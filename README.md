@@ -1,5 +1,7 @@
 <a id="english"></a>
 
+###### English
+
 <div align="center">
 
 <img src="assets/branding/koch-snowflake-evolution.svg" width="88" height="88" alt="Animated Koch snowflake" />
@@ -8,10 +10,7 @@
 
 **English** · **[简体中文](#简体中文)**
 
-[![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases)
-[![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE)
-[![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
+[![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases) [![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE) [![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
 
 **Turn a story idea into a draft-ready plan, one Snowflake step at a time.**
 
@@ -304,6 +303,8 @@ The distributable plugin consists of exactly `main.js`, `manifest.json`, and `st
 
 <a id="简体中文"></a>
 
+###### 简体中文
+
 <div align="center">
 
 <img src="assets/branding/koch-snowflake-evolution.svg" width="88" height="88" alt="动态科赫雪花" />
@@ -312,10 +313,7 @@ The distributable plugin consists of exactly `main.js`, `manifest.json`, and `st
 
 **[English](#english)** · **简体中文**
 
-[![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases)
-[![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE)
-[![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
+[![Release](https://img.shields.io/github/v/release/ZzPoLariszZ/obsidian-snowflake-method?display_name=tag&sort=semver)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/releases) [![CI](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml/badge.svg)](https://github.com/ZzPoLariszZ/obsidian-snowflake-method/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/ZzPoLariszZ/obsidian-snowflake-method?color=blue)](LICENSE) [![Obsidian 1.13+](https://img.shields.io/badge/Obsidian-1.13%2B-7c3aed?logo=obsidian)](https://obsidian.md)
 
 **从一句话灵感到可动笔的小说方案，一步步完成雪花写作法。**
 
