@@ -643,6 +643,25 @@ export class SnowflakeProjectService {
       return this.loadProject(project.projectFile);
     }
 
+    if (issue.code === "mismatched-note-title") {
+      // Frontmatter is the name the dashboard shows, so it wins; the heading and
+      // file name are brought to it rather than the other way around.
+      // safeFileName is lossy, so a file name cannot reconstruct a title.
+      const record = await this.repository.readManaged(normalized);
+      const title =
+        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) ??
+        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]);
+      if (title === null) {
+        throw new Error(`No stored name was found for "${normalized}".`);
+      }
+      await this.syncNoteHeading(normalized, title);
+      const renamed = await this.renameManagedNote(normalized, title);
+      if (documentTypeOf(record.frontmatter) === "character") {
+        await this.refreshCharacterReferences(project, normalized, renamed, title);
+      }
+      return this.loadProject(project.projectFile);
+    }
+
     if (issue.code === "invalid-system-template") {
       const layout = getProjectPathLayout(project.locale);
       const template = getSystemTemplates(project.locale).find(
@@ -978,7 +997,100 @@ export class SnowflakeProjectService {
       sectionValues,
       rollbackValues,
     );
-    return this.characterFromRecord(await this.repository.readManaged(character.path));
+
+    const nextName = patch.name?.trim();
+    let path = character.path;
+    if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
+      await this.syncNoteHeading(path, nextName);
+      path = await this.renameManagedNote(path, nextName);
+      await this.refreshCharacterReferences(project, character.path, path, nextName);
+    }
+    return this.characterFromRecord(await this.repository.readManaged(path));
+  }
+
+  /**
+   * Keeps the note file named after the title stored in frontmatter. Letting the
+   * two drift is the most confusing thing a rename can do, because the dashboard
+   * then shows one name and the file explorer another.
+   */
+  /**
+   * Brings an existing note heading to the stored name. A note without one is
+   * left as it is: the author may have removed it deliberately, and writing one
+   * back would add content rather than correct it.
+   */
+  private async syncNoteHeading(path: string, title: string): Promise<void> {
+    const record = await this.repository.readManaged(path);
+    if (firstHeading(record.body) === null) return;
+    await this.repository.updateFirstHeading(path, title);
+  }
+
+  private async renameManagedNote(path: string, title: string): Promise<string> {
+    const current = normalizePath(path);
+    const requested = normalizePath(`${parentOf(current)}/${safeFileName(title)}.md`);
+    if (requested === current) return current;
+    const destination = this.repository.get(requested)
+      ? this.repository.resolveUniquePath(requested)
+      : requested;
+    return this.repository.renameFile(current, destination);
+  }
+
+  /**
+   * Rewrites the links scenes store for a renamed character. Obsidian rewrites
+   * the path inside a link but never its display text, so a scene would keep
+   * presenting the previous name everywhere the raw link is rendered.
+   */
+  private async refreshCharacterReferences(
+    project: ProjectRef | ProjectSnapshot,
+    previousPath: string,
+    currentPath: string,
+    name: string,
+  ): Promise<void> {
+    const records = await this.findManagedFilesInProjectDirectories(
+      project,
+      "scenes",
+      "scene",
+      project.id,
+    );
+    const link = toWikiLink(currentPath, name);
+    const isRenamed = (stored: string | null): boolean =>
+      stored !== null && (stored === previousPath || stored === currentPath);
+
+    for (const record of records) {
+      if (record.readOnly) continue;
+      const patch: ManagedFrontmatter = {};
+
+      const storedPov = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]);
+      if (
+        storedPov !== null &&
+        !isScenePovMode(storedPov) &&
+        isRenamed(fromWikiLink(storedPov)) &&
+        storedPov !== link
+      ) {
+        patch[FRONTMATTER_KEYS.pov] = link;
+      }
+
+      const storedCharacters = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
+      const rawCharacters: unknown[] | null = Array.isArray(storedCharacters)
+        ? (storedCharacters as unknown[])
+        : typeof storedCharacters === "string"
+          ? [storedCharacters]
+          : null;
+      if (rawCharacters !== null) {
+        // Only the renamed entry is rebuilt; the remaining links already carry
+        // the right display text for their own character.
+        const next: unknown[] = rawCharacters.map((entry) => {
+          const raw = asOptionalString(entry);
+          return raw !== null && isRenamed(fromWikiLink(raw)) ? link : entry;
+        });
+        if (fingerprint(next) !== fingerprint(rawCharacters)) {
+          patch[FRONTMATTER_KEYS.sceneCharacters] = next;
+        }
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await this.repository.updateFrontmatter(record.path, patch);
+      }
+    }
   }
 
   async createScene(
@@ -1113,7 +1225,15 @@ export class SnowflakeProjectService {
       sectionValues,
       rollbackValues,
     );
-    return this.sceneFromRecord(await this.repository.readManaged(scene.path));
+
+    // Nothing links to a scene, so renaming one needs no reference sweep.
+    const nextTitle = patch.title?.trim();
+    let path = scene.path;
+    if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
+      await this.syncNoteHeading(path, nextTitle);
+      path = await this.renameManagedNote(path, nextTitle);
+    }
+    return this.sceneFromRecord(await this.repository.readManaged(path));
   }
 
   async reorderScene(
@@ -1808,6 +1928,35 @@ export class SnowflakeProjectService {
         if (typeof rawRank === "number" && Number.isSafeInteger(rawRank)) {
           usedRanks.add(rawRank);
         }
+        const storedTitle = asOptionalString(
+          record.frontmatter[
+            documentType === "character"
+              ? FRONTMATTER_KEYS.characterName
+              : FRONTMATTER_KEYS.sceneTitle
+          ],
+        );
+        if (storedTitle !== null) {
+          const expectedStem = trySafeFileName(storedTitle);
+          const heading = firstHeading(record.body);
+          const fileNameDrifted =
+            expectedStem !== null &&
+            !stemMatchesTitle(fileStem(record.path), expectedStem);
+          // An absent heading is left alone. The author may have removed it on
+          // purpose, and repairing would add content rather than correct it.
+          const headingDrifted =
+            heading !== null && heading !== normalizeHeading(storedTitle);
+          if (fileNameDrifted || headingDrifted) {
+            add({
+              code: "mismatched-note-title",
+              path: record.path,
+              stepIds,
+              expected: storedTitle,
+              canOpen: true,
+              repairable: !record.readOnly,
+            });
+          }
+        }
+
         const typeSpecificValid =
           documentType === "character"
             ? stableIdIsUnique &&
@@ -2793,6 +2942,35 @@ function relativeToRoot(path: string, rootPath: string): string {
 function basename(path: string): string {
   const normalized = normalizePath(path);
   return normalized.slice(normalized.lastIndexOf("/") + 1);
+}
+
+function normalizeHeading(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+/** The first level-one heading, matched exactly as updateFirstHeading writes it. */
+function firstHeading(body: string): string | null {
+  const match = /^#(?:[ \t]+)(.*)$/mu.exec(body);
+  return match ? normalizeHeading(match[1] ?? "") : null;
+}
+
+function trySafeFileName(value: string): string | null {
+  try {
+    return safeFileName(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Two notes may legitimately share a title, in which case creation and rename
+ * both fall back to a numbered file name. Treating that as drift would report a
+ * defect on an ordinary duplicate name.
+ */
+function stemMatchesTitle(stem: string, expected: string): boolean {
+  if (stem === expected) return true;
+  if (!stem.startsWith(`${expected} (`) || !stem.endsWith(")")) return false;
+  return /^\d+$/u.test(stem.slice(expected.length + 2, -1));
 }
 
 function fileStem(path: string): string {

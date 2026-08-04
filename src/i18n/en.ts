@@ -224,6 +224,8 @@ export const en = {
 	'projectStructure.issue.missing-artifact': 'Required project note is missing.',
 	'projectStructure.issue.missing-system-template':
 		'Required system template is missing.',
+	'projectStructure.issue.mismatched-note-title':
+		'The file name or heading no longer matches the name stored in this note.',
 	'projectStructure.issue.invalid-system-template':
 		'System template does not match the current project format.',
 	'projectStructure.issue.invalid-artifact-metadata':

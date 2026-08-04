@@ -10,8 +10,15 @@ import {
 	translate,
 	zhCN,
 } from '../../src/i18n';
+import { PROJECT_STRUCTURE_ISSUE_CODES } from '../../src/services';
 
 describe('translation resources', () => {
+	it('describes every project structure issue code the checker can report', () => {
+		for (const code of PROJECT_STRUCTURE_ISSUE_CODES) {
+			expect(Object.keys(en)).toContain(`projectStructure.issue.${code}`);
+		}
+	});
+
 	it('keeps English and Simplified Chinese key sets identical', () => {
 		expect(Object.keys(zhCN).sort()).toEqual(Object.keys(en).sort());
 		expect(en['dashboard.steps']).toBe('Steps');

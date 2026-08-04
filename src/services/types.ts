@@ -134,6 +134,7 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-artifact",
   "missing-system-template",
   "invalid-system-template",
+  "mismatched-note-title",
   "invalid-artifact-metadata",
 ] as const;
 

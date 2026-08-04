@@ -204,6 +204,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.missing-directory': '缺少必要的项目文件夹。',
 	'projectStructure.issue.missing-artifact': '缺少必要的项目笔记。',
 	'projectStructure.issue.missing-system-template': '缺少必要的系统模板。',
+	'projectStructure.issue.mismatched-note-title':
+		'文件名或标题与笔记中保存的名称不一致。',
 	'projectStructure.issue.invalid-system-template': '系统模板与当前项目格式不一致。',
 	'projectStructure.issue.invalid-artifact-metadata':
 		'必要的笔记元数据缺失或无效。',

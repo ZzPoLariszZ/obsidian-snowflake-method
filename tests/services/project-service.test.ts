@@ -1459,4 +1459,192 @@ describe("SnowflakeProjectService", () => {
     expect(reconciled.steps[4]).toBe("not-started");
     expect(reconciled.steps[10]).toBe("not-started");
   });
+
+  it("renames the character file and heading when the name changes", async () => {
+    const project = await service.createProject({ name: "Renames" });
+    const character = await service.createCharacter(project, "Bob");
+    expect(character.path).toBe(`${project.rootPath}/20_Character/Bob.md`);
+
+    const renamed = await service.updateCharacter(project, character.characterId, {
+      expectedRevision: character.revision,
+      name: "Robert",
+    });
+
+    expect(renamed.path).toBe(`${project.rootPath}/20_Character/Robert.md`);
+    expect(renamed.name).toBe("Robert");
+    expect(fakeVault.getFileByPath(character.path)).toBeNull();
+    expect(fakeVault.contents.get(renamed.path)).toContain("# Robert");
+    expect(renamed.characterId).toBe(character.characterId);
+  });
+
+  it("refreshes the links scenes store for a renamed character", async () => {
+    const project = await service.createProject({ name: "Scene Links" });
+    const bob = await service.createCharacter(project, "Bob");
+    const alice = await service.createCharacter(project, "Alice");
+    const scene = await service.createScene(project, {
+      title: "Meeting",
+      povPath: bob.path,
+      characters: [bob.path, alice.path],
+    });
+
+    const renamed = await service.updateCharacter(project, bob.characterId, {
+      expectedRevision: bob.revision,
+      name: "Robert",
+    });
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+
+    // The path and the display text both have to follow the rename; Obsidian
+    // would only ever update the path.
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(`[[${renamed.path}|Robert]]`);
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      `[[${renamed.path}|Robert]]`,
+      `[[${alice.path}|Alice]]`,
+    ]);
+    const reloaded = await service.listScenes(project);
+    expect(reloaded[0]?.povPath).toBe(renamed.path);
+  });
+
+  it("renames the scene file and heading when the title changes", async () => {
+    const project = await service.createProject({ name: "Scene Renames" });
+    const scene = await service.createScene(project, "Arrival");
+
+    const renamed = await service.updateScene(project, scene.sceneId, {
+      expectedRevision: scene.revision,
+      title: "Departure",
+    });
+
+    expect(renamed.path).toBe(`${project.rootPath}/40_Scene/Departure.md`);
+    expect(fakeVault.getFileByPath(scene.path)).toBeNull();
+    expect(fakeVault.contents.get(renamed.path)).toContain("# Departure");
+    expect(renamed.sceneId).toBe(scene.sceneId);
+  });
+
+  it("keeps a rename that collides with another note on a distinct file", async () => {
+    const project = await service.createProject({ name: "Collision" });
+    const alice = await service.createCharacter(project, "Alice");
+    const bob = await service.createCharacter(project, "Bob");
+
+    const renamed = await service.updateCharacter(project, bob.characterId, {
+      expectedRevision: bob.revision,
+      name: "Alice",
+    });
+
+    expect(renamed.path).toBe(`${project.rootPath}/20_Character/Alice (2).md`);
+    expect(fakeVault.getFileByPath(alice.path)).not.toBeNull();
+    expect(renamed.name).toBe("Alice");
+  });
+
+  it("accepts a numbered file name for a duplicated title", async () => {
+    const project = await service.createProject({ name: "Duplicates" });
+    await service.createCharacter(project, "Alice");
+    await service.createCharacter(project, "Alice");
+
+    const snapshot = await service.loadProject(project.projectFile);
+
+    // Two characters may share a name, so the numbered file is not drift.
+    expect(snapshot.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "mismatched-note-title" }),
+      ]),
+    );
+  });
+
+  it("reports a file name that drifted from the stored name and repairs it", async () => {
+    const project = await service.createProject({ name: "Drift" });
+    const character = await service.createCharacter(project, "Bob");
+    const scene = await service.createScene(project, {
+      title: "Meeting",
+      povPath: character.path,
+    });
+    const moved = `${project.rootPath}/20_Character/Renamed Outside.md`;
+    await service.repository.renameFile(character.path, moved);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mismatched-note-title",
+          path: moved,
+          expected: "Bob",
+          stepIds: [3, 5, 7],
+          repairable: true,
+        }),
+      ]),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, moved);
+
+    expect(fakeVault.getFileByPath(character.path)).not.toBeNull();
+    expect(fakeVault.getFileByPath(moved)).toBeNull();
+    expect(
+      (await service.readManagedFrontmatter(scene.path))[FRONTMATTER_KEYS.pov],
+    ).toBe(`[[${character.path}|Bob]]`);
+  });
+
+  it("reports a heading edited on its own and restores it", async () => {
+    const project = await service.createProject({ name: "Heading Drift" });
+    const character = await service.createCharacter(project, "Bob");
+    const before = fakeVault.contents.get(character.path) ?? "";
+    fakeVault.contents.set(before ? character.path : "", "");
+    fakeVault.contents.set(character.path, before.replace("# Bob", "# Bobby"));
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mismatched-note-title",
+          path: character.path,
+          expected: "Bob",
+          repairable: true,
+        }),
+      ]),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, character.path);
+
+    expect(fakeVault.contents.get(character.path)).toContain("# Bob");
+    expect(fakeVault.contents.get(character.path)).not.toContain("# Bobby");
+  });
+
+  it("restores the heading as well as the file name in one repair", async () => {
+    const project = await service.createProject({ name: "Both Drift" });
+    const scene = await service.createScene(project, "Arrival");
+    const moved = `${project.rootPath}/40_Scene/Something Else.md`;
+    const before = fakeVault.contents.get(scene.path) ?? "";
+    fakeVault.contents.set(scene.path, before.replace("# Arrival", "# Something Else"));
+    await service.repository.renameFile(scene.path, moved);
+
+    await service.repairMissingStructureItem(project.projectFile, moved);
+
+    // The earlier repair renamed the file but left the heading behind.
+    expect(fakeVault.getFileByPath(scene.path)).not.toBeNull();
+    expect(fakeVault.contents.get(scene.path)).toContain("# Arrival");
+    expect(fakeVault.getFileByPath(moved)).toBeNull();
+  });
+
+  it("leaves a note that has no heading alone", async () => {
+    const project = await service.createProject({ name: "No Heading" });
+    const character = await service.createCharacter(project, "Bob");
+    const stripped = (fakeVault.contents.get(character.path) ?? "").replace(
+      "# Bob\n",
+      "",
+    );
+    fakeVault.contents.set(character.path, stripped);
+
+    const snapshot = await service.loadProject(project.projectFile);
+    expect(snapshot.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "mismatched-note-title" }),
+      ]),
+    );
+
+    // A rename must not write a heading back into a note the author cleared.
+    const renamed = await service.updateCharacter(project, character.characterId, {
+      expectedRevision: (await service.listCharacters(project))[0]!.revision,
+      name: "Robert",
+    });
+    expect(fakeVault.contents.get(renamed.path)).not.toMatch(/^# /mu);
+  });
 });
