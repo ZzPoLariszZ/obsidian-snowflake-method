@@ -165,9 +165,11 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 | Add character | Add a shared character note to the current project. |
 | Add scene | Add a shared scene note to the current project. |
 | Create project | Create a new Markdown-native Snowflake project. |
+| Open character base | Open the Bases view of the current project's characters. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
 | Open project manager | Create, rename, open, or trash projects. |
+| Open scene base | Open the Bases view of the current project's scenes. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
@@ -214,8 +216,10 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── 11_One_Sentence_Summary.md
     │   └── ...
     ├── 20_Character/
+    │   └── Characters.base
     ├── 30_Synopsis/
     ├── 40_Scene/
+    │   └── Scenes.base
     ├── 50_Manuscript/
     │   └── Draft.md
     └── ...
@@ -238,7 +242,6 @@ These HTML comments are structural markers rather than story content. Boundary p
 ## Roadmap
 
 - Obtain written permission from Randy Ingermanson or Advanced Fiction Writing before adding the writing example from Chapter 20 of *How to Write a Novel Using the Snowflake Method*.
-- Use Obsidian's native Bases to manage characters and scenes.
 - Use Obsidian's native Canvas to build timelines and scene boards.
 - ...
 
@@ -461,6 +464,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 打开工作台 | 打开或显示当前项目的工作台。 |
 | 打开健康检查器 | 检查项目结构并修复安全问题。 |
 | 打开项目管理器 | 创建、重命名、打开或移入回收站。 |
+| 打开角色数据库 | 打开当前项目角色的 Bases 视图。 |
+| 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 选择固定分栏或普通标签页。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
@@ -501,8 +506,10 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 11_一句话概述.md
     │   └── ...
     ├── 20_角色/
+    │   └── 角色总览.base
     ├── 30_大纲/
     ├── 40_场景/
+    │   └── 场景总览.base
     ├── 50_正文/
     │   └── 初稿.md
     └── ...
@@ -523,7 +530,6 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 ## 路线图
 
 - 取得 Randy Ingermanson 或 Advanced Fiction Writing 的书面授权后，加入《How to Write a Novel Using the Snowflake Method》第 20 章中的创作示例。
-- 使用 Obsidian 原生 Bases 管理角色与场景。
 - 使用 Obsidian 原生 Canvas 构建时间线与场景看板。
 - ……
 

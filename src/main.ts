@@ -905,6 +905,12 @@ export default class SnowflakeMethodPlugin
 		await this.openManagedFile(path);
 	}
 
+	async openProjectBase(id: 'characters' | 'scenes'): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const path = await this.projects.openProjectBase(project, id);
+		await this.openManagedFile(path);
+	}
+
 	async updateScene(id: string, request: CreateSceneRequest): Promise<void> {
 		const project = await this.requireCurrentProject();
 		const expectedRevision = this.requireExpectedRevision(
@@ -1651,6 +1657,27 @@ export default class SnowflakeMethodPlugin
 				return available;
 			},
 		});
+		for (const base of ['characters', 'scenes'] as const) {
+			this.addCommand({
+				id: base === 'characters' ? 'open-character-base' : 'open-scene-base',
+				name: this.globalT(
+					base === 'characters'
+						? 'commands.openCharacterBase'
+						: 'commands.openSceneBase',
+				),
+				checkCallback: (checking) => {
+					const available = this.settings.recentProjectPath !== null;
+					if (!checking && available) {
+						void this.openProjectBase(base)
+							.then(() => this.refreshDashboards())
+							.catch((error: unknown) => {
+								this.showError(error);
+							});
+					}
+					return available;
+				},
+			});
+		}
 		this.addCommand({
 			id: 'repair-project',
 			name: this.globalT('commands.openHealthChecker'),

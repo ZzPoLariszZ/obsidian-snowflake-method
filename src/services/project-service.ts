@@ -45,6 +45,7 @@ import {
 } from "../repository";
 import {
   characterTemplate,
+  getProjectBases,
   getStoryArtifacts,
   getSystemTemplates,
   draftTemplate,
@@ -54,6 +55,8 @@ import {
   readMarkedSection,
   sceneTemplate,
   type MarkdownTemplate,
+  type ProjectBaseDefinition,
+  type ProjectBaseId,
   type SystemTemplateDefinition,
 } from "../templates";
 import {
@@ -516,6 +519,24 @@ export class SnowflakeProjectService {
       }
     }
 
+    // Only the existence of a base is a contract. Its views, column order, and
+    // widths belong to the author, and Obsidian itself rewrites the file when a
+    // column is resized, so a content check would report ordinary use as damage.
+    for (const base of getProjectBases(project.id, project.locale)) {
+      const path = normalizePath(
+        `${rootPath}/${layout.directories[base.id]}/${base.fileName}`,
+      );
+      const existing = this.repository.get(path);
+      if (existing === null) {
+        await this.repository.createPlainFile(path, base.content);
+        markCreated(result, path);
+      } else if (this.repository.getFile(path) !== null) {
+        markUnchanged(result, path);
+      } else {
+        markConflict(result, path, `A folder already exists at "${path}".`);
+      }
+    }
+
     for (const artifact of getStoryArtifacts(project.locale)) {
       const template = storyArtifactTemplate(artifact.step, project.locale);
       await this.ensureArtifact(
@@ -640,6 +661,21 @@ export class SnowflakeProjectService {
         template: template.template,
         frontmatter: systemTemplateFrontmatter(template, project),
       });
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "missing-base") {
+      const layout = getProjectPathLayout(project.locale);
+      const base = getProjectBases(project.id, project.locale).find(
+        (candidate) =>
+          normalizePath(
+            `${project.rootPath}/${layout.directories[candidate.id]}/${candidate.fileName}`,
+          ) === normalized,
+      );
+      if (!base) {
+        throw new Error(`No canonical project base was found for "${normalized}".`);
+      }
+      await this.repository.createPlainFile(normalized, base.content);
       return this.loadProject(project.projectFile);
     }
 
@@ -1037,7 +1073,8 @@ export class SnowflakeProjectService {
   /**
    * Rewrites the links scenes store for a renamed character. Obsidian rewrites
    * the path inside a link but never its display text, so a scene would keep
-   * presenting the previous name everywhere the raw link is rendered.
+   * presenting the previous name everywhere the raw link is rendered — the
+   * Bases views among them.
    */
   private async refreshCharacterReferences(
     project: ProjectRef | ProjectSnapshot,
@@ -1140,6 +1177,46 @@ export class SnowflakeProjectService {
       },
     });
     return this.sceneFromRecord(await this.repository.readManaged(created.path));
+  }
+
+  /**
+   * Returns the path to one of the generated Bases views, writing it first when
+   * it is missing. Opening therefore recovers a deleted base without waiting for
+   * a health check, and a read-only project can still open one that exists.
+   */
+  async openProjectBase(
+    projectLocator: ProjectLocator,
+    id: ProjectBaseId,
+  ): Promise<string> {
+    const project = await this.resolveProjectForRead(projectLocator);
+    const path = this.projectBasePath(project, id);
+    if (this.repository.getFile(path) !== null) return path;
+
+    this.assertProjectWritable(project);
+    const base = this.projectBase(project, id);
+    await this.repository.createPlainFile(path, base.content);
+    return path;
+  }
+
+  private projectBase(
+    project: ProjectRef | ProjectSnapshot,
+    id: ProjectBaseId,
+  ): ProjectBaseDefinition {
+    const base = getProjectBases(project.id, project.locale).find(
+      (candidate) => candidate.id === id,
+    );
+    if (!base) throw new Error(`Unknown project base: ${id}`);
+    return base;
+  }
+
+  private projectBasePath(
+    project: ProjectRef | ProjectSnapshot,
+    id: ProjectBaseId,
+  ): string {
+    const layout = getProjectPathLayout(project.locale);
+    return normalizePath(
+      `${project.rootPath}/${layout.directories[id]}/${this.projectBase(project, id).fileName}`,
+    );
   }
 
   async createSceneCanvas(projectLocator: ProjectLocator): Promise<string> {
@@ -1847,6 +1924,25 @@ export class SnowflakeProjectService {
           });
         }
       }
+    }
+
+    // Only absence is reported. A base that exists belongs to the author, and
+    // Obsidian rewrites it whenever a column is resized.
+    for (const base of getProjectBases(project.id, project.locale)) {
+      const directory = normalizePath(
+        `${project.rootPath}/${layout.directories[base.id]}`,
+      );
+      if (this.repository.getFolder(directory) === null) continue;
+      const path = normalizePath(`${directory}/${base.fileName}`);
+      if (this.repository.getFile(path) !== null) continue;
+      add({
+        code: "missing-base",
+        path,
+        stepIds: [...directorySteps[base.id]],
+        expected: base.id,
+        canOpen: false,
+        repairable: this.repository.get(path) === null,
+      });
     }
 
     for (const artifact of getStoryArtifacts(project.locale)) {

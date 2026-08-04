@@ -1225,6 +1225,25 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 	}
 
+	/**
+	 * Opens the generated Bases view for this collection. Deliberately left
+	 * enabled on a read-only project: an existing base still opens, and only
+	 * writing a missing one is refused.
+	 */
+	private renderOpenBase(
+		actions: HTMLElement,
+		id: 'characters' | 'scenes',
+	): void {
+		const openBase = actions.createEl('button', {
+			cls: 'snowflake-method-open-base',
+			text: this.t('actions.openBase'),
+			attr: { type: 'button' },
+		});
+		openBase.addEventListener('click', () => {
+			void this.runAndRefresh(() => this.host.openProjectBase(id));
+		});
+	}
+
 	private renderCharacters(
 		panel: HTMLElement,
 		model: ProjectDashboardModel,
@@ -1233,6 +1252,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
+		this.renderOpenBase(actions, 'characters');
 		const add = actions.createEl('button', {
 			cls: 'mod-cta',
 			text: this.t('actions.addCharacter'),
@@ -1484,6 +1504,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
+		this.renderOpenBase(actions, 'scenes');
 		const add = actions.createEl('button', {
 			cls: 'mod-cta',
 			text: this.t('actions.addScene'),
@@ -1504,6 +1525,7 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			).open();
 		});
+
 		if (step === 8) {
 			this.renderSceneListHints(panel);
 		} else {

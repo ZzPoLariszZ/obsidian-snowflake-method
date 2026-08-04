@@ -34,6 +34,37 @@ export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type ProjectLanguage = 'en' | 'zh-CN';
 export type CharacterType = 'major' | 'supporting' | 'minor';
 
+/**
+ * Frontmatter keys written by every managed document. Declared here rather than
+ * in the service layer so template modules can reference the schema without
+ * importing services, which import templates in turn.
+ */
+export const FRONTMATTER_KEYS = {
+	schema: 'snowflake-schema',
+	document: 'snowflake-document',
+	projectId: 'snowflake-project-id',
+	projectName: 'snowflake-project-name',
+	projectLanguage: 'snowflake-project-language',
+	stepStatuses: 'snowflake-step-status',
+	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
+	draft: 'snowflake-draft',
+	characterId: 'snowflake-character-id',
+	characterName: 'snowflake-character-name',
+	characterType: 'snowflake-character-type',
+	oneSentenceStoryline: 'snowflake-one-sentence-storyline',
+	motivation: 'snowflake-motivation',
+	goal: 'snowflake-goal',
+	conflict: 'snowflake-conflict',
+	growth: 'snowflake-growth',
+	sceneId: 'snowflake-scene-id',
+	sceneTitle: 'snowflake-scene-title',
+	rank: 'snowflake-rank',
+	pov: 'snowflake-pov',
+	sceneTime: 'snowflake-scene-time',
+	sceneLocation: 'snowflake-scene-location',
+	sceneCharacters: 'snowflake-scene-characters',
+} as const;
+
 export interface BaseDocumentData {
 	schemaVersion: typeof SCHEMA_VERSION;
 	documentType: DocumentType;

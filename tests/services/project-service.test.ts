@@ -1647,4 +1647,131 @@ describe("SnowflakeProjectService", () => {
     });
     expect(fakeVault.contents.get(renamed.path)).not.toMatch(/^# /mu);
   });
+
+  it("scaffolds a character and scene base scoped to the new project", async () => {
+    const project = await service.createProject({ name: "Bases" });
+    const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
+    const scenesBase = `${project.rootPath}/40_Scene/Scenes.base`;
+
+    expect(fakeVault.getFileByPath(charactersBase)).not.toBeNull();
+    expect(fakeVault.getFileByPath(scenesBase)).not.toBeNull();
+    expect(fakeVault.contents.get(charactersBase)).toContain(
+      `note["snowflake-project-id"] == "${project.id}"`,
+    );
+    expect(fakeVault.contents.get(scenesBase)).toContain(
+      `note["snowflake-scene-id"] != "${project.id}-template-scene"`,
+    );
+  });
+
+  it("localizes the generated base filenames", async () => {
+    const project = await service.createProject({ name: "基地", locale: "zh-CN" });
+
+    expect(
+      fakeVault.getFileByPath(`${project.rootPath}/20_角色/角色总览.base`),
+    ).not.toBeNull();
+    expect(
+      fakeVault.getFileByPath(`${project.rootPath}/40_场景/场景总览.base`),
+    ).not.toBeNull();
+  });
+
+  it("keeps an edited base when the project is repaired again", async () => {
+    const project = await service.createProject({ name: "Edited Base" });
+    const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
+    const customized = `${fakeVault.contents.get(charactersBase) ?? ""}  - type: cards\n    name: Gallery\n`;
+    fakeVault.contents.set(charactersBase, customized);
+
+    const repaired = await service.repairProject(project.rootPath);
+
+    // Authors own the views and Obsidian rewrites the file on a column resize,
+    // so only a missing base is a defect.
+    expect(fakeVault.contents.get(charactersBase)).toBe(customized);
+    expect(repaired.created).not.toContain(charactersBase);
+    expect(repaired.unchanged).toContain(charactersBase);
+  });
+
+  it("recreates a base that was deleted", async () => {
+    const project = await service.createProject({ name: "Deleted Base" });
+    const scenesBase = `${project.rootPath}/40_Scene/Scenes.base`;
+    const original = fakeVault.contents.get(scenesBase);
+    fakeVault.delete(scenesBase);
+    expect(fakeVault.getFileByPath(scenesBase)).toBeNull();
+
+    const repaired = await service.repairProject(project.rootPath);
+
+    expect(repaired.created).toContain(scenesBase);
+    expect(fakeVault.contents.get(scenesBase)).toBe(original);
+  });
+
+  it("opens an existing base without rewriting it", async () => {
+    const project = await service.createProject({ name: "Open Base" });
+    const scenesBase = `${project.rootPath}/40_Scene/Scenes.base`;
+    fakeVault.contents.set(scenesBase, "filters:\n  and: []\nviews: []\n");
+
+    const path = await service.openProjectBase(project, "scenes");
+
+    expect(path).toBe(scenesBase);
+    expect(fakeVault.contents.get(scenesBase)).toBe(
+      "filters:\n  and: []\nviews: []\n",
+    );
+  });
+
+  it("reports a missing base and repairs it on request", async () => {
+    const project = await service.createProject({ name: "Base Health" });
+    const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
+    const scenesBase = `${project.rootPath}/40_Scene/Scenes.base`;
+    const original = fakeVault.contents.get(charactersBase);
+    fakeVault.delete(charactersBase);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "missing-base",
+          path: charactersBase,
+          stepIds: [3, 5, 7],
+          repairable: true,
+        }),
+      ]),
+    );
+    // The scene base is untouched, so it must not be reported.
+    expect(damaged.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "missing-base", path: scenesBase }),
+      ]),
+    );
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      charactersBase,
+    );
+
+    expect(fakeVault.contents.get(charactersBase)).toBe(original);
+    expect(repaired.structureIssues).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "missing-base" })]),
+    );
+  });
+
+  it("reports no base issue for a healthy project", async () => {
+    const project = await service.createProject({ name: "Healthy Bases" });
+
+    const snapshot = await service.loadProject(project.projectFile);
+
+    expect(snapshot.structureIssues).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "missing-base" })]),
+    );
+  });
+
+  it("writes a missing base when it is opened", async () => {
+    const project = await service.createProject({ name: "Missing Base" });
+    const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
+    fakeVault.delete(charactersBase);
+
+    const path = await service.openProjectBase(project, "characters");
+
+    expect(path).toBe(charactersBase);
+    expect(fakeVault.contents.get(charactersBase)).toContain(
+      `note["snowflake-project-id"] == "${project.id}"`,
+    );
+  });
 });

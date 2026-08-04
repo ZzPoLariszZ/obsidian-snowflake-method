@@ -150,6 +150,7 @@ export interface DashboardHost {
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
 	createScene(request: CreateSceneRequest): Promise<void>;
 	createSceneCanvas(): Promise<void>;
+	openProjectBase(id: 'characters' | 'scenes'): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;

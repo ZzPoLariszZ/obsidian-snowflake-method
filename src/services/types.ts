@@ -73,31 +73,7 @@ export function getProjectMetadataRelativePath(language: ProjectLanguage): strin
   return `${layout.directories.system}/${layout.projectFileName}`;
 }
 
-export const FRONTMATTER_KEYS = {
-  schema: "snowflake-schema",
-  document: "snowflake-document",
-  projectId: "snowflake-project-id",
-  projectName: "snowflake-project-name",
-  projectLanguage: "snowflake-project-language",
-  stepStatuses: "snowflake-step-status",
-  reviewedFingerprints: "snowflake-reviewed-fingerprints",
-  draft: "snowflake-draft",
-  characterId: "snowflake-character-id",
-  characterName: "snowflake-character-name",
-  characterType: "snowflake-character-type",
-  oneSentenceStoryline: "snowflake-one-sentence-storyline",
-  motivation: "snowflake-motivation",
-  goal: "snowflake-goal",
-  conflict: "snowflake-conflict",
-  growth: "snowflake-growth",
-  sceneId: "snowflake-scene-id",
-  sceneTitle: "snowflake-scene-title",
-  rank: "snowflake-rank",
-  pov: "snowflake-pov",
-  sceneTime: "snowflake-scene-time",
-  sceneLocation: "snowflake-scene-location",
-  sceneCharacters: "snowflake-scene-characters",
-} as const;
+export { FRONTMATTER_KEYS } from "../domain";
 
 export type ProjectLocator = string | ProjectRef | ProjectSnapshot;
 
@@ -134,6 +110,7 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-artifact",
   "missing-system-template",
   "invalid-system-template",
+  "missing-base",
   "mismatched-note-title",
   "invalid-artifact-metadata",
 ] as const;

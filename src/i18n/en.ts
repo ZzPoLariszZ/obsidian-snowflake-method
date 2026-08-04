@@ -16,6 +16,8 @@ export const en = {
 	'commands.openProjectManager': 'Open project manager',
 	'commands.addCharacter': 'Add character',
 	'commands.addScene': 'Add scene',
+	'commands.openCharacterBase': 'Open character base',
+	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
 	'commands.toggleManagedBoundaries': 'Toggle managed boundary protection',
 	'commands.boundaryProtectionEnabled':
@@ -86,6 +88,7 @@ export const en = {
 	'actions.repairItem': 'Repair',
 	'actions.addCharacter': 'Add character',
 	'actions.addScene': 'Add scene',
+	'actions.openBase': 'Open base',
 	'actions.openNote': 'Open note',
 	'actions.edit': 'Edit',
 	'actions.delete': 'Delete',
@@ -224,6 +227,7 @@ export const en = {
 	'projectStructure.issue.missing-artifact': 'Required project note is missing.',
 	'projectStructure.issue.missing-system-template':
 		'Required system template is missing.',
+	'projectStructure.issue.missing-base': 'Required project base is missing.',
 	'projectStructure.issue.mismatched-note-title':
 		'The file name or heading no longer matches the name stored in this note.',
 	'projectStructure.issue.invalid-system-template':
