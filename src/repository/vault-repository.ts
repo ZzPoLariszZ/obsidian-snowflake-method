@@ -1,0 +1,566 @@
+import {
+  normalizePath,
+  stringifyYaml,
+  type FileManager,
+  type TAbstractFile,
+  type TFile,
+  type TFolder,
+  type Vault,
+} from "obsidian";
+
+import { SCHEMA_VERSION, fingerprint } from "../domain";
+import {
+  SECTION_MARKER_PREFIX,
+  findManagedMarkerIssues,
+  inspectMarkedSection,
+  replaceMarkedSection,
+  type ManagedMarkerIssue,
+  type ManagedSectionDefinition,
+  type MarkerIssueCode,
+  type MarkdownTemplate,
+} from "../templates";
+import {
+  ConcurrentChangeError,
+  InvalidManagedDocumentError,
+  ManagedFileNotFoundError,
+  PathConflictError,
+  UnsafeSectionError,
+} from "./errors";
+import {
+  assertWritableSchema,
+  documentTypeOf,
+  isManagedFrontmatter,
+  parseMarkdownFrontmatter,
+  projectIdOf,
+  schemaVersionOf,
+  type ManagedFrontmatter,
+} from "./frontmatter";
+
+export interface ManagedFileRecord {
+  file: TFile;
+  path: string;
+  content: string;
+  body: string;
+  frontmatter: ManagedFrontmatter;
+  schemaVersion: number | null;
+  readOnly: boolean;
+}
+
+export interface CreateManagedFileOptions {
+  path: string;
+  template: MarkdownTemplate;
+  frontmatter: ManagedFrontmatter;
+  uniqueOnConflict?: boolean;
+}
+
+export interface CreateManagedFileResult {
+  path: string;
+  file: TFile;
+  created: boolean;
+  frontmatterRepaired: boolean;
+}
+
+export interface RepairSectionConflict {
+  sectionId: string;
+  code: MarkerIssueCode;
+  reason: string;
+  markerSectionId?: string;
+  relatedSectionId?: string;
+}
+
+export interface SectionCheckResult {
+  unchanged: string[];
+  conflicts: RepairSectionConflict[];
+}
+
+export type FrontmatterUpdater = (
+  current: Readonly<ManagedFrontmatter>,
+) => ManagedFrontmatter;
+
+/**
+ * Thin, mobile-safe persistence layer. All content mutations are performed with
+ * Vault.process and all frontmatter mutations with FileManager.processFrontMatter.
+ */
+export class VaultRepository {
+  constructor(
+    readonly vault: Vault,
+    readonly fileManager: FileManager,
+  ) {}
+
+  normalize(path: string): string {
+    const trimmed = path.trim();
+    return trimmed ? normalizePath(trimmed) : "";
+  }
+
+  get(path: string): TAbstractFile | null {
+    return this.vault.getAbstractFileByPath(this.normalize(path));
+  }
+
+  getFile(path: string): TFile | null {
+    const node = this.get(path);
+    return isFile(node) ? node : null;
+  }
+
+  getFolder(path: string): TFolder | null {
+    const node = this.get(path);
+    return isFolder(node) ? node : null;
+  }
+
+  async ensureFolder(path: string): Promise<TFolder> {
+    const normalized = this.normalize(path);
+    if (!normalized) {
+      const root = this.vault.getRoot();
+      return root;
+    }
+
+    const pieces = normalized.split("/").filter(Boolean);
+    let current = "";
+    for (const piece of pieces) {
+      current = current ? `${current}/${piece}` : piece;
+      const existing = this.vault.getAbstractFileByPath(current);
+      if (existing) {
+        if (!isFolder(existing)) throw new PathConflictError(current);
+        continue;
+      }
+      try {
+        await this.vault.createFolder(current);
+      } catch (error) {
+        // A concurrent creator may have won the race. Re-read before failing.
+        const raced = this.vault.getAbstractFileByPath(current);
+        if (!isFolder(raced)) throw error;
+      }
+    }
+
+    const folder = this.getFolder(normalized);
+    if (!folder) throw new PathConflictError(normalized);
+    return folder;
+  }
+
+  async renameFile(path: string, destination: string): Promise<string> {
+    const sourcePath = this.normalize(path);
+    const destinationPath = this.normalize(destination);
+    const file = this.getFile(sourcePath);
+    if (!file) throw new ManagedFileNotFoundError(sourcePath);
+    if (sourcePath === destinationPath) return sourcePath;
+    if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+    await this.ensureFolder(parentOf(destinationPath));
+    try {
+      await this.fileManager.renameFile(file, destinationPath);
+    } catch (error) {
+      if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+      throw error;
+    }
+    return destinationPath;
+  }
+
+  async trashFile(path: string): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    await this.fileManager.trashFile(file);
+  }
+
+  async readManaged(path: string): Promise<ManagedFileRecord> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    const content = await this.vault.read(file);
+    const parsed = parseMarkdownFrontmatter(content);
+    const schemaVersion = schemaVersionOf(parsed.frontmatter);
+    return {
+      file,
+      path: normalized,
+      content,
+      body: parsed.body,
+      frontmatter: parsed.frontmatter,
+      schemaVersion,
+      readOnly:
+        Object.prototype.hasOwnProperty.call(parsed.frontmatter, "snowflake-schema") &&
+        schemaVersion !== SCHEMA_VERSION,
+    };
+  }
+
+  async tryReadManaged(path: string): Promise<ManagedFileRecord | null> {
+    try {
+      return await this.readManaged(path);
+    } catch (error) {
+      if (error instanceof ManagedFileNotFoundError || error instanceof InvalidManagedDocumentError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async createManagedFile(options: CreateManagedFileOptions): Promise<CreateManagedFileResult> {
+    const requestedPath = this.normalize(options.path);
+    const parentPath = parentOf(requestedPath);
+    await this.ensureFolder(parentPath);
+
+    const existing = this.get(requestedPath);
+    if (existing && !options.uniqueOnConflict) {
+      throw new PathConflictError(requestedPath);
+    }
+    const path = existing ? this.resolveUniquePath(requestedPath) : requestedPath;
+
+    const file = await this.vault.create(path, options.template.body);
+    await this.updateFrontmatter(file.path, {
+      ...options.frontmatter,
+      "snowflake-schema": SCHEMA_VERSION,
+    });
+    return { path: file.path, file, created: true, frontmatterRepaired: false };
+  }
+
+  async createPlainFile(
+    path: string,
+    content: string,
+    uniqueOnConflict = false,
+  ): Promise<TFile> {
+    const requestedPath = this.normalize(path);
+    await this.ensureFolder(parentOf(requestedPath));
+    const existing = this.get(requestedPath);
+    if (existing && !uniqueOnConflict) {
+      throw new PathConflictError(requestedPath);
+    }
+    const destination = existing
+      ? this.resolveUniquePath(requestedPath)
+      : requestedPath;
+    return this.vault.create(destination, content);
+  }
+
+  async replaceManagedFile(
+    path: string,
+    template: MarkdownTemplate,
+    frontmatter: ManagedFrontmatter,
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    const yaml = stringifyYaml({
+      ...frontmatter,
+      "snowflake-schema": SCHEMA_VERSION,
+    }).trimEnd();
+    await this.vault.process(
+      file,
+      () => `---\n${yaml}\n---\n${template.body}`,
+    );
+  }
+
+  async ensureManagedFile(options: CreateManagedFileOptions): Promise<CreateManagedFileResult> {
+    const requestedPath = this.normalize(options.path);
+    const existing = this.get(requestedPath);
+    if (!existing) return this.createManagedFile(options);
+    if (!isFile(existing)) {
+      if (options.uniqueOnConflict) {
+        return this.createManagedFile({ ...options, path: this.resolveUniquePath(requestedPath) });
+      }
+      throw new PathConflictError(requestedPath);
+    }
+
+    let record: ManagedFileRecord;
+    try {
+      record = await this.readManaged(existing.path);
+    } catch (error) {
+      if (options.uniqueOnConflict && error instanceof InvalidManagedDocumentError) {
+        return this.createManagedFile({ ...options, path: this.resolveUniquePath(requestedPath) });
+      }
+      throw error;
+    }
+    const rawDocument = options.frontmatter["snowflake-document"];
+    const rawProject = options.frontmatter["snowflake-project-id"];
+    const expectedDocument = typeof rawDocument === "string" ? rawDocument : "";
+    const expectedProject = typeof rawProject === "string" ? rawProject : "";
+    if (
+      documentTypeOf(record.frontmatter) !== expectedDocument ||
+      projectIdOf(record.frontmatter) !== expectedProject
+    ) {
+      if (options.uniqueOnConflict) {
+        return this.createManagedFile({ ...options, path: this.resolveUniquePath(requestedPath) });
+      }
+      throw new PathConflictError(requestedPath);
+    }
+
+    assertWritableSchema(record.path, record.frontmatter);
+    const missing: ManagedFrontmatter = {};
+    for (const [key, value] of Object.entries(options.frontmatter)) {
+      if (!(key in record.frontmatter)) missing[key] = value;
+    }
+    if (!("snowflake-schema" in record.frontmatter)) missing["snowflake-schema"] = SCHEMA_VERSION;
+    const frontmatterRepaired = Object.keys(missing).length > 0;
+    if (frontmatterRepaired) await this.updateFrontmatter(record.path, missing);
+    return { path: record.path, file: record.file, created: false, frontmatterRepaired };
+  }
+
+  async updateFrontmatter(path: string, patch: ManagedFrontmatter): Promise<void> {
+    await this.updateFrontmatterAtomic(path, () => patch);
+  }
+
+  async updateFrontmatterAtomic(path: string, updater: FrontmatterUpdater): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+
+    await this.fileManager.processFrontMatter(file, (frontmatter) => {
+      const mutable = frontmatter as ManagedFrontmatter;
+      assertWritableSchema(normalized, mutable);
+      const patch = updater({ ...mutable });
+      assertWritableSchema(normalized, { ...mutable, ...patch });
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) delete mutable[key];
+        else mutable[key] = value;
+      }
+    });
+  }
+
+  async updateFirstHeading(path: string, title: string): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    const normalizedTitle = title.replace(/\s+/gu, " ").trim();
+    if (!normalizedTitle) throw new Error("Document title is required.");
+
+    await this.vault.process(file, (current) => {
+      const parsed = parseMarkdownFrontmatter(current);
+      assertWritableSchema(normalized, parsed.frontmatter);
+      const bodyOffset = current.length - parsed.body.length;
+      const prefix = current.slice(0, bodyOffset);
+      const heading = `# ${normalizedTitle}`;
+      const match = /^#(?:[ \t]+).*$/mu.exec(parsed.body);
+      if (match) {
+        return `${prefix}${parsed.body.slice(0, match.index)}${heading}${parsed.body.slice(
+          match.index + match[0].length,
+        )}`;
+      }
+      const body = parsed.body.replace(/^(?:\r?\n)+/u, "");
+      return `${prefix}${heading}${body ? `\n\n${body}` : "\n"}`;
+    });
+  }
+
+  async updateSection(path: string, sectionId: string, value: string): Promise<void> {
+    await this.updateSections(path, { [sectionId]: value });
+  }
+
+  async updateSections(
+    path: string,
+    values: Readonly<Record<string, string>>,
+    expectedRevision?: string,
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+
+    await this.vault.process(file, (current) => {
+      const parsed = parseMarkdownFrontmatter(current);
+      assertWritableSchema(normalized, parsed.frontmatter);
+      const actualRevision = fingerprint(current);
+      if (expectedRevision !== undefined && expectedRevision !== actualRevision) {
+        throw new ConcurrentChangeError(normalized, expectedRevision, actualRevision);
+      }
+      const sectionIds = Object.keys(values);
+      for (const [sectionId, value] of Object.entries(values)) {
+        if (value.includes(`<!-- ${SECTION_MARKER_PREFIX}:`)) {
+          throw new UnsafeSectionError(
+            normalized,
+            sectionId,
+            "Managed section markers cannot be entered as field content.",
+          );
+        }
+      }
+      for (const sectionId of sectionIds) {
+        const inspection = inspectMarkedSection(current, sectionId);
+        if (inspection.status !== "present") {
+          throw new UnsafeSectionError(
+            normalized,
+            sectionId,
+            inspection.status === "invalid"
+              ? inspection.reason
+              : `Section "${sectionId}" is missing its managed markers.`,
+          );
+        }
+      }
+      const layoutIssue = findSectionLayoutIssue(current, sectionIds);
+      if (layoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          layoutIssue.sectionId ?? sectionIds[0] ?? "unknown",
+          layoutIssue.reason,
+        );
+      }
+      let next = current;
+      for (const [sectionId, value] of Object.entries(values)) {
+        const result = replaceMarkedSection(next, sectionId, value);
+        if (!result.ok) throw new UnsafeSectionError(normalized, sectionId, result.reason);
+        next = result.content;
+      }
+      const nextLayoutIssue = findSectionLayoutIssue(next, sectionIds);
+      if (nextLayoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          nextLayoutIssue.sectionId ?? sectionIds[0] ?? "unknown",
+          nextLayoutIssue.reason,
+        );
+      }
+      return next;
+    });
+  }
+
+  async checkSections(
+    path: string,
+    sections: ManagedSectionDefinition[],
+  ): Promise<SectionCheckResult> {
+    if (sections.length === 0) {
+      return { unchanged: [], conflicts: [] };
+    }
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    const sectionIds = sections.map((section) => section.id);
+    const current = await this.vault.read(file);
+    const parsed = parseMarkdownFrontmatter(current);
+    assertWritableSchema(normalized, parsed.frontmatter);
+    const blockingIssues = findManagedMarkerIssues(current, sectionIds).filter(
+      (issue) => issue.code !== "unknown-section",
+    );
+    const health = new Map(
+      sectionIds.map((sectionId) => [
+        sectionId,
+        inspectMarkedSection(current, sectionId, normalized),
+      ]),
+    );
+
+    return blockingIssues.length > 0
+      ? classifySectionConflicts(sections, health, blockingIssues)
+      : { unchanged: sectionIds, conflicts: [] };
+  }
+
+  listDirectFiles(folderPath: string): TFile[] {
+    const folder = this.getFolder(folderPath);
+    if (!folder) return [];
+    return folder.children.filter(isFile);
+  }
+
+  listDirectFolders(folderPath: string): TFolder[] {
+    const folder = this.getFolder(folderPath);
+    if (!folder) return [];
+    return folder.children.filter(isFolder);
+  }
+
+  async findManagedFiles(
+    folderPath: string,
+    documentType?: string,
+    projectId?: string,
+  ): Promise<ManagedFileRecord[]> {
+    const matches: ManagedFileRecord[] = [];
+    for (const file of this.listDirectFiles(folderPath)) {
+      if (file.extension !== "md") continue;
+      const record = await this.tryReadManaged(file.path);
+      if (!record) continue;
+      if (!isManagedFrontmatter(record.frontmatter)) continue;
+      if (documentType && documentTypeOf(record.frontmatter) !== documentType) continue;
+      if (projectId && projectIdOf(record.frontmatter) !== projectId) continue;
+      matches.push(record);
+    }
+    return matches;
+  }
+
+  resolveUniquePath(path: string): string {
+    const normalized = this.normalize(path);
+    if (!this.get(normalized)) return normalized;
+    const slash = normalized.lastIndexOf("/");
+    const folder = slash >= 0 ? normalized.slice(0, slash + 1) : "";
+    const name = slash >= 0 ? normalized.slice(slash + 1) : normalized;
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const extension = dot > 0 ? name.slice(dot) : "";
+
+    for (let index = 2; index < 10_000; index += 1) {
+      const candidate = `${folder}${stem} (${index})${extension}`;
+      if (!this.get(candidate)) return candidate;
+    }
+    throw new PathConflictError(normalized);
+  }
+}
+
+function findSectionLayoutIssue(
+  content: string,
+  sectionIds: readonly string[],
+): ManagedMarkerIssue | null {
+  return (
+    findManagedMarkerIssues(content, sectionIds).find(
+      (issue) =>
+        issue.code !== "missing" && issue.code !== "unknown-section",
+    ) ?? null
+  );
+}
+
+function repairConflictFromIssue(
+  sectionId: string,
+  issue: ManagedMarkerIssue,
+): RepairSectionConflict {
+  const conflict: RepairSectionConflict = {
+    sectionId,
+    code: issue.code,
+    reason: issue.reason,
+  };
+  if (issue.sectionId !== null) conflict.markerSectionId = issue.sectionId;
+  if (issue.relatedSectionId !== undefined) {
+    conflict.relatedSectionId = issue.relatedSectionId;
+  }
+  return conflict;
+}
+
+function classifySectionConflicts(
+  sections: readonly ManagedSectionDefinition[],
+  health: ReadonlyMap<string, ReturnType<typeof inspectMarkedSection>>,
+  blockingIssues: readonly ManagedMarkerIssue[],
+): SectionCheckResult {
+  const result: SectionCheckResult = {
+    unchanged: [],
+    conflicts: [],
+  };
+  for (const section of sections) {
+    const inspection = health.get(section.id);
+    const directIssue = blockingIssues.find(
+      (issue) =>
+        issue.sectionId === section.id ||
+        issue.relatedSectionId === section.id,
+    );
+    if (directIssue !== undefined) {
+      result.conflicts.push(repairConflictFromIssue(section.id, directIssue));
+    } else if (inspection?.status === "present") {
+      result.unchanged.push(section.id);
+    } else {
+      const blockingIssue = blockingIssues[0];
+      if (blockingIssue !== undefined) {
+        result.conflicts.push(
+          repairConflictFromIssue(section.id, blockingIssue),
+        );
+      } else if (inspection?.status === "invalid") {
+        result.conflicts.push({
+          sectionId: section.id,
+          code: inspection.code,
+          reason: inspection.reason,
+        });
+      } else {
+        result.conflicts.push({
+          sectionId: section.id,
+          code: "missing",
+          reason: `Section "${section.id}" could not be repaired safely.`,
+        });
+      }
+    }
+  }
+  return result;
+}
+
+function parentOf(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index < 0 ? "" : path.slice(0, index);
+}
+
+function isFile(node: TAbstractFile | null): node is TFile {
+  return node != null && "extension" in node;
+}
+
+function isFolder(node: TAbstractFile | null): node is TFolder {
+  return node != null && "children" in node;
+}

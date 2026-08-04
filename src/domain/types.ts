@@ -1,0 +1,126 @@
+export const SCHEMA_VERSION = 1 as const;
+
+export const STEP_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+export type StepId = (typeof STEP_IDS)[number];
+
+export const STEP_STATUSES = [
+	'not-started',
+	'in-progress',
+	'in-revision',
+	'complete',
+	'skipped',
+] as const;
+
+export type StepStatus = (typeof STEP_STATUSES)[number];
+
+export type StepStatusMap = { [K in StepId]: StepStatus };
+export type StepFingerprintMap = Partial<Record<StepId, string>>;
+
+export const DOCUMENT_TYPES = [
+	'project-metadata',
+	'one-sentence-summary',
+	'one-paragraph-summary',
+	'plot-synopsis',
+	'long-synopsis',
+	'character',
+	'scene',
+	'draft',
+	'material',
+	'archive',
+] as const;
+
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+export type ProjectLanguage = 'en' | 'zh-CN';
+export type CharacterType = 'major' | 'supporting' | 'minor';
+
+export interface BaseDocumentData {
+	schemaVersion: typeof SCHEMA_VERSION;
+	documentType: DocumentType;
+	projectId: string;
+}
+
+export interface ProjectData extends BaseDocumentData {
+	documentType: 'project-metadata';
+	title: string;
+	language: ProjectLanguage;
+	stepStatuses: StepStatusMap;
+	lastReviewedFingerprints: StepFingerprintMap;
+	draftLink: string | null;
+}
+
+export interface CharacterData extends BaseDocumentData {
+	documentType: 'character';
+	characterId: string;
+	name: string;
+	type: CharacterType;
+	oneSentenceStoryline: string;
+	motivation: string;
+	goal: string;
+	conflict: string;
+	growth: string;
+	viewpointSynopsis?: string;
+	profile?: string;
+}
+
+export interface SceneData extends BaseDocumentData {
+	documentType: 'scene';
+	sceneId: string;
+	title: string;
+	rank: number;
+	povLink: string | null;
+	time: string;
+	location: string;
+	characterLinks: string[];
+	conflict: string;
+	events: string;
+	planning?: string;
+}
+
+export interface ContentDocumentData extends BaseDocumentData {
+	documentType: Exclude<
+		DocumentType,
+		'project-metadata' | 'character' | 'scene'
+	>;
+	title: string;
+	content?: string;
+}
+
+export type SnowflakeDocumentData =
+	| ProjectData
+	| CharacterData
+	| SceneData
+	| ContentDocumentData;
+
+export function isStepId(value: unknown): value is StepId {
+	return (
+		typeof value === 'number' &&
+		Number.isInteger(value) &&
+		value >= 1 &&
+		value <= 10
+	);
+}
+
+export function isStepStatus(value: unknown): value is StepStatus {
+	return (
+		typeof value === 'string' &&
+		(STEP_STATUSES as readonly string[]).includes(value)
+	);
+}
+
+export function isDocumentType(value: unknown): value is DocumentType {
+	return (
+		typeof value === 'string' &&
+		(DOCUMENT_TYPES as readonly string[]).includes(value)
+	);
+}
+
+export function isProjectLanguage(value: unknown): value is ProjectLanguage {
+	return value === 'en' || value === 'zh-CN';
+}
+
+export function isCharacterType(
+	value: unknown,
+): value is CharacterType {
+	return value === 'major' || value === 'supporting' || value === 'minor';
+}

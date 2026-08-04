@@ -1,0 +1,18 @@
+# Editors
+.vscode
+.idea
+*.iml
+
+# Dependencies and test output
+node_modules
+coverage
+
+# Generated plugin bundle and source maps
+main.js
+*.map
+
+# Local Obsidian plugin settings
+data.json
+
+# Operating system files
+.DS_Store

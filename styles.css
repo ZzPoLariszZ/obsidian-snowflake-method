@@ -1,0 +1,3591 @@
+.snowflake-method-dashboard {
+	--snowflake-method-dashboard-width: 96rem;
+	--snowflake-method-sidebar-width: 19rem;
+	container-name: snowflake-dashboard;
+	container-type: inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	height: 100%;
+	min-width: 0;
+	padding: var(--size-4-4) var(--size-4-4) 0;
+	overflow: hidden;
+	box-sizing: border-box;
+	position: relative;
+}
+
+.workspace-leaf-content .view-content.snowflake-method-dashboard {
+	padding-bottom: 0;
+}
+
+.snowflake-method-celebration {
+	--snowflake-celebration-color-0: var(--color-purple, var(--interactive-accent));
+	--snowflake-celebration-color-1: var(--color-red, var(--interactive-accent));
+	--snowflake-celebration-color-2: var(--color-yellow, var(--interactive-accent));
+	--snowflake-celebration-color-3: var(--color-green, var(--interactive-accent));
+	--snowflake-celebration-color-4: var(--color-blue, var(--interactive-accent));
+	--snowflake-celebration-color-5: var(--color-orange, var(--interactive-accent));
+	--snowflake-celebration-color-6: var(--color-pink, var(--interactive-accent));
+	--snowflake-celebration-color-7: var(--color-cyan, var(--interactive-accent));
+	position: absolute;
+	z-index: 50;
+	inset: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.snowflake-method-confetti {
+	position: absolute;
+	top: -1.25rem;
+	width: 0.45rem;
+	height: 0.8rem;
+	border-radius: 0.1rem;
+	opacity: 0;
+	animation: snowflake-confetti-fall
+		var(--snowflake-confetti-duration)
+		cubic-bezier(0.18, 0.7, 0.35, 1)
+		var(--snowflake-confetti-delay) forwards;
+}
+
+.snowflake-method-confetti.is-position-0 {
+	left: 2%;
+}
+
+.snowflake-method-confetti.is-position-1 {
+	left: 56%;
+}
+
+.snowflake-method-confetti.is-position-2 {
+	left: 24%;
+}
+
+.snowflake-method-confetti.is-position-3 {
+	left: 86%;
+}
+
+.snowflake-method-confetti.is-position-4 {
+	left: 12%;
+}
+
+.snowflake-method-confetti.is-position-5 {
+	left: 68%;
+}
+
+.snowflake-method-confetti.is-position-6 {
+	left: 40%;
+}
+
+.snowflake-method-confetti.is-position-7 {
+	left: 95%;
+}
+
+.snowflake-method-confetti.is-position-8 {
+	left: 32%;
+}
+
+.snowflake-method-confetti.is-position-9 {
+	left: 77%;
+}
+
+.snowflake-method-confetti.is-position-10 {
+	left: 5%;
+}
+
+.snowflake-method-confetti.is-position-11 {
+	left: 61%;
+}
+
+.snowflake-method-confetti.is-position-12 {
+	left: 46%;
+}
+
+.snowflake-method-confetti.is-position-13 {
+	left: 90%;
+}
+
+.snowflake-method-confetti.is-position-14 {
+	left: 18%;
+}
+
+.snowflake-method-confetti.is-position-15 {
+	left: 72%;
+}
+
+.snowflake-method-confetti.is-position-16 {
+	left: 51%;
+}
+
+.snowflake-method-confetti.is-position-17 {
+	left: 83%;
+}
+
+.snowflake-method-confetti.is-color-0 {
+	background-color: var(--snowflake-celebration-color-0);
+}
+
+.snowflake-method-confetti.is-color-1 {
+	background-color: var(--snowflake-celebration-color-1);
+}
+
+.snowflake-method-confetti.is-color-2 {
+	background-color: var(--snowflake-celebration-color-2);
+}
+
+.snowflake-method-confetti.is-color-3 {
+	background-color: var(--snowflake-celebration-color-3);
+}
+
+.snowflake-method-confetti.is-color-4 {
+	background-color: var(--snowflake-celebration-color-4);
+}
+
+.snowflake-method-confetti.is-color-5 {
+	background-color: var(--snowflake-celebration-color-5);
+}
+
+.snowflake-method-confetti.is-color-6 {
+	background-color: var(--snowflake-celebration-color-6);
+}
+
+.snowflake-method-confetti.is-color-7 {
+	background-color: var(--snowflake-celebration-color-7);
+}
+
+.snowflake-method-confetti.is-timing-0 {
+	--snowflake-confetti-delay: 0.04s;
+	--snowflake-confetti-duration: 2.35s;
+}
+
+.snowflake-method-confetti.is-timing-1 {
+	--snowflake-confetti-delay: 0.42s;
+	--snowflake-confetti-duration: 3.08s;
+}
+
+.snowflake-method-confetti.is-timing-2 {
+	--snowflake-confetti-delay: 0.18s;
+	--snowflake-confetti-duration: 2.72s;
+}
+
+.snowflake-method-confetti.is-timing-3 {
+	--snowflake-confetti-delay: 0.76s;
+	--snowflake-confetti-duration: 3.31s;
+}
+
+.snowflake-method-confetti.is-timing-4 {
+	--snowflake-confetti-delay: 0.31s;
+	--snowflake-confetti-duration: 2.49s;
+}
+
+.snowflake-method-confetti.is-timing-5 {
+	--snowflake-confetti-delay: 0.87s;
+	--snowflake-confetti-duration: 2.94s;
+}
+
+.snowflake-method-confetti.is-timing-6 {
+	--snowflake-confetti-delay: 0.1s;
+	--snowflake-confetti-duration: 3.22s;
+}
+
+.snowflake-method-confetti.is-timing-7 {
+	--snowflake-confetti-delay: 0.55s;
+	--snowflake-confetti-duration: 2.61s;
+}
+
+.snowflake-method-confetti.is-timing-8 {
+	--snowflake-confetti-delay: 0.24s;
+	--snowflake-confetti-duration: 3.38s;
+}
+
+.snowflake-method-confetti.is-timing-9 {
+	--snowflake-confetti-delay: 0.68s;
+	--snowflake-confetti-duration: 2.83s;
+}
+
+.snowflake-method-confetti.is-timing-10 {
+	--snowflake-confetti-delay: 0.36s;
+	--snowflake-confetti-duration: 3.16s;
+}
+
+.snowflake-method-confetti.is-timing-11 {
+	--snowflake-confetti-delay: 0.81s;
+	--snowflake-confetti-duration: 2.56s;
+}
+
+.snowflake-method-confetti.is-drift-0 {
+	--snowflake-confetti-drift: -5.8rem;
+	--snowflake-confetti-spin: 520deg;
+}
+
+.snowflake-method-confetti.is-drift-1 {
+	--snowflake-confetti-drift: 3.2rem;
+	--snowflake-confetti-spin: 940deg;
+}
+
+.snowflake-method-confetti.is-drift-2 {
+	--snowflake-confetti-drift: -1.6rem;
+	--snowflake-confetti-spin: 720deg;
+}
+
+.snowflake-method-confetti.is-drift-3 {
+	--snowflake-confetti-drift: 5.4rem;
+	--snowflake-confetti-spin: 1080deg;
+}
+
+.snowflake-method-confetti.is-drift-4 {
+	--snowflake-confetti-drift: -3.7rem;
+	--snowflake-confetti-spin: 640deg;
+}
+
+.snowflake-method-confetti.is-drift-5 {
+	--snowflake-confetti-drift: 1.1rem;
+	--snowflake-confetti-spin: 860deg;
+}
+
+.snowflake-method-confetti.is-drift-6 {
+	--snowflake-confetti-drift: -4.6rem;
+	--snowflake-confetti-spin: 1010deg;
+}
+
+.snowflake-method-confetti.is-drift-7 {
+	--snowflake-confetti-drift: 4.4rem;
+	--snowflake-confetti-spin: 580deg;
+}
+
+.snowflake-method-confetti.is-drift-8 {
+	--snowflake-confetti-drift: -0.7rem;
+	--snowflake-confetti-spin: 780deg;
+}
+
+.snowflake-method-confetti.is-round {
+	width: 0.55rem;
+	height: 0.55rem;
+	border-radius: 50%;
+}
+
+.snowflake-method-firework-spark {
+	--snowflake-spark-angle: 0deg;
+	--snowflake-spark-burst-delay: 0s;
+	--snowflake-spark-jitter: 0s;
+	--snowflake-spark-mid-distance: -5rem;
+	--snowflake-spark-final-distance: -7rem;
+	--snowflake-spark-final-gravity: 2.5rem;
+	position: absolute;
+	width: 0.18rem;
+	height: 1.05rem;
+	margin: -0.525rem 0 0 -0.09rem;
+	border-radius: 999px;
+	background: linear-gradient(
+		to bottom,
+		transparent 0%,
+		currentColor 38%,
+		currentColor 100%
+	);
+	opacity: 0;
+	box-shadow:
+		0 0 0.28rem currentColor,
+		0 0 0.62rem currentColor;
+	transform-origin: 50% 100%;
+	rotate: var(--snowflake-spark-angle);
+	translate: 0 0;
+	animation: snowflake-firework-burst
+		var(--snowflake-spark-duration)
+		cubic-bezier(0.12, 0.7, 0.2, 1)
+		calc(var(--snowflake-spark-burst-delay) + var(--snowflake-spark-jitter))
+		forwards;
+}
+
+.snowflake-method-firework-spark.is-color-0 {
+	color: var(--snowflake-celebration-color-0);
+}
+
+.snowflake-method-firework-spark.is-color-1 {
+	color: var(--snowflake-celebration-color-1);
+}
+
+.snowflake-method-firework-spark.is-color-2 {
+	color: var(--snowflake-celebration-color-2);
+}
+
+.snowflake-method-firework-spark.is-color-3 {
+	color: var(--snowflake-celebration-color-3);
+}
+
+.snowflake-method-firework-spark.is-color-4 {
+	color: var(--snowflake-celebration-color-4);
+}
+
+.snowflake-method-firework-spark.is-color-5 {
+	color: var(--snowflake-celebration-color-5);
+}
+
+.snowflake-method-firework-spark.is-color-6 {
+	color: var(--snowflake-celebration-color-6);
+}
+
+.snowflake-method-firework-spark.is-color-7 {
+	color: var(--snowflake-celebration-color-7);
+}
+
+.snowflake-method-firework-spark.is-burst-0 {
+	--snowflake-spark-burst-delay: 0.1s;
+	left: 14%;
+	top: 24%;
+}
+
+.snowflake-method-firework-spark.is-burst-1 {
+	--snowflake-spark-burst-delay: 0.35s;
+	left: 38%;
+	top: 16%;
+}
+
+.snowflake-method-firework-spark.is-burst-2 {
+	--snowflake-spark-burst-delay: 0.6s;
+	left: 64%;
+	top: 18%;
+}
+
+.snowflake-method-firework-spark.is-burst-3 {
+	--snowflake-spark-burst-delay: 0.85s;
+	left: 86%;
+	top: 27%;
+}
+
+.snowflake-method-firework-spark.is-burst-4 {
+	--snowflake-spark-burst-delay: 1.05s;
+	left: 25%;
+	top: 52%;
+}
+
+.snowflake-method-firework-spark.is-burst-5 {
+	--snowflake-spark-burst-delay: 1.25s;
+	left: 52%;
+	top: 46%;
+}
+
+.snowflake-method-firework-spark.is-burst-6 {
+	--snowflake-spark-burst-delay: 1.45s;
+	left: 76%;
+	top: 54%;
+}
+
+.snowflake-method-firework-spark.is-distance-0 {
+	--snowflake-spark-mid-distance: -4rem;
+	--snowflake-spark-final-distance: -5.6rem;
+}
+
+.snowflake-method-firework-spark.is-distance-1 {
+	--snowflake-spark-mid-distance: -4.7rem;
+	--snowflake-spark-final-distance: -6.6rem;
+}
+
+.snowflake-method-firework-spark.is-distance-2 {
+	--snowflake-spark-mid-distance: -5.4rem;
+	--snowflake-spark-final-distance: -7.6rem;
+}
+
+.snowflake-method-firework-spark.is-distance-3 {
+	--snowflake-spark-mid-distance: -6.1rem;
+	--snowflake-spark-final-distance: -8.6rem;
+}
+
+.snowflake-method-firework-spark.is-distance-4 {
+	--snowflake-spark-mid-distance: -6.8rem;
+	--snowflake-spark-final-distance: -9.6rem;
+}
+
+.snowflake-method-firework-spark.is-distance-5 {
+	--snowflake-spark-mid-distance: -7.5rem;
+	--snowflake-spark-final-distance: -10.6rem;
+}
+
+.snowflake-method-firework-spark.is-gravity-0 {
+	--snowflake-spark-final-gravity: 1.8rem;
+}
+
+.snowflake-method-firework-spark.is-gravity-1 {
+	--snowflake-spark-final-gravity: 2.4rem;
+}
+
+.snowflake-method-firework-spark.is-gravity-2 {
+	--snowflake-spark-final-gravity: 3rem;
+}
+
+.snowflake-method-firework-spark.is-gravity-3 {
+	--snowflake-spark-final-gravity: 3.6rem;
+}
+
+.snowflake-method-firework-spark.is-gravity-4 {
+	--snowflake-spark-final-gravity: 4.2rem;
+}
+
+.snowflake-method-firework-spark.is-timing-0 {
+	--snowflake-spark-duration: 1.08s;
+	--snowflake-spark-jitter: 0.01s;
+}
+
+.snowflake-method-firework-spark.is-timing-1 {
+	--snowflake-spark-duration: 1.2s;
+	--snowflake-spark-jitter: 0.04s;
+}
+
+.snowflake-method-firework-spark.is-timing-2 {
+	--snowflake-spark-duration: 1.34s;
+	--snowflake-spark-jitter: 0.07s;
+}
+
+.snowflake-method-firework-spark.is-timing-3 {
+	--snowflake-spark-duration: 1.47s;
+	--snowflake-spark-jitter: 0.02s;
+}
+
+.snowflake-method-firework-spark.is-timing-4 {
+	--snowflake-spark-duration: 1.58s;
+	--snowflake-spark-jitter: 0.05s;
+}
+
+.snowflake-method-firework-spark.is-ray-0 {
+	--snowflake-spark-angle: 0deg;
+}
+
+.snowflake-method-firework-spark.is-ray-1 {
+	--snowflake-spark-angle: 10deg;
+}
+
+.snowflake-method-firework-spark.is-ray-2 {
+	--snowflake-spark-angle: 20deg;
+}
+
+.snowflake-method-firework-spark.is-ray-3 {
+	--snowflake-spark-angle: 30deg;
+}
+
+.snowflake-method-firework-spark.is-ray-4 {
+	--snowflake-spark-angle: 40deg;
+}
+
+.snowflake-method-firework-spark.is-ray-5 {
+	--snowflake-spark-angle: 50deg;
+}
+
+.snowflake-method-firework-spark.is-ray-6 {
+	--snowflake-spark-angle: 60deg;
+}
+
+.snowflake-method-firework-spark.is-ray-7 {
+	--snowflake-spark-angle: 70deg;
+}
+
+.snowflake-method-firework-spark.is-ray-8 {
+	--snowflake-spark-angle: 80deg;
+}
+
+.snowflake-method-firework-spark.is-ray-9 {
+	--snowflake-spark-angle: 90deg;
+}
+
+.snowflake-method-firework-spark.is-ray-10 {
+	--snowflake-spark-angle: 100deg;
+}
+
+.snowflake-method-firework-spark.is-ray-11 {
+	--snowflake-spark-angle: 110deg;
+}
+
+.snowflake-method-firework-spark.is-ray-12 {
+	--snowflake-spark-angle: 120deg;
+}
+
+.snowflake-method-firework-spark.is-ray-13 {
+	--snowflake-spark-angle: 130deg;
+}
+
+.snowflake-method-firework-spark.is-ray-14 {
+	--snowflake-spark-angle: 140deg;
+}
+
+.snowflake-method-firework-spark.is-ray-15 {
+	--snowflake-spark-angle: 150deg;
+}
+
+.snowflake-method-firework-spark.is-ray-16 {
+	--snowflake-spark-angle: 160deg;
+}
+
+.snowflake-method-firework-spark.is-ray-17 {
+	--snowflake-spark-angle: 170deg;
+}
+
+.snowflake-method-firework-spark.is-ray-18 {
+	--snowflake-spark-angle: 180deg;
+}
+
+.snowflake-method-firework-spark.is-ray-19 {
+	--snowflake-spark-angle: 190deg;
+}
+
+.snowflake-method-firework-spark.is-ray-20 {
+	--snowflake-spark-angle: 200deg;
+}
+
+.snowflake-method-firework-spark.is-ray-21 {
+	--snowflake-spark-angle: 210deg;
+}
+
+.snowflake-method-firework-spark.is-ray-22 {
+	--snowflake-spark-angle: 220deg;
+}
+
+.snowflake-method-firework-spark.is-ray-23 {
+	--snowflake-spark-angle: 230deg;
+}
+
+.snowflake-method-firework-spark.is-ray-24 {
+	--snowflake-spark-angle: 240deg;
+}
+
+.snowflake-method-firework-spark.is-ray-25 {
+	--snowflake-spark-angle: 250deg;
+}
+
+.snowflake-method-firework-spark.is-ray-26 {
+	--snowflake-spark-angle: 260deg;
+}
+
+.snowflake-method-firework-spark.is-ray-27 {
+	--snowflake-spark-angle: 270deg;
+}
+
+.snowflake-method-firework-spark.is-ray-28 {
+	--snowflake-spark-angle: 280deg;
+}
+
+.snowflake-method-firework-spark.is-ray-29 {
+	--snowflake-spark-angle: 290deg;
+}
+
+.snowflake-method-firework-spark.is-ray-30 {
+	--snowflake-spark-angle: 300deg;
+}
+
+.snowflake-method-firework-spark.is-ray-31 {
+	--snowflake-spark-angle: 310deg;
+}
+
+.snowflake-method-firework-spark.is-ray-32 {
+	--snowflake-spark-angle: 320deg;
+}
+
+.snowflake-method-firework-spark.is-ray-33 {
+	--snowflake-spark-angle: 330deg;
+}
+
+.snowflake-method-firework-spark.is-ray-34 {
+	--snowflake-spark-angle: 340deg;
+}
+
+.snowflake-method-firework-spark.is-ray-35 {
+	--snowflake-spark-angle: 350deg;
+}
+
+@keyframes snowflake-confetti-fall {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, -1rem, 0) rotate(0deg);
+	}
+
+	10% {
+		opacity: 1;
+	}
+
+	100% {
+		opacity: 0.9;
+		transform: translate3d(
+			var(--snowflake-confetti-drift),
+			calc(100vh + 3rem),
+			0
+		) rotate(var(--snowflake-confetti-spin));
+	}
+}
+
+@keyframes snowflake-firework-burst {
+	0% {
+		opacity: 0;
+		translate: 0 0;
+		transform: translateY(0) scaleY(0.2);
+	}
+
+	9% {
+		opacity: 1;
+		translate: 0 0;
+		transform: translateY(-0.25rem) scaleY(1.05);
+	}
+
+	68% {
+		opacity: 0.95;
+		translate: 0 0;
+		transform: translateY(var(--snowflake-spark-mid-distance)) scaleY(0.72);
+	}
+
+	100% {
+		opacity: 0;
+		translate: 0 var(--snowflake-spark-final-gravity);
+		transform: translateY(var(--snowflake-spark-final-distance)) scaleY(0.15);
+	}
+}
+
+.snowflake-method-progress-block,
+.snowflake-method-layout,
+.snowflake-method-dashboard > .snowflake-method-panel,
+.snowflake-method-dashboard > .snowflake-method-repair-callout {
+	width: 100%;
+	max-width: var(--snowflake-method-dashboard-width);
+	margin-inline: auto;
+	box-sizing: border-box;
+}
+
+.snowflake-method-toolbar-button > svg,
+.snowflake-method-icon-button > svg {
+	display: inline-flex;
+	width: 1rem;
+	height: 1rem;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-view-title-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-inline-end: var(--size-2-2);
+	color: var(--interactive-accent);
+	vertical-align: -0.15em;
+}
+
+.snowflake-method-view-title-icon > svg {
+	width: 1em;
+	height: 1em;
+}
+
+.snowflake-method-dashboard button.snowflake-method-project-control {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+	height: 1.625rem;
+	padding: 0 var(--size-4-2);
+	border: 0;
+	border-radius: var(--radius-m);
+	background: transparent;
+	box-shadow: none;
+	filter: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	text-align: start;
+	cursor: pointer;
+	appearance: none;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-dashboard button.snowflake-method-project-control:hover,
+.snowflake-method-dashboard
+	button.snowflake-method-project-control[aria-expanded='true'] {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+	outline: none;
+}
+
+.snowflake-method-dashboard button.snowflake-method-project-control:focus-visible {
+	background: transparent;
+	box-shadow: none;
+	outline: none;
+}
+
+.snowflake-method-control-label,
+.snowflake-method-progress-meta {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-project-switcher-label {
+	display: block;
+	width: auto;
+	min-width: 0;
+	overflow: hidden;
+	line-height: 1.3;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-project-switcher-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1rem;
+	height: 1rem;
+	color: var(--text-faint);
+	flex: 0 0 auto;
+}
+
+.snowflake-method-project-switcher-icon svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.snowflake-method-project-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-dashboard button.snowflake-method-toolbar-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.875rem;
+	height: 1.625rem;
+	min-width: 1.875rem;
+	min-height: 1.625rem;
+	padding: var(--size-4-1) var(--size-4-2);
+	border: 0;
+	border-radius: var(--radius-m);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	flex: 0 0 auto;
+}
+
+.snowflake-method-dashboard button.snowflake-method-toolbar-button > svg {
+	width: 1.125rem;
+	height: 1.125rem;
+	opacity: 0.85;
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-toolbar-button.is-health-healthy {
+	color: var(--color-green);
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-toolbar-button.has-health-issues {
+	color: var(--color-orange);
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-toolbar-button.is-health-healthy > svg,
+.snowflake-method-dashboard
+	button.snowflake-method-toolbar-button.has-health-issues > svg {
+	opacity: 1;
+}
+
+.snowflake-method-dashboard button.snowflake-method-toolbar-button:hover,
+.snowflake-method-dashboard button.snowflake-method-toolbar-button:focus-visible {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+}
+
+.snowflake-method-project-actions .snowflake-method-button-label {
+	display: none;
+}
+
+.snowflake-method-progress-block {
+	display: grid;
+	gap: var(--size-2-2);
+	flex: 0 0 auto;
+	padding-inline: var(--size-2-1);
+}
+
+.snowflake-method-progress-meta {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-progress-meta strong {
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-progress {
+	display: block;
+	width: 100%;
+	height: 0.375rem;
+	border: 0;
+	border-radius: 999px;
+	overflow: hidden;
+	background: var(--background-modifier-border);
+}
+
+.snowflake-method-progress::-webkit-progress-bar {
+	background: var(--background-modifier-border);
+}
+
+.snowflake-method-progress::-webkit-progress-value {
+	border-radius: 999px;
+	background: var(--interactive-accent);
+}
+
+.snowflake-method-progress::-moz-progress-bar {
+	border-radius: 999px;
+	background: var(--interactive-accent);
+}
+
+.snowflake-method-layout {
+	display: grid;
+	grid-template-columns: minmax(17rem, var(--snowflake-method-sidebar-width)) minmax(0, 1fr);
+	gap: var(--size-4-5);
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-main {
+	min-width: 0;
+	min-height: 0;
+	overflow-y: auto;
+	padding-bottom: var(--size-4-4);
+}
+
+.snowflake-method-step-nav {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	padding: var(--size-4-2) var(--size-4-2) 0;
+	border: 1px solid var(--background-modifier-border);
+	border-bottom: 0;
+	border-radius: var(--radius-m);
+	border-end-start-radius: 0;
+	border-end-end-radius: 0;
+	background: var(--background-secondary);
+	overflow: hidden;
+}
+
+.snowflake-method-step-nav-header {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--size-4-2);
+	padding: var(--size-4-4) var(--size-4-2) var(--size-4-4);
+	color: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.25;
+}
+
+.snowflake-method-main {
+	width: 100%;
+	margin: 0;
+	padding-inline-end: var(--size-2-1);
+}
+
+.snowflake-method-step-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-project-footer {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	margin: auto calc(var(--size-4-2) * -1) 0;
+	padding: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	flex: 0 0 auto;
+}
+
+.snowflake-method-step-item {
+	min-width: 0;
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-button {
+	display: grid;
+	grid-template-columns: 1.75rem minmax(0, 1fr) 1.375rem;
+	align-items: center;
+	gap: var(--size-4-2);
+	width: 100%;
+	height: auto;
+	min-height: 2.875rem;
+	padding: var(--size-4-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--nav-item-color, var(--text-muted));
+	font-family: var(--font-interface);
+	font-size: var(--nav-item-size, var(--font-ui-small));
+	font-weight: var(--nav-item-weight, var(--font-normal));
+	text-align: start;
+	white-space: normal;
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-button:hover {
+	border-color: var(--background-modifier-border-hover);
+	background: var(--background-modifier-hover);
+	color: var(--nav-item-color-hover, var(--text-normal));
+	font-weight: var(
+		--nav-item-weight-hover,
+		var(--nav-item-weight, var(--font-normal))
+	);
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-button.is-active {
+	border-color: var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: inset 3px 0 0 var(--interactive-accent);
+	color: var(--nav-item-color-active, var(--text-normal));
+	font-weight: var(
+		--nav-item-weight-active,
+		var(--nav-item-weight, var(--font-normal))
+	);
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-button:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+.snowflake-method-step-number {
+	display: grid;
+	place-items: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 50%;
+	background: var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-step-button.is-active .snowflake-method-step-number {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.snowflake-method-step-label {
+	display: -webkit-box;
+	min-width: 0;
+	overflow: hidden;
+	font-size: inherit;
+	line-height: 1.3;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.snowflake-method-step-indicator {
+	display: inline-grid;
+	place-items: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 50%;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	line-height: 1;
+}
+
+.snowflake-method-step-indicator[data-status='not-started']::after {
+	width: 0.25rem;
+	height: 0.25rem;
+	border-radius: 50%;
+	background: var(--text-faint);
+	content: '';
+}
+
+.snowflake-method-step-indicator[data-status='complete'] {
+	border-color: var(--color-green);
+	color: var(--color-green);
+}
+
+.snowflake-method-step-indicator[data-status='in-progress'] {
+	border-color: var(--color-blue);
+	color: var(--color-blue);
+}
+
+.snowflake-method-step-indicator[data-status='in-revision'] {
+	border-color: var(--color-yellow);
+	color: var(--color-yellow);
+}
+
+.snowflake-method-step-indicator[data-status='skipped'] {
+	color: var(--text-faint);
+}
+
+.snowflake-method-step-indicator.has-managed-section-issue {
+	border-color: transparent;
+	background: transparent;
+	color: var(--color-orange);
+}
+
+.snowflake-method-step-indicator.has-managed-section-issue::after {
+	display: none;
+}
+
+.snowflake-method-step-indicator.has-managed-section-issue svg {
+	width: 1.125rem;
+	height: 1.125rem;
+	stroke-width: 2.25;
+}
+
+.snowflake-method-panel {
+	min-width: 0;
+	padding: var(--size-4-5);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+}
+
+.snowflake-method-panel + .snowflake-method-panel {
+	margin-top: var(--size-4-4);
+}
+
+.snowflake-method-panel-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--size-4-4);
+	margin-bottom: var(--size-4-3);
+}
+
+.snowflake-method-panel-title {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+	flex-wrap: wrap;
+}
+
+.snowflake-method-panel-header h2,
+.snowflake-method-panel-header h3 {
+	width: 100%;
+	margin: 0;
+	color: var(--text-normal);
+	font-size: clamp(1.25rem, 2.2cqi, 1.625rem);
+	line-height: 1.25;
+}
+
+.snowflake-method-status-select {
+	width: auto;
+	min-width: 8rem;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-step-description {
+	max-width: 68ch;
+	margin: 0 0 var(--size-4-5);
+	color: var(--text-muted);
+	line-height: 1.55;
+	white-space: pre-line;
+}
+
+.snowflake-method-step-description-emphasis {
+	color: var(--interactive-accent);
+	font-style: italic;
+}
+
+.snowflake-method-step-ten-description-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--size-4-4);
+	margin-top: var(--size-4-3);
+}
+
+.snowflake-method-certificate-slot {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	min-width: 8rem;
+}
+
+.snowflake-method-certificate {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-certificate svg {
+	width: 3rem;
+	height: 3rem;
+	stroke-width: 1.75;
+}
+
+.snowflake-method-repair-callout {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--size-4-3);
+	margin: 0 0 var(--size-4-4);
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 0;
+	border-inline-start: 3px solid var(--color-orange);
+	border-radius: var(--radius-s);
+	background: color-mix(
+		in srgb,
+		var(--color-orange) 5%,
+		var(--background-primary)
+	);
+}
+
+.snowflake-method-repair-callout-icon {
+	display: inline-flex;
+	margin-top: var(--size-2-1);
+	color: var(--color-orange);
+}
+
+.snowflake-method-repair-callout-icon > svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-repair-callout-copy {
+	min-width: 0;
+}
+
+.snowflake-method-repair-callout-copy h3,
+.snowflake-method-repair-callout-copy p {
+	margin: 0;
+}
+
+.snowflake-method-repair-callout-copy h3 {
+	margin-bottom: var(--size-2-1);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-repair-callout-copy p {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+}
+
+.snowflake-method-guided-section {
+	margin: 0 0 var(--size-4-5);
+	padding: var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-guided-section-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin-bottom: var(--size-4-3);
+}
+
+.snowflake-method-guided-section-header h3 {
+	min-width: 0;
+	margin: 0;
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-guided-section-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-guided-section-icon > svg {
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.snowflake-method-guided-section > p {
+	max-width: 68ch;
+	margin: 0 0 var(--size-4-3);
+	color: var(--text-muted);
+	line-height: 1.55;
+}
+
+.snowflake-method-guided-details {
+	margin-top: var(--size-4-3);
+	padding-top: var(--size-4-5);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-guided-details > summary,
+.snowflake-method-optional-section > summary {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-height: var(--input-height);
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+	line-height: 1.35;
+	list-style: none;
+	user-select: none;
+}
+
+.snowflake-method-guided-details > summary {
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-guided-details > summary::-webkit-details-marker,
+.snowflake-method-optional-section > summary::-webkit-details-marker {
+	display: none;
+}
+
+.snowflake-method-guided-details > summary::marker,
+.snowflake-method-optional-section > summary::marker {
+	content: '';
+}
+
+.snowflake-method-guided-details > summary::before,
+.snowflake-method-optional-section > summary::before {
+	width: 0.45rem;
+	height: 0.45rem;
+	border: solid currentColor;
+	border-width: 0 1.5px 1.5px 0;
+	content: '';
+	flex: 0 0 auto;
+	transform: rotate(-45deg);
+	transition: transform 120ms ease;
+}
+
+.snowflake-method-guided-details[open] > summary::before,
+.snowflake-method-optional-section[open] > summary::before {
+	border-color: var(--interactive-accent);
+	transform: rotate(45deg);
+}
+
+.snowflake-method-guided-details > summary:focus-visible,
+.snowflake-method-optional-section > summary:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: 2px;
+}
+
+@media (hover: hover) {
+	.snowflake-method-guided-details > summary:hover,
+	.snowflake-method-optional-section > summary:hover {
+		background: var(--background-modifier-hover);
+	}
+}
+
+.snowflake-method-question-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0 var(--size-4-4);
+	margin-top: var(--size-4-4);
+}
+
+.snowflake-method-question-field-wide {
+	grid-column: 1 / -1;
+}
+
+.snowflake-method-audience-reasons-field {
+	margin-bottom: 0;
+}
+
+.snowflake-method-audience-reasons-field textarea {
+	min-height: 8rem;
+}
+
+.snowflake-method-question-prompt {
+	grid-column: 1 / -1;
+	margin: 0 0 var(--size-4-2);
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-numbered-fields {
+	display: grid;
+	grid-column: 1 / -1;
+	gap: var(--size-4-2);
+	margin: 0;
+	padding-inline-start: 1.75rem;
+}
+
+.snowflake-method-numbered-fields > li {
+	padding-inline-start: var(--size-2-1);
+}
+
+.snowflake-method-numbered-fields > li::marker {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-numbered-fields .snowflake-method-field {
+	margin-bottom: 0;
+}
+
+.snowflake-method-one-sentence-summary-field {
+	margin-bottom: var(--size-4-2);
+}
+
+.snowflake-method-one-sentence-summary-input {
+	min-height: 8rem;
+	font-size: var(--font-text-size);
+	line-height: 1.55;
+}
+
+.snowflake-method-field .snowflake-method-one-paragraph-summary-input {
+	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+}
+
+.snowflake-method-source-summary {
+	margin: var(--size-4-4) 0;
+	padding: var(--size-4-3) var(--size-4-4);
+	border-inline-start: 3px solid var(--interactive-accent);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-source-summary-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-2);
+}
+
+.snowflake-method-source-summary-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-source-summary-icon > svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.snowflake-method-source-summary-label {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	line-height: 1.35;
+}
+
+.snowflake-method-source-summary-content {
+	margin: 0;
+	color: var(--text-normal);
+	line-height: 1.6;
+	white-space: pre-wrap;
+}
+
+.snowflake-method-source-summary-content.is-empty {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+.snowflake-method-field .snowflake-method-description-input {
+	min-height: calc(12 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+}
+
+.snowflake-method-guided-details > summary .snowflake-method-status,
+.snowflake-method-optional-section > summary .snowflake-method-status {
+	margin-inline-start: auto;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+}
+
+.snowflake-method-optional-section[open] > summary {
+	margin-bottom: var(--size-4-3);
+}
+
+.snowflake-method-candidate-title-fields {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0 var(--size-4-4);
+}
+
+.snowflake-method-candidate-title-fields .snowflake-method-field:last-child {
+	margin-bottom: 0;
+}
+
+.snowflake-method-status {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	padding: var(--size-2-1) var(--size-4-2);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.snowflake-method-status[data-status='complete'] {
+	background: rgba(var(--color-green-rgb), 0.14);
+	color: var(--color-green);
+}
+
+.snowflake-method-status[data-status='in-progress'] {
+	background: rgba(var(--color-blue-rgb), 0.14);
+	color: var(--color-blue);
+}
+
+.snowflake-method-status[data-status='in-revision'] {
+	background: rgba(var(--color-yellow-rgb), 0.14);
+	color: var(--color-yellow);
+}
+
+.snowflake-method-status[data-status='skipped'] {
+	color: var(--text-faint);
+}
+
+.snowflake-method-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	min-width: 0;
+	margin-bottom: var(--size-4-4);
+}
+
+.snowflake-method-field > label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-field input,
+.snowflake-method-field textarea {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.snowflake-method-field textarea {
+	min-height: 7rem;
+	resize: vertical;
+}
+
+.snowflake-method-hint {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-length-hint {
+	display: flex;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: var(--size-4-3);
+}
+
+.snowflake-method-length-count {
+	margin-inline-start: auto;
+	text-align: end;
+	white-space: nowrap;
+}
+
+.snowflake-method-writing-hints {
+	margin: 0 0 var(--size-4-3);
+	padding: var(--size-4-3) var(--size-4-4);
+	border-inline-start: 3px solid var(--interactive-accent);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	background: var(--background-secondary);
+}
+
+.snowflake-method-writing-hints > summary {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	cursor: pointer;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	line-height: 1.35;
+	list-style: none;
+}
+
+.snowflake-method-writing-hints > summary::-webkit-details-marker {
+	display: none;
+}
+
+.snowflake-method-writing-hints > summary::marker {
+	content: '';
+}
+
+.snowflake-method-writing-hints > summary:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: 3px;
+}
+
+@media (hover: hover) {
+	.snowflake-method-writing-hints > summary:hover {
+		color: var(--interactive-accent);
+	}
+}
+
+.snowflake-method-writing-hints > summary::after {
+	width: 0.45rem;
+	height: 0.45rem;
+	margin-inline-start: auto;
+	border: solid var(--text-muted);
+	border-width: 0 1.5px 1.5px 0;
+	content: '';
+	transform: rotate(-45deg);
+	transition: transform 120ms ease;
+}
+
+.snowflake-method-writing-hints[open] > summary::after {
+	border-color: var(--interactive-accent);
+	transform: rotate(45deg);
+}
+
+.snowflake-method-writing-hints-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-writing-hints-icon > svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.snowflake-method-writing-hints > ol {
+	display: grid;
+	gap: var(--size-4-2);
+	margin: var(--size-4-3) 0 0;
+	padding-inline-start: 1.4rem;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+}
+
+.snowflake-method-writing-hints > ol > li {
+	padding-inline-start: var(--size-2-1);
+}
+
+.snowflake-method-writing-hints > ol > li::marker {
+	color: var(--interactive-accent);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-writing-hints > ol > li.snowflake-method-hint-emphasis {
+	color: var(--interactive-accent);
+	font-style: italic;
+}
+
+.snowflake-method-hint-keyword {
+	color: var(--interactive-accent);
+	font-weight: var(--font-bold);
+}
+
+.snowflake-method-dashboard button.snowflake-method-canvas-link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	width: auto;
+	height: auto;
+	min-height: 0;
+	margin: 0 var(--size-2-1);
+	padding: 0 var(--size-2-1);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--interactive-accent);
+	cursor: pointer;
+	font: inherit;
+	font-weight: var(--font-semibold);
+	line-height: inherit;
+	vertical-align: baseline;
+}
+
+.snowflake-method-dashboard button.snowflake-method-canvas-link:hover {
+	background: rgba(var(--interactive-accent-rgb), 0.12);
+	color: var(--interactive-accent-hover);
+}
+
+.snowflake-method-canvas-link-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.snowflake-method-canvas-link-icon svg {
+	width: 0.95em;
+	height: 0.95em;
+}
+
+.snowflake-method-canvas-link-label {
+	border-bottom: 1px dashed currentColor;
+}
+
+.snowflake-method-length-hint + .snowflake-method-optional-section {
+	margin-top: var(--size-4-4);
+}
+
+.snowflake-method-list-actions {
+	margin: 0 0 var(--size-4-3);
+}
+
+.snowflake-method-table-wrap {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow-x: auto;
+	background: var(--background-primary);
+}
+
+.snowflake-method-table {
+	width: 100%;
+	margin: 0;
+	border-collapse: collapse;
+}
+
+.snowflake-method-table th,
+.snowflake-method-table td {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: start;
+	vertical-align: middle;
+}
+
+.snowflake-method-table th {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+}
+
+.snowflake-method-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.snowflake-method-table tbody tr:hover td {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-table-primary {
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-table th:last-child,
+.snowflake-method-table td:last-child {
+	width: 1%;
+	white-space: nowrap;
+}
+
+.snowflake-method-table-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-4-1);
+	white-space: nowrap;
+}
+
+.snowflake-method-table-actions > button {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-character-table {
+	min-width: 42rem;
+	table-layout: fixed;
+}
+
+.snowflake-method-character-column-name {
+	width: 14rem;
+}
+
+.snowflake-method-character-column-type {
+	width: 6rem;
+}
+
+.snowflake-method-character-column-actions {
+	width: 11rem;
+}
+
+.snowflake-method-character-table th:last-child,
+.snowflake-method-character-table td:last-child {
+	width: auto;
+}
+
+.snowflake-method-character-table th:nth-child(2),
+.snowflake-method-character-table td:nth-child(2) {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-character-table td:nth-child(3) {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+	white-space: pre-wrap;
+}
+
+.snowflake-method-character-table td:nth-child(1) {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.snowflake-method-character-table td:last-child > .snowflake-method-table-actions,
+.snowflake-method-scene-table td:last-child > .snowflake-method-table-actions {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	justify-content: flex-start;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-character-table
+	td:last-child
+	> .snowflake-method-table-actions
+	button,
+.snowflake-method-scene-table
+	td:last-child
+	> .snowflake-method-table-actions
+	button {
+	min-width: 0;
+	box-sizing: border-box;
+	padding-inline: var(--size-4-2);
+}
+
+.snowflake-method-character-table th:not(:last-child),
+.snowflake-method-character-table td:not(:last-child) {
+	border-inline-end: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-scene-table {
+	min-width: 52rem;
+	table-layout: fixed;
+}
+
+.snowflake-method-scene-column-order {
+	width: 5rem;
+}
+
+.snowflake-method-scene-column-name {
+	width: 14rem;
+}
+
+.snowflake-method-scene-column-pov {
+	width: 10rem;
+}
+
+.snowflake-method-scene-column-actions {
+	width: 11rem;
+}
+
+.snowflake-method-scene-table th:not(:last-child),
+.snowflake-method-scene-table td:not(:last-child) {
+	border-inline-end: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-scene-table td:nth-child(2),
+.snowflake-method-scene-table td:nth-child(4) {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+	white-space: pre-wrap;
+}
+
+.snowflake-method-character-split-button {
+	display: inline-grid;
+	grid-template-columns: minmax(0, 1fr) 2rem;
+	align-items: center;
+	flex: 0 0 4.75rem;
+	width: 4.75rem;
+	min-width: 4.75rem;
+	box-sizing: border-box;
+}
+
+.snowflake-method-character-edit {
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	border-start-end-radius: 0;
+	border-end-end-radius: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-character-action-menu-trigger {
+	width: 2rem;
+	min-width: 1.7rem;
+	padding-inline: var(--size-2-1);
+	border-inline-start: 1px solid var(--background-modifier-border-hover);
+	border-start-start-radius: 0;
+	border-end-start-radius: 0;
+}
+
+.snowflake-method-character-action-menu-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.snowflake-method-character-action-menu-icon svg {
+	width: 0.85rem;
+	height: 0.85rem;
+}
+
+.snowflake-method-character-delete:not(:disabled) {
+	color: var(--text-error);
+}
+
+.snowflake-method-character-delete {
+	flex: 0 0 4rem;
+	width: 4rem;
+	min-width: 4rem;
+}
+
+.snowflake-method-icon-button {
+	display: inline-grid;
+	place-items: center;
+	min-width: var(--input-height);
+	padding-inline: var(--size-4-2);
+}
+
+.snowflake-method-table tr[draggable='true'] {
+	cursor: grab;
+}
+
+.snowflake-method-table tr.is-dragging {
+	opacity: 0.55;
+}
+
+.snowflake-method-empty-state {
+	display: grid;
+	place-items: center;
+	flex: 1 1 auto;
+	width: 100%;
+	max-width: var(--snowflake-method-dashboard-width);
+	min-height: 0;
+	margin-inline: auto;
+	padding: clamp(var(--size-4-8), 8vh, 6rem) var(--size-4-4);
+	color: var(--text-muted);
+	text-align: center;
+	box-sizing: border-box;
+}
+
+.snowflake-method-empty-state-content {
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	width: min(100%, 32rem);
+}
+
+.snowflake-method-empty-state-icon {
+	display: inline-grid;
+	place-items: center;
+	width: 6.5rem;
+	height: 6.5rem;
+	margin-bottom: var(--size-4-4);
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-empty-state-icon svg {
+	width: 6rem;
+	height: 6rem;
+	stroke-width: 1.5;
+}
+
+.snowflake-method-empty-state h2 {
+	margin: 0;
+	color: var(--text-normal);
+	font-size: calc(var(--font-ui-large) * 1.2);
+	font-weight: var(--font-semibold);
+	line-height: var(--line-height-tight);
+}
+
+.snowflake-method-empty-state p {
+	margin: var(--size-4-2) 0 var(--size-4-5);
+	font-size: var(--font-ui-large);
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-dashboard button.snowflake-method-empty-state-action {
+	min-height: 0;
+	height: auto;
+	padding: var(--size-4-1) var(--size-4-2);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--interactive-accent);
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-normal);
+	line-height: var(--line-height-normal);
+	cursor: pointer;
+	transition: opacity 100ms ease-in-out;
+}
+
+.snowflake-method-dashboard button.snowflake-method-empty-state-action:hover,
+.snowflake-method-dashboard button.snowflake-method-empty-state-action:focus-visible {
+	background: transparent;
+	box-shadow: none;
+	color: var(--interactive-accent);
+	opacity: 0.65;
+	text-decoration: none;
+}
+
+.snowflake-method-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-character-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-2);
+	margin: var(--size-4-3) 0 0;
+	color: var(--interactive-accent);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+}
+
+.snowflake-method-character-empty-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-character-empty-icon svg {
+	width: 1rem;
+	height: 1rem;
+	stroke-width: 2;
+}
+
+.snowflake-method-modal-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-4);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-project-modal {
+	width: min(34rem, calc(100vw - 2rem));
+	max-width: 34rem;
+	height: auto;
+	min-height: 0;
+}
+
+.snowflake-method-project-modal .modal-content {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-project-form {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 12rem;
+	gap: var(--size-4-4);
+	padding-top: var(--size-4-2);
+}
+
+.modal.snowflake-method-project-modal
+	.modal-content.snowflake-method-project-form
+	> .setting-item {
+	display: flex;
+	align-items: stretch;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.modal.snowflake-method-project-modal
+	.modal-content.snowflake-method-project-form
+	> .setting-item
+	+ .setting-item {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.snowflake-method-project-form > .setting-item > .setting-item-info {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-height: 1.5rem;
+	min-width: 0;
+	margin: 0;
+}
+
+.snowflake-method-project-form .setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-project-form > .setting-item > .setting-item-control {
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+	min-width: 0;
+	width: 100%;
+}
+
+.modal.snowflake-method-project-modal
+	.modal-content.snowflake-method-project-form
+	input,
+.modal.snowflake-method-project-modal
+	.modal-content.snowflake-method-project-form
+	select {
+	width: 100%;
+	max-width: none;
+	height: var(--input-height);
+	min-height: var(--input-height);
+	font-size: var(--font-ui-small);
+	box-sizing: border-box;
+}
+
+.snowflake-method-project-form > .snowflake-method-modal-actions {
+	grid-column: 1 / -1;
+	margin-top: var(--size-4-3);
+}
+
+.snowflake-method-project-manager-modal {
+	width: min(54rem, calc(100vw - 2rem));
+	max-width: 54rem;
+	height: min(38rem, calc(100vh - 2rem));
+	max-height: calc(100vh - 2rem);
+	padding: 0;
+	overflow: hidden;
+}
+
+.snowflake-method-project-manager-modal:focus {
+	outline: none;
+}
+
+.snowflake-method-project-manager-modal .modal-header {
+	position: absolute;
+	z-index: 2;
+	top: var(--size-4-3);
+	inset-inline-end: var(--size-4-3);
+	width: auto;
+	height: auto;
+	padding: 0;
+}
+
+.snowflake-method-project-manager-modal .modal-title {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+.snowflake-method-project-manager-modal .modal-content {
+	display: flex;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.snowflake-method-project-manager-layout {
+	display: grid;
+	grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	background: var(--background-primary);
+}
+
+.snowflake-method-project-manager-sidebar {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding: var(--size-4-5) var(--size-4-3);
+	overflow: hidden;
+	border-inline-end: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-project-manager-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.snowflake-method-project-manager-project-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	min-width: 0;
+	border-inline-start: 3px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+}
+
+.snowflake-method-project-manager-project-row.has-health-issues {
+	border-inline-start-color: var(--color-orange);
+	background: color-mix(
+		in srgb,
+		var(--color-orange) 5%,
+		transparent
+	);
+}
+
+.snowflake-method-project-manager-project-row:hover,
+.snowflake-method-project-manager-project-row:focus-within {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-project {
+	position: relative;
+	display: flex;
+	align-items: flex-start;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	width: 100%;
+	height: auto;
+	min-width: 0;
+	min-height: 3.5rem;
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	filter: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+	text-align: start;
+	cursor: pointer;
+	appearance: none;
+}
+
+.snowflake-method-project-manager-project-warning {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--clickable-icon-size);
+	height: var(--clickable-icon-size);
+	color: var(--color-orange);
+}
+
+.snowflake-method-project-manager-project-warning svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-project:hover,
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-project:focus-visible {
+	background: transparent;
+	box-shadow: none;
+	outline: none;
+}
+
+.snowflake-method-project-manager-project-more {
+	flex: 0 0 auto;
+	margin-inline-end: var(--size-4-2);
+	opacity: 1;
+}
+
+.snowflake-method-project-manager-project-title,
+.snowflake-method-project-manager-project-path {
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-project-manager-project-title {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+}
+
+.snowflake-method-project-manager-project-path {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-project-manager-main {
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	min-width: 0;
+	padding: clamp(var(--size-4-5), 4vh, 2rem);
+	overflow-y: auto;
+}
+
+.snowflake-method-project-manager-hero {
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	margin: auto 0 clamp(var(--size-4-4), 3vh, var(--size-4-6));
+	text-align: center;
+}
+
+.snowflake-method-project-manager-icon {
+	display: grid;
+	place-items: center;
+	width: 5.75rem;
+	height: 5.75rem;
+	margin-bottom: var(--size-4-3);
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-project-manager-icon svg {
+	width: 5.25rem;
+	height: 5.25rem;
+	overflow: visible;
+}
+
+.snowflake-method-snowflake-evolution-stage {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	opacity: 0;
+	transform-box: fill-box;
+	transform-origin: center;
+	animation-duration: 4.7s;
+	animation-timing-function: ease-in-out;
+	animation-iteration-count: infinite;
+}
+
+.snowflake-method-snowflake-evolution-star {
+	animation-name: snowflake-method-evolution-star;
+}
+
+.snowflake-method-snowflake-evolution-koch-one {
+	animation-name: snowflake-method-evolution-koch-one;
+}
+
+.snowflake-method-snowflake-evolution-koch-two {
+	animation-name: snowflake-method-evolution-koch-two;
+}
+
+@keyframes snowflake-method-evolution-star {
+	0%,
+	21% {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	25%,
+	96% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes snowflake-method-evolution-koch-one {
+	0%,
+	21% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+
+	25%,
+	46% {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	50%,
+	71% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+
+	75%,
+	96% {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	100% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+
+@keyframes snowflake-method-evolution-koch-two {
+	0%,
+	46% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+
+	50%,
+	71% {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	75%,
+	100% {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+
+.snowflake-method-snowflake-evolution-fallback {
+	display: none;
+	place-items: center;
+	width: 100%;
+	height: 100%;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-snowflake-evolution {
+	display: none;
+}
+
+.snowflake-method-reduce-motion
+	.snowflake-method-snowflake-evolution-fallback {
+	display: inline-grid;
+}
+
+.snowflake-method-project-manager-hero h2 {
+	margin: 0;
+	font-size: 1.75rem;
+	line-height: var(--line-height-tight);
+}
+
+.snowflake-method-project-manager-hero p {
+	margin: var(--size-4-1) 0 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-medium);
+}
+
+.snowflake-method-project-manager-actions {
+	width: min(100%, 36rem);
+	margin-bottom: auto;
+	padding: 0 var(--size-4-5);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-project-manager-action {
+	display: grid;
+	grid-template-columns: var(--input-height) minmax(0, 1fr);
+	align-items: start;
+	gap: var(--size-4-3);
+	padding: var(--size-4-4) 0;
+}
+
+.snowflake-method-project-manager-action +
+	.snowflake-method-project-manager-action {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-project-manager-action-icon {
+	display: grid;
+	place-items: center;
+	width: var(--input-height);
+	height: 1.5em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-medium);
+}
+
+.snowflake-method-project-manager-action-icon svg {
+	width: var(--icon-m);
+	height: var(--icon-m);
+}
+
+.snowflake-method-project-manager-action-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+}
+
+.snowflake-method-project-manager-action-copy h3 {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+}
+
+.snowflake-method-project-manager-action-copy p {
+	margin: var(--size-4-1) 0 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-project-manager-create-body > button {
+	min-width: 6.5rem;
+}
+
+.snowflake-method-project-manager-create-body {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--size-4-5);
+}
+
+.snowflake-method-project-manager-root-copy p {
+	max-width: none;
+}
+
+.snowflake-method-project-manager-root-control {
+	position: relative;
+	width: 100%;
+	min-width: 0;
+}
+
+.snowflake-method-project-manager-root-control input {
+	width: 100%;
+	padding-inline-end: calc(var(--icon-s) + var(--size-4-3));
+	font-family: var(--font-interface);
+}
+
+.snowflake-method-project-manager-root-selector {
+	position: absolute;
+	top: 50%;
+	inset-inline-end: var(--size-4-3);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--clickable-icon-size);
+	height: var(--clickable-icon-size);
+	padding: 0;
+	color: var(--text-muted);
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+	transform: translateY(-50%);
+}
+
+.snowflake-method-project-manager-root-selector svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-project-manager-language {
+	padding-block: var(--size-4-4);
+}
+
+.snowflake-method-project-manager-language select {
+	width: 100%;
+	max-width: none;
+	padding-inline-end: calc(var(--icon-s) + var(--size-4-3));
+	background-image: none;
+	appearance: none;
+}
+
+.snowflake-method-project-manager-language-control {
+	position: relative;
+	min-width: 0;
+}
+
+.snowflake-method-project-manager-language-selector {
+	position: absolute;
+	top: 50%;
+	inset-inline-end: var(--size-4-3);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+	pointer-events: none;
+	transform: translateY(-50%);
+}
+
+.snowflake-method-project-manager-language-selector svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+@media (max-width: 36rem) {
+	.snowflake-method-project-form {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.snowflake-method-project-form > .snowflake-method-modal-actions {
+		grid-column: 1;
+	}
+
+	.snowflake-method-project-manager-actions {
+		padding-inline: var(--size-4-4);
+	}
+
+	.snowflake-method-project-manager-create-body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.snowflake-method-project-manager-create-body > button {
+		width: 100%;
+	}
+}
+
+@media (max-width: 48rem) {
+	.snowflake-method-project-manager-layout {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(7rem, auto) minmax(0, 1fr);
+	}
+
+	.snowflake-method-project-manager-sidebar {
+		max-height: 12rem;
+		border-inline-end: 0;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.snowflake-method-project-manager-main {
+		padding: var(--size-4-5);
+	}
+
+	.snowflake-method-project-manager-hero {
+		margin: 0 0 var(--size-4-5);
+	}
+}
+
+.snowflake-method-character-modal {
+	width: min(44rem, calc(100vw - 2rem));
+	max-width: 44rem;
+}
+
+.snowflake-method-scene-modal {
+	width: min(44rem, calc(100vw - 2rem));
+	max-width: 44rem;
+}
+
+.snowflake-method-character-form {
+	display: grid;
+	grid-template-columns: minmax(0, 2fr) minmax(13rem, 1fr);
+	gap: var(--size-4-4);
+	padding-top: var(--size-4-3);
+}
+
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-character-form
+	> .snowflake-method-character-setting {
+	display: flex;
+	align-items: stretch;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-character-form
+	> .snowflake-method-character-setting
+	+ .snowflake-method-character-setting {
+	margin-top: 0;
+	padding-top: 0;
+}
+
+.snowflake-method-character-name-setting,
+.snowflake-method-character-type-setting {
+	align-self: start;
+	grid-row: 1;
+}
+
+.snowflake-method-character-name-setting {
+	grid-column: 1;
+}
+
+.snowflake-method-character-type-setting {
+	grid-column: 2;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-character-setting
+	> .setting-item-info {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-height: 1.5rem;
+	margin: 0;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-character-setting
+	.setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-character-setting
+	> .setting-item-control {
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+	min-height: var(--input-height);
+	width: 100%;
+}
+
+.snowflake-method-character-form input,
+.snowflake-method-character-form select,
+.snowflake-method-character-form textarea {
+	width: 100%;
+	max-width: none;
+	font-size: var(--font-ui-small);
+	box-sizing: border-box;
+}
+
+.snowflake-method-character-name-setting input,
+.snowflake-method-character-type-setting select {
+	height: var(--input-height);
+	min-height: var(--input-height);
+}
+
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-character-form
+	.snowflake-method-character-type-setting
+	select {
+	width: 100%;
+	min-width: 13rem;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-character-form textarea {
+	min-height: 4.5rem;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+.snowflake-method-character-oneSentenceStoryline-setting,
+.snowflake-method-character-oneParagraphStoryline-setting,
+.snowflake-method-character-motivation-setting,
+.snowflake-method-character-goal-setting,
+.snowflake-method-character-conflict-setting,
+.snowflake-method-character-growth-setting,
+.snowflake-method-character-form > .snowflake-method-modal-actions {
+	grid-column: 1 / -1;
+}
+
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-character-form
+	> .snowflake-method-character-oneSentenceStoryline-setting {
+	margin-top: var(--size-4-5);
+}
+
+.snowflake-method-character-oneParagraphStoryline-setting textarea {
+	min-height: 10rem;
+}
+
+.snowflake-method-character-form > .snowflake-method-modal-actions {
+	margin-top: 0;
+}
+
+.snowflake-method-scene-form {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--size-4-4);
+	padding-top: var(--size-4-3);
+}
+
+.modal.snowflake-method-scene-modal
+	.modal-content.snowflake-method-scene-form
+	> .snowflake-method-scene-setting {
+	display: flex;
+	align-items: stretch;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.modal.snowflake-method-scene-modal
+	.modal-content.snowflake-method-scene-form
+	> .snowflake-method-scene-setting
+	+ .snowflake-method-scene-setting {
+	margin-top: 0;
+	padding-top: 0;
+}
+
+.snowflake-method-scene-name-setting,
+.snowflake-method-scene-pov-setting {
+	align-self: start;
+	grid-row: 1;
+}
+
+.snowflake-method-scene-name-setting {
+	grid-column: 1 / 3;
+}
+
+.snowflake-method-scene-pov-setting {
+	grid-column: 3;
+}
+
+.snowflake-method-scene-time-setting,
+.snowflake-method-scene-location-setting,
+.snowflake-method-scene-characters-setting {
+	align-self: start;
+	grid-column: 1 / -1;
+}
+
+.snowflake-method-scene-conflict-setting,
+.snowflake-method-scene-events-setting,
+.snowflake-method-scene-form > .snowflake-method-modal-actions {
+	grid-column: 1 / -1;
+}
+
+.snowflake-method-scene-form
+	> .snowflake-method-scene-setting
+	> .setting-item-info {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-height: 1.5rem;
+	margin: 0;
+}
+
+.snowflake-method-scene-form
+	> .snowflake-method-scene-setting
+	.setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-scene-form
+	> .snowflake-method-scene-setting
+	> .setting-item-control {
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+	width: 100%;
+	min-height: var(--input-height);
+}
+
+.snowflake-method-scene-form input,
+.snowflake-method-scene-form select,
+.snowflake-method-scene-form textarea {
+	width: 100%;
+	max-width: none;
+	font-size: var(--font-ui-small);
+	box-sizing: border-box;
+}
+
+.snowflake-method-scene-name-setting input,
+.snowflake-method-scene-pov-setting select,
+.snowflake-method-scene-time-setting input,
+.snowflake-method-scene-location-setting input {
+	height: var(--input-height);
+	min-height: var(--input-height);
+}
+
+.modal.snowflake-method-scene-modal
+	.modal-content.snowflake-method-scene-form
+	.snowflake-method-scene-pov-setting
+	select {
+	width: 100%;
+	min-width: 0;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-scene-conflict-setting textarea {
+	min-height: 7rem;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+.snowflake-method-character-multi-select {
+	position: relative;
+	width: 100%;
+	min-width: 0;
+}
+
+.snowflake-method-character-multi-select-trigger {
+	display: flex;
+	align-items: stretch;
+	width: 100%;
+	min-height: var(--input-height);
+	border: var(--input-border-width) solid var(--background-modifier-border);
+	border-radius: var(--input-radius);
+	background: var(--background-modifier-form-field);
+	box-shadow: var(--input-shadow);
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.snowflake-method-character-multi-select-trigger:hover,
+.snowflake-method-character-multi-select-trigger:focus,
+.snowflake-method-character-multi-select.is-open
+	.snowflake-method-character-multi-select-trigger {
+	border-color: var(--background-modifier-border-hover);
+	box-shadow: var(--input-shadow-hover);
+	outline: none;
+}
+
+.snowflake-method-character-multi-select-chevron {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 var(--input-height);
+	color: var(--text-muted);
+}
+.snowflake-method-character-multi-select-chevron {
+	flex-basis: calc(var(--input-height) - var(--size-4-2));
+	transition: transform 120ms ease;
+}
+
+.snowflake-method-character-multi-select.is-open
+	.snowflake-method-character-multi-select-chevron {
+	transform: rotate(180deg);
+}
+
+.snowflake-method-character-multi-select-chevron svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-character-multi-select-values {
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+	min-width: 0;
+	padding: var(--size-4-1) var(--size-4-2);
+}
+
+.snowflake-method-character-multi-select-placeholder {
+	overflow: hidden;
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-character-multi-select-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	max-width: 100%;
+	min-height: calc(var(--input-height) - var(--size-4-3));
+	padding-inline-start: var(--size-4-2);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-character-multi-select-tag > span:first-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-character-multi-select-remove.clickable-icon {
+	flex: 0 0 auto;
+	width: calc(var(--input-height) - var(--size-4-3));
+	height: calc(var(--input-height) - var(--size-4-3));
+	padding: var(--size-4-1);
+	color: var(--text-faint);
+}
+
+.snowflake-method-character-multi-select-remove.clickable-icon:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-character-multi-select-options {
+	position: absolute;
+	z-index: var(--layer-popover);
+	top: calc(100% + var(--size-4-1));
+	inset-inline: 0;
+	display: flex;
+	flex-direction: column;
+	max-height: 12rem;
+	padding: var(--size-4-1);
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--input-radius);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	box-sizing: border-box;
+}
+
+.snowflake-method-character-multi-select-options.is-hidden {
+	display: none;
+}
+
+.snowflake-method-character-multi-select-option {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	width: 100%;
+	min-height: 2rem;
+	padding: var(--size-4-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	background: transparent;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	text-align: start;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.snowflake-method-character-multi-select-option:hover,
+.snowflake-method-character-multi-select-option:focus-visible {
+	background: var(--background-modifier-hover);
+	outline: none;
+}
+
+.snowflake-method-character-multi-select-check {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 var(--icon-s);
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-character-multi-select-check svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-character-multi-select-empty {
+	padding: var(--size-4-2) var(--size-4-3);
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-scene-events-setting textarea {
+	min-height: 12rem;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+.snowflake-method-scene-form > .snowflake-method-modal-actions {
+	margin-top: 0;
+}
+
+@media (max-width: 38rem) {
+	.snowflake-method-character-form,
+	.snowflake-method-scene-form {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.snowflake-method-character-type-setting,
+	.snowflake-method-scene-name-setting,
+	.snowflake-method-scene-pov-setting,
+	.snowflake-method-scene-time-setting,
+	.snowflake-method-scene-location-setting,
+	.snowflake-method-scene-characters-setting {
+		grid-column: 1;
+		grid-row: auto;
+	}
+
+	.snowflake-method-character-type-setting select,
+	.snowflake-method-scene-pov-setting select {
+		min-width: 0;
+	}
+
+}
+
+@container snowflake-dashboard (max-width: 68rem) {
+	.snowflake-method-layout {
+		grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
+		gap: var(--size-4-3);
+	}
+}
+
+@container snowflake-dashboard (max-width: 52rem) {
+	.snowflake-method-layout {
+		grid-template-columns: 6rem minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+	}
+
+	.snowflake-method-step-nav {
+		padding: var(--size-4-1) var(--size-4-1) 0;
+		overflow: hidden;
+	}
+
+	.snowflake-method-step-nav-header {
+		display: none;
+	}
+
+	.snowflake-method-step-list {
+		width: 100%;
+		flex-direction: column;
+		overflow-x: hidden;
+		overflow-y: auto;
+		flex: 1 1 auto;
+	}
+
+	.snowflake-method-step-item {
+		width: 100%;
+		min-width: 0;
+		flex: 0 0 auto;
+	}
+
+	.snowflake-method-dashboard button.snowflake-method-step-button {
+		grid-template-columns: 1.75rem 1.25rem;
+		justify-content: center;
+		gap: var(--size-4-3);
+		min-height: 2.875rem;
+		padding: var(--size-4-1);
+	}
+
+	.snowflake-method-step-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		border: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+	}
+
+	.snowflake-method-project-footer {
+		justify-content: center;
+		flex-direction: row;
+		gap: 0;
+		margin: auto calc(var(--size-4-1) * -1) 0;
+		padding: var(--size-4-2) 0;
+	}
+
+	.snowflake-method-project-control {
+		position: relative;
+		justify-content: center;
+		width: 1.875rem;
+		height: 1.625rem;
+		min-width: 1.875rem;
+		padding: 0;
+		flex: 0 0 auto;
+	}
+
+	.snowflake-method-project-control:focus-visible,
+	.snowflake-method-project-control[aria-expanded='true'] {
+		background: var(--background-modifier-hover);
+		outline: none;
+	}
+
+	.snowflake-method-project-switcher-icon {
+		pointer-events: none;
+	}
+
+	.snowflake-method-project-switcher-label {
+		display: none;
+	}
+
+	.snowflake-method-project-actions {
+		flex-direction: row;
+		justify-content: center;
+		gap: 0;
+	}
+
+	.snowflake-method-main {
+		padding-inline-end: 0;
+	}
+}
+
+@container snowflake-dashboard (max-width: 42rem) {
+	.snowflake-method-panel {
+		padding: var(--size-4-3);
+	}
+
+	.snowflake-method-panel-header {
+		align-items: stretch;
+		flex-direction: column;
+		gap: var(--size-4-2);
+	}
+
+	.snowflake-method-status-select {
+		align-self: flex-start;
+	}
+
+	.snowflake-method-repair-callout {
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: start;
+	}
+
+	.snowflake-method-repair-callout-actions {
+		grid-column: 2;
+		justify-self: start;
+	}
+
+	.snowflake-method-question-fields,
+	.snowflake-method-candidate-title-fields {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.snowflake-method-guided-section {
+		padding: var(--size-4-3);
+	}
+
+	.snowflake-method-guided-section-header {
+		align-items: flex-start;
+	}
+
+	.snowflake-method-guided-details > summary,
+	.snowflake-method-optional-section > summary {
+		align-items: center;
+	}
+
+	.snowflake-method-table-wrap {
+		border: 0;
+		overflow: visible;
+		background: transparent;
+	}
+
+	.snowflake-method-table {
+		display: block;
+	}
+
+	.snowflake-method-character-table,
+	.snowflake-method-scene-table {
+		min-width: 0;
+		table-layout: auto;
+	}
+
+	.snowflake-method-table thead {
+		display: none;
+	}
+
+	.snowflake-method-table tbody {
+		display: grid;
+		gap: var(--size-4-2);
+	}
+
+	.snowflake-method-table tr {
+		display: block;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-s);
+		overflow: hidden;
+		background: var(--background-primary);
+	}
+
+	.snowflake-method-table td,
+	.snowflake-method-table td:last-child {
+		display: grid;
+		grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
+		gap: var(--size-4-2);
+		width: auto;
+		padding: var(--size-4-2) var(--size-4-3);
+		white-space: normal;
+	}
+
+	.snowflake-method-project-footer {
+		margin: auto calc(var(--size-4-1) * -1) 0;
+		padding: var(--size-4-2) 0;
+	}
+
+	.snowflake-method-table td::before {
+		color: var(--text-muted);
+		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-semibold);
+		content: attr(data-label);
+	}
+
+	.snowflake-method-character-table td:nth-child(1),
+	.snowflake-method-character-table td:nth-child(2),
+	.snowflake-method-character-table td:nth-child(3) {
+		border-inline-end: 0;
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+	}
+
+	.snowflake-method-scene-table td:nth-child(1),
+	.snowflake-method-scene-table td:nth-child(2),
+	.snowflake-method-scene-table td:nth-child(3),
+	.snowflake-method-scene-table td:nth-child(4) {
+		border-inline-end: 0;
+	}
+
+	.snowflake-method-table-actions {
+		justify-content: flex-start;
+		flex-wrap: wrap;
+	}
+}
+
+@container snowflake-dashboard (max-width: 32rem) {
+	.snowflake-method-project-control {
+		min-width: 1.875rem;
+	}
+
+	.snowflake-method-actions > button {
+		min-height: 2.75rem;
+	}
+
+	.snowflake-method-guided-details > summary,
+	.snowflake-method-optional-section > summary {
+		min-height: 2.75rem;
+		padding: var(--size-4-2);
+	}
+
+	.snowflake-method-numbered-fields {
+		padding-inline-start: 1.5rem;
+	}
+
+	.snowflake-method-guided-details > summary .snowflake-method-status,
+	.snowflake-method-optional-section > summary .snowflake-method-status {
+		flex: 0 0 auto;
+	}
+}
+
+@media (max-width: 700px) {
+	.snowflake-method-dashboard {
+		padding: var(--size-4-2);
+	}
+}
+
+/* Managed Markdown sections (CodeMirror only; never rendered in reading view). */
+.cm-line.snowflake-managed-boundary-line {
+	color: var(--text-faint);
+}
+
+.snowflake-managed-boundary-lock {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	color: var(--interactive-accent);
+}
+
+.snowflake-managed-boundary-lock.is-unlocked {
+	color: var(--color-orange);
+}
+
+.snowflake-managed-boundary-lock svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+	stroke-width: 2;
+}
+
+.snowflake-managed-boundary-comment {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	vertical-align: middle;
+}
+
+.snowflake-managed-section-placeholder {
+	display: inline-flex;
+	align-items: center;
+	min-height: 1.75rem;
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-s);
+	color: var(--interactive-accent);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	font-style: italic;
+	cursor: text;
+	user-select: none;
+}
+
+.snowflake-managed-section-placeholder:hover,
+.snowflake-managed-section-placeholder:focus-visible {
+	background: transparent;
+	outline: none;
+}
+
+.snowflake-managed-boundary-source {
+	color: var(--text-faint);
+	font-size: 0.88em;
+}
+
+.snowflake-managed-boundary-source.is-unlocked {
+	color: var(--color-orange);
+}
+
+.snowflake-managed-boundary-lock {
+	margin-inline-end: var(--size-4-1);
+	vertical-align: text-bottom;
+}
+
+.cm-line.snowflake-managed-section-focus-flash.is-cycle-a {
+	animation: snowflake-managed-section-focus-a 1s ease-out both;
+}
+
+.cm-line.snowflake-managed-section-focus-flash.is-cycle-b {
+	animation: snowflake-managed-section-focus-b 1s ease-out both;
+}
+
+@keyframes snowflake-managed-section-focus-a {
+	0% {
+		background-color: color-mix(
+			in srgb,
+			var(--interactive-accent) 18%,
+			transparent
+		);
+	}
+
+	30% {
+		background-color: color-mix(
+			in srgb,
+			var(--interactive-accent) 12%,
+			transparent
+		);
+	}
+
+	100% {
+		background-color: transparent;
+	}
+}
+
+@keyframes snowflake-managed-section-focus-b {
+	0% {
+		background-color: color-mix(
+			in srgb,
+			var(--interactive-accent) 18%,
+			transparent
+		);
+	}
+
+	30% {
+		background-color: color-mix(
+			in srgb,
+			var(--interactive-accent) 12%,
+			transparent
+		);
+	}
+
+	100% {
+		background-color: transparent;
+	}
+}
+
+.snowflake-method-repair-callout-actions {
+	display: flex;
+	gap: var(--size-4-2);
+	align-self: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+}
+
+.snowflake-method-table-health-warning {
+	display: inline-flex;
+	margin-inline-start: var(--size-4-1);
+	color: var(--color-orange);
+	vertical-align: text-bottom;
+}
+
+.snowflake-method-table-health-warning svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.snowflake-method-repair-report-modal {
+	width: min(42rem, calc(100vw - 2rem));
+}
+
+.snowflake-method-repair-report-modal .modal-content {
+	max-height: min(72vh, 42rem);
+	padding-inline-end: var(--size-4-2);
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-color: var(--scrollbar-thumb-bg) transparent;
+	scrollbar-width: thin;
+}
+
+.snowflake-method-repair-report-modal .modal-content::-webkit-scrollbar {
+	width: 0.4rem;
+}
+
+.snowflake-method-repair-report-modal .modal-content::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.snowflake-method-repair-report-modal .modal-content::-webkit-scrollbar-thumb {
+	border-radius: var(--radius-l);
+	background: var(--scrollbar-thumb-bg);
+}
+
+.snowflake-method-repair-report-modal
+	.modal-content::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-active-thumb-bg);
+}
+
+.snowflake-method-repair-report-surface {
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	margin: 0;
+}
+
+.snowflake-method-repair-report-surface
+	> .snowflake-method-repair-callout-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	margin-top: 0;
+}
+
+.snowflake-method-repair-report-surface
+	> .snowflake-method-repair-callout-icon
+	> svg {
+	width: 1.5rem;
+	height: 1.5rem;
+}
+
+.snowflake-method-repair-report-surface.is-healthy {
+	border-inline-start-color: var(--color-green);
+	background: color-mix(
+		in srgb,
+		var(--color-green) 5%,
+		var(--background-primary)
+	);
+}
+
+.snowflake-method-repair-report-surface.is-healthy
+	.snowflake-method-repair-callout-icon {
+	color: var(--color-green);
+}
+
+.snowflake-method-repair-report-summary {
+	display: flex;
+	align-items: center;
+	min-height: 2rem;
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+	color: var(--text-normal);
+}
+
+.snowflake-method-repair-report-summary p {
+	margin: 0;
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-repair-report-list {
+	display: grid;
+	gap: 0;
+	margin: var(--size-4-2) 0 0;
+	padding: 0;
+	overflow: visible;
+	list-style: none;
+}
+
+.snowflake-method-repair-report-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) 0;
+	border: 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background: transparent;
+}
+
+.snowflake-method-repair-report-item.is-conflict {
+	border-color: var(--background-modifier-border);
+	background: transparent;
+	box-shadow: none;
+}
+
+.snowflake-method-repair-report-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-repair-report-item.is-unchanged
+	.snowflake-method-repair-report-icon {
+	color: var(--text-muted);
+}
+
+.snowflake-method-repair-report-item.is-conflict
+	.snowflake-method-repair-report-icon {
+	color: var(--color-orange);
+}
+
+.snowflake-method-repair-report-item.is-conflict
+	.snowflake-method-repair-report-copy > span {
+	color: var(--text-normal);
+}
+
+.snowflake-method-repair-report-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-repair-report-copy {
+	display: grid;
+	gap: var(--size-2-1);
+	min-width: 0;
+}
+
+.snowflake-method-repair-report-item-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--size-4-1);
+}
+
+.snowflake-method-repair-report-copy > span {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-repair-report-copy > small {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+	overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+	.snowflake-managed-section-placeholder {
+		min-height: 2.25rem;
+	}
+}
+
+.snowflake-method-reduce-motion .snowflake-method-celebration {
+	display: none;
+}
+
+.snowflake-method-reduce-motion
+	.cm-line.snowflake-managed-section-focus-flash {
+	animation: none;
+	background-color: color-mix(
+		in srgb,
+		var(--interactive-accent) 12%,
+		transparent
+	);
+}
+
+.snowflake-method-reduce-motion
+	.snowflake-method-guided-details
+	> summary::before,
+.snowflake-method-reduce-motion
+	.snowflake-method-optional-section
+	> summary::before,
+.snowflake-method-reduce-motion
+	.snowflake-method-writing-hints
+	> summary::after {
+	transition: none;
+}
