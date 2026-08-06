@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	addSceneCastMember,
-	availableSceneCastMembers,
 	isChoosableScenePov,
 	normalizeSceneCast,
 	scenesUsingCharacter,
@@ -26,26 +25,6 @@ describe('adding a character to a scene cast', () => {
 	it('drops cast entries the project no longer has', () => {
 		const cast = addSceneCastMember(order, ['deleted.md', 'b.md'], 'a.md');
 		expect(cast).toEqual(['a.md', 'b.md']);
-	});
-});
-
-describe('characters still available to add', () => {
-	const characters = order.map((path) => ({ path, name: path }));
-
-	it('leaves out the ones already cast', () => {
-		expect(
-			availableSceneCastMembers(characters, ['b.md', 'd.md']).map(
-				(character) => character.path,
-			),
-		).toEqual(['a.md', 'c.md']);
-	});
-
-	it('offers everything when the cast is empty', () => {
-		expect(availableSceneCastMembers(characters, [])).toHaveLength(4);
-	});
-
-	it('offers nothing once every character is cast', () => {
-		expect(availableSceneCastMembers(characters, order)).toEqual([]);
 	});
 });
 

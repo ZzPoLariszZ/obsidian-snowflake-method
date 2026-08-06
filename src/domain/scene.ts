@@ -75,12 +75,3 @@ export function isChoosableScenePov(
 ): boolean {
 	return isScenePovMode(povPath) || characterPaths.includes(povPath);
 }
-
-/** The characters still available to add, in project order. */
-export function availableSceneCastMembers<T extends { path: string }>(
-	characters: readonly T[],
-	cast: readonly string[],
-): T[] {
-	const selected = new Set(cast);
-	return characters.filter((character) => !selected.has(character.path));
-}

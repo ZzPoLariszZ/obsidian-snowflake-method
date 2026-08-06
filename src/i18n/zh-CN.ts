@@ -312,6 +312,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.deleteCharacter.povScenes': '以下场景需要重新选择视点：',
 	'modal.deleteCharacter.castScenes': '“{name}”将从以下场景的人物中移除：',
 	'modal.scene.povChoose': '请选择视点',
+	'modal.scene.createCharacter': '新建角色“{name}”',
 	'modal.scene.povOmniscient': '全知视角',
 	'table.povMissing': '人物已不存在：{name}',
 	'modal.scene.povMultiple': '多人视角',

@@ -98,6 +98,8 @@ import {
 	ManageProjectsModal,
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
+	promptForNewCharacter,
+	type CharacterOption,
 	type CreateCharacterRequest,
 	type CreateProjectRequest,
 	type CreateSceneRequest,
@@ -833,10 +835,13 @@ export default class SnowflakeMethodPlugin
 		};
 	}
 
-	async createCharacter(request: CreateCharacterRequest): Promise<void> {
+	async createCharacter(
+		request: CreateCharacterRequest,
+	): Promise<CharacterOption> {
 		const project = await this.requireCurrentProject();
 		const character = await this.projects.createCharacter(project, request);
 		new Notice(this.t('messages.characterCreated', { name: character.name }));
+		return { path: character.path, name: character.name };
 	}
 
 	async updateCharacter(
@@ -2181,6 +2186,20 @@ export default class SnowflakeMethodPlugin
 				async (request) => {
 					await this.createScene(request);
 					await this.refreshDashboards();
+				},
+				undefined,
+				async (name) => {
+					const created = await promptForNewCharacter(
+						this.app,
+						this.t,
+						name,
+						(request) => this.createCharacter(request),
+					);
+					if (created === null) return null;
+					// The field behind the form is waiting on this, so the dashboard
+					// redraw is left to catch up on its own rather than kept in front.
+					void this.refreshDashboards();
+					return created;
 				},
 			).open();
 		} catch (error) {

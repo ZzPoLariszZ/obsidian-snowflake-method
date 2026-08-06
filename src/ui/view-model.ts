@@ -3,6 +3,7 @@ import type { MarkerIssueCode } from '../templates';
 import type { ProjectStructureIssueCode } from '../services';
 
 import type {
+	CharacterOption,
 	CreateCharacterRequest,
 	CreateProjectRequest,
 	CreateSceneRequest,
@@ -152,7 +153,8 @@ export interface DashboardHost {
 	): void;
 	selectStep(step: StepId): Promise<void>;
 	createProject(request: CreateProjectRequest): Promise<CreatedProject>;
-	createCharacter(request: CreateCharacterRequest): Promise<void>;
+	/** Reports the character back so a field that asked for it can select it. */
+	createCharacter(request: CreateCharacterRequest): Promise<CharacterOption>;
 	updateCharacter(id: string, request: CreateCharacterRequest): Promise<void>;
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
 	createScene(request: CreateSceneRequest): Promise<void>;

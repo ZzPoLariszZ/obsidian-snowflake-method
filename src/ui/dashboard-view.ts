@@ -24,6 +24,8 @@ import {
 	CreateProjectModal,
 	CreateSceneModal,
 	RepairReportModal,
+	promptForNewCharacter,
+	type CharacterOption,
 	type Translate,
 } from './modals';
 import {
@@ -1582,6 +1584,8 @@ export class SnowflakeDashboardView extends ItemView {
 					await this.host.createScene(request);
 					await this.refresh();
 				},
+				undefined,
+				this.creatingCharacter(model),
 			).open();
 		});
 
@@ -1792,6 +1796,30 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
+	/**
+	 * Lets a scene's fields create a character the project does not have yet,
+	 * seeded with the name that was typed. Null on a read-only project, which
+	 * leaves the fields offering only what already exists.
+	 */
+	private creatingCharacter(
+		model: ProjectDashboardModel,
+	): ((name: string) => Promise<CharacterOption | null>) | null {
+		if (model.readOnly) return null;
+		return async (name) => {
+			const created = await promptForNewCharacter(
+				this.app,
+				this.t,
+				name,
+				(request) => this.host.createCharacter(request),
+			);
+			if (created === null) return null;
+			// The field behind the form is waiting on this, so the dashboard redraw
+			// is left to catch up on its own rather than kept in front of it.
+			void this.refresh();
+			return created;
+		};
+	}
+
 	private openSceneEditor(
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
@@ -1817,6 +1845,7 @@ export class SnowflakeDashboardView extends ItemView {
 				events: scene.events,
 				expectedRevision: scene.revision,
 			},
+			this.creatingCharacter(model),
 		).open();
 	}
 

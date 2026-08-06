@@ -2829,20 +2829,10 @@
 }
 
 .snowflake-method-scene-name-setting input,
-.snowflake-method-scene-pov-setting select,
 .snowflake-method-scene-time-setting input,
 .snowflake-method-scene-location-setting input {
 	height: var(--input-height);
 	min-height: var(--input-height);
-}
-
-.modal.snowflake-method-scene-modal
-	.modal-content.snowflake-method-scene-form
-	.snowflake-method-scene-pov-setting
-	select {
-	width: 100%;
-	min-width: 0;
-	text-overflow: ellipsis;
 }
 
 .snowflake-method-scene-conflict-setting textarea {
@@ -2851,13 +2841,13 @@
 	resize: vertical;
 }
 
-.snowflake-method-character-multi-select {
+.snowflake-method-option-picker {
 	position: relative;
 	width: 100%;
 	min-width: 0;
 }
 
-.snowflake-method-character-multi-select-field {
+.snowflake-method-option-picker-field {
 	display: flex;
 	align-items: stretch;
 	width: 100%;
@@ -2870,26 +2860,26 @@
 	cursor: text;
 }
 
-.snowflake-method-character-multi-select-field:hover,
-.snowflake-method-character-multi-select-field:focus-within {
+.snowflake-method-option-picker-field:hover,
+.snowflake-method-option-picker-field:focus-within {
 	border-color: var(--background-modifier-border-hover);
 	box-shadow: var(--input-shadow-hover);
 	outline: none;
 }
 
-.snowflake-method-character-multi-select-selector.clickable-icon {
+.snowflake-method-option-picker-selector.clickable-icon {
 	flex: 0 0 calc(var(--input-height) - var(--size-4-2));
 	align-self: center;
 	margin-inline-end: var(--size-4-1);
 	color: var(--text-muted);
 }
 
-.snowflake-method-character-multi-select-selector.clickable-icon:disabled {
+.snowflake-method-option-picker-selector.clickable-icon:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-.snowflake-method-character-multi-select-values {
+.snowflake-method-option-picker-values {
 	display: flex;
 	align-items: center;
 	flex: 1 1 auto;
@@ -2900,12 +2890,12 @@
 }
 
 /* Sits inline after the tags and wraps with them, so the search box always
-   follows the cast rather than sitting in a row of its own. The field around it
-   draws the frame, so the input has to give up every part of its own chrome --
-   and it needs the element selector to outweigh Obsidian's `input[type='text']`,
-   which is otherwise more specific than a lone class. */
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input {
+   follows the picked values rather than sitting in a row of its own. The field
+   around it draws the frame, so the input has to give up every part of its own
+   chrome -- and it needs the element selector to outweigh Obsidian's
+   `input[type='text']`, which is otherwise more specific than a lone class. */
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input {
 	flex: 1 1 6rem;
 	width: auto;
 	min-width: 6rem;
@@ -2923,26 +2913,65 @@
 	line-height: inherit;
 }
 
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input:hover,
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input:focus,
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input:focus-visible,
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input:active {
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input:hover,
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input:focus,
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input:focus-visible,
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input:active {
 	border: 0;
 	background: transparent;
 	box-shadow: none;
 	outline: none;
 }
 
-.snowflake-method-character-multi-select
-	input.snowflake-method-character-multi-select-input::placeholder {
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input::placeholder {
 	color: var(--text-faint);
 }
 
-.snowflake-method-character-multi-select-tag {
+/* A one-value field shows its value as plain text rather than a tag, so the
+   box is the whole field and never has to share the row. */
+.snowflake-method-option-picker.is-single
+	.snowflake-method-option-picker-values {
+	flex-wrap: nowrap;
+}
+
+/* The list belongs to the control, so it takes the frame's width rather than
+   the width of whichever name happens to be longest. The width itself is set
+   when the list opens, since only then is the frame's size known. */
+.suggestion-container.snowflake-method-option-picker-suggestions {
+	min-width: 0;
+	max-width: none;
+	box-sizing: border-box;
+}
+
+.suggestion-container.snowflake-method-option-picker-suggestions
+	.suggestion-item {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The row that creates what the project does not have yet reads as an action
+   rather than one more name to choose from. */
+.suggestion-container.snowflake-method-option-picker-suggestions
+	.snowflake-method-option-picker-create {
+	color: var(--text-accent);
+	font-style: italic;
+}
+
+/* No row is highlighted until the author reaches into the list. The framework
+   marks its first row the moment the list appears, and the list is rebuilt after
+   every pick, so that mark would otherwise keep flashing back to the top. */
+.suggestion-container.snowflake-method-option-picker-suggestions.is-selection-idle
+	.suggestion-item.is-selected {
+	background-color: transparent;
+}
+
+.snowflake-method-option-picker-tag {
 	display: inline-flex;
 	align-items: center;
 	gap: 2px;
@@ -2955,13 +2984,13 @@
 	font-size: var(--font-ui-small);
 }
 
-.snowflake-method-character-multi-select-tag > span:first-child {
+.snowflake-method-option-picker-tag > span:first-child {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.snowflake-method-character-multi-select-remove.clickable-icon {
+.snowflake-method-option-picker-remove.clickable-icon {
 	flex: 0 0 auto;
 	width: calc(var(--input-height) - var(--size-4-3));
 	height: calc(var(--input-height) - var(--size-4-3));
@@ -2969,7 +2998,7 @@
 	color: var(--text-faint);
 }
 
-.snowflake-method-character-multi-select-remove.clickable-icon:hover {
+.snowflake-method-option-picker-remove.clickable-icon:hover {
 	color: var(--text-normal);
 }
 
@@ -2999,8 +3028,7 @@
 		grid-row: auto;
 	}
 
-	.snowflake-method-character-type-setting select,
-	.snowflake-method-scene-pov-setting select {
+	.snowflake-method-character-type-setting select {
 		min-width: 0;
 	}
 

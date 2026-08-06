@@ -13,7 +13,6 @@ import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	addSceneCastMember,
-	availableSceneCastMembers,
 	isChoosableScenePov,
 	normalizeSceneCast,
 	type CharacterType,
@@ -26,6 +25,13 @@ import {
 	normalizeProjectRoot,
 } from '../project-root';
 import type { ProjectLocale } from '../settings';
+import {
+	buildOptionField,
+	buildOptionPicker,
+	type OptionFieldConfig,
+	type OptionPicker,
+	type PickerOption,
+} from './option-picker';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import type { RepairReportViewModel } from './view-model';
@@ -145,98 +151,6 @@ class ProjectRootSuggest extends AbstractInputSuggest<TFolder> {
 		this.setValue(displayProjectRoot(root));
 		this.close();
 		this.onChooseRoot(root);
-	}
-}
-
-/**
- * Type-to-filter picker for a scene's cast. Characters already chosen are left
- * out of the suggestions, so the list shortens as the cast fills up and the same
- * character cannot be added twice.
- */
-class CharacterSuggest extends AbstractInputSuggest<CharacterOption> {
-	private showAll = false;
-	// The framework exposes no way to ask whether the list is showing, and a
-	// refresh must not pop open a list the author had dismissed.
-	private listOpen = false;
-
-	constructor(
-		app: App,
-		private readonly inputEl: HTMLInputElement,
-		private readonly listCandidates: () => readonly CharacterOption[],
-		private readonly onChooseCharacter: (character: CharacterOption) => void,
-	) {
-		super(app, inputEl);
-		this.limit = 50;
-	}
-
-	/** Opens the full list from the chevron, the way a dropdown would. */
-	showAllSuggestions(): void {
-		this.inputEl.focus({ preventScroll: true });
-		this.showAll = true;
-		const EventConstructor =
-			this.inputEl.ownerDocument.defaultView?.Event ?? Event;
-		this.inputEl.dispatchEvent(new EventConstructor('input', { bubbles: true }));
-	}
-
-	protected getSuggestions(query: string): CharacterOption[] {
-		const showAll = this.showAll;
-		this.showAll = false;
-		const normalizedQuery = showAll ? '' : query.trim().toLocaleLowerCase();
-		return this.listCandidates().filter((character) =>
-			character.name.toLocaleLowerCase().includes(normalizedQuery),
-		);
-	}
-
-	renderSuggestion(character: CharacterOption, el: HTMLElement): void {
-		el.setText(character.name);
-	}
-
-	open(): void {
-		super.open();
-		this.listOpen = true;
-	}
-
-	close(): void {
-		super.close();
-		this.listOpen = false;
-	}
-
-	selectSuggestion(character: CharacterOption): void {
-		// The input is a search box, never a committed value, so it empties out
-		// ready for the next name rather than keeping the one just chosen.
-		this.setValue('');
-		this.close();
-		this.onChooseCharacter(character);
-		this.reopenSuggestions();
-	}
-
-	/**
-	 * Brings an open list back in step with a cast that changed underneath it.
-	 * A list that was already dismissed stays dismissed.
-	 */
-	refreshOpenSuggestions(): void {
-		if (!this.listOpen) return;
-		this.reopenSuggestions();
-	}
-
-	/**
-	 * Suggestions are only recomputed from an `input` event, so a list left alone
-	 * after the cast changes keeps offering a stale set — and stays anchored where
-	 * the field ended before a chip joined or left it. Closing and opening again
-	 * settles both the contents and the position.
-	 *
-	 * Deferred because the framework closes the popover once the click or key
-	 * handler that got us here returns.
-	 */
-	private reopenSuggestions(): void {
-		const view = this.inputEl.ownerDocument.defaultView;
-		if (view === null) return;
-		view.setTimeout(() => {
-			if (!this.inputEl.isConnected || this.inputEl.disabled) return;
-			this.close();
-			if (this.listCandidates().length === 0) return;
-			this.showAllSuggestions();
-		}, 0);
 	}
 }
 
@@ -953,6 +867,11 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		t: Translate,
 		onSubmit: SubmitHandler<CreateCharacterRequest>,
 		initial?: CreateCharacterRequest,
+		/**
+		 * Starting name for a character being created, so one typed into a scene's
+		 * point-of-view or cast field carries over instead of being typed twice.
+		 */
+		presetName?: string,
 	) {
 		super(
 			app,
@@ -966,7 +885,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.modalEl.addClass('snowflake-method-character-modal');
 		this.value = initial === undefined
 			? {
-					name: '',
+					name: presetName ?? '',
 					type: 'major',
 					oneSentenceStoryline: '',
 					oneParagraphStoryline: '',
@@ -1064,6 +983,54 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	}
 }
 
+/**
+ * The character form opened from a scene, which reports back what it created so
+ * the field that asked for it can select it.
+ */
+class NewCharacterPrompt extends CreateCharacterModal {
+	constructor(
+		app: App,
+		t: Translate,
+		presetName: string,
+		onSubmit: SubmitHandler<CreateCharacterRequest>,
+		private readonly settle: () => void,
+	) {
+		super(app, t, onSubmit, undefined, presetName);
+	}
+
+	// Closing is the one thing both ways out of the form have in common: a
+	// successful create has already run the submit handler by the time it closes,
+	// and a cancel closes having created nothing.
+	onClose(): void {
+		super.onClose();
+		this.settle();
+	}
+}
+
+/**
+ * Opens the character form seeded with `presetName`, resolving to the character
+ * that was created or to null when the author closed it without creating one.
+ */
+export function promptForNewCharacter(
+	app: App,
+	t: Translate,
+	presetName: string,
+	create: (request: CreateCharacterRequest) => Promise<CharacterOption>,
+): Promise<CharacterOption | null> {
+	return new Promise((resolve) => {
+		const outcome: { created: CharacterOption | null } = { created: null };
+		new NewCharacterPrompt(
+			app,
+			t,
+			presetName,
+			async (request) => {
+				outcome.created = await create(request);
+			},
+			() => resolve(outcome.created),
+		).open();
+	});
+}
+
 export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private readonly characters: CharacterOption[];
 	private title = '';
@@ -1071,10 +1038,12 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private location = '';
 	private characterPaths: string[] = [];
 	private conflict = '';
-	private povPath = SCENE_POV_OMNISCIENT;
+	// Unset, so a new scene starts on the placeholder and the author has to say
+	// whose scene it is rather than inheriting a default nobody chose.
+	private povPath = '';
 	private events = '';
 	private expectedRevision: string | undefined;
-	private characterSelectCleanup: (() => void) | null = null;
+	private readonly pickers: OptionPicker[] = [];
 
 	constructor(
 		app: App,
@@ -1082,6 +1051,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		characters: CharacterOption[],
 		onSubmit: SubmitHandler<CreateSceneRequest>,
 		initial?: CreateSceneRequest,
+		/**
+		 * Creates a character the scene needs but the project lacks, reporting it
+		 * back so the field can select it. Null when no character can be created
+		 * from here, which leaves the fields offering only what already exists.
+		 */
+		private readonly onCreateCharacter:
+			| ((name: string) => Promise<CharacterOption | null>)
+			| null = null,
 	) {
 		super(
 			app,
@@ -1091,14 +1068,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			initial === undefined ? 'common.create' : 'common.save',
 		);
 		this.modalEl.addClass('snowflake-method-scene-modal');
-		this.characters = characters;
+		this.characters = [...characters];
 		if (initial !== undefined) {
 			this.title = initial.title;
 			this.time = initial.time;
 			this.location = initial.location;
 			this.characterPaths = [...initial.characterPaths];
 			this.conflict = initial.conflict;
-			this.povPath = initial.povPath || SCENE_POV_OMNISCIENT;
+			this.povPath = initial.povPath;
 			this.events = initial.events;
 			this.expectedRevision = initial.expectedRevision;
 		}
@@ -1119,42 +1096,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-name-setting',
 		);
-		const pov = new Setting(this.contentEl)
-			.setName(`${this.t('modal.scene.pov')} *`)
-			.addDropdown((dropdown) => {
-				// A <select> silently drops a value it has no option for, leaving the
-				// control blank while the field still holds the old path — which then
-				// passes validation and saves the broken point of view straight back.
-				// Clearing it here is what makes "required" mean anything.
-				const characterPaths = this.characters.map(
-					(character) => character.path,
-				);
-				if (!isChoosableScenePov(this.povPath, characterPaths)) {
-					this.povPath = '';
-					dropdown.addOption('', this.t('modal.scene.povChoose'));
-				}
-				dropdown.addOption(
-					SCENE_POV_OMNISCIENT,
-					this.t('modal.scene.povOmniscient'),
-				);
-				dropdown.addOption(
-					SCENE_POV_MULTIPLE,
-					this.t('modal.scene.povMultiple'),
-				);
-				for (const character of this.characters) {
-					dropdown.addOption(character.path, character.name);
-				}
-				dropdown.selectEl.required = true;
-				dropdown.selectEl.setAttribute('aria-required', 'true');
-				dropdown.setValue(this.povPath);
-				dropdown.onChange((value) => {
-					this.povPath = value;
-				});
-			});
+		const pov = new Setting(this.contentEl).setName(
+			`${this.t('modal.scene.pov')} *`,
+		);
 		pov.settingEl.addClass(
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-pov-setting',
 		);
+		this.buildPovPicker(pov.controlEl);
 		const time = new Setting(this.contentEl)
 			.setName(this.t('modal.scene.time'))
 			.addText((text) =>
@@ -1190,7 +1139,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-characters-setting',
 		);
-		this.buildCharacterMultiSelect(characters.controlEl);
+		this.buildCastPicker(characters.controlEl);
 		const conflict = new Setting(this.contentEl)
 			.setName(this.t('modal.scene.conflict'))
 			.addTextArea((text) =>
@@ -1222,134 +1171,104 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	}
 
 	onClose(): void {
-		this.characterSelectCleanup?.();
-		this.characterSelectCleanup = null;
+		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.onClose();
 	}
 
-	private buildCharacterMultiSelect(container: HTMLElement): void {
-		const control = container.createDiv({
-			cls: 'snowflake-method-character-multi-select',
-		});
-		const field = control.createDiv({
-			cls: 'snowflake-method-character-multi-select-field',
-		});
-		const values = field.createDiv({
-			cls: 'snowflake-method-character-multi-select-values',
-		});
-		const input = values.createEl('input', {
-			cls: 'snowflake-method-character-multi-select-input',
-			type: 'text',
-			attr: {
-				'aria-label': this.t('modal.scene.characters'),
-				spellcheck: 'false',
-			},
-		});
-		const noCharacters = this.characters.length === 0;
-		input.disabled = noCharacters;
-		const selectorLabel = this.t('modal.scene.characters');
-		const selector = field.createEl('button', {
-			cls: 'clickable-icon snowflake-method-character-multi-select-selector',
-			attr: {
-				type: 'button',
-				'aria-label': selectorLabel,
-				title: selectorLabel,
-			},
-		});
-		setIcon(selector, 'chevrons-up-down');
-		selector.disabled = noCharacters;
+	/** The project's characters as picker options, in project order. */
+	private characterOptions(): PickerOption[] {
+		return this.characters.map((character) => ({
+			value: character.path,
+			label: character.name,
+		}));
+	}
 
-		const castOrder = this.characters.map((candidate) => candidate.path);
+	/**
+	 * The create half of a field's config, or undefined when this modal was given
+	 * no way to create a character.
+	 */
+	private creatingCharacter(): OptionFieldConfig['create'] {
+		const create = this.onCreateCharacter;
+		if (create === null) return undefined;
+		return {
+			label: (typed) => this.t('modal.scene.createCharacter', { name: typed }),
+			run: async (typed) => {
+				const created = await create(typed);
+				if (created === null) return null;
+				// Both fields read the list through a callback, so appending here is
+				// what puts the new character in front of the other one too.
+				this.characters.push(created);
+				return { value: created.path, label: created.name };
+			},
+		};
+	}
+
+	private buildPovPicker(container: HTMLElement): void {
+		// A point of view naming a character since deleted has no option to select
+		// it, so it must not survive the edit unchallenged: the field would show
+		// nothing while still holding the old path, which then passes validation
+		// and saves the broken point of view straight back. Clearing it here is
+		// what makes "required" mean anything.
+		const characterPaths = this.characters.map((character) => character.path);
+		if (!isChoosableScenePov(this.povPath, characterPaths)) this.povPath = '';
+
+		this.pickers.push(
+			buildOptionField(this.app, container, {
+				options: () => [
+					{
+						value: SCENE_POV_OMNISCIENT,
+						label: this.t('modal.scene.povOmniscient'),
+					},
+					{
+						value: SCENE_POV_MULTIPLE,
+						label: this.t('modal.scene.povMultiple'),
+					},
+					...this.characterOptions(),
+				],
+				value: () => this.povPath,
+				choose: (value) => {
+					this.povPath = value;
+				},
+				label: this.t('modal.scene.pov'),
+				placeholder: this.t('modal.scene.povChoose'),
+				emptyPlaceholder: this.t('modal.scene.povChoose'),
+				required: true,
+				create: this.creatingCharacter(),
+			}),
+		);
+	}
+
+	private buildCastPicker(container: HTMLElement): void {
+		const castOrder = (): string[] =>
+			this.characters.map((candidate) => candidate.path);
 		// A saved cast can name a character since deleted, which has no tag to show
 		// and no way to remove. Drop it here rather than let it ride along unseen.
-		this.characterPaths = normalizeSceneCast(castOrder, this.characterPaths);
+		this.characterPaths = normalizeSceneCast(castOrder(), this.characterPaths);
 
-		const isSelected = (path: string): boolean =>
-			this.characterPaths.includes(path);
-		const unselectedCharacters = (): readonly CharacterOption[] =>
-			availableSceneCastMembers(this.characters, this.characterPaths);
-
-		const addCharacter = (character: CharacterOption): void => {
-			this.characterPaths = addSceneCastMember(
-				castOrder,
-				this.characterPaths,
-				character.path,
-			);
-			renderTags();
-		};
-
-		const removeCharacter = (path: string): void => {
-			this.characterPaths = this.characterPaths.filter(
-				(candidate) => candidate !== path,
-			);
-			renderTags();
-			// The character is a candidate again, and the field may have just
-			// unwrapped a row, so a list still showing is now wrong twice over.
-			suggest.refreshOpenSuggestions();
-		};
-
-		const renderTags = (): void => {
-			for (const tag of Array.from(
-				values.querySelectorAll('.snowflake-method-character-multi-select-tag'),
-			)) {
-				tag.remove();
-			}
-			for (const character of this.characters) {
-				if (!isSelected(character.path)) continue;
-				const tag = values.createSpan({
-					cls: 'snowflake-method-character-multi-select-tag',
-				});
-				tag.createSpan({ text: character.name });
-				const remove = tag.createEl('button', {
-					cls: 'snowflake-method-character-multi-select-remove clickable-icon',
-					attr: {
-						type: 'button',
-						'aria-label': this.t('modal.scene.removeCharacter', {
-							name: character.name,
-						}),
-					},
-				});
-				setIcon(remove, 'x');
-				remove.addEventListener('click', () => {
-					removeCharacter(character.path);
-					input.focus({ preventScroll: true });
-				});
-				// The input stays last so typing always continues after the tags.
-				values.insertBefore(tag, input);
-			}
-			input.placeholder = noCharacters
-				? this.t('modal.scene.charactersEmpty')
-				: this.characterPaths.length === 0
-					? this.t('modal.scene.charactersPlaceholder')
-					: '';
-		};
-
-		const suggest = new CharacterSuggest(
-			this.app,
-			input,
-			unselectedCharacters,
-			addCharacter,
+		this.pickers.push(
+			buildOptionPicker(this.app, container, {
+				options: () => this.characterOptions(),
+				picked: () => this.characterPaths,
+				pick: (value) => {
+					this.characterPaths = addSceneCastMember(
+						castOrder(),
+						this.characterPaths,
+						value,
+					);
+				},
+				unpick: (value) => {
+					this.characterPaths = this.characterPaths.filter(
+						(candidate) => candidate !== value,
+					);
+				},
+				label: this.t('modal.scene.characters'),
+				placeholder: this.t('modal.scene.charactersPlaceholder'),
+				emptyPlaceholder: this.t('modal.scene.charactersEmpty'),
+				removeLabel: (label) =>
+					this.t('modal.scene.removeCharacter', { name: label }),
+				create: this.creatingCharacter(),
+			}),
 		);
-		this.characterSelectCleanup = () => suggest.close();
-		selector.addEventListener('click', () => {
-			suggest.showAllSuggestions();
-		});
-		// Clicking the padding around the tags should land in the search box, the
-		// way clicking anywhere in a text field does.
-		field.addEventListener('pointerdown', (event) => {
-			if (event.target !== field && event.target !== values) return;
-			event.preventDefault();
-			input.focus({ preventScroll: true });
-		});
-		// Backspace on an empty query removes the last chip, as chip inputs do.
-		input.addEventListener('keydown', (event) => {
-			if (event.key !== 'Backspace' || input.value.length > 0) return;
-			const last = this.characterPaths.at(-1);
-			if (last === undefined) return;
-			event.preventDefault();
-			removeCharacter(last);
-		});
-		renderTags();
 	}
 
 	protected collectValue(): CreateSceneRequest | null {

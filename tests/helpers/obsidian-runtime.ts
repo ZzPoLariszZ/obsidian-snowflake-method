@@ -19,6 +19,19 @@ export class PluginSettingTab {
 	update(): void {}
 }
 
+/**
+ * Stands in only so a module defining a subclass can be imported. The tests
+ * exercise the pure helpers beside it, never the popover itself, which needs a
+ * DOM this runtime does not have.
+ */
+export class AbstractInputSuggest {
+	limit = 0;
+	constructor(..._arguments: unknown[]) {}
+	open(): void {}
+	close(): void {}
+	setValue(_value: string): void {}
+}
+
 /** Only `locale()` is reached from the code under test. */
 export const moment = { locale: (): string => 'en' };
 

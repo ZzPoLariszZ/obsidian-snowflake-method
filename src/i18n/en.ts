@@ -348,9 +348,10 @@ export const en = {
 	'modal.deleteCharacter.castScenes':
 		'“{name}” will be removed from the cast of:',
 	'modal.scene.povChoose': 'Choose a point of view',
+	'modal.scene.createCharacter': 'Create character “{name}”',
 	'modal.scene.povOmniscient': 'Omniscient',
 	'table.povMissing': 'Missing character: {name}',
-	'modal.scene.povMultiple': 'Multiple viewpoints',
+	'modal.scene.povMultiple': 'Multi-POV',
 	'modal.scene.povRequired': 'Choose a point of view.',
 	'modal.scene.events': 'Specific events',
 	'modal.scene.timePlaceholder': 'When does this scene take place?',
