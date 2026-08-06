@@ -1647,10 +1647,19 @@
 
 .snowflake-method-table th,
 .snowflake-method-table td {
-	padding: var(--size-4-2) var(--size-4-3);
+	padding: var(--size-4-3);
 	border-bottom: 1px solid var(--background-modifier-border);
 	text-align: start;
-	vertical-align: middle;
+	vertical-align: top;
+}
+
+/* A cell can hold a whole paragraph, and that paragraph's own line spacing is
+   the yardstick: give the row less room than that above and below and the text
+   reads as running into the rows either side of it. Stated in line heights so
+   it holds at whatever text size the reader has set, and falling back to the
+   padding above wherever the unit is not understood. */
+.snowflake-method-table td {
+	padding-block: 1.25lh;
 }
 
 .snowflake-method-table th {
@@ -3269,7 +3278,7 @@
 		grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
 		gap: var(--size-4-2);
 		width: auto;
-		padding: var(--size-4-2) var(--size-4-3);
+		padding: var(--size-4-3);
 		white-space: normal;
 	}
 
