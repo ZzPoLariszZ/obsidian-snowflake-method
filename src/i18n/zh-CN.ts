@@ -83,6 +83,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'actions.repairItem': '修复',
 	'actions.addCharacter': '添加角色',
 	'actions.addScene': '添加场景',
+	'actions.addMoreCharacters': '添加更多角色…',
+	'actions.addMoreScenes': '添加更多场景…',
 	'actions.openBase': '打开数据库',
 	'actions.openNote': '打开笔记',
 	'actions.edit': '编辑',

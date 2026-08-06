@@ -88,6 +88,8 @@ export const en = {
 	'actions.repairItem': 'Repair',
 	'actions.addCharacter': 'Add character',
 	'actions.addScene': 'Add scene',
+	'actions.addMoreCharacters': 'Add more characters…',
+	'actions.addMoreScenes': 'Add more scenes…',
 	'actions.openBase': 'Open base',
 	'actions.openNote': 'Open note',
 	'actions.edit': 'Edit',

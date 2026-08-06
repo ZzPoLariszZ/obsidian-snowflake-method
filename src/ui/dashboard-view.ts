@@ -1317,12 +1317,7 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { type: 'button' },
 		});
 		add.disabled = model.readOnly;
-		add.addEventListener('click', () => {
-			new CreateCharacterModal(this.app, this.t, async (request) => {
-				await this.host.createCharacter(request);
-				await this.refresh();
-			}).open();
-		});
+		add.addEventListener('click', () => this.openCreateCharacter());
 
 		if (step === 5) {
 			this.renderWritingHints(
@@ -1555,6 +1550,13 @@ export class SnowflakeDashboardView extends ItemView {
 				);
 			}
 		});
+		this.renderAddRow(
+			body,
+			4,
+			this.t('actions.addMoreCharacters'),
+			model.readOnly,
+			() => this.openCreateCharacter(),
+		);
 	}
 
 	private renderScenes(
@@ -1572,22 +1574,7 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { type: 'button' },
 		});
 		add.disabled = model.readOnly;
-		add.addEventListener('click', () => {
-			new CreateSceneModal(
-				this.app,
-				this.t,
-				model.characters.map((character) => ({
-					path: character.path,
-					name: character.name,
-				})),
-				async (request) => {
-					await this.host.createScene(request);
-					await this.refresh();
-				},
-				undefined,
-				this.creatingCharacter(model),
-			).open();
-		});
+		add.addEventListener('click', () => this.openCreateScene(model));
 
 		if (step === 8) {
 			this.renderSceneListHints(panel);
@@ -1639,6 +1626,13 @@ export class SnowflakeDashboardView extends ItemView {
 		model.scenes.forEach((scene, index) => {
 			this.renderSceneRow(body, scene, index, model, step, reorderReadOnly);
 		});
+		this.renderAddRow(
+			body,
+			5,
+			this.t('actions.addMoreScenes'),
+			model.readOnly,
+			() => this.openCreateScene(model),
+		);
 	}
 
 	private renderSceneRow(
@@ -1794,6 +1788,59 @@ export class SnowflakeDashboardView extends ItemView {
 				(id, target) => this.host.reorderScene(id, target),
 			);
 		}
+	}
+
+	private openCreateCharacter(): void {
+		new CreateCharacterModal(this.app, this.t, async (request) => {
+			await this.host.createCharacter(request);
+			await this.refresh();
+		}).open();
+	}
+
+	private openCreateScene(model: ProjectDashboardModel): void {
+		new CreateSceneModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => ({
+				path: character.path,
+				name: character.name,
+			})),
+			async (request) => {
+				await this.host.createScene(request);
+				await this.refresh();
+			},
+			undefined,
+			this.creatingCharacter(model),
+		).open();
+	}
+
+	/**
+	 * A last row whose only job is to add another. The button above the table is
+	 * out of sight once a list is long enough to scroll, and the end of the list
+	 * is where the eye already is after reading to the bottom of it.
+	 */
+	private renderAddRow(
+		body: HTMLElement,
+		columns: number,
+		label: string,
+		readOnly: boolean,
+		add: () => void,
+	): void {
+		// Not draggable and given no drop handlers: it takes no part in the
+		// ordering, so a row dragged onto it stays where it was.
+		const row = body.createEl('tr', {
+			cls: 'snowflake-method-table-add-row',
+			attr: { draggable: 'false' },
+		});
+		if (readOnly) row.addClass('is-disabled');
+		const cell = row.createEl('td', { attr: { colspan: String(columns) } });
+		const button = cell.createEl('button', {
+			cls: 'snowflake-method-table-add-button',
+			text: label,
+			attr: { type: 'button' },
+		});
+		button.disabled = readOnly;
+		button.addEventListener('click', add);
 	}
 
 	/**

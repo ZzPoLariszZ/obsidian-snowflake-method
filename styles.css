@@ -1680,6 +1680,60 @@
 	white-space: nowrap;
 }
 
+/* The button is the row, so the cell gives up its padding and lets the button
+   carry it -- otherwise the two stack up and the row stands half again as tall
+   as the ones above it. The selector has to outweigh the shared cell padding
+   set at the top of the table. */
+.snowflake-method-table tbody tr.snowflake-method-table-add-row > td {
+	padding: 0;
+}
+
+/* The row is the button, so the button gives up every part of its own chrome --
+   and it needs to outweigh Obsidian's own `button` styling, which otherwise
+   fills the whole width of the table with a grey slab. */
+.snowflake-method-table
+	tbody
+	tr.snowflake-method-table-add-row
+	button.snowflake-method-table-add-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: inherit;
+	cursor: pointer;
+}
+
+/* The row's own hover already lights the full width, so the button only has to
+   bring the text up to meet it. */
+.snowflake-method-table
+	tbody
+	tr.snowflake-method-table-add-row:hover
+	button.snowflake-method-table-add-button {
+	background: transparent;
+	color: var(--text-normal);
+}
+
+.snowflake-method-table
+	tbody
+	tr.snowflake-method-table-add-row
+	button.snowflake-method-table-add-button:disabled {
+	background: transparent;
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Nothing to click, so nothing lights up. */
+.snowflake-method-table tbody tr.snowflake-method-table-add-row.is-disabled:hover td {
+	background: transparent;
+}
+
 .snowflake-method-table-actions {
 	display: flex;
 	align-items: center;
@@ -3250,6 +3304,19 @@
 	.snowflake-method-table-actions {
 		justify-content: flex-start;
 		flex-wrap: wrap;
+	}
+
+	/* Every other cell becomes a labelled two-column grid here. The add row has
+	   no label to show, so it would otherwise sit in the right-hand column with
+	   an empty third of the card beside it -- off-centre, and further so the
+	   narrower the window. It is one plain block instead. */
+	.snowflake-method-table tr.snowflake-method-table-add-row > td {
+		display: block;
+		padding: 0;
+	}
+
+	.snowflake-method-table tr.snowflake-method-table-add-row > td::before {
+		content: none;
 	}
 }
 
