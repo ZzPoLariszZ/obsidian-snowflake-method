@@ -843,19 +843,36 @@
 	flex: 1 1 auto;
 }
 
+/* Every panel that scrolls holds the scrollbar's space whether or not the bar is
+   showing, the way Obsidian's own editor and preview do. Otherwise adding the
+   character that first fills the panel would narrow everything already in it.
+
+   The space comes out of the padding the panel already keeps rather than being
+   added beside it, so a scrollbar never costs room and never pushes the panel
+   off centre. Each panel reaches back by --snowflake-method-scrollbar-width, the
+   width the plugin measures for this window; where scrollbars are overlaid or
+   hidden it measures nothing and none of this moves. */
 .snowflake-method-main {
 	min-width: 0;
 	min-height: 0;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
 	padding-bottom: var(--size-4-4);
 }
 
+/* The scrollbar's own width is what the steps are inset by on the far side, so
+   the near side is opened to match rather than leaving the rail lopsided. Where a
+   scrollbar costs nothing the rail keeps the padding it always had. */
 .snowflake-method-step-nav {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
 	min-height: 0;
 	padding: var(--size-4-2) var(--size-4-2) 0;
+	padding-inline-start: max(
+		var(--size-4-2),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
 	border: 1px solid var(--background-modifier-border);
 	border-bottom: 0;
 	border-radius: var(--radius-m);
@@ -878,9 +895,15 @@
 	line-height: 1.25;
 }
 
+/* Reaching into the dashboard's own side padding puts the scrollbar there rather
+   than inside the pane, which leaves the panels ending where the progress bar
+   above them ends. The pane must not be pinned to its column for the reach to
+   have anywhere to go. */
 .snowflake-method-main {
-	width: 100%;
 	margin: 0;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-4))
+	);
 	padding-inline-end: var(--size-2-1);
 }
 
@@ -894,14 +917,24 @@
 	list-style: none;
 	overflow-x: hidden;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2))
+	);
 	flex: 1 1 auto;
 }
 
+/* The footer reaches back out through the rail's padding so its rule meets both
+   walls. The near side has to reach as far as that padding actually goes, which
+   is the scrollbar's width once the rail has opened up to match it. */
 .snowflake-method-project-footer {
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-1);
 	margin: auto calc(var(--size-4-2) * -1) 0;
+	margin-inline-start: calc(
+		-1 * max(var(--size-4-2), var(--snowflake-method-scrollbar-width, 0px))
+	);
 	padding: var(--size-4-2);
 	border-top: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
@@ -1855,12 +1888,15 @@
 	font-weight: var(--font-semibold);
 }
 
+/* One edge only here: the indent the bullets already sit in answers for the other,
+   so holding both would push the list in from the left for no reason. */
 .snowflake-method-delete-character-modal
 	.snowflake-method-delete-character-group ul {
 	margin: 0;
 	padding-inline-start: var(--size-4-4);
 	max-height: 12rem;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }
@@ -2066,6 +2102,26 @@
 	stroke-width: 2;
 }
 
+/* A dialog is the scrollport for its own form, and its width is fixed, so a form
+   that grows long enough to scroll would otherwise pull its fields inward as the
+   scrollbar arrives. The project manager is left out: it never scrolls as a
+   whole, and the repair report scrolls inside its content instead. */
+.modal.snowflake-method-project-modal,
+.modal.snowflake-method-rename-project-modal,
+.modal.snowflake-method-character-modal,
+.modal.snowflake-method-scene-modal,
+.modal.snowflake-method-delete-character-modal {
+	padding-inline-start: max(
+		var(--size-4-4),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
+	padding-inline-end: max(
+		0px,
+		calc(var(--size-4-4) - var(--snowflake-method-scrollbar-width, 0px))
+	);
+	scrollbar-gutter: stable;
+}
+
 .snowflake-method-modal-actions {
 	display: flex;
 	align-items: center;
@@ -2217,6 +2273,10 @@
 	flex-direction: column;
 	min-width: 0;
 	padding: var(--size-4-5) var(--size-4-3);
+	padding-inline-start: max(
+		var(--size-4-3),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
 	overflow: hidden;
 	border-inline-end: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
@@ -2228,6 +2288,10 @@
 	gap: var(--size-2-1);
 	min-height: 0;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-3))
+	);
 }
 
 .snowflake-method-project-manager-project-row {
@@ -2330,9 +2394,22 @@
 	display: flex;
 	align-items: center;
 	flex-direction: column;
+	--snowflake-method-pane-padding: clamp(var(--size-4-5), 4vh, 2rem);
 	min-width: 0;
-	padding: clamp(var(--size-4-5), 4vh, 2rem);
+	padding: var(--snowflake-method-pane-padding);
+	padding-inline-start: max(
+		var(--snowflake-method-pane-padding),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
+	padding-inline-end: max(
+		0px,
+		calc(
+			var(--snowflake-method-pane-padding) -
+				var(--snowflake-method-scrollbar-width, 0px)
+		)
+	);
 	overflow-y: auto;
+	scrollbar-gutter: stable;
 }
 
 .snowflake-method-project-manager-hero {
@@ -2654,8 +2731,9 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
+	/* Set through the variable, so the room kept for the scrollbar survives. */
 	.snowflake-method-project-manager-main {
-		padding: var(--size-4-5);
+		--snowflake-method-pane-padding: var(--size-4-5);
 	}
 
 	.snowflake-method-project-manager-hero {
@@ -3011,6 +3089,18 @@
 	box-sizing: border-box;
 }
 
+/* Typing filters the list, so it crosses in and out of scrolling on almost every
+   keystroke. Holding the scrollbar's space keeps the names still while it does.
+
+   Alone among the panels, this one is not opened out to match: a list hanging off
+   a field reads against that field's edge, and the rows carry an inset of their
+   own, so the list is given no side padding at all and each row runs the whole
+   width. What is left on the far side is the scrollbar, and nothing else. */
+.suggestion-container.snowflake-method-option-picker-suggestions .suggestion {
+	padding-inline: 0;
+	scrollbar-gutter: stable;
+}
+
 .suggestion-container.snowflake-method-option-picker-suggestions
 	.suggestion-item {
 	overflow: hidden;
@@ -3112,6 +3202,10 @@
 
 	.snowflake-method-step-nav {
 		padding: var(--size-4-1) var(--size-4-1) 0;
+		padding-inline-start: max(
+			var(--size-4-1),
+			var(--snowflake-method-scrollbar-width, 0px)
+		);
 		overflow: hidden;
 	}
 
@@ -3119,11 +3213,15 @@
 		display: none;
 	}
 
+	/* The rail keeps less padding at this width, so there is less of it to hand
+	   the scrollbar back into. */
 	.snowflake-method-step-list {
-		width: 100%;
 		flex-direction: column;
 		overflow-x: hidden;
 		overflow-y: auto;
+		margin-inline-end: calc(
+			-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-1))
+		);
 		flex: 1 1 auto;
 	}
 
@@ -3133,10 +3231,17 @@
 		flex: 0 0 auto;
 	}
 
+	/* A rail this narrow would rather close up the space between a step's number
+	   and its mark than lose the even margin, so that space gives way by whatever
+	   the scrollbar took, down to a floor. It gives way by nothing at all where a
+	   scrollbar costs nothing. */
 	.snowflake-method-dashboard button.snowflake-method-step-button {
 		grid-template-columns: 1.75rem 1.25rem;
 		justify-content: center;
-		gap: var(--size-4-3);
+		gap: max(
+			var(--size-4-1),
+			calc(var(--size-4-3) - var(--snowflake-method-scrollbar-width, 0px))
+		);
 		min-height: 2.875rem;
 		padding: var(--size-4-1);
 	}
@@ -3158,6 +3263,9 @@
 		flex-direction: row;
 		gap: 0;
 		margin: auto calc(var(--size-4-1) * -1) 0;
+		margin-inline-start: calc(
+			-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
+		);
 		padding: var(--size-4-2) 0;
 	}
 
@@ -3191,9 +3299,6 @@
 		gap: 0;
 	}
 
-	.snowflake-method-main {
-		padding-inline-end: 0;
-	}
 }
 
 @container snowflake-dashboard (max-width: 42rem) {
@@ -3284,6 +3389,9 @@
 
 	.snowflake-method-project-footer {
 		margin: auto calc(var(--size-4-1) * -1) 0;
+		margin-inline-start: calc(
+			-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
+		);
 		padding: var(--size-4-2) 0;
 	}
 
@@ -3500,12 +3608,14 @@
 	width: min(42rem, calc(100vw - 2rem));
 }
 
+/* The held gutter is what keeps the report clear of its own scrollbar now, so the
+   hand-set inset that used to do that job would only lean the report leftwards. */
 .snowflake-method-repair-report-modal .modal-content {
 	max-height: min(72vh, 42rem);
-	padding-inline-end: var(--size-4-2);
 	overflow-x: hidden;
 	overflow-y: auto;
 	overscroll-behavior: contain;
+	scrollbar-gutter: stable both-edges;
 	scrollbar-color: var(--scrollbar-thumb-bg) transparent;
 	scrollbar-width: thin;
 }

@@ -120,8 +120,34 @@ import type {
 
 const REFRESH_DELAY_MS = 250;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
+const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
+
+/**
+ * How much room a scrollbar takes in this window. Overlaid ones, and the ones
+ * Obsidian hides outright, take none; the ones Windows and Linux draw take about
+ * a dozen pixels. The panels hand that much back out of the padding they already
+ * keep, so a scrollbar costs no extra room -- but only a measurement can say
+ * whether there is anything to hand back, and a theme can change the answer.
+ */
+function measureScrollbarWidth(targetDocument: Document): number {
+	const probe = targetDocument.body.createDiv();
+	// Dressed here rather than from the stylesheet: this runs before the plugin's
+	// own stylesheet reaches the document, and a probe with no scrollbar to
+	// measure would quietly report that a scrollbar costs nothing.
+	probe.setCssStyles({
+		position: 'absolute',
+		top: '-9999px',
+		width: '100px',
+		height: '100px',
+		overflowY: 'scroll',
+		visibility: 'hidden',
+	});
+	const width = probe.offsetWidth - probe.clientWidth;
+	probe.remove();
+	return width;
+}
 
 /** Tab group of a leaf; the companion pane is tracked by this identity. */
 type NotePane = WorkspaceLeaf['parent'];
@@ -148,6 +174,7 @@ export default class SnowflakeMethodPlugin
 	private refreshTimer: number | null = null;
 	private refreshProjectLocales = false;
 	private readonly motionDocuments = new Set<Document>();
+	private readonly scrollbarDocuments = new Set<Document>();
 	private resolveProjectScanReady: () => void = () => undefined;
 	/** Vault discovery must not contribute to the plugin onload critical path. */
 	private readonly projectScanReady = new Promise<void>((resolve) => {
@@ -203,20 +230,34 @@ export default class SnowflakeMethodPlugin
 		this.registerEvent(
 			this.app.workspace.on('window-open', (_workspaceWindow, targetWindow) => {
 				this.applyMotionPreferenceToDocument(targetWindow.document);
+				this.publishScrollbarWidthToDocument(targetWindow.document);
 			}),
 		);
 		this.registerEvent(
 			this.app.workspace.on('window-close', (_workspaceWindow, targetWindow) => {
 				targetWindow.document.body.classList.remove(REDUCE_MOTION_CLASS);
 				this.motionDocuments.delete(targetWindow.document);
+				targetWindow.document.body.style.removeProperty(
+					SCROLLBAR_WIDTH_PROPERTY,
+				);
+				this.scrollbarDocuments.delete(targetWindow.document);
 			}),
 		);
 		this.applyMotionPreference();
+		// A theme can restyle scrollbars, which changes how much room they take.
+		this.registerEvent(
+			this.app.workspace.on('css-change', () => this.publishScrollbarWidth()),
+		);
+		this.publishScrollbarWidth();
 		this.register(() => {
 			for (const targetDocument of this.motionDocuments) {
 				targetDocument.body.classList.remove(REDUCE_MOTION_CLASS);
 			}
 			this.motionDocuments.clear();
+			for (const targetDocument of this.scrollbarDocuments) {
+				targetDocument.body.style.removeProperty(SCROLLBAR_WIDTH_PROPERTY);
+			}
+			this.scrollbarDocuments.clear();
 		});
 		this.projects = new SnowflakeProjectService(
 			this.app.vault,
@@ -1360,6 +1401,21 @@ export default class SnowflakeMethodPlugin
 		targetDocument.body.classList.toggle(
 			REDUCE_MOTION_CLASS,
 			this.settings.reduceMotion,
+		);
+	}
+
+	private publishScrollbarWidth(): void {
+		this.publishScrollbarWidthToDocument(this.app.workspace.containerEl.doc);
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			this.publishScrollbarWidthToDocument(leaf.view.containerEl.doc);
+		});
+	}
+
+	private publishScrollbarWidthToDocument(targetDocument: Document): void {
+		this.scrollbarDocuments.add(targetDocument);
+		targetDocument.body.style.setProperty(
+			SCROLLBAR_WIDTH_PROPERTY,
+			`${measureScrollbarWidth(targetDocument)}px`,
 		);
 	}
 
