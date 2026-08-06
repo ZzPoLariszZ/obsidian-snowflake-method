@@ -43,6 +43,8 @@ export interface ManagedSectionIssueViewModel {
 	sectionLabel: string;
 	code: MarkerIssueCode | ProjectStructureIssueCode;
 	message: string;
+	/** What to do about it, shown on its own line. Null when the message says all. */
+	action: string | null;
 	blocking: boolean;
 	kind: 'section' | 'structure';
 	stepIds: StepId[];
@@ -75,6 +77,8 @@ export interface SceneViewModel {
 	rank: number;
 	povPath: string;
 	povName: string;
+	/** The stored point of view names a character the project no longer has. */
+	povMissing: boolean;
 	time: string;
 	location: string;
 	characterPaths: string[];
@@ -108,9 +112,12 @@ export interface RepairReportEntryViewModel {
 	sectionLabel: string;
 	status: 'unchanged' | 'conflict';
 	message: string;
+	action: string | null;
 	canOpen: boolean;
 	repairable: boolean;
 	repairField: string | null;
+	/** Set when the entry is a scene, so the report can offer its editor. */
+	sceneId: string | null;
 }
 
 export interface RepairReportViewModel {

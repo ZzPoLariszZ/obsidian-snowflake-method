@@ -25,6 +25,7 @@ import {
 	type DocumentType,
 	type StepId,
 	type StepStatus,
+	scenesUsingCharacter,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -90,6 +91,7 @@ import {
 	type NotePaneRoute,
 } from './ui/note-pane';
 import {
+	ConfirmCharacterDeletionModal,
 	CreateCharacterModal,
 	CreateProjectModal,
 	CreateSceneModal,
@@ -720,6 +722,10 @@ export default class SnowflakeMethodPlugin
 					field: issue.field ?? '',
 					expected: issue.expected ?? '',
 				}),
+				action: this.optionalTranslation(
+					projectT,
+					`projectStructure.action.${issue.code}`,
+				),
 				blocking: true,
 				kind: 'structure',
 				stepIds: issue.stepIds,
@@ -879,7 +885,32 @@ export default class SnowflakeMethodPlugin
 				),
 			);
 		}
-		if (!(await this.app.fileManager.promptForDeletion(file))) return;
+		// Obsidian's delete prompt sees a note, not a cast member, so a character
+		// scenes still reference gets its own confirmation that names them. With
+		// nothing referencing them, the standard prompt is the right one.
+		const usage = scenesUsingCharacter(project.scenes, character.path);
+		if (usage.pointOfView.length === 0 && usage.cast.length === 0) {
+			if (!(await this.app.fileManager.promptForDeletion(file))) return;
+			new Notice(this.t('messages.characterDeleted'));
+			return;
+		}
+
+		const confirmed = await new Promise<boolean>((resolve) => {
+			new ConfirmCharacterDeletionModal(
+				this.app,
+				this.t,
+				character.name,
+				usage,
+				resolve,
+			).open();
+		});
+		if (!confirmed) return;
+		// trashFile honours the same trash preference the prompt would have, so
+		// replacing that dialog does not quietly change where the note goes.
+		await this.projects.repository.trashFile(character.path);
+		// After the delete, so a failure here leaves links the health check can
+		// still report rather than a cast edited for a deletion that never landed.
+		await this.projects.removeCharacterFromScenes(project, character.path);
 		new Notice(this.t('messages.characterDeleted'));
 	}
 
@@ -1186,6 +1217,19 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	/**
+	 * The translation for `key`, or null when no locale defines one. Only some
+	 * issue codes have an action worth spelling out, and `t()` hands back the key
+	 * itself for anything it does not know.
+	 */
+	private optionalTranslation(
+		translate: (key: string, vars?: Record<string, string | number>) => string,
+		key: string,
+	): string | null {
+		const translated = translate(key);
+		return translated === key ? null : translated;
+	}
+
 	async checkCurrentProject(): Promise<RepairReportViewModel> {
 		const recent = this.settings.recentProjectPath;
 		if (recent === null) throw new Error(this.t('messages.noCurrentProject'));
@@ -1217,9 +1261,12 @@ export default class SnowflakeMethodPlugin
 					sectionLabel: issue.sectionLabel,
 					status: 'conflict',
 					message: issue.message,
+					action: issue.action,
 					canOpen: issue.canOpen,
 					repairable: issue.repairable,
 					repairField: issue.repairField,
+					sceneId:
+						model.scenes.find((scene) => scene.path === issue.path)?.id ?? null,
 				}),
 			);
 			return {
@@ -1237,6 +1284,8 @@ export default class SnowflakeMethodPlugin
 					{
 						path: recent,
 						sectionId: null,
+						action: null,
+						sceneId: null,
 						sectionLabel: this.t('editor.managedSection.documentLabel'),
 						status: 'conflict',
 						message,
@@ -2013,7 +2062,18 @@ export default class SnowflakeMethodPlugin
 						? t('modal.scene.povOmniscient')
 						: scene.povPath === SCENE_POV_MULTIPLE
 							? t('modal.scene.povMultiple')
-							: (characterNames.get(scene.povPath) ?? scene.povPath),
+							: (characterNames.get(scene.povPath) ??
+								// The character is gone, so its note name is the only name
+								// left to show for it.
+								(scene.povPath.split('/').pop() ?? scene.povPath).replace(
+									/\.md$/u,
+									'',
+								)),
+			povMissing:
+				scene.povPath !== null &&
+				scene.povPath !== SCENE_POV_OMNISCIENT &&
+				scene.povPath !== SCENE_POV_MULTIPLE &&
+				!characterNames.has(scene.povPath),
 			time: scene.time,
 			location: scene.location,
 			characterPaths: scene.characters,
@@ -2039,6 +2099,7 @@ export default class SnowflakeMethodPlugin
 			sectionId: issue.sectionId,
 			sectionLabel: this.sectionLabel(issue, t),
 			code: issue.code,
+			action: null,
 			message: t(`editor.managedSection.issue.${issue.code}`),
 			blocking: issue.code !== 'unknown-section',
 			kind: 'section',

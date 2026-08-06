@@ -1774,4 +1774,139 @@ describe("SnowflakeProjectService", () => {
       `note["snowflake-project-id"] == "${project.id}"`,
     );
   });
+
+  it("reports a scene cast entry whose character note is gone, and drops only that entry", async () => {
+    const project = await service.createProject({ name: "Dangling cast" });
+    const kept = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const deleted = await service.createCharacter(project, { name: "Bram", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      characters: [kept.path, deleted.path],
+      povPath: kept.path,
+      conflict: "A standoff",
+    });
+
+    const bodyBeforeRepair = parseMarkdownFrontmatter(
+      fakeVault.contents.get(scene.path) ?? "",
+    ).body;
+
+    fakeVault.delete(deleted.path);
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "dangling-scene-character",
+        path: scene.path,
+        expected: "Bram",
+        stepIds: [8, 9],
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, scene.path);
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+
+    // The surviving cast member and every other field are left untouched.
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      expect.stringContaining(kept.path),
+    ]);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toContain(kept.path);
+    expect(frontmatter[FRONTMATTER_KEYS.sceneTitle]).toBe("Arrival");
+    // The repair touches frontmatter only; the scene's prose is not rewritten.
+    expect(
+      parseMarkdownFrontmatter(fakeVault.contents.get(scene.path) ?? "").body,
+    ).toBe(bodyBeforeRepair);
+
+    const repaired = await service.loadProject(project.projectFile);
+    expect(repaired.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "dangling-scene-character" }),
+      ]),
+    );
+  });
+
+  it("reports a scene point of view whose character is gone but never picks a replacement", async () => {
+    const project = await service.createProject({ name: "Dangling pov" });
+    const pov = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: pov.path,
+    });
+
+    fakeVault.delete(pov.path);
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "dangling-scene-pov",
+        path: scene.path,
+        expected: "Ada",
+        canOpen: true,
+        repairable: false,
+      }),
+    );
+  });
+
+  it("leaves a scene alone while its cast and point of view still resolve", async () => {
+    const project = await service.createProject({ name: "Intact links" });
+    const character = await service.createCharacter(project, { name: "Ada", type: "major" });
+    await service.createScene(project, {
+      title: "Arrival",
+      characters: [character.path],
+      povPath: character.path,
+    });
+
+    const snapshot = await service.loadProject(project.projectFile);
+
+    expect(
+      snapshot.structureIssues.filter(
+        (issue) =>
+          issue.code === "dangling-scene-character" ||
+          issue.code === "dangling-scene-pov",
+      ),
+    ).toEqual([]);
+  });
+
+  it("treats an omniscient or multiple point of view as a mode, not a broken link", async () => {
+    const project = await service.createProject({ name: "Pov modes" });
+    const scene = await service.createScene(project, { title: "Arrival" });
+
+    const snapshot = await service.loadProject(project.projectFile);
+    const sceneIssues = snapshot.structureIssues.filter(
+      (issue) => issue.path === scene.path,
+    );
+
+    expect(sceneIssues).toEqual([]);
+  });
+
+  it("drops a deleted character from every scene cast but leaves points of view alone", async () => {
+    const project = await service.createProject({ name: "Cast cleanup" });
+    const doomed = await service.createCharacter(project, { name: "Bram", type: "major" });
+    const kept = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const castScene = await service.createScene(project, {
+      title: "Arrival",
+      characters: [doomed.path, kept.path],
+      povPath: kept.path,
+    });
+    const povScene = await service.createScene(project, {
+      title: "Departure",
+      characters: [doomed.path],
+      povPath: doomed.path,
+    });
+
+    await service.removeCharacterFromScenes(project.projectFile, doomed.path);
+
+    const castFrontmatter = await service.readManagedFrontmatter(castScene.path);
+    const povFrontmatter = await service.readManagedFrontmatter(povScene.path);
+
+    // The cast loses only the deleted character; the survivor stays.
+    expect(castFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      expect.stringContaining(kept.path),
+    ]);
+    expect(povFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([]);
+    // The point of view is the author's decision, so it is left broken on purpose
+    // for the health check to report.
+    expect(povFrontmatter[FRONTMATTER_KEYS.pov]).toContain(doomed.path);
+    expect(castFrontmatter[FRONTMATTER_KEYS.pov]).toContain(kept.path);
+  });
 });

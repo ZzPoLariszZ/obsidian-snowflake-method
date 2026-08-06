@@ -76,6 +76,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderedProjectPath: string | null = null;
 	private renderedProjectComplete = false;
 	private renderedStep: StepId | null = null;
+	private renderedModel: ProjectDashboardModel | null = null;
 	// A refresh replaces every node, so the presentation state the author set by
 	// hand has to be carried across the rebuild rather than left to the DOM.
 	private readonly renderState = new RenderStateKeeper([
@@ -256,6 +257,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectPath = model?.path ?? null;
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
+		this.renderedModel = model;
 		const root = this.contentEl;
 		root.empty();
 		this.celebrationEl = null;
@@ -861,6 +863,12 @@ export class SnowflakeDashboardView extends ItemView {
 				);
 				await this.refresh();
 				return this.host.checkCurrentProject();
+			},
+			async (sceneId) => {
+				const model = this.renderedModel;
+				const scene = model?.scenes.find((candidate) => candidate.id === sceneId);
+				if (model === undefined || model === null || scene === undefined) return;
+				this.openSceneEditor(model, scene);
 			},
 		).open();
 	}
@@ -1665,10 +1673,21 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			setIcon(warning, 'triangle-alert');
 		}
-		row.createEl('td', {
-			text: scene.povName,
+		const povCell = row.createEl('td', {
 			attr: { 'data-label': this.t('table.scenePov') },
 		});
+		if (scene.povMissing) {
+			const missingLabel = this.t('table.povMissing', {
+				name: scene.povName,
+			});
+			povCell.createSpan({
+				cls: 'snowflake-method-table-missing-reference',
+				text: '???',
+				attr: { 'aria-label': missingLabel, title: missingLabel },
+			});
+		} else {
+			povCell.setText(scene.povName);
+		}
 		row.createEl('td', {
 			text: scene.conflict,
 			attr: {
@@ -1684,28 +1703,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const editScene = (): void => {
 			if (model.readOnly || scene.readOnly || sceneDamaged) return;
-			new CreateSceneModal(
-				this.app,
-				this.t,
-				model.characters.map((character) => ({
-					path: character.path,
-					name: character.name,
-				})),
-				async (request) => {
-					await this.host.updateScene(scene.id, request);
-					await this.refresh();
-				},
-				{
-					title: scene.title,
-					povPath: scene.povPath,
-					time: scene.time,
-					location: scene.location,
-					characterPaths: scene.characterPaths,
-					conflict: scene.conflict,
-					events: scene.events,
-					expectedRevision: scene.revision,
-				},
-			).open();
+			this.openSceneEditor(model, scene);
 		};
 		const openScene = (): void => {
 			void this.host.openManagedFile(
@@ -1792,6 +1790,34 @@ export class SnowflakeDashboardView extends ItemView {
 				(id, target) => this.host.reorderScene(id, target),
 			);
 		}
+	}
+
+	private openSceneEditor(
+		model: ProjectDashboardModel,
+		scene: SceneViewModel,
+	): void {
+		new CreateSceneModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => ({
+				path: character.path,
+				name: character.name,
+			})),
+			async (request) => {
+				await this.host.updateScene(scene.id, request);
+				await this.refresh();
+			},
+			{
+				title: scene.title,
+				povPath: scene.povPath,
+				time: scene.time,
+				location: scene.location,
+				characterPaths: scene.characterPaths,
+				conflict: scene.conflict,
+				events: scene.events,
+				expectedRevision: scene.revision,
+			},
+		).open();
 	}
 
 	private renderSceneListHints(panel: HTMLElement): void {

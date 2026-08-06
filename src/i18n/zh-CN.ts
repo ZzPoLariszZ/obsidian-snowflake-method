@@ -213,6 +213,12 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.invalid-system-template': '系统模板与当前项目格式不一致。',
 	'projectStructure.issue.invalid-artifact-metadata':
 		'必要的笔记元数据缺失或无效。',
+	'projectStructure.issue.dangling-scene-pov': '视点人物“{expected}”已不存在。',
+	'projectStructure.action.dangling-scene-pov': '请编辑该场景并另选视点。',
+	'projectStructure.issue.dangling-scene-character':
+		'以下人物已不存在：{expected}。',
+	'projectStructure.action.dangling-scene-character':
+		'修复将把他们从人物列表中移除。',
 	'editor.managedSection.issue.missing': '两个边界标记均缺失。',
 	'editor.managedSection.issue.missing-start': '起始边界标记缺失。',
 	'editor.managedSection.issue.missing-end': '结束边界标记缺失。',
@@ -301,7 +307,13 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.characters': '人物',
 	'modal.scene.conflict': '冲突',
 	'modal.scene.pov': '视点人物',
+	'modal.deleteCharacter.title': '删除角色？',
+	'modal.deleteCharacter.description': '删除“{name}”会影响 {count} 个场景。',
+	'modal.deleteCharacter.povScenes': '以下场景需要重新选择视点：',
+	'modal.deleteCharacter.castScenes': '“{name}”将从以下场景的人物中移除：',
+	'modal.scene.povChoose': '请选择视点',
 	'modal.scene.povOmniscient': '全知视角',
+	'table.povMissing': '人物已不存在：{name}',
 	'modal.scene.povMultiple': '多人视角',
 	'modal.scene.povRequired': '请选择视点人物或视角。',
 	'modal.scene.events': '具体事件',

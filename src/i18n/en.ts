@@ -234,6 +234,14 @@ export const en = {
 		'System template does not match the current project format.',
 	'projectStructure.issue.invalid-artifact-metadata':
 		'Required note metadata is missing or invalid.',
+	'projectStructure.issue.dangling-scene-pov':
+		'The point-of-view character “{expected}” no longer exists.',
+	'projectStructure.action.dangling-scene-pov':
+		'Edit the scene to choose another point of view.',
+	'projectStructure.issue.dangling-scene-character':
+		'These characters no longer exist: {expected}.',
+	'projectStructure.action.dangling-scene-character':
+		'Repairing removes them from the cast.',
 	'editor.managedSection.issue.missing':
 		'Both boundary markers are missing.',
 	'editor.managedSection.issue.missing-start':
@@ -332,7 +340,16 @@ export const en = {
 	'modal.scene.characters': 'Characters',
 	'modal.scene.conflict': 'Conflict',
 	'modal.scene.pov': 'Point-of-view character',
+	'modal.deleteCharacter.title': 'Delete character?',
+	'modal.deleteCharacter.description':
+		'Deleting “{name}” affects {count} scene(s).',
+	'modal.deleteCharacter.povScenes':
+		'These scenes will need a new point of view:',
+	'modal.deleteCharacter.castScenes':
+		'“{name}” will be removed from the cast of:',
+	'modal.scene.povChoose': 'Choose a point of view',
 	'modal.scene.povOmniscient': 'Omniscient',
+	'table.povMissing': 'Missing character: {name}',
 	'modal.scene.povMultiple': 'Multiple viewpoints',
 	'modal.scene.povRequired': 'Choose a point of view.',
 	'modal.scene.events': 'Specific events',

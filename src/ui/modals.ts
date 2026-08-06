@@ -14,8 +14,10 @@ import {
 	SCENE_POV_OMNISCIENT,
 	addSceneCastMember,
 	availableSceneCastMembers,
+	isChoosableScenePov,
 	normalizeSceneCast,
 	type CharacterType,
+	type SceneCharacterUsage,
 } from '../domain';
 import { t as translate } from '../i18n';
 import {
@@ -1120,6 +1122,17 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		const pov = new Setting(this.contentEl)
 			.setName(`${this.t('modal.scene.pov')} *`)
 			.addDropdown((dropdown) => {
+				// A <select> silently drops a value it has no option for, leaving the
+				// control blank while the field still holds the old path — which then
+				// passes validation and saves the broken point of view straight back.
+				// Clearing it here is what makes "required" mean anything.
+				const characterPaths = this.characters.map(
+					(character) => character.path,
+				);
+				if (!isChoosableScenePov(this.povPath, characterPaths)) {
+					this.povPath = '';
+					dropdown.addOption('', this.t('modal.scene.povChoose'));
+				}
 				dropdown.addOption(
 					SCENE_POV_OMNISCIENT,
 					this.t('modal.scene.povOmniscient'),
@@ -1374,6 +1387,8 @@ export class RepairReportModal extends Modal {
 		private readonly repairItem: (
 			entry: RepairReportViewModel['entries'][number],
 		) => Promise<RepairReportViewModel>,
+		/** Opens a scene's editor. Null when no scene editor is reachable. */
+		private readonly editScene: ((sceneId: string) => Promise<void>) | null = null,
 	) {
 		super(app);
 		this.setTitle(t('actions.repair'));
@@ -1426,6 +1441,14 @@ export class RepairReportModal extends Modal {
 				});
 				copy.createEl('strong', { text: entry.sectionLabel });
 				copy.createSpan({ text: entry.message });
+				// Its own line: what is wrong and what to do about it are separate
+				// thoughts, and running them together wraps into an unreadable block.
+				if (entry.action !== null) {
+					copy.createSpan({
+						cls: 'snowflake-method-repair-report-action',
+						text: entry.action,
+					});
+				}
 				copy.createEl('small', { text: entry.path });
 				if (entry.repairable || entry.canOpen) {
 					const itemActions = item.createDiv({
@@ -1454,15 +1477,28 @@ export class RepairReportModal extends Modal {
 								});
 						});
 					}
-					// A deterministic repair is the primary action. Opening the raw note is
+					// A deterministic repair is the primary action. Reaching the note is
 					// reserved for issues that still require an author's judgment.
 					if (!entry.canOpen || entry.repairable) continue;
+					// A scene opens its editor rather than its raw Markdown: the judgment
+					// these issues need is choosing a point of view, which is a field in
+					// that form rather than something to hand-edit in frontmatter.
+					const sceneId = entry.sceneId;
+					const editScene = sceneId === null ? null : this.editScene;
 					const open = itemActions.createEl('button', {
-						text: this.t('editor.managedSection.openNote'),
+						text: this.t(
+							editScene === null
+								? 'editor.managedSection.openNote'
+								: 'actions.edit',
+						),
 						attr: { type: 'button' },
 					});
 					open.addEventListener('click', () => {
-						void this.openFile(entry.path, entry.sectionId)
+						const reach =
+							editScene !== null && sceneId !== null
+								? editScene(sceneId)
+								: this.openFile(entry.path, entry.sectionId);
+						void reach
 							.then(() => this.close())
 							.catch((error: unknown) => {
 								new Notice(
@@ -1479,6 +1515,92 @@ export class RepairReportModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+	}
+}
+
+/**
+ * Confirms deleting a character that scenes still reference, naming those scenes
+ * first. Obsidian's own delete prompt cannot say any of this: it sees a note, not
+ * a cast member, so the breakage would only surface later as unresolved links.
+ */
+export class ConfirmCharacterDeletionModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly characterName: string,
+		private readonly usage: SceneCharacterUsage,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.deleteCharacter.title'));
+		this.modalEl.addClass('snowflake-method-delete-character-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		const affected = new Set([
+			...this.usage.pointOfView,
+			...this.usage.cast,
+		]).size;
+		this.contentEl.createEl('p', {
+			text: this.t('modal.deleteCharacter.description', {
+				name: this.characterName,
+				count: affected,
+			}),
+		});
+		this.addSceneList(
+			this.t('modal.deleteCharacter.povScenes'),
+			this.usage.pointOfView,
+			true,
+		);
+		this.addSceneList(
+			this.t('modal.deleteCharacter.castScenes', { name: this.characterName }),
+			this.usage.cast,
+			false,
+		);
+
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const remove = actions.createEl('button', {
+			cls: 'mod-warning',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	private addSceneList(
+		label: string,
+		titles: readonly string[],
+		needsDecision: boolean,
+	): void {
+		if (titles.length === 0) return;
+		const group = this.contentEl.createDiv({
+			cls: `snowflake-method-delete-character-group${
+				needsDecision ? ' needs-decision' : ''
+			}`,
+		});
+		group.createEl('h3', { text: label });
+		const list = group.createEl('ul');
+		for (const title of titles) list.createEl('li', { text: title });
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		// Resolves however the modal closed -- button, Escape, or the title bar --
+		// so the caller is never left waiting on a dialog the author dismissed.
+		this.onResolve(this.confirmed);
 	}
 }
 

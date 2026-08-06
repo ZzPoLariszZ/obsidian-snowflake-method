@@ -113,6 +113,8 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-base",
   "mismatched-note-title",
   "invalid-artifact-metadata",
+  "dangling-scene-pov",
+  "dangling-scene-character",
 ] as const;
 
 export type ProjectStructureIssueCode =

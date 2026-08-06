@@ -1780,6 +1780,41 @@
 
 /* A reference the project can no longer resolve. Warm rather than red: the scene
    is still readable and the fix is the author's to make, not an error state. */
+.snowflake-method-delete-character-modal .snowflake-method-delete-character-group {
+	margin-block: var(--size-4-3);
+}
+
+.snowflake-method-delete-character-modal
+	.snowflake-method-delete-character-group h3 {
+	margin: 0 0 var(--size-4-1);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-delete-character-modal
+	.snowflake-method-delete-character-group ul {
+	margin: 0;
+	padding-inline-start: var(--size-4-4);
+	max-height: 12rem;
+	overflow-y: auto;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The scenes losing a point of view need a decision, not just a heads-up, so
+   they carry the same warm marker the scene table uses. */
+.snowflake-method-delete-character-modal
+	.snowflake-method-delete-character-group.needs-decision h3 {
+	color: var(--color-orange, var(--text-warning));
+}
+
+.snowflake-method-table-missing-reference {
+	color: var(--color-orange, var(--text-warning));
+	font-weight: var(--font-semibold);
+	cursor: help;
+}
+
 .snowflake-method-scene-column-actions {
 	width: 11rem;
 }
@@ -3504,12 +3539,26 @@
 
 .snowflake-method-repair-report-item-actions {
 	display: flex;
+	align-items: flex-start;
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: var(--size-4-1);
 }
 
+/* One width for every action, so a short label like Edit does not read as a
+   lesser control than Repair sitting beside it in another row. */
+.snowflake-method-repair-report-item-actions button {
+	min-width: 5.5rem;
+}
+
 .snowflake-method-repair-report-copy > span {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The instruction is a separate thought from the problem, so it gets its own
+   line rather than trailing the message into a wrapped block. */
+.snowflake-method-repair-report-action {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }

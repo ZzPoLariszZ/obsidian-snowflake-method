@@ -734,6 +734,29 @@ export class SnowflakeProjectService {
       return this.loadProject(project.projectFile);
     }
 
+    if (issue.code === "dangling-scene-character") {
+      // Only the entries whose notes are gone are dropped. The rest of the cast,
+      // and every other field on the scene, is left exactly as the author wrote
+      // it. A dangling point of view is deliberately not repaired here.
+      const record = await this.repository.readManaged(normalized);
+      const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
+      const rawCharacters: unknown[] = Array.isArray(stored)
+        ? (stored as unknown[])
+        : typeof stored === "string"
+          ? [stored]
+          : [];
+      const next = rawCharacters.filter(
+        (entry) => this.missingCharacterLink(asOptionalString(entry)) === null,
+      );
+      if (next.length === rawCharacters.length) {
+        throw new Error(`No missing character link was found in "${normalized}".`);
+      }
+      await this.repository.updateFrontmatter(normalized, {
+        [FRONTMATTER_KEYS.sceneCharacters]: next,
+      });
+      return this.loadProject(project.projectFile);
+    }
+
     if (issue.code === "invalid-artifact-metadata") {
       const patch = await this.safeArtifactMetadataRepairPatch(project, issue);
       if (patch === null || Object.keys(patch).length === 0) {
@@ -1076,6 +1099,57 @@ export class SnowflakeProjectService {
    * presenting the previous name everywhere the raw link is rendered — the
    * Bases views among them.
    */
+  /**
+   * Drops a character from every scene cast that lists them. Called once the
+   * note is gone, so a failure here leaves recoverable dangling links the health
+   * check reports rather than a cast edited for a deletion that never happened.
+   *
+   * A scene's point of view is deliberately left alone: blanking it would leave
+   * the scene invalid, and choosing the replacement is the author's call.
+   */
+  async removeCharacterFromScenes(
+    projectLocator: ProjectLocator,
+    characterPath: string,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    const records = await this.findManagedFilesInProjectDirectories(
+      project,
+      "scenes",
+      "scene",
+      project.id,
+    );
+    for (const record of records) {
+      if (record.readOnly) continue;
+      const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
+      const rawCharacters: unknown[] = Array.isArray(stored)
+        ? (stored as unknown[])
+        : typeof stored === "string"
+          ? [stored]
+          : [];
+      const next = rawCharacters.filter(
+        (entry) => fromWikiLink(asOptionalString(entry)) !== characterPath,
+      );
+      if (next.length === rawCharacters.length) continue;
+      await this.repository.updateFrontmatter(record.path, {
+        [FRONTMATTER_KEYS.sceneCharacters]: next,
+      });
+    }
+  }
+
+  /**
+   * The path a stored character link points at when no note is there any more,
+   * or null while the link still resolves. Point-of-view modes are not links and
+   * never dangle. Existence is the whole test: a note that is present but has
+   * broken metadata is a different issue, already reported against that note.
+   */
+  private missingCharacterLink(stored: string | null): string | null {
+    if (stored === null) return null;
+    const path = fromWikiLink(stored);
+    if (path === null || path.length === 0) return null;
+    if (isScenePovMode(path)) return null;
+    return this.repository.getFile(path) === null ? path : null;
+  }
+
   private async refreshCharacterReferences(
     project: ProjectRef | ProjectSnapshot,
     previousPath: string,
@@ -2047,6 +2121,41 @@ export class SnowflakeProjectService {
               path: record.path,
               stepIds,
               expected: storedTitle,
+              canOpen: true,
+              repairable: !record.readOnly,
+            });
+          }
+        }
+
+        // Deleting a character leaves the links scenes stored for it pointing at
+        // nothing. Obsidian treats those as ordinary unresolved links and offers
+        // to create the note, which would resurrect the character as an empty
+        // stub, so the project has to notice the breakage itself.
+        if (documentType === "scene") {
+          const missingPov = this.missingCharacterLink(
+            asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
+          );
+          if (missingPov !== null) {
+            add({
+              code: "dangling-scene-pov",
+              path: record.path,
+              stepIds,
+              expected: fileStem(missingPov),
+              canOpen: true,
+              // Which character now carries the scene is an authorial decision,
+              // so there is no content-preserving fix to apply on their behalf.
+              repairable: false,
+            });
+          }
+          const missingCast = readWikiLinkList(
+            record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
+          ).filter((path) => this.missingCharacterLink(path) !== null);
+          if (missingCast.length > 0) {
+            add({
+              code: "dangling-scene-character",
+              path: record.path,
+              stepIds,
+              expected: missingCast.map((path) => fileStem(path)).join(", "),
               canOpen: true,
               repairable: !record.readOnly,
             });
