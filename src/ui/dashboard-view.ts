@@ -28,9 +28,11 @@ import {
 } from './modals';
 import {
 	dashboardHasHealthIssues,
+	dashboardRenderContinuity,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
 } from './dashboard-state';
+import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import type {
 	CreatedProject,
@@ -52,6 +54,10 @@ export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
 const CHARACTER_DRAG_TYPE = 'application/x-snowflake-character';
 const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
 
+const STEP_LIST_SELECTOR = '.snowflake-method-step-list';
+const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
+const ACTIVE_STEP_SELECTOR = '.snowflake-method-step-button.is-active';
+
 export class SnowflakeDashboardView extends ItemView {
 	private readonly host: DashboardHost;
 	private readonly stepDrafts = new Map<
@@ -69,6 +75,13 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderedProjectId: string | null = null;
 	private renderedProjectPath: string | null = null;
 	private renderedProjectComplete = false;
+	private renderedStep: StepId | null = null;
+	// A refresh replaces every node, so the presentation state the author set by
+	// hand has to be carried across the rebuild rather than left to the DOM.
+	private readonly renderState = new RenderStateKeeper([
+		STEP_LIST_SELECTOR,
+		MAIN_PANEL_SELECTOR,
+	]);
 	private celebrationEl: HTMLElement | null = null;
 	private celebrationDelayTimer: number | null = null;
 	private celebrationDelayWindow: Window | null = null;
@@ -221,6 +234,13 @@ export class SnowflakeDashboardView extends ItemView {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 		model: ProjectDashboardModel | null,
 	): void {
+		this.renderState.capture(this.contentEl);
+		const continuity = dashboardRenderContinuity(
+			{ projectId: this.renderedProjectId, step: this.renderedStep },
+			{ projectId: model?.projectId ?? null, step: this.selectedStep },
+		);
+		if (!continuity.sameProject) this.renderState.clear();
+		if (!continuity.samePanel) this.renderState.resetScroll(MAIN_PANEL_SELECTOR);
 		this.rendered = true;
 		if (model === null && projects.length === 0) {
 			this.projectPath = null;
@@ -235,6 +255,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectId = model?.projectId ?? null;
 		this.renderedProjectPath = model?.path ?? null;
 		this.renderedProjectComplete = false;
+		this.renderedStep = null;
 		const root = this.contentEl;
 		root.empty();
 		this.celebrationEl = null;
@@ -299,6 +320,22 @@ export class SnowflakeDashboardView extends ItemView {
 		const layout = root.createDiv({ cls: 'snowflake-method-layout' });
 		this.renderStepNavigation(layout, model, projects);
 		this.renderSelectedStep(layout, model);
+		// Deferred to here so both scrollers are measured against the finished
+		// layout: the step list and the main panel share a grid row, and the row's
+		// height is not settled until the panel beside it exists.
+		this.renderState.restore(root);
+		if (continuity.revealActiveStep) {
+			this.renderState.reveal(root, STEP_LIST_SELECTOR, ACTIVE_STEP_SELECTOR);
+		}
+	}
+
+	private createDisclosure(
+		parent: HTMLElement,
+		key: string,
+		cls: string,
+		defaultOpen = false,
+	): HTMLDetailsElement {
+		return this.renderState.createDisclosure(parent, key, cls, defaultOpen);
 	}
 
 	private decorateViewTitle(): void {
@@ -560,6 +597,7 @@ export class SnowflakeDashboardView extends ItemView {
 			model.steps.find((candidate) => candidate.id === this.selectedStep) ??
 			model.steps[0];
 		if (step === undefined) return;
+		this.renderedStep = step.id;
 
 		const panel = main.createDiv({
 			cls: 'snowflake-method-panel',
@@ -936,9 +974,11 @@ export class SnowflakeDashboardView extends ItemView {
 		audience.createEl('p', {
 			text: this.t('step1.targetReaders.intro'),
 		});
-		const questions = audience.createEl('details', {
-			cls: 'snowflake-method-guided-details',
-		});
+		const questions = this.createDisclosure(
+			audience,
+			'1:target-readers',
+			'snowflake-method-guided-details',
+		);
 		const questionsSummary = questions.createEl('summary');
 		questionsSummary.createSpan({
 			text: this.t('step1.targetReaders.questions'),
@@ -976,9 +1016,11 @@ export class SnowflakeDashboardView extends ItemView {
 		reasonsInput.disabled = fieldReadOnly;
 		inputs.set('audience-reason-1', reasonsInput);
 
-		const writingHints = panel.createEl('details', {
-			cls: 'snowflake-method-writing-hints',
-		});
+		const writingHints = this.createDisclosure(
+			panel,
+			'1:hints',
+			'snowflake-method-writing-hints',
+		);
 		const hintsSummary = writingHints.createEl('summary');
 		const hintsIcon = hintsSummary.createSpan({
 			cls: 'snowflake-method-writing-hints-icon',
@@ -1030,11 +1072,13 @@ export class SnowflakeDashboardView extends ItemView {
 				}),
 			);
 		};
-		const candidateTitles = panel.createEl('details', {
-			cls: 'snowflake-method-guided-section snowflake-method-optional-section',
-		});
-		candidateTitles.open = ([1, 2, 3, 4, 5, 6] as const).some(
-			(number) => (fields[`candidate-title-${number}`] ?? '').length > 0,
+		const candidateTitles = this.createDisclosure(
+			panel,
+			'1:candidate-titles',
+			'snowflake-method-guided-section snowflake-method-optional-section',
+			([1, 2, 3, 4, 5, 6] as const).some(
+				(number) => (fields[`candidate-title-${number}`] ?? '').length > 0,
+			),
 		);
 		const candidateSummary = candidateTitles.createEl('summary');
 		candidateSummary.createSpan({
@@ -1115,9 +1159,11 @@ export class SnowflakeDashboardView extends ItemView {
 		const current = draft?.fields ?? model.stepFields[2] ?? {};
 		const paragraphSectionId = STEP_TWO_SECTION_IDS[0];
 		const descriptionSectionId = STEP_TWO_SECTION_IDS[1];
-		const writingHints = panel.createEl('details', {
-			cls: 'snowflake-method-writing-hints',
-		});
+		const writingHints = this.createDisclosure(
+			panel,
+			'2:hints',
+			'snowflake-method-writing-hints',
+		);
 		const hintsSummary = writingHints.createEl('summary');
 		const hintsIcon = hintsSummary.createSpan({
 			cls: 'snowflake-method-writing-hints-icon',
@@ -1163,10 +1209,12 @@ export class SnowflakeDashboardView extends ItemView {
 		input.value = current[paragraphSectionId] ?? '';
 		input.disabled = readOnly;
 
-		const description = panel.createEl('details', {
-			cls: 'snowflake-method-guided-section snowflake-method-optional-section snowflake-method-description-section',
-		});
-		description.open = (current[descriptionSectionId] ?? '').length > 0;
+		const description = this.createDisclosure(
+			panel,
+			'2:description',
+			'snowflake-method-guided-section snowflake-method-optional-section snowflake-method-description-section',
+			(current[descriptionSectionId] ?? '').length > 0,
+		);
 		const descriptionSummary = description.createEl('summary');
 		descriptionSummary.createSpan({
 			text: this.t('step2.description.title'),
@@ -1269,6 +1317,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (step === 5) {
 			this.renderWritingHints(
 				panel,
+				step,
 				'step5.hints.title',
 				[
 					'step5.hints.reorder',
@@ -1281,6 +1330,7 @@ export class SnowflakeDashboardView extends ItemView {
 		} else if (step === 7) {
 			this.renderWritingHints(
 				panel,
+				step,
 				'step7.hints.title',
 				[
 					'step7.hints.reorder',
@@ -1295,6 +1345,7 @@ export class SnowflakeDashboardView extends ItemView {
 		} else {
 			this.renderWritingHints(
 				panel,
+				step,
 				'characters.hints.title',
 				['characters.hints.reorder', 'characters.hints.revision'],
 				['characters.hints.revision'],
@@ -1531,6 +1582,7 @@ export class SnowflakeDashboardView extends ItemView {
 		} else {
 			this.renderWritingHints(
 				panel,
+				step,
 				'step9.hints.title',
 				[
 					'step9.hints.reorder',
@@ -1743,9 +1795,11 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private renderSceneListHints(panel: HTMLElement): void {
-		const writingHints = panel.createEl('details', {
-			cls: 'snowflake-method-writing-hints',
-		});
+		const writingHints = this.createDisclosure(
+			panel,
+			'8:hints',
+			'snowflake-method-writing-hints',
+		);
 		const hintsSummary = writingHints.createEl('summary');
 		const hintsIcon = hintsSummary.createSpan({
 			cls: 'snowflake-method-writing-hints-icon',
@@ -1815,6 +1869,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (step.id === 4) {
 			this.renderWritingHints(
 				panel,
+				step.id,
 				'step4.hints.title',
 				[
 					'step4.hints.openNote',
@@ -1838,6 +1893,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (step.id === 6) {
 			this.renderWritingHints(
 				panel,
+				step.id,
 				'step6.hints.title',
 				[
 					'step6.hints.openNote',
@@ -1869,13 +1925,16 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private renderWritingHints(
 		panel: HTMLElement,
+		step: StepId,
 		titleKey: string,
 		hintKeys: readonly string[],
 		emphasizedKeys: readonly string[],
 	): void {
-		const writingHints = panel.createEl('details', {
-			cls: 'snowflake-method-writing-hints',
-		});
+		const writingHints = this.createDisclosure(
+			panel,
+			`${step}:hints`,
+			'snowflake-method-writing-hints',
+		);
 		const hintsSummary = writingHints.createEl('summary');
 		const hintsIcon = hintsSummary.createSpan({
 			cls: 'snowflake-method-writing-hints-icon',
@@ -2024,6 +2083,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.rendered = true;
 		this.renderedProjectId = null;
 		this.renderedProjectComplete = false;
+		this.renderedStep = null;
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

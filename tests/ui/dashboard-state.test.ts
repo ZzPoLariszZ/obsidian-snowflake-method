@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	dashboardHasHealthIssues,
+	dashboardRenderContinuity,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
 } from '../../src/ui/dashboard-state';
@@ -60,6 +61,60 @@ describe('dashboard restored state', () => {
 				selectedStep: 11,
 			}),
 		).toEqual({ state: current, changed: false });
+	});
+});
+
+describe('dashboard render continuity', () => {
+	it('carries scroll and disclosure state through a same-step refresh', () => {
+		expect(
+			dashboardRenderContinuity(
+				{ projectId: 'novel', step: 9 },
+				{ projectId: 'novel', step: 9 },
+			),
+		).toEqual({
+			sameProject: true,
+			samePanel: true,
+			revealActiveStep: false,
+		});
+	});
+
+	it('keeps the step list put but resets the panel when the step changes', () => {
+		expect(
+			dashboardRenderContinuity(
+				{ projectId: 'novel', step: 1 },
+				{ projectId: 'novel', step: 9 },
+			),
+		).toEqual({
+			sameProject: true,
+			samePanel: false,
+			revealActiveStep: true,
+		});
+	});
+
+	it('starts over when the dashboard switches to another project', () => {
+		expect(
+			dashboardRenderContinuity(
+				{ projectId: 'novel', step: 9 },
+				{ projectId: 'novella', step: 9 },
+			),
+		).toEqual({
+			sameProject: false,
+			samePanel: false,
+			revealActiveStep: true,
+		});
+	});
+
+	it('treats the first render after an empty dashboard as a fresh start', () => {
+		expect(
+			dashboardRenderContinuity(
+				{ projectId: null, step: null },
+				{ projectId: 'novel', step: 4 },
+			),
+		).toEqual({
+			sameProject: false,
+			samePanel: false,
+			revealActiveStep: true,
+		});
 	});
 });
 

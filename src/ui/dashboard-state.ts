@@ -44,6 +44,38 @@ export function mergeDashboardViewState(
 	};
 }
 
+export interface DashboardRenderSnapshot {
+	projectId: string | null;
+	step: StepId | null;
+}
+
+export interface DashboardRenderContinuity {
+	/** The incoming render replaces a panel showing the same project. */
+	sameProject: boolean;
+	/** ...and the same step, so the main panel's scroll offset still applies. */
+	samePanel: boolean;
+	/** Pull the active step button into view rather than trusting the offset. */
+	revealActiveStep: boolean;
+}
+
+/**
+ * Every refresh rebuilds the dashboard from an empty container, which drops the
+ * step list's scroll offset and every open disclosure with it. Carrying that
+ * presentation state across a render is only correct while the author stays put:
+ * a different project starts over, and a different step scrolls its own panel
+ * back to the top while keeping the step list where the author left it.
+ */
+export function dashboardRenderContinuity(
+	previous: DashboardRenderSnapshot,
+	next: DashboardRenderSnapshot,
+): DashboardRenderContinuity {
+	const sameProject =
+		previous.projectId !== null && previous.projectId === next.projectId;
+	const samePanel =
+		sameProject && previous.step !== null && previous.step === next.step;
+	return { sameProject, samePanel, revealActiveStep: !samePanel };
+}
+
 /**
  * Only project-wide, author-blocking structure problems belong above the
  * dashboard layout. Auxiliary folders such as Material and Archive still

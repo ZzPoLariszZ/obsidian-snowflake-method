@@ -21,8 +21,12 @@ import {
 	normalizeProjectRoot,
 } from '../project-root';
 import type { ProjectLocale } from '../settings';
+import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import type { RepairReportViewModel } from './view-model';
+
+const PROJECT_LIST_SELECTOR = '.snowflake-method-project-manager-list';
+const PROJECT_MANAGER_MAIN_SELECTOR = '.snowflake-method-project-manager-main';
 
 export type Translate = (
 	key: string,
@@ -290,6 +294,12 @@ export class ManageProjectsModal extends Modal {
 	private suppressProjectRootBlurCommit = false;
 	private projectRootChangeId = 0;
 	private initialFocusWindow: Window | null = null;
+	// Changing the language, the project root, or any project rebuilds the whole
+	// modal, which would otherwise send both panes back to the top.
+	private readonly renderState = new RenderStateKeeper([
+		PROJECT_LIST_SELECTOR,
+		PROJECT_MANAGER_MAIN_SELECTOR,
+	]);
 
 	constructor(
 		app: App,
@@ -348,7 +358,17 @@ export class ManageProjectsModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	private renderManager(): void {
+	/**
+	 * `resetProjectListScroll` is for a change that loads a different set of
+	 * projects, where the position the reader had scrolled to no longer means
+	 * anything. The settings pane beside it still keeps its place, because that is
+	 * where the change was just made.
+	 */
+	private renderManager({ resetProjectListScroll = false } = {}): void {
+		this.renderState.capture(this.contentEl);
+		if (resetProjectListScroll) {
+			this.renderState.resetScroll(PROJECT_LIST_SELECTOR);
+		}
 		this.projectRootSuggest?.close();
 		this.projectRootSuggest = null;
 		this.projectRootInput = null;
@@ -456,6 +476,9 @@ export class ManageProjectsModal extends Modal {
 				this.onCreateProject(this.locale);
 			},
 		);
+		// Both panes are laid out by the same grid, so neither scroller settles to
+		// its final height until the whole layout is built.
+		this.renderState.restore(this.contentEl);
 	}
 
 	private addProjectRootSelector(container: HTMLElement): void {
@@ -580,7 +603,7 @@ export class ManageProjectsModal extends Modal {
 			if (changeId !== this.projectRootChangeId) return false;
 			this.projectRoot = root;
 			this.projects = projects;
-			this.renderManager();
+			this.renderManager({ resetProjectListScroll: true });
 			return true;
 		} catch (error) {
 			if (changeId !== this.projectRootChangeId) return false;
