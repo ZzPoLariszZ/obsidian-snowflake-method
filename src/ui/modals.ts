@@ -12,6 +12,9 @@ import {
 import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
+	addSceneCastMember,
+	availableSceneCastMembers,
+	normalizeSceneCast,
 	type CharacterType,
 } from '../domain';
 import { t as translate } from '../i18n';
@@ -140,6 +143,98 @@ class ProjectRootSuggest extends AbstractInputSuggest<TFolder> {
 		this.setValue(displayProjectRoot(root));
 		this.close();
 		this.onChooseRoot(root);
+	}
+}
+
+/**
+ * Type-to-filter picker for a scene's cast. Characters already chosen are left
+ * out of the suggestions, so the list shortens as the cast fills up and the same
+ * character cannot be added twice.
+ */
+class CharacterSuggest extends AbstractInputSuggest<CharacterOption> {
+	private showAll = false;
+	// The framework exposes no way to ask whether the list is showing, and a
+	// refresh must not pop open a list the author had dismissed.
+	private listOpen = false;
+
+	constructor(
+		app: App,
+		private readonly inputEl: HTMLInputElement,
+		private readonly listCandidates: () => readonly CharacterOption[],
+		private readonly onChooseCharacter: (character: CharacterOption) => void,
+	) {
+		super(app, inputEl);
+		this.limit = 50;
+	}
+
+	/** Opens the full list from the chevron, the way a dropdown would. */
+	showAllSuggestions(): void {
+		this.inputEl.focus({ preventScroll: true });
+		this.showAll = true;
+		const EventConstructor =
+			this.inputEl.ownerDocument.defaultView?.Event ?? Event;
+		this.inputEl.dispatchEvent(new EventConstructor('input', { bubbles: true }));
+	}
+
+	protected getSuggestions(query: string): CharacterOption[] {
+		const showAll = this.showAll;
+		this.showAll = false;
+		const normalizedQuery = showAll ? '' : query.trim().toLocaleLowerCase();
+		return this.listCandidates().filter((character) =>
+			character.name.toLocaleLowerCase().includes(normalizedQuery),
+		);
+	}
+
+	renderSuggestion(character: CharacterOption, el: HTMLElement): void {
+		el.setText(character.name);
+	}
+
+	open(): void {
+		super.open();
+		this.listOpen = true;
+	}
+
+	close(): void {
+		super.close();
+		this.listOpen = false;
+	}
+
+	selectSuggestion(character: CharacterOption): void {
+		// The input is a search box, never a committed value, so it empties out
+		// ready for the next name rather than keeping the one just chosen.
+		this.setValue('');
+		this.close();
+		this.onChooseCharacter(character);
+		this.reopenSuggestions();
+	}
+
+	/**
+	 * Brings an open list back in step with a cast that changed underneath it.
+	 * A list that was already dismissed stays dismissed.
+	 */
+	refreshOpenSuggestions(): void {
+		if (!this.listOpen) return;
+		this.reopenSuggestions();
+	}
+
+	/**
+	 * Suggestions are only recomputed from an `input` event, so a list left alone
+	 * after the cast changes keeps offering a stale set — and stays anchored where
+	 * the field ended before a chip joined or left it. Closing and opening again
+	 * settles both the contents and the position.
+	 *
+	 * Deferred because the framework closes the popover once the click or key
+	 * handler that got us here returns.
+	 */
+	private reopenSuggestions(): void {
+		const view = this.inputEl.ownerDocument.defaultView;
+		if (view === null) return;
+		view.setTimeout(() => {
+			if (!this.inputEl.isConnected || this.inputEl.disabled) return;
+			this.close();
+			if (this.listCandidates().length === 0) return;
+			this.showAllSuggestions();
+		}, 0);
 	}
 }
 
@@ -1123,132 +1218,125 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		const control = container.createDiv({
 			cls: 'snowflake-method-character-multi-select',
 		});
-		const trigger = control.createDiv({
-			cls: 'snowflake-method-character-multi-select-trigger',
-			attr: {
-				role: 'combobox',
-				tabindex: '0',
-				'aria-haspopup': 'listbox',
-				'aria-expanded': 'false',
-			},
+		const field = control.createDiv({
+			cls: 'snowflake-method-character-multi-select-field',
 		});
-		const values = trigger.createDiv({
+		const values = field.createDiv({
 			cls: 'snowflake-method-character-multi-select-values',
 		});
-		const chevron = trigger.createSpan({
-			cls: 'snowflake-method-character-multi-select-chevron',
+		const input = values.createEl('input', {
+			cls: 'snowflake-method-character-multi-select-input',
+			type: 'text',
+			attr: {
+				'aria-label': this.t('modal.scene.characters'),
+				spellcheck: 'false',
+			},
 		});
-		setIcon(chevron, 'chevron-down');
-
-		const options = control.createDiv({
-			cls: 'snowflake-method-character-multi-select-options is-hidden',
-			attr: { role: 'listbox', 'aria-multiselectable': 'true' },
+		const noCharacters = this.characters.length === 0;
+		input.disabled = noCharacters;
+		const selectorLabel = this.t('modal.scene.characters');
+		const selector = field.createEl('button', {
+			cls: 'clickable-icon snowflake-method-character-multi-select-selector',
+			attr: {
+				type: 'button',
+				'aria-label': selectorLabel,
+				title: selectorLabel,
+			},
 		});
-		let open = false;
+		setIcon(selector, 'chevrons-up-down');
+		selector.disabled = noCharacters;
 
-		const setOpen = (next: boolean): void => {
-			open = next;
-			options.toggleClass('is-hidden', !open);
-			trigger.setAttribute('aria-expanded', String(open));
-			control.toggleClass('is-open', open);
+		const castOrder = this.characters.map((candidate) => candidate.path);
+		// A saved cast can name a character since deleted, which has no tag to show
+		// and no way to remove. Drop it here rather than let it ride along unseen.
+		this.characterPaths = normalizeSceneCast(castOrder, this.characterPaths);
+
+		const isSelected = (path: string): boolean =>
+			this.characterPaths.includes(path);
+		const unselectedCharacters = (): readonly CharacterOption[] =>
+			availableSceneCastMembers(this.characters, this.characterPaths);
+
+		const addCharacter = (character: CharacterOption): void => {
+			this.characterPaths = addSceneCastMember(
+				castOrder,
+				this.characterPaths,
+				character.path,
+			);
+			renderTags();
 		};
 
-		const toggleCharacter = (path: string): void => {
-			const selected = new Set(this.characterPaths);
-			if (selected.has(path)) selected.delete(path);
-			else selected.add(path);
-			this.characterPaths = this.characters
-				.map((character) => character.path)
-				.filter((candidate) => selected.has(candidate));
-			render();
+		const removeCharacter = (path: string): void => {
+			this.characterPaths = this.characterPaths.filter(
+				(candidate) => candidate !== path,
+			);
+			renderTags();
+			// The character is a candidate again, and the field may have just
+			// unwrapped a row, so a list still showing is now wrong twice over.
+			suggest.refreshOpenSuggestions();
 		};
 
-		const render = (): void => {
-			values.empty();
-			const selected = new Set(this.characterPaths);
-			if (selected.size === 0) {
-				values.createSpan({
-					cls: 'snowflake-method-character-multi-select-placeholder',
-					text:
-						this.characters.length === 0
-							? this.t('modal.scene.charactersEmpty')
-							: this.t('modal.scene.charactersPlaceholder'),
-				});
-			} else {
-				for (const character of this.characters) {
-					if (!selected.has(character.path)) continue;
-					const tag = values.createSpan({
-						cls: 'snowflake-method-character-multi-select-tag',
-					});
-					tag.createSpan({ text: character.name });
-					const remove = tag.createEl('button', {
-						cls: 'snowflake-method-character-multi-select-remove clickable-icon',
-						attr: {
-							type: 'button',
-							'aria-label': this.t('modal.scene.removeCharacter', {
-								name: character.name,
-							}),
-						},
-					});
-					setIcon(remove, 'x');
-					remove.addEventListener('click', (event) => {
-						event.stopPropagation();
-						toggleCharacter(character.path);
-					});
-				}
-			}
-
-			options.empty();
-			if (this.characters.length === 0) {
-				options.createDiv({
-					cls: 'snowflake-method-character-multi-select-empty',
-					text: this.t('modal.scene.charactersEmpty'),
-				});
+		const renderTags = (): void => {
+			for (const tag of Array.from(
+				values.querySelectorAll('.snowflake-method-character-multi-select-tag'),
+			)) {
+				tag.remove();
 			}
 			for (const character of this.characters) {
-				const option = options.createDiv({
-					cls: 'snowflake-method-character-multi-select-option',
+				if (!isSelected(character.path)) continue;
+				const tag = values.createSpan({
+					cls: 'snowflake-method-character-multi-select-tag',
+				});
+				tag.createSpan({ text: character.name });
+				const remove = tag.createEl('button', {
+					cls: 'snowflake-method-character-multi-select-remove clickable-icon',
 					attr: {
-						role: 'option',
-						tabindex: '0',
-						'aria-selected': String(selected.has(character.path)),
+						type: 'button',
+						'aria-label': this.t('modal.scene.removeCharacter', {
+							name: character.name,
+						}),
 					},
 				});
-				option.toggleClass('is-selected', selected.has(character.path));
-				option.createSpan({ text: character.name });
-				const check = option.createSpan({
-					cls: 'snowflake-method-character-multi-select-check',
+				setIcon(remove, 'x');
+				remove.addEventListener('click', () => {
+					removeCharacter(character.path);
+					input.focus({ preventScroll: true });
 				});
-				if (selected.has(character.path)) setIcon(check, 'check');
-				option.addEventListener('click', () => {
-					toggleCharacter(character.path);
-				});
-				option.addEventListener('keydown', (event) => {
-					if (event.key === 'Enter' || event.key === ' ') {
-						event.preventDefault();
-						toggleCharacter(character.path);
-					}
-				});
+				// The input stays last so typing always continues after the tags.
+				values.insertBefore(tag, input);
 			}
+			input.placeholder = noCharacters
+				? this.t('modal.scene.charactersEmpty')
+				: this.characterPaths.length === 0
+					? this.t('modal.scene.charactersPlaceholder')
+					: '';
 		};
 
-		trigger.addEventListener('click', () => setOpen(!open));
-		trigger.addEventListener('keydown', (event) => {
-			if (event.key === 'Enter' || event.key === ' ') {
-				event.preventDefault();
-				setOpen(!open);
-			} else if (event.key === 'Escape') {
-				setOpen(false);
-			}
+		const suggest = new CharacterSuggest(
+			this.app,
+			input,
+			unselectedCharacters,
+			addCharacter,
+		);
+		this.characterSelectCleanup = () => suggest.close();
+		selector.addEventListener('click', () => {
+			suggest.showAllSuggestions();
 		});
-		const closeOnOutsidePointer = (event: PointerEvent): void => {
-			if (open && !control.contains(event.target as Node)) setOpen(false);
-		};
-		const ownerDocument = control.doc;
-		ownerDocument.addEventListener('pointerdown', closeOnOutsidePointer);
-		this.characterSelectCleanup = () =>
-			ownerDocument.removeEventListener('pointerdown', closeOnOutsidePointer);
-		render();
+		// Clicking the padding around the tags should land in the search box, the
+		// way clicking anywhere in a text field does.
+		field.addEventListener('pointerdown', (event) => {
+			if (event.target !== field && event.target !== values) return;
+			event.preventDefault();
+			input.focus({ preventScroll: true });
+		});
+		// Backspace on an empty query removes the last chip, as chip inputs do.
+		input.addEventListener('keydown', (event) => {
+			if (event.key !== 'Backspace' || input.value.length > 0) return;
+			const last = this.characterPaths.at(-1);
+			if (last === undefined) return;
+			event.preventDefault();
+			removeCharacter(last);
+		});
+		renderTags();
 	}
 
 	protected collectValue(): CreateSceneRequest | null {

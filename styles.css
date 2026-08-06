@@ -1778,6 +1778,8 @@
 	width: 10rem;
 }
 
+/* A reference the project can no longer resolve. Warm rather than red: the scene
+   is still readable and the fix is the author's to make, not an error state. */
 .snowflake-method-scene-column-actions {
 	width: 11rem;
 }
@@ -2820,7 +2822,7 @@
 	min-width: 0;
 }
 
-.snowflake-method-character-multi-select-trigger {
+.snowflake-method-character-multi-select-field {
 	display: flex;
 	align-items: stretch;
 	width: 100%;
@@ -2830,38 +2832,26 @@
 	background: var(--background-modifier-form-field);
 	box-shadow: var(--input-shadow);
 	box-sizing: border-box;
-	cursor: pointer;
+	cursor: text;
 }
 
-.snowflake-method-character-multi-select-trigger:hover,
-.snowflake-method-character-multi-select-trigger:focus,
-.snowflake-method-character-multi-select.is-open
-	.snowflake-method-character-multi-select-trigger {
+.snowflake-method-character-multi-select-field:hover,
+.snowflake-method-character-multi-select-field:focus-within {
 	border-color: var(--background-modifier-border-hover);
 	box-shadow: var(--input-shadow-hover);
 	outline: none;
 }
 
-.snowflake-method-character-multi-select-chevron {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 var(--input-height);
+.snowflake-method-character-multi-select-selector.clickable-icon {
+	flex: 0 0 calc(var(--input-height) - var(--size-4-2));
+	align-self: center;
+	margin-inline-end: var(--size-4-1);
 	color: var(--text-muted);
 }
-.snowflake-method-character-multi-select-chevron {
-	flex-basis: calc(var(--input-height) - var(--size-4-2));
-	transition: transform 120ms ease;
-}
 
-.snowflake-method-character-multi-select.is-open
-	.snowflake-method-character-multi-select-chevron {
-	transform: rotate(180deg);
-}
-
-.snowflake-method-character-multi-select-chevron svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
+.snowflake-method-character-multi-select-selector.clickable-icon:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .snowflake-method-character-multi-select-values {
@@ -2874,12 +2864,47 @@
 	padding: var(--size-4-1) var(--size-4-2);
 }
 
-.snowflake-method-character-multi-select-placeholder {
-	overflow: hidden;
-	color: var(--text-faint);
+/* Sits inline after the tags and wraps with them, so the search box always
+   follows the cast rather than sitting in a row of its own. The field around it
+   draws the frame, so the input has to give up every part of its own chrome --
+   and it needs the element selector to outweigh Obsidian's `input[type='text']`,
+   which is otherwise more specific than a lone class. */
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input {
+	flex: 1 1 6rem;
+	width: auto;
+	min-width: 6rem;
+	height: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-family: inherit;
 	font-size: var(--font-ui-small);
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	line-height: inherit;
+}
+
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input:hover,
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input:focus,
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input:focus-visible,
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input:active {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	outline: none;
+}
+
+.snowflake-method-character-multi-select
+	input.snowflake-method-character-multi-select-input::placeholder {
+	color: var(--text-faint);
 }
 
 .snowflake-method-character-multi-select-tag {
@@ -2911,69 +2936,6 @@
 
 .snowflake-method-character-multi-select-remove.clickable-icon:hover {
 	color: var(--text-normal);
-}
-
-.snowflake-method-character-multi-select-options {
-	position: absolute;
-	z-index: var(--layer-popover);
-	top: calc(100% + var(--size-4-1));
-	inset-inline: 0;
-	display: flex;
-	flex-direction: column;
-	max-height: 12rem;
-	padding: var(--size-4-1);
-	overflow-y: auto;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--input-radius);
-	background: var(--background-primary);
-	box-shadow: var(--shadow-s);
-	box-sizing: border-box;
-}
-
-.snowflake-method-character-multi-select-options.is-hidden {
-	display: none;
-}
-
-.snowflake-method-character-multi-select-option {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--size-4-3);
-	width: 100%;
-	min-height: 2rem;
-	padding: var(--size-4-1) var(--size-4-2);
-	border-radius: var(--radius-s);
-	background: transparent;
-	color: var(--text-normal);
-	font-size: var(--font-ui-small);
-	text-align: start;
-	cursor: pointer;
-	box-sizing: border-box;
-}
-
-.snowflake-method-character-multi-select-option:hover,
-.snowflake-method-character-multi-select-option:focus-visible {
-	background: var(--background-modifier-hover);
-	outline: none;
-}
-
-.snowflake-method-character-multi-select-check {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 var(--icon-s);
-	color: var(--interactive-accent);
-}
-
-.snowflake-method-character-multi-select-check svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
-}
-
-.snowflake-method-character-multi-select-empty {
-	padding: var(--size-4-2) var(--size-4-3);
-	color: var(--text-faint);
-	font-size: var(--font-ui-small);
 }
 
 .snowflake-method-scene-events-setting textarea {
