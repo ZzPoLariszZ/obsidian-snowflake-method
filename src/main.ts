@@ -263,6 +263,7 @@ export default class SnowflakeMethodPlugin
 		this.projects = new SnowflakeProjectService(
 			this.app.vault,
 			this.app.fileManager,
+			this.app.metadataCache,
 			this.settings.projectRoot,
 		);
 		this.registerManagedSectionEditor();

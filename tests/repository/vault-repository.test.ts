@@ -19,7 +19,11 @@ describe("VaultRepository", () => {
     const environment = createFakeEnvironment();
     fakeVault = environment.fakeVault;
     fakeFileManager = environment.fakeFileManager;
-    repository = new VaultRepository(environment.vault, environment.fileManager);
+    repository = new VaultRepository(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
   });
 
   it("creates folders and managed files through Vault and processFrontMatter", async () => {

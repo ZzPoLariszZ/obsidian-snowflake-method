@@ -4,6 +4,9 @@ import { normalizeFakePath, parseFakeYaml } from "./fake-vault";
 
 export const normalizePath = normalizeFakePath;
 export const parseYaml = parseFakeYaml;
+/** The file a link names, without the heading or block anchor after it. */
+export const getLinkpath = (linktext: string): string =>
+	linktext.split('#')[0] ?? linktext;
 export const stringifyYaml = (value: unknown): string =>
 	`${JSON.stringify(value, null, 2)}\n`;
 

@@ -21,20 +21,31 @@ import {
   type ProjectSnapshot,
 } from "../../src/services";
 import { getSystemTemplates, readMarkedSection } from "../../src/templates";
-import { createFakeEnvironment, type FakeFileManager, type FakeVault } from "../helpers/fake-vault";
+import {
+  createFakeEnvironment,
+  type FakeFileManager,
+  type FakeMetadataCache,
+  type FakeVault,
+} from "../helpers/fake-vault";
 
 const STEP_ONE_RELATIVE_PATH = "10_Summary/11_One_Sentence_Summary.md";
 
 describe("SnowflakeProjectService", () => {
   let fakeVault: FakeVault;
   let fakeFileManager: FakeFileManager;
+  let fakeMetadataCache: FakeMetadataCache;
   let service: SnowflakeProjectService;
 
   beforeEach(() => {
     const environment = createFakeEnvironment();
     fakeVault = environment.fakeVault;
     fakeFileManager = environment.fakeFileManager;
-    service = new SnowflakeProjectService(environment.vault, environment.fileManager);
+    fakeMetadataCache = environment.fakeMetadataCache;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
   });
 
   it("creates the full bilingual Markdown project structure", async () => {
@@ -665,6 +676,7 @@ describe("SnowflakeProjectService", () => {
     const rootService = new SnowflakeProjectService(
       fakeVault.asVault(),
       fakeFileManager.asFileManager(),
+      fakeMetadataCache.asMetadataCache(),
       "",
     );
     const project = await rootService.createProject({ name: "Root Project" });
@@ -685,6 +697,7 @@ describe("SnowflakeProjectService", () => {
     const rootService = new SnowflakeProjectService(
       fakeVault.asVault(),
       fakeFileManager.asFileManager(),
+      fakeMetadataCache.asMetadataCache(),
       "Future Projects/Snowflake",
     );
 
@@ -873,6 +886,106 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.contents.get(occupiedDraft)).toBe("Unmanaged notes that must survive");
     expect(repaired.created).toContain(replacement);
     expect(repaired.repaired.filter((path) => path === project.projectFile)).toHaveLength(1);
+  });
+
+  // Obsidian rewrites the links it finds in a renamed note or folder, this
+  // plugin's own included, and its rewrite carries no ".md" and may be shortened
+  // to a bare file name. Renaming a project is enough to trigger it, so a stored
+  // link that is no longer a Vault path is the ordinary case rather than a
+  // damaged one, and the note it names is right where it always was.
+  it("finds the draft through a link Obsidian rewrote without the file extension", async () => {
+    const project = await service.createProject({ name: "Rewritten link" });
+    const draftPath = `${project.rootPath}/50_Manuscript/Draft.md`;
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.draft] =
+          `[[${project.rootPath}/50_Manuscript/Draft]]`;
+      },
+    );
+
+    const reloaded = await service.loadProject(project.projectFile);
+
+    expect(reloaded.links.draft).toBe(draftPath);
+    expect(reloaded.structureIssues).toEqual([]);
+    expect(reloaded.artifacts[10]?.path).toBe(draftPath);
+  });
+
+  it("finds the draft through a link shortened to its file name", async () => {
+    const project = await service.createProject({ name: "Shortened link" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.draft] = "[[Draft]]";
+      },
+    );
+
+    const reloaded = await service.loadProject(project.projectFile);
+
+    expect(reloaded.links.draft).toBe(`${project.rootPath}/50_Manuscript/Draft.md`);
+    expect(reloaded.structureIssues).toEqual([]);
+  });
+
+  it("leaves a scene alone when Obsidian rewrote its links without the file extension", async () => {
+    const project = await service.createProject({ name: "Rewritten cast" });
+    const pov = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const supporting = await service.createCharacter(project, {
+      name: "Bram",
+      type: "supporting",
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: pov.path,
+      characters: [pov.path, supporting.path],
+    });
+    const withoutExtension = (path: string): string =>
+      `[[${path.replace(/\.md$/u, "")}]]`;
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.pov] = withoutExtension(pov.path);
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [
+          withoutExtension(pov.path),
+          withoutExtension(supporting.path),
+        ];
+      },
+    );
+
+    const reloaded = await service.loadProject(project.projectFile);
+
+    expect(reloaded.structureIssues).toEqual([]);
+  });
+
+  it("puts the draft back when the stored link leads nowhere at all", async () => {
+    const project = await service.createProject({ name: "Lost link" });
+    const draftPath = `${project.rootPath}/50_Manuscript/Draft.md`;
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.draft] = "[[Nowhere]]";
+      },
+    );
+
+    const damaged = await service.loadProject(project.projectFile);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "missing-artifact",
+        path: "Nowhere",
+        expected: "draft",
+        repairable: true,
+      }),
+    );
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      "Nowhere",
+    );
+
+    // The draft that was there all along is the one it points at again. A second
+    // draft beside it would be the plugin losing the author's manuscript.
+    expect(repaired.links.draft).toBe(draftPath);
+    expect(repaired.structureIssues).toEqual([]);
+    expect(fakeVault.getFileByPath(`${project.rootPath}/50_Manuscript/Draft (2).md`)).toBeNull();
   });
 
   it("reports missing artifact markers without changing the note", async () => {
@@ -2090,5 +2203,102 @@ describe("SnowflakeProjectService", () => {
     // for the health check to report.
     expect(povFrontmatter[FRONTMATTER_KEYS.pov]).toContain(doomed.path);
     expect(castFrontmatter[FRONTMATTER_KEYS.pov]).toContain(kept.path);
+  });
+
+  // Renaming a project renames its folder, which sets Obsidian rewriting every
+  // link inside it. What it writes back carries no ".md" and is shortened to
+  // whatever tail of the path is unambiguous -- often the file name alone. A
+  // scene holds its cast as character paths, so a cast read straight from that
+  // text matches no character the project has, and the scene form drops the
+  // whole cast the next time it opens.
+  const shorten = (path: string): string =>
+    `[[${path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/u, "")}]]`;
+
+  it("reads a scene cast Obsidian shortened back to the characters it names", async () => {
+    const project = await service.createProject({ name: "Shortened cast" });
+    const pov = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const supporting = await service.createCharacter(project, {
+      name: "Bram",
+      type: "supporting",
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: pov.path,
+      characters: [pov.path, supporting.path],
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.pov] = shorten(pov.path);
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [
+          shorten(pov.path),
+          shorten(supporting.path),
+        ];
+      },
+    );
+
+    const [reloaded] = await service.listScenes(project.projectFile);
+
+    expect(reloaded?.povPath).toBe(pov.path);
+    expect(reloaded?.characters).toEqual([pov.path, supporting.path]);
+  });
+
+  it("refreshes a shortened link when the character it names is renamed", async () => {
+    const project = await service.createProject({ name: "Shortened rename" });
+    const character = await service.createCharacter(project, {
+      name: "Bob",
+      type: "major",
+    });
+    const scene = await service.createScene(project, {
+      title: "Meeting",
+      povPath: character.path,
+      characters: [character.path],
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.pov] = shorten(character.path);
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [shorten(character.path)];
+      },
+    );
+
+    const renamed = await service.updateCharacter(project, character.characterId, {
+      expectedRevision: character.revision,
+      name: "Robert",
+    });
+    const [reloaded] = await service.listScenes(project.projectFile);
+
+    expect(reloaded?.povPath).toBe(renamed.path);
+    expect(reloaded?.characters).toEqual([renamed.path]);
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toContain("Robert");
+  });
+
+  it("drops a shortened link from a cast when the character it names is deleted", async () => {
+    const project = await service.createProject({ name: "Shortened delete" });
+    const doomed = await service.createCharacter(project, { name: "Bram", type: "major" });
+    const kept = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: kept.path,
+      characters: [doomed.path, kept.path],
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [
+          shorten(doomed.path),
+          shorten(kept.path),
+        ];
+      },
+    );
+
+    fakeVault.delete(doomed.path);
+    await service.removeCharacterFromScenes(project.projectFile, doomed.path);
+
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      shorten(kept.path),
+    ]);
   });
 });

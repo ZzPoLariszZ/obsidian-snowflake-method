@@ -1,7 +1,9 @@
 import {
+  getLinkpath,
   normalizePath,
   stringifyYaml,
   type FileManager,
+  type MetadataCache,
   type TAbstractFile,
   type TFile,
   type TFolder,
@@ -85,6 +87,7 @@ export class VaultRepository {
   constructor(
     readonly vault: Vault,
     readonly fileManager: FileManager,
+    readonly metadataCache: MetadataCache,
   ) {}
 
   normalize(path: string): string {
@@ -99,6 +102,25 @@ export class VaultRepository {
   getFile(path: string): TFile | null {
     const node = this.get(path);
     return isFile(node) ? node : null;
+  }
+
+  /**
+   * The note a stored link points at, resolved the way Obsidian resolves it.
+   *
+   * A link is not a Vault path. Obsidian rewrites every link into a note or
+   * folder it renames -- including the ones this plugin wrote, and including
+   * the rename behind Rename project -- and its rewrite drops the ".md" and may
+   * shorten the path to whatever is unambiguous. Looking a stored link up as a
+   * path therefore stops finding a file that is sitting right where the link
+   * says it is.
+   */
+  resolveLink(link: string, sourcePath: string): TFile | null {
+    const target = getLinkpath(link.trim());
+    if (!target) return null;
+    return this.metadataCache.getFirstLinkpathDest(
+      target,
+      this.normalize(sourcePath),
+    );
   }
 
   getFolder(path: string): TFolder | null {

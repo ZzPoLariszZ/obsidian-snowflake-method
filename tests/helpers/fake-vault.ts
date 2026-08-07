@@ -1,4 +1,11 @@
-import type { FileManager, TAbstractFile, TFile, TFolder, Vault } from "obsidian";
+import type {
+  FileManager,
+  MetadataCache,
+  TAbstractFile,
+  TFile,
+  TFolder,
+  Vault,
+} from "obsidian";
 
 export interface FakeFile extends TFile {
   path: string;
@@ -157,6 +164,54 @@ export class FakeVault {
   }
 }
 
+/**
+ * Obsidian's link resolution, as documented and as observed in the app: a link
+ * may carry no extension, and may be shortened to any suffix of the path that
+ * still names one file. Matching that here is what lets these tests stand for
+ * links Obsidian rewrote itself, which is every link after a rename.
+ */
+export class FakeMetadataCache {
+  constructor(readonly vault: FakeVault) {}
+
+  asMetadataCache(): MetadataCache {
+    return this as unknown as MetadataCache;
+  }
+
+  getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null {
+    const target = normalizeFakePath(linkpath);
+    if (!target) return null;
+    const sourceFolder = parentOf(normalizeFakePath(sourcePath));
+    const candidates = [
+      target,
+      `${target}.md`,
+      sourceFolder ? `${sourceFolder}/${target}` : target,
+      sourceFolder ? `${sourceFolder}/${target}.md` : `${target}.md`,
+    ];
+    for (const candidate of candidates) {
+      const file = this.vault.getFileByPath(candidate);
+      if (file) return file;
+    }
+
+    // A shortened link names the end of a path rather than the whole of it.
+    // Obsidian answers with the nearest match; the shortest path standing in
+    // for "nearest" is close enough for a Vault a test builds.
+    const suffix = `/${target}`;
+    const matches = [...this.vault.nodes.keys()]
+      .filter(
+        (path) =>
+          path.endsWith(suffix) ||
+          path.endsWith(`${suffix}.md`) ||
+          path === target ||
+          path === `${target}.md`,
+      )
+      .filter((path) => this.vault.getFileByPath(path) !== null)
+      .sort((left, right) => left.length - right.length || left.localeCompare(right));
+    const nearest = matches.find((path) => path.startsWith(`${sourceFolder}/`));
+    const chosen = nearest ?? matches[0];
+    return chosen === undefined ? null : this.vault.getFileByPath(chosen);
+  }
+}
+
 export class FakeFileManager {
   readonly frontmatterCalls: string[] = [];
   readonly renameCalls: Array<{ from: string; to: string }> = [];
@@ -205,16 +260,21 @@ export class FakeFileManager {
 export function createFakeEnvironment(): {
   fakeVault: FakeVault;
   fakeFileManager: FakeFileManager;
+  fakeMetadataCache: FakeMetadataCache;
   vault: Vault;
   fileManager: FileManager;
+  metadataCache: MetadataCache;
 } {
   const fakeVault = new FakeVault();
   const fakeFileManager = new FakeFileManager(fakeVault);
+  const fakeMetadataCache = new FakeMetadataCache(fakeVault);
   return {
     fakeVault,
     fakeFileManager,
+    fakeMetadataCache,
     vault: fakeVault.asVault(),
     fileManager: fakeFileManager.asFileManager(),
+    metadataCache: fakeMetadataCache.asMetadataCache(),
   };
 }
 

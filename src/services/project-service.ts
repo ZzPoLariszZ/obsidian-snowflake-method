@@ -1,4 +1,9 @@
-import { normalizePath, type FileManager, type Vault } from "obsidian";
+import {
+  normalizePath,
+  type FileManager,
+  type MetadataCache,
+  type Vault,
+} from "obsidian";
 
 import {
   RANK_GAP,
@@ -141,9 +146,10 @@ export class SnowflakeProjectService {
   constructor(
     vault: Vault,
     fileManager: FileManager,
+    metadataCache: MetadataCache,
     readonly defaultRoot = DEFAULT_PROJECT_ROOT,
   ) {
-    this.repository = new VaultRepository(vault, fileManager);
+    this.repository = new VaultRepository(vault, fileManager, metadataCache);
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
@@ -203,7 +209,10 @@ export class SnowflakeProjectService {
     );
     const steps = readStepStatuses(record.frontmatter[FRONTMATTER_KEYS.stepStatuses]);
     const links = {
-      draft: fromWikiLink(asOptionalString(record.frontmatter[FRONTMATTER_KEYS.draft])),
+      draft: this.linkedPath(
+        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.draft]),
+        record.path,
+      ),
     };
     const reviewedFingerprints = readFingerprints(
       record.frontmatter[FRONTMATTER_KEYS.reviewedFingerprints],
@@ -643,24 +652,43 @@ export class SnowflakeProjectService {
       );
     }
 
-    const draftLink = fromWikiLink(
-      asOptionalString(projectRecord.frontmatter[FRONTMATTER_KEYS.draft]),
+    const draftLink = asOptionalString(
+      projectRecord.frontmatter[FRONTMATTER_KEYS.draft],
     );
-    if (!draftLink || this.repository.getFile(draftLink) == null) {
-      const draft = await this.ensureArtifact(
-        project,
-        "draft",
-        `${layout.directories.draft}/${layout.draftFileName}`,
-        draftTemplate(project.title, project.locale),
-        result,
-      );
-      await this.repository.updateFrontmatter(project.projectFile, {
-        [FRONTMATTER_KEYS.draft]: toWikiLink(draft),
-      });
-      markRepaired(result, project.projectFile);
+    if (
+      !draftLink ||
+      this.missingLink(draftLink, projectRecord.path) !== null
+    ) {
+      await this.restoreDraft(project, result);
     }
 
     return { project: await this.loadProject(project.projectFile), ...result };
+  }
+
+  /**
+   * Gives a project back a draft to point at: the managed draft already in its
+   * draft folder when one is there, and a new draft beside whatever else is
+   * there when none is. Both repairs go through here so a link that leads
+   * nowhere is mended the same way whichever side asks for it -- in particular
+   * neither leaves a second draft behind when the first one is still present.
+   */
+  private async restoreDraft(
+    project: ProjectRef,
+    result: Omit<RepairResult, "project">,
+  ): Promise<string> {
+    const layout = getProjectPathLayout(project.locale);
+    const draft = await this.ensureArtifact(
+      project,
+      "draft",
+      `${layout.directories.draft}/${layout.draftFileName}`,
+      draftTemplate(project.title, project.locale),
+      result,
+    );
+    await this.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.draft]: toWikiLink(draft),
+    });
+    markRepaired(result, project.projectFile);
+    return draft;
   }
 
   /**
@@ -793,7 +821,8 @@ export class SnowflakeProjectService {
           ? [stored]
           : [];
       const next = rawCharacters.filter(
-        (entry) => this.missingCharacterLink(asOptionalString(entry)) === null,
+        (entry) =>
+          this.missingCharacterLink(asOptionalString(entry), normalized) === null,
       );
       if (next.length === rawCharacters.length) {
         throw new Error(`No missing character link was found in "${normalized}".`);
@@ -827,13 +856,16 @@ export class SnowflakeProjectService {
     }
 
     if (issue.expected === "draft") {
-      await this.repository.createManagedFile({
-        path: normalized,
-        template: draftTemplate(project.title, project.locale),
-        frontmatter: commonFrontmatter("draft", project.id),
-      });
-      await this.repository.updateFrontmatter(project.projectFile, {
-        [FRONTMATTER_KEYS.draft]: toWikiLink(normalized),
+      // The reported path is wherever the stored link led, which need not be
+      // anywhere this project would keep a draft, so the repair works from the
+      // project rather than from that path. What it records along the way is of
+      // no interest here: this repair reports itself by the issue it settles.
+      await this.restoreDraft(project, {
+        created: [],
+        repaired: [],
+        unchanged: [],
+        conflicts: [],
+        sectionResults: [],
       });
       return this.loadProject(project.projectFile);
     }
@@ -1198,9 +1230,12 @@ export class SnowflakeProjectService {
         : typeof stored === "string"
           ? [stored]
           : [];
-      const next = rawCharacters.filter(
-        (entry) => fromWikiLink(asOptionalString(entry)) !== characterPath,
-      );
+      const next = rawCharacters.filter((entry) => {
+        const target = fromWikiLink(asOptionalString(entry));
+        return (
+          target === null || !this.linkNames(target, characterPath, record.path)
+        );
+      });
       if (next.length === rawCharacters.length) continue;
       await this.repository.updateFrontmatter(record.path, {
         [FRONTMATTER_KEYS.sceneCharacters]: next,
@@ -1209,17 +1244,76 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * The path a stored character link points at when no note is there any more,
-   * or null while the link still resolves. Point-of-view modes are not links and
-   * never dangle. Existence is the whole test: a note that is present but has
-   * broken metadata is a different issue, already reported against that note.
+   * Where a stored link leads: the note's own path while the link resolves, and
+   * the link's own target once it leads nowhere, so a report can name what
+   * broke. Null only when nothing is stored.
+   *
+   * The two differ more often than they look. Obsidian owns the links this
+   * plugin writes and rewrites them whenever a note or folder is renamed --
+   * Rename project included -- in a form that carries no ".md" and may be
+   * shortened to a bare file name. The stored text stops being a path the
+   * moment anything is renamed, which is why it is resolved rather than read.
    */
-  private missingCharacterLink(stored: string | null): string | null {
-    if (stored === null) return null;
-    const path = fromWikiLink(stored);
-    if (path === null || path.length === 0) return null;
-    if (isScenePovMode(path)) return null;
-    return this.repository.getFile(path) === null ? path : null;
+  private linkedPath(stored: string | null, sourcePath: string): string | null {
+    const target = fromWikiLink(stored);
+    if (target === null || target.length === 0) return null;
+    return this.repository.resolveLink(target, sourcePath)?.path ?? target;
+  }
+
+  /**
+   * The target of a stored link that now leads nowhere, or null while it still
+   * resolves. Existence is the whole test: a note that is present but has broken
+   * metadata is a different issue, already reported against that note.
+   */
+  private missingLink(stored: string | null, sourcePath: string): string | null {
+    const target = fromWikiLink(stored);
+    if (target === null || target.length === 0) return null;
+    return this.repository.resolveLink(target, sourcePath) === null
+      ? target
+      : null;
+  }
+
+  /**
+   * The same test for a scene's cast, where a point-of-view mode may stand in
+   * place of a link. A mode is not a link and never dangles.
+   */
+  private missingCharacterLink(
+    stored: string | null,
+    sourcePath: string,
+  ): string | null {
+    if (stored !== null && isScenePovMode(fromWikiLink(stored) ?? "")) {
+      return null;
+    }
+    return this.missingLink(stored, sourcePath);
+  }
+
+  /**
+   * Whether a stored link names one particular note. Asked when that note is
+   * about to move or has just gone, which is exactly when resolving the link
+   * cannot answer -- so the stored text has to be read the way Obsidian wrote
+   * it: no ".md", and shortened to whatever tail of the path is unambiguous,
+   * often the file name alone.
+   *
+   * While the note is still reachable there is nothing to guess: the link
+   * either leads to it or leads somewhere else, and a link that leads somewhere
+   * else does not name it however alike the two names look.
+   */
+  private linkNames(
+    target: string,
+    path: string,
+    sourcePath: string,
+  ): boolean {
+    const wanted = normalizePath(path);
+    const resolved = this.repository.resolveLink(target, sourcePath);
+    if (resolved !== null) return resolved.path === wanted;
+    const named = normalizePath(target);
+    const stem = wanted.replace(/\.md$/u, "");
+    return (
+      named === wanted ||
+      named === stem ||
+      wanted.endsWith(`/${named}`) ||
+      stem.endsWith(`/${named}`)
+    );
   }
 
   private async refreshCharacterReferences(
@@ -1235,8 +1329,13 @@ export class SnowflakeProjectService {
       project.id,
     );
     const link = toWikiLink(currentPath, name);
-    const isRenamed = (stored: string | null): boolean =>
-      stored !== null && (stored === previousPath || stored === currentPath);
+    // Either name reaches the same character: Obsidian repoints the links it
+    // owns as the note moves, and leaves them naming where it was when a Vault
+    // is set not to update links at all.
+    const isRenamed = (stored: string | null, sourcePath: string): boolean =>
+      stored !== null &&
+      (this.linkNames(stored, previousPath, sourcePath) ||
+        this.linkNames(stored, currentPath, sourcePath));
 
     for (const record of records) {
       if (record.readOnly) continue;
@@ -1246,7 +1345,7 @@ export class SnowflakeProjectService {
       if (
         storedPov !== null &&
         !isScenePovMode(storedPov) &&
-        isRenamed(fromWikiLink(storedPov)) &&
+        isRenamed(fromWikiLink(storedPov), record.path) &&
         storedPov !== link
       ) {
         patch[FRONTMATTER_KEYS.pov] = link;
@@ -1263,7 +1362,9 @@ export class SnowflakeProjectService {
         // the right display text for their own character.
         const next: unknown[] = rawCharacters.map((entry) => {
           const raw = asOptionalString(entry);
-          return raw !== null && isRenamed(fromWikiLink(raw)) ? link : entry;
+          return raw !== null && isRenamed(fromWikiLink(raw), record.path)
+            ? link
+            : entry;
         });
         if (fingerprint(next) !== fingerprint(rawCharacters)) {
           patch[FRONTMATTER_KEYS.sceneCharacters] = next;
@@ -2226,6 +2327,7 @@ export class SnowflakeProjectService {
         if (documentType === "scene") {
           const missingPov = this.missingCharacterLink(
             asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
+            record.path,
           );
           if (missingPov !== null) {
             add({
@@ -2241,7 +2343,9 @@ export class SnowflakeProjectService {
           }
           const missingCast = readWikiLinkList(
             record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
-          ).filter((path) => this.missingCharacterLink(path) !== null);
+          ).filter(
+            (path) => this.missingCharacterLink(path, record.path) !== null,
+          );
           if (missingCast.length > 0) {
             add({
               code: "dangling-scene-character",
@@ -2308,9 +2412,11 @@ export class SnowflakeProjectService {
         stepIds: [10],
         expected: "draft",
         canOpen: false,
-        repairable:
-          effectiveDraftPath === canonicalDraftPath &&
-          this.repository.get(effectiveDraftPath) === null,
+        // A draft can always be put back: it is written where this project
+        // keeps its draft, beside anything already there, whatever the stored
+        // link happened to say. Leaving the author no way out of a link that
+        // leads nowhere would be the worse answer.
+        repairable: true,
       });
     } else {
       const record = await this.repository.readManaged(draftFile.path);
@@ -2388,6 +2494,14 @@ export class SnowflakeProjectService {
       throw new InvalidManagedDocumentError(`Scene metadata is incomplete in "${record.path}".`, record.path);
     }
     const rank = storedRank(record.frontmatter);
+    // Every character a scene names is given as the note's own path, because
+    // that is what the rest of the plugin holds a character by. A stored link
+    // is not that path once Obsidian has rewritten it, and a scene whose cast
+    // no longer matches the project's characters loses that cast the next time
+    // its form is opened, so the links are followed here rather than copied.
+    const storedPov = fromWikiLink(
+      asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
+    );
     return {
       id: sceneId,
       sceneId,
@@ -2396,10 +2510,15 @@ export class SnowflakeProjectService {
       title: asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) ?? fileStem(record.path),
       rank: rank ?? RANK_GAP,
       hasStoredRank: rank !== null,
-      povPath: fromWikiLink(asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov])),
+      povPath:
+        storedPov === null || isScenePovMode(storedPov)
+          ? storedPov
+          : this.linkedPath(storedPov, record.path),
       time: asString(record.frontmatter[FRONTMATTER_KEYS.sceneTime]),
       location: asString(record.frontmatter[FRONTMATTER_KEYS.sceneLocation]),
-      characters: readWikiLinkList(record.frontmatter[FRONTMATTER_KEYS.sceneCharacters]),
+      characters: readWikiLinkList(
+        record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
+      ).map((target) => this.linkedPath(target, record.path) ?? target),
       conflict: readMarkedSection(record.content, "scene-conflict") ?? "",
       events: readMarkedSection(record.content, "scene-events") ?? "",
       planning: readMarkedSection(record.content, "scene-planning") ?? "",
