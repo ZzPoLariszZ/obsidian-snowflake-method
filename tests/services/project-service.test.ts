@@ -30,6 +30,9 @@ import {
 
 const STEP_ONE_RELATIVE_PATH = "10_Summary/11_One_Sentence_Summary.md";
 
+/** What a note's path looks like inside a link: no ".md", as Obsidian writes them. */
+const linkTarget = (path: string): string => path.replace(/\.md$/u, "");
+
 describe("SnowflakeProjectService", () => {
   let fakeVault: FakeVault;
   let fakeFileManager: FakeFileManager;
@@ -1234,6 +1237,8 @@ describe("SnowflakeProjectService", () => {
 
   it("creates scenes, stores links, and normally rewrites only the moved rank", async () => {
     const project = await service.createProject({ name: "Scenes" });
+    // A scene reports the note its link reaches, so the note has to be there.
+    await fakeVault.seedFile("People/Ada.md", "# Ada\n");
     const first = await service.createScene(project, { title: "First", conflict: "One" });
 	expect(first.povPath).toBe(SCENE_POV_OMNISCIENT);
     const second = await service.createScene(project, {
@@ -1291,6 +1296,8 @@ describe("SnowflakeProjectService", () => {
 
   it("stores and updates the complete Step 8 scene form", async () => {
     const project = await service.createProject({ name: "Scene Details" });
+    await fakeVault.seedFile("People/Ada.md", "# Ada\n");
+    await fakeVault.seedFile("People/Lin.md", "# Lin\n");
     const scene = await service.createScene(project, {
       title: "Midnight meeting",
       time: "Midnight",
@@ -1308,12 +1315,10 @@ describe("SnowflakeProjectService", () => {
       fakeVault.contents.get(scene.path) ?? "",
     ).frontmatter;
     expect(sceneFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
-      "[[People/Ada.md|Ada]]",
-      "[[People/Lin.md|Lin]]",
+      "[[People/Ada|Ada]]",
+      "[[People/Lin|Lin]]",
     ]);
-    expect(sceneFrontmatter[FRONTMATTER_KEYS.pov]).toBe(
-      "[[People/Ada.md|Ada]]",
-    );
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.pov]).toBe("[[People/Ada|Ada]]");
     expect(scene.conflict).toBe("Ada must choose whom to trust.");
     expect(scene.povPath).toBe("People/Ada.md");
     expect(scene.events).toBe("A coded message arrives and the lights go out.");
@@ -1663,10 +1668,12 @@ describe("SnowflakeProjectService", () => {
 
     // The path and the display text both have to follow the rename; Obsidian
     // would only ever update the path.
-    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(`[[${renamed.path}|Robert]]`);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(
+      `[[${linkTarget(renamed.path)}|Robert]]`,
+    );
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
-      `[[${renamed.path}|Robert]]`,
-      `[[${alice.path}|Alice]]`,
+      `[[${linkTarget(renamed.path)}|Robert]]`,
+      `[[${linkTarget(alice.path)}|Alice]]`,
     ]);
     const reloaded = await service.listScenes(project);
     expect(reloaded[0]?.povPath).toBe(renamed.path);
@@ -1874,7 +1881,7 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.getFileByPath(moved)).toBeNull();
     expect(
       (await service.readManagedFrontmatter(scene.path))[FRONTMATTER_KEYS.pov],
-    ).toBe(`[[${character.path}|Bob]]`);
+    ).toBe(`[[${linkTarget(character.path)}|Bob]]`);
   });
 
   it("reports a heading edited on its own and restores it", async () => {
@@ -2103,9 +2110,9 @@ describe("SnowflakeProjectService", () => {
 
     // The surviving cast member and every other field are left untouched.
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
-      expect.stringContaining(kept.path),
+      expect.stringContaining(linkTarget(kept.path)),
     ]);
-    expect(frontmatter[FRONTMATTER_KEYS.pov]).toContain(kept.path);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toContain(linkTarget(kept.path));
     expect(frontmatter[FRONTMATTER_KEYS.sceneTitle]).toBe("Arrival");
     // The repair touches frontmatter only; the scene's prose is not rewritten.
     expect(
@@ -2196,13 +2203,13 @@ describe("SnowflakeProjectService", () => {
 
     // The cast loses only the deleted character; the survivor stays.
     expect(castFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
-      expect.stringContaining(kept.path),
+      expect.stringContaining(linkTarget(kept.path)),
     ]);
     expect(povFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([]);
     // The point of view is the author's decision, so it is left broken on purpose
     // for the health check to report.
-    expect(povFrontmatter[FRONTMATTER_KEYS.pov]).toContain(doomed.path);
-    expect(castFrontmatter[FRONTMATTER_KEYS.pov]).toContain(kept.path);
+    expect(povFrontmatter[FRONTMATTER_KEYS.pov]).toContain(linkTarget(doomed.path));
+    expect(castFrontmatter[FRONTMATTER_KEYS.pov]).toContain(linkTarget(kept.path));
   });
 
   // Renaming a project renames its folder, which sets Obsidian rewriting every

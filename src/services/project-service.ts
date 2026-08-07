@@ -3307,8 +3307,14 @@ function compareCharactersByRank(
   return left.characterId.localeCompare(right.characterId, "en");
 }
 
+/**
+ * Writes a link the way Obsidian writes one: the note's path without the ".md"
+ * it would never show. Obsidian rewrites these links itself as notes move, so
+ * matching its form is what keeps a stored link looking the same before and
+ * after a rename instead of quietly changing shape on the first one.
+ */
 export function toWikiLink(path: string, alias?: string): string {
-  const normalized = normalizePath(path.trim());
+  const normalized = normalizePath(path.trim()).replace(/\.md$/u, "");
   if (!normalized) return "";
   const safeAlias = typeof alias === "string"
     ? alias.replace(/[|\]]/gu, "").trim()
