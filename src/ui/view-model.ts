@@ -68,6 +68,8 @@ export interface CharacterViewModel {
 	growth: string;
 	revision: string;
 	readOnly: boolean;
+	/** The note's file name or heading has drifted from this name. */
+	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
 
@@ -87,6 +89,8 @@ export interface SceneViewModel {
 	events: string;
 	revision: string;
 	readOnly: boolean;
+	/** The note's file name or heading has drifted from this title. */
+	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
 

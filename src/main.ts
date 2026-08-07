@@ -681,14 +681,25 @@ export default class SnowflakeMethodPlugin
 		for (const step of [1, 2, 4, 6] as const) {
 			artifactMap.set(step, project.artifacts[step] ?? null);
 		}
+		// A name that drifted from its note is reported against that note, and the
+		// row for it is the one place an author is looking at the name itself.
+		const driftedNames = new Set(
+			project.structureIssues
+				.filter(
+					(issue) =>
+						issue.code === 'mismatched-character-title' ||
+						issue.code === 'mismatched-scene-title',
+				)
+				.map((issue) => issue.path),
+		);
 		const characterModels = characters.map((character) =>
-			this.characterViewModel(character, projectT),
+			this.characterViewModel(character, driftedNames, projectT),
 		);
 		const characterNames = new Map(
 			characters.map((character) => [character.path, character.name]),
 		);
 		const sceneModels = scenes.map((scene) =>
-			this.sceneViewModel(scene, characterNames, projectT),
+			this.sceneViewModel(scene, characterNames, driftedNames, projectT),
 		);
 		const artifactIssues = new Map<StepId, ManagedSectionIssueViewModel[]>();
 		for (const [step, artifact] of artifactMap) {
@@ -2099,6 +2110,7 @@ export default class SnowflakeMethodPlugin
 
 	private characterViewModel(
 		character: CharacterRecord,
+		driftedNames: ReadonlySet<string>,
 		t: Translate,
 	): CharacterViewModel {
 		return {
@@ -2115,6 +2127,7 @@ export default class SnowflakeMethodPlugin
 			growth: character.growth,
 			revision: character.revision,
 			readOnly: character.readOnly,
+			nameDrifted: driftedNames.has(character.path),
 			healthIssues: this.issueViewModels(
 				character.path,
 				character.sectionHealth,
@@ -2126,6 +2139,7 @@ export default class SnowflakeMethodPlugin
 	private sceneViewModel(
 		scene: SceneRecord,
 		characterNames: ReadonlyMap<string, string>,
+		driftedNames: ReadonlySet<string>,
 		t: Translate,
 	): SceneViewModel {
 		return {
@@ -2160,6 +2174,7 @@ export default class SnowflakeMethodPlugin
 			events: scene.events,
 			revision: scene.revision,
 			readOnly: scene.readOnly,
+			nameDrifted: driftedNames.has(scene.path),
 			healthIssues: this.issueViewModels(
 				scene.path,
 				scene.sectionHealth,

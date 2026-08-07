@@ -1726,7 +1726,7 @@ describe("SnowflakeProjectService", () => {
     // The numbered file is the only one left, so it is not drift.
     expect(snapshot.structureIssues).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "mismatched-note-title" }),
+        expect.objectContaining({ code: "mismatched-character-title" }),
       ]),
     );
   });
@@ -1866,7 +1866,7 @@ describe("SnowflakeProjectService", () => {
     expect(damaged.structureIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: "mismatched-note-title",
+          code: "mismatched-character-title",
           path: moved,
           expected: "Bob",
           stepIds: [3, 5, 7],
@@ -1884,6 +1884,88 @@ describe("SnowflakeProjectService", () => {
     ).toBe(`[[${linkTarget(character.path)}|Bob]]`);
   });
 
+  // Each kind of name is reported under its own code, because the sentence the
+  // checker shows has to name the thing and say where that name is changed.
+  it("reports a drifted scene name under the code for a scene", async () => {
+    const project = await service.createProject({ name: "Scene drift" });
+    const scene = await service.createScene(project, "Meeting");
+    const moved = `${project.rootPath}/40_Scene/Renamed Outside.md`;
+    await service.repository.renameFile(scene.path, moved);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "mismatched-scene-title",
+        path: moved,
+        expected: "Meeting",
+        stepIds: [8, 9],
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, moved);
+    const repaired = await service.loadProject(project.projectFile);
+
+    expect(repaired.scenes[0]?.path).toBe(scene.path);
+    expect(repaired.structureIssues).toEqual([]);
+  });
+
+  it("reports a project folder renamed outside the plugin and renames it back", async () => {
+    const project = await service.createProject({ name: "Chosen Name" });
+    // What renaming the folder in Obsidian's file explorer does, and no more:
+    // the folder moves and the stored name is left behind.
+    fakeVault.rename(project.rootPath, "Snowflake Projects/Typed In A Hurry");
+    const movedFile = "Snowflake Projects/Typed In A Hurry/00_System/001_Project_Metadata.md";
+
+    const damaged = await service.loadProject(movedFile);
+    expect(damaged.title).toBe("Chosen Name");
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "mismatched-project-folder",
+        path: "Snowflake Projects/Typed In A Hurry",
+        expected: "Chosen Name",
+        canOpen: false,
+        repairable: true,
+      }),
+    );
+
+    const repaired = await service.repairMissingStructureItem(
+      movedFile,
+      "Snowflake Projects/Typed In A Hurry",
+    );
+
+    expect(repaired.rootPath).toBe("Snowflake Projects/Chosen Name");
+    expect(repaired.title).toBe("Chosen Name");
+    expect(repaired.structureIssues).toEqual([]);
+    expect(fakeVault.getAbstractFileByPath("Snowflake Projects/Typed In A Hurry")).toBeNull();
+  });
+
+  it("leaves a project alone in the numbered folder its name had to take", async () => {
+    await fakeVault.seedFile("Snowflake Projects/Taken/note.md", "Not a project");
+    const project = await service.createProject({ name: "Taken" });
+
+    expect(project.rootPath).toBe("Snowflake Projects/Taken (2)");
+    expect(project.structureIssues).toEqual([]);
+  });
+
+  it("reports a project folder it cannot rename without offering the repair", async () => {
+    const project = await service.createProject({ name: "Blocked" });
+    fakeVault.rename(project.rootPath, "Snowflake Projects/Elsewhere");
+    await fakeVault.seedFile("Snowflake Projects/Blocked/note.md", "In the way");
+
+    const damaged = await service.loadProject(
+      "Snowflake Projects/Elsewhere/00_System/001_Project_Metadata.md",
+    );
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "mismatched-project-folder",
+        repairable: false,
+      }),
+    );
+  });
+
   it("reports a heading edited on its own and restores it", async () => {
     const project = await service.createProject({ name: "Heading Drift" });
     const character = await service.createCharacter(project, "Bob");
@@ -1896,7 +1978,7 @@ describe("SnowflakeProjectService", () => {
     expect(damaged.structureIssues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: "mismatched-note-title",
+          code: "mismatched-character-title",
           path: character.path,
           expected: "Bob",
           repairable: true,
@@ -1938,7 +2020,7 @@ describe("SnowflakeProjectService", () => {
     const snapshot = await service.loadProject(project.projectFile);
     expect(snapshot.structureIssues).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "mismatched-note-title" }),
+        expect.objectContaining({ code: "mismatched-character-title" }),
       ]),
     );
 

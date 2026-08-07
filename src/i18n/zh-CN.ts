@@ -212,8 +212,18 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.missing-artifact': '缺少必要的项目笔记。',
 	'projectStructure.issue.missing-system-template': '缺少必要的系统模板。',
 	'projectStructure.issue.missing-base': '缺少必要的项目数据库。',
-	'projectStructure.issue.mismatched-note-title':
-		'文件名或标题与笔记中保存的名称不一致。',
+	'projectStructure.issue.mismatched-character-title':
+		'文件名或标题与角色名称不一致。',
+	'projectStructure.action.mismatched-character-title':
+		'在此修复会将两者改为角色名称。\n若要重命名角色，请在角色表中编辑该角色。',
+	'projectStructure.issue.mismatched-scene-title':
+		'文件名或标题与场景名称不一致。',
+	'projectStructure.action.mismatched-scene-title':
+		'在此修复会将两者改为场景名称。\n若要重命名场景，请在场景表中编辑该场景。',
+	'projectStructure.issue.mismatched-project-folder':
+		'文件夹名称与项目名称不一致。',
+	'projectStructure.action.mismatched-project-folder':
+		'在此修复会重命名该文件夹。\n若要重命名项目，请使用项目管理器。',
 	'projectStructure.issue.invalid-system-template': '系统模板与当前项目格式不一致。',
 	'projectStructure.issue.invalid-artifact-metadata':
 		'必要的笔记元数据缺失或无效。',
@@ -321,6 +331,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.createCharacter': '新建角色“{name}”',
 	'modal.scene.povOmniscient': '全知视角',
 	'table.povMissing': '人物已不存在：{name}',
+	'table.nameDrifted': '笔记已不再使用该名称，请运行健康检查。',
 	'modal.scene.povMultiple': '多人视角',
 	'modal.scene.povRequired': '请选择视点人物或视角。',
 	'modal.scene.events': '具体事件',

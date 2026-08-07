@@ -1456,13 +1456,19 @@ export class RepairReportModal extends Modal {
 				copy.createSpan({ text: entry.message });
 				// Its own line: what is wrong and what to do about it are separate
 				// thoughts, and running them together wraps into an unreadable block.
-				if (entry.action !== null) {
+				// Where the advice is itself two thoughts -- what this button does,
+				// and where the name is changed instead -- they are split again.
+				for (const line of entry.action?.split('\n') ?? []) {
 					copy.createSpan({
 						cls: 'snowflake-method-repair-report-action',
-						text: entry.action,
+						text: line,
 					});
 				}
-				copy.createEl('small', { text: entry.path });
+				// A project's folder is named by the heading above already, and the
+				// path adds nothing when it is the same word twice.
+				if (entry.path !== entry.sectionLabel) {
+					copy.createEl('small', { text: entry.path });
+				}
 				if (entry.repairable || entry.canOpen) {
 					const itemActions = item.createDiv({
 						cls: 'snowflake-method-repair-report-item-actions',

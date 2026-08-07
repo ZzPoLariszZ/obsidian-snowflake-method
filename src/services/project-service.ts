@@ -681,7 +681,7 @@ export class SnowflakeProjectService {
       project,
       "draft",
       `${layout.directories.draft}/${layout.draftFileName}`,
-      draftTemplate(project.title, project.locale),
+      draftTemplate(project.locale),
       result,
     );
     await this.repository.updateFrontmatter(project.projectFile, {
@@ -754,7 +754,10 @@ export class SnowflakeProjectService {
       return this.loadProject(project.projectFile);
     }
 
-    if (issue.code === "mismatched-note-title") {
+    if (
+      issue.code === "mismatched-character-title" ||
+      issue.code === "mismatched-scene-title"
+    ) {
       // Frontmatter is the name the dashboard shows, so it wins; the heading and
       // file name are brought to it rather than the other way around.
       // safeFileName is lossy, so a file name cannot reconstruct a title.
@@ -771,6 +774,26 @@ export class SnowflakeProjectService {
         await this.refreshCharacterReferences(project, normalized, renamed, title);
       }
       return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "mismatched-project-folder") {
+      // The same rule one folder up: the stored name is the one the dashboard
+      // shows, so the folder is brought to it. An author who meant the folder
+      // name has Rename project, which sets both at once -- and only that way
+      // round is safe, because safeFileName drops what a folder cannot hold.
+      const folder = this.repository.getFolder(normalized);
+      if (folder === null) throw new ManagedFileNotFoundError(normalized);
+      const destination = normalizePath(
+        `${parentOf(normalized)}/${safeFileName(project.title)}`,
+      );
+      if (destination === normalized) return this.loadProject(project.projectFile);
+      if (this.repository.get(destination)) throw new PathConflictError(destination);
+      await this.repository.fileManager.renameFile(folder, destination);
+      return this.loadProject(
+        normalizePath(
+          `${destination}/${relativeToRoot(project.projectFile, normalized)}`,
+        ),
+      );
     }
 
     if (issue.code === "invalid-system-template") {
@@ -2130,6 +2153,30 @@ export class SnowflakeProjectService {
       });
     }
 
+    // The folder is what the Vault calls the project and the stored name is what
+    // the dashboard calls it, and Rename project is what keeps them the same. A
+    // folder renamed from the file explorer never reaches the stored name, and
+    // nothing else compares the two, so the project would go on answering to a
+    // name that is nowhere in the Vault without ever saying so.
+    const expectedFolder = trySafeFileName(project.title);
+    const projectFolder = normalizePath(project.rootPath);
+    if (
+      expectedFolder !== null &&
+      !stemMatchesTitle(basename(projectFolder), expectedFolder)
+    ) {
+      add({
+        code: "mismatched-project-folder",
+        path: projectFolder,
+        stepIds: [],
+        expected: project.title,
+        canOpen: false,
+        repairable:
+          !projectRecord.readOnly &&
+          this.repository.get(`${parentOf(projectFolder)}/${expectedFolder}`) ===
+            null,
+      });
+    }
+
     const layout = getProjectPathLayout(project.locale);
     const directorySteps: Readonly<
       Record<ProjectDirectoryKey, readonly StepId[]>
@@ -2310,7 +2357,10 @@ export class SnowflakeProjectService {
             heading !== null && heading !== normalizeHeading(storedTitle);
           if (fileNameDrifted || headingDrifted) {
             add({
-              code: "mismatched-note-title",
+              code:
+                documentType === "character"
+                  ? "mismatched-character-title"
+                  : "mismatched-scene-title",
               path: record.path,
               stepIds,
               expected: storedTitle,

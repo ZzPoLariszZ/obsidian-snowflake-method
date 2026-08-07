@@ -927,6 +927,28 @@ export class SnowflakeDashboardView extends ItemView {
 		).open();
 	}
 
+	/**
+	 * The name as the project stores it, marked when the note it belongs to no
+	 * longer carries it. The same warm colour a point of view that names nobody
+	 * gets: in both, the table is showing a name the Vault does not agree with.
+	 */
+	private renderTableName(
+		cell: HTMLElement,
+		name: string,
+		drifted: boolean,
+	): void {
+		if (!drifted) {
+			cell.createSpan({ text: name });
+			return;
+		}
+		const label = this.t('table.nameDrifted');
+		cell.createSpan({
+			cls: 'snowflake-method-table-missing-reference',
+			text: name,
+			attr: { 'aria-label': label, title: label },
+		});
+	}
+
 	private renderStepDescription(
 		panel: HTMLElement,
 		step: StepViewModel,
@@ -1462,7 +1484,7 @@ export class SnowflakeDashboardView extends ItemView {
 					title: character.name,
 				},
 			});
-			nameCell.createSpan({ text: character.name });
+			this.renderTableName(nameCell, character.name, character.nameDrifted);
 			if (characterDamaged) {
 				const warning = nameCell.createSpan({
 					cls: 'snowflake-method-table-health-warning',
@@ -1715,7 +1737,7 @@ export class SnowflakeDashboardView extends ItemView {
 				title: scene.title,
 			},
 		});
-		titleCell.createSpan({ text: scene.title });
+		this.renderTableName(titleCell, scene.title, scene.nameDrifted);
 		if (sceneDamaged) {
 			const warning = titleCell.createSpan({
 				cls: 'snowflake-method-table-health-warning',

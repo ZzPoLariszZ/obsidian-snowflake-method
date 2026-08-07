@@ -75,7 +75,6 @@ interface Copy {
   blankHint: string;
   characterTemplateTitle: string;
   sceneTemplateTitle: string;
-  projectTemplateTitle: string;
   materialTemplateTitle: string;
   archiveTemplateTitle: string;
 }
@@ -114,7 +113,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     blankHint: "Write here.",
     characterTemplateTitle: "Character",
     sceneTemplateTitle: "Scene",
-    projectTemplateTitle: "Project",
     materialTemplateTitle: "Material",
     archiveTemplateTitle: "Archive",
   },
@@ -150,7 +148,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     blankHint: "在这里写作。",
     characterTemplateTitle: "角色",
     sceneTemplateTitle: "场景",
-    projectTemplateTitle: "项目",
     materialTemplateTitle: "素材",
     archiveTemplateTitle: "存档",
   },
@@ -267,7 +264,7 @@ export function getSystemTemplates(
       id: "draft",
       documentType: "draft",
       fileName: fileNames.draft,
-      template: draftTemplate(copy.projectTemplateTitle, language),
+      template: draftTemplate(language),
     },
     {
       id: "material",
@@ -420,10 +417,16 @@ export function sceneTemplate(
   ]);
 }
 
-export function draftTemplate(projectName: string, language: TemplateLanguage): MarkdownTemplate {
+/**
+ * The heading names the note, not the project. A project's name is its own to
+ * change, and nothing carries a change into a draft: the manuscript is the
+ * author's prose from the first line, and rewriting a heading inside it to
+ * follow a rename would be editing their writing.
+ */
+export function draftTemplate(language: TemplateLanguage): MarkdownTemplate {
   const copy = COPY[language];
   return {
-    body: `# ${projectName} · ${copy.draftTitle}\n\n${copy.blankHint}\n`,
+    body: `# ${copy.draftTitle}\n\n${copy.blankHint}\n`,
     sections: [],
   };
 }

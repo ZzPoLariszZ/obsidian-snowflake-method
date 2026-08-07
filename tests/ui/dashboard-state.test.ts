@@ -170,6 +170,16 @@ describe('dashboard global structure issue placement', () => {
 		).toBe(true);
 	});
 
+	it('announces a project folder renamed out from under its stored name', () => {
+		expect(
+			shouldShowGlobalStructureIssue({
+				kind: 'structure',
+				code: 'mismatched-project-folder',
+				stepIds: [],
+			}),
+		).toBe(true);
+	});
+
 	it('leaves auxiliary missing folders to the manager and health report', () => {
 		expect(
 			shouldShowGlobalStructureIssue({

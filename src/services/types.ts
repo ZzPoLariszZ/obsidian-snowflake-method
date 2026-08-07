@@ -111,7 +111,11 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-system-template",
   "invalid-system-template",
   "missing-base",
-  "mismatched-note-title",
+  // One code per kind of name, because the sentence that explains the drift
+  // has to say which name it means and where that name is changed.
+  "mismatched-character-title",
+  "mismatched-scene-title",
+  "mismatched-project-folder",
   "invalid-artifact-metadata",
   "dangling-scene-pov",
   "dangling-scene-character",

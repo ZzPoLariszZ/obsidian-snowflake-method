@@ -77,10 +77,11 @@ export function dashboardRenderContinuity(
 }
 
 /**
- * Only project-wide, author-blocking structure problems belong above the
- * dashboard layout. Auxiliary folders such as Material and Archive still
- * participate in project health, but are surfaced by the project manager and
- * the full health report instead of interrupting every writing step.
+ * Only problems with the project itself belong above the dashboard layout:
+ * what it is called and what the plugin knows about it. Auxiliary folders such
+ * as Material and Archive still participate in project health, but are surfaced
+ * by the project manager and the full health report instead of interrupting
+ * every writing step.
  */
 export function shouldShowGlobalStructureIssue(
 	issue: Pick<
@@ -91,6 +92,10 @@ export function shouldShowGlobalStructureIssue(
 	return issue.kind === 'structure' && issue.stepIds.length === 0 && [
 		'missing-metadata-field',
 		'invalid-metadata-field',
+		// A folder renamed from the file explorer leaves the dashboard showing a
+		// name the Vault no longer uses. Nothing about that interrupts writing,
+		// which is exactly why it has to be said here rather than waited for.
+		'mismatched-project-folder',
 	].includes(issue.code);
 }
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	STORY_ARTIFACTS,
 	characterTemplate,
+	draftTemplate,
 	getStoryArtifacts,
 	getSystemTemplates,
 	projectTemplate,
@@ -138,6 +139,14 @@ describe('story artifact Markdown templates', () => {
 		expect(chinese).not.toContain('color:');
 		expect(chinese).toContain('请勿修改该元数据文件中的任何内容！');
 		expect(chinese).toContain('创作内容始终是普通 Markdown，停用插件后仍可直接编辑。');
+	});
+
+	// The project's name is not in the heading, and must not be: nothing carries
+	// a rename into a draft, and the plugin does not edit an author's prose to
+	// keep a name it wrote there up to date.
+	it('heads the draft with the note name alone', () => {
+		expect(draftTemplate('en').body).toBe('# Draft\n\nWrite here.\n');
+		expect(draftTemplate('zh-CN').body).toBe('# 初稿\n\n在这里写作。\n');
 	});
 
 	it('stores localized repair templates generated from the canonical note templates', () => {

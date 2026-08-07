@@ -233,8 +233,18 @@ export const en = {
 	'projectStructure.issue.missing-system-template':
 		'Required system template is missing.',
 	'projectStructure.issue.missing-base': 'Required project base is missing.',
-	'projectStructure.issue.mismatched-note-title':
-		'The file name or heading no longer matches the name stored in this note.',
+	'projectStructure.issue.mismatched-character-title':
+		'The file name or heading no longer matches the character name.',
+	'projectStructure.action.mismatched-character-title':
+		'Repairing here will bring both to the character name.\nTo rename the character, edit it in the character table.',
+	'projectStructure.issue.mismatched-scene-title':
+		'The file name or heading no longer matches the scene name.',
+	'projectStructure.action.mismatched-scene-title':
+		'Repairing here will bring both to the scene name.\nTo rename the scene, edit it in the scene table.',
+	'projectStructure.issue.mismatched-project-folder':
+		'The folder name no longer matches the project name.',
+	'projectStructure.action.mismatched-project-folder':
+		'Repairing here will rename the folder.\nTo rename the project, use the project manager.',
 	'projectStructure.issue.invalid-system-template':
 		'System template does not match the current project format.',
 	'projectStructure.issue.invalid-artifact-metadata':
@@ -358,6 +368,7 @@ export const en = {
 	'modal.scene.createCharacter': 'Create character “{name}”',
 	'modal.scene.povOmniscient': 'Omniscient',
 	'table.povMissing': 'Missing character: {name}',
+	'table.nameDrifted': 'The note no longer carries this name. Run the health check.',
 	'modal.scene.povMultiple': 'Multi-POV',
 	'modal.scene.povRequired': 'Choose a point of view.',
 	'modal.scene.events': 'Specific events',
