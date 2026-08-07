@@ -545,23 +545,34 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private openCreateProjectFromDashboard(): void {
-		this.openCreateProject(
+		void this.openCreateProject(
 			this.t,
 			this.projectLocale ?? this.host.getDefaultProjectLocale(),
 		);
 	}
 
-	private openCreateProject(t: Translate, locale: 'en' | 'zh-CN'): void {
-		new CreateProjectModal(
-			this.app,
-			t,
-			locale,
-			async (request) => {
-				const project = await this.host.createProject(request);
-				await this.host.selectProject(project.path);
-				await this.refresh();
-			},
-		).open();
+	private async openCreateProject(
+		t: Translate,
+		locale: 'en' | 'zh-CN',
+	): Promise<void> {
+		try {
+			const existing = await this.host.listProjects();
+			new CreateProjectModal(
+				this.app,
+				t,
+				locale,
+				existing.map((project) => project.title),
+				async (request) => {
+					const project = await this.host.createProject(request);
+					await this.host.selectProject(project.path);
+					await this.refresh();
+				},
+			).open();
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+		}
 	}
 
 	private bindProject(project: CreatedProject): void {
@@ -1317,7 +1328,7 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { type: 'button' },
 		});
 		add.disabled = model.readOnly;
-		add.addEventListener('click', () => this.openCreateCharacter());
+		add.addEventListener('click', () => this.openCreateCharacter(model));
 
 		if (step === 5) {
 			this.renderWritingHints(
@@ -1443,6 +1454,9 @@ export class SnowflakeDashboardView extends ItemView {
 				new CreateCharacterModal(
 					this.app,
 					this.t,
+					model.characters
+						.filter((candidate) => candidate.id !== character.id)
+						.map((candidate) => candidate.name),
 					async (request) => {
 						await this.host.updateCharacter(character.id, request);
 						await this.refresh();
@@ -1555,7 +1569,7 @@ export class SnowflakeDashboardView extends ItemView {
 			4,
 			this.t('actions.addMoreCharacters'),
 			model.readOnly,
-			() => this.openCreateCharacter(),
+			() => this.openCreateCharacter(model),
 		);
 	}
 
@@ -1790,11 +1804,16 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
-	private openCreateCharacter(): void {
-		new CreateCharacterModal(this.app, this.t, async (request) => {
-			await this.host.createCharacter(request);
-			await this.refresh();
-		}).open();
+	private openCreateCharacter(model: ProjectDashboardModel): void {
+		new CreateCharacterModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => character.name),
+			async (request) => {
+				await this.host.createCharacter(request);
+				await this.refresh();
+			},
+		).open();
 	}
 
 	private openCreateScene(model: ProjectDashboardModel): void {
@@ -1805,6 +1824,7 @@ export class SnowflakeDashboardView extends ItemView {
 				path: character.path,
 				name: character.name,
 			})),
+			model.scenes.map((scene) => scene.title),
 			async (request) => {
 				await this.host.createScene(request);
 				await this.refresh();
@@ -1850,12 +1870,20 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private creatingCharacter(
 		model: ProjectDashboardModel,
-	): ((name: string) => Promise<CharacterOption | null>) | null {
+	):
+		| ((
+				name: string,
+				takenNames: readonly string[],
+		  ) => Promise<CharacterOption | null>)
+		| null {
 		if (model.readOnly) return null;
-		return async (name) => {
+		// The taken names come from the scene form rather than from `model`, which
+		// was read before any character created from there existed.
+		return async (name, takenNames) => {
 			const created = await promptForNewCharacter(
 				this.app,
 				this.t,
+				takenNames,
 				name,
 				(request) => this.host.createCharacter(request),
 			);
@@ -1878,6 +1906,9 @@ export class SnowflakeDashboardView extends ItemView {
 				path: character.path,
 				name: character.name,
 			})),
+			model.scenes
+				.filter((candidate) => candidate.id !== scene.id)
+				.map((candidate) => candidate.title),
 			async (request) => {
 				await this.host.updateScene(scene.id, request);
 				await this.refresh();

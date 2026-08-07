@@ -2751,6 +2751,46 @@
 	max-width: 44rem;
 }
 
+/*
+ * A field's objection, sitting inside its row so the column gap that separates
+ * the label from the control separates the control from this too. Every form
+ * that names something uses it.
+ *
+ * The line is held whether or not there is anything to say. It costs one line
+ * per named field, and it buys a dialog that does not grow taller and shove
+ * everything below it down the moment a name turns out to be taken -- which is
+ * the exact moment the author is reading the field it happened to.
+ */
+.snowflake-method-field-warning {
+	min-height: calc(var(--font-ui-smaller) * 1.4);
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
+/*
+ * The rename dialog is the one that keeps Obsidian's own side-by-side row, with
+ * the label at one end and the field at the other. Left alone, the objection is
+ * squeezed in as a third item beside the field; wrapping it onto a line of its
+ * own puts it under the field, where the other three forms put it.
+ */
+.snowflake-method-rename-project-modal .setting-item {
+	flex-wrap: wrap;
+}
+
+.snowflake-method-rename-project-modal .snowflake-method-field-warning {
+	flex: 0 0 100%;
+	margin-top: var(--size-4-1);
+	text-align: end;
+}
+
+.snowflake-method-character-form input[aria-invalid='true'],
+.snowflake-method-scene-form input[aria-invalid='true'],
+.snowflake-method-project-form input[aria-invalid='true'],
+.snowflake-method-rename-project-modal input[aria-invalid='true'] {
+	border-color: var(--text-error);
+}
+
 .snowflake-method-character-form {
 	display: grid;
 	grid-template-columns: minmax(0, 2fr) minmax(13rem, 1fr);

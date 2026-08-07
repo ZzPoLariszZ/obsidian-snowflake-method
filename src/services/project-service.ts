@@ -12,8 +12,10 @@ import {
   createDefaultStepStatuses,
   enforceStepStatusDependencies,
   fingerprint,
+  foldName,
   isDocumentType,
   isCharacterType,
+  isNameTaken,
   isProjectLanguage,
   isScenePovMode,
   isStepStatus,
@@ -102,6 +104,34 @@ export class ProjectCreationInterruptedError extends Error {
       }`,
     );
     this.name = "ProjectCreationInterruptedError";
+  }
+}
+
+export type NamedRecordKind = "character" | "scene" | "project";
+
+/**
+ * A name another record of the same kind already answers to — a character or
+ * scene within one project, or a project within one root folder.
+ *
+ * Rejected rather than numbered like a file name, because a name is the whole of
+ * what the plugin shows: a scene's point of view, its cast tags, the project
+ * switcher, and the Bases views all present the name alone, so two that match
+ * leave the author choosing between rows they cannot tell apart. The folders and
+ * notes would disagree with it too — the second lands at "Ada (2)" while its
+ * frontmatter still reads "Ada", so the file explorer and the dashboard stop
+ * naming the same thing.
+ */
+export class DuplicateNameError extends Error {
+  constructor(
+    readonly kind: NamedRecordKind,
+    readonly requestedName: string,
+  ) {
+    super(
+      kind === "project"
+        ? `A project named "${requestedName}" already exists.`
+        : `A ${kind} named "${requestedName}" already exists in this project.`,
+    );
+    this.name = "DuplicateNameError";
   }
 }
 
@@ -284,6 +314,13 @@ export class SnowflakeProjectService {
     if (!isProjectLanguage(locale)) throw new Error(`Unsupported project language: ${String(locale)}`);
 
     const root = normalizePath(options.rootPath ?? this.defaultRoot);
+    // Scoped to the root the project is being made in, which is the only place
+    // its folder and its name can collide with anything.
+    this.assertNameAvailable(
+      "project",
+      (await this.discoverProjects(root)).map((candidate) => candidate.title),
+      title,
+    );
     await this.repository.ensureFolder(root);
     const requestedFolder = normalizePath(`${root}/${safeFileName(title)}`);
     const rootPath = this.repository.resolveUniquePath(requestedFolder);
@@ -320,10 +357,20 @@ export class SnowflakeProjectService {
     this.assertProjectWritable(project);
     const nextTitle = title.trim();
     if (!nextTitle) throw new Error("Project name is required.");
+    // Keeping its own name is not taking one, so only a change is checked --
+    // and against the siblings under its own root, where the folder would land.
+    const root = parentOf(project.rootPath);
+    if (foldName(nextTitle) !== foldName(project.title)) {
+      this.assertNameAvailable(
+        "project",
+        (await this.discoverProjects(root))
+          .filter((candidate) => candidate.id !== project.id)
+          .map((candidate) => candidate.title),
+        nextTitle,
+      );
+    }
 
-    const destinationRoot = normalizePath(
-      `${parentOf(project.rootPath)}/${safeFileName(nextTitle)}`,
-    );
+    const destinationRoot = normalizePath(`${root}/${safeFileName(nextTitle)}`);
     if (destinationRoot !== project.rootPath && this.repository.get(destinationRoot)) {
       throw new PathConflictError(destinationRoot);
     }
@@ -932,6 +979,11 @@ export class SnowflakeProjectService {
       typeof inputOrName === "string" ? { name: inputOrName, type: characterType } : inputOrName;
     const name = input.name.trim();
     if (!name) throw new Error("Character name is required.");
+    this.assertNameAvailable(
+      "character",
+      project.characters.map((candidate) => candidate.name),
+      name,
+    );
     const resolvedType = input.type ?? "major";
     if (!isCharacterType(resolvedType)) {
       throw new Error(`Unsupported character type: ${String(resolvedType)}`);
@@ -1029,6 +1081,27 @@ export class SnowflakeProjectService {
     if (!character) throw new ManagedFileNotFoundError(`character:${characterId}`);
     if (character.readOnly) throw new UnsupportedSchemaError(character.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     assertExpectedRevision(character.path, patch.expectedRevision, character.revision);
+    // Before the write rather than beside the rename below: the rename is the
+    // last thing this does, so a name refused there would already have saved
+    // every other field of a form the author was told had failed.
+    //
+    // Keeping the name it already has is never taking one, so a character that
+    // duplicates another from before this was refused is still free to have the
+    // rest of its form edited -- it is only the taking that is stopped.
+    const nextName = patch.name?.trim();
+    if (
+      nextName !== undefined &&
+      nextName.length > 0 &&
+      foldName(nextName) !== foldName(character.name)
+    ) {
+      this.assertNameAvailable(
+        "character",
+        project.characters
+          .filter((candidate) => candidate.characterId !== characterId)
+          .map((candidate) => candidate.name),
+        nextName,
+      );
+    }
 
     const frontmatterPatch: ManagedFrontmatter = {};
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.characterName, patch.name?.trim());
@@ -1057,7 +1130,6 @@ export class SnowflakeProjectService {
       rollbackValues,
     );
 
-    const nextName = patch.name?.trim();
     let path = character.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
       await this.syncNoteHeading(path, nextName);
@@ -1213,6 +1285,11 @@ export class SnowflakeProjectService {
     const input: SceneInput = typeof inputOrTitle === "string" ? { title: inputOrTitle } : inputOrTitle;
     const title = input.title.trim();
     if (!title) throw new Error("Scene title is required.");
+    this.assertNameAvailable(
+      "scene",
+      project.scenes.map((candidate) => candidate.title),
+      title,
+    );
     const scenes = project.scenes;
     const rank = scenes.length === 0 ? RANK_GAP : scenes[scenes.length - 1]!.rank + RANK_GAP;
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe scene rank.");
@@ -1339,6 +1416,22 @@ export class SnowflakeProjectService {
     if (!scene) throw new ManagedFileNotFoundError(`scene:${sceneId}`);
     if (scene.readOnly) throw new UnsupportedSchemaError(scene.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     assertExpectedRevision(scene.path, patch.expectedRevision, scene.revision);
+    // Before the write, and skipped for a title the scene already has, for the
+    // two reasons the character form gives.
+    const nextTitle = patch.title?.trim();
+    if (
+      nextTitle !== undefined &&
+      nextTitle.length > 0 &&
+      foldName(nextTitle) !== foldName(scene.title)
+    ) {
+      this.assertNameAvailable(
+        "scene",
+        project.scenes
+          .filter((candidate) => candidate.sceneId !== sceneId)
+          .map((candidate) => candidate.title),
+        nextTitle,
+      );
+    }
     const characterNames = new Map(
       project.characters.map((character) => [character.path, character.name]),
     );
@@ -1378,7 +1471,6 @@ export class SnowflakeProjectService {
     );
 
     // Nothing links to a scene, so renaming one needs no reference sweep.
-    const nextTitle = patch.title?.trim();
     let path = scene.path;
     if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
       await this.syncNoteHeading(path, nextTitle);
@@ -2584,6 +2676,24 @@ export class SnowflakeProjectService {
   private assertProjectWritable(project: ProjectRef): void {
     if (project.readOnly) throw new UnsupportedSchemaError(project.projectFile, SCHEMA_VERSION + 1, SCHEMA_VERSION);
   }
+
+  /**
+   * Refuses a name the project has already given out. Checked before anything is
+   * written, so a rejected create leaves no note behind and a rejected rename
+   * leaves the note it was asked about exactly as it was.
+   *
+   * Read-only characters and scenes hold their names too: the plugin cannot edit
+   * them, but it still shows them, so a new one matching would be every bit as
+   * ambiguous as a pair it could edit.
+   */
+  private assertNameAvailable(
+    kind: NamedRecordKind,
+    taken: readonly string[],
+    name: string,
+  ): void {
+    if (!isNameTaken(taken, name)) return;
+    throw new DuplicateNameError(kind, name);
+  }
 }
 
 function schemaCanBeSafelyPatched(frontmatter: ManagedFrontmatter): boolean {
@@ -3168,9 +3278,10 @@ function trySafeFileName(value: string): string | null {
 }
 
 /**
- * Two notes may legitimately share a title, in which case creation and rename
- * both fall back to a numbered file name. Treating that as drift would report a
- * defect on an ordinary duplicate name.
+ * A name whose note is already occupied — most often by something outside the
+ * project sharing the folder — falls back to a numbered file, on creation and on
+ * rename alike. Treating that as drift would report a defect on the only file
+ * name that was available.
  */
 function stemMatchesTitle(stem: string, expected: string): boolean {
   if (stem === expected) return true;

@@ -161,6 +161,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'errors.invalidProject': '这不是有效的雪花写作项目。',
 	'errors.fileMissing': '找不到笔记“{path}”。',
 	'errors.projectExists': '名为“{name}”的项目已存在。',
+	'errors.characterExists': '本项目中已有名为“{name}”的角色。',
+	'errors.sceneExists': '本项目中已有名为“{name}”的场景。',
 	'errors.markerMissing':
 		'托管区段的边界标记缺失。请先修复项目，再编辑此区段。',
 	'errors.concurrentChange':
@@ -257,6 +259,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.project.namePlaceholder': '我的小说',
 	'modal.project.language': '项目语言',
 	'modal.project.nameRequired': '请输入项目名称。',
+	'modal.project.nameTaken': '已有同名项目。',
 	'modal.projectManager.title': '管理雪花写作项目',
 	'modal.projectManager.projects': '项目',
 	'modal.projectManager.version': '版本 {version}',
@@ -295,6 +298,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.character.growth': '成长',
 	'modal.character.growthPlaceholder': '角色将学到什么，又会如何改变？',
 	'modal.character.nameRequired': '请输入角色姓名。',
+	'modal.character.nameTaken': '已有同名角色。',
 	'character.major': '主角',
 	'character.supporting': '配角',
 	'character.minor': '次要角色',
@@ -328,6 +332,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.conflictPlaceholder': '什么冲突推动着这个场景？',
 	'modal.scene.eventsPlaceholder': '这个场景中具体发生了什么？',
 	'modal.scene.nameRequired': '请输入场景名称。',
+	'modal.scene.nameTaken': '已有同名场景。',
 	'steps.titleFormat': '{number}、{title}',
 	'steps.number.1': '一',
 	'steps.number.2': '二',

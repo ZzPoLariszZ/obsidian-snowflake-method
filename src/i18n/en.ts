@@ -177,6 +177,9 @@ export const en = {
 	'errors.invalidProject': 'This is not a valid Snowflake project.',
 	'errors.fileMissing': 'The note “{path}” could not be found.',
 	'errors.projectExists': 'A project named “{name}” already exists.',
+	'errors.characterExists':
+		'A character named “{name}” already exists in this project.',
+	'errors.sceneExists': 'A scene named “{name}” already exists in this project.',
 	'errors.markerMissing':
 		'The managed section markers are missing. Repair the project before editing this section.',
 	'errors.concurrentChange':
@@ -285,6 +288,7 @@ export const en = {
 	'modal.project.namePlaceholder': 'My novel',
 	'modal.project.language': 'Project language',
 	'modal.project.nameRequired': 'Enter a project name.',
+	'modal.project.nameTaken': 'Another project already has this name.',
 	'modal.projectManager.title': 'Manage Snowflake projects',
 	'modal.projectManager.projects': 'Projects',
 	'modal.projectManager.version': 'Version {version}',
@@ -328,6 +332,7 @@ export const en = {
 	'modal.character.growthPlaceholder':
 		'What will he/she learn and how will he/she change?',
 	'modal.character.nameRequired': 'Enter a character name.',
+	'modal.character.nameTaken': 'Another character already has this name.',
 	'character.major': 'Major character',
 	'character.supporting': 'Supporting character',
 	'character.minor': 'Minor character',
@@ -364,6 +369,7 @@ export const en = {
 	'modal.scene.conflictPlaceholder': 'What conflict drives this scene?',
 	'modal.scene.eventsPlaceholder': 'What specifically happens in this scene?',
 	'modal.scene.nameRequired': 'Enter a scene name.',
+	'modal.scene.nameTaken': 'Another scene already has this name.',
 	'steps.titleFormat': '{number}. {title}',
 	'steps.number.1': '1',
 	'steps.number.2': '2',

@@ -14,6 +14,7 @@ import {
   parseMarkdownFrontmatter,
 } from "../../src/repository";
 import {
+  DuplicateNameError,
   FRONTMATTER_KEYS,
   ProjectCreationInterruptedError,
   SnowflakeProjectService,
@@ -586,9 +587,13 @@ describe("SnowflakeProjectService", () => {
 
   it("uses a unique project folder and discovers projects only one level below the root", async () => {
     const first = await service.createProject({ name: "Novel" });
-    const second = await service.createProject({ name: "Novel" });
+    // No project may take another's name, but a folder the author already keeps
+    // under the root claims none -- so the project takes the next name along
+    // rather than moving into it.
+    await fakeVault.ensureFolders("Snowflake Projects/Sequel");
+    const second = await service.createProject({ name: "Sequel" });
     expect(first.rootPath).toBe("Snowflake Projects/Novel");
-    expect(second.rootPath).toBe("Snowflake Projects/Novel (2)");
+    expect(second.rootPath).toBe("Snowflake Projects/Sequel (2)");
 
     const nestedPath = `${first.rootPath}/Nested`;
     await fakeVault.ensureFolders(nestedPath);
@@ -604,6 +609,56 @@ describe("SnowflakeProjectService", () => {
 
     const discovered = await service.discoverProjects();
     expect(discovered.map((project) => project.id)).toEqual([first.id, second.id]);
+  });
+
+  it("refuses a project taking a name another project already has", async () => {
+    await service.createProject({ name: "Novel" });
+
+    await expect(service.createProject({ name: "Novel" })).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+    await expect(service.createProject({ name: "  novel " })).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+
+    expect(await service.discoverProjects()).toHaveLength(1);
+    // Nothing was left behind by either attempt.
+    expect(fakeVault.getAbstractFileByPath("Snowflake Projects/Novel (2)")).toBeNull();
+  });
+
+  // The name only has to be free where the project's folder lands, so the same
+  // name under a different root is a different project, not a duplicate.
+  it("scopes a project name to the root it is created in", async () => {
+    await service.createProject({ name: "Novel" });
+    const elsewhere = await service.createProject({
+      name: "Novel",
+      rootPath: "Archive",
+    });
+
+    expect(elsewhere.rootPath).toBe("Archive/Novel");
+  });
+
+  it("refuses a project rename onto a name another project has", async () => {
+    const novel = await service.createProject({ name: "Novel" });
+    const sequel = await service.createProject({ name: "Sequel" });
+
+    await expect(service.renameProject(sequel.projectFile, "Novel")).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+
+    // Neither project moved.
+    expect(fakeVault.getAbstractFileByPath(novel.rootPath)).not.toBeNull();
+    expect(fakeVault.getAbstractFileByPath(sequel.rootPath)).not.toBeNull();
+  });
+
+  it("lets a project keep its own name through a rename", async () => {
+    await service.createProject({ name: "Novel" });
+    const sequel = await service.createProject({ name: "Sequel" });
+
+    const renamed = await service.renameProject(sequel.projectFile, "Sequel");
+
+    expect(renamed.title).toBe("Sequel");
+    expect(renamed.rootPath).toBe(sequel.rootPath);
   });
 
   it("creates and discovers projects directly below the Vault root", async () => {
@@ -874,9 +929,9 @@ describe("SnowflakeProjectService", () => {
 	  oneParagraphStoryline: "Ada escapes one trap and discovers a larger one.",
       characterSynopsis: "Ada tells the story.",
     });
-    const duplicate = await service.createCharacter(project, "Ada", "supporting");
+    const grace = await service.createCharacter(project, "Grace", "supporting");
     expect(ada.path).toMatch(/20_Character\/Ada\.md$/u);
-    expect(duplicate.path).toMatch(/20_Character\/Ada \(2\)\.md$/u);
+    expect(grace.path).toMatch(/20_Character\/Grace\.md$/u);
 
     const renamedPath = `${project.rootPath}/20_Character/Ada Lovelace.md`;
     fakeVault.rename(ada.path, renamedPath);
@@ -902,7 +957,7 @@ describe("SnowflakeProjectService", () => {
     // creation order rather than by the renamed file name.
     expect((await service.listCharacters(project)).map((character) => character.characterId)).toEqual([
       ada.characterId,
-      duplicate.characterId,
+      grace.characterId,
     ]);
   });
 
@@ -1519,9 +1574,13 @@ describe("SnowflakeProjectService", () => {
     expect(renamed.sceneId).toBe(scene.sceneId);
   });
 
+  // No character may take another's name, but the note it wants can still be
+  // occupied by something outside the project -- an ordinary note the author
+  // keeps in the same folder.
   it("keeps a rename that collides with another note on a distinct file", async () => {
     const project = await service.createProject({ name: "Collision" });
-    const alice = await service.createCharacter(project, "Alice");
+    const stray = `${project.rootPath}/20_Character/Alice.md`;
+    await service.repository.createPlainFile(stray, "Notes about Alice.\n");
     const bob = await service.createCharacter(project, "Bob");
 
     const renamed = await service.updateCharacter(project, bob.characterId, {
@@ -1530,23 +1589,146 @@ describe("SnowflakeProjectService", () => {
     });
 
     expect(renamed.path).toBe(`${project.rootPath}/20_Character/Alice (2).md`);
-    expect(fakeVault.getFileByPath(alice.path)).not.toBeNull();
+    expect(fakeVault.getFileByPath(stray)).not.toBeNull();
     expect(renamed.name).toBe("Alice");
   });
 
-  it("accepts a numbered file name for a duplicated title", async () => {
+  it("accepts a numbered file name when the note a name asks for is taken", async () => {
     const project = await service.createProject({ name: "Duplicates" });
-    await service.createCharacter(project, "Alice");
+    await service.repository.createPlainFile(
+      `${project.rootPath}/20_Character/Alice.md`,
+      "Notes about Alice.\n",
+    );
     await service.createCharacter(project, "Alice");
 
     const snapshot = await service.loadProject(project.projectFile);
 
-    // Two characters may share a name, so the numbered file is not drift.
+    // The numbered file is the only one left, so it is not drift.
     expect(snapshot.structureIssues).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "mismatched-note-title" }),
       ]),
     );
+  });
+
+  it("refuses a character taking a name another character already has", async () => {
+    const project = await service.createProject({ name: "Duplicate names" });
+    const alice = await service.createCharacter(project, "Alice");
+
+    await expect(service.createCharacter(project, "Alice")).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+    // Casing and spacing are not a difference a reader can see, and the file name
+    // collapses both anyway.
+    await expect(
+      service.createCharacter(project, "  alice  "),
+    ).rejects.toBeInstanceOf(DuplicateNameError);
+
+    // Nothing was written for either attempt.
+    expect(await service.listCharacters(project)).toHaveLength(1);
+    expect(fakeVault.getFileByPath(alice.path)).not.toBeNull();
+  });
+
+  it("refuses a scene taking a title another scene already has", async () => {
+    const project = await service.createProject({ name: "Duplicate titles" });
+    await service.createScene(project, "Arrival");
+
+    await expect(service.createScene(project, "arrival")).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+
+    expect(await service.listScenes(project)).toHaveLength(1);
+  });
+
+  it("refuses a rename onto a taken name without saving the rest of the form", async () => {
+    const project = await service.createProject({ name: "Rename collision" });
+    await service.createCharacter(project, "Alice");
+    const bob = await service.createCharacter(project, { name: "Bob", goal: "Original goal" });
+    const before = fakeVault.contents.get(bob.path) ?? "";
+
+    await expect(
+      service.updateCharacter(project, bob.characterId, {
+        expectedRevision: bob.revision,
+        name: "Alice",
+        goal: "A goal that must not be saved on its own",
+      }),
+    ).rejects.toBeInstanceOf(DuplicateNameError);
+
+    expect(fakeVault.contents.get(bob.path)).toBe(before);
+  });
+
+  it("lets a character keep its own name while other fields change", async () => {
+    const project = await service.createProject({ name: "Same name" });
+    await service.createCharacter(project, "Alice");
+    const bob = await service.createCharacter(project, "Bob");
+
+    const updated = await service.updateCharacter(project, bob.characterId, {
+      expectedRevision: bob.revision,
+      name: "Bob",
+      goal: "Escape",
+    });
+
+    expect(updated.name).toBe("Bob");
+    expect(updated.goal).toBe("Escape");
+    expect(updated.path).toBe(bob.path);
+  });
+
+  // Projects written before duplicates were refused may hold a pair of them.
+  // Keeping a name is not taking one, so the twin is still editable rather than
+  // held to ransom for a rename the author did not ask to make.
+  it("lets a character that already shares a name edit its other fields", async () => {
+    const project = await service.createProject({ name: "Legacy duplicate" });
+    await service.createCharacter(project, "Alice");
+    const twin = await service.createCharacter(project, "Bob");
+    // Renamed straight in the frontmatter, past the service, which is how a
+    // project written by a version that allowed duplicates already looks.
+    await service.repository.updateFrontmatter(twin.path, {
+      [FRONTMATTER_KEYS.characterName]: "Alice",
+    });
+    const [, duplicated] = await service.listCharacters(project);
+    expect(duplicated!.name).toBe("Alice");
+
+    const updated = await service.updateCharacter(project, duplicated!.characterId, {
+      expectedRevision: duplicated!.revision,
+      name: "Alice",
+      goal: "Escape",
+    });
+
+    expect(updated.goal).toBe("Escape");
+    expect(updated.name).toBe("Alice");
+  });
+
+  it("still refuses a third character taking the name of a legacy pair", async () => {
+    const project = await service.createProject({ name: "Legacy pair" });
+    await service.createCharacter(project, "Alice");
+    const twin = await service.createCharacter(project, "Bob");
+    await service.repository.updateFrontmatter(twin.path, {
+      [FRONTMATTER_KEYS.characterName]: "Alice",
+    });
+
+    await expect(service.createCharacter(project, "Alice")).rejects.toBeInstanceOf(
+      DuplicateNameError,
+    );
+  });
+
+  it("refuses a scene rename onto a taken title without saving the rest", async () => {
+    const project = await service.createProject({ name: "Scene rename collision" });
+    await service.createScene(project, "Arrival");
+    const departure = await service.createScene(project, {
+      title: "Departure",
+      conflict: "Original conflict",
+    });
+    const before = fakeVault.contents.get(departure.path) ?? "";
+
+    await expect(
+      service.updateScene(project, departure.sceneId, {
+        expectedRevision: departure.revision,
+        title: "Arrival",
+        conflict: "A conflict that must not be saved on its own",
+      }),
+    ).rejects.toBeInstanceOf(DuplicateNameError);
+
+    expect(fakeVault.contents.get(departure.path)).toBe(before);
   });
 
   it("reports a file name that drifted from the stored name and repairs it", async () => {

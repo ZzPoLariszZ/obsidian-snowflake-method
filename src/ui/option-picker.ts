@@ -1,5 +1,7 @@
 import { AbstractInputSuggest, App, setIcon } from 'obsidian';
 
+import { isNameTaken } from '../domain';
+
 export interface PickerOption {
 	value: string;
 	label: string;
@@ -43,15 +45,20 @@ export function optionsMatching<T extends { label: string }>(
  * than whitespace, and not the name of an option they could simply pick. The
  * comparison spans every option, not just the matches, so a name already taken
  * by a picked one is never offered a second time.
+ *
+ * Sameness is the same question the create form goes on to ask, so both are
+ * settled by `isNameTaken`: a row offering to create a name the form would then
+ * refuse is a dead end the author only finds out about after filling it in.
  */
 export function offersCreating(
 	options: readonly { label: string }[],
 	query: string,
 ): boolean {
-	const typed = query.trim();
-	if (typed.length === 0) return false;
-	const folded = typed.toLocaleLowerCase();
-	return !options.some((option) => option.label.toLocaleLowerCase() === folded);
+	if (query.trim().length === 0) return false;
+	return !isNameTaken(
+		options.map((option) => option.label),
+		query,
+	);
 }
 
 /**

@@ -97,6 +97,12 @@ describe('offering to create what was typed', () => {
 		expect(offersCreating(options, '  ada LOVELACE ')).toBe(false);
 	});
 
+	// Sameness is settled by the same rule the create form applies, so the row is
+	// never offered for a name that form would go on to refuse.
+	it('treats a name taken but for its inner spacing as taken too', () => {
+		expect(offersCreating(options, 'Ada  Lovelace')).toBe(false);
+	});
+
 	// The mode labels are options too, so "Omniscient" is a name already spoken
 	// for rather than a character waiting to be created.
 	it('does not offer a name a point-of-view mode already uses', () => {

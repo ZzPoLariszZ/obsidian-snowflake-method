@@ -13,7 +13,9 @@ import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	addSceneCastMember,
+	foldName,
 	isChoosableScenePov,
+	isNameTaken,
 	normalizeSceneCast,
 	type CharacterType,
 	type SceneCharacterUsage,
@@ -156,6 +158,74 @@ class ProjectRootSuggest extends AbstractInputSuggest<TFolder> {
 
 type SubmitHandler<T> = (value: T) => Promise<void>;
 
+/**
+ * The rule that a name may not be one another record of its kind already
+ * answers to, wired to the field holding it: an objection under the field as it
+ * is typed, the field marked invalid to match, and the same objection standing
+ * in the way of a submit.
+ *
+ * The line keeps its place whether or not it has anything to say, so answering
+ * never moves the form under the author — the stylesheet holds the height, and
+ * this only ever changes the words.
+ *
+ * Keeping the name a record already has is not taking one, so it is always
+ * allowed. That is what lets a pair sharing a name from before this rule
+ * existed still be edited, rather than being held to a rename first.
+ */
+class UniqueNameField {
+	private warningEl: HTMLElement | null = null;
+	private inputEl: HTMLInputElement | null = null;
+
+	constructor(
+		/** The names every other record of the same kind answers to. */
+		private readonly taken: readonly string[],
+		/** The name this record already has, or null for one being created. */
+		private readonly currentName: string | null,
+		/** Read late, so a form that redraws in another language re-reads it. */
+		private readonly message: () => string,
+	) {}
+
+	/**
+	 * Puts the objection inside the field's own row rather than after it: these
+	 * forms are grids, where a line of its own would be placed as a cell and land
+	 * a column's gap away from the field it is about.
+	 */
+	attach(row: HTMLElement, input: HTMLInputElement | null, value: string): void {
+		this.inputEl = input;
+		this.warningEl = row.createDiv({
+			cls: 'snowflake-method-field-warning',
+			attr: { role: 'alert' },
+		});
+		this.show(value);
+	}
+
+	/** Re-reads the field. Called on the way in and on every keystroke after. */
+	show(value: string): void {
+		const objection = this.objection(value);
+		this.warningEl?.setText(objection ?? '');
+		if (this.inputEl === null) return;
+		if (objection === null) this.inputEl.removeAttribute('aria-invalid');
+		else this.inputEl.setAttribute('aria-invalid', 'true');
+	}
+
+	/**
+	 * What is wrong with `value`, or null when nothing is. An empty field has no
+	 * objection here; the required check speaks for it, and has something more
+	 * useful to say.
+	 */
+	objection(value: string): string | null {
+		const name = value.trim();
+		if (name.length === 0) return null;
+		if (
+			this.currentName !== null &&
+			foldName(name) === foldName(this.currentName)
+		) {
+			return null;
+		}
+		return isNameTaken(this.taken, name) ? this.message() : null;
+	}
+}
+
 function isCrossWindowHTMLElement(
 	target: EventTarget | null,
 ): target is HTMLElement {
@@ -239,30 +309,49 @@ abstract class SnowflakeFormModal<T> extends Modal {
 export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest> {
 	private title = '';
 	private locale: ProjectLocale;
+	private name: UniqueNameField;
 
 	constructor(
 		app: App,
 		t: Translate,
 		defaultLocale: ProjectLocale,
+		/** The names the other projects under the same root already answer to. */
+		private readonly takenNames: readonly string[],
 		onSubmit: SubmitHandler<CreateProjectRequest>,
 	) {
 		super(app, t, t('modal.project.title'), onSubmit);
 		this.modalEl.addClass('snowflake-method-project-modal');
 		this.locale = defaultLocale;
+		this.name = this.uniqueName();
+	}
+
+	/**
+	 * Rebuilt with the form, because changing the language redraws it — and the
+	 * old field is left holding a line that is no longer in the document.
+	 */
+	private uniqueName(): UniqueNameField {
+		return new UniqueNameField(this.takenNames, null, () =>
+			this.t('modal.project.nameTaken'),
+		);
 	}
 
 	protected buildForm(): void {
 		this.contentEl.addClass('snowflake-method-project-form');
-		new Setting(this.contentEl)
+		this.name = this.uniqueName();
+		let inputEl: HTMLInputElement | null = null;
+		const name = new Setting(this.contentEl)
 			.setName(this.t('modal.project.name'))
-			.addText((text) =>
+			.addText((text) => {
+				inputEl = text.inputEl;
 				text
 					.setPlaceholder(this.t('modal.project.namePlaceholder'))
 					.setValue(this.title)
 					.onChange((value) => {
 						this.title = value;
-					}),
-			);
+						this.name.show(value);
+					});
+			});
+		this.name.attach(name.settingEl, inputEl, this.title);
 
 		new Setting(this.contentEl)
 			.setName(this.t('modal.project.language'))
@@ -285,6 +374,11 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 		const title = this.title.trim();
 		if (title.length === 0) {
 			new Notice(this.t('modal.project.nameRequired'));
+			return null;
+		}
+		const objection = this.name.objection(title);
+		if (objection !== null) {
+			new Notice(objection);
 			return null;
 		}
 
@@ -680,10 +774,18 @@ export class ManageProjectsModal extends Modal {
 	}
 
 	private openRenameProject(project: ManageProjectOption): void {
-		new RenameProjectModal(this.app, this.t, project.title, async (title) => {
-			this.projects = await this.onRenameProject(project, title);
-			this.renderManager();
-		}).open();
+		new RenameProjectModal(
+			this.app,
+			this.t,
+			project.title,
+			this.projects
+				.filter((candidate) => candidate.projectId !== project.projectId)
+				.map((candidate) => candidate.title),
+			async (title) => {
+				this.projects = await this.onRenameProject(project, title);
+				this.renderManager();
+			},
+		).open();
 	}
 
 	private async openProjectMetadata(path: string): Promise<void> {
@@ -827,26 +929,36 @@ export class ManageProjectsModal extends Modal {
 
 class RenameProjectModal extends SnowflakeFormModal<string> {
 	private value: string;
+	private readonly name: UniqueNameField;
 
 	constructor(
 		app: App,
 		t: Translate,
 		initialValue: string,
+		/** The names the other projects under the same root already answer to. */
+		takenNames: readonly string[],
 		onSubmit: SubmitHandler<string>,
 	) {
 		super(app, t, t('modal.projectManager.renameTitle'), onSubmit, 'common.save');
 		this.value = initialValue;
+		this.name = new UniqueNameField(takenNames, initialValue, () =>
+			this.t('modal.project.nameTaken'),
+		);
 		this.modalEl.addClass('snowflake-method-rename-project-modal');
 	}
 
 	protected buildForm(): void {
-		new Setting(this.contentEl)
+		let inputEl: HTMLInputElement | null = null;
+		const name = new Setting(this.contentEl)
 			.setName(this.t('modal.project.name'))
-			.addText((text) =>
+			.addText((text) => {
+				inputEl = text.inputEl;
 				text.setValue(this.value).onChange((value) => {
 					this.value = value;
-				}),
-			);
+					this.name.show(value);
+				});
+			});
+		this.name.attach(name.settingEl, inputEl, this.value);
 	}
 
 	protected collectValue(): string | null {
@@ -855,16 +967,28 @@ class RenameProjectModal extends SnowflakeFormModal<string> {
 			new Notice(this.t('modal.project.nameRequired'));
 			return null;
 		}
+		const objection = this.name.objection(value);
+		if (objection !== null) {
+			new Notice(objection);
+			return null;
+		}
 		return value;
 	}
 }
 
 export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequest> {
 	private readonly value: CreateCharacterRequest;
+	private readonly name: UniqueNameField;
 
 	constructor(
 		app: App,
 		t: Translate,
+		/**
+		 * The names the project's other characters already answer to. Editing one
+		 * passes every name but its own, so saving a form without touching the name
+		 * is never mistaken for claiming a name that is already taken.
+		 */
+		takenNames: readonly string[],
 		onSubmit: SubmitHandler<CreateCharacterRequest>,
 		initial?: CreateCharacterRequest,
 		/**
@@ -883,6 +1007,9 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			initial === undefined ? 'common.create' : 'common.save',
 		);
 		this.modalEl.addClass('snowflake-method-character-modal');
+		this.name = new UniqueNameField(takenNames, initial?.name ?? null, () =>
+			this.t('modal.character.nameTaken'),
+		);
 		this.value = initial === undefined
 			? {
 					name: presetName ?? '',
@@ -933,6 +1060,14 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			new Notice(this.t('modal.character.nameRequired'));
 			return null;
 		}
+		const objection = this.name.objection(this.value.name);
+		if (objection !== null) {
+			// Also as a notice: the line under the field has been showing all along,
+			// but a long form scrolls it out of sight, and a submit that appears to
+			// do nothing is worse than one that says why.
+			new Notice(objection);
+			return null;
+		}
 		return { ...this.value };
 	}
 
@@ -952,13 +1087,19 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			`snowflake-method-character-${key}-setting`,
 		);
 		if (key === 'name') {
-			setting.addText((text) =>
-				text
-					.setValue(this.value[key])
-					.onChange((value) => {
-						this.value[key] = value;
-					}),
-			);
+			let inputEl: HTMLInputElement | null = null;
+			setting.addText((text) => {
+				inputEl = text.inputEl;
+				text.setValue(this.value[key]).onChange((value) => {
+					this.value[key] = value;
+					// On every keystroke, so a name already taken is answered while the
+					// author is still typing it rather than after they submit.
+					this.name.show(value);
+				});
+			});
+			// A name carried in from a scene may be taken before a key is pressed, so
+			// the line starts out saying whatever it would say for what is there.
+			this.name.attach(setting.settingEl, inputEl, this.value[key]);
 			return;
 		}
 		const placeholderKey =
@@ -991,11 +1132,12 @@ class NewCharacterPrompt extends CreateCharacterModal {
 	constructor(
 		app: App,
 		t: Translate,
+		takenNames: readonly string[],
 		presetName: string,
 		onSubmit: SubmitHandler<CreateCharacterRequest>,
 		private readonly settle: () => void,
 	) {
-		super(app, t, onSubmit, undefined, presetName);
+		super(app, t, takenNames, onSubmit, undefined, presetName);
 	}
 
 	// Closing is the one thing both ways out of the form have in common: a
@@ -1014,6 +1156,7 @@ class NewCharacterPrompt extends CreateCharacterModal {
 export function promptForNewCharacter(
 	app: App,
 	t: Translate,
+	takenNames: readonly string[],
 	presetName: string,
 	create: (request: CreateCharacterRequest) => Promise<CharacterOption>,
 ): Promise<CharacterOption | null> {
@@ -1022,6 +1165,7 @@ export function promptForNewCharacter(
 		new NewCharacterPrompt(
 			app,
 			t,
+			takenNames,
 			presetName,
 			async (request) => {
 				outcome.created = await create(request);
@@ -1044,20 +1188,34 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private events = '';
 	private expectedRevision: string | undefined;
 	private readonly pickers: OptionPicker[] = [];
+	private readonly name: UniqueNameField;
 
 	constructor(
 		app: App,
 		t: Translate,
 		characters: CharacterOption[],
+		/**
+		 * The titles the project's other scenes already answer to. Editing one
+		 * passes every title but its own, so saving a form without touching the
+		 * title is never mistaken for claiming a title that is already taken.
+		 */
+		takenTitles: readonly string[],
 		onSubmit: SubmitHandler<CreateSceneRequest>,
 		initial?: CreateSceneRequest,
 		/**
 		 * Creates a character the scene needs but the project lacks, reporting it
 		 * back so the field can select it. Null when no character can be created
 		 * from here, which leaves the fields offering only what already exists.
+		 *
+		 * Told which names are taken, from this modal's own list rather than the
+		 * dashboard's: characters created from here are added to it as they arrive,
+		 * while the view behind was drawn before any of them existed.
 		 */
 		private readonly onCreateCharacter:
-			| ((name: string) => Promise<CharacterOption | null>)
+			| ((
+					name: string,
+					takenNames: readonly string[],
+			  ) => Promise<CharacterOption | null>)
 			| null = null,
 	) {
 		super(
@@ -1069,6 +1227,9 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		);
 		this.modalEl.addClass('snowflake-method-scene-modal');
 		this.characters = [...characters];
+		this.name = new UniqueNameField(takenTitles, initial?.title ?? null, () =>
+			this.t('modal.scene.nameTaken'),
+		);
 		if (initial !== undefined) {
 			this.title = initial.title;
 			this.time = initial.time;
@@ -1083,19 +1244,23 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 
 	protected buildForm(): void {
 		this.contentEl.addClass('snowflake-method-scene-form');
+		let titleEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
 			.setName(`${this.t('modal.scene.name')} *`)
-			.addText((text) =>
-				text
-					.setValue(this.title)
-					.onChange((value) => {
-						this.title = value;
-					}),
-			);
+			.addText((text) => {
+				titleEl = text.inputEl;
+				text.setValue(this.title).onChange((value) => {
+					this.title = value;
+					// On every keystroke, so a title already taken is answered while the
+					// author is still typing it rather than after they submit.
+					this.name.show(value);
+				});
+			});
 		name.settingEl.addClass(
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-name-setting',
 		);
+		this.name.attach(name.settingEl, titleEl, this.title);
 		const pov = new Setting(this.contentEl).setName(
 			`${this.t('modal.scene.pov')} *`,
 		);
@@ -1193,7 +1358,10 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		return {
 			label: (typed) => this.t('modal.scene.createCharacter', { name: typed }),
 			run: async (typed) => {
-				const created = await create(typed);
+				const created = await create(
+					typed,
+					this.characters.map((character) => character.name),
+				);
 				if (created === null) return null;
 				// Both fields read the list through a callback, so appending here is
 				// what puts the new character in front of the other one too.
@@ -1275,6 +1443,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		const title = this.title.trim();
 		if (title.length === 0) {
 			new Notice(this.t('modal.scene.nameRequired'));
+			return null;
+		}
+		const objection = this.name.objection(title);
+		if (objection !== null) {
+			// Also as a notice: the line under the field has been showing all along,
+			// but a long form scrolls it out of sight, and a submit that appears to
+			// do nothing is worse than one that says why.
+			new Notice(objection);
 			return null;
 		}
 		if (this.povPath.length === 0) {

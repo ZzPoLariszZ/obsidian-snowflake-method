@@ -55,6 +55,7 @@ import {
 } from './repository';
 import {
 	SnowflakeProjectService,
+	DuplicateNameError,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
 	type ArtifactSnapshot,
@@ -378,7 +379,7 @@ export default class SnowflakeMethodPlugin
 				await this.selectProject(path);
 			},
 			(projectLocale) => {
-				this.openCreateProjectModal(
+				void this.openCreateProjectModal(
 					(key, vars) => translate(projectLocale, key, vars),
 					projectLocale,
 				);
@@ -580,7 +581,12 @@ export default class SnowflakeMethodPlugin
 		title: string,
 	): Promise<ProjectOption[]> {
 		const oldPath = option.path;
-		const project = await this.projects.renameProject(oldPath, title);
+		let project: ProjectSnapshot;
+		try {
+			project = await this.projects.renameProject(oldPath, title);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 		const renamed: CreatedProject = {
 			path: project.projectFile,
 			projectId: project.id,
@@ -859,8 +865,9 @@ export default class SnowflakeMethodPlugin
 				this.settings.recentProjectPath = error.projectPath;
 				await this.saveSettings();
 				await this.refreshDashboards();
+				throw error;
 			}
-			throw error;
+			this.rethrowLocalizedMutationError(error);
 		}
 		this.currentProjectLocale = project.locale;
 		this.projectLocalesById.set(project.id, project.locale);
@@ -880,7 +887,12 @@ export default class SnowflakeMethodPlugin
 		request: CreateCharacterRequest,
 	): Promise<CharacterOption> {
 		const project = await this.requireCurrentProject();
-		const character = await this.projects.createCharacter(project, request);
+		let character;
+		try {
+			character = await this.projects.createCharacter(project, request);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 		new Notice(this.t('messages.characterCreated', { name: character.name }));
 		return { path: character.path, name: character.name };
 	}
@@ -962,15 +974,20 @@ export default class SnowflakeMethodPlugin
 
 	async createScene(request: CreateSceneRequest): Promise<void> {
 		const project = await this.requireCurrentProject();
-		const scene = await this.projects.createScene(project, {
-			title: request.title,
-			povPath: request.povPath || null,
-			time: request.time,
-			location: request.location,
-			characters: request.characterPaths,
-			conflict: request.conflict,
-			events: request.events,
-		});
+		let scene;
+		try {
+			scene = await this.projects.createScene(project, {
+				title: request.title,
+				povPath: request.povPath || null,
+				time: request.time,
+				location: request.location,
+				characters: request.characterPaths,
+				conflict: request.conflict,
+				events: request.events,
+			});
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 		new Notice(this.t('messages.sceneCreated', { name: scene.title }));
 	}
 
@@ -1731,7 +1748,7 @@ export default class SnowflakeMethodPlugin
 		this.addCommand({
 			id: 'create-project',
 			name: this.globalT('commands.createProject'),
-			callback: () => this.openCreateProjectModal(),
+			callback: () => void this.openCreateProjectModal(),
 		});
 		this.addCommand({
 			id: 'open-dashboard',
@@ -1754,7 +1771,7 @@ export default class SnowflakeMethodPlugin
 			name: this.globalT('commands.addCharacter'),
 			checkCallback: (checking) => {
 				const available = this.settings.recentProjectPath !== null;
-				if (!checking && available) this.openCreateCharacterModal();
+				if (!checking && available) void this.openCreateCharacterModal();
 				return available;
 			},
 		});
@@ -2188,6 +2205,14 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private rethrowLocalizedMutationError(error: unknown): never {
+		if (error instanceof DuplicateNameError) {
+			const key = {
+				character: 'errors.characterExists',
+				scene: 'errors.sceneExists',
+				project: 'errors.projectExists',
+			}[error.kind];
+			throw new Error(this.t(key, { name: error.requestedName }));
+		}
 		if (error instanceof ConcurrentChangeError) {
 			throw new Error(this.t('errors.concurrentChange'));
 		}
@@ -2200,33 +2225,49 @@ export default class SnowflakeMethodPlugin
 		throw error;
 	}
 
-	private openCreateProjectModal(
+	private async openCreateProjectModal(
 		t: Translate = this.globalT,
 		defaultLocale: 'en' | 'zh-CN' = this.getDefaultProjectLocale(),
-	): void {
-		new CreateProjectModal(
-			this.app,
-			t,
-			defaultLocale,
-			async (request) => {
-				const vaultWasEmpty = (await this.discoverProjects()).length === 0;
-				const project = await this.createProject(request);
-				if (
-					!vaultWasEmpty ||
-					!(await this.reuseEmptyDashboard(project))
-				) {
-					await this.selectProject(project.path);
-				}
-				await this.refreshDashboards();
-			},
-		).open();
+	): Promise<void> {
+		try {
+			const existing = await this.discoverProjects();
+			new CreateProjectModal(
+				this.app,
+				t,
+				defaultLocale,
+				existing.map((project) => project.title),
+				async (request) => {
+					const vaultWasEmpty = (await this.discoverProjects()).length === 0;
+					const project = await this.createProject(request);
+					if (
+						!vaultWasEmpty ||
+						!(await this.reuseEmptyDashboard(project))
+					) {
+						await this.selectProject(project.path);
+					}
+					await this.refreshDashboards();
+				},
+			).open();
+		} catch (error) {
+			this.showError(error);
+		}
 	}
 
-	private openCreateCharacterModal(): void {
-		new CreateCharacterModal(this.app, this.t, async (request) => {
-			await this.createCharacter(request);
-			await this.refreshDashboards();
-		}).open();
+	private async openCreateCharacterModal(): Promise<void> {
+		try {
+			const project = await this.requireCurrentProject();
+			new CreateCharacterModal(
+				this.app,
+				this.t,
+				project.characters.map((character) => character.name),
+				async (request) => {
+					await this.createCharacter(request);
+					await this.refreshDashboards();
+				},
+			).open();
+		} catch (error) {
+			this.showError(error);
+		}
 	}
 
 	private async openCreateSceneModal(): Promise<void> {
@@ -2239,15 +2280,20 @@ export default class SnowflakeMethodPlugin
 					path: character.path,
 					name: character.name,
 				})),
+				project.scenes.map((scene) => scene.title),
 				async (request) => {
 					await this.createScene(request);
 					await this.refreshDashboards();
 				},
 				undefined,
-				async (name) => {
+				// The taken names come from the scene form rather than from the
+				// snapshot above, which was read before any character created from
+				// there existed.
+				async (name, takenNames) => {
 					const created = await promptForNewCharacter(
 						this.app,
 						this.t,
+						takenNames,
 						name,
 						(request) => this.createCharacter(request),
 					);
