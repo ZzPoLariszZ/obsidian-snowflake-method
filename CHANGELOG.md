@@ -8,6 +8,25 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2]
+
+### Fixed
+
+- Renaming a project no longer costs it its links. Obsidian rewrites every link inside a folder it renames, shortening it and dropping the `.md`, and the plugin was still reading the stored text as a file path. The draft was reported missing while sitting where the link said it was, and opening a scene cleared its point of view and emptied its cast, losing both on save. Links are now followed the way Obsidian follows them.
+- A scene names characters from its own project. A second project with a character of the same name used to capture the first project's scenes, because a shortened link stops being unique the moment the name is reused.
+- A project folder renamed outside the plugin is reported instead of passing unnoticed, with a repair that brings the folder back to the project's name. To keep the new folder name, rename the project itself.
+- A character or scene whose file name or heading drifted from its stored name says which of the two it is, and the row for it is marked in the table.
+- The draft's heading no longer carries the project name, which nothing kept up to date when the project was renamed.
+
+### Added
+
+- The health check names each way a stored link can be wrong, and mends each one differently: a path typed as plain text where a wikilink belongs, a link shortened until it depends on a name staying unique, a link that opens a note in another project, a link to a note that no longer exists, and a link still carrying a file extension.
+
+### Changed
+
+- Links are written the way Obsidian writes them, without the `.md` it never shows, and the draft link carries the note's name as its display text like every other link. Existing projects keep their stored links; both forms are read.
+- Because the draft template changed, existing projects report that template as out of date once. Repairing it takes a click and changes nothing an author wrote.
+
 ## [0.3.1]
 
 ### Fixed
@@ -75,6 +94,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.3.2]
+
+### 修复
+
+- 重命名项目不再让它失去自己的链接。Obsidian 会重写被重命名文件夹内的所有链接，将其缩短并去掉 `.md`，而插件仍把所存文本当作文件路径读取。于是初稿明明就在链接所指之处，却被报告为缺失；打开场景时，视点人物会被清空，人物列表也会被清空，保存后两者一并丢失。现在链接会按 Obsidian 的方式解析。
+- 场景只会指向本项目中的角色。此前只要另一个项目使用了同名角色，它就会「抢走」原项目场景中的链接——因为名称一旦被重复使用，缩短形式的链接便不再唯一。
+- 在插件之外重命名项目文件夹不再悄无声息，而是会被报告，并可一键将文件夹改回项目名称。若想保留新的文件夹名称，请改为重命名项目本身。
+- 角色或场景的文件名或标题与所存名称不一致时，会明确指出是哪一种，并在表格中标出对应的行。
+- 初稿标题不再包含项目名称——项目重命名时并没有任何机制会同步更新它。
+
+### 新增
+
+- 健康检查会分别指出所存链接可能出现的每一种问题，并分别修复：本应是 wiki 链接却写成纯文本的路径、缩短到依赖名称唯一性的链接、会打开其他项目笔记的链接、指向已不存在笔记的链接，以及仍带有文件扩展名的链接。
+
+### 变更
+
+- 链接按 Obsidian 的写法写入，不再包含它从不显示的 `.md`；初稿链接也与其他链接一样，以笔记名称作为显示文本。已有项目中所存的链接保持原样，两种写法都能读取。
+- 由于初稿模板发生了变化，已有项目会有一次「模板已过期」的提示。修复只需一次点击，且不会改动作者写下的任何内容。
 
 ## [0.3.1]
 
