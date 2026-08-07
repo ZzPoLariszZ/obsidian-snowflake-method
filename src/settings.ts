@@ -1,8 +1,10 @@
 import {
 	App,
+	Notice,
 	moment,
 	normalizePath,
 	PluginSettingTab,
+	type Setting,
 	type SettingDefinitionItem,
 } from 'obsidian';
 
@@ -14,8 +16,13 @@ import {
 } from './i18n';
 import {
 	displayProjectRoot,
+	isValidProjectRoot,
 	normalizeProjectRoot,
 } from './project-root';
+import {
+	buildProjectRootField,
+	type ProjectRootField,
+} from './ui/project-root-field';
 
 export type { UiLocalePreference } from './i18n';
 export type ProjectLocale = 'en' | 'zh-CN';
@@ -161,13 +168,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			{
 				name: this.t('settings.projectRoot.name'),
 				desc: this.t('settings.projectRoot.desc'),
-				control: {
-					type: 'folder',
-					key: 'projectRoot',
-					defaultValue: DEFAULT_SETTINGS.projectRoot,
-					includeRoot: true,
-					placeholder: this.t('settings.projectRoot.placeholder'),
-				},
+				// Rendered rather than declared as a `folder` control, so this is
+				// the same field the project manager offers — one frame, one list,
+				// one set of manners — instead of two controls that merely ask the
+				// same question.
+				render: (setting) => this.renderProjectRoot(setting),
 			},
 			{
 				name: this.t('settings.uiLocale.name'),
@@ -226,6 +231,58 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				},
 			},
 		];
+	}
+
+	/**
+	 * Builds the project-root field into a setting row, and reports back how to
+	 * take it down again — the list it can leave open outlives the row itself.
+	 */
+	private renderProjectRoot(setting: Setting): () => void {
+		const field = buildProjectRootField(this.app, setting.controlEl, {
+			label: this.t('settings.projectRoot.name'),
+			placeholder: this.t('settings.projectRoot.placeholder'),
+			currentRoot: this.owner.settings.projectRoot,
+			onChooseRoot: (root) => {
+				void this.commitProjectRoot(root, field);
+			},
+		});
+		const commit = (): void => {
+			void this.commitProjectRoot(field.inputEl.value, field);
+		};
+		// Committing on the way out would fight the chevron, which takes focus off
+		// the box on its way to opening the list.
+		field.inputEl.addEventListener('blur', (event) => {
+			const next = event.relatedTarget;
+			if (next instanceof HTMLElement && next === field.selectorEl) return;
+			commit();
+		});
+		field.inputEl.addEventListener('keydown', (event) => {
+			if (event.key !== 'Enter') return;
+			event.preventDefault();
+			commit();
+		});
+		return () => field.destroy();
+	}
+
+	/**
+	 * Takes a root the author typed or picked. A path the Vault could never hold
+	 * is refused and the field put back to what is in force, so the box never
+	 * shows a root the plugin is not using.
+	 */
+	private async commitProjectRoot(
+		value: string,
+		field: ProjectRootField,
+	): Promise<void> {
+		if (!isValidProjectRoot(value)) {
+			new Notice(this.t('modal.projectManager.projectRootInvalid'));
+			field.showValue(this.owner.settings.projectRoot);
+			return;
+		}
+		const root = normalizeProjectRoot(value);
+		if (root !== this.owner.settings.projectRoot) {
+			await this.setControlValue('projectRoot', root);
+		}
+		field.showValue(this.owner.settings.projectRoot);
 	}
 
 	getControlValue(key: string): unknown {

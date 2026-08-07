@@ -1,6 +1,10 @@
-import { AbstractInputSuggest, App, setIcon } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 
 import { isNameTaken } from '../domain';
+import { FieldSuggest } from './field-suggest';
+
+/** Styles the rows only the option picker has. */
+const PICKER_SUGGESTIONS_CLASS = 'snowflake-method-option-picker-suggestions';
 
 export interface PickerOption {
 	value: string;
@@ -66,7 +70,7 @@ export function offersCreating(
  * out of the suggestions, so the list shortens as the field fills up and the
  * same option cannot be picked twice.
  */
-class OptionSuggest extends AbstractInputSuggest<Suggestion> {
+class OptionSuggest extends FieldSuggest<Suggestion> {
 	private showAll = false;
 	// The framework exposes no way to ask whether the list is showing, and a
 	// refresh must not pop open a list the author had dismissed.
@@ -83,9 +87,8 @@ class OptionSuggest extends AbstractInputSuggest<Suggestion> {
 
 	constructor(
 		app: App,
-		private readonly inputEl: HTMLInputElement,
-		/** The frame around the input, which the popover is sized to match. */
-		private readonly fieldEl: HTMLElement,
+		inputEl: HTMLInputElement,
+		fieldEl: HTMLElement,
 		private readonly listCandidates: () => readonly PickerOption[],
 		private readonly onChooseOption: (option: PickerOption) => void,
 		/** Null when the field cannot create what it does not already offer. */
@@ -101,8 +104,7 @@ class OptionSuggest extends AbstractInputSuggest<Suggestion> {
 		 */
 		private readonly reopenAfterPick: boolean,
 	) {
-		super(app, inputEl);
-		this.limit = 50;
+		super(app, inputEl, fieldEl);
 	}
 
 	/** Opens the full list from the chevron, the way a dropdown would. */
@@ -153,8 +155,17 @@ class OptionSuggest extends AbstractInputSuggest<Suggestion> {
 		super.open();
 		this.listOpen = true;
 		this.openRequested = false;
-		this.matchPopoverToField();
+		// The picker's own popover class, so the rows that only this list has --
+		// the create row, and the highlight it holds back -- can be styled without
+		// reaching every other list the plugin puts under a field.
+		this.popoverEl()?.addClass(PICKER_SUGGESTIONS_CLASS);
 		this.idleSelection();
+	}
+
+	/** Closes for good, whatever the list was in the middle of. */
+	destroy(): void {
+		this.refreshing = false;
+		super.destroy();
 	}
 
 	/**
@@ -184,9 +195,9 @@ class OptionSuggest extends AbstractInputSuggest<Suggestion> {
 		// its way holds the list open and swaps the rows underneath instead.
 		if (this.refreshing) return;
 		super.close();
+		this.popoverEl()?.removeClass(PICKER_SUGGESTIONS_CLASS);
 		this.listOpen = false;
 		this.openRequested = false;
-		this.releasePopover();
 	}
 
 	selectSuggestion(suggestion: Suggestion): void {
@@ -217,47 +228,6 @@ class OptionSuggest extends AbstractInputSuggest<Suggestion> {
 		if (!this.listOpen) return;
 		this.refreshing = true;
 		this.refreshSuggestions(this.popoverScrollTop());
-	}
-
-	/**
-	 * The framework places and sizes its popover from the element it is attached
-	 * to, which here is the inline search box: inset from the frame by its
-	 * padding, and a sliver once tags share its row — so the list lands short of
-	 * the frame's left edge and takes its width from whichever label happens to
-	 * be longest. Squaring both up makes the list belong to the control.
-	 *
-	 * The left edge is nudged by the measured difference rather than assigned
-	 * outright, so it holds whatever coordinate space the framework placed the
-	 * popover in.
-	 *
-	 * `suggestEl` is not in the published API, so this adjusts the popover only
-	 * when it is there and otherwise leaves the framework's own placement alone.
-	 */
-	private matchPopoverToField(): void {
-		const suggestEl = this.popoverEl();
-		if (suggestEl === null) return;
-		suggestEl.addClass('snowflake-method-option-picker-suggestions');
-		suggestEl.style.width = `${this.fieldEl.offsetWidth}px`;
-		const drift =
-			this.fieldEl.getBoundingClientRect().left -
-			suggestEl.getBoundingClientRect().left;
-		if (drift === 0) return;
-		const placed = Number.parseFloat(suggestEl.style.left);
-		if (Number.isNaN(placed)) return;
-		suggestEl.style.left = `${placed + drift}px`;
-	}
-
-	/** Undoes the sizing, in case the popover is one the framework hands round. */
-	private releasePopover(): void {
-		const suggestEl = this.popoverEl();
-		if (suggestEl === null) return;
-		suggestEl.removeClass('snowflake-method-option-picker-suggestions');
-		suggestEl.style.removeProperty('width');
-	}
-
-	private popoverEl(): HTMLElement | null {
-		const { suggestEl } = this as unknown as { suggestEl?: HTMLElement };
-		return suggestEl ?? null;
 	}
 
 	/**
@@ -571,7 +541,7 @@ export function buildOptionPicker(
 	});
 	renderTags();
 
-	return { destroy: () => suggest.close() };
+	return { destroy: () => suggest.destroy() };
 }
 
 /**
@@ -648,7 +618,7 @@ export function buildOptionField(
 	});
 	showValue();
 
-	return { destroy: () => suggest.close() };
+	return { destroy: () => suggest.destroy() };
 }
 
 interface Creating {

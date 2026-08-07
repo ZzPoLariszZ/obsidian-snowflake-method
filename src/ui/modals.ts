@@ -1,5 +1,4 @@
 import {
-	AbstractInputSuggest,
 	App,
 	Menu,
 	Modal,
@@ -34,6 +33,10 @@ import {
 	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
+import {
+	buildProjectRootField,
+	type ProjectRootField,
+} from './project-root-field';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import type { RepairReportViewModel } from './view-model';
@@ -87,73 +90,6 @@ export interface CreateSceneRequest {
 	povPath: string;
 	events: string;
 	expectedRevision?: string;
-}
-
-class ProjectRootSuggest extends AbstractInputSuggest<TFolder> {
-	private showAll = false;
-
-	constructor(
-		app: App,
-		private readonly inputEl: HTMLInputElement,
-		private readonly currentRoot: string,
-		private readonly onChooseRoot: (root: string) => void,
-	) {
-		super(app, inputEl);
-		this.limit = 50;
-	}
-
-	showAllSuggestions(): void {
-		this.inputEl.focus({ preventScroll: true });
-		this.showAll = true;
-		const EventConstructor =
-			this.inputEl.ownerDocument.defaultView?.Event ?? Event;
-		this.inputEl.dispatchEvent(
-			new EventConstructor('input', { bubbles: true }),
-		);
-	}
-
-	protected getSuggestions(query: string): TFolder[] {
-		const trimmedQuery = query.trim();
-		const showAll = this.showAll;
-		this.showAll = false;
-		if (
-			!showAll &&
-			trimmedQuery === displayProjectRoot(this.currentRoot)
-		) {
-			return [];
-		}
-		const normalizedQuery = showAll ? '' : trimmedQuery.toLocaleLowerCase();
-		// Runs on every keystroke; getAllLoadedFiles() would walk every note and
-		// attachment in the Vault to arrive at the same list.
-		const folders = this.app.vault.getAllFolders(true);
-		const unique = new Map<string, TFolder>();
-		for (const folder of folders) {
-			unique.set(normalizeProjectRoot(folder.path), folder);
-		}
-		return [...unique.entries()]
-			.filter(([path]) =>
-				displayProjectRoot(path)
-					.toLocaleLowerCase()
-					.includes(normalizedQuery),
-			)
-			.sort(([left], [right]) => {
-				if (left.length === 0) return -1;
-				if (right.length === 0) return 1;
-				return left.localeCompare(right);
-			})
-			.map(([, folder]) => folder);
-	}
-
-	renderSuggestion(folder: TFolder, el: HTMLElement): void {
-		el.setText(displayProjectRoot(folder.path));
-	}
-
-	selectSuggestion(folder: TFolder): void {
-		const root = normalizeProjectRoot(folder.path);
-		this.setValue(displayProjectRoot(root));
-		this.close();
-		this.onChooseRoot(root);
-	}
 }
 
 type SubmitHandler<T> = (value: T) => Promise<void>;
@@ -394,7 +330,7 @@ export class ManageProjectsModal extends Modal {
 	private locale: ProjectLocale;
 	private projects: readonly ManageProjectOption[];
 	private initialFocusFrame: number | null = null;
-	private projectRootSuggest: ProjectRootSuggest | null = null;
+	private projectRootField: ProjectRootField | null = null;
 	private projectRootInput: HTMLInputElement | null = null;
 	private suppressProjectRootBlurCommit = false;
 	private projectRootChangeId = 0;
@@ -456,8 +392,8 @@ export class ManageProjectsModal extends Modal {
 			this.initialFocusFrame = null;
 		}
 		this.initialFocusWindow = null;
-		this.projectRootSuggest?.close();
-		this.projectRootSuggest = null;
+		this.projectRootField?.destroy();
+		this.projectRootField = null;
 		this.projectRootInput = null;
 		this.suppressProjectRootBlurCommit = false;
 		this.contentEl.empty();
@@ -474,8 +410,8 @@ export class ManageProjectsModal extends Modal {
 		if (resetProjectListScroll) {
 			this.renderState.resetScroll(PROJECT_LIST_SELECTOR);
 		}
-		this.projectRootSuggest?.close();
-		this.projectRootSuggest = null;
+		this.projectRootField?.destroy();
+		this.projectRootField = null;
 		this.projectRootInput = null;
 		this.suppressProjectRootBlurCommit = false;
 		this.contentEl.empty();
@@ -607,28 +543,18 @@ export class ManageProjectsModal extends Modal {
 		copy.createEl('p', {
 			text: this.t('modal.projectManager.projectRootDesc'),
 		});
-		const control = body.createDiv({
-			cls: 'snowflake-method-project-manager-root-control',
-		});
-		const input = control.createEl('input', {
-			type: 'text',
-			value: displayProjectRoot(this.projectRoot),
+		const field = buildProjectRootField(this.app, body, {
+			label: this.t('modal.projectManager.projectRoot'),
 			placeholder: this.t('modal.projectManager.projectRootPlaceholder'),
-			attr: {
-				'aria-label': this.t('modal.projectManager.projectRoot'),
-				spellcheck: 'false',
+			currentRoot: this.projectRoot,
+			onChooseRoot: (root) => {
+				void this.changeProjectRoot(root, field.inputEl);
 			},
 		});
+		this.projectRootField = field;
+		const input = field.inputEl;
+		const selector = field.selectorEl;
 		this.projectRootInput = input;
-		const selector = control.createEl('button', {
-			cls: 'clickable-icon snowflake-method-project-manager-root-selector',
-			attr: {
-				type: 'button',
-				'aria-label': this.t('modal.projectManager.projectRoot'),
-				title: this.t('modal.projectManager.projectRoot'),
-			},
-		});
-		setIcon(selector, 'chevrons-up-down');
 		const commit = (): void => {
 			void this.changeProjectRoot(input.value, input);
 		};
@@ -641,7 +567,7 @@ export class ManageProjectsModal extends Modal {
 						'.snowflake-method-project-manager-create',
 					) !== null ||
 						nextTarget.closest(
-							'.snowflake-method-project-manager-root-selector',
+							'.snowflake-method-root-field-selector',
 						) !== null))
 			) {
 				return;
@@ -653,15 +579,6 @@ export class ManageProjectsModal extends Modal {
 			event.preventDefault();
 			commit();
 		});
-		const suggest = new ProjectRootSuggest(
-			this.app,
-			input,
-			this.projectRoot,
-			(root) => {
-				void this.changeProjectRoot(root, input);
-			},
-		);
-		this.projectRootSuggest = suggest;
 		selector.addEventListener('pointerdown', () => {
 			this.suppressProjectRootBlurCommit = true;
 		});
@@ -670,9 +587,6 @@ export class ManageProjectsModal extends Modal {
 		});
 		selector.addEventListener('pointercancel', () => {
 			this.suppressProjectRootBlurCommit = false;
-		});
-		selector.addEventListener('click', () => {
-			suggest.showAllSuggestions();
 		});
 	}
 
@@ -948,6 +862,10 @@ class RenameProjectModal extends SnowflakeFormModal<string> {
 	}
 
 	protected buildForm(): void {
+		// The same form the create dialog uses, so renaming a project looks like
+		// naming one rather than like a different dialog that happens to ask for a
+		// name; the stylesheet drops the language column it has no field for.
+		this.contentEl.addClass('snowflake-method-project-form');
 		let inputEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
 			.setName(this.t('modal.project.name'))

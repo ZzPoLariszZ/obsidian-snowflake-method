@@ -13,11 +13,13 @@ import {
 	areStepPrerequisitesComplete,
 	countWritingLength,
 	createDefaultStepStatuses,
+	getFirstIncompleteStep,
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
 	type StepOneSectionId,
 	type StepId,
 	type StepStatus,
+	type StepStatusMap,
 } from '../domain';
 import {
 	CreateCharacterModal,
@@ -58,6 +60,13 @@ const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
 
 const STEP_LIST_SELECTOR = '.snowflake-method-step-list';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
+
+/** The model's steps as the status map the domain rules are written against. */
+function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
+	const statuses = createDefaultStepStatuses();
+	for (const step of model.steps) statuses[step.id] = step.status;
+	return statuses;
+}
 const ACTIVE_STEP_SELECTOR = '.snowflake-method-step-button.is-active';
 
 export class SnowflakeDashboardView extends ItemView {
@@ -67,6 +76,20 @@ export class SnowflakeDashboardView extends ItemView {
 		{ fields: StepFields; expectedRevision: string }
 	>();
 	private selectedStep: StepId;
+	/**
+	 * False until a step has actually been chosen in this session. A view built
+	 * for a leaf Obsidian restored carries the step the workspace last saved,
+	 * which is where the author happened to stop rather than where they mean to
+	 * start — so the first render picks up the work instead.
+	 */
+	private stepChosen = false;
+	/**
+	 * False until Obsidian has handed this leaf its state. Until then the view
+	 * does not know which project it belongs to, and a null path means "whichever
+	 * project is current" to the host — so rendering in that gap paints somebody
+	 * else's project for the beat before the state lands.
+	 */
+	private stateDelivered = false;
 	private projectPath: string | null = null;
 	private projectTitle: string | null = null;
 	private projectLocale: 'en' | 'zh-CN' | null = null;
@@ -124,6 +147,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
 		await super.setState(state, result);
+		this.stateDelivered = true;
 		const update = mergeDashboardViewState(
 			{
 				projectPath: this.projectPath,
@@ -136,9 +160,14 @@ export class SnowflakeDashboardView extends ItemView {
 		this.projectTitle = update.state.projectTitle;
 		this.selectedStep = update.state.selectedStep;
 		// During workspace restoration Obsidian may open an ItemView before it
-		// delivers the persisted view state. Re-rendering here prevents that first
-		// paint (which uses the global recent project) from becoming permanent.
-		if (this.opened && this.app.workspace.layoutReady && update.changed) {
+		// delivers the persisted view state, so this is the first moment a
+		// restored leaf can be drawn at all — hence rendering when nothing has
+		// been drawn yet, and not only when the state moved.
+		if (
+			this.opened &&
+			this.app.workspace.layoutReady &&
+			(update.changed || !this.rendered)
+		) {
 			await this.refresh();
 		}
 	}
@@ -166,6 +195,8 @@ export class SnowflakeDashboardView extends ItemView {
 	): Promise<void> {
 		this.bindProject(project);
 		this.selectedStep = selectedStep;
+		// Asked for by name, so it stands even on a view that has yet to render.
+		this.stepChosen = true;
 		await this.refresh();
 	}
 
@@ -201,6 +232,11 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	async refresh(): Promise<void> {
+		// A leaf that has not been told which project it is for has nothing to
+		// draw, and asking the host with no path would have it answer with the
+		// current project — another leaf's. Waiting costs a beat; setState draws
+		// as soon as it arrives.
+		if (this.projectPath === null && !this.stateDelivered) return;
 		if (this.refreshing) {
 			this.refreshPending = true;
 			return;
@@ -237,6 +273,14 @@ export class SnowflakeDashboardView extends ItemView {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 		model: ProjectDashboardModel | null,
 	): void {
+		// Once a project is in hand, the first render of the session opens on the
+		// step still waiting to be done. Only the first: from here on the step is
+		// whatever the author last moved to, which is what returning to a tab they
+		// left open should give them.
+		if (model !== null && !this.stepChosen) {
+			this.selectedStep = getFirstIncompleteStep(stepStatusesOf(model));
+			this.stepChosen = true;
+		}
 		this.renderState.capture(this.contentEl);
 		const continuity = dashboardRenderContinuity(
 			{ projectId: this.renderedProjectId, step: this.renderedStep },
@@ -448,6 +492,7 @@ export class SnowflakeDashboardView extends ItemView {
 			}
 			button.addEventListener('click', () => {
 				this.selectedStep = step.id;
+				this.stepChosen = true;
 				void this.runAndRefresh(() => this.host.selectStep(step.id));
 			});
 		}
@@ -622,12 +667,8 @@ export class SnowflakeDashboardView extends ItemView {
 				candidate.status === 'complete' ||
 				(candidate.optional && candidate.status === 'skipped'),
 		);
-		const statuses = createDefaultStepStatuses();
-		for (const candidate of model.steps) {
-			statuses[candidate.id] = candidate.status;
-		}
 		const prerequisitesComplete = areStepPrerequisitesComplete(
-			statuses,
+			stepStatusesOf(model),
 			step.id,
 		);
 		this.renderedProjectComplete = projectComplete;

@@ -1,6 +1,10 @@
 .snowflake-method-dashboard {
 	--snowflake-method-dashboard-width: 96rem;
 	--snowflake-method-sidebar-width: 19rem;
+	/* Named because the main panel reaches into it for the scrollbar's width, and
+	   a reach longer than the padding it reaches into spills past the view and is
+	   scrollable. The two have to be read from one place to stay in step. */
+	--snowflake-method-dashboard-padding: var(--size-4-4);
 	container-name: snowflake-dashboard;
 	container-type: inline-size;
 	display: flex;
@@ -8,14 +12,20 @@
 	gap: var(--size-4-3);
 	height: 100%;
 	min-width: 0;
-	padding: var(--size-4-4) var(--size-4-4) 0;
-	overflow: hidden;
 	box-sizing: border-box;
 	position: relative;
 }
 
+/* Obsidian styles `.view-content` through two classes, which outranks anything
+   this stylesheet says through one — so the padding and the overflow the
+   dashboard wants have to be asked for from here to take effect at all. */
 .workspace-leaf-content .view-content.snowflake-method-dashboard {
-	padding-bottom: 0;
+	padding: var(--snowflake-method-dashboard-padding)
+		var(--snowflake-method-dashboard-padding) 0;
+	/* The dashboard fills its leaf and its panels scroll inside it; the view
+	   itself has nowhere to scroll to, and letting it try only ever means a
+	   stray pixel has escaped a panel. */
+	overflow: hidden;
 }
 
 .snowflake-method-celebration {
@@ -899,10 +909,17 @@
    than inside the pane, which leaves the panels ending where the progress bar
    above them ends. The pane must not be pinned to its column for the reach to
    have anywhere to go. */
+/* Capped by the padding it reaches into, not by a length that happens to match
+   it: the dashboard keeps less padding on a small window, and a reach longer
+   than that hangs past the view and turns into a scrollbar a few pixels wide. */
 .snowflake-method-main {
 	margin: 0;
 	margin-inline-end: calc(
-		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-4))
+		-1 *
+			min(
+				var(--snowflake-method-scrollbar-width, 0px),
+				var(--snowflake-method-dashboard-padding)
+			)
 	);
 	padding-inline-end: var(--size-2-1);
 }
@@ -2138,7 +2155,17 @@
 	min-height: 0;
 }
 
-.snowflake-method-project-modal .modal-content {
+/* Renaming is the same form asking the same question, so it is the same dialog
+   with the language column left out. */
+.snowflake-method-rename-project-modal {
+	width: min(28rem, calc(100vw - 2rem));
+	max-width: 28rem;
+	height: auto;
+	min-height: 0;
+}
+
+.snowflake-method-project-modal .modal-content,
+.snowflake-method-rename-project-modal .modal-content {
 	flex: 0 0 auto;
 }
 
@@ -2149,7 +2176,14 @@
 	padding-top: var(--size-4-2);
 }
 
-.modal.snowflake-method-project-modal
+.snowflake-method-rename-project-modal .snowflake-method-project-form {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-rename-project-modal
+	)
 	.modal-content.snowflake-method-project-form
 	> .setting-item {
 	display: flex;
@@ -2162,7 +2196,10 @@
 	border: 0;
 }
 
-.modal.snowflake-method-project-modal
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-rename-project-modal
+	)
 	.modal-content.snowflake-method-project-form
 	> .setting-item
 	+ .setting-item {
@@ -2195,10 +2232,16 @@
 	width: 100%;
 }
 
-.modal.snowflake-method-project-modal
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-rename-project-modal
+	)
 	.modal-content.snowflake-method-project-form
 	input,
-.modal.snowflake-method-project-modal
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-rename-project-modal
+	)
 	.modal-content.snowflake-method-project-form
 	select {
 	width: 100%;
@@ -2629,19 +2672,28 @@
 	max-width: none;
 }
 
-.snowflake-method-project-manager-root-control {
+/* The project-root field, wherever it is asked for: the project manager and the
+   settings page build the same control, so it is styled once. */
+.snowflake-method-root-field {
 	position: relative;
 	width: 100%;
 	min-width: 0;
 }
 
-.snowflake-method-project-manager-root-control input {
+.snowflake-method-root-field input {
 	width: 100%;
 	padding-inline-end: calc(var(--icon-s) + var(--size-4-3));
 	font-family: var(--font-interface);
 }
 
-.snowflake-method-project-manager-root-selector {
+/* On a settings page the field shares its row's control column with Obsidian's
+   own widgets, which stop well short of filling it. Capped to match them, so
+   the row reads as one of the page's rather than as the odd one out. */
+.setting-item-control > .snowflake-method-root-field {
+	max-width: 250px;
+}
+
+.snowflake-method-root-field-selector {
 	position: absolute;
 	top: 50%;
 	inset-inline-end: var(--size-4-3);
@@ -2658,7 +2710,7 @@
 	transform: translateY(-50%);
 }
 
-.snowflake-method-project-manager-root-selector svg {
+.snowflake-method-root-field-selector svg {
 	width: var(--icon-s);
 	height: var(--icon-s);
 }
@@ -2766,22 +2818,6 @@
 	color: var(--text-error);
 	font-size: var(--font-ui-smaller);
 	line-height: 1.4;
-}
-
-/*
- * The rename dialog is the one that keeps Obsidian's own side-by-side row, with
- * the label at one end and the field at the other. Left alone, the objection is
- * squeezed in as a third item beside the field; wrapping it onto a line of its
- * own puts it under the field, where the other three forms put it.
- */
-.snowflake-method-rename-project-modal .setting-item {
-	flex-wrap: wrap;
-}
-
-.snowflake-method-rename-project-modal .snowflake-method-field-warning {
-	flex: 0 0 100%;
-	margin-top: var(--size-4-1);
-	text-align: end;
 }
 
 .snowflake-method-character-form input[aria-invalid='true'],
@@ -3120,29 +3156,28 @@
 	flex-wrap: nowrap;
 }
 
-/* The list belongs to the control, so it takes the frame's width rather than
-   the width of whichever name happens to be longest. The width itself is set
-   when the list opens, since only then is the frame's size known. */
-.suggestion-container.snowflake-method-option-picker-suggestions {
+/* Every list this plugin hangs off a field, sized to the control it belongs to
+   rather than to whichever entry happens to be longest. The width itself is set
+   when the list opens, since only then is the control's size known. */
+.suggestion-container.snowflake-method-suggestions {
 	min-width: 0;
 	max-width: none;
 	box-sizing: border-box;
 }
 
 /* Typing filters the list, so it crosses in and out of scrolling on almost every
-   keystroke. Holding the scrollbar's space keeps the names still while it does.
+   keystroke. Holding the scrollbar's space keeps the entries still while it does.
 
    Alone among the panels, this one is not opened out to match: a list hanging off
    a field reads against that field's edge, and the rows carry an inset of their
    own, so the list is given no side padding at all and each row runs the whole
    width. What is left on the far side is the scrollbar, and nothing else. */
-.suggestion-container.snowflake-method-option-picker-suggestions .suggestion {
+.suggestion-container.snowflake-method-suggestions .suggestion {
 	padding-inline: 0;
 	scrollbar-gutter: stable;
 }
 
-.suggestion-container.snowflake-method-option-picker-suggestions
-	.suggestion-item {
+.suggestion-container.snowflake-method-suggestions .suggestion-item {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -3503,8 +3538,10 @@
 }
 
 @media (max-width: 700px) {
+	/* Set through the variable, so the reach into it shortens by the same amount
+	   rather than hanging past the edge of the view. */
 	.snowflake-method-dashboard {
-		padding: var(--size-4-2);
+		--snowflake-method-dashboard-padding: var(--size-4-2);
 	}
 }
 
