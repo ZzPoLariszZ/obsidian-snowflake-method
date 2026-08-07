@@ -534,7 +534,11 @@ export function buildOptionPicker(
 	// Backspace on an empty query removes the last tag, as tag inputs do.
 	input.addEventListener('keydown', (event) => {
 		if (event.key !== 'Backspace' || input.value.length > 0) return;
-		const last = config.picked().at(-1);
+		// Indexed rather than `at(-1)`, which this project's ES2021 target does
+		// not declare — where nothing else happens to pull the later library in,
+		// its type does not resolve and everything read from it goes untyped.
+		const picked = config.picked();
+		const last = picked[picked.length - 1];
 		if (last === undefined) return;
 		event.preventDefault();
 		unpick(last);
