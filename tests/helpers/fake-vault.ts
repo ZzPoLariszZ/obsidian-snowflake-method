@@ -193,8 +193,7 @@ export class FakeMetadataCache {
     }
 
     // A shortened link names the end of a path rather than the whole of it.
-    // Obsidian answers with the nearest match; the shortest path standing in
-    // for "nearest" is close enough for a Vault a test builds.
+    // Where one note answers, that note is the answer.
     const suffix = `/${target}`;
     const matches = [...this.vault.nodes.keys()]
       .filter(
@@ -206,8 +205,15 @@ export class FakeMetadataCache {
       )
       .filter((path) => this.vault.getFileByPath(path) !== null)
       .sort((left, right) => left.length - right.length || left.localeCompare(right));
-    const nearest = matches.find((path) => path.startsWith(`${sourceFolder}/`));
-    const chosen = nearest ?? matches[0];
+    const inSourceFolder = matches.find((path) =>
+      path.startsWith(`${sourceFolder}/`),
+    );
+    // Where several answer, Obsidian picks by its own index order, which no
+    // caller can predict -- in the app it has been seen answering with another
+    // project's note in preference to the asking project's own. The last match
+    // stands for "not necessarily yours", so that code relying on getting its
+    // own back fails here rather than in someone's Vault.
+    const chosen = inSourceFolder ?? matches[matches.length - 1];
     return chosen === undefined ? null : this.vault.getFileByPath(chosen);
   }
 }

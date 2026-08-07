@@ -118,7 +118,13 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "mismatched-project-folder",
   "invalid-artifact-metadata",
   "dangling-scene-pov",
-  "dangling-scene-character",
+  // One per thing that can be wrong with a stored link, because each is mended
+  // a different way: written out in full, or taken off the list.
+  "unlinked-path",
+  "incomplete-link",
+  "foreign-link",
+  "missing-link",
+  "extension-in-link",
 ] as const;
 
 export type ProjectStructureIssueCode =

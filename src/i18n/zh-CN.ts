@@ -227,12 +227,26 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.invalid-system-template': '系统模板与当前项目格式不一致。',
 	'projectStructure.issue.invalid-artifact-metadata':
 		'必要的笔记元数据缺失或无效。',
-	'projectStructure.issue.dangling-scene-pov': '视点人物“{expected}”已不存在。',
+	'projectStructure.issue.dangling-scene-pov': '视点人物“{expected}”不在本项目中。',
 	'projectStructure.action.dangling-scene-pov': '请编辑该场景并另选视点。',
-	'projectStructure.issue.dangling-scene-character':
-		'以下人物已不存在：{expected}。',
-	'projectStructure.action.dangling-scene-character':
-		'修复将把他们从人物列表中移除。',
+	'projectStructure.issue.unlinked-path':
+		'以下本应是 wiki 链接，却是纯文本：{expected}。',
+	'projectStructure.action.unlinked-path':
+		'Obsidian 只会自动更新 wiki 链接。\n在此修复会将它们改写为 wiki 链接。',
+	'projectStructure.issue.incomplete-link':
+		'以下 wiki 链接是缩短形式：{expected}。',
+	'projectStructure.action.incomplete-link':
+		'缩短形式的 wiki 链接，在名称被重复使用后便不再唯一。\n在此修复会补上本项目的完整路径。',
+	'projectStructure.issue.foreign-link':
+		'以下 wiki 链接会打开其他项目中的笔记：{expected}。',
+	'projectStructure.action.foreign-link': '修复会将它们从列表中移除。',
+	'projectStructure.issue.missing-link':
+		'以下 wiki 链接指向的笔记已不存在：{expected}。',
+	'projectStructure.action.missing-link': '修复会将它们从列表中移除。',
+	'projectStructure.issue.extension-in-link':
+		'仍有 {expected} 个所存链接以“.md”指向笔记。',
+	'projectStructure.action.extension-in-link':
+		'在此修复会将它们全部改为 Obsidian 的写法。',
 	'editor.managedSection.issue.missing': '两个边界标记均缺失。',
 	'editor.managedSection.issue.missing-start': '起始边界标记缺失。',
 	'editor.managedSection.issue.missing-end': '结束边界标记缺失。',

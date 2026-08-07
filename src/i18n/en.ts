@@ -250,13 +250,29 @@ export const en = {
 	'projectStructure.issue.invalid-artifact-metadata':
 		'Required note metadata is missing or invalid.',
 	'projectStructure.issue.dangling-scene-pov':
-		'The point-of-view character “{expected}” no longer exists.',
+		'The point-of-view character “{expected}” is not in this project.',
 	'projectStructure.action.dangling-scene-pov':
 		'Edit the scene to choose another point of view.',
-	'projectStructure.issue.dangling-scene-character':
-		'These characters no longer exist: {expected}.',
-	'projectStructure.action.dangling-scene-character':
-		'Repairing removes them from the cast.',
+	'projectStructure.issue.unlinked-path':
+		'These are plain text where a wikilink belongs: {expected}.',
+	'projectStructure.action.unlinked-path':
+		'Obsidian only keeps wikilinks up to date automatically.\nRepairing here writes them as wikilinks.',
+	'projectStructure.issue.incomplete-link':
+		'These wikilinks are shortened: {expected}.',
+	'projectStructure.action.incomplete-link':
+		'Shortened wikilinks stop being unique once their names are reused.\nRepairing here adds the full path of this project.',
+	'projectStructure.issue.foreign-link':
+		'These wikilinks open notes in other projects: {expected}.',
+	'projectStructure.action.foreign-link':
+		'Repairing removes them from the list.',
+	'projectStructure.issue.missing-link':
+		'These wikilinks point to notes that no longer exist: {expected}.',
+	'projectStructure.action.missing-link':
+		'Repairing removes them from the list.',
+	'projectStructure.issue.extension-in-link':
+		'{expected} stored link(s) still name a note with “.md”.',
+	'projectStructure.action.extension-in-link':
+		'Repairing here rewrites them the way Obsidian writes a link.',
 	'editor.managedSection.issue.missing':
 		'Both boundary markers are missing.',
 	'editor.managedSection.issue.missing-start':

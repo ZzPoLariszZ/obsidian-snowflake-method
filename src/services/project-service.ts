@@ -212,6 +212,7 @@ export class SnowflakeProjectService {
       draft: this.linkedPath(
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.draft]),
         record.path,
+        project.rootPath,
       ),
     };
     const reviewedFingerprints = readFingerprints(
@@ -399,6 +400,63 @@ export class SnowflakeProjectService {
     });
     await this.repository.updateFirstHeading(projectFile, nextTitle);
     return this.loadProject(projectFile);
+  }
+
+  /**
+   * The frontmatter that would rewrite one note's links without the ".md"
+   * Obsidian never writes, and the number of links that would change. Null when
+   * none of them carry one, which is every note written since.
+   */
+  private extensionTidyPatch(
+    record: ManagedFileRecord,
+  ): { patch: ManagedFrontmatter; links: number } | null {
+    if (record.readOnly) return null;
+    const patch: ManagedFrontmatter = {};
+    let links = 0;
+    for (const key of [FRONTMATTER_KEYS.draft, FRONTMATTER_KEYS.pov]) {
+      const tidied = this.tidiedLink(
+        asOptionalString(record.frontmatter[key]),
+        record.path,
+      );
+      if (tidied === null) continue;
+      patch[key] = tidied;
+      links += 1;
+    }
+    const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
+    const rawCharacters: unknown[] = Array.isArray(stored)
+      ? (stored as unknown[])
+      : typeof stored === "string"
+        ? [stored]
+        : [];
+    const next = rawCharacters.map((entry) => {
+      const tidied = this.tidiedLink(asOptionalString(entry), record.path);
+      if (tidied === null) return entry;
+      links += 1;
+      return tidied;
+    });
+    if (fingerprint(next) !== fingerprint(rawCharacters)) {
+      patch[FRONTMATTER_KEYS.sceneCharacters] = next;
+    }
+    return links > 0 ? { patch, links } : null;
+  }
+
+  /**
+   * The same link written the way Obsidian writes one, or null when it already
+   * is -- or when dropping the extension would lead somewhere else, which no
+   * tidying is worth.
+   */
+  private tidiedLink(stored: string | null, sourcePath: string): string | null {
+    const target = fromWikiLink(stored);
+    if (target === null || !target.endsWith(".md")) return null;
+    if (isScenePovMode(target)) return null;
+    const tidied = toWikiLink(target, wikiLinkAlias(stored ?? ""));
+    const before = this.repository.resolveLink(target, sourcePath);
+    const after = this.repository.resolveLink(
+      fromWikiLink(tidied) ?? "",
+      sourcePath,
+    );
+    if (before?.path !== after?.path) return null;
+    return tidied === stored ? null : tidied;
   }
 
   async repairProject(path: string): Promise<RepairResult> {
@@ -652,12 +710,14 @@ export class SnowflakeProjectService {
       );
     }
 
-    const draftLink = asOptionalString(
-      projectRecord.frontmatter[FRONTMATTER_KEYS.draft],
+    const draftTarget = fromWikiLink(
+      asOptionalString(projectRecord.frontmatter[FRONTMATTER_KEYS.draft]),
     );
     if (
-      !draftLink ||
-      this.missingLink(draftLink, projectRecord.path) !== null
+      draftTarget === null ||
+      draftTarget.length === 0 ||
+      this.draftNotePath(draftTarget, projectRecord.path, project.rootPath) ===
+        null
     ) {
       await this.restoreDraft(project, result);
     }
@@ -685,7 +745,10 @@ export class SnowflakeProjectService {
       result,
     );
     await this.repository.updateFrontmatter(project.projectFile, {
-      [FRONTMATTER_KEYS.draft]: toWikiLink(draft),
+      // Named, as every other link this plugin writes is: the property editor
+      // shows the display text, and a whole path where a note name belongs
+      // reads as machinery rather than as the draft.
+      [FRONTMATTER_KEYS.draft]: toWikiLink(draft, fileStem(draft)),
     });
     markRepaired(result, project.projectFile);
     return draft;
@@ -776,6 +839,92 @@ export class SnowflakeProjectService {
       return this.loadProject(project.projectFile);
     }
 
+    if (issue.code === "extension-in-link") {
+      // The report covers the project, so the repair does too: every note it
+      // counted is rewritten in one go, rather than leaving the same one-time
+      // change to be clicked through note by note.
+      const records = [
+        await this.repository.readManaged(project.projectFile),
+        ...(await this.findManagedFilesInProjectDirectories(
+          project,
+          "scenes",
+          "scene",
+          project.id,
+        )),
+      ];
+      let rewritten = 0;
+      for (const record of records) {
+        const tidy = this.extensionTidyPatch(record);
+        if (tidy === null) continue;
+        await this.repository.updateFrontmatter(record.path, tidy.patch);
+        rewritten += 1;
+      }
+      if (rewritten === 0) {
+        throw new Error(`No stored link in "${normalized}" carries a file extension.`);
+      }
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "unlinked-path" || issue.code === "incomplete-link") {
+      // Written out in full as a link, so that it stops depending on the name
+      // staying unique and Obsidian starts keeping it up to date. Only the ones
+      // the report named are touched; the rest keep the text the author has,
+      // alias and all.
+      const wanted = issue.code === "unlinked-path" ? "unlinked" : "incomplete";
+      const record = await this.repository.readManaged(normalized);
+      const names = new Map(
+        project.characters.map((character) => [character.path, character.name]),
+      );
+      const rewrite = (path: string, stored: string | null): string =>
+        toWikiLink(path, wikiLinkAlias(stored ?? "") ?? names.get(path) ?? fileStem(path));
+      const patch: ManagedFrontmatter = {};
+      const mend = (key: string): void => {
+        const stored = asOptionalString(record.frontmatter[key]);
+        const link = this.classifyLink(stored, normalized, project.rootPath);
+        if (link.kind === wanted) patch[key] = rewrite(link.path, stored);
+      };
+      mend(FRONTMATTER_KEYS.draft);
+      mend(FRONTMATTER_KEYS.pov);
+      const cast = this.storedCast(record);
+      const next = cast.map((entry) => {
+        const stored = asOptionalString(entry);
+        const link = this.classifyLink(stored, normalized, project.rootPath);
+        return link.kind === wanted ? rewrite(link.path, stored) : entry;
+      });
+      if (fingerprint(next) !== fingerprint(cast)) {
+        patch[FRONTMATTER_KEYS.sceneCharacters] = next;
+      }
+      if (Object.keys(patch).length === 0) {
+        throw new Error(`No such link was found in "${normalized}".`);
+      }
+      await this.repository.updateFrontmatter(normalized, patch);
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "foreign-link" || issue.code === "missing-link") {
+      // The cast loses only the entries the report named. A point of view is
+      // never dropped here, and every other field on the scene, and all of its
+      // prose, is left exactly as the author wrote it.
+      const wanted = issue.code === "foreign-link" ? "foreign" : "missing";
+      const record = await this.repository.readManaged(normalized);
+      const rawCharacters = this.storedCast(record);
+      const next = rawCharacters.filter(
+        (entry) =>
+          this.classifyLink(
+            asOptionalString(entry),
+            normalized,
+            project.rootPath,
+          ).kind !== wanted,
+      );
+      if (next.length === rawCharacters.length) {
+        throw new Error(`No such character link was found in "${normalized}".`);
+      }
+      await this.repository.updateFrontmatter(normalized, {
+        [FRONTMATTER_KEYS.sceneCharacters]: next,
+      });
+      return this.loadProject(project.projectFile);
+    }
+
     if (issue.code === "mismatched-project-folder") {
       // The same rule one folder up: the stored name is the one the dashboard
       // shows, so the folder is brought to it. An author who meant the folder
@@ -829,30 +978,6 @@ export class SnowflakeProjectService {
         throw new Error(`The project metadata issue at "${normalized}" cannot be repaired safely.`);
       }
       await this.repository.updateFrontmatter(project.projectFile, patch);
-      return this.loadProject(project.projectFile);
-    }
-
-    if (issue.code === "dangling-scene-character") {
-      // Only the entries whose notes are gone are dropped. The rest of the cast,
-      // and every other field on the scene, is left exactly as the author wrote
-      // it. A dangling point of view is deliberately not repaired here.
-      const record = await this.repository.readManaged(normalized);
-      const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
-      const rawCharacters: unknown[] = Array.isArray(stored)
-        ? (stored as unknown[])
-        : typeof stored === "string"
-          ? [stored]
-          : [];
-      const next = rawCharacters.filter(
-        (entry) =>
-          this.missingCharacterLink(asOptionalString(entry), normalized) === null,
-      );
-      if (next.length === rawCharacters.length) {
-        throw new Error(`No missing character link was found in "${normalized}".`);
-      }
-      await this.repository.updateFrontmatter(normalized, {
-        [FRONTMATTER_KEYS.sceneCharacters]: next,
-      });
       return this.loadProject(project.projectFile);
     }
 
@@ -1256,7 +1381,13 @@ export class SnowflakeProjectService {
       const next = rawCharacters.filter((entry) => {
         const target = fromWikiLink(asOptionalString(entry));
         return (
-          target === null || !this.linkNames(target, characterPath, record.path)
+          target === null ||
+          !this.linkNames(
+            target,
+            characterPath,
+            record.path,
+            project.rootPath,
+          )
         );
       });
       if (next.length === rawCharacters.length) continue;
@@ -1277,37 +1408,105 @@ export class SnowflakeProjectService {
    * shortened to a bare file name. The stored text stops being a path the
    * moment anything is renamed, which is why it is resolved rather than read.
    */
-  private linkedPath(stored: string | null, sourcePath: string): string | null {
-    const target = fromWikiLink(stored);
-    if (target === null || target.length === 0) return null;
-    return this.repository.resolveLink(target, sourcePath)?.path ?? target;
-  }
-
-  /**
-   * The target of a stored link that now leads nowhere, or null while it still
-   * resolves. Existence is the whole test: a note that is present but has broken
-   * metadata is a different issue, already reported against that note.
-   */
-  private missingLink(stored: string | null, sourcePath: string): string | null {
-    const target = fromWikiLink(stored);
-    if (target === null || target.length === 0) return null;
-    return this.repository.resolveLink(target, sourcePath) === null
-      ? target
-      : null;
-  }
-
-  /**
-   * The same test for a scene's cast, where a point-of-view mode may stand in
-   * place of a link. A mode is not a link and never dangles.
-   */
-  private missingCharacterLink(
+  private linkedPath(
     stored: string | null,
     sourcePath: string,
+    root: string,
   ): string | null {
-    if (stored !== null && isScenePovMode(fromWikiLink(stored) ?? "")) {
-      return null;
+    const target = fromWikiLink(stored);
+    if (target === null || target.length === 0) return null;
+    return this.draftNotePath(target, sourcePath, root) ?? target;
+  }
+
+  /**
+   * Where a draft link leads, or null when it leads nowhere. The project's own
+   * draft is preferred and anywhere in the Vault accepted, because a draft is
+   * the one note a project is allowed to keep outside its folder.
+   */
+  private draftNotePath(
+    target: string,
+    sourcePath: string,
+    root: string,
+  ): string | null {
+    return (
+      this.repository.resolveLinkWithin(target, sourcePath, root)?.path ??
+      this.repository.resolveLink(target, sourcePath)?.path ??
+      null
+    );
+  }
+
+  /**
+   * The note a scene's link leads to, which may only be one of its own
+   * project's. Obsidian shortens a link to a bare file name whenever that name
+   * is unambiguous, and a second project reusing the name makes it ambiguous
+   * without either note being touched -- at which point Obsidian starts
+   * answering with the other project's character. A link reaching outside the
+   * project is not this project's character, however it is spelled, and reads
+   * as broken so the health check can say so.
+   */
+  private projectLinkedPath(
+    stored: string | null,
+    sourcePath: string,
+    root: string,
+  ): string | null {
+    const target = fromWikiLink(stored);
+    if (target === null || target.length === 0) return null;
+    return (
+      this.repository.resolveLinkWithin(target, sourcePath, root)?.path ?? target
+    );
+  }
+
+  /** A scene's cast exactly as stored, so a rewrite can keep what it does not change. */
+  private storedCast(record: ManagedFileRecord): unknown[] {
+    const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
+    if (Array.isArray(stored)) return stored as unknown[];
+    return typeof stored === "string" ? [stored] : [];
+  }
+
+  /**
+   * How a stored link stands to the project it was written in. Three things can
+   * be wrong with one, and each wants a different answer:
+   *
+   * - shortened, so it still reaches the right note but only while no other
+   *   project reuses the name -- write the path out in full;
+   * - reaching a note in another project, which this project never meant;
+   * - reaching nothing at all.
+   *
+   * The last two are told apart because "gone" and "someone else's" are not the
+   * same news, even though both leave the list to be edited.
+   */
+  private classifyLink(
+    stored: string | null,
+    sourcePath: string,
+    root: string,
+  ): {
+    kind: "ok" | "unlinked" | "incomplete" | "foreign" | "missing";
+    path: string;
+  } {
+    const target = fromWikiLink(stored);
+    if (target === null || target.length === 0 || isScenePovMode(target)) {
+      return { kind: "ok", path: target ?? "" };
     }
-    return this.missingLink(stored, sourcePath);
+    const own = this.repository.resolveLinkWithin(target, sourcePath, root);
+    if (own === null) {
+      const anywhere = this.repository.resolveLink(target, sourcePath);
+      return anywhere === null
+        ? { kind: "missing", path: target }
+        : { kind: "foreign", path: anywhere.path };
+    }
+    // A path typed as plain text reaches the note today and is not a link, so
+    // Obsidian leaves it where it is when that note moves -- and the plugin
+    // reading it as one is what lets it look healthy right up until a rename
+    // takes the note out from under it. Reported before the shape of the path,
+    // because writing it as a link settles both at once.
+    if (!isWikiLink(stored)) return { kind: "unlinked", path: own.path };
+    // Complete when the stored text is the note's own path, with or without the
+    // extension Obsidian drops. Anything shorter leans on the name being
+    // unique, which is a thing that stops being true without warning.
+    const named = normalizePath(target);
+    const complete =
+      named === own.path || named === own.path.replace(/\.md$/u, "");
+    return { kind: complete ? "ok" : "incomplete", path: own.path };
   }
 
   /**
@@ -1325,9 +1524,10 @@ export class SnowflakeProjectService {
     target: string,
     path: string,
     sourcePath: string,
+    root: string,
   ): boolean {
     const wanted = normalizePath(path);
-    const resolved = this.repository.resolveLink(target, sourcePath);
+    const resolved = this.repository.resolveLinkWithin(target, sourcePath, root);
     if (resolved !== null) return resolved.path === wanted;
     const named = normalizePath(target);
     const stem = wanted.replace(/\.md$/u, "");
@@ -1357,8 +1557,8 @@ export class SnowflakeProjectService {
     // is set not to update links at all.
     const isRenamed = (stored: string | null, sourcePath: string): boolean =>
       stored !== null &&
-      (this.linkNames(stored, previousPath, sourcePath) ||
-        this.linkNames(stored, currentPath, sourcePath));
+      (this.linkNames(stored, previousPath, sourcePath, project.rootPath) ||
+        this.linkNames(stored, currentPath, sourcePath, project.rootPath));
 
     for (const record of records) {
       if (record.readOnly) continue;
@@ -1451,7 +1651,10 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.sceneCharacters]: (input.characters ?? []).map(characterLink),
       },
     });
-    return this.sceneFromRecord(await this.repository.readManaged(created.path));
+    return this.sceneFromRecord(
+      await this.repository.readManaged(created.path),
+      project.rootPath,
+    );
   }
 
   /**
@@ -1521,7 +1724,7 @@ export class SnowflakeProjectService {
     const scenes: SceneRecord[] = [];
     for (const record of records) {
       try {
-        scenes.push(this.sceneFromRecord(record));
+        scenes.push(this.sceneFromRecord(record, project.rootPath));
       } catch (error) {
         if (!(record.readOnly && error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -1600,7 +1803,10 @@ export class SnowflakeProjectService {
       await this.syncNoteHeading(path, nextTitle);
       path = await this.renameManagedNote(path, nextTitle);
     }
-    return this.sceneFromRecord(await this.repository.readManaged(path));
+    return this.sceneFromRecord(
+      await this.repository.readManaged(path),
+      project.rootPath,
+    );
   }
 
   async reorderScene(
@@ -2297,6 +2503,12 @@ export class SnowflakeProjectService {
       }
     }
 
+    // Links this project stored before the plugin started writing them the way
+    // Obsidian does. Nothing about them is broken -- both forms are read -- so
+    // they are gathered into one report for the project rather than raised
+    // against each note that has one.
+    let datedLinks = this.extensionTidyPatch(projectRecord)?.links ?? 0;
+
     const inspectCollection = async (
       directory: ProjectDirectoryKey,
       documentType: "character" | "scene",
@@ -2375,37 +2587,89 @@ export class SnowflakeProjectService {
         // to create the note, which would resurrect the character as an empty
         // stub, so the project has to notice the breakage itself.
         if (documentType === "scene") {
-          const missingPov = this.missingCharacterLink(
-            asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
-            record.path,
+          const storedPov = asOptionalString(
+            record.frontmatter[FRONTMATTER_KEYS.pov],
           );
-          if (missingPov !== null) {
+          const pov = this.classifyLink(
+            storedPov,
+            record.path,
+            project.rootPath,
+          );
+          // Classified from the stored entries rather than their targets: it is
+          // the entry that says whether it is a link at all.
+          const cast = this.storedCast(record).map((entry) =>
+            this.classifyLink(
+              asOptionalString(entry),
+              record.path,
+              project.rootPath,
+            ),
+          );
+          const named = (kind: string): string =>
+            [
+              ...new Set(
+                [pov, ...cast]
+                  .filter((link) => link.kind === kind)
+                  .map((link) => fileStem(link.path)),
+              ),
+            ].join(", ");
+
+          // The point of view is deliberately absent from what a repair
+          // touches, so a scene left without one is reported on its own: which
+          // character now carries the scene is the author's to decide.
+          if (pov.kind === "foreign" || pov.kind === "missing") {
             add({
               code: "dangling-scene-pov",
               path: record.path,
               stepIds,
-              expected: fileStem(missingPov),
+              expected: fileStem(pov.path),
               canOpen: true,
-              // Which character now carries the scene is an authorial decision,
-              // so there is no content-preserving fix to apply on their behalf.
               repairable: false,
             });
           }
-          const missingCast = readWikiLinkList(
-            record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
-          ).filter(
-            (path) => this.missingCharacterLink(path, record.path) !== null,
-          );
-          if (missingCast.length > 0) {
+          if (pov.kind === "unlinked" || cast.some((l) => l.kind === "unlinked")) {
             add({
-              code: "dangling-scene-character",
+              code: "unlinked-path",
               path: record.path,
               stepIds,
-              expected: missingCast.map((path) => fileStem(path)).join(", "),
+              expected: named("unlinked"),
               canOpen: true,
               repairable: !record.readOnly,
             });
           }
+          if (pov.kind === "incomplete" || cast.some((l) => l.kind === "incomplete")) {
+            add({
+              code: "incomplete-link",
+              path: record.path,
+              stepIds,
+              expected: named("incomplete"),
+              canOpen: true,
+              repairable: !record.readOnly,
+            });
+          }
+          if (cast.some((link) => link.kind === "foreign")) {
+            add({
+              code: "foreign-link",
+              path: record.path,
+              stepIds,
+              expected: named("foreign"),
+              canOpen: true,
+              repairable: !record.readOnly,
+            });
+          }
+          if (cast.some((link) => link.kind === "missing")) {
+            add({
+              code: "missing-link",
+              path: record.path,
+              stepIds,
+              expected: named("missing"),
+              canOpen: true,
+              repairable: !record.readOnly,
+            });
+          }
+          // Counted while the scenes are open anyway; reported once for the
+          // project below, since one note at a time would be a long list of
+          // the same one-time change.
+          datedLinks += this.extensionTidyPatch(record)?.links ?? 0;
         }
 
         const typeSpecificValid =
@@ -2449,6 +2713,35 @@ export class SnowflakeProjectService {
     };
     await inspectCollection("characters", "character", [3, 5, 7]);
     await inspectCollection("scenes", "scene", [8, 9]);
+
+    // The draft link belongs to the project note rather than to any scene, and
+    // is just as capable of being typed out as plain text.
+    const draftLink = this.classifyLink(
+      asOptionalString(projectRecord.frontmatter[FRONTMATTER_KEYS.draft]),
+      projectRecord.path,
+      project.rootPath,
+    );
+    if (draftLink.kind === "unlinked" || draftLink.kind === "incomplete") {
+      add({
+        code: draftLink.kind === "unlinked" ? "unlinked-path" : "incomplete-link",
+        path: projectRecord.path,
+        stepIds: [10],
+        expected: fileStem(draftLink.path),
+        canOpen: true,
+        repairable: !projectRecord.readOnly,
+      });
+    }
+
+    if (datedLinks > 0) {
+      add({
+        code: "extension-in-link",
+        path: project.rootPath,
+        stepIds: [],
+        expected: String(datedLinks),
+        canOpen: false,
+        repairable: true,
+      });
+    }
 
     const canonicalDraftPath = normalizePath(
       `${project.rootPath}/${layout.directories.draft}/${layout.draftFileName}`,
@@ -2537,7 +2830,10 @@ export class SnowflakeProjectService {
     };
   }
 
-  private sceneFromRecord(record: ManagedFileRecord): SceneRecord {
+  private sceneFromRecord(
+    record: ManagedFileRecord,
+    root: string,
+  ): SceneRecord {
     const sceneId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneId]);
     const projectId = projectIdOf(record.frontmatter);
     if (!sceneId || !projectId) {
@@ -2548,7 +2844,9 @@ export class SnowflakeProjectService {
     // that is what the rest of the plugin holds a character by. A stored link
     // is not that path once Obsidian has rewritten it, and a scene whose cast
     // no longer matches the project's characters loses that cast the next time
-    // its form is opened, so the links are followed here rather than copied.
+    // its form is opened, so the links are followed here rather than copied --
+    // and followed only as far as this project, which is the only place its
+    // characters are.
     const storedPov = fromWikiLink(
       asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
     );
@@ -2563,12 +2861,14 @@ export class SnowflakeProjectService {
       povPath:
         storedPov === null || isScenePovMode(storedPov)
           ? storedPov
-          : this.linkedPath(storedPov, record.path),
+          : this.projectLinkedPath(storedPov, record.path, root),
       time: asString(record.frontmatter[FRONTMATTER_KEYS.sceneTime]),
       location: asString(record.frontmatter[FRONTMATTER_KEYS.sceneLocation]),
       characters: readWikiLinkList(
         record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
-      ).map((target) => this.linkedPath(target, record.path) ?? target),
+      ).map(
+        (target) => this.projectLinkedPath(target, record.path, root) ?? target,
+      ),
       conflict: readMarkedSection(record.content, "scene-conflict") ?? "",
       events: readMarkedSection(record.content, "scene-events") ?? "",
       planning: readMarkedSection(record.content, "scene-planning") ?? "",
@@ -2730,7 +3030,7 @@ export class SnowflakeProjectService {
     const validScenes: SceneRecord[] = [];
     for (const record of sceneRecords.filter((candidate) => !candidate.readOnly)) {
       try {
-        const scene = this.sceneFromRecord(record);
+        const scene = this.sceneFromRecord(record, project.rootPath);
         validScenes.push(scene);
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
@@ -2749,7 +3049,7 @@ export class SnowflakeProjectService {
     const visibleScenes = [...scenes];
     for (const record of sceneRecords.filter((candidate) => candidate.readOnly)) {
       try {
-        visibleScenes.push(this.sceneFromRecord(record));
+        visibleScenes.push(this.sceneFromRecord(record, project.rootPath));
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -3179,7 +3479,7 @@ function encodeProjectPatch(
   }
   if (patch.draftPath !== undefined) {
     encoded[FRONTMATTER_KEYS.draft] = patch.draftPath
-      ? toWikiLink(patch.draftPath)
+      ? toWikiLink(patch.draftPath, fileStem(patch.draftPath))
       : "";
   }
   copyDefined(encoded, FRONTMATTER_KEYS.reviewedFingerprints, patch.reviewedFingerprints);
@@ -3370,6 +3670,16 @@ export function toWikiLink(path: string, alias?: string): string {
     ? alias.replace(/[|\]]/gu, "").trim()
     : "";
   return safeAlias ? `[[${normalized}|${safeAlias}]]` : `[[${normalized}]]`;
+}
+
+/** Whether a stored value is a wikilink at all, rather than a path typed out. */
+function isWikiLink(value: string | null): boolean {
+  return value !== null && /^\[\[[^\]]+\]\]$/u.test(value.trim());
+}
+
+/** The display text a link carries after the bar, if it carries one. */
+function wikiLinkAlias(value: string): string | undefined {
+  return /^\[\[[^\]|]+\|([^\]]*)\]\]$/u.exec(value.trim())?.[1];
 }
 
 export function fromWikiLink(value: string | null): string | null {

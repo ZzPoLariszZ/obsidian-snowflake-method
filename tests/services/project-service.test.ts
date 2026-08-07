@@ -65,6 +65,13 @@ describe("SnowflakeProjectService", () => {
     expect(project.links).toEqual({
       draft: "Snowflake Projects/北境之雪/50_正文/初稿.md",
     });
+    // Named like every other link the plugin writes, so the property editor
+    // shows the note rather than the path leading to it.
+    expect(
+      (await service.readManagedFrontmatter(project.projectFile))[
+        FRONTMATTER_KEYS.draft
+      ],
+    ).toBe("[[Snowflake Projects/北境之雪/50_正文/初稿|初稿]]");
     const stepOnePath = `${project.rootPath}/10_概述/11_一句话概述.md`;
     expect(fakeVault.getFileByPath(stepOnePath)).not.toBeNull();
     expect(fakeVault.getFileByPath(`${project.rootPath}/10_概述/12_一段式梗概.md`)).not.toBeNull();
@@ -925,8 +932,30 @@ describe("SnowflakeProjectService", () => {
 
     const reloaded = await service.loadProject(project.projectFile);
 
+    // Still found, and still reported: a bare file name reaches the draft only
+    // while nothing else in the Vault answers to it.
     expect(reloaded.links.draft).toBe(`${project.rootPath}/50_Manuscript/Draft.md`);
-    expect(reloaded.structureIssues).toEqual([]);
+    expect(reloaded.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "incomplete-link",
+        path: project.projectFile,
+        expected: "Draft",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(
+      project.projectFile,
+      project.projectFile,
+    );
+    const repaired = await service.loadProject(project.projectFile);
+
+    expect(
+      (await service.readManagedFrontmatter(project.projectFile))[
+        FRONTMATTER_KEYS.draft
+      ],
+    ).toBe(`[[${project.rootPath}/50_Manuscript/Draft|Draft]]`);
+    expect(repaired.structureIssues).toEqual([]);
   });
 
   it("leaves a scene alone when Obsidian rewrote its links without the file extension", async () => {
@@ -1237,13 +1266,13 @@ describe("SnowflakeProjectService", () => {
 
   it("creates scenes, stores links, and normally rewrites only the moved rank", async () => {
     const project = await service.createProject({ name: "Scenes" });
-    // A scene reports the note its link reaches, so the note has to be there.
-    await fakeVault.seedFile("People/Ada.md", "# Ada\n");
+    // A scene reports the character its link reaches, so there has to be one.
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
     const first = await service.createScene(project, { title: "First", conflict: "One" });
 	expect(first.povPath).toBe(SCENE_POV_OMNISCIENT);
     const second = await service.createScene(project, {
       title: "Second",
-      povPath: "People/Ada.md",
+      povPath: ada.path,
       planning: "Plan the reversal.",
     });
     const updatedSecond = await service.updateScene(project, second.sceneId, {
@@ -1258,7 +1287,7 @@ describe("SnowflakeProjectService", () => {
     const reordered = await service.reorderScene(project, third.sceneId, 1);
     expect(reordered.map((scene) => scene.title)).toEqual(["First", "Third", "Second"]);
     expect(fakeFileManager.frontmatterCalls).toEqual([third.path]);
-    expect(reordered[2]?.povPath).toBe("People/Ada.md");
+    expect(reordered[2]?.povPath).toBe(ada.path);
     expect(reordered[2]?.planning).toBe("Plan the reversal and its consequences.");
     expect(first.rank).toBeLessThan(reordered[1]!.rank);
   });
@@ -1296,31 +1325,33 @@ describe("SnowflakeProjectService", () => {
 
   it("stores and updates the complete Step 8 scene form", async () => {
     const project = await service.createProject({ name: "Scene Details" });
-    await fakeVault.seedFile("People/Ada.md", "# Ada\n");
-    await fakeVault.seedFile("People/Lin.md", "# Lin\n");
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const lin = await service.createCharacter(project, { name: "Lin", type: "major" });
     const scene = await service.createScene(project, {
       title: "Midnight meeting",
       time: "Midnight",
       location: "Old station",
-      characters: ["People/Ada.md", "People/Lin.md"],
+      characters: [ada.path, lin.path],
       conflict: "Ada must choose whom to trust.",
-      povPath: "People/Ada.md",
+      povPath: ada.path,
       events: "A coded message arrives and the lights go out.",
     });
 
     expect(scene.time).toBe("Midnight");
     expect(scene.location).toBe("Old station");
-    expect(scene.characters).toEqual(["People/Ada.md", "People/Lin.md"]);
+    expect(scene.characters).toEqual([ada.path, lin.path]);
     const sceneFrontmatter = parseMarkdownFrontmatter(
       fakeVault.contents.get(scene.path) ?? "",
     ).frontmatter;
     expect(sceneFrontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
-      "[[People/Ada|Ada]]",
-      "[[People/Lin|Lin]]",
+      `[[${linkTarget(ada.path)}|Ada]]`,
+      `[[${linkTarget(lin.path)}|Lin]]`,
     ]);
-    expect(sceneFrontmatter[FRONTMATTER_KEYS.pov]).toBe("[[People/Ada|Ada]]");
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.pov]).toBe(
+      `[[${linkTarget(ada.path)}|Ada]]`,
+    );
     expect(scene.conflict).toBe("Ada must choose whom to trust.");
-    expect(scene.povPath).toBe("People/Ada.md");
+    expect(scene.povPath).toBe(ada.path);
     expect(scene.events).toBe("A coded message arrives and the lights go out.");
     expect(readMarkedSection(fakeVault.contents.get(scene.path) ?? "", "scene-conflict")).toBe(
       "Ada must choose whom to trust.",
@@ -1884,6 +1915,306 @@ describe("SnowflakeProjectService", () => {
     ).toBe(`[[${linkTarget(character.path)}|Bob]]`);
   });
 
+  it("rewrites the links older projects stored with a file extension", async () => {
+    const project = await service.createProject({ name: "Legacy links" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: ada.path,
+      characters: [ada.path],
+    });
+    // What every project written before the change has on disk.
+    const withExtension = (path: string, alias: string): string =>
+      `[[${path}|${alias}]]`;
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.pov] = withExtension(ada.path, "Ada");
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [
+          withExtension(ada.path, "Ada"),
+        ];
+      },
+    );
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.draft] =
+          `[[${project.rootPath}/50_Manuscript/Draft.md]]`;
+      },
+    );
+
+    // One report for the project, counting every link across its notes, rather
+    // than the same one-time change raised against each note that has one.
+    const damaged = await service.loadProject(project.projectFile);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "extension-in-link",
+        path: project.rootPath,
+        expected: "3",
+        stepIds: [],
+        canOpen: false,
+        repairable: true,
+      }),
+    );
+    // Reporting writes nothing.
+    expect(
+      (await service.readManagedFrontmatter(scene.path))[FRONTMATTER_KEYS.pov],
+    ).toBe(withExtension(ada.path, "Ada"));
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      project.rootPath,
+    );
+
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(
+      `[[${linkTarget(ada.path)}|Ada]]`,
+    );
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      `[[${linkTarget(ada.path)}|Ada]]`,
+    ]);
+    expect(repaired.links.draft).toBe(`${project.rootPath}/50_Manuscript/Draft.md`);
+    expect(repaired.scenes[0]?.characters).toEqual([ada.path]);
+    expect(repaired.structureIssues).toEqual([]);
+  });
+
+  it("leaves a point-of-view mode and an already-tidy link alone", async () => {
+    const project = await service.createProject({ name: "Nothing to tidy" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    await service.createScene(project, {
+      title: "Arrival",
+      povPath: SCENE_POV_MULTIPLE,
+      characters: [ada.path],
+    });
+
+    const snapshot = await service.loadProject(project.projectFile);
+
+    expect(snapshot.structureIssues).toEqual([]);
+  });
+
+  // A path typed into the property editor is stored as plain text. It reaches
+  // the note, so everything looks well -- but Obsidian only rewrites links it
+  // can see, so the next rename leaves it pointing at where the note used to be.
+  it("reports a path stored as plain text instead of a wikilink", async () => {
+    const project = await service.createProject({ name: "Typed out" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.draft] =
+          `${project.rootPath}/50_Manuscript/Draft`;
+      },
+    );
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    // It still reaches the draft, which is exactly why it needs saying.
+    expect(damaged.links.draft).toBe(`${project.rootPath}/50_Manuscript/Draft.md`);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "unlinked-path",
+        path: project.projectFile,
+        expected: "Draft",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(
+      project.projectFile,
+      project.projectFile,
+    );
+
+    expect(
+      (await service.readManagedFrontmatter(project.projectFile))[
+        FRONTMATTER_KEYS.draft
+      ],
+    ).toBe(`[[${project.rootPath}/50_Manuscript/Draft|Draft]]`);
+    expect(
+      (await service.loadProject(project.projectFile)).structureIssues,
+    ).toEqual([]);
+  });
+
+  it("reports a scene cast entry stored as plain text instead of a wikilink", async () => {
+    const project = await service.createProject({ name: "Typed cast" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: ada.path,
+      characters: [ada.path],
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = [ada.path];
+        frontmatter[FRONTMATTER_KEYS.pov] = ada.path;
+      },
+    );
+
+    const damaged = await service.loadProject(project.projectFile);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "unlinked-path",
+        path: scene.path,
+        expected: "Ada",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, scene.path);
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(
+      `[[${linkTarget(ada.path)}|Ada]]`,
+    );
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      `[[${linkTarget(ada.path)}|Ada]]`,
+    ]);
+    expect(
+      (await service.loadProject(project.projectFile)).structureIssues,
+    ).toEqual([]);
+  });
+
+  // A point-of-view mode is plain text on purpose and must never be reported.
+  it("leaves a point-of-view mode as the plain text it is meant to be", async () => {
+    const project = await service.createProject({ name: "Omniscient" });
+    await service.createScene(project, {
+      title: "Arrival",
+      povPath: SCENE_POV_OMNISCIENT,
+    });
+
+    expect(
+      (await service.loadProject(project.projectFile)).structureIssues,
+    ).toEqual([]);
+  });
+
+  // Obsidian shortens a link to a bare file name while that name is the only
+  // one of its kind, and a project made later with a character of the same name
+  // makes the link ambiguous without either note being touched. Obsidian then
+  // answers with whichever it reaches first, which is how one project's scene
+  // comes to name another project's character.
+  it("keeps a shortened cast link on its own project's character", async () => {
+    const first = await service.createProject({ name: "First" });
+    const eve = await service.createCharacter(first, { name: "Eve", type: "major" });
+    const scene = await service.createScene(first, {
+      title: "Arrival",
+      characters: [eve.path],
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = ["[[Eve|Eve]]"];
+        frontmatter[FRONTMATTER_KEYS.pov] = "[[Eve|Eve]]";
+      },
+    );
+
+    // The second project's Eve is the one a Vault-wide lookup finds first.
+    const second = await service.createProject({ name: "Second" });
+    const stranger = await service.createCharacter(second, {
+      name: "Eve",
+      type: "major",
+    });
+    expect(stranger.path).not.toBe(eve.path);
+
+    const reloaded = await service.loadProject(first.projectFile);
+
+    expect(reloaded.scenes[0]?.characters).toEqual([eve.path]);
+    expect(reloaded.scenes[0]?.povPath).toBe(eve.path);
+
+    // Reading it correctly is not enough: clicking the link, the backlinks and
+    // the graph all follow Obsidian to the other project, so it is reported.
+    expect(reloaded.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "incomplete-link",
+        path: scene.path,
+        expected: "Eve",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(first.projectFile, scene.path);
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
+      `[[${linkTarget(eve.path)}|Eve]]`,
+    ]);
+    expect(frontmatter[FRONTMATTER_KEYS.pov]).toBe(
+      `[[${linkTarget(eve.path)}|Eve]]`,
+    );
+    expect((await service.loadProject(first.projectFile)).structureIssues).toEqual([]);
+  });
+
+  // A namesake elsewhere never stands in for the character this project lost.
+  // The link now opens the other project's note, which is what it is told: the
+  // one thing it must not be called is "gone", when clicking it lands on a note.
+  it("calls a cast link a namesake elsewhere answers a link into another project", async () => {
+    const first = await service.createProject({ name: "Only" });
+    const eve = await service.createCharacter(first, { name: "Eve", type: "major" });
+    const scene = await service.createScene(first, {
+      title: "Arrival",
+      characters: [eve.path],
+      povPath: eve.path,
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneCharacters] = ["[[Eve|Eve]]"];
+      },
+    );
+    fakeVault.delete(eve.path);
+    const elsewhere = await service.createProject({ name: "Elsewhere" });
+    const stranger = await service.createCharacter(elsewhere, {
+      name: "Eve",
+      type: "major",
+    });
+
+    const damaged = await service.loadProject(first.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "foreign-link",
+        path: scene.path,
+        expected: "Eve",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(first.projectFile, scene.path);
+    const frontmatter = await service.readManagedFrontmatter(scene.path);
+
+    expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([]);
+    // The other project keeps its own character; only the list entry went.
+    expect(fakeVault.getFileByPath(stranger.path)).not.toBeNull();
+  });
+
+  it("calls a cast link nothing at all answers a link to a note that is gone", async () => {
+    const project = await service.createProject({ name: "Vanished" });
+    const eve = await service.createCharacter(project, { name: "Eve", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      characters: [eve.path],
+      povPath: SCENE_POV_MULTIPLE,
+    });
+    fakeVault.delete(eve.path);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "missing-link",
+        path: scene.path,
+        expected: "Eve",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, scene.path);
+
+    expect(
+      (await service.readManagedFrontmatter(scene.path))[
+        FRONTMATTER_KEYS.sceneCharacters
+      ],
+    ).toEqual([]);
+  });
+
   // Each kind of name is reported under its own code, because the sentence the
   // checker shows has to name the thing and say where that name is changed.
   it("reports a drifted scene name under the code for a scene", async () => {
@@ -2179,7 +2510,7 @@ describe("SnowflakeProjectService", () => {
 
     expect(damaged.structureIssues).toContainEqual(
       expect.objectContaining({
-        code: "dangling-scene-character",
+        code: "missing-link",
         path: scene.path,
         expected: "Bram",
         stepIds: [8, 9],
@@ -2204,7 +2535,7 @@ describe("SnowflakeProjectService", () => {
     const repaired = await service.loadProject(project.projectFile);
     expect(repaired.structureIssues).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "dangling-scene-character" }),
+        expect.objectContaining({ code: "missing-link" }),
       ]),
     );
   });
@@ -2245,7 +2576,7 @@ describe("SnowflakeProjectService", () => {
     expect(
       snapshot.structureIssues.filter(
         (issue) =>
-          issue.code === "dangling-scene-character" ||
+          issue.code === "missing-link" ||
           issue.code === "dangling-scene-pov",
       ),
     ).toEqual([]);

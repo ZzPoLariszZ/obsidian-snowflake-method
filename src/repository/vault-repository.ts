@@ -123,6 +123,50 @@ export class VaultRepository {
     );
   }
 
+  /**
+   * The same, looked for inside one folder.
+   *
+   * Obsidian shortens a link to whatever was unambiguous when it wrote it, so a
+   * character's link can end up as nothing but a file name. A second project
+   * with a character of the same name makes that name ambiguous afterwards, and
+   * Obsidian then answers with whichever of them it reaches first -- which is
+   * how one project's scene comes to name another project's character. Nothing
+   * in the link says which was meant, so the folder it was written in decides.
+   */
+  resolveLinkWithin(
+    link: string,
+    sourcePath: string,
+    folder: string,
+  ): TFile | null {
+    const target = getLinkpath(link.trim());
+    if (!target) return null;
+    const scope = this.normalize(folder);
+    const anywhere = this.resolveLink(target, sourcePath);
+    if (anywhere !== null && isAtOrBelow(anywhere.path, scope)) return anywhere;
+    const root = this.getFolder(scope);
+    if (root === null) return null;
+    const wanted = this.normalize(target).endsWith(".md")
+      ? this.normalize(target)
+      : `${this.normalize(target)}.md`;
+    // The nearest note wins, as it does for a link Obsidian can place itself.
+    let nearest: TFile | null = null;
+    const visit = (node: TFolder): void => {
+      for (const child of node.children) {
+        if (isFolder(child)) {
+          visit(child);
+        } else if (
+          isFile(child) &&
+          (child.path === wanted || child.path.endsWith(`/${wanted}`)) &&
+          (nearest === null || child.path.length < nearest.path.length)
+        ) {
+          nearest = child;
+        }
+      }
+    };
+    visit(root);
+    return nearest;
+  }
+
   getFolder(path: string): TFolder | null {
     const node = this.get(path);
     return isFolder(node) ? node : null;
@@ -577,6 +621,10 @@ function classifySectionConflicts(
 function parentOf(path: string): string {
   const index = path.lastIndexOf("/");
   return index < 0 ? "" : path.slice(0, index);
+}
+
+function isAtOrBelow(path: string, folder: string): boolean {
+  return folder.length === 0 || path === folder || path.startsWith(`${folder}/`);
 }
 
 function isFile(node: TAbstractFile | null): node is TFile {
