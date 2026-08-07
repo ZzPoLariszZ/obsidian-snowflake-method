@@ -8,6 +8,12 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1]
+
+### Fixed
+
+- Removed a use of a JavaScript method newer than the language version this plugin targets, which left the value it returned without a resolved type. Nothing behaves differently; the source now type-checks against the target it states.
+
 ## [0.3.0]
 
 ### Added
@@ -69,6 +75,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.3.1]
+
+### 修复
+
+- 移除了一处高于本插件目标语言版本的 JavaScript 方法调用，该调用会使其返回值无法解析出类型。行为没有任何变化；源码现在可在所声明的目标版本下通过类型检查。
 
 ## [0.3.0]
 
