@@ -48,6 +48,20 @@ export function schemaVersionOf(frontmatter: ManagedFrontmatter): number | null 
   return Number.isInteger(numeric) && numeric >= 0 ? numeric : null;
 }
 
+/**
+ * Whether a note declares a schema this build cannot write.
+ *
+ * A note carrying no schema at all is not one of ours and is not locked; one
+ * carrying a schema we do not recognise is a note a later build wrote, and is
+ * read but never written back.
+ */
+export function isReadOnlySchema(frontmatter: ManagedFrontmatter): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(frontmatter, "snowflake-schema") &&
+    schemaVersionOf(frontmatter) !== SCHEMA_VERSION
+  );
+}
+
 export function assertWritableSchema(path: string, frontmatter: ManagedFrontmatter): void {
   if (!Object.prototype.hasOwnProperty.call(frontmatter, 'snowflake-schema')) {
     return;

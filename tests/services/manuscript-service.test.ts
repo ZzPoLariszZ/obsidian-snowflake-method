@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { FRONTMATTER_KEYS } from "../../src/domain";
+import { FRONTMATTER_KEYS, findSequenceIssues } from "../../src/domain";
 import { parseMarkdownFrontmatter } from "../../src/repository";
 import {
   SnowflakeProjectService,
   type ProjectSnapshot,
 } from "../../src/services";
-import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
+import {
+  createFakeEnvironment,
+  type FakeMetadataCache,
+  type FakeVault,
+} from "../helpers/fake-vault";
 
 describe("ManuscriptService", () => {
   let fakeVault: FakeVault;
@@ -49,10 +53,11 @@ describe("ManuscriptService", () => {
   });
 
   it("reports nothing wrong with a manuscript of one", async () => {
-    const issues = await service.manuscript.findSequenceIssues(
-      project,
-    );
-    expect(issues).toEqual({ missing: [], invalid: [], duplicate: [] });
+    expect(findSequenceIssues(await manuscript())).toEqual({
+      missing: [],
+      invalid: [],
+      duplicate: [],
+    });
     expect(project.structureIssues).toEqual([]);
   });
 
@@ -418,5 +423,221 @@ describe("manuscript health checks", () => {
         ({ sequence }) => sequence,
       ),
     ).toEqual([1024, 2048]);
+  });
+});
+
+describe("what a manuscript costs to read", () => {
+  let fakeVault: FakeVault;
+  let fakeMetadataCache: FakeMetadataCache;
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+
+  const reads = (): string[] =>
+    fakeVault.readCalls.filter((path) => path.includes("/50_Manuscript/"));
+
+  const sequenceOf = (path: string): unknown =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+      FRONTMATTER_KEYS.manuscriptSequence
+    ];
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    fakeMetadataCache = environment.fakeMetadataCache;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+    for (const title of ["Two", "Three", "Four"]) {
+      await service.manuscript.appendSegment(project, title);
+    }
+    project = await service.loadProject(project.projectFile);
+  });
+
+  it("opens no note to say what order the manuscript reads in", async () => {
+    fakeVault.readCalls.length = 0;
+    const segments = await service.manuscript.listSegments(project);
+
+    expect(segments.map(({ title }) => title)).toEqual([
+      "Draft",
+      "Two",
+      "Three",
+      "Four",
+    ]);
+    expect(reads()).toEqual([]);
+  });
+
+  it("opens every note when the answer is about to be written back", async () => {
+    fakeVault.readCalls.length = 0;
+    await service.manuscript.listSegmentsFromFiles(project);
+
+    expect(new Set(reads()).size).toBe(4);
+  });
+
+  it("goes over the manuscript once to load a project, not twice", async () => {
+    fakeVault.readCalls.length = 0;
+    fakeMetadataCache.getFileCacheCalls.length = 0;
+    await service.loadProject(project.projectFile);
+
+    // Both questions a load asks of the manuscript -- what order it reads in,
+    // and whether anything is wrong with that order -- come off one pass.
+    expect(fakeMetadataCache.getFileCacheCalls).toHaveLength(4);
+    // Step 10's artifact is the opening note, which is read for its content on
+    // any project. Nothing else in the manuscript is opened at all.
+    expect(new Set(reads())).toEqual(
+      new Set(["Snowflake Projects/Novel/50_Manuscript/Draft.md"]),
+    );
+  });
+
+  it("finds a note the index has not caught up with", async () => {
+    const three = "Snowflake Projects/Novel/50_Manuscript/Three.md";
+    fakeMetadataCache.unindexed.add(three);
+
+    const segments = await service.manuscript.listSegments(project);
+
+    expect(segments.map(({ title }) => title)).toEqual([
+      "Draft",
+      "Two",
+      "Three",
+      "Four",
+    ]);
+    expect(segments[2]?.hasStoredSequence).toBe(true);
+    // Found by opening it, which is the price of the index not knowing it yet.
+    expect(reads()).toContain(three);
+  });
+
+  it("reports a place the index has not caught up with as it is written", async () => {
+    const two = "Snowflake Projects/Novel/50_Manuscript/Two.md";
+    await service.repository.updateFrontmatter(two, {
+      [FRONTMATTER_KEYS.manuscriptSequence]: "second",
+    });
+    fakeMetadataCache.unindexed.add(two);
+
+    const snapshot = await service.loadProject(project.projectFile);
+
+    expect(snapshot.structureIssues.map((issue) => issue.code)).toContain(
+      "invalid-manuscript-sequence",
+    );
+  });
+
+  it("opens two notes to place a chapter between them, not the book", async () => {
+    fakeVault.readCalls.length = 0;
+    const placed = await service.manuscript.insertSegmentAfter(
+      project,
+      "Snowflake Projects/Novel/50_Manuscript/Two.md",
+      "Two And A Half",
+    );
+
+    expect(
+      (await service.manuscript.listSegments(project)).map(
+        ({ title }) => title,
+      ),
+    ).toEqual(["Draft", "Two", "Two And A Half", "Three", "Four"]);
+    // Only the pair the new place goes between, and the note being created.
+    expect(new Set(reads())).toEqual(
+      new Set([
+        "Snowflake Projects/Novel/50_Manuscript/Two.md",
+        "Snowflake Projects/Novel/50_Manuscript/Three.md",
+        placed,
+      ]),
+    );
+  });
+
+  it("opens one note to add a chapter at the end", async () => {
+    fakeVault.readCalls.length = 0;
+    const added = await service.manuscript.appendSegment(project, "Five");
+
+    expect(new Set(reads())).toEqual(
+      new Set(["Snowflake Projects/Novel/50_Manuscript/Four.md", added]),
+    );
+    expect(sequenceOf(added)).toBe(5 * 1024);
+  });
+
+  it("goes back to the notes when the index is behind on a place it needs", async () => {
+    // What a renumbering leaves behind: the run was rewritten whole, so the
+    // index is behind on the very notes the new place goes between.
+    const stale = (path: string, sequence: number): void => {
+      fakeMetadataCache.behind.set(path, {
+        "snowflake-schema": 1,
+        "snowflake-document": "draft",
+        "snowflake-project-id": project.id,
+        [FRONTMATTER_KEYS.manuscriptSequence]: sequence,
+      });
+    };
+    stale("Snowflake Projects/Novel/50_Manuscript/Two.md", 2000);
+    stale("Snowflake Projects/Novel/50_Manuscript/Three.md", 3000);
+    fakeVault.readCalls.length = 0;
+
+    const placed = await service.manuscript.insertSegmentAfter(
+      project,
+      "Snowflake Projects/Novel/50_Manuscript/Two.md",
+      "Two And A Half",
+    );
+
+    // Every note opened, because one answer being wrong makes all of them
+    // suspect -- and the place is worked out from what the notes really say,
+    // not from the 2500 the index would have given.
+    expect(new Set(reads()).size).toBeGreaterThan(4);
+    expect(sequenceOf(placed)).toBe(2560);
+    expect(
+      (await service.manuscript.listSegmentsFromFiles(project)).map(
+        ({ title }) => title,
+      ),
+    ).toEqual(["Draft", "Two", "Two And A Half", "Three", "Four"]);
+  });
+
+  it("places a chapter beside one the index has never seen", async () => {
+    const three = "Snowflake Projects/Novel/50_Manuscript/Three.md";
+    fakeMetadataCache.unindexed.add(three);
+
+    const placed = await service.manuscript.insertSegmentAfter(
+      project,
+      three,
+      "Three And A Half",
+    );
+
+    expect(sequenceOf(placed)).toBe(3584);
+    expect(
+      (await service.manuscript.listSegments(project)).map(({ title }) => title),
+    ).toEqual(["Draft", "Two", "Three", "Three And A Half", "Four"]);
+  });
+
+  it("goes back to the notes when a place has not been written down yet", async () => {
+    // A manuscript grown from the single draft every older project has: the
+    // index cannot tell a place it has not caught from one that was never
+    // written, and the second would send that note to the back of the book.
+    const environment = createFakeEnvironment();
+    const grown = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    const fresh = await grown.createProject({ title: "Grown", locale: "en" });
+    environment.fakeVault.readCalls.length = 0;
+
+    await grown.manuscript.appendSegment(fresh, "Chapter Two");
+
+    expect(
+      (await grown.manuscript.listSegments(fresh)).map(({ title }) => title),
+    ).toEqual(["Draft", "Chapter Two"]);
+    expect(
+      environment.fakeVault.readCalls.some((path) => path.endsWith("Draft.md")),
+    ).toBe(true);
+  });
+
+  it("says how a note stands without opening it", async () => {
+    const two = "Snowflake Projects/Novel/50_Manuscript/Two.md";
+    const before = service.manuscript.segmentStamp(two);
+    fakeVault.readCalls.length = 0;
+
+    expect(service.manuscript.segmentStamp(two)).toBe(before);
+    expect(reads()).toEqual([]);
+
+    await service.manuscript.writeSegment(two, "# Two\n\nRewritten.\n");
+
+    expect(service.manuscript.segmentStamp(two)).not.toBe(before);
+    expect(service.manuscript.segmentStamp("Nowhere.md")).toBeNull();
   });
 });

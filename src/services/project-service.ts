@@ -17,6 +17,7 @@ import {
   createDefaultStepStatuses,
   enforceStepStatusDependencies,
   fileStem,
+  findSequenceIssues,
   fingerprint,
   foldName,
   safeFileName,
@@ -786,7 +787,9 @@ export class SnowflakeProjectService {
     // The manuscript knows its own first note, wherever it is filed and
     // whatever it is called. Only a manuscript with nothing in it needs one
     // written, and only then at the canonical name.
-    const existing = await this.manuscript.listSegments(project);
+    // Read from the notes: this decides whether to write one, and the index
+    // being a beat behind would be a beat in which a second draft gets made.
+    const existing = await this.manuscript.listSegmentsFromFiles(project);
     const draft =
       existing[0]?.path ??
       (await this.adoptStrayDraft(project, result)) ??
@@ -2878,7 +2881,11 @@ export class SnowflakeProjectService {
     // to sit, a note sitting somewhere unreadable, and two notes sitting in the
     // same place each stop the manuscript being a sequence. Each is repaired by
     // writing positions and nothing else, so none of them touches prose.
-    const sequenceIssues = await this.manuscript.findSequenceIssues(project);
+    //
+    // Read off the manuscript this was handed rather than gathered again: each
+    // segment carries the position its frontmatter wrote as well as the one the
+    // manuscript resolved, which is the whole of what this needs.
+    const sequenceIssues = findSequenceIssues(manuscript);
     const sequenceCodes = [
       ["missing-manuscript-sequence", sequenceIssues.missing],
       ["invalid-manuscript-sequence", sequenceIssues.invalid],

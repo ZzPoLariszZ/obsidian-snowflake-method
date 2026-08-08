@@ -213,14 +213,25 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * holds an update off, because there is no way to take one without deciding
 	 * which of the two versions loses — and the save that follows refuses to
 	 * clobber, which is where that decision belongs.
+	 *
+	 * A note the Vault has not touched is left unopened. This runs on every
+	 * Vault event, and in the ordinary case — the author typing in one segment —
+	 * every other note held here is exactly as it was.
 	 */
 	private async refreshMountedBodies(): Promise<void> {
 		for (const entry of this.mounted.values()) {
 			if (entry.pending !== null) continue;
+			if (this.host.manuscriptSegmentStamp(entry.path) === entry.text.stamp) {
+				continue;
+			}
 			try {
 				const text = await this.host.readManuscriptSegment(entry.path);
-				if (text.revision === entry.text.revision) continue;
+				const changed = text.revision !== entry.text.revision;
+				// Taken even when nothing changed: a file can be rewritten with the
+				// same text in it, and the new stamp is what stops this reading it
+				// again on every refresh from here on.
 				entry.text = text;
+				if (!changed) continue;
 				if (entry.editor === null) await this.renderSegmentBody(entry);
 				else entry.editor.write(text.body);
 			} catch (error) {
@@ -824,12 +835,12 @@ export class SnowflakeManuscriptView extends ItemView {
 			const pending = entry.pending;
 			if (pending === null || pending === entry.text.body) continue;
 			try {
-				const revision = await this.host.saveManuscriptSegment(
+				const saved = await this.host.saveManuscriptSegment(
 					entry.path,
 					pending,
 					entry.text.revision,
 				);
-				entry.text = { ...entry.text, body: pending, revision };
+				entry.text = { ...entry.text, body: pending, ...saved };
 				entry.pending = null;
 			} catch (error) {
 				// The file moved on underneath. Keeping the typed text and saying so

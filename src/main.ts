@@ -1840,15 +1840,20 @@ export default class SnowflakeMethodPlugin
 			path: segment.path,
 			body: segment.body,
 			revision: segment.revision,
+			stamp: segment.stamp,
 			readOnly: segment.readOnly,
 		};
+	}
+
+	manuscriptSegmentStamp(path: string): string | null {
+		return this.projects.manuscript.segmentStamp(path);
 	}
 
 	async saveManuscriptSegment(
 		path: string,
 		body: string,
 		expectedRevision: string,
-	): Promise<string> {
+	): Promise<{ revision: string; stamp: string }> {
 		try {
 			await this.projects.manuscript.writeSegment(path, body, expectedRevision);
 		} catch (error) {
@@ -1866,7 +1871,8 @@ export default class SnowflakeMethodPlugin
 			}
 			throw error;
 		}
-		return (await this.projects.manuscript.readSegment(path)).revision;
+		const saved = await this.projects.manuscript.readSegment(path);
+		return { revision: saved.revision, stamp: saved.stamp };
 	}
 
 	async createManuscriptSegment(

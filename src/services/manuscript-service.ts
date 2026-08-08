@@ -1,11 +1,10 @@
-import { normalizePath } from "obsidian";
+import { normalizePath, type TFile } from "obsidian";
 
 import {
   FRONTMATTER_KEYS,
   SCHEMA_VERSION,
   fileStem,
   fingerprint,
-  findSequenceIssues,
   moveSegment,
   safeFileName,
   repairSequences,
@@ -13,14 +12,13 @@ import {
   sequenceAtEnd,
   sequenceBetween,
   type ManuscriptSegment,
-  type SequenceIssues,
   type StoredSegment,
 } from "../domain";
 import {
   ManagedFileNotFoundError,
   UnsupportedSchemaError,
   projectIdOf,
-  type ManagedFileRecord,
+  type ManagedEntryRecord,
   type VaultRepository,
 } from "../repository";
 import { manuscriptSegmentTemplate } from "../templates";
@@ -33,6 +31,13 @@ import {
 export interface ManuscriptSegmentRecord extends ManuscriptSegment {
   /** True when the note declares a schema this build cannot write. */
   readOnly: boolean;
+  /**
+   * The position as the frontmatter writes it, kept beside the one the
+   * manuscript resolved. The health check has to see a value that is missing or
+   * unusable, which a resolved position has already papered over -- carrying it
+   * here is what lets one pass over the notes answer both questions.
+   */
+  storedSequence: unknown;
 }
 
 export interface ManuscriptSegmentContent {
@@ -42,7 +47,30 @@ export interface ManuscriptSegmentContent {
   body: string;
   /** Fingerprint of the whole file, so a save can refuse to clobber. */
   revision: string;
+  /** What the Vault says about the file, so an unchanged one can be left. */
+  stamp: string;
   readOnly: boolean;
+}
+
+/**
+ * The notes an operation is about to compute a new position from, named from
+ * the manuscript's order. Everything else about that order can be taken on the
+ * index's word; these have to be read.
+ */
+type Interest = (
+  ordered: readonly ManuscriptSegmentRecord[],
+) => readonly (string | undefined)[];
+
+const firstOf: Interest = (ordered) => [ordered[0]?.path];
+
+const lastOf: Interest = (ordered) => [ordered[ordered.length - 1]?.path];
+
+/** A note and the one after it, which is what goes between or joins together. */
+function pairAt(target: string): Interest {
+  return (ordered) => {
+    const index = ordered.findIndex((segment) => segment.path === target);
+    return index === -1 ? [] : [ordered[index]?.path, ordered[index + 1]?.path];
+  };
 }
 
 /**
@@ -59,59 +87,64 @@ export class ManuscriptService {
   constructor(readonly repository: VaultRepository) {}
 
   /**
-   * Every note of the manuscript, as its frontmatter has it, before the order
-   * is worked out. The health check reads this: it has to see a position that
-   * is missing or unusable, which a resolved segment has already papered over.
-   */
-  async listStoredSegments(project: ProjectRef): Promise<StoredSegment[]> {
-    return (await this.collect(project)).map(asStored);
-  }
-
-  /**
-   * Every note of the manuscript, read once.
+   * Every note of the manuscript, in the order it reads in.
    *
    * A manuscript is what is in the manuscript folder, at any depth, and nothing
    * else. Notes were once also found by following the project's own link, which
    * let one live anywhere in the Vault; that made the link load-bearing and the
    * manuscript's contents depend on a field nobody types.
    */
-  private async collect(project: ProjectRef): Promise<ManagedFileRecord[]> {
-    const records = new Map<string, ManagedFileRecord>();
+  async listSegments(project: ProjectRef): Promise<ManuscriptSegmentRecord[]> {
+    return resolve(await this.declared(project));
+  }
+
+  /**
+   * The same manuscript, read from the notes rather than from the index.
+   *
+   * Everything that works out a new position from the positions already there
+   * comes through here, and so does anything deciding whether a note needs
+   * writing at all. The index is a beat behind the file it describes, and a
+   * beat is long enough to place a note twice or to number one on top of
+   * another. Reading is different: it happens on every Vault event and can
+   * afford to be a beat behind, because the next event brings it level again.
+   */
+  async listSegmentsFromFiles(
+    project: ProjectRef,
+  ): Promise<ManuscriptSegmentRecord[]> {
+    return resolve(await this.collect(project));
+  }
+
+  /** The manuscript's notes as Obsidian has already parsed them. */
+  private async declared(project: ProjectRef): Promise<ManagedEntryRecord[]> {
+    return this.gather(project, (folder) =>
+      this.repository.listManagedEntriesBelow(folder, "draft", project.id),
+    );
+  }
+
+  /** The manuscript's notes as the notes themselves have them. */
+  private async collect(project: ProjectRef): Promise<ManagedEntryRecord[]> {
+    return this.gather(project, (folder) =>
+      this.repository.findManagedFilesBelow(folder, "draft", project.id),
+    );
+  }
+
+  private async gather(
+    project: ProjectRef,
+    from: (folder: string) => Promise<readonly ManagedEntryRecord[]>,
+  ): Promise<ManagedEntryRecord[]> {
+    const records = new Map<string, ManagedEntryRecord>();
     for (const folder of draftFolders(project)) {
-      for (const record of await this.repository.findManagedFilesBelow(
-        folder,
-        "draft",
-        project.id,
-      )) {
-        records.set(record.path, record);
-      }
+      for (const record of await from(folder)) records.set(record.path, record);
     }
     return [...records.values()];
   }
 
-  async listSegments(
-    project: ProjectRef,
-  ): Promise<ManuscriptSegmentRecord[]> {
-    const records = await this.collect(project);
-    const readOnly = new Map(
-      records.map((record) => [record.path, record.readOnly] as const),
-    );
-    return resolveSegments(records.map(asStored)).map((segment) => ({
-      ...segment,
-      readOnly: readOnly.get(segment.path) ?? false,
-    }));
-  }
-
-/** Whether a note sits in one of the folders a manuscript is scanned from. */
+  /** Whether a note sits in one of the folders a manuscript is scanned from. */
   isInManuscriptFolder(project: ProjectRef, path: string): boolean {
     const note = normalizePath(path);
     return draftFolders(project).some(
       (folder) => note === folder || note.startsWith(`${folder}/`),
     );
-  }
-
-  async findSequenceIssues(project: ProjectRef): Promise<SequenceIssues> {
-    return findSequenceIssues(await this.listStoredSegments(project));
   }
 
   /** Everything below the frontmatter of one segment, ready to render or edit. */
@@ -122,8 +155,22 @@ export class ManuscriptService {
       title: fileStem(record.path),
       body: record.body,
       revision: fingerprint(record.content),
+      stamp: stampOf(record.file),
       readOnly: record.readOnly,
     };
+  }
+
+  /**
+   * How the Vault last saw a segment's file, without opening it.
+   *
+   * A stream holds a dozen notes at once and is redrawn on every Vault event.
+   * Reading all of them back to find out that none of them moved is the whole
+   * of that work wasted; what changes when a note is written is its size or the
+   * moment it was written, and both are already in memory.
+   */
+  segmentStamp(path: string): string | null {
+    const file = this.repository.getFile(path);
+    return file === null ? null : stampOf(file);
   }
 
   /**
@@ -143,7 +190,7 @@ export class ManuscriptService {
     project: ProjectRef,
     title: string,
   ): Promise<string> {
-    const segments = await this.settleOrder(project);
+    const segments = await this.settleOrder(project, lastOf);
     return this.createSegment(project, title, sequenceAtEnd(segments));
   }
 
@@ -151,7 +198,7 @@ export class ManuscriptService {
     project: ProjectRef,
     title: string,
   ): Promise<string> {
-    const segments = await this.roomyOrder(project, (ordered) =>
+    const segments = await this.roomyOrder(project, firstOf, (ordered) =>
       sequenceBetween(null, ordered[0]?.sequence),
     );
     const sequence = sequenceBetween(null, segments[0]?.sequence);
@@ -165,7 +212,7 @@ export class ManuscriptService {
     title: string,
   ): Promise<string> {
     const target = normalizePath(afterPath);
-    const segments = await this.roomyOrder(project, (ordered) => {
+    const segments = await this.roomyOrder(project, pairAt(target), (ordered) => {
       const index = ordered.findIndex((segment) => segment.path === target);
       if (index === -1) return null;
       return sequenceBetween(
@@ -228,10 +275,9 @@ export class ManuscriptService {
     project: ProjectRef,
     path: string,
   ): Promise<{ kept: string; removed: string } | null> {
-    const segments = await this.listSegments(project);
-    const index = segments.findIndex(
-      (segment) => segment.path === normalizePath(path),
-    );
+    const target = normalizePath(path);
+    const segments = await this.orderAround(project, pairAt(target));
+    const index = segments.findIndex((segment) => segment.path === target);
     const earlier = segments[index];
     const later = segments[index + 1];
     if (earlier === undefined || later === undefined) return null;
@@ -254,12 +300,18 @@ export class ManuscriptService {
     return { kept: earlier.path, removed: later.path };
   }
 
+  /**
+   * Moving and repairing read the manuscript rather than the index, and are the
+   * only two things that do. Both may renumber the whole run, so every position
+   * is one the answer is computed from -- there is no handful to check instead.
+   * Both are also rare, and already write about as much as they read.
+   */
   async moveSegment(
     project: ProjectRef,
     path: string,
     toIndex: number,
   ): Promise<void> {
-    const before = await this.listSegments(project);
+    const before = await this.listSegmentsFromFiles(project);
     await this.persistSequences(
       before,
       moveSegment(before, normalizePath(path), toIndex),
@@ -268,7 +320,7 @@ export class ManuscriptService {
 
   /** Regular intervals in the manuscript's current order. Returns what changed. */
   async repairSequences(project: ProjectRef): Promise<string[]> {
-    const before = await this.listSegments(project);
+    const before = await this.listSegmentsFromFiles(project);
     return this.persistSequences(before, repairSequences(before));
   }
 
@@ -304,12 +356,55 @@ export class ManuscriptService {
    */
   private async roomyOrder(
     project: ProjectRef,
+    interest: Interest,
     room: (ordered: readonly ManuscriptSegmentRecord[]) => number | null,
   ): Promise<ManuscriptSegmentRecord[]> {
-    const segments = await this.settleOrder(project);
+    const segments = await this.settleOrder(project, interest);
     if (segments.length === 0 || room(segments) !== null) return segments;
     await this.repairSequences(project);
-    return this.listSegments(project);
+    return this.listSegmentsFromFiles(project);
+  }
+
+  /**
+   * The manuscript in reading order, with the positions a new one is about to
+   * be worked out from checked against the notes holding them.
+   *
+   * Opening a whole book to place one chapter in it costs a second on a long
+   * one, and all but a few bytes of that is spent confirming what the index
+   * already said. What has to be exactly right is the handful of positions the
+   * arithmetic actually touches — the neighbours a new position goes between —
+   * so those are read, and any disagreement hands the whole question back to
+   * the notes. That is enough because the index only ever runs behind a note:
+   * it can fail to have caught a position, but it cannot invent one, so a
+   * position it agrees on is a position that is really there.
+   *
+   * The two ways this plugin can leave the index behind are both covered. A
+   * note it has just made has no entry at all, and is read for that reason
+   * alone; a run it has just renumbered was renumbered whole, so the
+   * neighbours are always among the notes that moved. What is left over is a
+   * position typed into a note by hand, elsewhere in the book, within the
+   * moment before Obsidian reads it back -- that can produce two notes in one
+   * place, which is what `duplicate-manuscript-sequence` is for and what two
+   * devices syncing would produce anyway.
+   */
+  private async orderAround(
+    project: ProjectRef,
+    interest: Interest,
+  ): Promise<ManuscriptSegmentRecord[]> {
+    const ordered = await this.listSegments(project);
+    for (const path of interest(ordered)) {
+      if (path === undefined) continue;
+      const record = await this.repository.tryReadManaged(path);
+      if (record === null) return this.listSegmentsFromFiles(project);
+      const declared = ordered.find((segment) => segment.path === path);
+      if (
+        record.frontmatter[FRONTMATTER_KEYS.manuscriptSequence] !==
+        declared?.storedSequence
+      ) {
+        return this.listSegmentsFromFiles(project);
+      }
+    }
+    return ordered;
   }
 
   /**
@@ -324,11 +419,21 @@ export class ManuscriptService {
    */
   private async settleOrder(
     project: ProjectRef,
+    interest: Interest,
   ): Promise<ManuscriptSegmentRecord[]> {
-    const segments = await this.listSegments(project);
+    // Every position accounted for is a settled manuscript, and the index can
+    // say so on its own: a note it has a position for has that position written
+    // in it. Only the other answer needs the notes opened, because a position
+    // the index has not caught yet looks exactly like one that was never
+    // written -- and an unwritten position sends its note to the back of the
+    // book, which is the one mistake here that moves an author's chapter.
+    const declared = await this.orderAround(project, interest);
+    if (declared.every((segment) => segment.hasStoredSequence)) return declared;
+
+    const segments = await this.listSegmentsFromFiles(project);
     if (segments.every((segment) => segment.hasStoredSequence)) return segments;
     await this.persistSequences(segments, segments);
-    return this.listSegments(project);
+    return this.listSegmentsFromFiles(project);
   }
 
   /**
@@ -361,7 +466,30 @@ export class ManuscriptService {
   }
 }
 
-function asStored(record: ManagedFileRecord): StoredSegment {
+/**
+ * Discovered notes as a manuscript: sorted, positions filled in where none was
+ * stored, and each note still carrying what its own frontmatter said.
+ */
+function resolve(
+  records: readonly ManagedEntryRecord[],
+): ManuscriptSegmentRecord[] {
+  const found = new Map(records.map((record) => [record.path, record] as const));
+  return resolveSegments(records.map(asStored)).map((segment) => {
+    const record = found.get(segment.path);
+    return {
+      ...segment,
+      readOnly: record?.readOnly ?? false,
+      storedSequence:
+        record?.frontmatter[FRONTMATTER_KEYS.manuscriptSequence],
+    };
+  });
+}
+
+function stampOf(file: TFile): string {
+  return `${file.stat.mtime}:${file.stat.size}`;
+}
+
+function asStored(record: ManagedEntryRecord): StoredSegment {
   return {
     path: record.path,
     projectId: projectIdOf(record.frontmatter) ?? "",

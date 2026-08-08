@@ -157,6 +157,8 @@ export interface ManuscriptSegmentText {
 	body: string;
 	/** Fingerprint of the whole file, so a save can refuse to clobber. */
 	revision: string;
+	/** What the Vault says about the file, so an unchanged one can be left. */
+	stamp: string;
 	readOnly: boolean;
 }
 
@@ -177,12 +179,14 @@ export interface ManuscriptHost {
 	manuscriptWindowSettings(): ManuscriptWindowSettings;
 	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
 	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
-	/** Saves one segment and reports the revision it now carries. */
+	/** How the Vault last saw a segment's file, without opening it. */
+	manuscriptSegmentStamp(path: string): string | null;
+	/** Saves one segment and reports what it now carries. */
 	saveManuscriptSegment(
 		path: string,
 		body: string,
 		expectedRevision: string,
-	): Promise<string>;
+	): Promise<{ revision: string; stamp: string }>;
 	/** Creates a segment at one end of the manuscript, or after a given one. */
 	createManuscriptSegment(
 		projectPath: string,

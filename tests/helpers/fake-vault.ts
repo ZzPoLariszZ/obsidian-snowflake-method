@@ -1,4 +1,5 @@
 import type {
+  CachedMetadata,
   FileManager,
   MetadataCache,
   TAbstractFile,
@@ -40,13 +41,32 @@ export class FakeVault {
   readonly contents = new Map<string, string>();
   readonly processCalls: string[] = [];
   readonly createCalls: string[] = [];
+  /** Every file opened, so a test can tell a read from an answer already held. */
+  readonly readCalls: string[] = [];
   failNextCreatePath: string | null = null;
 
   private readonly root: FakeFolder;
+  /**
+   * Stands in for the clock. Two writes in the same millisecond would share an
+   * mtime on a real Vault too, but here every write must be distinguishable or
+   * a test cannot tell a stale answer from a fresh one.
+   */
+  private tick = 1;
 
   constructor() {
     this.root = fakeFolder("", null);
     this.nodes.set("", this.root);
+  }
+
+  /** Puts content on a file and moves its stat, as writing to one does. */
+  write(path: string, content: string): void {
+    const normalized = normalizeFakePath(path);
+    this.contents.set(normalized, content);
+    const file = this.getFileByPath(normalized);
+    if (file === null) return;
+    this.tick += 1;
+    file.stat.mtime = this.tick;
+    file.stat.size = content.length;
   }
 
   asVault(): Vault {
@@ -87,7 +107,7 @@ export class FakeVault {
     const file = fakeFile(normalized, parent);
     parent.children.push(file);
     this.nodes.set(normalized, file);
-    this.contents.set(normalized, content);
+    this.write(normalized, content);
     this.createCalls.push(normalized);
     return file;
   }
@@ -95,13 +115,14 @@ export class FakeVault {
   async read(file: TFile): Promise<string> {
     const content = this.contents.get(file.path);
     if (content === undefined) throw new Error(`Missing content: ${file.path}`);
+    this.readCalls.push(file.path);
     return content;
   }
 
   async process(file: TFile, callback: (data: string) => string): Promise<string> {
     const current = await this.read(file);
     const next = callback(current);
-    this.contents.set(file.path, next);
+    this.write(file.path, next);
     this.processCalls.push(file.path);
     return next;
   }
@@ -171,10 +192,48 @@ export class FakeVault {
  * links Obsidian rewrote itself, which is every link after a rename.
  */
 export class FakeMetadataCache {
+  /**
+   * Files the index has not caught up with. Obsidian has no entry at all for a
+   * file it has not read yet, which is the state a note is in for a moment
+   * after being written -- and the state that decides whether code reading the
+   * index quietly loses a note or goes and opens it.
+   */
+  readonly unindexed = new Set<string>();
+  /**
+   * Frontmatter the index is still serving for a file that has moved on. The
+   * other way an index runs behind: it knows the note, but not the last thing
+   * written into it.
+   */
+  readonly behind = new Map<string, Record<string, unknown>>();
+  /** Every file the index was asked about, so a test can count the passes. */
+  readonly getFileCacheCalls: string[] = [];
+
   constructor(readonly vault: FakeVault) {}
 
   asMetadataCache(): MetadataCache {
     return this as unknown as MetadataCache;
+  }
+
+  getFileCache(file: TFile): CachedMetadata | null {
+    const path = normalizeFakePath(file.path);
+    this.getFileCacheCalls.push(path);
+    if (this.unindexed.has(path)) return null;
+    const content = this.vault.contents.get(path);
+    if (content === undefined) return null;
+    const frontmatter =
+      this.behind.get(path) ?? splitFrontmatter(content).frontmatter;
+    if (Object.keys(frontmatter).length === 0) return {};
+    // Obsidian hangs the block's own position off what it parsed, so anything
+    // reading this has to cope with a key the file does not contain.
+    return {
+      frontmatter: {
+        ...frontmatter,
+        position: {
+          start: { line: 0, col: 0, offset: 0 },
+          end: { line: 0, col: 0, offset: 0 },
+        },
+      },
+    };
   }
 
   getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null {
@@ -247,7 +306,10 @@ export class FakeFileManager {
     const current = await this.vault.read(file);
     const { frontmatter, body } = splitFrontmatter(current);
     callback(frontmatter);
-    this.vault.contents.set(file.path, `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n${body}`);
+    this.vault.write(
+      file.path,
+      `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n${body}`,
+    );
     this.frontmatterCalls.push(file.path);
   }
 
