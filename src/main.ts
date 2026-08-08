@@ -1,5 +1,6 @@
 import {
 	MarkdownView,
+	Menu,
 	moment,
 	Notice,
 	Platform,
@@ -87,6 +88,10 @@ import {
 	SnowflakeDashboardView,
 } from './ui/dashboard-view';
 import {
+	MANUSCRIPT_VIEW_TYPE,
+	SnowflakeManuscriptView,
+} from './ui/manuscript-view';
+import {
 	routeNotePane,
 	type NotePaneLeaf,
 	type NotePaneRoute,
@@ -100,6 +105,7 @@ import {
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
 	promptForNewCharacter,
+	promptForSegmentTitle,
 	type CharacterOption,
 	type CreateCharacterRequest,
 	type CreateProjectRequest,
@@ -112,6 +118,10 @@ import type {
 	CreatedProject,
 	DashboardHost,
 	ManagedSectionIssueViewModel,
+	ManuscriptHost,
+	ManuscriptModel,
+	ManuscriptSegmentText,
+	ManuscriptWindowSettings,
 	StepFields,
 	ProjectDashboardModel,
 	ProjectOption,
@@ -168,7 +178,7 @@ const DOCUMENT_BY_MANAGED_STEP: Readonly<
 
 export default class SnowflakeMethodPlugin
 	extends Plugin
-	implements DashboardHost
+	implements DashboardHost, ManuscriptHost
 {
 	settings: SnowflakeSettings = { ...DEFAULT_SETTINGS };
 	projects!: SnowflakeProjectService;
@@ -271,10 +281,22 @@ export default class SnowflakeMethodPlugin
 			DASHBOARD_VIEW_TYPE,
 			(leaf) => new SnowflakeDashboardView(leaf, this),
 		);
+		this.registerView(
+			MANUSCRIPT_VIEW_TYPE,
+			(leaf) => new SnowflakeManuscriptView(leaf, this),
+		);
 		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
 			void this.openDashboard();
 		});
+		this.addRibbonIcon(
+			'scroll-text',
+			this.globalT('commands.openManuscriptStream'),
+			() => {
+				void this.openCurrentManuscript();
+			},
+		);
 		this.registerCommands();
+		this.registerFileMenu();
 		this.addSettingTab(new SnowflakeSettingTab(this.app, this));
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
@@ -747,6 +769,7 @@ export default class SnowflakeMethodPlugin
 			readOnlyReason: project.readOnly
 				? projectT('dashboard.readOnlySchema')
 				: null,
+			lastManuscriptNote: this.lastManuscriptNote(project.id),
 			steps: STEP_DEFINITIONS.map((definition) => ({
 				id: definition.id,
 				title: projectT(definition.titleKey),
@@ -1601,6 +1624,30 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	/**
+	 * The two things a manuscript note's header can carry, each turned on and
+	 * off from the palette as well as from the settings page. Both are things an
+	 * author wants while checking a manuscript over and not while writing in it,
+	 * which is a reason to reach them without leaving the page they are on.
+	 */
+	private async toggleManuscriptHeader(
+		key: 'showManuscriptPath' | 'showManuscriptSequence',
+	): Promise<void> {
+		const shown = !this.settings[key];
+		this.settings[key] = shown;
+		await this.saveSettings();
+		await this.handleSettingsChanged(key);
+		const said =
+			key === 'showManuscriptPath'
+				? shown
+					? 'commands.manuscriptPathShown'
+					: 'commands.manuscriptPathHidden'
+				: shown
+					? 'commands.manuscriptSequenceShown'
+					: 'commands.manuscriptSequenceHidden';
+		new Notice(this.globalT(said));
+	}
+
 	private editorLocale(content: string): 'en' | 'zh-CN' {
 		return resolveManagedSectionLocale({
 			uiLocale: this.settings.uiLocale,
@@ -1610,6 +1657,287 @@ export default class SnowflakeMethodPlugin
 			content,
 			projectLocalesById: this.projectLocalesById,
 		});
+	}
+
+	/**
+	 * Opens the manuscript of a project, reusing the stream already showing it
+	 * rather than stacking another tab of the same book.
+	 */
+	async openManuscriptStream(
+		projectPath: string,
+		anchorPath: string | null = null,
+	): Promise<void> {
+		// Every way in lands in the same place. A caller that names a note means
+		// that note; one that does not means wherever the author was writing, so
+		// the fallback lives here rather than in each of the five callers.
+		const anchor = anchorPath ?? this.rememberedManuscriptNote(projectPath);
+		const open = this.app.workspace
+			.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
+			.find((leaf) => leaf.getViewState().state?.projectPath === projectPath);
+		const leaf = open ?? this.manuscriptLeaf();
+		if (open === undefined) {
+			await leaf.setViewState({
+				type: MANUSCRIPT_VIEW_TYPE,
+				active: true,
+				state: { projectPath, anchorPath: anchor },
+			});
+		}
+		await leaf.loadIfDeferred();
+		// A stream already on screen is never handed a new view state, so the note
+		// that was asked for has to be given to it directly. Without this, opening
+		// the manuscript at a note only ever worked the first time.
+		if (
+			open !== undefined &&
+			anchor !== null &&
+			leaf.view instanceof SnowflakeManuscriptView
+		) {
+			await leaf.view.revealSegment(anchor);
+		}
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** The note this project was last written in, when it is still there. */
+	private rememberedManuscriptNote(projectPath: string): string | null {
+		const projectId = this.projectIdOfPath(projectPath);
+		return projectId === null ? null : this.lastManuscriptNote(projectId)?.path ?? null;
+	}
+
+	/**
+	 * Where a manuscript goes: the pane long-form notes already open in, beside
+	 * the dashboard rather than on top of it.
+	 *
+	 * A manuscript is the longest-form note a project has, so it belongs in the
+	 * companion pane with the rest and not in a column of its own. The routing
+	 * that decides which pane that is is the same one notes use; only finding a
+	 * stream that is already open is handled by the caller, because a stream is
+	 * not a file and has no path for the router to match on.
+	 */
+	private manuscriptLeaf(): WorkspaceLeaf {
+		const route = routeNotePane<WorkspaceLeaf, NotePane>({
+			// Nothing to match: the open case never reaches here.
+			targetPath: '',
+			targetProjectId: null,
+			dashboardViewType: DASHBOARD_VIEW_TYPE,
+			leaves: this.workspaceLeafSnapshots(),
+			notePane: this.notePane,
+			activeLeaf: this.app.workspace.getMostRecentLeaf(
+				this.app.workspace.rootSplit,
+			),
+			preferSplit: this.settings.openLongTextInSplit,
+			canSplit: this.canSplitWorkspace(),
+		});
+		switch (route.kind) {
+			case 'pane': {
+				// A new tab opens next to the active leaf, so aim at the pane first.
+				this.app.workspace.setActiveLeaf(route.anchor, { focus: false });
+				return this.claimNotePane(this.app.workspace.getLeaf('tab'));
+			}
+			case 'split':
+				return this.claimNotePane(
+					this.app.workspace.createLeafBySplit(route.source, 'vertical'),
+				);
+			case 'reveal':
+			case 'tab':
+				return this.app.workspace.getLeaf('tab');
+		}
+	}
+
+	private claimNotePane(leaf: WorkspaceLeaf): WorkspaceLeaf {
+		this.notePane = leaf.parent;
+		return leaf;
+	}
+
+	private activeManuscriptView(): SnowflakeManuscriptView | null {
+		return this.app.workspace.getActiveViewOfType(SnowflakeManuscriptView);
+	}
+
+	/**
+	 * The manuscript of the project in hand. Anchored on the note in front of
+	 * the author when that note is part of it, so a stream opened from a chapter
+	 * opens at that chapter rather than at the front of the book.
+	 */
+	private async openCurrentManuscript(): Promise<void> {
+		const project = await this.resolveProject(null);
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		const active = this.app.workspace.getActiveFile();
+		const segments = await this.projects.manuscript.listSegments(
+			project,
+			project.links.draft,
+		);
+		const anchor =
+			segments.find((segment) => segment.path === active?.path)?.path ?? null;
+		await this.openManuscriptStream(project.projectFile, anchor);
+	}
+
+	/**
+	 * The manuscript note this project was last worked in, when it is still
+	 * there. Answered from the file rather than from the manuscript, so the
+	 * dashboard does not read a whole novel to draw one line.
+	 */
+	private lastManuscriptNote(
+		projectId: string,
+	): { path: string; title: string } | null {
+		const path = this.settings.recentManuscriptNotes[projectId];
+		if (path === undefined) return null;
+		const file = this.app.vault.getFileByPath(path);
+		return file === null ? null : { path, title: file.basename };
+	}
+
+	rememberManuscriptNote(projectId: string, path: string): void {
+		if (this.settings.recentManuscriptNotes[projectId] === path) return;
+		this.settings.recentManuscriptNotes = {
+			...this.settings.recentManuscriptNotes,
+			[projectId]: path,
+		};
+		void this.saveSettings();
+		// Step 10 offers this note as the way back in, so it has to be the note
+		// the author is actually in rather than the one they were in when the
+		// dashboard last happened to be redrawn.
+		this.scheduleRefresh();
+	}
+
+	async mergeManuscriptSegments(
+		projectPath: string,
+		path: string,
+	): Promise<void> {
+		await this.projects.mergeManuscriptSegments(projectPath, path);
+	}
+
+	manuscriptWindowSettings(): ManuscriptWindowSettings {
+		return {
+			before: this.settings.manuscriptWindow,
+			after: this.settings.manuscriptWindow,
+			showPath: this.settings.showManuscriptPath,
+			showSequence: this.settings.showManuscriptSequence,
+		};
+	}
+
+	async loadManuscript(
+		projectPath: string | null,
+	): Promise<ManuscriptModel | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		const segments = await this.projects.manuscript.listSegments(
+			project,
+			project.links.draft,
+		);
+		return {
+			projectPath: project.projectFile,
+			projectId: project.id,
+			projectTitle: project.title,
+			locale: project.locale,
+			readOnly: project.readOnly,
+			segments: segments.map((segment) => ({
+				path: segment.path,
+				title: segment.title,
+				sequence: segment.sequence,
+				readOnly: segment.readOnly,
+			})),
+		};
+	}
+
+	async readManuscriptSegment(path: string): Promise<ManuscriptSegmentText> {
+		const segment = await this.projects.manuscript.readSegment(path);
+		return {
+			path: segment.path,
+			body: segment.body,
+			revision: segment.revision,
+			readOnly: segment.readOnly,
+		};
+	}
+
+	async saveManuscriptSegment(
+		path: string,
+		body: string,
+		expectedRevision: string,
+	): Promise<string> {
+		await this.projects.manuscript.writeSegment(path, body, expectedRevision);
+		return (await this.projects.manuscript.readSegment(path)).revision;
+	}
+
+	async createManuscriptSegment(
+		projectPath: string,
+		placement: { after: string } | { atStart: true } | { atEnd: true },
+	): Promise<string | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		const manuscript = this.projects.manuscript;
+		const draft = project.links.draft;
+		return promptForSegmentTitle(
+			this.app,
+			(key, vars) => this.translateForProject(project.locale, key, vars),
+			this.translateForProject(
+				project.locale,
+				'manuscript.defaultSegmentTitle',
+			),
+			async (title) => {
+				if ('after' in placement) {
+					return manuscript.insertSegmentAfter(
+						project,
+						draft,
+						placement.after,
+						title,
+					);
+				}
+				return 'atStart' in placement
+					? manuscript.prependSegment(project, draft, title)
+					: manuscript.appendSegment(project, draft, title);
+			},
+		);
+	}
+
+	async splitManuscriptSegment(
+		projectPath: string,
+		path: string,
+		offset: number,
+	): Promise<string | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		return promptForSegmentTitle(
+			this.app,
+			(key, vars) => this.translateForProject(project.locale, key, vars),
+			this.translateForProject(
+				project.locale,
+				'manuscript.defaultSegmentTitle',
+			),
+			(title) =>
+				this.projects.manuscript.splitSegment(
+					project,
+					project.links.draft,
+					path,
+					offset,
+					title,
+				),
+		);
+	}
+
+	private async resolveProject(
+		projectPath: string | null,
+	): Promise<ProjectSnapshot | null> {
+		const path = projectPath ?? this.settings.recentProjectPath;
+		if (path === null) return null;
+		try {
+			return await this.projects.loadProject(path);
+		} catch {
+			return null;
+		}
+	}
+
+	/** Every open stream, refreshed after something changed underneath it. */
+	private async refreshManuscriptStreams(): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			if (!leaf.view.containerEl.isShown()) continue;
+			await leaf.loadIfDeferred();
+			if (leaf.view instanceof SnowflakeManuscriptView) {
+				await leaf.view.refresh();
+			}
+		}
 	}
 
 	async openDashboard(): Promise<void> {
@@ -1818,6 +2146,107 @@ export default class SnowflakeMethodPlugin
 			});
 		}
 		this.addCommand({
+			id: 'open-manuscript-stream',
+			name: this.globalT('commands.openManuscriptStream'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) void this.openCurrentManuscript();
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'split-manuscript-segment',
+			name: this.globalT('commands.splitManuscriptSegment'),
+			checkCallback: (checking) => {
+				const view = this.activeManuscriptView();
+				// Only offered where there is a caret to split at.
+				const available = view !== null && view.editingSegment() !== null;
+				if (!checking && available) {
+					void view.splitActiveSegment().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		// Moving about in a manuscript, and growing one, from the keyboard. Each is
+		// offered whenever a stream is the view in front of the author, which is
+		// what makes them findable: a command nobody can see is a command nobody
+		// can bind a key to either.
+		const inStream = (
+			run: (view: SnowflakeManuscriptView) => Promise<void>,
+			ready: (view: SnowflakeManuscriptView) => boolean = (view) =>
+				view.hasSegments(),
+		) =>
+			(checking: boolean): boolean => {
+				const view = this.activeManuscriptView();
+				const available = view !== null && ready(view);
+				if (!checking && available) {
+					void run(view).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			};
+		this.addCommand({
+			id: 'manuscript-next-segment',
+			name: this.globalT('commands.manuscriptNextSegment'),
+			checkCallback: inStream((view) => view.goToSegment(1)),
+		});
+		this.addCommand({
+			id: 'manuscript-previous-segment',
+			name: this.globalT('commands.manuscriptPreviousSegment'),
+			checkCallback: inStream((view) => view.goToSegment(-1)),
+		});
+		this.addCommand({
+			id: 'manuscript-back-to-anchor',
+			name: this.globalT('commands.manuscriptBackToAnchor'),
+			checkCallback: inStream((view) => view.goToAnchor()),
+		});
+		this.addCommand({
+			id: 'manuscript-insert-note-after',
+			name: this.globalT('commands.manuscriptInsertAfter'),
+			checkCallback: inStream((view) => view.insertBesideActive('after')),
+		});
+		this.addCommand({
+			id: 'manuscript-insert-note-before',
+			name: this.globalT('commands.manuscriptInsertBefore'),
+			checkCallback: inStream((view) => view.insertBesideActive('before')),
+		});
+		this.addCommand({
+			id: 'toggle-manuscript-note-paths',
+			name: this.globalT('commands.toggleManuscriptPath'),
+			callback: () => {
+				void this.toggleManuscriptHeader('showManuscriptPath').catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
+			},
+		});
+		this.addCommand({
+			id: 'toggle-manuscript-order-numbers',
+			name: this.globalT('commands.toggleManuscriptSequence'),
+			callback: () => {
+				void this.toggleManuscriptHeader('showManuscriptSequence').catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
+			},
+		});
+		this.addCommand({
+			id: 'close-manuscript-stream',
+			name: this.globalT('commands.closeManuscriptStream'),
+			checkCallback: inStream(
+				async (view) => {
+					view.leaf.detach();
+					return Promise.resolve();
+				},
+				() => true,
+			),
+		});
+		this.addCommand({
 			id: 'repair-project',
 			name: this.globalT('commands.openHealthChecker'),
 			checkCallback: (checking) => {
@@ -1835,6 +2264,111 @@ export default class SnowflakeMethodPlugin
 				return available;
 			},
 		});
+	}
+
+	/**
+	 * This plugin's own items in the note context menu, wherever Obsidian raises
+	 * one: the file explorer, a tab header, the search results, the manuscript.
+	 *
+	 * Grouped into a section of their own under a heading, because they are the
+	 * only items in that menu written in the project's language while everything
+	 * around them follows Obsidian's. Unlabelled, two sentences in Chinese in the
+	 * middle of an English menu read as a fault rather than as a boundary.
+	 */
+	private registerFileMenu(): void {
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file, source) => {
+				// Not our own menu: the stream adds these before it asks Obsidian
+				// for the rest, and would otherwise be answered by itself.
+				if (source === MANUSCRIPT_VIEW_TYPE) return;
+				if (!(file instanceof TFile) || !this.touchesProject(file.path)) return;
+				this.addProjectMenuSection(menu, file.path);
+			}),
+		);
+	}
+
+	/**
+	 * The section itself, shared by the file menu and the manuscript's own.
+	 *
+	 * `source` is where the menu was raised, so the section can leave out the way
+	 * back to somewhere the author is already standing.
+	 */
+	addProjectMenuSection(menu: Menu, path: string, source?: string): void {
+		const locale = this.projectLocaleOfPath(path);
+		const t = (key: string): string => this.translateForProject(locale, key);
+		const section = 'snowflake-method';
+		menu.addItem((item) =>
+			item.setSection(section).setIsLabel(true).setTitle(t('plugin.name')),
+		);
+		if (source !== MANUSCRIPT_VIEW_TYPE) {
+			menu.addItem((item) =>
+				item
+					.setSection(section)
+					.setTitle(t('commands.openManuscriptStream'))
+					.setIcon('scroll-text')
+					.onClick(() => {
+						void this.openManuscriptFor(path).catch((error: unknown) => {
+							this.showError(error);
+						});
+					}),
+			);
+		}
+		menu.addItem((item) =>
+			item
+				.setSection(section)
+				.setTitle(t('commands.openDashboard'))
+				.setIcon('snowflake')
+				.onClick(() => {
+					void this.openDashboardFor(path).catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
+	}
+
+	/** The language of whichever project owns a path, for menu text. */
+	private projectLocaleOfPath(path: string): 'en' | 'zh-CN' | null {
+		const projectId = this.projectIdOfPath(path);
+		const locale =
+			projectId === null ? undefined : this.projectLocalesById.get(projectId);
+		return locale ?? this.currentProjectLocale;
+	}
+
+	/** The project a note belongs to, found from the roots already discovered. */
+	private async projectOfPath(path: string): Promise<ProjectSnapshot | null> {
+		for (const rootPath of this.knownProjectRoots) {
+			if (!isPathAtOrBelow(path, rootPath)) continue;
+			for (const project of await this.discoverProjects()) {
+				if (project.rootPath === rootPath) {
+					return this.projects.loadProject(project.projectFile);
+				}
+			}
+		}
+		return this.resolveProject(null);
+	}
+
+	private async openManuscriptFor(path: string): Promise<void> {
+		const project = await this.projectOfPath(path);
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		const segments = await this.projects.manuscript.listSegments(
+			project,
+			project.links.draft,
+		);
+		const anchor = segments.find((segment) => segment.path === path)?.path ?? null;
+		await this.openManuscriptStream(project.projectFile, anchor);
+	}
+
+	private async openDashboardFor(path: string): Promise<void> {
+		const project = await this.projectOfPath(path);
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		await this.selectProject(project.projectFile);
+		await this.openDashboard();
 	}
 
 	private registerVaultListeners(): void {
@@ -1881,6 +2415,21 @@ export default class SnowflakeMethodPlugin
 			if (
 				dashboardPath !== null &&
 				isPathAtOrBelow(dashboardPath, file.path)
+			) {
+				leaf.detach();
+			}
+		}
+
+		// A stream showing a project that has just been deleted has nothing left
+		// to show, and would otherwise sit there holding a manuscript that is in
+		// the trash.
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			const statePath = leaf.getViewState().state?.projectPath;
+			if (
+				typeof statePath === 'string' &&
+				isPathAtOrBelow(statePath, file.path)
 			) {
 				leaf.detach();
 			}
@@ -1984,6 +2533,7 @@ export default class SnowflakeMethodPlugin
 					}
 				}),
 		);
+		await this.refreshManuscriptStreams();
 		this.refreshManagedEditors();
 	}
 

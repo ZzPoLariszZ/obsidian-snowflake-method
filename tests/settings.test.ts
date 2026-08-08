@@ -24,23 +24,104 @@ function settingTabFor(
 	return new SnowflakeSettingTab({} as never, plugin);
 }
 
+/** Every row the page offers, groups walked into rather than counted as one. */
+function settingRows(
+	tab: SnowflakeSettingTab,
+): { name: string; key?: string }[] {
+	const rows: { name: string; key?: string }[] = [];
+	const visit = (items: readonly unknown[]): void => {
+		for (const item of items as Record<string, never>[]) {
+			if (Array.isArray(item.items)) {
+				if (typeof item.heading === 'string') rows.push({ name: item.heading });
+				visit(item.items);
+				continue;
+			}
+			if (!('name' in item)) continue;
+			const control = item.control as { key?: string } | undefined;
+			rows.push(
+				control?.key === undefined
+					? { name: String(item.name) }
+					: { name: String(item.name), key: control.key },
+			);
+		}
+	};
+	visit(tab.getSettingDefinitions());
+	return rows;
+}
+
 function settingNames(tab: SnowflakeSettingTab): string[] {
-	return tab
-		.getSettingDefinitions()
-		.map((item) => ('name' in item ? String(item.name) : ''));
+	return settingRows(tab).map((row) => row.name);
+}
+
+/** A tab whose plugin records saves, so a control's effect can be observed. */
+function writableSettingTab(): {
+	tab: SnowflakeSettingTab;
+	settings: SnowflakeSettings;
+} {
+	const settings: SnowflakeSettings = { ...DEFAULT_SETTINGS };
+	const plugin = {
+		settings,
+		saveSettings: async () => undefined,
+		handleSettingsChanged: async () => undefined,
+	} as unknown as SnowflakeMethodPlugin;
+	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
+}
+
+/** A value of the right type that is not the one the setting already holds. */
+function otherValue(current: unknown): unknown {
+	if (typeof current === 'boolean') return !current;
+	if (typeof current === 'number') return current + 1;
+	return current;
 }
 
 describe('settings', () => {
-	it('migrates settings to schema v5 with boundary protection enabled', () => {
-		expect(DEFAULT_SETTINGS.settingsSchemaVersion).toBe(5);
+	/**
+	 * setControlValue stores each key by hand, and a key it has no case for is
+	 * saved and announced without ever being written — the control moves and
+	 * nothing happens. Nothing else notices, so this does.
+	 */
+	it('stores every control the page offers', async () => {
+		for (const row of settingRows(writableSettingTab().tab)) {
+			const { key } = row;
+			if (key === undefined || key === 'projectRoot' || key === 'uiLocale') {
+				continue;
+			}
+			const { tab, settings } = writableSettingTab();
+			const wanted = otherValue(tab.getControlValue(key));
+
+			await tab.setControlValue(key, wanted);
+
+			expect(
+				{ key, value: settings[key as keyof SnowflakeSettings] },
+				`"${key}" has no case in setControlValue`,
+			).toEqual({ key, value: wanted });
+			expect(tab.getControlValue(key)).toEqual(wanted);
+		}
+	});
+
+	it('migrates settings to schema v6 with boundary protection enabled', () => {
+		expect(DEFAULT_SETTINGS.settingsSchemaVersion).toBe(6);
 		expect(DEFAULT_SETTINGS.protectManagedBoundaries).toBe(true);
 		const migrated = sanitizeSettings({
 			settingsSchemaVersion: 4,
 			uiLocale: 'zh-CN',
 		});
-		expect(migrated.settingsSchemaVersion).toBe(5);
+		expect(migrated.settingsSchemaVersion).toBe(6);
 		expect(migrated.uiLocale).toBe('zh-CN');
 		expect(migrated.protectManagedBoundaries).toBe(true);
+	});
+
+	it('keeps the manuscript window to a size a page can be built from', () => {
+		expect(DEFAULT_SETTINGS.manuscriptWindow).toBe(5);
+		expect(DEFAULT_SETTINGS.showManuscriptSequence).toBe(false);
+		expect(sanitizeSettings({ manuscriptWindow: 0 }).manuscriptWindow).toBe(0);
+		expect(sanitizeSettings({ manuscriptWindow: 12 }).manuscriptWindow).toBe(12);
+		expect(sanitizeSettings({ manuscriptWindow: -1 }).manuscriptWindow).toBe(5);
+		expect(sanitizeSettings({ manuscriptWindow: 400 }).manuscriptWindow).toBe(5);
+		expect(sanitizeSettings({ manuscriptWindow: '5' }).manuscriptWindow).toBe(5);
+		expect(
+			sanitizeSettings({ showManuscriptSequence: true }).showManuscriptSequence,
+		).toBe(true);
 	});
 
 	it('preserves an explicit boundary protection preference', () => {

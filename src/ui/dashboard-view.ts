@@ -707,6 +707,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.renderScenes(panel, model, step.id);
 				break;
 			case 10:
+				this.renderManuscript(panel, model);
 				break;
 			default:
 				this.renderOpenArtifact(panel, step, model);
@@ -732,6 +733,61 @@ export class SnowflakeDashboardView extends ItemView {
 					);
 				});
 		}
+	}
+
+	/**
+	 * Step 10 is where the novel gets written, and until now the panel had
+	 * nothing in it but the congratulation. The way in to the manuscript belongs
+	 * here rather than only in the command palette.
+	 */
+	private renderManuscript(
+		panel: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const section = panel.createDiv({ cls: 'snowflake-method-step-ten-manuscript' });
+		const open = section.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t('step10.openManuscript'),
+			attr: { type: 'button' },
+		});
+		open.addEventListener('click', () => {
+			void this.host
+				.openManuscriptStream(model.path)
+				.catch((error: unknown) => {
+					new Notice(
+						error instanceof Error ? error.message : this.t('errors.unknown'),
+					);
+				});
+		});
+		// Where the author stopped, directly under the way in, because both are
+		// ways in and the second one is the better of the two: a manuscript is
+		// the part of a project nobody starts from the top of twice.
+		const last = model.lastManuscriptNote;
+		if (last !== null) {
+			const resume = section.createDiv({
+				cls: 'snowflake-method-step-ten-resume',
+			});
+			resume.createSpan({ text: this.t('step10.lastOpen') });
+			const link = resume.createEl('button', {
+				cls: 'snowflake-method-step-ten-resume-note',
+				text: last.title,
+				attr: { type: 'button', title: last.path },
+			});
+			link.addEventListener('click', () => {
+				void this.host
+					.openManuscriptStream(model.path, last.path)
+					.catch((error: unknown) => {
+						new Notice(
+							error instanceof Error ? error.message : this.t('errors.unknown'),
+						);
+					});
+			});
+		}
+
+		section.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t('step10.manuscriptHint'),
+		});
 	}
 
 	private scheduleCertificateCelebration(projectId: string): void {

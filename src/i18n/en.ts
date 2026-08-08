@@ -19,6 +19,20 @@ export const en = {
 	'commands.openCharacterBase': 'Open character base',
 	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
+	'commands.openManuscriptStream': 'Open manuscript stream',
+	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
+	'commands.manuscriptNextSegment': 'Go to the next manuscript note',
+	'commands.manuscriptPreviousSegment': 'Go to the previous manuscript note',
+	'commands.manuscriptBackToAnchor': 'Go back to where the stream opened',
+	'commands.manuscriptInsertAfter': 'Insert a manuscript note after this one',
+	'commands.manuscriptInsertBefore': 'Insert a manuscript note before this one',
+	'commands.closeManuscriptStream': 'Close manuscript stream',
+	'commands.toggleManuscriptPath': 'Toggle note paths in the manuscript',
+	'commands.manuscriptPathShown': 'Manuscript note paths are shown.',
+	'commands.manuscriptPathHidden': 'Manuscript note paths are hidden.',
+	'commands.toggleManuscriptSequence': 'Toggle order numbers in the manuscript',
+	'commands.manuscriptSequenceShown': 'Manuscript order numbers are shown.',
+	'commands.manuscriptSequenceHidden': 'Manuscript order numbers are hidden.',
 	'commands.toggleManagedBoundaries': 'Toggle managed boundary protection',
 	'commands.boundaryProtectionEnabled':
 		'Managed boundary protection enabled.',
@@ -50,6 +64,16 @@ export const en = {
 		'Protect section markers from accidental edits.',
 	'settings.reduceMotion.name': 'Reduce animations',
 	'settings.reduceMotion.desc': 'Use static visual effects instead of animations.',
+	'settings.manuscript.heading': 'Manuscript stream',
+	'settings.manuscriptWindow.name': 'Notes kept loaded',
+	'settings.manuscriptWindow.desc':
+		'How many notes to keep loaded before the one being read, and how many after it. A larger number scrolls further without pausing to load, and uses more memory.',
+	'settings.manuscriptPath.name': 'Show each note’s file path',
+	'settings.manuscriptPath.desc':
+		'Show where the note is stored in the vault, above the note itself.',
+	'settings.manuscriptSequence.name': 'Show each note’s order number',
+	'settings.manuscriptSequence.desc':
+		'Show the “snowflake-manuscript-sequence” property that decides where each note is read, which is worth seeing when checking the order rather than while writing.',
 	'dashboard.title': 'Snowflake Method',
 	'dashboard.project': 'Project',
 	'dashboard.projectSwitcher': 'Project switcher',
@@ -510,6 +534,10 @@ export const en = {
 	'steps.10.description':
 		'Congratulations! You now have a thoughtfully designed story!\nWrite your novel! Remember to revisit and revise the earlier steps whenever you need to.',
 	'step10.certificate': 'All ten steps complete',
+	'step10.openManuscript': 'Open manuscript stream',
+	'step10.lastOpen': 'You were last writing in',
+	'step10.manuscriptHint':
+		'Read and write the whole manuscript as one page. Every chapter stays its own note.',
 	'manuscript.title': 'Manuscript',
 	'manuscript.titleFor': '{project} · manuscript',
 	'manuscript.empty': 'This project has no manuscript notes yet.',

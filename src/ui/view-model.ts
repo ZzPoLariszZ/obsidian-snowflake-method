@@ -111,6 +111,8 @@ export interface ProjectDashboardModel {
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
 	structureIssues: ManagedSectionIssueViewModel[];
+	/** The manuscript note last worked in, when it is still in the vault. */
+	lastManuscriptNote: { path: string; title: string } | null;
 }
 
 export interface RepairReportEntryViewModel {
@@ -254,6 +256,10 @@ export interface DashboardHost {
 		highlightSectionIds?: readonly string[],
 	): Promise<void>;
 	openStep(step: StepId): Promise<void>;
+	openManuscriptStream(
+		projectPath: string,
+		anchorPath?: string | null,
+	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
 	repairMissingStructureItem(path: string, field?: string): Promise<void>;
 }

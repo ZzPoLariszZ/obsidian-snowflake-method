@@ -29,29 +29,39 @@ export type ProjectLocale = 'en' | 'zh-CN';
 export type DefaultProjectLocale = 'system' | ProjectLocale;
 
 export interface SnowflakeSettings {
-	settingsSchemaVersion: 5;
+	settingsSchemaVersion: 6;
 	projectRoot: string;
 	uiLocale: UiLocalePreference;
 	defaultProjectLocale: DefaultProjectLocale;
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
+	/** Manuscript notes kept loaded on each side of the one being read. */
+	manuscriptWindow: number;
+	showManuscriptPath: boolean;
+	showManuscriptSequence: boolean;
 	recentProjectPath: string | null;
 	recentStep: number;
 	certificateCelebrations: Record<string, true>;
+	/** The manuscript note last worked in, by project id. */
+	recentManuscriptNotes: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: SnowflakeSettings = {
-	settingsSchemaVersion: 5,
+	settingsSchemaVersion: 6,
 	projectRoot: '',
 	uiLocale: 'project',
 	defaultProjectLocale: 'system',
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
+	manuscriptWindow: 5,
+	showManuscriptPath: true,
+	showManuscriptSequence: false,
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
+	recentManuscriptNotes: {},
 };
 
 const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
@@ -62,9 +72,13 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
+	'manuscriptWindow',
+	'showManuscriptPath',
+	'showManuscriptSequence',
 	'recentProjectPath',
 	'recentStep',
 	'certificateCelebrations',
+	'recentManuscriptNotes',
 ]);
 
 export function sanitizeSettings(input: unknown): SnowflakeSettings {
@@ -77,7 +91,8 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		(raw.settingsSchemaVersion === 2 ||
 			raw.settingsSchemaVersion === 3 ||
 			raw.settingsSchemaVersion === 4 ||
-			raw.settingsSchemaVersion === 5) &&
+			raw.settingsSchemaVersion === 5 ||
+			raw.settingsSchemaVersion === 6) &&
 		isUiLocale(raw.uiLocale)
 			? raw.uiLocale
 			: DEFAULT_SETTINGS.uiLocale;
@@ -102,8 +117,27 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		}
 	}
 
+	// Held to a range a window can be drawn from: nothing to hold on a side,
+	// and enough to read around a chapter without loading a novel.
+	const manuscriptWindow =
+		typeof raw.manuscriptWindow === 'number' &&
+		Number.isInteger(raw.manuscriptWindow) &&
+		raw.manuscriptWindow >= 0 &&
+		raw.manuscriptWindow <= 25
+			? raw.manuscriptWindow
+			: DEFAULT_SETTINGS.manuscriptWindow;
+
+	const recentManuscriptNotes: Record<string, string> = {};
+	if (isRecord(raw.recentManuscriptNotes)) {
+		for (const [projectId, path] of Object.entries(raw.recentManuscriptNotes)) {
+			if (projectId.length > 0 && typeof path === 'string' && path.length > 0) {
+				recentManuscriptNotes[projectId] = normalizePath(path);
+			}
+		}
+	}
+
 	return {
-		settingsSchemaVersion: 5,
+		settingsSchemaVersion: 6,
 		projectRoot,
 		uiLocale,
 		defaultProjectLocale,
@@ -119,12 +153,22 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.reduceMotion === 'boolean'
 				? raw.reduceMotion
 				: DEFAULT_SETTINGS.reduceMotion,
+		manuscriptWindow,
+		showManuscriptPath:
+			typeof raw.showManuscriptPath === 'boolean'
+				? raw.showManuscriptPath
+				: DEFAULT_SETTINGS.showManuscriptPath,
+		showManuscriptSequence:
+			typeof raw.showManuscriptSequence === 'boolean'
+				? raw.showManuscriptSequence
+				: DEFAULT_SETTINGS.showManuscriptSequence,
 		recentProjectPath:
 			typeof raw.recentProjectPath === 'string'
 				? normalizePath(raw.recentProjectPath)
 				: null,
 		recentStep,
 		certificateCelebrations,
+		recentManuscriptNotes,
 	};
 }
 
@@ -230,6 +274,45 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					defaultValue: DEFAULT_SETTINGS.protectManagedBoundaries,
 				},
 			},
+			// Under a heading of their own: three settings that mean nothing to an
+			// author who never opens the manuscript, and that would otherwise sit
+			// among the ones that govern the whole plugin.
+			{
+				type: 'group',
+				heading: this.t('settings.manuscript.heading'),
+				items: [
+					{
+						name: this.t('settings.manuscriptWindow.name'),
+						desc: this.t('settings.manuscriptWindow.desc'),
+						control: {
+							type: 'slider',
+							key: 'manuscriptWindow',
+							defaultValue: DEFAULT_SETTINGS.manuscriptWindow,
+							min: 0,
+							max: 25,
+							step: 1,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptPath.name'),
+						desc: this.t('settings.manuscriptPath.desc'),
+						control: {
+							type: 'toggle',
+							key: 'showManuscriptPath',
+							defaultValue: DEFAULT_SETTINGS.showManuscriptPath,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptSequence.name'),
+						desc: this.t('settings.manuscriptSequence.desc'),
+						control: {
+							type: 'toggle',
+							key: 'showManuscriptSequence',
+							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
+						},
+					},
+				],
+			},
 		];
 	}
 
@@ -329,7 +412,25 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.protectManagedBoundaries = value;
 				}
 				break;
+			case 'manuscriptWindow':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.manuscriptWindow = value;
+				}
+				break;
+			case 'showManuscriptPath':
+				if (typeof value === 'boolean') {
+					this.owner.settings.showManuscriptPath = value;
+				}
+				break;
+			case 'showManuscriptSequence':
+				if (typeof value === 'boolean') {
+					this.owner.settings.showManuscriptSequence = value;
+				}
+				break;
 			default:
+				// A key with no case above is saved and announced but never stored,
+				// so the control moves and nothing happens. Every key in
+				// SETTINGS_KEYS needs a case here; the test below holds it to that.
 				break;
 		}
 

@@ -57,6 +57,10 @@ export default defineConfig(
 					],
 					acronyms: ['ID', 'POV'],
 					ignoreRegex: [
+						// A frontmatter key, quoted so an author can find it in the
+						// note. It is spelled the way the file spells it, which is
+						// lowercase, and is not the brand.
+						'snowflake-manuscript-sequence',
 						'^conflict$',
 						'^ \\(don’t add a scene',
 						'^point-of-view character$',
