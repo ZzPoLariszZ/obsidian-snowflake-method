@@ -204,15 +204,25 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 	}
 
-	/** Reloads segments whose files changed elsewhere, leaving typing alone. */
+	/**
+	 * Reloads segments whose files changed elsewhere, leaving typing alone.
+	 *
+	 * The segment open for writing is reloaded too, into the editor rather than
+	 * over it: a note edited in an ordinary tab is the same note, and the stream
+	 * showing an older copy of it is the stream being wrong. Only unsaved text
+	 * holds an update off, because there is no way to take one without deciding
+	 * which of the two versions loses — and the save that follows refuses to
+	 * clobber, which is where that decision belongs.
+	 */
 	private async refreshMountedBodies(): Promise<void> {
 		for (const entry of this.mounted.values()) {
-			if (entry.path === this.editingPath || entry.pending !== null) continue;
+			if (entry.pending !== null) continue;
 			try {
 				const text = await this.host.readManuscriptSegment(entry.path);
 				if (text.revision === entry.text.revision) continue;
 				entry.text = text;
-				await this.renderSegmentBody(entry);
+				if (entry.editor === null) await this.renderSegmentBody(entry);
+				else entry.editor.write(text.body);
 			} catch (error) {
 				this.showError(error);
 			}

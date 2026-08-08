@@ -7,7 +7,12 @@ import {
 	syntaxHighlighting,
 } from '@codemirror/language';
 import { parser as markdownParser } from '@lezer/markdown';
-import { EditorState, type Extension } from '@codemirror/state';
+import {
+	Annotation,
+	EditorSelection,
+	EditorState,
+	type Extension,
+} from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 
 /**
@@ -46,6 +51,9 @@ export interface SegmentEditorHooks {
 	onBlur(path: string): void;
 }
 
+/** Marks a change the editor was handed rather than one the author typed. */
+const FROM_ELSEWHERE = Annotation.define<boolean>();
+
 /**
  * Markdown highlighting from the grammar itself rather than through
  * `@codemirror/lang-markdown`.
@@ -77,6 +85,13 @@ export interface SegmentEditorHandle {
 	readonly path: string;
 	/** The text as it stands in the editor, which may be ahead of the file. */
 	read(): string;
+	/**
+	 * Puts text that arrived from elsewhere into the editor.
+	 *
+	 * Not reported back as a change, because it is not one the author made and
+	 * writing it straight back out would be this editor answering itself.
+	 */
+	write(body: string): void;
 	/** Caret position within the body, for splitting the segment at it. */
 	cursor(): number;
 	focus(): void;
@@ -137,6 +152,18 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 		return {
 			path,
 			read: () => view.state.doc.toString(),
+			write: (body: string) => {
+				if (body === view.state.doc.toString()) return;
+				// The caret keeps its offset where the new text is long enough to
+				// hold it. Mapping it through a whole-document replacement would be
+				// guesswork; landing somewhere sensible is not.
+				const head = Math.min(view.state.selection.main.head, body.length);
+				view.dispatch({
+					changes: { from: 0, to: view.state.doc.length, insert: body },
+					selection: EditorSelection.cursor(head),
+					annotations: FROM_ELSEWHERE.of(true),
+				});
+			},
 			cursor: () => view.state.selection.main.head,
 			focus: () => {
 				view.focus();
@@ -158,7 +185,10 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 			EditorView.lineWrapping,
 			EditorView.updateListener.of((update) => {
-				if (update.docChanged) {
+				const handed = update.transactions.some(
+					(transaction) => transaction.annotation(FROM_ELSEWHERE) === true,
+				);
+				if (update.docChanged && !handed) {
 					hooks.onChange(target.path, update.state.doc.toString());
 				}
 				if (update.focusChanged && !update.view.hasFocus) {

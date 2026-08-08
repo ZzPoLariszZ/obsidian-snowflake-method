@@ -1849,7 +1849,23 @@ export default class SnowflakeMethodPlugin
 		body: string,
 		expectedRevision: string,
 	): Promise<string> {
-		await this.projects.manuscript.writeSegment(path, body, expectedRevision);
+		try {
+			await this.projects.manuscript.writeSegment(path, body, expectedRevision);
+		} catch (error) {
+			// The note moved on somewhere else while this text was being written.
+			// Said in the author's own words rather than the repository's, because
+			// two views of one note is an ordinary thing to have arranged and this
+			// is the one moment it costs them something.
+			if (error instanceof ConcurrentChangeError) {
+				throw new Error(
+					this.translateForProject(
+						this.projectLocaleOfPath(path),
+						'errors.concurrentChange',
+					),
+				);
+			}
+			throw error;
+		}
 		return (await this.projects.manuscript.readSegment(path)).revision;
 	}
 
