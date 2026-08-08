@@ -42,6 +42,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 |---|---|
 | Guided dashboard | Navigate all ten steps and control progress without blocking validation rules. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
+| Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
@@ -154,6 +155,7 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 3. Open the project dashboard and begin with the target-reader prompts and one-sentence summary.
 4. Mark steps complete when they are useful to you, and revisit them whenever the story changes.
 5. Open long-form notes beside the dashboard or in regular tabs.
+6. When the plan is ready, open the manuscript stream from step 10 and write the novel as one continuous page.
 
 <a id="commands"></a>
 
@@ -163,15 +165,27 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 |---|---|
 | Add character | Add a shared character note to the current project. |
 | Add scene | Add a shared scene note to the current project. |
+| Close manuscript stream | Close the manuscript stream in the current pane. |
 | Create project | Create a new Markdown-native Snowflake project. |
+| Go back to where the stream opened | Return to the note the manuscript stream was opened at. |
+| Go to the next manuscript note | Move one note further into the manuscript. |
+| Go to the previous manuscript note | Move one note back through the manuscript. |
+| Insert a manuscript note after this one | Add a note directly after the one being read. |
+| Insert a manuscript note before this one | Add a note directly before the one being read. |
 | Open character base | Open the Bases view of the current project's characters. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
+| Open manuscript stream | Open the manuscript, at the note last written in. |
 | Open project manager | Create, rename, open, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
+| Split manuscript note at the cursor | Divide the note being written in, at the caret. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
+| Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
+| Toggle order numbers in the manuscript | Show or hide each manuscript note's stored position. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
+
+Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing.
 
 <a id="settings"></a>
 
@@ -185,6 +199,9 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 | Open notes beside dashboard | On | Reuse a companion pane for notes. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
+| Notes kept loaded | 5 | Hold this many manuscript notes on each side of the one being read. |
+| Show each note's file path | On | Show where a manuscript note is stored, above the note itself. |
+| Show each note's order number | Off | Show the stored position that decides where a note is read. |
 
 <a id="privacy"></a>
 
@@ -220,11 +237,15 @@ Each project is stored as a direct child of the configured project root. Its fol
     ├── 40_Scene/
     │   └── Scenes.base
     ├── 50_Manuscript/
-    │   └── Draft.md
+    │   ├── Draft.md
+    │   └── Part One/
+    │       └── Chapter One.md
     └── ...
 ```
 
 </details>
+
+A manuscript may be one note or many, arranged in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming one never changes where it is read, and the manuscript stream presents them in that order as a single page.
 
 The dashboard synchronizes only the text enclosed by paired managed section boundaries:
 
@@ -343,6 +364,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 |---|---|
 | 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
+| 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
@@ -451,6 +473,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 3. 打开项目工作台，从目标读者问题和一句话概述开始。
 4. 当某一步对你已经足够有用时，将其标记为完成；故事变化后可随时返回修改。
 5. 长篇笔记可以在工作台旁的固定分栏或普通标签页中打开。
+6. 计划就绪后，在第十步打开正文流，把整部小说当作一页连续写作。
 
 ## 命令
 
@@ -464,9 +487,21 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 打开项目管理器 | 创建、重命名、打开或移入回收站。 |
 | 打开角色数据库 | 打开当前项目角色的 Bases 视图。 |
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
+| 打开正文流 | 打开正文，并定位到上次写作的笔记。 |
+| 关闭正文流 | 关闭当前分栏中的正文流。 |
+| 前往上一篇正文笔记 | 在正文中向前移动一篇。 |
+| 前往下一篇正文笔记 | 在正文中向后移动一篇。 |
+| 回到打开正文流的位置 | 返回打开正文流时所在的笔记。 |
+| 在这一篇之前插入正文笔记 | 在正在阅读的这一篇之前新增一篇。 |
+| 在这一篇之后插入正文笔记 | 在正在阅读的这一篇之后新增一篇。 |
+| 在光标处拆分正文笔记 | 在光标处把正在写作的笔记一分为二。 |
+| 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
+| 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记所存的位置。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 选择固定分栏或普通标签页。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
+
+与正文相关的命令仅在当前视图为正文流时提供，其中**在光标处拆分正文笔记**还需要其中有一篇笔记正处于写作状态。
 
 ## 设置
 
@@ -478,6 +513,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在工作台旁打开笔记 | 开启 | 长篇笔记复用工作台旁的固定分栏。 |
 | 减少动画 | 关闭 | 使用静态视觉效果替代动画。 |
 | 保护托管区段边界 | 开启 | 防止意外修改同步标记。 |
+| 同时载入的笔记数 | 5 | 在正在阅读的笔记前后各保留这么多篇正文笔记。 |
+| 显示每篇笔记的文件路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
+| 显示每篇笔记的顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
 
 ## 隐私
 
@@ -509,11 +547,15 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     ├── 40_场景/
     │   └── 场景总览.base
     ├── 50_正文/
-    │   └── 初稿.md
+    │   ├── 初稿.md
+    │   └── 第一部/
+    │       └── 第一章.md
     └── ...
 ```
 
 </details>
+
+正文可以只有一篇笔记，也可以有许多篇，文件夹如何组织都可以。每篇笔记都用 `snowflake-manuscript-sequence` 记录自己的位置，因此移动或重命名笔记都不会改变它的阅读顺序；正文流会按该顺序把它们呈现为一整页。
 
 工作台只同步一对托管区段边界之间的文字：
 
