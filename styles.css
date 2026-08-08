@@ -2124,7 +2124,7 @@
    scrollbar arrives. The project manager is left out: it never scrolls as a
    whole, and the repair report scrolls inside its content instead. */
 .modal.snowflake-method-project-modal,
-.modal.snowflake-method-rename-project-modal,
+.modal.snowflake-method-compact-form-modal,
 .modal.snowflake-method-character-modal,
 .modal.snowflake-method-scene-modal,
 .modal.snowflake-method-delete-character-modal {
@@ -2157,7 +2157,7 @@
 
 /* Renaming is the same form asking the same question, so it is the same dialog
    with the language column left out. */
-.snowflake-method-rename-project-modal {
+.snowflake-method-compact-form-modal {
 	width: min(28rem, calc(100vw - 2rem));
 	max-width: 28rem;
 	height: auto;
@@ -2165,7 +2165,7 @@
 }
 
 .snowflake-method-project-modal .modal-content,
-.snowflake-method-rename-project-modal .modal-content {
+.snowflake-method-compact-form-modal .modal-content {
 	flex: 0 0 auto;
 }
 
@@ -2176,13 +2176,13 @@
 	padding-top: var(--size-4-2);
 }
 
-.snowflake-method-rename-project-modal .snowflake-method-project-form {
+.snowflake-method-compact-form-modal .snowflake-method-project-form {
 	grid-template-columns: minmax(0, 1fr);
 }
 
 .modal:is(
 		.snowflake-method-project-modal,
-		.snowflake-method-rename-project-modal
+		.snowflake-method-compact-form-modal
 	)
 	.modal-content.snowflake-method-project-form
 	> .setting-item {
@@ -2198,7 +2198,7 @@
 
 .modal:is(
 		.snowflake-method-project-modal,
-		.snowflake-method-rename-project-modal
+		.snowflake-method-compact-form-modal
 	)
 	.modal-content.snowflake-method-project-form
 	> .setting-item
@@ -2234,13 +2234,13 @@
 
 .modal:is(
 		.snowflake-method-project-modal,
-		.snowflake-method-rename-project-modal
+		.snowflake-method-compact-form-modal
 	)
 	.modal-content.snowflake-method-project-form
 	input,
 .modal:is(
 		.snowflake-method-project-modal,
-		.snowflake-method-rename-project-modal
+		.snowflake-method-compact-form-modal
 	)
 	.modal-content.snowflake-method-project-form
 	select {
@@ -2823,7 +2823,7 @@
 .snowflake-method-character-form input[aria-invalid='true'],
 .snowflake-method-scene-form input[aria-invalid='true'],
 .snowflake-method-project-form input[aria-invalid='true'],
-.snowflake-method-rename-project-modal input[aria-invalid='true'] {
+.snowflake-method-compact-form-modal input[aria-invalid='true'] {
 	border-color: var(--text-error);
 }
 
@@ -3889,5 +3889,271 @@
 .snowflake-method-reduce-motion
 	.snowflake-method-writing-hints
 	> summary::after {
+	transition: none;
+}
+
+/* Manuscript stream.
+   -----------------
+   The page is the manuscript, so the chrome is kept to what is needed to tell
+   one note from the next: a rule, a name, and nothing else that competes with
+   prose for attention. */
+
+.snowflake-method-step-ten-manuscript {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-4);
+}
+
+.snowflake-method-manuscript-view.view-content {
+	padding: 0;
+	overflow: hidden;
+}
+
+.snowflake-method-manuscript-stream {
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	/* Room below the last line to scroll it up to a comfortable place to write,
+	   without leaving so much that the end of the manuscript looks like a fault. */
+	padding: var(--size-4-8) 0 25vh;
+	scrollbar-gutter: stable;
+}
+
+/* The manuscript reads at the width Obsidian gives a note, wherever the pane
+   happens to be, so a wide window does not stretch a line past reading length. */
+.snowflake-method-segment,
+.snowflake-method-manuscript-end {
+	max-width: var(--file-line-width);
+	margin-inline: auto;
+	padding-inline: var(--size-4-6);
+}
+
+/* One height whether it carries a path, a number, both or neither: turning a
+   setting on must not move the words below it. */
+.snowflake-method-segment-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-height: var(--size-4-6);
+	margin-bottom: var(--size-4-2);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+/* A path, so it is left exactly as the Vault spells it: no capitalising and no
+   letter-spacing, both of which would be saying it wrong. */
+.snowflake-method-segment-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-interface);
+}
+
+.snowflake-method-segment-sequence {
+	font-variant-numeric: tabular-nums;
+	opacity: 0.65;
+}
+
+/* Out of the way until the reader is in this segment, so a column of buttons
+   does not run down the side of the manuscript. */
+.snowflake-method-segment-open {
+	margin-inline-start: auto;
+	opacity: 0;
+	transition: opacity 120ms ease-in-out;
+}
+
+.snowflake-method-segment:hover .snowflake-method-segment-open,
+.snowflake-method-segment-open:focus-visible {
+	opacity: 1;
+}
+
+.snowflake-method-segment-body {
+	font-family: var(--font-text);
+	font-size: var(--font-text-size);
+	line-height: var(--line-height-normal);
+}
+
+/* The rendered half and the editing half have to occupy the same space, or the
+   page jumps by the difference at the moment the author clicks into it. */
+.snowflake-method-segment-body .cm-editor {
+	background: transparent;
+	font-family: var(--font-text);
+	font-size: var(--font-text-size);
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-segment-body .cm-editor.cm-focused {
+	outline: none;
+}
+
+.snowflake-method-segment-body .cm-scroller {
+	font-family: inherit;
+	line-height: inherit;
+}
+
+.snowflake-method-segment-body .cm-content {
+	padding: 0;
+	caret-color: var(--caret-color);
+}
+
+.snowflake-method-segment-body .cm-line {
+	padding-inline: 0;
+}
+
+.snowflake-method-segment-body.is-editing {
+	border-inline-start: 2px solid var(--interactive-accent);
+	padding-inline-start: var(--size-4-3);
+	margin-inline-start: calc(var(--size-4-3) * -1 - 2px);
+}
+
+/* The boundary is drawn here and written nowhere: it is not in the note, not in
+   copied text, and not in any count. */
+.snowflake-method-segment-boundary {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: var(--size-4-12);
+	margin-block: var(--size-4-4);
+}
+
+.snowflake-method-segment-boundary::before {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	height: 1px;
+	background-color: var(--background-modifier-border);
+}
+
+/* The line above the first note, which has no note of its own to hang off.
+   The end block stacks so the line can span the column rather than shrink to
+   the nothing a flex row would give it. */
+.snowflake-method-manuscript-end.is-start {
+	flex-direction: column;
+	align-items: center;
+}
+
+.snowflake-method-segment-boundary.is-leading {
+	align-self: stretch;
+	height: var(--size-4-9);
+	margin-block: var(--size-4-2) 0;
+}
+
+/* One block over one stretch of the line, so none of it shows between the two
+   controls while the pointer is on them. */
+.snowflake-method-segment-boundary-actions {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	padding-inline: var(--size-4-2);
+	background-color: var(--background-primary);
+	opacity: 0;
+	transition: opacity 120ms ease-in-out;
+}
+
+.snowflake-method-segment-boundary:hover
+	.snowflake-method-segment-boundary-actions,
+.snowflake-method-segment-boundary-actions:focus-within {
+	opacity: 1;
+}
+
+/* One size for both, whatever each glyph would otherwise take. */
+.snowflake-method-segment-boundary-action > svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+/* The same room around the action at either end, so reaching the top of the
+   manuscript feels like reaching the bottom of it. */
+.snowflake-method-manuscript-end {
+	display: flex;
+	justify-content: center;
+	padding-block: var(--size-4-8);
+}
+
+/* The way the dashboard offers the project manager when there is no project:
+   accent-coloured, no chrome, dimming on hover. A size down from that one,
+   because this sits at the end of a page of prose rather than in an empty pane. */
+.snowflake-method-manuscript-action.empty-state-action {
+	appearance: none;
+	background: none;
+	border: 0;
+	box-shadow: none;
+	width: auto;
+	min-height: 0;
+	height: auto;
+	padding: var(--size-4-1) var(--size-4-2);
+	border-radius: var(--radius-s);
+	color: var(--interactive-accent);
+	font-family: inherit;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-normal);
+	line-height: var(--line-height-normal);
+	cursor: pointer;
+	transition: opacity 100ms ease-in-out;
+}
+
+.snowflake-method-manuscript-action.empty-state-action:hover,
+.snowflake-method-manuscript-action.empty-state-action:focus-visible {
+	background: none;
+	box-shadow: none;
+	color: var(--interactive-accent);
+	opacity: 0.65;
+	text-decoration: none;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-manuscript-action {
+	transition: none;
+}
+
+.snowflake-method-manuscript-view .empty-state {
+	height: 100%;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-segment-open,
+.snowflake-method-reduce-motion .snowflake-method-segment-boundary-actions {
+	transition: none;
+}
+
+/* Where the author stopped, offered under the way in to the manuscript. */
+.snowflake-method-step-ten-resume {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-ten-resume-note {
+	appearance: none;
+	background: none;
+	border: 0;
+	box-shadow: none;
+	width: auto;
+	min-height: 0;
+	height: auto;
+	padding: 0;
+	color: var(--interactive-accent);
+	font-family: inherit;
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	cursor: pointer;
+	transition: opacity 100ms ease-in-out;
+}
+
+.snowflake-method-dashboard button.snowflake-method-step-ten-resume-note:hover,
+.snowflake-method-dashboard
+	button.snowflake-method-step-ten-resume-note:focus-visible {
+	background: none;
+	box-shadow: none;
+	color: var(--interactive-accent);
+	opacity: 0.65;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-step-ten-resume-note {
 	transition: none;
 }

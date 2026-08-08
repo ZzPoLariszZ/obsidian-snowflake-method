@@ -1,3 +1,5 @@
+import type { Menu } from 'obsidian';
+
 import type { CharacterType, StepId, StepStatus } from '../domain';
 import type { MarkerIssueCode } from '../templates';
 import type { ProjectStructureIssueCode } from '../services';
@@ -128,6 +130,78 @@ export interface RepairReportEntryViewModel {
 export interface RepairReportViewModel {
 	summary: string;
 	entries: RepairReportEntryViewModel[];
+}
+
+export interface ManuscriptSegmentViewModel {
+	path: string;
+	title: string;
+	sequence: number;
+	readOnly: boolean;
+}
+
+export interface ManuscriptModel {
+	projectPath: string;
+	projectId: string;
+	projectTitle: string;
+	locale: 'en' | 'zh-CN';
+	readOnly: boolean;
+	/** Every segment of the manuscript, in reading order. */
+	segments: ManuscriptSegmentViewModel[];
+}
+
+export interface ManuscriptSegmentText {
+	path: string;
+	/** Everything below the frontmatter. The frontmatter is never shown. */
+	body: string;
+	/** Fingerprint of the whole file, so a save can refuse to clobber. */
+	revision: string;
+	readOnly: boolean;
+}
+
+export interface ManuscriptWindowSettings {
+	before: number;
+	after: number;
+	showPath: boolean;
+	showSequence: boolean;
+}
+
+export interface ManuscriptHost {
+	t: Translate;
+	translateForProject(
+		locale: 'en' | 'zh-CN' | null,
+		key: string,
+		vars?: Record<string, string | number>,
+	): string;
+	manuscriptWindowSettings(): ManuscriptWindowSettings;
+	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
+	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
+	/** Saves one segment and reports the revision it now carries. */
+	saveManuscriptSegment(
+		path: string,
+		body: string,
+		expectedRevision: string,
+	): Promise<string>;
+	/** Creates a segment at one end of the manuscript, or after a given one. */
+	createManuscriptSegment(
+		projectPath: string,
+		placement: { after: string } | { atStart: true } | { atEnd: true },
+	): Promise<string | null>;
+	splitManuscriptSegment(
+		projectPath: string,
+		path: string,
+		offset: number,
+	): Promise<string | null>;
+	openManagedFile(
+		path: string,
+		sectionId?: string,
+		highlightSectionIds?: readonly string[],
+	): Promise<void>;
+	/** This plugin's own labelled group of items, as the file menu shows them. */
+	addProjectMenuSection(menu: Menu, path: string, source?: string): void;
+	/** Records where the author was working, for the dashboard to offer later. */
+	rememberManuscriptNote(projectId: string, path: string): void;
+	/** Joins a note with the one after it, the earlier one surviving. */
+	mergeManuscriptSegments(projectPath: string, path: string): Promise<void>;
 }
 
 export interface DashboardHost {

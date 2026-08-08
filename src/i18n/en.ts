@@ -510,6 +510,23 @@ export const en = {
 	'steps.10.description':
 		'Congratulations! You now have a thoughtfully designed story!\nWrite your novel! Remember to revisit and revise the earlier steps whenever you need to.',
 	'step10.certificate': 'All ten steps complete',
+	'manuscript.title': 'Manuscript',
+	'manuscript.titleFor': '{project} · manuscript',
+	'manuscript.empty': 'This project has no manuscript notes yet.',
+	'manuscript.noProject': 'Open a Snowflake project to read its manuscript.',
+	'manuscript.createFirst': 'Start writing',
+	'manuscript.createNext': 'Write the next one',
+	'manuscript.createPrevious': 'Write the previous one',
+	'manuscript.insertSegment': 'Insert a note after this one',
+	'manuscript.splitHere': 'Split at the cursor',
+	'manuscript.mergeWithNext': 'Merge “{note}” into this note',
+	'manuscript.openNote': 'Open this note on its own',
+	'manuscript.copySelection': 'Copy',
+	'manuscript.newSegment': 'New manuscript note',
+	'manuscript.segmentTitle': 'Name',
+	'manuscript.segmentTitlePlaceholder': 'Chapter 1',
+	'manuscript.segmentTitleRequired': 'A name is required.',
+	'manuscript.defaultSegmentTitle': 'Untitled',
 } as const;
 
 export type TranslationKey = keyof typeof en;

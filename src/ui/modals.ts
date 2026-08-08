@@ -325,6 +325,89 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 	}
 }
 
+/**
+ * The one question a new manuscript segment has to answer. Deliberately not the
+ * duplicate-name form the character and scene modals use: nothing links to a
+ * segment by name, so two chapters may share one, and a manuscript is no place
+ * to be refused a title.
+ */
+class SegmentTitleModal extends SnowflakeFormModal<string> {
+	private title: string;
+
+	constructor(
+		app: App,
+		t: Translate,
+		presetTitle: string,
+		onSubmit: SubmitHandler<string>,
+		private readonly settle: () => void,
+	) {
+		super(app, t, t('manuscript.newSegment'), onSubmit);
+		this.title = presetTitle;
+		this.modalEl.addClass('snowflake-method-project-modal');
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		// The same form the project dialogs use, so naming a chapter looks like
+		// naming anything else rather than like a dialog of its own.
+		this.contentEl.addClass('snowflake-method-project-form');
+		new Setting(this.contentEl)
+			.setName(this.t('manuscript.segmentTitle'))
+			.addText((text) => {
+				text
+					.setPlaceholder(this.t('manuscript.segmentTitlePlaceholder'))
+					.setValue(this.title)
+					.onChange((value) => {
+						this.title = value;
+					});
+				// The one field this form has, so it takes the caret without the
+				// author reaching for it.
+				window.setTimeout(() => {
+					text.inputEl.focus();
+					text.inputEl.select();
+				}, 0);
+			});
+	}
+
+	protected collectValue(): string | null {
+		const title = this.title.trim();
+		if (title.length === 0) {
+			new Notice(this.t('manuscript.segmentTitleRequired'));
+			return null;
+		}
+		return title;
+	}
+
+	onClose(): void {
+		super.onClose();
+		this.settle();
+	}
+}
+
+/**
+ * Asks for a segment title, resolving to the path of the segment that was
+ * created or to null when the author closed the form without creating one.
+ */
+export function promptForSegmentTitle(
+	app: App,
+	t: Translate,
+	presetTitle: string,
+	create: (title: string) => Promise<string>,
+): Promise<string | null> {
+	return new Promise((resolve) => {
+		const outcome: { created: string | null } = { created: null };
+		new SegmentTitleModal(
+			app,
+			t,
+			presetTitle,
+			async (title) => {
+				outcome.created = await create(title);
+			},
+			() => resolve(outcome.created),
+		).open();
+	});
+}
+
 export class ManageProjectsModal extends Modal {
 	private t: Translate;
 	private locale: ProjectLocale;
@@ -858,7 +941,7 @@ class RenameProjectModal extends SnowflakeFormModal<string> {
 		this.name = new UniqueNameField(takenNames, initialValue, () =>
 			this.t('modal.project.nameTaken'),
 		);
-		this.modalEl.addClass('snowflake-method-rename-project-modal');
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
 	}
 
 	protected buildForm(): void {
