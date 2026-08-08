@@ -1,5 +1,6 @@
 export * from './fingerprint';
 export * from './managed-sections';
+export * from './manuscript';
 export * from './names';
 export * from './plot-fields';
 export * from './rank';

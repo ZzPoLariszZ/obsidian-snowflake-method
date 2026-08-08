@@ -68,6 +68,7 @@ import {
   type ProjectBaseId,
   type SystemTemplateDefinition,
 } from "../templates";
+import { ManuscriptService } from "./manuscript-service";
 import {
   DEFAULT_PROJECT_ROOT,
   FRONTMATTER_KEYS,
@@ -144,6 +145,8 @@ export class DuplicateNameError extends Error {
 
 export class SnowflakeProjectService {
   readonly repository: VaultRepository;
+  /** The manuscript of whichever project is being asked about. See its class. */
+  readonly manuscript: ManuscriptService;
 
   constructor(
     vault: Vault,
@@ -152,6 +155,7 @@ export class SnowflakeProjectService {
     readonly defaultRoot = DEFAULT_PROJECT_ROOT,
   ) {
     this.repository = new VaultRepository(vault, fileManager, metadataCache);
+    this.manuscript = new ManuscriptService(this.repository);
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
@@ -924,6 +928,25 @@ export class SnowflakeProjectService {
       await this.repository.updateFrontmatter(normalized, {
         [FRONTMATTER_KEYS.sceneCharacters]: next,
       });
+      return this.loadProject(project.projectFile);
+    }
+
+    if (
+      issue.code === "missing-manuscript-sequence" ||
+      issue.code === "invalid-manuscript-sequence" ||
+      issue.code === "duplicate-manuscript-sequence"
+    ) {
+      // Every one of the three is settled the same way, because a manuscript
+      // whose positions disagree has only one honest answer: keep the order it
+      // reads in now and write it down properly. Nothing below a frontmatter is
+      // touched, so no prose moves and none of it changes.
+      const written = await this.manuscript.repairSequences(
+        project,
+        project.links.draft,
+      );
+      if (written.length === 0) {
+        throw new Error(`No manuscript position in "${normalized}" needed repair.`);
+      }
       return this.loadProject(project.projectFile);
     }
 
@@ -1804,6 +1827,36 @@ export class SnowflakeProjectService {
       await this.repository.readManaged(path),
       project.rootPath,
     );
+  }
+
+  /**
+   * Joins a manuscript note with the one after it.
+   *
+   * The merge itself belongs to the manuscript; what belongs here is the one
+   * piece of project metadata it can invalidate. `snowflake-draft` names the
+   * opening of the manuscript, and merging that note into its neighbour would
+   * leave the project pointing at something in the trash.
+   */
+  async mergeManuscriptSegments(
+    projectLocator: ProjectLocator,
+    path: string,
+  ): Promise<ProjectSnapshot> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const merged = await this.manuscript.mergeWithNext(
+      project,
+      project.links.draft,
+      path,
+    );
+    if (merged === null) {
+      throw new Error(`There is no manuscript note after "${normalizePath(path)}".`);
+    }
+    if (project.links.draft === merged.removed) {
+      await this.repository.updateFrontmatter(project.projectFile, {
+        [FRONTMATTER_KEYS.draft]: toWikiLink(merged.kept, fileStem(merged.kept)),
+      });
+    }
+    return this.loadProject(project.projectFile);
   }
 
   async reorderScene(
@@ -2740,6 +2793,35 @@ export class SnowflakeProjectService {
       });
     }
 
+    // A manuscript reads in the order its notes store, so a note with nowhere
+    // to sit, a note sitting somewhere unreadable, and two notes sitting in the
+    // same place each stop the manuscript being a sequence. Each is repaired by
+    // writing positions and nothing else, so none of them touches prose.
+    const sequenceIssues = await this.manuscript.findSequenceIssues(
+      project,
+      draftPath,
+    );
+    const sequenceCodes = [
+      ["missing-manuscript-sequence", sequenceIssues.missing],
+      ["invalid-manuscript-sequence", sequenceIssues.invalid],
+      ["duplicate-manuscript-sequence", sequenceIssues.duplicate],
+    ] as const;
+    for (const [code, paths] of sequenceCodes) {
+      // Reported against the first note it applies to rather than against the
+      // folder, so the author can open the note the sentence is about. A note
+      // falls into exactly one of the three, so the three never collide.
+      const first = paths[0];
+      if (first === undefined) continue;
+      add({
+        code,
+        path: first,
+        stepIds: [10],
+        expected: paths.map((path) => fileStem(path)).join(", "),
+        canOpen: true,
+        repairable: !projectRecord.readOnly,
+      });
+    }
+
     const canonicalDraftPath = normalizePath(
       `${project.rootPath}/${layout.directories.draft}/${layout.draftFileName}`,
     );
@@ -3069,9 +3151,26 @@ export class SnowflakeProjectService {
       opaqueScenes,
     ]);
 
+    // The manuscript is fingerprinted from what the Vault already knows about
+    // its notes rather than from their text. Step 10 impacts no step, so this
+    // fingerprint is never a review source and nothing downstream reads it --
+    // and reading a whole novel back on every Vault event, once per note, to
+    // produce a value nobody looks at is a cost a long manuscript would feel.
+    const segments = await this.manuscript.listSegments(project, draftPath);
+    output[10] = fingerprint(
+      segments.map((segment) => {
+        const file = this.repository.getFile(segment.path);
+        return {
+          path: segment.path,
+          sequence: segment.sequence,
+          modified: file?.stat.mtime ?? 0,
+          size: file?.stat.size ?? 0,
+        };
+      }),
+    );
+
     const draft = draftPath ? this.repository.getFile(draftPath) : null;
     const draftContent = draft ? await this.repository.vault.read(draft) : "";
-    output[10] = fingerprint(draftContent);
     if (draft) {
       const managedDraft = await this.repository.tryReadManaged(draft.path);
       artifacts[10] = {

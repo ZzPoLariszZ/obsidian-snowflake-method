@@ -431,6 +431,23 @@ export function draftTemplate(language: TemplateLanguage): MarkdownTemplate {
   };
 }
 
+/**
+ * A new segment of the manuscript. The heading is the name the author just gave
+ * the note, which is theirs to change afterwards -- nothing checks it, the way
+ * nothing checks the draft's heading, because everything below the frontmatter
+ * of a manuscript note is prose.
+ */
+export function manuscriptSegmentTemplate(
+  title: string,
+  language: TemplateLanguage,
+): MarkdownTemplate {
+  const copy = COPY[language];
+  return {
+    body: `# ${title}\n\n${copy.blankHint}\n`,
+    sections: [],
+  };
+}
+
 function fromSections(title: string, sections: ManagedSectionDefinition[]): MarkdownTemplate {
   const rendered = sections
     .map((section) =>

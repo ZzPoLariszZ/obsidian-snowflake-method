@@ -273,6 +273,18 @@ export const en = {
 		'{expected} stored link(s) still name a note with “.md”.',
 	'projectStructure.action.extension-in-link':
 		'Repairing here rewrites them the way Obsidian writes a link.',
+	'projectStructure.issue.missing-manuscript-sequence':
+		'These manuscript notes have no place in the reading order: {expected}.',
+	'projectStructure.action.missing-manuscript-sequence':
+		'They are read last until they are given one.\nRepairing here numbers the manuscript in the order it reads now.',
+	'projectStructure.issue.invalid-manuscript-sequence':
+		'These manuscript notes store a place that cannot be read: {expected}.',
+	'projectStructure.action.invalid-manuscript-sequence':
+		'A place in the manuscript has to be a whole number.\nRepairing here numbers the manuscript in the order it reads now.',
+	'projectStructure.issue.duplicate-manuscript-sequence':
+		'These manuscript notes claim the same place: {expected}.',
+	'projectStructure.action.duplicate-manuscript-sequence':
+		'Which of them is read first is left to chance until this is settled.\nRepairing here numbers the manuscript in the order it reads now.',
 	'editor.managedSection.issue.missing':
 		'Both boundary markers are missing.',
 	'editor.managedSection.issue.missing-start':

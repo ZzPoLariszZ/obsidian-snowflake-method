@@ -48,6 +48,7 @@ export const FRONTMATTER_KEYS = {
 	stepStatuses: 'snowflake-step-status',
 	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
 	draft: 'snowflake-draft',
+	manuscriptSequence: 'snowflake-manuscript-sequence',
 	characterId: 'snowflake-character-id',
 	characterName: 'snowflake-character-name',
 	characterType: 'snowflake-character-type',

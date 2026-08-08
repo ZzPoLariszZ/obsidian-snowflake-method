@@ -247,6 +247,18 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 		'仍有 {expected} 个所存链接以“.md”指向笔记。',
 	'projectStructure.action.extension-in-link':
 		'在此修复会将它们全部改为 Obsidian 的写法。',
+	'projectStructure.issue.missing-manuscript-sequence':
+		'这些正文笔记在阅读顺序中没有位置：{expected}。',
+	'projectStructure.action.missing-manuscript-sequence':
+		'在获得位置之前，它们会被排在最后。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
+	'projectStructure.issue.invalid-manuscript-sequence':
+		'这些正文笔记所存的位置无法读取：{expected}。',
+	'projectStructure.action.invalid-manuscript-sequence':
+		'正文中的位置必须是整数。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
+	'projectStructure.issue.duplicate-manuscript-sequence':
+		'这些正文笔记占据了同一个位置：{expected}。',
+	'projectStructure.action.duplicate-manuscript-sequence':
+		'在此问题解决之前，它们谁先谁后并不确定。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
 	'editor.managedSection.issue.missing': '两个边界标记均缺失。',
 	'editor.managedSection.issue.missing-start': '起始边界标记缺失。',
 	'editor.managedSection.issue.missing-end': '结束边界标记缺失。',

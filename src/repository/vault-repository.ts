@@ -401,6 +401,36 @@ export class VaultRepository {
     });
   }
 
+  /**
+   * Replaces everything below the frontmatter, leaving the frontmatter itself
+   * exactly as it was.
+   *
+   * Written for the manuscript, where the note is prose the plugin has no
+   * business inside: it stores a position in the frontmatter and hands the rest
+   * of the file to the author. `expectedRevision` is how a save refuses to land
+   * on top of a change that arrived from somewhere else in the meantime.
+   */
+  async replaceBody(
+    path: string,
+    body: string,
+    expectedRevision?: string,
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+
+    await this.vault.process(file, (current) => {
+      const parsed = parseMarkdownFrontmatter(current);
+      assertWritableSchema(normalized, parsed.frontmatter);
+      const actualRevision = fingerprint(current);
+      if (expectedRevision !== undefined && expectedRevision !== actualRevision) {
+        throw new ConcurrentChangeError(normalized, expectedRevision, actualRevision);
+      }
+      const prefix = current.slice(0, current.length - parsed.body.length);
+      return `${prefix}${body}`;
+    });
+  }
+
   async updateSection(path: string, sectionId: string, value: string): Promise<void> {
     await this.updateSections(path, { [sectionId]: value });
   }
@@ -504,6 +534,28 @@ export class VaultRepository {
     return folder.children.filter(isFile);
   }
 
+  /**
+   * Every file at or below a folder, in path order.
+   *
+   * The project directories the plugin writes are flat, so the direct listing
+   * answers for them. A manuscript is the exception: an author files chapters
+   * into parts and volumes, and a chapter is no less part of the book for
+   * sitting one folder further down.
+   */
+  listFilesBelow(folderPath: string): TFile[] {
+    const root = this.getFolder(folderPath);
+    if (!root) return [];
+    const files: TFile[] = [];
+    const visit = (node: TFolder): void => {
+      for (const child of node.children) {
+        if (isFolder(child)) visit(child);
+        else if (isFile(child)) files.push(child);
+      }
+    };
+    visit(root);
+    return files.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  }
+
   listDirectFolders(folderPath: string): TFolder[] {
     const folder = this.getFolder(folderPath);
     if (!folder) return [];
@@ -515,8 +567,33 @@ export class VaultRepository {
     documentType?: string,
     projectId?: string,
   ): Promise<ManagedFileRecord[]> {
+    return this.matchManagedFiles(
+      this.listDirectFiles(folderPath),
+      documentType,
+      projectId,
+    );
+  }
+
+  /** findManagedFiles, over every subfolder as well. */
+  async findManagedFilesBelow(
+    folderPath: string,
+    documentType?: string,
+    projectId?: string,
+  ): Promise<ManagedFileRecord[]> {
+    return this.matchManagedFiles(
+      this.listFilesBelow(folderPath),
+      documentType,
+      projectId,
+    );
+  }
+
+  private async matchManagedFiles(
+    files: readonly TFile[],
+    documentType?: string,
+    projectId?: string,
+  ): Promise<ManagedFileRecord[]> {
     const matches: ManagedFileRecord[] = [];
-    for (const file of this.listDirectFiles(folderPath)) {
+    for (const file of files) {
       if (file.extension !== "md") continue;
       const record = await this.tryReadManaged(file.path);
       if (!record) continue;

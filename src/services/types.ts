@@ -125,6 +125,12 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "foreign-link",
   "missing-link",
   "extension-in-link",
+  // One per way a manuscript can lose its order, because a note carrying no
+  // position, a note carrying nonsense, and two notes claiming the same place
+  // are three different sentences with three different repairs.
+  "missing-manuscript-sequence",
+  "invalid-manuscript-sequence",
+  "duplicate-manuscript-sequence",
 ] as const;
 
 export type ProjectStructureIssueCode =
