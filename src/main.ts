@@ -1764,10 +1764,7 @@ export default class SnowflakeMethodPlugin
 			return;
 		}
 		const active = this.app.workspace.getActiveFile();
-		const segments = await this.projects.manuscript.listSegments(
-			project,
-			project.links.draft,
-		);
+		const segments = await this.projects.manuscript.listSegments(project);
 		const anchor =
 			segments.find((segment) => segment.path === active?.path)?.path ?? null;
 		await this.openManuscriptStream(project.projectFile, anchor);
@@ -1821,10 +1818,7 @@ export default class SnowflakeMethodPlugin
 	): Promise<ManuscriptModel | null> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
-		const segments = await this.projects.manuscript.listSegments(
-			project,
-			project.links.draft,
-		);
+		const segments = await this.projects.manuscript.listSegments(project);
 		return {
 			projectPath: project.projectFile,
 			projectId: project.id,
@@ -1866,7 +1860,6 @@ export default class SnowflakeMethodPlugin
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
 		const manuscript = this.projects.manuscript;
-		const draft = project.links.draft;
 		return promptForSegmentTitle(
 			this.app,
 			(key, vars) => this.translateForProject(project.locale, key, vars),
@@ -1876,16 +1869,11 @@ export default class SnowflakeMethodPlugin
 			),
 			async (title) => {
 				if ('after' in placement) {
-					return manuscript.insertSegmentAfter(
-						project,
-						draft,
-						placement.after,
-						title,
-					);
+					return manuscript.insertSegmentAfter(project, placement.after, title);
 				}
 				return 'atStart' in placement
-					? manuscript.prependSegment(project, draft, title)
-					: manuscript.appendSegment(project, draft, title);
+					? manuscript.prependSegment(project, title)
+					: manuscript.appendSegment(project, title);
 			},
 		);
 	}
@@ -1905,13 +1893,7 @@ export default class SnowflakeMethodPlugin
 				'manuscript.defaultSegmentTitle',
 			),
 			(title) =>
-				this.projects.manuscript.splitSegment(
-					project,
-					project.links.draft,
-					path,
-					offset,
-					title,
-				),
+				this.projects.manuscript.splitSegment(project, path, offset, title),
 		);
 	}
 
@@ -2353,10 +2335,7 @@ export default class SnowflakeMethodPlugin
 			new Notice(this.globalT('messages.noCurrentProject'));
 			return;
 		}
-		const segments = await this.projects.manuscript.listSegments(
-			project,
-			project.links.draft,
-		);
+		const segments = await this.projects.manuscript.listSegments(project);
 		const anchor = segments.find((segment) => segment.path === path)?.path ?? null;
 		await this.openManuscriptStream(project.projectFile, anchor);
 	}

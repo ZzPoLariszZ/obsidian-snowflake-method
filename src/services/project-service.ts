@@ -68,7 +68,10 @@ import {
   type ProjectBaseId,
   type SystemTemplateDefinition,
 } from "../templates";
-import { ManuscriptService } from "./manuscript-service";
+import {
+  ManuscriptService,
+  type ManuscriptSegmentRecord,
+} from "./manuscript-service";
 import {
   DEFAULT_PROJECT_ROOT,
   FRONTMATTER_KEYS,
@@ -229,10 +232,16 @@ export class SnowflakeProjectService {
       links.draft,
     );
     const currentFingerprints = fingerprintCalculation.fingerprints;
+    links.draft = await this.settleManuscriptStart(
+      project,
+      links.draft,
+      fingerprintCalculation.manuscript,
+    );
     const structureIssues = await this.inspectProjectStructure(
       project,
       record,
       links.draft,
+      fingerprintCalculation.manuscript,
     );
     return {
       ...project,
@@ -732,24 +741,62 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * Gives a project back a draft to point at: the managed draft already in its
-   * draft folder when one is there, and a new draft beside whatever else is
-   * there when none is. Both repairs go through here so a link that leads
-   * nowhere is mended the same way whichever side asks for it -- in particular
-   * neither leaves a second draft behind when the first one is still present.
+   * Keeps `snowflake-draft` naming the note the manuscript begins at.
+   *
+   * The field was written when step 10 was one note called Draft. A manuscript
+   * is many notes now, and which of them comes first is decided by the stored
+   * order rather than by a file name -- so an author is free to rename that
+   * note, file it into a part folder, or delete it once other chapters exist.
+   *
+   * Nobody types this field, so it is kept true rather than reported: it is
+   * quietly moved to whichever note the manuscript now begins with, whether the
+   * one it named was deleted, renamed, or simply overtaken by a note written
+   * before it.
+   *
+   * The one time it is left alone is a project whose manuscript is empty. What
+   * it names then is the only trace of where the author's prose went, and the
+   * repair reads it to bring that note home rather than writing a new one.
+   */
+  private async settleManuscriptStart(
+    project: ProjectRef,
+    draftPath: string | null,
+    manuscript: readonly ManuscriptSegmentRecord[],
+  ): Promise<string | null> {
+    const opening = manuscript[0];
+    if (opening === undefined || draftPath === opening.path) return draftPath;
+    if (project.readOnly) return opening.path;
+    await this.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.draft]: toWikiLink(opening.path, fileStem(opening.path)),
+    });
+    return opening.path;
+  }
+
+  /**
+   * Gives a project a manuscript to point at: the note it already begins with
+   * when there is one, and a new first note when the manuscript is empty. Both
+   * repairs go through here so a link that leads nowhere is mended the same way
+   * whichever side asks for it -- in particular neither leaves a second draft
+   * behind when the first one is still present.
    */
   private async restoreDraft(
     project: ProjectRef,
     result: Omit<RepairResult, "project">,
   ): Promise<string> {
     const layout = getProjectPathLayout(project.locale);
-    const draft = await this.ensureArtifact(
-      project,
-      "draft",
-      `${layout.directories.draft}/${layout.draftFileName}`,
-      draftTemplate(project.locale),
-      result,
-    );
+    // The manuscript knows its own first note, wherever it is filed and
+    // whatever it is called. Only a manuscript with nothing in it needs one
+    // written, and only then at the canonical name.
+    const existing = await this.manuscript.listSegments(project);
+    const draft =
+      existing[0]?.path ??
+      (await this.adoptStrayDraft(project, result)) ??
+      (await this.ensureArtifact(
+        project,
+        "draft",
+        `${layout.directories.draft}/${layout.draftFileName}`,
+        draftTemplate(project.locale),
+        result,
+      ));
     await this.repository.updateFrontmatter(project.projectFile, {
       // Named, as every other link this plugin writes is: the property editor
       // shows the display text, and a whole path where a note name belongs
@@ -758,6 +805,46 @@ export class SnowflakeProjectService {
     });
     markRepaired(result, project.projectFile);
     return draft;
+  }
+
+  /**
+   * Moves a draft the project names from outside the manuscript folder into it.
+   *
+   * A manuscript is the manuscript folder, so a note kept anywhere else is not
+   * part of one however the project links to it. Writing a fresh empty draft
+   * beside it and leaving the author's own prose orphaned would be the worse
+   * answer, so the repair brings the note to where manuscripts live.
+   */
+  private async adoptStrayDraft(
+    project: ProjectRef,
+    result: Omit<RepairResult, "project">,
+  ): Promise<string | null> {
+    const record = await this.repository.tryReadManaged(project.projectFile);
+    const target = record === null
+      ? null
+      : fromWikiLink(asOptionalString(record.frontmatter[FRONTMATTER_KEYS.draft]));
+    if (target === null || target.length === 0) return null;
+    const stray = this.repository.resolveLink(target, project.projectFile);
+    if (stray === null) return null;
+    const strayRecord = await this.repository.tryReadManaged(stray.path);
+    if (
+      strayRecord === null ||
+      strayRecord.readOnly ||
+      documentTypeOf(strayRecord.frontmatter) !== "draft" ||
+      projectIdOf(strayRecord.frontmatter) !== project.id
+    ) {
+      return null;
+    }
+
+    const layout = getProjectPathLayout(project.locale);
+    const home = this.repository.resolveUniquePath(
+      normalizePath(
+        `${project.rootPath}/${layout.directories.draft}/${basename(stray.path)}`,
+      ),
+    );
+    const moved = await this.repository.renameFile(stray.path, home);
+    markRepaired(result, moved);
+    return moved;
   }
 
   /**
@@ -940,10 +1027,7 @@ export class SnowflakeProjectService {
       // whose positions disagree has only one honest answer: keep the order it
       // reads in now and write it down properly. Nothing below a frontmatter is
       // touched, so no prose moves and none of it changes.
-      const written = await this.manuscript.repairSequences(
-        project,
-        project.links.draft,
-      );
+      const written = await this.manuscript.repairSequences(project);
       if (written.length === 0) {
         throw new Error(`No manuscript position in "${normalized}" needed repair.`);
       }
@@ -1843,11 +1927,7 @@ export class SnowflakeProjectService {
   ): Promise<ProjectSnapshot> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const merged = await this.manuscript.mergeWithNext(
-      project,
-      project.links.draft,
-      path,
-    );
+    const merged = await this.manuscript.mergeWithNext(project, path);
     if (merged === null) {
       throw new Error(`There is no manuscript note after "${normalizePath(path)}".`);
     }
@@ -2327,6 +2407,7 @@ export class SnowflakeProjectService {
     project: ProjectRef,
     projectRecord: ManagedFileRecord,
     draftPath: string | null,
+    manuscript: readonly ManuscriptSegmentRecord[],
   ): Promise<ProjectStructureIssue[]> {
     const issues: ProjectStructureIssue[] = [];
     if (
@@ -2797,10 +2878,7 @@ export class SnowflakeProjectService {
     // to sit, a note sitting somewhere unreadable, and two notes sitting in the
     // same place each stop the manuscript being a sequence. Each is repaired by
     // writing positions and nothing else, so none of them touches prose.
-    const sequenceIssues = await this.manuscript.findSequenceIssues(
-      project,
-      draftPath,
-    );
+    const sequenceIssues = await this.manuscript.findSequenceIssues(project);
     const sequenceCodes = [
       ["missing-manuscript-sequence", sequenceIssues.missing],
       ["invalid-manuscript-sequence", sequenceIssues.invalid],
@@ -2822,27 +2900,23 @@ export class SnowflakeProjectService {
       });
     }
 
+    // Step 10's artifact is the manuscript, not a note with a particular name.
+    // A project with notes in it is not missing anything, however they are
+    // called and wherever they are filed; a project with none of them is.
     const canonicalDraftPath = normalizePath(
       `${project.rootPath}/${layout.directories.draft}/${layout.draftFileName}`,
     );
-    const effectiveDraftPath = draftPath ?? canonicalDraftPath;
-    const draftFile = this.repository.getFile(effectiveDraftPath);
-    if (draftFile === null) {
-      add({
-        code: "missing-artifact",
-        path: effectiveDraftPath,
-        stepIds: [10],
-        expected: "draft",
-        canOpen: false,
-        // A draft can always be put back: it is written where this project
-        // keeps its draft, beside anything already there, whatever the stored
-        // link happened to say. Leaving the author no way out of a link that
-        // leads nowhere would be the worse answer.
-        repairable: true,
-      });
-    } else {
-      const record = await this.repository.readManaged(draftFile.path);
+    if (manuscript.length === 0) {
+      // With no manuscript at all, whatever the project links to is the only
+      // clue to where the prose went. A real note whose metadata no longer says
+      // it belongs here is why the manuscript is empty, and is reported as
+      // itself rather than as an absence.
+      const named =
+        draftPath === null ? null : this.repository.getFile(draftPath);
+      const record =
+        named === null ? null : await this.repository.readManaged(named.path);
       if (
+        record !== null &&
         record.schemaVersion !== null &&
         record.schemaVersion > SCHEMA_VERSION
       ) {
@@ -2851,19 +2925,32 @@ export class SnowflakeProjectService {
         );
       }
       if (
-        documentTypeOf(record.frontmatter) !== "draft" ||
-        !hasMatchingProjectId(record.frontmatter) ||
-        !isCurrentOrNewerSchema(record.frontmatter)
+        record !== null &&
+        (documentTypeOf(record.frontmatter) !== "draft" ||
+          !hasMatchingProjectId(record.frontmatter) ||
+          !isCurrentOrNewerSchema(record.frontmatter))
       ) {
         add({
           code: "invalid-artifact-metadata",
-          path: draftFile.path,
+          path: record.path,
           stepIds: [10],
           expected: "draft",
           canOpen: true,
           repairable:
-            draftFile.path === canonicalDraftPath &&
             safeCommonMetadataRepairPatch(record, "draft", project.id) !== null,
+        });
+      } else {
+        add({
+          code: "missing-artifact",
+          path: canonicalDraftPath,
+          stepIds: [10],
+          expected: "draft",
+          canOpen: false,
+          // A manuscript can always be started: the first note is written where
+          // this project keeps its manuscript, or the note it already has is
+          // brought there. Leaving the author no way out would be the worse
+          // answer.
+          repairable: true,
         });
       }
     }
@@ -3004,6 +3091,7 @@ export class SnowflakeProjectService {
     characters: CharacterRecord[];
     scenes: SceneRecord[];
     artifacts: Partial<Record<StepId, ArtifactSnapshot>>;
+    manuscript: ManuscriptSegmentRecord[];
   }> {
     const output: StepFingerprintMap = {};
     const artifacts: Partial<Record<StepId, ArtifactSnapshot>> = {};
@@ -3156,7 +3244,7 @@ export class SnowflakeProjectService {
     // fingerprint is never a review source and nothing downstream reads it --
     // and reading a whole novel back on every Vault event, once per note, to
     // produce a value nobody looks at is a cost a long manuscript would feel.
-    const segments = await this.manuscript.listSegments(project, draftPath);
+    const segments = await this.manuscript.listSegments(project);
     output[10] = fingerprint(
       segments.map((segment) => {
         const file = this.repository.getFile(segment.path);
@@ -3193,6 +3281,7 @@ export class SnowflakeProjectService {
       characters: visibleCharacters,
       scenes: sortByRank(visibleScenes),
       artifacts,
+      manuscript: segments,
     };
   }
 

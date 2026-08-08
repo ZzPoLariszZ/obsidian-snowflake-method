@@ -988,7 +988,7 @@ describe("SnowflakeProjectService", () => {
     expect(reloaded.structureIssues).toEqual([]);
   });
 
-  it("puts the draft back when the stored link leads nowhere at all", async () => {
+  it("puts the manuscript start back when the stored link leads nowhere", async () => {
     const project = await service.createProject({ name: "Lost link" });
     const draftPath = `${project.rootPath}/50_Manuscript/Draft.md`;
     await fakeFileManager.processFrontMatter(
@@ -998,11 +998,63 @@ describe("SnowflakeProjectService", () => {
       },
     );
 
-    const damaged = await service.loadProject(project.projectFile);
-    expect(damaged.structureIssues).toContainEqual(
+    const reloaded = await service.loadProject(project.projectFile);
+
+    // Nobody typed this link, so a stale one is not news. It goes back to the
+    // note the manuscript begins at without asking, and a second draft beside
+    // it would be the plugin losing the author's manuscript.
+    expect(reloaded.links.draft).toBe(draftPath);
+    expect(reloaded.structureIssues).toEqual([]);
+    expect(
+      (await service.readManagedFrontmatter(project.projectFile))[
+        FRONTMATTER_KEYS.draft
+      ],
+    ).toBe(`[[${draftPath.replace(/\.md$/u, "")}|Draft]]`);
+    expect(fakeVault.getFileByPath(`${project.rootPath}/50_Manuscript/Draft (2).md`)).toBeNull();
+  });
+
+  it("starts the manuscript wherever the author put it, under any name", async () => {
+    const project = await service.createProject({ name: "Renamed" });
+    const draftPath = `${project.rootPath}/50_Manuscript/Draft.md`;
+    await service.manuscript.appendSegment(project, "Chapter Two");
+    // The author renames the opening note and files it into a part folder, then
+    // deletes nothing: this is the ordinary shape of a real manuscript.
+    await service.repository.renameFile(
+      draftPath,
+      `${project.rootPath}/50_Manuscript/Part One/Chapter One.md`,
+    );
+
+    const reloaded = await service.loadProject(project.projectFile);
+
+    expect(reloaded.structureIssues).toEqual([]);
+    expect(
+      (await service.manuscript.listSegments(reloaded)).map(
+        (segment) => segment.title,
+      ),
+    ).toEqual(["Chapter One", "Chapter Two"]);
+  });
+
+  it("says a project has no manuscript only when it truly has none", async () => {
+    const project = await service.createProject({ name: "Emptied" });
+    const draftPath = `${project.rootPath}/50_Manuscript/Draft.md`;
+    const second = await service.manuscript.appendSegment(
+      project,
+      "Chapter Two",
+    );
+
+    // One note gone out of two is not a project without a manuscript.
+    await service.repository.trashFile(draftPath);
+    const partial = await service.loadProject(project.projectFile);
+    expect(partial.structureIssues).toEqual([]);
+    expect(partial.links.draft).toBe(second);
+
+    // Both gone is.
+    await service.repository.trashFile(second);
+    const empty = await service.loadProject(project.projectFile);
+    expect(empty.structureIssues).toContainEqual(
       expect.objectContaining({
         code: "missing-artifact",
-        path: "Nowhere",
+        path: draftPath,
         expected: "draft",
         repairable: true,
       }),
@@ -1010,14 +1062,10 @@ describe("SnowflakeProjectService", () => {
 
     const repaired = await service.repairMissingStructureItem(
       project.projectFile,
-      "Nowhere",
+      draftPath,
     );
-
-    // The draft that was there all along is the one it points at again. A second
-    // draft beside it would be the plugin losing the author's manuscript.
     expect(repaired.links.draft).toBe(draftPath);
     expect(repaired.structureIssues).toEqual([]);
-    expect(fakeVault.getFileByPath(`${project.rootPath}/50_Manuscript/Draft (2).md`)).toBeNull();
   });
 
   it("reports missing artifact markers without changing the note", async () => {

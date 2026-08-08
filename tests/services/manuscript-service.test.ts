@@ -15,7 +15,7 @@ describe("ManuscriptService", () => {
 
   const manuscript = (): Promise<
     Awaited<ReturnType<SnowflakeProjectService["manuscript"]["listSegments"]>>
-  > => service.manuscript.listSegments(project, project.links.draft);
+  > => service.manuscript.listSegments(project);
 
   const titles = async (): Promise<string[]> =>
     (await manuscript()).map(({ title }) => title);
@@ -51,7 +51,6 @@ describe("ManuscriptService", () => {
   it("reports nothing wrong with a manuscript of one", async () => {
     const issues = await service.manuscript.findSequenceIssues(
       project,
-      project.links.draft,
     );
     expect(issues).toEqual({ missing: [], invalid: [], duplicate: [] });
     expect(project.structureIssues).toEqual([]);
@@ -61,7 +60,6 @@ describe("ManuscriptService", () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     const added = await service.manuscript.appendSegment(
       project,
-      project.links.draft,
       "Chapter Two",
     );
 
@@ -73,10 +71,9 @@ describe("ManuscriptService", () => {
   });
 
   it("places a segment between two neighbours", async () => {
-    await service.manuscript.appendSegment(project, project.links.draft, "Three");
+    await service.manuscript.appendSegment(project, "Three");
     const between = await service.manuscript.insertSegmentAfter(
       project,
-      project.links.draft,
       "Snowflake Projects/Novel/50_Manuscript/Draft.md",
       "Two",
     );
@@ -89,7 +86,6 @@ describe("ManuscriptService", () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     const second = await service.manuscript.appendSegment(
       project,
-      project.links.draft,
       "Second",
     );
     await service.repository.updateFrontmatter(draft, {
@@ -101,7 +97,6 @@ describe("ManuscriptService", () => {
 
     const wedged = await service.manuscript.insertSegmentAfter(
       project,
-      project.links.draft,
       draft,
       "Wedged",
     );
@@ -115,7 +110,6 @@ describe("ManuscriptService", () => {
   it("puts a segment before the opening one", async () => {
     const opening = await service.manuscript.prependSegment(
       project,
-      project.links.draft,
       "Prologue",
     );
     expect(await titles()).toEqual(["Prologue", "Draft"]);
@@ -143,7 +137,7 @@ describe("ManuscriptService", () => {
 
   it("ignores a manuscript note belonging to another project", async () => {
     const other = await service.createProject({ title: "Other", locale: "en" });
-    await service.manuscript.appendSegment(other, other.links.draft, "Draft");
+    await service.manuscript.appendSegment(other, "Draft");
 
     expect((await manuscript()).map(({ path }) => path)).toEqual([
       "Snowflake Projects/Novel/50_Manuscript/Draft.md",
@@ -161,7 +155,6 @@ describe("ManuscriptService", () => {
 
     const created = await service.manuscript.splitSegment(
       project,
-      project.links.draft,
       draft,
       cut,
       "Chapter Two",
@@ -180,10 +173,9 @@ describe("ManuscriptService", () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     const two = await service.manuscript.appendSegment(
       project,
-      project.links.draft,
       "Two",
     );
-    await service.manuscript.appendSegment(project, project.links.draft, "Three");
+    await service.manuscript.appendSegment(project, "Three");
     await service.manuscript.writeSegment(draft, "# Draft\n\nThe opening.\n");
     await service.manuscript.writeSegment(two, "# Two\n\nWhat follows.\n");
 
@@ -203,7 +195,6 @@ describe("ManuscriptService", () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     const opening = await service.manuscript.prependSegment(
       project,
-      project.links.draft,
       "Prologue",
     );
 
@@ -216,7 +207,7 @@ describe("ManuscriptService", () => {
   });
 
   it("refuses to merge the last segment, which has nothing after it", async () => {
-    await service.manuscript.appendSegment(project, project.links.draft, "Two");
+    await service.manuscript.appendSegment(project, "Two");
 
     await expect(
       service.mergeManuscriptSegments(
@@ -226,18 +217,91 @@ describe("ManuscriptService", () => {
     ).rejects.toThrow(/no manuscript note after/iu);
   });
 
-  it("moves a segment without touching what any of them say", async () => {
-    await service.manuscript.appendSegment(project, project.links.draft, "Two");
+  it("keeps the project pointing at whatever note now comes first", async () => {
+    const link = async (): Promise<unknown> =>
+      (await service.readManagedFrontmatter(project.projectFile))[
+        FRONTMATTER_KEYS.draft
+      ];
+    expect(await link()).toBe(
+      "[[Snowflake Projects/Novel/50_Manuscript/Draft|Draft]]",
+    );
+
+    // A note written before the opening one takes its place at the front, and
+    // the project has to follow it there.
+    const prologue = await service.manuscript.prependSegment(
+      project,
+      "Prologue",
+    );
+    const reloaded = await service.loadProject(project.projectFile);
+    expect(reloaded.links.draft).toBe(prologue);
+    expect(await link()).toBe(
+      "[[Snowflake Projects/Novel/50_Manuscript/Prologue|Prologue]]",
+    );
+
+    // Merging it away hands the front back to the note behind it.
+    await service.mergeManuscriptSegments(project.projectFile, prologue);
+    const merged = await service.loadProject(project.projectFile);
+    expect(merged.links.draft).toBe(prologue);
+
+    // And moving a later note to the front is followed too.
     const three = await service.manuscript.appendSegment(
       project,
-      project.links.draft,
+      "Three",
+    );
+    await service.manuscript.moveSegment(merged, three, 0);
+    const moved = await service.loadProject(project.projectFile);
+    expect(moved.links.draft).toBe(three);
+  });
+
+  it("brings a draft kept outside the manuscript folder into it", async () => {
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    // The author files their only draft somewhere else. Obsidian rewrites the
+    // project's link to follow it, so the project still names it -- but a
+    // manuscript is the manuscript folder, so the manuscript is now empty.
+    await service.repository.renameFile(
+      draft,
+      "Snowflake Projects/Novel/80_Material/Draft.md",
+    );
+    await service.repository.updateFrontmatter(project.projectFile, {
+      [FRONTMATTER_KEYS.draft]:
+        "[[Snowflake Projects/Novel/80_Material/Draft|Draft]]",
+    });
+    await service.manuscript.writeSegment(
+      "Snowflake Projects/Novel/80_Material/Draft.md",
+      "# Draft\n\nProse the author would rather keep.\n",
+    );
+
+    const reported = await service.loadProject(project.projectFile);
+    expect(reported.structureIssues.map((issue) => issue.code)).toContain(
+      "missing-artifact",
+    );
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      `${project.rootPath}/50_Manuscript/Draft.md`,
+    );
+
+    // Brought home rather than left orphaned beside a fresh empty draft.
+    expect(repaired.links.draft).toBe(draft);
+    expect((await service.manuscript.readSegment(draft)).body).toBe(
+      "# Draft\n\nProse the author would rather keep.\n",
+    );
+    expect(
+      fakeVault.getFileByPath("Snowflake Projects/Novel/80_Material/Draft.md"),
+    ).toBeNull();
+    expect(repaired.structureIssues).toEqual([]);
+  });
+
+  it("moves a segment without touching what any of them say", async () => {
+    await service.manuscript.appendSegment(project, "Two");
+    const three = await service.manuscript.appendSegment(
+      project,
       "Three",
     );
     const bodyBefore = (await service.manuscript.readSegment(three)).body;
 
     await service.manuscript.moveSegment(
       project,
-      project.links.draft,
       three,
       0,
     );
@@ -248,7 +312,7 @@ describe("ManuscriptService", () => {
 
   it("keeps the frontmatter when text is written back", async () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
-    await service.manuscript.appendSegment(project, project.links.draft, "Two");
+    await service.manuscript.appendSegment(project, "Two");
 
     await service.manuscript.writeSegment(draft, "# Draft\n\nRewritten.\n");
 
@@ -282,7 +346,7 @@ describe("manuscript health checks", () => {
       environment.metadataCache,
     );
     project = await service.createProject({ title: "Novel", locale: "en" });
-    await service.manuscript.appendSegment(project, project.links.draft, "Two");
+    await service.manuscript.appendSegment(project, "Two");
     project = await service.loadProject(project.projectFile);
   });
 
@@ -350,7 +414,7 @@ describe("manuscript health checks", () => {
     ).not.toContain("duplicate-manuscript-sequence");
     expect(fakeVault.contents.get(two)).toContain("The second chapter.");
     expect(
-      (await service.manuscript.listSegments(project, project.links.draft)).map(
+      (await service.manuscript.listSegments(project)).map(
         ({ sequence }) => sequence,
       ),
     ).toEqual([1024, 2048]);

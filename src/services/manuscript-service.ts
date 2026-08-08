@@ -19,7 +19,6 @@ import {
 import {
   ManagedFileNotFoundError,
   UnsupportedSchemaError,
-  documentTypeOf,
   projectIdOf,
   type ManagedFileRecord,
   type VaultRepository,
@@ -64,10 +63,19 @@ export class ManuscriptService {
    * is worked out. The health check reads this: it has to see a position that
    * is missing or unusable, which a resolved segment has already papered over.
    */
-  async listStoredSegments(
-    project: ProjectRef,
-    draftPath: string | null,
-  ): Promise<StoredSegment[]> {
+  async listStoredSegments(project: ProjectRef): Promise<StoredSegment[]> {
+    return (await this.collect(project)).map(asStored);
+  }
+
+  /**
+   * Every note of the manuscript, read once.
+   *
+   * A manuscript is what is in the manuscript folder, at any depth, and nothing
+   * else. Notes were once also found by following the project's own link, which
+   * let one live anywhere in the Vault; that made the link load-bearing and the
+   * manuscript's contents depend on a field nobody types.
+   */
+  private async collect(project: ProjectRef): Promise<ManagedFileRecord[]> {
     const records = new Map<string, ManagedFileRecord>();
     for (const folder of draftFolders(project)) {
       for (const record of await this.repository.findManagedFilesBelow(
@@ -78,51 +86,32 @@ export class ManuscriptService {
         records.set(record.path, record);
       }
     }
-
-    // A draft the project links to from outside its manuscript folder is still
-    // the opening of the manuscript. That link is the one thing that has always
-    // been allowed to point anywhere, and taking it away here would lose the
-    // draft rather than move it.
-    if (draftPath !== null && !records.has(normalizePath(draftPath))) {
-      const outside = await this.repository.tryReadManaged(draftPath);
-      if (
-        outside !== null &&
-        documentTypeOf(outside.frontmatter) === "draft" &&
-        projectIdOf(outside.frontmatter) === project.id
-      ) {
-        records.set(outside.path, outside);
-      }
-    }
-
-    return [...records.values()].map((record) => ({
-      path: record.path,
-      projectId: project.id,
-      title: fileStem(record.path),
-      storedSequence: record.frontmatter[FRONTMATTER_KEYS.manuscriptSequence],
-    }));
+    return [...records.values()];
   }
 
   async listSegments(
     project: ProjectRef,
-    draftPath: string | null,
   ): Promise<ManuscriptSegmentRecord[]> {
-    const stored = await this.listStoredSegments(project, draftPath);
-    const readOnly = new Map<string, boolean>();
-    for (const entry of stored) {
-      const record = await this.repository.tryReadManaged(entry.path);
-      readOnly.set(entry.path, record?.readOnly ?? false);
-    }
-    return resolveSegments(stored).map((segment) => ({
+    const records = await this.collect(project);
+    const readOnly = new Map(
+      records.map((record) => [record.path, record.readOnly] as const),
+    );
+    return resolveSegments(records.map(asStored)).map((segment) => ({
       ...segment,
       readOnly: readOnly.get(segment.path) ?? false,
     }));
   }
 
-  async findSequenceIssues(
-    project: ProjectRef,
-    draftPath: string | null,
-  ): Promise<SequenceIssues> {
-    return findSequenceIssues(await this.listStoredSegments(project, draftPath));
+/** Whether a note sits in one of the folders a manuscript is scanned from. */
+  isInManuscriptFolder(project: ProjectRef, path: string): boolean {
+    const note = normalizePath(path);
+    return draftFolders(project).some(
+      (folder) => note === folder || note.startsWith(`${folder}/`),
+    );
+  }
+
+  async findSequenceIssues(project: ProjectRef): Promise<SequenceIssues> {
+    return findSequenceIssues(await this.listStoredSegments(project));
   }
 
   /** Everything below the frontmatter of one segment, ready to render or edit. */
@@ -152,19 +141,17 @@ export class ManuscriptService {
 
   async appendSegment(
     project: ProjectRef,
-    draftPath: string | null,
     title: string,
   ): Promise<string> {
-    const segments = await this.settleOrder(project, draftPath);
+    const segments = await this.settleOrder(project);
     return this.createSegment(project, title, sequenceAtEnd(segments));
   }
 
   async prependSegment(
     project: ProjectRef,
-    draftPath: string | null,
     title: string,
   ): Promise<string> {
-    const segments = await this.roomyOrder(project, draftPath, (ordered) =>
+    const segments = await this.roomyOrder(project, (ordered) =>
       sequenceBetween(null, ordered[0]?.sequence),
     );
     const sequence = sequenceBetween(null, segments[0]?.sequence);
@@ -174,12 +161,11 @@ export class ManuscriptService {
 
   async insertSegmentAfter(
     project: ProjectRef,
-    draftPath: string | null,
     afterPath: string,
     title: string,
   ): Promise<string> {
     const target = normalizePath(afterPath);
-    const segments = await this.roomyOrder(project, draftPath, (ordered) => {
+    const segments = await this.roomyOrder(project, (ordered) => {
       const index = ordered.findIndex((segment) => segment.path === target);
       if (index === -1) return null;
       return sequenceBetween(
@@ -204,7 +190,6 @@ export class ManuscriptService {
    */
   async splitSegment(
     project: ProjectRef,
-    draftPath: string | null,
     path: string,
     offset: number,
     title: string,
@@ -214,7 +199,6 @@ export class ManuscriptService {
     // that rather than before it.
     const created = await this.insertSegmentAfter(
       project,
-      draftPath,
       normalizePath(path),
       title,
     );
@@ -242,10 +226,9 @@ export class ManuscriptService {
    */
   async mergeWithNext(
     project: ProjectRef,
-    draftPath: string | null,
     path: string,
   ): Promise<{ kept: string; removed: string } | null> {
-    const segments = await this.listSegments(project, draftPath);
+    const segments = await this.listSegments(project);
     const index = segments.findIndex(
       (segment) => segment.path === normalizePath(path),
     );
@@ -273,11 +256,10 @@ export class ManuscriptService {
 
   async moveSegment(
     project: ProjectRef,
-    draftPath: string | null,
     path: string,
     toIndex: number,
   ): Promise<void> {
-    const before = await this.listSegments(project, draftPath);
+    const before = await this.listSegments(project);
     await this.persistSequences(
       before,
       moveSegment(before, normalizePath(path), toIndex),
@@ -285,11 +267,8 @@ export class ManuscriptService {
   }
 
   /** Regular intervals in the manuscript's current order. Returns what changed. */
-  async repairSequences(
-    project: ProjectRef,
-    draftPath: string | null,
-  ): Promise<string[]> {
-    const before = await this.listSegments(project, draftPath);
+  async repairSequences(project: ProjectRef): Promise<string[]> {
+    const before = await this.listSegments(project);
     return this.persistSequences(before, repairSequences(before));
   }
 
@@ -325,13 +304,12 @@ export class ManuscriptService {
    */
   private async roomyOrder(
     project: ProjectRef,
-    draftPath: string | null,
     room: (ordered: readonly ManuscriptSegmentRecord[]) => number | null,
   ): Promise<ManuscriptSegmentRecord[]> {
-    const segments = await this.settleOrder(project, draftPath);
+    const segments = await this.settleOrder(project);
     if (segments.length === 0 || room(segments) !== null) return segments;
-    await this.repairSequences(project, draftPath);
-    return this.listSegments(project, draftPath);
+    await this.repairSequences(project);
+    return this.listSegments(project);
   }
 
   /**
@@ -346,12 +324,11 @@ export class ManuscriptService {
    */
   private async settleOrder(
     project: ProjectRef,
-    draftPath: string | null,
   ): Promise<ManuscriptSegmentRecord[]> {
-    const segments = await this.listSegments(project, draftPath);
+    const segments = await this.listSegments(project);
     if (segments.every((segment) => segment.hasStoredSequence)) return segments;
     await this.persistSequences(segments, segments);
-    return this.listSegments(project, draftPath);
+    return this.listSegments(project);
   }
 
   /**
@@ -382,6 +359,15 @@ export class ManuscriptService {
     }
     return written;
   }
+}
+
+function asStored(record: ManagedFileRecord): StoredSegment {
+  return {
+    path: record.path,
+    projectId: projectIdOf(record.frontmatter) ?? "",
+    title: fileStem(record.path),
+    storedSequence: record.frontmatter[FRONTMATTER_KEYS.manuscriptSequence],
+  };
 }
 
 /**
