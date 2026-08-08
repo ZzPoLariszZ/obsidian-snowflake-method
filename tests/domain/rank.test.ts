@@ -2,24 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	RANK_GAP,
-	moveScene,
-	normalizeSceneRanks,
+	moveRanked,
+	normalizeRanks,
 	rankBetween,
-	repairSceneRanks,
-	sortScenesByRank,
+	repairRanks,
+	sortByRank,
 } from '../../src/domain';
 
-interface TestScene {
-	sceneId: string;
+interface TestRecord {
+	id: string;
 	rank: number;
 	title: string;
 }
 
-function scene(sceneId: string, rank: number): TestScene {
-	return { sceneId, rank, title: sceneId.toUpperCase() };
+function record(id: string, rank: number): TestRecord {
+	return { id, rank, title: id.toUpperCase() };
 }
 
-describe('scene ranks', () => {
+describe('ranks', () => {
 	it('allocates interval ranks at the beginning, middle, and end', () => {
 		expect(rankBetween()).toBe(RANK_GAP);
 		expect(rankBetween(undefined, 2048)).toBe(1024);
@@ -34,21 +34,17 @@ describe('scene ranks', () => {
 	});
 
 	it('sorts by rank with a deterministic id tie-breaker', () => {
-		const scenes = [scene('c', 20), scene('b', 10), scene('a', 10)];
-		expect(sortScenesByRank(scenes).map(({ sceneId }) => sceneId)).toEqual([
-			'a',
-			'b',
-			'c',
-		]);
+		const records = [record('c', 20), record('b', 10), record('a', 10)];
+		expect(sortByRank(records).map(({ id }) => id)).toEqual(['a', 'b', 'c']);
 	});
 
-	it('normally changes only the moved scene rank', () => {
-		const a = scene('a', 1024);
-		const b = scene('b', 2048);
-		const c = scene('c', 3072);
-		const moved = moveScene([a, b, c], 'c', 1);
+	it('normally changes only the moved record rank', () => {
+		const a = record('a', 1024);
+		const b = record('b', 2048);
+		const c = record('c', 3072);
+		const moved = moveRanked([a, b, c], 'c', 1);
 
-		expect(moved.map(({ sceneId }) => sceneId)).toEqual(['a', 'c', 'b']);
+		expect(moved.map(({ id }) => id)).toEqual(['a', 'c', 'b']);
 		expect(moved.map(({ rank }) => rank)).toEqual([1024, 1536, 2048]);
 		expect(moved[0]).toBe(a);
 		expect(moved[2]).toBe(b);
@@ -56,30 +52,30 @@ describe('scene ranks', () => {
 	});
 
 	it('normalizes the full order when a gap is exhausted', () => {
-		const moved = moveScene([scene('a', 1), scene('b', 2), scene('c', 3)], 'c', 1);
-		expect(moved.map(({ sceneId }) => sceneId)).toEqual(['a', 'c', 'b']);
+		const moved = moveRanked(
+			[record('a', 1), record('b', 2), record('c', 3)],
+			'c',
+			1,
+		);
+		expect(moved.map(({ id }) => id)).toEqual(['a', 'c', 'b']);
 		expect(moved.map(({ rank }) => rank)).toEqual([1024, 2048, 3072]);
 	});
 
 	it('normalizes supplied order and can repair existing rank order', () => {
-		const supplied = [scene('c', 30), scene('a', 10), scene('b', 20)];
-		expect(normalizeSceneRanks(supplied).map(({ sceneId }) => sceneId)).toEqual([
+		const supplied = [record('c', 30), record('a', 10), record('b', 20)];
+		expect(normalizeRanks(supplied).map(({ id }) => id)).toEqual([
 			'c',
 			'a',
 			'b',
 		]);
-		expect(repairSceneRanks(supplied).map(({ sceneId }) => sceneId)).toEqual([
-			'a',
-			'b',
-			'c',
-		]);
+		expect(repairRanks(supplied).map(({ id }) => id)).toEqual(['a', 'b', 'c']);
 	});
 
 	it('rejects invalid moves and duplicate ids', () => {
-		const scenes = [scene('a', 1), scene('b', 2)];
-		expect(() => moveScene(scenes, 'missing', 0)).toThrow(/Unknown scene/u);
-		expect(() => moveScene(scenes, 'a', -1)).toThrow(RangeError);
-		expect(() => moveScene([scene('a', 1), scene('a', 2)], 'a', 1)).toThrow(
+		const records = [record('a', 1), record('b', 2)];
+		expect(() => moveRanked(records, 'missing', 0)).toThrow(/Unknown record/u);
+		expect(() => moveRanked(records, 'a', -1)).toThrow(RangeError);
+		expect(() => moveRanked([record('a', 1), record('a', 2)], 'a', 1)).toThrow(
 			/Duplicate/u,
 		);
 	});

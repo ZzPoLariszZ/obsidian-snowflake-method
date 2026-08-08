@@ -28,3 +28,27 @@ export function isNameTaken(
 	if (folded.length === 0) return false;
 	return taken.some((candidate) => foldName(candidate) === folded);
 }
+
+/**
+ * A name a file or folder can actually be given. Lossy on purpose — what a
+ * path cannot hold is dropped rather than escaped — so a file name can never
+ * be read back as the name it came from.
+ */
+export function safeFileName(value: string): string {
+	const normalized = value
+		.trim()
+		.replace(/[\\/:*?"<>|#[\]^]/gu, '-')
+		.replace(/\s+/gu, ' ')
+		.replace(/\.+$/gu, '')
+		.trim();
+	if (!normalized || normalized === '.' || normalized === '..') {
+		throw new Error('The name does not contain a safe file name.');
+	}
+	return normalized;
+}
+
+/** The file name of a path, without the Markdown extension. */
+export function fileStem(path: string): string {
+	const name = path.slice(path.lastIndexOf('/') + 1);
+	return name.endsWith('.md') ? name.slice(0, -3) : name;
+}

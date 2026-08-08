@@ -16,18 +16,20 @@ import {
   canSetStepStatus,
   createDefaultStepStatuses,
   enforceStepStatusDependencies,
+  fileStem,
   fingerprint,
   foldName,
+  safeFileName,
   isDocumentType,
   isCharacterType,
   isNameTaken,
   isProjectLanguage,
   isScenePovMode,
   isStepStatus,
-  moveScene,
+  moveRanked,
   reviewContextFingerprint,
   setStepStatus,
-  sortScenesByRank,
+  sortByRank,
   SCENE_POV_OMNISCIENT,
   type CharacterType,
   type DocumentType,
@@ -1235,15 +1237,10 @@ export class SnowflakeProjectService {
   ): Promise<CharacterRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    // moveScene orders by the shared rank contract; characters reach it by
-    // presenting their own stable id as the ranked id.
-    const ranked = project.characters.map((character) => ({
-      ...character,
-      sceneId: character.characterId,
-    }));
+    const current = project.characters;
     await this.persistReorderedRanks(
-      ranked,
-      moveScene(ranked, characterId, targetIndex),
+      current,
+      moveRanked(current, characterId, targetIndex),
     );
     return this.listCharacters(project);
   }
@@ -1729,7 +1726,7 @@ export class SnowflakeProjectService {
         if (!(record.readOnly && error instanceof InvalidManagedDocumentError)) throw error;
       }
     }
-    return sortScenesByRank(scenes);
+    return sortByRank(scenes);
   }
 
   async updateScene(
@@ -1817,7 +1814,7 @@ export class SnowflakeProjectService {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = project.scenes;
-    await this.persistReorderedRanks(current, moveScene(current, sceneId, targetIndex));
+    await this.persistReorderedRanks(current, moveRanked(current, sceneId, targetIndex));
     return this.listScenes(project);
   }
 
@@ -1828,14 +1825,14 @@ export class SnowflakeProjectService {
    * next load.
    */
   private async persistReorderedRanks(
-    before: readonly { sceneId: string; path: string; rank: number; hasStoredRank: boolean }[],
-    after: readonly { sceneId: string; path: string; rank: number }[],
+    before: readonly { id: string; path: string; rank: number; hasStoredRank: boolean }[],
+    after: readonly { id: string; path: string; rank: number }[],
   ): Promise<void> {
     const previous = new Map(
-      before.map((item) => [item.sceneId, item] as const),
+      before.map((item) => [item.id, item] as const),
     );
     for (const item of after) {
-      const stored = previous.get(item.sceneId);
+      const stored = previous.get(item.id);
       if (stored?.hasStoredRank === true && stored.rank === item.rank) continue;
       await this.repository.updateFrontmatter(item.path, {
         [FRONTMATTER_KEYS.rank]: item.rank,
@@ -3036,7 +3033,7 @@ export class SnowflakeProjectService {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
       }
     }
-    const scenes = sortScenesByRank(validScenes);
+    const scenes = sortByRank(validScenes);
     assertUniqueStableIds(
       scenes,
       (scene) => scene.sceneId,
@@ -3095,7 +3092,7 @@ export class SnowflakeProjectService {
       fingerprints: output,
       hasUnsupportedChildren,
       characters: visibleCharacters,
-      scenes: sortScenesByRank(visibleScenes),
+      scenes: sortByRank(visibleScenes),
       artifacts,
     };
   }
@@ -3697,19 +3694,6 @@ function readWikiLinkList(value: unknown): string[] {
   return [...new Set(paths)];
 }
 
-export function safeFileName(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[\\/:*?"<>|#[\]^]/gu, "-")
-    .replace(/\s+/gu, " ")
-    .replace(/\.+$/gu, "")
-    .trim();
-  if (!normalized || normalized === "." || normalized === "..") {
-    throw new Error("The name does not contain a safe file name.");
-  }
-  return normalized;
-}
-
 function createStableId(prefix: string): string {
   const uuid = typeof window === "undefined" ? undefined : window.crypto?.randomUUID?.();
   if (uuid) return `${prefix}-${uuid}`;
@@ -3772,11 +3756,6 @@ function stemMatchesTitle(stem: string, expected: string): boolean {
   if (stem === expected) return true;
   if (!stem.startsWith(`${expected} (`) || !stem.endsWith(")")) return false;
   return /^\d+$/u.test(stem.slice(expected.length + 2, -1));
-}
-
-function fileStem(path: string): string {
-  const name = basename(path);
-  return name.endsWith(".md") ? name.slice(0, -3) : name;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
