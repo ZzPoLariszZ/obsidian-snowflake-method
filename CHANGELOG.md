@@ -8,6 +8,26 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0]
+
+### Added
+
+- The manuscript stream: read and write a whole draft as one continuous page while every chapter stays its own Markdown note. Click a chapter and it becomes an editor with the caret in the word you clicked; move to another and the first is typeset prose again. The line naming the chapter you are in stays at the top of the page until the next chapter reaches it.
+- A project's manuscript is the notes it has rather than one note called Draft. Each note records its place in `snowflake-manuscript-sequence`, so moving or renaming one never changes where it is read. An existing project needs nothing done to it: a single draft note is a manuscript of one.
+- Insert a note before or after the one being read, cut the one being written in at the caret, or merge it into the next. Merging asks first, because it is the only one of the three that takes a note away.
+- Ways in from wherever you are: **Open manuscript stream** on step 10, which returns to the note last written in, the command palette, and the right-click menu of any manuscript note in the file explorer.
+- Ten commands for the manuscript: opening and closing the stream, moving to the next or previous note, returning to where the stream was opened, inserting a note on either side, splitting at the cursor, and toggling what each note's line shows. They are offered only while a manuscript stream is the current view.
+- Three settings under **Manuscript stream**: how many notes are held on each side of the one being read, whether a note shows its file path, and whether it shows its stored order number.
+- The health check reports manuscript positions that are missing, unreadable, or shared by two notes, and mends all three the same way: it keeps the order the manuscript reads in now and writes it down properly. Nothing below the frontmatter is touched.
+
+### Changed
+
+- Tooltips are Obsidian's own throughout, rather than the browser's.
+
+### Fixed
+
+- One tooltip where two used to appear. Seventeen controls carried an accessible label and a browser title at once, so Obsidian's tooltip and the browser's were drawn over each other: the project switcher, the step buttons, the health check, the table markers and warnings, the toolbar buttons, the project manager's controls, and the dashboard's own tab.
+
 ## [0.3.2]
 
 ### Fixed
@@ -94,6 +114,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.4.0]
+
+### 新增
+
+- 正文流：把整部初稿当作一页连续读写，而每一章仍是各自独立的 Markdown 笔记。点击某一章，它便就地变成编辑器，光标落在你点的那个词上；转到另一章时，前一章又变回排版后的正文。写着当前章名的那一行会一直停在页首，直到下一章把它顶走。
+- 项目的正文由它实际拥有的笔记组成，而不再是一篇名为「初稿」的笔记。每篇笔记以 `snowflake-manuscript-sequence` 记录自己的位置，因此移动或重命名都不会改变它被阅读的顺序。已有项目无需任何改动：只有一篇初稿的项目，就是一篇笔记构成的正文。
+- 可以在正在读的这一章前后插入新的一章、在光标处把正在写的一章拆成两章，或把它并入下一章。合并会先询问，因为三者之中只有它会让一篇笔记消失。
+- 随处可进：第十步的**打开正文流**（会回到上次写作的那篇笔记）、命令面板，以及在文件列表中右键任意一篇正文笔记。
+- 十条正文命令：打开与关闭正文流、前往下一篇或上一篇、回到正文流打开时所在的笔记、在前后插入笔记、在光标处拆分，以及切换每篇笔记那一行显示的内容。这些命令仅在当前视图是正文流时提供。
+- **正文流**下的三项设置：正在读的那一篇每侧各保留多少篇笔记、是否显示笔记的文件路径，以及是否显示它所存的顺序编号。
+- 健康检查会报告缺失、无法读取或被两篇笔记共用的正文位置，并以同一种方式修复：保留正文当前的阅读顺序，把它妥善写下。frontmatter 以下的内容不会被改动。
+
+### 变更
+
+- 全插件的悬浮提示改用 Obsidian 自己的提示，而不再是浏览器的。
+
+### 修复
+
+- 原本会同时出现两个悬浮提示，现在只剩一个。此前有十七处控件同时设置了无障碍标签与浏览器 title，于是 Obsidian 的提示与浏览器的提示彼此重叠：项目切换器、各步骤按钮、健康检查、表格中的标记与警告、工具栏按钮、项目管理器中的控件，以及仪表盘自身的标签页。
 
 ## [0.3.2]
 
