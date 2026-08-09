@@ -9,6 +9,7 @@ import {
 } from 'obsidian';
 
 import { activeSegmentAt, planWindow } from './manuscript-window';
+import { confirmSegmentMerge } from './modals';
 import {
 	PublicCodeMirrorBackend,
 	type SegmentEditorBackend,
@@ -842,6 +843,20 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async mergeAt(path: string): Promise<void> {
 		const model = this.model;
 		if (model === null || model.readOnly) return;
+		const at = model.segments.findIndex((segment) => segment.path === path);
+		const kept = model.segments[at];
+		const removed = model.segments[at + 1];
+		if (kept === undefined || removed === undefined) return;
+		// Asked before anything is put away, because the answer may be no. This is
+		// the one action here that takes a note away, and taking the editor down
+		// first would move the page while the author was still deciding.
+		const agreed = await confirmSegmentMerge(
+			this.app,
+			this.t,
+			kept.title,
+			removed.title,
+		);
+		if (!agreed) return;
 		await this.deactivateSegment();
 		try {
 			await this.host.mergeManuscriptSegments(model.projectPath, path);

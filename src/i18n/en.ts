@@ -118,6 +118,7 @@ export const en = {
 	'actions.openNote': 'Open note',
 	'actions.edit': 'Edit',
 	'actions.delete': 'Delete',
+	'actions.merge': 'Merge',
 	'actions.discardDraft': 'Discard draft and load latest',
 	'actions.setStatus': 'Set status',
 	'actions.moveUp': 'Move up',
@@ -416,6 +417,11 @@ export const en = {
 		'These scenes will need a new point of view:',
 	'modal.deleteCharacter.castScenes':
 		'“{name}” will be removed from the cast of:',
+	'modal.mergeSegments.title': 'Merge notes',
+	'modal.mergeSegments.question':
+		'Are you sure you want to merge “{removed}” into “{kept}”?',
+	'modal.mergeSegments.consequence':
+		'Its text is kept. Only the note itself is removed.',
 	'modal.scene.povChoose': 'Choose a point of view',
 	'modal.scene.createCharacter': 'Create character “{name}”',
 	'modal.scene.povOmniscient': 'Omniscient',

@@ -3932,13 +3932,30 @@
 }
 
 /* One height whether it carries a path, a number, both or neither: turning a
-   setting on must not move the words below it. */
+   setting on must not move the words below it.
+
+   Held at the top of the page for as long as its own note is on it, and pushed
+   off by the next note's header, so an author a thousand words into a chapter
+   can still see which chapter they are in and open it on its own. Sticky is
+   bounded by the note it belongs to, which is exactly the rule wanted here and
+   is why no scroll handler is involved.
+
+   The gap below it is padding rather than margin, and the height it would have
+   added is put back into min-height: the prose passes underneath, and a margin
+   is transparent, so a strip of it would show through. The offset up the page
+   is the page's own top padding, which a sticky element is measured from the
+   far side of — without it the header freezes a gap below the top and the
+   prose runs through the gap. */
 .snowflake-method-segment-header {
+	position: sticky;
+	top: calc(var(--size-4-8) * -1);
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-2);
-	min-height: var(--size-4-6);
-	margin-bottom: var(--size-4-2);
+	min-height: calc(var(--size-4-6) + var(--size-4-2));
+	padding-bottom: var(--size-4-2);
+	background-color: var(--background-primary);
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 }

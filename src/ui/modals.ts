@@ -1706,6 +1706,104 @@ export class ConfirmCharacterDeletionModal extends Modal {
 	}
 }
 
+/**
+ * Asks whether two manuscript notes should be joined, resolving true only if
+ * the author said so.
+ *
+ * A merge is the one manuscript action that takes a note away, and undoing it
+ * means splitting again at a seam nothing records. Every other action here is
+ * either reversible or asks for a name first; this asks for the same pause.
+ */
+export function confirmSegmentMerge(
+	app: App,
+	t: Translate,
+	kept: string,
+	removed: string,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmSegmentMergeModal(app, t, kept, removed, resolve).open();
+	});
+}
+
+/**
+ * Built to the shape of Obsidian's own delete prompt — the question and its
+ * consequence as two paragraphs, and the buttons in a `modal-button-container`
+ * below the content rather than inside it, cancel plain and the destructive one
+ * red. An author being asked whether to throw a note away should be looking at
+ * the dialog they already know, not at this plugin's idea of one.
+ */
+class ConfirmSegmentMergeModal extends Modal {
+	private confirmed = false;
+	private buttons: HTMLElement | null = null;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly kept: string,
+		private readonly removed: string,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.mergeSegments.title'));
+		this.modalEl.addClass('snowflake-method-merge-segments-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			// A note is named after a file and can be as long as one, so it wraps
+			// the way Obsidian wraps a filename rather than widening the dialog.
+			cls: 'u-break-word',
+			text: this.t('modal.mergeSegments.question', {
+				removed: this.removed,
+				kept: this.kept,
+			}),
+		});
+		this.contentEl.createEl('p', {
+			text: this.t('modal.mergeSegments.consequence'),
+		});
+
+		const buttons = this.modalEl.createDiv({ cls: 'modal-button-container' });
+		this.buttons = buttons;
+		const cancel = buttons.createEl('button', {
+			cls: 'mod-cancel',
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => {
+			this.close();
+		});
+		const merge = buttons.createEl('button', {
+			cls: 'mod-cta mod-destructive',
+			text: this.t('actions.merge'),
+			attr: { type: 'button' },
+		});
+		merge.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+		// Where Obsidian puts it on its own delete prompt, so Return answers this
+		// dialog the way it answers that one. Left on cancel it draws a ring round
+		// the button nobody is looking at. Deferred because opening a modal moves
+		// the focus to the first thing in it once this method has returned, which
+		// would undo a call made here.
+		this.contentEl.win.setTimeout(() => {
+			merge.focus();
+		}, 0);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		// The buttons hang off the modal rather than off its content, so emptying
+		// the content leaves them behind.
+		this.buttons?.remove();
+		this.buttons = null;
+		// Resolves however the modal closed -- button, Escape, or the title bar --
+		// so the caller is never left waiting on a dialog the author dismissed.
+		this.onResolve(this.confirmed);
+	}
+}
+
 export class ManagedBoundaryUnlockModal extends Modal {
 	constructor(
 		app: App,
