@@ -81,6 +81,35 @@ const MARKDOWN = new Language(
 	'markdown',
 );
 
+/**
+ * Where a passage of rendered text sits in the Markdown behind it, or null.
+ *
+ * Prose reaches the page as itself, so the words are the same on both sides and
+ * looking them up is enough. What differs is the markup around them: a passage
+ * that ran into an emphasis or a link is not there to be found, and is given up
+ * on rather than approximated, because doing nothing beats moving the page to
+ * the wrong place. `near` is roughly how far through the note the passage was,
+ * for telling copies of the same wording apart.
+ */
+export function findPassage(
+	source: string,
+	passage: string,
+	near: number,
+): number | null {
+	if (passage.trim().length < 12) return null;
+	// The nearest match, and only ever the whole passage. A shorter prefix finds
+	// something almost anywhere in a chapter, and acting on the wrong copy
+	// scrolls the page somewhere the author never was — worse than the small
+	// shift of doing nothing. Prose that ran into an emphasis or a link will not
+	// be found, and is left alone.
+	let best: number | null = null;
+	for (let at = source.indexOf(passage); at !== -1; ) {
+		if (best === null || Math.abs(at - near) < Math.abs(best - near)) best = at;
+		at = source.indexOf(passage, at + 1);
+	}
+	return best;
+}
+
 export interface SegmentEditorHandle {
 	readonly path: string;
 	/** The text as it stands in the editor, which may be ahead of the file. */
@@ -94,6 +123,23 @@ export interface SegmentEditorHandle {
 	write(body: string): void;
 	/** Caret position within the body, for splitting the segment at it. */
 	cursor(): number;
+	/**
+	 * Puts the caret in a passage of text, and says how far up or down the page
+	 * that passage sits from where the caller wanted it.
+	 *
+	 * A rendered note and an editor showing the same note are not the same
+	 * height, so the words an author clicked are somewhere else by the time they
+	 * can type in them. Rather than chase two layouts into agreement, the caller
+	 * says which words those were, how far into them the pointer was, where on
+	 * the screen they were, and roughly how far through the note — and scrolls by
+	 * what comes back. Null when the passage cannot be found.
+	 */
+	seek(
+		passage: string,
+		lead: number,
+		screenY: number,
+		near: number,
+	): number | null;
 	focus(): void;
 	destroy(): void;
 }
@@ -165,6 +211,37 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 			},
 			cursor: () => view.state.selection.main.head,
+			seek: (
+				passage: string,
+				lead: number,
+				screenY: number,
+				near: number,
+			) => {
+				const source = view.state.doc.toString();
+				const found = findPassage(source, passage, near * source.length);
+				// Wherever the caret ends up it must be somewhere the reader can see,
+				// because focusing an editor scrolls the caret into view — and a caret
+				// left at the first character drags the page to the top of the note,
+				// which is a bigger move than any this was meant to avoid. Failing the
+				// words, the height the click came in at is the next best guess.
+				const position =
+					found === null
+						? view.posAtCoords({
+								x: view.dom.getBoundingClientRect().left + 8,
+								y: screenY,
+							})
+						: Math.min(found + lead, source.length);
+				if (position === null) return null;
+				// Asked twice, because the first answer comes from an editor that has
+				// not measured itself yet. The second time the caret is already there
+				// and only the measurement is wanted.
+				if (view.state.selection.main.head !== position) {
+					view.dispatch({ selection: EditorSelection.cursor(position) });
+				}
+				if (found === null) return null;
+				const coords = view.coordsAtPos(position);
+				return coords === null ? null : coords.top - screenY;
+			},
 			focus: () => {
 				view.focus();
 			},

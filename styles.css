@@ -3915,11 +3915,10 @@
 	height: 100%;
 	overflow-y: auto;
 	overflow-x: hidden;
-	/* Room below the last note so it can be scrolled up to be read, measured by
-	   the view against the note that is actually last and set here. Zero until
-	   the window reaches the end of the manuscript, because until then there is
-	   always more book below. */
-	padding: var(--size-4-8) 0 var(--snowflake-method-manuscript-tail, 25vh);
+	/* Room below the last note so the one being read can be scrolled up to the
+	   top of the page, measured by the view and set here. Zero by default and
+	   for most of a long book, where there is always more manuscript below. */
+	padding: var(--size-4-8) 0 var(--snowflake-method-manuscript-tail, 0px);
 	scrollbar-gutter: stable;
 }
 

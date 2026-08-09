@@ -169,6 +169,17 @@ export interface ManuscriptWindowSettings {
 	showSequence: boolean;
 }
 
+/**
+ * Run once the author has settled on a name for a new note, and before the note
+ * is made.
+ *
+ * Both of these begin by asking a question the answer to which may be no.
+ * Anything the page must do to get ready — putting an editor away, which
+ * changes the height of the note it was in — belongs after the answer, or the
+ * words move while the author is still deciding whether to move them.
+ */
+export type SegmentNamed = () => Promise<void>;
+
 export interface ManuscriptHost {
 	t: Translate;
 	translateForProject(
@@ -191,11 +202,13 @@ export interface ManuscriptHost {
 	createManuscriptSegment(
 		projectPath: string,
 		placement: { after: string } | { atStart: true } | { atEnd: true },
+		onNamed?: SegmentNamed,
 	): Promise<string | null>;
 	splitManuscriptSegment(
 		projectPath: string,
 		path: string,
 		offset: number,
+		onNamed?: SegmentNamed,
 	): Promise<string | null>;
 	openManagedFile(
 		path: string,

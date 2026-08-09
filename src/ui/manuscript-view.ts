@@ -27,6 +27,9 @@ export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
 /** Long enough that a sentence is not written to disk a letter at a time. */
 const SAVE_DELAY_MS = 800;
 
+/** How long a freshly built editor is given to settle on its own height. */
+const SETTLING_FRAMES = 6;
+
 interface ManuscriptViewStateSnapshot {
 	projectPath: string | null;
 	/** The segment the stream was opened from, and the one Back returns to. */
@@ -64,12 +67,16 @@ export class SnowflakeManuscriptView extends ItemView {
 	private shape = '';
 	/** What is shown about each note, so a setting can redraw only the headers. */
 	private headerShape = '';
+	/** Whose manuscript is on the page. Another project's is a different page. */
+	private renderedProject: string | null = null;
 	private projectPath: string | null = null;
 	private anchorPath: string | null = null;
 	private activePath: string | null = null;
 	private editingPath: string | null = null;
 	private stateDelivered = false;
 	private streamEl: HTMLElement | null = null;
+	/** The room settleTail last put below the last note, in pixels. */
+	private tail = 0;
 	/**
 	 * Raised while this view is the one moving the page.
 	 *
@@ -175,13 +182,25 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.shape = shapeOf(this.model);
 			this.headerShape = headerShapeOf(settings);
 
-			if (this.streamEl !== null && this.shape === previousShape) {
-				// Nothing about the manuscript changed, so nothing is rebuilt and
-				// nothing scrolls. A setting the author just flipped is not a reason
-				// to move the page out from under them: the headers are redrawn where
-				// they stand, and a narrower window is applied by applyWindow, which
-				// holds the reader's place while it mounts and lets go.
-				if (this.headerShape !== previousHeaders) this.redrawHeaders();
+			const project = this.model?.projectPath ?? null;
+			if (
+				this.streamEl !== null &&
+				this.renderedProject === project &&
+				(this.model?.segments.length ?? 0) > 0
+			) {
+				// A note arriving, leaving, being cut in two or joined to the next is
+				// a change to what is on the page, not a reason to build a new one.
+				// Rebuilding threw the reader to the top of a note every time they
+				// added one — and rendered every note in the window to do it, when
+				// planWindow already knows which have arrived and which have gone.
+				// A setting they just flipped is no reason to move them either, so
+				// the headers are redrawn where they stand.
+				if (
+					this.shape !== previousShape ||
+					this.headerShape !== previousHeaders
+				) {
+					this.redrawHeaders();
+				}
 				await this.applyWindow();
 				await this.refreshMountedBodies();
 				return;
@@ -233,6 +252,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * every other note held here is exactly as it was.
 	 */
 	private async refreshMountedBodies(): Promise<void> {
+		let release: (() => void) | null = null;
 		for (const entry of this.mounted.values()) {
 			if (entry.pending !== null) continue;
 			if (this.host.manuscriptSegmentStamp(entry.path) === entry.text.stamp) {
@@ -246,12 +266,18 @@ export class SnowflakeManuscriptView extends ItemView {
 				// again on every refresh from here on.
 				entry.text = text;
 				if (!changed) continue;
+				// Held from the first note that has actually changed, and not before,
+				// so a refresh finding nothing to do measures nothing. A note whose
+				// text changed is a note whose height changed, and everything below
+				// it moves by the difference.
+				release ??= this.holdPosition();
 				if (entry.editor === null) await this.renderSegmentBody(entry);
 				else entry.editor.write(text.body);
 			} catch (error) {
 				this.showError(error);
 			}
 		}
+		release?.();
 	}
 
 	/** The segment being written in, so the plugin can leave its file alone. */
@@ -343,7 +369,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async render(): Promise<void> {
 		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
 		this.contentEl.empty();
+		this.streamEl = null;
+		this.tail = 0;
 		const model = this.model;
+		this.renderedProject = model?.projectPath ?? null;
 		if (model === null || model.segments.length === 0) {
 			this.renderEmpty();
 			return;
@@ -437,13 +466,14 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		if (plan.mount.length === 0 && plan.unmount.length === 0) {
 			this.renderEnds(plan.atStart, plan.atEnd);
-			this.settleTail(plan.atEnd);
+			this.settleTail();
 			return;
 		}
 
 		await this.quietly(async () => {
-			const anchor = this.activePath;
+			const releaseUnmount = this.holdPosition(new Set(plan.visible));
 			for (const path of plan.unmount) await this.unmountSegment(path);
+			releaseUnmount();
 
 			// The note the author asked for goes up on its own first, and is put
 			// where they asked for it before its neighbours are rendered at all.
@@ -455,60 +485,74 @@ export class SnowflakeManuscriptView extends ItemView {
 			// and the hold below keeps it still while they do — so the wait is one
 			// note however many are loaded. Only when the note is newly mounted,
 			// which is a jump; sliding the window along leaves this alone.
+			const anchor = this.activePath;
 			const arriving =
 				anchor !== null && plan.mount.includes(anchor) ? anchor : null;
 			if (arriving !== null) {
 				await this.mountSegment(arriving);
 				this.reorder(plan.visible.filter((path) => this.mounted.has(path)));
+				// Room before the move, not after it: a page holding one short note
+				// cannot scroll far enough to bring it to the top, and the browser
+				// stopping at the bottom is how the note lands where it fell.
+				this.settleTail();
 				this.scrollToActive();
 			}
 
-			const beforeTop = this.offsetOf(anchor);
-			const beforeScroll = stream.scrollTop;
+			const release = this.holdPosition(new Set(plan.visible));
 			for (const path of plan.mount) {
 				if (path === arriving) continue;
 				await this.mountSegment(path);
 			}
 			this.reorder(plan.visible);
 			this.renderEnds(plan.atStart, plan.atEnd);
-			this.settleTail(plan.atEnd);
-
-			const afterTop = this.offsetOf(anchor);
-			if (beforeTop !== null && afterTop !== null) {
-				stream.scrollTop = beforeScroll + (afterTop - beforeTop);
-			}
+			this.settleTail();
+			release();
 		});
 	}
 
 	/**
-	 * Room below the last note, so that it can be brought up to be read.
+	 * Room below the last note, so that the one being read can be brought up to
+	 * the top of the page.
 	 *
-	 * A page can only scroll as far as it has content: ask for the last note of
-	 * a short manuscript to sit at the top and the browser stops at the bottom
-	 * instead, leaving the note most of a screen down from where it was asked
-	 * for. Measured on a ten-note project, the closing note landed 761px low.
+	 * A page can only scroll as far as it has content, and a note with less than
+	 * a screenful of manuscript after it cannot reach the top of one. That is the
+	 * closing chapter of any book — measured on a ten-note project, it landed
+	 * 761px low — and, because the window holds only a few notes on either side,
+	 * it is the opening chapter of a short one too: asked for, `Prologue` sat
+	 * 171px down a page that could not scroll at all.
 	 *
-	 * Exactly enough to bring that last note to the top, and nothing beyond it —
-	 * a note taller than the viewport needs none, and the end of a manuscript
-	 * should not read as a screenful of nothing.
+	 * Exactly what that note is short by and nothing more, so a long book never
+	 * grows a gap and a short one grows only what it needs. The reader's own
+	 * position is counted alongside the note's, because a tail that shrank under
+	 * someone already standing in it would take the page down with them.
 	 */
-	private settleTail(atEnd: boolean): void {
+	private settleTail(): void {
 		const stream = this.streamEl;
 		if (stream === null) return;
-		const last = [...this.mounted.values()].pop()?.el;
-		const room =
-			atEnd && last !== undefined
-				? Math.max(0, stream.clientHeight - last.offsetHeight)
-				: 0;
+		const active =
+			this.activePath === null ? undefined : this.mounted.get(this.activePath);
+		const scrollTop = stream.scrollTop;
+		const activeTop =
+			active === undefined
+				? 0
+				: active.el.getBoundingClientRect().top -
+					stream.getBoundingClientRect().top +
+					scrollTop;
+		// What the manuscript itself puts on the page, without the room added
+		// last time — measuring against that would compound it on every call.
+		const content = stream.scrollHeight - this.tail;
+		const room = Math.round(
+			Math.max(
+				0,
+				stream.clientHeight - (content - Math.max(scrollTop, activeTop)),
+			),
+		);
+		if (room === this.tail) return;
+		this.tail = room;
 		stream.style.setProperty(
 			'--snowflake-method-manuscript-tail',
-			`${String(Math.round(room))}px`,
+			`${String(room)}px`,
 		);
-	}
-
-	private offsetOf(path: string | null): number | null {
-		if (path === null) return null;
-		return this.mounted.get(path)?.el.offsetTop ?? null;
 	}
 
 	private async mountSegment(path: string): Promise<void> {
@@ -600,9 +644,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		rendered.addEventListener('click', (event) => {
 			// A link inside the prose is a link, not an invitation to edit.
 			if ((event.target as HTMLElement | null)?.closest('a') !== null) return;
-			void this.activateSegment(entry.path).catch((error: unknown) => {
-				this.showError(error);
-			});
+			void this.activateSegment(entry.path, clickedWords(event)).catch(
+				(error: unknown) => {
+					this.showError(error);
+				},
+			);
 		});
 	}
 
@@ -611,7 +657,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * that had one back to rendered. One editor at a time is what the stable
 	 * backend offers; the swap is where that has to be honoured.
 	 */
-	private async activateSegment(path: string): Promise<void> {
+	private async activateSegment(
+		path: string,
+		clicked?: ClickedWords,
+	): Promise<void> {
 		if (this.editingPath === path) {
 			this.backend.focus(path);
 			return;
@@ -622,9 +671,11 @@ export class SnowflakeManuscriptView extends ItemView {
 
 		await this.deactivateSegment();
 
-		const stream = this.streamEl;
-		const beforeTop = entry.el.offsetTop;
-		const beforeScroll = stream?.scrollTop ?? 0;
+		// An editor is not the height of the prose it replaces, so everything
+		// below this note moves, and if the note itself is below the reader then
+		// so does the note. Held across the swap and let go of before the caret is
+		// placed, because placing it is the one move that was asked for.
+		const restore = this.holdPosition();
 
 		entry.bodyEl.empty();
 		entry.bodyEl.addClass('is-editing');
@@ -647,11 +698,61 @@ export class SnowflakeManuscriptView extends ItemView {
 		);
 		this.editingPath = path;
 		this.remember(path);
+		restore();
+		// The words the author clicked go back under the pointer, and the caret
+		// goes into them. Holding the note still is not enough: the source of a
+		// line is not the height of the line, so everything after the first
+		// heading has moved even though the note itself has not.
+		if (clicked !== undefined) this.putBack(entry, clicked);
+		// Focused last, because focusing an editor scrolls its caret into view and
+		// would otherwise be the final word on where the reader ends up.
 		entry.editor.focus();
+		if (clicked !== undefined) this.keepPuttingBack(entry, clicked);
+	}
 
-		if (stream !== null) {
-			stream.scrollTop = beforeScroll + (entry.el.offsetTop - beforeTop);
+	/**
+	 * Puts the words back on each of the next few frames, while the editor is
+	 * still working out how tall it is.
+	 *
+	 * A CodeMirror only just built estimates the height of every line it has not
+	 * laid out yet, and replaces those estimates over the frames that follow.
+	 * Measured on a chapter of two thousand words: it agreed with the page for
+	 * two frames and then grew by 72px on the third, taking the words 54px down
+	 * with it. Asking again is a search of the text and one measurement, and it
+	 * is over inside a tenth of a second — long before an author can have typed
+	 * anything, and it stops the moment they do.
+	 */
+	private keepPuttingBack(entry: MountedSegment, clicked: ClickedWords): void {
+		const win = this.contentEl.win;
+		const untouched = entry.pending;
+		let frames = 0;
+		const again = (): void => {
+			if (this.editingPath !== entry.path || entry.pending !== untouched) return;
+			this.putBack(entry, clicked);
+			frames += 1;
+			if (frames < SETTLING_FRAMES) win.requestAnimationFrame(again);
+		};
+		win.requestAnimationFrame(again);
+	}
+
+	/** Scrolls the words a click landed on back to where the pointer left them. */
+	private putBack(entry: MountedSegment, clicked: ClickedWords): void {
+		const stream = this.streamEl;
+		const gone = entry.editor?.seek(
+			clicked.passage,
+			clicked.lead,
+			clicked.screenY,
+			clicked.near,
+		);
+		if (stream === null || gone === null || gone === undefined || gone === 0) {
+			return;
 		}
+		// Counted as the view's own, because it is: answering it as the reader's
+		// would pick whichever note the reading line happened to land on and set
+		// the whole window sliding.
+		void this.quietly(() => {
+			stream.scrollTop += gone;
+		});
 	}
 
 	private async deactivateSegment(): Promise<void> {
@@ -659,11 +760,23 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (path === null) return;
 		await this.flushPendingSave();
 		this.editingPath = null;
-		await this.backend.unmount(path);
-		const entry = this.mounted.get(path);
-		if (entry === undefined) return;
-		entry.editor = null;
-		await this.renderSegmentBody(entry);
+		// The note going back to prose may be anywhere, including above the reader,
+		// so its place is held across the swap — and held from before the editor
+		// goes, not after. Taking an editor down empties the note to a header and
+		// a rule, which drops a reader who was a page into it several chapters
+		// further on; a hold taken at that moment pins whichever note they landed
+		// on, and putting the prose back shoves that note down the page, so the
+		// release chases it. Measured on a split, a swap that should have moved
+		// nothing threw the reader four and a half thousand pixels into the book.
+		const release = this.holdPosition();
+		await this.quietly(async () => {
+			await this.backend.unmount(path);
+			const entry = this.mounted.get(path);
+			if (entry === undefined) return;
+			entry.editor = null;
+			await this.renderSegmentBody(entry);
+		});
+		release();
 	}
 
 	/**
@@ -898,6 +1011,63 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 	};
 
+	/**
+	 * Pins whatever is under the reader's eye, and gives back the way to put it
+	 * back there once the page has changed underneath it.
+	 *
+	 * Anything mounting, unmounting, growing or shrinking above the viewport
+	 * moves everything below it, which throws the page off mid-sentence. The
+	 * note straddling the top of the viewport is the one the reader is on, so
+	 * its distance from that edge is what is kept — not the active note's, which
+	 * may be off screen, and not the scroll offset, which means nothing once the
+	 * heights above it have changed.
+	 *
+	 * Measured against the viewport rather than through offsetTop, which counts
+	 * from whichever ancestor happens to be positioned and here is the leaf
+	 * rather than the stream. `surviving` names what will still be mounted
+	 * afterwards, because a note about to be let go cannot hold anybody's place
+	 * and a detached one reports nothing but zeroes.
+	 */
+	private holdPosition(surviving?: ReadonlySet<string>): () => void {
+		const stream = this.streamEl;
+		if (stream === null) return () => undefined;
+		const edge = stream.getBoundingClientRect().top;
+		const held = [...this.mounted.values()]
+			.filter((entry) => surviving?.has(entry.path) !== false)
+			.map((entry) => ({ el: entry.el, box: entry.el.getBoundingClientRect() }))
+			.filter((seen) => seen.box.bottom > edge)
+			.sort((left, right) => left.box.top - right.box.top)[0];
+		if (held === undefined) return () => undefined;
+		const wanted = held.box.top - edge;
+		return () => {
+			if (!held.el.isConnected) return;
+			const now =
+				held.el.getBoundingClientRect().top -
+				stream.getBoundingClientRect().top;
+			stream.scrollTop = Math.max(0, stream.scrollTop + (now - wanted));
+		};
+	}
+
+	/**
+	 * Brings a note to where it can be read, and only when it is not already
+	 * somewhere it can be read.
+	 *
+	 * Asking to go to a note means going there. A note that has just appeared
+	 * where the author was already looking is a different matter: they clicked a
+	 * rule in front of them and it became a chapter in front of them, and
+	 * hauling it to the top of the page to say so undoes that.
+	 */
+	private bringIntoView(path: string): void {
+		const stream = this.streamEl;
+		const entry = this.mounted.get(path);
+		if (stream === null || entry === undefined) return;
+		const margin = Math.min(120, stream.clientHeight / 5);
+		const fromTop =
+			entry.el.getBoundingClientRect().top - stream.getBoundingClientRect().top;
+		if (fromTop >= margin && fromTop <= stream.clientHeight - margin) return;
+		this.scrollToActive();
+	}
+
 	private scrollToActive(): void {
 		const stream = this.streamEl;
 		const entry =
@@ -962,15 +1132,22 @@ export class SnowflakeManuscriptView extends ItemView {
 	): Promise<void> {
 		const model = this.model;
 		if (model === null) return;
-		await this.deactivateSegment();
 		try {
+			// The editor is put away only once there is a name to put it away for.
+			// Doing it first moves the page while the author is still looking at the
+			// form, deciding whether to go ahead at all.
 			const created = await this.host.createManuscriptSegment(
 				model.projectPath,
 				placement,
+				() => this.deactivateSegment(),
 			);
 			if (created === null) return;
-			this.activePath = created;
 			await this.refresh();
+			// The one move that is asked for rather than suffered — and only when
+			// the new note is not already where the author is looking.
+			this.activePath = created;
+			await this.applyWindow();
+			this.bringIntoView(created);
 			await this.activateSegment(created);
 		} catch (error) {
 			this.showError(error);
@@ -988,18 +1165,40 @@ export class SnowflakeManuscriptView extends ItemView {
 		const entry = path === null ? undefined : this.mounted.get(path);
 		if (model === null || path === null || entry?.editor == null) return;
 
+		// Read before asking, because asking takes the caret away. Nothing else
+		// happens until there is a name: the editor goes away as part of the
+		// split, not as part of being asked about one.
 		const offset = entry.editor.cursor();
-		await this.flushPendingSave();
-		await this.deactivateSegment();
 		try {
 			const created = await this.host.splitManuscriptSegment(
 				model.projectPath,
 				path,
 				offset,
+				() => this.deactivateSegment(),
 			);
 			if (created === null) return;
-			this.activePath = created;
+			// The words that were under the caret are the new note's first words
+			// and are already on the screen: the rule appearing where the caret was
+			// is the whole of what happened, so nothing needs to move.
+			//
+			// Which is why the note arrives before it becomes the one the window is
+			// centred on. Pointed at first it is a note that is not mounted yet, and
+			// putting up the note that was asked for is exactly what takes a
+			// manuscript to the top of it — measured, a split at a caret four
+			// hundred pixels down the page landed the reader at nought. Refreshed
+			// first, it goes up with the page held still, and becoming the active
+			// note afterwards costs nothing.
 			await this.refresh();
+			// Named rather than left to the window to work out. A note the model no
+			// longer holds sends `windowAround` back to the first one in the book,
+			// which is the right answer for a note that has been merged away and the
+			// wrong one here: the note this split made is where the author is.
+			this.activePath = created;
+			await this.applyWindow();
+			// And into it, the way adding a note goes into the note it added. The
+			// caret was in these words a moment ago and the author was writing them;
+			// the split gave them a chapter of their own, not somewhere else to be.
+			await this.activateSegment(created);
 		} catch (error) {
 			this.showError(error);
 		}
@@ -1010,6 +1209,75 @@ export class SnowflakeManuscriptView extends ItemView {
 			error instanceof Error ? error.message : this.t('errors.unknown'),
 		);
 	}
+}
+
+interface ClickedWords {
+	/** The prose the pointer was over, to be found again in the Markdown. */
+	passage: string;
+	/** How far into that passage the pointer itself was. */
+	lead: number;
+	/** Where on the screen it was, so it can be put back there. */
+	screenY: number;
+	/** How far through the note, for telling repeated wording apart. */
+	near: number;
+}
+
+/**
+ * The words under a click, and where they were.
+ *
+ * Taken from the rendered text rather than from coordinates, because
+ * coordinates stop meaning anything the moment the editor changes the height of
+ * what is on the page — whereas the words are the same words either side of the
+ * swap, and finding them again is what puts them back under the pointer.
+ */
+function clickedWords(event: MouseEvent): ClickedWords | undefined {
+	const target = event.target as HTMLElement | null;
+	const doc = target?.ownerDocument;
+	if (doc === undefined || doc === null) return undefined;
+	const spot = caretAt(doc, event.clientX, event.clientY);
+	if (spot === null) return undefined;
+	// Reaching back from the click as well as forward, because clicking past the
+	// end of a line puts the caret at the end of that paragraph's text and leaves
+	// nothing in front of it to go looking for.
+	const from = Math.max(0, spot.offset - 24);
+	const passage = spot.text.slice(from, spot.offset + 48);
+	if (passage.trim().length < 12) return undefined;
+	const prose =
+		target?.closest('.snowflake-method-segment-rendered')?.textContent ?? '';
+	const at = prose.indexOf(passage);
+	// Halfway is the answer when the words cannot be placed, which biases nothing.
+	const near = at === -1 ? 0.5 : at / Math.max(1, prose.length);
+	return { passage, lead: spot.offset - from, screenY: event.clientY, near };
+}
+
+/**
+ * The character a click landed on, from whichever of the two APIs this build of
+ * Obsidian has. `caretPositionFromPoint` is the standard one and the newer
+ * arrival; the other is what Chromium answered with for years before it, asked
+ * for by name because the Document type has since retired it.
+ */
+function caretAt(
+	doc: Document,
+	x: number,
+	y: number,
+): { text: string; offset: number } | null {
+	const spot =
+		typeof doc.caretPositionFromPoint === 'function'
+			? doc.caretPositionFromPoint(x, y)
+			: null;
+	if (spot !== null) {
+		const text = spot.offsetNode.textContent;
+		return text === null ? null : { text, offset: spot.offset };
+	}
+	const legacy = (
+		doc as unknown as {
+			caretRangeFromPoint?: (x: number, y: number) => Range | null;
+		}
+	).caretRangeFromPoint;
+	const range = typeof legacy === 'function' ? legacy.call(doc, x, y) : null;
+	if (range === null) return null;
+	const text = range.startContainer.textContent;
+	return text === null ? null : { text, offset: range.startOffset };
 }
 
 /**

@@ -122,6 +122,7 @@ import type {
 	ManuscriptModel,
 	ManuscriptSegmentText,
 	ManuscriptWindowSettings,
+	SegmentNamed,
 	StepFields,
 	ProjectDashboardModel,
 	ProjectOption,
@@ -1886,6 +1887,7 @@ export default class SnowflakeMethodPlugin
 	async createManuscriptSegment(
 		projectPath: string,
 		placement: { after: string } | { atStart: true } | { atEnd: true },
+		onNamed?: SegmentNamed,
 	): Promise<string | null> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
@@ -1898,6 +1900,7 @@ export default class SnowflakeMethodPlugin
 				'manuscript.defaultSegmentTitle',
 			),
 			async (title) => {
+				await onNamed?.();
 				if ('after' in placement) {
 					return manuscript.insertSegmentAfter(project, placement.after, title);
 				}
@@ -1912,6 +1915,7 @@ export default class SnowflakeMethodPlugin
 		projectPath: string,
 		path: string,
 		offset: number,
+		onNamed?: SegmentNamed,
 	): Promise<string | null> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
@@ -1922,8 +1926,15 @@ export default class SnowflakeMethodPlugin
 				project.locale,
 				'manuscript.defaultSegmentTitle',
 			),
-			(title) =>
-				this.projects.manuscript.splitSegment(project, path, offset, title),
+			async (title) => {
+				await onNamed?.();
+				return this.projects.manuscript.splitSegment(
+					project,
+					path,
+					offset,
+					title,
+				);
+			},
 		);
 	}
 
