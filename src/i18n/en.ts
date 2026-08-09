@@ -552,6 +552,7 @@ export const en = {
 	'manuscript.createNext': 'Write the next one',
 	'manuscript.createPrevious': 'Write the previous one',
 	'manuscript.insertSegment': 'Insert a note after this one',
+	'manuscript.insertSegmentBefore': 'Insert a note before this one',
 	'manuscript.splitHere': 'Split at the cursor',
 	'manuscript.mergeWithNext': 'Merge “{note}” into this note',
 	'manuscript.nowReading': 'Current view: reading',

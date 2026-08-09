@@ -196,11 +196,10 @@ export class SnowflakeManuscriptView extends ItemView {
 				// added one — and rendered every note in the window to do it, when
 				// planWindow already knows which have arrived and which have gone.
 				// A setting they just flipped is no reason to move them either, so
-				// the headers are redrawn where they stand.
-				if (
-					this.shape !== previousShape ||
-					this.headerShape !== previousHeaders
-				) {
+				// the chrome is redrawn where it stands.
+				const reshaped = this.shape !== previousShape;
+				if (reshaped) this.redrawBoundaries();
+				if (reshaped || this.headerShape !== previousHeaders) {
 					this.redrawHeaders();
 				}
 				await this.applyWindow();
@@ -236,6 +235,31 @@ export class SnowflakeManuscriptView extends ItemView {
 			if (segment === undefined) continue;
 			entry.el.querySelector('.snowflake-method-segment-header')?.remove();
 			entry.el.prepend(this.renderSegmentHeader(entry.el, segment));
+		}
+	}
+
+	/**
+	 * Replaces the line below each mounted note, because what it offers is not
+	 * about that note but about the one after it.
+	 *
+	 * A rule drawn while its note was the last in the book offers only a new
+	 * note; once there is a note after it, the same rule should offer to fold
+	 * the two together — and it named the note it would fold in, so a rename
+	 * moves on too. Neither reached the page: the rules were drawn once, when
+	 * the note mounted, and a manuscript that had grown a second note kept
+	 * telling the author there was nothing to merge until they closed the stream
+	 * and opened it again. Same height, same place, so nothing moves.
+	 */
+	private redrawBoundaries(): void {
+		for (const entry of this.mounted.values()) {
+			const segment = this.model?.segments.find(
+				(candidate) => candidate.path === entry.path,
+			);
+			if (segment === undefined) continue;
+			entry.el
+				.querySelector(':scope > .snowflake-method-segment-boundary')
+				?.remove();
+			this.renderBoundary(entry.el, { after: segment.path });
 		}
 	}
 
@@ -587,7 +611,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.mounted.set(path, entry);
 		await this.renderSegmentBody(entry);
 		this.renderSegmentMenu(el, segment);
-		this.renderBoundary(el, segment);
+		this.renderBoundary(el, { after: segment.path });
 	}
 
 	private renderSegmentHeader(
@@ -851,13 +875,20 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * segment, here. Splitting used to hang off this button too and does not
 	 * belong: it acts on a caret inside a segment rather than on the gap between
 	 * two, so it lives in the segment's own menu and in the command palette.
+	 *
+	 * Where the new note goes is the same placement `createSegment` takes, so the
+	 * rule above the first note can offer what every other rule offers rather
+	 * than being the one line in the manuscript that offers nothing.
 	 */
 	private renderBoundary(
 		el: HTMLElement,
-		segment: ManuscriptSegmentViewModel,
+		placement: { after: string } | { atStart: true },
 	): void {
+		const leading = !('after' in placement);
 		const boundary = el.createDiv({
-			cls: 'snowflake-method-segment-boundary',
+			cls: leading
+				? 'snowflake-method-segment-boundary is-leading'
+				: 'snowflake-method-segment-boundary',
 		});
 		if (this.model?.readOnly === true) return;
 		// Both controls in one block, so hovering covers a single stretch of the
@@ -869,14 +900,16 @@ export class SnowflakeManuscriptView extends ItemView {
 			cls: 'clickable-icon snowflake-method-segment-boundary-action',
 			attr: {
 				type: 'button',
-				'aria-label': this.t('manuscript.insertSegment'),
+				'aria-label': this.t(
+					leading ? 'manuscript.insertSegmentBefore' : 'manuscript.insertSegment',
+				),
 			},
 		});
 		setIcon(add, 'plus');
 		add.addEventListener('click', () => {
-			void this.createSegment({ after: segment.path });
+			void this.createSegment(placement);
 		});
-		this.renderMergeControl(actions, segment.path);
+		if ('after' in placement) this.renderMergeControl(actions, placement.after);
 	}
 
 	/**
@@ -895,7 +928,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		const label = this.t('manuscript.mergeWithNext', { note: next.title });
 		const merge = actions.createEl('button', {
 			cls: 'clickable-icon snowflake-method-segment-boundary-action',
-			attr: { type: 'button', 'aria-label': label},
+			attr: { type: 'button', 'aria-label': label },
 		});
 		// A minus against the plus beside it. The line between two notes is the
 		// thing being added to or taken away: one more note here, or one fewer.
@@ -1032,12 +1065,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			});
 			// Every note carries the line below it, so the first one has nothing
 			// above it and the top of the manuscript reads differently from the
-			// bottom. This is that line.
+			// bottom. This is that line, and it offers what the others offer: a
+			// note here, which at the top of the book means before the first one.
 			if (placement === 'start') {
-				host.createDiv({
-					cls: 'snowflake-method-segment-boundary is-leading',
-					attr: { 'aria-hidden': 'true' },
-				});
+				this.renderBoundary(host, { atStart: true });
 				stream.prepend(host);
 			}
 		};

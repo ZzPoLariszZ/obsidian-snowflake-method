@@ -497,6 +497,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.createNext': '写下一篇',
 	'manuscript.createPrevious': '写上一篇',
 	'manuscript.insertSegment': '在这一篇之后插入笔记',
+	'manuscript.insertSegmentBefore': '在这一篇之前插入笔记',
 	'manuscript.splitHere': '在光标处拆分',
 	'manuscript.mergeWithNext': '将“{note}”合并到这一篇',
 	'manuscript.nowReading': '当前视图：阅读',
