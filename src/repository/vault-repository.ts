@@ -635,21 +635,29 @@ export class VaultRepository {
   /**
    * What one note declares, from the index where the index knows it.
    *
-   * A file Obsidian has not indexed yet has no cache entry at all -- which is
-   * the state a note is in for a moment after being created. Treating that as
-   * "declares nothing" would make a segment vanish from its own manuscript
-   * between being written and being noticed, so it is read instead. A note that
-   * is indexed and has no frontmatter is simply not one of ours.
+   * Two answers mean the index cannot say, and a note passes through both in
+   * the moment after it is created: no cache entry at all, and a cache entry
+   * with no frontmatter in it -- which is what a file indexed after it was
+   * written but before its frontmatter was put in looks like. Either way the
+   * note is read rather than taken at its word, because a segment that drops
+   * out of its own manuscript for a frame takes the reader's place in the book
+   * with it: the stream cannot find the note it was centred on, falls back to
+   * the first in the manuscript, and a reader five hundred chapters in is put
+   * back at chapter one.
+   *
+   * A note that really has no frontmatter is opened every time, which is what
+   * happened to every note before the index was used at all. Manuscript folders
+   * do not usually hold any.
    */
   private async entryOf(file: TFile): Promise<ManagedEntryRecord | null> {
     const cached = this.metadataCache.getFileCache(file);
-    if (cached === null) {
+    if (cached?.frontmatter === undefined) {
       const record = await this.tryReadManaged(file.path);
       return record === null ? null : toEntry(record);
     }
     // Obsidian hangs the frontmatter block's own position off the object it
     // parsed. Left in, it would be a key nothing wrote and nothing should see.
-    const { position, ...frontmatter } = cached.frontmatter ?? {};
+    const { position, ...frontmatter } = cached.frontmatter;
     void position;
     return {
       file,

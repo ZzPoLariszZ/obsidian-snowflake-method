@@ -200,6 +200,12 @@ export class FakeMetadataCache {
    */
   readonly unindexed = new Set<string>();
   /**
+   * Files the index has an entry for and no frontmatter in it. What a note
+   * looks like between being written and having its frontmatter put in --
+   * known to the index, and declaring nothing.
+   */
+  readonly halfSeen = new Set<string>();
+  /**
    * Frontmatter the index is still serving for a file that has moved on. The
    * other way an index runs behind: it knows the note, but not the last thing
    * written into it.
@@ -218,6 +224,7 @@ export class FakeMetadataCache {
     const path = normalizeFakePath(file.path);
     this.getFileCacheCalls.push(path);
     if (this.unindexed.has(path)) return null;
+    if (this.halfSeen.has(path)) return {};
     const content = this.vault.contents.get(path);
     if (content === undefined) return null;
     const frontmatter =

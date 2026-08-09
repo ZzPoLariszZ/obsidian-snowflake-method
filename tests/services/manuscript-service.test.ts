@@ -508,6 +508,38 @@ describe("what a manuscript costs to read", () => {
     expect(reads()).toContain(three);
   });
 
+  it("finds a note the index has an entry for but no frontmatter in", async () => {
+    // The state a note passes through between being written and having its
+    // frontmatter put in. Taken at its word, the note drops out of its own
+    // manuscript, and a stream centred on it loses the reader's place.
+    const three = "Snowflake Projects/Novel/50_Manuscript/Three.md";
+    fakeMetadataCache.halfSeen.add(three);
+
+    const segments = await service.manuscript.listSegments(project);
+
+    expect(segments.map(({ title }) => title)).toEqual([
+      "Draft",
+      "Two",
+      "Three",
+      "Four",
+    ]);
+    expect(segments[2]?.hasStoredSequence).toBe(true);
+    expect(reads()).toContain(three);
+  });
+
+  it("keeps a note the index has only half seen right after it was made", async () => {
+    const created = await service.manuscript.insertSegmentAfter(
+      project,
+      "Snowflake Projects/Novel/50_Manuscript/Two.md",
+      "Two And A Half",
+    );
+    fakeMetadataCache.halfSeen.add(created);
+
+    expect(
+      (await service.manuscript.listSegments(project)).map(({ title }) => title),
+    ).toEqual(["Draft", "Two", "Two And A Half", "Three", "Four"]);
+  });
+
   it("reports a place the index has not caught up with as it is written", async () => {
     const two = "Snowflake Projects/Novel/50_Manuscript/Two.md";
     await service.repository.updateFrontmatter(two, {
