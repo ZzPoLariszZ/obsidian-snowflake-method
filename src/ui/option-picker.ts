@@ -1,4 +1,4 @@
-import { App, setIcon } from 'obsidian';
+import { App, setIcon, setTooltip } from 'obsidian';
 
 import { isNameTaken } from '../domain';
 import { FieldSuggest } from './field-suggest';
@@ -469,7 +469,10 @@ export function buildOptionPicker(
 			});
 			// A narrow field ellipsizes a long label, so the tooltip is the only way
 			// left to read it in full.
-			tag.createSpan({ text: option.label, attr: { title: option.label } });
+			setTooltip(
+				tag.createSpan({ text: option.label }),
+				option.label,
+			);
 			const remove = tag.createEl('button', {
 				cls: 'snowflake-method-option-picker-remove clickable-icon',
 				attr: {

@@ -768,8 +768,11 @@ export class SnowflakeDashboardView extends ItemView {
 			const link = resume.createEl('button', {
 				cls: 'snowflake-method-step-ten-resume-note',
 				text: last.title,
-				attr: { type: 'button', title: last.path },
+				attr: { type: 'button' },
 			});
+			// The button says which note; the tooltip says which one of the notes
+			// by that name, which is the whole reason the path is offered here.
+			setTooltip(link, last.path);
 			link.addEventListener('click', () => {
 				void this.host
 					.openManuscriptStream(model.path, last.path)
@@ -1532,11 +1535,9 @@ export class SnowflakeDashboardView extends ItemView {
 			row.toggleClass('has-managed-section-issue', characterDamaged);
 			const nameCell = row.createEl('td', {
 				cls: 'snowflake-method-table-primary',
-				attr: {
-					'data-label': this.t('table.name'),
-					title: character.name,
-				},
+				attr: { 'data-label': this.t('table.name') },
 			});
+			setTooltip(nameCell, character.name);
 			this.renderTableName(nameCell, character.name, character.nameDrifted);
 			if (characterDamaged) {
 				const warning = nameCell.createSpan({
@@ -1551,13 +1552,13 @@ export class SnowflakeDashboardView extends ItemView {
 				text: this.t(`character.${character.type}Short`),
 				attr: { 'data-label': this.t('table.characterType') },
 			});
-			row.createEl('td', {
-				text: character.oneSentenceStoryline,
-				attr: {
-					'data-label': this.t('table.oneSentenceStoryline'),
-					title: character.oneSentenceStoryline,
-				},
-			});
+			setTooltip(
+				row.createEl('td', {
+					text: character.oneSentenceStoryline,
+					attr: { 'data-label': this.t('table.oneSentenceStoryline') },
+				}),
+				character.oneSentenceStoryline,
+			);
 			const cell = row.createEl('td', {
 				attr: { 'data-label': this.t('table.actions') },
 			});
@@ -1784,11 +1785,9 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const titleCell = row.createEl('td', {
 			cls: 'snowflake-method-table-primary',
-			attr: {
-				'data-label': this.t('table.sceneName'),
-				title: scene.title,
-			},
+			attr: { 'data-label': this.t('table.sceneName') },
 		});
+		setTooltip(titleCell, scene.title);
 		this.renderTableName(titleCell, scene.title, scene.nameDrifted);
 		if (sceneDamaged) {
 			const warning = titleCell.createSpan({
@@ -1814,13 +1813,13 @@ export class SnowflakeDashboardView extends ItemView {
 		} else {
 			povCell.setText(scene.povName);
 		}
-		row.createEl('td', {
-			text: scene.conflict,
-			attr: {
-				'data-label': this.t('table.conflict'),
-				title: scene.conflict,
-			},
-		});
+		setTooltip(
+			row.createEl('td', {
+				text: scene.conflict,
+				attr: { 'data-label': this.t('table.conflict') },
+			}),
+			scene.conflict,
+		);
 		const actionCell = row.createEl('td', {
 			attr: { 'data-label': this.t('table.actions') },
 		});

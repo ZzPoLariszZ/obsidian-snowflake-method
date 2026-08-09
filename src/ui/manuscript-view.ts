@@ -624,11 +624,13 @@ export class SnowflakeManuscriptView extends ItemView {
 		// the author has already written a line below it, and saying it twice
 		// tells them nothing. Where the note actually is, they cannot see.
 		if (settings.showPath) {
-			header.createSpan({
-				cls: 'snowflake-method-segment-path',
-				text: segment.path,
-				attr: { title: segment.path },
-			});
+			setTooltip(
+				header.createSpan({
+					cls: 'snowflake-method-segment-path',
+					text: segment.path,
+				}),
+				segment.path,
+			);
 		}
 		if (settings.showSequence) {
 			header.createSpan({
