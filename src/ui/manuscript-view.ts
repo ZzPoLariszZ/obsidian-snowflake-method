@@ -4,6 +4,7 @@ import {
 	Menu,
 	Notice,
 	setIcon,
+	setTooltip,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -611,15 +612,34 @@ export class SnowflakeManuscriptView extends ItemView {
 				text: String(segment.sequence),
 			});
 		}
-		const open = header.createEl('button', {
-			cls: 'clickable-icon snowflake-method-segment-open',
-			attr: {
-				type: 'button',
-				'aria-label': this.t('manuscript.openNote'),
-				title: this.t('manuscript.openNote'),
-			},
+		const actions = header.createDiv({
+			cls: 'snowflake-method-segment-actions',
+		});
+		// Not offered on a note that cannot be written in, because pressing it
+		// would do nothing: activateSegment turns a read-only segment away.
+		if (this.model?.readOnly !== true && !segment.readOnly) {
+			const write = actions.createEl('button', {
+				// `view-action` alongside `clickable-icon` for the size Obsidian gives
+				// the same button in a note's own header: 28 by 24, on a 16px icon.
+				cls: 'clickable-icon view-action snowflake-method-segment-write',
+				attr: { type: 'button' },
+			});
+			this.dressWriteToggle(write, this.editingPath === segment.path);
+			write.addEventListener('click', (event) => {
+				event.stopPropagation();
+				void this.toggleSegment(segment.path).catch((error: unknown) => {
+					this.showError(error);
+				});
+			});
+		}
+		const open = actions.createEl('button', {
+			cls: 'clickable-icon view-action snowflake-method-segment-open',
+			attr: { type: 'button' },
 		});
 		setIcon(open, 'file-text');
+		// Obsidian's own tooltip rather than the browser's: its header buttons
+		// carry an aria-label and no title, and setting both shows two.
+		setTooltip(open, this.t('manuscript.openNote'));
 		open.addEventListener('click', (event) => {
 			event.stopPropagation();
 			void this.host.openManagedFile(segment.path).catch((error: unknown) => {
@@ -627,6 +647,50 @@ export class SnowflakeManuscriptView extends ItemView {
 			});
 		});
 		return header;
+	}
+
+	/**
+	 * Starts or stops writing in one note.
+	 *
+	 * Clicking the prose has always been the way in. This is the way back out,
+	 * which until now there was none of: an editor stayed mounted until the
+	 * author clicked into some other note or the window let go of this one.
+	 */
+	private async toggleSegment(path: string): Promise<void> {
+		if (this.editingPath === path) await this.deactivateSegment();
+		else await this.activateSegment(path);
+	}
+
+	/**
+	 * Says which way the toggle would go, in its icon and in its tooltip.
+	 *
+	 * Worded as Obsidian words the same toggle on a note of its own — where the
+	 * view is now, then what pressing it would do — so an author reads one
+	 * sentence in both places rather than two dialects of the same idea.
+	 */
+	private dressWriteToggle(el: HTMLElement, editing: boolean): void {
+		// Two sentences on two lines, the way Obsidian's own tooltip reads.
+		const where = this.t(
+			editing ? 'manuscript.nowEditing' : 'manuscript.nowReading',
+		);
+		const then = this.t(
+			editing ? 'manuscript.clickToRead' : 'manuscript.clickToEdit',
+		);
+		setTooltip(el, `${where}\n${then}`);
+		// The pencil and the open book Obsidian uses on its own reading toggle.
+		setIcon(el, editing ? 'book-open' : 'pencil');
+	}
+
+	/** Re-dresses every toggle after the note being written in has changed. */
+	private refreshWriteToggles(): void {
+		for (const entry of this.mounted.values()) {
+			const toggle = entry.el.querySelector<HTMLElement>(
+				'.snowflake-method-segment-write',
+			);
+			if (toggle !== null) {
+				this.dressWriteToggle(toggle, this.editingPath === entry.path);
+			}
+		}
 	}
 
 	private async renderSegmentBody(entry: MountedSegment): Promise<void> {
@@ -698,6 +762,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			},
 		);
 		this.editingPath = path;
+		this.refreshWriteToggles();
 		this.remember(path);
 		restore();
 		// The words the author clicked go back under the pointer, and the caret
@@ -761,6 +826,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (path === null) return;
 		await this.flushPendingSave();
 		this.editingPath = null;
+		this.refreshWriteToggles();
 		// The note going back to prose may be anywhere, including above the reader,
 		// so its place is held across the swap — and held from before the editor
 		// goes, not after. Taking an editor down empties the note to a header and

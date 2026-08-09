@@ -3974,15 +3974,35 @@
 	opacity: 0.65;
 }
 
-/* Out of the way until the reader is in this segment, so a column of buttons
-   does not run down the side of the manuscript. */
-.snowflake-method-segment-open {
+/* Both buttons together at the end of the line, in one group so that the space
+   before them belongs to the pair rather than opening up between them. No gap:
+   each carries the same padding Obsidian's own header buttons do, which is what
+   sets them apart from one another there. */
+.snowflake-method-segment-actions {
+	display: flex;
+	align-items: center;
 	margin-inline-start: auto;
+}
+
+/* The icon size Obsidian gives a view-action, which it sets on the header these
+   buttons are not in: without it they come out 18px and the button 30 by 26
+   against the 28 by 24 of the same button on a note of its own. */
+.snowflake-method-segment-actions .clickable-icon {
+	--icon-size: var(--icon-s);
+}
+
+/* Out of the way until the reader is in this segment, so a column of buttons
+   does not run down the side of the manuscript. One rule for both of them,
+   whichever way round the reading toggle happens to be. */
+.snowflake-method-segment-write,
+.snowflake-method-segment-open {
 	opacity: 0;
 	transition: opacity 120ms ease-in-out;
 }
 
+.snowflake-method-segment:hover .snowflake-method-segment-write,
 .snowflake-method-segment:hover .snowflake-method-segment-open,
+.snowflake-method-segment-write:focus-visible,
 .snowflake-method-segment-open:focus-visible {
 	opacity: 1;
 }
