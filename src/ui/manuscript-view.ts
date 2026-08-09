@@ -70,6 +70,20 @@ export class SnowflakeManuscriptView extends ItemView {
 	private editingPath: string | null = null;
 	private stateDelivered = false;
 	private streamEl: HTMLElement | null = null;
+	/**
+	 * Raised while this view is the one moving the page.
+	 *
+	 * Taking a window down shrinks the page under the scroll position, and the
+	 * browser pulls the scroll back to fit — which arrives as a scroll event
+	 * indistinguishable from the reader's own. Answered as though the reader had
+	 * scrolled, it picks whatever note happens to be under the reading line
+	 * halfway through the teardown and sets off a second pass, which then lands
+	 * on top of the first: measured, a note asked for by name arrived, was placed
+	 * exactly, and was moved three thousand pixels ninety milliseconds later.
+	 */
+	private settling = 0;
+	/** The queue that keeps window changes from running over one another. */
+	private windowing: Promise<void> = Promise.resolve();
 	private saveTimer: number | null = null;
 	private saveWindow: Window | null = null;
 	private refreshing = false;
@@ -376,7 +390,38 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * the difference, which keeps the same words under the reader's eye whatever
 	 * happened off-screen.
 	 */
-	private async applyWindow(): Promise<void> {
+	/**
+	 * One at a time, however many things ask at once.
+	 *
+	 * Bringing the window into line renders every note that arrived, which on a
+	 * full window is the better part of half a second. Four things can ask for it
+	 * — going to a note, a Vault event, scrolling, and making one — and without
+	 * this they can all be inside it together, each mounting and unmounting
+	 * against measurements the others have already invalidated.
+	 */
+	private applyWindow(): Promise<void> {
+		this.windowing = this.windowing.then(
+			() => this.bringWindowIntoLine(),
+			() => this.bringWindowIntoLine(),
+		);
+		return this.windowing;
+	}
+
+	/** Runs `work`, with any scrolling it causes counted as the view's own. */
+	private async quietly<T>(work: () => Promise<T> | T): Promise<T> {
+		this.settling += 1;
+		try {
+			return await work();
+		} finally {
+			// Released only once the browser has delivered the scroll events the
+			// work caused, which it does after the current task rather than during.
+			this.contentEl.win.setTimeout(() => {
+				this.settling = Math.max(0, this.settling - 1);
+			}, 0);
+		}
+	}
+
+	private async bringWindowIntoLine(): Promise<void> {
 		const model = this.model;
 		const stream = this.streamEl;
 		if (model === null || stream === null) return;
@@ -392,22 +437,52 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		if (plan.mount.length === 0 && plan.unmount.length === 0) {
 			this.renderEnds(plan.atStart, plan.atEnd);
+			this.settleTail(plan.atEnd);
 			return;
 		}
 
-		const anchor = this.activePath;
-		const beforeTop = this.offsetOf(anchor);
-		const beforeScroll = stream.scrollTop;
+		await this.quietly(async () => {
+			const anchor = this.activePath;
+			const beforeTop = this.offsetOf(anchor);
+			const beforeScroll = stream.scrollTop;
 
-		for (const path of plan.unmount) await this.unmountSegment(path);
-		for (const path of plan.mount) await this.mountSegment(path);
-		this.reorder(plan.visible);
-		this.renderEnds(plan.atStart, plan.atEnd);
+			for (const path of plan.unmount) await this.unmountSegment(path);
+			for (const path of plan.mount) await this.mountSegment(path);
+			this.reorder(plan.visible);
+			this.renderEnds(plan.atStart, plan.atEnd);
+			this.settleTail(plan.atEnd);
 
-		const afterTop = this.offsetOf(anchor);
-		if (beforeTop !== null && afterTop !== null) {
-			stream.scrollTop = beforeScroll + (afterTop - beforeTop);
-		}
+			const afterTop = this.offsetOf(anchor);
+			if (beforeTop !== null && afterTop !== null) {
+				stream.scrollTop = beforeScroll + (afterTop - beforeTop);
+			}
+		});
+	}
+
+	/**
+	 * Room below the last note, so that it can be brought up to be read.
+	 *
+	 * A page can only scroll as far as it has content: ask for the last note of
+	 * a short manuscript to sit at the top and the browser stops at the bottom
+	 * instead, leaving the note most of a screen down from where it was asked
+	 * for. Measured on a ten-note project, the closing note landed 761px low.
+	 *
+	 * Exactly enough to bring that last note to the top, and nothing beyond it —
+	 * a note taller than the viewport needs none, and the end of a manuscript
+	 * should not read as a screenful of nothing.
+	 */
+	private settleTail(atEnd: boolean): void {
+		const stream = this.streamEl;
+		if (stream === null) return;
+		const last = [...this.mounted.values()].pop()?.el;
+		const room =
+			atEnd && last !== undefined
+				? Math.max(0, stream.clientHeight - last.offsetHeight)
+				: 0;
+		stream.style.setProperty(
+			'--snowflake-method-manuscript-tail',
+			`${String(Math.round(room))}px`,
+		);
 	}
 
 	private offsetOf(path: string | null): number | null {
@@ -780,7 +855,10 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	private readonly onScroll = (): void => {
 		const stream = this.streamEl;
-		if (stream === null) return;
+		// Only the reader moves the reading position. A page shrinking under the
+		// scroll as notes are let go of moves it too, and answering that is how
+		// the view ends up chasing itself.
+		if (stream === null || this.settling > 0) return;
 		const offsets = [...this.mounted.values()].map((entry) => ({
 			path: entry.path,
 			top: entry.el.offsetTop,
@@ -804,7 +882,15 @@ export class SnowflakeManuscriptView extends ItemView {
 		const entry =
 			this.activePath === null ? undefined : this.mounted.get(this.activePath);
 		if (stream === null || entry === undefined) return;
-		stream.scrollTop = entry.el.offsetTop;
+		// Moved by the gap between where the note is and where the top of the page
+		// is, rather than set to offsetTop — which is counted from whichever
+		// ancestor happens to be positioned, here the leaf rather than the stream,
+		// and so lands every note the same distance out.
+		void this.quietly(() => {
+			stream.scrollTop +=
+				entry.el.getBoundingClientRect().top -
+				stream.getBoundingClientRect().top;
+		});
 	}
 
 	private scheduleSave(): void {

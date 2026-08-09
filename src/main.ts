@@ -1667,13 +1667,21 @@ export default class SnowflakeMethodPlugin
 		projectPath: string,
 		anchorPath: string | null = null,
 	): Promise<void> {
-		// Every way in lands in the same place. A caller that names a note means
-		// that note; one that does not means wherever the author was writing, so
-		// the fallback lives here rather than in each of the five callers.
-		const anchor = anchorPath ?? this.rememberedManuscriptNote(projectPath);
 		const open = this.app.workspace
 			.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
 			.find((leaf) => leaf.getViewState().state?.projectPath === projectPath);
+		// A caller that names a note means that note. One that does not — the
+		// ribbon, or a right-click on something in the project that is not part of
+		// the manuscript — means the manuscript, and nowhere in particular.
+		//
+		// A stream being opened has to start somewhere, and where the author was
+		// last writing is the best guess available. A stream already on screen is
+		// already somewhere, and that somewhere is where the author left it: the
+		// guess is then not an answer to anything, and acting on it carries them
+		// off to a chapter they did not ask for.
+		const anchor =
+			anchorPath ??
+			(open === undefined ? this.rememberedManuscriptNote(projectPath) : null);
 		const leaf = open ?? this.manuscriptLeaf();
 		if (open === undefined) {
 			await leaf.setViewState({

@@ -3915,9 +3915,11 @@
 	height: 100%;
 	overflow-y: auto;
 	overflow-x: hidden;
-	/* Room below the last line to scroll it up to a comfortable place to write,
-	   without leaving so much that the end of the manuscript looks like a fault. */
-	padding: var(--size-4-8) 0 25vh;
+	/* Room below the last note so it can be scrolled up to be read, measured by
+	   the view against the note that is actually last and set here. Zero until
+	   the window reaches the end of the manuscript, because until then there is
+	   always more book below. */
+	padding: var(--size-4-8) 0 var(--snowflake-method-manuscript-tail, 25vh);
 	scrollbar-gutter: stable;
 }
 
