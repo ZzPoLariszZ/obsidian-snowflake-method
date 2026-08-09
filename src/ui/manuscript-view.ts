@@ -443,11 +443,32 @@ export class SnowflakeManuscriptView extends ItemView {
 
 		await this.quietly(async () => {
 			const anchor = this.activePath;
+			for (const path of plan.unmount) await this.unmountSegment(path);
+
+			// The note the author asked for goes up on its own first, and is put
+			// where they asked for it before its neighbours are rendered at all.
+			//
+			// Every note here goes through the Markdown renderer, sixteen
+			// milliseconds apiece: a window of twenty-one took four hundred, and
+			// for all of it the page sat on the chapter being left behind and then
+			// jumped. Shown first, it can be read while the rest arrive around it,
+			// and the hold below keeps it still while they do — so the wait is one
+			// note however many are loaded. Only when the note is newly mounted,
+			// which is a jump; sliding the window along leaves this alone.
+			const arriving =
+				anchor !== null && plan.mount.includes(anchor) ? anchor : null;
+			if (arriving !== null) {
+				await this.mountSegment(arriving);
+				this.reorder(plan.visible.filter((path) => this.mounted.has(path)));
+				this.scrollToActive();
+			}
+
 			const beforeTop = this.offsetOf(anchor);
 			const beforeScroll = stream.scrollTop;
-
-			for (const path of plan.unmount) await this.unmountSegment(path);
-			for (const path of plan.mount) await this.mountSegment(path);
+			for (const path of plan.mount) {
+				if (path === arriving) continue;
+				await this.mountSegment(path);
+			}
 			this.reorder(plan.visible);
 			this.renderEnds(plan.atStart, plan.atEnd);
 			this.settleTail(plan.atEnd);
