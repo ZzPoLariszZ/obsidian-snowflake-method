@@ -32,6 +32,14 @@ const SAVE_DELAY_MS = 800;
 /** How long a freshly built editor is given to settle on its own height. */
 const SETTLING_FRAMES = 6;
 
+/** One press deeper each time, and off again past the deepest. */
+export const NEXT_FOCUS_LEVEL = {
+	off: 'on',
+	on: 'deep',
+	deep: 'solo',
+	solo: 'off',
+} as const;
+
 interface ManuscriptViewStateSnapshot {
 	projectPath: string | null;
 	/** The segment the stream was opened from, and the one Back returns to. */
@@ -183,6 +191,15 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.model = await this.host.loadManuscript(this.projectPath);
 			this.shape = shapeOf(this.model);
 			this.headerShape = headerShapeOf(settings);
+			// The modes are classes and nothing else, so flipping one moves nothing.
+			this.contentEl.toggleClass(
+				'snowflake-method-typewriter',
+				settings.typewriter,
+			);
+			this.contentEl.toggleClass(
+				'snowflake-method-focus',
+				settings.focusLevel !== 'off',
+			);
 
 			const project = this.model?.projectPath ?? null;
 			if (
@@ -644,6 +661,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		// Not offered on a note that cannot be written in, because pressing it
 		// would do nothing: activateSegment turns a read-only segment away.
 		if (this.model?.readOnly !== true && !segment.readOnly) {
+			// Writing modes first, then the way in and out of writing: the pair
+			// reads left to right as how to write, then whether to.
+			this.renderModeToggle(actions, 'typewriter');
+			this.renderModeToggle(actions, 'focus');
 			const write = actions.createEl('button', {
 				// `view-action` alongside `clickable-icon` for the size Obsidian gives
 				// the same button in a note's own header: 28 by 24, on a 16px icon.
@@ -673,6 +694,50 @@ export class SnowflakeManuscriptView extends ItemView {
 			});
 		});
 		return header;
+	}
+
+	/**
+	 * One writing-mode button. The modes are the author's rather than any
+	 * note's, so pressing this one turns every stream at once — and every
+	 * header carries the same pair, because the header is pinned to the top of
+	 * the page, which is what keeps them in reach however deep the book. The
+	 * typewriter button is a switch; the focus button walks the levels, one
+	 * press deeper each time and off again past the deepest.
+	 */
+	private renderModeToggle(
+		actions: HTMLElement,
+		mode: 'typewriter' | 'focus',
+	): void {
+		const settings = this.host.manuscriptWindowSettings();
+		const toggle = actions.createEl('button', {
+			cls: 'clickable-icon view-action snowflake-method-mode-toggle',
+			attr: { type: 'button' },
+		});
+		if (mode === 'typewriter') {
+			const on = settings.typewriter;
+			toggle.toggleClass('is-active', on);
+			const state = this.t(
+				on ? 'manuscript.typewriterOn' : 'manuscript.typewriterOff',
+			);
+			const then = this.t(
+				on ? 'manuscript.modeTurnOff' : 'manuscript.modeTurnOn',
+			);
+			setTooltip(toggle, `${state}\n${then}`);
+			setIcon(toggle, 'align-vertical-space-around');
+		} else {
+			const level = settings.focusLevel;
+			toggle.toggleClass('is-active', level !== 'off');
+			const state = this.t(`manuscript.focusLevel.${level}`);
+			const then = this.t(`manuscript.focusNext.${NEXT_FOCUS_LEVEL[level]}`);
+			setTooltip(toggle, `${state}\n${then}`);
+			setIcon(toggle, 'focus');
+		}
+		toggle.addEventListener('click', (event) => {
+			event.stopPropagation();
+			void this.host.toggleManuscriptMode(mode).catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
 	}
 
 	/**
@@ -785,10 +850,19 @@ export class SnowflakeManuscriptView extends ItemView {
 						this.showError(error);
 					});
 				},
+				onCaretMove: (moved) => {
+					if (!this.host.manuscriptWindowSettings().typewriter) return;
+					const target = this.mounted.get(moved);
+					if (target !== undefined) this.recentreCaret(target);
+				},
 			},
 		);
 		this.editingPath = path;
 		this.refreshWriteToggles();
+		// Focus fades only while something is being written, and only around the
+		// note it is written in. Classes, so that starting to write moves nothing.
+		this.streamEl?.addClass('is-writing');
+		entry.el.addClass('is-writing');
 		this.remember(path);
 		restore();
 		// The words the author clicked go back under the pointer, and the caret
@@ -847,12 +921,50 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 	}
 
+	/**
+	 * Holds the line being written at the middle of the page.
+	 *
+	 * The line stays and the page moves: each time the author moves the caret,
+	 * the stream is scrolled by however far that line has drifted from the
+	 * anchor. Near the very top of the book the page cannot scroll above its
+	 * first line and the caret rides high; near the end, the room below the last
+	 * note is grown so there is always page left to bring up — the same spacer
+	 * `settleTail` keeps, which refuses to shrink under anyone standing in it.
+	 */
+	private recentreCaret(entry: MountedSegment): void {
+		const stream = this.streamEl;
+		const top = entry.editor?.caretTop() ?? null;
+		if (stream === null || top === null) return;
+		const anchor =
+			stream.getBoundingClientRect().top + stream.clientHeight / 2;
+		const delta = top - anchor;
+		if (Math.abs(delta) < 1) return;
+		const wanted = stream.scrollTop + delta;
+		const short = Math.ceil(
+			wanted - (stream.scrollHeight - stream.clientHeight),
+		);
+		if (short > 0) {
+			this.tail += short;
+			stream.style.setProperty(
+				'--snowflake-method-manuscript-tail',
+				`${String(this.tail)}px`,
+			);
+		}
+		// The view's own movement: answering it as the reader's would set the
+		// window sliding under the author's hands.
+		void this.quietly(() => {
+			stream.scrollTop = wanted;
+		});
+	}
+
 	private async deactivateSegment(): Promise<void> {
 		const path = this.editingPath;
 		if (path === null) return;
 		await this.flushPendingSave();
 		this.editingPath = null;
 		this.refreshWriteToggles();
+		this.streamEl?.removeClass('is-writing');
+		this.mounted.get(path)?.el.removeClass('is-writing');
 		// The note going back to prose may be anywhere, including above the reader,
 		// so its place is held across the swap — and held from before the editor
 		// goes, not after. Taking an editor down empties the note to a header and
@@ -1094,6 +1206,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (this.editingPath === path) {
 			await this.flushPendingSave();
 			this.editingPath = null;
+			this.streamEl?.removeClass('is-writing');
 		}
 		await this.backend.unmount(path);
 		this.mounted.delete(path);
@@ -1458,5 +1571,14 @@ function shapeOf(model: ManuscriptModel | null): string {
  * not to rebuild the page and send the reader back to where they started.
  */
 function headerShapeOf(settings: ManuscriptWindowSettings): string {
-	return `${String(settings.showPath)} ${String(settings.showSequence)}`;
+	return [
+		settings.showPath,
+		settings.showSequence,
+		// The mode buttons live in the headers and show which modes are on, so a
+		// flip has to reach them the same way: redrawn where they stand.
+		settings.typewriter,
+		settings.focusLevel,
+	]
+		.map(String)
+		.join(' ');
 }

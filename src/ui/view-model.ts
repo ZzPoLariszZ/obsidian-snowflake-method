@@ -167,6 +167,10 @@ export interface ManuscriptWindowSettings {
 	after: number;
 	showPath: boolean;
 	showSequence: boolean;
+	/** The line being written held at the middle of the page. */
+	typewriter: boolean;
+	/** How far the fading reaches; 'off' fades nothing. */
+	focusLevel: 'off' | 'on' | 'deep' | 'solo';
 }
 
 /**
@@ -221,6 +225,12 @@ export interface ManuscriptHost {
 	rememberManuscriptNote(projectId: string, path: string): void;
 	/** Joins a note with the one after it, the earlier one surviving. */
 	mergeManuscriptSegments(projectPath: string, path: string): Promise<void>;
+	/**
+	 * Turns one writing mode for every stream at once: typewriter on and off,
+	 * focus around its levels. The buttons live in each segment's header, but
+	 * the mode is the author's, not the note's.
+	 */
+	toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void>;
 }
 
 export interface DashboardHost {

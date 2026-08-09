@@ -124,6 +124,44 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
+	it('keeps the writing modes off until asked, and holds them once asked', () => {
+		expect(DEFAULT_SETTINGS.manuscriptTypewriter).toBe(false);
+		expect(DEFAULT_SETTINGS.manuscriptFocusLevel).toBe('off');
+		expect(
+			sanitizeSettings({ manuscriptTypewriter: true }).manuscriptTypewriter,
+		).toBe(true);
+		for (const level of ['off', 'on', 'deep', 'solo'] as const) {
+			expect(
+				sanitizeSettings({ manuscriptFocusLevel: level }).manuscriptFocusLevel,
+			).toBe(level);
+		}
+		// Junk stays junk: anything unrecognised is the default.
+		expect(
+			sanitizeSettings({ manuscriptTypewriter: 'yes' }).manuscriptTypewriter,
+		).toBe(false);
+		expect(
+			sanitizeSettings({ manuscriptFocusLevel: 'zen' }).manuscriptFocusLevel,
+		).toBe('off');
+	});
+
+	it('reads the level a file written by the three focus switches added up to', () => {
+		expect(
+			sanitizeSettings({ manuscriptFocus: true }).manuscriptFocusLevel,
+		).toBe('on');
+		expect(
+			sanitizeSettings({
+				manuscriptFocus: true,
+				manuscriptFocusFadesDashboard: true,
+			}).manuscriptFocusLevel,
+		).toBe('deep');
+		expect(
+			sanitizeSettings({ manuscriptSolo: true }).manuscriptFocusLevel,
+		).toBe('solo');
+		expect(
+			sanitizeSettings({ manuscriptFocus: false }).manuscriptFocusLevel,
+		).toBe('off');
+	});
+
 	it('preserves an explicit boundary protection preference', () => {
 		expect(
 			sanitizeSettings({

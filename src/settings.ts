@@ -28,6 +28,14 @@ export type { UiLocalePreference } from './i18n';
 export type ProjectLocale = 'en' | 'zh-CN';
 export type DefaultProjectLocale = 'system' | ProjectLocale;
 
+/**
+ * How far focus reaches, each level containing the one before it: `on` fades
+ * all but the paragraph being written, `deep` fades the plugin's own
+ * dashboards with everything else, and `solo` hides the rest of the app
+ * outright while a stream is in front.
+ */
+export type ManuscriptFocusLevel = 'off' | 'on' | 'deep' | 'solo';
+
 export interface SnowflakeSettings {
 	settingsSchemaVersion: 6;
 	projectRoot: string;
@@ -40,6 +48,9 @@ export interface SnowflakeSettings {
 	manuscriptWindow: number;
 	showManuscriptPath: boolean;
 	showManuscriptSequence: boolean;
+	/** The line being written held at the middle of the page. */
+	manuscriptTypewriter: boolean;
+	manuscriptFocusLevel: ManuscriptFocusLevel;
 	recentProjectPath: string | null;
 	recentStep: number;
 	certificateCelebrations: Record<string, true>;
@@ -58,6 +69,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
+	manuscriptTypewriter: false,
+	manuscriptFocusLevel: 'off',
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
@@ -75,6 +88,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptWindow',
 	'showManuscriptPath',
 	'showManuscriptSequence',
+	'manuscriptTypewriter',
+	'manuscriptFocusLevel',
 	'recentProjectPath',
 	'recentStep',
 	'certificateCelebrations',
@@ -162,6 +177,11 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.showManuscriptSequence === 'boolean'
 				? raw.showManuscriptSequence
 				: DEFAULT_SETTINGS.showManuscriptSequence,
+		manuscriptTypewriter:
+			typeof raw.manuscriptTypewriter === 'boolean'
+				? raw.manuscriptTypewriter
+				: DEFAULT_SETTINGS.manuscriptTypewriter,
+		manuscriptFocusLevel: readFocusLevel(raw),
 		recentProjectPath:
 			typeof raw.recentProjectPath === 'string'
 				? normalizePath(raw.recentProjectPath)
@@ -174,6 +194,29 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function isManuscriptFocusLevel(
+	value: unknown,
+): value is ManuscriptFocusLevel {
+	return (
+		value === 'off' || value === 'on' || value === 'deep' || value === 'solo'
+	);
+}
+
+/**
+ * The stored focus level — or, from a file written while focus was three
+ * switches, the level those switches added up to.
+ */
+function readFocusLevel(raw: Record<string, unknown>): ManuscriptFocusLevel {
+	if (isManuscriptFocusLevel(raw.manuscriptFocusLevel)) {
+		return raw.manuscriptFocusLevel;
+	}
+	if (raw.manuscriptSolo === true) return 'solo';
+	if (raw.manuscriptFocus === true) {
+		return raw.manuscriptFocusFadesDashboard === true ? 'deep' : 'on';
+	}
+	return DEFAULT_SETTINGS.manuscriptFocusLevel;
 }
 
 function isUiLocale(value: unknown): value is UiLocalePreference {
@@ -206,6 +249,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			key,
 		);
 	}
+
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
@@ -311,9 +355,82 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
 						},
 					},
+					{
+						name: this.t('settings.manuscriptTypewriter.name'),
+						desc: this.t('settings.manuscriptTypewriter.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptTypewriter',
+							defaultValue: DEFAULT_SETTINGS.manuscriptTypewriter,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptFocus.name'),
+						desc: '',
+						// Rendered rather than declared: the row's own name carries the
+						// level in force and its description explains it, both rewritten
+						// as the slider moves — and, being built at display time, both
+						// read right however the level was changed while this page was
+						// closed.
+						render: (setting) => this.renderFocusMode(setting),
+					},
 				],
 			},
 		];
+	}
+
+	/**
+	 * The focus row: a four-stop slider from everything bright to nothing but
+	 * the manuscript, in the manner of a graded effort control. The row's name
+	 * names the level in force and the description explains it, both rewritten
+	 * in place as the slider moves — never a rebuild, so a drag is not
+	 * interrupted by the page changing under it.
+	 */
+	private renderFocusMode(setting: Setting): void {
+		setting.settingEl.addClass('snowflake-method-focus-row');
+		const levels: readonly ManuscriptFocusLevel[] = [
+			'off',
+			'on',
+			'deep',
+			'solo',
+		];
+		const labelKeys: Record<ManuscriptFocusLevel, string> = {
+			off: 'settings.manuscriptFocus.levelOff',
+			on: 'settings.manuscriptFocus.levelOn',
+			deep: 'settings.manuscriptFocus.levelDeep',
+			solo: 'settings.manuscriptFocus.levelSolo',
+		};
+		setting.setName(this.t('settings.manuscriptFocus.name'));
+		// Where an ordinary slider shows its number, this one names the level —
+		// a number would only be the same fact in a language nobody chose.
+		const value = setting.controlEl.createSpan({
+			cls: 'snowflake-method-focus-value',
+		});
+		const dress = (): void => {
+			const level = this.owner.settings.manuscriptFocusLevel;
+			value.setText(this.t(labelKeys[level]));
+			setting.setDesc(this.t(`settings.manuscriptFocus.${level}`));
+		};
+		dress();
+		setting.addSlider((slider) =>
+			slider
+				.setLimits(0, levels.length - 1, 1)
+				.setValue(
+					Math.max(
+						0,
+						levels.indexOf(this.owner.settings.manuscriptFocusLevel),
+					),
+				)
+				// Answered while the handle moves, not when it is let go: the name
+				// and the sentence under the title are how the stops are told apart,
+				// so they have to keep up with the drag.
+				.setInstant(true)
+				.onChange((picked) => {
+					const level = levels[picked] ?? 'off';
+					if (level === this.owner.settings.manuscriptFocusLevel) return;
+					void this.setControlValue('manuscriptFocusLevel', level).then(dress);
+				}),
+		);
 	}
 
 	/**
@@ -427,6 +544,16 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.showManuscriptSequence = value;
 				}
 				break;
+			case 'manuscriptTypewriter':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptTypewriter = value;
+				}
+				break;
+			case 'manuscriptFocusLevel':
+				if (isManuscriptFocusLevel(value)) {
+					this.owner.settings.manuscriptFocusLevel = value;
+				}
+				break;
 			default:
 				// A key with no case above is saved and announced but never stored,
 				// so the control moves and nothing happens. Every key in
@@ -435,9 +562,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		}
 
 		await this.owner.saveSettings();
+		// handleSettingsChanged rebuilds this page for the keys whose rows
+		// describe the value in force; uiLocale is rebuilt here because every
+		// label on the page is resolved through it.
 		await this.owner.handleSettingsChanged(key);
-		// Every label on this page is resolved through uiLocale, so the
-		// definitions have to be rebuilt when it changes.
 		if (key === 'uiLocale') this.update();
 	}
 }

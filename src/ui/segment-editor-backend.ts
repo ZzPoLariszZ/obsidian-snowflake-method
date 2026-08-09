@@ -13,8 +13,16 @@ import {
 	EditorState,
 	type Extension,
 } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
+import {
+	Decoration,
+	EditorView,
+	ViewPlugin,
+	keymap,
+	type DecorationSet,
+	type ViewUpdate,
+} from '@codemirror/view';
 
+import { paragraphAround } from './caret-paragraph';
 import { findPassage } from './prose-projection';
 
 /**
@@ -51,6 +59,13 @@ export interface SegmentEditorTarget {
 export interface SegmentEditorHooks {
 	onChange(path: string, body: string): void;
 	onBlur(path: string): void;
+	/**
+	 * The author moved the caret: typed, pressed Enter, walked with the arrows.
+	 * Not fired for the machinery's own dispatches, and not for a pointer
+	 * click — that is the one move the view already answers, by putting the
+	 * clicked words back under the pointer.
+	 */
+	onCaretMove?(path: string): void;
 }
 
 /** Marks a change the editor was handed rather than one the author typed. */
@@ -83,6 +98,47 @@ const MARKDOWN = new Language(
 	'markdown',
 );
 
+const CARET_PARAGRAPH = Decoration.line({
+	class: 'snowflake-method-caret-paragraph',
+});
+
+function lightParagraph(state: EditorState): DecorationSet {
+	const doc = state.doc;
+	const bounds = paragraphAround(
+		{ lines: doc.lines, lineText: (line) => doc.line(line).text },
+		doc.lineAt(state.selection.main.head).number,
+	);
+	if (bounds === null) return Decoration.none;
+	const lines = [];
+	for (let line = bounds.first; line <= bounds.last; line += 1) {
+		lines.push(CARET_PARAGRAPH.range(doc.line(line).from));
+	}
+	return Decoration.set(lines);
+}
+
+/**
+ * Marks the lines of the paragraph the caret is in, always. The styling that
+ * fades everything else is applied by the view, in focus mode only, so keeping
+ * the mark current is the whole of this plugin's job — a toggle is a class
+ * flip, never an editor reconfiguration.
+ */
+const caretParagraph = ViewPlugin.fromClass(
+	class {
+		decorations: DecorationSet;
+
+		constructor(view: EditorView) {
+			this.decorations = lightParagraph(view.state);
+		}
+
+		update(update: ViewUpdate): void {
+			if (update.docChanged || update.selectionSet) {
+				this.decorations = lightParagraph(update.state);
+			}
+		}
+	},
+	{ decorations: (plugin) => plugin.decorations },
+);
+
 export interface SegmentEditorHandle {
 	readonly path: string;
 	/** The text as it stands in the editor, which may be ahead of the file. */
@@ -96,6 +152,11 @@ export interface SegmentEditorHandle {
 	write(body: string): void;
 	/** Caret position within the body, for splitting the segment at it. */
 	cursor(): number;
+	/**
+	 * Where the caret line sits on the screen, or null while the editor has not
+	 * measured itself. The view scrolls by this to hold the line steady.
+	 */
+	caretTop(): number | null;
 	/**
 	 * Puts the caret in a passage of text, and says how far up or down the page
 	 * that passage sits from where the caller wanted it.
@@ -184,6 +245,8 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 			},
 			cursor: () => view.state.selection.main.head,
+			caretTop: () =>
+				view.coordsAtPos(view.state.selection.main.head)?.top ?? null,
 			seek: (
 				passage: string,
 				lead: number,
@@ -207,9 +270,14 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				if (position === null) return null;
 				// Asked twice, because the first answer comes from an editor that has
 				// not measured itself yet. The second time the caret is already there
-				// and only the measurement is wanted.
+				// and only the measurement is wanted. Annotated as the machinery's
+				// own move: seeking is the view placing the caret, not the author
+				// moving it, and typewriter scrolling must not answer it.
 				if (view.state.selection.main.head !== position) {
-					view.dispatch({ selection: EditorSelection.cursor(position) });
+					view.dispatch({
+						selection: EditorSelection.cursor(position),
+						annotations: FROM_ELSEWHERE.of(true),
+					});
 				}
 				if (found === null) return null;
 				const coords = view.coordsAtPos(position);
@@ -234,6 +302,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			MARKDOWN,
 			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 			EditorView.lineWrapping,
+			caretParagraph,
 			EditorView.updateListener.of((update) => {
 				const handed = update.transactions.some(
 					(transaction) => transaction.annotation(FROM_ELSEWHERE) === true,
@@ -243,6 +312,14 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				}
 				if (update.focusChanged && !update.view.hasFocus) {
 					hooks.onBlur(target.path);
+				}
+				// A pointer selection is the click the view already answers with
+				// `putBack`; everything else that moved the caret is the author.
+				const pointed = update.transactions.some((transaction) =>
+					transaction.isUserEvent('select.pointer'),
+				);
+				if ((update.docChanged || update.selectionSet) && !handed && !pointed) {
+					hooks.onCaretMove?.(target.path);
 				}
 			}),
 		];

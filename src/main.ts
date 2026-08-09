@@ -89,6 +89,7 @@ import {
 } from './ui/dashboard-view';
 import {
 	MANUSCRIPT_VIEW_TYPE,
+	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
 import {
@@ -185,6 +186,10 @@ export default class SnowflakeMethodPlugin
 	projects!: SnowflakeProjectService;
 	private refreshTimer: number | null = null;
 	private refreshProjectLocales = false;
+	/** Which sidebars solo folded away, so leaving it unfolds only those. */
+	private soloCollapsed: { left: boolean; right: boolean } | null = null;
+	/** Whether solo took the window full screen, so leaving it lets go. */
+	private soloFullscreen = false;
 	private readonly motionDocuments = new Set<Document>();
 	private readonly scrollbarDocuments = new Set<Document>();
 	private resolveProjectScanReady: () => void = () => undefined;
@@ -331,11 +336,22 @@ export default class SnowflakeMethodPlugin
 			this.registerVaultListeners();
 			this.registerEvent(
 				this.app.workspace.on('active-leaf-change', (leaf) => {
+					this.applyManuscriptModePresence();
 					void this.activateDashboardLeaf(leaf).catch((error: unknown) => {
 						this.showError(error);
 					});
 				}),
 			);
+			// A session that begins already in solo cannot know how the sidebars
+			// stood before it: the folding happened in a session that is gone.
+			// Treating them as having been open means leaving solo always brings
+			// them back — which is the answer an author who has lost the sidebars
+			// actually wants — instead of restoring the folded state solo itself
+			// had left behind.
+			if (this.settings.manuscriptFocusLevel === 'solo') {
+				this.soloCollapsed = { left: false, right: false };
+			}
+			this.applyManuscriptModePresence();
 			void this.refreshVisibleDashboardsAfterLayout().catch(
 				(error: unknown) => {
 					this.showError(error);
@@ -353,6 +369,23 @@ export default class SnowflakeMethodPlugin
 		if (this.refreshTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.refreshTimer);
 			this.refreshTimer = null;
+		}
+		// The app is handed back as it stands: nothing faded, nothing folded.
+		const body = this.app.workspace.containerEl.doc.body;
+		body.classList.remove(
+			'snowflake-method-focus-app',
+			'snowflake-method-focus-dashboard',
+			'snowflake-method-solo',
+		);
+		if (this.soloCollapsed !== null) {
+			if (!this.soloCollapsed.left) this.app.workspace.leftSplit.expand();
+			if (!this.soloCollapsed.right) this.app.workspace.rightSplit.expand();
+			this.soloCollapsed = null;
+		}
+		if (this.soloFullscreen) {
+			this.soloFullscreen = false;
+			const doc = this.app.workspace.containerEl.doc;
+			if (doc.fullscreenElement !== null) void doc.exitFullscreen();
 		}
 	}
 
@@ -1422,6 +1455,7 @@ export default class SnowflakeMethodPlugin
 
 	async handleSettingsChanged(key: string): Promise<void> {
 		if (key === 'reduceMotion') this.applyMotionPreference();
+		if (key === 'manuscriptFocusLevel') this.applyManuscriptModePresence();
 		if (key === 'projectRoot') {
 			this.projectHealth.clear();
 			const recent = this.settings.recentProjectPath;
@@ -1447,6 +1481,60 @@ export default class SnowflakeMethodPlugin
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			this.applyMotionPreferenceToDocument(leaf.view.containerEl.doc);
 		});
+	}
+
+	/**
+	 * Stamps the app with the focus levels that reach past the stream — fading
+	 * the rest of the workspace, and solo — and only while a stream is the view
+	 * in front of the author. Going anywhere else lifts all of it at once: the
+	 * settings keep the author's choice, but the app is never left faded or
+	 * folded away behind a note that has nothing to do with the manuscript.
+	 */
+	private applyManuscriptModePresence(): void {
+		const body = this.app.workspace.containerEl.doc.body;
+		const level = this.settings.manuscriptFocusLevel;
+		const inFront = this.activeManuscriptView() !== null;
+		body.classList.toggle(
+			'snowflake-method-focus-app',
+			inFront && level !== 'off',
+		);
+		body.classList.toggle(
+			'snowflake-method-focus-dashboard',
+			inFront && (level === 'deep' || level === 'solo'),
+		);
+		const solo = inFront && level === 'solo';
+		body.classList.toggle('snowflake-method-solo', solo);
+		// Full screen follows the level rather than the leaf: the fading lifts
+		// and returns as the author glances at other tabs, but macOS animates
+		// its way into and out of full screen, and a second of animation per
+		// glance would be the mode punishing the glancing. Entered once when
+		// solo is chosen, left once when it is put away.
+		const doc = this.app.workspace.containerEl.doc;
+		if (level === 'solo' && !this.soloFullscreen) {
+			if (doc.fullscreenElement === null) {
+				this.soloFullscreen = true;
+				doc.documentElement.requestFullscreen().catch(() => {
+					this.soloFullscreen = false;
+				});
+			}
+		} else if (level !== 'solo' && this.soloFullscreen) {
+			this.soloFullscreen = false;
+			if (doc.fullscreenElement !== null) void doc.exitFullscreen();
+		}
+		if (solo && this.soloCollapsed === null) {
+			this.soloCollapsed = {
+				left: this.app.workspace.leftSplit.collapsed,
+				right: this.app.workspace.rightSplit.collapsed,
+			};
+			this.app.workspace.leftSplit.collapse();
+			this.app.workspace.rightSplit.collapse();
+		} else if (!solo && this.soloCollapsed !== null) {
+			// Only the sidebars solo itself folded: one the author had already put
+			// away stays away.
+			if (!this.soloCollapsed.left) this.app.workspace.leftSplit.expand();
+			if (!this.soloCollapsed.right) this.app.workspace.rightSplit.expand();
+			this.soloCollapsed = null;
+		}
 	}
 
 	private applyMotionPreferenceToDocument(targetDocument: Document): void {
@@ -1843,7 +1931,36 @@ export default class SnowflakeMethodPlugin
 			after: this.settings.manuscriptWindow,
 			showPath: this.settings.showManuscriptPath,
 			showSequence: this.settings.showManuscriptSequence,
+			typewriter: this.settings.manuscriptTypewriter,
+			focusLevel: this.settings.manuscriptFocusLevel,
 		};
+	}
+
+	/**
+	 * Turns one of the manuscript's writing modes, from the palette or from the
+	 * buttons every segment header carries: typewriter on and off, focus one
+	 * level deeper — and off again past the deepest. One mode for the whole app
+	 * rather than one per stream, because the modes are about how the author
+	 * writes, not about which book they are writing in.
+	 */
+	async toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void> {
+		let said: string;
+		if (mode === 'typewriter') {
+			const on = !this.settings.manuscriptTypewriter;
+			this.settings.manuscriptTypewriter = on;
+			said = on
+				? 'commands.manuscriptTypewriterOn'
+				: 'commands.manuscriptTypewriterOff';
+			await this.saveSettings();
+			await this.handleSettingsChanged('manuscriptTypewriter');
+		} else {
+			const next = NEXT_FOCUS_LEVEL[this.settings.manuscriptFocusLevel];
+			this.settings.manuscriptFocusLevel = next;
+			said = `commands.manuscriptFocus.${next}`;
+			await this.saveSettings();
+			await this.handleSettingsChanged('manuscriptFocusLevel');
+		}
+		new Notice(this.globalT(said));
 	}
 
 	async loadManuscript(
@@ -2281,6 +2398,26 @@ export default class SnowflakeMethodPlugin
 					},
 				);
 			},
+		});
+		// The writing modes, offered where they act: while a stream is in front.
+		// Each is also a button in every segment header; the commands are what a
+		// key can be bound to. Focus is one command that walks the levels, the
+		// same walk as its button.
+		this.addCommand({
+			id: 'toggle-typewriter-scrolling',
+			name: this.globalT('commands.toggleManuscriptTypewriter'),
+			checkCallback: inStream(
+				() => this.toggleManuscriptMode('typewriter'),
+				() => true,
+			),
+		});
+		this.addCommand({
+			id: 'cycle-focus',
+			name: this.globalT('commands.cycleManuscriptFocus'),
+			checkCallback: inStream(
+				() => this.toggleManuscriptMode('focus'),
+				() => true,
+			),
 		});
 		this.addCommand({
 			id: 'close-manuscript-stream',

@@ -3992,18 +3992,23 @@
 }
 
 /* Out of the way until the reader is in this segment, so a column of buttons
-   does not run down the side of the manuscript. One rule for both of them,
-   whichever way round the reading toggle happens to be. */
+   does not run down the side of the manuscript. One rule for all of them,
+   whichever way round the reading toggle happens to be. A mode button whose
+   mode is on stays visible: it is the one telling the author something. */
 .snowflake-method-segment-write,
-.snowflake-method-segment-open {
+.snowflake-method-segment-open,
+.snowflake-method-mode-toggle {
 	opacity: 0;
 	transition: opacity 120ms ease-in-out;
 }
 
 .snowflake-method-segment:hover .snowflake-method-segment-write,
 .snowflake-method-segment:hover .snowflake-method-segment-open,
+.snowflake-method-segment:hover .snowflake-method-mode-toggle,
 .snowflake-method-segment-write:focus-visible,
-.snowflake-method-segment-open:focus-visible {
+.snowflake-method-segment-open:focus-visible,
+.snowflake-method-mode-toggle:focus-visible,
+.snowflake-method-mode-toggle.is-active {
 	opacity: 1;
 }
 
@@ -4194,4 +4199,216 @@
 
 .snowflake-method-reduce-motion .snowflake-method-step-ten-resume-note {
 	transition: none;
+}
+
+/* -------------------------------------------------------------------------
+   The writing modes: typewriter scrolling is scrolling and needs no ink;
+   focus and solo are below. Focus is opacity from top to bottom — never
+   layout — so entering and leaving it moves nothing at all. Solo is the one
+   mode whose point is to change the layout, and it says so by existing. */
+
+/* The mode buttons, lit while their mode is on. */
+.snowflake-method-mode-toggle.is-active {
+	color: var(--interactive-accent);
+	opacity: 1;
+}
+
+/* Inside the stream, while something is being written: the note in hand keeps
+   only the paragraph under the caret at full strength. */
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	.cm-line {
+	opacity: 0.35;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	.cm-line.snowflake-method-caret-paragraph {
+	opacity: 1;
+}
+
+/* The neighbouring notes step further back, whole. */
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment:not(.is-writing),
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-manuscript-end {
+	opacity: 0.3;
+	transition: opacity 200ms ease-in-out;
+}
+
+/* The note in hand's own chrome all but disappears, and returns under the
+   pointer. Not the neighbours' chrome: they are already faded whole, and
+   fading their headers again would compound. */
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-header,
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-boundary {
+	opacity: 0.15;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-header:hover,
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-header:focus-within,
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-boundary:hover,
+.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-boundary:focus-within {
+	opacity: 1;
+}
+
+/* Focus reaches past the stream: the rest of the app steps back with it, and
+   any of it returns under the pointer. The plugin's own dashboards stay
+   bright unless the author asks for them faded too. */
+body.snowflake-method-focus-app .workspace-ribbon,
+body.snowflake-method-focus-app .workspace-tab-header-container,
+body.snowflake-method-focus-app .status-bar,
+body.snowflake-method-focus-app .workspace-split.mod-left-split,
+body.snowflake-method-focus-app .workspace-split.mod-right-split,
+body.snowflake-method-focus-app
+	.workspace-split.mod-root
+	.workspace-leaf:not(:has(.snowflake-method-manuscript-view)):not(
+		:has(.snowflake-method-dashboard)
+	) {
+	opacity: 0.25;
+	transition: opacity 200ms ease-in-out;
+}
+
+body.snowflake-method-focus-app.snowflake-method-focus-dashboard
+	.workspace-split.mod-root
+	.workspace-leaf:has(.snowflake-method-dashboard):not(
+		:has(.snowflake-method-manuscript-view)
+	) {
+	opacity: 0.25;
+	transition: opacity 200ms ease-in-out;
+}
+
+/* Each restore outweighs its own dim: a hover rule that carries less
+   specificity than the fade it undoes restores nothing at all. */
+body.snowflake-method-focus-app .workspace-ribbon:hover,
+body.snowflake-method-focus-app .workspace-tab-header-container:hover,
+body.snowflake-method-focus-app .status-bar:hover,
+body.snowflake-method-focus-app .workspace-split.mod-left-split:hover,
+body.snowflake-method-focus-app .workspace-split.mod-right-split:hover,
+body.snowflake-method-focus-app
+	.workspace-split.mod-root
+	.workspace-leaf:not(:has(.snowflake-method-manuscript-view)):not(
+		:has(.snowflake-method-dashboard)
+	):hover,
+body.snowflake-method-focus-app.snowflake-method-focus-dashboard
+	.workspace-split.mod-root
+	.workspace-leaf:has(.snowflake-method-dashboard):not(
+		:has(.snowflake-method-manuscript-view)
+	):hover {
+	opacity: 1;
+}
+
+/* Solo: nothing but the manuscript. The sidebars are folded by the plugin so
+   they can be unfolded exactly as they were; the rest is simply not drawn —
+   including every pane in the main area that is not showing a stream, so the
+   one that is takes the whole window. */
+body.snowflake-method-solo .workspace-ribbon,
+body.snowflake-method-solo .workspace-tab-header-container,
+body.snowflake-method-solo .status-bar,
+body.snowflake-method-solo
+	.workspace-split.mod-root
+	.workspace-tabs:not(:has(.snowflake-method-manuscript-view)),
+body.snowflake-method-solo
+	.workspace-split.mod-root
+	.workspace-split:not(:has(.snowflake-method-manuscript-view)) {
+	display: none;
+}
+
+/* In solo even the notes' own bookkeeping goes: where a note lives and where
+   it stands are for working on the book, not for being alone with it. The
+   header holds its height, so nothing below it moves. */
+body.snowflake-method-solo .snowflake-method-segment-path,
+body.snowflake-method-solo .snowflake-method-segment-sequence {
+	display: none;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-segment.is-writing .cm-line,
+.snowflake-method-reduce-motion .snowflake-method-segment,
+.snowflake-method-reduce-motion .snowflake-method-segment-header,
+.snowflake-method-reduce-motion .snowflake-method-segment-boundary,
+.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-ribbon,
+.snowflake-method-reduce-motion.snowflake-method-focus-app
+	.workspace-tab-header-container,
+.snowflake-method-reduce-motion.snowflake-method-focus-app .status-bar,
+.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-split,
+.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-leaf {
+	transition: none;
+}
+
+/* The level named where an ordinary slider shows its number. Held to a width
+   so the slider does not shuffle sideways as one name gives way to another
+   mid-drag. */
+.snowflake-method-focus-value {
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	min-width: 3.5em;
+	text-align: right;
+}
+
+/* The slider's own number, which the name beside it replaces. */
+.snowflake-method-focus-row .slider-value {
+	display: none;
+}
+
+/* The two stops between the ends, drawn on the track, so the slider reads as
+   the four choices it is rather than a continuous amount.
+
+   The bar is repainted over the handle's travel alone — the track minus the
+   handle's width, which is where its centre can actually go — so the bar's own
+   ends are the outer stops and the two dots sit at exact thirds between them.
+   Painted whole, the bar kept a dead margin either side that made the end
+   steps read longer than the middle ones. Every layer is sized to the travel:
+   the dots, the filled stretch — from the ratio the slider writes on itself,
+   ending exactly at the handle's centre — and the grey bar itself, because
+   the native coat is full-length and has to be taken off first. */
+.snowflake-method-focus-row input.slider {
+	width: 150px;
+	background-color: transparent;
+	background-image: radial-gradient(
+			circle at 33.3% 50%,
+			var(--text-faint) 2px,
+			transparent 2.5px
+		),
+		radial-gradient(circle at 66.6% 50%, var(--text-faint) 2px, transparent 2.5px),
+		linear-gradient(
+			to right,
+			var(--slider-track-background-active, var(--interactive-accent))
+				calc(var(--slider-fill-ratio, 0) * 100%),
+			transparent calc(var(--slider-fill-ratio, 0) * 100%)
+		),
+		linear-gradient(
+			to right,
+			var(--slider-track-background, #dadada),
+			var(--slider-track-background, #dadada)
+		);
+	background-size: calc(100% - var(--slider-thumb-width, 30px)) 100%;
+	background-position: calc(var(--slider-thumb-width, 30px) / 2) 0;
+	background-repeat: no-repeat;
+}
+
+.snowflake-method-focus-row input.slider::-webkit-slider-runnable-track {
+	background: transparent;
 }
