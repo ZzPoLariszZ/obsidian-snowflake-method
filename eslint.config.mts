@@ -11,7 +11,9 @@ export default defineConfig(
 		'version-bump.mjs',
 		'versions.json',
 		'main.js',
-		'package.json',
+		// package.json is deliberately not here: Obsidian's own config lints it
+		// for dependencies it would rather a plugin did without, and ignoring the
+		// file turned that check off.
 		'package-lock.json',
 		'tsconfig.json',
 	]),
@@ -22,11 +24,12 @@ export default defineConfig(
 			},
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: [
-						'eslint.config.mts',
-						'vitest.config.mts',
-						'manifest.json',
-					],
+					allowDefaultProject: ['eslint.config.mts', 'vitest.config.mts'],
+					// These two run in Node and are the only files here that may say
+					// so. The project's own tsconfig takes `types: []`, which is what
+					// stops a Node declaration quietly lending the plugin a method
+					// the browsers it targets do not have.
+					defaultProject: 'tsconfig.tools.json',
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],
