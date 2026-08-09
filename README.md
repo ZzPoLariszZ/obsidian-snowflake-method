@@ -123,6 +123,16 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 
 </details>
 
+### Manuscript stream
+
+A novel is easier to write in chapters and easier to read as a book. The manuscript stream gives you both at once: every chapter stays its own Markdown note on disk, and the whole draft reads as a single continuous page. If you have used Scrivener, this is its Scrivenings mode, now living in Obsidian.
+
+<p align="center"><img src="assets/screenshots/manuscript-stream-en.gif" width="100%" alt="Reading and writing a whole manuscript as one continuous page" /></p>
+
+In the manuscript stream, click any chapter and it becomes an editing view, and it returns to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the caret, or (iii) merge it into the next one.*
+
+**All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of 3000+ notes holding two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters.
+
 <a id="installation"></a>
 
 ## Installation
@@ -444,6 +454,16 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 </table>
 
 </details>
+
+### 正文流
+
+长篇按章节写更顺手，成篇阅读才像一本书。正文流可以让两者兼得：每一章仍是本地各自独立的 Markdown 笔记，而整部正文读起来像是连续的一页。如果你用过 Scrivener，这就是它的 Scrivenings 模式，如今就在 Obsidian 里。
+
+<p align="center"><img src="assets/screenshots/manuscript-stream-cn.gif" width="100%" alt="把整部正文当作一页连续读写" /></p>
+
+在正文流中，点击任意一章，它就变成编辑视图；当你转到另一章时，它又回到阅读视图。你可以*（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把它并入下一章。*
+
+**书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个 3000 多篇笔记的库，其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上。
 
 ## 安装
 
