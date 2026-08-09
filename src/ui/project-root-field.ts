@@ -107,7 +107,7 @@ export function buildProjectRootField(
 	});
 	const selector = control.createEl('button', {
 		cls: 'clickable-icon snowflake-method-root-field-selector',
-		attr: { type: 'button', 'aria-label': config.label, title: config.label },
+		attr: { type: 'button', 'aria-label': config.label},
 	});
 	setIcon(selector, 'chevrons-up-down');
 

@@ -3,6 +3,7 @@ import {
 	Menu,
 	Notice,
 	setIcon,
+	setTooltip,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -416,8 +417,7 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		leaf.updateHeader?.();
 		const fullTitle = this.getFullDisplayText();
-		leaf.tabHeaderEl?.setAttribute('aria-label', fullTitle);
-		leaf.tabHeaderEl?.setAttribute('title', fullTitle);
+		if (leaf.tabHeaderEl !== undefined) setTooltip(leaf.tabHeaderEl, fullTitle);
 		this.containerEl
 			.querySelector<HTMLElement>('.view-header-title')
 			?.setText(fullTitle);
@@ -461,7 +461,6 @@ export class SnowflakeDashboardView extends ItemView {
 				}${damaged ? ' has-managed-section-issue' : ''}`,
 				attr: {
 					type: 'button',
-					title: stepTitle,
 					'aria-label': stepTitle,
 					...(damaged ? { 'aria-invalid': 'true' } : {}),
 					...(active ? { 'aria-current': 'step' } : {}),
@@ -508,7 +507,6 @@ export class SnowflakeDashboardView extends ItemView {
 				'aria-haspopup': 'menu',
 				'aria-expanded': 'false',
 				'aria-label': projectSwitcherLabel,
-				title: projectSwitcherLabel,
 			},
 		});
 		const switcherIcon = projectControl.createSpan({
@@ -585,8 +583,7 @@ export class SnowflakeDashboardView extends ItemView {
 				: 'messages.healthCheckPassed',
 		);
 		const healthLabel = `${this.t('actions.repair')}: ${healthStatus}`;
-		healthButton.setAttribute('aria-label', healthLabel);
-		healthButton.setAttribute('title', healthLabel);
+		setTooltip(healthButton, healthLabel);
 	}
 
 	private openCreateProjectFromDashboard(): void {
@@ -1001,7 +998,7 @@ export class SnowflakeDashboardView extends ItemView {
 		cell.createSpan({
 			cls: 'snowflake-method-table-missing-reference',
 			text: name,
-			attr: { 'aria-label': label, title: label },
+			attr: { 'aria-label': label},
 		});
 	}
 
@@ -1038,7 +1035,7 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			const certificate = certificateSlot.createDiv({
 				cls: 'snowflake-method-certificate',
-				attr: { role: 'img', 'aria-label': label, title: label },
+				attr: { role: 'img', 'aria-label': label},
 			});
 			setIcon(certificate, 'badge-check');
 		}
@@ -1546,7 +1543,6 @@ export class SnowflakeDashboardView extends ItemView {
 					cls: 'snowflake-method-table-health-warning',
 					attr: {
 						'aria-label': this.t('editor.managedSection.damagedTitle'),
-						title: this.t('editor.managedSection.damagedTitle'),
 					},
 				});
 				setIcon(warning, 'triangle-alert');
@@ -1799,7 +1795,6 @@ export class SnowflakeDashboardView extends ItemView {
 				cls: 'snowflake-method-table-health-warning',
 				attr: {
 					'aria-label': this.t('editor.managedSection.damagedTitle'),
-					title: this.t('editor.managedSection.damagedTitle'),
 				},
 			});
 			setIcon(warning, 'triangle-alert');
@@ -1814,7 +1809,7 @@ export class SnowflakeDashboardView extends ItemView {
 			povCell.createSpan({
 				cls: 'snowflake-method-table-missing-reference',
 				text: '???',
-				attr: { 'aria-label': missingLabel, title: missingLabel },
+				attr: { 'aria-label': missingLabel},
 			});
 		} else {
 			povCell.setText(scene.povName);
@@ -2091,7 +2086,6 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-canvas-link',
 			attr: {
 				'aria-label': this.t('step8.hints.canvasAria'),
-				title: this.t('step8.hints.canvasAria'),
 				type: 'button',
 			},
 		});
@@ -2293,7 +2287,6 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-toolbar-button',
 			attr: {
 				'aria-label': this.t(labelKey),
-				title: this.t(labelKey),
 				type: 'button',
 			},
 		});

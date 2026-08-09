@@ -870,7 +870,6 @@ export class SnowflakeManuscriptView extends ItemView {
 			attr: {
 				type: 'button',
 				'aria-label': this.t('manuscript.insertSegment'),
-				title: this.t('manuscript.insertSegment'),
 			},
 		});
 		setIcon(add, 'plus');
@@ -896,7 +895,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		const label = this.t('manuscript.mergeWithNext', { note: next.title });
 		const merge = actions.createEl('button', {
 			cls: 'clickable-icon snowflake-method-segment-boundary-action',
-			attr: { type: 'button', 'aria-label': label, title: label },
+			attr: { type: 'button', 'aria-label': label},
 		});
 		// A minus against the plus beside it. The line between two notes is the
 		// thing being added to or taken away: one more note here, or one fewer.

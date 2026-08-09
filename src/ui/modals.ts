@@ -538,7 +538,6 @@ export class ManageProjectsModal extends Modal {
 					cls: 'snowflake-method-project-manager-project-warning',
 					attr: {
 						'aria-label': this.t('projectHealth.needsAttention'),
-						title: this.t('projectHealth.needsAttention'),
 					},
 				});
 				setIcon(warning, 'triangle-alert');
@@ -838,7 +837,6 @@ export class ManageProjectsModal extends Modal {
 		const select = control.createEl('select', {
 			attr: {
 				'aria-label': this.t('modal.projectManager.language'),
-				title: this.t('modal.projectManager.language'),
 			},
 		});
 		const selector = control.createSpan({

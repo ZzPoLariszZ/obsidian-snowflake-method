@@ -415,7 +415,6 @@ function buildPickerFrame(
 		attr: {
 			type: 'button',
 			'aria-label': config.label,
-			title: config.label,
 		},
 	});
 	setIcon(selector, 'chevrons-up-down');
