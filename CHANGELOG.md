@@ -8,6 +8,21 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1]
+
+### Fixed
+
+- Clicking a word in the manuscript puts the caret in that word even where Markdown syntax sits between the words clicked. Prose reaches the page without its emphasis marks, heading marks, link targets or the newline of a soft break, so any passage crossing one of them could not be found in the file, and the caret was placed by the height of the click instead — landing further from the word the longer the chapter, and worst at the end of one. The words are now matched against the file with its syntax set aside, which lands the caret on the character that was clicked.
+- Clicking beside a short stretch of bold, or a link, no longer sends the page to the top of the note. The words looked for stopped at the edge of whatever was clicked, and a stretch too short to search for left nothing to go on.
+- A chapter that repeats a sentence takes the copy that was clicked rather than the first one in the note.
+- The line between two notes offers what the manuscript allows now, rather than what it allowed when that line was first drawn. A project of one note that had grown a second kept saying there was nothing to merge until the stream was closed and opened again, and the name a merge offered stayed the name that note had when the line was drawn.
+- The line above the first note offers to insert one, the way the line below every other note does. It was the only line in a manuscript that offered nothing.
+- The last seven tooltips drawn by the browser are the plugin's own: a note's path in the manuscript, the note offered on step 10, a character's name and one-sentence storyline, a scene's name and conflict, and the tags in a picker.
+
+### Changed
+
+- The type checker now holds the source to the language version the plugin states. A Node type declaration was lending it a method newer than that version, which would have compiled and shipped without anything saying so. Nothing behaves differently.
+
 ## [0.4.0]
 
 ### Added
@@ -114,6 +129,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.4.1]
+
+### 修复
+
+- 点击正文中的某个词，即使所点的词之间夹着 Markdown 语法，光标也会落在那个词上。正文显示在页面上时不带强调标记、标题标记、链接地址，也不带软换行的换行符，因此凡是跨过它们的片段都无法在文件中找到，只能改按点击的高度放置光标——章节越长，落点离那个词越远，在一章的结尾处最为明显。现在会把这些词与撇开语法后的原文比对，光标就落在被点中的那个字上。
+- 在一小段加粗或链接旁边点击，不会再把页面甩到笔记顶端。此前用于查找的词只截取到所点内容的边界，而一小段太短，便无从查起。
+- 一章中重复出现的句子，取被点中的那一处，而不是笔记中的第一处。
+- 两篇笔记之间的那条线，提供的是此刻正文允许的操作，而不是这条线画出来时允许的。原本只有一篇笔记、后来新增了第二篇的项目，那条线仍说没有可合并的内容，除非关掉正文流再打开；合并所给出的名称，也停留在画线那一刻那篇笔记的名字。
+- 第一篇笔记上方的那条线也可以插入笔记了，与其他每篇笔记下方的线一样。此前它是正文中唯一什么都不提供的线。
+- 最后七处由浏览器绘制的悬浮提示改用插件自己的提示：正文中笔记的路径、第十步给出的那篇笔记、角色的名称与一句话故事线、场景的名称与冲突，以及选择器中的标签。
+
+### 变更
+
+- 类型检查会让源码守住插件所声明的语言版本。此前一处 Node 类型声明让源码用上了高于该版本的方法，而这类用法本会毫无提示地通过编译并随插件发布。行为没有任何变化。
 
 ## [0.4.0]
 
