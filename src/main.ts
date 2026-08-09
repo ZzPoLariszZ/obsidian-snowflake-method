@@ -1811,6 +1811,30 @@ export default class SnowflakeMethodPlugin
 		path: string,
 	): Promise<void> {
 		await this.projects.mergeManuscriptSegments(projectPath, path);
+		this.followMergedNote(projectPath, path);
+	}
+
+	/**
+	 * Moves the note step 10 offers as the way back in onto the note that
+	 * absorbed it.
+	 *
+	 * "You were last writing in" is answered from the file, so a note that has
+	 * been merged away answers nothing at all: the line goes, and it takes the
+	 * way back into the manuscript with it. The words have not gone anywhere
+	 * though — they are in the note they were joined to, and that is the note to
+	 * offer. `mergeManuscriptSegments` repoints the project's own draft link for
+	 * the same reason; this is the same repair on the one pointer that lives in
+	 * settings rather than in frontmatter.
+	 */
+	private followMergedNote(projectPath: string, kept: string): void {
+		const projectId = this.projectIdOfPath(projectPath);
+		if (projectId === null) return;
+		const offered = this.settings.recentManuscriptNotes[projectId];
+		// Only when the note that went is the note being offered. Any other note
+		// still on disk is still where the author was last writing.
+		if (offered === undefined) return;
+		if (this.app.vault.getFileByPath(offered) !== null) return;
+		this.rememberManuscriptNote(projectId, kept);
 	}
 
 	manuscriptWindowSettings(): ManuscriptWindowSettings {
