@@ -43,6 +43,8 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Guided dashboard | Navigate all ten steps and control progress without blocking validation rules. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
+| Typewriter scrolling | Keep the line being written at the middle of the page. |
+| Focus mode | Fade everything except the paragraph being written, in four levels. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
@@ -131,6 +133,8 @@ A novel is easier to write in chapters and easier to read as a book. The manuscr
 
 In the manuscript stream, click any chapter and it becomes an editing view, and it returns to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the caret, or (iii) merge it into the next one.*
 
+**Typewriter scrolling** keeps the line being written at the middle of the page. **Focus mode** fades everything except the paragraph being written, and its deepest level, solo, shows only the manuscript in full screen. Each has a button in every chapter's header, and the arrow keys walk the caret from one chapter into the next.
+
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of 3000+ notes holding two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters.
 
 <a id="installation"></a>
@@ -188,12 +192,14 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 | Open manuscript stream | Open the manuscript, at the note last written in. |
 | Open project manager | Create, rename, open, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
+| Set focus mode to off / on / deep / solo | Set how far focus mode reaches, one command per level. |
 | Split manuscript note at the cursor | Divide the note being written in, at the caret. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
 | Toggle order numbers in the manuscript | Show or hide each manuscript note's stored position. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
+| Toggle typewriter scrolling | Hold the line being written at the middle of the page. |
 
 Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing.
 
@@ -209,9 +215,11 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Open notes beside dashboard | On | Reuse a companion pane for notes. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
-| Notes kept loaded | 5 | Hold this many manuscript notes on each side of the one being read. |
-| Show each note's file path | On | Show where a manuscript note is stored, above the note itself. |
-| Show each note's order number | Off | Show the stored position that decides where a note is read. |
+| Notes to keep loaded | 5 | Hold this many manuscript notes on each side of the one being read. |
+| Show note paths | On | Show where a manuscript note is stored, above the note itself. |
+| Show order numbers | Off | Show the stored position that decides where a note is read. |
+| Typewriter scrolling | On | Keep the line being written at the middle of the page. |
+| Focus mode | Off | Fade all but the paragraph being written. The solo level shows only the manuscript in full screen. |
 
 <a id="privacy"></a>
 
@@ -265,7 +273,7 @@ Your writing remains editable here.
 <!-- snowflake:section:one-sentence-summary:end -->
 ```
 
-These HTML comments are structural markers rather than story content. Boundary protection is enabled by default to prevent accidental edits to the marker lines. Text inside the pair is synchronized with the dashboard; Markdown outside it remains under your control and is not replaced by the plugin. If markers are missing, duplicated, reversed, or overlapping, the plugin reports the problem and avoids an unsafe write.
+These HTML comments are structural markers rather than story content. Boundary protection is enabled by default to prevent accidental edits to the marker lines. Text inside the pair is synchronized with the dashboard. Markdown outside it remains under your control and is not replaced by the plugin. If markers are missing, duplicated, reversed, or overlapping, the plugin reports the problem and avoids an unsafe write.
 
 <a id="roadmap"></a>
 
@@ -312,7 +320,7 @@ Run `npm run check` before every commit intended for review. For local Obsidian 
 
 ### Continuous integration
 
-Every push and pull request runs the test, build, and lint jobs on each supported Node.js version. A change is ready to merge only after the full matrix succeeds. CI builds the distributable bundle from source; local build output is not treated as verification evidence.
+Every push and pull request runs the test, build, and lint jobs on each supported Node.js version. A change is ready to merge only after the full matrix succeeds. CI builds the distributable bundle from source. Local build output is not treated as verification evidence.
 
 ### Release procedure
 
@@ -375,6 +383,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
+| 打字机滚动 | 让正在写的一行保持在页面中部。 |
+| 专注模式 | 分四档淡化正在写的段落之外的一切。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
@@ -463,6 +473,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 在正文流中，点击任意一章，它就变成编辑视图；当你转到另一章时，它又回到阅读视图。你可以*（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把它并入下一章。*
 
+**打字机滚动**让正在写的一行保持在页面中部。**专注模式**淡化正在写的段落之外的一切；最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮，方向键也可以带着光标从一章移动到下一章。
+
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个 3000 多篇笔记的库，其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上。
 
 ## 安装
@@ -515,6 +527,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在这一篇之前插入正文笔记 | 在正在阅读的这一篇之前新增一篇。 |
 | 在这一篇之后插入正文笔记 | 在正在阅读的这一篇之后新增一篇。 |
 | 在光标处拆分正文笔记 | 在光标处把正在写作的笔记一分为二。 |
+| 将专注模式设为关／开／深度／仅正文 | 直接切到指定的专注深度，每档一条命令。 |
+| 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记所存的位置。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
@@ -533,9 +547,11 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在工作台旁打开笔记 | 开启 | 长篇笔记复用工作台旁的固定分栏。 |
 | 减少动画 | 关闭 | 使用静态视觉效果替代动画。 |
 | 保护托管区段边界 | 开启 | 防止意外修改同步标记。 |
-| 同时载入的笔记数 | 5 | 在正在阅读的笔记前后各保留这么多篇正文笔记。 |
-| 显示每篇笔记的文件路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
-| 显示每篇笔记的顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
+| 保持载入的笔记数 | 5 | 在正在阅读的笔记前后各保留这么多篇正文笔记。 |
+| 显示笔记路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
+| 显示顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
+| 打字机滚动 | 开启 | 让正在写的一行保持在页面中部。 |
+| 专注模式 | 关 | 淡化正在写的段落之外的一切。仅正文一档会全屏只显示正文。 |
 
 ## 隐私
 
