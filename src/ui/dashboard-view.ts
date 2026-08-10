@@ -2368,6 +2368,7 @@ export class SnowflakeDashboardView extends ItemView {
 							scene.povName,
 							scene.time,
 							scene.location,
+							scene.conflict,
 							...scene.characterPaths.map(
 								(path) => names.get(path) ?? '',
 							),
