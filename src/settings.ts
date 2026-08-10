@@ -69,7 +69,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
-	manuscriptTypewriter: false,
+	manuscriptTypewriter: true,
 	manuscriptFocusLevel: 'off',
 	recentProjectPath: null,
 	recentStep: 1,

@@ -124,12 +124,12 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
-	it('keeps the writing modes off until asked, and holds them once asked', () => {
-		expect(DEFAULT_SETTINGS.manuscriptTypewriter).toBe(false);
+	it('starts with typewriter scrolling on and focus off, and holds a choice', () => {
+		expect(DEFAULT_SETTINGS.manuscriptTypewriter).toBe(true);
 		expect(DEFAULT_SETTINGS.manuscriptFocusLevel).toBe('off');
 		expect(
-			sanitizeSettings({ manuscriptTypewriter: true }).manuscriptTypewriter,
-		).toBe(true);
+			sanitizeSettings({ manuscriptTypewriter: false }).manuscriptTypewriter,
+		).toBe(false);
 		for (const level of ['off', 'on', 'deep', 'solo'] as const) {
 			expect(
 				sanitizeSettings({ manuscriptFocusLevel: level }).manuscriptFocusLevel,
@@ -138,7 +138,7 @@ describe('settings', () => {
 		// Junk stays junk: anything unrecognised is the default.
 		expect(
 			sanitizeSettings({ manuscriptTypewriter: 'yes' }).manuscriptTypewriter,
-		).toBe(false);
+		).toBe(true);
 		expect(
 			sanitizeSettings({ manuscriptFocusLevel: 'zen' }).manuscriptFocusLevel,
 		).toBe('off');
