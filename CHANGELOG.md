@@ -8,6 +8,23 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0]
+
+### Added
+
+- Typewriter scrolling: the line being written stays at the middle of the page, and the page moves under it. A mouse click still leaves the clicked words under the pointer, and the centring takes over at the first keystroke. On by default, with a button in every chapter's header and a command to turn it off and on.
+- Focus mode: while writing, everything except the paragraph being written fades. That covers the rest of the note, the neighbouring notes, and the rest of the app. Its four levels each reach further than the last: **on** keeps the dashboard bright, **deep** fades it with everything else, and **solo** shows nothing but the manuscript in full screen, with note paths and order numbers hidden and the side panes folded away. The button in every chapter's header walks the levels, four palette commands name them directly, and the slider under **Manuscript stream** explains each level as it is chosen. Leaving the stream restores the app, and coming back restores the mode.
+- The arrow keys walk from one note into the next. Up or down on a note's first or last row, or left or right at its first or last character, carries the caret over the rule into the neighbouring note, and the rule being crossed stays exactly where it was on screen.
+
+### Fixed
+
+- An arrow pressed while the caret is scrolled off the page brings the page back to the caret in one measured move. The editor used to answer with its own scrolling, reckoned against a page the sliding window had already changed, and a single press could throw the reader across several notes.
+- Scrolling far enough to slide the window no longer drops the keyboard out of the note being written. Only the notes that actually changed places move now, so the editor holding the caret is never lifted out of the page mid-write.
+
+### Changed
+
+- The settings under **Manuscript stream** have shorter names and one-line descriptions, and the two sliders are drawn alike.
+
 ## [0.4.1]
 
 ### Fixed
@@ -129,6 +146,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.5.0]
+
+### 新增
+
+- 打字机滚动：正在写的一行保持在页面中部，移动的是页面。鼠标点击仍会把所点的词留在指针下，从第一次按键起开始居中。默认开启，每一章的标题栏里都有它的按钮，也可用命令开关。
+- 专注模式：写作时，除正在写的段落外，其余一切都会淡化，包括本篇的其余部分、相邻的笔记与应用的其余界面。四档逐级加深：「开」保持工作台明亮，「深度」让工作台一并淡化，「仅正文」则全屏只显示正文，并隐藏笔记路径与顺序编号、收起两侧面板。每一章标题栏中的按钮逐级切换，四条命令可直接设为某一档，**正文流**设置中的滑杆会在选择时说明每一档的含义。离开正文流时应用恢复原样，回来时模式随之恢复。
+- 方向键可以从一篇笔记走进下一篇。在第一行或最后一行按上下键，或在第一个或最后一个字符处按左右键，光标便越过分隔线进入相邻的笔记，而被跨过的那条线在屏幕上保持不动。
+
+### 修复
+
+- 光标被滚出页面后按方向键，页面会以一次测量好的移动回到光标处。此前编辑器按自己的推算滚动，而滑动窗口早已改变页面，一次按键就可能把读者甩过好几篇笔记。
+- 滚动到让窗口滑动的程度，不再使键盘脱离正在写的笔记。现在只有真正换了位置的笔记才会移动，承载光标的编辑器不会在写作途中被抬离页面。
+
+### 变更
+
+- **正文流**下的设置更为简洁：名称更短，描述一句一行，两个滑杆的样式一致。
 
 ## [0.4.1]
 
