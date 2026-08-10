@@ -8,6 +8,12 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1]
+
+### Changed
+
+- The fading and hiding that focus mode lays over the app now follow classes the plugin puts on each pane, rather than selectors that ask what a pane contains. Nothing looks or behaves differently. The `:has()` selectors this replaces are the kind the plugin review warns about, because the browser re-checks them broadly as the page changes.
+
 ## [0.5.0]
 
 ### Added
@@ -146,6 +152,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.5.1]
+
+### 变更
+
+- 专注模式覆盖在应用上的淡化与隐藏，现在依据插件为每个窗格标注的类，而不再用询问窗格内容的选择器。外观与行为没有任何变化。被替换的 `:has()` 选择器正是插件审查所警告的一类，因为页面变化时浏览器需要大范围地重新检查它们。
 
 ## [0.5.0]
 
