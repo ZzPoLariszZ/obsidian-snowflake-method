@@ -277,10 +277,23 @@ export class SnowflakeDashboardView extends ItemView {
 	async onClose(): Promise<void> {
 		this.opened = false;
 		this.clearCertificateCelebration();
-		this.memberFilterPicker?.destroy();
-		this.memberFilterPicker = null;
+		this.releaseMemberControls();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
+	}
+
+	/**
+	 * Lets go of what a member panel was holding beyond its own elements: the
+	 * filter picker owns a suggestion list that would outlive its field, and a
+	 * table may have a frame queued that would wake to a page that has gone.
+	 */
+	private releaseMemberControls(): void {
+		this.memberFilterPicker?.destroy();
+		this.memberFilterPicker = null;
+		this.characterTable?.destroy();
+		this.characterTable = null;
+		this.sceneTable?.destroy();
+		this.sceneTable = null;
 	}
 
 	async refresh(): Promise<void> {
@@ -339,7 +352,13 @@ export class SnowflakeDashboardView extends ItemView {
 			{ projectId: this.renderedProjectId, step: this.renderedStep },
 			{ projectId: model?.projectId ?? null, step: this.selectedStep },
 		);
-		if (!continuity.sameProject) this.renderState.clear();
+		if (!continuity.sameProject) {
+			this.renderState.clear();
+			// Another project's rows are not coming back, and their measured
+			// heights would otherwise pile up for as long as the view is open.
+			this.characterHeights.clear();
+			this.sceneHeights.clear();
+		}
 		if (!continuity.samePanel) this.renderState.resetScroll(MAIN_PANEL_SELECTOR);
 		this.rendered = true;
 		if (model === null && projects.length === 0) {
@@ -357,13 +376,8 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
 		this.renderedModel = model;
-		// The tables and the filter picker belong to the DOM about to go. The
-		// picker is told, because it owns a suggestion list that would outlive
-		// its field if nobody closed it.
-		this.memberFilterPicker?.destroy();
-		this.memberFilterPicker = null;
-		this.characterTable = null;
-		this.sceneTable = null;
+		// Both belong to the DOM about to go.
+		this.releaseMemberControls();
 		const root = this.contentEl;
 		root.empty();
 		this.celebrationEl = null;
@@ -2892,10 +2906,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectId = null;
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
-		this.memberFilterPicker?.destroy();
-		this.memberFilterPicker = null;
-		this.characterTable = null;
-		this.sceneTable = null;
+		this.releaseMemberControls();
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

@@ -363,8 +363,9 @@ class SegmentTitleModal extends SnowflakeFormModal<string> {
 						this.title = value;
 					});
 				// The one field this form has, so it takes the caret without the
-				// author reaching for it.
-				window.setTimeout(() => {
+				// author reaching for it. Timed by the window the form is in,
+				// which is not the app's when it opened in a popout.
+				this.contentEl.win.setTimeout(() => {
 					text.inputEl.focus();
 					text.inputEl.select();
 				}, 0);
@@ -1508,8 +1509,9 @@ export class MoveToPositionModal extends SnowflakeFormModal<number> {
 					this.position = value;
 				});
 				// The one field this form has, so it takes the caret without the
-				// author reaching for it.
-				window.setTimeout(() => {
+				// author reaching for it. Timed by the window the form is in,
+				// which is not the app's when it opened in a popout.
+				this.contentEl.win.setTimeout(() => {
 					text.inputEl.focus();
 					text.inputEl.select();
 				}, 0);

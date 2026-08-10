@@ -137,6 +137,17 @@ export class VirtualTable {
 		});
 	}
 
+	/**
+	 * Drops a frame still waiting to run, for a table whose elements are
+	 * going away. The scroll listener needs no such care: it lives on the
+	 * scroller, which the next render discards along with it.
+	 */
+	destroy(): void {
+		if (this.frame === 0) return;
+		this.options.scroller.win.cancelAnimationFrame(this.frame);
+		this.frame = 0;
+	}
+
 	/** Replaces what the table is showing. Also the first fill. */
 	setTotal(total: number): void {
 		this.total = total;
