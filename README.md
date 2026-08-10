@@ -135,7 +135,7 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 **Typewriter scrolling** keeps the line being written at the middle of the page. **Focus mode** fades everything except the paragraph being written, and its deepest level, solo, shows only the manuscript in full screen. Each has a button in every chapter's header, and the arrow keys walk the caret from one chapter into the next.
 
-**All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of 3000+ notes holding two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters.
+**All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of nearly 8000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
 <a id="installation"></a>
 
@@ -475,7 +475,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 **打字机滚动**让正在写的一行保持在页面中部。**专注模式**淡化正在写的段落之外的一切；最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮，方向键也可以带着光标从一章移动到下一章。
 
-**书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个 3000 多篇笔记的库，其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上。
+**书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个近 8000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
 ## 安装
 
