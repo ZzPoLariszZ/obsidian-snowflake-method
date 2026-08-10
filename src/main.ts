@@ -343,6 +343,13 @@ export default class SnowflakeMethodPlugin
 					});
 				}),
 			);
+			// Panes move without the active leaf changing — a drag, a split, a
+			// closed neighbour — and the marks must follow the containers.
+			this.registerEvent(
+				this.app.workspace.on('layout-change', () => {
+					this.applyManuscriptModePresence();
+				}),
+			);
 			// A session that begins already in solo cannot know how the sidebars
 			// stood before it: the folding happened in a session that is gone.
 			// Treating them as having been open means leaving solo always brings
@@ -1495,6 +1502,7 @@ export default class SnowflakeMethodPlugin
 		const body = this.app.workspace.containerEl.doc.body;
 		const level = this.settings.manuscriptFocusLevel;
 		const inFront = this.activeManuscriptView() !== null;
+		this.markModeContainers();
 		body.classList.toggle(
 			'snowflake-method-focus-app',
 			inFront && level !== 'off',
@@ -1536,6 +1544,46 @@ export default class SnowflakeMethodPlugin
 			if (!this.soloCollapsed.right) this.app.workspace.rightSplit.expand();
 			this.soloCollapsed = null;
 		}
+	}
+
+	/**
+	 * Marks the containers the focus levels select by: the leaf holding each
+	 * manuscript stream — and, for solo, the tab group and splits above it —
+	 * and the leaf holding each dashboard. The stylesheet reads these classes
+	 * where it once asked `:has()` what a container held, a question whose
+	 * broad invalidation the plugin review flags. Swept and re-laid whole,
+	 * because containers keep their elements as leaves move between them.
+	 */
+	private markModeContainers(): void {
+		const root = this.app.workspace.containerEl.doc.body;
+		for (const cls of [
+			'snowflake-method-holds-stream',
+			'snowflake-method-holds-dashboard',
+		]) {
+			for (const marked of Array.from(root.querySelectorAll(`.${cls}`))) {
+				marked.classList.remove(cls);
+			}
+		}
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.view instanceof SnowflakeManuscriptView) {
+				let above: HTMLElement | null =
+					leaf.view.containerEl.closest('.workspace-leaf');
+				while (above !== null && !above.classList.contains('mod-root')) {
+					if (
+						above.classList.contains('workspace-leaf') ||
+						above.classList.contains('workspace-tabs') ||
+						above.classList.contains('workspace-split')
+					) {
+						above.classList.add('snowflake-method-holds-stream');
+					}
+					above = above.parentElement;
+				}
+			} else if (leaf.view instanceof SnowflakeDashboardView) {
+				leaf.view.containerEl
+					.closest('.workspace-leaf')
+					?.classList.add('snowflake-method-holds-dashboard');
+			}
+		});
 	}
 
 	private applyMotionPreferenceToDocument(targetDocument: Document): void {

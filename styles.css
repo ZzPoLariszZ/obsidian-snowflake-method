@@ -4277,7 +4277,11 @@
 
 /* Focus reaches past the stream: the rest of the app steps back with it, and
    any of it returns under the pointer. The plugin's own dashboards stay
-   bright unless the author asks for them faded too. */
+   bright unless the author asks for them faded too. Containers are told
+   apart by classes the plugin lays on them — the leaf holding a stream, its
+   tab group and splits, the leaf holding a dashboard — because asking the
+   selector engine what a container holds is the kind of question the plugin
+   review flags for its invalidation costs. */
 body.snowflake-method-focus-app .workspace-ribbon,
 body.snowflake-method-focus-app .workspace-tab-header-container,
 body.snowflake-method-focus-app .status-bar,
@@ -4285,8 +4289,8 @@ body.snowflake-method-focus-app .workspace-split.mod-left-split,
 body.snowflake-method-focus-app .workspace-split.mod-right-split,
 body.snowflake-method-focus-app
 	.workspace-split.mod-root
-	.workspace-leaf:not(:has(.snowflake-method-manuscript-view)):not(
-		:has(.snowflake-method-dashboard)
+	.workspace-leaf:not(.snowflake-method-holds-stream):not(
+		.snowflake-method-holds-dashboard
 	) {
 	opacity: 0.25;
 	transition: opacity 200ms ease-in-out;
@@ -4294,8 +4298,8 @@ body.snowflake-method-focus-app
 
 body.snowflake-method-focus-app.snowflake-method-focus-dashboard
 	.workspace-split.mod-root
-	.workspace-leaf:has(.snowflake-method-dashboard):not(
-		:has(.snowflake-method-manuscript-view)
+	.workspace-leaf.snowflake-method-holds-dashboard:not(
+		.snowflake-method-holds-stream
 	) {
 	opacity: 0.25;
 	transition: opacity 200ms ease-in-out;
@@ -4310,13 +4314,13 @@ body.snowflake-method-focus-app .workspace-split.mod-left-split:hover,
 body.snowflake-method-focus-app .workspace-split.mod-right-split:hover,
 body.snowflake-method-focus-app
 	.workspace-split.mod-root
-	.workspace-leaf:not(:has(.snowflake-method-manuscript-view)):not(
-		:has(.snowflake-method-dashboard)
+	.workspace-leaf:not(.snowflake-method-holds-stream):not(
+		.snowflake-method-holds-dashboard
 	):hover,
 body.snowflake-method-focus-app.snowflake-method-focus-dashboard
 	.workspace-split.mod-root
-	.workspace-leaf:has(.snowflake-method-dashboard):not(
-		:has(.snowflake-method-manuscript-view)
+	.workspace-leaf.snowflake-method-holds-dashboard:not(
+		.snowflake-method-holds-stream
 	):hover {
 	opacity: 1;
 }
@@ -4330,10 +4334,10 @@ body.snowflake-method-solo .workspace-tab-header-container,
 body.snowflake-method-solo .status-bar,
 body.snowflake-method-solo
 	.workspace-split.mod-root
-	.workspace-tabs:not(:has(.snowflake-method-manuscript-view)),
+	.workspace-tabs:not(.snowflake-method-holds-stream),
 body.snowflake-method-solo
 	.workspace-split.mod-root
-	.workspace-split:not(:has(.snowflake-method-manuscript-view)) {
+	.workspace-split:not(.snowflake-method-holds-stream) {
 	display: none;
 }
 
