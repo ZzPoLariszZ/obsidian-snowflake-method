@@ -1,7 +1,7 @@
 {
 	"id": "snowflake-method",
 	"name": "Snowflake Method",
-	"version": "0.4.1",
+	"version": "0.5.0",
 	"minAppVersion": "1.13.0",
 	"description": "Plan fiction with a bilingual ten-step Snowflake Method workspace backed by portable Markdown notes.",
 	"author": "Polaris",
