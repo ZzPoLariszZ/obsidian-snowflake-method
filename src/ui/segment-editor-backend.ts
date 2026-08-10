@@ -66,6 +66,22 @@ export interface SegmentEditorHooks {
 	 * clicked words back under the pointer.
 	 */
 	onCaretMove?(path: string): void;
+	/**
+	 * An arrow pressed against the edge of the note: the caret was already at
+	 * the very start or end, and had nowhere left to go inside this editor.
+	 * The manuscript continues in the next note, and walking into it is the
+	 * view's to arrange.
+	 */
+	onCaretLeave?(path: string, edge: 'start' | 'end'): void;
+	/**
+	 * The editor asking for the caret to be brought into view, with where the
+	 * caret line sits on the screen — measured when the line is laid out, the
+	 * editor's estimate when it is not yet. Handed over rather than acted on:
+	 * the editor is one block in a page it does not own, and scrolling that
+	 * page by its own reckoning threw the reader wherever the reckoning was
+	 * stale.
+	 */
+	onCaretShow?(path: string, top: number, bottom: number): void;
 }
 
 /** Marks a change the editor was handed rather than one the author typed. */
@@ -153,10 +169,17 @@ export interface SegmentEditorHandle {
 	/** Caret position within the body, for splitting the segment at it. */
 	cursor(): number;
 	/**
-	 * Where the caret line sits on the screen, or null while the editor has not
-	 * measured itself. The view scrolls by this to hold the line steady.
+	 * Where the caret line sits on the screen, or null while the editor has
+	 * not laid that line out. The view scrolls by this to hold the line
+	 * steady, and to settle a landing once the layout firms up.
 	 */
-	caretTop(): number | null;
+	caretBand(): { top: number; bottom: number } | null;
+	/**
+	 * Puts the caret at one end of the note, as the author's own arrival — an
+	 * arrow key carried them in from the neighbouring note, so the modes that
+	 * follow the author follow this too.
+	 */
+	enter(edge: 'start' | 'end'): void;
 	/**
 	 * Puts the caret in a passage of text, and says how far up or down the page
 	 * that passage sits from where the caller wanted it.
@@ -245,8 +268,20 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 			},
 			cursor: () => view.state.selection.main.head,
-			caretTop: () =>
-				view.coordsAtPos(view.state.selection.main.head)?.top ?? null,
+			caretBand: () => {
+				const coords = view.coordsAtPos(view.state.selection.main.head);
+				return coords === null
+					? null
+					: { top: coords.top, bottom: coords.bottom };
+			},
+			enter: (edge: 'start' | 'end') => {
+				view.dispatch({
+					selection: EditorSelection.cursor(
+						edge === 'start' ? 0 : view.state.doc.length,
+					),
+					userEvent: 'select',
+				});
+			},
 			seek: (
 				passage: string,
 				lead: number,
@@ -296,8 +331,87 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 		target: SegmentEditorTarget,
 		hooks: SegmentEditorHooks,
 	): Extension[] {
+		// An arrow the editor can do nothing with has one thing left to mean:
+		// the author is walking on, and the manuscript continues in the next
+		// note. Left and right are simple — the character edges of the note.
+		// Up and down go by rows: on the visual row holding the note's first
+		// or last character, one press walks on, which keeps a wrapped
+		// paragraph walkable line by visual line. Rows are compared by their
+		// measured places, and only rendered rows have one — long notes are
+		// laid out a windowful at a time, so a caret the page has scrolled
+		// away from decides nothing: the press is spent bringing it back,
+		// and the next press finds it measurable. Ahead of the default
+		// keymap, which would swallow the press doing nothing.
+		const reveal = (view: EditorView, head: number): boolean => {
+			view.dispatch({ effects: EditorView.scrollIntoView(head) });
+			return true;
+		};
+		const walksOut =
+			(edge: 'start' | 'end') =>
+			(view: EditorView): boolean => {
+				const selection = view.state.selection.main;
+				if (!selection.empty) return false;
+				const at = edge === 'start' ? 0 : view.state.doc.length;
+				if (selection.head !== at) return false;
+				if (view.coordsAtPos(selection.head) === null) {
+					return reveal(view, selection.head);
+				}
+				hooks.onCaretLeave?.(target.path, edge);
+				return true;
+			};
+		const climbsOut =
+			(edge: 'start' | 'end') =>
+			(view: EditorView): boolean => {
+				const selection = view.state.selection.main;
+				if (!selection.empty) return false;
+				const row = view.coordsAtPos(selection.head);
+				if (row === null) return reveal(view, selection.head);
+				const corner = view.coordsAtPos(
+					edge === 'start' ? 0 : view.state.doc.length,
+				);
+				// An edge the editor has not laid out is nowhere near the
+				// caret's rendered row.
+				if (corner === null) return false;
+				// The same row when their heights overlap — surer than
+				// comparing tops, which inline formatting can nudge apart.
+				if (row.top >= corner.bottom || row.bottom <= corner.top) {
+					return false;
+				}
+				hooks.onCaretLeave?.(target.path, edge);
+				return true;
+			};
 		const extensions: Extension[] = [
 			history(),
+			// Every cursor command asks for the caret to be scrolled into view,
+			// and CodeMirror would answer by scrolling the page this editor sits
+			// in. The page is windowed: notes mount and unmount as it moves, so
+			// the editor's reckoning of where to scroll goes stale mid-scroll,
+			// and an arrow key could throw the reader across several notes. The
+			// view owns the page, so the view is given the caret and the choice.
+			EditorView.scrollHandler.of((view, range) => {
+				if (hooks.onCaretShow === undefined) return false;
+				const coords = view.coordsAtPos(range.head);
+				if (coords !== null) {
+					hooks.onCaretShow(target.path, coords.top, coords.bottom);
+					return true;
+				}
+				// A caret with no layout yet still has an address: estimated
+				// line heights say roughly where its line sits. Rough is
+				// enough — the view lands nearby and settles on measured
+				// ground over the frames that follow. Refusing here would
+				// hand the scroll back to the editor's own answer, which is
+				// the several-notes throw this handler exists to prevent.
+				const line = view.lineBlockAt(range.head);
+				const top = view.documentTop + line.top;
+				hooks.onCaretShow(target.path, top, top + line.height);
+				return true;
+			}),
+			keymap.of([
+				{ key: 'ArrowUp', run: climbsOut('start') },
+				{ key: 'ArrowLeft', run: walksOut('start') },
+				{ key: 'ArrowDown', run: climbsOut('end') },
+				{ key: 'ArrowRight', run: walksOut('end') },
+			]),
 			keymap.of([...defaultKeymap, ...historyKeymap]),
 			MARKDOWN,
 			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),

@@ -83,6 +83,20 @@ export class SnowflakeManuscriptView extends ItemView {
 	private anchorPath: string | null = null;
 	private activePath: string | null = null;
 	private editingPath: string | null = null;
+	/**
+	 * Raised while a click is being put back under the pointer. The click
+	 * promised the words stay where the pointer left them, so the caret
+	 * reveals that focusing the editor asks for are waived until the promise
+	 * has been kept — or the author types, which hands the page to the modes.
+	 */
+	private puttingBack = false;
+	/**
+	 * Raised while an arrow-key arrival owns the page: the crossing is being
+	 * held still, and the reveal that focusing the editor asks for would tug
+	 * the caret to an edge or the middle for nothing. The settling frames
+	 * that follow the arrival lower it.
+	 */
+	private walkingIn = false;
 	private stateDelivered = false;
 	private streamEl: HTMLElement | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
@@ -816,6 +830,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async activateSegment(
 		path: string,
 		clicked?: ClickedWords,
+		arriving?: 'start' | 'end',
+		crossing?: CrossingHold,
 	): Promise<void> {
 		if (this.editingPath === path) {
 			this.backend.focus(path);
@@ -830,8 +846,13 @@ export class SnowflakeManuscriptView extends ItemView {
 		// An editor is not the height of the prose it replaces, so everything
 		// below this note moves, and if the note itself is below the reader then
 		// so does the note. Held across the swap and let go of before the caret is
-		// placed, because placing it is the one move that was asked for.
-		const restore = this.holdPosition();
+		// placed, because placing it is the one move that was asked for. An
+		// arrival by arrow key holds the rule being crossed instead: the
+		// author's eyes are on it, and the general hold pins some other note's
+		// top and lets the crossing drift by the whole disagreement between
+		// the two layouts.
+		const pin = crossing === undefined ? undefined : this.holdCrossing(crossing);
+		const restore = pin ?? this.holdPosition();
 
 		entry.bodyEl.empty();
 		entry.bodyEl.addClass('is-editing');
@@ -855,6 +876,14 @@ export class SnowflakeManuscriptView extends ItemView {
 					const target = this.mounted.get(moved);
 					if (target !== undefined) this.recentreCaret(target);
 				},
+				onCaretLeave: (from, edge) => {
+					void this.slipInto(from, edge).catch((error: unknown) => {
+						this.showError(error);
+					});
+				},
+				onCaretShow: (shown, top, bottom) => {
+					this.showCaret(shown, top, bottom);
+				},
 			},
 		);
 		this.editingPath = path;
@@ -870,10 +899,59 @@ export class SnowflakeManuscriptView extends ItemView {
 		// line is not the height of the line, so everything after the first
 		// heading has moved even though the note itself has not.
 		if (clicked !== undefined) this.putBack(entry, clicked);
+		// An arrival by arrow key: the caret goes to the edge the author walked
+		// in over, before focus can scroll to anywhere else.
+		if (arriving !== undefined) entry.editor.enter(arriving);
 		// Focused last, because focusing an editor scrolls its caret into view and
 		// would otherwise be the final word on where the reader ends up.
+		this.puttingBack = clicked !== undefined;
+		this.walkingIn = arriving !== undefined;
 		entry.editor.focus();
 		if (clicked !== undefined) this.keepPuttingBack(entry, clicked);
+		if (arriving !== undefined) this.keepRevealing(path, { pin });
+	}
+
+	/**
+	 * Walks the caret over the rule between two notes.
+	 *
+	 * An arrow pressed with nowhere left to go inside a note means the author
+	 * is going on reading the book, and the book continues next door: the
+	 * previous note is entered at its end, the next at its start. The first
+	 * and last notes have one edge that leads nowhere, and an arrow against
+	 * those stays put.
+	 */
+	private async slipInto(
+		path: string,
+		edge: 'start' | 'end',
+	): Promise<void> {
+		const segments = this.model?.segments ?? [];
+		const index = segments.findIndex((segment) => segment.path === path);
+		if (index === -1) return;
+		const neighbour = segments[edge === 'end' ? index + 1 : index - 1];
+		if (neighbour === undefined) return;
+		// The author's eyes are at the rule being crossed — the departing
+		// note's edge. Both notes change height on the way over, one editor
+		// coming down and another going up, so where that rule sits is
+		// remembered from before either swap and put back after. Without it
+		// the page lurched by however much the two layouts disagreed.
+		const from = this.mounted.get(path);
+		const side = edge === 'start' ? ('top' as const) : ('bottom' as const);
+		const crossing =
+			from === undefined
+				? undefined
+				: { el: from.el, side, was: from.el.getBoundingClientRect()[side] };
+		// A neighbour the window has let go of has to be brought back before it
+		// can be written in.
+		if (!this.mounted.has(neighbour.path)) {
+			this.activePath = neighbour.path;
+			await this.applyWindow();
+		}
+		await this.activateSegment(
+			neighbour.path,
+			undefined,
+			edge === 'end' ? 'start' : 'end',
+			crossing,
+		);
 	}
 
 	/**
@@ -893,10 +971,14 @@ export class SnowflakeManuscriptView extends ItemView {
 		const untouched = entry.pending;
 		let frames = 0;
 		const again = (): void => {
-			if (this.editingPath !== entry.path || entry.pending !== untouched) return;
+			if (this.editingPath !== entry.path || entry.pending !== untouched) {
+				this.puttingBack = false;
+				return;
+			}
 			this.putBack(entry, clicked);
 			frames += 1;
 			if (frames < SETTLING_FRAMES) win.requestAnimationFrame(again);
+			else this.puttingBack = false;
 		};
 		win.requestAnimationFrame(again);
 	}
@@ -933,12 +1015,107 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	private recentreCaret(entry: MountedSegment): void {
 		const stream = this.streamEl;
-		const top = entry.editor?.caretTop() ?? null;
+		const top = entry.editor?.caretBand()?.top ?? null;
 		if (stream === null || top === null) return;
 		const anchor =
 			stream.getBoundingClientRect().top + stream.clientHeight / 2;
 		const delta = top - anchor;
 		if (Math.abs(delta) < 1) return;
+		this.scrollBy(delta);
+	}
+
+	/**
+	 * Brings the caret line into view, and no further.
+	 *
+	 * A caret already on the page is left exactly where it is — an arrow key
+	 * moving one line must not move the page at all. One off the page is
+	 * brought back: to the middle under typewriter scrolling, which holds
+	 * lines to the middle anyway, and otherwise just inside the nearer edge.
+	 * Counted as the view's own move; the editor's own answer scrolled by a
+	 * reckoning the sliding window had already invalidated, which could throw
+	 * the reader across several notes. The numbers may be the editor's
+	 * estimate for a line it has not laid out, and the landing itself shifts
+	 * notes in and out of the window, so any move is settled afterwards
+	 * against measured ground.
+	 */
+	private showCaret(path: string, top: number, bottom: number): void {
+		if (this.puttingBack || this.walkingIn) return;
+		if (this.revealCaret(top, bottom)) this.keepRevealing(path);
+	}
+
+	/** One correction from the given caret band; says whether it moved. */
+	private revealCaret(top: number, bottom: number): boolean {
+		const stream = this.streamEl;
+		if (stream === null) return false;
+		const rect = stream.getBoundingClientRect();
+		// Room for the sticky header above, a line's worth of company below.
+		const upper = rect.top + 56;
+		const lower = rect.bottom - 32;
+		if (top >= upper && bottom <= lower) return false;
+		const delta = this.host.manuscriptWindowSettings().typewriter
+			? top - (rect.top + stream.clientHeight / 2)
+			: top < upper
+				? top - upper
+				: bottom - lower;
+		this.scrollBy(delta);
+		return true;
+	}
+
+	/**
+	 * Settles a landing over the frames the editor spends measuring itself.
+	 *
+	 * A CodeMirror only just built estimates the heights of lines it has not
+	 * laid out and replaces the estimates over the frames that follow —
+	 * `keepPuttingBack` re-seeks a click for the same reason. Here it is the
+	 * caret being held to its place: the middle under typewriter scrolling,
+	 * on the page at all otherwise. An arrow-key arrival passes the crossing
+	 * pin, which is re-laid each frame so the rule the author walked over
+	 * stays put while the heights firm up around it. Measured afresh each
+	 * frame, and handed back the moment the author moves the caret again —
+	 * from then on it is their walk, not this landing.
+	 */
+	private keepRevealing(
+		path: string,
+		arrival?: { pin: (() => void) | undefined },
+	): void {
+		const win = this.contentEl.win;
+		const arrived = this.mounted.get(path)?.editor?.cursor() ?? null;
+		let frames = 0;
+		const done = (): void => {
+			if (arrival !== undefined) this.walkingIn = false;
+		};
+		const again = (): void => {
+			const entry = this.mounted.get(path);
+			if (
+				this.editingPath !== path ||
+				entry === undefined ||
+				entry.editor === null ||
+				(arrived !== null && entry.editor.cursor() !== arrived)
+			) {
+				done();
+				return;
+			}
+			if (this.host.manuscriptWindowSettings().typewriter) {
+				this.recentreCaret(entry);
+			} else {
+				arrival?.pin?.();
+				const band = entry.editor.caretBand();
+				if (band !== null) this.revealCaret(band.top, band.bottom);
+			}
+			frames += 1;
+			if (frames < SETTLING_FRAMES) win.requestAnimationFrame(again);
+			else done();
+		};
+		win.requestAnimationFrame(again);
+	}
+
+	/**
+	 * The view's own scroll by a distance, growing the tail spacer when the
+	 * page would run out before the distance is covered.
+	 */
+	private scrollBy(delta: number): void {
+		const stream = this.streamEl;
+		if (stream === null) return;
 		const wanted = stream.scrollTop + delta;
 		const short = Math.ceil(
 			wanted - (stream.scrollHeight - stream.clientHeight),
@@ -962,6 +1139,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (path === null) return;
 		await this.flushPendingSave();
 		this.editingPath = null;
+		this.puttingBack = false;
+		this.walkingIn = false;
 		this.refreshWriteToggles();
 		this.streamEl?.removeClass('is-writing');
 		this.mounted.get(path)?.el.removeClass('is-writing');
@@ -1190,13 +1369,43 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (atEnd) action(this.t('manuscript.createNext'), 'end');
 	}
 
-	/** Puts the mounted blocks into reading order without rebuilding them. */
+	/**
+	 * Puts the mounted blocks into reading order without rebuilding them — and
+	 * without touching the ones already standing in it. Re-appending them all
+	 * would order them just as well, but moving an element takes it out of the
+	 * document for an instant, and taking the note being written in out drops
+	 * the caret's focus on the floor: after any slide of the window, the
+	 * keyboard was scrolling the page instead of moving the caret.
+	 *
+	 * Walked against the blocks already in the stream: one that matches the
+	 * order stands still, and only a block out of its place — a freshly
+	 * mounted neighbour, sitting at the end where mounting put it — is carried
+	 * in front of the one it belongs before. Chaining on the previous entry
+	 * instead would move the whole old run each time, because the fresh ends
+	 * of the chain pull everything after them.
+	 */
 	private reorder(visible: readonly string[]): void {
 		const stream = this.streamEl;
 		if (stream === null) return;
+		const segment = (el: Element | null): Element | null => {
+			let candidate = el;
+			while (
+				candidate !== null &&
+				!candidate.classList.contains('snowflake-method-segment')
+			) {
+				candidate = candidate.nextElementSibling;
+			}
+			return candidate;
+		};
+		let cursor = segment(stream.firstElementChild);
 		for (const path of visible) {
 			const entry = this.mounted.get(path);
-			if (entry !== undefined) stream.append(entry.el);
+			if (entry === undefined) continue;
+			if (entry.el === cursor) {
+				cursor = segment(cursor.nextElementSibling);
+			} else {
+				stream.insertBefore(entry.el, cursor);
+			}
 		}
 	}
 
@@ -1254,6 +1463,23 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * afterwards, because a note about to be let go cannot hold anybody's place
 	 * and a detached one reports nothing but zeroes.
 	 */
+	/**
+	 * Holds the rule the author is walking over exactly where it was.
+	 *
+	 * Absolute rather than relative: the place was measured before either
+	 * note began changing shape, and every replay scrolls the crossing back
+	 * to it, however many holds and remounts have moved things in between.
+	 */
+	private holdCrossing(crossing: CrossingHold): () => void {
+		return () => {
+			if (!crossing.el.isConnected) return;
+			const now = crossing.el.getBoundingClientRect()[crossing.side];
+			const delta = now - crossing.was;
+			if (Math.abs(delta) < 1) return;
+			this.scrollBy(delta);
+		};
+	}
+
 	private holdPosition(surviving?: ReadonlySet<string>): () => void {
 		const stream = this.streamEl;
 		if (stream === null) return () => undefined;
@@ -1435,6 +1661,13 @@ export class SnowflakeManuscriptView extends ItemView {
 			error instanceof Error ? error.message : this.t('errors.unknown'),
 		);
 	}
+}
+
+/** The rule the author is crossing: which edge of the note being left, and where it sat. */
+interface CrossingHold {
+	el: HTMLElement;
+	side: 'top' | 'bottom';
+	was: number;
 }
 
 interface ClickedWords {
