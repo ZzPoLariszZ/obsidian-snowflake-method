@@ -32,6 +32,14 @@ const SAVE_DELAY_MS = 800;
 /** How long a freshly built editor is given to settle on its own height. */
 const SETTLING_FRAMES = 6;
 
+/**
+ * How long an arrival keeps holding its landing. A chapter of two thousand
+ * words revises its heights in waves for several hundred milliseconds after
+ * mounting, with quiet stretches in between, so the hold cannot trust early
+ * stillness — it runs its full term unless the author takes the page first.
+ */
+const ARRIVAL_FRAMES = 90;
+
 /** One press deeper each time, and off again past the deepest. */
 export const NEXT_FOCUS_LEVEL = {
 	off: 'on',
@@ -908,7 +916,20 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.walkingIn = arriving !== undefined;
 		entry.editor.focus();
 		if (clicked !== undefined) this.keepPuttingBack(entry, clicked);
-		if (arriving !== undefined) this.keepRevealing(path, { pin });
+		if (arriving !== undefined) {
+			this.keepRevealing(path, {
+				pin,
+				// The page scrolled for the band carries the crossing with it:
+				// the pin's target moves by the same distance, in the same
+				// breath.
+				follow:
+					crossing === undefined
+						? undefined
+						: (delta) => {
+								crossing.was -= delta;
+							},
+			});
+		}
 	}
 
 	/**
@@ -1013,15 +1034,16 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * note is grown so there is always page left to bring up — the same spacer
 	 * `settleTail` keeps, which refuses to shrink under anyone standing in it.
 	 */
-	private recentreCaret(entry: MountedSegment): void {
+	private recentreCaret(entry: MountedSegment): boolean {
 		const stream = this.streamEl;
 		const top = entry.editor?.caretBand()?.top ?? null;
-		if (stream === null || top === null) return;
+		if (stream === null || top === null) return false;
 		const anchor =
 			stream.getBoundingClientRect().top + stream.clientHeight / 2;
 		const delta = top - anchor;
-		if (Math.abs(delta) < 1) return;
+		if (Math.abs(delta) < 1) return false;
 		this.scrollBy(delta);
+		return true;
 	}
 
 	/**
@@ -1040,25 +1062,25 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	private showCaret(path: string, top: number, bottom: number): void {
 		if (this.puttingBack || this.walkingIn) return;
-		if (this.revealCaret(top, bottom)) this.keepRevealing(path);
+		if (this.revealCaret(top, bottom) !== 0) this.keepRevealing(path);
 	}
 
-	/** One correction from the given caret band; says whether it moved. */
-	private revealCaret(top: number, bottom: number): boolean {
+	/** One correction from the given caret band; says how far it moved the page. */
+	private revealCaret(top: number, bottom: number): number {
 		const stream = this.streamEl;
-		if (stream === null) return false;
+		if (stream === null) return 0;
 		const rect = stream.getBoundingClientRect();
 		// Room for the sticky header above, a line's worth of company below.
 		const upper = rect.top + 56;
 		const lower = rect.bottom - 32;
-		if (top >= upper && bottom <= lower) return false;
+		if (top >= upper && bottom <= lower) return 0;
 		const delta = this.host.manuscriptWindowSettings().typewriter
 			? top - (rect.top + stream.clientHeight / 2)
 			: top < upper
 				? top - upper
 				: bottom - lower;
 		this.scrollBy(delta);
-		return true;
+		return delta;
 	}
 
 	/**
@@ -1070,13 +1092,18 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * caret being held to its place: the middle under typewriter scrolling,
 	 * on the page at all otherwise. An arrow-key arrival passes the crossing
 	 * pin, which is re-laid each frame so the rule the author walked over
-	 * stays put while the heights firm up around it. Measured afresh each
-	 * frame, and handed back the moment the author moves the caret again —
+	 * stays put while the heights firm up around it — and an arrival holds on
+	 * until the layout has been still for a few frames, because a chapter of
+	 * two thousand words keeps revising its heights long after a short one
+	 * has settled. Handed back the moment the author moves the caret again —
 	 * from then on it is their walk, not this landing.
 	 */
 	private keepRevealing(
 		path: string,
-		arrival?: { pin: (() => void) | undefined },
+		arrival?: {
+			pin: (() => boolean) | undefined;
+			follow: ((delta: number) => void) | undefined;
+		},
 	): void {
 		const win = this.contentEl.win;
 		const arrived = this.mounted.get(path)?.editor?.cursor() ?? null;
@@ -1095,16 +1122,31 @@ export class SnowflakeManuscriptView extends ItemView {
 				done();
 				return;
 			}
+			// An arrival holds through every scroll it did not make. Its own
+			// big correction can read as a reader's scroll once the quiet
+			// window has closed, and the machinery that answers a reader —
+			// sliding the window, holding some other note's top — is exactly
+			// what this hold exists to out-wait. The author is heard through
+			// the caret alone: any keystroke ends the hold at the top of the
+			// next frame.
 			if (this.host.manuscriptWindowSettings().typewriter) {
 				this.recentreCaret(entry);
 			} else {
 				arrival?.pin?.();
 				const band = entry.editor.caretBand();
-				if (band !== null) this.revealCaret(band.top, band.bottom);
+				if (band !== null) {
+					// Where the pin and the band disagree — a caret landing
+					// under the sticky header — the band wins once, and the
+					// pin's target moves with the page rather than fighting
+					// the same fight every frame.
+					const gave = this.revealCaret(band.top, band.bottom);
+					if (gave !== 0) arrival?.follow?.(gave);
+				}
 			}
 			frames += 1;
-			if (frames < SETTLING_FRAMES) win.requestAnimationFrame(again);
-			else done();
+			const term = arrival === undefined ? SETTLING_FRAMES : ARRIVAL_FRAMES;
+			if (frames >= term) done();
+			else win.requestAnimationFrame(again);
 		};
 		win.requestAnimationFrame(again);
 	}
@@ -1469,14 +1511,17 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * Absolute rather than relative: the place was measured before either
 	 * note began changing shape, and every replay scrolls the crossing back
 	 * to it, however many holds and remounts have moved things in between.
+	 * Says whether it had to move anything, so a settler can hear the layout
+	 * go quiet.
 	 */
-	private holdCrossing(crossing: CrossingHold): () => void {
+	private holdCrossing(crossing: CrossingHold): () => boolean {
 		return () => {
-			if (!crossing.el.isConnected) return;
+			if (!crossing.el.isConnected) return false;
 			const now = crossing.el.getBoundingClientRect()[crossing.side];
 			const delta = now - crossing.was;
-			if (Math.abs(delta) < 1) return;
+			if (Math.abs(delta) < 1) return false;
 			this.scrollBy(delta);
+			return true;
 		};
 	}
 
