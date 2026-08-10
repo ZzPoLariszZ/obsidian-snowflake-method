@@ -291,6 +291,24 @@ export class VaultRepository {
     return record;
   }
 
+  /**
+   * Lets go of what the cache holds for a path the vault no longer has: a
+   * deleted file's record, or with `children`, every record under a folder
+   * that was renamed or deleted. Records hold their file's whole text, so a
+   * session of renames would otherwise keep every old copy until the plugin
+   * reloads. Reads cannot be affected: a stale record is already refused by
+   * the identity check above, so forgetting one only returns the memory.
+   */
+  forget(path: string, { children = false } = {}): void {
+    const normalized = this.normalize(path);
+    this.records.delete(normalized);
+    if (!children) return;
+    const prefix = `${normalized}/`;
+    for (const key of this.records.keys()) {
+      if (key.startsWith(prefix)) this.records.delete(key);
+    }
+  }
+
   async tryReadManaged(path: string): Promise<ManagedFileRecord | null> {
     try {
       return await this.readManaged(path);

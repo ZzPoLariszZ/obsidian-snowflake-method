@@ -426,4 +426,42 @@ describe("VaultRepository", () => {
       "snowflake:section:plot-synopsis",
     );
   });
+
+  it("forgets a path's record, and a folder's records with it", async () => {
+    const managed = (name: string) => ({
+      path: name,
+      template: { body: "# Note\n", sections: [] },
+      frontmatter: {
+        "snowflake-document": "scene",
+        "snowflake-project-id": "project-1",
+      },
+    });
+    const inside = await repository.createManagedFile(
+      managed("Projects/Novel/40_Scene/One.md"),
+    );
+    const sibling = await repository.createManagedFile(
+      managed("Projects/Novel/40_Scene/Two.md"),
+    );
+    const outside = await repository.createManagedFile(
+      managed("Projects/Novel/10_Summary/Note.md"),
+    );
+
+    // A record is shared while its file stands: the same object comes back.
+    const kept = await repository.readManaged(inside.path);
+    expect(await repository.readManaged(inside.path)).toBe(kept);
+
+    // Forgetting the exact path parses afresh on the next read.
+    repository.forget(inside.path);
+    const reread = await repository.readManaged(inside.path);
+    expect(reread).not.toBe(kept);
+    expect(reread.content).toBe(kept.content);
+
+    // Forgetting a folder sweeps what is under it and nothing beside it.
+    const keptSibling = await repository.readManaged(sibling.path);
+    const keptOutside = await repository.readManaged(outside.path);
+    repository.forget("Projects/Novel/40_Scene", { children: true });
+    expect(await repository.readManaged(reread.path)).not.toBe(reread);
+    expect(await repository.readManaged(sibling.path)).not.toBe(keptSibling);
+    expect(await repository.readManaged(outside.path)).toBe(keptOutside);
+  });
 });

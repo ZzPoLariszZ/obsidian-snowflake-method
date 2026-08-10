@@ -6,6 +6,7 @@ import {
 	Platform,
 	Plugin,
 	TFile,
+	TFolder,
 	type MarkdownFileInfo,
 	type TAbstractFile,
 	type WorkspaceLeaf,
@@ -2648,6 +2649,11 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private async handleVaultDelete(file: TAbstractFile): Promise<void> {
+		// Before any guard: the parse cache lets the record go wherever the
+		// file was, and forgetting can never change what a read returns.
+		this.projects.repository.forget(file.path, {
+			children: file instanceof TFolder,
+		});
 		if (!this.touchesProject(file.path)) return;
 		this.invalidateProjectHealth(file.path);
 
@@ -2696,6 +2702,11 @@ export default class SnowflakeMethodPlugin
 		file: TAbstractFile,
 		oldPath: string,
 	): Promise<void> {
+		// Before any guard: the parse cache lets the old path's record go. The
+		// new path caches itself on its next read.
+		this.projects.repository.forget(oldPath, {
+			children: file instanceof TFolder,
+		});
 		// The configured root travels with its folder. Leaving the setting on a
 		// path that no longer exists would empty the dashboard while every
 		// project note is still on disk. This is checked before the containment
