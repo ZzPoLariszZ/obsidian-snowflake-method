@@ -44,6 +44,20 @@ export function mergeDashboardViewState(
 	};
 }
 
+/**
+ * Whether one member's searchable fields contain the query, matched the way
+ * the option pickers match: lower-cased, anywhere in the text. An empty query
+ * matches everyone, so a search box at rest filters nothing out.
+ */
+export function memberMatches(
+	texts: readonly string[],
+	query: string,
+): boolean {
+	const needle = query.trim().toLocaleLowerCase();
+	if (needle.length === 0) return true;
+	return texts.some((text) => text.toLocaleLowerCase().includes(needle));
+}
+
 export interface DashboardRenderSnapshot {
 	projectId: string | null;
 	step: StepId | null;

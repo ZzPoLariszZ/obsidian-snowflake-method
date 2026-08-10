@@ -124,6 +124,12 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
+	it('drops settings the plugin no longer keeps, such as the pager size', () => {
+		expect(sanitizeSettings({ memberPageSize: 50 })).not.toHaveProperty(
+			'memberPageSize',
+		);
+	});
+
 	it('starts with typewriter scrolling on and focus off, and holds a choice', () => {
 		expect(DEFAULT_SETTINGS.manuscriptTypewriter).toBe(true);
 		expect(DEFAULT_SETTINGS.manuscriptFocusLevel).toBe('off');

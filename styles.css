@@ -863,11 +863,23 @@
    width the plugin measures for this window; where scrollbars are overlaid or
    hidden it measures nothing and none of this moves. */
 .snowflake-method-main {
+	display: flex;
+	flex-direction: column;
 	min-width: 0;
 	min-height: 0;
 	overflow-y: auto;
 	scrollbar-gutter: stable;
 	padding-bottom: var(--size-4-4);
+}
+
+/* A member step hands its table every line the pane has left: the panel
+   stretches to the pane's height and the table frame takes the leftover.
+   Other steps keep their natural height, so their panels end where their
+   content does. */
+.snowflake-method-panel.snowflake-method-member-panel {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
 }
 
 /* The scrollbar's own width is what the steps are inset by on the far side, so
@@ -1682,17 +1694,94 @@
 	margin: 0 0 var(--size-4-3);
 }
 
+/* The search, filters and shown-count above a member table. */
+.snowflake-method-table-toolbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-2-3);
+	margin: 0 0 var(--size-2-3);
+}
+
+/* The toolbar reads as part of the grid below it: the search ends where
+   the name column ends, and the filter begins where the actions column
+   begins. The extra pixel on each is the frame's border, which the columns
+   sit inside of and the toolbar does not. */
+.snowflake-method-table-toolbar .search-input-container {
+	flex: 0 0 auto;
+	width: calc(19rem + 1px);
+}
+
+.snowflake-method-table-filter {
+	flex: 0 0 auto;
+	width: calc(11rem + 1px);
+}
+
+.snowflake-method-table-count {
+	margin-inline-start: auto;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The table frame: a header strip over a scrolling body, as two tables laid
+   by the same fixed columns. The split keeps the body's scrollbar under the
+   header instead of running alongside it, and the frame takes whatever
+   height its step panel has left to give.
+
+   The gutter is where the scrollbar lives: outside the frame's border, in
+   the panel padding between this frame and the pane's edge. At least a
+   finger of room, so an overlaid scrollbar lands there too. */
 .snowflake-method-table-wrap {
+	--snowflake-method-table-gutter: max(
+		var(--snowflake-method-scrollbar-width, 0px),
+		var(--size-4-3)
+	);
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 12rem;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
-	overflow-x: auto;
 	background: var(--background-primary);
 }
 
+/* The wrap no longer clips, so each half rounds its own corners: the header
+   strip the top pair, the body the bottom-left it still owns. The header's
+   horizontal scroll is set from the body's, so it never scrolls itself. */
+.snowflake-method-table-head {
+	flex: 0 0 auto;
+	overflow: hidden;
+	border-start-start-radius: calc(var(--radius-s) - 1px);
+	border-start-end-radius: calc(var(--radius-s) - 1px);
+}
+
+/* The body reaches out of the frame by the gutter and pads the reach back,
+   less the width a classic scrollbar takes: the table inside always ends at
+   the frame's border, in line with the header and the toolbar, while the
+   scrollbar sits in the gutter beyond it. Scroll rather than auto on the
+   vertical axis, so the bar's width is spoken for whether or not the list
+   is long enough to need one. */
+.snowflake-method-table-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-x: auto;
+	overflow-y: scroll;
+	margin-inline-end: calc(-1 * var(--snowflake-method-table-gutter));
+	padding-inline-end: calc(
+		var(--snowflake-method-table-gutter) -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
+	border-end-start-radius: calc(var(--radius-s) - 1px);
+}
+
+/* Separate borders keep each row's border inside its own rect, which is
+   what the row-height measurements read. */
 .snowflake-method-table {
 	width: 100%;
 	margin: 0;
-	border-collapse: collapse;
+	border-collapse: separate;
+	border-spacing: 0;
 }
 
 .snowflake-method-table th,
@@ -1703,21 +1792,27 @@
 	vertical-align: top;
 }
 
-/* A cell can hold a whole paragraph, and that paragraph's own line spacing is
-   the yardstick: give the row less room than that above and below and the text
-   reads as running into the rows either side of it. Stated in line heights so
-   it holds at whatever text size the reader has set, and falling back to the
-   padding above wherever the unit is not understood. */
-.snowflake-method-table td {
-	padding-block: 1.25lh;
-}
-
 .snowflake-method-table th {
 	background: var(--background-secondary);
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
 	white-space: nowrap;
+}
+
+/* The rows that hold the height of everything the window is not drawing.
+   Bare height and nothing else, so the arithmetic they carry stays exact.
+   The width matters too: as the body table's first row, a spacer with the
+   last-child 1% width would hand fixed layout that 1% for every column it
+   spans, and the flexible column would starve. */
+.snowflake-method-table tr.snowflake-method-virtual-spacer > td {
+	width: auto;
+	padding: 0;
+	border: 0;
+}
+
+.snowflake-method-table tbody tr.snowflake-method-virtual-spacer:hover td {
+	background: transparent;
 }
 
 .snowflake-method-table tbody tr:last-child td {
@@ -1805,50 +1900,51 @@
 	flex: 0 0 auto;
 }
 
-.snowflake-method-character-table {
-	min-width: 42rem;
+/* Both member tables are laid by the same five columns, so stepping from
+   characters to scenes changes the rows and not the grid. The text column
+   has no width of its own: it takes whatever the others leave. */
+.snowflake-method-table {
+	min-width: 52rem;
 	table-layout: fixed;
 }
 
-.snowflake-method-character-column-name {
+.snowflake-method-member-column-order {
+	width: 5rem;
+}
+
+.snowflake-method-member-column-name {
 	width: 14rem;
 }
 
-.snowflake-method-character-column-type {
-	width: 6rem;
+.snowflake-method-member-column-kind {
+	width: 10rem;
 }
 
-.snowflake-method-character-column-actions {
+.snowflake-method-member-column-actions {
 	width: 11rem;
 }
 
-.snowflake-method-character-table th:last-child,
-.snowflake-method-character-table td:last-child {
-	width: auto;
+.snowflake-method-table th:not(:last-child),
+.snowflake-method-table td:not(:last-child) {
+	border-inline-end: 1px solid var(--background-modifier-border);
 }
 
-.snowflake-method-character-table th:nth-child(2),
-.snowflake-method-character-table td:nth-child(2) {
+/* Names keep to one line, with the full text as their tooltip. */
+.snowflake-method-table td:nth-child(2) {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.snowflake-method-character-table td:nth-child(3) {
-	overflow: visible;
-	overflow-wrap: anywhere;
-	text-overflow: clip;
-	white-space: pre-wrap;
-}
-
-.snowflake-method-character-table td:nth-child(1) {
-	overflow: visible;
-	overflow-wrap: anywhere;
+/* The storyline and the conflict show themselves whole: they wrap to
+   whatever height they need, and the virtual window measures each row
+   rather than assuming one. */
+.snowflake-method-table td:nth-child(4) {
 	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
-.snowflake-method-character-table td:last-child > .snowflake-method-table-actions,
-.snowflake-method-scene-table td:last-child > .snowflake-method-table-actions {
+.snowflake-method-table td:last-child > .snowflake-method-table-actions {
 	width: 100%;
 	min-width: 0;
 	box-sizing: border-box;
@@ -1856,39 +1952,13 @@
 	gap: var(--size-2-2);
 }
 
-.snowflake-method-character-table
-	td:last-child
-	> .snowflake-method-table-actions
-	button,
-.snowflake-method-scene-table
+.snowflake-method-table
 	td:last-child
 	> .snowflake-method-table-actions
 	button {
 	min-width: 0;
 	box-sizing: border-box;
 	padding-inline: var(--size-4-2);
-}
-
-.snowflake-method-character-table th:not(:last-child),
-.snowflake-method-character-table td:not(:last-child) {
-	border-inline-end: 1px solid var(--background-modifier-border);
-}
-
-.snowflake-method-scene-table {
-	min-width: 52rem;
-	table-layout: fixed;
-}
-
-.snowflake-method-scene-column-order {
-	width: 5rem;
-}
-
-.snowflake-method-scene-column-name {
-	width: 14rem;
-}
-
-.snowflake-method-scene-column-pov {
-	width: 10rem;
 }
 
 /* A reference the project can no longer resolve. Warm rather than red: the scene
@@ -1929,23 +1999,6 @@
 	color: var(--color-orange, var(--text-warning));
 	font-weight: var(--font-semibold);
 	cursor: help;
-}
-
-.snowflake-method-scene-column-actions {
-	width: 11rem;
-}
-
-.snowflake-method-scene-table th:not(:last-child),
-.snowflake-method-scene-table td:not(:last-child) {
-	border-inline-end: 1px solid var(--background-modifier-border);
-}
-
-.snowflake-method-scene-table td:nth-child(2),
-.snowflake-method-scene-table td:nth-child(4) {
-	overflow: visible;
-	overflow-wrap: anywhere;
-	text-overflow: clip;
-	white-space: pre-wrap;
 }
 
 .snowflake-method-character-split-button {
@@ -3419,9 +3472,11 @@
 		align-items: center;
 	}
 
+	/* The border and fill go, the way the rest of this layout sheds its
+	   chrome, but the wrap stays the scrollport: the virtual window still
+	   needs an element that scrolls and has a height. */
 	.snowflake-method-table-wrap {
 		border: 0;
-		overflow: visible;
 		background: transparent;
 	}
 
@@ -3429,14 +3484,25 @@
 		display: block;
 	}
 
-	.snowflake-method-character-table,
-	.snowflake-method-scene-table {
+	.snowflake-method-table {
 		min-width: 0;
 		table-layout: auto;
 	}
 
-	.snowflake-method-table thead {
+	.snowflake-method-table-head {
 		display: none;
+	}
+
+	/* The columns the toolbar aligned to are gone here, so the search and
+	   the filter go back to sharing the row. */
+	.snowflake-method-table-toolbar .search-input-container {
+		flex: 1 1 12rem;
+		width: auto;
+	}
+
+	.snowflake-method-table-filter {
+		flex: 0 1 14rem;
+		width: auto;
 	}
 
 	.snowflake-method-table tbody {
@@ -3450,6 +3516,22 @@
 		border-radius: var(--radius-s);
 		overflow: hidden;
 		background: var(--background-primary);
+	}
+
+	/* A spacer is height, not a card. */
+	.snowflake-method-table tr.snowflake-method-virtual-spacer {
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+	}
+
+	.snowflake-method-table tr.snowflake-method-virtual-spacer > td {
+		display: block;
+		padding: 0;
+	}
+
+	.snowflake-method-table tr.snowflake-method-virtual-spacer > td::before {
+		content: none;
 	}
 
 	.snowflake-method-table td,
@@ -3477,20 +3559,21 @@
 		content: attr(data-label);
 	}
 
-	.snowflake-method-character-table td:nth-child(1),
-	.snowflake-method-character-table td:nth-child(2),
-	.snowflake-method-character-table td:nth-child(3) {
+	/* Names and short fields keep to one line in the cards; the storyline
+	   and the conflict wrap in full, as they do in the wide table. */
+	.snowflake-method-table td:nth-child(1),
+	.snowflake-method-table td:nth-child(2),
+	.snowflake-method-table td:nth-child(3) {
 		border-inline-end: 0;
-		overflow: visible;
-		text-overflow: clip;
-		white-space: normal;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.snowflake-method-scene-table td:nth-child(1),
-	.snowflake-method-scene-table td:nth-child(2),
-	.snowflake-method-scene-table td:nth-child(3),
-	.snowflake-method-scene-table td:nth-child(4) {
+	.snowflake-method-table td:nth-child(4) {
 		border-inline-end: 0;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 
 	.snowflake-method-table-actions {

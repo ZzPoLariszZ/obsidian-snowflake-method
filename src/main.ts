@@ -971,7 +971,7 @@ export default class SnowflakeMethodPlugin
 			this.rethrowLocalizedMutationError(error);
 		}
 		new Notice(this.t('messages.characterCreated', { name: character.name }));
-		return { path: character.path, name: character.name };
+		return { id: character.id, path: character.path, name: character.name };
 	}
 
 	async updateCharacter(
@@ -1049,7 +1049,7 @@ export default class SnowflakeMethodPlugin
 		new Notice(this.t('messages.characterDeleted'));
 	}
 
-	async createScene(request: CreateSceneRequest): Promise<void> {
+	async createScene(request: CreateSceneRequest): Promise<{ id: string }> {
 		const project = await this.requireCurrentProject();
 		let scene;
 		try {
@@ -1066,6 +1066,7 @@ export default class SnowflakeMethodPlugin
 			this.rethrowLocalizedMutationError(error);
 		}
 		new Notice(this.t('messages.sceneCreated', { name: scene.title }));
+		return { id: scene.id };
 	}
 
 	async createSceneCanvas(): Promise<void> {
@@ -3089,6 +3090,7 @@ export default class SnowflakeMethodPlugin
 				this.app,
 				this.t,
 				project.characters.map((character) => ({
+					id: character.id,
 					path: character.path,
 					name: character.name,
 				})),

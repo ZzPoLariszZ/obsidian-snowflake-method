@@ -264,7 +264,8 @@ export interface DashboardHost {
 	createCharacter(request: CreateCharacterRequest): Promise<CharacterOption>;
 	updateCharacter(id: string, request: CreateCharacterRequest): Promise<void>;
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
-	createScene(request: CreateSceneRequest): Promise<void>;
+	/** Reports the scene's id back, so inserting can place what it created. */
+	createScene(request: CreateSceneRequest): Promise<{ id: string }>;
 	createSceneCanvas(): Promise<void>;
 	openProjectBase(id: 'characters' | 'scenes'): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;

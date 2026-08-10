@@ -378,7 +378,7 @@ describe('translation resources', () => {
 		);
 		expect(en['step5.hints.title']).toBe('Hints for character synopsis');
 		expect(en['step5.hints.reorder']).toBe(
-			'Drag to reorder the characters.',
+			'Drag to reorder the characters. The row menu moves one to an exact position.',
 		);
 		expect(en['step5.hints.openNote']).toBe(
 			'Open the separate note to edit the character synopsis.',
@@ -394,7 +394,9 @@ describe('translation resources', () => {
 			'从每位角色的视角重新讲述故事。\n解释他们的动机、目标、冲突与成长是如何与故事融为一体的。',
 		);
 		expect(zhCN['step5.hints.title']).toBe('人物大纲提示');
-		expect(zhCN['step5.hints.reorder']).toBe('拖动可以调整角色顺序。');
+		expect(zhCN['step5.hints.reorder']).toBe(
+			'拖动可以调整角色顺序，行内菜单可将其移动到指定位置。',
+		);
 		expect(zhCN['step5.hints.openNote']).toBe('请打开独立笔记进行编辑。');
 		expect(zhCN['step5.hints.expand']).toBe(
 			'与第四步情节大纲类似，拓展角色的一段式故事梗概。',

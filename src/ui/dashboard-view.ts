@@ -2,6 +2,7 @@ import {
 	ItemView,
 	Menu,
 	Notice,
+	SearchComponent,
 	setIcon,
 	setTooltip,
 	type ViewStateResult,
@@ -9,6 +10,8 @@ import {
 } from 'obsidian';
 
 import {
+	SCENE_POV_MULTIPLE,
+	SCENE_POV_OMNISCIENT,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
 	areStepPrerequisitesComplete,
@@ -17,6 +20,7 @@ import {
 	getFirstIncompleteStep,
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
+	type CharacterType,
 	type StepOneSectionId,
 	type StepId,
 	type StepStatus,
@@ -26,20 +30,27 @@ import {
 	CreateCharacterModal,
 	CreateProjectModal,
 	CreateSceneModal,
+	MoveAfterModal,
+	MoveToPositionModal,
 	RepairReportModal,
 	promptForNewCharacter,
 	type CharacterOption,
+	type MoveAfterEntry,
 	type Translate,
 } from './modals';
 import {
 	dashboardHasHealthIssues,
 	dashboardRenderContinuity,
+	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
 } from './dashboard-state';
+import { buildOptionField, type OptionPicker } from './option-picker';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
+import { VirtualTable } from './virtual-table';
 import type {
+	CharacterViewModel,
 	CreatedProject,
 	DashboardHost,
 	ManagedSectionIssueViewModel,
@@ -59,6 +70,16 @@ export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
 const CHARACTER_DRAG_TYPE = 'application/x-snowflake-character';
 const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
 
+/**
+ * Both member tables are laid by the same five columns, so stepping between
+ * characters and scenes changes the rows and not the grid: order, name, the
+ * kind column (a character's type, a scene's point of view), the wrapping
+ * text column, and the actions.
+ */
+const MEMBER_COLUMN_CLASSES = ['order', 'name', 'kind', 'text', 'actions'].map(
+	(name) => `snowflake-method-member-column-${name}`,
+);
+
 const STEP_LIST_SELECTOR = '.snowflake-method-step-list';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
@@ -77,6 +98,34 @@ export class SnowflakeDashboardView extends ItemView {
 		{ fields: StepFields; expectedRevision: string }
 	>();
 	private selectedStep: StepId;
+	/**
+	 * What each member table is showing, one set per table rather than one
+	 * per step: steps 3, 5 and 7 share the character table and 8 and 9 the
+	 * scene table, so moving between them keeps the same rows, search and
+	 * filters in view. Session state, like the selected step.
+	 */
+	private characterScroll = 0;
+	private sceneScroll = 0;
+	private characterQuery = '';
+	private sceneQuery = '';
+	private characterTypeFilter: 'all' | CharacterType = 'all';
+	/** A character path, a point-of-view mode, or '' for every scene. */
+	private scenePovFilter = '';
+	/** The average measured row height, carried across renders as a seed. */
+	private characterRowHeight = 48;
+	private sceneRowHeight = 48;
+	/** Measured heights by member id: rows wrap, so each has its own. */
+	private readonly characterHeights = new Map<string, number>();
+	private readonly sceneHeights = new Map<string, number>();
+	private characterTable: VirtualTable | null = null;
+	private sceneTable: VirtualTable | null = null;
+	/** The one filter picker a member panel shows: type or point of view. */
+	private memberFilterPicker: OptionPicker | null = null;
+	/** What the last render drew, so a reveal can find a row's place now. */
+	private lastRender: {
+		projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
+		model: ProjectDashboardModel | null;
+	} | null = null;
 	/**
 	 * False until a step has actually been chosen in this session. A view built
 	 * for a leaf Obsidian restored carries the step the workspace last saved,
@@ -228,6 +277,8 @@ export class SnowflakeDashboardView extends ItemView {
 	async onClose(): Promise<void> {
 		this.opened = false;
 		this.clearCertificateCelebration();
+		this.memberFilterPicker?.destroy();
+		this.memberFilterPicker = null;
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -274,6 +325,7 @@ export class SnowflakeDashboardView extends ItemView {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 		model: ProjectDashboardModel | null,
 	): void {
+		this.lastRender = { projects, model };
 		// Once a project is in hand, the first render of the session opens on the
 		// step still waiting to be done. Only the first: from here on the step is
 		// whatever the author last moved to, which is what returning to a tab they
@@ -305,6 +357,13 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
 		this.renderedModel = model;
+		// The tables and the filter picker belong to the DOM about to go. The
+		// picker is told, because it owns a suggestion list that would outlive
+		// its field if nobody closed it.
+		this.memberFilterPicker?.destroy();
+		this.memberFilterPicker = null;
+		this.characterTable = null;
+		this.sceneTable = null;
 		const root = this.contentEl;
 		root.empty();
 		this.celebrationEl = null;
@@ -1500,193 +1559,340 @@ export class SnowflakeDashboardView extends ItemView {
 			return;
 		}
 
-		const wrap = panel.createDiv({ cls: 'snowflake-method-table-wrap' });
-		const table = wrap.createEl('table', {
-			cls: 'snowflake-method-table snowflake-method-character-table',
+		panel.addClass('snowflake-method-member-panel');
+		const toolbar = panel.createDiv({ cls: 'snowflake-method-table-toolbar' });
+		const search = new SearchComponent(toolbar);
+		search.setPlaceholder(this.t('table.searchCharacters'));
+		search.setValue(this.characterQuery);
+		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
+		const typeSlot = toolbar.createDiv({
+			cls: 'snowflake-method-table-filter',
 		});
-		const columns = table.createEl('colgroup');
-		for (const name of ['name', 'type', 'one-sentence-storyline', 'actions']) {
-			columns.createEl('col', {
-				cls: `snowflake-method-character-column-${name}`,
-			});
-		}
-		const header = table.createEl('thead').createEl('tr');
-		for (const key of ['name', 'characterType', 'oneSentenceStoryline', 'actions']) {
-			header.createEl('th', {
-				cls: `snowflake-method-character-header-${key}`,
-				text: this.t(
-					key === 'characterType'
-						? 'table.characterTypeShort'
-						: `table.${key}`,
-				),
-			});
-		}
-		const body = table.createEl('tbody');
+
+		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+			panel,
+			'snowflake-method-character-table',
+			[
+				this.t('table.order'),
+				this.t('table.name'),
+				this.t('table.characterTypeShort'),
+				this.t('table.oneSentenceStoryline'),
+				this.t('table.actions'),
+			],
+		);
 		const reorderReadOnly =
 			model.readOnly || model.characters.some((character) => character.readOnly);
-		model.characters.forEach((character, index) => {
-			const characterDamaged = character.healthIssues.some(
-				(issue) => issue.blocking,
-			);
-			const row = body.createEl('tr', {
-				attr: { draggable: reorderReadOnly ? 'false' : 'true' },
-			});
-			row.dataset.characterId = character.id;
-			row.toggleClass('has-managed-section-issue', characterDamaged);
-			const nameCell = row.createEl('td', {
-				cls: 'snowflake-method-table-primary',
-				attr: { 'data-label': this.t('table.name') },
-			});
-			setTooltip(nameCell, character.name);
-			this.renderTableName(nameCell, character.name, character.nameDrifted);
-			if (characterDamaged) {
-				const warning = nameCell.createSpan({
-					cls: 'snowflake-method-table-health-warning',
-					attr: {
-						'aria-label': this.t('editor.managedSection.damagedTitle'),
-					},
-				});
-				setIcon(warning, 'triangle-alert');
-			}
-			row.createEl('td', {
-				text: this.t(`character.${character.type}Short`),
-				attr: { 'data-label': this.t('table.characterType') },
-			});
-			setTooltip(
-				row.createEl('td', {
-					text: character.oneSentenceStoryline,
-					attr: { 'data-label': this.t('table.oneSentenceStoryline') },
-				}),
-				character.oneSentenceStoryline,
-			);
-			const cell = row.createEl('td', {
-				attr: { 'data-label': this.t('table.actions') },
-			});
-			const buttonGroup = cell.createDiv({
-				cls: 'snowflake-method-table-actions',
-			});
-			const editCharacter = (): void => {
-				if (model.readOnly || character.readOnly || characterDamaged) return;
-				new CreateCharacterModal(
-					this.app,
-					this.t,
-					model.characters
-						.filter((candidate) => candidate.id !== character.id)
-						.map((candidate) => candidate.name),
-					async (request) => {
-						await this.host.updateCharacter(character.id, request);
-						await this.refresh();
-					},
-					{
-						name: character.name,
-						type: character.type,
-						oneSentenceStoryline: character.oneSentenceStoryline,
-						oneParagraphStoryline: character.oneParagraphStoryline,
-						motivation: character.motivation,
-						goal: character.goal,
-						conflict: character.conflict,
-						growth: character.growth,
-						expectedRevision: character.revision,
-					},
-				).open();
-			};
-			const openCharacter = (): void => {
-				void this.host.openManagedFile(
-					character.path,
-					primaryManagedSectionForStep(step) ?? undefined,
+
+		let entries: { character: CharacterViewModel; index: number }[] = [];
+		const virtual = new VirtualTable({
+			scroller: bodyWrap,
+			body,
+			columns: 5,
+			estimatedRowHeight: this.characterRowHeight,
+			overscan: 8,
+			rowKey: (offset) =>
+				entries[offset]?.character.id ?? `?${String(offset)}`,
+			heights: this.characterHeights,
+			renderRow: (rows, offset) => {
+				const entry = entries[offset];
+				if (entry === undefined) return;
+				this.renderCharacterRow(
+					rows,
+					entry.character,
+					entry.index,
+					model,
+					step,
+					reorderReadOnly,
+					reorderReadOnly || this.characterListFiltered(),
 				);
-			};
-			const opensByDefault = step === 5 || step === 7;
-			const splitButton = buttonGroup.createDiv({
-				cls: 'snowflake-method-character-split-button',
-			});
-			const primaryAction = splitButton.createEl('button', {
-				cls: 'snowflake-method-character-edit',
-				text: this.t(
-					opensByDefault ? 'common.open' : 'actions.edit',
-				),
-				attr: { type: 'button' },
-			});
-			primaryAction.disabled =
-				!opensByDefault &&
-				(model.readOnly || character.readOnly || characterDamaged);
-			primaryAction.addEventListener(
-				'click',
-				opensByDefault ? openCharacter : editCharacter,
+			},
+			renderTail: (rows) => {
+				this.renderAddRow(
+					rows,
+					5,
+					this.t('actions.addMoreCharacters'),
+					model.readOnly,
+					() => this.openCreateCharacter(model),
+				);
+			},
+			onScroll: (top) => {
+				this.characterScroll = top;
+				headWrap.scrollLeft = bodyWrap.scrollLeft;
+			},
+			onMeasure: (height) => {
+				this.characterRowHeight = height;
+			},
+		});
+		this.characterTable = virtual;
+		const feed = (resetScroll: boolean): void => {
+			// A changed filter makes the old offset point at nothing the eye
+			// was on, so the list starts back at its head.
+			if (resetScroll) {
+				this.characterScroll = 0;
+				bodyWrap.scrollTop = 0;
+			}
+			entries = this.characterEntries(model);
+			count.setText(
+				this.characterListFiltered()
+					? this.t('table.filteredCount', {
+							shown: entries.length,
+							total: model.characters.length,
+						})
+					: '',
 			);
-			const actionMenu = splitButton.createEl('button', {
-				cls: 'snowflake-method-character-action-menu-trigger',
+			virtual.setTotal(entries.length);
+		};
+		search.onChange((value) => {
+			this.characterQuery = value;
+			feed(true);
+		});
+		// A picker rather than a plain dropdown, so the list stays usable
+		// once custom character types join the built-in three.
+		this.memberFilterPicker = buildOptionField(this.app, typeSlot, {
+			options: () => [
+				{ value: 'all', label: this.t('table.filterAllTypes') },
+				...(['major', 'supporting', 'minor'] as const).map((kind) => ({
+					value: kind,
+					label: this.t(`character.${kind}`),
+				})),
+			],
+			value: () => this.characterTypeFilter,
+			choose: (value) => {
+				this.characterTypeFilter =
+					value === 'major' ||
+					value === 'supporting' ||
+					value === 'minor'
+						? value
+						: 'all';
+				feed(true);
+			},
+			label: this.t('table.characterType'),
+			placeholder: this.t('table.filterAllTypes'),
+			emptyPlaceholder: this.t('table.filterAllTypes'),
+		});
+		feed(false);
+		bodyWrap.scrollTop = this.characterScroll;
+		virtual.refresh();
+	}
+
+	/**
+	 * The frame both member tables share: a header strip and a scrolling body,
+	 * as two tables laid by the same fixed columns so they stay aligned. The
+	 * split is what keeps the body's scrollbar under the header instead of
+	 * running alongside it, and the header follows the body's horizontal
+	 * scroll so a narrow pane never shears the columns apart.
+	 */
+	private buildTableFrame(
+		panel: HTMLElement,
+		tableCls: string,
+		headers: readonly string[],
+	): { headWrap: HTMLElement; bodyWrap: HTMLElement; body: HTMLElement } {
+		const wrap = panel.createDiv({ cls: 'snowflake-method-table-wrap' });
+		const headWrap = wrap.createDiv({ cls: 'snowflake-method-table-head' });
+		const headTable = headWrap.createEl('table', {
+			cls: `snowflake-method-table ${tableCls}`,
+		});
+		const bodyWrap = wrap.createDiv({ cls: 'snowflake-method-table-body' });
+		const bodyTable = bodyWrap.createEl('table', {
+			cls: `snowflake-method-table ${tableCls}`,
+		});
+		for (const table of [headTable, bodyTable]) {
+			const columns = table.createEl('colgroup');
+			for (const cls of MEMBER_COLUMN_CLASSES) {
+				columns.createEl('col', { cls });
+			}
+		}
+		const headerRow = headTable.createEl('thead').createEl('tr');
+		for (const text of headers) headerRow.createEl('th', { text });
+		return { headWrap, bodyWrap, body: bodyTable.createEl('tbody') };
+	}
+
+	private renderCharacterRow(
+		body: HTMLElement,
+		character: CharacterViewModel,
+		index: number,
+		model: ProjectDashboardModel,
+		step: 3 | 5 | 7,
+		reorderReadOnly: boolean,
+		dragLocked: boolean,
+	): void {
+		const characterDamaged = character.healthIssues.some(
+			(issue) => issue.blocking,
+		);
+		const row = body.createEl('tr', {
+			attr: { draggable: dragLocked ? 'false' : 'true' },
+		});
+		row.dataset.characterId = character.id;
+		row.toggleClass('has-managed-section-issue', characterDamaged);
+		row.createEl('td', {
+			text: String(index + 1),
+			attr: { 'data-label': this.t('table.order') },
+		});
+		const nameCell = row.createEl('td', {
+			cls: 'snowflake-method-table-primary',
+			attr: { 'data-label': this.t('table.name') },
+		});
+		setTooltip(nameCell, character.name);
+		this.renderTableName(nameCell, character.name, character.nameDrifted);
+		if (characterDamaged) {
+			const warning = nameCell.createSpan({
+				cls: 'snowflake-method-table-health-warning',
 				attr: {
-					type: 'button',
-					'aria-haspopup': 'menu',
-					'aria-label': this.t('table.actions'),
+					'aria-label': this.t('editor.managedSection.damagedTitle'),
 				},
 			});
-			const menuIcon = actionMenu.createSpan({
-				cls: 'snowflake-method-character-action-menu-icon',
-			});
-			setIcon(menuIcon, 'chevron-down');
-			actionMenu.addEventListener('click', (event) => {
-				const menu = new Menu();
-				menu.setParentElement(splitButton);
-				const addEditItem = (): void => {
-					menu.addItem((item) =>
-						item
-							.setTitle(this.t('actions.edit'))
-							.setIcon('pencil')
-							.setDisabled(
-								model.readOnly || character.readOnly || characterDamaged,
-							)
-							.onClick(editCharacter),
-					);
-				};
-				const addOpenItem = (): void => {
-					menu.addItem((item) =>
-						item
-							.setTitle(this.t('common.open'))
-							.setIcon('file-text')
-							.onClick(openCharacter),
-					);
-				};
-				if (step === 3) {
-					addOpenItem();
-					addEditItem();
-				} else {
-					addEditItem();
-					addOpenItem();
-				}
-				menu.showAtMouseEvent(event);
-			});
-			const remove = buttonGroup.createEl('button', {
-				cls: 'snowflake-method-character-delete',
-				text: this.t('actions.delete'),
-				attr: { type: 'button' },
-			});
-			remove.disabled = model.readOnly || character.readOnly;
-			remove.addEventListener('click', () => {
-				void this.runAndRefresh(() =>
-					this.host.deleteCharacter(character.id, character.revision),
-				);
-			});
-			if (!reorderReadOnly) {
-				this.makeRowReorderable(
-					row,
-					CHARACTER_DRAG_TYPE,
-					character.id,
-					index,
-					(candidate) =>
-						model.characters.some((entry) => entry.id === candidate),
-					(id, target) => this.host.reorderCharacter(id, target),
-				);
-			}
+			setIcon(warning, 'triangle-alert');
+		}
+		row.createEl('td', {
+			text: this.t(`character.${character.type}Short`),
+			attr: { 'data-label': this.t('table.characterType') },
 		});
-		this.renderAddRow(
-			body,
-			4,
-			this.t('actions.addMoreCharacters'),
-			model.readOnly,
-			() => this.openCreateCharacter(model),
+		row.createEl('td', {
+			text: character.oneSentenceStoryline,
+			attr: { 'data-label': this.t('table.oneSentenceStoryline') },
+		});
+		const cell = row.createEl('td', {
+			attr: { 'data-label': this.t('table.actions') },
+		});
+		const buttonGroup = cell.createDiv({
+			cls: 'snowflake-method-table-actions',
+		});
+		const editCharacter = (): void => {
+			if (model.readOnly || character.readOnly || characterDamaged) return;
+			new CreateCharacterModal(
+				this.app,
+				this.t,
+				model.characters
+					.filter((candidate) => candidate.id !== character.id)
+					.map((candidate) => candidate.name),
+				async (request) => {
+					await this.host.updateCharacter(character.id, request);
+					await this.refresh();
+				},
+				{
+					name: character.name,
+					type: character.type,
+					oneSentenceStoryline: character.oneSentenceStoryline,
+					oneParagraphStoryline: character.oneParagraphStoryline,
+					motivation: character.motivation,
+					goal: character.goal,
+					conflict: character.conflict,
+					growth: character.growth,
+					expectedRevision: character.revision,
+				},
+			).open();
+		};
+		const openCharacter = (): void => {
+			void this.host.openManagedFile(
+				character.path,
+				primaryManagedSectionForStep(step) ?? undefined,
+			);
+		};
+		const opensByDefault = step === 5 || step === 7;
+		const splitButton = buttonGroup.createDiv({
+			cls: 'snowflake-method-character-split-button',
+		});
+		const primaryAction = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-edit',
+			text: this.t(
+				opensByDefault ? 'common.open' : 'actions.edit',
+			),
+			attr: { type: 'button' },
+		});
+		primaryAction.disabled =
+			!opensByDefault &&
+			(model.readOnly || character.readOnly || characterDamaged);
+		primaryAction.addEventListener(
+			'click',
+			opensByDefault ? openCharacter : editCharacter,
 		);
+		const actionMenu = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-action-menu-trigger',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		const menuIcon = actionMenu.createSpan({
+			cls: 'snowflake-method-character-action-menu-icon',
+		});
+		setIcon(menuIcon, 'chevron-down');
+		actionMenu.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(splitButton);
+			const addEditItem = (): void => {
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.edit'))
+						.setIcon('pencil')
+						.setDisabled(
+							model.readOnly || character.readOnly || characterDamaged,
+						)
+						.onClick(editCharacter),
+				);
+			};
+			const addOpenItem = (): void => {
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('common.open'))
+						.setIcon('file-text')
+						.onClick(openCharacter),
+				);
+			};
+			if (step === 3) {
+				addOpenItem();
+				addEditItem();
+			} else {
+				addEditItem();
+				addOpenItem();
+			}
+			this.addOrderMenuItems(menu, {
+				index,
+				total: model.characters.length,
+				locked: reorderReadOnly,
+				readOnly: model.readOnly,
+				insertTitleKey: 'table.insertCharacterAfter',
+				options: () =>
+					model.characters
+						.map((candidate, at) => ({
+							id: candidate.id,
+							index: at,
+							label: `${String(at + 1)}. ${candidate.name}`,
+						}))
+						.filter((candidate) => candidate.id !== character.id),
+				move: (toIndex) => this.host.reorderCharacter(character.id, toIndex),
+				reveal: () => {
+					this.revealCharacter(character.id);
+				},
+				insert: () => {
+					this.insertCharacterAfter(model, index);
+				},
+			});
+			menu.showAtMouseEvent(event);
+		});
+		const remove = buttonGroup.createEl('button', {
+			cls: 'snowflake-method-character-delete',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.disabled = model.readOnly || character.readOnly;
+		remove.addEventListener('click', () => {
+			void this.runAndRefresh(() =>
+				this.host.deleteCharacter(character.id, character.revision),
+			);
+		});
+		if (!dragLocked) {
+			this.makeRowReorderable(
+				row,
+				CHARACTER_DRAG_TYPE,
+				character.id,
+				index,
+				(candidate) =>
+					model.characters.some((entry) => entry.id === candidate),
+				(id, target) => this.host.reorderCharacter(id, target),
+			);
+		}
 	}
 
 	private renderScenes(
@@ -1736,33 +1942,128 @@ export class SnowflakeDashboardView extends ItemView {
 			return;
 		}
 
-		const wrap = panel.createDiv({ cls: 'snowflake-method-table-wrap' });
-		const table = wrap.createEl('table', {
-			cls: 'snowflake-method-table snowflake-method-scene-table',
+		panel.addClass('snowflake-method-member-panel');
+		const toolbar = panel.createDiv({ cls: 'snowflake-method-table-toolbar' });
+		const search = new SearchComponent(toolbar);
+		search.setPlaceholder(this.t('table.searchScenes'));
+		search.setValue(this.sceneQuery);
+		// A held filter can name a character since deleted, which would filter
+		// every scene out while the field reads as if nothing were set.
+		if (
+			this.scenePovFilter !== '' &&
+			this.scenePovFilter !== SCENE_POV_OMNISCIENT &&
+			this.scenePovFilter !== SCENE_POV_MULTIPLE &&
+			!model.characters.some(
+				(character) => character.path === this.scenePovFilter,
+			)
+		) {
+			this.scenePovFilter = '';
+		}
+		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
+		const povSlot = toolbar.createDiv({
+			cls: 'snowflake-method-table-filter',
 		});
-		const columns = table.createEl('colgroup');
-		for (const name of ['order', 'name', 'pov', 'conflict', 'actions']) {
-			columns.createEl('col', {
-				cls: `snowflake-method-scene-column-${name}`,
-			});
-		}
-		const header = table.createEl('thead').createEl('tr');
-		for (const key of ['order', 'sceneName', 'scenePov', 'conflict', 'actions']) {
-			header.createEl('th', { text: this.t(`table.${key}`) });
-		}
-		const body = table.createEl('tbody');
+
+		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+			panel,
+			'snowflake-method-scene-table',
+			['order', 'sceneName', 'scenePov', 'conflict', 'actions'].map(
+				(key) => this.t(`table.${key}`),
+			),
+		);
 		const reorderReadOnly =
 			model.readOnly || model.scenes.some((candidate) => candidate.readOnly);
-		model.scenes.forEach((scene, index) => {
-			this.renderSceneRow(body, scene, index, model, step, reorderReadOnly);
-		});
-		this.renderAddRow(
+
+		let entries: { scene: SceneViewModel; index: number }[] = [];
+		const virtual = new VirtualTable({
+			scroller: bodyWrap,
 			body,
-			5,
-			this.t('actions.addMoreScenes'),
-			model.readOnly,
-			() => this.openCreateScene(model),
-		);
+			columns: 5,
+			estimatedRowHeight: this.sceneRowHeight,
+			overscan: 8,
+			rowKey: (offset) => entries[offset]?.scene.id ?? `?${String(offset)}`,
+			heights: this.sceneHeights,
+			renderRow: (rows, offset) => {
+				const entry = entries[offset];
+				if (entry === undefined) return;
+				this.renderSceneRow(
+					rows,
+					entry.scene,
+					entry.index,
+					model,
+					step,
+					reorderReadOnly,
+					reorderReadOnly || this.sceneListFiltered(),
+				);
+			},
+			renderTail: (rows) => {
+				this.renderAddRow(
+					rows,
+					5,
+					this.t('actions.addMoreScenes'),
+					model.readOnly,
+					() => this.openCreateScene(model),
+				);
+			},
+			onScroll: (top) => {
+				this.sceneScroll = top;
+				headWrap.scrollLeft = bodyWrap.scrollLeft;
+			},
+			onMeasure: (height) => {
+				this.sceneRowHeight = height;
+			},
+		});
+		this.sceneTable = virtual;
+		const feed = (resetScroll: boolean): void => {
+			// A changed filter makes the old offset point at nothing the eye
+			// was on, so the list starts back at its head.
+			if (resetScroll) {
+				this.sceneScroll = 0;
+				bodyWrap.scrollTop = 0;
+			}
+			entries = this.sceneEntries(model);
+			count.setText(
+				this.sceneListFiltered()
+					? this.t('table.filteredCount', {
+							shown: entries.length,
+							total: model.scenes.length,
+						})
+					: '',
+			);
+			virtual.setTotal(entries.length);
+		};
+		search.onChange((value) => {
+			this.sceneQuery = value;
+			feed(true);
+		});
+		this.memberFilterPicker = buildOptionField(this.app, povSlot, {
+			options: () => [
+				{ value: '', label: this.t('table.filterAllPov') },
+				{
+					value: SCENE_POV_OMNISCIENT,
+					label: this.t('modal.scene.povOmniscient'),
+				},
+				{
+					value: SCENE_POV_MULTIPLE,
+					label: this.t('modal.scene.povMultiple'),
+				},
+				...model.characters.map((character) => ({
+					value: character.path,
+					label: character.name,
+				})),
+			],
+			value: () => this.scenePovFilter,
+			choose: (value) => {
+				this.scenePovFilter = value;
+				feed(true);
+			},
+			label: this.t('table.scenePov'),
+			placeholder: this.t('table.filterAllPov'),
+			emptyPlaceholder: this.t('table.filterAllPov'),
+		});
+		feed(false);
+		bodyWrap.scrollTop = this.sceneScroll;
+		virtual.refresh();
 	}
 
 	private renderSceneRow(
@@ -1772,10 +2073,11 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 8 | 9,
 		reorderReadOnly: boolean,
+		dragLocked: boolean,
 	): void {
 		const sceneDamaged = scene.healthIssues.some((issue) => issue.blocking);
 		const row = body.createEl('tr', {
-			attr: { draggable: reorderReadOnly ? 'false' : 'true' },
+			attr: { draggable: dragLocked ? 'false' : 'true' },
 		});
 		row.dataset.sceneId = scene.id;
 		row.toggleClass('has-managed-section-issue', sceneDamaged);
@@ -1813,13 +2115,10 @@ export class SnowflakeDashboardView extends ItemView {
 		} else {
 			povCell.setText(scene.povName);
 		}
-		setTooltip(
-			row.createEl('td', {
-				text: scene.conflict,
-				attr: { 'data-label': this.t('table.conflict') },
-			}),
-			scene.conflict,
-		);
+		row.createEl('td', {
+			text: scene.conflict,
+			attr: { 'data-label': this.t('table.conflict') },
+		});
 		const actionCell = row.createEl('td', {
 			attr: { 'data-label': this.t('table.actions') },
 		});
@@ -1891,6 +2190,28 @@ export class SnowflakeDashboardView extends ItemView {
 				addEditItem();
 				addOpenItem();
 			}
+			this.addOrderMenuItems(menu, {
+				index,
+				total: model.scenes.length,
+				locked: reorderReadOnly,
+				readOnly: model.readOnly,
+				insertTitleKey: 'table.insertSceneAfter',
+				options: () =>
+					model.scenes
+						.map((candidate, at) => ({
+							id: candidate.id,
+							index: at,
+							label: `${String(at + 1)}. ${candidate.title}`,
+						}))
+						.filter((candidate) => candidate.id !== scene.id),
+				move: (toIndex) => this.host.reorderScene(scene.id, toIndex),
+				reveal: () => {
+					this.revealScene(scene.id);
+				},
+				insert: () => {
+					this.insertSceneAfter(model, index);
+				},
+			});
 			menu.showAtMouseEvent(event);
 		});
 		const remove = buttonGroup.createEl('button', {
@@ -1905,7 +2226,7 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		});
 
-		if (!reorderReadOnly) {
+		if (!dragLocked) {
 			this.makeRowReorderable(
 				row,
 				SCENE_DRAG_TYPE,
@@ -1924,6 +2245,13 @@ export class SnowflakeDashboardView extends ItemView {
 			model.characters.map((character) => character.name),
 			async (request) => {
 				await this.host.createCharacter(request);
+				// The new character joins the end of the list, so the search
+				// and filter are let go and the table scrolls to the end.
+				// What was just made must be on screen, not hidden behind an
+				// old query it happens not to match.
+				this.characterQuery = '';
+				this.characterTypeFilter = 'all';
+				this.characterScroll = Number.MAX_SAFE_INTEGER;
 				await this.refresh();
 			},
 		).open();
@@ -1934,17 +2262,251 @@ export class SnowflakeDashboardView extends ItemView {
 			this.app,
 			this.t,
 			model.characters.map((character) => ({
+				id: character.id,
 				path: character.path,
 				name: character.name,
 			})),
 			model.scenes.map((scene) => scene.title),
 			async (request) => {
 				await this.host.createScene(request);
+				// To the end, filters let go, for the same reason as above.
+				this.sceneQuery = '';
+				this.scenePovFilter = '';
+				this.sceneScroll = Number.MAX_SAFE_INTEGER;
 				await this.refresh();
 			},
 			undefined,
 			this.creatingCharacter(model),
 		).open();
+	}
+
+	/** Creates a character and walks it back from the end to `index + 1`. */
+	private insertCharacterAfter(
+		model: ProjectDashboardModel,
+		index: number,
+	): void {
+		new CreateCharacterModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => character.name),
+			async (request) => {
+				const created = await this.host.createCharacter(request);
+				await this.host.reorderCharacter(created.id, index + 1);
+				await this.refresh();
+				this.revealCharacter(created.id);
+			},
+		).open();
+	}
+
+	/** Creates a scene and walks it back from the end to `index + 1`. */
+	private insertSceneAfter(model: ProjectDashboardModel, index: number): void {
+		new CreateSceneModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => ({
+				id: character.id,
+				path: character.path,
+				name: character.name,
+			})),
+			model.scenes.map((scene) => scene.title),
+			async (request) => {
+				const created = await this.host.createScene(request);
+				await this.host.reorderScene(created.id, index + 1);
+				await this.refresh();
+				this.revealScene(created.id);
+			},
+			undefined,
+			this.creatingCharacter(model),
+		).open();
+	}
+
+	/** The rows the character table shows, each with its place in the list. */
+	private characterEntries(
+		model: ProjectDashboardModel,
+	): { character: CharacterViewModel; index: number }[] {
+		return model.characters
+			.map((character, index) => ({ character, index }))
+			.filter(
+				({ character }) =>
+					(this.characterTypeFilter === 'all' ||
+						character.type === this.characterTypeFilter) &&
+					memberMatches(
+						[
+							character.name,
+							this.t(`character.${character.type}`),
+							this.t(`character.${character.type}Short`),
+							character.oneSentenceStoryline,
+						],
+						this.characterQuery,
+					),
+			);
+	}
+
+	private characterListFiltered(): boolean {
+		return (
+			this.characterQuery.trim().length > 0 ||
+			this.characterTypeFilter !== 'all'
+		);
+	}
+
+	/** The rows the scene table shows, each with its place in the list. */
+	private sceneEntries(
+		model: ProjectDashboardModel,
+	): { scene: SceneViewModel; index: number }[] {
+		const names = new Map(
+			model.characters.map((character) => [character.path, character.name]),
+		);
+		return model.scenes
+			.map((scene, index) => ({ scene, index }))
+			.filter(
+				({ scene }) =>
+					(this.scenePovFilter === '' ||
+						scene.povPath === this.scenePovFilter) &&
+					memberMatches(
+						[
+							scene.title,
+							scene.povName,
+							scene.time,
+							scene.location,
+							...scene.characterPaths.map(
+								(path) => names.get(path) ?? '',
+							),
+						],
+						this.sceneQuery,
+					),
+			);
+	}
+
+	private sceneListFiltered(): boolean {
+		return this.sceneQuery.trim().length > 0 || this.scenePovFilter !== '';
+	}
+
+	/** Scrolls the character table to a row, wherever the filters put it. */
+	private revealCharacter(id: string): void {
+		const model = this.lastRender?.model ?? null;
+		if (model === null) return;
+		const at = this.characterEntries(model).findIndex(
+			(entry) => entry.character.id === id,
+		);
+		if (at === -1) return;
+		this.characterTable?.reveal(at);
+	}
+
+	/** Scrolls the scene table to a row, wherever the filters put it. */
+	private revealScene(id: string): void {
+		const model = this.lastRender?.model ?? null;
+		if (model === null) return;
+		const at = this.sceneEntries(model).findIndex(
+			(entry) => entry.scene.id === id,
+		);
+		if (at === -1) return;
+		this.sceneTable?.reveal(at);
+	}
+
+	/**
+	 * The move and insert items every member row's menu carries. Dragging
+	 * moves a row past the neighbours it can see; these move it by name and
+	 * by number, which is what a list of three thousand actually needs, and
+	 * they keep working while a filter hides the rows in between.
+	 */
+	private addOrderMenuItems(
+		menu: Menu,
+		config: {
+			/** The row's place in the full list, not the filtered one. */
+			index: number;
+			total: number;
+			/** True when any member is read-only, the rule the drag follows. */
+			locked: boolean;
+			/** True when the project cannot take a new member at all. */
+			readOnly: boolean;
+			insertTitleKey: string;
+			/** Everything the row could be moved after, so all but itself. */
+			options: () => MoveAfterEntry[];
+			move: (toIndex: number) => Promise<void>;
+			/** Scrolls to the row once the move has been drawn. */
+			reveal: () => void;
+			insert: () => void;
+		},
+	): void {
+		const { index, total } = config;
+		const moveTo = (toIndex: number): void => {
+			void this.runAndRefresh(() =>
+				config.move(Math.max(0, Math.min(toIndex, total - 1))),
+			).then(() => {
+				config.reveal();
+			});
+		};
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.moveUp'))
+				.setIcon('arrow-up')
+				.setDisabled(config.locked || index === 0)
+				.onClick(() => {
+					moveTo(index - 1);
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.moveDown'))
+				.setIcon('arrow-down')
+				.setDisabled(config.locked || index === total - 1)
+				.onClick(() => {
+					moveTo(index + 1);
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('table.moveToPosition'))
+				.setIcon('hash')
+				.setDisabled(config.locked)
+				.onClick(() => {
+					new MoveToPositionModal(
+						this.app,
+						this.t,
+						total,
+						index + 1,
+						async (toIndex) => {
+							await config.move(toIndex);
+							await this.refresh();
+							config.reveal();
+						},
+					).open();
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('table.moveAfter'))
+				.setIcon('corner-down-right')
+				.setDisabled(config.locked)
+				.onClick(() => {
+					new MoveAfterModal(
+						this.app,
+						this.t,
+						config.options(),
+						(picked) => {
+							// The mover leaves its place before it lands: a
+							// target below it slides up by one, so following it
+							// means taking its old index, while a target above
+							// keeps its index and following it means the slot
+							// after.
+							moveTo(
+								index < picked.index
+									? picked.index
+									: picked.index + 1,
+							);
+						},
+					).open();
+				}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t(config.insertTitleKey))
+				.setIcon('plus')
+				.setDisabled(config.readOnly)
+				.onClick(config.insert),
+		);
 	}
 
 	/**
@@ -2016,6 +2578,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.app,
 			this.t,
 			model.characters.map((character) => ({
+				id: character.id,
 				path: character.path,
 				name: character.name,
 			})),
@@ -2328,6 +2891,10 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectId = null;
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
+		this.memberFilterPicker?.destroy();
+		this.memberFilterPicker = null;
+		this.characterTable = null;
+		this.sceneTable = null;
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

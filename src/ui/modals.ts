@@ -1,5 +1,6 @@
 import {
 	App,
+	FuzzySuggestModal,
 	Menu,
 	Modal,
 	Notice,
@@ -77,6 +78,7 @@ export interface CreateCharacterRequest {
 }
 
 export interface CharacterOption {
+	id: string;
 	path: string;
 	name: string;
 }
@@ -1466,6 +1468,104 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			events: this.events.trim(),
 			expectedRevision: this.expectedRevision,
 		};
+	}
+}
+
+/**
+ * Asks where in the list a row should go, as the 1-based position the order
+ * column shows. Dragging moves a row past a neighbour or two; a scene going
+ * from the back of three thousand to the front needs its destination named.
+ */
+export class MoveToPositionModal extends SnowflakeFormModal<number> {
+	private position: string;
+
+	constructor(
+		app: App,
+		t: Translate,
+		/** How many entries the list holds, naming the last position there is. */
+		private readonly total: number,
+		/** The 1-based position the row holds now, offered as the start. */
+		current: number,
+		onSubmit: SubmitHandler<number>,
+	) {
+		super(app, t, t('modal.moveToPosition.title'), onSubmit, 'actions.move');
+		this.position = String(current);
+		this.modalEl.addClass('snowflake-method-project-modal');
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		// The same form the project dialogs use, so moving a row looks like
+		// answering any other one-field question the plugin asks.
+		this.contentEl.addClass('snowflake-method-project-form');
+		new Setting(this.contentEl)
+			.setName(this.t('modal.moveToPosition.position', { total: this.total }))
+			.addText((text) => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				text.inputEl.max = String(this.total);
+				text.setValue(this.position).onChange((value) => {
+					this.position = value;
+				});
+				// The one field this form has, so it takes the caret without the
+				// author reaching for it.
+				window.setTimeout(() => {
+					text.inputEl.focus();
+					text.inputEl.select();
+				}, 0);
+			});
+	}
+
+	/** The 0-based index the position names, which is what the mover takes. */
+	protected collectValue(): number | null {
+		const position = Number(this.position.trim());
+		if (!Number.isInteger(position) || position < 1 || position > this.total) {
+			new Notice(
+				this.t('modal.moveToPosition.invalid', { total: this.total }),
+			);
+			return null;
+		}
+		return position - 1;
+	}
+}
+
+export interface MoveAfterEntry {
+	id: string;
+	/** The 0-based position the entry holds now. */
+	index: number;
+	/** What the list shows for it: the position and the name. */
+	label: string;
+}
+
+/**
+ * Picks the entry another row should follow. Typing narrows the whole list,
+ * so the destination is found by name even when the rows between are off
+ * screen or filtered out of the table.
+ */
+export class MoveAfterModal extends FuzzySuggestModal<MoveAfterEntry> {
+	constructor(
+		app: App,
+		t: Translate,
+		/** Every entry the row could follow, so everything except itself. */
+		private readonly entries: MoveAfterEntry[],
+		private readonly onPick: (entry: MoveAfterEntry) => void,
+	) {
+		super(app);
+		this.setPlaceholder(t('modal.moveAfter.placeholder'));
+		// Enough matches to scan, few enough to render at three thousand rows.
+		this.limit = 50;
+	}
+
+	getItems(): MoveAfterEntry[] {
+		return this.entries;
+	}
+
+	getItemText(entry: MoveAfterEntry): string {
+		return entry.label;
+	}
+
+	onChooseItem(entry: MoveAfterEntry): void {
+		this.onPick(entry);
 	}
 }
 

@@ -149,6 +149,7 @@ export const en = {
 	'actions.setStatus': 'Set status',
 	'actions.moveUp': 'Move up',
 	'actions.moveDown': 'Move down',
+	'actions.move': 'Move',
 	'fields.oneSentenceSummary': 'One-sentence summary',
 	'fields.oneSentenceSummaryPlaceholder': 'Write the story’s one-sentence summary.',
 	'fields.oneSentenceSummaryCount': 'Current length: {count} {unit}.',
@@ -198,12 +199,21 @@ export const en = {
 	'table.conflict': 'Conflict',
 	'table.actions': 'Actions',
 	'table.order': 'Order',
+	'table.searchCharacters': 'Search characters',
+	'table.searchScenes': 'Search scenes',
+	'table.filterAllTypes': 'All types',
+	'table.filterAllPov': 'All points of view',
+	'table.filteredCount': '{shown} / {total}',
+	'table.moveToPosition': 'Move to position…',
+	'table.moveAfter': 'Move after…',
+	'table.insertCharacterAfter': 'Insert character after',
+	'table.insertSceneAfter': 'Insert scene after',
 	'table.sceneName': 'Scene name',
 	'table.scenePov': 'POV character',
 	'table.pov': 'POV',
 	'characters.empty': 'No characters',
 	'characters.hints.title': 'Hints for major character sheet',
-	'characters.hints.reorder': 'Drag to reorder the characters.',
+	'characters.hints.reorder': 'Drag to reorder the characters. The row menu moves one to an exact position.',
 	'characters.hints.revision':
 		'It’s perfectly fine to revisit steps 1 and 2. Your characters may teach you something new about your story.',
 	'scenes.empty': 'No scenes',
@@ -448,6 +458,10 @@ export const en = {
 		'Are you sure you want to merge “{removed}” into “{kept}”?',
 	'modal.mergeSegments.consequence':
 		'Its text is kept. Only the note itself is removed.',
+	'modal.moveToPosition.title': 'Move to position',
+	'modal.moveToPosition.position': 'Position (1 to {total})',
+	'modal.moveToPosition.invalid': 'Enter a number from 1 to {total}.',
+	'modal.moveAfter.placeholder': 'Type to find the entry to move after',
 	'modal.scene.povChoose': 'Choose a point of view',
 	'modal.scene.createCharacter': 'Create character “{name}”',
 	'modal.scene.povOmniscient': 'Omniscient',
@@ -501,7 +515,7 @@ export const en = {
 	'steps.5.description':
 		'Retell the story from each character’s point of view.\nExplain how their motivation, goal, conflict, and growth fit into the story.',
 	'step5.hints.title': 'Hints for character synopsis',
-	'step5.hints.reorder': 'Drag to reorder the characters.',
+	'step5.hints.reorder': 'Drag to reorder the characters. The row menu moves one to an exact position.',
 	'step5.hints.openNote':
 		'Open the separate note to edit the character synopsis.',
 	'step5.hints.expand':
@@ -524,7 +538,7 @@ export const en = {
 	'steps.7.description':
 		'Explore each character in your novel in depth.\nThis is where you can keep everything related to them.',
 	'step7.hints.title': 'Hints for character profiles',
-	'step7.hints.reorder': 'Drag to reorder the characters.',
+	'step7.hints.reorder': 'Drag to reorder the characters. The row menu moves one to an exact position.',
 	'step7.hints.openNote':
 		'Open the separate note to edit the character profile.',
 	'step7.hints.contents':
@@ -537,7 +551,7 @@ export const en = {
 	'steps.8.description':
 		'Scenes are the fundamental building blocks of a novel.\nList as many scenes in the novel as possible.',
 	'step8.hints.title': 'Hints for scene list',
-	'step8.hints.reorder': 'Drag to reorder the scenes.',
+	'step8.hints.reorder': 'Drag to reorder the scenes. The row menu moves one to an exact position.',
 	'step8.hints.elementsBefore':
 		'The basic elements of a scene are time, place, characters, and ',
 	'step8.hints.conflict': 'conflict',
@@ -557,7 +571,7 @@ export const en = {
 	'steps.9.description':
 		'Optional step: before drafting, further develop each scene’s conflict,\nsatisfying moments, comic beats, foreshadowing, memorable dialogue, and more.',
 	'step9.hints.title': 'Hints for scene list',
-	'step9.hints.reorder': 'Drag to reorder the scenes.',
+	'step9.hints.reorder': 'Drag to reorder the scenes. The row menu moves one to an exact position.',
 	'step9.hints.sceneTypes':
 		'Planning example: Decide whether each scene is proactive (goal → conflict → setback) or reactive (reaction → dilemma → decision).',
 	'step9.hints.revision':

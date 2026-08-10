@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	dashboardHasHealthIssues,
 	dashboardRenderContinuity,
+	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
 } from '../../src/ui/dashboard-state';
@@ -218,5 +219,29 @@ describe('dashboard global structure issue placement', () => {
 				stepIds: [1],
 			}),
 		).toBe(false);
+	});
+});
+
+describe('member table search', () => {
+	it('matches without regard to case, anywhere in any field', () => {
+		expect(memberMatches(['Prince Kael', 'major'], 'kael')).toBe(true);
+		expect(memberMatches(['Prince Kael', 'major'], 'MAJOR')).toBe(true);
+		expect(memberMatches(['Prince Kael', 'major'], 'ince k')).toBe(true);
+	});
+
+	it('lets everyone through while the search box is empty', () => {
+		expect(memberMatches(['Prince Kael'], '')).toBe(true);
+		expect(memberMatches(['Prince Kael'], '   ')).toBe(true);
+		expect(memberMatches([], '')).toBe(true);
+	});
+
+	it('holds back a member none of whose fields carry the query', () => {
+		expect(memberMatches(['Prince Kael', 'major'], 'minor')).toBe(false);
+		expect(memberMatches([], 'kael')).toBe(false);
+	});
+
+	it('ignores the whitespace around a query, not the one inside it', () => {
+		expect(memberMatches(['Prince Kael'], '  prince kael  ')).toBe(true);
+		expect(memberMatches(['PrinceKael'], 'prince kael')).toBe(false);
 	});
 });

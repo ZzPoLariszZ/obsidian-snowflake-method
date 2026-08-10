@@ -139,6 +139,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'actions.setStatus': '设置状态',
 	'actions.moveUp': '上移',
 	'actions.moveDown': '下移',
+	'actions.move': '移动',
 	'fields.oneSentenceSummary': '一句话概述',
 	'fields.oneSentenceSummaryPlaceholder': '写下整个故事的一句话概述。',
 	'fields.oneSentenceSummaryCount': '当前长度：{count} 字。',
@@ -177,12 +178,21 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'table.conflict': '冲突',
 	'table.actions': '操作',
 	'table.order': '顺序',
+	'table.searchCharacters': '搜索角色',
+	'table.searchScenes': '搜索场景',
+	'table.filterAllTypes': '全部类型',
+	'table.filterAllPov': '全部视角',
+	'table.filteredCount': '{shown} / {total}',
+	'table.moveToPosition': '移动到位置…',
+	'table.moveAfter': '移动到某项之后…',
+	'table.insertCharacterAfter': '在其后插入角色',
+	'table.insertSceneAfter': '在其后插入场景',
 	'table.sceneName': '场景名称',
 	'table.scenePov': '视点人物',
 	'table.pov': '视角角色（POV）',
 	'characters.empty': '尚未添加角色',
 	'characters.hints.title': '主要角色表提示',
-	'characters.hints.reorder': '拖动可以调整角色顺序。',
+	'characters.hints.reorder': '拖动可以调整角色顺序，行内菜单可将其移动到指定位置。',
 	'characters.hints.revision':
 		'随时回到第一、二步修改也完全没问题。你的角色或许会让你对故事有新的发现。',
 	'scenes.empty': '尚未添加场景',
@@ -402,6 +412,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.mergeSegments.title': '合并笔记',
 	'modal.mergeSegments.question': '确定要将“{removed}”合并到“{kept}”吗？',
 	'modal.mergeSegments.consequence': '正文会保留，只有笔记本身会被删除。',
+	'modal.moveToPosition.title': '移动到位置',
+	'modal.moveToPosition.position': '位置（1 至 {total}）',
+	'modal.moveToPosition.invalid': '请输入 1 至 {total} 之间的数字。',
+	'modal.moveAfter.placeholder': '输入名称以查找目标条目，移动到其后',
 	'modal.scene.povChoose': '请选择视点',
 	'modal.scene.createCharacter': '新建角色“{name}”',
 	'modal.scene.povOmniscient': '全知视角',
@@ -453,7 +467,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'steps.5.description':
 		'从每位角色的视角重新讲述故事。\n解释他们的动机、目标、冲突与成长是如何与故事融为一体的。',
 	'step5.hints.title': '人物大纲提示',
-	'step5.hints.reorder': '拖动可以调整角色顺序。',
+	'step5.hints.reorder': '拖动可以调整角色顺序，行内菜单可将其移动到指定位置。',
 	'step5.hints.openNote': '请打开独立笔记进行编辑。',
 	'step5.hints.expand': '与第四步情节大纲类似，拓展角色的一段式故事梗概。',
 	'step5.hints.revision':
@@ -471,7 +485,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'steps.7.description':
 		'深入研究小说中的每个人物。\n这里将保存与他们相关的所有信息。',
 	'step7.hints.title': '角色档案提示',
-	'step7.hints.reorder': '拖动可以调整角色顺序。',
+	'step7.hints.reorder': '拖动可以调整角色顺序，行内菜单可将其移动到指定位置。',
 	'step7.hints.openNote': '请打开独立笔记进行编辑。',
 	'step7.hints.contents':
 		'档案可以包含：基本信息、外貌性格、成长环境、情感关系、阶段状态等。',
@@ -482,7 +496,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'steps.8.description':
 		'场景是小说中最基本的创作单位。\n尽可能罗列出小说中所有的场景。',
 	'step8.hints.title': '场景列表提示',
-	'step8.hints.reorder': '拖动可以调整场景顺序。',
+	'step8.hints.reorder': '拖动可以调整场景顺序，行内菜单可将其移动到指定位置。',
 	'step8.hints.elementsBefore': '场景的基本元素：时间、地点、人物和',
 	'step8.hints.conflict': '冲突',
 	'step8.hints.elementsAfter':
@@ -500,7 +514,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'steps.9.description':
 		'可选步骤：在正式创作前进一步设计场景内的冲突，\n包括你觉得需要强调的爽点、笑点、伏笔、精彩对话等。',
 	'step9.hints.title': '场景列表提示',
-	'step9.hints.reorder': '拖动可以调整场景顺序。',
+	'step9.hints.reorder': '拖动可以调整场景顺序，行内菜单可将其移动到指定位置。',
 	'step9.hints.sceneTypes':
 		'规划举例：判断是主动场景（目标 → 冲突 → 挫折）亦或是被动场景（反应 → 困境 → 决定）。',
 	'step9.hints.revision': '随时回到第一至八步修改也完全没问题。',
