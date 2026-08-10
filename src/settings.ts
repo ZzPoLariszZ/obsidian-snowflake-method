@@ -324,6 +324,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			{
 				type: 'group',
 				heading: this.t('settings.manuscript.heading'),
+				cls: 'snowflake-method-manuscript-settings',
 				items: [
 					{
 						name: this.t('settings.manuscriptWindow.name'),

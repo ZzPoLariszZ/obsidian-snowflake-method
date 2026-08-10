@@ -75,6 +75,7 @@ import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
 	sanitizeSettings,
+	type ManuscriptFocusLevel,
 	type SnowflakeSettings,
 } from './settings';
 import {
@@ -1937,30 +1938,44 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * Turns one of the manuscript's writing modes, from the palette or from the
-	 * buttons every segment header carries: typewriter on and off, focus one
-	 * level deeper — and off again past the deepest. One mode for the whole app
+	 * Turns one of the manuscript's writing modes, from the buttons every
+	 * segment header carries: typewriter on and off, focus mode one level
+	 * deeper — and off again past the deepest. One mode for the whole app
 	 * rather than one per stream, because the modes are about how the author
 	 * writes, not about which book they are writing in.
 	 */
 	async toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void> {
-		let said: string;
-		if (mode === 'typewriter') {
-			const on = !this.settings.manuscriptTypewriter;
-			this.settings.manuscriptTypewriter = on;
-			said = on
-				? 'commands.manuscriptTypewriterOn'
-				: 'commands.manuscriptTypewriterOff';
-			await this.saveSettings();
-			await this.handleSettingsChanged('manuscriptTypewriter');
-		} else {
-			const next = NEXT_FOCUS_LEVEL[this.settings.manuscriptFocusLevel];
-			this.settings.manuscriptFocusLevel = next;
-			said = `commands.manuscriptFocus.${next}`;
+		if (mode === 'focus') {
+			await this.setManuscriptFocus(
+				NEXT_FOCUS_LEVEL[this.settings.manuscriptFocusLevel],
+			);
+			return;
+		}
+		const on = !this.settings.manuscriptTypewriter;
+		this.settings.manuscriptTypewriter = on;
+		await this.saveSettings();
+		await this.handleSettingsChanged('manuscriptTypewriter');
+		new Notice(
+			this.globalT(
+				on
+					? 'commands.manuscriptTypewriterOn'
+					: 'commands.manuscriptTypewriterOff',
+			),
+		);
+	}
+
+	/**
+	 * Sets focus mode to one level. The palette offers each level as its own
+	 * command, so a key can name the depth it wants; the notice confirms the
+	 * level even when it was already in force.
+	 */
+	async setManuscriptFocus(level: ManuscriptFocusLevel): Promise<void> {
+		if (this.settings.manuscriptFocusLevel !== level) {
+			this.settings.manuscriptFocusLevel = level;
 			await this.saveSettings();
 			await this.handleSettingsChanged('manuscriptFocusLevel');
 		}
-		new Notice(this.globalT(said));
+		new Notice(this.globalT(`commands.manuscriptFocus.${level}`));
 	}
 
 	async loadManuscript(
@@ -2400,9 +2415,9 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		// The writing modes, offered where they act: while a stream is in front.
-		// Each is also a button in every segment header; the commands are what a
-		// key can be bound to. Focus is one command that walks the levels, the
-		// same walk as its button.
+		// The header buttons walk the levels; the palette names them — one
+		// command per focus mode level, so a key can be bound to the exact
+		// depth wanted rather than cycling through the rest.
 		this.addCommand({
 			id: 'toggle-typewriter-scrolling',
 			name: this.globalT('commands.toggleManuscriptTypewriter'),
@@ -2411,14 +2426,16 @@ export default class SnowflakeMethodPlugin
 				() => true,
 			),
 		});
-		this.addCommand({
-			id: 'cycle-focus',
-			name: this.globalT('commands.cycleManuscriptFocus'),
-			checkCallback: inStream(
-				() => this.toggleManuscriptMode('focus'),
-				() => true,
-			),
-		});
+		for (const level of ['off', 'on', 'deep', 'solo'] as const) {
+			this.addCommand({
+				id: `set-focus-mode-${level}`,
+				name: this.globalT(`commands.setFocusMode.${level}`),
+				checkCallback: inStream(
+					() => this.setManuscriptFocus(level),
+					() => true,
+				),
+			});
+		}
 		this.addCommand({
 			id: 'close-manuscript-stream',
 			name: this.globalT('commands.closeManuscriptStream'),

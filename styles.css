@@ -4373,42 +4373,24 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	display: none;
 }
 
-/* The two stops between the ends, drawn on the track, so the slider reads as
-   the four choices it is rather than a continuous amount.
-
-   The bar is repainted over the handle's travel alone — the track minus the
-   handle's width, which is where its centre can actually go — so the bar's own
-   ends are the outer stops and the two dots sit at exact thirds between them.
-   Painted whole, the bar kept a dead margin either side that made the end
-   steps read longer than the middle ones. Every layer is sized to the travel:
-   the dots, the filled stretch — from the ratio the slider writes on itself,
-   ending exactly at the handle's centre — and the grey bar itself, because
-   the native coat is full-length and has to be taken off first. */
-.snowflake-method-focus-row input.slider {
-	width: 150px;
-	background-color: transparent;
-	background-image: radial-gradient(
-			circle at 33.3% 50%,
-			var(--text-faint) 2px,
-			transparent 2.5px
-		),
-		radial-gradient(circle at 66.6% 50%, var(--text-faint) 2px, transparent 2.5px),
-		linear-gradient(
-			to right,
-			var(--slider-track-background-active, var(--interactive-accent))
-				calc(var(--slider-fill-ratio, 0) * 100%),
-			transparent calc(var(--slider-fill-ratio, 0) * 100%)
-		),
-		linear-gradient(
-			to right,
-			var(--slider-track-background, #dadada),
-			var(--slider-track-background, #dadada)
-		);
-	background-size: calc(100% - var(--slider-thumb-width, 30px)) 100%;
-	background-position: calc(var(--slider-thumb-width, 30px) / 2) 0;
-	background-repeat: no-repeat;
+/* The number beside the loaded-notes slider, held to two digits' width so
+   crossing from 9 to 10 does not shuffle the slider sideways, and centred in
+   that width so a single digit is not left hugging the slider. */
+.snowflake-method-manuscript-settings .slider-value {
+	min-width: 2.5em;
+	text-align: center;
 }
 
-.snowflake-method-focus-row input.slider::-webkit-slider-runnable-track {
-	background: transparent;
+/* One sentence per line: the descriptions here break where the text breaks. */
+.snowflake-method-manuscript-settings .setting-item-description {
+	white-space: pre-line;
 }
+
+/* The slider itself is the stock one, exactly as the loaded-notes slider
+   above it draws: same length, same rounded ends, same fill. A repainted
+   track with stop dots lived here once, and no two answers to it could
+   agree — dots on a full track made the end steps read long, and a track
+   cut to the handle's travel lost the native rounding and stopped short of
+   the column every other control ends on. The four levels still announce
+   themselves: the handle snaps, and the name and description follow the
+   drag. */
