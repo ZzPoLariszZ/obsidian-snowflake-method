@@ -100,6 +100,22 @@ export type FrontmatterUpdater = (
  * Vault.process and all frontmatter mutations with FileManager.processFrontMatter.
  */
 export class VaultRepository {
+  /**
+   * Records already parsed, kept until the file itself changes.
+   *
+   * A project load reads every character, scene and step note it owns, and a
+   * member-heavy project pays a full read and parse for each on every
+   * refresh — a second per load at three thousand scenes, spent almost
+   * entirely on files that have not changed. A record is reused while the
+   * file's modification time, size and identity all stand; any write moves
+   * them, and the next read parses afresh. Records are shared, never edited:
+   * every writer goes through the vault and reads back.
+   */
+  private readonly records = new Map<
+    string,
+    { mtime: number; size: number; record: ManagedFileRecord }
+  >();
+
   constructor(
     readonly vault: Vault,
     readonly fileManager: FileManager,
@@ -246,10 +262,19 @@ export class VaultRepository {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
+    const kept = this.records.get(normalized);
+    if (
+      kept !== undefined &&
+      kept.mtime === file.stat.mtime &&
+      kept.size === file.stat.size &&
+      kept.record.file === file
+    ) {
+      return kept.record;
+    }
     const content = await this.vault.read(file);
     const parsed = parseMarkdownFrontmatter(content);
     const schemaVersion = schemaVersionOf(parsed.frontmatter);
-    return {
+    const record: ManagedFileRecord = {
       file,
       path: normalized,
       content,
@@ -258,6 +283,12 @@ export class VaultRepository {
       schemaVersion,
       readOnly: isReadOnlySchema(parsed.frontmatter),
     };
+    this.records.set(normalized, {
+      mtime: file.stat.mtime,
+      size: file.stat.size,
+      record,
+    });
+    return record;
   }
 
   async tryReadManaged(path: string): Promise<ManagedFileRecord | null> {

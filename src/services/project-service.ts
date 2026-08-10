@@ -2967,6 +2967,31 @@ export class SnowflakeProjectService {
     );
   }
 
+  /**
+   * The parts of a member note that follow from its bytes alone — the marked
+   * sections, their health, the revision hash — parsed once per record. The
+   * repository hands back the same record for as long as the file stands
+   * unchanged, so the parse rides the record's own lifetime. Link resolution
+   * is deliberately not in here: what a link reaches can change while the
+   * note holding it does not.
+   */
+  private readonly characterReadings = new WeakMap<
+    ManagedFileRecord,
+    Pick<
+      CharacterRecord,
+      | "oneParagraphStoryline"
+      | "characterSynopsis"
+      | "characterProfile"
+      | "sectionHealth"
+      | "revision"
+    >
+  >();
+
+  private readonly sceneReadings = new WeakMap<
+    ManagedFileRecord,
+    Pick<SceneRecord, "conflict" | "events" | "planning" | "sectionHealth" | "revision">
+  >();
+
   private characterFromRecord(record: ManagedFileRecord): CharacterRecord {
     const characterId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterId]);
     const projectId = projectIdOf(record.frontmatter);
@@ -2975,6 +3000,21 @@ export class SnowflakeProjectService {
     }
     const characterTypeValue = record.frontmatter[FRONTMATTER_KEYS.characterType];
     const rank = storedRank(record.frontmatter);
+    let reading = this.characterReadings.get(record);
+    if (reading === undefined) {
+      reading = {
+        oneParagraphStoryline: readMarkedSection(record.content, "one-paragraph-storyline") ?? "",
+        characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
+        characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
+        sectionHealth: inspectManagedDocumentSections(
+          record.content,
+          managedSectionsForDocument("character").map((section) => section.id),
+          record.path,
+        ),
+        revision: fingerprint(record.content),
+      };
+      this.characterReadings.set(record, reading);
+    }
     return {
       id: characterId,
       characterId,
@@ -2990,15 +3030,7 @@ export class SnowflakeProjectService {
       goal: asString(record.frontmatter[FRONTMATTER_KEYS.goal]),
       conflict: asString(record.frontmatter[FRONTMATTER_KEYS.conflict]),
       growth: asString(record.frontmatter[FRONTMATTER_KEYS.growth]),
-      oneParagraphStoryline: readMarkedSection(record.content, "one-paragraph-storyline") ?? "",
-      characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
-      characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
-      sectionHealth: inspectManagedDocumentSections(
-        record.content,
-        managedSectionsForDocument("character").map((section) => section.id),
-        record.path,
-      ),
-      revision: fingerprint(record.content),
+      ...reading,
       readOnly: record.readOnly,
     };
   }
@@ -3042,17 +3074,30 @@ export class SnowflakeProjectService {
       ).map(
         (target) => this.projectLinkedPath(target, record.path, root) ?? target,
       ),
-      conflict: readMarkedSection(record.content, "scene-conflict") ?? "",
-      events: readMarkedSection(record.content, "scene-events") ?? "",
-      planning: readMarkedSection(record.content, "scene-planning") ?? "",
-      sectionHealth: inspectManagedDocumentSections(
-        record.content,
-        managedSectionsForDocument("scene").map((section) => section.id),
-        record.path,
-      ),
-      revision: fingerprint(record.content),
+      ...this.sceneReading(record),
       readOnly: record.readOnly,
     };
+  }
+
+  private sceneReading(
+    record: ManagedFileRecord,
+  ): Pick<SceneRecord, "conflict" | "events" | "planning" | "sectionHealth" | "revision"> {
+    let reading = this.sceneReadings.get(record);
+    if (reading === undefined) {
+      reading = {
+        conflict: readMarkedSection(record.content, "scene-conflict") ?? "",
+        events: readMarkedSection(record.content, "scene-events") ?? "",
+        planning: readMarkedSection(record.content, "scene-planning") ?? "",
+        sectionHealth: inspectManagedDocumentSections(
+          record.content,
+          managedSectionsForDocument("scene").map((section) => section.id),
+          record.path,
+        ),
+        revision: fingerprint(record.content),
+      };
+      this.sceneReadings.set(record, reading);
+    }
+    return reading;
   }
 
   private projectHasBlockingManagedSectionIssues(

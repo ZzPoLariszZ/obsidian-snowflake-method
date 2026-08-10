@@ -36,9 +36,36 @@ export function parseFakeYaml(source: string): unknown {
   return trimmed ? JSON.parse(trimmed) : {};
 }
 
+/**
+ * Contents that keep the file stats honest: putting text on a path moves the
+ * file's mtime and size, because on a real Vault there is no way to change a
+ * file's bytes without moving them. Tests poke this map directly to stand in
+ * for edits made outside the plugin, and those edits must age the file too,
+ * or code that trusts an unmoved stat would rightly ignore them.
+ */
+class StatMovingContents extends Map<string, string> {
+  constructor(private readonly aged: (path: string, content: string) => void) {
+    super();
+  }
+
+  override set(path: string, content: string): this {
+    super.set(path, content);
+    this.aged(path, content);
+    return this;
+  }
+}
+
 export class FakeVault {
   readonly nodes = new Map<string, FakeFile | FakeFolder>();
-  readonly contents = new Map<string, string>();
+  readonly contents: Map<string, string> = new StatMovingContents(
+    (path, content) => {
+      const file = this.getFileByPath(normalizeFakePath(path));
+      if (file === null) return;
+      this.tick += 1;
+      file.stat.mtime = this.tick;
+      file.stat.size = content.length;
+    },
+  );
   readonly processCalls: string[] = [];
   readonly createCalls: string[] = [];
   /** Every file opened, so a test can tell a read from an answer already held. */
@@ -58,15 +85,9 @@ export class FakeVault {
     this.nodes.set("", this.root);
   }
 
-  /** Puts content on a file and moves its stat, as writing to one does. */
+  /** Puts content on a file; the contents map itself moves the stat. */
   write(path: string, content: string): void {
-    const normalized = normalizeFakePath(path);
-    this.contents.set(normalized, content);
-    const file = this.getFileByPath(normalized);
-    if (file === null) return;
-    this.tick += 1;
-    file.stat.mtime = this.tick;
-    file.stat.size = content.length;
+    this.contents.set(normalizeFakePath(path), content);
   }
 
   asVault(): Vault {

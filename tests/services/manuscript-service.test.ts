@@ -440,6 +440,19 @@ describe("what a manuscript costs to read", () => {
       FRONTMATTER_KEYS.manuscriptSequence
     ];
 
+  /**
+   * Moves every manuscript note's stat without changing a byte, the state a
+   * renumbering or an outside edit leaves behind: whatever was read before
+   * can no longer be trusted, and the repository's record of it goes stale.
+   */
+  const ageManuscript = (): void => {
+    for (const path of [...fakeVault.contents.keys()]) {
+      if (path.includes("/50_Manuscript/")) {
+        fakeVault.write(path, fakeVault.contents.get(path) ?? "");
+      }
+    }
+  };
+
   beforeEach(async () => {
     const environment = createFakeEnvironment();
     fakeVault = environment.fakeVault;
@@ -470,10 +483,21 @@ describe("what a manuscript costs to read", () => {
   });
 
   it("opens every note when the answer is about to be written back", async () => {
+    // Aged first: a record still fresh is as good as the file, so only notes
+    // that have moved since they were last read cost anything to consult.
+    ageManuscript();
     fakeVault.readCalls.length = 0;
     await service.manuscript.listSegmentsFromFiles(project);
 
     expect(new Set(reads()).size).toBe(4);
+  });
+
+  it("re-opens nothing it already holds, when nothing has moved", async () => {
+    await service.manuscript.listSegmentsFromFiles(project);
+    fakeVault.readCalls.length = 0;
+    await service.manuscript.listSegmentsFromFiles(project);
+
+    expect(reads()).toEqual([]);
   });
 
   it("goes over the manuscript once to load a project, not twice", async () => {
@@ -555,6 +579,9 @@ describe("what a manuscript costs to read", () => {
   });
 
   it("opens two notes to place a chapter between them, not the book", async () => {
+    // Every note aged, so any the insertion consulted would show in the
+    // count: the book staying closed is the point.
+    ageManuscript();
     fakeVault.readCalls.length = 0;
     const placed = await service.manuscript.insertSegmentAfter(
       project,
@@ -600,6 +627,9 @@ describe("what a manuscript costs to read", () => {
     };
     stale("Snowflake Projects/Novel/50_Manuscript/Two.md", 2000);
     stale("Snowflake Projects/Novel/50_Manuscript/Three.md", 3000);
+    // The rewrite moved the files as well, so the repository's records of
+    // them are as far behind as the index.
+    ageManuscript();
     fakeVault.readCalls.length = 0;
 
     const placed = await service.manuscript.insertSegmentAfter(
