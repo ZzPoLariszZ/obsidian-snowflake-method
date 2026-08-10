@@ -8,6 +8,24 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Added
+
+- The character and scene tables scroll the whole list, drawing only the rows in view, so three hundred characters or three thousand scenes cost the dashboard nothing. The steps that share a table share its position: moving between steps 3, 5 and 7, or between 8 and 9, keeps the same rows on screen.
+- A search box and a filter above each table. Characters answer to their name, type and storyline, scenes to their name, point of view, time, location, conflict and cast. The filter narrows the characters to one type, or the scenes to one point of view, and a count says how much of the list remains. Dragging pauses while anything is filtering, because the rows between are hidden.
+- Every row's menu moves it exactly: **Move up**, **Move down**, **Move to position…** by number, and **Move after…**, which finds the destination by name. **Insert character after** and **Insert scene after** put a new entry directly below the row instead of at the end of the list. All of these carry over any distance, and keep working while a filter is on.
+- The character table numbers its rows the way the scene table always has.
+
+### Changed
+
+- Both tables stand on the same columns, reach the bottom of the window, and show storylines and conflicts in full rather than cut to one line. The scrollbar runs beside the table, under its header, rather than over the rows.
+- Opening a project reuses the notes already parsed while their files stand unchanged, and lets go of what a rename or a delete leaves behind. A dashboard that took a second to open at three thousand scenes now opens in a tenth of one.
+
+### Fixed
+
+- Walking into a long chapter with the arrow keys holds the crossed rule still until the chapter has finished measuring itself. A chapter only just mounted revises its line heights for a moment, and the landing used to drift with them.
+
 ## [0.5.1]
 
 ### Changed
@@ -152,6 +170,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.6.0]
+
+### 新增
+
+- 角色表与场景表滚动整份列表，只绘制视野内的行，三百个角色或三千个场景对工作台毫无负担。共用同一张表的步骤共享位置：在第 3、5、7 步之间或第 8、9 步之间切换，屏幕上仍是同样的那几行。
+- 每张表上方新增搜索框与筛选器。角色可按姓名、类型与一句话故事概述查找，场景可按名称、视点、时间、地点、冲突与出场角色查找。筛选器可将角色限定为某一类型、场景限定为某一视点，右侧的计数显示列表还剩多少条。筛选生效时拖动暂停，因为中间的行都被隐藏了。
+- 每一行的菜单都能精确移动它：「上移」「下移」、按序号「移动到位置…」，以及按名称查找目标的「移动到某项之后…」。「在其后插入角色」与「在其后插入场景」把新条目放在这一行下方，而不是列表末尾。这些操作可跨越任意距离，筛选时也照常可用。
+- 角色表也有了顺序列，与场景表一致。
+
+### 变更
+
+- 两张表使用同一套列宽，占满窗口的剩余高度，一句话故事概述与冲突完整显示，不再截成一行。滚动条位于表格旁、表头之下，不再压在行上。
+- 打开项目时，文件未变的笔记沿用已解析的结果，被重命名或删除的则随之释放。三千个场景下原本要一秒才能打开的工作台，如今十分之一秒即可。
+
+### 修复
+
+- 用方向键走进较长的章节时，被跨过的那条线会保持不动，直到该章完成自身的测量。刚装载的章节会在片刻间修正各行的高度，落点此前会随之漂移。
 
 ## [0.5.1]
 
