@@ -143,6 +143,11 @@ export const en = {
 	'actions.addMoreCharacters': 'Add more characters…',
 	'actions.addMoreScenes': 'Add more scenes…',
 	'actions.openBase': 'Open base',
+	'actions.restoreBase': 'Restore base',
+	'modal.restoreBase.title': 'Restore this base?',
+	'modal.restoreBase.description':
+		'The file is rewritten from the current template. Views and arrangements you added in it are replaced.',
+	'modal.restoreBase.action': 'Restore',
 	'actions.openNote': 'Open note',
 	'actions.edit': 'Edit',
 	'actions.delete': 'Delete',

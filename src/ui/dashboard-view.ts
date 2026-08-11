@@ -27,6 +27,7 @@ import {
 	type StepStatusMap,
 } from '../domain';
 import {
+	ConfirmRestoreBaseModal,
 	CreateCharacterModal,
 	CreateProjectModal,
 	CreateSceneModal,
@@ -1494,14 +1495,56 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderOpenBase(
 		actions: HTMLElement,
 		id: 'characters' | 'scenes',
+		model: ProjectDashboardModel,
 	): void {
-		const openBase = actions.createEl('button', {
+		const openBase = (): void => {
+			void this.runAndRefresh(() => this.host.openProjectBase(id));
+		};
+		const splitButton = actions.createDiv({
+			cls: 'snowflake-method-character-split-button snowflake-method-base-split-button',
+		});
+		const open = splitButton.createEl('button', {
 			cls: 'snowflake-method-open-base',
 			text: this.t('actions.openBase'),
 			attr: { type: 'button' },
 		});
-		openBase.addEventListener('click', () => {
-			void this.runAndRefresh(() => this.host.openProjectBase(id));
+		open.addEventListener('click', openBase);
+		const actionMenu = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-action-menu-trigger',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		const menuIcon = actionMenu.createSpan({
+			cls: 'snowflake-method-character-action-menu-icon',
+		});
+		setIcon(menuIcon, 'chevron-down');
+		actionMenu.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(splitButton);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('actions.restoreBase'))
+					.setIcon('rotate-ccw')
+					.setDisabled(model.readOnly)
+					.onClick(() => {
+						new ConfirmRestoreBaseModal(this.app, this.t, (confirmed) => {
+							if (!confirmed) return;
+							void this.runAndRefresh(() =>
+								this.host.restoreProjectBase(id),
+							);
+						}).open();
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('actions.openBase'))
+					.setIcon('layout-grid')
+					.onClick(openBase),
+			);
+			menu.showAtMouseEvent(event);
 		});
 	}
 
@@ -1561,7 +1604,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
-		this.renderOpenBase(actions, 'characters');
+		this.renderOpenBase(actions, 'characters', model);
 		const add = actions.createEl('button', {
 			cls: 'mod-cta',
 			text: this.t('actions.addCharacter'),
@@ -1967,7 +2010,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
-		this.renderOpenBase(actions, 'scenes');
+		this.renderOpenBase(actions, 'scenes', model);
 		const add = actions.createEl('button', {
 			cls: 'mod-cta',
 			text: this.t('actions.addScene'),

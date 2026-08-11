@@ -2847,6 +2847,20 @@ describe("SnowflakeProjectService", () => {
     );
   });
 
+  it("restores a base to the current template, and writes a missing one", async () => {
+    const project = await service.createProject({ name: "Base restore" });
+    const path = `${project.rootPath}/40_Scene/Scenes.base`;
+    const pristine = fakeVault.contents.get(path);
+    fakeVault.contents.set(path, "filters:\n  and: []\nviews: []\n");
+
+    expect(await service.restoreProjectBase(project, "scenes")).toBe(path);
+    expect(fakeVault.contents.get(path)).toBe(pristine);
+
+    fakeVault.delete(path);
+    expect(await service.restoreProjectBase(project, "scenes")).toBe(path);
+    expect(fakeVault.contents.get(path)).toBe(pristine);
+  });
+
   it("grows an open base with member properties it does not list yet", async () => {
     const project = await service.createProject({ name: "Base growth" });
     await service.createScene(project, {

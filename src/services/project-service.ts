@@ -1841,6 +1841,28 @@ export class SnowflakeProjectService {
   }
 
   /**
+   * Rewrites the base from the current template and hands back its path. The
+   * one way a base picks up template changes an append cannot express, so the
+   * dashboard offers it behind a confirmation: it replaces the arrangements
+   * the author made in the file.
+   */
+  async restoreProjectBase(
+    projectLocator: ProjectLocator,
+    id: ProjectBaseId,
+  ): Promise<string> {
+    const project = await this.resolveProjectForRead(projectLocator);
+    this.assertProjectWritable(project);
+    const path = this.projectBasePath(project, id);
+    const base = this.projectBase(project, id);
+    if (this.repository.getFile(path) === null) {
+      await this.repository.createPlainFile(path, base.content);
+    } else {
+      await this.repository.updatePlainFile(path, () => base.content);
+    }
+    return path;
+  }
+
+  /**
    * Grows the base with columns for member properties it does not reference
    * yet, so a field that moved into the frontmatter, or one the author added
    * by hand, shows up the next time the view opens. Append-only: everything

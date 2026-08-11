@@ -1098,6 +1098,12 @@ export default class SnowflakeMethodPlugin
 		await this.openManagedFile(path);
 	}
 
+	async restoreProjectBase(id: 'characters' | 'scenes'): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const path = await this.projects.restoreProjectBase(project, id);
+		await this.openManagedFile(path);
+	}
+
 	async updateScene(id: string, request: CreateSceneRequest): Promise<void> {
 		const project = await this.requireCurrentProject();
 		const expectedRevision = this.requireExpectedRevision(

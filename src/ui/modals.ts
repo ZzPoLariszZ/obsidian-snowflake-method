@@ -1725,6 +1725,49 @@ export class RepairReportModal extends Modal {
  * first. Obsidian's own delete prompt cannot say any of this: it sees a note, not
  * a cast member, so the breakage would only surface later as unresolved links.
  */
+/** Restoring a base replaces the author's arrangements in it, so it asks. */
+export class ConfirmRestoreBaseModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.restoreBase.title'));
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: this.t('modal.restoreBase.description'),
+		});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const restore = actions.createEl('button', {
+			cls: 'mod-warning',
+			text: this.t('modal.restoreBase.action'),
+			attr: { type: 'button' },
+		});
+		restore.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.confirmed);
+	}
+}
+
 export class ConfirmCharacterDeletionModal extends Modal {
 	private confirmed = false;
 

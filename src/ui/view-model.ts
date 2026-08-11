@@ -270,6 +270,8 @@ export interface DashboardHost {
 	createScene(request: CreateSceneRequest): Promise<{ id: string }>;
 	createSceneCanvas(): Promise<void>;
 	openProjectBase(id: 'characters' | 'scenes'): Promise<void>;
+	/** Rewrites the base from the current template and opens it. */
+	restoreProjectBase(id: 'characters' | 'scenes'): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;

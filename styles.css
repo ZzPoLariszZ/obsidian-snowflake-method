@@ -2066,6 +2066,18 @@
 	border-end-start-radius: 0;
 }
 
+/* The table's base opener shares the split shape, not the row width cap. */
+.snowflake-method-base-split-button {
+	flex: 0 0 auto;
+	width: auto;
+	min-width: 0;
+}
+
+.snowflake-method-base-split-button .snowflake-method-open-base {
+	border-start-end-radius: 0;
+	border-end-end-radius: 0;
+}
+
 .snowflake-method-character-action-menu-icon {
 	display: inline-flex;
 	align-items: center;

@@ -132,6 +132,11 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'actions.addMoreCharacters': '添加更多角色…',
 	'actions.addMoreScenes': '添加更多场景…',
 	'actions.openBase': '打开数据库',
+	'actions.restoreBase': '重置数据库',
+	'modal.restoreBase.title': '重置此数据库？',
+	'modal.restoreBase.description':
+		'将按当前模板重写该文件，你在其中添加的视图与排列将被替换。',
+	'modal.restoreBase.action': '重置',
 	'actions.openNote': '打开笔记',
 	'actions.edit': '编辑',
 	'actions.delete': '删除',
