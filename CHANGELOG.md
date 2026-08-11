@@ -8,6 +8,28 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0]
+
+### Added
+
+- Character and scene notes show their fields in the note body, as an overview above the writing. The labels and the values are in the project's language, the point of view and the cast are links, and the whole block is generated from the note's own properties. It is ordinary Markdown, so it reads the same in reading view, live preview and source mode, and it stays readable with the plugin turned off. The Properties panel cuts long key names short and shows them in English whatever the project language, which is what this answers.
+- The overview keeps itself current. Editing a field in the dashboard or in the Properties panel rewrites it, and text typed into the block is put back the way the properties have it. The editor refuses edits inside the block and says where to make them instead.
+- Existing notes gain their overview when you ask for it. A line above the character and scene tables counts the notes written before this and adds the overview to all of them at once, and the command **Write field overviews into character and scene notes** does the same for the current project. Until then those notes keep working from their properties, and none of them is reported as damaged.
+- The generated base views grow. Opening one adds a column for any property the notes carry that the base does not list yet, including a property you add yourself, and leaves the columns and views you arranged as they were.
+- **Restore base**, in the menu beside **Open base**, rewrites a base from the current template. It asks first, because the views and the arrangements added in that file are replaced.
+
+### Changed
+
+- A scene's conflict is stored as a property rather than as a section of prose, which is what lets the scene table, the search, the base views and the overview all show the same thing. A scene written before this keeps reading its conflict from where it was, until the overview is added to it.
+- The scene base lists the conflict, and translates the two points of view that name no character. The character base's **All Characters** view lists every field of the sheet rather than four of them. A base made before this picks all of it up through **Restore base**.
+- New character notes head their step 3 section **One-Paragraph Storyline**, which is what the step writes there. Notes already written keep the heading they have.
+- Opening a step note from a table lights up the overview beside the prose that step fills.
+
+### Fixed
+
+- Repairing a note that is open in an editor works without turning boundary protection off first. The protection is meant for what a person types, and it used to refuse the plugin's own writes as well, which left the editor showing the old text and could save it back over the repair.
+- Opening a step note from the dashboard brings its section to the middle of the page. Obsidian restores a note's own scroll position just after it opens, and the centring used to land before that and be carried away by it.
+
 ## [0.6.0]
 
 ### Added
@@ -170,6 +192,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.7.0]
+
+### 新增
+
+- 角色笔记与场景笔记会在正文中显示自身的字段，作为写作区上方的一份概览。标签与取值均使用项目语言，视点人物与出场角色为链接，整块内容由笔记自身的属性生成。它是普通的 Markdown，在阅读视图、实时预览与源码模式下呈现一致，停用插件后依然可读。属性面板会截断过长的键名，且无论项目语言都只显示英文，这正是此概览所要解决的。
+- 概览会自动保持最新。在工作台或属性面板中修改字段都会重写它，直接在块内输入的文字则会按属性中的内容还原。编辑器会拒绝块内的编辑，并提示应该去哪里修改。
+- 已有笔记可按需获得概览。角色表与场景表上方会出现一行提示，统计此前写下的笔记数量，并一次性为它们全部添加；命令「将字段概览写入角色与场景笔记」对当前项目做同样的事。在此之前，这些笔记照常依据属性工作，也不会被报告为损坏。
+- 生成的数据库视图会自动扩充。打开数据库时，笔记中存在而数据库尚未列出的属性都会新增一列，包括你自行添加的属性，而你排布过的列与视图保持原样。
+- 「打开数据库」旁的菜单中新增「重置数据库」，按当前模板重写该数据库。它会先询问，因为文件中新增的视图与排列会被替换。
+
+### 变更
+
+- 场景的冲突改为存放在属性中，而不再是一段正文区段，这样场景表、搜索、数据库视图与概览显示的才是同一份内容。在此之前写下的场景仍从原处读取冲突，直到为其添加概览为止。
+- 场景数据库新增冲突列，并翻译两种不指向具体角色的视点。角色数据库的「全部角色」视图列出角色表的全部字段，而不再只有四项。此前建好的数据库可通过「重置数据库」获得这些改动。
+- 新建角色笔记的第三步区段标题改为「第三步 · 一段式故事梗概」，与该步写入的内容一致。已写下的笔记保留原有标题。
+- 从表格打开步骤笔记时，会在该步所填正文之外一并高亮概览。
+
+### 修复
+
+- 修复正在编辑器中打开的笔记时，无需先关闭边界保护即可完成修复。该保护针对的是人工输入，此前却也会拒绝插件自身的写入，导致编辑器仍显示旧内容，并可能把它覆盖回修复结果之上。
+- 从工作台打开步骤笔记时，对应区段会被带到页面中部。Obsidian 会在笔记打开后随即恢复它自身的滚动位置，此前的居中发生在那之前，因而被其带走。
 
 ## [0.6.0]
 
