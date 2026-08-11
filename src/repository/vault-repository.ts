@@ -14,12 +14,15 @@ import { SCHEMA_VERSION, fingerprint } from "../domain";
 import {
   SECTION_MARKER_PREFIX,
   findManagedMarkerIssues,
+  insertMarkedSection,
   inspectMarkedSection,
+  removeMarkedSection,
   replaceMarkedSection,
   type ManagedMarkerIssue,
   type ManagedSectionDefinition,
   type MarkerIssueCode,
   type MarkdownTemplate,
+  type SectionLayoutEntry,
 } from "../templates";
 import {
   ConcurrentChangeError,
@@ -258,6 +261,41 @@ export class VaultRepository {
     await this.fileManager.trashFile(file);
   }
 
+  /**
+   * Whether this repository is writing the path right now. The editor's
+   * protection filter asks, because a write to an open note lands in its
+   * editor as a transaction: without this, the plugin's own dashboard save
+   * would be refused as if a person had typed into a protected range, and
+   * the stale buffer would then save the change away again.
+   */
+  isWritingPath(path: string): boolean {
+    return this.writingPaths.has(this.normalize(path));
+  }
+
+  private readonly writingPaths = new Set<string>();
+
+  private async withWriteMark<T>(
+    path: string,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    this.writingPaths.add(path);
+    try {
+      return await write();
+    } finally {
+      this.writingPaths.delete(path);
+    }
+  }
+
+  private async processMarked(
+    file: TFile,
+    normalized: string,
+    transform: (current: string) => string,
+  ): Promise<void> {
+    await this.withWriteMark(normalized, () =>
+      this.vault.process(file, transform),
+    );
+  }
+
   async readManaged(path: string): Promise<ManagedFileRecord> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
@@ -368,8 +406,9 @@ export class VaultRepository {
       ...frontmatter,
       "snowflake-schema": SCHEMA_VERSION,
     }).trimEnd();
-    await this.vault.process(
+    await this.processMarked(
       file,
+      normalized,
       () => `---\n${yaml}\n---\n${template.body}`,
     );
   }
@@ -428,16 +467,18 @@ export class VaultRepository {
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
 
-    await this.fileManager.processFrontMatter(file, (frontmatter) => {
-      const mutable = frontmatter as ManagedFrontmatter;
-      assertWritableSchema(normalized, mutable);
-      const patch = updater({ ...mutable });
-      assertWritableSchema(normalized, { ...mutable, ...patch });
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined) delete mutable[key];
-        else mutable[key] = value;
-      }
-    });
+    await this.withWriteMark(normalized, () =>
+      this.fileManager.processFrontMatter(file, (frontmatter) => {
+        const mutable = frontmatter as ManagedFrontmatter;
+        assertWritableSchema(normalized, mutable);
+        const patch = updater({ ...mutable });
+        assertWritableSchema(normalized, { ...mutable, ...patch });
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === undefined) delete mutable[key];
+          else mutable[key] = value;
+        }
+      }),
+    );
   }
 
   async updateFirstHeading(path: string, title: string): Promise<void> {
@@ -447,7 +488,7 @@ export class VaultRepository {
     const normalizedTitle = title.replace(/\s+/gu, " ").trim();
     if (!normalizedTitle) throw new Error("Document title is required.");
 
-    await this.vault.process(file, (current) => {
+    await this.processMarked(file, normalized, (current) => {
       const parsed = parseMarkdownFrontmatter(current);
       assertWritableSchema(normalized, parsed.frontmatter);
       const bodyOffset = current.length - parsed.body.length;
@@ -482,7 +523,7 @@ export class VaultRepository {
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
 
-    await this.vault.process(file, (current) => {
+    await this.processMarked(file, normalized, (current) => {
       const parsed = parseMarkdownFrontmatter(current);
       assertWritableSchema(normalized, parsed.frontmatter);
       const actualRevision = fingerprint(current);
@@ -507,7 +548,7 @@ export class VaultRepository {
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
 
-    await this.vault.process(file, (current) => {
+    await this.processMarked(file, normalized, (current) => {
       const parsed = parseMarkdownFrontmatter(current);
       assertWritableSchema(normalized, parsed.frontmatter);
       const actualRevision = fingerprint(current);
@@ -562,9 +603,189 @@ export class VaultRepository {
     });
   }
 
+  /**
+   * The migration write: retires legacy sections and upserts the rest, in one
+   * Vault.process so a note is either reshaped whole or left alone. Damage to
+   * any involved section refuses the write, exactly as updateSections would.
+   */
+  async reshapeSections(
+    path: string,
+    options: {
+      values: Readonly<Record<string, string>>;
+      layout: readonly SectionLayoutEntry[];
+      remove?: readonly { sectionId: string; headings: readonly string[] }[];
+      expectedRevision?: string;
+    },
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    const removals = options.remove ?? [];
+
+    await this.processMarked(file, normalized, (current) => {
+      const parsed = parseMarkdownFrontmatter(current);
+      assertWritableSchema(normalized, parsed.frontmatter);
+      const actualRevision = fingerprint(current);
+      if (
+        options.expectedRevision !== undefined &&
+        options.expectedRevision !== actualRevision
+      ) {
+        throw new ConcurrentChangeError(
+          normalized,
+          options.expectedRevision,
+          actualRevision,
+        );
+      }
+      const requested = Object.keys(options.values);
+      const involved = [
+        ...requested,
+        ...removals.map((removal) => removal.sectionId),
+      ];
+      for (const [sectionId, value] of Object.entries(options.values)) {
+        if (value.includes(`<!-- ${SECTION_MARKER_PREFIX}:`)) {
+          throw new UnsafeSectionError(
+            normalized,
+            sectionId,
+            "Managed section markers cannot be entered as field content.",
+          );
+        }
+      }
+      const layoutIssue = findSectionLayoutIssue(current, involved);
+      if (layoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          layoutIssue.sectionId ?? involved[0] ?? "unknown",
+          layoutIssue.reason,
+        );
+      }
+
+      let next = current;
+      for (const removal of removals) {
+        next = removeMarkedSection(next, removal.sectionId, removal.headings);
+      }
+      const order = new Map(
+        options.layout.map((entry, index) => [entry.id, index]),
+      );
+      const sorted = [...requested].sort(
+        (left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0),
+      );
+      const bodyStart = next.length - parseMarkdownFrontmatter(next).body.length;
+      for (const sectionId of sorted) {
+        const value = options.values[sectionId] ?? "";
+        const inspection = inspectMarkedSection(next, sectionId);
+        if (inspection.status === "invalid") {
+          throw new UnsafeSectionError(normalized, sectionId, inspection.reason);
+        }
+        if (inspection.status === "present") {
+          const result = replaceMarkedSection(next, sectionId, value);
+          if (!result.ok) {
+            throw new UnsafeSectionError(normalized, sectionId, result.reason);
+          }
+          next = result.content;
+        } else {
+          next = insertMarkedSection(
+            next,
+            options.layout,
+            sectionId,
+            value,
+            bodyStart,
+          );
+        }
+      }
+      const nextLayoutIssue = findSectionLayoutIssue(next, requested);
+      if (nextLayoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          nextLayoutIssue.sectionId ?? requested[0] ?? "unknown",
+          nextLayoutIssue.reason,
+        );
+      }
+      return next;
+    });
+  }
+
+  /**
+   * updateSections for notes that may not carry every requested section yet:
+   * a section that exists is replaced, one that is missing is inserted at its
+   * canonical place in `layout`. Damage still refuses the whole write, so an
+   * upsert can never sew a second copy into a note whose markers are broken.
+   */
+  async upsertSections(
+    path: string,
+    values: Readonly<Record<string, string>>,
+    layout: readonly SectionLayoutEntry[],
+    expectedRevision?: string,
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+
+    await this.processMarked(file, normalized, (current) => {
+      const parsed = parseMarkdownFrontmatter(current);
+      assertWritableSchema(normalized, parsed.frontmatter);
+      const actualRevision = fingerprint(current);
+      if (expectedRevision !== undefined && expectedRevision !== actualRevision) {
+        throw new ConcurrentChangeError(normalized, expectedRevision, actualRevision);
+      }
+      const requested = Object.keys(values);
+      for (const [sectionId, value] of Object.entries(values)) {
+        if (value.includes(`<!-- ${SECTION_MARKER_PREFIX}:`)) {
+          throw new UnsafeSectionError(
+            normalized,
+            sectionId,
+            "Managed section markers cannot be entered as field content.",
+          );
+        }
+      }
+      const layoutIssue = findSectionLayoutIssue(current, requested);
+      if (layoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          layoutIssue.sectionId ?? requested[0] ?? "unknown",
+          layoutIssue.reason,
+        );
+      }
+
+      // Layout order, so an earlier section inserted in this same write is
+      // already in place to anchor a later one.
+      const order = new Map(layout.map((entry, index) => [entry.id, index]));
+      const sorted = [...requested].sort(
+        (left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0),
+      );
+      const bodyStart = current.length - parsed.body.length;
+      let next = current;
+      for (const sectionId of sorted) {
+        const value = values[sectionId] ?? "";
+        const inspection = inspectMarkedSection(next, sectionId);
+        if (inspection.status === "invalid") {
+          throw new UnsafeSectionError(normalized, sectionId, inspection.reason);
+        }
+        if (inspection.status === "present") {
+          const result = replaceMarkedSection(next, sectionId, value);
+          if (!result.ok) {
+            throw new UnsafeSectionError(normalized, sectionId, result.reason);
+          }
+          next = result.content;
+        } else {
+          next = insertMarkedSection(next, layout, sectionId, value, bodyStart);
+        }
+      }
+      const nextLayoutIssue = findSectionLayoutIssue(next, requested);
+      if (nextLayoutIssue) {
+        throw new UnsafeSectionError(
+          normalized,
+          nextLayoutIssue.sectionId ?? requested[0] ?? "unknown",
+          nextLayoutIssue.reason,
+        );
+      }
+      return next;
+    });
+  }
+
   async checkSections(
     path: string,
     sections: ManagedSectionDefinition[],
+    optionalIds: ReadonlySet<string> = new Set(),
   ): Promise<SectionCheckResult> {
     if (sections.length === 0) {
       return { unchanged: [], conflicts: [] };
@@ -576,8 +797,17 @@ export class VaultRepository {
     const current = await this.vault.read(file);
     const parsed = parseMarkdownFrontmatter(current);
     assertWritableSchema(normalized, parsed.frontmatter);
+    // An optional section's absence is a state the note is allowed to be in --
+    // a fields block not migrated in yet, or a legacy section migration has
+    // already removed -- so only its damage counts, never its missingness.
     const blockingIssues = findManagedMarkerIssues(current, sectionIds).filter(
-      (issue) => issue.code !== "unknown-section",
+      (issue) =>
+        issue.code !== "unknown-section" &&
+        !(
+          issue.code === "missing" &&
+          issue.sectionId !== null &&
+          optionalIds.has(issue.sectionId)
+        ),
     );
     const health = new Map(
       sectionIds.map((sectionId) => [
@@ -587,7 +817,7 @@ export class VaultRepository {
     );
 
     return blockingIssues.length > 0
-      ? classifySectionConflicts(sections, health, blockingIssues)
+      ? classifySectionConflicts(sections, health, blockingIssues, optionalIds)
       : { unchanged: sectionIds, conflicts: [] };
   }
 
@@ -795,6 +1025,7 @@ function classifySectionConflicts(
   sections: readonly ManagedSectionDefinition[],
   health: ReadonlyMap<string, ReturnType<typeof inspectMarkedSection>>,
   blockingIssues: readonly ManagedMarkerIssue[],
+  optionalIds: ReadonlySet<string> = new Set(),
 ): SectionCheckResult {
   const result: SectionCheckResult = {
     unchanged: [],
@@ -810,6 +1041,11 @@ function classifySectionConflicts(
     if (directIssue !== undefined) {
       result.conflicts.push(repairConflictFromIssue(section.id, directIssue));
     } else if (inspection?.status === "present") {
+      result.unchanged.push(section.id);
+    } else if (
+      inspection?.status === "missing" &&
+      optionalIds.has(section.id)
+    ) {
       result.unchanged.push(section.id);
     } else {
       const blockingIssue = blockingIssues[0];

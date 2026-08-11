@@ -20,7 +20,11 @@ import {
   SnowflakeProjectService,
   type ProjectSnapshot,
 } from "../../src/services";
-import { getSystemTemplates, readMarkedSection } from "../../src/templates";
+import {
+  getSystemTemplates,
+  readMarkedSection,
+  renderMarkedSection,
+} from "../../src/templates";
 import {
   createFakeEnvironment,
   type FakeFileManager,
@@ -32,6 +36,46 @@ const STEP_ONE_RELATIVE_PATH = "10_Summary/11_One_Sentence_Summary.md";
 
 /** What a note's path looks like inside a link: no ".md", as Obsidian writes them. */
 const linkTarget = (path: string): string => path.replace(/\.md$/u, "");
+
+function stripSection(content: string, sectionId: string): string {
+  const start = `<!-- snowflake:section:${sectionId}:start -->`;
+  const end = `<!-- snowflake:section:${sectionId}:end -->`;
+  const from = content.indexOf(start);
+  const to = content.indexOf(end);
+  if (from === -1 || to === -1) return content;
+  return `${content.slice(0, from)}${content.slice(to + end.length)}`.replace(
+    /\n{3,}/gu,
+    "\n\n",
+  );
+}
+
+/**
+ * Rewrites a freshly created scene into the shape older releases wrote: no
+ * conflict property, no fields block, and the conflict in its own managed
+ * section under its step heading, above the events.
+ */
+function reshapeToLegacyScene(
+  vault: FakeVault,
+  path: string,
+  conflictText: string,
+): void {
+  const raw = vault.contents.get(path) ?? "";
+  const parts = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/u.exec(raw);
+  if (!parts) throw new Error(`No frontmatter to reshape in ${path}`);
+  const frontmatter = JSON.parse(parts[1]!) as Record<string, unknown>;
+  delete frontmatter[FRONTMATTER_KEYS.conflict];
+  const body = stripSection(parts[2]!, "scene-fields").replace(
+    "## Step 8 · Specific Events",
+    `## Step 8 · Conflict\n\n${renderMarkedSection(
+      "scene-conflict",
+      conflictText,
+    )}\n\n## Step 8 · Specific Events`,
+  );
+  vault.contents.set(
+    path,
+    `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n${body}`,
+  );
+}
 
 describe("SnowflakeProjectService", () => {
   let fakeVault: FakeVault;
@@ -1401,9 +1445,12 @@ describe("SnowflakeProjectService", () => {
     expect(scene.conflict).toBe("Ada must choose whom to trust.");
     expect(scene.povPath).toBe(ada.path);
     expect(scene.events).toBe("A coded message arrives and the lights go out.");
-    expect(readMarkedSection(fakeVault.contents.get(scene.path) ?? "", "scene-conflict")).toBe(
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.conflict]).toBe(
       "Ada must choose whom to trust.",
     );
+    expect(
+      readMarkedSection(fakeVault.contents.get(scene.path) ?? "", "scene-conflict"),
+    ).toBeNull();
     expect(readMarkedSection(fakeVault.contents.get(scene.path) ?? "", "scene-events")).toBe(
       "A coded message arrives and the lights go out.",
     );
@@ -1427,6 +1474,267 @@ describe("SnowflakeProjectService", () => {
     ]);
   });
 
+  it("reads a legacy scene conflict from its section until the property exists", async () => {
+    const project = await service.createProject({ name: "Legacy conflict" });
+    const created = await service.createScene(project, {
+      title: "Old shape",
+      conflict: "Written by the property",
+    });
+    reshapeToLegacyScene(fakeVault, created.path, "The bridge is out.");
+
+    const [legacy] = (await service.loadProject(project)).scenes;
+    expect(legacy!.conflict).toBe("The bridge is out.");
+    // The old shape is a state of the note, not damage: nothing blocks it.
+    expect(legacy!.sectionHealth.issues).toEqual([]);
+
+    const updated = await service.updateScene(project, legacy!.sceneId, {
+      expectedRevision: legacy!.revision,
+      conflict: "The bridge is rebuilt.",
+    });
+    expect(updated.conflict).toBe("The bridge is rebuilt.");
+    const afterEdit = fakeVault.contents.get(created.path) ?? "";
+    expect(
+      parseMarkdownFrontmatter(afterEdit).frontmatter[FRONTMATTER_KEYS.conflict],
+    ).toBe("The bridge is rebuilt.");
+    // Until the migration removes it, the legacy section keeps saying what
+    // the property says, so the note never shows yesterday's conflict.
+    expect(readMarkedSection(afterEdit, "scene-conflict")).toBe(
+      "The bridge is rebuilt.",
+    );
+  });
+
+  it("lets an empty conflict property override a leftover legacy section", async () => {
+    const project = await service.createProject({ name: "Emptied conflict" });
+    const created = await service.createScene(project, {
+      title: "Cleared",
+      conflict: "To be cleared",
+    });
+    reshapeToLegacyScene(fakeVault, created.path, "Stale section text");
+    const raw = fakeVault.contents.get(created.path) ?? "";
+    const parts = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/u.exec(raw);
+    const frontmatter = JSON.parse(parts![1]!) as Record<string, unknown>;
+    frontmatter[FRONTMATTER_KEYS.conflict] = "";
+    fakeVault.contents.set(
+      created.path,
+      `---\n${JSON.stringify(frontmatter, null, 2)}\n---\n${parts![2]!}`,
+    );
+
+    const [scene] = (await service.loadProject(project)).scenes;
+    expect(scene!.conflict).toBe("");
+  });
+
+  it("writes the localized fields block into new notes and refreshes it on edit", async () => {
+    const project = await service.createProject({ name: "Block life" });
+    const character = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      motivation: "Belong somewhere.",
+    });
+    const created = fakeVault.contents.get(character.path) ?? "";
+    const block = readMarkedSection(created, "character-fields");
+    expect(block).toContain("> [!info] Character overview");
+    expect(block).toContain("> **Type**: Major character");
+    expect(block).toContain("> **Motivation**: Belong somewhere.");
+
+    const updated = await service.updateCharacter(project, character.characterId, {
+      expectedRevision: character.revision,
+      motivation: "Lead the fleet.",
+      type: "supporting",
+    });
+    const after = readMarkedSection(
+      fakeVault.contents.get(updated.path) ?? "",
+      "character-fields",
+    );
+    expect(after).toContain("> **Type**: Supporting character");
+    expect(after).toContain("> **Motivation**: Lead the fleet.");
+    expect(after).not.toContain("Belong somewhere.");
+  });
+
+  it("gives a character from before the block its fields block on the first edit", async () => {
+    const project = await service.createProject({ name: "Block by edit" });
+    const character = await service.createCharacter(project, {
+      name: "Ada",
+      type: "minor",
+    });
+    const raw = fakeVault.contents.get(character.path) ?? "";
+    fakeVault.contents.set(character.path, stripSection(raw, "character-fields"));
+
+    const [legacy] = (await service.loadProject(project)).characters;
+    expect(legacy!.sectionHealth.issues).toEqual([]);
+
+    const updated = await service.updateCharacter(project, legacy!.characterId, {
+      expectedRevision: legacy!.revision,
+      goal: "Cross the sea.",
+    });
+    const content = fakeVault.contents.get(updated.path) ?? "";
+    const block = readMarkedSection(content, "character-fields");
+    expect(block).toContain("> **Goal**: Cross the sea.");
+    expect(content.indexOf("snowflake:section:character-fields:end")).toBeLessThan(
+      content.indexOf("## Step 3"),
+    );
+  });
+
+  it("keeps the scene block naming the point of view and the conflict", async () => {
+    const project = await service.createProject({ name: "Scene block" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      povPath: ada.path,
+      conflict: "The tide turns.",
+      characters: [ada.path],
+    });
+    const block = readMarkedSection(
+      fakeVault.contents.get(scene.path) ?? "",
+      "scene-fields",
+    );
+    expect(block).toContain(
+      `> **Point-of-view character**: [[${linkTarget(ada.path)}|Ada]]`,
+    );
+    expect(block).toContain("> **Conflict**: The tide turns.");
+    expect(block).toContain(`> **Characters**: [[${linkTarget(ada.path)}|Ada]]`);
+
+    const updated = await service.updateScene(project, scene.sceneId, {
+      expectedRevision: scene.revision,
+      povPath: SCENE_POV_OMNISCIENT,
+      conflict: "The tide waits.",
+    });
+    const after = readMarkedSection(
+      fakeVault.contents.get(updated.path) ?? "",
+      "scene-fields",
+    );
+    expect(after).toContain("> **Point-of-view character**: Omniscient");
+    expect(after).toContain("> **Conflict**: The tide waits.");
+  });
+
+  it("migrates a project's legacy notes in one pass and reports the counts", async () => {
+    const project = await service.createProject({ name: "Bulk migration" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      goal: "Hold.",
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      conflict: "The gate is shut.",
+      povPath: ada.path,
+    });
+    const characterRaw = fakeVault.contents.get(ada.path) ?? "";
+    fakeVault.contents.set(
+      ada.path,
+      stripSection(characterRaw, "character-fields"),
+    );
+    reshapeToLegacyScene(fakeVault, scene.path, "The gate is shut.");
+
+    const before = await service.loadProject(project);
+    expect(before.characters[0]!.unmigrated).toBe(true);
+    expect(before.scenes[0]!.unmigrated).toBe(true);
+
+    const result = await service.migrateMemberNotes(project.projectFile);
+    expect(result).toEqual({ migrated: 2, skipped: 0 });
+
+    const characterContent = fakeVault.contents.get(ada.path) ?? "";
+    expect(
+      readMarkedSection(characterContent, "character-fields"),
+    ).toContain("> **Goal**: Hold.");
+
+    const sceneContent = fakeVault.contents.get(scene.path) ?? "";
+    expect(readMarkedSection(sceneContent, "scene-fields")).toContain(
+      "> **Conflict**: The gate is shut.",
+    );
+    expect(sceneContent).not.toContain("snowflake:section:scene-conflict");
+    expect(sceneContent).not.toContain("## Step 8 · Conflict");
+    expect(
+      parseMarkdownFrontmatter(sceneContent).frontmatter[
+        FRONTMATTER_KEYS.conflict
+      ],
+    ).toBe("The gate is shut.");
+    expect(
+      sceneContent.indexOf("snowflake:section:scene-fields:end"),
+    ).toBeLessThan(sceneContent.indexOf("## Step 8 · Specific Events"));
+
+    const after = await service.loadProject(project);
+    expect(after.characters[0]!.unmigrated).toBe(false);
+    expect(after.scenes[0]!.unmigrated).toBe(false);
+    expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
+      migrated: 0,
+      skipped: 0,
+    });
+  });
+
+  it("skips a note whose block markers are damaged and migrates the rest", async () => {
+    const project = await service.createProject({ name: "Damaged skip" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    const bea = await service.createCharacter(project, { name: "Bea", type: "minor" });
+    const adaRaw = fakeVault.contents.get(ada.path) ?? "";
+    const beaRaw = fakeVault.contents.get(bea.path) ?? "";
+    fakeVault.contents.set(ada.path, stripSection(adaRaw, "character-fields"));
+    fakeVault.contents.set(
+      bea.path,
+      `${stripSection(beaRaw, "character-fields")}\n<!-- snowflake:section:character-fields:start -->\n`,
+    );
+
+    const result = await service.migrateMemberNotes(project.projectFile);
+    expect(result).toEqual({ migrated: 1, skipped: 1 });
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(ada.path) ?? "",
+        "character-fields",
+      ),
+    ).not.toBeNull();
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(bea.path) ?? "",
+        "character-fields",
+      ),
+    ).toBeNull();
+  });
+
+  it("reconciles a drifted block and follows a property edited outside the forms", async () => {
+    const project = await service.createProject({ name: "Reconcile" });
+    const character = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      goal: "Hold the line.",
+    });
+    const content = fakeVault.contents.get(character.path) ?? "";
+    const tampered = content.replace(
+      "> **Goal**: Hold the line.",
+      "> **Goal**: Something typed into the block",
+    );
+    expect(tampered).not.toBe(content);
+    fakeVault.contents.set(character.path, tampered);
+
+    let snapshot = await service.loadProject(project);
+    expect(
+      await service.reconcileMemberFieldsBlock(snapshot, character.path),
+    ).toBe(true);
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(character.path) ?? "",
+        "character-fields",
+      ),
+    ).toContain("> **Goal**: Hold the line.");
+
+    snapshot = await service.loadProject(project);
+    expect(
+      await service.reconcileMemberFieldsBlock(snapshot, character.path),
+    ).toBe(false);
+
+    await service.repository.updateFrontmatter(character.path, {
+      [FRONTMATTER_KEYS.goal]: "Cross the sea.",
+    });
+    snapshot = await service.loadProject(project);
+    expect(
+      await service.reconcileMemberFieldsBlock(snapshot, character.path),
+    ).toBe(true);
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(character.path) ?? "",
+        "character-fields",
+      ),
+    ).toContain("> **Goal**: Cross the sea.");
+  });
+
   it("creates all scene prose in the initial template and rejects a partially damaged form", async () => {
     const project = await service.createProject({ name: "Atomic scene" });
     fakeVault.processCalls.length = 0;
@@ -1438,9 +1746,10 @@ describe("SnowflakeProjectService", () => {
     });
     const original = fakeVault.contents.get(created.path) ?? "";
     expect(fakeVault.processCalls).not.toContain(created.path);
-    expect(readMarkedSection(original, "scene-conflict")).toBe(
-      "Ada cannot enter the city.",
-    );
+    expect(readMarkedSection(original, "scene-conflict")).toBeNull();
+    expect(
+      parseMarkdownFrontmatter(original).frontmatter[FRONTMATTER_KEYS.conflict],
+    ).toBe("Ada cannot enter the city.");
     expect(readMarkedSection(original, "scene-events")).toBe("The gate closes.");
     expect(readMarkedSection(original, "scene-planning")).toBe(
       "Reveal the forged pass.",

@@ -140,6 +140,22 @@ export function containsManagedMarkerText(text: string): boolean {
 	return text.includes(`${SECTION_MARKER_PREFIX}:`);
 }
 
+/**
+ * Whether a change reaches the content of a section whose text is generated
+ * rather than written. The marker lines themselves stay under the boundary
+ * rules; this covers what sits between them, including the empty point of a
+ * section with nothing in it, so nothing can be typed inside at all.
+ */
+export function changeIntersectsReadOnlyContent(
+	change: TextChangeRange,
+	section: ManagedSectionRange,
+): boolean {
+	if (change.from === change.to) {
+		return change.from >= section.contentFrom && change.from <= section.contentTo;
+	}
+	return change.from < section.contentTo && change.to > section.contentFrom;
+}
+
 function precedingLineBreakStart(content: string, lineFrom: number): number {
 	if (lineFrom === 0) return 0;
 	if (lineFrom >= 2 && content.slice(lineFrom - 2, lineFrom) === '\r\n') {

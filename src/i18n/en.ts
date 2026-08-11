@@ -20,6 +20,8 @@ export const en = {
 	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
 	'commands.openManuscriptStream': 'Open manuscript stream',
+	'commands.migrateMemberNotes':
+		'Write field overviews into character and scene notes',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
 	'commands.manuscriptNextSegment': 'Go to the next manuscript note',
 	'commands.manuscriptPreviousSegment': 'Go to the previous manuscript note',
@@ -224,6 +226,11 @@ export const en = {
 	'messages.repairSummary':
 		'Repair finished: {created} created, {repaired} repaired, {conflicts} conflicts.',
 	'messages.healthCheckPassed': 'Health check passed. No problems were found.',
+	'messages.migrateMemberNotesDone':
+		'Added overviews to {migrated} notes. Skipped {skipped}.',
+	'migrate.membersCallout':
+		'{count} character and scene notes do not show their fields in the note body yet.',
+	'migrate.membersAction': 'Add overviews',
 	'messages.healthCheckIssues': 'Health check found {count} problem(s).',
 	'messages.characterCreated': 'Created character “{name}”.',
 	'messages.characterDeleted': 'Moved character note to the trash.',
@@ -252,6 +259,8 @@ export const en = {
 		'Snowflake boundary marker. Do not edit or delete it.',
 	'editor.managedSection.protectedNotice':
 		'Snowflake section boundaries are protected.',
+	'editor.managedSection.generatedNotice':
+		'The overview is generated from the note properties. Use the dashboard to edit (recommended) or modify the properties above directly.',
 	'editor.managedSection.unlock': 'Unlock boundaries',
 	'editor.managedSection.relock': 'Relock boundaries',
 	'editor.managedSection.unlockConfirmTitle':
@@ -375,6 +384,8 @@ export const en = {
 	'editor.managedSection.name.description': 'Description',
 	'editor.managedSection.name.plot-synopsis': 'Plot synopsis',
 	'editor.managedSection.name.long-synopsis': 'Long synopsis',
+	'editor.managedSection.name.character-fields': 'Character overview',
+	'editor.managedSection.name.scene-fields': 'Scene overview',
 	'editor.managedSection.name.one-paragraph-storyline':
 		'One-paragraph storyline',
 	'editor.managedSection.name.character-synopsis': 'Character synopsis',

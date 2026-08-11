@@ -7,6 +7,7 @@ import {
 	Plugin,
 	TFile,
 	TFolder,
+	type EditorPosition,
 	type MarkdownFileInfo,
 	type TAbstractFile,
 	type WorkspaceLeaf,
@@ -58,8 +59,10 @@ import {
 import {
 	SnowflakeProjectService,
 	DuplicateNameError,
+	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
+	isMemberDocumentType,
 	type ArtifactSnapshot,
 	type CharacterRecord,
 	type ProjectRef,
@@ -134,6 +137,7 @@ import type {
 } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
+const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
@@ -207,6 +211,11 @@ export default class SnowflakeMethodPlugin
 	private readonly knownProjectRoots = new Set<string>();
 	/** Draft notes a project links to from outside its own folder, by root. */
 	private readonly externalDrafts = new Map<string, string>();
+	/** Member notes waiting for the fields-block reconcile pass. */
+	private readonly pendingFieldsReconciles = new Set<string>();
+	private fieldsReconcileTimer: number | null = null;
+	/** Held while the migration writes, which leaves every block right anyway. */
+	private fieldsReconcilePaused = false;
 	/** Project health flags by project root path; see projectHealthFlags(). */
 	private readonly projectHealth = new Map<
 		string,
@@ -839,6 +848,11 @@ export default class SnowflakeMethodPlugin
 				},
 			characters: characterModels,
 			scenes: sceneModels,
+			unmigratedMembers:
+				characters.filter(
+					(character) => character.unmigrated && !character.readOnly,
+				).length +
+				scenes.filter((scene) => scene.unmigrated && !scene.readOnly).length,
 			structureIssues: project.structureIssues.map((issue) => ({
 				path: issue.path,
 				sectionId: null,
@@ -1194,7 +1208,7 @@ export default class SnowflakeMethodPlugin
 			if (issueTarget !== null) {
 				const cursor = editor.offsetToPos(issueTarget.cursorOffset);
 				editor.setCursor(cursor);
-				editor.scrollIntoView({ from: cursor, to: cursor }, true);
+				this.centerEditorOn(leaf.view, cursor);
 				editor.focus();
 				const editorView = findEditorViewForMarkdownInfo(leaf.view);
 				if (editorView !== null) {
@@ -1223,7 +1237,7 @@ export default class SnowflakeMethodPlugin
 
 		const cursor = editor.offsetToPos(target.cursorOffset);
 		editor.setCursor(cursor);
-		editor.scrollIntoView({ from: cursor, to: cursor }, true);
+		this.centerEditorOn(leaf.view, cursor);
 		editor.focus();
 		const editorView = findEditorViewForMarkdownInfo(leaf.view);
 		if (editorView !== null) {
@@ -1233,6 +1247,29 @@ export default class SnowflakeMethodPlugin
 				target.cursorOffset,
 			);
 		}
+	}
+
+	/**
+	 * Centers the editor on the target once now and twice more after layout.
+	 * Obsidian restores the note's remembered scroll just after it opens, and
+	 * live preview keeps measuring the document for a few frames, so a single
+	 * request lands before both and is carried away with the old position.
+	 */
+	private centerEditorOn(view: MarkdownView, cursor: EditorPosition): void {
+		const editor = view.editor;
+		const range = { from: cursor, to: cursor };
+		editor.scrollIntoView(range, true);
+		const win = view.containerEl.win;
+		// The view can close before the delayed passes; a centering request
+		// must never reach an editor that no longer has a place on screen.
+		const center = (): void => {
+			if (!view.containerEl.isConnected) return;
+			editor.scrollIntoView(range, true);
+		};
+		win.requestAnimationFrame(() => {
+			center();
+			win.setTimeout(center, 250);
+		});
 	}
 
 	/**
@@ -1449,6 +1486,20 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	async migrateMemberNotes(): Promise<{ migrated: number; skipped: number }> {
+		const project = await this.requireCurrentProject();
+		// The migration leaves every block saying what the properties say, so
+		// the reconcile pass has nothing to add. Pausing it keeps the write
+		// storm from queueing a project load for every note it touched.
+		this.fieldsReconcilePaused = true;
+		try {
+			return await this.projects.migrateMemberNotes(project.projectFile);
+		} finally {
+			this.fieldsReconcilePaused = false;
+			this.pendingFieldsReconciles.clear();
+		}
+	}
+
 	async saveSettings(): Promise<void> {
 		const snapshot: SnowflakeSettings = {
 			...this.settings,
@@ -1620,14 +1671,19 @@ export default class SnowflakeMethodPlugin
 					this.isManagedEditorContext(context.content) ||
 					this.isPotentiallyManagedEditor(context),
 				isProtectionEnabled: () => this.settings.protectManagedBoundaries,
+				isPluginWrite: (context) =>
+					context.filePath !== null &&
+					this.projects.repository.isWritingPath(context.filePath),
 				getStrings: (context) => this.managedSectionEditorStrings(context),
 				getSectionIds: (context) =>
 					this.managedSectionIdsForEditor(context.content),
-				onBoundaryBlocked: ({ context }) => {
+				onBoundaryBlocked: ({ context, generatedSectionIds }) => {
 					new Notice(
 						this.editorT(
 							context.content,
-							'editor.managedSection.protectedNotice',
+							generatedSectionIds.length > 0
+								? 'editor.managedSection.generatedNotice'
+								: 'editor.managedSection.protectedNotice',
 						),
 					);
 				},
@@ -2384,6 +2440,28 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'migrate-member-notes',
+			name: this.globalT('commands.migrateMemberNotes'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.migrateMemberNotes()
+						.then(({ migrated, skipped }) => {
+							new Notice(
+								this.t('messages.migrateMemberNotesDone', {
+									migrated,
+									skipped,
+								}),
+							);
+						})
+						.catch((error: unknown) => {
+							this.showError(error);
+						});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
 			id: 'split-manuscript-segment',
 			name: this.globalT('commands.splitManuscriptSegment'),
 			checkCallback: (checking) => {
@@ -2620,6 +2698,13 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private registerVaultListeners(): void {
+		this.register(() => {
+			if (this.fieldsReconcileTimer !== null) {
+				window.clearTimeout(this.fieldsReconcileTimer);
+				this.fieldsReconcileTimer = null;
+			}
+			this.pendingFieldsReconciles.clear();
+		});
 		this.registerEvent(
 			this.app.vault.on('create', (file) => this.handleVaultEvent(file)),
 		);
@@ -2646,6 +2731,77 @@ export default class SnowflakeMethodPlugin
 		if (!this.touchesProject(file.path)) return;
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
+		this.scheduleFieldsBlockReconcile(file.path);
+	}
+
+	/**
+	 * Queues a note for the fields-block reconcile: the pass that rewrites a
+	 * member note's generated block when it stops saying what the properties
+	 * say. Trailing debounce, so a burst of writes settles into one pass, and
+	 * the plugin's own write inside that pass ends it: the next look finds the
+	 * block already right and writes nothing.
+	 */
+	private scheduleFieldsBlockReconcile(path: string): void {
+		if (this.fieldsReconcilePaused || !path.endsWith('.md')) return;
+		this.pendingFieldsReconciles.add(path);
+		// Deliberately the main window's clock: this debounce outlives any one
+		// view, and a timer scoped to a popout would die with it and drop the
+		// pass. Cleanup is registered beside the vault listeners.
+		if (this.fieldsReconcileTimer !== null) {
+			window.clearTimeout(this.fieldsReconcileTimer);
+		}
+		this.fieldsReconcileTimer = window.setTimeout(() => {
+			this.fieldsReconcileTimer = null;
+			void this.drainFieldsBlockReconciles();
+		}, FIELDS_RECONCILE_DELAY_MS);
+	}
+
+	private async drainFieldsBlockReconciles(): Promise<void> {
+		const paths = [...this.pendingFieldsReconciles];
+		this.pendingFieldsReconciles.clear();
+		// One project snapshot per drain, however many notes a burst touched.
+		const projects = new Map<string, ProjectSnapshot | null>();
+		for (const path of paths) {
+			try {
+				await this.reconcileFieldsBlockAt(path, projects);
+			} catch (error) {
+				console.error(
+					'Snowflake: could not reconcile the fields block',
+					path,
+					error,
+				);
+			}
+		}
+	}
+
+	private async reconcileFieldsBlockAt(
+		path: string,
+		projects: Map<string, ProjectSnapshot | null>,
+	): Promise<void> {
+		const repository = this.projects.repository;
+		if (repository.getFile(path) === null) return;
+		const record = await repository.tryReadManaged(path);
+		if (record === null || record.readOnly) return;
+		const documentType = documentTypeOf(record.frontmatter);
+		if (!isMemberDocumentType(documentType)) return;
+		// Everything above costs one cached read; the project below costs a
+		// load, so a note that carries no block never gets that far.
+		if (
+			readMarkedSection(
+				record.content,
+				MEMBER_FIELDS_SECTION_BY_DOCUMENT[documentType],
+			) === null
+		) {
+			return;
+		}
+		const projectId = projectIdOf(record.frontmatter) ?? '';
+		let project = projects.get(projectId);
+		if (project === undefined) {
+			project = await this.projectOfPath(path);
+			projects.set(projectId, project);
+		}
+		if (project === null) return;
+		await this.projects.reconcileMemberFieldsBlock(project, path);
 	}
 
 	private async handleVaultDelete(file: TAbstractFile): Promise<void> {

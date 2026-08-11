@@ -1,9 +1,13 @@
 import {
   STEP_ONE_SECTION_IDS,
-  managedSectionsForDocument,
+  templateSectionsForDocument,
   type DocumentType,
   type StepOneSectionId,
 } from "../domain";
+import {
+  renderCharacterFieldsBlock,
+  renderSceneFieldsBlock,
+} from "./fields-block";
 import { renderMarkedSection } from "./markers";
 
 export type TemplateLanguage = "en" | "zh-CN";
@@ -36,13 +40,14 @@ export interface SystemTemplateDefinition {
 }
 
 export interface CharacterSectionContent {
+  fieldsBlock?: string;
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
 }
 
 export interface SceneSectionContent {
-  conflict?: string;
+  fieldsBlock?: string;
   events?: string;
   planning?: string;
 }
@@ -65,7 +70,7 @@ interface Copy {
   descriptionTitle: string;
   plotSynopsisTitle: string;
   longSynopsisTitle: string;
-  majorCharacterSheet: string;
+  characterStoryline: string;
   characterSynopsis: string;
   characterProfile: string;
   sceneConflict: string;
@@ -103,7 +108,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     descriptionTitle: "Description (Optional)",
     plotSynopsisTitle: "Step 4 · Plot Synopsis",
     longSynopsisTitle: "Step 6 · Long Synopsis",
-    majorCharacterSheet: "Step 3 · Major Character Sheet",
+    characterStoryline: "Step 3 · One-Paragraph Storyline",
     characterSynopsis: "Step 5 · Character Synopsis",
     characterProfile: "Step 7 · Character Profiles",
     sceneConflict: "Step 8 · Conflict",
@@ -138,7 +143,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     descriptionTitle: "简介（可选）",
     plotSynopsisTitle: "第四步 · 情节大纲",
     longSynopsisTitle: "第六步 · 长篇大纲",
-    majorCharacterSheet: "第三步 · 主要角色表",
+    characterStoryline: "第三步 · 一段式故事梗概",
     characterSynopsis: "第五步 · 人物大纲",
     characterProfile: "第七步 · 角色档案",
     sceneConflict: "第八步 · 冲突",
@@ -375,8 +380,22 @@ export function characterTemplate(
   const copy = COPY[language];
   return fromManagedSections("character", characterName, [
     {
+      id: "character-fields",
+      heading: "",
+      initialContent:
+        content.fieldsBlock ??
+        renderCharacterFieldsBlock(language, {
+          type: "",
+          oneSentenceStoryline: "",
+          motivation: "",
+          goal: "",
+          conflict: "",
+          growth: "",
+        }),
+    },
+    {
       id: "one-paragraph-storyline",
-      heading: `## ${copy.majorCharacterSheet}`,
+      heading: `## ${copy.characterStoryline}`,
       initialContent: content.oneParagraphStoryline,
     },
     {
@@ -400,9 +419,17 @@ export function sceneTemplate(
   const copy = COPY[language];
   return fromManagedSections("scene", sceneTitle, [
     {
-      id: "scene-conflict",
-      heading: `## ${copy.sceneConflict}`,
-      initialContent: content.conflict,
+      id: "scene-fields",
+      heading: "",
+      initialContent:
+        content.fieldsBlock ??
+        renderSceneFieldsBlock(language, {
+          pov: null,
+          time: "",
+          location: "",
+          conflict: "",
+          cast: [],
+        }),
     },
     {
       id: "scene-events",
@@ -415,6 +442,18 @@ export function sceneTemplate(
       initialContent: content.planning,
     },
   ]);
+}
+
+/**
+ * The headings older releases created the scene conflict section under, in
+ * every language they wrote. Migration removes that section after moving its
+ * text into the conflict property, and takes the heading with it only when
+ * the heading is exactly one of these: anything else is the author's line.
+ */
+export function legacySceneConflictHeadings(): string[] {
+  return (Object.keys(COPY) as TemplateLanguage[]).map(
+    (language) => `## ${COPY[language].sceneConflict}`,
+  );
 }
 
 /**
@@ -472,7 +511,7 @@ function assertManagedSectionContract(
   documentType: DocumentType,
   sections: readonly ManagedSectionDefinition[],
 ): void {
-  const expected = managedSectionsForDocument(documentType).map((section) => section.id);
+  const expected = templateSectionsForDocument(documentType).map((section) => section.id);
   const actual = sections.map((section) => section.id);
   if (expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
     throw new Error(

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { GENERATED_SECTION_IDS } from '../../src/domain';
 import {
 	changeIntersectsManagedBoundary,
+	changeIntersectsReadOnlyContent,
 	containsManagedMarkerText,
 	findManagedBoundaryIntersections,
 	pairManagedSections,
 	scanManagedBoundaries,
 } from '../../src/editor/managed-section-ranges';
+import { MEMBER_FIELDS_SECTION_BY_DOCUMENT } from '../../src/services/mirror-sync';
 import { renderMarkedSection, sectionMarkers } from '../../src/templates/markers';
 
 describe('managed section editor ranges', () => {
@@ -140,5 +143,90 @@ describe('managed section editor ranges', () => {
 				({ sectionId, kind }) => ({ sectionId, kind }),
 			),
 		).toEqual([{ sectionId: 'audience-reason-1', kind: 'end' }]);
+	});
+});
+
+describe('read-only generated section ranges', () => {
+	const content = `# Ada\n\n${renderMarkedSection(
+		'character-fields',
+		'> [!info] Character overview\n> **Type**: Major character',
+	)}\n\nProse after the block.\n`;
+	const section = pairManagedSections(content).find(
+		(candidate) => candidate.sectionId === 'character-fields',
+	)!;
+
+	it('registers the same generated ids the reconcile maintains', () => {
+		expect([...GENERATED_SECTION_IDS].sort()).toEqual(
+			Object.values(MEMBER_FIELDS_SECTION_BY_DOCUMENT).sort(),
+		);
+	});
+
+	it('blocks typing anywhere inside the block content', () => {
+		const inside = content.indexOf('**Type**');
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: inside, to: inside, insertedText: 'x' },
+				section,
+			),
+		).toBe(true);
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: section.contentFrom, to: section.contentFrom, insertedText: 'x' },
+				section,
+			),
+		).toBe(true);
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: section.contentTo, to: section.contentTo, insertedText: 'x' },
+				section,
+			),
+		).toBe(true);
+	});
+
+	it('blocks deletions and replacements overlapping the content', () => {
+		const inside = content.indexOf('**Type**');
+		expect(
+			changeIntersectsReadOnlyContent({ from: inside, to: inside + 4 }, section),
+		).toBe(true);
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: 0, to: content.length },
+				section,
+			),
+		).toBe(true);
+	});
+
+	it('leaves the prose around the block editable', () => {
+		const before = content.indexOf('# Ada');
+		const after = content.indexOf('Prose after');
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: before, to: before, insertedText: 'x' },
+				section,
+			),
+		).toBe(false);
+		expect(
+			changeIntersectsReadOnlyContent(
+				{ from: after, to: after + 5, insertedText: 'y' },
+				section,
+			),
+		).toBe(false);
+	});
+
+	it('protects the empty point of a section with nothing in it', () => {
+		const empty = renderMarkedSection('scene-fields', '');
+		const emptySection = pairManagedSections(empty).find(
+			(candidate) => candidate.sectionId === 'scene-fields',
+		)!;
+		expect(
+			changeIntersectsReadOnlyContent(
+				{
+					from: emptySection.contentFrom,
+					to: emptySection.contentFrom,
+					insertedText: 'x',
+				},
+				emptySection,
+			),
+		).toBe(true);
 	});
 });

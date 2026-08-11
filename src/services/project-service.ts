@@ -10,6 +10,7 @@ import {
   SCHEMA_VERSION,
   STEP_IDS,
   managedSectionsForDocument,
+  optionalSectionIds,
   areStepPrerequisitesComplete,
   assertStepStatus,
   calculateContextNeedsReview,
@@ -45,6 +46,7 @@ import {
   InvalidManagedDocumentError,
   ManagedFileNotFoundError,
   PathConflictError,
+  UnsafeSectionError,
   UnsupportedSchemaError,
   VaultRepository,
   documentTypeOf,
@@ -59,11 +61,18 @@ import {
   getStoryArtifacts,
   getSystemTemplates,
   draftTemplate,
+  legacySceneConflictHeadings,
   storyArtifactTemplate,
   projectTemplate,
   inspectManagedDocumentSections,
   readMarkedSection,
+  renderCharacterFieldsBlock,
+  renderSceneFieldsBlock,
   sceneTemplate,
+  type ManagedSectionDefinition,
+  type ManagedSectionsInspection,
+  type ScenePovField,
+  type SectionLayoutEntry,
   type MarkdownTemplate,
   type ProjectBaseDefinition,
   type ProjectBaseId,
@@ -73,6 +82,10 @@ import {
   ManuscriptService,
   type ManuscriptSegmentRecord,
 } from "./manuscript-service";
+import {
+  planFieldsBlockReconcile,
+  type MemberDocumentType,
+} from "./mirror-sync";
 import {
   DEFAULT_PROJECT_ROOT,
   FRONTMATTER_KEYS,
@@ -1296,6 +1309,14 @@ export class SnowflakeProjectService {
       path: requested,
       uniqueOnConflict: true,
       template: characterTemplate(name, project.locale, {
+        fieldsBlock: renderCharacterFieldsBlock(project.locale, {
+          type: resolvedType,
+          oneSentenceStoryline: input.oneSentenceStoryline ?? "",
+          motivation: input.motivation ?? "",
+          goal: input.goal ?? "",
+          conflict: input.conflict ?? "",
+          growth: input.growth ?? "",
+        }),
         oneParagraphStoryline: input.oneParagraphStoryline,
         characterSynopsis: input.characterSynopsis,
         characterProfile: input.characterProfile,
@@ -1399,12 +1420,29 @@ export class SnowflakeProjectService {
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.conflict, patch.conflict);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.growth, patch.growth);
     const sectionValues: Record<string, string> = {
+      "character-fields": renderCharacterFieldsBlock(project.locale, {
+        type: patch.type ?? character.type,
+        oneSentenceStoryline:
+          patch.oneSentenceStoryline ?? character.oneSentenceStoryline,
+        motivation: patch.motivation ?? character.motivation,
+        goal: patch.goal ?? character.goal,
+        conflict: patch.conflict ?? character.conflict,
+        growth: patch.growth ?? character.growth,
+      }),
       "one-paragraph-storyline":
         patch.oneParagraphStoryline ?? character.oneParagraphStoryline,
       "character-synopsis": patch.characterSynopsis ?? character.characterSynopsis,
       "character-profile": patch.characterProfile ?? character.characterProfile,
     };
     const rollbackValues: Record<string, string> = {
+      "character-fields": renderCharacterFieldsBlock(project.locale, {
+        type: character.type,
+        oneSentenceStoryline: character.oneSentenceStoryline,
+        motivation: character.motivation,
+        goal: character.goal,
+        conflict: character.conflict,
+        growth: character.growth,
+      }),
       "one-paragraph-storyline": character.oneParagraphStoryline,
       "character-synopsis": character.characterSynopsis,
       "character-profile": character.characterProfile,
@@ -1415,6 +1453,7 @@ export class SnowflakeProjectService {
       frontmatterPatch,
       sectionValues,
       rollbackValues,
+      characterTemplate(character.name, project.locale).sections,
     );
 
     let path = character.path;
@@ -1739,7 +1778,17 @@ export class SnowflakeProjectService {
       path: requested,
       uniqueOnConflict: true,
       template: sceneTemplate(title, project.locale, {
-        conflict: input.conflict,
+        fieldsBlock: sceneFieldsBlock(
+          project.locale,
+          {
+            povPath: povValue ?? null,
+            time: input.time ?? "",
+            location: input.location ?? "",
+            conflict: input.conflict ?? "",
+            characters: input.characters ?? [],
+          },
+          characterNames,
+        ),
         events: input.events,
         planning: input.planning,
       }),
@@ -1756,6 +1805,7 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.sceneTime]: input.time ?? "",
         [FRONTMATTER_KEYS.sceneLocation]: input.location ?? "",
         [FRONTMATTER_KEYS.sceneCharacters]: (input.characters ?? []).map(characterLink),
+        [FRONTMATTER_KEYS.conflict]: input.conflict ?? "",
       },
     });
     return this.sceneFromRecord(
@@ -1886,22 +1936,42 @@ export class SnowflakeProjectService {
     if (patch.characters !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.sceneCharacters] = patch.characters.map(characterLink);
     }
+    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.conflict, patch.conflict);
+    const nextFields = {
+      povPath: patch.povPath !== undefined ? patch.povPath || null : scene.povPath,
+      time: patch.time ?? scene.time,
+      location: patch.location ?? scene.location,
+      conflict: patch.conflict ?? scene.conflict,
+      characters: patch.characters ?? scene.characters,
+    };
     const sectionValues: Record<string, string> = {
-      "scene-conflict": patch.conflict ?? scene.conflict,
+      "scene-fields": sceneFieldsBlock(project.locale, nextFields, characterNames),
       "scene-events": patch.events ?? scene.events,
       "scene-planning": patch.planning ?? scene.planning,
     };
     const rollbackValues: Record<string, string> = {
-      "scene-conflict": scene.conflict,
+      "scene-fields": sceneFieldsBlock(project.locale, scene, characterNames),
       "scene-events": scene.events,
       "scene-planning": scene.planning,
     };
+    // Until the migration removes it, a legacy conflict section is text the
+    // author still sees, so an edit keeps it saying what the property says
+    // rather than leaving yesterday's conflict on the page.
+    const legacyConflict = readMarkedSection(
+      (await this.repository.readManaged(scene.path)).content,
+      "scene-conflict",
+    );
+    if (legacyConflict !== null) {
+      sectionValues["scene-conflict"] = patch.conflict ?? scene.conflict;
+      rollbackValues["scene-conflict"] = legacyConflict;
+    }
     await this.updateManagedForm(
       scene.path,
       patch.expectedRevision,
       frontmatterPatch,
       sectionValues,
       rollbackValues,
+      sceneUpdateLayout(scene.title, project.locale),
     );
 
     // Nothing links to a scene, so renaming one needs no reference sweep.
@@ -1914,6 +1984,130 @@ export class SnowflakeProjectService {
       await this.repository.readManaged(path),
       project.rootPath,
     );
+  }
+
+  /**
+   * Writes the fields block into every member note that predates it, and
+   * moves a legacy scene conflict into its property before retiring the
+   * section. One pass over one project. Damaged notes are skipped and
+   * counted, never forced.
+   */
+  async migrateMemberNotes(
+    projectLocator: ProjectLocator,
+  ): Promise<{ migrated: number; skipped: number }> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const characterNames = new Map(
+      project.characters.map((character) => [character.path, character.name]),
+    );
+    const legacyHeadings = legacySceneConflictHeadings();
+    let migrated = 0;
+    let skipped = 0;
+
+    for (const character of project.characters) {
+      if (character.readOnly || !character.unmigrated) continue;
+      try {
+        await this.repository.reshapeSections(character.path, {
+          values: {
+            "character-fields": renderCharacterFieldsBlock(
+              project.locale,
+              character,
+            ),
+          },
+          layout: characterTemplate(character.name, project.locale).sections,
+        });
+        migrated += 1;
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+        skipped += 1;
+      }
+    }
+
+    for (const scene of project.scenes) {
+      if (scene.readOnly || !scene.unmigrated) continue;
+      try {
+        const record = await this.repository.readManaged(scene.path);
+        // The property first: scene.conflict already reads property-wins, so
+        // this writes exactly what the note showed, and a failure after it
+        // leaves a state every reader resolves the same way.
+        if (!hasOwn(record.frontmatter, FRONTMATTER_KEYS.conflict)) {
+          await this.repository.updateFrontmatter(scene.path, {
+            [FRONTMATTER_KEYS.conflict]: scene.conflict,
+          });
+        }
+        await this.repository.reshapeSections(scene.path, {
+          values: {
+            "scene-fields": sceneFieldsBlock(
+              project.locale,
+              scene,
+              characterNames,
+            ),
+          },
+          layout: sceneUpdateLayout(scene.title, project.locale),
+          remove: [{ sectionId: "scene-conflict", headings: legacyHeadings }],
+        });
+        migrated += 1;
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+        skipped += 1;
+      }
+    }
+
+    return { migrated, skipped };
+  }
+
+  /**
+   * The generated block a member note should carry right now, rendered from
+   * its project record. Null for a path the project holds no writable member
+   * at.
+   */
+  memberFieldsBlock(
+    project: ProjectSnapshot,
+    path: string,
+  ): { documentType: MemberDocumentType; expected: string } | null {
+    const character = project.characters.find(
+      (candidate) => candidate.path === path,
+    );
+    if (character) {
+      return character.readOnly
+        ? null
+        : {
+            documentType: "character",
+            expected: renderCharacterFieldsBlock(project.locale, character),
+          };
+    }
+    const scene = project.scenes.find((candidate) => candidate.path === path);
+    if (!scene || scene.readOnly) return null;
+    const characterNames = new Map(
+      project.characters.map((candidate) => [candidate.path, candidate.name]),
+    );
+    return {
+      documentType: "scene",
+      expected: sceneFieldsBlock(project.locale, scene, characterNames),
+    };
+  }
+
+  /**
+   * Rewrites the note's fields block when it stops saying what the properties
+   * say: after a Properties-panel edit, an external edit, or a change typed
+   * into the block itself. One-way and idempotent. Returns whether anything
+   * was written.
+   */
+  async reconcileMemberFieldsBlock(
+    project: ProjectSnapshot,
+    path: string,
+  ): Promise<boolean> {
+    const target = this.memberFieldsBlock(project, path);
+    if (target === null) return false;
+    const record = await this.repository.readManaged(path);
+    const plan = planFieldsBlockReconcile({
+      documentType: target.documentType,
+      content: record.content,
+      expectedBlock: target.expected,
+    });
+    if (plan === null) return false;
+    await this.repository.updateSections(path, { [plan.sectionId]: plan.value });
+    return true;
   }
 
   /**
@@ -2244,6 +2438,16 @@ export class SnowflakeProjectService {
     ]) {
       if (typeof record.frontmatter[key] !== "string") patch[key] = "";
     }
+    // The conflict property is never backfilled onto a note that lacks it:
+    // absence is what marks the legacy section as the live copy, and writing
+    // an empty property here would silently override that text. Only a
+    // property that exists with a non-string value is normalized.
+    if (
+      hasOwn(record.frontmatter, FRONTMATTER_KEYS.conflict) &&
+      typeof record.frontmatter[FRONTMATTER_KEYS.conflict] !== "string"
+    ) {
+      patch[FRONTMATTER_KEYS.conflict] = "";
+    }
     return { patch, title };
   }
 
@@ -2302,7 +2506,28 @@ export class SnowflakeProjectService {
       );
       return;
     }
-    const check = await this.repository.checkSections(record.path, template.sections);
+    // Legacy sections are not part of the template any more, but a copy still
+    // sitting in an unmigrated note must keep its damage checked: until the
+    // migration runs, it is the live store for its field.
+    const documentType = documentTypeOf(record.frontmatter);
+    const checkList: ManagedSectionDefinition[] = [...template.sections];
+    const optional = new Set<string>();
+    if (isDocumentType(documentType)) {
+      for (const id of optionalSectionIds(documentType)) optional.add(id);
+      for (const descriptor of managedSectionsForDocument(documentType)) {
+        if (
+          descriptor.legacy === true &&
+          !checkList.some((section) => section.id === descriptor.id)
+        ) {
+          checkList.push({ id: descriptor.id, heading: "" });
+        }
+      }
+    }
+    const check = await this.repository.checkSections(
+      record.path,
+      checkList,
+      optional,
+    );
     recordSectionCheckResults(result, record.path, check);
     markUnchanged(result, record.path);
     for (const conflict of check.conflicts) {
@@ -2983,13 +3208,22 @@ export class SnowflakeProjectService {
       | "characterSynopsis"
       | "characterProfile"
       | "sectionHealth"
+      | "unmigrated"
       | "revision"
     >
   >();
 
   private readonly sceneReadings = new WeakMap<
     ManagedFileRecord,
-    Pick<SceneRecord, "conflict" | "events" | "planning" | "sectionHealth" | "revision">
+    Pick<
+      SceneRecord,
+      | "conflict"
+      | "events"
+      | "planning"
+      | "sectionHealth"
+      | "unmigrated"
+      | "revision"
+    >
   >();
 
   private characterFromRecord(record: ManagedFileRecord): CharacterRecord {
@@ -3006,11 +3240,8 @@ export class SnowflakeProjectService {
         oneParagraphStoryline: readMarkedSection(record.content, "one-paragraph-storyline") ?? "",
         characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
         characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
-        sectionHealth: inspectManagedDocumentSections(
-          record.content,
-          managedSectionsForDocument("character").map((section) => section.id),
-          record.path,
-        ),
+        sectionHealth: memberSectionHealth(record.content, "character", record.path),
+        unmigrated: readMarkedSection(record.content, "character-fields") === null,
         revision: fingerprint(record.content),
       };
       this.characterReadings.set(record, reading);
@@ -3081,18 +3312,25 @@ export class SnowflakeProjectService {
 
   private sceneReading(
     record: ManagedFileRecord,
-  ): Pick<SceneRecord, "conflict" | "events" | "planning" | "sectionHealth" | "revision"> {
+  ): Pick<
+    SceneRecord,
+    "conflict" | "events" | "planning" | "sectionHealth" | "unmigrated" | "revision"
+  > {
     let reading = this.sceneReadings.get(record);
     if (reading === undefined) {
       reading = {
-        conflict: readMarkedSection(record.content, "scene-conflict") ?? "",
+        // The property is the store once it exists, even holding an empty
+        // string; the legacy section only answers for notes the migration has
+        // not reached, where it is still the live copy.
+        conflict: hasOwn(record.frontmatter, FRONTMATTER_KEYS.conflict)
+          ? asString(record.frontmatter[FRONTMATTER_KEYS.conflict])
+          : (readMarkedSection(record.content, "scene-conflict") ?? ""),
         events: readMarkedSection(record.content, "scene-events") ?? "",
         planning: readMarkedSection(record.content, "scene-planning") ?? "",
-        sectionHealth: inspectManagedDocumentSections(
-          record.content,
-          managedSectionsForDocument("scene").map((section) => section.id),
-          record.path,
-        ),
+        sectionHealth: memberSectionHealth(record.content, "scene", record.path),
+        unmigrated:
+          readMarkedSection(record.content, "scene-fields") === null ||
+          readMarkedSection(record.content, "scene-conflict") !== null,
         revision: fingerprint(record.content),
       };
       this.sceneReadings.set(record, reading);
@@ -3343,6 +3581,7 @@ export class SnowflakeProjectService {
     frontmatterPatch: ManagedFrontmatter,
     sectionValues: Readonly<Record<string, string>>,
     rollbackValues: Readonly<Record<string, string>>,
+    layout: readonly SectionLayoutEntry[],
   ): Promise<void> {
     const hasSections = Object.keys(sectionValues).length > 0;
     const hasFrontmatter = Object.keys(frontmatterPatch).length > 0;
@@ -3354,8 +3593,10 @@ export class SnowflakeProjectService {
 
     // Validate every requested section and apply all prose edits through one
     // Vault.process call before changing frontmatter. A damaged marker layout
-    // therefore cannot leave the structured fields partially updated.
-    await this.repository.updateSections(path, sectionValues, expectedRevision);
+    // therefore cannot leave the structured fields partially updated. Upsert
+    // rather than update: a note from before the fields block gains it on its
+    // first edit, at its canonical place in the layout.
+    await this.repository.upsertSections(path, sectionValues, layout, expectedRevision);
     if (!hasFrontmatter) return;
 
     const afterSections = await this.repository.readManaged(path);
@@ -3364,12 +3605,13 @@ export class SnowflakeProjectService {
       await this.repository.updateFrontmatter(path, frontmatterPatch);
     } catch (error) {
       // Best-effort rollback is conditional on the exact post-section revision.
-      // If another writer won the race, updateSections throws rather than
+      // If another writer won the race, upsertSections throws rather than
       // overwriting that newer content.
       try {
-        await this.repository.updateSections(
+        await this.repository.upsertSections(
           path,
           rollbackValues,
+          layout,
           afterSectionsRevision,
         );
       } catch (rollbackError) {
@@ -3766,6 +4008,94 @@ function assertExpectedRevision(
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * The scene's generated fields block, with the point of view and the cast
+ * resolved to names the way the dashboard shows them. Only the display is
+ * localized; the stored properties keep their language-neutral values.
+ */
+function sceneFieldsBlock(
+  locale: ProjectLanguage,
+  fields: {
+    povPath: string | null;
+    time: string;
+    location: string;
+    conflict: string;
+    characters: readonly string[];
+  },
+  characterNames: ReadonlyMap<string, string>,
+): string {
+  const memberName = (path: string): string =>
+    characterNames.get(path) ?? fileStem(path);
+  const pov: ScenePovField =
+    fields.povPath === null || fields.povPath === ""
+      ? null
+      : isScenePovMode(fields.povPath)
+        ? { kind: "mode", mode: fields.povPath }
+        : {
+            kind: "character",
+            path: fields.povPath,
+            name: memberName(fields.povPath),
+          };
+  return renderSceneFieldsBlock(locale, {
+    pov,
+    time: fields.time,
+    location: fields.location,
+    conflict: fields.conflict,
+    cast: fields.characters.map((path) => ({ path, name: memberName(path) })),
+  });
+}
+
+/**
+ * The upsert layout for a scene: the template's sections in registry order,
+ * with the legacy conflict slotted at its historical place. A fields block
+ * inserted into an unmigrated note then lands above the legacy section, where
+ * migration will leave it, instead of below.
+ */
+function sceneUpdateLayout(
+  title: string,
+  locale: ProjectLanguage,
+): SectionLayoutEntry[] {
+  const sections = sceneTemplate(title, locale).sections;
+  return managedSectionsForDocument("scene").map(
+    (descriptor) =>
+      sections.find((section) => section.id === descriptor.id) ?? {
+        id: descriptor.id,
+        heading: "",
+      },
+  );
+}
+
+/**
+ * Section health for a character or scene note. Optional sections are dropped
+ * from the issues when only their absence is wrong: a fields block a note has
+ * not been migrated to carry, or a legacy section migration already removed,
+ * is a state of the note rather than damage to it. Damage to one that exists
+ * stays reported.
+ */
+function memberSectionHealth(
+  content: string,
+  documentType: "character" | "scene",
+  path: string,
+): ManagedSectionsInspection {
+  const inspection = inspectManagedDocumentSections(
+    content,
+    managedSectionsForDocument(documentType).map((section) => section.id),
+    path,
+  );
+  const optional = optionalSectionIds(documentType);
+  return {
+    sections: inspection.sections,
+    issues: inspection.issues.filter(
+      (issue) =>
+        !(
+          issue.code === "missing" &&
+          issue.sectionId !== null &&
+          optional.has(issue.sectionId)
+        ),
+    ),
+  };
 }
 
 function asOptionalString(value: unknown): string | null {

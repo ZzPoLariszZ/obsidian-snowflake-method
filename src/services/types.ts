@@ -223,6 +223,8 @@ export interface CharacterRecord {
   characterSynopsis: string;
   characterProfile: string;
   sectionHealth: ManagedSectionsInspection;
+  /** True while the note predates the generated fields block. */
+  unmigrated: boolean;
   /** Stable fingerprint of the complete managed Markdown note. */
   revision: string;
   readOnly: boolean;
@@ -269,6 +271,8 @@ export interface SceneRecord {
   events: string;
   planning: string;
   sectionHealth: ManagedSectionsInspection;
+  /** True while the note lacks the fields block or still holds the legacy conflict section. */
+  unmigrated: boolean;
   /** Stable fingerprint of the complete managed Markdown note. */
   revision: string;
   readOnly: boolean;

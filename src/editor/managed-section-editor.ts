@@ -23,7 +23,9 @@ import {
 	type MarkdownFileInfo,
 } from 'obsidian';
 
+import { GENERATED_SECTION_IDS } from '../domain';
 import {
+	changeIntersectsReadOnlyContent,
 	containsManagedMarkerText,
 	findManagedBoundaryIntersections,
 	pairManagedSections,
@@ -57,6 +59,8 @@ export interface ManagedSectionEditorStrings {
 export interface ManagedBoundaryBlockedEvent {
 	context: ManagedSectionEditorContext;
 	sectionIds: readonly string[];
+	/** The subset hit inside a generated block's content, for a truer notice. */
+	generatedSectionIds: readonly string[];
 	userEvent: string;
 }
 
@@ -71,6 +75,13 @@ export interface ManagedSectionEditorOptions {
 	getStrings?: (context: ManagedSectionEditorContext) => ManagedSectionEditorStrings;
 	/** Canonical section ids for this document type. Unknown markers stay editable. */
 	getSectionIds?: (context: ManagedSectionEditorContext) => readonly string[];
+	/**
+	 * True while the plugin itself is writing this file. A write to an open
+	 * note arrives here as a transaction, and refusing it would strand the
+	 * editor on the old text, which the next autosave would then write back
+	 * over the plugin's change.
+	 */
+	isPluginWrite?: (context: ManagedSectionEditorIdentity) => boolean;
 	onBoundaryBlocked?: (event: ManagedBoundaryBlockedEvent) => void;
 	blockedNoticeThrottleMs?: number;
 	now?: () => number;
@@ -264,10 +275,20 @@ export function createManagedSectionEditorExtension(
 
 	const transactionFilter = EditorState.transactionFilter.of((transaction) => {
 		const userEvent = transaction.annotation(Transaction.userEvent);
-		if (!transaction.docChanged || !userEvent) return transaction;
+		// Only changes a person makes are refused. Obsidian and plugins apply
+		// programmatic edits with other event names, or none, and the plugin's
+		// own writes to an open note arrive through here too.
+		if (
+			!transaction.docChanged ||
+			!userEvent ||
+			!isHumanUserEvent(userEvent)
+		) {
+			return transaction;
+		}
 		if (areManagedBoundariesUnlocked(transaction.startState)) return transaction;
 
 		const identity = editorIdentity(transaction.startState);
+		if (options.isPluginWrite?.(identity) === true) return transaction;
 		if (options.isPotentiallyEnabled?.(identity) === false) return transaction;
 		const context = editorContext(transaction.startState, identity);
 		const boundaries = scanManagedBoundaries(
@@ -283,20 +304,50 @@ export function createManagedSectionEditorExtension(
 		});
 
 		const intersections = findManagedBoundaryIntersections(changes, boundaries);
+		// A generated block is read-only through its content as well: it only
+		// ever says what the properties say, so a keystroke inside it would be
+		// rewritten by the next reconcile pass anyway. Refusing it here is the
+		// honest version of that.
+		const generatedHits = new Set<string>();
+		const generatedSections = pairManagedSections(
+			context.content,
+			boundaries,
+		).filter((section) => GENERATED_SECTION_IDS.has(section.sectionId));
+		for (const change of changes) {
+			for (const section of generatedSections) {
+				if (changeIntersectsReadOnlyContent(change, section)) {
+					generatedHits.add(section.sectionId);
+				}
+			}
+		}
 		const insertsMarkerText = changes.some((change) =>
 			containsManagedMarkerText(change.insertedText ?? ''),
 		);
-		if (intersections.length === 0 && !insertsMarkerText) return transaction;
+		if (
+			intersections.length === 0 &&
+			generatedHits.size === 0 &&
+			!insertsMarkerText
+		) {
+			return transaction;
+		}
 
 		const sectionIds = [
-			...new Set(intersections.map(({ boundary }) => boundary.sectionId)),
+			...new Set([
+				...intersections.map(({ boundary }) => boundary.sectionId),
+				...generatedHits,
+			]),
 		];
 		const throttleKey = context.filePath ?? '__snowflake-unknown-editor__';
 		const timestamp = now();
 		const lastNotice = lastBlockedNoticeByFile.get(throttleKey) ?? Number.NEGATIVE_INFINITY;
 		if (timestamp - lastNotice >= throttleMs) {
 			lastBlockedNoticeByFile.set(throttleKey, timestamp);
-			options.onBoundaryBlocked?.({ context, sectionIds, userEvent });
+			options.onBoundaryBlocked?.({
+				context,
+				sectionIds,
+				generatedSectionIds: [...generatedHits],
+				userEvent,
+			});
 		}
 
 		return [];
@@ -421,6 +472,26 @@ function buildDecorations(
 	}
 
 	for (const section of pairManagedSections(context.content, boundaries)) {
+		if (GENERATED_SECTION_IDS.has(section.sectionId)) {
+			// The whole block is a generated view of the properties: tint it in
+			// source mode, where the raw quote lines need the hint, and never
+			// invite writing into it with the empty placeholder. Live preview
+			// needs neither, since the callout already reads as one made thing.
+			if (!context.livePreview) {
+				for (const lineStart of lineStartsBetween(
+					context.content,
+					section.start.from,
+					section.end.protectedTo,
+				)) {
+					ranges.push(
+						Decoration.line({
+							class: 'snowflake-managed-generated-line',
+						}).range(lineStart),
+					);
+				}
+			}
+			continue;
+		}
 		if (section.empty && section.contentFrom < section.end.from) {
 			ranges.push(
 				Decoration.widget({
@@ -475,6 +546,41 @@ function isEditorEnabled(
 	boundaries: readonly ManagedBoundaryRange[],
 ): boolean {
 	return options.isEnabled?.(context) ?? boundaries.length > 0;
+}
+
+const HUMAN_USER_EVENT_PREFIXES = [
+	'input',
+	'delete',
+	'move',
+	'paste',
+	'cut',
+	'drop',
+	'undo',
+	'redo',
+] as const;
+
+/** Whether a transaction's user event names something a person did. */
+function isHumanUserEvent(userEvent: string): boolean {
+	return HUMAN_USER_EVENT_PREFIXES.some(
+		(prefix) => userEvent === prefix || userEvent.startsWith(`${prefix}.`),
+	);
+}
+
+/** Start offsets of every line that begins inside `[from, toExclusive)`. */
+function lineStartsBetween(
+	content: string,
+	from: number,
+	toExclusive: number,
+): number[] {
+	const starts: number[] = [];
+	let lineStart = content.lastIndexOf('\n', Math.max(0, from - 1)) + 1;
+	while (lineStart < toExclusive) {
+		starts.push(lineStart);
+		const next = content.indexOf('\n', lineStart);
+		if (next === -1) break;
+		lineStart = next + 1;
+	}
+	return starts;
 }
 
 function editorIdentity(state: EditorState): ManagedSectionEditorIdentity {

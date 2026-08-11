@@ -110,6 +110,8 @@ export interface ProjectDashboardModel {
 	stepRevisions: Partial<Record<StepId, string>>;
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
+	/** Writable member notes that predate the generated fields block. */
+	unmigratedMembers: number;
 	structureIssues: ManagedSectionIssueViewModel[];
 	/** The manuscript note last worked in, when it is still in the vault. */
 	lastManuscriptNote: { path: string; title: string } | null;
@@ -290,4 +292,6 @@ export interface DashboardHost {
 	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
 	repairMissingStructureItem(path: string, field?: string): Promise<void>;
+	/** Writes the fields block into every member note that predates it. */
+	migrateMemberNotes(): Promise<{ migrated: number; skipped: number }>;
 }

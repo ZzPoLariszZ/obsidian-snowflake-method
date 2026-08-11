@@ -26,19 +26,24 @@ describe('managed section navigation', () => {
 			'character-synopsis',
 			'long-synopsis',
 			'character-profile',
-			'scene-conflict',
+			'scene-events',
 			'scene-planning',
 			null,
 		]);
 	});
 
-	it('adds specific events to the Step 8 highlight without changing its cursor target', () => {
-		expect(primaryManagedSectionForStep(8)).toBe('scene-conflict');
+	it('highlights the fields block beside the prose on the steps that fill it', () => {
+		expect(primaryManagedSectionForStep(8)).toBe('scene-events');
 		expect(managedSectionHighlightsForStep(8)).toEqual([
-			'scene-conflict',
+			'scene-fields',
 			'scene-events',
 		]);
+		expect(managedSectionHighlightsForStep(3)).toEqual([
+			'character-fields',
+			'one-paragraph-storyline',
+		]);
 		expect(managedSectionHighlightsForStep(9)).toEqual(['scene-planning']);
+		expect(managedSectionHighlightsForStep(5)).toEqual(['character-synopsis']);
 	});
 
 	it('places an empty section cursor at its first safe content offset', () => {

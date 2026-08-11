@@ -359,8 +359,179 @@ export function replaceMarkedSection(
   const markers = sectionMarkers(sectionId);
   const lineEnding = preferredLineEnding(content);
   const normalized = normalizeSectionBody(replacement, lineEnding);
-  const next = `${content.slice(0, inspection.start)}${markers.start}${lineEnding}${normalized}${lineEnding}${markers.end}${content.slice(inspection.end + markers.end.length)}`;
+  const next = `${content.slice(0, inspection.start)}${markers.start}${lineEnding}${quoteHead(normalized, lineEnding)}${normalized}${quoteTail(normalized, lineEnding)}${lineEnding}${markers.end}${content.slice(inspection.end + markers.end.length)}`;
   return { ok: true, content: next, changed: next !== content };
+}
+
+/**
+ * A blank line between quote-ending content and the end marker. A blockquote
+ * or callout would otherwise swallow the marker line into its rendered block
+ * in live preview, hiding it. Reads trim the edge newlines away again, so
+ * every write re-derives this and the framing stays stable byte for byte.
+ */
+function quoteTail(body: string, lineEnding: "\n" | "\r\n"): string {
+  const lastLine = body.slice(body.lastIndexOf("\n") + 1);
+  return lastLine.trimStart().startsWith(">") ? lineEnding : "";
+}
+
+/** The matching blank line after the start marker, so the framing reads even. */
+function quoteHead(body: string, lineEnding: "\n" | "\r\n"): string {
+  const newline = body.indexOf("\n");
+  const firstLine = newline === -1 ? body : body.slice(0, newline);
+  return firstLine.trimStart().startsWith(">") ? lineEnding : "";
+}
+
+export interface SectionLayoutEntry {
+  id: string;
+  heading: string;
+}
+
+/**
+ * Inserts a managed section a note does not carry yet, at its canonical place
+ * in the given layout: after the closest earlier section that exists, else
+ * above the closest later one together with the heading sitting directly on
+ * it, else after the note's first heading line. `layout` lists every section
+ * the document may carry, in note order, with the heading each is created
+ * under; `bodyStart` is where the frontmatter ends, so a heading inside YAML
+ * can never anchor the insertion.
+ */
+export function insertMarkedSection(
+  content: string,
+  layout: readonly SectionLayoutEntry[],
+  sectionId: string,
+  value: string,
+  bodyStart = 0,
+): string {
+  const entryIndex = layout.findIndex((entry) => entry.id === sectionId);
+  if (entryIndex < 0) {
+    throw new Error(`Section "${sectionId}" is not part of the layout.`);
+  }
+  const lineEnding = preferredLineEnding(content);
+  const heading = layout[entryIndex]!.heading;
+  const rendered = renderMarkedSectionWithEol(sectionId, value, lineEnding);
+  const chunk =
+    heading.length > 0
+      ? `${heading}${lineEnding}${lineEnding}${rendered}`
+      : rendered;
+  const gap = `${lineEnding}${lineEnding}`;
+
+  const present = layout
+    .map((entry, index) => ({
+      index,
+      inspection: inspectMarkedSection(content, entry.id),
+    }))
+    .filter(
+      (
+        candidate,
+      ): candidate is {
+        index: number;
+        inspection: Extract<ManagedSectionHealth, { status: "present" }>;
+      } => candidate.inspection.status === "present",
+    );
+
+  const anchorBefore = [...present]
+    .reverse()
+    .find((candidate) => candidate.index < entryIndex);
+  if (anchorBefore) {
+    const endMarker = sectionMarkers(layout[anchorBefore.index]!.id).end;
+    const insertAt = anchorBefore.inspection.end + endMarker.length;
+    return `${content.slice(0, insertAt)}${gap}${chunk}${content.slice(insertAt)}`;
+  }
+
+  const anchorAfter = present.find((candidate) => candidate.index > entryIndex);
+  if (anchorAfter) {
+    const insertAt = blockStartAbove(content, anchorAfter.inspection.start);
+    return `${content.slice(0, insertAt)}${chunk}${gap}${content.slice(insertAt)}`;
+  }
+
+  const body = content.slice(bodyStart);
+  const title = /^#[ \t][^\r\n]*/mu.exec(body);
+  if (title) {
+    const insertAt = bodyStart + title.index + title[0].length;
+    return `${content.slice(0, insertAt)}${gap}${chunk}${content.slice(insertAt)}`;
+  }
+  return body.trim().length > 0
+    ? `${content.slice(0, bodyStart)}${chunk}${gap}${body}`
+    : `${content.slice(0, bodyStart)}${chunk}${lineEnding}`;
+}
+
+/**
+ * Removes a managed section outright: markers, content, and the heading
+ * directly above it when that heading exactly matches one of the given
+ * strings. Written for migration, which retires a legacy section after its
+ * value moved into the frontmatter. Any other heading is someone's own line
+ * and stays. Returns the content unchanged when the section is not cleanly
+ * present.
+ */
+export function removeMarkedSection(
+  content: string,
+  sectionId: string,
+  absorbHeadings: readonly string[] = [],
+): string {
+  const inspection = inspectMarkedSection(content, sectionId);
+  if (inspection.status !== "present") return content;
+  const endMarker = sectionMarkers(sectionId).end;
+
+  let from = content.lastIndexOf("\n", Math.max(0, inspection.start - 1)) + 1;
+  const known = new Set(absorbHeadings.map((heading) => heading.trim()));
+  let probe = from;
+  while (probe > 0) {
+    const previousStart = content.lastIndexOf("\n", probe - 2) + 1;
+    const previousLine = content
+      .slice(previousStart, probe)
+      .replace(/\r?\n$/u, "");
+    if (previousLine.trim().length === 0) {
+      probe = previousStart;
+      continue;
+    }
+    if (known.has(previousLine.trim())) from = previousStart;
+    break;
+  }
+
+  let to = inspection.end + endMarker.length;
+  if (content.slice(to, to + 2) === "\r\n") to += 2;
+  else if (content[to] === "\n") to += 1;
+
+  const before = content.slice(0, from);
+  const after = content.slice(to);
+  const lineEnding = preferredLineEnding(content);
+  const gap = `${lineEnding}${lineEnding}`;
+  // The section carried the separation between its neighbours away with it;
+  // give one blank line back where text remains on both sides.
+  if (before.length > 0 && after.trim().length > 0) {
+    const trimmedBefore = before.replace(/(?:\r\n|\r|\n)+$/u, "");
+    const trimmedAfter = after.replace(/^(?:\r\n|\r|\n)+/u, "");
+    return `${trimmedBefore}${gap}${trimmedAfter}`;
+  }
+  return `${before}${after.replace(/^(?:\r\n|\r|\n)+/u, "")}`;
+}
+
+/**
+ * Where a section's block begins for something inserted above it: the start
+ * of its marker line, or of the heading that sits directly on it with nothing
+ * but blank lines between.
+ */
+function blockStartAbove(content: string, markerFrom: number): number {
+  const markerLineStart =
+    content.lastIndexOf("\n", Math.max(0, markerFrom - 1)) + 1;
+  let cursor = markerLineStart;
+  // Look upward across blank lines for a heading, but commit to its line only
+  // when one is there: moving into a blank run that leads anywhere else would
+  // strand the insertion between paragraphs.
+  let probe = markerLineStart;
+  while (probe > 0) {
+    const previousStart = content.lastIndexOf("\n", probe - 2) + 1;
+    const previousLine = content
+      .slice(previousStart, probe)
+      .replace(/\r?\n$/u, "");
+    if (previousLine.trim().length === 0) {
+      probe = previousStart;
+      continue;
+    }
+    if (/^#{1,6}[ \t]/u.test(previousLine.trim())) cursor = previousStart;
+    break;
+  }
+  return cursor;
 }
 
 function renderMarkedSectionWithEol(
@@ -370,7 +541,7 @@ function renderMarkedSectionWithEol(
 ): string {
   const markers = sectionMarkers(sectionId);
   const body = normalizeSectionBody(initialContent, lineEnding);
-  return `${markers.start}${lineEnding}${body}${lineEnding}${markers.end}`;
+  return `${markers.start}${lineEnding}${quoteHead(body, lineEnding)}${body}${quoteTail(body, lineEnding)}${lineEnding}${markers.end}`;
 }
 
 function normalizeSectionBody(

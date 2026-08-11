@@ -22,6 +22,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.openSceneBase': '打开场景数据库',
 	'commands.openHealthChecker': '打开健康检查器',
 	'commands.openManuscriptStream': '打开正文流',
+	'commands.migrateMemberNotes': '将字段概览写入角色与场景笔记',
 	'commands.splitManuscriptSegment': '在光标处拆分正文笔记',
 	'commands.manuscriptNextSegment': '前往下一篇正文笔记',
 	'commands.manuscriptPreviousSegment': '前往上一篇正文笔记',
@@ -203,6 +204,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.repairSummary':
 		'修复完成：新建 {created} 项，修复 {repaired} 项，冲突 {conflicts} 项。',
 	'messages.healthCheckPassed': '健康检查通过，未发现问题。',
+	'messages.migrateMemberNotesDone':
+		'已为 {migrated} 个笔记添加概览，跳过 {skipped} 个。',
+	'migrate.membersCallout': '{count} 个角色或场景笔记尚未在正文中显示字段概览。',
+	'migrate.membersAction': '添加概览',
 	'messages.healthCheckIssues': '健康检查发现 {count} 个问题。',
 	'messages.characterCreated': '已创建角色“{name}”。',
 	'messages.characterDeleted': '角色笔记已移至回收站。',
@@ -229,6 +234,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'editor.managedSection.boundaryTooltip':
 		'雪花写作边界标记，请勿修改或删除。',
 	'editor.managedSection.protectedNotice': '雪花写作区段边界已受保护。',
+	'editor.managedSection.generatedNotice':
+		'此概览由笔记属性生成。推荐使用工作台编辑，也可直接修改上方属性。',
 	'editor.managedSection.unlock': '解锁边界',
 	'editor.managedSection.relock': '重新锁定边界',
 	'editor.managedSection.unlockConfirmTitle': '解锁雪花写作边界？',
@@ -340,6 +347,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'editor.managedSection.name.description': '简介',
 	'editor.managedSection.name.plot-synopsis': '情节大纲',
 	'editor.managedSection.name.long-synopsis': '长篇大纲',
+	'editor.managedSection.name.character-fields': '角色概览',
+	'editor.managedSection.name.scene-fields': '场景概览',
 	'editor.managedSection.name.one-paragraph-storyline': '一段式故事梗概',
 	'editor.managedSection.name.character-synopsis': '人物大纲',
 	'editor.managedSection.name.character-profile': '角色档案',

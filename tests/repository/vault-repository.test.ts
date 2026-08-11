@@ -427,6 +427,107 @@ describe("VaultRepository", () => {
     );
   });
 
+  it("upserts sections, replacing what exists and inserting the rest in layout order", async () => {
+    const layout = [
+      { id: "scene-fields", heading: "" },
+      { id: "scene-events", heading: "## Events" },
+      { id: "scene-planning", heading: "## Planning" },
+    ];
+    const created = await repository.createManagedFile({
+      path: "Upsert.md",
+      template: {
+        body: `# Arrival\n\n## Events\n\n${renderMarkedSection("scene-events", "The gate closes.")}\n`,
+        sections: [],
+      },
+      frontmatter: {
+        "snowflake-document": "scene",
+        "snowflake-project-id": "project-1",
+      },
+    });
+
+    await repository.upsertSections(
+      created.path,
+      {
+        "scene-fields": "> [!info] Scene overview",
+        "scene-events": "The gate reopens.",
+        "scene-planning": "Reveal the pass.",
+      },
+      layout,
+    );
+
+    const content = fakeVault.contents.get(created.path) ?? "";
+    const order = [
+      content.indexOf("# Arrival"),
+      content.indexOf("snowflake:section:scene-fields:start"),
+      content.indexOf("## Events"),
+      content.indexOf("The gate reopens."),
+      content.indexOf("## Planning"),
+      content.indexOf("Reveal the pass."),
+    ];
+    expect(order.every((position) => position >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+    expect(content).not.toContain("The gate closes.");
+    // The block went above the heading that sits on the events section, not
+    // between that heading and its markers.
+    expect(content.indexOf("snowflake:section:scene-fields:end")).toBeLessThan(
+      content.indexOf("## Events"),
+    );
+  });
+
+  it("refuses an upsert when a requested section's markers are damaged", async () => {
+    const damaged = [
+      "# Arrival",
+      "<!-- snowflake:section:scene-events:start -->",
+      "<!-- snowflake:section:scene-events:start -->",
+      "Twice opened",
+      "<!-- snowflake:section:scene-events:end -->",
+    ].join("\n");
+    const created = await repository.createManagedFile({
+      path: "Damaged upsert.md",
+      template: { body: damaged, sections: [] },
+      frontmatter: {
+        "snowflake-document": "scene",
+        "snowflake-project-id": "project-1",
+      },
+    });
+    const before = fakeVault.contents.get(created.path) ?? "";
+
+    await expect(
+      repository.upsertSections(
+        created.path,
+        { "scene-events": "New", "scene-fields": "Block" },
+        [
+          { id: "scene-fields", heading: "" },
+          { id: "scene-events", heading: "## Events" },
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "unsafe-section" });
+    expect(fakeVault.contents.get(created.path)).toBe(before);
+  });
+
+  it("refuses a stale upsert the way updateSections does", async () => {
+    const created = await repository.createManagedFile({
+      path: "Stale upsert.md",
+      template: { body: "# Arrival\n", sections: [] },
+      frontmatter: {
+        "snowflake-document": "scene",
+        "snowflake-project-id": "project-1",
+      },
+    });
+    const opened = fakeVault.contents.get(created.path) ?? "";
+    fakeVault.contents.set(created.path, `${opened}\nExternal line.\n`);
+
+    await expect(
+      repository.upsertSections(
+        created.path,
+        { "scene-fields": "Block" },
+        [{ id: "scene-fields", heading: "" }],
+        fingerprint(opened),
+      ),
+    ).rejects.toBeInstanceOf(ConcurrentChangeError);
+    expect(fakeVault.contents.get(created.path)).toContain("External line.");
+  });
+
   it("forgets a path's record, and a folder's records with it", async () => {
     const managed = (name: string) => ({
       path: name,

@@ -59,41 +59,62 @@ describe('story artifact Markdown templates', () => {
 		const english = characterTemplate('Ada', 'en');
 		const chinese = characterTemplate('小岚', 'zh-CN');
 
-		expect(english.sections[0]?.heading).toBe('## Step 3 · Major Character Sheet');
-		expect(chinese.sections[0]?.heading).toBe('## 第三步 · 主要角色表');
-		expect(chinese.sections[0]?.heading).not.toContain('(');
+		expect(english.sections[1]?.heading).toBe(
+			'## Step 3 · One-Paragraph Storyline',
+		);
+		expect(chinese.sections[1]?.heading).toBe('## 第三步 · 一段式故事梗概');
+		expect(chinese.sections[1]?.heading).not.toContain('(');
+	});
+
+	it('opens character notes with a headingless fields block', () => {
+		const english = characterTemplate('Ada', 'en');
+		const chinese = characterTemplate('小岚', 'zh-CN');
+
+		expect(english.sections[0]?.id).toBe('character-fields');
+		expect(english.sections[0]?.heading).toBe('');
+		expect(english.sections[0]?.initialContent).toContain(
+			'> [!info] Character overview',
+		);
+		expect(chinese.sections[0]?.initialContent).toContain(
+			'> [!info] 角色概览',
+		);
+		expect(english.body).toContain('snowflake:section:character-fields:start');
 	});
 
 	it('keeps Step 5 character headings title-cased and free of parenthetical English', () => {
 		const english = characterTemplate('Ada', 'en');
 		const chinese = characterTemplate('小岚', 'zh-CN');
 
-		expect(english.sections[1]?.heading).toBe('## Step 5 · Character Synopsis');
-		expect(chinese.sections[1]?.heading).toBe('## 第五步 · 人物大纲');
-		expect(chinese.sections[1]?.heading).not.toContain('(');
+		expect(english.sections[2]?.heading).toBe('## Step 5 · Character Synopsis');
+		expect(chinese.sections[2]?.heading).toBe('## 第五步 · 人物大纲');
+		expect(chinese.sections[2]?.heading).not.toContain('(');
 	});
 
 	it('keeps Step 7 character headings title-cased and free of parenthetical English', () => {
 		const english = characterTemplate('Ada', 'en');
 		const chinese = characterTemplate('小岚', 'zh-CN');
 
-		expect(english.sections[2]?.heading).toBe('## Step 7 · Character Profiles');
-		expect(chinese.sections[2]?.heading).toBe('## 第七步 · 角色档案');
-		expect(chinese.sections[2]?.heading).not.toContain('(');
+		expect(english.sections[3]?.heading).toBe('## Step 7 · Character Profiles');
+		expect(chinese.sections[3]?.heading).toBe('## 第七步 · 角色档案');
+		expect(chinese.sections[3]?.heading).not.toContain('(');
 	});
 
-	it('creates stable scene conflict and event sections', () => {
+	it('opens scenes with a fields block and keeps the prose sections', () => {
 		const english = sceneTemplate('Arrival', 'en');
 		const chinese = sceneTemplate('抵达', 'zh-CN');
 
 		expect(english.sections.slice(0, 2)).toEqual([
-			expect.objectContaining({ id: 'scene-conflict', heading: '## Step 8 · Conflict' }),
+			expect.objectContaining({ id: 'scene-fields', heading: '' }),
 			expect.objectContaining({ id: 'scene-events', heading: '## Step 8 · Specific Events' }),
 		]);
 		expect(chinese.sections.slice(0, 2)).toEqual([
-			expect.objectContaining({ id: 'scene-conflict', heading: '## 第八步 · 冲突' }),
+			expect.objectContaining({ id: 'scene-fields', heading: '' }),
 			expect.objectContaining({ id: 'scene-events', heading: '## 第八步 · 具体事件' }),
 		]);
+		expect(english.sections[0]?.initialContent).toContain(
+			'> [!info] Scene overview',
+		);
+		expect(english.body).not.toContain('snowflake:section:scene-conflict');
 		expect(english.sections[2]?.heading).toBe(
 			'## Step 9 · Scene Planning (Optional)',
 		);

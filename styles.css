@@ -1235,6 +1235,42 @@
 	line-height: 1.45;
 }
 
+/* The migration line above the member tables: informational, not damage, so
+   it takes the accent tone the repair callout reserves orange for. */
+.snowflake-method-migrate-callout {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--size-4-3);
+	margin: 0 0 var(--size-4-4);
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 0;
+	border-inline-start: 3px solid var(--interactive-accent);
+	border-radius: var(--radius-s);
+	background: color-mix(
+		in srgb,
+		var(--interactive-accent) 5%,
+		var(--background-primary)
+	);
+}
+
+.snowflake-method-migrate-callout-icon {
+	display: inline-flex;
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-migrate-callout-icon > svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-migrate-callout-copy {
+	min-width: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+}
+
 .snowflake-method-guided-section {
 	margin: 0 0 var(--size-4-5);
 	padding: var(--size-4-4);
@@ -3633,6 +3669,14 @@
 	color: var(--text-faint);
 }
 
+/* A generated fields block only ever says what the properties say, so its
+   whole range reads as plugin matter rather than prose: faintly tinted, with
+   the default cursor instead of the text beam. */
+.cm-line.snowflake-managed-generated-line {
+	background-color: var(--background-primary-alt);
+	cursor: default;
+}
+
 .snowflake-managed-boundary-lock {
 	display: inline-flex;
 	align-items: center;
@@ -3697,6 +3741,17 @@
 }
 
 .cm-line.snowflake-managed-section-focus-flash.is-cycle-b {
+	animation: snowflake-managed-section-focus-b 1s ease-out both;
+}
+
+/* A generated overview renders as a block widget over its source lines, so
+   the flash on those lines cannot tint it. The flashed blank line directly
+   above the widget carries the same animation onto it instead. */
+.cm-line.snowflake-managed-section-focus-flash.is-cycle-a + .cm-embed-block {
+	animation: snowflake-managed-section-focus-a 1s ease-out both;
+}
+
+.cm-line.snowflake-managed-section-focus-flash.is-cycle-b + .cm-embed-block {
 	animation: snowflake-managed-section-focus-b 1s ease-out both;
 }
 
@@ -3955,6 +4010,17 @@
 
 .snowflake-method-reduce-motion
 	.cm-line.snowflake-managed-section-focus-flash {
+	animation: none;
+	background-color: color-mix(
+		in srgb,
+		var(--interactive-accent) 12%,
+		transparent
+	);
+}
+
+.snowflake-method-reduce-motion
+	.cm-line.snowflake-managed-section-focus-flash
+	+ .cm-embed-block {
 	animation: none;
 	background-color: color-mix(
 		in srgb,

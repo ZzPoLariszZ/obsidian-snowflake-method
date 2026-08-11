@@ -1505,11 +1505,59 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
+	/**
+	 * One line above the member tables while any writable note predates the
+	 * generated fields block. Informational, never damage: the notes keep
+	 * working from their properties until their author chooses to migrate.
+	 */
+	private renderMigrationCallout(
+		panel: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		if (model.unmigratedMembers === 0 || model.readOnly) return;
+		const callout = panel.createDiv({
+			cls: 'snowflake-method-migrate-callout',
+			attr: { role: 'status' },
+		});
+		const icon = callout.createSpan({
+			cls: 'snowflake-method-migrate-callout-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(icon, 'info');
+		callout.createSpan({
+			cls: 'snowflake-method-migrate-callout-copy',
+			text: this.t('migrate.membersCallout', {
+				count: model.unmigratedMembers,
+			}),
+		});
+		const action = callout.createEl('button', {
+			text: this.t('migrate.membersAction'),
+			attr: { type: 'button' },
+		});
+		action.addEventListener('click', () => {
+			action.disabled = true;
+			void this.host
+				.migrateMemberNotes()
+				.then(({ migrated, skipped }) => {
+					new Notice(
+						this.t('messages.migrateMemberNotesDone', { migrated, skipped }),
+					);
+				})
+				.catch((error: unknown) => {
+					action.disabled = false;
+					new Notice(
+						error instanceof Error ? error.message : this.t('errors.unknown'),
+					);
+				});
+		});
+	}
+
 	private renderCharacters(
 		panel: HTMLElement,
 		model: ProjectDashboardModel,
 		step: 3 | 5 | 7,
 	): void {
+		this.renderMigrationCallout(panel, model);
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
@@ -1800,6 +1848,7 @@ export class SnowflakeDashboardView extends ItemView {
 			void this.host.openManagedFile(
 				character.path,
 				primaryManagedSectionForStep(step) ?? undefined,
+				managedSectionHighlightsForStep(step),
 			);
 		};
 		const opensByDefault = step === 5 || step === 7;
@@ -1914,6 +1963,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 8 | 9,
 	): void {
+		this.renderMigrationCallout(panel, model);
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});

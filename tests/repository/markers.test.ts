@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   findManagedMarkerIssues,
   getProtectedMarkerRanges,
+  insertMarkedSection,
   inspectManagedDocumentSections,
   inspectMarkedSection,
   readMarkedSection,
@@ -184,6 +185,36 @@ describe("managed Markdown sections", () => {
     expect(source.slice(ranges[1]!.from, ranges[1]!.to)).toBe(`${end}\r\n`);
   });
 
+  it("keeps a blank line on both sides of quote content and the markers", () => {
+    const callout = "> [!info] Overview\n> **Time**: Dawn";
+    const rendered = renderMarkedSection("scene-fields", callout);
+    // Without the trailing blank, live preview folds the end marker into the
+    // rendered callout and it disappears; the leading blank matches it so the
+    // framing reads even.
+    expect(rendered).toContain(
+      "> **Time**: Dawn\n\n<!-- snowflake:section:scene-fields:end -->",
+    );
+    expect(rendered).toContain(
+      "<!-- snowflake:section:scene-fields:start -->\n\n> [!info] Overview",
+    );
+    expect(readMarkedSection(rendered, "scene-fields")).toBe(`\n${callout}\n`);
+
+    // Writing back what was read reproduces the same bytes.
+    const replaced = replaceMarkedSection(
+      rendered,
+      "scene-fields",
+      readMarkedSection(rendered, "scene-fields") ?? "",
+    );
+    expect(replaced.ok).toBe(true);
+    if (!replaced.ok) return;
+    expect(replaced.changed).toBe(false);
+
+    // Prose keeps the tight framing it always had.
+    expect(renderMarkedSection("scene-events", "Prose line")).toContain(
+      "Prose line\n<!-- snowflake:section:scene-events:end -->",
+    );
+  });
+
   it("preserves CRLF when replacing managed sections", () => {
     const original = [
       "# Scene",
@@ -221,5 +252,93 @@ describe("managed Markdown sections", () => {
       getProtectedMarkerRanges(content).map((range) => range.sectionId),
     ).toEqual(["plot-synopsis", "plot-synopsis"]);
     expect(readMarkedSection(content, "plot-synopsis")).toBe("Body");
+  });
+});
+
+describe("insertMarkedSection", () => {
+  const LAYOUT = [
+    { id: "scene-fields", heading: "" },
+    { id: "scene-events", heading: "## Events" },
+    { id: "scene-planning", heading: "## Planning" },
+  ];
+
+  it("inserts after the closest earlier section that exists", () => {
+    const content = `# Arrival\n\n${renderMarkedSection("scene-fields", "Block")}\n\n## Planning\n\n${renderMarkedSection("scene-planning", "Plan")}`;
+    const next = insertMarkedSection(content, LAYOUT, "scene-events", "Gate closes.");
+
+    expect(readMarkedSection(next, "scene-events")).toBe("Gate closes.");
+    expect(next.indexOf("snowflake:section:scene-events:start")).toBeGreaterThan(
+      next.indexOf("snowflake:section:scene-fields:end"),
+    );
+    expect(next.indexOf("snowflake:section:scene-events:end")).toBeLessThan(
+      next.indexOf("## Planning"),
+    );
+    expect(next).toContain("## Events\n\n<!-- snowflake:section:scene-events:start -->");
+  });
+
+  it("inserts above a later section together with the heading sitting on it", () => {
+    const content = `# Arrival\n\n## Events\n\n${renderMarkedSection("scene-events", "Gate closes.")}`;
+    const next = insertMarkedSection(content, LAYOUT, "scene-fields", "> Block");
+
+    expect(readMarkedSection(next, "scene-fields")).toBe("\n> Block\n");
+    expect(next.indexOf("snowflake:section:scene-fields:end")).toBeLessThan(
+      next.indexOf("## Events"),
+    );
+    expect(next).toContain("# Arrival\n\n<!-- snowflake:section:scene-fields:start -->");
+  });
+
+  it("does not move the insertion into a blank run that leads to prose", () => {
+    const content = `# Arrival\n\nUser prose stays put.\n\n${renderMarkedSection("scene-events", "Gate")}`;
+    const next = insertMarkedSection(content, LAYOUT, "scene-fields", "Block");
+
+    expect(next).toContain(
+      "User prose stays put.\n\n<!-- snowflake:section:scene-fields:start -->",
+    );
+    expect(next).not.toMatch(/\n{3,}/u);
+  });
+
+  it("lands after the first heading when the note has no managed sections", () => {
+    const next = insertMarkedSection(
+      "# Arrival\n\nUser prose.\n",
+      LAYOUT,
+      "scene-fields",
+      "Block",
+    );
+    expect(next).toContain("# Arrival\n\n<!-- snowflake:section:scene-fields:start -->");
+    expect(next).toContain("scene-fields:end -->\n\nUser prose.");
+  });
+
+  it("opens the body when there is neither a section nor a title", () => {
+    const next = insertMarkedSection("Just prose.\n", LAYOUT, "scene-fields", "Block");
+    expect(next.startsWith("<!-- snowflake:section:scene-fields:start -->")).toBe(true);
+    expect(next).toContain("Just prose.");
+  });
+
+  it("never anchors on a heading inside the frontmatter", () => {
+    const content = "---\ntitle: '# Not a title'\n---\nNo body title.\n";
+    const bodyStart = content.indexOf("No body title.");
+    const next = insertMarkedSection(content, LAYOUT, "scene-fields", "Block", bodyStart);
+    expect(
+      next.indexOf("snowflake:section:scene-fields:start"),
+    ).toBeGreaterThanOrEqual(bodyStart);
+  });
+
+  it("emits the layout heading above the inserted markers", () => {
+    const next = insertMarkedSection("# Arrival\n", LAYOUT, "scene-planning", "Plan");
+    expect(next).toContain("## Planning\n\n<!-- snowflake:section:scene-planning:start -->");
+  });
+
+  it("keeps CRLF endings throughout the insertion", () => {
+    const content = "# Arrival\r\n\r\nProse.\r\n";
+    const next = insertMarkedSection(content, LAYOUT, "scene-fields", "One\nTwo");
+    expect(next).toContain(
+      "# Arrival\r\n\r\n<!-- snowflake:section:scene-fields:start -->\r\nOne\r\nTwo\r\n<!-- snowflake:section:scene-fields:end -->",
+    );
+  });
+
+  it("refuses a section the layout does not know", () => {
+    expect(() =>
+      insertMarkedSection("# Arrival\n", LAYOUT, "unknown-section", "x"),
+    ).toThrow(/not part of the layout/u);
   });
 });
