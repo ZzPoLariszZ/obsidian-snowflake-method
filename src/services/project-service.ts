@@ -56,6 +56,9 @@ import {
   type ManagedFrontmatter,
 } from "../repository";
 import {
+  BASE_EXCLUDED_COLUMN_KEYS,
+  appendBaseColumns,
+  baseColumnDisplayNames,
   characterTemplate,
   getProjectBases,
   getStoryArtifacts,
@@ -1825,12 +1828,53 @@ export class SnowflakeProjectService {
   ): Promise<string> {
     const project = await this.resolveProjectForRead(projectLocator);
     const path = this.projectBasePath(project, id);
-    if (this.repository.getFile(path) !== null) return path;
-
-    this.assertProjectWritable(project);
-    const base = this.projectBase(project, id);
-    await this.repository.createPlainFile(path, base.content);
+    if (this.repository.getFile(path) === null) {
+      this.assertProjectWritable(project);
+      const base = this.projectBase(project, id);
+      await this.repository.createPlainFile(path, base.content);
+      return path;
+    }
+    if (!project.readOnly) {
+      await this.refreshProjectBaseColumns(project, id, path);
+    }
     return path;
+  }
+
+  /**
+   * Grows the base with columns for member properties it does not reference
+   * yet, so a field that moved into the frontmatter, or one the author added
+   * by hand, shows up the next time the view opens. Append-only: everything
+   * the author arranged in the base stays arranged.
+   */
+  private async refreshProjectBaseColumns(
+    project: ProjectRef | ProjectSnapshot,
+    id: ProjectBaseId,
+    path: string,
+  ): Promise<void> {
+    const documentType = id === "characters" ? "character" : "scene";
+    const layout = getProjectPathLayout(project.locale);
+    const folder = normalizePath(
+      `${project.rootPath}/${layout.directories[id]}`,
+    );
+    const entries = await this.repository.listManagedEntriesBelow(
+      folder,
+      documentType,
+      project.id,
+    );
+    const keys = new Set<string>();
+    for (const entry of entries) {
+      for (const key of Object.keys(entry.frontmatter)) keys.add(key);
+    }
+    const displayNames = baseColumnDisplayNames(project.locale);
+    const additions = [...keys]
+      .filter((key) => !BASE_EXCLUDED_COLUMN_KEYS.has(key))
+      .sort()
+      .map((key) => ({ key, displayName: displayNames.get(key) }));
+    if (additions.length === 0) return;
+    await this.repository.updatePlainFile(
+      path,
+      (current) => appendBaseColumns(current, additions).content,
+    );
   }
 
   private projectBase(

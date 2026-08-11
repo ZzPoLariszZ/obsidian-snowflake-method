@@ -377,6 +377,17 @@ export class VaultRepository {
     return { path: file.path, file, created: true, frontmatterRepaired: false };
   }
 
+  /** Rewrites a plain generated file, such as a base view, atomically. */
+  async updatePlainFile(
+    path: string,
+    transform: (current: string) => string,
+  ): Promise<void> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+    await this.vault.process(file, transform);
+  }
+
   async createPlainFile(
     path: string,
     content: string,

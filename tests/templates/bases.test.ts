@@ -1,7 +1,7 @@
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
-import { getProjectBases } from '../../src/templates';
+import { appendBaseColumns, getProjectBases } from '../../src/templates';
 
 const PROJECT_ID = 'project-85200cf4-9b68-40e9-a316-ead8ed859365';
 
@@ -138,8 +138,33 @@ describe('project base templates', () => {
 		).toEqual([undefined, 'formula.character_type']);
 		expect(parsed('scenes').views.map((view) => view.groupBy?.property)).toEqual([
 			undefined,
-			'snowflake-pov',
+			'formula.pov',
 			'snowflake-scene-location',
+		]);
+	});
+
+	it('shows the narrative modes of the point of view in the project language', () => {
+		// A character link falls through unchanged and still opens the note.
+		expect(parsed('scenes', 'zh-CN').formulas['pov']).toBe(
+			'if(note["snowflake-pov"] == "omniscient", "全知视角", ' +
+				'if(note["snowflake-pov"] == "multiple", "多人视角", ' +
+				'note["snowflake-pov"]))',
+		);
+		expect(parsed('scenes').formulas['pov']).toContain('"Omniscient"');
+		for (const view of parsed('scenes').views) {
+			expect(view.order).not.toContain('snowflake-pov');
+		}
+	});
+
+	it('lists every character field on the all-characters view', () => {
+		expect(parsed('characters').views[1]?.order).toEqual([
+			'formula.character',
+			'formula.character_type',
+			'snowflake-one-sentence-storyline',
+			'snowflake-motivation',
+			'snowflake-goal',
+			'snowflake-conflict',
+			'snowflake-growth',
 		]);
 	});
 
@@ -189,5 +214,80 @@ describe('project base templates', () => {
 				expect(baseFor(id, language).content.endsWith('\n')).toBe(true);
 			}
 		}
+	});
+
+	it('lists the scene conflict now that it lives in the frontmatter', () => {
+		expect(parsed('scenes').views[0]?.order).toContain('snowflake-conflict');
+		expect(
+			parsed('scenes', 'zh-CN').properties['note.snowflake-conflict']
+				?.displayName,
+		).toBe('冲突');
+		// The cast stays ahead of the conflict, matching the overview block.
+		const order = parsed('scenes').views[0]?.order ?? [];
+		expect(order.indexOf('snowflake-scene-characters')).toBeLessThan(
+			order.indexOf('snowflake-conflict'),
+		);
+	});
+});
+
+describe('appendBaseColumns', () => {
+	const base = () => baseFor('scenes').content;
+
+	it('appends an unreferenced property to every view and names it', () => {
+		const { content, added } = appendBaseColumns(base(), [
+			{ key: 'status', displayName: 'Status' },
+		]);
+		expect(added).toEqual(['note.status']);
+		const document = parse(content) as ReturnType<typeof parsed>;
+		for (const view of document.views) {
+			expect(view.order[view.order.length - 1]).toBe('note.status');
+		}
+		expect(document.properties['note.status']?.displayName).toBe('Status');
+	});
+
+	it('leaves a key alone once the base references it in either form', () => {
+		expect(
+			appendBaseColumns(base(), [{ key: 'snowflake-conflict' }]).added,
+		).toEqual([]);
+		const withNoteForm = appendBaseColumns(base(), [
+			{ key: 'status', displayName: 'Status' },
+		]).content;
+		expect(appendBaseColumns(withNoteForm, [{ key: 'status' }]).added).toEqual(
+			[],
+		);
+	});
+
+	it('respects an author who removed a column from one view only', () => {
+		const trimmed = base().replace('      - snowflake-conflict\n', '');
+		expect(parse(trimmed)).toBeTruthy();
+		expect(
+			appendBaseColumns(trimmed, [{ key: 'snowflake-conflict' }]).added,
+		).toEqual([]);
+	});
+
+	it('keeps the untouched document byte for byte when nothing is added', () => {
+		const before = base();
+		expect(appendBaseColumns(before, [{ key: 'snowflake-pov' }]).content).toBe(
+			before,
+		);
+	});
+
+	it('adds nothing to a file it cannot parse', () => {
+		expect(appendBaseColumns(':\nbroken', [{ key: 'status' }]).added).toEqual(
+			[],
+		);
+	});
+
+	it('preserves filters, formulas and sorts through the rewrite', () => {
+		const { content } = appendBaseColumns(base(), [
+			{ key: 'status', displayName: 'Status' },
+		]);
+		const document = parse(content) as ReturnType<typeof parsed>;
+		const original = parsed('scenes');
+		expect(document.filters).toEqual(original.filters);
+		expect(document.formulas).toEqual(original.formulas);
+		expect(document.views.map((view) => view.sort)).toEqual(
+			original.views.map((view) => view.sort),
+		);
 	});
 });

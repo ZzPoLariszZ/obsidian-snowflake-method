@@ -1,14 +1,17 @@
 import { StateField } from '@codemirror/state';
+import { parse as parseRealYaml, stringify as stringifyRealYaml } from 'yaml';
 
-import { normalizeFakePath, parseFakeYaml } from "./fake-vault";
+import { normalizeFakePath } from "./fake-vault";
 
 export const normalizePath = normalizeFakePath;
-export const parseYaml = parseFakeYaml;
+// Real YAML, the way Obsidian's own helpers behave: the fake vault writes its
+// frontmatter as JSON, which is a YAML subset, so both worlds stay readable.
+export const parseYaml = (source: string): unknown => parseRealYaml(source);
 /** The file a link names, without the heading or block anchor after it. */
 export const getLinkpath = (linktext: string): string =>
 	linktext.split('#')[0] ?? linktext;
 export const stringifyYaml = (value: unknown): string =>
-	`${JSON.stringify(value, null, 2)}\n`;
+	stringifyRealYaml(value);
 
 // The repository/service tests use structural fake Vault objects. These class
 // exports keep incidental instanceof checks in neighboring code predictable if

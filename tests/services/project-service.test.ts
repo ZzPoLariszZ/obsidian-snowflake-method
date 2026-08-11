@@ -2847,6 +2847,41 @@ describe("SnowflakeProjectService", () => {
     );
   });
 
+  it("grows an open base with member properties it does not list yet", async () => {
+    const project = await service.createProject({ name: "Base growth" });
+    await service.createScene(project, {
+      title: "Arrival",
+      conflict: "The gate is shut.",
+    });
+    const path = await service.openProjectBase(project, "scenes");
+    const created = fakeVault.contents.get(path) ?? "";
+    expect(created).toContain("snowflake-conflict");
+
+    // A property the author invents appears the next time the base opens.
+    const [scene] = (await service.loadProject(project)).scenes;
+    await service.repository.updateFrontmatter(scene!.path, { status: "draft" });
+    await service.openProjectBase(project, "scenes");
+    const grown = fakeVault.contents.get(path) ?? "";
+    expect(grown).toContain("note.status");
+    // Never the bookkeeping keys.
+    expect(grown).not.toContain("note.snowflake-schema");
+    expect(grown).not.toContain("note.snowflake-scene-id");
+
+    // Opening again with nothing new leaves the file byte for byte, so an
+    // author's own arrangement is never churned.
+    const customized = `${grown}  - type: table\n    name: Mine\n    order:\n      - formula.scene\n    sort: []\n`;
+    fakeVault.contents.set(path, customized);
+    await service.openProjectBase(project, "scenes");
+    expect(fakeVault.contents.get(path)).toBe(customized);
+
+    // The next new key grows every view, the author's included.
+    await service.repository.updateFrontmatter(scene!.path, { color: "red" });
+    await service.openProjectBase(project, "scenes");
+    const recolored = fakeVault.contents.get(path) ?? "";
+    expect(recolored).toContain("note.color");
+    expect(recolored).toContain("Mine");
+  });
+
   it("reports a scene cast entry whose character note is gone, and drops only that entry", async () => {
     const project = await service.createProject({ name: "Dangling cast" });
     const kept = await service.createCharacter(project, { name: "Ada", type: "major" });

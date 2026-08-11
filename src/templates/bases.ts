@@ -1,3 +1,5 @@
+import { parseYaml, stringifyYaml } from "obsidian";
+
 import { FRONTMATTER_KEYS } from "../domain";
 import type { TemplateLanguage } from "./markdown";
 
@@ -62,6 +64,8 @@ interface Copy {
   growth: string;
   sceneName: string;
   scenePov: string;
+  povOmniscient: string;
+  povMultiple: string;
   sceneTime: string;
   sceneLocation: string;
   sceneCharacters: string;
@@ -88,6 +92,8 @@ const COPY: Record<TemplateLanguage, Copy> = {
     growth: "Growth",
     sceneName: "Scene name",
     scenePov: "POV character",
+    povOmniscient: "Omniscient",
+    povMultiple: "Multi-POV",
     sceneTime: "Time",
     sceneLocation: "Location",
     sceneCharacters: "Characters",
@@ -112,6 +118,8 @@ const COPY: Record<TemplateLanguage, Copy> = {
     growth: "成长",
     sceneName: "场景名称",
     scenePov: "视点人物",
+    povOmniscient: "全知视角",
+    povMultiple: "多人视角",
     sceneTime: "时间",
     sceneLocation: "地点",
     sceneCharacters: "人物",
@@ -175,6 +183,20 @@ function characterTypeFormula(copy: Copy): string {
     `if(${equals(key, "major")}, ${label(copy.majorType)}, ` +
     `if(${equals(key, "supporting")}, ${label(copy.supportingType)}, ` +
     `if(${equals(key, "minor")}, ${label(copy.minorType)}, ${expr(key)})))`
+  );
+}
+
+/**
+ * The point of view stores a wikilink for a character and a canonical
+ * `omniscient`/`multiple` word for the narrative modes, so a raw column would
+ * read the modes as English in a Chinese project. The link falls through
+ * unchanged and keeps opening the character.
+ */
+function scenePovFormula(copy: Copy): string {
+  const key = FRONTMATTER_KEYS.pov;
+  return (
+    `if(${equals(key, "omniscient")}, ${JSON.stringify(copy.povOmniscient)}, ` +
+    `if(${equals(key, "multiple")}, ${JSON.stringify(copy.povMultiple)}, ${expr(key)}))`
   );
 }
 
@@ -295,8 +317,11 @@ function charactersBase(projectId: string, copy: Copy): string {
         order: [
           `formula.${nameFormula}`,
           `formula.${typeFormula}`,
+          FRONTMATTER_KEYS.oneSentenceStoryline,
+          FRONTMATTER_KEYS.motivation,
           FRONTMATTER_KEYS.goal,
           FRONTMATTER_KEYS.conflict,
+          FRONTMATTER_KEYS.growth,
         ],
         sort: RANK_SORT,
       },
@@ -306,11 +331,14 @@ function charactersBase(projectId: string, copy: Copy): string {
 
 function scenesBase(projectId: string, copy: Copy): string {
   const nameFormula = "scene";
+  const povFormula = "pov";
+  const povColumn = `formula.${povFormula}`;
   const sceneColumns = [
-    FRONTMATTER_KEYS.pov,
+    povColumn,
     FRONTMATTER_KEYS.sceneTime,
     FRONTMATTER_KEYS.sceneLocation,
     FRONTMATTER_KEYS.sceneCharacters,
+    FRONTMATTER_KEYS.conflict,
   ];
   const without = (excluded: string): string[] =>
     sceneColumns.filter((column) => column !== excluded);
@@ -327,9 +355,11 @@ function scenesBase(projectId: string, copy: Copy): string {
     },
     formulas: {
       [nameFormula]: nameLinkFormula(FRONTMATTER_KEYS.sceneTitle),
+      [povFormula]: scenePovFormula(copy),
     },
     properties: {
       [`formula.${nameFormula}`]: { displayName: copy.sceneName },
+      [povColumn]: { displayName: copy.scenePov },
       [`note.${FRONTMATTER_KEYS.sceneTitle}`]: { displayName: copy.sceneName },
       [`note.${FRONTMATTER_KEYS.pov}`]: { displayName: copy.scenePov },
       [`note.${FRONTMATTER_KEYS.sceneTime}`]: { displayName: copy.sceneTime },
@@ -337,6 +367,7 @@ function scenesBase(projectId: string, copy: Copy): string {
       [`note.${FRONTMATTER_KEYS.sceneCharacters}`]: {
         displayName: copy.sceneCharacters,
       },
+      [`note.${FRONTMATTER_KEYS.conflict}`]: { displayName: copy.conflict },
     },
     views: [
       {
@@ -348,8 +379,8 @@ function scenesBase(projectId: string, copy: Copy): string {
       {
         type: "table",
         name: copy.byPovView,
-        groupBy: { property: FRONTMATTER_KEYS.pov, direction: "ASC" },
-        order: [`formula.${nameFormula}`, ...without(FRONTMATTER_KEYS.pov)],
+        groupBy: { property: povColumn, direction: "ASC" },
+        order: [`formula.${nameFormula}`, ...without(povColumn)],
         sort: RANK_SORT,
       },
       {
@@ -364,6 +395,113 @@ function scenesBase(projectId: string, copy: Copy): string {
       },
     ],
   });
+}
+
+/**
+ * Bookkeeping keys a base never grows on its own: identity and machinery
+ * every note carries, whose column would say nothing. The name keys are here
+ * too, because the generated name formula already links each row by name.
+ */
+export const BASE_EXCLUDED_COLUMN_KEYS: ReadonlySet<string> = new Set([
+  FRONTMATTER_KEYS.schema,
+  FRONTMATTER_KEYS.document,
+  FRONTMATTER_KEYS.projectId,
+  FRONTMATTER_KEYS.projectName,
+  FRONTMATTER_KEYS.projectLanguage,
+  FRONTMATTER_KEYS.stepStatuses,
+  FRONTMATTER_KEYS.reviewedFingerprints,
+  FRONTMATTER_KEYS.draft,
+  FRONTMATTER_KEYS.manuscriptSequence,
+  FRONTMATTER_KEYS.characterId,
+  FRONTMATTER_KEYS.sceneId,
+  FRONTMATTER_KEYS.rank,
+  FRONTMATTER_KEYS.characterName,
+  FRONTMATTER_KEYS.sceneTitle,
+]);
+
+/** Localized display names for the member keys a base may gain later. */
+export function baseColumnDisplayNames(
+  language: TemplateLanguage,
+): ReadonlyMap<string, string> {
+  const copy = COPY[language];
+  return new Map([
+    [FRONTMATTER_KEYS.characterType, copy.characterType],
+    [FRONTMATTER_KEYS.oneSentenceStoryline, copy.oneSentenceStoryline],
+    [FRONTMATTER_KEYS.motivation, copy.motivation],
+    [FRONTMATTER_KEYS.goal, copy.goal],
+    [FRONTMATTER_KEYS.conflict, copy.conflict],
+    [FRONTMATTER_KEYS.growth, copy.growth],
+    [FRONTMATTER_KEYS.pov, copy.scenePov],
+    [FRONTMATTER_KEYS.sceneTime, copy.sceneTime],
+    [FRONTMATTER_KEYS.sceneLocation, copy.sceneLocation],
+    [FRONTMATTER_KEYS.sceneCharacters, copy.sceneCharacters],
+  ]);
+}
+
+export interface BaseColumnAddition {
+  key: string;
+  displayName?: string;
+}
+
+/**
+ * Appends columns for properties the base does not reference anywhere yet, so
+ * a field that moves into the frontmatter, or one the author invents later,
+ * shows up the next time the base opens. Append-only on purpose: a key
+ * referenced by any view, or named under `properties`, is one the author has
+ * already decided about, and hiding or reordering is theirs to keep. The
+ * whole document is re-serialized, which normalizes formatting the same way
+ * Obsidian's own view editor does, and preserves every setting in it.
+ */
+export function appendBaseColumns(
+  content: string,
+  additions: readonly BaseColumnAddition[],
+): { content: string; added: string[] } {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(content);
+  } catch {
+    return { content, added: [] };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { content, added: [] };
+  }
+  const base = parsed as {
+    properties?: Record<string, Record<string, unknown>>;
+    views?: { order?: unknown }[];
+  };
+
+  const referenced = new Set<string>();
+  for (const key of Object.keys(base.properties ?? {})) {
+    referenced.add(key);
+  }
+  for (const view of base.views ?? []) {
+    if (!Array.isArray(view.order)) continue;
+    for (const column of view.order) {
+      if (typeof column === "string") referenced.add(column);
+    }
+  }
+  const isReferenced = (key: string): boolean =>
+    referenced.has(key) || referenced.has(`note.${key}`);
+
+  const added: string[] = [];
+  for (const addition of additions) {
+    if (isReferenced(addition.key)) continue;
+    const column = `note.${addition.key}`;
+    added.push(column);
+    if (addition.displayName !== undefined) {
+      base.properties ??= {};
+      base.properties[column] = {
+        ...(base.properties[column] ?? {}),
+        displayName: addition.displayName,
+      };
+    }
+    for (const view of base.views ?? []) {
+      if (!Array.isArray(view.order)) continue;
+      view.order.push(column);
+    }
+  }
+  if (added.length === 0) return { content, added };
+  return { content: stringifyYaml(parsed), added };
 }
 
 export function getProjectBases(
