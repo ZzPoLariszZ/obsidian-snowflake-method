@@ -232,7 +232,6 @@ export interface CharacterInput {
   goal?: string;
   conflict?: string;
   growth?: string;
-  age?: DetailsLine | null;
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   oneParagraphStoryline?: string;
@@ -253,7 +252,6 @@ export interface CharacterPatch {
   goal?: string;
   conflict?: string;
   growth?: string;
-  age?: DetailsLine | null;
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   oneParagraphStoryline?: string;
@@ -271,8 +269,11 @@ export interface CharacterRecord {
   rank: number;
   /** False when `rank` is the fallback because the note stores no usable rank. */
   hasStoredRank: boolean;
-  /** The role, read from the category links first, the legacy key second. */
-  type: CharacterType;
+  /**
+   * The role, read from the category links first, the legacy key second, and
+   * null when the character has been given neither.
+   */
+  type: CharacterType | null;
   /** Null while the note has never chosen a progress status. */
   progressStatus: ProgressStatus | null;
   aliases: string[];
@@ -307,8 +308,8 @@ export interface SceneInput {
   aliases?: string[];
   categoryPaths?: string[];
   progressStatus?: ProgressStatus | null;
-  time?: string;
-  location?: string;
+  times?: string[];
+  locations?: string[];
   characters?: string[];
   conflict?: string;
   worldStatus?: RecordLine[];
@@ -325,8 +326,8 @@ export interface ScenePatch {
   aliases?: string[];
   categoryPaths?: string[];
   progressStatus?: ProgressStatus | null;
-  time?: string;
-  location?: string;
+  times?: string[];
+  locations?: string[];
   characters?: string[];
   conflict?: string;
   worldStatus?: RecordLine[];
@@ -350,8 +351,10 @@ export interface SceneRecord {
   /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
   categories: string[];
   povPath: string | null;
-  time: string;
-  location: string;
+  /** Time notes the scene happens in, as stored links or plain words. */
+  times: string[];
+  /** Places the scene happens in, as stored links or plain words. */
+  locations: string[];
   characters: string[];
   conflict: string;
   worldStatus: RecordLine[];

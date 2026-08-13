@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-	CHARACTER_DETAILS_PROPERTIES,
 	GENERATED_SECTION_IDS,
 	MANAGED_SECTIONS_BY_DOCUMENT,
 	MIN_SUPPORTED_SCHEMA_VERSION,
@@ -24,7 +23,6 @@ describe('worldbuilding kinds', () => {
 		expect(WORLDBUILDING_KIND_DEFINITIONS.item.detailsProperties).toEqual([
 			'owner',
 		]);
-		expect(CHARACTER_DETAILS_PROPERTIES).toEqual(['age']);
 		for (const kind of WORLDBUILDING_KINDS) {
 			expect(isWorldbuildingKind(kind)).toBe(true);
 		}
@@ -41,9 +39,11 @@ describe('worldbuilding kinds', () => {
 			expect(isProgressStatus(status)).toBe(true);
 		}
 		expect(isProgressStatus('skipped')).toBe(false);
-		for (const kind of ['point', 'period', 'event']) {
+		for (const kind of ['point', 'period']) {
 			expect(isTimeKind(kind)).toBe(true);
 		}
+		// A time note is a moment or the stretch between two of them.
+		expect(isTimeKind('event')).toBe(false);
 		expect(isTimeKind('era')).toBe(false);
 	});
 });

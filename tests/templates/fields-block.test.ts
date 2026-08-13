@@ -112,8 +112,8 @@ describe('renderSceneFieldsBlock', () => {
 			path: 'Projects/Novel/20_Characters/Aria.md',
 			name: 'Aria',
 		},
-		time: 'Dawn, third day',
-		location: 'The harbor',
+		times: ['Dawn, third day'],
+		locations: ['The harbor'],
 		conflict: 'The tide turns before the cargo is loaded.',
 		cast: [
 			{ path: 'Projects/Novel/20_Characters/Aria.md', name: 'Aria' },
@@ -158,8 +158,8 @@ describe('renderSceneFieldsBlock', () => {
 		const block = renderSceneFieldsBlock('en', {
 			...COMMON,
 			pov: null,
-			time: '',
-			location: '',
+			times: [],
+			locations: [],
 			conflict: '',
 			cast: [],
 		});
@@ -196,30 +196,44 @@ describe('renderEntityFieldsBlock', () => {
 				'> [!info] Time overview',
 				'> **Progress status**: In progress',
 				'>',
-				'> **Type**: Period',
+				'> **Type**: Time period',
 				'>',
-				'> **Start**: [[Novel/60_Worldbuilding/61_Time/1024-03]]',
+				// Each link is read out by its name, never by its whole path.
+				'> **Start**: [[Novel/60_Worldbuilding/61_Time/1024-03|1024-03]]',
 				'>',
-				'> **End**: [[Novel/60_Worldbuilding/61_Time/1024-06]]',
+				'> **End**: [[Novel/60_Worldbuilding/61_Time/1024-06|1024-06]]',
 				'>',
 				'> **Description**: The three months the capital starved.',
 			].join('\n'),
 		);
 	});
 
-	it('shows an event with a single time as when', () => {
+	it('shows a period with only one end as when', () => {
 		const block = renderEntityFieldsBlock('zh-CN', 'time', {
 			...COMMON,
 			description: '',
 			time: {
-				kind: 'event',
+				kind: 'period',
 				start: '[[小说/60_世界观/61_时间/1024-05]]',
 				end: '',
 			},
 		});
-		expect(block).toContain('> **类型**：事件');
-		expect(block).toContain('> **时间**：[[小说/60_世界观/61_时间/1024-05]]');
+		expect(block).toContain('> **类型**：时间段');
+		expect(block).toContain('> **时间**：[[小说/60_世界观/61_时间/1024-05|1024-05]]');
 		expect(block).not.toContain('**开始**');
+	});
+
+	it('leaves out a kind this release no longer knows', () => {
+		const block = renderEntityFieldsBlock('en', 'time', {
+			...COMMON,
+			description: '',
+			time: {
+				kind: 'event' as never,
+				start: '',
+				end: '',
+			},
+		});
+		expect(block).toBe('> [!info] Time overview');
 	});
 
 	it('keeps a location to its universal lines', () => {

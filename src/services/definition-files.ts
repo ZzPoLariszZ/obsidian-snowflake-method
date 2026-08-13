@@ -84,19 +84,35 @@ export function findDefinitionEntry(
   );
 }
 
+/**
+ * How many levels a path may have. A level is a heading level, and Markdown
+ * gives six: the fifth is as deep as a tree can go and still leave the file
+ * readable, which is deeper than any taxonomy an author has needed.
+ */
+export const MAX_DEFINITION_DEPTH = 5;
+
 export type AppendPathResult =
   | { ok: true; content: string; addedHeadings: string[] }
-  | { ok: false; code: "invalid-segment" | "heading-taken"; segment: string };
+  | {
+      ok: false;
+      code: "invalid-segment" | "heading-taken" | "too-deep";
+      segment: string;
+    };
 
 /**
  * Ensures a path exists, appending only the missing tail. A new heading lands
  * at the end of its parent's subtree so the tree stays grouped, and a segment
  * whose text already names a different path is refused rather than reused:
  * anchors resolve by text alone, so reuse would point old links somewhere new.
+ *
+ * A description is written as prose under the deepest new heading, which is
+ * the one the author named. Nothing reads it back: it is there for whoever
+ * opens the file and wonders what the category was for.
  */
 export function appendDefinitionPath(
   content: string,
   path: string,
+  description = "",
 ): AppendPathResult {
   const segments = path
     .split("/")
@@ -104,6 +120,9 @@ export function appendDefinitionPath(
     .filter((segment) => segment.length > 0);
   if (segments.length === 0) {
     return { ok: false, code: "invalid-segment", segment: path };
+  }
+  if (segments.length > MAX_DEFINITION_DEPTH) {
+    return { ok: false, code: "too-deep", segment: path };
   }
   for (const segment of segments) {
     if (!isValidDefinitionSegment(segment)) {
@@ -154,6 +173,8 @@ export function appendDefinitionPath(
     block.push("", `${"#".repeat(Math.min(level, 6))} ${segment}`);
     added.push(segment);
   }
+  const note = description.trim();
+  if (note.length > 0) block.push("", note);
   const next = [
     ...lines.slice(0, insertAfter + 1),
     ...block,

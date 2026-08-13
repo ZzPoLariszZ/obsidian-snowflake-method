@@ -5,6 +5,7 @@ import {
 	Modal,
 	Notice,
 	Setting,
+	SuggestModal,
 	TFolder,
 	setIcon,
 } from 'obsidian';
@@ -12,28 +13,32 @@ import {
 import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
+	TIME_KINDS,
 	addSceneCastMember,
 	foldName,
 	isChoosableScenePov,
 	isNameTaken,
+	isTimeKind,
 	normalizeSceneCast,
-	type CharacterType,
 	type ProgressStatus,
 	type SceneCharacterUsage,
 	type TimeKind,
 	type WorldbuildingKind,
 } from '../domain';
-import { renderTerm, type DetailsLine, type RecordLine } from '../templates';
+import type { RecordLine } from '../templates';
 import {
 	CategoryPathField,
 	ChipListField,
-	DetailsRowEditor,
-	RecordRowsEditor,
-	addProgressStatusRow,
+	NoteField,
+	NoteListField,
+	ENTITY_GROUP_IDS,
+	RecordCardsEditor,
+	addProgressStatusControl,
 	type DefinitionPathSource,
+	type EntityGroupId,
+	type PickedEntity,
 	type RecordEditorContext,
 } from './entity-form';
-import { FieldSuggest } from './field-suggest';
 import { t as translate } from '../i18n';
 import {
 	displayProjectRoot,
@@ -82,17 +87,15 @@ export interface ManageProjectOption {
 
 export interface CreateCharacterRequest {
 	name: string;
-	type: CharacterType;
 	aliases: string[];
 	categoryPaths: string[];
-	progressStatus: ProgressStatus | null;
+	progressStatus: ProgressStatus;
 	oneSentenceStoryline: string;
 	oneParagraphStoryline: string;
 	motivation: string;
 	goal: string;
 	conflict: string;
 	growth: string;
-	age: DetailsLine | null;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	expectedRevision?: string;
@@ -108,9 +111,9 @@ export interface CreateSceneRequest {
 	title: string;
 	aliases: string[];
 	categoryPaths: string[];
-	progressStatus: ProgressStatus | null;
-	time: string;
-	location: string;
+	progressStatus: ProgressStatus;
+	times: string[];
+	locations: string[];
 	characterPaths: string[];
 	conflict: string;
 	worldStatus: RecordLine[];
@@ -125,12 +128,11 @@ export interface EntityFormRequest {
 	name: string;
 	aliases: string[];
 	categoryPaths: string[];
-	progressStatus: ProgressStatus | null;
+	progressStatus: ProgressStatus;
 	description: string;
 	timeKind: TimeKind | null;
 	timeStart: string;
 	timeEnd: string;
-	owner: DetailsLine | null;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	expectedRevision?: string;
@@ -143,9 +145,23 @@ export interface EntityFormRequest {
  */
 export interface MemberFormContext {
 	notice: (message: string) => void;
+	/** Every note of one group, for the picker that points a record at one. */
+	entitiesIn: (group: EntityGroupId) => readonly PickerOption[];
+	/**
+	 * Makes a note of that group, for a field asked for something the project
+	 * does not have yet. `onlyGroup` is for a field that takes one group and no
+	 * other: the form that opens holds the kind rather than offering to change
+	 * it, because changing it would make a note the field cannot accept.
+	 */
+	createIn: (
+		group: EntityGroupId,
+		name: string,
+		options?: { onlyGroup?: boolean },
+	) => Promise<PickerOption | null>;
+	/** Which group a stored link belongs to, or null when it left the project. */
+	groupOf: (path: string) => EntityGroupId | null;
 	members: () => readonly PickerOption[];
 	times: () => readonly PickerOption[];
-	locations: () => readonly PickerOption[];
 	categories: DefinitionPathSource;
 	worldStatusLabels: DefinitionPathSource;
 	relationshipLabels: DefinitionPathSource;
@@ -253,13 +269,60 @@ abstract class SnowflakeFormModal<T> extends Modal {
 		this.submitHandler = onSubmit;
 		this.submitLabelKey = submitLabelKey;
 		this.setTitle(title);
+		// What every form the plugin opens has in common, for the few things
+		// that should be true of all of them at once.
+		this.modalEl.addClass('snowflake-method-form-modal');
 	}
 
 	protected abstract buildForm(): void;
 	protected abstract collectValue(): T | null;
 
+	/** Everything a record editor needs, wired to this modal's own dialogs. */
+	protected recordContext(
+		context: MemberFormContext,
+		labels: DefinitionPathSource,
+	): RecordEditorContext {
+		return {
+			app: this.app,
+			t: this.t,
+			notice: context.notice,
+			labels,
+			describeLabel: (path) =>
+				promptForCategoryDescription(this.app, this.t, path),
+			pickEntity: () => promptForEntityReference(this.app, this.t, context),
+			entityGroup: context.groupOf,
+			times: context.times,
+			members: context.members,
+		};
+	}
+
+	/**
+	 * Puts a control on the title row, where a step pane keeps its status. The
+	 * title survives a redraw of the form, so an old control is cleared first
+	 * rather than joined by a second one.
+	 */
+	protected titleControls(): HTMLElement {
+		this.titleEl.addClass('snowflake-method-form-title');
+		const existing = this.titleEl.querySelector(
+			'.snowflake-method-form-title-controls',
+		);
+		existing?.remove();
+		return this.titleEl.createDiv({
+			cls: 'snowflake-method-form-title-controls',
+		});
+	}
+
 	onOpen(): void {
 		this.renderForm();
+		// A form opens with nothing focused. Whatever sits first in the dialog
+		// is an accident of layout, and landing on it puts a caret, or a
+		// dropdown ready to change on a keypress, where nobody was looking.
+		window.setTimeout(() => {
+			const active = this.modalEl.ownerDocument.activeElement;
+			if (isCrossWindowHTMLElement(active) && this.modalEl.contains(active)) {
+				active.blur();
+			}
+		}, 0);
 	}
 
 	protected renderForm(): void {
@@ -1043,9 +1106,8 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	private readonly name: UniqueNameField;
 	private aliasesField: ChipListField | null = null;
 	private categoryField: CategoryPathField | null = null;
-	private ageEditor: DetailsRowEditor | null = null;
-	private worldStatusEditor: RecordRowsEditor | null = null;
-	private relationshipsEditor: RecordRowsEditor | null = null;
+	private worldStatusEditor: RecordCardsEditor | null = null;
+	private relationshipsEditor: RecordCardsEditor | null = null;
 
 	constructor(
 		app: App,
@@ -1086,17 +1148,15 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.value = initial === undefined
 			? {
 					name: presetName ?? '',
-					type: 'major',
 					aliases: [],
 					categoryPaths: [],
-					progressStatus: null,
+					progressStatus: 'not-started',
 					oneSentenceStoryline: '',
 					oneParagraphStoryline: '',
 					motivation: '',
 					goal: '',
 					conflict: '',
 					growth: '',
-					age: null,
 					worldStatus: [],
 					relationships: [],
 				}
@@ -1105,26 +1165,8 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 
 	protected buildForm(): void {
 		this.contentEl.addClass('snowflake-method-character-form');
+		this.buildTitleStatus();
 		this.addText('name', 'modal.character.name', true);
-		const characterType = new Setting(this.contentEl)
-			.setName(this.t('modal.character.type'))
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('major', this.t('character.major'))
-					.addOption('supporting', this.t('character.supporting'))
-					.addOption('minor', this.t('character.minor'))
-					.setValue(this.value.type)
-					.onChange((value) => {
-						this.value.type =
-							value === 'supporting' || value === 'minor'
-								? value
-								: 'major';
-					}),
-			);
-		characterType.settingEl.addClass(
-			'snowflake-method-character-setting',
-			'snowflake-method-character-type-setting',
-		);
 		this.buildUniversalRows();
 		this.addText('oneSentenceStoryline', 'modal.character.oneSentenceStoryline');
 		this.addText('motivation', 'modal.character.motivation');
@@ -1135,35 +1177,48 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.buildRecordEditors();
 	}
 
-	private buildUniversalRows(): void {
-		const context = this.formContext;
-		if (context === undefined) return;
-		addProgressStatusRow(
-			this.contentEl,
+	/** The status rides in the title row, the way a step's status does. */
+	private buildTitleStatus(): void {
+		if (this.formContext === undefined) return;
+		addProgressStatusControl(
+			this.titleControls(),
 			this.t,
-			'snowflake-method-character-setting',
 			this.value.progressStatus,
 			(value) => {
 				this.value.progressStatus = value;
 			},
 		);
+	}
+
+	private buildUniversalRows(): void {
+		const context = this.formContext;
+		if (context === undefined) return;
 		const aliases = new Setting(this.contentEl).setName(this.t('form.aliases'));
-		aliases.settingEl.addClass('snowflake-method-character-setting');
+		aliases.settingEl.addClass(
+			'snowflake-method-character-setting',
+			'snowflake-method-character-aliases-setting',
+		);
 		this.aliasesField = new ChipListField(
+			{ t: this.t },
 			this.value.aliases,
 			this.t('form.aliases.placeholder'),
 		);
 		this.aliasesField.attach(aliases.controlEl);
-		const categories = new Setting(this.contentEl).setName(
-			this.t('form.category'),
+		const categories = new Setting(this.contentEl)
+			.setName(this.t('form.category'))
+			.setDesc(this.t('form.category.desc'));
+		categories.settingEl.addClass(
+			'snowflake-method-character-setting',
+			'snowflake-method-character-category-setting',
 		);
-		categories.settingEl.addClass('snowflake-method-character-setting');
 		this.categoryField = new CategoryPathField(
 			{
 				app: this.app,
 				t: this.t,
 				notice: context.notice,
 				source: context.categories,
+				describe: (path) =>
+					promptForCategoryDescription(this.app, this.t, path),
 			},
 			this.value.categoryPaths,
 		);
@@ -1176,35 +1231,33 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
-		const worldStatusContext: RecordEditorContext = {
-			app: this.app,
-			t: this.t,
-			notice: context.notice,
-			members: context.members,
-			times: context.times,
-			locations: context.locations,
-			labels: context.worldStatusLabels,
-		};
-		this.ageEditor = new DetailsRowEditor(
-			worldStatusContext,
-			'age',
-			{ title: this.t('form.age') },
-			this.value.age,
+		const worldStatusContext = this.recordContext(
+			context,
+			context.worldStatusLabels,
 		);
-		this.ageEditor.attach(block);
-		this.worldStatusEditor = new RecordRowsEditor(
+		this.worldStatusEditor = new RecordCardsEditor(
 			worldStatusContext,
 			context.worldStatusPath,
 			this.value.worldStatus,
-			{ title: this.t('form.worldStatus'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.worldStatus'),
+				add: this.t('form.record.addStatus'),
+				labelTitle: this.t('form.record.status'),
+				labelPlaceholder: this.t('form.record.searchStatus'),
+			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordRowsEditor(
+		this.relationshipsEditor = new RecordCardsEditor(
 			{ ...worldStatusContext, labels: context.relationshipLabels },
 			context.relationshipPath,
 			this.value.relationships,
-			{ title: this.t('form.relationships'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.relationships'),
+				add: this.t('form.record.addRelationship'),
+				labelTitle: this.t('form.record.relationship'),
+				labelPlaceholder: this.t('form.record.searchRelationship'),
+			},
 			true,
 		);
 		this.relationshipsEditor.attach(block);
@@ -1216,7 +1269,6 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		if (this.categoryField !== null) {
 			this.value.categoryPaths = this.categoryField.get();
 		}
-		if (this.ageEditor !== null) this.value.age = this.ageEditor.line();
 		if (this.worldStatusEditor !== null) {
 			this.value.worldStatus = this.worldStatusEditor.records();
 		}
@@ -1237,14 +1289,6 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			// but a long form scrolls it out of sight, and a submit that appears to
 			// do nothing is worse than one that says why.
 			new Notice(objection);
-			return null;
-		}
-		const halfSpans =
-			(this.ageEditor?.halfSpans() ?? 0) +
-			(this.worldStatusEditor?.halfSpans() ?? 0) +
-			(this.relationshipsEditor?.halfSpans() ?? 0);
-		if (halfSpans > 0) {
-			new Notice(this.t('form.record.halfSpan'));
 			return null;
 		}
 		this.syncEditors();
@@ -1312,7 +1356,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 }
 
 /**
- * The character form opened from a scene, which reports back what it created so
+ * The character form opened from a field, which reports back what it created so
  * the field that asked for it can select it.
  */
 class NewCharacterPrompt extends CreateCharacterModal {
@@ -1323,8 +1367,9 @@ class NewCharacterPrompt extends CreateCharacterModal {
 		presetName: string,
 		onSubmit: SubmitHandler<CreateCharacterRequest>,
 		private readonly settle: () => void,
+		formContext?: MemberFormContext,
 	) {
-		super(app, t, takenNames, onSubmit, undefined, presetName);
+		super(app, t, takenNames, onSubmit, undefined, presetName, formContext);
 	}
 
 	// Closing is the one thing both ways out of the form have in common: a
@@ -1339,6 +1384,9 @@ class NewCharacterPrompt extends CreateCharacterModal {
 /**
  * Opens the character form seeded with `presetName`, resolving to the character
  * that was created or to null when the author closed it without creating one.
+ *
+ * The context is the same one the form behind it was given: a character made
+ * from a field is a character like any other, and is asked the same questions.
  */
 export function promptForNewCharacter(
 	app: App,
@@ -1346,6 +1394,7 @@ export function promptForNewCharacter(
 	takenNames: readonly string[],
 	presetName: string,
 	create: (request: CreateCharacterRequest) => Promise<CharacterOption>,
+	formContext?: MemberFormContext,
 ): Promise<CharacterOption | null> {
 	return new Promise((resolve) => {
 		const outcome: { created: CharacterOption | null } = { created: null };
@@ -1358,15 +1407,251 @@ export function promptForNewCharacter(
 				outcome.created = await create(request);
 			},
 			() => resolve(outcome.created),
+			formContext,
 		).open();
+	});
+}
+
+/**
+ * Asks what a new category means before it is written. A category becomes a
+ * word the whole project is sorted by, so the moment to record what it stands
+ * for is the moment it is invented -- and the description is optional because
+ * some categories really do explain themselves.
+ */
+class NewCategoryModal extends Modal {
+	private pathEl: HTMLInputElement | null = null;
+	private descriptionEl: HTMLTextAreaElement | null = null;
+	private decided = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly path: string,
+		private readonly done: (created: NewDefinitionPath | null) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.category.title'));
+		this.modalEl.addClass(
+			'snowflake-method-form-modal',
+			'snowflake-method-category-modal',
+		);
+	}
+
+	onOpen(): void {
+		// Worn like every other form the plugin opens: the same rows, each label
+		// above the field it names. It asks for less than they do, and that is
+		// the only way it should differ.
+		this.contentEl.addClass('snowflake-method-category-form');
+		// The name arrives from whatever was typed into the field, which is
+		// where a slash in the wrong place is easiest to make and hardest to
+		// see. It stays an editable field so it can be put right here.
+		const name = new Setting(this.contentEl)
+			.setName(this.t('modal.category.name'))
+			.setDesc(this.t('form.category.desc'))
+			.addText((text) => {
+				text.setValue(this.path);
+				text.setPlaceholder(this.t('form.category.placeholder'));
+				this.pathEl = text.inputEl;
+			});
+		name.settingEl.addClass('snowflake-method-category-setting');
+		// Read at submit rather than tracked on the way in: what the field holds
+		// when Create is pressed is the answer, however it got there -- typed,
+		// pasted, or composed through an input method.
+		const description = new Setting(this.contentEl)
+			.setName(this.t('modal.category.description'))
+			.addTextArea((text) => {
+				text.setPlaceholder(this.t('form.description.placeholder'));
+				this.descriptionEl = text.inputEl;
+			});
+		description.settingEl.addClass(
+			'snowflake-method-category-setting',
+			'snowflake-method-category-description',
+		);
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', { text: this.t('common.cancel') });
+		cancel.addEventListener('click', () => this.close());
+		const create = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t('common.create'),
+		});
+		create.addEventListener('click', () => {
+			// An empty name is nothing to create, so the form stays open on it.
+			if ((this.pathEl?.value ?? '').trim().length === 0) {
+				this.pathEl?.focus();
+				return;
+			}
+			this.decided = true;
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		const path = this.pathEl?.value.trim() ?? '';
+		const description = this.descriptionEl?.value.trim() ?? '';
+		this.contentEl.empty();
+		this.pathEl = null;
+		this.descriptionEl = null;
+		// Closing any other way is a refusal, and a refusal creates nothing.
+		this.done(this.decided ? { path, description } : null);
+	}
+}
+
+/** What the new-category dialog settled on: the path to add, and what it means. */
+export interface NewDefinitionPath {
+	path: string;
+	description: string;
+}
+
+/**
+ * Opens the new-category dialog, resolving to the path to write and the
+ * description to write under it, or to null when the author backed out.
+ */
+export function promptForCategoryDescription(
+	app: App,
+	t: Translate,
+	path: string,
+): Promise<NewDefinitionPath | null> {
+	return new Promise((resolve) => {
+		new NewCategoryModal(app, t, path, resolve).open();
+	});
+}
+
+/**
+ * A list to choose from, with an offer to create what was typed when the list
+ * has nothing like it. Resolves to null when the author closes it.
+ */
+/**
+ * Points a record at another note in two questions asked by one dialog: what
+ * kind of note, then which one. Asking the kind first is what keeps the second
+ * list short enough to read in a project with three thousand scenes in it, and
+ * one dialog that moves on is steadier than a second one opened while the
+ * first is still closing.
+ */
+class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
+	private group: EntityGroupId | null = null;
+	private answered: PickedEntity | null = null;
+	private pending: Promise<PickedEntity | null> | null = null;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly context: MemberFormContext,
+		private readonly done: (picked: PickedEntity | null) => void,
+	) {
+		super(app);
+		this.setPlaceholder(t('form.record.pickGroup'));
+	}
+
+	getSuggestions(query: string): ReferenceChoice[] {
+		const group = this.group;
+		if (group === null) {
+			return optionsMatching(
+				ENTITY_GROUP_IDS.map((id) => ({
+					value: id,
+					label: this.t(`form.group.${id}`),
+				})),
+				query,
+			).map((option) => ({
+				kind: 'group',
+				group: option.value,
+				label: option.label,
+			}));
+		}
+		const options = this.context.entitiesIn(group);
+		const matches = optionsMatching(options, query).map(
+			(option): ReferenceChoice => ({ kind: 'entity', group, option }),
+		);
+		const typed = query.trim();
+		if (
+			typed.length === 0 ||
+			options.some((option) => option.label === typed)
+		) {
+			return matches;
+		}
+		return [...matches, { kind: 'create', group, name: typed }];
+	}
+
+	renderSuggestion(choice: ReferenceChoice, el: HTMLElement): void {
+		if (choice.kind === 'group') el.setText(choice.label);
+		else if (choice.kind === 'entity') el.setText(choice.option.label);
+		else {
+			// The same row a field offers, so creating from here and creating
+			// from a field are one offer wearing one look.
+			el.addClass('snowflake-method-option-picker-create');
+			el.setText(this.t('form.record.createEntity', { name: choice.name }));
+		}
+	}
+
+	/**
+	 * Choosing the kind moves this dialog on rather than closing it, which is
+	 * why the framework's own select is only called for an answer.
+	 */
+	selectSuggestion(
+		choice: ReferenceChoice,
+		event: MouseEvent | KeyboardEvent,
+	): void {
+		if (choice.kind !== 'group') {
+			super.selectSuggestion(choice, event);
+			return;
+		}
+		this.group = choice.group;
+		this.setPlaceholder(
+			this.t('form.record.pickEntity', { group: choice.label }),
+		);
+		this.inputEl.value = '';
+		this.inputEl.dispatchEvent(new Event('input'));
+		this.inputEl.focus();
+	}
+
+	onChooseSuggestion(choice: ReferenceChoice): void {
+		if (choice.kind === 'entity') {
+			this.answered = { group: choice.group, option: choice.option };
+			return;
+		}
+		if (choice.kind === 'create') {
+			this.pending = this.context
+				.createIn(choice.group, choice.name)
+				.then((option) =>
+					option === null ? null : { group: choice.group, option },
+				);
+		}
+	}
+
+	/**
+	 * The answer is read after this dialog is gone, not while it is closing:
+	 * the framework closes first and reports the choice second, so reading at
+	 * close time would always find nothing chosen.
+	 */
+	onClose(): void {
+		super.onClose();
+		void Promise.resolve().then(async () => {
+			this.done(await (this.pending ?? Promise.resolve(this.answered)));
+		});
+	}
+}
+
+type ReferenceChoice =
+	| { kind: 'group'; group: EntityGroupId; label: string }
+	| { kind: 'entity'; group: EntityGroupId; option: PickerOption }
+	| { kind: 'create'; group: EntityGroupId; name: string };
+
+export function promptForEntityReference(
+	app: App,
+	t: Translate,
+	context: MemberFormContext,
+): Promise<PickedEntity | null> {
+	return new Promise((resolve) => {
+		new EntityReferenceModal(app, t, context, resolve).open();
 	});
 }
 
 export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private readonly characters: CharacterOption[];
 	private title = '';
-	private time = '';
-	private location = '';
+	private times: string[] = [];
+	private locations: string[] = [];
 	private characterPaths: string[] = [];
 	private conflict = '';
 	// Unset, so a new scene starts on the placeholder and the author has to say
@@ -1375,7 +1660,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private events = '';
 	private aliases: string[] = [];
 	private categoryPaths: string[] = [];
-	private progressStatus: ProgressStatus | null = null;
+	private progressStatus: ProgressStatus = 'not-started';
 	private worldStatus: RecordLine[] = [];
 	private relationships: RecordLine[] = [];
 	private expectedRevision: string | undefined;
@@ -1383,8 +1668,10 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private readonly name: UniqueNameField;
 	private aliasesField: ChipListField | null = null;
 	private categoryField: CategoryPathField | null = null;
-	private worldStatusEditor: RecordRowsEditor | null = null;
-	private relationshipsEditor: RecordRowsEditor | null = null;
+	private timesField: NoteListField | null = null;
+	private locationsField: NoteListField | null = null;
+	private worldStatusEditor: RecordCardsEditor | null = null;
+	private relationshipsEditor: RecordCardsEditor | null = null;
 
 	constructor(
 		app: App,
@@ -1418,6 +1705,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		 * Without it the form offers only the classic fields.
 		 */
 		private readonly formContext?: MemberFormContext,
+		/** The title typed into the field that asked for this scene. */
+		presetTitle?: string,
 	) {
 		super(
 			app,
@@ -1428,13 +1717,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		);
 		this.modalEl.addClass('snowflake-method-scene-modal');
 		this.characters = [...characters];
+		this.title = presetTitle ?? '';
 		this.name = new UniqueNameField(takenTitles, initial?.title ?? null, () =>
 			this.t('modal.scene.nameTaken'),
 		);
 		if (initial !== undefined) {
 			this.title = initial.title;
-			this.time = initial.time;
-			this.location = initial.location;
+			this.times = [...initial.times];
+			this.locations = [...initial.locations];
 			this.characterPaths = [...initial.characterPaths];
 			this.conflict = initial.conflict;
 			this.povPath = initial.povPath;
@@ -1475,33 +1765,38 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-pov-setting',
 		);
 		this.buildPovPicker(pov.controlEl);
-		const time = new Setting(this.contentEl)
-			.setName(this.t('modal.scene.time'))
-			.addText((text) =>
-				text
-					.setPlaceholder(this.t('modal.scene.timePlaceholder'))
-					.setValue(this.time)
-					.onChange((value) => {
-						this.time = value;
-					}),
-			);
+		// Aliases and category sit with the name, the way they do on a
+		// character, rather than after the prose fields.
+		this.buildUniversalRows();
+		const time = new Setting(this.contentEl).setName(
+			this.t('modal.scene.time'),
+		);
 		time.settingEl.addClass(
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-time-setting',
 		);
-		const location = new Setting(this.contentEl)
-			.setName(this.t('modal.scene.location'))
-			.addText((text) =>
-				text
-					.setPlaceholder(this.t('modal.scene.locationPlaceholder'))
-					.setValue(this.location)
-					.onChange((value) => {
-						this.location = value;
-					}),
-			);
+		this.timesField = this.buildNoteListField(
+			time.controlEl,
+			['time-point', 'time-period'],
+			'time-point',
+			this.t('modal.scene.time'),
+			this.t('modal.scene.timePlaceholder'),
+			this.times,
+		);
+		const location = new Setting(this.contentEl).setName(
+			this.t('modal.scene.location'),
+		);
 		location.settingEl.addClass(
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-location-setting',
+		);
+		this.locationsField = this.buildNoteListField(
+			location.controlEl,
+			['location'],
+			'location',
+			this.t('modal.scene.location'),
+			this.t('modal.scene.locationPlaceholder'),
+			this.locations,
 		);
 		const characters = new Setting(this.contentEl).setName(
 			this.t('modal.scene.characters'),
@@ -1539,39 +1834,46 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-events-setting',
 		);
-		this.buildUniversalRows();
 		this.buildRecordEditors();
 	}
 
 	private buildUniversalRows(): void {
 		const context = this.formContext;
 		if (context === undefined) return;
-		addProgressStatusRow(
-			this.contentEl,
+		addProgressStatusControl(
+			this.titleControls(),
 			this.t,
-			'snowflake-method-scene-setting',
 			this.progressStatus,
 			(value) => {
 				this.progressStatus = value;
 			},
 		);
 		const aliases = new Setting(this.contentEl).setName(this.t('form.aliases'));
-		aliases.settingEl.addClass('snowflake-method-scene-setting');
+		aliases.settingEl.addClass(
+			'snowflake-method-scene-setting',
+			'snowflake-method-scene-aliases-setting',
+		);
 		this.aliasesField = new ChipListField(
+			{ t: this.t },
 			this.aliases,
 			this.t('form.aliases.placeholder'),
 		);
 		this.aliasesField.attach(aliases.controlEl);
-		const categories = new Setting(this.contentEl).setName(
-			this.t('form.category'),
+		const categories = new Setting(this.contentEl)
+			.setName(this.t('form.category'))
+			.setDesc(this.t('form.category.desc'));
+		categories.settingEl.addClass(
+			'snowflake-method-scene-setting',
+			'snowflake-method-scene-category-setting',
 		);
-		categories.settingEl.addClass('snowflake-method-scene-setting');
 		this.categoryField = new CategoryPathField(
 			{
 				app: this.app,
 				t: this.t,
 				notice: context.notice,
 				source: context.categories,
+				describe: (path) =>
+					promptForCategoryDescription(this.app, this.t, path),
 			},
 			this.categoryPaths,
 		);
@@ -1585,27 +1887,31 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			cls: 'snowflake-method-record-editors',
 		});
 		const editorContext: RecordEditorContext = {
-			app: this.app,
-			t: this.t,
-			notice: context.notice,
-			members: context.members,
-			times: context.times,
-			locations: context.locations,
-			labels: context.worldStatusLabels,
+			...this.recordContext(context, context.worldStatusLabels),
 		};
-		this.worldStatusEditor = new RecordRowsEditor(
+		this.worldStatusEditor = new RecordCardsEditor(
 			editorContext,
 			context.worldStatusPath,
 			this.worldStatus,
-			{ title: this.t('form.worldStatus'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.worldStatus'),
+				add: this.t('form.record.addStatus'),
+				labelTitle: this.t('form.record.status'),
+				labelPlaceholder: this.t('form.record.searchStatus'),
+			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordRowsEditor(
+		this.relationshipsEditor = new RecordCardsEditor(
 			{ ...editorContext, labels: context.relationshipLabels },
 			context.relationshipPath,
 			this.relationships,
-			{ title: this.t('form.relationships'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.relationships'),
+				add: this.t('form.record.addRelationship'),
+				labelTitle: this.t('form.record.relationship'),
+				labelPlaceholder: this.t('form.record.searchRelationship'),
+			},
 			true,
 		);
 		this.relationshipsEditor.attach(block);
@@ -1666,6 +1972,39 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 				return { value: created.path, label: created.name };
 			},
 		};
+	}
+
+	/**
+	 * A tag picker over the notes of one or more kinds, creating in the kind a
+	 * new name most likely belongs to.
+	 */
+	private buildNoteListField(
+		container: HTMLElement,
+		groups: readonly EntityGroupId[],
+		createIn: EntityGroupId,
+		label: string,
+		placeholder: string,
+		initial: readonly string[],
+	): NoteListField | null {
+		const context = this.formContext;
+		if (context === undefined) return null;
+		const field = new NoteListField(
+			{
+				app: this.app,
+				t: this.t,
+				notice: context.notice,
+				options: () => groups.flatMap((group) => context.entitiesIn(group)),
+				create: (name) => context.createIn(createIn, name),
+				label,
+				placeholder,
+				createLabel: (name) =>
+					this.t('form.record.createEntity', { name }),
+				removeLabel: (name) => this.t('form.record.removeLine', { name }),
+			},
+			initial,
+		);
+		field.attach(container);
+		return field;
 	}
 
 	private buildPovPicker(container: HTMLElement): void {
@@ -1754,21 +2093,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			new Notice(this.t('modal.scene.povRequired'));
 			return null;
 		}
-		const halfSpans =
-			(this.worldStatusEditor?.halfSpans() ?? 0) +
-			(this.relationshipsEditor?.halfSpans() ?? 0);
-		if (halfSpans > 0) {
-			new Notice(this.t('form.record.halfSpan'));
-			return null;
-		}
 		this.syncEditors();
 		return {
 			title,
 			aliases: [...this.aliases],
 			categoryPaths: [...this.categoryPaths],
 			progressStatus: this.progressStatus,
-			time: this.time.trim(),
-			location: this.location.trim(),
+			times: this.timesField?.get() ?? [...this.times],
+			locations: this.locationsField?.get() ?? [...this.locations],
 			characterPaths: [...this.characterPaths],
 			conflict: this.conflict.trim(),
 			worldStatus: [...this.worldStatus],
@@ -1788,11 +2120,11 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	private readonly value: EntityFormRequest;
 	private readonly name: UniqueNameField;
+	private readonly pickers: OptionPicker[] = [];
 	private aliasesField: ChipListField | null = null;
 	private categoryField: CategoryPathField | null = null;
-	private ownerEditor: DetailsRowEditor | null = null;
-	private worldStatusEditor: RecordRowsEditor | null = null;
-	private relationshipsEditor: RecordRowsEditor | null = null;
+	private worldStatusEditor: RecordCardsEditor | null = null;
+	private relationshipsEditor: RecordCardsEditor | null = null;
 
 	constructor(
 		app: App,
@@ -1802,6 +2134,17 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		private readonly formContext: MemberFormContext,
 		onSubmit: SubmitHandler<EntityFormRequest>,
 		initial?: EntityFormRequest,
+		/**
+		 * What a note being created already knows about itself: the name typed
+		 * into the field that asked for it, and the kind of time that field
+		 * wanted. Still a create, so the form opens on Create rather than Save.
+		 * A locked kind is one the field will only take, and the form holds it.
+		 */
+		private readonly preset?: {
+			name?: string;
+			timeKind?: TimeKind;
+			lockTimeKind?: boolean;
+		},
 	) {
 		super(
 			app,
@@ -1819,15 +2162,14 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		this.value = initial === undefined
 			? {
 					kind,
-					name: '',
+					name: preset?.name ?? '',
 					aliases: [],
 					categoryPaths: [],
-					progressStatus: null,
+					progressStatus: 'not-started',
 					description: '',
-					timeKind: null,
+					timeKind: preset?.timeKind ?? null,
 					timeStart: '',
 					timeEnd: '',
-					owner: null,
 					worldStatus: [],
 					relationships: [],
 				}
@@ -1839,6 +2181,9 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			'snowflake-method-character-form',
 			'snowflake-method-entity-form',
 		);
+		if (this.value.kind === 'time') {
+			this.contentEl.addClass('snowflake-method-entity-form-timed');
+		}
 		const context = this.formContext;
 		let nameEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
@@ -1850,105 +2195,153 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 					this.name.show(value);
 				});
 			});
-		name.settingEl.addClass('snowflake-method-character-setting');
-		this.name.attach(name.settingEl, nameEl, this.value.name);
-
-		addProgressStatusRow(
-			this.contentEl,
-			this.t,
+		name.settingEl.addClass(
 			'snowflake-method-character-setting',
+			'snowflake-method-character-name-setting',
+		);
+		this.name.attach(name.settingEl, nameEl, this.value.name);
+		if (this.value.kind === 'time') this.buildTimeKindRow();
+
+		addProgressStatusControl(
+			this.titleControls(),
+			this.t,
 			this.value.progressStatus,
 			(value) => {
 				this.value.progressStatus = value;
 			},
 		);
 		const aliases = new Setting(this.contentEl).setName(this.t('form.aliases'));
-		aliases.settingEl.addClass('snowflake-method-character-setting');
+		aliases.settingEl.addClass(
+			'snowflake-method-character-setting',
+			'snowflake-method-character-aliases-setting',
+		);
 		this.aliasesField = new ChipListField(
+			{ t: this.t },
 			this.value.aliases,
 			this.t('form.aliases.placeholder'),
 		);
 		this.aliasesField.attach(aliases.controlEl);
-		const categories = new Setting(this.contentEl).setName(
-			this.t('form.category'),
+		const categories = new Setting(this.contentEl)
+			.setName(this.t('form.category'))
+			.setDesc(this.t('form.category.desc'));
+		categories.settingEl.addClass(
+			'snowflake-method-character-setting',
+			'snowflake-method-character-category-setting',
 		);
-		categories.settingEl.addClass('snowflake-method-character-setting');
 		this.categoryField = new CategoryPathField(
 			{
 				app: this.app,
 				t: this.t,
 				notice: context.notice,
 				source: context.categories,
+				describe: (path) =>
+					promptForCategoryDescription(this.app, this.t, path),
 			},
 			this.value.categoryPaths,
 		);
 		this.categoryField.attach(categories.controlEl);
-
-		if (this.value.kind === 'time') this.buildTimeRows();
+		if (this.value.kind === 'time') this.buildTimeSpanRows();
 
 		const description = new Setting(this.contentEl)
 			.setName(this.t('form.description'))
 			.addTextArea((text) =>
-				text.setValue(this.value.description).onChange((value) => {
-					this.value.description = value;
-				}),
+				text
+					.setPlaceholder(this.t('form.description.placeholder'))
+					.setValue(this.value.description)
+					.onChange((value) => {
+						this.value.description = value;
+					}),
 			);
 		description.settingEl.addClass('snowflake-method-character-setting');
 
 		this.buildRecordEditors();
 	}
 
-	private buildTimeRows(): void {
+	/**
+	 * A time note is a point or the period between two of them, so the type is
+	 * the first thing said about it and rides beside the name.
+	 */
+	private buildTimeKindRow(): void {
+		// Starred like the name: a time note is a point or a period before it is
+		// anything else, and the form never leaves the question blank.
 		const timeKind = new Setting(this.contentEl).setName(
-			this.t('form.timeKind'),
+			`${this.t('form.timeKind')} *`,
 		);
-		timeKind.settingEl.addClass('snowflake-method-character-setting');
+		timeKind.settingEl.addClass(
+			'snowflake-method-character-setting',
+			'snowflake-method-entity-kind-setting',
+		);
 		timeKind.addDropdown((dropdown) => {
-			dropdown.addOption('', this.t('form.progressStatus.unset'));
-			dropdown.addOption('point', this.t('form.timeKind.point'));
-			dropdown.addOption('period', this.t('form.timeKind.period'));
-			dropdown.addOption('event', this.t('form.timeKind.event'));
-			dropdown.setValue(this.value.timeKind ?? '').onChange((value) => {
-				this.value.timeKind =
-					value === 'point' || value === 'period' || value === 'event'
-						? value
-						: null;
+			for (const kind of TIME_KINDS) {
+				dropdown.addOption(kind, this.t(`form.timeKind.${kind}`));
+			}
+			// Every time note is one of the two, so the field opens on one
+			// rather than on a blank nobody chose.
+			const current = this.value.timeKind ?? 'point';
+			this.value.timeKind = current;
+			dropdown.setValue(current).onChange((value) => {
+				this.value.timeKind = isTimeKind(value) ? value : 'point';
+				// A span belongs to a period alone, so those rows come and go
+				// with the answer.
+				this.renderForm();
 			});
+			// A form opened by a field that takes one kind shows which kind that
+			// is and holds it: the other answer would make a note the field
+			// asking for it could not accept.
+			if (this.preset?.lockTimeKind === true) {
+				dropdown.setDisabled(true);
+				timeKind.settingEl.addClass('is-locked');
+			}
 		});
-		const addTermRow = (
+	}
+
+	/** A period is the stretch between two points, and names both of them. */
+	private buildTimeSpanRows(): void {
+		if (this.value.timeKind !== 'period') return;
+		// The two ends are one thing said twice, so they share a row of even
+		// halves rather than the form's own uneven columns.
+		const span = this.contentEl.createDiv({
+			cls: 'snowflake-method-entity-span-row',
+		});
+		const addSpanRow = (
 			labelKey: string,
 			read: () => string,
 			write: (value: string) => void,
 		): void => {
-			const row = new Setting(this.contentEl).setName(this.t(labelKey));
-			row.settingEl.addClass('snowflake-method-character-setting');
-			row.addText((text) => {
-				text.setValue(read()).onChange(write);
-				new TimeTermSuggest(
-					this.app,
-					text.inputEl,
-					row.controlEl,
-					this.formContext.times,
-					(option) => {
-						const link = renderTerm({
-							kind: 'link',
-							path: option.value,
-							name: option.label,
-						});
-						text.setValue(link);
-						write(link);
-					},
-				);
-			});
+			const row = new Setting(span).setName(this.t(labelKey));
+			row.settingEl.addClass(
+				'snowflake-method-character-setting',
+				'snowflake-method-entity-span-setting',
+			);
+			// Only points, never periods: a period is the stretch between two
+			// moments, and a stretch is not a moment.
+			const field = new NoteField(
+				{
+					app: this.app,
+					t: this.t,
+					options: () => this.formContext.entitiesIn('time-point'),
+					create: (name) =>
+						this.formContext.createIn('time-point', name, {
+							onlyGroup: true,
+						}),
+					label: this.t(labelKey),
+					placeholder: this.t(`${labelKey}.placeholder`),
+					createLabel: (name) =>
+						this.t('form.record.createEntity', { name }),
+					onChange: write,
+				},
+				read(),
+			);
+			this.pickers.push(field.attach(row.controlEl));
 		};
-		addTermRow(
+		addSpanRow(
 			'form.timeStart',
 			() => this.value.timeStart,
 			(value) => {
 				this.value.timeStart = value;
 			},
 		);
-		addTermRow(
+		addSpanRow(
 			'form.timeEnd',
 			() => this.value.timeEnd,
 			(value) => {
@@ -1963,37 +2356,31 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			cls: 'snowflake-method-record-editors',
 		});
 		const editorContext: RecordEditorContext = {
-			app: this.app,
-			t: this.t,
-			notice: context.notice,
-			members: context.members,
-			times: context.times,
-			locations: context.locations,
-			labels: context.worldStatusLabels,
+			...this.recordContext(context, context.worldStatusLabels),
 		};
-		if (this.value.kind === 'item') {
-			this.ownerEditor = new DetailsRowEditor(
-				editorContext,
-				'owner',
-				{ title: this.t('form.owner') },
-				this.value.owner,
-				context.members,
-			);
-			this.ownerEditor.attach(block);
-		}
-		this.worldStatusEditor = new RecordRowsEditor(
+		this.worldStatusEditor = new RecordCardsEditor(
 			editorContext,
 			context.worldStatusPath,
 			this.value.worldStatus,
-			{ title: this.t('form.worldStatus'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.worldStatus'),
+				add: this.t('form.record.addStatus'),
+				labelTitle: this.t('form.record.status'),
+				labelPlaceholder: this.t('form.record.searchStatus'),
+			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordRowsEditor(
+		this.relationshipsEditor = new RecordCardsEditor(
 			{ ...editorContext, labels: context.relationshipLabels },
 			context.relationshipPath,
 			this.value.relationships,
-			{ title: this.t('form.relationships'), add: this.t('form.record.add') },
+			{
+				title: this.t('form.relationships'),
+				add: this.t('form.record.addRelationship'),
+				labelTitle: this.t('form.record.relationship'),
+				labelPlaceholder: this.t('form.record.searchRelationship'),
+			},
 			true,
 		);
 		this.relationshipsEditor.attach(block);
@@ -2004,13 +2391,25 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		if (this.categoryField !== null) {
 			this.value.categoryPaths = this.categoryField.get();
 		}
-		if (this.ownerEditor !== null) this.value.owner = this.ownerEditor.line();
 		if (this.worldStatusEditor !== null) {
 			this.value.worldStatus = this.worldStatusEditor.records();
 		}
 		if (this.relationshipsEditor !== null) {
 			this.value.relationships = this.relationshipsEditor.records();
 		}
+	}
+
+	protected renderForm(): void {
+		// The form redraws when the time kind changes, which is one field
+		// answering for another: whatever the editors hold has to survive it.
+		this.syncEditors();
+		for (const picker of this.pickers.splice(0)) picker.destroy();
+		super.renderForm();
+	}
+
+	onClose(): void {
+		for (const picker of this.pickers.splice(0)) picker.destroy();
+		super.onClose();
 	}
 
 	protected collectValue(): EntityFormRequest | null {
@@ -2024,56 +2423,130 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			new Notice(objection);
 			return null;
 		}
-		if (
-			this.value.kind === 'time' &&
-			this.value.timeKind === 'period' &&
-			(this.value.timeStart.trim().length > 0) !==
-				(this.value.timeEnd.trim().length > 0)
-		) {
+		// A point is a moment, so it has no ends. Anything a period held before
+		// the author made it a point goes with the rows that held it.
+		const period =
+			this.value.kind === 'time' && this.value.timeKind === 'period';
+		const span = period
+			? {
+					start: this.value.timeStart.trim(),
+					end: this.value.timeEnd.trim(),
+				}
+			: { start: '', end: '' };
+		// A period claims the stretch between two moments, so it needs both of
+		// them or neither: one end alone names a stretch with no other side.
+		if ((span.start.length > 0) !== (span.end.length > 0)) {
 			new Notice(this.t('form.period.halfSpan'));
 			return null;
 		}
-		const halfSpans =
-			(this.ownerEditor?.halfSpans() ?? 0) +
-			(this.worldStatusEditor?.halfSpans() ?? 0) +
-			(this.relationshipsEditor?.halfSpans() ?? 0);
-		if (halfSpans > 0) {
-			new Notice(this.t('form.record.halfSpan'));
-			return null;
-		}
 		this.syncEditors();
-		return {
-			...this.value,
-			timeStart: this.value.timeStart.trim(),
-			timeEnd: this.value.timeEnd.trim(),
-		};
+		return { ...this.value, timeStart: span.start, timeEnd: span.end };
 	}
 }
 
-/** Suggests time notes under a plain time field, a pick inserting the link. */
-class TimeTermSuggest extends FieldSuggest<PickerOption> {
+
+/** The scene form opened from a field, reporting back what it created. */
+class NewScenePrompt extends CreateSceneModal {
 	constructor(
 		app: App,
-		inputEl: HTMLInputElement,
-		fieldEl: HTMLElement,
-		private readonly listOptions: () => readonly PickerOption[],
-		private readonly onPick: (option: PickerOption) => void,
+		t: Translate,
+		characters: CharacterOption[],
+		takenTitles: readonly string[],
+		presetTitle: string,
+		onSubmit: SubmitHandler<CreateSceneRequest>,
+		private readonly settle: () => void,
+		formContext?: MemberFormContext,
 	) {
-		super(app, inputEl, fieldEl);
+		super(
+			app,
+			t,
+			characters,
+			takenTitles,
+			onSubmit,
+			undefined,
+			null,
+			formContext,
+			presetTitle,
+		);
 	}
 
-	protected getSuggestions(query: string): PickerOption[] {
-		return optionsMatching(this.listOptions(), query);
+	onClose(): void {
+		super.onClose();
+		this.settle();
+	}
+}
+
+export function promptForNewScene(
+	app: App,
+	t: Translate,
+	characters: CharacterOption[],
+	takenTitles: readonly string[],
+	presetTitle: string,
+	create: (request: CreateSceneRequest) => Promise<PickerOption>,
+	formContext?: MemberFormContext,
+): Promise<PickerOption | null> {
+	return new Promise((resolve) => {
+		const outcome: { created: PickerOption | null } = { created: null };
+		new NewScenePrompt(
+			app,
+			t,
+			characters,
+			takenTitles,
+			presetTitle,
+			async (request) => {
+				outcome.created = await create(request);
+			},
+			() => resolve(outcome.created),
+			formContext,
+		).open();
+	});
+}
+
+/** The worldbuilding form opened from a field, reporting back what it made. */
+class NewEntityPrompt extends EntityFormModal {
+	constructor(
+		app: App,
+		t: Translate,
+		kind: WorldbuildingKind,
+		takenNames: readonly string[],
+		formContext: MemberFormContext,
+		preset: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean },
+		onSubmit: SubmitHandler<EntityFormRequest>,
+		private readonly settle: () => void,
+	) {
+		super(app, t, kind, takenNames, formContext, onSubmit, undefined, preset);
 	}
 
-	renderSuggestion(option: PickerOption, el: HTMLElement): void {
-		el.setText(option.label);
+	onClose(): void {
+		super.onClose();
+		this.settle();
 	}
+}
 
-	selectSuggestion(option: PickerOption): void {
-		this.onPick(option);
-		this.close();
-	}
+export function promptForNewEntity(
+	app: App,
+	t: Translate,
+	kind: WorldbuildingKind,
+	takenNames: readonly string[],
+	formContext: MemberFormContext,
+	preset: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean },
+	create: (request: EntityFormRequest) => Promise<PickerOption>,
+): Promise<PickerOption | null> {
+	return new Promise((resolve) => {
+		const outcome: { created: PickerOption | null } = { created: null };
+		new NewEntityPrompt(
+			app,
+			t,
+			kind,
+			takenNames,
+			formContext,
+			preset,
+			async (request) => {
+				outcome.created = await create(request);
+			},
+			() => resolve(outcome.created),
+		).open();
+	});
 }
 
 /**

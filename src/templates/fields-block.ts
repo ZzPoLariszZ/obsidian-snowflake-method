@@ -5,6 +5,7 @@ import {
   type TimeKind,
   type WorldbuildingKind,
 } from "../domain";
+import { parseTerm, renderTerm } from "./record-lines";
 
 export type FieldsBlockLanguage = "en" | "zh-CN";
 
@@ -41,8 +42,8 @@ export interface CharacterFieldsView extends MemberFieldsCommon {
 
 export interface SceneFieldsView extends MemberFieldsCommon {
   pov: ScenePovField;
-  time: string;
-  location: string;
+  times: readonly string[];
+  locations: readonly string[];
   conflict: string;
   cast: readonly { path: string; name: string }[];
 }
@@ -114,9 +115,8 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
     description: "Description",
     type: "Type",
     timeKindLabels: {
-      point: "Point in time",
-      period: "Period",
-      event: "Event",
+      point: "Time point",
+      period: "Time period",
     },
     start: "Start",
     end: "End",
@@ -157,7 +157,6 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
     timeKindLabels: {
       point: "时间点",
       period: "时间段",
-      event: "事件",
     },
     start: "开始",
     end: "结束",
@@ -206,8 +205,14 @@ export function renderSceneFieldsBlock(
   return renderCallout(copy.sceneTitle, [
     ...commonEntries(copy, fields),
     { label: copy.pov, value: renderPov(copy, fields.pov) },
-    { label: copy.time, value: fields.time },
-    { label: copy.location, value: fields.location },
+    {
+      label: copy.time,
+      value: joinList(copy, fields.times),
+    },
+    {
+      label: copy.location,
+      value: joinList(copy, fields.locations),
+    },
     {
       label: copy.cast,
       value: fields.cast
@@ -257,11 +262,15 @@ function timeEntries(
   const entries: FieldEntry[] = [
     {
       label: copy.type,
-      value: time.kind === null ? "" : copy.timeKindLabels[time.kind],
+      // A note can hold a kind this release no longer knows, and a line with
+      // nothing to say is simply left out.
+      value: time.kind === null ? "" : (copy.timeKindLabels[time.kind] ?? ""),
     },
   ];
-  const start = time.start.trim();
-  const end = time.end.trim();
+  // A link with no display name is read out as the whole vault path, so what
+  // the note stored is re-emitted through the codec before it is shown.
+  const start = displayTerm(time.start);
+  const end = displayTerm(time.end);
   if (start.length > 0 && end.length > 0) {
     entries.push({ label: copy.start, value: start });
     entries.push({ label: copy.end, value: end });
@@ -271,6 +280,12 @@ function timeEntries(
     entries.push({ label: copy.end, value: end });
   }
   return entries;
+}
+
+/** A stored term as it should be read: a link keeps its name, text stays text. */
+function displayTerm(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? "" : renderTerm(parseTerm(trimmed));
 }
 
 function joinList(copy: FieldsCopy, values: readonly string[]): string {

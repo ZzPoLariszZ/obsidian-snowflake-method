@@ -421,7 +421,7 @@ describe("SnowflakeProjectService", () => {
     );
   });
 
-  it("repairs generated character identity fields but never guesses character type", async () => {
+  it("repairs generated character identity fields and leaves the role alone", async () => {
     const project = await service.createProject({ name: "Character metadata" });
     const character = await service.createCharacter(project, {
       name: "Ada",
@@ -463,19 +463,17 @@ describe("SnowflakeProjectService", () => {
     await fakeFileManager.processFrontMatter(
       fakeVault.getFileByPath(character.path)!,
       (frontmatter) => {
-        // With the category gone and the legacy key nonsense, no home stores
-        // a role any more, and the repair must refuse to guess one.
+        // The role is a category like any other now, so a character carrying
+        // none is a choice rather than damage.
         delete frontmatter[FRONTMATTER_KEYS.category];
-        frontmatter[FRONTMATTER_KEYS.characterType] = "protagonist";
+        delete frontmatter[FRONTMATTER_KEYS.characterType];
       },
     );
-    const unsafe = await service.loadProject(project.projectFile);
-    expect(unsafe.structureIssues).toContainEqual(
-      expect.objectContaining({ path: character.path, repairable: false }),
-    );
-    await expect(
-      service.repairMissingStructureItem(project.projectFile, character.path),
-    ).rejects.toThrow(/No repairable/u);
+    const roleless = await service.loadProject(project.projectFile);
+    expect(roleless.structureIssues).toEqual([]);
+    expect(
+      roleless.characters.find((candidate) => candidate.name === "Ada")?.type,
+    ).toBeNull();
   });
 
   it("does not take ownership of a note with another valid project id", async () => {
@@ -919,8 +917,8 @@ describe("SnowflakeProjectService", () => {
     expect(scenes.find((scene) => scene.path === secondScene.path)).toMatchObject({
       title: "Departure",
       povPath: null,
-      time: "",
-      location: "",
+      times: [],
+      locations: [],
       characters: [],
     });
     expect(new Set(repaired.repaired).size).toBe(repaired.repaired.length);
@@ -1432,16 +1430,16 @@ describe("SnowflakeProjectService", () => {
     const lin = await service.createCharacter(project, { name: "Lin", type: "major" });
     const scene = await service.createScene(project, {
       title: "Midnight meeting",
-      time: "Midnight",
-      location: "Old station",
+      times: ["Midnight"],
+      locations: ["Old station"],
       characters: [ada.path, lin.path],
       conflict: "Ada must choose whom to trust.",
       povPath: ada.path,
       events: "A coded message arrives and the lights go out.",
     });
 
-    expect(scene.time).toBe("Midnight");
-    expect(scene.location).toBe("Old station");
+    expect(scene.times).toEqual(["Midnight"]);
+    expect(scene.locations).toEqual(["Old station"]);
     expect(scene.characters).toEqual([ada.path, lin.path]);
     const sceneFrontmatter = parseMarkdownFrontmatter(
       fakeVault.contents.get(scene.path) ?? "",
@@ -1777,7 +1775,7 @@ describe("SnowflakeProjectService", () => {
     await expect(
       service.updateScene(project, created.sceneId, {
         expectedRevision: scene!.revision,
-        location: "Must not be saved",
+        locations: ["Must not be saved"],
         events: "Must not be saved",
       }),
     ).rejects.toBeInstanceOf(UnsafeSectionError);
@@ -1790,13 +1788,14 @@ describe("SnowflakeProjectService", () => {
     const project = await service.createProject({ name: "Scene Concurrency" });
     const scene = await service.createScene(project, {
       title: "Arrival",
-      time: "At dawn",
+      times: ["At dawn"],
     });
     const openedRevision = scene.revision;
     const beforeExternalEdit = fakeVault.contents.get(scene.path) ?? "";
+    // The time is a list of notes now, so the outside edit changes an entry.
     const externalContent = beforeExternalEdit.replace(
-      `"${FRONTMATTER_KEYS.sceneTime}": "At dawn"`,
-      `"${FRONTMATTER_KEYS.sceneTime}": "Changed directly in Markdown"`,
+      '"At dawn"',
+      '"Changed directly in Markdown"',
     );
     expect(externalContent).not.toBe(beforeExternalEdit);
     fakeVault.contents.set(scene.path, externalContent);
@@ -1806,7 +1805,7 @@ describe("SnowflakeProjectService", () => {
     await expect(
       service.updateScene(project, scene.sceneId, {
         expectedRevision: openedRevision,
-        location: "Stale location",
+        locations: ["Stale location"],
       }),
     ).rejects.toMatchObject({
       code: "concurrent-change",
@@ -3204,18 +3203,25 @@ describe("SnowflakeProjectService", () => {
     ]);
   });
 
-  const statusRecord = (heading: string): RecordLine => ({
+  const statusRecord = (heading: string, value = ""): RecordLine => ({
     label: { path: "Def/World_Status", heading, display: heading },
-    target: null,
-    location: null,
-    time: null,
+    value,
+    clauses: [],
   });
 
   const relationRecord = (heading: string, target: string): RecordLine => ({
     label: { path: "Def/Relationship", heading, display: heading },
-    target: { kind: "link", path: target, name: target.split("/").pop() ?? target },
-    location: null,
-    time: null,
+    value: "",
+    clauses: [
+      {
+        kind: "target",
+        term: {
+          kind: "link",
+          path: target,
+          name: target.split("/").pop() ?? target,
+        },
+      },
+    ],
   });
 
   it("creates a worldbuilding entity with its frontmatter, callout, and records", async () => {
@@ -3254,7 +3260,7 @@ describe("SnowflakeProjectService", () => {
     expect(frontmatter["aliases"]).toEqual(["The Hunger"]);
     const block = readMarkedSection(content, "entity-fields");
     expect(block).toContain("> [!info] Time overview");
-    expect(block).toContain("> **Type**: Period");
+    expect(block).toContain("> **Type**: Time period");
     expect(block).toContain("> **Start**: ");
     expect(block).toContain("> **Description**: Three hungry months.");
     expect(readMarkedSection(content, "world-status")).toContain(
@@ -3342,48 +3348,46 @@ describe("SnowflakeProjectService", () => {
     const eraFrontmatter = parseMarkdownFrontmatter(
       fakeVault.contents.get(era.path) ?? "",
     ).frontmatter;
-    // The alias matches the note name, so the normalized link drops it.
+    // The link carries the new name, so the note reads as the note rather
+    // than as the path the note is filed under.
     expect(eraFrontmatter[FRONTMATTER_KEYS.timeStart]).toBe(
-      `[[${linkTarget(renamed.path)}]]`,
+      `[[${linkTarget(renamed.path)}|Imperial Year 1023]]`,
     );
     expect(eraFrontmatter[FRONTMATTER_KEYS.timeEnd]).toBe(
-      `[[${linkTarget(renamed.path)}]]`,
+      `[[${linkTarget(renamed.path)}|Imperial Year 1023]]`,
     );
   });
 
-  it("keeps a character's age and records in their sections", async () => {
+  it("keeps a character's records in their sections, values and all", async () => {
     const project = await service.createProject({ name: "Character records" });
     const ada = await service.createCharacter(project, {
       name: "Ada",
       type: "major",
-      age: {
-        property: "age",
-        value: { kind: "text", text: "23" },
-        location: null,
-        time: null,
-      },
-      worldStatus: [statusRecord("Missing")],
+      // A value belongs to the record on this note; only the label is shared.
+      worldStatus: [statusRecord("Age", "23"), statusRecord("Missing")],
     });
     const created = fakeVault.contents.get(ada.path) ?? "";
-    expect(created).toContain("## Details");
-    expect(readMarkedSection(created, "details")).toBe("- **Age**: 23");
-    expect(readMarkedSection(created, "world-status")).toContain("Missing");
-    expect(ada.details).toHaveLength(1);
+    expect(created).toContain("## World Status");
+    expect(readMarkedSection(created, "world-status")).toBe(
+      [
+        "- [[Def/World_Status#Age|Age]]: 23",
+        "- [[Def/World_Status#Missing|Missing]]",
+      ].join("\n"),
+    );
+    expect(ada.worldStatus).toHaveLength(2);
+    expect(ada.worldStatus[0]?.value).toBe("23");
 
     const cleared = await service.updateCharacter(project, ada.characterId, {
       expectedRevision: ada.revision,
-      age: null,
       worldStatus: [],
       relationships: [relationRecord("Enemy", "Demon Empire")],
     });
     const content = fakeVault.contents.get(cleared.path) ?? "";
-    expect(content).not.toContain("snowflake:section:details");
-    expect(content).not.toContain("## Details");
     expect(content).not.toContain("snowflake:section:world-status");
+    expect(content).not.toContain("## World Status");
     expect(readMarkedSection(content, "relationships")).toContain(
       "[[Def/Relationship#Enemy|Enemy]] -> [[Demon Empire]]",
     );
-    expect(cleared.details).toEqual([]);
     expect(cleared.relationships).toHaveLength(1);
   });
 
@@ -3411,6 +3415,57 @@ describe("SnowflakeProjectService", () => {
       expect.stringContaining("|Supporting]]"),
       expect.stringContaining("|Gender/Female]]"),
     ]);
+  });
+
+  it("gives a character only the categories it was handed", async () => {
+    const project = await service.createProject({ name: "No role" });
+
+    // The form no longer names a role, so nothing may invent one: a character
+    // is whatever categories it was given, and a role is one of those.
+    const nobody = await service.createCharacter(project, { name: "Nobody" });
+    expect(nobody.categories).toEqual([]);
+    expect(nobody.type).toBeNull();
+    const frontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(nobody.path) ?? "",
+    ).frontmatter;
+    expect(frontmatter[FRONTMATTER_KEYS.characterType]).toBeUndefined();
+
+    const elf = await service.createCharacter(project, {
+      name: "Elf",
+      categoryPaths: ["Race/Elf"],
+    });
+    expect(elf.categories).toEqual([
+      expect.stringContaining("21_Category#Elf|Race/Elf]]"),
+    ]);
+    expect(elf.type).toBeNull();
+
+    // Picking the seeded role category is how a role is chosen now.
+    const major = await service.updateCharacter(project, elf.characterId, {
+      expectedRevision: elf.revision,
+      categoryPaths: ["Race/Elf", "Major"],
+    });
+    expect(major.type).toBe("major");
+    expect(major.categories).toHaveLength(2);
+  });
+
+  it("writes a new category's description under its heading", async () => {
+    const project = await service.createProject({ name: "Described" });
+
+    const added = await service.addDefinitionPath(
+      project,
+      "character",
+      "category",
+      "Race/Elf",
+      "Long-lived, and never in a hurry.",
+    );
+    expect(added.ok).toBe(true);
+    const content =
+      fakeVault.contents.get(`${project.rootPath}/20_Character/21_Category.md`) ?? "";
+    expect(content).toContain("## Elf\n\nLong-lived, and never in a hurry.");
+    // The description is prose, not a heading, so it joins no vocabulary.
+    expect(
+      await service.listDefinitionPaths(project, "character", "category"),
+    ).toEqual(["Major", "Supporting", "Minor", "Race", "Race/Elf"]);
   });
 
   it("scopes definition vocabularies to the kind that owns the file", async () => {
@@ -3500,6 +3555,102 @@ describe("SnowflakeProjectService", () => {
     expect(
       fakeVault.contents.get(`${project.rootPath}/20_Character/21_Category.md`),
     ).toContain("# Major");
+  });
+
+  it("gives a scene's written time and place notes of their own", async () => {
+    const project = await service.createProject({ name: "Adopted fields" });
+    // What a scene held before either field named a note.
+    const dawn = await service.createScene(project, {
+      title: "Dawn",
+      times: ["The first winter"],
+      locations: ["The old mill"],
+    });
+    const dusk = await service.createScene(project, {
+      title: "Dusk",
+      times: ["The first winter"],
+      locations: [],
+    });
+
+    await service.migrateMemberNotes(project.projectFile);
+
+    const times = await service.listEntities(project.projectFile, "time");
+    const locations = await service.listEntities(project.projectFile, "location");
+    // One note per wording, however many scenes wrote it.
+    expect(times.map((entity) => entity.name)).toEqual(["The first winter"]);
+    expect(times[0]!.timeKind).toBe("point");
+    expect(locations.map((entity) => entity.name)).toEqual(["The old mill"]);
+
+    const scenes = await service.listScenes(
+      await service.loadProject(project.projectFile),
+    );
+    const first = scenes.find((scene) => scene.title === "Dawn")!;
+    expect(first.times).toEqual([
+      `[[${linkTarget(times[0]!.path)}|The first winter]]`,
+    ]);
+    expect(first.locations).toEqual([
+      `[[${linkTarget(locations[0]!.path)}|The old mill]]`,
+    ]);
+    const second = scenes.find((scene) => scene.title === "Dusk")!;
+    expect(second.times).toEqual(first.times);
+    // The overview follows the frontmatter it is drawn from.
+    expect(
+      readMarkedSection(fakeVault.contents.get(dawn.path) ?? "", "scene-fields"),
+    ).toContain("|The first winter]]");
+    expect(fakeVault.contents.get(dusk.path)).toContain("|The first winter]]");
+  });
+
+  it("gives the links in a migrated project the names they are read by", async () => {
+    const project = await service.createProject({ name: "Named links" });
+    const point = await service.createEntity(project, {
+      kind: "time",
+      name: "Year 1023",
+      timeKind: "point",
+    });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      worldStatus: [
+        {
+          label: {
+            path: `${project.rootPath}/20_Character/22_World_Status`,
+            heading: "Age",
+            display: "Age",
+          },
+          value: "18",
+          clauses: [
+            { kind: "when", term: { kind: "link", path: point.path, name: "Year 1023" } },
+          ],
+        },
+      ],
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      times: [`[[${linkTarget(point.path)}]]`],
+    });
+    // The shape an older release wrote: a link with nothing but its path.
+    const bare = (fakeVault.contents.get(ada.path) ?? "").replace(
+      `[[${linkTarget(point.path)}|Year 1023]]`,
+      `[[${linkTarget(point.path)}]]`,
+    );
+    fakeVault.contents.set(ada.path, bare);
+    expect(fakeVault.contents.get(ada.path)).toContain(
+      `when [[${linkTarget(point.path)}]]`,
+    );
+
+    await service.migrateMemberNotes(project.projectFile);
+
+    expect(fakeVault.contents.get(ada.path)).toContain(
+      `when [[${linkTarget(point.path)}|Year 1023]]`,
+    );
+    const migrated = await service.listScenes(
+      await service.loadProject(project.projectFile),
+    );
+    expect(migrated.find((entry) => entry.title === "Arrival")!.times).toEqual([
+      `[[${linkTarget(point.path)}|Year 1023]]`,
+    ]);
+    expect(fakeVault.contents.get(scene.path)).toContain(
+      `[[${linkTarget(point.path)}|Year 1023]]`,
+    );
   });
 
   it("refreshes worldbuilding overviews in the same pass as members", async () => {

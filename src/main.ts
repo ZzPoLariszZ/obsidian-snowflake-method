@@ -66,7 +66,6 @@ import {
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
-	characterTypeFromHeading,
 	definitionFileName,
 	entityKindFolder,
 	getProjectPathLayout,
@@ -440,6 +439,10 @@ export default class SnowflakeMethodPlugin
 
 	isReduceMotionEnabled(): boolean {
 		return this.settings.reduceMotion;
+	}
+
+	opensFormWhenCreatingFromField(): boolean {
+		return this.settings.createFromField === 'form';
 	}
 
 	async openProjectManager(
@@ -1037,7 +1040,6 @@ export default class SnowflakeMethodPlugin
 			await this.projects.updateCharacter(project, id, {
 				expectedRevision,
 				name: request.name,
-				type: request.type,
 				aliases: request.aliases,
 				categoryPaths: request.categoryPaths,
 				progressStatus: request.progressStatus,
@@ -1047,7 +1049,6 @@ export default class SnowflakeMethodPlugin
 				goal: request.goal,
 				conflict: request.conflict,
 				growth: request.growth,
-				age: request.age,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
 			});
@@ -1106,7 +1107,9 @@ export default class SnowflakeMethodPlugin
 		new Notice(this.t('messages.characterDeleted'));
 	}
 
-	async createScene(request: CreateSceneRequest): Promise<{ id: string }> {
+	async createScene(
+		request: CreateSceneRequest,
+	): Promise<{ id: string; path: string }> {
 		const project = await this.requireCurrentProject();
 		let scene;
 		try {
@@ -1116,8 +1119,8 @@ export default class SnowflakeMethodPlugin
 				aliases: request.aliases,
 				categoryPaths: request.categoryPaths,
 				progressStatus: request.progressStatus,
-				time: request.time,
-				location: request.location,
+				times: request.times,
+				locations: request.locations,
 				characters: request.characterPaths,
 				conflict: request.conflict,
 				worldStatus: request.worldStatus,
@@ -1128,7 +1131,7 @@ export default class SnowflakeMethodPlugin
 			this.rethrowLocalizedMutationError(error);
 		}
 		new Notice(this.t('messages.sceneCreated', { name: scene.title }));
-		return { id: scene.id };
+		return { id: scene.id, path: scene.path };
 	}
 
 	async createSceneCanvas(): Promise<void> {
@@ -1151,7 +1154,9 @@ export default class SnowflakeMethodPlugin
 		await this.openManagedFile(path);
 	}
 
-	async createEntity(request: EntityFormRequest): Promise<{ id: string }> {
+	async createEntity(
+		request: EntityFormRequest,
+	): Promise<{ id: string; path: string }> {
 		const project = await this.requireCurrentProject();
 		let entity;
 		try {
@@ -1165,10 +1170,7 @@ export default class SnowflakeMethodPlugin
 				timeKind: request.timeKind,
 				timeStart: request.timeStart,
 				timeEnd: request.timeEnd,
-				details:
-					request.owner === null
-						? []
-						: [{ ...request.owner, property: 'owner' as const }],
+				details: [],
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
 			});
@@ -1176,7 +1178,7 @@ export default class SnowflakeMethodPlugin
 			this.rethrowLocalizedMutationError(error);
 		}
 		new Notice(this.t('messages.entityCreated', { name: entity.name }));
-		return { id: entity.entityId };
+		return { id: entity.entityId, path: entity.path };
 	}
 
 	async updateEntity(id: string, request: EntityFormRequest): Promise<void> {
@@ -1195,10 +1197,7 @@ export default class SnowflakeMethodPlugin
 				timeKind: request.timeKind,
 				timeStart: request.timeStart,
 				timeEnd: request.timeEnd,
-				details:
-					request.owner === null
-						? []
-						: [{ ...request.owner, property: 'owner' as const }],
+				details: [],
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
 			});
@@ -1253,6 +1252,7 @@ export default class SnowflakeMethodPlugin
 		kind: EntityKind,
 		id: DefinitionFileChoice,
 		path: string,
+		description = '',
 	): Promise<AddDefinitionPathResult> {
 		const project = await this.requireCurrentProject();
 		const result = await this.projects.addDefinitionPath(
@@ -1260,6 +1260,7 @@ export default class SnowflakeMethodPlugin
 			kind,
 			id,
 			path,
+			description,
 		);
 		return result.ok
 			? { ok: true }
@@ -1295,8 +1296,8 @@ export default class SnowflakeMethodPlugin
 				aliases: request.aliases,
 				categoryPaths: request.categoryPaths,
 				progressStatus: request.progressStatus,
-				time: request.time,
-				location: request.location,
+				times: request.times,
+				locations: request.locations,
 				characters: request.characterPaths,
 				conflict: request.conflict,
 				worldStatus: request.worldStatus,
@@ -3276,21 +3277,15 @@ export default class SnowflakeMethodPlugin
 			type: character.type,
 			progressStatus: character.progressStatus,
 			aliases: character.aliases,
-			// The role rides its own control in the form, so its category link
-			// stays out of the picker's list.
-			categoryPaths: character.categories
-				.filter((raw) => {
-					const link = parseHeadingLink(raw);
-					return link === null || characterTypeFromHeading(link.heading) === null;
-				})
-				.map((raw) => categoryDisplayPath(raw)),
+			// Every category, the role among them: the picker owns the whole list
+			// now, so anything held back here would be dropped on the next save.
+			categoryPaths: character.categories.map((raw) => categoryDisplayPath(raw)),
 			oneSentenceStoryline: character.oneSentenceStoryline,
 			oneParagraphStoryline: character.oneParagraphStoryline,
 			motivation: character.motivation,
 			goal: character.goal,
 			conflict: character.conflict,
 			growth: character.growth,
-			age: character.details.find((line) => line.property === 'age') ?? null,
 			worldStatus: character.worldStatus,
 			relationships: character.relationships,
 			revision: character.revision,
@@ -3335,8 +3330,8 @@ export default class SnowflakeMethodPlugin
 				scene.povPath !== SCENE_POV_OMNISCIENT &&
 				scene.povPath !== SCENE_POV_MULTIPLE &&
 				!characterNames.has(scene.povPath),
-			time: scene.time,
-			location: scene.location,
+			times: scene.times,
+			locations: scene.locations,
 			characterPaths: scene.characters,
 			conflict: scene.conflict,
 			progressStatus: scene.progressStatus,

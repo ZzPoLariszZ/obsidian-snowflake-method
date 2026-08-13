@@ -28,7 +28,11 @@ export type DefinitionFileChoice = 'category' | 'world-status' | 'relationship';
 
 export type AddDefinitionPathResult =
 	| { ok: true }
-	| { ok: false; code: 'invalid-segment' | 'heading-taken'; segment: string };
+	| {
+			ok: false;
+			code: 'invalid-segment' | 'heading-taken' | 'too-deep';
+			segment: string;
+	  };
 
 export interface ProjectOption {
 	path: string;
@@ -79,7 +83,8 @@ export interface CharacterViewModel {
 	path: string;
 	name: string;
 	rank: number;
-	type: CharacterType;
+	/** Null when no category names a role and no legacy key stores one. */
+	type: CharacterType | null;
 	progressStatus: ProgressStatus | null;
 	aliases: string[];
 	/** Full category paths for display and the picker, role excluded. */
@@ -90,7 +95,6 @@ export interface CharacterViewModel {
 	goal: string;
 	conflict: string;
 	growth: string;
-	age: DetailsLine | null;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	revision: string;
@@ -113,8 +117,10 @@ export interface SceneViewModel {
 	povName: string;
 	/** The stored point of view names a character the project no longer has. */
 	povMissing: boolean;
-	time: string;
-	location: string;
+	/** Time notes the scene names, as stored links or plain words. */
+	times: string[];
+	/** Places the scene names, as stored links or plain words. */
+	locations: string[];
 	characterPaths: string[];
 	conflict: string;
 	worldStatus: RecordLine[];
@@ -301,6 +307,8 @@ export interface DashboardHost {
 	): string;
 	getRecentStep(): StepId;
 	isReduceMotionEnabled(): boolean;
+	/** True while a field that makes a note opens that note's form first. */
+	opensFormWhenCreatingFromField(): boolean;
 	openProjectManager(
 		projectLocale: 'en' | 'zh-CN' | null,
 	): Promise<void>;
@@ -325,8 +333,8 @@ export interface DashboardHost {
 	updateCharacter(id: string, request: CreateCharacterRequest): Promise<void>;
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
 	/** Reports the scene's id back, so inserting can place what it created. */
-	createScene(request: CreateSceneRequest): Promise<{ id: string }>;
-	createEntity(request: EntityFormRequest): Promise<{ id: string }>;
+	createScene(request: CreateSceneRequest): Promise<{ id: string; path: string }>;
+	createEntity(request: EntityFormRequest): Promise<{ id: string; path: string }>;
 	updateEntity(id: string, request: EntityFormRequest): Promise<void>;
 	deleteEntity(id: string, expectedRevision: string): Promise<void>;
 	reorderEntity(
@@ -352,6 +360,7 @@ export interface DashboardHost {
 		kind: EntityKind,
 		id: DefinitionFileChoice,
 		path: string,
+		description?: string,
 	): Promise<AddDefinitionPathResult>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;

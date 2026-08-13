@@ -1,20 +1,24 @@
-import { Setting, type App } from 'obsidian';
+import { setIcon, setTooltip, type App } from 'obsidian';
 
 import type { DetailsPropertyId, ProgressStatus } from '../domain';
 import {
 	parseTerm,
 	renderTerm,
 	type DetailsLine,
+	type RecordClause,
+	type RecordClauseKind,
 	type RecordLine,
 	type RecordTerm,
 } from '../templates';
 import { FieldSuggest } from './field-suggest';
 import {
+	buildOptionField,
 	buildOptionPicker,
 	optionsMatching,
+	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
-import type { Translate } from './modals';
+import type { NewDefinitionPath, Translate } from './modals';
 
 /**
  * The shared field kit every member form is built from: the universal rows
@@ -28,32 +32,48 @@ export interface DefinitionPathSource {
 	list(): readonly string[];
 	/**
 	 * Appends a new path, resolving to null on success and to a localized
-	 * objection when the file refuses it.
+	 * objection when the file refuses it. The description is written under the
+	 * new heading for whoever reads the file later.
 	 */
-	add(path: string): Promise<string | null>;
+	add(path: string, description: string): Promise<string | null>;
 }
 
 export interface RecordEditorContext {
 	app: App;
 	t: Translate;
 	notice: (message: string) => void;
-	/** Members a target can point at: every character, scene, and entity. */
-	members: () => readonly PickerOption[];
-	/** Time notes, for when and from and to. */
-	times: () => readonly PickerOption[];
-	/** Location notes, for at. */
-	locations: () => readonly PickerOption[];
 	/** The record labels of one definition file, with create-on-type. */
 	labels: DefinitionPathSource;
+	/**
+	 * Asks what a new label is and what it means, resolving to null when
+	 * cancelled. The path comes back too: the dialog is where a name typed in
+	 * passing gets its last look.
+	 */
+	describeLabel: (path: string) => Promise<NewDefinitionPath | null>;
+	/** Chooses a note to point at: its group first, then the note itself. */
+	pickEntity: () => Promise<PickedEntity | null>;
+	/** The group a stored link belongs to, for naming the line it sits on. */
+	entityGroup: (path: string) => EntityGroupId | null;
+	/** Time notes, for the Owner details row that still asks for one. */
+	times: () => readonly PickerOption[];
+	/** Members the Owner details row can point at. */
+	members: () => readonly PickerOption[];
 }
 
-/** A pill list with an inline input for free text: Enter or a comma adds. */
+/**
+ * Free text as a tag list: type, then Enter or a comma commits a tag.
+ *
+ * It wears the option picker's own field, tags and remove buttons rather than
+ * a look of its own, because the two sit one above the other in every member
+ * form and the only real difference is that this one has nothing to suggest.
+ */
 export class ChipListField {
 	private values: string[];
-	private chipsEl: HTMLElement | null = null;
+	private valuesEl: HTMLElement | null = null;
 	private inputEl: HTMLInputElement | null = null;
 
 	constructor(
+		private readonly context: { t: Translate },
 		initial: readonly string[],
 		private readonly placeholder: string,
 	) {
@@ -61,12 +81,26 @@ export class ChipListField {
 	}
 
 	attach(container: HTMLElement): void {
-		const field = container.createDiv({ cls: 'snowflake-method-chip-field' });
-		this.chipsEl = field.createDiv({ cls: 'snowflake-method-chip-list' });
-		this.inputEl = field.createEl('input', {
+		const picker = container.createDiv({
+			cls: 'snowflake-method-option-picker',
+		});
+		const field = picker.createDiv({
+			cls: 'snowflake-method-option-picker-field',
+		});
+		this.valuesEl = field.createDiv({
+			cls: 'snowflake-method-option-picker-values',
+		});
+		this.inputEl = this.valuesEl.createEl('input', {
 			type: 'text',
-			cls: 'snowflake-method-chip-input',
+			cls: 'snowflake-method-option-picker-input',
 			attr: { placeholder: this.placeholder },
+		});
+		// The frame is the field, so clicking anywhere in it starts typing.
+		field.addEventListener('mousedown', (event) => {
+			if (event.target === this.inputEl) return;
+			if ((event.target as HTMLElement).closest('button') !== null) return;
+			event.preventDefault();
+			this.inputEl?.focus();
 		});
 		this.inputEl.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ',' || event.key === '、') {
@@ -78,11 +112,11 @@ export class ChipListField {
 				this.values.length > 0
 			) {
 				this.values.pop();
-				this.renderChips();
+				this.renderTags();
 			}
 		});
 		this.inputEl.addEventListener('blur', () => this.commitInput());
-		this.renderChips();
+		this.renderTags();
 	}
 
 	get(): string[] {
@@ -97,26 +131,42 @@ export class ChipListField {
 		if (trimmed.length === 0) return;
 		if (!this.values.includes(trimmed)) {
 			this.values.push(trimmed);
-			this.renderChips();
+			this.renderTags();
 		}
 	}
 
-	private renderChips(): void {
-		const chips = this.chipsEl;
-		if (!chips) return;
-		chips.empty();
+	/** Tags are rebuilt before the input, which always stays last in the row. */
+	private renderTags(): void {
+		const values = this.valuesEl;
+		if (values === null) return;
+		for (const tag of Array.from(
+			values.querySelectorAll('.snowflake-method-option-picker-tag'),
+		)) {
+			tag.remove();
+		}
 		this.values.forEach((value, index) => {
-			const chip = chips.createSpan({ cls: 'snowflake-method-chip' });
-			chip.createSpan({ cls: 'snowflake-method-chip-label', text: value });
-			const remove = chip.createEl('button', {
-				cls: 'snowflake-method-chip-remove',
-				text: '×',
-				attr: { type: 'button', 'aria-label': value },
+			const tag = values.createSpan({
+				cls: 'snowflake-method-option-picker-tag',
+			});
+			setTooltip(tag.createSpan({ text: value }), value);
+			const remove = tag.createEl('button', {
+				cls: 'snowflake-method-option-picker-remove clickable-icon',
+				attr: {
+					type: 'button',
+					'aria-label': this.context.t('form.aliases.remove', { name: value }),
+				},
+			});
+			setIcon(remove, 'x');
+			// Taking focus would blur the input and commit whatever is half-typed.
+			remove.addEventListener('mousedown', (event) => {
+				event.preventDefault();
 			});
 			remove.addEventListener('click', () => {
 				this.values.splice(index, 1);
-				this.renderChips();
+				this.renderTags();
+				this.inputEl?.focus();
 			});
+			values.insertBefore(tag, this.inputEl);
 		});
 	}
 }
@@ -126,6 +176,10 @@ export class ChipListField {
  * create-on-type appending to the file first so the link the note will store
  * resolves. A picked path the file no longer lists still shows as a tag, so
  * nothing silently falls off a note in the picker.
+ *
+ * Creating asks for a description first: a new category is a word the whole
+ * project will be sorted by, and the one moment its meaning is obvious is the
+ * moment it is invented.
  */
 export class CategoryPathField {
 	private values: string[];
@@ -136,6 +190,11 @@ export class CategoryPathField {
 			t: Translate;
 			notice: (message: string) => void;
 			source: DefinitionPathSource;
+			/**
+			 * Asks for the path to write and what it means, resolving to null
+			 * when cancelled.
+			 */
+			describe: (path: string) => Promise<NewDefinitionPath | null>;
 		},
 		initial: readonly string[],
 	) {
@@ -167,9 +226,18 @@ export class CategoryPathField {
 			create: {
 				label: (typed) => t('form.category.create', { name: typed }),
 				run: async (typed) => {
-					const path = typed.trim();
+					const typedPath = typed.trim();
+					if (typedPath.length === 0) return null;
+					// The dialog may hand back a different path than it was given:
+					// what it settles on is what gets written and picked.
+					const answer = await this.context.describe(typedPath);
+					if (answer === null) return null;
+					const path = answer.path.trim();
 					if (path.length === 0) return null;
-					const objection = await this.context.source.add(path);
+					const objection = await this.context.source.add(
+						path,
+						answer.description,
+					);
 					if (objection !== null) {
 						this.context.notice(objection);
 						return null;
@@ -185,37 +253,259 @@ export class CategoryPathField {
 	}
 }
 
-/** The progress status dropdown, sharing the step vocabulary minus skipped. */
-export function addProgressStatusRow(
+/**
+ * Any number of notes of one sort, as a tag picker with create-on-type. What
+ * a scene held before these fields named notes -- plain words -- stays on the
+ * list as a tag of its own, so nothing an author wrote is dropped by a change
+ * of field.
+ */
+export class NoteListField {
+	private values: string[];
+	/**
+	 * Notes made from this field, by note key. The project behind the field is
+	 * read afresh on every keystroke, but a note made a moment ago may not be
+	 * in it yet, and a field that cannot find what it just made stores the
+	 * path as if it were words and shows it twice.
+	 */
+	private readonly made = new Map<string, PickerOption>();
+
+	constructor(
+		private readonly context: {
+			app: App;
+			t: Translate;
+			notice: (message: string) => void;
+			/** The notes on offer, newest reading of the project. */
+			options: () => readonly PickerOption[];
+			/** Makes one by name, resolving to null when that fails. */
+			create: (name: string) => Promise<PickerOption | null>;
+			label: string;
+			placeholder: string;
+			createLabel: (name: string) => string;
+			removeLabel: (name: string) => string;
+		},
+		initial: readonly string[],
+	) {
+		this.values = [...initial];
+	}
+
+	attach(container: HTMLElement): void {
+		buildOptionPicker(this.context.app, container, {
+			options: () => noteFieldOptions(this.context.options(), this.values),
+			label: this.context.label,
+			placeholder: this.context.placeholder,
+			emptyPlaceholder: this.context.placeholder,
+			picked: () => this.values.map((value) => this.identity(value)),
+			pick: (value) => {
+				const stored = this.term(value);
+				if (!this.values.includes(stored)) this.values.push(stored);
+			},
+			unpick: (value) => {
+				this.values = this.values.filter(
+					(candidate) => this.identity(candidate) !== value,
+				);
+			},
+			removeLabel: (label) => this.context.removeLabel(label),
+			create: {
+				label: (typed) => this.context.createLabel(typed),
+				// Storing is left to the pick that follows, so a note arrives on
+				// the list exactly once however it came to exist.
+				run: async (typed) => {
+					const name = typed.trim();
+					if (name.length === 0) return null;
+					const created = await this.context.create(name);
+					if (created === null) return null;
+					const option = { value: noteKey(created.value), label: created.label };
+					this.made.set(option.value, created);
+					return option;
+				},
+			},
+		});
+	}
+
+	/** The term to store for a picked note: a link when the note is known. */
+	private term(value: string): string {
+		const option =
+			this.context
+				.options()
+				.find((candidate) => noteKey(candidate.value) === value) ??
+			this.made.get(value);
+		return option === undefined
+			? value
+			: renderTerm({ kind: 'link', path: option.value, name: option.label });
+	}
+
+	get(): string[] {
+		return [...this.values];
+	}
+
+	/** What the picker knows a stored value by: a note's path, or the words. */
+	private identity(value: string): string {
+		return noteIdentity(value);
+	}
+}
+
+/**
+ * One note of one sort, as a single-value picker with create-on-type. Held as
+ * the raw term the note stores, so words written before the field named notes
+ * stay on the list as an option of their own.
+ */
+export class NoteField {
+	private value: string;
+	/** Notes made from this field, by note key. See `NoteListField.made`. */
+	private readonly made = new Map<string, PickerOption>();
+
+	constructor(
+		private readonly context: {
+			app: App;
+			t: Translate;
+			/** The notes on offer, newest reading of the project. */
+			options: () => readonly PickerOption[];
+			/** Makes one by name, resolving to null when that fails. */
+			create: (name: string) => Promise<PickerOption | null>;
+			label: string;
+			placeholder: string;
+			createLabel: (name: string) => string;
+			/** Called with the term to store on every change. */
+			onChange: (value: string) => void;
+		},
+		initial: string,
+	) {
+		this.value = initial.trim();
+	}
+
+	attach(container: HTMLElement): OptionPicker {
+		return buildOptionField(this.context.app, container, {
+			options: () => noteFieldOptions(this.context.options(), [this.value]),
+			label: this.context.label,
+			placeholder: this.context.placeholder,
+			emptyPlaceholder: this.context.placeholder,
+			value: () => this.identity(),
+			choose: (value) => {
+				const option =
+					this.context
+						.options()
+						.find((candidate) => noteKey(candidate.value) === value) ??
+					this.made.get(value);
+				this.set(
+					option === undefined
+						? value
+						: renderTerm({
+								kind: 'link',
+								path: option.value,
+								name: option.label,
+							}),
+				);
+			},
+			create: {
+				label: (typed) => this.context.createLabel(typed),
+				// Choosing is left to the field, which the picker does next.
+				run: async (typed) => {
+					const name = typed.trim();
+					if (name.length === 0) return null;
+					const created = await this.context.create(name);
+					if (created === null) return null;
+					const option = { value: noteKey(created.value), label: created.label };
+					this.made.set(option.value, created);
+					return option;
+				},
+			},
+		});
+	}
+
+	private set(value: string): void {
+		this.value = value;
+		this.context.onChange(value);
+	}
+
+	private identity(): string {
+		return noteIdentity(this.value);
+	}
+}
+
+/** A note is known by its path without the extension, which is what a link holds. */
+function noteKey(path: string): string {
+	return path.replace(/\.md$/u, '');
+}
+
+/**
+ * What a note field offers: the project's notes keyed the way a stored link is,
+ * and behind them anything the field holds that the project has never heard of.
+ *
+ * The keying is the whole of it. A note listed under its file path and held as
+ * a link are the same note, and a field that keys them differently shows the
+ * one it holds as a path and goes on offering it a second time.
+ */
+export function noteFieldOptions(
+	options: readonly PickerOption[],
+	values: readonly string[],
+): PickerOption[] {
+	const known = options.map((option) => ({
+		value: noteKey(option.value),
+		label: option.label,
+	}));
+	const paths = new Set(known.map((option) => option.value));
+	// Words a scene wrote before this field named notes are on offer nowhere,
+	// so the field carries them itself rather than dropping what it cannot find.
+	const kept = values
+		.filter((value) => value.trim().length > 0)
+		.map((value) => ({
+			value: noteIdentity(value),
+			label: noteDisplay(value),
+		}))
+		.filter((option) => !paths.has(option.value));
+	return [...known, ...kept];
+}
+
+/** What a picker knows a stored value by: a note's path, or the words. */
+export function noteIdentity(value: string): string {
+	const term = parseTerm(value);
+	return term.kind === 'link' ? noteKey(term.path) : term.text;
+}
+
+function noteDisplay(value: string): string {
+	const term = parseTerm(value);
+	return term.kind === 'link' ? term.name : term.text;
+}
+
+export const PROGRESS_STATUS_ORDER = [
+	'not-started',
+	'in-progress',
+	'in-revision',
+	'complete',
+] as const;
+
+/**
+ * The progress status, worn where a step wears it: a bare select in the header
+ * beside the title, no label of its own, and always holding one of the four.
+ * A member is somewhere in its progress the moment it exists, so there is
+ * nothing for an unset option to mean.
+ */
+export function addProgressStatusControl(
 	container: HTMLElement,
 	t: Translate,
-	settingClass: string,
-	initial: ProgressStatus | null,
-	onChange: (value: ProgressStatus | null) => void,
-): void {
-	const setting = new Setting(container).setName(t('form.progressStatus'));
-	setting.settingEl.addClass(settingClass);
-	setting.addDropdown((dropdown) => {
-		dropdown.addOption('', t('form.progressStatus.unset'));
-		for (const status of [
-			'not-started',
-			'in-progress',
-			'in-revision',
-			'complete',
-		] as const) {
-			dropdown.addOption(status, t(`status.${status}`));
-		}
-		dropdown.setValue(initial ?? '').onChange((value) => {
-			onChange(
-				value === 'not-started' ||
-					value === 'in-progress' ||
-					value === 'in-revision' ||
-					value === 'complete'
-					? value
-					: null,
-			);
-		});
+	initial: ProgressStatus,
+	onChange: (value: ProgressStatus) => void,
+): HTMLSelectElement {
+	const select = container.createEl('select', {
+		cls: 'dropdown snowflake-method-status-select',
+		attr: { 'aria-label': t('form.progressStatus') },
 	});
+	for (const status of PROGRESS_STATUS_ORDER) {
+		const option = select.createEl('option', {
+			value: status,
+			text: t(`status.${status}`),
+		});
+		option.selected = status === initial;
+	}
+	select.addEventListener('change', () => {
+		const value = select.value;
+		onChange(
+			PROGRESS_STATUS_ORDER.includes(value as ProgressStatus)
+				? (value as ProgressStatus)
+				: 'not-started',
+		);
+	});
+	return select;
 }
 
 /** Suggests options under a free-text input, a pick inserting the link. */
@@ -292,155 +582,435 @@ class TermInput {
 	}
 }
 
-interface RecordRow {
-	labelInput: HTMLInputElement;
-	target: TermInput;
-	location: TermInput;
-	when: TermInput;
-	from: TermInput;
-	to: TermInput;
-	rowEl: HTMLElement;
+/**
+ * The kinds of note a record can point at. Time is split by what a time note
+ * is, because picking "the year it happened" and "the war it happened during"
+ * are different choices even though both are time notes.
+ */
+export const ENTITY_GROUP_IDS = [
+	'character',
+	'scene',
+	'time-point',
+	'time-period',
+	'location',
+	'item',
+] as const;
+
+export type EntityGroupId = (typeof ENTITY_GROUP_IDS)[number];
+
+/** What connector a reference to each group is written with. */
+export const ENTITY_GROUP_CLAUSE: Readonly<
+	Record<EntityGroupId, RecordClauseKind>
+> = {
+	character: 'with',
+	scene: 'with',
+	item: 'with',
+	'time-point': 'when',
+	'time-period': 'when',
+	location: 'at',
+};
+
+export interface PickedEntity {
+	group: EntityGroupId;
+	option: PickerOption;
+}
+
+/** One card's worth of state, kept beside its element. */
+interface RecordCard {
+	el: HTMLElement;
+	contextsEl: HTMLElement;
+	label: string;
+	valueEl: HTMLInputElement;
+	target: RecordTerm | null;
+	clauses: RecordClause[];
+	renderTarget: () => void;
 }
 
 /**
- * The rows of one record section. Each row is a label from the definition
- * file followed by the clause inputs in canonical order; empty clauses are
- * simply absent from the line, and a row without a label is not a record.
+ * One card per record: the label it is filed under, the value it carries on
+ * this note, the one target a relationship is with, and any number of notes
+ * that give it context. A card is a record, so removing the card removes the
+ * record, and removing a line removes only that line.
  */
-export class RecordRowsEditor {
-	private rows: RecordRow[] = [];
+export class RecordCardsEditor {
+	private cards: RecordCard[] = [];
 	private listEl: HTMLElement | null = null;
+	private dragging: RecordCard | null = null;
 
 	constructor(
 		private readonly context: RecordEditorContext,
 		private readonly definitionPath: string,
 		private readonly initial: readonly RecordLine[],
-		private readonly copy: { title: string; add: string },
+		private readonly copy: {
+			title: string;
+			add: string;
+			labelTitle: string;
+			labelPlaceholder: string;
+		},
 		private readonly withTarget: boolean,
 	) {}
 
 	attach(container: HTMLElement): void {
 		const block = container.createDiv({ cls: 'snowflake-method-record-editor' });
-		const header = block.createDiv({ cls: 'snowflake-method-record-header' });
-		header.createSpan({
+		block.createDiv({
 			cls: 'snowflake-method-record-title',
 			text: this.copy.title,
 		});
-		const add = header.createEl('button', {
+		this.listEl = block.createDiv({ cls: 'snowflake-method-record-cards' });
+		// Under the records, where the next one will appear, rather than off in
+		// a corner of the heading.
+		const add = block.createEl('button', {
+			cls: 'snowflake-method-record-add',
 			text: this.copy.add,
 			attr: { type: 'button' },
 		});
-		this.listEl = block.createDiv({ cls: 'snowflake-method-record-rows' });
 		add.addEventListener('click', () => {
-			this.addRow(null);
+			this.addCard(null);
 		});
-		for (const record of this.initial) this.addRow(record);
+		for (const record of this.initial) this.addCard(record);
 	}
 
 	records(): RecordLine[] {
 		const records: RecordLine[] = [];
-		for (const row of this.rows) {
-			const heading = row.labelInput.value.trim();
+		for (const card of this.cards) {
+			const heading = card.label.trim();
 			if (heading.length === 0) continue;
 			const label = heading.split('/').pop() ?? heading;
-			const when = row.when.term();
-			const from = row.from.term();
-			const to = row.to.term();
 			records.push({
 				label: { path: this.definitionPath, heading: label, display: label },
-				target: this.withTarget ? row.target.term() : null,
-				location: row.location.term(),
-				time:
-					from !== null && to !== null
-						? { kind: 'span', start: from, end: to }
-						: when !== null
-							? { kind: 'when', at: when }
-							: null,
+				value: card.valueEl.value.trim(),
+				clauses: [
+					...(this.withTarget && card.target !== null
+						? [{ kind: 'target' as const, term: card.target }]
+						: []),
+					...card.clauses,
+				],
 			});
 		}
 		return records;
 	}
 
-	/** Rows whose span is half-filled, so the form can refuse to save them. */
-	halfSpans(): number {
-		return this.rows.filter((row) => {
-			const from = row.from.term();
-			const to = row.to.term();
-			return (from === null) !== (to === null);
-		}).length;
-	}
-
-	private addRow(record: RecordLine | null): void {
+	private addCard(record: RecordLine | null): void {
 		const list = this.listEl;
-		if (!list) return;
-		const rowEl = list.createDiv({ cls: 'snowflake-method-record-row' });
-		const labelHolder = rowEl.createDiv({
-			cls: 'snowflake-method-term-input snowflake-method-record-label',
+		if (list === null) return;
+		const el = list.createDiv({ cls: 'snowflake-method-record-card' });
+		const handle = el.createDiv({
+			cls: 'snowflake-method-record-drag',
+			attr: { 'aria-label': this.context.t('form.record.reorder') },
 		});
-		const labelInput = labelHolder.createEl('input', {
-			type: 'text',
-			value: record?.label.display ?? '',
-			attr: { placeholder: this.context.t('form.record.label') },
-		});
-		new TermSuggest(
-			this.context.app,
-			labelInput,
-			labelHolder,
-			() =>
-				this.context.labels.list().map((path) => ({ value: path, label: path })),
-			(option) => {
-				labelInput.value = option.value;
+		setIcon(handle, 'grip-vertical');
+		const body = el.createDiv({ cls: 'snowflake-method-record-body' });
+		const close = el.createEl('button', {
+			cls: 'snowflake-method-record-card-close clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.context.t('form.record.removeRecord'),
 			},
+		});
+		setIcon(close, 'trash-2');
+
+		const storedTarget = record?.clauses.find(
+			(clause) => clause.kind === 'target',
 		);
-
-		const term = (
-			value: RecordTerm | null | undefined,
-			options: TermInputOptions,
-		): TermInput => {
-			const input = new TermInput(
-				this.context,
-				value === null || value === undefined ? '' : renderTerm(value),
-				options,
-			);
-			input.attach(rowEl);
-			return input;
+		const card: RecordCard = {
+			el,
+			contextsEl: null as unknown as HTMLElement,
+			label: record?.label.display ?? '',
+			valueEl: null as unknown as HTMLInputElement,
+			target:
+				storedTarget !== undefined && storedTarget.kind !== 'span'
+					? storedTarget.term
+					: null,
+			clauses: (record?.clauses ?? []).filter(
+				(clause) => clause.kind !== 'target',
+			),
+			renderTarget: () => undefined,
 		};
+		this.makeDraggable(el, handle, card);
 
-		const target = this.withTarget
-			? term(record?.target, {
-					placeholderKey: 'form.record.target',
-					options: this.context.members,
-				})
-			: new TermInput(this.context, '', { placeholderKey: 'form.record.target' });
-		const location = term(record?.location, {
-			placeholderKey: 'form.record.at',
-			options: this.context.locations,
-		});
-		const when = term(record?.time?.kind === 'when' ? record.time.at : null, {
-			placeholderKey: 'form.record.when',
-			options: this.context.times,
-		});
-		const from = term(record?.time?.kind === 'span' ? record.time.start : null, {
-			placeholderKey: 'form.record.from',
-			options: this.context.times,
-		});
-		const to = term(record?.time?.kind === 'span' ? record.time.end : null, {
-			placeholderKey: 'form.record.to',
-			options: this.context.times,
+		// Every field says what it is in its own placeholder, so a card carries
+		// no titles: the fields are the card.
+		buildOptionField(this.context.app, body.createDiv(), {
+			options: () => {
+				const known = this.context.labels.list();
+				const all =
+					known.includes(card.label) || card.label.length === 0
+						? [...known]
+						: [...known, card.label];
+				return all.map((path) => ({ value: path, label: path }));
+			},
+			label: this.copy.labelTitle,
+			placeholder: this.copy.labelPlaceholder,
+			emptyPlaceholder: this.copy.labelPlaceholder,
+			value: () => card.label,
+			choose: (value) => {
+				card.label = value;
+			},
+			create: {
+				label: (typed) =>
+					this.context.t('form.record.createLabel', { name: typed }),
+				run: async (typed) => {
+					const typedPath = typed.trim();
+					if (typedPath.length === 0) return null;
+					const answer = await this.context.describeLabel(typedPath);
+					if (answer === null) return null;
+					const path = answer.path.trim();
+					if (path.length === 0) return null;
+					const objection = await this.context.labels.add(
+						path,
+						answer.description,
+					);
+					if (objection !== null) {
+						this.context.notice(objection);
+						return null;
+					}
+					return { value: path, label: path };
+				},
+			},
 		});
 
-		const remove = rowEl.createEl('button', {
-			cls: 'snowflake-method-record-remove',
-			text: '×',
-			attr: { type: 'button', 'aria-label': this.context.t('common.remove') },
+		card.valueEl = body.createEl('input', {
+			type: 'text',
+			cls: 'snowflake-method-record-value',
+			value: record?.value ?? '',
+			attr: {
+				placeholder: this.context.t('form.record.valuePlaceholder'),
+				'aria-label': this.context.t('form.record.value'),
+			},
 		});
-		const row: RecordRow = { labelInput, target, location, when, from, to, rowEl };
-		remove.addEventListener('click', () => {
-			this.rows = this.rows.filter((candidate) => candidate !== row);
-			rowEl.remove();
+
+		if (this.withTarget) {
+			const targetEl = body.createDiv({
+				cls: 'snowflake-method-record-target',
+			});
+			card.renderTarget = (): void => {
+				targetEl.empty();
+				if (card.target === null) {
+					this.renderTargetPicker(
+						targetEl,
+						this.context.t('form.record.chooseTarget'),
+						() => {
+							void this.context.pickEntity().then((picked) => {
+								if (picked === null) return;
+								card.target = {
+									kind: 'link',
+									path: picked.option.value,
+									name: picked.option.label,
+								};
+								card.renderTarget();
+							});
+						},
+					);
+					return;
+				}
+				this.renderLine(
+					targetEl,
+					this.lineLabel(card.target),
+					termText(card.target),
+					() => {
+						card.target = null;
+						card.renderTarget();
+					},
+				);
+			};
+			card.renderTarget();
+		}
+
+		// What the record is comes first, what it points at comes after.
+		card.contextsEl = body.createDiv({ cls: 'snowflake-method-record-lines' });
+		this.renderAddMore(body, this.context.t('form.record.more'), () => {
+			void this.context.pickEntity().then((picked) => {
+				if (picked === null) return;
+				card.clauses.push({
+					kind: ENTITY_GROUP_CLAUSE[picked.group],
+					term: {
+						kind: 'link',
+						path: picked.option.value,
+						name: picked.option.label,
+					},
+				});
+				this.renderContexts(card);
+			});
 		});
-		this.rows.push(row);
+
+		close.addEventListener('click', () => {
+			this.cards = this.cards.filter((candidate) => candidate !== card);
+			el.remove();
+		});
+		this.cards.push(card);
+		this.renderContexts(card);
 	}
+
+	/**
+	 * Records keep the order they are given, so that order is the author's to
+	 * set. Only the handle starts a drag, or selecting the text in a field
+	 * would carry the card off instead.
+	 */
+	private makeDraggable(
+		el: HTMLElement,
+		handle: HTMLElement,
+		card: RecordCard,
+	): void {
+		handle.addEventListener('mousedown', () => {
+			el.draggable = true;
+		});
+		handle.addEventListener('mouseup', () => {
+			el.draggable = false;
+		});
+		el.addEventListener('dragstart', (event) => {
+			this.dragging = card;
+			el.addClass('is-dragging');
+			if (event.dataTransfer === null) return;
+			event.dataTransfer.effectAllowed = 'move';
+			// A drag has to carry something to start at all.
+			event.dataTransfer.setData('text/plain', '');
+		});
+		el.addEventListener('dragend', () => {
+			el.draggable = false;
+			el.removeClass('is-dragging');
+			this.dragging = null;
+		});
+		el.addEventListener('dragover', (event) => {
+			if (this.dragging === null || this.dragging === card) return;
+			event.preventDefault();
+			el.addClass('is-drop-target');
+		});
+		el.addEventListener('dragleave', () => {
+			el.removeClass('is-drop-target');
+		});
+		el.addEventListener('drop', (event) => {
+			el.removeClass('is-drop-target');
+			const dragged = this.dragging;
+			if (dragged === null || dragged === card) return;
+			event.preventDefault();
+			this.moveCard(dragged, card);
+		});
+	}
+
+	/** Puts one card where another sits, in the list and on the page. */
+	private moveCard(dragged: RecordCard, target: RecordCard): void {
+		const from = this.cards.indexOf(dragged);
+		const to = this.cards.indexOf(target);
+		if (from < 0 || to < 0) return;
+		this.cards.splice(from, 1);
+		this.cards.splice(to, 0, dragged);
+		if (from < to) target.el.after(dragged.el);
+		else target.el.before(dragged.el);
+	}
+
+	/**
+	 * The way to add a reference, quiet the way the add-record row under the
+	 * cards is quiet: both are invitations, not fields holding anything.
+	 */
+	private renderAddMore(
+		container: HTMLElement,
+		label: string,
+		open: () => void,
+	): void {
+		const button = container.createEl('button', {
+			cls: 'snowflake-method-record-more',
+			text: label,
+			attr: { type: 'button' },
+		});
+		button.addEventListener('click', () => {
+			open();
+		});
+	}
+
+	/**
+	 * The target is a value the record holds, so it wears the option picker's
+	 * frame like every other field that names something.
+	 */
+	private renderTargetPicker(
+		container: HTMLElement,
+		placeholder: string,
+		open: () => void,
+	): void {
+		const picker = container.createDiv({
+			cls: 'snowflake-method-option-picker is-single snowflake-method-record-pick',
+		});
+		const field = picker.createDiv({
+			cls: 'snowflake-method-option-picker-field',
+		});
+		const values = field.createDiv({
+			cls: 'snowflake-method-option-picker-values',
+		});
+		values.createSpan({
+			cls: 'snowflake-method-record-pick-placeholder',
+			text: placeholder,
+		});
+		const selector = field.createEl('button', {
+			cls: 'clickable-icon snowflake-method-option-picker-selector',
+			attr: { type: 'button', 'aria-label': placeholder },
+		});
+		setIcon(selector, 'chevrons-up-down');
+		picker.addEventListener('click', () => {
+			open();
+		});
+	}
+
+	/**
+	 * A line is labelled by what it points at, never by the connector the line
+	 * will be written with: `at` and `when` are for reading the note, and the
+	 * form talks about locations and times.
+	 */
+	private lineLabel(term: RecordTerm): string {
+		const path = linkPath(term);
+		const group = path === null ? null : this.context.entityGroup(path);
+		return group === null
+			? this.context.t('form.record.reference')
+			: this.context.t(`form.group.${group}`);
+	}
+
+	private renderContexts(card: RecordCard): void {
+		card.contextsEl.empty();
+		card.clauses.forEach((clause, index) => {
+			const text =
+				clause.kind === 'span'
+					? `${termText(clause.start)} – ${termText(clause.end)}`
+					: termText(clause.term);
+			const label =
+				clause.kind === 'span'
+					? this.context.t('form.record.span')
+					: this.lineLabel(clause.term);
+			this.renderLine(card.contextsEl, label, text, () => {
+				card.clauses.splice(index, 1);
+				this.renderContexts(card);
+			});
+		});
+	}
+
+	/** One reference: what it is, what it points at, and a way to drop it. */
+	private renderLine(
+		container: HTMLElement,
+		label: string,
+		text: string,
+		remove: () => void,
+	): void {
+		const line = container.createDiv({ cls: 'snowflake-method-record-line' });
+		line.createDiv({
+			cls: 'snowflake-method-record-line-label',
+			text: label,
+		});
+		line.createDiv({ cls: 'snowflake-method-record-line-value', text });
+		const button = line.createEl('button', {
+			cls: 'snowflake-method-record-line-remove clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.context.t('form.record.removeLine', { name: text }),
+			},
+		});
+		setIcon(button, 'circle-minus');
+		button.addEventListener('click', remove);
+	}
+}
+
+function termText(term: RecordTerm): string {
+	return term.kind === 'text' ? term.text : term.name;
+}
+
+function linkPath(term: RecordTerm): string | null {
+	return term.kind === 'link' ? term.path : null;
 }
 
 /**

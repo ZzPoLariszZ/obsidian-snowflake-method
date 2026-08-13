@@ -90,7 +90,6 @@ interface Copy {
   timeKind: string;
   timePoint: string;
   timePeriod: string;
-  timeEvent: string;
   timeStart: string;
   timeEnd: string;
   majorCharacterSheetView: string;
@@ -123,7 +122,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     timeKind: "Type",
     timePoint: "Point in time",
     timePeriod: "Period",
-    timeEvent: "Event",
     timeStart: "Start",
     timeEnd: "End",
     kindListViews: {
@@ -175,7 +173,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     timeKind: "类型",
     timePoint: "时间点",
     timePeriod: "时间段",
-    timeEvent: "事件",
     timeStart: "开始",
     timeEnd: "结束",
     kindListViews: {
@@ -314,7 +311,7 @@ function timeKindFormula(copy: Copy): string {
   return (
     `if(${equals(key, "point")}, ${label(copy.timePoint)}, ` +
     `if(${equals(key, "period")}, ${label(copy.timePeriod)}, ` +
-    `if(${equals(key, "event")}, ${label(copy.timeEvent)}, ${expr(key)})))`
+    `${expr(key)}))`
   );
 }
 

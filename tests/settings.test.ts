@@ -199,6 +199,18 @@ describe('settings', () => {
 		expect(sanitizeSettings({ reduceMotion: true }).reduceMotion).toBe(true);
 	});
 
+	it('opens a note’s own form when a field asks for one', () => {
+		expect(DEFAULT_SETTINGS.createFromField).toBe('form');
+		expect(sanitizeSettings(undefined).createFromField).toBe('form');
+		expect(sanitizeSettings({ createFromField: 'now' }).createFromField).toBe(
+			'now',
+		);
+		// Anything else is not a way of creating, so the default answers for it.
+		expect(
+			sanitizeSettings({ createFromField: 'later' }).createFromField,
+		).toBe('form');
+	});
+
 	it('uses an empty canonical path for the current Vault root', () => {
 		expect(DEFAULT_SETTINGS.projectRoot).toBe('');
 		expect(sanitizeSettings(undefined).projectRoot).toBe('');

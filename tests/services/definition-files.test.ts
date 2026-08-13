@@ -9,6 +9,7 @@ import {
   definitionFileTemplate,
   findDefinitionEntry,
   isValidDefinitionSegment,
+  MAX_DEFINITION_DEPTH,
   parseDefinitionFile,
   parseHeadingLink,
   renderHeadingLink,
@@ -104,6 +105,24 @@ describe("appendDefinitionPath", () => {
       code: "heading-taken",
       segment: "Elf",
     });
+  });
+
+  it("refuses a path with more levels than a heading tree can hold", () => {
+    const deep = Array.from(
+      { length: MAX_DEFINITION_DEPTH + 1 },
+      (_, index) => `Level ${index + 1}`,
+    ).join("/");
+    expect(appendDefinitionPath(sample, deep)).toEqual({
+      ok: false,
+      code: "too-deep",
+      segment: deep,
+    });
+    // One level shallower is still a path this file can hold.
+    const allowed = Array.from(
+      { length: MAX_DEFINITION_DEPTH },
+      (_, index) => `Level ${index + 1}`,
+    ).join("/");
+    expect(appendDefinitionPath(sample, allowed).ok).toBe(true);
   });
 
   it("refuses segments that cannot anchor a link", () => {

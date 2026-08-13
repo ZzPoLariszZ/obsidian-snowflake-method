@@ -23,12 +23,14 @@ import {
 	primaryManagedSectionForStep,
 	type CharacterType,
 	type EntityKind,
+	type TimeKind,
 	type StepOneSectionId,
 	type StepId,
 	type StepStatus,
 	type StepStatusMap,
 	type WorldbuildingKind,
 } from '../domain';
+import { MAX_DEFINITION_DEPTH } from '../services';
 import {
 	ConfirmRestoreBaseModal,
 	CreateCharacterModal,
@@ -39,6 +41,8 @@ import {
 	MoveToPositionModal,
 	RepairReportModal,
 	promptForNewCharacter,
+	promptForNewEntity,
+	promptForNewScene,
 	type CharacterOption,
 	type MemberFormContext,
 	type MoveAfterEntry,
@@ -54,8 +58,16 @@ import {
 	type DashboardPane,
 	type DashboardRailCollapse,
 } from './dashboard-state';
-import { buildOptionField, type OptionPicker } from './option-picker';
-import type { DefinitionPathSource } from './entity-form';
+import {
+	buildOptionField,
+	type OptionPicker,
+	type PickerOption,
+} from './option-picker';
+import {
+	ENTITY_GROUP_IDS,
+	type DefinitionPathSource,
+	type EntityGroupId,
+} from './entity-form';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { VirtualTable } from './virtual-table';
@@ -1129,11 +1141,21 @@ export class SnowflakeDashboardView extends ItemView {
 			let paths = [...initial];
 			return {
 				list: () => paths,
-				add: async (path) => {
-					const result = await this.host.addDefinitionPath(kind, id, path);
+				add: async (path, description) => {
+					const result = await this.host.addDefinitionPath(
+						kind,
+						id,
+						path,
+						description,
+					);
 					if (!result.ok) {
-						return result.code === 'heading-taken'
-							? this.t('form.definition.taken', { name: result.segment })
+						if (result.code === 'heading-taken') {
+							return this.t('form.definition.taken', { name: result.segment });
+						}
+						return result.code === 'too-deep'
+							? this.t('form.definition.tooDeep', {
+									count: MAX_DEFINITION_DEPTH,
+								})
 							: this.t('form.definition.invalid', { name: result.segment });
 					}
 					paths = await this.host.listDefinitionPaths(kind, id);
@@ -1141,38 +1163,261 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			};
 		};
-		const entities = WORLDBUILDING_KINDS.flatMap(
-			(kind) => model.worldbuilding[kind],
-		);
+		const named = (
+			entries: readonly { path: string; name: string }[],
+		): PickerOption[] =>
+			entries.map((entry) => ({ value: entry.path, label: entry.name }));
+		// A time note whose kind this release no longer knows is still a time,
+		// and a point is what an unnamed one is: leaving it out of both lists
+		// would put it beyond every picker while its links still stand.
+		const timesOfKind = (timeKind: TimeKind): PickerOption[] =>
+			named(
+				model.worldbuilding.time.filter((entity) =>
+					timeKind === 'point'
+						? entity.timeKind === 'point' || entity.timeKind === null
+						: entity.timeKind === timeKind,
+				),
+			);
+		const groups: Record<EntityGroupId, () => PickerOption[]> = {
+			character: () => named(model.characters),
+			scene: () =>
+				named(
+					model.scenes.map((scene) => ({
+						path: scene.path,
+						name: scene.title,
+					})),
+				),
+			'time-point': () => timesOfKind('point'),
+			'time-period': () => timesOfKind('period'),
+			location: () => named(model.worldbuilding.location),
+			item: () => named(model.worldbuilding.item),
+		};
+		// A stored link carries no file extension, so both sides are keyed
+		// without one: otherwise every reference read back from a note looks
+		// like a note the project has never heard of.
+		const noteKey = (path: string): string => path.replace(/\.md$/u, '');
+		const groupByPath = new Map<string, EntityGroupId>();
+		for (const group of ENTITY_GROUP_IDS) {
+			for (const option of groups[group]()) {
+				groupByPath.set(noteKey(option.value), group);
+			}
+		}
 		const members = [
-			...model.characters.map((character) => ({
-				value: character.path,
-				label: character.name,
-			})),
-			...model.scenes.map((scene) => ({ value: scene.path, label: scene.title })),
-			...entities.map((entity) => ({ value: entity.path, label: entity.name })),
+			...named(model.characters),
+			...named(
+				model.scenes.map((scene) => ({ path: scene.path, name: scene.title })),
+			),
+			...WORLDBUILDING_KINDS.flatMap((kind) =>
+				named(model.worldbuilding[kind]),
+			),
 		];
-		const times = model.worldbuilding.time.map((entity) => ({
-			value: entity.path,
-			label: entity.name,
-		}));
-		const locations = model.worldbuilding.location.map((entity) => ({
-			value: entity.path,
-			label: entity.name,
-		}));
+		const times = named(model.worldbuilding.time);
+		// Notes made while this form has been open. The project behind it was
+		// read before they existed, so without this a note made a moment ago is
+		// one the form cannot say anything about, and its line goes unnamed.
+		const madeHere = new Map<string, EntityGroupId>();
 		return {
 			notice: (message) => {
 				new Notice(message);
 			},
+			entitiesIn: (group) => groups[group](),
+			createIn: async (group, name, options) => {
+				const created = await this.createInGroup(model, group, name, options);
+				if (created !== null) madeHere.set(noteKey(created.value), group);
+				return created;
+			},
+			groupOf: (path) =>
+				groupByPath.get(noteKey(path)) ?? madeHere.get(noteKey(path)) ?? null,
 			members: () => members,
 			times: () => times,
-			locations: () => locations,
 			categories: sourceFor('category', categoryPaths),
 			worldStatusLabels: sourceFor('world-status', worldStatusPaths),
 			relationshipLabels: sourceFor('relationship', relationshipPaths),
 			worldStatusPath: filePaths['world-status'],
 			relationshipPath: filePaths.relationship,
 		};
+	}
+
+	/**
+	 * Makes the note a field asked for. Either the note's own form opens on top
+	 * of the one being filled in, so everything about it is said while it is in
+	 * mind, or the note is made from its name alone and left for later. Which
+	 * one is a setting, because both are how somebody works.
+	 */
+	private async createInGroup(
+		model: ProjectDashboardModel,
+		group: EntityGroupId,
+		rawName: string,
+		options?: { onlyGroup?: boolean },
+	): Promise<PickerOption | null> {
+		const name = rawName.trim();
+		if (name.length === 0) return null;
+		if (this.host.opensFormWhenCreatingFromField()) {
+			return this.createInGroupThroughForm(model, group, name, options);
+		}
+		const find = (path: string): PickerOption => ({ value: path, label: name });
+		try {
+			if (group === 'character') {
+				const created = await this.quickCreateCharacter(name);
+				return created === null ? null : find(created.path);
+			}
+			if (group === 'scene') {
+				const created = await this.host.createScene({
+					title: name,
+					aliases: [],
+					categoryPaths: [],
+					progressStatus: 'not-started',
+					povPath: '',
+					times: [],
+					locations: [],
+					characterPaths: [],
+					conflict: '',
+					worldStatus: [],
+					relationships: [],
+					events: '',
+				});
+				await this.refresh();
+				return find(created.path);
+			}
+			const kind: WorldbuildingKind =
+				group === 'location' ? 'location' : group === 'item' ? 'item' : 'time';
+			const created = await this.host.createEntity({
+				kind,
+				name,
+				aliases: [],
+				categoryPaths: [],
+				progressStatus: 'not-started',
+				description: '',
+				timeKind:
+					group === 'time-point'
+						? 'point'
+						: group === 'time-period'
+							? 'period'
+							: null,
+				timeStart: '',
+				timeEnd: '',
+				worldStatus: [],
+				relationships: [],
+			});
+			await this.refresh();
+			return find(created.path);
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+			return null;
+		}
+	}
+
+	/** A character from its name alone, with every other field left unset. */
+	private async quickCreateCharacter(
+		name: string,
+	): Promise<CharacterOption | null> {
+		try {
+			const created = await this.host.createCharacter({
+				name,
+				aliases: [],
+				categoryPaths: [],
+				progressStatus: 'not-started',
+				oneSentenceStoryline: '',
+				oneParagraphStoryline: '',
+				motivation: '',
+				goal: '',
+				conflict: '',
+				growth: '',
+				worldStatus: [],
+				relationships: [],
+			});
+			await this.refresh();
+			return created;
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * The same form the note would be created through anywhere else, opened on
+	 * top of the one that asked for it and seeded with the name typed there.
+	 * Resolves to null when the author closes it without creating anything.
+	 */
+	private async createInGroupThroughForm(
+		model: ProjectDashboardModel,
+		group: EntityGroupId,
+		name: string,
+		options?: { onlyGroup?: boolean },
+	): Promise<PickerOption | null> {
+		const report = (path: string, label: string): PickerOption => ({
+			value: path,
+			label,
+		});
+		if (group === 'character') {
+			const context = await this.memberFormContext(model, 'character');
+			const created = await promptForNewCharacter(
+				this.app,
+				this.t,
+				model.characters.map((character) => character.name),
+				name,
+				(request) => this.host.createCharacter(request),
+				context,
+			);
+			if (created === null) return null;
+			await this.refresh();
+			return report(created.path, created.name);
+		}
+		if (group === 'scene') {
+			const context = await this.memberFormContext(model, 'scene');
+			const created = await promptForNewScene(
+				this.app,
+				this.t,
+				model.characters.map((character) => ({
+					id: character.id,
+					path: character.path,
+					name: character.name,
+				})),
+				model.scenes.map((scene) => scene.title),
+				name,
+				async (request) => {
+					const scene = await this.host.createScene(request);
+					return report(scene.path, request.title);
+				},
+				context,
+			);
+			if (created === null) return null;
+			await this.refresh();
+			return created;
+		}
+		const kind: WorldbuildingKind =
+			group === 'location' ? 'location' : group === 'item' ? 'item' : 'time';
+		const context = await this.memberFormContext(model, kind);
+		const created = await promptForNewEntity(
+			this.app,
+			this.t,
+			kind,
+			model.worldbuilding[kind].map((entity) => entity.name),
+			context,
+			{
+				name,
+				// The field asked for one kind of time, and the form opens on it.
+				timeKind:
+					group === 'time-point'
+						? 'point'
+						: group === 'time-period'
+							? 'period'
+							: undefined,
+				// A field that takes nothing else holds the answer as well.
+				lockTimeKind: options?.onlyGroup === true,
+			},
+			async (request) => {
+				const entity = await this.host.createEntity(request);
+				return report(entity.path, request.name);
+			},
+		);
+		if (created === null) return null;
+		await this.refresh();
+		return created;
 	}
 
 	private openCreateEntity(
@@ -1217,13 +1462,11 @@ export class SnowflakeDashboardView extends ItemView {
 					name: entity.name,
 					aliases: entity.aliases,
 					categoryPaths: entity.categoryPaths,
-					progressStatus: entity.progressStatus,
+					progressStatus: entity.progressStatus ?? 'not-started',
 					description: entity.description,
 					timeKind: entity.timeKind,
 					timeStart: entity.timeStart,
 					timeEnd: entity.timeEnd,
-					owner:
-						entity.details.find((line) => line.property === 'owner') ?? null,
 					worldStatus: entity.worldStatus,
 					relationships: entity.relationships,
 					expectedRevision: entity.revision,
@@ -2367,7 +2610,11 @@ export class SnowflakeDashboardView extends ItemView {
 			setIcon(warning, 'triangle-alert');
 		}
 		row.createEl('td', {
-			text: this.t(`character.${character.type}Short`),
+			// A character with no role category has nothing to show here.
+			text:
+				character.type === null
+					? ''
+					: this.t(`character.${character.type}Short`),
 			attr: { 'data-label': this.t('table.characterType') },
 		});
 		row.createEl('td', {
@@ -2395,17 +2642,15 @@ export class SnowflakeDashboardView extends ItemView {
 					},
 					{
 						name: character.name,
-						type: character.type,
 						aliases: character.aliases,
 						categoryPaths: character.categoryPaths,
-						progressStatus: character.progressStatus,
+						progressStatus: character.progressStatus ?? 'not-started',
 						oneSentenceStoryline: character.oneSentenceStoryline,
 						oneParagraphStoryline: character.oneParagraphStoryline,
 						motivation: character.motivation,
 						goal: character.goal,
 						conflict: character.conflict,
 						growth: character.growth,
-						age: character.age,
 						worldStatus: character.worldStatus,
 						relationships: character.relationships,
 						expectedRevision: character.revision,
@@ -2984,8 +3229,12 @@ export class SnowflakeDashboardView extends ItemView {
 					memberMatches(
 						[
 							character.name,
-							this.t(`character.${character.type}`),
-							this.t(`character.${character.type}Short`),
+							...(character.type === null
+								? []
+								: [
+										this.t(`character.${character.type}`),
+										this.t(`character.${character.type}Short`),
+									]),
 							character.oneSentenceStoryline,
 						],
 						this.characterQuery,
@@ -3017,8 +3266,8 @@ export class SnowflakeDashboardView extends ItemView {
 						[
 							scene.title,
 							scene.povName,
-							scene.time,
-							scene.location,
+							...scene.times,
+							...scene.locations,
 							scene.conflict,
 							...scene.characterPaths.map(
 								(path) => names.get(path) ?? '',
@@ -3207,12 +3456,18 @@ export class SnowflakeDashboardView extends ItemView {
 		// The taken names come from the scene form rather than from `model`, which
 		// was read before any character created from there existed.
 		return async (name, takenNames) => {
+			// Made from its name alone, with everything else left for later.
+			if (!this.host.opensFormWhenCreatingFromField()) {
+				return this.quickCreateCharacter(name);
+			}
+			const context = await this.memberFormContext(model, 'character');
 			const created = await promptForNewCharacter(
 				this.app,
 				this.t,
 				takenNames,
 				name,
 				(request) => this.host.createCharacter(request),
+				context,
 			);
 			if (created === null) return null;
 			// The field behind the form is waiting on this, so the dashboard redraw
@@ -3246,10 +3501,10 @@ export class SnowflakeDashboardView extends ItemView {
 					title: scene.title,
 					aliases: scene.aliases,
 					categoryPaths: scene.categoryPaths,
-					progressStatus: scene.progressStatus,
+					progressStatus: scene.progressStatus ?? 'not-started',
 					povPath: scene.povPath,
-					time: scene.time,
-					location: scene.location,
+					times: scene.times,
+					locations: scene.locations,
 					characterPaths: scene.characterPaths,
 					conflict: scene.conflict,
 					worldStatus: scene.worldStatus,

@@ -36,6 +36,14 @@ export type DefaultProjectLocale = 'system' | ProjectLocale;
  */
 export type ManuscriptFocusLevel = 'off' | 'on' | 'deep' | 'solo';
 
+/**
+ * What a field does when it is asked for a note the project does not have.
+ * `form` opens the note's own form, so everything about it is said at once;
+ * `now` makes the note from its name alone and leaves the rest for later,
+ * which keeps the author in the form they were already filling in.
+ */
+export type CreateFromFieldMode = 'form' | 'now';
+
 export interface SnowflakeSettings {
 	settingsSchemaVersion: 6;
 	projectRoot: string;
@@ -44,6 +52,8 @@ export interface SnowflakeSettings {
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
+	/** What a picker does when asked for a note that does not exist yet. */
+	createFromField: CreateFromFieldMode;
 	/** Manuscript notes kept loaded on each side of the one being read. */
 	manuscriptWindow: number;
 	showManuscriptPath: boolean;
@@ -66,6 +76,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
+	createFromField: 'form',
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
@@ -85,6 +96,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
+	'createFromField',
 	'manuscriptWindow',
 	'showManuscriptPath',
 	'showManuscriptSequence',
@@ -168,6 +180,9 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.reduceMotion === 'boolean'
 				? raw.reduceMotion
 				: DEFAULT_SETTINGS.reduceMotion,
+		createFromField: isCreateFromFieldMode(raw.createFromField)
+			? raw.createFromField
+			: DEFAULT_SETTINGS.createFromField,
 		manuscriptWindow,
 		showManuscriptPath:
 			typeof raw.showManuscriptPath === 'boolean'
@@ -190,6 +205,12 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		certificateCelebrations,
 		recentManuscriptNotes,
 	};
+}
+
+export function isCreateFromFieldMode(
+	value: unknown,
+): value is CreateFromFieldMode {
+	return value === 'form' || value === 'now';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -316,6 +337,19 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					type: 'toggle',
 					key: 'protectManagedBoundaries',
 					defaultValue: DEFAULT_SETTINGS.protectManagedBoundaries,
+				},
+			},
+			{
+				name: this.t('settings.createFromField.name'),
+				desc: this.t('settings.createFromField.desc'),
+				control: {
+					type: 'dropdown',
+					key: 'createFromField',
+					defaultValue: DEFAULT_SETTINGS.createFromField,
+					options: {
+						form: this.t('settings.createFromField.form'),
+						now: this.t('settings.createFromField.now'),
+					},
 				},
 			},
 			// Under a heading of their own: three settings that mean nothing to an

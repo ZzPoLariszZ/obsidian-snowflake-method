@@ -336,10 +336,8 @@ describe('translation resources', () => {
 		expect(zhCN['table.oneSentenceStoryline']).toBe('一句话故事概述');
 		expect(zhCN['modal.character.oneParagraphStoryline']).toBe('一段式故事梗概');
 		expect(zhCN['modal.character.growth']).toBe('成长');
-		expect(en['modal.character.type']).toBe('Type');
 		expect(en['table.characterType']).toBe('Type');
 		expect(en['table.characterTypeShort']).toBe('Type');
-		expect(zhCN['modal.character.type']).toBe('类型');
 		expect(zhCN['table.characterType']).toBe('类型');
 		expect(zhCN['table.characterTypeShort']).toBe('类型');
 		expect(zhCN['character.major']).toBe('主角');

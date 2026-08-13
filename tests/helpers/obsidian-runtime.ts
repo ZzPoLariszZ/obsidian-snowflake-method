@@ -54,3 +54,4 @@ export const editorLivePreviewField = StateField.define<boolean>({
 	update: (value) => value,
 });
 export function setIcon(..._arguments: unknown[]): void {}
+export function setTooltip(..._arguments: unknown[]): void {}

@@ -67,7 +67,7 @@ export type ProgressStatus = (typeof PROGRESS_STATUSES)[number];
 
 export const DEFAULT_PROGRESS_STATUS: ProgressStatus = 'not-started';
 
-export const TIME_KINDS = ['point', 'period', 'event'] as const;
+export const TIME_KINDS = ['point', 'period'] as const;
 
 export type TimeKind = (typeof TIME_KINDS)[number];
 

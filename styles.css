@@ -2956,18 +2956,19 @@
 	padding-top: 0;
 }
 
+/* A row each, both the full width of the form: the name keeps the line under
+   it for the objection when a name is already taken, and the aliases field
+   grows down as tags wrap. */
 .snowflake-method-character-name-setting,
-.snowflake-method-character-type-setting {
+.snowflake-method-character-aliases-setting {
 	align-self: start;
-	grid-row: 1;
+	grid-column: 1 / -1;
 }
 
-.snowflake-method-character-name-setting {
-	grid-column: 1;
-}
-
-.snowflake-method-character-type-setting {
-	grid-column: 2;
+/* The category is a row of its own: its tags wrap, and it carries the line
+   explaining that a category can have levels. */
+.snowflake-method-character-category-setting {
+	grid-column: 1 / -1;
 }
 
 .snowflake-method-character-form
@@ -3008,19 +3009,9 @@
 	box-sizing: border-box;
 }
 
-.snowflake-method-character-name-setting input,
-.snowflake-method-character-type-setting select {
+.snowflake-method-character-name-setting input {
 	height: var(--input-height);
 	min-height: var(--input-height);
-}
-
-.modal.snowflake-method-character-modal
-	.modal-content.snowflake-method-character-form
-	.snowflake-method-character-type-setting
-	select {
-	width: 100%;
-	min-width: 13rem;
-	text-overflow: ellipsis;
 }
 
 .snowflake-method-character-form textarea {
@@ -3053,6 +3044,97 @@
 	margin-top: 0;
 }
 
+/* Every entity row spans the form. A time note is the exception twice over:
+   its type rides beside the name, in a column no wider than the status it
+   lines up with, and its two ends share one row. */
+.snowflake-method-entity-form > .snowflake-method-character-setting {
+	grid-column: 1 / -1;
+}
+
+.snowflake-method-entity-form-timed {
+	grid-template-columns: minmax(0, 1fr) var(--snowflake-form-aside);
+}
+
+.snowflake-method-entity-form-timed
+	> .snowflake-method-character-name-setting {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.snowflake-method-entity-form-timed > .snowflake-method-entity-kind-setting {
+	align-self: start;
+	grid-column: 2;
+	grid-row: 1;
+}
+
+/* The type fills the column, so its right edge lands under the progress status
+   the column was sized to and its left edge under nothing but itself. Left to
+   itself a dropdown is as wide as the words in it, which moves the field every
+   time the answer changes. */
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-entity-form-timed
+	> .snowflake-method-entity-kind-setting
+	select.dropdown {
+	width: 100%;
+	min-width: 0;
+	height: var(--input-height);
+}
+
+.snowflake-method-entity-form > .snowflake-method-entity-span-row {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--size-4-4);
+}
+
+/* The rows inside that pair are laid out like every other row of the form,
+   which the form's own rule cannot reach past the wrapper. */
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-character-form
+	> .snowflake-method-entity-span-row
+	> .snowflake-method-character-setting {
+	display: flex;
+	align-items: stretch;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-entity-span-row
+	> .snowflake-method-character-setting
+	> .setting-item-info {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-height: 1.5rem;
+	margin: 0;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-entity-span-row
+	> .snowflake-method-character-setting
+	.setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-entity-span-row
+	> .snowflake-method-character-setting
+	> .setting-item-control {
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+	width: 100%;
+	min-height: var(--input-height);
+}
+
 .snowflake-method-scene-form {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3081,6 +3163,8 @@
 	padding-top: 0;
 }
 
+/* The name keeps the point of view beside it, since a scene is named by both;
+   every other row is the full width, the way the character form reads. */
 .snowflake-method-scene-name-setting,
 .snowflake-method-scene-pov-setting {
 	align-self: start;
@@ -3095,6 +3179,8 @@
 	grid-column: 3;
 }
 
+.snowflake-method-scene-aliases-setting,
+.snowflake-method-scene-category-setting,
 .snowflake-method-scene-time-setting,
 .snowflake-method-scene-location-setting,
 .snowflake-method-scene-characters-setting {
@@ -3285,9 +3371,12 @@
 }
 
 /* The row that creates what the project does not have yet reads as an action
-   rather than one more name to choose from. */
+   rather than one more name to choose from -- in the list under a field, and
+   in the dialog that asks which note a record points at, which offers exactly
+   the same row and should not look like a different offer. */
 .suggestion-container.snowflake-method-option-picker-suggestions
-	.snowflake-method-option-picker-create {
+	.snowflake-method-option-picker-create,
+.snowflake-method-option-picker-create {
 	color: var(--text-accent);
 	font-style: italic;
 }
@@ -3347,18 +3436,13 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 
-	.snowflake-method-character-type-setting,
 	.snowflake-method-scene-name-setting,
 	.snowflake-method-scene-pov-setting,
 	.snowflake-method-scene-time-setting,
 	.snowflake-method-scene-location-setting,
 	.snowflake-method-scene-characters-setting {
-		grid-column: 1;
+		grid-column: 1 / -1;
 		grid-row: auto;
-	}
-
-	.snowflake-method-character-type-setting select {
-		min-width: 0;
 	}
 
 }
@@ -4705,105 +4789,221 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	text-align: center;
 }
 
-/* == Member form: chips and record editors =============================== */
-
-.snowflake-method-chip-field {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--size-2-2);
-	width: 100%;
-	padding: var(--size-2-2) var(--size-2-3);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--input-radius);
-	background: var(--background-primary);
-}
-
-.snowflake-method-chip-list {
-	display: contents;
-}
-
-.snowflake-method-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--size-2-1);
-	padding: 0 var(--size-2-2);
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
-	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-chip-remove {
-	background: none;
-	border: none;
-	box-shadow: none;
-	padding: 0;
-	color: var(--text-faint);
-	cursor: pointer;
-	line-height: 1;
-}
-
-.snowflake-method-chip-remove:hover {
-	color: var(--text-normal);
-}
-
-.snowflake-method-chip-input {
-	flex: 1 1 8em;
-	min-width: 6em;
-	border: none;
-	box-shadow: none;
-	background: transparent;
-	padding: 0;
-}
-
-.snowflake-method-chip-input:focus {
-	outline: none;
-	box-shadow: none;
-}
-
-/* Record editors sit below the form's grid, full width: a titled block with
-   one row per record, the clause inputs in the grammar's own order. */
+/* Record editors sit below the form's grid, the full width of it: a titled
+   block, one card per record. */
 .snowflake-method-record-editors {
+	grid-column: 1 / -1;
+	/* A fixed handle, so every card's fields begin at the same place. */
+	--snowflake-record-handle: 1.25rem;
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-3);
 	margin-block-start: var(--size-4-4);
-	padding-block-start: var(--size-4-3);
-	border-block-start: 1px solid var(--background-modifier-border);
-}
-
-.snowflake-method-record-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--size-4-2);
-	margin-block-end: var(--size-2-3);
 }
 
 .snowflake-method-record-title {
+	margin-block-end: var(--size-2-3);
 	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
 
-.snowflake-method-record-rows {
+/* Under the cards, where the next record will appear, and quiet the way the
+   add row under a table is quiet. */
+.snowflake-method-record-body button.snowflake-method-record-more,
+.snowflake-method-record-editor button.snowflake-method-record-add {
 	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-3);
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	margin-block-start: var(--size-2-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: inherit;
+	cursor: pointer;
 }
 
-.snowflake-method-record-row {
+.snowflake-method-record-body button.snowflake-method-record-more:hover,
+.snowflake-method-record-editor button.snowflake-method-record-add:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-record-cards {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
+
+/* One card per record: what it is filed under, what it says, and every note
+   it points at, all inside one frame so a record reads as one thing. */
+/* Three columns: the handle that moves the record, the fields that are the
+   record, and the way to be rid of it -- the two controls balanced on either
+   side and centred against the fields between them. */
+.snowflake-method-record-card {
+	display: flex;
+	/* The handle and the trash ride the first field, not the middle of a card
+	   that grows taller with every reference added to it. */
+	align-items: flex-start;
+	gap: var(--size-2-2);
+	width: 100%;
+	padding: var(--size-4-3) var(--size-2-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-record-card.is-dragging {
+	opacity: 0.5;
+}
+
+.snowflake-method-record-card.is-drop-target {
+	border-color: var(--interactive-accent);
+}
+
+.snowflake-method-record-drag {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 var(--snowflake-record-handle);
+	width: var(--snowflake-record-handle);
+	height: var(--input-height);
+	color: var(--text-faint);
+	cursor: grab;
+}
+
+.snowflake-method-record-drag:hover {
+	color: var(--text-muted);
+}
+
+.snowflake-method-record-card.is-dragging .snowflake-method-record-drag {
+	cursor: grabbing;
+}
+
+.snowflake-method-record-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-2-3);
+	min-width: 0;
+}
+
+.snowflake-method-record-body input.snowflake-method-record-value {
+	width: 100%;
+}
+
+/* The chooser wears the picker's frame, so a record's fields all read as the
+   same kind of control. */
+.snowflake-method-record-pick .snowflake-method-option-picker-field {
+	cursor: pointer;
+}
+
+.snowflake-method-record-pick-placeholder {
+	flex: 1 1 auto;
+	padding: var(--size-4-1) 0;
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+}
+
+/* Destructive, in the same red the tables give their delete. */
+.snowflake-method-record-card-close.clickable-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	height: var(--input-height);
+	color: var(--text-error);
+}
+
+.snowflake-method-record-card-close.clickable-icon:hover {
+	background: var(--background-modifier-error-hover);
+	color: var(--text-error);
+}
+
+.snowflake-method-record-card-close.clickable-icon:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-record-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-record-field-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-record-field-body input[type='text'] {
+	width: 100%;
+}
+
+/* One line per note the record points at: what kind it is, which one, and a
+   way to take it off again. */
+.snowflake-method-record-lines {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-record-line {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	/* Indented to where a field's own text begins, and ending where a field's
+	   chevron does, so the lines and the fields above them read down both
+	   edges. */
+	padding: var(--size-2-1) calc(var(--size-4-1) + var(--input-border-width) - 1px)
+		var(--size-2-1) var(--size-4-2);
+	font-family: inherit;
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-record-line-label {
+	flex: 0 0 auto;
+	min-width: 7em;
+	color: var(--text-muted);
+}
+
+.snowflake-method-record-line-value {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+}
+
+.snowflake-method-record-line-remove.clickable-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* The same box the picker's chevron ends up with, so the two sit on one
+	   vertical line down the right of the card. */
+	flex: 0 0 var(--input-height);
+	width: var(--input-height);
+	padding: 0;
+	color: var(--text-faint);
+}
+
+.snowflake-method-record-line-remove.clickable-icon:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-details-row {
 	display: grid;
-	grid-template-columns: minmax(7em, 1.2fr) repeat(5, minmax(5em, 1fr)) auto;
+	grid-template-columns: repeat(4, minmax(6em, 1fr));
 	gap: var(--size-2-2);
 	align-items: center;
 }
 
-.snowflake-method-details-row {
-	grid-template-columns: repeat(4, minmax(6em, 1fr));
-}
-
-.snowflake-method-record-row .snowflake-method-term-input input,
-.snowflake-method-record-row input {
+.snowflake-method-details-row .snowflake-method-term-input input,
+.snowflake-method-details-row input {
 	width: 100%;
 	min-width: 0;
 }
@@ -4821,9 +5021,204 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	color: var(--text-normal);
 }
 
-/* Narrow modals stack a record's clauses instead of squeezing seven columns. */
+/* Narrow modals stack a details row instead of squeezing four columns. */
 @media (max-width: 700px) {
-	.snowflake-method-record-row {
+	.snowflake-method-details-row {
 		grid-template-columns: 1fr 1fr;
 	}
+}
+
+/* One width for everything that rides on the right of a form: the status in
+   the title row, and any field that lines up under it. */
+.modal.snowflake-method-form-modal {
+	--snowflake-form-aside: 8rem;
+}
+
+/* A form's title row, with room on the right for the controls that belong to
+   the whole form rather than to any one field -- and room beyond them for the
+   close button Obsidian pins to the corner. */
+.snowflake-method-form-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	/* Below the close button rather than beside it, so the control on the right
+	   ends where the form's fields end instead of stopping short of a corner
+	   Obsidian owns. */
+	margin-top: var(--size-4-6);
+}
+
+.snowflake-method-form-title-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	flex: 0 0 auto;
+}
+
+/* The status is the width every other control on the right of a form lines up
+   with, so it is a width rather than whatever its longest label happens to
+   measure -- which is not the same number in two languages. */
+.snowflake-method-form-title-controls .snowflake-method-status-select {
+	width: var(--snowflake-form-aside);
+	font-size: var(--font-ui-small);
+}
+
+/* Obsidian pins the close a few pixels inside the corner, which leaves it
+   short of the edge every field in the form ends on. The inset differs by one
+   scrollbar between a form long enough to scroll and one that is not, and the
+   close is placed against the modal rather than against the fields. */
+.modal.snowflake-method-form-modal .modal-header-button,
+.modal.snowflake-method-form-modal .modal-close-button {
+	right: var(--snowflake-close-inset, 1px);
+}
+
+.modal.snowflake-method-category-modal {
+	--snowflake-close-inset: 16px;
+}
+
+/* Naming a new category: what it will be called, and what it is for. */
+.snowflake-method-category-modal {
+	width: min(30rem, calc(100vw - 2rem));
+}
+
+.snowflake-method-category-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-4);
+	padding-top: var(--size-4-3);
+}
+
+/* The same row every member form is built from: the label above the field it
+   names, both spanning the dialog. */
+.modal.snowflake-method-category-modal
+	.modal-content.snowflake-method-category-form
+	> .snowflake-method-category-setting {
+	display: flex;
+	align-items: stretch;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+/* The label sits above its field, and an explanation below the label rather
+   than beside it, which would squeeze both into halves of one line. */
+.snowflake-method-category-form
+	> .snowflake-method-category-setting
+	> .setting-item-info {
+	display: block;
+	flex: 0 0 auto;
+	min-height: 0;
+	margin: 0;
+}
+
+.snowflake-method-category-form
+	> .snowflake-method-category-setting
+	.setting-item-description {
+	margin-top: var(--size-2-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	white-space: pre-line;
+}
+
+.snowflake-method-category-form
+	> .snowflake-method-category-setting
+	input[type='text'] {
+	width: 100%;
+	max-width: none;
+}
+
+.snowflake-method-category-form
+	> .snowflake-method-category-setting
+	.setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-category-form
+	> .snowflake-method-category-setting
+	> .setting-item-control {
+	display: flex;
+	align-items: stretch;
+	justify-content: stretch;
+	width: 100%;
+	min-height: var(--input-height);
+}
+
+.snowflake-method-category-levels {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-category-level {
+	padding: 0 var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-category-level-separator {
+	color: var(--text-faint);
+}
+
+.snowflake-method-category-description {
+	display: block;
+}
+
+.snowflake-method-category-description .setting-item-control {
+	width: 100%;
+}
+
+.snowflake-method-category-description textarea {
+	width: 100%;
+	min-height: 5rem;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+/* The category row explains itself, so its label and that explanation stack
+   rather than sharing the single line every other row's label sits on. */
+.snowflake-method-character-form
+	> .snowflake-method-character-category-setting
+	> .setting-item-info {
+	display: block;
+	min-height: 0;
+}
+
+.snowflake-method-character-form
+	> .snowflake-method-character-category-setting
+	.setting-item-description {
+	margin-top: var(--size-2-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	/* The copy chooses where its own line breaks, so a long explanation
+	   breaks where it reads best rather than wherever the field ends. */
+	white-space: pre-line;
+}
+
+/* The scene's category explains itself too, and this has to come after the
+   rule that lays every other scene label on one line with its control. */
+.snowflake-method-scene-form
+	> .snowflake-method-scene-category-setting
+	> .setting-item-info {
+	display: block;
+	min-height: 0;
+}
+
+.snowflake-method-scene-form
+	> .snowflake-method-scene-category-setting
+	.setting-item-description {
+	margin-top: var(--size-2-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	white-space: pre-line;
 }

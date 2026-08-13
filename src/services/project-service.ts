@@ -105,6 +105,8 @@ import {
   parseRecordSectionLenient,
   parseTerm,
   renderTerm,
+  type RecordTerm,
+  type SpanLookup,
   entityTemplate,
   recordSectionHeading,
   recordSectionHeadings,
@@ -1381,8 +1383,11 @@ export class SnowflakeProjectService {
       project.characters.map((candidate) => candidate.name),
       name,
     );
-    const resolvedType = input.type ?? "major";
-    if (!isCharacterType(resolvedType)) {
+    // A role is one category among the others now, so it is written only when
+    // a caller names one. Defaulting here would hand every new character a
+    // role nobody chose, and overwrite the one the category picker did.
+    const resolvedType = input.type;
+    if (resolvedType !== undefined && !isCharacterType(resolvedType)) {
       throw new Error(`Unsupported character type: ${String(resolvedType)}`);
     }
 
@@ -1399,12 +1404,20 @@ export class SnowflakeProjectService {
     );
     // Born migrated: the role is a category link from the first write, and
     // the legacy type key never appears on a new note.
-    const categories = replacedRoleCategories(
-      project.locale,
-      categoryLinksFromPaths(project, "character", input.categoryPaths ?? []),
-      resolvedType,
-      categoryDefinitionPath(project, "character"),
+    const pickedCategories = categoryLinksFromPaths(
+      project,
+      "character",
+      input.categoryPaths ?? [],
     );
+    const categories =
+      resolvedType === undefined
+        ? pickedCategories
+        : replacedRoleCategories(
+            project.locale,
+            pickedCategories,
+            resolvedType,
+            categoryDefinitionPath(project, "character"),
+          );
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
@@ -1415,7 +1428,7 @@ export class SnowflakeProjectService {
         fieldsBlock: renderCharacterFieldsBlock(
           project.locale,
           characterFieldsView(project.locale, {
-            type: resolvedType,
+            type: resolvedType ?? null,
             progressStatus: input.progressStatus ?? null,
             aliases,
             categories,
@@ -1452,14 +1465,12 @@ export class SnowflakeProjectService {
     const createdRecords = entityRecordSectionValues(
       project.locale,
       {
-        details:
-          input.age === undefined || input.age === null
-            ? []
-            : [{ ...input.age, property: "age" as const }],
+        details: [],
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
       { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      projectTimeSpans(project),
     );
     if (Object.keys(createdRecords).length > 0) {
       await this.repository.upsertSections(
@@ -1553,17 +1564,24 @@ export class SnowflakeProjectService {
     // A role change lands where the role lives: as the category link on a
     // migrated note, under the legacy key on one the migration has not
     // reached. Writing the legacy key back onto a migrated note would flip it
-    // to unmigrated again. When the category picker speaks it owns the whole
-    // list, and the role link always rides along.
-    const nextType = patch.type ?? character.type;
+    // to unmigrated again. The category picker owns the whole list, so what it
+    // sends is what the note gets, role category included or left out.
     let nextCategories = character.categories;
     if (patch.categoryPaths !== undefined) {
-      nextCategories = replacedRoleCategories(
-        project.locale,
-        categoryLinksFromPaths(project, "character", patch.categoryPaths),
-        nextType,
-        categoryDefinitionPath(project, "character"),
+      const picked = categoryLinksFromPaths(
+        project,
+        "character",
+        patch.categoryPaths,
       );
+      nextCategories =
+        patch.type === undefined
+          ? picked
+          : replacedRoleCategories(
+              project.locale,
+              picked,
+              patch.type,
+              categoryDefinitionPath(project, "character"),
+            );
       frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
     } else if (patch.type !== undefined) {
       if (character.categories.length > 0) {
@@ -1600,29 +1618,29 @@ export class SnowflakeProjectService {
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.growth, patch.growth);
 
     const nextRecords = {
-      details:
-        patch.age === undefined
-          ? character.details
-          : replacedAgeDetails(character.details, patch.age),
+      details: character.details,
       worldStatus: patch.worldStatus ?? character.worldStatus,
       relationships: patch.relationships ?? character.relationships,
     };
+    const spans = projectTimeSpans(project);
     const nextRecordValues = entityRecordSectionValues(
       project.locale,
       nextRecords,
       character,
+      spans,
     );
     const originalRecordValues = entityRecordSectionValues(
       project.locale,
       character,
       character,
+      spans,
     );
     const sectionValues: Record<string, string> = {
       "character-fields": renderCharacterFieldsBlock(
         project.locale,
         characterFieldsView(project.locale, {
           ...character,
-          type: nextType,
+          type: characterRoleFromCategories(nextCategories) ?? character.type,
           progressStatus: nextProgressStatus,
           aliases: nextAliases,
           categories: nextCategories,
@@ -2005,8 +2023,8 @@ export class SnowflakeProjectService {
             aliases: sceneAliases,
             categories: sceneCategories,
             povPath: povValue ?? null,
-            time: input.time ?? "",
-            location: input.location ?? "",
+            times: input.times ?? [],
+            locations: input.locations ?? [],
             conflict: input.conflict ?? "",
             characters: input.characters ?? [],
           },
@@ -2025,8 +2043,8 @@ export class SnowflakeProjectService {
             ? povValue
             : characterLink(povValue)
           : "",
-        [FRONTMATTER_KEYS.sceneTime]: input.time ?? "",
-        [FRONTMATTER_KEYS.sceneLocation]: input.location ?? "",
+        [FRONTMATTER_KEYS.sceneTime]: input.times ?? [],
+        [FRONTMATTER_KEYS.sceneLocation]: input.locations ?? [],
         [FRONTMATTER_KEYS.sceneCharacters]: (input.characters ?? []).map(characterLink),
         [FRONTMATTER_KEYS.conflict]: input.conflict ?? "",
         ...(sceneAliases.length > 0 ? { [ALIASES_KEY]: sceneAliases } : {}),
@@ -2046,6 +2064,7 @@ export class SnowflakeProjectService {
         relationships: input.relationships ?? [],
       },
       { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      projectTimeSpans(project),
     );
     if (Object.keys(createdRecords).length > 0) {
       await this.repository.upsertSections(
@@ -2248,8 +2267,12 @@ export class SnowflakeProjectService {
           : characterLink(patch.povPath)
         : "";
     }
-    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.sceneTime, patch.time);
-    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.sceneLocation, patch.location);
+    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.sceneTime, patch.times);
+    copyDefined(
+      frontmatterPatch,
+      FRONTMATTER_KEYS.sceneLocation,
+      patch.locations,
+    );
     if (patch.characters !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.sceneCharacters] = patch.characters.map(characterLink);
     }
@@ -2280,8 +2303,8 @@ export class SnowflakeProjectService {
       aliases: nextAliases,
       categories: nextCategories,
       povPath: patch.povPath !== undefined ? patch.povPath || null : scene.povPath,
-      time: patch.time ?? scene.time,
-      location: patch.location ?? scene.location,
+      times: patch.times ?? scene.times,
+      locations: patch.locations ?? scene.locations,
       conflict: patch.conflict ?? scene.conflict,
       characters: patch.characters ?? scene.characters,
     };
@@ -2295,15 +2318,18 @@ export class SnowflakeProjectService {
       worldStatusUnrecognized: scene.worldStatusUnrecognized,
       relationshipsUnrecognized: scene.relationshipsUnrecognized,
     };
+    const spans = projectTimeSpans(project);
     const nextRecordValues = entityRecordSectionValues(
       project.locale,
       nextRecords,
       sceneUnrecognized,
+      spans,
     );
     const originalRecordValues = entityRecordSectionValues(
       project.locale,
       { details: [], worldStatus: scene.worldStatus, relationships: scene.relationships },
       sceneUnrecognized,
+      spans,
     );
     const sectionValues: Record<string, string> = {
       "scene-fields": sceneFieldsBlock(project.locale, nextFields, characterNames),
@@ -2370,9 +2396,16 @@ export class SnowflakeProjectService {
   async migrateMemberNotes(
     projectLocator: ProjectLocator,
   ): Promise<{ migrated: number; skipped: number }> {
-    const project = await this.loadProject(projectLocator);
-    this.assertProjectWritable(project);
-    await this.ensureWorldbuildingTree(project);
+    const loaded = await this.loadProject(projectLocator);
+    this.assertProjectWritable(loaded);
+    await this.ensureWorldbuildingTree(loaded);
+    // Notes made here join the project, so everything after this reads a
+    // project that has them: the callouts refreshed below are refreshed with
+    // the links, not with the words they replaced.
+    const project =
+      (await this.adoptSceneNoteFields(loaded)) > 0
+        ? await this.loadProject(projectLocator)
+        : loaded;
     // The system templates carry the schema stamp too, and they are canonical
     // plugin files: bringing them current here is the same write the health
     // pane's repair performs, folded in so one migration leaves nothing
@@ -2407,7 +2440,10 @@ export class SnowflakeProjectService {
         // then leaves either yesterday's note or one every reader already
         // resolves the same way, never a note claiming two roles.
         const record = await this.repository.readManaged(character.path);
+        // Nothing to move when the role already reads as a category, or when
+        // the note never named one.
         const migratedCategories =
+          character.type === null ||
           characterRoleFromCategories(character.categories) !== null
             ? character.categories
             : replacedRoleCategories(
@@ -2501,6 +2537,7 @@ export class SnowflakeProjectService {
       }
       try {
         await this.reconcileMemberFieldsBlock(project, member.path);
+        await this.reconcileRecordSections(project, member);
       } catch (error) {
         if (!(error instanceof UnsafeSectionError)) throw error;
       }
@@ -2513,6 +2550,205 @@ export class SnowflakeProjectService {
     }
 
     return { migrated, skipped };
+  }
+
+  /**
+   * Brings a note's record sections back in step with the codec. The plugin is
+   * their only writer, so what it would write now is what they should hold,
+   * and re-emitting them is how lines written by an older release pick up what
+   * the grammar says today.
+   *
+   * Written only where the two differ: a migration reads every note in the
+   * project, and one that also touched every note would be a migration nobody
+   * could tell from a rewrite.
+   */
+  private async reconcileRecordSections(
+    project: ProjectSnapshot,
+    member: CharacterRecord | SceneRecord | WorldbuildingRecord,
+  ): Promise<void> {
+    const values = entityRecordSectionValues(
+      project.locale,
+      {
+        details: "details" in member ? member.details : [],
+        worldStatus: member.worldStatus,
+        relationships: member.relationships,
+      },
+      {
+        detailsUnrecognized:
+          "detailsUnrecognized" in member ? member.detailsUnrecognized : [],
+        worldStatusUnrecognized: member.worldStatusUnrecognized,
+        relationshipsUnrecognized: member.relationshipsUnrecognized,
+      },
+      projectTimeSpans(project),
+    );
+    if (Object.keys(values).length === 0) return;
+    const record = await this.repository.readManaged(member.path);
+    const stale: Record<string, string> = {};
+    for (const [sectionId, value] of Object.entries(values)) {
+      const current = readMarkedSection(record.content, sectionId);
+      // A section that is not there is not this pass's business: records are
+      // upserted when a note first has one, never conjured by a refresh.
+      if (current === null || current.trim() === value.trim()) continue;
+      stale[sectionId] = value;
+    }
+    if (Object.keys(stale).length === 0) return;
+    await this.repository.updateSections(member.path, stale);
+  }
+
+  /**
+   * Gives a scene's time and place the notes they were always naming, and
+   * every link that names a note the name it is read out by.
+   *
+   * Before either field named a note a scene wrote it as a line of words, and
+   * those words are the name of the note the author would have made: so one
+   * is made, once per distinct wording, and the scene points at it. Links the
+   * scene already holds are re-emitted rather than left alone, which is what
+   * gives the ones written before display names a name to show. A period's
+   * two ends are re-emitted for the same reason.
+   *
+   * Reports how many notes changed, so the caller knows whether the project
+   * it holds is still the project on disk.
+   */
+  private async adoptSceneNoteFields(project: ProjectSnapshot): Promise<number> {
+    const fields = [
+      {
+        key: FRONTMATTER_KEYS.sceneTime,
+        kind: "time" as const,
+        stored: (scene: SceneRecord): readonly string[] => scene.times,
+      },
+      {
+        key: FRONTMATTER_KEYS.sceneLocation,
+        kind: "location" as const,
+        stored: (scene: SceneRecord): readonly string[] => scene.locations,
+      },
+    ];
+    // One note per wording, however many scenes wrote it: two scenes on the
+    // same evening are in the same evening.
+    const known = new Map<string, string>();
+    const ranks = new Map<WorldbuildingKind, number>();
+    for (const { kind } of fields) {
+      const entities = project.worldbuilding[kind];
+      for (const entity of entities) {
+        known.set(`${kind} ${foldName(entity.name)}`, entity.path);
+      }
+      const last = entities[entities.length - 1];
+      ranks.set(kind, last === undefined ? 0 : last.rank);
+    }
+    let changed = 0;
+    for (const scene of project.scenes) {
+      if (scene.readOnly) continue;
+      const patch: ManagedFrontmatter = {};
+      for (const field of fields) {
+        const stored = field.stored(scene);
+        const adopted: string[] = [];
+        let differs = false;
+        for (const raw of stored) {
+          const value = raw.trim();
+          if (value.length === 0) {
+            differs = true;
+            continue;
+          }
+          const term = parseTerm(value);
+          if (term.kind === "link") {
+            const link = renderTerm(term);
+            if (link !== value) differs = true;
+            adopted.push(link);
+            continue;
+          }
+          const key = `${field.kind} ${foldName(term.text)}`;
+          let path = known.get(key);
+          if (path === undefined) {
+            const rank = (ranks.get(field.kind) ?? 0) + RANK_GAP;
+            path = await this.createAdoptedEntity(
+              project,
+              field.kind,
+              term.text,
+              rank,
+            );
+            ranks.set(field.kind, rank);
+            known.set(key, path);
+          }
+          adopted.push(renderTerm({ kind: "link", path, name: term.text }));
+          differs = true;
+        }
+        if (differs) patch[field.key] = adopted;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      await this.repository.updateFrontmatter(scene.path, patch);
+      changed += 1;
+    }
+    // A period's ends are links too, and were written before links carried the
+    // name they are read out by.
+    for (const entity of project.worldbuilding.time) {
+      if (entity.readOnly) continue;
+      const patch: ManagedFrontmatter = {};
+      const spans = [
+        { key: FRONTMATTER_KEYS.timeStart, stored: entity.timeStart },
+        { key: FRONTMATTER_KEYS.timeEnd, stored: entity.timeEnd },
+      ];
+      for (const span of spans) {
+        const value = span.stored.trim();
+        if (value.length === 0) continue;
+        const term = parseTerm(value);
+        if (term.kind !== "link") continue;
+        const link = renderTerm(term);
+        if (link !== value) patch[span.key] = link;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      await this.repository.updateFrontmatter(entity.path, patch);
+      changed += 1;
+    }
+    return changed;
+  }
+
+  /**
+   * The note a scene's words were naming, from the words alone. Every other
+   * field is left unset: the migration moves what an author wrote, and has
+   * nothing of its own to say about a place or a moment.
+   */
+  private async createAdoptedEntity(
+    project: ProjectSnapshot,
+    kind: WorldbuildingKind,
+    name: string,
+    rank: number,
+  ): Promise<string> {
+    // A moment is what a scene's own time is, so an adopted time is a point.
+    const timeKind: TimeKind | null = kind === "time" ? "point" : null;
+    const view = entityFieldsViewOf(kind, {
+      progressStatus: null,
+      aliases: [],
+      categories: [],
+      description: "",
+      timeKind,
+      timeStart: "",
+      timeEnd: "",
+    });
+    const folder = normalizePath(
+      worldbuildingKindFolder(project.rootPath, project.locale, kind),
+    );
+    const created = await this.repository.createManagedFile({
+      path: normalizePath(`${folder}/${safeFileName(name)}.md`),
+      uniqueOnConflict: true,
+      template: entityTemplate(name, kind, project.locale, {
+        fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
+      }),
+      frontmatter: {
+        ...commonFrontmatter("worldbuilding", project.id),
+        [FRONTMATTER_KEYS.entityId]: createStableId("entity"),
+        [FRONTMATTER_KEYS.worldbuildingKind]: kind,
+        [FRONTMATTER_KEYS.name]: name,
+        [FRONTMATTER_KEYS.rank]: rank,
+        [FRONTMATTER_KEYS.description]: "",
+        ...(timeKind === null
+          ? {}
+          : {
+              [FRONTMATTER_KEYS.timeKind]: timeKind,
+              [FRONTMATTER_KEYS.timeStart]: "",
+              [FRONTMATTER_KEYS.timeEnd]: "",
+            }),
+      },
+    });
+    return created.path;
   }
 
   /**
@@ -2542,6 +2778,7 @@ export class SnowflakeProjectService {
     kind: EntityKind,
     id: DefinitionFileId,
     path: string,
+    description = "",
   ): Promise<AppendPathResult> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
@@ -2550,7 +2787,7 @@ export class SnowflakeProjectService {
     await this.repository.updatePlainFile(
       definitionFilePath(project, kind, id),
       (current) => {
-        outcome = appendDefinitionPath(current, path);
+        outcome = appendDefinitionPath(current, path, description);
         return outcome.ok ? outcome.content : current;
       },
     );
@@ -2805,6 +3042,7 @@ export class SnowflakeProjectService {
         relationships: input.relationships ?? [],
       },
       { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      projectTimeSpans(project),
     );
     if (Object.keys(recordValues).length > 0) {
       await this.repository.upsertSections(
@@ -2903,15 +3141,18 @@ export class SnowflakeProjectService {
       worldStatus: patch.worldStatus ?? entity.worldStatus,
       relationships: patch.relationships ?? entity.relationships,
     };
+    const spans = projectTimeSpans(project);
     const nextRecordValues = entityRecordSectionValues(
       project.locale,
       nextRecords,
       entity,
+      spans,
     );
     const originalRecordValues = entityRecordSectionValues(
       project.locale,
       entity,
       entity,
+      spans,
     );
     const sectionValues: Record<string, string> = {
       "entity-fields": renderEntityFieldsBlock(
@@ -4057,11 +4298,13 @@ export class SnowflakeProjectService {
           datedLinks += this.extensionTidyPatch(record)?.links ?? 0;
         }
 
+        // A role is a category like any other, so having none is a choice, not
+        // damage. What a character must have is its identity: a unique id and
+        // a name.
         const typeSpecificValid =
           documentType === "character"
             ? stableIdIsUnique &&
-              asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) !== null &&
-              characterHasStoredRole(record.frontmatter)
+              asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) !== null
             : stableIdIsUnique &&
               asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) !== null &&
               typeof record.frontmatter[FRONTMATTER_KEYS.rank] === "number";
@@ -4318,9 +4561,12 @@ export class SnowflakeProjectService {
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) ?? fileStem(record.path),
       rank: rank ?? RANK_GAP,
       hasStoredRank: rank !== null,
+      // The role is whichever category names one, or the legacy key on a note
+      // the migration has not reached. A character with neither has no role,
+      // which is now an ordinary thing to be.
       type:
         characterRoleFromCategories(record.frontmatter[FRONTMATTER_KEYS.category]) ??
-        (isCharacterType(characterTypeValue) ? characterTypeValue : "supporting"),
+        (isCharacterType(characterTypeValue) ? characterTypeValue : null),
       progressStatus: isProgressStatus(progressStatusValue) ? progressStatusValue : null,
       aliases: readStringList(record.frontmatter[ALIASES_KEY]),
       categories: readStringList(record.frontmatter[FRONTMATTER_KEYS.category]),
@@ -4371,8 +4617,12 @@ export class SnowflakeProjectService {
         storedPov === null || isScenePovMode(storedPov)
           ? storedPov
           : this.projectLinkedPath(storedPov, record.path, root),
-      time: asString(record.frontmatter[FRONTMATTER_KEYS.sceneTime]),
-      location: asString(record.frontmatter[FRONTMATTER_KEYS.sceneLocation]),
+      // A scene written before these named notes holds one line of words, so
+      // a lone string reads as a list of one and keeps what it said.
+      times: readStringList(record.frontmatter[FRONTMATTER_KEYS.sceneTime]),
+      locations: readStringList(
+        record.frontmatter[FRONTMATTER_KEYS.sceneLocation],
+      ),
       characters: readWikiLinkList(
         record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
       ).map(
@@ -4611,13 +4861,13 @@ export class SnowflakeProjectService {
       }
     }
     output[8] = fingerprint(
-      [scenes.map(({ sceneId, rank, title, povPath, time, location, characters, conflict, events }) => ({
+      [scenes.map(({ sceneId, rank, title, povPath, times, locations, characters, conflict, events }) => ({
         sceneId,
         rank,
         title,
         povPath,
-        time,
-        location,
+        times,
+        locations,
         characters,
         conflict,
         events,
@@ -4841,13 +5091,6 @@ function safeCommonMetadataRepairPatch(
 }
 
 /** Whether a character note stores its role in either of its two homes. */
-function characterHasStoredRole(frontmatter: ManagedFrontmatter): boolean {
-  return (
-    characterRoleFromCategories(frontmatter[FRONTMATTER_KEYS.category]) !== null ||
-    isCharacterType(frontmatter[FRONTMATTER_KEYS.characterType])
-  );
-}
-
 function safeCharacterMetadataRepairPatch(
   record: ManagedFileRecord,
   expectedProjectId: string,
@@ -4862,11 +5105,9 @@ function safeCharacterMetadataRepairPatch(
   if (patch === null) return null;
   const frontmatter = record.frontmatter;
 
-  // The role is an authorial decision. Never guess or overwrite it, wherever
-  // it is stored: as a category link on a migrated note, under the legacy key
-  // on an older one.
-  if (!characterHasStoredRole(frontmatter)) return null;
-
+  // The role is an authorial decision, stored as a category link or under the
+  // legacy key on an older note. This repair restores identity only, and
+  // never invents or moves a role -- including the choice to have none.
   const rawId = normalizeStableId(frontmatter[FRONTMATTER_KEYS.characterId]);
   const characterId =
     rawId !== null && !usedIds.has(rawId)
@@ -4980,8 +5221,8 @@ function systemTemplateFrontmatter(
       [FRONTMATTER_KEYS.sceneTitle]: project.locale === "zh-CN" ? "场景" : "Scene",
       [FRONTMATTER_KEYS.rank]: RANK_GAP,
       [FRONTMATTER_KEYS.pov]: SCENE_POV_OMNISCIENT,
-      [FRONTMATTER_KEYS.sceneTime]: "",
-      [FRONTMATTER_KEYS.sceneLocation]: "",
+      [FRONTMATTER_KEYS.sceneTime]: [],
+      [FRONTMATTER_KEYS.sceneLocation]: [],
       [FRONTMATTER_KEYS.sceneCharacters]: [],
     };
   }
@@ -5180,7 +5421,7 @@ function readStringList(value: unknown): string[] {
 function characterFieldsView(
   locale: ProjectLanguage,
   source: {
-    type: CharacterType;
+    type: CharacterType | null;
     progressStatus: ProgressStatus | null;
     aliases: readonly string[];
     categories: readonly string[];
@@ -5194,10 +5435,15 @@ function characterFieldsView(
   return {
     progressStatus: source.progressStatus,
     aliases: [...source.aliases],
+    // A note whose role still lives under the legacy key has no category to
+    // show, so the role stands in for one until the migration moves it. A
+    // character with no role at all simply has no category line.
     categories:
       source.categories.length > 0
         ? [...source.categories]
-        : [characterRoleHeading(locale, source.type)],
+        : source.type === null
+          ? []
+          : [characterRoleHeading(locale, source.type)],
     oneSentenceStoryline: source.oneSentenceStoryline,
     motivation: source.motivation,
     goal: source.goal,
@@ -5376,6 +5622,7 @@ function entityRecordSectionValues(
     worldStatusUnrecognized: readonly string[];
     relationshipsUnrecognized: readonly string[];
   },
+  spanOf: SpanLookup | null = null,
 ): Record<string, string> {
   const values: Record<string, string> = {};
   if (records.details.length + unrecognized.detailsUnrecognized.length > 0) {
@@ -5390,6 +5637,7 @@ function entityRecordSectionValues(
       locale,
       records.worldStatus,
       unrecognized.worldStatusUnrecognized,
+      spanOf,
     );
   }
   if (
@@ -5400,9 +5648,29 @@ function entityRecordSectionValues(
       locale,
       records.relationships,
       unrecognized.relationshipsUnrecognized,
+      spanOf,
     );
   }
   return values;
+}
+
+/**
+ * What each of the project's periods spans, for the record lines that name
+ * one. Keyed without the file extension, which is how a stored link names it.
+ */
+function projectTimeSpans(project: ProjectSnapshot): SpanLookup {
+  const spans = new Map<string, { start: RecordTerm; end: RecordTerm }>();
+  for (const entity of project.worldbuilding.time) {
+    if (entity.timeKind !== "period") continue;
+    const start = entity.timeStart.trim();
+    const end = entity.timeEnd.trim();
+    if (start.length === 0 || end.length === 0) continue;
+    spans.set(entity.path.replace(/\.md$/u, ""), {
+      start: parseTerm(start),
+      end: parseTerm(end),
+    });
+  }
+  return (path) => spans.get(path.replace(/\.md$/u, "")) ?? null;
 }
 
 /** The heading a section outside the template is created under at upsert. */
@@ -5447,26 +5715,14 @@ function characterUpdateLayout(
   );
 }
 
-/**
- * The stored details lines with their Age entry replaced, added, or removed.
- * Any other line in the section is not the form's to touch.
- */
-function replacedAgeDetails(
-  details: readonly DetailsLine[],
-  age: DetailsLine | null,
-): DetailsLine[] {
-  const others = details.filter((line) => line.property !== "age");
-  if (age === null) return others;
-  return [{ ...age, property: "age" }, ...others];
-}
 
 interface SceneFieldsSource {
   progressStatus: ProgressStatus | null;
   aliases: readonly string[];
   categories: readonly string[];
   povPath: string | null;
-  time: string;
-  location: string;
+  times: readonly string[];
+  locations: readonly string[];
   conflict: string;
   characters: readonly string[];
 }
@@ -5498,8 +5754,8 @@ function sceneFieldsBlock(
     aliases: [...fields.aliases],
     categories: [...fields.categories],
     pov,
-    time: fields.time,
-    location: fields.location,
+    times: [...fields.times],
+    locations: [...fields.locations],
     conflict: fields.conflict,
     cast: fields.characters.map((path) => ({ path, name: memberName(path) })),
   });
