@@ -1,4 +1,8 @@
-import type { DetailsPropertyId, ProjectLanguage } from "../domain";
+import {
+  DEFINITION_NODE_BASENAME,
+  type DetailsPropertyId,
+  type ProjectLanguage,
+} from "../domain";
 
 /**
  * The record-line codec: the one grammar every compound property is written
@@ -10,8 +14,14 @@ import type { DetailsPropertyId, ProjectLanguage } from "../domain";
  * A record is a label from the kind's taxonomy, an optional value of its own,
  * and any number of clauses pointing at other notes:
  *
- *   - [[22_World_Status#Age|Age]]: 18 when [[Year 1024]]
- *   - [[23_Relationship#Member|Member]]: Guild Master -> [[Guild]] at [[Capital]]
+ *   - [[22_World_Status/Injured/_self|Injured]] when [[Year 1024]]
+ *   - [[23_Relationship/Member/_self|Member]]: Guild Master -> [[Guild]]
+ *
+ * The label links the node's `_self.md`, and its alias is the taxonomy path.
+ * Labels written before nodes were folders pointed a heading inside the file
+ * the tree grew out of, `[[23_Relationship#Member|Member]]`; the parser still
+ * reads that form and maps it onto the node it names, so the next write of
+ * the section is what re-emits it the current way.
  *
  * The value belongs to this record on this note; only the label is shared
  * vocabulary. Clauses keep the order they were added in, and a connector says
@@ -46,10 +56,11 @@ export type RecordClause =
   | { kind: RecordClauseKind; term: RecordTerm }
   | { kind: "span"; start: RecordTerm; end: RecordTerm };
 
-/** The taxonomy heading a record points at: `[[path#heading|display]]`. */
+/** The taxonomy node a record points at: `[[…/<path>/_self|<taxonomy path>]]`. */
 export interface RecordLabel {
+  /** The node's `_self` note, as a full vault path without its extension. */
   path: string;
-  heading: string;
+  /** The taxonomy path the label is read as, kept as the link's alias. */
   display: string;
 }
 
@@ -599,26 +610,49 @@ function listItemBody(line: string): string | null {
   return trimmed.slice(2).trim();
 }
 
-const LABEL_PATTERN = /^\[\[([^\]|#]*)#([^\]|]+)\|([^\]]+)\]\]/u;
+const NODE_LABEL_PATTERN = /^\[\[([^\]|#]+)\|([^\]]+)\]\]/u;
+const LEGACY_LABEL_PATTERN = /^\[\[([^\]|#]*)#([^\]|]+)\|([^\]]+)\]\]/u;
 
+/**
+ * The label a record line opens with. Only a link whose target ends in the
+ * node file counts, so a line that merely begins with some other link is not
+ * mistaken for a record. The legacy heading form maps totally onto a node:
+ * the file it pointed into is the folder the tree stands at now, and the
+ * alias was already the taxonomy path, so the two compose into the node's
+ * `_self` path and the model never holds the old shape.
+ */
 function takeLabelLink(
   body: string,
 ): { label: RecordLabel; rest: string } | null {
-  const match = LABEL_PATTERN.exec(body);
-  if (match === null) return null;
+  const node = NODE_LABEL_PATTERN.exec(body);
+  if (node !== null) {
+    const target = (node[1] ?? "").trim().replace(/\.md$/u, "");
+    if (target.split("/").pop() !== DEFINITION_NODE_BASENAME) return null;
+    return {
+      label: { path: target, display: (node[2] ?? "").trim() },
+      rest: body.slice(node[0].length).trim(),
+    };
+  }
+  const legacy = LEGACY_LABEL_PATTERN.exec(body);
+  if (legacy === null) return null;
+  const display = (legacy[3] ?? "").trim();
+  const path = [
+    (legacy[1] ?? "").trim().replace(/\.md$/u, ""),
+    ...display.split("/"),
+    DEFINITION_NODE_BASENAME,
+  ]
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join("/");
   return {
-    label: {
-      path: (match[1] ?? "").trim(),
-      heading: (match[2] ?? "").trim(),
-      display: (match[3] ?? "").trim(),
-    },
-    rest: body.slice(match[0].length).trim(),
+    label: { path, display },
+    rest: body.slice(legacy[0].length).trim(),
   };
 }
 
 function labelLink(label: RecordLabel): string {
   const target = label.path.trim().replace(/\.md$/u, "");
-  return `[[${target}#${label.heading}|${sanitizeAlias(label.display)}]]`;
+  return `[[${target}|${sanitizeAlias(label.display)}]]`;
 }
 
 const TERM_LINK_PATTERN = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/u;
@@ -631,8 +665,24 @@ export function parseTerm(text: string): RecordTerm {
   return {
     kind: "link",
     path,
-    name: alias.length > 0 ? alias : path.split("/").pop() ?? path,
+    name: alias.length > 0 ? alias : nameFromPath(path),
   };
+}
+
+/**
+ * The name a bare link falls back to: its last segment, or the one before it
+ * when the last is the node file every definition folder holds, which is a
+ * file name and never anything a reader should see.
+ */
+function nameFromPath(path: string): string {
+  const segments = path
+    .replace(/\.md$/u, "")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  const last = segments.pop() ?? path;
+  if (last !== DEFINITION_NODE_BASENAME) return last;
+  return segments.pop() ?? last;
 }
 
 export function renderTerm(term: RecordTerm): string {

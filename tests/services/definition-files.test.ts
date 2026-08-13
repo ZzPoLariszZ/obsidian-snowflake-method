@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { ENTITY_KINDS } from "../../src/domain";
 import {
-  appendDefinitionPath,
   characterRoleFromCategories,
-  characterRoleHeading,
-  definitionFileName,
-  definitionFileTemplate,
-  findDefinitionEntry,
+  characterRoleName,
+  characterStarterNames,
+  checkDefinitionPath,
+  definitionProseByPath,
+  definitionRootFromValue,
+  definitionRootName,
   isValidDefinitionSegment,
+  legacyDefinitionFileName,
   MAX_DEFINITION_DEPTH,
+  nodeLink,
+  nodeNameFromValue,
+  nodeSelfPath,
   parseDefinitionFile,
-  parseHeadingLink,
-  renderHeadingLink,
+  parseDefinitionValue,
+  taxonomyPathFromTarget,
+  taxonomyPathFromValue,
 } from "../../src/services/definition-files";
 
 const sample = [
@@ -21,6 +26,8 @@ const sample = [
   "# Character",
   "",
   "## Race",
+  "",
+  "Elves and dwarves live here.",
   "",
   "### Elf",
   "",
@@ -44,207 +51,211 @@ describe("parseDefinitionFile", () => {
       "Item",
     ]);
     expect(tree.duplicates).toEqual([]);
-    expect(findDefinitionEntry(tree, "Dwarf")?.path).toBe(
-      "Character/Race/Dwarf",
-    );
-  });
-
-  it("reports duplicate headings anywhere in the file", () => {
-    const tree = parseDefinitionFile(
-      "# Character\n\n## Elf\n\n# Item\n\n## Elf\n",
-    );
-    expect(tree.duplicates).toEqual(["Elf"]);
   });
 
   it("ignores headings inside code fences", () => {
     const tree = parseDefinitionFile("# Real\n\n```\n# Fenced\n```\n");
     expect(tree.entries.map((entry) => entry.heading)).toEqual(["Real"]);
   });
+
+  it("maps each heading's prose to its path and leaves the intro behind", () => {
+    const prose = definitionProseByPath(sample);
+    expect(prose.get("Character/Race")).toBe("Elves and dwarves live here.");
+    expect(prose.has("Character")).toBe(false);
+    expect([...prose.keys()]).toEqual(["Character/Race"]);
+  });
 });
 
-describe("appendDefinitionPath", () => {
-  it("returns the content unchanged when the path already exists", () => {
-    const result = appendDefinitionPath(sample, "Character/Race/Elf");
-    expect(result).toEqual({
+describe("checkDefinitionPath", () => {
+  it("splits a typed path into trimmed segments", () => {
+    expect(checkDefinitionPath(" Race / Elf ")).toEqual({
       ok: true,
-      content: sample,
-      addedHeadings: [],
+      segments: ["Race", "Elf"],
     });
   });
 
-  it("appends the missing tail at the end of its parent subtree", () => {
-    const result = appendDefinitionPath(sample, "Character/Race/Orc");
-    if (!result.ok) throw new Error("expected ok");
-    expect(result.addedHeadings).toEqual(["Orc"]);
-    const tree = parseDefinitionFile(result.content);
-    expect(tree.entries.map((entry) => entry.path)).toEqual([
-      "Character",
-      "Character/Race",
-      "Character/Race/Elf",
-      "Character/Race/Dwarf",
-      "Character/Race/Orc",
-      "Character/Gender",
-      "Item",
-    ]);
-  });
-
-  it("creates a whole new tree at the end of the file", () => {
-    const result = appendDefinitionPath(sample, "Location/Region/North");
-    if (!result.ok) throw new Error("expected ok");
-    expect(result.addedHeadings).toEqual(["Location", "Region", "North"]);
-    const tree = parseDefinitionFile(result.content);
-    expect(tree.entries[tree.entries.length - 1]?.path).toBe(
-      "Location/Region/North",
-    );
-    expect(result.content.endsWith("\n")).toBe(true);
-  });
-
-  it("refuses a segment whose heading already names another path", () => {
-    expect(appendDefinitionPath(sample, "Item/Origin/Elf")).toEqual({
-      ok: false,
-      code: "heading-taken",
-      segment: "Elf",
-    });
-  });
-
-  it("refuses a path with more levels than a heading tree can hold", () => {
-    const deep = Array.from(
-      { length: MAX_DEFINITION_DEPTH + 1 },
-      (_, index) => `Level ${index + 1}`,
-    ).join("/");
-    expect(appendDefinitionPath(sample, deep)).toEqual({
+  it("holds the line at the depth cap for managing", () => {
+    const levels = (count: number): string =>
+      Array.from({ length: count }, (_, index) => `Level ${index + 1}`).join(
+        "/",
+      );
+    expect(checkDefinitionPath(levels(MAX_DEFINITION_DEPTH)).ok).toBe(true);
+    expect(checkDefinitionPath(levels(MAX_DEFINITION_DEPTH + 1))).toEqual({
       ok: false,
       code: "too-deep",
-      segment: deep,
+      segment: levels(MAX_DEFINITION_DEPTH + 1),
     });
-    // One level shallower is still a path this file can hold.
-    const allowed = Array.from(
-      { length: MAX_DEFINITION_DEPTH },
-      (_, index) => `Level ${index + 1}`,
-    ).join("/");
-    expect(appendDefinitionPath(sample, allowed).ok).toBe(true);
   });
 
-  it("refuses segments that cannot anchor a link", () => {
-    expect(appendDefinitionPath(sample, "Character/Ra#ce")).toEqual({
+  it("refuses segments no folder can be named after", () => {
+    expect(checkDefinitionPath("Race/El:f")).toEqual({
       ok: false,
       code: "invalid-segment",
-      segment: "Ra#ce",
+      segment: "El:f",
+    });
+    expect(checkDefinitionPath("")).toEqual({
+      ok: false,
+      code: "invalid-segment",
+      segment: "",
     });
     expect(isValidDefinitionSegment("Fine name")).toBe(true);
     expect(isValidDefinitionSegment("bad|name")).toBe(false);
+    expect(isValidDefinitionSegment("bad#name")).toBe(false);
+    expect(isValidDefinitionSegment(".hidden")).toBe(false);
     expect(isValidDefinitionSegment("")).toBe(false);
   });
-});
 
-describe("templates", () => {
-  it("seeds the character category file with the three roles as whole paths", () => {
-    const en = parseDefinitionFile(
-      definitionFileTemplate("character", "category", "en"),
-    );
-    expect(en.entries.map((entry) => entry.path)).toEqual([
-      "Major",
-      "Supporting",
-      "Minor",
-    ]);
-    const zh = parseDefinitionFile(
-      definitionFileTemplate("character", "category", "zh-CN"),
-    );
-    expect(zh.entries.map((entry) => entry.path)).toEqual([
-      "主角",
-      "配角",
-      "次要角色",
-    ]);
-  });
-
-  it("starts every other kind with an empty tree of its own", () => {
-    for (const language of ["en", "zh-CN"] as const) {
-      for (const kind of ENTITY_KINDS) {
-        for (const id of [
-          "category",
-          "world-status",
-          "relationship",
-        ] as const) {
-          const template = definitionFileTemplate(kind, id, language);
-          const tree = parseDefinitionFile(template);
-          expect(tree.duplicates).toEqual([]);
-          if (kind === "character") {
-            expect(tree.entries.length).toBeGreaterThan(0);
-            expect(tree.entries.every((entry) => entry.level === 1)).toBe(true);
-          } else {
-            expect(tree.entries).toEqual([]);
-            expect(template.trim().length).toBeGreaterThan(0);
-          }
-          expect(definitionFileName(kind, id, language)).not.toContain(" ");
-        }
-      }
-    }
-  });
-
-  it("numbers each file after the folder it sits in", () => {
-    // The folder's number gives up its trailing zero, or the position is
-    // appended when there is none to give up.
-    expect(definitionFileName("character", "category", "en")).toBe(
-      "21_Category.md",
-    );
-    expect(definitionFileName("character", "world-status", "en")).toBe(
-      "22_World_Status.md",
-    );
-    expect(definitionFileName("character", "relationship", "en")).toBe(
-      "23_Relationship.md",
-    );
-    expect(definitionFileName("scene", "category", "en")).toBe("41_Category.md");
-    expect(definitionFileName("time", "category", "en")).toBe("611_Category.md");
-    expect(definitionFileName("location", "world-status", "en")).toBe(
-      "622_World_Status.md",
-    );
-    expect(definitionFileName("item", "relationship", "en")).toBe(
-      "633_Relationship.md",
-    );
-    expect(definitionFileName("character", "world-status", "zh-CN")).toBe(
-      "22_状态.md",
-    );
-    expect(definitionFileName("location", "category", "zh-CN")).toBe(
-      "621_类别.md",
-    );
+  it("reserves the node file's own name", () => {
+    expect(isValidDefinitionSegment("_self")).toBe(false);
+    expect(isValidDefinitionSegment("_SELF")).toBe(false);
+    expect(checkDefinitionPath("Race/_self")).toEqual({
+      ok: false,
+      code: "invalid-segment",
+      segment: "_self",
+    });
   });
 });
 
-describe("heading links", () => {
-  it("round-trips a category link with its path alias", () => {
-    const raw = renderHeadingLink(
-      "Novel/20_Character/Category.md",
-      "Elf",
+describe("node links", () => {
+  const root = "Novel/20_Character/21_Category";
+
+  it("links the node's own note with the taxonomy path as alias", () => {
+    expect(nodeSelfPath(root, "Race/Elf")).toBe(`${root}/Race/Elf/_self`);
+    expect(nodeLink(root, "Race/Elf")).toBe(
+      `[[${root}/Race/Elf/_self|Race/Elf]]`,
+    );
+  });
+
+  it("derives the taxonomy path from the target below its root", () => {
+    expect(taxonomyPathFromTarget(`${root}/Race/Elf/_self`, root)).toBe(
       "Race/Elf",
     );
-    expect(raw).toBe("[[Novel/20_Character/Category#Elf|Race/Elf]]");
-    expect(parseHeadingLink(raw)).toEqual({
-      path: "Novel/20_Character/Category",
-      heading: "Elf",
-      display: "Race/Elf",
+    expect(taxonomyPathFromTarget(`${root}/Race`, root)).toBe("Race");
+    expect(taxonomyPathFromTarget(`${root}/Race/Elf/_self.md`, root)).toBe(
+      "Race/Elf",
+    );
+    expect(taxonomyPathFromTarget("Elsewhere/Race/_self", root)).toBeNull();
+    expect(taxonomyPathFromTarget(root, root)).toBeNull();
+  });
+
+  it("reads a stored value target first and alias second", () => {
+    const raw = nodeLink(root, "Race/Elf");
+    expect(taxonomyPathFromValue(raw, root)).toBe("Race/Elf");
+    // A rename moved the target: the alias no longer decides.
+    expect(
+      taxonomyPathFromValue(`[[${root}/Race/Elder/_self|Race/Elf]]`, root),
+    ).toBe("Race/Elder");
+    // A target the root cannot explain falls back to the alias.
+    expect(
+      taxonomyPathFromValue("[[Elsewhere/Race/Elf/_self|Race/Elf]]", root),
+    ).toBe("Race/Elf");
+    expect(taxonomyPathFromValue(42, root)).toBeNull();
+  });
+
+  it("still reads the legacy heading form by its alias", () => {
+    expect(
+      taxonomyPathFromValue("[[Novel/20_Character/21_Category#Elf|Race/Elf]]", root),
+    ).toBe("Race/Elf");
+    expect(
+      taxonomyPathFromValue("[[Novel/20_Character/21_Category#Elf]]", root),
+    ).toBe("Elf");
+  });
+
+  it("takes a stored value apart whichever era wrote it", () => {
+    expect(parseDefinitionValue(`[[${root}/Race/Elf/_self|Race/Elf]]`)).toEqual(
+      { target: `${root}/Race/Elf/_self`, alias: "Race/Elf", legacyHeading: null },
+    );
+    expect(parseDefinitionValue(`[[${root}.md#Elf|Race/Elf]]`)).toEqual({
+      target: root,
+      alias: "Race/Elf",
+      legacyHeading: "Elf",
     });
-    expect(parseHeadingLink("[[No heading link]]")).toBeNull();
-    expect(parseHeadingLink(42)).toBeNull();
+    expect(nodeNameFromValue(`[[${root}/Race/Elf/_self|Race/Elf]]`)).toBe("Elf");
+    expect(nodeNameFromValue(`[[${root}#Elf|Race/Elf]]`)).toBe("Elf");
+    expect(definitionRootFromValue(`[[${root}/Race/Elf/_self|Race/Elf]]`)).toBe(
+      `${root}/Race`,
+    );
+    expect(definitionRootFromValue(`[[${root}/Major/_self|Major]]`)).toBe(root);
+    expect(definitionRootFromValue(`[[${root}#Major|Major]]`)).toBe(root);
+  });
+});
+
+describe("root names", () => {
+  it("numbers each root after the folder it sits in", () => {
+    // The folder's number gives up its trailing zero, or the position is
+    // appended when there is none to give up.
+    expect(definitionRootName("character", "category", "en")).toBe(
+      "21_Category",
+    );
+    expect(definitionRootName("character", "world-status", "en")).toBe(
+      "22_World_Status",
+    );
+    expect(definitionRootName("character", "relationship", "en")).toBe(
+      "23_Relationship",
+    );
+    expect(definitionRootName("scene", "category", "en")).toBe("41_Category");
+    expect(definitionRootName("time", "category", "en")).toBe("611_Category");
+    expect(definitionRootName("location", "world-status", "en")).toBe(
+      "622_World_Status",
+    );
+    expect(definitionRootName("item", "relationship", "en")).toBe(
+      "633_Relationship",
+    );
+    expect(definitionRootName("character", "world-status", "zh-CN")).toBe(
+      "22_状态",
+    );
+    expect(definitionRootName("location", "category", "zh-CN")).toBe(
+      "621_类别",
+    );
+  });
+
+  it("names the file the same tree lived in before folders", () => {
+    expect(legacyDefinitionFileName("character", "category", "en")).toBe(
+      "21_Category.md",
+    );
+    expect(legacyDefinitionFileName("time", "relationship", "zh-CN")).toBe(
+      "613_关系.md",
+    );
   });
 });
 
 describe("character roles", () => {
-  it("names the seeded role heading per language", () => {
-    expect(characterRoleHeading("en", "major")).toBe("Major");
-    expect(characterRoleHeading("zh-CN", "supporting")).toBe("配角");
+  it("names the seeded role node per language", () => {
+    expect(characterRoleName("en", "major")).toBe("Major");
+    expect(characterRoleName("zh-CN", "supporting")).toBe("配角");
   });
 
-  it("reads the role from category links in either language", () => {
+  it("seeds the character trees and only them", () => {
+    expect(characterStarterNames("en", "category")).toEqual([
+      "Major",
+      "Supporting",
+      "Minor",
+    ]);
+    expect(characterStarterNames("zh-CN", "category")).toEqual([
+      "主角",
+      "配角",
+      "次要角色",
+    ]);
+    expect(characterStarterNames("en", "world-status")).toContain("Injured");
+    expect(characterStarterNames("en", "relationship")).toContain("Family");
+  });
+
+  it("reads the role from category links of either era and language", () => {
     expect(
       characterRoleFromCategories([
-        "[[P/20_Character/Category#Elf|Race/Elf]]",
-        "[[P/20_Character/Category#Major|Major]]",
+        "[[P/20_Character/21_Category/Race/Elf/_self|Race/Elf]]",
+        "[[P/20_Character/21_Category/Major/_self|Major]]",
       ]),
     ).toBe("major");
     expect(
-      characterRoleFromCategories(["[[P/20_角色/类别#配角|配角]]"]),
+      characterRoleFromCategories(["[[P/20_Character/21_Category#Major|Major]]"]),
+    ).toBe("major");
+    expect(
+      characterRoleFromCategories(["[[P/20_角色/21_类别/配角/_self|配角]]"]),
     ).toBe("supporting");
-    expect(characterRoleFromCategories(["[[P/Category#Elf|x]]"])).toBeNull();
+    expect(
+      characterRoleFromCategories(["[[P/21_Category/Race/Elf/_self|Race/Elf]]"]),
+    ).toBeNull();
     expect(characterRoleFromCategories("not a list")).toBeNull();
   });
 });

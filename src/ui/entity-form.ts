@@ -1,6 +1,10 @@
 import { setIcon, setTooltip, type App } from 'obsidian';
 
-import type { DetailsPropertyId, ProgressStatus } from '../domain';
+import {
+	DEFINITION_NODE_BASENAME,
+	type DetailsPropertyId,
+	type ProgressStatus,
+} from '../domain';
 import {
 	parseTerm,
 	renderTerm,
@@ -213,8 +217,8 @@ export class CategoryPathField {
 				return all.map((path) => ({ value: path, label: path }));
 			},
 			label: t('form.category'),
-			placeholder: t('form.category.placeholder'),
-			emptyPlaceholder: t('form.category.placeholder'),
+			placeholder: t('form.definition.placeholder.category'),
+			emptyPlaceholder: t('form.definition.placeholder.category'),
 			picked: () => this.values,
 			pick: (value) => {
 				if (!this.values.includes(value)) this.values.push(value);
@@ -673,11 +677,13 @@ export class RecordCardsEditor {
 	records(): RecordLine[] {
 		const records: RecordLine[] = [];
 		for (const card of this.cards) {
-			const heading = card.label.trim();
-			if (heading.length === 0) continue;
-			const label = heading.split('/').pop() ?? heading;
+			const path = card.label.trim();
+			if (path.length === 0) continue;
 			records.push({
-				label: { path: this.definitionPath, heading: label, display: label },
+				label: {
+					path: `${this.definitionPath}/${path}/${DEFINITION_NODE_BASENAME}`,
+					display: path,
+				},
 				value: card.valueEl.value.trim(),
 				clauses: [
 					...(this.withTarget && card.target !== null

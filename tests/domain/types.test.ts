@@ -13,6 +13,7 @@ describe('document types', () => {
 			'character',
 			'scene',
 			'worldbuilding',
+			'definition',
 			'draft',
 			'material',
 			'archive',

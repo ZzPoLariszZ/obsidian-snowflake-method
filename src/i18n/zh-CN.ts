@@ -286,6 +286,18 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.missing-artifact': '缺少必要的项目笔记。',
 	'projectStructure.issue.missing-system-template': '缺少必要的系统模板。',
 	'projectStructure.issue.missing-base': '缺少必要的项目数据库。',
+	'projectStructure.issue.missing-definition-node':
+		'该文件夹是一个类别、状态或关系条目，但缺少它的“_self.md”笔记。',
+	'projectStructure.action.missing-definition-node':
+		'链接指向的是该笔记而非文件夹。\n在此修复会创建它。',
+	'projectStructure.issue.unresolved-definition-link':
+		'以下条目指向不存在的类别、状态或关系：{expected}。',
+	'projectStructure.action.unresolved-definition-link':
+		'文件夹可能已被手动重命名或删除。\n在此修复会按链接创建对应条目。',
+	'projectStructure.issue.stale-definition-alias':
+		'以下条目显示的名称与其指向不再一致：{expected}。',
+	'projectStructure.action.stale-definition-alias':
+		'重命名文件夹会更新链接，但不会更新显示的名称。\n在此修复会按链接重写显示名称。',
 	'projectStructure.issue.mismatched-character-title':
 		'文件名或标题与角色名称不一致。',
 	'projectStructure.action.mismatched-character-title':
@@ -371,6 +383,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'editor.managedSection.name.world-status': '状态',
 	'editor.managedSection.name.relationships': '关系',
 	'editor.managedSection.name.entity-notes': '备注',
+	'editor.managedSection.name.definition-fields': '概览',
 	'common.remove': '移除',
 	'dashboard.worldbuilding': '世界观',
 	'worldbuilding.kind.time': '时间',
@@ -403,13 +416,26 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'form.aliases.placeholder': '输入别名后按回车',
 	'form.aliases.remove': '移除 {name}',
 	'form.category': '类别',
-	'form.category.desc':
-		'类别可以分层，用斜杠分隔，\n例如「种族/精灵」表示「精灵」在「种族」之下（最多 5 层）。',
-	'form.category.placeholder': '搜索或创建类别，如「种族」或「种族/精灵」…',
 	'form.category.create': '创建类别「{name}」',
 	'form.category.remove': '移除 {name}',
-	'modal.category.title': '添加类别',
-	'modal.category.name': '类别',
+	'form.definition.desc.category':
+		'类别可以分层，用斜杠分隔，\n例如「种族/精灵」表示「精灵」在「种族」之下（最多 7 层）。',
+	'form.definition.desc.world-status':
+		'状态可以分层，用斜杠分隔，\n例如「健康/受伤」表示「受伤」在「健康」之下（最多 7 层）。',
+	'form.definition.desc.relationship':
+		'关系可以分层，用斜杠分隔，\n例如「家人/父亲」表示「父亲」在「家人」之下（最多 7 层）。',
+	'form.definition.placeholder.category':
+		'搜索或创建类别…（例如「精灵」或「种族/精灵」）',
+	'form.definition.placeholder.world-status':
+		'搜索或创建状态…（例如「受伤」或「健康/受伤」）',
+	'form.definition.placeholder.relationship':
+		'搜索或创建关系…（例如「父亲」或「家人/父亲」）',
+	'modal.definition.title.category': '添加类别',
+	'modal.definition.title.world-status': '添加状态',
+	'modal.definition.title.relationship': '添加关系',
+	'modal.definition.name.category': '类别',
+	'modal.definition.name.world-status': '状态',
+	'modal.definition.name.relationship': '关系',
 	'modal.category.description': '说明',
 	'form.description': '描述',
 	'form.timeKind': '类型',
@@ -428,8 +454,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'form.record.status': '状态',
 	'form.record.relationship': '关系',
 	'form.record.label': '标签',
-	'form.record.searchStatus': '搜索或创建状态…',
-	'form.record.searchRelationship': '搜索或创建关系…',
 	'form.record.labelPlaceholder': '搜索，或输入新标签',
 	'form.record.createLabel': '创建「{name}」',
 	'form.record.target': '对象',
@@ -458,7 +482,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'form.group.location': '地点',
 	'form.group.item': '物品',
 	'form.period.halfSpan': '时间段需要同时填写开始与结束，或都留空。',
-	'form.definition.taken': '名称「{name}」已在该文件的其他位置使用。',
 	'form.definition.invalid': '名称「{name}」不能用于路径。',
 	'form.definition.tooDeep': '路径最多只能有 {count} 层。',
 	'editor.managedSection.issue.unrecognized-record':

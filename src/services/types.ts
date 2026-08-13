@@ -176,6 +176,12 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-manuscript-sequence",
   "invalid-manuscript-sequence",
   "duplicate-manuscript-sequence",
+  // One per thing that can be wrong around a definition tree: a node folder
+  // without the note its links resolve to, a link naming a node that is not
+  // there, and a link whose displayed name a folder rename left behind.
+  "missing-definition-node",
+  "unresolved-definition-link",
+  "stale-definition-alias",
 ] as const;
 
 export type ProjectStructureIssueCode =
@@ -277,7 +283,7 @@ export interface CharacterRecord {
   /** Null while the note has never chosen a progress status. */
   progressStatus: ProgressStatus | null;
   aliases: string[];
-  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  /** Category links exactly as stored, `[[…/Full/Path/_self|Full/Path]]`. */
   categories: string[];
   oneSentenceStoryline: string;
   motivation: string;
@@ -348,7 +354,7 @@ export interface SceneRecord {
   /** Null while the note has never chosen a progress status. */
   progressStatus: ProgressStatus | null;
   aliases: string[];
-  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  /** Category links exactly as stored, `[[…/Full/Path/_self|Full/Path]]`. */
   categories: string[];
   povPath: string | null;
   /** Time notes the scene happens in, as stored links or plain words. */
@@ -389,7 +395,7 @@ export interface WorldbuildingRecord {
   /** Null while the note has never chosen a progress status. */
   progressStatus: ProgressStatus | null;
   aliases: string[];
-  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  /** Category links exactly as stored, `[[…/Full/Path/_self|Full/Path]]`. */
   categories: string[];
   description: string;
   timeKind: TimeKind | null;

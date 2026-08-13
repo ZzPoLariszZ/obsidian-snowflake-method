@@ -1,5 +1,6 @@
 import {
   SCENE_POV_OMNISCIENT,
+  type DefinitionFileId,
   type ProgressStatus,
   type ScenePovMode,
   type TimeKind,
@@ -60,10 +61,22 @@ export interface EntityFieldsView extends MemberFieldsCommon {
   time: EntityTimeView | null;
 }
 
+/**
+ * What a definition node's own note shows. The path is where the node sits
+ * right now, read from its folders rather than stored, so this block is the
+ * one place a taxonomy entry reads as a name instead of as `_self`.
+ */
+export interface DefinitionFieldsView {
+  taxonomyPath: string;
+  description: string;
+}
+
 interface FieldsCopy {
   characterTitle: string;
   sceneTitle: string;
   entityTitles: Record<WorldbuildingKind, string>;
+  definitionTitles: Record<DefinitionFileId, string>;
+  definitionName: string;
   status: string;
   statusLabels: Record<ProgressStatus, string>;
   aliases: string;
@@ -103,6 +116,12 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
       location: "Location overview",
       item: "Item overview",
     },
+    definitionTitles: {
+      category: "Category",
+      "world-status": "World status",
+      relationship: "Relationship",
+    },
+    definitionName: "Name",
     status: "Progress status",
     statusLabels: {
       "not-started": "Not started",
@@ -143,6 +162,12 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
       location: "地点概览",
       item: "物品概览",
     },
+    definitionTitles: {
+      category: "类别",
+      "world-status": "状态",
+      relationship: "关系",
+    },
+    definitionName: "名称",
     status: "进度",
     statusLabels: {
       "not-started": "未开始",
@@ -233,6 +258,25 @@ export function renderEntityFieldsBlock(
   return renderCallout(copy.entityTitles[kind], [
     ...commonEntries(copy, fields),
     ...timeEntries(copy, fields.time),
+    { label: copy.description, value: fields.description },
+  ], copy.separator);
+}
+
+/**
+ * The block a definition node's `_self.md` opens with. The note is named for
+ * the file every node folder holds, so without this nothing on the page says
+ * which entry it is. A node's name is its whole path, parents included, and
+ * the callout's own title says which vocabulary that path belongs to: it is
+ * here to be read, not to be stored.
+ */
+export function renderDefinitionFieldsBlock(
+  language: FieldsBlockLanguage,
+  id: DefinitionFileId,
+  fields: DefinitionFieldsView,
+): string {
+  const copy = COPY[language];
+  return renderCallout(copy.definitionTitles[id], [
+    { label: copy.definitionName, value: fields.taxonomyPath },
     { label: copy.description, value: fields.description },
   ], copy.separator);
 }

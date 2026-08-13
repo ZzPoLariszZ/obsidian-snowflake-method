@@ -120,8 +120,8 @@ const COPY: Record<TemplateLanguage, Copy> = {
     statusInRevision: "In revision",
     statusComplete: "Complete",
     timeKind: "Type",
-    timePoint: "Point in time",
-    timePeriod: "Period",
+    timePoint: "Time point",
+    timePeriod: "Time period",
     timeStart: "Start",
     timeEnd: "End",
     kindListViews: {
@@ -313,6 +313,89 @@ function timeKindFormula(copy: Copy): string {
     `if(${equals(key, "period")}, ${label(copy.timePeriod)}, ` +
     `${expr(key)}))`
   );
+}
+
+/**
+ * Wording these files were generated with before, by the label it has now.
+ * A base is created once and then belongs to its author -- Obsidian rewrites
+ * the file whenever a column is resized -- so a renamed label cannot arrive
+ * by regenerating the file. Only these exact strings give way.
+ */
+const SUPERSEDED_LABELS: Record<TemplateLanguage, Partial<Copy>> = {
+  // Times read as "Time point" and "Time period" everywhere else now.
+  en: { timePoint: "Point in time", timePeriod: "Period" },
+  "zh-CN": {},
+};
+
+/**
+ * The time kinds a release before this one wrote a column for, with the
+ * label each was given. `event` was a kind of its own until a moment and a
+ * stretch turned out to cover every case, and a base written then still
+ * carries the arm that named it.
+ */
+const SUPERSEDED_TIME_KIND_ARMS: Record<
+  TemplateLanguage,
+  ReadonlyArray<readonly [string, string]>
+> = {
+  en: [
+    ["point", "Point in time"],
+    ["period", "Period"],
+    ["event", "Event"],
+  ],
+  "zh-CN": [
+    ["point", "时间点"],
+    ["period", "时间段"],
+    ["event", "事件"],
+  ],
+};
+
+export interface BaseTextRefresh {
+  from: string;
+  to: string;
+}
+
+/**
+ * The swaps that bring a base written by an older release up to today's
+ * wording: the whole time-kind formula where it still reads as it was
+ * generated, and failing that each label where the arm naming it says which
+ * kind it belongs to. Tied to the comparison it labels, so a column an
+ * author named for themselves is never touched.
+ */
+export function getBaseTextRefreshes(
+  language: TemplateLanguage,
+): BaseTextRefresh[] {
+  const copy = COPY[language];
+  const key = FRONTMATTER_KEYS.timeKind;
+  const arm = (kind: string, label: string): string =>
+    `${equals(key, kind)}, ${JSON.stringify(label)}`;
+  const superseded = SUPERSEDED_TIME_KIND_ARMS[language];
+  const labels = new Map<string, string>([
+    ["point", copy.timePoint],
+    ["period", copy.timePeriod],
+  ]);
+  const refreshes: BaseTextRefresh[] = [];
+  // The whole formula first, which also retires the arm for the kind this
+  // release no longer knows.
+  const [pointLabel, periodLabel, eventLabel] = superseded.map(
+    ([, label]) => label,
+  );
+  refreshes.push({
+    from:
+      `if(${arm("point", pointLabel ?? "")}, ` +
+      `if(${arm("period", periodLabel ?? "")}, ` +
+      `if(${arm("event", eventLabel ?? "")}, ${expr(key)})))`,
+    to: timeKindFormula(copy),
+  });
+  refreshes.push({
+    from: timeKindFormula({ ...copy, ...SUPERSEDED_LABELS[language] }),
+    to: timeKindFormula(copy),
+  });
+  for (const [kind, label] of superseded) {
+    const current = labels.get(kind);
+    if (current === undefined) continue;
+    refreshes.push({ from: arm(kind, label), to: arm(kind, current) });
+  }
+  return refreshes.filter((refresh) => refresh.from !== refresh.to);
 }
 
 /**

@@ -156,8 +156,14 @@ describe('read-only generated section ranges', () => {
 	)!;
 
 	it('registers the same generated ids the reconcile maintains', () => {
+		// A definition node's block is generated and reconciled too, from
+		// where its folder sits rather than from a member's properties, so it
+		// keeps its own pass and joins the member sections here.
 		expect([...GENERATED_SECTION_IDS].sort()).toEqual(
-			Object.values(MEMBER_FIELDS_SECTION_BY_DOCUMENT).sort(),
+			[
+				...Object.values(MEMBER_FIELDS_SECTION_BY_DOCUMENT),
+				'definition-fields',
+			].sort(),
 		);
 	});
 

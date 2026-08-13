@@ -315,6 +315,18 @@ export const en = {
 	'projectStructure.issue.missing-system-template':
 		'Required system template is missing.',
 	'projectStructure.issue.missing-base': 'Required project base is missing.',
+	'projectStructure.issue.missing-definition-node':
+		'The folder is a category, status, or relationship entry, but its “_self.md” note is missing.',
+	'projectStructure.action.missing-definition-node':
+		'Links point at that note rather than at the folder.\nRepairing here creates it.',
+	'projectStructure.issue.unresolved-definition-link':
+		'These entries point at a category, status, or relationship that does not exist: {expected}.',
+	'projectStructure.action.unresolved-definition-link':
+		'A folder may have been renamed or removed by hand.\nRepairing here creates what the links name.',
+	'projectStructure.issue.stale-definition-alias':
+		'These entries show a name that no longer matches where they point: {expected}.',
+	'projectStructure.action.stale-definition-alias':
+		'Renaming a folder updates links but not the name they show.\nRepairing here rewrites the names from the links.',
 	'projectStructure.issue.mismatched-character-title':
 		'The file name or heading no longer matches the character name.',
 	'projectStructure.action.mismatched-character-title':
@@ -410,6 +422,7 @@ export const en = {
 	'editor.managedSection.name.world-status': 'World status',
 	'editor.managedSection.name.relationships': 'Relationships',
 	'editor.managedSection.name.entity-notes': 'Notes',
+	'editor.managedSection.name.definition-fields': 'Overview',
 	'common.remove': 'Remove',
 	'dashboard.worldbuilding': 'Worldbuilding',
 	'worldbuilding.kind.time': 'Time',
@@ -445,14 +458,30 @@ export const en = {
 	'form.aliases.placeholder': 'Type an alias and press enter',
 	'form.aliases.remove': 'Remove {name}',
 	'form.category': 'Category',
-	'form.category.desc':
-		'Categories can have levels which are separated by a slash,\ne.g., race/elf puts elf under race (can have at most 5 levels).',
-	'form.category.placeholder':
-		'Search or create a new category like race or race/elf…',
 	'form.category.create': 'Create category "{name}"',
 	'form.category.remove': 'Remove {name}',
-	'modal.category.title': 'Add category',
-	'modal.category.name': 'Category',
+	// One set per vocabulary: the dialog that adds an entry is the same for
+	// all three, and only its wording says which one is being added to. The
+	// examples stay in lower case because Obsidian asks every string it shows
+	// to read as a sentence, whatever case the entries themselves are given.
+	'form.definition.desc.category':
+		'Categories can have levels which are separated by a slash,\ne.g., race/elf puts elf under race (can have at most 7 levels).',
+	'form.definition.desc.world-status':
+		'Statuses can have levels which are separated by a slash,\ne.g., health/injured puts injured under health (can have at most 7 levels).',
+	'form.definition.desc.relationship':
+		'Relationships can have levels which are separated by a slash,\ne.g., family/father puts father under family (can have at most 7 levels).',
+	'form.definition.placeholder.category':
+		'Search or create a category… (e.g., elf or race/elf)',
+	'form.definition.placeholder.world-status':
+		'Search or create a status… (e.g., injured or health/injured)',
+	'form.definition.placeholder.relationship':
+		'Search or create a relationship… (e.g., father or family/father)',
+	'modal.definition.title.category': 'Add category',
+	'modal.definition.title.world-status': 'Add status',
+	'modal.definition.title.relationship': 'Add relationship',
+	'modal.definition.name.category': 'Category',
+	'modal.definition.name.world-status': 'Status',
+	'modal.definition.name.relationship': 'Relationship',
 	'modal.category.description': 'Description',
 	'form.description': 'Description',
 	'form.timeKind': 'Type',
@@ -471,8 +500,6 @@ export const en = {
 	'form.record.status': 'Status',
 	'form.record.relationship': 'Relationship',
 	'form.record.label': 'Label',
-	'form.record.searchStatus': 'Search or create a status…',
-	'form.record.searchRelationship': 'Search or create a relationship…',
 	'form.record.labelPlaceholder': 'Search, or type a new one',
 	'form.record.createLabel': 'Create "{name}"',
 	'form.record.target': 'Target',
@@ -502,8 +529,6 @@ export const en = {
 	'form.group.item': 'Item',
 	'form.period.halfSpan':
 		'A time period needs both its start and its end, or neither.',
-	'form.definition.taken':
-		'The name "{name}" is already used elsewhere in that file.',
 	'form.definition.invalid': 'The name "{name}" cannot be used in a path.',
 	'form.definition.tooDeep': 'A path can have at most {count} levels.',
 	'editor.managedSection.issue.unrecognized-record':

@@ -14,9 +14,8 @@ import {
   type RecordLine,
 } from "../../src/templates/record-lines";
 
-const label = (heading: string, display = heading) => ({
-  path: "Novel/60_Worldbuilding/Relationship",
-  heading,
+const label = (name: string, display = name) => ({
+  path: `Novel/60_Worldbuilding/Relationship/${display}/_self`,
   display,
 });
 
@@ -44,7 +43,7 @@ describe("record lines", () => {
     };
     const line = renderRecordLine("en", record);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship#Member|Member]]: Guild Master -> [[Novel/60_Worldbuilding/63_Item/Adventurer Guild|Guild]] at [[Novel/60_Worldbuilding/62_Location/Royal Capital|Royal Capital]] when [[Novel/60_Worldbuilding/61_Time/Year 1023|Year 1023]]",
+      "- [[Novel/60_Worldbuilding/Relationship/Member/_self|Member]]: Guild Master -> [[Novel/60_Worldbuilding/63_Item/Adventurer Guild|Guild]] at [[Novel/60_Worldbuilding/62_Location/Royal Capital|Royal Capital]] when [[Novel/60_Worldbuilding/61_Time/Year 1023|Year 1023]]",
     );
     expect(parseRecordLine("en", line)).toEqual(record);
   });
@@ -78,14 +77,14 @@ describe("record lines", () => {
     };
     const line = renderRecordLine("en", record);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship#Ally|Ally]] with [[P/20_Character/Aria|Aria]] with [[P/20_Character/Brin|Brin]] at [[P/62_Location/Capital|Capital]]",
+      "- [[Novel/60_Worldbuilding/Relationship/Ally/_self|Ally]] with [[P/20_Character/Aria|Aria]] with [[P/20_Character/Brin|Brin]] at [[P/62_Location/Capital|Capital]]",
     );
     expect(parseRecordLine("en", line)).toEqual(record);
   });
 
   it("round-trips the Chinese connectors", () => {
     const record: RecordLine = {
-      label: { path: "小说/60_世界观/关系", heading: "盟友", display: "盟友" },
+      label: { path: "小说/60_世界观/关系/盟友/_self", display: "盟友" },
       value: "同盟",
       clauses: [
         { kind: "target", term: link("小说/60_世界观/63_物品/精灵王国", "精灵王国") },
@@ -114,7 +113,7 @@ describe("record lines", () => {
         : null;
     const line = renderRecordLine("en", record, spans);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship#Missing|Missing]] when [[P/61_Time/The Regency|The Regency]] (from [[P/61_Time/Year 1020|Year 1020]] to [[P/61_Time/Year 1024|Year 1024]])",
+      "- [[Novel/60_Worldbuilding/Relationship/Missing/_self|Missing]] when [[P/61_Time/The Regency|The Regency]] (from [[P/61_Time/Year 1020|Year 1020]] to [[P/61_Time/Year 1024|Year 1024]])",
     );
     // The span is the time note's, not the record's, so reading gives back
     // exactly the record that was written.
@@ -140,10 +139,32 @@ describe("record lines", () => {
     expect(parsed?.clauses).toEqual([
       { kind: "span", start: link("P/1023"), end: link("P/1025") },
     ]);
-    // What it reads it writes back, with the names each link is read out by.
+    // What it reads it writes back in today's shape, names and label alike.
     expect(renderRecordLine("en", parsed as RecordLine)).toBe(
-      "- [[P/Relationship#Member|Member]] from [[P/1023|1023]] to [[P/1025|1025]]",
+      "- [[P/Relationship/Member/_self|Member]] from [[P/1023|1023]] to [[P/1025|1025]]",
     );
+  });
+
+  it("maps a legacy heading label onto the node it names", () => {
+    const parsed = parseRecordLine(
+      "en",
+      "- [[P/20_Character/23_Relationship#Sibling|Family/Sibling]] -> [[P/20_Character/Brin|Brin]]",
+    );
+    // The file it pointed into is the folder the tree stands at now, and the
+    // alias was already the taxonomy path: together they name the node.
+    expect(parsed?.label).toEqual({
+      path: "P/20_Character/23_Relationship/Family/Sibling/_self",
+      display: "Family/Sibling",
+    });
+    expect(renderRecordLine("en", parsed as RecordLine)).toBe(
+      "- [[P/20_Character/23_Relationship/Family/Sibling/_self|Family/Sibling]] -> [[P/20_Character/Brin|Brin]]",
+    );
+  });
+
+  it("keeps a line opened by an ordinary link out of the records", () => {
+    expect(
+      parseRecordLine("en", "- [[P/20_Character/Aria|Aria]] said so"),
+    ).toBeNull();
   });
 
   it("does not split on connector words inside a link", () => {
@@ -255,8 +276,8 @@ describe("record sections", () => {
       renderRecordSection("en", parsed.records, parsed.unrecognized),
     ).toBe(
       [
-        "- [[P/World_Status#Injured|Injured]] when [[P/Battle|Battle]]",
-        "- [[P/World_Status#Missing|Missing]]",
+        "- [[P/World_Status/Injured/_self|Injured]] when [[P/Battle|Battle]]",
+        "- [[P/World_Status/Missing/_self|Missing]]",
         "a stray note someone typed",
       ].join("\n"),
     );
@@ -283,6 +304,9 @@ describe("terms", () => {
     expect(parseTerm("[[A/B/C|Name]]")).toEqual(link("A/B/C", "Name"));
     expect(parseTerm("[[A/B/C]]")).toEqual(link("A/B/C", "C"));
     expect(parseTerm("plain words")).toEqual(text("plain words"));
+    // The node file every definition folder holds is a file name, never a
+    // name: a bare link to one is read by the folder that is the node.
+    expect(parseTerm("[[A/B/Elf/_self]]")).toEqual(link("A/B/Elf/_self", "Elf"));
   });
 
   it("writes the name a link is read out by, unless it is the link", () => {

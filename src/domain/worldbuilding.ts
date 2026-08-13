@@ -62,6 +62,16 @@ export const DEFINITION_FILE_IDS = [
 export type DefinitionFileId = (typeof DEFINITION_FILE_IDS)[number];
 
 /**
+ * The note every definition node folder holds, without its extension. The
+ * folder is what makes the node exist; this file is where its description and
+ * anything a later release attaches will live, and the underscore keeps it
+ * sorted above the child folders it shares a listing with. No display ever
+ * shows this name: links carry the taxonomy path as their alias, and every
+ * fallback strips it.
+ */
+export const DEFINITION_NODE_BASENAME = '_self';
+
+/**
  * Every kind of entity the universal model covers: the two member kinds that
  * predate worldbuilding plus the worldbuilding kinds. Each one owns its own
  * set of definition files, so vocabularies are scoped to the kind an entity

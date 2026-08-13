@@ -60,7 +60,10 @@ import {
 } from './project-root-field';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
-import type { RepairReportViewModel } from './view-model';
+import type {
+	DefinitionFileChoice,
+	RepairReportViewModel,
+} from './view-model';
 
 const PROJECT_LIST_SELECTOR = '.snowflake-method-project-manager-list';
 const PROJECT_MANAGER_MAIN_SELECTOR = '.snowflake-method-project-manager-main';
@@ -281,6 +284,7 @@ abstract class SnowflakeFormModal<T> extends Modal {
 	protected recordContext(
 		context: MemberFormContext,
 		labels: DefinitionPathSource,
+		definitionId: DefinitionFileChoice,
 	): RecordEditorContext {
 		return {
 			app: this.app,
@@ -288,7 +292,7 @@ abstract class SnowflakeFormModal<T> extends Modal {
 			notice: context.notice,
 			labels,
 			describeLabel: (path) =>
-				promptForCategoryDescription(this.app, this.t, path),
+				promptForDefinitionPath(this.app, this.t, definitionId, path),
 			pickEntity: () => promptForEntityReference(this.app, this.t, context),
 			entityGroup: context.groupOf,
 			times: context.times,
@@ -1206,7 +1210,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		this.aliasesField.attach(aliases.controlEl);
 		const categories = new Setting(this.contentEl)
 			.setName(this.t('form.category'))
-			.setDesc(this.t('form.category.desc'));
+			.setDesc(this.t('form.definition.desc.category'));
 		categories.settingEl.addClass(
 			'snowflake-method-character-setting',
 			'snowflake-method-character-category-setting',
@@ -1218,7 +1222,7 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 				notice: context.notice,
 				source: context.categories,
 				describe: (path) =>
-					promptForCategoryDescription(this.app, this.t, path),
+					promptForDefinitionPath(this.app, this.t, 'category', path),
 			},
 			this.value.categoryPaths,
 		);
@@ -1231,32 +1235,28 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
-		const worldStatusContext = this.recordContext(
-			context,
-			context.worldStatusLabels,
-		);
 		this.worldStatusEditor = new RecordCardsEditor(
-			worldStatusContext,
+			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
 			this.value.worldStatus,
 			{
 				title: this.t('form.worldStatus'),
 				add: this.t('form.record.addStatus'),
 				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.record.searchStatus'),
+				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
 			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
 		this.relationshipsEditor = new RecordCardsEditor(
-			{ ...worldStatusContext, labels: context.relationshipLabels },
+			this.recordContext(context, context.relationshipLabels, 'relationship'),
 			context.relationshipPath,
 			this.value.relationships,
 			{
 				title: this.t('form.relationships'),
 				add: this.t('form.record.addRelationship'),
 				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.record.searchRelationship'),
+				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
 			},
 			true,
 		);
@@ -1418,7 +1418,7 @@ export function promptForNewCharacter(
  * for is the moment it is invented -- and the description is optional because
  * some categories really do explain themselves.
  */
-class NewCategoryModal extends Modal {
+class NewDefinitionModal extends Modal {
 	private pathEl: HTMLInputElement | null = null;
 	private descriptionEl: HTMLTextAreaElement | null = null;
 	private decided = false;
@@ -1426,34 +1426,38 @@ class NewCategoryModal extends Modal {
 	constructor(
 		app: App,
 		private readonly t: Translate,
+		private readonly definitionId: DefinitionFileChoice,
 		private readonly path: string,
 		private readonly done: (created: NewDefinitionPath | null) => void,
 	) {
 		super(app);
-		this.setTitle(t('modal.category.title'));
+		this.setTitle(t(`modal.definition.title.${definitionId}`));
 		this.modalEl.addClass(
 			'snowflake-method-form-modal',
-			'snowflake-method-category-modal',
+			'snowflake-method-definition-modal',
 		);
 	}
 
 	onOpen(): void {
 		// Worn like every other form the plugin opens: the same rows, each label
 		// above the field it names. It asks for less than they do, and that is
-		// the only way it should differ.
-		this.contentEl.addClass('snowflake-method-category-form');
+		// the only way it should differ. Which vocabulary is being added to is
+		// what the wording changes: the dialog is the same for all three.
+		this.contentEl.addClass('snowflake-method-definition-form');
 		// The name arrives from whatever was typed into the field, which is
 		// where a slash in the wrong place is easiest to make and hardest to
 		// see. It stays an editable field so it can be put right here.
 		const name = new Setting(this.contentEl)
-			.setName(this.t('modal.category.name'))
-			.setDesc(this.t('form.category.desc'))
+			.setName(this.t(`modal.definition.name.${this.definitionId}`))
+			.setDesc(this.t(`form.definition.desc.${this.definitionId}`))
 			.addText((text) => {
 				text.setValue(this.path);
-				text.setPlaceholder(this.t('form.category.placeholder'));
+				text.setPlaceholder(
+					this.t(`form.definition.placeholder.${this.definitionId}`),
+				);
 				this.pathEl = text.inputEl;
 			});
-		name.settingEl.addClass('snowflake-method-category-setting');
+		name.settingEl.addClass('snowflake-method-definition-setting');
 		// Read at submit rather than tracked on the way in: what the field holds
 		// when Create is pressed is the answer, however it got there -- typed,
 		// pasted, or composed through an input method.
@@ -1464,8 +1468,8 @@ class NewCategoryModal extends Modal {
 				this.descriptionEl = text.inputEl;
 			});
 		description.settingEl.addClass(
-			'snowflake-method-category-setting',
-			'snowflake-method-category-description',
+			'snowflake-method-definition-setting',
+			'snowflake-method-definition-description',
 		);
 		const actions = this.contentEl.createDiv({
 			cls: 'snowflake-method-modal-actions',
@@ -1505,16 +1509,17 @@ export interface NewDefinitionPath {
 }
 
 /**
- * Opens the new-category dialog, resolving to the path to write and the
- * description to write under it, or to null when the author backed out.
+ * Opens the new-entry dialog for one of the vocabularies, resolving to the
+ * path to add and what it means, or to null when the author backed out.
  */
-export function promptForCategoryDescription(
+export function promptForDefinitionPath(
 	app: App,
 	t: Translate,
+	definitionId: DefinitionFileChoice,
 	path: string,
 ): Promise<NewDefinitionPath | null> {
 	return new Promise((resolve) => {
-		new NewCategoryModal(app, t, path, resolve).open();
+		new NewDefinitionModal(app, t, definitionId, path, resolve).open();
 	});
 }
 
@@ -1861,7 +1866,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		this.aliasesField.attach(aliases.controlEl);
 		const categories = new Setting(this.contentEl)
 			.setName(this.t('form.category'))
-			.setDesc(this.t('form.category.desc'));
+			.setDesc(this.t('form.definition.desc.category'));
 		categories.settingEl.addClass(
 			'snowflake-method-scene-setting',
 			'snowflake-method-scene-category-setting',
@@ -1873,7 +1878,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 				notice: context.notice,
 				source: context.categories,
 				describe: (path) =>
-					promptForCategoryDescription(this.app, this.t, path),
+					promptForDefinitionPath(this.app, this.t, 'category', path),
 			},
 			this.categoryPaths,
 		);
@@ -1886,31 +1891,28 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
-		const editorContext: RecordEditorContext = {
-			...this.recordContext(context, context.worldStatusLabels),
-		};
 		this.worldStatusEditor = new RecordCardsEditor(
-			editorContext,
+			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
 			this.worldStatus,
 			{
 				title: this.t('form.worldStatus'),
 				add: this.t('form.record.addStatus'),
 				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.record.searchStatus'),
+				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
 			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
 		this.relationshipsEditor = new RecordCardsEditor(
-			{ ...editorContext, labels: context.relationshipLabels },
+			this.recordContext(context, context.relationshipLabels, 'relationship'),
 			context.relationshipPath,
 			this.relationships,
 			{
 				title: this.t('form.relationships'),
 				add: this.t('form.record.addRelationship'),
 				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.record.searchRelationship'),
+				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
 			},
 			true,
 		);
@@ -2223,7 +2225,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		this.aliasesField.attach(aliases.controlEl);
 		const categories = new Setting(this.contentEl)
 			.setName(this.t('form.category'))
-			.setDesc(this.t('form.category.desc'));
+			.setDesc(this.t('form.definition.desc.category'));
 		categories.settingEl.addClass(
 			'snowflake-method-character-setting',
 			'snowflake-method-character-category-setting',
@@ -2235,7 +2237,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 				notice: context.notice,
 				source: context.categories,
 				describe: (path) =>
-					promptForCategoryDescription(this.app, this.t, path),
+					promptForDefinitionPath(this.app, this.t, 'category', path),
 			},
 			this.value.categoryPaths,
 		);
@@ -2355,31 +2357,28 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
-		const editorContext: RecordEditorContext = {
-			...this.recordContext(context, context.worldStatusLabels),
-		};
 		this.worldStatusEditor = new RecordCardsEditor(
-			editorContext,
+			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
 			this.value.worldStatus,
 			{
 				title: this.t('form.worldStatus'),
 				add: this.t('form.record.addStatus'),
 				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.record.searchStatus'),
+				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
 			},
 			false,
 		);
 		this.worldStatusEditor.attach(block);
 		this.relationshipsEditor = new RecordCardsEditor(
-			{ ...editorContext, labels: context.relationshipLabels },
+			this.recordContext(context, context.relationshipLabels, 'relationship'),
 			context.relationshipPath,
 			this.value.relationships,
 			{
 				title: this.t('form.relationships'),
 				add: this.t('form.record.addRelationship'),
 				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.record.searchRelationship'),
+				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
 			},
 			true,
 		);

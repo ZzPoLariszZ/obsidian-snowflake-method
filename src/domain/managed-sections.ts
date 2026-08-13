@@ -99,6 +99,9 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 		recordSection('relationships'),
 		section('entity-notes'),
 	],
+	// A definition node's `_self.md`: the generated block that reads out
+	// where the node sits and what it means, and free prose after it.
+	definition: [section('definition-fields', { generated: true })],
 	draft: [],
 	material: [],
 	archive: [],

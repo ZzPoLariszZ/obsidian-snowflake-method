@@ -29,6 +29,7 @@ import {
 	primaryManagedSectionForStep,
 	type DocumentType,
 	type EntityKind,
+	type ProjectLanguage,
 	type StepId,
 	type StepStatus,
 	type WorldbuildingKind,
@@ -66,11 +67,11 @@ import {
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
-	definitionFileName,
+	definitionRootName,
 	entityKindFolder,
 	getProjectPathLayout,
 	isMemberDocumentType,
-	parseHeadingLink,
+	taxonomyPathFromValue,
 	type ArtifactSnapshot,
 	type CharacterRecord,
 	type ProjectRef,
@@ -157,9 +158,24 @@ const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
 
-/** The full path a category link displays: its alias, or the raw value. */
-function categoryDisplayPath(raw: string): string {
-	return parseHeadingLink(raw)?.display ?? raw;
+/** The vault path of one of an entity kind's tree root folders. */
+function definitionRootPathFor(
+	project: { rootPath: string; locale: ProjectLanguage },
+	kind: EntityKind,
+	id: DefinitionFileChoice,
+): string {
+	return normalizePath(
+		`${project.rootPath}/${entityKindFolder(getProjectPathLayout(project.locale), kind)}/${definitionRootName(kind, id, project.locale)}`,
+	);
+}
+
+/**
+ * The taxonomy path a stored category link displays. The link's target is
+ * the source of truth, so the path is read from it; the alias only answers
+ * for a value the root cannot explain.
+ */
+function categoryDisplayPath(raw: string, categoryRoot: string): string {
+	return taxonomyPathFromValue(raw, categoryRoot) ?? raw;
 }
 
 /**
@@ -790,13 +806,24 @@ export default class SnowflakeMethodPlugin
 				.map((issue) => issue.path),
 		);
 		const characterModels = characters.map((character) =>
-			this.characterViewModel(character, driftedNames, projectT),
+			this.characterViewModel(
+				character,
+				driftedNames,
+				projectT,
+				definitionRootPathFor(project, 'character', 'category'),
+			),
 		);
 		const characterNames = new Map(
 			characters.map((character) => [character.path, character.name]),
 		);
 		const sceneModels = scenes.map((scene) =>
-			this.sceneViewModel(scene, characterNames, driftedNames, projectT),
+			this.sceneViewModel(
+				scene,
+				characterNames,
+				driftedNames,
+				projectT,
+				definitionRootPathFor(project, 'scene', 'category'),
+			),
 		);
 		const artifactIssues = new Map<StepId, ManagedSectionIssueViewModel[]>();
 		for (const [step, artifact] of artifactMap) {
@@ -873,13 +900,25 @@ export default class SnowflakeMethodPlugin
 			scenes: sceneModels,
 			worldbuilding: {
 				time: project.worldbuilding.time.map((entity) =>
-					this.entityViewModel(entity, projectT),
+					this.entityViewModel(
+						entity,
+						projectT,
+						definitionRootPathFor(project, 'time', 'category'),
+					),
 				),
 				location: project.worldbuilding.location.map((entity) =>
-					this.entityViewModel(entity, projectT),
+					this.entityViewModel(
+						entity,
+						projectT,
+						definitionRootPathFor(project, 'location', 'category'),
+					),
 				),
 				item: project.worldbuilding.item.map((entity) =>
-					this.entityViewModel(entity, projectT),
+					this.entityViewModel(
+						entity,
+						projectT,
+						definitionRootPathFor(project, 'item', 'category'),
+					),
 				),
 			},
 			unmigratedMembers:
@@ -1271,11 +1310,8 @@ export default class SnowflakeMethodPlugin
 		kind: EntityKind,
 	): Promise<Record<DefinitionFileChoice, string>> {
 		const project = await this.requireCurrentProject();
-		const layout = getProjectPathLayout(project.locale);
 		const pathFor = (id: DefinitionFileChoice): string =>
-			normalizePath(
-				`${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionFileName(kind, id, project.locale)}`,
-			);
+			definitionRootPathFor(project, kind, id);
 		return {
 			category: pathFor('category'),
 			'world-status': pathFor('world-status'),
@@ -2924,6 +2960,28 @@ export default class SnowflakeMethodPlugin
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
+		if (file instanceof TFolder) this.scheduleDefinitionMaterialize(file.path);
+	}
+
+	/**
+	 * A folder that just appeared under a definition tree is a node the file
+	 * explorer made, and every node carries its `_self.md`: materialized
+	 * here, the moment the folder exists, so a link made a breath later has
+	 * a note to resolve to. For any other folder the service returns without
+	 * writing, which is what makes it safe to call on every folder event.
+	 */
+	private scheduleDefinitionMaterialize(path: string): void {
+		void (async () => {
+			const project = await this.projectOfPath(path);
+			if (project === null || project.readOnly) return;
+			await this.projects.materializeDefinitionNodesBelow(project, path);
+		})().catch((error: unknown) => {
+			console.error(
+				'Snowflake: could not materialize definition nodes',
+				path,
+				error,
+			);
+		});
 	}
 
 	/**
@@ -2975,6 +3033,15 @@ export default class SnowflakeMethodPlugin
 		const record = await repository.tryReadManaged(path);
 		if (record === null || record.readOnly) return;
 		const documentType = documentTypeOf(record.frontmatter);
+		// A definition node's block is generated the same way, from where the
+		// node sits and the description its properties carry, so a description
+		// edited in the properties panel reaches the note it describes.
+		if (documentType === 'definition') {
+			const project = await this.projectOfPath(path);
+			if (project === null) return;
+			await this.projects.syncDefinitionNodeAt(project, path);
+			return;
+		}
 		if (!isMemberDocumentType(documentType)) return;
 		// Everything above costs one cached read; the project below costs a
 		// load, so a note that carries no block never gets that far.
@@ -3092,6 +3159,9 @@ export default class SnowflakeMethodPlugin
 		}
 		if (movedRoot !== null || movedRecent !== null) await this.saveSettings();
 		this.scheduleRefresh(true);
+		// A folder dragged into a definition tree brings its subfolders along,
+		// and every one of them is a node from this moment on.
+		if (file instanceof TFolder) this.scheduleDefinitionMaterialize(file.path);
 	}
 
 	private isProjectPath(path: string): boolean {
@@ -3268,6 +3338,7 @@ export default class SnowflakeMethodPlugin
 		character: CharacterRecord,
 		driftedNames: ReadonlySet<string>,
 		t: Translate,
+		categoryRoot: string,
 	): CharacterViewModel {
 		return {
 			id: character.characterId,
@@ -3279,7 +3350,9 @@ export default class SnowflakeMethodPlugin
 			aliases: character.aliases,
 			// Every category, the role among them: the picker owns the whole list
 			// now, so anything held back here would be dropped on the next save.
-			categoryPaths: character.categories.map((raw) => categoryDisplayPath(raw)),
+			categoryPaths: character.categories.map((raw) =>
+				categoryDisplayPath(raw, categoryRoot),
+			),
 			oneSentenceStoryline: character.oneSentenceStoryline,
 			oneParagraphStoryline: character.oneParagraphStoryline,
 			motivation: character.motivation,
@@ -3304,6 +3377,7 @@ export default class SnowflakeMethodPlugin
 		characterNames: ReadonlyMap<string, string>,
 		driftedNames: ReadonlySet<string>,
 		t: Translate,
+		categoryRoot: string,
 	): SceneViewModel {
 		return {
 			id: scene.sceneId,
@@ -3336,7 +3410,9 @@ export default class SnowflakeMethodPlugin
 			conflict: scene.conflict,
 			progressStatus: scene.progressStatus,
 			aliases: scene.aliases,
-			categoryPaths: scene.categories.map((raw) => categoryDisplayPath(raw)),
+			categoryPaths: scene.categories.map((raw) =>
+				categoryDisplayPath(raw, categoryRoot),
+			),
 			worldStatus: scene.worldStatus,
 			relationships: scene.relationships,
 			events: scene.events,
@@ -3354,6 +3430,7 @@ export default class SnowflakeMethodPlugin
 	private entityViewModel(
 		entity: WorldbuildingRecord,
 		t: Translate,
+		categoryRoot: string,
 	): WorldbuildingEntityViewModel {
 		return {
 			id: entity.entityId,
@@ -3363,7 +3440,9 @@ export default class SnowflakeMethodPlugin
 			rank: entity.rank,
 			progressStatus: entity.progressStatus,
 			aliases: entity.aliases,
-			categoryPaths: entity.categories.map((raw) => categoryDisplayPath(raw)),
+			categoryPaths: entity.categories.map((raw) =>
+				categoryDisplayPath(raw, categoryRoot),
+			),
 			description: entity.description,
 			timeKind: entity.timeKind,
 			timeStart: entity.timeStart,

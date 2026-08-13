@@ -43,6 +43,10 @@ export const DOCUMENT_TYPES = [
 	'character',
 	'scene',
 	'worldbuilding',
+	// The `_self.md` a definition node folder holds: not an entity, so it
+	// never joins a kind's listing, but managed enough to carry the stamp
+	// that says which project's vocabulary it belongs to.
+	'definition',
 	'draft',
 	'material',
 	'archive',
@@ -102,6 +106,7 @@ export const FRONTMATTER_KEYS = {
 	sceneLocation: 'snowflake-scene-location',
 	sceneCharacters: 'snowflake-scene-characters',
 	entityId: 'snowflake-entity-id',
+	definitionId: 'snowflake-definition-id',
 	name: 'snowflake-name',
 	description: 'snowflake-description',
 	// "progress" so the key can never be mistaken for the body-stored World

@@ -1,7 +1,11 @@
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
-import { appendBaseColumns, getProjectBases } from '../../src/templates';
+import {
+	appendBaseColumns,
+	getBaseTextRefreshes,
+	getProjectBases,
+} from '../../src/templates';
 
 const PROJECT_ID = 'project-85200cf4-9b68-40e9-a316-ead8ed859365';
 
@@ -307,6 +311,38 @@ describe('worldbuilding kind bases', () => {
 			expect(document.views).toHaveLength(1);
 			expect(document.views[0]?.order).not.toContain('snowflake-time-start');
 		}
+	});
+
+	it('rewrites the time column a past release generated', () => {
+		// Exactly what a base written before "Time point" and before the kind
+		// called `event` was dropped still holds on disk.
+		const stored =
+			'if(note["snowflake-time-kind"] == "point", "Point in time", ' +
+			'if(note["snowflake-time-kind"] == "period", "Period", ' +
+			'if(note["snowflake-time-kind"] == "event", "Event", note["snowflake-time-kind"])))';
+		const refreshed = getBaseTextRefreshes('en').reduce(
+			(text, { from, to }) => text.split(from).join(to),
+			stored,
+		);
+		expect(refreshed).toBe(parsed('time').formulas['time_kind']);
+		expect(refreshed).toContain('"Time point"');
+		expect(refreshed).toContain('"Time period"');
+		expect(refreshed).not.toContain('"Event"');
+		// Applying it twice changes nothing more.
+		expect(
+			getBaseTextRefreshes('en').reduce(
+				(text, { from, to }) => text.split(from).join(to),
+				refreshed,
+			),
+		).toBe(refreshed);
+		// A column an author named for themselves is left alone.
+		const mine = 'formula.period: "Period of the reign"';
+		expect(
+			getBaseTextRefreshes('en').reduce(
+				(text, { from, to }) => text.split(from).join(to),
+				mine,
+			),
+		).toBe(mine);
 	});
 
 	it('ends every list view with the description', () => {

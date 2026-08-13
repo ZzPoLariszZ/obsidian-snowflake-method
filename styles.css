@@ -5072,16 +5072,16 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	right: var(--snowflake-close-inset, 1px);
 }
 
-.modal.snowflake-method-category-modal {
+.modal.snowflake-method-definition-modal {
 	--snowflake-close-inset: 16px;
 }
 
 /* Naming a new category: what it will be called, and what it is for. */
-.snowflake-method-category-modal {
+.snowflake-method-definition-modal {
 	width: min(30rem, calc(100vw - 2rem));
 }
 
-.snowflake-method-category-form {
+.snowflake-method-definition-form {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-4);
@@ -5090,9 +5090,9 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 /* The same row every member form is built from: the label above the field it
    names, both spanning the dialog. */
-.modal.snowflake-method-category-modal
-	.modal-content.snowflake-method-category-form
-	> .snowflake-method-category-setting {
+.modal.snowflake-method-definition-modal
+	.modal-content.snowflake-method-definition-form
+	> .snowflake-method-definition-setting {
 	display: flex;
 	align-items: stretch;
 	flex-direction: column;
@@ -5105,8 +5105,8 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 /* The label sits above its field, and an explanation below the label rather
    than beside it, which would squeeze both into halves of one line. */
-.snowflake-method-category-form
-	> .snowflake-method-category-setting
+.snowflake-method-definition-form
+	> .snowflake-method-definition-setting
 	> .setting-item-info {
 	display: block;
 	flex: 0 0 auto;
@@ -5114,8 +5114,8 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	margin: 0;
 }
 
-.snowflake-method-category-form
-	> .snowflake-method-category-setting
+.snowflake-method-definition-form
+	> .snowflake-method-definition-setting
 	.setting-item-description {
 	margin-top: var(--size-2-1);
 	color: var(--text-muted);
@@ -5124,15 +5124,15 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	white-space: pre-line;
 }
 
-.snowflake-method-category-form
-	> .snowflake-method-category-setting
+.snowflake-method-definition-form
+	> .snowflake-method-definition-setting
 	input[type='text'] {
 	width: 100%;
 	max-width: none;
 }
 
-.snowflake-method-category-form
-	> .snowflake-method-category-setting
+.snowflake-method-definition-form
+	> .snowflake-method-definition-setting
 	.setting-item-name {
 	color: var(--text-normal);
 	font-size: var(--font-ui-medium);
@@ -5140,8 +5140,8 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	line-height: 1.4;
 }
 
-.snowflake-method-category-form
-	> .snowflake-method-category-setting
+.snowflake-method-definition-form
+	> .snowflake-method-definition-setting
 	> .setting-item-control {
 	display: flex;
 	align-items: stretch;
@@ -5168,15 +5168,15 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	color: var(--text-faint);
 }
 
-.snowflake-method-category-description {
+.snowflake-method-definition-description {
 	display: block;
 }
 
-.snowflake-method-category-description .setting-item-control {
+.snowflake-method-definition-description .setting-item-control {
 	width: 100%;
 }
 
-.snowflake-method-category-description textarea {
+.snowflake-method-definition-description textarea {
 	width: 100%;
 	min-height: 5rem;
 	line-height: 1.5;

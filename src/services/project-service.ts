@@ -40,6 +40,7 @@ import {
   sortByRank,
   ALIASES_KEY,
   DEFINITION_FILE_IDS,
+  DEFINITION_NODE_BASENAME,
   ENTITY_KINDS,
   SCENE_POV_OMNISCIENT,
   WORLDBUILDING_KINDS,
@@ -57,15 +58,22 @@ import {
   type WorldbuildingKind,
 } from "../domain";
 import {
-  appendDefinitionPath,
+  MAX_DEFINITION_DEPTH,
   characterRoleFromCategories,
-  characterRoleHeading,
-  characterTypeFromHeading,
-  definitionFileName,
-  definitionFileTemplate,
+  characterRoleName,
+  characterStarterNames,
+  characterTypeFromNodeName,
+  checkDefinitionPath,
+  definitionProseByPath,
+  definitionRootFromValue,
+  definitionRootName,
+  legacyDefinitionFileName,
+  nodeLink,
+  nodeNameFromValue,
   parseDefinitionFile,
-  parseHeadingLink,
-  renderHeadingLink,
+  parseDefinitionValue,
+  taxonomyPathFromTarget,
+  taxonomyPathFromValue,
   type AppendPathResult,
 } from "./definition-files";
 import {
@@ -87,6 +95,8 @@ import {
   appendBaseColumns,
   baseColumnDisplayNames,
   characterTemplate,
+  definitionTemplate,
+  getBaseTextRefreshes,
   getProjectBases,
   getStoryArtifacts,
   getSystemTemplates,
@@ -97,6 +107,7 @@ import {
   inspectManagedDocumentSections,
   readMarkedSection,
   renderCharacterFieldsBlock,
+  renderDefinitionFieldsBlock,
   renderEntityFieldsBlock,
   renderSceneFieldsBlock,
   renderDetailsSection,
@@ -222,6 +233,14 @@ export class SnowflakeProjectService {
   readonly repository: VaultRepository;
   /** The manuscript of whichever project is being asked about. See its class. */
   readonly manuscript: ManuscriptService;
+  /**
+   * Definition node folders this service is raising right now. Making a
+   * folder is what tells the vault watcher a node exists, so without this
+   * the watcher would answer the folder the plugin just made and write the
+   * node file first, empty, while the pass that has the description is
+   * still on its way to the same file.
+   */
+  private readonly ensuringDefinitionNodes = new Set<string>();
 
   constructor(
     vault: Vault,
@@ -654,24 +673,20 @@ export class SnowflakeProjectService {
       else markCreated(result, folder);
     }
 
-    // Like the bases below, a definition file's existence is the contract:
-    // its heading tree is the author's taxonomy, and the health checker is
-    // what watches over duplicates and dangling links. Every entity kind
-    // carries its own set, in the folder its notes live in.
+    // Like the bases below, a tree root's existence is the contract: its
+    // folders are the author's taxonomy, and the health checker is what
+    // watches over the node files and the links pointing in. Every entity
+    // kind carries its own set, in the folder its notes live in.
     for (const kind of ENTITY_KINDS) {
       for (const definitionId of DEFINITION_FILE_IDS) {
-        const path = definitionFilePath(project, kind, definitionId);
-        const existing = this.repository.get(path);
-        if (existing === null) {
-          await this.repository.createPlainFile(
-            path,
-            definitionFileTemplate(kind, definitionId, project.locale),
-          );
-          markCreated(result, path);
-        } else if (this.repository.getFile(path) !== null) {
+        const path = definitionRootPath(project, kind, definitionId);
+        if (this.repository.getFolder(path) !== null) {
           markUnchanged(result, path);
+        } else if (this.repository.get(path) !== null) {
+          markConflict(result, path, `A file already exists at "${path}".`);
         } else {
-          markConflict(result, path, `A folder already exists at "${path}".`);
+          await this.ensureDefinitionRoot(project, kind, definitionId);
+          markCreated(result, path);
         }
       }
     }
@@ -1017,6 +1032,103 @@ export class SnowflakeProjectService {
         throw new Error(`No canonical project base was found for "${normalized}".`);
       }
       await this.repository.createPlainFile(normalized, base.content);
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "missing-definition-node") {
+      await this.materializeDefinitionNodesBelow(project, normalized);
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "unresolved-definition-link") {
+      const member = this.memberAtPath(project, normalized);
+      if (member === null) {
+        throw new Error(`No project member was found at "${normalized}".`);
+      }
+      const kind = memberEntityKind(member);
+      const roots = DEFINITION_FILE_IDS.map((id) => ({
+        id,
+        rootPath: definitionRootPath(project, kind, id),
+      }));
+      let created = 0;
+      const raise = async (
+        target: string,
+        root: { id: DefinitionFileId; rootPath: string },
+      ): Promise<void> => {
+        const path = taxonomyPathFromTarget(target, root.rootPath);
+        if (path === null) return;
+        if (this.repository.getFolder(`${root.rootPath}/${path}`) !== null) {
+          return;
+        }
+        const check = checkDefinitionPath(path);
+        if (!check.ok) return;
+        await this.ensureDefinitionNodes(project, kind, root.id, check.segments);
+        created += 1;
+      };
+      for (const raw of member.categories) {
+        const link = parseDefinitionValue(raw);
+        if (link === null || link.legacyHeading !== null) continue;
+        await raise(link.target, {
+          id: "category",
+          rootPath: definitionRootPath(project, kind, "category"),
+        });
+      }
+      for (const line of [...member.worldStatus, ...member.relationships]) {
+        for (const root of roots) {
+          if (taxonomyPathFromTarget(line.label.path, root.rootPath) === null) {
+            continue;
+          }
+          await raise(line.label.path, root);
+          break;
+        }
+      }
+      if (created === 0) {
+        throw new Error(
+          `No unresolved definition link was found in "${normalized}".`,
+        );
+      }
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "stale-definition-alias") {
+      const member = this.memberAtPath(project, normalized);
+      if (member === null) {
+        throw new Error(`No project member was found at "${normalized}".`);
+      }
+      const kind = memberEntityKind(member);
+      const roots = DEFINITION_FILE_IDS.map((id) =>
+        definitionRootPath(project, kind, id),
+      );
+      // The names come back from the targets: the frontmatter through the
+      // normal rewrite, and the record labels re-rendered with the path each
+      // target spells today. The callout follows on its own reconcile.
+      await this.normalizeMemberCategoryLinks(project, member);
+      const fixLabels = (lines: readonly RecordLine[]): RecordLine[] =>
+        lines.map((line) => {
+          for (const root of roots) {
+            const derived = taxonomyPathFromTarget(line.label.path, root);
+            if (derived === null) continue;
+            return derived === line.label.display
+              ? line
+              : { ...line, label: { ...line.label, display: derived } };
+          }
+          return line;
+        });
+      await this.reconcileRecordSections(project, {
+        ...member,
+        worldStatus: fixLabels(member.worldStatus),
+        relationships: fixLabels(member.relationships),
+      });
+      // The callout re-emits the category links, so left to the debounced
+      // reconcile it would keep showing the stale names for a while after
+      // the repair reported success: refreshed here, from the note as it
+      // stands now, so the report and the note agree immediately.
+      const refreshed = await this.loadProject(project.projectFile);
+      try {
+        await this.reconcileMemberFieldsBlock(refreshed, normalized);
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+      }
       return this.loadProject(project.projectFile);
     }
 
@@ -1421,6 +1533,17 @@ export class SnowflakeProjectService {
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
+    await this.ensureReferencedDefinitions(
+      project,
+      "character",
+      [
+        ...(input.categoryPaths ?? []),
+        ...(resolvedType === undefined
+          ? []
+          : [characterRoleName(project.locale, resolvedType)]),
+      ],
+      [input.worldStatus, input.relationships],
+    );
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
@@ -1558,6 +1681,17 @@ export class SnowflakeProjectService {
         nextName,
       );
     }
+    await this.ensureReferencedDefinitions(
+      project,
+      "character",
+      [
+        ...(patch.categoryPaths ?? []),
+        ...(patch.type === undefined
+          ? []
+          : [characterRoleName(project.locale, patch.type)]),
+      ],
+      [patch.worldStatus, patch.relationships],
+    );
 
     const frontmatterPatch: ManagedFrontmatter = {};
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.characterName, patch.name?.trim());
@@ -2012,6 +2146,10 @@ export class SnowflakeProjectService {
       "scene",
       input.categoryPaths ?? [],
     );
+    await this.ensureReferencedDefinitions(project, "scene", input.categoryPaths ?? [], [
+      input.worldStatus,
+      input.relationships,
+    ]);
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
@@ -2284,6 +2422,10 @@ export class SnowflakeProjectService {
     if (patch.aliases !== undefined) {
       frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
     }
+    await this.ensureReferencedDefinitions(project, "scene", patch.categoryPaths ?? [], [
+      patch.worldStatus,
+      patch.relationships,
+    ]);
     const nextCategories =
       patch.categoryPaths === undefined
         ? scene.categories
@@ -2399,6 +2541,9 @@ export class SnowflakeProjectService {
     const loaded = await this.loadProject(projectLocator);
     this.assertProjectWritable(loaded);
     await this.ensureWorldbuildingTree(loaded);
+    await this.convertLegacyDefinitionFiles(loaded);
+    await this.syncDefinitionTrees(loaded);
+    await this.refreshRoleLinksInBases(loaded);
     // Notes made here join the project, so everything after this reads a
     // project that has them: the callouts refreshed below are refreshed with
     // the links, not with the words they replaced.
@@ -2441,8 +2586,9 @@ export class SnowflakeProjectService {
         // resolves the same way, never a note claiming two roles.
         const record = await this.repository.readManaged(character.path);
         // Nothing to move when the role already reads as a category, or when
-        // the note never named one.
-        const migratedCategories =
+        // the note never named one. Whatever the list holds afterwards is
+        // re-emitted in today's link form, old role or not.
+        const roleAdjusted =
           character.type === null ||
           characterRoleFromCategories(character.categories) !== null
             ? character.categories
@@ -2452,6 +2598,11 @@ export class SnowflakeProjectService {
                 character.type,
                 categoryDefinitionPath(project, "character"),
               );
+        const migratedCategories = normalizedCategoryValues(
+          project,
+          "character",
+          roleAdjusted,
+        );
         const frontmatterPatch: ManagedFrontmatter = {};
         if (schemaVersionOf(record.frontmatter) !== SCHEMA_VERSION) {
           frontmatterPatch[FRONTMATTER_KEYS.schema] = SCHEMA_VERSION;
@@ -2460,7 +2611,7 @@ export class SnowflakeProjectService {
           hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType) ||
           migratedCategories !== character.categories
         ) {
-          frontmatterPatch[FRONTMATTER_KEYS.category] = migratedCategories;
+          frontmatterPatch[FRONTMATTER_KEYS.category] = [...migratedCategories];
           frontmatterPatch[FRONTMATTER_KEYS.characterType] = undefined;
         }
         if (Object.keys(frontmatterPatch).length > 0) {
@@ -2472,7 +2623,7 @@ export class SnowflakeProjectService {
               project.locale,
               characterFieldsView(project.locale, {
                 ...character,
-                categories: migratedCategories,
+                categories: [...migratedCategories],
               }),
             ),
           },
@@ -2526,18 +2677,32 @@ export class SnowflakeProjectService {
     // Worldbuilding entities are members of the same model and carry the same
     // generated overview, so a bulk refresh that skipped them would leave a
     // project half in the current shape.
-    const refreshable = [
-      ...project.characters,
-      ...project.scenes,
-      ...WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]),
-    ];
-    for (const member of refreshable) {
-      if (member.readOnly || ("unmigrated" in member && member.unmigrated)) {
-        continue;
+    const refreshable = (
+      snapshot: ProjectSnapshot,
+    ): Array<CharacterRecord | SceneRecord | WorldbuildingRecord> =>
+      [
+        ...snapshot.characters,
+        ...snapshot.scenes,
+        ...WORLDBUILDING_KINDS.flatMap((kind) => snapshot.worldbuilding[kind]),
+      ].filter(
+        (member) =>
+          !member.readOnly && !("unmigrated" in member && member.unmigrated),
+      );
+    // Category links first, and reloaded when any changed: the callouts
+    // refreshed below are rendered from the snapshot, and must show the
+    // links the notes now hold, not the ones conversion just replaced.
+    let normalized = 0;
+    for (const member of refreshable(project)) {
+      if (await this.normalizeMemberCategoryLinks(project, member)) {
+        normalized += 1;
       }
+    }
+    const current =
+      normalized > 0 ? await this.loadProject(projectLocator) : project;
+    for (const member of refreshable(current)) {
       try {
-        await this.reconcileMemberFieldsBlock(project, member.path);
-        await this.reconcileRecordSections(project, member);
+        await this.reconcileMemberFieldsBlock(current, member.path);
+        await this.reconcileRecordSections(current, member);
       } catch (error) {
         if (!(error instanceof UnsafeSectionError)) throw error;
       }
@@ -2593,6 +2758,153 @@ export class SnowflakeProjectService {
     }
     if (Object.keys(stale).length === 0) return;
     await this.repository.updateSections(member.path, stale);
+  }
+
+  /**
+   * Raises the folder tree out of each legacy heading file, then retires the
+   * file. The prose an author kept under a heading moves into that node's
+   * `_self.md`, the intro line above the first heading goes with the file,
+   * and the file itself goes to the trash, where it stays recoverable. A
+   * heading no folder could be named after stays behind, and so does its
+   * file: better a file too many than a word dropped.
+   */
+  private async convertLegacyDefinitionFiles(
+    project: ProjectSnapshot,
+  ): Promise<void> {
+    const layout = getProjectPathLayout(project.locale);
+    for (const kind of ENTITY_KINDS) {
+      for (const id of DEFINITION_FILE_IDS) {
+        const legacyPath = normalizePath(
+          `${project.rootPath}/${entityKindFolder(layout, kind)}/${legacyDefinitionFileName(kind, id, project.locale)}`,
+        );
+        const file = this.repository.getFile(legacyPath);
+        if (file === null) continue;
+        const content = await this.repository.vault.read(file);
+        const prose = definitionProseByPath(content);
+        let refused = false;
+        for (const entry of parseDefinitionFile(content).entries) {
+          const check = checkDefinitionPath(entry.path);
+          if (!check.ok) {
+            refused = true;
+            continue;
+          }
+          await this.ensureDefinitionNodes(
+            project,
+            kind,
+            id,
+            check.segments,
+            prose.get(entry.path) ?? "",
+          );
+        }
+        if (refused) continue;
+        await this.repository.trashFile(legacyPath);
+      }
+    }
+  }
+
+  /**
+   * The bases embed the three role links in their filters and formulas, and
+   * the ones written before nodes were folders anchor a heading that no
+   * longer exists. The wording a generated column was written with is stuck
+   * the same way, because a base is created once and belongs to its author
+   * afterwards. The swap is textual on purpose: views, columns and widths
+   * are theirs, so only the exact superseded strings give way.
+   */
+  private async refreshRoleLinksInBases(
+    project: ProjectSnapshot,
+  ): Promise<void> {
+    const layout = getProjectPathLayout(project.locale);
+    const definitionPath = categoryDefinitionPath(project, "character");
+    const swaps = [
+      ...(["major", "supporting", "minor"] as const).map((type) => {
+        const role = characterRoleName(project.locale, type);
+        return {
+          from: `[[${definitionPath}#${role}|${role}]]`,
+          to: nodeLink(definitionPath, role),
+        };
+      }),
+      ...getBaseTextRefreshes(project.locale),
+    ];
+    for (const base of getProjectBases(
+      project.id,
+      project.locale,
+      characterRoleLinks(project),
+    )) {
+      const path = normalizePath(
+        `${project.rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
+      );
+      if (this.repository.getFile(path) === null) continue;
+      await this.repository.updatePlainFile(path, (currentContent) => {
+        let next = currentContent;
+        for (const swap of swaps) next = next.split(swap.from).join(swap.to);
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Rewrites a member's stored category links to today's node form, and only
+   * then: a value already written this way comes back identical, and the
+   * note is left untouched. True when the note changed.
+   */
+  private async normalizeMemberCategoryLinks(
+    project: ProjectSnapshot,
+    member: CharacterRecord | SceneRecord | WorldbuildingRecord,
+  ): Promise<boolean> {
+    const kind = memberEntityKind(member);
+    const next = normalizedCategoryValues(project, kind, member.categories);
+    if (next === member.categories) return false;
+    await this.repository.updateFrontmatter(member.path, {
+      [FRONTMATTER_KEYS.category]: [...next],
+    });
+    return true;
+  }
+
+  /**
+   * Every definition path a write references is made real first. The picker
+   * creates what it offers, but a path can also arrive typed straight into a
+   * caller or carried in from another note, and a link written before its
+   * node exists would be born broken.
+   */
+  private async ensureReferencedDefinitions(
+    project: ProjectRef | ProjectSnapshot,
+    kind: EntityKind,
+    categoryPaths: readonly string[],
+    records: ReadonlyArray<readonly RecordLine[] | undefined>,
+  ): Promise<void> {
+    const jobs = new Map<
+      string,
+      { id: DefinitionFileId; segments: string[] }
+    >();
+    const claim = (id: DefinitionFileId, path: string): void => {
+      const check = checkDefinitionPath(path);
+      if (!check.ok) return;
+      jobs.set(`${id}/${check.segments.join("/")}`, {
+        id,
+        segments: check.segments,
+      });
+    };
+    for (const path of categoryPaths) claim("category", path);
+    const roots = DEFINITION_FILE_IDS.map((id) => ({
+      id,
+      rootPath: definitionRootPath(project, kind, id),
+    }));
+    for (const lines of records) {
+      for (const record of lines ?? []) {
+        for (const root of roots) {
+          const taxonomy = taxonomyPathFromTarget(
+            record.label.path,
+            root.rootPath,
+          );
+          if (taxonomy === null) continue;
+          claim(root.id, taxonomy);
+          break;
+        }
+      }
+    }
+    for (const job of jobs.values()) {
+      await this.ensureDefinitionNodes(project, kind, job.id, job.segments);
+    }
   }
 
   /**
@@ -2752,8 +3064,10 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * The paths a definition file's heading tree spells, in document order:
-   * what the category and record-label pickers list.
+   * The paths a definition tree's folders spell, depth first with siblings
+   * in folded name order: what the category and record-label pickers list.
+   * The walk stops at the depth cap, so a deeper folder is simply not part
+   * of the vocabulary.
    */
   async listDefinitionPaths(
     projectLocator: ProjectLocator,
@@ -2761,17 +3075,206 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
   ): Promise<string[]> {
     const project = await this.loadProject(projectLocator);
-    const file = this.repository.getFile(definitionFilePath(project, kind, id));
-    if (file === null) return [];
-    const content = await this.repository.vault.read(file);
-    return parseDefinitionFile(content).entries.map((entry) => entry.path);
+    return this.walkDefinitionTree(definitionRootPath(project, kind, id));
+  }
+
+  private walkDefinitionTree(rootPath: string): string[] {
+    return this.definitionNodeFolders(rootPath).map(
+      (folderPath) => taxonomyPathFromTarget(folderPath, rootPath) ?? "",
+    );
   }
 
   /**
-   * Appends a missing path to one kind's definition file, creating the
-   * worldbuilding tree first when an older project has none. Refusals are
-   * returned rather than thrown so the picker can say why in the project's
-   * language.
+   * Every node folder at or below a folder, depth first with siblings in
+   * folded name order, stopping at the depth cap. One walk for the pickers,
+   * the health scan, and the passes that write node files.
+   */
+  private definitionNodeFolders(rootPath: string, from = rootPath): string[] {
+    const folders: string[] = [];
+    const start = this.repository.getFolder(from) === null ? null : from;
+    if (start === null) return folders;
+    const startDepth =
+      start === rootPath
+        ? 0
+        : (taxonomyPathFromTarget(start, rootPath)?.split("/").length ?? 0);
+    const visit = (folderPath: string, depth: number): void => {
+      if (depth >= MAX_DEFINITION_DEPTH) return;
+      const children = [...this.repository.listDirectFolders(folderPath)].sort(
+        (left, right) => foldName(left.name).localeCompare(foldName(right.name)),
+      );
+      for (const child of children) {
+        const path = `${folderPath}/${child.name}`;
+        folders.push(path);
+        visit(path, depth + 1);
+      }
+    };
+    if (startDepth > 0) folders.push(start);
+    visit(start, startDepth);
+    return folders;
+  }
+
+  /** The tree a folder belongs to, or null when it is under none of them. */
+  private definitionRootOf(
+    project: ProjectRef | ProjectSnapshot,
+    folderPath: string,
+  ): { kind: EntityKind; id: DefinitionFileId; rootPath: string } | null {
+    const normalized = normalizePath(folderPath);
+    for (const kind of ENTITY_KINDS) {
+      for (const id of DEFINITION_FILE_IDS) {
+        const rootPath = definitionRootPath(project, kind, id);
+        if (normalized === rootPath || normalized.startsWith(`${rootPath}/`)) {
+          return { kind, id, rootPath };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Gives every node folder at or below a path its `_self.md`. The vault
+   * watcher calls this when a folder appears under a project, so a node made
+   * in the file explorer is materialized the moment it exists; a path that
+   * is not under any definition tree is quietly nothing to do.
+   */
+  async materializeDefinitionNodesBelow(
+    projectLocator: ProjectLocator,
+    folderPath: string,
+  ): Promise<void> {
+    const project = await this.resolveProjectForRead(projectLocator);
+    if (project.readOnly) return;
+    const normalized = normalizePath(folderPath);
+    const owner = this.definitionRootOf(project, normalized);
+    if (owner === null || this.repository.getFolder(normalized) === null) {
+      return;
+    }
+    for (const nodeFolder of this.definitionNodeFolders(
+      owner.rootPath,
+      normalized,
+    )) {
+      // A folder the plugin is in the middle of raising is not a folder made
+      // by hand, and the pass raising it is the one holding the description.
+      if (this.ensuringDefinitionNodes.has(nodeFolder)) continue;
+      await this.syncDefinitionNode(
+        project,
+        owner.id,
+        owner.rootPath,
+        nodeFolder,
+      );
+    }
+  }
+
+  /**
+   * Every node in every tree, brought current: the pass that gives a project
+   * written by an older build the node files, properties and blocks this one
+   * writes. Cheap enough to run whole, because a vocabulary is small beside
+   * the notes that use it.
+   */
+  private async syncDefinitionTrees(
+    project: ProjectRef | ProjectSnapshot,
+  ): Promise<void> {
+    for (const kind of ENTITY_KINDS) {
+      for (const id of DEFINITION_FILE_IDS) {
+        const rootPath = definitionRootPath(project, kind, id);
+        if (this.repository.getFolder(rootPath) === null) continue;
+        for (const nodeFolder of this.definitionNodeFolders(rootPath)) {
+          await this.syncDefinitionNode(project, id, rootPath, nodeFolder);
+        }
+      }
+    }
+  }
+
+  /**
+   * The definition links one member note stores, checked against the trees.
+   * The target is the identity, so a target whose node folder is gone is a
+   * broken link, and an alias that no longer reads as the target's path is a
+   * name a folder rename left behind. Legacy heading links are neither: the
+   * migration is what rewrites those, and reporting them here would call a
+   * project damaged for not having migrated yet.
+   */
+  private inspectMemberDefinitionLinks(
+    project: { rootPath: string; locale: ProjectLanguage },
+    kind: EntityKind,
+    record: ManagedFileRecord,
+    stepIds: StepId[],
+    add: (issue: ProjectStructureIssue) => void,
+  ): void {
+    const categoryRoot = definitionRootPath(project, kind, "category");
+    const roots = DEFINITION_FILE_IDS.map((id) =>
+      definitionRootPath(project, kind, id),
+    );
+    const stale: string[] = [];
+    const unresolved: string[] = [];
+    const check = (target: string, alias: string, root: string): void => {
+      const path = taxonomyPathFromTarget(target, root);
+      if (path === null) return;
+      if (this.repository.getFolder(`${root}/${path}`) === null) {
+        unresolved.push(path);
+        return;
+      }
+      if (alias !== path) stale.push(alias.length === 0 ? path : alias);
+    };
+    for (const raw of readStringList(
+      record.frontmatter[FRONTMATTER_KEYS.category],
+    )) {
+      const link = parseDefinitionValue(raw);
+      if (link === null || link.legacyHeading !== null) continue;
+      check(link.target, link.alias ?? "", categoryRoot);
+    }
+    // Record labels live in the body, and the generated callout re-emits the
+    // category links there too: the same checks apply to every one of them.
+    const labelPattern = new RegExp(
+      String.raw`\[\[([^\]|#]+/${DEFINITION_NODE_BASENAME})\|([^\]]*)\]\]`,
+      "gu",
+    );
+    for (const match of record.body.matchAll(labelPattern)) {
+      const target = (match[1] ?? "").trim();
+      const alias = (match[2] ?? "").trim();
+      for (const root of roots) {
+        if (taxonomyPathFromTarget(target, root) === null) continue;
+        check(target, alias, root);
+        break;
+      }
+    }
+    if (unresolved.length > 0) {
+      add({
+        code: "unresolved-definition-link",
+        path: record.path,
+        stepIds,
+        expected: [...new Set(unresolved)].join(", "),
+        canOpen: true,
+        repairable: !record.readOnly,
+      });
+    }
+    if (stale.length > 0) {
+      add({
+        code: "stale-definition-alias",
+        path: record.path,
+        stepIds,
+        expected: [...new Set(stale)].join(", "),
+        canOpen: true,
+        repairable: !record.readOnly,
+      });
+    }
+  }
+
+  private memberAtPath(
+    project: ProjectSnapshot,
+    path: string,
+  ): CharacterRecord | SceneRecord | WorldbuildingRecord | null {
+    return (
+      project.characters.find((member) => member.path === path) ??
+      project.scenes.find((member) => member.path === path) ??
+      WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]).find(
+        (member) => member.path === path,
+      ) ??
+      null
+    );
+  }
+
+  /**
+   * Makes sure a path exists in one kind's tree, creating the worldbuilding
+   * tree first when an older project has none. Refusals are returned rather
+   * than thrown so the picker can say why in the project's language.
    */
   async addDefinitionPath(
     projectLocator: ProjectLocator,
@@ -2783,19 +3286,207 @@ export class SnowflakeProjectService {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     await this.ensureWorldbuildingTree(project);
-    let outcome: AppendPathResult = { ok: true, content: "", addedHeadings: [] };
-    await this.repository.updatePlainFile(
-      definitionFilePath(project, kind, id),
-      (current) => {
-        outcome = appendDefinitionPath(current, path, description);
-        return outcome.ok ? outcome.content : current;
-      },
+    const check = checkDefinitionPath(path);
+    if (!check.ok) return check;
+    const createdPaths = await this.ensureDefinitionNodes(
+      project,
+      kind,
+      id,
+      check.segments,
+      description,
     );
-    return outcome;
+    return { ok: true, createdPaths };
   }
 
   /**
-   * The worldbuilding folders, every kind's definition files, and the kind
+   * Raises a node chain below a root, reusing what already stands: a folder
+   * matching a segment under fold is the same node, so a picker typing a
+   * different case cannot mint a twin of what a case-blind file system would
+   * refuse anyway. Every folder on the chain gets its node file, and the
+   * description lands in the deepest node's body, where it stays the moment
+   * the body has anything of its own.
+   */
+  private async ensureDefinitionNodes(
+    project: ProjectRef | ProjectSnapshot,
+    kind: EntityKind,
+    id: DefinitionFileId,
+    segments: readonly string[],
+    description = "",
+  ): Promise<string[]> {
+    const rootPath = definitionRootPath(project, kind, id);
+    await this.repository.ensureFolder(rootPath);
+    const created: string[] = [];
+    const claimed: string[] = [];
+    let folderPath = rootPath;
+    let taxonomy = "";
+    try {
+      for (let index = 0; index < segments.length; index += 1) {
+        const segment = segments[index] as string;
+        const existing = this.repository
+          .listDirectFolders(folderPath)
+          .find((child) => foldName(child.name) === foldName(segment));
+        const name = existing?.name ?? segment;
+        folderPath = `${folderPath}/${name}`;
+        taxonomy = taxonomy.length === 0 ? name : `${taxonomy}/${name}`;
+        // Claimed before the folder exists, because making it is what tells
+        // the watcher there is a node here, and the watcher knows nothing of
+        // the description this pass is carrying.
+        claimed.push(folderPath);
+        this.ensuringDefinitionNodes.add(folderPath);
+        if (existing === undefined) {
+          await this.repository.ensureFolder(folderPath);
+          created.push(taxonomy);
+        }
+        await this.syncDefinitionNode(
+          project,
+          id,
+          rootPath,
+          folderPath,
+          index === segments.length - 1 ? description : "",
+        );
+      }
+    } finally {
+      for (const path of claimed) this.ensuringDefinitionNodes.delete(path);
+    }
+    return created;
+  }
+
+  /**
+   * The note a node folder must hold, made when it is not there and brought
+   * current when it is. The description is a property, so a second pass can
+   * never double it, and the block below it is generated from where the node
+   * sits: a folder renamed in the file explorer is put right by the next
+   * pass rather than left describing where it used to be.
+   *
+   * A description already written wins over one arriving here, because the
+   * note is where an author edits it. True when the file had to be made.
+   */
+  private async syncDefinitionNode(
+    project: ProjectRef | ProjectSnapshot,
+    id: DefinitionFileId,
+    rootPath: string,
+    folderPath: string,
+    description = "",
+  ): Promise<boolean> {
+    const path = normalizePath(`${folderPath}/${DEFINITION_NODE_BASENAME}.md`);
+    const taxonomyPath = taxonomyPathFromTarget(folderPath, rootPath) ?? "";
+    const offered = description.trim();
+    if (this.repository.getFile(path) === null) {
+      if (this.repository.get(path) !== null) return false;
+      try {
+        await this.repository.createManagedFile({
+          path,
+          template: definitionTemplate(id, project.locale, {
+            taxonomyPath,
+            description: offered,
+          }),
+          frontmatter: {
+            ...commonFrontmatter("definition", project.id),
+            [FRONTMATTER_KEYS.definitionId]: createStableId("definition"),
+            // Written only when there is one: an empty property is a line in
+            // every node's properties panel saying nothing.
+            ...(offered.length > 0
+              ? { [FRONTMATTER_KEYS.description]: offered }
+              : {}),
+          },
+        });
+        return true;
+      } catch (error) {
+        // The folder watcher raises node files too, and it may have reached
+        // this one between the look and the write. Whoever lost carries on
+        // below, which is where the two passes agree anyway.
+        if (!(error instanceof PathConflictError)) throw error;
+      }
+    }
+    const record = await this.repository.tryReadManaged(path);
+    if (record === null || record.readOnly) return false;
+    const stored = asOptionalString(
+      record.frontmatter[FRONTMATTER_KEYS.description],
+    );
+    const finalDescription =
+      stored !== null && stored.trim().length > 0 ? stored : offered;
+    const patch: ManagedFrontmatter = {};
+    if (documentTypeOf(record.frontmatter) !== "definition") {
+      patch[FRONTMATTER_KEYS.document] = "definition";
+    }
+    if (
+      asOptionalString(record.frontmatter[FRONTMATTER_KEYS.definitionId]) === null
+    ) {
+      patch[FRONTMATTER_KEYS.definitionId] = createStableId("definition");
+    }
+    if (projectIdOf(record.frontmatter) === null) {
+      patch[FRONTMATTER_KEYS.projectId] = project.id;
+    }
+    if (finalDescription !== (stored ?? "")) {
+      patch[FRONTMATTER_KEYS.description] = finalDescription;
+    }
+    if (Object.keys(patch).length > 0) {
+      await this.repository.updateFrontmatter(path, patch);
+    }
+    const expected = renderDefinitionFieldsBlock(project.locale, id, {
+      taxonomyPath,
+      description: finalDescription,
+    });
+    const current = readMarkedSection(record.content, "definition-fields");
+    if (current !== null && current.trim() === expected.trim()) return false;
+    // Upserted rather than only updated: a node file written before this
+    // block existed, or made by hand, gains it at the top of the note with
+    // whatever the author put there kept below.
+    await this.repository.reshapeSections(path, {
+      values: { "definition-fields": expected },
+      layout: [{ id: "definition-fields", heading: "" }],
+    });
+    return false;
+  }
+
+  /**
+   * Brings one node file in step with the folders around it, for the vault
+   * watcher: a description edited in the note's properties reaches the block
+   * below, and nothing happens at a path that is not a node.
+   */
+  async syncDefinitionNodeAt(
+    projectLocator: ProjectLocator,
+    notePath: string,
+  ): Promise<boolean> {
+    const project = await this.resolveProjectForRead(projectLocator);
+    if (project.readOnly) return false;
+    const normalized = normalizePath(notePath);
+    if (basename(normalized) !== `${DEFINITION_NODE_BASENAME}.md`) return false;
+    const folderPath = parentOf(normalized);
+    const owner = this.definitionRootOf(project, folderPath);
+    if (owner === null || folderPath === owner.rootPath) return false;
+    await this.syncDefinitionNode(
+      project,
+      owner.id,
+      owner.rootPath,
+      folderPath,
+    );
+    return true;
+  }
+
+  /**
+   * One tree root, seeded only at its own creation: characters arrive with
+   * the vocabulary the plugin itself depends on or has always suggested, and
+   * every other kind starts empty because its vocabulary is the author's to
+   * invent. A root that already exists belongs to the author, missing
+   * starters and all.
+   */
+  private async ensureDefinitionRoot(
+    project: ProjectRef | ProjectSnapshot,
+    kind: EntityKind,
+    id: DefinitionFileId,
+  ): Promise<void> {
+    const rootPath = definitionRootPath(project, kind, id);
+    const existed = this.repository.getFolder(rootPath) !== null;
+    await this.repository.ensureFolder(rootPath);
+    if (existed || kind !== "character") return;
+    for (const starter of characterStarterNames(project.locale, id)) {
+      await this.ensureDefinitionNodes(project, kind, id, [starter]);
+    }
+  }
+
+  /**
+   * The worldbuilding folders, every kind's definition trees, and the kind
    * bases a schema 2 project carries, created only where missing: what exists
    * belongs to the author.
    */
@@ -2811,13 +3502,7 @@ export class SnowflakeProjectService {
         normalizePath(`${project.rootPath}/${entityKindFolder(layout, kind)}`),
       );
       for (const definitionId of DEFINITION_FILE_IDS) {
-        const path = definitionFilePath(project, kind, definitionId);
-        if (this.repository.get(path) === null) {
-          await this.repository.createPlainFile(
-            path,
-            definitionFileTemplate(kind, definitionId, project.locale),
-          );
-        }
+        await this.ensureDefinitionRoot(project, kind, definitionId);
       }
     }
     for (const base of getProjectBases(
@@ -2995,6 +3680,10 @@ export class SnowflakeProjectService {
       kind,
       input.categoryPaths ?? [],
     );
+    await this.ensureReferencedDefinitions(project, kind, input.categoryPaths ?? [], [
+      input.worldStatus,
+      input.relationships,
+    ]);
     const view = entityFieldsViewOf(kind, {
       progressStatus: input.progressStatus ?? null,
       aliases,
@@ -3088,6 +3777,10 @@ export class SnowflakeProjectService {
         nextName,
       );
     }
+    await this.ensureReferencedDefinitions(project, kind, patch.categoryPaths ?? [], [
+      patch.worldStatus,
+      patch.relationships,
+    ]);
 
     const next = {
       progressStatus:
@@ -4029,6 +4722,39 @@ export class SnowflakeProjectService {
       });
     }
 
+    // Every folder under a definition root is a node, and every node must
+    // hold its `_self.md`: the folder is what makes the node exist, and the
+    // note is what its links resolve to. The walk stops where reading does.
+    for (const kind of ENTITY_KINDS) {
+      for (const definitionId of DEFINITION_FILE_IDS) {
+        const rootPath = definitionRootPath(project, kind, definitionId);
+        if (this.repository.getFolder(rootPath) === null) continue;
+        const visit = (folderPath: string, depth: number): void => {
+          if (depth > MAX_DEFINITION_DEPTH) return;
+          if (depth > 0) {
+            const selfPath = normalizePath(
+              `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
+            );
+            if (this.repository.getFile(selfPath) === null) {
+              add({
+                code: "missing-definition-node",
+                path: folderPath,
+                stepIds: [],
+                canOpen: false,
+                repairable:
+                  !projectRecord.readOnly &&
+                  this.repository.get(selfPath) === null,
+              });
+            }
+          }
+          for (const child of this.repository.listDirectFolders(folderPath)) {
+            visit(`${folderPath}/${child.name}`, depth + 1);
+          }
+        };
+        visit(rootPath, 0);
+      }
+    }
+
     const systemFolder = normalizePath(
       `${project.rootPath}/${layout.directories.system}`,
     );
@@ -4298,6 +5024,14 @@ export class SnowflakeProjectService {
           datedLinks += this.extensionTidyPatch(record)?.links ?? 0;
         }
 
+        this.inspectMemberDefinitionLinks(
+          project,
+          documentType,
+          record,
+          stepIds,
+          add,
+        );
+
         // A role is a category like any other, so having none is a choice, not
         // damage. What a character must have is its identity: a unique id and
         // a name.
@@ -4341,6 +5075,23 @@ export class SnowflakeProjectService {
     };
     await inspectCollection("characters", "character", [3, 5, 7]);
     await inspectCollection("scenes", "scene", [8, 9]);
+
+    // Worldbuilding notes carry the same links and are read the same way; no
+    // step hinges on them, so their issues arrive with no step attached.
+    for (const kind of WORLDBUILDING_KINDS) {
+      const folderPath = normalizePath(
+        worldbuildingKindFolder(project.rootPath, project.locale, kind),
+      );
+      if (this.repository.getFolder(folderPath) === null) continue;
+      for (const file of this.repository.listDirectFiles(folderPath)) {
+        if (file.extension !== "md") continue;
+        const record = await this.repository.tryReadManaged(file.path);
+        if (record === null) continue;
+        if (documentTypeOf(record.frontmatter) !== "worldbuilding") continue;
+        if (!hasMatchingProjectId(record.frontmatter)) continue;
+        this.inspectMemberDefinitionLinks(project, kind, record, [], add);
+      }
+    }
 
     // The draft link belongs to the project note rather than to any scene, and
     // is just as capable of being typed out as plain text.
@@ -5443,7 +6194,7 @@ function characterFieldsView(
         ? [...source.categories]
         : source.type === null
           ? []
-          : [characterRoleHeading(locale, source.type)],
+          : [characterRoleName(locale, source.type)],
     oneSentenceStoryline: source.oneSentenceStoryline,
     motivation: source.motivation,
     goal: source.goal,
@@ -5452,19 +6203,19 @@ function characterFieldsView(
   };
 }
 
-/** The vault path of one of an entity kind's definition files. */
-function definitionFilePath(
+/** The vault path of one of an entity kind's tree root folders. */
+function definitionRootPath(
   project: { rootPath: string; locale: ProjectLanguage },
   kind: EntityKind,
   id: DefinitionFileId,
 ): string {
   const layout = getProjectPathLayout(project.locale);
   return normalizePath(
-    `${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionFileName(kind, id, project.locale)}`,
+    `${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionRootName(kind, id, project.locale)}`,
   );
 }
 
-/** The vault path of an entity kind's Category definition file. */
+/** The root folder of an entity kind's Category tree. */
 function categoryDefinitionPath(
   project: {
     rootPath: string;
@@ -5472,7 +6223,7 @@ function categoryDefinitionPath(
   },
   kind: EntityKind,
 ): string {
-  return definitionFilePath(project, kind, "category");
+  return definitionRootPath(project, kind, "category");
 }
 
 /** The exact role links this project writes, for base filters and formulas. */
@@ -5482,16 +6233,29 @@ function characterRoleLinks(project: {
 }): CharacterRoleLinks {
   const definitionPath = categoryDefinitionPath(project, "character");
   const link = (type: CharacterType): string =>
-    renderHeadingLink(
-      definitionPath,
-      characterRoleHeading(project.locale, type),
-      characterRoleHeading(project.locale, type),
-    );
+    nodeLink(definitionPath, characterRoleName(project.locale, type));
   return {
     major: link("major"),
     supporting: link("supporting"),
     minor: link("minor"),
   };
+}
+
+/** The character type a single stored category value names, if any. */
+function roleTypeOfValue(value: string): CharacterType | null {
+  const name = nodeNameFromValue(value);
+  return name === null ? null : characterTypeFromNodeName(name);
+}
+
+/** The entity kind a member record is, which is where its trees live. */
+function memberEntityKind(
+  member: CharacterRecord | SceneRecord | WorldbuildingRecord,
+): EntityKind {
+  return "characterId" in member
+    ? "character"
+    : "sceneId" in member
+      ? "scene"
+      : member.kind;
 }
 
 /** The project folder a base file lives in, relative to the project root. */
@@ -5518,19 +6282,13 @@ function replacedRoleCategories(
 ): string[] {
   const definitionPath =
     categories
-      .map((raw) => parseHeadingLink(raw))
-      .find(
-        (link) => link !== null && characterTypeFromHeading(link.heading) !== null,
-      )?.path ?? fallbackDefinitionPath;
-  const roleLink = renderHeadingLink(
-    definitionPath,
-    characterRoleHeading(locale, type),
-    characterRoleHeading(locale, type),
-  );
+      .filter((raw) => roleTypeOfValue(raw) !== null)
+      .map((raw) => definitionRootFromValue(raw))
+      .find((root): root is string => root !== null) ?? fallbackDefinitionPath;
+  const roleLink = nodeLink(definitionPath, characterRoleName(locale, type));
   let replaced = false;
   const next = categories.map((raw) => {
-    const link = parseHeadingLink(raw);
-    if (link !== null && characterTypeFromHeading(link.heading) !== null) {
+    if (roleTypeOfValue(raw) !== null) {
       replaced = true;
       return roleLink;
     }
@@ -5540,7 +6298,7 @@ function replacedRoleCategories(
   return next;
 }
 
-/** Category paths chosen in a picker become links into the kind's own file. */
+/** Category paths chosen in a picker become links into the kind's own tree. */
 function categoryLinksFromPaths(
   project: { rootPath: string; locale: ProjectLanguage },
   kind: EntityKind,
@@ -5550,13 +6308,27 @@ function categoryLinksFromPaths(
   return paths
     .map((path) => path.trim())
     .filter((path) => path.length > 0)
-    .map((path) =>
-      renderHeadingLink(
-        definitionPath,
-        path.split("/").pop() ?? path,
-        path,
-      ),
-    );
+    .map((path) => nodeLink(definitionPath, path));
+}
+
+/**
+ * The stored category list as this release would write it: every value read
+ * for the path it names and re-emitted as a node link. The same array comes
+ * back when nothing would change, so a caller comparing by identity writes
+ * only the notes conversion actually touches.
+ */
+function normalizedCategoryValues(
+  project: { rootPath: string; locale: ProjectLanguage },
+  kind: EntityKind,
+  values: readonly string[],
+): readonly string[] {
+  const root = categoryDefinitionPath(project, kind);
+  const next = values.map((raw) => {
+    const path = taxonomyPathFromValue(raw, root);
+    return path === null ? raw : nodeLink(root, path);
+  });
+  const changed = next.some((value, index) => value !== values[index]);
+  return changed ? next : values;
 }
 
 interface EntityFieldsSource {

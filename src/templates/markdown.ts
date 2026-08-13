@@ -1,14 +1,17 @@
 import {
   STEP_ONE_SECTION_IDS,
   templateSectionsForDocument,
+  type DefinitionFileId,
   type DocumentType,
   type StepOneSectionId,
   type WorldbuildingKind,
 } from "../domain";
 import {
   renderCharacterFieldsBlock,
+  renderDefinitionFieldsBlock,
   renderEntityFieldsBlock,
   renderSceneFieldsBlock,
+  type DefinitionFieldsView,
 } from "./fields-block";
 import { renderMarkedSection } from "./markers";
 
@@ -495,6 +498,33 @@ export function entityTemplate(
       initialContent: content.notes,
     },
   ]);
+}
+
+/**
+ * A definition node's own note. Alone among the plugin's notes it carries no
+ * H1: every one of them is called `_self`, so a heading would name the file
+ * rather than the node, and the block below says which entry this is.
+ */
+export function definitionTemplate(
+  id: DefinitionFileId,
+  language: TemplateLanguage,
+  fields: DefinitionFieldsView,
+): MarkdownTemplate {
+  const sections: ManagedSectionDefinition[] = [
+    {
+      id: "definition-fields",
+      heading: "",
+      initialContent: renderDefinitionFieldsBlock(language, id, fields),
+    },
+  ];
+  assertManagedSectionContract("definition", sections);
+  return {
+    body: `${renderMarkedSection(
+      "definition-fields",
+      sections[0]?.initialContent ?? "",
+    )}\n`,
+    sections,
+  };
 }
 
 export type RecordSectionId = "details" | "world-status" | "relationships";

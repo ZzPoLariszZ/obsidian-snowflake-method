@@ -1149,9 +1149,6 @@ export class SnowflakeDashboardView extends ItemView {
 						description,
 					);
 					if (!result.ok) {
-						if (result.code === 'heading-taken') {
-							return this.t('form.definition.taken', { name: result.segment });
-						}
 						return result.code === 'too-deep'
 							? this.t('form.definition.tooDeep', {
 									count: MAX_DEFINITION_DEPTH,

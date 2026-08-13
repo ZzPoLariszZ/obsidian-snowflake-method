@@ -30,7 +30,7 @@ export type AddDefinitionPathResult =
 	| { ok: true }
 	| {
 			ok: false;
-			code: 'invalid-segment' | 'heading-taken' | 'too-deep';
+			code: 'invalid-segment' | 'too-deep';
 			segment: string;
 	  };
 
