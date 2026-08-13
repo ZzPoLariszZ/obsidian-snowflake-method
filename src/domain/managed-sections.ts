@@ -77,7 +77,6 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	'long-synopsis': [section('long-synopsis')],
 	character: [
 		section('character-fields', { optional: true, generated: true }),
-		recordSection('details'),
 		recordSection('world-status'),
 		recordSection('relationships'),
 		section('one-paragraph-storyline'),
@@ -94,7 +93,6 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	],
 	worldbuilding: [
 		section('entity-fields', { generated: true }),
-		recordSection('details'),
 		recordSection('world-status'),
 		recordSection('relationships'),
 		section('entity-notes'),

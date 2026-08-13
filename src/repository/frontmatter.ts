@@ -41,6 +41,52 @@ export function parseMarkdownFrontmatter(content: string): ParsedMarkdown {
   };
 }
 
+/**
+ * The keys of `order` a note actually carries, in the order it carries them.
+ * Everything else the note holds is left out: an author's own property has no
+ * place in this sequence and no business disturbing it.
+ */
+function orderedKeysOf(
+  frontmatter: ManagedFrontmatter,
+  order: readonly string[],
+): string[] {
+  const named = new Set(order);
+  return Object.keys(frontmatter).filter((key) => named.has(key));
+}
+
+/** Whether the keys `order` names already read in that order. */
+export function isFrontmatterOrdered(
+  frontmatter: ManagedFrontmatter,
+  order: readonly string[],
+): boolean {
+  const present = orderedKeysOf(frontmatter, order);
+  const wanted = order.filter((key) =>
+    Object.prototype.hasOwnProperty.call(frontmatter, key),
+  );
+  return present.every((key, at) => key === wanted[at]);
+}
+
+/**
+ * Rewrites a mapping in place so the keys `order` names read in that order.
+ * Keys it does not name follow, in the sequence they already had.
+ */
+export function orderFrontmatterKeys(
+  frontmatter: ManagedFrontmatter,
+  order: readonly string[],
+): void {
+  if (isFrontmatterOrdered(frontmatter, order)) return;
+  const named = new Set(order);
+  const values = { ...frontmatter };
+  const sorted = [
+    ...order.filter((key) =>
+      Object.prototype.hasOwnProperty.call(frontmatter, key),
+    ),
+    ...Object.keys(frontmatter).filter((key) => !named.has(key)),
+  ];
+  for (const key of Object.keys(frontmatter)) delete frontmatter[key];
+  for (const key of sorted) frontmatter[key] = values[key];
+}
+
 export function schemaVersionOf(frontmatter: ManagedFrontmatter): number | null {
   const raw = frontmatter["snowflake-schema"];
   if (raw == null || raw === "") return null;

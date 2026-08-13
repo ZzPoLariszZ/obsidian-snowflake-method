@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parseDetailsLine,
-  parseDetailsSection,
   parseRecordLine,
   parseRecordSection,
   parseTerm,
-  renderDetailsLine,
-  renderDetailsSection,
   renderRecordLine,
   renderRecordSection,
   renderTerm,
@@ -43,7 +39,7 @@ describe("record lines", () => {
     };
     const line = renderRecordLine("en", record);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship/Member/_self|Member]]: Guild Master -> [[Novel/60_Worldbuilding/63_Item/Adventurer Guild|Guild]] at [[Novel/60_Worldbuilding/62_Location/Royal Capital|Royal Capital]] when [[Novel/60_Worldbuilding/61_Time/Year 1023|Year 1023]]",
+      "[[Novel/60_Worldbuilding/Relationship/Member/_self|Member]]: Guild Master -> [[Novel/60_Worldbuilding/63_Item/Adventurer Guild|Guild]] at [[Novel/60_Worldbuilding/62_Location/Royal Capital|Royal Capital]] when [[Novel/60_Worldbuilding/61_Time/Year 1023|Year 1023]]",
     );
     expect(parseRecordLine("en", line)).toEqual(record);
   });
@@ -77,7 +73,7 @@ describe("record lines", () => {
     };
     const line = renderRecordLine("en", record);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship/Ally/_self|Ally]] with [[P/20_Character/Aria|Aria]] with [[P/20_Character/Brin|Brin]] at [[P/62_Location/Capital|Capital]]",
+      "[[Novel/60_Worldbuilding/Relationship/Ally/_self|Ally]] with [[P/20_Character/Aria|Aria]] with [[P/20_Character/Brin|Brin]] at [[P/62_Location/Capital|Capital]]",
     );
     expect(parseRecordLine("en", line)).toEqual(record);
   });
@@ -113,7 +109,7 @@ describe("record lines", () => {
         : null;
     const line = renderRecordLine("en", record, spans);
     expect(line).toBe(
-      "- [[Novel/60_Worldbuilding/Relationship/Missing/_self|Missing]] when [[P/61_Time/The Regency|The Regency]] (from [[P/61_Time/Year 1020|Year 1020]] to [[P/61_Time/Year 1024|Year 1024]])",
+      "[[Novel/60_Worldbuilding/Relationship/Missing/_self|Missing]] when [[P/61_Time/The Regency|The Regency]] (from [[P/61_Time/Year 1020|Year 1020]] to [[P/61_Time/Year 1024|Year 1024]])",
     );
     // The span is the time note's, not the record's, so reading gives back
     // exactly the record that was written.
@@ -141,7 +137,7 @@ describe("record lines", () => {
     ]);
     // What it reads it writes back in today's shape, names and label alike.
     expect(renderRecordLine("en", parsed as RecordLine)).toBe(
-      "- [[P/Relationship/Member/_self|Member]] from [[P/1023|1023]] to [[P/1025|1025]]",
+      "[[P/Relationship/Member/_self|Member]] from [[P/1023|1023]] to [[P/1025|1025]]",
     );
   });
 
@@ -157,7 +153,7 @@ describe("record lines", () => {
       display: "Family/Sibling",
     });
     expect(renderRecordLine("en", parsed as RecordLine)).toBe(
-      "- [[P/20_Character/23_Relationship/Family/Sibling/_self|Family/Sibling]] -> [[P/20_Character/Brin|Brin]]",
+      "[[P/20_Character/23_Relationship/Family/Sibling/_self|Family/Sibling]] -> [[P/20_Character/Brin|Brin]]",
     );
   });
 
@@ -207,61 +203,6 @@ describe("record lines", () => {
   });
 });
 
-describe("details lines", () => {
-  it("round-trips a plain value, a linked value, and their time clauses", () => {
-    const cases = [
-      {
-        property: "owner" as const,
-        value: link("P/20_Character/Aria", "Aria"),
-        location: null,
-        time: null,
-      },
-      {
-        property: "owner" as const,
-        value: text("the crown"),
-        location: null,
-        time: { kind: "when" as const, at: link("P/61_Time/Year 1003") },
-      },
-      {
-        property: "owner" as const,
-        value: link("P/20_Character/Aria", "Aria"),
-        location: null,
-        time: {
-          kind: "span" as const,
-          start: link("P/61_Time/Year 1020"),
-          end: link("P/61_Time/Year 1022"),
-        },
-      },
-    ];
-    for (const details of cases) {
-      const line = renderDetailsLine("en", details);
-      expect(parseDetailsLine("en", line)).toEqual(details);
-    }
-  });
-
-  it("uses the localized bold label and separator", () => {
-    const line = renderDetailsLine("zh-CN", {
-      property: "owner",
-      value: text("王室"),
-      location: null,
-      time: null,
-    });
-    expect(line).toBe("- **所有者**：王室");
-    expect(parseDetailsLine("zh-CN", line)).toEqual({
-      property: "owner",
-      value: text("王室"),
-      location: null,
-      time: null,
-    });
-  });
-
-  it("refuses an arrow clause on a details line", () => {
-    expect(
-      parseDetailsLine("en", "- **Owner**: [[P/Aria]] -> [[P/Somewhere]]"),
-    ).toBeNull();
-  });
-});
-
 describe("record sections", () => {
   it("keeps unrecognized lines verbatim after the records", () => {
     const content = [
@@ -272,30 +213,54 @@ describe("record sections", () => {
     const parsed = parseRecordSection("en", content);
     expect(parsed.records).toHaveLength(2);
     expect(parsed.unrecognized).toEqual(["a stray note someone typed"]);
+    // Written as a titled callout, which is what says which section it is now
+    // that the sections carry no headings.
     expect(
-      renderRecordSection("en", parsed.records, parsed.unrecognized),
+      renderRecordSection(
+        "en",
+        "world-status",
+        parsed.records,
+        parsed.unrecognized,
+      ),
     ).toBe(
       [
-        "- [[P/World_Status/Injured/_self|Injured]] when [[P/Battle|Battle]]",
-        "- [[P/World_Status/Missing/_self|Missing]]",
-        "a stray note someone typed",
+        "> [!info] World status",
+        "> [[P/World_Status/Injured/_self|Injured]] when [[P/Battle|Battle]]",
+        ">",
+        "> [[P/World_Status/Missing/_self|Missing]]",
+        ">",
+        "> a stray note someone typed",
       ].join("\n"),
     );
   });
 
-  it("reads CRLF content line by line", () => {
-    const parsed = parseDetailsSection(
-      "en",
-      "- **Owner**: [[P/Aria|Aria]]\r\n- **Owner**: the crown\r\n",
+  it("reads a section back out of the callout it was written in", () => {
+    const written = renderRecordSection("zh-CN", "relationships", [
+      {
+        label: { path: "P/23_Relationship/Family/_self", display: "Family" },
+        value: "",
+        clauses: [{ kind: "target", term: link("P/Bob", "Bob") }],
+      },
+    ]);
+    expect(written.split("\n")[0]).toBe("> [!info] 关系");
+    const parsed = parseRecordSection("zh-CN", written);
+    expect(parsed.unrecognized).toEqual([]);
+    expect(parsed.records).toHaveLength(1);
+    expect(renderRecordSection("zh-CN", "relationships", parsed.records)).toBe(
+      written,
     );
-    expect(parsed.details.map((line) => line.property)).toEqual([
-      "owner",
-      "owner",
+  });
+
+  it("reads CRLF content line by line", () => {
+    const parsed = parseRecordSection(
+      "en",
+      "- [[P/World_Status/Injured/_self|Injured]]\r\n- [[P/World_Status/Missing/_self|Missing]]\r\n",
+    );
+    expect(parsed.records.map((record) => record.label.display)).toEqual([
+      "Injured",
+      "Missing",
     ]);
     expect(parsed.unrecognized).toEqual([]);
-    expect(renderDetailsSection("en", parsed.details)).toBe(
-      "- **Owner**: [[P/Aria|Aria]]\n- **Owner**: the crown",
-    );
   });
 });
 

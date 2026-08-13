@@ -19,10 +19,12 @@ import {
 	countWritingLength,
 	createDefaultStepStatuses,
 	getFirstIncompleteStep,
+	isProgressStatus,
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
-	type CharacterType,
+	PROGRESS_STATUSES,
 	type EntityKind,
+	type ProgressStatus,
 	type TimeKind,
 	type StepOneSectionId,
 	type StepId,
@@ -93,6 +95,24 @@ export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
  */
 const CHARACTER_DRAG_TYPE = 'application/x-snowflake-character';
 const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
+const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
+
+/** How the filter panel sits: under its button, and off the window's edge. */
+const PANEL_ANCHOR_GAP = 4;
+const PANEL_EDGE_GAP = 8;
+
+/** One question the funnel asks: a labelled picker over one vocabulary. */
+interface MemberFilterRow {
+	label: string;
+	/** What the field reads as when the question is not being asked. */
+	placeholder: string;
+	/** The value that means exactly that, and what the reset returns to. */
+	empty: string;
+	options: () => PickerOption[];
+	/** What the table is filtered by now, which the panel opens on. */
+	value: string;
+	apply: (value: string) => void;
+}
 
 /**
  * Both member tables are laid by the same five columns, so stepping between
@@ -112,6 +132,16 @@ const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
 	location: 'map-pin',
 	item: 'gem',
 };
+
+/**
+ * Whether a category path sits at or below the one a filter names, so
+ * filtering by `Race` keeps the characters filed under `Race/Elf`. A level
+ * nobody is filed under directly is still a real thing to ask about, which is
+ * why the whole tree is on offer.
+ */
+function categoryWithin(path: string, filter: string): boolean {
+	return path === filter || path.startsWith(`${filter}/`);
+}
 
 /** What a stored term reads as: a link's display name, or the text itself. */
 function termName(raw: string): string {
@@ -146,6 +176,19 @@ export class SnowflakeDashboardView extends ItemView {
 		worldbuilding: false,
 	};
 	private readonly entityQueries = new Map<WorldbuildingKind, string>();
+	private readonly entityCategoryFilters = new Map<WorldbuildingKind, string>();
+	private readonly entityStatusFilters = new Map<
+		WorldbuildingKind,
+		'all' | ProgressStatus
+	>();
+	private readonly entityCategories = new Map<
+		WorldbuildingKind,
+		{ projectId: string; paths: string[] }
+	>();
+	private readonly entityScroll = new Map<WorldbuildingKind, number>();
+	private readonly entityHeights = new Map<string, number>();
+	private entityRowHeight = 48;
+	private entityTable: VirtualTable | null = null;
 	/**
 	 * What each member table is showing, one set per table rather than one
 	 * per step: steps 3, 5 and 7 share the character table and 8 and 9 the
@@ -156,9 +199,27 @@ export class SnowflakeDashboardView extends ItemView {
 	private sceneScroll = 0;
 	private characterQuery = '';
 	private sceneQuery = '';
-	private characterTypeFilter: 'all' | CharacterType = 'all';
+	/**
+	 * What the character table is filtered by. Two questions, asked together
+	 * behind one funnel: a category path, whose subtree counts as filed under
+	 * it, and a progress status. '' and 'all' mean the question is not being
+	 * asked.
+	 */
+	private characterCategoryFilter = '';
+	private characterStatusFilter: 'all' | ProgressStatus = 'all';
+	/** Every category the project offers, and whose project they came from. */
+	private characterCategories: { projectId: string; paths: string[] } | null =
+		null;
+	private sceneCategories: { projectId: string; paths: string[] } | null = null;
 	/** A character path, a point-of-view mode, or '' for every scene. */
 	private scenePovFilter = '';
+	private sceneCategoryFilter = '';
+	private sceneStatusFilter: 'all' | ProgressStatus = 'all';
+	/** A time or location by the name it is shown under, or '' for all. */
+	private sceneTimeFilter = '';
+	private sceneLocationFilter = '';
+	/** A character path the scene must have in its cast, or '' for all. */
+	private sceneCharacterFilter = '';
 	/** The average measured row height, carried across renders as a seed. */
 	private characterRowHeight = 48;
 	private sceneRowHeight = 48;
@@ -167,8 +228,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly sceneHeights = new Map<string, number>();
 	private characterTable: VirtualTable | null = null;
 	private sceneTable: VirtualTable | null = null;
-	/** The one filter picker a member panel shows: type or point of view. */
-	private memberFilterPicker: OptionPicker | null = null;
+	/** The filter pickers the member panel on show is using, for release. */
+	private memberFilterPickers: OptionPicker[] = [];
+	/** The filter panel while it is open, with what it has to let go of. */
+	private filterPanel: { el: HTMLElement; release: () => void } | null = null;
 	/** What the last render drew, so a reveal can find a row's place now. */
 	private lastRender: {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
@@ -344,12 +407,16 @@ export class SnowflakeDashboardView extends ItemView {
 	 * table may have a frame queued that would wake to a page that has gone.
 	 */
 	private releaseMemberControls(): void {
-		this.memberFilterPicker?.destroy();
-		this.memberFilterPicker = null;
+		// The panel lives outside the view's own element, so a render that
+		// throws its toolbar away would otherwise leave it hanging there.
+		this.closeFilterPanel();
+		this.releaseFilterPickers();
 		this.characterTable?.destroy();
 		this.characterTable = null;
 		this.sceneTable?.destroy();
 		this.sceneTable = null;
+		this.entityTable?.destroy();
+		this.entityTable = null;
 	}
 
 	async refresh(): Promise<void> {
@@ -902,8 +969,11 @@ export class SnowflakeDashboardView extends ItemView {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		this.renderedPaneKey = dashboardPaneKey({ kind: 'worldbuilding', wbKind: kind });
 		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
-		const header = panel.createDiv({ cls: 'snowflake-method-step-header' });
-		header.createEl('h2', { text: this.t(`worldbuilding.kind.${kind}`) });
+		// The same header a step panel carries, so a kind's title sits where a
+		// step's does and reads at the same size.
+		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
+		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		title.createEl('h2', { text: this.t(`worldbuilding.kind.${kind}`) });
 		panel.createEl('p', {
 			cls: 'snowflake-method-step-description',
 			text: this.t(`worldbuilding.kind.${kind}.description`),
@@ -929,115 +999,296 @@ export class SnowflakeDashboardView extends ItemView {
 			this.openCreateEntity(model, kind);
 		});
 
-		const toolbar = panel.createDiv({ cls: 'snowflake-method-member-toolbar' });
+		if (model.worldbuilding[kind].length === 0) {
+			const empty = panel.createEl('p', {
+				cls: 'snowflake-method-character-empty',
+			});
+			const icon = empty.createSpan({
+				cls: 'snowflake-method-character-empty-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(icon, 'triangle-alert');
+			empty.createSpan({ text: this.t(`worldbuilding.empty.${kind}`) });
+			return;
+		}
+
+		// The same frame the character and scene tables stand in, so a project
+		// reads the same whichever of its lists is on show.
+		panel.addClass('snowflake-method-member-panel');
+		const toolbar = panel.createDiv({ cls: 'snowflake-method-table-toolbar' });
 		const search = new SearchComponent(toolbar);
 		search.setPlaceholder(this.t(`worldbuilding.search.${kind}`));
 		search.setValue(this.entityQueries.get(kind) ?? '');
+		void this.loadEntityCategories(model, kind);
+		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
+		const filterSlot = toolbar.createDiv({
+			cls: 'snowflake-method-table-filter',
+		});
+		const filterButton = filterSlot.createEl('button', {
+			cls: 'clickable-icon snowflake-method-filter-button',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'dialog',
+				'aria-expanded': 'false',
+				'aria-label': this.t('table.filter'),
+			},
+		});
+		setIcon(filterButton, 'funnel');
+		setTooltip(filterButton, this.t('table.filter'));
+
+		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+			panel,
+			'snowflake-method-entity-table',
+			[
+				this.t('table.order'),
+				this.t('table.name'),
+				this.t('table.category'),
+				this.t('table.description'),
+				this.t('table.actions'),
+			],
+		);
+		const reorderReadOnly =
+			model.readOnly ||
+			model.worldbuilding[kind].some((entity) => entity.readOnly);
+
+		let entries: { entity: WorldbuildingEntityViewModel; index: number }[] = [];
+		const virtual = new VirtualTable({
+			scroller: bodyWrap,
+			body,
+			columns: 5,
+			estimatedRowHeight: this.entityRowHeight,
+			overscan: 8,
+			rowKey: (offset) => entries[offset]?.entity.id ?? `?${String(offset)}`,
+			heights: this.entityHeights,
+			renderRow: (rows, offset) => {
+				const entry = entries[offset];
+				if (entry === undefined) return;
+				this.renderEntityRow(
+					rows,
+					model,
+					kind,
+					entry.entity,
+					entry.index,
+					reorderReadOnly,
+					reorderReadOnly || this.entityListFiltered(kind),
+				);
+			},
+			renderTail: (rows) => {
+				this.renderAddRow(
+					rows,
+					5,
+					this.t(`worldbuilding.addMore.${kind}`),
+					model.readOnly,
+					() => {
+						this.openCreateEntity(model, kind);
+					},
+				);
+			},
+			onScroll: (top) => {
+				this.entityScroll.set(kind, top);
+				headWrap.scrollLeft = bodyWrap.scrollLeft;
+			},
+			onMeasure: (height) => {
+				this.entityRowHeight = height;
+			},
+		});
+		this.entityTable = virtual;
+		const feed = (resetScroll: boolean): void => {
+			if (resetScroll) {
+				this.entityScroll.set(kind, 0);
+				bodyWrap.scrollTop = 0;
+			}
+			entries = this.entityEntries(model, kind);
+			count.setText(
+				this.entityListFiltered(kind)
+					? this.t('table.filteredCount', {
+							shown: entries.length,
+							total: model.worldbuilding[kind].length,
+						})
+					: '',
+			);
+			virtual.setTotal(entries.length);
+		};
 		search.onChange((value) => {
 			this.entityQueries.set(kind, value);
-			this.renderEntityRows(rowsEl, model, kind);
+			feed(true);
 		});
-
-		const table = panel.createDiv({ cls: 'snowflake-method-entity-table' });
-		const rowsEl = table.createDiv({ cls: 'snowflake-method-entity-rows' });
-		this.renderEntityRows(rowsEl, model, kind);
+		const markFilterButton = (): void => {
+			filterButton.toggleClass('is-active', this.entityFiltered(kind));
+		};
+		markFilterButton();
+		filterButton.addEventListener('click', () => {
+			if (this.filterPanel !== null) {
+				this.closeFilterPanel();
+				return;
+			}
+			this.openFilterPanel(
+				filterButton,
+				this.entityFilterRows(model, kind),
+				() => {
+					markFilterButton();
+					feed(true);
+				},
+			);
+		});
+		feed(false);
+		bodyWrap.scrollTop = this.entityScroll.get(kind) ?? 0;
+		virtual.refresh();
 	}
 
-	private renderEntityRows(
-		rowsEl: HTMLElement,
+	/** The rows one kind's table shows, each with its place in the list. */
+	private entityEntries(
 		model: ProjectDashboardModel,
 		kind: WorldbuildingKind,
-	): void {
-		rowsEl.empty();
+	): { entity: WorldbuildingEntityViewModel; index: number }[] {
 		const query = this.entityQueries.get(kind) ?? '';
-		const entries = model.worldbuilding[kind]
+		const category = this.entityCategoryFilters.get(kind) ?? '';
+		const status = this.entityStatusFilters.get(kind) ?? 'all';
+		return model.worldbuilding[kind]
 			.map((entity, index) => ({ entity, index }))
-			.filter(({ entity }) =>
-				memberMatches(
-					[
-						entity.name,
-						...entity.aliases,
-						...entity.categoryPaths,
-						entity.description,
-					],
-					query,
-				),
+			.filter(
+				({ entity }) =>
+					(category === '' ||
+						entity.categoryPaths.some((path) =>
+							categoryWithin(path, category),
+						)) &&
+					(status === 'all' || entity.progressStatus === status) &&
+					memberMatches(
+						[
+							entity.name,
+							...entity.aliases,
+							...entity.categoryPaths,
+							...(entity.progressStatus === null
+								? []
+								: [this.t(`status.${entity.progressStatus}`)]),
+							entity.description,
+						],
+						query,
+					),
 			);
-		if (entries.length === 0) {
-			rowsEl.createDiv({
-				cls: 'snowflake-method-entity-empty',
-				text: this.t(`worldbuilding.empty.${kind}`),
-			});
-			return;
+	}
+
+	private entityFiltered(kind: WorldbuildingKind): boolean {
+		return (
+			(this.entityCategoryFilters.get(kind) ?? '') !== '' ||
+			(this.entityStatusFilters.get(kind) ?? 'all') !== 'all'
+		);
+	}
+
+	private entityListFiltered(kind: WorldbuildingKind): boolean {
+		return (
+			(this.entityQueries.get(kind) ?? '').trim().length > 0 ||
+			this.entityFiltered(kind)
+		);
+	}
+
+	private entityFilterRows(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+	): MemberFilterRow[] {
+		return [
+			this.progressFilterRow(
+				this.entityStatusFilters.get(kind) ?? 'all',
+				(next) => {
+					this.entityStatusFilters.set(kind, next);
+				},
+			),
+			this.categoryFilterRow(
+				this.entityCategories.get(kind)?.projectId === model.projectId
+					? (this.entityCategories.get(kind)?.paths ?? [])
+					: [],
+				this.entityCategoryFilters.get(kind) ?? '',
+				(next) => {
+					this.entityCategoryFilters.set(kind, next);
+				},
+			),
+		];
+	}
+
+	private async loadEntityCategories(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+	): Promise<void> {
+		let paths: string[] = [];
+		try {
+			paths = await this.host.listDefinitionPaths(kind, 'category');
+		} catch {
+			paths = [];
 		}
-		for (const { entity, index } of entries) {
-			this.renderEntityRow(rowsEl, model, kind, entity, index);
-		}
+		this.entityCategories.set(kind, { projectId: model.projectId, paths });
 	}
 
 	private renderEntityRow(
-		rowsEl: HTMLElement,
+		body: HTMLElement,
 		model: ProjectDashboardModel,
 		kind: WorldbuildingKind,
 		entity: WorldbuildingEntityViewModel,
 		index: number,
+		reorderReadOnly: boolean,
+		dragLocked: boolean,
 	): void {
 		const damaged = entity.healthIssues.some((issue) => issue.blocking);
-		const row = rowsEl.createDiv({
-			cls: `snowflake-method-entity-row${damaged ? ' has-managed-section-issue' : ''}`,
+		const row = body.createEl('tr', {
+			attr: { draggable: dragLocked ? 'false' : 'true' },
 		});
-		const order = row.createSpan({
-			cls: 'snowflake-method-entity-order',
+		row.dataset.entityId = entity.id;
+		row.toggleClass('has-managed-section-issue', damaged);
+		row.createEl('td', {
 			text: String(index + 1),
+			attr: { 'data-label': this.t('table.order') },
 		});
-		setTooltip(order, this.t('table.order'));
-		const body = row.createDiv({ cls: 'snowflake-method-entity-body' });
-		const nameLine = body.createDiv({ cls: 'snowflake-method-entity-name-line' });
-		const name = nameLine.createEl('button', {
-			cls: 'snowflake-method-entity-name',
-			text: entity.name,
-			attr: { type: 'button' },
+		const nameCell = row.createEl('td', {
+			cls: 'snowflake-method-table-primary',
+			attr: { 'data-label': this.t('table.name') },
 		});
-		name.addEventListener('click', () => {
+		this.renderMemberNameCell(nameCell, {
+			name: entity.name,
+			drifted: entity.nameDrifted,
+			damaged,
+			aliases: entity.aliases,
+			// What a time note is and what it spans, a fact to a line: its own,
+			// which the other kinds have none of and the columns no room for.
+			details:
+				kind === 'time'
+					? [
+							entity.timeKind === null
+								? ''
+								: this.t(`form.timeKind.${entity.timeKind}`),
+							termName(entity.timeStart),
+							termName(entity.timeEnd),
+						].filter((fact) => fact.length > 0)
+					: undefined,
+			progressStatus: entity.progressStatus,
+		});
+		const categoryCell = row.createEl('td', {
+			cls: 'snowflake-method-member-categories',
+			attr: { 'data-label': this.t('table.category') },
+		});
+		for (const path of entity.categoryPaths) {
+			categoryCell.createDiv({
+				cls: 'snowflake-method-member-category',
+				text: path,
+			});
+		}
+		row.createEl('td', {
+			text: entity.description,
+			attr: { 'data-label': this.t('table.description') },
+		});
+		const actionCell = row.createEl('td', {
+			attr: { 'data-label': this.t('table.actions') },
+		});
+		const buttonGroup = actionCell.createDiv({
+			cls: 'snowflake-method-table-actions',
+		});
+		const locked = model.readOnly || entity.readOnly || damaged;
+		const openEntity = (): void => {
 			void this.host.openManagedFile(entity.path, 'entity-fields', [
 				'entity-fields',
 			]);
-		});
-		if (entity.progressStatus !== null) {
-			nameLine.createSpan({
-				cls: `snowflake-method-entity-status is-${entity.progressStatus}`,
-				text: this.t(`status.${entity.progressStatus}`),
-			});
-		}
-		const detailParts: string[] = [];
-		if (entity.aliases.length > 0) detailParts.push(entity.aliases.join(', '));
-		if (entity.categoryPaths.length > 0) {
-			detailParts.push(entity.categoryPaths.join(', '));
-		}
-		if (kind === 'time') {
-			const summary = [
-				entity.timeKind === null
-					? ''
-					: this.t(`form.timeKind.${entity.timeKind}`),
-				termName(entity.timeStart),
-				termName(entity.timeEnd),
-			]
-				.filter((part) => part.length > 0)
-				.join(' · ');
-			if (summary.length > 0) detailParts.push(summary);
-		}
-		if (entity.description.trim().length > 0) {
-			detailParts.push(entity.description.trim());
-		}
-		if (detailParts.length > 0) {
-			body.createDiv({
-				cls: 'snowflake-method-entity-detail',
-				text: detailParts.join(' — '),
-			});
-		}
-
-		const buttonGroup = row.createDiv({ cls: 'snowflake-method-table-actions' });
-		const locked = model.readOnly || entity.readOnly || damaged;
+		};
+		const editEntity = (): void => {
+			if (!locked) this.openEntityEditor(model, entity);
+		};
 		const splitButton = buttonGroup.createDiv({
 			cls: 'snowflake-method-character-split-button',
 		});
@@ -1047,9 +1298,7 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { type: 'button' },
 		});
 		edit.disabled = locked;
-		edit.addEventListener('click', () => {
-			if (!locked) this.openEntityEditor(model, entity);
-		});
+		edit.addEventListener('click', editEntity);
 		const trigger = splitButton.createEl('button', {
 			cls: 'snowflake-method-character-action-menu-trigger',
 			attr: {
@@ -1062,57 +1311,105 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-character-action-menu-icon',
 		});
 		setIcon(triggerIcon, 'chevron-down');
+		const entities = model.worldbuilding[kind];
 		trigger.addEventListener('click', (event) => {
+			// The same items a character's and a scene's menu carries, and no
+			// delete: that is the button beside this one.
 			const menu = new Menu();
 			menu.setParentElement(splitButton);
 			menu.addItem((item) =>
 				item
+					.setTitle(this.t('actions.edit'))
+					.setIcon('pencil')
+					.setDisabled(locked)
+					.onClick(editEntity),
+			);
+			menu.addItem((item) =>
+				item
 					.setTitle(this.t('common.open'))
 					.setIcon('file-text')
-					.onClick(() => {
-						void this.host.openManagedFile(entity.path, 'entity-fields', [
-							'entity-fields',
-						]);
-					}),
+					.onClick(openEntity),
 			);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('table.moveToPosition'))
-					.setIcon('hash')
-					.setDisabled(locked)
-					.onClick(() => {
-						new MoveToPositionModal(
-							this.app,
-							this.t,
-							model.worldbuilding[kind].length,
-							index + 1,
-							async (toIndex) => {
-								await this.host.reorderEntity(kind, entity.id, toIndex);
-								await this.refresh();
-							},
-						).open();
-					}),
-			);
-			menu.addSeparator();
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('worldbuilding.delete'))
-					.setIcon('trash-2')
-					.setDisabled(model.readOnly || entity.readOnly)
-					.onClick(() => {
-						void this.host
-							.deleteEntity(entity.id, entity.revision)
-							.then(() => this.refresh())
-							.catch((error: unknown) => {
-								new Notice(
-									error instanceof Error
-										? error.message
-										: this.t('errors.unknown'),
-								);
-							});
-					}),
-			);
+			this.addOrderMenuItems(menu, {
+				index,
+				total: entities.length,
+				locked: reorderReadOnly,
+				readOnly: model.readOnly,
+				insertTitleKey: `worldbuilding.insertAfter.${kind}`,
+				options: () =>
+					entities
+						.map((candidate, at) => ({
+							id: candidate.id,
+							index: at,
+							label: `${String(at + 1)}. ${candidate.name}`,
+						}))
+						.filter((candidate) => candidate.id !== entity.id),
+				move: (toIndex) => this.host.reorderEntity(kind, entity.id, toIndex),
+				reveal: () => {
+					this.revealEntity(model, kind, entity.id);
+				},
+				insert: () => {
+					this.insertEntityAfter(model, kind, index);
+				},
+			});
 			menu.showAtMouseEvent(event);
+		});
+		const remove = buttonGroup.createEl('button', {
+			cls: 'snowflake-method-character-delete',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.disabled = model.readOnly || entity.readOnly;
+		remove.addEventListener('click', () => {
+			void this.runAndRefresh(() =>
+				this.host.deleteEntity(entity.id, entity.revision),
+			);
+		});
+		if (!dragLocked) {
+			this.makeRowReorderable(
+				row,
+				ENTITY_DRAG_TYPE,
+				entity.id,
+				index,
+				(candidate) => entities.some((entry) => entry.id === candidate),
+				(id, target) => this.host.reorderEntity(kind, id, target),
+			);
+		}
+	}
+
+	/** Scrolls one kind's table to a row, wherever the filters put it. */
+	private revealEntity(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+		id: string,
+	): void {
+		const at = this.entityEntries(model, kind).findIndex(
+			(entry) => entry.entity.id === id,
+		);
+		if (at === -1) return;
+		this.entityTable?.reveal(at);
+	}
+
+	/** Creates an entry and walks it back from the end to `index + 1`. */
+	private insertEntityAfter(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+		index: number,
+	): void {
+		void this.memberFormContext(model, kind).then((context) => {
+			new EntityFormModal(
+				this.app,
+				this.t,
+				kind,
+				model.worldbuilding[kind].map((entity) => entity.name),
+				context,
+				async (request) => {
+					const created = await this.host.createEntity(request);
+					await this.host.reorderEntity(kind, created.id, index + 1);
+					await this.refresh();
+					this.revealEntity(model, kind, created.id);
+				},
+			).open();
 		});
 	}
 
@@ -1820,6 +2117,62 @@ export class SnowflakeDashboardView extends ItemView {
 	 * longer carries it. The same warm colour a point of view that names nobody
 	 * gets: in both, the table is showing a name the Vault does not agree with.
 	 */
+	/**
+	 * What a member row leads with: the name, and under it what else it goes by
+	 * and how far along it is. One block inside the cell, so the card layout a
+	 * narrow pane switches to still has a single thing to put beside the label.
+	 */
+	private renderMemberNameCell(
+		cell: HTMLElement,
+		member: {
+			name: string;
+			drifted: boolean;
+			damaged: boolean;
+			aliases: readonly string[];
+			/** The member's own facts, one to a line, where its kind has any. */
+			details?: readonly string[];
+			progressStatus: ProgressStatus | null;
+		},
+	): void {
+		setTooltip(cell, member.name);
+		const block = cell.createDiv({ cls: 'snowflake-method-member-name-cell' });
+		const line = block.createDiv({ cls: 'snowflake-method-member-name-line' });
+		this.renderTableName(line, member.name, member.drifted);
+		if (member.damaged) {
+			const warning = line.createSpan({
+				cls: 'snowflake-method-table-health-warning',
+				attr: { 'aria-label': this.t('editor.managedSection.damagedTitle') },
+			});
+			setIcon(warning, 'triangle-alert');
+		}
+		// Quieter than the name, and each on a line of its own beneath it: what
+		// else it goes by, what it is, then how far along it is.
+		if (member.aliases.length > 0) {
+			const aliases = member.aliases.join(', ');
+			const aliasEl = block.createDiv({
+				cls: 'snowflake-method-member-aliases',
+				text: aliases,
+			});
+			setTooltip(aliasEl, `${this.t('form.aliases')}: ${aliases}`);
+		}
+		for (const fact of member.details ?? []) {
+			if (fact.length === 0) continue;
+			const detail = block.createDiv({
+				cls: 'snowflake-method-member-detail',
+				text: fact,
+			});
+			setTooltip(detail, fact);
+		}
+		if (member.progressStatus !== null) {
+			block.createDiv({
+				cls:
+					'snowflake-method-entity-status snowflake-method-member-status ' +
+					`is-${member.progressStatus}`,
+				text: this.t(`status.${member.progressStatus}`),
+			});
+		}
+	}
+
 	private renderTableName(
 		cell: HTMLElement,
 		name: string,
@@ -2427,10 +2780,29 @@ export class SnowflakeDashboardView extends ItemView {
 		const search = new SearchComponent(toolbar);
 		search.setPlaceholder(this.t('table.searchCharacters'));
 		search.setValue(this.characterQuery);
+		// The whole category tree, not only the paths characters already carry:
+		// a filter is asked before the answer is known, and an empty category is
+		// a fair thing to ask about. Fetched beside the render rather than in it,
+		// and read live by the list below.
+		void this.loadMemberCategories(model, 'character');
 		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
-		const typeSlot = toolbar.createDiv({
+		const filterSlot = toolbar.createDiv({
 			cls: 'snowflake-method-table-filter',
 		});
+		// An icon button in Obsidian's own sense: `clickable-icon` is the class
+		// its button styling stands aside for, so the funnel is the symbol
+		// alone rather than a symbol on a slab.
+		const filterButton = filterSlot.createEl('button', {
+			cls: 'clickable-icon snowflake-method-filter-button',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'dialog',
+				'aria-expanded': 'false',
+				'aria-label': this.t('table.filter'),
+			},
+		});
+		setIcon(filterButton, 'funnel');
+		setTooltip(filterButton, this.t('table.filter'));
 
 		const { headWrap, bodyWrap, body } = this.buildTableFrame(
 			panel,
@@ -2438,7 +2810,7 @@ export class SnowflakeDashboardView extends ItemView {
 			[
 				this.t('table.order'),
 				this.t('table.name'),
-				this.t('table.characterTypeShort'),
+				this.t('table.category'),
 				this.t('table.oneSentenceStoryline'),
 				this.t('table.actions'),
 			],
@@ -2509,33 +2881,314 @@ export class SnowflakeDashboardView extends ItemView {
 			this.characterQuery = value;
 			feed(true);
 		});
-		// A picker rather than a plain dropdown, so the list stays usable
-		// once custom character types join the built-in three.
-		this.memberFilterPicker = buildOptionField(this.app, typeSlot, {
-			options: () => [
-				{ value: 'all', label: this.t('table.filterAllTypes') },
-				...(['major', 'supporting', 'minor'] as const).map((kind) => ({
-					value: kind,
-					label: this.t(`character.${kind}`),
-				})),
-			],
-			value: () => this.characterTypeFilter,
-			choose: (value) => {
-				this.characterTypeFilter =
-					value === 'major' ||
-					value === 'supporting' ||
-					value === 'minor'
-						? value
-						: 'all';
+		const markFilterButton = (): void => {
+			filterButton.toggleClass(
+				'is-active',
+				this.characterCategoryFilter !== '' ||
+					this.characterStatusFilter !== 'all',
+			);
+		};
+		markFilterButton();
+		filterButton.addEventListener('click', () => {
+			if (this.filterPanel !== null) {
+				this.closeFilterPanel();
+				return;
+			}
+			this.openFilterPanel(filterButton, this.characterFilterRows(model), () => {
+				markFilterButton();
 				feed(true);
-			},
-			label: this.t('table.characterType'),
-			placeholder: this.t('table.filterAllTypes'),
-			emptyPlaceholder: this.t('table.filterAllTypes'),
+			});
 		});
 		feed(false);
 		bodyWrap.scrollTop = this.characterScroll;
 		virtual.refresh();
+	}
+
+	/** The progress row every member table's funnel opens with. */
+	private progressFilterRow(
+		value: 'all' | ProgressStatus,
+		apply: (next: 'all' | ProgressStatus) => void,
+	): MemberFilterRow {
+		return {
+			label: this.t('table.progressStatus'),
+			placeholder: this.t('table.filterAllStatuses'),
+			empty: 'all',
+			options: () =>
+				PROGRESS_STATUSES.map((status) => ({
+					value: status,
+					label: this.t(`status.${status}`),
+				})),
+			value,
+			apply: (next) => {
+				apply(isProgressStatus(next) ? next : 'all');
+			},
+		};
+	}
+
+	/** The category row, over one kind's whole tree. */
+	private categoryFilterRow(
+		paths: readonly string[],
+		value: string,
+		apply: (next: string) => void,
+	): MemberFilterRow {
+		return {
+			label: this.t('table.category'),
+			placeholder: this.t('table.filterAllCategories'),
+			empty: '',
+			options: () => paths.map((path) => ({ value: path, label: path })),
+			value,
+			apply,
+		};
+	}
+
+	private characterFilterRows(
+		model: ProjectDashboardModel,
+	): MemberFilterRow[] {
+		return [
+			this.progressFilterRow(this.characterStatusFilter, (next) => {
+				this.characterStatusFilter = next;
+			}),
+			this.categoryFilterRow(
+				this.characterCategoryPaths(model),
+				this.characterCategoryFilter,
+				(next) => {
+					this.characterCategoryFilter = next;
+				},
+			),
+		];
+	}
+
+	/**
+	 * Everything a scene can be narrowed by. The notes it names are offered
+	 * whole, not only the ones some scene already points at: a filter is asked
+	 * before the answer is known.
+	 */
+	private sceneFilterRows(model: ProjectDashboardModel): MemberFilterRow[] {
+		const named = (
+			entities: readonly { name: string }[],
+		): PickerOption[] =>
+			entities
+				.map((entity) => ({ value: entity.name, label: entity.name }))
+				.filter((option) => option.value.length > 0);
+		return [
+			this.progressFilterRow(this.sceneStatusFilter, (next) => {
+				this.sceneStatusFilter = next;
+			}),
+			this.categoryFilterRow(
+				this.sceneCategoryPaths(model),
+				this.sceneCategoryFilter,
+				(next) => {
+					this.sceneCategoryFilter = next;
+				},
+			),
+			{
+				label: this.t('table.scenePov'),
+				placeholder: this.t('table.filterAllPov'),
+				empty: '',
+				options: () => [
+					{
+						value: SCENE_POV_OMNISCIENT,
+						label: this.t('modal.scene.povOmniscient'),
+					},
+					{
+						value: SCENE_POV_MULTIPLE,
+						label: this.t('modal.scene.povMultiple'),
+					},
+					...model.characters.map((character) => ({
+						value: character.path,
+						label: character.name,
+					})),
+				],
+				value: this.scenePovFilter,
+				apply: (next) => {
+					this.scenePovFilter = next;
+				},
+			},
+			{
+				label: this.t('table.sceneTime'),
+				placeholder: this.t('table.filterAllTimes'),
+				empty: '',
+				options: () => named(model.worldbuilding.time),
+				value: this.sceneTimeFilter,
+				apply: (next) => {
+					this.sceneTimeFilter = next;
+				},
+			},
+			{
+				label: this.t('table.sceneLocation'),
+				placeholder: this.t('table.filterAllLocations'),
+				empty: '',
+				options: () => named(model.worldbuilding.location),
+				value: this.sceneLocationFilter,
+				apply: (next) => {
+					this.sceneLocationFilter = next;
+				},
+			},
+			{
+				label: this.t('table.sceneCharacters'),
+				placeholder: this.t('table.filterAllCast'),
+				empty: '',
+				options: () =>
+					model.characters.map((character) => ({
+						value: character.path,
+						label: character.name,
+					})),
+				value: this.sceneCharacterFilter,
+				apply: (next) => {
+					this.sceneCharacterFilter = next;
+				},
+			},
+		];
+	}
+
+	/**
+	 * The questions the funnel asks, in a panel under it. Each is a picker of
+	 * its own, so they can all be asked at once, and each offers its whole
+	 * vocabulary rather than only the answers this project happens to hold.
+	 */
+	private openFilterPanel(
+		anchor: HTMLElement,
+		rows: readonly MemberFilterRow[],
+		changed: () => void,
+	): void {
+		this.closeFilterPanel();
+		const panel = anchor.win.activeDocument.body.createDiv({
+			cls: 'snowflake-method-filter-panel',
+			attr: { role: 'dialog', 'aria-label': this.t('table.filter') },
+		});
+		panel.createDiv({
+			cls: 'snowflake-method-filter-panel-title',
+			text: this.t('table.filter'),
+		});
+		const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
+		// What the panel is being set to, until it is confirmed. The table keeps
+		// showing what it was showing while the fields are being worked out, and
+		// a panel dismissed without confirming changes nothing.
+		const draft = rows.map((entry) => entry.value);
+		// Rebuilt rather than reassigned: a picker shows the value it was built
+		// with, so the reset below has to build the fields again to show them
+		// back at rest.
+		const fill = (): void => {
+			body.empty();
+			this.releaseFilterPickers();
+			rows.forEach((entry, index) => {
+				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
+				field.createDiv({
+					cls: 'snowflake-method-filter-label',
+					text: entry.label,
+				});
+				this.memberFilterPickers.push(
+					buildOptionField(this.app, field, {
+						options: () => [
+							{ value: entry.empty, label: entry.placeholder },
+							...entry.options(),
+						],
+						value: () => draft[index] ?? entry.empty,
+						choose: (value) => {
+							draft[index] = value;
+						},
+						label: entry.label,
+						placeholder: entry.placeholder,
+						emptyPlaceholder: entry.placeholder,
+					}),
+				);
+			});
+		};
+		fill();
+		const actions = panel.createDiv({
+			cls: 'snowflake-method-filter-panel-actions',
+		});
+		const reset = actions.createEl('button', {
+			cls: 'snowflake-method-filter-reset',
+			text: this.t('table.filterReset'),
+			attr: { type: 'button' },
+		});
+		// Clears the fields rather than the table: the panel has one way out,
+		// and this is not it.
+		reset.addEventListener('click', () => {
+			rows.forEach((entry, index) => {
+				draft[index] = entry.empty;
+			});
+			fill();
+		});
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t('table.filterConfirm'),
+			attr: { type: 'button' },
+		});
+		confirm.addEventListener('click', () => {
+			rows.forEach((entry, index) => {
+				entry.apply(draft[index] ?? entry.empty);
+			});
+			this.closeFilterPanel();
+			changed();
+		});
+
+		// Under the funnel and lined up with its end, in the layer above
+		// everything: the panel covers a table that scrolls, and a panel inside
+		// it would be clipped by it.
+		const view = anchor.win;
+		const place = (): void => {
+			const box = anchor.getBoundingClientRect();
+			const room = view.innerWidth - panel.offsetWidth - PANEL_EDGE_GAP;
+			panel.style.top = `${String(box.bottom + PANEL_ANCHOR_GAP)}px`;
+			panel.style.left = `${String(
+				Math.max(
+					PANEL_EDGE_GAP,
+					Math.min(box.right - panel.offsetWidth, room),
+				),
+			)}px`;
+		};
+		place();
+		anchor.setAttribute('aria-expanded', 'true');
+
+		// A click inside the panel is the author using it, and one inside a
+		// suggestion list is them using a field of it: the list is put in the
+		// same layer, outside the panel's own element.
+		const dismiss = (event: MouseEvent): void => {
+			const target = event.target as Node | null;
+			if (target === null) return;
+			if (panel.contains(target) || anchor.contains(target)) return;
+			const el = target.instanceOf(Element) ? target : target.parentElement;
+			if (el?.closest('.suggestion-container') != null) return;
+			this.closeFilterPanel();
+		};
+		const onKey = (event: KeyboardEvent): void => {
+			if (event.key !== 'Escape') return;
+			// The field's own list answers Escape first, and closing the panel
+			// under it would take the field away mid-correction.
+			if (view.activeDocument.querySelector('.suggestion-container') !== null) {
+				return;
+			}
+			this.closeFilterPanel();
+			anchor.focus();
+		};
+		view.addEventListener('mousedown', dismiss, true);
+		view.addEventListener('keydown', onKey, true);
+		view.addEventListener('resize', place);
+		this.filterPanel = {
+			el: panel,
+			release: () => {
+				view.removeEventListener('mousedown', dismiss, true);
+				view.removeEventListener('keydown', onKey, true);
+				view.removeEventListener('resize', place);
+				anchor.setAttribute('aria-expanded', 'false');
+			},
+		};
+	}
+
+	private closeFilterPanel(): void {
+		const open = this.filterPanel;
+		if (open === null) return;
+		this.filterPanel = null;
+		open.release();
+		this.releaseFilterPickers();
+		open.el.remove();
+	}
+
+	private releaseFilterPickers(): void {
+		for (const picker of this.memberFilterPickers) picker.destroy();
+		this.memberFilterPickers = [];
 	}
 
 	/**
@@ -2595,25 +3248,25 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-table-primary',
 			attr: { 'data-label': this.t('table.name') },
 		});
-		setTooltip(nameCell, character.name);
-		this.renderTableName(nameCell, character.name, character.nameDrifted);
-		if (characterDamaged) {
-			const warning = nameCell.createSpan({
-				cls: 'snowflake-method-table-health-warning',
-				attr: {
-					'aria-label': this.t('editor.managedSection.damagedTitle'),
-				},
-			});
-			setIcon(warning, 'triangle-alert');
-		}
-		row.createEl('td', {
-			// A character with no role category has nothing to show here.
-			text:
-				character.type === null
-					? ''
-					: this.t(`character.${character.type}Short`),
-			attr: { 'data-label': this.t('table.characterType') },
+		this.renderMemberNameCell(nameCell, {
+			name: character.name,
+			drifted: character.nameDrifted,
+			damaged: characterDamaged,
+			aliases: character.aliases,
+			progressStatus: character.progressStatus,
 		});
+		const categoryCell = row.createEl('td', {
+			cls: 'snowflake-method-member-categories',
+			attr: { 'data-label': this.t('table.category') },
+		});
+		// Every category the character carries, the role among them, each on a
+		// line of its own: they are paths, and paths read badly run together.
+		for (const path of character.categoryPaths) {
+			categoryCell.createDiv({
+				cls: 'snowflake-method-member-category',
+				text: path,
+			});
+		}
 		row.createEl('td', {
 			text: character.oneSentenceStoryline,
 			attr: { 'data-label': this.t('table.oneSentenceStoryline') },
@@ -2824,22 +3477,40 @@ export class SnowflakeDashboardView extends ItemView {
 		const search = new SearchComponent(toolbar);
 		search.setPlaceholder(this.t('table.searchScenes'));
 		search.setValue(this.sceneQuery);
+		void this.loadMemberCategories(model, 'scene');
 		// A held filter can name a character since deleted, which would filter
 		// every scene out while the field reads as if nothing were set.
+		const knownCharacter = (path: string): boolean =>
+			model.characters.some((character) => character.path === path);
 		if (
 			this.scenePovFilter !== '' &&
 			this.scenePovFilter !== SCENE_POV_OMNISCIENT &&
 			this.scenePovFilter !== SCENE_POV_MULTIPLE &&
-			!model.characters.some(
-				(character) => character.path === this.scenePovFilter,
-			)
+			!knownCharacter(this.scenePovFilter)
 		) {
 			this.scenePovFilter = '';
 		}
+		if (
+			this.sceneCharacterFilter !== '' &&
+			!knownCharacter(this.sceneCharacterFilter)
+		) {
+			this.sceneCharacterFilter = '';
+		}
 		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
-		const povSlot = toolbar.createDiv({
+		const filterSlot = toolbar.createDiv({
 			cls: 'snowflake-method-table-filter',
 		});
+		const filterButton = filterSlot.createEl('button', {
+			cls: 'clickable-icon snowflake-method-filter-button',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'dialog',
+				'aria-expanded': 'false',
+				'aria-label': this.t('table.filter'),
+			},
+		});
+		setIcon(filterButton, 'funnel');
+		setTooltip(filterButton, this.t('table.filter'));
 
 		const { headWrap, bodyWrap, body } = this.buildTableFrame(
 			panel,
@@ -2913,30 +3584,19 @@ export class SnowflakeDashboardView extends ItemView {
 			this.sceneQuery = value;
 			feed(true);
 		});
-		this.memberFilterPicker = buildOptionField(this.app, povSlot, {
-			options: () => [
-				{ value: '', label: this.t('table.filterAllPov') },
-				{
-					value: SCENE_POV_OMNISCIENT,
-					label: this.t('modal.scene.povOmniscient'),
-				},
-				{
-					value: SCENE_POV_MULTIPLE,
-					label: this.t('modal.scene.povMultiple'),
-				},
-				...model.characters.map((character) => ({
-					value: character.path,
-					label: character.name,
-				})),
-			],
-			value: () => this.scenePovFilter,
-			choose: (value) => {
-				this.scenePovFilter = value;
+		const markFilterButton = (): void => {
+			filterButton.toggleClass('is-active', this.sceneFiltered());
+		};
+		markFilterButton();
+		filterButton.addEventListener('click', () => {
+			if (this.filterPanel !== null) {
+				this.closeFilterPanel();
+				return;
+			}
+			this.openFilterPanel(filterButton, this.sceneFilterRows(model), () => {
+				markFilterButton();
 				feed(true);
-			},
-			label: this.t('table.scenePov'),
-			placeholder: this.t('table.filterAllPov'),
-			emptyPlaceholder: this.t('table.filterAllPov'),
+			});
 		});
 		feed(false);
 		bodyWrap.scrollTop = this.sceneScroll;
@@ -2966,17 +3626,13 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-table-primary',
 			attr: { 'data-label': this.t('table.sceneName') },
 		});
-		setTooltip(titleCell, scene.title);
-		this.renderTableName(titleCell, scene.title, scene.nameDrifted);
-		if (sceneDamaged) {
-			const warning = titleCell.createSpan({
-				cls: 'snowflake-method-table-health-warning',
-				attr: {
-					'aria-label': this.t('editor.managedSection.damagedTitle'),
-				},
-			});
-			setIcon(warning, 'triangle-alert');
-		}
+		this.renderMemberNameCell(titleCell, {
+			name: scene.title,
+			drifted: scene.nameDrifted,
+			damaged: sceneDamaged,
+			aliases: scene.aliases,
+			progressStatus: scene.progressStatus,
+		});
 		const povCell = row.createEl('td', {
 			attr: { 'data-label': this.t('table.scenePov') },
 		});
@@ -3128,7 +3784,8 @@ export class SnowflakeDashboardView extends ItemView {
 					// What was just made must be on screen, not hidden behind an
 					// old query it happens not to match.
 					this.characterQuery = '';
-					this.characterTypeFilter = 'all';
+					this.characterCategoryFilter = '';
+					this.characterStatusFilter = 'all';
 					this.characterScroll = Number.MAX_SAFE_INTEGER;
 					await this.refresh();
 				},
@@ -3154,7 +3811,7 @@ export class SnowflakeDashboardView extends ItemView {
 					await this.host.createScene(request);
 					// To the end, filters let go, for the same reason as above.
 					this.sceneQuery = '';
-					this.scenePovFilter = '';
+					this.clearSceneFilters();
 					this.sceneScroll = Number.MAX_SAFE_INTEGER;
 					await this.refresh();
 				},
@@ -3213,25 +3870,62 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
+	/** The categories the filter offers, once they have been read. */
+	private characterCategoryPaths(model: ProjectDashboardModel): string[] {
+		const loaded = this.characterCategories;
+		return loaded?.projectId === model.projectId ? loaded.paths : [];
+	}
+
+	private sceneCategoryPaths(model: ProjectDashboardModel): string[] {
+		const loaded = this.sceneCategories;
+		return loaded?.projectId === model.projectId ? loaded.paths : [];
+	}
+
+	/**
+	 * Reads a kind's category tree for the filter. Held between renders, so the
+	 * list is ready by the time the field is opened, and keyed by project so
+	 * another one's categories are never on offer.
+	 */
+	private async loadMemberCategories(
+		model: ProjectDashboardModel,
+		kind: 'character' | 'scene',
+	): Promise<void> {
+		let paths: string[] = [];
+		try {
+			paths = await this.host.listDefinitionPaths(kind, 'category');
+		} catch {
+			// A tree that cannot be read leaves the filter offering the rest,
+			// which is a smaller panel rather than a broken one.
+			paths = [];
+		}
+		const loaded = { projectId: model.projectId, paths };
+		if (kind === 'character') this.characterCategories = loaded;
+		else this.sceneCategories = loaded;
+	}
+
 	/** The rows the character table shows, each with its place in the list. */
 	private characterEntries(
 		model: ProjectDashboardModel,
 	): { character: CharacterViewModel; index: number }[] {
+		const category = this.characterCategoryFilter;
+		const status = this.characterStatusFilter;
 		return model.characters
 			.map((character, index) => ({ character, index }))
 			.filter(
 				({ character }) =>
-					(this.characterTypeFilter === 'all' ||
-						character.type === this.characterTypeFilter) &&
+					(category === '' ||
+						character.categoryPaths.some((path) =>
+							categoryWithin(path, category),
+						)) &&
+					(status === 'all' || character.progressStatus === status) &&
 					memberMatches(
 						[
 							character.name,
-							...(character.type === null
+							...character.aliases,
+							...character.categoryPaths,
+							...(character.progressStatus === null
 								? []
-								: [
-										this.t(`character.${character.type}`),
-										this.t(`character.${character.type}Short`),
-									]),
+								: [this.t(`status.${character.progressStatus}`)]),
 							character.oneSentenceStoryline,
 						],
 						this.characterQuery,
@@ -3242,7 +3936,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private characterListFiltered(): boolean {
 		return (
 			this.characterQuery.trim().length > 0 ||
-			this.characterTypeFilter !== 'all'
+			this.characterCategoryFilter !== '' ||
+			this.characterStatusFilter !== 'all'
 		);
 	}
 
@@ -3253,19 +3948,40 @@ export class SnowflakeDashboardView extends ItemView {
 		const names = new Map(
 			model.characters.map((character) => [character.path, character.name]),
 		);
+		// The stored value is a link or the words themselves; either way the
+		// name is what the table shows and what the filter names.
+		const holds = (values: readonly string[], wanted: string): boolean =>
+			values.some((value) => termName(value) === wanted);
 		return model.scenes
 			.map((scene, index) => ({ scene, index }))
 			.filter(
 				({ scene }) =>
 					(this.scenePovFilter === '' ||
 						scene.povPath === this.scenePovFilter) &&
+					(this.sceneStatusFilter === 'all' ||
+						scene.progressStatus === this.sceneStatusFilter) &&
+					(this.sceneCategoryFilter === '' ||
+						scene.categoryPaths.some((path) =>
+							categoryWithin(path, this.sceneCategoryFilter),
+						)) &&
+					(this.sceneTimeFilter === '' ||
+						holds(scene.times, this.sceneTimeFilter)) &&
+					(this.sceneLocationFilter === '' ||
+						holds(scene.locations, this.sceneLocationFilter)) &&
+					(this.sceneCharacterFilter === '' ||
+						scene.characterPaths.includes(this.sceneCharacterFilter)) &&
 					memberMatches(
 						[
 							scene.title,
+							...scene.aliases,
+							...scene.categoryPaths,
 							scene.povName,
-							...scene.times,
-							...scene.locations,
+							...scene.times.map(termName),
+							...scene.locations.map(termName),
 							scene.conflict,
+							...(scene.progressStatus === null
+								? []
+								: [this.t(`status.${scene.progressStatus}`)]),
 							...scene.characterPaths.map(
 								(path) => names.get(path) ?? '',
 							),
@@ -3275,8 +3991,29 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 	}
 
+	private clearSceneFilters(): void {
+		this.scenePovFilter = '';
+		this.sceneStatusFilter = 'all';
+		this.sceneCategoryFilter = '';
+		this.sceneTimeFilter = '';
+		this.sceneLocationFilter = '';
+		this.sceneCharacterFilter = '';
+	}
+
+	/** True when any of the funnel's six questions is being asked. */
+	private sceneFiltered(): boolean {
+		return (
+			this.scenePovFilter !== '' ||
+			this.sceneStatusFilter !== 'all' ||
+			this.sceneCategoryFilter !== '' ||
+			this.sceneTimeFilter !== '' ||
+			this.sceneLocationFilter !== '' ||
+			this.sceneCharacterFilter !== ''
+		);
+	}
+
 	private sceneListFiltered(): boolean {
-		return this.sceneQuery.trim().length > 0 || this.scenePovFilter !== '';
+		return this.sceneQuery.trim().length > 0 || this.sceneFiltered();
 	}
 
 	/** Scrolls the character table to a row, wherever the filters put it. */

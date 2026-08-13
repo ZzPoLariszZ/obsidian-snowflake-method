@@ -179,7 +179,6 @@ describe("SnowflakeProjectService", () => {
       FRONTMATTER_KEYS.characterId,
       FRONTMATTER_KEYS.characterName,
       FRONTMATTER_KEYS.rank,
-      FRONTMATTER_KEYS.characterType,
       FRONTMATTER_KEYS.oneSentenceStoryline,
       FRONTMATTER_KEYS.motivation,
       FRONTMATTER_KEYS.goal,
@@ -188,6 +187,11 @@ describe("SnowflakeProjectService", () => {
     ]) {
       expect(characterTemplateProperties, key).toHaveProperty(key);
     }
+    // The role is a category now; a template naming the discarded property
+    // would teach a shape no form writes.
+    expect(characterTemplateProperties).not.toHaveProperty(
+      FRONTMATTER_KEYS.characterType,
+    );
     const sceneTemplateProperties = parseMarkdownFrontmatter(
       fakeVault.contents.get(`${project.rootPath}/00_系统/041_模板_场景.md`) ?? "",
     ).frontmatter;
@@ -3289,10 +3293,14 @@ describe("SnowflakeProjectService", () => {
     expect(block).toContain("> **Type**: Time period");
     expect(block).toContain("> **Start**: ");
     expect(block).toContain("> **Description**: Three hungry months.");
+    // A titled callout under the overview, with no heading of its own.
     expect(readMarkedSection(content, "world-status")).toContain(
-      "- [[Def/World_Status/Ongoing/_self|Ongoing]]",
+      "> [[Def/World_Status/Ongoing/_self|Ongoing]]",
     );
-    expect(content).toContain("## World Status");
+    expect(readMarkedSection(content, "world-status")).toContain(
+      "> [!info] World status",
+    );
+    expect(content).not.toContain("## World Status");
     // Empty record sections stay deferred out of the note.
     expect(content).not.toContain("snowflake:section:relationships");
 
@@ -3393,11 +3401,13 @@ describe("SnowflakeProjectService", () => {
       worldStatus: [statusRecord("Age", "23"), statusRecord("Missing")],
     });
     const created = fakeVault.contents.get(ada.path) ?? "";
-    expect(created).toContain("## World Status");
-    expect(readMarkedSection(created, "world-status")).toBe(
+    expect(created).not.toContain("## World Status");
+    expect(readMarkedSection(created, "world-status")?.trim()).toBe(
       [
-        "- [[Def/World_Status/Age/_self|Age]]: 23",
-        "- [[Def/World_Status/Missing/_self|Missing]]",
+        "> [!info] World status",
+        "> [[Def/World_Status/Age/_self|Age]]: 23",
+        ">",
+        "> [[Def/World_Status/Missing/_self|Missing]]",
       ].join("\n"),
     );
     expect(ada.worldStatus).toHaveLength(2);
@@ -3758,8 +3768,8 @@ describe("SnowflakeProjectService", () => {
     fakeVault.contents.set(
       withRecord.path,
       (fakeVault.contents.get(withRecord.path) ?? "").replace(
-        `- [[${statusRoot}/Injured/_self|Injured]]`,
-        `- [[${statusRoot}#Injured|Injured]]`,
+        `[[${statusRoot}/Injured/_self|Injured]]`,
+        `[[${statusRoot}#Injured|Injured]]`,
       ),
     );
     const basePath = `${characterFolder}/Characters.base`;
@@ -3784,7 +3794,7 @@ describe("SnowflakeProjectService", () => {
     expect(parseMarkdownFrontmatter(content).frontmatter[FRONTMATTER_KEYS.category]).toEqual([
       `[[${categoryRoot}/Race/Elf/_self|Race/Elf]]`,
     ]);
-    expect(content).toContain(`- [[${statusRoot}/Injured/_self|Injured]]`);
+    expect(content).toContain(`> [[${statusRoot}/Injured/_self|Injured]]`);
     expect(readMarkedSection(content, "character-fields")).toContain(
       `[[${categoryRoot}/Race/Elf/_self|Race/Elf]]`,
     );
@@ -3941,6 +3951,121 @@ describe("SnowflakeProjectService", () => {
         `${project.rootPath}/20_Character/21_Category/Major/_self.md`,
       ),
     ).toBe(true);
+  });
+
+  it("writes a character's properties in one order and holds them there", async () => {
+    const project = await service.createProject({ name: "Property order" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      progressStatus: "in-progress",
+      oneSentenceStoryline: "She counts what nobody else will.",
+    });
+    const orderOf = (path: string): string[] =>
+      Object.keys(
+        parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter,
+      );
+    const expected = [
+      FRONTMATTER_KEYS.schema,
+      FRONTMATTER_KEYS.document,
+      FRONTMATTER_KEYS.projectId,
+      FRONTMATTER_KEYS.characterId,
+      FRONTMATTER_KEYS.characterName,
+      FRONTMATTER_KEYS.rank,
+      FRONTMATTER_KEYS.category,
+      FRONTMATTER_KEYS.oneSentenceStoryline,
+      FRONTMATTER_KEYS.motivation,
+      FRONTMATTER_KEYS.goal,
+      FRONTMATTER_KEYS.conflict,
+      FRONTMATTER_KEYS.growth,
+      FRONTMATTER_KEYS.progressStatus,
+    ];
+    expect(orderOf(ada.path)).toEqual(expected);
+
+    // An alias arrives long after the note was made, and belongs under the
+    // name rather than at the end of the list.
+    await service.updateCharacter(project.projectFile, ada.characterId, {
+      aliases: ["The Countess"],
+      expectedRevision: ada.revision,
+    });
+    expect(orderOf(ada.path)).toEqual([
+      ...expected.slice(0, 5),
+      "aliases",
+      ...expected.slice(5),
+    ]);
+  });
+
+  it("writes a scene's properties in one order and holds them there", async () => {
+    const project = await service.createProject({ name: "Scene order" });
+    const scene = await service.createScene(project, {
+      title: "Dawn",
+      conflict: "The tide turns first.",
+      progressStatus: "in-progress",
+    });
+    const orderOf = (path: string): string[] =>
+      Object.keys(
+        parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter,
+      );
+    const expected = [
+      FRONTMATTER_KEYS.schema,
+      FRONTMATTER_KEYS.document,
+      FRONTMATTER_KEYS.projectId,
+      FRONTMATTER_KEYS.sceneId,
+      FRONTMATTER_KEYS.sceneTitle,
+      FRONTMATTER_KEYS.rank,
+      FRONTMATTER_KEYS.pov,
+      FRONTMATTER_KEYS.sceneTime,
+      FRONTMATTER_KEYS.sceneLocation,
+      FRONTMATTER_KEYS.sceneCharacters,
+      FRONTMATTER_KEYS.conflict,
+      FRONTMATTER_KEYS.progressStatus,
+    ];
+    expect(orderOf(scene.path)).toEqual(expected);
+
+    // An alias arrives later and belongs under the title, not at the end.
+    await service.updateScene(project.projectFile, scene.sceneId, {
+      aliases: ["The turning"],
+      expectedRevision: scene.revision,
+    });
+    expect(orderOf(scene.path)).toEqual([
+      ...expected.slice(0, 5),
+      "aliases",
+      ...expected.slice(5),
+    ]);
+  });
+
+  it("brings a character note written in an older order into today's", async () => {
+    const project = await service.createProject({ name: "Property reorder" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      aliases: ["The Countess"],
+    });
+    // The shape a release before this one wrote: the aliases and the progress
+    // behind the story fields, where each landed when it was added.
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        const aliases = frontmatter["aliases"];
+        delete frontmatter["aliases"];
+        frontmatter["aliases"] = aliases;
+        frontmatter[FRONTMATTER_KEYS.progressStatus] = "in-progress";
+        frontmatter["reading-list"] = "kept";
+      },
+    );
+
+    await service.migrateMemberNotes(project.projectFile);
+
+    const keys = Object.keys(
+      parseMarkdownFrontmatter(fakeVault.contents.get(ada.path) ?? "").frontmatter,
+    );
+    expect(keys.indexOf("aliases")).toBe(
+      keys.indexOf(FRONTMATTER_KEYS.characterName) + 1,
+    );
+    expect(keys[keys.length - 2]).toBe(FRONTMATTER_KEYS.progressStatus);
+    // A property the author added is nobody else's to arrange, so it keeps
+    // its place after the ones this order names.
+    expect(keys[keys.length - 1]).toBe("reading-list");
   });
 
   it("gives a scene's written time and place notes of their own", async () => {

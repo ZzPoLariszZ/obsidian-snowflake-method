@@ -1209,7 +1209,6 @@ export default class SnowflakeMethodPlugin
 				timeKind: request.timeKind,
 				timeStart: request.timeStart,
 				timeEnd: request.timeEnd,
-				details: [],
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
 			});
@@ -1236,7 +1235,6 @@ export default class SnowflakeMethodPlugin
 				timeKind: request.timeKind,
 				timeStart: request.timeStart,
 				timeEnd: request.timeEnd,
-				details: [],
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
 			});
@@ -3447,7 +3445,6 @@ export default class SnowflakeMethodPlugin
 			timeKind: entity.timeKind,
 			timeStart: entity.timeStart,
 			timeEnd: entity.timeEnd,
-			details: entity.details,
 			worldStatus: entity.worldStatus,
 			relationships: entity.relationships,
 			revision: entity.revision,

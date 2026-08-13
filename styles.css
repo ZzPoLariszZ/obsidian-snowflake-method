@@ -1753,6 +1753,89 @@
 	width: calc(11rem + 1px);
 }
 
+/* The character table asks its two questions behind one funnel, so its slot
+   is the button and nothing else. */
+.snowflake-method-table-filter:has(> .snowflake-method-filter-button) {
+	display: flex;
+	justify-content: flex-end;
+	width: auto;
+}
+
+.snowflake-method-filter-button {
+	cursor: pointer;
+}
+
+/* Filtering is a state the table is in, and the funnel is where it shows. */
+.snowflake-method-filter-button.is-active,
+.snowflake-method-filter-button.is-active:hover {
+	color: var(--text-accent);
+}
+
+/* The panel the funnel opens: placed against the button in script, because it
+   sits above a table that scrolls and would otherwise clip it. It rises above
+   the workspace but stays below the menu layer, which is where the lists its
+   own fields drop down live -- above the panel, as a list under a field must
+   be. */
+.snowflake-method-filter-panel {
+	position: fixed;
+	z-index: var(--layer-popover);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	width: 16rem;
+	max-width: calc(100vw - var(--size-4-4));
+	padding: var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.snowflake-method-filter-panel-title {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-filter-panel-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+}
+
+.snowflake-method-filter-row {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-filter-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* Two buttons, in the order they are weighed: clearing the fields is the
+   aside, and confirming is what the panel is for. */
+.snowflake-method-filter-panel-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-filter-panel-actions > button {
+	flex: 0 0 auto;
+	cursor: pointer;
+}
+
+.snowflake-method-filter-reset {
+	color: var(--text-muted);
+}
+
+.snowflake-method-filter-reset:hover {
+	color: var(--text-normal);
+}
+
 .snowflake-method-table-count {
 	margin-inline-start: auto;
 	color: var(--text-muted);
@@ -1970,6 +2053,56 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* The name cell stacks up to three lines: the name, what else the member goes
+   by, and how far along it is. Each keeps to its own line, so a long alias
+   list ends in an ellipsis rather than pushing the row taller. */
+.snowflake-method-member-name-cell {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+}
+
+.snowflake-method-member-name-line {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-1);
+	min-width: 0;
+	overflow: hidden;
+}
+
+.snowflake-method-member-aliases,
+.snowflake-method-member-detail,
+.snowflake-method-member-status {
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-member-aliases,
+.snowflake-method-member-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+}
+
+/* However many lines stand above it, the progress ends the cell at its far
+   edge: the eye finds it in the same place down the whole column. */
+.snowflake-method-member-status {
+	align-self: flex-end;
+}
+
+/* Categories are paths, and paths read badly run together: one per line, and
+   each wraps rather than being cut off. */
+.snowflake-method-member-categories {
+	white-space: normal;
+}
+
+.snowflake-method-member-category {
+	overflow-wrap: anywhere;
 }
 
 /* The storyline and the conflict show themselves whole: they wrap to
@@ -3708,6 +3841,14 @@
 		overflow-wrap: anywhere;
 	}
 
+	/* A card is as tall as it needs to be, so the categories show in full
+	   here rather than ending in an ellipsis the way they do in a row. */
+	.snowflake-method-table td.snowflake-method-member-categories {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+	}
+
 	.snowflake-method-table-actions {
 		justify-content: flex-start;
 		flex-wrap: wrap;
@@ -4696,97 +4837,23 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	color: var(--text-faint);
 }
 
-/* The kind pane's list: one row per entity, the order in its own column the
-   way the member tables hold theirs. */
-.snowflake-method-member-toolbar {
-	margin-block-start: var(--size-4-3);
-}
-
-.snowflake-method-entity-table {
-	margin-block-start: var(--size-4-3);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	overflow: hidden;
-}
-
-.snowflake-method-entity-row {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--size-4-3);
-	padding: var(--size-4-2) var(--size-4-3);
-	border-block-end: 1px solid var(--background-modifier-border);
-}
-
-.snowflake-method-entity-row:last-child {
-	border-block-end: none;
-}
-
-.snowflake-method-entity-row.has-managed-section-issue {
-	background: var(--background-modifier-error-hover);
-}
-
-.snowflake-method-entity-order {
-	min-width: 2em;
-	padding-block-start: 0.15em;
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-	text-align: end;
-}
-
-.snowflake-method-entity-body {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-.snowflake-method-entity-name-line {
-	display: flex;
-	align-items: baseline;
-	gap: var(--size-4-2);
-	flex-wrap: wrap;
-}
-
-.snowflake-method-entity-name {
-	background: none;
-	border: none;
-	box-shadow: none;
-	padding: 0;
-	color: var(--text-normal);
-	font-weight: var(--font-semibold);
-	cursor: pointer;
-}
-
-.snowflake-method-entity-name:hover {
-	color: var(--text-accent);
-	text-decoration: underline;
-}
-
+/* A word, not a badge: the same four colours the step indicators in the rail
+   carry, so how far along a member is reads the same wherever it is shown. */
 .snowflake-method-entity-status {
 	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	padding: 0 var(--size-4-1);
+	color: var(--text-faint);
 }
 
 .snowflake-method-entity-status.is-complete {
 	color: var(--color-green);
 }
 
-.snowflake-method-entity-status.is-in-progress,
+.snowflake-method-entity-status.is-in-progress {
+	color: var(--color-blue);
+}
+
 .snowflake-method-entity-status.is-in-revision {
-	color: var(--color-orange);
-}
-
-.snowflake-method-entity-detail {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	overflow-wrap: anywhere;
-}
-
-.snowflake-method-entity-empty {
-	padding: var(--size-4-4);
-	color: var(--text-faint);
-	text-align: center;
+	color: var(--color-yellow);
 }
 
 /* Record editors sit below the form's grid, the full width of it: a titled
@@ -4995,19 +5062,6 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	color: var(--text-normal);
 }
 
-.snowflake-method-details-row {
-	display: grid;
-	grid-template-columns: repeat(4, minmax(6em, 1fr));
-	gap: var(--size-2-2);
-	align-items: center;
-}
-
-.snowflake-method-details-row .snowflake-method-term-input input,
-.snowflake-method-details-row input {
-	width: 100%;
-	min-width: 0;
-}
-
 .snowflake-method-record-remove {
 	background: none;
 	border: none;
@@ -5019,13 +5073,6 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 .snowflake-method-record-remove:hover {
 	color: var(--text-normal);
-}
-
-/* Narrow modals stack a details row instead of squeezing four columns. */
-@media (max-width: 700px) {
-	.snowflake-method-details-row {
-		grid-template-columns: 1fr 1fr;
-	}
 }
 
 /* One width for everything that rides on the right of a form: the status in

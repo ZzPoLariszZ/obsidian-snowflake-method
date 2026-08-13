@@ -206,6 +206,11 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
  * The read-only block a character note shows for its properties. The stored
  * values stay language-neutral in the frontmatter; only this display is
  * localized, which is safe because the block is generated and never parsed.
+ *
+ * The same order the properties read in everywhere else: what they are called,
+ * what they are filed under, the story, and how far along it is last. The name
+ * is not among them, because the note is already titled with it and the block
+ * sits directly under that title.
  */
 export function renderCharacterFieldsBlock(
   language: FieldsBlockLanguage,
@@ -213,22 +218,30 @@ export function renderCharacterFieldsBlock(
 ): string {
   const copy = COPY[language];
   return renderCallout(copy.characterTitle, [
-    ...commonEntries(copy, fields),
+    { label: copy.aliases, value: joinList(copy, fields.aliases) },
+    { label: copy.category, value: joinList(copy, fields.categories) },
     { label: copy.oneSentenceStoryline, value: fields.oneSentenceStoryline },
     { label: copy.motivation, value: fields.motivation },
     { label: copy.goal, value: fields.goal },
     { label: copy.conflict, value: fields.conflict },
     { label: copy.growth, value: fields.growth },
+    { label: copy.status, value: statusLabel(copy, fields.progressStatus) },
   ], copy.separator);
 }
 
+/**
+ * A scene's properties in the order they read everywhere else: what it is
+ * called and filed under, who tells it and where, then how far along it is.
+ * The title is not among them, for the same reason a character's name is not.
+ */
 export function renderSceneFieldsBlock(
   language: FieldsBlockLanguage,
   fields: SceneFieldsView,
 ): string {
   const copy = COPY[language];
   return renderCallout(copy.sceneTitle, [
-    ...commonEntries(copy, fields),
+    { label: copy.aliases, value: joinList(copy, fields.aliases) },
+    { label: copy.category, value: joinList(copy, fields.categories) },
     { label: copy.pov, value: renderPov(copy, fields.pov) },
     {
       label: copy.time,
@@ -246,9 +259,12 @@ export function renderSceneFieldsBlock(
         .join(copy.listSeparator),
     },
     { label: copy.conflict, value: fields.conflict },
+    { label: copy.status, value: statusLabel(copy, fields.progressStatus) },
   ], copy.separator);
 }
 
+/** The same order again: what it is called and filed under, what it is, how
+ * far along it is. The name is the note's own title, as everywhere else. */
 export function renderEntityFieldsBlock(
   language: FieldsBlockLanguage,
   kind: WorldbuildingKind,
@@ -256,9 +272,11 @@ export function renderEntityFieldsBlock(
 ): string {
   const copy = COPY[language];
   return renderCallout(copy.entityTitles[kind], [
-    ...commonEntries(copy, fields),
+    { label: copy.aliases, value: joinList(copy, fields.aliases) },
+    { label: copy.category, value: joinList(copy, fields.categories) },
     ...timeEntries(copy, fields.time),
     { label: copy.description, value: fields.description },
+    { label: copy.status, value: statusLabel(copy, fields.progressStatus) },
   ], copy.separator);
 }
 
@@ -281,21 +299,11 @@ export function renderDefinitionFieldsBlock(
   ], copy.separator);
 }
 
-function commonEntries(
+function statusLabel(
   copy: FieldsCopy,
-  fields: MemberFieldsCommon,
-): FieldEntry[] {
-  return [
-    {
-      label: copy.status,
-      value:
-        fields.progressStatus === null
-          ? ""
-          : copy.statusLabels[fields.progressStatus],
-    },
-    { label: copy.aliases, value: joinList(copy, fields.aliases) },
-    { label: copy.category, value: joinList(copy, fields.categories) },
-  ];
+  status: ProgressStatus | null,
+): string {
+  return status === null ? "" : copy.statusLabels[status];
 }
 
 function timeEntries(

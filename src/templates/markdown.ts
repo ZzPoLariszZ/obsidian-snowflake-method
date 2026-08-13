@@ -87,9 +87,6 @@ interface Copy {
   sceneEvents: string;
   scenePlanning: string;
   entityNotes: string;
-  recordDetails: string;
-  recordWorldStatus: string;
-  recordRelationships: string;
   draftTitle: string;
   blankHint: string;
   characterTemplateTitle: string;
@@ -129,9 +126,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     sceneEvents: "Step 8 · Specific Events",
     scenePlanning: "Step 9 · Scene Planning (Optional)",
     entityNotes: "Notes",
-    recordDetails: "Details",
-    recordWorldStatus: "World Status",
-    recordRelationships: "Relationships",
     draftTitle: "Draft",
     blankHint: "Write here.",
     characterTemplateTitle: "Character",
@@ -168,9 +162,6 @@ const COPY: Record<TemplateLanguage, Copy> = {
     sceneEvents: "第八步 · 具体事件",
     scenePlanning: "第九步 · 场景规划（可选）",
     entityNotes: "备注",
-    recordDetails: "详情",
-    recordWorldStatus: "状态",
-    recordRelationships: "关系",
     draftTitle: "初稿",
     blankHint: "在这里写作。",
     characterTemplateTitle: "角色",
@@ -525,33 +516,6 @@ export function definitionTemplate(
     )}\n`,
     sections,
   };
-}
-
-export type RecordSectionId = "details" | "world-status" | "relationships";
-
-const RECORD_SECTION_COPY: Record<RecordSectionId, keyof Copy> = {
-  details: "recordDetails",
-  "world-status": "recordWorldStatus",
-  relationships: "recordRelationships",
-};
-
-/** The heading a record section is created under, `## Details` and kin. */
-export function recordSectionHeading(
-  id: RecordSectionId,
-  language: TemplateLanguage,
-): string {
-  return `## ${String(COPY[language][RECORD_SECTION_COPY[id]])}`;
-}
-
-/**
- * The heading in every language the plugin writes, for removing an emptied
- * record section together with the heading it was created under: anything
- * else above the markers is the author's line and stays.
- */
-export function recordSectionHeadings(id: RecordSectionId): string[] {
-  return (Object.keys(COPY) as TemplateLanguage[]).map((language) =>
-    recordSectionHeading(id, language),
-  );
 }
 
 /**

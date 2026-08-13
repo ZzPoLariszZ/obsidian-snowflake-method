@@ -2,7 +2,9 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 import {
+	BASE_EXCLUDED_COLUMN_KEYS,
 	appendBaseColumns,
+	baseColumnDisplayNames,
 	getBaseTextRefreshes,
 	getProjectBases,
 } from '../../src/templates';
@@ -157,7 +159,9 @@ describe('project base templates', () => {
 		expect(parsed('characters').formulas['character_type']).toContain('"Major"');
 		for (const language of ['en', 'zh-CN'] as const) {
 			const views = parsed('characters', language).views;
-			expect(views[1]?.order).toContain('formula.character_type');
+			// The role heads the groups; it has no column of its own.
+			expect(views[1]?.groupBy?.property).toBe('formula.character_type');
+			expect(views[1]?.order).not.toContain('formula.character_type');
 			expect(views[1]?.order).not.toContain('snowflake-character-type');
 			// The major sheet lists a role stored either way.
 			expect(views[0]?.filters?.and).toEqual([
@@ -196,19 +200,31 @@ describe('project base templates', () => {
 		}
 	});
 
-	it('lists every character field on the all-characters view', () => {
-		expect(parsed('characters').views[1]?.order).toEqual([
-			'formula.character',
-			'formula.character_type',
-			'snowflake-one-sentence-storyline',
-			'snowflake-motivation',
-			'snowflake-goal',
-			'snowflake-conflict',
-			'snowflake-growth',
-			'aliases',
-			'snowflake-category',
-			'snowflake-progress-status',
-		]);
+	it('reads a character row as who they are, the story, then the progress', () => {
+		// Both views carry the same columns in the same order: the sheet is the
+		// major characters of the list beside it, not a different table.
+		for (const view of parsed('characters').views) {
+			expect(view.order).toEqual([
+				'formula.character',
+				'aliases',
+				'snowflake-category',
+				'snowflake-one-sentence-storyline',
+				'snowflake-motivation',
+				'snowflake-goal',
+				'snowflake-conflict',
+				'snowflake-growth',
+				'snowflake-progress-status',
+			]);
+		}
+	});
+
+	it('never grows a column for the character type it replaced', () => {
+		// A note the migration has not reached still carries the legacy key, and
+		// the category column is where its role reads now.
+		expect(BASE_EXCLUDED_COLUMN_KEYS.has('snowflake-character-type')).toBe(true);
+		expect(baseColumnDisplayNames('en').has('snowflake-character-type')).toBe(
+			false,
+		);
 	});
 
 	it('lists the universal columns on every member view', () => {
@@ -270,6 +286,37 @@ describe('project base templates', () => {
 		expect(order.indexOf('snowflake-scene-characters')).toBeLessThan(
 			order.indexOf('snowflake-conflict'),
 		);
+	});
+
+	it('reads a scene row as what it is, the story, then the progress', () => {
+		expect(parsed('scenes').views[0]?.order).toEqual([
+			'formula.scene',
+			'aliases',
+			'snowflake-category',
+			'formula.pov',
+			'snowflake-scene-time',
+			'snowflake-scene-location',
+			'snowflake-scene-characters',
+			'snowflake-conflict',
+			'snowflake-progress-status',
+		]);
+		// The grouped views drop the column they group by and keep the rest in
+		// the same order.
+		expect(parsed('scenes').views[1]?.order).toEqual(
+			(parsed('scenes').views[0]?.order ?? []).filter(
+				(column) => column !== 'formula.pov',
+			),
+		);
+	});
+
+	it('heads both member bases with a plain name', () => {
+		// A scene column headed "Scene name" said twice what the base says once.
+		expect(
+			parsed('scenes').properties['formula.scene']?.displayName,
+		).toBe('Name');
+		expect(
+			parsed('scenes', 'zh-CN').properties['formula.scene']?.displayName,
+		).toBe('名称');
 	});
 });
 
@@ -345,10 +392,16 @@ describe('worldbuilding kind bases', () => {
 		).toBe(mine);
 	});
 
-	it('ends every list view with the description', () => {
+	it('reads an entry as what it is, then how far along it is', () => {
 		for (const kind of ['time', 'location', 'item'] as const) {
 			const order = parsed(kind).views[0]?.order ?? [];
-			expect(order[order.length - 1]).toBe('snowflake-description');
+			expect(order[0]).toBe('formula.entity');
+			expect(order[1]).toBe('aliases');
+			expect(order[2]).toBe('snowflake-category');
+			// The description is the last of the entry's own fields, and the
+			// progress closes the row the way it does everywhere else.
+			expect(order[order.length - 2]).toBe('snowflake-description');
+			expect(order[order.length - 1]).toBe('formula.status');
 		}
 	});
 });

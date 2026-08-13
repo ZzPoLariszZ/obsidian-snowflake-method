@@ -140,7 +140,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     goal: "Goal",
     conflict: "Conflict",
     growth: "Growth",
-    sceneName: "Scene name",
+    sceneName: "Name",
     scenePov: "POV character",
     povOmniscient: "Omniscient",
     povMultiple: "Multi-POV",
@@ -191,7 +191,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     goal: "目标",
     conflict: "冲突",
     growth: "成长",
-    sceneName: "场景名称",
+    sceneName: "名称",
     scenePov: "视点人物",
     povOmniscient: "全知视角",
     povMultiple: "多人视角",
@@ -487,11 +487,21 @@ function pushFilter(lines: string[], filter: BaseFilter, indent: string): void {
   }
 }
 
-/** The columns every member note shares, appended the way growth would. */
-function universalColumns(): string[] {
+/**
+ * A character's columns, in the order a row reads: who the character is,
+ * then the story fields, then how far along it is. The role has no column of
+ * its own -- it is one of the categories now, and the category column shows
+ * it among them.
+ */
+function characterColumns(): string[] {
   return [
     ALIASES_KEY,
     FRONTMATTER_KEYS.category,
+    FRONTMATTER_KEYS.oneSentenceStoryline,
+    FRONTMATTER_KEYS.motivation,
+    FRONTMATTER_KEYS.goal,
+    FRONTMATTER_KEYS.conflict,
+    FRONTMATTER_KEYS.growth,
     FRONTMATTER_KEYS.progressStatus,
   ];
 }
@@ -532,9 +542,10 @@ function charactersBase(
     },
     properties: {
       [`formula.${nameFormula}`]: { displayName: copy.characterName },
+      // The role still names the groups of the all-characters view, so it
+      // keeps its formula and the label that heads them.
       [`formula.${typeFormula}`]: { displayName: copy.characterType },
       [`note.${FRONTMATTER_KEYS.characterName}`]: { displayName: copy.characterName },
-      [`note.${FRONTMATTER_KEYS.characterType}`]: { displayName: copy.characterType },
       [`note.${FRONTMATTER_KEYS.oneSentenceStoryline}`]: {
         displayName: copy.oneSentenceStoryline,
       },
@@ -560,31 +571,14 @@ function charactersBase(
             },
           ],
         },
-        order: [
-          `formula.${nameFormula}`,
-          FRONTMATTER_KEYS.oneSentenceStoryline,
-          FRONTMATTER_KEYS.motivation,
-          FRONTMATTER_KEYS.goal,
-          FRONTMATTER_KEYS.conflict,
-          FRONTMATTER_KEYS.growth,
-          ...universalColumns(),
-        ],
+        order: [`formula.${nameFormula}`, ...characterColumns()],
         sort: RANK_SORT,
       },
       {
         type: "table",
         name: copy.allCharactersView,
         groupBy: { property: `formula.${typeFormula}`, direction: "ASC" },
-        order: [
-          `formula.${nameFormula}`,
-          `formula.${typeFormula}`,
-          FRONTMATTER_KEYS.oneSentenceStoryline,
-          FRONTMATTER_KEYS.motivation,
-          FRONTMATTER_KEYS.goal,
-          FRONTMATTER_KEYS.conflict,
-          FRONTMATTER_KEYS.growth,
-          ...universalColumns(),
-        ],
+        order: [`formula.${nameFormula}`, ...characterColumns()],
         sort: RANK_SORT,
       },
     ],
@@ -595,12 +589,18 @@ function scenesBase(projectId: string, copy: Copy): string {
   const nameFormula = "scene";
   const povFormula = "pov";
   const povColumn = `formula.${povFormula}`;
+  // The order a scene reads in: what it is called and filed under, who tells
+  // it, when and where and with whom, what it turns on, and how far along it
+  // is last.
   const sceneColumns = [
+    ALIASES_KEY,
+    FRONTMATTER_KEYS.category,
     povColumn,
     FRONTMATTER_KEYS.sceneTime,
     FRONTMATTER_KEYS.sceneLocation,
     FRONTMATTER_KEYS.sceneCharacters,
     FRONTMATTER_KEYS.conflict,
+    FRONTMATTER_KEYS.progressStatus,
   ];
   const without = (excluded: string): string[] =>
     sceneColumns.filter((column) => column !== excluded);
@@ -636,18 +636,14 @@ function scenesBase(projectId: string, copy: Copy): string {
       {
         type: "table",
         name: copy.sceneListView,
-        order: [`formula.${nameFormula}`, ...sceneColumns, ...universalColumns()],
+        order: [`formula.${nameFormula}`, ...sceneColumns],
         sort: RANK_SORT,
       },
       {
         type: "table",
         name: copy.byPovView,
         groupBy: { property: povColumn, direction: "ASC" },
-        order: [
-          `formula.${nameFormula}`,
-          ...without(povColumn),
-          ...universalColumns(),
-        ],
+        order: [`formula.${nameFormula}`, ...without(povColumn)],
         sort: RANK_SORT,
       },
       {
@@ -657,7 +653,6 @@ function scenesBase(projectId: string, copy: Copy): string {
         order: [
           `formula.${nameFormula}`,
           ...without(FRONTMATTER_KEYS.sceneLocation),
-          ...universalColumns(),
         ],
         sort: RANK_SORT,
       },
@@ -686,13 +681,15 @@ function worldbuildingBase(
         FRONTMATTER_KEYS.timeEnd,
       ]
     : [];
+  // The order an entry reads in, the same as a character's and a scene's:
+  // what it is called and filed under, what it is, and the progress last.
   const columns = [
     `formula.${nameFormula}`,
     ALIASES_KEY,
     FRONTMATTER_KEYS.category,
-    `formula.${statusFormula}`,
     ...timeColumns,
     FRONTMATTER_KEYS.description,
+    `formula.${statusFormula}`,
   ];
   return render({
     filters: {
@@ -752,9 +749,12 @@ function worldbuildingBase(
 /**
  * Bookkeeping keys a base never grows on its own: identity and machinery
  * every note carries, whose column would say nothing. The name keys are here
- * too, because the generated name formula already links each row by name.
+ * too, because the generated name formula already links each row by name, and
+ * the legacy character type, which a note the migration has not reached still
+ * carries and whose column the category one replaced.
  */
 export const BASE_EXCLUDED_COLUMN_KEYS: ReadonlySet<string> = new Set([
+  FRONTMATTER_KEYS.characterType,
   FRONTMATTER_KEYS.schema,
   FRONTMATTER_KEYS.document,
   FRONTMATTER_KEYS.projectId,
@@ -780,7 +780,6 @@ export function baseColumnDisplayNames(
 ): ReadonlyMap<string, string> {
   const copy = COPY[language];
   return new Map([
-    [FRONTMATTER_KEYS.characterType, copy.characterType],
     [FRONTMATTER_KEYS.oneSentenceStoryline, copy.oneSentenceStoryline],
     [FRONTMATTER_KEYS.motivation, copy.motivation],
     [FRONTMATTER_KEYS.goal, copy.goal],

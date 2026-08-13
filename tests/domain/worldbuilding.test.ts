@@ -20,9 +20,6 @@ describe('worldbuilding kinds', () => {
 		expect(WORLDBUILDING_KINDS).toEqual(['time', 'location', 'item']);
 		expect(WORLDBUILDING_KIND_DEFINITIONS.time.timeFields).toBe(true);
 		expect(WORLDBUILDING_KIND_DEFINITIONS.location.timeFields).toBe(false);
-		expect(WORLDBUILDING_KIND_DEFINITIONS.item.detailsProperties).toEqual([
-			'owner',
-		]);
 		for (const kind of WORLDBUILDING_KINDS) {
 			expect(isWorldbuildingKind(kind)).toBe(true);
 		}
@@ -62,7 +59,7 @@ describe('schema acceptance', () => {
 
 describe('record sections', () => {
 	it('keeps records protected but never generated', () => {
-		for (const id of ['details', 'world-status', 'relationships']) {
+		for (const id of ['world-status', 'relationships']) {
 			expect(PROTECTED_SECTION_IDS.has(id)).toBe(true);
 			expect(GENERATED_SECTION_IDS.has(id)).toBe(false);
 		}
@@ -76,7 +73,6 @@ describe('record sections', () => {
 			const template = templateSectionsForDocument(documentType).map(
 				(section) => section.id,
 			);
-			expect(template).not.toContain('details');
 			expect(template).not.toContain('world-status');
 			expect(template).not.toContain('relationships');
 		}
@@ -87,10 +83,17 @@ describe('record sections', () => {
 			MANAGED_SECTIONS_BY_DOCUMENT.worldbuilding.map((section) => section.id),
 		).toEqual([
 			'entity-fields',
-			'details',
 			'world-status',
 			'relationships',
 			'entity-notes',
 		]);
+	});
+
+	it('has no details section left to register', () => {
+		// The built-in properties it held are gone: the age from a character,
+		// the owner from an item. What a note records now is all taxonomy.
+		for (const sections of Object.values(MANAGED_SECTIONS_BY_DOCUMENT)) {
+			expect(sections.map((section) => section.id)).not.toContain('details');
+		}
 	});
 });

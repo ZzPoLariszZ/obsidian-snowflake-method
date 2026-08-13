@@ -20,32 +20,18 @@ export function isWorldbuildingKind(
 	);
 }
 
-/**
- * Built-in single-record compound properties. Each is one line in a note's
- * Details section: a value that may mix text and links, which frontmatter
- * cannot hold. Labels are built into the plugin copy, not user taxonomy.
- *
- * Only what no taxonomy can express belongs here. Anything an author would
- * name for themselves is a record with a label of their own instead.
- */
-export const DETAILS_PROPERTY_IDS = ['owner'] as const;
-
-export type DetailsPropertyId = (typeof DETAILS_PROPERTY_IDS)[number];
-
 export interface WorldbuildingKindDefinition {
 	id: WorldbuildingKind;
 	/** The kind carries `snowflake-time-kind` / `-start` / `-end`. */
 	timeFields: boolean;
-	/** Single-record properties this kind's Details section holds. */
-	detailsProperties: readonly DetailsPropertyId[];
 }
 
 export const WORLDBUILDING_KIND_DEFINITIONS: Readonly<
 	Record<WorldbuildingKind, WorldbuildingKindDefinition>
 > = {
-	time: { id: 'time', timeFields: true, detailsProperties: [] },
-	location: { id: 'location', timeFields: false, detailsProperties: [] },
-	item: { id: 'item', timeFields: false, detailsProperties: ['owner'] },
+	time: { id: 'time', timeFields: true },
+	location: { id: 'location', timeFields: false },
+	item: { id: 'item', timeFields: false },
 };
 
 /**

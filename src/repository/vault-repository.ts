@@ -36,6 +36,7 @@ import {
   documentTypeOf,
   isManagedFrontmatter,
   isReadOnlySchema,
+  orderFrontmatterKeys,
   parseMarkdownFrontmatter,
   projectIdOf,
   schemaVersionOf,
@@ -469,11 +470,27 @@ export class VaultRepository {
     return { path: record.path, file: record.file, created: false, frontmatterRepaired };
   }
 
-  async updateFrontmatter(path: string, patch: ManagedFrontmatter): Promise<void> {
-    await this.updateFrontmatterAtomic(path, () => patch);
+  /**
+   * `order` names the keys whose sequence the note holds to. Frontmatter is
+   * written in the order it was first given, so a key a note gains later --
+   * an alias added long after it was created -- would otherwise settle at the
+   * end, behind fields it belongs in front of. Keys the order does not name
+   * keep their own sequence after it, so a property an author added by hand is
+   * never reshuffled away from where they put it.
+   */
+  async updateFrontmatter(
+    path: string,
+    patch: ManagedFrontmatter,
+    order?: readonly string[],
+  ): Promise<void> {
+    await this.updateFrontmatterAtomic(path, () => patch, order);
   }
 
-  async updateFrontmatterAtomic(path: string, updater: FrontmatterUpdater): Promise<void> {
+  async updateFrontmatterAtomic(
+    path: string,
+    updater: FrontmatterUpdater,
+    order?: readonly string[],
+  ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
@@ -488,6 +505,7 @@ export class VaultRepository {
           if (value === undefined) delete mutable[key];
           else mutable[key] = value;
         }
+        if (order !== undefined) orderFrontmatterKeys(mutable, order);
       }),
     );
   }

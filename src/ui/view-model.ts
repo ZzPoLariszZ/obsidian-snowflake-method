@@ -9,7 +9,7 @@ import type {
 	TimeKind,
 	WorldbuildingKind,
 } from '../domain';
-import type { DetailsLine, MarkerIssueCode, RecordLine } from '../templates';
+import type { MarkerIssueCode, RecordLine } from '../templates';
 import type { ProjectStructureIssueCode } from '../services';
 
 import type {
@@ -148,7 +148,6 @@ export interface WorldbuildingEntityViewModel {
 	/** Raw stored terms, wikilinks or plain text; empty when absent. */
 	timeStart: string;
 	timeEnd: string;
-	details: DetailsLine[];
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	revision: string;

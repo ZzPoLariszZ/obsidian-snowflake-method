@@ -2,23 +2,19 @@ import { setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	DEFINITION_NODE_BASENAME,
-	type DetailsPropertyId,
 	type ProgressStatus,
 } from '../domain';
 import {
 	parseTerm,
 	renderTerm,
-	type DetailsLine,
 	type RecordClause,
 	type RecordClauseKind,
 	type RecordLine,
 	type RecordTerm,
 } from '../templates';
-import { FieldSuggest } from './field-suggest';
 import {
 	buildOptionField,
 	buildOptionPicker,
-	optionsMatching,
 	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
@@ -58,9 +54,9 @@ export interface RecordEditorContext {
 	pickEntity: () => Promise<PickedEntity | null>;
 	/** The group a stored link belongs to, for naming the line it sits on. */
 	entityGroup: (path: string) => EntityGroupId | null;
-	/** Time notes, for the Owner details row that still asks for one. */
+	/** Time notes a record clause can point at. */
 	times: () => readonly PickerOption[];
-	/** Members the Owner details row can point at. */
+	/** Members a record clause can point at. */
 	members: () => readonly PickerOption[];
 }
 
@@ -512,80 +508,6 @@ export function addProgressStatusControl(
 	return select;
 }
 
-/** Suggests options under a free-text input, a pick inserting the link. */
-class TermSuggest extends FieldSuggest<PickerOption> {
-	constructor(
-		app: App,
-		inputEl: HTMLInputElement,
-		fieldEl: HTMLElement,
-		private readonly listOptions: () => readonly PickerOption[],
-		private readonly onPick: (option: PickerOption) => void,
-	) {
-		super(app, inputEl, fieldEl);
-	}
-
-	protected getSuggestions(query: string): PickerOption[] {
-		return optionsMatching(this.listOptions(), query);
-	}
-
-	renderSuggestion(option: PickerOption, el: HTMLElement): void {
-		el.setText(option.label);
-	}
-
-	selectSuggestion(option: PickerOption): void {
-		this.onPick(option);
-		this.close();
-	}
-}
-
-interface TermInputOptions {
-	placeholderKey: string;
-	options?: () => readonly PickerOption[];
-}
-
-/**
- * One clause input: plain text stays text, a pick becomes a wikilink. The
- * field holds the raw term either way, exactly what the record line stores.
- */
-class TermInput {
-	private inputEl: HTMLInputElement | null = null;
-
-	constructor(
-		private readonly context: { app: App; t: Translate },
-		private value: string,
-		private readonly options: TermInputOptions,
-	) {}
-
-	attach(container: HTMLElement): void {
-		const holder = container.createDiv({ cls: 'snowflake-method-term-input' });
-		this.inputEl = holder.createEl('input', {
-			type: 'text',
-			value: this.value,
-			attr: { placeholder: this.context.t(this.options.placeholderKey) },
-		});
-		this.inputEl.addEventListener('input', () => {
-			this.value = this.inputEl?.value ?? '';
-		});
-		const list = this.options.options;
-		if (list !== undefined && this.inputEl !== null) {
-			new TermSuggest(this.context.app, this.inputEl, holder, list, (option) => {
-				this.value = renderTerm({
-					kind: 'link',
-					path: option.value,
-					name: option.label,
-				});
-				if (this.inputEl) this.inputEl.value = this.value;
-			});
-		}
-	}
-
-	term(): RecordTerm | null {
-		const raw = (this.inputEl?.value ?? this.value).trim();
-		if (raw.length === 0) return null;
-		return parseTerm(raw);
-	}
-}
-
 /**
  * The kinds of note a record can point at. Time is split by what a time note
  * is, because picking "the year it happened" and "the war it happened during"
@@ -1019,86 +941,3 @@ function linkPath(term: RecordTerm): string | null {
 	return term.kind === 'link' ? term.path : null;
 }
 
-/**
- * The one-line editor for a built-in single-record property: Age on a
- * character, Owner on an item. The same clause tail as a record, behind a
- * fixed label instead of a picked one.
- */
-export class DetailsRowEditor {
-	private readonly value: TermInput;
-	private readonly when: TermInput;
-	private readonly from: TermInput;
-	private readonly to: TermInput;
-
-	constructor(
-		private readonly context: RecordEditorContext,
-		private readonly property: DetailsPropertyId,
-		private readonly copy: { title: string },
-		initial: DetailsLine | null,
-		valueOptions?: () => readonly PickerOption[],
-	) {
-		this.value = new TermInput(
-			this.context,
-			initial?.value == null ? '' : renderTerm(initial.value),
-			{ placeholderKey: 'form.record.value', options: valueOptions },
-		);
-		this.when = new TermInput(
-			this.context,
-			initial?.time?.kind === 'when' ? renderTerm(initial.time.at) : '',
-			{ placeholderKey: 'form.record.when', options: this.context.times },
-		);
-		this.from = new TermInput(
-			this.context,
-			initial?.time?.kind === 'span' ? renderTerm(initial.time.start) : '',
-			{ placeholderKey: 'form.record.from', options: this.context.times },
-		);
-		this.to = new TermInput(
-			this.context,
-			initial?.time?.kind === 'span' ? renderTerm(initial.time.end) : '',
-			{ placeholderKey: 'form.record.to', options: this.context.times },
-		);
-	}
-
-	attach(container: HTMLElement): void {
-		const block = container.createDiv({ cls: 'snowflake-method-record-editor' });
-		const header = block.createDiv({ cls: 'snowflake-method-record-header' });
-		header.createSpan({
-			cls: 'snowflake-method-record-title',
-			text: this.copy.title,
-		});
-		const rowEl = block.createDiv({
-			cls: 'snowflake-method-record-row snowflake-method-details-row',
-		});
-		this.value.attach(rowEl);
-		this.when.attach(rowEl);
-		this.from.attach(rowEl);
-		this.to.attach(rowEl);
-	}
-
-	line(): DetailsLine | null {
-		const value = this.value.term();
-		const when = this.when.term();
-		const from = this.from.term();
-		const to = this.to.term();
-		if (value === null && when === null && from === null && to === null) {
-			return null;
-		}
-		return {
-			property: this.property,
-			value,
-			location: null,
-			time:
-				from !== null && to !== null
-					? { kind: 'span', start: from, end: to }
-					: when !== null
-						? { kind: 'when', at: when }
-						: null,
-		};
-	}
-
-	halfSpans(): number {
-		const from = this.from.term();
-		const to = this.to.term();
-		return (from === null) !== (to === null) ? 1 : 0;
-	}
-}

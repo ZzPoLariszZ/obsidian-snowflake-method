@@ -336,11 +336,17 @@ describe('translation resources', () => {
 		expect(zhCN['table.oneSentenceStoryline']).toBe('一句话故事概述');
 		expect(zhCN['modal.character.oneParagraphStoryline']).toBe('一段式故事梗概');
 		expect(zhCN['modal.character.growth']).toBe('成长');
-		expect(en['table.characterType']).toBe('Type');
-		expect(en['table.characterTypeShort']).toBe('Type');
-		expect(zhCN['table.characterType']).toBe('类型');
-		expect(zhCN['table.characterTypeShort']).toBe('类型');
-		expect(zhCN['character.major']).toBe('主角');
+		// The character table names the category rather than the discarded
+		// type, and the role reads as one category among them.
+		expect(en['table.category']).toBe('Category');
+		expect(zhCN['table.category']).toBe('类别');
+		// Both tables head their first column with a plain name; only Chinese
+		// tells a person's name from a thing's.
+		expect(en['table.sceneName']).toBe('Name');
+		expect(zhCN['table.sceneName']).toBe('名称');
+		expect(zhCN['table.name']).toBe('姓名');
+		expect(Object.keys(en)).not.toContain('table.characterType');
+		expect(Object.keys(en)).not.toContain('character.major');
 	});
 
 	it('keeps the Step 4 plot synopsis terminology exact', () => {

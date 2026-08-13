@@ -1,8 +1,4 @@
-import {
-  DEFINITION_NODE_BASENAME,
-  type DetailsPropertyId,
-  type ProjectLanguage,
-} from "../domain";
+import { DEFINITION_NODE_BASENAME, type ProjectLanguage } from "../domain";
 
 /**
  * The record-line codec: the one grammar every compound property is written
@@ -29,11 +25,6 @@ import {
  * else, and `->` the one target a relationship is with. `from … to …` is read
  * and re-emitted for records written before spans became period notes, but
  * nothing writes a new one.
- *
- * A Details line is the same tail behind a built-in bold label instead of a
- * taxonomy link, for the one property that is not user vocabulary:
- *
- *   - **Owner**: [[Aria]] from [[Year 1020]] to [[Year 1022]]
  *
  * A line the grammar does not cover is kept verbatim and re-emitted after the
  * records on every rewrite, so nothing typed by other tools is dropped; the
@@ -71,23 +62,14 @@ export interface RecordLine {
   clauses: RecordClause[];
 }
 
-export interface DetailsLine {
-  property: DetailsPropertyId;
-  value: RecordTerm | null;
-  location: RecordTerm | null;
-  time: RecordTime | null;
-}
-
 export interface ParsedRecordSection {
   records: RecordLine[];
   /** Lines the grammar does not cover, re-emitted verbatim after the records. */
   unrecognized: string[];
 }
 
-export interface ParsedDetailsSection {
-  details: DetailsLine[];
-  unrecognized: string[];
-}
+/** The record sections a member note can carry, in the order they read. */
+export type RecordSectionId = "world-status" | "relationships";
 
 interface RecordCopy {
   arrow: string;
@@ -100,7 +82,8 @@ interface RecordCopy {
   spanOpen: string;
   spanClose: string;
   valueSeparator: string;
-  detailsLabels: Record<DetailsPropertyId, string>;
+  /** What each section's callout is titled, the way the overview is titled. */
+  sectionTitles: Record<RecordSectionId, string>;
 }
 
 const COPY: Record<ProjectLanguage, RecordCopy> = {
@@ -114,7 +97,10 @@ const COPY: Record<ProjectLanguage, RecordCopy> = {
     spanOpen: "(",
     spanClose: ")",
     valueSeparator: ": ",
-    detailsLabels: { owner: "Owner" },
+    sectionTitles: {
+      "world-status": "World status",
+      relationships: "Relationships",
+    },
   },
   "zh-CN": {
     arrow: "->",
@@ -126,7 +112,10 @@ const COPY: Record<ProjectLanguage, RecordCopy> = {
     spanOpen: "（",
     spanClose: "）",
     valueSeparator: "：",
-    detailsLabels: { owner: "所有者" },
+    sectionTitles: {
+      "world-status": "状态",
+      relationships: "关系",
+    },
   },
 };
 
@@ -155,13 +144,6 @@ export function recordClauseConnector(
   return copy.with;
 }
 
-export function recordDetailsLabel(
-  language: ProjectLanguage,
-  property: DetailsPropertyId,
-): string {
-  return COPY[language].detailsLabels[property];
-}
-
 export function renderRecordLine(
   language: ProjectLanguage,
   record: RecordLine,
@@ -173,58 +155,52 @@ export function renderRecordLine(
   // its colon and English wants one.
   const head =
     value.length === 0
-      ? `- ${labelLink(record.label)}`
-      : `- ${labelLink(record.label)}${copy.valueSeparator}${value}`;
+      ? labelLink(record.label)
+      : `${labelLink(record.label)}${copy.valueSeparator}${value}`;
   const clauses = record.clauses.flatMap((clause) =>
     renderClause(copy, clause, spanOf),
   );
   return [head, ...clauses].join(" ");
 }
 
-export function renderDetailsLine(
+/** What a section's callout is titled, in the project's language. */
+export function recordSectionTitle(
+  id: RecordSectionId,
   language: ProjectLanguage,
-  details: DetailsLine,
 ): string {
-  const copy = COPY[language];
-  const clauses: RecordClause[] = [];
-  if (details.location !== null) {
-    clauses.push({ kind: "at", term: details.location });
-  }
-  if (details.time !== null) {
-    clauses.push(
-      details.time.kind === "when"
-        ? { kind: "when", term: details.time.at }
-        : { kind: "span", start: details.time.start, end: details.time.end },
-    );
-  }
-  const tail = [
-    ...(details.value === null ? [] : [renderTerm(details.value)]),
-    ...clauses.flatMap((clause) => renderClause(copy, clause)),
-  ].join(" ");
-  return `- **${copy.detailsLabels[details.property]}**${copy.valueSeparator}${tail}`.trimEnd();
+  return COPY[language].sectionTitles[id];
+}
+
+/**
+ * A record section as it is written: a titled callout holding one record per
+ * paragraph, the same box the overview above it reads as, and separated the
+ * same way. The callout is what says which section this is, so the sections
+ * carry no headings of their own.
+ *
+ * The syntax is spelled out here rather than shared with the overview's
+ * renderer, which sits downstream of this module and cannot be reached from
+ * it. Both write the plainest callout there is.
+ */
+function renderRecordCallout(title: string, lines: readonly string[]): string {
+  const rendered: string[] = [`> [!info] ${title}`];
+  lines.forEach((line, index) => {
+    if (index > 0) rendered.push(">");
+    rendered.push(`> ${line}`.trimEnd());
+  });
+  return rendered.join("\n");
 }
 
 export function renderRecordSection(
   language: ProjectLanguage,
+  id: RecordSectionId,
   records: readonly RecordLine[],
   unrecognized: readonly string[] = [],
   spanOf: SpanLookup | null = null,
 ): string {
-  return [
+  return renderRecordCallout(recordSectionTitle(id, language), [
     ...records.map((record) => renderRecordLine(language, record, spanOf)),
     ...unrecognized,
-  ].join("\n");
-}
-
-export function renderDetailsSection(
-  language: ProjectLanguage,
-  details: readonly DetailsLine[],
-  unrecognized: readonly string[] = [],
-): string {
-  return [
-    ...details.map((line) => renderDetailsLine(language, line)),
-    ...unrecognized,
-  ].join("\n");
+  ]);
 }
 
 export function parseRecordLine(
@@ -241,44 +217,6 @@ export function parseRecordLine(
   return { label: label.label, value: split.value, clauses: split.clauses };
 }
 
-export function parseDetailsLine(
-  language: ProjectLanguage,
-  line: string,
-): DetailsLine | null {
-  const copy = COPY[language];
-  const body = listItemBody(line);
-  if (body === null) return null;
-  const property = (
-    Object.entries(copy.detailsLabels) as Array<[DetailsPropertyId, string]>
-  ).find(([, text]) =>
-    body.startsWith(`**${text}**${copy.valueSeparator.trimEnd()}`),
-  );
-  if (property === undefined) return null;
-  const tail = body
-    .slice(`**${property[1]}**${copy.valueSeparator.trimEnd()}`.length)
-    .trim();
-  const clauses = parseClauses(copy, tail);
-  if (clauses === null) return null;
-  // Details name one property, so they hold one place and one time at most,
-  // and never a target: anything else is a line this grammar cannot claim.
-  let location: RecordTerm | null = null;
-  let time: RecordTime | null = null;
-  for (const clause of clauses.clauses) {
-    if (clause.kind === "at" && location === null) location = clause.term;
-    else if (clause.kind === "when" && time === null) {
-      time = { kind: "when", at: clause.term };
-    } else if (clause.kind === "span" && time === null) {
-      time = { kind: "span", start: clause.start, end: clause.end };
-    } else return null;
-  }
-  return {
-    property: property[0],
-    value: clauses.head.length === 0 ? null : parseTerm(clauses.head),
-    location,
-    time,
-  };
-}
-
 export function parseRecordSection(
   language: ProjectLanguage,
   content: string,
@@ -293,27 +231,12 @@ export function parseRecordSection(
   return { records, unrecognized };
 }
 
-export function parseDetailsSection(
-  language: ProjectLanguage,
-  content: string,
-): ParsedDetailsSection {
-  const details: DetailsLine[] = [];
-  const unrecognized: string[] = [];
-  for (const line of contentLines(content)) {
-    const parsed = parseDetailsLine(language, line);
-    if (parsed === null) unrecognized.push(line);
-    else details.push(parsed);
-  }
-  return { details, unrecognized };
-}
-
 const LENIENT_LANGUAGES: readonly ProjectLanguage[] = ["en", "zh-CN"];
 
 /**
  * Reads a section line by line, trying the preferred language first and the
- * other one second. A project that changed its language keeps the records its
- * notes were written with, and the next rewrite normalizes every line to the
- * preferred language.
+ * other after it: a project whose language was switched still reads the lines
+ * written before the switch, and re-emits them in the language it has now.
  */
 export function parseRecordSectionLenient(
   preferred: ProjectLanguage,
@@ -335,31 +258,13 @@ export function parseRecordSectionLenient(
   return { records, unrecognized };
 }
 
-export function parseDetailsSectionLenient(
-  preferred: ProjectLanguage,
-  content: string,
-): ParsedDetailsSection {
-  const languages = [
-    preferred,
-    ...LENIENT_LANGUAGES.filter((language) => language !== preferred),
-  ];
-  const details: DetailsLine[] = [];
-  const unrecognized: string[] = [];
-  for (const line of contentLines(content)) {
-    const parsed = languages
-      .map((language) => parseDetailsLine(language, line))
-      .find((candidate) => candidate !== null);
-    if (parsed === undefined || parsed === null) unrecognized.push(line);
-    else details.push(parsed);
-  }
-  return { details, unrecognized };
-}
-
 function contentLines(content: string): string[] {
   return content
     .split(/\r\n|\r|\n/u)
     .map((line) => line.replace(/\s+$/u, ""))
-    .filter((line) => line.trim().length > 0);
+    .map((line) => (line.startsWith(">") ? line.replace(/^>[ \t]?/u, "") : line))
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => !/^\[![a-z]+\]/iu.test(line.trim()));
 }
 
 function renderClause(
@@ -604,10 +509,14 @@ function connectorIndex(text: string, connector: string): number | null {
   return null;
 }
 
+/**
+ * A record as it stands on its line. The records are paragraphs of a callout
+ * now; a bullet in front of one is how they were written for a while, and it
+ * comes off rather than making the line unreadable.
+ */
 function listItemBody(line: string): string | null {
   const trimmed = line.trim();
-  if (!trimmed.startsWith("- ")) return null;
-  return trimmed.slice(2).trim();
+  return trimmed.startsWith("- ") ? trimmed.slice(2).trim() : trimmed;
 }
 
 const NODE_LABEL_PATTERN = /^\[\[([^\]|#]+)\|([^\]]+)\]\]/u;

@@ -58,6 +58,13 @@ describe('renderCharacterFieldsBlock', () => {
 		expect(block).toContain(
 			'> **Category**: [[Novel/60_Worldbuilding/Category#Major|Character/Major]], [[Novel/60_Worldbuilding/Category#Elf|Character/Race/Elf]]',
 		);
+		// What they are called first, how far along last, and no name: the note
+		// is already titled with it.
+		const lines = block.split('\n').filter((line) => line.includes('**'));
+		expect(lines[0]).toContain('**Aliases**');
+		expect(lines[1]).toContain('**Category**');
+		expect(lines[lines.length - 1]).toContain('**Progress status**');
+		expect(block).not.toContain('**Name**');
 	});
 
 	it('localizes labels and status in Chinese', () => {
@@ -120,6 +127,25 @@ describe('renderSceneFieldsBlock', () => {
 			{ path: 'Projects/Novel/20_Characters/Brin.md', name: 'Brin' },
 		],
 	} as const;
+
+	it('reads in the order every other surface shows a scene in', () => {
+		const block = renderSceneFieldsBlock('en', {
+			...SCENE,
+			progressStatus: 'in-progress',
+			aliases: ['The turning'],
+			categories: ['Act/One'],
+		});
+		expect(block.split('\n').filter((line) => line.includes('**'))).toEqual([
+			'> **Aliases**: The turning',
+			'> **Category**: Act/One',
+			'> **Point-of-view character**: [[Projects/Novel/20_Characters/Aria|Aria]]',
+			'> **Time**: Dawn, third day',
+			'> **Location**: The harbor',
+			'> **Characters**: [[Projects/Novel/20_Characters/Aria|Aria]], [[Projects/Novel/20_Characters/Brin|Brin]]',
+			'> **Conflict**: The tide turns before the cargo is loaded.',
+			'> **Progress status**: In progress',
+		]);
+	});
 
 	it('links the point of view and the cast without the .md suffix', () => {
 		const block = renderSceneFieldsBlock('en', SCENE);
@@ -194,8 +220,6 @@ describe('renderEntityFieldsBlock', () => {
 		expect(block).toBe(
 			[
 				'> [!info] Time overview',
-				'> **Progress status**: In progress',
-				'>',
 				'> **Type**: Time period',
 				'>',
 				// Each link is read out by its name, never by its whole path.
@@ -204,6 +228,9 @@ describe('renderEntityFieldsBlock', () => {
 				'> **End**: [[Novel/60_Worldbuilding/61_Time/1024-06|1024-06]]',
 				'>',
 				'> **Description**: The three months the capital starved.',
+				'>',
+				// Last, the way it closes a character's and a scene's overview.
+				'> **Progress status**: In progress',
 			].join('\n'),
 		);
 	});

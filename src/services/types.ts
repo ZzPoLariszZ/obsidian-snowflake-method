@@ -12,7 +12,6 @@ import type {
 } from "../domain";
 import type { ManagedFrontmatter } from "../repository";
 import type {
-  DetailsLine,
   ManagedSectionsInspection,
   MarkerIssueCode,
   RecordLine,
@@ -290,11 +289,9 @@ export interface CharacterRecord {
   goal: string;
   conflict: string;
   growth: string;
-  /** Record lines from the note's body sections; Age lives in `details`. */
-  details: DetailsLine[];
+  /** Record lines from the note's body sections. */
   worldStatus: RecordLine[];
   relationships: RecordLine[];
-  detailsUnrecognized: string[];
   worldStatusUnrecognized: string[];
   relationshipsUnrecognized: string[];
   oneParagraphStoryline: string;
@@ -402,14 +399,12 @@ export interface WorldbuildingRecord {
   /** Raw stored term, a wikilink or plain text; empty when absent. */
   timeStart: string;
   timeEnd: string;
-  details: DetailsLine[];
   worldStatus: RecordLine[];
   relationships: RecordLine[];
   /**
    * Lines in each record section the grammar does not cover, kept verbatim
    * per section so a rewrite re-emits them where they were found.
    */
-  detailsUnrecognized: string[];
   worldStatusUnrecognized: string[];
   relationshipsUnrecognized: string[];
   notes: string;
@@ -430,7 +425,6 @@ export interface EntityInput {
   timeKind?: TimeKind | null;
   timeStart?: string;
   timeEnd?: string;
-  details?: DetailsLine[];
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   notes?: string;
@@ -447,7 +441,6 @@ export interface EntityPatch {
   timeKind?: TimeKind | null;
   timeStart?: string;
   timeEnd?: string;
-  details?: DetailsLine[];
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   notes?: string;

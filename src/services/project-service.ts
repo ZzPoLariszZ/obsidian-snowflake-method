@@ -85,6 +85,7 @@ import {
   UnsupportedSchemaError,
   VaultRepository,
   documentTypeOf,
+  isFrontmatterOrdered,
   projectIdOf,
   schemaVersionOf,
   type ManagedFileRecord,
@@ -110,19 +111,14 @@ import {
   renderDefinitionFieldsBlock,
   renderEntityFieldsBlock,
   renderSceneFieldsBlock,
-  renderDetailsSection,
   renderRecordSection,
-  parseDetailsSectionLenient,
   parseRecordSectionLenient,
   parseTerm,
   renderTerm,
   type RecordTerm,
   type SpanLookup,
   entityTemplate,
-  recordSectionHeading,
-  recordSectionHeadings,
   type CharacterFieldsView,
-  type DetailsLine,
   type EntityFieldsView,
   type RecordLine,
   type RecordSectionId,
@@ -182,6 +178,76 @@ const STATIC_DOCUMENT_BY_STEP: Partial<Record<StepId, DocumentType>> = {
   6: "long-synopsis",
   10: "draft",
 };
+
+/**
+ * The sequence a character note's properties read in: the stamp that says
+ * whose note it is, then who the character is and what they are called, then
+ * where they sit in the list and what they belong to, then the story fields,
+ * with how far along they are last of all. The same order the dashboard table
+ * and the generated base read, so the three agree wherever a character is
+ * shown.
+ *
+ * Held on every write, not only at creation: a property a note gains later --
+ * an alias added long after the character was made -- would otherwise settle
+ * at the end, behind the story it should be reading in front of. Anything the
+ * author added themselves follows, undisturbed.
+ */
+/**
+ * And for a worldbuilding entry, whose own fields are the time it covers and
+ * what it is: the kind sits with the identity, because it says which list the
+ * note belongs to rather than anything about the thing itself.
+ */
+const ENTITY_FRONTMATTER_ORDER: readonly string[] = [
+  FRONTMATTER_KEYS.schema,
+  FRONTMATTER_KEYS.document,
+  FRONTMATTER_KEYS.projectId,
+  FRONTMATTER_KEYS.entityId,
+  FRONTMATTER_KEYS.worldbuildingKind,
+  FRONTMATTER_KEYS.name,
+  ALIASES_KEY,
+  FRONTMATTER_KEYS.rank,
+  FRONTMATTER_KEYS.category,
+  FRONTMATTER_KEYS.timeKind,
+  FRONTMATTER_KEYS.timeStart,
+  FRONTMATTER_KEYS.timeEnd,
+  FRONTMATTER_KEYS.description,
+  FRONTMATTER_KEYS.progressStatus,
+];
+
+/** The same sequence for a scene: what it is, then the story, then progress. */
+const SCENE_FRONTMATTER_ORDER: readonly string[] = [
+  FRONTMATTER_KEYS.schema,
+  FRONTMATTER_KEYS.document,
+  FRONTMATTER_KEYS.projectId,
+  FRONTMATTER_KEYS.sceneId,
+  FRONTMATTER_KEYS.sceneTitle,
+  ALIASES_KEY,
+  FRONTMATTER_KEYS.rank,
+  FRONTMATTER_KEYS.category,
+  FRONTMATTER_KEYS.pov,
+  FRONTMATTER_KEYS.sceneTime,
+  FRONTMATTER_KEYS.sceneLocation,
+  FRONTMATTER_KEYS.sceneCharacters,
+  FRONTMATTER_KEYS.conflict,
+  FRONTMATTER_KEYS.progressStatus,
+];
+
+const CHARACTER_FRONTMATTER_ORDER: readonly string[] = [
+  FRONTMATTER_KEYS.schema,
+  FRONTMATTER_KEYS.document,
+  FRONTMATTER_KEYS.projectId,
+  FRONTMATTER_KEYS.characterId,
+  FRONTMATTER_KEYS.characterName,
+  ALIASES_KEY,
+  FRONTMATTER_KEYS.rank,
+  FRONTMATTER_KEYS.category,
+  FRONTMATTER_KEYS.oneSentenceStoryline,
+  FRONTMATTER_KEYS.motivation,
+  FRONTMATTER_KEYS.goal,
+  FRONTMATTER_KEYS.conflict,
+  FRONTMATTER_KEYS.growth,
+  FRONTMATTER_KEYS.progressStatus,
+];
 
 export class ProjectCreationInterruptedError extends Error {
   constructor(
@@ -1566,21 +1632,23 @@ export class SnowflakeProjectService {
         characterSynopsis: input.characterSynopsis,
         characterProfile: input.characterProfile,
       }),
+      // Written in CHARACTER_FRONTMATTER_ORDER: the sequence a note is made
+      // with is the sequence every later edit holds it to.
       frontmatter: {
         ...commonFrontmatter("character", project.id),
         [FRONTMATTER_KEYS.characterId]: characterId,
         [FRONTMATTER_KEYS.characterName]: name,
+        ...(aliases.length > 0 ? { [ALIASES_KEY]: aliases } : {}),
         [FRONTMATTER_KEYS.rank]: rank,
         [FRONTMATTER_KEYS.category]: categories,
-        ...(aliases.length > 0 ? { [ALIASES_KEY]: aliases } : {}),
-        ...(input.progressStatus
-          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
-          : {}),
         [FRONTMATTER_KEYS.oneSentenceStoryline]: input.oneSentenceStoryline ?? "",
         [FRONTMATTER_KEYS.motivation]: input.motivation ?? "",
         [FRONTMATTER_KEYS.goal]: input.goal ?? "",
         [FRONTMATTER_KEYS.conflict]: input.conflict ?? "",
         [FRONTMATTER_KEYS.growth]: input.growth ?? "",
+        ...(input.progressStatus
+          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
+          : {}),
       },
     });
     // Record sections are deferred out of the template; the first records a
@@ -1588,11 +1656,10 @@ export class SnowflakeProjectService {
     const createdRecords = entityRecordSectionValues(
       project.locale,
       {
-        details: [],
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
     if (Object.keys(createdRecords).length > 0) {
@@ -1752,7 +1819,6 @@ export class SnowflakeProjectService {
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.growth, patch.growth);
 
     const nextRecords = {
-      details: character.details,
       worldStatus: patch.worldStatus ?? character.worldStatus,
       relationships: patch.relationships ?? character.relationships,
     };
@@ -1814,8 +1880,12 @@ export class SnowflakeProjectService {
       sectionValues,
       rollbackValues,
       characterUpdateLayout(character.name, project.locale),
+      CHARACTER_FRONTMATTER_ORDER,
     );
-    await this.removeEmptiedRecordSections(character, nextRecords);
+    await this.removeEmptiedRecordSections(
+      character,
+      nextRecords,
+    );
 
     let path = character.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
@@ -2171,11 +2241,17 @@ export class SnowflakeProjectService {
         events: input.events,
         planning: input.planning,
       }),
+      // Written in SCENE_FRONTMATTER_ORDER: the sequence a note is made with
+      // is the sequence every later edit holds it to.
       frontmatter: {
         ...commonFrontmatter("scene", project.id),
         [FRONTMATTER_KEYS.sceneId]: sceneId,
         [FRONTMATTER_KEYS.sceneTitle]: title,
+        ...(sceneAliases.length > 0 ? { [ALIASES_KEY]: sceneAliases } : {}),
         [FRONTMATTER_KEYS.rank]: rank,
+        ...(sceneCategories.length > 0
+          ? { [FRONTMATTER_KEYS.category]: sceneCategories }
+          : {}),
         [FRONTMATTER_KEYS.pov]: povValue
           ? isScenePovMode(povValue)
             ? povValue
@@ -2185,10 +2261,6 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.sceneLocation]: input.locations ?? [],
         [FRONTMATTER_KEYS.sceneCharacters]: (input.characters ?? []).map(characterLink),
         [FRONTMATTER_KEYS.conflict]: input.conflict ?? "",
-        ...(sceneAliases.length > 0 ? { [ALIASES_KEY]: sceneAliases } : {}),
-        ...(sceneCategories.length > 0
-          ? { [FRONTMATTER_KEYS.category]: sceneCategories }
-          : {}),
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
@@ -2197,11 +2269,10 @@ export class SnowflakeProjectService {
     const createdRecords = entityRecordSectionValues(
       project.locale,
       {
-        details: [],
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
     if (Object.keys(createdRecords).length > 0) {
@@ -2451,12 +2522,10 @@ export class SnowflakeProjectService {
       characters: patch.characters ?? scene.characters,
     };
     const nextRecords = {
-      details: [] as DetailsLine[],
       worldStatus: patch.worldStatus ?? scene.worldStatus,
       relationships: patch.relationships ?? scene.relationships,
     };
     const sceneUnrecognized = {
-      detailsUnrecognized: [] as string[],
       worldStatusUnrecognized: scene.worldStatusUnrecognized,
       relationshipsUnrecognized: scene.relationshipsUnrecognized,
     };
@@ -2469,7 +2538,7 @@ export class SnowflakeProjectService {
     );
     const originalRecordValues = entityRecordSectionValues(
       project.locale,
-      { details: [], worldStatus: scene.worldStatus, relationships: scene.relationships },
+      { worldStatus: scene.worldStatus, relationships: scene.relationships },
       sceneUnrecognized,
       spans,
     );
@@ -2508,9 +2577,10 @@ export class SnowflakeProjectService {
       sectionValues,
       rollbackValues,
       sceneUpdateLayout(scene.title, project.locale),
+      SCENE_FRONTMATTER_ORDER,
     );
     await this.removeEmptiedRecordSections(
-      { ...scene, details: [], detailsUnrecognized: [] },
+      scene,
       nextRecords,
     );
 
@@ -2707,6 +2777,31 @@ export class SnowflakeProjectService {
         if (!(error instanceof UnsafeSectionError)) throw error;
       }
     }
+    // Last, once every property this migration writes is in place: a note
+    // made by an older release holds its keys in that release's order, and
+    // one that gained an alias since holds it at the end. Written only where
+    // the sequence actually differs.
+    const ordered: [readonly { path: string; readOnly: boolean }[], readonly string[]][] =
+      [
+        [current.characters, CHARACTER_FRONTMATTER_ORDER],
+        [current.scenes, SCENE_FRONTMATTER_ORDER],
+        ...WORLDBUILDING_KINDS.map(
+          (kind) =>
+            [current.worldbuilding[kind], ENTITY_FRONTMATTER_ORDER] as [
+              readonly { path: string; readOnly: boolean }[],
+              readonly string[],
+            ],
+        ),
+      ];
+    for (const [members, order] of ordered) {
+      for (const member of members) {
+        if (member.readOnly) continue;
+        const record = await this.repository.tryReadManaged(member.path);
+        if (record === null) continue;
+        if (isFrontmatterOrdered(record.frontmatter, order)) continue;
+        await this.repository.updateFrontmatter(member.path, {}, order);
+      }
+    }
 
     if (project.schemaVersion !== SCHEMA_VERSION) {
       await this.repository.updateFrontmatter(project.projectFile, {
@@ -2734,13 +2829,10 @@ export class SnowflakeProjectService {
     const values = entityRecordSectionValues(
       project.locale,
       {
-        details: "details" in member ? member.details : [],
         worldStatus: member.worldStatus,
         relationships: member.relationships,
       },
       {
-        detailsUnrecognized:
-          "detailsUnrecognized" in member ? member.detailsUnrecognized : [],
         worldStatusUnrecognized: member.worldStatusUnrecognized,
         relationshipsUnrecognized: member.relationshipsUnrecognized,
       },
@@ -3700,24 +3792,26 @@ export class SnowflakeProjectService {
         fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
         notes: input.notes,
       }),
+      // Written in ENTITY_FRONTMATTER_ORDER: the sequence a note is made with
+      // is the sequence every later edit holds it to.
       frontmatter: {
         ...commonFrontmatter("worldbuilding", project.id),
         [FRONTMATTER_KEYS.entityId]: entityId,
         [FRONTMATTER_KEYS.worldbuildingKind]: kind,
         [FRONTMATTER_KEYS.name]: name,
-        [FRONTMATTER_KEYS.rank]: rank,
-        [FRONTMATTER_KEYS.description]: input.description ?? "",
         ...(aliases.length > 0 ? { [ALIASES_KEY]: aliases } : {}),
+        [FRONTMATTER_KEYS.rank]: rank,
         ...(categories.length > 0 ? { [FRONTMATTER_KEYS.category]: categories } : {}),
-        ...(input.progressStatus
-          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
-          : {}),
         ...(kind === "time"
           ? {
               ...(timeKind === null ? {} : { [FRONTMATTER_KEYS.timeKind]: timeKind }),
               [FRONTMATTER_KEYS.timeStart]: timeStart,
               [FRONTMATTER_KEYS.timeEnd]: timeEnd,
             }
+          : {}),
+        [FRONTMATTER_KEYS.description]: input.description ?? "",
+        ...(input.progressStatus
+          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
       },
     });
@@ -3726,11 +3820,10 @@ export class SnowflakeProjectService {
     const recordValues = entityRecordSectionValues(
       project.locale,
       {
-        details: input.details ?? [],
         worldStatus: input.worldStatus ?? [],
         relationships: input.relationships ?? [],
       },
-      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+      { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
     if (Object.keys(recordValues).length > 0) {
@@ -3830,7 +3923,6 @@ export class SnowflakeProjectService {
     }
 
     const nextRecords = {
-      details: patch.details ?? entity.details,
       worldStatus: patch.worldStatus ?? entity.worldStatus,
       relationships: patch.relationships ?? entity.relationships,
     };
@@ -3877,6 +3969,7 @@ export class SnowflakeProjectService {
       sectionValues,
       rollbackValues,
       entityUpdateLayout(entity.name, kind, project.locale),
+      ENTITY_FRONTMATTER_ORDER,
     );
     await this.removeEmptiedRecordSections(entity, nextRecords);
 
@@ -3914,15 +4007,12 @@ export class SnowflakeProjectService {
   private async removeEmptiedRecordSections(
     entity: {
       path: string;
-      details: readonly unknown[];
       worldStatus: readonly unknown[];
       relationships: readonly unknown[];
-      detailsUnrecognized: readonly string[];
       worldStatusUnrecognized: readonly string[];
       relationshipsUnrecognized: readonly string[];
     },
     nextRecords: {
-      details: readonly unknown[];
       worldStatus: readonly unknown[];
       relationships: readonly unknown[];
     },
@@ -3935,15 +4025,11 @@ export class SnowflakeProjectService {
       unrecognized: readonly string[],
     ): void => {
       if (had && !hasNow && unrecognized.length === 0) {
-        emptied.push({ sectionId, headings: recordSectionHeadings(sectionId) });
+        // No headings to absorb: a record section is a callout that names
+        // itself, and nothing above it belongs to the plugin.
+        emptied.push({ sectionId, headings: [] });
       }
     };
-    consider(
-      "details",
-      entity.details.length > 0,
-      nextRecords.details.length > 0,
-      entity.detailsUnrecognized,
-    );
     consider(
       "world-status",
       entity.worldStatus.length > 0,
@@ -4009,10 +4095,8 @@ export class SnowflakeProjectService {
     ManagedFileRecord,
     Pick<
       WorldbuildingRecord,
-      | "details"
       | "worldStatus"
       | "relationships"
-      | "detailsUnrecognized"
       | "worldStatusUnrecognized"
       | "relationshipsUnrecognized"
       | "notes"
@@ -4037,10 +4121,6 @@ export class SnowflakeProjectService {
     const rank = storedRank(record.frontmatter);
     let reading = this.entityReadings.get(record);
     if (reading === undefined) {
-      const details = parseDetailsSectionLenient(
-        locale,
-        readMarkedSection(record.content, "details") ?? "",
-      );
       const worldStatus = parseRecordSectionLenient(
         locale,
         readMarkedSection(record.content, "world-status") ?? "",
@@ -4050,8 +4130,6 @@ export class SnowflakeProjectService {
         readMarkedSection(record.content, "relationships") ?? "",
       );
       reading = {
-        details: details.details,
-        detailsUnrecognized: details.unrecognized,
         worldStatus: worldStatus.records,
         worldStatusUnrecognized: worldStatus.unrecognized,
         relationships: relationships.records,
@@ -5224,10 +5302,8 @@ export class SnowflakeProjectService {
     ManagedFileRecord,
     Pick<
       CharacterRecord,
-      | "details"
       | "worldStatus"
       | "relationships"
-      | "detailsUnrecognized"
       | "worldStatusUnrecognized"
       | "relationshipsUnrecognized"
       | "oneParagraphStoryline"
@@ -5269,10 +5345,6 @@ export class SnowflakeProjectService {
     const rank = storedRank(record.frontmatter);
     let reading = this.characterReadings.get(record);
     if (reading === undefined) {
-      const details = parseDetailsSectionLenient(
-        locale,
-        readMarkedSection(record.content, "details") ?? "",
-      );
       const worldStatus = parseRecordSectionLenient(
         locale,
         readMarkedSection(record.content, "world-status") ?? "",
@@ -5282,8 +5354,6 @@ export class SnowflakeProjectService {
         readMarkedSection(record.content, "relationships") ?? "",
       );
       reading = {
-        details: details.details,
-        detailsUnrecognized: details.unrecognized,
         worldStatus: worldStatus.records,
         worldStatusUnrecognized: worldStatus.unrecognized,
         relationships: relationships.records,
@@ -5722,12 +5792,20 @@ export class SnowflakeProjectService {
     sectionValues: Readonly<Record<string, string>>,
     rollbackValues: Readonly<Record<string, string>>,
     layout: readonly SectionLayoutEntry[],
+    /** The key sequence the note holds to, where its kind has one. */
+    frontmatterOrder?: readonly string[],
   ): Promise<void> {
     const hasSections = Object.keys(sectionValues).length > 0;
     const hasFrontmatter = Object.keys(frontmatterPatch).length > 0;
 
     if (!hasSections) {
-      if (hasFrontmatter) await this.repository.updateFrontmatter(path, frontmatterPatch);
+      if (hasFrontmatter) {
+        await this.repository.updateFrontmatter(
+          path,
+          frontmatterPatch,
+          frontmatterOrder,
+        );
+      }
       return;
     }
 
@@ -5742,7 +5820,11 @@ export class SnowflakeProjectService {
     const afterSections = await this.repository.readManaged(path);
     const afterSectionsRevision = fingerprint(afterSections.content);
     try {
-      await this.repository.updateFrontmatter(path, frontmatterPatch);
+      await this.repository.updateFrontmatter(
+        path,
+        frontmatterPatch,
+        frontmatterOrder,
+      );
     } catch (error) {
       // Best-effort rollback is conditional on the exact post-section revision.
       // If another writer won the race, upsertSections throws rather than
@@ -5952,12 +6034,14 @@ function systemTemplateFrontmatter(
 ): ManagedFrontmatter {
   const frontmatter = commonFrontmatter(template.documentType, project.id);
   if (template.id === "character") {
+    // The properties a character carries, in the order they read on one, and
+    // no role: a role is a category now, and one named here would teach a
+    // shape the forms no longer write.
     return {
       ...frontmatter,
       [FRONTMATTER_KEYS.characterId]: `${project.id}-template-character`,
       [FRONTMATTER_KEYS.characterName]: project.locale === "zh-CN" ? "角色" : "Character",
       [FRONTMATTER_KEYS.rank]: RANK_GAP,
-      [FRONTMATTER_KEYS.characterType]: "major",
       [FRONTMATTER_KEYS.oneSentenceStoryline]: "",
       [FRONTMATTER_KEYS.motivation]: "",
       [FRONTMATTER_KEYS.goal]: "",
@@ -6372,7 +6456,6 @@ function assertEntityTimeFields(
 }
 
 const RECORD_SECTION_IDS: readonly RecordSectionId[] = [
-  "details",
   "world-status",
   "relationships",
 ];
@@ -6385,28 +6468,20 @@ const RECORD_SECTION_IDS: readonly RecordSectionId[] = [
 function entityRecordSectionValues(
   locale: ProjectLanguage,
   records: {
-    details: readonly DetailsLine[];
     worldStatus: readonly RecordLine[];
     relationships: readonly RecordLine[];
   },
   unrecognized: {
-    detailsUnrecognized: readonly string[];
     worldStatusUnrecognized: readonly string[];
     relationshipsUnrecognized: readonly string[];
   },
   spanOf: SpanLookup | null = null,
 ): Record<string, string> {
   const values: Record<string, string> = {};
-  if (records.details.length + unrecognized.detailsUnrecognized.length > 0) {
-    values["details"] = renderDetailsSection(
-      locale,
-      records.details,
-      unrecognized.detailsUnrecognized,
-    );
-  }
   if (records.worldStatus.length + unrecognized.worldStatusUnrecognized.length > 0) {
     values["world-status"] = renderRecordSection(
       locale,
+      "world-status",
       records.worldStatus,
       unrecognized.worldStatusUnrecognized,
       spanOf,
@@ -6418,6 +6493,7 @@ function entityRecordSectionValues(
   ) {
     values["relationships"] = renderRecordSection(
       locale,
+      "relationships",
       records.relationships,
       unrecognized.relationshipsUnrecognized,
       spanOf,
@@ -6445,13 +6521,6 @@ function projectTimeSpans(project: ProjectSnapshot): SpanLookup {
   return (path) => spans.get(path.replace(/\.md$/u, "")) ?? null;
 }
 
-/** The heading a section outside the template is created under at upsert. */
-function deferredSectionHeading(id: string, locale: ProjectLanguage): string {
-  return (RECORD_SECTION_IDS as readonly string[]).includes(id)
-    ? recordSectionHeading(id as RecordSectionId, locale)
-    : "";
-}
-
 /**
  * The upsert layout for a worldbuilding note: the registry order, with the
  * headings deferred record sections are created under when their first record
@@ -6466,8 +6535,10 @@ function entityUpdateLayout(
   return managedSectionsForDocument("worldbuilding").map(
     (descriptor) =>
       sections.find((section) => section.id === descriptor.id) ?? {
+        // A section the template defers carries no heading: the record
+        // sections are titled callouts, and the title is what names them.
         id: descriptor.id,
-        heading: deferredSectionHeading(descriptor.id, locale),
+        heading: "",
       },
   );
 }
@@ -6481,8 +6552,10 @@ function characterUpdateLayout(
   return managedSectionsForDocument("character").map(
     (descriptor) =>
       sections.find((section) => section.id === descriptor.id) ?? {
+        // A section the template defers carries no heading: the record
+        // sections are titled callouts, and the title is what names them.
         id: descriptor.id,
-        heading: deferredSectionHeading(descriptor.id, locale),
+        heading: "",
       },
   );
 }
@@ -6547,8 +6620,10 @@ function sceneUpdateLayout(
   return managedSectionsForDocument("scene").map(
     (descriptor) =>
       sections.find((section) => section.id === descriptor.id) ?? {
+        // A section the template defers carries no heading: the record
+        // sections are titled callouts, and the title is what names them.
         id: descriptor.id,
-        heading: deferredSectionHeading(descriptor.id, locale),
+        heading: "",
       },
   );
 }
@@ -6586,10 +6661,7 @@ function memberSectionHealth(
   for (const sectionId of RECORD_SECTION_IDS) {
     const body = readMarkedSection(content, sectionId);
     if (body === null) continue;
-    const unrecognized =
-      sectionId === "details"
-        ? parseDetailsSectionLenient("en", body).unrecognized
-        : parseRecordSectionLenient("en", body).unrecognized;
+    const unrecognized = parseRecordSectionLenient("en", body).unrecognized;
     if (unrecognized.length > 0) {
       issues.push({
         code: "unrecognized-record",
