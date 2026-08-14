@@ -4,7 +4,6 @@ import {
 	addSceneCastMember,
 	isChoosableScenePov,
 	normalizeSceneCast,
-	scenesUsingCharacter,
 } from '../../src/domain/scene';
 
 const order = ['a.md', 'b.md', 'c.md', 'd.md'];
@@ -82,39 +81,5 @@ describe('whether a stored point of view can still be chosen', () => {
 
 	it('rejects an empty point of view, so saving is blocked until one is picked', () => {
 		expect(isChoosableScenePov('', order)).toBe(false);
-	});
-});
-
-describe('which scenes reference a character', () => {
-	const scenes = [
-		{ title: 'Arrival', povPath: 'a.md', characters: ['a.md', 'b.md'] },
-		{ title: 'Departure', povPath: 'b.md', characters: ['a.md'] },
-		{ title: 'Interlude', povPath: 'omniscient', characters: [] },
-	];
-
-	it('splits point of view from cast, because each costs something different', () => {
-		expect(scenesUsingCharacter(scenes, 'a.md')).toEqual({
-			pointOfView: ['Arrival'],
-			cast: ['Arrival', 'Departure'],
-		});
-	});
-
-	// A scene that is both loses its cast entry and needs a new point of view,
-	// so it has to be named under both headings rather than counted once.
-	it('lists a scene under both headings when it is both', () => {
-		const usage = scenesUsingCharacter(scenes, 'a.md');
-		expect(usage.pointOfView).toContain('Arrival');
-		expect(usage.cast).toContain('Arrival');
-	});
-
-	it('reports nothing for a character no scene mentions', () => {
-		expect(scenesUsingCharacter(scenes, 'unused.md')).toEqual({
-			pointOfView: [],
-			cast: [],
-		});
-	});
-
-	it('does not mistake a point-of-view mode for a character', () => {
-		expect(scenesUsingCharacter(scenes, 'omniscient').cast).toEqual([]);
 	});
 });

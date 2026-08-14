@@ -996,7 +996,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "incomplete-link",
         path: project.projectFile,
-        expected: "Draft",
+        names: ["50_Manuscript/Draft"],
         repairable: true,
       }),
     );
@@ -2313,6 +2313,43 @@ describe("SnowflakeProjectService", () => {
           `[[${project.rootPath}/50_Manuscript/Draft.md]]`;
       },
     );
+    // Every other key that holds a link, in the notes the first pass never
+    // opened: a scene's time and place, a character's categories, and the ends
+    // a period is written between.
+    const dawn = await service.createEntity(project, {
+      kind: "time",
+      name: "Dawn",
+      timeKind: "point",
+    });
+    const era = await service.createEntity(project, {
+      kind: "time",
+      name: "The Long Age",
+      timeKind: "period",
+      timeStart: `[[${linkTarget(dawn.path)}|Dawn]]`,
+      timeEnd: `[[${linkTarget(dawn.path)}|Dawn]]`,
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneTime] = [withExtension(dawn.path, "Dawn")];
+      },
+    );
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(era.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.timeEnd] = withExtension(dawn.path, "Dawn");
+      },
+    );
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    await service.addDefinitionPath(project, "character", "category", "Kin/Elf");
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.category] = [
+          `[[${categoryRoot}/Kin/Elf/_self.md|Kin/Elf]]`,
+        ];
+      },
+    );
 
     // One report for the project, counting every link across its notes, rather
     // than the same one-time change raised against each note that has one.
@@ -2321,7 +2358,14 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "extension-in-link",
         path: project.rootPath,
-        expected: "3",
+        // The notes that carry them, not how many links there are: one row for
+        // the project still, and the list says where to look.
+        names: [
+          "00_System/001_Project_Metadata",
+          "20_Character/Ada",
+          "40_Scene/Arrival",
+          "60_Worldbuilding/61_Time/The Long Age",
+        ],
         stepIds: [],
         canOpen: false,
         repairable: true,
@@ -2344,9 +2388,90 @@ describe("SnowflakeProjectService", () => {
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
       `[[${linkTarget(ada.path)}|Ada]]`,
     ]);
+    expect(frontmatter[FRONTMATTER_KEYS.sceneTime]).toEqual([
+      `[[${linkTarget(dawn.path)}|Dawn]]`,
+    ]);
+    expect(
+      (await service.readManagedFrontmatter(era.path))[FRONTMATTER_KEYS.timeEnd],
+    ).toBe(`[[${linkTarget(dawn.path)}|Dawn]]`);
+    expect(
+      (await service.readManagedFrontmatter(ada.path))[FRONTMATTER_KEYS.category],
+    ).toEqual([`[[${categoryRoot}/Kin/Elf/_self|Kin/Elf]]`]);
     expect(repaired.links.draft).toBe(`${project.rootPath}/50_Manuscript/Draft.md`);
     expect(repaired.scenes[0]?.characters).toEqual([ada.path]);
     expect(repaired.structureIssues).toEqual([]);
+  });
+
+  it("reads a shortened link wherever one is stored, not only in a scene's cast", async () => {
+    const project = await service.createProject({ name: "Short links" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      categoryPaths: ["Kin/Elf"],
+    });
+    const dawn = await service.createEntity(project, {
+      kind: "time",
+      name: "Dawn",
+      timeKind: "point",
+    });
+    const era = await service.createEntity(project, {
+      kind: "time",
+      name: "The Long Age",
+      timeKind: "period",
+      timeStart: `[[${linkTarget(dawn.path)}|Dawn]]`,
+      timeEnd: `[[${linkTarget(dawn.path)}|Dawn]]`,
+    });
+    // Obsidian shortens a link to whatever was unambiguous when it wrote it,
+    // and these three notes were never read for one.
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.category] = ["[[Kin/Elf/_self|Kin/Elf]]"];
+      },
+    );
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(era.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.timeEnd] = "[[Dawn|Dawn]]";
+      },
+    );
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "incomplete-link",
+        path: era.path,
+        names: ["60_Worldbuilding/61_Time/Dawn"],
+        repairable: true,
+      }),
+    );
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "incomplete-link",
+        path: ada.path,
+        names: ["20_Character/21_Category/Kin/Elf/_self"],
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, era.path);
+    await service.repairMissingStructureItem(project.projectFile, ada.path);
+
+    expect(
+      (await service.readManagedFrontmatter(era.path))[FRONTMATTER_KEYS.timeEnd],
+    ).toBe(`[[${linkTarget(dawn.path)}|Dawn]]`);
+    // A category is written out in full the same way, and never taken off the
+    // list: what a link there names is the definition repair's to raise.
+    expect(
+      (await service.readManagedFrontmatter(ada.path))[FRONTMATTER_KEYS.category],
+    ).toEqual([
+      `[[${project.rootPath}/20_Character/21_Category/Kin/Elf/_self|Kin/Elf]]`,
+    ]);
+    expect(
+      (await service.loadProject(project.projectFile)).structureIssues.filter(
+        (issue) => issue.code === "incomplete-link",
+      ),
+    ).toEqual([]);
   });
 
   it("leaves a point-of-view mode and an already-tidy link alone", async () => {
@@ -2384,7 +2509,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "unlinked-path",
         path: project.projectFile,
-        expected: "Draft",
+        names: ["50_Manuscript/Draft"],
         repairable: true,
       }),
     );
@@ -2425,7 +2550,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "unlinked-path",
         path: scene.path,
-        expected: "Ada",
+        names: ["20_Character/Ada"],
         repairable: true,
       }),
     );
@@ -2496,7 +2621,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "incomplete-link",
         path: scene.path,
-        expected: "Eve",
+        names: ["20_Character/Eve"],
         repairable: true,
       }),
     );
@@ -2543,7 +2668,9 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "foreign-link",
         path: scene.path,
-        expected: "Eve",
+        // A link into another project keeps its Vault path: being outside
+        // this project is the whole of what is wrong with it.
+        names: ["Snowflake Projects/Elsewhere/20_Character/Eve"],
         repairable: true,
       }),
     );
@@ -2554,6 +2681,27 @@ describe("SnowflakeProjectService", () => {
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([]);
     // The other project keeps its own character; only the list entry went.
     expect(fakeVault.getFileByPath(stranger.path)).not.toBeNull();
+  });
+
+  it("names what a link stored when the project can place it nowhere", async () => {
+    const project = await service.createProject({ name: "Bare name" });
+    const scene = await service.createScene(project, { title: "Arrival" });
+    // A link Obsidian shortened to a file name, to a note that then went. There
+    // is no folder left to name it by, so the report says what the link says
+    // rather than inventing somewhere for it to have been.
+    await service.repository.updateFrontmatter(scene.path, {
+      [FRONTMATTER_KEYS.sceneCharacters]: ["[[Ghostly]]"],
+    });
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "missing-link",
+        path: scene.path,
+        names: ["Ghostly"],
+      }),
+    );
   });
 
   it("calls a cast link nothing at all answers a link to a note that is gone", async () => {
@@ -2572,7 +2720,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "missing-link",
         path: scene.path,
-        expected: "Eve",
+        names: ["20_Character/Eve"],
         repairable: true,
       }),
     );
@@ -3023,7 +3171,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "missing-link",
         path: scene.path,
-        expected: "Bram",
+        names: ["20_Character/Bram"],
         stepIds: [8, 9],
         repairable: true,
       }),
@@ -3066,7 +3214,7 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "dangling-scene-pov",
         path: scene.path,
-        expected: "Ada",
+        names: ["20_Character/Ada"],
         canOpen: true,
         repairable: false,
       }),
@@ -3120,7 +3268,7 @@ describe("SnowflakeProjectService", () => {
       povPath: doomed.path,
     });
 
-    await service.removeCharacterFromScenes(project.projectFile, doomed.path);
+    await service.removeMemberReferences(project.projectFile, doomed.path);
 
     const castFrontmatter = await service.readManagedFrontmatter(castScene.path);
     const povFrontmatter = await service.readManagedFrontmatter(povScene.path);
@@ -3225,7 +3373,7 @@ describe("SnowflakeProjectService", () => {
     );
 
     fakeVault.delete(doomed.path);
-    await service.removeCharacterFromScenes(project.projectFile, doomed.path);
+    await service.removeMemberReferences(project.projectFile, doomed.path);
 
     const frontmatter = await service.readManagedFrontmatter(scene.path);
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
@@ -3390,6 +3538,242 @@ describe("SnowflakeProjectService", () => {
     expect(eraFrontmatter[FRONTMATTER_KEYS.timeEnd]).toBe(
       `[[${linkTarget(renamed.path)}|Imperial Year 1023]]`,
     );
+  });
+
+  /**
+   * A time note, a place, a scene set in both, a period running to the time,
+   * and a character whose record says when something happened to them: every
+   * way one member note can name another, in one project.
+   */
+  const projectWithReferences = async (): Promise<{
+    project: Awaited<ReturnType<typeof service.createProject>>;
+    dawn: Awaited<ReturnType<typeof service.createEntity>>;
+    mill: Awaited<ReturnType<typeof service.createEntity>>;
+    era: Awaited<ReturnType<typeof service.createEntity>>;
+    scene: Awaited<ReturnType<typeof service.createScene>>;
+    ada: Awaited<ReturnType<typeof service.createCharacter>>;
+  }> => {
+    const project = await service.createProject({ name: "References" });
+    const dawn = await service.createEntity(project, {
+      kind: "time",
+      name: "Dawn",
+      timeKind: "point",
+    });
+    const mill = await service.createEntity(project, {
+      kind: "location",
+      name: "The old mill",
+    });
+    const era = await service.createEntity(project, {
+      kind: "time",
+      name: "The Silver Era",
+      timeKind: "period",
+      timeStart: `[[${linkTarget(dawn.path)}|Dawn]]`,
+      timeEnd: `[[${linkTarget(dawn.path)}|Dawn]]`,
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      // A link beside the words a scene held before its time was a note.
+      times: [`[[${linkTarget(dawn.path)}|Dawn]]`, "one winter evening"],
+      locations: [`[[${linkTarget(mill.path)}|The old mill]]`],
+    });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      worldStatus: [
+        {
+          label: { path: "Def/World_Status/Waiting/_self", display: "Waiting" },
+          value: "",
+          clauses: [
+            {
+              kind: "when",
+              term: { kind: "link", path: linkTarget(dawn.path), name: "Dawn" },
+            },
+          ],
+        },
+      ],
+    });
+    return { project, dawn, mill, era, scene, ada };
+  };
+
+  it("follows a renamed entity into scene fields and record lines", async () => {
+    const { project, dawn, scene, ada } = await projectWithReferences();
+
+    const renamed = await service.updateEntity(project, dawn.entityId, {
+      expectedRevision: dawn.revision,
+      name: "First light",
+    });
+
+    const sceneFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(scene.path) ?? "",
+    ).frontmatter;
+    // Both halves: where the link leads, and the name it is read out by.
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.sceneTime]).toEqual([
+      `[[${linkTarget(renamed.path)}|First light]]`,
+      // The author's own words are not a link and are left alone.
+      "one winter evening",
+    ]);
+    // The overview is drawn from that frontmatter, so it says so too.
+    expect(
+      readMarkedSection(fakeVault.contents.get(scene.path) ?? "", "scene-fields"),
+    ).toContain("|First light]]");
+    expect(
+      readMarkedSection(fakeVault.contents.get(ada.path) ?? "", "world-status"),
+    ).toContain(`[[${linkTarget(renamed.path)}|First light]]`);
+  });
+
+  it("says which notes name a member, split by what deleting it costs them", async () => {
+    const { project, dawn } = await projectWithReferences();
+
+    const usage = await service.memberUsage(project.projectFile, dawn.path);
+
+    expect(usage.listed).toEqual(["Arrival"]);
+    expect(usage.needsDecision).toEqual(["The Silver Era"]);
+    expect(usage.records).toEqual(["Ada"]);
+  });
+
+  it("drops a deleted entity from the lists that name it, and leaves the rest", async () => {
+    const { project, dawn, era, scene, ada } = await projectWithReferences();
+
+    await service.repository.trashFile(dawn.path);
+    await service.removeMemberReferences(project.projectFile, dawn.path);
+
+    const sceneFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(scene.path) ?? "",
+    ).frontmatter;
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.sceneTime]).toEqual([
+      "one winter evening",
+    ]);
+    // The place is a different note and keeps its place.
+    expect(sceneFrontmatter[FRONTMATTER_KEYS.sceneLocation]).toHaveLength(1);
+    // A period is written between two moments, and a record line is a sentence
+    // the author wrote: both are left for the health check to report.
+    const eraFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(era.path) ?? "",
+    ).frontmatter;
+    expect(eraFrontmatter[FRONTMATTER_KEYS.timeStart]).toContain(
+      linkTarget(dawn.path),
+    );
+    expect(
+      readMarkedSection(fakeVault.contents.get(ada.path) ?? "", "world-status"),
+    ).toContain(linkTarget(dawn.path));
+  });
+
+  it("reports an entity file renamed outside the dashboard and repairs it", async () => {
+    const { project, dawn, scene } = await projectWithReferences();
+    const moved = `${project.rootPath}/60_Worldbuilding/61_Time/Renamed Outside.md`;
+    await service.repository.renameFile(dawn.path, moved);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "mismatched-entity-title",
+        path: moved,
+        expected: "Dawn",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, moved);
+
+    expect(fakeVault.getFileByPath(dawn.path)).not.toBeNull();
+    expect(fakeVault.getFileByPath(moved)).toBeNull();
+    expect(
+      parseMarkdownFrontmatter(fakeVault.contents.get(scene.path) ?? "")
+        .frontmatter[FRONTMATTER_KEYS.sceneTime],
+    ).toEqual([`[[${linkTarget(dawn.path)}|Dawn]]`, "one winter evening"]);
+  });
+
+  it("reports the ends of a period and the records that lead nowhere", async () => {
+    const { project, dawn, era, ada } = await projectWithReferences();
+    await service.repository.trashFile(dawn.path);
+
+    const damaged = await service.loadProject(project.projectFile);
+
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "dangling-time-span",
+        path: era.path,
+        names: ["60_Worldbuilding/61_Time/Dawn"],
+        repairable: false,
+      }),
+    );
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "dangling-record-link",
+        path: ada.path,
+        names: ["60_Worldbuilding/61_Time/Dawn"],
+        repairable: false,
+      }),
+    );
+  });
+
+  it("reports a scene's dead time link and leaves plain words to the migration", async () => {
+    const project = await service.createProject({ name: "Scene setting" });
+    const dawn = await service.createEntity(project, {
+      kind: "time",
+      name: "Dawn",
+      timeKind: "point",
+    });
+    const scene = await service.createScene(project, {
+      title: "Arrival",
+      // What a scene holds before its time was a note, beside a link.
+      times: [`[[${linkTarget(dawn.path)}|Dawn]]`, "one winter evening"],
+    });
+    await service.repository.trashFile(dawn.path);
+
+    const damaged = await service.loadProject(project.projectFile);
+    const issue = damaged.structureIssues.find(
+      (candidate) =>
+        candidate.code === "missing-link" && candidate.path === scene.path,
+    );
+    // The words an author typed are not a broken link, so they are not named,
+    // and what is named is named by where it was filed.
+    expect(issue?.names).toEqual(["60_Worldbuilding/61_Time/Dawn"]);
+
+    await service.repairMissingStructureItem(project.projectFile, scene.path);
+
+    expect(
+      parseMarkdownFrontmatter(fakeVault.contents.get(scene.path) ?? "")
+        .frontmatter[FRONTMATTER_KEYS.sceneTime],
+    ).toEqual(["one winter evening"]);
+  });
+
+  it("reports a worldbuilding note whose metadata stopped saying what it is", async () => {
+    const project = await service.createProject({ name: "Entity metadata" });
+    const dawn = await service.createEntity(project, {
+      kind: "time",
+      name: "Dawn",
+      timeKind: "point",
+    });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(dawn.path)!,
+      (frontmatter: Record<string, unknown>) => {
+        delete frontmatter[FRONTMATTER_KEYS.entityId];
+        delete frontmatter[FRONTMATTER_KEYS.worldbuildingKind];
+      },
+    );
+
+    const damaged = await service.loadProject(project.projectFile);
+    // Unreadable metadata takes the note out of the dashboard, which is
+    // exactly when the project has to say where it went.
+    expect(damaged.worldbuilding.time).toEqual([]);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-artifact-metadata",
+        path: dawn.path,
+        expected: "worldbuilding",
+        repairable: true,
+      }),
+    );
+
+    await service.repairMissingStructureItem(project.projectFile, dawn.path);
+
+    const repaired = await service.loadProject(project.projectFile);
+    expect(repaired.worldbuilding.time.map((entity) => entity.name)).toEqual([
+      "Dawn",
+    ]);
+    // The kind comes from the folder, which a mangled frontmatter cannot lose.
+    expect(repaired.worldbuilding.time[0]!.kind).toBe("time");
   });
 
   it("keeps a character's records in their sections, values and all", async () => {
@@ -3883,7 +4267,9 @@ describe("SnowflakeProjectService", () => {
       expect.objectContaining({
         code: "unresolved-definition-link",
         path: ada.path,
-        expected: "Ghost",
+        // Named under its own tree: every member kind keeps one, and the same
+        // entry name under two of them is two different entries.
+        names: ["20_Character/21_Category/Ghost"],
         repairable: true,
       }),
     );

@@ -2132,12 +2132,12 @@
 
 /* A reference the project can no longer resolve. Warm rather than red: the scene
    is still readable and the fix is the author's to make, not an error state. */
-.snowflake-method-delete-character-modal .snowflake-method-delete-character-group {
+.snowflake-method-delete-member-modal .snowflake-method-delete-member-group {
 	margin-block: var(--size-4-3);
 }
 
-.snowflake-method-delete-character-modal
-	.snowflake-method-delete-character-group h3 {
+.snowflake-method-delete-member-modal
+	.snowflake-method-delete-member-group h3 {
 	margin: 0 0 var(--size-4-1);
 	color: var(--text-normal);
 	font-size: var(--font-ui-small);
@@ -2146,8 +2146,8 @@
 
 /* One edge only here: the indent the bullets already sit in answers for the other,
    so holding both would push the list in from the left for no reason. */
-.snowflake-method-delete-character-modal
-	.snowflake-method-delete-character-group ul {
+.snowflake-method-delete-member-modal
+	.snowflake-method-delete-member-group ul {
 	margin: 0;
 	padding-inline-start: var(--size-4-4);
 	max-height: 12rem;
@@ -2157,10 +2157,10 @@
 	font-size: var(--font-ui-small);
 }
 
-/* The scenes losing a point of view need a decision, not just a heads-up, so
-   they carry the same warm marker the scene table uses. */
-.snowflake-method-delete-character-modal
-	.snowflake-method-delete-character-group.needs-decision h3 {
+/* The notes left with a gap need a decision, not just a heads-up, so they carry
+   the same warm marker the scene table uses. */
+.snowflake-method-delete-member-modal
+	.snowflake-method-delete-member-group.needs-decision h3 {
 	color: var(--color-orange, var(--text-warning));
 }
 
@@ -2361,7 +2361,7 @@
 .modal.snowflake-method-compact-form-modal,
 .modal.snowflake-method-character-modal,
 .modal.snowflake-method-scene-modal,
-.modal.snowflake-method-delete-character-modal {
+.modal.snowflake-method-delete-member-modal {
 	padding-inline-start: max(
 		var(--size-4-4),
 		var(--snowflake-method-scrollbar-width, 0px)
@@ -3027,14 +3027,33 @@
 	}
 }
 
+/* The member forms stand as wide as the health report, and spend the extra on
+   air at both edges rather than on wider fields: the form inside is the width
+   it always was, framed rather than stretched. The gutter is written the way
+   the dialogs above write theirs, so the fields hold still when a scrollbar
+   arrives. */
 .snowflake-method-character-modal {
-	width: min(44rem, calc(100vw - 2rem));
-	max-width: 44rem;
+	width: min(46rem, calc(100vw - 2rem));
+	max-width: 46rem;
 }
 
 .snowflake-method-scene-modal {
-	width: min(44rem, calc(100vw - 2rem));
-	max-width: 44rem;
+	width: min(46rem, calc(100vw - 2rem));
+	max-width: 46rem;
+}
+
+.modal:is(
+		.snowflake-method-character-modal,
+		.snowflake-method-scene-modal
+	) {
+	padding-inline-start: max(
+		var(--size-4-8),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
+	padding-inline-end: max(
+		0px,
+		calc(var(--size-4-8) - var(--snowflake-method-scrollbar-width, 0px))
+	);
 }
 
 /*
@@ -3539,6 +3558,20 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* A field cannot drop what an author wrote, so what it can no longer place it
+   marks instead: the same warm orange a row gives a name with something wrong,
+   here on the entry that needs settling rather than on the whole field.
+   Written past the field's own selectors, which are more specific than a lone
+   class and would otherwise keep the text at its ordinary colour. */
+.snowflake-method-option-picker-missing,
+.snowflake-method-option-picker-missing > span:first-child,
+.snowflake-method-record-line-value.snowflake-method-option-picker-missing,
+.snowflake-method-option-picker
+	input.snowflake-method-option-picker-input.snowflake-method-option-picker-missing {
+	color: var(--color-orange, var(--text-warning));
+	font-weight: var(--font-semibold);
 }
 
 .snowflake-method-option-picker-remove.clickable-icon {
@@ -4056,8 +4089,12 @@
 	height: var(--icon-xs);
 }
 
+/* Wide enough that a sentence written as one line reads as one line: the copy
+   column has to hold the longest of them, and it sits beside the callout's icon
+   and the row's buttons. Narrow windows still win, so the dialog never reaches
+   past the window it opens in. */
 .snowflake-method-repair-report-modal {
-	width: min(42rem, calc(100vw - 2rem));
+	width: min(46rem, calc(100vw - 2rem));
 }
 
 /* The held gutter is what keeps the report clear of its own scrollbar now, so the
@@ -4154,12 +4191,17 @@
 	list-style: none;
 }
 
+/* The rows sit beside the callout's icon, so the text begins one icon and one
+   gap in from the edge. The buttons end the same distance from the other edge,
+   which is what makes the row read as centred rather than pushed right — and
+   it keeps the chevron well clear of the dialog's scrollbar. */
 .snowflake-method-repair-report-item {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--size-4-3);
-	padding: var(--size-4-3) 0;
+	padding: var(--size-4-3) calc(var(--size-4-8) + var(--size-4-3))
+		var(--size-4-3) 0;
 	border: 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 	border-radius: 0;
@@ -4212,14 +4254,44 @@
 }
 
 /* One width for every action, so a short label like Edit does not read as a
-   lesser control than Repair sitting beside it in another row. */
+   lesser control than Repair sitting beside it in another row. The chevron is
+   not one of them: it keeps the narrow half of the split button. */
 .snowflake-method-repair-report-item-actions button {
 	min-width: 5.5rem;
+}
+
+.snowflake-method-repair-report-item-actions
+	.snowflake-method-character-action-menu-trigger {
+	min-width: 1.7rem;
+}
+
+/* Both halves of a repair carry the accent, so the line between them is drawn
+   in the text colour that sits on it rather than the border colour that reads
+   against the page. */
+.snowflake-method-repair-report-item-actions
+	.snowflake-method-character-action-menu-trigger.mod-cta {
+	border-inline-start-color: var(--text-on-accent);
 }
 
 .snowflake-method-repair-report-copy > span {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
+}
+
+/* What the check found, between the problem and what to do about it: one entry
+   to a line, in the same monospace the path below is written in, because these
+   are paths too. Long lists scroll rather than pushing the buttons off the
+   bottom of the dialog. */
+.snowflake-method-repair-report-names {
+	margin: 0;
+	padding-inline-start: var(--size-4-4);
+	max-height: 9rem;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	overflow-wrap: anywhere;
 }
 
 /* The instruction is a separate thought from the problem, so it gets its own

@@ -9,6 +9,12 @@ const PICKER_SUGGESTIONS_CLASS = 'snowflake-method-option-picker-suggestions';
 export interface PickerOption {
 	value: string;
 	label: string;
+	/**
+	 * The note or entry this names is no longer in the project. It stays on
+	 * offer, because a field cannot silently drop what an author wrote — but it
+	 * is marked, so it reads as something to settle rather than a choice.
+	 */
+	missing?: boolean;
 }
 
 /** The row offering to create the option the author typed but does not have. */
@@ -149,6 +155,9 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 			return;
 		}
 		el.setText(suggestion.label);
+		if (suggestion.missing === true) {
+			el.addClass('snowflake-method-option-picker-missing');
+		}
 	}
 
 	open(): void {
@@ -343,6 +352,8 @@ interface OptionPickerBaseConfig {
 	/** Shown instead of `placeholder` when the picker has nothing to offer. */
 	emptyPlaceholder: string;
 	required?: boolean;
+	/** Says what is wrong with an option marked missing. */
+	missingLabel?: (label: string) => string;
 	/** Omitted when the field cannot create an option it does not have. */
 	create?: {
 		/** Names the create row, given exactly what was typed. */
@@ -467,11 +478,15 @@ export function buildOptionPicker(
 			const tag = values.createSpan({
 				cls: 'snowflake-method-option-picker-tag',
 			});
+			const missing = option.missing === true;
+			if (missing) tag.addClass('snowflake-method-option-picker-missing');
 			// A narrow field ellipsizes a long label, so the tooltip is the only way
 			// left to read it in full.
 			setTooltip(
 				tag.createSpan({ text: option.label }),
-				option.label,
+				missing
+					? (config.missingLabel?.(option.label) ?? option.label)
+					: option.label,
 			);
 			const remove = tag.createEl('button', {
 				cls: 'snowflake-method-option-picker-remove clickable-icon',
@@ -563,15 +578,26 @@ export function buildOptionField(
 	const frame = buildPickerFrame(container, config, true);
 	const { input } = frame;
 
-	const labelFor = (value: string): string =>
-		config.options().find((option) => option.value === value)?.label ?? '';
+	const optionFor = (value: string): PickerOption | undefined =>
+		config.options().find((option) => option.value === value);
 
 	/** Puts the committed value back on show, discarding an abandoned query. */
 	const showValue = (): void => {
-		input.value = labelFor(config.value());
+		const option = optionFor(config.value());
+		input.value = option?.label ?? '';
 		input.placeholder = frame.deadEnd
 			? config.emptyPlaceholder
 			: config.placeholder;
+		// The value lives in the input here, so the field itself carries the
+		// mark a tag would have carried.
+		const missing = option?.missing === true;
+		input.toggleClass('snowflake-method-option-picker-missing', missing);
+		setTooltip(
+			input,
+			missing
+				? (config.missingLabel?.(option?.label ?? '') ?? (option?.label ?? ''))
+				: '',
+		);
 	};
 
 	// Every option stays on offer, including the one held now: picking another is

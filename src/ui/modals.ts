@@ -21,10 +21,10 @@ import {
 	isTimeKind,
 	normalizeSceneCast,
 	type ProgressStatus,
-	type SceneCharacterUsage,
 	type TimeKind,
 	type WorldbuildingKind,
 } from '../domain';
+import type { MemberUsage } from '../services';
 import type { RecordLine } from '../templates';
 import {
 	CategoryPathField,
@@ -2659,8 +2659,13 @@ export class RepairReportModal extends Modal {
 		private readonly repairItem: (
 			entry: RepairReportViewModel['entries'][number],
 		) => Promise<RepairReportViewModel>,
-		/** Opens a scene's editor. Null when no scene editor is reachable. */
-		private readonly editScene: ((sceneId: string) => Promise<void>) | null = null,
+		/**
+		 * Opens a member's own editor and answers with the report as it reads
+		 * once that form is done. Null when no editor is reachable.
+		 */
+		private readonly editMember:
+			| ((memberId: string) => Promise<RepairReportViewModel>)
+			| null = null,
 	) {
 		super(app);
 		this.setTitle(t('actions.repair'));
@@ -2713,6 +2718,15 @@ export class RepairReportModal extends Modal {
 				});
 				copy.createEl('strong', { text: entry.sectionLabel });
 				copy.createSpan({ text: entry.message });
+				// One to a line, and by path: a comma-separated tail wraps into a
+				// hedge the eye cannot count, and two notes of the same name are
+				// only told apart by where they are filed.
+				if (entry.names.length > 0) {
+					const found = copy.createEl('ul', {
+						cls: 'snowflake-method-repair-report-names',
+					});
+					for (const name of entry.names) found.createEl('li', { text: name });
+				}
 				// Its own line: what is wrong and what to do about it are separate
 				// thoughts, and running them together wraps into an unreadable block.
 				// Where the advice is itself two thoughts -- what this button does,
@@ -2728,67 +2742,149 @@ export class RepairReportModal extends Modal {
 				if (entry.path !== entry.sectionLabel) {
 					copy.createEl('small', { text: entry.path });
 				}
-				if (entry.repairable || entry.canOpen) {
-					const itemActions = item.createDiv({
-						cls: 'snowflake-method-repair-report-item-actions',
-					});
-					if (entry.repairable) {
-						const repair = itemActions.createEl('button', {
-							cls: 'mod-cta',
-							text: this.t('actions.repairItem'),
-							attr: { type: 'button' },
-						});
-						repair.addEventListener('click', () => {
-							repair.disabled = true;
-							void this.repairItem(entry)
-								.then((report) => {
-									this.report = report;
-									this.onOpen();
-								})
-								.catch((error: unknown) => {
-									repair.disabled = false;
-									new Notice(
-										error instanceof Error
-											? error.message
-											: this.t('errors.unknown'),
-									);
-								});
-						});
-					}
-					// A deterministic repair is the primary action. Reaching the note is
-					// reserved for issues that still require an author's judgment.
-					if (!entry.canOpen || entry.repairable) continue;
-					// A scene opens its editor rather than its raw Markdown: the judgment
-					// these issues need is choosing a point of view, which is a field in
-					// that form rather than something to hand-edit in frontmatter.
-					const sceneId = entry.sceneId;
-					const editScene = sceneId === null ? null : this.editScene;
-					const open = itemActions.createEl('button', {
-						text: this.t(
-							editScene === null
-								? 'editor.managedSection.openNote'
-								: 'actions.edit',
-						),
-						attr: { type: 'button' },
-					});
-					open.addEventListener('click', () => {
-						const reach =
-							editScene !== null && sceneId !== null
-								? editScene(sceneId)
-								: this.openFile(entry.path, entry.sectionId);
-						void reach
-							.then(() => this.close())
-							.catch((error: unknown) => {
-								new Notice(
-									error instanceof Error
-										? error.message
-										: this.t('errors.unknown'),
-								);
-							});
-					});
-				}
+				this.renderEntryActions(item, entry);
 			}
 		}
+	}
+
+	/**
+	 * Every way one entry can be settled, as one split button: the most decisive
+	 * way to hand, and the rest a chevron away.
+	 *
+	 * A repair that needs no decision leads, because it is the one action that
+	 * asks nothing of the author; the form comes next, because the decisions
+	 * these issues do need are fields in it; the note itself comes last. None of
+	 * them is hidden behind the others, though — a repairable issue is often one
+	 * an author would rather look at first.
+	 */
+	private renderEntryActions(
+		item: HTMLElement,
+		entry: RepairReportViewModel['entries'][number],
+	): void {
+		const say = (error: unknown): void => {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+		};
+		// Opening a note puts it behind this dialog, so the dialog gets out of the
+		// way. Nothing else here does: a form stacks on top, and a repair leaves
+		// the list to be read again.
+		const reach = (opening: Promise<void>): void => {
+			void opening.then(() => this.close()).catch(say);
+		};
+		const memberId = entry.memberId;
+		const editMember = memberId === null ? null : this.editMember;
+		const actions: Array<{
+			label: string;
+			icon: string;
+			/** True for the one action that settles the row without being asked. */
+			decisive?: boolean;
+			run: (button: HTMLButtonElement | null) => void;
+		}> = [];
+		if (entry.repairable) {
+			actions.push({
+				label: this.t('actions.repairItem'),
+				icon: 'wrench',
+				decisive: true,
+				run: (button) => {
+					if (button !== null) button.disabled = true;
+					void this.repairItem(entry)
+						.then((report) => {
+							this.report = report;
+							this.onOpen();
+						})
+						.catch((error: unknown) => {
+							if (button !== null) button.disabled = false;
+							say(error);
+						});
+				},
+			});
+		}
+		// A member opens its own editor rather than its raw Markdown: the
+		// judgment these issues need — another point of view, another moment,
+		// another sentence — is a field in that form rather than something to
+		// hand-edit in frontmatter.
+		if (entry.canOpen && editMember !== null && memberId !== null) {
+			actions.push({
+				label: this.t('actions.edit'),
+				icon: 'pencil',
+				// The form opens on top of this dialog rather than in place of
+				// it: an author settling several rows would otherwise have to
+				// find their way back to the report after every one. What the
+				// form changed is read back into the list when it closes.
+				run: () => {
+					void editMember(memberId)
+						.then((report) => {
+							this.report = report;
+							this.onOpen();
+						})
+						.catch(say);
+				},
+			});
+		}
+		if (entry.canOpen) {
+			actions.push({
+				label: this.t('editor.managedSection.openNote'),
+				icon: 'file-text',
+				run: () => reach(this.openFile(entry.path, entry.sectionId)),
+			});
+		}
+		const primary = actions[0];
+		if (primary === undefined) return;
+		const itemActions = item.createDiv({
+			cls: 'snowflake-method-repair-report-item-actions',
+		});
+		const split = itemActions.createDiv({
+			cls: 'snowflake-method-character-split-button snowflake-method-base-split-button',
+		});
+		// A repair asks nothing of the author and is done the moment it is
+		// pressed, so it carries the accent; reaching the note is an ordinary
+		// button. Both halves take the colour, or the chevron would read as a
+		// second control rather than the other half of this one.
+		const accent = primary.decisive === true ? ' mod-cta' : '';
+		const button = split.createEl('button', {
+			cls: `snowflake-method-character-edit${accent}`,
+			text: primary.label,
+			attr: { type: 'button' },
+		});
+		button.addEventListener('click', () => {
+			primary.run(button);
+		});
+		// The chevron is part of the shape, not of the offer: a row with one way
+		// to settle it keeps the same button as every other row, with nothing
+		// behind the chevron and no way to press it.
+		const only = actions.length === 1;
+		const trigger = split.createEl('button', {
+			cls: `snowflake-method-character-action-menu-trigger${accent}`,
+			attr: {
+				type: 'button',
+				...(only ? {} : { 'aria-haspopup': 'menu' }),
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		trigger.disabled = only;
+		setIcon(
+			trigger.createSpan({ cls: 'snowflake-method-character-action-menu-icon' }),
+			'chevron-down',
+		);
+		if (only) return;
+		trigger.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(split);
+			// The others first and the primary last: the button already offers it,
+			// so the list reads as what else there is.
+			for (const action of [...actions.slice(1), primary]) {
+				menu.addItem((entryItem) =>
+					entryItem
+						.setTitle(action.label)
+						.setIcon(action.icon)
+						.onClick(() => {
+							action.run(null);
+						}),
+				);
+			}
+			menu.showAtMouseEvent(event);
+		});
 	}
 
 	onClose(): void {
@@ -2844,42 +2940,54 @@ export class ConfirmRestoreBaseModal extends Modal {
 	}
 }
 
-export class ConfirmCharacterDeletionModal extends Modal {
+/**
+ * Asks before a member note that other notes name goes to the trash, and says
+ * what naming it costs them. One dialog for all of them, because a character,
+ * a scene and a worldbuilding note are named the same way and lose the same
+ * things when they go.
+ */
+export class ConfirmMemberDeletionModal extends Modal {
 	private confirmed = false;
 
 	constructor(
 		app: App,
 		private readonly t: Translate,
-		private readonly characterName: string,
-		private readonly usage: SceneCharacterUsage,
+		private readonly memberName: string,
+		private readonly usage: MemberUsage,
 		private readonly onResolve: (confirmed: boolean) => void,
 	) {
 		super(app);
-		this.setTitle(t('modal.deleteCharacter.title'));
-		this.modalEl.addClass('snowflake-method-delete-character-modal');
+		this.setTitle(t('modal.deleteMember.title', { name: memberName }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
 	onOpen(): void {
 		this.contentEl.empty();
 		const affected = new Set([
-			...this.usage.pointOfView,
-			...this.usage.cast,
+			...this.usage.needsDecision,
+			...this.usage.listed,
+			...this.usage.records,
 		]).size;
 		this.contentEl.createEl('p', {
-			text: this.t('modal.deleteCharacter.description', {
-				name: this.characterName,
+			text: this.t('modal.deleteMember.description', {
+				name: this.memberName,
 				count: affected,
 			}),
 		});
-		this.addSceneList(
-			this.t('modal.deleteCharacter.povScenes'),
-			this.usage.pointOfView,
+		this.addNoteList(
+			this.t('modal.deleteMember.needsDecision'),
+			this.usage.needsDecision,
 			true,
 		);
-		this.addSceneList(
-			this.t('modal.deleteCharacter.castScenes', { name: this.characterName }),
-			this.usage.cast,
+		this.addNoteList(
+			this.t('modal.deleteMember.listed', { name: this.memberName }),
+			this.usage.listed,
 			false,
+		);
+		this.addNoteList(
+			this.t('modal.deleteMember.records'),
+			this.usage.records,
+			true,
 		);
 
 		const actions = this.contentEl.createDiv({
@@ -2901,14 +3009,14 @@ export class ConfirmCharacterDeletionModal extends Modal {
 		});
 	}
 
-	private addSceneList(
+	private addNoteList(
 		label: string,
 		titles: readonly string[],
 		needsDecision: boolean,
 	): void {
 		if (titles.length === 0) return;
 		const group = this.contentEl.createDiv({
-			cls: `snowflake-method-delete-character-group${
+			cls: `snowflake-method-delete-member-group${
 				needsDecision ? ' needs-decision' : ''
 			}`,
 		});

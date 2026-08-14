@@ -276,7 +276,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'editor.managedSection.documentLabel': '托管文档',
 	'editor.managedSection.repairConflict':
 		'未进行任何自动修改。请手动检查此托管结构。',
-	'projectStructure.damagedTitle': '雪花写作项目结构需要修复',
+	'projectStructure.damagedTitle': '雪花写作项目需要修复',
 	'projectHealth.needsAttention': '此项目需要检查',
 	'projectHealth.dashboardStructureSummary':
 		'请运行健康检查以查看项目问题和可用操作。',
@@ -285,72 +285,98 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.damagedDescription':
 		'必要的项目元数据、文件夹或笔记缺失或无效。请先检查下列项目。',
 	'projectStructure.issue.missing-metadata-field':
-		'缺少必要的元数据字段“{field}”。',
+		'本项目笔记缺少属性：',
+	'projectStructure.action.missing-metadata-field': '在此修复会将其写回。',
 	'projectStructure.issue.invalid-metadata-field':
-		'必要的元数据字段“{field}”无效。',
-	'projectStructure.issue.missing-directory': '缺少必要的项目文件夹。',
-	'projectStructure.issue.missing-artifact': '缺少必要的项目笔记。',
-	'projectStructure.issue.missing-system-template': '缺少必要的系统模板。',
-	'projectStructure.issue.missing-base': '缺少必要的项目数据库。',
+		'本项目笔记中无法读取的属性：',
+	'projectStructure.action.invalid-metadata-field':
+		'在此修复会写入可读取的值。',
+	'projectStructure.issue.missing-directory': '缺少该项目文件夹。',
+	'projectStructure.action.missing-directory': '在此修复会创建它。',
+	'projectStructure.issue.missing-artifact': '缺少该项目笔记。',
+	'projectStructure.action.missing-artifact':
+		'在此修复会按所属步骤的模板写入它。',
+	'projectStructure.issue.missing-system-template': '缺少该系统模板。',
+	'projectStructure.action.missing-system-template': '在此修复会重新写入它。',
+	'projectStructure.issue.missing-base': '缺少该项目数据库视图。',
+	'projectStructure.action.missing-base': '在此修复会重新写入它。',
 	'projectStructure.issue.missing-definition-node':
-		'该文件夹是一个类别、状态或关系条目，但缺少它的“_self.md”笔记。',
+		'该类别、状态或关系条目没有自己的笔记。',
 	'projectStructure.action.missing-definition-node':
-		'链接指向的是该笔记而非文件夹。\n在此修复会创建它。',
+		'在此修复会创建它。\n链接指向的是该笔记，而不是文件夹。',
 	'projectStructure.issue.unresolved-definition-link':
-		'以下条目指向不存在的类别、状态或关系：{expected}。',
+		'本笔记引用了项目中不存在的条目：',
 	'projectStructure.action.unresolved-definition-link':
-		'文件夹可能已被手动重命名或删除。\n在此修复会按链接创建对应条目。',
+		'在此修复会按链接创建对应条目。\n文件夹可能已被手动重命名或删除。',
 	'projectStructure.issue.stale-definition-alias':
-		'以下条目显示的名称与其指向不再一致：{expected}。',
+		'本笔记显示的名称与其指向不再一致：',
 	'projectStructure.action.stale-definition-alias':
-		'重命名文件夹会更新链接，但不会更新显示的名称。\n在此修复会按链接重写显示名称。',
+		'在此修复会按链接重写显示的名称。\n重命名文件夹会更新链接，但不会更新显示的名称。',
 	'projectStructure.issue.mismatched-character-title':
 		'文件名或标题与角色名称不一致。',
 	'projectStructure.action.mismatched-character-title':
-		'在此修复会将两者改为角色名称。\n若要重命名角色，请在角色表中编辑该角色。',
+		'在此修复会将两者改为所存名称。\n若要重命名角色，请在角色表中编辑该角色。',
 	'projectStructure.issue.mismatched-scene-title':
 		'文件名或标题与场景名称不一致。',
 	'projectStructure.action.mismatched-scene-title':
-		'在此修复会将两者改为场景名称。\n若要重命名场景，请在场景表中编辑该场景。',
+		'在此修复会将两者改为所存名称。\n若要重命名场景，请在场景表中编辑该场景。',
+	'projectStructure.issue.mismatched-entity-title':
+		'文件名或标题与该笔记的名称不一致。',
+	'projectStructure.action.mismatched-entity-title':
+		'在此修复会将两者改为所存名称。\n若要重命名，请在世界观表中编辑该笔记。',
 	'projectStructure.issue.mismatched-project-folder':
 		'文件夹名称与项目名称不一致。',
 	'projectStructure.action.mismatched-project-folder':
 		'在此修复会重命名该文件夹。\n若要重命名项目，请使用项目管理器。',
-	'projectStructure.issue.invalid-system-template': '系统模板与当前项目格式不一致。',
+	'projectStructure.issue.invalid-system-template':
+		'该系统模板与当前项目格式不一致。',
+	'projectStructure.action.invalid-system-template': '在此修复会写入当前版本。',
 	'projectStructure.issue.invalid-artifact-metadata':
-		'必要的笔记元数据缺失或无效。',
-	'projectStructure.issue.dangling-scene-pov': '视点人物“{expected}”不在本项目中。',
-	'projectStructure.action.dangling-scene-pov': '请编辑该场景并另选视点。',
+		'本笔记已无法说明自己是什么。',
+	'projectStructure.action.invalid-artifact-metadata':
+		'在此修复会写回使其可读的属性。',
+	'projectStructure.issue.dangling-scene-pov':
+		'本场景的视点人物已不在项目中：',
+	'projectStructure.action.dangling-scene-pov':
+		'请编辑该场景并另选视点。\n留空会让场景说得比你本意更少，因此保持原样。',
+	'projectStructure.issue.dangling-time-span':
+		'该时段的起点或终点所指的时间笔记已不存在：',
+	'projectStructure.action.dangling-time-span':
+		'请编辑该笔记并另选时刻。\n时段写在两个时刻之间。',
+	'projectStructure.issue.dangling-record-link':
+		'本笔记的记录提到的笔记已不存在：',
+	'projectStructure.action.dangling-record-link':
+		'请编辑该笔记，改写为现在要说的话。\n记录是你写下的句子，因此保持原样。',
 	'projectStructure.issue.unlinked-path':
-		'以下本应是 wiki 链接，却是纯文本：{expected}。',
+		'本笔记在应为链接处存放了纯文本：',
 	'projectStructure.action.unlinked-path':
-		'Obsidian 只会自动更新 wiki 链接。\n在此修复会将它们改写为 wiki 链接。',
+		'在此修复会将它们改写为链接。\n只有链接才会在所指笔记被重命名时自动更新。',
 	'projectStructure.issue.incomplete-link':
-		'以下 wiki 链接是缩短形式：{expected}。',
+		'本笔记以部分路径引用其他笔记：',
 	'projectStructure.action.incomplete-link':
-		'缩短形式的 wiki 链接，在名称被重复使用后便不再唯一。\n在此修复会补上本项目的完整路径。',
+		'在此修复会补上完整路径。\n名称一旦被重复使用，简写便不再唯一。',
 	'projectStructure.issue.foreign-link':
-		'以下 wiki 链接会打开其他项目中的笔记：{expected}。',
-	'projectStructure.action.foreign-link': '修复会将它们从列表中移除。',
+		'本笔记链接到了其他项目：',
+	'projectStructure.action.foreign-link': '在此修复会将它们从列表中移除。',
 	'projectStructure.issue.missing-link':
-		'以下 wiki 链接指向的笔记已不存在：{expected}。',
-	'projectStructure.action.missing-link': '修复会将它们从列表中移除。',
+		'本笔记链接的笔记已不存在：',
+	'projectStructure.action.missing-link': '在此修复会将它们从列表中移除。',
 	'projectStructure.issue.extension-in-link':
-		'仍有 {expected} 个所存链接以“.md”指向笔记。',
+		'以下笔记中的链接仍以“.md”写成：',
 	'projectStructure.action.extension-in-link':
-		'在此修复会将它们全部改为 Obsidian 的写法。',
+		'在此修复会按 Obsidian 的写法重写它们。',
 	'projectStructure.issue.missing-manuscript-sequence':
-		'这些正文笔记在阅读顺序中没有位置：{expected}。',
+		'以下正文笔记在阅读顺序中没有位置：',
 	'projectStructure.action.missing-manuscript-sequence':
-		'在获得位置之前，它们会被排在最后。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
+		'在此修复会按当前的阅读顺序为整部正文重新编号。\n在此之前，它们会被排在最后。',
 	'projectStructure.issue.invalid-manuscript-sequence':
-		'这些正文笔记所存的位置无法读取：{expected}。',
+		'以下正文笔记所存的位置不是整数：',
 	'projectStructure.action.invalid-manuscript-sequence':
-		'正文中的位置必须是整数。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
+		'在此修复会按当前的阅读顺序为整部正文重新编号。',
 	'projectStructure.issue.duplicate-manuscript-sequence':
-		'这些正文笔记占据了同一个位置：{expected}。',
+		'以下正文笔记占据了同一个位置：',
 	'projectStructure.action.duplicate-manuscript-sequence':
-		'在此问题解决之前，它们谁先谁后并不确定。\n在此修复会按当前的阅读顺序为整部正文重新编号。',
+		'在此修复会按当前的阅读顺序为整部正文重新编号。\n在此之前，它们谁先谁后全凭偶然。',
 	'editor.managedSection.issue.missing': '两个边界标记均缺失。',
 	'editor.managedSection.issue.missing-start': '起始边界标记缺失。',
 	'editor.managedSection.issue.missing-end': '结束边界标记缺失。',
@@ -428,6 +454,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'form.category': '类别',
 	'form.category.create': '创建类别「{name}」',
 	'form.category.remove': '移除 {name}',
+	'form.referenceMissing': '已不在本项目中：{name}',
 	'form.definition.desc.category':
 		'类别可以分层，用斜杠分隔，\n例如「种族/精灵」表示「精灵」在「种族」之下（最多 7 层）。',
 	'form.definition.desc.world-status':
@@ -552,10 +579,11 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.characters': '人物',
 	'modal.scene.conflict': '冲突',
 	'modal.scene.pov': '视点人物',
-	'modal.deleteCharacter.title': '删除角色？',
-	'modal.deleteCharacter.description': '删除“{name}”会影响 {count} 个场景。',
-	'modal.deleteCharacter.povScenes': '以下场景需要重新选择视点：',
-	'modal.deleteCharacter.castScenes': '“{name}”将从以下场景的人物中移除：',
+	'modal.deleteMember.title': '删除“{name}”？',
+	'modal.deleteMember.description': '删除“{name}”会影响 {count} 篇其他笔记。',
+	'modal.deleteMember.needsDecision': '以下笔记需要另选一篇笔记替代：',
+	'modal.deleteMember.listed': '“{name}”将从以下笔记中移除：',
+	'modal.deleteMember.records': '以下笔记的记录中提到了它：',
 	'modal.mergeSegments.title': '合并笔记',
 	'modal.mergeSegments.question': '确定要将“{removed}”合并到“{kept}”吗？',
 	'modal.mergeSegments.consequence': '正文会保留，只有笔记本身会被删除。',
@@ -567,7 +595,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.createCharacter': '新建角色“{name}”',
 	'modal.scene.povOmniscient': '全知视角',
 	'table.povMissing': '人物已不存在：{name}',
-	'table.nameDrifted': '笔记已不再使用该名称，请运行健康检查。',
+	'table.referenceMissing': '笔记已不存在：{name}',
 	'modal.scene.povMultiple': '多人视角',
 	'modal.scene.povRequired': '请选择视点人物或视角。',
 	'modal.scene.events': '具体事件',

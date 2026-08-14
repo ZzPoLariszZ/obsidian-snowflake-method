@@ -5,6 +5,7 @@ import {
 	SearchComponent,
 	setIcon,
 	setTooltip,
+	type Modal,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -144,6 +145,16 @@ function categoryWithin(path: string, filter: string): boolean {
 }
 
 /** What a stored term reads as: a link's display name, or the text itself. */
+/** One line of a member's own facts, beneath its name. */
+interface MemberFact {
+	text: string;
+	/** The note it names is gone, so the row shows that instead of the name. */
+	missing: boolean;
+}
+
+/** What a row shows where the note a field names is no longer there. */
+const MISSING_REFERENCE_TEXT = '???';
+
 function termName(raw: string): string {
 	const trimmed = raw.trim();
 	const match = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/u.exec(trimmed);
@@ -654,9 +665,7 @@ export class SnowflakeDashboardView extends ItemView {
 			const damaged = this.getStepHealthIssues(model, step.id).some(
 				(issue) => issue.blocking,
 			);
-			const stepTitle = damaged
-				? `${step.title} · ${this.t('editor.managedSection.damagedTitle')}`
-				: step.title;
+			const stepTitle = step.title;
 			const item = list.createEl('li', {
 				cls: 'snowflake-method-step-item',
 			});
@@ -683,7 +692,7 @@ export class SnowflakeDashboardView extends ItemView {
 				cls: 'snowflake-method-step-indicator',
 				attr: {
 					'aria-label': damaged
-						? this.t('editor.managedSection.damagedTitle')
+						? this.t('projectStructure.damagedTitle')
 						: this.t(`status.${step.status}`),
 				},
 			});
@@ -914,8 +923,14 @@ export class SnowflakeDashboardView extends ItemView {
 				this.selectedPane.kind === 'worldbuilding' &&
 				this.selectedPane.wbKind === kind;
 			const entities = model.worldbuilding[kind];
-			const damaged = entities.some((entity) =>
-				entity.healthIssues.some((issue) => issue.blocking),
+			// Whatever the project reports about one of these notes, the same way
+			// a step carries what is reported about its own: the count steps aside
+			// for the warning, because how many there are matters less than that
+			// one of them needs looking at.
+			const damaged = entities.some(
+				(entity) =>
+					entity.healthIssues.some((issue) => issue.blocking) ||
+					this.memberWarnings(model, entity.path).length > 0,
 			);
 			const title = this.t(`worldbuilding.kind.${kind}`);
 			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
@@ -941,7 +956,11 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			const indicator = button.createSpan({
 				cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
-				attr: { 'aria-label': String(entities.length) },
+				attr: {
+					'aria-label': damaged
+						? this.t('projectStructure.damagedTitle')
+						: String(entities.length),
+				},
 			});
 			if (damaged) {
 				indicator.addClass('has-managed-section-issue');
@@ -978,9 +997,11 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-description',
 			text: this.t(`worldbuilding.kind.${kind}.description`),
 		});
-		const blockingIssues = model.worldbuilding[kind]
-			.flatMap((entity) => entity.healthIssues)
-			.filter((issue) => issue.blocking);
+		const paths = new Set(model.worldbuilding[kind].map((entity) => entity.path));
+		const blockingIssues = [
+			...model.worldbuilding[kind].flatMap((entity) => entity.healthIssues),
+			...model.structureIssues.filter((issue) => paths.has(issue.path)),
+		].filter((issue) => issue.blocking);
 		if (blockingIssues.length > 0) {
 			this.renderManagedSectionIssues(panel, blockingIssues);
 		}
@@ -1243,20 +1264,27 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		this.renderMemberNameCell(nameCell, {
 			name: entity.name,
-			drifted: entity.nameDrifted,
 			damaged,
+			warnings: this.memberWarnings(model, entity.path),
 			aliases: entity.aliases,
 			// What a time note is and what it spans, a fact to a line: its own,
 			// which the other kinds have none of and the columns no room for.
 			details:
 				kind === 'time'
-					? [
-							entity.timeKind === null
-								? ''
-								: this.t(`form.timeKind.${entity.timeKind}`),
-							termName(entity.timeStart),
-							termName(entity.timeEnd),
-						].filter((fact) => fact.length > 0)
+					? ([
+							{
+								text:
+									entity.timeKind === null
+										? ''
+										: this.t(`form.timeKind.${entity.timeKind}`),
+								missing: false,
+							},
+							{
+								text: termName(entity.timeStart),
+								missing: entity.timeStartMissing,
+							},
+							{ text: termName(entity.timeEnd), missing: entity.timeEndMissing },
+						].filter((fact) => fact.text.length > 0) satisfies MemberFact[])
 					: undefined,
 			progressStatus: entity.progressStatus,
 		});
@@ -1287,7 +1315,7 @@ export class SnowflakeDashboardView extends ItemView {
 			]);
 		};
 		const editEntity = (): void => {
-			if (!locked) this.openEntityEditor(model, entity);
+			if (!locked) void this.openEntityEditor(model, entity);
 		};
 		const splitButton = buttonGroup.createDiv({
 			cls: 'snowflake-method-character-split-button',
@@ -1734,12 +1762,54 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
+	/**
+	 * The character's own form, opened wherever a character is reached: from its
+	 * row, and from a health report that leaves the author a decision to make.
+	 */
+	private openCharacterEditor(
+		model: ProjectDashboardModel,
+		character: CharacterViewModel,
+	): Promise<Modal> {
+		return this.memberFormContext(model, 'character').then((context) => {
+			const form = new CreateCharacterModal(
+				this.app,
+				this.t,
+				model.characters
+					.filter((candidate) => candidate.id !== character.id)
+					.map((candidate) => candidate.name),
+				async (request) => {
+					await this.host.updateCharacter(character.id, request);
+					await this.refresh();
+				},
+				{
+					name: character.name,
+					aliases: character.aliases,
+					categoryPaths: character.categoryPaths,
+					progressStatus: character.progressStatus ?? 'not-started',
+					oneSentenceStoryline: character.oneSentenceStoryline,
+					oneParagraphStoryline: character.oneParagraphStoryline,
+					motivation: character.motivation,
+					goal: character.goal,
+					conflict: character.conflict,
+					growth: character.growth,
+					worldStatus: character.worldStatus,
+					relationships: character.relationships,
+					expectedRevision: character.revision,
+				},
+				undefined,
+				context,
+			);
+			form.open();
+			return form;
+		});
+	}
+
 	private openEntityEditor(
 		model: ProjectDashboardModel,
 		entity: WorldbuildingEntityViewModel,
-	): void {
-		void this.memberFormContext(model, entity.kind).then((context) => {
-			new EntityFormModal(
+	): Promise<Modal> {
+		return this.memberFormContext(model, entity.kind).then((context) => {
+			const form = new EntityFormModal(
 				this.app,
 				this.t,
 				entity.kind,
@@ -1765,7 +1835,9 @@ export class SnowflakeDashboardView extends ItemView {
 					relationships: entity.relationships,
 					expectedRevision: entity.revision,
 				},
-			).open();
+			);
+			form.open();
+			return form;
 		});
 	}
 
@@ -2057,13 +2129,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-repair-callout-copy',
 		});
 		const hasStructureIssue = issues.some((issue) => issue.kind === 'structure');
-		copy.createEl('h3', {
-			text: this.t(
-				hasStructureIssue
-					? 'projectStructure.damagedTitle'
-					: 'editor.managedSection.damagedTitle',
-			),
-		});
+		copy.createEl('h3', { text: this.t('projectStructure.damagedTitle') });
 		copy.createEl('p', {
 			text: this.t(
 				hasStructureIssue
@@ -2103,13 +2169,48 @@ export class SnowflakeDashboardView extends ItemView {
 				await this.refresh();
 				return this.host.checkCurrentProject();
 			},
-			async (sceneId) => {
-				const model = this.renderedModel;
-				const scene = model?.scenes.find((candidate) => candidate.id === sceneId);
-				if (model === undefined || model === null || scene === undefined) return;
-				this.openSceneEditor(model, scene);
+			async (memberId) => {
+				await this.editMemberById(memberId);
+				await this.refresh();
+				return this.host.checkCurrentProject();
 			},
 		).open();
+	}
+
+	/**
+	 * Opens the form of whichever member a report row is about. Public because
+	 * the same report opens from the command palette, where the plugin has the
+	 * issues but not the model these forms are filled from.
+	 */
+	async editMemberById(memberId: string): Promise<void> {
+		const model = this.renderedModel;
+		if (model === undefined || model === null) return;
+		const scene = model.scenes.find((candidate) => candidate.id === memberId);
+		const character = model.characters.find(
+			(candidate) => candidate.id === memberId,
+		);
+		const entity = WORLDBUILDING_KINDS.flatMap(
+			(kind) => model.worldbuilding[kind],
+		).find((candidate) => candidate.id === memberId);
+		const form =
+			scene !== undefined
+				? await this.openSceneEditor(model, scene)
+				: character !== undefined
+					? await this.openCharacterEditor(model, character)
+					: entity !== undefined
+						? await this.openEntityEditor(model, entity)
+						: null;
+		if (form === null) return;
+		// Whoever opened the form is still on screen behind it and wants to know
+		// when it is done. A modal announces that by closing, and nothing else,
+		// so its own closing is what the wait is on.
+		await new Promise<void>((resolve) => {
+			const closed = form.onClose.bind(form);
+			form.onClose = (): void => {
+				closed();
+				resolve();
+			};
+		});
 	}
 
 	/**
@@ -2126,18 +2227,25 @@ export class SnowflakeDashboardView extends ItemView {
 		cell: HTMLElement,
 		member: {
 			name: string;
-			drifted: boolean;
 			damaged: boolean;
+			/** What the project reports about this note, a sentence to a problem. */
+			warnings: readonly string[];
 			aliases: readonly string[];
 			/** The member's own facts, one to a line, where its kind has any. */
-			details?: readonly string[];
+			details?: readonly MemberFact[];
 			progressStatus: ProgressStatus | null;
 		},
 	): void {
-		setTooltip(cell, member.name);
+		// The name is the one thing every row shows, so it is where a row says
+		// that something about its note needs looking at.
+		const troubles = [
+			...member.warnings,
+			...(member.damaged ? [this.t('editor.managedSection.damagedTitle')] : []),
+		];
+		setTooltip(cell, [member.name, ...troubles].join('\n'));
 		const block = cell.createDiv({ cls: 'snowflake-method-member-name-cell' });
 		const line = block.createDiv({ cls: 'snowflake-method-member-name-line' });
-		this.renderTableName(line, member.name, member.drifted);
+		this.renderTableName(line, member.name, troubles);
 		if (member.damaged) {
 			const warning = line.createSpan({
 				cls: 'snowflake-method-table-health-warning',
@@ -2156,12 +2264,22 @@ export class SnowflakeDashboardView extends ItemView {
 			setTooltip(aliasEl, `${this.t('form.aliases')}: ${aliases}`);
 		}
 		for (const fact of member.details ?? []) {
-			if (fact.length === 0) continue;
-			const detail = block.createDiv({
-				cls: 'snowflake-method-member-detail',
-				text: fact,
-			});
-			setTooltip(detail, fact);
+			if (fact.text.length === 0) continue;
+			const detail = block.createDiv({ cls: 'snowflake-method-member-detail' });
+			// A fact whose note is gone has nothing left to show, so it shows that:
+			// the same three marks a point of view nobody answers to gets.
+			if (fact.missing) {
+				const label = this.t('table.referenceMissing', { name: fact.text });
+				detail.createSpan({
+					cls: 'snowflake-method-table-missing-reference',
+					text: MISSING_REFERENCE_TEXT,
+					attr: { 'aria-label': label },
+				});
+				setTooltip(detail, label);
+				continue;
+			}
+			detail.setText(fact.text);
+			setTooltip(detail, fact.text);
 		}
 		if (member.progressStatus !== null) {
 			block.createDiv({
@@ -2176,18 +2294,30 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderTableName(
 		cell: HTMLElement,
 		name: string,
-		drifted: boolean,
+		troubles: readonly string[],
 	): void {
-		if (!drifted) {
+		if (troubles.length === 0) {
 			cell.createSpan({ text: name });
 			return;
 		}
-		const label = this.t('table.nameDrifted');
 		cell.createSpan({
 			cls: 'snowflake-method-table-missing-reference',
 			text: name,
-			attr: { 'aria-label': label},
+			attr: { 'aria-label': troubles.join('\n') },
 		});
+	}
+
+	/**
+	 * What the project reports about one note, as sentences. The rows show them
+	 * on the name; the health pane shows the same sentences with what to do.
+	 */
+	private memberWarnings(
+		model: ProjectDashboardModel,
+		path: string,
+	): string[] {
+		return model.structureIssues
+			.filter((issue) => issue.path === path)
+			.map((issue) => issue.message);
 	}
 
 	private renderStepDescription(
@@ -3250,8 +3380,8 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		this.renderMemberNameCell(nameCell, {
 			name: character.name,
-			drifted: character.nameDrifted,
 			damaged: characterDamaged,
+			warnings: this.memberWarnings(model, character.path),
 			aliases: character.aliases,
 			progressStatus: character.progressStatus,
 		});
@@ -3279,36 +3409,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const editCharacter = (): void => {
 			if (model.readOnly || character.readOnly || characterDamaged) return;
-			void this.memberFormContext(model, 'character').then((context) => {
-				new CreateCharacterModal(
-					this.app,
-					this.t,
-					model.characters
-						.filter((candidate) => candidate.id !== character.id)
-						.map((candidate) => candidate.name),
-					async (request) => {
-						await this.host.updateCharacter(character.id, request);
-						await this.refresh();
-					},
-					{
-						name: character.name,
-						aliases: character.aliases,
-						categoryPaths: character.categoryPaths,
-						progressStatus: character.progressStatus ?? 'not-started',
-						oneSentenceStoryline: character.oneSentenceStoryline,
-						oneParagraphStoryline: character.oneParagraphStoryline,
-						motivation: character.motivation,
-						goal: character.goal,
-						conflict: character.conflict,
-						growth: character.growth,
-						worldStatus: character.worldStatus,
-						relationships: character.relationships,
-						expectedRevision: character.revision,
-					},
-					undefined,
-					context,
-				).open();
-			});
+			void this.openCharacterEditor(model, character);
 		};
 		const openCharacter = (): void => {
 			void this.host.openManagedFile(
@@ -3628,8 +3729,8 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		this.renderMemberNameCell(titleCell, {
 			name: scene.title,
-			drifted: scene.nameDrifted,
 			damaged: sceneDamaged,
+			warnings: this.memberWarnings(model, scene.path),
 			aliases: scene.aliases,
 			progressStatus: scene.progressStatus,
 		});
@@ -3642,8 +3743,8 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			povCell.createSpan({
 				cls: 'snowflake-method-table-missing-reference',
-				text: '???',
-				attr: { 'aria-label': missingLabel},
+				text: MISSING_REFERENCE_TEXT,
+				attr: { 'aria-label': missingLabel },
 			});
 		} else {
 			povCell.setText(scene.povName);
@@ -3660,7 +3761,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const editScene = (): void => {
 			if (model.readOnly || scene.readOnly || sceneDamaged) return;
-			this.openSceneEditor(model, scene);
+			void this.openSceneEditor(model, scene);
 		};
 		const openScene = (): void => {
 			void this.host.openManagedFile(
@@ -4214,9 +4315,9 @@ export class SnowflakeDashboardView extends ItemView {
 	private openSceneEditor(
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
-	): void {
-		void this.memberFormContext(model, 'scene').then((context) => {
-			new CreateSceneModal(
+	): Promise<Modal> {
+		return this.memberFormContext(model, 'scene').then((context) => {
+			const form = new CreateSceneModal(
 				this.app,
 				this.t,
 				model.characters.map((character) => ({
@@ -4248,7 +4349,9 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 				this.creatingCharacter(model),
 				context,
-			).open();
+			);
+			form.open();
+			return form;
 		});
 	}
 

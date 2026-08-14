@@ -68,6 +68,8 @@ export interface ManagedSectionIssueViewModel {
 	sectionLabel: string;
 	code: MarkerIssueCode | ProjectStructureIssueCode;
 	message: string;
+	/** What the issue found, one to a line under the message. */
+	names: string[];
 	/** What to do about it, shown on its own line. Null when the message says all. */
 	action: string | null;
 	blocking: boolean;
@@ -99,8 +101,6 @@ export interface CharacterViewModel {
 	relationships: RecordLine[];
 	revision: string;
 	readOnly: boolean;
-	/** The note's file name or heading has drifted from this name. */
-	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
 
@@ -128,8 +128,6 @@ export interface SceneViewModel {
 	events: string;
 	revision: string;
 	readOnly: boolean;
-	/** The note's file name or heading has drifted from this title. */
-	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
 
@@ -148,12 +146,13 @@ export interface WorldbuildingEntityViewModel {
 	/** Raw stored terms, wikilinks or plain text; empty when absent. */
 	timeStart: string;
 	timeEnd: string;
+	/** The stored start or end names a note the Vault no longer has. */
+	timeStartMissing: boolean;
+	timeEndMissing: boolean;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	revision: string;
 	readOnly: boolean;
-	/** The note's file name or heading has drifted from this name. */
-	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
 
@@ -185,12 +184,14 @@ export interface RepairReportEntryViewModel {
 	sectionLabel: string;
 	status: 'unchanged' | 'conflict';
 	message: string;
+	/** What the check found, one to a line under the message. */
+	names: string[];
 	action: string | null;
 	canOpen: boolean;
 	repairable: boolean;
 	repairField: string | null;
-	/** Set when the entry is a scene, so the report can offer its editor. */
-	sceneId: string | null;
+	/** Set when the entry is a member note, so the report can offer its form. */
+	memberId: string | null;
 }
 
 export interface RepairReportViewModel {

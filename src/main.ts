@@ -33,7 +33,6 @@ import {
 	type StepId,
 	type StepStatus,
 	type WorldbuildingKind,
-	scenesUsingCharacter,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -94,6 +93,7 @@ import {
 } from './settings';
 import {
 	inspectManagedDocumentSections,
+	parseTerm,
 	readMarkedSection,
 	type ManagedMarkerIssue,
 	type ManagedSectionsInspection,
@@ -113,7 +113,7 @@ import {
 	type NotePaneRoute,
 } from './ui/note-pane';
 import {
-	ConfirmCharacterDeletionModal,
+	ConfirmMemberDeletionModal,
 	CreateCharacterModal,
 	CreateProjectModal,
 	CreateSceneModal,
@@ -794,21 +794,9 @@ export default class SnowflakeMethodPlugin
 		for (const step of [1, 2, 4, 6] as const) {
 			artifactMap.set(step, project.artifacts[step] ?? null);
 		}
-		// A name that drifted from its note is reported against that note, and the
-		// row for it is the one place an author is looking at the name itself.
-		const driftedNames = new Set(
-			project.structureIssues
-				.filter(
-					(issue) =>
-						issue.code === 'mismatched-character-title' ||
-						issue.code === 'mismatched-scene-title',
-				)
-				.map((issue) => issue.path),
-		);
 		const characterModels = characters.map((character) =>
 			this.characterViewModel(
 				character,
-				driftedNames,
 				projectT,
 				definitionRootPathFor(project, 'character', 'category'),
 			),
@@ -820,7 +808,6 @@ export default class SnowflakeMethodPlugin
 			this.sceneViewModel(
 				scene,
 				characterNames,
-				driftedNames,
 				projectT,
 				definitionRootPathFor(project, 'scene', 'category'),
 			),
@@ -929,13 +916,16 @@ export default class SnowflakeMethodPlugin
 			structureIssues: project.structureIssues.map((issue) => ({
 				path: issue.path,
 				sectionId: null,
-				sectionLabel:
-					issue.field ?? issue.path.split('/').pop() ?? issue.path,
+				// The note, always: what was found inside it is the list's to say,
+				// and a row titled by a property key looked like a different kind
+				// of row from every other one.
+				sectionLabel: issue.path.split('/').pop() ?? issue.path,
 				code: issue.code,
 				message: projectT(`projectStructure.issue.${issue.code}`, {
 					field: issue.field ?? '',
 					expected: issue.expected ?? '',
 				}),
+				names: issue.names ?? [],
 				action: this.optionalTranslation(
 					projectT,
 					`projectStructure.action.${issue.code}`,
@@ -1104,34 +1094,56 @@ export default class SnowflakeMethodPlugin
 		if (character === undefined) {
 			throw new ManagedFileNotFoundError(`character:${id}`);
 		}
-		const file = this.app.vault.getFileByPath(character.path);
+		await this.deleteMember(
+			project,
+			character,
+			expectedRevision,
+			this.t('messages.characterDeleted'),
+		);
+	}
+
+	/**
+	 * Sends one member note to the trash, asking first when other notes name
+	 * it. Obsidian's delete prompt sees a note rather than a member, so a note
+	 * the project still points at gets a confirmation that says who points at
+	 * it and what that costs them; with nothing pointing at it, the standard
+	 * prompt is the right one.
+	 */
+	private async deleteMember(
+		project: ProjectSnapshot,
+		member: { path: string; name: string; revision: string },
+		expectedRevision: string,
+		deleted: string,
+	): Promise<void> {
+		const file = this.app.vault.getFileByPath(member.path);
 		if (!(file instanceof TFile)) {
-			throw new ManagedFileNotFoundError(character.path);
+			throw new ManagedFileNotFoundError(member.path);
 		}
-		if (character.revision !== expectedRevision) {
+		if (member.revision !== expectedRevision) {
 			this.rethrowLocalizedMutationError(
 				new ConcurrentChangeError(
-					character.path,
+					member.path,
 					expectedRevision,
-					character.revision,
+					member.revision,
 				),
 			);
 		}
-		// Obsidian's delete prompt sees a note, not a cast member, so a character
-		// scenes still reference gets its own confirmation that names them. With
-		// nothing referencing them, the standard prompt is the right one.
-		const usage = scenesUsingCharacter(project.scenes, character.path);
-		if (usage.pointOfView.length === 0 && usage.cast.length === 0) {
+		const usage = await this.projects.memberUsage(project, member.path);
+		if (
+			usage.needsDecision.length === 0 &&
+			usage.listed.length === 0 &&
+			usage.records.length === 0
+		) {
 			if (!(await this.app.fileManager.promptForDeletion(file))) return;
-			new Notice(this.t('messages.characterDeleted'));
+			new Notice(deleted);
 			return;
 		}
 
 		const confirmed = await new Promise<boolean>((resolve) => {
-			new ConfirmCharacterDeletionModal(
+			new ConfirmMemberDeletionModal(
 				this.app,
 				this.t,
-				character.name,
+				member.name,
 				usage,
 				resolve,
 			).open();
@@ -1139,11 +1151,11 @@ export default class SnowflakeMethodPlugin
 		if (!confirmed) return;
 		// trashFile honours the same trash preference the prompt would have, so
 		// replacing that dialog does not quietly change where the note goes.
-		await this.projects.repository.trashFile(character.path);
+		await this.projects.repository.trashFile(member.path);
 		// After the delete, so a failure here leaves links the health check can
-		// still report rather than a cast edited for a deletion that never landed.
-		await this.projects.removeCharacterFromScenes(project, character.path);
-		new Notice(this.t('messages.characterDeleted'));
+		// still report rather than lists edited for a deletion that never landed.
+		await this.projects.removeMemberReferences(project, member.path);
+		new Notice(deleted);
 	}
 
 	async createScene(
@@ -1251,17 +1263,12 @@ export default class SnowflakeMethodPlugin
 		if (entity === undefined) {
 			throw new ManagedFileNotFoundError(`entity:${id}`);
 		}
-		const file = this.app.vault.getFileByPath(entity.path);
-		if (!(file instanceof TFile)) {
-			throw new ManagedFileNotFoundError(entity.path);
-		}
-		if (entity.revision !== expectedRevision) {
-			this.rethrowLocalizedMutationError(
-				new ConcurrentChangeError(entity.path, expectedRevision, entity.revision),
-			);
-		}
-		if (!(await this.app.fileManager.promptForDeletion(file))) return;
-		new Notice(this.t('messages.entityDeleted'));
+		await this.deleteMember(
+			project,
+			entity,
+			expectedRevision,
+			this.t('messages.entityDeleted'),
+		);
 	}
 
 	async reorderEntity(
@@ -1349,21 +1356,12 @@ export default class SnowflakeMethodPlugin
 		if (scene === undefined) {
 			throw new ManagedFileNotFoundError(`scene:${id}`);
 		}
-		const file = this.app.vault.getFileByPath(scene.path);
-		if (!(file instanceof TFile)) {
-			throw new ManagedFileNotFoundError(scene.path);
-		}
-		if (scene.revision !== expectedRevision) {
-			this.rethrowLocalizedMutationError(
-				new ConcurrentChangeError(
-					scene.path,
-					expectedRevision,
-					scene.revision,
-				),
-			);
-		}
-		if (!(await this.app.fileManager.promptForDeletion(file))) return;
-		new Notice(this.t('messages.sceneDeleted'));
+		await this.deleteMember(
+			project,
+			{ path: scene.path, name: scene.title, revision: scene.revision },
+			expectedRevision,
+			this.t('messages.sceneDeleted'),
+		);
 	}
 
 	async setStepStatus(step: StepId, status: StepStatus): Promise<void> {
@@ -1664,12 +1662,21 @@ export default class SnowflakeMethodPlugin
 					sectionLabel: issue.sectionLabel,
 					status: 'conflict',
 					message: issue.message,
+					names: issue.names,
 					action: issue.action,
 					canOpen: issue.canOpen,
 					repairable: issue.repairable,
 					repairField: issue.repairField,
-					sceneId:
-						model.scenes.find((scene) => scene.path === issue.path)?.id ?? null,
+					// Whichever member the issue is about, so the report can offer the
+					// form rather than the raw note it would otherwise open.
+					memberId:
+						[
+							...model.characters,
+							...model.scenes,
+							...WORLDBUILDING_KINDS.flatMap(
+								(kind) => model.worldbuilding[kind],
+							),
+						].find((member) => member.path === issue.path)?.id ?? null,
 				}),
 			);
 			return {
@@ -1688,10 +1695,11 @@ export default class SnowflakeMethodPlugin
 						path: recent,
 						sectionId: null,
 						action: null,
-						sceneId: null,
+						memberId: null,
 						sectionLabel: this.t('editor.managedSection.documentLabel'),
 						status: 'conflict',
 						message,
+						names: [],
 						canOpen: this.app.vault.getFileByPath(recent) instanceof TFile,
 						repairable: false,
 						repairField: null,
@@ -3334,7 +3342,6 @@ export default class SnowflakeMethodPlugin
 
 	private characterViewModel(
 		character: CharacterRecord,
-		driftedNames: ReadonlySet<string>,
 		t: Translate,
 		categoryRoot: string,
 	): CharacterViewModel {
@@ -3361,7 +3368,6 @@ export default class SnowflakeMethodPlugin
 			relationships: character.relationships,
 			revision: character.revision,
 			readOnly: character.readOnly,
-			nameDrifted: driftedNames.has(character.path),
 			healthIssues: this.issueViewModels(
 				character.path,
 				character.sectionHealth,
@@ -3373,7 +3379,6 @@ export default class SnowflakeMethodPlugin
 	private sceneViewModel(
 		scene: SceneRecord,
 		characterNames: ReadonlyMap<string, string>,
-		driftedNames: ReadonlySet<string>,
 		t: Translate,
 		categoryRoot: string,
 	): SceneViewModel {
@@ -3416,7 +3421,6 @@ export default class SnowflakeMethodPlugin
 			events: scene.events,
 			revision: scene.revision,
 			readOnly: scene.readOnly,
-			nameDrifted: driftedNames.has(scene.path),
 			healthIssues: this.issueViewModels(
 				scene.path,
 				scene.sectionHealth,
@@ -3445,13 +3449,29 @@ export default class SnowflakeMethodPlugin
 			timeKind: entity.timeKind,
 			timeStart: entity.timeStart,
 			timeEnd: entity.timeEnd,
+			timeStartMissing: this.termMissing(entity.timeStart, entity.path),
+			timeEndMissing: this.termMissing(entity.timeEnd, entity.path),
 			worldStatus: entity.worldStatus,
 			relationships: entity.relationships,
 			revision: entity.revision,
 			readOnly: entity.readOnly,
-			nameDrifted: false,
 			healthIssues: this.issueViewModels(entity.path, entity.sectionHealth, t),
 		};
+	}
+
+	/**
+	 * Whether a stored term names a note that is no longer there. Resolved the
+	 * way the health check resolves it, so the table and the report never
+	 * disagree about what is missing.
+	 */
+	private termMissing(raw: string, sourcePath: string): boolean {
+		const value = raw.trim();
+		if (value.length === 0) return false;
+		const term = parseTerm(value);
+		return (
+			term.kind === 'link' &&
+			this.projects.repository.resolveLink(term.path, sourcePath) === null
+		);
 	}
 
 	private issueViewModels(
@@ -3466,6 +3486,9 @@ export default class SnowflakeMethodPlugin
 			code: issue.code,
 			action: null,
 			message: t(`editor.managedSection.issue.${issue.code}`),
+			// A marker issue is about the section it names and nothing else, so
+			// it has no list of its own to show.
+			names: [],
 			blocking:
 				issue.code !== 'unknown-section' &&
 				issue.code !== 'unrecognized-record',
@@ -3607,6 +3630,10 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private showRepairReport(report: RepairReportViewModel): void {
+		// The forms these rows offer are filled from the dashboard's own model,
+		// so the report opened from the command palette offers them only while a
+		// dashboard for this project is open to ask.
+		const dashboard = this.dashboardViewForRecentProject();
 		new RepairReportModal(
 			this.app,
 			this.t,
@@ -3621,7 +3648,22 @@ export default class SnowflakeMethodPlugin
 				await this.refreshDashboards();
 				return this.checkCurrentProject();
 			},
+			dashboard === null
+				? null
+				: async (memberId) => {
+						await dashboard.editMemberById(memberId);
+						await this.refreshDashboards();
+						return this.checkCurrentProject();
+					},
 		).open();
+	}
+
+	/** The open dashboard showing the project the report is about, if any. */
+	private dashboardViewForRecentProject(): SnowflakeDashboardView | null {
+		const recent = this.settings.recentProjectPath;
+		if (recent === null) return null;
+		const leaf = this.findOpenProjectLeaf(recent);
+		return leaf?.view instanceof SnowflakeDashboardView ? leaf.view : null;
 	}
 }
 

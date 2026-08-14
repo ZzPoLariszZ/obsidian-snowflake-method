@@ -159,9 +159,15 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   // has to say which name it means and where that name is changed.
   "mismatched-character-title",
   "mismatched-scene-title",
+  "mismatched-entity-title",
   "mismatched-project-folder",
   "invalid-artifact-metadata",
+  // One per reference nothing can be done about automatically: which note
+  // takes the place of the one that went is the author's decision, and a
+  // record line is a sentence they wrote.
   "dangling-scene-pov",
+  "dangling-time-span",
+  "dangling-record-link",
   // One per thing that can be wrong with a stored link, because each is mended
   // a different way: written out in full, or taken off the list.
   "unlinked-path",
@@ -192,10 +198,38 @@ export interface ProjectStructureIssue {
   path: string;
   stepIds: StepId[];
   field?: string;
+  /**
+   * One value the sentence itself needs: a count, a document type, the name a
+   * note should be filed under. Never a list — what the report names, it names
+   * in `names`.
+   */
   expected?: string;
+  /**
+   * What the issue found, one entry to a line. Written as the path inside the
+   * project wherever the project knows one, so two notes sharing a name are
+   * told apart, and as the link stored it when it names nothing the project
+   * can place.
+   */
+  names?: string[];
   canOpen: boolean;
   /** True only when the issue has a deterministic, content-preserving fix. */
   repairable: boolean;
+}
+
+/**
+ * Which notes name one member, split because deleting it costs each kind
+ * something different: an entry in a list can simply go, a field holding one
+ * note leaves the note that holds it needing a decision only the author can
+ * make, and a record line is a sentence the author wrote about the two of
+ * them. A note in more than one of those appears in each.
+ */
+export interface MemberUsage {
+  /** Notes listing it among others, which lose the entry and nothing else. */
+  listed: string[];
+  /** Notes naming it where only one note fits: a point of view, a period end. */
+  needsDecision: string[];
+  /** Notes whose world status or relationships mention it. */
+  records: string[];
 }
 
 export interface CreateProjectOptions {

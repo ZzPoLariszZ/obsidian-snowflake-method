@@ -138,6 +138,7 @@ import {
   type ManuscriptSegmentRecord,
 } from "./manuscript-service";
 import {
+  isMemberDocumentType,
   planFieldsBlockReconcile,
   type MemberDocumentType,
 } from "./mirror-sync";
@@ -155,6 +156,7 @@ import {
   type CharacterPatch,
   type CharacterRecord,
   type CreateProjectOptions,
+  type MemberUsage,
   type ProjectFrontmatterPatch,
   type ProjectDirectoryKey,
   type ProjectPathLayout,
@@ -579,6 +581,10 @@ export class SnowflakeProjectService {
    * The frontmatter that would rewrite one note's links without the ".md"
    * Obsidian never writes, and the number of links that would change. Null when
    * none of them carry one, which is every note written since.
+   *
+   * Every key that holds a link is read, not the three the first release
+   * happened to write: a scene names a time and a place, a period names its
+   * ends, and every member carries its categories.
    */
   private extensionTidyPatch(
     record: ManagedFileRecord,
@@ -586,29 +592,29 @@ export class SnowflakeProjectService {
     if (record.readOnly) return null;
     const patch: ManagedFrontmatter = {};
     let links = 0;
-    for (const key of [FRONTMATTER_KEYS.draft, FRONTMATTER_KEYS.pov]) {
+    for (const field of STORED_LINK_FIELDS) {
+      const stored = record.frontmatter[field.key];
+      if (field.list) {
+        const raw = storedList(stored);
+        if (raw === null) continue;
+        const next = raw.map((entry) => {
+          const value = storedReference(field, entry);
+          const tidied =
+            value === null ? null : this.tidiedLink(value, record.path);
+          if (tidied === null) return entry;
+          links += 1;
+          return tidied;
+        });
+        if (fingerprint(next) !== fingerprint(raw)) patch[field.key] = next;
+        continue;
+      }
       const tidied = this.tidiedLink(
-        asOptionalString(record.frontmatter[key]),
+        storedReference(field, stored),
         record.path,
       );
       if (tidied === null) continue;
-      patch[key] = tidied;
+      patch[field.key] = tidied;
       links += 1;
-    }
-    const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
-    const rawCharacters: unknown[] = Array.isArray(stored)
-      ? (stored as unknown[])
-      : typeof stored === "string"
-        ? [stored]
-        : [];
-    const next = rawCharacters.map((entry) => {
-      const tidied = this.tidiedLink(asOptionalString(entry), record.path);
-      if (tidied === null) return entry;
-      links += 1;
-      return tidied;
-    });
-    if (fingerprint(next) !== fingerprint(rawCharacters)) {
-      patch[FRONTMATTER_KEYS.sceneCharacters] = next;
     }
     return links > 0 ? { patch, links } : null;
   }
@@ -1200,23 +1206,20 @@ export class SnowflakeProjectService {
 
     if (
       issue.code === "mismatched-character-title" ||
-      issue.code === "mismatched-scene-title"
+      issue.code === "mismatched-scene-title" ||
+      issue.code === "mismatched-entity-title"
     ) {
       // Frontmatter is the name the dashboard shows, so it wins; the heading and
       // file name are brought to it rather than the other way around.
       // safeFileName is lossy, so a file name cannot reconstruct a title.
       const record = await this.repository.readManaged(normalized);
-      const title =
-        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) ??
-        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]);
+      const title = memberStoredTitle(record);
       if (title === null) {
         throw new Error(`No stored name was found for "${normalized}".`);
       }
       await this.syncNoteHeading(normalized, title);
       const renamed = await this.renameManagedNote(normalized, title);
-      if (documentTypeOf(record.frontmatter) === "character") {
-        await this.refreshCharacterReferences(project, normalized, renamed, title);
-      }
+      await this.refreshMemberReferences(project, normalized, renamed, title);
       return this.loadProject(project.projectFile);
     }
 
@@ -1226,12 +1229,7 @@ export class SnowflakeProjectService {
       // change to be clicked through note by note.
       const records = [
         await this.repository.readManaged(project.projectFile),
-        ...(await this.findManagedFilesInProjectDirectories(
-          project,
-          "scenes",
-          "scene",
-          project.id,
-        )),
+        ...(await this.memberRecords(project)),
       ];
       let rewritten = 0;
       for (const record of records) {
@@ -1254,26 +1252,34 @@ export class SnowflakeProjectService {
       const wanted = issue.code === "unlinked-path" ? "unlinked" : "incomplete";
       const record = await this.repository.readManaged(normalized);
       const names = new Map(
-        project.characters.map((character) => [character.path, character.name]),
+        projectMembers(project).map((member) => [member.path, memberName(member)]),
       );
       const rewrite = (path: string, stored: string | null): string =>
         toWikiLink(path, wikiLinkAlias(stored ?? "") ?? names.get(path) ?? fileStem(path));
       const patch: ManagedFrontmatter = {};
-      const mend = (key: string): void => {
-        const stored = asOptionalString(record.frontmatter[key]);
+      // The same reader the report used, so every field it can name is a field
+      // this can mend: what an author wrote in words is passed over by both.
+      const mend = (field: { key: string; prose: boolean }): void => {
+        const stored = storedReference(field, record.frontmatter[field.key]);
+        if (stored === null) return;
         const link = this.classifyLink(stored, normalized, project.rootPath);
-        if (link.kind === wanted) patch[key] = rewrite(link.path, stored);
+        if (link.kind === wanted) patch[field.key] = rewrite(link.path, stored);
       };
-      mend(FRONTMATTER_KEYS.draft);
-      mend(FRONTMATTER_KEYS.pov);
-      const cast = this.storedCast(record);
-      const next = cast.map((entry) => {
-        const stored = asOptionalString(entry);
-        const link = this.classifyLink(stored, normalized, project.rootPath);
-        return link.kind === wanted ? rewrite(link.path, stored) : entry;
-      });
-      if (fingerprint(next) !== fingerprint(cast)) {
-        patch[FRONTMATTER_KEYS.sceneCharacters] = next;
+      mend(DRAFT_LINK_FIELD);
+      for (const field of [...MEMBER_LINK_FIELDS, CATEGORY_LINK_FIELD]) {
+        if (!field.list) {
+          mend(field);
+          continue;
+        }
+        const raw = storedList(record.frontmatter[field.key]);
+        if (raw === null) continue;
+        const next = raw.map((entry) => {
+          const stored = storedReference(field, entry);
+          if (stored === null) return entry;
+          const link = this.classifyLink(stored, normalized, project.rootPath);
+          return link.kind === wanted ? rewrite(link.path, stored) : entry;
+        });
+        if (fingerprint(next) !== fingerprint(raw)) patch[field.key] = next;
       }
       if (Object.keys(patch).length === 0) {
         throw new Error(`No such link was found in "${normalized}".`);
@@ -1283,26 +1289,31 @@ export class SnowflakeProjectService {
     }
 
     if (issue.code === "foreign-link" || issue.code === "missing-link") {
-      // The cast loses only the entries the report named. A point of view is
-      // never dropped here, and every other field on the scene, and all of its
-      // prose, is left exactly as the author wrote it.
+      // The lists lose only the entries the report named. A field holding one
+      // note is never emptied here, and every other field on the note, and all
+      // of its prose, is left exactly as the author wrote it.
       const wanted = issue.code === "foreign-link" ? "foreign" : "missing";
       const record = await this.repository.readManaged(normalized);
-      const rawCharacters = this.storedCast(record);
-      const next = rawCharacters.filter(
-        (entry) =>
-          this.classifyLink(
-            asOptionalString(entry),
-            normalized,
-            project.rootPath,
-          ).kind !== wanted,
-      );
-      if (next.length === rawCharacters.length) {
-        throw new Error(`No such character link was found in "${normalized}".`);
+      const patch: ManagedFrontmatter = {};
+      for (const field of MEMBER_LINK_FIELDS) {
+        // Only what a list can lose: what a field holds alone is a decision to
+        // be made rather than an entry to drop.
+        if (!field.removable) continue;
+        const raw = storedList(record.frontmatter[field.key]);
+        if (raw === null) continue;
+        const next = raw.filter((entry) => {
+          const stored = storedReference(field, entry);
+          return (
+            stored === null ||
+            this.classifyLink(stored, normalized, project.rootPath).kind !== wanted
+          );
+        });
+        if (next.length !== raw.length) patch[field.key] = next;
       }
-      await this.repository.updateFrontmatter(normalized, {
-        [FRONTMATTER_KEYS.sceneCharacters]: next,
-      });
+      if (Object.keys(patch).length === 0) {
+        throw new Error(`No such link was found in "${normalized}".`);
+      }
+      await this.repository.updateFrontmatter(normalized, patch);
       return this.loadProject(project.projectFile);
     }
 
@@ -1461,10 +1472,16 @@ export class SnowflakeProjectService {
     const expected = issue.expected;
     if (!expected || !isDocumentType(expected)) return null;
 
-    if (expected !== "character" && expected !== "scene") {
+    if (!isMemberDocumentType(expected)) {
       return safeCommonMetadataRepairPatch(record, expected, project.id);
     }
 
+    const idKey =
+      expected === "character"
+        ? FRONTMATTER_KEYS.characterId
+        : expected === "scene"
+          ? FRONTMATTER_KEYS.sceneId
+          : FRONTMATTER_KEYS.entityId;
     const folder = parentOf(record.path);
     const usedIds = new Set<string>();
     const usedRanks = new Set<number>();
@@ -1472,21 +1489,29 @@ export class SnowflakeProjectService {
       if (file.extension !== "md" || file.path === record.path) continue;
       const candidate = await this.repository.tryReadManaged(file.path);
       if (!candidate) continue;
-      const id = normalizeStableId(
-        candidate.frontmatter[
-          expected === "character"
-            ? FRONTMATTER_KEYS.characterId
-            : FRONTMATTER_KEYS.sceneId
-        ],
-      );
+      const id = normalizeStableId(candidate.frontmatter[idKey]);
       if (id) usedIds.add(id);
       const rank = candidate.frontmatter[FRONTMATTER_KEYS.rank];
       if (typeof rank === "number" && Number.isSafeInteger(rank)) usedRanks.add(rank);
     }
 
-    return expected === "character"
-      ? safeCharacterMetadataRepairPatch(record, project.id, usedIds, usedRanks)
-      : safeSceneMetadataRepairPatch(record, project.id, usedIds, usedRanks);
+    if (expected === "character") {
+      return safeCharacterMetadataRepairPatch(record, project.id, usedIds, usedRanks);
+    }
+    if (expected === "scene") {
+      return safeSceneMetadataRepairPatch(record, project.id, usedIds, usedRanks);
+    }
+    // The folder a worldbuilding note sits in says which kind it is, and the
+    // note is only repairable where that folder is one of them.
+    const kind = WORLDBUILDING_KINDS.find(
+      (candidate) =>
+        normalizePath(
+          worldbuildingKindFolder(project.rootPath, project.locale, candidate),
+        ) === folder,
+    );
+    return kind === undefined
+      ? null
+      : safeEntityMetadataRepairPatch(record, project.id, kind, usedIds, usedRanks);
   }
 
   async readManagedFrontmatter(path: string): Promise<ManagedFrontmatter> {
@@ -1891,7 +1916,7 @@ export class SnowflakeProjectService {
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
       await this.syncNoteHeading(path, nextName);
       path = await this.renameManagedNote(path, nextName);
-      await this.refreshCharacterReferences(project, character.path, path, nextName);
+      await this.refreshMemberReferences(project, character.path, path, nextName);
     }
     return this.characterFromRecord(
       await this.repository.readManaged(path),
@@ -1926,55 +1951,101 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * Rewrites the links scenes store for a renamed character. Obsidian rewrites
-   * the path inside a link but never its display text, so a scene would keep
-   * presenting the previous name everywhere the raw link is rendered — the
-   * Bases views among them.
-   */
-  /**
-   * Drops a character from every scene cast that lists them. Called once the
-   * note is gone, so a failure here leaves recoverable dangling links the health
-   * check reports rather than a cast edited for a deletion that never happened.
+   * Drops a deleted note from every list that keeps it: a scene's cast, and the
+   * times and places a scene happens in. Called once the note is gone, so a
+   * failure here leaves recoverable dangling links the health check reports
+   * rather than lists edited for a deletion that never happened.
    *
-   * A scene's point of view is deliberately left alone: blanking it would leave
-   * the scene invalid, and choosing the replacement is the author's call.
+   * The fields holding one note rather than a list are deliberately left alone
+   * — a scene's point of view, a period's two ends — because emptying one
+   * leaves the note saying less than it did, and choosing the replacement is
+   * the author's call. The health check names those instead.
    */
-  async removeCharacterFromScenes(
+  async removeMemberReferences(
     projectLocator: ProjectLocator,
-    characterPath: string,
+    memberPath: string,
   ): Promise<void> {
     const project = await this.loadProject(projectLocator);
-    const records = await this.findManagedFilesInProjectDirectories(
-      project,
-      "scenes",
-      "scene",
-      project.id,
-    );
+    const records = await this.memberRecords(project);
     for (const record of records) {
-      if (record.readOnly) continue;
-      const stored = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
-      const rawCharacters: unknown[] = Array.isArray(stored)
-        ? (stored as unknown[])
-        : typeof stored === "string"
-          ? [stored]
-          : [];
-      const next = rawCharacters.filter((entry) => {
-        const target = fromWikiLink(asOptionalString(entry));
-        return (
-          target === null ||
-          !this.linkNames(
-            target,
-            characterPath,
-            record.path,
-            project.rootPath,
-          )
-        );
-      });
-      if (next.length === rawCharacters.length) continue;
-      await this.repository.updateFrontmatter(record.path, {
-        [FRONTMATTER_KEYS.sceneCharacters]: next,
-      });
+      if (record.readOnly || record.path === memberPath) continue;
+      const patch: ManagedFrontmatter = {};
+      for (const field of MEMBER_LINK_FIELDS) {
+        // Only what a list can lose: what a field holds alone is a decision to
+        // be made rather than an entry to drop.
+        if (!field.removable) continue;
+        const raw = storedList(record.frontmatter[field.key]);
+        if (raw === null) continue;
+        const next = raw.filter((entry) => {
+          const target = fromWikiLink(storedReference(field, entry));
+          return (
+            target === null ||
+            !this.linkNames(target, memberPath, record.path, project.rootPath)
+          );
+        });
+        if (next.length !== raw.length) patch[field.key] = next;
+      }
+      if (Object.keys(patch).length === 0) continue;
+      await this.repository.updateFrontmatter(record.path, patch);
     }
+  }
+
+  /**
+   * Which notes name one member, split because deleting it costs each kind
+   * something different: an entry in a list can simply go, while a field
+   * holding one note leaves the note that holds it needing a decision only the
+   * author can make, and a record line is a sentence the author wrote.
+   */
+  async memberUsage(
+    projectLocator: ProjectLocator,
+    memberPath: string,
+  ): Promise<MemberUsage> {
+    const project = await this.loadProject(projectLocator);
+    const listed = new Set<string>();
+    const single = new Set<string>();
+    const records = new Set<string>();
+    for (const record of await this.memberRecords(project)) {
+      if (record.path === memberPath) continue;
+      const names = (stored: string | null): boolean => {
+        const target = fromWikiLink(stored);
+        return (
+          target !== null &&
+          this.linkNames(target, memberPath, record.path, project.rootPath)
+        );
+      };
+      const title = memberTitleOf(record);
+      for (const field of MEMBER_LINK_FIELDS) {
+        const stored = record.frontmatter[field.key];
+        if (field.list) {
+          if (
+            storedList(stored)?.some((entry) =>
+              names(storedReference(field, entry)),
+            )
+          ) {
+            listed.add(title);
+          }
+          continue;
+        }
+        const value = storedReference(field, stored);
+        if (value !== null && !isScenePovMode(value) && names(value)) {
+          single.add(title);
+        }
+      }
+      if (
+        memberRecordTerms(record, project.locale).some(
+          (term) =>
+            term.kind === "link" &&
+            this.linkNames(term.path, memberPath, record.path, project.rootPath),
+        )
+      ) {
+        records.add(title);
+      }
+    }
+    return {
+      listed: [...listed],
+      needsDecision: [...single],
+      records: [...records],
+    };
   }
 
   /**
@@ -2119,65 +2190,154 @@ export class SnowflakeProjectService {
     );
   }
 
-  private async refreshCharacterReferences(
-    project: ProjectRef | ProjectSnapshot,
+  /**
+   * Rewrites every reference the project stores to a note that has just been
+   * renamed. Obsidian repoints the links it owns as the note moves, but never
+   * their display text, so every place a raw link is rendered — the Bases
+   * views among them — would keep presenting the previous name.
+   *
+   * One sweep for all of them, because a member is named the same way wherever
+   * it is named: a scene's point of view and cast, the times and places a
+   * scene happens in, the two ends of a period, and the record lines any
+   * member writes about another.
+   */
+  private async refreshMemberReferences(
+    project: ProjectSnapshot,
     previousPath: string,
     currentPath: string,
     name: string,
   ): Promise<void> {
-    const records = await this.findManagedFilesInProjectDirectories(
-      project,
-      "scenes",
-      "scene",
-      project.id,
-    );
+    const records = await this.memberRecords(project);
     const link = toWikiLink(currentPath, name);
-    // Either name reaches the same character: Obsidian repoints the links it
-    // owns as the note moves, and leaves them naming where it was when a Vault
-    // is set not to update links at all.
-    const isRenamed = (stored: string | null, sourcePath: string): boolean =>
-      stored !== null &&
-      (this.linkNames(stored, previousPath, sourcePath, project.rootPath) ||
-        this.linkNames(stored, currentPath, sourcePath, project.rootPath));
+    // Either name reaches the same note: Obsidian repoints the links it owns
+    // as the note moves, and leaves them naming where it was when a Vault is
+    // set not to update links at all.
+    const isRenamed = (target: string | null, sourcePath: string): boolean =>
+      target !== null &&
+      (this.linkNames(target, previousPath, sourcePath, project.rootPath) ||
+        this.linkNames(target, currentPath, sourcePath, project.rootPath));
 
+    const touched: string[] = [];
     for (const record of records) {
-      if (record.readOnly) continue;
+      if (record.readOnly || record.path === previousPath) continue;
       const patch: ManagedFrontmatter = {};
-
-      const storedPov = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]);
-      if (
-        storedPov !== null &&
-        !isScenePovMode(storedPov) &&
-        isRenamed(fromWikiLink(storedPov), record.path) &&
-        storedPov !== link
-      ) {
-        patch[FRONTMATTER_KEYS.pov] = link;
-      }
-
-      const storedCharacters = record.frontmatter[FRONTMATTER_KEYS.sceneCharacters];
-      const rawCharacters: unknown[] | null = Array.isArray(storedCharacters)
-        ? (storedCharacters as unknown[])
-        : typeof storedCharacters === "string"
-          ? [storedCharacters]
-          : null;
-      if (rawCharacters !== null) {
-        // Only the renamed entry is rebuilt; the remaining links already carry
-        // the right display text for their own character.
-        const next: unknown[] = rawCharacters.map((entry) => {
-          const raw = asOptionalString(entry);
-          return raw !== null && isRenamed(fromWikiLink(raw), record.path)
-            ? link
-            : entry;
-        });
-        if (fingerprint(next) !== fingerprint(rawCharacters)) {
-          patch[FRONTMATTER_KEYS.sceneCharacters] = next;
+      for (const field of MEMBER_LINK_FIELDS) {
+        const stored = record.frontmatter[field.key];
+        if (field.list) {
+          const raw = storedList(stored);
+          if (raw === null) continue;
+          // Only the renamed entry is rebuilt; the remaining links already
+          // carry the right display text for their own note.
+          const next = raw.map((entry) => {
+            const value = storedReference(field, entry);
+            return value !== null && isRenamed(fromWikiLink(value), record.path)
+              ? link
+              : entry;
+          });
+          if (fingerprint(next) !== fingerprint(raw)) patch[field.key] = next;
+          continue;
+        }
+        const value = storedReference(field, stored);
+        if (value === null || isScenePovMode(value)) continue;
+        if (value !== link && isRenamed(fromWikiLink(value), record.path)) {
+          patch[field.key] = link;
         }
       }
+      if (Object.keys(patch).length === 0) continue;
+      await this.repository.updateFrontmatter(record.path, patch);
+      touched.push(record.path);
+    }
 
-      if (Object.keys(patch).length > 0) {
-        await this.repository.updateFrontmatter(record.path, patch);
+    // Read again before the record lines: a line naming a period writes that
+    // period's own ends after it, and those ends are frontmatter the pass
+    // above may just have rewritten.
+    const refreshed = await this.loadProject(project.projectFile);
+    for (const member of projectMembers(refreshed)) {
+      if (member.readOnly) continue;
+      const rewrite = (term: RecordTerm): RecordTerm =>
+        term.kind === "link" && isRenamed(term.path, member.path)
+          ? {
+              kind: "link",
+              path: normalizePath(currentPath).replace(/\.md$/u, ""),
+              name,
+            }
+          : term;
+      let changed = false;
+      const rewritten = (lines: readonly RecordLine[]): RecordLine[] =>
+        lines.map((line) => {
+          let lineChanged = false;
+          const clauses = line.clauses.map((clause) => {
+            if (clause.kind === "span") {
+              const start = rewrite(clause.start);
+              const end = rewrite(clause.end);
+              if (start === clause.start && end === clause.end) return clause;
+              lineChanged = true;
+              return { ...clause, start, end };
+            }
+            const term = rewrite(clause.term);
+            if (term === clause.term) return clause;
+            lineChanged = true;
+            return { ...clause, term };
+          });
+          if (!lineChanged) return line;
+          changed = true;
+          return { ...line, clauses };
+        });
+      const worldStatus = rewritten(member.worldStatus);
+      const relationships = rewritten(member.relationships);
+      if (!changed) continue;
+      await this.reconcileRecordSections(refreshed, {
+        ...member,
+        worldStatus,
+        relationships,
+      });
+      touched.push(member.path);
+    }
+
+    // The overview re-emits these very links, so leaving it to the watcher
+    // would show yesterday's name for as long as it takes an event to arrive,
+    // and never at all where the write came from a repair.
+    for (const path of new Set(touched)) {
+      try {
+        await this.reconcileMemberFieldsBlock(refreshed, path);
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
       }
     }
+  }
+
+  /**
+   * The member notes of a project, read once for a pass that has to look at
+   * all of them. Characters and scenes come from their own folders, and
+   * worldbuilding notes from wherever their kind folders are.
+   */
+  private async memberRecords(
+    project: ProjectRef | ProjectSnapshot,
+  ): Promise<ManagedFileRecord[]> {
+    const records = new Map<string, ManagedFileRecord>();
+    for (const [directory, documentType] of [
+      ["characters", "character"],
+      ["scenes", "scene"],
+    ] as const) {
+      for (const record of await this.findManagedFilesInProjectDirectories(
+        project,
+        directory,
+        documentType,
+        project.id,
+      )) {
+        records.set(record.path, record);
+      }
+    }
+    for (const folderName of this.getProjectDirectoryNames(project, "worldbuilding")) {
+      for (const record of await this.repository.findManagedFilesBelow(
+        normalizePath(`${project.rootPath}/${folderName}`),
+        "worldbuilding",
+        project.id,
+      )) {
+        records.set(record.path, record);
+      }
+    }
+    return [...records.values()];
   }
 
   async createScene(
@@ -2584,11 +2744,13 @@ export class SnowflakeProjectService {
       nextRecords,
     );
 
-    // Nothing links to a scene, so renaming one needs no reference sweep.
     let path = scene.path;
     if (nextTitle !== undefined && nextTitle.length > 0 && nextTitle !== scene.title) {
       await this.syncNoteHeading(path, nextTitle);
       path = await this.renameManagedNote(path, nextTitle);
+      // No property names a scene, but a record line can: what a character was
+      // doing, where and when, is a sentence that may point at one.
+      await this.refreshMemberReferences(project, scene.path, path, nextTitle);
     }
     return this.sceneFromRecord(
       await this.repository.readManaged(path),
@@ -3296,14 +3458,18 @@ export class SnowflakeProjectService {
     );
     const stale: string[] = [];
     const unresolved: string[] = [];
+    // Named under the tree it belongs to, because each member kind keeps its
+    // own: a relationship a scene has is not one a character has, and a report
+    // that said only "Family" would look like the same entry twice over.
     const check = (target: string, alias: string, root: string): void => {
       const path = taxonomyPathFromTarget(target, root);
       if (path === null) return;
+      const named = this.reportName(`${root}/${path}`, project.rootPath);
       if (this.repository.getFolder(`${root}/${path}`) === null) {
-        unresolved.push(path);
+        unresolved.push(named);
         return;
       }
-      if (alias !== path) stale.push(alias.length === 0 ? path : alias);
+      if (alias !== path) stale.push(alias.length === 0 ? named : alias);
     };
     for (const raw of readStringList(
       record.frontmatter[FRONTMATTER_KEYS.category],
@@ -3332,7 +3498,7 @@ export class SnowflakeProjectService {
         code: "unresolved-definition-link",
         path: record.path,
         stepIds,
-        expected: [...new Set(unresolved)].join(", "),
+        names: [...new Set(unresolved)],
         canOpen: true,
         repairable: !record.readOnly,
       });
@@ -3342,11 +3508,117 @@ export class SnowflakeProjectService {
         code: "stale-definition-alias",
         path: record.path,
         stepIds,
-        expected: [...new Set(stale)].join(", "),
+        names: [...new Set(stale)],
         canOpen: true,
         repairable: !record.readOnly,
       });
     }
+  }
+
+  /**
+   * What is wrong with the links one member note stores: text where a link
+   * belongs, a link shortened to part of a path, a link into another project,
+   * a link to a note that is gone. Every note is read the same way, because
+   * every one of them stores links — a scene names its cast and its setting, a
+   * period names its ends, and all of them name their categories.
+   *
+   * Which of the four a field can be reported for is the field's own business.
+   * A list can simply lose an entry, so all four apply; a field holding one
+   * note cannot be emptied by a repair, and a category that leads nowhere is
+   * the definition check's to report, because it can raise what the link names
+   * rather than take the link away.
+   */
+  private inspectMemberLinks(
+    project: { rootPath: string },
+    record: ManagedFileRecord,
+    stepIds: StepId[],
+    add: (issue: ProjectStructureIssue) => void,
+  ): void {
+    const found = new Map<string, string[]>();
+    for (const field of [...MEMBER_LINK_FIELDS, CATEGORY_LINK_FIELD]) {
+      const stored = record.frontmatter[field.key];
+      const entries = field.list ? (storedList(stored) ?? []) : [stored];
+      for (const entry of entries) {
+        // Classified from the stored entry rather than its target: it is the
+        // entry that says whether it is a link at all.
+        const value = storedReference(field, entry);
+        if (value === null) continue;
+        const link = this.classifyLink(value, record.path, project.rootPath);
+        if (link.kind === "ok") continue;
+        const removal = link.kind === "foreign" || link.kind === "missing";
+        if (removal && !field.removable) continue;
+        const named = found.get(link.kind) ?? [];
+        named.push(this.reportName(link.path, project.rootPath));
+        found.set(link.kind, named);
+      }
+    }
+    const codes = [
+      ["unlinked", "unlinked-path"],
+      ["incomplete", "incomplete-link"],
+      ["foreign", "foreign-link"],
+      ["missing", "missing-link"],
+    ] as const;
+    for (const [kind, code] of codes) {
+      const named = found.get(kind);
+      if (named === undefined) continue;
+      add({
+        code,
+        path: record.path,
+        stepIds,
+        names: [...new Set(named)],
+        canOpen: true,
+        repairable: !record.readOnly,
+      });
+    }
+  }
+
+  /**
+   * The notes a member's records point at that lead nowhere at all — most
+   * often because the note they named was deleted while the sentence about it
+   * stayed. Reported and never repaired: what a line should say once the note
+   * it was about is gone is the author's to write.
+   *
+   * A link that resolves outside the project is left alone. The pickers offer
+   * members only, but an author writing their own line may well point at a
+   * note they keep elsewhere, and that is not damage.
+   */
+  private inspectMemberRecordLinks(
+    project: { rootPath: string; locale: ProjectLanguage },
+    record: ManagedFileRecord,
+    stepIds: StepId[],
+    add: (issue: ProjectStructureIssue) => void,
+  ): void {
+    const dangling = new Set<string>();
+    for (const term of memberRecordTerms(record, project.locale)) {
+      if (term.kind !== "link") continue;
+      if (this.repository.resolveLink(term.path, record.path) !== null) continue;
+      dangling.add(this.reportName(term.path, project.rootPath));
+    }
+    if (dangling.size === 0) return;
+    add({
+      code: "dangling-record-link",
+      path: record.path,
+      stepIds,
+      names: [...dangling],
+      canOpen: true,
+      repairable: false,
+    });
+  }
+
+  /**
+   * How a report names a note or an entry: by its path inside the project, so
+   * that two of them sharing a name are told apart — the relationship a scene
+   * has and the one a character has are different entries, and a report saying
+   * only "Family" would look like the same one twice.
+   *
+   * What lies outside the project keeps its Vault path, which is what says it
+   * is outside; what the project cannot place at all is named exactly as the
+   * link stored it, because inventing a folder for it would be a guess.
+   */
+  private reportName(target: string, root: string): string {
+    const named = normalizePath(target).replace(/\.md$/u, "");
+    const prefix = `${normalizePath(root)}/`;
+    return named.startsWith(prefix) ? named.slice(prefix.length) : named;
   }
 
   private memberAtPath(
@@ -3354,12 +3626,7 @@ export class SnowflakeProjectService {
     path: string,
   ): CharacterRecord | SceneRecord | WorldbuildingRecord | null {
     return (
-      project.characters.find((member) => member.path === path) ??
-      project.scenes.find((member) => member.path === path) ??
-      WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]).find(
-        (member) => member.path === path,
-      ) ??
-      null
+      projectMembers(project).find((member) => member.path === path) ?? null
     );
   }
 
@@ -3977,7 +4244,7 @@ export class SnowflakeProjectService {
     if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
       await this.syncNoteHeading(path, nextName);
       path = await this.renameManagedNote(path, nextName);
-      await this.refreshEntityTimeReferences(project, entity.path, path, nextName);
+      await this.refreshMemberReferences(project, entity.path, path, nextName);
     }
     return this.entityFromRecord(
       await this.repository.readManaged(path),
@@ -4048,47 +4315,6 @@ export class SnowflakeProjectService {
       layout: [],
       remove: emptied,
     });
-  }
-
-  /**
-   * Rewrites the time links other worldbuilding notes store in their own
-   * frontmatter after a time note is renamed. Body links are Obsidian's to
-   * update; these two keys are the plugin's.
-   */
-  private async refreshEntityTimeReferences(
-    project: ProjectSnapshot,
-    oldPath: string,
-    newPath: string,
-    name: string,
-  ): Promise<void> {
-    const oldTarget = normalizePath(oldPath).replace(/\.md$/u, "");
-    const newLink = renderTerm({
-      kind: "link",
-      path: normalizePath(newPath).replace(/\.md$/u, ""),
-      name,
-    });
-    for (const kind of WORLDBUILDING_KINDS) {
-      for (const entity of project.worldbuilding[kind]) {
-        if (entity.readOnly || entity.path === oldPath) continue;
-        const patch: ManagedFrontmatter = {};
-        for (const [key, raw] of [
-          [FRONTMATTER_KEYS.timeStart, entity.timeStart],
-          [FRONTMATTER_KEYS.timeEnd, entity.timeEnd],
-        ] as const) {
-          if (raw.trim().length === 0) continue;
-          const term = parseTerm(raw);
-          if (
-            term.kind === "link" &&
-            normalizePath(term.path).replace(/\.md$/u, "") === oldTarget
-          ) {
-            patch[key] = newLink;
-          }
-        }
-        if (Object.keys(patch).length > 0) {
-          await this.repository.updateFrontmatter(entity.path, patch);
-        }
-      }
-    }
   }
 
   private readonly entityReadings = new WeakMap<
@@ -4724,7 +4950,10 @@ export class SnowflakeProjectService {
         code: exists ? "invalid-metadata-field" : "missing-metadata-field",
         path: projectRecord.path,
         stepIds: [],
+        // The key stays on the issue because the repair works one property at a
+        // time; the report reads it off the list like every other finding.
         field: check.field,
+        names: [check.field],
         canOpen: true,
         repairable: isSafelyRepairableProjectMetadataIssue(
           exists ? "invalid-metadata-field" : "missing-metadata-field",
@@ -4937,7 +5166,45 @@ export class SnowflakeProjectService {
     // Obsidian does. Nothing about them is broken -- both forms are read -- so
     // they are gathered into one report for the project rather than raised
     // against each note that has one.
-    let datedLinks = this.extensionTidyPatch(projectRecord)?.links ?? 0;
+    // Which notes carry them, not how many there are: a count says a number
+    // where every other row says what it found.
+    const datedNotes: string[] = [];
+    if ((this.extensionTidyPatch(projectRecord)?.links ?? 0) > 0) {
+      datedNotes.push(this.reportName(projectRecord.path, project.rootPath));
+    }
+
+    // The same drift, wherever a member keeps its name: the file it is filed
+    // as and the heading it opens with are both brought to the name the note
+    // stores, because that is the name the dashboard shows.
+    const inspectTitle = (
+      record: ManagedFileRecord,
+      code:
+        | "mismatched-character-title"
+        | "mismatched-scene-title"
+        | "mismatched-entity-title",
+      stepIds: StepId[],
+    ): void => {
+      const storedTitle = memberStoredTitle(record);
+      if (storedTitle === null) return;
+      const expectedStem = trySafeFileName(storedTitle);
+      const heading = firstHeading(record.body);
+      const fileNameDrifted =
+        expectedStem !== null &&
+        !stemMatchesTitle(fileStem(record.path), expectedStem);
+      // An absent heading is left alone. The author may have removed it on
+      // purpose, and repairing would add content rather than correct it.
+      const headingDrifted =
+        heading !== null && heading !== normalizeHeading(storedTitle);
+      if (!fileNameDrifted && !headingDrifted) return;
+      add({
+        code,
+        path: record.path,
+        stepIds,
+        expected: storedTitle,
+        canOpen: true,
+        repairable: !record.readOnly,
+      });
+    };
 
     const inspectCollection = async (
       directory: ProjectDirectoryKey,
@@ -4980,126 +5247,44 @@ export class SnowflakeProjectService {
         if (typeof rawRank === "number" && Number.isSafeInteger(rawRank)) {
           usedRanks.add(rawRank);
         }
-        const storedTitle = asOptionalString(
-          record.frontmatter[
-            documentType === "character"
-              ? FRONTMATTER_KEYS.characterName
-              : FRONTMATTER_KEYS.sceneTitle
-          ],
+        inspectTitle(
+          record,
+          documentType === "character"
+            ? "mismatched-character-title"
+            : "mismatched-scene-title",
+          stepIds,
         );
-        if (storedTitle !== null) {
-          const expectedStem = trySafeFileName(storedTitle);
-          const heading = firstHeading(record.body);
-          const fileNameDrifted =
-            expectedStem !== null &&
-            !stemMatchesTitle(fileStem(record.path), expectedStem);
-          // An absent heading is left alone. The author may have removed it on
-          // purpose, and repairing would add content rather than correct it.
-          const headingDrifted =
-            heading !== null && heading !== normalizeHeading(storedTitle);
-          if (fileNameDrifted || headingDrifted) {
-            add({
-              code:
-                documentType === "character"
-                  ? "mismatched-character-title"
-                  : "mismatched-scene-title",
-              path: record.path,
-              stepIds,
-              expected: storedTitle,
-              canOpen: true,
-              repairable: !record.readOnly,
-            });
-          }
-        }
 
-        // Deleting a character leaves the links scenes stored for it pointing at
-        // nothing. Obsidian treats those as ordinary unresolved links and offers
-        // to create the note, which would resurrect the character as an empty
-        // stub, so the project has to notice the breakage itself.
+        // Deleting a character leaves the links scenes stored for it pointing
+        // at nothing. Obsidian treats those as ordinary unresolved links and
+        // offers to create the note, which would resurrect the character as an
+        // empty stub, so the project has to notice the breakage itself.
+        this.inspectMemberLinks(project, record, stepIds, add);
         if (documentType === "scene") {
-          const storedPov = asOptionalString(
-            record.frontmatter[FRONTMATTER_KEYS.pov],
-          );
-          const pov = this.classifyLink(
-            storedPov,
-            record.path,
-            project.rootPath,
-          );
-          // Classified from the stored entries rather than their targets: it is
-          // the entry that says whether it is a link at all.
-          const cast = this.storedCast(record).map((entry) =>
-            this.classifyLink(
-              asOptionalString(entry),
-              record.path,
-              project.rootPath,
-            ),
-          );
-          const named = (kind: string): string =>
-            [
-              ...new Set(
-                [pov, ...cast]
-                  .filter((link) => link.kind === kind)
-                  .map((link) => fileStem(link.path)),
-              ),
-            ].join(", ");
-
           // The point of view is deliberately absent from what a repair
           // touches, so a scene left without one is reported on its own: which
           // character now carries the scene is the author's to decide.
+          const pov = this.classifyLink(
+            asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
+            record.path,
+            project.rootPath,
+          );
           if (pov.kind === "foreign" || pov.kind === "missing") {
             add({
               code: "dangling-scene-pov",
               path: record.path,
               stepIds,
-              expected: fileStem(pov.path),
+              names: [this.reportName(pov.path, project.rootPath)],
               canOpen: true,
               repairable: false,
             });
           }
-          if (pov.kind === "unlinked" || cast.some((l) => l.kind === "unlinked")) {
-            add({
-              code: "unlinked-path",
-              path: record.path,
-              stepIds,
-              expected: named("unlinked"),
-              canOpen: true,
-              repairable: !record.readOnly,
-            });
-          }
-          if (pov.kind === "incomplete" || cast.some((l) => l.kind === "incomplete")) {
-            add({
-              code: "incomplete-link",
-              path: record.path,
-              stepIds,
-              expected: named("incomplete"),
-              canOpen: true,
-              repairable: !record.readOnly,
-            });
-          }
-          if (cast.some((link) => link.kind === "foreign")) {
-            add({
-              code: "foreign-link",
-              path: record.path,
-              stepIds,
-              expected: named("foreign"),
-              canOpen: true,
-              repairable: !record.readOnly,
-            });
-          }
-          if (cast.some((link) => link.kind === "missing")) {
-            add({
-              code: "missing-link",
-              path: record.path,
-              stepIds,
-              expected: named("missing"),
-              canOpen: true,
-              repairable: !record.readOnly,
-            });
-          }
-          // Counted while the scenes are open anyway; reported once for the
-          // project below, since one note at a time would be a long list of
-          // the same one-time change.
-          datedLinks += this.extensionTidyPatch(record)?.links ?? 0;
+        }
+        // Read while the note is open anyway; reported once for the project
+        // below, since one note at a time would be a long list of the same
+        // one-time change.
+        if ((this.extensionTidyPatch(record)?.links ?? 0) > 0) {
+          datedNotes.push(this.reportName(record.path, project.rootPath));
         }
 
         this.inspectMemberDefinitionLinks(
@@ -5109,6 +5294,7 @@ export class SnowflakeProjectService {
           stepIds,
           add,
         );
+        this.inspectMemberRecordLinks(project, record, stepIds, add);
 
         // A role is a category like any other, so having none is a choice, not
         // damage. What a character must have is its identity: a unique id and
@@ -5154,20 +5340,101 @@ export class SnowflakeProjectService {
     await inspectCollection("characters", "character", [3, 5, 7]);
     await inspectCollection("scenes", "scene", [8, 9]);
 
-    // Worldbuilding notes carry the same links and are read the same way; no
-    // step hinges on them, so their issues arrive with no step attached.
+    // Worldbuilding notes are members like any other and are inspected like
+    // any other: the name they are filed under, the links they store, and the
+    // metadata that makes them readable at all. No step hinges on them, so
+    // their issues arrive with no step attached.
     for (const kind of WORLDBUILDING_KINDS) {
       const folderPath = normalizePath(
         worldbuildingKindFolder(project.rootPath, project.locale, kind),
       );
       if (this.repository.getFolder(folderPath) === null) continue;
+      const stableIds = new Set<string>();
+      const usedRanks = new Set<number>();
       for (const file of this.repository.listDirectFiles(folderPath)) {
         if (file.extension !== "md") continue;
         const record = await this.repository.tryReadManaged(file.path);
         if (record === null) continue;
-        if (documentTypeOf(record.frontmatter) !== "worldbuilding") continue;
-        if (!hasMatchingProjectId(record.frontmatter)) continue;
+        if (record.schemaVersion !== null && record.schemaVersion > SCHEMA_VERSION) {
+          continue;
+        }
+        // A note whose metadata says nothing is still one of these if it
+        // carries the block this plugin writes: that is the note whose
+        // identity has to be reported rather than quietly skipped.
+        const looksManaged =
+          documentTypeOf(record.frontmatter) === "worldbuilding" ||
+          record.content.includes("snowflake:section:entity-fields");
+        if (!looksManaged) continue;
+        const stableId = asOptionalString(
+          record.frontmatter[FRONTMATTER_KEYS.entityId],
+        );
+        const idsBeforeCurrent = new Set(stableIds);
+        const ranksBeforeCurrent = new Set(usedRanks);
+        const stableIdIsUnique = stableId !== null && !stableIds.has(stableId);
+        if (stableId !== null) stableIds.add(stableId);
+        const rawRank = record.frontmatter[FRONTMATTER_KEYS.rank];
+        if (typeof rawRank === "number" && Number.isSafeInteger(rawRank)) {
+          usedRanks.add(rawRank);
+        }
+
+        inspectTitle(record, "mismatched-entity-title", []);
+        if ((this.extensionTidyPatch(record)?.links ?? 0) > 0) {
+          datedNotes.push(this.reportName(record.path, project.rootPath));
+        }
         this.inspectMemberDefinitionLinks(project, kind, record, [], add);
+        this.inspectMemberRecordLinks(project, record, [], add);
+        this.inspectMemberLinks(project, record, [], add);
+
+        // A period is written between two moments, and those two are notes.
+        // Emptying one is no repair -- the period would then say less than its
+        // author meant -- so a broken end is named and left.
+        const ends = new Set<string>();
+        for (const key of [FRONTMATTER_KEYS.timeStart, FRONTMATTER_KEYS.timeEnd]) {
+          const stored = asOptionalString(record.frontmatter[key]);
+          if (stored === null || stored.trim().length === 0) continue;
+          const term = parseTerm(stored);
+          if (term.kind !== "link") continue;
+          if (this.repository.resolveLink(term.path, record.path) !== null) continue;
+          ends.add(this.reportName(term.path, project.rootPath));
+        }
+        if (ends.size > 0) {
+          add({
+            code: "dangling-time-span",
+            path: record.path,
+            stepIds: [],
+            names: [...ends],
+            canOpen: true,
+            repairable: false,
+          });
+        }
+
+        // What an entity must have is what makes it readable: a unique id, a
+        // name, and the kind that says which pane it belongs to.
+        if (
+          isCurrentOrNewerSchema(record.frontmatter) &&
+          documentTypeOf(record.frontmatter) === "worldbuilding" &&
+          hasMatchingProjectId(record.frontmatter) &&
+          stableIdIsUnique &&
+          asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name]) !== null &&
+          isWorldbuildingKind(record.frontmatter[FRONTMATTER_KEYS.worldbuildingKind])
+        ) {
+          continue;
+        }
+        add({
+          code: "invalid-artifact-metadata",
+          path: record.path,
+          stepIds: [],
+          expected: "worldbuilding",
+          canOpen: true,
+          repairable:
+            safeEntityMetadataRepairPatch(
+              record,
+              project.id,
+              kind,
+              idsBeforeCurrent,
+              ranksBeforeCurrent,
+            ) !== null,
+        });
       }
     }
 
@@ -5183,18 +5450,18 @@ export class SnowflakeProjectService {
         code: draftLink.kind === "unlinked" ? "unlinked-path" : "incomplete-link",
         path: projectRecord.path,
         stepIds: [10],
-        expected: fileStem(draftLink.path),
+        names: [this.reportName(draftLink.path, project.rootPath)],
         canOpen: true,
         repairable: !projectRecord.readOnly,
       });
     }
 
-    if (datedLinks > 0) {
+    if (datedNotes.length > 0) {
       add({
         code: "extension-in-link",
         path: project.rootPath,
         stepIds: [],
-        expected: String(datedLinks),
+        names: datedNotes,
         canOpen: false,
         repairable: true,
       });
@@ -5224,7 +5491,7 @@ export class SnowflakeProjectService {
         code,
         path: first,
         stepIds: [10],
-        expected: paths.map((path) => fileStem(path)).join(", "),
+        names: paths.map((path) => this.reportName(path, project.rootPath)),
         canOpen: true,
         repairable: !projectRecord.readOnly,
       });
@@ -6005,6 +6272,60 @@ function safeSceneMetadataRepairPatch(
   return patch;
 }
 
+/**
+ * Identity for a worldbuilding note, and identity only: the id it is tracked
+ * by, the name it is read out as, the kind that says which pane it belongs to,
+ * and a place in the order. Everything an author writes into one — its
+ * categories, its records, its description — is left exactly as it stands.
+ *
+ * The kind comes from the folder the note is filed in, which is the one thing
+ * about it that survives a frontmatter an editor mangled.
+ */
+function safeEntityMetadataRepairPatch(
+  record: ManagedFileRecord,
+  expectedProjectId: string,
+  kind: WorldbuildingKind,
+  usedIds: Set<string>,
+  usedRanks: Set<number>,
+): ManagedFrontmatter | null {
+  const patch = safeCommonMetadataRepairPatch(
+    record,
+    "worldbuilding",
+    expectedProjectId,
+  );
+  if (patch === null) return null;
+  const frontmatter = record.frontmatter;
+
+  const rawId = normalizeStableId(frontmatter[FRONTMATTER_KEYS.entityId]);
+  const entityId =
+    rawId !== null && !usedIds.has(rawId)
+      ? rawId
+      : createUniqueStableId("entity", usedIds);
+  if (frontmatter[FRONTMATTER_KEYS.entityId] !== entityId) {
+    patch[FRONTMATTER_KEYS.entityId] = entityId;
+  }
+
+  const name =
+    asOptionalString(frontmatter[FRONTMATTER_KEYS.name]) ?? fileStem(record.path);
+  if (frontmatter[FRONTMATTER_KEYS.name] !== name) {
+    patch[FRONTMATTER_KEYS.name] = name;
+  }
+
+  if (frontmatter[FRONTMATTER_KEYS.worldbuildingKind] !== kind) {
+    patch[FRONTMATTER_KEYS.worldbuildingKind] = kind;
+  }
+
+  const rawRank = frontmatter[FRONTMATTER_KEYS.rank];
+  const rank =
+    typeof rawRank === "number" &&
+    Number.isSafeInteger(rawRank) &&
+    !usedRanks.has(rawRank)
+      ? rawRank
+      : nextRepairRank(usedRanks);
+  if (rawRank !== rank) patch[FRONTMATTER_KEYS.rank] = rank;
+  return patch;
+}
+
 function projectFrontmatter(
   projectId: string,
   name: string,
@@ -6500,6 +6821,159 @@ function entityRecordSectionValues(
     );
   }
   return values;
+}
+
+/**
+ * Where one member note names another: the point of view a scene is told from
+ * and the cast it puts on stage, the times and places it happens in, and the
+ * two ends of a period. A rename or a deletion sweeps every one of them,
+ * because a member is named the same way wherever it is named.
+ *
+ * The list-valued ones are the ones a deletion can simply shorten; emptying
+ * one of the others would leave the note that holds it saying less than its
+ * author meant it to.
+ *
+ * The ones marked as prose could hold words before they held notes. Only what
+ * is written as a link is read as one there, so a scene still saying "one
+ * winter evening" is never reported as a broken link and never rewritten: it
+ * is the member migration that gives those words a note.
+ */
+const MEMBER_LINK_FIELDS = [
+  { key: FRONTMATTER_KEYS.pov, list: false, prose: false, removable: false },
+  {
+    key: FRONTMATTER_KEYS.sceneCharacters,
+    list: true,
+    prose: false,
+    removable: true,
+  },
+  { key: FRONTMATTER_KEYS.sceneTime, list: true, prose: true, removable: true },
+  {
+    key: FRONTMATTER_KEYS.sceneLocation,
+    list: true,
+    prose: true,
+    removable: true,
+  },
+  { key: FRONTMATTER_KEYS.timeStart, list: false, prose: true, removable: false },
+  { key: FRONTMATTER_KEYS.timeEnd, list: false, prose: true, removable: false },
+] as const;
+
+/**
+ * The categories every member carries. They are links like the rest and go
+ * short the same way, but one that leads nowhere is never taken off the list:
+ * the definition check raises the entry the link names instead, which is what
+ * an author meant by writing it.
+ */
+const CATEGORY_LINK_FIELD = {
+  key: FRONTMATTER_KEYS.category,
+  list: true,
+  prose: false,
+  removable: false,
+} as const;
+
+/**
+ * Every frontmatter key holding a link this plugin writes: what one member
+ * names in another, the categories every member carries, and the note a
+ * project calls its manuscript. A link written the way Obsidian never writes
+ * one is tidied wherever it is stored, not only where it was first found.
+ */
+/** The note a project calls its manuscript. */
+const DRAFT_LINK_FIELD = {
+  key: FRONTMATTER_KEYS.draft,
+  list: false,
+  prose: false,
+  removable: false,
+} as const;
+
+const STORED_LINK_FIELDS = [
+  ...MEMBER_LINK_FIELDS,
+  CATEGORY_LINK_FIELD,
+  DRAFT_LINK_FIELD,
+] as const;
+
+/**
+ * A stored value read as the list it may be, or null when the note stores
+ * nothing there. A note written before a field held several reads as a list of
+ * one, which keeps what it said.
+ */
+function storedList(value: unknown): unknown[] | null {
+  if (Array.isArray(value)) return value as unknown[];
+  return typeof value === "string" ? [value] : null;
+}
+
+/**
+ * One stored entry, when it is something that names a note; null when it is
+ * not. A field that held the author's own words before it held notes keeps
+ * them: a scene still saying "one winter evening" is never followed, rewritten
+ * or taken away by anything here.
+ */
+function storedReference(
+  field: { readonly prose: boolean },
+  entry: unknown,
+): string | null {
+  const stored = asOptionalString(entry);
+  if (stored === null || stored.length === 0) return null;
+  if (field.prose && !isWikiLink(stored)) return null;
+  return stored;
+}
+
+/** Every member of a project, in the order the dashboard shows its panes. */
+function projectMembers(
+  project: ProjectSnapshot,
+): Array<CharacterRecord | SceneRecord | WorldbuildingRecord> {
+  return [
+    ...project.characters,
+    ...project.scenes,
+    ...WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]),
+  ];
+}
+
+/**
+ * The name a member note stores, whichever kind of member it is, or null when
+ * it stores none — which is the one case a file name cannot stand in for,
+ * since safeFileName is lossy and a repair would write back less than the
+ * author typed.
+ */
+function memberStoredTitle(record: ManagedFileRecord): string | null {
+  return (
+    asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) ??
+    asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) ??
+    asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name])
+  );
+}
+
+/** The name a member note goes by, falling back to what it is filed as. */
+function memberTitleOf(record: ManagedFileRecord): string {
+  return memberStoredTitle(record) ?? fileStem(record.path);
+}
+
+/** The same, read off a loaded member rather than off its note. */
+function memberName(
+  member: CharacterRecord | SceneRecord | WorldbuildingRecord,
+): string {
+  return "title" in member ? member.title : member.name;
+}
+
+/**
+ * Every note the record sections of one member point at. Read leniently and
+ * from the note itself, because these live in the body where an author writes
+ * as well as the plugin.
+ */
+function memberRecordTerms(
+  record: ManagedFileRecord,
+  locale: ProjectLanguage,
+): RecordTerm[] {
+  const terms: RecordTerm[] = [];
+  for (const sectionId of RECORD_SECTION_IDS) {
+    const content = readMarkedSection(record.content, sectionId);
+    if (content === null) continue;
+    for (const line of parseRecordSectionLenient(locale, content).records) {
+      for (const clause of line.clauses) {
+        if (clause.kind === "span") terms.push(clause.start, clause.end);
+        else terms.push(clause.term);
+      }
+    }
+  }
+  return terms;
 }
 
 /**

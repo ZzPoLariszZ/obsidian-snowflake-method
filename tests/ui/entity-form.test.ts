@@ -14,10 +14,14 @@ const notes = [
 	{ value: 'Novel/61_Time/The Regency.md', label: 'The Regency' },
 ];
 
+/** A Vault holding exactly the notes above, however a link spells them. */
+const leadsSomewhere = (path: string): boolean =>
+	notes.some((note) => note.value.replace(/\.md$/u, '').endsWith(path));
+
 describe('note field options', () => {
 	it('knows a stored link and a listed note as the same note', () => {
 		const held = ['[[Novel/61_Time/Year 1023|Year 1023]]'];
-		const options = noteFieldOptions(notes, held);
+		const options = noteFieldOptions(notes, held, leadsSomewhere);
 		expect(options.map((option) => option.value)).toEqual([
 			'Novel/61_Time/Year 1023',
 			'Novel/61_Time/The Regency',
@@ -33,11 +37,14 @@ describe('note field options', () => {
 
 	it('carries words the project has no note for', () => {
 		const held = ['Three days after the funeral'];
-		const options = noteFieldOptions(notes, held);
+		const options = noteFieldOptions(notes, held, leadsSomewhere);
 		expect(options).toHaveLength(3);
+		// Words are what an author wrote, not a link that broke, so the field
+		// carries them without marking them.
 		expect(options[2]).toEqual({
 			value: 'Three days after the funeral',
 			label: 'Three days after the funeral',
+			missing: false,
 		});
 		expect(
 			unpickedOptions(options, held.map(noteIdentity)),
@@ -48,12 +55,26 @@ describe('note field options', () => {
 		expect(noteIdentity('[[Novel/61_Time/Year 1023]]')).toBe(
 			'Novel/61_Time/Year 1023',
 		);
-		expect(noteFieldOptions([], ['[[Novel/61_Time/Year 1023]]'])).toEqual([
-			{ value: 'Novel/61_Time/Year 1023', label: 'Year 1023' },
+		// A link the project cannot place is a note that has gone: kept, so an
+		// edit never drops it silently, and marked, so it reads as one to settle.
+		expect(noteFieldOptions([], ['[[Novel/61_Time/Year 1023]]'], () => false)).toEqual([
+			{ value: 'Novel/61_Time/Year 1023', label: 'Year 1023', missing: true },
+		]);
+		expect(
+			noteFieldOptions(notes, ['[[Novel/61_Time/Year 1023|Year 1023]]'], leadsSomewhere),
+		).toEqual(notes.map((note) => ({ ...note, value: note.value.replace(/\.md$/u, '') })));
+	});
+
+	it('does not call a shortened link missing when it still leads somewhere', () => {
+		// Obsidian shortens the links it writes, so what a link resolves to is
+		// the only honest answer to whether the note is still there.
+		const options = noteFieldOptions([], ['[[Year 1023|Year 1023]]'], leadsSomewhere);
+		expect(options).toEqual([
+			{ value: 'Year 1023', label: 'Year 1023', missing: false },
 		]);
 	});
 
 	it('offers nothing for a field holding nothing', () => {
-		expect(noteFieldOptions([], [''])).toEqual([]);
+		expect(noteFieldOptions([], [''], () => false)).toEqual([]);
 	});
 });

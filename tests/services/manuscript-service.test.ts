@@ -370,7 +370,7 @@ describe("manuscript health checks", () => {
       (candidate) => candidate.code === "missing-manuscript-sequence",
     );
     expect(issue?.path).toBe("Snowflake Projects/Novel/50_Manuscript/Two.md");
-    expect(issue?.expected).toBe("Two");
+    expect(issue?.names).toEqual(["50_Manuscript/Two"]);
     expect(issue?.repairable).toBe(true);
   });
 
@@ -395,7 +395,8 @@ describe("manuscript health checks", () => {
     const issue = snapshot.structureIssues.find(
       (candidate) => candidate.code === "duplicate-manuscript-sequence",
     );
-    expect(issue?.expected).toBe("Draft, Two");
+    // One to a line in the report, and each by where it is filed.
+    expect(issue?.names).toEqual(["50_Manuscript/Draft", "50_Manuscript/Two"]);
   });
 
   it("repairs by renumbering, leaving every word where it was", async () => {

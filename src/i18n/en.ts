@@ -305,7 +305,7 @@ export const en = {
 	'editor.managedSection.documentLabel': 'Managed document',
 	'editor.managedSection.repairConflict':
 		'No automatic changes were made. Review this managed structure manually.',
-	'projectStructure.damagedTitle': 'Snowflake project structure needs repair',
+	'projectStructure.damagedTitle': 'Snowflake project needs repair',
 	'projectHealth.needsAttention': 'This project needs attention',
 	'projectHealth.dashboardStructureSummary':
 		'Run the health check to review project issues and available actions.',
@@ -313,79 +313,110 @@ export const en = {
 		'Run the health check to review this step and available actions.',
 	'projectStructure.damagedDescription':
 		'Required project metadata, folders, or notes are missing or invalid. Check the listed items before continuing.',
+	// Every entry in the health report is read the same way: the first line says
+	// what is wrong about this one note, subject first, with the names it found
+	// after a colon; the second says what to do about it, the action first and
+	// the reason after. Nothing in the first line explains, and nothing in the
+	// second states the problem again.
 	'projectStructure.issue.missing-metadata-field':
-		'Required metadata field “{field}” is missing.',
+		'This project note is missing a property:',
+	'projectStructure.action.missing-metadata-field':
+		'Repairing here writes it back.',
 	'projectStructure.issue.invalid-metadata-field':
-		'Required metadata field “{field}” is invalid.',
-	'projectStructure.issue.missing-directory': 'Required project folder is missing.',
-	'projectStructure.issue.missing-artifact': 'Required project note is missing.',
+		'This project note holds a property this plugin cannot read:',
+	'projectStructure.action.invalid-metadata-field':
+		'Repairing here writes a value it can read.',
+	'projectStructure.issue.missing-directory': 'This project folder is missing.',
+	'projectStructure.action.missing-directory': 'Repairing here creates it.',
+	'projectStructure.issue.missing-artifact': 'This project note is missing.',
+	'projectStructure.action.missing-artifact':
+		'Repairing here writes it from the template for its step.',
 	'projectStructure.issue.missing-system-template':
-		'Required system template is missing.',
-	'projectStructure.issue.missing-base': 'Required project base is missing.',
+		'This system template is missing.',
+	'projectStructure.action.missing-system-template':
+		'Repairing here writes it again.',
+	'projectStructure.issue.missing-base': 'This project base is missing.',
+	'projectStructure.action.missing-base': 'Repairing here writes it again.',
 	'projectStructure.issue.missing-definition-node':
-		'The folder is a category, status, or relationship entry, but its “_self.md” note is missing.',
+		'This category, status, or relationship entry has no note of its own.',
 	'projectStructure.action.missing-definition-node':
-		'Links point at that note rather than at the folder.\nRepairing here creates it.',
+		'Repairing here creates it.\nLinks point at that note rather than at the folder.',
 	'projectStructure.issue.unresolved-definition-link':
-		'These entries point at a category, status, or relationship that does not exist: {expected}.',
+		'This note names an entry the project does not have:',
 	'projectStructure.action.unresolved-definition-link':
-		'A folder may have been renamed or removed by hand.\nRepairing here creates what the links name.',
+		'Repairing here creates what the links name.\nA folder may have been renamed or removed by hand.',
 	'projectStructure.issue.stale-definition-alias':
-		'These entries show a name that no longer matches where they point: {expected}.',
+		'This note shows a name that is no longer where it points:',
 	'projectStructure.action.stale-definition-alias':
-		'Renaming a folder updates links but not the name they show.\nRepairing here rewrites the names from the links.',
+		'Repairing here rewrites the names from the links.\nRenaming a folder updates links but not the name they show.',
 	'projectStructure.issue.mismatched-character-title':
 		'The file name or heading no longer matches the character name.',
 	'projectStructure.action.mismatched-character-title':
-		'Repairing here will bring both to the character name.\nTo rename the character, edit it in the character table.',
+		'Repairing here brings both to the stored name.\nTo rename the character, edit it in the character table.',
 	'projectStructure.issue.mismatched-scene-title':
 		'The file name or heading no longer matches the scene name.',
 	'projectStructure.action.mismatched-scene-title':
-		'Repairing here will bring both to the scene name.\nTo rename the scene, edit it in the scene table.',
+		'Repairing here brings both to the stored name.\nTo rename the scene, edit it in the scene table.',
+	'projectStructure.issue.mismatched-entity-title':
+		'The file name or heading no longer matches the name of this note.',
+	'projectStructure.action.mismatched-entity-title':
+		'Repairing here brings both to the stored name.\nTo rename it, edit it in the worldbuilding table.',
 	'projectStructure.issue.mismatched-project-folder':
 		'The folder name no longer matches the project name.',
 	'projectStructure.action.mismatched-project-folder':
-		'Repairing here will rename the folder.\nTo rename the project, use the project manager.',
+		'Repairing here renames the folder.\nTo rename the project, use the project manager.',
 	'projectStructure.issue.invalid-system-template':
-		'System template does not match the current project format.',
+		'This system template is not the one this project format uses.',
+	'projectStructure.action.invalid-system-template':
+		'Repairing here writes the current one.',
 	'projectStructure.issue.invalid-artifact-metadata':
-		'Required note metadata is missing or invalid.',
+		'This note no longer says what it is.',
+	'projectStructure.action.invalid-artifact-metadata':
+		'Repairing here writes back the properties that make it readable.',
 	'projectStructure.issue.dangling-scene-pov':
-		'The point-of-view character “{expected}” is not in this project.',
+		'This scene is told from a character the project no longer has:',
 	'projectStructure.action.dangling-scene-pov':
-		'Edit the scene to choose another point of view.',
+		'Edit the scene and choose another point of view.\nLeaving it empty would say less than you meant, so it is left as it is.',
+	'projectStructure.issue.dangling-time-span':
+		'This period runs from or to a time note that is gone:',
+	'projectStructure.action.dangling-time-span':
+		'Edit it and choose the moment that takes its place.\nA period is written between two moments.',
+	'projectStructure.issue.dangling-record-link':
+		'A record here names a note that is gone:',
+	'projectStructure.action.dangling-record-link':
+		'Edit the note to say what it says now.\nA record is a sentence you wrote, so it is left as it is.',
 	'projectStructure.issue.unlinked-path':
-		'These are plain text where a wikilink belongs: {expected}.',
+		'This note stores plain text where a link belongs:',
 	'projectStructure.action.unlinked-path':
-		'Obsidian only keeps wikilinks up to date automatically.\nRepairing here writes them as wikilinks.',
+		'Repairing here writes them as links.\nOnly a link is kept up to date when the note it names is renamed.',
 	'projectStructure.issue.incomplete-link':
-		'These wikilinks are shortened: {expected}.',
+		'This note names another by part of its path:',
 	'projectStructure.action.incomplete-link':
-		'Shortened wikilinks stop being unique once their names are reused.\nRepairing here adds the full path of this project.',
+		'Repairing here writes the whole path.\nA short name stops being unique as soon as it is reused.',
 	'projectStructure.issue.foreign-link':
-		'These wikilinks open notes in other projects: {expected}.',
+		'This note links into another project:',
 	'projectStructure.action.foreign-link':
-		'Repairing removes them from the list.',
+		'Repairing here takes them off the list.',
 	'projectStructure.issue.missing-link':
-		'These wikilinks point to notes that no longer exist: {expected}.',
+		'This note links to a note that is gone:',
 	'projectStructure.action.missing-link':
-		'Repairing removes them from the list.',
+		'Repairing here takes them off the list.',
 	'projectStructure.issue.extension-in-link':
-		'{expected} stored link(s) still name a note with “.md”.',
+		'These notes store links that still write “.md”:',
 	'projectStructure.action.extension-in-link':
 		'Repairing here rewrites them the way Obsidian writes a link.',
 	'projectStructure.issue.missing-manuscript-sequence':
-		'These manuscript notes have no place in the reading order: {expected}.',
+		'These manuscript notes have no place in the reading order:',
 	'projectStructure.action.missing-manuscript-sequence':
-		'They are read last until they are given one.\nRepairing here numbers the manuscript in the order it reads now.',
+		'Repairing here numbers the manuscript in the order it reads now.\nUntil then they are read last.',
 	'projectStructure.issue.invalid-manuscript-sequence':
-		'These manuscript notes store a place that cannot be read: {expected}.',
+		'These manuscript notes store a place that is not a whole number:',
 	'projectStructure.action.invalid-manuscript-sequence':
-		'A place in the manuscript has to be a whole number.\nRepairing here numbers the manuscript in the order it reads now.',
+		'Repairing here numbers the manuscript in the order it reads now.',
 	'projectStructure.issue.duplicate-manuscript-sequence':
-		'These manuscript notes claim the same place: {expected}.',
+		'These manuscript notes claim the same place:',
 	'projectStructure.action.duplicate-manuscript-sequence':
-		'Which of them is read first is left to chance until this is settled.\nRepairing here numbers the manuscript in the order it reads now.',
+		'Repairing here numbers the manuscript in the order it reads now.\nUntil then, which of them reads first is chance.',
 	'editor.managedSection.issue.missing':
 		'Both boundary markers are missing.',
 	'editor.managedSection.issue.missing-start':
@@ -471,6 +502,7 @@ export const en = {
 	'form.category': 'Category',
 	'form.category.create': 'Create category "{name}"',
 	'form.category.remove': 'Remove {name}',
+	'form.referenceMissing': 'No longer in this project: {name}',
 	// One set per vocabulary: the dialog that adds an entry is the same for
 	// all three, and only its wording says which one is being added to. The
 	// examples stay in lower case because Obsidian asks every string it shows
@@ -605,13 +637,13 @@ export const en = {
 	'modal.scene.characters': 'Characters',
 	'modal.scene.conflict': 'Conflict',
 	'modal.scene.pov': 'Point-of-view character',
-	'modal.deleteCharacter.title': 'Delete character?',
-	'modal.deleteCharacter.description':
-		'Deleting “{name}” affects {count} scene(s).',
-	'modal.deleteCharacter.povScenes':
-		'These scenes will need a new point of view:',
-	'modal.deleteCharacter.castScenes':
-		'“{name}” will be removed from the cast of:',
+	'modal.deleteMember.title': 'Delete “{name}”?',
+	'modal.deleteMember.description':
+		'Deleting “{name}” affects {count} other note(s).',
+	'modal.deleteMember.needsDecision':
+		'These notes will need another note in its place:',
+	'modal.deleteMember.listed': '“{name}” will be removed from:',
+	'modal.deleteMember.records': 'These notes mention it in their records:',
 	'modal.mergeSegments.title': 'Merge notes',
 	'modal.mergeSegments.question':
 		'Are you sure you want to merge “{removed}” into “{kept}”?',
@@ -625,7 +657,7 @@ export const en = {
 	'modal.scene.createCharacter': 'Create character “{name}”',
 	'modal.scene.povOmniscient': 'Omniscient',
 	'table.povMissing': 'Missing character: {name}',
-	'table.nameDrifted': 'The note no longer carries this name. Run the health check.',
+	'table.referenceMissing': 'Missing note: {name}',
 	'modal.scene.povMultiple': 'Multi-POV',
 	'modal.scene.povRequired': 'Choose a point of view.',
 	'modal.scene.events': 'Specific events',

@@ -1,4 +1,4 @@
-import { setIcon, setTooltip, type App } from 'obsidian';
+import { getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	DEFINITION_NODE_BASENAME,
@@ -206,12 +206,19 @@ export class CategoryPathField {
 		buildOptionPicker(this.context.app, container, {
 			options: () => {
 				const known = this.context.source.list();
-				const all = [...known];
+				const options: PickerOption[] = known.map((path) => ({
+					value: path,
+					label: path,
+				}));
+				// A path the tree no longer holds stays on the field -- dropping it
+				// would edit the note behind the author's back -- and says so.
 				for (const value of this.values) {
-					if (!known.includes(value)) all.push(value);
+					if (known.includes(value)) continue;
+					options.push({ value, label: value, missing: true });
 				}
-				return all.map((path) => ({ value: path, label: path }));
+				return options;
 			},
+			missingLabel: (name) => t('form.referenceMissing', { name }),
 			label: t('form.category'),
 			placeholder: t('form.definition.placeholder.category'),
 			emptyPlaceholder: t('form.definition.placeholder.category'),
@@ -290,7 +297,14 @@ export class NoteListField {
 
 	attach(container: HTMLElement): void {
 		buildOptionPicker(this.context.app, container, {
-			options: () => noteFieldOptions(this.context.options(), this.values),
+			options: () =>
+				noteFieldOptions(
+					this.context.options(),
+					this.values,
+					(path) => !linkLeadsNowhere(this.context.app, path),
+				),
+			missingLabel: (name) =>
+				this.context.t('form.referenceMissing', { name }),
 			label: this.context.label,
 			placeholder: this.context.placeholder,
 			emptyPlaceholder: this.context.placeholder,
@@ -375,7 +389,14 @@ export class NoteField {
 
 	attach(container: HTMLElement): OptionPicker {
 		return buildOptionField(this.context.app, container, {
-			options: () => noteFieldOptions(this.context.options(), [this.value]),
+			options: () =>
+				noteFieldOptions(
+					this.context.options(),
+					[this.value],
+					(path) => !linkLeadsNowhere(this.context.app, path),
+				),
+			missingLabel: (name) =>
+				this.context.t('form.referenceMissing', { name }),
 			label: this.context.label,
 			placeholder: this.context.placeholder,
 			emptyPlaceholder: this.context.placeholder,
@@ -428,6 +449,16 @@ function noteKey(path: string): string {
 }
 
 /**
+ * Whether a link leads nowhere at all — which is the only reading of "missing"
+ * a field can act on. Obsidian shortens the links it writes to whatever was
+ * unambiguous at the time, so a link that does not match a listed note by its
+ * text may still be that note; what it resolves to is the answer.
+ */
+export function linkLeadsNowhere(app: App, path: string): boolean {
+	return app.metadataCache.getFirstLinkpathDest(getLinkpath(path), '') === null;
+}
+
+/**
  * What a note field offers: the project's notes keyed the way a stored link is,
  * and behind them anything the field holds that the project has never heard of.
  *
@@ -438,6 +469,8 @@ function noteKey(path: string): string {
 export function noteFieldOptions(
 	options: readonly PickerOption[],
 	values: readonly string[],
+	/** Whether a link the list does not hold still leads to a note. */
+	leadsSomewhere: (path: string) => boolean,
 ): PickerOption[] {
 	const known = options.map((option) => ({
 		value: noteKey(option.value),
@@ -451,9 +484,20 @@ export function noteFieldOptions(
 		.map((value) => ({
 			value: noteIdentity(value),
 			label: noteDisplay(value),
+			// Words are words; a link that leads nowhere is a note that has gone,
+			// and the field says which of the two it is holding.
+			missing: isMissingLink(value, leadsSomewhere),
 		}))
 		.filter((option) => !paths.has(option.value));
 	return [...known, ...kept];
+}
+
+function isMissingLink(
+	value: string,
+	leadsSomewhere: (path: string) => boolean,
+): boolean {
+	const term = parseTerm(value);
+	return term.kind === 'link' && !leadsSomewhere(term.path);
 }
 
 /** What a picker knows a stored value by: a note's path, or the words. */
@@ -661,12 +705,17 @@ export class RecordCardsEditor {
 		buildOptionField(this.context.app, body.createDiv(), {
 			options: () => {
 				const known = this.context.labels.list();
-				const all =
-					known.includes(card.label) || card.label.length === 0
-						? [...known]
-						: [...known, card.label];
-				return all.map((path) => ({ value: path, label: path }));
+				const options: PickerOption[] = known.map((path) => ({
+					value: path,
+					label: path,
+				}));
+				if (card.label.length > 0 && !known.includes(card.label)) {
+					options.push({ value: card.label, label: card.label, missing: true });
+				}
+				return options;
 			},
+			missingLabel: (name) =>
+				this.context.t('form.referenceMissing', { name }),
 			label: this.copy.labelTitle,
 			placeholder: this.copy.labelPlaceholder,
 			emptyPlaceholder: this.copy.labelPlaceholder,
@@ -735,6 +784,7 @@ export class RecordCardsEditor {
 					targetEl,
 					this.lineLabel(card.target),
 					termText(card.target),
+					this.isMissing(card.target),
 					() => {
 						card.target = null;
 						card.renderTarget();
@@ -901,11 +951,21 @@ export class RecordCardsEditor {
 				clause.kind === 'span'
 					? this.context.t('form.record.span')
 					: this.lineLabel(clause.term);
-			this.renderLine(card.contextsEl, label, text, () => {
+			const missing =
+				clause.kind === 'span'
+					? this.isMissing(clause.start) || this.isMissing(clause.end)
+					: this.isMissing(clause.term);
+			this.renderLine(card.contextsEl, label, text, missing, () => {
 				card.clauses.splice(index, 1);
 				this.renderContexts(card);
 			});
 		});
+	}
+
+	/** Whether a reference names a note that is no longer anywhere. */
+	private isMissing(term: RecordTerm): boolean {
+		const path = linkPath(term);
+		return path !== null && linkLeadsNowhere(this.context.app, path);
 	}
 
 	/** One reference: what it is, what it points at, and a way to drop it. */
@@ -913,6 +973,7 @@ export class RecordCardsEditor {
 		container: HTMLElement,
 		label: string,
 		text: string,
+		missing: boolean,
 		remove: () => void,
 	): void {
 		const line = container.createDiv({ cls: 'snowflake-method-record-line' });
@@ -920,7 +981,14 @@ export class RecordCardsEditor {
 			cls: 'snowflake-method-record-line-label',
 			text: label,
 		});
-		line.createDiv({ cls: 'snowflake-method-record-line-value', text });
+		const value = line.createDiv({
+			cls: 'snowflake-method-record-line-value',
+			text,
+		});
+		if (missing) {
+			value.addClass('snowflake-method-option-picker-missing');
+			setTooltip(value, this.context.t('form.referenceMissing', { name: text }));
+		}
 		const button = line.createEl('button', {
 			cls: 'snowflake-method-record-line-remove clickable-icon',
 			attr: {
