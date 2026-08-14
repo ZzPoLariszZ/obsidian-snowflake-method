@@ -2110,7 +2110,9 @@
 }
 
 @media (pointer: coarse) {
-	.snowflake-method-table-more {
+	/* Spelled with the hiding rule's own selector: a media query adds no
+	   specificity of its own, and a bare class here would lose to it. */
+	.snowflake-method-dashboard button.snowflake-method-table-more {
 		opacity: 1;
 	}
 }
@@ -6249,7 +6251,10 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 }
 
 @media (pointer: coarse) {
-	.snowflake-method-definition-inspector-note-more {
+	/* Spelled with the hiding rule's own selector: a media query adds no
+	   specificity of its own, and a bare class here would lose to it. */
+	.snowflake-method-dashboard
+		button.snowflake-method-definition-inspector-note-more {
 		opacity: 1;
 	}
 }

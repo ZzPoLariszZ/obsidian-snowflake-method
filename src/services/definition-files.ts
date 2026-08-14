@@ -328,17 +328,62 @@ export function characterTypeFromNodeName(
 }
 
 /**
+ * The role a single stored category link names -- and only at the root of
+ * the category tree, where the roles are seeded. An author is free to name a
+ * deeper node after a role, `Houses/Major`, and that is an ordinary category:
+ * reading it as the role would make the dashboard disagree with the generated
+ * base, and the migration mistake it for a converted role.
+ */
+export function characterRoleFromValue(value: unknown): CharacterType | null {
+  const link = parseDefinitionValue(value);
+  if (link === null) return null;
+  if (link.legacyHeading !== null) {
+    const type = characterTypeFromNodeName(link.legacyHeading);
+    if (type === null) return null;
+    // A legacy link's alias is the taxonomy path it always carried: a path
+    // with a parent in it is a nested node, not a root role.
+    const alias = link.alias ?? "";
+    return alias.includes("/") ? null : type;
+  }
+  const segments = link.target
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  const last = segments[segments.length - 1];
+  if (last !== undefined && foldName(last) === foldName(DEFINITION_NODE_BASENAME)) {
+    segments.pop();
+  }
+  const name = segments.pop();
+  if (name === undefined) return null;
+  const type = characterTypeFromNodeName(name);
+  if (type === null) return null;
+  // The folder above a root node is the tree root itself. A target too short
+  // to say -- a hand-typed link relative to the root -- is given the benefit
+  // of the doubt, the way every link was before nodes had depth.
+  const parent = segments.pop();
+  return parent === undefined || isCategoryRootName(parent) ? type : null;
+}
+
+/** Whether a folder name is a character category tree root, either language. */
+function isCategoryRootName(name: string): boolean {
+  for (const language of ["en", "zh-CN"] as const) {
+    if (name === definitionRootName("character", "category", language)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Reads a character's role out of its category links: the first link naming
- * one of the seeded role nodes decides, whichever era wrote the link.
+ * a seeded role node at the tree root decides, whichever era wrote the link.
  */
 export function characterRoleFromCategories(
   values: unknown,
 ): CharacterType | null {
   if (!Array.isArray(values)) return null;
   for (const value of values) {
-    const name = nodeNameFromValue(value);
-    if (name === null) continue;
-    const type = characterTypeFromNodeName(name);
+    const type = characterRoleFromValue(value);
     if (type !== null) return type;
   }
   return null;

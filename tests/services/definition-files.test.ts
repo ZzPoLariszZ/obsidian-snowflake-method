@@ -258,4 +258,31 @@ describe("character roles", () => {
     ).toBeNull();
     expect(characterRoleFromCategories("not a list")).toBeNull();
   });
+
+  it("does not read a deeper node named after a role as the role", () => {
+    // An author is free to file houses under `Houses/Major`: that is an
+    // ordinary category, not the author's role choice, in either era.
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Character/21_Category/Houses/Major/_self|Houses/Major]]",
+      ]),
+    ).toBeNull();
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Character/21_Category#Major|Houses/Major]]",
+      ]),
+    ).toBeNull();
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_角色/21_类别/家族/配角/_self|家族/配角]]",
+      ]),
+    ).toBeNull();
+    // And a nested namesake never hides the real root role behind it.
+    expect(
+      characterRoleFromCategories([
+        "[[P/20_Character/21_Category/Houses/Major/_self|Houses/Major]]",
+        "[[P/20_Character/21_Category/Supporting/_self|Supporting]]",
+      ]),
+    ).toBe("supporting");
+  });
 });

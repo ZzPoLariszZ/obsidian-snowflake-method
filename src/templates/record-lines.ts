@@ -22,9 +22,12 @@ import { DEFINITION_NODE_BASENAME, type ProjectLanguage } from "../domain";
  * The value belongs to this record on this note; only the label is shared
  * vocabulary. Clauses keep the order they were added in, and a connector says
  * what kind of note follows: `at` a location, `when` a time, `with` anyone
- * else, and `->` the one target a relationship is with. `from … to …` is read
- * and re-emitted for records written before spans became period notes, but
- * nothing writes a new one.
+ * else, and `->` the one target a relationship is with. A connector reads as
+ * a connector only in front of a link -- the plugin never writes one anywhere
+ * else -- so a value stays free prose even when it contains the words `at`,
+ * `from` or an arrow of its own. `from … to …` is read and re-emitted for
+ * records written before spans became period notes, but nothing writes a new
+ * one.
  *
  * A line the grammar does not cover is kept verbatim and re-emitted after the
  * records on every rewrite, so nothing typed by other tools is dropped; the
@@ -259,12 +262,17 @@ export function parseRecordSectionLenient(
 }
 
 function contentLines(content: string): string[] {
-  return content
+  const lines = content
     .split(/\r\n|\r|\n/u)
     .map((line) => line.replace(/\s+$/u, ""))
     .map((line) => (line.startsWith(">") ? line.replace(/^>[ \t]?/u, "") : line))
-    .filter((line) => line.trim().length > 0)
-    .filter((line) => !/^\[![a-z]+\]/iu.test(line.trim()));
+    .filter((line) => line.trim().length > 0);
+  // The callout title is the section's own furniture, but only the one the
+  // section opens with. A callout header typed further down is somebody
+  // else's content: it flows to the unrecognized bucket and is kept, like
+  // every other line the grammar does not cover.
+  const title = lines.findIndex((line) => /^\[![a-z]+\]/iu.test(line.trim()));
+  return lines.filter((line, at) => at !== title);
 }
 
 function renderClause(
@@ -337,14 +345,15 @@ interface ConnectorMark {
 
 /**
  * Splits a tail at its connectors, in the order they appear. A connector
- * counts only with spaces on both sides and outside wikilink brackets, so a
- * link text may contain a connector word without splitting the record. Every
- * connector must be followed by something; anything else is not this grammar.
+ * counts only with spaces on both sides, outside wikilink brackets, and in
+ * front of a link: every clause the plugin writes points its connector at a
+ * link, so a connector word in front of anything else is the value's own
+ * prose -- "Escaped from prison" is a value, not half a span.
  */
 function parseClauses(copy: RecordCopy, tail: string): ClauseSplit | null {
   // Padded so a connector at the very start still sits between spaces.
   const padded = ` ${stripDerivedSpans(copy, tail)}`;
-  const marks: ConnectorMark[] = [
+  let marks: ConnectorMark[] = [
     ...connectorMarks(padded, copy.arrow, "target"),
     ...connectorMarks(padded, copy.at, "at"),
     ...connectorMarks(padded, copy.when, "when"),
@@ -352,6 +361,25 @@ function parseClauses(copy: RecordCopy, tail: string): ClauseSplit | null {
     ...connectorMarks(padded, copy.from, "span"),
   ].sort((left, right) => left.index - right.index);
 
+  // A mark whose segment does not read as a clause after all is prose, not
+  // half a clause: the mark comes back out and the words stay where the
+  // author put them, which also re-widens the segment before it.
+  for (;;) {
+    const read = readClauses(copy, padded, marks);
+    if (read.ok) return read.split;
+    if (read.dropped === null) return null;
+    const dropped = read.dropped;
+    marks = marks.filter((mark) => mark !== dropped);
+  }
+}
+
+function readClauses(
+  copy: RecordCopy,
+  padded: string,
+  marks: readonly ConnectorMark[],
+):
+  | { ok: true; split: ClauseSplit }
+  | { ok: false; dropped: ConnectorMark | null } {
   const head = padded.slice(0, marks[0]?.index ?? padded.length).trim();
   const clauses: RecordClause[] = [];
   for (let index = 0; index < marks.length; index += 1) {
@@ -360,24 +388,34 @@ function parseClauses(copy: RecordCopy, tail: string): ClauseSplit | null {
     const text = padded
       .slice(mark.index + mark.token.length, next?.index ?? padded.length)
       .trim();
-    if (text.length === 0) return null;
+    if (text.length === 0) return { ok: false, dropped: null };
     if (mark.kind === "span") {
-      const span = ` ${text}`;
-      const toIndex = connectorIndex(span, copy.to);
-      if (toIndex === null) return null;
-      const start = span.slice(0, toIndex).trim();
-      const end = span.slice(toIndex + connectorToken(copy.to).length).trim();
-      if (start.length === 0 || end.length === 0) return null;
-      clauses.push({
-        kind: "span",
-        start: parseTerm(start),
-        end: parseTerm(end),
-      });
+      const span = parseSpan(copy, text);
+      if (span === null) return { ok: false, dropped: mark };
+      clauses.push(span);
       continue;
     }
-    clauses.push({ kind: mark.kind, term: parseTerm(text) });
+    const term = parseTerm(text);
+    if (term.kind !== "link") return { ok: false, dropped: mark };
+    clauses.push({ kind: mark.kind, term });
   }
-  return { head, clauses };
+  return { ok: true, split: { head, clauses } };
+}
+
+/**
+ * A span clause is two linked ends or it is not a span: `from … to …` occurs
+ * in ordinary prose far too often to read on the words alone.
+ */
+function parseSpan(copy: RecordCopy, text: string): RecordClause | null {
+  const span = ` ${text}`;
+  const toIndex = connectorIndex(span, copy.to);
+  if (toIndex === null) return null;
+  const start = parseTerm(span.slice(0, toIndex).trim());
+  const end = parseTerm(
+    span.slice(toIndex + connectorToken(copy.to).length).trim(),
+  );
+  if (start.kind !== "link" || end.kind !== "link") return null;
+  return { kind: "span", start, end };
 }
 
 /**
@@ -386,13 +424,16 @@ function parseClauses(copy: RecordCopy, tail: string): ClauseSplit | null {
  * note, so a line read back must not find them, or the record would gain a
  * clause nobody wrote and grow another pair on every save.
  *
- * Only an exact `(from <link> to <link>)` is taken, so a bracket an author put
- * in a value of their own is left where they put it.
+ * A period's ends are whatever its frontmatter holds -- links or plain words
+ * -- so the shape inside the brackets is only `from <something> to
+ * <something>`. What keeps an author's own "(from … to …)" safe is the term
+ * in front: the renderer writes a span only behind a linked period, so a
+ * bracket after plain prose is left where the author put it.
  */
 function stripDerivedSpans(copy: RecordCopy, tail: string): string {
   const open = `${copy.spanOpen}${copy.from} `;
   const pattern = new RegExp(
-    `^${escapeForPattern(copy.from)}\\s+\\[\\[[^\\]]+\\]\\]\\s+${escapeForPattern(copy.to)}\\s+\\[\\[[^\\]]+\\]\\]$`,
+    `^${escapeForPattern(copy.from)}\\s+\\S(?:.*\\S)?\\s+${escapeForPattern(copy.to)}\\s+\\S.*$`,
     "u",
   );
   let result = "";
@@ -412,7 +453,10 @@ function stripDerivedSpans(copy: RecordCopy, tail: string): string {
       continue;
     }
     if (depth === 0 && tail.startsWith(open, index)) {
-      const close = closingIndex(tail, index + open.length, copy.spanClose);
+      const behindLink = result.replace(/\s+$/u, "").endsWith("]]");
+      const close = behindLink
+        ? closingIndex(tail, index + open.length, copy.spanClose)
+        : null;
       const inner =
         close === null
           ? null
@@ -457,7 +501,11 @@ function escapeForPattern(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
-/** Every occurrence of ` connector ` outside wikilink brackets. */
+/**
+ * Every occurrence of ` connector ` outside wikilink brackets that stands in
+ * front of a link. The plugin only ever writes a connector in front of one,
+ * so anywhere else the word is prose.
+ */
 function connectorMarks(
   text: string,
   connector: string,
@@ -478,7 +526,9 @@ function connectorMarks(
       continue;
     }
     if (depth === 0 && text.startsWith(token, index)) {
-      marks.push({ kind, index, token });
+      let peek = index + token.length;
+      while (text[peek] === " ") peek += 1;
+      if (text.startsWith("[[", peek)) marks.push({ kind, index, token });
       index += token.length - 2;
     }
   }

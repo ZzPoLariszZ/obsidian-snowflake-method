@@ -41,6 +41,7 @@ import {
   ALIASES_KEY,
   DEFINITION_FILE_IDS,
   DEFINITION_NODE_BASENAME,
+  DOCUMENT_TYPES,
   ENTITY_KINDS,
   SCENE_POV_OMNISCIENT,
   WORLDBUILDING_KINDS,
@@ -60,9 +61,9 @@ import {
 import {
   MAX_DEFINITION_DEPTH,
   characterRoleFromCategories,
+  characterRoleFromValue,
   characterRoleName,
   characterStarterNames,
-  characterTypeFromNodeName,
   checkDefinitionPath,
   definitionProseByPath,
   definitionRootFromValue,
@@ -70,7 +71,6 @@ import {
   isValidDefinitionSegment,
   legacyDefinitionFileName,
   nodeLink,
-  nodeNameFromValue,
   nodeSelfPath,
   parseDefinitionFile,
   parseDefinitionValue,
@@ -1135,13 +1135,15 @@ export class SnowflakeProjectService {
       ): Promise<void> => {
         const path = taxonomyPathFromTarget(target, root.rootPath);
         if (path === null) return;
-        if (this.repository.getFolder(`${root.rootPath}/${path}`) !== null) {
-          return;
-        }
+        if (this.definitionNodeFolderStands(root.rootPath, path)) return;
         const check = checkDefinitionPath(path);
         if (!check.ok) return;
-        await this.ensureDefinitionNodes(project, kind, root.id, check.segments);
-        created += 1;
+        // Counted by what the ensure actually made: a repair that made
+        // nothing has repaired nothing, and says so below rather than
+        // reporting a success the next check would take straight back.
+        created += (
+          await this.ensureDefinitionNodes(project, kind, root.id, check.segments)
+        ).length;
       };
       for (const raw of member.categories) {
         const link = parseDefinitionValue(raw);
@@ -1973,6 +1975,10 @@ export class SnowflakeProjectService {
   ): Promise<void> {
     const project = await this.loadProject(projectLocator);
     const records = await this.memberRecords(project);
+    // The note is gone, so every link to it is words now, and a bare
+    // wiki-word only reads as the deleted member in fields of its own kind;
+    // a path-qualified link says which note it meant by itself.
+    const kind = memberKindOfPath(project, memberPath);
     for (const record of records) {
       if (record.readOnly || record.path === memberPath) continue;
       const patch: ManagedFrontmatter = {};
@@ -1980,13 +1986,19 @@ export class SnowflakeProjectService {
         // Only what a list can lose: what a field holds alone is a decision to
         // be made rather than an entry to drop.
         if (!field.removable) continue;
+        const kindMatches = field.kind === kind;
         const raw = storedList(record.frontmatter[field.key]);
         if (raw === null) continue;
         const next = raw.filter((entry) => {
           const target = fromWikiLink(storedReference(field, entry));
-          return (
-            target === null ||
-            !this.linkNames(target, memberPath, record.path, project.rootPath)
+          if (target === null) return true;
+          if (!target.includes("/") && !kindMatches) return true;
+          return !this.linkNames(
+            target,
+            memberPath,
+            record.path,
+            project.rootPath,
+            true,
           );
         });
         if (next.length !== raw.length) patch[field.key] = next;
@@ -2010,22 +2022,33 @@ export class SnowflakeProjectService {
     const listed = new Set<string>();
     const single = new Set<string>();
     const records = new Set<string>();
+    // A bare wiki-word in a field only means this member where the field
+    // holds its kind, matching what the removal sweep will actually edit. A
+    // record line's clauses can point at anyone, so there the words keep
+    // reading.
+    const kind = memberKindOfPath(project, memberPath);
     for (const record of await this.memberRecords(project)) {
       if (record.path === memberPath) continue;
-      const names = (stored: string | null): boolean => {
+      const names = (stored: string | null, kindMatches: boolean): boolean => {
         const target = fromWikiLink(stored);
-        return (
-          target !== null &&
-          this.linkNames(target, memberPath, record.path, project.rootPath)
+        if (target === null) return false;
+        if (!target.includes("/") && !kindMatches) return false;
+        return this.linkNames(
+          target,
+          memberPath,
+          record.path,
+          project.rootPath,
+          true,
         );
       };
       const title = memberTitleOf(record);
       for (const field of MEMBER_LINK_FIELDS) {
+        const kindMatches = field.kind === kind;
         const stored = record.frontmatter[field.key];
         if (field.list) {
           if (
             storedList(stored)?.some((entry) =>
-              names(storedReference(field, entry)),
+              names(storedReference(field, entry), kindMatches),
             )
           ) {
             listed.add(title);
@@ -2033,7 +2056,7 @@ export class SnowflakeProjectService {
           continue;
         }
         const value = storedReference(field, stored);
-        if (value !== null && !isScenePovMode(value) && names(value)) {
+        if (value !== null && !isScenePovMode(value) && names(value, kindMatches)) {
           single.add(title);
         }
       }
@@ -2041,7 +2064,13 @@ export class SnowflakeProjectService {
         memberRecordTerms(record, project.locale).some(
           (term) =>
             term.kind === "link" &&
-            this.linkNames(term.path, memberPath, record.path, project.rootPath),
+            this.linkNames(
+              term.path,
+              memberPath,
+              record.path,
+              project.rootPath,
+              kind !== null,
+            ),
         )
       ) {
         records.add(title);
@@ -2182,10 +2211,16 @@ export class SnowflakeProjectService {
     path: string,
     sourcePath: string,
     root: string,
+    bareNames: boolean,
   ): boolean {
     const wanted = normalizePath(path);
     const resolved = this.repository.resolveLinkWithin(target, sourcePath, root);
     if (resolved !== null) return resolved.path === wanted;
+    // A link that resolves nowhere carries only its words, and words are
+    // ambiguous: a dangling [[Winter]] could have meant any member ever
+    // called Winter. The caller says whether this context is narrow enough
+    // -- the right kind of field for the member in hand -- to read them.
+    if (!bareNames) return false;
     const named = normalizePath(target);
     const stem = wanted.replace(/\.md$/u, "");
     return (
@@ -2217,17 +2252,33 @@ export class SnowflakeProjectService {
     const link = toWikiLink(currentPath, name);
     // Either name reaches the same note: Obsidian repoints the links it owns
     // as the note moves, and leaves them naming where it was when a Vault is
-    // set not to update links at all.
-    const isRenamed = (target: string | null, sourcePath: string): boolean =>
-      target !== null &&
-      (this.linkNames(target, previousPath, sourcePath, project.rootPath) ||
-        this.linkNames(target, currentPath, sourcePath, project.rootPath));
+    // set not to update links at all. A bare wiki-word is different: it is
+    // whatever the vault happens to resolve it to today -- with the time note
+    // gone, a hand-typed [[Winter]] in a scene's time list resolves to a
+    // character of that name, or to nothing at all. Either way it only reads
+    // as this member in fields and clauses of this member's own kind. A
+    // path-qualified target is unambiguous wherever it sits: its folders
+    // already say which kind it names.
+    const kind = memberKindOfPath(project, previousPath);
+    const isRenamed = (
+      target: string | null,
+      sourcePath: string,
+      kindMatches: boolean,
+    ): boolean => {
+      if (target === null) return false;
+      if (!target.includes("/") && !kindMatches) return false;
+      return (
+        this.linkNames(target, previousPath, sourcePath, project.rootPath, true) ||
+        this.linkNames(target, currentPath, sourcePath, project.rootPath, true)
+      );
+    };
 
     const touched: string[] = [];
     for (const record of records) {
       if (record.readOnly || record.path === previousPath) continue;
       const patch: ManagedFrontmatter = {};
       for (const field of MEMBER_LINK_FIELDS) {
+        const kindMatches = field.kind === kind;
         const stored = record.frontmatter[field.key];
         if (field.list) {
           const raw = storedList(stored);
@@ -2236,7 +2287,8 @@ export class SnowflakeProjectService {
           // carry the right display text for their own note.
           const next = raw.map((entry) => {
             const value = storedReference(field, entry);
-            return value !== null && isRenamed(fromWikiLink(value), record.path)
+            return value !== null &&
+              isRenamed(fromWikiLink(value), record.path, kindMatches)
               ? link
               : entry;
           });
@@ -2245,7 +2297,10 @@ export class SnowflakeProjectService {
         }
         const value = storedReference(field, stored);
         if (value === null || isScenePovMode(value)) continue;
-        if (value !== link && isRenamed(fromWikiLink(value), record.path)) {
+        if (
+          value !== link &&
+          isRenamed(fromWikiLink(value), record.path, kindMatches)
+        ) {
           patch[field.key] = link;
         }
       }
@@ -2260,27 +2315,37 @@ export class SnowflakeProjectService {
     const refreshed = await this.loadProject(project.projectFile);
     for (const member of projectMembers(refreshed)) {
       if (member.readOnly) continue;
-      const rewrite = (term: RecordTerm): RecordTerm =>
-        term.kind === "link" && isRenamed(term.path, member.path)
+      const rewrite = (term: RecordTerm, kindMatches: boolean): RecordTerm =>
+        term.kind === "link" && isRenamed(term.path, member.path, kindMatches)
           ? {
               kind: "link",
               path: normalizePath(currentPath).replace(/\.md$/u, ""),
               name,
             }
           : term;
+      // `when` holds times and `at` holds locations, so only there do bare
+      // words read as those kinds; `with` and the arrow reach any member.
+      const kindIn = (
+        clauseKind: "target" | "at" | "when" | "with" | "span",
+      ): boolean =>
+        clauseKind === "when" || clauseKind === "span"
+          ? kind === "time"
+          : clauseKind === "at"
+            ? kind === "location"
+            : kind !== null;
       let changed = false;
       const rewritten = (lines: readonly RecordLine[]): RecordLine[] =>
         lines.map((line) => {
           let lineChanged = false;
           const clauses = line.clauses.map((clause) => {
             if (clause.kind === "span") {
-              const start = rewrite(clause.start);
-              const end = rewrite(clause.end);
+              const start = rewrite(clause.start, kindIn("span"));
+              const end = rewrite(clause.end, kindIn("span"));
               if (start === clause.start && end === clause.end) return clause;
               lineChanged = true;
               return { ...clause, start, end };
             }
-            const term = rewrite(clause.term);
+            const term = rewrite(clause.term, kindIn(clause.kind));
             if (term === clause.term) return clause;
             lineChanged = true;
             return { ...clause, term };
@@ -2823,6 +2888,17 @@ export class SnowflakeProjectService {
         // then leaves either yesterday's note or one every reader already
         // resolves the same way, never a note claiming two roles.
         const record = await this.repository.readManaged(character.path);
+        // A legacy key that does not read is still the author's role, in a
+        // spelling the plugin cannot follow. Migrating would delete the key
+        // without converting anything: the note is skipped and counted, and
+        // the health check names it for the author to put right.
+        if (
+          hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType) &&
+          !isCharacterType(record.frontmatter[FRONTMATTER_KEYS.characterType])
+        ) {
+          skipped += 1;
+          continue;
+        }
         // Nothing to move when the role already reads as a category, or when
         // the note never named one. Whatever the list holds afterwards is
         // re-emitted in today's link form, old role or not.
@@ -3041,8 +3117,24 @@ export class SnowflakeProjectService {
         if (file === null) continue;
         const content = await this.repository.vault.read(file);
         const prose = definitionProseByPath(content);
-        let refused = false;
-        for (const entry of parseDefinitionFile(content).entries) {
+        const entries = parseDefinitionFile(content).entries;
+        // Two chains folding onto one node are two proses claiming one
+        // `_self.md`: converting would keep whichever came last and trash
+        // the only copy of the other. The unambiguous nodes still rise; the
+        // file stays, with both spellings in it, until the author settles
+        // which is which.
+        const claimed = new Set<string>();
+        const contested = new Set<string>();
+        for (const entry of entries) {
+          const folded = entry.path.split("/").map(foldName).join("/");
+          if (claimed.has(folded)) contested.add(folded);
+          claimed.add(folded);
+        }
+        let refused = contested.size > 0;
+        for (const entry of entries) {
+          if (contested.has(entry.path.split("/").map(foldName).join("/"))) {
+            continue;
+          }
           const check = checkDefinitionPath(entry.path);
           if (!check.ok) {
             refused = true;
@@ -3584,7 +3676,9 @@ export class SnowflakeProjectService {
       const path = taxonomyPathFromTarget(target, root);
       if (path === null) return;
       const named = this.reportName(`${root}/${path}`, project.rootPath);
-      if (this.repository.getFolder(`${root}/${path}`) === null) {
+      // Folded, the way links resolve and the repair matches: a folder
+      // renamed only in case still holds the node this link means.
+      if (!this.definitionNodeFolderStands(root, path)) {
         unresolved.push(named);
         return;
       }
@@ -3784,6 +3878,27 @@ export class SnowflakeProjectService {
    * description lands in the deepest node's body, where it stays the moment
    * the body has anything of its own.
    */
+  /**
+   * Whether a node folder already stands at a taxonomy path, matched the way
+   * `ensureDefinitionNodes` matches: fold by fold, segment by segment. The
+   * check that raises an issue and the ensure that would mend it must agree
+   * on what exists -- an exact-case lookup here would report a folder renamed
+   * only in case as missing, and the repair, matching folded, would create
+   * nothing and report success, forever.
+   */
+  private definitionNodeFolderStands(rootPath: string, path: string): boolean {
+    if (this.repository.getFolder(rootPath) === null) return false;
+    let folderPath = rootPath;
+    for (const segment of path.split("/")) {
+      const existing = this.repository
+        .listDirectFolders(folderPath)
+        .find((child) => foldName(child.name) === foldName(segment));
+      if (existing === undefined) return false;
+      folderPath = `${folderPath}/${existing.name}`;
+    }
+    return true;
+  }
+
   private async ensureDefinitionNodes(
     project: ProjectRef | ProjectSnapshot,
     kind: EntityKind,
@@ -4855,14 +4970,24 @@ export class SnowflakeProjectService {
     );
     for (const folder of folders) {
       const folderPath = normalizePath(`${rootPath}/${folder}`);
-      for (const file of this.repository.listDirectFiles(folderPath)) {
-        if (file.extension !== "md") continue;
-        const record = await this.repository.tryReadManaged(file.path);
-        if (!record || record.readOnly || !isProjectDocumentType(documentTypeOf(record.frontmatter))) {
-          continue;
+      // The whole subtree votes: worldbuilding notes live one kind folder
+      // down, definition `_self.md` notes deeper still, and every one of
+      // them carries the very stamp being recovered.
+      const queue: string[] = [folderPath];
+      while (queue.length > 0) {
+        const current = queue.pop() as string;
+        for (const child of this.repository.listDirectFolders(current)) {
+          queue.push(child.path);
         }
-        const candidate = normalizeStableId(record.frontmatter[FRONTMATTER_KEYS.projectId]);
-        if (candidate) counts.set(candidate, (counts.get(candidate) ?? 0) + 1);
+        for (const file of this.repository.listDirectFiles(current)) {
+          if (file.extension !== "md") continue;
+          const record = await this.repository.tryReadManaged(file.path);
+          if (!record || record.readOnly || !isProjectDocumentType(documentTypeOf(record.frontmatter))) {
+            continue;
+          }
+          const candidate = normalizeStableId(record.frontmatter[FRONTMATTER_KEYS.projectId]);
+          if (candidate) counts.set(candidate, (counts.get(candidate) ?? 0) + 1);
+        }
       }
     }
     const ranked = [...counts.entries()].sort(
@@ -4975,10 +5100,10 @@ export class SnowflakeProjectService {
         : nextRepairRank(usedRanks);
     usedRanks.add(rank);
     if (rawRank !== rank) patch[FRONTMATTER_KEYS.rank] = rank;
-    const rawCharacterType = record.frontmatter[FRONTMATTER_KEYS.characterType];
-    if (!isCharacterType(rawCharacterType)) {
-      patch[FRONTMATTER_KEYS.characterType] = "supporting";
-    }
+    // The role is an authorial decision. A note without the legacy type key
+    // is a migrated note or a roleless one, and a value that does not read
+    // is the author's to put right: the repair never invents or moves a
+    // role, the same rule the per-note safe repair follows.
     for (const key of [
       FRONTMATTER_KEYS.oneSentenceStoryline,
       FRONTMATTER_KEYS.motivation,
@@ -5657,10 +5782,17 @@ export class SnowflakeProjectService {
 
         // A role is a category like any other, so having none is a choice, not
         // damage. What a character must have is its identity: a unique id and
-        // a name.
+        // a name -- and a legacy role key that still reads, because the
+        // migration deletes that key, and it must never delete a role it
+        // could not first read.
+        const typeReadable =
+          documentType !== "character" ||
+          !hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType) ||
+          isCharacterType(record.frontmatter[FRONTMATTER_KEYS.characterType]);
         const typeSpecificValid =
           documentType === "character"
             ? stableIdIsUnique &&
+              typeReadable &&
               asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) !== null
             : stableIdIsUnique &&
               asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) !== null &&
@@ -5679,8 +5811,11 @@ export class SnowflakeProjectService {
           stepIds,
           expected: documentType,
           canOpen: true,
+          // A role value nobody can read is the author's to put right: the
+          // repair never guesses a role, so it cannot mend this one.
           repairable:
-            documentType === "character"
+            typeReadable &&
+            (documentType === "character"
               ? safeCharacterMetadataRepairPatch(
                   record,
                   project.id,
@@ -5692,7 +5827,7 @@ export class SnowflakeProjectService {
                   project.id,
                   idsBeforeCurrent,
                   ranksBeforeCurrent,
-                ) !== null,
+                ) !== null),
         });
       }
     };
@@ -7023,10 +7158,14 @@ function characterRoleLinks(project: {
   };
 }
 
-/** The character type a single stored category value names, if any. */
+/**
+ * The character type a single stored category value names, if any. Root-level
+ * role nodes only, the same reading `characterRoleFromCategories` gives the
+ * dashboard: a deeper node that happens to carry a role's name is an ordinary
+ * category, and a role change must not overwrite it.
+ */
 function roleTypeOfValue(value: string): CharacterType | null {
-  const name = nodeNameFromValue(value);
-  return name === null ? null : characterTypeFromNodeName(name);
+  return characterRoleFromValue(value);
 }
 
 /** The entity kind a member record is, which is where its trees live. */
@@ -7038,6 +7177,27 @@ function memberEntityKind(
     : "sceneId" in member
       ? "scene"
       : member.kind;
+}
+
+/**
+ * The entity kind a member path belongs to, read from the folder it sits in.
+ * The note itself may already be gone -- the deletion sweep runs after the
+ * file does, and a rename sweep asks about the note's previous path -- so
+ * the path is all there is to read.
+ */
+function memberKindOfPath(
+  project: { rootPath: string; locale: ProjectLanguage },
+  path: string,
+): EntityKind | null {
+  const layout = getProjectPathLayout(project.locale);
+  const normalized = normalizePath(path);
+  for (const kind of ENTITY_KINDS) {
+    const folder = normalizePath(
+      `${project.rootPath}/${entityKindFolder(layout, kind)}`,
+    );
+    if (normalized.startsWith(`${folder}/`)) return kind;
+  }
+  return null;
 }
 
 /** The project folder a base file lives in, relative to the project root. */
@@ -7214,24 +7374,55 @@ function entityRecordSectionValues(
  * is written as a link is read as one there, so a scene still saying "one
  * winter evening" is never reported as a broken link and never rewritten: it
  * is the member migration that gives those words a note.
+ *
+ * Each field holds one kind of note, and the kind is what keeps the sweeps
+ * honest: a link that no longer resolves is matched by bare name only against
+ * members of the kind its field holds, so renaming a character called Winter
+ * never captures a scene's dangling time entry of the same name.
  */
 const MEMBER_LINK_FIELDS = [
-  { key: FRONTMATTER_KEYS.pov, list: false, prose: false, removable: false },
+  {
+    key: FRONTMATTER_KEYS.pov,
+    kind: "character",
+    list: false,
+    prose: false,
+    removable: false,
+  },
   {
     key: FRONTMATTER_KEYS.sceneCharacters,
+    kind: "character",
     list: true,
     prose: false,
     removable: true,
   },
-  { key: FRONTMATTER_KEYS.sceneTime, list: true, prose: true, removable: true },
   {
-    key: FRONTMATTER_KEYS.sceneLocation,
+    key: FRONTMATTER_KEYS.sceneTime,
+    kind: "time",
     list: true,
     prose: true,
     removable: true,
   },
-  { key: FRONTMATTER_KEYS.timeStart, list: false, prose: true, removable: false },
-  { key: FRONTMATTER_KEYS.timeEnd, list: false, prose: true, removable: false },
+  {
+    key: FRONTMATTER_KEYS.sceneLocation,
+    kind: "location",
+    list: true,
+    prose: true,
+    removable: true,
+  },
+  {
+    key: FRONTMATTER_KEYS.timeStart,
+    kind: "time",
+    list: false,
+    prose: true,
+    removable: false,
+  },
+  {
+    key: FRONTMATTER_KEYS.timeEnd,
+    kind: "time",
+    list: false,
+    prose: true,
+    removable: false,
+  },
 ] as const;
 
 /**
@@ -7566,16 +7757,20 @@ function nextRepairRank(used: ReadonlySet<number>): number {
   throw new RangeError("Could not assign a safe scene rank while repairing the project.");
 }
 
+/**
+ * The document types whose notes vote when a project id is being recovered:
+ * derived from the one list of types, so a type added there votes here
+ * without anyone remembering to widen a copy. The project's own metadata
+ * note is what is being recovered, and material and archive hold whatever
+ * the author brought along rather than the plugin's stamps.
+ */
+const PROJECT_MEMBER_DOCUMENT_TYPES: readonly string[] = DOCUMENT_TYPES.filter(
+  (type) =>
+    type !== "project-metadata" && type !== "material" && type !== "archive",
+);
+
 function isProjectDocumentType(value: string | null): value is DocumentType {
-  return (
-    value === "one-sentence-summary" ||
-    value === "one-paragraph-summary" ||
-    value === "plot-synopsis" ||
-    value === "long-synopsis" ||
-    value === "character" ||
-    value === "scene" ||
-    value === "draft"
-  );
+  return value !== null && PROJECT_MEMBER_DOCUMENT_TYPES.includes(value);
 }
 
 function hasOwn(record: ManagedFrontmatter, key: string): boolean {

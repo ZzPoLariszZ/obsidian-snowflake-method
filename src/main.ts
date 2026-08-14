@@ -1722,11 +1722,17 @@ export default class SnowflakeMethodPlugin
 				key: string,
 				vars?: Record<string, string | number>,
 			): string => this.translateForProject(model.locale, key, vars);
+			// The same members the shield button counts, worldbuilding included:
+			// an indicator that turns red over an issue the report then cannot
+			// name would leave the author with nowhere to go.
 			const issues = [
 				...model.structureIssues,
 				...model.steps.flatMap((step) => step.healthIssues),
 				...model.characters.flatMap((character) => character.healthIssues),
 				...model.scenes.flatMap((scene) => scene.healthIssues),
+				...WORLDBUILDING_KINDS.flatMap((kind) =>
+					model.worldbuilding[kind].flatMap((entity) => entity.healthIssues),
+				),
 			].filter((issue) => issue.blocking);
 			const uniqueIssues = [
 				...new Map(

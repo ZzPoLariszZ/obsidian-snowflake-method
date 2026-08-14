@@ -585,11 +585,29 @@ export interface PickedEntity {
 	option: PickerOption;
 }
 
+/**
+ * A card the author has begun but not yet filed under a label. A record needs
+ * its label to be written, but a form redraw is not a save: whatever was
+ * typed has to survive it, label or no label.
+ */
+export interface RecordDraft {
+	value: string;
+	target: RecordTerm | null;
+	clauses: RecordClause[];
+}
+
 /** One card's worth of state, kept beside its element. */
 interface RecordCard {
 	el: HTMLElement;
 	contextsEl: HTMLElement;
 	label: string;
+	/**
+	 * The stored label link, kept while the label field is untouched. The
+	 * target carries identity and the alias is only a display cache, so a
+	 * save must not rebuild the target out of the alias: after a folder
+	 * rename that would resurrect the node the rename moved away from.
+	 */
+	labelPath: string | null;
 	valueEl: HTMLInputElement;
 	target: RecordTerm | null;
 	clauses: RecordClause[];
@@ -618,6 +636,7 @@ export class RecordCardsEditor {
 			labelPlaceholder: string;
 		},
 		private readonly withTarget: boolean,
+		private readonly initialDrafts: readonly RecordDraft[] = [],
 	) {}
 
 	attach(container: HTMLElement): void {
@@ -638,6 +657,32 @@ export class RecordCardsEditor {
 			this.addCard(null);
 		});
 		for (const record of this.initial) this.addCard(record);
+		for (const draft of this.initialDrafts) this.addDraft(draft);
+	}
+
+	/**
+	 * The unlabeled cards, so a redraw can hand them to the editor it builds
+	 * next. They rejoin after the records; a redraw mid-form loses a draft's
+	 * place in the order, never the draft.
+	 */
+	drafts(): RecordDraft[] {
+		return this.cards
+			.filter((card) => card.label.trim().length === 0)
+			.map((card) => ({
+				value: card.valueEl.value,
+				target: card.target,
+				clauses: [...card.clauses],
+			}));
+	}
+
+	private addDraft(draft: RecordDraft): void {
+		const card = this.addCard(null);
+		if (card === null) return;
+		card.valueEl.value = draft.value;
+		card.target = draft.target;
+		card.clauses = [...draft.clauses];
+		card.renderTarget();
+		this.renderContexts(card);
 	}
 
 	records(): RecordLine[] {
@@ -646,13 +691,16 @@ export class RecordCardsEditor {
 			const path = card.label.trim();
 			if (path.length === 0) continue;
 			records.push({
-				label: {
-					path: `${this.definitionPath}/${path}/${DEFINITION_NODE_BASENAME}`,
-					display: path,
-				},
+				label:
+					card.labelPath !== null
+						? { path: card.labelPath, display: path }
+						: {
+								path: `${this.definitionPath}/${path}/${DEFINITION_NODE_BASENAME}`,
+								display: path,
+							},
 				value: card.valueEl.value.trim(),
 				clauses: [
-					...(this.withTarget && card.target !== null
+					...(card.target !== null
 						? [{ kind: 'target' as const, term: card.target }]
 						: []),
 					...card.clauses,
@@ -662,9 +710,9 @@ export class RecordCardsEditor {
 		return records;
 	}
 
-	private addCard(record: RecordLine | null): void {
+	private addCard(record: RecordLine | null): RecordCard | null {
 		const list = this.listEl;
-		if (list === null) return;
+		if (list === null) return null;
 		const el = list.createDiv({ cls: 'snowflake-method-record-card' });
 		const handle = el.createDiv({
 			cls: 'snowflake-method-record-drag',
@@ -681,20 +729,26 @@ export class RecordCardsEditor {
 		});
 		setIcon(close, 'trash-2');
 
-		const storedTarget = record?.clauses.find(
-			(clause) => clause.kind === 'target',
-		);
+		// Only the target the picker will show comes out of the clauses. Any
+		// further target line -- and every one of them where the editor shows
+		// no picker -- stays an ordinary context line, visible and removable,
+		// and is written back out with the record rather than dropped.
+		const storedTarget = this.withTarget
+			? record?.clauses.find((clause) => clause.kind === 'target')
+			: undefined;
 		const card: RecordCard = {
 			el,
 			contextsEl: null as unknown as HTMLElement,
-			label: record?.label.display ?? '',
+			label:
+				record === null ? '' : labelDisplay(record.label, this.definitionPath),
+			labelPath: record?.label.path ?? null,
 			valueEl: null as unknown as HTMLInputElement,
 			target:
 				storedTarget !== undefined && storedTarget.kind !== 'span'
 					? storedTarget.term
 					: null,
 			clauses: (record?.clauses ?? []).filter(
-				(clause) => clause.kind !== 'target',
+				(clause) => clause !== storedTarget,
 			),
 			renderTarget: () => undefined,
 		};
@@ -722,6 +776,9 @@ export class RecordCardsEditor {
 			value: () => card.label,
 			choose: (value) => {
 				card.label = value;
+				// A picked label is the author's decision: from here the link is
+				// built from the taxonomy path, not kept from the stored line.
+				card.labelPath = null;
 			},
 			create: {
 				label: (typed) =>
@@ -817,6 +874,7 @@ export class RecordCardsEditor {
 		});
 		this.cards.push(card);
 		this.renderContexts(card);
+		return card;
 	}
 
 	/**
@@ -999,6 +1057,26 @@ export class RecordCardsEditor {
 		setIcon(button, 'circle-minus');
 		button.addEventListener('click', remove);
 	}
+}
+
+/**
+ * What a stored label reads as: the taxonomy path derived from its target
+ * whenever the target sits in this editor's tree, because the target carries
+ * identity and the alias is only a display cache -- stale after a folder
+ * rename until the health checker rewrites it. A target from anywhere else
+ * falls back to the alias, which is all there is to go on.
+ */
+function labelDisplay(
+	label: { path: string; display: string },
+	definitionPath: string,
+): string {
+	const prefix = `${definitionPath}/`;
+	const target = label.path.trim().replace(/\.md$/u, '');
+	if (!target.startsWith(prefix)) return label.display;
+	const segments = target.slice(prefix.length).split('/');
+	if (segments.pop() !== DEFINITION_NODE_BASENAME) return label.display;
+	const path = segments.join('/');
+	return path.length > 0 ? path : label.display;
 }
 
 function termText(term: RecordTerm): string {

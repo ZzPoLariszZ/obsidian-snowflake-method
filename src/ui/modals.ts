@@ -38,6 +38,7 @@ import {
 	type DefinitionPathSource,
 	type EntityGroupId,
 	type PickedEntity,
+	type RecordDraft,
 	type RecordEditorContext,
 } from './entity-form';
 import { t as translate } from '../i18n';
@@ -2397,6 +2398,11 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	private categoryField: CategoryPathField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	// Cards begun but not yet filed under a label. A record needs its label to
+	// be saved, but the redraw the time-kind dropdown triggers is not a save:
+	// these carry what was typed across it.
+	private worldStatusDrafts: RecordDraft[] = [];
+	private relationshipDrafts: RecordDraft[] = [];
 
 	constructor(
 		app: App,
@@ -2638,6 +2644,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
 			},
 			false,
+			this.worldStatusDrafts,
 		);
 		this.worldStatusEditor.attach(block);
 		this.relationshipsEditor = new RecordCardsEditor(
@@ -2651,6 +2658,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
 			},
 			true,
+			this.relationshipDrafts,
 		);
 		this.relationshipsEditor.attach(block);
 	}
@@ -2662,9 +2670,11 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		}
 		if (this.worldStatusEditor !== null) {
 			this.value.worldStatus = this.worldStatusEditor.records();
+			this.worldStatusDrafts = this.worldStatusEditor.drafts();
 		}
 		if (this.relationshipsEditor !== null) {
 			this.value.relationships = this.relationshipsEditor.records();
+			this.relationshipDrafts = this.relationshipsEditor.drafts();
 		}
 	}
 

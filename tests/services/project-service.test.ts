@@ -1702,6 +1702,126 @@ describe("SnowflakeProjectService", () => {
     ).toBeNull();
   });
 
+  it("reports an unreadable character role and never invents or deletes one", async () => {
+    const project = await service.createProject({ name: "Role intent" });
+    const ada = await service.createCharacter(project, { name: "Ada" });
+    const noor = await service.createCharacter(project, { name: "Noor" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.characterType] = "protagonist";
+      },
+    );
+
+    // The value is the author's role in a spelling the plugin cannot follow:
+    // named for the author, and never guessed at by a repair.
+    const damaged = await service.loadProject(project.projectFile);
+    expect(damaged.structureIssues).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-artifact-metadata",
+        path: ada.path,
+        repairable: false,
+      }),
+    );
+
+    await service.repairProject(project.rootPath);
+    expect(
+      (await service.readManagedFrontmatter(ada.path))[
+        FRONTMATTER_KEYS.characterType
+      ],
+    ).toBe("protagonist");
+    expect(await service.readManagedFrontmatter(noor.path)).not.toHaveProperty(
+      FRONTMATTER_KEYS.characterType,
+    );
+
+    // The migration deletes the legacy key as it converts, so a value it
+    // cannot convert is a note it does not touch.
+    const counts = await service.migrateMemberNotes(project.projectFile);
+    expect(counts.skipped).toBeGreaterThanOrEqual(1);
+    expect(
+      (await service.readManagedFrontmatter(ada.path))[
+        FRONTMATTER_KEYS.characterType
+      ],
+    ).toBe("protagonist");
+  });
+
+  it("leaves a dangling namesake of another kind out of a rename sweep", async () => {
+    const project = await service.createProject({ name: "Namesakes" });
+    const scene = await service.createScene(project, "Cold Night");
+    // A hand-typed time entry whose note is gone: dangling words. A character
+    // called the same word is about to be renamed, and the sweep must not
+    // read the scene's time as that character.
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneTime] = ["[[Winter]]"];
+      },
+    );
+    const winter = await service.createCharacter(project, "Winter");
+    await service.updateCharacter(project, winter.characterId, {
+      expectedRevision: winter.revision,
+      name: "Spring",
+    });
+    expect(
+      (await service.readManagedFrontmatter(scene.path))[
+        FRONTMATTER_KEYS.sceneTime
+      ],
+    ).toEqual(["[[Winter]]"]);
+  });
+
+  it("does not report a node folder renamed only in case", async () => {
+    const project = await service.createProject({ name: "Case fold" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+    });
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    // An explorer rename that changes only the case. Links resolve to the
+    // folder either way, so nothing is missing -- and nothing for a repair
+    // to endlessly report success over without mending.
+    fakeVault.rename(`${categoryRoot}/Major`, `${categoryRoot}/major`);
+    const loaded = await service.loadProject(project.projectFile);
+    expect(
+      loaded.structureIssues
+        .filter((issue) => issue.path === ada.path)
+        .map((issue) => issue.code),
+    ).not.toContain("unresolved-definition-link");
+  });
+
+  it("recovers the project id from the votes of every managed subtree", async () => {
+    const project = await service.createProject({ name: "Voting" });
+    for (const name of ["Dawn", "Dusk", "Noon"]) {
+      await service.createEntity(project, {
+        kind: "time",
+        name,
+        timeKind: "point",
+      });
+    }
+    const imposter = `${project.id.slice(0, -4)}ffff`;
+    for (const file of service.repository.listDirectFiles(
+      `${project.rootPath}/10_Summary`,
+    )) {
+      await fakeFileManager.processFrontMatter(
+        fakeVault.getFileByPath(file.path)!,
+        (frontmatter) => {
+          frontmatter[FRONTMATTER_KEYS.projectId] = imposter;
+        },
+      );
+    }
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.projectId] = "   ";
+      },
+    );
+
+    // The worldbuilding notes and the definition `_self` notes below them
+    // vote too, and outvote the tampered summaries: the id comes back rather
+    // than being minted fresh or recovered as the imposter's.
+    const repaired = await service.repairProject(project.rootPath);
+    expect(repaired.project.id).toBe(project.id);
+  });
+
   it("reconciles a drifted block and follows a property edited outside the forms", async () => {
     const project = await service.createProject({ name: "Reconcile" });
     const character = await service.createCharacter(project, {
@@ -4491,6 +4611,46 @@ describe("SnowflakeProjectService", () => {
       `[[${categoryRoot}/Major/_self|Major]]`,
     );
     expect(fakeVault.contents.get(basePath)).not.toContain("#Major|Major");
+  });
+
+  it("keeps a legacy file whose chains fold onto one node", async () => {
+    const project = await service.createProject({ name: "Doubled" });
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    await fakeVault.create(
+      `${categoryRoot}.md`,
+      [
+        "# Race",
+        "",
+        "## Elf",
+        "",
+        "Forest dwellers.",
+        "",
+        "# Climate",
+        "",
+        "# Race",
+        "",
+        "## Elf",
+        "",
+        "Mountain clan.",
+        "",
+      ].join("\n"),
+    );
+
+    await service.migrateMemberNotes(project.projectFile);
+
+    // Two proses claim Race/Elf, and converting would keep whichever came
+    // last while the file -- the only copy of the other -- went to the
+    // trash. The unambiguous node still rises; the file stays whole.
+    expect(fakeVault.contents.has(`${categoryRoot}.md`)).toBe(true);
+    const kept = fakeVault.contents.get(`${categoryRoot}.md`) ?? "";
+    expect(kept).toContain("Forest dwellers.");
+    expect(kept).toContain("Mountain clan.");
+    expect(fakeVault.contents.has(`${categoryRoot}/Climate/_self.md`)).toBe(
+      true,
+    );
+    expect(fakeVault.contents.has(`${categoryRoot}/Race/Elf/_self.md`)).toBe(
+      false,
+    );
   });
 
   it("reports and repairs definition tree damage", async () => {

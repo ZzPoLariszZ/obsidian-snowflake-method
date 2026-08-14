@@ -128,6 +128,38 @@ describe("record lines", () => {
     ]);
   });
 
+  it("reads back a span whose period stores plain words for its ends", () => {
+    const record: RecordLine = {
+      label: label("Missing"),
+      value: "",
+      clauses: [{ kind: "when", term: link("P/61_Time/The War", "The War") }],
+    };
+    const spans = (path: string) =>
+      path === "P/61_Time/The War"
+        ? { start: text("Dawn"), end: text("Dusk") }
+        : null;
+    const line = renderRecordLine("en", record, spans);
+    expect(line).toContain("(from Dawn to Dusk)");
+    // The plain-word ends are the time note's as much as linked ones are:
+    // reading gives back exactly the record that was written.
+    expect(parseRecordLine("en", line)).toEqual(record);
+    // And writing it again adds one span, never two.
+    expect(
+      renderRecordLine("en", parseRecordLine("en", line) as RecordLine, spans),
+    ).toBe(line);
+  });
+
+  it("leaves an author's own from-to bracket after plain prose alone", () => {
+    // A span is only ever written behind a linked period, so a bracket after
+    // ordinary words is the author's and stays in the value.
+    const parsed = parseRecordLine(
+      "en",
+      "- [[P/World_Status#Note|Note]]: seen (from morning to night)",
+    );
+    expect(parsed?.value).toBe("seen (from morning to night)");
+    expect(parsed?.clauses).toEqual([]);
+  });
+
   it("still reads a span written before periods were notes", () => {
     const line =
       "- [[P/Relationship#Member|Member]] from [[P/1023]] to [[P/1025]]";
@@ -171,6 +203,44 @@ describe("record lines", () => {
     };
     const line = renderRecordLine("en", record);
     expect(parseRecordLine("en", line)).toEqual(record);
+  });
+
+  it("keeps connector words inside a value as the value's own prose", () => {
+    const records: RecordLine[] = [
+      { label: label("Injured"), value: "Escaped from prison", clauses: [] },
+      { label: label("Injured"), value: "Standing at the gate", clauses: [] },
+      { label: label("Health"), value: "HP 5 -> 3", clauses: [] },
+      { label: label("Ally"), value: "went with them when asked", clauses: [] },
+    ];
+    for (const record of records) {
+      expect(parseRecordLine("en", renderRecordLine("en", record))).toEqual(
+        record,
+      );
+    }
+  });
+
+  it("reads a clause after a value that contains the same connector word", () => {
+    const record: RecordLine = {
+      label: label("Injured"),
+      value: "Standing at the gate",
+      clauses: [
+        { kind: "at", term: link("P/62_Location/East Gate", "East Gate") },
+      ],
+    };
+    expect(parseRecordLine("en", renderRecordLine("en", record))).toEqual(
+      record,
+    );
+  });
+
+  it("keeps a Chinese value containing a spaced connector word whole", () => {
+    const record: RecordLine = {
+      label: { path: "小说/60_世界观/关系/盟友/_self", display: "盟友" },
+      value: "此人 与 我同行",
+      clauses: [],
+    };
+    expect(
+      parseRecordLine("zh-CN", renderRecordLine("zh-CN", record)),
+    ).toEqual(record);
   });
 
   it("reads clauses in whatever order they were written", () => {
@@ -249,6 +319,27 @@ describe("record sections", () => {
     expect(renderRecordSection("zh-CN", "relationships", parsed.records)).toBe(
       written,
     );
+  });
+
+  it("keeps a callout header typed inside the section", () => {
+    const content = [
+      "> [!info] World status",
+      "> [[P/World_Status/Injured/_self|Injured]]",
+      "> [!warning] verify this date",
+    ].join("\n");
+    const parsed = parseRecordSection("en", content);
+    expect(parsed.records).toHaveLength(1);
+    // Only the title the section opens with is the section's own furniture;
+    // a header typed further down is somebody's content and is kept.
+    expect(parsed.unrecognized).toEqual(["[!warning] verify this date"]);
+    expect(
+      renderRecordSection(
+        "en",
+        "world-status",
+        parsed.records,
+        parsed.unrecognized,
+      ),
+    ).toContain("> [!warning] verify this date");
   });
 
   it("reads CRLF content line by line", () => {
