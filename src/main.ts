@@ -20,7 +20,6 @@ import {
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
-	WORLDBUILDING_KINDS,
 	getFirstIncompleteStep,
 	isDocumentType,
 	isStepId,
@@ -28,11 +27,10 @@ import {
 	managedSectionsForDocument,
 	primaryManagedSectionForStep,
 	type DocumentType,
-	type EntityKind,
-	type ProjectLanguage,
+	type EntityKindId,
 	type StepId,
 	type StepStatus,
-	type WorldbuildingKind,
+	type WorldbuildingKindId,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -66,13 +64,15 @@ import {
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
-	definitionRootName,
+	definitionRootNameForFolder,
+	entitiesOf,
 	entityKindFolder,
-	getProjectPathLayout,
 	isMemberDocumentType,
+	type KindScope,
 	taxonomyPathFromValue,
 	type ArtifactSnapshot,
 	type CharacterRecord,
+	type MemberUsage,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SceneRecord,
@@ -95,6 +95,7 @@ import {
 	inspectManagedDocumentSections,
 	parseTerm,
 	readMarkedSection,
+	type CustomField,
 	type ManagedMarkerIssue,
 	type ManagedSectionsInspection,
 } from './templates';
@@ -144,6 +145,7 @@ import type {
 	ManuscriptWindowSettings,
 	SegmentNamed,
 	StepFields,
+	KindMutationOutcome,
 	ProjectBaseChoice,
 	ProjectDashboardModel,
 	ProjectOption,
@@ -161,12 +163,13 @@ const MIN_SPLIT_WIDTH_PX = 900;
 
 /** The vault path of one of an entity kind's tree root folders. */
 function definitionRootPathFor(
-	project: { rootPath: string; locale: ProjectLanguage },
-	kind: EntityKind,
+	project: KindScope,
+	kind: EntityKindId,
 	id: DefinitionFileChoice,
 ): string {
+	const kindFolder = entityKindFolder(project, kind);
 	return normalizePath(
-		`${project.rootPath}/${entityKindFolder(getProjectPathLayout(project.locale), kind)}/${definitionRootName(kind, id, project.locale)}`,
+		`${project.rootPath}/${kindFolder}/${definitionRootNameForFolder(kindFolder, id, project.locale)}`,
 	);
 }
 
@@ -916,36 +919,26 @@ export default class SnowflakeMethodPlugin
 			characters: characterModels,
 			scenes: sceneModels,
 			definitions,
-			worldbuilding: {
-				time: project.worldbuilding.time.map((entity) =>
-					this.entityViewModel(
-						entity,
-						projectT,
-						definitionRootPathFor(project, 'time', 'category'),
+			worldbuildingKinds: project.worldbuildingKinds,
+			worldbuilding: Object.fromEntries(
+				project.worldbuildingKinds.map((kind) => [
+					kind.id,
+					entitiesOf(project, kind.id).map((entity) =>
+						this.entityViewModel(
+							entity,
+							projectT,
+							definitionRootPathFor(project, kind.id, 'category'),
+						),
 					),
-				),
-				location: project.worldbuilding.location.map((entity) =>
-					this.entityViewModel(
-						entity,
-						projectT,
-						definitionRootPathFor(project, 'location', 'category'),
-					),
-				),
-				item: project.worldbuilding.item.map((entity) =>
-					this.entityViewModel(
-						entity,
-						projectT,
-						definitionRootPathFor(project, 'item', 'category'),
-					),
-				),
-			},
+				]),
+			),
 			outdatedNotes:
 				characters.filter(
 					(character) => character.unmigrated && !character.readOnly,
 				).length +
 				scenes.filter((scene) => scene.unmigrated && !scene.readOnly).length +
-				WORLDBUILDING_KINDS.flatMap(
-					(kind) => project.worldbuilding[kind],
+				project.worldbuildingKinds.flatMap((kind) =>
+					entitiesOf(project, kind.id),
 				).filter((entity) => entity.unmigrated && !entity.readOnly).length +
 				(await this.projects.countOutdatedNotes(project)),
 			structureIssues: project.structureIssues.map((issue) => ({
@@ -1115,6 +1108,7 @@ export default class SnowflakeMethodPlugin
 				growth: request.growth,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
+				customFields: request.customFields,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -1211,6 +1205,7 @@ export default class SnowflakeMethodPlugin
 				conflict: request.conflict,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
+				customFields: request.customFields,
 				events: request.events,
 			});
 		} catch (error) {
@@ -1258,6 +1253,7 @@ export default class SnowflakeMethodPlugin
 				timeEnd: request.timeEnd,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
+				customFields: request.customFields,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -1284,6 +1280,7 @@ export default class SnowflakeMethodPlugin
 				timeEnd: request.timeEnd,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
+				customFields: request.customFields,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -1292,8 +1289,8 @@ export default class SnowflakeMethodPlugin
 
 	async deleteEntity(id: string, expectedRevision: string): Promise<void> {
 		const project = await this.requireCurrentProject();
-		const entity = WORLDBUILDING_KINDS.flatMap(
-			(kind) => project.worldbuilding[kind],
+		const entity = project.worldbuildingKinds.flatMap((kind) =>
+			entitiesOf(project, kind.id),
 		).find((candidate) => candidate.entityId === id);
 		if (entity === undefined) {
 			throw new ManagedFileNotFoundError(`entity:${id}`);
@@ -1307,7 +1304,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async reorderEntity(
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		entityId: string,
 		targetIndex: number,
 	): Promise<void> {
@@ -1319,8 +1316,90 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
+	async createWorldbuildingKind(
+		name: string,
+		appearance: { icon: string; description: string },
+	): Promise<KindMutationOutcome> {
+		const project = await this.requireCurrentProject();
+		try {
+			return await this.projects.createWorldbuildingKind(
+				project,
+				name,
+				appearance,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async setKindAppearance(
+		kind: WorldbuildingKindId,
+		appearance: { icon: string; description: string },
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.setKindAppearance(project, kind, appearance);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async renameWorldbuildingKind(
+		kind: WorldbuildingKindId,
+		newName: string,
+	): Promise<KindMutationOutcome> {
+		const project = await this.requireCurrentProject();
+		try {
+			return await this.projects.renameWorldbuildingKind(
+				project,
+				kind,
+				newName,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async worldbuildingKindUsage(
+		kind: WorldbuildingKindId,
+	): Promise<{ entityCount: number; usage: MemberUsage }> {
+		const project = await this.requireCurrentProject();
+		return this.projects.worldbuildingKindUsage(project, kind);
+	}
+
+	async deleteWorldbuildingKind(kind: WorldbuildingKindId): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.deleteWorldbuildingKind(project, kind);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async kindTemplatePath(kind: EntityKindId): Promise<string | null> {
+		const project = await this.requireCurrentProject();
+		return this.projects.kindTemplatePath(project, kind);
+	}
+
+	async setKindTemplate(
+		kind: EntityKindId,
+		path: string | null,
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.setKindTemplate(project, kind, path);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async kindTemplateFields(kind: EntityKindId): Promise<CustomField[]> {
+		const project = await this.requireCurrentProject();
+		return this.projects.kindTemplateFields(project, kind);
+	}
+
 	async listDefinitionPaths(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 	): Promise<string[]> {
 		const project = await this.requireCurrentProject();
@@ -1328,7 +1407,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async addDefinitionPath(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		path: string,
 		description = '',
@@ -1347,7 +1426,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async renameDefinitionNode(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		newName: string,
@@ -1371,7 +1450,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async deleteDefinitionNode(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 	): Promise<void> {
@@ -1385,7 +1464,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async updateDefinitionDescription(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		description: string,
@@ -1405,7 +1484,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async definitionFilePaths(
-		kind: EntityKind,
+		kind: EntityKindId,
 	): Promise<Record<DefinitionFileChoice, string>> {
 		const project = await this.requireCurrentProject();
 		const pathFor = (id: DefinitionFileChoice): string =>
@@ -1436,6 +1515,7 @@ export default class SnowflakeMethodPlugin
 				conflict: request.conflict,
 				worldStatus: request.worldStatus,
 				relationships: request.relationships,
+				customFields: request.customFields,
 				events: request.events,
 			});
 		} catch (error) {
@@ -1742,8 +1822,10 @@ export default class SnowflakeMethodPlugin
 				...model.steps.flatMap((step) => step.healthIssues),
 				...model.characters.flatMap((character) => character.healthIssues),
 				...model.scenes.flatMap((scene) => scene.healthIssues),
-				...WORLDBUILDING_KINDS.flatMap((kind) =>
-					model.worldbuilding[kind].flatMap((entity) => entity.healthIssues),
+				...model.worldbuildingKinds.flatMap((kind) =>
+					(model.worldbuilding[kind.id] ?? []).flatMap(
+						(entity) => entity.healthIssues,
+					),
 				),
 			].filter((issue) => issue.blocking);
 			const uniqueIssues = [
@@ -1772,8 +1854,8 @@ export default class SnowflakeMethodPlugin
 						[
 							...model.characters,
 							...model.scenes,
-							...WORLDBUILDING_KINDS.flatMap(
-								(kind) => model.worldbuilding[kind],
+							...model.worldbuildingKinds.flatMap(
+								(kind) => model.worldbuilding[kind.id] ?? [],
 							),
 						].find((member) => member.path === issue.path)?.id ?? null,
 				}),
@@ -3540,6 +3622,7 @@ export default class SnowflakeMethodPlugin
 			conflict: character.conflict,
 			growth: character.growth,
 			worldStatus: character.worldStatus,
+			customFields: character.customFields,
 			relationships: character.relationships,
 			revision: character.revision,
 			readOnly: character.readOnly,
@@ -3592,6 +3675,7 @@ export default class SnowflakeMethodPlugin
 				categoryDisplayPath(raw, categoryRoot),
 			),
 			worldStatus: scene.worldStatus,
+			customFields: scene.customFields,
 			relationships: scene.relationships,
 			events: scene.events,
 			revision: scene.revision,
@@ -3627,6 +3711,7 @@ export default class SnowflakeMethodPlugin
 			timeStartMissing: this.termMissing(entity.timeStart, entity.path),
 			timeEndMissing: this.termMissing(entity.timeEnd, entity.path),
 			worldStatus: entity.worldStatus,
+			customFields: entity.customFields,
 			relationships: entity.relationships,
 			revision: entity.revision,
 			readOnly: entity.readOnly,
@@ -3693,14 +3778,14 @@ export default class SnowflakeMethodPlugin
 
 	private rethrowLocalizedMutationError(error: unknown): never {
 		if (error instanceof DuplicateNameError) {
-			const key = {
-				character: 'errors.characterExists',
-				scene: 'errors.sceneExists',
-				project: 'errors.projectExists',
-				time: 'errors.entityExists',
-				location: 'errors.entityExists',
-				item: 'errors.entityExists',
-			}[error.kind];
+			const key =
+				error.kind === 'character'
+					? 'errors.characterExists'
+					: error.kind === 'scene'
+						? 'errors.sceneExists'
+						: error.kind === 'project'
+							? 'errors.projectExists'
+							: 'errors.entityExists';
 			throw new Error(this.t(key, { name: error.requestedName }));
 		}
 		if (error instanceof ConcurrentChangeError) {

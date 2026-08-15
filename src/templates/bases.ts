@@ -3,8 +3,11 @@ import { parseYaml, stringifyYaml } from "obsidian";
 import {
   ALIASES_KEY,
   FRONTMATTER_KEYS,
-  WORLDBUILDING_KINDS,
+  isWorldbuildingKind,
+  safeFileName,
+  type ProjectWorldbuildingKind,
   type WorldbuildingKind,
+  type WorldbuildingKindId,
 } from "../domain";
 import type { TemplateLanguage } from "./markdown";
 
@@ -17,8 +20,11 @@ import type { TemplateLanguage } from "./markdown";
  * one to match a canonical form would discard their work.
  */
 
-/** Character and scene bases sit in their directories, kind bases in theirs. */
-export type ProjectBaseId = "characters" | "scenes" | WorldbuildingKind;
+/**
+ * Character and scene bases sit in their directories, kind bases in theirs.
+ * Open like the kind ids: `characters`, `scenes`, or any kind id.
+ */
+export type ProjectBaseId = WorldbuildingKindId;
 
 export interface ProjectBaseDefinition {
   id: ProjectBaseId;
@@ -627,7 +633,7 @@ function scenesBase(projectId: string, copy: Copy): string {
  */
 function worldbuildingBase(
   projectId: string,
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   copy: Copy,
 ): string {
   const nameFormula = "entity";
@@ -682,7 +688,9 @@ function worldbuildingBase(
     views: [
       {
         type: "table",
-        name: copy.kindListViews[kind],
+        // A custom kind's list view is named by the kind itself: the author
+        // named it, so there is nothing to translate.
+        name: isWorldbuildingKind(kind) ? copy.kindListViews[kind] : kind,
         order: columns,
         sort: RANK_SORT,
       },
@@ -825,10 +833,60 @@ export function appendBaseColumns(
   return { content: stringifyYaml(parsed), added };
 }
 
+/**
+ * Carries a kind rename into a base the author may have reshaped: only the
+ * filter condition naming the old kind and any view named exactly after it
+ * are touched, and a file that does not parse is left as it stands. The
+ * whole document is re-serialized, the same normalization Obsidian's own
+ * view editor applies.
+ */
+export function renameWorldbuildingBaseKind(
+  content: string,
+  oldKind: string,
+  newKind: string,
+): string {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(content);
+  } catch {
+    return content;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return content;
+  }
+  const oldCondition = equals(FRONTMATTER_KEYS.worldbuildingKind, oldKind);
+  const newCondition = equals(FRONTMATTER_KEYS.worldbuildingKind, newKind);
+  let changed = false;
+  const walkFilters = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      if (value !== oldCondition) return value;
+      changed = true;
+      return newCondition;
+    }
+    if (Array.isArray(value)) return value.map(walkFilters);
+    if (typeof value === "object" && value !== null) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, walkFilters(entry)]),
+      );
+    }
+    return value;
+  };
+  const base = parsed as { filters?: unknown; views?: { name?: unknown }[] };
+  base.filters = walkFilters(base.filters);
+  for (const view of base.views ?? []) {
+    if (view.name === oldKind) {
+      view.name = newKind;
+      changed = true;
+    }
+  }
+  return changed ? stringifyYaml(parsed) : content;
+}
+
 export function getProjectBases(
   projectId: string,
   language: TemplateLanguage,
   roles: CharacterRoleLinks,
+  kinds: readonly ProjectWorldbuildingKind[],
 ): ProjectBaseDefinition[] {
   const copy = COPY[language];
   return [
@@ -842,10 +900,13 @@ export function getProjectBases(
       fileName: copy.scenesFileName,
       content: scenesBase(projectId, copy),
     },
-    ...WORLDBUILDING_KINDS.map((kind) => ({
-      id: kind,
-      fileName: copy.kindFileNames[kind],
-      content: worldbuildingBase(projectId, kind, copy),
+    ...kinds.map((kind) => ({
+      id: kind.id,
+      // A custom kind's base is named after the kind, the one name it has.
+      fileName: isWorldbuildingKind(kind.id)
+        ? copy.kindFileNames[kind.id]
+        : `${safeFileName(kind.id)}.base`,
+      content: worldbuildingBase(projectId, kind.id, copy),
     })),
   ];
 }

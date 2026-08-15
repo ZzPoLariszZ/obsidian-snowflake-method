@@ -4,7 +4,7 @@ import {
   type DefinitionFileId,
   type DocumentType,
   type StepOneSectionId,
-  type WorldbuildingKind,
+  type WorldbuildingKindId,
 } from "../domain";
 import {
   renderCharacterFieldsBlock,
@@ -476,7 +476,7 @@ export function sceneTemplate(
 
 export function entityTemplate(
   entityName: string,
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   language: TemplateLanguage,
   content: EntitySectionContent = {},
 ): MarkdownTemplate {

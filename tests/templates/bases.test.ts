@@ -20,8 +20,17 @@ const ROLES = {
 type BaseId = 'characters' | 'scenes' | 'time' | 'location' | 'item';
 type BaseFilter = string | { or: string[] };
 
+const BUILT_IN_KINDS = (['time', 'location', 'item'] as const).map((id) => ({
+	id,
+	folderName: `6${['time', 'location', 'item'].indexOf(id) + 1}_${id}`,
+	custom: false,
+	missingFolder: false,
+	icon: null,
+	description: null,
+}));
+
 function baseFor(id: BaseId, language: 'en' | 'zh-CN' = 'en') {
-	const base = getProjectBases(PROJECT_ID, language, ROLES).find(
+	const base = getProjectBases(PROJECT_ID, language, ROLES, BUILT_IN_KINDS).find(
 		(candidate) => candidate.id === id,
 	);
 	if (!base) throw new Error(`Missing generated base: ${id}`);
@@ -46,7 +55,7 @@ function parsed(id: BaseId, language: 'en' | 'zh-CN' = 'en') {
 describe('project base templates', () => {
 	it('localizes every generated filename', () => {
 		expect(
-			getProjectBases(PROJECT_ID, 'en', ROLES).map(({ fileName }) => fileName),
+			getProjectBases(PROJECT_ID, 'en', ROLES, BUILT_IN_KINDS).map(({ fileName }) => fileName),
 		).toEqual([
 			'Characters.base',
 			'Scenes.base',
@@ -55,7 +64,7 @@ describe('project base templates', () => {
 			'Item.base',
 		]);
 		expect(
-			getProjectBases(PROJECT_ID, 'zh-CN', ROLES).map(
+			getProjectBases(PROJECT_ID, 'zh-CN', ROLES, BUILT_IN_KINDS).map(
 				({ fileName }) => fileName,
 			),
 		).toEqual([
@@ -68,7 +77,7 @@ describe('project base templates', () => {
 	});
 
 	it('names each base after the folder it belongs in', () => {
-		expect(getProjectBases(PROJECT_ID, 'en', ROLES).map(({ id }) => id)).toEqual([
+		expect(getProjectBases(PROJECT_ID, 'en', ROLES, BUILT_IN_KINDS).map(({ id }) => id)).toEqual([
 			'characters',
 			'scenes',
 			'time',

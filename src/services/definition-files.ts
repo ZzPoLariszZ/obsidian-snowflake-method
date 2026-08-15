@@ -8,7 +8,7 @@ import {
   type EntityKind,
   type ProjectLanguage,
 } from "../domain";
-import { entityKindFolder, getProjectPathLayout } from "./types";
+import { getProjectPathLayout } from "./types";
 
 /**
  * Definition trees are the project's taxonomies: folder hierarchies whose
@@ -258,13 +258,12 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
  * trees sort together above the notes they classify.
  */
 function definitionFileNumber(
-  kind: EntityKind,
+  kindFolder: string,
   id: DefinitionFileId,
-  language: ProjectLanguage,
 ): string {
-  const folder = entityKindFolder(getProjectPathLayout(language), kind);
-  const leaf = folder.slice(folder.lastIndexOf("/") + 1);
-  const folderNumber = /^\d+/u.exec(leaf)?.[0] ?? "";
+  const leaf = kindFolder.slice(kindFolder.lastIndexOf("/") + 1);
+  // A kind folder past 69 wears a letter: 6A_Faction roots 6A1_Category.
+  const folderNumber = /^\d+[A-Za-z]?/u.exec(leaf)?.[0] ?? "";
   const position = DEFINITION_FILE_IDS.indexOf(id) + 1;
   if (folderNumber.length === 0) return "";
   return folderNumber.endsWith("0")
@@ -272,14 +271,34 @@ function definitionFileNumber(
     : `${folderNumber}${position}`;
 }
 
-/** The name of a kind's tree root folder, `21_Category` or `621_类别`. */
+/** The name of a built-in kind's tree root folder, `21_Category` or `621_类别`. */
 export function definitionRootName(
   kind: EntityKind,
   id: DefinitionFileId,
   language: ProjectLanguage,
 ): string {
+  const layout = getProjectPathLayout(language);
+  const kindFolder =
+    kind === "character"
+      ? layout.directories.characters
+      : kind === "scene"
+        ? layout.directories.scenes
+        : layout.worldbuildingKinds[kind];
+  return definitionRootNameForFolder(kindFolder, id, language);
+}
+
+/**
+ * The tree root name any kind folder implies, custom kinds included: the
+ * folder's own number carried down the way the built-ins carry theirs, so
+ * `64_Faction` roots its trees at `641_Category` onward.
+ */
+export function definitionRootNameForFolder(
+  kindFolder: string,
+  id: DefinitionFileId,
+  language: ProjectLanguage,
+): string {
   const stem = COPY[language].fileStems[id];
-  const number = definitionFileNumber(kind, id, language);
+  const number = definitionFileNumber(kindFolder, id);
   return number.length === 0 ? stem : `${number}_${stem}`;
 }
 

@@ -1,10 +1,11 @@
 import {
   SCENE_POV_OMNISCIENT,
+  isWorldbuildingKind,
   type DefinitionFileId,
   type ProgressStatus,
   type ScenePovMode,
   type TimeKind,
-  type WorldbuildingKind,
+  type WorldbuildingKindId,
 } from "../domain";
 import { parseTerm, renderTerm } from "./record-lines";
 
@@ -74,7 +75,7 @@ export interface DefinitionFieldsView {
 interface FieldsCopy {
   characterTitle: string;
   sceneTitle: string;
-  entityTitles: Record<WorldbuildingKind, string>;
+  entityTitles: Record<"time" | "location" | "item", string>;
   definitionTitles: Record<DefinitionFileId, string>;
   definitionName: string;
   status: string;
@@ -264,14 +265,17 @@ export function renderSceneFieldsBlock(
 }
 
 /** The same order again: what it is called and filed under, what it is, how
- * far along it is. The name is the note's own title, as everywhere else. */
+ * far along it is. The name is the note's own title, as everywhere else. A
+ * custom kind's callout wears the kind's own name: the author named it, so
+ * there is nothing to translate. */
 export function renderEntityFieldsBlock(
   language: FieldsBlockLanguage,
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   fields: EntityFieldsView,
 ): string {
   const copy = COPY[language];
-  return renderCallout(copy.entityTitles[kind], [
+  const title = isWorldbuildingKind(kind) ? copy.entityTitles[kind] : kind;
+  return renderCallout(title, [
     { label: copy.aliases, value: joinList(copy, fields.aliases) },
     { label: copy.category, value: joinList(copy, fields.categories) },
     ...timeEntries(copy, fields.time),

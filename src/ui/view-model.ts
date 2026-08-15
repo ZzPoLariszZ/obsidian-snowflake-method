@@ -2,16 +2,18 @@ import type { Menu } from 'obsidian';
 
 import type {
 	CharacterType,
-	EntityKind,
+	EntityKindId,
 	ProgressStatus,
+	ProjectWorldbuildingKind,
 	StepId,
 	StepStatus,
 	TimeKind,
-	WorldbuildingKind,
+	WorldbuildingKindId,
 } from '../domain';
-import type { MarkerIssueCode, RecordLine } from '../templates';
+import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type {
 	DefinitionForest,
+	MemberUsage,
 	ProjectStructureIssueCode,
 } from '../services';
 
@@ -24,8 +26,11 @@ import type {
 	Translate,
 } from './modals';
 
-/** Every base the dashboard can open or restore, one per generated file. */
-export type ProjectBaseChoice = 'characters' | 'scenes' | WorldbuildingKind;
+/**
+ * Every base the dashboard can open or restore, one per generated file. Open
+ * like the kind ids: `characters`, `scenes`, or any kind id.
+ */
+export type ProjectBaseChoice = WorldbuildingKindId;
 
 export type DefinitionFileChoice = 'category' | 'world-status' | 'relationship';
 
@@ -44,6 +49,11 @@ export type RenameDefinitionPathResult =
 			code: 'invalid-segment' | 'taken';
 			segment: string;
 	  };
+
+/** What a kind mutation came to, with refusals as data for the modal. */
+export type KindMutationOutcome =
+	| { ok: true; kind: ProjectWorldbuildingKind }
+	| { ok: false; code: 'invalid-name' | 'taken' | 'full' };
 
 export interface ProjectOption {
 	path: string;
@@ -110,6 +120,8 @@ export interface CharacterViewModel {
 	growth: string;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
+	/** The custom-fields block as stored; empty while the note carries none. */
+	customFields: string;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
@@ -137,6 +149,8 @@ export interface SceneViewModel {
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	events: string;
+	/** The custom-fields block as stored; empty while the note carries none. */
+	customFields: string;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
@@ -146,7 +160,7 @@ export interface WorldbuildingEntityViewModel {
 	id: string;
 	path: string;
 	name: string;
-	kind: WorldbuildingKind;
+	kind: WorldbuildingKindId;
 	rank: number;
 	progressStatus: ProgressStatus | null;
 	aliases: string[];
@@ -162,6 +176,8 @@ export interface WorldbuildingEntityViewModel {
 	timeEndMissing: boolean;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
+	/** The custom-fields block as stored; empty while the note carries none. */
+	customFields: string;
 	revision: string;
 	readOnly: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
@@ -181,7 +197,9 @@ export interface ProjectDashboardModel {
 	stepRevisions: Partial<Record<StepId, string>>;
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
-	worldbuilding: Record<WorldbuildingKind, WorldbuildingEntityViewModel[]>;
+	/** Every kind the project has, in rail order, customs included. */
+	worldbuildingKinds: ProjectWorldbuildingKind[];
+	worldbuilding: Record<WorldbuildingKindId, WorldbuildingEntityViewModel[]>;
 	/** The three vocabularies across every kind, for the definition panes. */
 	definitions: Record<DefinitionFileChoice, DefinitionForest>;
 	/** Writable member notes that predate the generated fields block. */
@@ -343,7 +361,7 @@ export interface DashboardHost {
 		step: StepId,
 	): void;
 	selectStep(step: StepId): Promise<void>;
-	selectWorldbuildingKind(kind: WorldbuildingKind): Promise<void>;
+	selectWorldbuildingKind(kind: WorldbuildingKindId): Promise<void>;
 	createProject(request: CreateProjectRequest): Promise<CreatedProject>;
 	/** Reports the character back so a field that asked for it can select it. */
 	createCharacter(request: CreateCharacterRequest): Promise<CharacterOption>;
@@ -354,8 +372,35 @@ export interface DashboardHost {
 	createEntity(request: EntityFormRequest): Promise<{ id: string; path: string }>;
 	updateEntity(id: string, request: EntityFormRequest): Promise<void>;
 	deleteEntity(id: string, expectedRevision: string): Promise<void>;
+	/** Registers a new custom kind, or reports why the name cannot be it. */
+	createWorldbuildingKind(
+		name: string,
+		appearance: { icon: string; description: string },
+	): Promise<KindMutationOutcome>;
+	/** Renames one custom kind, carrying every reference with it. */
+	renameWorldbuildingKind(
+		kind: WorldbuildingKindId,
+		newName: string,
+	): Promise<KindMutationOutcome>;
+	/** Records the kind's icon and pane sentence; empty strings clear them. */
+	setKindAppearance(
+		kind: WorldbuildingKindId,
+		appearance: { icon: string; description: string },
+	): Promise<void>;
+	/** What deleting the kind takes with it, for the confirmation to read. */
+	worldbuildingKindUsage(
+		kind: WorldbuildingKindId,
+	): Promise<{ entityCount: number; usage: MemberUsage }>;
+	/** Trashes the kind whole: folder, notes, vocabularies, base, registry. */
+	deleteWorldbuildingKind(kind: WorldbuildingKindId): Promise<void>;
+	/** The note seeding one kind's default custom fields, when one is chosen. */
+	kindTemplatePath(kind: EntityKindId): Promise<string | null>;
+	/** Records that choice; null clears it. */
+	setKindTemplate(kind: EntityKindId, path: string | null): Promise<void>;
+	/** The default fields the chosen template note defines right now. */
+	kindTemplateFields(kind: EntityKindId): Promise<CustomField[]>;
 	reorderEntity(
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		entityId: string,
 		targetIndex: number,
 	): Promise<void>;
@@ -365,36 +410,36 @@ export interface DashboardHost {
 	restoreProjectBase(id: ProjectBaseChoice): Promise<void>;
 	/** The paths one kind's definition file offers, in its heading order. */
 	listDefinitionPaths(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 	): Promise<string[]>;
 	/** Vault paths of one kind's definition files, for the links records store. */
 	definitionFilePaths(
-		kind: EntityKind,
+		kind: EntityKindId,
 	): Promise<Record<DefinitionFileChoice, string>>;
 	/** Appends a new path, reporting a refusal instead of throwing it. */
 	addDefinitionPath(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		path: string,
 		description?: string,
 	): Promise<AddDefinitionPathResult>;
 	/** Renames one node and rewrites every member link into its subtree. */
 	renameDefinitionNode(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		newName: string,
 	): Promise<RenameDefinitionPathResult>;
 	/** Trashes one node's subtree and drops it from members' category lists. */
 	deleteDefinitionNode(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 	): Promise<void>;
 	/** Writes what one node means, on its note and its generated block. */
 	updateDefinitionDescription(
-		kind: EntityKind,
+		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		description: string,

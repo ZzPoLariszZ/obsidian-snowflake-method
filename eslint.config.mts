@@ -52,13 +52,14 @@ export default defineConfig(
 				{
 					brands: [
 						'Hero’s Journey',
+						'Lucide',
 						'Markdown',
 						'Obsidian',
 						'Obsidian Canvas',
 						'Snowflake',
 						'Snowflake Method',
 					],
-					acronyms: ['ID', 'POV'],
+					acronyms: ['ID', 'POV', '6Z'],
 					ignoreRegex: [
 						// A frontmatter key, quoted so an author can find it in the
 						// note. It is spelled the way the file spells it, which is

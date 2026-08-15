@@ -12,12 +12,10 @@ import {
 
 import {
 	DEFINITION_FILE_IDS,
-	ENTITY_KINDS,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
-	WORLDBUILDING_KINDS,
 	areStepPrerequisitesComplete,
 	countWritingLength,
 	createDefaultStepStatuses,
@@ -26,21 +24,29 @@ import {
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
 	PROGRESS_STATUSES,
-	type EntityKind,
+	entityKindIds,
+	isWorldbuildingKind,
+	nextCustomKindPrefix,
+	type EntityKindId,
+	type ProjectWorldbuildingKind,
 	type ProgressStatus,
 	type TimeKind,
 	type StepOneSectionId,
 	type StepId,
 	type StepStatus,
 	type StepStatusMap,
-	type WorldbuildingKind,
+	type WorldbuildingKindId,
 } from '../domain';
 import {
 	MAX_DEFINITION_DEPTH,
+	validateKindName,
+	type DefinitionForest,
 	type DefinitionNodeInfo,
+	type DefinitionTreeInfo,
 } from '../services';
 import {
 	ConfirmDefinitionDeletionModal,
+	ConfirmKindDeletionModal,
 	ConfirmRestoreBaseModal,
 	CreateCharacterModal,
 	CreateProjectModal,
@@ -50,6 +56,7 @@ import {
 	MoveToPositionModal,
 	RepairReportModal,
 	promptForDefinitionEdit,
+	promptForKindForm,
 	promptForDefinitionKind,
 	promptForDefinitionPath,
 	promptForNewCharacter,
@@ -76,7 +83,8 @@ import {
 	type PickerOption,
 } from './option-picker';
 import {
-	ENTITY_GROUP_IDS,
+	entityGroupLabel,
+	entityGroupsOf,
 	type DefinitionPathSource,
 	type EntityGroupId,
 } from './entity-form';
@@ -94,6 +102,7 @@ import type {
 	SceneViewModel,
 	StepViewModel,
 	WorldbuildingEntityViewModel,
+	ProjectBaseChoice,
 } from './view-model';
 
 export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
@@ -145,14 +154,38 @@ const DEFINITION_USAGE_PREVIEW = 4;
 const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
-const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
+const WORLDBUILDING_KIND_ICONS: Record<'time' | 'location' | 'item', string> = {
 	time: 'clock',
 	location: 'map-pin',
 	item: 'gem',
 };
 
 /** The mark each kind of note goes by, the rail's own for the three it lists. */
-const ENTITY_KIND_ICONS: Record<EntityKind, string> = {
+/** Every custom kind wears the one icon; the built-ins keep their own. */
+const CUSTOM_KIND_ICON = 'shapes';
+
+const EMPTY_TREE: DefinitionTreeInfo = { rootPath: '', nodes: [] };
+
+/** One kind's rows of the model; empty for a pane left on a kind since gone. */
+function kindEntities(
+	model: ProjectDashboardModel,
+	kind: WorldbuildingKindId,
+): WorldbuildingEntityViewModel[] {
+	return model.worldbuilding[kind] ?? [];
+}
+
+/** One kind's tree of a forest; empty for the same stale-pane reason. */
+function forestTree(
+	forest: DefinitionForest,
+	kind: EntityKindId,
+): DefinitionTreeInfo {
+	return forest[kind] ?? EMPTY_TREE;
+}
+
+const ENTITY_KIND_ICONS: Record<
+	'character' | 'scene' | 'time' | 'location' | 'item',
+	string
+> = {
 	character: 'user',
 	scene: 'clapperboard',
 	...WORLDBUILDING_KIND_ICONS,
@@ -173,9 +206,9 @@ interface DefinitionPaneContext {
 	id: DefinitionFileChoice;
 	/** Rows by `id/kind/path`, replaced whenever a tree redraws. */
 	rows: Map<string, HTMLElement>;
-	select: (kind: EntityKind, taxonomyPath: string) => void;
+	select: (kind: EntityKindId, taxonomyPath: string) => void;
 	/** Chooses an entry and opens whatever was folded over it on the way. */
-	reveal: (kind: EntityKind, taxonomyPath: string) => void;
+	reveal: (kind: EntityKindId, taxonomyPath: string) => void;
 	markSelected: () => void;
 }
 
@@ -243,24 +276,24 @@ export class SnowflakeDashboardView extends ItemView {
 	/** The entry the inspector is showing, one per vocabulary. */
 	private readonly definitionSelection = new Map<
 		DefinitionFileChoice,
-		{ kind: EntityKind; taxonomyPath: string }
+		{ kind: EntityKindId; taxonomyPath: string }
 	>();
 	/**
 	 * The one entry whose users are listed in full rather than previewed,
 	 * keyed `id/kind/path`. One at a time, and only while it is being read.
 	 */
 	private definitionUsageOpen: string | null = null;
-	private readonly entityQueries = new Map<WorldbuildingKind, string>();
-	private readonly entityCategoryFilters = new Map<WorldbuildingKind, string>();
+	private readonly entityQueries = new Map<WorldbuildingKindId, string>();
+	private readonly entityCategoryFilters = new Map<WorldbuildingKindId, string>();
 	private readonly entityStatusFilters = new Map<
-		WorldbuildingKind,
+		WorldbuildingKindId,
 		'all' | ProgressStatus
 	>();
 	private readonly entityCategories = new Map<
-		WorldbuildingKind,
+		WorldbuildingKindId,
 		{ projectId: string; paths: string[] }
 	>();
-	private readonly entityScroll = new Map<WorldbuildingKind, number>();
+	private readonly entityScroll = new Map<WorldbuildingKindId, number>();
 	private readonly entityHeights = new Map<string, number>();
 	private entityRowHeight = 48;
 	private entityTable: VirtualTable | null = null;
@@ -993,11 +1026,12 @@ export class SnowflakeDashboardView extends ItemView {
 		const list = body.createEl('ol', {
 			cls: 'snowflake-method-step-list snowflake-method-worldbuilding-list',
 		});
-		for (const kind of WORLDBUILDING_KINDS) {
+		for (const descriptor of model.worldbuildingKinds) {
+			const kind = descriptor.id;
 			const active =
 				this.selectedPane.kind === 'worldbuilding' &&
 				this.selectedPane.wbKind === kind;
-			const entities = model.worldbuilding[kind];
+			const entities = kindEntities(model, kind);
 			// Whatever the project reports about one of these notes, the same way
 			// a step carries what is reported about its own: the count steps aside
 			// for the warning, because how many there are matters less than that
@@ -1007,7 +1041,7 @@ export class SnowflakeDashboardView extends ItemView {
 					entity.healthIssues.some((issue) => issue.blocking) ||
 					this.memberWarnings(model, entity.path).length > 0,
 			);
-			const title = this.t(`worldbuilding.kind.${kind}`);
+			const title = this.kindDisplayName(kind);
 			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
 			const button = item.createEl('button', {
 				cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
@@ -1024,7 +1058,12 @@ export class SnowflakeDashboardView extends ItemView {
 				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
 				attr: { 'aria-hidden': 'true' },
 			});
-			setIcon(iconEl, WORLDBUILDING_KIND_ICONS[kind]);
+			setIcon(
+				iconEl,
+				isWorldbuildingKind(kind)
+					? WORLDBUILDING_KIND_ICONS[kind]
+					: (descriptor.icon ?? CUSTOM_KIND_ICON),
+			);
 			button.createSpan({
 				cls: 'snowflake-method-step-label',
 				text: title,
@@ -1049,6 +1088,32 @@ export class SnowflakeDashboardView extends ItemView {
 				void this.runAndRefresh(() => this.host.selectWorldbuildingKind(kind));
 			});
 		}
+		// The invitation to add a kind, standing with the kinds it would join
+		// and above the line the vocabularies sit behind: quiet like every
+		// other add-row, because it is an offer rather than a thing.
+		const hintItem = list.createEl('li', {
+			cls: 'snowflake-method-step-item',
+		});
+		const hint = hintItem.createEl('button', {
+			cls: 'snowflake-method-step-button snowflake-method-add-kind',
+			attr: { type: 'button', 'aria-label': this.t('worldbuilding.kind.add') },
+		});
+		// Disabled only while all thirty-two slots are in use at once: a
+		// deleted kind frees its slot, and the invitation comes back with it.
+		hint.disabled =
+			model.readOnly || nextCustomKindPrefix(model.worldbuildingKinds) === null;
+		const hintIcon = hint.createSpan({
+			cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(hintIcon, 'plus');
+		hint.createSpan({
+			cls: 'snowflake-method-step-label',
+			text: this.t('worldbuilding.kind.add'),
+		});
+		hint.addEventListener('click', () => {
+			this.openCreateKind(model);
+		});
 		// The vocabularies live with the kinds they classify: three more
 		// entries in the same list, each the whole of one vocabulary across
 		// every kind — but they are words rather than notes, so a line parts
@@ -1061,7 +1126,9 @@ export class SnowflakeDashboardView extends ItemView {
 			const active =
 				this.selectedPane.kind === 'definition' &&
 				this.selectedPane.definitionId === definitionId;
-			const trees = ENTITY_KINDS.map((kind) => model.definitions[definitionId][kind]);
+			const trees = entityKindIds(model.worldbuildingKinds).map((kind) =>
+				forestTree(model.definitions[definitionId], kind),
+			);
 			const count = trees.reduce(
 				(total, tree) =>
 					total + tree.nodes.filter((node) => !node.missing).length,
@@ -1124,23 +1191,68 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderWorldbuildingPane(
 		layout: HTMLElement,
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 	): void {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		this.renderedPaneKey = dashboardPaneKey({ kind: 'worldbuilding', wbKind: kind });
 		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
+		const descriptor = model.worldbuildingKinds.find(
+			(candidate) => candidate.id === kind,
+		);
 		// The same header a step panel carries, so a kind's title sits where a
 		// step's does and reads at the same size.
 		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
 		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
-		title.createEl('h2', { text: this.t(`worldbuilding.kind.${kind}`) });
-		panel.createEl('p', {
-			cls: 'snowflake-method-step-description',
-			text: this.t(`worldbuilding.kind.${kind}.description`),
-		});
-		const paths = new Set(model.worldbuilding[kind].map((entity) => entity.path));
+		title.createEl('h2', { text: this.kindDisplayName(kind) });
+		// An authored kind answers for its own name, looks, and existence: its
+		// doors hang where a step keeps its status, at the header's right.
+		if (descriptor?.custom === true) {
+			const options = header.createEl('button', {
+				cls: 'clickable-icon snowflake-method-kind-options',
+				attr: {
+					type: 'button',
+					'aria-haspopup': 'menu',
+					'aria-label': this.t('worldbuilding.kind.options', { name: kind }),
+				},
+			});
+			setIcon(options, 'ellipsis');
+			options.addEventListener('click', (event) => {
+				const menu = new Menu();
+				menu.addItem((menuItem) =>
+					menuItem
+						.setTitle(this.t('actions.edit'))
+						.setIcon('pencil')
+						.setDisabled(model.readOnly)
+						.onClick(() => {
+							this.openRenameKind(model, descriptor);
+						}),
+				);
+				menu.addItem((menuItem) =>
+					menuItem
+						.setTitle(this.t('actions.delete'))
+						.setIcon('trash-2')
+						.setDisabled(model.readOnly)
+						.onClick(() => {
+							void this.confirmKindDeletion(model, kind);
+						}),
+				);
+				menu.showAtMouseEvent(event);
+			});
+		}
+		// Built-ins carry their own sentences; an authored kind says only what
+		// its author wrote, and nothing stands where nothing was written.
+		const paneDescription = isWorldbuildingKind(kind)
+			? this.t(`worldbuilding.kind.${kind}.description`)
+			: (descriptor?.description ?? '');
+		if (paneDescription.length > 0) {
+			panel.createEl('p', {
+				cls: 'snowflake-method-step-description',
+				text: paneDescription,
+			});
+		}
+		const paths = new Set(kindEntities(model, kind).map((entity) => entity.path));
 		const blockingIssues = [
-			...model.worldbuilding[kind].flatMap((entity) => entity.healthIssues),
+			...kindEntities(model, kind).flatMap((entity) => entity.healthIssues),
 			...model.structureIssues.filter((issue) => paths.has(issue.path)),
 		].filter((issue) => issue.blocking);
 		if (blockingIssues.length > 0) {
@@ -1153,7 +1265,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderOpenBase(actions, kind, model);
 		const add = actions.createEl('button', {
 			cls: 'mod-cta',
-			text: this.t(`worldbuilding.add.${kind}`),
+			text: this.kindText('worldbuilding.add', kind),
 			attr: { type: 'button' },
 		});
 		add.disabled = model.readOnly;
@@ -1161,7 +1273,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.openCreateEntity(model, kind);
 		});
 
-		if (model.worldbuilding[kind].length === 0) {
+		if (kindEntities(model, kind).length === 0) {
 			const empty = panel.createEl('p', {
 				cls: 'snowflake-method-character-empty',
 			});
@@ -1170,7 +1282,7 @@ export class SnowflakeDashboardView extends ItemView {
 				attr: { 'aria-hidden': 'true' },
 			});
 			setIcon(icon, 'triangle-alert');
-			empty.createSpan({ text: this.t(`worldbuilding.empty.${kind}`) });
+			empty.createSpan({ text: this.kindText('worldbuilding.empty', kind) });
 			return;
 		}
 
@@ -1179,7 +1291,7 @@ export class SnowflakeDashboardView extends ItemView {
 		panel.addClass('snowflake-method-member-panel');
 		const toolbar = panel.createDiv({ cls: 'snowflake-method-table-toolbar' });
 		const search = new SearchComponent(toolbar);
-		search.setPlaceholder(this.t(`worldbuilding.search.${kind}`));
+		search.setPlaceholder(this.kindText('worldbuilding.search', kind));
 		search.setValue(this.entityQueries.get(kind) ?? '');
 		void this.loadEntityCategories(model, kind);
 		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
@@ -1210,7 +1322,7 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 		const reorderReadOnly =
 			model.readOnly ||
-			model.worldbuilding[kind].some((entity) => entity.readOnly);
+			kindEntities(model, kind).some((entity) => entity.readOnly);
 
 		let entries: { entity: WorldbuildingEntityViewModel; index: number }[] = [];
 		const virtual = new VirtualTable({
@@ -1238,7 +1350,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.renderAddRow(
 					rows,
 					this.tableColumnClasses().length,
-					this.t(`worldbuilding.addMore.${kind}`),
+					this.kindText('worldbuilding.addMore', kind),
 					model.readOnly,
 					() => {
 						this.openCreateEntity(model, kind);
@@ -1264,7 +1376,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.entityListFiltered(kind)
 					? this.t('table.filteredCount', {
 							shown: entries.length,
-							total: model.worldbuilding[kind].length,
+							total: kindEntities(model, kind).length,
 						})
 					: '',
 			);
@@ -1300,12 +1412,12 @@ export class SnowflakeDashboardView extends ItemView {
 	/** The rows one kind's table shows, each with its place in the list. */
 	private entityEntries(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 	): { entity: WorldbuildingEntityViewModel; index: number }[] {
 		const query = this.entityQueries.get(kind) ?? '';
 		const category = this.entityCategoryFilters.get(kind) ?? '';
 		const status = this.entityStatusFilters.get(kind) ?? 'all';
-		return model.worldbuilding[kind]
+		return kindEntities(model, kind)
 			.map((entity, index) => ({ entity, index }))
 			.filter(
 				({ entity }) =>
@@ -1329,14 +1441,14 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 	}
 
-	private entityFiltered(kind: WorldbuildingKind): boolean {
+	private entityFiltered(kind: WorldbuildingKindId): boolean {
 		return (
 			(this.entityCategoryFilters.get(kind) ?? '') !== '' ||
 			(this.entityStatusFilters.get(kind) ?? 'all') !== 'all'
 		);
 	}
 
-	private entityListFiltered(kind: WorldbuildingKind): boolean {
+	private entityListFiltered(kind: WorldbuildingKindId): boolean {
 		return (
 			(this.entityQueries.get(kind) ?? '').trim().length > 0 ||
 			this.entityFiltered(kind)
@@ -1345,7 +1457,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private entityFilterRows(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 	): MemberFilterRow[] {
 		return [
 			this.progressFilterRow(
@@ -1368,7 +1480,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private async loadEntityCategories(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 	): Promise<void> {
 		let paths: string[] = [];
 		try {
@@ -1382,7 +1494,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderEntityRow(
 		body: HTMLElement,
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		entity: WorldbuildingEntityViewModel,
 		index: number,
 		reorderReadOnly: boolean,
@@ -1451,7 +1563,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const editEntity = (): void => {
 			if (!locked) void this.openEntityEditor(model, entity);
 		};
-		const entities = model.worldbuilding[kind];
+		const entities = kindEntities(model, kind);
 		this.renderRowActions(row, textCell, {
 			name: entity.name,
 			primaryLabel: this.t('actions.edit'),
@@ -1477,7 +1589,7 @@ export class SnowflakeDashboardView extends ItemView {
 					total: entities.length,
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
-					insertTitleKey: `worldbuilding.insertAfter.${kind}`,
+					insertTitle: this.kindText('worldbuilding.insertAfter', kind),
 					options: () =>
 						entities
 							.map((candidate, at) => ({
@@ -1517,7 +1629,7 @@ export class SnowflakeDashboardView extends ItemView {
 	/** Scrolls one kind's table to a row, wherever the filters put it. */
 	private revealEntity(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		id: string,
 	): void {
 		const at = this.entityEntries(model, kind).findIndex(
@@ -1530,7 +1642,7 @@ export class SnowflakeDashboardView extends ItemView {
 	/** Creates an entry and walks it back from the end to `index + 1`. */
 	private insertEntityAfter(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		index: number,
 	): void {
 		void this.memberFormContext(model, kind).then((context) => {
@@ -1538,7 +1650,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.app,
 				this.t,
 				kind,
-				model.worldbuilding[kind].map((entity) => entity.name),
+				kindEntities(model, kind).map((entity) => entity.name),
 				context,
 				async (request) => {
 					const created = await this.host.createEntity(request);
@@ -1579,8 +1691,8 @@ export class SnowflakeDashboardView extends ItemView {
 		// report's project-relative names are read back against this pane's
 		// trees.
 		const projectRoot = model.path.split('/').slice(0, -2).join('/');
-		const relativeRoots = ENTITY_KINDS.map((kind) => {
-			const rootPath = forest[kind].rootPath;
+		const relativeRoots = entityKindIds(model.worldbuildingKinds).map((kind) => {
+			const rootPath = forestTree(forest, kind).rootPath;
 			return rootPath.startsWith(`${projectRoot}/`)
 				? rootPath.slice(projectRoot.length + 1)
 				: rootPath;
@@ -1588,8 +1700,8 @@ export class SnowflakeDashboardView extends ItemView {
 		const paneIssues = model.structureIssues.filter((issue) => {
 			if (!issue.blocking) return false;
 			if (issue.code === 'missing-definition-node') {
-				return ENTITY_KINDS.some((kind) => {
-					const rootPath = forest[kind].rootPath;
+				return entityKindIds(model.worldbuildingKinds).some((kind) => {
+					const rootPath = forestTree(forest, kind).rootPath;
 					return (
 						issue.path === rootPath || issue.path.startsWith(`${rootPath}/`)
 					);
@@ -1625,7 +1737,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		add.disabled = model.readOnly;
 		add.addEventListener('click', () => {
-			void this.addDefinitionEntryToKind(id);
+			void this.addDefinitionEntryToKind(model, id);
 		});
 		// Browse on one side, inspect on the other: a tree row has room for a
 		// name and little else, and what an entry means and who uses it are
@@ -1705,7 +1817,7 @@ export class SnowflakeDashboardView extends ItemView {
 					?.scrollIntoView({ block: 'nearest' });
 			},
 		};
-		const painters = ENTITY_KINDS.map((kind) =>
+		const painters = entityKindIds(model.worldbuildingKinds).map((kind) =>
 			this.renderDefinitionSection(browser, model, context, kind),
 		);
 		repaintTrees = (): void => {
@@ -1742,10 +1854,10 @@ export class SnowflakeDashboardView extends ItemView {
 		browser: HTMLElement,
 		model: ProjectDashboardModel,
 		context: DefinitionPaneContext,
-		kind: EntityKind,
+		kind: EntityKindId,
 	): () => number {
 		const { id } = context;
-		const tree = model.definitions[id][kind];
+		const tree = forestTree(model.definitions[id], kind);
 		const sectionKey = `${id}/${kind}`;
 		const section = browser.createDiv({
 			cls: 'snowflake-method-definition-section',
@@ -1909,7 +2021,7 @@ export class SnowflakeDashboardView extends ItemView {
 		rows: HTMLElement,
 		model: ProjectDashboardModel,
 		context: DefinitionPaneContext,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 		shape: { hasChildren: boolean; folded: boolean; repaint: () => void },
 	): void {
@@ -2001,7 +2113,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private definitionActions(
 		model: ProjectDashboardModel,
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 	): {
 		locked: boolean;
@@ -2049,7 +2161,7 @@ export class SnowflakeDashboardView extends ItemView {
 		event: MouseEvent,
 		model: ProjectDashboardModel,
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 		anchor: HTMLElement,
 	): void {
@@ -2116,7 +2228,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const node =
 			chosen === undefined
 				? undefined
-				: model.definitions[id][chosen.kind].nodes.find(
+				: forestTree(model.definitions[id], chosen.kind).nodes.find(
 						(candidate) => candidate.taxonomyPath === chosen.taxonomyPath,
 					);
 		// With nothing chosen there is nothing to frame: no panel, only the
@@ -2261,7 +2373,7 @@ export class SnowflakeDashboardView extends ItemView {
 		panel: HTMLElement,
 		model: ProjectDashboardModel,
 		context: DefinitionPaneContext,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 		section: (label: string, count?: number) => HTMLElement,
 	): void {
@@ -2316,7 +2428,7 @@ export class SnowflakeDashboardView extends ItemView {
 				});
 			}
 		} else {
-			for (const entity of model.worldbuilding[kind]) {
+			for (const entity of kindEntities(model, kind)) {
 				remember(entity.name, entity, () => {
 					void this.openEntityEditor(model, entity);
 				});
@@ -2346,7 +2458,9 @@ export class SnowflakeDashboardView extends ItemView {
 					cls: 'snowflake-method-definition-inspector-note-icon',
 					attr: { 'aria-hidden': 'true' },
 				}),
-				ENTITY_KIND_ICONS[kind],
+				kind === 'character' || kind === 'scene' || isWorldbuildingKind(kind)
+					? ENTITY_KIND_ICONS[kind]
+					: CUSTOM_KIND_ICON,
 			);
 			card.createSpan({
 				cls: 'snowflake-method-definition-inspector-note-name',
@@ -2438,16 +2552,16 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/** The heading one kind's tree stands under. */
-	private definitionKindLabel(kind: EntityKind): string {
+	private definitionKindLabel(kind: EntityKindId): string {
 		if (kind === 'character' || kind === 'scene') {
 			return this.t(`definition.kind.${kind}`);
 		}
-		return this.t(`worldbuilding.kind.${kind}`);
+		return this.kindDisplayName(kind);
 	}
 
 	private definitionCollapseKey(
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		taxonomyPath: string,
 	): string {
 		return `${id}/${kind}/${taxonomyPath}`;
@@ -2455,7 +2569,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private definitionAncestorCollapsed(
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		taxonomyPath: string,
 	): boolean {
 		const segments = taxonomyPath.split('/');
@@ -2494,12 +2608,13 @@ export class SnowflakeDashboardView extends ItemView {
 	 * of its own and an entry has to be born into one of them.
 	 */
 	private async addDefinitionEntryToKind(
+		model: ProjectDashboardModel,
 		id: DefinitionFileChoice,
 	): Promise<void> {
 		const kind = await promptForDefinitionKind(
 			this.app,
 			this.t,
-			ENTITY_KINDS.map((candidate) => ({
+			entityKindIds(model.worldbuildingKinds).map((candidate) => ({
 				kind: candidate,
 				label: this.definitionKindLabel(candidate),
 			})),
@@ -2511,7 +2626,7 @@ export class SnowflakeDashboardView extends ItemView {
 	/** Asks for a new entry — at the root, or under the prefilled parent. */
 	private async addDefinitionEntry(
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		prefill: string,
 	): Promise<void> {
 		const created = await promptForDefinitionPath(
@@ -2539,7 +2654,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private async openDefinitionEditor(
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 	): Promise<void> {
 		const settled = await promptForDefinitionEdit(
@@ -2604,10 +2719,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private confirmDefinitionDeletion(
 		model: ProjectDashboardModel,
 		id: DefinitionFileChoice,
-		kind: EntityKind,
+		kind: EntityKindId,
 		node: DefinitionNodeInfo,
 	): void {
-		const tree = model.definitions[id][kind];
+		const tree = forestTree(model.definitions[id], kind);
 		const prefix = `${node.taxonomyPath}/`;
 		const subtree = tree.nodes.filter(
 			(candidate) =>
@@ -2656,7 +2771,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private async memberFormContext(
 		model: ProjectDashboardModel,
-		kind: EntityKind,
+		kind: EntityKindId,
 	): Promise<MemberFormContext> {
 		const [categoryPaths, worldStatusPaths, relationshipPaths, filePaths] =
 			await Promise.all([
@@ -2700,33 +2815,36 @@ export class SnowflakeDashboardView extends ItemView {
 		// would put it beyond every picker while its links still stand.
 		const timesOfKind = (timeKind: TimeKind): PickerOption[] =>
 			named(
-				model.worldbuilding.time.filter((entity) =>
+				kindEntities(model, 'time').filter((entity) =>
 					timeKind === 'point'
 						? entity.timeKind === 'point' || entity.timeKind === null
 						: entity.timeKind === timeKind,
 				),
 			);
-		const groups: Record<EntityGroupId, () => PickerOption[]> = {
-			character: () => named(model.characters),
-			scene: () =>
-				named(
+		// The project's own groups, registered kinds included: any group not
+		// answered by name here is a kind whose notes the model already holds.
+		const groupIds = entityGroupsOf(model.worldbuildingKinds);
+		const entitiesOfGroup = (group: EntityGroupId): PickerOption[] => {
+			if (group === 'character') return named(model.characters);
+			if (group === 'scene') {
+				return named(
 					model.scenes.map((scene) => ({
 						path: scene.path,
 						name: scene.title,
 					})),
-				),
-			'time-point': () => timesOfKind('point'),
-			'time-period': () => timesOfKind('period'),
-			location: () => named(model.worldbuilding.location),
-			item: () => named(model.worldbuilding.item),
+				);
+			}
+			if (group === 'time-point') return timesOfKind('point');
+			if (group === 'time-period') return timesOfKind('period');
+			return named(kindEntities(model, group));
 		};
 		// A stored link carries no file extension, so both sides are keyed
 		// without one: otherwise every reference read back from a note looks
 		// like a note the project has never heard of.
 		const noteKey = (path: string): string => path.replace(/\.md$/u, '');
 		const groupByPath = new Map<string, EntityGroupId>();
-		for (const group of ENTITY_GROUP_IDS) {
-			for (const option of groups[group]()) {
+		for (const group of groupIds) {
+			for (const option of entitiesOfGroup(group)) {
 				groupByPath.set(noteKey(option.value), group);
 			}
 		}
@@ -2735,20 +2853,40 @@ export class SnowflakeDashboardView extends ItemView {
 			...named(
 				model.scenes.map((scene) => ({ path: scene.path, name: scene.title })),
 			),
-			...WORLDBUILDING_KINDS.flatMap((kind) =>
-				named(model.worldbuilding[kind]),
+			...model.worldbuildingKinds.flatMap((descriptor) =>
+				named(kindEntities(model, descriptor.id)),
 			),
 		];
-		const times = named(model.worldbuilding.time);
+		const times = named(kindEntities(model, 'time'));
 		// Notes made while this form has been open. The project behind it was
 		// read before they existed, so without this a note made a moment ago is
 		// one the form cannot say anything about, and its line goes unnamed.
 		const madeHere = new Map<string, EntityGroupId>();
+		// Any markdown note of the project can be a template; the picker names
+		// them by their file name and holds them by path without the extension.
+		const projectRoot = model.path.split('/').slice(0, -2).join('/');
+		const templateOptions = (): PickerOption[] =>
+			this.app.vault
+				.getMarkdownFiles()
+				.filter((file) => file.path.startsWith(`${projectRoot}/`))
+				.map((file) => ({
+					value: file.path.replace(/\.md$/u, ''),
+					label: file.basename,
+				}))
+				.sort((left, right) => left.label.localeCompare(right.label));
 		return {
 			notice: (message) => {
 				new Notice(message);
 			},
-			entitiesIn: (group) => groups[group](),
+			kindTemplates: {
+				options: templateOptions,
+				current: () => this.host.kindTemplatePath(kind),
+				set: (path) => this.host.setKindTemplate(kind, path),
+				fields: () => this.host.kindTemplateFields(kind),
+			},
+			groups: () =>
+				groupIds.map((id) => ({ id, label: entityGroupLabel(this.t, id) })),
+			entitiesIn: (group) => entitiesOfGroup(group),
 			createIn: async (group, name, options) => {
 				const created = await this.createInGroup(model, group, name, options);
 				if (created !== null) madeHere.set(noteKey(created.value), group);
@@ -2803,12 +2941,13 @@ export class SnowflakeDashboardView extends ItemView {
 					worldStatus: [],
 					relationships: [],
 					events: '',
+					customFields: '',
 				});
 				await this.refresh();
 				return find(created.path);
 			}
-			const kind: WorldbuildingKind =
-				group === 'location' ? 'location' : group === 'item' ? 'item' : 'time';
+			const kind: WorldbuildingKindId =
+				group === 'time-point' || group === 'time-period' ? 'time' : group;
 			const created = await this.host.createEntity({
 				kind,
 				name,
@@ -2826,6 +2965,7 @@ export class SnowflakeDashboardView extends ItemView {
 				timeEnd: '',
 				worldStatus: [],
 				relationships: [],
+				customFields: '',
 			});
 			await this.refresh();
 			return find(created.path);
@@ -2855,6 +2995,7 @@ export class SnowflakeDashboardView extends ItemView {
 				growth: '',
 				worldStatus: [],
 				relationships: [],
+				customFields: '',
 			});
 			await this.refresh();
 			return created;
@@ -2917,14 +3058,14 @@ export class SnowflakeDashboardView extends ItemView {
 			await this.refresh();
 			return created;
 		}
-		const kind: WorldbuildingKind =
-			group === 'location' ? 'location' : group === 'item' ? 'item' : 'time';
+		const kind: WorldbuildingKindId =
+			group === 'time-point' || group === 'time-period' ? 'time' : group;
 		const context = await this.memberFormContext(model, kind);
 		const created = await promptForNewEntity(
 			this.app,
 			this.t,
 			kind,
-			model.worldbuilding[kind].map((entity) => entity.name),
+			kindEntities(model, kind).map((entity) => entity.name),
 			context,
 			{
 				name,
@@ -2948,16 +3089,165 @@ export class SnowflakeDashboardView extends ItemView {
 		return created;
 	}
 
+	/** Built-in kinds read from the copy; an authored kind is its own name. */
+	private kindDisplayName(kind: WorldbuildingKindId): string {
+		return isWorldbuildingKind(kind)
+			? this.t(`worldbuilding.kind.${kind}`)
+			: kind;
+	}
+
+	/** Per-kind copy: the built-ins have their own sentences, customs share one. */
+	private kindText(prefix: string, kind: WorldbuildingKindId): string {
+		return isWorldbuildingKind(kind)
+			? this.t(`${prefix}.${kind}`)
+			: this.t(`${prefix}.custom`, { name: kind });
+	}
+
+	private kindRefusal(
+		code: 'invalid-name' | 'taken' | 'full',
+		name: string,
+	): string {
+		if (code === 'full') return this.t('modal.kind.full');
+		return code === 'taken'
+			? this.t('modal.kind.nameTaken', { name })
+			: this.t('modal.kind.invalidName', { name });
+	}
+
+	private openCreateKind(model: ProjectDashboardModel): void {
+		if (model.readOnly) return;
+		void promptForKindForm(this.app, this.t, {
+			title: this.t('modal.kind.createTitle'),
+			submitLabel: this.t('common.create'),
+			objection: (name) => {
+				const code = validateKindName(name, model.worldbuildingKinds);
+				return code === null ? null : this.kindRefusal(code, name);
+			},
+		}).then(async (result) => {
+			if (result === null) return;
+			await this.runAndRefresh(async () => {
+				const made = await this.host.createWorldbuildingKind(result.name, {
+					icon: result.icon,
+					description: result.description,
+				});
+				if (!made.ok) {
+					new Notice(this.kindRefusal(made.code, result.name));
+					return;
+				}
+				this.selectedPane = {
+					kind: 'worldbuilding',
+					wbKind: made.kind.id,
+				};
+				this.stepChosen = true;
+				new Notice(this.t('messages.kindCreated', { name: made.kind.id }));
+			});
+		});
+	}
+
+	/**
+	 * The same dialog creation opens, with everything the kind has standing:
+	 * the name renames, and looks that changed are recorded under whichever
+	 * name the kind ends up wearing.
+	 */
+	private openRenameKind(
+		model: ProjectDashboardModel,
+		descriptor: ProjectWorldbuildingKind,
+	): void {
+		if (model.readOnly) return;
+		const kind = descriptor.id;
+		// Keeping the kind's own name is not taking one, so the check runs
+		// against every kind but this.
+		const others = model.worldbuildingKinds.filter(
+			(candidate) => candidate.id !== kind,
+		);
+		void promptForKindForm(this.app, this.t, {
+			title: this.t('modal.kind.editTitle', { name: kind }),
+			submitLabel: this.t('common.save'),
+			initial: {
+				name: kind,
+				icon: descriptor.icon ?? '',
+				description: descriptor.description ?? '',
+			},
+			objection: (name) => {
+				const code = validateKindName(name, others);
+				return code === null ? null : this.kindRefusal(code, name);
+			},
+		}).then(async (result) => {
+			if (result === null) return;
+			await this.runAndRefresh(async () => {
+				let settledId = kind;
+				if (result.name !== kind) {
+					const renamed = await this.host.renameWorldbuildingKind(
+						kind,
+						result.name,
+					);
+					if (!renamed.ok) {
+						new Notice(this.kindRefusal(renamed.code, result.name));
+						return;
+					}
+					settledId = renamed.kind.id;
+					if (
+						this.selectedPane.kind === 'worldbuilding' &&
+						this.selectedPane.wbKind === kind
+					) {
+						this.selectedPane = {
+							kind: 'worldbuilding',
+							wbKind: settledId,
+						};
+					}
+					new Notice(this.t('messages.kindRenamed', { name: settledId }));
+				}
+				if (
+					result.icon !== (descriptor.icon ?? '') ||
+					result.description !== (descriptor.description ?? '')
+				) {
+					await this.host.setKindAppearance(settledId, {
+						icon: result.icon,
+						description: result.description,
+					});
+				}
+			});
+		});
+	}
+
+	private async confirmKindDeletion(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKindId,
+	): Promise<void> {
+		if (model.readOnly) return;
+		const cost = await this.host.worldbuildingKindUsage(kind);
+		const confirmed = await new Promise<boolean>((resolve) => {
+			new ConfirmKindDeletionModal(
+				this.app,
+				this.t,
+				kind,
+				cost.entityCount,
+				cost.usage,
+				resolve,
+			).open();
+		});
+		if (!confirmed) return;
+		await this.runAndRefresh(async () => {
+			await this.host.deleteWorldbuildingKind(kind);
+			if (
+				this.selectedPane.kind === 'worldbuilding' &&
+				this.selectedPane.wbKind === kind
+			) {
+				this.selectedPane = { kind: 'step', step: this.selectedStep };
+			}
+			new Notice(this.t('messages.kindDeleted', { name: kind }));
+		});
+	}
+
 	private openCreateEntity(
 		model: ProjectDashboardModel,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 	): void {
 		void this.memberFormContext(model, kind).then((context) => {
 			new EntityFormModal(
 				this.app,
 				this.t,
 				kind,
-				model.worldbuilding[kind].map((entity) => entity.name),
+				kindEntities(model, kind).map((entity) => entity.name),
 				context,
 				async (request) => {
 					await this.host.createEntity(request);
@@ -3000,6 +3290,7 @@ export class SnowflakeDashboardView extends ItemView {
 					growth: character.growth,
 					worldStatus: character.worldStatus,
 					relationships: character.relationships,
+					customFields: character.customFields,
 					expectedRevision: character.revision,
 				},
 				undefined,
@@ -3019,7 +3310,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.app,
 				this.t,
 				entity.kind,
-				model.worldbuilding[entity.kind]
+				kindEntities(model, entity.kind)
 					.filter((candidate) => candidate.id !== entity.id)
 					.map((candidate) => candidate.name),
 				context,
@@ -3039,6 +3330,7 @@ export class SnowflakeDashboardView extends ItemView {
 					timeEnd: entity.timeEnd,
 					worldStatus: entity.worldStatus,
 					relationships: entity.relationships,
+					customFields: entity.customFields,
 					expectedRevision: entity.revision,
 				},
 			);
@@ -3399,8 +3691,8 @@ export class SnowflakeDashboardView extends ItemView {
 		const character = model.characters.find(
 			(candidate) => candidate.id === memberId,
 		);
-		const entity = WORLDBUILDING_KINDS.flatMap(
-			(kind) => model.worldbuilding[kind],
+		const entity = model.worldbuildingKinds.flatMap((descriptor) =>
+			kindEntities(model, descriptor.id),
 		).find((candidate) => candidate.id === memberId);
 		const form =
 			scene !== undefined
@@ -4071,7 +4363,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
-		id: 'characters' | 'scenes' | WorldbuildingKind,
+		id: ProjectBaseChoice,
 		model: ProjectDashboardModel,
 	): void {
 		const openBase = (): void => {
@@ -4478,7 +4770,7 @@ export class SnowflakeDashboardView extends ItemView {
 				label: this.t('table.sceneTime'),
 				placeholder: this.t('table.filterAllTimes'),
 				empty: '',
-				options: () => named(model.worldbuilding.time),
+				options: () => named(kindEntities(model, 'time')),
 				value: this.sceneTimeFilter,
 				apply: (next) => {
 					this.sceneTimeFilter = next;
@@ -4488,7 +4780,7 @@ export class SnowflakeDashboardView extends ItemView {
 				label: this.t('table.sceneLocation'),
 				placeholder: this.t('table.filterAllLocations'),
 				empty: '',
-				options: () => named(model.worldbuilding.location),
+				options: () => named(kindEntities(model, 'location')),
 				value: this.sceneLocationFilter,
 				apply: (next) => {
 					this.sceneLocationFilter = next;
@@ -4799,7 +5091,7 @@ export class SnowflakeDashboardView extends ItemView {
 					total: model.characters.length,
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
-					insertTitleKey: 'table.insertCharacterAfter',
+					insertTitle: this.t('table.insertCharacterAfter'),
 					options: () =>
 						model.characters
 							.map((candidate, at) => ({
@@ -5114,7 +5406,7 @@ export class SnowflakeDashboardView extends ItemView {
 					total: model.scenes.length,
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
-					insertTitleKey: 'table.insertSceneAfter',
+					insertTitle: this.t('table.insertSceneAfter'),
 					options: () =>
 						model.scenes
 							.map((candidate, at) => ({
@@ -5435,7 +5727,7 @@ export class SnowflakeDashboardView extends ItemView {
 			locked: boolean;
 			/** True when the project cannot take a new member at all. */
 			readOnly: boolean;
-			insertTitleKey: string;
+			insertTitle: string;
 			/** Everything the row could be moved after, so all but itself. */
 			options: () => MoveAfterEntry[];
 			move: (toIndex: number) => Promise<void>;
@@ -5518,7 +5810,7 @@ export class SnowflakeDashboardView extends ItemView {
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
-				.setTitle(this.t(config.insertTitleKey))
+				.setTitle(config.insertTitle)
 				.setIcon('plus')
 				.setDisabled(config.readOnly)
 				.onClick(config.insert),
@@ -5625,6 +5917,7 @@ export class SnowflakeDashboardView extends ItemView {
 					worldStatus: scene.worldStatus,
 					relationships: scene.relationships,
 					events: scene.events,
+					customFields: scene.customFields,
 					expectedRevision: scene.revision,
 				},
 				this.creatingCharacter(model),

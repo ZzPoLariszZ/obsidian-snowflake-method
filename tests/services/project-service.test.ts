@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  CUSTOM_KIND_PREFIXES,
   SCENE_POV_MULTIPLE,
   SCENE_POV_OMNISCIENT,
   SCHEMA_VERSION,
@@ -3574,11 +3575,11 @@ describe("SnowflakeProjectService", () => {
     expect(content).not.toContain("snowflake:section:relationships");
 
     const snapshot = await service.loadProject(project.projectFile);
-    expect(snapshot.worldbuilding.time.map((entity) => entity.name)).toEqual([
+    expect(snapshot.worldbuilding.time!.map((entity) => entity.name)).toEqual([
       "1024-03",
       "The Long Famine",
     ]);
-    expect(snapshot.worldbuilding.location).toEqual([]);
+    expect(snapshot.worldbuilding.location!).toEqual([]);
   });
 
   it("requires both ends of a period, or neither", async () => {
@@ -3890,11 +3891,11 @@ describe("SnowflakeProjectService", () => {
     await service.repairMissingStructureItem(project.projectFile, dawn.path);
 
     const repaired = await service.loadProject(project.projectFile);
-    expect(repaired.worldbuilding.time.map((entity) => entity.name)).toEqual([
+    expect(repaired.worldbuilding.time!.map((entity) => entity.name)).toEqual([
       "Dawn",
     ]);
     // The kind comes from the folder, which a mangled frontmatter cannot lose.
-    expect(repaired.worldbuilding.time[0]!.kind).toBe("time");
+    expect(repaired.worldbuilding.time![0]!.kind).toBe("time");
   });
 
   it("keeps a character's records in their sections, values and all", async () => {
@@ -4276,9 +4277,9 @@ describe("SnowflakeProjectService", () => {
       project.projectFile,
       "category",
     );
-    expect(forest.character.rootPath).toBe(categoryRoot);
+    expect(forest.character!.rootPath).toBe(categoryRoot);
     expect(
-      forest.character.nodes.map((node) => [node.taxonomyPath, node.depth]),
+      forest.character!.nodes.map((node) => [node.taxonomyPath, node.depth]),
     ).toEqual([
       ["Bare", 1],
       ["Major", 1],
@@ -4287,7 +4288,7 @@ describe("SnowflakeProjectService", () => {
       ["Race/Elf", 2],
       ["Supporting", 1],
     ]);
-    const elf = forest.character.nodes.find(
+    const elf = forest.character!.nodes.find(
       (node) => node.taxonomyPath === "Race/Elf",
     );
     expect(elf).toMatchObject({
@@ -4299,7 +4300,7 @@ describe("SnowflakeProjectService", () => {
     });
     expect(elf?.selfPath).toBe(`${categoryRoot}/Race/Elf/Elf.md`);
     expect(
-      forest.character.nodes.find((node) => node.taxonomyPath === "Bare"),
+      forest.character!.nodes.find((node) => node.taxonomyPath === "Bare"),
     ).toMatchObject({ missingSelf: true, missing: false, description: "" });
 
     // The felled entry still stands in its tree, marked as the hole it is,
@@ -4309,7 +4310,7 @@ describe("SnowflakeProjectService", () => {
       "relationship",
     );
     expect(
-      relationships.character.nodes.map((node) => [
+      relationships.character!.nodes.map((node) => [
         node.taxonomyPath,
         node.missing,
       ]),
@@ -4321,12 +4322,12 @@ describe("SnowflakeProjectService", () => {
       ["Member", false],
     ]);
     expect(
-      relationships.character.nodes.find(
+      relationships.character!.nodes.find(
         (node) => node.taxonomyPath === "Family",
       )?.usage,
     ).toEqual({ listed: [], records: ["Alice"] });
     // Every other kind answers with the tree it has: seeded or empty.
-    expect(relationships.scene.nodes).toEqual([]);
+    expect(relationships.scene!.nodes).toEqual([]);
 
     // The walk stops at the depth cap, hand-made folders or not.
     const deep = Array.from({ length: 8 }, (_, index) => `D${index + 1}`).join(
@@ -4338,7 +4339,7 @@ describe("SnowflakeProjectService", () => {
       "category",
     );
     expect(
-      capped.character.nodes
+      capped.character!.nodes
         .filter((node) => node.taxonomyPath.startsWith("D1"))
         .map((node) => node.depth),
     ).toEqual([1, 2, 3, 4, 5, 6, 7]);
@@ -5049,7 +5050,7 @@ describe("SnowflakeProjectService", () => {
       fakeVault.contents.set(
         path,
         (fakeVault.contents.get(path) ?? "").replace(
-          '"snowflake-schema": 2',
+          `"snowflake-schema": ${SCHEMA_VERSION}`,
           '"snowflake-schema": 1',
         ),
       );
@@ -5084,9 +5085,9 @@ describe("SnowflakeProjectService", () => {
       expect(await service.countOutdatedNotes(project.projectFile)).toBe(3);
       const pass = await service.migrateMemberNotes(project.projectFile);
       expect(pass).toEqual({ migrated: 3, skipped: 0 });
-      expect(schemaOf(draftPath)).toBe(2);
-      expect(schemaOf(summaryPath)).toBe(2);
-      expect(schemaOf(materialPath)).toBe(2);
+      expect(schemaOf(draftPath)).toBe(SCHEMA_VERSION);
+      expect(schemaOf(summaryPath)).toBe(SCHEMA_VERSION);
+      expect(schemaOf(materialPath)).toBe(SCHEMA_VERSION);
       expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
       expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
         migrated: 0,
@@ -5100,7 +5101,7 @@ describe("SnowflakeProjectService", () => {
       // A plugin-managed file: never the banner's business.
       expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
       expect(await service.settleSystemFiles(project.projectFile)).toBe(true);
-      expect(schemaOf(project.projectFile)).toBe(2);
+      expect(schemaOf(project.projectFile)).toBe(SCHEMA_VERSION);
       expect(await service.settleSystemFiles(project.projectFile)).toBe(false);
     });
 
@@ -5114,7 +5115,7 @@ describe("SnowflakeProjectService", () => {
 
       expect(await service.settleSystemFiles(project.projectFile)).toBe(true);
       expect(fakeVault.getFileByPath(worldbuildingTemplate)).not.toBeNull();
-      expect(schemaOf(characterTemplate)).toBe(2);
+      expect(schemaOf(characterTemplate)).toBe(SCHEMA_VERSION);
       expect(await service.settleSystemFiles(project.projectFile)).toBe(false);
     });
 
@@ -5128,17 +5129,17 @@ describe("SnowflakeProjectService", () => {
       flip(relic.path);
       const before = await service.loadProject(project.projectFile);
       expect(
-        before.worldbuilding.item.find((entity) => entity.name === "Relic")
+        before.worldbuilding.item!.find((entity) => entity.name === "Relic")
           ?.unmigrated,
       ).toBe(true);
       // A member: monitored through its own flag, not the non-member count.
       expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
       const pass = await service.migrateMemberNotes(project.projectFile);
       expect(pass).toEqual({ migrated: 1, skipped: 0 });
-      expect(schemaOf(relic.path)).toBe(2);
+      expect(schemaOf(relic.path)).toBe(SCHEMA_VERSION);
       const after = await service.loadProject(project.projectFile);
       expect(
-        after.worldbuilding.item.find((entity) => entity.name === "Relic")
+        after.worldbuilding.item!.find((entity) => entity.name === "Relic")
           ?.unmigrated,
       ).toBe(false);
       expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
@@ -5173,6 +5174,588 @@ describe("SnowflakeProjectService", () => {
       expect(
         (await service.migrateMemberNotes(project.projectFile)).skipped,
       ).toBe(1);
+    });
+  });
+
+  describe("custom worldbuilding kinds", () => {
+    const metadataRegistry = (path: string): unknown =>
+      parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+        "snowflake-worldbuilding-kinds"
+      ];
+
+    it("registers a kind and raises its whole scaffold", async () => {
+      const project = await service.createProject({ name: "Kinds" });
+      const made = await service.createWorldbuildingKind(project, "Faction");
+      expect(made).toMatchObject({
+        ok: true,
+        kind: { id: "Faction", folderName: "64_Faction", custom: true },
+      });
+      expect(metadataRegistry(project.projectFile)).toEqual(["64_Faction"]);
+      const root = `${project.rootPath}/60_Worldbuilding/64_Faction`;
+      expect(fakeVault.getAbstractFileByPath(root)).not.toBeNull();
+      expect(fakeVault.getAbstractFileByPath(`${root}/641_Category`)).not.toBeNull();
+      expect(
+        fakeVault.getAbstractFileByPath(`${root}/642_World_Status`),
+      ).not.toBeNull();
+      expect(fakeVault.getFileByPath(`${root}/Faction.base`)).not.toBeNull();
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.map((kind) => kind.id),
+      ).toEqual(["time", "location", "item", "Faction"]);
+    });
+
+    it("refuses reserved, colliding, and unusable names", async () => {
+      const project = await service.createProject({ name: "Kind Names" });
+      await service.createWorldbuildingKind(project, "Faction");
+      expect(await service.createWorldbuildingKind(project, "Time")).toEqual({
+        ok: false,
+        code: "taken",
+      });
+      expect(await service.createWorldbuildingKind(project, "时间")).toEqual({
+        ok: false,
+        code: "taken",
+      });
+      expect(
+        await service.createWorldbuildingKind(project, "faction"),
+      ).toEqual({ ok: false, code: "taken" });
+      expect(await service.createWorldbuildingKind(project, "a/b")).toEqual({
+        ok: false,
+        code: "invalid-name",
+      });
+      expect(await service.createWorldbuildingKind(project, "42_x")).toEqual({
+        ok: false,
+        code: "invalid-name",
+      });
+      // Members before kinds: character and scene answer for other namespaces,
+      // as do the two ids the pickers split time into, in either spelling.
+      for (const name of ["character", "Scene", "场景", "Time-Point", "time-period"]) {
+        expect(await service.createWorldbuildingKind(project, name)).toEqual({
+          ok: false,
+          code: "taken",
+        });
+      }
+    });
+
+    it("crosses into letters, reuses retired slots, and refuses only a full run", async () => {
+      const project = await service.createProject({ name: "Kind Run" });
+      await service.createWorldbuildingKind(project, "Six");
+      const setRegistry = (entries: string[]): void => {
+        fakeVault.contents.set(
+          project.projectFile,
+          (fakeVault.contents.get(project.projectFile) ?? "").replace(
+            /"snowflake-worldbuilding-kinds": \[[^\]]*\]/u,
+            `"snowflake-worldbuilding-kinds": ${JSON.stringify(entries)}`,
+          ),
+        );
+      };
+      // With every digit spoken for, the run crosses into letters.
+      setRegistry(["64_Six", "65_A", "66_B", "67_C", "68_D", "69_E"]);
+      const lettered = await service.createWorldbuildingKind(
+        project.projectFile,
+        "Order",
+      );
+      expect(lettered).toMatchObject({
+        ok: true,
+        kind: { id: "Order", folderName: "6A_Order" },
+      });
+      const root = `${project.rootPath}/60_Worldbuilding/6A_Order`;
+      expect(
+        fakeVault.getAbstractFileByPath(`${root}/6A1_Category`),
+      ).not.toBeNull();
+      expect(fakeVault.getFileByPath(`${root}/Order.base`)).not.toBeNull();
+      // A deleted kind frees its slot: with 65 retired, the next kind takes it.
+      setRegistry(["64_Six", "66_B", "6A_Order"]);
+      expect(
+        await service.createWorldbuildingKind(project.projectFile, "Back"),
+      ).toMatchObject({ ok: true, kind: { folderName: "65_Back" } });
+      // 6Z is a slot like any other, and only all thirty-two at once refuse.
+      setRegistry(
+        CUSTOM_KIND_PREFIXES.slice(0, -1).map((prefix, at) => `${prefix}_K${at}`),
+      );
+      expect(
+        await service.createWorldbuildingKind(project.projectFile, "Last"),
+      ).toMatchObject({ ok: true, kind: { folderName: "6Z_Last" } });
+      setRegistry(
+        CUSTOM_KIND_PREFIXES.map((prefix, at) => `${prefix}_K${at}`),
+      );
+      expect(
+        await service.createWorldbuildingKind(project.projectFile, "More"),
+      ).toEqual({ ok: false, code: "full" });
+    });
+
+    it("grows and lists a custom kind's own definition vocabulary", async () => {
+      const project = await service.createProject({ name: "Kind Vocab" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const added = await service.addDefinitionPath(
+        project.projectFile,
+        "Faction",
+        "category",
+        "Guild/Trade",
+      );
+      expect(added.ok).toBe(true);
+      expect(
+        fakeVault.getAbstractFileByPath(
+          `${project.rootPath}/60_Worldbuilding/64_Faction/641_Category/Guild/Trade`,
+        ),
+      ).not.toBeNull();
+      expect(
+        await service.listDefinitionPaths(project.projectFile, "Faction", "category"),
+      ).toEqual(["Guild", "Guild/Trade"]);
+    });
+
+    it("creates, lists, and buckets entities of a custom kind", async () => {
+      const project = await service.createProject({ name: "Kind Entities" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const entity = await service.createEntity(project.projectFile, {
+        kind: "Faction",
+        name: "The Guild",
+        description: "Merchants of the low quarter.",
+      });
+      expect(entity.path).toBe(
+        `${project.rootPath}/60_Worldbuilding/64_Faction/The Guild.md`,
+      );
+      const frontmatter = parseMarkdownFrontmatter(
+        fakeVault.contents.get(entity.path) ?? "",
+      ).frontmatter;
+      expect(frontmatter["snowflake-worldbuilding-kind"]).toBe("Faction");
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuilding["Faction"]!.map((member) => member.name),
+      ).toEqual(["The Guild"]);
+      // A registered kind's notes are as readable as a built-in's: nothing
+      // about them is a structure issue.
+      expect(snapshot.structureIssues).toEqual([]);
+    });
+
+    it("does not read a stray folder as a kind", async () => {
+      const project = await service.createProject({ name: "Stray Folder" });
+      await fakeVault.createFolder(
+        `${project.rootPath}/60_Worldbuilding/70_Stray`,
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.some((kind) => kind.id === "Stray"),
+      ).toBe(false);
+    });
+
+    it("reports notes of an unregistered kind, and the repair registers it", async () => {
+      const project = await service.createProject({ name: "Ghost Kind" });
+      const folder = `${project.rootPath}/60_Worldbuilding/79_Ghost`;
+      await fakeVault.createFolder(folder);
+      await fakeVault.create(
+        `${folder}/Shade.md`,
+        [
+          "---",
+          "{",
+          `  "snowflake-schema": ${SCHEMA_VERSION},`,
+          '  "snowflake-document": "worldbuilding",',
+          `  "snowflake-project-id": "${project.id}",`,
+          '  "snowflake-entity-id": "entity-ghost-1",',
+          '  "snowflake-worldbuilding-kind": "Ghost",',
+          '  "snowflake-name": "Shade",',
+          '  "snowflake-rank": 1024,',
+          '  "snowflake-description": ""',
+          "}",
+          "---",
+          "# Shade",
+          "",
+        ].join("\n"),
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(snapshot.worldbuilding["Ghost"]).toBeUndefined();
+      const issue = snapshot.structureIssues.find(
+        (candidate) => candidate.code === "unregistered-worldbuilding-kind",
+      );
+      expect(issue).toMatchObject({
+        field: "Ghost",
+        repairable: true,
+        names: ["60_Worldbuilding/79_Ghost/Shade"],
+      });
+      await service.repairMissingStructureItem(
+        project.projectFile,
+        issue!.path,
+        "Ghost",
+      );
+      const repaired = await service.loadProject(project.projectFile);
+      expect(
+        repaired.worldbuilding["Ghost"]!.map((member) => member.name),
+      ).toEqual(["Shade"]);
+      expect(
+        repaired.structureIssues.some(
+          (candidate) =>
+            candidate.code === "unregistered-worldbuilding-kind",
+        ),
+      ).toBe(false);
+    });
+
+    it("settles duplicate registry entries first-wins and repairs the rest away", async () => {
+      const project = await service.createProject({ name: "Twin Kinds" });
+      await service.createWorldbuildingKind(project, "Faction");
+      fakeVault.contents.set(
+        project.projectFile,
+        (fakeVault.contents.get(project.projectFile) ?? "").replace(
+          '"snowflake-worldbuilding-kinds": [\n    "64_Faction"\n  ]',
+          '"snowflake-worldbuilding-kinds": [\n    "64_Faction",\n    "65_faction",\n    "66_Time"\n  ]',
+        ),
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.filter((kind) => kind.custom),
+      ).toHaveLength(1);
+      const issue = snapshot.structureIssues.find(
+        (candidate) =>
+          candidate.code === "invalid-metadata-field" &&
+          candidate.field === "snowflake-worldbuilding-kinds",
+      );
+      expect(issue?.names).toEqual(["65_faction", "66_Time"]);
+      await service.repairMissingStructureItem(
+        project.projectFile,
+        project.projectFile,
+        "snowflake-worldbuilding-kinds",
+      );
+      expect(metadataRegistry(project.projectFile)).toEqual(["64_Faction"]);
+    });
+
+    it("renames a kind through folder, stamps, links, and base", async () => {
+      const project = await service.createProject({ name: "Kind Rename" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const guild = await service.createEntity(project.projectFile, {
+        kind: "Faction",
+        name: "The Guild",
+      });
+      const ally: RecordLine = {
+        label: {
+          path: `${project.rootPath}/20_Character/21_Category/Ally/Ally`,
+          display: "Ally",
+        },
+        value: "sworn",
+        clauses: [
+          {
+            kind: "with",
+            term: {
+              kind: "link",
+              path: linkTarget(guild.path),
+              name: "The Guild",
+            },
+          },
+        ],
+      };
+      await service.createCharacter(project.projectFile, {
+        name: "Ada",
+        relationships: [ally],
+      });
+      expect(
+        await service.renameWorldbuildingKind(project.projectFile, "Faction", "Time"),
+      ).toEqual({ ok: false, code: "taken" });
+      const renamed = await service.renameWorldbuildingKind(
+        project.projectFile,
+        "Faction",
+        "Empire",
+      );
+      expect(renamed).toMatchObject({
+        ok: true,
+        kind: { id: "Empire", folderName: "64_Empire" },
+      });
+      expect(metadataRegistry(project.projectFile)).toEqual(["64_Empire"]);
+      const movedPath = `${project.rootPath}/60_Worldbuilding/64_Empire/The Guild.md`;
+      expect(fakeVault.getFileByPath(movedPath)).not.toBeNull();
+      expect(
+        parseMarkdownFrontmatter(fakeVault.contents.get(movedPath) ?? "")
+          .frontmatter["snowflake-worldbuilding-kind"],
+      ).toBe("Empire");
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuilding["Empire"]!.map((member) => member.name),
+      ).toEqual(["The Guild"]);
+      const character = snapshot.characters.find(
+        (candidate) => candidate.name === "Ada",
+      );
+      const clause = character?.relationships[0]?.clauses.find(
+        (candidate) => candidate.kind === "with",
+      );
+      expect(
+        clause !== undefined && clause.kind === "with" && clause.term.kind === "link"
+          ? clause.term.path
+          : "",
+      ).toContain("64_Empire/The Guild");
+      const base = `${project.rootPath}/60_Worldbuilding/64_Empire/Empire.base`;
+      expect(fakeVault.getFileByPath(base)).not.toBeNull();
+      expect(fakeVault.contents.get(base) ?? "").toContain('== "Empire"');
+    });
+
+    it("deletes a kind whole, naming its costs first", async () => {
+      const project = await service.createProject({ name: "Kind Delete" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const guild = await service.createEntity(project.projectFile, {
+        kind: "Faction",
+        name: "The Guild",
+      });
+      const mention: RecordLine = {
+        label: {
+          path: `${project.rootPath}/20_Character/21_Category/Ally/Ally`,
+          display: "Ally",
+        },
+        value: "member",
+        clauses: [
+          {
+            kind: "with",
+            term: {
+              kind: "link",
+              path: linkTarget(guild.path),
+              name: "The Guild",
+            },
+          },
+        ],
+      };
+      await service.createCharacter(project.projectFile, {
+        name: "Ada",
+        relationships: [mention],
+      });
+      const cost = await service.worldbuildingKindUsage(
+        project.projectFile,
+        "Faction",
+      );
+      expect(cost.entityCount).toBe(1);
+      expect(cost.usage.records).toEqual(["Ada"]);
+      await service.deleteWorldbuildingKind(project.projectFile, "Faction");
+      expect(metadataRegistry(project.projectFile)).toEqual([]);
+      expect(
+        fakeVault.getAbstractFileByPath(
+          `${project.rootPath}/60_Worldbuilding/64_Faction`,
+        ),
+      ).toBeNull();
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(snapshot.worldbuilding["Faction"]).toBeUndefined();
+      // The record line stays as written, for the health check to report.
+      const character = snapshot.characters.find(
+        (candidate) => candidate.name === "Ada",
+      );
+      expect(character?.relationships).toHaveLength(1);
+    });
+
+    it("keeps a kind's template choice, moving it with a rename", async () => {
+      const project = await service.createProject({ name: "Kind Template" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const sheet = `${project.rootPath}/80_Material/Faction Sheet.md`;
+      await fakeVault.create(
+        sheet,
+        [
+          "---",
+          "{",
+          `  "snowflake-schema": ${SCHEMA_VERSION},`,
+          '  "snowflake-document": "material",',
+          `  "snowflake-project-id": "${project.id}"`,
+          "}",
+          "---",
+          "# Faction sheet",
+          "",
+          "### Banner",
+          "",
+          "What flies over them.",
+          "",
+          "### Seat",
+          "",
+        ].join("\n"),
+      );
+      await service.setKindTemplate(
+        project.projectFile,
+        "Faction",
+        linkTarget(sheet),
+      );
+      expect(
+        await service.kindTemplatePath(project.projectFile, "Faction"),
+      ).toBe(linkTarget(sheet));
+      expect(
+        await service.kindTemplateFields(project.projectFile, "Faction"),
+      ).toEqual([
+        { title: "Banner", content: "What flies over them." },
+        { title: "Seat", content: "" },
+      ]);
+      await service.renameWorldbuildingKind(
+        project.projectFile,
+        "Faction",
+        "Empire",
+      );
+      expect(
+        await service.kindTemplatePath(project.projectFile, "Empire"),
+      ).toBe(linkTarget(sheet));
+      expect(
+        await service.kindTemplatePath(project.projectFile, "Faction"),
+      ).toBeNull();
+      await service.setKindTemplate(project.projectFile, "Empire", null);
+      expect(
+        await service.kindTemplatePath(project.projectFile, "Empire"),
+      ).toBeNull();
+    });
+
+    it("keeps a kind's icon and sentence, and they follow the name", async () => {
+      const project = await service.createProject({ name: "Kind Looks" });
+      const made = await service.createWorldbuildingKind(project, "Faction", {
+        icon: "flag",
+        description: "Who marches together.",
+      });
+      expect(made.ok).toBe(true);
+      const meta = (): Record<string, unknown> =>
+        parseMarkdownFrontmatter(
+          fakeVault.contents.get(project.projectFile) ?? "",
+        ).frontmatter;
+      expect(meta()["snowflake-kind-icons"]).toEqual({ Faction: "flag" });
+      expect(meta()["snowflake-kind-descriptions"]).toEqual({
+        Faction: "Who marches together.",
+      });
+      let snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.find((kind) => kind.id === "Faction"),
+      ).toMatchObject({ icon: "flag", description: "Who marches together." });
+      // Built-ins never read the maps, whatever a hand-edit put there.
+      expect(
+        snapshot.worldbuildingKinds.find((kind) => kind.id === "time"),
+      ).toMatchObject({ icon: null, description: null });
+
+      await service.renameWorldbuildingKind(
+        project.projectFile,
+        "Faction",
+        "Empire",
+      );
+      expect(meta()["snowflake-kind-icons"]).toEqual({ Empire: "flag" });
+      snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.find((kind) => kind.id === "Empire"),
+      ).toMatchObject({ icon: "flag", description: "Who marches together." });
+
+      await service.setKindAppearance(project.projectFile, "Empire", {
+        icon: "crown",
+        description: "",
+      });
+      snapshot = await service.loadProject(project.projectFile);
+      expect(
+        snapshot.worldbuildingKinds.find((kind) => kind.id === "Empire"),
+      ).toMatchObject({ icon: "crown", description: null });
+
+      await service.deleteWorldbuildingKind(project.projectFile, "Empire");
+      expect(meta()["snowflake-kind-icons"]).toEqual({});
+      expect(meta()["snowflake-kind-descriptions"]).toEqual({});
+    });
+
+    it("reports and repairs an unreadable per-kind map", async () => {
+      const project = await service.createProject({ name: "Kind Looks Bad" });
+      await service.createWorldbuildingKind(project, "Faction", {
+        icon: "flag",
+      });
+      fakeVault.contents.set(
+        project.projectFile,
+        (fakeVault.contents.get(project.projectFile) ?? "").replace(
+          '"Faction": "flag"',
+          '"Faction": 7',
+        ),
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      const issue = snapshot.structureIssues.find(
+        (candidate) =>
+          candidate.code === "invalid-metadata-field" &&
+          candidate.field === "snowflake-kind-icons",
+      );
+      expect(issue?.repairable).toBe(true);
+      expect(
+        snapshot.worldbuildingKinds.find((kind) => kind.id === "Faction"),
+      ).toMatchObject({ icon: null });
+      await service.repairMissingStructureItem(
+        project.projectFile,
+        project.projectFile,
+        "snowflake-kind-icons",
+      );
+      const repaired = parseMarkdownFrontmatter(
+        fakeVault.contents.get(project.projectFile) ?? "",
+      ).frontmatter;
+      expect(repaired["snowflake-kind-icons"]).toEqual({});
+      expect(
+        (await service.loadProject(project.projectFile)).structureIssues,
+      ).toEqual([]);
+    });
+  });
+
+  describe("custom fields on member notes", () => {
+    it("stores the block after the prose section and round-trips it", async () => {
+      const project = await service.createProject({ name: "Fields Store" });
+      const character = await service.createCharacter(project.projectFile, {
+        name: "Ada",
+        characterProfile: "She writes in the margins of everything.",
+        customFields: "### Eyes\n\nGrey.",
+      });
+      const content = fakeVault.contents.get(character.path) ?? "";
+      expect(readMarkedSection(content, "custom-fields")).toBe(
+        "### Eyes\n\nGrey.",
+      );
+      // The block stands after the profile prose, under the same heading.
+      expect(content.indexOf("snowflake:section:custom-fields:start")).toBeGreaterThan(
+        content.indexOf("snowflake:section:character-profile:start"),
+      );
+      expect(character.customFields).toBe("### Eyes\n\nGrey.");
+      expect(character.characterProfile).toBe(
+        "She writes in the margins of everything.",
+      );
+    });
+
+    it("never reads the author's own prose as fields, H3 headings included", async () => {
+      const project = await service.createProject({ name: "Fields Prose" });
+      const entity = await service.createEntity(project.projectFile, {
+        kind: "item",
+        name: "Relic",
+        notes: "### A heading the author wrote\n\nTheir own words.",
+        customFields: "### Origin\n\nUnknown.",
+      });
+      expect(entity.notes).toBe(
+        "### A heading the author wrote\n\nTheir own words.",
+      );
+      expect(entity.customFields).toBe("### Origin\n\nUnknown.");
+      const updated = await service.updateEntity(
+        project.projectFile,
+        entity.entityId,
+        {
+          expectedRevision: entity.revision,
+          customFields: "### Origin\n\nThe northern vaults.",
+        },
+      );
+      expect(updated.notes).toBe(
+        "### A heading the author wrote\n\nTheir own words.",
+      );
+      expect(updated.customFields).toBe("### Origin\n\nThe northern vaults.");
+    });
+
+    it("removes the deferred section when the last field leaves", async () => {
+      const project = await service.createProject({ name: "Fields Leave" });
+      const scene = await service.createScene(project.projectFile, {
+        title: "Opening",
+        customFields: "### Mood\n\nCold.",
+      });
+      expect(
+        readMarkedSection(
+          fakeVault.contents.get(scene.path) ?? "",
+          "custom-fields",
+        ),
+      ).toBe("### Mood\n\nCold.");
+      const cleared = await service.updateScene(
+        project.projectFile,
+        scene.sceneId,
+        { expectedRevision: scene.revision, customFields: "" },
+      );
+      expect(cleared.customFields).toBe("");
+      expect(
+        readMarkedSection(
+          fakeVault.contents.get(scene.path) ?? "",
+          "custom-fields",
+        ),
+      ).toBeNull();
+      // A fresh note never carries the block at all.
+      const fresh = await service.createScene(project.projectFile, {
+        title: "Second",
+      });
+      expect(
+        readMarkedSection(
+          fakeVault.contents.get(fresh.path) ?? "",
+          "custom-fields",
+        ),
+      ).toBeNull();
     });
   });
 });

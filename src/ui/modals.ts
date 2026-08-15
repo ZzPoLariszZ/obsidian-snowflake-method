@@ -7,6 +7,7 @@ import {
 	Setting,
 	SuggestModal,
 	TFolder,
+	getIconIds,
 	setIcon,
 } from 'obsidian';
 
@@ -20,21 +21,30 @@ import {
 	isNameTaken,
 	isTimeKind,
 	normalizeSceneCast,
-	type EntityKind,
+	type EntityKindId,
 	type ProgressStatus,
 	type TimeKind,
-	type WorldbuildingKind,
+	isWorldbuildingKind,
+	type WorldbuildingKindId,
 } from '../domain';
 import type { MemberUsage } from '../services';
-import type { RecordLine } from '../templates';
+import { FieldSuggest } from './field-suggest';
+import {
+	duplicateFieldTitle,
+	parseCustomFields,
+	serializeCustomFields,
+	type CustomField,
+	type RecordLine,
+} from '../templates';
 import {
 	CategoryPathField,
 	ChipListField,
+	CustomFieldsEditor,
 	NoteField,
 	NoteListField,
-	ENTITY_GROUP_IDS,
 	RecordCardsEditor,
 	addProgressStatusControl,
+	type CustomFieldTemplateSource,
 	type DefinitionPathSource,
 	type EntityGroupId,
 	type PickedEntity,
@@ -103,6 +113,7 @@ export interface CreateCharacterRequest {
 	growth: string;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
+	customFields: string;
 	expectedRevision?: string;
 }
 
@@ -125,11 +136,12 @@ export interface CreateSceneRequest {
 	relationships: RecordLine[];
 	povPath: string;
 	events: string;
+	customFields: string;
 	expectedRevision?: string;
 }
 
 export interface EntityFormRequest {
-	kind: WorldbuildingKind;
+	kind: WorldbuildingKindId;
 	name: string;
 	aliases: string[];
 	categoryPaths: string[];
@@ -140,7 +152,14 @@ export interface EntityFormRequest {
 	timeEnd: string;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
+	customFields: string;
 	expectedRevision?: string;
+}
+
+/** One pickable group: its id and the name the picker shows for it. */
+export interface EntityGroupOption {
+	id: EntityGroupId;
+	label: string;
 }
 
 /**
@@ -150,6 +169,12 @@ export interface EntityFormRequest {
  */
 export interface MemberFormContext {
 	notice: (message: string) => void;
+	/**
+	 * The groups a record can point into, labelled and in rail order. The
+	 * list is the project's own: registered kinds stand in it beside the
+	 * built-ins, so a picker built from anything static would lose them.
+	 */
+	groups: () => readonly EntityGroupOption[];
 	/** Every note of one group, for the picker that points a record at one. */
 	entitiesIn: (group: EntityGroupId) => readonly PickerOption[];
 	/**
@@ -173,6 +198,58 @@ export interface MemberFormContext {
 	/** Vault paths of the definition files, for the label links records store. */
 	worldStatusPath: string;
 	relationshipPath: string;
+	/** The kind's template-note machinery, for the custom-fields block. */
+	kindTemplates: CustomFieldTemplateSource;
+}
+
+/**
+ * Turns the custom-field rows into the block to store, refusing what cannot
+ * be stored: a titled twin, or words under no title at all. Refusals speak
+ * as notices, because a long form scrolls its rows out of sight.
+ */
+function collectCustomFieldsBlock(
+	t: Translate,
+	initialBlock: string,
+	rows: readonly CustomField[],
+): { ok: true; block: string } | { ok: false } {
+	const untitled = rows.find(
+		(row) => row.title.trim().length === 0 && row.content.trim().length > 0,
+	);
+	if (untitled !== undefined) {
+		new Notice(t('form.customFields.untitled'));
+		return { ok: false };
+	}
+	const kept = rows.filter((row) => row.title.trim().length > 0);
+	const duplicate = duplicateFieldTitle(kept.map((row) => row.title));
+	if (duplicate !== null) {
+		new Notice(t('form.customFields.duplicate', { name: duplicate }));
+		return { ok: false };
+	}
+	return { ok: true, block: serializeCustomFields(initialBlock, kept) };
+}
+
+/** The custom-fields block, standing first among the record editors. */
+function attachCustomFields(
+	app: App,
+	t: Translate,
+	block: HTMLElement,
+	context: MemberFormContext,
+	state: { rows: CustomField[]; touched: boolean },
+	seedFromTemplate: boolean,
+): CustomFieldsEditor {
+	const editor = new CustomFieldsEditor({
+		app,
+		t,
+		rows: state.rows,
+		template: context.kindTemplates,
+		seedFromTemplate,
+		touched: () => state.touched,
+		markTouched: () => {
+			state.touched = true;
+		},
+	});
+	editor.attach(block);
+	return editor;
 }
 
 type SubmitHandler<T> = (value: T) => Promise<void>;
@@ -1114,6 +1191,10 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	private categoryField: CategoryPathField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private customFieldsEditor: CustomFieldsEditor | null = null;
+	private readonly customFieldState: { rows: CustomField[]; touched: boolean };
+	private readonly initialCustomFields: string;
+	private readonly isCreateForm: boolean;
 
 	constructor(
 		app: App,
@@ -1165,8 +1246,15 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 					growth: '',
 					worldStatus: [],
 					relationships: [],
+					customFields: '',
 				}
 			: { ...initial };
+		this.isCreateForm = initial === undefined;
+		this.initialCustomFields = initial?.customFields ?? '';
+		this.customFieldState = {
+			rows: parseCustomFields(this.initialCustomFields).fields,
+			touched: false,
+		};
 	}
 
 	protected buildForm(): void {
@@ -1237,6 +1325,14 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
+		this.customFieldsEditor = attachCustomFields(
+			this.app,
+			this.t,
+			block,
+			context,
+			this.customFieldState,
+			this.isCreateForm,
+		);
 		this.worldStatusEditor = new RecordCardsEditor(
 			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
@@ -1294,6 +1390,15 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			return null;
 		}
 		this.syncEditors();
+		if (this.customFieldsEditor !== null) {
+			const collected = collectCustomFieldsBlock(
+				this.t,
+				this.initialCustomFields,
+				this.customFieldState.rows,
+			);
+			if (!collected.ok) return null;
+			this.value.customFields = collected.block;
+		}
 		return { ...this.value };
 	}
 
@@ -1527,7 +1632,7 @@ export function promptForDefinitionPath(
 
 /** One kind of note a vocabulary can be added to, by the name it is shown by. */
 export interface DefinitionKindChoice {
-	kind: EntityKind;
+	kind: EntityKindId;
 	label: string;
 }
 
@@ -1538,13 +1643,13 @@ export interface DefinitionKindChoice {
  * entry needs to know about itself.
  */
 class DefinitionKindModal extends SuggestModal<DefinitionKindChoice> {
-	private answered: EntityKind | null = null;
+	private answered: EntityKindId | null = null;
 
 	constructor(
 		app: App,
 		t: Translate,
 		private readonly kinds: readonly DefinitionKindChoice[],
-		private readonly done: (kind: EntityKind | null) => void,
+		private readonly done: (kind: EntityKindId | null) => void,
 	) {
 		super(app);
 		this.setPlaceholder(t('definition.pickKind'));
@@ -1583,7 +1688,7 @@ export function promptForDefinitionKind(
 	app: App,
 	t: Translate,
 	kinds: readonly DefinitionKindChoice[],
-): Promise<EntityKind | null> {
+): Promise<EntityKindId | null> {
 	return new Promise((resolve) => {
 		new DefinitionKindModal(app, t, kinds, resolve).open();
 	});
@@ -1824,10 +1929,9 @@ class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
 		const group = this.group;
 		if (group === null) {
 			return optionsMatching(
-				ENTITY_GROUP_IDS.map((id) => ({
-					value: id,
-					label: this.t(`form.group.${id}`),
-				})),
+				this.context
+					.groups()
+					.map((choice) => ({ value: choice.id, label: choice.label })),
 				query,
 			).map((option) => ({
 				kind: 'group',
@@ -1948,6 +2052,13 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private locationsField: NoteListField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private customFieldsEditor: CustomFieldsEditor | null = null;
+	private customFieldState: { rows: CustomField[]; touched: boolean } = {
+		rows: [],
+		touched: false,
+	};
+	private initialCustomFields = '';
+	private isCreateForm = true;
 
 	constructor(
 		app: App,
@@ -2012,6 +2123,12 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			this.relationships = [...initial.relationships];
 			this.expectedRevision = initial.expectedRevision;
 		}
+		this.isCreateForm = initial === undefined;
+		this.initialCustomFields = initial?.customFields ?? '';
+		this.customFieldState = {
+			rows: parseCustomFields(this.initialCustomFields).fields,
+			touched: false,
+		};
 	}
 
 	protected buildForm(): void {
@@ -2162,6 +2279,14 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
+		this.customFieldsEditor = attachCustomFields(
+			this.app,
+			this.t,
+			block,
+			context,
+			this.customFieldState,
+			this.isCreateForm,
+		);
 		this.worldStatusEditor = new RecordCardsEditor(
 			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
@@ -2367,6 +2492,16 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			return null;
 		}
 		this.syncEditors();
+		let customFields = this.initialCustomFields;
+		if (this.customFieldsEditor !== null) {
+			const collected = collectCustomFieldsBlock(
+				this.t,
+				this.initialCustomFields,
+				this.customFieldState.rows,
+			);
+			if (!collected.ok) return null;
+			customFields = collected.block;
+		}
 		return {
 			title,
 			aliases: [...this.aliases],
@@ -2380,6 +2515,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			relationships: [...this.relationships],
 			povPath: this.povPath,
 			events: this.events.trim(),
+			customFields,
 			expectedRevision: this.expectedRevision,
 		};
 	}
@@ -2398,6 +2534,12 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	private categoryField: CategoryPathField | null = null;
 	private worldStatusEditor: RecordCardsEditor | null = null;
 	private relationshipsEditor: RecordCardsEditor | null = null;
+	private customFieldsEditor: CustomFieldsEditor | null = null;
+	// Rows live on the modal and are edited in place, so the redraw the
+	// time-kind dropdown triggers rebuilds the editor without losing a key.
+	private readonly customFieldState: { rows: CustomField[]; touched: boolean };
+	private readonly initialCustomFields: string;
+	private readonly isCreateForm: boolean;
 	// Cards begun but not yet filed under a label. A record needs its label to
 	// be saved, but the redraw the time-kind dropdown triggers is not a save:
 	// these carry what was typed across it.
@@ -2407,7 +2549,7 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	constructor(
 		app: App,
 		t: Translate,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		takenNames: readonly string[],
 		private readonly formContext: MemberFormContext,
 		onSubmit: SubmitHandler<EntityFormRequest>,
@@ -2428,8 +2570,12 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			app,
 			t,
 			initial === undefined
-				? t(`modal.entity.title.${kind}`)
-				: t(`modal.entity.editTitle.${kind}`),
+				? isWorldbuildingKind(kind)
+					? t(`modal.entity.title.${kind}`)
+					: t('modal.entity.title.custom', { name: kind })
+				: isWorldbuildingKind(kind)
+					? t(`modal.entity.editTitle.${kind}`)
+					: t('modal.entity.editTitle.custom', { name: kind }),
 			onSubmit,
 			initial === undefined ? 'common.create' : 'common.save',
 		);
@@ -2450,8 +2596,15 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 					timeEnd: '',
 					worldStatus: [],
 					relationships: [],
+					customFields: '',
 				}
 			: { ...initial };
+		this.isCreateForm = initial === undefined;
+		this.initialCustomFields = initial?.customFields ?? '';
+		this.customFieldState = {
+			rows: parseCustomFields(this.initialCustomFields).fields,
+			touched: false,
+		};
 	}
 
 	protected buildForm(): void {
@@ -2633,6 +2786,14 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 		const block = this.contentEl.createDiv({
 			cls: 'snowflake-method-record-editors',
 		});
+		this.customFieldsEditor = attachCustomFields(
+			this.app,
+			this.t,
+			block,
+			context,
+			this.customFieldState,
+			this.isCreateForm,
+		);
 		this.worldStatusEditor = new RecordCardsEditor(
 			this.recordContext(context, context.worldStatusLabels, 'world-status'),
 			context.worldStatusPath,
@@ -2719,6 +2880,15 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			return null;
 		}
 		this.syncEditors();
+		if (this.customFieldsEditor !== null) {
+			const collected = collectCustomFieldsBlock(
+				this.t,
+				this.initialCustomFields,
+				this.customFieldState.rows,
+			);
+			if (!collected.ok) return null;
+			this.value.customFields = collected.block;
+		}
 		return { ...this.value, timeStart: span.start, timeEnd: span.end };
 	}
 }
@@ -2786,7 +2956,7 @@ class NewEntityPrompt extends EntityFormModal {
 	constructor(
 		app: App,
 		t: Translate,
-		kind: WorldbuildingKind,
+		kind: WorldbuildingKindId,
 		takenNames: readonly string[],
 		formContext: MemberFormContext,
 		preset: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean },
@@ -2805,7 +2975,7 @@ class NewEntityPrompt extends EntityFormModal {
 export function promptForNewEntity(
 	app: App,
 	t: Translate,
-	kind: WorldbuildingKind,
+	kind: WorldbuildingKindId,
 	takenNames: readonly string[],
 	formContext: MemberFormContext,
 	preset: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean },
@@ -3309,6 +3479,340 @@ export class ConfirmMemberDeletionModal extends Modal {
 		this.contentEl.empty();
 		// Resolves however the modal closed -- button, Escape, or the title bar --
 		// so the caller is never left waiting on a dialog the author dismissed.
+		this.onResolve(this.confirmed);
+	}
+}
+
+/** What the kind dialog settled on: the name, and how the kind presents itself. */
+export interface KindFormResult {
+	name: string;
+	/** An icon id the app knows, or empty for the stock custom-kind icon. */
+	icon: string;
+	description: string;
+}
+
+/**
+ * Asks what a kind is called and how it shows itself: on create with nothing
+ * filled in, on rename with everything the kind has standing. Resolves to the
+ * answers, or to null however the dialog was dismissed.
+ */
+export function promptForKindForm(
+	app: App,
+	t: Translate,
+	options: {
+		title: string;
+		submitLabel: string;
+		initial?: KindFormResult;
+		/**
+		 * What is wrong with a name right now, or null when nothing is. The
+		 * dialog answers where the field is and stays open, the way every
+		 * member form answers a taken name.
+		 */
+		objection: (name: string) => string | null;
+	},
+): Promise<KindFormResult | null> {
+	return new Promise((resolve) => {
+		new KindFormModal(app, t, options, resolve).open();
+	});
+}
+
+/**
+ * Every icon the app can draw, offered by name. The list is long, so only the
+ * first stretch of it renders and typing is what narrows the search — unlike
+ * the project lists, nothing here is irreplaceable, and every row left out is
+ * reachable by one more letter.
+ */
+class IconSuggest extends FieldSuggest<string> {
+	constructor(
+		app: App,
+		inputEl: HTMLInputElement,
+		private readonly onPick: (icon: string) => void,
+	) {
+		super(app, inputEl, inputEl);
+		this.limit = 200;
+	}
+
+	protected getSuggestions(query: string): string[] {
+		const needle = query.trim().toLowerCase();
+		const ids = getIconIds();
+		const matches =
+			needle.length === 0
+				? ids
+				: ids.filter((id) => id.toLowerCase().includes(needle));
+		return matches.slice(0, 200);
+	}
+
+	renderSuggestion(id: string, el: HTMLElement): void {
+		el.addClass('snowflake-method-icon-suggestion');
+		setIcon(
+			el.createSpan({
+				cls: 'snowflake-method-icon-suggestion-glyph',
+				attr: { 'aria-hidden': 'true' },
+			}),
+			id,
+		);
+		el.createSpan({
+			cls: 'snowflake-method-icon-suggestion-name',
+			text: id,
+		});
+	}
+
+	selectSuggestion(id: string): void {
+		this.onPick(id);
+		this.close();
+	}
+}
+
+/** Whether the app can draw this id, spelled with or without its family prefix. */
+function knownIconId(value: string): boolean {
+	const ids = getIconIds();
+	return ids.includes(value) || ids.includes(`lucide-${value}`);
+}
+
+class KindFormModal extends Modal {
+	private answered: KindFormResult | null = null;
+	private iconSuggest: IconSuggest | null = null;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly options: {
+			title: string;
+			submitLabel: string;
+			initial?: KindFormResult;
+			objection: (name: string) => string | null;
+		},
+		private readonly onResolve: (result: KindFormResult | null) => void,
+	) {
+		super(app);
+		this.setTitle(options.title);
+		// Worn like the vocabulary dialogs: the same frame, the same rows,
+		// each label above the field it names.
+		this.modalEl.addClass(
+			'snowflake-method-form-modal',
+			'snowflake-method-definition-modal',
+		);
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.addClass('snowflake-method-definition-form');
+		let name = this.options.initial?.name ?? '';
+		let icon = this.options.initial?.icon ?? '';
+		let description = this.options.initial?.description ?? '';
+		let nameInput: HTMLInputElement | null = null;
+		let warning: HTMLElement | null = null;
+		// The objection stands in the field's own row and moves with every
+		// keystroke; an empty field stays quiet and the required mark speaks.
+		const showObjection = (): string | null => {
+			const trimmed = name.trim();
+			const objection =
+				trimmed.length === 0 ? null : this.options.objection(trimmed);
+			warning?.setText(objection ?? '');
+			if (nameInput !== null) {
+				if (objection === null) nameInput.removeAttribute('aria-invalid');
+				else nameInput.setAttribute('aria-invalid', 'true');
+			}
+			return objection;
+		};
+		const submit = (): void => {
+			if (name.trim().length === 0 || showObjection() !== null) {
+				nameInput?.focus();
+				return;
+			}
+			this.answered = {
+				name: name.trim(),
+				// Only a spelling the app can draw is worth keeping: anything else
+				// stores nothing and the kind wears the stock icon.
+				icon: knownIconId(icon.trim()) ? icon.trim() : '',
+				description: description.trim(),
+			};
+			this.close();
+		};
+		const nameRow = new Setting(this.contentEl).setName(
+			`${this.t('modal.kind.name')} *`,
+		);
+		nameRow.settingEl.addClass('snowflake-method-definition-setting');
+		nameRow.addText((text) => {
+			nameInput = text.inputEl;
+			text.setValue(name).onChange((next) => {
+				name = next;
+				showObjection();
+			});
+			text.inputEl.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					submit();
+				}
+			});
+			// The dialog opens to be typed into, prefilled or not.
+			window.setTimeout(() => {
+				text.inputEl.focus();
+				text.inputEl.select();
+			}, 0);
+		});
+		warning = nameRow.settingEl.createDiv({
+			cls: 'snowflake-method-field-warning',
+			attr: { role: 'alert' },
+		});
+		showObjection();
+		// The icon row shows what it will draw: the preview reads the field on
+		// every change, so a name the app cannot draw shows as nothing before
+		// the dialog is ever submitted.
+		const iconRow = new Setting(this.contentEl)
+			.setName(this.t('modal.kind.icon'))
+			.setDesc(this.t('modal.kind.iconDescription'));
+		iconRow.settingEl.addClass(
+			'snowflake-method-definition-setting',
+			'snowflake-method-kind-icon-row',
+		);
+		const preview = iconRow.controlEl.createSpan({
+			cls: 'snowflake-method-kind-icon-preview',
+			attr: { 'aria-hidden': 'true' },
+		});
+		const paint = (): void => {
+			preview.empty();
+			const trimmed = icon.trim();
+			setIcon(preview, knownIconId(trimmed) ? trimmed : 'shapes');
+		};
+		iconRow.addText((text) => {
+			text
+				.setValue(icon)
+				.setPlaceholder(this.t('modal.kind.iconPlaceholder'))
+				.onChange((next) => {
+					icon = next;
+					paint();
+				});
+			this.iconSuggest = new IconSuggest(this.app, text.inputEl, (picked) => {
+				icon = picked;
+				text.setValue(picked);
+				paint();
+			});
+		});
+		paint();
+		const descriptionRow = new Setting(this.contentEl).setName(
+			this.t('modal.kind.description'),
+		);
+		descriptionRow.settingEl.addClass(
+			'snowflake-method-definition-setting',
+			'snowflake-method-definition-description',
+		);
+		descriptionRow.addTextArea((text) => {
+			text
+				.setValue(description)
+				.setPlaceholder(this.t('form.description.placeholder'))
+				.onChange((next) => {
+					description = next;
+				});
+		});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.options.submitLabel,
+			attr: { type: 'button' },
+		});
+		confirm.addEventListener('click', submit);
+	}
+
+	onClose(): void {
+		this.iconSuggest?.destroy();
+		this.iconSuggest = null;
+		this.contentEl.empty();
+		this.onResolve(this.answered);
+	}
+}
+
+/**
+ * What deleting a whole kind costs, read out before anything moves: how many
+ * notes leave with the folder, and everything outside the kind still naming
+ * one of them — the lists that will shorten, and the record lines that will
+ * stay behind for the health check to report.
+ */
+export class ConfirmKindDeletionModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly kindName: string,
+		private readonly entityCount: number,
+		private readonly usage: MemberUsage,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.deleteKind.title', { name: kindName }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: this.t('modal.deleteKind.description', {
+				name: this.kindName,
+				count: this.entityCount,
+			}),
+		});
+		this.addNoteList(
+			this.t('modal.deleteMember.needsDecision'),
+			this.usage.needsDecision,
+			true,
+		);
+		this.addNoteList(
+			this.t('modal.deleteKind.listed', { name: this.kindName }),
+			this.usage.listed,
+			false,
+		);
+		this.addNoteList(
+			this.t('modal.deleteMember.records'),
+			this.usage.records,
+			true,
+		);
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const remove = actions.createEl('button', {
+			cls: 'mod-warning',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	private addNoteList(
+		label: string,
+		titles: readonly string[],
+		needsDecision: boolean,
+	): void {
+		if (titles.length === 0) return;
+		const group = this.contentEl.createDiv({
+			cls: `snowflake-method-delete-member-group${
+				needsDecision ? ' needs-decision' : ''
+			}`,
+		});
+		group.createEl('h3', { text: label });
+		const list = group.createEl('ul');
+		for (const title of titles) list.createEl('li', { text: title });
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		// Resolves however the modal closed -- button, Escape, or the title
+		// bar -- so the caller is never left waiting on a dismissed dialog.
 		this.onResolve(this.confirmed);
 	}
 }

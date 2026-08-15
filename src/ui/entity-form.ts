@@ -3,10 +3,12 @@ import { getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
 import {
 	foldName,
 	type ProgressStatus,
+	type ProjectWorldbuildingKind,
 } from '../domain';
 import {
 	parseTerm,
 	renderTerm,
+	type CustomField,
 	type RecordClause,
 	type RecordClauseKind,
 	type RecordLine,
@@ -555,9 +557,11 @@ export function addProgressStatusControl(
 /**
  * The kinds of note a record can point at. Time is split by what a time note
  * is, because picking "the year it happened" and "the war it happened during"
- * are different choices even though both are time notes.
+ * are different choices even though both are time notes. The groups are not a
+ * fixed union: every registered worldbuilding kind is one, so this list only
+ * names the ones whose labels live in the copy.
  */
-export const ENTITY_GROUP_IDS = [
+export const BUILT_IN_ENTITY_GROUP_IDS = [
 	'character',
 	'scene',
 	'time-point',
@@ -566,19 +570,34 @@ export const ENTITY_GROUP_IDS = [
 	'item',
 ] as const;
 
-export type EntityGroupId = (typeof ENTITY_GROUP_IDS)[number];
+/** A built-in group id above, or a registered kind standing as its own group. */
+export type EntityGroupId = string;
+
+/** Every group of one project, in rail order with time split into its two. */
+export function entityGroupsOf(
+	kinds: readonly ProjectWorldbuildingKind[],
+): EntityGroupId[] {
+	return [
+		'character',
+		'scene',
+		...kinds.flatMap((kind) =>
+			kind.id === 'time' ? ['time-point', 'time-period'] : [kind.id],
+		),
+	];
+}
 
 /** What connector a reference to each group is written with. */
-export const ENTITY_GROUP_CLAUSE: Readonly<
-	Record<EntityGroupId, RecordClauseKind>
-> = {
-	character: 'with',
-	scene: 'with',
-	item: 'with',
-	'time-point': 'when',
-	'time-period': 'when',
-	location: 'at',
-};
+export function clauseForGroup(group: EntityGroupId): RecordClauseKind {
+	if (group === 'time-point' || group === 'time-period') return 'when';
+	return group === 'location' ? 'at' : 'with';
+}
+
+/** What a group is called: copy for the built-ins, a kind its own name. */
+export function entityGroupLabel(t: Translate, group: EntityGroupId): string {
+	return (BUILT_IN_ENTITY_GROUP_IDS as readonly string[]).includes(group)
+		? t(`form.group.${group}`)
+		: group;
+}
 
 export interface PickedEntity {
 	group: EntityGroupId;
@@ -859,7 +878,7 @@ export class RecordCardsEditor {
 			void this.context.pickEntity().then((picked) => {
 				if (picked === null) return;
 				card.clauses.push({
-					kind: ENTITY_GROUP_CLAUSE[picked.group],
+					kind: clauseForGroup(picked.group),
 					term: {
 						kind: 'link',
 						path: picked.option.value,
@@ -997,7 +1016,7 @@ export class RecordCardsEditor {
 		const group = path === null ? null : this.context.entityGroup(path);
 		return group === null
 			? this.context.t('form.record.reference')
-			: this.context.t(`form.group.${group}`);
+			: entityGroupLabel(this.context.t, group);
 	}
 
 	private renderContexts(card: RecordCard): void {
@@ -1058,6 +1077,211 @@ export class RecordCardsEditor {
 		});
 		setIcon(button, 'circle-minus');
 		button.addEventListener('click', remove);
+	}
+}
+
+/**
+ * Everything the custom-fields block needs to know about templates: which
+ * notes are on offer, which one the kind has chosen, how to record a new
+ * choice, and what default fields the chosen note defines right now.
+ */
+export interface CustomFieldTemplateSource {
+	options: () => readonly PickerOption[];
+	current: () => Promise<string | null>;
+	set: (path: string | null) => Promise<void>;
+	fields: () => Promise<CustomField[]>;
+}
+
+/**
+ * The form's custom fields: title-and-content rows stored in the note's own
+ * marked block, edited here and nowhere else. The rows live in an array the
+ * modal owns and this editor mutates in place, so a form redraw rebuilds the
+ * editor without losing a keystroke. On a create form the kind's template
+ * note seeds the rows, and changing the template re-seeds them only while
+ * nobody has typed into a row yet.
+ */
+export class CustomFieldsEditor {
+	private rowsEl: HTMLElement | null = null;
+
+	constructor(
+		private readonly context: {
+			app: App;
+			t: Translate;
+			/** The rows, shared with the modal and edited in place. */
+			rows: CustomField[];
+			/** The kind's template machinery; null on the quick form. */
+			template: CustomFieldTemplateSource | null;
+			/** True on a create form, where the template seeds the rows. */
+			seedFromTemplate: boolean;
+			touched: () => boolean;
+			markTouched: () => void;
+		},
+	) {}
+
+	attach(container: HTMLElement): void {
+		const t = this.context.t;
+		const block = container.createDiv({
+			cls: 'snowflake-method-record-editor snowflake-method-custom-fields',
+		});
+		const head = block.createDiv({
+			cls: 'snowflake-method-custom-fields-head',
+		});
+		head.createDiv({
+			cls: 'snowflake-method-record-title',
+			text: t('form.customFields'),
+		});
+		if (this.context.template !== null) {
+			this.attachTemplatePicker(head, this.context.template);
+		}
+		this.rowsEl = block.createDiv({
+			cls: 'snowflake-method-custom-fields-rows',
+		});
+		const add = block.createEl('button', {
+			cls: 'snowflake-method-record-add',
+			text: t('form.customFields.add'),
+			attr: { type: 'button' },
+		});
+		add.addEventListener('click', () => {
+			this.context.rows.push({ title: '', content: '' });
+			this.context.markTouched();
+			this.renderRows();
+		});
+		this.renderRows();
+		if (
+			this.context.seedFromTemplate &&
+			this.context.template !== null &&
+			this.context.rows.length === 0 &&
+			!this.context.touched()
+		) {
+			void this.context.template.fields().then((fields) => {
+				// The answer may land after the author started typing; what
+				// they typed wins.
+				if (this.context.touched() || this.context.rows.length > 0) return;
+				this.context.rows.push(...fields);
+				this.renderRows();
+			});
+		}
+	}
+
+	/** Every title as typed, for the submit-time duplicate check. */
+	titles(): string[] {
+		return this.context.rows.map((row) => row.title);
+	}
+
+	/**
+	 * The template choice, worn on the block's own title line: a single-value
+	 * picker over the project's notes, with an offer of none. Built once the
+	 * stored choice has been read, so the field opens already saying it.
+	 */
+	private attachTemplatePicker(
+		head: HTMLElement,
+		template: CustomFieldTemplateSource,
+	): void {
+		const t = this.context.t;
+		const slot = head.createDiv({
+			cls: 'snowflake-method-custom-fields-template',
+		});
+		slot.createSpan({
+			cls: 'snowflake-method-custom-fields-template-label',
+			text: t('form.customFields.template'),
+		});
+		const fieldEl = slot.createDiv();
+		let current = '';
+		void template.current().then((path) => {
+			current = path ?? '';
+			buildOptionField(this.context.app, fieldEl, {
+				options: () => {
+					const known = template.options();
+					const options: PickerOption[] = [
+						{ value: '', label: t('form.customFields.templateNone') },
+						...known,
+					];
+					if (
+						current.length > 0 &&
+						!known.some((option) => option.value === current)
+					) {
+						options.push({ value: current, label: current, missing: true });
+					}
+					return options;
+				},
+				missingLabel: (name) => t('form.referenceMissing', { name }),
+				label: t('form.customFields.template'),
+				placeholder: t('form.customFields.templatePlaceholder'),
+				emptyPlaceholder: t('form.customFields.templatePlaceholder'),
+				value: () => current,
+				choose: (value) => {
+					current = value;
+					void template
+						.set(value.length === 0 ? null : value)
+						.then(async () => {
+							// A fresh choice reseeds a form nobody has typed into.
+							if (!this.context.seedFromTemplate || this.context.touched()) {
+								return;
+							}
+							const fields =
+								value.length === 0 ? [] : await template.fields();
+							this.context.rows.splice(
+								0,
+								this.context.rows.length,
+								...fields,
+							);
+							this.renderRows();
+						});
+				},
+			});
+		});
+	}
+
+	private renderRows(): void {
+		const rows = this.rowsEl;
+		if (rows === null) return;
+		rows.empty();
+		this.context.rows.forEach((row, index) => {
+			const el = rows.createDiv({ cls: 'snowflake-method-custom-field-row' });
+			const title = el.createEl('input', {
+				type: 'text',
+				cls: 'snowflake-method-custom-field-title',
+				value: row.title,
+				attr: {
+					placeholder: this.context.t('form.customFields.titlePlaceholder'),
+					'aria-label': this.context.t('form.customFields.titlePlaceholder'),
+				},
+			});
+			title.addEventListener('input', () => {
+				row.title = title.value;
+				this.context.markTouched();
+			});
+			const remove = el.createEl('button', {
+				cls: 'snowflake-method-record-card-close clickable-icon',
+				attr: {
+					type: 'button',
+					'aria-label': this.context.t('form.customFields.remove', {
+						name: row.title,
+					}),
+				},
+			});
+			setIcon(remove, 'trash-2');
+			remove.addEventListener('click', () => {
+				this.context.rows.splice(index, 1);
+				this.context.markTouched();
+				this.renderRows();
+			});
+			const content = el.createEl('textarea', {
+				cls: 'snowflake-method-custom-field-content',
+				attr: {
+					placeholder: this.context.t(
+						'form.customFields.contentPlaceholder',
+					),
+					'aria-label': row.title,
+					rows: '2',
+				},
+			});
+			content.value = row.content;
+			content.addEventListener('input', () => {
+				row.content = content.value;
+				this.context.markTouched();
+			});
+		});
 	}
 }
 

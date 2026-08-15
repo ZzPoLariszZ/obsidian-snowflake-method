@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 /**
  * Oldest schema this build still reads and writes. Schema 1 notes keep their
@@ -89,6 +89,17 @@ export const FRONTMATTER_KEYS = {
 	stepStatuses: 'snowflake-step-status',
 	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
 	draft: 'snowflake-draft',
+	// The authored worldbuilding kinds, as a list of kind folder names in rail
+	// order. The registry is what makes a custom kind exist: a folder under the
+	// worldbuilding directory that no entry names is not a kind.
+	worldbuildingKinds: 'snowflake-worldbuilding-kinds',
+	// Which note seeds a kind's default custom fields, as a map from kind id to
+	// a wikilink. Absent while no kind has chosen one.
+	kindTemplates: 'snowflake-kind-templates',
+	// How an authored kind presents itself: its rail icon and the sentence its
+	// pane stands under, each a map from kind id, absent while unset.
+	kindIcons: 'snowflake-kind-icons',
+	kindDescriptions: 'snowflake-kind-descriptions',
 	manuscriptSequence: 'snowflake-manuscript-sequence',
 	characterId: 'snowflake-character-id',
 	characterName: 'snowflake-character-name',

@@ -75,6 +75,11 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	],
 	'plot-synopsis': [section('plot-synopsis')],
 	'long-synopsis': [section('long-synopsis')],
+	// The custom-fields block trails the prose section it reads as part of:
+	// each host section is its document's last, so the block sits under that
+	// heading, after whatever the author wrote there. Deferred, so it exists
+	// only once a form has fields to store; neither generated nor protected,
+	// so the author may edit it and the reconcile pass never rewrites it.
 	character: [
 		section('character-fields', { optional: true, generated: true }),
 		recordSection('world-status'),
@@ -82,6 +87,7 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 		section('one-paragraph-storyline'),
 		section('character-synopsis'),
 		section('character-profile'),
+		section('custom-fields', { optional: true, deferred: true }),
 	],
 	scene: [
 		section('scene-fields', { optional: true, generated: true }),
@@ -90,12 +96,14 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 		recordSection('relationships'),
 		section('scene-events'),
 		section('scene-planning'),
+		section('custom-fields', { optional: true, deferred: true }),
 	],
 	worldbuilding: [
 		section('entity-fields', { generated: true }),
 		recordSection('world-status'),
 		recordSection('relationships'),
 		section('entity-notes'),
+		section('custom-fields', { optional: true, deferred: true }),
 	],
 	// A definition node's `_self.md`: the generated block that reads out
 	// where the node sits and what it means, and free prose after it.

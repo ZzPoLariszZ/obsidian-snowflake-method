@@ -41,21 +41,25 @@ import {
   ALIASES_KEY,
   DEFINITION_FILE_IDS,
   DOCUMENT_TYPES,
-  ENTITY_KINDS,
   SCENE_POV_OMNISCIENT,
   WORLDBUILDING_KINDS,
+  entityKindIds,
+  kindIdFromFolderName,
+  nextCustomKindPrefix,
   type CharacterType,
   type DefinitionFileId,
-  type EntityKind,
+  type EntityKindId,
   type DocumentType,
   type ProgressStatus,
   type ProjectLanguage,
+  type ProjectWorldbuildingKind,
   type StepFingerprintMap,
   type StepId,
   type StepStatus,
   type StepStatusMap,
   type TimeKind,
   type WorldbuildingKind,
+  type WorldbuildingKindId,
 } from "../domain";
 import {
   MAX_DEFINITION_DEPTH,
@@ -65,7 +69,7 @@ import {
   characterStarterNames,
   checkDefinitionPath,
   definitionRootFromValue,
-  definitionRootName,
+  definitionRootNameForFolder,
   isValidDefinitionSegment,
   nodeLink,
   nodeSelfPath,
@@ -106,6 +110,9 @@ import {
   projectTemplate,
   inspectManagedDocumentSections,
   readMarkedSection,
+  renameWorldbuildingBaseKind,
+  templateCustomFields,
+  type CustomField,
   renderCharacterFieldsBlock,
   renderDefinitionFieldsBlock,
   renderEntityFieldsBlock,
@@ -146,10 +153,12 @@ import {
   FRONTMATTER_KEYS,
   PROJECT_DIRECTORY_KEYS,
   PROJECT_PATH_LAYOUTS,
+  entitiesOf,
   entityKindFolder,
   getProjectMetadataRelativePath,
   getProjectPathLayout,
   worldbuildingKindFolder,
+  type KindScope,
   type ArtifactSnapshot,
   type CharacterInput,
   type CharacterPatch,
@@ -161,7 +170,6 @@ import {
   type MemberUsage,
   type ProjectFrontmatterPatch,
   type ProjectDirectoryKey,
-  type ProjectPathLayout,
   type ProjectLocator,
   type ProjectRef,
   type ProjectSnapshot,
@@ -267,11 +275,20 @@ export class ProjectCreationInterruptedError extends Error {
   }
 }
 
-export type NamedRecordKind =
-  | "character"
-  | "scene"
-  | "project"
-  | WorldbuildingKind;
+/**
+ * What a duplicate name is a duplicate of: an entity kind id, or `project`
+ * for a name two project folders would share. Open like the kind ids are.
+ */
+export type NamedRecordKind = EntityKindId;
+
+/**
+ * What making or renaming a kind came to: the kind as the project now lists
+ * it, or the refusal to show — a name the file system will not hold, or one
+ * already answering for a kind, built-in spellings included.
+ */
+export type KindMutationResult =
+  | { ok: true; kind: ProjectWorldbuildingKind }
+  | { ok: false; code: "invalid-name" | "taken" | "full" };
 
 /**
  * A name another record of the same kind already answers to — a character or
@@ -459,6 +476,7 @@ export class SnowflakeProjectService {
       record,
       links.draft,
       fingerprintCalculation.manuscript,
+      fingerprintCalculation.unregisteredKindNotes,
     );
     const snapshot: ProjectSnapshot = {
       ...project,
@@ -797,9 +815,8 @@ export class SnowflakeProjectService {
     const layout = getProjectPathLayout(project.locale);
     const commonFolders = [
       ...Object.values(layout.directories),
-      ...WORLDBUILDING_KINDS.map(
-        (kind) =>
-          `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`,
+      ...project.worldbuildingKinds.map(
+        (kind) => `${layout.directories.worldbuilding}/${kind.folderName}`,
       ),
     ].map((folder) => normalizePath(`${rootPath}/${folder}`));
     for (const folder of commonFolders) {
@@ -813,7 +830,7 @@ export class SnowflakeProjectService {
     // folders are the author's taxonomy, and the health checker is what
     // watches over the node files and the links pointing in. Every entity
     // kind carries its own set, in the folder its notes live in.
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       for (const definitionId of DEFINITION_FILE_IDS) {
         const path = definitionRootPath(project, kind, definitionId);
         if (this.repository.getFolder(path) !== null) {
@@ -839,6 +856,8 @@ export class SnowflakeProjectService {
         "long-synopsis",
         "character",
         "scene",
+        // 061 is a worldbuilding-typed template and lives here with the rest.
+        "worldbuilding",
         "draft",
         "material",
         "archive",
@@ -906,9 +925,10 @@ export class SnowflakeProjectService {
       project.id,
       project.locale,
       characterRoleLinks(project),
+      project.worldbuildingKinds,
     )) {
       const path = normalizePath(
-        `${rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
+        `${rootPath}/${projectBaseFolder(project, base.id)}/${base.fileName}`,
       );
       const existing = this.repository.get(path);
       if (existing === null) {
@@ -1153,21 +1173,33 @@ export class SnowflakeProjectService {
     }
 
     if (issue.code === "missing-base") {
-      const layout = getProjectPathLayout(project.locale);
       const base = getProjectBases(
         project.id,
         project.locale,
         characterRoleLinks(project),
+        project.worldbuildingKinds,
       ).find(
         (candidate) =>
           normalizePath(
-            `${project.rootPath}/${projectBaseFolder(layout, candidate.id)}/${candidate.fileName}`,
+            `${project.rootPath}/${projectBaseFolder(project, candidate.id)}/${candidate.fileName}`,
           ) === normalized,
       );
       if (!base) {
         throw new Error(`No canonical project base was found for "${normalized}".`);
       }
       await this.repository.createPlainFile(normalized, base.content);
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "unregistered-worldbuilding-kind") {
+      const kindId = issue.field;
+      if (kindId === undefined) {
+        throw new Error(`No kind id was recorded for "${normalized}".`);
+      }
+      const result = await this.createWorldbuildingKind(project, kindId);
+      if (!result.ok) {
+        throw new Error(`The kind "${kindId}" cannot be registered.`);
+      }
       return this.loadProject(project.projectFile);
     }
 
@@ -1511,6 +1543,35 @@ export class SnowflakeProjectService {
           : { [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION };
       case FRONTMATTER_KEYS.document:
         return { [FRONTMATTER_KEYS.document]: "project-metadata" };
+      // The registry is rewritten to the entries the reading accepted: the
+      // losers of a duplicate drop off the list and nothing else moves, so
+      // folders and notes stay exactly where they are.
+      case FRONTMATTER_KEYS.worldbuildingKinds:
+        return {
+          [FRONTMATTER_KEYS.worldbuildingKinds]: this.readWorldbuildingKinds(
+            frontmatter,
+            project.rootPath,
+            project.locale,
+          )
+            .kinds.filter((kind) => kind.custom)
+            .map((kind) => kind.folderName),
+        };
+      // A per-kind map keeps its readable pairs and loses the rest.
+      case FRONTMATTER_KEYS.kindTemplates:
+      case FRONTMATTER_KEYS.kindIcons:
+      case FRONTMATTER_KEYS.kindDescriptions: {
+        const value = frontmatter[issue.field];
+        const entries =
+          typeof value === "object" && value !== null && !Array.isArray(value)
+            ? Object.entries(value).filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === "string",
+              )
+            : [];
+        return {
+          [issue.field]: Object.fromEntries(entries),
+        };
+      }
       case FRONTMATTER_KEYS.projectId: {
         const recovered = await this.recoverProjectId(project.rootPath);
         return recovered === null
@@ -1569,15 +1630,13 @@ export class SnowflakeProjectService {
     }
     // The folder a worldbuilding note sits in says which kind it is, and the
     // note is only repairable where that folder is one of them.
-    const kind = WORLDBUILDING_KINDS.find(
+    const kind = project.worldbuildingKinds.find(
       (candidate) =>
-        normalizePath(
-          worldbuildingKindFolder(project.rootPath, project.locale, candidate),
-        ) === folder,
+        normalizePath(worldbuildingKindFolder(project, candidate.id)) === folder,
     );
     return kind === undefined
       ? null
-      : safeEntityMetadataRepairPatch(record, project.id, kind, usedIds, usedRanks);
+      : safeEntityMetadataRepairPatch(record, project.id, kind.id, usedIds, usedRanks);
   }
 
   async readManagedFrontmatter(path: string): Promise<ManagedFrontmatter> {
@@ -1753,6 +1812,9 @@ export class SnowflakeProjectService {
       { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
+    if ((input.customFields ?? "").trim().length > 0) {
+      createdRecords["custom-fields"] = input.customFields!;
+    }
     if (Object.keys(createdRecords).length > 0) {
       await this.repository.upsertSections(
         created.path,
@@ -1947,6 +2009,7 @@ export class SnowflakeProjectService {
         patch.oneParagraphStoryline ?? character.oneParagraphStoryline,
       "character-synopsis": patch.characterSynopsis ?? character.characterSynopsis,
       "character-profile": patch.characterProfile ?? character.characterProfile,
+      ...customFieldsSectionValue(patch.customFields ?? character.customFields),
       ...nextRecordValues,
     };
     const rollbackValues: Record<string, string> = {
@@ -1957,6 +2020,7 @@ export class SnowflakeProjectService {
       "one-paragraph-storyline": character.oneParagraphStoryline,
       "character-synopsis": character.characterSynopsis,
       "character-profile": character.characterProfile,
+      ...customFieldsSectionValue(character.customFields),
       ...Object.fromEntries(
         Object.keys(nextRecordValues).map((sectionId) => [
           sectionId,
@@ -1976,6 +2040,7 @@ export class SnowflakeProjectService {
     await this.removeEmptiedRecordSections(
       character,
       nextRecords,
+      patch.customFields,
     );
 
     let path = character.path;
@@ -2564,6 +2629,9 @@ export class SnowflakeProjectService {
       { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
+    if ((input.customFields ?? "").trim().length > 0) {
+      createdRecords["custom-fields"] = input.customFields!;
+    }
     if (Object.keys(createdRecords).length > 0) {
       await this.repository.upsertSections(
         created.path,
@@ -2640,9 +2708,8 @@ export class SnowflakeProjectService {
         : id === "scenes"
           ? "scene"
           : "worldbuilding";
-    const layout = getProjectPathLayout(project.locale);
     const folder = normalizePath(
-      `${project.rootPath}/${projectBaseFolder(layout, id)}`,
+      `${project.rootPath}/${projectBaseFolder(project, id)}`,
     );
     const entries = await this.repository.listManagedEntriesBelow(
       folder,
@@ -2673,6 +2740,7 @@ export class SnowflakeProjectService {
       project.id,
       project.locale,
       characterRoleLinks(project),
+      project.worldbuildingKinds,
     ).find((candidate) => candidate.id === id);
     if (!base) throw new Error(`Unknown project base: ${id}`);
     return base;
@@ -2682,9 +2750,8 @@ export class SnowflakeProjectService {
     project: ProjectRef | ProjectSnapshot,
     id: ProjectBaseId,
   ): string {
-    const layout = getProjectPathLayout(project.locale);
     return normalizePath(
-      `${project.rootPath}/${projectBaseFolder(layout, id)}/${this.projectBase(project, id).fileName}`,
+      `${project.rootPath}/${projectBaseFolder(project, id)}/${this.projectBase(project, id).fileName}`,
     );
   }
 
@@ -2835,12 +2902,14 @@ export class SnowflakeProjectService {
       "scene-fields": sceneFieldsBlock(project.locale, nextFields, characterNames),
       "scene-events": patch.events ?? scene.events,
       "scene-planning": patch.planning ?? scene.planning,
+      ...customFieldsSectionValue(patch.customFields ?? scene.customFields),
       ...nextRecordValues,
     };
     const rollbackValues: Record<string, string> = {
       "scene-fields": sceneFieldsBlock(project.locale, scene, characterNames),
       "scene-events": scene.events,
       "scene-planning": scene.planning,
+      ...customFieldsSectionValue(scene.customFields),
       ...Object.fromEntries(
         Object.keys(nextRecordValues).map((sectionId) => [
           sectionId,
@@ -2871,6 +2940,7 @@ export class SnowflakeProjectService {
     await this.removeEmptiedRecordSections(
       scene,
       nextRecords,
+      patch.customFields,
     );
 
     let path = scene.path;
@@ -3026,8 +3096,8 @@ export class SnowflakeProjectService {
       }
     }
 
-    for (const kind of WORLDBUILDING_KINDS) {
-      for (const entity of project.worldbuilding[kind]) {
+    for (const kind of project.worldbuildingKinds) {
+      for (const entity of entitiesOf(project, kind.id)) {
         if (entity.readOnly || !entity.unmigrated) continue;
         try {
           // The block first: a damaged one refuses here and keeps the old
@@ -3056,7 +3126,7 @@ export class SnowflakeProjectService {
       [
         ...snapshot.characters,
         ...snapshot.scenes,
-        ...WORLDBUILDING_KINDS.flatMap((kind) => snapshot.worldbuilding[kind]),
+        ...snapshot.worldbuildingKinds.flatMap((kind) => entitiesOf(snapshot, kind.id)),
       ].filter(
         (member) =>
           !member.readOnly && !("unmigrated" in member && member.unmigrated),
@@ -3088,9 +3158,9 @@ export class SnowflakeProjectService {
       [
         [current.characters, CHARACTER_FRONTMATTER_ORDER],
         [current.scenes, SCENE_FRONTMATTER_ORDER],
-        ...WORLDBUILDING_KINDS.map(
+        ...current.worldbuildingKinds.map(
           (kind) =>
-            [current.worldbuilding[kind], ENTITY_FRONTMATTER_ORDER] as [
+            [entitiesOf(current, kind.id), ENTITY_FRONTMATTER_ORDER] as [
               readonly { path: string; readOnly: boolean }[],
               readonly string[],
             ],
@@ -3264,15 +3334,14 @@ export class SnowflakeProjectService {
   private async refreshRoleLinksInBases(
     project: ProjectSnapshot,
   ): Promise<void> {
-    const layout = getProjectPathLayout(project.locale);
     const roles = characterRoleLinks(project);
     // A 0.7.0 base filters its role sheets on the legacy type key the
     // migration is about to delete from every note. That is the one older
     // spelling a released vault can hold.
     const swaps = getLegacyRoleRefreshes(project.locale, roles);
-    for (const base of getProjectBases(project.id, project.locale, roles)) {
+    for (const base of getProjectBases(project.id, project.locale, roles, project.worldbuildingKinds)) {
       const path = normalizePath(
-        `${project.rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
+        `${project.rootPath}/${projectBaseFolder(project, base.id)}/${base.fileName}`,
       );
       if (this.repository.getFile(path) === null) continue;
       await this.repository.updatePlainFile(path, (currentContent) => {
@@ -3309,7 +3378,7 @@ export class SnowflakeProjectService {
    */
   private async ensureReferencedDefinitions(
     project: ProjectRef | ProjectSnapshot,
-    kind: EntityKind,
+    kind: EntityKindId,
     categoryPaths: readonly string[],
     records: ReadonlyArray<readonly RecordLine[] | undefined>,
   ): Promise<void> {
@@ -3380,7 +3449,7 @@ export class SnowflakeProjectService {
     const known = new Map<string, string>();
     const ranks = new Map<WorldbuildingKind, number>();
     for (const { kind } of fields) {
-      const entities = project.worldbuilding[kind];
+      const entities = entitiesOf(project, kind);
       for (const entity of entities) {
         known.set(`${kind} ${foldName(entity.name)}`, entity.path);
       }
@@ -3432,7 +3501,7 @@ export class SnowflakeProjectService {
     }
     // A period's ends are links too, and were written before links carried the
     // name they are read out by.
-    for (const entity of project.worldbuilding.time) {
+    for (const entity of entitiesOf(project, "time")) {
       if (entity.readOnly) continue;
       const patch: ManagedFrontmatter = {};
       const spans = [
@@ -3476,9 +3545,7 @@ export class SnowflakeProjectService {
       timeStart: "",
       timeEnd: "",
     });
-    const folder = normalizePath(
-      worldbuildingKindFolder(project.rootPath, project.locale, kind),
-    );
+    const folder = normalizePath(worldbuildingKindFolder(project, kind));
     const created = await this.repository.createManagedFile({
       path: normalizePath(`${folder}/${safeFileName(name)}.md`),
       uniqueOnConflict: true,
@@ -3512,7 +3579,7 @@ export class SnowflakeProjectService {
    */
   async listDefinitionPaths(
     projectLocator: ProjectLocator,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
   ): Promise<string[]> {
     const project = await this.loadProject(projectLocator);
@@ -3550,7 +3617,7 @@ export class SnowflakeProjectService {
         ? projectLocator
         : await this.loadProject(projectLocator);
     const forest = {} as DefinitionForest;
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       const rootPath = definitionRootPath(project, kind, id);
       const members = membersOfKind(project, kind);
       // Referenced paths under this root, by folded path: who names the node
@@ -3677,9 +3744,9 @@ export class SnowflakeProjectService {
   private definitionRootOf(
     project: ProjectRef | ProjectSnapshot,
     folderPath: string,
-  ): { kind: EntityKind; id: DefinitionFileId; rootPath: string } | null {
+  ): { kind: EntityKindId; id: DefinitionFileId; rootPath: string } | null {
     const normalized = normalizePath(folderPath);
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       for (const id of DEFINITION_FILE_IDS) {
         const rootPath = definitionRootPath(project, kind, id);
         if (normalized === rootPath || normalized.startsWith(`${rootPath}/`)) {
@@ -3732,7 +3799,7 @@ export class SnowflakeProjectService {
   private async syncDefinitionTrees(
     project: ProjectRef | ProjectSnapshot,
   ): Promise<void> {
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       for (const id of DEFINITION_FILE_IDS) {
         const rootPath = definitionRootPath(project, kind, id);
         if (this.repository.getFolder(rootPath) === null) continue;
@@ -3752,8 +3819,8 @@ export class SnowflakeProjectService {
    * project damaged for not having migrated yet.
    */
   private inspectMemberDefinitionLinks(
-    project: { rootPath: string; locale: ProjectLanguage },
-    kind: EntityKind,
+    project: KindScope,
+    kind: EntityKindId,
     record: ManagedFileRecord,
     stepIds: StepId[],
     add: (issue: ProjectStructureIssue) => void,
@@ -3945,7 +4012,7 @@ export class SnowflakeProjectService {
    */
   async addDefinitionPath(
     projectLocator: ProjectLocator,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
     path: string,
     description = "",
@@ -3996,7 +4063,7 @@ export class SnowflakeProjectService {
 
   private async ensureDefinitionNodes(
     project: ProjectRef | ProjectSnapshot,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
     segments: readonly string[],
     description = "",
@@ -4205,7 +4272,7 @@ export class SnowflakeProjectService {
    */
   async renameDefinitionNode(
     projectLocator: ProjectLocator,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
     taxonomyPath: string,
     newName: string,
@@ -4265,7 +4332,7 @@ export class SnowflakeProjectService {
    */
   private async rewriteDefinitionReferences(
     project: ProjectSnapshot,
-    kind: EntityKind,
+    kind: EntityKindId,
     rootPath: string,
     oldFolder: string,
     newFolder: string,
@@ -4353,7 +4420,7 @@ export class SnowflakeProjectService {
    */
   async deleteDefinitionNode(
     projectLocator: ProjectLocator,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
     taxonomyPath: string,
   ): Promise<void> {
@@ -4405,7 +4472,7 @@ export class SnowflakeProjectService {
    */
   async updateDefinitionDescription(
     projectLocator: ProjectLocator,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
     taxonomyPath: string,
     description: string,
@@ -4439,7 +4506,7 @@ export class SnowflakeProjectService {
    */
   private async ensureDefinitionRoot(
     project: ProjectRef | ProjectSnapshot,
-    kind: EntityKind,
+    kind: EntityKindId,
     id: DefinitionFileId,
   ): Promise<void> {
     const rootPath = definitionRootPath(project, kind, id);
@@ -4463,9 +4530,9 @@ export class SnowflakeProjectService {
     await this.repository.ensureFolder(
       normalizePath(`${project.rootPath}/${layout.directories.worldbuilding}`),
     );
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       await this.repository.ensureFolder(
-        normalizePath(`${project.rootPath}/${entityKindFolder(layout, kind)}`),
+        normalizePath(`${project.rootPath}/${entityKindFolder(project, kind)}`),
       );
       for (const definitionId of DEFINITION_FILE_IDS) {
         await this.ensureDefinitionRoot(project, kind, definitionId);
@@ -4475,10 +4542,11 @@ export class SnowflakeProjectService {
       project.id,
       project.locale,
       characterRoleLinks(project),
+      project.worldbuildingKinds,
     )) {
       if (base.id === "characters" || base.id === "scenes") continue;
       const path = normalizePath(
-        `${project.rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
+        `${project.rootPath}/${projectBaseFolder(project, base.id)}/${base.fileName}`,
       );
       if (this.repository.get(path) === null) {
         await this.repository.createPlainFile(path, base.content);
@@ -4520,8 +4588,8 @@ export class SnowflakeProjectService {
         expected: sceneFieldsBlock(project.locale, scene, characterNames),
       };
     }
-    for (const kind of WORLDBUILDING_KINDS) {
-      const entity = project.worldbuilding[kind].find(
+    for (const kind of project.worldbuildingKinds) {
+      const entity = entitiesOf(project, kind.id).find(
         (candidate) => candidate.path === path,
       );
       if (entity) {
@@ -4531,8 +4599,8 @@ export class SnowflakeProjectService {
               documentType: "worldbuilding",
               expected: renderEntityFieldsBlock(
                 project.locale,
-                kind,
-                entityFieldsViewOf(kind, entity),
+                kind.id,
+                entityFieldsViewOf(kind.id, entity),
               ),
             };
       }
@@ -4603,10 +4671,10 @@ export class SnowflakeProjectService {
 
   async listEntities(
     projectLocator: ProjectLocator,
-    kind: WorldbuildingKind,
+    kind: WorldbuildingKindId,
   ): Promise<WorldbuildingRecord[]> {
     const project = await this.loadProject(projectLocator);
-    return project.worldbuilding[kind];
+    return entitiesOf(project, kind);
   }
 
   async createEntity(
@@ -4620,7 +4688,7 @@ export class SnowflakeProjectService {
     if (!name) throw new Error("Entity name is required.");
     this.assertNameAvailable(
       kind,
-      project.worldbuilding[kind].map((entity) => entity.name),
+      entitiesOf(project, kind).map((entity) => entity.name),
       name,
     );
     const timeKind = kind === "time" ? (input.timeKind ?? null) : null;
@@ -4629,15 +4697,13 @@ export class SnowflakeProjectService {
     assertEntityTimeFields(timeKind, timeStart, timeEnd);
 
     const entityId = createStableId("entity");
-    const siblings = project.worldbuilding[kind];
+    const siblings = entitiesOf(project, kind);
     const rank =
       siblings.length === 0
         ? RANK_GAP
         : siblings[siblings.length - 1]!.rank + RANK_GAP;
     if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe entity rank.");
-    const folder = normalizePath(
-      worldbuildingKindFolder(project.rootPath, project.locale, kind),
-    );
+    const folder = normalizePath(worldbuildingKindFolder(project, kind));
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
@@ -4700,6 +4766,9 @@ export class SnowflakeProjectService {
       { worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
       projectTimeSpans(project),
     );
+    if ((input.customFields ?? "").trim().length > 0) {
+      recordValues["custom-fields"] = input.customFields!;
+    }
     if (Object.keys(recordValues).length > 0) {
       await this.repository.upsertSections(
         created.path,
@@ -4720,8 +4789,8 @@ export class SnowflakeProjectService {
   ): Promise<WorldbuildingRecord> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const entity = WORLDBUILDING_KINDS.flatMap(
-      (kind) => project.worldbuilding[kind],
+    const entity = project.worldbuildingKinds.flatMap(
+      (kind) => entitiesOf(project, kind.id),
     ).find((candidate) => candidate.entityId === entityId);
     if (!entity) {
       throw new ManagedFileNotFoundError(`worldbuilding entity ${entityId}`);
@@ -4738,7 +4807,7 @@ export class SnowflakeProjectService {
     ) {
       this.assertNameAvailable(
         kind,
-        project.worldbuilding[kind]
+        entitiesOf(project, kind)
           .filter((candidate) => candidate.entityId !== entityId)
           .map((candidate) => candidate.name),
         nextName,
@@ -4820,6 +4889,7 @@ export class SnowflakeProjectService {
         entityFieldsViewOf(kind, next),
       ),
       "entity-notes": patch.notes ?? entity.notes,
+      ...customFieldsSectionValue(patch.customFields ?? entity.customFields),
       ...nextRecordValues,
     };
     const rollbackValues: Record<string, string> = {
@@ -4829,6 +4899,7 @@ export class SnowflakeProjectService {
         entityFieldsViewOf(kind, entity),
       ),
       "entity-notes": entity.notes,
+      ...customFieldsSectionValue(entity.customFields),
       ...Object.fromEntries(
         Object.keys(nextRecordValues).map((sectionId) => [
           sectionId,
@@ -4845,7 +4916,7 @@ export class SnowflakeProjectService {
       entityUpdateLayout(entity.name, kind, project.locale),
       ENTITY_FRONTMATTER_ORDER,
     );
-    await this.removeEmptiedRecordSections(entity, nextRecords);
+    await this.removeEmptiedRecordSections(entity, nextRecords, patch.customFields);
 
     let path = entity.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
@@ -4861,15 +4932,414 @@ export class SnowflakeProjectService {
 
   async reorderEntity(
     projectLocator: ProjectLocator,
-    kind: WorldbuildingKind,
+    kind: WorldbuildingKindId,
     entityId: string,
     targetIndex: number,
   ): Promise<WorldbuildingRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const current = project.worldbuilding[kind];
+    const current = entitiesOf(project, kind);
     await this.persistReorderedRanks(current, moveRanked(current, entityId, targetIndex));
     return this.listEntities(project, kind);
+  }
+
+  /**
+   * Registers a new custom kind and raises its scaffold: the registry entry,
+   * the folder wearing the first free prefix of the run, the three
+   * vocabulary roots, and the kind's base. The registry entry is what makes
+   * the kind exist; everything after it is scaffold the repair pass could
+   * rebuild.
+   */
+  async createWorldbuildingKind(
+    projectLocator: ProjectLocator,
+    name: string,
+    appearance?: { icon?: string; description?: string },
+  ): Promise<KindMutationResult> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const trimmed = name.trim();
+    const refusal = validateKindName(trimmed, project.worldbuildingKinds);
+    if (refusal !== null) return { ok: false, code: refusal };
+    const prefix = nextCustomKindPrefix(project.worldbuildingKinds);
+    if (prefix === null) return { ok: false, code: "full" };
+    const folderName = `${prefix}_${trimmed}`;
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const patch: ManagedFrontmatter = {
+          [FRONTMATTER_KEYS.worldbuildingKinds]: [
+            ...storedKindFolderNames(frontmatter),
+            folderName,
+          ],
+        };
+        // The looks ride along in the same write, or not at all: an empty
+        // answer leaves the maps untouched rather than holding a blank.
+        for (const [key, given] of [
+          [FRONTMATTER_KEYS.kindIcons, appearance?.icon],
+          [FRONTMATTER_KEYS.kindDescriptions, appearance?.description],
+        ] as const) {
+          const value = given?.trim() ?? "";
+          if (value.length === 0) continue;
+          const stored = frontmatter[key];
+          patch[key] = {
+            ...(isKindStringMap(stored) ? stored : {}),
+            [trimmed]: value,
+          };
+        }
+        return patch;
+      },
+    );
+    const refreshed = await this.loadProject(project.projectFile);
+    await this.ensureKindScaffold(refreshed, trimmed);
+    const kind = refreshed.worldbuildingKinds.find(
+      (candidate) => candidate.id === trimmed,
+    );
+    if (kind === undefined) {
+      throw new Error(`The kind "${trimmed}" did not register.`);
+    }
+    return { ok: true, kind: { ...kind, missingFolder: false } };
+  }
+
+  /** One kind's folder, its three vocabulary roots, and its base, made real. */
+  private async ensureKindScaffold(
+    project: ProjectSnapshot,
+    kindId: WorldbuildingKindId,
+  ): Promise<void> {
+    await this.repository.ensureFolder(
+      normalizePath(worldbuildingKindFolder(project, kindId)),
+    );
+    for (const definitionId of DEFINITION_FILE_IDS) {
+      await this.ensureDefinitionRoot(project, kindId, definitionId);
+    }
+    const basePath = this.projectBasePath(project, kindId);
+    if (this.repository.get(basePath) === null) {
+      await this.repository.createPlainFile(
+        basePath,
+        this.projectBase(project, kindId).content,
+      );
+    }
+  }
+
+  /**
+   * Renames a custom kind: the registry entry and the template choice first,
+   * because they are what the readers answer to, then the folder, the kind
+   * stamp on every note of the kind, the links into its moved vocabulary
+   * trees, the links other members hold to its notes, and last the base's
+   * name and filter. Idempotent over whatever Obsidian's own link updater
+   * already moved.
+   */
+  async renameWorldbuildingKind(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+    newName: string,
+  ): Promise<KindMutationResult> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const kind = project.worldbuildingKinds.find(
+      (candidate) => candidate.id === kindId,
+    );
+    if (kind === undefined) {
+      throw new ManagedFileNotFoundError(`worldbuilding kind ${kindId}`);
+    }
+    if (!kind.custom) {
+      throw new Error(`The built-in kind "${kindId}" keeps its name.`);
+    }
+    const trimmed = newName.trim();
+    if (trimmed === kindId) return { ok: true, kind };
+    const others = project.worldbuildingKinds.filter(
+      (candidate) => candidate.id !== kindId,
+    );
+    const refusal = validateKindName(trimmed, others);
+    if (refusal !== null) return { ok: false, code: refusal };
+
+    const layout = getProjectPathLayout(project.locale);
+    const worldbuildingDirectory = `${project.rootPath}/${layout.directories.worldbuilding}`;
+    const number =
+      /^\d+[A-Za-z]?/u.exec(kind.folderName)?.[0] ??
+      nextCustomKindPrefix(others) ??
+      "64";
+    const newFolderName = `${number}_${trimmed}`;
+    const oldFolder = normalizePath(`${worldbuildingDirectory}/${kind.folderName}`);
+    const newFolder = normalizePath(`${worldbuildingDirectory}/${newFolderName}`);
+    const entities = entitiesOf(project, kindId);
+    const movedPath = (path: string): string | null =>
+      path.startsWith(`${oldFolder}/`)
+        ? normalizePath(`${newFolder}/${path.slice(oldFolder.length + 1)}`)
+        : null;
+
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const patch: ManagedFrontmatter = {
+          [FRONTMATTER_KEYS.worldbuildingKinds]: storedKindFolderNames(
+            frontmatter,
+          ).map((entry) => (entry === kind.folderName ? newFolderName : entry)),
+        };
+        // Every per-kind map follows the name: template, icon, description.
+        for (const key of [
+          FRONTMATTER_KEYS.kindTemplates,
+          FRONTMATTER_KEYS.kindIcons,
+          FRONTMATTER_KEYS.kindDescriptions,
+        ] as const) {
+          const stored = frontmatter[key];
+          if (isKindStringMap(stored) && stored[kindId] !== undefined) {
+            const moved: Record<string, string> = { ...stored };
+            moved[trimmed] = moved[kindId]!;
+            delete moved[kindId];
+            patch[key] = moved;
+          }
+        }
+        return patch;
+      },
+    );
+    if (this.repository.getFolder(oldFolder) !== null) {
+      await this.repository.renameFolder(oldFolder, newFolder);
+    } else {
+      await this.repository.ensureFolder(newFolder);
+    }
+    // The notes wear the new id: what a note carries is the registry id.
+    for (const entity of entities) {
+      const path = movedPath(entity.path) ?? entity.path;
+      const record = await this.repository.tryReadManaged(path);
+      if (record === null || record.readOnly) continue;
+      await this.repository.updateFrontmatter(path, {
+        [FRONTMATTER_KEYS.worldbuildingKind]: trimmed,
+      });
+    }
+    let refreshed = await this.loadProject(project.projectFile);
+    // Links into the moved vocabulary trees: the same pass a node rename
+    // runs, with each whole root as the moved subtree.
+    for (const definitionId of DEFINITION_FILE_IDS) {
+      const rootPath = definitionRootPath(refreshed, trimmed, definitionId);
+      const oldRoot = normalizePath(`${oldFolder}/${basename(rootPath)}`);
+      await this.rewriteDefinitionReferences(
+        refreshed,
+        trimmed,
+        rootPath,
+        oldRoot,
+        rootPath,
+      );
+    }
+    // Links to the kind's own notes, wherever another member names one.
+    refreshed = await this.loadProject(project.projectFile);
+    for (const entity of entities) {
+      const path = movedPath(entity.path);
+      if (path === null) continue;
+      await this.refreshMemberReferences(
+        refreshed,
+        entity.path,
+        path,
+        entity.name,
+      );
+    }
+    // The base moved with the folder; its name and filter follow the kind.
+    const oldBase = normalizePath(`${newFolder}/${safeFileName(kindId)}.base`);
+    const newBase = normalizePath(`${newFolder}/${safeFileName(trimmed)}.base`);
+    if (this.repository.getFile(oldBase) !== null) {
+      const renamed = await this.repository.renameFile(oldBase, newBase);
+      await this.repository.updatePlainFile(renamed, (content) =>
+        renameWorldbuildingBaseKind(content, kindId, trimmed),
+      );
+    }
+    const final = await this.loadProject(project.projectFile);
+    const renamedKind = final.worldbuildingKinds.find(
+      (candidate) => candidate.id === trimmed,
+    );
+    if (renamedKind === undefined) {
+      throw new Error(`The kind "${trimmed}" did not register.`);
+    }
+    return { ok: true, kind: renamedKind };
+  }
+
+  /**
+   * What deleting a kind costs, for the confirmation to read out: how many
+   * notes go with the folder, and everything outside the kind that names one
+   * of them, in the same buckets a single deletion shows. References between
+   * the kind's own notes are not costs — they leave together.
+   */
+  async worldbuildingKindUsage(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+  ): Promise<{ entityCount: number; usage: MemberUsage }> {
+    const project = await this.loadProject(projectLocator);
+    const entities = entitiesOf(project, kindId);
+    // Usage names notes by their display names, so notes of the kind itself
+    // are told apart by name too: they leave with the folder either way.
+    const kindNames = new Set(entities.map((entity) => entity.name));
+    const insideKind = (name: string): boolean => kindNames.has(name);
+    const listed = new Set<string>();
+    const needsDecision = new Set<string>();
+    const records = new Set<string>();
+    for (const entity of entities) {
+      const usage = await this.memberUsage(project, entity.path);
+      for (const name of usage.listed) if (!insideKind(name)) listed.add(name);
+      for (const name of usage.needsDecision) {
+        if (!insideKind(name)) needsDecision.add(name);
+      }
+      for (const name of usage.records) {
+        if (!insideKind(name)) records.add(name);
+      }
+    }
+    return {
+      entityCount: entities.length,
+      usage: {
+        listed: [...listed],
+        needsDecision: [...needsDecision],
+        records: [...records],
+      },
+    };
+  }
+
+  /**
+   * Trashes a custom kind whole: its folder with every note, vocabulary tree
+   * and base inside, then the cascade a single deletion runs for each note
+   * that just went — list entries drop, record lines stay for the health
+   * check to report — and last the registry entry and template choice.
+   */
+  async deleteWorldbuildingKind(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const kind = project.worldbuildingKinds.find(
+      (candidate) => candidate.id === kindId,
+    );
+    if (kind === undefined) {
+      throw new ManagedFileNotFoundError(`worldbuilding kind ${kindId}`);
+    }
+    if (!kind.custom) {
+      throw new Error(`The built-in kind "${kindId}" cannot be deleted.`);
+    }
+    const folder = normalizePath(worldbuildingKindFolder(project, kindId));
+    const entities = entitiesOf(project, kindId);
+    if (this.repository.getFolder(folder) !== null) {
+      await this.repository.trashFolder(folder);
+    }
+    // After the delete, as with a single member: a failure here leaves links
+    // the health check can still report, not lists edited for a deletion
+    // that never landed.
+    for (const entity of entities) {
+      await this.removeMemberReferences(project.projectFile, entity.path);
+    }
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const patch: ManagedFrontmatter = {
+          [FRONTMATTER_KEYS.worldbuildingKinds]: storedKindFolderNames(
+            frontmatter,
+          ).filter((entry) => entry !== kind.folderName),
+        };
+        // The kind's entries leave every per-kind map with it.
+        for (const key of [
+          FRONTMATTER_KEYS.kindTemplates,
+          FRONTMATTER_KEYS.kindIcons,
+          FRONTMATTER_KEYS.kindDescriptions,
+        ] as const) {
+          const stored = frontmatter[key];
+          if (isKindStringMap(stored) && stored[kindId] !== undefined) {
+            const kept: Record<string, string> = { ...stored };
+            delete kept[kindId];
+            patch[key] = kept;
+          }
+        }
+        return patch;
+      },
+    );
+  }
+
+  /**
+   * The note chosen to seed one kind's default custom fields, as stored:
+   * the target path, resolved no further, so a note that has gone still
+   * shows where the choice pointed.
+   */
+  async kindTemplatePath(
+    projectLocator: ProjectLocator,
+    kindId: EntityKindId,
+  ): Promise<string | null> {
+    const project = await this.loadProject(projectLocator);
+    const record = await this.repository.tryReadManaged(project.projectFile);
+    const map = record?.frontmatter[FRONTMATTER_KEYS.kindTemplates];
+    if (!isKindStringMap(map)) return null;
+    const stored = map[kindId];
+    if (stored === undefined) return null;
+    const target = (fromWikiLink(stored) ?? stored).trim();
+    return target.length === 0 ? null : target;
+  }
+
+  /** Records which note seeds one kind's custom fields; null clears it. */
+  async setKindTemplate(
+    projectLocator: ProjectLocator,
+    kindId: EntityKindId,
+    path: string | null,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const stored = frontmatter[FRONTMATTER_KEYS.kindTemplates];
+        const map: Record<string, string> = isKindStringMap(stored)
+          ? { ...stored }
+          : {};
+        if (path === null || path.trim().length === 0) delete map[kindId];
+        else map[kindId] = toWikiLink(path, fileStem(path));
+        return { [FRONTMATTER_KEYS.kindTemplates]: map };
+      },
+    );
+  }
+
+  /**
+   * Records how a kind presents itself — its icon and its pane sentence.
+   * An empty string clears the entry: unset looks are the built-in fallback,
+   * not a stored blank.
+   */
+  async setKindAppearance(
+    projectLocator: ProjectLocator,
+    kindId: WorldbuildingKindId,
+    appearance: { icon: string; description: string },
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const patch: ManagedFrontmatter = {};
+        for (const [key, given] of [
+          [FRONTMATTER_KEYS.kindIcons, appearance.icon],
+          [FRONTMATTER_KEYS.kindDescriptions, appearance.description],
+        ] as const) {
+          const stored = frontmatter[key];
+          const map: Record<string, string> = isKindStringMap(stored)
+            ? { ...stored }
+            : {};
+          const value = given.trim();
+          if (value.length === 0) delete map[kindId];
+          else map[kindId] = value;
+          patch[key] = map;
+        }
+        return patch;
+      },
+    );
+  }
+
+  /**
+   * The default custom fields a kind's template note defines right now:
+   * every `###` block of its body. An unset choice, a note that has gone,
+   * and a note with no headings all seed nothing.
+   */
+  async kindTemplateFields(
+    projectLocator: ProjectLocator,
+    kindId: EntityKindId,
+  ): Promise<CustomField[]> {
+    const templatePath = await this.kindTemplatePath(projectLocator, kindId);
+    if (templatePath === null) return [];
+    const path = templatePath.endsWith(".md")
+      ? templatePath
+      : `${templatePath}.md`;
+    const record = await this.repository.tryReadManaged(normalizePath(path));
+    if (record === null) return [];
+    return templateCustomFields(record.content);
   }
 
   /**
@@ -4885,13 +5355,23 @@ export class SnowflakeProjectService {
       relationships: readonly unknown[];
       worldStatusUnrecognized: readonly string[];
       relationshipsUnrecognized: readonly string[];
+      customFields: string;
     },
     nextRecords: {
       worldStatus: readonly unknown[];
       relationships: readonly unknown[];
     },
+    nextCustomFields?: string,
   ): Promise<void> {
     const emptied: Array<{ sectionId: string; headings: string[] }> = [];
+    // The custom-fields block goes the way a record section goes: deferred
+    // in, removed whole when the last field leaves.
+    if (
+      entity.customFields.trim().length > 0 &&
+      (nextCustomFields ?? entity.customFields).trim().length === 0
+    ) {
+      emptied.push({ sectionId: "custom-fields", headings: [] });
+    }
     const consider = (
       sectionId: RecordSectionId,
       had: boolean,
@@ -4933,6 +5413,7 @@ export class SnowflakeProjectService {
       | "worldStatusUnrecognized"
       | "relationshipsUnrecognized"
       | "notes"
+      | "customFields"
       | "sectionHealth"
       | "revision"
     >
@@ -4945,7 +5426,11 @@ export class SnowflakeProjectService {
     const entityId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.entityId]);
     const projectId = projectIdOf(record.frontmatter);
     const kindValue = record.frontmatter[FRONTMATTER_KEYS.worldbuildingKind];
-    if (!entityId || !projectId || !isWorldbuildingKind(kindValue)) {
+    const kind =
+      typeof kindValue === "string" && kindValue.trim().length > 0
+        ? kindValue.trim()
+        : null;
+    if (!entityId || !projectId || kind === null) {
       throw new InvalidManagedDocumentError(
         `Worldbuilding metadata is incomplete in "${record.path}".`,
         record.path,
@@ -4968,6 +5453,7 @@ export class SnowflakeProjectService {
         relationships: relationships.records,
         relationshipsUnrecognized: relationships.unrecognized,
         notes: readMarkedSection(record.content, "entity-notes") ?? "",
+        customFields: readMarkedSection(record.content, "custom-fields") ?? "",
         sectionHealth: memberSectionHealth(record.content, "worldbuilding", record.path),
         revision: fingerprint(record.content),
       };
@@ -4980,7 +5466,7 @@ export class SnowflakeProjectService {
       entityId,
       projectId,
       path: record.path,
-      kind: kindValue,
+      kind,
       name:
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name]) ??
         fileStem(record.path),
@@ -5464,7 +5950,75 @@ export class SnowflakeProjectService {
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.projectName]) ?? basename(rootPath),
       locale,
       readOnly: record.readOnly,
+      worldbuildingKinds: this.readWorldbuildingKinds(
+        record.frontmatter,
+        rootPath,
+        locale,
+      ).kinds,
     };
+  }
+
+  /**
+   * The kinds a metadata note declares: the built-ins, then the registered
+   * custom kinds in registry order. The registry is authoritative — a folder
+   * no entry names is not a kind — and reading it settles collisions the
+   * validation could not have allowed but a hand edit can create: the first
+   * entry to spell an id keeps it, and every later one is handed back for the
+   * structure check to report.
+   */
+  private readWorldbuildingKinds(
+    frontmatter: ManagedFrontmatter,
+    rootPath: string,
+    locale: ProjectLanguage,
+  ): { kinds: ProjectWorldbuildingKind[]; invalidEntries: string[] } {
+    const layout = getProjectPathLayout(locale);
+    const worldbuildingDirectory = `${rootPath}/${layout.directories.worldbuilding}`;
+    // A custom kind's looks ride two per-kind maps; a built-in's belong to
+    // the program, so for one the maps are never consulted.
+    const icons = frontmatter[FRONTMATTER_KEYS.kindIcons];
+    const descriptions = frontmatter[FRONTMATTER_KEYS.kindDescriptions];
+    const appearance = (id: string, map: unknown): string | null => {
+      if (!isKindStringMap(map)) return null;
+      const stored = map[id]?.trim() ?? "";
+      return stored.length === 0 ? null : stored;
+    };
+    const describe = (
+      id: string,
+      folderName: string,
+      custom: boolean,
+    ): ProjectWorldbuildingKind => ({
+      id,
+      folderName,
+      custom,
+      missingFolder:
+        this.repository.getFolder(
+          normalizePath(`${worldbuildingDirectory}/${folderName}`),
+        ) === null,
+      icon: custom ? appearance(id, icons) : null,
+      description: custom ? appearance(id, descriptions) : null,
+    });
+    const kinds = WORLDBUILDING_KINDS.map((kind) =>
+      describe(kind, layout.worldbuildingKinds[kind], false),
+    );
+    const taken = new Set(reservedKindFolds());
+    const invalidEntries: string[] = [];
+    const stored = frontmatter[FRONTMATTER_KEYS.worldbuildingKinds];
+    for (const value of Array.isArray(stored) ? stored : []) {
+      const folderName = typeof value === "string" ? value.trim() : "";
+      const id = kindIdFromFolderName(folderName);
+      if (
+        folderName.length === 0 ||
+        id.length === 0 ||
+        folderName.includes("/") ||
+        taken.has(foldName(id))
+      ) {
+        invalidEntries.push(typeof value === "string" ? value : String(value));
+        continue;
+      }
+      taken.add(foldName(id));
+      kinds.push(describe(id, folderName, true));
+    }
+    return { kinds, invalidEntries };
   }
 
   private async toInspectableProjectRef(
@@ -5491,6 +6045,11 @@ export class SnowflakeProjectService {
         basename(rootPath),
       locale,
       readOnly: record.readOnly,
+      worldbuildingKinds: this.readWorldbuildingKinds(
+        record.frontmatter,
+        rootPath,
+        locale,
+      ).kinds,
     };
   }
 
@@ -5499,6 +6058,7 @@ export class SnowflakeProjectService {
     projectRecord: ManagedFileRecord,
     draftPath: string | null,
     manuscript: readonly ManuscriptSegmentRecord[],
+    unregisteredKindNotes: ReadonlyMap<string, string[]> = new Map(),
   ): Promise<ProjectStructureIssue[]> {
     const issues: ProjectStructureIssue[] = [];
     if (
@@ -5635,10 +6195,8 @@ export class SnowflakeProjectService {
         repairable: this.repository.get(path) === null,
       });
     }
-    for (const kind of WORLDBUILDING_KINDS) {
-      const path = normalizePath(
-        worldbuildingKindFolder(project.rootPath, project.locale, kind),
-      );
+    for (const kind of project.worldbuildingKinds) {
+      const path = normalizePath(worldbuildingKindFolder(project, kind.id));
       if (this.repository.getFolder(path) !== null) continue;
       add({
         code: "missing-directory",
@@ -5649,10 +6207,73 @@ export class SnowflakeProjectService {
       });
     }
 
+    // The registry itself: a hand edit can leave entries no reading honors —
+    // a value that is not a list, an entry that shadows a built-in, or two
+    // spelling the same id, where the first won above. One issue names them
+    // all, and its repair rewrites the key to the entries that stood.
+    const registryValue = metadata[FRONTMATTER_KEYS.worldbuildingKinds];
+    const registryReading = this.readWorldbuildingKinds(
+      metadata,
+      project.rootPath,
+      project.locale,
+    );
+    const registryComplaints =
+      hasOwn(metadata, FRONTMATTER_KEYS.worldbuildingKinds) &&
+      !Array.isArray(registryValue)
+        ? [FRONTMATTER_KEYS.worldbuildingKinds as string]
+        : registryReading.invalidEntries;
+    if (registryComplaints.length > 0) {
+      add({
+        code: "invalid-metadata-field",
+        path: projectRecord.path,
+        stepIds: [],
+        field: FRONTMATTER_KEYS.worldbuildingKinds,
+        names: registryComplaints,
+        canOpen: true,
+        repairable: !projectRecord.readOnly,
+      });
+    }
+    for (const key of [
+      FRONTMATTER_KEYS.kindTemplates,
+      FRONTMATTER_KEYS.kindIcons,
+      FRONTMATTER_KEYS.kindDescriptions,
+    ] as const) {
+      if (hasOwn(metadata, key) && !isKindStringMap(metadata[key])) {
+        add({
+          code: "invalid-metadata-field",
+          path: projectRecord.path,
+          stepIds: [],
+          field: key,
+          names: [key],
+          canOpen: true,
+          repairable: !projectRecord.readOnly,
+        });
+      }
+    }
+
+    // Notes wearing a kind the registry does not list: invisible to every
+    // table until the kind is back, so each such id is reported with the
+    // notes carrying it, and the repair registers the kind again.
+    for (const [kindId, notes] of unregisteredKindNotes) {
+      add({
+        code: "unregistered-worldbuilding-kind",
+        path: normalizePath(
+          `${project.rootPath}/${layout.directories.worldbuilding}`,
+        ),
+        stepIds: [],
+        field: kindId,
+        expected: kindId,
+        names: notes.map((note) => this.reportName(note, project.rootPath)),
+        canOpen: false,
+        repairable:
+          !projectRecord.readOnly && validateKindName(kindId, []) === null,
+      });
+    }
+
     // Every folder under a definition root is a node, and every node must
     // hold its `_self.md`: the folder is what makes the node exist, and the
     // note is what its links resolve to. The walk stops where reading does.
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
       for (const definitionId of DEFINITION_FILE_IDS) {
         const rootPath = definitionRootPath(project, kind, definitionId);
         if (this.repository.getFolder(rootPath) === null) continue;
@@ -5724,9 +6345,10 @@ export class SnowflakeProjectService {
       project.id,
       project.locale,
       characterRoleLinks(project),
+      project.worldbuildingKinds,
     )) {
       const directory = normalizePath(
-        `${project.rootPath}/${projectBaseFolder(layout, base.id)}`,
+        `${project.rootPath}/${projectBaseFolder(project, base.id)}`,
       );
       if (this.repository.getFolder(directory) === null) continue;
       const path = normalizePath(`${directory}/${base.fileName}`);
@@ -5974,9 +6596,9 @@ export class SnowflakeProjectService {
     // any other: the name they are filed under, the links they store, and the
     // metadata that makes them readable at all. No step hinges on them, so
     // their issues arrive with no step attached.
-    for (const kind of WORLDBUILDING_KINDS) {
+    for (const kind of project.worldbuildingKinds) {
       const folderPath = normalizePath(
-        worldbuildingKindFolder(project.rootPath, project.locale, kind),
+        worldbuildingKindFolder(project, kind.id),
       );
       if (this.repository.getFolder(folderPath) === null) continue;
       const stableIds = new Set<string>();
@@ -6011,7 +6633,7 @@ export class SnowflakeProjectService {
         if ((this.extensionTidyPatch(record)?.links ?? 0) > 0) {
           datedNotes.push(this.reportName(record.path, project.rootPath));
         }
-        this.inspectMemberDefinitionLinks(project, kind, record, [], add);
+        this.inspectMemberDefinitionLinks(project, kind.id, record, [], add);
         this.inspectMemberRecordLinks(project, record, [], add);
         this.inspectMemberLinks(project, record, [], add);
 
@@ -6039,14 +6661,21 @@ export class SnowflakeProjectService {
         }
 
         // What an entity must have is what makes it readable: a unique id, a
-        // name, and the kind that says which pane it belongs to.
+        // name, and a kind the project lists — custom kinds included, because
+        // a registered kind's notes are as readable as a built-in's.
+        const stampedKind = asOptionalString(
+          record.frontmatter[FRONTMATTER_KEYS.worldbuildingKind],
+        );
         if (
           isCurrentOrNewerSchema(record.frontmatter) &&
           documentTypeOf(record.frontmatter) === "worldbuilding" &&
           hasMatchingProjectId(record.frontmatter) &&
           stableIdIsUnique &&
           asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name]) !== null &&
-          isWorldbuildingKind(record.frontmatter[FRONTMATTER_KEYS.worldbuildingKind])
+          stampedKind !== null &&
+          project.worldbuildingKinds.some(
+            (candidate) => candidate.id === stampedKind,
+          )
         ) {
           continue;
         }
@@ -6060,7 +6689,7 @@ export class SnowflakeProjectService {
             safeEntityMetadataRepairPatch(
               record,
               project.id,
-              kind,
+              kind.id,
               idsBeforeCurrent,
               ranksBeforeCurrent,
             ) !== null,
@@ -6206,6 +6835,7 @@ export class SnowflakeProjectService {
       | "oneParagraphStoryline"
       | "characterSynopsis"
       | "characterProfile"
+      | "customFields"
       | "sectionHealth"
       | "unmigrated"
       | "revision"
@@ -6223,6 +6853,7 @@ export class SnowflakeProjectService {
       | "relationshipsUnrecognized"
       | "events"
       | "planning"
+      | "customFields"
       | "sectionHealth"
       | "unmigrated"
       | "revision"
@@ -6258,6 +6889,7 @@ export class SnowflakeProjectService {
         oneParagraphStoryline: readMarkedSection(record.content, "one-paragraph-storyline") ?? "",
         characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
         characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
+        customFields: readMarkedSection(record.content, "custom-fields") ?? "",
         sectionHealth: memberSectionHealth(record.content, "character", record.path),
         // A note the schema 2 migration has not reached: an older schema
         // stamp, no fields block yet, or the role still stored under the
@@ -6364,6 +6996,7 @@ export class SnowflakeProjectService {
     | "relationshipsUnrecognized"
     | "events"
     | "planning"
+    | "customFields"
     | "sectionHealth"
     | "unmigrated"
     | "revision"
@@ -6391,6 +7024,7 @@ export class SnowflakeProjectService {
         relationshipsUnrecognized: relationships.unrecognized,
         events: readMarkedSection(record.content, "scene-events") ?? "",
         planning: readMarkedSection(record.content, "scene-planning") ?? "",
+        customFields: readMarkedSection(record.content, "custom-fields") ?? "",
         sectionHealth: memberSectionHealth(record.content, "scene", record.path),
         // An older schema stamp counts too: a 0.7.0 scene is already property
         // -shaped, and without this the migration would leave it stamped 1,
@@ -6436,8 +7070,8 @@ export class SnowflakeProjectService {
       project.scenes.some((scene) =>
         scene.sectionHealth.issues.some(blocking),
       ) ||
-      WORLDBUILDING_KINDS.some((kind) =>
-        project.worldbuilding[kind].some((entity) =>
+      project.worldbuildingKinds.some((kind) =>
+        entitiesOf(project, kind.id).some((entity) =>
           entity.sectionHealth.issues.some(blocking),
         ),
       )
@@ -6452,7 +7086,9 @@ export class SnowflakeProjectService {
     hasUnsupportedChildren: boolean;
     characters: CharacterRecord[];
     scenes: SceneRecord[];
-    worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]>;
+    worldbuilding: Record<WorldbuildingKindId, WorldbuildingRecord[]>;
+    /** Notes whose kind no registry entry spells, by kind id. */
+    unregisteredKindNotes: Map<string, string[]>;
     artifacts: Partial<Record<StepId, ArtifactSnapshot>>;
     manuscript: ManuscriptSegmentRecord[];
   }> {
@@ -6642,11 +7278,13 @@ export class SnowflakeProjectService {
     // Worldbuilding entities join the snapshot but no step fingerprint: no
     // step's review hinges on them. The kind lives in each note's own
     // frontmatter rather than its folder, so one recursive scan serves all.
-    const worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]> = {
-      time: [],
-      location: [],
-      item: [],
-    };
+    const worldbuilding: Record<WorldbuildingKindId, WorldbuildingRecord[]> = {};
+    for (const kind of project.worldbuildingKinds) {
+      worldbuilding[kind.id] = [];
+    }
+    // Notes carrying a kind no registry entry spells: kept out of the buckets
+    // and handed to the structure check, whose repair registers the kind.
+    const unregisteredKindNotes = new Map<string, string[]>();
     const entityRecords = new Map<string, ManagedFileRecord>();
     for (const folderName of this.getProjectDirectoryNames(project, "worldbuilding")) {
       const folderRecords = await this.repository.findManagedFilesBelow(
@@ -6674,7 +7312,14 @@ export class SnowflakeProjectService {
       "entity",
     );
     for (const entity of sortByRank(entities)) {
-      worldbuilding[entity.kind].push(entity);
+      const bucket = worldbuilding[entity.kind];
+      if (bucket !== undefined) {
+        bucket.push(entity);
+        continue;
+      }
+      const notes = unregisteredKindNotes.get(entity.kind) ?? [];
+      notes.push(entity.path);
+      unregisteredKindNotes.set(entity.kind, notes);
     }
 
     return {
@@ -6683,6 +7328,7 @@ export class SnowflakeProjectService {
       characters: visibleCharacters,
       scenes: sortByRank(visibleScenes),
       worldbuilding,
+      unregisteredKindNotes,
       artifacts,
       manuscript: segments,
     };
@@ -6794,6 +7440,13 @@ function isSafelyRepairableProjectMetadataIssue(
       return recoveredProjectId !== null;
     case FRONTMATTER_KEYS.draft:
       return code === "missing-metadata-field";
+    // All optional: only what is present and unreadable gets repaired, by
+    // rewriting the key to the entries the reading accepted.
+    case FRONTMATTER_KEYS.worldbuildingKinds:
+    case FRONTMATTER_KEYS.kindTemplates:
+    case FRONTMATTER_KEYS.kindIcons:
+    case FRONTMATTER_KEYS.kindDescriptions:
+      return code === "invalid-metadata-field";
     default:
       return false;
   }
@@ -6920,7 +7573,7 @@ function safeSceneMetadataRepairPatch(
 function safeEntityMetadataRepairPatch(
   record: ManagedFileRecord,
   expectedProjectId: string,
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   usedIds: Set<string>,
   usedRanks: Set<number>,
 ): ManagedFrontmatter | null {
@@ -7263,33 +7916,100 @@ function compareTaxonomyPaths(left: string, right: string): number {
 }
 
 /** The vault path of one of an entity kind's tree root folders. */
+/**
+ * The kind ids no registry entry may spell: the built-in ids and the names
+ * the built-in folders answer to in either language, folded. A custom kind
+ * called Time would stand beside the built-in in one language and shadow it
+ * in the other, so both spellings are off the table everywhere. Character and
+ * scene are members before they are kinds, so their ids and folder names are
+ * reserved the same way — a kind called character would answer for both
+ * namespaces at once — and the two ids the pickers split time into go with
+ * them, or a kind so named would stand in for one half of time.
+ */
+function reservedKindFolds(): Set<string> {
+  const folds = new Set<string>();
+  for (const kind of WORLDBUILDING_KINDS) folds.add(foldName(kind));
+  for (const id of ["character", "scene", "time-point", "time-period"]) {
+    folds.add(foldName(id));
+  }
+  for (const language of ["en", "zh-CN"] as const) {
+    const layout = getProjectPathLayout(language);
+    for (const kind of WORLDBUILDING_KINDS) {
+      folds.add(foldName(kindIdFromFolderName(layout.worldbuildingKinds[kind])));
+    }
+    for (const key of ["characters", "scenes"] as const) {
+      folds.add(foldName(kindIdFromFolderName(layout.directories[key])));
+    }
+  }
+  return folds;
+}
+
+/**
+ * What stands in the way of a kind wearing this name: a name the file system
+ * will not hold or that would read as an ordering prefix, a reserved built-in
+ * spelling, or a kind already answering to it under fold. Null when the name
+ * is free to take.
+ */
+export function validateKindName(
+  name: string,
+  existing: readonly ProjectWorldbuildingKind[],
+): "invalid-name" | "taken" | null {
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed.includes("/")) return "invalid-name";
+  try {
+    if (safeFileName(trimmed) !== trimmed) return "invalid-name";
+  } catch {
+    return "invalid-name";
+  }
+  // A leading `NN_` would be stripped back off as an ordering prefix, so the
+  // registered name and the read-back id would stop agreeing.
+  if (kindIdFromFolderName(trimmed) !== trimmed) return "invalid-name";
+  if (reservedKindFolds().has(foldName(trimmed))) return "taken";
+  if (existing.some((kind) => foldName(kind.id) === foldName(trimmed))) {
+    return "taken";
+  }
+  return null;
+}
+
+/** A per-kind map as stored: kind ids to strings, nothing else. */
+function isKindStringMap(
+  value: unknown,
+): value is Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+/** The registry as stored, string entries only; readers validate further. */
+function storedKindFolderNames(frontmatter: ManagedFrontmatter): string[] {
+  const stored = frontmatter[FRONTMATTER_KEYS.worldbuildingKinds];
+  return Array.isArray(stored)
+    ? stored.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function definitionRootPath(
-  project: { rootPath: string; locale: ProjectLanguage },
-  kind: EntityKind,
+  project: KindScope,
+  kind: EntityKindId,
   id: DefinitionFileId,
 ): string {
-  const layout = getProjectPathLayout(project.locale);
+  const kindFolder = entityKindFolder(project, kind);
   return normalizePath(
-    `${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionRootName(kind, id, project.locale)}`,
+    `${project.rootPath}/${kindFolder}/${definitionRootNameForFolder(kindFolder, id, project.locale)}`,
   );
 }
 
 /** The root folder of an entity kind's Category tree. */
 function categoryDefinitionPath(
-  project: {
-    rootPath: string;
-    locale: ProjectLanguage;
-  },
-  kind: EntityKind,
+  project: KindScope,
+  kind: EntityKindId,
 ): string {
   return definitionRootPath(project, kind, "category");
 }
 
 /** The exact role links this project writes, for base filters and formulas. */
-function characterRoleLinks(project: {
-  rootPath: string;
-  locale: ProjectLanguage;
-}): CharacterRoleLinks {
+function characterRoleLinks(project: KindScope): CharacterRoleLinks {
   const definitionPath = categoryDefinitionPath(project, "character");
   const link = (type: CharacterType): string =>
     nodeLink(definitionPath, characterRoleName(project.locale, type));
@@ -7313,7 +8033,7 @@ function roleTypeOfValue(value: string): CharacterType | null {
 /** The entity kind a member record is, which is where its trees live. */
 function memberEntityKind(
   member: CharacterRecord | SceneRecord | WorldbuildingRecord,
-): EntityKind {
+): EntityKindId {
   return "characterId" in member
     ? "character"
     : "sceneId" in member
@@ -7328,14 +8048,13 @@ function memberEntityKind(
  * the path is all there is to read.
  */
 function memberKindOfPath(
-  project: { rootPath: string; locale: ProjectLanguage },
+  project: KindScope,
   path: string,
-): EntityKind | null {
-  const layout = getProjectPathLayout(project.locale);
+): EntityKindId | null {
   const normalized = normalizePath(path);
-  for (const kind of ENTITY_KINDS) {
+  for (const kind of entityKindIds(project.worldbuildingKinds)) {
     const folder = normalizePath(
-      `${project.rootPath}/${entityKindFolder(layout, kind)}`,
+      `${project.rootPath}/${entityKindFolder(project, kind)}`,
     );
     if (normalized.startsWith(`${folder}/`)) return kind;
   }
@@ -7344,12 +8063,13 @@ function memberKindOfPath(
 
 /** The project folder a base file lives in, relative to the project root. */
 function projectBaseFolder(
-  layout: ProjectPathLayout,
+  project: KindScope,
   id: ProjectBaseId,
 ): string {
+  const layout = getProjectPathLayout(project.locale);
   if (id === "characters") return layout.directories.characters;
   if (id === "scenes") return layout.directories.scenes;
-  return `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[id]}`;
+  return entityKindFolder(project, id);
 }
 
 /**
@@ -7384,8 +8104,8 @@ function replacedRoleCategories(
 
 /** Category paths chosen in a picker become links into the kind's own tree. */
 function categoryLinksFromPaths(
-  project: { rootPath: string; locale: ProjectLanguage },
-  kind: EntityKind,
+  project: KindScope,
+  kind: EntityKindId,
   paths: readonly string[],
 ): string[] {
   const definitionPath = categoryDefinitionPath(project, kind);
@@ -7402,8 +8122,8 @@ function categoryLinksFromPaths(
  * only the notes conversion actually touches.
  */
 function normalizedCategoryValues(
-  project: { rootPath: string; locale: ProjectLanguage },
-  kind: EntityKind,
+  project: KindScope,
+  kind: EntityKindId,
   values: readonly string[],
 ): readonly string[] {
   const root = categoryDefinitionPath(project, kind);
@@ -7426,7 +8146,7 @@ interface EntityFieldsSource {
 }
 
 function entityFieldsViewOf(
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   source: EntityFieldsSource,
 ): EntityFieldsView {
   return {
@@ -7434,7 +8154,7 @@ function entityFieldsViewOf(
     aliases: [...source.aliases],
     categories: [...source.categories],
     description: source.description,
-    time: WORLDBUILDING_KIND_DEFINITIONS[kind].timeFields
+    time: isWorldbuildingKind(kind) && WORLDBUILDING_KIND_DEFINITIONS[kind].timeFields
       ? { kind: source.timeKind, start: source.timeStart, end: source.timeEnd }
       : null,
   };
@@ -7459,6 +8179,17 @@ const RECORD_SECTION_IDS: readonly RecordSectionId[] = [
   "world-status",
   "relationships",
 ];
+
+/**
+ * The custom-fields block as a section-values entry: present only while it
+ * holds something, because the section is deferred and an empty write would
+ * plant an empty block on every note a form touches.
+ */
+function customFieldsSectionValue(
+  block: string,
+): Record<string, string> {
+  return block.trim().length > 0 ? { "custom-fields": block } : {};
+}
 
 /**
  * The record sections a write should carry: only the ones with something in
@@ -7633,20 +8364,20 @@ function projectMembers(
   return [
     ...project.characters,
     ...project.scenes,
-    ...WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]),
+    ...project.worldbuildingKinds.flatMap((kind) => entitiesOf(project, kind.id)),
   ];
 }
 
 /** One kind's members, read off the snapshot. */
 function membersOfKind(
   project: ProjectSnapshot,
-  kind: EntityKind,
+  kind: EntityKindId,
 ): ReadonlyArray<CharacterRecord | SceneRecord | WorldbuildingRecord> {
   return kind === "character"
     ? project.characters
     : kind === "scene"
       ? project.scenes
-      : project.worldbuilding[kind];
+      : entitiesOf(project, kind);
 }
 
 /**
@@ -7704,7 +8435,7 @@ function memberRecordTerms(
  */
 function projectTimeSpans(project: ProjectSnapshot): SpanLookup {
   const spans = new Map<string, { start: RecordTerm; end: RecordTerm }>();
-  for (const entity of project.worldbuilding.time) {
+  for (const entity of entitiesOf(project, "time")) {
     if (entity.timeKind !== "period") continue;
     const start = entity.timeStart.trim();
     const end = entity.timeEnd.trim();
@@ -7724,7 +8455,7 @@ function projectTimeSpans(project: ProjectSnapshot): SpanLookup {
  */
 function entityUpdateLayout(
   name: string,
-  kind: WorldbuildingKind,
+  kind: WorldbuildingKindId,
   locale: ProjectLanguage,
 ): SectionLayoutEntry[] {
   const sections = entityTemplate(name, kind, locale).sections;

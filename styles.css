@@ -5077,6 +5077,123 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	color: var(--text-normal);
 }
 
+/* The custom-fields block: the title line carries the template choice at its
+   right, and each field is one row of title, remove, and content below. */
+.snowflake-method-custom-fields-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-custom-fields-head .snowflake-method-record-title {
+	margin-block-end: 0;
+}
+
+.snowflake-method-custom-fields-template {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	min-width: 0;
+}
+
+.snowflake-method-custom-fields-template-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+}
+
+.snowflake-method-custom-fields-template > div {
+	min-width: 14rem;
+}
+
+.snowflake-method-custom-fields-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	margin-block-start: var(--size-2-3);
+}
+
+.snowflake-method-custom-field-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: var(--size-2-2) var(--size-2-3);
+	padding: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+}
+
+input.snowflake-method-custom-field-title {
+	font-weight: var(--font-semibold);
+}
+
+textarea.snowflake-method-custom-field-content {
+	grid-column: 1 / -1;
+	width: 100%;
+	resize: vertical;
+	min-height: 3.4em;
+	font-family: inherit;
+}
+
+/* The invitation row in the rail: quiet like every other add row, the label
+   muted until the pointer says it matters. */
+.snowflake-method-step-button.snowflake-method-add-kind {
+	color: var(--text-muted);
+}
+
+.snowflake-method-step-button.snowflake-method-add-kind:hover {
+	color: var(--text-normal);
+}
+
+/* The kind's own doors, hanging where a step keeps its status. */
+button.snowflake-method-kind-options {
+	flex-shrink: 0;
+	align-self: flex-start;
+}
+
+/* The icon lives inside its own field, the way a search box wears its glass:
+   what the field spells is drawn where the typing happens. */
+.snowflake-method-kind-icon-row .setting-item-control {
+	position: relative;
+}
+
+.snowflake-method-kind-icon-preview {
+	position: absolute;
+	display: inline-flex;
+	align-items: center;
+	inset-inline-start: var(--size-4-2);
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--text-muted);
+	pointer-events: none;
+}
+
+.snowflake-method-kind-icon-row input[type='text'] {
+	padding-inline-start: calc(var(--size-4-2) + var(--size-4-1) + 18px);
+}
+
+/* An icon suggestion says its name and shows its face. */
+.suggestion-item.snowflake-method-icon-suggestion {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-icon-suggestion-glyph {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.snowflake-method-icon-suggestion-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* Under the cards, where the next record will appear, and quiet the way the
    add row under a table is quiet. */
 .snowflake-method-record-body button.snowflake-method-record-more,

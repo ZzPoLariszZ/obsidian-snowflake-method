@@ -1,10 +1,9 @@
 import {
 	isDefinitionFileId,
 	isStepId,
-	isWorldbuildingKind,
 	type DefinitionFileId,
 	type StepId,
-	type WorldbuildingKind,
+	type WorldbuildingKindId,
 } from '../domain';
 import type { ManagedSectionIssueViewModel } from './view-model';
 
@@ -14,7 +13,7 @@ import type { ManagedSectionIssueViewModel } from './view-model';
  */
 export type DashboardPane =
 	| { kind: 'step'; step: StepId }
-	| { kind: 'worldbuilding'; wbKind: WorldbuildingKind }
+	| { kind: 'worldbuilding'; wbKind: WorldbuildingKindId }
 	| { kind: 'definition'; definitionId: DefinitionFileId };
 
 /** A stable identity for a pane, for continuity and change comparisons. */
@@ -30,9 +29,13 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 	if (candidate.kind === 'step' && isStepId(candidate.step)) {
 		return { kind: 'step', step: candidate.step };
 	}
+	// Any non-empty id is a pane worth restoring: whether the project still
+	// has the kind is the render's question, and a kind since deleted falls
+	// back to the step pane there.
 	if (
 		candidate.kind === 'worldbuilding' &&
-		isWorldbuildingKind(candidate.wbKind)
+		typeof candidate.wbKind === 'string' &&
+		candidate.wbKind.trim().length > 0
 	) {
 		return { kind: 'worldbuilding', wbKind: candidate.wbKind };
 	}

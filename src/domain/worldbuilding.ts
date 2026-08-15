@@ -20,6 +20,73 @@ export function isWorldbuildingKind(
 	);
 }
 
+/**
+ * Any worldbuilding kind a note can carry: a built-in id, or a custom kind's
+ * name exactly as the author typed it. Custom ids are user text, so the type
+ * is open; what makes one real is the project's registry.
+ */
+export type WorldbuildingKindId = string;
+
+/**
+ * One kind of a project, built-in or authored. The registry entry is the
+ * folder name; the id is the folder name without its ordering prefix, which
+ * is also what every note of the kind carries.
+ */
+export interface ProjectWorldbuildingKind {
+	id: WorldbuildingKindId;
+	/** The folder under the worldbuilding directory, `61_Time` or `64_Faction`. */
+	folderName: string;
+	custom: boolean;
+	/** Registered, but its folder is not in the Vault. */
+	missingFolder: boolean;
+	/**
+	 * How an authored kind presents itself: its icon id and the sentence its
+	 * pane stands under. Null where unset — and always null for a built-in,
+	 * whose looks belong to the program.
+	 */
+	icon: string | null;
+	description: string | null;
+}
+
+/** The kind id a registry folder name spells: the leaf minus its ordering prefix. */
+export function kindIdFromFolderName(folderName: string): string {
+	return folderName.replace(/^\d+[A-Za-z]?_/u, '');
+}
+
+/**
+ * The ordering prefixes an authored kind's folder can wear, in the order they
+ * are handed out: 64 through 69 after the built-ins, then 6A through 6Z so
+ * the family never spills into 70 and the folders above it. Thirty-two kinds
+ * is the whole run; a project that reaches 6Z adds no more.
+ */
+export const CUSTOM_KIND_PREFIXES: readonly string[] = [
+	'64',
+	'65',
+	'66',
+	'67',
+	'68',
+	'69',
+	...Array.from({ length: 26 }, (_, at) => `6${String.fromCharCode(65 + at)}`),
+];
+
+/**
+ * The prefix the next authored kind's folder gets: the first slot in the run
+ * no living kind occupies, so a deleted kind's slot is free again the moment
+ * it goes. Null only when all thirty-two slots are in use at once — the rail
+ * order is the registry's, not the folder number's, so a reclaimed low slot
+ * shuffles nothing the author sees.
+ */
+export function nextCustomKindPrefix(
+	kinds: readonly ProjectWorldbuildingKind[],
+): string | null {
+	const occupied = new Set(
+		kinds
+			.filter((kind) => kind.custom)
+			.map((kind) => kind.folderName.split('_')[0] ?? ''),
+	);
+	return CUSTOM_KIND_PREFIXES.find((prefix) => !occupied.has(prefix)) ?? null;
+}
+
 export interface WorldbuildingKindDefinition {
 	id: WorldbuildingKind;
 	/** The kind carries `snowflake-time-kind` / `-start` / `-end`. */
@@ -81,3 +148,18 @@ export const ENTITY_KINDS = [
 ] as const;
 
 export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+/**
+ * An entity kind by id where the set is open: `character`, `scene`, or any
+ * worldbuilding kind of the project at hand, custom ones included. The same
+ * open string as a kind id, aliased so a signature says which family of ids
+ * it answers for. Code that enumerates a fixed set keeps `EntityKind`.
+ */
+export type EntityKindId = WorldbuildingKindId;
+
+/** The worldbuilding kinds of a project, as entity kind ids in rail order. */
+export function entityKindIds(
+	kinds: readonly ProjectWorldbuildingKind[],
+): EntityKindId[] {
+	return ['character', 'scene', ...kinds.map((kind) => kind.id)];
+}

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { noteFieldOptions, noteIdentity } from '../../src/ui/entity-form';
+import type { ProjectWorldbuildingKind } from '../../src/domain';
+import {
+	clauseForGroup,
+	entityGroupLabel,
+	entityGroupsOf,
+	noteFieldOptions,
+	noteIdentity,
+} from '../../src/ui/entity-form';
 import { unpickedOptions } from '../../src/ui/option-picker';
 
 /**
@@ -76,5 +83,57 @@ describe('note field options', () => {
 
 	it('offers nothing for a field holding nothing', () => {
 		expect(noteFieldOptions([], [''], () => false)).toEqual([]);
+	});
+});
+
+/**
+ * The groups a record can point into are the project's own: the built-ins in
+ * their fixed order, then every registered kind as a group of its own. A
+ * custom kind missing from this list is a note nothing can point at.
+ */
+describe('entity groups', () => {
+	const kind = (
+		id: string,
+		custom = true,
+	): ProjectWorldbuildingKind => ({
+		id,
+		folderName: custom ? `64_${id}` : `61_${id}`,
+		custom,
+		missingFolder: false,
+		icon: null,
+		description: null,
+	});
+
+	it('lists registered kinds beside the built-ins, time split in two', () => {
+		expect(
+			entityGroupsOf([
+				kind('time', false),
+				kind('location', false),
+				kind('item', false),
+				kind('Faction'),
+			]),
+		).toEqual([
+			'character',
+			'scene',
+			'time-point',
+			'time-period',
+			'location',
+			'item',
+			'Faction',
+		]);
+	});
+
+	it('writes a custom-kind reference with the plain connector', () => {
+		expect(clauseForGroup('Faction')).toBe('with');
+		expect(clauseForGroup('location')).toBe('at');
+		expect(clauseForGroup('time-point')).toBe('when');
+		expect(clauseForGroup('time-period')).toBe('when');
+		expect(clauseForGroup('character')).toBe('with');
+	});
+
+	it('names built-ins from the copy and a custom kind by itself', () => {
+		const t = (key: string): string => `t:${key}`;
+		expect(entityGroupLabel(t, 'location')).toBe('t:form.group.location');
+		expect(entityGroupLabel(t, 'Faction')).toBe('Faction');
 	});
 });

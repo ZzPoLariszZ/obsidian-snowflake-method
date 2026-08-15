@@ -134,10 +134,29 @@ describe('dashboard restored state', () => {
 				projectPath: 10,
 				projectTitle: false,
 				selectedStep: 11,
-				selectedPane: { kind: 'worldbuilding', wbKind: 'weather' },
+				// A blank kind names nothing; a worded one is some project's kind.
+				selectedPane: { kind: 'worldbuilding', wbKind: '  ' },
 				railCollapsed: { steps: 'yes' },
 			}),
 		).toEqual({ state: current, changed: false });
+	});
+
+	it('restores a custom kind pane by its id alone', () => {
+		const current = {
+			projectPath: 'Snowflake Projects/Novel/metadata.md',
+			projectTitle: 'Novel',
+			selectedStep: 3 as const,
+			selectedPane: { kind: 'step', step: 3 } as const,
+			railCollapsed: OPEN_RAIL,
+		};
+		const update = mergeDashboardViewState(current, {
+			selectedPane: { kind: 'worldbuilding', wbKind: 'Faction' },
+		});
+		expect(update.changed).toBe(true);
+		expect(update.state.selectedPane).toEqual({
+			kind: 'worldbuilding',
+			wbKind: 'Faction',
+		});
 	});
 });
 

@@ -1,14 +1,16 @@
 import type {
   CharacterType,
-  EntityKind,
+  EntityKindId,
   ProgressStatus,
   ProjectLanguage,
+  ProjectWorldbuildingKind,
   StepFingerprintMap,
   StepId,
   StepStatus,
   StepStatusMap,
   TimeKind,
   WorldbuildingKind,
+  WorldbuildingKindId,
 } from "../domain";
 import type { ManagedFrontmatter } from "../repository";
 import type {
@@ -84,14 +86,44 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
   },
 };
 
+/** A project as the kind lookups need it: where it is and what kinds it has. */
+export interface KindScope {
+  rootPath: string;
+  locale: ProjectLanguage;
+  worldbuildingKinds: readonly ProjectWorldbuildingKind[];
+}
+
+/**
+ * The folder name of one worldbuilding kind: the registered descriptor's when
+ * the project lists the kind, and the layout's own for a built-in id even
+ * when the descriptor list is not at hand. An unregistered custom id has no
+ * folder to name.
+ */
+export function worldbuildingKindFolderName(
+  scope: KindScope,
+  kind: WorldbuildingKindId,
+): string | null {
+  const registered = scope.worldbuildingKinds.find(
+    (candidate) => candidate.id === kind,
+  );
+  if (registered !== undefined) return registered.folderName;
+  const layout = getProjectPathLayout(scope.locale);
+  return kind in layout.worldbuildingKinds
+    ? layout.worldbuildingKinds[kind as WorldbuildingKind]
+    : null;
+}
+
 /** The vault path of a project's worldbuilding kind folder. */
 export function worldbuildingKindFolder(
-  rootPath: string,
-  language: ProjectLanguage,
-  kind: WorldbuildingKind,
+  scope: KindScope,
+  kind: WorldbuildingKindId,
 ): string {
-  const layout = getProjectPathLayout(language);
-  return `${rootPath}/${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`;
+  const layout = getProjectPathLayout(scope.locale);
+  const folderName = worldbuildingKindFolderName(scope, kind);
+  if (folderName === null) {
+    throw new Error(`Unknown worldbuilding kind "${kind}".`);
+  }
+  return `${scope.rootPath}/${layout.directories.worldbuilding}/${folderName}`;
 }
 
 /**
@@ -99,12 +131,17 @@ export function worldbuildingKindFolder(
  * where the kind's own definition files sit.
  */
 export function entityKindFolder(
-  layout: ProjectPathLayout,
-  kind: EntityKind,
+  scope: KindScope,
+  kind: EntityKindId,
 ): string {
+  const layout = getProjectPathLayout(scope.locale);
   if (kind === "character") return layout.directories.characters;
   if (kind === "scene") return layout.directories.scenes;
-  return `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`;
+  const folderName = worldbuildingKindFolderName(scope, kind);
+  if (folderName === null) {
+    throw new Error(`Unknown worldbuilding kind "${kind}".`);
+  }
+  return `${layout.directories.worldbuilding}/${folderName}`;
 }
 
 export function getProjectPathLayout(language: ProjectLanguage): ProjectPathLayout {
@@ -127,10 +164,29 @@ export interface ProjectRef {
   title: string;
   locale: ProjectLanguage;
   readOnly: boolean;
+  /**
+   * Every worldbuilding kind the project has, built-ins first, then the
+   * registered custom kinds in registry order. Read off the metadata note, so
+   * a ref carries it wherever the ref goes.
+   */
+  worldbuildingKinds: ProjectWorldbuildingKind[];
 }
 
 export interface ProjectLinks {
   draft: string | null;
+}
+
+/**
+ * One kind's bucket of a snapshot. The map holds a row for every kind the
+ * project lists, so an empty answer means an id from somewhere else — a pane
+ * left open on a kind since deleted, say — and the caller reads that as no
+ * entities rather than as a crash.
+ */
+export function entitiesOf(
+  project: Pick<ProjectSnapshot, "worldbuilding">,
+  kind: WorldbuildingKindId,
+): WorldbuildingRecord[] {
+  return project.worldbuilding[kind] ?? [];
 }
 
 export interface ProjectSnapshot extends ProjectRef {
@@ -142,7 +198,8 @@ export interface ProjectSnapshot extends ProjectRef {
   schemaVersion: number | null;
   characters: CharacterRecord[];
   scenes: SceneRecord[];
-  worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]>;
+  /** One bucket per kind the project has, keyed by kind id. */
+  worldbuilding: Record<WorldbuildingKindId, WorldbuildingRecord[]>;
   artifacts: Partial<Record<StepId, ArtifactSnapshot>>;
   structureIssues: ProjectStructureIssue[];
 }
@@ -187,6 +244,11 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-definition-node",
   "unresolved-definition-link",
   "stale-definition-alias",
+  // Notes carry a worldbuilding kind the registry does not list, which a
+  // hand-restored backup or a hand-edited registry can leave behind. The
+  // repair registers the kind and ensures its folder, so the notes come back
+  // into the fold instead of standing invisible.
+  "unregistered-worldbuilding-kind",
 ] as const;
 
 export type ProjectStructureIssueCode =
@@ -278,8 +340,8 @@ export interface DefinitionTreeInfo {
   nodes: DefinitionNodeInfo[];
 }
 
-/** One vocabulary across every entity kind. */
-export type DefinitionForest = Record<EntityKind, DefinitionTreeInfo>;
+/** One vocabulary across every entity kind of the project, keyed by kind id. */
+export type DefinitionForest = Record<EntityKindId, DefinitionTreeInfo>;
 
 export interface CreateProjectOptions {
   name?: string;
@@ -325,6 +387,7 @@ export interface CharacterInput {
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
+  customFields?: string;
 }
 
 export interface CharacterPatch {
@@ -345,6 +408,7 @@ export interface CharacterPatch {
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
+  customFields?: string;
 }
 
 export interface CharacterRecord {
@@ -380,6 +444,8 @@ export interface CharacterRecord {
   oneParagraphStoryline: string;
   characterSynopsis: string;
   characterProfile: string;
+  /** The custom-fields block as stored; empty while the note carries none. */
+  customFields: string;
   sectionHealth: ManagedSectionsInspection;
   /** True while the note predates the generated fields block. */
   unmigrated: boolean;
@@ -402,6 +468,7 @@ export interface SceneInput {
   relationships?: RecordLine[];
   events?: string;
   planning?: string;
+  customFields?: string;
 }
 
 export interface ScenePatch {
@@ -420,6 +487,7 @@ export interface ScenePatch {
   relationships?: RecordLine[];
   events?: string;
   planning?: string;
+  customFields?: string;
 }
 
 export interface SceneRecord {
@@ -449,6 +517,8 @@ export interface SceneRecord {
   relationshipsUnrecognized: string[];
   events: string;
   planning: string;
+  /** The custom-fields block as stored; empty while the note carries none. */
+  customFields: string;
   sectionHealth: ManagedSectionsInspection;
   /** True while the note lacks the fields block or still holds the legacy conflict section. */
   unmigrated: boolean;
@@ -467,7 +537,7 @@ export interface WorldbuildingRecord {
   entityId: string;
   projectId: string;
   path: string;
-  kind: WorldbuildingKind;
+  kind: WorldbuildingKindId;
   name: string;
   rank: number;
   /** False when `rank` is the fallback because the note stores no usable rank. */
@@ -491,6 +561,8 @@ export interface WorldbuildingRecord {
   worldStatusUnrecognized: string[];
   relationshipsUnrecognized: string[];
   notes: string;
+  /** The custom-fields block as stored; empty while the note carries none. */
+  customFields: string;
   sectionHealth: ManagedSectionsInspection;
   /** True while the note carries an older release's schema stamp. */
   unmigrated: boolean;
@@ -500,7 +572,7 @@ export interface WorldbuildingRecord {
 }
 
 export interface EntityInput {
-  kind: WorldbuildingKind;
+  kind: WorldbuildingKindId;
   name: string;
   aliases?: string[];
   /** Category paths chosen in the picker, `Time/Era`; links are built here. */
@@ -513,6 +585,7 @@ export interface EntityInput {
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   notes?: string;
+  customFields?: string;
 }
 
 export interface EntityPatch {
@@ -529,6 +602,7 @@ export interface EntityPatch {
   worldStatus?: RecordLine[];
   relationships?: RecordLine[];
   notes?: string;
+  customFields?: string;
 }
 
 export interface ArtifactSnapshot {
