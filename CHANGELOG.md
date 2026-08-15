@@ -8,6 +8,20 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0]
+
+### Added
+
+- Custom fields on any member note. A field is a title and whatever you write under it, added and reordered as cards in the member's form, and kept in a section of the note's own. The plugin writes nothing into them and reads them for nothing else, so they hold whatever this story needs that the built-in fields do not.
+- Worldbuilding kinds of your own. Time, location and item are the three every project starts with, and the rail can add up to thirty-two more: a faction, a language, a piece of technology, whatever else this story keeps track of. Each authored kind gets its own folder, rail pane, table, Bases view and three vocabularies, a Lucide icon you choose by name, and a sentence saying what it is for. Renaming one moves its folder and rewrites every link into it. Deleting one names what that will cost before anything goes.
+- Custom field templates, one folder per kind. A template is a note holding a set of fields, kept in a fourth folder beside the kind's three vocabularies, and the new **Custom field** pane in the rail lists them per kind to add, edit and delete. Any member form can export the fields you just typed as a template, saying first when a namesake will be replaced. Choosing a template in a form remembers it as that kind's default, so a new note of that kind opens with those fields already in place, while a note that already has fields keeps them and gains only the ones it was missing.
+
+### Changed
+
+- Notes carry schema 3. The blue **Older project format** notice and its **Update** button bring earlier notes current in one pass, as they always have.
+- A relationship record now names the note it is with. The form will not save one without a target, and it marks the card it means so you can find it in a long form. Records written before this rule are read and shown exactly as they were, and the form asks for the missing target the next time that note is saved.
+- A record's value is written in a field that wraps and can be dragged taller, the same field a custom field's content uses. A record is one line in the note, so any line breaks you type are read back as spaces when it is saved.
+
 ## [0.8.1]
 
 ### Changed
@@ -226,6 +240,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.9.0]
+
+### 新增
+
+- 任何成员笔记都可以带上自定义字段。每个字段由一个标题和你写在其下的内容组成，在成员表单中以卡片添加与排序，存放在笔记自己的区段里。插件不会往里写任何东西，也不会拿它们做别的事，因此这个故事需要而内置字段没有的一切，都可以放在这里。
+- 世界观种类可以自建。时间、地点与物品是每个项目自带的三类，侧栏还可以再添加至多三十二类：门派、语言、某项技术，凡是这个故事还要记住的都可以。每个自建种类都有自己的文件夹、侧栏面板、表格、数据库视图与三份词表，图标按名称从 Lucide 中挑选，另有一句话说明它的用途。重命名会移动它的文件夹并改写指向它的所有链接。删除前会先说明这样做的代价。
+- 自定义字段模板，每类成员各有一个文件夹。模板是一篇存放一组字段的笔记，就放在该种类三份词表旁边的第四个文件夹里，侧栏新增的**自定义字段**面板按种类列出它们，可以添加、编辑与删除。任意成员表单都可以把刚刚填好的字段导出为模板，若会替换同名模板，会先行说明。在表单中选定模板即记为该种类的默认值，此后新建该类笔记时字段已经就位。已有字段的笔记则保留原有内容，只补上缺少的部分。
+
+### 变更
+
+- 笔记升至 schema 3。蓝色的**较旧的项目格式**提示与它的**更新**按钮，仍会一次把早先的笔记带到当前版本。
+- 关系记录现在必须写明它指向的笔记。缺少对象时表单不会保存，并会标出它指的那张卡片，方便在长表单中找到。此前写下的记录，读取与显示都和从前一样，只有下次保存那篇笔记时，表单才会要求补上缺少的对象。
+- 记录的值改在可换行、可拉高的字段中书写，与自定义字段的内容用的是同一种字段。记录在笔记中占一行，因此你输入的换行会在保存时读作空格。
 
 ## [0.8.1]
 
