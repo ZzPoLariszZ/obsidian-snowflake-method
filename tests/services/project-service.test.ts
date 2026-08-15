@@ -24,6 +24,7 @@ import {
   getSystemTemplates,
   readMarkedSection,
   renderMarkedSection,
+  type RecordLine,
 } from "../../src/templates";
 import {
   createFakeEnvironment,
@@ -452,11 +453,19 @@ describe("SnowflakeProjectService", () => {
     );
     expect(repaired.frontmatter[FRONTMATTER_KEYS.characterName]).toBe("Ada");
     expect(repaired.frontmatter[FRONTMATTER_KEYS.rank]).toEqual(expect.any(Number));
-    expect(repaired.frontmatter[FRONTMATTER_KEYS.characterType]).toBe("major");
+    // The role stays where creation put it: in the category link, with no
+    // legacy key invented by the repair.
+    expect(repaired.frontmatter[FRONTMATTER_KEYS.category]).toEqual([
+      expect.stringContaining("|Character/Major]]"),
+    ]);
+    expect(repaired.frontmatter[FRONTMATTER_KEYS.characterType]).toBeUndefined();
 
     await fakeFileManager.processFrontMatter(
       fakeVault.getFileByPath(character.path)!,
       (frontmatter) => {
+        // With the category gone and the legacy key nonsense, no home stores
+        // a role any more, and the repair must refuse to guess one.
+        delete frontmatter[FRONTMATTER_KEYS.category];
         frontmatter[FRONTMATTER_KEYS.characterType] = "protagonist";
       },
     );
@@ -896,9 +905,11 @@ describe("SnowflakeProjectService", () => {
     expect(repaired.project.steps[9]).toBe("not-started");
     expect(repaired.project.reviewedFingerprints).toEqual({});
     expect(characters).toHaveLength(1);
+    // The tampered legacy key does not decide the role: the category link
+    // written at creation still names it.
     expect(characters[0]).toMatchObject({
       name: "Ada",
-      type: "supporting",
+      type: "major",
       goal: "",
     });
     expect(characters[0]!.characterId).toMatch(/^character-/u);
@@ -1533,7 +1544,7 @@ describe("SnowflakeProjectService", () => {
     const created = fakeVault.contents.get(character.path) ?? "";
     const block = readMarkedSection(created, "character-fields");
     expect(block).toContain("> [!info] Character overview");
-    expect(block).toContain("> **Type**: Major character");
+    expect(block).toContain("Category#Major|Character/Major]]");
     expect(block).toContain("> **Motivation**: Belong somewhere.");
 
     const updated = await service.updateCharacter(project, character.characterId, {
@@ -1545,7 +1556,7 @@ describe("SnowflakeProjectService", () => {
       fakeVault.contents.get(updated.path) ?? "",
       "character-fields",
     );
-    expect(after).toContain("> **Type**: Supporting character");
+    expect(after).toContain("Category#Supporting|Character/Supporting]]");
     expect(after).toContain("> **Motivation**: Lead the fleet.");
     expect(after).not.toContain("Belong somewhere.");
   });
@@ -2746,6 +2757,42 @@ describe("SnowflakeProjectService", () => {
     ).not.toBeNull();
   });
 
+  it("scaffolds the worldbuilding tree with its definition files and kind bases", async () => {
+    const project = await service.createProject({ name: "Worlds" });
+    const worldbuilding = `${project.rootPath}/60_Worldbuilding`;
+
+    for (const folder of ["61_Time", "62_Location", "63_Item"]) {
+      expect(fakeVault.nodes.has(`${worldbuilding}/${folder}`)).toBe(true);
+    }
+    const category = fakeVault.contents.get(`${worldbuilding}/Category.md`) ?? "";
+    expect(category).toContain("# Character");
+    expect(category).toContain("## Major");
+    expect(category).toContain("# Item");
+    expect(
+      fakeVault.contents.get(`${worldbuilding}/World_Status.md`),
+    ).toContain("# Injured");
+    expect(
+      fakeVault.contents.get(`${worldbuilding}/Relationship.md`),
+    ).toContain("# Ally");
+    const timeBase = fakeVault.contents.get(`${worldbuilding}/61_Time/Time.base`) ?? "";
+    expect(timeBase).toContain('note["snowflake-worldbuilding-kind"] == "time"');
+    expect(timeBase).toContain(`note["snowflake-project-id"] == "${project.id}"`);
+    expect(
+      fakeVault.getFileByPath(`${worldbuilding}/62_Location/Location.base`),
+    ).not.toBeNull();
+    expect(
+      fakeVault.getFileByPath(`${worldbuilding}/63_Item/Item.base`),
+    ).not.toBeNull();
+
+    const zh = await service.createProject({ name: "世界", locale: "zh-CN" });
+    expect(
+      fakeVault.contents.get(`${zh.rootPath}/60_世界观/类别.md`),
+    ).toContain("# 角色");
+    expect(
+      fakeVault.getFileByPath(`${zh.rootPath}/60_世界观/61_时间/时间总览.base`),
+    ).not.toBeNull();
+  });
+
   it("keeps an edited base when the project is repaired again", async () => {
     const project = await service.createProject({ name: "Edited Base" });
     const charactersBase = `${project.rootPath}/20_Character/Characters.base`;
@@ -3126,5 +3173,249 @@ describe("SnowflakeProjectService", () => {
     expect(frontmatter[FRONTMATTER_KEYS.sceneCharacters]).toEqual([
       shorten(kept.path),
     ]);
+  });
+
+  const statusRecord = (heading: string): RecordLine => ({
+    label: { path: "Def/World_Status", heading, display: heading },
+    target: null,
+    location: null,
+    time: null,
+  });
+
+  const relationRecord = (heading: string, target: string): RecordLine => ({
+    label: { path: "Def/Relationship", heading, display: heading },
+    target: { kind: "link", path: target, name: target.split("/").pop() ?? target },
+    location: null,
+    time: null,
+  });
+
+  it("creates a worldbuilding entity with its frontmatter, callout, and records", async () => {
+    const project = await service.createProject({ name: "Worlds CRUD" });
+    const start = await service.createEntity(project, {
+      kind: "time",
+      name: "1024-03",
+      timeKind: "point",
+    });
+    const famine = await service.createEntity(project, {
+      kind: "time",
+      name: "The Long Famine",
+      timeKind: "period",
+      timeStart: `[[${linkTarget(start.path)}]]`,
+      timeEnd: "[[1024-06]]",
+      description: "Three hungry months.",
+      aliases: ["The Hunger"],
+      categoryPaths: ["Time/Era"],
+      worldStatus: [statusRecord("Ongoing")],
+    });
+
+    expect(famine.path).toContain("60_Worldbuilding/61_Time/");
+    expect(famine.kind).toBe("time");
+    expect(famine.timeKind).toBe("period");
+    expect(famine.aliases).toEqual(["The Hunger"]);
+    expect(famine.categories).toEqual([
+      expect.stringContaining("Category#Era|Time/Era"),
+    ]);
+    expect(famine.worldStatus).toHaveLength(1);
+
+    const content = fakeVault.contents.get(famine.path) ?? "";
+    const frontmatter = parseMarkdownFrontmatter(content).frontmatter;
+    expect(frontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
+    expect(frontmatter[FRONTMATTER_KEYS.document]).toBe("worldbuilding");
+    expect(frontmatter[FRONTMATTER_KEYS.worldbuildingKind]).toBe("time");
+    expect(frontmatter["aliases"]).toEqual(["The Hunger"]);
+    const block = readMarkedSection(content, "entity-fields");
+    expect(block).toContain("> [!info] Time overview");
+    expect(block).toContain("> **Type**: Period");
+    expect(block).toContain("> **Start**: ");
+    expect(block).toContain("> **Description**: Three hungry months.");
+    expect(readMarkedSection(content, "world-status")).toContain(
+      "- [[Def/World_Status#Ongoing|Ongoing]]",
+    );
+    expect(content).toContain("## World Status");
+    // Empty record sections stay deferred out of the note.
+    expect(content).not.toContain("snowflake:section:relationships");
+
+    const snapshot = await service.loadProject(project.projectFile);
+    expect(snapshot.worldbuilding.time.map((entity) => entity.name)).toEqual([
+      "1024-03",
+      "The Long Famine",
+    ]);
+    expect(snapshot.worldbuilding.location).toEqual([]);
+  });
+
+  it("requires both ends of a period, or neither", async () => {
+    const project = await service.createProject({ name: "Half period" });
+    await expect(
+      service.createEntity(project, {
+        kind: "time",
+        name: "Broken",
+        timeKind: "period",
+        timeStart: "[[Somewhere]]",
+      }),
+    ).rejects.toThrow(/both its start and its end/u);
+  });
+
+  it("updates entity records and removes an emptied record section", async () => {
+    const project = await service.createProject({ name: "Entity update" });
+    const keep = await service.createEntity(project, {
+      kind: "location",
+      name: "Royal Capital",
+      worldStatus: [statusRecord("Standing")],
+    });
+
+    const emptied = await service.updateEntity(project, keep.entityId, {
+      expectedRevision: keep.revision,
+      worldStatus: [],
+      relationships: [relationRecord("Ally", "Elf Kingdom")],
+      description: "The seat of the crown.",
+    });
+    const content = fakeVault.contents.get(emptied.path) ?? "";
+    expect(content).not.toContain("snowflake:section:world-status");
+    expect(content).not.toContain("## World Status");
+    expect(readMarkedSection(content, "relationships")).toContain(
+      "-> [[Elf Kingdom]]",
+    );
+    expect(readMarkedSection(content, "entity-fields")).toContain(
+      "> **Description**: The seat of the crown.",
+    );
+    expect(emptied.worldStatus).toEqual([]);
+    expect(emptied.relationships).toHaveLength(1);
+
+    await expect(
+      service.updateEntity(project, keep.entityId, {
+        expectedRevision: keep.revision,
+        description: "stale",
+      }),
+    ).rejects.toThrow(ConcurrentChangeError);
+  });
+
+  it("renames an entity and follows the time links other notes store", async () => {
+    const project = await service.createProject({ name: "Entity rename" });
+    const point = await service.createEntity(project, {
+      kind: "time",
+      name: "Year 1023",
+      timeKind: "point",
+    });
+    const era = await service.createEntity(project, {
+      kind: "time",
+      name: "The Silver Era",
+      timeKind: "period",
+      timeStart: `[[${linkTarget(point.path)}|Year 1023]]`,
+      timeEnd: `[[${linkTarget(point.path)}|Year 1023]]`,
+    });
+
+    const renamed = await service.updateEntity(project, point.entityId, {
+      expectedRevision: point.revision,
+      name: "Imperial Year 1023",
+    });
+    expect(renamed.name).toBe("Imperial Year 1023");
+    expect(renamed.path).toContain("Imperial Year 1023.md");
+    const eraFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(era.path) ?? "",
+    ).frontmatter;
+    // The alias matches the note name, so the normalized link drops it.
+    expect(eraFrontmatter[FRONTMATTER_KEYS.timeStart]).toBe(
+      `[[${linkTarget(renamed.path)}]]`,
+    );
+    expect(eraFrontmatter[FRONTMATTER_KEYS.timeEnd]).toBe(
+      `[[${linkTarget(renamed.path)}]]`,
+    );
+  });
+
+  it("keeps a character's age and records in their sections", async () => {
+    const project = await service.createProject({ name: "Character records" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      age: {
+        property: "age",
+        value: { kind: "text", text: "23" },
+        location: null,
+        time: null,
+      },
+      worldStatus: [statusRecord("Missing")],
+    });
+    const created = fakeVault.contents.get(ada.path) ?? "";
+    expect(created).toContain("## Details");
+    expect(readMarkedSection(created, "details")).toBe("- **Age**: 23");
+    expect(readMarkedSection(created, "world-status")).toContain("Missing");
+    expect(ada.details).toHaveLength(1);
+
+    const cleared = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: ada.revision,
+      age: null,
+      worldStatus: [],
+      relationships: [relationRecord("Enemy", "Demon Empire")],
+    });
+    const content = fakeVault.contents.get(cleared.path) ?? "";
+    expect(content).not.toContain("snowflake:section:details");
+    expect(content).not.toContain("## Details");
+    expect(content).not.toContain("snowflake:section:world-status");
+    expect(readMarkedSection(content, "relationships")).toContain(
+      "[[Def/Relationship#Enemy|Enemy]] -> [[Demon Empire]]",
+    );
+    expect(cleared.details).toEqual([]);
+    expect(cleared.relationships).toHaveLength(1);
+  });
+
+  it("keeps the category picker's list and the role link together", async () => {
+    const project = await service.createProject({ name: "Category picker" });
+    const ada = await service.createCharacter(project, {
+      name: "Ada",
+      type: "major",
+      categoryPaths: ["Character/Race/Elf"],
+    });
+    expect(ada.categories).toEqual([
+      expect.stringContaining("|Character/Major]]"),
+      expect.stringContaining("|Character/Race/Elf]]"),
+    ]);
+
+    const repicked = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: ada.revision,
+      type: "supporting",
+      categoryPaths: ["Character/Gender/Female"],
+    });
+    expect(repicked.type).toBe("supporting");
+    expect(repicked.categories).toEqual([
+      expect.stringContaining("|Character/Supporting]]"),
+      expect.stringContaining("|Character/Gender/Female]]"),
+    ]);
+  });
+
+  it("stamps schema 2 across the project when migrating and restores the worldbuilding tree", async () => {
+    const project = await service.createProject({ name: "Schema stamp" });
+    const ada = await service.createCharacter(project, { name: "Ada", type: "major" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(ada.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.schema] = 1;
+        frontmatter[FRONTMATTER_KEYS.characterType] = "major";
+        delete frontmatter[FRONTMATTER_KEYS.category];
+      },
+    );
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(project.projectFile)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.schema] = 1;
+      },
+    );
+    fakeVault.delete(`${project.rootPath}/60_Worldbuilding/Category.md`);
+
+    const result = await service.migrateMemberNotes(project.projectFile);
+    expect(result.skipped).toBe(0);
+
+    const characterFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(ada.path) ?? "",
+    ).frontmatter;
+    expect(characterFrontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
+    expect(characterFrontmatter[FRONTMATTER_KEYS.characterType]).toBeUndefined();
+    expect(characterFrontmatter[FRONTMATTER_KEYS.category]).toEqual([
+      expect.stringContaining("|Character/Major]]"),
+    ]);
+    const projectFrontmatter = await service.readManagedFrontmatter(project.projectFile);
+    expect(projectFrontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
+    expect(
+      fakeVault.contents.get(`${project.rootPath}/60_Worldbuilding/Category.md`),
+    ).toContain("# Character");
   });
 });

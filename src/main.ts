@@ -2,6 +2,7 @@ import {
 	MarkdownView,
 	Menu,
 	moment,
+	normalizePath,
 	Notice,
 	Platform,
 	Plugin,
@@ -19,6 +20,7 @@ import {
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	WORLDBUILDING_KINDS,
 	getFirstIncompleteStep,
 	isDocumentType,
 	isStepId,
@@ -28,6 +30,7 @@ import {
 	type DocumentType,
 	type StepId,
 	type StepStatus,
+	type WorldbuildingKind,
 	scenesUsingCharacter,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
@@ -62,12 +65,17 @@ import {
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
+	characterTypeFromHeading,
+	definitionFileName,
+	getProjectPathLayout,
 	isMemberDocumentType,
+	parseHeadingLink,
 	type ArtifactSnapshot,
 	type CharacterRecord,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SceneRecord,
+	type WorldbuildingRecord,
 } from './services';
 import {
 	isPathAtOrBelow,
@@ -116,13 +124,16 @@ import {
 	type CreateCharacterRequest,
 	type CreateProjectRequest,
 	type CreateSceneRequest,
+	type EntityFormRequest,
 	type ManageProjectOption,
 	type Translate,
 } from './ui/modals';
 import type {
+	AddDefinitionPathResult,
 	CharacterViewModel,
 	CreatedProject,
 	DashboardHost,
+	DefinitionFileChoice,
 	ManagedSectionIssueViewModel,
 	ManuscriptHost,
 	ManuscriptModel,
@@ -130,10 +141,12 @@ import type {
 	ManuscriptWindowSettings,
 	SegmentNamed,
 	StepFields,
+	ProjectBaseChoice,
 	ProjectDashboardModel,
 	ProjectOption,
 	RepairReportViewModel,
 	SceneViewModel,
+	WorldbuildingEntityViewModel,
 } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
@@ -142,6 +155,11 @@ const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
+
+/** The full path a category link displays: its alias, or the raw value. */
+function categoryDisplayPath(raw: string): string {
+	return parseHeadingLink(raw)?.display ?? raw;
+}
 
 /**
  * How much room a scrollbar takes in this window. Overlaid ones, and the ones
@@ -848,6 +866,17 @@ export default class SnowflakeMethodPlugin
 				},
 			characters: characterModels,
 			scenes: sceneModels,
+			worldbuilding: {
+				time: project.worldbuilding.time.map((entity) =>
+					this.entityViewModel(entity, projectT),
+				),
+				location: project.worldbuilding.location.map((entity) =>
+					this.entityViewModel(entity, projectT),
+				),
+				item: project.worldbuilding.item.map((entity) =>
+					this.entityViewModel(entity, projectT),
+				),
+			},
 			unmigratedMembers:
 				characters.filter(
 					(character) => character.unmigrated && !character.readOnly,
@@ -943,6 +972,11 @@ export default class SnowflakeMethodPlugin
 		await this.saveSettings();
 	}
 
+	async selectWorldbuildingKind(): Promise<void> {
+		// The pane rides the view state; a fresh dashboard still opens on the
+		// recent step, which stays whatever it was.
+	}
+
 	async createProject(request: CreateProjectRequest): Promise<CreatedProject> {
 		let project: ProjectSnapshot;
 		try {
@@ -1002,12 +1036,18 @@ export default class SnowflakeMethodPlugin
 				expectedRevision,
 				name: request.name,
 				type: request.type,
+				aliases: request.aliases,
+				categoryPaths: request.categoryPaths,
+				progressStatus: request.progressStatus,
 				oneSentenceStoryline: request.oneSentenceStoryline,
 				oneParagraphStoryline: request.oneParagraphStoryline,
 				motivation: request.motivation,
 				goal: request.goal,
 				conflict: request.conflict,
 				growth: request.growth,
+				age: request.age,
+				worldStatus: request.worldStatus,
+				relationships: request.relationships,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -1071,10 +1111,15 @@ export default class SnowflakeMethodPlugin
 			scene = await this.projects.createScene(project, {
 				title: request.title,
 				povPath: request.povPath || null,
+				aliases: request.aliases,
+				categoryPaths: request.categoryPaths,
+				progressStatus: request.progressStatus,
 				time: request.time,
 				location: request.location,
 				characters: request.characterPaths,
 				conflict: request.conflict,
+				worldStatus: request.worldStatus,
+				relationships: request.relationships,
 				events: request.events,
 			});
 		} catch (error) {
@@ -1092,16 +1137,136 @@ export default class SnowflakeMethodPlugin
 		await this.openManagedFile(path);
 	}
 
-	async openProjectBase(id: 'characters' | 'scenes'): Promise<void> {
+	async openProjectBase(id: ProjectBaseChoice): Promise<void> {
 		const project = await this.requireCurrentProject();
 		const path = await this.projects.openProjectBase(project, id);
 		await this.openManagedFile(path);
 	}
 
-	async restoreProjectBase(id: 'characters' | 'scenes'): Promise<void> {
+	async restoreProjectBase(id: ProjectBaseChoice): Promise<void> {
 		const project = await this.requireCurrentProject();
 		const path = await this.projects.restoreProjectBase(project, id);
 		await this.openManagedFile(path);
+	}
+
+	async createEntity(request: EntityFormRequest): Promise<{ id: string }> {
+		const project = await this.requireCurrentProject();
+		let entity;
+		try {
+			entity = await this.projects.createEntity(project, {
+				kind: request.kind,
+				name: request.name,
+				aliases: request.aliases,
+				categoryPaths: request.categoryPaths,
+				progressStatus: request.progressStatus,
+				description: request.description,
+				timeKind: request.timeKind,
+				timeStart: request.timeStart,
+				timeEnd: request.timeEnd,
+				details:
+					request.owner === null
+						? []
+						: [{ ...request.owner, property: 'owner' as const }],
+				worldStatus: request.worldStatus,
+				relationships: request.relationships,
+			});
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		new Notice(this.t('messages.entityCreated', { name: entity.name }));
+		return { id: entity.entityId };
+	}
+
+	async updateEntity(id: string, request: EntityFormRequest): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const expectedRevision = this.requireExpectedRevision(
+			request.expectedRevision,
+		);
+		try {
+			await this.projects.updateEntity(project, id, {
+				expectedRevision,
+				name: request.name,
+				aliases: request.aliases,
+				categoryPaths: request.categoryPaths,
+				progressStatus: request.progressStatus,
+				description: request.description,
+				timeKind: request.timeKind,
+				timeStart: request.timeStart,
+				timeEnd: request.timeEnd,
+				details:
+					request.owner === null
+						? []
+						: [{ ...request.owner, property: 'owner' as const }],
+				worldStatus: request.worldStatus,
+				relationships: request.relationships,
+			});
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async deleteEntity(id: string, expectedRevision: string): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const entity = WORLDBUILDING_KINDS.flatMap(
+			(kind) => project.worldbuilding[kind],
+		).find((candidate) => candidate.entityId === id);
+		if (entity === undefined) {
+			throw new ManagedFileNotFoundError(`entity:${id}`);
+		}
+		const file = this.app.vault.getFileByPath(entity.path);
+		if (!(file instanceof TFile)) {
+			throw new ManagedFileNotFoundError(entity.path);
+		}
+		if (entity.revision !== expectedRevision) {
+			this.rethrowLocalizedMutationError(
+				new ConcurrentChangeError(entity.path, expectedRevision, entity.revision),
+			);
+		}
+		if (!(await this.app.fileManager.promptForDeletion(file))) return;
+		new Notice(this.t('messages.entityDeleted'));
+	}
+
+	async reorderEntity(
+		kind: WorldbuildingKind,
+		entityId: string,
+		targetIndex: number,
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.reorderEntity(project, kind, entityId, targetIndex);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async listDefinitionPaths(id: DefinitionFileChoice): Promise<string[]> {
+		const project = await this.requireCurrentProject();
+		return this.projects.listDefinitionPaths(project, id);
+	}
+
+	async addDefinitionPath(
+		id: DefinitionFileChoice,
+		path: string,
+	): Promise<AddDefinitionPathResult> {
+		const project = await this.requireCurrentProject();
+		const result = await this.projects.addDefinitionPath(project, id, path);
+		return result.ok
+			? { ok: true }
+			: { ok: false, code: result.code, segment: result.segment };
+	}
+
+	async definitionFilePaths(): Promise<Record<DefinitionFileChoice, string>> {
+		const project = await this.requireCurrentProject();
+		const layout = getProjectPathLayout(project.locale);
+		const pathFor = (id: DefinitionFileChoice): string =>
+			normalizePath(
+				`${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(id, project.locale)}`,
+			);
+		return {
+			category: pathFor('category'),
+			'world-status': pathFor('world-status'),
+			relationship: pathFor('relationship'),
+		};
 	}
 
 	async updateScene(id: string, request: CreateSceneRequest): Promise<void> {
@@ -1114,10 +1279,15 @@ export default class SnowflakeMethodPlugin
 				expectedRevision,
 				title: request.title,
 				povPath: request.povPath || null,
+				aliases: request.aliases,
+				categoryPaths: request.categoryPaths,
+				progressStatus: request.progressStatus,
 				time: request.time,
 				location: request.location,
 				characters: request.characterPaths,
 				conflict: request.conflict,
+				worldStatus: request.worldStatus,
+				relationships: request.relationships,
 				events: request.events,
 			});
 		} catch (error) {
@@ -1683,13 +1853,15 @@ export default class SnowflakeMethodPlugin
 				getStrings: (context) => this.managedSectionEditorStrings(context),
 				getSectionIds: (context) =>
 					this.managedSectionIdsForEditor(context.content),
-				onBoundaryBlocked: ({ context, generatedSectionIds }) => {
+				onBoundaryBlocked: ({ context, generatedSectionIds, recordSectionIds }) => {
 					new Notice(
 						this.editorT(
 							context.content,
 							generatedSectionIds.length > 0
 								? 'editor.managedSection.generatedNotice'
-								: 'editor.managedSection.protectedNotice',
+								: recordSectionIds.length > 0
+									? 'editor.managedSection.recordNotice'
+									: 'editor.managedSection.protectedNotice',
 						),
 					);
 				},
@@ -3089,12 +3261,25 @@ export default class SnowflakeMethodPlugin
 			name: character.name,
 			rank: character.rank,
 			type: character.type,
+			progressStatus: character.progressStatus,
+			aliases: character.aliases,
+			// The role rides its own control in the form, so its category link
+			// stays out of the picker's list.
+			categoryPaths: character.categories
+				.filter((raw) => {
+					const link = parseHeadingLink(raw);
+					return link === null || characterTypeFromHeading(link.heading) === null;
+				})
+				.map((raw) => categoryDisplayPath(raw)),
 			oneSentenceStoryline: character.oneSentenceStoryline,
 			oneParagraphStoryline: character.oneParagraphStoryline,
 			motivation: character.motivation,
 			goal: character.goal,
 			conflict: character.conflict,
 			growth: character.growth,
+			age: character.details.find((line) => line.property === 'age') ?? null,
+			worldStatus: character.worldStatus,
+			relationships: character.relationships,
 			revision: character.revision,
 			readOnly: character.readOnly,
 			nameDrifted: driftedNames.has(character.path),
@@ -3141,6 +3326,11 @@ export default class SnowflakeMethodPlugin
 			location: scene.location,
 			characterPaths: scene.characters,
 			conflict: scene.conflict,
+			progressStatus: scene.progressStatus,
+			aliases: scene.aliases,
+			categoryPaths: scene.categories.map((raw) => categoryDisplayPath(raw)),
+			worldStatus: scene.worldStatus,
+			relationships: scene.relationships,
 			events: scene.events,
 			revision: scene.revision,
 			readOnly: scene.readOnly,
@@ -3150,6 +3340,33 @@ export default class SnowflakeMethodPlugin
 				scene.sectionHealth,
 				t,
 			),
+		};
+	}
+
+	private entityViewModel(
+		entity: WorldbuildingRecord,
+		t: Translate,
+	): WorldbuildingEntityViewModel {
+		return {
+			id: entity.entityId,
+			path: entity.path,
+			name: entity.name,
+			kind: entity.kind,
+			rank: entity.rank,
+			progressStatus: entity.progressStatus,
+			aliases: entity.aliases,
+			categoryPaths: entity.categories.map((raw) => categoryDisplayPath(raw)),
+			description: entity.description,
+			timeKind: entity.timeKind,
+			timeStart: entity.timeStart,
+			timeEnd: entity.timeEnd,
+			details: entity.details,
+			worldStatus: entity.worldStatus,
+			relationships: entity.relationships,
+			revision: entity.revision,
+			readOnly: entity.readOnly,
+			nameDrifted: false,
+			healthIssues: this.issueViewModels(entity.path, entity.sectionHealth, t),
 		};
 	}
 
@@ -3165,7 +3382,9 @@ export default class SnowflakeMethodPlugin
 			code: issue.code,
 			action: null,
 			message: t(`editor.managedSection.issue.${issue.code}`),
-			blocking: issue.code !== 'unknown-section',
+			blocking:
+				issue.code !== 'unknown-section' &&
+				issue.code !== 'unrecognized-record',
 			kind: 'section',
 			stepIds: [],
 			canOpen: true,
@@ -3196,6 +3415,9 @@ export default class SnowflakeMethodPlugin
 				character: 'errors.characterExists',
 				scene: 'errors.sceneExists',
 				project: 'errors.projectExists',
+				time: 'errors.entityExists',
+				location: 'errors.entityExists',
+				item: 'errors.entityExists',
 			}[error.kind];
 			throw new Error(this.t(key, { name: error.requestedName }));
 		}

@@ -8,3 +8,4 @@ export * from './scene';
 export * from './steps';
 export * from './text-length';
 export * from './types';
+export * from './worldbuilding';

@@ -12,6 +12,7 @@ describe('document types', () => {
 			'long-synopsis',
 			'character',
 			'scene',
+			'worldbuilding',
 			'draft',
 			'material',
 			'archive',

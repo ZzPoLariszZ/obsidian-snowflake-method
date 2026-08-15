@@ -1,7 +1,9 @@
 import {
   SCENE_POV_OMNISCIENT,
-  isCharacterType,
+  type ProgressStatus,
   type ScenePovMode,
+  type TimeKind,
+  type WorldbuildingKind,
 } from "../domain";
 
 export type FieldsBlockLanguage = "en" | "zh-CN";
@@ -17,8 +19,19 @@ export type ScenePovField =
   | { kind: "mode"; mode: ScenePovMode }
   | null;
 
-export interface CharacterFieldsView {
-  type: string;
+/**
+ * The universal lines every member note's overview opens with. Categories
+ * arrive as their stored display form, link or plain path text, because the
+ * stored form is already exactly what should be shown; a null status is a
+ * note that never chose one, and the line is simply absent.
+ */
+export interface MemberFieldsCommon {
+  progressStatus: ProgressStatus | null;
+  aliases: readonly string[];
+  categories: readonly string[];
+}
+
+export interface CharacterFieldsView extends MemberFieldsCommon {
   oneSentenceStoryline: string;
   motivation: string;
   goal: string;
@@ -26,7 +39,7 @@ export interface CharacterFieldsView {
   growth: string;
 }
 
-export interface SceneFieldsView {
+export interface SceneFieldsView extends MemberFieldsCommon {
   pov: ScenePovField;
   time: string;
   location: string;
@@ -34,10 +47,32 @@ export interface SceneFieldsView {
   cast: readonly { path: string; name: string }[];
 }
 
+export interface EntityTimeView {
+  kind: TimeKind | null;
+  start: string;
+  end: string;
+}
+
+export interface EntityFieldsView extends MemberFieldsCommon {
+  description: string;
+  /** Present only for kinds that carry the time fields. */
+  time: EntityTimeView | null;
+}
+
 interface FieldsCopy {
   characterTitle: string;
   sceneTitle: string;
+  entityTitles: Record<WorldbuildingKind, string>;
+  status: string;
+  statusLabels: Record<ProgressStatus, string>;
+  aliases: string;
+  category: string;
+  description: string;
   type: string;
+  timeKindLabels: Record<TimeKind, string>;
+  start: string;
+  end: string;
+  when: string;
   oneSentenceStoryline: string;
   motivation: string;
   goal: string;
@@ -47,7 +82,6 @@ interface FieldsCopy {
   time: string;
   location: string;
   cast: string;
-  typeLabels: Record<"major" | "supporting" | "minor", string>;
   povOmniscient: string;
   povMultiple: string;
   separator: string;
@@ -63,7 +97,30 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
   en: {
     characterTitle: "Character overview",
     sceneTitle: "Scene overview",
+    entityTitles: {
+      time: "Time overview",
+      location: "Location overview",
+      item: "Item overview",
+    },
+    status: "Status",
+    statusLabels: {
+      "not-started": "Not started",
+      "in-progress": "In progress",
+      "in-revision": "In revision",
+      complete: "Complete",
+    },
+    aliases: "Aliases",
+    category: "Category",
+    description: "Description",
     type: "Type",
+    timeKindLabels: {
+      point: "Point in time",
+      period: "Period",
+      event: "Event",
+    },
+    start: "Start",
+    end: "End",
+    when: "When",
     oneSentenceStoryline: "One-sentence storyline",
     motivation: "Motivation",
     goal: "Goal",
@@ -73,11 +130,6 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
     time: "Time",
     location: "Location",
     cast: "Characters",
-    typeLabels: {
-      major: "Major character",
-      supporting: "Supporting character",
-      minor: "Minor character",
-    },
     povOmniscient: "Omniscient",
     povMultiple: "Multi-POV",
     separator: ": ",
@@ -86,7 +138,30 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
   "zh-CN": {
     characterTitle: "角色概览",
     sceneTitle: "场景概览",
+    entityTitles: {
+      time: "时间概览",
+      location: "地点概览",
+      item: "物品概览",
+    },
+    status: "状态",
+    statusLabels: {
+      "not-started": "未开始",
+      "in-progress": "进行中",
+      "in-revision": "修订中",
+      complete: "已完成",
+    },
+    aliases: "别名",
+    category: "类别",
+    description: "描述",
     type: "类型",
+    timeKindLabels: {
+      point: "时间点",
+      period: "时间段",
+      event: "事件",
+    },
+    start: "开始",
+    end: "结束",
+    when: "时间",
     oneSentenceStoryline: "一句话故事概述",
     motivation: "动机",
     goal: "目标",
@@ -96,11 +171,6 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
     time: "时间",
     location: "地点",
     cast: "人物",
-    typeLabels: {
-      major: "主角",
-      supporting: "配角",
-      minor: "次要角色",
-    },
     povOmniscient: "全知视角",
     povMultiple: "多人视角",
     separator: "：",
@@ -119,12 +189,7 @@ export function renderCharacterFieldsBlock(
 ): string {
   const copy = COPY[language];
   return renderCallout(copy.characterTitle, [
-    {
-      label: copy.type,
-      value: isCharacterType(fields.type)
-        ? copy.typeLabels[fields.type]
-        : fields.type,
-    },
+    ...commonEntries(copy, fields),
     { label: copy.oneSentenceStoryline, value: fields.oneSentenceStoryline },
     { label: copy.motivation, value: fields.motivation },
     { label: copy.goal, value: fields.goal },
@@ -139,6 +204,7 @@ export function renderSceneFieldsBlock(
 ): string {
   const copy = COPY[language];
   return renderCallout(copy.sceneTitle, [
+    ...commonEntries(copy, fields),
     { label: copy.pov, value: renderPov(copy, fields.pov) },
     { label: copy.time, value: fields.time },
     { label: copy.location, value: fields.location },
@@ -151,6 +217,67 @@ export function renderSceneFieldsBlock(
     },
     { label: copy.conflict, value: fields.conflict },
   ], copy.separator);
+}
+
+export function renderEntityFieldsBlock(
+  language: FieldsBlockLanguage,
+  kind: WorldbuildingKind,
+  fields: EntityFieldsView,
+): string {
+  const copy = COPY[language];
+  return renderCallout(copy.entityTitles[kind], [
+    ...commonEntries(copy, fields),
+    ...timeEntries(copy, fields.time),
+    { label: copy.description, value: fields.description },
+  ], copy.separator);
+}
+
+function commonEntries(
+  copy: FieldsCopy,
+  fields: MemberFieldsCommon,
+): FieldEntry[] {
+  return [
+    {
+      label: copy.status,
+      value:
+        fields.progressStatus === null
+          ? ""
+          : copy.statusLabels[fields.progressStatus],
+    },
+    { label: copy.aliases, value: joinList(copy, fields.aliases) },
+    { label: copy.category, value: joinList(copy, fields.categories) },
+  ];
+}
+
+function timeEntries(
+  copy: FieldsCopy,
+  time: EntityTimeView | null,
+): FieldEntry[] {
+  if (time === null) return [];
+  const entries: FieldEntry[] = [
+    {
+      label: copy.type,
+      value: time.kind === null ? "" : copy.timeKindLabels[time.kind],
+    },
+  ];
+  const start = time.start.trim();
+  const end = time.end.trim();
+  if (start.length > 0 && end.length > 0) {
+    entries.push({ label: copy.start, value: start });
+    entries.push({ label: copy.end, value: end });
+  } else if (start.length > 0) {
+    entries.push({ label: copy.when, value: start });
+  } else if (end.length > 0) {
+    entries.push({ label: copy.end, value: end });
+  }
+  return entries;
+}
+
+function joinList(copy: FieldsCopy, values: readonly string[]): string {
+  return values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .join(copy.listSeparator);
 }
 
 function renderPov(copy: FieldsCopy, pov: ScenePovField): string {
@@ -171,8 +298,9 @@ interface FieldEntry {
 /**
  * An `[!info]` callout: boxed in reading view and live preview, an ordinary
  * blockquote everywhere else, so the block reads as generated matter rather
- * than prose in every mode. One paragraph per field; a value's own line breaks
- * continue the paragraph as unlabeled callout lines.
+ * than prose in every mode. Only fields holding a value appear; one paragraph
+ * per shown field, and a value's own line breaks continue the paragraph as
+ * unlabeled callout lines.
  */
 function renderCallout(
   title: string,
@@ -180,7 +308,8 @@ function renderCallout(
   separator: string,
 ): string {
   const lines = [`> [!info] ${title}`];
-  entries.forEach((entry, index) => {
+  const filled = entries.filter((entry) => entry.value.trim().length > 0);
+  filled.forEach((entry, index) => {
     if (index > 0) lines.push(">");
     const valueLines = entry.value.split(/\r\n|\r|\n/u);
     lines.push(`> **${entry.label}**${separator}${valueLines[0] ?? ""}`.trimEnd());

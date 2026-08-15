@@ -1,4 +1,21 @@
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
+
+/**
+ * Oldest schema this build still reads and writes. Schema 1 notes keep their
+ * legacy keys (character type, sectioned conflict) and every reader falls back
+ * to them, so nothing forces an upgrade; the migration action is what moves a
+ * project forward deliberately.
+ */
+export const MIN_SUPPORTED_SCHEMA_VERSION = 1 as const;
+
+export function isWritableSchemaVersion(version: number | null): boolean {
+	return (
+		version !== null &&
+		Number.isInteger(version) &&
+		version >= MIN_SUPPORTED_SCHEMA_VERSION &&
+		version <= SCHEMA_VERSION
+	);
+}
 
 export const STEP_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
@@ -25,6 +42,7 @@ export const DOCUMENT_TYPES = [
 	'long-synopsis',
 	'character',
 	'scene',
+	'worldbuilding',
 	'draft',
 	'material',
 	'archive',
@@ -33,6 +51,25 @@ export const DOCUMENT_TYPES = [
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type ProjectLanguage = 'en' | 'zh-CN';
 export type CharacterType = 'major' | 'supporting' | 'minor';
+
+/**
+ * Per-entity progress, the step vocabulary minus `skipped`: skipping is a
+ * decision about the optional step 9, not a state an individual note can be in.
+ */
+export const PROGRESS_STATUSES = [
+	'not-started',
+	'in-progress',
+	'in-revision',
+	'complete',
+] as const;
+
+export type ProgressStatus = (typeof PROGRESS_STATUSES)[number];
+
+export const DEFAULT_PROGRESS_STATUS: ProgressStatus = 'not-started';
+
+export const TIME_KINDS = ['point', 'period', 'event'] as const;
+
+export type TimeKind = (typeof TIME_KINDS)[number];
 
 /**
  * Frontmatter keys written by every managed document. Declared here rather than
@@ -64,7 +101,25 @@ export const FRONTMATTER_KEYS = {
 	sceneTime: 'snowflake-scene-time',
 	sceneLocation: 'snowflake-scene-location',
 	sceneCharacters: 'snowflake-scene-characters',
+	entityId: 'snowflake-entity-id',
+	name: 'snowflake-name',
+	description: 'snowflake-description',
+	// "progress" so the key can never be mistaken for the body-stored World
+	// Status records, which describe the entity inside the story.
+	progressStatus: 'snowflake-progress-status',
+	category: 'snowflake-category',
+	worldbuildingKind: 'snowflake-worldbuilding-kind',
+	timeKind: 'snowflake-time-kind',
+	timeStart: 'snowflake-time-start',
+	timeEnd: 'snowflake-time-end',
 } as const;
+
+/**
+ * Obsidian's own aliases key. Written as-is rather than under a snowflake
+ * prefix because the point is what Obsidian does with it: link autocomplete
+ * finds an entity by any alias.
+ */
+export const ALIASES_KEY = 'aliases' as const;
 
 export interface BaseDocumentData {
 	schemaVersion: typeof SCHEMA_VERSION;
@@ -112,7 +167,7 @@ export interface SceneData extends BaseDocumentData {
 export interface ContentDocumentData extends BaseDocumentData {
 	documentType: Exclude<
 		DocumentType,
-		'project-metadata' | 'character' | 'scene'
+		'project-metadata' | 'character' | 'scene' | 'worldbuilding'
 	>;
 	title: string;
 	content?: string;
@@ -155,4 +210,18 @@ export function isCharacterType(
 	value: unknown,
 ): value is CharacterType {
 	return value === 'major' || value === 'supporting' || value === 'minor';
+}
+
+export function isProgressStatus(value: unknown): value is ProgressStatus {
+	return (
+		typeof value === 'string' &&
+		(PROGRESS_STATUSES as readonly string[]).includes(value)
+	);
+}
+
+export function isTimeKind(value: unknown): value is TimeKind {
+	return (
+		typeof value === 'string' &&
+		(TIME_KINDS as readonly string[]).includes(value)
+	);
 }

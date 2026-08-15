@@ -10,7 +10,12 @@ export type MarkerIssueCode =
   | "duplicate-end"
   | "reversed"
   | "unknown-section"
-  | "overlap";
+  | "overlap"
+  /**
+   * A line in a record section the grammar cannot read. Informational, never
+   * blocking: the line is kept verbatim, and only the author can resolve it.
+   */
+  | "unrecognized-record";
 
 export interface SectionMarkers {
   start: string;

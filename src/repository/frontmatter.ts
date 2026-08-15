@@ -1,6 +1,6 @@
 import { parseYaml } from "obsidian";
 
-import { SCHEMA_VERSION } from "../domain";
+import { SCHEMA_VERSION, isWritableSchemaVersion } from "../domain";
 import { InvalidManagedDocumentError, UnsupportedSchemaError } from "./errors";
 
 export type FrontmatterValue = unknown;
@@ -53,12 +53,14 @@ export function schemaVersionOf(frontmatter: ManagedFrontmatter): number | null 
  *
  * A note carrying no schema at all is not one of ours and is not locked; one
  * carrying a schema we do not recognise is a note a later build wrote, and is
- * read but never written back.
+ * read but never written back. Anything in the supported range stays writable:
+ * schema 1 notes keep working through their legacy keys until the user runs
+ * the migration.
  */
 export function isReadOnlySchema(frontmatter: ManagedFrontmatter): boolean {
   return (
     Object.prototype.hasOwnProperty.call(frontmatter, "snowflake-schema") &&
-    schemaVersionOf(frontmatter) !== SCHEMA_VERSION
+    !isWritableSchemaVersion(schemaVersionOf(frontmatter))
   );
 }
 
@@ -73,7 +75,7 @@ export function assertWritableSchema(path: string, frontmatter: ManagedFrontmatt
       path,
     );
   }
-  if (schema !== SCHEMA_VERSION) {
+  if (!isWritableSchemaVersion(schema)) {
     throw new UnsupportedSchemaError(path, schema, SCHEMA_VERSION);
   }
 }

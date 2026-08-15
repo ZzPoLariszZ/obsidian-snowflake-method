@@ -8,10 +8,19 @@ import {
 	shouldShowGlobalStructureIssue,
 } from '../../src/ui/dashboard-state';
 
+const DEFAULT_PANE = { kind: 'step', step: 1 } as const;
+const OPEN_RAIL = { steps: false, worldbuilding: false };
+
 describe('dashboard restored state', () => {
 	it('detects persisted project state that arrives after the view opens', () => {
 		const update = mergeDashboardViewState(
-			{ projectPath: null, projectTitle: null, selectedStep: 1 },
+			{
+				projectPath: null,
+				projectTitle: null,
+				selectedStep: 1,
+				selectedPane: DEFAULT_PANE,
+				railCollapsed: OPEN_RAIL,
+			},
 			{
 				projectPath: 'Snowflake Projects/Novel/00_System/001_Project_Metadata.md',
 				projectTitle: 'Novel',
@@ -25,9 +34,39 @@ describe('dashboard restored state', () => {
 					'Snowflake Projects/Novel/00_System/001_Project_Metadata.md',
 				projectTitle: 'Novel',
 				selectedStep: 4,
+				// A state written by an older build carries only the step, which
+				// is a pane all the same.
+				selectedPane: { kind: 'step', step: 4 },
+				railCollapsed: OPEN_RAIL,
 			},
 			changed: true,
 		});
+	});
+
+	it('restores a worldbuilding pane and the rail folds', () => {
+		const update = mergeDashboardViewState(
+			{
+				projectPath: null,
+				projectTitle: null,
+				selectedStep: 1,
+				selectedPane: DEFAULT_PANE,
+				railCollapsed: OPEN_RAIL,
+			},
+			{
+				selectedPane: { kind: 'worldbuilding', wbKind: 'time' },
+				railCollapsed: { steps: true, worldbuilding: false },
+			},
+		);
+
+		expect(update.state.selectedPane).toEqual({
+			kind: 'worldbuilding',
+			wbKind: 'time',
+		});
+		expect(update.state.railCollapsed).toEqual({
+			steps: true,
+			worldbuilding: false,
+		});
+		expect(update.changed).toBe(true);
 	});
 
 	it('supports restoring an explicitly empty dashboard', () => {
@@ -36,6 +75,8 @@ describe('dashboard restored state', () => {
 				projectPath: 'Snowflake Projects/Novel/metadata.md',
 				projectTitle: 'Novel',
 				selectedStep: 3,
+				selectedPane: { kind: 'step', step: 3 },
+				railCollapsed: OPEN_RAIL,
 			},
 			{ projectPath: null, projectTitle: null, selectedStep: 1 },
 		);
@@ -44,6 +85,8 @@ describe('dashboard restored state', () => {
 			projectPath: null,
 			projectTitle: null,
 			selectedStep: 1,
+			selectedPane: { kind: 'step', step: 1 },
+			railCollapsed: OPEN_RAIL,
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -53,6 +96,8 @@ describe('dashboard restored state', () => {
 			projectPath: 'Snowflake Projects/Novel/metadata.md',
 			projectTitle: 'Novel',
 			selectedStep: 3 as const,
+			selectedPane: { kind: 'step', step: 3 } as const,
+			railCollapsed: OPEN_RAIL,
 		};
 
 		expect(
@@ -60,17 +105,19 @@ describe('dashboard restored state', () => {
 				projectPath: 10,
 				projectTitle: false,
 				selectedStep: 11,
+				selectedPane: { kind: 'worldbuilding', wbKind: 'weather' },
+				railCollapsed: { steps: 'yes' },
 			}),
 		).toEqual({ state: current, changed: false });
 	});
 });
 
 describe('dashboard render continuity', () => {
-	it('carries scroll and disclosure state through a same-step refresh', () => {
+	it('carries scroll and disclosure state through a same-pane refresh', () => {
 		expect(
 			dashboardRenderContinuity(
-				{ projectId: 'novel', step: 9 },
-				{ projectId: 'novel', step: 9 },
+				{ projectId: 'novel', pane: 'step-9' },
+				{ projectId: 'novel', pane: 'step-9' },
 			),
 		).toEqual({
 			sameProject: true,
@@ -79,11 +126,11 @@ describe('dashboard render continuity', () => {
 		});
 	});
 
-	it('keeps the step list put but resets the panel when the step changes', () => {
+	it('keeps the rail put but resets the panel when the pane changes', () => {
 		expect(
 			dashboardRenderContinuity(
-				{ projectId: 'novel', step: 1 },
-				{ projectId: 'novel', step: 9 },
+				{ projectId: 'novel', pane: 'step-1' },
+				{ projectId: 'novel', pane: 'wb-time' },
 			),
 		).toEqual({
 			sameProject: true,
@@ -95,8 +142,8 @@ describe('dashboard render continuity', () => {
 	it('starts over when the dashboard switches to another project', () => {
 		expect(
 			dashboardRenderContinuity(
-				{ projectId: 'novel', step: 9 },
-				{ projectId: 'novella', step: 9 },
+				{ projectId: 'novel', pane: 'step-9' },
+				{ projectId: 'novella', pane: 'step-9' },
 			),
 		).toEqual({
 			sameProject: false,
@@ -108,8 +155,8 @@ describe('dashboard render continuity', () => {
 	it('treats the first render after an empty dashboard as a fresh start', () => {
 		expect(
 			dashboardRenderContinuity(
-				{ projectId: null, step: null },
-				{ projectId: 'novel', step: 4 },
+				{ projectId: null, pane: null },
+				{ projectId: 'novel', pane: 'step-4' },
 			),
 		).toEqual({
 			sameProject: false,
@@ -126,6 +173,7 @@ describe('dashboard health indicator', () => {
 		steps: [{ healthIssues: [] }],
 		characters: [],
 		scenes: [],
+		worldbuilding: { time: [], location: [], item: [] },
 	};
 
 	it('is healthy when every issue source is clear', () => {

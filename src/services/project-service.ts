@@ -6,9 +6,11 @@ import {
 } from "obsidian";
 
 import {
+  MIN_SUPPORTED_SCHEMA_VERSION,
   RANK_GAP,
   SCHEMA_VERSION,
   STEP_IDS,
+  isWritableSchemaVersion,
   managedSectionsForDocument,
   optionalSectionIds,
   areStepPrerequisitesComplete,
@@ -22,25 +24,49 @@ import {
   fingerprint,
   foldName,
   safeFileName,
+  WORLDBUILDING_KIND_DEFINITIONS,
   isDocumentType,
   isCharacterType,
   isNameTaken,
+  isProgressStatus,
   isProjectLanguage,
   isScenePovMode,
   isStepStatus,
+  isTimeKind,
+  isWorldbuildingKind,
   moveRanked,
   reviewContextFingerprint,
   setStepStatus,
   sortByRank,
+  ALIASES_KEY,
+  DEFINITION_FILE_IDS,
   SCENE_POV_OMNISCIENT,
+  WORLDBUILDING_KINDS,
   type CharacterType,
+  type DefinitionFileId,
   type DocumentType,
+  type ProgressStatus,
   type ProjectLanguage,
   type StepFingerprintMap,
   type StepId,
   type StepStatus,
   type StepStatusMap,
+  type TimeKind,
+  type WorldbuildingKind,
 } from "../domain";
+import {
+  appendDefinitionPath,
+  characterRoleFromCategories,
+  characterRoleHeading,
+  characterRolePath,
+  characterTypeFromHeading,
+  definitionFileName,
+  definitionFileTemplate,
+  parseDefinitionFile,
+  parseHeadingLink,
+  renderHeadingLink,
+  type AppendPathResult,
+} from "./definition-files";
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
@@ -70,13 +96,29 @@ import {
   inspectManagedDocumentSections,
   readMarkedSection,
   renderCharacterFieldsBlock,
+  renderEntityFieldsBlock,
   renderSceneFieldsBlock,
+  renderDetailsSection,
+  renderRecordSection,
+  parseDetailsSectionLenient,
+  parseRecordSectionLenient,
+  parseTerm,
+  renderTerm,
+  entityTemplate,
+  recordSectionHeading,
+  recordSectionHeadings,
+  type CharacterFieldsView,
+  type DetailsLine,
+  type EntityFieldsView,
+  type RecordLine,
+  type RecordSectionId,
   sceneTemplate,
   type ManagedSectionDefinition,
   type ManagedSectionsInspection,
   type ScenePovField,
   type SectionLayoutEntry,
   type MarkdownTemplate,
+  type CharacterRoleLinks,
   type ProjectBaseDefinition,
   type ProjectBaseId,
   type SystemTemplateDefinition,
@@ -96,6 +138,7 @@ import {
   PROJECT_PATH_LAYOUTS,
   getProjectMetadataRelativePath,
   getProjectPathLayout,
+  worldbuildingKindFolder,
   type ArtifactSnapshot,
   type CharacterInput,
   type CharacterPatch,
@@ -103,6 +146,7 @@ import {
   type CreateProjectOptions,
   type ProjectFrontmatterPatch,
   type ProjectDirectoryKey,
+  type ProjectPathLayout,
   type ProjectLocator,
   type ProjectRef,
   type ProjectSnapshot,
@@ -111,6 +155,9 @@ import {
   type SceneInput,
   type ScenePatch,
   type SceneRecord,
+  type EntityInput,
+  type EntityPatch,
+  type WorldbuildingRecord,
 } from "./types";
 
 const STATIC_DOCUMENT_BY_STEP: Partial<Record<StepId, DocumentType>> = {
@@ -135,7 +182,11 @@ export class ProjectCreationInterruptedError extends Error {
   }
 }
 
-export type NamedRecordKind = "character" | "scene" | "project";
+export type NamedRecordKind =
+  | "character"
+  | "scene"
+  | "project"
+  | WorldbuildingKind;
 
 /**
  * A name another record of the same kind already answers to — a character or
@@ -271,6 +322,7 @@ export class SnowflakeProjectService {
       schemaVersion: record.schemaVersion,
       characters: fingerprintCalculation.characters,
       scenes: fingerprintCalculation.scenes,
+      worldbuilding: fingerprintCalculation.worldbuilding,
       artifacts: fingerprintCalculation.artifacts,
       structureIssues,
     };
@@ -584,14 +636,39 @@ export class SnowflakeProjectService {
 
     const project = this.toProjectRef(projectRecord, rootPath);
     const layout = getProjectPathLayout(project.locale);
-    const commonFolders = Object.values(layout.directories).map((folder) =>
-      normalizePath(`${rootPath}/${folder}`),
-    );
+    const commonFolders = [
+      ...Object.values(layout.directories),
+      ...WORLDBUILDING_KINDS.map(
+        (kind) =>
+          `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`,
+      ),
+    ].map((folder) => normalizePath(`${rootPath}/${folder}`));
     for (const folder of commonFolders) {
       const existed = this.repository.getFolder(folder) != null;
       await this.repository.ensureFolder(folder);
       if (existed) markUnchanged(result, folder);
       else markCreated(result, folder);
+    }
+
+    // Like the bases below, a definition file's existence is the contract:
+    // its heading tree is the author's taxonomy, and the health checker is
+    // what watches over duplicates and dangling links.
+    for (const definitionId of DEFINITION_FILE_IDS) {
+      const path = normalizePath(
+        `${rootPath}/${layout.directories.worldbuilding}/${definitionFileName(definitionId, project.locale)}`,
+      );
+      const existing = this.repository.get(path);
+      if (existing === null) {
+        await this.repository.createPlainFile(
+          path,
+          definitionFileTemplate(definitionId, project.locale),
+        );
+        markCreated(result, path);
+      } else if (this.repository.getFile(path) !== null) {
+        markUnchanged(result, path);
+      } else {
+        markConflict(result, path, `A folder already exists at "${path}".`);
+      }
     }
 
     const managedTypesByDirectory: Record<
@@ -621,6 +698,7 @@ export class SnowflakeProjectService {
       characters: new Set(["character"]),
       scenes: new Set(["scene"]),
       draft: new Set(["draft"]),
+      worldbuilding: new Set(["worldbuilding"]),
       materials: new Set(),
       archive: new Set(),
     };
@@ -668,9 +746,13 @@ export class SnowflakeProjectService {
     // Only the existence of a base is a contract. Its views, column order, and
     // widths belong to the author, and Obsidian itself rewrites the file when a
     // column is resized, so a content check would report ordinary use as damage.
-    for (const base of getProjectBases(project.id, project.locale)) {
+    for (const base of getProjectBases(
+      project.id,
+      project.locale,
+      characterRoleLinks(project),
+    )) {
       const path = normalizePath(
-        `${rootPath}/${layout.directories[base.id]}/${base.fileName}`,
+        `${rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
       );
       const existing = this.repository.get(path);
       if (existing === null) {
@@ -916,10 +998,14 @@ export class SnowflakeProjectService {
 
     if (issue.code === "missing-base") {
       const layout = getProjectPathLayout(project.locale);
-      const base = getProjectBases(project.id, project.locale).find(
+      const base = getProjectBases(
+        project.id,
+        project.locale,
+        characterRoleLinks(project),
+      ).find(
         (candidate) =>
           normalizePath(
-            `${project.rootPath}/${layout.directories[candidate.id]}/${candidate.fileName}`,
+            `${project.rootPath}/${projectBaseFolder(layout, candidate.id)}/${candidate.fileName}`,
           ) === normalized,
       );
       if (!base) {
@@ -1308,18 +1394,35 @@ export class SnowflakeProjectService {
     const requested = normalizePath(
       `${project.rootPath}/${layout.directories.characters}/${safeFileName(name)}.md`,
     );
+    // Born migrated: the role is a category link from the first write, and
+    // the legacy type key never appears on a new note.
+    const categories = replacedRoleCategories(
+      project.locale,
+      categoryLinksFromPaths(project, input.categoryPaths ?? []),
+      resolvedType,
+      categoryDefinitionPath(project),
+    );
+    const aliases = (input.aliases ?? [])
+      .map((alias) => alias.trim())
+      .filter((alias) => alias.length > 0);
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
       template: characterTemplate(name, project.locale, {
-        fieldsBlock: renderCharacterFieldsBlock(project.locale, {
-          type: resolvedType,
-          oneSentenceStoryline: input.oneSentenceStoryline ?? "",
-          motivation: input.motivation ?? "",
-          goal: input.goal ?? "",
-          conflict: input.conflict ?? "",
-          growth: input.growth ?? "",
-        }),
+        fieldsBlock: renderCharacterFieldsBlock(
+          project.locale,
+          characterFieldsView(project.locale, {
+            type: resolvedType,
+            progressStatus: input.progressStatus ?? null,
+            aliases,
+            categories,
+            oneSentenceStoryline: input.oneSentenceStoryline ?? "",
+            motivation: input.motivation ?? "",
+            goal: input.goal ?? "",
+            conflict: input.conflict ?? "",
+            growth: input.growth ?? "",
+          }),
+        ),
         oneParagraphStoryline: input.oneParagraphStoryline,
         characterSynopsis: input.characterSynopsis,
         characterProfile: input.characterProfile,
@@ -1329,7 +1432,11 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.characterId]: characterId,
         [FRONTMATTER_KEYS.characterName]: name,
         [FRONTMATTER_KEYS.rank]: rank,
-        [FRONTMATTER_KEYS.characterType]: resolvedType,
+        [FRONTMATTER_KEYS.category]: categories,
+        ...(aliases.length > 0 ? { [ALIASES_KEY]: aliases } : {}),
+        ...(input.progressStatus
+          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
+          : {}),
         [FRONTMATTER_KEYS.oneSentenceStoryline]: input.oneSentenceStoryline ?? "",
         [FRONTMATTER_KEYS.motivation]: input.motivation ?? "",
         [FRONTMATTER_KEYS.goal]: input.goal ?? "",
@@ -1337,7 +1444,31 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.growth]: input.growth ?? "",
       },
     });
-    return this.characterFromRecord(await this.repository.readManaged(created.path));
+    // Record sections are deferred out of the template; the first records a
+    // note is created with are upserted right after it exists.
+    const createdRecords = entityRecordSectionValues(
+      project.locale,
+      {
+        details:
+          input.age === undefined || input.age === null
+            ? []
+            : [{ ...input.age, property: "age" as const }],
+        worldStatus: input.worldStatus ?? [],
+        relationships: input.relationships ?? [],
+      },
+      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+    );
+    if (Object.keys(createdRecords).length > 0) {
+      await this.repository.upsertSections(
+        created.path,
+        createdRecords,
+        characterUpdateLayout(name, project.locale),
+      );
+    }
+    return this.characterFromRecord(
+      await this.repository.readManaged(created.path),
+      project.locale,
+    );
   }
 
   async listCharacters(projectLocator: ProjectLocator): Promise<CharacterRecord[]> {
@@ -1351,7 +1482,7 @@ export class SnowflakeProjectService {
     const characters: CharacterRecord[] = [];
     for (const record of records) {
       try {
-        characters.push(this.characterFromRecord(record));
+        characters.push(this.characterFromRecord(record, project.locale));
       } catch (error) {
         if (!(record.readOnly && error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -1416,39 +1547,110 @@ export class SnowflakeProjectService {
 
     const frontmatterPatch: ManagedFrontmatter = {};
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.characterName, patch.name?.trim());
-    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.characterType, patch.type);
+    // A role change lands where the role lives: as the category link on a
+    // migrated note, under the legacy key on one the migration has not
+    // reached. Writing the legacy key back onto a migrated note would flip it
+    // to unmigrated again. When the category picker speaks it owns the whole
+    // list, and the role link always rides along.
+    const nextType = patch.type ?? character.type;
+    let nextCategories = character.categories;
+    if (patch.categoryPaths !== undefined) {
+      nextCategories = replacedRoleCategories(
+        project.locale,
+        categoryLinksFromPaths(project, patch.categoryPaths),
+        nextType,
+        categoryDefinitionPath(project),
+      );
+      frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
+    } else if (patch.type !== undefined) {
+      if (character.categories.length > 0) {
+        nextCategories = replacedRoleCategories(
+          project.locale,
+          character.categories,
+          patch.type,
+          categoryDefinitionPath(project),
+        );
+        frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
+      } else {
+        frontmatterPatch[FRONTMATTER_KEYS.characterType] = patch.type;
+      }
+    }
+    const nextAliases =
+      patch.aliases === undefined
+        ? character.aliases
+        : patch.aliases.map((alias) => alias.trim()).filter((alias) => alias.length > 0);
+    if (patch.aliases !== undefined) {
+      frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
+    }
+    const nextProgressStatus =
+      patch.progressStatus === undefined
+        ? character.progressStatus
+        : patch.progressStatus;
+    if (patch.progressStatus !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.progressStatus] =
+        patch.progressStatus ?? undefined;
+    }
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.oneSentenceStoryline, patch.oneSentenceStoryline);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.motivation, patch.motivation);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.goal, patch.goal);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.conflict, patch.conflict);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.growth, patch.growth);
+
+    const nextRecords = {
+      details:
+        patch.age === undefined
+          ? character.details
+          : replacedAgeDetails(character.details, patch.age),
+      worldStatus: patch.worldStatus ?? character.worldStatus,
+      relationships: patch.relationships ?? character.relationships,
+    };
+    const nextRecordValues = entityRecordSectionValues(
+      project.locale,
+      nextRecords,
+      character,
+    );
+    const originalRecordValues = entityRecordSectionValues(
+      project.locale,
+      character,
+      character,
+    );
     const sectionValues: Record<string, string> = {
-      "character-fields": renderCharacterFieldsBlock(project.locale, {
-        type: patch.type ?? character.type,
-        oneSentenceStoryline:
-          patch.oneSentenceStoryline ?? character.oneSentenceStoryline,
-        motivation: patch.motivation ?? character.motivation,
-        goal: patch.goal ?? character.goal,
-        conflict: patch.conflict ?? character.conflict,
-        growth: patch.growth ?? character.growth,
-      }),
+      "character-fields": renderCharacterFieldsBlock(
+        project.locale,
+        characterFieldsView(project.locale, {
+          ...character,
+          type: nextType,
+          progressStatus: nextProgressStatus,
+          aliases: nextAliases,
+          categories: nextCategories,
+          oneSentenceStoryline:
+            patch.oneSentenceStoryline ?? character.oneSentenceStoryline,
+          motivation: patch.motivation ?? character.motivation,
+          goal: patch.goal ?? character.goal,
+          conflict: patch.conflict ?? character.conflict,
+          growth: patch.growth ?? character.growth,
+        }),
+      ),
       "one-paragraph-storyline":
         patch.oneParagraphStoryline ?? character.oneParagraphStoryline,
       "character-synopsis": patch.characterSynopsis ?? character.characterSynopsis,
       "character-profile": patch.characterProfile ?? character.characterProfile,
+      ...nextRecordValues,
     };
     const rollbackValues: Record<string, string> = {
-      "character-fields": renderCharacterFieldsBlock(project.locale, {
-        type: character.type,
-        oneSentenceStoryline: character.oneSentenceStoryline,
-        motivation: character.motivation,
-        goal: character.goal,
-        conflict: character.conflict,
-        growth: character.growth,
-      }),
+      "character-fields": renderCharacterFieldsBlock(
+        project.locale,
+        characterFieldsView(project.locale, character),
+      ),
       "one-paragraph-storyline": character.oneParagraphStoryline,
       "character-synopsis": character.characterSynopsis,
       "character-profile": character.characterProfile,
+      ...Object.fromEntries(
+        Object.keys(nextRecordValues).map((sectionId) => [
+          sectionId,
+          originalRecordValues[sectionId] ?? "",
+        ]),
+      ),
     };
     await this.updateManagedForm(
       character.path,
@@ -1456,8 +1658,9 @@ export class SnowflakeProjectService {
       frontmatterPatch,
       sectionValues,
       rollbackValues,
-      characterTemplate(character.name, project.locale).sections,
+      characterUpdateLayout(character.name, project.locale),
     );
+    await this.removeEmptiedRecordSections(character, nextRecords);
 
     let path = character.path;
     if (nextName !== undefined && nextName.length > 0 && nextName !== character.name) {
@@ -1465,7 +1668,10 @@ export class SnowflakeProjectService {
       path = await this.renameManagedNote(path, nextName);
       await this.refreshCharacterReferences(project, character.path, path, nextName);
     }
-    return this.characterFromRecord(await this.repository.readManaged(path));
+    return this.characterFromRecord(
+      await this.repository.readManaged(path),
+      project.locale,
+    );
   }
 
   /**
@@ -1777,6 +1983,10 @@ export class SnowflakeProjectService {
     const requested = normalizePath(
       `${project.rootPath}/${layout.directories.scenes}/${safeFileName(title)}.md`,
     );
+    const sceneAliases = (input.aliases ?? [])
+      .map((alias) => alias.trim())
+      .filter((alias) => alias.length > 0);
+    const sceneCategories = categoryLinksFromPaths(project, input.categoryPaths ?? []);
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
@@ -1784,6 +1994,9 @@ export class SnowflakeProjectService {
         fieldsBlock: sceneFieldsBlock(
           project.locale,
           {
+            progressStatus: input.progressStatus ?? null,
+            aliases: sceneAliases,
+            categories: sceneCategories,
             povPath: povValue ?? null,
             time: input.time ?? "",
             location: input.location ?? "",
@@ -1809,11 +2022,35 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.sceneLocation]: input.location ?? "",
         [FRONTMATTER_KEYS.sceneCharacters]: (input.characters ?? []).map(characterLink),
         [FRONTMATTER_KEYS.conflict]: input.conflict ?? "",
+        ...(sceneAliases.length > 0 ? { [ALIASES_KEY]: sceneAliases } : {}),
+        ...(sceneCategories.length > 0
+          ? { [FRONTMATTER_KEYS.category]: sceneCategories }
+          : {}),
+        ...(input.progressStatus
+          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
+          : {}),
       },
     });
+    const createdRecords = entityRecordSectionValues(
+      project.locale,
+      {
+        details: [],
+        worldStatus: input.worldStatus ?? [],
+        relationships: input.relationships ?? [],
+      },
+      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+    );
+    if (Object.keys(createdRecords).length > 0) {
+      await this.repository.upsertSections(
+        created.path,
+        createdRecords,
+        sceneUpdateLayout(title, project.locale),
+      );
+    }
     return this.sceneFromRecord(
       await this.repository.readManaged(created.path),
       project.rootPath,
+      project.locale,
     );
   }
 
@@ -1873,10 +2110,15 @@ export class SnowflakeProjectService {
     id: ProjectBaseId,
     path: string,
   ): Promise<void> {
-    const documentType = id === "characters" ? "character" : "scene";
+    const documentType: DocumentType =
+      id === "characters"
+        ? "character"
+        : id === "scenes"
+          ? "scene"
+          : "worldbuilding";
     const layout = getProjectPathLayout(project.locale);
     const folder = normalizePath(
-      `${project.rootPath}/${layout.directories[id]}`,
+      `${project.rootPath}/${projectBaseFolder(layout, id)}`,
     );
     const entries = await this.repository.listManagedEntriesBelow(
       folder,
@@ -1903,9 +2145,11 @@ export class SnowflakeProjectService {
     project: ProjectRef | ProjectSnapshot,
     id: ProjectBaseId,
   ): ProjectBaseDefinition {
-    const base = getProjectBases(project.id, project.locale).find(
-      (candidate) => candidate.id === id,
-    );
+    const base = getProjectBases(
+      project.id,
+      project.locale,
+      characterRoleLinks(project),
+    ).find((candidate) => candidate.id === id);
     if (!base) throw new Error(`Unknown project base: ${id}`);
     return base;
   }
@@ -1916,7 +2160,7 @@ export class SnowflakeProjectService {
   ): string {
     const layout = getProjectPathLayout(project.locale);
     return normalizePath(
-      `${project.rootPath}/${layout.directories[id]}/${this.projectBase(project, id).fileName}`,
+      `${project.rootPath}/${projectBaseFolder(layout, id)}/${this.projectBase(project, id).fileName}`,
     );
   }
 
@@ -1947,7 +2191,7 @@ export class SnowflakeProjectService {
     const scenes: SceneRecord[] = [];
     for (const record of records) {
       try {
-        scenes.push(this.sceneFromRecord(record, project.rootPath));
+        scenes.push(this.sceneFromRecord(record, project.rootPath, project.locale));
       } catch (error) {
         if (!(record.readOnly && error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -2003,22 +2247,73 @@ export class SnowflakeProjectService {
       frontmatterPatch[FRONTMATTER_KEYS.sceneCharacters] = patch.characters.map(characterLink);
     }
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.conflict, patch.conflict);
+    const nextAliases =
+      patch.aliases === undefined
+        ? scene.aliases
+        : patch.aliases.map((alias) => alias.trim()).filter((alias) => alias.length > 0);
+    if (patch.aliases !== undefined) {
+      frontmatterPatch[ALIASES_KEY] = nextAliases.length > 0 ? nextAliases : undefined;
+    }
+    const nextCategories =
+      patch.categoryPaths === undefined
+        ? scene.categories
+        : categoryLinksFromPaths(project, patch.categoryPaths);
+    if (patch.categoryPaths !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.category] =
+        nextCategories.length > 0 ? nextCategories : undefined;
+    }
+    const nextProgressStatus =
+      patch.progressStatus === undefined ? scene.progressStatus : patch.progressStatus;
+    if (patch.progressStatus !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.progressStatus] =
+        patch.progressStatus ?? undefined;
+    }
     const nextFields = {
+      progressStatus: nextProgressStatus,
+      aliases: nextAliases,
+      categories: nextCategories,
       povPath: patch.povPath !== undefined ? patch.povPath || null : scene.povPath,
       time: patch.time ?? scene.time,
       location: patch.location ?? scene.location,
       conflict: patch.conflict ?? scene.conflict,
       characters: patch.characters ?? scene.characters,
     };
+    const nextRecords = {
+      details: [] as DetailsLine[],
+      worldStatus: patch.worldStatus ?? scene.worldStatus,
+      relationships: patch.relationships ?? scene.relationships,
+    };
+    const sceneUnrecognized = {
+      detailsUnrecognized: [] as string[],
+      worldStatusUnrecognized: scene.worldStatusUnrecognized,
+      relationshipsUnrecognized: scene.relationshipsUnrecognized,
+    };
+    const nextRecordValues = entityRecordSectionValues(
+      project.locale,
+      nextRecords,
+      sceneUnrecognized,
+    );
+    const originalRecordValues = entityRecordSectionValues(
+      project.locale,
+      { details: [], worldStatus: scene.worldStatus, relationships: scene.relationships },
+      sceneUnrecognized,
+    );
     const sectionValues: Record<string, string> = {
       "scene-fields": sceneFieldsBlock(project.locale, nextFields, characterNames),
       "scene-events": patch.events ?? scene.events,
       "scene-planning": patch.planning ?? scene.planning,
+      ...nextRecordValues,
     };
     const rollbackValues: Record<string, string> = {
       "scene-fields": sceneFieldsBlock(project.locale, scene, characterNames),
       "scene-events": scene.events,
       "scene-planning": scene.planning,
+      ...Object.fromEntries(
+        Object.keys(nextRecordValues).map((sectionId) => [
+          sectionId,
+          originalRecordValues[sectionId] ?? "",
+        ]),
+      ),
     };
     // Until the migration removes it, a legacy conflict section is text the
     // author still sees, so an edit keeps it saying what the property says
@@ -2039,6 +2334,10 @@ export class SnowflakeProjectService {
       rollbackValues,
       sceneUpdateLayout(scene.title, project.locale),
     );
+    await this.removeEmptiedRecordSections(
+      { ...scene, details: [], detailsUnrecognized: [] },
+      nextRecords,
+    );
 
     // Nothing links to a scene, so renaming one needs no reference sweep.
     let path = scene.path;
@@ -2049,20 +2348,24 @@ export class SnowflakeProjectService {
     return this.sceneFromRecord(
       await this.repository.readManaged(path),
       project.rootPath,
+      project.locale,
     );
   }
 
   /**
-   * Writes the fields block into every member note that predates it, and
-   * moves a legacy scene conflict into its property before retiring the
-   * section. One pass over one project. Damaged notes are skipped and
-   * counted, never forced.
+   * Moves a project onto schema 2 in one pass: the worldbuilding tree is
+   * created where missing, every legacy character role becomes a category
+   * link, every legacy scene conflict moves into its property, every member
+   * overview is regenerated in the current shape, and the notes and project
+   * file are stamped with the schema they now follow. Damaged notes are
+   * skipped and counted, never forced.
    */
   async migrateMemberNotes(
     projectLocator: ProjectLocator,
   ): Promise<{ migrated: number; skipped: number }> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
+    await this.ensureWorldbuildingTree(project);
     const characterNames = new Map(
       project.characters.map((character) => [character.path, character.name]),
     );
@@ -2073,14 +2376,45 @@ export class SnowflakeProjectService {
     for (const character of project.characters) {
       if (character.readOnly || !character.unmigrated) continue;
       try {
+        // The role moves first, into the category links, and the legacy key
+        // goes with it in the same write: a failure between the two writes
+        // then leaves either yesterday's note or one every reader already
+        // resolves the same way, never a note claiming two roles.
+        const record = await this.repository.readManaged(character.path);
+        const migratedCategories =
+          characterRoleFromCategories(character.categories) !== null
+            ? character.categories
+            : replacedRoleCategories(
+                project.locale,
+                character.categories,
+                character.type,
+                categoryDefinitionPath(project),
+              );
+        const frontmatterPatch: ManagedFrontmatter = {};
+        if (schemaVersionOf(record.frontmatter) !== SCHEMA_VERSION) {
+          frontmatterPatch[FRONTMATTER_KEYS.schema] = SCHEMA_VERSION;
+        }
+        if (
+          hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType) ||
+          migratedCategories !== character.categories
+        ) {
+          frontmatterPatch[FRONTMATTER_KEYS.category] = migratedCategories;
+          frontmatterPatch[FRONTMATTER_KEYS.characterType] = undefined;
+        }
+        if (Object.keys(frontmatterPatch).length > 0) {
+          await this.repository.updateFrontmatter(character.path, frontmatterPatch);
+        }
         await this.repository.reshapeSections(character.path, {
           values: {
             "character-fields": renderCharacterFieldsBlock(
               project.locale,
-              character,
+              characterFieldsView(project.locale, {
+                ...character,
+                categories: migratedCategories,
+              }),
             ),
           },
-          layout: characterTemplate(character.name, project.locale).sections,
+          layout: characterUpdateLayout(character.name, project.locale),
         });
         migrated += 1;
       } catch (error) {
@@ -2096,10 +2430,15 @@ export class SnowflakeProjectService {
         // The property first: scene.conflict already reads property-wins, so
         // this writes exactly what the note showed, and a failure after it
         // leaves a state every reader resolves the same way.
+        const frontmatterPatch: ManagedFrontmatter = {};
+        if (schemaVersionOf(record.frontmatter) !== SCHEMA_VERSION) {
+          frontmatterPatch[FRONTMATTER_KEYS.schema] = SCHEMA_VERSION;
+        }
         if (!hasOwn(record.frontmatter, FRONTMATTER_KEYS.conflict)) {
-          await this.repository.updateFrontmatter(scene.path, {
-            [FRONTMATTER_KEYS.conflict]: scene.conflict,
-          });
+          frontmatterPatch[FRONTMATTER_KEYS.conflict] = scene.conflict;
+        }
+        if (Object.keys(frontmatterPatch).length > 0) {
+          await this.repository.updateFrontmatter(scene.path, frontmatterPatch);
         }
         await this.repository.reshapeSections(scene.path, {
           values: {
@@ -2119,7 +2458,107 @@ export class SnowflakeProjectService {
       }
     }
 
+    // Members the flags never marked can still carry yesterday's overview
+    // shape; the same idempotent reconcile the vault watcher runs brings each
+    // one current, and touches nothing that already matches.
+    for (const member of [...project.characters, ...project.scenes]) {
+      if (member.readOnly || member.unmigrated) continue;
+      try {
+        await this.reconcileMemberFieldsBlock(project, member.path);
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+      }
+    }
+
+    if (project.schemaVersion !== SCHEMA_VERSION) {
+      await this.repository.updateFrontmatter(project.projectFile, {
+        [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,
+      });
+    }
+
     return { migrated, skipped };
+  }
+
+  /**
+   * The paths a definition file's heading tree spells, in document order:
+   * what the category and record-label pickers list.
+   */
+  async listDefinitionPaths(
+    projectLocator: ProjectLocator,
+    id: DefinitionFileId,
+  ): Promise<string[]> {
+    const project = await this.loadProject(projectLocator);
+    const file = this.repository.getFile(definitionFilePath(project, id));
+    if (file === null) return [];
+    const content = await this.repository.vault.read(file);
+    return parseDefinitionFile(content).entries.map((entry) => entry.path);
+  }
+
+  /**
+   * Appends a missing path to a definition file, creating the worldbuilding
+   * tree first when an older project has none. Refusals are returned rather
+   * than thrown so the picker can say why in the project's language.
+   */
+  async addDefinitionPath(
+    projectLocator: ProjectLocator,
+    id: DefinitionFileId,
+    path: string,
+  ): Promise<AppendPathResult> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    await this.ensureWorldbuildingTree(project);
+    let outcome: AppendPathResult = { ok: true, content: "", addedHeadings: [] };
+    await this.repository.updatePlainFile(
+      definitionFilePath(project, id),
+      (current) => {
+        outcome = appendDefinitionPath(current, path);
+        return outcome.ok ? outcome.content : current;
+      },
+    );
+    return outcome;
+  }
+
+  /**
+   * The worldbuilding folders, definition files, and kind bases a schema 2
+   * project carries, created only where missing: what exists belongs to the
+   * author.
+   */
+  private async ensureWorldbuildingTree(
+    project: ProjectRef | ProjectSnapshot,
+  ): Promise<void> {
+    const layout = getProjectPathLayout(project.locale);
+    await this.repository.ensureFolder(
+      normalizePath(`${project.rootPath}/${layout.directories.worldbuilding}`),
+    );
+    for (const kind of WORLDBUILDING_KINDS) {
+      await this.repository.ensureFolder(
+        normalizePath(worldbuildingKindFolder(project.rootPath, project.locale, kind)),
+      );
+    }
+    for (const definitionId of DEFINITION_FILE_IDS) {
+      const path = normalizePath(
+        `${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(definitionId, project.locale)}`,
+      );
+      if (this.repository.get(path) === null) {
+        await this.repository.createPlainFile(
+          path,
+          definitionFileTemplate(definitionId, project.locale),
+        );
+      }
+    }
+    for (const base of getProjectBases(
+      project.id,
+      project.locale,
+      characterRoleLinks(project),
+    )) {
+      if (base.id === "characters" || base.id === "scenes") continue;
+      const path = normalizePath(
+        `${project.rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
+      );
+      if (this.repository.get(path) === null) {
+        await this.repository.createPlainFile(path, base.content);
+      }
+    }
   }
 
   /**
@@ -2139,18 +2578,41 @@ export class SnowflakeProjectService {
         ? null
         : {
             documentType: "character",
-            expected: renderCharacterFieldsBlock(project.locale, character),
+            expected: renderCharacterFieldsBlock(
+              project.locale,
+              characterFieldsView(project.locale, character),
+            ),
           };
     }
     const scene = project.scenes.find((candidate) => candidate.path === path);
-    if (!scene || scene.readOnly) return null;
-    const characterNames = new Map(
-      project.characters.map((candidate) => [candidate.path, candidate.name]),
-    );
-    return {
-      documentType: "scene",
-      expected: sceneFieldsBlock(project.locale, scene, characterNames),
-    };
+    if (scene) {
+      if (scene.readOnly) return null;
+      const characterNames = new Map(
+        project.characters.map((candidate) => [candidate.path, candidate.name]),
+      );
+      return {
+        documentType: "scene",
+        expected: sceneFieldsBlock(project.locale, scene, characterNames),
+      };
+    }
+    for (const kind of WORLDBUILDING_KINDS) {
+      const entity = project.worldbuilding[kind].find(
+        (candidate) => candidate.path === path,
+      );
+      if (entity) {
+        return entity.readOnly
+          ? null
+          : {
+              documentType: "worldbuilding",
+              expected: renderEntityFieldsBlock(
+                project.locale,
+                kind,
+                entityFieldsViewOf(kind, entity),
+              ),
+            };
+      }
+    }
+    return null;
   }
 
   /**
@@ -2212,6 +2674,442 @@ export class SnowflakeProjectService {
     const current = project.scenes;
     await this.persistReorderedRanks(current, moveRanked(current, sceneId, targetIndex));
     return this.listScenes(project);
+  }
+
+  async listEntities(
+    projectLocator: ProjectLocator,
+    kind: WorldbuildingKind,
+  ): Promise<WorldbuildingRecord[]> {
+    const project = await this.loadProject(projectLocator);
+    return project.worldbuilding[kind];
+  }
+
+  async createEntity(
+    projectLocator: ProjectLocator,
+    input: EntityInput,
+  ): Promise<WorldbuildingRecord> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const kind = input.kind;
+    const name = input.name.trim();
+    if (!name) throw new Error("Entity name is required.");
+    this.assertNameAvailable(
+      kind,
+      project.worldbuilding[kind].map((entity) => entity.name),
+      name,
+    );
+    const timeKind = kind === "time" ? (input.timeKind ?? null) : null;
+    const timeStart = kind === "time" ? (input.timeStart ?? "").trim() : "";
+    const timeEnd = kind === "time" ? (input.timeEnd ?? "").trim() : "";
+    assertEntityTimeFields(timeKind, timeStart, timeEnd);
+
+    const entityId = createStableId("entity");
+    const siblings = project.worldbuilding[kind];
+    const rank =
+      siblings.length === 0
+        ? RANK_GAP
+        : siblings[siblings.length - 1]!.rank + RANK_GAP;
+    if (!Number.isSafeInteger(rank)) throw new RangeError("Cannot assign a safe entity rank.");
+    const folder = normalizePath(
+      worldbuildingKindFolder(project.rootPath, project.locale, kind),
+    );
+    const aliases = (input.aliases ?? [])
+      .map((alias) => alias.trim())
+      .filter((alias) => alias.length > 0);
+    const categories = categoryLinksFromPaths(project, input.categoryPaths ?? []);
+    const view = entityFieldsViewOf(kind, {
+      progressStatus: input.progressStatus ?? null,
+      aliases,
+      categories,
+      description: input.description ?? "",
+      timeKind,
+      timeStart,
+      timeEnd,
+    });
+    const created = await this.repository.createManagedFile({
+      path: normalizePath(`${folder}/${safeFileName(name)}.md`),
+      uniqueOnConflict: true,
+      template: entityTemplate(name, kind, project.locale, {
+        fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
+        notes: input.notes,
+      }),
+      frontmatter: {
+        ...commonFrontmatter("worldbuilding", project.id),
+        [FRONTMATTER_KEYS.entityId]: entityId,
+        [FRONTMATTER_KEYS.worldbuildingKind]: kind,
+        [FRONTMATTER_KEYS.name]: name,
+        [FRONTMATTER_KEYS.rank]: rank,
+        [FRONTMATTER_KEYS.description]: input.description ?? "",
+        ...(aliases.length > 0 ? { [ALIASES_KEY]: aliases } : {}),
+        ...(categories.length > 0 ? { [FRONTMATTER_KEYS.category]: categories } : {}),
+        ...(input.progressStatus
+          ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
+          : {}),
+        ...(kind === "time"
+          ? {
+              ...(timeKind === null ? {} : { [FRONTMATTER_KEYS.timeKind]: timeKind }),
+              [FRONTMATTER_KEYS.timeStart]: timeStart,
+              [FRONTMATTER_KEYS.timeEnd]: timeEnd,
+            }
+          : {}),
+      },
+    });
+    // Record sections are deferred out of the template; the first records a
+    // note is created with are upserted right after it exists.
+    const recordValues = entityRecordSectionValues(
+      project.locale,
+      {
+        details: input.details ?? [],
+        worldStatus: input.worldStatus ?? [],
+        relationships: input.relationships ?? [],
+      },
+      { detailsUnrecognized: [], worldStatusUnrecognized: [], relationshipsUnrecognized: [] },
+    );
+    if (Object.keys(recordValues).length > 0) {
+      await this.repository.upsertSections(
+        created.path,
+        recordValues,
+        entityUpdateLayout(name, kind, project.locale),
+      );
+    }
+    return this.entityFromRecord(
+      await this.repository.readManaged(created.path),
+      project.locale,
+    );
+  }
+
+  async updateEntity(
+    projectLocator: ProjectLocator,
+    entityId: string,
+    patch: EntityPatch,
+  ): Promise<WorldbuildingRecord> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const entity = WORLDBUILDING_KINDS.flatMap(
+      (kind) => project.worldbuilding[kind],
+    ).find((candidate) => candidate.entityId === entityId);
+    if (!entity) {
+      throw new ManagedFileNotFoundError(`worldbuilding entity ${entityId}`);
+    }
+    if (entity.readOnly) {
+      throw new UnsupportedSchemaError(entity.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
+    }
+    const kind = entity.kind;
+    const nextName = patch.name?.trim();
+    if (
+      nextName !== undefined &&
+      nextName.length > 0 &&
+      foldName(nextName) !== foldName(entity.name)
+    ) {
+      this.assertNameAvailable(
+        kind,
+        project.worldbuilding[kind]
+          .filter((candidate) => candidate.entityId !== entityId)
+          .map((candidate) => candidate.name),
+        nextName,
+      );
+    }
+
+    const next = {
+      progressStatus:
+        patch.progressStatus === undefined
+          ? entity.progressStatus
+          : patch.progressStatus,
+      aliases: (patch.aliases ?? entity.aliases)
+        .map((alias) => alias.trim())
+        .filter((alias) => alias.length > 0),
+      categories:
+        patch.categoryPaths === undefined
+          ? entity.categories
+          : categoryLinksFromPaths(project, patch.categoryPaths),
+      description: patch.description ?? entity.description,
+      timeKind:
+        kind !== "time"
+          ? null
+          : patch.timeKind === undefined
+            ? entity.timeKind
+            : patch.timeKind,
+      timeStart: kind !== "time" ? "" : (patch.timeStart ?? entity.timeStart).trim(),
+      timeEnd: kind !== "time" ? "" : (patch.timeEnd ?? entity.timeEnd).trim(),
+    };
+    assertEntityTimeFields(next.timeKind, next.timeStart, next.timeEnd);
+
+    const frontmatterPatch: ManagedFrontmatter = {};
+    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.name, nextName);
+    if (patch.aliases !== undefined) {
+      frontmatterPatch[ALIASES_KEY] =
+        next.aliases.length > 0 ? next.aliases : undefined;
+    }
+    if (patch.categoryPaths !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.category] =
+        next.categories.length > 0 ? next.categories : undefined;
+    }
+    if (patch.progressStatus !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.progressStatus] =
+        patch.progressStatus ?? undefined;
+    }
+    copyDefined(frontmatterPatch, FRONTMATTER_KEYS.description, patch.description);
+    if (kind === "time") {
+      if (patch.timeKind !== undefined) {
+        frontmatterPatch[FRONTMATTER_KEYS.timeKind] = patch.timeKind ?? undefined;
+      }
+      copyDefined(frontmatterPatch, FRONTMATTER_KEYS.timeStart, patch.timeStart?.trim());
+      copyDefined(frontmatterPatch, FRONTMATTER_KEYS.timeEnd, patch.timeEnd?.trim());
+    }
+
+    const nextRecords = {
+      details: patch.details ?? entity.details,
+      worldStatus: patch.worldStatus ?? entity.worldStatus,
+      relationships: patch.relationships ?? entity.relationships,
+    };
+    const nextRecordValues = entityRecordSectionValues(
+      project.locale,
+      nextRecords,
+      entity,
+    );
+    const originalRecordValues = entityRecordSectionValues(
+      project.locale,
+      entity,
+      entity,
+    );
+    const sectionValues: Record<string, string> = {
+      "entity-fields": renderEntityFieldsBlock(
+        project.locale,
+        kind,
+        entityFieldsViewOf(kind, next),
+      ),
+      "entity-notes": patch.notes ?? entity.notes,
+      ...nextRecordValues,
+    };
+    const rollbackValues: Record<string, string> = {
+      "entity-fields": renderEntityFieldsBlock(
+        project.locale,
+        kind,
+        entityFieldsViewOf(kind, entity),
+      ),
+      "entity-notes": entity.notes,
+      ...Object.fromEntries(
+        Object.keys(nextRecordValues).map((sectionId) => [
+          sectionId,
+          originalRecordValues[sectionId] ?? "",
+        ]),
+      ),
+    };
+    await this.updateManagedForm(
+      entity.path,
+      patch.expectedRevision,
+      frontmatterPatch,
+      sectionValues,
+      rollbackValues,
+      entityUpdateLayout(entity.name, kind, project.locale),
+    );
+    await this.removeEmptiedRecordSections(entity, nextRecords);
+
+    let path = entity.path;
+    if (nextName !== undefined && nextName.length > 0 && nextName !== entity.name) {
+      await this.syncNoteHeading(path, nextName);
+      path = await this.renameManagedNote(path, nextName);
+      await this.refreshEntityTimeReferences(project, entity.path, path, nextName);
+    }
+    return this.entityFromRecord(
+      await this.repository.readManaged(path),
+      project.locale,
+    );
+  }
+
+  async reorderEntity(
+    projectLocator: ProjectLocator,
+    kind: WorldbuildingKind,
+    entityId: string,
+    targetIndex: number,
+  ): Promise<WorldbuildingRecord[]> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const current = project.worldbuilding[kind];
+    await this.persistReorderedRanks(current, moveRanked(current, entityId, targetIndex));
+    return this.listEntities(project, kind);
+  }
+
+  /**
+   * Takes an emptied record section out of the note together with the heading
+   * the plugin created it under, returning the note to its deferred state. A
+   * section that still holds lines the grammar cannot read is never removed:
+   * those lines are the author's.
+   */
+  private async removeEmptiedRecordSections(
+    entity: {
+      path: string;
+      details: readonly unknown[];
+      worldStatus: readonly unknown[];
+      relationships: readonly unknown[];
+      detailsUnrecognized: readonly string[];
+      worldStatusUnrecognized: readonly string[];
+      relationshipsUnrecognized: readonly string[];
+    },
+    nextRecords: {
+      details: readonly unknown[];
+      worldStatus: readonly unknown[];
+      relationships: readonly unknown[];
+    },
+  ): Promise<void> {
+    const emptied: Array<{ sectionId: string; headings: string[] }> = [];
+    const consider = (
+      sectionId: RecordSectionId,
+      had: boolean,
+      hasNow: boolean,
+      unrecognized: readonly string[],
+    ): void => {
+      if (had && !hasNow && unrecognized.length === 0) {
+        emptied.push({ sectionId, headings: recordSectionHeadings(sectionId) });
+      }
+    };
+    consider(
+      "details",
+      entity.details.length > 0,
+      nextRecords.details.length > 0,
+      entity.detailsUnrecognized,
+    );
+    consider(
+      "world-status",
+      entity.worldStatus.length > 0,
+      nextRecords.worldStatus.length > 0,
+      entity.worldStatusUnrecognized,
+    );
+    consider(
+      "relationships",
+      entity.relationships.length > 0,
+      nextRecords.relationships.length > 0,
+      entity.relationshipsUnrecognized,
+    );
+    if (emptied.length === 0) return;
+    await this.repository.reshapeSections(entity.path, {
+      values: {},
+      layout: [],
+      remove: emptied,
+    });
+  }
+
+  /**
+   * Rewrites the time links other worldbuilding notes store in their own
+   * frontmatter after a time note is renamed. Body links are Obsidian's to
+   * update; these two keys are the plugin's.
+   */
+  private async refreshEntityTimeReferences(
+    project: ProjectSnapshot,
+    oldPath: string,
+    newPath: string,
+    name: string,
+  ): Promise<void> {
+    const oldTarget = normalizePath(oldPath).replace(/\.md$/u, "");
+    const newLink = renderTerm({
+      kind: "link",
+      path: normalizePath(newPath).replace(/\.md$/u, ""),
+      name,
+    });
+    for (const kind of WORLDBUILDING_KINDS) {
+      for (const entity of project.worldbuilding[kind]) {
+        if (entity.readOnly || entity.path === oldPath) continue;
+        const patch: ManagedFrontmatter = {};
+        for (const [key, raw] of [
+          [FRONTMATTER_KEYS.timeStart, entity.timeStart],
+          [FRONTMATTER_KEYS.timeEnd, entity.timeEnd],
+        ] as const) {
+          if (raw.trim().length === 0) continue;
+          const term = parseTerm(raw);
+          if (
+            term.kind === "link" &&
+            normalizePath(term.path).replace(/\.md$/u, "") === oldTarget
+          ) {
+            patch[key] = newLink;
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          await this.repository.updateFrontmatter(entity.path, patch);
+        }
+      }
+    }
+  }
+
+  private readonly entityReadings = new WeakMap<
+    ManagedFileRecord,
+    Pick<
+      WorldbuildingRecord,
+      | "details"
+      | "worldStatus"
+      | "relationships"
+      | "detailsUnrecognized"
+      | "worldStatusUnrecognized"
+      | "relationshipsUnrecognized"
+      | "notes"
+      | "sectionHealth"
+      | "revision"
+    >
+  >();
+
+  private entityFromRecord(
+    record: ManagedFileRecord,
+    locale: ProjectLanguage,
+  ): WorldbuildingRecord {
+    const entityId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.entityId]);
+    const projectId = projectIdOf(record.frontmatter);
+    const kindValue = record.frontmatter[FRONTMATTER_KEYS.worldbuildingKind];
+    if (!entityId || !projectId || !isWorldbuildingKind(kindValue)) {
+      throw new InvalidManagedDocumentError(
+        `Worldbuilding metadata is incomplete in "${record.path}".`,
+        record.path,
+      );
+    }
+    const rank = storedRank(record.frontmatter);
+    let reading = this.entityReadings.get(record);
+    if (reading === undefined) {
+      const details = parseDetailsSectionLenient(
+        locale,
+        readMarkedSection(record.content, "details") ?? "",
+      );
+      const worldStatus = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "world-status") ?? "",
+      );
+      const relationships = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "relationships") ?? "",
+      );
+      reading = {
+        details: details.details,
+        detailsUnrecognized: details.unrecognized,
+        worldStatus: worldStatus.records,
+        worldStatusUnrecognized: worldStatus.unrecognized,
+        relationships: relationships.records,
+        relationshipsUnrecognized: relationships.unrecognized,
+        notes: readMarkedSection(record.content, "entity-notes") ?? "",
+        sectionHealth: memberSectionHealth(record.content, "worldbuilding", record.path),
+        revision: fingerprint(record.content),
+      };
+      this.entityReadings.set(record, reading);
+    }
+    const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
+    const timeKindValue = record.frontmatter[FRONTMATTER_KEYS.timeKind];
+    return {
+      id: entityId,
+      entityId,
+      projectId,
+      path: record.path,
+      kind: kindValue,
+      name:
+        asOptionalString(record.frontmatter[FRONTMATTER_KEYS.name]) ??
+        fileStem(record.path),
+      rank: rank ?? RANK_GAP,
+      hasStoredRank: rank !== null,
+      progressStatus: isProgressStatus(progressStatusValue) ? progressStatusValue : null,
+      aliases: readStringList(record.frontmatter[ALIASES_KEY]),
+      categories: readStringList(record.frontmatter[FRONTMATTER_KEYS.category]),
+      description: asString(record.frontmatter[FRONTMATTER_KEYS.description]),
+      timeKind: isTimeKind(timeKindValue) ? timeKindValue : null,
+      timeStart: asString(record.frontmatter[FRONTMATTER_KEYS.timeStart]),
+      timeEnd: asString(record.frontmatter[FRONTMATTER_KEYS.timeEnd]),
+      ...reading,
+      readOnly: record.readOnly,
+    };
   }
 
   /**
@@ -2740,7 +3638,7 @@ export class SnowflakeProjectService {
         field: FRONTMATTER_KEYS.schema,
         valid: (value) => {
           const numeric = typeof value === "number" ? value : Number(value);
-          return Number.isInteger(numeric) && numeric >= SCHEMA_VERSION;
+          return Number.isInteger(numeric) && numeric >= MIN_SUPPORTED_SCHEMA_VERSION;
         },
       },
       { field: FRONTMATTER_KEYS.document, valid: (value) => value === "project-metadata" },
@@ -2818,6 +3716,7 @@ export class SnowflakeProjectService {
       synopses: [4, 6],
       scenes: [8, 9],
       draft: [10],
+      worldbuilding: [],
       materials: [],
       archive: [],
     };
@@ -2830,6 +3729,19 @@ export class SnowflakeProjectService {
         code: "missing-directory",
         path,
         stepIds: [...directorySteps[directory]],
+        canOpen: false,
+        repairable: this.repository.get(path) === null,
+      });
+    }
+    for (const kind of WORLDBUILDING_KINDS) {
+      const path = normalizePath(
+        worldbuildingKindFolder(project.rootPath, project.locale, kind),
+      );
+      if (this.repository.getFolder(path) !== null) continue;
+      add({
+        code: "missing-directory",
+        path,
+        stepIds: [],
         canOpen: false,
         repairable: this.repository.get(path) === null,
       });
@@ -2873,9 +3785,13 @@ export class SnowflakeProjectService {
 
     // Only absence is reported. A base that exists belongs to the author, and
     // Obsidian rewrites it whenever a column is resized.
-    for (const base of getProjectBases(project.id, project.locale)) {
+    for (const base of getProjectBases(
+      project.id,
+      project.locale,
+      characterRoleLinks(project),
+    )) {
       const directory = normalizePath(
-        `${project.rootPath}/${layout.directories[base.id]}`,
+        `${project.rootPath}/${projectBaseFolder(layout, base.id)}`,
       );
       if (this.repository.getFolder(directory) === null) continue;
       const path = normalizePath(`${directory}/${base.fileName}`);
@@ -2883,7 +3799,10 @@ export class SnowflakeProjectService {
       add({
         code: "missing-base",
         path,
-        stepIds: [...directorySteps[base.id]],
+        stepIds:
+          base.id === "characters" || base.id === "scenes"
+            ? [...directorySteps[base.id]]
+            : [],
         expected: base.id,
         canOpen: false,
         repairable: this.repository.get(path) === null,
@@ -3101,7 +4020,7 @@ export class SnowflakeProjectService {
           documentType === "character"
             ? stableIdIsUnique &&
               asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) !== null &&
-              isCharacterType(record.frontmatter[FRONTMATTER_KEYS.characterType])
+              characterHasStoredRole(record.frontmatter)
             : stableIdIsUnique &&
               asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) !== null &&
               typeof record.frontmatter[FRONTMATTER_KEYS.rank] === "number";
@@ -3270,6 +4189,12 @@ export class SnowflakeProjectService {
     ManagedFileRecord,
     Pick<
       CharacterRecord,
+      | "details"
+      | "worldStatus"
+      | "relationships"
+      | "detailsUnrecognized"
+      | "worldStatusUnrecognized"
+      | "relationshipsUnrecognized"
       | "oneParagraphStoryline"
       | "characterSynopsis"
       | "characterProfile"
@@ -3284,6 +4209,10 @@ export class SnowflakeProjectService {
     Pick<
       SceneRecord,
       | "conflict"
+      | "worldStatus"
+      | "relationships"
+      | "worldStatusUnrecognized"
+      | "relationshipsUnrecognized"
       | "events"
       | "planning"
       | "sectionHealth"
@@ -3292,7 +4221,10 @@ export class SnowflakeProjectService {
     >
   >();
 
-  private characterFromRecord(record: ManagedFileRecord): CharacterRecord {
+  private characterFromRecord(
+    record: ManagedFileRecord,
+    locale: ProjectLanguage,
+  ): CharacterRecord {
     const characterId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterId]);
     const projectId = projectIdOf(record.frontmatter);
     if (!characterId || !projectId) {
@@ -3302,16 +4234,40 @@ export class SnowflakeProjectService {
     const rank = storedRank(record.frontmatter);
     let reading = this.characterReadings.get(record);
     if (reading === undefined) {
+      const details = parseDetailsSectionLenient(
+        locale,
+        readMarkedSection(record.content, "details") ?? "",
+      );
+      const worldStatus = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "world-status") ?? "",
+      );
+      const relationships = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "relationships") ?? "",
+      );
       reading = {
+        details: details.details,
+        detailsUnrecognized: details.unrecognized,
+        worldStatus: worldStatus.records,
+        worldStatusUnrecognized: worldStatus.unrecognized,
+        relationships: relationships.records,
+        relationshipsUnrecognized: relationships.unrecognized,
         oneParagraphStoryline: readMarkedSection(record.content, "one-paragraph-storyline") ?? "",
         characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
         characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
         sectionHealth: memberSectionHealth(record.content, "character", record.path),
-        unmigrated: readMarkedSection(record.content, "character-fields") === null,
+        // A note the schema 2 migration has not reached: no fields block yet,
+        // or the role still stored under the legacy type key instead of as a
+        // category link.
+        unmigrated:
+          readMarkedSection(record.content, "character-fields") === null ||
+          hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType),
         revision: fingerprint(record.content),
       };
       this.characterReadings.set(record, reading);
     }
+    const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
     return {
       id: characterId,
       characterId,
@@ -3321,7 +4277,12 @@ export class SnowflakeProjectService {
         asOptionalString(record.frontmatter[FRONTMATTER_KEYS.characterName]) ?? fileStem(record.path),
       rank: rank ?? RANK_GAP,
       hasStoredRank: rank !== null,
-      type: isCharacterType(characterTypeValue) ? characterTypeValue : "supporting",
+      type:
+        characterRoleFromCategories(record.frontmatter[FRONTMATTER_KEYS.category]) ??
+        (isCharacterType(characterTypeValue) ? characterTypeValue : "supporting"),
+      progressStatus: isProgressStatus(progressStatusValue) ? progressStatusValue : null,
+      aliases: readStringList(record.frontmatter[ALIASES_KEY]),
+      categories: readStringList(record.frontmatter[FRONTMATTER_KEYS.category]),
       oneSentenceStoryline: asString(record.frontmatter[FRONTMATTER_KEYS.oneSentenceStoryline]),
       motivation: asString(record.frontmatter[FRONTMATTER_KEYS.motivation]),
       goal: asString(record.frontmatter[FRONTMATTER_KEYS.goal]),
@@ -3335,6 +4296,7 @@ export class SnowflakeProjectService {
   private sceneFromRecord(
     record: ManagedFileRecord,
     root: string,
+    locale: ProjectLanguage,
   ): SceneRecord {
     const sceneId = asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneId]);
     const projectId = projectIdOf(record.frontmatter);
@@ -3352,6 +4314,7 @@ export class SnowflakeProjectService {
     const storedPov = fromWikiLink(
       asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
     );
+    const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
     return {
       id: sceneId,
       sceneId,
@@ -3360,6 +4323,9 @@ export class SnowflakeProjectService {
       title: asOptionalString(record.frontmatter[FRONTMATTER_KEYS.sceneTitle]) ?? fileStem(record.path),
       rank: rank ?? RANK_GAP,
       hasStoredRank: rank !== null,
+      progressStatus: isProgressStatus(progressStatusValue) ? progressStatusValue : null,
+      aliases: readStringList(record.frontmatter[ALIASES_KEY]),
+      categories: readStringList(record.frontmatter[FRONTMATTER_KEYS.category]),
       povPath:
         storedPov === null || isScenePovMode(storedPov)
           ? storedPov
@@ -3371,19 +4337,37 @@ export class SnowflakeProjectService {
       ).map(
         (target) => this.projectLinkedPath(target, record.path, root) ?? target,
       ),
-      ...this.sceneReading(record),
+      ...this.sceneReading(record, locale),
       readOnly: record.readOnly,
     };
   }
 
   private sceneReading(
     record: ManagedFileRecord,
+    locale: ProjectLanguage,
   ): Pick<
     SceneRecord,
-    "conflict" | "events" | "planning" | "sectionHealth" | "unmigrated" | "revision"
+    | "conflict"
+    | "worldStatus"
+    | "relationships"
+    | "worldStatusUnrecognized"
+    | "relationshipsUnrecognized"
+    | "events"
+    | "planning"
+    | "sectionHealth"
+    | "unmigrated"
+    | "revision"
   > {
     let reading = this.sceneReadings.get(record);
     if (reading === undefined) {
+      const worldStatus = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "world-status") ?? "",
+      );
+      const relationships = parseRecordSectionLenient(
+        locale,
+        readMarkedSection(record.content, "relationships") ?? "",
+      );
       reading = {
         // The property is the store once it exists, even holding an empty
         // string; the legacy section only answers for notes the migration has
@@ -3391,6 +4375,10 @@ export class SnowflakeProjectService {
         conflict: hasOwn(record.frontmatter, FRONTMATTER_KEYS.conflict)
           ? asString(record.frontmatter[FRONTMATTER_KEYS.conflict])
           : (readMarkedSection(record.content, "scene-conflict") ?? ""),
+        worldStatus: worldStatus.records,
+        worldStatusUnrecognized: worldStatus.unrecognized,
+        relationships: relationships.records,
+        relationshipsUnrecognized: relationships.unrecognized,
         events: readMarkedSection(record.content, "scene-events") ?? "",
         planning: readMarkedSection(record.content, "scene-planning") ?? "",
         sectionHealth: memberSectionHealth(record.content, "scene", record.path),
@@ -3424,15 +4412,18 @@ export class SnowflakeProjectService {
         return true;
       }
     }
+    const blocking = (issue: { code: string }): boolean =>
+      issue.code !== "unknown-section" && issue.code !== "unrecognized-record";
     return (
       project.characters.some((character) =>
-        character.sectionHealth.issues.some(
-          (issue) => issue.code !== "unknown-section",
-        ),
+        character.sectionHealth.issues.some(blocking),
       ) ||
       project.scenes.some((scene) =>
-        scene.sectionHealth.issues.some(
-          (issue) => issue.code !== "unknown-section",
+        scene.sectionHealth.issues.some(blocking),
+      ) ||
+      WORLDBUILDING_KINDS.some((kind) =>
+        project.worldbuilding[kind].some((entity) =>
+          entity.sectionHealth.issues.some(blocking),
         ),
       )
     );
@@ -3446,6 +4437,7 @@ export class SnowflakeProjectService {
     hasUnsupportedChildren: boolean;
     characters: CharacterRecord[];
     scenes: SceneRecord[];
+    worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]>;
     artifacts: Partial<Record<StepId, ArtifactSnapshot>>;
     manuscript: ManuscriptSegmentRecord[];
   }> {
@@ -3496,7 +4488,7 @@ export class SnowflakeProjectService {
     const characters: CharacterRecord[] = [];
     for (const record of characterRecords.filter((candidate) => !candidate.readOnly)) {
       try {
-        const character = this.characterFromRecord(record);
+        const character = this.characterFromRecord(record, project.locale);
         characters.push(character);
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
@@ -3515,7 +4507,7 @@ export class SnowflakeProjectService {
     const visibleCharacters = [...characters];
     for (const record of characterRecords.filter((candidate) => candidate.readOnly)) {
       try {
-        visibleCharacters.push(this.characterFromRecord(record));
+        visibleCharacters.push(this.characterFromRecord(record, project.locale));
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -3553,7 +4545,7 @@ export class SnowflakeProjectService {
     const validScenes: SceneRecord[] = [];
     for (const record of sceneRecords.filter((candidate) => !candidate.readOnly)) {
       try {
-        const scene = this.sceneFromRecord(record, project.rootPath);
+        const scene = this.sceneFromRecord(record, project.rootPath, project.locale);
         validScenes.push(scene);
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
@@ -3572,7 +4564,7 @@ export class SnowflakeProjectService {
     const visibleScenes = [...scenes];
     for (const record of sceneRecords.filter((candidate) => candidate.readOnly)) {
       try {
-        visibleScenes.push(this.sceneFromRecord(record, project.rootPath));
+        visibleScenes.push(this.sceneFromRecord(record, project.rootPath, project.locale));
       } catch (error) {
         if (!(error instanceof InvalidManagedDocumentError)) throw error;
       }
@@ -3631,11 +4623,51 @@ export class SnowflakeProjectService {
         hasUnsupportedChildren = true;
       }
     }
+
+    // Worldbuilding entities join the snapshot but no step fingerprint: no
+    // step's review hinges on them. The kind lives in each note's own
+    // frontmatter rather than its folder, so one recursive scan serves all.
+    const worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]> = {
+      time: [],
+      location: [],
+      item: [],
+    };
+    const entityRecords = new Map<string, ManagedFileRecord>();
+    for (const folderName of this.getProjectDirectoryNames(project, "worldbuilding")) {
+      const folderRecords = await this.repository.findManagedFilesBelow(
+        normalizePath(`${project.rootPath}/${folderName}`),
+        "worldbuilding",
+        project.id,
+      );
+      for (const record of folderRecords) entityRecords.set(record.path, record);
+    }
+    hasUnsupportedChildren ||= [...entityRecords.values()].some(
+      (record) => record.readOnly && projectIdOf(record.frontmatter) === project.id,
+    );
+    const entities: WorldbuildingRecord[] = [];
+    for (const record of entityRecords.values()) {
+      try {
+        entities.push(this.entityFromRecord(record, project.locale));
+      } catch (error) {
+        if (!(error instanceof InvalidManagedDocumentError)) throw error;
+      }
+    }
+    assertUniqueStableIds(
+      entities,
+      (entity) => entity.entityId,
+      (entity) => entity.path,
+      "entity",
+    );
+    for (const entity of sortByRank(entities)) {
+      worldbuilding[entity.kind].push(entity);
+    }
+
     return {
       fingerprints: output,
       hasUnsupportedChildren,
       characters: visibleCharacters,
       scenes: sortByRank(visibleScenes),
+      worldbuilding,
       artifacts,
       manuscript: segments,
     };
@@ -3713,7 +4745,7 @@ export class SnowflakeProjectService {
 function schemaCanBeSafelyPatched(frontmatter: ManagedFrontmatter): boolean {
   return (
     !hasOwn(frontmatter, FRONTMATTER_KEYS.schema) ||
-    schemaVersionOf(frontmatter) === SCHEMA_VERSION
+    isWritableSchemaVersion(schemaVersionOf(frontmatter))
   );
 }
 
@@ -3767,6 +4799,14 @@ function safeCommonMetadataRepairPatch(
   return patch;
 }
 
+/** Whether a character note stores its role in either of its two homes. */
+function characterHasStoredRole(frontmatter: ManagedFrontmatter): boolean {
+  return (
+    characterRoleFromCategories(frontmatter[FRONTMATTER_KEYS.category]) !== null ||
+    isCharacterType(frontmatter[FRONTMATTER_KEYS.characterType])
+  );
+}
+
 function safeCharacterMetadataRepairPatch(
   record: ManagedFileRecord,
   expectedProjectId: string,
@@ -3781,8 +4821,10 @@ function safeCharacterMetadataRepairPatch(
   if (patch === null) return null;
   const frontmatter = record.frontmatter;
 
-  // Character type is an authorial decision. Never guess or overwrite it.
-  if (!isCharacterType(frontmatter[FRONTMATTER_KEYS.characterType])) return null;
+  // The role is an authorial decision. Never guess or overwrite it, wherever
+  // it is stored: as a category link on a migrated note, under the legacy key
+  // on an older one.
+  if (!characterHasStoredRole(frontmatter)) return null;
 
   const rawId = normalizeStableId(frontmatter[FRONTMATTER_KEYS.characterId]);
   const characterId =
@@ -3918,7 +4960,7 @@ function isCurrentSystemTemplate(
 
 function isCurrentOrNewerSchema(frontmatter: ManagedFrontmatter): boolean {
   const version = schemaVersionOf(frontmatter);
-  return version !== null && version >= SCHEMA_VERSION;
+  return version !== null && version >= MIN_SUPPORTED_SCHEMA_VERSION;
 }
 
 /**
@@ -4045,7 +5087,7 @@ function assertUniqueStableIds<T>(
   records: readonly T[],
   idOf: (record: T) => string,
   pathOf: (record: T) => string,
-  kind: "character" | "scene",
+  kind: "character" | "scene" | "entity",
 ): void {
   const firstPathById = new Map<string, string>();
   for (const record of records) {
@@ -4077,19 +5119,320 @@ function asString(value: unknown): string {
 }
 
 /**
+ * A frontmatter list of plain strings, kept in stored order. A bare string
+ * counts as a one-entry list, the way Obsidian itself reads `aliases`.
+ */
+function readStringList(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+/**
+ * The character's generated fields block view. A character always displays a
+ * category line: the stored links when it has them, and otherwise its role
+ * synthesized as the seeded path, so an unmigrated note reads the same way a
+ * migrated one does.
+ */
+function characterFieldsView(
+  locale: ProjectLanguage,
+  source: {
+    type: CharacterType;
+    progressStatus: ProgressStatus | null;
+    aliases: readonly string[];
+    categories: readonly string[];
+    oneSentenceStoryline: string;
+    motivation: string;
+    goal: string;
+    conflict: string;
+    growth: string;
+  },
+): CharacterFieldsView {
+  return {
+    progressStatus: source.progressStatus,
+    aliases: [...source.aliases],
+    categories:
+      source.categories.length > 0
+        ? [...source.categories]
+        : [characterRolePath(locale, source.type)],
+    oneSentenceStoryline: source.oneSentenceStoryline,
+    motivation: source.motivation,
+    goal: source.goal,
+    conflict: source.conflict,
+    growth: source.growth,
+  };
+}
+
+/** The vault path of one of a project's definition files. */
+function definitionFilePath(
+  project: { rootPath: string; locale: ProjectLanguage },
+  id: DefinitionFileId,
+): string {
+  const layout = getProjectPathLayout(project.locale);
+  return normalizePath(
+    `${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(id, project.locale)}`,
+  );
+}
+
+/** The vault path of a project's Category definition file. */
+function categoryDefinitionPath(project: {
+  rootPath: string;
+  locale: ProjectLanguage;
+}): string {
+  return definitionFilePath(project, "category");
+}
+
+/** The exact role links this project writes, for base filters and formulas. */
+function characterRoleLinks(project: {
+  rootPath: string;
+  locale: ProjectLanguage;
+}): CharacterRoleLinks {
+  const definitionPath = categoryDefinitionPath(project);
+  const link = (type: CharacterType): string =>
+    renderHeadingLink(
+      definitionPath,
+      characterRoleHeading(project.locale, type),
+      characterRolePath(project.locale, type),
+    );
+  return {
+    major: link("major"),
+    supporting: link("supporting"),
+    minor: link("minor"),
+  };
+}
+
+/** The project folder a base file lives in, relative to the project root. */
+function projectBaseFolder(
+  layout: ProjectPathLayout,
+  id: ProjectBaseId,
+): string {
+  if (id === "characters") return layout.directories.characters;
+  if (id === "scenes") return layout.directories.scenes;
+  return `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[id]}`;
+}
+
+/**
+ * The stored category list with its role link moved to a new role. The other
+ * categories stay untouched; a list carrying no role link gains one at the
+ * front, reusing the definition path the note's own links already point at
+ * when there is one.
+ */
+function replacedRoleCategories(
+  locale: ProjectLanguage,
+  categories: readonly string[],
+  type: CharacterType,
+  fallbackDefinitionPath: string,
+): string[] {
+  const definitionPath =
+    categories
+      .map((raw) => parseHeadingLink(raw))
+      .find(
+        (link) => link !== null && characterTypeFromHeading(link.heading) !== null,
+      )?.path ?? fallbackDefinitionPath;
+  const roleLink = renderHeadingLink(
+    definitionPath,
+    characterRoleHeading(locale, type),
+    characterRolePath(locale, type),
+  );
+  let replaced = false;
+  const next = categories.map((raw) => {
+    const link = parseHeadingLink(raw);
+    if (link !== null && characterTypeFromHeading(link.heading) !== null) {
+      replaced = true;
+      return roleLink;
+    }
+    return raw;
+  });
+  if (!replaced) next.unshift(roleLink);
+  return next;
+}
+
+/** Category paths chosen in a picker become links into the definition file. */
+function categoryLinksFromPaths(
+  project: { rootPath: string; locale: ProjectLanguage },
+  paths: readonly string[],
+): string[] {
+  const definitionPath = categoryDefinitionPath(project);
+  return paths
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0)
+    .map((path) =>
+      renderHeadingLink(
+        definitionPath,
+        path.split("/").pop() ?? path,
+        path,
+      ),
+    );
+}
+
+interface EntityFieldsSource {
+  progressStatus: ProgressStatus | null;
+  aliases: readonly string[];
+  categories: readonly string[];
+  description: string;
+  timeKind: TimeKind | null;
+  timeStart: string;
+  timeEnd: string;
+}
+
+function entityFieldsViewOf(
+  kind: WorldbuildingKind,
+  source: EntityFieldsSource,
+): EntityFieldsView {
+  return {
+    progressStatus: source.progressStatus,
+    aliases: [...source.aliases],
+    categories: [...source.categories],
+    description: source.description,
+    time: WORLDBUILDING_KIND_DEFINITIONS[kind].timeFields
+      ? { kind: source.timeKind, start: source.timeStart, end: source.timeEnd }
+      : null,
+  };
+}
+
+/**
+ * A period claims a span, so it needs both of its ends or neither; a point is
+ * its own time and an event may name one moment or a span freely.
+ */
+function assertEntityTimeFields(
+  timeKind: TimeKind | null,
+  timeStart: string,
+  timeEnd: string,
+): void {
+  if (timeKind !== "period") return;
+  if ((timeStart.length > 0) !== (timeEnd.length > 0)) {
+    throw new Error("A time period needs both its start and its end, or neither.");
+  }
+}
+
+const RECORD_SECTION_IDS: readonly RecordSectionId[] = [
+  "details",
+  "world-status",
+  "relationships",
+];
+
+/**
+ * The record sections a write should carry: only the ones with something in
+ * them, each rendered in the project language with the lines the grammar
+ * cannot read re-emitted verbatim after the records.
+ */
+function entityRecordSectionValues(
+  locale: ProjectLanguage,
+  records: {
+    details: readonly DetailsLine[];
+    worldStatus: readonly RecordLine[];
+    relationships: readonly RecordLine[];
+  },
+  unrecognized: {
+    detailsUnrecognized: readonly string[];
+    worldStatusUnrecognized: readonly string[];
+    relationshipsUnrecognized: readonly string[];
+  },
+): Record<string, string> {
+  const values: Record<string, string> = {};
+  if (records.details.length + unrecognized.detailsUnrecognized.length > 0) {
+    values["details"] = renderDetailsSection(
+      locale,
+      records.details,
+      unrecognized.detailsUnrecognized,
+    );
+  }
+  if (records.worldStatus.length + unrecognized.worldStatusUnrecognized.length > 0) {
+    values["world-status"] = renderRecordSection(
+      locale,
+      records.worldStatus,
+      unrecognized.worldStatusUnrecognized,
+    );
+  }
+  if (
+    records.relationships.length + unrecognized.relationshipsUnrecognized.length >
+    0
+  ) {
+    values["relationships"] = renderRecordSection(
+      locale,
+      records.relationships,
+      unrecognized.relationshipsUnrecognized,
+    );
+  }
+  return values;
+}
+
+/** The heading a section outside the template is created under at upsert. */
+function deferredSectionHeading(id: string, locale: ProjectLanguage): string {
+  return (RECORD_SECTION_IDS as readonly string[]).includes(id)
+    ? recordSectionHeading(id as RecordSectionId, locale)
+    : "";
+}
+
+/**
+ * The upsert layout for a worldbuilding note: the registry order, with the
+ * headings deferred record sections are created under when their first record
+ * arrives.
+ */
+function entityUpdateLayout(
+  name: string,
+  kind: WorldbuildingKind,
+  locale: ProjectLanguage,
+): SectionLayoutEntry[] {
+  const sections = entityTemplate(name, kind, locale).sections;
+  return managedSectionsForDocument("worldbuilding").map(
+    (descriptor) =>
+      sections.find((section) => section.id === descriptor.id) ?? {
+        id: descriptor.id,
+        heading: deferredSectionHeading(descriptor.id, locale),
+      },
+  );
+}
+
+/** The upsert layout for a character note, record headings included. */
+function characterUpdateLayout(
+  name: string,
+  locale: ProjectLanguage,
+): SectionLayoutEntry[] {
+  const sections = characterTemplate(name, locale).sections;
+  return managedSectionsForDocument("character").map(
+    (descriptor) =>
+      sections.find((section) => section.id === descriptor.id) ?? {
+        id: descriptor.id,
+        heading: deferredSectionHeading(descriptor.id, locale),
+      },
+  );
+}
+
+/**
+ * The stored details lines with their Age entry replaced, added, or removed.
+ * Any other line in the section is not the form's to touch.
+ */
+function replacedAgeDetails(
+  details: readonly DetailsLine[],
+  age: DetailsLine | null,
+): DetailsLine[] {
+  const others = details.filter((line) => line.property !== "age");
+  if (age === null) return others;
+  return [{ ...age, property: "age" }, ...others];
+}
+
+interface SceneFieldsSource {
+  progressStatus: ProgressStatus | null;
+  aliases: readonly string[];
+  categories: readonly string[];
+  povPath: string | null;
+  time: string;
+  location: string;
+  conflict: string;
+  characters: readonly string[];
+}
+
+/**
  * The scene's generated fields block, with the point of view and the cast
  * resolved to names the way the dashboard shows them. Only the display is
  * localized; the stored properties keep their language-neutral values.
  */
 function sceneFieldsBlock(
   locale: ProjectLanguage,
-  fields: {
-    povPath: string | null;
-    time: string;
-    location: string;
-    conflict: string;
-    characters: readonly string[];
-  },
+  fields: SceneFieldsSource,
   characterNames: ReadonlyMap<string, string>,
 ): string {
   const memberName = (path: string): string =>
@@ -4105,6 +5448,9 @@ function sceneFieldsBlock(
             name: memberName(fields.povPath),
           };
   return renderSceneFieldsBlock(locale, {
+    progressStatus: fields.progressStatus,
+    aliases: [...fields.aliases],
+    categories: [...fields.categories],
     pov,
     time: fields.time,
     location: fields.location,
@@ -4128,7 +5474,7 @@ function sceneUpdateLayout(
     (descriptor) =>
       sections.find((section) => section.id === descriptor.id) ?? {
         id: descriptor.id,
-        heading: "",
+        heading: deferredSectionHeading(descriptor.id, locale),
       },
   );
 }
@@ -4142,7 +5488,7 @@ function sceneUpdateLayout(
  */
 function memberSectionHealth(
   content: string,
-  documentType: "character" | "scene",
+  documentType: "character" | "scene" | "worldbuilding",
   path: string,
 ): ManagedSectionsInspection {
   const inspection = inspectManagedDocumentSections(
@@ -4151,17 +5497,34 @@ function memberSectionHealth(
     path,
   );
   const optional = optionalSectionIds(documentType);
-  return {
-    sections: inspection.sections,
-    issues: inspection.issues.filter(
-      (issue) =>
-        !(
-          issue.code === "missing" &&
-          issue.sectionId !== null &&
-          optional.has(issue.sectionId)
-        ),
-    ),
-  };
+  const issues = inspection.issues.filter(
+    (issue) =>
+      !(
+        issue.code === "missing" &&
+        issue.sectionId !== null &&
+        optional.has(issue.sectionId)
+      ),
+  );
+  // Lines a record section holds that the grammar cannot read: kept verbatim,
+  // invisible to the dashboard, and only the author can resolve them, so the
+  // health report is where they get said. Informational, never blocking.
+  // Detection is language-independent, since the lenient parse tries both.
+  for (const sectionId of RECORD_SECTION_IDS) {
+    const body = readMarkedSection(content, sectionId);
+    if (body === null) continue;
+    const unrecognized =
+      sectionId === "details"
+        ? parseDetailsSectionLenient("en", body).unrecognized
+        : parseRecordSectionLenient("en", body).unrecognized;
+    if (unrecognized.length > 0) {
+      issues.push({
+        code: "unrecognized-record",
+        sectionId,
+        reason: `${unrecognized.length} line(s) in "${sectionId}" do not read as records.`,
+      });
+    }
+  }
+  return { sections: inspection.sections, issues };
 }
 
 function asOptionalString(value: unknown): string | null {

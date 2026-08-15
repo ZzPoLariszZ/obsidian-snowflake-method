@@ -23,7 +23,7 @@ import {
 	type MarkdownFileInfo,
 } from 'obsidian';
 
-import { GENERATED_SECTION_IDS } from '../domain';
+import { GENERATED_SECTION_IDS, PROTECTED_SECTION_IDS } from '../domain';
 import {
 	changeIntersectsReadOnlyContent,
 	containsManagedMarkerText,
@@ -61,6 +61,8 @@ export interface ManagedBoundaryBlockedEvent {
 	sectionIds: readonly string[];
 	/** The subset hit inside a generated block's content, for a truer notice. */
 	generatedSectionIds: readonly string[];
+	/** The subset hit inside a record section's content: canonical storage the dashboard edits. */
+	recordSectionIds: readonly string[];
 	userEvent: string;
 }
 
@@ -304,19 +306,26 @@ export function createManagedSectionEditorExtension(
 		});
 
 		const intersections = findManagedBoundaryIntersections(changes, boundaries);
-		// A generated block is read-only through its content as well: it only
-		// ever says what the properties say, so a keystroke inside it would be
-		// rewritten by the next reconcile pass anyway. Refusing it here is the
-		// honest version of that.
+		// A protected section is read-only through its content as well. A
+		// generated block only ever says what the properties say, so a keystroke
+		// inside it would be rewritten by the next reconcile pass anyway; a
+		// record section is canonical storage in a grammar only the dashboard
+		// writes, so a keystroke inside it could quietly stop being a record.
+		// Refusing both here is the honest version of that.
 		const generatedHits = new Set<string>();
-		const generatedSections = pairManagedSections(
+		const recordHits = new Set<string>();
+		const protectedSections = pairManagedSections(
 			context.content,
 			boundaries,
-		).filter((section) => GENERATED_SECTION_IDS.has(section.sectionId));
+		).filter((section) => PROTECTED_SECTION_IDS.has(section.sectionId));
 		for (const change of changes) {
-			for (const section of generatedSections) {
+			for (const section of protectedSections) {
 				if (changeIntersectsReadOnlyContent(change, section)) {
-					generatedHits.add(section.sectionId);
+					if (GENERATED_SECTION_IDS.has(section.sectionId)) {
+						generatedHits.add(section.sectionId);
+					} else {
+						recordHits.add(section.sectionId);
+					}
 				}
 			}
 		}
@@ -326,6 +335,7 @@ export function createManagedSectionEditorExtension(
 		if (
 			intersections.length === 0 &&
 			generatedHits.size === 0 &&
+			recordHits.size === 0 &&
 			!insertsMarkerText
 		) {
 			return transaction;
@@ -335,6 +345,7 @@ export function createManagedSectionEditorExtension(
 			...new Set([
 				...intersections.map(({ boundary }) => boundary.sectionId),
 				...generatedHits,
+				...recordHits,
 			]),
 		];
 		const throttleKey = context.filePath ?? '__snowflake-unknown-editor__';
@@ -346,6 +357,7 @@ export function createManagedSectionEditorExtension(
 				context,
 				sectionIds,
 				generatedSectionIds: [...generatedHits],
+				recordSectionIds: [...recordHits],
 				userEvent,
 			});
 		}
@@ -472,11 +484,12 @@ function buildDecorations(
 	}
 
 	for (const section of pairManagedSections(context.content, boundaries)) {
-		if (GENERATED_SECTION_IDS.has(section.sectionId)) {
-			// The whole block is a generated view of the properties: tint it in
-			// source mode, where the raw quote lines need the hint, and never
-			// invite writing into it with the empty placeholder. Live preview
-			// needs neither, since the callout already reads as one made thing.
+		if (PROTECTED_SECTION_IDS.has(section.sectionId)) {
+			// The whole section is the plugin's to write, a generated view of the
+			// properties or a record store the dashboard edits: tint it in source
+			// mode, where the raw lines need the hint, and never invite writing
+			// into it with the empty placeholder. Live preview needs neither,
+			// since the rendered block already reads as one made thing.
 			if (!context.livePreview) {
 				for (const lineStart of lineStartsBetween(
 					context.content,

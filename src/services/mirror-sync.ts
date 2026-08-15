@@ -7,6 +7,7 @@ import { readMarkedSection } from "../templates";
 export const MEMBER_FIELDS_SECTION_BY_DOCUMENT = {
   character: "character-fields",
   scene: "scene-fields",
+  worldbuilding: "entity-fields",
 } as const;
 
 export type MemberDocumentType = keyof typeof MEMBER_FIELDS_SECTION_BY_DOCUMENT;
@@ -14,7 +15,7 @@ export type MemberDocumentType = keyof typeof MEMBER_FIELDS_SECTION_BY_DOCUMENT;
 export function isMemberDocumentType(
   value: string | null,
 ): value is MemberDocumentType {
-  return value === "character" || value === "scene";
+  return value === "character" || value === "scene" || value === "worldbuilding";
 }
 
 export interface FieldsBlockWrite {

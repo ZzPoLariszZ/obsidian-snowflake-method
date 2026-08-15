@@ -1,15 +1,20 @@
 import type {
   CharacterType,
+  ProgressStatus,
   ProjectLanguage,
   StepFingerprintMap,
   StepId,
   StepStatus,
   StepStatusMap,
+  TimeKind,
+  WorldbuildingKind,
 } from "../domain";
 import type { ManagedFrontmatter } from "../repository";
 import type {
+  DetailsLine,
   ManagedSectionsInspection,
   MarkerIssueCode,
+  RecordLine,
 } from "../templates";
 
 export const DEFAULT_PROJECT_ROOT = "Snowflake Projects";
@@ -21,6 +26,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "synopses",
   "scenes",
   "draft",
+  "worldbuilding",
   "materials",
   "archive",
 ] as const;
@@ -30,6 +36,8 @@ export type ProjectDirectoryKey = (typeof PROJECT_DIRECTORY_KEYS)[number];
 export interface ProjectPathLayout {
   projectFileName: string;
   directories: Readonly<Record<ProjectDirectoryKey, string>>;
+  /** Kind subfolders inside the worldbuilding directory. */
+  worldbuildingKinds: Readonly<Record<WorldbuildingKind, string>>;
   draftFileName: string;
 }
 
@@ -43,8 +51,14 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       synopses: "30_Synopsis",
       scenes: "40_Scene",
       draft: "50_Manuscript",
+      worldbuilding: "60_Worldbuilding",
       materials: "80_Material",
       archive: "90_Archive",
+    },
+    worldbuildingKinds: {
+      time: "61_Time",
+      location: "62_Location",
+      item: "63_Item",
     },
     draftFileName: "Draft.md",
   },
@@ -57,12 +71,28 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       synopses: "30_大纲",
       scenes: "40_场景",
       draft: "50_正文",
+      worldbuilding: "60_世界观",
       materials: "80_素材",
       archive: "90_存档",
+    },
+    worldbuildingKinds: {
+      time: "61_时间",
+      location: "62_地点",
+      item: "63_物品",
     },
     draftFileName: "初稿.md",
   },
 };
+
+/** The vault path of a project's worldbuilding kind folder. */
+export function worldbuildingKindFolder(
+  rootPath: string,
+  language: ProjectLanguage,
+  kind: WorldbuildingKind,
+): string {
+  const layout = getProjectPathLayout(language);
+  return `${rootPath}/${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`;
+}
 
 export function getProjectPathLayout(language: ProjectLanguage): ProjectPathLayout {
   return PROJECT_PATH_LAYOUTS[language];
@@ -99,6 +129,7 @@ export interface ProjectSnapshot extends ProjectRef {
   schemaVersion: number | null;
   characters: CharacterRecord[];
   scenes: SceneRecord[];
+  worldbuilding: Record<WorldbuildingKind, WorldbuildingRecord[]>;
   artifacts: Partial<Record<StepId, ArtifactSnapshot>>;
   structureIssues: ProjectStructureIssue[];
 }
@@ -178,11 +209,18 @@ export interface RepairSectionResult {
 export interface CharacterInput {
   name: string;
   type?: CharacterType;
+  aliases?: string[];
+  /** Category paths beyond the role, `Character/Race/Elf`; links are built here. */
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
   oneSentenceStoryline?: string;
   motivation?: string;
   goal?: string;
   conflict?: string;
   growth?: string;
+  age?: DetailsLine | null;
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
@@ -193,11 +231,17 @@ export interface CharacterPatch {
   expectedRevision: string;
   name?: string;
   type?: CharacterType;
+  aliases?: string[];
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
   oneSentenceStoryline?: string;
   motivation?: string;
   goal?: string;
   conflict?: string;
   growth?: string;
+  age?: DetailsLine | null;
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
   oneParagraphStoryline?: string;
   characterSynopsis?: string;
   characterProfile?: string;
@@ -213,12 +257,25 @@ export interface CharacterRecord {
   rank: number;
   /** False when `rank` is the fallback because the note stores no usable rank. */
   hasStoredRank: boolean;
+  /** The role, read from the category links first, the legacy key second. */
   type: CharacterType;
+  /** Null while the note has never chosen a progress status. */
+  progressStatus: ProgressStatus | null;
+  aliases: string[];
+  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  categories: string[];
   oneSentenceStoryline: string;
   motivation: string;
   goal: string;
   conflict: string;
   growth: string;
+  /** Record lines from the note's body sections; Age lives in `details`. */
+  details: DetailsLine[];
+  worldStatus: RecordLine[];
+  relationships: RecordLine[];
+  detailsUnrecognized: string[];
+  worldStatusUnrecognized: string[];
+  relationshipsUnrecognized: string[];
   oneParagraphStoryline: string;
   characterSynopsis: string;
   characterProfile: string;
@@ -233,10 +290,15 @@ export interface CharacterRecord {
 export interface SceneInput {
   title: string;
   povPath?: string | null;
+  aliases?: string[];
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
   time?: string;
   location?: string;
   characters?: string[];
   conflict?: string;
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
   events?: string;
   planning?: string;
 }
@@ -246,10 +308,15 @@ export interface ScenePatch {
   expectedRevision: string;
   title?: string;
   povPath?: string | null;
+  aliases?: string[];
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
   time?: string;
   location?: string;
   characters?: string[];
   conflict?: string;
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
   events?: string;
   planning?: string;
 }
@@ -263,11 +330,20 @@ export interface SceneRecord {
   rank: number;
   /** False when `rank` is the fallback because the note stores no usable rank. */
   hasStoredRank: boolean;
+  /** Null while the note has never chosen a progress status. */
+  progressStatus: ProgressStatus | null;
+  aliases: string[];
+  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  categories: string[];
   povPath: string | null;
   time: string;
   location: string;
   characters: string[];
   conflict: string;
+  worldStatus: RecordLine[];
+  relationships: RecordLine[];
+  worldStatusUnrecognized: string[];
+  relationshipsUnrecognized: string[];
   events: string;
   planning: string;
   sectionHealth: ManagedSectionsInspection;
@@ -276,6 +352,82 @@ export interface SceneRecord {
   /** Stable fingerprint of the complete managed Markdown note. */
   revision: string;
   readOnly: boolean;
+}
+
+/**
+ * A worldbuilding entity's structured record. Frontmatter carries what a
+ * single value or a single link can hold; the record sections carry the
+ * compounds, read back through the codec from the plugin's own lines.
+ */
+export interface WorldbuildingRecord {
+  id: string;
+  entityId: string;
+  projectId: string;
+  path: string;
+  kind: WorldbuildingKind;
+  name: string;
+  rank: number;
+  /** False when `rank` is the fallback because the note stores no usable rank. */
+  hasStoredRank: boolean;
+  /** Null while the note has never chosen a progress status. */
+  progressStatus: ProgressStatus | null;
+  aliases: string[];
+  /** Category links exactly as stored, `[[…#Heading|Full/Path]]`. */
+  categories: string[];
+  description: string;
+  timeKind: TimeKind | null;
+  /** Raw stored term, a wikilink or plain text; empty when absent. */
+  timeStart: string;
+  timeEnd: string;
+  details: DetailsLine[];
+  worldStatus: RecordLine[];
+  relationships: RecordLine[];
+  /**
+   * Lines in each record section the grammar does not cover, kept verbatim
+   * per section so a rewrite re-emits them where they were found.
+   */
+  detailsUnrecognized: string[];
+  worldStatusUnrecognized: string[];
+  relationshipsUnrecognized: string[];
+  notes: string;
+  sectionHealth: ManagedSectionsInspection;
+  /** Stable fingerprint of the complete managed Markdown note. */
+  revision: string;
+  readOnly: boolean;
+}
+
+export interface EntityInput {
+  kind: WorldbuildingKind;
+  name: string;
+  aliases?: string[];
+  /** Category paths chosen in the picker, `Time/Era`; links are built here. */
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
+  description?: string;
+  timeKind?: TimeKind | null;
+  timeStart?: string;
+  timeEnd?: string;
+  details?: DetailsLine[];
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
+  notes?: string;
+}
+
+export interface EntityPatch {
+  /** Revision shown to the editor before the user began changing fields. */
+  expectedRevision: string;
+  name?: string;
+  aliases?: string[];
+  categoryPaths?: string[];
+  progressStatus?: ProgressStatus | null;
+  description?: string;
+  timeKind?: TimeKind | null;
+  timeStart?: string;
+  timeEnd?: string;
+  details?: DetailsLine[];
+  worldStatus?: RecordLine[];
+  relationships?: RecordLine[];
+  notes?: string;
 }
 
 export interface ArtifactSnapshot {

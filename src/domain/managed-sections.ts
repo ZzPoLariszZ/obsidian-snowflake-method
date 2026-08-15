@@ -20,19 +20,35 @@ export interface ManagedSectionDescriptor {
 	 * any change that reaches the file anyway.
 	 */
 	generated?: boolean;
+	/**
+	 * Written only by the plugin, but as canonical storage rather than a view:
+	 * record sections whose content frontmatter cannot hold. The editor keeps
+	 * the range read-only, and the reconcile pass must never touch it, because
+	 * there is nothing else to regenerate it from.
+	 */
+	protected?: boolean;
+	/**
+	 * Left out of fresh notes and inserted the first time it has something to
+	 * hold. Implies the absence is a state, so a deferred section is also
+	 * `optional`.
+	 */
+	deferred?: boolean;
 }
 
 const section = (
 	id: string,
 	flags: Pick<
 		ManagedSectionDescriptor,
-		'optional' | 'legacy' | 'generated'
+		'optional' | 'legacy' | 'generated' | 'protected' | 'deferred'
 	> = {},
 ): ManagedSectionDescriptor => ({
 	id,
 	nameKey: `editor.managedSection.name.${id}`,
 	...flags,
 });
+
+const recordSection = (id: string): ManagedSectionDescriptor =>
+	section(id, { optional: true, protected: true, deferred: true });
 
 /**
  * Canonical v1 section contract shared by templates, persistence, the
@@ -61,6 +77,9 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	'long-synopsis': [section('long-synopsis')],
 	character: [
 		section('character-fields', { optional: true, generated: true }),
+		recordSection('details'),
+		recordSection('world-status'),
+		recordSection('relationships'),
 		section('one-paragraph-storyline'),
 		section('character-synopsis'),
 		section('character-profile'),
@@ -68,8 +87,17 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	scene: [
 		section('scene-fields', { optional: true, generated: true }),
 		section('scene-conflict', { optional: true, legacy: true }),
+		recordSection('world-status'),
+		recordSection('relationships'),
 		section('scene-events'),
 		section('scene-planning'),
+	],
+	worldbuilding: [
+		section('entity-fields', { generated: true }),
+		recordSection('details'),
+		recordSection('world-status'),
+		recordSection('relationships'),
+		section('entity-notes'),
 	],
 	draft: [],
 	material: [],
@@ -82,12 +110,15 @@ export function managedSectionsForDocument(
 	return MANAGED_SECTIONS_BY_DOCUMENT[documentType];
 }
 
-/** The sections a freshly created note carries: everything not legacy. */
+/**
+ * The sections a freshly created note carries: everything that is neither
+ * legacy nor deferred until first use.
+ */
 export function templateSectionsForDocument(
 	documentType: DocumentType,
 ): readonly ManagedSectionDescriptor[] {
 	return MANAGED_SECTIONS_BY_DOCUMENT[documentType].filter(
-		(descriptor) => descriptor.legacy !== true,
+		(descriptor) => descriptor.legacy !== true && descriptor.deferred !== true,
 	);
 }
 
@@ -96,6 +127,23 @@ export const GENERATED_SECTION_IDS: ReadonlySet<string> = new Set(
 	Object.values(MANAGED_SECTIONS_BY_DOCUMENT).flatMap((sections) =>
 		sections
 			.filter((descriptor) => descriptor.generated === true)
+			.map((descriptor) => descriptor.id),
+	),
+);
+
+/**
+ * Every id the editor refuses human edits inside: the generated views plus the
+ * canonical record sections. What differs between the two is the reconcile
+ * pass (views are rewritten from the properties, records never are) and the
+ * notice explaining where to edit instead.
+ */
+export const PROTECTED_SECTION_IDS: ReadonlySet<string> = new Set(
+	Object.values(MANAGED_SECTIONS_BY_DOCUMENT).flatMap((sections) =>
+		sections
+			.filter(
+				(descriptor) =>
+					descriptor.generated === true || descriptor.protected === true,
+			)
 			.map((descriptor) => descriptor.id),
 	),
 );

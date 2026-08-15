@@ -5,17 +5,27 @@ import { appendBaseColumns, getProjectBases } from '../../src/templates';
 
 const PROJECT_ID = 'project-85200cf4-9b68-40e9-a316-ead8ed859365';
 
-function baseFor(id: 'characters' | 'scenes', language: 'en' | 'zh-CN' = 'en') {
-	const base = getProjectBases(PROJECT_ID, language).find(
+const CATEGORY_PATH = 'Snowflake Projects/Novel/60_Worldbuilding/Category';
+const ROLES = {
+	major: `[[${CATEGORY_PATH}#Major|Character/Major]]`,
+	supporting: `[[${CATEGORY_PATH}#Supporting|Character/Supporting]]`,
+	minor: `[[${CATEGORY_PATH}#Minor|Character/Minor]]`,
+};
+
+type BaseId = 'characters' | 'scenes' | 'time' | 'location' | 'item';
+type BaseFilter = string | { or: string[] };
+
+function baseFor(id: BaseId, language: 'en' | 'zh-CN' = 'en') {
+	const base = getProjectBases(PROJECT_ID, language, ROLES).find(
 		(candidate) => candidate.id === id,
 	);
 	if (!base) throw new Error(`Missing generated base: ${id}`);
 	return base;
 }
 
-function parsed(id: 'characters' | 'scenes', language: 'en' | 'zh-CN' = 'en') {
+function parsed(id: BaseId, language: 'en' | 'zh-CN' = 'en') {
 	return parse(baseFor(id, language).content) as {
-		filters: { and: string[] };
+		filters: { and: BaseFilter[] };
 		formulas: Record<string, string>;
 		properties: Record<string, { displayName: string }>;
 		views: {
@@ -23,36 +33,51 @@ function parsed(id: 'characters' | 'scenes', language: 'en' | 'zh-CN' = 'en') {
 			order: string[];
 			sort: { property: string; direction: string }[];
 			groupBy?: { property: string };
-			filters?: { and: string[] };
+			filters?: { and: BaseFilter[] };
 		}[];
 	};
 }
 
 describe('project base templates', () => {
-	it('localizes both generated filenames', () => {
-		expect(getProjectBases(PROJECT_ID, 'en').map(({ fileName }) => fileName)).toEqual([
+	it('localizes every generated filename', () => {
+		expect(
+			getProjectBases(PROJECT_ID, 'en', ROLES).map(({ fileName }) => fileName),
+		).toEqual([
 			'Characters.base',
 			'Scenes.base',
+			'Time.base',
+			'Location.base',
+			'Item.base',
 		]);
-		expect(getProjectBases(PROJECT_ID, 'zh-CN').map(({ fileName }) => fileName)).toEqual([
+		expect(
+			getProjectBases(PROJECT_ID, 'zh-CN', ROLES).map(
+				({ fileName }) => fileName,
+			),
+		).toEqual([
 			'角色总览.base',
 			'场景总览.base',
+			'时间总览.base',
+			'地点总览.base',
+			'物品总览.base',
 		]);
 	});
 
-	it('names each base after the project directory it belongs in', () => {
-		expect(getProjectBases(PROJECT_ID, 'en').map(({ id }) => id)).toEqual([
+	it('names each base after the folder it belongs in', () => {
+		expect(getProjectBases(PROJECT_ID, 'en', ROLES).map(({ id }) => id)).toEqual([
 			'characters',
 			'scenes',
+			'time',
+			'location',
+			'item',
 		]);
 	});
 
 	it('scopes every base to one project by id rather than by folder', () => {
-		for (const id of ['characters', 'scenes'] as const) {
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
 			expect(parsed(id).filters.and).toContain(
 				`note["snowflake-project-id"] == "${PROJECT_ID}"`,
 			);
-			expect(parsed(id).filters.and.join('\n')).not.toContain('inFolder');
+			expect(JSON.stringify(parsed(id).filters.and)).not.toContain('inFolder');
 		}
 	});
 
@@ -75,8 +100,13 @@ describe('project base templates', () => {
 	});
 
 	it('leads every view with the link column', () => {
-		for (const id of ['characters', 'scenes'] as const) {
-			const formula = id === 'characters' ? 'formula.character' : 'formula.scene';
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
+			const formula =
+				id === 'characters'
+					? 'formula.character'
+					: id === 'scenes'
+						? 'formula.scene'
+						: 'formula.entity';
 			for (const view of parsed(id).views) {
 				expect(view.order[0]).toBe(formula);
 			}
@@ -84,7 +114,7 @@ describe('project base templates', () => {
 	});
 
 	it('sorts every view by the rank the dashboard maintains', () => {
-		for (const id of ['characters', 'scenes'] as const) {
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
 			for (const view of parsed(id).views) {
 				expect(view.sort).toEqual([
 					{ property: 'snowflake-rank', direction: 'ASC' },
@@ -94,39 +124,45 @@ describe('project base templates', () => {
 	});
 
 	it('keeps rank and identity out of the editable columns', () => {
-		for (const id of ['characters', 'scenes'] as const) {
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
 			for (const view of parsed(id).views) {
 				expect(view.order).not.toContain('snowflake-rank');
 				expect(view.order).not.toContain('snowflake-character-id');
 				expect(view.order).not.toContain('snowflake-scene-id');
+				expect(view.order).not.toContain('snowflake-entity-id');
+				expect(view.order).not.toContain('snowflake-worldbuilding-kind');
 			}
 		}
 	});
 
 	it('never repeats a column within one view', () => {
-		for (const id of ['characters', 'scenes'] as const) {
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
 			for (const view of parsed(id).views) {
 				expect(new Set(view.order).size).toBe(view.order.length);
 			}
 		}
 	});
 
-	it('shows the character type in the project language', () => {
-		// The stored value stays canonical; only the column is translated.
-		expect(parsed('characters', 'zh-CN').formulas['character_type']).toBe(
-			'if(note["snowflake-character-type"] == "major", "主角", ' +
-				'if(note["snowflake-character-type"] == "supporting", "配角", ' +
-				'if(note["snowflake-character-type"] == "minor", "次要角色", ' +
-				'note["snowflake-character-type"])))',
-		);
+	it('reads the role from the category links first, the legacy key second', () => {
+		const formula = parsed('characters', 'zh-CN').formulas['character_type'];
+		// The category links decide when the property exists at all.
+		expect(formula).toContain(`note["snowflake-category"].contains(${JSON.stringify(ROLES.major)})`);
+		expect(formula).toContain('"主角"');
+		// The legacy key is the fallthrough for unmigrated notes.
+		expect(formula).toContain('note["snowflake-character-type"] == "major"');
 		expect(parsed('characters').formulas['character_type']).toContain('"Major"');
 		for (const language of ['en', 'zh-CN'] as const) {
 			const views = parsed('characters', language).views;
 			expect(views[1]?.order).toContain('formula.character_type');
 			expect(views[1]?.order).not.toContain('snowflake-character-type');
-			// The major sheet still filters on the canonical stored value.
+			// The major sheet lists a role stored either way.
 			expect(views[0]?.filters?.and).toEqual([
-				'note["snowflake-character-type"] == "major"',
+				{
+					or: [
+						`note["snowflake-category"].contains(${JSON.stringify(ROLES.major)})`,
+						'note["snowflake-character-type"] == "major"',
+					],
+				},
 			]);
 		}
 	});
@@ -165,15 +201,18 @@ describe('project base templates', () => {
 			'snowflake-goal',
 			'snowflake-conflict',
 			'snowflake-growth',
+			'aliases',
+			'snowflake-category',
+			'snowflake-progress-status',
 		]);
 	});
 
-	it('restricts the major character sheet to major characters', () => {
-		const [majorSheet] = parsed('characters').views;
-
-		expect(majorSheet?.filters?.and).toEqual([
-			'note["snowflake-character-type"] == "major"',
-		]);
+	it('lists the universal columns on every member view', () => {
+		for (const id of ['characters', 'scenes', 'time', 'location', 'item'] as const) {
+			for (const view of parsed(id).views) {
+				expect(view.order).toContain('snowflake-category');
+			}
+		}
 	});
 
 	it('localizes view names and column labels', () => {
@@ -227,6 +266,54 @@ describe('project base templates', () => {
 		expect(order.indexOf('snowflake-scene-characters')).toBeLessThan(
 			order.indexOf('snowflake-conflict'),
 		);
+	});
+});
+
+describe('worldbuilding kind bases', () => {
+	it('filters each base to one kind of one project', () => {
+		for (const kind of ['time', 'location', 'item'] as const) {
+			expect(parsed(kind).filters.and).toEqual([
+				'note["snowflake-document"] == "worldbuilding"',
+				`note["snowflake-project-id"] == "${PROJECT_ID}"`,
+				`note["snowflake-worldbuilding-kind"] == "${kind}"`,
+			]);
+		}
+	});
+
+	it('links each row through the stored entity name', () => {
+		expect(parsed('location').formulas['entity']).toBe(
+			'if(note["snowflake-name"], file.asLink(note["snowflake-name"]), file.asLink())',
+		);
+	});
+
+	it('localizes the progress status column and defaults it to not started', () => {
+		const formula = parsed('item', 'zh-CN').formulas['status'];
+		expect(formula).toContain('"进行中"');
+		expect(formula).toContain('"已完成"');
+		// A missing status reads as not started, an unknown one shows itself.
+		expect(formula).toContain('"未开始"');
+		expect(formula).toContain('note["snowflake-progress-status"], note["snowflake-progress-status"]');
+	});
+
+	it('gives only the time base its kind formula and grouped view', () => {
+		const time = parsed('time', 'zh-CN');
+		expect(time.formulas['time_kind']).toContain('"时间段"');
+		expect(time.views.map(({ name }) => name)).toEqual(['时间列表', '按类型']);
+		expect(time.views[0]?.order).toContain('snowflake-time-start');
+		expect(time.views[1]?.groupBy?.property).toBe('formula.time_kind');
+		for (const kind of ['location', 'item'] as const) {
+			const document = parsed(kind);
+			expect(document.formulas['time_kind']).toBeUndefined();
+			expect(document.views).toHaveLength(1);
+			expect(document.views[0]?.order).not.toContain('snowflake-time-start');
+		}
+	});
+
+	it('ends every list view with the description', () => {
+		for (const kind of ['time', 'location', 'item'] as const) {
+			const order = parsed(kind).views[0]?.order ?? [];
+			expect(order[order.length - 1]).toBe('snowflake-description');
+		}
 	});
 });
 

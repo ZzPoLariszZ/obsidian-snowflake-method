@@ -1,7 +1,14 @@
 import type { Menu } from 'obsidian';
 
-import type { CharacterType, StepId, StepStatus } from '../domain';
-import type { MarkerIssueCode } from '../templates';
+import type {
+	CharacterType,
+	ProgressStatus,
+	StepId,
+	StepStatus,
+	TimeKind,
+	WorldbuildingKind,
+} from '../domain';
+import type { DetailsLine, MarkerIssueCode, RecordLine } from '../templates';
 import type { ProjectStructureIssueCode } from '../services';
 
 import type {
@@ -9,8 +16,18 @@ import type {
 	CreateCharacterRequest,
 	CreateProjectRequest,
 	CreateSceneRequest,
+	EntityFormRequest,
 	Translate,
 } from './modals';
+
+/** Every base the dashboard can open or restore, one per generated file. */
+export type ProjectBaseChoice = 'characters' | 'scenes' | WorldbuildingKind;
+
+export type DefinitionFileChoice = 'category' | 'world-status' | 'relationship';
+
+export type AddDefinitionPathResult =
+	| { ok: true }
+	| { ok: false; code: 'invalid-segment' | 'heading-taken'; segment: string };
 
 export interface ProjectOption {
 	path: string;
@@ -62,12 +79,19 @@ export interface CharacterViewModel {
 	name: string;
 	rank: number;
 	type: CharacterType;
+	progressStatus: ProgressStatus | null;
+	aliases: string[];
+	/** Full category paths for display and the picker, role excluded. */
+	categoryPaths: string[];
 	oneSentenceStoryline: string;
 	oneParagraphStoryline: string;
 	motivation: string;
 	goal: string;
 	conflict: string;
 	growth: string;
+	age: DetailsLine | null;
+	worldStatus: RecordLine[];
+	relationships: RecordLine[];
 	revision: string;
 	readOnly: boolean;
 	/** The note's file name or heading has drifted from this name. */
@@ -80,6 +104,10 @@ export interface SceneViewModel {
 	path: string;
 	title: string;
 	rank: number;
+	progressStatus: ProgressStatus | null;
+	aliases: string[];
+	/** Full category paths for display and the picker. */
+	categoryPaths: string[];
 	povPath: string;
 	povName: string;
 	/** The stored point of view names a character the project no longer has. */
@@ -88,10 +116,37 @@ export interface SceneViewModel {
 	location: string;
 	characterPaths: string[];
 	conflict: string;
+	worldStatus: RecordLine[];
+	relationships: RecordLine[];
 	events: string;
 	revision: string;
 	readOnly: boolean;
 	/** The note's file name or heading has drifted from this title. */
+	nameDrifted: boolean;
+	healthIssues: ManagedSectionIssueViewModel[];
+}
+
+export interface WorldbuildingEntityViewModel {
+	id: string;
+	path: string;
+	name: string;
+	kind: WorldbuildingKind;
+	rank: number;
+	progressStatus: ProgressStatus | null;
+	aliases: string[];
+	/** Full category paths for display and the picker. */
+	categoryPaths: string[];
+	description: string;
+	timeKind: TimeKind | null;
+	/** Raw stored terms, wikilinks or plain text; empty when absent. */
+	timeStart: string;
+	timeEnd: string;
+	details: DetailsLine[];
+	worldStatus: RecordLine[];
+	relationships: RecordLine[];
+	revision: string;
+	readOnly: boolean;
+	/** The note's file name or heading has drifted from this name. */
 	nameDrifted: boolean;
 	healthIssues: ManagedSectionIssueViewModel[];
 }
@@ -110,6 +165,7 @@ export interface ProjectDashboardModel {
 	stepRevisions: Partial<Record<StepId, string>>;
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
+	worldbuilding: Record<WorldbuildingKind, WorldbuildingEntityViewModel[]>;
 	/** Writable member notes that predate the generated fields block. */
 	unmigratedMembers: number;
 	structureIssues: ManagedSectionIssueViewModel[];
@@ -261,6 +317,7 @@ export interface DashboardHost {
 		step: StepId,
 	): void;
 	selectStep(step: StepId): Promise<void>;
+	selectWorldbuildingKind(kind: WorldbuildingKind): Promise<void>;
 	createProject(request: CreateProjectRequest): Promise<CreatedProject>;
 	/** Reports the character back so a field that asked for it can select it. */
 	createCharacter(request: CreateCharacterRequest): Promise<CharacterOption>;
@@ -268,10 +325,27 @@ export interface DashboardHost {
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
 	/** Reports the scene's id back, so inserting can place what it created. */
 	createScene(request: CreateSceneRequest): Promise<{ id: string }>;
+	createEntity(request: EntityFormRequest): Promise<{ id: string }>;
+	updateEntity(id: string, request: EntityFormRequest): Promise<void>;
+	deleteEntity(id: string, expectedRevision: string): Promise<void>;
+	reorderEntity(
+		kind: WorldbuildingKind,
+		entityId: string,
+		targetIndex: number,
+	): Promise<void>;
 	createSceneCanvas(): Promise<void>;
-	openProjectBase(id: 'characters' | 'scenes'): Promise<void>;
+	openProjectBase(id: ProjectBaseChoice): Promise<void>;
 	/** Rewrites the base from the current template and opens it. */
-	restoreProjectBase(id: 'characters' | 'scenes'): Promise<void>;
+	restoreProjectBase(id: ProjectBaseChoice): Promise<void>;
+	/** The paths a definition file offers, in its heading order. */
+	listDefinitionPaths(id: DefinitionFileChoice): Promise<string[]>;
+	/** Vault paths of the three definition files, for the links records store. */
+	definitionFilePaths(): Promise<Record<DefinitionFileChoice, string>>;
+	/** Appends a new path, reporting a refusal instead of throwing it. */
+	addDefinitionPath(
+		id: DefinitionFileChoice,
+		path: string,
+	): Promise<AddDefinitionPathResult>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;

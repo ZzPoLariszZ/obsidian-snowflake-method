@@ -14,6 +14,7 @@ import {
 	SCENE_POV_OMNISCIENT,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	WORLDBUILDING_KINDS,
 	areStepPrerequisitesComplete,
 	countWritingLength,
 	createDefaultStepStatuses,
@@ -25,28 +26,35 @@ import {
 	type StepId,
 	type StepStatus,
 	type StepStatusMap,
+	type WorldbuildingKind,
 } from '../domain';
 import {
 	ConfirmRestoreBaseModal,
 	CreateCharacterModal,
 	CreateProjectModal,
 	CreateSceneModal,
+	EntityFormModal,
 	MoveAfterModal,
 	MoveToPositionModal,
 	RepairReportModal,
 	promptForNewCharacter,
 	type CharacterOption,
+	type MemberFormContext,
 	type MoveAfterEntry,
 	type Translate,
 } from './modals';
 import {
 	dashboardHasHealthIssues,
+	dashboardPaneKey,
 	dashboardRenderContinuity,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
+	type DashboardPane,
+	type DashboardRailCollapse,
 } from './dashboard-state';
 import { buildOptionField, type OptionPicker } from './option-picker';
+import type { DefinitionPathSource } from './entity-form';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { VirtualTable } from './virtual-table';
@@ -54,11 +62,13 @@ import type {
 	CharacterViewModel,
 	CreatedProject,
 	DashboardHost,
+	DefinitionFileChoice,
 	ManagedSectionIssueViewModel,
 	StepFields,
 	ProjectDashboardModel,
 	SceneViewModel,
 	StepViewModel,
+	WorldbuildingEntityViewModel,
 } from './view-model';
 
 export const DASHBOARD_VIEW_TYPE = 'snowflake-method-dashboard';
@@ -84,6 +94,23 @@ const MEMBER_COLUMN_CLASSES = ['order', 'name', 'kind', 'text', 'actions'].map(
 const STEP_LIST_SELECTOR = '.snowflake-method-step-list';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
+const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
+	time: 'clock',
+	location: 'map-pin',
+	item: 'gem',
+};
+
+/** What a stored term reads as: a link's display name, or the text itself. */
+function termName(raw: string): string {
+	const trimmed = raw.trim();
+	const match = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/u.exec(trimmed);
+	if (match === null) return trimmed;
+	const alias = (match[2] ?? '').trim();
+	if (alias.length > 0) return alias;
+	const path = (match[1] ?? '').trim();
+	return path.split('/').pop() ?? path;
+}
+
 /** The model's steps as the status map the domain rules are written against. */
 function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
 	const statuses = createDefaultStepStatuses();
@@ -99,6 +126,13 @@ export class SnowflakeDashboardView extends ItemView {
 		{ fields: StepFields; expectedRevision: string }
 	>();
 	private selectedStep: StepId;
+	/** What the main panel shows: the selected step, or a worldbuilding kind. */
+	private selectedPane: DashboardPane;
+	private railCollapsed: DashboardRailCollapse = {
+		steps: false,
+		worldbuilding: false,
+	};
+	private readonly entityQueries = new Map<WorldbuildingKind, string>();
 	/**
 	 * What each member table is showing, one set per table rather than one
 	 * per step: steps 3, 5 and 7 share the character table and 8 and 9 the
@@ -152,6 +186,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private renderedProjectPath: string | null = null;
 	private renderedProjectComplete = false;
 	private renderedStep: StepId | null = null;
+	private renderedPaneKey: string | null = null;
 	private renderedModel: ProjectDashboardModel | null = null;
 	// A refresh replaces every node, so the presentation state the author set by
 	// hand has to be carried across the rebuild rather than left to the DOM.
@@ -174,6 +209,7 @@ export class SnowflakeDashboardView extends ItemView {
 		super(leaf);
 		this.host = host;
 		this.selectedStep = host.getRecentStep();
+		this.selectedPane = { kind: 'step', step: this.selectedStep };
 	}
 
 	getViewType(): string {
@@ -193,6 +229,8 @@ export class SnowflakeDashboardView extends ItemView {
 			projectPath: this.projectPath,
 			projectTitle: this.projectTitle,
 			selectedStep: this.selectedStep,
+			selectedPane: this.selectedPane,
+			railCollapsed: this.railCollapsed,
 		};
 	}
 
@@ -204,12 +242,16 @@ export class SnowflakeDashboardView extends ItemView {
 				projectPath: this.projectPath,
 				projectTitle: this.projectTitle,
 				selectedStep: this.selectedStep,
+				selectedPane: this.selectedPane,
+				railCollapsed: this.railCollapsed,
 			},
 			state,
 		);
 		this.projectPath = update.state.projectPath;
 		this.projectTitle = update.state.projectTitle;
 		this.selectedStep = update.state.selectedStep;
+		this.selectedPane = update.state.selectedPane;
+		this.railCollapsed = update.state.railCollapsed;
 		// During workspace restoration Obsidian may open an ItemView before it
 		// delivers the persisted view state, so this is the first moment a
 		// restored leaf can be drawn at all — hence rendering when nothing has
@@ -346,12 +388,16 @@ export class SnowflakeDashboardView extends ItemView {
 		// left open should give them.
 		if (model !== null && !this.stepChosen) {
 			this.selectedStep = getFirstIncompleteStep(stepStatusesOf(model));
+			this.selectedPane = { kind: 'step', step: this.selectedStep };
 			this.stepChosen = true;
 		}
 		this.renderState.capture(this.contentEl);
 		const continuity = dashboardRenderContinuity(
-			{ projectId: this.renderedProjectId, step: this.renderedStep },
-			{ projectId: model?.projectId ?? null, step: this.selectedStep },
+			{ projectId: this.renderedProjectId, pane: this.renderedPaneKey },
+			{
+				projectId: model?.projectId ?? null,
+				pane: dashboardPaneKey(this.selectedPane),
+			},
 		);
 		if (!continuity.sameProject) {
 			this.renderState.clear();
@@ -376,6 +422,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectPath = model?.path ?? null;
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
+		this.renderedPaneKey = null;
 		this.renderedModel = model;
 		// Both belong to the DOM about to go.
 		this.releaseMemberControls();
@@ -515,11 +562,15 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-nav',
 			attr: { 'aria-label': this.t('dashboard.steps') },
 		});
-		const navHeader = nav.createDiv({ cls: 'snowflake-method-step-nav-header' });
-		navHeader.createSpan({ text: this.t('dashboard.steps') });
-		const list = nav.createEl('ol', { cls: 'snowflake-method-step-list' });
+		const stepsGroup = this.createRailGroup(
+			nav,
+			'steps',
+			this.t('dashboard.steps'),
+		);
+		const list = stepsGroup.createEl('ol', { cls: 'snowflake-method-step-list' });
 		for (const step of model.steps) {
-			const active = step.id === this.selectedStep;
+			const active =
+				this.selectedPane.kind === 'step' && step.id === this.selectedPane.step;
 			const damaged = this.getStepHealthIssues(model, step.id).some(
 				(issue) => issue.blocking,
 			);
@@ -565,10 +616,13 @@ export class SnowflakeDashboardView extends ItemView {
 			}
 			button.addEventListener('click', () => {
 				this.selectedStep = step.id;
+				this.selectedPane = { kind: 'step', step: step.id };
 				this.stepChosen = true;
 				void this.runAndRefresh(() => this.host.selectStep(step.id));
 			});
 		}
+
+		this.renderWorldbuildingGroup(nav, model);
 
 		const projectFooter = nav.createDiv({
 			cls: 'snowflake-method-project-footer',
@@ -719,16 +773,475 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
+	/**
+	 * One collapsible group of the rail. The fold is presentation state the
+	 * author sets, so it rides the view state rather than the DOM.
+	 */
+	private createRailGroup(
+		nav: HTMLElement,
+		key: keyof DashboardRailCollapse,
+		title: string,
+	): HTMLElement {
+		const group = nav.createDiv({ cls: 'snowflake-method-rail-group' });
+		const header = group.createEl('button', {
+			cls: 'snowflake-method-step-nav-header snowflake-method-rail-group-header',
+			attr: {
+				type: 'button',
+				'aria-expanded': this.railCollapsed[key] ? 'false' : 'true',
+			},
+		});
+		const chevron = header.createSpan({
+			cls: 'snowflake-method-rail-group-chevron',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(chevron, this.railCollapsed[key] ? 'chevron-right' : 'chevron-down');
+		header.createSpan({ text: title });
+		const body = group.createDiv({ cls: 'snowflake-method-rail-group-body' });
+		if (this.railCollapsed[key]) body.addClass('is-collapsed');
+		header.addEventListener('click', () => {
+			this.railCollapsed = {
+				...this.railCollapsed,
+				[key]: !this.railCollapsed[key],
+			};
+			body.toggleClass('is-collapsed', this.railCollapsed[key]);
+			header.setAttribute(
+				'aria-expanded',
+				this.railCollapsed[key] ? 'false' : 'true',
+			);
+			setIcon(
+				chevron,
+				this.railCollapsed[key] ? 'chevron-right' : 'chevron-down',
+			);
+			this.app.workspace.requestSaveLayout();
+		});
+		return body;
+	}
+
+	private renderWorldbuildingGroup(
+		nav: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const body = this.createRailGroup(
+			nav,
+			'worldbuilding',
+			this.t('dashboard.worldbuilding'),
+		);
+		const list = body.createEl('ol', {
+			cls: 'snowflake-method-step-list snowflake-method-worldbuilding-list',
+		});
+		for (const kind of WORLDBUILDING_KINDS) {
+			const active =
+				this.selectedPane.kind === 'worldbuilding' &&
+				this.selectedPane.wbKind === kind;
+			const entities = model.worldbuilding[kind];
+			const damaged = entities.some((entity) =>
+				entity.healthIssues.some((issue) => issue.blocking),
+			);
+			const title = this.t(`worldbuilding.kind.${kind}`);
+			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
+			const button = item.createEl('button', {
+				cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
+					damaged ? ' has-managed-section-issue' : ''
+				}`,
+				attr: {
+					type: 'button',
+					'aria-label': title,
+					...(damaged ? { 'aria-invalid': 'true' } : {}),
+					...(active ? { 'aria-current': 'true' } : {}),
+				},
+			});
+			const iconEl = button.createSpan({
+				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(iconEl, WORLDBUILDING_KIND_ICONS[kind]);
+			button.createSpan({
+				cls: 'snowflake-method-step-label',
+				text: title,
+			});
+			const indicator = button.createSpan({
+				cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
+				attr: { 'aria-label': String(entities.length) },
+			});
+			if (damaged) {
+				indicator.addClass('has-managed-section-issue');
+				setIcon(indicator, 'triangle-alert');
+			} else {
+				indicator.setText(String(entities.length));
+			}
+			button.addEventListener('click', () => {
+				this.selectedPane = { kind: 'worldbuilding', wbKind: kind };
+				this.stepChosen = true;
+				void this.runAndRefresh(() => this.host.selectWorldbuildingKind(kind));
+			});
+		}
+	}
+
+	/**
+	 * The panel one worldbuilding kind fills: the same shape as a member step,
+	 * with the records living behind the entity form rather than in prose.
+	 */
+	private renderWorldbuildingPane(
+		layout: HTMLElement,
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+	): void {
+		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
+		this.renderedPaneKey = dashboardPaneKey({ kind: 'worldbuilding', wbKind: kind });
+		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
+		const header = panel.createDiv({ cls: 'snowflake-method-step-header' });
+		header.createEl('h2', { text: this.t(`worldbuilding.kind.${kind}`) });
+		panel.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t(`worldbuilding.kind.${kind}.description`),
+		});
+		const blockingIssues = model.worldbuilding[kind]
+			.flatMap((entity) => entity.healthIssues)
+			.filter((issue) => issue.blocking);
+		if (blockingIssues.length > 0) {
+			this.renderManagedSectionIssues(panel, blockingIssues);
+		}
+
+		const actions = panel.createDiv({
+			cls: 'snowflake-method-actions snowflake-method-list-actions',
+		});
+		this.renderOpenBase(actions, kind, model);
+		const add = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t(`worldbuilding.add.${kind}`),
+			attr: { type: 'button' },
+		});
+		add.disabled = model.readOnly;
+		add.addEventListener('click', () => {
+			this.openCreateEntity(model, kind);
+		});
+
+		const toolbar = panel.createDiv({ cls: 'snowflake-method-member-toolbar' });
+		const search = new SearchComponent(toolbar);
+		search.setPlaceholder(this.t(`worldbuilding.search.${kind}`));
+		search.setValue(this.entityQueries.get(kind) ?? '');
+		search.onChange((value) => {
+			this.entityQueries.set(kind, value);
+			this.renderEntityRows(rowsEl, model, kind);
+		});
+
+		const table = panel.createDiv({ cls: 'snowflake-method-entity-table' });
+		const rowsEl = table.createDiv({ cls: 'snowflake-method-entity-rows' });
+		this.renderEntityRows(rowsEl, model, kind);
+	}
+
+	private renderEntityRows(
+		rowsEl: HTMLElement,
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+	): void {
+		rowsEl.empty();
+		const query = this.entityQueries.get(kind) ?? '';
+		const entries = model.worldbuilding[kind]
+			.map((entity, index) => ({ entity, index }))
+			.filter(({ entity }) =>
+				memberMatches(
+					[
+						entity.name,
+						...entity.aliases,
+						...entity.categoryPaths,
+						entity.description,
+					],
+					query,
+				),
+			);
+		if (entries.length === 0) {
+			rowsEl.createDiv({
+				cls: 'snowflake-method-entity-empty',
+				text: this.t(`worldbuilding.empty.${kind}`),
+			});
+			return;
+		}
+		for (const { entity, index } of entries) {
+			this.renderEntityRow(rowsEl, model, kind, entity, index);
+		}
+	}
+
+	private renderEntityRow(
+		rowsEl: HTMLElement,
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+		entity: WorldbuildingEntityViewModel,
+		index: number,
+	): void {
+		const damaged = entity.healthIssues.some((issue) => issue.blocking);
+		const row = rowsEl.createDiv({
+			cls: `snowflake-method-entity-row${damaged ? ' has-managed-section-issue' : ''}`,
+		});
+		const order = row.createSpan({
+			cls: 'snowflake-method-entity-order',
+			text: String(index + 1),
+		});
+		setTooltip(order, this.t('table.order'));
+		const body = row.createDiv({ cls: 'snowflake-method-entity-body' });
+		const nameLine = body.createDiv({ cls: 'snowflake-method-entity-name-line' });
+		const name = nameLine.createEl('button', {
+			cls: 'snowflake-method-entity-name',
+			text: entity.name,
+			attr: { type: 'button' },
+		});
+		name.addEventListener('click', () => {
+			void this.host.openManagedFile(entity.path, 'entity-fields', [
+				'entity-fields',
+			]);
+		});
+		if (entity.progressStatus !== null) {
+			nameLine.createSpan({
+				cls: `snowflake-method-entity-status is-${entity.progressStatus}`,
+				text: this.t(`status.${entity.progressStatus}`),
+			});
+		}
+		const detailParts: string[] = [];
+		if (entity.aliases.length > 0) detailParts.push(entity.aliases.join(', '));
+		if (entity.categoryPaths.length > 0) {
+			detailParts.push(entity.categoryPaths.join(', '));
+		}
+		if (kind === 'time') {
+			const summary = [
+				entity.timeKind === null
+					? ''
+					: this.t(`form.timeKind.${entity.timeKind}`),
+				termName(entity.timeStart),
+				termName(entity.timeEnd),
+			]
+				.filter((part) => part.length > 0)
+				.join(' · ');
+			if (summary.length > 0) detailParts.push(summary);
+		}
+		if (entity.description.trim().length > 0) {
+			detailParts.push(entity.description.trim());
+		}
+		if (detailParts.length > 0) {
+			body.createDiv({
+				cls: 'snowflake-method-entity-detail',
+				text: detailParts.join(' — '),
+			});
+		}
+
+		const buttonGroup = row.createDiv({ cls: 'snowflake-method-table-actions' });
+		const locked = model.readOnly || entity.readOnly || damaged;
+		const splitButton = buttonGroup.createDiv({
+			cls: 'snowflake-method-character-split-button',
+		});
+		const edit = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-edit',
+			text: this.t('actions.edit'),
+			attr: { type: 'button' },
+		});
+		edit.disabled = locked;
+		edit.addEventListener('click', () => {
+			if (!locked) this.openEntityEditor(model, entity);
+		});
+		const trigger = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-action-menu-trigger',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		const triggerIcon = trigger.createSpan({
+			cls: 'snowflake-method-character-action-menu-icon',
+		});
+		setIcon(triggerIcon, 'chevron-down');
+		trigger.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(splitButton);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('common.open'))
+					.setIcon('file-text')
+					.onClick(() => {
+						void this.host.openManagedFile(entity.path, 'entity-fields', [
+							'entity-fields',
+						]);
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('table.moveToPosition'))
+					.setIcon('hash')
+					.setDisabled(locked)
+					.onClick(() => {
+						new MoveToPositionModal(
+							this.app,
+							this.t,
+							model.worldbuilding[kind].length,
+							index + 1,
+							async (toIndex) => {
+								await this.host.reorderEntity(kind, entity.id, toIndex);
+								await this.refresh();
+							},
+						).open();
+					}),
+			);
+			menu.addSeparator();
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('worldbuilding.delete'))
+					.setIcon('trash-2')
+					.setDisabled(model.readOnly || entity.readOnly)
+					.onClick(() => {
+						void this.host
+							.deleteEntity(entity.id, entity.revision)
+							.then(() => this.refresh())
+							.catch((error: unknown) => {
+								new Notice(
+									error instanceof Error
+										? error.message
+										: this.t('errors.unknown'),
+								);
+							});
+					}),
+			);
+			menu.showAtMouseEvent(event);
+		});
+	}
+
+	/**
+	 * Everything the record editors need from the project, fetched fresh so
+	 * the pickers list what the definition files hold right now.
+	 */
+	private async memberFormContext(
+		model: ProjectDashboardModel,
+	): Promise<MemberFormContext> {
+		const [categoryPaths, worldStatusPaths, relationshipPaths, filePaths] =
+			await Promise.all([
+				this.host.listDefinitionPaths('category'),
+				this.host.listDefinitionPaths('world-status'),
+				this.host.listDefinitionPaths('relationship'),
+				this.host.definitionFilePaths(),
+			]);
+		const sourceFor = (
+			id: DefinitionFileChoice,
+			initial: string[],
+		): DefinitionPathSource => {
+			let paths = [...initial];
+			return {
+				list: () => paths,
+				add: async (path) => {
+					const result = await this.host.addDefinitionPath(id, path);
+					if (!result.ok) {
+						return result.code === 'heading-taken'
+							? this.t('form.definition.taken', { name: result.segment })
+							: this.t('form.definition.invalid', { name: result.segment });
+					}
+					paths = await this.host.listDefinitionPaths(id);
+					return null;
+				},
+			};
+		};
+		const entities = WORLDBUILDING_KINDS.flatMap(
+			(kind) => model.worldbuilding[kind],
+		);
+		const members = [
+			...model.characters.map((character) => ({
+				value: character.path,
+				label: character.name,
+			})),
+			...model.scenes.map((scene) => ({ value: scene.path, label: scene.title })),
+			...entities.map((entity) => ({ value: entity.path, label: entity.name })),
+		];
+		const times = model.worldbuilding.time.map((entity) => ({
+			value: entity.path,
+			label: entity.name,
+		}));
+		const locations = model.worldbuilding.location.map((entity) => ({
+			value: entity.path,
+			label: entity.name,
+		}));
+		return {
+			notice: (message) => {
+				new Notice(message);
+			},
+			members: () => members,
+			times: () => times,
+			locations: () => locations,
+			categories: sourceFor('category', categoryPaths),
+			worldStatusLabels: sourceFor('world-status', worldStatusPaths),
+			relationshipLabels: sourceFor('relationship', relationshipPaths),
+			worldStatusPath: filePaths['world-status'],
+			relationshipPath: filePaths.relationship,
+		};
+	}
+
+	private openCreateEntity(
+		model: ProjectDashboardModel,
+		kind: WorldbuildingKind,
+	): void {
+		void this.memberFormContext(model).then((context) => {
+			new EntityFormModal(
+				this.app,
+				this.t,
+				kind,
+				model.worldbuilding[kind].map((entity) => entity.name),
+				context,
+				async (request) => {
+					await this.host.createEntity(request);
+					this.entityQueries.set(kind, '');
+					await this.refresh();
+				},
+			).open();
+		});
+	}
+
+	private openEntityEditor(
+		model: ProjectDashboardModel,
+		entity: WorldbuildingEntityViewModel,
+	): void {
+		void this.memberFormContext(model).then((context) => {
+			new EntityFormModal(
+				this.app,
+				this.t,
+				entity.kind,
+				model.worldbuilding[entity.kind]
+					.filter((candidate) => candidate.id !== entity.id)
+					.map((candidate) => candidate.name),
+				context,
+				async (request) => {
+					await this.host.updateEntity(entity.id, request);
+					await this.refresh();
+				},
+				{
+					kind: entity.kind,
+					name: entity.name,
+					aliases: entity.aliases,
+					categoryPaths: entity.categoryPaths,
+					progressStatus: entity.progressStatus,
+					description: entity.description,
+					timeKind: entity.timeKind,
+					timeStart: entity.timeStart,
+					timeEnd: entity.timeEnd,
+					owner:
+						entity.details.find((line) => line.property === 'owner') ?? null,
+					worldStatus: entity.worldStatus,
+					relationships: entity.relationships,
+					expectedRevision: entity.revision,
+				},
+			).open();
+		});
+	}
+
 	private renderSelectedStep(
 		layout: HTMLElement,
 		model: ProjectDashboardModel,
 	): void {
+		if (this.selectedPane.kind === 'worldbuilding') {
+			this.renderWorldbuildingPane(layout, model, this.selectedPane.wbKind);
+			return;
+		}
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		const step =
 			model.steps.find((candidate) => candidate.id === this.selectedStep) ??
 			model.steps[0];
 		if (step === undefined) return;
 		this.renderedStep = step.id;
+		this.renderedPaneKey = dashboardPaneKey({ kind: 'step', step: step.id });
 
 		const panel = main.createDiv({
 			cls: 'snowflake-method-panel',
@@ -1494,7 +2007,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
-		id: 'characters' | 'scenes',
+		id: 'characters' | 'scenes' | WorldbuildingKind,
 		model: ProjectDashboardModel,
 	): void {
 		const openBase = (): void => {
@@ -1864,28 +2377,38 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const editCharacter = (): void => {
 			if (model.readOnly || character.readOnly || characterDamaged) return;
-			new CreateCharacterModal(
-				this.app,
-				this.t,
-				model.characters
-					.filter((candidate) => candidate.id !== character.id)
-					.map((candidate) => candidate.name),
-				async (request) => {
-					await this.host.updateCharacter(character.id, request);
-					await this.refresh();
-				},
-				{
-					name: character.name,
-					type: character.type,
-					oneSentenceStoryline: character.oneSentenceStoryline,
-					oneParagraphStoryline: character.oneParagraphStoryline,
-					motivation: character.motivation,
-					goal: character.goal,
-					conflict: character.conflict,
-					growth: character.growth,
-					expectedRevision: character.revision,
-				},
-			).open();
+			void this.memberFormContext(model).then((context) => {
+				new CreateCharacterModal(
+					this.app,
+					this.t,
+					model.characters
+						.filter((candidate) => candidate.id !== character.id)
+						.map((candidate) => candidate.name),
+					async (request) => {
+						await this.host.updateCharacter(character.id, request);
+						await this.refresh();
+					},
+					{
+						name: character.name,
+						type: character.type,
+						aliases: character.aliases,
+						categoryPaths: character.categoryPaths,
+						progressStatus: character.progressStatus,
+						oneSentenceStoryline: character.oneSentenceStoryline,
+						oneParagraphStoryline: character.oneParagraphStoryline,
+						motivation: character.motivation,
+						goal: character.goal,
+						conflict: character.conflict,
+						growth: character.growth,
+						age: character.age,
+						worldStatus: character.worldStatus,
+						relationships: character.relationships,
+						expectedRevision: character.revision,
+					},
+					undefined,
+					context,
+				).open();
+			});
 		};
 		const openCharacter = (): void => {
 			void this.host.openManagedFile(
@@ -2346,45 +2869,53 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private openCreateCharacter(model: ProjectDashboardModel): void {
-		new CreateCharacterModal(
-			this.app,
-			this.t,
-			model.characters.map((character) => character.name),
-			async (request) => {
-				await this.host.createCharacter(request);
-				// The new character joins the end of the list, so the search
-				// and filter are let go and the table scrolls to the end.
-				// What was just made must be on screen, not hidden behind an
-				// old query it happens not to match.
-				this.characterQuery = '';
-				this.characterTypeFilter = 'all';
-				this.characterScroll = Number.MAX_SAFE_INTEGER;
-				await this.refresh();
-			},
-		).open();
+		void this.memberFormContext(model).then((context) => {
+			new CreateCharacterModal(
+				this.app,
+				this.t,
+				model.characters.map((character) => character.name),
+				async (request) => {
+					await this.host.createCharacter(request);
+					// The new character joins the end of the list, so the search
+					// and filter are let go and the table scrolls to the end.
+					// What was just made must be on screen, not hidden behind an
+					// old query it happens not to match.
+					this.characterQuery = '';
+					this.characterTypeFilter = 'all';
+					this.characterScroll = Number.MAX_SAFE_INTEGER;
+					await this.refresh();
+				},
+				undefined,
+				undefined,
+				context,
+			).open();
+		});
 	}
 
 	private openCreateScene(model: ProjectDashboardModel): void {
-		new CreateSceneModal(
-			this.app,
-			this.t,
-			model.characters.map((character) => ({
-				id: character.id,
-				path: character.path,
-				name: character.name,
-			})),
-			model.scenes.map((scene) => scene.title),
-			async (request) => {
-				await this.host.createScene(request);
-				// To the end, filters let go, for the same reason as above.
-				this.sceneQuery = '';
-				this.scenePovFilter = '';
-				this.sceneScroll = Number.MAX_SAFE_INTEGER;
-				await this.refresh();
-			},
-			undefined,
-			this.creatingCharacter(model),
-		).open();
+		void this.memberFormContext(model).then((context) => {
+			new CreateSceneModal(
+				this.app,
+				this.t,
+				model.characters.map((character) => ({
+					id: character.id,
+					path: character.path,
+					name: character.name,
+				})),
+				model.scenes.map((scene) => scene.title),
+				async (request) => {
+					await this.host.createScene(request);
+					// To the end, filters let go, for the same reason as above.
+					this.sceneQuery = '';
+					this.scenePovFilter = '';
+					this.sceneScroll = Number.MAX_SAFE_INTEGER;
+					await this.refresh();
+				},
+				undefined,
+				this.creatingCharacter(model),
+				context,
+			).open();
+		});
 	}
 
 	/** Creates a character and walks it back from the end to `index + 1`. */
@@ -2392,39 +2923,47 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		index: number,
 	): void {
-		new CreateCharacterModal(
-			this.app,
-			this.t,
-			model.characters.map((character) => character.name),
-			async (request) => {
-				const created = await this.host.createCharacter(request);
-				await this.host.reorderCharacter(created.id, index + 1);
-				await this.refresh();
-				this.revealCharacter(created.id);
-			},
-		).open();
+		void this.memberFormContext(model).then((context) => {
+			new CreateCharacterModal(
+				this.app,
+				this.t,
+				model.characters.map((character) => character.name),
+				async (request) => {
+					const created = await this.host.createCharacter(request);
+					await this.host.reorderCharacter(created.id, index + 1);
+					await this.refresh();
+					this.revealCharacter(created.id);
+				},
+				undefined,
+				undefined,
+				context,
+			).open();
+		});
 	}
 
 	/** Creates a scene and walks it back from the end to `index + 1`. */
 	private insertSceneAfter(model: ProjectDashboardModel, index: number): void {
-		new CreateSceneModal(
-			this.app,
-			this.t,
-			model.characters.map((character) => ({
-				id: character.id,
-				path: character.path,
-				name: character.name,
-			})),
-			model.scenes.map((scene) => scene.title),
-			async (request) => {
-				const created = await this.host.createScene(request);
-				await this.host.reorderScene(created.id, index + 1);
-				await this.refresh();
-				this.revealScene(created.id);
-			},
-			undefined,
-			this.creatingCharacter(model),
-		).open();
+		void this.memberFormContext(model).then((context) => {
+			new CreateSceneModal(
+				this.app,
+				this.t,
+				model.characters.map((character) => ({
+					id: character.id,
+					path: character.path,
+					name: character.name,
+				})),
+				model.scenes.map((scene) => scene.title),
+				async (request) => {
+					const created = await this.host.createScene(request);
+					await this.host.reorderScene(created.id, index + 1);
+					await this.refresh();
+					this.revealScene(created.id);
+				},
+				undefined,
+				this.creatingCharacter(model),
+				context,
+			).open();
+		});
 	}
 
 	/** The rows the character table shows, each with its place in the list. */
@@ -2682,33 +3221,41 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
 	): void {
-		new CreateSceneModal(
-			this.app,
-			this.t,
-			model.characters.map((character) => ({
-				id: character.id,
-				path: character.path,
-				name: character.name,
-			})),
-			model.scenes
-				.filter((candidate) => candidate.id !== scene.id)
-				.map((candidate) => candidate.title),
-			async (request) => {
-				await this.host.updateScene(scene.id, request);
-				await this.refresh();
-			},
-			{
-				title: scene.title,
-				povPath: scene.povPath,
-				time: scene.time,
-				location: scene.location,
-				characterPaths: scene.characterPaths,
-				conflict: scene.conflict,
-				events: scene.events,
-				expectedRevision: scene.revision,
-			},
-			this.creatingCharacter(model),
-		).open();
+		void this.memberFormContext(model).then((context) => {
+			new CreateSceneModal(
+				this.app,
+				this.t,
+				model.characters.map((character) => ({
+					id: character.id,
+					path: character.path,
+					name: character.name,
+				})),
+				model.scenes
+					.filter((candidate) => candidate.id !== scene.id)
+					.map((candidate) => candidate.title),
+				async (request) => {
+					await this.host.updateScene(scene.id, request);
+					await this.refresh();
+				},
+				{
+					title: scene.title,
+					aliases: scene.aliases,
+					categoryPaths: scene.categoryPaths,
+					progressStatus: scene.progressStatus,
+					povPath: scene.povPath,
+					time: scene.time,
+					location: scene.location,
+					characterPaths: scene.characterPaths,
+					conflict: scene.conflict,
+					worldStatus: scene.worldStatus,
+					relationships: scene.relationships,
+					events: scene.events,
+					expectedRevision: scene.revision,
+				},
+				this.creatingCharacter(model),
+				context,
+			).open();
+		});
 	}
 
 	private renderSceneListHints(panel: HTMLElement): void {

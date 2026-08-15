@@ -4559,3 +4559,271 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    the column every other control ends on. The four levels still announce
    themselves: the handle snaps, and the name and description follow the
    drag. */
+
+/* == Worldbuilding ======================================================== */
+
+/* The rail folds into two groups: Steps and Worldbuilding. The header is the
+   same line the step list always opened with, now clickable, with a chevron
+   that says which way it will fold. */
+.snowflake-method-rail-group-header {
+	width: 100%;
+	background: none;
+	border: none;
+	box-shadow: none;
+	cursor: pointer;
+	text-align: start;
+}
+
+.snowflake-method-rail-group-header:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-rail-group-chevron {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-faint);
+}
+
+.snowflake-method-rail-group-chevron svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-rail-group-body.is-collapsed {
+	display: none;
+}
+
+/* The kind buttons reuse the step buttons' anatomy; the number slot holds an
+   icon and the indicator slot holds the count of entities. */
+.snowflake-method-worldbuilding-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+}
+
+.snowflake-method-worldbuilding-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-worldbuilding-count {
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+}
+
+/* The kind pane's list: one row per entity, the order in its own column the
+   way the member tables hold theirs. */
+.snowflake-method-member-toolbar {
+	margin-block-start: var(--size-4-3);
+}
+
+.snowflake-method-entity-table {
+	margin-block-start: var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	overflow: hidden;
+}
+
+.snowflake-method-entity-row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-block-end: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-entity-row:last-child {
+	border-block-end: none;
+}
+
+.snowflake-method-entity-row.has-managed-section-issue {
+	background: var(--background-modifier-error-hover);
+}
+
+.snowflake-method-entity-order {
+	min-width: 2em;
+	padding-block-start: 0.15em;
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+}
+
+.snowflake-method-entity-body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.snowflake-method-entity-name-line {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-entity-name {
+	background: none;
+	border: none;
+	box-shadow: none;
+	padding: 0;
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+	cursor: pointer;
+}
+
+.snowflake-method-entity-name:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
+}
+
+.snowflake-method-entity-status {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-4-1);
+}
+
+.snowflake-method-entity-status.is-complete {
+	color: var(--color-green);
+}
+
+.snowflake-method-entity-status.is-in-progress,
+.snowflake-method-entity-status.is-in-revision {
+	color: var(--color-orange);
+}
+
+.snowflake-method-entity-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-entity-empty {
+	padding: var(--size-4-4);
+	color: var(--text-faint);
+	text-align: center;
+}
+
+/* == Member form: chips and record editors =============================== */
+
+.snowflake-method-chip-field {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-2-2);
+	width: 100%;
+	padding: var(--size-2-2) var(--size-2-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--input-radius);
+	background: var(--background-primary);
+}
+
+.snowflake-method-chip-list {
+	display: contents;
+}
+
+.snowflake-method-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	padding: 0 var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-chip-remove {
+	background: none;
+	border: none;
+	box-shadow: none;
+	padding: 0;
+	color: var(--text-faint);
+	cursor: pointer;
+	line-height: 1;
+}
+
+.snowflake-method-chip-remove:hover {
+	color: var(--text-normal);
+}
+
+.snowflake-method-chip-input {
+	flex: 1 1 8em;
+	min-width: 6em;
+	border: none;
+	box-shadow: none;
+	background: transparent;
+	padding: 0;
+}
+
+.snowflake-method-chip-input:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+/* Record editors sit below the form's grid, full width: a titled block with
+   one row per record, the clause inputs in the grammar's own order. */
+.snowflake-method-record-editors {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	margin-block-start: var(--size-4-4);
+	padding-block-start: var(--size-4-3);
+	border-block-start: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-record-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	margin-block-end: var(--size-2-3);
+}
+
+.snowflake-method-record-title {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.snowflake-method-record-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-3);
+}
+
+.snowflake-method-record-row {
+	display: grid;
+	grid-template-columns: minmax(7em, 1.2fr) repeat(5, minmax(5em, 1fr)) auto;
+	gap: var(--size-2-2);
+	align-items: center;
+}
+
+.snowflake-method-details-row {
+	grid-template-columns: repeat(4, minmax(6em, 1fr));
+}
+
+.snowflake-method-record-row .snowflake-method-term-input input,
+.snowflake-method-record-row input {
+	width: 100%;
+	min-width: 0;
+}
+
+.snowflake-method-record-remove {
+	background: none;
+	border: none;
+	box-shadow: none;
+	padding: 0 var(--size-2-2);
+	color: var(--text-faint);
+	cursor: pointer;
+}
+
+.snowflake-method-record-remove:hover {
+	color: var(--text-normal);
+}
+
+/* Narrow modals stack a record's clauses instead of squeezing seven columns. */
+@media (max-width: 700px) {
+	.snowflake-method-record-row {
+		grid-template-columns: 1fr 1fr;
+	}
+}
