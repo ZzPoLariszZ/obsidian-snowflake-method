@@ -232,6 +232,55 @@ export interface MemberUsage {
   records: string[];
 }
 
+/**
+ * Which notes use one definition node directly, split because removing the
+ * node costs each something different: a category entry in a list can simply
+ * go, while a record line is a sentence the author wrote under that label.
+ */
+export interface DefinitionNodeUsage {
+  /** Display names of notes categorized under the node itself. */
+  listed: string[];
+  /** Display names of notes whose record lines carry the node as a label. */
+  records: string[];
+}
+
+/**
+ * One node of a definition tree, in the order the tree is read: depth first,
+ * siblings by folded name. A node exists because its folder does; the two
+ * flags carry the ways it can half-exist — a folder without the note its
+ * links resolve to, and a path members reference that no folder spells.
+ */
+export interface DefinitionNodeInfo {
+  /** The taxonomy path below the tree root, `Race/Elf`. */
+  taxonomyPath: string;
+  /** The last segment, which is the folder's own name. */
+  name: string;
+  /** How many segments the path has; 1 directly under the root. */
+  depth: number;
+  /** Vault path of the node's folder, standing or not. */
+  folderPath: string;
+  /** Vault path of the node's `_self.md`. */
+  selfPath: string;
+  /** What the node's note says it means; empty while it says nothing. */
+  description: string;
+  /** The folder stands but its `_self.md` is not there. */
+  missingSelf: boolean;
+  /** Members reference the path but no folder spells it. */
+  missing: boolean;
+  /** The notes naming this very node, not its children. */
+  usage: DefinitionNodeUsage;
+}
+
+/** One kind's tree of one vocabulary: where it roots, and every node in order. */
+export interface DefinitionTreeInfo {
+  /** Vault path of the tree's root folder, which may not exist yet. */
+  rootPath: string;
+  nodes: DefinitionNodeInfo[];
+}
+
+/** One vocabulary across every entity kind. */
+export type DefinitionForest = Record<EntityKind, DefinitionTreeInfo>;
+
 export interface CreateProjectOptions {
   name?: string;
   title?: string;

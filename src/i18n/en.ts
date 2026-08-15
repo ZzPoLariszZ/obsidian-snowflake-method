@@ -526,6 +526,32 @@ export const en = {
 	'modal.definition.name.world-status': 'Status',
 	'modal.definition.name.relationship': 'Relationship',
 	'modal.category.description': 'Description',
+	'dashboard.definition.category': 'Category',
+	'dashboard.definition.world-status': 'World status',
+	'dashboard.definition.relationship': 'Relationship',
+	'dashboard.definition.category.description':
+		'What each kind of note is filed under. Entries nest, and an entry reads as its path: race/elf is the elf under race.',
+	'dashboard.definition.world-status.description':
+		'The states world status records choose from, one vocabulary per kind of note.',
+	'dashboard.definition.relationship.description':
+		'The ways relationship records connect notes, one vocabulary per kind of note.',
+	'definition.kind.character': 'Character',
+	'definition.kind.scene': 'Scene',
+	'definition.add': 'Add',
+	'definition.addChild': 'Add entry under it',
+	'definition.create': 'Create',
+	'definition.empty': 'No entries yet.',
+	'definition.countLabel': '{count} entries',
+	'definition.usage': 'Named by {count} note(s):',
+	'definition.expand': 'Expand',
+	'definition.collapse': 'Collapse',
+	'definition.missingEntry':
+		'The project has no such entry, but notes still name it.',
+	'modal.definition.edit.category': 'Edit category',
+	'modal.definition.edit.world-status': 'Edit status',
+	'modal.definition.edit.relationship': 'Edit relationship',
+	'modal.definition.edit.path':
+		'Editing “{path}”. Renaming keeps every note pointing here.',
 	'form.description': 'Description',
 	'form.timeKind': 'Type',
 	'form.timeKind.point': 'Time point',
@@ -573,10 +599,12 @@ export const en = {
 		'A time period needs both its start and its end, or neither.',
 	'form.definition.invalid': 'The name "{name}" cannot be used in a path.',
 	'form.definition.tooDeep': 'A path can have at most {count} levels.',
+	'form.definition.taken': 'The name "{name}" is already taken at this level.',
 	'editor.managedSection.issue.unrecognized-record':
 		'A line in this section does not read as a record. It stays exactly as written, and the dashboard cannot edit it.',
 	'messages.entityCreated': 'Created “{name}”.',
 	'messages.entityDeleted': 'Moved the note to the trash.',
+	'messages.definitionDeleted': 'Moved the entry to the trash.',
 	'errors.entityExists': 'This kind already has an entry named “{name}”.',
 	'modal.project.title': 'Create Snowflake project',
 	'modal.project.name': 'Project name',
@@ -644,6 +672,14 @@ export const en = {
 		'These notes will need another note in its place:',
 	'modal.deleteMember.listed': '“{name}” will be removed from:',
 	'modal.deleteMember.records': 'These notes mention it in their records:',
+	'modal.deleteDefinition.title': 'Delete “{name}”?',
+	'modal.deleteDefinition.description':
+		'The entry and its note are moved to the trash.',
+	'modal.deleteDefinition.subtree':
+		'The entry and {count} more under it are moved to the trash.',
+	'modal.deleteDefinition.listed': 'It will be removed from the categories of:',
+	'modal.deleteDefinition.records':
+		'These notes mention it in their records, and the health check will point each one out:',
 	'modal.mergeSegments.title': 'Merge notes',
 	'modal.mergeSegments.question':
 		'Are you sure you want to merge “{removed}” into “{kept}”?',

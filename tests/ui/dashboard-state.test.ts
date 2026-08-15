@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	dashboardHasHealthIssues,
+	dashboardPaneKey,
 	dashboardRenderContinuity,
 	memberMatches,
 	mergeDashboardViewState,
@@ -67,6 +68,34 @@ describe('dashboard restored state', () => {
 			worldbuilding: false,
 		});
 		expect(update.changed).toBe(true);
+	});
+
+	it('restores a definition pane and keys it apart from the others', () => {
+		const update = mergeDashboardViewState(
+			{
+				projectPath: null,
+				projectTitle: null,
+				selectedStep: 1,
+				selectedPane: DEFAULT_PANE,
+				railCollapsed: OPEN_RAIL,
+			},
+			{ selectedPane: { kind: 'definition', definitionId: 'world-status' } },
+		);
+
+		expect(update.state.selectedPane).toEqual({
+			kind: 'definition',
+			definitionId: 'world-status',
+		});
+		expect(update.changed).toBe(true);
+		expect(dashboardPaneKey(update.state.selectedPane)).toBe(
+			'def-world-status',
+		);
+		// A vocabulary this build does not know is not a pane.
+		expect(
+			mergeDashboardViewState(update.state, {
+				selectedPane: { kind: 'definition', definitionId: 'weather' },
+			}).changed,
+		).toBe(false);
 	});
 
 	it('supports restoring an explicitly empty dashboard', () => {

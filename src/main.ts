@@ -136,6 +136,7 @@ import type {
 	CreatedProject,
 	DashboardHost,
 	DefinitionFileChoice,
+	RenameDefinitionPathResult,
 	ManagedSectionIssueViewModel,
 	ManuscriptHost,
 	ManuscriptModel,
@@ -848,6 +849,19 @@ export default class SnowflakeMethodPlugin
 							: (artifactMap.get(step)?.path ?? null);
 			pathMap.set(step, path);
 		}
+		// Read off the snapshot in hand, so the three vocabularies cost the
+		// walk of their folders and nothing of the members again.
+		const definitions = {
+			category: await this.projects.listDefinitionForest(project, 'category'),
+			'world-status': await this.projects.listDefinitionForest(
+				project,
+				'world-status',
+			),
+			relationship: await this.projects.listDefinitionForest(
+				project,
+				'relationship',
+			),
+		};
 
 		return {
 			path: project.projectFile,
@@ -885,6 +899,7 @@ export default class SnowflakeMethodPlugin
 				},
 			characters: characterModels,
 			scenes: sceneModels,
+			definitions,
 			worldbuilding: {
 				time: project.worldbuilding.time.map((entity) =>
 					this.entityViewModel(
@@ -1309,6 +1324,64 @@ export default class SnowflakeMethodPlugin
 		return result.ok
 			? { ok: true }
 			: { ok: false, code: result.code, segment: result.segment };
+	}
+
+	async renameDefinitionNode(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+		newName: string,
+	): Promise<RenameDefinitionPathResult> {
+		const project = await this.requireCurrentProject();
+		let result: RenameDefinitionPathResult;
+		try {
+			result = await this.projects.renameDefinitionNode(
+				project,
+				kind,
+				id,
+				taxonomyPath,
+				newName,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		return result.ok
+			? { ok: true, taxonomyPath: result.taxonomyPath }
+			: { ok: false, code: result.code, segment: result.segment };
+	}
+
+	async deleteDefinitionNode(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.deleteDefinitionNode(project, kind, id, taxonomyPath);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		new Notice(this.t('messages.definitionDeleted'));
+	}
+
+	async updateDefinitionDescription(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+		description: string,
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.updateDefinitionDescription(
+				project,
+				kind,
+				id,
+				taxonomyPath,
+				description,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 	}
 
 	async definitionFilePaths(

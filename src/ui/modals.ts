@@ -1523,6 +1523,213 @@ export function promptForDefinitionPath(
 	});
 }
 
+/** What the edit dialog settled on: the node's name and what it means. */
+export interface DefinitionEditResult {
+	name: string;
+	description: string;
+}
+
+/**
+ * The same two rows the new-entry dialog asks with, prefilled: one node's
+ * name and its description. Only the last segment is editable — the
+ * ancestors have rows of their own — and the full path sits under the field
+ * so a rename of one `Empire` among several says which one is in hand.
+ */
+class EditDefinitionModal extends Modal {
+	private nameEl: HTMLInputElement | null = null;
+	private descriptionEl: HTMLTextAreaElement | null = null;
+	private decided = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly definitionId: DefinitionFileChoice,
+		private readonly taxonomyPath: string,
+		private readonly description: string,
+		private readonly done: (settled: DefinitionEditResult | null) => void,
+	) {
+		super(app);
+		this.setTitle(t(`modal.definition.edit.${definitionId}`));
+		this.modalEl.addClass(
+			'snowflake-method-form-modal',
+			'snowflake-method-definition-modal',
+		);
+	}
+
+	onOpen(): void {
+		this.contentEl.addClass('snowflake-method-definition-form');
+		const segments = this.taxonomyPath.split('/');
+		const name = new Setting(this.contentEl)
+			.setName(this.t(`modal.definition.name.${this.definitionId}`))
+			.setDesc(
+				this.t('modal.definition.edit.path', { path: this.taxonomyPath }),
+			)
+			.addText((text) => {
+				text.setValue(segments[segments.length - 1] ?? '');
+				this.nameEl = text.inputEl;
+			});
+		name.settingEl.addClass('snowflake-method-definition-setting');
+		const description = new Setting(this.contentEl)
+			.setName(this.t('modal.category.description'))
+			.addTextArea((text) => {
+				text.setPlaceholder(this.t('form.description.placeholder'));
+				text.setValue(this.description);
+				this.descriptionEl = text.inputEl;
+			});
+		description.settingEl.addClass(
+			'snowflake-method-definition-setting',
+			'snowflake-method-definition-description',
+		);
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', { text: this.t('common.cancel') });
+		cancel.addEventListener('click', () => this.close());
+		const save = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t('common.save'),
+		});
+		save.addEventListener('click', () => {
+			// An empty name is nothing to rename to, so the form stays open on it.
+			if ((this.nameEl?.value ?? '').trim().length === 0) {
+				this.nameEl?.focus();
+				return;
+			}
+			this.decided = true;
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		const name = this.nameEl?.value.trim() ?? '';
+		const description = this.descriptionEl?.value.trim() ?? '';
+		this.contentEl.empty();
+		this.nameEl = null;
+		this.descriptionEl = null;
+		// Closing any other way is a refusal, and a refusal changes nothing.
+		this.done(this.decided ? { name, description } : null);
+	}
+}
+
+/**
+ * Opens the edit dialog for one definition node, resolving to the name and
+ * description it settled on, or to null when the author backed out.
+ */
+export function promptForDefinitionEdit(
+	app: App,
+	t: Translate,
+	definitionId: DefinitionFileChoice,
+	taxonomyPath: string,
+	description: string,
+): Promise<DefinitionEditResult | null> {
+	return new Promise((resolve) => {
+		new EditDefinitionModal(
+			app,
+			t,
+			definitionId,
+			taxonomyPath,
+			description,
+			resolve,
+		).open();
+	});
+}
+
+/** What deleting one definition node costs, gathered over its subtree. */
+export interface DefinitionDeletionCost {
+	/** How many standing entries go, the node itself included. */
+	nodes: number;
+	/** Notes that lose the entry from their category lists. */
+	listed: string[];
+	/** Notes whose record lines will be left naming the felled path. */
+	records: string[];
+}
+
+/**
+ * Asks whether a definition node should go, saying what going costs: how
+ * many entries the subtree takes with it, which notes lose a category
+ * entry, and which record lines will be left naming a path that is gone —
+ * those are sentences the author wrote, so they stay and the health check
+ * reports them.
+ */
+export class ConfirmDefinitionDeletionModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly taxonomyPath: string,
+		private readonly cost: DefinitionDeletionCost,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.deleteDefinition.title', { name: taxonomyPath }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: this.t(
+				this.cost.nodes > 1
+					? 'modal.deleteDefinition.subtree'
+					: 'modal.deleteDefinition.description',
+				{ name: this.taxonomyPath, count: this.cost.nodes - 1 },
+			),
+		});
+		this.addNoteList(
+			this.t('modal.deleteDefinition.listed'),
+			this.cost.listed,
+			false,
+		);
+		this.addNoteList(
+			this.t('modal.deleteDefinition.records'),
+			this.cost.records,
+			true,
+		);
+
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const remove = actions.createEl('button', {
+			cls: 'mod-warning',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	private addNoteList(
+		label: string,
+		titles: readonly string[],
+		needsDecision: boolean,
+	): void {
+		if (titles.length === 0) return;
+		const group = this.contentEl.createDiv({
+			cls: `snowflake-method-delete-member-group${
+				needsDecision ? ' needs-decision' : ''
+			}`,
+		});
+		group.createEl('h3', { text: label });
+		const list = group.createEl('ul');
+		for (const title of titles) list.createEl('li', { text: title });
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		// Resolves however the modal closed -- button, Escape, or the title bar --
+		// so the caller is never left waiting on a dialog the author dismissed.
+		this.onResolve(this.confirmed);
+	}
+}
+
 /**
  * A list to choose from, with an offer to create what was typed when the list
  * has nothing like it. Resolves to null when the author closes it.

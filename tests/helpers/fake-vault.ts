@@ -195,8 +195,15 @@ export class FakeVault {
     const node = this.nodes.get(normalized);
     if (!node) return;
     if (node.parent) node.parent.children = node.parent.children.filter((child) => child !== node);
-    this.nodes.delete(normalized);
-    this.contents.delete(normalized);
+    // A folder takes its subtree with it, as the Vault's own trash does.
+    const doomed = [...this.nodes.keys()].filter(
+      (candidate) =>
+        candidate === normalized || candidate.startsWith(`${normalized}/`),
+    );
+    for (const candidate of doomed) {
+      this.nodes.delete(candidate);
+      this.contents.delete(candidate);
+    }
   }
 
   private requireFolder(path: string): FakeFolder {

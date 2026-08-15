@@ -263,6 +263,37 @@ export class VaultRepository {
   }
 
   /**
+   * The folder counterparts, through the same manager calls: a folder rename
+   * moves its whole subtree, and trashing one takes the subtree with it.
+   * Obsidian's own link updater may rewrite links into a renamed folder, but
+   * only when the user has that setting on -- a caller that needs the links
+   * moved must move them itself.
+   */
+  async renameFolder(path: string, destination: string): Promise<string> {
+    const sourcePath = this.normalize(path);
+    const destinationPath = this.normalize(destination);
+    const folder = this.getFolder(sourcePath);
+    if (!folder) throw new ManagedFileNotFoundError(sourcePath);
+    if (sourcePath === destinationPath) return sourcePath;
+    if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+    await this.ensureFolder(parentOf(destinationPath));
+    try {
+      await this.fileManager.renameFile(folder, destinationPath);
+    } catch (error) {
+      if (this.get(destinationPath)) throw new PathConflictError(destinationPath);
+      throw error;
+    }
+    return destinationPath;
+  }
+
+  async trashFolder(path: string): Promise<void> {
+    const normalized = this.normalize(path);
+    const folder = this.getFolder(normalized);
+    if (!folder) throw new ManagedFileNotFoundError(normalized);
+    await this.fileManager.trashFile(folder);
+  }
+
+  /**
    * Whether this repository is writing the path right now. The editor's
    * protection filter asks, because a write to an open note lands in its
    * editor as a transaction: without this, the plugin's own dashboard save

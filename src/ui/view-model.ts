@@ -10,7 +10,10 @@ import type {
 	WorldbuildingKind,
 } from '../domain';
 import type { MarkerIssueCode, RecordLine } from '../templates';
-import type { ProjectStructureIssueCode } from '../services';
+import type {
+	DefinitionForest,
+	ProjectStructureIssueCode,
+} from '../services';
 
 import type {
 	CharacterOption,
@@ -31,6 +34,14 @@ export type AddDefinitionPathResult =
 	| {
 			ok: false;
 			code: 'invalid-segment' | 'too-deep';
+			segment: string;
+	  };
+
+export type RenameDefinitionPathResult =
+	| { ok: true; taxonomyPath: string }
+	| {
+			ok: false;
+			code: 'invalid-segment' | 'taken';
 			segment: string;
 	  };
 
@@ -171,6 +182,8 @@ export interface ProjectDashboardModel {
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
 	worldbuilding: Record<WorldbuildingKind, WorldbuildingEntityViewModel[]>;
+	/** The three vocabularies across every kind, for the definition panes. */
+	definitions: Record<DefinitionFileChoice, DefinitionForest>;
 	/** Writable member notes that predate the generated fields block. */
 	unmigratedMembers: number;
 	structureIssues: ManagedSectionIssueViewModel[];
@@ -362,6 +375,26 @@ export interface DashboardHost {
 		path: string,
 		description?: string,
 	): Promise<AddDefinitionPathResult>;
+	/** Renames one node and rewrites every member link into its subtree. */
+	renameDefinitionNode(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+		newName: string,
+	): Promise<RenameDefinitionPathResult>;
+	/** Trashes one node's subtree and drops it from members' category lists. */
+	deleteDefinitionNode(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+	): Promise<void>;
+	/** Writes what one node means, on its note and its generated block. */
+	updateDefinitionDescription(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+		taxonomyPath: string,
+		description: string,
+	): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;

@@ -11,6 +11,8 @@ import {
 } from 'obsidian';
 
 import {
+	DEFINITION_FILE_IDS,
+	ENTITY_KINDS,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	STEP_ONE_SECTION_IDS,
@@ -33,8 +35,12 @@ import {
 	type StepStatusMap,
 	type WorldbuildingKind,
 } from '../domain';
-import { MAX_DEFINITION_DEPTH } from '../services';
 import {
+	MAX_DEFINITION_DEPTH,
+	type DefinitionNodeInfo,
+} from '../services';
+import {
+	ConfirmDefinitionDeletionModal,
 	ConfirmRestoreBaseModal,
 	CreateCharacterModal,
 	CreateProjectModal,
@@ -43,6 +49,8 @@ import {
 	MoveAfterModal,
 	MoveToPositionModal,
 	RepairReportModal,
+	promptForDefinitionEdit,
+	promptForDefinitionPath,
 	promptForNewCharacter,
 	promptForNewEntity,
 	promptForNewScene,
@@ -134,6 +142,12 @@ const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
 	item: 'gem',
 };
 
+const DEFINITION_ICONS: Record<DefinitionFileChoice, string> = {
+	category: 'tags',
+	'world-status': 'activity',
+	relationship: 'heart-handshake',
+};
+
 /**
  * Whether a category path sits at or below the one a filter names, so
  * filtering by `Race` keeps the characters filed under `Race/Elf`. A level
@@ -186,6 +200,11 @@ export class SnowflakeDashboardView extends ItemView {
 		steps: false,
 		worldbuilding: false,
 	};
+	/**
+	 * Folded rows of the definition trees, keyed `id/kind/path`. Session
+	 * state like a table's search: a refresh redraws the fold as it stood.
+	 */
+	private readonly definitionCollapse = new Set<string>();
 	private readonly entityQueries = new Map<WorldbuildingKind, string>();
 	private readonly entityCategoryFilters = new Map<WorldbuildingKind, string>();
 	private readonly entityStatusFilters = new Map<
@@ -974,6 +993,67 @@ export class SnowflakeDashboardView extends ItemView {
 				void this.runAndRefresh(() => this.host.selectWorldbuildingKind(kind));
 			});
 		}
+		// The vocabularies live with the kinds they classify: three more
+		// entries in the same list, each the whole of one vocabulary across
+		// every kind.
+		for (const definitionId of DEFINITION_FILE_IDS) {
+			const active =
+				this.selectedPane.kind === 'definition' &&
+				this.selectedPane.definitionId === definitionId;
+			const trees = ENTITY_KINDS.map((kind) => model.definitions[definitionId][kind]);
+			const count = trees.reduce(
+				(total, tree) =>
+					total + tree.nodes.filter((node) => !node.missing).length,
+				0,
+			);
+			// Held to the standard the kinds above set: whatever the project
+			// reports about the vocabulary — an entry without its note, a path
+			// members name that no folder spells — takes the count's place.
+			const damaged = trees.some((tree) =>
+				tree.nodes.some((node) => node.missing || node.missingSelf),
+			);
+			const title = this.t(`dashboard.definition.${definitionId}`);
+			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
+			const button = item.createEl('button', {
+				cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
+					damaged ? ' has-managed-section-issue' : ''
+				}`,
+				attr: {
+					type: 'button',
+					'aria-label': title,
+					...(damaged ? { 'aria-invalid': 'true' } : {}),
+					...(active ? { 'aria-current': 'true' } : {}),
+				},
+			});
+			const iconEl = button.createSpan({
+				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(iconEl, DEFINITION_ICONS[definitionId]);
+			button.createSpan({
+				cls: 'snowflake-method-step-label',
+				text: title,
+			});
+			const indicator = button.createSpan({
+				cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
+				attr: {
+					'aria-label': damaged
+						? this.t('projectStructure.damagedTitle')
+						: String(count),
+				},
+			});
+			if (damaged) {
+				indicator.addClass('has-managed-section-issue');
+				setIcon(indicator, 'triangle-alert');
+			} else {
+				indicator.setText(String(count));
+			}
+			button.addEventListener('click', () => {
+				this.selectedPane = { kind: 'definition', definitionId };
+				this.stepChosen = true;
+				void this.refresh();
+			});
+		}
 	}
 
 	/**
@@ -1442,6 +1522,477 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
+	 * The panel one vocabulary fills: the whole of one id across every kind,
+	 * each kind a section holding its tree. The trees are small — the depth
+	 * cap keeps them readable — so the rows are plain elements rather than a
+	 * virtual table, and the fold is session state like a table's search.
+	 */
+	private renderDefinitionPane(
+		layout: HTMLElement,
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+	): void {
+		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
+		this.renderedPaneKey = dashboardPaneKey({
+			kind: 'definition',
+			definitionId: id,
+		});
+		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
+		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
+		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		title.createEl('h2', { text: this.t(`dashboard.definition.${id}`) });
+		panel.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t(`dashboard.definition.${id}.description`),
+		});
+		const forest = model.definitions[id];
+		// The project file sits one folder below the root, which is how the
+		// report's project-relative names are read back against this pane's
+		// trees.
+		const projectRoot = model.path.split('/').slice(0, -2).join('/');
+		const relativeRoots = ENTITY_KINDS.map((kind) => {
+			const rootPath = forest[kind].rootPath;
+			return rootPath.startsWith(`${projectRoot}/`)
+				? rootPath.slice(projectRoot.length + 1)
+				: rootPath;
+		});
+		const paneIssues = model.structureIssues.filter((issue) => {
+			if (!issue.blocking) return false;
+			if (issue.code === 'missing-definition-node') {
+				return ENTITY_KINDS.some((kind) => {
+					const rootPath = forest[kind].rootPath;
+					return (
+						issue.path === rootPath || issue.path.startsWith(`${rootPath}/`)
+					);
+				});
+			}
+			if (issue.code === 'unresolved-definition-link') {
+				return issue.names.some((name) =>
+					relativeRoots.some((root) => name.startsWith(`${root}/`)),
+				);
+			}
+			return false;
+		});
+		if (paneIssues.length > 0) {
+			this.renderManagedSectionIssues(panel, paneIssues);
+		}
+		panel.addClass('snowflake-method-definition-panel');
+		for (const kind of ENTITY_KINDS) {
+			this.renderDefinitionSection(panel, model, id, kind);
+		}
+	}
+
+	/** One kind's tree of one vocabulary: its heading, count, add, and rows. */
+	private renderDefinitionSection(
+		panel: HTMLElement,
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+	): void {
+		const tree = model.definitions[id][kind];
+		const section = panel.createDiv({
+			cls: 'snowflake-method-definition-section',
+		});
+		const header = section.createDiv({
+			cls: 'snowflake-method-definition-section-header',
+		});
+		header.createEl('h3', { text: this.definitionKindLabel(kind) });
+		const standing = tree.nodes.filter((node) => !node.missing).length;
+		header.createSpan({
+			cls: 'snowflake-method-definition-count',
+			text: String(standing),
+			attr: {
+				'aria-label': this.t('definition.countLabel', { count: standing }),
+			},
+		});
+		const add = header.createEl('button', {
+			cls: 'snowflake-method-definition-add',
+			text: this.t('definition.add'),
+			attr: { type: 'button' },
+		});
+		add.disabled = model.readOnly;
+		add.addEventListener('click', () => {
+			void this.addDefinitionEntry(id, kind, '');
+		});
+		if (tree.nodes.length === 0) {
+			section.createEl('p', {
+				cls: 'snowflake-method-definition-empty',
+				text: this.t('definition.empty'),
+			});
+			return;
+		}
+		const rows = section.createDiv({
+			cls: 'snowflake-method-definition-tree',
+			attr: { role: 'tree' },
+		});
+		for (let index = 0; index < tree.nodes.length; index += 1) {
+			const node = tree.nodes[index];
+			if (node === undefined) continue;
+			if (this.definitionAncestorCollapsed(id, kind, node.taxonomyPath)) {
+				continue;
+			}
+			const hasChildren =
+				(tree.nodes[index + 1]?.depth ?? 0) > node.depth;
+			this.renderDefinitionRow(rows, model, id, kind, node, hasChildren);
+		}
+	}
+
+	/**
+	 * One row of a tree: the fold toggle, the name marked the way a member's
+	 * is when the project reports anything about it, what the node means,
+	 * how many notes use it, and the same actions a member row offers. An
+	 * entry no folder spells gets one action instead — being created.
+	 */
+	private renderDefinitionRow(
+		rows: HTMLElement,
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+		hasChildren: boolean,
+	): void {
+		const collapsed = this.definitionCollapse.has(
+			this.definitionCollapseKey(id, kind, node.taxonomyPath),
+		);
+		const row = rows.createDiv({
+			cls: `snowflake-method-definition-row${node.missing ? ' is-missing' : ''}`,
+			attr: {
+				role: 'treeitem',
+				'aria-level': String(node.depth),
+				...(hasChildren
+					? { 'aria-expanded': collapsed ? 'false' : 'true' }
+					: {}),
+			},
+		});
+		row.style.setProperty(
+			'--snowflake-definition-depth',
+			String(node.depth - 1),
+		);
+		if (hasChildren) {
+			const toggle = row.createEl('button', {
+				cls: 'clickable-icon snowflake-method-definition-toggle',
+				attr: {
+					type: 'button',
+					'aria-label': this.t(
+						collapsed ? 'definition.expand' : 'definition.collapse',
+					),
+				},
+			});
+			setIcon(toggle, collapsed ? 'chevron-right' : 'chevron-down');
+			toggle.addEventListener('click', () => {
+				const key = this.definitionCollapseKey(id, kind, node.taxonomyPath);
+				if (!this.definitionCollapse.delete(key)) {
+					this.definitionCollapse.add(key);
+				}
+				void this.refresh();
+			});
+		} else {
+			row.createSpan({
+				cls: 'snowflake-method-definition-toggle-spacer',
+				attr: { 'aria-hidden': 'true' },
+			});
+		}
+		const body = row.createDiv({ cls: 'snowflake-method-definition-row-body' });
+		const line = body.createDiv({ cls: 'snowflake-method-definition-name' });
+		const troubles = [
+			...this.memberWarnings(model, node.folderPath),
+			...(node.missing ? [this.t('definition.missingEntry')] : []),
+		];
+		setTooltip(line, [node.taxonomyPath, ...troubles].join('\n'));
+		this.renderTableName(line, node.name, troubles);
+		if (troubles.length > 0) {
+			const warning = line.createSpan({
+				cls: 'snowflake-method-table-health-warning',
+				attr: { 'aria-label': troubles.join('\n') },
+			});
+			setIcon(warning, 'triangle-alert');
+		}
+		const users = new Set([...node.usage.listed, ...node.usage.records]);
+		if (users.size > 0) {
+			const usage = line.createSpan({
+				cls: 'snowflake-method-definition-usage',
+				text: String(users.size),
+			});
+			setTooltip(
+				usage,
+				[
+					this.t('definition.usage', { count: users.size }),
+					...users,
+				].join('\n'),
+			);
+		}
+		if (node.description.length > 0) {
+			const description = body.createDiv({
+				cls: 'snowflake-method-definition-row-description',
+				text: node.description,
+			});
+			setTooltip(description, node.description);
+		}
+		const actions = row.createDiv({ cls: 'snowflake-method-table-actions' });
+		if (node.missing) {
+			const create = actions.createEl('button', {
+				cls: 'snowflake-method-definition-create',
+				text: this.t('definition.create'),
+				attr: { type: 'button' },
+			});
+			create.disabled = model.readOnly;
+			create.addEventListener('click', () => {
+				void this.runAndRefresh(async () => {
+					const result = await this.host.addDefinitionPath(
+						kind,
+						id,
+						node.taxonomyPath,
+					);
+					if (!result.ok) new Notice(this.definitionRefusal(result));
+				});
+			});
+			return;
+		}
+		const locked = model.readOnly;
+		const editNode = (): void => {
+			if (!locked) void this.openDefinitionEditor(id, kind, node);
+		};
+		const openNode = (): void => {
+			void this.host.openManagedFile(node.selfPath, 'definition-fields', [
+				'definition-fields',
+			]);
+		};
+		const addChild = (): void => {
+			void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`);
+		};
+		const splitButton = actions.createDiv({
+			cls: 'snowflake-method-character-split-button',
+		});
+		const edit = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-edit',
+			text: this.t('actions.edit'),
+			attr: { type: 'button' },
+		});
+		edit.disabled = locked;
+		edit.addEventListener('click', editNode);
+		const trigger = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-action-menu-trigger',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		const triggerIcon = trigger.createSpan({
+			cls: 'snowflake-method-character-action-menu-icon',
+		});
+		setIcon(triggerIcon, 'chevron-down');
+		trigger.addEventListener('click', (event) => {
+			// The same items a member's menu carries, and no delete: that is
+			// the button beside this one.
+			const menu = new Menu();
+			menu.setParentElement(splitButton);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('actions.edit'))
+					.setIcon('pencil')
+					.setDisabled(locked)
+					.onClick(editNode),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('common.open'))
+					.setIcon('file-text')
+					.onClick(openNode),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('definition.addChild'))
+					.setIcon('plus')
+					.setDisabled(locked || node.depth >= MAX_DEFINITION_DEPTH)
+					.onClick(addChild),
+			);
+			menu.showAtMouseEvent(event);
+		});
+		const remove = actions.createEl('button', {
+			cls: 'snowflake-method-character-delete',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.disabled = locked;
+		remove.addEventListener('click', () => {
+			this.confirmDefinitionDeletion(model, id, kind, node);
+		});
+	}
+
+	/** The heading one kind's tree stands under. */
+	private definitionKindLabel(kind: EntityKind): string {
+		if (kind === 'character' || kind === 'scene') {
+			return this.t(`definition.kind.${kind}`);
+		}
+		return this.t(`worldbuilding.kind.${kind}`);
+	}
+
+	private definitionCollapseKey(
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		taxonomyPath: string,
+	): string {
+		return `${id}/${kind}/${taxonomyPath}`;
+	}
+
+	private definitionAncestorCollapsed(
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		taxonomyPath: string,
+	): boolean {
+		const segments = taxonomyPath.split('/');
+		for (let depth = 1; depth < segments.length; depth += 1) {
+			const ancestor = segments.slice(0, depth).join('/');
+			if (
+				this.definitionCollapse.has(
+					this.definitionCollapseKey(id, kind, ancestor),
+				)
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The sentence a refused definition name is explained with. */
+	private definitionRefusal(result: {
+		code: 'invalid-segment' | 'too-deep' | 'taken';
+		segment: string;
+	}): string {
+		if (result.code === 'too-deep') {
+			return this.t('form.definition.tooDeep', {
+				count: MAX_DEFINITION_DEPTH,
+			});
+		}
+		if (result.code === 'taken') {
+			return this.t('form.definition.taken', { name: result.segment });
+		}
+		return this.t('form.definition.invalid', { name: result.segment });
+	}
+
+	/** Asks for a new entry — at the root, or under the prefilled parent. */
+	private async addDefinitionEntry(
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		prefill: string,
+	): Promise<void> {
+		const created = await promptForDefinitionPath(
+			this.app,
+			this.t,
+			id,
+			prefill,
+		);
+		if (created === null) return;
+		await this.runAndRefresh(async () => {
+			const result = await this.host.addDefinitionPath(
+				kind,
+				id,
+				created.path,
+				created.description,
+			);
+			if (!result.ok) new Notice(this.definitionRefusal(result));
+		});
+	}
+
+	/**
+	 * The edit dialog, and what it settled on carried out: the rename first,
+	 * because it moves the node the description belongs to, and the
+	 * description at whichever path the node then stands at.
+	 */
+	private async openDefinitionEditor(
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+	): Promise<void> {
+		const settled = await promptForDefinitionEdit(
+			this.app,
+			this.t,
+			id,
+			node.taxonomyPath,
+			node.description,
+		);
+		if (settled === null) return;
+		await this.runAndRefresh(async () => {
+			let taxonomyPath = node.taxonomyPath;
+			if (settled.name !== node.name) {
+				const renamed = await this.host.renameDefinitionNode(
+					kind,
+					id,
+					node.taxonomyPath,
+					settled.name,
+				);
+				if (!renamed.ok) {
+					new Notice(this.definitionRefusal(renamed));
+					return;
+				}
+				taxonomyPath = renamed.taxonomyPath;
+				// A fold keyed by the old path would fall open on the rename.
+				const oldKey = this.definitionCollapseKey(
+					id,
+					kind,
+					node.taxonomyPath,
+				);
+				if (this.definitionCollapse.delete(oldKey)) {
+					this.definitionCollapse.add(
+						this.definitionCollapseKey(id, kind, taxonomyPath),
+					);
+				}
+			}
+			if (settled.description !== node.description) {
+				await this.host.updateDefinitionDescription(
+					kind,
+					id,
+					taxonomyPath,
+					settled.description,
+				);
+			}
+		});
+	}
+
+	/**
+	 * What deleting one node costs, gathered over its subtree the same way
+	 * the deletion will fell it, then the question — and only on yes, the
+	 * deletion itself.
+	 */
+	private confirmDefinitionDeletion(
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+	): void {
+		const tree = model.definitions[id][kind];
+		const prefix = `${node.taxonomyPath}/`;
+		const subtree = tree.nodes.filter(
+			(candidate) =>
+				candidate.taxonomyPath === node.taxonomyPath ||
+				candidate.taxonomyPath.startsWith(prefix),
+		);
+		const listed = new Set<string>();
+		const records = new Set<string>();
+		for (const member of subtree) {
+			for (const name of member.usage.listed) listed.add(name);
+			for (const name of member.usage.records) records.add(name);
+		}
+		new ConfirmDefinitionDeletionModal(
+			this.app,
+			this.t,
+			node.taxonomyPath,
+			{
+				nodes: subtree.filter((candidate) => !candidate.missing).length,
+				listed: [...listed],
+				records: [...records],
+			},
+			(confirmed) => {
+				if (!confirmed) return;
+				void this.runAndRefresh(() =>
+					this.host.deleteDefinitionNode(kind, id, node.taxonomyPath),
+				);
+			},
+		).open();
+	}
+
+	/**
 	 * Everything the record editors need from the project, fetched fresh so
 	 * the pickers list what the definition files hold right now. The kind is
 	 * the note the form is for: each kind owns its own definition files, so a
@@ -1847,6 +2398,10 @@ export class SnowflakeDashboardView extends ItemView {
 	): void {
 		if (this.selectedPane.kind === 'worldbuilding') {
 			this.renderWorldbuildingPane(layout, model, this.selectedPane.wbKind);
+			return;
+		}
+		if (this.selectedPane.kind === 'definition') {
+			this.renderDefinitionPane(layout, model, this.selectedPane.definitionId);
 			return;
 		}
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });

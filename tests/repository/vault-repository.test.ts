@@ -4,6 +4,8 @@ import { SCHEMA_VERSION, fingerprint } from "../../src/domain";
 import {
   ConcurrentChangeError,
   InvalidManagedDocumentError,
+  ManagedFileNotFoundError,
+  PathConflictError,
   UnsupportedSchemaError,
   VaultRepository,
 } from "../../src/repository";
@@ -44,6 +46,45 @@ describe("VaultRepository", () => {
     const record = await repository.readManaged(created.path);
     expect(record.frontmatter["snowflake-schema"]).toBe(SCHEMA_VERSION);
     expect(record.body).toContain("# One-Sentence Summary");
+  });
+
+  it("renames and trashes folders with their whole subtrees", async () => {
+    await fakeVault.seedFile("Novel/21_Category/Race/_self.md", "race");
+    await fakeVault.seedFile("Novel/21_Category/Race/Elf/_self.md", "elf");
+
+    await repository.renameFolder(
+      "Novel/21_Category/Race",
+      "Novel/21_Category/Kind",
+    );
+    expect(fakeVault.contents.has("Novel/21_Category/Kind/_self.md")).toBe(true);
+    expect(fakeVault.contents.has("Novel/21_Category/Kind/Elf/_self.md")).toBe(
+      true,
+    );
+    expect(fakeVault.contents.has("Novel/21_Category/Race/_self.md")).toBe(
+      false,
+    );
+    expect(fakeFileManager.renameCalls).toEqual([
+      { from: "Novel/21_Category/Race", to: "Novel/21_Category/Kind" },
+    ]);
+
+    // A destination already standing is a conflict, never an overwrite.
+    await fakeVault.seedFile("Novel/21_Category/Old/_self.md", "old");
+    await expect(
+      repository.renameFolder("Novel/21_Category/Kind", "Novel/21_Category/Old"),
+    ).rejects.toThrow(PathConflictError);
+
+    await repository.trashFolder("Novel/21_Category/Kind");
+    expect(fakeVault.contents.has("Novel/21_Category/Kind/_self.md")).toBe(
+      false,
+    );
+    expect(fakeVault.contents.has("Novel/21_Category/Kind/Elf/_self.md")).toBe(
+      false,
+    );
+    expect(fakeVault.getAbstractFileByPath("Novel/21_Category/Kind/Elf")).toBeNull();
+    expect(fakeVault.contents.has("Novel/21_Category/Old/_self.md")).toBe(true);
+    await expect(repository.trashFolder("Novel/21_Category/Kind")).rejects.toThrow(
+      ManagedFileNotFoundError,
+    );
   });
 
   it("uses a safe suffix and never overwrites a conflicting file", async () => {

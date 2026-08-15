@@ -47,6 +47,15 @@ export const DEFINITION_FILE_IDS = [
 
 export type DefinitionFileId = (typeof DEFINITION_FILE_IDS)[number];
 
+export function isDefinitionFileId(
+	value: unknown,
+): value is DefinitionFileId {
+	return (
+		typeof value === 'string' &&
+		(DEFINITION_FILE_IDS as readonly string[]).includes(value)
+	);
+}
+
 /**
  * The note every definition node folder holds, without its extension. The
  * folder is what makes the node exist; this file is where its description and

@@ -1,19 +1,27 @@
 import {
+	isDefinitionFileId,
 	isStepId,
 	isWorldbuildingKind,
+	type DefinitionFileId,
 	type StepId,
 	type WorldbuildingKind,
 } from '../domain';
 import type { ManagedSectionIssueViewModel } from './view-model';
 
-/** What the main panel is showing: one step, or one worldbuilding kind. */
+/**
+ * What the main panel is showing: one step, one worldbuilding kind, or one
+ * of the definition vocabularies.
+ */
 export type DashboardPane =
 	| { kind: 'step'; step: StepId }
-	| { kind: 'worldbuilding'; wbKind: WorldbuildingKind };
+	| { kind: 'worldbuilding'; wbKind: WorldbuildingKind }
+	| { kind: 'definition'; definitionId: DefinitionFileId };
 
 /** A stable identity for a pane, for continuity and change comparisons. */
 export function dashboardPaneKey(pane: DashboardPane): string {
-	return pane.kind === 'step' ? `step-${pane.step}` : `wb-${pane.wbKind}`;
+	if (pane.kind === 'step') return `step-${pane.step}`;
+	if (pane.kind === 'worldbuilding') return `wb-${pane.wbKind}`;
+	return `def-${pane.definitionId}`;
 }
 
 export function parseDashboardPane(value: unknown): DashboardPane | null {
@@ -27,6 +35,12 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 		isWorldbuildingKind(candidate.wbKind)
 	) {
 		return { kind: 'worldbuilding', wbKind: candidate.wbKind };
+	}
+	if (
+		candidate.kind === 'definition' &&
+		isDefinitionFileId(candidate.definitionId)
+	) {
+		return { kind: 'definition', definitionId: candidate.definitionId };
 	}
 	return null;
 }

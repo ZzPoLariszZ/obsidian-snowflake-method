@@ -43,6 +43,15 @@ export type AppendPathResult =
   | { ok: false; code: "invalid-segment" | "too-deep"; segment: string };
 
 /**
+ * What renaming a node came to: the path it now spells, or the refusal to
+ * show — a name the file system will not take, or a sibling already
+ * answering to it under fold.
+ */
+export type RenamePathResult =
+  | { ok: true; taxonomyPath: string }
+  | { ok: false; code: "invalid-segment" | "taken"; segment: string };
+
+/**
  * A name a node folder can actually be given: what the file system accepts
  * unchanged, nothing hidden behind a leading dot, and never the node file's
  * own name.

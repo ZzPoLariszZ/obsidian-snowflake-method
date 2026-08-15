@@ -67,14 +67,17 @@ import {
   definitionProseByPath,
   definitionRootFromValue,
   definitionRootName,
+  isValidDefinitionSegment,
   legacyDefinitionFileName,
   nodeLink,
   nodeNameFromValue,
+  nodeSelfPath,
   parseDefinitionFile,
   parseDefinitionValue,
   taxonomyPathFromTarget,
   taxonomyPathFromValue,
   type AppendPathResult,
+  type RenamePathResult,
 } from "./definition-files";
 import {
   ConcurrentChangeError,
@@ -156,6 +159,9 @@ import {
   type CharacterPatch,
   type CharacterRecord,
   type CreateProjectOptions,
+  type DefinitionForest,
+  type DefinitionNodeInfo,
+  type DefinitionNodeUsage,
   type MemberUsage,
   type ProjectFrontmatterPatch,
   type ProjectDirectoryKey,
@@ -3339,6 +3345,119 @@ export class SnowflakeProjectService {
   }
 
   /**
+   * One vocabulary across every kind, read for showing and managing rather
+   * than for picking: every node in walk order with what its note says it
+   * means, which notes use it, and the two ways a node can half-exist — a
+   * folder missing the note its links resolve to, and a path members
+   * reference that no folder spells, raised as a marked entry where the
+   * folder would stand, missing ancestors and all.
+   *
+   * Usage is direct: the notes naming that very node, not its children. A
+   * deletion that takes a subtree gathers the descendants' entries itself.
+   * Paths are matched under fold throughout, because the file systems these
+   * vaults live on answer to either case with the same folder.
+   */
+  async listDefinitionForest(
+    projectLocator: ProjectLocator,
+    id: DefinitionFileId,
+  ): Promise<DefinitionForest> {
+    // Everything the members store is in the snapshot, so a caller holding
+    // one — the dashboard model is built from exactly this — pays no second
+    // read of the project.
+    const project =
+      typeof projectLocator === "object" && "characters" in projectLocator
+        ? projectLocator
+        : await this.loadProject(projectLocator);
+    const forest = {} as DefinitionForest;
+    for (const kind of ENTITY_KINDS) {
+      const rootPath = definitionRootPath(project, kind, id);
+      const members = membersOfKind(project, kind);
+      // Referenced paths under this root, by folded path: who names the node
+      // in a category list, who under a record label, and how the first
+      // reference spelled it — the name a folderless entry is shown by.
+      const usage = new Map<string, DefinitionNodeUsage>();
+      const spelled = new Map<string, string>();
+      const claim = (
+        taxonomyPath: string,
+        bucket: keyof DefinitionNodeUsage,
+        name: string,
+      ): void => {
+        const folded = foldName(taxonomyPath);
+        if (!spelled.has(folded)) spelled.set(folded, taxonomyPath);
+        const entry = usage.get(folded) ?? { listed: [], records: [] };
+        if (!entry[bucket].includes(name)) entry[bucket].push(name);
+        usage.set(folded, entry);
+      };
+      for (const member of members) {
+        const name = memberName(member);
+        for (const raw of member.categories) {
+          const link = parseDefinitionValue(raw);
+          if (link === null || link.legacyHeading !== null) continue;
+          const path = taxonomyPathFromTarget(link.target, rootPath);
+          if (path !== null) claim(path, "listed", name);
+        }
+        for (const line of [...member.worldStatus, ...member.relationships]) {
+          const path = taxonomyPathFromTarget(line.label.path, rootPath);
+          if (path !== null) claim(path, "records", name);
+        }
+      }
+      const standing = this.walkDefinitionTree(rootPath);
+      const known = new Set(standing.map((path) => foldName(path)));
+      const ghosts = new Map<string, string>();
+      for (const display of spelled.values()) {
+        const segments = display.split("/");
+        for (let depth = 1; depth <= segments.length; depth += 1) {
+          const ancestor = segments.slice(0, depth).join("/");
+          const folded = foldName(ancestor);
+          if (!known.has(folded) && !ghosts.has(folded)) {
+            ghosts.set(folded, ancestor);
+          }
+        }
+      }
+      const paths = [...standing, ...ghosts.values()].sort(
+        compareTaxonomyPaths,
+      );
+      const nodes: DefinitionNodeInfo[] = [];
+      for (const taxonomyPath of paths) {
+        const segments = taxonomyPath.split("/");
+        const folderPath = normalizePath(`${rootPath}/${taxonomyPath}`);
+        const selfPath = normalizePath(
+          `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
+        );
+        const missing = !known.has(foldName(taxonomyPath));
+        let description = "";
+        let missingSelf = false;
+        if (!missing) {
+          const record = await this.repository.tryReadManaged(selfPath);
+          missingSelf = record === null;
+          description =
+            record === null
+              ? ""
+              : (asOptionalString(
+                  record.frontmatter[FRONTMATTER_KEYS.description],
+                ) ?? "");
+        }
+        nodes.push({
+          taxonomyPath,
+          name: segments[segments.length - 1] ?? taxonomyPath,
+          depth: segments.length,
+          folderPath,
+          selfPath,
+          description,
+          missingSelf,
+          missing,
+          usage: usage.get(foldName(taxonomyPath)) ?? {
+            listed: [],
+            records: [],
+          },
+        });
+      }
+      forest[kind] = { rootPath, nodes };
+    }
+    return forest;
+  }
+
+  /**
    * Every node folder at or below a folder, depth first with siblings in
    * folded name order, stopping at the depth cap. One walk for the pickers,
    * the health scan, and the passes that write node files.
@@ -3821,6 +3940,246 @@ export class SnowflakeProjectService {
       folderPath,
     );
     return true;
+  }
+
+  /**
+   * Gives one node a new name, and walks everything that names it. The
+   * folder is renamed first; the subtree's node files are regenerated,
+   * because every path below the fold changed; and every member link into
+   * the moved subtree is rewritten by hand — target and shown name both —
+   * because Obsidian's own link updater is a setting an author may have
+   * off, and a vocabulary rename must not depend on it. Where Obsidian got
+   * there first, the rewrite finds the targets already moved and only
+   * settles their shown names.
+   *
+   * Refusals are returned rather than thrown so the dialog can say why in
+   * the project's language: a name the file system will not take, or a
+   * sibling already answering to it — under fold, because the file systems
+   * these vaults live on would treat the twin as the same folder.
+   */
+  async renameDefinitionNode(
+    projectLocator: ProjectLocator,
+    kind: EntityKind,
+    id: DefinitionFileId,
+    taxonomyPath: string,
+    newName: string,
+  ): Promise<RenamePathResult> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const trimmed = newName.trim();
+    if (!isValidDefinitionSegment(trimmed)) {
+      return { ok: false, code: "invalid-segment", segment: trimmed };
+    }
+    const rootPath = definitionRootPath(project, kind, id);
+    const segments = taxonomyPath
+      .split("/")
+      .filter((segment) => segment.length > 0);
+    const oldName = segments[segments.length - 1] ?? "";
+    const parentSegments = segments.slice(0, -1);
+    const parentPath = [rootPath, ...parentSegments].join("/");
+    const oldFolder = normalizePath(`${parentPath}/${oldName}`);
+    if (this.repository.getFolder(oldFolder) === null) {
+      throw new ManagedFileNotFoundError(oldFolder);
+    }
+    if (trimmed === oldName) return { ok: true, taxonomyPath };
+    const twin = this.repository
+      .listDirectFolders(parentPath)
+      .find(
+        (child) =>
+          foldName(child.name) === foldName(trimmed) &&
+          child.name !== oldName,
+      );
+    if (twin !== undefined) {
+      return { ok: false, code: "taken", segment: trimmed };
+    }
+    const newFolder = normalizePath(`${parentPath}/${trimmed}`);
+    await this.repository.renameFolder(oldFolder, newFolder);
+    // Every node below moved with it, and each one's generated block spells
+    // its path: brought current here rather than left to the next pass.
+    for (const nodeFolder of this.definitionNodeFolders(rootPath, newFolder)) {
+      await this.syncDefinitionNode(project, id, rootPath, nodeFolder);
+    }
+    await this.rewriteDefinitionReferences(
+      project,
+      kind,
+      rootPath,
+      oldFolder,
+      newFolder,
+    );
+    return { ok: true, taxonomyPath: [...parentSegments, trimmed].join("/") };
+  }
+
+  /**
+   * Rewrites every member link into a moved subtree: the category lists in
+   * frontmatter, the labels on record lines, and the callout that re-emits
+   * them. The project is reloaded first, because Obsidian may have moved
+   * some targets already; a link found moved keeps its target and gets its
+   * shown name settled, so the pass lands the same wherever Obsidian left
+   * off.
+   */
+  private async rewriteDefinitionReferences(
+    project: ProjectSnapshot,
+    kind: EntityKind,
+    rootPath: string,
+    oldFolder: string,
+    newFolder: string,
+  ): Promise<void> {
+    const oldPrefix = `${oldFolder}/`;
+    const moved = (target: string): string => {
+      const cleaned = normalizePath(target.trim());
+      if (cleaned === oldFolder) return newFolder;
+      return cleaned.startsWith(oldPrefix)
+        ? `${newFolder}/${cleaned.slice(oldPrefix.length)}`
+        : cleaned;
+    };
+    const refreshed = await this.loadProject(project.projectFile);
+    const members = membersOfKind(refreshed, kind);
+    const touched: string[] = [];
+    for (const member of members) {
+      if (member.readOnly) continue;
+      let changed = false;
+      const categories = member.categories.map((raw) => {
+        const link = parseDefinitionValue(raw);
+        if (link === null || link.legacyHeading !== null) return raw;
+        const path = taxonomyPathFromTarget(moved(link.target), rootPath);
+        if (path === null) return raw;
+        const canonical = nodeLink(rootPath, path);
+        if (canonical === raw.trim()) return raw;
+        changed = true;
+        return canonical;
+      });
+      if (changed) {
+        await this.repository.updateFrontmatter(member.path, {
+          [FRONTMATTER_KEYS.category]: categories,
+        });
+        touched.push(member.path);
+      }
+      const fixLines = (lines: readonly RecordLine[]): readonly RecordLine[] =>
+        lines.map((line) => {
+          const path = taxonomyPathFromTarget(moved(line.label.path), rootPath);
+          if (path === null) return line;
+          const target = nodeSelfPath(rootPath, path);
+          if (line.label.path === target && line.label.display === path) {
+            return line;
+          }
+          return { ...line, label: { path: target, display: path } };
+        });
+      const worldStatus = fixLines(member.worldStatus);
+      const relationships = fixLines(member.relationships);
+      if (
+        worldStatus.some((line, index) => line !== member.worldStatus[index]) ||
+        relationships.some(
+          (line, index) => line !== member.relationships[index],
+        )
+      ) {
+        await this.reconcileRecordSections(refreshed, {
+          ...member,
+          worldStatus: [...worldStatus],
+          relationships: [...relationships],
+        });
+        if (!touched.includes(member.path)) touched.push(member.path);
+      }
+    }
+    if (touched.length === 0) return;
+    // The callout re-emits the category links; refreshed from the notes as
+    // they stand now, so the panes and the notes agree immediately.
+    const final = await this.loadProject(project.projectFile);
+    for (const path of touched) {
+      try {
+        await this.reconcileMemberFieldsBlock(final, path);
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+      }
+    }
+  }
+
+  /**
+   * Trashes one node, subtree and all, and takes the entries that simply
+   * can go: a category link into the felled subtree drops out of its list,
+   * the way a deleted member drops out of the lists that carry it. Record
+   * lines are sentences the author wrote and stay; the health check reports
+   * each one still labelled with a felled path, with the member's form to
+   * settle it in.
+   */
+  async deleteDefinitionNode(
+    projectLocator: ProjectLocator,
+    kind: EntityKind,
+    id: DefinitionFileId,
+    taxonomyPath: string,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const rootPath = definitionRootPath(project, kind, id);
+    const folderPath = normalizePath(`${rootPath}/${taxonomyPath}`);
+    if (this.repository.getFolder(folderPath) === null) {
+      throw new ManagedFileNotFoundError(folderPath);
+    }
+    await this.repository.trashFolder(folderPath);
+    const stump = foldName(taxonomyPath);
+    const felled = (path: string): boolean => {
+      const folded = foldName(path);
+      return folded === stump || folded.startsWith(`${stump}/`);
+    };
+    const refreshed = await this.loadProject(project.projectFile);
+    const touched: string[] = [];
+    for (const member of membersOfKind(refreshed, kind)) {
+      if (member.readOnly) continue;
+      const kept = member.categories.filter((raw) => {
+        const link = parseDefinitionValue(raw);
+        if (link === null || link.legacyHeading !== null) return true;
+        const path = taxonomyPathFromTarget(link.target, rootPath);
+        return path === null || !felled(path);
+      });
+      if (kept.length === member.categories.length) continue;
+      await this.repository.updateFrontmatter(member.path, {
+        [FRONTMATTER_KEYS.category]: kept,
+      });
+      touched.push(member.path);
+    }
+    if (touched.length === 0) return;
+    const final = await this.loadProject(project.projectFile);
+    for (const path of touched) {
+      try {
+        await this.reconcileMemberFieldsBlock(final, path);
+      } catch (error) {
+        if (!(error instanceof UnsafeSectionError)) throw error;
+      }
+    }
+  }
+
+  /**
+   * Writes what one node means: the property on its note, and the generated
+   * block below it through the same sync every other writer uses. An
+   * emptied description takes the property with it, because an empty
+   * property is a line in the panel saying nothing.
+   */
+  async updateDefinitionDescription(
+    projectLocator: ProjectLocator,
+    kind: EntityKind,
+    id: DefinitionFileId,
+    taxonomyPath: string,
+    description: string,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const rootPath = definitionRootPath(project, kind, id);
+    const folderPath = normalizePath(`${rootPath}/${taxonomyPath}`);
+    if (this.repository.getFolder(folderPath) === null) {
+      throw new ManagedFileNotFoundError(folderPath);
+    }
+    const selfPath = normalizePath(
+      `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
+    );
+    const trimmed = description.trim();
+    if (this.repository.getFile(selfPath) !== null) {
+      await this.repository.updateFrontmatter(selfPath, {
+        [FRONTMATTER_KEYS.description]:
+          trimmed.length === 0 ? undefined : trimmed,
+      });
+    }
+    // A note that was missing is made here with the description in hand; one
+    // that stands has just been told, and the sync re-renders its block.
+    await this.syncDefinitionNode(project, id, rootPath, folderPath, trimmed);
   }
 
   /**
@@ -6608,6 +6967,24 @@ function characterFieldsView(
   };
 }
 
+/**
+ * The tree's walk order, recovered from paths alone: segment by segment under
+ * fold, a parent before its children. What the folder walk yields for
+ * standing nodes, extended to entries no folder spells.
+ */
+function compareTaxonomyPaths(left: string, right: string): number {
+  const a = left.split("/");
+  const b = right.split("/");
+  const shared = Math.min(a.length, b.length);
+  for (let index = 0; index < shared; index += 1) {
+    const order = foldName(a[index] ?? "").localeCompare(
+      foldName(b[index] ?? ""),
+    );
+    if (order !== 0) return order;
+  }
+  return a.length - b.length;
+}
+
 /** The vault path of one of an entity kind's tree root folders. */
 function definitionRootPath(
   project: { rootPath: string; locale: ProjectLanguage },
@@ -6925,6 +7302,18 @@ function projectMembers(
     ...project.scenes,
     ...WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]),
   ];
+}
+
+/** One kind's members, read off the snapshot. */
+function membersOfKind(
+  project: ProjectSnapshot,
+  kind: EntityKind,
+): ReadonlyArray<CharacterRecord | SceneRecord | WorldbuildingRecord> {
+  return kind === "character"
+    ? project.characters
+    : kind === "scene"
+      ? project.scenes
+      : project.worldbuilding[kind];
 }
 
 /**

@@ -4108,6 +4108,311 @@ describe("SnowflakeProjectService", () => {
     ).toBe(false);
   });
 
+  const familyRecord = (
+    relationshipRoot: string,
+    target: { path: string; name: string },
+  ): RecordLine => ({
+    label: { path: `${relationshipRoot}/Family/_self`, display: "Family" },
+    value: "",
+    clauses: [
+      {
+        kind: "target",
+        term: {
+          kind: "link",
+          path: target.path.replace(/\.md$/u, ""),
+          name: target.name,
+        },
+      },
+    ],
+  });
+
+  it("reads one vocabulary as a forest: order, meaning, use, and holes", async () => {
+    const project = await service.createProject({ name: "Forest" });
+    const characterFolder = `${project.rootPath}/20_Character`;
+    const categoryRoot = `${characterFolder}/21_Category`;
+    const relationshipRoot = `${characterFolder}/23_Relationship`;
+    await service.addDefinitionPath(
+      project,
+      "character",
+      "category",
+      "Race/Elf",
+      "Long-lived.",
+    );
+    const bobby = await service.createCharacter(project, { name: "Bobby" });
+    await service.createCharacter(project, {
+      name: "Alice",
+      categoryPaths: ["Race/Elf"],
+      relationships: [familyRecord(relationshipRoot, bobby)],
+    });
+    // A folder made by hand and never materialized, and a subtree felled by
+    // hand while a note still names it.
+    await fakeVault.createFolder(`${categoryRoot}/Bare`);
+    fakeVault.delete(`${relationshipRoot}/Family`);
+
+    const forest = await service.listDefinitionForest(
+      project.projectFile,
+      "category",
+    );
+    expect(forest.character.rootPath).toBe(categoryRoot);
+    expect(
+      forest.character.nodes.map((node) => [node.taxonomyPath, node.depth]),
+    ).toEqual([
+      ["Bare", 1],
+      ["Major", 1],
+      ["Minor", 1],
+      ["Race", 1],
+      ["Race/Elf", 2],
+      ["Supporting", 1],
+    ]);
+    const elf = forest.character.nodes.find(
+      (node) => node.taxonomyPath === "Race/Elf",
+    );
+    expect(elf).toMatchObject({
+      name: "Elf",
+      description: "Long-lived.",
+      missing: false,
+      missingSelf: false,
+      usage: { listed: ["Alice"], records: [] },
+    });
+    expect(elf?.selfPath).toBe(`${categoryRoot}/Race/Elf/_self.md`);
+    expect(
+      forest.character.nodes.find((node) => node.taxonomyPath === "Bare"),
+    ).toMatchObject({ missingSelf: true, missing: false, description: "" });
+
+    // The felled entry still stands in its tree, marked as the hole it is,
+    // with the note that names it counted.
+    const relationships = await service.listDefinitionForest(
+      project.projectFile,
+      "relationship",
+    );
+    expect(
+      relationships.character.nodes.map((node) => [
+        node.taxonomyPath,
+        node.missing,
+      ]),
+    ).toEqual([
+      ["Ally", false],
+      ["Enemy", false],
+      ["Family", true],
+      ["Friend", false],
+      ["Member", false],
+    ]);
+    expect(
+      relationships.character.nodes.find(
+        (node) => node.taxonomyPath === "Family",
+      )?.usage,
+    ).toEqual({ listed: [], records: ["Alice"] });
+    // Every other kind answers with the tree it has: seeded or empty.
+    expect(relationships.scene.nodes).toEqual([]);
+
+    // The walk stops at the depth cap, hand-made folders or not.
+    const deep = Array.from({ length: 8 }, (_, index) => `D${index + 1}`).join(
+      "/",
+    );
+    await fakeVault.ensureFolders(`${categoryRoot}/${deep}`);
+    const capped = await service.listDefinitionForest(
+      project.projectFile,
+      "category",
+    );
+    expect(
+      capped.character.nodes
+        .filter((node) => node.taxonomyPath.startsWith("D1"))
+        .map((node) => node.depth),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("renames a node and walks every member link into the moved subtree", async () => {
+    const project = await service.createProject({ name: "Renamed vocab" });
+    const characterFolder = `${project.rootPath}/20_Character`;
+    const categoryRoot = `${characterFolder}/21_Category`;
+    const relationshipRoot = `${characterFolder}/23_Relationship`;
+    await service.addDefinitionPath(project, "character", "category", "Race/Elf");
+    const bobby = await service.createCharacter(project, { name: "Bobby" });
+    const alice = await service.createCharacter(project, {
+      name: "Alice",
+      categoryPaths: ["Race/Elf"],
+      relationships: [familyRecord(relationshipRoot, bobby)],
+    });
+
+    const renamed = await service.renameDefinitionNode(
+      project.projectFile,
+      "character",
+      "category",
+      "Race",
+      "Kind",
+    );
+    expect(renamed).toEqual({ ok: true, taxonomyPath: "Kind" });
+    // The folders moved, and every node file below spells its new path.
+    expect(fakeVault.contents.has(`${categoryRoot}/Kind/Elf/_self.md`)).toBe(
+      true,
+    );
+    expect(fakeVault.contents.has(`${categoryRoot}/Race/_self.md`)).toBe(false);
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(`${categoryRoot}/Kind/Elf/_self.md`) ?? "",
+        "definition-fields",
+      ),
+    ).toContain("> **Name**: Kind/Elf");
+    // The member's stored link moved with it, target and shown name both,
+    // and the callout that re-emits it followed.
+    const frontmatter = await service.readManagedFrontmatter(alice.path);
+    expect(frontmatter[FRONTMATTER_KEYS.category]).toEqual([
+      `[[${categoryRoot}/Kind/Elf/_self|Kind/Elf]]`,
+    ]);
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(alice.path) ?? "",
+        "character-fields",
+      ),
+    ).toContain(`[[${categoryRoot}/Kind/Elf/_self|Kind/Elf]]`);
+    // And the health check has nothing left to say about the rename.
+    const snapshot = await service.loadProject(project.projectFile);
+    expect(
+      snapshot.structureIssues.filter((issue) =>
+        ["stale-definition-alias", "unresolved-definition-link"].includes(
+          issue.code,
+        ),
+      ),
+    ).toEqual([]);
+
+    // Record labels ride a rename of their own tree the same way.
+    expect(
+      await service.renameDefinitionNode(
+        project.projectFile,
+        "character",
+        "relationship",
+        "Family",
+        "Kin",
+      ),
+    ).toEqual({ ok: true, taxonomyPath: "Kin" });
+    const aliceAfter = fakeVault.contents.get(alice.path) ?? "";
+    expect(readMarkedSection(aliceAfter, "relationships")).toContain(
+      `[[${relationshipRoot}/Kin/_self|Kin]]`,
+    );
+    expect(aliceAfter).not.toContain("Family/_self");
+
+    // Refusals: a name the file system will not take, and a sibling already
+    // answering to it under fold.
+    expect(
+      await service.renameDefinitionNode(
+        project.projectFile,
+        "character",
+        "category",
+        "Kind",
+        "_self",
+      ),
+    ).toEqual({ ok: false, code: "invalid-segment", segment: "_self" });
+    await service.addDefinitionPath(project, "character", "category", "Old");
+    expect(
+      await service.renameDefinitionNode(
+        project.projectFile,
+        "character",
+        "category",
+        "Old",
+        "kind",
+      ),
+    ).toEqual({ ok: false, code: "taken", segment: "kind" });
+  });
+
+  it("deletes a node's subtree, drops its category links, and leaves records to the check", async () => {
+    const project = await service.createProject({ name: "Felled vocab" });
+    const characterFolder = `${project.rootPath}/20_Character`;
+    const categoryRoot = `${characterFolder}/21_Category`;
+    const relationshipRoot = `${characterFolder}/23_Relationship`;
+    await service.addDefinitionPath(project, "character", "category", "Race/Elf");
+    const bobby = await service.createCharacter(project, { name: "Bobby" });
+    const alice = await service.createCharacter(project, {
+      name: "Alice",
+      categoryPaths: ["Race/Elf"],
+      relationships: [familyRecord(relationshipRoot, bobby)],
+    });
+
+    await service.deleteDefinitionNode(
+      project.projectFile,
+      "character",
+      "category",
+      "Race",
+    );
+    expect(fakeFileManager.trashCalls).toContain(`${categoryRoot}/Race`);
+    expect(fakeVault.getAbstractFileByPath(`${categoryRoot}/Race`)).toBeNull();
+    expect(fakeVault.contents.has(`${categoryRoot}/Race/Elf/_self.md`)).toBe(
+      false,
+    );
+    // The category entry simply went, list and callout both.
+    expect(
+      (await service.readManagedFrontmatter(alice.path))[
+        FRONTMATTER_KEYS.category
+      ],
+    ).toEqual([]);
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(alice.path) ?? "",
+        "character-fields",
+      ),
+    ).not.toContain("Race/Elf");
+
+    await service.deleteDefinitionNode(
+      project.projectFile,
+      "character",
+      "relationship",
+      "Family",
+    );
+    // The record line is the author's sentence: it stays, and the check
+    // reports the entry it names as one the project no longer has.
+    expect(
+      readMarkedSection(
+        fakeVault.contents.get(alice.path) ?? "",
+        "relationships",
+      ),
+    ).toContain("Family");
+    const snapshot = await service.loadProject(project.projectFile);
+    expect(
+      snapshot.structureIssues.find(
+        (issue) => issue.code === "unresolved-definition-link",
+      ),
+    ).toMatchObject({
+      path: alice.path,
+      names: ["20_Character/23_Relationship/Family"],
+    });
+  });
+
+  it("updates a node's description in property and block, and clears it clean", async () => {
+    const project = await service.createProject({ name: "Meanings" });
+    const categoryRoot = `${project.rootPath}/20_Character/21_Category`;
+    await service.addDefinitionPath(project, "character", "category", "Race");
+
+    await service.updateDefinitionDescription(
+      project.projectFile,
+      "character",
+      "category",
+      "Race",
+      "Where one comes from.",
+    );
+    let note = fakeVault.contents.get(`${categoryRoot}/Race/_self.md`) ?? "";
+    expect(
+      parseMarkdownFrontmatter(note).frontmatter[FRONTMATTER_KEYS.description],
+    ).toBe("Where one comes from.");
+    expect(readMarkedSection(note, "definition-fields")).toContain(
+      "> **Description**: Where one comes from.",
+    );
+
+    // Emptied, the description takes its property and its block line along.
+    await service.updateDefinitionDescription(
+      project.projectFile,
+      "character",
+      "category",
+      "Race",
+      "",
+    );
+    note = fakeVault.contents.get(`${categoryRoot}/Race/_self.md`) ?? "";
+    expect(parseMarkdownFrontmatter(note).frontmatter).not.toHaveProperty(
+      FRONTMATTER_KEYS.description,
+    );
+    expect(readMarkedSection(note, "definition-fields")).not.toContain(
+      "Description",
+    );
+  });
+
   it("raises folder trees out of legacy heading files and retires them", async () => {
     const project = await service.createProject({ name: "Converted" });
     const characterFolder = `${project.rootPath}/20_Character`;

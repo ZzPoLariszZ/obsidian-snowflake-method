@@ -5341,3 +5341,139 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	line-height: 1.4;
 	white-space: pre-line;
 }
+
+/* ---- Definition panes -------------------------------------------------- */
+
+/* The last section's rows end the pane, so the panel keeps a little floor
+   under them. */
+.snowflake-method-definition-panel {
+	padding-block-end: var(--size-4-8);
+}
+
+/* Five sections stand in one panel, each one kind's tree of the vocabulary.
+   The header line carries the kind, its count, and the add button. */
+.snowflake-method-definition-section {
+	margin-block-start: var(--size-4-6);
+}
+
+.snowflake-method-definition-section-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-block-end: var(--size-4-2);
+}
+
+.snowflake-method-definition-section-header h3 {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-definition-count {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-definition-add {
+	margin-inline-start: auto;
+}
+
+.snowflake-method-definition-empty {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The rows are a flat list wearing a tree: each knows its depth and indents
+   by it, and folding a parent simply leaves its children out of the render. */
+.snowflake-method-definition-tree {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	overflow: hidden;
+}
+
+.snowflake-method-definition-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	padding-inline-start: calc(
+		var(--size-4-2) + var(--snowflake-definition-depth, 0) * var(--size-4-5)
+	);
+}
+
+.snowflake-method-definition-row + .snowflake-method-definition-row {
+	border-block-start: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-definition-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* Rows without children hold the toggle's column with a spacer, so sibling
+   names line up whether or not one of them folds. */
+.snowflake-method-definition-toggle,
+.snowflake-method-definition-toggle-spacer {
+	flex: 0 0 auto;
+	width: 1.75rem;
+}
+
+.snowflake-method-definition-toggle {
+	justify-content: center;
+}
+
+.snowflake-method-definition-row-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+}
+
+.snowflake-method-definition-name {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-1);
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.snowflake-method-definition-name > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-definition-name .snowflake-method-table-health-warning,
+.snowflake-method-definition-name .snowflake-method-definition-usage {
+	flex: 0 0 auto;
+	overflow: visible;
+}
+
+/* How many notes name the node, worn like a quiet badge; the tooltip lists
+   them. */
+.snowflake-method-definition-usage {
+	padding-inline: var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: help;
+}
+
+.snowflake-method-definition-row-description {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-definition-row > .snowflake-method-table-actions {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
