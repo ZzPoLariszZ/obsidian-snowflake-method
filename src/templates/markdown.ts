@@ -166,7 +166,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     scenePlanning: "第九步 · 场景规划（可选）",
     entityNotes: "备注",
     recordDetails: "详情",
-    recordWorldStatus: "世界状态",
+    recordWorldStatus: "状态",
     recordRelationships: "关系",
     draftTitle: "初稿",
     blankHint: "在这里写作。",

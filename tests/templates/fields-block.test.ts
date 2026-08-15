@@ -53,7 +53,7 @@ describe('renderCharacterFieldsBlock', () => {
 				'[[Novel/60_Worldbuilding/Category#Elf|Character/Race/Elf]]',
 			],
 		});
-		expect(block).toContain('> **Status**: In progress');
+		expect(block).toContain('> **Progress status**: In progress');
 		expect(block).toContain('> **Aliases**: The Gull, Captain A');
 		expect(block).toContain(
 			'> **Category**: [[Novel/60_Worldbuilding/Category#Major|Character/Major]], [[Novel/60_Worldbuilding/Category#Elf|Character/Race/Elf]]',
@@ -67,7 +67,7 @@ describe('renderCharacterFieldsBlock', () => {
 			categories: ['角色/主角'],
 		});
 		expect(block).toContain('> [!info] 角色概览');
-		expect(block).toContain('> **状态**：已完成');
+		expect(block).toContain('> **进度**：已完成');
 		expect(block).toContain('> **类别**：角色/主角');
 		expect(block).toContain(
 			'> **一句话故事概述**：A smuggler trades her ship for a crown.',
@@ -194,7 +194,7 @@ describe('renderEntityFieldsBlock', () => {
 		expect(block).toBe(
 			[
 				'> [!info] Time overview',
-				'> **Status**: In progress',
+				'> **Progress status**: In progress',
 				'>',
 				'> **Type**: Period',
 				'>',

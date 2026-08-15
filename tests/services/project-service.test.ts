@@ -3501,4 +3501,26 @@ describe("SnowflakeProjectService", () => {
       fakeVault.contents.get(`${project.rootPath}/20_Character/21_Category.md`),
     ).toContain("# Major");
   });
+
+  it("refreshes worldbuilding overviews in the same pass as members", async () => {
+    const project = await service.createProject({ name: "Entity refresh" });
+    const relic = await service.createEntity(project, {
+      kind: "item",
+      name: "Relic",
+      progressStatus: "in-progress",
+    });
+    // A stale overview, the shape a copy change leaves behind.
+    const stale = (fakeVault.contents.get(relic.path) ?? "").replace(
+      "**Progress status**",
+      "**Status**",
+    );
+    fakeVault.contents.set(relic.path, stale);
+    expect(fakeVault.contents.get(relic.path)).toContain("> **Status**:");
+
+    await service.migrateMemberNotes(project.projectFile);
+
+    const refreshed = fakeVault.contents.get(relic.path) ?? "";
+    expect(refreshed).toContain("> **Progress status**: In progress");
+    expect(refreshed).not.toContain("> **Status**:");
+  });
 });

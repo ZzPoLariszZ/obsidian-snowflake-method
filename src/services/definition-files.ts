@@ -242,7 +242,7 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
     },
     categoryIntro:
       "此类笔记可引用的类别。添加标题即添加类别，嵌套标题可组成「种族/精灵」这样的路径。整份文件中的每个标题必须保持唯一。",
-    worldStatusIntro: "此类实体在故事中可处于的状态。笔记「世界状态」区段中的记录会指向这些标题。",
+    worldStatusIntro: "此类实体在故事中可处于的状态。笔记「状态」区段中的记录会指向这些标题。",
     relationshipIntro:
       "此类实体与其他实体之间的关系。笔记「关系」区段中的记录会指向这些标题，记录的对象可以是任何类型的实体。",
     roles: { major: "主角", supporting: "配角", minor: "次要角色" },

@@ -435,7 +435,7 @@ export const en = {
 	'modal.entity.name': 'Name',
 	'modal.entity.nameRequired': 'A name is required.',
 	'modal.entity.nameTaken': 'Another entry of this kind already uses this name.',
-	'form.progressStatus': 'Status',
+	'form.progressStatus': 'Progress status',
 	'form.progressStatus.unset': 'Not set',
 	'form.aliases': 'Aliases',
 	'form.aliases.placeholder': 'Type an alias and press enter',

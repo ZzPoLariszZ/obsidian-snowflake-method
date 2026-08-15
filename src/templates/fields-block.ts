@@ -102,7 +102,7 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
       location: "Location overview",
       item: "Item overview",
     },
-    status: "Status",
+    status: "Progress status",
     statusLabels: {
       "not-started": "Not started",
       "in-progress": "In progress",
@@ -143,7 +143,7 @@ const COPY: Record<FieldsBlockLanguage, FieldsCopy> = {
       location: "地点概览",
       item: "物品概览",
     },
-    status: "状态",
+    status: "进度",
     statusLabels: {
       "not-started": "未开始",
       "in-progress": "进行中",

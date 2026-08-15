@@ -2487,8 +2487,18 @@ export class SnowflakeProjectService {
     // Members the flags never marked can still carry yesterday's overview
     // shape; the same idempotent reconcile the vault watcher runs brings each
     // one current, and touches nothing that already matches.
-    for (const member of [...project.characters, ...project.scenes]) {
-      if (member.readOnly || member.unmigrated) continue;
+    // Worldbuilding entities are members of the same model and carry the same
+    // generated overview, so a bulk refresh that skipped them would leave a
+    // project half in the current shape.
+    const refreshable = [
+      ...project.characters,
+      ...project.scenes,
+      ...WORLDBUILDING_KINDS.flatMap((kind) => project.worldbuilding[kind]),
+    ];
+    for (const member of refreshable) {
+      if (member.readOnly || ("unmigrated" in member && member.unmigrated)) {
+        continue;
+      }
       try {
         await this.reconcileMemberFieldsBlock(project, member.path);
       } catch (error) {
