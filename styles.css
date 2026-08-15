@@ -5547,10 +5547,10 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	);
 }
 
-/* A search that found nothing has nothing to close off. */
-.snowflake-method-definition-browser:has(
-		.snowflake-method-definition-empty:not(.is-hidden)
-	)
+/* A search that found nothing has nothing to close off. The class is put on
+   by the search itself rather than asked with a has() selector, which the
+   browser would re-check broadly as the page changes. */
+.snowflake-method-definition-browser.is-empty
 	.snowflake-method-definition-tail {
 	background-image: none;
 }

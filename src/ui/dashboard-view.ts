@@ -1720,10 +1720,11 @@ export class SnowflakeDashboardView extends ItemView {
 		search.onChange((value) => {
 			this.definitionQueries.set(id, value);
 			const found = painters.reduce((total, paint) => total + paint(), 0);
-			noMatches.toggleClass(
-				'is-hidden',
-				value.trim().length === 0 || found > 0,
-			);
+			const nothingFound = value.trim().length > 0 && found === 0;
+			noMatches.toggleClass('is-hidden', !nothingFound);
+			// The tail's parting line answers to this class rather than to a
+			// :has selector, which the browser re-checks broadly on any change.
+			browser.toggleClass('is-empty', nothingFound);
 		});
 		paintInspector();
 	}
