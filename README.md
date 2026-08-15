@@ -42,6 +42,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 |---|---|
 | Guided dashboard | Navigate all ten steps and control progress without blocking validation rules. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
+| Worldbuilding | Track time, location, and item beside characters and scenes, with category, world-status, and relationship growing. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
@@ -125,6 +126,12 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 
 </details>
 
+### Worldbuilding
+
+Characters and scenes rarely act alone. Time, location, and item notes live beside them as members of the project, with the same tables, forms, and base views. Any member can carry **world status** and **relationship** record lines: sentences whose terms are links, stored as ordinary Markdown callouts in the note.
+
+The words those lines use come from three vocabularies for every kind: categories, world statuses, and relationships. Each vocabulary grows as a folder tree whose entries are notes, so links to them resolve like any other link and the graph shows each entry under its own name. Three rail panes browse, rename, and prune the trees, and every reference is kept true along the way.
+
 ### Manuscript stream
 
 A novel is easier to write in chapters and easier to read as a book. The manuscript stream gives you both at once: every chapter stays its own Markdown note on disk, and the whole draft reads as a single continuous page. If you have used Scrivener, this is its Scrivenings mode, now living in Obsidian.
@@ -135,7 +142,7 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 **Typewriter scrolling** keeps the line being written at the middle of the page. **Focus mode** fades everything except the paragraph being written, and its deepest level, solo, shows only the manuscript in full screen. Each has a button in every chapter's header, and the arrow keys walk the caret from one chapter into the next.
 
-**All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of nearly 8000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
+**All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
 <a id="installation"></a>
 
@@ -159,6 +166,10 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 2. Create `<vault>/.obsidian/plugins/snowflake-method/`.
 3. Copy the three files into that folder.
 4. Reload Obsidian and enable **Snowflake Method** under **Community plugins**.
+
+### Upgrading
+
+Updating the plugin never rewrites your notes by itself. The files the plugin generates keep themselves current: the system templates under `00_System` and the version stamp on the project metadata note are brought up to date quietly the first time a dashboard shows the project. Notes you write change only behind one button. When any of them was written by an older release, the dashboard shows **Older project format** with a count, and **Update** brings them all current in one safe, repeatable pass.
 
 <a id="guide"></a>
 
@@ -197,9 +208,13 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
+| Toggle opening a form for new notes from a field | Choose whether a note created from a picker field opens its form first. |
 | Toggle order numbers in the manuscript | Show or hide each manuscript note's stored position. |
+| Toggle progress status in tables | Show or hide the progress status column. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
+| Toggle the actions column in tables | Show or hide each row's actions column. |
 | Toggle typewriter scrolling | Hold the line being written at the middle of the page. |
+| Update notes in older format | Update every note an older release wrote. |
 
 Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing.
 
@@ -215,6 +230,9 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Open notes beside dashboard | On | Reuse a companion pane for notes. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
+| Show progress status in tables | Off | Add a progress status column to the member tables. |
+| Show the actions column in tables | On | Keep each row's actions visible beside it. |
+| New notes from a field | Open its form | Choose whether a note created from a picker field opens its form first or is created directly. |
 | Notes to keep loaded | 5 | Hold this many manuscript notes on each side of the one being read. |
 | Show note paths | On | Show where a manuscript note is stored, above the note itself. |
 | Show order numbers | Off | Show the stored position that decides where a note is read. |
@@ -250,6 +268,9 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── 11_One_Sentence_Summary.md
     │   └── ...
     ├── 20_Character/
+    │   ├── 21_Category/
+    │   │   └── Major/
+    │   │       └── Major.md
     │   └── Characters.base
     ├── 30_Synopsis/
     ├── 40_Scene/
@@ -258,6 +279,10 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── Draft.md
     │   └── Part One/
     │       └── Chapter One.md
+    ├── 60_Worldbuilding/
+    │   ├── 61_Time/
+    │   ├── 62_Location/
+    │   └── 63_Item/
     └── ...
 ```
 
@@ -382,6 +407,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 |---|---|
 | 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
+| 世界观 | 在角色与场景旁管理时间、地点与物品，并为每类成员配置类别、状态与关系。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
@@ -465,6 +491,12 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 </details>
 
+### 世界观
+
+角色与场景很少独自行动。时间、地点与物品笔记作为项目成员与它们并肩存在，共用同样的表格、表单与数据库视图。任何成员都可以书写**状态**与**关系**记录行：以链接为词项的句子，以普通 Markdown 标注块存放在笔记里。
+
+这些句子使用的词来自每类成员的三份词表：类别、状态与关系。每份词表都以文件夹树生长，每个词条都是一篇笔记，因此指向词条的链接与其他链接一样解析，关系图中的词条也以自己的名字出现。侧栏的三个词表面板可以浏览、重命名与修剪这些树，所有引用都会随之保持有效。
+
 ### 正文流
 
 长篇按章节写更顺手，成篇阅读才像一本书。正文流可以让两者兼得：每一章仍是本地各自独立的 Markdown 笔记，而整部正文读起来像是连续的一页。如果你用过 Scrivener，这就是它的 Scrivenings 模式，如今就在 Obsidian 里。
@@ -475,7 +507,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 **打字机滚动**让正在写的一行保持在页面中部。**专注模式**淡化正在写的段落之外的一切；最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮，方向键也可以带着光标从一章移动到下一章。
 
-**书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个近 8000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
+**书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
 ## 安装
 
@@ -498,6 +530,10 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 3. 将三个文件复制到该目录。
 4. 重载 Obsidian，然后在 **第三方插件** 中启用 **Snowflake Method（雪花写作法）**。
 
+### 升级
+
+更新插件本身绝不会改写你的笔记。插件生成的文件会自行保持最新：`00_系统` 下的系统模板与项目元数据笔记上的版本戳，会在工作台首次显示项目时静默更新到当前版本。你写下的笔记只会在一个按钮之后改变。当其中任何一篇出自旧版本时，工作台会显示「较旧的项目格式」及数量，「更新」会以一次安全、可重复的操作把它们全部带到当前版本。
+
 ## 指南
 
 1. 打开命令面板，执行 **打开项目管理器** 命令。
@@ -516,6 +552,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 创建项目 | 创建新的 Markdown 原生雪花写作项目。 |
 | 打开工作台 | 打开或显示当前项目的工作台。 |
 | 打开健康检查器 | 检查项目结构并修复安全问题。 |
+| 更新旧格式的笔记 | 更新旧版本写下的所有笔记。 |
 | 打开项目管理器 | 创建、重命名、打开或移入回收站。 |
 | 打开角色数据库 | 打开当前项目角色的 Bases 视图。 |
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
@@ -533,6 +570,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记所存的位置。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 选择固定分栏或普通标签页。 |
+| 切换从字段新建笔记时是否打开表单 | 选择从字段新建的笔记是先打开表单还是直接创建。 |
+| 切换表格中的进度状态 | 显示或隐藏进度状态列。 |
+| 切换表格中的操作列 | 显示或隐藏每行的操作列。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
 
 与正文相关的命令仅在当前视图为正文流时提供，其中**在光标处拆分正文笔记**还需要其中有一篇笔记正处于写作状态。
@@ -547,6 +587,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在工作台旁打开笔记 | 开启 | 长篇笔记复用工作台旁的固定分栏。 |
 | 减少动画 | 关闭 | 使用静态视觉效果替代动画。 |
 | 保护托管区段边界 | 开启 | 防止意外修改同步标记。 |
+| 在表格中显示进度状态 | 关闭 | 为成员表格增加进度状态列。 |
+| 在表格中显示操作列 | 开启 | 让每一行的操作按钮保持可见。 |
+| 从字段新建笔记 | 打开表单 | 选择从字段新建的笔记是先打开表单还是直接创建。 |
 | 保持载入的笔记数 | 5 | 在正在阅读的笔记前后各保留这么多篇正文笔记。 |
 | 显示笔记路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
 | 显示顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
@@ -578,6 +621,9 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 11_一句话概述.md
     │   └── ...
     ├── 20_角色/
+    │   ├── 21_类别/
+    │   │   └── 主角/
+    │   │       └── 主角.md
     │   └── 角色总览.base
     ├── 30_大纲/
     ├── 40_场景/
@@ -586,6 +632,10 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 初稿.md
     │   └── 第一部/
     │       └── 第一章.md
+    ├── 60_世界观/
+    │   ├── 61_时间/
+    │   ├── 62_地点/
+    │   └── 63_物品/
     └── ...
 ```
 
