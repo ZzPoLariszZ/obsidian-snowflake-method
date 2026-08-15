@@ -28,6 +28,7 @@ import {
 	managedSectionsForDocument,
 	primaryManagedSectionForStep,
 	type DocumentType,
+	type EntityKind,
 	type StepId,
 	type StepStatus,
 	type WorldbuildingKind,
@@ -67,6 +68,7 @@ import {
 	PROJECT_PATH_LAYOUTS,
 	characterTypeFromHeading,
 	definitionFileName,
+	entityKindFolder,
 	getProjectPathLayout,
 	isMemberDocumentType,
 	parseHeadingLink,
@@ -1239,28 +1241,39 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async listDefinitionPaths(id: DefinitionFileChoice): Promise<string[]> {
+	async listDefinitionPaths(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+	): Promise<string[]> {
 		const project = await this.requireCurrentProject();
-		return this.projects.listDefinitionPaths(project, id);
+		return this.projects.listDefinitionPaths(project, kind, id);
 	}
 
 	async addDefinitionPath(
+		kind: EntityKind,
 		id: DefinitionFileChoice,
 		path: string,
 	): Promise<AddDefinitionPathResult> {
 		const project = await this.requireCurrentProject();
-		const result = await this.projects.addDefinitionPath(project, id, path);
+		const result = await this.projects.addDefinitionPath(
+			project,
+			kind,
+			id,
+			path,
+		);
 		return result.ok
 			? { ok: true }
 			: { ok: false, code: result.code, segment: result.segment };
 	}
 
-	async definitionFilePaths(): Promise<Record<DefinitionFileChoice, string>> {
+	async definitionFilePaths(
+		kind: EntityKind,
+	): Promise<Record<DefinitionFileChoice, string>> {
 		const project = await this.requireCurrentProject();
 		const layout = getProjectPathLayout(project.locale);
 		const pathFor = (id: DefinitionFileChoice): string =>
 			normalizePath(
-				`${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(id, project.locale)}`,
+				`${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionFileName(kind, id, project.locale)}`,
 			);
 		return {
 			category: pathFor('category'),

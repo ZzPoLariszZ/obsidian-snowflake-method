@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { ENTITY_KINDS } from "../../src/domain";
 import {
   appendDefinitionPath,
   characterRoleFromCategories,
-  characterRolePath,
+  characterRoleHeading,
   definitionFileName,
   definitionFileTemplate,
   findDefinitionEntry,
@@ -118,60 +119,90 @@ describe("appendDefinitionPath", () => {
 });
 
 describe("templates", () => {
-  it("seeds the category namespaces with the three roles", () => {
-    const en = parseDefinitionFile(definitionFileTemplate("category", "en"));
+  it("seeds the character category file with the three roles as whole paths", () => {
+    const en = parseDefinitionFile(
+      definitionFileTemplate("character", "category", "en"),
+    );
     expect(en.entries.map((entry) => entry.path)).toEqual([
-      "Character",
-      "Character/Major",
-      "Character/Supporting",
-      "Character/Minor",
-      "Scene",
-      "Time",
-      "Location",
-      "Item",
+      "Major",
+      "Supporting",
+      "Minor",
     ]);
     const zh = parseDefinitionFile(
-      definitionFileTemplate("category", "zh-CN"),
+      definitionFileTemplate("character", "category", "zh-CN"),
     );
     expect(zh.entries.map((entry) => entry.path)).toEqual([
-      "角色",
-      "角色/主角",
-      "角色/配角",
-      "角色/次要角色",
-      "场景",
-      "时间",
-      "地点",
-      "物品",
+      "主角",
+      "配角",
+      "次要角色",
     ]);
   });
 
-  it("keeps every starter heading unique and names the files without spaces", () => {
+  it("starts every other kind with an empty tree of its own", () => {
     for (const language of ["en", "zh-CN"] as const) {
-      for (const id of ["category", "world-status", "relationship"] as const) {
-        const tree = parseDefinitionFile(definitionFileTemplate(id, language));
-        expect(tree.duplicates).toEqual([]);
-        expect(tree.entries.length).toBeGreaterThan(0);
-        expect(definitionFileName(id, language)).not.toContain(" ");
+      for (const kind of ENTITY_KINDS) {
+        for (const id of [
+          "category",
+          "world-status",
+          "relationship",
+        ] as const) {
+          const template = definitionFileTemplate(kind, id, language);
+          const tree = parseDefinitionFile(template);
+          expect(tree.duplicates).toEqual([]);
+          if (kind === "character") {
+            expect(tree.entries.length).toBeGreaterThan(0);
+            expect(tree.entries.every((entry) => entry.level === 1)).toBe(true);
+          } else {
+            expect(tree.entries).toEqual([]);
+            expect(template.trim().length).toBeGreaterThan(0);
+          }
+          expect(definitionFileName(kind, id, language)).not.toContain(" ");
+        }
       }
     }
-    expect(definitionFileName("world-status", "en")).toBe("World_Status.md");
+  });
+
+  it("numbers each file after the folder it sits in", () => {
+    // The folder's number gives up its trailing zero, or the position is
+    // appended when there is none to give up.
+    expect(definitionFileName("character", "category", "en")).toBe(
+      "21_Category.md",
+    );
+    expect(definitionFileName("character", "world-status", "en")).toBe(
+      "22_World_Status.md",
+    );
+    expect(definitionFileName("character", "relationship", "en")).toBe(
+      "23_Relationship.md",
+    );
+    expect(definitionFileName("scene", "category", "en")).toBe("41_Category.md");
+    expect(definitionFileName("time", "category", "en")).toBe("611_Category.md");
+    expect(definitionFileName("location", "world-status", "en")).toBe(
+      "622_World_Status.md",
+    );
+    expect(definitionFileName("item", "relationship", "en")).toBe(
+      "633_Relationship.md",
+    );
+    expect(definitionFileName("character", "world-status", "zh-CN")).toBe(
+      "22_状态.md",
+    );
+    expect(definitionFileName("location", "category", "zh-CN")).toBe(
+      "621_类别.md",
+    );
   });
 });
 
 describe("heading links", () => {
   it("round-trips a category link with its path alias", () => {
     const raw = renderHeadingLink(
-      "Novel/60_Worldbuilding/Category.md",
+      "Novel/20_Character/Category.md",
       "Elf",
-      "Character/Race/Elf",
+      "Race/Elf",
     );
-    expect(raw).toBe(
-      "[[Novel/60_Worldbuilding/Category#Elf|Character/Race/Elf]]",
-    );
+    expect(raw).toBe("[[Novel/20_Character/Category#Elf|Race/Elf]]");
     expect(parseHeadingLink(raw)).toEqual({
-      path: "Novel/60_Worldbuilding/Category",
+      path: "Novel/20_Character/Category",
       heading: "Elf",
-      display: "Character/Race/Elf",
+      display: "Race/Elf",
     });
     expect(parseHeadingLink("[[No heading link]]")).toBeNull();
     expect(parseHeadingLink(42)).toBeNull();
@@ -179,20 +210,20 @@ describe("heading links", () => {
 });
 
 describe("character roles", () => {
-  it("builds the seeded role path per language", () => {
-    expect(characterRolePath("en", "major")).toBe("Character/Major");
-    expect(characterRolePath("zh-CN", "supporting")).toBe("角色/配角");
+  it("names the seeded role heading per language", () => {
+    expect(characterRoleHeading("en", "major")).toBe("Major");
+    expect(characterRoleHeading("zh-CN", "supporting")).toBe("配角");
   });
 
   it("reads the role from category links in either language", () => {
     expect(
       characterRoleFromCategories([
-        "[[P/Category#Elf|Character/Race/Elf]]",
-        "[[P/Category#Major|Character/Major]]",
+        "[[P/20_Character/Category#Elf|Race/Elf]]",
+        "[[P/20_Character/Category#Major|Major]]",
       ]),
     ).toBe("major");
     expect(
-      characterRoleFromCategories(["[[P/类别#配角|角色/配角]]"]),
+      characterRoleFromCategories(["[[P/20_角色/类别#配角|配角]]"]),
     ).toBe("supporting");
     expect(characterRoleFromCategories(["[[P/Category#Elf|x]]"])).toBeNull();
     expect(characterRoleFromCategories("not a list")).toBeNull();

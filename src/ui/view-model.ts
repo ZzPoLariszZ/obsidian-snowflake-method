@@ -2,6 +2,7 @@ import type { Menu } from 'obsidian';
 
 import type {
 	CharacterType,
+	EntityKind,
 	ProgressStatus,
 	StepId,
 	StepStatus,
@@ -337,12 +338,18 @@ export interface DashboardHost {
 	openProjectBase(id: ProjectBaseChoice): Promise<void>;
 	/** Rewrites the base from the current template and opens it. */
 	restoreProjectBase(id: ProjectBaseChoice): Promise<void>;
-	/** The paths a definition file offers, in its heading order. */
-	listDefinitionPaths(id: DefinitionFileChoice): Promise<string[]>;
-	/** Vault paths of the three definition files, for the links records store. */
-	definitionFilePaths(): Promise<Record<DefinitionFileChoice, string>>;
+	/** The paths one kind's definition file offers, in its heading order. */
+	listDefinitionPaths(
+		kind: EntityKind,
+		id: DefinitionFileChoice,
+	): Promise<string[]>;
+	/** Vault paths of one kind's definition files, for the links records store. */
+	definitionFilePaths(
+		kind: EntityKind,
+	): Promise<Record<DefinitionFileChoice, string>>;
 	/** Appends a new path, reporting a refusal instead of throwing it. */
 	addDefinitionPath(
+		kind: EntityKind,
 		id: DefinitionFileChoice,
 		path: string,
 	): Promise<AddDefinitionPathResult>;

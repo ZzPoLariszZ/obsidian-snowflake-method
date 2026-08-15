@@ -1,19 +1,24 @@
-import type {
-  CategoryNamespaceId,
-  CharacterType,
-  DefinitionFileId,
-  ProjectLanguage,
+import {
+  DEFINITION_FILE_IDS,
+  type CharacterType,
+  type DefinitionFileId,
+  type EntityKind,
+  type ProjectLanguage,
 } from "../domain";
+import { entityKindFolder, getProjectPathLayout } from "./types";
 
 /**
- * Definition files are the project's taxonomies: plain notes at the
- * worldbuilding root whose heading tree is the vocabulary. A path is the
- * heading chain, `# Character` > `## Race` > `### Elf` reads as
- * `Character/Race/Elf`, and frontmatter or record lines point at a heading
- * with `[[…/Category#Elf|Character/Race/Elf]]`: the anchor carries identity,
- * the alias shows the full path. Obsidian resolves a heading link by text
- * alone, which is why every heading must stay unique across the whole file,
- * even under different trees.
+ * Definition files are the project's taxonomies: plain notes whose heading
+ * tree is the vocabulary. Each entity kind owns its own set, in the folder
+ * its notes live in, so a vocabulary is scoped to the kind that uses it. A
+ * path is the heading chain, `# Race` > `## Elf` reads as `Race/Elf`, and
+ * frontmatter or record lines point at a heading with
+ * `[[…/Category#Elf|Race/Elf]]`: the anchor carries identity, the alias shows
+ * the full path, and the link target is always the definition file's full
+ * vault path. Obsidian resolves a heading link by text alone, which is why
+ * every heading must stay unique across its own file, even under different
+ * trees. Across files nothing has to agree: two kinds may both name a
+ * heading `Origin`.
  *
  * The files are deliberately ordinary Markdown. Users extend them by typing
  * headings or through the pickers, the plugin only ever appends, and the
@@ -202,11 +207,11 @@ export function renderHeadingLink(
 }
 
 interface DefinitionCopy {
-  fileNames: Record<DefinitionFileId, string>;
+  /** File names without their number, which the folder decides. */
+  fileStems: Record<DefinitionFileId, string>;
   categoryIntro: string;
   worldStatusIntro: string;
   relationshipIntro: string;
-  namespaces: Record<CategoryNamespaceId, string>;
   roles: Record<CharacterType, string>;
   worldStatusStarters: string[];
   relationshipStarters: string[];
@@ -214,106 +219,114 @@ interface DefinitionCopy {
 
 const COPY: Record<ProjectLanguage, DefinitionCopy> = {
   en: {
-    fileNames: {
-      category: "Category.md",
-      "world-status": "World_Status.md",
-      relationship: "Relationship.md",
+    fileStems: {
+      category: "Category",
+      "world-status": "World_Status",
+      relationship: "Relationship",
     },
     categoryIntro:
-      "Categories every entity can point at. Add a heading to add a category, and nest headings to build a path like Character/Race/Elf. Every heading must stay unique across this whole file.",
+      "Categories notes of this kind can point at. Add a heading to add a category, and nest headings to build a path like Race/Elf. Every heading must stay unique across this whole file.",
     worldStatusIntro:
-      "The states an entity can be in inside the story. Records in a note's World Status section point at these headings.",
+      "The states an entity of this kind can be in inside the story. Records in a note's World Status section point at these headings.",
     relationshipIntro:
-      "The ways entities relate to each other. Records in a note's Relationships section point at these headings.",
-    namespaces: {
-      character: "Character",
-      scene: "Scene",
-      time: "Time",
-      location: "Location",
-      item: "Item",
-    },
+      "The ways an entity of this kind relates to others. Records in a note's Relationships section point at these headings, and their targets may be entities of any kind.",
     roles: { major: "Major", supporting: "Supporting", minor: "Minor" },
     worldStatusStarters: ["Injured", "Missing", "Deceased"],
     relationshipStarters: ["Ally", "Enemy", "Friend", "Family", "Member"],
   },
   "zh-CN": {
-    fileNames: {
-      category: "类别.md",
-      "world-status": "世界状态.md",
-      relationship: "关系.md",
+    fileStems: {
+      category: "类别",
+      "world-status": "状态",
+      relationship: "关系",
     },
     categoryIntro:
-      "所有实体可引用的类别。添加标题即添加类别，嵌套标题可组成「角色/种族/精灵」这样的路径。整份文件中的每个标题必须保持唯一。",
-    worldStatusIntro: "实体在故事中可处于的状态。笔记「世界状态」区段中的记录会指向这些标题。",
-    relationshipIntro: "实体之间的关系。笔记「关系」区段中的记录会指向这些标题。",
-    namespaces: {
-      character: "角色",
-      scene: "场景",
-      time: "时间",
-      location: "地点",
-      item: "物品",
-    },
+      "此类笔记可引用的类别。添加标题即添加类别，嵌套标题可组成「种族/精灵」这样的路径。整份文件中的每个标题必须保持唯一。",
+    worldStatusIntro: "此类实体在故事中可处于的状态。笔记「世界状态」区段中的记录会指向这些标题。",
+    relationshipIntro:
+      "此类实体与其他实体之间的关系。笔记「关系」区段中的记录会指向这些标题，记录的对象可以是任何类型的实体。",
     roles: { major: "主角", supporting: "配角", minor: "次要角色" },
     worldStatusStarters: ["受伤", "失踪", "已故"],
     relationshipStarters: ["盟友", "敌人", "朋友", "家人", "成员"],
   },
 };
 
-export function definitionFileName(
+/**
+ * A definition file is numbered after the folder it sits in, the way
+ * `10_Summary` holds `11_One_Sentence_Summary.md`: the folder's number gives
+ * up its trailing zero to the file's position, and where there is no zero to
+ * give up the position is appended instead. Characters get 21/22/23 inside
+ * `20_Character`, locations 621/622/623 inside `62_Location`, so the three
+ * files sort together above the notes they classify.
+ */
+function definitionFileNumber(
+  kind: EntityKind,
   id: DefinitionFileId,
   language: ProjectLanguage,
 ): string {
-  return COPY[language].fileNames[id];
+  const folder = entityKindFolder(getProjectPathLayout(language), kind);
+  const leaf = folder.slice(folder.lastIndexOf("/") + 1);
+  const folderNumber = /^\d+/u.exec(leaf)?.[0] ?? "";
+  const position = DEFINITION_FILE_IDS.indexOf(id) + 1;
+  if (folderNumber.length === 0) return "";
+  return folderNumber.endsWith("0")
+    ? `${folderNumber.slice(0, -1)}${position}`
+    : `${folderNumber}${position}`;
 }
 
+export function definitionFileName(
+  kind: EntityKind,
+  id: DefinitionFileId,
+  language: ProjectLanguage,
+): string {
+  const stem = COPY[language].fileStems[id];
+  const number = definitionFileNumber(kind, id, language);
+  return number.length === 0 ? `${stem}.md` : `${number}_${stem}.md`;
+}
+
+/**
+ * What a kind's definition file holds on creation. Characters arrive with the
+ * vocabulary the plugin itself depends on or has always suggested: the three
+ * role categories the type field stands on, and the starter status and
+ * relationship labels. Every other kind starts with an intro line and an
+ * empty tree, because its vocabulary is the author's to invent.
+ */
 export function definitionFileTemplate(
+  kind: EntityKind,
   id: DefinitionFileId,
   language: ProjectLanguage,
 ): string {
   const copy = COPY[language];
-  if (id === "category") {
-    const lines = [copy.categoryIntro, "", `# ${copy.namespaces.character}`];
-    for (const role of ["major", "supporting", "minor"] as const) {
-      lines.push("", `## ${copy.roles[role]}`);
-    }
-    for (const namespace of ["scene", "time", "location", "item"] as const) {
-      lines.push("", `# ${copy.namespaces[namespace]}`);
-    }
-    return `${lines.join("\n")}\n`;
-  }
   const intro =
-    id === "world-status" ? copy.worldStatusIntro : copy.relationshipIntro;
-  const starters =
-    id === "world-status"
-      ? copy.worldStatusStarters
-      : copy.relationshipStarters;
+    id === "category"
+      ? copy.categoryIntro
+      : id === "world-status"
+        ? copy.worldStatusIntro
+        : copy.relationshipIntro;
   const lines = [intro];
-  for (const starter of starters) lines.push("", `# ${starter}`);
+  if (kind === "character") {
+    const starters =
+      id === "category"
+        ? (["major", "supporting", "minor"] as const).map(
+            (role) => copy.roles[role],
+          )
+        : id === "world-status"
+          ? copy.worldStatusStarters
+          : copy.relationshipStarters;
+    for (const starter of starters) lines.push("", `# ${starter}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
-export function categoryNamespaceLabel(
-  language: ProjectLanguage,
-  namespace: CategoryNamespaceId,
-): string {
-  return COPY[language].namespaces[namespace];
-}
-
-/** The seeded role heading for a character type, `Major` or `主角`. */
+/**
+ * The seeded role heading for a character type, `Major` or `主角`. With the
+ * category file scoped to characters this is also the role's whole path.
+ */
 export function characterRoleHeading(
   language: ProjectLanguage,
   type: CharacterType,
 ): string {
   return COPY[language].roles[type];
-}
-
-/** The seeded role path for a character type, `Character/Major` or `角色/主角`. */
-export function characterRolePath(
-  language: ProjectLanguage,
-  type: CharacterType,
-): string {
-  const copy = COPY[language];
-  return `${copy.namespaces.character}/${copy.roles[type]}`;
 }
 
 /**

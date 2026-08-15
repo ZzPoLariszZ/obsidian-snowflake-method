@@ -22,6 +22,7 @@ import {
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
 	type CharacterType,
+	type EntityKind,
 	type StepOneSectionId,
 	type StepId,
 	type StepStatus,
@@ -1105,17 +1106,21 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/**
 	 * Everything the record editors need from the project, fetched fresh so
-	 * the pickers list what the definition files hold right now.
+	 * the pickers list what the definition files hold right now. The kind is
+	 * the note the form is for: each kind owns its own definition files, so a
+	 * character form lists character vocabularies and an item form the item
+	 * ones, while record targets stay free to point at any entity.
 	 */
 	private async memberFormContext(
 		model: ProjectDashboardModel,
+		kind: EntityKind,
 	): Promise<MemberFormContext> {
 		const [categoryPaths, worldStatusPaths, relationshipPaths, filePaths] =
 			await Promise.all([
-				this.host.listDefinitionPaths('category'),
-				this.host.listDefinitionPaths('world-status'),
-				this.host.listDefinitionPaths('relationship'),
-				this.host.definitionFilePaths(),
+				this.host.listDefinitionPaths(kind, 'category'),
+				this.host.listDefinitionPaths(kind, 'world-status'),
+				this.host.listDefinitionPaths(kind, 'relationship'),
+				this.host.definitionFilePaths(kind),
 			]);
 		const sourceFor = (
 			id: DefinitionFileChoice,
@@ -1125,13 +1130,13 @@ export class SnowflakeDashboardView extends ItemView {
 			return {
 				list: () => paths,
 				add: async (path) => {
-					const result = await this.host.addDefinitionPath(id, path);
+					const result = await this.host.addDefinitionPath(kind, id, path);
 					if (!result.ok) {
 						return result.code === 'heading-taken'
 							? this.t('form.definition.taken', { name: result.segment })
 							: this.t('form.definition.invalid', { name: result.segment });
 					}
-					paths = await this.host.listDefinitionPaths(id);
+					paths = await this.host.listDefinitionPaths(kind, id);
 					return null;
 				},
 			};
@@ -1174,7 +1179,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		kind: WorldbuildingKind,
 	): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, kind).then((context) => {
 			new EntityFormModal(
 				this.app,
 				this.t,
@@ -1194,7 +1199,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		entity: WorldbuildingEntityViewModel,
 	): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, entity.kind).then((context) => {
 			new EntityFormModal(
 				this.app,
 				this.t,
@@ -2377,7 +2382,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		const editCharacter = (): void => {
 			if (model.readOnly || character.readOnly || characterDamaged) return;
-			void this.memberFormContext(model).then((context) => {
+			void this.memberFormContext(model, 'character').then((context) => {
 				new CreateCharacterModal(
 					this.app,
 					this.t,
@@ -2869,7 +2874,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private openCreateCharacter(model: ProjectDashboardModel): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, 'character').then((context) => {
 			new CreateCharacterModal(
 				this.app,
 				this.t,
@@ -2893,7 +2898,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private openCreateScene(model: ProjectDashboardModel): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, 'scene').then((context) => {
 			new CreateSceneModal(
 				this.app,
 				this.t,
@@ -2923,7 +2928,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		index: number,
 	): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, 'character').then((context) => {
 			new CreateCharacterModal(
 				this.app,
 				this.t,
@@ -2943,7 +2948,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/** Creates a scene and walks it back from the end to `index + 1`. */
 	private insertSceneAfter(model: ProjectDashboardModel, index: number): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, 'scene').then((context) => {
 			new CreateSceneModal(
 				this.app,
 				this.t,
@@ -3221,7 +3226,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
 	): void {
-		void this.memberFormContext(model).then((context) => {
+		void this.memberFormContext(model, 'scene').then((context) => {
 			new CreateSceneModal(
 				this.app,
 				this.t,

@@ -456,7 +456,7 @@ describe("SnowflakeProjectService", () => {
     // The role stays where creation put it: in the category link, with no
     // legacy key invented by the repair.
     expect(repaired.frontmatter[FRONTMATTER_KEYS.category]).toEqual([
-      expect.stringContaining("|Character/Major]]"),
+      expect.stringContaining("21_Category#Major|Major]]"),
     ]);
     expect(repaired.frontmatter[FRONTMATTER_KEYS.characterType]).toBeUndefined();
 
@@ -1544,7 +1544,7 @@ describe("SnowflakeProjectService", () => {
     const created = fakeVault.contents.get(character.path) ?? "";
     const block = readMarkedSection(created, "character-fields");
     expect(block).toContain("> [!info] Character overview");
-    expect(block).toContain("Category#Major|Character/Major]]");
+    expect(block).toContain("20_Character/21_Category#Major|Major]]");
     expect(block).toContain("> **Motivation**: Belong somewhere.");
 
     const updated = await service.updateCharacter(project, character.characterId, {
@@ -1556,7 +1556,7 @@ describe("SnowflakeProjectService", () => {
       fakeVault.contents.get(updated.path) ?? "",
       "character-fields",
     );
-    expect(after).toContain("Category#Supporting|Character/Supporting]]");
+    expect(after).toContain("21_Category#Supporting|Supporting]]");
     expect(after).toContain("> **Motivation**: Lead the fleet.");
     expect(after).not.toContain("Belong somewhere.");
   });
@@ -2757,23 +2757,49 @@ describe("SnowflakeProjectService", () => {
     ).not.toBeNull();
   });
 
-  it("scaffolds the worldbuilding tree with its definition files and kind bases", async () => {
+  it("scaffolds the worldbuilding tree with per-kind definition files and kind bases", async () => {
     const project = await service.createProject({ name: "Worlds" });
     const worldbuilding = `${project.rootPath}/60_Worldbuilding`;
 
     for (const folder of ["61_Time", "62_Location", "63_Item"]) {
       expect(fakeVault.nodes.has(`${worldbuilding}/${folder}`)).toBe(true);
     }
-    const category = fakeVault.contents.get(`${worldbuilding}/Category.md`) ?? "";
-    expect(category).toContain("# Character");
-    expect(category).toContain("## Major");
-    expect(category).toContain("# Item");
+    // Every entity kind owns its own set, in the folder its notes live in.
+    // Only the character files arrive seeded; the roles are whole paths.
+    const characterFolder = `${project.rootPath}/20_Character`;
+    const category = fakeVault.contents.get(`${characterFolder}/21_Category.md`) ?? "";
+    expect(category).toContain("# Major");
+    expect(category).not.toContain("# Character");
+    expect(category).not.toContain("# Item");
     expect(
-      fakeVault.contents.get(`${worldbuilding}/World_Status.md`),
+      fakeVault.contents.get(`${characterFolder}/22_World_Status.md`),
     ).toContain("# Injured");
     expect(
-      fakeVault.contents.get(`${worldbuilding}/Relationship.md`),
+      fakeVault.contents.get(`${characterFolder}/23_Relationship.md`),
     ).toContain("# Ally");
+    // Each file is numbered after its own folder, and every kind but the
+    // character one starts with an intro line and no headings.
+    for (const [folder, prefix] of [
+      [`${project.rootPath}/40_Scene`, "4"],
+      [`${worldbuilding}/61_Time`, "61"],
+      [`${worldbuilding}/62_Location`, "62"],
+      [`${worldbuilding}/63_Item`, "63"],
+    ] as const) {
+      for (const [position, stem] of [
+        [1, "Category"],
+        [2, "World_Status"],
+        [3, "Relationship"],
+      ] as const) {
+        const content =
+          fakeVault.contents.get(`${folder}/${prefix}${position}_${stem}.md`) ?? "";
+        expect(content.trim().length).toBeGreaterThan(0);
+        expect(content).not.toContain("# ");
+      }
+    }
+    // Nothing is left at the worldbuilding root, under either name.
+    for (const fileName of ["Category.md", "61_Category.md", "World_Status.md"]) {
+      expect(fakeVault.contents.has(`${worldbuilding}/${fileName}`)).toBe(false);
+    }
     const timeBase = fakeVault.contents.get(`${worldbuilding}/61_Time/Time.base`) ?? "";
     expect(timeBase).toContain('note["snowflake-worldbuilding-kind"] == "time"');
     expect(timeBase).toContain(`note["snowflake-project-id"] == "${project.id}"`);
@@ -2786,8 +2812,11 @@ describe("SnowflakeProjectService", () => {
 
     const zh = await service.createProject({ name: "世界", locale: "zh-CN" });
     expect(
-      fakeVault.contents.get(`${zh.rootPath}/60_世界观/类别.md`),
-    ).toContain("# 角色");
+      fakeVault.contents.get(`${zh.rootPath}/20_角色/21_类别.md`),
+    ).toContain("# 主角");
+    expect(
+      fakeVault.getFileByPath(`${zh.rootPath}/60_世界观/61_时间/611_类别.md`),
+    ).not.toBeNull();
     expect(
       fakeVault.getFileByPath(`${zh.rootPath}/60_世界观/61_时间/时间总览.base`),
     ).not.toBeNull();
@@ -3363,22 +3392,60 @@ describe("SnowflakeProjectService", () => {
     const ada = await service.createCharacter(project, {
       name: "Ada",
       type: "major",
-      categoryPaths: ["Character/Race/Elf"],
+      categoryPaths: ["Race/Elf"],
     });
+    // Category links point into the character kind's own file, and the role
+    // is a whole path there.
     expect(ada.categories).toEqual([
-      expect.stringContaining("|Character/Major]]"),
-      expect.stringContaining("|Character/Race/Elf]]"),
+      expect.stringContaining("20_Character/21_Category#Major|Major]]"),
+      expect.stringContaining("20_Character/21_Category#Elf|Race/Elf]]"),
     ]);
 
     const repicked = await service.updateCharacter(project, ada.characterId, {
       expectedRevision: ada.revision,
       type: "supporting",
-      categoryPaths: ["Character/Gender/Female"],
+      categoryPaths: ["Gender/Female"],
     });
     expect(repicked.type).toBe("supporting");
     expect(repicked.categories).toEqual([
-      expect.stringContaining("|Character/Supporting]]"),
-      expect.stringContaining("|Character/Gender/Female]]"),
+      expect.stringContaining("|Supporting]]"),
+      expect.stringContaining("|Gender/Female]]"),
+    ]);
+  });
+
+  it("scopes definition vocabularies to the kind that owns the file", async () => {
+    const project = await service.createProject({ name: "Scoped vocab" });
+
+    // A path added for one kind lands in that kind's file and nowhere else.
+    const added = await service.addDefinitionPath(
+      project,
+      "item",
+      "world-status",
+      "Cursed",
+    );
+    expect(added.ok).toBe(true);
+    expect(
+      await service.listDefinitionPaths(project, "item", "world-status"),
+    ).toEqual(["Cursed"]);
+    expect(
+      await service.listDefinitionPaths(project, "character", "world-status"),
+    ).toEqual(["Injured", "Missing", "Deceased"]);
+
+    // Heading uniqueness holds per file, so two kinds may share a name.
+    for (const kind of ["location", "item"] as const) {
+      const result = await service.addDefinitionPath(
+        project,
+        kind,
+        "category",
+        "Origin",
+      );
+      expect(result.ok).toBe(true);
+    }
+    expect(await service.listDefinitionPaths(project, "location", "category")).toEqual([
+      "Origin",
+    ]);
+    expect(await service.listDefinitionPaths(project, "item", "category")).toEqual([
+      "Origin",
     ]);
   });
 
@@ -3399,10 +3466,26 @@ describe("SnowflakeProjectService", () => {
         frontmatter[FRONTMATTER_KEYS.schema] = 1;
       },
     );
-    fakeVault.delete(`${project.rootPath}/60_Worldbuilding/Category.md`);
+    fakeVault.delete(`${project.rootPath}/20_Character/21_Category.md`);
+    // The system templates are stamped too, so a migrated project is not
+    // left with a page of repairable template flags.
+    const templatePath = `${project.rootPath}/00_System/011_Template_One_Sentence_Summary.md`;
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(templatePath)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.schema] = 1;
+      },
+    );
 
     const result = await service.migrateMemberNotes(project.projectFile);
     expect(result.skipped).toBe(0);
+
+    const templateFrontmatter = parseMarkdownFrontmatter(
+      fakeVault.contents.get(templatePath) ?? "",
+    ).frontmatter;
+    expect(templateFrontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
+    const migratedSnapshot = await service.loadProject(project.projectFile);
+    expect(migratedSnapshot.structureIssues).toEqual([]);
 
     const characterFrontmatter = parseMarkdownFrontmatter(
       fakeVault.contents.get(ada.path) ?? "",
@@ -3410,12 +3493,12 @@ describe("SnowflakeProjectService", () => {
     expect(characterFrontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
     expect(characterFrontmatter[FRONTMATTER_KEYS.characterType]).toBeUndefined();
     expect(characterFrontmatter[FRONTMATTER_KEYS.category]).toEqual([
-      expect.stringContaining("|Character/Major]]"),
+      expect.stringContaining("20_Character/21_Category#Major|Major]]"),
     ]);
     const projectFrontmatter = await service.readManagedFrontmatter(project.projectFile);
     expect(projectFrontmatter[FRONTMATTER_KEYS.schema]).toBe(SCHEMA_VERSION);
     expect(
-      fakeVault.contents.get(`${project.rootPath}/60_Worldbuilding/Category.md`),
-    ).toContain("# Character");
+      fakeVault.contents.get(`${project.rootPath}/20_Character/21_Category.md`),
+    ).toContain("# Major");
   });
 });

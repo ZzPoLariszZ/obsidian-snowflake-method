@@ -40,10 +40,12 @@ import {
   sortByRank,
   ALIASES_KEY,
   DEFINITION_FILE_IDS,
+  ENTITY_KINDS,
   SCENE_POV_OMNISCIENT,
   WORLDBUILDING_KINDS,
   type CharacterType,
   type DefinitionFileId,
+  type EntityKind,
   type DocumentType,
   type ProgressStatus,
   type ProjectLanguage,
@@ -58,7 +60,6 @@ import {
   appendDefinitionPath,
   characterRoleFromCategories,
   characterRoleHeading,
-  characterRolePath,
   characterTypeFromHeading,
   definitionFileName,
   definitionFileTemplate,
@@ -136,6 +137,7 @@ import {
   FRONTMATTER_KEYS,
   PROJECT_DIRECTORY_KEYS,
   PROJECT_PATH_LAYOUTS,
+  entityKindFolder,
   getProjectMetadataRelativePath,
   getProjectPathLayout,
   worldbuildingKindFolder,
@@ -652,22 +654,23 @@ export class SnowflakeProjectService {
 
     // Like the bases below, a definition file's existence is the contract:
     // its heading tree is the author's taxonomy, and the health checker is
-    // what watches over duplicates and dangling links.
-    for (const definitionId of DEFINITION_FILE_IDS) {
-      const path = normalizePath(
-        `${rootPath}/${layout.directories.worldbuilding}/${definitionFileName(definitionId, project.locale)}`,
-      );
-      const existing = this.repository.get(path);
-      if (existing === null) {
-        await this.repository.createPlainFile(
-          path,
-          definitionFileTemplate(definitionId, project.locale),
-        );
-        markCreated(result, path);
-      } else if (this.repository.getFile(path) !== null) {
-        markUnchanged(result, path);
-      } else {
-        markConflict(result, path, `A folder already exists at "${path}".`);
+    // what watches over duplicates and dangling links. Every entity kind
+    // carries its own set, in the folder its notes live in.
+    for (const kind of ENTITY_KINDS) {
+      for (const definitionId of DEFINITION_FILE_IDS) {
+        const path = definitionFilePath(project, kind, definitionId);
+        const existing = this.repository.get(path);
+        if (existing === null) {
+          await this.repository.createPlainFile(
+            path,
+            definitionFileTemplate(kind, definitionId, project.locale),
+          );
+          markCreated(result, path);
+        } else if (this.repository.getFile(path) !== null) {
+          markUnchanged(result, path);
+        } else {
+          markConflict(result, path, `A folder already exists at "${path}".`);
+        }
       }
     }
 
@@ -1398,9 +1401,9 @@ export class SnowflakeProjectService {
     // the legacy type key never appears on a new note.
     const categories = replacedRoleCategories(
       project.locale,
-      categoryLinksFromPaths(project, input.categoryPaths ?? []),
+      categoryLinksFromPaths(project, "character", input.categoryPaths ?? []),
       resolvedType,
-      categoryDefinitionPath(project),
+      categoryDefinitionPath(project, "character"),
     );
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
@@ -1557,9 +1560,9 @@ export class SnowflakeProjectService {
     if (patch.categoryPaths !== undefined) {
       nextCategories = replacedRoleCategories(
         project.locale,
-        categoryLinksFromPaths(project, patch.categoryPaths),
+        categoryLinksFromPaths(project, "character", patch.categoryPaths),
         nextType,
-        categoryDefinitionPath(project),
+        categoryDefinitionPath(project, "character"),
       );
       frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
     } else if (patch.type !== undefined) {
@@ -1568,7 +1571,7 @@ export class SnowflakeProjectService {
           project.locale,
           character.categories,
           patch.type,
-          categoryDefinitionPath(project),
+          categoryDefinitionPath(project, "character"),
         );
         frontmatterPatch[FRONTMATTER_KEYS.category] = nextCategories;
       } else {
@@ -1986,7 +1989,11 @@ export class SnowflakeProjectService {
     const sceneAliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
-    const sceneCategories = categoryLinksFromPaths(project, input.categoryPaths ?? []);
+    const sceneCategories = categoryLinksFromPaths(
+      project,
+      "scene",
+      input.categoryPaths ?? [],
+    );
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
@@ -2257,7 +2264,7 @@ export class SnowflakeProjectService {
     const nextCategories =
       patch.categoryPaths === undefined
         ? scene.categories
-        : categoryLinksFromPaths(project, patch.categoryPaths);
+        : categoryLinksFromPaths(project, "scene", patch.categoryPaths);
     if (patch.categoryPaths !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.category] =
         nextCategories.length > 0 ? nextCategories : undefined;
@@ -2366,6 +2373,25 @@ export class SnowflakeProjectService {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     await this.ensureWorldbuildingTree(project);
+    // The system templates carry the schema stamp too, and they are canonical
+    // plugin files: bringing them current here is the same write the health
+    // pane's repair performs, folded in so one migration leaves nothing
+    // flagged. Missing or damaged ones stay the repair pane's business.
+    const layout = getProjectPathLayout(project.locale);
+    for (const systemTemplate of getSystemTemplates(project.locale)) {
+      const path = normalizePath(
+        `${project.rootPath}/${layout.directories.system}/${systemTemplate.fileName}`,
+      );
+      const record = await this.repository.tryReadManaged(path);
+      if (record === null) continue;
+      const frontmatter = systemTemplateFrontmatter(systemTemplate, project);
+      if (isCurrentSystemTemplate(record, systemTemplate, frontmatter)) continue;
+      await this.repository.replaceManagedFile(
+        path,
+        systemTemplate.template,
+        frontmatter,
+      );
+    }
     const characterNames = new Map(
       project.characters.map((character) => [character.path, character.name]),
     );
@@ -2388,7 +2414,7 @@ export class SnowflakeProjectService {
                 project.locale,
                 character.categories,
                 character.type,
-                categoryDefinitionPath(project),
+                categoryDefinitionPath(project, "character"),
               );
         const frontmatterPatch: ManagedFrontmatter = {};
         if (schemaVersionOf(record.frontmatter) !== SCHEMA_VERSION) {
@@ -2485,22 +2511,25 @@ export class SnowflakeProjectService {
    */
   async listDefinitionPaths(
     projectLocator: ProjectLocator,
+    kind: EntityKind,
     id: DefinitionFileId,
   ): Promise<string[]> {
     const project = await this.loadProject(projectLocator);
-    const file = this.repository.getFile(definitionFilePath(project, id));
+    const file = this.repository.getFile(definitionFilePath(project, kind, id));
     if (file === null) return [];
     const content = await this.repository.vault.read(file);
     return parseDefinitionFile(content).entries.map((entry) => entry.path);
   }
 
   /**
-   * Appends a missing path to a definition file, creating the worldbuilding
-   * tree first when an older project has none. Refusals are returned rather
-   * than thrown so the picker can say why in the project's language.
+   * Appends a missing path to one kind's definition file, creating the
+   * worldbuilding tree first when an older project has none. Refusals are
+   * returned rather than thrown so the picker can say why in the project's
+   * language.
    */
   async addDefinitionPath(
     projectLocator: ProjectLocator,
+    kind: EntityKind,
     id: DefinitionFileId,
     path: string,
   ): Promise<AppendPathResult> {
@@ -2509,7 +2538,7 @@ export class SnowflakeProjectService {
     await this.ensureWorldbuildingTree(project);
     let outcome: AppendPathResult = { ok: true, content: "", addedHeadings: [] };
     await this.repository.updatePlainFile(
-      definitionFilePath(project, id),
+      definitionFilePath(project, kind, id),
       (current) => {
         outcome = appendDefinitionPath(current, path);
         return outcome.ok ? outcome.content : current;
@@ -2519,9 +2548,9 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * The worldbuilding folders, definition files, and kind bases a schema 2
-   * project carries, created only where missing: what exists belongs to the
-   * author.
+   * The worldbuilding folders, every kind's definition files, and the kind
+   * bases a schema 2 project carries, created only where missing: what exists
+   * belongs to the author.
    */
   private async ensureWorldbuildingTree(
     project: ProjectRef | ProjectSnapshot,
@@ -2530,20 +2559,18 @@ export class SnowflakeProjectService {
     await this.repository.ensureFolder(
       normalizePath(`${project.rootPath}/${layout.directories.worldbuilding}`),
     );
-    for (const kind of WORLDBUILDING_KINDS) {
+    for (const kind of ENTITY_KINDS) {
       await this.repository.ensureFolder(
-        normalizePath(worldbuildingKindFolder(project.rootPath, project.locale, kind)),
+        normalizePath(`${project.rootPath}/${entityKindFolder(layout, kind)}`),
       );
-    }
-    for (const definitionId of DEFINITION_FILE_IDS) {
-      const path = normalizePath(
-        `${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(definitionId, project.locale)}`,
-      );
-      if (this.repository.get(path) === null) {
-        await this.repository.createPlainFile(
-          path,
-          definitionFileTemplate(definitionId, project.locale),
-        );
+      for (const definitionId of DEFINITION_FILE_IDS) {
+        const path = definitionFilePath(project, kind, definitionId);
+        if (this.repository.get(path) === null) {
+          await this.repository.createPlainFile(
+            path,
+            definitionFileTemplate(kind, definitionId, project.locale),
+          );
+        }
       }
     }
     for (const base of getProjectBases(
@@ -2716,7 +2743,11 @@ export class SnowflakeProjectService {
     const aliases = (input.aliases ?? [])
       .map((alias) => alias.trim())
       .filter((alias) => alias.length > 0);
-    const categories = categoryLinksFromPaths(project, input.categoryPaths ?? []);
+    const categories = categoryLinksFromPaths(
+      project,
+      kind,
+      input.categoryPaths ?? [],
+    );
     const view = entityFieldsViewOf(kind, {
       progressStatus: input.progressStatus ?? null,
       aliases,
@@ -2821,7 +2852,7 @@ export class SnowflakeProjectService {
       categories:
         patch.categoryPaths === undefined
           ? entity.categories
-          : categoryLinksFromPaths(project, patch.categoryPaths),
+          : categoryLinksFromPaths(project, kind, patch.categoryPaths),
       description: patch.description ?? entity.description,
       timeKind:
         kind !== "time"
@@ -5156,7 +5187,7 @@ function characterFieldsView(
     categories:
       source.categories.length > 0
         ? [...source.categories]
-        : [characterRolePath(locale, source.type)],
+        : [characterRoleHeading(locale, source.type)],
     oneSentenceStoryline: source.oneSentenceStoryline,
     motivation: source.motivation,
     goal: source.goal,
@@ -5165,23 +5196,27 @@ function characterFieldsView(
   };
 }
 
-/** The vault path of one of a project's definition files. */
+/** The vault path of one of an entity kind's definition files. */
 function definitionFilePath(
   project: { rootPath: string; locale: ProjectLanguage },
+  kind: EntityKind,
   id: DefinitionFileId,
 ): string {
   const layout = getProjectPathLayout(project.locale);
   return normalizePath(
-    `${project.rootPath}/${layout.directories.worldbuilding}/${definitionFileName(id, project.locale)}`,
+    `${project.rootPath}/${entityKindFolder(layout, kind)}/${definitionFileName(kind, id, project.locale)}`,
   );
 }
 
-/** The vault path of a project's Category definition file. */
-function categoryDefinitionPath(project: {
-  rootPath: string;
-  locale: ProjectLanguage;
-}): string {
-  return definitionFilePath(project, "category");
+/** The vault path of an entity kind's Category definition file. */
+function categoryDefinitionPath(
+  project: {
+    rootPath: string;
+    locale: ProjectLanguage;
+  },
+  kind: EntityKind,
+): string {
+  return definitionFilePath(project, kind, "category");
 }
 
 /** The exact role links this project writes, for base filters and formulas. */
@@ -5189,12 +5224,12 @@ function characterRoleLinks(project: {
   rootPath: string;
   locale: ProjectLanguage;
 }): CharacterRoleLinks {
-  const definitionPath = categoryDefinitionPath(project);
+  const definitionPath = categoryDefinitionPath(project, "character");
   const link = (type: CharacterType): string =>
     renderHeadingLink(
       definitionPath,
       characterRoleHeading(project.locale, type),
-      characterRolePath(project.locale, type),
+      characterRoleHeading(project.locale, type),
     );
   return {
     major: link("major"),
@@ -5234,7 +5269,7 @@ function replacedRoleCategories(
   const roleLink = renderHeadingLink(
     definitionPath,
     characterRoleHeading(locale, type),
-    characterRolePath(locale, type),
+    characterRoleHeading(locale, type),
   );
   let replaced = false;
   const next = categories.map((raw) => {
@@ -5249,12 +5284,13 @@ function replacedRoleCategories(
   return next;
 }
 
-/** Category paths chosen in a picker become links into the definition file. */
+/** Category paths chosen in a picker become links into the kind's own file. */
 function categoryLinksFromPaths(
   project: { rootPath: string; locale: ProjectLanguage },
+  kind: EntityKind,
   paths: readonly string[],
 ): string[] {
-  const definitionPath = categoryDefinitionPath(project);
+  const definitionPath = categoryDefinitionPath(project, kind);
   return paths
     .map((path) => path.trim())
     .filter((path) => path.length > 0)

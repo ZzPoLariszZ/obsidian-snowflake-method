@@ -51,9 +51,9 @@ export const CHARACTER_DETAILS_PROPERTIES: readonly DetailsPropertyId[] = [
 ];
 
 /**
- * The taxonomy and record-label files a project carries at its worldbuilding
- * root. Category backs the `snowflake-category` links; the other two supply
- * the labels record lines link to.
+ * The taxonomy and record-label files every entity kind carries in the folder
+ * its notes live in. Category backs the `snowflake-category` links; the other
+ * two supply the labels record lines link to.
  */
 export const DEFINITION_FILE_IDS = [
 	'category',
@@ -63,23 +63,18 @@ export const DEFINITION_FILE_IDS = [
 
 export type DefinitionFileId = (typeof DEFINITION_FILE_IDS)[number];
 
-/** Which definition file a record section draws its labels from. */
-export const RECORD_SECTION_DEFINITION_FILE: Readonly<
-	Record<string, DefinitionFileId>
-> = {
-	'world-status': 'world-status',
-	relationships: 'relationship',
-};
-
 /**
- * Every member note carries categories under a namespace named after what the
- * note is, `Character/Race/Elf` and never a bare `Race/Elf`, so one Category
- * file can classify every kind of entity without collisions of meaning.
+ * Every kind of entity the universal model covers: the two member kinds that
+ * predate worldbuilding plus the worldbuilding kinds. Each one owns its own
+ * set of definition files, so vocabularies are scoped to the kind an entity
+ * is: heading uniqueness only has to hold within one file, and a character's
+ * relationship labels are the character kind's, whatever those relationships
+ * point at.
  */
-export type CategoryNamespaceId = 'character' | 'scene' | WorldbuildingKind;
-
-export const CATEGORY_NAMESPACE_IDS: readonly CategoryNamespaceId[] = [
+export const ENTITY_KINDS = [
 	'character',
 	'scene',
 	...WORLDBUILDING_KINDS,
-];
+] as const;
+
+export type EntityKind = (typeof ENTITY_KINDS)[number];

@@ -1,5 +1,6 @@
 import type {
   CharacterType,
+  EntityKind,
   ProgressStatus,
   ProjectLanguage,
   StepFingerprintMap,
@@ -92,6 +93,19 @@ export function worldbuildingKindFolder(
 ): string {
   const layout = getProjectPathLayout(language);
   return `${rootPath}/${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`;
+}
+
+/**
+ * The project-relative folder an entity kind's notes live in, which is also
+ * where the kind's own definition files sit.
+ */
+export function entityKindFolder(
+  layout: ProjectPathLayout,
+  kind: EntityKind,
+): string {
+  if (kind === "character") return layout.directories.characters;
+  if (kind === "scene") return layout.directories.scenes;
+  return `${layout.directories.worldbuilding}/${layout.worldbuildingKinds[kind]}`;
 }
 
 export function getProjectPathLayout(language: ProjectLanguage): ProjectPathLayout {
