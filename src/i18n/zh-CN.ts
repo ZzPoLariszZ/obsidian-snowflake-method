@@ -22,7 +22,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.openSceneBase': '打开场景数据库',
 	'commands.openHealthChecker': '打开健康检查器',
 	'commands.openManuscriptStream': '打开正文流',
-	'commands.migrateMemberNotes': '将项目笔记更新到当前版本',
+	'commands.migrateMemberNotes': '更新旧格式的笔记',
 	'commands.splitManuscriptSegment': '在光标处拆分正文笔记',
 	'commands.manuscriptNextSegment': '前往下一篇正文笔记',
 	'commands.manuscriptPreviousSegment': '前往上一篇正文笔记',

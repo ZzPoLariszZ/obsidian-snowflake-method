@@ -20,7 +20,7 @@ export const en = {
 	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
 	'commands.openManuscriptStream': 'Open manuscript stream',
-	'commands.migrateMemberNotes': 'Bring the project’s notes up to date',
+	'commands.migrateMemberNotes': 'Update notes in older format',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
 	'commands.manuscriptNextSegment': 'Go to the next manuscript note',
 	'commands.manuscriptPreviousSegment': 'Go to the previous manuscript note',
