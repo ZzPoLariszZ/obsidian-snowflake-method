@@ -358,9 +358,9 @@ Every push and pull request runs the test, build, and lint jobs on each supporte
 ### Release procedure
 
 1. Start from `main` with a clean working tree and confirm that `npm run check` succeeds.
-2. Select the appropriate semantic version increment and run `npm version patch`, `npm version minor`, or `npm version major`.
-3. The version script updates `package.json`, `manifest.json`, and `versions.json`, then creates a release commit and a numeric tag such as `0.2.0`. Tags must not use a `v` prefix.
-4. Push the release commit and tag with `git push origin main --follow-tags`.
+2. Select the appropriate semantic version increment and run `npm version patch -m "chore: release %s"`, or the same with `minor` or `major`. The message matters, because npm would otherwise write the bare number as the commit subject.
+3. The version script updates `package.json`, `package-lock.json`, `manifest.json`, and `versions.json`, then creates the release commit. It also tags the commit with a `v` prefix, `v0.9.0` for that release, and this project does not use that form. Replace it with the bare number before pushing anything, `git tag -d v0.9.0 && git tag 0.9.0` in that example. Tags here are lightweight and must not use a `v` prefix.
+4. Push the commit and the tag as two steps: `git push origin main`, then `git push origin` with the tag you just made. `--follow-tags` will not carry these tags, because it pushes annotated tags only and leaves a lightweight one behind without saying so. Confirm the tag arrived with `git ls-remote --tags origin`, since the release workflow starts from the tag and nothing runs without it.
 5. GitHub Actions verifies that the tag exactly matches `manifest.json`, installs dependencies with `npm ci`, and repeats the test, production build, and lint checks.
 6. After verification, the workflow attests `main.js`, `manifest.json`, and `styles.css`, then attaches them to a draft GitHub release with generated release notes.
 7. Review the draft release and its assets before publishing it.
@@ -715,9 +715,9 @@ npm ci
 ### 发布流程
 
 1. 从 `main` 分支的干净工作区开始，并确认 `npm run check` 已通过。
-2. 根据语义化版本规则，运行 `npm version patch`、`npm version minor` 或 `npm version major`。
-3. 版本脚本会同步更新 `package.json`、`manifest.json` 和 `versions.json`，随后创建发布 commit 和形如 `0.2.0` 的纯数字标签。标签不得带有 `v` 前缀。
-4. 使用 `git push origin main --follow-tags` 推送发布 commit 和标签。
+2. 根据语义化版本规则，运行 `npm version patch -m "chore: release %s"`，或将 `patch` 换成 `minor`、`major`。这里的信息不能省略，否则 npm 会把纯版本号写成 commit 标题。
+3. 版本脚本会同步更新 `package.json`、`package-lock.json`、`manifest.json` 和 `versions.json`，随后创建发布 commit。它还会给这次提交打上带 `v` 前缀的标签，例如 `v0.9.0`，而本项目不使用这种形式。推送之前先把它换成纯数字，在该例中即 `git tag -d v0.9.0 && git tag 0.9.0`。本项目的标签是轻量标签，且不得带有 `v` 前缀。
+4. 分两步推送 commit 与标签：先 `git push origin main`，再用 `git push origin` 推送刚才创建的标签。`--follow-tags` 不会带上这里的标签，因为它只推送附注标签，遇到轻量标签会默不作声地略过。推送后用 `git ls-remote --tags origin` 确认标签已经到达，因为发布工作流由标签触发，没有标签就什么都不会运行。
 5. GitHub Actions 会验证标签与 `manifest.json` 中的版本完全一致，通过 `npm ci` 安装依赖，并重新执行测试、生产构建和 lint。
 6. 验证通过后，工作流会为 `main.js`、`manifest.json` 和 `styles.css` 生成构建来源证明，并将它们与自动生成的发布说明附加到 GitHub 草稿发布。
 7. 检查草稿发布及其附件无误后，再正式发布。
