@@ -633,6 +633,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'form.record.value': '值',
 	'form.record.valuePlaceholder': '可选的值或描述…',
 	'form.record.halfSpan': '时间段需要同时填写开始与结束。',
+	'form.record.targetRequired': '关系「{name}」需要选择对象。',
 	'form.group.character': '角色',
 	'form.group.scene': '场景',
 	'form.group.time-point': '时间点',

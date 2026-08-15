@@ -731,6 +731,20 @@ export class RecordCardsEditor {
 		return records;
 	}
 
+	/**
+	 * The first record filed under a label but aimed at nobody, for the
+	 * submit-time check: a relationship is with someone, so a form refuses to
+	 * write one without its target. Only labeled cards count -- an unlabeled
+	 * card is a draft, and a draft is not saved anyway.
+	 */
+	firstMissingTarget(): string | null {
+		if (!this.withTarget) return null;
+		const missing = this.cards.find(
+			(card) => card.label.trim().length > 0 && card.target === null,
+		);
+		return missing !== undefined ? missing.label.trim() : null;
+	}
+
 	private addCard(record: RecordLine | null): RecordCard | null {
 		const list = this.listEl;
 		if (list === null) return null;

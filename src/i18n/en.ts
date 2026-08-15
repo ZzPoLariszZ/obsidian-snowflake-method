@@ -689,6 +689,7 @@ export const en = {
 	'form.record.value': 'Value',
 	'form.record.valuePlaceholder': 'Optional value or description…',
 	'form.record.halfSpan': 'A time span needs both its from and its to.',
+	'form.record.targetRequired': 'The relationship "{name}" needs a target.',
 	'form.group.character': 'Character',
 	'form.group.scene': 'Scene',
 	'form.group.time-point': 'Time point',

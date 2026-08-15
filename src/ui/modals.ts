@@ -1456,6 +1456,11 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			return null;
 		}
 		this.syncEditors();
+		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
+		if (missingTarget !== null) {
+			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
+			return null;
+		}
 		if (this.customFieldsEditor !== null) {
 			const collected = collectCustomFieldsBlock(
 				this.t,
@@ -2558,6 +2563,11 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			return null;
 		}
 		this.syncEditors();
+		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
+		if (missingTarget !== null) {
+			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
+			return null;
+		}
 		let customFields = this.initialCustomFields;
 		if (this.customFieldsEditor !== null) {
 			const collected = collectCustomFieldsBlock(
@@ -2946,6 +2956,11 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			return null;
 		}
 		this.syncEditors();
+		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
+		if (missingTarget !== null) {
+			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
+			return null;
+		}
 		if (this.customFieldsEditor !== null) {
 			const collected = collectCustomFieldsBlock(
 				this.t,
