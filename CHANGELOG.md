@@ -8,6 +8,12 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1]
+
+### Changed
+
+- The line that closes off the vocabulary browser after a search that found nothing now follows a class the plugin puts on the browser, rather than a selector that asks what the browser contains. Nothing looks or behaves differently. The `:has()` selector this replaces is the kind the plugin review warns about, because the browser re-checks it broadly as the page changes.
+
 ## [0.8.0]
 
 ### Added
@@ -220,6 +226,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.8.1]
+
+### 变更
+
+- 词表搜索一无所获时收起分隔线的样式，现在依据插件为浏览区标注的类，而不再用询问其内容的选择器。外观与行为没有任何变化。被替换的 `:has()` 选择器正是插件审查所警告的一类，因为页面变化时浏览器需要大范围地重新检查它。
 
 ## [0.8.0]
 
