@@ -42,7 +42,8 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 |---|---|
 | Guided dashboard | Navigate all ten steps and control progress without blocking validation rules. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
-| Worldbuilding | Track time, location, and item beside characters and scenes, with category, world-status, and relationship growing. |
+| Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
+| Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
@@ -128,9 +129,13 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
 
 ### Worldbuilding
 
-Characters and scenes rarely act alone. Time, location, and item notes live beside them as members of the project, with the same tables, forms, and base views. Any member can carry **world status** and **relationship** record lines: sentences whose terms are links, stored as ordinary Markdown callouts in the note.
+Characters and scenes rarely act alone. Time, location, and item notes live beside them as members of the project, with the same tables, forms, and base views. Any member can carry **world status** and **relationship** record lines: sentences whose terms are links, stored as ordinary Markdown callouts in the note. A relationship also names the note it is with, so there is always a link to follow between the two.
 
-The words those lines use come from three vocabularies for every kind: categories, world statuses, and relationships. Each vocabulary grows as a folder tree whose entries are notes, so links to them resolve like any other link and the graph shows each entry under its own name. Three rail panes browse, rename, and prune the trees, and every reference is kept true along the way.
+Time, location, and item are only the kinds every project begins with. You can add your own for whatever else the story keeps track of: a faction, a language, a piece of technology. An authored kind gets its own folder, rail pane, table, base view, and icon of your choosing, and behaves like the built-in three everywhere else.
+
+The words those record lines use come from three vocabularies for every kind: categories, world statuses, and relationships. Each vocabulary grows as a folder tree whose entries are notes, so links to them resolve like any other link and the graph shows each entry under its own name. Three rail panes browse, rename, and prune the trees, and every reference is kept true along the way.
+
+Beyond the fields every member shares, a note can carry **custom fields** of your own. Each is a title and whatever you write under it, edited from the member's form and stored in its own block in the note. Save a set of them as a template and it becomes a note in that kind's template folder, ready to seed the next character, scene, or faction you create. The custom field pane in the rail manages those templates, and the export button on any form turns the fields you just typed into one.
 
 ### Manuscript stream
 
@@ -271,6 +276,8 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── 21_Category/
     │   │   └── Major/
     │   │       └── Major.md
+    │   ├── 24_Custom_Field/
+    │   │   └── Age.md
     │   └── Characters.base
     ├── 30_Synopsis/
     ├── 40_Scene/
@@ -282,7 +289,8 @@ Each project is stored as a direct child of the configured project root. Its fol
     ├── 60_Worldbuilding/
     │   ├── 61_Time/
     │   ├── 62_Location/
-    │   └── 63_Item/
+    │   ├── 63_Item/
+    │   └── 64_Faction/
     └── ...
 ```
 
@@ -407,7 +415,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 |---|---|
 | 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
-| 世界观 | 在角色与场景旁管理时间、地点与物品，并为每类成员配置类别、状态与关系。 |
+| 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
+| 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
@@ -493,9 +502,13 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 世界观
 
-角色与场景很少独自行动。时间、地点与物品笔记作为项目成员与它们并肩存在，共用同样的表格、表单与数据库视图。任何成员都可以书写**状态**与**关系**记录行：以链接为词项的句子，以普通 Markdown 标注块存放在笔记里。
+角色与场景很少独自行动。时间、地点与物品笔记作为项目成员与它们并肩存在，共用同样的表格、表单与数据库视图。任何成员都可以书写**状态**与**关系**记录行：以链接为词项的句子，以普通 Markdown 标注块存放在笔记里。每条关系还会写明它指向的那篇笔记，因此两者之间始终有一条可以跟随的链接。
 
-这些句子使用的词来自每类成员的三份词表：类别、状态与关系。每份词表都以文件夹树生长，每个词条都是一篇笔记，因此指向词条的链接与其他链接一样解析，关系图中的词条也以自己的名字出现。侧栏的三个词表面板可以浏览、重命名与修剪这些树，所有引用都会随之保持有效。
+时间、地点与物品只是每个项目自带的种类。故事还要记住什么，你都可以自建，比如门派、语言或某项技术。自建的种类拥有自己的文件夹、侧栏面板、表格、数据库视图与自选图标，其余行为与三个内置种类完全一致。
+
+记录行使用的词来自每类成员的三份词表：类别、状态与关系。每份词表都以文件夹树生长，每个词条都是一篇笔记，因此指向词条的链接与其他链接一样解析，关系图中的词条也以自己的名字出现。侧栏的三个词表面板可以浏览、重命名与修剪这些树，所有引用都会随之保持有效。
+
+除了每类成员共有的字段，笔记还可以带上你自己的**自定义字段**。每个字段由一个标题和你在其下写的内容组成，在成员表单中编辑，并存放在笔记自己的区段里。把一组字段保存为模板，它就成为该种类模板文件夹中的一篇笔记，可用于预填下一个角色、场景或门派。侧栏的自定义字段面板管理这些模板，任意表单上的导出按钮则可以把刚刚填好的字段直接存成模板。
 
 ### 正文流
 
@@ -624,6 +637,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 21_类别/
     │   │   └── 主角/
     │   │       └── 主角.md
+    │   ├── 24_自定义字段/
+    │   │   └── 年龄.md
     │   └── 角色总览.base
     ├── 30_大纲/
     ├── 40_场景/
@@ -635,7 +650,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     ├── 60_世界观/
     │   ├── 61_时间/
     │   ├── 62_地点/
-    │   └── 63_物品/
+    │   ├── 63_物品/
+    │   └── 64_门派/
     └── ...
 ```
 
