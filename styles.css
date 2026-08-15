@@ -5132,7 +5132,9 @@ input.snowflake-method-custom-field-title {
 	font-weight: var(--font-semibold);
 }
 
-textarea.snowflake-method-custom-field-content {
+/* A record's value wears the same field its content does: prose wraps. */
+textarea.snowflake-method-custom-field-content,
+.snowflake-method-record-body textarea.snowflake-method-record-value {
 	width: 100%;
 	resize: vertical;
 	min-height: 3.4em;

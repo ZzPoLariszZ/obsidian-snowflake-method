@@ -627,7 +627,7 @@ interface RecordCard {
 	 * rename that would resurrect the node the rename moved away from.
 	 */
 	labelPath: string | null;
-	valueEl: HTMLInputElement;
+	valueEl: HTMLTextAreaElement;
 	target: RecordTerm | null;
 	clauses: RecordClause[];
 	renderTarget: () => void;
@@ -719,7 +719,7 @@ export class RecordCardsEditor {
 								path: `${this.definitionPath}/${path}/${path.split('/').pop() ?? path}`,
 								display: path,
 							},
-				value: card.valueEl.value.trim(),
+				value: oneLineValue(card.valueEl.value),
 				clauses: [
 					...(card.target !== null
 						? [{ kind: 'target' as const, term: card.target }]
@@ -763,7 +763,7 @@ export class RecordCardsEditor {
 			label:
 				record === null ? '' : labelDisplay(record.label, this.definitionPath),
 			labelPath: record?.label.path ?? null,
-			valueEl: null as unknown as HTMLInputElement,
+			valueEl: null as unknown as HTMLTextAreaElement,
 			target:
 				storedTarget !== undefined && storedTarget.kind !== 'span'
 					? storedTarget.term
@@ -824,15 +824,17 @@ export class RecordCardsEditor {
 			},
 		});
 
-		card.valueEl = body.createEl('input', {
-			type: 'text',
+		// The same field a custom field holds its content in: prose wants room
+		// to wrap, not a single line scrolling sideways.
+		card.valueEl = body.createEl('textarea', {
 			cls: 'snowflake-method-record-value',
-			value: record?.value ?? '',
 			attr: {
 				placeholder: this.context.t('form.record.valuePlaceholder'),
 				'aria-label': this.context.t('form.record.value'),
+				rows: '2',
 			},
 		});
+		card.valueEl.value = record?.value ?? '';
 
 		if (this.withTarget) {
 			const targetEl = body.createDiv({
@@ -1423,6 +1425,18 @@ function labelDisplay(
 
 function termText(term: RecordTerm): string {
 	return term.kind === 'text' ? term.text : term.name;
+}
+
+/**
+ * The grammar keeps a record on one line, so the line breaks the taller value
+ * field lets an author type read back out as spaces.
+ */
+function oneLineValue(text: string): string {
+	return text
+		.split(/\r\n|\r|\n/u)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0)
+		.join(' ');
 }
 
 function linkPath(term: RecordTerm): string | null {
