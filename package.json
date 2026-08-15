@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-snowflake-method",
-	"version": "0.8.1",
+	"version": "0.9.0",
 	"description": "Plan fiction with a bilingual ten-step Snowflake Method workspace backed by portable Markdown notes.",
 	"main": "main.js",
 	"type": "module",
