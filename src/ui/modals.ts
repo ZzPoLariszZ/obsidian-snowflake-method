@@ -20,6 +20,7 @@ import {
 	isNameTaken,
 	isTimeKind,
 	normalizeSceneCast,
+	type EntityKind,
 	type ProgressStatus,
 	type TimeKind,
 	type WorldbuildingKind,
@@ -1523,6 +1524,70 @@ export function promptForDefinitionPath(
 	});
 }
 
+/** One kind of note a vocabulary can be added to, by the name it is shown by. */
+export interface DefinitionKindChoice {
+	kind: EntityKind;
+	label: string;
+}
+
+/**
+ * Which kind of note a new entry belongs to, asked the way a record asks
+ * what kind of note it is pointing at: one list, chosen before the thing
+ * itself. Each kind keeps its own vocabulary, so this is the first thing an
+ * entry needs to know about itself.
+ */
+class DefinitionKindModal extends SuggestModal<DefinitionKindChoice> {
+	private answered: EntityKind | null = null;
+
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly kinds: readonly DefinitionKindChoice[],
+		private readonly done: (kind: EntityKind | null) => void,
+	) {
+		super(app);
+		this.setPlaceholder(t('definition.pickKind'));
+	}
+
+	getSuggestions(query: string): DefinitionKindChoice[] {
+		return optionsMatching(this.kinds, query);
+	}
+
+	renderSuggestion(choice: DefinitionKindChoice, el: HTMLElement): void {
+		el.setText(choice.label);
+	}
+
+	onChooseSuggestion(choice: DefinitionKindChoice): void {
+		this.answered = choice.kind;
+	}
+
+	/**
+	 * The answer is read after this dialog is gone, not while it is closing:
+	 * the framework closes first and reports the choice second, so reading at
+	 * close time would always find nothing chosen — and a kind chosen would
+	 * come back as nobody answering, which ends the asking there. Settles
+	 * however the dialog closed, so a caller waiting on it is never left
+	 * holding a promise nobody will settle.
+	 */
+	onClose(): void {
+		super.onClose();
+		void Promise.resolve().then(() => {
+			this.done(this.answered);
+		});
+	}
+}
+
+/** Asks which kind of note an entry is for, or null when nobody answered. */
+export function promptForDefinitionKind(
+	app: App,
+	t: Translate,
+	kinds: readonly DefinitionKindChoice[],
+): Promise<EntityKind | null> {
+	return new Promise((resolve) => {
+		new DefinitionKindModal(app, t, kinds, resolve).open();
+	});
+}
+
 /** What the edit dialog settled on: the node's name and what it means. */
 export interface DefinitionEditResult {
 	name: string;
@@ -1531,9 +1596,9 @@ export interface DefinitionEditResult {
 
 /**
  * The same two rows the new-entry dialog asks with, prefilled: one node's
- * name and its description. Only the last segment is editable — the
- * ancestors have rows of their own — and the full path sits under the field
- * so a rename of one `Empire` among several says which one is in hand.
+ * name and its description. Only the last segment is editable, which is what
+ * the line under the field says — the ancestors have rows of their own, and
+ * this dialog renames the one entry it was opened on.
  */
 class EditDefinitionModal extends Modal {
 	private nameEl: HTMLInputElement | null = null;
@@ -1561,9 +1626,7 @@ class EditDefinitionModal extends Modal {
 		const segments = this.taxonomyPath.split('/');
 		const name = new Setting(this.contentEl)
 			.setName(this.t(`modal.definition.name.${this.definitionId}`))
-			.setDesc(
-				this.t('modal.definition.edit.path', { path: this.taxonomyPath }),
-			)
+			.setDesc(this.t('modal.definition.edit.scope'))
 			.addText((text) => {
 				text.setValue(segments[segments.length - 1] ?? '');
 				this.nameEl = text.inputEl;

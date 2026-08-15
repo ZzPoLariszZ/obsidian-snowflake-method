@@ -458,6 +458,14 @@ export default class SnowflakeMethodPlugin
 		return this.settings.reduceMotion;
 	}
 
+	showsTableProgressStatus(): boolean {
+		return this.settings.showTableProgressStatus;
+	}
+
+	showsTableActionsColumn(): boolean {
+		return this.settings.showTableActionsColumn;
+	}
+
 	opensFormWhenCreatingFromField(): boolean {
 		return this.settings.createFromField === 'form';
 	}
@@ -2113,6 +2121,55 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	/**
+	 * The two dashboard settings an author changes while looking at what they
+	 * govern: whether a row says how far along its note is, and whether a name
+	 * typed into a field opens the new note's form. Both are on the settings
+	 * page as well; from the palette they are one keystroke from the table or
+	 * the form itself.
+	 */
+	private async toggleTableProgressStatus(): Promise<void> {
+		const shown = !this.settings.showTableProgressStatus;
+		this.settings.showTableProgressStatus = shown;
+		await this.saveSettings();
+		await this.handleSettingsChanged('showTableProgressStatus');
+		new Notice(
+			this.globalT(
+				shown
+					? 'commands.tableProgressStatusShown'
+					: 'commands.tableProgressStatusHidden',
+			),
+		);
+	}
+
+	private async toggleTableActionsColumn(): Promise<void> {
+		const shown = !this.settings.showTableActionsColumn;
+		this.settings.showTableActionsColumn = shown;
+		await this.saveSettings();
+		await this.handleSettingsChanged('showTableActionsColumn');
+		new Notice(
+			this.globalT(
+				shown
+					? 'commands.tableActionsColumnShown'
+					: 'commands.tableActionsColumnHidden',
+			),
+		);
+	}
+
+	private async toggleCreateFromField(): Promise<void> {
+		const opensForm = this.settings.createFromField !== 'form';
+		this.settings.createFromField = opensForm ? 'form' : 'now';
+		await this.saveSettings();
+		await this.handleSettingsChanged('createFromField');
+		new Notice(
+			this.globalT(
+				opensForm
+					? 'commands.createFromFieldForm'
+					: 'commands.createFromFieldNow',
+			),
+		);
+	}
+
 	private async toggleNotesBesideDashboard(): Promise<void> {
 		const enabled = !this.settings.openLongTextInSplit;
 		this.settings.openLongTextInSplit = enabled;
@@ -2673,6 +2730,33 @@ export default class SnowflakeMethodPlugin
 			name: this.globalT('commands.toggleNotesBesideDashboard'),
 			callback: () => {
 				void this.toggleNotesBesideDashboard().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-table-progress-status',
+			name: this.globalT('commands.toggleTableProgressStatus'),
+			callback: () => {
+				void this.toggleTableProgressStatus().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-table-actions-column',
+			name: this.globalT('commands.toggleTableActionsColumn'),
+			callback: () => {
+				void this.toggleTableActionsColumn().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-create-from-field',
+			name: this.globalT('commands.toggleCreateFromField'),
+			callback: () => {
+				void this.toggleCreateFromField().catch((error: unknown) => {
 					this.showError(error);
 				});
 			},

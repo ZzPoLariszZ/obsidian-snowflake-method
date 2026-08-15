@@ -52,6 +52,18 @@ export interface SnowflakeSettings {
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
+	/**
+	 * How far along each member note is, written under its name in the tables.
+	 * Off unless it is asked for: it is a line on every row of every table, and
+	 * the note's own form is where it is set and read.
+	 */
+	showTableProgressStatus: boolean;
+	/**
+	 * Whether a table gives its rows' actions a column of buttons. Off, they sit
+	 * behind one menu at the end of the row, which hands the widest column back
+	 * to what the row is about.
+	 */
+	showTableActionsColumn: boolean;
 	/** What a picker does when asked for a note that does not exist yet. */
 	createFromField: CreateFromFieldMode;
 	/** Manuscript notes kept loaded on each side of the one being read. */
@@ -76,6 +88,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
+	showTableProgressStatus: false,
+	showTableActionsColumn: true,
 	createFromField: 'form',
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
@@ -96,6 +110,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
+	'showTableProgressStatus',
+	'showTableActionsColumn',
 	'createFromField',
 	'manuscriptWindow',
 	'showManuscriptPath',
@@ -180,6 +196,14 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.reduceMotion === 'boolean'
 				? raw.reduceMotion
 				: DEFAULT_SETTINGS.reduceMotion,
+		showTableProgressStatus:
+			typeof raw.showTableProgressStatus === 'boolean'
+				? raw.showTableProgressStatus
+				: DEFAULT_SETTINGS.showTableProgressStatus,
+		showTableActionsColumn:
+			typeof raw.showTableActionsColumn === 'boolean'
+				? raw.showTableActionsColumn
+				: DEFAULT_SETTINGS.showTableActionsColumn,
 		createFromField: isCreateFromFieldMode(raw.createFromField)
 			? raw.createFromField
 			: DEFAULT_SETTINGS.createFromField,
@@ -261,6 +285,24 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		this.owner = plugin;
 	}
 
+	/**
+	 * A description that breaks where its copy breaks. The page renders a
+	 * description as text, so a newline in it would otherwise close up into a
+	 * space; a fragment carries the break itself, and its text is still what
+	 * the settings search reads. Falls back to the copy as written where there
+	 * is no document to build one in, which is how the tests read these rows.
+	 */
+	private lines(key: string): string | DocumentFragment {
+		const text = this.t(key);
+		if (typeof createFragment === 'undefined') return text;
+		return createFragment((fragment) => {
+			for (const [at, line] of text.split('\n').entries()) {
+				if (at > 0) fragment.createEl('br');
+				fragment.appendText(line);
+			}
+		});
+	}
+
 	private t(key: string): string {
 		// This page is global UI, so 'project' falls back to Obsidian's language
 		// -- but an explicit English or Chinese choice has to be honoured here,
@@ -328,6 +370,24 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					type: 'toggle',
 					key: 'reduceMotion',
 					defaultValue: DEFAULT_SETTINGS.reduceMotion,
+				},
+			},
+			{
+				name: this.t('settings.tableActionsColumn.name'),
+				desc: this.lines('settings.tableActionsColumn.desc'),
+				control: {
+					type: 'toggle',
+					key: 'showTableActionsColumn',
+					defaultValue: DEFAULT_SETTINGS.showTableActionsColumn,
+				},
+			},
+			{
+				name: this.t('settings.tableProgressStatus.name'),
+				desc: this.t('settings.tableProgressStatus.desc'),
+				control: {
+					type: 'toggle',
+					key: 'showTableProgressStatus',
+					defaultValue: DEFAULT_SETTINGS.showTableProgressStatus,
 				},
 			},
 			{
@@ -562,6 +622,21 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'protectManagedBoundaries':
 				if (typeof value === 'boolean') {
 					this.owner.settings.protectManagedBoundaries = value;
+				}
+				break;
+			case 'showTableProgressStatus':
+				if (typeof value === 'boolean') {
+					this.owner.settings.showTableProgressStatus = value;
+				}
+				break;
+			case 'showTableActionsColumn':
+				if (typeof value === 'boolean') {
+					this.owner.settings.showTableActionsColumn = value;
+				}
+				break;
+			case 'createFromField':
+				if (isCreateFromFieldMode(value)) {
+					this.owner.settings.createFromField = value;
 				}
 				break;
 			case 'manuscriptWindow':

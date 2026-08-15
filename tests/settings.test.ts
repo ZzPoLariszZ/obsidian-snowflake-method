@@ -27,8 +27,8 @@ function settingTabFor(
 /** Every row the page offers, groups walked into rather than counted as one. */
 function settingRows(
 	tab: SnowflakeSettingTab,
-): { name: string; key?: string }[] {
-	const rows: { name: string; key?: string }[] = [];
+): { name: string; key?: string; options?: string[] }[] {
+	const rows: { name: string; key?: string; options?: string[] }[] = [];
 	const visit = (items: readonly unknown[]): void => {
 		for (const item of items as Record<string, never>[]) {
 			if (Array.isArray(item.items)) {
@@ -37,12 +37,22 @@ function settingRows(
 				continue;
 			}
 			if (!('name' in item)) continue;
-			const control = item.control as { key?: string } | undefined;
-			rows.push(
-				control?.key === undefined
-					? { name: String(item.name) }
-					: { name: String(item.name), key: control.key },
-			);
+			const control = item.control as
+				| { key?: string; options?: Record<string, string> }
+				| undefined;
+			if (control?.key === undefined) {
+				rows.push({ name: String(item.name) });
+				continue;
+			}
+			rows.push({
+				name: String(item.name),
+				key: control.key,
+				// A dropdown's own list, so a test can ask it for a value it offers
+				// rather than the one it already holds.
+				...(control.options === undefined
+					? {}
+					: { options: Object.keys(control.options) }),
+			});
 		}
 	};
 	visit(tab.getSettingDefinitions());
@@ -67,10 +77,17 @@ function writableSettingTab(): {
 	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
 }
 
-/** A value of the right type that is not the one the setting already holds. */
-function otherValue(current: unknown): unknown {
+/**
+ * A value of the right type that is not the one the setting already holds.
+ * A dropdown answers from its own list: asking one for the value it is already
+ * on proves nothing about a key the page never stores.
+ */
+function otherValue(current: unknown, options?: readonly string[]): unknown {
 	if (typeof current === 'boolean') return !current;
 	if (typeof current === 'number') return current + 1;
+	if (options !== undefined) {
+		return options.find((option) => option !== current) ?? current;
+	}
 	return current;
 }
 
@@ -82,12 +99,12 @@ describe('settings', () => {
 	 */
 	it('stores every control the page offers', async () => {
 		for (const row of settingRows(writableSettingTab().tab)) {
-			const { key } = row;
+			const { key, options } = row;
 			if (key === undefined || key === 'projectRoot' || key === 'uiLocale') {
 				continue;
 			}
 			const { tab, settings } = writableSettingTab();
-			const wanted = otherValue(tab.getControlValue(key));
+			const wanted = otherValue(tab.getControlValue(key), options);
 
 			await tab.setControlValue(key, wanted);
 
@@ -109,6 +126,29 @@ describe('settings', () => {
 		expect(migrated.settingsSchemaVersion).toBe(6);
 		expect(migrated.uiLocale).toBe('zh-CN');
 		expect(migrated.protectManagedBoundaries).toBe(true);
+	});
+
+	it('keeps the tables on their actions column unless it is turned off', () => {
+		expect(DEFAULT_SETTINGS.showTableActionsColumn).toBe(true);
+		expect(
+			sanitizeSettings({ showTableActionsColumn: false })
+				.showTableActionsColumn,
+		).toBe(false);
+		expect(
+			sanitizeSettings({ showTableActionsColumn: 'no' }).showTableActionsColumn,
+		).toBe(true);
+	});
+
+	it('keeps the tables quiet about progress until it is asked for', () => {
+		expect(DEFAULT_SETTINGS.showTableProgressStatus).toBe(false);
+		expect(
+			sanitizeSettings({ showTableProgressStatus: true })
+				.showTableProgressStatus,
+		).toBe(true);
+		expect(
+			sanitizeSettings({ showTableProgressStatus: 'yes' })
+				.showTableProgressStatus,
+		).toBe(false);
 	});
 
 	it('keeps the manuscript window to a size a page can be built from', () => {

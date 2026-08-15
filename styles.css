@@ -20,8 +20,10 @@
    this stylesheet says through one — so the padding and the overflow the
    dashboard wants have to be asked for from here to take effect at all. */
 .workspace-leaf-content .view-content.snowflake-method-dashboard {
-	padding: var(--snowflake-method-dashboard-padding)
-		var(--snowflake-method-dashboard-padding) 0;
+	/* No room above the progress line: it is the first thing the dashboard
+	   says, and it starts where the view starts. The sides keep theirs, which
+	   is also what the panels reach into for their scrollbars. */
+	padding: 0 var(--snowflake-method-dashboard-padding);
 	/* The dashboard fills its leaf and its panels scroll inside it; the view
 	   itself has nowhere to scroll to, and letting it try only ever means a
 	   stray pixel has escaped a panel. */
@@ -901,9 +903,31 @@
 	border-end-start-radius: 0;
 	border-end-end-radius: 0;
 	background: var(--background-secondary);
-	overflow: hidden;
 }
 
+/* Taller than the window leaves room for, the groups scroll rather than losing
+   what will not fit — one scroll for both of them, since either can be open and
+   neither has a height of its own to scroll inside. It is the groups that
+   scroll and not the rail, so the bar stops above the project switcher instead
+   of running down beside it. The bar runs in the rail's own end padding, which
+   keeps the rows their full width, and its lane is kept whether or not there is
+   anything to scroll, so folding a group never shifts the rows sideways. */
+.snowflake-method-step-nav-scroll {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2))
+	);
+	flex: 1 1 auto;
+}
+
+/* A group's name reads as the heading it is, a step above the rows it heads —
+   the same two steps the inspector's headings and content keep. */
 .snowflake-method-step-nav-header {
 	display: flex;
 	align-items: center;
@@ -912,7 +936,7 @@
 	padding: var(--size-4-4) var(--size-4-2) var(--size-4-4);
 	color: var(--text-muted);
 	font-family: var(--font-interface);
-	font-size: var(--font-ui-medium);
+	font-size: calc(var(--font-ui-medium) + 2px);
 	font-weight: var(--font-semibold);
 	line-height: 1.25;
 }
@@ -936,6 +960,9 @@
 	padding-inline-end: var(--size-2-1);
 }
 
+/* The groups' scroller is what scrolls, so a list is only ever as tall as its
+   rows — two reserved lanes in a rail this narrow would cost more than the marks
+   can spare. */
 .snowflake-method-step-list {
 	display: flex;
 	flex-direction: column;
@@ -944,13 +971,8 @@
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	overflow-x: hidden;
-	overflow-y: auto;
-	scrollbar-gutter: stable;
-	margin-inline-end: calc(
-		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2))
-	);
-	flex: 1 1 auto;
+	overflow: visible;
+	flex: 0 0 auto;
 }
 
 /* The footer reaches back out through the rail's padding so its rule meets both
@@ -989,7 +1011,10 @@
 	box-shadow: none;
 	color: var(--nav-item-color, var(--text-muted));
 	font-family: var(--font-interface);
-	font-size: var(--nav-item-size, var(--font-ui-small));
+	/* A step's name is what the rail is read for, so it is set a little above
+	   what the app's own nav items are — measured from the theme's size, so a
+	   theme that scales its nav still scales this. */
+	font-size: calc(var(--nav-item-size, var(--font-ui-small)) + 2px);
 	font-weight: var(--nav-item-weight, var(--font-normal));
 	text-align: start;
 	white-space: normal;
@@ -1730,35 +1755,38 @@
 	margin: 0 0 var(--size-4-3);
 }
 
-/* The search, filters and shown-count above a member table. */
+/* The search, filters and shown-count above a member table. What ends the row
+   ends it on whichever line it lands on: a pane too narrow to keep the funnel
+   beside the search drops it to a line of its own, and a line of its own is
+   still a line that ends at the right. Where the count's margin has already
+   taken up the slack there is none of this left to do. */
 .snowflake-method-table-toolbar {
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
 	flex-wrap: wrap;
 	gap: var(--size-2-3);
 	margin: 0 0 var(--size-2-3);
 }
 
-/* The toolbar reads as part of the grid below it: the search ends where
-   the name column ends, and the filter begins where the actions column
-   begins. The extra pixel on each is the frame's border, which the columns
+/* The toolbar reads as part of the grid below it: the search ends where the
+   name column ends. The extra pixel is the frame's border, which the columns
    sit inside of and the toolbar does not. */
 .snowflake-method-table-toolbar .search-input-container {
 	flex: 0 0 auto;
 	width: calc(19rem + 1px);
 }
 
+/* A table asks all its questions behind one funnel, so the slot is the button
+   and nothing else — no width of its own at any pane size. Reserving one only
+   ever put the funnel where the reserved width ended: at the far right while
+   the toolbar held one line, and adrift in the middle of the next line once a
+   narrow pane made it wrap. What carries it to the end of the row it is on is
+   the count's own margin, which it travels beside. */
 .snowflake-method-table-filter {
-	flex: 0 0 auto;
-	width: calc(11rem + 1px);
-}
-
-/* The character table asks its two questions behind one funnel, so its slot
-   is the button and nothing else. */
-.snowflake-method-table-filter:has(> .snowflake-method-filter-button) {
 	display: flex;
 	justify-content: flex-end;
-	width: auto;
+	flex: 0 0 auto;
 }
 
 .snowflake-method-filter-button {
@@ -1947,10 +1975,40 @@
 	font-weight: var(--font-semibold);
 }
 
-.snowflake-method-table th:last-child,
-.snowflake-method-table td:last-child {
-	width: 1%;
-	white-space: nowrap;
+/* Without a column of its own, the row's menu rides at the end of the last
+   cell: the cell holds the room for one and stands as its frame of reference.
+   With a column, that cell is the buttons' own and needs neither. */
+.snowflake-method-table:not(.has-actions-column) td:last-child {
+	position: relative;
+	padding-inline-end: calc(var(--snowflake-row-more) + var(--size-4-2));
+}
+
+/* One button wide, plus the room a cell keeps on either side of what it
+   holds — the width the buttons need where they are shown. */
+.snowflake-method-member-column-actions {
+	width: 11rem;
+}
+
+.snowflake-method-table.has-actions-column {
+	min-width: 52rem;
+}
+
+.snowflake-method-table.has-actions-column td:last-child
+	> .snowflake-method-table-actions {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	justify-content: flex-start;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-table.has-actions-column
+	td:last-child
+	> .snowflake-method-table-actions
+	button {
+	min-width: 0;
+	box-sizing: border-box;
+	padding-inline: var(--size-4-2);
 }
 
 /* The button is the row, so the cell gives up its padding and lets the button
@@ -2007,6 +2065,7 @@
 	background: transparent;
 }
 
+/* Where the actions keep a column, they are buttons in a group at its end. */
 .snowflake-method-table-actions {
 	display: flex;
 	align-items: center;
@@ -2019,11 +2078,61 @@
 	flex: 0 0 auto;
 }
 
+/* Everything a row can be asked to do stands behind this one button, which
+   keeps no column of its own: it rides at the end of the row's last cell, on
+   the line the filter's funnel keeps above it, and stays out of the way until
+   the row is pointed at, reached by the keyboard, or read on a screen that has
+   no hover to wait for. */
+.snowflake-method-dashboard button.snowflake-method-table-more {
+	position: absolute;
+	inset-inline-end: 0;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* The size every other ellipsis in the dashboard keeps. */
+	width: var(--snowflake-row-more);
+	height: var(--snowflake-row-more);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	opacity: 0;
+}
+
+.snowflake-method-table tbody tr:hover .snowflake-method-table-more,
+.snowflake-method-table tbody tr:focus-within .snowflake-method-table-more {
+	opacity: 1;
+}
+
+@media (pointer: coarse) {
+	.snowflake-method-table-more {
+		opacity: 1;
+	}
+}
+
+.snowflake-method-dashboard button.snowflake-method-table-more:hover {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+	color: var(--text-normal);
+}
+
 /* Both member tables are laid by the same five columns, so stepping from
    characters to scenes changes the rows and not the grid. The text column
    has no width of its own: it takes whatever the others leave. */
 .snowflake-method-table {
-	min-width: 52rem;
+	/* The button a row keeps at its end, and the room the last cell holds for
+	   it — declared once, since the cell reserves what the button occupies. */
+	--snowflake-row-more: 1.875rem;
+	/* Said outright, rather than left to a last column with a percentage width
+	   to pull the table out to its frame: the three fixed columns take theirs
+	   and the text column takes the rest of the room the frame gives. */
+	width: 100%;
+	min-width: 40rem;
 	table-layout: fixed;
 }
 
@@ -2037,10 +2146,6 @@
 
 .snowflake-method-member-column-kind {
 	width: 10rem;
-}
-
-.snowflake-method-member-column-actions {
-	width: 11rem;
 }
 
 .snowflake-method-table th:not(:last-child),
@@ -2065,9 +2170,11 @@
 	min-width: 0;
 }
 
+/* The name and whatever the project has to say about it, on one line that
+   centres what it holds — the same line the trees give their own names. */
 .snowflake-method-member-name-line {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	gap: var(--size-4-1);
 	min-width: 0;
 	overflow: hidden;
@@ -2113,22 +2220,6 @@
 	overflow-wrap: anywhere;
 }
 
-.snowflake-method-table td:last-child > .snowflake-method-table-actions {
-	width: 100%;
-	min-width: 0;
-	box-sizing: border-box;
-	justify-content: flex-start;
-	gap: var(--size-2-2);
-}
-
-.snowflake-method-table
-	td:last-child
-	> .snowflake-method-table-actions
-	button {
-	min-width: 0;
-	box-sizing: border-box;
-	padding-inline: var(--size-4-2);
-}
 
 /* A reference the project can no longer resolve. Warm rather than red: the scene
    is still readable and the fix is the author's to make, not an error state. */
@@ -3632,23 +3723,38 @@
 			var(--size-4-1),
 			var(--snowflake-method-scrollbar-width, 0px)
 		);
-		overflow: hidden;
 	}
 
-	.snowflake-method-step-nav-header {
-		display: none;
-	}
-
-	/* The rail keeps less padding at this width, so there is less of it to hand
-	   the scrollbar back into. */
-	.snowflake-method-step-list {
-		flex-direction: column;
-		overflow-x: hidden;
-		overflow-y: auto;
+	/* Narrow or wide, a rail taller than the window scrolls rather than losing
+	   what will not fit — but the rail keeps less padding at this width, so
+	   there is less of it to hand the scrollbar back into. */
+	.snowflake-method-step-nav-scroll {
 		margin-inline-end: calc(
 			-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-1))
 		);
-		flex: 1 1 auto;
+	}
+
+	/* No room for a word in a column this narrow, but the fold is worth
+	   keeping: the chevron stands alone, centred over the marks it heads, and
+	   the word stays for anything reading the page aloud. */
+	.snowflake-method-dashboard button.snowflake-method-rail-group-header {
+		grid-template-columns: minmax(0, 1fr);
+		justify-items: center;
+		min-height: 2rem;
+		padding: var(--size-4-1);
+	}
+
+	.snowflake-method-rail-group-header
+		> span:not(.snowflake-method-rail-group-chevron) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		border: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
 	}
 
 	.snowflake-method-step-item {
@@ -3791,15 +3897,10 @@
 		display: none;
 	}
 
-	/* The columns the toolbar aligned to are gone here, so the search and
-	   the filter go back to sharing the row. */
+	/* The column the search was sized to is gone here, so it takes the row and
+	   gives the funnel beside it whatever it needs. */
 	.snowflake-method-table-toolbar .search-input-container {
 		flex: 1 1 12rem;
-		width: auto;
-	}
-
-	.snowflake-method-table-filter {
-		flex: 0 1 14rem;
 		width: auto;
 	}
 
@@ -3832,14 +3933,19 @@
 		content: none;
 	}
 
-	.snowflake-method-table td,
-	.snowflake-method-table td:last-child {
+	.snowflake-method-table td {
 		display: grid;
 		grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
 		gap: var(--size-4-2);
 		width: auto;
 		padding: var(--size-4-3);
 		white-space: normal;
+	}
+
+	/* The row's menu rides at the end of the last cell here too, so the cell
+	   keeps the room for it. */
+	.snowflake-method-table:not(.has-actions-column) td:last-child {
+		padding-inline-end: calc(var(--snowflake-row-more) + var(--size-4-2));
 	}
 
 	.snowflake-method-project-footer {
@@ -4077,11 +4183,16 @@
 	flex-wrap: wrap;
 }
 
+/* The mark that rides beside a name it has something to say about: one size
+   wherever it stands, whatever the name is set in. It takes no part in how it
+   is aligned — every name that carries one is a line of its own, and the line
+   centres it. Hung off the baseline or off the floor of the text box instead,
+   it read differently at each size the names are set in. */
 .snowflake-method-table-health-warning {
 	display: inline-flex;
+	align-items: center;
 	margin-inline-start: var(--size-4-1);
 	color: var(--color-orange);
-	vertical-align: text-bottom;
 }
 
 .snowflake-method-table-health-warning svg {
@@ -4861,23 +4972,43 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 /* The rail folds into two groups: Steps and Worldbuilding. The header is the
    same line the step list always opened with, now clickable, with a chevron
-   that says which way it will fold. */
-.snowflake-method-rail-group-header {
+   that says which way it will fold — and it is a heading before it is a
+   button, so it gives up the slab Obsidian dresses a button in. That takes
+   the rail's own selector: a lone class loses to what the app says a button
+   looks like, which is also what was holding the line to 32px and eating the
+   room it was given. */
+.snowflake-method-dashboard button.snowflake-method-rail-group-header {
+	/* Laid out on the rows' own grid: the chevron takes the column their
+	   circles and icons stand in, so the word starts where their names do. */
+	display: grid;
+	grid-template-columns: 1.75rem minmax(0, 1fr);
+	align-items: center;
 	width: 100%;
-	background: none;
-	border: none;
+	height: auto;
+	/* Standing taller than the rows it heads, as the trees' headings do. */
+	min-height: 2.75rem;
+	/* The room a row keeps on that side, and the hairline of its frame. */
+	padding: var(--size-4-2) var(--size-4-2) var(--size-4-2)
+		calc(var(--size-4-2) + 1px);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
 	box-shadow: none;
 	cursor: pointer;
 	text-align: start;
 }
 
-.snowflake-method-rail-group-header:hover {
+.snowflake-method-dashboard
+	button.snowflake-method-rail-group-header:hover {
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-normal);
 }
 
 .snowflake-method-rail-group-chevron {
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	color: var(--text-faint);
 }
 
@@ -4888,6 +5019,22 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 .snowflake-method-rail-group-body.is-collapsed {
 	display: none;
+}
+
+/* One group's name stands clear of the last row of the one above it. */
+.snowflake-method-rail-group + .snowflake-method-rail-group {
+	margin-block-start: var(--size-4-4);
+}
+
+/* The vocabularies are words rather than notes, so a line parts them from the
+   kinds above, with the same air on either side of it. */
+.snowflake-method-rail-divider {
+	flex: 0 0 auto;
+	height: 1px;
+	margin-block: var(--size-4-3);
+	margin-inline: var(--size-4-2);
+	background: var(--background-modifier-border);
+	list-style: none;
 }
 
 /* The kind buttons reuse the step buttons' anatomy; the number slot holds an
@@ -5342,75 +5489,429 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	white-space: pre-line;
 }
 
+
 /* ---- Definition panes -------------------------------------------------- */
 
-/* The last section's rows end the pane, so the panel keeps a little floor
-   under them. */
+/* The pane takes the height the window gives it, the way a member step's
+   does: the title, the search and the way in stay put, and the columns below
+   them take everything that is left. */
 .snowflake-method-definition-panel {
-	padding-block-end: var(--size-4-8);
-}
-
-/* Five sections stand in one panel, each one kind's tree of the vocabulary.
-   The header line carries the kind, its count, and the add button. */
-.snowflake-method-definition-section {
-	margin-block-start: var(--size-4-6);
-}
-
-.snowflake-method-definition-section-header {
+	/* How tall a tree's heading stands, held here because the trees and the
+	   panel beside them have to agree on it. It stands taller than the rows
+	   it heads, which is what parts one kind from the next now that no line
+	   is drawn between a heading and its own rows. */
+	--snowflake-definition-heading: 2.75rem;
 	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* Browse on one side, inspect on the other. The inspector keeps its place
+   as the trees scroll past, because it is about whichever entry is chosen
+   rather than about wherever the reader has got to. */
+.snowflake-method-definition-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+	align-items: stretch;
+	gap: var(--size-4-4);
+	flex: 1 1 0;
+	min-height: 8rem;
+}
+
+/* The trees scroll inside their own column, so the scrollbar runs between
+   them and the panel rather than down the edge of the window, and the
+   headings hold still against this column rather than against the page.
+   The bar keeps a lane of its own at the far edge, which is reserved whether
+   or not there is anything to scroll: the frame beside it is then in the same
+   place always, rather than stepping aside each time a tree is folded. */
+.snowflake-method-definition-browser {
+	/* A column, so that what the trees leave of it is a measurable thing:
+	   the tail below them is sized from it, and closes the last tree only
+	   while there is any of it left. */
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	/* So the frame inside can be told to stand exactly one screenful tall. */
+	container-type: size;
+}
+
+/* The trees keep their own height whatever is left over, and the frame keeps
+   the screenful it was given. */
+.snowflake-method-definition-section,
+.snowflake-method-definition-frame,
+.snowflake-method-definition-empty {
+	flex: none;
+}
+
+/* Everything the trees did not need. It closes the last of them with the same
+   line that parts one from the next, and gives the room below it — but only
+   while there is room to give: filled to the floor it is nothing at all, and
+   a line that would sit on the frame's own floor is never drawn. The line is
+   a background rather than a border, because a border on a box of no height
+   is drawn all the same. */
+.snowflake-method-definition-tail {
+	flex: 1 1 0;
+	min-height: 0;
+	background-image: linear-gradient(
+		to bottom,
+		var(--background-modifier-border) 0 1px,
+		transparent 1px
+	);
+}
+
+/* A search that found nothing has nothing to close off. */
+.snowflake-method-definition-browser:has(
+		.snowflake-method-definition-empty:not(.is-hidden)
+	)
+	.snowflake-method-definition-tail {
+	background-image: none;
+}
+
+/* The frame is drawn by nothing that scrolls: it is one screenful tall,
+   pinned to the top of the column, and takes no room in it — so it is the
+   same closed rounded rectangle at every scroll position, and neither an
+   edge nor a corner can travel or be cut. Riding above the rows it is also
+   drawn over them, so the curve is always whole. Being a plain block inside
+   the column, it ends where the scrollbar's lane begins, which is what puts
+   the bar outside it. */
+.snowflake-method-definition-frame {
+	position: sticky;
+	top: 0;
+	/* Above the headings, which hold still under it. */
+	z-index: 3;
+	height: 100cqh;
+	margin-block-end: -100cqh;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	/* The page's own colour, laid in the four corners the curve cuts off:
+	   the rows behind are square there and would otherwise show through
+	   outside the frame. It reaches no further than the column, because the
+	   column clips everything in it short of the scrollbar's lane. */
+	box-shadow: 0 0 0 var(--radius-m) var(--background-primary);
+	pointer-events: none;
+}
+
+/* Two frames beginning on the same line and ending on the same line: the
+   panel is as tall as the column of trees beside it, and a long entry
+   scrolls inside it rather than running off the foot of the page. */
+.snowflake-method-definition-inspector {
+	/* The marks down the right edge — the menu, the count, and the one ending
+	   each card — are boxes of a known size at a known inset, which is what
+	   lands all three on one line. */
+	--snowflake-definition-mark: 1.25rem;
+	--snowflake-inspector-card-inset: var(--size-4-3);
+	--snowflake-inspector-more: 1.875rem;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	/* The panel draws its own frame and never scrolls, so the frame cannot
+	   travel and needs no measuring of screenfuls to stand still. */
+	position: relative;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+/* Everything that scrolls. It reaches past the frame's right edge by the
+   width of the bar and keeps a lane there for it, so the bar runs outside
+   the frame while the frame keeps the whole width of its column — the same
+   reach every table of the dashboard makes into the room around it. */
+.snowflake-method-definition-inspector-scroll {
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-5))
+	);
+}
+
+.snowflake-method-definition-inspector-body {
+	padding-block-end: var(--size-4-5);
+}
+
+/* Nothing chosen yet, but the panel is still there: the same frame stands
+   waiting, with the invitation halfway down it, in the accent every other
+   "nothing here yet" line is written in. */
+.snowflake-method-definition-inspector.is-empty {
 	align-items: center;
-	gap: var(--size-4-2);
-	margin-block-end: var(--size-4-2);
+	justify-content: center;
 }
 
-.snowflake-method-definition-section-header h3 {
+.snowflake-method-definition-inspector-empty {
 	margin: 0;
+	color: var(--interactive-accent);
 	font-size: var(--font-ui-medium);
-	font-weight: var(--font-semibold);
+	font-weight: var(--font-medium);
+	text-align: center;
 }
 
-.snowflake-method-definition-count {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
+/* Too narrow for two columns: the two stack, and the chosen entry sits above
+   the trees rather than below all of them. */
+@container snowflake-dashboard (max-width: 60rem) {
+	.snowflake-method-definition-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	/* Stacked, each takes the height it needs and the pane scrolls as one. */
+	.snowflake-method-definition-layout {
+		flex: 0 0 auto;
+		min-height: 0;
+	}
+
+	/* Stacked, the column is a plain framed box in a page that scrolls as
+	   one: it draws its own frame and clips the corners itself, since there
+	   is no scrolling of its own here for a frame to hold still against —
+	   and its height is its trees' now, which is not a height a screenful
+	   can be measured from. The headings hold to the page's scroll instead,
+	   each still bounded by its own tree and clipped to the box. */
+	.snowflake-method-definition-browser {
+		overflow: clip;
+		container-type: normal;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-m);
+	}
+
+	.snowflake-method-definition-frame {
+		display: none;
+	}
+
+	/* Stacked, the panel takes the height its reading needs, and the page
+	   scrolls it along with everything else — so nothing scrolls inside it
+	   and there is no bar to keep a lane for. */
+	.snowflake-method-definition-inspector {
+		order: -1;
+		max-height: none;
+	}
+
+	.snowflake-method-definition-inspector-scroll {
+		overflow: visible;
+		scrollbar-gutter: auto;
+		margin-inline-end: 0;
+	}
+
+	.snowflake-method-definition-inspector.is-empty {
+		min-height: 6rem;
+	}
+}
+
+/* The way in sits at the end of the search line, where every member pane
+   keeps its own: the search takes the width it takes everywhere else, and
+   the button takes what is left at the far end. */
+.snowflake-method-definition-toolbar {
+	margin-block-end: var(--size-4-3);
 }
 
 .snowflake-method-definition-add {
 	margin-inline-start: auto;
 }
 
+/* Each kind's tree folds away behind its own heading: five trees at once is
+   four more than anyone reads. The five stack flush inside the one frame,
+   parted by a rule that belongs to the boundary and scrolls with it — and
+   only a boundary with something standing above it draws one, so the first
+   tree a search leaves showing starts clean under the frame's own edge. */
+
+.snowflake-method-definition-section:not(.is-hidden)
+	~ .snowflake-method-definition-section:not(.is-hidden) {
+	border-block-start: 1px solid var(--background-modifier-border);
+}
+
+/* A tree can be long enough to lose which kind's it is, so the heading stays
+   at the top of the column while its own rows scroll under it, until the
+   next kind's heading arrives and walks it out. It carries no part of the
+   frame — the column's own edge is always there above it — and no rule under
+   it either: the rows belong to the heading, and a line would read as the
+   start of something else. Only the page's background, or the rows it holds
+   still for would read through it. */
+.snowflake-method-definition-section-header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	/* A known height, because the inspector beside it starts one heading
+	   down; min rather than fixed, so a larger UI font is never cut off. */
+	min-height: var(--snowflake-definition-heading);
+	/* No room of its own on either side: the heading is one target across the
+	   whole band, and room here would be room the highlight cannot reach. It
+	   is kept by the button instead, which is what wears the highlight. */
+	background: var(--background-primary);
+}
+
+/* The body carries nothing of the frame and none of the room at the end of a
+   tree either: whatever ends the tree keeps that room itself, above and
+   below in equal measure, so that in the one case which is a button the
+   whole of it can be clicked. */
+
+/* An empty tree is just its sentence, with the room around it worn as the
+   sentence's own padding — padding rather than margin, so nothing climbs out
+   of the box and moves what is around it. */
+.snowflake-method-definition-section-body > .snowflake-method-character-empty {
+	margin: 0;
+	padding-block: var(--size-4-4);
+}
+
+.snowflake-method-dashboard button.snowflake-method-definition-section-toggle {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	/* Obsidian centres what a button holds; these two read as lines of a list,
+	   so they start where every other line in the pane starts. */
+	justify-content: flex-start;
+	gap: var(--size-4-2);
+	min-width: 0;
+	/* It fills the band it stands in, corner to corner, so what lights up
+	   under the pointer is the whole heading rather than a slab inside it —
+	   square-edged and full width, the way a row of the tree lights up. The
+	   room the band used to keep on either side is kept here instead, which
+	   leaves the words exactly where they were. */
+	align-self: stretch;
+	height: auto;
+	padding-block: var(--size-4-2);
+	padding-inline: calc(var(--size-2-2) + var(--size-2-3));
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-weight: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+/* Hovering and pressing a heading changes what it is sitting on and nothing
+   else: a raised edge would have it float above the rows it belongs to. */
+.snowflake-method-dashboard
+	button.snowflake-method-definition-section-toggle:hover {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-definition-section-toggle:active,
+.snowflake-method-dashboard
+	button.snowflake-method-definition-section-toggle:focus {
+	box-shadow: none;
+}
+
+/* Reached by keyboard it still has to be findable, so the ring is drawn
+   rather than cast. */
+.snowflake-method-dashboard
+	button.snowflake-method-definition-section-toggle:focus-visible {
+	box-shadow: none;
+	outline: 2px solid var(--background-modifier-border-focus);
+	outline-offset: -2px;
+}
+
+.snowflake-method-definition-section-chevron {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+/* A step above the rows it heads, so a kind is found by glancing rather than
+   by reading. */
+.snowflake-method-definition-section-title {
+	overflow: hidden;
+	font-size: calc(var(--font-ui-medium) + 2px);
+	font-weight: var(--font-semibold);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* At the end of the heading's line, which is where the eye already goes for
+   a count: the rail's own circle, in the rail's own place. */
+.snowflake-method-definition-count {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
+/* A vocabulary or a kind can run to three figures, and the circle is not
+   growing for them: the figures give way instead. Three is as many as either
+   is ever counted in, so nothing narrower is worth carrying. */
+.snowflake-method-worldbuilding-count[data-digits='3'],
+.snowflake-method-worldbuilding-count[data-digits='4'] {
+	font-size: calc(var(--font-ui-smaller) * 0.78);
+	letter-spacing: -0.02em;
+}
+
+.snowflake-method-definition-section-body.is-collapsed {
+	display: none;
+}
+
 .snowflake-method-definition-empty {
 	margin: 0;
+	padding: var(--size-4-2);
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }
 
-/* The rows are a flat list wearing a tree: each knows its depth and indents
-   by it, and folding a parent simply leaves its children out of the render. */
-.snowflake-method-definition-tree {
-	display: flex;
-	flex-direction: column;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	overflow: hidden;
+/* A kind with nothing to answer a search steps aside rather than saying so
+   five times over. */
+.snowflake-method-definition-section.is-hidden,
+.snowflake-method-definition-empty.is-hidden {
+	display: none;
 }
 
-.snowflake-method-definition-row {
+/* The rows are a flat list wearing a tree: each knows how deep it sits, and
+   indents by it. */
+.snowflake-method-definition-tree {
+	/* One step per level, and where the first guide runs: the middle of a
+	   parent's fold arrow, so a line points at the row it descends from. */
+	--snowflake-definition-indent: 1.25rem;
+	--snowflake-definition-rail: 0.875rem;
 	display: flex;
-	flex-wrap: wrap;
+	flex-direction: column;
+}
+
+/* The whole row is the target, so the whole row says so: what lights up on
+   hover and what answers a click are the same rectangle. */
+.snowflake-method-definition-row {
+	position: relative;
+	display: flex;
 	align-items: center;
-	gap: var(--size-4-2);
-	padding: var(--size-2-2) var(--size-4-2);
+	gap: var(--size-4-1);
+	padding: var(--size-4-2);
+	cursor: pointer;
 	padding-inline-start: calc(
-		var(--size-4-2) + var(--snowflake-definition-depth, 0) * var(--size-4-5)
+		var(--size-4-2) + var(--snowflake-definition-depth, 0) *
+			var(--snowflake-definition-indent)
 	);
 }
 
-.snowflake-method-definition-row + .snowflake-method-definition-row {
-	border-block-start: 1px solid var(--background-modifier-border);
+/* Indentation alone stops being readable a few levels down, so every branch
+   a row hangs from draws a hairline beside it: one line per ancestor, each
+   running the full height of the row so they join up the column. */
+.snowflake-method-definition-row::before {
+	content: '';
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: calc(var(--size-4-2) + var(--snowflake-definition-rail));
+	width: calc(
+		var(--snowflake-definition-depth, 0) * var(--snowflake-definition-indent)
+	);
+	background-image: repeating-linear-gradient(
+		to right,
+		var(--background-modifier-border) 0 1px,
+		transparent 1px var(--snowflake-definition-indent)
+	);
+	pointer-events: none;
 }
 
 .snowflake-method-definition-row:hover {
 	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-definition-row.is-selected {
+	background: var(--nav-item-background-active, var(--background-modifier-hover));
 }
 
 /* Rows without children hold the toggle's column with a spacer, so sibling
@@ -5421,59 +5922,394 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	width: 1.75rem;
 }
 
+/* The arrow says which way the row is folded and takes no click of its own. */
 .snowflake-method-definition-toggle {
+	display: inline-flex;
+	align-items: center;
 	justify-content: center;
+	color: var(--text-muted);
 }
 
-.snowflake-method-definition-row-body {
+/* The row itself is what chooses an entry, so it is a button the whole way
+   across — worn plainly, because a row of buttons reads as a form. */
+.snowflake-method-dashboard button.snowflake-method-definition-row-body {
 	display: flex;
 	flex: 1 1 auto;
-	flex-direction: column;
-	gap: var(--size-2-1);
-	min-width: 0;
-}
-
-.snowflake-method-definition-name {
-	display: flex;
-	align-items: baseline;
+	align-items: center;
+	justify-content: flex-start;
 	gap: var(--size-4-1);
 	min-width: 0;
-	overflow: hidden;
+	height: auto;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	/* A button carries a size of its own, which is smaller than the rows of
+	   every table in the dashboard. Taking the pane's instead is what makes an
+	   entry read like the member row it is. */
+	font-size: inherit;
+	font-weight: inherit;
+	text-align: start;
 	white-space: nowrap;
+	cursor: pointer;
 }
 
-.snowflake-method-definition-name > span {
+.snowflake-method-dashboard button.snowflake-method-definition-row-body:hover {
+	background: transparent;
+	box-shadow: none;
+}
+
+.snowflake-method-definition-row-body > span:first-child {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.snowflake-method-definition-name .snowflake-method-table-health-warning,
-.snowflake-method-definition-name .snowflake-method-definition-usage {
+.snowflake-method-definition-row-body .snowflake-method-table-health-warning {
 	flex: 0 0 auto;
-	overflow: visible;
 }
 
-/* How many notes name the node, worn like a quiet badge; the tooltip lists
-   them. */
-.snowflake-method-definition-usage {
-	padding-inline: var(--size-2-2);
-	border-radius: var(--radius-s);
+/* Where the next entry goes, ending the list the way the member tables end
+   theirs: the row is the button, so the button gives up its own chrome and
+   rides with its list. The air at the end of the tree is the button's own
+   padding, above and below alike — so the room reads as room, and every
+   pixel of it answers to a click. */
+.snowflake-method-dashboard button.snowflake-method-definition-add-more {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: auto;
+	padding: var(--size-4-4) var(--size-4-3);
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: inherit;
+	cursor: pointer;
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-definition-add-more:hover:not(:disabled) {
 	background: var(--background-modifier-hover);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	cursor: help;
+	box-shadow: none;
+	color: var(--text-normal);
 }
 
-.snowflake-method-definition-row-description {
+.snowflake-method-dashboard
+	button.snowflake-method-definition-add-more:disabled {
+	background: transparent;
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Everything an entry can be asked to do lives behind this one button, which
+   stays out of the way until the row is pointed at, chosen, or reached by
+   the keyboard. A touch screen has no hover to wait for. */
+.snowflake-method-definition-more {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+	opacity: 0;
+}
+
+.snowflake-method-definition-row:hover .snowflake-method-definition-more,
+.snowflake-method-definition-row:focus-within .snowflake-method-definition-more,
+.snowflake-method-definition-row.is-selected .snowflake-method-definition-more {
+	opacity: 1;
+}
+
+@media (pointer: coarse) {
+	.snowflake-method-definition-more {
+		opacity: 1;
+	}
+}
+
+/* The name, the tag saying what it files, and the menu: one line, in that
+   order. Felling lives in that menu and nowhere else — it is no button to
+   leave lying about. */
+.snowflake-method-definition-inspector-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-5) var(--size-4-4) 0;
+}
+
+.snowflake-method-definition-inspector-name {
+	/* A line like the rows', so the mark it may carry is centred on the name
+	   rather than left to the type size to place. */
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	min-width: 0;
+	flex: 0 1 auto;
+	margin: 0;
+	overflow-wrap: anywhere;
+	color: var(--interactive-accent);
+	font-size: calc(var(--font-ui-medium) + 5px);
+	font-weight: var(--font-semibold);
+	line-height: 1.25;
+}
+
+/* One word in a ring: the kind of note this vocabulary entry files. */
+.snowflake-method-definition-inspector-kind {
+	flex: 0 0 auto;
+	padding: var(--size-2-1) var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l, 999px);
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+/* Held off the panel's edge by as much as it takes to put its middle on the
+   line the count and the cards' marks keep. */
+.snowflake-method-definition-inspector-more {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+	width: var(--snowflake-inspector-more);
+	height: var(--snowflake-inspector-more);
+	margin-inline-end: calc(
+		var(--snowflake-inspector-card-inset) + var(--snowflake-definition-mark) /
+			2 - var(--snowflake-inspector-more) / 2
+	);
+}
+
+/* One part of the reading: a quieter name for it, then what there is to say. */
+.snowflake-method-definition-inspector-section {
+	padding: var(--size-4-6) var(--size-4-4) 0;
+}
+
+/* A part's name stands above what it holds, and stands taller than it: the
+   panel reads name, part, content, in three sizes of the one scale. */
+.snowflake-method-definition-inspector-label {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-block-end: var(--size-4-3);
+	color: var(--text-normal);
+	font-size: calc(var(--font-ui-medium) + 2px);
+	font-weight: var(--font-semibold);
+}
+
+/* How many notes use the entry, worn where the trees wear their counts —
+   standing as far in from the panel's edge as the mark ending a card below
+   it, so the two fall on one line. */
+.snowflake-method-definition-inspector-total {
+	margin-inline-start: auto;
+	margin-inline-end: var(--size-4-3);
+}
+
+.snowflake-method-definition-inspector-description {
+	font-size: var(--font-ui-medium);
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-definition-inspector-description.is-muted {
+	color: var(--text-muted);
+}
+
+/* It stands clear of both its own part's name and the next one's, with the
+   same air on either side: the name above leaves less room than the part
+   below it does, so the difference is made up here. */
+.snowflake-method-definition-inspector-nothing {
+	margin: var(--size-4-4) 0 0;
+}
+
+/* Where the entry sits, written the way a path is written everywhere else in
+   the plugin — A/B/C — because two entries may share a name under different
+   branches and the branch is what tells them apart. Every step above the last
+   leads back to the entry it names. */
+.snowflake-method-definition-inspector-trail {
+	font-size: var(--font-ui-medium);
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-definition-inspector-slash {
+	color: var(--text-faint);
+}
+
+.snowflake-method-definition-inspector-step.is-current {
+	color: var(--text-normal);
+}
+
+.snowflake-method-dashboard button.snowflake-method-definition-inspector-step {
+	display: inline;
+	width: auto;
+	height: auto;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: inherit;
+	font-weight: inherit;
+	text-align: start;
+	overflow-wrap: anywhere;
+	cursor: pointer;
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-definition-inspector-step:hover {
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	text-decoration: underline;
+}
+
+/* The notes using the entry, one card each: no frame around a card, only a
+   surface a shade in from the panel's own — nothing white, which would read as
+   a hole cut through to the page. The whole card is the way into the note, so
+   the name is written plainly rather than dressed as a second offer inside it;
+   the surface answering under the pointer is what says it can be opened.
+
+   Both marks keep the same room at their ends as the count above them keeps at
+   its own, and both stand in a box the size of that count's circle — so the
+   mark at the end of a card and the circle at the end of the heading fall on
+   one line. */
+.snowflake-method-definition-inspector-notes {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	font-size: var(--font-ui-medium);
+}
+
+/* A reading, not an offer: the card carries no surface of its own until it is
+   pointed at or reached by the keyboard, which is how the tree beside it holds
+   its own rows. */
+.snowflake-method-definition-inspector-note {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	width: 100%;
+	/* A row of the tree beside it stands as tall, and the two of them fall at
+	   the same pitch: the panel reads as one list of notes rather than a column
+	   of rows next to a column of blocks. */
+	padding: var(--size-4-1) var(--snowflake-inspector-card-inset);
+	border-radius: var(--radius-m);
+	background: transparent;
+	color: var(--text-normal);
+}
+
+.snowflake-method-definition-inspector-note:not(.is-plain):hover,
+.snowflake-method-definition-inspector-note:focus-within {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-definition-inspector-note-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	/* The size the count's circle keeps, so the two line up down the panel. */
+	width: var(--snowflake-definition-mark);
+	color: var(--text-muted);
+}
+
+.snowflake-method-definition-inspector-note-icon svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+/* What can be done to the note this card names — the same button an entry's own
+   row carries, and kept the same way: out of the way until the card is pointed
+   at, chosen by the keyboard, or read on a screen that has no hover to wait
+   for. It sits at the end of the card, held off the edge by as much as it takes
+   to put its middle on the line the count and the kind marks keep. */
+.snowflake-method-dashboard
+	button.snowflake-method-definition-inspector-note-more {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+	width: var(--snowflake-inspector-more);
+	height: var(--snowflake-inspector-more);
+	margin-inline-end: calc(
+		var(--snowflake-definition-mark) / 2 - var(--snowflake-inspector-more) / 2
+	);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	opacity: 0;
+}
+
+.snowflake-method-definition-inspector-note:hover
+	.snowflake-method-definition-inspector-note-more,
+.snowflake-method-definition-inspector-note:focus-within
+	.snowflake-method-definition-inspector-note-more {
+	opacity: 1;
+}
+
+@media (pointer: coarse) {
+	.snowflake-method-definition-inspector-note-more {
+		opacity: 1;
+	}
+}
+
+/* The card is by then the colour a hover gives it, so the button takes the next
+   one up rather than disappearing into what it sits on. */
+.snowflake-method-dashboard
+	button.snowflake-method-definition-inspector-note-more:hover {
+	background: var(
+		--background-modifier-active-hover,
+		var(--nav-item-background-active)
+	);
+	box-shadow: none;
+	color: var(--text-muted);
+}
+
+.snowflake-method-definition-inspector-note-name {
+	min-width: 0;
+	flex: 0 1 auto;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.snowflake-method-definition-row > .snowflake-method-table-actions {
+/* A name no note answers to has nothing to be done to it, so it never lights
+   up: the surface a card takes is what says there is something behind it. */
+.snowflake-method-definition-inspector-note.is-plain {
+	color: var(--text-muted);
+}
+
+/* The rest of a long list, and the way back to the few. */
+.snowflake-method-dashboard
+	button.snowflake-method-definition-inspector-viewall {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	height: auto;
+	margin-block-start: var(--size-2-2);
+	padding: var(--size-2-2) 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: var(--font-ui-medium);
+	font-weight: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-definition-inspector-viewall:hover {
+	background: transparent;
+	box-shadow: none;
+	text-decoration: underline;
+}
+
+.snowflake-method-definition-inspector-viewall-icon {
+	display: inline-flex;
 	flex: 0 0 auto;
-	margin-inline-start: auto;
+	color: var(--text-faint);
 }

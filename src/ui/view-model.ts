@@ -320,6 +320,10 @@ export interface DashboardHost {
 	): string;
 	getRecentStep(): StepId;
 	isReduceMotionEnabled(): boolean;
+	/** True while the tables write each note's progress status under its name. */
+	showsTableProgressStatus(): boolean;
+	/** True while a table's rows wear their actions as a column of buttons. */
+	showsTableActionsColumn(): boolean;
 	/** True while a field that makes a note opens that note's form first. */
 	opensFormWhenCreatingFromField(): boolean;
 	openProjectManager(

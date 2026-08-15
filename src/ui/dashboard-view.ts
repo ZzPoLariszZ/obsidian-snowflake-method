@@ -50,6 +50,7 @@ import {
 	MoveToPositionModal,
 	RepairReportModal,
 	promptForDefinitionEdit,
+	promptForDefinitionKind,
 	promptForDefinitionPath,
 	promptForNewCharacter,
 	promptForNewEntity,
@@ -124,16 +125,24 @@ interface MemberFilterRow {
 }
 
 /**
- * Both member tables are laid by the same five columns, so stepping between
+ * Both member tables are laid by the same four columns, so stepping between
  * characters and scenes changes the rows and not the grid: order, name, the
- * kind column (a character's type, a scene's point of view), the wrapping
- * text column, and the actions.
+ * kind column (a character's type, a scene's point of view), and the wrapping
+ * text column. What a row can be asked to do keeps no column of its own — it
+ * rides at the end of the last one.
  */
-const MEMBER_COLUMN_CLASSES = ['order', 'name', 'kind', 'text', 'actions'].map(
+const MEMBER_COLUMN_CLASSES = ['order', 'name', 'kind', 'text'].map(
 	(name) => `snowflake-method-member-column-${name}`,
 );
 
-const STEP_LIST_SELECTOR = '.snowflake-method-step-list';
+/** The fifth column, kept only while the actions are shown as buttons. */
+const ACTIONS_COLUMN_CLASS = 'snowflake-method-member-column-actions';
+
+/** How many of an entry's users the panel shows before offering the rest. */
+const DEFINITION_USAGE_PREVIEW = 4;
+
+/** The rail's scroller: both groups together, not either list on its own. */
+const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
 const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
@@ -142,11 +151,33 @@ const WORLDBUILDING_KIND_ICONS: Record<WorldbuildingKind, string> = {
 	item: 'gem',
 };
 
+/** The mark each kind of note goes by, the rail's own for the three it lists. */
+const ENTITY_KIND_ICONS: Record<EntityKind, string> = {
+	character: 'user',
+	scene: 'clapperboard',
+	...WORLDBUILDING_KIND_ICONS,
+};
+
 const DEFINITION_ICONS: Record<DefinitionFileChoice, string> = {
 	category: 'tags',
 	'world-status': 'activity',
 	relationship: 'heart-handshake',
 };
+
+/**
+ * What every tree in one definition pane shares: which vocabulary is on
+ * show, the rows drawn so far so a chosen one can be marked without redrawing
+ * the others, and how to choose one.
+ */
+interface DefinitionPaneContext {
+	id: DefinitionFileChoice;
+	/** Rows by `id/kind/path`, replaced whenever a tree redraws. */
+	rows: Map<string, HTMLElement>;
+	select: (kind: EntityKind, taxonomyPath: string) => void;
+	/** Chooses an entry and opens whatever was folded over it on the way. */
+	reveal: (kind: EntityKind, taxonomyPath: string) => void;
+	markSelected: () => void;
+}
 
 /**
  * Whether a category path sits at or below the one a filter names, so
@@ -205,6 +236,20 @@ export class SnowflakeDashboardView extends ItemView {
 	 * state like a table's search: a refresh redraws the fold as it stood.
 	 */
 	private readonly definitionCollapse = new Set<string>();
+	/** Folded kind sections, keyed `id/kind`. */
+	private readonly definitionSectionCollapse = new Set<string>();
+	/** What each tree's search box holds, keyed `id/kind`. */
+	private readonly definitionQueries = new Map<string, string>();
+	/** The entry the inspector is showing, one per vocabulary. */
+	private readonly definitionSelection = new Map<
+		DefinitionFileChoice,
+		{ kind: EntityKind; taxonomyPath: string }
+	>();
+	/**
+	 * The one entry whose users are listed in full rather than previewed,
+	 * keyed `id/kind/path`. One at a time, and only while it is being read.
+	 */
+	private definitionUsageOpen: string | null = null;
 	private readonly entityQueries = new Map<WorldbuildingKind, string>();
 	private readonly entityCategoryFilters = new Map<WorldbuildingKind, string>();
 	private readonly entityStatusFilters = new Map<
@@ -297,7 +342,7 @@ export class SnowflakeDashboardView extends ItemView {
 	// A refresh replaces every node, so the presentation state the author set by
 	// hand has to be carried across the rebuild rather than left to the DOM.
 	private readonly renderState = new RenderStateKeeper([
-		STEP_LIST_SELECTOR,
+		RAIL_SCROLL_SELECTOR,
 		MAIN_PANEL_SELECTOR,
 	]);
 	private celebrationEl: HTMLElement | null = null;
@@ -601,11 +646,11 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderStepNavigation(layout, model, projects);
 		this.renderSelectedStep(layout, model);
 		// Deferred to here so both scrollers are measured against the finished
-		// layout: the step list and the main panel share a grid row, and the row's
+		// layout: the rail and the main panel share a grid row, and the row's
 		// height is not settled until the panel beside it exists.
 		this.renderState.restore(root);
 		if (continuity.revealActiveStep) {
-			this.renderState.reveal(root, STEP_LIST_SELECTOR, ACTIVE_STEP_SELECTOR);
+			this.renderState.reveal(root, RAIL_SCROLL_SELECTOR, ACTIVE_STEP_SELECTOR);
 		}
 	}
 
@@ -672,8 +717,12 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-nav',
 			attr: { 'aria-label': this.t('dashboard.steps') },
 		});
+		// Both groups scroll together, inside the rail rather than as the rail:
+		// the project switcher stands on the floor below, where no scrollbar
+		// reaches it and its rule still meets both walls.
+		const groups = nav.createDiv({ cls: 'snowflake-method-step-nav-scroll' });
 		const stepsGroup = this.createRailGroup(
-			nav,
+			groups,
 			'steps',
 			this.t('dashboard.steps'),
 		);
@@ -730,7 +779,7 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 		}
 
-		this.renderWorldbuildingGroup(nav, model);
+		this.renderWorldbuildingGroup(groups, model);
 
 		const projectFooter = nav.createDiv({
 			cls: 'snowflake-method-project-footer',
@@ -898,6 +947,9 @@ export class SnowflakeDashboardView extends ItemView {
 				'aria-expanded': this.railCollapsed[key] ? 'false' : 'true',
 			},
 		});
+		// The chevron leads, as every other fold in the plugin does, and stands
+		// in the column the rows below keep their marks in — which puts the
+		// word itself in the column those rows keep their names in.
 		const chevron = header.createSpan({
 			cls: 'snowflake-method-rail-group-chevron',
 			attr: { 'aria-hidden': 'true' },
@@ -985,7 +1037,7 @@ export class SnowflakeDashboardView extends ItemView {
 				indicator.addClass('has-managed-section-issue');
 				setIcon(indicator, 'triangle-alert');
 			} else {
-				indicator.setText(String(entities.length));
+				this.setCount(indicator, entities.length);
 			}
 			button.addEventListener('click', () => {
 				this.selectedPane = { kind: 'worldbuilding', wbKind: kind };
@@ -995,7 +1047,12 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 		// The vocabularies live with the kinds they classify: three more
 		// entries in the same list, each the whole of one vocabulary across
-		// every kind.
+		// every kind — but they are words rather than notes, so a line parts
+		// them from the kinds above.
+		list.createEl('li', {
+			cls: 'snowflake-method-rail-divider',
+			attr: { role: 'presentation' },
+		});
 		for (const definitionId of DEFINITION_FILE_IDS) {
 			const active =
 				this.selectedPane.kind === 'definition' &&
@@ -1046,7 +1103,7 @@ export class SnowflakeDashboardView extends ItemView {
 				indicator.addClass('has-managed-section-issue');
 				setIcon(indicator, 'triangle-alert');
 			} else {
-				indicator.setText(String(count));
+				this.setCount(indicator, count);
 			}
 			button.addEventListener('click', () => {
 				this.selectedPane = { kind: 'definition', definitionId };
@@ -1145,7 +1202,6 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t('table.name'),
 				this.t('table.category'),
 				this.t('table.description'),
-				this.t('table.actions'),
 			],
 		);
 		const reorderReadOnly =
@@ -1156,7 +1212,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const virtual = new VirtualTable({
 			scroller: bodyWrap,
 			body,
-			columns: 5,
+			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.entityRowHeight,
 			overscan: 8,
 			rowKey: (offset) => entries[offset]?.entity.id ?? `?${String(offset)}`,
@@ -1177,7 +1233,7 @@ export class SnowflakeDashboardView extends ItemView {
 			renderTail: (rows) => {
 				this.renderAddRow(
 					rows,
-					5,
+					this.tableColumnClasses().length,
 					this.t(`worldbuilding.addMore.${kind}`),
 					model.readOnly,
 					() => {
@@ -1378,15 +1434,9 @@ export class SnowflakeDashboardView extends ItemView {
 				text: path,
 			});
 		}
-		row.createEl('td', {
+		const textCell = row.createEl('td', {
 			text: entity.description,
 			attr: { 'data-label': this.t('table.description') },
-		});
-		const actionCell = row.createEl('td', {
-			attr: { 'data-label': this.t('table.actions') },
-		});
-		const buttonGroup = actionCell.createDiv({
-			cls: 'snowflake-method-table-actions',
 		});
 		const locked = model.readOnly || entity.readOnly || damaged;
 		const openEntity = (): void => {
@@ -1397,81 +1447,56 @@ export class SnowflakeDashboardView extends ItemView {
 		const editEntity = (): void => {
 			if (!locked) void this.openEntityEditor(model, entity);
 		};
-		const splitButton = buttonGroup.createDiv({
-			cls: 'snowflake-method-character-split-button',
-		});
-		const edit = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-edit',
-			text: this.t('actions.edit'),
-			attr: { type: 'button' },
-		});
-		edit.disabled = locked;
-		edit.addEventListener('click', editEntity);
-		const trigger = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
-			},
-		});
-		const triggerIcon = trigger.createSpan({
-			cls: 'snowflake-method-character-action-menu-icon',
-		});
-		setIcon(triggerIcon, 'chevron-down');
 		const entities = model.worldbuilding[kind];
-		trigger.addEventListener('click', (event) => {
-			// The same items a character's and a scene's menu carries, and no
-			// delete: that is the button beside this one.
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('actions.edit'))
-					.setIcon('pencil')
-					.setDisabled(locked)
-					.onClick(editEntity),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('common.open'))
-					.setIcon('file-text')
-					.onClick(openEntity),
-			);
-			this.addOrderMenuItems(menu, {
-				index,
-				total: entities.length,
-				locked: reorderReadOnly,
-				readOnly: model.readOnly,
-				insertTitleKey: `worldbuilding.insertAfter.${kind}`,
-				options: () =>
-					entities
-						.map((candidate, at) => ({
-							id: candidate.id,
-							index: at,
-							label: `${String(at + 1)}. ${candidate.name}`,
-						}))
-						.filter((candidate) => candidate.id !== entity.id),
-				move: (toIndex) => this.host.reorderEntity(kind, entity.id, toIndex),
-				reveal: () => {
-					this.revealEntity(model, kind, entity.id);
-				},
-				insert: () => {
-					this.insertEntityAfter(model, kind, index);
-				},
-			});
-			menu.showAtMouseEvent(event);
-		});
-		const remove = buttonGroup.createEl('button', {
-			cls: 'snowflake-method-character-delete',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.disabled = model.readOnly || entity.readOnly;
-		remove.addEventListener('click', () => {
-			void this.runAndRefresh(() =>
-				this.host.deleteEntity(entity.id, entity.revision),
-			);
+		this.renderRowActions(row, textCell, {
+			name: entity.name,
+			primaryLabel: this.t('actions.edit'),
+			primary: editEntity,
+			primaryDisabled: locked,
+			// The same items a character's and a scene's menu carries.
+			items: (menu) => {
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.edit'))
+						.setIcon('pencil')
+						.setDisabled(locked)
+						.onClick(editEntity),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('common.open'))
+						.setIcon('file-text')
+						.onClick(openEntity),
+				);
+				this.addOrderMenuItems(menu, {
+					index,
+					total: entities.length,
+					locked: reorderReadOnly,
+					readOnly: model.readOnly,
+					insertTitleKey: `worldbuilding.insertAfter.${kind}`,
+					options: () =>
+						entities
+							.map((candidate, at) => ({
+								id: candidate.id,
+								index: at,
+								label: `${String(at + 1)}. ${candidate.name}`,
+							}))
+							.filter((candidate) => candidate.id !== entity.id),
+					move: (toIndex) => this.host.reorderEntity(kind, entity.id, toIndex),
+					reveal: () => {
+						this.revealEntity(model, kind, entity.id);
+					},
+					insert: () => {
+						this.insertEntityAfter(model, kind, index);
+					},
+				});
+			},
+			remove: () => {
+				void this.runAndRefresh(() =>
+					this.host.deleteEntity(entity.id, entity.revision),
+				);
+			},
+			removeDisabled: model.readOnly || entity.readOnly,
 		});
 		if (!dragLocked) {
 			this.makeRowReorderable(
@@ -1577,166 +1602,425 @@ export class SnowflakeDashboardView extends ItemView {
 			this.renderManagedSectionIssues(panel, paneIssues);
 		}
 		panel.addClass('snowflake-method-definition-panel');
-		for (const kind of ENTITY_KINDS) {
-			this.renderDefinitionSection(panel, model, id, kind);
-		}
+		// One search and one way in, on the line every member pane puts them,
+		// and above both columns: what is being looked for is a word rather
+		// than a word in the character trees, and what is being added is an
+		// entry rather than a character's entry — which kind it belongs to is
+		// the first thing the dialog asks. Standing above the columns is also
+		// what lets the first tree's heading and the inspector start level.
+		const toolbar = panel.createDiv({
+			cls: 'snowflake-method-table-toolbar snowflake-method-definition-toolbar',
+		});
+		const search = new SearchComponent(toolbar);
+		search.setPlaceholder(this.t('definition.search'));
+		search.setValue(this.definitionQueries.get(id) ?? '');
+		const add = toolbar.createEl('button', {
+			cls: 'mod-cta snowflake-method-definition-add',
+			text: this.t(`definition.add.${id}`),
+			attr: { type: 'button' },
+		});
+		add.disabled = model.readOnly;
+		add.addEventListener('click', () => {
+			void this.addDefinitionEntryToKind(id);
+		});
+		// Browse on one side, inspect on the other: a tree row has room for a
+		// name and little else, and what an entry means and who uses it are
+		// exactly what the row cannot hold. Narrow panes stack the two, the
+		// inspector first, so a chosen entry is not below a long tree.
+		const columns = panel.createDiv({
+			cls: 'snowflake-method-definition-layout',
+		});
+		const browser = columns.createDiv({
+			cls: 'snowflake-method-definition-browser',
+		});
+		// The frame around the trees is not one of them: it rides above the
+		// rows, one screenful tall and pinned to the top of the column, so it
+		// stands closed wherever the reader has scrolled to. Being inside the
+		// column it stops where the scrollbar's lane begins, which is what
+		// leaves the bar running outside it.
+		browser.createDiv({
+			cls: 'snowflake-method-definition-frame',
+			attr: { 'aria-hidden': 'true' },
+		});
+		const inspector = columns.createEl('aside', {
+			cls: 'snowflake-method-definition-inspector',
+		});
+		const noMatches = browser.createEl('p', {
+			cls: 'snowflake-method-definition-empty is-hidden',
+			text: this.t('definition.noMatches'),
+		});
+		const rows = new Map<string, HTMLElement>();
+		// The trees redraw from here, so a step taken in the panel — following
+		// the path of the chosen entry back up a branch — can open what was
+		// folded over the entry it lands on.
+		let repaintTrees = (): void => {};
+		const paintInspector = (): void => {
+			this.renderDefinitionInspector(inspector, model, context);
+		};
+		const markSelected = (): void => {
+			const chosen = this.definitionSelection.get(id);
+			const key =
+				chosen === undefined
+					? null
+					: this.definitionCollapseKey(id, chosen.kind, chosen.taxonomyPath);
+			for (const [rowKey, element] of rows) {
+				const selected = rowKey === key;
+				element.toggleClass('is-selected', selected);
+				element.setAttribute('aria-selected', String(selected));
+			}
+		};
+		const context: DefinitionPaneContext = {
+			id,
+			rows,
+			markSelected,
+			select: (kind, taxonomyPath) => {
+				this.definitionSelection.set(id, { kind, taxonomyPath });
+				markSelected();
+				paintInspector();
+			},
+			reveal: (kind, taxonomyPath) => {
+				// An entry cannot be shown as chosen while a fold above it hides
+				// its row, so every fold along the way is opened first.
+				const segments = taxonomyPath.split('/');
+				for (let depth = 1; depth <= segments.length; depth += 1) {
+					this.definitionCollapse.delete(
+						this.definitionCollapseKey(
+							id,
+							kind,
+							segments.slice(0, depth).join('/'),
+						),
+					);
+				}
+				this.definitionSectionCollapse.delete(`${id}/${kind}`);
+				this.definitionSelection.set(id, { kind, taxonomyPath });
+				repaintTrees();
+				markSelected();
+				paintInspector();
+				rows
+					.get(this.definitionCollapseKey(id, kind, taxonomyPath))
+					?.scrollIntoView({ block: 'nearest' });
+			},
+		};
+		const painters = ENTITY_KINDS.map((kind) =>
+			this.renderDefinitionSection(browser, model, context, kind),
+		);
+		repaintTrees = (): void => {
+			for (const paint of painters) paint();
+		};
+		// What is left of the column once the trees have taken their share: it
+		// closes the last one with a line, and holds the room below it. When
+		// the trees fill the column there is nothing left of it, and nothing
+		// left to draw the line with — which is the moment the frame's own
+		// floor is doing that work.
+		browser.createDiv({ cls: 'snowflake-method-definition-tail' });
+		search.onChange((value) => {
+			this.definitionQueries.set(id, value);
+			const found = painters.reduce((total, paint) => total + paint(), 0);
+			noMatches.toggleClass(
+				'is-hidden',
+				value.trim().length === 0 || found > 0,
+			);
+		});
+		paintInspector();
 	}
 
-	/** One kind's tree of one vocabulary: its heading, count, add, and rows. */
+	/**
+	 * One kind's tree of one vocabulary, behind a fold of its own: five trees
+	 * in one pane is four more than anyone reads at once, so each says how
+	 * many entries it holds and opens when it is wanted.
+	 *
+	 * Everything below the header redraws in place — folding a row, searching,
+	 * choosing an entry — because a full refresh would take the search box's
+	 * focus away between one keystroke and the next.
+	 */
 	private renderDefinitionSection(
-		panel: HTMLElement,
+		browser: HTMLElement,
 		model: ProjectDashboardModel,
-		id: DefinitionFileChoice,
+		context: DefinitionPaneContext,
 		kind: EntityKind,
-	): void {
+	): () => number {
+		const { id } = context;
 		const tree = model.definitions[id][kind];
-		const section = panel.createDiv({
+		const sectionKey = `${id}/${kind}`;
+		const section = browser.createDiv({
 			cls: 'snowflake-method-definition-section',
 		});
 		const header = section.createDiv({
 			cls: 'snowflake-method-definition-section-header',
 		});
-		header.createEl('h3', { text: this.definitionKindLabel(kind) });
+		const collapsed = (): boolean =>
+			this.definitionSectionCollapse.has(sectionKey);
+		const toggle = header.createEl('button', {
+			cls: 'snowflake-method-definition-section-toggle',
+			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
+		});
+		const chevron = toggle.createSpan({
+			cls: 'snowflake-method-definition-section-chevron',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(chevron, collapsed() ? 'chevron-right' : 'chevron-down');
+		toggle.createSpan({
+			cls: 'snowflake-method-definition-section-title',
+			text: this.definitionKindLabel(kind),
+			attr: { role: 'heading', 'aria-level': '3' },
+		});
+		// How many entries this kind keeps, worn the way the rail wears its
+		// counts: the same circle, in the same place at the end of the line.
 		const standing = tree.nodes.filter((node) => !node.missing).length;
-		header.createSpan({
-			cls: 'snowflake-method-definition-count',
-			text: String(standing),
-			attr: {
-				'aria-label': this.t('definition.countLabel', { count: standing }),
-			},
-		});
-		const add = header.createEl('button', {
-			cls: 'snowflake-method-definition-add',
-			text: this.t('definition.add'),
-			attr: { type: 'button' },
-		});
-		add.disabled = model.readOnly;
-		add.addEventListener('click', () => {
-			void this.addDefinitionEntry(id, kind, '');
+		this.setCount(
+			toggle.createSpan({
+				cls:
+					'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
+					'snowflake-method-definition-count',
+				attr: {
+					'aria-label': this.t('definition.countLabel', { count: standing }),
+				},
+			}),
+			standing,
+		);
+		const body = section.createDiv({
+			cls: 'snowflake-method-definition-section-body',
 		});
 		if (tree.nodes.length === 0) {
-			section.createEl('p', {
-				cls: 'snowflake-method-definition-empty',
-				text: this.t('definition.empty'),
+			// The same sentence an empty member table says, worn the same way:
+			// a kind with no vocabulary yet is not a fault, it is a start.
+			const empty = body.createEl('p', {
+				cls: 'snowflake-method-character-empty',
 			});
-			return;
+			const icon = empty.createSpan({
+				cls: 'snowflake-method-character-empty-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(icon, 'triangle-alert');
+			empty.createSpan({ text: this.t(`definition.empty.${id}`) });
 		}
-		const rows = section.createDiv({
-			cls: 'snowflake-method-definition-tree',
-			attr: { role: 'tree' },
-		});
-		for (let index = 0; index < tree.nodes.length; index += 1) {
-			const node = tree.nodes[index];
-			if (node === undefined) continue;
-			if (this.definitionAncestorCollapsed(id, kind, node.taxonomyPath)) {
-				continue;
+		const rows =
+			tree.nodes.length === 0
+				? null
+				: body.createDiv({
+						cls: 'snowflake-method-definition-tree',
+						attr: { role: 'tree' },
+					});
+		// How many entries the search found here: what tells the pane whether
+		// this kind has anything to show, and whether anything was found at all.
+		const paint = (): number => {
+			const query = this.definitionQueries.get(id) ?? '';
+			const searching = query.trim().length > 0;
+			// A search reaches into folded branches rather than past them, so
+			// while one is on, the fold is set aside — the row's own and the
+			// whole section's alike.
+			const open = searching || !collapsed();
+			body.toggleClass('is-collapsed', !open);
+			toggle.setAttribute('aria-expanded', String(open));
+			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
+			if (rows === null) {
+				section.toggleClass('is-hidden', searching);
+				return 0;
 			}
-			const hasChildren =
-				(tree.nodes[index + 1]?.depth ?? 0) > node.depth;
-			this.renderDefinitionRow(rows, model, id, kind, node, hasChildren);
-		}
+			rows.empty();
+			// A match is worth nothing without the branch it hangs from, so the
+			// ancestors of every hit come along.
+			const shown = new Set<string>();
+			let found = 0;
+			if (searching) {
+				for (const node of tree.nodes) {
+					if (
+						!memberMatches(
+							[node.name, node.taxonomyPath, node.description],
+							query,
+						)
+					) {
+						continue;
+					}
+					found += 1;
+					const segments = node.taxonomyPath.split('/');
+					for (let depth = 1; depth <= segments.length; depth += 1) {
+						shown.add(segments.slice(0, depth).join('/'));
+					}
+				}
+				// A kind with nothing to answer steps aside rather than saying
+				// so five times over.
+				section.toggleClass('is-hidden', found === 0);
+				if (found === 0) return 0;
+			} else {
+				section.removeClass('is-hidden');
+			}
+			for (let index = 0; index < tree.nodes.length; index += 1) {
+				const node = tree.nodes[index];
+				if (node === undefined) continue;
+				if (searching) {
+					if (!shown.has(node.taxonomyPath)) continue;
+				} else if (
+					this.definitionAncestorCollapsed(id, kind, node.taxonomyPath)
+				) {
+					continue;
+				}
+				const hasChildren = (tree.nodes[index + 1]?.depth ?? 0) > node.depth;
+				this.renderDefinitionRow(rows, model, context, kind, node, {
+					hasChildren,
+					folded:
+						!searching &&
+						this.definitionCollapse.has(
+							this.definitionCollapseKey(id, kind, node.taxonomyPath),
+						),
+					repaint: () => {
+						paint();
+					},
+				});
+			}
+			// Where the next entry goes, at the end of the list that will hold
+			// it — the same offer the member tables end with, riding with its
+			// list the way theirs do.
+			const more = rows.createEl('button', {
+				cls: 'snowflake-method-definition-add-more',
+				text: this.t(`definition.addMore.${id}`),
+				attr: { type: 'button' },
+			});
+			more.disabled = model.readOnly;
+			more.addEventListener('click', () => {
+				void this.addDefinitionEntry(id, kind, '');
+			});
+			context.markSelected();
+			return found;
+		};
+		toggle.addEventListener('click', () => {
+			if (!this.definitionSectionCollapse.delete(sectionKey)) {
+				this.definitionSectionCollapse.add(sectionKey);
+			}
+			paint();
+		});
+		paint();
+		return paint;
 	}
 
 	/**
 	 * One row of a tree: the fold toggle, the name marked the way a member's
-	 * is when the project reports anything about it, what the node means,
-	 * how many notes use it, and the same actions a member row offers. An
-	 * entry no folder spells gets one action instead — being created.
+	 * is when the project reports anything about it, how many notes name it,
+	 * and everything that can be done to it behind one quiet button at the
+	 * end. The row itself chooses the entry the inspector is showing, which
+	 * is where its description and the notes using it are read.
 	 */
 	private renderDefinitionRow(
 		rows: HTMLElement,
 		model: ProjectDashboardModel,
-		id: DefinitionFileChoice,
+		context: DefinitionPaneContext,
 		kind: EntityKind,
 		node: DefinitionNodeInfo,
-		hasChildren: boolean,
+		shape: { hasChildren: boolean; folded: boolean; repaint: () => void },
 	): void {
-		const collapsed = this.definitionCollapse.has(
-			this.definitionCollapseKey(id, kind, node.taxonomyPath),
-		);
+		const { id } = context;
+		const rowKey = this.definitionCollapseKey(id, kind, node.taxonomyPath);
+		const chosen = this.definitionSelection.get(id);
+		const selected =
+			chosen?.kind === kind && chosen.taxonomyPath === node.taxonomyPath;
 		const row = rows.createDiv({
-			cls: `snowflake-method-definition-row${node.missing ? ' is-missing' : ''}`,
+			cls: `snowflake-method-definition-row${node.missing ? ' is-missing' : ''}${
+				selected ? ' is-selected' : ''
+			}`,
 			attr: {
 				role: 'treeitem',
 				'aria-level': String(node.depth),
-				...(hasChildren
-					? { 'aria-expanded': collapsed ? 'false' : 'true' }
+				'aria-selected': String(selected),
+				...(shape.hasChildren
+					? { 'aria-expanded': shape.folded ? 'false' : 'true' }
 					: {}),
 			},
 		});
+		context.rows.set(rowKey, row);
+		const fold = (): void => {
+			if (!shape.hasChildren) return;
+			if (!this.definitionCollapse.delete(rowKey)) {
+				this.definitionCollapse.add(rowKey);
+			}
+			shape.repaint();
+		};
+		// The whole row answers, arrow included: choosing an entry and opening
+		// what is under it are one gesture, the way a heading opens its own
+		// section. Only the button at the end keeps a click of its own.
+		row.addEventListener('click', (event) => {
+			const target = event.target;
+			if (
+				target instanceof Element &&
+				target.closest('.snowflake-method-definition-more') !== null
+			) {
+				return;
+			}
+			context.select(kind, node.taxonomyPath);
+			fold();
+		});
+		// How deep the row sits, which is both its indent and how many guide
+		// lines run down its left: one for every branch it hangs from.
 		row.style.setProperty(
 			'--snowflake-definition-depth',
 			String(node.depth - 1),
 		);
-		if (hasChildren) {
-			const toggle = row.createEl('button', {
-				cls: 'clickable-icon snowflake-method-definition-toggle',
-				attr: {
-					type: 'button',
-					'aria-label': this.t(
-						collapsed ? 'definition.expand' : 'definition.collapse',
-					),
-				},
+		if (shape.hasChildren) {
+			// Which way it points is all it does: the row opens itself, the way
+			// a section heading opens its own section.
+			const toggle = row.createSpan({
+				cls: 'snowflake-method-definition-toggle',
+				attr: { 'aria-hidden': 'true' },
 			});
-			setIcon(toggle, collapsed ? 'chevron-right' : 'chevron-down');
-			toggle.addEventListener('click', () => {
-				const key = this.definitionCollapseKey(id, kind, node.taxonomyPath);
-				if (!this.definitionCollapse.delete(key)) {
-					this.definitionCollapse.add(key);
-				}
-				void this.refresh();
-			});
+			setIcon(toggle, shape.folded ? 'chevron-right' : 'chevron-down');
 		} else {
 			row.createSpan({
 				cls: 'snowflake-method-definition-toggle-spacer',
 				attr: { 'aria-hidden': 'true' },
 			});
 		}
-		const body = row.createDiv({ cls: 'snowflake-method-definition-row-body' });
-		const line = body.createDiv({ cls: 'snowflake-method-definition-name' });
 		const troubles = [
 			...this.memberWarnings(model, node.folderPath),
 			...(node.missing ? [this.t('definition.missingEntry')] : []),
 		];
-		setTooltip(line, [node.taxonomyPath, ...troubles].join('\n'));
-		this.renderTableName(line, node.name, troubles);
-		if (troubles.length > 0) {
-			const warning = line.createSpan({
-				cls: 'snowflake-method-table-health-warning',
-				attr: { 'aria-label': troubles.join('\n') },
-			});
-			setIcon(warning, 'triangle-alert');
-		}
-		const users = new Set([...node.usage.listed, ...node.usage.records]);
-		if (users.size > 0) {
-			const usage = line.createSpan({
-				cls: 'snowflake-method-definition-usage',
-				text: String(users.size),
-			});
-			setTooltip(
-				usage,
-				[
-					this.t('definition.usage', { count: users.size }),
-					...users,
-				].join('\n'),
-			);
-		}
-		if (node.description.length > 0) {
-			const description = body.createDiv({
-				cls: 'snowflake-method-definition-row-description',
-				text: node.description,
-			});
-			setTooltip(description, node.description);
-		}
-		const actions = row.createDiv({ cls: 'snowflake-method-table-actions' });
-		if (node.missing) {
-			const create = actions.createEl('button', {
-				cls: 'snowflake-method-definition-create',
-				text: this.t('definition.create'),
-				attr: { type: 'button' },
-			});
-			create.disabled = model.readOnly;
-			create.addEventListener('click', () => {
+		const body = row.createEl('button', {
+			cls: 'snowflake-method-definition-row-body',
+			attr: { type: 'button' },
+		});
+		setTooltip(body, [node.taxonomyPath, ...troubles].join('\n'));
+		this.renderTableName(body, node.name, troubles);
+		const more = row.createEl('button', {
+			cls: 'clickable-icon snowflake-method-definition-more',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('definition.options', { name: node.name }),
+			},
+		});
+		setIcon(more, 'ellipsis');
+		more.addEventListener('click', (event) => {
+			this.showDefinitionMenu(event, model, id, kind, node, more);
+		});
+	}
+
+	/** Everything one entry can be asked to do, from a row or the inspector. */
+	private definitionActions(
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+	): {
+		locked: boolean;
+		edit: () => void;
+		open: () => void;
+		addChild: () => void;
+		create: () => void;
+		remove: () => void;
+	} {
+		const locked = model.readOnly;
+		return {
+			locked,
+			edit: () => {
+				if (!locked) void this.openDefinitionEditor(id, kind, node);
+			},
+			open: () => {
+				void this.host.openManagedFile(node.selfPath, 'definition-fields', [
+					'definition-fields',
+				]);
+			},
+			addChild: () => {
+				void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`);
+			},
+			create: () => {
 				void this.runAndRefresh(async () => {
 					const result = await this.host.addDefinitionPath(
 						kind,
@@ -1745,79 +2029,407 @@ export class SnowflakeDashboardView extends ItemView {
 					);
 					if (!result.ok) new Notice(this.definitionRefusal(result));
 				});
+			},
+			remove: () => {
+				this.confirmDefinitionDeletion(model, id, kind, node);
+			},
+		};
+	}
+
+	/**
+	 * The menu behind a row's last button. An entry no folder spells can only
+	 * be raised, so that is all it offers.
+	 */
+	private showDefinitionMenu(
+		event: MouseEvent,
+		model: ProjectDashboardModel,
+		id: DefinitionFileChoice,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+		anchor: HTMLElement,
+	): void {
+		const actions = this.definitionActions(model, id, kind, node);
+		const menu = new Menu();
+		menu.setParentElement(anchor);
+		if (node.missing) {
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('definition.create'))
+					.setIcon('folder-plus')
+					.setDisabled(actions.locked)
+					.onClick(actions.create),
+			);
+			menu.showAtMouseEvent(event);
+			return;
+		}
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.edit'))
+				.setIcon('pencil')
+				.setDisabled(actions.locked)
+				.onClick(actions.edit),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.openNote'))
+				.setIcon('file-text')
+				.onClick(actions.open),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('definition.addChild'))
+				.setIcon('plus')
+				.setDisabled(actions.locked || node.depth >= MAX_DEFINITION_DEPTH)
+				.onClick(actions.addChild),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('actions.delete'))
+				.setIcon('trash')
+				.setWarning(true)
+				.setDisabled(actions.locked)
+				.onClick(actions.remove),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * The other half of the pane: one entry read in full — where it sits in
+	 * its tree, what it means, and which notes use it — with its name the
+	 * loudest thing in the panel and everything that can be done to it either
+	 * at the foot or behind the menu in the corner.
+	 */
+	private renderDefinitionInspector(
+		container: HTMLElement,
+		model: ProjectDashboardModel,
+		context: DefinitionPaneContext,
+	): void {
+		const { id } = context;
+		container.empty();
+		const chosen = this.definitionSelection.get(id);
+		const node =
+			chosen === undefined
+				? undefined
+				: model.definitions[id][chosen.kind].nodes.find(
+						(candidate) => candidate.taxonomyPath === chosen.taxonomyPath,
+					);
+		// With nothing chosen there is nothing to frame: no panel, only the
+		// invitation, standing where the panel would have been.
+		container.toggleClass(
+			'is-empty',
+			chosen === undefined || node === undefined,
+		);
+		if (chosen === undefined || node === undefined) {
+			container.createEl('p', {
+				cls: 'snowflake-method-definition-inspector-empty',
+				text: this.t('definition.inspector.empty'),
 			});
 			return;
 		}
-		const locked = model.readOnly;
-		const editNode = (): void => {
-			if (!locked) void this.openDefinitionEditor(id, kind, node);
-		};
-		const openNode = (): void => {
-			void this.host.openManagedFile(node.selfPath, 'definition-fields', [
-				'definition-fields',
-			]);
-		};
-		const addChild = (): void => {
-			void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`);
-		};
-		const splitButton = actions.createDiv({
-			cls: 'snowflake-method-character-split-button',
+		const kind = chosen.kind;
+		const troubles = [
+			...this.memberWarnings(model, node.folderPath),
+			...(node.missing ? [this.t('definition.missingEntry')] : []),
+		];
+		// The panel itself is the frame and holds still; everything that
+		// scrolls lives in here, and reaches out past the frame's right edge
+		// by the width of the scrollbar, which is what leaves the bar running
+		// outside the frame without taking any of the panel's width.
+		const body = container
+			.createDiv({ cls: 'snowflake-method-definition-inspector-scroll' })
+			.createDiv({ cls: 'snowflake-method-definition-inspector-body' });
+		// One line: the name, the tag saying what kind of note it files right
+		// beside it, and at the far end everything that can be done to it —
+		// behind the same menu the entry's own row carries, felling included,
+		// which is no button to leave lying about.
+		const header = body.createDiv({
+			cls: 'snowflake-method-definition-inspector-header',
 		});
-		const edit = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-edit',
-			text: this.t('actions.edit'),
-			attr: { type: 'button' },
+		this.renderTableName(
+			header.createEl('h3', {
+				cls: 'snowflake-method-definition-inspector-name',
+			}),
+			node.name,
+			troubles,
+		);
+		header.createSpan({
+			cls: 'snowflake-method-definition-inspector-kind',
+			text: this.definitionKindLabel(kind),
 		});
-		edit.disabled = locked;
-		edit.addEventListener('click', editNode);
-		const trigger = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
+		const more = header.createEl('button', {
+			cls: 'clickable-icon snowflake-method-definition-inspector-more',
 			attr: {
 				type: 'button',
 				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
+				'aria-label': this.t('definition.options', { name: node.name }),
 			},
 		});
-		const triggerIcon = trigger.createSpan({
-			cls: 'snowflake-method-character-action-menu-icon',
+		setIcon(more, 'ellipsis');
+		more.addEventListener('click', (event) => {
+			this.showDefinitionMenu(event, model, id, kind, node, more);
 		});
-		setIcon(triggerIcon, 'chevron-down');
-		trigger.addEventListener('click', (event) => {
-			// The same items a member's menu carries, and no delete: that is
-			// the button beside this one.
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('actions.edit'))
-					.setIcon('pencil')
-					.setDisabled(locked)
-					.onClick(editNode),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('common.open'))
-					.setIcon('file-text')
-					.onClick(openNode),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('definition.addChild'))
-					.setIcon('plus')
-					.setDisabled(locked || node.depth >= MAX_DEFINITION_DEPTH)
-					.onClick(addChild),
-			);
-			menu.showAtMouseEvent(event);
+		// One part of the reading: its name, and under it what there is to say.
+		// A part that can be counted says so at the end of its own line.
+		const section = (label: string, count?: number): HTMLElement => {
+			const block = body.createDiv({
+				cls: 'snowflake-method-definition-inspector-section',
+			});
+			const line = block.createDiv({
+				cls: 'snowflake-method-definition-inspector-label',
+			});
+			line.createSpan({ text: label });
+			if (count !== undefined) {
+				this.setCount(
+					line.createSpan({
+						cls:
+							'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
+							'snowflake-method-definition-inspector-total',
+					}),
+					count,
+				);
+			}
+			return block;
+		};
+		// Where the entry sits, which is what tells two entries of the same
+		// name apart: read from the folders the tree is made of, never from
+		// what a link happens to display. Each step above the last is a way
+		// back up the branch.
+		const trail = section(this.t('definition.inspector.path')).createDiv({
+			cls: 'snowflake-method-definition-inspector-trail',
 		});
-		const remove = actions.createEl('button', {
-			cls: 'snowflake-method-character-delete',
-			text: this.t('actions.delete'),
+		const segments = node.taxonomyPath.split('/');
+		for (let depth = 1; depth <= segments.length; depth += 1) {
+			const step = segments.slice(0, depth).join('/');
+			const name = segments[depth - 1] ?? step;
+			if (depth > 1) {
+				// The separator every other place in the plugin writes a path
+				// with, so one read here matches one read in a picker or a
+				// field: A/B/C, and nothing else.
+				trail.createSpan({
+					cls: 'snowflake-method-definition-inspector-slash',
+					text: '/',
+					attr: { 'aria-hidden': 'true' },
+				});
+			}
+			if (depth === segments.length) {
+				trail.createSpan({
+					cls: 'snowflake-method-definition-inspector-step is-current',
+					text: name,
+				});
+				continue;
+			}
+			const jump = trail.createEl('button', {
+				cls: 'snowflake-method-definition-inspector-step',
+				text: name,
+				attr: { type: 'button' },
+			});
+			setTooltip(jump, this.t('definition.inspector.goTo', { name }));
+			jump.addEventListener('click', () => {
+				context.reveal(kind, step);
+			});
+		}
+		const described = section(this.t('definition.inspector.description'));
+		if (node.description.length > 0) {
+			described
+				.createDiv({
+					cls: 'snowflake-method-definition-inspector-description',
+				})
+				.setText(node.description);
+		} else {
+			// Said the way every empty list in the dashboard says it.
+			this.renderDefinitionNothing(
+				described,
+				this.t('definition.inspector.noDescription'),
+			);
+		}
+		this.renderDefinitionUsage(container, model, context, kind, node, section);
+	}
+
+	/**
+	 * Who uses the chosen entry: how many notes in all, then the first few by
+	 * name with the kind of note each is, and a way to see the rest. A note
+	 * named here opens from here — that is the question this list is read to
+	 * answer.
+	 */
+	private renderDefinitionUsage(
+		panel: HTMLElement,
+		model: ProjectDashboardModel,
+		context: DefinitionPaneContext,
+		kind: EntityKind,
+		node: DefinitionNodeInfo,
+		section: (label: string, count?: number) => HTMLElement,
+	): void {
+		const { id } = context;
+		const names = [...node.usage.listed, ...node.usage.records];
+		const block = section(this.t('definition.inspector.usedBy'), names.length);
+		if (names.length === 0) {
+			this.renderDefinitionNothing(
+				block,
+				this.t('definition.inspector.unused'),
+			);
+			return;
+		}
+		// Which note a name belongs to, and what may be done to it from here,
+		// so a note using this entry is reached rather than hunted for. Only
+		// this kind's members can use it, and by the same name the usage was
+		// gathered by — which for a scene is its title.
+		const notes = new Map<
+			string,
+			{ path: string; locked: boolean; edit: () => void }
+		>();
+		const remember = (
+			name: string,
+			member: {
+				path: string;
+				readOnly: boolean;
+				healthIssues: readonly { readonly blocking: boolean }[];
+			},
+			edit: () => void,
+		): void => {
+			notes.set(name, {
+				path: member.path,
+				// The three things that hold a member table's Edit shut hold
+				// this one shut too: a form is no place to meet a damaged note.
+				locked:
+					model.readOnly ||
+					member.readOnly ||
+					member.healthIssues.some((issue) => issue.blocking),
+				edit,
+			});
+		};
+		if (kind === 'character') {
+			for (const character of model.characters) {
+				remember(character.name, character, () => {
+					void this.openCharacterEditor(model, character);
+				});
+			}
+		} else if (kind === 'scene') {
+			for (const scene of model.scenes) {
+				remember(scene.title, scene, () => {
+					void this.openSceneEditor(model, scene);
+				});
+			}
+		} else {
+			for (const entity of model.worldbuilding[kind]) {
+				remember(entity.name, entity, () => {
+					void this.openEntityEditor(model, entity);
+				});
+			}
+		}
+		const key = this.definitionCollapseKey(id, kind, node.taxonomyPath);
+		const all = this.definitionUsageOpen === key;
+		const shown = all ? names : names.slice(0, DEFINITION_USAGE_PREVIEW);
+		// One card to a note: the mark its kind goes by in the rail, its name,
+		// and what may be done to it. The card itself does nothing — it says
+		// which notes use the entry, which is a reading, not an offer.
+		const list = block.createDiv({
+			cls: 'snowflake-method-definition-inspector-notes',
+		});
+		for (const name of shown) {
+			const note = notes.get(name);
+			// A name no note answers to is written rather than offered: there
+			// is nothing to open and nothing to edit, and a dead target is
+			// worse than none.
+			const card = list.createDiv({
+				cls: `snowflake-method-definition-inspector-note${
+					note === undefined ? ' is-plain' : ''
+				}`,
+			});
+			setIcon(
+				card.createSpan({
+					cls: 'snowflake-method-definition-inspector-note-icon',
+					attr: { 'aria-hidden': 'true' },
+				}),
+				ENTITY_KIND_ICONS[kind],
+			);
+			card.createSpan({
+				cls: 'snowflake-method-definition-inspector-note-name',
+				text: name,
+			});
+			// The whole name, for one the card had to cut short.
+			setTooltip(card, name);
+			if (note === undefined) continue;
+			// Behind the same button an entry's own row carries, and holding
+			// the same two things a member's row offers.
+			const more = card.createEl('button', {
+				cls: 'clickable-icon snowflake-method-definition-inspector-note-more',
+				attr: {
+					type: 'button',
+					'aria-haspopup': 'menu',
+					'aria-label': this.t('definition.options', { name }),
+				},
+			});
+			setIcon(more, 'ellipsis');
+			more.addEventListener('click', (event) => {
+				const menu = new Menu();
+				menu.setParentElement(card);
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('common.open'))
+						.setIcon('file-text')
+						.onClick(() => {
+							void this.host.openManagedFile(note.path);
+						}),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.edit'))
+						.setIcon('pencil')
+						.setDisabled(note.locked)
+						.onClick(note.edit),
+				);
+				menu.showAtMouseEvent(event);
+			});
+		}
+		if (names.length <= DEFINITION_USAGE_PREVIEW) return;
+		const toggle = block.createEl('button', {
+			cls: 'snowflake-method-definition-inspector-viewall',
 			attr: { type: 'button' },
 		});
-		remove.disabled = locked;
-		remove.addEventListener('click', () => {
-			this.confirmDefinitionDeletion(model, id, kind, node);
+		toggle.createSpan({
+			text: all
+				? this.t('definition.inspector.showFewer')
+				: this.t('definition.inspector.viewAll', { count: names.length }),
 		});
+		setIcon(
+			toggle.createSpan({
+				cls: 'snowflake-method-definition-inspector-viewall-icon',
+				attr: { 'aria-hidden': 'true' },
+			}),
+			all ? 'chevron-up' : 'chevron-right',
+		);
+		toggle.addEventListener('click', () => {
+			this.definitionUsageOpen = all ? null : key;
+			this.renderDefinitionInspector(panel, model, context);
+		});
+	}
+
+	/**
+	 * Nothing there yet, said the way an empty table and an empty tree say it:
+	 * the same mark, the same accent, the same short sentence.
+	 */
+	private renderDefinitionNothing(parent: HTMLElement, text: string): void {
+		const empty = parent.createEl('p', {
+			cls: 'snowflake-method-character-empty snowflake-method-definition-inspector-nothing',
+		});
+		const icon = empty.createSpan({
+			cls: 'snowflake-method-character-empty-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(icon, 'triangle-alert');
+		empty.createSpan({ text });
+	}
+
+	/**
+	 * A count in one of the rail's circles. The circle keeps its size, so the
+	 * figures give way instead: three of them still read, which is as many as
+	 * a vocabulary or a kind is ever counted in.
+	 */
+	private setCount(element: HTMLElement, value: number): void {
+		const text = String(value);
+		element.setText(text);
+		element.dataset.digits = String(Math.min(text.length, 4));
 	}
 
 	/** The heading one kind's tree stands under. */
@@ -1869,6 +2481,26 @@ export class SnowflakeDashboardView extends ItemView {
 			return this.t('form.definition.taken', { name: result.segment });
 		}
 		return this.t('form.definition.invalid', { name: result.segment });
+	}
+
+	/**
+	 * Adding from the pane rather than from a row: which kind of note the
+	 * entry belongs to is asked first, because each kind keeps a vocabulary
+	 * of its own and an entry has to be born into one of them.
+	 */
+	private async addDefinitionEntryToKind(
+		id: DefinitionFileChoice,
+	): Promise<void> {
+		const kind = await promptForDefinitionKind(
+			this.app,
+			this.t,
+			ENTITY_KINDS.map((candidate) => ({
+				kind: candidate,
+				label: this.definitionKindLabel(candidate),
+			})),
+		);
+		if (kind === null) return;
+		await this.addDefinitionEntry(id, kind, '');
 	}
 
 	/** Asks for a new entry — at the root, or under the prefilled parent. */
@@ -1938,6 +2570,15 @@ export class SnowflakeDashboardView extends ItemView {
 						this.definitionCollapseKey(id, kind, taxonomyPath),
 					);
 				}
+				// The inspector is showing this entry; it keeps showing it under
+				// the name it now has, rather than emptying out.
+				const chosen = this.definitionSelection.get(id);
+				if (
+					chosen?.kind === kind &&
+					chosen.taxonomyPath === node.taxonomyPath
+				) {
+					this.definitionSelection.set(id, { kind, taxonomyPath });
+				}
 			}
 			if (settled.description !== node.description) {
 				await this.host.updateDefinitionDescription(
@@ -1985,6 +2626,15 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			(confirmed) => {
 				if (!confirmed) return;
+				// Nothing left to inspect where the subtree stood.
+				const chosen = this.definitionSelection.get(id);
+				if (
+					chosen?.kind === kind &&
+					(chosen.taxonomyPath === node.taxonomyPath ||
+						chosen.taxonomyPath.startsWith(prefix))
+				) {
+					this.definitionSelection.delete(id);
+				}
 				void this.runAndRefresh(() =>
 					this.host.deleteDefinitionNode(kind, id, node.taxonomyPath),
 				);
@@ -2801,13 +3451,6 @@ export class SnowflakeDashboardView extends ItemView {
 		const block = cell.createDiv({ cls: 'snowflake-method-member-name-cell' });
 		const line = block.createDiv({ cls: 'snowflake-method-member-name-line' });
 		this.renderTableName(line, member.name, troubles);
-		if (member.damaged) {
-			const warning = line.createSpan({
-				cls: 'snowflake-method-table-health-warning',
-				attr: { 'aria-label': this.t('editor.managedSection.damagedTitle') },
-			});
-			setIcon(warning, 'triangle-alert');
-		}
 		// Quieter than the name, and each on a line of its own beneath it: what
 		// else it goes by, what it is, then how far along it is.
 		if (member.aliases.length > 0) {
@@ -2836,7 +3479,9 @@ export class SnowflakeDashboardView extends ItemView {
 			detail.setText(fact.text);
 			setTooltip(detail, fact.text);
 		}
-		if (member.progressStatus !== null) {
+		// A line on every row of every table, and one the note's own form both
+		// sets and shows: written here only where it is asked for.
+		if (member.progressStatus !== null && this.host.showsTableProgressStatus()) {
 			block.createDiv({
 				cls:
 					'snowflake-method-entity-status snowflake-method-member-status ' +
@@ -2846,6 +3491,12 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
+	/**
+	 * A name, and what the project reports about it: the warn colour and, beside
+	 * it, the mark that says the same thing without asking anyone to see colour.
+	 * Both belong to the name itself — a name marked in one list and only tinted
+	 * in another reads as two different states of the same note.
+	 */
 	private renderTableName(
 		cell: HTMLElement,
 		name: string,
@@ -2855,11 +3506,136 @@ export class SnowflakeDashboardView extends ItemView {
 			cell.createSpan({ text: name });
 			return;
 		}
+		const reported = troubles.join('\n');
 		cell.createSpan({
 			cls: 'snowflake-method-table-missing-reference',
 			text: name,
-			attr: { 'aria-label': troubles.join('\n') },
+			attr: { 'aria-label': reported },
 		});
+		const warning = cell.createSpan({
+			cls: 'snowflake-method-table-health-warning',
+			attr: { 'aria-label': reported },
+		});
+		setIcon(warning, 'triangle-alert');
+	}
+
+	/**
+	 * Everything a row can be asked to do, behind one button at the end of its
+	 * last cell — no column of its own, and nothing on show until the row is
+	 * pointed at or reached by the keyboard. The actions used to stand as
+	 * buttons in a column that cost the table its widest one to say what a
+	 * press says when it is asked, and left deleting a note a slip of the hand
+	 * away. The menu is the one the vocabulary rows carry, so a row reads the
+	 * same wherever the dashboard puts one.
+	 */
+	private renderRowMenu(
+		cell: HTMLElement,
+		name: string,
+		build: (menu: Menu) => void,
+	): void {
+		const more = cell.createEl('button', {
+			cls: 'clickable-icon snowflake-method-table-more',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.options', { name }),
+			},
+		});
+		setIcon(more, 'ellipsis');
+		more.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(more);
+			build(menu);
+			menu.showAtMouseEvent(event);
+		});
+	}
+
+	/**
+	 * A row's actions, in whichever of the two shapes the author asked for: a
+	 * column of buttons — the action the step is for, a menu beside it, and
+	 * felling at the end — or one menu at the end of the row's last cell, which
+	 * gives the table back the widest column it had. Both offer the same things;
+	 * only the column keeps felling on show, which is why it is a choice.
+	 */
+	private renderRowActions(
+		row: HTMLElement,
+		textCell: HTMLElement,
+		member: {
+			name: string;
+			/** The action the column puts on its button, first in the menu too. */
+			primaryLabel: string;
+			primary: () => void;
+			primaryDisabled: boolean;
+			/** Edit, open and ordering, in the order this step wants them. */
+			items: (menu: Menu) => void;
+			remove: () => void;
+			removeDisabled: boolean;
+		},
+	): void {
+		if (!this.host.showsTableActionsColumn()) {
+			this.renderRowMenu(textCell, member.name, (menu) => {
+				member.items(menu);
+				menu.addSeparator();
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.delete'))
+						.setIcon('trash')
+						.setWarning(true)
+						.setDisabled(member.removeDisabled)
+						.onClick(member.remove),
+				);
+			});
+			return;
+		}
+		const cell = row.createEl('td', {
+			attr: { 'data-label': this.t('table.actions') },
+		});
+		const group = cell.createDiv({ cls: 'snowflake-method-table-actions' });
+		const splitButton = group.createDiv({
+			cls: 'snowflake-method-character-split-button',
+		});
+		const primary = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-edit',
+			text: member.primaryLabel,
+			attr: { type: 'button' },
+		});
+		primary.disabled = member.primaryDisabled;
+		primary.addEventListener('click', member.primary);
+		const trigger = splitButton.createEl('button', {
+			cls: 'snowflake-method-character-action-menu-trigger',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('table.actions'),
+			},
+		});
+		setIcon(
+			trigger.createSpan({
+				cls: 'snowflake-method-character-action-menu-icon',
+			}),
+			'chevron-down',
+		);
+		// No felling in this menu: that is the button beside it.
+		trigger.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.setParentElement(splitButton);
+			member.items(menu);
+			menu.showAtMouseEvent(event);
+		});
+		const remove = group.createEl('button', {
+			cls: 'snowflake-method-character-delete',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.disabled = member.removeDisabled;
+		remove.addEventListener('click', member.remove);
+	}
+
+	/** The columns a member table is laid by, the actions one where it is shown. */
+	private tableColumnClasses(): string[] {
+		return this.host.showsTableActionsColumn()
+			? [...MEMBER_COLUMN_CLASSES, ACTIONS_COLUMN_CLASS]
+			: [...MEMBER_COLUMN_CLASSES];
 	}
 
 	/**
@@ -3497,7 +4273,6 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t('table.name'),
 				this.t('table.category'),
 				this.t('table.oneSentenceStoryline'),
-				this.t('table.actions'),
 			],
 		);
 		const reorderReadOnly =
@@ -3507,7 +4282,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const virtual = new VirtualTable({
 			scroller: bodyWrap,
 			body,
-			columns: 5,
+			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.characterRowHeight,
 			overscan: 8,
 			rowKey: (offset) =>
@@ -3529,7 +4304,7 @@ export class SnowflakeDashboardView extends ItemView {
 			renderTail: (rows) => {
 				this.renderAddRow(
 					rows,
-					5,
+					this.tableColumnClasses().length,
 					this.t('actions.addMoreCharacters'),
 					model.readOnly,
 					() => this.openCreateCharacter(model),
@@ -3888,23 +4663,28 @@ export class SnowflakeDashboardView extends ItemView {
 		tableCls: string,
 		headers: readonly string[],
 	): { headWrap: HTMLElement; bodyWrap: HTMLElement; body: HTMLElement } {
+		// The actions column is the author's choice, so it is the frame that
+		// knows whether there is one: the rows fill whichever grid it lays.
+		const columnClasses = this.tableColumnClasses();
+		const shown = this.host.showsTableActionsColumn()
+			? [...headers, this.t('table.actions')]
+			: headers;
 		const wrap = panel.createDiv({ cls: 'snowflake-method-table-wrap' });
 		const headWrap = wrap.createDiv({ cls: 'snowflake-method-table-head' });
-		const headTable = headWrap.createEl('table', {
-			cls: `snowflake-method-table ${tableCls}`,
-		});
+		const tableClasses = `snowflake-method-table ${tableCls}${
+			this.host.showsTableActionsColumn() ? ' has-actions-column' : ''
+		}`;
+		const headTable = headWrap.createEl('table', { cls: tableClasses });
 		const bodyWrap = wrap.createDiv({ cls: 'snowflake-method-table-body' });
-		const bodyTable = bodyWrap.createEl('table', {
-			cls: `snowflake-method-table ${tableCls}`,
-		});
+		const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
 		for (const table of [headTable, bodyTable]) {
 			const columns = table.createEl('colgroup');
-			for (const cls of MEMBER_COLUMN_CLASSES) {
+			for (const cls of columnClasses) {
 				columns.createEl('col', { cls });
 			}
 		}
 		const headerRow = headTable.createEl('thead').createEl('tr');
-		for (const text of headers) headerRow.createEl('th', { text });
+		for (const text of shown) headerRow.createEl('th', { text });
 		return { headWrap, bodyWrap, body: bodyTable.createEl('tbody') };
 	}
 
@@ -3952,15 +4732,9 @@ export class SnowflakeDashboardView extends ItemView {
 				text: path,
 			});
 		}
-		row.createEl('td', {
+		const cell = row.createEl('td', {
 			text: character.oneSentenceStoryline,
 			attr: { 'data-label': this.t('table.oneSentenceStoryline') },
-		});
-		const cell = row.createEl('td', {
-			attr: { 'data-label': this.t('table.actions') },
-		});
-		const buttonGroup = cell.createDiv({
-			cls: 'snowflake-method-table-actions',
 		});
 		const editCharacter = (): void => {
 			if (model.readOnly || character.readOnly || characterDamaged) return;
@@ -3973,99 +4747,72 @@ export class SnowflakeDashboardView extends ItemView {
 				managedSectionHighlightsForStep(step),
 			);
 		};
+		// On the steps written in the note itself, opening it is the work, so
+		// that is the action the column offers and the menu leads with.
 		const opensByDefault = step === 5 || step === 7;
-		const splitButton = buttonGroup.createDiv({
-			cls: 'snowflake-method-character-split-button',
-		});
-		const primaryAction = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-edit',
-			text: this.t(
-				opensByDefault ? 'common.open' : 'actions.edit',
-			),
-			attr: { type: 'button' },
-		});
-		primaryAction.disabled =
-			!opensByDefault &&
-			(model.readOnly || character.readOnly || characterDamaged);
-		primaryAction.addEventListener(
-			'click',
-			opensByDefault ? openCharacter : editCharacter,
-		);
-		const actionMenu = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
+		this.renderRowActions(row, cell, {
+			name: character.name,
+			primaryLabel: this.t(opensByDefault ? 'common.open' : 'actions.edit'),
+			primary: opensByDefault ? openCharacter : editCharacter,
+			primaryDisabled:
+				!opensByDefault &&
+				(model.readOnly || character.readOnly || characterDamaged),
+			items: (menu) => {
+				const addEditItem = (): void => {
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('actions.edit'))
+							.setIcon('pencil')
+							.setDisabled(
+								model.readOnly || character.readOnly || characterDamaged,
+							)
+							.onClick(editCharacter),
+					);
+				};
+				const addOpenItem = (): void => {
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('common.open'))
+							.setIcon('file-text')
+							.onClick(openCharacter),
+					);
+				};
+				if (opensByDefault) {
+					addOpenItem();
+					addEditItem();
+				} else {
+					addEditItem();
+					addOpenItem();
+				}
+				this.addOrderMenuItems(menu, {
+					index,
+					total: model.characters.length,
+					locked: reorderReadOnly,
+					readOnly: model.readOnly,
+					insertTitleKey: 'table.insertCharacterAfter',
+					options: () =>
+						model.characters
+							.map((candidate, at) => ({
+								id: candidate.id,
+								index: at,
+								label: `${String(at + 1)}. ${candidate.name}`,
+							}))
+							.filter((candidate) => candidate.id !== character.id),
+					move: (toIndex) => this.host.reorderCharacter(character.id, toIndex),
+					reveal: () => {
+						this.revealCharacter(character.id);
+					},
+					insert: () => {
+						this.insertCharacterAfter(model, index);
+					},
+				});
 			},
-		});
-		const menuIcon = actionMenu.createSpan({
-			cls: 'snowflake-method-character-action-menu-icon',
-		});
-		setIcon(menuIcon, 'chevron-down');
-		actionMenu.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			const addEditItem = (): void => {
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('actions.edit'))
-						.setIcon('pencil')
-						.setDisabled(
-							model.readOnly || character.readOnly || characterDamaged,
-						)
-						.onClick(editCharacter),
+			remove: () => {
+				void this.runAndRefresh(() =>
+					this.host.deleteCharacter(character.id, character.revision),
 				);
-			};
-			const addOpenItem = (): void => {
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('common.open'))
-						.setIcon('file-text')
-						.onClick(openCharacter),
-				);
-			};
-			if (step === 3) {
-				addOpenItem();
-				addEditItem();
-			} else {
-				addEditItem();
-				addOpenItem();
-			}
-			this.addOrderMenuItems(menu, {
-				index,
-				total: model.characters.length,
-				locked: reorderReadOnly,
-				readOnly: model.readOnly,
-				insertTitleKey: 'table.insertCharacterAfter',
-				options: () =>
-					model.characters
-						.map((candidate, at) => ({
-							id: candidate.id,
-							index: at,
-							label: `${String(at + 1)}. ${candidate.name}`,
-						}))
-						.filter((candidate) => candidate.id !== character.id),
-				move: (toIndex) => this.host.reorderCharacter(character.id, toIndex),
-				reveal: () => {
-					this.revealCharacter(character.id);
-				},
-				insert: () => {
-					this.insertCharacterAfter(model, index);
-				},
-			});
-			menu.showAtMouseEvent(event);
-		});
-		const remove = buttonGroup.createEl('button', {
-			cls: 'snowflake-method-character-delete',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.disabled = model.readOnly || character.readOnly;
-		remove.addEventListener('click', () => {
-			void this.runAndRefresh(() =>
-				this.host.deleteCharacter(character.id, character.revision),
-			);
+			},
+			removeDisabled: model.readOnly || character.readOnly,
 		});
 		if (!dragLocked) {
 			this.makeRowReorderable(
@@ -4171,8 +4918,8 @@ export class SnowflakeDashboardView extends ItemView {
 		const { headWrap, bodyWrap, body } = this.buildTableFrame(
 			panel,
 			'snowflake-method-scene-table',
-			['order', 'sceneName', 'scenePov', 'conflict', 'actions'].map(
-				(key) => this.t(`table.${key}`),
+			['order', 'sceneName', 'scenePov', 'conflict'].map((key) =>
+				this.t(`table.${key}`),
 			),
 		);
 		const reorderReadOnly =
@@ -4182,7 +4929,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const virtual = new VirtualTable({
 			scroller: bodyWrap,
 			body,
-			columns: 5,
+			columns: this.tableColumnClasses().length,
 			estimatedRowHeight: this.sceneRowHeight,
 			overscan: 8,
 			rowKey: (offset) => entries[offset]?.scene.id ?? `?${String(offset)}`,
@@ -4203,7 +4950,7 @@ export class SnowflakeDashboardView extends ItemView {
 			renderTail: (rows) => {
 				this.renderAddRow(
 					rows,
-					5,
+					this.tableColumnClasses().length,
 					this.t('actions.addMoreScenes'),
 					model.readOnly,
 					() => this.openCreateScene(model),
@@ -4304,15 +5051,9 @@ export class SnowflakeDashboardView extends ItemView {
 		} else {
 			povCell.setText(scene.povName);
 		}
-		row.createEl('td', {
+		const textCell = row.createEl('td', {
 			text: scene.conflict,
 			attr: { 'data-label': this.t('table.conflict') },
-		});
-		const actionCell = row.createEl('td', {
-			attr: { 'data-label': this.t('table.actions') },
-		});
-		const buttonGroup = actionCell.createDiv({
-			cls: 'snowflake-method-table-actions',
 		});
 		const editScene = (): void => {
 			if (model.readOnly || scene.readOnly || sceneDamaged) return;
@@ -4325,94 +5066,69 @@ export class SnowflakeDashboardView extends ItemView {
 				managedSectionHighlightsForStep(step),
 			);
 		};
+		// The step-9 planning is written in the scene note itself, so that is the
+		// step where opening it leads and editing its fields follows.
 		const opensByDefault = step === 9;
-		const splitButton = buttonGroup.createDiv({
-			cls: 'snowflake-method-character-split-button',
-		});
-		const primaryAction = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-edit',
-			text: this.t(opensByDefault ? 'common.open' : 'actions.edit'),
-			attr: { type: 'button' },
-		});
-		primaryAction.disabled =
-			!opensByDefault && (model.readOnly || scene.readOnly || sceneDamaged);
-		primaryAction.addEventListener(
-			'click',
-			opensByDefault ? openScene : editScene,
-		);
-		const actionMenu = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
+		this.renderRowActions(row, textCell, {
+			name: scene.title,
+			primaryLabel: this.t(opensByDefault ? 'common.open' : 'actions.edit'),
+			primary: opensByDefault ? openScene : editScene,
+			primaryDisabled:
+				!opensByDefault && (model.readOnly || scene.readOnly || sceneDamaged),
+			items: (menu) => {
+				const addEditItem = (): void => {
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('actions.edit'))
+							.setIcon('pencil')
+							.setDisabled(model.readOnly || scene.readOnly || sceneDamaged)
+							.onClick(editScene),
+					);
+				};
+				const addOpenItem = (): void => {
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('common.open'))
+							.setIcon('file-text')
+							.onClick(openScene),
+					);
+				};
+				if (opensByDefault) {
+					addOpenItem();
+					addEditItem();
+				} else {
+					addEditItem();
+					addOpenItem();
+				}
+				this.addOrderMenuItems(menu, {
+					index,
+					total: model.scenes.length,
+					locked: reorderReadOnly,
+					readOnly: model.readOnly,
+					insertTitleKey: 'table.insertSceneAfter',
+					options: () =>
+						model.scenes
+							.map((candidate, at) => ({
+								id: candidate.id,
+								index: at,
+								label: `${String(at + 1)}. ${candidate.title}`,
+							}))
+							.filter((candidate) => candidate.id !== scene.id),
+					move: (toIndex) => this.host.reorderScene(scene.id, toIndex),
+					reveal: () => {
+						this.revealScene(scene.id);
+					},
+					insert: () => {
+						this.insertSceneAfter(model, index);
+					},
+				});
 			},
-		});
-		const menuIcon = actionMenu.createSpan({
-			cls: 'snowflake-method-character-action-menu-icon',
-		});
-		setIcon(menuIcon, 'chevron-down');
-		actionMenu.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			const addEditItem = (): void => {
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('actions.edit'))
-						.setIcon('pencil')
-						.setDisabled(model.readOnly || scene.readOnly || sceneDamaged)
-						.onClick(editScene),
+			remove: () => {
+				void this.runAndRefresh(() =>
+					this.host.deleteScene(scene.id, scene.revision),
 				);
-			};
-			const addOpenItem = (): void => {
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('common.open'))
-						.setIcon('file-text')
-						.onClick(openScene),
-				);
-			};
-			if (step === 8) {
-				addOpenItem();
-				addEditItem();
-			} else {
-				addEditItem();
-				addOpenItem();
-			}
-			this.addOrderMenuItems(menu, {
-				index,
-				total: model.scenes.length,
-				locked: reorderReadOnly,
-				readOnly: model.readOnly,
-				insertTitleKey: 'table.insertSceneAfter',
-				options: () =>
-					model.scenes
-						.map((candidate, at) => ({
-							id: candidate.id,
-							index: at,
-							label: `${String(at + 1)}. ${candidate.title}`,
-						}))
-						.filter((candidate) => candidate.id !== scene.id),
-				move: (toIndex) => this.host.reorderScene(scene.id, toIndex),
-				reveal: () => {
-					this.revealScene(scene.id);
-				},
-				insert: () => {
-					this.insertSceneAfter(model, index);
-				},
-			});
-			menu.showAtMouseEvent(event);
-		});
-		const remove = buttonGroup.createEl('button', {
-			cls: 'snowflake-method-character-delete',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.disabled = model.readOnly || scene.readOnly;
-		remove.addEventListener('click', () => {
-			void this.runAndRefresh(() =>
-				this.host.deleteScene(scene.id, scene.revision),
-			);
+			},
+			removeDisabled: model.readOnly || scene.readOnly,
 		});
 
 		if (!dragLocked) {
