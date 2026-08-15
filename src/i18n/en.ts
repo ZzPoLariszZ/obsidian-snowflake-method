@@ -20,8 +20,7 @@ export const en = {
 	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
 	'commands.openManuscriptStream': 'Open manuscript stream',
-	'commands.migrateMemberNotes':
-		'Write field overviews into character and scene notes',
+	'commands.migrateMemberNotes': 'Bring the project’s notes up to date',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
 	'commands.manuscriptNextSegment': 'Go to the next manuscript note',
 	'commands.manuscriptPreviousSegment': 'Go to the previous manuscript note',
@@ -262,10 +261,11 @@ export const en = {
 		'Repair finished: {created} created, {repaired} repaired, {conflicts} conflicts.',
 	'messages.healthCheckPassed': 'Health check passed. No problems were found.',
 	'messages.migrateMemberNotesDone':
-		'Added overviews to {migrated} notes. Skipped {skipped}.',
+		'Brought {migrated} note(s) up to date. Skipped {skipped}.',
+	'migrate.membersTitle': 'Older project format',
 	'migrate.membersCallout':
-		'{count} character and scene notes do not show their fields in the note body yet.',
-	'migrate.membersAction': 'Add overviews',
+		'{count} note(s) from an older format can be brought up to date.',
+	'migrate.membersAction': 'Update',
 	'messages.healthCheckIssues': 'Health check found {count} problem(s).',
 	'messages.characterCreated': 'Created character “{name}”.',
 	'messages.characterDeleted': 'Moved character note to the trash.',

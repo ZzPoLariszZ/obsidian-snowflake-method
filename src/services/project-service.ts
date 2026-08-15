@@ -2911,25 +2911,9 @@ export class SnowflakeProjectService {
       (await this.adoptSceneNoteFields(loaded)) > 0
         ? await this.loadProject(projectLocator)
         : loaded;
-    // The system templates carry the schema stamp too, and they are canonical
-    // plugin files: bringing them current here is the same write the health
-    // pane's repair performs, folded in so one migration leaves nothing
-    // flagged. Missing or damaged ones stay the repair pane's business.
-    const layout = getProjectPathLayout(project.locale);
-    for (const systemTemplate of getSystemTemplates(project.locale)) {
-      const path = normalizePath(
-        `${project.rootPath}/${layout.directories.system}/${systemTemplate.fileName}`,
-      );
-      const record = await this.repository.tryReadManaged(path);
-      if (record === null) continue;
-      const frontmatter = systemTemplateFrontmatter(systemTemplate, project);
-      if (isCurrentSystemTemplate(record, systemTemplate, frontmatter)) continue;
-      await this.repository.replaceManagedFile(
-        path,
-        systemTemplate.template,
-        frontmatter,
-      );
-    }
+    // The plugin's own files come along first, silently: they are generated,
+    // so bringing them current is bookkeeping, not migration.
+    await this.settleSystemFiles(project);
     const characterNames = new Map(
       project.characters.map((character) => [character.path, character.name]),
     );
@@ -3042,6 +3026,24 @@ export class SnowflakeProjectService {
       }
     }
 
+    for (const kind of WORLDBUILDING_KINDS) {
+      for (const entity of project.worldbuilding[kind]) {
+        if (entity.readOnly || !entity.unmigrated) continue;
+        try {
+          // The block first: a damaged one refuses here and keeps the old
+          // stamp, which is what keeps the note counted as waiting.
+          await this.reconcileMemberFieldsBlock(project, entity.path);
+          await this.repository.updateFrontmatter(entity.path, {
+            [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,
+          });
+          migrated += 1;
+        } catch (error) {
+          if (!(error instanceof UnsafeSectionError)) throw error;
+          skipped += 1;
+        }
+      }
+    }
+
     // Members the flags never marked can still carry yesterday's overview
     // shape; the same idempotent reconcile the vault watcher runs brings each
     // one current, and touches nothing that already matches.
@@ -3104,13 +3106,110 @@ export class SnowflakeProjectService {
       }
     }
 
-    if (project.schemaVersion !== SCHEMA_VERSION) {
-      await this.repository.updateFrontmatter(project.projectFile, {
+    // The members above are the notes the migration transforms; everything
+    // else the plugin manages — step artifacts, the manuscript, materials,
+    // archives, definition notes — changes nothing but its stamp between
+    // schemas, and nothing else ever brings that stamp forward. Swept here so
+    // one migration leaves no note claiming an older release wrote it,
+    // whichever door it came through. Members stay out of the sweep: one the
+    // loop skipped must keep its old stamp, or it stops being counted as
+    // waiting.
+    for (const path of await this.listOutdatedStamps(project)) {
+      await this.repository.updateFrontmatter(path, {
         [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,
       });
+      migrated += 1;
     }
 
     return { migrated, skipped };
+  }
+
+  /**
+   * Brings the plugin's own files current, silently. The system templates,
+   * 011 through 091, are generated: a missing one is created and an outdated
+   * one replaced without asking, and the metadata note's schema stamp —
+   * bookkeeping on a plugin-managed file — comes along the same way. A
+   * template that exists but cannot be read is left for the health pane to
+   * explain. User notes are never touched here: their crossing stays behind
+   * the Update button. Runs when a dashboard shows the project and at the
+   * head of every migration; both doors are idempotent.
+   */
+  async settleSystemFiles(projectLocator: ProjectLocator): Promise<boolean> {
+    const project = await this.loadProject(projectLocator);
+    if (project.readOnly) return false;
+    let settled = false;
+    const layout = getProjectPathLayout(project.locale);
+    for (const systemTemplate of getSystemTemplates(project.locale)) {
+      const path = normalizePath(
+        `${project.rootPath}/${layout.directories.system}/${systemTemplate.fileName}`,
+      );
+      const frontmatter = systemTemplateFrontmatter(systemTemplate, project);
+      if (this.repository.getFile(path) === null) {
+        await this.repository.createManagedFile({
+          path,
+          template: systemTemplate.template,
+          frontmatter,
+        });
+        settled = true;
+        continue;
+      }
+      const record = await this.repository.tryReadManaged(path);
+      if (record === null || record.readOnly) continue;
+      if (isCurrentSystemTemplate(record, systemTemplate, frontmatter)) continue;
+      await this.repository.replaceManagedFile(
+        path,
+        systemTemplate.template,
+        frontmatter,
+      );
+      settled = true;
+    }
+    if (
+      project.schemaVersion !== null &&
+      project.schemaVersion < SCHEMA_VERSION
+    ) {
+      await this.repository.updateFrontmatter(project.projectFile, {
+        [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,
+      });
+      settled = true;
+    }
+    return settled;
+  }
+
+  /**
+   * Every note of the project that still carries an older release's schema
+   * stamp and that no member machinery will bring forward: artifacts, drafts,
+   * materials, archives, definition notes — anything managed except the
+   * members, whose crossing (and whose right to be skipped) belongs to the
+   * member loops, and the metadata note, whose stamp the migration writes
+   * last and countOutdatedNotes checks directly off the snapshot.
+   */
+  private async listOutdatedStamps(
+    project: ProjectRef | ProjectSnapshot,
+  ): Promise<string[]> {
+    const entries = await this.repository.listManagedEntriesBelow(
+      project.rootPath,
+      undefined,
+      project.id,
+    );
+    const outdated: string[] = [];
+    for (const entry of entries) {
+      if (entry.readOnly) continue;
+      const documentType = documentTypeOf(entry.frontmatter);
+      if (!isDocumentType(documentType)) continue;
+      if (isMemberDocumentType(documentType)) continue;
+      if (documentType === "project-metadata") continue;
+      if (entry.schemaVersion === null || entry.schemaVersion >= SCHEMA_VERSION) {
+        continue;
+      }
+      outdated.push(entry.path);
+    }
+    return outdated;
+  }
+
+  /** How many such notes are waiting, for the dashboard's callout to say. */
+  async countOutdatedNotes(projectLocator: ProjectLocator): Promise<number> {
+    const project = await this.loadProject(projectLocator);
+    return (await this.listOutdatedStamps(project)).length;
   }
 
   /**
@@ -4895,6 +4994,9 @@ export class SnowflakeProjectService {
       timeStart: asString(record.frontmatter[FRONTMATTER_KEYS.timeStart]),
       timeEnd: asString(record.frontmatter[FRONTMATTER_KEYS.timeEnd]),
       ...reading,
+      // Entities change nothing but the stamp between schemas, so the stamp
+      // is the whole test of whether the migration has reached the note.
+      unmigrated: (record.schemaVersion ?? 0) < SCHEMA_VERSION,
       readOnly: record.readOnly,
     };
   }

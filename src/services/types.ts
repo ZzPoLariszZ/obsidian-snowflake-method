@@ -492,6 +492,8 @@ export interface WorldbuildingRecord {
   relationshipsUnrecognized: string[];
   notes: string;
   sectionHealth: ManagedSectionsInspection;
+  /** True while the note carries an older release's schema stamp. */
+  unmigrated: boolean;
   /** Stable fingerprint of the complete managed Markdown note. */
   revision: string;
   readOnly: boolean;

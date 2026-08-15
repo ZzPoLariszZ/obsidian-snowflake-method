@@ -634,6 +634,10 @@ export class SnowflakeDashboardView extends ItemView {
 				text: model.readOnlyReason ?? this.t('dashboard.readOnlySchema'),
 			});
 		}
+		// The project-level notices share one place: a vault from a newer
+		// release warns just above, and one with notes from an older release
+		// offers its update here, wherever in the dashboard the author is.
+		this.renderMigrationCallout(root, model);
 
 		const globalStructureIssues = model.structureIssues.filter(
 			shouldShowGlobalStructureIssue,
@@ -4121,28 +4125,34 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * One line above the member tables while any writable note predates the
-	 * generated fields block. Informational, never damage: the notes keep
-	 * working from their properties until their author chooses to migrate.
+	 * One line among the project-level notices while any writable note was
+	 * written by an older release — a member without its generated fields
+	 * block, or any managed note still carrying an old schema stamp. It sits
+	 * beside the newer-schema warning: both speak about the vault's age, one
+	 * looking forward and one back. Informational, never damage: the notes
+	 * keep working until their author chooses to update.
 	 */
 	private renderMigrationCallout(
 		panel: HTMLElement,
 		model: ProjectDashboardModel,
 	): void {
-		if (model.unmigratedMembers === 0 || model.readOnly) return;
+		if (model.outdatedNotes === 0 || model.readOnly) return;
 		const callout = panel.createDiv({
-			cls: 'snowflake-method-migrate-callout',
+			cls: 'snowflake-method-repair-callout snowflake-method-migrate-callout',
 			attr: { role: 'status' },
 		});
 		const icon = callout.createSpan({
-			cls: 'snowflake-method-migrate-callout-icon',
+			cls: 'snowflake-method-repair-callout-icon',
 			attr: { 'aria-hidden': 'true' },
 		});
-		setIcon(icon, 'info');
-		callout.createSpan({
-			cls: 'snowflake-method-migrate-callout-copy',
+		setIcon(icon, 'refresh-cw');
+		const copy = callout.createDiv({
+			cls: 'snowflake-method-repair-callout-copy',
+		});
+		copy.createEl('h3', { text: this.t('migrate.membersTitle') });
+		copy.createEl('p', {
 			text: this.t('migrate.membersCallout', {
-				count: model.unmigratedMembers,
+				count: model.outdatedNotes,
 			}),
 		});
 		const action = callout.createEl('button', {
@@ -4172,7 +4182,6 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 3 | 5 | 7,
 	): void {
-		this.renderMigrationCallout(panel, model);
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});
@@ -4832,7 +4841,6 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 8 | 9,
 	): void {
-		this.renderMigrationCallout(panel, model);
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});

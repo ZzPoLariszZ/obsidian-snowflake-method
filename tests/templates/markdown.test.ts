@@ -182,6 +182,7 @@ describe('story artifact Markdown templates', () => {
 			'032_Template_Long_Synopsis.md',
 			'041_Template_Scene.md',
 			'051_Template_Draft.md',
+			'061_Template_Worldbuilding.md',
 			'081_Template_Material.md',
 			'091_Template_Archive.md',
 		]);
@@ -193,6 +194,7 @@ describe('story artifact Markdown templates', () => {
 			'032_模板_长篇大纲.md',
 			'041_模板_场景.md',
 			'051_模板_初稿.md',
+			'061_模板_世界观.md',
 			'081_模板_素材.md',
 			'091_模板_存档.md',
 		]);

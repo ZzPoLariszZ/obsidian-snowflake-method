@@ -37,6 +37,7 @@ export interface SystemTemplateDefinition {
     | "long-synopsis"
     | "scene"
     | "draft"
+    | "worldbuilding"
     | "material"
     | "archive";
   documentType: DocumentType;
@@ -91,6 +92,7 @@ interface Copy {
   blankHint: string;
   characterTemplateTitle: string;
   sceneTemplateTitle: string;
+  worldbuildingTemplateTitle: string;
   materialTemplateTitle: string;
   archiveTemplateTitle: string;
 }
@@ -130,6 +132,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     blankHint: "Write here.",
     characterTemplateTitle: "Character",
     sceneTemplateTitle: "Scene",
+    worldbuildingTemplateTitle: "Worldbuilding",
     materialTemplateTitle: "Material",
     archiveTemplateTitle: "Archive",
   },
@@ -166,6 +169,7 @@ const COPY: Record<TemplateLanguage, Copy> = {
     blankHint: "在这里写作。",
     characterTemplateTitle: "角色",
     sceneTemplateTitle: "场景",
+    worldbuildingTemplateTitle: "世界观",
     materialTemplateTitle: "素材",
     archiveTemplateTitle: "存档",
   },
@@ -227,6 +231,7 @@ export function getSystemTemplates(
         long: "032_模板_长篇大纲.md",
         scene: "041_模板_场景.md",
         draft: "051_模板_初稿.md",
+        worldbuilding: "061_模板_世界观.md",
         material: "081_模板_素材.md",
         archive: "091_模板_存档.md",
       }
@@ -238,6 +243,7 @@ export function getSystemTemplates(
         long: "032_Template_Long_Synopsis.md",
         scene: "041_Template_Scene.md",
         draft: "051_Template_Draft.md",
+        worldbuilding: "061_Template_Worldbuilding.md",
         material: "081_Template_Material.md",
         archive: "091_Template_Archive.md",
       };
@@ -283,6 +289,12 @@ export function getSystemTemplates(
       documentType: "draft",
       fileName: fileNames.draft,
       template: draftTemplate(language),
+    },
+    {
+      id: "worldbuilding",
+      documentType: "worldbuilding",
+      fileName: fileNames.worldbuilding,
+      template: entityTemplate(copy.worldbuildingTemplateTitle, "item", language),
     },
     {
       id: "material",

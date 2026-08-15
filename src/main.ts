@@ -791,6 +791,14 @@ export default class SnowflakeMethodPlugin
 		if (path === null) {
 			project = await this.projects.reconcileRevisionStatuses(project);
 		}
+		// The plugin's own files — the system templates and the metadata
+		// note's stamp — are generated, so a dashboard showing the project
+		// brings them current here, silently. User notes keep their banner.
+		if (!project.readOnly && (await this.projects.settleSystemFiles(project))) {
+			project = await this.projects.reconcileRevisionStatuses(
+				project.projectFile,
+			);
+		}
 		this.rememberDraft(project);
 		this.projectLocalesById.set(project.id, project.locale);
 		const projectT = (
@@ -931,11 +939,15 @@ export default class SnowflakeMethodPlugin
 					),
 				),
 			},
-			unmigratedMembers:
+			outdatedNotes:
 				characters.filter(
 					(character) => character.unmigrated && !character.readOnly,
 				).length +
-				scenes.filter((scene) => scene.unmigrated && !scene.readOnly).length,
+				scenes.filter((scene) => scene.unmigrated && !scene.readOnly).length +
+				WORLDBUILDING_KINDS.flatMap(
+					(kind) => project.worldbuilding[kind],
+				).filter((entity) => entity.unmigrated && !entity.readOnly).length +
+				(await this.projects.countOutdatedNotes(project)),
 			structureIssues: project.structureIssues.map((issue) => ({
 				path: issue.path,
 				sectionId: null,

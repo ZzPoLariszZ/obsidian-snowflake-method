@@ -387,7 +387,15 @@ function splitFrontmatter(content: string): {
 } {
   const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/u.exec(content);
   if (!match) return { frontmatter: {}, body: content };
-  const parsed = parseFakeYaml(match[1] ?? "");
+  let parsed: unknown;
+  try {
+    parsed = parseFakeYaml(match[1] ?? "");
+  } catch {
+    // The fake's frontmatter dialect is JSON; a block it cannot read stands
+    // in for YAML Obsidian's cache could not parse, which surfaces as a note
+    // with no frontmatter — readers then open the file itself.
+    return { frontmatter: {}, body: content };
+  }
   return {
     frontmatter:
       typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)

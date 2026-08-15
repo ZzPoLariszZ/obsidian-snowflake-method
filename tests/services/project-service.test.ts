@@ -136,6 +136,7 @@ describe("SnowflakeProjectService", () => {
       "032_模板_长篇大纲.md",
       "041_模板_场景.md",
       "051_模板_初稿.md",
+      "061_模板_世界观.md",
       "081_模板_素材.md",
       "091_模板_存档.md",
     ].map((name) => `${project.rootPath}/00_系统/${name}`);
@@ -5038,6 +5039,140 @@ describe("SnowflakeProjectService", () => {
       await fakeVault.createFolder(`${project.rootPath}/80_Material/Maps`);
       const after = await service.loadProject(project.projectFile);
       expect(after).not.toBe(first);
+    });
+  });
+
+  describe("schema stamps beyond the members", () => {
+    // The fake's frontmatter dialect is JSON, so that is what an aged stamp
+    // looks like here.
+    const flip = (path: string): void => {
+      fakeVault.contents.set(
+        path,
+        (fakeVault.contents.get(path) ?? "").replace(
+          '"snowflake-schema": 2',
+          '"snowflake-schema": 1',
+        ),
+      );
+    };
+    const schemaOf = (path: string): unknown =>
+      parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+        "snowflake-schema"
+      ];
+
+    it("brings every non-member note an older release wrote up to date", async () => {
+      const project = await service.createProject({ name: "Stamp Sweep" });
+      const draftPath = project.links.draft ?? "";
+      const summaryPath = `${project.rootPath}/${STEP_ONE_RELATIVE_PATH}`;
+      const materialPath = `${project.rootPath}/80_Material/Old Clipping.md`;
+      flip(draftPath);
+      flip(summaryPath);
+      await fakeVault.create(
+        materialPath,
+        [
+          "---",
+          "{",
+          '  "snowflake-schema": 1,',
+          '  "snowflake-document": "material",',
+          `  "snowflake-project-id": "${project.id}"`,
+          "}",
+          "---",
+          "An old clipping.",
+          "",
+        ].join("\n"),
+      );
+
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(3);
+      const pass = await service.migrateMemberNotes(project.projectFile);
+      expect(pass).toEqual({ migrated: 3, skipped: 0 });
+      expect(schemaOf(draftPath)).toBe(2);
+      expect(schemaOf(summaryPath)).toBe(2);
+      expect(schemaOf(materialPath)).toBe(2);
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
+      expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
+        migrated: 0,
+        skipped: 0,
+      });
+    });
+
+    it("settles the metadata stamp silently, off the update count", async () => {
+      const project = await service.createProject({ name: "Stamp Metadata" });
+      flip(project.projectFile);
+      // A plugin-managed file: never the banner's business.
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
+      expect(await service.settleSystemFiles(project.projectFile)).toBe(true);
+      expect(schemaOf(project.projectFile)).toBe(2);
+      expect(await service.settleSystemFiles(project.projectFile)).toBe(false);
+    });
+
+    it("rebuilds the system templates silently, worldbuilding included", async () => {
+      const project = await service.createProject({ name: "Settle Templates" });
+      const worldbuildingTemplate = `${project.rootPath}/00_System/061_Template_Worldbuilding.md`;
+      expect(fakeVault.getFileByPath(worldbuildingTemplate)).not.toBeNull();
+      fakeVault.delete(worldbuildingTemplate);
+      const characterTemplate = `${project.rootPath}/00_System/021_Template_Character.md`;
+      flip(characterTemplate);
+
+      expect(await service.settleSystemFiles(project.projectFile)).toBe(true);
+      expect(fakeVault.getFileByPath(worldbuildingTemplate)).not.toBeNull();
+      expect(schemaOf(characterTemplate)).toBe(2);
+      expect(await service.settleSystemFiles(project.projectFile)).toBe(false);
+    });
+
+    it("stamps an entity an older release wrote, counted as a member", async () => {
+      const project = await service.createProject({ name: "Stamp Entity" });
+      const relic = await service.createEntity(project, {
+        kind: "item",
+        name: "Relic",
+        progressStatus: "in-progress",
+      });
+      flip(relic.path);
+      const before = await service.loadProject(project.projectFile);
+      expect(
+        before.worldbuilding.item.find((entity) => entity.name === "Relic")
+          ?.unmigrated,
+      ).toBe(true);
+      // A member: monitored through its own flag, not the non-member count.
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
+      const pass = await service.migrateMemberNotes(project.projectFile);
+      expect(pass).toEqual({ migrated: 1, skipped: 0 });
+      expect(schemaOf(relic.path)).toBe(2);
+      const after = await service.loadProject(project.projectFile);
+      expect(
+        after.worldbuilding.item.find((entity) => entity.name === "Relic")
+          ?.unmigrated,
+      ).toBe(false);
+      expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
+        migrated: 0,
+        skipped: 0,
+      });
+    });
+
+    it("leaves a skipped member to the member loop, still counted", async () => {
+      const project = await service.createProject({ name: "Stamp Member" });
+      const bea = await service.createCharacter(project, {
+        name: "Bea",
+        type: "minor",
+      });
+      const raw = fakeVault.contents.get(bea.path) ?? "";
+      fakeVault.contents.set(
+        bea.path,
+        `${stripSection(raw, "character-fields")}\n<!-- snowflake:section:character-fields:start -->\n`,
+      );
+
+      const pass = await service.migrateMemberNotes(project.projectFile);
+      expect(pass.skipped).toBe(1);
+      // The sweep counts no members: one the loop skipped keeps its damaged
+      // block, stays unmigrated, and is reported again next time — none of
+      // which the generic stamp sweep may shortcut.
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(0);
+      const after = await service.loadProject(project.projectFile);
+      expect(
+        after.characters.find((character) => character.name === "Bea")
+          ?.unmigrated,
+      ).toBe(true);
+      expect(
+        (await service.migrateMemberNotes(project.projectFile)).skipped,
+      ).toBe(1);
     });
   });
 });

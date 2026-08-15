@@ -185,7 +185,7 @@ export interface ProjectDashboardModel {
 	/** The three vocabularies across every kind, for the definition panes. */
 	definitions: Record<DefinitionFileChoice, DefinitionForest>;
 	/** Writable member notes that predate the generated fields block. */
-	unmigratedMembers: number;
+	outdatedNotes: number;
 	structureIssues: ManagedSectionIssueViewModel[];
 	/** The manuscript note last worked in, when it is still in the vault. */
 	lastManuscriptNote: { path: string; title: string } | null;

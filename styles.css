@@ -1260,40 +1260,22 @@
 	line-height: 1.45;
 }
 
-/* The migration line above the member tables: informational, not damage, so
-   it takes the accent tone the repair callout reserves orange for. */
+/* The update notice among the project-level callouts: the newer-schema
+   warning's twin in shape and width, wearing the blue of an in-progress
+   step — an age of the vault the author can do something about. */
 .snowflake-method-migrate-callout {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
-	gap: var(--size-4-3);
-	margin: 0 0 var(--size-4-4);
-	padding: var(--size-4-3) var(--size-4-4);
-	border: 0;
-	border-inline-start: 3px solid var(--interactive-accent);
-	border-radius: var(--radius-s);
+	border-inline-start-color: var(--color-blue);
 	background: color-mix(
 		in srgb,
-		var(--interactive-accent) 5%,
+		var(--color-blue) 5%,
 		var(--background-primary)
 	);
 }
 
-.snowflake-method-migrate-callout-icon {
-	display: inline-flex;
-	color: var(--interactive-accent);
-}
-
-.snowflake-method-migrate-callout-icon > svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
-}
-
-.snowflake-method-migrate-callout-copy {
-	min-width: 0;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	line-height: 1.45;
+.snowflake-method-migrate-callout > .snowflake-method-repair-callout-icon {
+	margin-top: 0;
+	color: var(--color-blue);
 }
 
 .snowflake-method-guided-section {
