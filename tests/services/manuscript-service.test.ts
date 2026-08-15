@@ -504,6 +504,9 @@ describe("what a manuscript costs to read", () => {
   it("goes over the manuscript once to load a project, not twice", async () => {
     fakeVault.readCalls.length = 0;
     fakeMetadataCache.getFileCacheCalls.length = 0;
+    // The snapshot cache would answer for free; the question here is what a
+    // real rebuild pays, so it is made to happen.
+    service.forgetSnapshots();
     await service.loadProject(project.projectFile);
 
     // Both questions a load asks of the manuscript -- what order it reads in,

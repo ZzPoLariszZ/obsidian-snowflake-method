@@ -371,12 +371,68 @@ export class SnowflakeProjectService {
     );
   }
 
+  /**
+   * The last snapshot of each project, kept while its files stand unchanged.
+   *
+   * Nearly everything the plugin does begins by loading the project, and at
+   * three thousand scenes a load spends a third of a second mapping and
+   * inspecting notes that have not moved since the last one. The digest is
+   * the subtree as the vault already holds it in memory — every folder path,
+   * and every file path with its modification time and size — so a write,
+   * rename, deletion or new folder from anyone, the plugin included, reads
+   * as a different project and rebuilds; until then the same snapshot
+   * answers. Snapshots are shared, never edited, like the records they carry.
+   */
+  private readonly snapshots = new Map<
+    string,
+    { digest: string; snapshot: ProjectSnapshot }
+  >();
+
+  /**
+   * Forgets every kept snapshot, so the next load rebuilds at full price.
+   * The cost tests call it to measure that price; correctness never needs it.
+   */
+  forgetSnapshots(): void {
+    this.snapshots.clear();
+  }
+
+  private projectTreeDigest(rootPath: string): string {
+    let sum = 0;
+    let xor = 0;
+    let count = 0;
+    const eat = (text: string): void => {
+      let hash = 2166136261;
+      for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      hash >>>= 0;
+      sum = (sum + hash) >>> 0;
+      xor = (xor ^ hash) >>> 0;
+      count += 1;
+    };
+    const walkFolders = (path: string): void => {
+      for (const folder of this.repository.listDirectFolders(path)) {
+        eat(`${folder.path}/`);
+        walkFolders(folder.path);
+      }
+    };
+    walkFolders(rootPath);
+    for (const file of this.repository.listFilesBelow(rootPath)) {
+      eat(`${file.path}|${file.stat.mtime}|${file.stat.size}`);
+    }
+    return `${count}:${sum}:${xor}`;
+  }
+
   async loadProject(locator: ProjectLocator): Promise<ProjectSnapshot> {
     const record = await this.resolveProjectRecord(locator);
-    const project = await this.toInspectableProjectRef(
-      record,
-      projectRootForMetadataPath(record.path),
-    );
+    const rootPath = projectRootForMetadataPath(record.path);
+    const digest = this.projectTreeDigest(rootPath);
+    const cached = this.snapshots.get(rootPath);
+    if (cached !== undefined && cached.digest === digest) {
+      return cached.snapshot;
+    }
+    const project = await this.toInspectableProjectRef(record, rootPath);
     const steps = readStepStatuses(record.frontmatter[FRONTMATTER_KEYS.stepStatuses]);
     const links = {
       draft: this.linkedPath(
@@ -404,7 +460,7 @@ export class SnowflakeProjectService {
       links.draft,
       fingerprintCalculation.manuscript,
     );
-    return {
+    const snapshot: ProjectSnapshot = {
       ...project,
       readOnly: project.readOnly || fingerprintCalculation.hasUnsupportedChildren,
       steps,
@@ -419,6 +475,12 @@ export class SnowflakeProjectService {
       artifacts: fingerprintCalculation.artifacts,
       structureIssues,
     };
+    // A write can land while a snapshot is building, leaving it of neither
+    // state: such a snapshot is served once and never cached.
+    if (this.projectTreeDigest(rootPath) === digest) {
+      this.snapshots.set(rootPath, { digest, snapshot });
+    }
+    return snapshot;
   }
 
   async reconcileRevisionStatuses(

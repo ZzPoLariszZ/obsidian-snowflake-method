@@ -4995,4 +4995,49 @@ describe("SnowflakeProjectService", () => {
     expect(refreshed).toContain("> **Progress status**: In progress");
     expect(refreshed).not.toContain("> **Status**:");
   });
+
+  describe("project snapshot cache", () => {
+    it("answers with the same snapshot while nothing under the project moved", async () => {
+      const project = await service.createProject({ name: "Cache Steady" });
+      const first = await service.loadProject(project.projectFile);
+      const second = await service.loadProject(project.projectFile);
+      expect(second).toBe(first);
+    });
+
+    it("rebuilds after the service's own write", async () => {
+      const project = await service.createProject({ name: "Cache Own Write" });
+      const first = await service.loadProject(project.projectFile);
+      await service.createCharacter(project, { name: "Ada" });
+      const after = await service.loadProject(project.projectFile);
+      expect(after).not.toBe(first);
+      expect(after.characters.map((character) => character.name)).toContain(
+        "Ada",
+      );
+    });
+
+    it("rebuilds after an edit that came through the vault alone", async () => {
+      const project = await service.createProject({ name: "Cache Outside" });
+      const character = await service.createCharacter(project, {
+        name: "Brin",
+      });
+      const first = await service.loadProject(project.projectFile);
+      // An outside editor rewrites the note; only the file's stat says so.
+      fakeVault.contents.set(
+        character.path,
+        `${fakeVault.contents.get(character.path) ?? ""}\nOutside prose.\n`,
+      );
+      const after = await service.loadProject(project.projectFile);
+      expect(after).not.toBe(first);
+      const again = await service.loadProject(project.projectFile);
+      expect(again).toBe(after);
+    });
+
+    it("rebuilds when a folder appears, even an empty one", async () => {
+      const project = await service.createProject({ name: "Cache Folder" });
+      const first = await service.loadProject(project.projectFile);
+      await fakeVault.createFolder(`${project.rootPath}/80_Material/Maps`);
+      const after = await service.loadProject(project.projectFile);
+      expect(after).not.toBe(first);
+    });
+  });
 });
