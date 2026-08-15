@@ -43,7 +43,7 @@ export const DOCUMENT_TYPES = [
 	'character',
 	'scene',
 	'worldbuilding',
-	// The `_self.md` a definition node folder holds: not an entity, so it
+	// The note a definition node folder holds: not an entity, so it
 	// never joins a kind's listing, but managed enough to carry the stamp
 	// that says which project's vocabulary it belongs to.
 	'definition',

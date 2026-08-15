@@ -15,18 +15,22 @@ import { entityKindFolder, getProjectPathLayout } from "./types";
  * folders are the vocabulary. Each entity kind owns its own set, rooted in
  * the folder its notes live in, so a vocabulary is scoped to the kind that
  * uses it. A node exists because its folder does, `Race/Elf` is the folder
- * chain below the root, and every node holds a `_self.md` where its
- * description and anything a later release attaches live. Frontmatter and
- * record lines point at a node through that note,
- * `[[…/21_Category/Race/Elf/_self|Race/Elf]]`: the target carries identity,
- * the alias shows the taxonomy path, and Obsidian resolves the full path, so
- * two parents may both hold an `Elf` and a folder rename walks through every
- * link on its own. The alias a rename leaves behind is display cache, stale
- * until the health checker rewrites it.
+ * chain below the root, and every node holds a note named after its folder,
+ * `Race/Elf/Elf.md`, where its description and anything a later release
+ * attaches live. Named so rather than something reserved, because surfaces
+ * the plugin does not draw -- the graph view above all -- show notes by
+ * file name, and a vocabulary should read as itself there, not as a field
+ * of identical markers. Frontmatter and record lines point at a node
+ * through that note, `[[…/21_Category/Race/Elf/Elf|Race/Elf]]`: the target
+ * carries identity, the alias shows the taxonomy path, and Obsidian
+ * resolves the full path, so two parents may both hold an `Elf` and a
+ * folder rename walks through every link on its own. The alias a rename
+ * leaves behind is display cache, stale until the health checker rewrites
+ * it.
  *
  * The trees are deliberately ordinary folders. Users extend them in the file
  * explorer or through the pickers, and the plugin's only insistence is
- * materialization: every node folder gets its `_self.md`, made at creation,
+ * materialization: every node folder gets its own note, made at creation,
  * by the vault watcher, or by the health checker's repair.
  */
 
@@ -53,8 +57,9 @@ export type RenamePathResult =
 
 /**
  * A name a node folder can actually be given: what the file system accepts
- * unchanged, nothing hidden behind a leading dot, and never the node file's
- * own name.
+ * unchanged, nothing hidden behind a leading dot, and never `_self` -- the
+ * name every node note wore in development, reserved so a corpse from that
+ * era can never read as a node.
  */
 export function isValidDefinitionSegment(segment: string): boolean {
   const trimmed = segment.trim();
@@ -91,14 +96,20 @@ export function checkDefinitionPath(path: string): DefinitionPathCheck {
   return { ok: true, segments };
 }
 
-/** The vault path of a node's `_self` note, without its extension. */
+/** The note a node folder holds, named after the folder itself. */
+export function nodeNoteName(taxonomyPath: string): string {
+  const segments = taxonomyPath.split("/").filter((s) => s.trim().length > 0);
+  return segments[segments.length - 1]?.trim() ?? taxonomyPath.trim();
+}
+
+/** The vault path of a node's own note, without its extension. */
 export function nodeSelfPath(rootPath: string, taxonomyPath: string): string {
-  return `${rootPath}/${taxonomyPath}/${DEFINITION_NODE_BASENAME}`;
+  return `${rootPath}/${taxonomyPath}/${nodeNoteName(taxonomyPath)}`;
 }
 
 /**
- * The link a note stores for a node: the `_self` target that carries
- * identity, and the taxonomy path as the alias every reader sees.
+ * The link a note stores for a node: the target that carries identity, and
+ * the taxonomy path as the alias every reader sees.
  */
 export function nodeLink(rootPath: string, taxonomyPath: string): string {
   const alias = taxonomyPath.replace(/[|\]]/gu, "").trim();
@@ -106,8 +117,24 @@ export function nodeLink(rootPath: string, taxonomyPath: string): string {
 }
 
 /**
+ * Drops the node-note segment off the end of a target's segments: the note
+ * is named after its folder, so a leaf repeating the segment before it is
+ * the one shape that says "this folder's own note", and an ordinary child
+ * segment never comes off. A bare folder target, with no note segment at
+ * all, is left whole; only hand-written links spell that form, and a
+ * hand-written `…/Race/Race` meaning a child called Race is read as the
+ * parent's note -- the price of tolerating bare targets at all.
+ */
+function popNodeNoteSegment(segments: string[]): void {
+  const last = segments[segments.length - 1];
+  const parent = segments[segments.length - 2];
+  if (last === undefined || parent === undefined) return;
+  if (foldName(last) === foldName(parent)) segments.pop();
+}
+
+/**
  * The taxonomy path a target names below a root: the segments between the
- * two, with the node file stripped off the end. Null when the target is not
+ * two, with the node note stripped off the end. Null when the target is not
  * under the root, which is what makes the caller fall back to the alias.
  */
 export function taxonomyPathFromTarget(
@@ -122,19 +149,15 @@ export function taxonomyPathFromTarget(
     .split("/")
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
-  if (segments[segments.length - 1] === DEFINITION_NODE_BASENAME) {
-    segments.pop();
-  }
+  popNodeNoteSegment(segments);
   return segments.length === 0 ? null : segments.join("/");
 }
 
-/** A stored definition value taken apart, whichever era wrote it. */
+/** A stored definition value taken apart. */
 export interface DefinitionValue {
-  /** The link target, `.md` never included; the heading split off when legacy. */
+  /** The link target, `.md` never included. */
   target: string;
   alias: string | null;
-  /** The heading of a legacy `[[file#heading|alias]]` link, else null. */
-  legacyHeading: string | null;
 }
 
 const DEFINITION_VALUE_PATTERN = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/u;
@@ -144,23 +167,17 @@ export function parseDefinitionValue(value: unknown): DefinitionValue | null {
   const match = DEFINITION_VALUE_PATTERN.exec(value.trim());
   if (match === null) return null;
   const raw = (match[1] ?? "").trim();
+  // A heading link is not a definition value: nodes are notes, and 0.7.0 --
+  // the last release before they were -- wrote no definition links at all.
+  if (raw.includes("#")) return null;
   const alias = match[2] === undefined ? null : match[2].trim();
-  const hash = raw.indexOf("#");
-  if (hash < 0) {
-    return { target: raw.replace(/\.md$/u, ""), alias, legacyHeading: null };
-  }
-  return {
-    target: raw.slice(0, hash).trim().replace(/\.md$/u, ""),
-    alias,
-    legacyHeading: raw.slice(hash + 1).trim(),
-  };
+  return { target: raw.replace(/\.md$/u, ""), alias };
 }
 
 /**
  * The taxonomy path a stored value should be read as. The target is the
  * source of truth, so it is asked first; the alias answers for a target the
- * root cannot explain, and a legacy heading link answers with the alias it
- * always carried.
+ * root cannot explain.
  */
 export function taxonomyPathFromValue(
   value: unknown,
@@ -168,48 +185,35 @@ export function taxonomyPathFromValue(
 ): string | null {
   const link = parseDefinitionValue(value);
   if (link === null) return null;
-  if (link.legacyHeading !== null) {
-    return link.alias !== null && link.alias.length > 0
-      ? link.alias
-      : link.legacyHeading;
-  }
   const derived = taxonomyPathFromTarget(link.target, rootPath);
   if (derived !== null) return derived;
   return link.alias !== null && link.alias.length > 0 ? link.alias : null;
 }
 
 /**
- * The name of the node a stored value points at: the target's last folder,
- * or the heading a legacy link named. This is the piece role detection
- * matches, so it must read both eras.
+ * The name of the node a stored value points at: the target's last folder.
+ * This is the piece role detection matches.
  */
 export function nodeNameFromValue(value: unknown): string | null {
   const link = parseDefinitionValue(value);
   if (link === null) return null;
-  if (link.legacyHeading !== null) return link.legacyHeading;
   const segments = link.target
     .split("/")
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
-  const last = segments.pop();
-  if (last === undefined) return null;
-  if (foldName(last) !== foldName(DEFINITION_NODE_BASENAME)) return last;
+  popNodeNoteSegment(segments);
   return segments.pop() ?? null;
 }
 
 /**
- * The tree root a stored value points into: a legacy link's file is the very
- * folder the tree now stands at, and a node link's root is what is left when
- * the node's own folder and file come off the end.
+ * The tree root a stored value points into: what is left when the node's own
+ * note and folder come off the end of the target.
  */
 export function definitionRootFromValue(value: unknown): string | null {
   const link = parseDefinitionValue(value);
   if (link === null) return null;
-  if (link.legacyHeading !== null) return link.target;
   const segments = link.target.split("/").filter((segment) => segment.length > 0);
-  if (segments[segments.length - 1] === DEFINITION_NODE_BASENAME) {
-    segments.pop();
-  }
+  popNodeNoteSegment(segments);
   segments.pop();
   return segments.length === 0 ? null : segments.join("/");
 }
@@ -337,22 +341,11 @@ export function characterTypeFromNodeName(
 export function characterRoleFromValue(value: unknown): CharacterType | null {
   const link = parseDefinitionValue(value);
   if (link === null) return null;
-  if (link.legacyHeading !== null) {
-    const type = characterTypeFromNodeName(link.legacyHeading);
-    if (type === null) return null;
-    // A legacy link's alias is the taxonomy path it always carried: a path
-    // with a parent in it is a nested node, not a root role.
-    const alias = link.alias ?? "";
-    return alias.includes("/") ? null : type;
-  }
   const segments = link.target
     .split("/")
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
-  const last = segments[segments.length - 1];
-  if (last !== undefined && foldName(last) === foldName(DEFINITION_NODE_BASENAME)) {
-    segments.pop();
-  }
+  popNodeNoteSegment(segments);
   const name = segments.pop();
   if (name === undefined) return null;
   const type = characterTypeFromNodeName(name);
@@ -389,89 +382,3 @@ export function characterRoleFromCategories(
   return null;
 }
 
-/*
- * The legacy corner. Before nodes were folders a tree was a heading tree
- * inside one file per kind and id, `20_Character/21_Category.md`, and links
- * anchored a heading: `[[…/21_Category#Elf|Race/Elf]]`. Nothing below is
- * written any more; the migration still reads it to raise the folders, adopt
- * the prose, and retire the file.
- */
-
-/** The file a kind's taxonomy lived in before it became a folder tree. */
-export function legacyDefinitionFileName(
-  kind: EntityKind,
-  id: DefinitionFileId,
-  language: ProjectLanguage,
-): string {
-  return `${definitionRootName(kind, id, language)}.md`;
-}
-
-export interface DefinitionEntry {
-  /** The heading text, which was the link anchor. */
-  heading: string;
-  /** The full slash path from the root heading. */
-  path: string;
-  /** Heading level, which is also the path depth. */
-  level: number;
-  /** Zero-based line the heading sits on. */
-  line: number;
-}
-
-export interface DefinitionTree {
-  entries: DefinitionEntry[];
-  /** Heading texts that appear more than once, in first-seen order. */
-  duplicates: string[];
-}
-
-export function parseDefinitionFile(content: string): DefinitionTree {
-  const entries: DefinitionEntry[] = [];
-  const seen = new Map<string, number>();
-  const duplicates: string[] = [];
-  const stack: Array<{ level: number; heading: string }> = [];
-  let inFence = false;
-  const lines = content.split(/\r\n|\r|\n/u);
-  for (let line = 0; line < lines.length; line += 1) {
-    const text = lines[line] ?? "";
-    if (/^\s*(```|~~~)/u.test(text)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const match = /^(#{1,6})\s+(.*\S)\s*$/u.exec(text);
-    if (match === null) continue;
-    const level = (match[1] ?? "#").length;
-    const heading = (match[2] ?? "").trim();
-    while (stack.length > 0) {
-      const top = stack[stack.length - 1] as (typeof stack)[number];
-      if (top.level >= level) stack.pop();
-      else break;
-    }
-    const path = [...stack.map((frame) => frame.heading), heading].join("/");
-    stack.push({ level, heading });
-    entries.push({ heading, path, level, line });
-    const count = seen.get(heading) ?? 0;
-    seen.set(heading, count + 1);
-    if (count === 1) duplicates.push(heading);
-  }
-  return { entries, duplicates };
-}
-
-/**
- * The prose a legacy file kept under each heading, by path: what belongs in
- * each node's `_self.md` once the folders stand. The text above the first
- * heading was the file's intro line and stays behind, because it described
- * the mechanism this file no longer is.
- */
-export function definitionProseByPath(content: string): Map<string, string> {
-  const tree = parseDefinitionFile(content);
-  const lines = content.split(/\r\n|\r|\n/u);
-  const prose = new Map<string, string>();
-  for (let index = 0; index < tree.entries.length; index += 1) {
-    const entry = tree.entries[index] as DefinitionEntry;
-    const from = entry.line + 1;
-    const to = tree.entries[index + 1]?.line ?? lines.length;
-    const body = lines.slice(from, to).join("\n").trim();
-    if (body.length > 0) prose.set(entry.path, body);
-  }
-  return prose;
-}

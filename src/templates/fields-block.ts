@@ -64,7 +64,7 @@ export interface EntityFieldsView extends MemberFieldsCommon {
 /**
  * What a definition node's own note shows. The path is where the node sits
  * right now, read from its folders rather than stored, so this block is the
- * one place a taxonomy entry reads as a name instead of as `_self`.
+ * one place a taxonomy entry reads as its whole path, not its leaf alone.
  */
 export interface DefinitionFieldsView {
   taxonomyPath: string;
@@ -281,7 +281,7 @@ export function renderEntityFieldsBlock(
 }
 
 /**
- * The block a definition node's `_self.md` opens with. The note is named for
+ * The block a definition node's own note opens with. The note is named for
  * the file every node folder holds, so without this nothing on the page says
  * which entry it is. A node's name is its whole path, parents included, and
  * the callout's own title says which vocabulary that path belongs to: it is

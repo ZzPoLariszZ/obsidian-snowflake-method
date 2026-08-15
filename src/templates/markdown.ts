@@ -493,7 +493,7 @@ export function entityTemplate(
 
 /**
  * A definition node's own note. Alone among the plugin's notes it carries no
- * H1: every one of them is called `_self`, so a heading would name the file
+ * H1: a heading would only repeat the note name
  * rather than the node, and the block below says which entry this is.
  */
 export function definitionTemplate(

@@ -3134,9 +3134,9 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * A folder that just appeared under a definition tree is a node the file
-	 * explorer made, and every node carries its `_self.md`: materialized
-	 * here, the moment the folder exists, so a link made a breath later has
-	 * a note to resolve to. For any other folder the service returns without
+	 * explorer made, and every node carries a note named after its folder:
+	 * materialized here, the moment the folder exists, so a link made a
+	 * breath later has a note to resolve to. For any other folder the service returns without
 	 * writing, which is what makes it safe to call on every folder event.
 	 */
 	private scheduleDefinitionMaterialize(path: string): void {

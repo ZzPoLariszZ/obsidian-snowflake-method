@@ -40,7 +40,6 @@ import {
   sortByRank,
   ALIASES_KEY,
   DEFINITION_FILE_IDS,
-  DEFINITION_NODE_BASENAME,
   DOCUMENT_TYPES,
   ENTITY_KINDS,
   SCENE_POV_OMNISCIENT,
@@ -65,14 +64,11 @@ import {
   characterRoleName,
   characterStarterNames,
   checkDefinitionPath,
-  definitionProseByPath,
   definitionRootFromValue,
   definitionRootName,
   isValidDefinitionSegment,
-  legacyDefinitionFileName,
   nodeLink,
   nodeSelfPath,
-  parseDefinitionFile,
   parseDefinitionValue,
   taxonomyPathFromTarget,
   taxonomyPathFromValue,
@@ -100,7 +96,7 @@ import {
   baseColumnDisplayNames,
   characterTemplate,
   definitionTemplate,
-  getBaseTextRefreshes,
+  getLegacyRoleRefreshes,
   getProjectBases,
   getStoryArtifacts,
   getSystemTemplates,
@@ -1147,7 +1143,7 @@ export class SnowflakeProjectService {
       };
       for (const raw of member.categories) {
         const link = parseDefinitionValue(raw);
-        if (link === null || link.legacyHeading !== null) continue;
+        if (link === null) continue;
         await raise(link.target, {
           id: "category",
           rootPath: definitionRootPath(project, kind, "category"),
@@ -2844,7 +2840,6 @@ export class SnowflakeProjectService {
     const loaded = await this.loadProject(projectLocator);
     this.assertProjectWritable(loaded);
     await this.ensureWorldbuildingTree(loaded);
-    await this.convertLegacyDefinitionFiles(loaded);
     await this.syncDefinitionTrees(loaded);
     await this.refreshRoleLinksInBases(loaded);
     // Notes made here join the project, so everything after this reads a
@@ -3096,63 +3091,6 @@ export class SnowflakeProjectService {
     await this.repository.updateSections(member.path, stale);
   }
 
-  /**
-   * Raises the folder tree out of each legacy heading file, then retires the
-   * file. The prose an author kept under a heading moves into that node's
-   * `_self.md`, the intro line above the first heading goes with the file,
-   * and the file itself goes to the trash, where it stays recoverable. A
-   * heading no folder could be named after stays behind, and so does its
-   * file: better a file too many than a word dropped.
-   */
-  private async convertLegacyDefinitionFiles(
-    project: ProjectSnapshot,
-  ): Promise<void> {
-    const layout = getProjectPathLayout(project.locale);
-    for (const kind of ENTITY_KINDS) {
-      for (const id of DEFINITION_FILE_IDS) {
-        const legacyPath = normalizePath(
-          `${project.rootPath}/${entityKindFolder(layout, kind)}/${legacyDefinitionFileName(kind, id, project.locale)}`,
-        );
-        const file = this.repository.getFile(legacyPath);
-        if (file === null) continue;
-        const content = await this.repository.vault.read(file);
-        const prose = definitionProseByPath(content);
-        const entries = parseDefinitionFile(content).entries;
-        // Two chains folding onto one node are two proses claiming one
-        // `_self.md`: converting would keep whichever came last and trash
-        // the only copy of the other. The unambiguous nodes still rise; the
-        // file stays, with both spellings in it, until the author settles
-        // which is which.
-        const claimed = new Set<string>();
-        const contested = new Set<string>();
-        for (const entry of entries) {
-          const folded = entry.path.split("/").map(foldName).join("/");
-          if (claimed.has(folded)) contested.add(folded);
-          claimed.add(folded);
-        }
-        let refused = contested.size > 0;
-        for (const entry of entries) {
-          if (contested.has(entry.path.split("/").map(foldName).join("/"))) {
-            continue;
-          }
-          const check = checkDefinitionPath(entry.path);
-          if (!check.ok) {
-            refused = true;
-            continue;
-          }
-          await this.ensureDefinitionNodes(
-            project,
-            kind,
-            id,
-            check.segments,
-            prose.get(entry.path) ?? "",
-          );
-        }
-        if (refused) continue;
-        await this.repository.trashFile(legacyPath);
-      }
-    }
-  }
 
   /**
    * The bases embed the three role links in their filters and formulas, and
@@ -3166,22 +3104,12 @@ export class SnowflakeProjectService {
     project: ProjectSnapshot,
   ): Promise<void> {
     const layout = getProjectPathLayout(project.locale);
-    const definitionPath = categoryDefinitionPath(project, "character");
-    const swaps = [
-      ...(["major", "supporting", "minor"] as const).map((type) => {
-        const role = characterRoleName(project.locale, type);
-        return {
-          from: `[[${definitionPath}#${role}|${role}]]`,
-          to: nodeLink(definitionPath, role),
-        };
-      }),
-      ...getBaseTextRefreshes(project.locale),
-    ];
-    for (const base of getProjectBases(
-      project.id,
-      project.locale,
-      characterRoleLinks(project),
-    )) {
+    const roles = characterRoleLinks(project);
+    // A 0.7.0 base filters its role sheets on the legacy type key the
+    // migration is about to delete from every note. That is the one older
+    // spelling a released vault can hold.
+    const swaps = getLegacyRoleRefreshes(project.locale, roles);
+    for (const base of getProjectBases(project.id, project.locale, roles)) {
       const path = normalizePath(
         `${project.rootPath}/${projectBaseFolder(layout, base.id)}/${base.fileName}`,
       );
@@ -3484,7 +3412,7 @@ export class SnowflakeProjectService {
         const name = memberName(member);
         for (const raw of member.categories) {
           const link = parseDefinitionValue(raw);
-          if (link === null || link.legacyHeading !== null) continue;
+          if (link === null) continue;
           const path = taxonomyPathFromTarget(link.target, rootPath);
           if (path !== null) claim(path, "listed", name);
         }
@@ -3513,14 +3441,20 @@ export class SnowflakeProjectService {
       for (const taxonomyPath of paths) {
         const segments = taxonomyPath.split("/");
         const folderPath = normalizePath(`${rootPath}/${taxonomyPath}`);
-        const selfPath = normalizePath(
-          `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
-        );
+        // The note as it stands, whichever era named it; a node without one
+        // is offered the leaf-named path everything writes now.
+        const standingNote = this.standingNodeNotePath(folderPath);
+        const selfPath =
+          standingNote ??
+          normalizePath(`${folderPath}/${basename(folderPath)}.md`);
         const missing = !known.has(foldName(taxonomyPath));
         let description = "";
         let missingSelf = false;
         if (!missing) {
-          const record = await this.repository.tryReadManaged(selfPath);
+          const record =
+            standingNote === null
+              ? null
+              : await this.repository.tryReadManaged(standingNote);
           missingSelf = record === null;
           description =
             record === null
@@ -3688,15 +3622,15 @@ export class SnowflakeProjectService {
       record.frontmatter[FRONTMATTER_KEYS.category],
     )) {
       const link = parseDefinitionValue(raw);
-      if (link === null || link.legacyHeading !== null) continue;
+      if (link === null) continue;
       check(link.target, link.alias ?? "", categoryRoot);
     }
     // Record labels live in the body, and the generated callout re-emits the
     // category links there too: the same checks apply to every one of them.
-    const labelPattern = new RegExp(
-      String.raw`\[\[([^\]|#]+/${DEFINITION_NODE_BASENAME})\|([^\]]*)\]\]`,
-      "gu",
-    );
+    // Any piped link is a candidate: what makes one a node link is living
+    // under a definition root, which is the roots loop's business, not a
+    // reserved spelling's. Ordinary member links fall out of the loop below.
+    const labelPattern = /\[\[([^\]|#]+)\|([^\]]*)\]\]/gu;
     for (const match of record.body.matchAll(labelPattern)) {
       const target = (match[1] ?? "").trim();
       const alias = (match[2] ?? "").trim();
@@ -3951,6 +3885,19 @@ export class SnowflakeProjectService {
    * sits: a folder renamed in the file explorer is put right by the next
    * pass rather than left describing where it used to be.
    *
+  /** The node folder's own note as it stands on disk, or null. */
+  private standingNodeNotePath(folderPath: string): string | null {
+    const leaf = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
+    return this.repository.getFile(leaf) !== null ? leaf : null;
+  }
+
+  /**
+   * The note a node folder must hold, made when it is not there and brought
+   * current when it is. The description is a property, so a second pass can
+   * never double it, and the block below it is generated from where the node
+   * sits: a folder renamed in the file explorer is put right by the next
+   * pass rather than left describing where it used to be.
+   *
    * A description already written wins over one arriving here, because the
    * note is where an author edits it. True when the file had to be made.
    */
@@ -3961,9 +3908,29 @@ export class SnowflakeProjectService {
     folderPath: string,
     description = "",
   ): Promise<boolean> {
-    const path = normalizePath(`${folderPath}/${DEFINITION_NODE_BASENAME}.md`);
+    const path = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
     const taxonomyPath = taxonomyPathFromTarget(folderPath, rootPath) ?? "";
     const offered = description.trim();
+    // A note the node already has under an earlier name -- the leaf a
+    // renamed folder used to answer to, standing alone -- is this node's
+    // own and is renamed into place. Making a fresh note beside it would
+    // fork the description. Two strange files at once is nothing to guess
+    // about: the fresh note wins and the strays stay.
+    if (this.repository.getFile(path) === null) {
+      const notes = this.repository
+        .listDirectFiles(folderPath)
+        .filter((file) => file.extension === "md");
+      const earlier =
+        notes.length === 1 ? normalizePath(notes[0]?.path ?? "") : null;
+      if (earlier !== null && earlier !== path) {
+        try {
+          await this.repository.renameFile(earlier, path);
+        } catch {
+          // The watcher may have renamed or created it between the look and
+          // the move; whoever lost carries on with what stands now.
+        }
+      }
+    }
     if (this.repository.getFile(path) === null) {
       if (this.repository.get(path) !== null) return false;
       try {
@@ -4044,8 +4011,11 @@ export class SnowflakeProjectService {
     const project = await this.resolveProjectForRead(projectLocator);
     if (project.readOnly) return false;
     const normalized = normalizePath(notePath);
-    if (basename(normalized) !== `${DEFINITION_NODE_BASENAME}.md`) return false;
     const folderPath = parentOf(normalized);
+    const name = basename(normalized);
+    if (foldName(name) !== foldName(`${basename(folderPath)}.md`)) {
+      return false;
+    }
     const owner = this.definitionRootOf(project, folderPath);
     if (owner === null || folderPath === owner.rootPath) return false;
     await this.syncDefinitionNode(
@@ -4140,9 +4110,13 @@ export class SnowflakeProjectService {
     newFolder: string,
   ): Promise<void> {
     const oldPrefix = `${oldFolder}/`;
+    const oldNote = `${oldFolder}/${basename(oldFolder)}`;
     const moved = (target: string): string => {
       const cleaned = normalizePath(target.trim());
-      if (cleaned === oldFolder) return newFolder;
+      // The renamed node's own note carried the old leaf twice. Only the
+      // folder survives the move here; the canonical link written below
+      // puts the new note segment back on.
+      if (cleaned === oldFolder || cleaned === oldNote) return newFolder;
       return cleaned.startsWith(oldPrefix)
         ? `${newFolder}/${cleaned.slice(oldPrefix.length)}`
         : cleaned;
@@ -4155,7 +4129,7 @@ export class SnowflakeProjectService {
       let changed = false;
       const categories = member.categories.map((raw) => {
         const link = parseDefinitionValue(raw);
-        if (link === null || link.legacyHeading !== null) return raw;
+        if (link === null) return raw;
         const path = taxonomyPathFromTarget(moved(link.target), rootPath);
         if (path === null) return raw;
         const canonical = nodeLink(rootPath, path);
@@ -4241,7 +4215,7 @@ export class SnowflakeProjectService {
       if (member.readOnly) continue;
       const kept = member.categories.filter((raw) => {
         const link = parseDefinitionValue(raw);
-        if (link === null || link.legacyHeading !== null) return true;
+        if (link === null) return true;
         const path = taxonomyPathFromTarget(link.target, rootPath);
         return path === null || !felled(path);
       });
@@ -4282,11 +4256,9 @@ export class SnowflakeProjectService {
     if (this.repository.getFolder(folderPath) === null) {
       throw new ManagedFileNotFoundError(folderPath);
     }
-    const selfPath = normalizePath(
-      `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
-    );
+    const selfPath = this.standingNodeNotePath(folderPath);
     const trimmed = description.trim();
-    if (this.repository.getFile(selfPath) !== null) {
+    if (selfPath !== null) {
       await this.repository.updateFrontmatter(selfPath, {
         [FRONTMATTER_KEYS.description]:
           trimmed.length === 0 ? undefined : trimmed,
@@ -5523,10 +5495,10 @@ export class SnowflakeProjectService {
         const visit = (folderPath: string, depth: number): void => {
           if (depth > MAX_DEFINITION_DEPTH) return;
           if (depth > 0) {
-            const selfPath = normalizePath(
-              `${folderPath}/${DEFINITION_NODE_BASENAME}.md`,
+            const leafPath = normalizePath(
+              `${folderPath}/${basename(folderPath)}.md`,
             );
-            if (this.repository.getFile(selfPath) === null) {
+            if (this.standingNodeNotePath(folderPath) === null) {
               add({
                 code: "missing-definition-node",
                 path: folderPath,
@@ -5534,7 +5506,7 @@ export class SnowflakeProjectService {
                 canOpen: false,
                 repairable:
                   !projectRecord.readOnly &&
-                  this.repository.get(selfPath) === null,
+                  this.repository.get(leafPath) === null,
               });
             }
           }
@@ -6123,10 +6095,11 @@ export class SnowflakeProjectService {
         characterSynopsis: readMarkedSection(record.content, "character-synopsis") ?? "",
         characterProfile: readMarkedSection(record.content, "character-profile") ?? "",
         sectionHealth: memberSectionHealth(record.content, "character", record.path),
-        // A note the schema 2 migration has not reached: no fields block yet,
-        // or the role still stored under the legacy type key instead of as a
-        // category link.
+        // A note the schema 2 migration has not reached: an older schema
+        // stamp, no fields block yet, or the role still stored under the
+        // legacy type key instead of as a category link.
         unmigrated:
+          (schemaVersionOf(record.frontmatter) ?? 0) < SCHEMA_VERSION ||
           readMarkedSection(record.content, "character-fields") === null ||
           hasOwn(record.frontmatter, FRONTMATTER_KEYS.characterType),
         revision: fingerprint(record.content),
@@ -6255,7 +6228,12 @@ export class SnowflakeProjectService {
         events: readMarkedSection(record.content, "scene-events") ?? "",
         planning: readMarkedSection(record.content, "scene-planning") ?? "",
         sectionHealth: memberSectionHealth(record.content, "scene", record.path),
+        // An older schema stamp counts too: a 0.7.0 scene is already property
+        // -shaped, and without this the migration would leave it stamped 1,
+        // against its own promise that migrated notes carry the schema they
+        // now follow.
         unmigrated:
+          (schemaVersionOf(record.frontmatter) ?? 0) < SCHEMA_VERSION ||
           readMarkedSection(record.content, "scene-fields") === null ||
           readMarkedSection(record.content, "scene-conflict") !== null,
         revision: fingerprint(record.content),

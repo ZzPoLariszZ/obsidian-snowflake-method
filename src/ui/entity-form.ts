@@ -1,7 +1,7 @@
 import { getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
-	DEFINITION_NODE_BASENAME,
+	foldName,
 	type ProgressStatus,
 } from '../domain';
 import {
@@ -695,7 +695,9 @@ export class RecordCardsEditor {
 					card.labelPath !== null
 						? { path: card.labelPath, display: path }
 						: {
-								path: `${this.definitionPath}/${path}/${DEFINITION_NODE_BASENAME}`,
+								// The node's note is named after its folder, so the leaf
+								// says itself twice: `…/Race/Elf/Elf`.
+								path: `${this.definitionPath}/${path}/${path.split('/').pop() ?? path}`,
 								display: path,
 							},
 				value: card.valueEl.value.trim(),
@@ -1074,7 +1076,14 @@ function labelDisplay(
 	const target = label.path.trim().replace(/\.md$/u, '');
 	if (!target.startsWith(prefix)) return label.display;
 	const segments = target.slice(prefix.length).split('/');
-	if (segments.pop() !== DEFINITION_NODE_BASENAME) return label.display;
+	const last = segments.pop();
+	const parent = segments[segments.length - 1];
+	// The note segment: the leaf repeating its folder.
+	const namesNode =
+		last !== undefined &&
+		parent !== undefined &&
+		foldName(last) === foldName(parent);
+	if (!namesNode) return label.display;
 	const path = segments.join('/');
 	return path.length > 0 ? path : label.display;
 }
