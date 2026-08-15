@@ -8,6 +8,34 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0]
+
+### Added
+
+- Worldbuilding notes: time, location and item join characters and scenes as members of a project. Each kind has its own folder, its own table in the dashboard's new rail group, its own Bases view, and the same form as everyone else. An entity carries aliases, categories, a progress status and a description, and its note reads like any other: properties above, a generated overview in the body, your prose below.
+- World status and relationships, written as record lines on any member: a label from a vocabulary, linked terms for who, where and when, and free text after them. They are edited as cards in the member form, with pickers that create what does not exist yet, and stored as ordinary Markdown callouts that read the same with the plugin off.
+- Three vocabularies for every kind, grown as folder trees: categories, world statuses and relationships. Every entry is a folder holding a note named after it, so links to entries resolve like any others and the graph shows each entry under its own name. Three rail panes browse the vocabularies across all five kinds: fold and search the trees, read one entry beside them together with everything that uses it, add children, rename with every reference rewritten, and delete with the cost named first.
+- A character's role is one of its categories now. Major, Supporting and Minor are seeded in the project's language, deeper entries are yours to shape, so elves can live under Race/Elf and houses under Houses/Major. An entry that merely shares a role's name deeper in the tree is never read as the role. The character base groups by the role link.
+- A scene's time and place are notes rather than words, picked the way its cast is picked, and created from the field when they do not exist yet.
+- The health check follows every note a project names: a vocabulary entry whose note is gone, a link naming an entry that is not there, a display a rename left behind, and a record line pointing at nothing are each reported. Each repair mends exactly what its report counted, nothing more.
+- One blue notice, **Older project format**, stands beside the newer format warning whenever any note was written by an older release, whether a character, a scene, an entity, a summary, a synopsis, a manuscript note, a material or an archive. Its **Update** button brings all of them current in one pass and says what it skipped. The command **Update notes in older format** does the same from the palette, and running either again changes nothing.
+- The plugin's own files look after themselves. The system templates are created when missing and replaced when outdated the moment a dashboard shows the project, silently, because they are generated. The set now includes 061, the worldbuilding template it had been missing. Your notes only ever change behind the **Update** button.
+- Tables can show a progress status and an actions column, each with a setting and a command, and a setting chooses whether a note created from a picker field opens its form first or is created directly.
+
+### Changed
+
+- Notes carry schema 2. A character's role moved from the old type key into its category links, member properties read in one canonical order per kind, and the overview ends with the progress status while record sections sit directly beneath it as titled callouts.
+- **Write field overviews into character and scene notes** is now **Update notes in older format**. The command's identity is unchanged, so a hotkey bound to it keeps working.
+- Repeated project loads are answered from one snapshot while nothing in the project has moved. At three hundred characters and three thousand scenes, the third of a second that every form, pane and refresh used to pay is now about a millisecond, and only a real change pays for one rebuild.
+- Each member row's actions fold into one menu, and what a table's rows show is the author's to choose.
+
+### Fixed
+
+- A record line the plugin cannot read is kept exactly as written and reported as informational, never rewritten: half-linked spans, plain-text terms and connector words inside values all stay the author's.
+- Renaming a vocabulary entry rewrites every reference, in properties and record lines alike, targets and displayed names both. Unrelated notes that merely share a name are left alone, because a bare name is matched only where its kind agrees.
+- The migration reads exactly what 0.7.0 wrote. The base role sheets are respelled from their 0.7.0 forms, every note it crosses is stamped, and nothing depends on shapes only development builds ever produced.
+- Repairs report what they did rather than what they tried: a repair that made nothing says so, and the health check's counts survive a second look.
+
 ## [0.7.0]
 
 ### Added
@@ -192,6 +220,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.8.0]
+
+### 新增
+
+- 世界观笔记：时间、地点与物品加入角色与场景的行列，成为项目的成员。每一类都有自己的文件夹、工作台侧栏新分组中的表格、自己的数据库视图，以及与其他成员相同的表单。条目可以有别名、类别、进度状态与描述，笔记的样子也与其他笔记一致：属性在上，生成的概览在正文中，你的文字在其后。
+- 任何成员都可以书写状态与关系记录行：以词表中的标签开头，用链接写出对象、地点、时间与起止，其后是自由的文字。它们在表单中以卡片编辑，选择器可以当场创建尚不存在的对象。存储形式是普通的 Markdown 标注块，停用插件后读起来一模一样。
+- 每一类成员都有三份词表：类别、状态与关系，以文件夹树的形式生长。每个词条都是一个文件夹，其中有一篇与它同名的笔记，因此指向词条的链接与其他链接一样可以解析，关系图中的词条也以自己的名字出现。侧栏的三个词表面板可以跨全部五类浏览词表：折叠与搜索、在树旁完整阅读一个词条并看到使用它的一切、添加子项、重命名并改写所有引用、删除前先说明代价。
+- 角色的定位改为它的一个类别。主角、配角与次要角色按项目语言预置，更深的词条由你自定，把精灵放进「种族／精灵」、把家族放进「家族／主角」，都不会被当作定位读取。角色数据库按定位链接分组。
+- 场景的时间与地点是笔记而不再是文字，选择方式与出场角色相同，不存在的可以就地创建。
+- 健康检查会追随项目提到的每一篇笔记：词条的笔记不见了、链接指向不存在的词条、重命名留下的旧显示名、指向空处的记录行，都会被分别报告。每一项修复只修补报告数出的那些，不多不少。
+- 一条蓝色的提示「较旧的项目格式」立在较新格式警告的旁边：只要有任何笔记出自旧版本，无论是角色、场景、世界观条目、概述与大纲、正文笔记还是素材与存档，它就会出现。它的「更新」按钮一次把它们全部带到当前版本，并说明跳过了什么。命令「更新旧格式的笔记」在命令面板中做同样的事，重复运行不会改变任何东西。
+- 插件自己的文件自行维护。系统模板会在工作台显示项目的那一刻静默补建缺失的、替换过期的，因为它们本就是生成的。整套模板如今包含此前缺失的 061 世界观模板。你的笔记只会在「更新」按钮之后改变。
+- 表格可以显示进度状态与操作列，各有一项设置与一条命令。另有一项设置决定从字段新建笔记时是先打开表单还是直接创建。
+
+### 变更
+
+- 笔记使用架构 2。角色定位从旧的类型键移入类别链接，成员属性按每类固定的顺序排列，概览以进度状态收尾，记录区段作为带标题的标注块紧随其下。
+- 「将字段概览写入角色与场景笔记」更名为「更新旧格式的笔记」。命令的标识未变，绑定过的快捷键照常工作。
+- 项目未发生变化时，重复的项目加载由同一份快照直接作答。在三百个角色与三千个场景的规模下，此前每次表单、面板与刷新都要付出的三分之一秒，如今只需约一毫秒，只有真正的变化才需要一次重建。
+- 成员行的操作折叠为一个菜单，表格的行显示什么由作者选择。
+
+### 修复
+
+- 插件读不懂的记录行会原样保留并作为提示性报告，绝不改写：只有一端成链的起止、纯文字的词项、值里出现的连接词，都仍是作者的。
+- 重命名词条会改写每一处引用，包括属性与记录行中的目标与显示名，而不会波及只是同名的无关笔记：不带路径的名称只在类别相符处匹配。
+- 迁移只读 0.7.0 写下的内容。数据库的定位表以其 0.7.0 的拼写为准得到改写，迁移经过的每篇笔记都会盖上版本戳，任何逻辑都不依赖只有开发版本才产生过的形态。
+- 修复所报即所做：没有做成任何事的修复会如实说明，健康检查的计数经得起复查。
 
 ## [0.7.0]
 
