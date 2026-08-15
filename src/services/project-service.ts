@@ -68,6 +68,7 @@ import {
   characterRoleName,
   characterStarterNames,
   checkDefinitionPath,
+  customFieldRootNameForFolder,
   definitionRootFromValue,
   definitionRootNameForFolder,
   isValidDefinitionSegment,
@@ -99,6 +100,7 @@ import {
   appendBaseColumns,
   baseColumnDisplayNames,
   characterTemplate,
+  customFieldTemplateNote,
   definitionTemplate,
   getLegacyRoleRefreshes,
   getProjectBases,
@@ -111,7 +113,7 @@ import {
   inspectManagedDocumentSections,
   readMarkedSection,
   renameWorldbuildingBaseKind,
-  templateCustomFields,
+  templateNoteFields,
   type CustomField,
   renderCharacterFieldsBlock,
   renderDefinitionFieldsBlock,
@@ -164,6 +166,7 @@ import {
   type CharacterPatch,
   type CharacterRecord,
   type CreateProjectOptions,
+  type CustomFieldTemplateInfo,
   type DefinitionForest,
   type DefinitionNodeInfo,
   type DefinitionNodeUsage,
@@ -289,6 +292,18 @@ export type NamedRecordKind = EntityKindId;
 export type KindMutationResult =
   | { ok: true; kind: ProjectWorldbuildingKind }
   | { ok: false; code: "invalid-name" | "taken" | "full" };
+
+/**
+ * What saving a custom-field template came to: the note as it now stands, or
+ * the refusal to show — a name the file system will not hold, or one another
+ * template of the kind already answers to.
+ */
+export type SaveCustomFieldTemplateResult =
+  | { ok: true; path: string }
+  | { ok: false; code: "invalid-name" | "taken" };
+
+/** The template-type stamp a custom-field template note wears. */
+const CUSTOM_FIELD_TEMPLATE_TYPE = "custom-field";
 
 /**
  * A name another record of the same kind already answers to — a character or
@@ -829,7 +844,8 @@ export class SnowflakeProjectService {
     // Like the bases below, a tree root's existence is the contract: its
     // folders are the author's taxonomy, and the health checker is what
     // watches over the node files and the links pointing in. Every entity
-    // kind carries its own set, in the folder its notes live in.
+    // kind carries its own set, in the folder its notes live in, plus the
+    // fourth folder its custom-field templates call home.
     for (const kind of entityKindIds(project.worldbuildingKinds)) {
       for (const definitionId of DEFINITION_FILE_IDS) {
         const path = definitionRootPath(project, kind, definitionId);
@@ -841,6 +857,15 @@ export class SnowflakeProjectService {
           await this.ensureDefinitionRoot(project, kind, definitionId);
           markCreated(result, path);
         }
+      }
+      const fieldRoot = customFieldRootPath(project, kind);
+      if (this.repository.getFolder(fieldRoot) !== null) {
+        markUnchanged(result, fieldRoot);
+      } else if (this.repository.get(fieldRoot) !== null) {
+        markConflict(result, fieldRoot, `A file already exists at "${fieldRoot}".`);
+      } else {
+        await this.repository.ensureFolder(fieldRoot);
+        markCreated(result, fieldRoot);
       }
     }
 
@@ -4537,6 +4562,7 @@ export class SnowflakeProjectService {
       for (const definitionId of DEFINITION_FILE_IDS) {
         await this.ensureDefinitionRoot(project, kind, definitionId);
       }
+      await this.repository.ensureFolder(customFieldRootPath(project, kind));
     }
     for (const base of getProjectBases(
       project.id,
@@ -5000,7 +5026,10 @@ export class SnowflakeProjectService {
     return { ok: true, kind: { ...kind, missingFolder: false } };
   }
 
-  /** One kind's folder, its three vocabulary roots, and its base, made real. */
+  /**
+   * One kind's folder, its three vocabulary roots, its template folder, and
+   * its base, made real.
+   */
   private async ensureKindScaffold(
     project: ProjectSnapshot,
     kindId: WorldbuildingKindId,
@@ -5011,6 +5040,7 @@ export class SnowflakeProjectService {
     for (const definitionId of DEFINITION_FILE_IDS) {
       await this.ensureDefinitionRoot(project, kindId, definitionId);
     }
+    await this.repository.ensureFolder(customFieldRootPath(project, kindId));
     const basePath = this.projectBasePath(project, kindId);
     if (this.repository.get(basePath) === null) {
       await this.repository.createPlainFile(
@@ -5088,6 +5118,23 @@ export class SnowflakeProjectService {
             delete moved[kindId];
             patch[key] = moved;
           }
+        }
+        // A stored template choice names a path inside the kind's folder,
+        // and the folder is about to move: the value follows the name too.
+        const templates =
+          patch[FRONTMATTER_KEYS.kindTemplates] ??
+          frontmatter[FRONTMATTER_KEYS.kindTemplates];
+        if (isKindStringMap(templates)) {
+          const retargeted: Record<string, string> = { ...templates };
+          let changed = false;
+          for (const [entryKind, stored] of Object.entries(retargeted)) {
+            const target = (fromWikiLink(stored) ?? stored).trim();
+            if (!target.startsWith(`${oldFolder}/`)) continue;
+            const moved = `${newFolder}/${target.slice(oldFolder.length + 1)}`;
+            retargeted[entryKind] = toWikiLink(moved, fileStem(moved));
+            changed = true;
+          }
+          if (changed) patch[FRONTMATTER_KEYS.kindTemplates] = retargeted;
         }
         return patch;
       },
@@ -5324,9 +5371,10 @@ export class SnowflakeProjectService {
   }
 
   /**
-   * The default custom fields a kind's template note defines right now:
-   * every `###` block of its body. An unset choice, a note that has gone,
-   * and a note with no headings all seed nothing.
+   * The default custom fields a kind's template note defines right now: the
+   * protected block of a template note, or every `###` block of a free-form
+   * choice from before templates had a home. An unset choice, a note that has
+   * gone, and a note with no fields all seed nothing.
    */
   async kindTemplateFields(
     projectLocator: ProjectLocator,
@@ -5339,7 +5387,209 @@ export class SnowflakeProjectService {
       : `${templatePath}.md`;
     const record = await this.repository.tryReadManaged(normalizePath(path));
     if (record === null) return [];
-    return templateCustomFields(record.content);
+    return templateNoteFields(record.content);
+  }
+
+  /**
+   * Every kind's custom-field templates, straight from the folder that holds
+   * them: the note names the template, the frontmatter holds its sentence.
+   */
+  async listCustomFieldTemplates(
+    projectLocator: ProjectLocator,
+  ): Promise<Record<EntityKindId, CustomFieldTemplateInfo[]>> {
+    const project = await this.loadProject(projectLocator);
+    const listing: Record<EntityKindId, CustomFieldTemplateInfo[]> = {};
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
+      listing[kind] = await this.customFieldTemplatesOf(project, kind);
+    }
+    return listing;
+  }
+
+  private async customFieldTemplatesOf(
+    project: ProjectRef,
+    kind: EntityKindId,
+  ): Promise<CustomFieldTemplateInfo[]> {
+    const records = await this.repository.findManagedFiles(
+      customFieldRootPath(project, kind),
+      "template",
+      project.id,
+    );
+    return records
+      .filter(
+        (record) =>
+          record.frontmatter[FRONTMATTER_KEYS.templateType] ===
+          CUSTOM_FIELD_TEMPLATE_TYPE,
+      )
+      .map((record) => ({
+        name: fileStem(record.path),
+        description:
+          asOptionalString(record.frontmatter[FRONTMATTER_KEYS.description]) ??
+          "",
+        path: record.path,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  /** The fields one template stores, for the dialog that edits them. */
+  async customFieldTemplateFields(
+    projectLocator: ProjectLocator,
+    kind: EntityKindId,
+    name: string,
+  ): Promise<CustomField[]> {
+    const project = await this.loadProject(projectLocator);
+    const path = normalizePath(
+      `${customFieldRootPath(project, kind)}/${name}.md`,
+    );
+    const record = await this.repository.tryReadManaged(path);
+    if (record === null) return [];
+    return templateNoteFields(record.content);
+  }
+
+  /**
+   * Writes one custom-field template into the kind's template folder. A new
+   * name makes a new note; `previousName` says a standing template is being
+   * edited, name change included; `overwrite` lets an export land on a taken
+   * name, replacing that note but keeping its identity. Refusals are returned
+   * rather than thrown so the dialog can say why in the project's language.
+   */
+  async saveCustomFieldTemplate(
+    projectLocator: ProjectLocator,
+    kind: EntityKindId,
+    input: {
+      name: string;
+      description: string;
+      fields: readonly CustomField[];
+    },
+    options: { previousName?: string; overwrite?: boolean } = {},
+  ): Promise<SaveCustomFieldTemplateResult> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const name = input.name.trim();
+    if (name.length === 0 || safeFileName(name) !== name) {
+      return { ok: false, code: "invalid-name" };
+    }
+    const root = customFieldRootPath(project, kind);
+    const existing = await this.customFieldTemplatesOf(project, kind);
+    const previous =
+      options.previousName === undefined
+        ? null
+        : (existing.find(
+            (candidate) => candidate.name === options.previousName,
+          ) ?? null);
+    if (options.previousName !== undefined && previous === null) {
+      throw new ManagedFileNotFoundError(
+        normalizePath(`${root}/${options.previousName}.md`),
+      );
+    }
+    const collision =
+      existing.find(
+        (candidate) =>
+          candidate !== previous && foldName(candidate.name) === foldName(name),
+      ) ?? null;
+    // Only an export may land on a taken name; an edit renamed onto another
+    // template is refused, because replacing a second note was never asked.
+    if (collision !== null && (previous !== null || options.overwrite !== true)) {
+      return { ok: false, code: "taken" };
+    }
+    let path = collision?.path ?? previous?.path ?? null;
+    if (previous !== null && collision === null && previous.name !== name) {
+      const destination = normalizePath(`${root}/${name}.md`);
+      await this.repository.renameFile(previous.path, destination);
+      await this.retargetKindTemplateEntries(
+        project,
+        stripMarkdownExtension(previous.path),
+        stripMarkdownExtension(destination),
+      );
+      path = destination;
+    }
+    const description = input.description.trim();
+    const identity =
+      path === null
+        ? null
+        : normalizeStableId(
+            (await this.repository.tryReadManaged(path))?.frontmatter[
+              FRONTMATTER_KEYS.templateId
+            ],
+          );
+    const frontmatter: ManagedFrontmatter = {
+      ...commonFrontmatter("template", project.id),
+      [FRONTMATTER_KEYS.templateType]: CUSTOM_FIELD_TEMPLATE_TYPE,
+      [FRONTMATTER_KEYS.templateId]:
+        identity ?? createStableId("field-template"),
+      ...(description.length > 0
+        ? { [FRONTMATTER_KEYS.description]: description }
+        : {}),
+    };
+    const template = customFieldTemplateNote(input.fields);
+    if (path === null) {
+      const created = normalizePath(`${root}/${name}.md`);
+      await this.repository.createManagedFile({
+        path: created,
+        template,
+        frontmatter,
+      });
+      return { ok: true, path: created };
+    }
+    await this.repository.replaceManagedFile(path, template, frontmatter);
+    return { ok: true, path };
+  }
+
+  /** Trashes one template and clears every choice that pointed at it. */
+  async deleteCustomFieldTemplate(
+    projectLocator: ProjectLocator,
+    kind: EntityKindId,
+    name: string,
+  ): Promise<void> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const existing = await this.customFieldTemplatesOf(project, kind);
+    const template =
+      existing.find((candidate) => candidate.name === name) ?? null;
+    if (template === null) {
+      throw new ManagedFileNotFoundError(
+        normalizePath(`${customFieldRootPath(project, kind)}/${name}.md`),
+      );
+    }
+    await this.repository.trashFile(template.path);
+    await this.retargetKindTemplateEntries(
+      project,
+      stripMarkdownExtension(template.path),
+      null,
+    );
+  }
+
+  /**
+   * Follows a template note wherever it goes: every kind whose stored choice
+   * named the old path is pointed at the new one, or cleared when the note is
+   * gone for good.
+   */
+  private async retargetKindTemplateEntries(
+    project: ProjectRef,
+    from: string,
+    to: string | null,
+  ): Promise<void> {
+    const record = await this.repository.tryReadManaged(project.projectFile);
+    const stored = record?.frontmatter[FRONTMATTER_KEYS.kindTemplates];
+    if (!isKindStringMap(stored)) return;
+    const matches = Object.values(stored).some(
+      (value) => (fromWikiLink(value) ?? value).trim() === from,
+    );
+    if (!matches) return;
+    await this.repository.updateFrontmatterAtomic(
+      project.projectFile,
+      (frontmatter) => {
+        const current = frontmatter[FRONTMATTER_KEYS.kindTemplates];
+        const map: Record<string, string> = isKindStringMap(current)
+          ? { ...current }
+          : {};
+        for (const [entryKind, value] of Object.entries(map)) {
+          if ((fromWikiLink(value) ?? value).trim() !== from) continue;
+          if (to === null) delete map[entryKind];
+          else map[entryKind] = toWikiLink(to, fileStem(to));
+        }
+        return { [FRONTMATTER_KEYS.kindTemplates]: map };
+      },
+    );
   }
 
   /**
@@ -6197,6 +6447,20 @@ export class SnowflakeProjectService {
     }
     for (const kind of project.worldbuildingKinds) {
       const path = normalizePath(worldbuildingKindFolder(project, kind.id));
+      if (this.repository.getFolder(path) !== null) continue;
+      add({
+        code: "missing-directory",
+        path,
+        stepIds: [],
+        canOpen: false,
+        repairable: this.repository.get(path) === null,
+      });
+    }
+    // The template folder every kind carries: unlike a vocabulary root, whose
+    // absence the tree walk tolerates, this one is reported so the repair can
+    // put it back before anyone reaches for the templates inside.
+    for (const kind of entityKindIds(project.worldbuildingKinds)) {
+      const path = customFieldRootPath(project, kind);
       if (this.repository.getFolder(path) !== null) continue;
       add({
         code: "missing-directory",
@@ -8000,6 +8264,14 @@ function definitionRootPath(
   );
 }
 
+/** The folder a kind's custom-field templates live in, `24_Custom_Field`. */
+function customFieldRootPath(project: KindScope, kind: EntityKindId): string {
+  const kindFolder = entityKindFolder(project, kind);
+  return normalizePath(
+    `${project.rootPath}/${kindFolder}/${customFieldRootNameForFolder(kindFolder, project.locale)}`,
+  );
+}
+
 /** The root folder of an entity kind's Category tree. */
 function categoryDefinitionPath(
   project: KindScope,
@@ -8728,6 +9000,11 @@ function compareCharactersByRank(
   const byRank = left.rank - right.rank;
   if (byRank !== 0) return byRank;
   return left.characterId.localeCompare(right.characterId, "en");
+}
+
+/** The path a stored link means: the note's path without its ".md". */
+function stripMarkdownExtension(path: string): string {
+  return path.replace(/\.md$/u, "");
 }
 
 /**

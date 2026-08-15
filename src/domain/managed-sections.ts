@@ -108,6 +108,10 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	// A definition node's `_self.md`: the generated block that reads out
 	// where the node sits and what it means, and free prose after it.
 	definition: [section('definition-fields', { generated: true })],
+	// A template note's whole body: canonical storage for the fields it
+	// seeds, managed from the dashboard. Its own id, because the protected
+	// set is global and `custom-fields` must stay editable in member notes.
+	template: [section('template-fields', { protected: true })],
 	draft: [],
 	material: [],
 	archive: [],

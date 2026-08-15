@@ -7,6 +7,11 @@ import {
   type WorldbuildingKindId,
 } from "../domain";
 import {
+  TEMPLATE_FIELDS_SECTION_ID,
+  serializeCustomFields,
+  type CustomField,
+} from "./custom-fields";
+import {
   renderCharacterFieldsBlock,
   renderDefinitionFieldsBlock,
   renderEntityFieldsBlock,
@@ -524,6 +529,32 @@ export function definitionTemplate(
   return {
     body: `${renderMarkedSection(
       "definition-fields",
+      sections[0]?.initialContent ?? "",
+    )}\n`,
+    sections,
+  };
+}
+
+/**
+ * A custom-field template note. The whole body is the one protected block
+ * that stores the fields the template seeds: the note is the plugin's own
+ * storage, managed from the dashboard, so nothing outside the block exists
+ * for an author to write.
+ */
+export function customFieldTemplateNote(
+  fields: readonly CustomField[],
+): MarkdownTemplate {
+  const sections: ManagedSectionDefinition[] = [
+    {
+      id: TEMPLATE_FIELDS_SECTION_ID,
+      heading: "",
+      initialContent: serializeCustomFields("", fields),
+    },
+  ];
+  assertManagedSectionContract("template", sections);
+  return {
+    body: `${renderMarkedSection(
+      TEMPLATE_FIELDS_SECTION_ID,
       sections[0]?.initialContent ?? "",
     )}\n`,
     sections,

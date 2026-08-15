@@ -25,8 +25,10 @@ import {
 	primaryManagedSectionForStep,
 	PROGRESS_STATUSES,
 	entityKindIds,
+	foldName,
 	isWorldbuildingKind,
 	nextCustomKindPrefix,
+	safeFileName,
 	type EntityKindId,
 	type ProjectWorldbuildingKind,
 	type ProgressStatus,
@@ -40,6 +42,7 @@ import {
 import {
 	MAX_DEFINITION_DEPTH,
 	validateKindName,
+	type CustomFieldTemplateInfo,
 	type DefinitionForest,
 	type DefinitionNodeInfo,
 	type DefinitionTreeInfo,
@@ -55,6 +58,7 @@ import {
 	MoveAfterModal,
 	MoveToPositionModal,
 	RepairReportModal,
+	promptForCustomFieldTemplate,
 	promptForDefinitionEdit,
 	promptForKindForm,
 	promptForDefinitionKind,
@@ -62,6 +66,7 @@ import {
 	promptForNewCharacter,
 	promptForNewEntity,
 	promptForNewScene,
+	promptForTemplateDeletion,
 	type CharacterOption,
 	type MemberFormContext,
 	type MoveAfterEntry,
@@ -273,6 +278,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly definitionSectionCollapse = new Set<string>();
 	/** What each tree's search box holds, keyed `id/kind`. */
 	private readonly definitionQueries = new Map<string, string>();
+	/** What the template pane's search box holds. */
+	private customFieldsQuery = '';
 	/** The entry the inspector is showing, one per vocabulary. */
 	private readonly definitionSelection = new Map<
 		DefinitionFileChoice,
@@ -1182,6 +1189,46 @@ export class SnowflakeDashboardView extends ItemView {
 				void this.refresh();
 			});
 		}
+		this.renderCustomFieldsRailEntry(list, model);
+	}
+
+	/** The rail entry under Relationship that opens the template tables. */
+	private renderCustomFieldsRailEntry(
+		list: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const active = this.selectedPane.kind === 'custom-fields';
+		const count = entityKindIds(model.worldbuildingKinds).reduce(
+			(total, kind) =>
+				total + (model.customFieldTemplates[kind]?.length ?? 0),
+			0,
+		);
+		const title = this.t('dashboard.customFields');
+		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
+		const button = item.createEl('button', {
+			cls: `snowflake-method-step-button${active ? ' is-active' : ''}`,
+			attr: {
+				type: 'button',
+				'aria-label': title,
+				...(active ? { 'aria-current': 'true' } : {}),
+			},
+		});
+		const iconEl = button.createSpan({
+			cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(iconEl, 'layout-template');
+		button.createSpan({ cls: 'snowflake-method-step-label', text: title });
+		const indicator = button.createSpan({
+			cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
+			attr: { 'aria-label': String(count) },
+		});
+		this.setCount(indicator, count);
+		button.addEventListener('click', () => {
+			this.selectedPane = { kind: 'custom-fields' };
+			this.stepChosen = true;
+			void this.refresh();
+		});
 	}
 
 	/**
@@ -2109,6 +2156,338 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
+	/**
+	 * The template tables: one section per kind, each a small table of the
+	 * kind's custom-field templates with edit and delete at hand. Dressed like
+	 * the vocabulary pane — header, search, per-kind folds — but a template
+	 * list is flat, so a table stands where the tree would.
+	 */
+	private renderCustomFieldsPane(
+		layout: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
+		this.renderedPaneKey = dashboardPaneKey({ kind: 'custom-fields' });
+		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
+		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
+		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		title.createEl('h2', { text: this.t('dashboard.customFields') });
+		panel.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t('dashboard.customFields.description'),
+		});
+		const toolbar = panel.createDiv({
+			cls: 'snowflake-method-table-toolbar snowflake-method-definition-toolbar',
+		});
+		const search = new SearchComponent(toolbar);
+		search.setPlaceholder(this.t('customFields.search'));
+		search.setValue(this.customFieldsQuery);
+		const add = toolbar.createEl('button', {
+			cls: 'mod-cta snowflake-method-definition-add',
+			text: this.t('customFields.add'),
+			attr: { type: 'button' },
+		});
+		add.disabled = model.readOnly;
+		add.addEventListener('click', () => {
+			void this.addTemplateToKind(model);
+		});
+		const sections = panel.createDiv({
+			cls: 'snowflake-method-template-sections',
+		});
+		const painters = entityKindIds(model.worldbuildingKinds).map((kind) =>
+			this.renderCustomFieldsSection(sections, model, kind),
+		);
+		const noMatches = sections.createEl('p', {
+			cls: 'snowflake-method-definition-empty is-hidden',
+			text: this.t('definition.noMatches'),
+		});
+		search.onChange((value) => {
+			this.customFieldsQuery = value;
+			const found = painters.reduce((total, paint) => total + paint(), 0);
+			noMatches.toggleClass(
+				'is-hidden',
+				!(value.trim().length > 0 && found === 0),
+			);
+		});
+	}
+
+	/** One kind's templates behind a fold of its own, as a two-column table. */
+	private renderCustomFieldsSection(
+		container: HTMLElement,
+		model: ProjectDashboardModel,
+		kind: EntityKindId,
+	): () => number {
+		const templates = model.customFieldTemplates[kind] ?? [];
+		const sectionKey = `custom-fields/${kind}`;
+		const section = container.createDiv({
+			cls: 'snowflake-method-definition-section',
+		});
+		const header = section.createDiv({
+			cls: 'snowflake-method-definition-section-header',
+		});
+		const collapsed = (): boolean =>
+			this.definitionSectionCollapse.has(sectionKey);
+		const toggle = header.createEl('button', {
+			cls: 'snowflake-method-definition-section-toggle',
+			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
+		});
+		const chevron = toggle.createSpan({
+			cls: 'snowflake-method-definition-section-chevron',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(chevron, collapsed() ? 'chevron-right' : 'chevron-down');
+		toggle.createSpan({
+			cls: 'snowflake-method-definition-section-title',
+			text: this.definitionKindLabel(kind),
+			attr: { role: 'heading', 'aria-level': '3' },
+		});
+		this.setCount(
+			toggle.createSpan({
+				cls:
+					'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
+					'snowflake-method-definition-count',
+				attr: {
+					'aria-label': this.t('customFields.countLabel', {
+						count: templates.length,
+					}),
+				},
+			}),
+			templates.length,
+		);
+		const body = section.createDiv({
+			cls: 'snowflake-method-definition-section-body',
+		});
+		let rows: { template: CustomFieldTemplateInfo; row: HTMLElement }[] = [];
+		if (templates.length === 0) {
+			// The same sentence an empty tree says, worn the same way; the
+			// toolbar's Add template is the way in, as it is for the trees.
+			const empty = body.createEl('p', {
+				cls: 'snowflake-method-character-empty',
+			});
+			const icon = empty.createSpan({
+				cls: 'snowflake-method-character-empty-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(icon, 'triangle-alert');
+			empty.createSpan({ text: this.t('customFields.empty') });
+		} else {
+			rows = this.renderCustomFieldsTable(body, model, kind, templates);
+		}
+		const paint = (): number => {
+			const query = this.customFieldsQuery;
+			const searching = query.trim().length > 0;
+			const open = searching || !collapsed();
+			body.toggleClass('is-collapsed', !open);
+			toggle.setAttribute('aria-expanded', String(open));
+			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
+			let found = 0;
+			for (const { template, row } of rows) {
+				const matches =
+					!searching ||
+					memberMatches([template.name, template.description], query);
+				row.toggleClass('is-hidden', !matches);
+				if (matches) found += 1;
+			}
+			// While a search is on, a kind with nothing to show steps aside.
+			section.toggleClass('is-hidden', searching && found === 0);
+			return found;
+		};
+		toggle.addEventListener('click', () => {
+			if (!this.definitionSectionCollapse.delete(sectionKey)) {
+				this.definitionSectionCollapse.add(sectionKey);
+			}
+			paint();
+		});
+		paint();
+		return paint;
+	}
+
+	/** The two-column table one kind's templates stand in, add-row included. */
+	private renderCustomFieldsTable(
+		body: HTMLElement,
+		model: ProjectDashboardModel,
+		kind: EntityKindId,
+		templates: readonly CustomFieldTemplateInfo[],
+	): { template: CustomFieldTemplateInfo; row: HTMLElement }[] {
+		const frame = this.buildTableFrame(
+			body,
+			'snowflake-method-template-table',
+			[this.t('table.name'), this.t('table.description')],
+			this.templateColumnClasses(),
+		);
+		const rows = templates.map((template) => {
+			const row = frame.body.createEl('tr');
+			row.createEl('td', {
+				cls: 'snowflake-method-table-primary',
+				text: template.name,
+			});
+			const textCell = row.createEl('td', { text: template.description });
+			this.renderRowActions(row, textCell, {
+				name: template.name,
+				primaryLabel: this.t('actions.edit'),
+				primary: () => {
+					void this.openEditTemplate(model, kind, template);
+				},
+				primaryDisabled: model.readOnly,
+				items: (menu) => {
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('actions.edit'))
+							.setIcon('pencil')
+							.setDisabled(model.readOnly)
+							.onClick(() => {
+								void this.openEditTemplate(model, kind, template);
+							}),
+					);
+					menu.addItem((item) =>
+						item
+							.setTitle(this.t('actions.openNote'))
+							.setIcon('file-text')
+							.onClick(() => {
+								void this.host.openManagedFile(template.path);
+							}),
+					);
+				},
+				remove: () => {
+					void this.confirmTemplateDeletion(kind, template);
+				},
+				removeDisabled: model.readOnly,
+			});
+			return { template, row };
+		});
+		this.renderAddRow(
+			frame.body,
+			2 + (this.host.showsTableActionsColumn() ? 1 : 0),
+			this.t('customFields.addMore'),
+			model.readOnly,
+			() => {
+				void this.openCreateTemplate(model, kind);
+			},
+		);
+		return rows;
+	}
+
+	/** The toolbar's way in: which kind first, then the same dialog. */
+	private async addTemplateToKind(model: ProjectDashboardModel): Promise<void> {
+		const kind = await promptForDefinitionKind(
+			this.app,
+			this.t,
+			entityKindIds(model.worldbuildingKinds).map((candidate) => ({
+				kind: candidate,
+				label: this.definitionKindLabel(candidate),
+			})),
+		);
+		if (kind === null) return;
+		await this.openCreateTemplate(model, kind);
+	}
+
+	private async openCreateTemplate(
+		model: ProjectDashboardModel,
+		kind: EntityKindId,
+	): Promise<void> {
+		const result = await promptForCustomFieldTemplate(this.app, this.t, {
+			title: this.t('modal.customFieldTemplate.createTitle', {
+				kind: this.definitionKindLabel(kind),
+			}),
+			submitLabel: this.t('common.create'),
+			rows: [],
+			objection: (name) =>
+				this.templateNameObjection(model, kind, name, null),
+		});
+		if (result === null) return;
+		await this.runAndRefresh(async () => {
+			const outcome = await this.host.saveCustomFieldTemplate(kind, result);
+			if (!outcome.ok) {
+				new Notice(this.templateRefusal(outcome.code, result.name));
+			}
+		});
+	}
+
+	private async openEditTemplate(
+		model: ProjectDashboardModel,
+		kind: EntityKindId,
+		template: CustomFieldTemplateInfo,
+	): Promise<void> {
+		const fields = await this.host.customFieldTemplateFields(
+			kind,
+			template.name,
+		);
+		const result = await promptForCustomFieldTemplate(this.app, this.t, {
+			title: this.t('modal.customFieldTemplate.editTitle', {
+				name: template.name,
+			}),
+			submitLabel: this.t('common.save'),
+			initial: { name: template.name, description: template.description },
+			rows: [...fields],
+			objection: (name) =>
+				this.templateNameObjection(model, kind, name, template.name),
+		});
+		if (result === null) return;
+		await this.runAndRefresh(async () => {
+			const outcome = await this.host.saveCustomFieldTemplate(kind, result, {
+				previousName: template.name,
+			});
+			if (!outcome.ok) {
+				new Notice(this.templateRefusal(outcome.code, result.name));
+			}
+		});
+	}
+
+	private async confirmTemplateDeletion(
+		kind: EntityKindId,
+		template: CustomFieldTemplateInfo,
+	): Promise<void> {
+		const confirmed = await promptForTemplateDeletion(
+			this.app,
+			this.t,
+			template.name,
+		);
+		if (!confirmed) return;
+		await this.runAndRefresh(() =>
+			this.host.deleteCustomFieldTemplate(kind, template.name),
+		);
+	}
+
+	/**
+	 * What is wrong with a template name right now: a spelling no file can
+	 * wear, or a namesake in the kind — the one being edited excepted.
+	 */
+	private templateNameObjection(
+		model: ProjectDashboardModel,
+		kind: EntityKindId,
+		name: string,
+		previousName: string | null,
+	): string | null {
+		if (safeFileName(name) !== name) {
+			return this.t('modal.customFieldTemplate.invalidName', { name });
+		}
+		const taken = (model.customFieldTemplates[kind] ?? []).some(
+			(candidate) =>
+				candidate.name !== previousName &&
+				foldName(candidate.name) === foldName(name),
+		);
+		return taken
+			? this.t('modal.customFieldTemplate.nameTaken', { name })
+			: null;
+	}
+
+	private templateRefusal(code: 'invalid-name' | 'taken', name: string): string {
+		return code === 'taken'
+			? this.t('modal.customFieldTemplate.nameTaken', { name })
+			: this.t('modal.customFieldTemplate.invalidName', { name });
+	}
+
+	/** The columns the template tables are laid by: name, sentence, actions. */
+	private templateColumnClasses(): string[] {
+		const columns = [
+			'snowflake-method-member-column-name',
+			'snowflake-method-member-column-text',
+		];
+		return this.host.showsTableActionsColumn()
+			? [...columns, ACTIONS_COLUMN_CLASS]
+			: columns;
+	}
+
 	/** Everything one entry can be asked to do, from a row or the inspector. */
 	private definitionActions(
 		model: ProjectDashboardModel,
@@ -2862,18 +3241,18 @@ export class SnowflakeDashboardView extends ItemView {
 		// read before they existed, so without this a note made a moment ago is
 		// one the form cannot say anything about, and its line goes unnamed.
 		const madeHere = new Map<string, EntityGroupId>();
-		// Any markdown note of the project can be a template; the picker names
-		// them by their file name and holds them by path without the extension.
-		const projectRoot = model.path.split('/').slice(0, -2).join('/');
-		const templateOptions = (): PickerOption[] =>
-			this.app.vault
-				.getMarkdownFiles()
-				.filter((file) => file.path.startsWith(`${projectRoot}/`))
-				.map((file) => ({
-					value: file.path.replace(/\.md$/u, ''),
-					label: file.basename,
-				}))
-				.sort((left, right) => left.label.localeCompare(right.label));
+		// Only the kind's own template folder speaks here: a template is made
+		// in the dashboard or exported from a form, never picked at large. The
+		// picker names them by note name and holds them by extensionless path.
+		// Read off the freshest render, so a template exported while this very
+		// form stands open joins the offer once the refresh behind it lands.
+		const templateOptions = (): PickerOption[] => {
+			const fresh = this.renderedModel ?? model;
+			return (fresh.customFieldTemplates[kind] ?? []).map((template) => ({
+				value: template.path.replace(/\.md$/u, ''),
+				label: template.name,
+			}));
+		};
 		return {
 			notice: (message) => {
 				new Notice(message);
@@ -2883,6 +3262,17 @@ export class SnowflakeDashboardView extends ItemView {
 				current: () => this.host.kindTemplatePath(kind),
 				set: (path) => this.host.setKindTemplate(kind, path),
 				fields: () => this.host.kindTemplateFields(kind),
+				export: async (input) => {
+					const outcome = await this.host.saveCustomFieldTemplate(
+						kind,
+						input,
+						{ overwrite: true },
+					);
+					// The pane and the picker read the model, so a fresh export
+					// joins them on the next refresh, behind the open form.
+					if (outcome.ok) void this.refresh();
+					return outcome;
+				},
 			},
 			groups: () =>
 				groupIds.map((id) => ({ id, label: entityGroupLabel(this.t, id) })),
@@ -3349,6 +3739,10 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 		if (this.selectedPane.kind === 'definition') {
 			this.renderDefinitionPane(layout, model, this.selectedPane.definitionId);
+			return;
+		}
+		if (this.selectedPane.kind === 'custom-fields') {
+			this.renderCustomFieldsPane(layout, model);
 			return;
 		}
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
@@ -4964,10 +5358,12 @@ export class SnowflakeDashboardView extends ItemView {
 		panel: HTMLElement,
 		tableCls: string,
 		headers: readonly string[],
-	): { headWrap: HTMLElement; bodyWrap: HTMLElement; body: HTMLElement } {
 		// The actions column is the author's choice, so it is the frame that
 		// knows whether there is one: the rows fill whichever grid it lays.
-		const columnClasses = this.tableColumnClasses();
+		// Member tables lay the member grid; a caller with fewer columns says
+		// so here.
+		columnClasses: readonly string[] = this.tableColumnClasses(),
+	): { headWrap: HTMLElement; bodyWrap: HTMLElement; body: HTMLElement } {
 		const shown = this.host.showsTableActionsColumn()
 			? [...headers, this.t('table.actions')]
 			: headers;

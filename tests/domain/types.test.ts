@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { DOCUMENT_TYPES, isDocumentType } from '../../src/domain';
+import {
+	DOCUMENT_TYPES,
+	FRONTMATTER_KEYS,
+	PROTECTED_SECTION_IDS,
+	isDocumentType,
+} from '../../src/domain';
 
 describe('document types', () => {
 	it('exposes the complete document type set', () => {
@@ -14,6 +19,7 @@ describe('document types', () => {
 			'scene',
 			'worldbuilding',
 			'definition',
+			'template',
 			'draft',
 			'material',
 			'archive',
@@ -21,6 +27,16 @@ describe('document types', () => {
 		for (const documentType of DOCUMENT_TYPES) {
 			expect(isDocumentType(documentType)).toBe(true);
 		}
+	});
+
+	it('names the template identity keys', () => {
+		expect(FRONTMATTER_KEYS.templateType).toBe('snowflake-template-type');
+		expect(FRONTMATTER_KEYS.templateId).toBe('snowflake-template-id');
+	});
+
+	it('protects the template body while member custom fields stay editable', () => {
+		expect(PROTECTED_SECTION_IDS.has('template-fields')).toBe(true);
+		expect(PROTECTED_SECTION_IDS.has('custom-fields')).toBe(false);
 	});
 
 	it('rejects values that are not document types', () => {

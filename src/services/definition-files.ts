@@ -221,6 +221,8 @@ export function definitionRootFromValue(value: unknown): string | null {
 interface DefinitionCopy {
   /** Root folder names without their number, which the kind's folder decides. */
   fileStems: Record<DefinitionFileId, string>;
+  /** The custom-field template folder's name, numbered like a fourth tree. */
+  customFieldStem: string;
   roles: Record<CharacterType, string>;
   worldStatusStarters: string[];
   relationshipStarters: string[];
@@ -233,6 +235,7 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
       "world-status": "World_Status",
       relationship: "Relationship",
     },
+    customFieldStem: "Custom_Field",
     roles: { major: "Major", supporting: "Supporting", minor: "Minor" },
     worldStatusStarters: ["Injured", "Missing", "Deceased"],
     relationshipStarters: ["Ally", "Enemy", "Friend", "Family", "Member"],
@@ -243,6 +246,7 @@ const COPY: Record<ProjectLanguage, DefinitionCopy> = {
       "world-status": "状态",
       relationship: "关系",
     },
+    customFieldStem: "自定义字段",
     roles: { major: "主角", supporting: "配角", minor: "次要角色" },
     worldStatusStarters: ["受伤", "失踪", "已故"],
     relationshipStarters: ["盟友", "敌人", "朋友", "家人", "成员"],
@@ -261,14 +265,34 @@ function definitionFileNumber(
   kindFolder: string,
   id: DefinitionFileId,
 ): string {
+  return kindFileNumber(kindFolder, DEFINITION_FILE_IDS.indexOf(id) + 1);
+}
+
+function kindFileNumber(kindFolder: string, position: number): string {
   const leaf = kindFolder.slice(kindFolder.lastIndexOf("/") + 1);
   // A kind folder past 69 wears a letter: 6A_Faction roots 6A1_Category.
   const folderNumber = /^\d+[A-Za-z]?/u.exec(leaf)?.[0] ?? "";
-  const position = DEFINITION_FILE_IDS.indexOf(id) + 1;
   if (folderNumber.length === 0) return "";
   return folderNumber.endsWith("0")
     ? `${folderNumber.slice(0, -1)}${position}`
     : `${folderNumber}${position}`;
+}
+
+/** Where custom-field templates sit inside a kind folder: after the trees. */
+const CUSTOM_FIELD_POSITION = DEFINITION_FILE_IDS.length + 1;
+
+/**
+ * The custom-field template folder any kind folder implies, numbered as the
+ * position after the three trees: `24_Custom_Field` inside `20_Character`,
+ * `624_自定义字段` inside `62_地点`, `6A4_Custom_Field` inside `6A_Faction`.
+ */
+export function customFieldRootNameForFolder(
+  kindFolder: string,
+  language: ProjectLanguage,
+): string {
+  const stem = COPY[language].customFieldStem;
+  const number = kindFileNumber(kindFolder, CUSTOM_FIELD_POSITION);
+  return number.length === 0 ? stem : `${number}_${stem}`;
 }
 
 /** The name of a built-in kind's tree root folder, `21_Category` or `621_类别`. */

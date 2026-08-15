@@ -12,9 +12,11 @@ import type {
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type {
+	CustomFieldTemplateInfo,
 	DefinitionForest,
 	MemberUsage,
 	ProjectStructureIssueCode,
+	SaveCustomFieldTemplateResult,
 } from '../services';
 
 import type {
@@ -202,6 +204,8 @@ export interface ProjectDashboardModel {
 	worldbuilding: Record<WorldbuildingKindId, WorldbuildingEntityViewModel[]>;
 	/** The three vocabularies across every kind, for the definition panes. */
 	definitions: Record<DefinitionFileChoice, DefinitionForest>;
+	/** Every kind's custom-field templates, for the pane and the pickers. */
+	customFieldTemplates: Record<EntityKindId, CustomFieldTemplateInfo[]>;
 	/** Writable member notes that predate the generated fields block. */
 	outdatedNotes: number;
 	structureIssues: ManagedSectionIssueViewModel[];
@@ -399,6 +403,19 @@ export interface DashboardHost {
 	setKindTemplate(kind: EntityKindId, path: string | null): Promise<void>;
 	/** The default fields the chosen template note defines right now. */
 	kindTemplateFields(kind: EntityKindId): Promise<CustomField[]>;
+	/** The fields one named template stores, for the dialog that edits them. */
+	customFieldTemplateFields(
+		kind: EntityKindId,
+		name: string,
+	): Promise<CustomField[]>;
+	/** Writes one template: add, edit, or an export allowed to overwrite. */
+	saveCustomFieldTemplate(
+		kind: EntityKindId,
+		input: { name: string; description: string; fields: CustomField[] },
+		options?: { previousName?: string; overwrite?: boolean },
+	): Promise<SaveCustomFieldTemplateResult>;
+	/** Trashes one template and clears every choice that named it. */
+	deleteCustomFieldTemplate(kind: EntityKindId, name: string): Promise<void>;
 	reorderEntity(
 		kind: WorldbuildingKindId,
 		entityId: string,

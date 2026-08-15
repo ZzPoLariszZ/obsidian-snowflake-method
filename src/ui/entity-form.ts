@@ -1090,6 +1090,12 @@ export interface CustomFieldTemplateSource {
 	current: () => Promise<string | null>;
 	set: (path: string | null) => Promise<void>;
 	fields: () => Promise<CustomField[]>;
+	/** Writes the form's rows as a template of the kind, replacing a namesake. */
+	export: (input: {
+		name: string;
+		description: string;
+		fields: CustomField[];
+	}) => Promise<{ ok: true } | { ok: false; code: 'invalid-name' | 'taken' }>;
 }
 
 /**
@@ -1097,11 +1103,14 @@ export interface CustomFieldTemplateSource {
  * marked block, edited here and nowhere else. The rows live in an array the
  * modal owns and this editor mutates in place, so a form redraw rebuilds the
  * editor without losing a keystroke. On a create form the kind's template
- * note seeds the rows, and changing the template re-seeds them only while
- * nobody has typed into a row yet.
+ * note seeds the rows; choosing a template re-seeds an untouched create form
+ * wholesale, and on any form already holding rows it appends the template's
+ * fields below them, skipping titles already present.
  */
 export class CustomFieldsEditor {
 	private rowsEl: HTMLElement | null = null;
+	/** The row a drag carries, by its place in the shared list. */
+	private draggingIndex: number | null = null;
 
 	constructor(
 		private readonly context: {
@@ -1113,6 +1122,8 @@ export class CustomFieldsEditor {
 			template: CustomFieldTemplateSource | null;
 			/** True on a create form, where the template seeds the rows. */
 			seedFromTemplate: boolean;
+			/** Offers the rows as a template of the kind; absent where unwanted. */
+			onExport?: () => void;
 			touched: () => boolean;
 			markTouched: () => void;
 		},
@@ -1130,11 +1141,27 @@ export class CustomFieldsEditor {
 			cls: 'snowflake-method-record-title',
 			text: t('form.customFields'),
 		});
-		if (this.context.template !== null) {
-			this.attachTemplatePicker(head, this.context.template);
+		// The template choice and the export share one line under the title:
+		// the choice starts it on the left, the export closes it on the right.
+		const onExport = this.context.onExport;
+		if (this.context.template !== null || onExport !== undefined) {
+			const row = block.createDiv({
+				cls: 'snowflake-method-custom-fields-template',
+			});
+			if (this.context.template !== null) {
+				this.attachTemplatePicker(row, this.context.template);
+			}
+			if (onExport !== undefined) {
+				const exportButton = row.createEl('button', {
+					cls: 'snowflake-method-custom-fields-export',
+					text: t('form.customFields.export'),
+					attr: { type: 'button' },
+				});
+				exportButton.addEventListener('click', onExport);
+			}
 		}
 		this.rowsEl = block.createDiv({
-			cls: 'snowflake-method-custom-fields-rows',
+			cls: 'snowflake-method-record-cards snowflake-method-custom-fields-rows',
 		});
 		const add = block.createEl('button', {
 			cls: 'snowflake-method-record-add',
@@ -1169,23 +1196,21 @@ export class CustomFieldsEditor {
 	}
 
 	/**
-	 * The template choice, worn on the block's own title line: a single-value
-	 * picker over the project's notes, with an offer of none. Built once the
-	 * stored choice has been read, so the field opens already saying it.
+	 * The template choice, opening the line under the block's title: a
+	 * single-value picker over the kind's templates, with an offer of none.
+	 * Built once the stored choice has been read, so the field opens already
+	 * saying it.
 	 */
 	private attachTemplatePicker(
-		head: HTMLElement,
+		row: HTMLElement,
 		template: CustomFieldTemplateSource,
 	): void {
 		const t = this.context.t;
-		const slot = head.createDiv({
-			cls: 'snowflake-method-custom-fields-template',
-		});
-		slot.createSpan({
+		row.createSpan({
 			cls: 'snowflake-method-custom-fields-template-label',
 			text: t('form.customFields.template'),
 		});
-		const fieldEl = slot.createDiv();
+		const fieldEl = row.createDiv();
 		let current = '';
 		void template.current().then((path) => {
 			current = path ?? '';
@@ -1214,17 +1239,40 @@ export class CustomFieldsEditor {
 					void template
 						.set(value.length === 0 ? null : value)
 						.then(async () => {
-							// A fresh choice reseeds a form nobody has typed into.
-							if (!this.context.seedFromTemplate || this.context.touched()) {
+							const untouchedCreate =
+								this.context.seedFromTemplate && !this.context.touched();
+							if (value.length === 0) {
+								// Clearing the choice empties only seeded rows nobody
+								// has touched; typed rows are the author's.
+								if (untouchedCreate) {
+									this.context.rows.splice(0, this.context.rows.length);
+									this.renderRows();
+								}
 								return;
 							}
-							const fields =
-								value.length === 0 ? [] : await template.fields();
-							this.context.rows.splice(
-								0,
-								this.context.rows.length,
-								...fields,
+							const fields = await template.fields();
+							// A fresh choice reseeds a create form nobody has typed
+							// into; a form already holding rows keeps them, and the
+							// template's fields join below — the titles already
+							// present staying single.
+							if (untouchedCreate) {
+								this.context.rows.splice(
+									0,
+									this.context.rows.length,
+									...fields,
+								);
+								this.renderRows();
+								return;
+							}
+							const present = new Set(
+								this.context.rows.map((row) => foldName(row.title.trim())),
 							);
+							const appended = fields.filter(
+								(field) => !present.has(foldName(field.title.trim())),
+							);
+							if (appended.length === 0) return;
+							this.context.rows.push(...appended);
+							this.context.markTouched();
 							this.renderRows();
 						});
 				},
@@ -1237,10 +1285,19 @@ export class CustomFieldsEditor {
 		if (rows === null) return;
 		rows.empty();
 		this.context.rows.forEach((row, index) => {
-			const el = rows.createDiv({ cls: 'snowflake-method-custom-field-row' });
-			const title = el.createEl('input', {
+			// The same card a record wears: the handle that moves it, the
+			// fields that are it, and the way to be rid of it.
+			const el = rows.createDiv({ cls: 'snowflake-method-record-card' });
+			const handle = el.createDiv({
+				cls: 'snowflake-method-record-drag',
+				attr: { 'aria-label': this.context.t('form.record.reorder') },
+			});
+			setIcon(handle, 'grip-vertical');
+			this.makeRowDraggable(el, handle, index);
+			const body = el.createDiv({ cls: 'snowflake-method-record-body' });
+			const title = body.createEl('input', {
 				type: 'text',
-				cls: 'snowflake-method-custom-field-title',
+				cls: 'snowflake-method-record-value snowflake-method-custom-field-title',
 				value: row.title,
 				attr: {
 					placeholder: this.context.t('form.customFields.titlePlaceholder'),
@@ -1249,6 +1306,21 @@ export class CustomFieldsEditor {
 			});
 			title.addEventListener('input', () => {
 				row.title = title.value;
+				this.context.markTouched();
+			});
+			const content = body.createEl('textarea', {
+				cls: 'snowflake-method-custom-field-content',
+				attr: {
+					placeholder: this.context.t(
+						'form.customFields.contentPlaceholder',
+					),
+					'aria-label': row.title,
+					rows: '2',
+				},
+			});
+			content.value = row.content;
+			content.addEventListener('input', () => {
+				row.content = content.value;
 				this.context.markTouched();
 			});
 			const remove = el.createEl('button', {
@@ -1266,21 +1338,58 @@ export class CustomFieldsEditor {
 				this.context.markTouched();
 				this.renderRows();
 			});
-			const content = el.createEl('textarea', {
-				cls: 'snowflake-method-custom-field-content',
-				attr: {
-					placeholder: this.context.t(
-						'form.customFields.contentPlaceholder',
-					),
-					'aria-label': row.title,
-					rows: '2',
-				},
-			});
-			content.value = row.content;
-			content.addEventListener('input', () => {
-				row.content = content.value;
-				this.context.markTouched();
-			});
+		});
+	}
+
+	/**
+	 * Fields keep the order they are given, so that order is the author's to
+	 * set — the record cards' own rule, moved the record cards' own way. Only
+	 * the handle starts a drag, and a drop reorders the shared rows and
+	 * redraws, which is also what retires every listener the old cards held.
+	 */
+	private makeRowDraggable(
+		el: HTMLElement,
+		handle: HTMLElement,
+		index: number,
+	): void {
+		handle.addEventListener('mousedown', () => {
+			el.draggable = true;
+		});
+		handle.addEventListener('mouseup', () => {
+			el.draggable = false;
+		});
+		el.addEventListener('dragstart', (event) => {
+			this.draggingIndex = index;
+			el.addClass('is-dragging');
+			if (event.dataTransfer === null) return;
+			event.dataTransfer.effectAllowed = 'move';
+			// A drag has to carry something to start at all.
+			event.dataTransfer.setData('text/plain', '');
+		});
+		el.addEventListener('dragend', () => {
+			el.draggable = false;
+			el.removeClass('is-dragging');
+			this.draggingIndex = null;
+		});
+		el.addEventListener('dragover', (event) => {
+			if (this.draggingIndex === null || this.draggingIndex === index) return;
+			event.preventDefault();
+			el.addClass('is-drop-target');
+		});
+		el.addEventListener('dragleave', () => {
+			el.removeClass('is-drop-target');
+		});
+		el.addEventListener('drop', (event) => {
+			el.removeClass('is-drop-target');
+			const from = this.draggingIndex;
+			if (from === null || from === index) return;
+			event.preventDefault();
+			this.draggingIndex = null;
+			const [moved] = this.context.rows.splice(from, 1);
+			if (moved === undefined) return;
+			this.context.rows.splice(index, 0, moved);
+			this.context.markTouched();
+			this.renderRows();
 		});
 	}
 }

@@ -47,6 +47,10 @@ export const DOCUMENT_TYPES = [
 	// never joins a kind's listing, but managed enough to carry the stamp
 	// that says which project's vocabulary it belongs to.
 	'definition',
+	// A note the plugin keeps as reusable authoring material, such as a
+	// custom-field template. Which flavor it is lives in the template-type
+	// key, so later template kinds need no new document type.
+	'template',
 	'draft',
 	'material',
 	'archive',
@@ -118,6 +122,10 @@ export const FRONTMATTER_KEYS = {
 	sceneCharacters: 'snowflake-scene-characters',
 	entityId: 'snowflake-entity-id',
 	definitionId: 'snowflake-definition-id',
+	// What a template note is a template of ('custom-field' today) and its
+	// stable identity, which survives overwrites and renames.
+	templateType: 'snowflake-template-type',
+	templateId: 'snowflake-template-id',
 	name: 'snowflake-name',
 	description: 'snowflake-description',
 	// "progress" so the key can never be mistaken for the body-stored World

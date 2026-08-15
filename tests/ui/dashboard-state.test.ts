@@ -98,6 +98,23 @@ describe('dashboard restored state', () => {
 		).toBe(false);
 	});
 
+	it('restores the custom-fields pane', () => {
+		const update = mergeDashboardViewState(
+			{
+				projectPath: null,
+				projectTitle: null,
+				selectedStep: 1,
+				selectedPane: DEFAULT_PANE,
+				railCollapsed: OPEN_RAIL,
+			},
+			{ selectedPane: { kind: 'custom-fields' } },
+		);
+
+		expect(update.state.selectedPane).toEqual({ kind: 'custom-fields' });
+		expect(update.changed).toBe(true);
+		expect(dashboardPaneKey(update.state.selectedPane)).toBe('custom-fields');
+	});
+
 	it('supports restoring an explicitly empty dashboard', () => {
 		const update = mergeDashboardViewState(
 			{

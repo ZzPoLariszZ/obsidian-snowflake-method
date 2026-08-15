@@ -21,6 +21,7 @@ import {
 	isNameTaken,
 	isTimeKind,
 	normalizeSceneCast,
+	safeFileName,
 	type EntityKindId,
 	type ProgressStatus,
 	type TimeKind,
@@ -212,6 +213,19 @@ function collectCustomFieldsBlock(
 	initialBlock: string,
 	rows: readonly CustomField[],
 ): { ok: true; block: string } | { ok: false } {
+	const collected = collectCustomFieldRows(t, rows);
+	if (!collected.ok) return collected;
+	return {
+		ok: true,
+		block: serializeCustomFields(initialBlock, collected.fields),
+	};
+}
+
+/** The rows worth storing, or a spoken refusal: a twin or an untitled text. */
+export function collectCustomFieldRows(
+	t: Translate,
+	rows: readonly CustomField[],
+): { ok: true; fields: CustomField[] } | { ok: false } {
 	const untitled = rows.find(
 		(row) => row.title.trim().length === 0 && row.content.trim().length > 0,
 	);
@@ -225,7 +239,7 @@ function collectCustomFieldsBlock(
 		new Notice(t('form.customFields.duplicate', { name: duplicate }));
 		return { ok: false };
 	}
-	return { ok: true, block: serializeCustomFields(initialBlock, kept) };
+	return { ok: true, fields: kept };
 }
 
 /** The custom-fields block, standing first among the record editors. */
@@ -243,6 +257,9 @@ function attachCustomFields(
 		rows: state.rows,
 		template: context.kindTemplates,
 		seedFromTemplate,
+		onExport: () => {
+			void exportCustomFields(app, t, context.kindTemplates, state.rows);
+		},
 		touched: () => state.touched,
 		markTouched: () => {
 			state.touched = true;
@@ -250,6 +267,55 @@ function attachCustomFields(
 	});
 	editor.attach(block);
 	return editor;
+}
+
+/**
+ * Offers the form's rows as a template of the kind: a name and a sentence in
+ * a small dialog, with a quiet line saying when a namesake would be replaced.
+ * The rows are validated first, the way a submit validates them, so the
+ * dialog never opens over rows the note could not hold either.
+ */
+async function exportCustomFields(
+	app: App,
+	t: Translate,
+	source: CustomFieldTemplateSource,
+	rows: readonly CustomField[],
+): Promise<void> {
+	const collected = collectCustomFieldRows(t, rows);
+	if (!collected.ok) return;
+	const names = source.options().map((option) => option.label);
+	const namesake = (name: string): string | null =>
+		names.find((candidate) => foldName(candidate) === foldName(name)) ?? null;
+	const result = await promptForCustomFieldTemplate(app, t, {
+		title: t('modal.customFieldTemplate.exportTitle'),
+		submitLabel: t('common.save'),
+		rows: null,
+		objection: (name) =>
+			safeFileName(name) !== name
+				? t('modal.customFieldTemplate.invalidName', { name })
+				: null,
+		advisory: (name) => {
+			const match = namesake(name);
+			return match === null
+				? null
+				: t('modal.customFieldTemplate.replaceNotice', { name: match });
+		},
+	});
+	if (result === null) return;
+	const outcome = await source.export({
+		name: result.name,
+		description: result.description,
+		fields: collected.fields,
+	});
+	if (outcome.ok) {
+		new Notice(t('notice.templateExported', { name: result.name }));
+		return;
+	}
+	new Notice(
+		outcome.code === 'taken'
+			? t('modal.customFieldTemplate.nameTaken', { name: result.name })
+			: t('modal.customFieldTemplate.invalidName', { name: result.name }),
+	);
 }
 
 type SubmitHandler<T> = (value: T) => Promise<void>;
@@ -3726,6 +3792,242 @@ class KindFormModal extends Modal {
 		this.iconSuggest = null;
 		this.contentEl.empty();
 		this.onResolve(this.answered);
+	}
+}
+
+export interface CustomFieldTemplateFormResult {
+	name: string;
+	description: string;
+	fields: CustomField[];
+}
+
+/**
+ * The one dialog every template write goes through: adding and editing carry
+ * the field cards along, an export carries only a name and a sentence because
+ * the fields are already in the form behind it.
+ */
+export function promptForCustomFieldTemplate(
+	app: App,
+	t: Translate,
+	options: {
+		title: string;
+		submitLabel: string;
+		initial?: { name: string; description: string };
+		/** The rows to edit in the dialog, or null when it carries none. */
+		rows: CustomField[] | null;
+		/** What is wrong with a name right now; refuses submit while standing. */
+		objection: (name: string) => string | null;
+		/** A consequence worth saying that blocks nothing, replacing included. */
+		advisory?: (name: string) => string | null;
+	},
+): Promise<CustomFieldTemplateFormResult | null> {
+	return new Promise((resolve) => {
+		new CustomFieldTemplateModal(app, t, options, resolve).open();
+	});
+}
+
+class CustomFieldTemplateModal extends Modal {
+	private answered: CustomFieldTemplateFormResult | null = null;
+	private readonly state: { rows: CustomField[]; touched: boolean };
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly options: {
+			title: string;
+			submitLabel: string;
+			initial?: { name: string; description: string };
+			rows: CustomField[] | null;
+			objection: (name: string) => string | null;
+			advisory?: (name: string) => string | null;
+		},
+		private readonly onResolve: (
+			result: CustomFieldTemplateFormResult | null,
+		) => void,
+	) {
+		super(app);
+		this.setTitle(options.title);
+		this.modalEl.addClass(
+			'snowflake-method-form-modal',
+			'snowflake-method-definition-modal',
+		);
+		this.state = { rows: options.rows ?? [], touched: false };
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.addClass('snowflake-method-definition-form');
+		let name = this.options.initial?.name ?? '';
+		let description = this.options.initial?.description ?? '';
+		let nameInput: HTMLInputElement | null = null;
+		let warning: HTMLElement | null = null;
+		// The objection stands in the field's own row and moves with every
+		// keystroke. With nothing wrong, the row may still have something worth
+		// saying — an export about to replace a namesake — worn quietly.
+		const showObjection = (): string | null => {
+			const trimmed = name.trim();
+			const objection =
+				trimmed.length === 0 ? null : this.options.objection(trimmed);
+			const advisory =
+				objection !== null || trimmed.length === 0
+					? null
+					: (this.options.advisory?.(trimmed) ?? null);
+			warning?.setText(objection ?? advisory ?? '');
+			warning?.toggleClass('is-notice', objection === null && advisory !== null);
+			if (nameInput !== null) {
+				if (objection === null) nameInput.removeAttribute('aria-invalid');
+				else nameInput.setAttribute('aria-invalid', 'true');
+			}
+			return objection;
+		};
+		const submit = (): void => {
+			if (name.trim().length === 0 || showObjection() !== null) {
+				nameInput?.focus();
+				return;
+			}
+			const collected =
+				this.options.rows === null
+					? { ok: true as const, fields: [] }
+					: collectCustomFieldRows(this.t, this.state.rows);
+			if (!collected.ok) return;
+			this.answered = {
+				name: name.trim(),
+				description: description.trim(),
+				fields: collected.fields,
+			};
+			this.close();
+		};
+		const nameRow = new Setting(this.contentEl).setName(
+			`${this.t('modal.customFieldTemplate.name')} *`,
+		);
+		nameRow.settingEl.addClass('snowflake-method-definition-setting');
+		nameRow.addText((text) => {
+			nameInput = text.inputEl;
+			text.setValue(name).onChange((next) => {
+				name = next;
+				showObjection();
+			});
+			text.inputEl.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					submit();
+				}
+			});
+			window.setTimeout(() => {
+				text.inputEl.focus();
+				text.inputEl.select();
+			}, 0);
+		});
+		warning = nameRow.settingEl.createDiv({
+			cls: 'snowflake-method-field-warning',
+			attr: { role: 'alert' },
+		});
+		showObjection();
+		const descriptionRow = new Setting(this.contentEl).setName(
+			this.t('modal.customFieldTemplate.description'),
+		);
+		descriptionRow.settingEl.addClass(
+			'snowflake-method-definition-setting',
+			'snowflake-method-definition-description',
+		);
+		descriptionRow.addTextArea((text) => {
+			text
+				.setValue(description)
+				.setPlaceholder(this.t('form.description.placeholder'))
+				.onChange((next) => {
+					description = next;
+				});
+		});
+		if (this.options.rows !== null) {
+			const editors = this.contentEl.createDiv({
+				cls: 'snowflake-method-record-editors',
+			});
+			new CustomFieldsEditor({
+				app: this.app,
+				t: this.t,
+				rows: this.state.rows,
+				template: null,
+				seedFromTemplate: false,
+				touched: () => this.state.touched,
+				markTouched: () => {
+					this.state.touched = true;
+				},
+			}).attach(editors);
+		}
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.options.submitLabel,
+			attr: { type: 'button' },
+		});
+		confirm.addEventListener('click', submit);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.answered);
+	}
+}
+
+/** Asks whether one template may go; its note is trashed, nothing else moves. */
+export function promptForTemplateDeletion(
+	app: App,
+	t: Translate,
+	name: string,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmTemplateDeletionModal(app, t, name, resolve).open();
+	});
+}
+
+class ConfirmTemplateDeletionModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly name: string,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.deleteTemplate.title', { name }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: this.t('modal.deleteTemplate.description', { name: this.name }),
+		});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const remove = actions.createEl('button', {
+			cls: 'mod-warning',
+			text: this.t('actions.delete'),
+			attr: { type: 'button' },
+		});
+		remove.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.confirmed);
 	}
 }
 

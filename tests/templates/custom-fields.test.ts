@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	customFieldTemplateNote,
 	duplicateFieldTitle,
 	parseCustomFields,
 	serializeCustomFields,
 	templateCustomFields,
+	templateNoteFields,
 } from '../../src/templates';
 
 const BLOCK = [
@@ -158,6 +160,48 @@ describe('templateCustomFields', () => {
 		].join('\n');
 		expect(templateCustomFields(note)).toEqual([
 			{ title: 'Appearance', content: 'first' },
+		]);
+	});
+});
+
+describe('template notes', () => {
+	it('stores the fields in one protected block and reads them back', () => {
+		const note = customFieldTemplateNote([
+			{ title: 'Motto', content: 'Words to live by.' },
+			{ title: 'Sigil', content: '' },
+		]);
+		expect(note.sections.map((section) => section.id)).toEqual([
+			'template-fields',
+		]);
+		expect(note.body).toContain(
+			'<!-- snowflake:section:template-fields:start -->',
+		);
+		expect(note.body).toContain(
+			'<!-- snowflake:section:template-fields:end -->',
+		);
+		const content = `---\nsnowflake-schema: 3\n---\n${note.body}`;
+		expect(templateNoteFields(content)).toEqual([
+			{ title: 'Motto', content: 'Words to live by.' },
+			{ title: 'Sigil', content: '' },
+		]);
+	});
+
+	it('keeps the first spelling when a hand edit repeats a title', () => {
+		const note = customFieldTemplateNote([{ title: 'Motto', content: 'One.' }]);
+		const tampered = note.body.replace(
+			'### Motto\n\nOne.',
+			'### Motto\n\nOne.\n\n### motto\n\nTwo.',
+		);
+		expect(tampered).not.toBe(note.body);
+		expect(templateNoteFields(tampered)).toEqual([
+			{ title: 'Motto', content: 'One.' },
+		]);
+	});
+
+	it('reads a note without the block the free-form way', () => {
+		const note = ['# Anything', '', '### Motto', '', 'Words.'].join('\n');
+		expect(templateNoteFields(note)).toEqual([
+			{ title: 'Motto', content: 'Words.' },
 		]);
 	});
 });

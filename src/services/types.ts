@@ -343,6 +343,16 @@ export interface DefinitionTreeInfo {
 /** One vocabulary across every entity kind of the project, keyed by kind id. */
 export type DefinitionForest = Record<EntityKindId, DefinitionTreeInfo>;
 
+/** One custom-field template as the tables list it. */
+export interface CustomFieldTemplateInfo {
+  /** The note's own name, which is the template's. */
+  name: string;
+  /** The sentence its frontmatter holds; empty while it holds none. */
+  description: string;
+  /** Vault path of the template note. */
+  path: string;
+}
+
 export interface CreateProjectOptions {
   name?: string;
   title?: string;

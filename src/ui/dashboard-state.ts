@@ -8,18 +8,20 @@ import {
 import type { ManagedSectionIssueViewModel } from './view-model';
 
 /**
- * What the main panel is showing: one step, one worldbuilding kind, or one
- * of the definition vocabularies.
+ * What the main panel is showing: one step, one worldbuilding kind, one of
+ * the definition vocabularies, or the custom-field template tables.
  */
 export type DashboardPane =
 	| { kind: 'step'; step: StepId }
 	| { kind: 'worldbuilding'; wbKind: WorldbuildingKindId }
-	| { kind: 'definition'; definitionId: DefinitionFileId };
+	| { kind: 'definition'; definitionId: DefinitionFileId }
+	| { kind: 'custom-fields' };
 
 /** A stable identity for a pane, for continuity and change comparisons. */
 export function dashboardPaneKey(pane: DashboardPane): string {
 	if (pane.kind === 'step') return `step-${pane.step}`;
 	if (pane.kind === 'worldbuilding') return `wb-${pane.wbKind}`;
+	if (pane.kind === 'custom-fields') return 'custom-fields';
 	return `def-${pane.definitionId}`;
 }
 
@@ -45,6 +47,7 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 	) {
 		return { kind: 'definition', definitionId: candidate.definitionId };
 	}
+	if (candidate.kind === 'custom-fields') return { kind: 'custom-fields' };
 	return null;
 }
 

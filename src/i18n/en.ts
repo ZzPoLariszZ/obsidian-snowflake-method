@@ -298,6 +298,8 @@ export const en = {
 		'The overview is generated from the note properties. Use the dashboard to edit (recommended) or modify the properties above directly.',
 	'editor.managedSection.recordNotice':
 		'These records are managed by the plugin. Open the note in the dashboard to change them.',
+	'editor.managedSection.templateNotice':
+		'This template is managed by the plugin. Edit it from the custom fields pane of the dashboard.',
 	'editor.managedSection.unlock': 'Unlock boundaries',
 	'editor.managedSection.relock': 'Relock boundaries',
 	'editor.managedSection.unlockConfirmTitle':
@@ -483,6 +485,7 @@ export const en = {
 	'editor.managedSection.name.entity-notes': 'Notes',
 	'editor.managedSection.name.definition-fields': 'Overview',
 	'editor.managedSection.name.custom-fields': 'Custom fields',
+	'editor.managedSection.name.template-fields': 'Template fields',
 	'common.remove': 'Remove',
 	'dashboard.worldbuilding': 'Worldbuilding',
 	'worldbuilding.kind.time': 'Time',
@@ -550,7 +553,7 @@ export const en = {
 	'form.category.create': 'Create category "{name}"',
 	'form.category.remove': 'Remove {name}',
 	'form.customFields': 'Custom fields',
-	'form.customFields.add': 'Add more fields',
+	'form.customFields.add': 'Add more fields…',
 	'form.customFields.titlePlaceholder': 'Field title',
 	'form.customFields.contentPlaceholder': 'What this field holds',
 	'form.customFields.remove': 'Remove field {name}',
@@ -558,6 +561,7 @@ export const en = {
 		'Two fields share the title "{name}". Rename one before saving.',
 	'form.customFields.untitled': 'A field with text needs a title.',
 	'form.customFields.template': 'Template',
+	'form.customFields.export': 'Export',
 	'form.customFields.templatePlaceholder': 'Choose a template note…',
 	'form.customFields.templateNone': 'No template',
 	'form.referenceMissing': 'No longer in this project: {name}',
@@ -626,6 +630,28 @@ export const en = {
 	'modal.definition.edit.world-status': 'Edit status',
 	'modal.definition.edit.relationship': 'Edit relationship',
 	'modal.definition.edit.scope': 'Renaming only works for the current level.',
+	'dashboard.customFields': 'Custom field',
+	'dashboard.customFields.description':
+		'Keep reusable sets of custom fields, ready to seed new notes of a kind.',
+	'customFields.add': 'Add template',
+	'customFields.addMore': 'Add more templates…',
+	'customFields.empty': 'No templates',
+	'customFields.countLabel': '{count} templates',
+	'customFields.search': 'Search templates',
+	'modal.customFieldTemplate.createTitle': 'Add {kind} template',
+	'modal.customFieldTemplate.editTitle': 'Edit {name}',
+	'modal.customFieldTemplate.exportTitle': 'Export as template',
+	'modal.customFieldTemplate.name': 'Name',
+	'modal.customFieldTemplate.description': 'Description',
+	'modal.customFieldTemplate.nameTaken':
+		'Another template already answers to "{name}".',
+	'modal.customFieldTemplate.invalidName': '"{name}" cannot name a template.',
+	'modal.customFieldTemplate.replaceNotice':
+		'This will replace the template "{name}".',
+	'modal.deleteTemplate.title': 'Delete “{name}”?',
+	'modal.deleteTemplate.description':
+		'The template note is moved to the trash. A kind using it as its default loses that choice.',
+	'notice.templateExported': 'Saved the template "{name}".',
 	'form.description': 'Description',
 	'form.timeKind': 'Type',
 	'form.timeKind.point': 'Time point',

@@ -75,6 +75,7 @@ import {
 	type MemberUsage,
 	type ProjectRef,
 	type ProjectSnapshot,
+	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type WorldbuildingRecord,
 } from './services';
@@ -92,6 +93,7 @@ import {
 	type SnowflakeSettings,
 } from './settings';
 import {
+	TEMPLATE_FIELDS_SECTION_ID,
 	inspectManagedDocumentSections,
 	parseTerm,
 	readMarkedSection,
@@ -881,6 +883,8 @@ export default class SnowflakeMethodPlugin
 				'relationship',
 			),
 		};
+		const customFieldTemplates =
+			await this.projects.listCustomFieldTemplates(project);
 
 		return {
 			path: project.projectFile,
@@ -919,6 +923,7 @@ export default class SnowflakeMethodPlugin
 			characters: characterModels,
 			scenes: sceneModels,
 			definitions,
+			customFieldTemplates,
 			worldbuildingKinds: project.worldbuildingKinds,
 			worldbuilding: Object.fromEntries(
 				project.worldbuildingKinds.map((kind) => [
@@ -1396,6 +1401,44 @@ export default class SnowflakeMethodPlugin
 	async kindTemplateFields(kind: EntityKindId): Promise<CustomField[]> {
 		const project = await this.requireCurrentProject();
 		return this.projects.kindTemplateFields(project, kind);
+	}
+
+	async customFieldTemplateFields(
+		kind: EntityKindId,
+		name: string,
+	): Promise<CustomField[]> {
+		const project = await this.requireCurrentProject();
+		return this.projects.customFieldTemplateFields(project, kind, name);
+	}
+
+	async saveCustomFieldTemplate(
+		kind: EntityKindId,
+		input: { name: string; description: string; fields: CustomField[] },
+		options?: { previousName?: string; overwrite?: boolean },
+	): Promise<SaveCustomFieldTemplateResult> {
+		const project = await this.requireCurrentProject();
+		try {
+			return await this.projects.saveCustomFieldTemplate(
+				project,
+				kind,
+				input,
+				options,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async deleteCustomFieldTemplate(
+		kind: EntityKindId,
+		name: string,
+	): Promise<void> {
+		const project = await this.requireCurrentProject();
+		try {
+			await this.projects.deleteCustomFieldTemplate(project, kind, name);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 	}
 
 	async listDefinitionPaths(
@@ -2096,9 +2139,11 @@ export default class SnowflakeMethodPlugin
 							context.content,
 							generatedSectionIds.length > 0
 								? 'editor.managedSection.generatedNotice'
-								: recordSectionIds.length > 0
-									? 'editor.managedSection.recordNotice'
-									: 'editor.managedSection.protectedNotice',
+								: recordSectionIds.includes(TEMPLATE_FIELDS_SECTION_ID)
+									? 'editor.managedSection.templateNotice'
+									: recordSectionIds.length > 0
+										? 'editor.managedSection.recordNotice'
+										: 'editor.managedSection.protectedNotice',
 						),
 					);
 				},

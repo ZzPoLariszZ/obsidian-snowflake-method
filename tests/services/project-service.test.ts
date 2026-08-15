@@ -5674,6 +5674,320 @@ describe("SnowflakeProjectService", () => {
     });
   });
 
+  describe("custom-field templates", () => {
+    it("scaffolds a template folder for every kind, new kinds included", async () => {
+      const project = await service.createProject({ name: "Template Home" });
+      const root = project.rootPath;
+      for (const path of [
+        `${root}/20_Character/24_Custom_Field`,
+        `${root}/40_Scene/44_Custom_Field`,
+        `${root}/60_Worldbuilding/61_Time/614_Custom_Field`,
+        `${root}/60_Worldbuilding/62_Location/624_Custom_Field`,
+        `${root}/60_Worldbuilding/63_Item/634_Custom_Field`,
+      ]) {
+        expect(fakeVault.nodes.has(path)).toBe(true);
+      }
+      await service.createWorldbuildingKind(project, "Faction");
+      expect(
+        fakeVault.nodes.has(
+          `${root}/60_Worldbuilding/64_Faction/644_Custom_Field`,
+        ),
+      ).toBe(true);
+    });
+
+    it("reports a missing template folder and repair puts it back", async () => {
+      const project = await service.createProject({ name: "Template Repair" });
+      const path = `${project.rootPath}/20_Character/24_Custom_Field`;
+      fakeVault.delete(path);
+      const snapshot = await service.loadProject(project.projectFile);
+      const issue = snapshot.structureIssues.find(
+        (candidate) =>
+          candidate.code === "missing-directory" && candidate.path === path,
+      );
+      expect(issue?.repairable).toBe(true);
+      await service.repairMissingStructureItem(project.projectFile, path);
+      expect(fakeVault.nodes.has(path)).toBe(true);
+      expect(
+        (await service.loadProject(project.projectFile)).structureIssues,
+      ).toEqual([]);
+    });
+
+    it("writes a template note the canonical way and lists it", async () => {
+      const project = await service.createProject({ name: "Template Write" });
+      const saved = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "character",
+        {
+          name: "Combatant",
+          description: "For anyone who fights.",
+          fields: [
+            { title: "Weapon", content: "" },
+            { title: "Style", content: "How they move." },
+          ],
+        },
+      );
+      const path = `${project.rootPath}/20_Character/24_Custom_Field/Combatant.md`;
+      expect(saved).toEqual({ ok: true, path });
+      const content = fakeVault.contents.get(path) ?? "";
+      const { frontmatter } = parseMarkdownFrontmatter(content);
+      expect(frontmatter["snowflake-schema"]).toBe(SCHEMA_VERSION);
+      expect(frontmatter["snowflake-document"]).toBe("template");
+      expect(frontmatter["snowflake-template-type"]).toBe("custom-field");
+      expect(String(frontmatter["snowflake-template-id"])).toMatch(
+        /^field-template-/u,
+      );
+      expect(frontmatter["snowflake-description"]).toBe(
+        "For anyone who fights.",
+      );
+      expect(readMarkedSection(content, "template-fields")).toBe(
+        "### Weapon\n\n### Style\n\nHow they move.",
+      );
+      const listing = await service.listCustomFieldTemplates(
+        project.projectFile,
+      );
+      expect(listing["character"]).toEqual([
+        { name: "Combatant", description: "For anyone who fights.", path },
+      ]);
+      expect(listing["scene"]).toEqual([]);
+      expect(
+        await service.customFieldTemplateFields(
+          project.projectFile,
+          "character",
+          "Combatant",
+        ),
+      ).toEqual([
+        { title: "Weapon", content: "" },
+        { title: "Style", content: "How they move." },
+      ]);
+    });
+
+    it("refuses a taken or unsafe name unless an export overwrites", async () => {
+      const project = await service.createProject({
+        name: "Template Refusals",
+      });
+      const first = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "character",
+        {
+          name: "Combatant",
+          description: "",
+          fields: [{ title: "Weapon", content: "" }],
+        },
+      );
+      expect(first.ok).toBe(true);
+      const firstPath = first.ok ? first.path : "";
+      const frontmatterOf = (): Record<string, unknown> =>
+        parseMarkdownFrontmatter(fakeVault.contents.get(firstPath) ?? "")
+          .frontmatter;
+      expect("snowflake-description" in frontmatterOf()).toBe(false);
+      const identity = frontmatterOf()["snowflake-template-id"];
+      expect(
+        await service.saveCustomFieldTemplate(project.projectFile, "character", {
+          name: "combatant",
+          description: "",
+          fields: [],
+        }),
+      ).toEqual({ ok: false, code: "taken" });
+      expect(
+        await service.saveCustomFieldTemplate(project.projectFile, "character", {
+          name: "Sliced/Name",
+          description: "",
+          fields: [],
+        }),
+      ).toEqual({ ok: false, code: "invalid-name" });
+      // An export lands on the standing note: identity kept, the rest replaced.
+      const overwrite = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "character",
+        {
+          name: "combatant",
+          description: "Sharper now.",
+          fields: [{ title: "Stance", content: "Low." }],
+        },
+        { overwrite: true },
+      );
+      expect(overwrite).toEqual({ ok: true, path: firstPath });
+      expect(frontmatterOf()["snowflake-template-id"]).toBe(identity);
+      expect(frontmatterOf()["snowflake-description"]).toBe("Sharper now.");
+      expect(
+        readMarkedSection(fakeVault.contents.get(firstPath) ?? "", "template-fields"),
+      ).toBe("### Stance\n\nLow.");
+    });
+
+    it("renames with the note and carries the kind default along", async () => {
+      const project = await service.createProject({ name: "Template Rename" });
+      const saved = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "location",
+        {
+          name: "Settlement",
+          description: "",
+          fields: [{ title: "Population", content: "" }],
+        },
+      );
+      const savedPath = saved.ok ? saved.path : "";
+      await service.setKindTemplate(
+        project.projectFile,
+        "location",
+        linkTarget(savedPath),
+      );
+      const renamed = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "location",
+        {
+          name: "Town",
+          description: "",
+          fields: [{ title: "Population", content: "" }],
+        },
+        { previousName: "Settlement" },
+      );
+      const townPath = `${project.rootPath}/60_Worldbuilding/62_Location/624_Custom_Field/Town.md`;
+      expect(renamed).toEqual({ ok: true, path: townPath });
+      expect(fakeVault.contents.has(savedPath)).toBe(false);
+      expect(
+        await service.kindTemplatePath(project.projectFile, "location"),
+      ).toBe(linkTarget(townPath));
+      expect(
+        await service.kindTemplateFields(project.projectFile, "location"),
+      ).toEqual([{ title: "Population", content: "" }]);
+      // Renaming onto another template is refused: replacing a second note
+      // was never asked.
+      await service.saveCustomFieldTemplate(project.projectFile, "location", {
+        name: "Fort",
+        description: "",
+        fields: [],
+      });
+      expect(
+        await service.saveCustomFieldTemplate(
+          project.projectFile,
+          "location",
+          { name: "Fort", description: "", fields: [] },
+          { previousName: "Town" },
+        ),
+      ).toEqual({ ok: false, code: "taken" });
+    });
+
+    it("deletes a template and clears every choice that named it", async () => {
+      const project = await service.createProject({ name: "Template Delete" });
+      const saved = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "scene",
+        {
+          name: "Battle",
+          description: "",
+          fields: [{ title: "Stakes", content: "" }],
+        },
+      );
+      const savedPath = saved.ok ? saved.path : "";
+      await service.setKindTemplate(
+        project.projectFile,
+        "scene",
+        linkTarget(savedPath),
+      );
+      await service.deleteCustomFieldTemplate(
+        project.projectFile,
+        "scene",
+        "Battle",
+      );
+      expect(fakeFileManager.trashCalls).toContain(savedPath);
+      expect(
+        await service.kindTemplatePath(project.projectFile, "scene"),
+      ).toBeNull();
+      expect(
+        (await service.listCustomFieldTemplates(project.projectFile))["scene"],
+      ).toEqual([]);
+    });
+
+    it("keeps template notes out of the member listings", async () => {
+      const project = await service.createProject({
+        name: "Template Invisible",
+      });
+      await service.saveCustomFieldTemplate(project.projectFile, "character", {
+        name: "Combatant",
+        description: "",
+        fields: [{ title: "Weapon", content: "" }],
+      });
+      await service.saveCustomFieldTemplate(project.projectFile, "time", {
+        name: "Era",
+        description: "",
+        fields: [{ title: "Span", content: "" }],
+      });
+      const snapshot = await service.loadProject(project.projectFile);
+      expect(snapshot.characters).toEqual([]);
+      expect(snapshot.worldbuilding["time"] ?? []).toEqual([]);
+      expect(snapshot.structureIssues).toEqual([]);
+    });
+
+    it("restamps an old template note in the sweep", async () => {
+      const project = await service.createProject({ name: "Template Stamp" });
+      const path = `${project.rootPath}/40_Scene/44_Custom_Field/Old.md`;
+      await fakeVault.create(
+        path,
+        [
+          "---",
+          "{",
+          '  "snowflake-schema": 1,',
+          '  "snowflake-document": "template",',
+          '  "snowflake-template-type": "custom-field",',
+          '  "snowflake-template-id": "field-template-old",',
+          `  "snowflake-project-id": "${project.id}"`,
+          "}",
+          "---",
+          "<!-- snowflake:section:template-fields:start -->",
+          "### Kept",
+          "<!-- snowflake:section:template-fields:end -->",
+          "",
+        ].join("\n"),
+      );
+      expect(await service.countOutdatedNotes(project.projectFile)).toBe(1);
+      expect(await service.migrateMemberNotes(project.projectFile)).toEqual({
+        migrated: 1,
+        skipped: 0,
+      });
+      const { frontmatter } = parseMarkdownFrontmatter(
+        fakeVault.contents.get(path) ?? "",
+      );
+      expect(frontmatter["snowflake-schema"]).toBe(SCHEMA_VERSION);
+      expect(frontmatter["snowflake-template-id"]).toBe("field-template-old");
+    });
+
+    it("keeps a custom kind's template working through a kind rename", async () => {
+      const project = await service.createProject({
+        name: "Template Kind Rename",
+      });
+      await service.createWorldbuildingKind(project, "Faction");
+      const saved = await service.saveCustomFieldTemplate(
+        project.projectFile,
+        "Faction",
+        {
+          name: "Order",
+          description: "",
+          fields: [{ title: "Creed", content: "" }],
+        },
+      );
+      const savedPath = saved.ok ? saved.path : "";
+      await service.setKindTemplate(
+        project.projectFile,
+        "Faction",
+        linkTarget(savedPath),
+      );
+      const renamed = await service.renameWorldbuildingKind(
+        project.projectFile,
+        "Faction",
+        "Guild",
+      );
+      expect(renamed.ok).toBe(true);
+      const movedPath = `${project.rootPath}/60_Worldbuilding/64_Guild/644_Custom_Field/Order.md`;
+      expect(fakeVault.contents.has(movedPath)).toBe(true);
+      expect(
+        await service.kindTemplatePath(project.projectFile, "Guild"),
+      ).toBe(linkTarget(movedPath));
+      expect(
+        await service.kindTemplateFields(project.projectFile, "Guild"),
+      ).toEqual([{ title: "Creed", content: "" }]);
+    });
+  });
+
   describe("custom fields on member notes", () => {
     it("stores the block after the prose section and round-trips it", async () => {
       const project = await service.createProject({ name: "Fields Store" });

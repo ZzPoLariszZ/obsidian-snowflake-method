@@ -1,5 +1,5 @@
 import { foldName } from "../domain";
-import { SECTION_MARKER_PREFIX } from "./markers";
+import { SECTION_MARKER_PREFIX, readMarkedSection } from "./markers";
 
 /**
  * The custom-fields block: the one region of a member note the form's field
@@ -145,16 +145,33 @@ export function templateCustomFields(noteContent: string): CustomField[] {
     .replace(FRONTMATTER_PATTERN, "")
     .replace(MARKED_RANGE_PATTERN, "")
     .replace(STRAY_MARKER_PATTERN, "");
-  const { fields } = parseRawFields(body);
+  return dedupeByTitle(parseRawFields(body).fields);
+}
+
+/** The section id a template note stores its fields under. */
+export const TEMPLATE_FIELDS_SECTION_ID = "template-fields";
+
+/**
+ * The fields a template note offers. The protected block is the canonical
+ * store; a note without one — a free-form choice from before templates had a
+ * home of their own — still reads the old way, every `###` block of its prose.
+ */
+export function templateNoteFields(noteContent: string): CustomField[] {
+  const block = readMarkedSection(noteContent, TEMPLATE_FIELDS_SECTION_ID);
+  if (block === null) return templateCustomFields(noteContent);
+  return dedupeByTitle(parseRawFields(block).fields);
+}
+
+function dedupeByTitle(fields: readonly CustomField[]): CustomField[] {
   const seen = new Set<string>();
-  const defaults: CustomField[] = [];
+  const kept: CustomField[] = [];
   for (const field of fields) {
     const folded = foldName(field.title);
     if (seen.has(folded)) continue;
     seen.add(folded);
-    defaults.push({ title: field.title, content: field.content });
+    kept.push({ title: field.title, content: field.content });
   }
-  return defaults;
+  return kept;
 }
 
 function trimBlankEdges(text: string): string {

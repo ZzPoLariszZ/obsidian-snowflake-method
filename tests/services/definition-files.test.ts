@@ -5,6 +5,7 @@ import {
   characterRoleName,
   characterStarterNames,
   checkDefinitionPath,
+  customFieldRootNameForFolder,
   definitionRootFromValue,
   definitionRootName,
   isValidDefinitionSegment,
@@ -148,6 +149,34 @@ describe("root names", () => {
     );
   });
 
+  it("numbers the template folder as the position after the trees", () => {
+    expect(customFieldRootNameForFolder("20_Character", "en")).toBe(
+      "24_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("40_Scene", "en")).toBe(
+      "44_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("61_Time", "en")).toBe(
+      "614_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("62_Location", "en")).toBe(
+      "624_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("63_Item", "en")).toBe(
+      "634_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("64_Faction", "en")).toBe(
+      "644_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("6A_Faction", "en")).toBe(
+      "6A4_Custom_Field",
+    );
+    expect(customFieldRootNameForFolder("62_地点", "zh-CN")).toBe(
+      "624_自定义字段",
+    );
+    // A folder wearing no number offers none to carry down.
+    expect(customFieldRootNameForFolder("Faction", "en")).toBe("Custom_Field");
+  });
 });
 
 describe("character roles", () => {
