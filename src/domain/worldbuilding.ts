@@ -37,8 +37,6 @@ export interface ProjectWorldbuildingKind {
 	/** The folder under the worldbuilding directory, `61_Time` or `64_Faction`. */
 	folderName: string;
 	custom: boolean;
-	/** Registered, but its folder is not in the Vault. */
-	missingFolder: boolean;
 	/**
 	 * How an authored kind presents itself: its icon id and the sentence its
 	 * pane stands under. Null where unset — and always null for a built-in,

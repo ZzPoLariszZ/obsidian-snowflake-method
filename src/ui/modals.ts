@@ -270,6 +270,101 @@ function attachCustomFields(
 }
 
 /**
+ * The record editors every member form carries -- custom fields, world
+ * status, relationships -- built the one way, so the three forms hold one
+ * copy of the wiring. Drafts ride along for the form that redraws mid-edit.
+ */
+function buildMemberRecordEditors(options: {
+	app: App;
+	t: Translate;
+	container: HTMLElement;
+	context: MemberFormContext;
+	customFieldState: { rows: CustomField[]; touched: boolean };
+	seedFromTemplate: boolean;
+	recordContext: (
+		labels: DefinitionPathSource,
+		definitionId: DefinitionFileChoice,
+	) => RecordEditorContext;
+	worldStatus: readonly RecordLine[];
+	relationships: readonly RecordLine[];
+	worldStatusDrafts?: readonly RecordDraft[];
+	relationshipDrafts?: readonly RecordDraft[];
+}): {
+	customFields: CustomFieldsEditor;
+	worldStatus: RecordCardsEditor;
+	relationships: RecordCardsEditor;
+} {
+	const block = options.container.createDiv({
+		cls: 'snowflake-method-record-editors',
+	});
+	const customFields = attachCustomFields(
+		options.app,
+		options.t,
+		block,
+		options.context,
+		options.customFieldState,
+		options.seedFromTemplate,
+	);
+	const worldStatus = new RecordCardsEditor(
+		options.recordContext(options.context.worldStatusLabels, 'world-status'),
+		options.context.worldStatusPath,
+		options.worldStatus,
+		{
+			title: options.t('form.worldStatus'),
+			add: options.t('form.record.addStatus'),
+			labelTitle: options.t('form.record.status'),
+			labelPlaceholder: options.t('form.definition.placeholder.world-status'),
+		},
+		false,
+		options.worldStatusDrafts ?? [],
+	);
+	worldStatus.attach(block);
+	const relationships = new RecordCardsEditor(
+		options.recordContext(options.context.relationshipLabels, 'relationship'),
+		options.context.relationshipPath,
+		options.relationships,
+		{
+			title: options.t('form.relationships'),
+			add: options.t('form.record.addRelationship'),
+			labelTitle: options.t('form.record.relationship'),
+			labelPlaceholder: options.t('form.definition.placeholder.relationship'),
+		},
+		true,
+		options.relationshipDrafts ?? [],
+	);
+	relationships.attach(block);
+	return { customFields, worldStatus, relationships };
+}
+
+/**
+ * The submit-time drain those editors share: the relationship targets
+ * demanded -- the missing card marked and named -- and the custom-field rows
+ * folded into their block. One copy of the rules, so no form falls behind
+ * the others. Null when something refused; the refusal has been said. A null
+ * block means the form opened without the editor, and what it holds stands.
+ */
+function collectMemberEditors(
+	t: Translate,
+	editors: {
+		customFields: CustomFieldsEditor | null;
+		relationships: RecordCardsEditor | null;
+	},
+	initialCustomFields: string,
+	rows: readonly CustomField[],
+): { customFields: string | null } | null {
+	const missingTarget = editors.relationships?.firstMissingTarget() ?? null;
+	if (missingTarget !== null) {
+		editors.relationships?.revealMissingTarget();
+		new Notice(t('form.record.targetRequired', { name: missingTarget }));
+		return null;
+	}
+	if (editors.customFields === null) return { customFields: null };
+	const collected = collectCustomFieldsBlock(t, initialCustomFields, rows);
+	if (!collected.ok) return null;
+	return { customFields: collected.block };
+}
+
+/**
  * Offers the form's rows as a template of the kind: a name and a sentence in
  * a small dialog, with a quiet line saying when a namesake would be replaced.
  * The rows are validated first, the way a submit validates them, so the
@@ -302,20 +397,48 @@ async function exportCustomFields(
 		},
 	});
 	if (result === null) return;
-	const outcome = await source.export({
-		name: result.name,
-		description: result.description,
-		fields: collected.fields,
-	});
-	if (outcome.ok) {
-		new Notice(t('notice.templateExported', { name: result.name }));
-		return;
+	// The dialog is gone by the time the write settles, so a thrown save has
+	// to say so itself -- silence here would read as success.
+	try {
+		const outcome = await source.export({
+			name: result.name,
+			description: result.description,
+			fields: collected.fields,
+		});
+		if (outcome.ok) {
+			new Notice(t('notice.templateExported', { name: result.name }));
+			return;
+		}
+		new Notice(
+			outcome.code === 'taken'
+				? t('modal.customFieldTemplate.nameTaken', { name: result.name })
+				: t('modal.customFieldTemplate.invalidName', { name: result.name }),
+		);
+	} catch (error) {
+		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
 	}
-	new Notice(
-		outcome.code === 'taken'
-			? t('modal.customFieldTemplate.nameTaken', { name: result.name })
-			: t('modal.customFieldTemplate.invalidName', { name: result.name }),
-	);
+}
+
+/**
+ * The list a deletion confirm reads a cost out in: nothing when there is
+ * nothing to say, else a labelled group of note titles, marked when each
+ * named note is left holding a decision rather than just an entry.
+ */
+function addNoteList(
+	container: HTMLElement,
+	label: string,
+	titles: readonly string[],
+	needsDecision: boolean,
+): void {
+	if (titles.length === 0) return;
+	const group = container.createDiv({
+		cls: `snowflake-method-delete-member-group${
+			needsDecision ? ' needs-decision' : ''
+		}`,
+	});
+	group.createEl('h3', { text: label });
+	const list = group.createEl('ul');
+	for (const title of titles) list.createEl('li', { text: title });
 }
 
 type SubmitHandler<T> = (value: T) => Promise<void>;
@@ -334,9 +457,39 @@ type SubmitHandler<T> = (value: T) => Promise<void>;
  * allowed. That is what lets a pair sharing a name from before this rule
  * existed still be edited, rather than being held to a rename first.
  */
+/**
+ * The warning line inside a field's row: the one place that owns how an
+ * objection is announced — the alert text, the field marked invalid to match
+ * — whatever rule produced it. A notice is the quiet variant: something
+ * worth saying with nothing wrong, so the field stays valid. It sits inside
+ * the field's own row rather than after it: these forms are grids, where a
+ * line of its own would be placed as a cell and land a column's gap away
+ * from the field it is about.
+ */
+class FieldWarning {
+	private readonly el: HTMLElement;
+
+	constructor(
+		row: HTMLElement,
+		private readonly input: HTMLInputElement | null = null,
+	) {
+		this.el = row.createDiv({
+			cls: 'snowflake-method-field-warning',
+			attr: { role: 'alert' },
+		});
+	}
+
+	show(objection: string | null, notice: string | null = null): void {
+		this.el.setText(objection ?? notice ?? '');
+		this.el.toggleClass('is-notice', objection === null && notice !== null);
+		if (this.input === null) return;
+		if (objection === null) this.input.removeAttribute('aria-invalid');
+		else this.input.setAttribute('aria-invalid', 'true');
+	}
+}
+
 class UniqueNameField {
-	private warningEl: HTMLElement | null = null;
-	private inputEl: HTMLInputElement | null = null;
+	private warning: FieldWarning | null = null;
 
 	constructor(
 		/** The names every other record of the same kind answers to. */
@@ -347,27 +500,14 @@ class UniqueNameField {
 		private readonly message: () => string,
 	) {}
 
-	/**
-	 * Puts the objection inside the field's own row rather than after it: these
-	 * forms are grids, where a line of its own would be placed as a cell and land
-	 * a column's gap away from the field it is about.
-	 */
 	attach(row: HTMLElement, input: HTMLInputElement | null, value: string): void {
-		this.inputEl = input;
-		this.warningEl = row.createDiv({
-			cls: 'snowflake-method-field-warning',
-			attr: { role: 'alert' },
-		});
+		this.warning = new FieldWarning(row, input);
 		this.show(value);
 	}
 
 	/** Re-reads the field. Called on the way in and on every keystroke after. */
 	show(value: string): void {
-		const objection = this.objection(value);
-		this.warningEl?.setText(objection ?? '');
-		if (this.inputEl === null) return;
-		if (objection === null) this.inputEl.removeAttribute('aria-invalid');
-		else this.inputEl.setAttribute('aria-invalid', 'true');
+		this.warning?.show(this.objection(value));
 	}
 
 	/**
@@ -1388,43 +1528,21 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 	private buildRecordEditors(): void {
 		const context = this.formContext;
 		if (context === undefined) return;
-		const block = this.contentEl.createDiv({
-			cls: 'snowflake-method-record-editors',
-		});
-		this.customFieldsEditor = attachCustomFields(
-			this.app,
-			this.t,
-			block,
+		const editors = buildMemberRecordEditors({
+			app: this.app,
+			t: this.t,
+			container: this.contentEl,
 			context,
-			this.customFieldState,
-			this.isCreateForm,
-		);
-		this.worldStatusEditor = new RecordCardsEditor(
-			this.recordContext(context, context.worldStatusLabels, 'world-status'),
-			context.worldStatusPath,
-			this.value.worldStatus,
-			{
-				title: this.t('form.worldStatus'),
-				add: this.t('form.record.addStatus'),
-				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
-			},
-			false,
-		);
-		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordCardsEditor(
-			this.recordContext(context, context.relationshipLabels, 'relationship'),
-			context.relationshipPath,
-			this.value.relationships,
-			{
-				title: this.t('form.relationships'),
-				add: this.t('form.record.addRelationship'),
-				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
-			},
-			true,
-		);
-		this.relationshipsEditor.attach(block);
+			customFieldState: this.customFieldState,
+			seedFromTemplate: this.isCreateForm,
+			recordContext: (labels, definitionId) =>
+				this.recordContext(context, labels, definitionId),
+			worldStatus: this.value.worldStatus,
+			relationships: this.value.relationships,
+		});
+		this.customFieldsEditor = editors.customFields;
+		this.worldStatusEditor = editors.worldStatus;
+		this.relationshipsEditor = editors.relationships;
 	}
 
 	/** Pulls the live editors back into the value, for collect and re-render. */
@@ -1456,19 +1574,18 @@ export class CreateCharacterModal extends SnowflakeFormModal<CreateCharacterRequ
 			return null;
 		}
 		this.syncEditors();
-		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
-		if (missingTarget !== null) {
-			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
-			return null;
-		}
-		if (this.customFieldsEditor !== null) {
-			const collected = collectCustomFieldsBlock(
-				this.t,
-				this.initialCustomFields,
-				this.customFieldState.rows,
-			);
-			if (!collected.ok) return null;
-			this.value.customFields = collected.block;
+		const drained = collectMemberEditors(
+			this.t,
+			{
+				customFields: this.customFieldsEditor,
+				relationships: this.relationshipsEditor,
+			},
+			this.initialCustomFields,
+			this.customFieldState.rows,
+		);
+		if (drained === null) return null;
+		if (drained.customFields !== null) {
+			this.value.customFields = drained.customFields;
 		}
 		return { ...this.value };
 	}
@@ -1916,12 +2033,12 @@ export class ConfirmDefinitionDeletionModal extends Modal {
 				{ name: this.taxonomyPath, count: this.cost.nodes - 1 },
 			),
 		});
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteDefinition.listed'),
 			this.cost.listed,
 			false,
 		);
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteDefinition.records'),
 			this.cost.records,
 			true,
@@ -1944,22 +2061,6 @@ export class ConfirmDefinitionDeletionModal extends Modal {
 			this.confirmed = true;
 			this.close();
 		});
-	}
-
-	private addNoteList(
-		label: string,
-		titles: readonly string[],
-		needsDecision: boolean,
-	): void {
-		if (titles.length === 0) return;
-		const group = this.contentEl.createDiv({
-			cls: `snowflake-method-delete-member-group${
-				needsDecision ? ' needs-decision' : ''
-			}`,
-		});
-		group.createEl('h3', { text: label });
-		const list = group.createEl('ul');
-		for (const title of titles) list.createEl('li', { text: title });
 	}
 
 	onClose(): void {
@@ -2347,43 +2448,21 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private buildRecordEditors(): void {
 		const context = this.formContext;
 		if (context === undefined) return;
-		const block = this.contentEl.createDiv({
-			cls: 'snowflake-method-record-editors',
-		});
-		this.customFieldsEditor = attachCustomFields(
-			this.app,
-			this.t,
-			block,
+		const editors = buildMemberRecordEditors({
+			app: this.app,
+			t: this.t,
+			container: this.contentEl,
 			context,
-			this.customFieldState,
-			this.isCreateForm,
-		);
-		this.worldStatusEditor = new RecordCardsEditor(
-			this.recordContext(context, context.worldStatusLabels, 'world-status'),
-			context.worldStatusPath,
-			this.worldStatus,
-			{
-				title: this.t('form.worldStatus'),
-				add: this.t('form.record.addStatus'),
-				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
-			},
-			false,
-		);
-		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordCardsEditor(
-			this.recordContext(context, context.relationshipLabels, 'relationship'),
-			context.relationshipPath,
-			this.relationships,
-			{
-				title: this.t('form.relationships'),
-				add: this.t('form.record.addRelationship'),
-				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
-			},
-			true,
-		);
-		this.relationshipsEditor.attach(block);
+			customFieldState: this.customFieldState,
+			seedFromTemplate: this.isCreateForm,
+			recordContext: (labels, definitionId) =>
+				this.recordContext(context, labels, definitionId),
+			worldStatus: this.worldStatus,
+			relationships: this.relationships,
+		});
+		this.customFieldsEditor = editors.customFields;
+		this.worldStatusEditor = editors.worldStatus;
+		this.relationshipsEditor = editors.relationships;
 	}
 
 	/** Pulls the live editors back into the fields, for collect and re-render. */
@@ -2563,21 +2642,17 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			return null;
 		}
 		this.syncEditors();
-		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
-		if (missingTarget !== null) {
-			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
-			return null;
-		}
-		let customFields = this.initialCustomFields;
-		if (this.customFieldsEditor !== null) {
-			const collected = collectCustomFieldsBlock(
-				this.t,
-				this.initialCustomFields,
-				this.customFieldState.rows,
-			);
-			if (!collected.ok) return null;
-			customFields = collected.block;
-		}
+		const drained = collectMemberEditors(
+			this.t,
+			{
+				customFields: this.customFieldsEditor,
+				relationships: this.relationshipsEditor,
+			},
+			this.initialCustomFields,
+			this.customFieldState.rows,
+		);
+		if (drained === null) return null;
+		const customFields = drained.customFields ?? this.initialCustomFields;
 		return {
 			title,
 			aliases: [...this.aliases],
@@ -2859,45 +2934,23 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 
 	private buildRecordEditors(): void {
 		const context = this.formContext;
-		const block = this.contentEl.createDiv({
-			cls: 'snowflake-method-record-editors',
-		});
-		this.customFieldsEditor = attachCustomFields(
-			this.app,
-			this.t,
-			block,
+		const editors = buildMemberRecordEditors({
+			app: this.app,
+			t: this.t,
+			container: this.contentEl,
 			context,
-			this.customFieldState,
-			this.isCreateForm,
-		);
-		this.worldStatusEditor = new RecordCardsEditor(
-			this.recordContext(context, context.worldStatusLabels, 'world-status'),
-			context.worldStatusPath,
-			this.value.worldStatus,
-			{
-				title: this.t('form.worldStatus'),
-				add: this.t('form.record.addStatus'),
-				labelTitle: this.t('form.record.status'),
-				labelPlaceholder: this.t('form.definition.placeholder.world-status'),
-			},
-			false,
-			this.worldStatusDrafts,
-		);
-		this.worldStatusEditor.attach(block);
-		this.relationshipsEditor = new RecordCardsEditor(
-			this.recordContext(context, context.relationshipLabels, 'relationship'),
-			context.relationshipPath,
-			this.value.relationships,
-			{
-				title: this.t('form.relationships'),
-				add: this.t('form.record.addRelationship'),
-				labelTitle: this.t('form.record.relationship'),
-				labelPlaceholder: this.t('form.definition.placeholder.relationship'),
-			},
-			true,
-			this.relationshipDrafts,
-		);
-		this.relationshipsEditor.attach(block);
+			customFieldState: this.customFieldState,
+			seedFromTemplate: this.isCreateForm,
+			recordContext: (labels, definitionId) =>
+				this.recordContext(context, labels, definitionId),
+			worldStatus: this.value.worldStatus,
+			relationships: this.value.relationships,
+			worldStatusDrafts: this.worldStatusDrafts,
+			relationshipDrafts: this.relationshipDrafts,
+		});
+		this.customFieldsEditor = editors.customFields;
+		this.worldStatusEditor = editors.worldStatus;
+		this.relationshipsEditor = editors.relationships;
 	}
 
 	private syncEditors(): void {
@@ -2956,19 +3009,18 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 			return null;
 		}
 		this.syncEditors();
-		const missingTarget = this.relationshipsEditor?.firstMissingTarget() ?? null;
-		if (missingTarget !== null) {
-			new Notice(this.t('form.record.targetRequired', { name: missingTarget }));
-			return null;
-		}
-		if (this.customFieldsEditor !== null) {
-			const collected = collectCustomFieldsBlock(
-				this.t,
-				this.initialCustomFields,
-				this.customFieldState.rows,
-			);
-			if (!collected.ok) return null;
-			this.value.customFields = collected.block;
+		const drained = collectMemberEditors(
+			this.t,
+			{
+				customFields: this.customFieldsEditor,
+				relationships: this.relationshipsEditor,
+			},
+			this.initialCustomFields,
+			this.customFieldState.rows,
+		);
+		if (drained === null) return null;
+		if (drained.customFields !== null) {
+			this.value.customFields = drained.customFields;
 		}
 		return { ...this.value, timeStart: span.start, timeEnd: span.end };
 	}
@@ -3505,17 +3557,17 @@ export class ConfirmMemberDeletionModal extends Modal {
 				count: affected,
 			}),
 		});
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteMember.needsDecision'),
 			this.usage.needsDecision,
 			true,
 		);
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteMember.listed', { name: this.memberName }),
 			this.usage.listed,
 			false,
 		);
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteMember.records'),
 			this.usage.records,
 			true,
@@ -3538,22 +3590,6 @@ export class ConfirmMemberDeletionModal extends Modal {
 			this.confirmed = true;
 			this.close();
 		});
-	}
-
-	private addNoteList(
-		label: string,
-		titles: readonly string[],
-		needsDecision: boolean,
-	): void {
-		if (titles.length === 0) return;
-		const group = this.contentEl.createDiv({
-			cls: `snowflake-method-delete-member-group${
-				needsDecision ? ' needs-decision' : ''
-			}`,
-		});
-		group.createEl('h3', { text: label });
-		const list = group.createEl('ul');
-		for (const title of titles) list.createEl('li', { text: title });
 	}
 
 	onClose(): void {
@@ -3682,18 +3718,14 @@ class KindFormModal extends Modal {
 		let icon = this.options.initial?.icon ?? '';
 		let description = this.options.initial?.description ?? '';
 		let nameInput: HTMLInputElement | null = null;
-		let warning: HTMLElement | null = null;
+		let warning: FieldWarning | null = null;
 		// The objection stands in the field's own row and moves with every
 		// keystroke; an empty field stays quiet and the required mark speaks.
 		const showObjection = (): string | null => {
 			const trimmed = name.trim();
 			const objection =
 				trimmed.length === 0 ? null : this.options.objection(trimmed);
-			warning?.setText(objection ?? '');
-			if (nameInput !== null) {
-				if (objection === null) nameInput.removeAttribute('aria-invalid');
-				else nameInput.setAttribute('aria-invalid', 'true');
-			}
+			warning?.show(objection);
 			return objection;
 		};
 		const submit = (): void => {
@@ -3732,10 +3764,7 @@ class KindFormModal extends Modal {
 				text.inputEl.select();
 			}, 0);
 		});
-		warning = nameRow.settingEl.createDiv({
-			cls: 'snowflake-method-field-warning',
-			attr: { role: 'alert' },
-		});
+		warning = new FieldWarning(nameRow.settingEl, nameInput);
 		showObjection();
 		// The icon row shows what it will draw: the preview reads the field on
 		// every change, so a name the app cannot draw shows as nothing before
@@ -3875,7 +3904,7 @@ class CustomFieldTemplateModal extends Modal {
 		let name = this.options.initial?.name ?? '';
 		let description = this.options.initial?.description ?? '';
 		let nameInput: HTMLInputElement | null = null;
-		let warning: HTMLElement | null = null;
+		let warning: FieldWarning | null = null;
 		// The objection stands in the field's own row and moves with every
 		// keystroke. With nothing wrong, the row may still have something worth
 		// saying — an export about to replace a namesake — worn quietly.
@@ -3887,12 +3916,7 @@ class CustomFieldTemplateModal extends Modal {
 				objection !== null || trimmed.length === 0
 					? null
 					: (this.options.advisory?.(trimmed) ?? null);
-			warning?.setText(objection ?? advisory ?? '');
-			warning?.toggleClass('is-notice', objection === null && advisory !== null);
-			if (nameInput !== null) {
-				if (objection === null) nameInput.removeAttribute('aria-invalid');
-				else nameInput.setAttribute('aria-invalid', 'true');
-			}
+			warning?.show(objection, advisory);
 			return objection;
 		};
 		const submit = (): void => {
@@ -3933,10 +3957,7 @@ class CustomFieldTemplateModal extends Modal {
 				text.inputEl.select();
 			}, 0);
 		});
-		warning = nameRow.settingEl.createDiv({
-			cls: 'snowflake-method-field-warning',
-			attr: { role: 'alert' },
-		});
+		warning = new FieldWarning(nameRow.settingEl, nameInput);
 		showObjection();
 		const descriptionRow = new Setting(this.contentEl).setName(
 			this.t('modal.customFieldTemplate.description'),
@@ -4076,17 +4097,17 @@ export class ConfirmKindDeletionModal extends Modal {
 				count: this.entityCount,
 			}),
 		});
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteMember.needsDecision'),
 			this.usage.needsDecision,
 			true,
 		);
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteKind.listed', { name: this.kindName }),
 			this.usage.listed,
 			false,
 		);
-		this.addNoteList(
+		addNoteList(this.contentEl, 
 			this.t('modal.deleteMember.records'),
 			this.usage.records,
 			true,
@@ -4108,22 +4129,6 @@ export class ConfirmKindDeletionModal extends Modal {
 			this.confirmed = true;
 			this.close();
 		});
-	}
-
-	private addNoteList(
-		label: string,
-		titles: readonly string[],
-		needsDecision: boolean,
-	): void {
-		if (titles.length === 0) return;
-		const group = this.contentEl.createDiv({
-			cls: `snowflake-method-delete-member-group${
-				needsDecision ? ' needs-decision' : ''
-			}`,
-		});
-		group.createEl('h3', { text: label });
-		const list = group.createEl('ul');
-		for (const title of titles) list.createEl('li', { text: title });
 	}
 
 	onClose(): void {

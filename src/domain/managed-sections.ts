@@ -33,13 +33,19 @@ export interface ManagedSectionDescriptor {
 	 * `optional`.
 	 */
 	deferred?: boolean;
+	/**
+	 * A protected section that is a whole template's body rather than one of
+	 * a member's record sections, so the editor's refusal notice points at
+	 * the dashboard instead of a member form.
+	 */
+	templateBody?: boolean;
 }
 
 const section = (
 	id: string,
 	flags: Pick<
 		ManagedSectionDescriptor,
-		'optional' | 'legacy' | 'generated' | 'protected' | 'deferred'
+		'optional' | 'legacy' | 'generated' | 'protected' | 'deferred' | 'templateBody'
 	> = {},
 ): ManagedSectionDescriptor => ({
 	id,
@@ -111,7 +117,7 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	// A template note's whole body: canonical storage for the fields it
 	// seeds, managed from the dashboard. Its own id, because the protected
 	// set is global and `custom-fields` must stay editable in member notes.
-	template: [section('template-fields', { protected: true })],
+	template: [section('template-fields', { protected: true, templateBody: true })],
 	draft: [],
 	material: [],
 	archive: [],
@@ -157,6 +163,19 @@ export const PROTECTED_SECTION_IDS: ReadonlySet<string> = new Set(
 				(descriptor) =>
 					descriptor.generated === true || descriptor.protected === true,
 			)
+			.map((descriptor) => descriptor.id),
+	),
+);
+
+/**
+ * Protected ids that are a template's whole body, for the notice that names
+ * the dashboard rather than a member form. Derived, so the next template
+ * flavor joins by declaring itself instead of by another string check.
+ */
+export const TEMPLATE_SECTION_IDS: ReadonlySet<string> = new Set(
+	Object.values(MANAGED_SECTIONS_BY_DOCUMENT).flatMap((sections) =>
+		sections
+			.filter((descriptor) => descriptor.templateBody === true)
 			.map((descriptor) => descriptor.id),
 	),
 );

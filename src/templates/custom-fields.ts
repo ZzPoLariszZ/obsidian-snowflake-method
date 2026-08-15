@@ -14,6 +14,11 @@ import { SECTION_MARKER_PREFIX, readMarkedSection } from "./markers";
  * re-emitted, never shown as a field and never dropped. Duplicate titles load
  * as separate rows; the form is where uniqueness is enforced, at the one door
  * writes pass through.
+ *
+ * A content line that would itself read as a heading is stored behind one
+ * backslash, and a stored backslash run in front of `### ` grows by one more,
+ * so the read side can always strip exactly one: what the author typed comes
+ * back as typed, and only headings this module wrote open fields.
  */
 
 export interface CustomField {
@@ -28,6 +33,25 @@ export interface CustomFieldsBlock {
 }
 
 const FIELD_HEADING_PATTERN = /^###\s+(?<title>\S.*?)\s*$/u;
+
+/** A line the parser would open a field on, behind any number of escapes. */
+const BOUNDARY_LIKE_PATTERN = /^\\*###\s+\S/u;
+/** A boundary-like line wearing at least one escape already. */
+const ESCAPED_BOUNDARY_PATTERN = /^\\+###\s+\S/u;
+
+function escapeFieldContent(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => (BOUNDARY_LIKE_PATTERN.test(line) ? `\\${line}` : line))
+    .join("\n");
+}
+
+function unescapeFieldContent(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => (ESCAPED_BOUNDARY_PATTERN.test(line) ? line.slice(1) : line))
+    .join("\n");
+}
 
 interface RawField extends CustomField {
   /** The exact slice of the block, heading line through the next heading. */
@@ -52,7 +76,7 @@ function parseRawFields(block: string): { leading: string; fields: RawField[] } 
       FIELD_HEADING_PATTERN.exec(lines[headingIndex]!)?.groups?.["title"] ?? "";
     fields.push({
       title,
-      content: trimBlankEdges(slice.slice(1).join("\n")),
+      content: unescapeFieldContent(trimBlankEdges(slice.slice(1).join("\n"))),
       raw: slice.join("\n"),
     });
   });
@@ -102,7 +126,7 @@ export function serializeCustomFields(
       return trimBlankEdges(kept.raw);
     }
     const title = field.title.trim();
-    const content = trimBlankEdges(field.content);
+    const content = escapeFieldContent(trimBlankEdges(field.content));
     return content.length > 0 ? `### ${title}\n\n${content}` : `### ${title}`;
   });
   const leading = trimBlankEdges(parsed.leading);

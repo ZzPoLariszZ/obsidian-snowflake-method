@@ -253,6 +253,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'errors.invalidProject': '这不是有效的雪花写作项目。',
 	'errors.fileMissing': '找不到笔记“{path}”。',
 	'errors.projectExists': '名为“{name}”的项目已存在。',
+	'errors.kindNotRegistrable': '无法注册种类“{name}”。',
 	'errors.characterExists': '本项目中已有名为“{name}”的角色。',
 	'errors.sceneExists': '本项目中已有名为“{name}”的场景。',
 	'errors.markerMissing':

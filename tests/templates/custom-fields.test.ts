@@ -205,3 +205,27 @@ describe('template notes', () => {
 		]);
 	});
 });
+
+describe('heading-like content lines', () => {
+	it('keeps a field whole when its content lines look like headings', () => {
+		const fields = [
+			{
+				title: 'Outline',
+				content: 'Act info follows.\n\n### Act One\n\nThey meet.',
+			},
+		];
+		const block = serializeCustomFields('', fields);
+		expect(block).toContain('\\### Act One');
+		const parsed = parseCustomFields(block);
+		expect(parsed.fields).toEqual(fields);
+		// A save that changes nothing hands back the stored bytes.
+		expect(serializeCustomFields(block, parsed.fields)).toBe(block);
+	});
+
+	it('grows a typed escape by one so the read strips exactly one', () => {
+		const fields = [{ title: 'Notes', content: '\\### literal' }];
+		const block = serializeCustomFields('', fields);
+		expect(block).toContain('\\\\### literal');
+		expect(parseCustomFields(block).fields).toEqual(fields);
+	});
+});

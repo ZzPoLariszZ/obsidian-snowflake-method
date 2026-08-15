@@ -24,7 +24,6 @@ const BUILT_IN_KINDS = (['time', 'location', 'item'] as const).map((id) => ({
 	id,
 	folderName: `6${['time', 'location', 'item'].indexOf(id) + 1}_${id}`,
 	custom: false,
-	missingFolder: false,
 	icon: null,
 	description: null,
 }));

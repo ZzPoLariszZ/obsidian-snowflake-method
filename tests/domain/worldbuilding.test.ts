@@ -114,8 +114,7 @@ describe('custom kind prefixes', () => {
 		id: kindIdFromFolderName(folderName),
 		folderName,
 		custom: true,
-		missingFolder: false,
-		icon: null,
+			icon: null,
 		description: null,
 	});
 

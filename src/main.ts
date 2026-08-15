@@ -23,6 +23,7 @@ import {
 	getFirstIncompleteStep,
 	isDocumentType,
 	isStepId,
+	TEMPLATE_SECTION_IDS,
 	managedSectionHighlightsForStep,
 	managedSectionsForDocument,
 	primaryManagedSectionForStep,
@@ -61,6 +62,7 @@ import {
 import {
 	SnowflakeProjectService,
 	DuplicateNameError,
+	KindRegistrationRefusedError,
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
 	ProjectCreationInterruptedError,
 	PROJECT_PATH_LAYOUTS,
@@ -93,7 +95,6 @@ import {
 	type SnowflakeSettings,
 } from './settings';
 import {
-	TEMPLATE_FIELDS_SECTION_ID,
 	inspectManagedDocumentSections,
 	parseTerm,
 	readMarkedSection,
@@ -155,6 +156,7 @@ import type {
 	SceneViewModel,
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
+import { kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
@@ -871,20 +873,20 @@ export default class SnowflakeMethodPlugin
 			pathMap.set(step, path);
 		}
 		// Read off the snapshot in hand, so the three vocabularies cost the
-		// walk of their folders and nothing of the members again.
+		// walk of their folders and nothing of the members again — and side
+		// by side, since none of the four listings needs another.
+		const [category, worldStatus, relationship, customFieldTemplates] =
+			await Promise.all([
+				this.projects.listDefinitionForest(project, 'category'),
+				this.projects.listDefinitionForest(project, 'world-status'),
+				this.projects.listDefinitionForest(project, 'relationship'),
+				this.projects.listCustomFieldTemplates(project),
+			]);
 		const definitions = {
-			category: await this.projects.listDefinitionForest(project, 'category'),
-			'world-status': await this.projects.listDefinitionForest(
-				project,
-				'world-status',
-			),
-			relationship: await this.projects.listDefinitionForest(
-				project,
-				'relationship',
-			),
+			category,
+			'world-status': worldStatus,
+			relationship,
 		};
-		const customFieldTemplates =
-			await this.projects.listCustomFieldTemplates(project);
 
 		return {
 			path: project.projectFile,
@@ -1369,7 +1371,11 @@ export default class SnowflakeMethodPlugin
 		kind: WorldbuildingKindId,
 	): Promise<{ entityCount: number; usage: MemberUsage }> {
 		const project = await this.requireCurrentProject();
-		return this.projects.worldbuildingKindUsage(project, kind);
+		try {
+			return await this.projects.worldbuildingKindUsage(project, kind);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 	}
 
 	async deleteWorldbuildingKind(kind: WorldbuildingKindId): Promise<void> {
@@ -1866,7 +1872,7 @@ export default class SnowflakeMethodPlugin
 				...model.characters.flatMap((character) => character.healthIssues),
 				...model.scenes.flatMap((scene) => scene.healthIssues),
 				...model.worldbuildingKinds.flatMap((kind) =>
-					(model.worldbuilding[kind.id] ?? []).flatMap(
+					kindEntities(model, kind.id).flatMap(
 						(entity) => entity.healthIssues,
 					),
 				),
@@ -1897,8 +1903,8 @@ export default class SnowflakeMethodPlugin
 						[
 							...model.characters,
 							...model.scenes,
-							...model.worldbuildingKinds.flatMap(
-								(kind) => model.worldbuilding[kind.id] ?? [],
+							...model.worldbuildingKinds.flatMap((kind) =>
+								kindEntities(model, kind.id),
 							),
 						].find((member) => member.path === issue.path)?.id ?? null,
 				}),
@@ -1935,11 +1941,15 @@ export default class SnowflakeMethodPlugin
 
 	async repairMissingStructureItem(path: string, field?: string): Promise<void> {
 		const project = await this.requireCurrentProject();
-		await this.projects.repairMissingStructureItem(
-			project.projectFile,
-			path,
-			field,
-		);
+		try {
+			await this.projects.repairMissingStructureItem(
+				project.projectFile,
+				path,
+				field,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
 	}
 
 	async migrateMemberNotes(): Promise<{ migrated: number; skipped: number }> {
@@ -2139,7 +2149,7 @@ export default class SnowflakeMethodPlugin
 							context.content,
 							generatedSectionIds.length > 0
 								? 'editor.managedSection.generatedNotice'
-								: recordSectionIds.includes(TEMPLATE_FIELDS_SECTION_ID)
+								: recordSectionIds.some((id) => TEMPLATE_SECTION_IDS.has(id))
 									? 'editor.managedSection.templateNotice'
 									: recordSectionIds.length > 0
 										? 'editor.managedSection.recordNotice'
@@ -3832,6 +3842,11 @@ export default class SnowflakeMethodPlugin
 							? 'errors.projectExists'
 							: 'errors.entityExists';
 			throw new Error(this.t(key, { name: error.requestedName }));
+		}
+		if (error instanceof KindRegistrationRefusedError) {
+			throw new Error(
+				this.t('errors.kindNotRegistrable', { name: error.kindId }),
+			);
 		}
 		if (error instanceof ConcurrentChangeError) {
 			throw new Error(this.t('errors.concurrentChange'));

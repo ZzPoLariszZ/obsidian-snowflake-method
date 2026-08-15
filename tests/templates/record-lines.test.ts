@@ -358,3 +358,16 @@ describe("terms", () => {
     expect(renderTerm(text("23"))).toBe("23");
   });
 });
+
+describe("multi-line values", () => {
+  it("reads a value's line breaks back out as spaces", () => {
+    const record: RecordLine = {
+      label: { path: "X/Ally/Ally", display: "Ally" },
+      value: "First line\nSecond line",
+      clauses: [],
+    };
+    expect(renderRecordLine("en", record)).toBe(
+      "[[X/Ally/Ally|Ally]]: First line Second line",
+    );
+  });
+});

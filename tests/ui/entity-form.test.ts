@@ -99,8 +99,7 @@ describe('entity groups', () => {
 		id,
 		folderName: custom ? `64_${id}` : `61_${id}`,
 		custom,
-		missingFolder: false,
-		icon: null,
+			icon: null,
 		description: null,
 	});
 

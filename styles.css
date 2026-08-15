@@ -5256,6 +5256,11 @@ button.snowflake-method-kind-options {
 	border-color: var(--interactive-accent);
 }
 
+/* The card a refused save was about: the notice names it, the frame shows it. */
+.snowflake-method-record-card.is-missing-target {
+	border-color: var(--text-error);
+}
+
 .snowflake-method-record-drag {
 	display: flex;
 	align-items: center;

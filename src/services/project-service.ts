@@ -317,6 +317,14 @@ const CUSTOM_FIELD_TEMPLATE_TYPE = "custom-field";
  * frontmatter still reads "Ada", so the file explorer and the dashboard stop
  * naming the same thing.
  */
+/** A health repair promised a kind registration the registry then refused. */
+export class KindRegistrationRefusedError extends Error {
+  constructor(public readonly kindId: string) {
+    super(`The kind "${kindId}" cannot be registered.`);
+    this.name = "KindRegistrationRefusedError";
+  }
+}
+
 export class DuplicateNameError extends Error {
   constructor(
     readonly kind: NamedRecordKind,
@@ -847,25 +855,26 @@ export class SnowflakeProjectService {
     // kind carries its own set, in the folder its notes live in, plus the
     // fourth folder its custom-field templates call home.
     for (const kind of entityKindIds(project.worldbuildingKinds)) {
-      for (const definitionId of DEFINITION_FILE_IDS) {
-        const path = definitionRootPath(project, kind, definitionId);
-        if (this.repository.getFolder(path) !== null) {
-          markUnchanged(result, path);
-        } else if (this.repository.get(path) !== null) {
-          markConflict(result, path, `A file already exists at "${path}".`);
+      const roots = [
+        ...DEFINITION_FILE_IDS.map((definitionId) => ({
+          path: definitionRootPath(project, kind, definitionId),
+          ensure: () => this.ensureDefinitionRoot(project, kind, definitionId),
+        })),
+        {
+          path: customFieldRootPath(project, kind),
+          ensure: () =>
+            this.repository.ensureFolder(customFieldRootPath(project, kind)),
+        },
+      ];
+      for (const root of roots) {
+        if (this.repository.getFolder(root.path) !== null) {
+          markUnchanged(result, root.path);
+        } else if (this.repository.get(root.path) !== null) {
+          markConflict(result, root.path, `A file already exists at "${root.path}".`);
         } else {
-          await this.ensureDefinitionRoot(project, kind, definitionId);
-          markCreated(result, path);
+          await root.ensure();
+          markCreated(result, root.path);
         }
-      }
-      const fieldRoot = customFieldRootPath(project, kind);
-      if (this.repository.getFolder(fieldRoot) !== null) {
-        markUnchanged(result, fieldRoot);
-      } else if (this.repository.get(fieldRoot) !== null) {
-        markConflict(result, fieldRoot, `A file already exists at "${fieldRoot}".`);
-      } else {
-        await this.repository.ensureFolder(fieldRoot);
-        markCreated(result, fieldRoot);
       }
     }
 
@@ -1223,7 +1232,7 @@ export class SnowflakeProjectService {
       }
       const result = await this.createWorldbuildingKind(project, kindId);
       if (!result.ok) {
-        throw new Error(`The kind "${kindId}" cannot be registered.`);
+        throw new KindRegistrationRefusedError(kindId);
       }
       return this.loadProject(project.projectFile);
     }
@@ -2122,31 +2131,50 @@ export class SnowflakeProjectService {
     memberPath: string,
   ): Promise<void> {
     const project = await this.loadProject(projectLocator);
-    const records = await this.memberRecords(project);
-    // The note is gone, so every link to it is words now, and a bare
-    // wiki-word only reads as the deleted member in fields of its own kind;
+    await this.removeReferencesToMembers(project, [memberPath]);
+  }
+
+  /**
+   * The same sweep for any number of members at once: the notes are walked
+   * once and each affected note is written once, however many members just
+   * left — what keeps a kind deletion from reloading the project per entity.
+   */
+  private async removeReferencesToMembers(
+    project: ProjectSnapshot,
+    memberPaths: readonly string[],
+  ): Promise<void> {
+    if (memberPaths.length === 0) return;
+    // The notes are gone, so every link to one is words now, and a bare
+    // wiki-word only reads as a deleted member in fields of its own kind;
     // a path-qualified link says which note it meant by itself.
-    const kind = memberKindOfPath(project, memberPath);
+    const gone = memberPaths.map((path) => ({
+      path,
+      kind: memberKindOfPath(project, path),
+    }));
+    const goneSet = new Set(gone.map((member) => member.path));
+    const records = await this.memberRecords(project);
     for (const record of records) {
-      if (record.readOnly || record.path === memberPath) continue;
+      if (record.readOnly || goneSet.has(record.path)) continue;
       const patch: ManagedFrontmatter = {};
       for (const field of MEMBER_LINK_FIELDS) {
         // Only what a list can lose: what a field holds alone is a decision to
         // be made rather than an entry to drop.
         if (!field.removable) continue;
-        const kindMatches = field.kind === kind;
         const raw = storedList(record.frontmatter[field.key]);
         if (raw === null) continue;
         const next = raw.filter((entry) => {
           const target = fromWikiLink(storedReference(field, entry));
           if (target === null) return true;
-          if (!target.includes("/") && !kindMatches) return true;
-          return !this.linkNames(
-            target,
-            memberPath,
-            record.path,
-            project.rootPath,
-            true,
+          return !gone.some(
+            (member) =>
+              (target.includes("/") || field.kind === member.kind) &&
+              this.linkNames(
+                target,
+                member.path,
+                record.path,
+                project.rootPath,
+                true,
+              ),
           );
         });
         if (next.length !== raw.length) patch[field.key] = next;
@@ -5023,7 +5051,7 @@ export class SnowflakeProjectService {
     if (kind === undefined) {
       throw new Error(`The kind "${trimmed}" did not register.`);
     }
-    return { ok: true, kind: { ...kind, missingFolder: false } };
+    return { ok: true, kind };
   }
 
   /**
@@ -5145,14 +5173,18 @@ export class SnowflakeProjectService {
       await this.repository.ensureFolder(newFolder);
     }
     // The notes wear the new id: what a note carries is the registry id.
-    for (const entity of entities) {
-      const path = movedPath(entity.path) ?? entity.path;
-      const record = await this.repository.tryReadManaged(path);
-      if (record === null || record.readOnly) continue;
-      await this.repository.updateFrontmatter(path, {
-        [FRONTMATTER_KEYS.worldbuildingKind]: trimmed,
-      });
-    }
+    // Every note is its own write, so the writes overlap instead of queueing
+    // one behind another through a large kind.
+    await Promise.all(
+      entities.map(async (entity) => {
+        const path = movedPath(entity.path) ?? entity.path;
+        const record = await this.repository.tryReadManaged(path);
+        if (record === null || record.readOnly) return;
+        await this.repository.updateFrontmatter(path, {
+          [FRONTMATTER_KEYS.worldbuildingKind]: trimmed,
+        });
+      }),
+    );
     let refreshed = await this.loadProject(project.projectFile);
     // Links into the moved vocabulary trees: the same pass a node rename
     // runs, with each whole root as the moved subtree.
@@ -5210,21 +5242,70 @@ export class SnowflakeProjectService {
   ): Promise<{ entityCount: number; usage: MemberUsage }> {
     const project = await this.loadProject(projectLocator);
     const entities = entitiesOf(project, kindId);
-    // Usage names notes by their display names, so notes of the kind itself
-    // are told apart by name too: they leave with the folder either way.
-    const kindNames = new Set(entities.map((entity) => entity.name));
-    const insideKind = (name: string): boolean => kindNames.has(name);
+    const entityPaths = new Set(
+      entities.map((entity) => normalizePath(entity.path)),
+    );
+    // Notes of the kind itself are told apart by path, never by name: they
+    // leave with the folder either way, and a member of another kind that
+    // happens to share a name must keep its place in the report.
+    const folder = normalizePath(worldbuildingKindFolder(project, kindId));
+    const insideKind = (path: string): boolean =>
+      entityPaths.has(normalizePath(path)) ||
+      normalizePath(path).startsWith(`${folder}/`);
     const listed = new Set<string>();
     const needsDecision = new Set<string>();
     const records = new Set<string>();
-    for (const entity of entities) {
-      const usage = await this.memberUsage(project, entity.path);
-      for (const name of usage.listed) if (!insideKind(name)) listed.add(name);
-      for (const name of usage.needsDecision) {
-        if (!insideKind(name)) needsDecision.add(name);
+    // One pass over the members, each record's fields and lines read once,
+    // against the whole set of notes the folder will take with it.
+    for (const record of await this.memberRecords(project)) {
+      if (insideKind(record.path)) continue;
+      const title = memberTitleOf(record);
+      const namesAny = (stored: string | null, kindMatches: boolean): boolean => {
+        const target = fromWikiLink(stored);
+        if (target === null) return false;
+        if (!target.includes("/") && !kindMatches) return false;
+        return this.linkReachesAny(
+          target,
+          entityPaths,
+          record.path,
+          project.rootPath,
+        );
+      };
+      for (const field of MEMBER_LINK_FIELDS) {
+        const kindMatches = field.kind === kindId;
+        const stored = record.frontmatter[field.key];
+        if (field.list) {
+          if (
+            storedList(stored)?.some((entry) =>
+              namesAny(storedReference(field, entry), kindMatches),
+            )
+          ) {
+            listed.add(title);
+          }
+          continue;
+        }
+        const value = storedReference(field, stored);
+        if (
+          value !== null &&
+          !isScenePovMode(value) &&
+          namesAny(value, kindMatches)
+        ) {
+          needsDecision.add(title);
+        }
       }
-      for (const name of usage.records) {
-        if (!insideKind(name)) records.add(name);
+      if (
+        memberRecordTerms(record, project.locale).some(
+          (term) =>
+            term.kind === "link" &&
+            this.linkReachesAny(
+              term.path,
+              entityPaths,
+              record.path,
+              project.rootPath,
+            ),
+        )
+      ) {
+        records.add(title);
       }
     }
     return {
@@ -5235,6 +5316,34 @@ export class SnowflakeProjectService {
         records: [...records],
       },
     };
+  }
+
+  /**
+   * linkNames against a set of members: the link resolves once, and only a
+   * link that resolves nowhere falls back to reading its bare words against
+   * each candidate.
+   */
+  private linkReachesAny(
+    target: string,
+    memberPaths: ReadonlySet<string>,
+    sourcePath: string,
+    root: string,
+  ): boolean {
+    const resolved = this.repository.resolveLinkWithin(target, sourcePath, root);
+    if (resolved !== null) return memberPaths.has(normalizePath(resolved.path));
+    const named = normalizePath(target);
+    for (const wanted of memberPaths) {
+      const stem = wanted.replace(/\.md$/u, "");
+      if (
+        named === wanted ||
+        named === stem ||
+        wanted.endsWith(`/${named}`) ||
+        stem.endsWith(`/${named}`)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -5265,10 +5374,11 @@ export class SnowflakeProjectService {
     }
     // After the delete, as with a single member: a failure here leaves links
     // the health check can still report, not lists edited for a deletion
-    // that never landed.
-    for (const entity of entities) {
-      await this.removeMemberReferences(project.projectFile, entity.path);
-    }
+    // that never landed. One sweep for the whole kind.
+    await this.removeReferencesToMembers(
+      project,
+      entities.map((entity) => entity.path),
+    );
     await this.repository.updateFrontmatterAtomic(
       project.projectFile,
       (frontmatter) => {
@@ -5398,22 +5508,40 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
   ): Promise<Record<EntityKindId, CustomFieldTemplateInfo[]>> {
     const project = await this.loadProject(projectLocator);
+    const kinds = entityKindIds(project.worldbuildingKinds);
+    // The dashboard asks for this on every refresh, so the folders are read
+    // off the metadata index, and side by side rather than one behind the
+    // next. The write paths below keep reading the files: a collision check
+    // must not trust an index that runs a beat behind its own write.
+    const listings = await Promise.all(
+      kinds.map((kind) => this.customFieldTemplatesOf(project, kind, "index")),
+    );
     const listing: Record<EntityKindId, CustomFieldTemplateInfo[]> = {};
-    for (const kind of entityKindIds(project.worldbuildingKinds)) {
-      listing[kind] = await this.customFieldTemplatesOf(project, kind);
-    }
+    kinds.forEach((kind, index) => {
+      listing[kind] = listings[index]!;
+    });
     return listing;
   }
 
   private async customFieldTemplatesOf(
     project: ProjectRef,
     kind: EntityKindId,
+    from: "files" | "index" = "files",
   ): Promise<CustomFieldTemplateInfo[]> {
-    const records = await this.repository.findManagedFiles(
-      customFieldRootPath(project, kind),
-      "template",
-      project.id,
-    );
+    const root = customFieldRootPath(project, kind);
+    const records =
+      from === "index"
+        ? // The entries walk is recursive; only direct children are templates.
+          (
+            await this.repository.listManagedEntriesBelow(
+              root,
+              "template",
+              project.id,
+            )
+          ).filter(
+            (record) => record.path.slice(0, record.path.lastIndexOf("/")) === root,
+          )
+        : await this.repository.findManagedFiles(root, "template", project.id);
     return records
       .filter(
         (record) =>
@@ -6222,7 +6350,6 @@ export class SnowflakeProjectService {
     locale: ProjectLanguage,
   ): { kinds: ProjectWorldbuildingKind[]; invalidEntries: string[] } {
     const layout = getProjectPathLayout(locale);
-    const worldbuildingDirectory = `${rootPath}/${layout.directories.worldbuilding}`;
     // A custom kind's looks ride two per-kind maps; a built-in's belong to
     // the program, so for one the maps are never consulted.
     const icons = frontmatter[FRONTMATTER_KEYS.kindIcons];
@@ -6240,10 +6367,6 @@ export class SnowflakeProjectService {
       id,
       folderName,
       custom,
-      missingFolder:
-        this.repository.getFolder(
-          normalizePath(`${worldbuildingDirectory}/${folderName}`),
-        ) === null,
       icon: custom ? appearance(id, icons) : null,
       description: custom ? appearance(id, descriptions) : null,
     });
@@ -6529,8 +6652,12 @@ export class SnowflakeProjectService {
         expected: kindId,
         names: notes.map((note) => this.reportName(note, project.rootPath)),
         canOpen: false,
+        // Repairable only when the repair itself would go through: the same
+        // registry and the same slot pool the registration will check.
         repairable:
-          !projectRecord.readOnly && validateKindName(kindId, []) === null,
+          !projectRecord.readOnly &&
+          validateKindName(kindId, project.worldbuildingKinds) === null &&
+          nextCustomKindPrefix(project.worldbuildingKinds) !== null,
       });
     }
 
@@ -8205,6 +8332,10 @@ function reservedKindFolds(): Set<string> {
       folds.add(foldName(kindIdFromFolderName(layout.directories[key])));
     }
   }
+  // The two ids the base machinery answers by their literal spelling --
+  // projectBaseFolder and the canonical base list both special-case them --
+  // so a kind wearing either name would put on the built-in base as its own.
+  for (const id of ["characters", "scenes"]) folds.add(foldName(id));
   return folds;
 }
 
@@ -8239,10 +8370,10 @@ export function validateKindName(
 function isKindStringMap(
   value: unknown,
 ): value is Record<string, string> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
+  return (
+    isRecord(value) &&
+    Object.values(value).every((entry) => typeof entry === "string")
+  );
 }
 
 /** The registry as stored, string entries only; readers validate further. */

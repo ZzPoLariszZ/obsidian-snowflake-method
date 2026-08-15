@@ -280,6 +280,7 @@ export const en = {
 	'errors.invalidProject': 'This is not a valid Snowflake project.',
 	'errors.fileMissing': 'The note “{path}” could not be found.',
 	'errors.projectExists': 'A project named “{name}” already exists.',
+	'errors.kindNotRegistrable': 'The kind “{name}” cannot be registered.',
 	'errors.characterExists':
 		'A character named “{name}” already exists in this project.',
 	'errors.sceneExists': 'A scene named “{name}” already exists in this project.',

@@ -1,4 +1,4 @@
-import { getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
+import { Notice, getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	foldName,
@@ -605,6 +605,57 @@ export interface PickedEntity {
 }
 
 /**
+ * The one drag-and-drop wiring every card editor shares. Only the handle
+ * starts a drag, or selecting the text in a field would carry the card off
+ * instead; what a drop means is the caller's, who owns the order. The state
+ * holder empties on drop before the caller redraws, so a source element
+ * retired by the redraw cannot strand a drag in flight.
+ */
+function wireCardDrag<T>(
+	el: HTMLElement,
+	handle: HTMLElement,
+	state: { dragging: T | null },
+	payload: T,
+	drop: (dragged: T) => void,
+): void {
+	handle.addEventListener('mousedown', () => {
+		el.draggable = true;
+	});
+	handle.addEventListener('mouseup', () => {
+		el.draggable = false;
+	});
+	el.addEventListener('dragstart', (event) => {
+		state.dragging = payload;
+		el.addClass('is-dragging');
+		if (event.dataTransfer === null) return;
+		event.dataTransfer.effectAllowed = 'move';
+		// A drag has to carry something to start at all.
+		event.dataTransfer.setData('text/plain', '');
+	});
+	el.addEventListener('dragend', () => {
+		el.draggable = false;
+		el.removeClass('is-dragging');
+		state.dragging = null;
+	});
+	el.addEventListener('dragover', (event) => {
+		if (state.dragging === null || state.dragging === payload) return;
+		event.preventDefault();
+		el.addClass('is-drop-target');
+	});
+	el.addEventListener('dragleave', () => {
+		el.removeClass('is-drop-target');
+	});
+	el.addEventListener('drop', (event) => {
+		el.removeClass('is-drop-target');
+		const dragged = state.dragging;
+		if (dragged === null || dragged === payload) return;
+		event.preventDefault();
+		state.dragging = null;
+		drop(dragged);
+	});
+}
+
+/**
  * A card the author has begun but not yet filed under a label. A record needs
  * its label to be written, but a form redraw is not a save: whatever was
  * typed has to survive it, label or no label.
@@ -642,7 +693,9 @@ interface RecordCard {
 export class RecordCardsEditor {
 	private cards: RecordCard[] = [];
 	private listEl: HTMLElement | null = null;
-	private dragging: RecordCard | null = null;
+	private readonly dragState: { dragging: RecordCard | null } = {
+		dragging: null,
+	};
 
 	constructor(
 		private readonly context: RecordEditorContext,
@@ -719,7 +772,7 @@ export class RecordCardsEditor {
 								path: `${this.definitionPath}/${path}/${path.split('/').pop() ?? path}`,
 								display: path,
 							},
-				value: oneLineValue(card.valueEl.value),
+				value: card.valueEl.value.trim(),
 				clauses: [
 					...(card.target !== null
 						? [{ kind: 'target' as const, term: card.target }]
@@ -743,6 +796,22 @@ export class RecordCardsEditor {
 			(card) => card.label.trim().length > 0 && card.target === null,
 		);
 		return missing !== undefined ? missing.label.trim() : null;
+	}
+
+	/**
+	 * Marks the card the refusal was about and brings it into view, so the
+	 * notice is not the only finger pointing at it in a long form. The mark
+	 * comes off with the empty picker, the moment a target is chosen.
+	 */
+	revealMissingTarget(): void {
+		const missing = this.cards.find(
+			(card) => card.label.trim().length > 0 && card.target === null,
+		);
+		if (missing === undefined) return;
+		missing.el.addClass('is-missing-target');
+		// No smooth behavior: a scripted smooth scroll animates even for the
+		// authors who turned animations off, and the sibling scrolls plainly.
+		missing.el.scrollIntoView({ block: 'center' });
 	}
 
 	private addCard(record: RecordLine | null): RecordCard | null {
@@ -787,7 +856,9 @@ export class RecordCardsEditor {
 			),
 			renderTarget: () => undefined,
 		};
-		this.makeDraggable(el, handle, card);
+		wireCardDrag(el, handle, this.dragState, card, (dragged) => {
+			this.moveCard(dragged, card);
+		});
 
 		// Every field says what it is in its own placeholder, so a card carries
 		// no titles: the fields are the card.
@@ -856,6 +927,7 @@ export class RecordCardsEditor {
 			});
 			card.renderTarget = (): void => {
 				targetEl.empty();
+				if (card.target !== null) el.removeClass('is-missing-target');
 				if (card.target === null) {
 					this.renderTargetPicker(
 						targetEl,
@@ -912,52 +984,6 @@ export class RecordCardsEditor {
 		this.cards.push(card);
 		this.renderContexts(card);
 		return card;
-	}
-
-	/**
-	 * Records keep the order they are given, so that order is the author's to
-	 * set. Only the handle starts a drag, or selecting the text in a field
-	 * would carry the card off instead.
-	 */
-	private makeDraggable(
-		el: HTMLElement,
-		handle: HTMLElement,
-		card: RecordCard,
-	): void {
-		handle.addEventListener('mousedown', () => {
-			el.draggable = true;
-		});
-		handle.addEventListener('mouseup', () => {
-			el.draggable = false;
-		});
-		el.addEventListener('dragstart', (event) => {
-			this.dragging = card;
-			el.addClass('is-dragging');
-			if (event.dataTransfer === null) return;
-			event.dataTransfer.effectAllowed = 'move';
-			// A drag has to carry something to start at all.
-			event.dataTransfer.setData('text/plain', '');
-		});
-		el.addEventListener('dragend', () => {
-			el.draggable = false;
-			el.removeClass('is-dragging');
-			this.dragging = null;
-		});
-		el.addEventListener('dragover', (event) => {
-			if (this.dragging === null || this.dragging === card) return;
-			event.preventDefault();
-			el.addClass('is-drop-target');
-		});
-		el.addEventListener('dragleave', () => {
-			el.removeClass('is-drop-target');
-		});
-		el.addEventListener('drop', (event) => {
-			el.removeClass('is-drop-target');
-			const dragged = this.dragging;
-			if (dragged === null || dragged === card) return;
-			event.preventDefault();
-			this.moveCard(dragged, card);
-		});
 	}
 
 	/** Puts one card where another sits, in the list and on the page. */
@@ -1126,7 +1152,7 @@ export interface CustomFieldTemplateSource {
 export class CustomFieldsEditor {
 	private rowsEl: HTMLElement | null = null;
 	/** The row a drag carries, by its place in the shared list. */
-	private draggingIndex: number | null = null;
+	private readonly dragState: { dragging: number | null } = { dragging: null };
 
 	constructor(
 		private readonly context: {
@@ -1159,14 +1185,13 @@ export class CustomFieldsEditor {
 		});
 		// The template choice and the export share one line under the title:
 		// the choice starts it on the left, the export closes it on the right.
-		const onExport = this.context.onExport;
-		if (this.context.template !== null || onExport !== undefined) {
+		// The template gates the whole line; an export only ever rides one.
+		if (this.context.template !== null) {
 			const row = block.createDiv({
 				cls: 'snowflake-method-custom-fields-template',
 			});
-			if (this.context.template !== null) {
-				this.attachTemplatePicker(row, this.context.template);
-			}
+			this.attachTemplatePicker(row, this.context.template);
+			const onExport = this.context.onExport;
 			if (onExport !== undefined) {
 				const exportButton = row.createEl('button', {
 					cls: 'snowflake-method-custom-fields-export',
@@ -1197,13 +1222,25 @@ export class CustomFieldsEditor {
 			!this.context.touched()
 		) {
 			void this.context.template.fields().then((fields) => {
-				// The answer may land after the author started typing; what
-				// they typed wins.
+				// The answer may land after the author started typing, or after
+				// a redraw handed the shared rows to a newer editor; what they
+				// typed wins, and a retired editor keeps its hands off.
+				if (!this.isLive()) return;
 				if (this.context.touched() || this.context.rows.length > 0) return;
 				this.context.rows.push(...fields);
 				this.renderRows();
 			});
 		}
+	}
+
+	/**
+	 * Whether this editor still owns what it shows. A form redraw builds a new
+	 * editor over the same shared rows and abandons this one, so an async
+	 * continuation landing afterwards must do nothing: writing rows a detached
+	 * element renders would put fields on the note nobody saw.
+	 */
+	private isLive(): boolean {
+		return this.rowsEl?.isConnected ?? false;
 	}
 
 	/** Every title as typed, for the submit-time duplicate check. */
@@ -1228,8 +1265,8 @@ export class CustomFieldsEditor {
 		});
 		const fieldEl = row.createDiv();
 		let current = '';
-		void template.current().then((path) => {
-			current = path ?? '';
+		const render = (): void => {
+			fieldEl.empty();
 			buildOptionField(this.context.app, fieldEl, {
 				options: () => {
 					const known = template.options();
@@ -1251,10 +1288,15 @@ export class CustomFieldsEditor {
 				emptyPlaceholder: t('form.customFields.templatePlaceholder'),
 				value: () => current,
 				choose: (value) => {
+					const previous = current;
 					current = value;
 					void template
 						.set(value.length === 0 ? null : value)
 						.then(async () => {
+							// A redraw may have handed the rows to a newer editor
+							// while the write was out; the stored default landed,
+							// but the retired editor leaves the rows alone.
+							if (!this.isLive()) return;
 							const untouchedCreate =
 								this.context.seedFromTemplate && !this.context.touched();
 							if (value.length === 0) {
@@ -1267,6 +1309,7 @@ export class CustomFieldsEditor {
 								return;
 							}
 							const fields = await template.fields();
+							if (!this.isLive()) return;
 							// A fresh choice reseeds a create form nobody has typed
 							// into; a form already holding rows keeps them, and the
 							// template's fields join below — the titles already
@@ -1290,9 +1333,25 @@ export class CustomFieldsEditor {
 							this.context.rows.push(...appended);
 							this.context.markTouched();
 							this.renderRows();
+						})
+						.catch((error: unknown) => {
+							// The write refused, so the field must not keep showing
+							// a choice that never landed: back to the stored one,
+							// and the refusal said out loud.
+							current = previous;
+							render();
+							new Notice(
+								error instanceof Error
+									? error.message
+									: t('errors.unknown'),
+							);
 						});
 				},
 			});
+		};
+		void template.current().then((path) => {
+			current = path ?? '';
+			render();
 		});
 	}
 
@@ -1309,7 +1368,16 @@ export class CustomFieldsEditor {
 				attr: { 'aria-label': this.context.t('form.record.reorder') },
 			});
 			setIcon(handle, 'grip-vertical');
-			this.makeRowDraggable(el, handle, index);
+			// The drop reorders the shared rows and redraws, which is also what
+			// retires every listener the old cards held. An index survives the
+			// trip because the redraw rebuilds them all.
+			wireCardDrag(el, handle, this.dragState, index, (from) => {
+				const [moved] = this.context.rows.splice(from, 1);
+				if (moved === undefined) return;
+				this.context.rows.splice(index, 0, moved);
+				this.context.markTouched();
+				this.renderRows();
+			});
 			const body = el.createDiv({ cls: 'snowflake-method-record-body' });
 			const title = body.createEl('input', {
 				type: 'text',
@@ -1320,23 +1388,30 @@ export class CustomFieldsEditor {
 					'aria-label': this.context.t('form.customFields.titlePlaceholder'),
 				},
 			});
-			title.addEventListener('input', () => {
-				row.title = title.value;
-				this.context.markTouched();
-			});
+			// The content field is named by its title, so the name follows the
+			// typing rather than staying whatever the row was created with.
+			const contentLabel = (): string =>
+				row.title.trim().length > 0
+					? row.title
+					: this.context.t('form.customFields.contentPlaceholder');
 			const content = body.createEl('textarea', {
 				cls: 'snowflake-method-custom-field-content',
 				attr: {
 					placeholder: this.context.t(
 						'form.customFields.contentPlaceholder',
 					),
-					'aria-label': row.title,
+					'aria-label': contentLabel(),
 					rows: '2',
 				},
 			});
 			content.value = row.content;
 			content.addEventListener('input', () => {
 				row.content = content.value;
+				this.context.markTouched();
+			});
+			title.addEventListener('input', () => {
+				row.title = title.value;
+				content.setAttribute('aria-label', contentLabel());
 				this.context.markTouched();
 			});
 			const remove = el.createEl('button', {
@@ -1357,57 +1432,6 @@ export class CustomFieldsEditor {
 		});
 	}
 
-	/**
-	 * Fields keep the order they are given, so that order is the author's to
-	 * set — the record cards' own rule, moved the record cards' own way. Only
-	 * the handle starts a drag, and a drop reorders the shared rows and
-	 * redraws, which is also what retires every listener the old cards held.
-	 */
-	private makeRowDraggable(
-		el: HTMLElement,
-		handle: HTMLElement,
-		index: number,
-	): void {
-		handle.addEventListener('mousedown', () => {
-			el.draggable = true;
-		});
-		handle.addEventListener('mouseup', () => {
-			el.draggable = false;
-		});
-		el.addEventListener('dragstart', (event) => {
-			this.draggingIndex = index;
-			el.addClass('is-dragging');
-			if (event.dataTransfer === null) return;
-			event.dataTransfer.effectAllowed = 'move';
-			// A drag has to carry something to start at all.
-			event.dataTransfer.setData('text/plain', '');
-		});
-		el.addEventListener('dragend', () => {
-			el.draggable = false;
-			el.removeClass('is-dragging');
-			this.draggingIndex = null;
-		});
-		el.addEventListener('dragover', (event) => {
-			if (this.draggingIndex === null || this.draggingIndex === index) return;
-			event.preventDefault();
-			el.addClass('is-drop-target');
-		});
-		el.addEventListener('dragleave', () => {
-			el.removeClass('is-drop-target');
-		});
-		el.addEventListener('drop', (event) => {
-			el.removeClass('is-drop-target');
-			const from = this.draggingIndex;
-			if (from === null || from === index) return;
-			event.preventDefault();
-			this.draggingIndex = null;
-			const [moved] = this.context.rows.splice(from, 1);
-			if (moved === undefined) return;
-			this.context.rows.splice(index, 0, moved);
-			this.context.markTouched();
-			this.renderRows();
-		});
-	}
 }
 
 /**
@@ -1439,18 +1463,6 @@ function labelDisplay(
 
 function termText(term: RecordTerm): string {
 	return term.kind === 'text' ? term.text : term.name;
-}
-
-/**
- * The grammar keeps a record on one line, so the line breaks the taller value
- * field lets an author type read back out as spaces.
- */
-function oneLineValue(text: string): string {
-	return text
-		.split(/\r\n|\r|\n/u)
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0)
-		.join(' ');
 }
 
 function linkPath(term: RecordTerm): string | null {

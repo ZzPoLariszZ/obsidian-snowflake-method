@@ -95,6 +95,7 @@ import {
 } from './entity-form';
 import { RenderStateKeeper } from './render-state';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
+import { kindEntities } from './view-model';
 import { VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
@@ -171,14 +172,6 @@ const CUSTOM_KIND_ICON = 'shapes';
 
 const EMPTY_TREE: DefinitionTreeInfo = { rootPath: '', nodes: [] };
 
-/** One kind's rows of the model; empty for a pane left on a kind since gone. */
-function kindEntities(
-	model: ProjectDashboardModel,
-	kind: WorldbuildingKindId,
-): WorldbuildingEntityViewModel[] {
-	return model.worldbuilding[kind] ?? [];
-}
-
 /** One kind's tree of a forest; empty for the same stale-pane reason. */
 function forestTree(
 	forest: DefinitionForest,
@@ -195,6 +188,20 @@ const ENTITY_KIND_ICONS: Record<
 	scene: 'clapperboard',
 	...WORLDBUILDING_KIND_ICONS,
 };
+
+/**
+ * The face a kind wears wherever it appears: a built-in's own icon, an
+ * authored kind's chosen one, and the generic shape only when nothing chose.
+ */
+function kindIcon(model: ProjectDashboardModel, kind: string): string {
+	if (kind === 'character' || kind === 'scene' || isWorldbuildingKind(kind)) {
+		return ENTITY_KIND_ICONS[kind];
+	}
+	const descriptor = model.worldbuildingKinds.find(
+		(candidate) => candidate.id === kind,
+	);
+	return descriptor?.icon ?? CUSTOM_KIND_ICON;
+}
 
 const DEFINITION_ICONS: Record<DefinitionFileChoice, string> = {
 	category: 'tags',
@@ -1065,12 +1072,7 @@ export class SnowflakeDashboardView extends ItemView {
 				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
 				attr: { 'aria-hidden': 'true' },
 			});
-			setIcon(
-				iconEl,
-				isWorldbuildingKind(kind)
-					? WORLDBUILDING_KIND_ICONS[kind]
-					: (descriptor.icon ?? CUSTOM_KIND_ICON),
-			);
+			setIcon(iconEl, kindIcon(model, kind));
 			button.createSpan({
 				cls: 'snowflake-method-step-label',
 				text: title,
@@ -2837,9 +2839,7 @@ export class SnowflakeDashboardView extends ItemView {
 					cls: 'snowflake-method-definition-inspector-note-icon',
 					attr: { 'aria-hidden': 'true' },
 				}),
-				kind === 'character' || kind === 'scene' || isWorldbuildingKind(kind)
-					? ENTITY_KIND_ICONS[kind]
-					: CUSTOM_KIND_ICON,
+				kindIcon(model, kind),
 			);
 			card.createSpan({
 				cls: 'snowflake-method-definition-inspector-note-name',
@@ -3249,7 +3249,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const templateOptions = (): PickerOption[] => {
 			const fresh = this.renderedModel ?? model;
 			return (fresh.customFieldTemplates[kind] ?? []).map((template) => ({
-				value: template.path.replace(/\.md$/u, ''),
+				value: noteKey(template.path),
 				label: template.name,
 			}));
 		};
@@ -3604,7 +3604,18 @@ export class SnowflakeDashboardView extends ItemView {
 		kind: WorldbuildingKindId,
 	): Promise<void> {
 		if (model.readOnly) return;
-		const cost = await this.host.worldbuildingKindUsage(kind);
+		// The pre-fetch runs before runAndRefresh's own net, and the caller
+		// drops the promise, so a refusal here has to say itself or the menu
+		// item would just do nothing.
+		const cost = await this.host.worldbuildingKindUsage(kind).catch(
+			(error: unknown) => {
+				new Notice(
+					error instanceof Error ? error.message : this.t('errors.unknown'),
+				);
+				return null;
+			},
+		);
+		if (cost === null) return;
 		const confirmed = await new Promise<boolean>((resolve) => {
 			new ConfirmKindDeletionModal(
 				this.app,

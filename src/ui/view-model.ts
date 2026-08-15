@@ -14,6 +14,7 @@ import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type {
 	CustomFieldTemplateInfo,
 	DefinitionForest,
+	KindMutationResult,
 	MemberUsage,
 	ProjectStructureIssueCode,
 	SaveCustomFieldTemplateResult,
@@ -52,10 +53,11 @@ export type RenameDefinitionPathResult =
 			segment: string;
 	  };
 
-/** What a kind mutation came to, with refusals as data for the modal. */
-export type KindMutationOutcome =
-	| { ok: true; kind: ProjectWorldbuildingKind }
-	| { ok: false; code: 'invalid-name' | 'taken' | 'full' };
+/**
+ * What a kind mutation came to, with refusals as data for the modal: the
+ * service's own result, under the name the UI has always called it.
+ */
+export type KindMutationOutcome = KindMutationResult;
 
 export interface ProjectOption {
 	path: string;
@@ -249,6 +251,14 @@ export interface ManuscriptModel {
 	readOnly: boolean;
 	/** Every segment of the manuscript, in reading order. */
 	segments: ManuscriptSegmentViewModel[];
+}
+
+/** One kind's rows of the model; empty for a pane left on a kind since gone. */
+export function kindEntities(
+	model: ProjectDashboardModel,
+	kind: WorldbuildingKindId,
+): WorldbuildingEntityViewModel[] {
+	return model.worldbuilding[kind] ?? [];
 }
 
 export interface ManuscriptSegmentText {

@@ -5533,6 +5533,92 @@ describe("SnowflakeProjectService", () => {
       expect(character?.relationships).toHaveLength(1);
     });
 
+    it("refuses a kind wearing the base machinery's own ids", async () => {
+      const project = await service.createProject({ name: "Kind Reserved" });
+      expect(
+        await service.createWorldbuildingKind(project, "characters"),
+      ).toEqual({ ok: false, code: "taken" });
+      expect(await service.createWorldbuildingKind(project, "Scenes")).toEqual({
+        ok: false,
+        code: "taken",
+      });
+    });
+
+    it("marks a fold-twin of a registered kind as unrepairable", async () => {
+      const project = await service.createProject({ name: "Kind Twin" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const folder = `${project.rootPath}/60_Worldbuilding/79_faction`;
+      await fakeVault.createFolder(folder);
+      await fakeVault.create(
+        `${folder}/Shade.md`,
+        [
+          "---",
+          "{",
+          `  "snowflake-schema": ${SCHEMA_VERSION},`,
+          '  "snowflake-document": "worldbuilding",',
+          `  "snowflake-project-id": "${project.id}",`,
+          '  "snowflake-entity-id": "entity-shade-1",',
+          '  "snowflake-worldbuilding-kind": "faction",',
+          '  "snowflake-name": "Shade",',
+          '  "snowflake-rank": 1024,',
+          '  "snowflake-description": ""',
+          "}",
+          "---",
+          "# Shade",
+          "",
+        ].join("\n"),
+      );
+      const snapshot = await service.loadProject(project.projectFile);
+      const issue = snapshot.structureIssues.find(
+        (candidate) => candidate.code === "unregistered-worldbuilding-kind",
+      );
+      // Registering "faction" would collide with "Faction" under fold, so the
+      // issue must not promise a repair the registration will refuse.
+      expect(issue).toMatchObject({ field: "faction", repairable: false });
+    });
+
+    it("keeps a same-named outsider in a kind's deletion cost", async () => {
+      const project = await service.createProject({ name: "Kind Namesake" });
+      await service.createWorldbuildingKind(project, "Faction");
+      const umbrella = await service.createEntity(project.projectFile, {
+        kind: "Faction",
+        name: "Umbrella",
+      });
+      await service.createEntity(project.projectFile, {
+        kind: "Faction",
+        name: "Shadow",
+      });
+      const mention: RecordLine = {
+        label: {
+          path: `${project.rootPath}/20_Character/21_Category/Ally/Ally`,
+          display: "Ally",
+        },
+        value: "infiltrates",
+        clauses: [
+          {
+            kind: "with",
+            term: {
+              kind: "link",
+              path: linkTarget(umbrella.path),
+              name: "Umbrella",
+            },
+          },
+        ],
+      };
+      await service.createCharacter(project.projectFile, {
+        name: "Shadow",
+        relationships: [mention],
+      });
+      const cost = await service.worldbuildingKindUsage(
+        project.projectFile,
+        "Faction",
+      );
+      expect(cost.entityCount).toBe(2);
+      // The character shares its name with a Faction entity; the report keeps
+      // it anyway, because insiders are told apart by path, never by name.
+      expect(cost.usage.records).toEqual(["Shadow"]);
+    });
+
     it("keeps a kind's template choice, moving it with a rename", async () => {
       const project = await service.createProject({ name: "Kind Template" });
       await service.createWorldbuildingKind(project, "Faction");

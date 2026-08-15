@@ -4,6 +4,7 @@ import {
 	DOCUMENT_TYPES,
 	FRONTMATTER_KEYS,
 	PROTECTED_SECTION_IDS,
+	TEMPLATE_SECTION_IDS,
 	isDocumentType,
 } from '../../src/domain';
 
@@ -37,6 +38,12 @@ describe('document types', () => {
 	it('protects the template body while member custom fields stay editable', () => {
 		expect(PROTECTED_SECTION_IDS.has('template-fields')).toBe(true);
 		expect(PROTECTED_SECTION_IDS.has('custom-fields')).toBe(false);
+	});
+
+	it('marks the template body as a template, not a record section', () => {
+		expect(TEMPLATE_SECTION_IDS.has('template-fields')).toBe(true);
+		expect(TEMPLATE_SECTION_IDS.has('world-status')).toBe(false);
+		expect(TEMPLATE_SECTION_IDS.has('relationships')).toBe(false);
 	});
 
 	it('rejects values that are not document types', () => {

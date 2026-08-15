@@ -145,13 +145,26 @@ export function recordClauseConnector(
   return copy.with;
 }
 
+/**
+ * A record is one line by grammar, so a value handed in with line breaks —
+ * a taller form field, a bulk import — reads them back out as spaces here,
+ * at the one door every record passes through on its way into a note.
+ */
+function oneLineValue(text: string): string {
+  return text
+    .split(/\r\n|\r|\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ");
+}
+
 export function renderRecordLine(
   language: ProjectLanguage,
   record: RecordLine,
   spanOf: SpanLookup | null = null,
 ): string {
   const copy = COPY[language];
-  const value = record.value.trim();
+  const value = oneLineValue(record.value);
   // The separator carries its own spacing, because Chinese wants none after
   // its colon and English wants one.
   const head =
