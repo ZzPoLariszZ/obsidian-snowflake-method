@@ -2646,6 +2646,105 @@
 	);
 }
 
+/* Pinned below the scrolling project list rather than inside it, and capped
+	at a third of the sidebar, so the working projects keep the room. */
+.snowflake-method-project-manager-archived {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	max-height: 40%;
+	min-height: 0;
+	margin-block-start: auto;
+	padding-block-start: var(--size-2-2);
+	border-block-start: 1px solid var(--background-modifier-border);
+}
+
+/* The label starts at the same inset as the project titles, and the count
+	takes the more-button's own column, so the section reads as one of the rows
+	above it rather than as a caption. */
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-archived-toggle {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	width: 100%;
+	height: auto;
+	padding: var(--size-4-2) 0 var(--size-4-2) var(--size-4-3);
+	border: 0;
+	/* The rows above carry this same transparent edge for their health tint,
+		so the label only lines up with the titles by carrying it too. */
+	border-inline-start: 3px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	text-align: start;
+	cursor: pointer;
+	appearance: none;
+}
+
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-archived-toggle:hover {
+	background: var(--background-modifier-hover);
+}
+
+/* The same box as an option button, holding the rail's own number-in-a-circle
+	badge. The extra margin term repeats the inset the rows below take from
+	their scroller's reserved gutter: the scrollbar's width beyond what the
+	list wins back with its negative margin. */
+.snowflake-method-project-manager-archived-count {
+	display: inline-grid;
+	flex: 0 0 auto;
+	place-items: center;
+	width: var(--snowflake-method-row-action-size);
+	height: var(--snowflake-method-row-action-size);
+	margin-inline-start: auto;
+	margin-inline-end: calc(
+		var(--size-4-2) +
+			max(
+				0px,
+				var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-3)
+			)
+	);
+}
+
+.snowflake-method-project-manager-archived-list {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-3))
+	);
+}
+
+.snowflake-method-project-manager-archived-list.is-collapsed {
+	display: none;
+}
+
+/* The archived entry is a plain block: the project opens nowhere until it is
+	restored, so nothing about it should look pressable. */
+.snowflake-method-project-manager-project-row.is-archived
+	div.snowflake-method-project-manager-project {
+	display: flex;
+	align-items: flex-start;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+	min-height: 3.5rem;
+	padding: var(--size-4-2) var(--size-4-3);
+}
+
+.snowflake-method-project-manager-project-row.is-archived
+	.snowflake-method-project-manager-project-title {
+	color: var(--text-muted);
+}
+
 .snowflake-method-project-manager-project-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto auto;
@@ -2717,8 +2816,20 @@
 	outline: none;
 }
 
+/* One width for the option button and the archived count above it, declared
+	here rather than borrowed from a theme variable, so the two boxes are equal
+	by construction and their centers fall on the same column. */
+.snowflake-method-project-manager-sidebar {
+	--snowflake-method-row-action-size: 30px;
+}
+
 .snowflake-method-project-manager-project-more {
+	display: inline-flex;
 	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: var(--snowflake-method-row-action-size);
+	height: var(--snowflake-method-row-action-size);
 	margin-inline-end: var(--size-4-2);
 	opacity: 1;
 }

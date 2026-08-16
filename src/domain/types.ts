@@ -93,6 +93,10 @@ export const FRONTMATTER_KEYS = {
 	stepStatuses: 'snowflake-step-status',
 	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
 	draft: 'snowflake-draft',
+	// Present only on the metadata note of a project filed in the archive
+	// folder. The location is what hides an archived project; the key is for
+	// anyone reading the folder by hand, and it is removed on the way back.
+	archived: 'snowflake-archived',
 	// The authored worldbuilding kinds, as a list of kind folder names in rail
 	// order. The registry is what makes a custom kind exist: a folder under the
 	// worldbuilding directory that no entry names is not a kind.

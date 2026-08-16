@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldName, isNameTaken } from '../../src/domain/names';
+import { foldName, freeName, isNameTaken } from '../../src/domain/names';
 
 describe('folding a name for comparison', () => {
 	it('ignores surrounding space and casing', () => {
@@ -53,5 +53,25 @@ describe('whether a name is already taken', () => {
 
 	it('finds nothing taken in an empty project', () => {
 		expect(isNameTaken([], 'Ada Lovelace')).toBe(false);
+	});
+});
+
+describe('finding a free name', () => {
+	it('keeps a name nothing holds', () => {
+		expect(freeName('Ada', ['Grace'])).toBe('Ada');
+	});
+
+	it('counts up from 2 past every taken candidate', () => {
+		expect(freeName('Ada', ['Ada'])).toBe('Ada 2');
+		expect(freeName('Ada', ['Ada', 'Ada 2', 'Ada 3'])).toBe('Ada 4');
+	});
+
+	it('compares both sides in the folded form', () => {
+		expect(freeName('Ada', ['  ada  '])).toBe('Ada 2');
+		expect(freeName('Ada', ['ADA', 'ada 2'])).toBe('Ada 3');
+	});
+
+	it('fills a gap a departed holder left behind', () => {
+		expect(freeName('Ada', ['Ada', 'Ada 3'])).toBe('Ada 2');
 	});
 });

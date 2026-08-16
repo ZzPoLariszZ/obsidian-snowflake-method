@@ -256,6 +256,10 @@ export const en = {
 	'messages.projectCreated': 'Created Snowflake project “{name}”.',
 	'messages.projectRenamed': 'Renamed project to “{name}”.',
 	'messages.projectTrashed': 'Moved project “{name}” to the trash.',
+	'messages.projectArchived': 'Archived project “{name}”.',
+	'messages.projectRestored': 'Restored project “{name}”.',
+	'messages.projectRestoredRenamed':
+		'Restored project “{from}” as “{name}”, because its name was taken.',
 	'messages.projectRepaired': 'Project structure repaired.',
 	'messages.repairSummary':
 		'Repair finished: {created} created, {repaired} repaired, {conflicts} conflicts.',
@@ -280,6 +284,8 @@ export const en = {
 	'errors.invalidProject': 'This is not a valid Snowflake project.',
 	'errors.fileMissing': 'The note “{path}” could not be found.',
 	'errors.projectExists': 'A project named “{name}” already exists.',
+	'errors.archiveFolderIsProject':
+		'A project is standing where the “Snowflake Archive” folder would go. Rename that project first.',
 	'errors.kindNotRegistrable': 'The kind “{name}” cannot be registered.',
 	'errors.characterExists':
 		'A character named “{name}” already exists in this project.',
@@ -738,6 +744,13 @@ export const en = {
 	'modal.projectManager.renameTitle': 'Rename project',
 	'modal.projectManager.openMetadata': 'Open project metadata',
 	'modal.projectManager.trash': 'Move project to trash',
+	'modal.projectManager.archive': 'Archive project',
+	'modal.projectManager.archivedProjects': 'Archive',
+	'modal.projectManager.restore': 'Restore project',
+	'modal.archiveProject.title': 'Archive “{name}”',
+	'modal.archiveProject.description':
+		'The whole project moves into the “Snowflake Archive” folder beside your projects, with every note unchanged. Restore it from this manager whenever you want it back.',
+	'modal.archiveProject.confirm': 'Archive',
 	'modal.character.title': 'Add character',
 	'modal.character.editTitle': 'Edit character',
 	'modal.character.name': 'Name',

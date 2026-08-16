@@ -21,6 +21,21 @@ import type {
 
 export const DEFAULT_PROJECT_ROOT = "Snowflake Projects";
 
+/**
+ * Where archived projects go: one folder beside the project folders, so the
+ * one-level discovery scan never reads into it. Unlocalized like the default
+ * root above, because it must be found again whatever language the vault
+ * later runs in.
+ */
+export const PROJECT_ARCHIVE_FOLDER = "Snowflake Archive";
+
+/** The archive folder under one configured project root. */
+export function projectArchiveRoot(rootPath: string): string {
+  return rootPath.length === 0
+    ? PROJECT_ARCHIVE_FOLDER
+    : `${rootPath}/${PROJECT_ARCHIVE_FOLDER}`;
+}
+
 export const PROJECT_DIRECTORY_KEYS = [
   "system",
   "summaries",

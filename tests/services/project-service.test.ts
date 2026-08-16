@@ -15,6 +15,7 @@ import {
   parseMarkdownFrontmatter,
 } from "../../src/repository";
 import {
+  ArchiveFolderIsProjectError,
   DuplicateNameError,
   FRONTMATTER_KEYS,
   ProjectCreationInterruptedError,
@@ -661,6 +662,116 @@ describe("SnowflakeProjectService", () => {
     expect(second).toBe(`${project.rootPath}/40_场景/场景看板 (2).canvas`);
     expect(fakeVault.contents.get(first)).toBe('{"nodes":[],"edges":[]}');
     expect(fakeVault.contents.get(second)).toBe('{"nodes":[],"edges":[]}');
+  });
+
+  describe("archiving a project", () => {
+    it("files the project under the archive folder and marks the metadata note", async () => {
+      const project = await service.createProject({ name: "Wintering" });
+
+      const archived = await service.archiveProject(project);
+
+      expect(archived.rootPath).toBe(
+        "Snowflake Projects/Snowflake Archive/Wintering",
+      );
+      expect(archived.id).toBe(project.id);
+      expect(fakeVault.getAbstractFileByPath(project.rootPath)).toBeNull();
+      const metadata = fakeVault.contents.get(archived.projectFile) ?? "";
+      expect(
+        parseMarkdownFrontmatter(metadata).frontmatter[
+          FRONTMATTER_KEYS.archived
+        ],
+      ).toBe(true);
+      const discovered = await service.discoverProjects();
+      expect(discovered.map((candidate) => candidate.title)).not.toContain(
+        "Wintering",
+      );
+      const archivedTitles = (await service.listArchivedProjects()).map(
+        (candidate) => candidate.title,
+      );
+      expect(archivedTitles).toContain("Wintering");
+    });
+
+    it("keeps two same-named archives apart by their folders", async () => {
+      const first = await service.createProject({ name: "Twin" });
+      await service.archiveProject(first);
+      const second = await service.createProject({ name: "Twin" });
+
+      const archived = await service.archiveProject(second);
+
+      expect(archived.rootPath).toBe(
+        "Snowflake Projects/Snowflake Archive/Twin (2)",
+      );
+      const titles = (await service.listArchivedProjects()).map(
+        (candidate) => candidate.title,
+      );
+      expect(titles).toEqual(["Twin", "Twin"]);
+    });
+
+    it("refuses to archive while the archive folder is a project", async () => {
+      await service.createProject({ name: "Snowflake Archive" });
+      const project = await service.createProject({ name: "Nested" });
+
+      await expect(service.archiveProject(project)).rejects.toBeInstanceOf(
+        ArchiveFolderIsProjectError,
+      );
+      expect(fakeVault.getAbstractFileByPath(project.rootPath)).not.toBeNull();
+    });
+
+    it("restores a project to the place and name it left", async () => {
+      const project = await service.createProject({ name: "Homecoming" });
+      const archived = await service.archiveProject(project);
+
+      const restored = await service.restoreProject(archived.projectFile);
+
+      expect(restored.renamedFrom).toBeNull();
+      expect(restored.project.rootPath).toBe(project.rootPath);
+      expect(restored.project.id).toBe(project.id);
+      const metadata =
+        fakeVault.contents.get(restored.project.projectFile) ?? "";
+      expect(parseMarkdownFrontmatter(metadata).frontmatter).not.toHaveProperty(
+        FRONTMATTER_KEYS.archived,
+      );
+      expect(
+        (await service.discoverProjects()).map((candidate) => candidate.title),
+      ).toContain("Homecoming");
+      expect(restored.project.structureIssues).toEqual([]);
+    });
+
+    it("repairs a restore collision by renaming folder and title together", async () => {
+      const original = await service.createProject({ name: "Twin" });
+      const archived = await service.archiveProject(original);
+      await service.createProject({ name: "Twin" });
+
+      const restored = await service.restoreProject(archived.projectFile);
+
+      expect(restored.renamedFrom).toBe("Twin");
+      expect(restored.project.title).toBe("Twin 2");
+      expect(restored.project.rootPath).toBe("Snowflake Projects/Twin 2");
+      const parsed = parseMarkdownFrontmatter(
+        fakeVault.contents.get(restored.project.projectFile) ?? "",
+      );
+      expect(parsed.frontmatter[FRONTMATTER_KEYS.projectName]).toBe("Twin 2");
+      expect(parsed.body).toMatch(/^# Twin 2$/mu);
+      expect(restored.project.structureIssues).toEqual([]);
+    });
+
+    it("lists and restores a project a hand moved into the archive", async () => {
+      const project = await service.createProject({ name: "Dropped" });
+      await service.repository.renameFolder(
+        project.rootPath,
+        "Snowflake Projects/Snowflake Archive/Dropped",
+      );
+
+      const listed = await service.listArchivedProjects();
+      expect(listed.map((candidate) => candidate.title)).toContain("Dropped");
+      const archivedFile = listed.find(
+        (candidate) => candidate.title === "Dropped",
+      )?.projectFile;
+      const restored = await service.restoreProject(archivedFile ?? "");
+
+      expect(restored.renamedFrom).toBeNull();
+      expect(restored.project.rootPath).toBe("Snowflake Projects/Dropped");
+    });
   });
 
   it("uses a unique project folder and discovers projects only one level below the root", async () => {

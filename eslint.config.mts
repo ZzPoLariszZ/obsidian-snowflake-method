@@ -57,6 +57,7 @@ export default defineConfig(
 						'Obsidian',
 						'Obsidian Canvas',
 						'Snowflake',
+						'Snowflake Archive',
 						'Snowflake Method',
 					],
 					acronyms: ['ID', 'POV', '6Z'],

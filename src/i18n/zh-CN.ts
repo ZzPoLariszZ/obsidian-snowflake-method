@@ -230,6 +230,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.projectCreated': '已创建雪花写作项目“{name}”。',
 	'messages.projectRenamed': '已将项目重命名为“{name}”。',
 	'messages.projectTrashed': '已将项目“{name}”移至废纸篓。',
+	'messages.projectArchived': '已归档项目“{name}”。',
+	'messages.projectRestored': '已恢复项目“{name}”。',
+	'messages.projectRestoredRenamed': '原名已被占用，已将项目“{from}”恢复为“{name}”。',
 	'messages.projectRepaired': '项目结构已修复。',
 	'messages.repairSummary':
 		'修复完成：新建 {created} 项，修复 {repaired} 项，冲突 {conflicts} 项。',
@@ -253,6 +256,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'errors.invalidProject': '这不是有效的雪花写作项目。',
 	'errors.fileMissing': '找不到笔记“{path}”。',
 	'errors.projectExists': '名为“{name}”的项目已存在。',
+	'errors.archiveFolderIsProject':
+		'“Snowflake Archive”文件夹的位置上已有一个同名项目。请先重命名该项目。',
 	'errors.kindNotRegistrable': '无法注册种类“{name}”。',
 	'errors.characterExists': '本项目中已有名为“{name}”的角色。',
 	'errors.sceneExists': '本项目中已有名为“{name}”的场景。',
@@ -679,6 +684,13 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.projectManager.renameTitle': '重命名项目',
 	'modal.projectManager.openMetadata': '打开项目元数据',
 	'modal.projectManager.trash': '将项目移至废纸篓',
+	'modal.projectManager.archive': '归档项目',
+	'modal.projectManager.archivedProjects': '归档',
+	'modal.projectManager.restore': '恢复项目',
+	'modal.archiveProject.title': '归档“{name}”',
+	'modal.archiveProject.description':
+		'整个项目将移入项目旁的“Snowflake Archive”文件夹，所有笔记保持原样。想要找回时，随时可以在此管理器中恢复。',
+	'modal.archiveProject.confirm': '归档',
 	'modal.character.title': '添加角色',
 	'modal.character.editTitle': '编辑角色',
 	'modal.character.name': '姓名',

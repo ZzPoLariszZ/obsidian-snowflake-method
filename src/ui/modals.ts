@@ -79,6 +79,7 @@ import type {
 } from './view-model';
 
 const PROJECT_LIST_SELECTOR = '.snowflake-method-project-manager-list';
+const ARCHIVED_LIST_SELECTOR = '.snowflake-method-project-manager-archived-list';
 const PROJECT_MANAGER_MAIN_SELECTOR = '.snowflake-method-project-manager-main';
 
 export type Translate = (
@@ -99,6 +100,16 @@ export interface ManageProjectOption {
 	readOnly: boolean;
 	hasStructureIssues: boolean;
 	hasMarkerIssues: boolean;
+}
+
+/**
+ * Both manager lists at once, because archiving and restoring each move a
+ * project from one list to the other: a callback answering only the list it
+ * changed would leave the other showing the project twice or not at all.
+ */
+export interface ManageProjectLists {
+	projects: readonly ManageProjectOption[];
+	archived: readonly ManageProjectOption[];
 }
 
 export interface CreateCharacterRequest {
@@ -833,10 +844,14 @@ export class ManageProjectsModal extends Modal {
 	private suppressProjectRootBlurCommit = false;
 	private projectRootChangeId = 0;
 	private initialFocusWindow: Window | null = null;
+	// Collapsed until asked for: archived projects are dormant, and the section
+	// opens itself only when an archive action has just filled it.
+	private archivedExpanded = false;
 	// Changing the language, the project root, or any project rebuilds the whole
 	// modal, which would otherwise send both panes back to the top.
 	private readonly renderState = new RenderStateKeeper([
 		PROJECT_LIST_SELECTOR,
+		ARCHIVED_LIST_SELECTOR,
 		PROJECT_MANAGER_MAIN_SELECTOR,
 	]);
 
@@ -860,6 +875,16 @@ export class ManageProjectsModal extends Modal {
 		private readonly onTrashProject: (
 			project: ManageProjectOption,
 		) => Promise<readonly ManageProjectOption[] | null>,
+		private archived: readonly ManageProjectOption[],
+		private readonly onArchiveProject: (
+			project: ManageProjectOption,
+		) => Promise<ManageProjectLists>,
+		private readonly onRestoreProject: (
+			project: ManageProjectOption,
+		) => Promise<ManageProjectLists>,
+		private readonly onTrashArchivedProject: (
+			project: ManageProjectOption,
+		) => Promise<ManageProjectLists | null>,
 	) {
 		super(app);
 		this.t = t;
@@ -971,6 +996,77 @@ export class ManageProjectsModal extends Modal {
 			more.addEventListener('click', () => {
 				this.showProjectMenu(project, more);
 			});
+		}
+
+		if (this.archived.length > 0) {
+			const archivedSection = sidebar.createDiv({
+				cls: 'snowflake-method-project-manager-archived',
+			});
+			const toggle = archivedSection.createEl('button', {
+				cls: 'snowflake-method-project-manager-archived-toggle',
+				attr: {
+					type: 'button',
+					'aria-expanded': this.archivedExpanded ? 'true' : 'false',
+				},
+			});
+			toggle.createSpan({
+				text: this.t('modal.projectManager.archivedProjects'),
+			});
+			toggle
+				.createSpan({
+					cls: 'snowflake-method-project-manager-archived-count',
+				})
+				.createSpan({
+					cls: 'snowflake-method-step-indicator',
+					text: String(this.archived.length),
+				});
+			const archivedList = archivedSection.createDiv({
+				cls: `snowflake-method-project-manager-archived-list${
+					this.archivedExpanded ? '' : ' is-collapsed'
+				}`,
+			});
+			toggle.addEventListener('click', () => {
+				this.archivedExpanded = !this.archivedExpanded;
+				toggle.setAttribute(
+					'aria-expanded',
+					this.archivedExpanded ? 'true' : 'false',
+				);
+				archivedList.toggleClass('is-collapsed', !this.archivedExpanded);
+			});
+			for (const project of this.archived) {
+				const projectRow = archivedList.createDiv({
+					cls: 'snowflake-method-project-manager-project-row is-archived',
+				});
+				// A plain block rather than a button: an archived project opens
+				// nowhere until it is restored, and a control that looks pressable
+				// but refuses would only say that the slow way.
+				const item = projectRow.createDiv({
+					cls: 'snowflake-method-project-manager-project',
+					attr: { title: project.title },
+				});
+				item.createSpan({
+					cls: 'snowflake-method-project-manager-project-title',
+					text: project.title,
+				});
+				item.createSpan({
+					cls: 'snowflake-method-project-manager-project-path',
+					text: project.rootPath,
+				});
+				const more = projectRow.createEl('button', {
+					cls: 'clickable-icon snowflake-method-project-manager-project-more',
+					attr: {
+						type: 'button',
+						'aria-haspopup': 'menu',
+						'aria-label': this.t('modal.projectManager.projectOptions', {
+							name: project.title,
+						}),
+					},
+				});
+				setIcon(more, 'ellipsis');
+				more.addEventListener('click', () => {
+					this.showArchivedProjectMenu(project, more);
+				});
+			}
 		}
 
 		const main = layout.createEl('main', {
@@ -1173,11 +1269,58 @@ export class ManageProjectsModal extends Modal {
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
+				.setTitle(this.t('modal.projectManager.archive'))
+				.setIcon('archive')
+				.setDisabled(project.readOnly)
+				.onClick(() => {
+					this.confirmArchiveProject(project);
+				}),
+		);
+		menu.addItem((item) =>
+			item
 				.setTitle(this.t('modal.projectManager.trash'))
 				.setIcon('trash-2')
 				.setWarning(true)
 				.onClick(() => {
 					void this.trashProject(project);
+				}),
+		);
+		const rect = trigger.getBoundingClientRect();
+		menu.showAtPosition({ x: rect.right, y: rect.bottom });
+	}
+
+	private showArchivedProjectMenu(
+		project: ManageProjectOption,
+		trigger: HTMLButtonElement,
+	): void {
+		const menu = new Menu().setUseNativeMenu(false);
+		menu.setParentElement(trigger.parentElement ?? this.contentEl);
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('modal.projectManager.restore'))
+				.setIcon('archive-restore')
+				.setDisabled(project.readOnly)
+				.onClick(() => {
+					void this.restoreProject(project);
+				}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('modal.projectManager.openMetadata'))
+				.setIcon('file-text')
+				.onClick(() => {
+					void this.openProjectMetadata(project.path);
+				}),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('modal.projectManager.trash'))
+				.setIcon('trash-2')
+				.setWarning(true)
+				.onClick(() => {
+					void this.trashArchivedProject(project);
 				}),
 		);
 		const rect = trigger.getBoundingClientRect();
@@ -1223,6 +1366,61 @@ export class ManageProjectsModal extends Modal {
 				error instanceof Error ? error.message : this.t('errors.unknown'),
 			);
 		}
+	}
+
+	private confirmArchiveProject(project: ManageProjectOption): void {
+		new ConfirmArchiveProjectModal(
+			this.app,
+			this.t,
+			project.title,
+			(confirmed) => {
+				if (confirmed) void this.archiveProject(project);
+			},
+		).open();
+	}
+
+	private async archiveProject(project: ManageProjectOption): Promise<void> {
+		try {
+			const lists = await this.onArchiveProject(project);
+			// The project the author just filed away should be visible where it
+			// landed, not hidden behind a fold they then have to find.
+			this.archivedExpanded = true;
+			this.applyLists(lists);
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+		}
+	}
+
+	private async restoreProject(project: ManageProjectOption): Promise<void> {
+		try {
+			this.applyLists(await this.onRestoreProject(project));
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+		}
+	}
+
+	private async trashArchivedProject(
+		project: ManageProjectOption,
+	): Promise<void> {
+		try {
+			const lists = await this.onTrashArchivedProject(project);
+			if (lists === null) return;
+			this.applyLists(lists);
+		} catch (error) {
+			new Notice(
+				error instanceof Error ? error.message : this.t('errors.unknown'),
+			);
+		}
+	}
+
+	private applyLists(lists: ManageProjectLists): void {
+		this.projects = lists.projects;
+		this.archived = lists.archived;
+		this.renderManager();
 	}
 
 	private addLanguageSelector(container: HTMLElement): void {
@@ -4021,6 +4219,55 @@ export function promptForTemplateDeletion(
 	return new Promise((resolve) => {
 		new ConfirmTemplateDeletionModal(app, t, name, resolve).open();
 	});
+}
+
+/**
+ * Archiving is reversible, but it closes the project's views and takes the
+ * project out of every list, so it asks once. The confirm button is a plain
+ * call to action rather than a warning, because nothing is destroyed.
+ */
+class ConfirmArchiveProjectModal extends Modal {
+	private confirmed = false;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly name: string,
+		private readonly onResolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+		this.setTitle(t('modal.archiveProject.title', { name }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: this.t('modal.archiveProject.description', { name: this.name }),
+		});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const archive = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.t('modal.archiveProject.confirm'),
+			attr: { type: 'button' },
+		});
+		archive.addEventListener('click', () => {
+			this.confirmed = true;
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.confirmed);
+	}
 }
 
 class ConfirmTemplateDeletionModal extends Modal {

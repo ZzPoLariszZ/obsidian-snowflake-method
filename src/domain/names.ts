@@ -30,6 +30,21 @@ export function isNameTaken(
 }
 
 /**
+ * The name itself while nothing holds it, and otherwise the first of
+ * "Name 2", "Name 3", … that nothing holds. Restore flows lean on it: a
+ * collision found on the way back is repaired rather than refused, because
+ * refusing would strand the returning copy behind a name its author may not
+ * remember having given away.
+ */
+export function freeName(name: string, taken: readonly string[]): string {
+	if (!isNameTaken(taken, name)) return name;
+	for (let index = 2; ; index += 1) {
+		const candidate = `${name} ${index}`;
+		if (!isNameTaken(taken, candidate)) return candidate;
+	}
+}
+
+/**
  * A name a file or folder can actually be given. Lossy on purpose — what a
  * path cannot hold is dropped rather than escaped — so a file name can never
  * be read back as the name it came from.

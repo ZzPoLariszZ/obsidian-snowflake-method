@@ -23,6 +23,7 @@ import {
   findSequenceIssues,
   fingerprint,
   foldName,
+  freeName,
   safeFileName,
   WORLDBUILDING_KIND_DEFINITIONS,
   isDocumentType,
@@ -159,6 +160,7 @@ import {
   entityKindFolder,
   getProjectMetadataRelativePath,
   getProjectPathLayout,
+  projectArchiveRoot,
   worldbuildingKindFolder,
   type KindScope,
   type ArtifactSnapshot,
@@ -336,6 +338,18 @@ export class DuplicateNameError extends Error {
         : `A ${kind} named "${requestedName}" already exists in this project.`,
     );
     this.name = "DuplicateNameError";
+  }
+}
+
+/**
+ * The place archived projects would go is itself a project of that very
+ * name. Filing more projects inside it would nest one project's folder in
+ * another's, and the one-level discovery scan reads neither of them.
+ */
+export class ArchiveFolderIsProjectError extends Error {
+  constructor(readonly archiveRoot: string) {
+    super(`The archive folder "${archiveRoot}" is already a project.`);
+    this.name = "ArchiveFolderIsProjectError";
   }
 }
 
@@ -680,6 +694,97 @@ export class SnowflakeProjectService {
     });
     await this.repository.updateFirstHeading(projectFile, nextTitle);
     return this.loadProject(projectFile);
+  }
+
+  /**
+   * Moves a whole project into the archive folder beside the projects, where
+   * the one-level discovery scan never looks. A project is the one thing the
+   * plugin archives: every reference it holds travels inside its own folder,
+   * so nothing dangles while it is away and nothing needs mending when it
+   * returns. The metadata note is marked so a reader browsing the vault can
+   * tell the project was filed here on purpose; hiding it is the location's
+   * doing, not the mark's.
+   */
+  async archiveProject(projectLocator: ProjectLocator): Promise<ProjectSnapshot> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const archiveRoot = normalizePath(
+      projectArchiveRoot(parentOf(project.rootPath)),
+    );
+    // The archive folder's name may already belong to a project -- including
+    // the very one being archived. Filing projects inside a project would
+    // nest their roots, and discovery reads neither level of such a nest.
+    if ((await this.findProjectRecord(archiveRoot)) !== null) {
+      throw new ArchiveFolderIsProjectError(archiveRoot);
+    }
+    const folderName = project.rootPath.slice(
+      project.rootPath.lastIndexOf("/") + 1,
+    );
+    const destination = this.repository.resolveUniquePath(
+      normalizePath(`${archiveRoot}/${folderName}`),
+    );
+    await this.repository.renameFolder(project.rootPath, destination);
+    const projectFile = normalizePath(
+      `${destination}/${relativeToRoot(project.projectFile, project.rootPath)}`,
+    );
+    await this.repository.updateFrontmatterAtomic(projectFile, () => ({
+      [FRONTMATTER_KEYS.archived]: true,
+    }));
+    return this.loadProject(projectFile);
+  }
+
+  /**
+   * Every project discoverable under the archive folder, whether the plugin
+   * filed it there or a hand did. The mark is written on the way in and
+   * removed on the way out, but the folder is what decides: a project
+   * someone dragged in themselves deserves the same way back.
+   */
+  async listArchivedProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
+    return this.discoverProjects(projectArchiveRoot(rootPath));
+  }
+
+  /**
+   * Moves an archived project back beside the others. The name it left under
+   * may since have been handed to another project, or its folder's place to
+   * anything at all, so the title is repaired to the first free one --
+   * "Name 2" -- and the folder moves with it, because a folder not spelling
+   * the title reads as drift the health check would offer to repair.
+   */
+  async restoreProject(
+    projectLocator: ProjectLocator,
+    rootPath = this.defaultRoot,
+  ): Promise<{ project: ProjectSnapshot; renamedFrom: string | null }> {
+    const project = await this.loadProject(projectLocator);
+    this.assertProjectWritable(project);
+    const root = normalizePath(rootPath);
+    const taken = (await this.discoverProjects(root))
+      .filter((candidate) => candidate.id !== project.id)
+      .map((candidate) => candidate.title);
+    let title = freeName(project.title, taken);
+    let destination = normalizePath(`${root}/${safeFileName(title)}`);
+    // A folder can stand in the way without any project owning it. The name
+    // check reads titles; only trying the path itself reads the vault.
+    while (this.repository.get(destination) !== null) {
+      taken.push(title);
+      title = freeName(project.title, taken);
+      destination = normalizePath(`${root}/${safeFileName(title)}`);
+    }
+    await this.repository.renameFolder(project.rootPath, destination);
+    const projectFile = normalizePath(
+      `${destination}/${relativeToRoot(project.projectFile, project.rootPath)}`,
+    );
+    const renamed = foldName(title) !== foldName(project.title);
+    await this.repository.updateFrontmatterAtomic(projectFile, () => ({
+      [FRONTMATTER_KEYS.archived]: undefined,
+      ...(renamed ? { [FRONTMATTER_KEYS.projectName]: title } : {}),
+    }));
+    if (renamed) {
+      await this.repository.updateFirstHeading(projectFile, title);
+    }
+    return {
+      project: await this.loadProject(projectFile),
+      renamedFrom: renamed ? project.title : null,
+    };
   }
 
   /**

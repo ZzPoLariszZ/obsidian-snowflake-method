@@ -61,6 +61,7 @@ import {
 } from './repository';
 import {
 	SnowflakeProjectService,
+	ArchiveFolderIsProjectError,
 	DuplicateNameError,
 	KindRegistrationRefusedError,
 	MEMBER_FIELDS_SECTION_BY_DOCUMENT,
@@ -131,6 +132,7 @@ import {
 	type CreateProjectRequest,
 	type CreateSceneRequest,
 	type EntityFormRequest,
+	type ManageProjectLists,
 	type ManageProjectOption,
 	type Translate,
 } from './ui/modals';
@@ -489,6 +491,7 @@ export default class SnowflakeMethodPlugin
 		);
 		const managerT: Translate = (key, vars) => translate(locale, key, vars);
 		const projects = await this.listProjects();
+		const archived = await this.listArchivedProjectOptions();
 		new ManageProjectsModal(
 			this.app,
 			managerT,
@@ -517,6 +520,10 @@ export default class SnowflakeMethodPlugin
 			async (project, title) => this.renameManagedProject(project, title),
 			async (path) => this.openManagedFile(path),
 			async (project) => this.trashManagedProject(project),
+			archived,
+			async (project) => this.archiveManagedProject(project),
+			async (project) => this.restoreManagedProject(project),
+			async (project) => this.trashArchivedProject(project),
 		).open();
 	}
 
@@ -776,6 +783,102 @@ export default class SnowflakeMethodPlugin
 		return (await this.listProjects()).filter(
 			(candidate) => candidate.projectId !== project.id,
 		);
+	}
+
+	/**
+	 * The archived rows carry no health flags on purpose: computing them reads
+	 * every note of every archived project each time the manager opens, for
+	 * rows whose only offers are restore, open metadata, and trash.
+	 */
+	private async listArchivedProjectOptions(): Promise<ManageProjectOption[]> {
+		const archived = await this.projects.listArchivedProjects(
+			this.settings.projectRoot,
+		);
+		return archived.map((project) => ({
+			path: project.projectFile,
+			rootPath: project.rootPath,
+			projectId: project.id,
+			title: project.title,
+			readOnly: project.readOnly,
+			hasStructureIssues: false,
+			hasMarkerIssues: false,
+		}));
+	}
+
+	private async manageProjectLists(): Promise<ManageProjectLists> {
+		return {
+			projects: await this.listProjects(),
+			archived: await this.listArchivedProjectOptions(),
+		};
+	}
+
+	private async archiveManagedProject(
+		option: ManageProjectOption,
+	): Promise<ManageProjectLists> {
+		let project: ProjectSnapshot;
+		try {
+			project = await this.projects.archiveProject(option.path);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		this.projectLocalesById.delete(project.id);
+		this.invalidateProjectHealth(option.rootPath);
+		// A rename does not detach views the way a delete does, and a dashboard
+		// left open on the old path would sit on a project it can no longer find.
+		this.detachProjectViews(option.rootPath);
+		if (
+			this.settings.recentProjectPath === option.path ||
+			this.settings.recentProjectPath?.startsWith(`${option.rootPath}/`)
+		) {
+			this.settings.recentProjectPath = null;
+			this.settings.recentStep = 1;
+			this.currentProjectLocale = null;
+			await this.saveSettings();
+		}
+		await this.refreshDashboards();
+		new Notice(this.t('messages.projectArchived', { name: project.title }));
+		return this.manageProjectLists();
+	}
+
+	private async restoreManagedProject(
+		option: ManageProjectOption,
+	): Promise<ManageProjectLists> {
+		let restored: { project: ProjectSnapshot; renamedFrom: string | null };
+		try {
+			restored = await this.projects.restoreProject(
+				option.path,
+				this.settings.projectRoot,
+			);
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+		this.invalidateProjectHealth(option.rootPath);
+		this.invalidateProjectHealth(restored.project.rootPath);
+		await this.refreshDashboards();
+		new Notice(
+			restored.renamedFrom === null
+				? this.t('messages.projectRestored', {
+						name: restored.project.title,
+					})
+				: this.t('messages.projectRestoredRenamed', {
+						name: restored.project.title,
+						from: restored.renamedFrom,
+					}),
+		);
+		return this.manageProjectLists();
+	}
+
+	private async trashArchivedProject(
+		option: ManageProjectOption,
+	): Promise<ManageProjectLists | null> {
+		const project = await this.projects.loadProject(option.path);
+		const folder = this.projects.repository.getFolder(project.rootPath);
+		if (folder === null) throw new ManagedFileNotFoundError(project.rootPath);
+		if (!(await this.app.fileManager.promptForDeletion(folder))) return null;
+		this.projectLocalesById.delete(project.id);
+		this.invalidateProjectHealth(project.rootPath);
+		new Notice(this.t('messages.projectTrashed', { name: project.title }));
+		return this.manageProjectLists();
 	}
 
 	async loadDashboardModel(
@@ -3389,7 +3492,23 @@ export default class SnowflakeMethodPlugin
 		});
 		if (!this.touchesProject(file.path)) return;
 		this.invalidateProjectHealth(file.path);
+		this.detachProjectViews(file.path);
+		this.scheduleRefresh(true);
+		const recent = this.settings.recentProjectPath;
+		if (recent !== null && isPathAtOrBelow(recent, file.path)) {
+			this.settings.recentProjectPath = null;
+			this.settings.recentStep = 1;
+			this.currentProjectLocale = null;
+			await this.saveSettings();
+		}
+	}
 
+	/**
+	 * Closes every dashboard and stream leaf showing a project at or below the
+	 * path. A view left standing would sit on a project it can no longer find,
+	 * whether the project went to the trash or into the archive.
+	 */
+	private detachProjectViews(path: string): void {
 		for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
 			const statePath = leaf.getViewState().state?.projectPath;
 			const dashboardPath =
@@ -3398,36 +3517,18 @@ export default class SnowflakeMethodPlugin
 					: typeof statePath === 'string'
 						? statePath
 						: null;
-			if (
-				dashboardPath !== null &&
-				isPathAtOrBelow(dashboardPath, file.path)
-			) {
+			if (dashboardPath !== null && isPathAtOrBelow(dashboardPath, path)) {
 				leaf.detach();
 			}
 		}
 
-		// A stream showing a project that has just been deleted has nothing left
-		// to show, and would otherwise sit there holding a manuscript that is in
-		// the trash.
 		for (const leaf of this.app.workspace.getLeavesOfType(
 			MANUSCRIPT_VIEW_TYPE,
 		)) {
 			const statePath = leaf.getViewState().state?.projectPath;
-			if (
-				typeof statePath === 'string' &&
-				isPathAtOrBelow(statePath, file.path)
-			) {
+			if (typeof statePath === 'string' && isPathAtOrBelow(statePath, path)) {
 				leaf.detach();
 			}
-		}
-
-		this.scheduleRefresh(true);
-		const recent = this.settings.recentProjectPath;
-		if (recent !== null && isPathAtOrBelow(recent, file.path)) {
-			this.settings.recentProjectPath = null;
-			this.settings.recentStep = 1;
-			this.currentProjectLocale = null;
-			await this.saveSettings();
 		}
 	}
 
@@ -3856,6 +3957,9 @@ export default class SnowflakeMethodPlugin
 		}
 		if (error instanceof UnsupportedSchemaError) {
 			throw new Error(this.t('editor.managedSection.readOnlyNewerSchema'));
+		}
+		if (error instanceof ArchiveFolderIsProjectError) {
+			throw new Error(this.t('errors.archiveFolderIsProject'));
 		}
 		throw error;
 	}
