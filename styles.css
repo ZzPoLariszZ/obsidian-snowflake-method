@@ -5494,6 +5494,10 @@ button.snowflake-method-kind-options {
    dialogs' two-class override wins wherever the rules sit in this file. */
 .snowflake-method-form-modal {
 	--snowflake-form-pad: var(--size-4-4);
+	/* What a focused control paints outside its own edge: two pixels for a
+	   field, three for a dropdown. A scroller clips at its edge, so the fields
+	   cannot start on that edge or the ring loses the side it meets. */
+	--snowflake-form-ring: 3px;
 }
 
 .modal.snowflake-method-form-modal {
@@ -5516,6 +5520,12 @@ button.snowflake-method-kind-options {
 	min-height: 0;
 	overflow-y: auto;
 	scrollbar-gutter: stable;
+	/* Room for a focus ring on the side where the dialog's padding is all the
+	   fields have: the scroller reaches into it and hands the same width back
+	   as padding, so the fields stand exactly where they did and the ring has
+	   somewhere to be drawn. The other side already has the bar's gutter. */
+	margin-inline-start: calc(-1 * var(--snowflake-form-ring));
+	padding-inline-start: var(--snowflake-form-ring);
 	margin-inline-end: calc(-1 * var(--snowflake-form-pad));
 	padding-inline-end: max(
 		0px,
