@@ -73,9 +73,11 @@ import {
 	type Translate,
 } from './modals';
 import {
+	coerceFreeformPane,
 	dashboardHasHealthIssues,
 	dashboardPaneKey,
 	dashboardRenderContinuity,
+	isFreeformStep,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
@@ -579,6 +581,10 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
+	private get freeformMode(): boolean {
+		return this.host.isFreeformModeEnabled();
+	}
+
 	private render(
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>,
 		model: ProjectDashboardModel | null,
@@ -592,6 +598,14 @@ export class SnowflakeDashboardView extends ItemView {
 			this.selectedStep = getFirstIncompleteStep(stepStatusesOf(model));
 			this.selectedPane = { kind: 'step', step: this.selectedStep };
 			this.stepChosen = true;
+		}
+		// However the selection got here, a step pane freeform mode no longer
+		// shows lands on characters instead.
+		if (model !== null && this.freeformMode) {
+			this.selectedPane = coerceFreeformPane(this.selectedPane);
+			if (this.selectedPane.kind === 'step') {
+				this.selectedStep = this.selectedPane.step;
+			}
 		}
 		this.renderState.capture(this.contentEl);
 		const continuity = dashboardRenderContinuity(
@@ -638,28 +652,30 @@ export class SnowflakeDashboardView extends ItemView {
 			return;
 		}
 
-		const completedSteps = model.steps.filter(
-			(step) => step.status === 'complete' || step.status === 'skipped',
-		).length;
-		const progressBlock = root.createDiv({
-			cls: 'snowflake-method-progress-block',
-		});
-		const progressMeta = progressBlock.createDiv({
-			cls: 'snowflake-method-progress-meta',
-		});
-		progressMeta.createSpan({ text: this.t('dashboard.progress') });
-		progressMeta.createEl('strong', {
-			text: `${completedSteps} / ${model.steps.length}`,
-		});
-		const progress = progressBlock.createEl('progress', {
-			cls: 'snowflake-method-progress',
-			attr: {
-				max: String(model.steps.length),
-				value: String(completedSteps),
-				'aria-label': this.t('dashboard.progress'),
-			},
-		});
-		progress.value = completedSteps;
+		if (!this.freeformMode) {
+			const completedSteps = model.steps.filter(
+				(step) => step.status === 'complete' || step.status === 'skipped',
+			).length;
+			const progressBlock = root.createDiv({
+				cls: 'snowflake-method-progress-block',
+			});
+			const progressMeta = progressBlock.createDiv({
+				cls: 'snowflake-method-progress-meta',
+			});
+			progressMeta.createSpan({ text: this.t('dashboard.progress') });
+			progressMeta.createEl('strong', {
+				text: `${completedSteps} / ${model.steps.length}`,
+			});
+			const progress = progressBlock.createEl('progress', {
+				cls: 'snowflake-method-progress',
+				attr: {
+					max: String(model.steps.length),
+					value: String(completedSteps),
+					'aria-label': this.t('dashboard.progress'),
+				},
+			});
+			progress.value = completedSteps;
+		}
 
 		if (model.readOnly) {
 			const readOnlyNotice = root.createDiv({
@@ -766,69 +782,17 @@ export class SnowflakeDashboardView extends ItemView {
 	): void {
 		const nav = layout.createEl('nav', {
 			cls: 'snowflake-method-step-nav',
-			attr: { 'aria-label': this.t('dashboard.steps') },
+			attr: {
+				'aria-label': this.t(
+					this.freeformMode ? 'dashboard.worldbuilding' : 'dashboard.steps',
+				),
+			},
 		});
 		// Both groups scroll together, inside the rail rather than as the rail:
 		// the project switcher stands on the floor below, where no scrollbar
 		// reaches it and its rule still meets both walls.
 		const groups = nav.createDiv({ cls: 'snowflake-method-step-nav-scroll' });
-		const stepsGroup = this.createRailGroup(
-			groups,
-			'steps',
-			this.t('dashboard.steps'),
-		);
-		const list = stepsGroup.createEl('ol', { cls: 'snowflake-method-step-list' });
-		for (const step of model.steps) {
-			const active =
-				this.selectedPane.kind === 'step' && step.id === this.selectedPane.step;
-			const damaged = this.getStepHealthIssues(model, step.id).some(
-				(issue) => issue.blocking,
-			);
-			const stepTitle = step.title;
-			const item = list.createEl('li', {
-				cls: 'snowflake-method-step-item',
-			});
-			const button = item.createEl('button', {
-				cls: `snowflake-method-step-button${
-					active ? ' is-active' : ''
-				}${damaged ? ' has-managed-section-issue' : ''}`,
-				attr: {
-					type: 'button',
-					'aria-label': stepTitle,
-					...(damaged ? { 'aria-invalid': 'true' } : {}),
-					...(active ? { 'aria-current': 'step' } : {}),
-				},
-			});
-			button.createSpan({
-				cls: 'snowflake-method-step-number',
-				text: this.t(`steps.number.${step.id}`),
-			});
-			button.createSpan({
-				cls: 'snowflake-method-step-label',
-				text: step.title,
-			});
-			const indicator = button.createSpan({
-				cls: 'snowflake-method-step-indicator',
-				attr: {
-					'aria-label': damaged
-						? this.t('projectStructure.damagedTitle')
-						: this.t(`status.${step.status}`),
-				},
-			});
-			indicator.dataset.status = step.status;
-			if (damaged) {
-				indicator.addClass('has-managed-section-issue');
-				setIcon(indicator, 'triangle-alert');
-			} else {
-				indicator.setText(this.statusGlyph(step.status));
-			}
-			button.addEventListener('click', () => {
-				this.selectedStep = step.id;
-				this.selectedPane = { kind: 'step', step: step.id };
-				this.stepChosen = true;
-				void this.runAndRefresh(() => this.host.selectStep(step.id));
-			});
-		}
+		if (!this.freeformMode) this.renderStepsGroup(groups, model);
 
 		this.renderWorldbuildingGroup(groups, model);
 
@@ -985,6 +949,69 @@ export class SnowflakeDashboardView extends ItemView {
 	 * One collapsible group of the rail. The fold is presentation state the
 	 * author sets, so it rides the view state rather than the DOM.
 	 */
+	private renderStepsGroup(
+		nav: HTMLElement,
+		model: ProjectDashboardModel,
+	): void {
+		const stepsGroup = this.createRailGroup(
+			nav,
+			'steps',
+			this.t('dashboard.steps'),
+		);
+		const list = stepsGroup.createEl('ol', { cls: 'snowflake-method-step-list' });
+		for (const step of model.steps) {
+			const active =
+				this.selectedPane.kind === 'step' && step.id === this.selectedPane.step;
+			const damaged = this.getStepHealthIssues(model, step.id).some(
+				(issue) => issue.blocking,
+			);
+			const stepTitle = step.title;
+			const item = list.createEl('li', {
+				cls: 'snowflake-method-step-item',
+			});
+			const button = item.createEl('button', {
+				cls: `snowflake-method-step-button${
+					active ? ' is-active' : ''
+				}${damaged ? ' has-managed-section-issue' : ''}`,
+				attr: {
+					type: 'button',
+					'aria-label': stepTitle,
+					...(damaged ? { 'aria-invalid': 'true' } : {}),
+					...(active ? { 'aria-current': 'step' } : {}),
+				},
+			});
+			button.createSpan({
+				cls: 'snowflake-method-step-number',
+				text: this.t(`steps.number.${step.id}`),
+			});
+			button.createSpan({
+				cls: 'snowflake-method-step-label',
+				text: step.title,
+			});
+			const indicator = button.createSpan({
+				cls: 'snowflake-method-step-indicator',
+				attr: {
+					'aria-label': damaged
+						? this.t('projectStructure.damagedTitle')
+						: this.t(`status.${step.status}`),
+				},
+			});
+			indicator.dataset.status = step.status;
+			if (damaged) {
+				indicator.addClass('has-managed-section-issue');
+				setIcon(indicator, 'triangle-alert');
+			} else {
+				indicator.setText(this.statusGlyph(step.status));
+			}
+			button.addEventListener('click', () => {
+				this.selectedStep = step.id;
+				this.selectedPane = { kind: 'step', step: step.id };
+				this.stepChosen = true;
+				void this.runAndRefresh(() => this.host.selectStep(step.id));
+			});
+		}
+	}
+
 	private createRailGroup(
 		nav: HTMLElement,
 		key: keyof DashboardRailCollapse,
@@ -1028,6 +1055,66 @@ export class SnowflakeDashboardView extends ItemView {
 		return body;
 	}
 
+	/**
+	 * A characters or scenes row for the worldbuilding group while freeform
+	 * mode has the steps away: a kind-shaped face over the step pane it still
+	 * selects, warning exactly when the hidden step row would have.
+	 */
+	private renderFreeformEntityRow(
+		list: HTMLElement,
+		model: ProjectDashboardModel,
+		step: 7 | 8,
+	): void {
+		const active =
+			this.selectedPane.kind === 'step' && this.selectedPane.step === step;
+		const damaged = this.getStepHealthIssues(model, step).some(
+			(issue) => issue.blocking,
+		);
+		const title = this.t(step === 7 ? 'freeform.character' : 'freeform.scene');
+		const count = step === 7 ? model.characters.length : model.scenes.length;
+		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
+		const button = item.createEl('button', {
+			cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
+				damaged ? ' has-managed-section-issue' : ''
+			}`,
+			attr: {
+				type: 'button',
+				'aria-label': title,
+				...(damaged ? { 'aria-invalid': 'true' } : {}),
+				...(active ? { 'aria-current': 'step' } : {}),
+			},
+		});
+		const iconEl = button.createSpan({
+			cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(iconEl, kindIcon(model, step === 7 ? 'character' : 'scene'));
+		button.createSpan({
+			cls: 'snowflake-method-step-label',
+			text: title,
+		});
+		const indicator = button.createSpan({
+			cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
+			attr: {
+				'aria-label': damaged
+					? this.t('projectStructure.damagedTitle')
+					: String(count),
+			},
+		});
+		if (damaged) {
+			indicator.addClass('has-managed-section-issue');
+			setIcon(indicator, 'triangle-alert');
+		} else {
+			this.setCount(indicator, count);
+		}
+		button.addEventListener('click', () => {
+			this.selectedStep = step;
+			this.selectedPane = { kind: 'step', step };
+			this.stepChosen = true;
+			void this.runAndRefresh(() => this.host.selectStep(step));
+		});
+	}
+
 	private renderWorldbuildingGroup(
 		nav: HTMLElement,
 		model: ProjectDashboardModel,
@@ -1040,6 +1127,12 @@ export class SnowflakeDashboardView extends ItemView {
 		const list = body.createEl('ol', {
 			cls: 'snowflake-method-step-list snowflake-method-worldbuilding-list',
 		});
+		// With the steps out of sight, characters and scenes stand where an
+		// author reaches for them first: ahead of the kinds they write about.
+		if (this.freeformMode) {
+			this.renderFreeformEntityRow(list, model, 7);
+			this.renderFreeformEntityRow(list, model, 8);
+		}
 		for (const descriptor of model.worldbuildingKinds) {
 			const kind = descriptor.id;
 			const active =
@@ -4366,6 +4459,17 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-description',
 		});
 		if (step.id !== 10) {
+			if (this.freeformMode && isFreeformStep(step.id)) {
+				// Only the sentence saying what the list is; the method's
+				// guidance rests with the steps.
+				const lineBreak = step.description.indexOf('\n');
+				description.setText(
+					lineBreak === -1
+						? step.description
+						: step.description.slice(0, lineBreak),
+				);
+				return;
+			}
 			description.setText(step.description);
 			return;
 		}
@@ -4400,6 +4504,14 @@ export class SnowflakeDashboardView extends ItemView {
 	): void {
 		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
 		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		// In freeform mode the pane is not a numbered step with a status to
+		// move: just the members it lists, named for what they are.
+		if (this.freeformMode && isFreeformStep(step.id)) {
+			title.createEl('h2', {
+				text: this.t(step.id === 7 ? 'freeform.character' : 'freeform.scene'),
+			});
+			return;
+		}
 		title.createEl('h2', {
 			text: this.t('steps.titleFormat', {
 				number: this.t(`steps.number.${step.id}`),
@@ -4892,42 +5004,46 @@ export class SnowflakeDashboardView extends ItemView {
 		add.disabled = model.readOnly;
 		add.addEventListener('click', () => this.openCreateCharacter(model));
 
-		if (step === 5) {
-			this.renderWritingHints(
-				panel,
-				step,
-				'step5.hints.title',
-				[
-					'step5.hints.reorder',
-					'step5.hints.openNote',
-					'step5.hints.expand',
-					'step5.hints.revision',
-				],
-				['step5.hints.revision'],
-			);
-		} else if (step === 7) {
-			this.renderWritingHints(
-				panel,
-				step,
-				'step7.hints.title',
-				[
-					'step7.hints.reorder',
-					'step7.hints.openNote',
-					'step7.hints.contents',
-					'step1.hints.imagination',
-					'step7.hints.storyDetails',
-					'step7.hints.revision',
-				],
-				['step1.hints.imagination', 'step7.hints.revision'],
-			);
-		} else {
-			this.renderWritingHints(
-				panel,
-				step,
-				'characters.hints.title',
-				['characters.hints.reorder', 'characters.hints.revision'],
-				['characters.hints.revision'],
-			);
+		// The hints are the method coaching its steps; freeform mode reads the
+		// pane as a plain member table and leaves them out.
+		if (!this.freeformMode) {
+			if (step === 5) {
+				this.renderWritingHints(
+					panel,
+					step,
+					'step5.hints.title',
+					[
+						'step5.hints.reorder',
+						'step5.hints.openNote',
+						'step5.hints.expand',
+						'step5.hints.revision',
+					],
+					['step5.hints.revision'],
+				);
+			} else if (step === 7) {
+				this.renderWritingHints(
+					panel,
+					step,
+					'step7.hints.title',
+					[
+						'step7.hints.reorder',
+						'step7.hints.openNote',
+						'step7.hints.contents',
+						'step1.hints.imagination',
+						'step7.hints.storyDetails',
+						'step7.hints.revision',
+					],
+					['step1.hints.imagination', 'step7.hints.revision'],
+				);
+			} else {
+				this.renderWritingHints(
+					panel,
+					step,
+					'characters.hints.title',
+					['characters.hints.reorder', 'characters.hints.revision'],
+					['characters.hints.revision'],
+				);
+			}
 		}
 
 		if (model.characters.length === 0) {
@@ -5457,8 +5573,10 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		};
 		// On the steps written in the note itself, opening it is the work, so
-		// that is the action the column offers and the menu leads with.
-		const opensByDefault = step === 5 || step === 7;
+		// that is the action the column offers and the menu leads with. In
+		// freeform mode the pane is a member table like any kind's, and a
+		// table's first offer is the form.
+		const opensByDefault = step === 5 || (step === 7 && !this.freeformMode);
 		this.renderRowActions(row, cell, {
 			name: character.name,
 			primaryLabel: this.t(opensByDefault ? 'common.open' : 'actions.edit'),
@@ -5553,21 +5671,25 @@ export class SnowflakeDashboardView extends ItemView {
 		add.disabled = model.readOnly;
 		add.addEventListener('click', () => this.openCreateScene(model));
 
-		if (step === 8) {
-			this.renderSceneListHints(panel);
-		} else {
-			this.renderWritingHints(
-				panel,
-				step,
-				'step9.hints.title',
-				[
-					'step9.hints.reorder',
-					'step9.hints.sceneTypes',
-					'step1.hints.imagination',
-					'step9.hints.revision',
-				],
-				['step1.hints.imagination', 'step9.hints.revision'],
-			);
+		// Same as the character lists: freeform mode keeps the table and
+		// leaves the method's coaching out.
+		if (!this.freeformMode) {
+			if (step === 8) {
+				this.renderSceneListHints(panel);
+			} else {
+				this.renderWritingHints(
+					panel,
+					step,
+					'step9.hints.title',
+					[
+						'step9.hints.reorder',
+						'step9.hints.sceneTypes',
+						'step1.hints.imagination',
+						'step9.hints.revision',
+					],
+					['step1.hints.imagination', 'step9.hints.revision'],
+				);
+			}
 		}
 
 		if (model.scenes.length === 0) {

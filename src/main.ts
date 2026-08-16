@@ -475,6 +475,10 @@ export default class SnowflakeMethodPlugin
 		return this.settings.showTableActionsColumn;
 	}
 
+	isFreeformModeEnabled(): boolean {
+		return this.settings.freeformMode;
+	}
+
 	opensFormWhenCreatingFromField(): boolean {
 		return this.settings.createFromField === 'form';
 	}
@@ -2414,6 +2418,20 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	private async toggleFreeformMode(): Promise<void> {
+		const enabled = !this.settings.freeformMode;
+		this.settings.freeformMode = enabled;
+		await this.saveSettings();
+		await this.handleSettingsChanged('freeformMode');
+		new Notice(
+			this.globalT(
+				enabled
+					? 'commands.freeformModeEnabled'
+					: 'commands.freeformModeDisabled',
+			),
+		);
+	}
+
 	private async toggleCreateFromField(): Promise<void> {
 		const opensForm = this.settings.createFromField !== 'form';
 		this.settings.createFromField = opensForm ? 'form' : 'now';
@@ -3015,6 +3033,15 @@ export default class SnowflakeMethodPlugin
 			name: this.globalT('commands.toggleCreateFromField'),
 			callback: () => {
 				void this.toggleCreateFromField().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-freeform-mode',
+			name: this.globalT('commands.toggleFreeformMode'),
+			callback: () => {
+				void this.toggleFreeformMode().catch((error: unknown) => {
 					this.showError(error);
 				});
 			},

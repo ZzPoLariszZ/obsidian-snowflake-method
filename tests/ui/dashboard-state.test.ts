@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	coerceFreeformPane,
 	dashboardHasHealthIssues,
 	dashboardPaneKey,
 	dashboardRenderContinuity,
+	FREEFORM_STEPS,
+	isFreeformStep,
 	memberMatches,
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
+	type DashboardPane,
 } from '../../src/ui/dashboard-state';
+import type { StepId } from '../../src/domain';
 
 const DEFAULT_PANE = { kind: 'step', step: 1 } as const;
 const OPEN_RAIL = { steps: false, worldbuilding: false };
@@ -356,5 +361,41 @@ describe('member table search', () => {
 	it('ignores the whitespace around a query, not the one inside it', () => {
 		expect(memberMatches(['Prince Kael'], '  prince kael  ')).toBe(true);
 		expect(memberMatches(['PrinceKael'], 'prince kael')).toBe(false);
+	});
+});
+
+describe('freeform mode panes', () => {
+	it('keeps characters and scenes as the steps freeform mode shows', () => {
+		expect(FREEFORM_STEPS).toEqual([7, 8]);
+		expect(isFreeformStep(7)).toBe(true);
+		expect(isFreeformStep(8)).toBe(true);
+		expect(isFreeformStep(1)).toBe(false);
+		expect(isFreeformStep(10)).toBe(false);
+	});
+
+	it('lets the surviving step panes and every non-step pane stand', () => {
+		const characters: DashboardPane = { kind: 'step', step: 7 };
+		const scenes: DashboardPane = { kind: 'step', step: 8 };
+		const kind: DashboardPane = { kind: 'worldbuilding', wbKind: 'time' };
+		const definition: DashboardPane = {
+			kind: 'definition',
+			definitionId: 'category',
+		};
+		const customFields: DashboardPane = { kind: 'custom-fields' };
+		expect(coerceFreeformPane(characters)).toBe(characters);
+		expect(coerceFreeformPane(scenes)).toBe(scenes);
+		expect(coerceFreeformPane(kind)).toBe(kind);
+		expect(coerceFreeformPane(definition)).toBe(definition);
+		expect(coerceFreeformPane(customFields)).toBe(customFields);
+	});
+
+	it('lands every hidden step pane on characters', () => {
+		const hidden: StepId[] = [1, 2, 3, 4, 5, 6, 9, 10];
+		for (const step of hidden) {
+			expect(coerceFreeformPane({ kind: 'step', step })).toEqual({
+				kind: 'step',
+				step: 7,
+			});
+		}
 	});
 });

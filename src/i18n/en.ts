@@ -71,6 +71,9 @@ export const en = {
 		'Toggle opening a form for new notes from a field',
 	'commands.createFromFieldForm': 'New notes from a field open their form.',
 	'commands.createFromFieldNow': 'New notes from a field are created directly.',
+	'commands.toggleFreeformMode': 'Toggle freeform mode',
+	'commands.freeformModeEnabled': 'Freeform mode enabled.',
+	'commands.freeformModeDisabled': 'Freeform mode disabled.',
 	'settings.projectRoot.name': 'Project root folder',
 	'settings.projectRoot.desc':
 		'Vault-relative folder path for Snowflake projects.',
@@ -81,6 +84,9 @@ export const en = {
 	'settings.locale.system': 'Follow Obsidian',
 	'settings.projectLocale.name': 'Default project language',
 	'settings.projectLocale.desc': 'Language used for new projects.',
+	'settings.freeformMode.name': 'Freeform mode',
+	'settings.freeformMode.desc':
+		'Hide Snowflake Method 10 steps and their progress.\nCharacters and scenes will join the worldbuilding list.',
 	'settings.split.name': 'Open notes beside the dashboard',
 	'settings.split.desc':
 		'Open Snowflake notes in one pane beside the dashboard.',
@@ -253,6 +259,8 @@ export const en = {
 	'characters.hints.revision':
 		'It’s perfectly fine to revisit steps 1 and 2. Your characters may teach you something new about your story.',
 	'scenes.empty': 'No scenes',
+	'freeform.character': 'Character',
+	'freeform.scene': 'Scene',
 	'messages.projectCreated': 'Created Snowflake project “{name}”.',
 	'messages.projectRenamed': 'Renamed project to “{name}”.',
 	'messages.projectTrashed': 'Moved project “{name}” to the trash.',

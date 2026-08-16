@@ -151,6 +151,12 @@ describe('settings', () => {
 		).toBe(false);
 	});
 
+	it('leaves the ten steps standing until freeform mode is chosen', () => {
+		expect(DEFAULT_SETTINGS.freeformMode).toBe(false);
+		expect(sanitizeSettings({ freeformMode: true }).freeformMode).toBe(true);
+		expect(sanitizeSettings({ freeformMode: 'on' }).freeformMode).toBe(false);
+	});
+
 	it('keeps the manuscript window to a size a page can be built from', () => {
 		expect(DEFAULT_SETTINGS.manuscriptWindow).toBe(5);
 		expect(DEFAULT_SETTINGS.showManuscriptSequence).toBe(false);

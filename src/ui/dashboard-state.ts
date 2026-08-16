@@ -51,6 +51,27 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 	return null;
 }
 
+/**
+ * The step panes freeform mode keeps: characters and scenes, reached from the
+ * worldbuilding group once the steps themselves are out of sight.
+ */
+export const FREEFORM_STEPS: readonly StepId[] = [7, 8];
+
+export function isFreeformStep(step: StepId): boolean {
+	return FREEFORM_STEPS.includes(step);
+}
+
+/**
+ * Where a pane lands while freeform mode hides the steps. Non-step panes and
+ * the two surviving step panes stand as they are; any other step — a restored
+ * selection, a deletion fallback, a fresh tab's seed — goes to characters,
+ * the first entry the rail still shows.
+ */
+export function coerceFreeformPane(pane: DashboardPane): DashboardPane {
+	if (pane.kind !== 'step' || isFreeformStep(pane.step)) return pane;
+	return { kind: 'step', step: 7 };
+}
+
 export interface DashboardRailCollapse {
 	steps: boolean;
 	worldbuilding: boolean;

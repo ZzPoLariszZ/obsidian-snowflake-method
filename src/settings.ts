@@ -49,6 +49,12 @@ export interface SnowflakeSettings {
 	projectRoot: string;
 	uiLocale: UiLocalePreference;
 	defaultProjectLocale: DefaultProjectLocale;
+	/**
+	 * The dashboard with the ten steps set aside: no progress or step list,
+	 * characters and scenes standing with the worldbuilding kinds. Purely a
+	 * way of looking — notes, statuses, and structure stay as they are.
+	 */
+	freeformMode: boolean;
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
@@ -85,6 +91,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	projectRoot: '',
 	uiLocale: 'project',
 	defaultProjectLocale: 'system',
+	freeformMode: false,
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
@@ -107,6 +114,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'projectRoot',
 	'uiLocale',
 	'defaultProjectLocale',
+	'freeformMode',
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
@@ -184,6 +192,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		projectRoot,
 		uiLocale,
 		defaultProjectLocale,
+		freeformMode:
+			typeof raw.freeformMode === 'boolean'
+				? raw.freeformMode
+				: DEFAULT_SETTINGS.freeformMode,
 		openLongTextInSplit:
 			typeof raw.openLongTextInSplit === 'boolean'
 				? raw.openLongTextInSplit
@@ -352,6 +364,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						en: 'English',
 						'zh-CN': '简体中文',
 					},
+				},
+			},
+			{
+				name: this.t('settings.freeformMode.name'),
+				desc: this.lines('settings.freeformMode.desc'),
+				control: {
+					type: 'toggle',
+					key: 'freeformMode',
+					defaultValue: DEFAULT_SETTINGS.freeformMode,
 				},
 			},
 			{
@@ -607,6 +628,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'defaultProjectLocale':
 				if (isDefaultProjectLocale(value)) {
 					this.owner.settings.defaultProjectLocale = value;
+				}
+				break;
+			case 'freeformMode':
+				if (typeof value === 'boolean') {
+					this.owner.settings.freeformMode = value;
 				}
 				break;
 			case 'openLongTextInSplit':

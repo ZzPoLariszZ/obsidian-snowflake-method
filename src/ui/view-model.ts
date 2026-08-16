@@ -356,6 +356,8 @@ export interface DashboardHost {
 	showsTableProgressStatus(): boolean;
 	/** True while a table's rows wear their actions as a column of buttons. */
 	showsTableActionsColumn(): boolean;
+	/** True while the dashboard sets the ten steps aside for freeform work. */
+	isFreeformModeEnabled(): boolean;
 	/** True while a field that makes a note opens that note's form first. */
 	opensFormWhenCreatingFromField(): boolean;
 	openProjectManager(

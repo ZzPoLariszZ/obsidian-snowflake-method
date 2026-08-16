@@ -65,6 +65,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.toggleCreateFromField': '切换从字段新建笔记时是否打开表单',
 	'commands.createFromFieldForm': '从字段新建笔记时将打开它的表单。',
 	'commands.createFromFieldNow': '从字段新建笔记时将直接创建。',
+	'commands.toggleFreeformMode': '切换自由模式',
+	'commands.freeformModeEnabled': '自由模式已开启。',
+	'commands.freeformModeDisabled': '自由模式已关闭。',
 	'settings.projectRoot.name': '项目根目录',
 	'settings.projectRoot.desc': '雪花写作项目文件夹的 Vault 相对路径。',
 	'settings.projectRoot.placeholder': 'Vault 根目录 (/)',
@@ -74,6 +77,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.locale.system': '跟随 Obsidian',
 	'settings.projectLocale.name': '默认项目语言',
 	'settings.projectLocale.desc': '新项目使用的语言。',
+	'settings.freeformMode.name': '自由模式',
+	'settings.freeformMode.desc':
+		'隐藏雪花写作法的十个步骤与进度。\n角色和场景将并入世界观列表。',
 	'settings.split.name': '在工作台旁打开笔记',
 	'settings.split.desc':
 		'在工作台旁的同一分栏中打开雪花写作笔记。',
@@ -227,6 +233,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'characters.hints.revision':
 		'随时回到第一、二步修改也完全没问题。你的角色或许会让你对故事有新的发现。',
 	'scenes.empty': '尚未添加场景',
+	'freeform.character': '角色',
+	'freeform.scene': '场景',
 	'messages.projectCreated': '已创建雪花写作项目“{name}”。',
 	'messages.projectRenamed': '已将项目重命名为“{name}”。',
 	'messages.projectTrashed': '已将项目“{name}”移至废纸篓。',
