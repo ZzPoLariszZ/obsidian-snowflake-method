@@ -950,6 +950,41 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 	}
 
+	/**
+	 * Opens the form for a new note of a kind, from outside the dashboard. The
+	 * kind's own pane comes forward first, so the note lands in a table the
+	 * author is already looking at, and the form is the pane's own: everything
+	 * it offers, categories and records included, is built from this render.
+	 * Characters and scenes keep their own panes and their own forms, which is
+	 * where those two have always been written.
+	 */
+	async startEntityCreation(kind: EntityKindId): Promise<void> {
+		if (this.lastRender?.model == null) return;
+		this.selectedPane =
+			kind === 'character'
+				? { kind: 'step', step: 7 }
+				: kind === 'scene'
+					? { kind: 'step', step: 8 }
+					: { kind: 'worldbuilding', wbKind: kind };
+		if (this.selectedPane.kind === 'step') {
+			this.selectedStep = this.selectedPane.step;
+		}
+		this.stepChosen = true;
+		await this.refresh();
+		const model = this.lastRender.model;
+		if (model === null) return;
+		if (kind === 'character') this.openCreateCharacter(model);
+		else if (kind === 'scene') this.openCreateScene(model);
+		else this.openCreateEntity(model, kind);
+	}
+
+	/** Opens the new-kind dialog, the same one the rail's invitation opens. */
+	startKindCreation(): void {
+		const model = this.lastRender?.model ?? null;
+		if (model === null) return;
+		this.openCreateKind(model);
+	}
+
 	async activateFromWorkspace(): Promise<void> {
 		await this.refreshFromWorkspace();
 		this.activateProjectContext();

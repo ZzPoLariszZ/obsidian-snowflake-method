@@ -15,14 +15,17 @@ import {
 } from 'obsidian';
 
 import {
+	DEFINITION_FILE_IDS,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	entityKindIds,
 	getFirstIncompleteStep,
 	isDocumentType,
 	isStepId,
+	isWorldbuildingKind,
 	TEMPLATE_SECTION_IDS,
 	managedSectionHighlightsForStep,
 	managedSectionsForDocument,
@@ -71,6 +74,7 @@ import {
 	entitiesOf,
 	entityKindFolder,
 	isMemberDocumentType,
+	MAX_DEFINITION_DEPTH,
 	type KindScope,
 	taxonomyPathFromValue,
 	type ArtifactSnapshot,
@@ -131,6 +135,8 @@ import {
 	type CreateCharacterRequest,
 	type CreateProjectRequest,
 	type CreateSceneRequest,
+	promptForDefinitionKind,
+	promptForDefinitionPath,
 	type EntityFormRequest,
 	type ManageProjectLists,
 	type ManageProjectOption,
@@ -2893,6 +2899,14 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async openDashboard(): Promise<void> {
+		await this.revealDashboard();
+	}
+
+	/**
+	 * Brings the dashboard forward and hands back the view behind it, for the
+	 * commands that finish inside a pane rather than in a dialog of their own.
+	 */
+	private async revealDashboard(): Promise<SnowflakeDashboardView | null> {
 		const recent = this.settings.recentProjectPath;
 		let leaf: WorkspaceLeaf | undefined =
 			recent === null
@@ -2920,6 +2934,7 @@ export default class SnowflakeMethodPlugin
 		}
 		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		await this.app.workspace.revealLeaf(leaf);
+		return leaf.view instanceof SnowflakeDashboardView ? leaf.view : null;
 	}
 
 	private async activateDashboardLeaf(
@@ -3103,6 +3118,62 @@ export default class SnowflakeMethodPlugin
 				return available;
 			},
 		});
+		this.addCommand({
+			id: 'add-worldbuilding-note',
+			name: this.globalT('commands.addWorldbuildingNote'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.addWorldbuildingNote().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'create-worldbuilding-kind',
+			name: this.globalT('commands.createWorldbuildingKind'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.startWorldbuildingKind().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-worldbuilding-base',
+			name: this.globalT('commands.openWorldbuildingBase'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openWorldbuildingBase().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		for (const definitionId of DEFINITION_FILE_IDS) {
+			this.addCommand({
+				id: `add-${definitionId}`,
+				name: this.globalT(`commands.add.${definitionId}`),
+				checkCallback: (checking) => {
+					const available = this.settings.recentProjectPath !== null;
+					if (!checking && available) {
+						void this.addDefinitionEntry(definitionId).catch(
+							(error: unknown) => {
+								this.showError(error);
+							},
+						);
+					}
+					return available;
+				},
+			});
+		}
 		this.addCommand({
 			id: 'add-scene',
 			name: this.globalT('commands.addScene'),
@@ -4085,6 +4156,82 @@ export default class SnowflakeMethodPlugin
 		} catch (error) {
 			this.showError(error);
 		}
+	}
+
+	/** What a kind is called wherever a command has to ask which one. */
+	private kindLabel(kind: EntityKindId): string {
+		if (kind === 'character' || kind === 'scene') {
+			return this.t(`definition.kind.${kind}`);
+		}
+		return isWorldbuildingKind(kind) ? this.t(`worldbuilding.kind.${kind}`) : kind;
+	}
+
+	/**
+	 * Asks which kind, over every kind a project keeps. Characters and scenes
+	 * stand with the worldbuilding kinds here, as they do in the rail and in
+	 * each of the three vocabularies. Null when the author walked away.
+	 */
+	private async askEntityKind(
+		project: ProjectSnapshot,
+	): Promise<EntityKindId | null> {
+		return promptForDefinitionKind(
+			this.app,
+			this.t,
+			entityKindIds(project.worldbuildingKinds).map((kind) => ({
+				kind,
+				label: this.kindLabel(kind),
+			})),
+		);
+	}
+
+	private async addWorldbuildingNote(): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const kind = await this.askEntityKind(project);
+		if (kind === null) return;
+		const view = await this.revealDashboard();
+		await view?.startEntityCreation(kind);
+	}
+
+	private async startWorldbuildingKind(): Promise<void> {
+		await this.requireCurrentProject();
+		const view = await this.revealDashboard();
+		view?.startKindCreation();
+	}
+
+	private async openWorldbuildingBase(): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const kind = await this.askEntityKind(project);
+		if (kind === null) return;
+		// The two oldest bases are named for their contents rather than their
+		// kind, from before the kinds were a list anything could join.
+		const base =
+			kind === 'character' ? 'characters' : kind === 'scene' ? 'scenes' : kind;
+		await this.openProjectBase(base);
+		await this.refreshDashboards();
+	}
+
+	/** Adds one entry to a vocabulary, under whichever kind keeps it. */
+	private async addDefinitionEntry(id: DefinitionFileChoice): Promise<void> {
+		const project = await this.requireCurrentProject();
+		const kind = await this.askEntityKind(project);
+		if (kind === null) return;
+		const created = await promptForDefinitionPath(this.app, this.t, id, '');
+		if (created === null) return;
+		const result = await this.addDefinitionPath(
+			kind,
+			id,
+			created.path,
+			created.description,
+		);
+		if (!result.ok) {
+			new Notice(
+				result.code === 'too-deep'
+					? this.t('form.definition.tooDeep', { count: MAX_DEFINITION_DEPTH })
+					: this.t('form.definition.invalid', { name: result.segment }),
+			);
+			return;
+		}
+		await this.refreshDashboards();
 	}
 
 	private async openCreateCharacterModal(): Promise<void> {
