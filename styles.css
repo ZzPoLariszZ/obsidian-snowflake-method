@@ -6070,6 +6070,20 @@ button.snowflake-method-kind-options {
 	margin-inline-start: auto;
 }
 
+/* A template row's ellipsis stands under the circle counting its kind, so the
+   heading and the rows it heads end on one line. The circle sits a heading's
+   padding in from the wall; the button is the wider box and gives back half
+   the difference to put the two centres together. Only the tables of this
+   pane: a member table ends at its own actions column, not under a heading. */
+.snowflake-method-dashboard
+	.snowflake-method-template-table
+	button.snowflake-method-table-more {
+	inset-inline-end: calc(
+		var(--size-2-2) + var(--size-2-3) +
+			(1.25rem - var(--snowflake-row-more)) / 2
+	);
+}
+
 /* A vocabulary or a kind can run to three figures, and the circle is not
    growing for them: the figures give way instead. Three is as many as either
    is ever counted in, so nothing narrower is worth carrying. */
