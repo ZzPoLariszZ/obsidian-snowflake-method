@@ -8,7 +8,27 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0]
+## [0.10.0]
+
+### Added
+
+- Projects can be archived. **Archive project** in the project manager's row menu moves the whole folder into `Snowflake Archive`, a folder that sits beside your projects rather than inside one, and the manager grows an **Archive** section at the foot of its list to hold what is in there. Nothing in the notes changes and no link is left dangling, because everything a project refers to travels inside its own folder. Restore brings a project back where it came from, and gives it a free name if the one it left under has since been taken. Moving a folder in or out with the file explorer does the same thing, so the archive is a place rather than a mechanism.
+- Worldbuilding and the vocabularies answer to the command palette. **Add worldbuilding note** and **Open worldbuilding base** ask which kind and then do for any of them what the two character and scene commands have always done for those two, custom kinds included. **Create worldbuilding kind** opens the dialog that adds a kind, and **Add category**, **Add world status** and **Add relationship** each ask which kind the entry belongs to and add it there. The kind is asked for rather than fixed, because a project's kinds are its own and can be made and unmade while it is open.
+- Freeform mode, a setting and the command **Toggle freeform mode**. With it on, the dashboard puts the ten steps and their progress away and keeps what you write into: characters and scenes join the worldbuilding list in the rail, each with its own icon and count, and their panes drop the step number, the status and the hints to read as plain lists of notes. Turning it off brings the method back exactly as it was, because the mode changes only what is drawn. The manuscript stream stays open to the **Open manuscript stream** command while the steps are away.
+
+### Changed
+
+- A long member form keeps its title and its buttons in reach. The dialog no longer scrolls as a whole: the title row and the progress status stay at the top, the Cancel and Create buttons stay at the bottom, and only the fields between them move. The scrollbar rides in the dialog's own margin, so the fields still end where the title above them and the buttons below them do.
+- The definition tree and the custom field tables call their menu action **Open** rather than Open note, the way every member row already did.
+
+### Fixed
+
+- A form dialog too tall for the window can be scrolled again. The project and rename dialogs had kept a rule that stopped their fields from giving way, which in a short window left the last fields and the buttons under them out of reach with no scrollbar to be found.
+- A focused field draws its full ring. The dialog's scroller used to clip the side of the ring nearest the fields' own edge.
+- Changing the project root while the manager is open now reloads the archive too. It had gone on showing the previous root's archived projects, and restoring one of those rows would have moved the project into the new root.
+- A project dragged into or out of `Snowflake Archive` by hand is noticed. Dragging one out used to leave it missing from every list until something unrelated woke the plugin, and dragging one in left an open manuscript tab writing into a project that was no longer there.
+- Archiving or restoring from the manager no longer repaints the lists from a reading of the vault taken before the folder moved, which could show a project as both archived and active at once.
+- The count above a list of rows and the row menus below it stand on one line, in the vocabulary trees and the custom field tables alike.
 
 ### Added
 
@@ -241,7 +261,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
 
-## [0.9.0]
+## [0.10.0]
+
+### 新增
+
+- 项目可以归档。项目管理器行内菜单中的**归档项目**会把整个文件夹移入 `Snowflake Archive`，这个文件夹与各个项目并列，而不在任何项目之内，管理器列表底部也新增了**归档**分区来存放它们。笔记本身没有任何改动，也不会留下断链，因为项目引用的一切都在它自己的文件夹里。恢复会把项目送回原处，若原来的名称已被占用，会为它取一个未被使用的名称。用文件管理器手动移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
+- 世界观与词表也能从命令面板使用了。**添加世界观笔记**与**打开世界观数据库**会先询问种类，然后为任意一类做角色与场景那两条命令一直在做的事，自建种类同样适用。**创建世界观种类**会打开新增种类的对话框，**添加类别**、**添加世界状态**与**添加关系**则会先问清条目属于哪一类，再添加到该处。种类是问出来的而不是写死的，因为每个项目的种类都归它自己所有，打开期间也可以随时增删。
+- 自由模式，包含一项设置与**切换自由模式**命令。开启后，工作台会收起十个步骤与进度，只保留你真正写入的内容：角色与场景并入侧栏的世界观列表，各有自己的图标与计数，它们的面板也去掉了步骤编号、状态与提示，读起来就是两份普通的笔记清单。关闭后方法会原样回来，因为这个模式只改变呈现方式。步骤收起期间，正文流仍可通过**打开正文流**命令打开。
+
+### 变更
+
+- 较长的成员表单，标题与按钮始终触手可及。对话框不再整体滚动：标题行与进度状态固定在顶部，取消与创建按钮固定在底部，只有中间的字段会移动。滚动条位于对话框自身的留白中，因此字段的右边界仍与上方标题、下方按钮对齐。
+- 词表树与自定义字段表格的菜单项改为**打开**，不再是打开笔记，与各成员行的说法保持一致。
+
+### 修复
+
+- 高度超出窗口的表单对话框重新可以滚动。项目与重命名对话框此前保留了一条让字段无法收缩的规则，窗口较矮时，最后几个字段与它们下方的按钮都无法触及，也找不到滚动条。
+- 获得焦点的字段能画出完整的边框光晕。此前对话框的滚动区会裁掉靠近字段边界一侧的光晕。
+- 管理器打开期间更改项目根目录，归档列表也会一并重新载入。此前它仍显示上一个根目录中的归档项目，恢复其中一项还会把项目移入新的根目录。
+- 手动把项目拖入或拖出 `Snowflake Archive` 都会被察觉。此前拖出后项目会从各处列表中消失，直到别的操作唤醒插件，而拖入时已打开的正文标签页仍会继续写入一个已经不在原处的项目。
+- 在管理器中归档或恢复，不会再用移动之前读到的项目列表重绘，此前这可能让同一个项目同时出现在归档与活动两处。
+- 列表上方的计数与下方各行的菜单按钮对齐到同一条竖线上，词表树与自定义字段表格都是如此。
 
 ### 新增
 
