@@ -555,6 +555,7 @@ abstract class SnowflakeFormModal<T> extends Modal {
 	private readonly submitHandler: SubmitHandler<T>;
 	private readonly submitLabelKey: string;
 	private submitButton: HTMLButtonElement | null = null;
+	private actionsEl: HTMLElement | null = null;
 
 	protected constructor(
 		app: App,
@@ -628,9 +629,14 @@ abstract class SnowflakeFormModal<T> extends Modal {
 	protected renderForm(): void {
 		this.contentEl.empty();
 		this.buildForm();
-		const actions = this.contentEl.createDiv({
+		// On the dialog itself rather than in the content, so the buttons stand
+		// below the scrolling fields and the scrollbar ends above them. A form
+		// that re-renders would otherwise stack a second row here.
+		this.actionsEl?.remove();
+		const actions = this.modalEl.createDiv({
 			cls: 'snowflake-method-modal-actions',
 		});
+		this.actionsEl = actions;
 		const cancel = actions.createEl('button', {
 			text: this.t('common.cancel'),
 		});
@@ -646,6 +652,8 @@ abstract class SnowflakeFormModal<T> extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+		this.actionsEl?.remove();
+		this.actionsEl = null;
 	}
 
 	private async submit(): Promise<void> {

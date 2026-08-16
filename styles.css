@@ -2428,14 +2428,11 @@
 	stroke-width: 2;
 }
 
-/* A dialog is the scrollport for its own form, and its width is fixed, so a form
-   that grows long enough to scroll would otherwise pull its fields inward as the
-   scrollbar arrives. The project manager is left out: it never scrolls as a
-   whole, and the repair report scrolls inside its content instead. */
-.modal.snowflake-method-project-modal,
-.modal.snowflake-method-compact-form-modal,
-.modal.snowflake-method-character-modal,
-.modal.snowflake-method-scene-modal,
+/* A dialog that scrolls as a whole would pull its content inward as the
+   scrollbar arrives, so the confirm dialogs keep a stable gutter here. The
+   form dialogs left this rule: they scroll inside their content now, which
+   carries its own gutter, and a second one on the dialog would push the bar
+   off the wall. */
 .modal.snowflake-method-delete-member-modal {
 	padding-inline-start: max(
 		var(--size-4-4),
@@ -2559,11 +2556,6 @@
 	min-height: var(--input-height);
 	font-size: var(--font-ui-small);
 	box-sizing: border-box;
-}
-
-.snowflake-method-project-form > .snowflake-method-modal-actions {
-	grid-column: 1 / -1;
-	margin-top: var(--size-4-3);
 }
 
 .snowflake-method-project-manager-modal {
@@ -3174,10 +3166,6 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 
-	.snowflake-method-project-form > .snowflake-method-modal-actions {
-		grid-column: 1;
-	}
-
 	.snowflake-method-project-manager-actions {
 		padding-inline: var(--size-4-4);
 	}
@@ -3232,14 +3220,8 @@
 		.snowflake-method-character-modal,
 		.snowflake-method-scene-modal
 	) {
-	padding-inline-start: max(
-		var(--size-4-8),
-		var(--snowflake-method-scrollbar-width, 0px)
-	);
-	padding-inline-end: max(
-		0px,
-		calc(var(--size-4-8) - var(--snowflake-method-scrollbar-width, 0px))
-	);
+	--snowflake-form-pad: var(--size-4-8);
+	padding-inline: var(--size-4-8);
 }
 
 /*
@@ -3369,8 +3351,7 @@
 .snowflake-method-character-motivation-setting,
 .snowflake-method-character-goal-setting,
 .snowflake-method-character-conflict-setting,
-.snowflake-method-character-growth-setting,
-.snowflake-method-character-form > .snowflake-method-modal-actions {
+.snowflake-method-character-growth-setting {
 	grid-column: 1 / -1;
 }
 
@@ -3382,10 +3363,6 @@
 
 .snowflake-method-character-oneParagraphStoryline-setting textarea {
 	min-height: 10rem;
-}
-
-.snowflake-method-character-form > .snowflake-method-modal-actions {
-	margin-top: 0;
 }
 
 /* Every entity row spans the form. A time note is the exception twice over:
@@ -3533,8 +3510,7 @@
 }
 
 .snowflake-method-scene-conflict-setting,
-.snowflake-method-scene-events-setting,
-.snowflake-method-scene-form > .snowflake-method-modal-actions {
+.snowflake-method-scene-events-setting {
 	grid-column: 1 / -1;
 }
 
@@ -3782,10 +3758,6 @@
 	min-height: 12rem;
 	line-height: 1.5;
 	resize: vertical;
-}
-
-.snowflake-method-scene-form > .snowflake-method-modal-actions {
-	margin-top: 0;
 }
 
 @media (max-width: 38rem) {
@@ -5517,8 +5489,47 @@ button.snowflake-method-kind-options {
 
 /* One width for everything that rides on the right of a form: the status in
    the title row, and any field that lines up under it. */
+/* The dialog's own inline padding, which the scroller below reaches back
+   across. Declared at single-class weight on purpose, so the wide member
+   dialogs' two-class override wins wherever the rules sit in this file. */
+.snowflake-method-form-modal {
+	--snowflake-form-pad: var(--size-4-4);
+}
+
 .modal.snowflake-method-form-modal {
 	--snowflake-form-aside: 8rem;
+	/* Obsidian scrolls the whole dialog, which carries the title row and the
+	   buttons out of sight on a long form. Kept still here, so only the fields
+	   between them move: the title pins itself once the dialog stops
+	   scrolling, and the actions row below pins with position sticky. */
+	overflow: hidden;
+}
+
+/* Only the fields scroll, and their bar rides against the dialog's wall: the
+   scroller reaches out across the dialog's own right padding, keeps the bar's
+   width at that far edge, and gives whatever the bar does not need back as
+   padding. So the bar sits at the outside of the gap rather than leaning on
+   the fields, and the fields still end where the title above them and the
+   buttons below them end. The width is kept whether or not the form is long
+   enough to scroll, so a short dialog lines up the same. */
+.snowflake-method-form-modal .modal-content {
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(-1 * var(--snowflake-form-pad));
+	padding-inline-end: max(
+		0px,
+		calc(var(--snowflake-form-pad) - var(--snowflake-method-scrollbar-width, 0px))
+	);
+	padding-bottom: var(--size-4-2);
+}
+
+/* The footer a dialog is expected to have: a child of the dialog rather than
+   of the scrolling content, so it is always in reach and the scrollbar ends
+   above it. No rule above it: the gap already says where the fields end. */
+.snowflake-method-form-modal .snowflake-method-modal-actions {
+	margin-top: 0;
+	padding-top: var(--size-4-4);
 }
 
 /* A form's title row, with room on the right for the controls that belong to
@@ -5550,13 +5561,13 @@ button.snowflake-method-kind-options {
 	font-size: var(--font-ui-small);
 }
 
-/* Obsidian pins the close a few pixels inside the corner, which leaves it
-   short of the edge every field in the form ends on. The inset differs by one
-   scrollbar between a form long enough to scroll and one that is not, and the
-   close is placed against the modal rather than against the fields. */
+/* Obsidian pins the close a pixel inside the corner, but that column belongs
+   to the scrollbar now that the fields scroll against the dialog wall. So the
+   close stands with the fields instead: its edge is the one the status below
+   it and every field under that already end on. */
 .modal.snowflake-method-form-modal .modal-header-button,
 .modal.snowflake-method-form-modal .modal-close-button {
-	right: var(--snowflake-close-inset, 1px);
+	right: var(--snowflake-close-inset, var(--snowflake-form-pad));
 }
 
 .modal.snowflake-method-definition-modal {
