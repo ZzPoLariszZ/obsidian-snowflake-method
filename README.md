@@ -44,6 +44,8 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
 | Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
+| Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
+| Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
@@ -193,10 +195,15 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 
 | Command | Purpose |
 |---|---|
+| Add category | Add a category to a kind's vocabulary. |
 | Add character | Add a shared character note to the current project. |
+| Add relationship | Add a relationship to a kind's vocabulary. |
 | Add scene | Add a shared scene note to the current project. |
+| Add world status | Add a world status to a kind's vocabulary. |
+| Add worldbuilding note | Add a note to a worldbuilding kind you choose. |
 | Close manuscript stream | Close the manuscript stream in the current pane. |
 | Create project | Create a new Markdown-native Snowflake project. |
+| Create worldbuilding kind | Add a kind of worldbuilding note, with its own folder, pane, and vocabularies. |
 | Go back to where the stream opened | Return to the note the manuscript stream was opened at. |
 | Go to the next manuscript note | Move one note further into the manuscript. |
 | Go to the previous manuscript note | Move one note back through the manuscript. |
@@ -206,10 +213,12 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
 | Open manuscript stream | Open the manuscript, at the note last written in. |
-| Open project manager | Create, rename, open, or trash projects. |
+| Open project manager | Create, rename, open, archive, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
+| Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
 | Set focus mode to off / on / deep / solo | Set how far focus mode reaches, one command per level. |
 | Split manuscript note at the cursor | Divide the note being written in, at the caret. |
+| Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
@@ -232,6 +241,7 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Project root folder | Vault root | Choose the Vault-relative parent folder for projects. |
 | Interface language | Follow project | Follow the current project, Obsidian, English, or Simplified Chinese. |
 | Default project language | System language | Set the language used when creating projects. |
+| Freeform mode | Off | Hide the ten steps and their progress. Characters and scenes join the worldbuilding list. |
 | Open notes beside dashboard | On | Reuse a companion pane for notes. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
@@ -295,6 +305,8 @@ Each project is stored as a direct child of the configured project root. Its fol
 ```
 
 </details>
+
+Archiving a project moves its whole folder into `Snowflake Archive`, a folder beside the projects rather than inside any of them. Nothing in the notes changes, and because a project keeps every reference within its own folder, no link is left dangling while it is away. The project manager lists what is in there and restores any of it, giving the project a free name if the one it left under has since been taken. Moving a folder in or out by hand works the same way, so the archive is a place rather than a mechanism.
 
 A manuscript may be one note or many, arranged in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming one never changes where it is read, and the manuscript stream presents them in that order as a single page.
 
@@ -417,6 +429,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
 | 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
 | 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
+| 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
+| 项目归档 | 把暂时写完的项目收起来，想要时再取回。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
@@ -562,13 +576,19 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 |---|---|
 | 添加角色 | 为当前项目添加共享角色笔记。 |
 | 添加场景 | 为当前项目添加共享场景笔记。 |
+| 添加世界观笔记 | 为你选定的世界观种类添加一篇笔记。 |
+| 创建世界观种类 | 新增一类世界观笔记，它有自己的文件夹、面板与词表。 |
+| 添加类别 | 为某一种类的词表添加一个类别。 |
+| 添加世界状态 | 为某一种类的词表添加一种世界状态。 |
+| 添加关系 | 为某一种类的词表添加一种关系。 |
 | 创建项目 | 创建新的 Markdown 原生雪花写作项目。 |
 | 打开工作台 | 打开或显示当前项目的工作台。 |
 | 打开健康检查器 | 检查项目结构并修复安全问题。 |
 | 更新旧格式的笔记 | 更新旧版本写下的所有笔记。 |
-| 打开项目管理器 | 创建、重命名、打开或移入回收站。 |
+| 打开项目管理器 | 创建、重命名、打开、归档或移入回收站。 |
 | 打开角色数据库 | 打开当前项目角色的 Bases 视图。 |
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
+| 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
 | 打开正文流 | 打开正文，并定位到上次写作的笔记。 |
 | 关闭正文流 | 关闭当前分栏中的正文流。 |
 | 前往上一篇正文笔记 | 在正文中向前移动一篇。 |
@@ -587,6 +607,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 切换表格中的进度状态 | 显示或隐藏进度状态列。 |
 | 切换表格中的操作列 | 显示或隐藏每行的操作列。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
+| 切换自由模式 | 隐藏十个步骤与进度，或者把它们找回来。 |
 
 与正文相关的命令仅在当前视图为正文流时提供，其中**在光标处拆分正文笔记**还需要其中有一篇笔记正处于写作状态。
 
@@ -597,6 +618,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 项目根目录 | Vault 根目录 | 选择存放项目的 Vault 相对父目录。 |
 | 界面语言 | 跟随项目 | 可跟随当前项目、Obsidian，或固定为英文／简体中文。 |
 | 默认项目语言 | 系统语言 | 设置新建项目所使用的模板语言。 |
+| 自由模式 | 关闭 | 隐藏十个步骤与进度。角色和场景将并入世界观列表。 |
 | 在工作台旁打开笔记 | 开启 | 长篇笔记复用工作台旁的固定分栏。 |
 | 减少动画 | 关闭 | 使用静态视觉效果替代动画。 |
 | 保护托管区段边界 | 开启 | 防止意外修改同步标记。 |
@@ -656,6 +678,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 ```
 
 </details>
+
+归档项目会把它的整个文件夹移入 `Snowflake Archive`。这个文件夹与各个项目并列，而不在任何项目之内。笔记本身不会有任何改动，而且项目的所有引用都在自己的文件夹内，因此归档期间不会留下任何断链。项目管理器会列出其中的项目并随时取回，若原来的名称已被占用，会为它取一个未被使用的名称。手动把文件夹移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
 
 正文可以只有一篇笔记，也可以有许多篇，文件夹如何组织都可以。每篇笔记都用 `snowflake-manuscript-sequence` 记录自己的位置，因此移动或重命名笔记都不会改变它的阅读顺序；正文流会按该顺序把它们呈现为一整页。
 
