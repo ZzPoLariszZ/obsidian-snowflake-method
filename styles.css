@@ -5,6 +5,10 @@
 	   a reach longer than the padding it reaches into spills past the view and is
 	   scrollable. The two have to be read from one place to stay in step. */
 	--snowflake-method-dashboard-padding: var(--size-4-4);
+	/* The ellipsis a row keeps at its end. The tables size their button and
+	   reserve the last cell's room by it, and the definition and template
+	   headings centre their count circle on it, so it is read from one place. */
+	--snowflake-row-more: 1.875rem;
 	container-name: snowflake-dashboard;
 	container-type: inline-size;
 	display: flex;
@@ -2109,9 +2113,6 @@
    characters to scenes changes the rows and not the grid. The text column
    has no width of its own: it takes whatever the others leave. */
 .snowflake-method-table {
-	/* The button a row keeps at its end, and the room the last cell holds for
-	   it — declared once, since the cell reserves what the button occupies. */
-	--snowflake-row-more: 1.875rem;
 	/* Said outright, rather than left to a last column with a percentage width
 	   to pull the table out to its frame: the three fixed columns take theirs
 	   and the text column takes the rest of the room the frame gives. */
@@ -6078,20 +6079,24 @@ button.snowflake-method-kind-options {
 .snowflake-method-definition-count {
 	flex: 0 0 auto;
 	margin-inline-start: auto;
+	/* Centred on the ellipsis the rows below keep: their button stands a
+	   row's padding from the edge, this circle a heading's narrower padding,
+	   and the two boxes differ in width — the margin walks the circle's
+	   centre onto the button's. */
+	margin-inline-end: calc(
+		var(--size-4-2) + (var(--snowflake-row-more) - 1.25rem) / 2 -
+			var(--size-2-2) - var(--size-2-3)
+	);
 }
 
-/* A template row's ellipsis stands under the circle counting its kind, so the
-   heading and the rows it heads end on one line. The circle sits a heading's
-   padding in from the wall; the button is the wider box and gives back half
-   the difference to put the two centres together. Only the tables of this
-   pane: a member table ends at its own actions column, not under a heading. */
+/* A template row's ellipsis stands where a definition row keeps its own: a
+   row's padding from the edge, under the circle the heading centres on that
+   line. Only the tables of this pane: a member table ends at its own actions
+   column, not under a heading. */
 .snowflake-method-dashboard
 	.snowflake-method-template-table
 	button.snowflake-method-table-more {
-	inset-inline-end: calc(
-		var(--size-2-2) + var(--size-2-3) +
-			(1.25rem - var(--snowflake-row-more)) / 2
-	);
+	inset-inline-end: var(--size-4-2);
 }
 
 /* A vocabulary or a kind can run to three figures, and the circle is not
