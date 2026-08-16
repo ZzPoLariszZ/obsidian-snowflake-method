@@ -205,6 +205,22 @@ function kindIcon(model: ProjectDashboardModel, kind: string): string {
 	return descriptor?.icon ?? CUSTOM_KIND_ICON;
 }
 
+/**
+ * What one rail row is made of. The leading mark is a step's number or a
+ * kind's icon; the indicator is how many notes stand behind the row, or how
+ * far along the step is.
+ */
+interface RailRowSpec {
+	leading: { icon: string } | { text: string };
+	label: string;
+	active: boolean;
+	/** Steps are steps to a screen reader; everything else is just current. */
+	current: 'step' | 'true';
+	damaged: boolean;
+	indicator: { count: number } | { status: StepStatus };
+	onClick: () => void;
+}
+
 const DEFINITION_ICONS: Record<DefinitionFileChoice, string> = {
 	category: 'tags',
 	'world-status': 'activity',
@@ -946,9 +962,68 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * One collapsible group of the rail. The fold is presentation state the
-	 * author sets, so it rides the view state rather than the DOM.
+	 * One row of the rail, whichever group it stands in: a mark where a step
+	 * keeps its number, what the pane is called, and the circle at the end
+	 * carrying either how many notes are in there or how far along a step is.
+	 * A row with something to report wears the warning in place of its circle,
+	 * because that one of them needs looking at matters more than how many.
 	 */
+	private renderRailRow(list: HTMLElement, row: RailRowSpec): void {
+		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
+		const button = item.createEl('button', {
+			cls: `snowflake-method-step-button${row.active ? ' is-active' : ''}${
+				row.damaged ? ' has-managed-section-issue' : ''
+			}`,
+			attr: {
+				type: 'button',
+				'aria-label': row.label,
+				...(row.damaged ? { 'aria-invalid': 'true' } : {}),
+				...(row.active ? { 'aria-current': row.current } : {}),
+			},
+		});
+		if ('icon' in row.leading) {
+			const iconEl = button.createSpan({
+				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(iconEl, row.leading.icon);
+		} else {
+			button.createSpan({
+				cls: 'snowflake-method-step-number',
+				text: row.leading.text,
+			});
+		}
+		button.createSpan({
+			cls: 'snowflake-method-step-label',
+			text: row.label,
+		});
+		const counted = 'count' in row.indicator;
+		const indicator = button.createSpan({
+			cls: `snowflake-method-step-indicator${
+				counted ? ' snowflake-method-worldbuilding-count' : ''
+			}`,
+			attr: {
+				'aria-label': row.damaged
+					? this.t('projectStructure.damagedTitle')
+					: 'count' in row.indicator
+						? String(row.indicator.count)
+						: this.t(`status.${row.indicator.status}`),
+			},
+		});
+		if ('status' in row.indicator) {
+			indicator.dataset.status = row.indicator.status;
+		}
+		if (row.damaged) {
+			indicator.addClass('has-managed-section-issue');
+			setIcon(indicator, 'triangle-alert');
+		} else if ('count' in row.indicator) {
+			this.setCount(indicator, row.indicator.count);
+		} else {
+			indicator.setText(this.statusGlyph(row.indicator.status));
+		}
+		button.addEventListener('click', row.onClick);
+	}
+
 	private renderStepsGroup(
 		nav: HTMLElement,
 		model: ProjectDashboardModel,
@@ -960,57 +1035,31 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 		const list = stepsGroup.createEl('ol', { cls: 'snowflake-method-step-list' });
 		for (const step of model.steps) {
-			const active =
-				this.selectedPane.kind === 'step' && step.id === this.selectedPane.step;
-			const damaged = this.getStepHealthIssues(model, step.id).some(
-				(issue) => issue.blocking,
-			);
-			const stepTitle = step.title;
-			const item = list.createEl('li', {
-				cls: 'snowflake-method-step-item',
-			});
-			const button = item.createEl('button', {
-				cls: `snowflake-method-step-button${
-					active ? ' is-active' : ''
-				}${damaged ? ' has-managed-section-issue' : ''}`,
-				attr: {
-					type: 'button',
-					'aria-label': stepTitle,
-					...(damaged ? { 'aria-invalid': 'true' } : {}),
-					...(active ? { 'aria-current': 'step' } : {}),
+			this.renderRailRow(list, {
+				leading: { text: this.t(`steps.number.${step.id}`) },
+				label: step.title,
+				active:
+					this.selectedPane.kind === 'step' &&
+					step.id === this.selectedPane.step,
+				current: 'step',
+				damaged: this.getStepHealthIssues(model, step.id).some(
+					(issue) => issue.blocking,
+				),
+				indicator: { status: step.status },
+				onClick: () => {
+					this.selectedStep = step.id;
+					this.selectedPane = { kind: 'step', step: step.id };
+					this.stepChosen = true;
+					void this.runAndRefresh(() => this.host.selectStep(step.id));
 				},
-			});
-			button.createSpan({
-				cls: 'snowflake-method-step-number',
-				text: this.t(`steps.number.${step.id}`),
-			});
-			button.createSpan({
-				cls: 'snowflake-method-step-label',
-				text: step.title,
-			});
-			const indicator = button.createSpan({
-				cls: 'snowflake-method-step-indicator',
-				attr: {
-					'aria-label': damaged
-						? this.t('projectStructure.damagedTitle')
-						: this.t(`status.${step.status}`),
-				},
-			});
-			indicator.dataset.status = step.status;
-			if (damaged) {
-				indicator.addClass('has-managed-section-issue');
-				setIcon(indicator, 'triangle-alert');
-			} else {
-				indicator.setText(this.statusGlyph(step.status));
-			}
-			button.addEventListener('click', () => {
-				this.selectedStep = step.id;
-				this.selectedPane = { kind: 'step', step: step.id };
-				this.stepChosen = true;
-				void this.runAndRefresh(() => this.host.selectStep(step.id));
 			});
 		}
 	}
+
+	/**
+	 * One collapsible group of the rail. The fold is presentation state the
+	 * author sets, so it rides the view state rather than the DOM.
+	 */
 
 	private createRailGroup(
 		nav: HTMLElement,
@@ -1065,53 +1114,24 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 7 | 8,
 	): void {
-		const active =
-			this.selectedPane.kind === 'step' && this.selectedPane.step === step;
-		const damaged = this.getStepHealthIssues(model, step).some(
-			(issue) => issue.blocking,
-		);
-		const title = this.t(step === 7 ? 'freeform.character' : 'freeform.scene');
-		const count = step === 7 ? model.characters.length : model.scenes.length;
-		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
-		const button = item.createEl('button', {
-			cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
-				damaged ? ' has-managed-section-issue' : ''
-			}`,
-			attr: {
-				type: 'button',
-				'aria-label': title,
-				...(damaged ? { 'aria-invalid': 'true' } : {}),
-				...(active ? { 'aria-current': 'step' } : {}),
+		this.renderRailRow(list, {
+			leading: { icon: kindIcon(model, step === 7 ? 'character' : 'scene') },
+			label: this.t(step === 7 ? 'freeform.character' : 'freeform.scene'),
+			active:
+				this.selectedPane.kind === 'step' && this.selectedPane.step === step,
+			current: 'step',
+			damaged: this.getStepHealthIssues(model, step).some(
+				(issue) => issue.blocking,
+			),
+			indicator: {
+				count: step === 7 ? model.characters.length : model.scenes.length,
 			},
-		});
-		const iconEl = button.createSpan({
-			cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
-			attr: { 'aria-hidden': 'true' },
-		});
-		setIcon(iconEl, kindIcon(model, step === 7 ? 'character' : 'scene'));
-		button.createSpan({
-			cls: 'snowflake-method-step-label',
-			text: title,
-		});
-		const indicator = button.createSpan({
-			cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
-			attr: {
-				'aria-label': damaged
-					? this.t('projectStructure.damagedTitle')
-					: String(count),
+			onClick: () => {
+				this.selectedStep = step;
+				this.selectedPane = { kind: 'step', step };
+				this.stepChosen = true;
+				void this.runAndRefresh(() => this.host.selectStep(step));
 			},
-		});
-		if (damaged) {
-			indicator.addClass('has-managed-section-issue');
-			setIcon(indicator, 'triangle-alert');
-		} else {
-			this.setCount(indicator, count);
-		}
-		button.addEventListener('click', () => {
-			this.selectedStep = step;
-			this.selectedPane = { kind: 'step', step };
-			this.stepChosen = true;
-			void this.runAndRefresh(() => this.host.selectStep(step));
 		});
 	}
 
@@ -1135,59 +1155,31 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 		for (const descriptor of model.worldbuildingKinds) {
 			const kind = descriptor.id;
-			const active =
-				this.selectedPane.kind === 'worldbuilding' &&
-				this.selectedPane.wbKind === kind;
 			const entities = kindEntities(model, kind);
-			// Whatever the project reports about one of these notes, the same way
-			// a step carries what is reported about its own: the count steps aside
-			// for the warning, because how many there are matters less than that
-			// one of them needs looking at.
-			const damaged = entities.some(
-				(entity) =>
-					entity.healthIssues.some((issue) => issue.blocking) ||
-					this.memberWarnings(model, entity.path).length > 0,
-			);
-			const title = this.kindDisplayName(kind);
-			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
-			const button = item.createEl('button', {
-				cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
-					damaged ? ' has-managed-section-issue' : ''
-				}`,
-				attr: {
-					type: 'button',
-					'aria-label': title,
-					...(damaged ? { 'aria-invalid': 'true' } : {}),
-					...(active ? { 'aria-current': 'true' } : {}),
+			this.renderRailRow(list, {
+				leading: { icon: kindIcon(model, kind) },
+				label: this.kindDisplayName(kind),
+				active:
+					this.selectedPane.kind === 'worldbuilding' &&
+					this.selectedPane.wbKind === kind,
+				current: 'true',
+				// Whatever the project reports about one of these notes, the same
+				// way a step carries what is reported about its own: the count
+				// steps aside for the warning, because how many there are matters
+				// less than that one of them needs looking at.
+				damaged: entities.some(
+					(entity) =>
+						entity.healthIssues.some((issue) => issue.blocking) ||
+						this.memberWarnings(model, entity.path).length > 0,
+				),
+				indicator: { count: entities.length },
+				onClick: () => {
+					this.selectedPane = { kind: 'worldbuilding', wbKind: kind };
+					this.stepChosen = true;
+					void this.runAndRefresh(() =>
+						this.host.selectWorldbuildingKind(kind),
+					);
 				},
-			});
-			const iconEl = button.createSpan({
-				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
-				attr: { 'aria-hidden': 'true' },
-			});
-			setIcon(iconEl, kindIcon(model, kind));
-			button.createSpan({
-				cls: 'snowflake-method-step-label',
-				text: title,
-			});
-			const indicator = button.createSpan({
-				cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
-				attr: {
-					'aria-label': damaged
-						? this.t('projectStructure.damagedTitle')
-						: String(entities.length),
-				},
-			});
-			if (damaged) {
-				indicator.addClass('has-managed-section-issue');
-				setIcon(indicator, 'triangle-alert');
-			} else {
-				this.setCount(indicator, entities.length);
-			}
-			button.addEventListener('click', () => {
-				this.selectedPane = { kind: 'worldbuilding', wbKind: kind };
-				this.stepChosen = true;
-				void this.runAndRefresh(() => this.host.selectWorldbuildingKind(kind));
 			});
 		}
 		// The invitation to add a kind, standing with the kinds it would join
@@ -1225,63 +1217,34 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { role: 'presentation' },
 		});
 		for (const definitionId of DEFINITION_FILE_IDS) {
-			const active =
-				this.selectedPane.kind === 'definition' &&
-				this.selectedPane.definitionId === definitionId;
 			const trees = entityKindIds(model.worldbuildingKinds).map((kind) =>
 				forestTree(model.definitions[definitionId], kind),
 			);
-			const count = trees.reduce(
-				(total, tree) =>
-					total + tree.nodes.filter((node) => !node.missing).length,
-				0,
-			);
-			// Held to the standard the kinds above set: whatever the project
-			// reports about the vocabulary — an entry without its note, a path
-			// members name that no folder spells — takes the count's place.
-			const damaged = trees.some((tree) =>
-				tree.nodes.some((node) => node.missing || node.missingSelf),
-			);
-			const title = this.t(`dashboard.definition.${definitionId}`);
-			const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
-			const button = item.createEl('button', {
-				cls: `snowflake-method-step-button${active ? ' is-active' : ''}${
-					damaged ? ' has-managed-section-issue' : ''
-				}`,
-				attr: {
-					type: 'button',
-					'aria-label': title,
-					...(damaged ? { 'aria-invalid': 'true' } : {}),
-					...(active ? { 'aria-current': 'true' } : {}),
+			this.renderRailRow(list, {
+				leading: { icon: DEFINITION_ICONS[definitionId] },
+				label: this.t(`dashboard.definition.${definitionId}`),
+				active:
+					this.selectedPane.kind === 'definition' &&
+					this.selectedPane.definitionId === definitionId,
+				current: 'true',
+				// Held to the standard the kinds above set: whatever the project
+				// reports about the vocabulary — an entry without its note, a path
+				// members name that no folder spells — takes the count's place.
+				damaged: trees.some((tree) =>
+					tree.nodes.some((node) => node.missing || node.missingSelf),
+				),
+				indicator: {
+					count: trees.reduce(
+						(total, tree) =>
+							total + tree.nodes.filter((node) => !node.missing).length,
+						0,
+					),
 				},
-			});
-			const iconEl = button.createSpan({
-				cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
-				attr: { 'aria-hidden': 'true' },
-			});
-			setIcon(iconEl, DEFINITION_ICONS[definitionId]);
-			button.createSpan({
-				cls: 'snowflake-method-step-label',
-				text: title,
-			});
-			const indicator = button.createSpan({
-				cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
-				attr: {
-					'aria-label': damaged
-						? this.t('projectStructure.damagedTitle')
-						: String(count),
+				onClick: () => {
+					this.selectedPane = { kind: 'definition', definitionId };
+					this.stepChosen = true;
+					void this.refresh();
 				},
-			});
-			if (damaged) {
-				indicator.addClass('has-managed-section-issue');
-				setIcon(indicator, 'triangle-alert');
-			} else {
-				this.setCount(indicator, count);
-			}
-			button.addEventListener('click', () => {
-				this.selectedPane = { kind: 'definition', definitionId };
-				this.stepChosen = true;
-				void this.refresh();
 			});
 		}
 		this.renderCustomFieldsRailEntry(list, model);
@@ -1292,37 +1255,26 @@ export class SnowflakeDashboardView extends ItemView {
 		list: HTMLElement,
 		model: ProjectDashboardModel,
 	): void {
-		const active = this.selectedPane.kind === 'custom-fields';
-		const count = entityKindIds(model.worldbuildingKinds).reduce(
-			(total, kind) =>
-				total + (model.customFieldTemplates[kind]?.length ?? 0),
-			0,
-		);
-		const title = this.t('dashboard.customFields');
-		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
-		const button = item.createEl('button', {
-			cls: `snowflake-method-step-button${active ? ' is-active' : ''}`,
-			attr: {
-				type: 'button',
-				'aria-label': title,
-				...(active ? { 'aria-current': 'true' } : {}),
+		this.renderRailRow(list, {
+			leading: { icon: 'layout-template' },
+			label: this.t('dashboard.customFields'),
+			active: this.selectedPane.kind === 'custom-fields',
+			current: 'true',
+			// Templates are shapes rather than notes: nothing here can be
+			// damaged the way an entry with a missing folder can.
+			damaged: false,
+			indicator: {
+				count: entityKindIds(model.worldbuildingKinds).reduce(
+					(total, kind) =>
+						total + (model.customFieldTemplates[kind]?.length ?? 0),
+					0,
+				),
 			},
-		});
-		const iconEl = button.createSpan({
-			cls: 'snowflake-method-step-number snowflake-method-worldbuilding-icon',
-			attr: { 'aria-hidden': 'true' },
-		});
-		setIcon(iconEl, 'layout-template');
-		button.createSpan({ cls: 'snowflake-method-step-label', text: title });
-		const indicator = button.createSpan({
-			cls: 'snowflake-method-step-indicator snowflake-method-worldbuilding-count',
-			attr: { 'aria-label': String(count) },
-		});
-		this.setCount(indicator, count);
-		button.addEventListener('click', () => {
-			this.selectedPane = { kind: 'custom-fields' };
-			this.stepChosen = true;
-			void this.refresh();
+			onClick: () => {
+				this.selectedPane = { kind: 'custom-fields' };
+				this.stepChosen = true;
+				void this.refresh();
+			},
 		});
 	}
 
@@ -4459,18 +4411,19 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-description',
 		});
 		if (step.id !== 10) {
-			if (this.freeformMode && isFreeformStep(step.id)) {
-				// Only the sentence saying what the list is; the method's
-				// guidance rests with the steps.
-				const lineBreak = step.description.indexOf('\n');
-				description.setText(
-					lineBreak === -1
-						? step.description
-						: step.description.slice(0, lineBreak),
-				);
-				return;
-			}
-			description.setText(step.description);
+			// Freeform mode says what the list is rather than what the step is
+			// for, in a sentence of its own: cutting the step's description at
+			// its line break would leave the copy at the mercy of where a
+			// translator chose to wrap it.
+			description.setText(
+				this.freeformMode && isFreeformStep(step.id)
+					? this.t(
+							step.id === 7
+								? 'freeform.characterDescription'
+								: 'freeform.sceneDescription',
+						)
+					: step.description,
+			);
 			return;
 		}
 		const [opening, ...emphasisParts] = step.description.split('\n');

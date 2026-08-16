@@ -260,7 +260,11 @@ export const en = {
 		'It’s perfectly fine to revisit steps 1 and 2. Your characters may teach you something new about your story.',
 	'scenes.empty': 'No scenes',
 	'freeform.character': 'Character',
+	'freeform.characterDescription':
+		'Everyone in your novel, and everything you keep about them.',
 	'freeform.scene': 'Scene',
+	'freeform.sceneDescription':
+		'Every scene in your novel, in the order they happen.',
 	'messages.projectCreated': 'Created Snowflake project “{name}”.',
 	'messages.projectRenamed': 'Renamed project to “{name}”.',
 	'messages.projectTrashed': 'Moved project “{name}” to the trash.',

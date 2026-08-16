@@ -705,7 +705,7 @@ export class SnowflakeProjectService {
    * tell the project was filed here on purpose; hiding it is the location's
    * doing, not the mark's.
    */
-  async archiveProject(projectLocator: ProjectLocator): Promise<ProjectSnapshot> {
+  async archiveProject(projectLocator: ProjectLocator): Promise<ProjectRef> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const archiveRoot = normalizePath(
@@ -717,11 +717,8 @@ export class SnowflakeProjectService {
     if ((await this.findProjectRecord(archiveRoot)) !== null) {
       throw new ArchiveFolderIsProjectError(archiveRoot);
     }
-    const folderName = project.rootPath.slice(
-      project.rootPath.lastIndexOf("/") + 1,
-    );
     const destination = this.repository.resolveUniquePath(
-      normalizePath(`${archiveRoot}/${folderName}`),
+      normalizePath(`${archiveRoot}/${basename(project.rootPath)}`),
     );
     await this.repository.renameFolder(project.rootPath, destination);
     const projectFile = normalizePath(
@@ -730,7 +727,18 @@ export class SnowflakeProjectService {
     await this.repository.updateFrontmatterAtomic(projectFile, () => ({
       [FRONTMATTER_KEYS.archived]: true,
     }));
-    return this.loadProject(projectFile);
+    // The same project, at the path it keeps now. Reading it back would
+    // rebuild a snapshot of every note in it, and an archived project is the
+    // one thing nothing is about to draw.
+    return {
+      projectFile,
+      rootPath: destination,
+      id: project.id,
+      title: project.title,
+      locale: project.locale,
+      readOnly: project.readOnly,
+      worldbuildingKinds: project.worldbuildingKinds,
+    };
   }
 
   /**

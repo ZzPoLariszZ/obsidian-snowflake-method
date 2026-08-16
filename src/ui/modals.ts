@@ -870,9 +870,11 @@ export class ManageProjectsModal extends Modal {
 		private readonly version: string,
 		locale: ProjectLocale,
 		private projectRoot: string,
+		// Both lists answer to the root: the archive is a folder beside the
+		// projects, so a new root brings its own archived projects too.
 		private readonly onProjectRootChange: (
 			root: string,
-		) => Promise<readonly ManageProjectOption[]>,
+		) => Promise<ManageProjectLists>,
 		private readonly onOpenProject: (path: string) => Promise<void>,
 		private readonly onCreateProject: (locale: ProjectLocale) => void,
 		private readonly onRenameProject: (
@@ -958,51 +960,15 @@ export class ManageProjectsModal extends Modal {
 		for (const project of this.projects) {
 			const hasHealthIssues =
 				project.hasStructureIssues || project.hasMarkerIssues;
-			const projectRow = projectList.createDiv({
-				cls: `snowflake-method-project-manager-project-row${
-					hasHealthIssues ? ' has-health-issues' : ''
-				}`,
-			});
-			const item = projectRow.createEl('button', {
-				cls: 'snowflake-method-project-manager-project',
-				attr: {
-					type: 'button',
-					title: project.title,
+			this.renderProjectRow(projectList, project, {
+				modifier: hasHealthIssues ? ' has-health-issues' : '',
+				warn: hasHealthIssues,
+				open: (item) => {
+					void this.openProject(project.path, item);
 				},
-			});
-			item.createSpan({
-				cls: 'snowflake-method-project-manager-project-title',
-				text: project.title,
-			});
-			item.createSpan({
-				cls: 'snowflake-method-project-manager-project-path',
-				text: project.rootPath,
-			});
-			item.addEventListener('click', () => {
-				void this.openProject(project.path, item);
-			});
-			if (hasHealthIssues) {
-				const warning = projectRow.createSpan({
-					cls: 'snowflake-method-project-manager-project-warning',
-					attr: {
-						'aria-label': this.t('projectHealth.needsAttention'),
-					},
-				});
-				setIcon(warning, 'triangle-alert');
-			}
-			const more = projectRow.createEl('button', {
-				cls: 'clickable-icon snowflake-method-project-manager-project-more',
-				attr: {
-					type: 'button',
-					'aria-haspopup': 'menu',
-					'aria-label': this.t('modal.projectManager.projectOptions', {
-						name: project.title,
-					}),
+				menu: (trigger) => {
+					this.showProjectMenu(project, trigger);
 				},
-			});
-			setIcon(more, 'ellipsis');
-			more.addEventListener('click', () => {
-				this.showProjectMenu(project, more);
 			});
 		}
 
@@ -1042,37 +1008,16 @@ export class ManageProjectsModal extends Modal {
 				archivedList.toggleClass('is-collapsed', !this.archivedExpanded);
 			});
 			for (const project of this.archived) {
-				const projectRow = archivedList.createDiv({
-					cls: 'snowflake-method-project-manager-project-row is-archived',
-				});
-				// A plain block rather than a button: an archived project opens
-				// nowhere until it is restored, and a control that looks pressable
-				// but refuses would only say that the slow way.
-				const item = projectRow.createDiv({
-					cls: 'snowflake-method-project-manager-project',
-					attr: { title: project.title },
-				});
-				item.createSpan({
-					cls: 'snowflake-method-project-manager-project-title',
-					text: project.title,
-				});
-				item.createSpan({
-					cls: 'snowflake-method-project-manager-project-path',
-					text: project.rootPath,
-				});
-				const more = projectRow.createEl('button', {
-					cls: 'clickable-icon snowflake-method-project-manager-project-more',
-					attr: {
-						type: 'button',
-						'aria-haspopup': 'menu',
-						'aria-label': this.t('modal.projectManager.projectOptions', {
-							name: project.title,
-						}),
+				// No open: an archived project opens nowhere until it is
+				// restored, so the row stays a plain block rather than a
+				// control that looks pressable and refuses.
+				this.renderProjectRow(archivedList, project, {
+					modifier: ' is-archived',
+					warn: false,
+					open: null,
+					menu: (trigger) => {
+						this.showArchivedProjectMenu(project, trigger);
 					},
-				});
-				setIcon(more, 'ellipsis');
-				more.addEventListener('click', () => {
-					this.showArchivedProjectMenu(project, more);
 				});
 			}
 		}
@@ -1219,10 +1164,11 @@ export class ManageProjectsModal extends Modal {
 		const changeId = ++this.projectRootChangeId;
 		input.disabled = true;
 		try {
-			const projects = await this.onProjectRootChange(root);
+			const lists = await this.onProjectRootChange(root);
 			if (changeId !== this.projectRootChangeId) return false;
 			this.projectRoot = root;
-			this.projects = projects;
+			this.projects = lists.projects;
+			this.archived = lists.archived;
 			this.renderManager({ resetProjectListScroll: true });
 			return true;
 		} catch (error) {
@@ -1423,6 +1369,69 @@ export class ManageProjectsModal extends Modal {
 				error instanceof Error ? error.message : this.t('errors.unknown'),
 			);
 		}
+	}
+
+	/**
+	 * One row of the sidebar, in either list: the project's name over its
+	 * folder, and the menu that stands at the end. A row that can be opened
+	 * makes the name a button; one that cannot leaves it a plain block.
+	 */
+	private renderProjectRow(
+		list: HTMLElement,
+		project: ManageProjectOption,
+		row: {
+			modifier: string;
+			warn: boolean;
+			open: ((item: HTMLButtonElement) => void) | null;
+			menu: (trigger: HTMLButtonElement) => void;
+		},
+	): void {
+		const projectRow = list.createDiv({
+			cls: `snowflake-method-project-manager-project-row${row.modifier}`,
+		});
+		const cls = 'snowflake-method-project-manager-project';
+		const item =
+			row.open === null
+				? projectRow.createDiv({ cls, attr: { title: project.title } })
+				: projectRow.createEl('button', {
+						cls,
+						attr: { type: 'button', title: project.title },
+					});
+		item.createSpan({
+			cls: 'snowflake-method-project-manager-project-title',
+			text: project.title,
+		});
+		item.createSpan({
+			cls: 'snowflake-method-project-manager-project-path',
+			text: project.rootPath,
+		});
+		const open = row.open;
+		if (open !== null && item instanceof HTMLButtonElement) {
+			item.addEventListener('click', () => {
+				open(item);
+			});
+		}
+		if (row.warn) {
+			const warning = projectRow.createSpan({
+				cls: 'snowflake-method-project-manager-project-warning',
+				attr: { 'aria-label': this.t('projectHealth.needsAttention') },
+			});
+			setIcon(warning, 'triangle-alert');
+		}
+		const more = projectRow.createEl('button', {
+			cls: 'clickable-icon snowflake-method-project-manager-project-more',
+			attr: {
+				type: 'button',
+				'aria-haspopup': 'menu',
+				'aria-label': this.t('modal.projectManager.projectOptions', {
+					name: project.title,
+				}),
+			},
+		});
+		setIcon(more, 'ellipsis');
+		more.addEventListener('click', () => {
+			row.menu(more);
+		});
 	}
 
 	private applyLists(lists: ManageProjectLists): void {
@@ -2214,42 +2223,35 @@ export interface DefinitionDeletionCost {
  * those are sentences the author wrote, so they stay and the health check
  * reports them.
  */
-export class ConfirmDefinitionDeletionModal extends Modal {
+/**
+ * The shape every "are you sure?" here keeps: what the action costs, whatever
+ * detail the dialog wants to spell out under it, and one pair of buttons.
+ *
+ * The answer travels out through onClose, so a dialog dismissed any way at all
+ * -- button, Escape, or the title bar -- counts as declining, and no caller is
+ * ever left waiting on a question the author walked away from.
+ */
+abstract class ConfirmModal extends Modal {
 	private confirmed = false;
 
-	constructor(
+	protected constructor(
 		app: App,
-		private readonly t: Translate,
-		private readonly taxonomyPath: string,
-		private readonly cost: DefinitionDeletionCost,
+		protected readonly t: Translate,
+		private readonly confirm: {
+			label: string;
+			style: 'mod-cta' | 'mod-warning';
+		},
 		private readonly onResolve: (confirmed: boolean) => void,
 	) {
 		super(app);
-		this.setTitle(t('modal.deleteDefinition.title', { name: taxonomyPath }));
-		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
+
+	/** What this dialog says, above the buttons the base draws for it. */
+	protected abstract renderBody(body: HTMLElement): void;
 
 	onOpen(): void {
 		this.contentEl.empty();
-		this.contentEl.createEl('p', {
-			text: this.t(
-				this.cost.nodes > 1
-					? 'modal.deleteDefinition.subtree'
-					: 'modal.deleteDefinition.description',
-				{ name: this.taxonomyPath, count: this.cost.nodes - 1 },
-			),
-		});
-		addNoteList(this.contentEl, 
-			this.t('modal.deleteDefinition.listed'),
-			this.cost.listed,
-			false,
-		);
-		addNoteList(this.contentEl, 
-			this.t('modal.deleteDefinition.records'),
-			this.cost.records,
-			true,
-		);
-
+		this.renderBody(this.contentEl);
 		const actions = this.contentEl.createDiv({
 			cls: 'snowflake-method-modal-actions',
 		});
@@ -2258,12 +2260,12 @@ export class ConfirmDefinitionDeletionModal extends Modal {
 			attr: { type: 'button' },
 		});
 		cancel.addEventListener('click', () => this.close());
-		const remove = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('actions.delete'),
+		const proceed = actions.createEl('button', {
+			cls: this.confirm.style,
+			text: this.confirm.label,
 			attr: { type: 'button' },
 		});
-		remove.addEventListener('click', () => {
+		proceed.addEventListener('click', () => {
 			this.confirmed = true;
 			this.close();
 		});
@@ -2271,9 +2273,34 @@ export class ConfirmDefinitionDeletionModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
-		// Resolves however the modal closed -- button, Escape, or the title bar --
-		// so the caller is never left waiting on a dialog the author dismissed.
 		this.onResolve(this.confirmed);
+	}
+}
+
+export class ConfirmDefinitionDeletionModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly taxonomyPath: string,
+		private readonly cost: DefinitionDeletionCost,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
+		this.setTitle(t('modal.deleteDefinition.title', { name: taxonomyPath }));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
+			text: this.t(
+				this.cost.nodes > 1
+					? 'modal.deleteDefinition.subtree'
+					: 'modal.deleteDefinition.description',
+				{ name: this.taxonomyPath, count: this.cost.nodes - 1 },
+			),
+		});
+		addNoteList(body, this.t('modal.deleteDefinition.listed'), this.cost.listed, false);
+		addNoteList(body, this.t('modal.deleteDefinition.records'), this.cost.records, true);
 	}
 }
 
@@ -3687,45 +3714,23 @@ export class RepairReportModal extends Modal {
  * a cast member, so the breakage would only surface later as unresolved links.
  */
 /** Restoring a base replaces the author's arrangements in it, so it asks. */
-export class ConfirmRestoreBaseModal extends Modal {
-	private confirmed = false;
-
+export class ConfirmRestoreBaseModal extends ConfirmModal {
 	constructor(
 		app: App,
-		private readonly t: Translate,
-		private readonly onResolve: (confirmed: boolean) => void,
+		t: Translate,
+		onResolve: (confirmed: boolean) => void,
 	) {
-		super(app);
+		super(
+			app,
+			t,
+			{ label: t('modal.restoreBase.action'), style: 'mod-warning' },
+			onResolve,
+		);
 		this.setTitle(t('modal.restoreBase.title'));
 	}
 
-	onOpen(): void {
-		this.contentEl.empty();
-		this.contentEl.createEl('p', {
-			text: this.t('modal.restoreBase.description'),
-		});
-		const actions = this.contentEl.createDiv({
-			cls: 'snowflake-method-modal-actions',
-		});
-		const cancel = actions.createEl('button', {
-			text: this.t('common.cancel'),
-			attr: { type: 'button' },
-		});
-		cancel.addEventListener('click', () => this.close());
-		const restore = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('modal.restoreBase.action'),
-			attr: { type: 'button' },
-		});
-		restore.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-		this.onResolve(this.confirmed);
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.restoreBase.description') });
 	}
 }
 
@@ -3735,74 +3740,44 @@ export class ConfirmRestoreBaseModal extends Modal {
  * a scene and a worldbuilding note are named the same way and lose the same
  * things when they go.
  */
-export class ConfirmMemberDeletionModal extends Modal {
-	private confirmed = false;
-
+export class ConfirmMemberDeletionModal extends ConfirmModal {
 	constructor(
 		app: App,
-		private readonly t: Translate,
+		t: Translate,
 		private readonly memberName: string,
 		private readonly usage: MemberUsage,
-		private readonly onResolve: (confirmed: boolean) => void,
+		onResolve: (confirmed: boolean) => void,
 	) {
-		super(app);
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
 		this.setTitle(t('modal.deleteMember.title', { name: memberName }));
 		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
-	onOpen(): void {
-		this.contentEl.empty();
+	protected renderBody(body: HTMLElement): void {
 		const affected = new Set([
 			...this.usage.needsDecision,
 			...this.usage.listed,
 			...this.usage.records,
 		]).size;
-		this.contentEl.createEl('p', {
+		body.createEl('p', {
 			text: this.t('modal.deleteMember.description', {
 				name: this.memberName,
 				count: affected,
 			}),
 		});
-		addNoteList(this.contentEl, 
+		addNoteList(
+			body,
 			this.t('modal.deleteMember.needsDecision'),
 			this.usage.needsDecision,
 			true,
 		);
-		addNoteList(this.contentEl, 
+		addNoteList(
+			body,
 			this.t('modal.deleteMember.listed', { name: this.memberName }),
 			this.usage.listed,
 			false,
 		);
-		addNoteList(this.contentEl, 
-			this.t('modal.deleteMember.records'),
-			this.usage.records,
-			true,
-		);
-
-		const actions = this.contentEl.createDiv({
-			cls: 'snowflake-method-modal-actions',
-		});
-		const cancel = actions.createEl('button', {
-			text: this.t('common.cancel'),
-			attr: { type: 'button' },
-		});
-		cancel.addEventListener('click', () => this.close());
-		const remove = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-		// Resolves however the modal closed -- button, Escape, or the title bar --
-		// so the caller is never left waiting on a dialog the author dismissed.
-		this.onResolve(this.confirmed);
+		addNoteList(body, this.t('modal.deleteMember.records'), this.usage.records, true);
 	}
 }
 
@@ -4234,91 +4209,46 @@ export function promptForTemplateDeletion(
  * project out of every list, so it asks once. The confirm button is a plain
  * call to action rather than a warning, because nothing is destroyed.
  */
-class ConfirmArchiveProjectModal extends Modal {
-	private confirmed = false;
-
+class ConfirmArchiveProjectModal extends ConfirmModal {
 	constructor(
 		app: App,
-		private readonly t: Translate,
+		t: Translate,
 		private readonly name: string,
-		private readonly onResolve: (confirmed: boolean) => void,
+		onResolve: (confirmed: boolean) => void,
 	) {
-		super(app);
+		super(
+			app,
+			t,
+			{ label: t('modal.archiveProject.confirm'), style: 'mod-cta' },
+			onResolve,
+		);
 		this.setTitle(t('modal.archiveProject.title', { name }));
 		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
-	onOpen(): void {
-		this.contentEl.empty();
-		this.contentEl.createEl('p', {
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
 			text: this.t('modal.archiveProject.description', { name: this.name }),
 		});
-		const actions = this.contentEl.createDiv({
-			cls: 'snowflake-method-modal-actions',
-		});
-		const cancel = actions.createEl('button', {
-			text: this.t('common.cancel'),
-			attr: { type: 'button' },
-		});
-		cancel.addEventListener('click', () => this.close());
-		const archive = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: this.t('modal.archiveProject.confirm'),
-			attr: { type: 'button' },
-		});
-		archive.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-		this.onResolve(this.confirmed);
 	}
 }
 
-class ConfirmTemplateDeletionModal extends Modal {
-	private confirmed = false;
-
+class ConfirmTemplateDeletionModal extends ConfirmModal {
 	constructor(
 		app: App,
-		private readonly t: Translate,
+		t: Translate,
 		private readonly name: string,
-		private readonly onResolve: (confirmed: boolean) => void,
+		onResolve: (confirmed: boolean) => void,
 	) {
-		super(app);
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
 		this.setTitle(t('modal.deleteTemplate.title', { name }));
 		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
-	onOpen(): void {
-		this.contentEl.empty();
-		this.contentEl.createEl('p', {
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
 			text: this.t('modal.deleteTemplate.description', { name: this.name }),
 		});
-		const actions = this.contentEl.createDiv({
-			cls: 'snowflake-method-modal-actions',
-		});
-		const cancel = actions.createEl('button', {
-			text: this.t('common.cancel'),
-			attr: { type: 'button' },
-		});
-		cancel.addEventListener('click', () => this.close());
-		const remove = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-		this.onResolve(this.confirmed);
 	}
 }
 
@@ -4328,69 +4258,40 @@ class ConfirmTemplateDeletionModal extends Modal {
  * one of them — the lists that will shorten, and the record lines that will
  * stay behind for the health check to report.
  */
-export class ConfirmKindDeletionModal extends Modal {
-	private confirmed = false;
-
+export class ConfirmKindDeletionModal extends ConfirmModal {
 	constructor(
 		app: App,
-		private readonly t: Translate,
+		t: Translate,
 		private readonly kindName: string,
 		private readonly entityCount: number,
 		private readonly usage: MemberUsage,
-		private readonly onResolve: (confirmed: boolean) => void,
+		onResolve: (confirmed: boolean) => void,
 	) {
-		super(app);
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
 		this.setTitle(t('modal.deleteKind.title', { name: kindName }));
 		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
-	onOpen(): void {
-		this.contentEl.empty();
-		this.contentEl.createEl('p', {
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
 			text: this.t('modal.deleteKind.description', {
 				name: this.kindName,
 				count: this.entityCount,
 			}),
 		});
-		addNoteList(this.contentEl, 
+		addNoteList(
+			body,
 			this.t('modal.deleteMember.needsDecision'),
 			this.usage.needsDecision,
 			true,
 		);
-		addNoteList(this.contentEl, 
+		addNoteList(
+			body,
 			this.t('modal.deleteKind.listed', { name: this.kindName }),
 			this.usage.listed,
 			false,
 		);
-		addNoteList(this.contentEl, 
-			this.t('modal.deleteMember.records'),
-			this.usage.records,
-			true,
-		);
-		const actions = this.contentEl.createDiv({
-			cls: 'snowflake-method-modal-actions',
-		});
-		const cancel = actions.createEl('button', {
-			text: this.t('common.cancel'),
-			attr: { type: 'button' },
-		});
-		cancel.addEventListener('click', () => this.close());
-		const remove = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('actions.delete'),
-			attr: { type: 'button' },
-		});
-		remove.addEventListener('click', () => {
-			this.confirmed = true;
-			this.close();
-		});
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-		// Resolves however the modal closed -- button, Escape, or the title
-		// bar -- so the caller is never left waiting on a dismissed dialog.
-		this.onResolve(this.confirmed);
+		addNoteList(body, this.t('modal.deleteMember.records'), this.usage.records, true);
 	}
 }
 

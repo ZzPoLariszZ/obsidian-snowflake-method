@@ -494,8 +494,7 @@ export default class SnowflakeMethodPlugin
 				this.resolvedDefaultProjectLocale(),
 		);
 		const managerT: Translate = (key, vars) => translate(locale, key, vars);
-		const projects = await this.listProjects();
-		const archived = await this.listArchivedProjectOptions();
+		const { projects, archived } = await this.manageProjectLists();
 		new ManageProjectsModal(
 			this.app,
 			managerT,
@@ -510,7 +509,7 @@ export default class SnowflakeMethodPlugin
 					await this.saveSettings();
 					await this.handleSettingsChanged('projectRoot');
 				}
-				return this.listProjects();
+				return this.manageProjectLists();
 			},
 			async (path) => {
 				await this.selectProject(path);
@@ -626,6 +625,17 @@ export default class SnowflakeMethodPlugin
 				this.projectDiscoveryPromise = null;
 			}
 		}
+	}
+
+	/**
+	 * Lets go of the scan in flight, if any. A scan that began before a project
+	 * folder moved reports where the folders were, not where they are, and the
+	 * callers after the move would join it and repaint the old arrangement.
+	 * The scan itself finishes for whoever already asked; the next asker starts
+	 * one of their own.
+	 */
+	private invalidateProjectDiscovery(): void {
+		this.projectDiscoveryPromise = null;
 	}
 
 	private async scanProjects(): Promise<ProjectRef[]> {
@@ -760,32 +770,46 @@ export default class SnowflakeMethodPlugin
 		return this.listProjects();
 	}
 
+	/**
+	 * Puts a project's folder through Obsidian's own deletion flow and forgets
+	 * what was held about it. Everything the flow needs is on the row the author
+	 * clicked, so deleting a project reads none of it.
+	 *
+	 * Obsidian's confirmation performs the configured trash/delete action before
+	 * it resolves true. Calling trashFile() again would use a detached TFolder
+	 * and abort the manager refresh after the project has already disappeared.
+	 */
+	private async confirmProjectDeletion(
+		option: ManageProjectOption,
+	): Promise<boolean> {
+		const folder = this.projects.repository.getFolder(option.rootPath);
+		if (folder === null) throw new ManagedFileNotFoundError(option.rootPath);
+		if (!(await this.app.fileManager.promptForDeletion(folder))) return false;
+		this.projectLocalesById.delete(option.projectId);
+		this.invalidateProjectHealth(option.rootPath);
+		this.invalidateProjectDiscovery();
+		new Notice(this.t('messages.projectTrashed', { name: option.title }));
+		return true;
+	}
+
+	/** Forgets a recent project that lived at or below the path. */
+	private async forgetRecentProjectUnder(rootPath: string): Promise<void> {
+		const recent = this.settings.recentProjectPath;
+		if (recent === null || !isPathAtOrBelow(recent, rootPath)) return;
+		this.settings.recentProjectPath = null;
+		this.settings.recentStep = 1;
+		this.currentProjectLocale = null;
+		await this.saveSettings();
+	}
+
 	private async trashManagedProject(
 		option: ManageProjectOption,
 	): Promise<ProjectOption[] | null> {
-		const project = await this.projects.loadProject(option.path);
-		const folder = this.projects.repository.getFolder(project.rootPath);
-		if (folder === null) throw new ManagedFileNotFoundError(project.rootPath);
-		if (!(await this.app.fileManager.promptForDeletion(folder))) return null;
-		this.projectLocalesById.delete(project.id);
-		this.invalidateProjectHealth(project.rootPath);
-
-		// Obsidian's confirmation flow performs the configured trash/delete action
-		// before resolving true. Calling trashFile() again uses a detached TFolder
-		// and aborts the manager refresh after the project has already disappeared.
-		if (
-			this.settings.recentProjectPath === project.projectFile ||
-			this.settings.recentProjectPath?.startsWith(`${project.rootPath}/`)
-		) {
-			this.settings.recentProjectPath = null;
-			this.settings.recentStep = 1;
-			this.currentProjectLocale = null;
-			await this.saveSettings();
-		}
+		if (!(await this.confirmProjectDeletion(option))) return null;
+		await this.forgetRecentProjectUnder(option.rootPath);
 		await this.refreshDashboards();
-		new Notice(this.t('messages.projectTrashed', { name: project.title }));
 		return (await this.listProjects()).filter(
-			(candidate) => candidate.projectId !== project.id,
+			(candidate) => candidate.projectId !== option.projectId,
 		);
 	}
 
@@ -809,17 +833,27 @@ export default class SnowflakeMethodPlugin
 		}));
 	}
 
+	/** The manager's two lists, gathered together because it shows them so. */
 	private async manageProjectLists(): Promise<ManageProjectLists> {
-		return {
-			projects: await this.listProjects(),
-			archived: await this.listArchivedProjectOptions(),
-		};
+		// Disjoint folders, so neither has to wait on the other: the archive
+		// sits beside the projects rather than among them.
+		const [projects, archived] = await Promise.all([
+			this.listProjects(),
+			this.listArchivedProjectOptions(),
+		]);
+		return { projects, archived };
 	}
 
 	private async archiveManagedProject(
 		option: ManageProjectOption,
 	): Promise<ManageProjectLists> {
-		let project: ProjectSnapshot;
+		// Asked before the move rather than after: the folder rename reaches
+		// handleVaultRename first, which forgets a recent project that has left
+		// the root, so by the time this returns there is nothing left to compare.
+		const wasRecent =
+			this.settings.recentProjectPath !== null &&
+			isPathAtOrBelow(this.settings.recentProjectPath, option.rootPath);
+		let project: ProjectRef;
 		try {
 			project = await this.projects.archiveProject(option.path);
 		} catch (error) {
@@ -827,19 +861,17 @@ export default class SnowflakeMethodPlugin
 		}
 		this.projectLocalesById.delete(project.id);
 		this.invalidateProjectHealth(option.rootPath);
+		this.invalidateProjectDiscovery();
 		// A rename does not detach views the way a delete does, and a dashboard
 		// left open on the old path would sit on a project it can no longer find.
 		this.detachProjectViews(option.rootPath);
-		if (
-			this.settings.recentProjectPath === option.path ||
-			this.settings.recentProjectPath?.startsWith(`${option.rootPath}/`)
-		) {
+		if (wasRecent) {
 			this.settings.recentProjectPath = null;
 			this.settings.recentStep = 1;
 			this.currentProjectLocale = null;
 			await this.saveSettings();
 		}
-		await this.refreshDashboards();
+		this.scheduleRefresh(true);
 		new Notice(this.t('messages.projectArchived', { name: project.title }));
 		return this.manageProjectLists();
 	}
@@ -858,7 +890,8 @@ export default class SnowflakeMethodPlugin
 		}
 		this.invalidateProjectHealth(option.rootPath);
 		this.invalidateProjectHealth(restored.project.rootPath);
-		await this.refreshDashboards();
+		this.invalidateProjectDiscovery();
+		this.scheduleRefresh(true);
 		new Notice(
 			restored.renamedFrom === null
 				? this.t('messages.projectRestored', {
@@ -875,13 +908,7 @@ export default class SnowflakeMethodPlugin
 	private async trashArchivedProject(
 		option: ManageProjectOption,
 	): Promise<ManageProjectLists | null> {
-		const project = await this.projects.loadProject(option.path);
-		const folder = this.projects.repository.getFolder(project.rootPath);
-		if (folder === null) throw new ManagedFileNotFoundError(project.rootPath);
-		if (!(await this.app.fileManager.promptForDeletion(folder))) return null;
-		this.projectLocalesById.delete(project.id);
-		this.invalidateProjectHealth(project.rootPath);
-		new Notice(this.t('messages.projectTrashed', { name: project.title }));
+		if (!(await this.confirmProjectDeletion(option))) return null;
 		return this.manageProjectLists();
 	}
 
@@ -3579,8 +3606,26 @@ export default class SnowflakeMethodPlugin
 		);
 		if (movedRoot !== null) this.settings.projectRoot = movedRoot;
 
+		// A project folder can be carried across the line the scan draws by
+		// hand: dragged into the archive, or dragged back out of it. Neither
+		// end of that move looks like anything the ordinary tests know — the
+		// old path stops being a known root the moment it leaves, and the new
+		// one is a folder rather than the note the scan recognises — so the
+		// folder itself is asked whether it holds a project.
+		const leftTheRoot =
+			file instanceof TFolder &&
+			this.knownProjectRoots.has(oldPath) &&
+			parentPath(file.path) !== this.settings.projectRoot;
+		const joinedTheRoot =
+			file instanceof TFolder &&
+			!this.knownProjectRoots.has(oldPath) &&
+			parentPath(file.path) === this.settings.projectRoot &&
+			this.holdsProjectMetadata(file.path);
+
 		if (
 			movedRoot === null &&
+			!leftTheRoot &&
+			!joinedTheRoot &&
 			!this.touchesProject(oldPath) &&
 			!this.touchesProject(file.path)
 		) {
@@ -3589,6 +3634,13 @@ export default class SnowflakeMethodPlugin
 
 		this.invalidateProjectHealth(oldPath);
 		this.invalidateProjectHealth(file.path);
+		// Whatever the scan holds was true of the old arrangement.
+		this.invalidateProjectDiscovery();
+		if (leftTheRoot) {
+			// Views cannot follow a project out of the scan's reach, and a
+			// stream left in a background tab never notices on its own.
+			this.detachProjectViews(oldPath);
+		}
 
 		const recent = this.settings.recentProjectPath;
 		const movedRecent =
@@ -3612,6 +3664,22 @@ export default class SnowflakeMethodPlugin
 
 	private isProjectPath(path: string): boolean {
 		return isPathAtOrBelow(path, this.settings.projectRoot);
+	}
+
+	/**
+	 * Whether a folder holds a project's canonical metadata note, which is what
+	 * makes it a project the scan can find. Two lookups in the file map and no
+	 * reads, so a Vault event can afford to ask.
+	 */
+	private holdsProjectMetadata(folderPath: string): boolean {
+		return Object.values(PROJECT_PATH_LAYOUTS).some(
+			(layout) =>
+				this.projects.repository.getFile(
+					normalizePath(
+						`${folderPath}/${layout.directories.system}/${layout.projectFileName}`,
+					),
+				) !== null,
+		);
 	}
 
 	private isDirectProjectFile(path: string): boolean {

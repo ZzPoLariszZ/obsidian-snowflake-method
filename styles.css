@@ -2471,9 +2471,13 @@
 	min-height: 0;
 }
 
+/* These dialogs stand as tall as their fields rather than filling the frame,
+   so the content does not grow — but it must still be allowed to shrink, or
+   the scroller below never engages and a window too short for the form hides
+   its last fields and the buttons under them with no way to reach either. */
 .snowflake-method-project-modal .modal-content,
 .snowflake-method-compact-form-modal .modal-content {
-	flex: 0 0 auto;
+	flex: 0 1 auto;
 }
 
 .snowflake-method-project-form {
@@ -5579,10 +5583,6 @@ button.snowflake-method-kind-options {
 .modal.snowflake-method-form-modal .modal-header-button,
 .modal.snowflake-method-form-modal .modal-close-button {
 	right: var(--snowflake-close-inset, var(--snowflake-form-pad));
-}
-
-.modal.snowflake-method-definition-modal {
-	--snowflake-close-inset: 16px;
 }
 
 /* Naming a new category: what it will be called, and what it is for. */
