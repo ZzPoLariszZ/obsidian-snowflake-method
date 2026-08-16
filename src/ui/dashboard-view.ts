@@ -2662,7 +2662,7 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 		menu.addItem((item) =>
 			item
-				.setTitle(this.t('actions.openNote'))
+				.setTitle(this.t('common.open'))
 				.setIcon('file-text')
 				.onClick(actions.open),
 		);
