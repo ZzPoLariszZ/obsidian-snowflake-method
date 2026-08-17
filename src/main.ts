@@ -48,6 +48,7 @@ import {
 	areManagedBoundariesUnlocked,
 	createManagedSectionEditorExtension,
 	createSelectionWatchExtension,
+	type EditorFocusReport,
 	findEditorViewForMarkdownInfo,
 	flashManagedMarkerIssue,
 	flashManagedSections,
@@ -111,6 +112,7 @@ import {
 } from './settings';
 import {
 	inspectManagedDocumentSections,
+	inspectMarkedSection,
 	parseTerm,
 	readMarkedSection,
 	type CustomField,
@@ -182,6 +184,27 @@ const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
+
+/** Fields that hold writing. A date, a number, a checkbox holds none. */
+const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
+
+/**
+ * How often a field being counted is looked at again. A field can stop
+ * existing without a word from the DOM -- closing a modal removes the element
+ * that had focus, and removal fires neither blur nor focusout -- so the one
+ * count that cannot wait for an event asks again while it stands.
+ */
+const FIELD_RECHECK_MS = 500;
+
+/**
+ * Whether an element sits inside something this plugin drew. Every container
+ * of ours carries a `snowflake-method-` class, and nothing else in the app
+ * does, so the count follows our own forms and leaves Obsidian's own boxes --
+ * the quick switcher, the search pane -- to answer for themselves.
+ */
+function isSnowflakeField(element: Element): boolean {
+	return element.closest('[class*="snowflake-method-"]') !== null;
+}
 
 /** The vault path of one of an entity kind's tree root folders. */
 function definitionRootPathFor(
@@ -260,7 +283,7 @@ export default class SnowflakeMethodPlugin
 	/** Ticks per refresh, so a slow count cannot paint over a newer one. */
 	private writingCountSequence = 0;
 	/** What is selected in the focused native Markdown editor, or null. */
-	private editorSelection: string | null = null;
+	private editorFocus: EditorFocusReport | null = null;
 	/** Which sidebars solo folded away, so leaving it unfolds only those. */
 	private soloCollapsed: { left: boolean; right: boolean } | null = null;
 	/** Whether solo took the window full screen, so leaving it lets go. */
@@ -418,9 +441,9 @@ export default class SnowflakeMethodPlugin
 			this.registerEvent(
 				this.app.workspace.on('active-leaf-change', (leaf) => {
 					this.applyManuscriptModePresence();
-					// A selection reported from the editor just left must not
-					// stand in for whatever is in front now.
-					this.editorSelection = null;
+					// What was reported from the editor just left must not stand
+					// in for whatever is in front now.
+					this.editorFocus = null;
 					this.scheduleWritingCountRefresh(0);
 					void this.activateDashboardLeaf(leaf).catch((error: unknown) => {
 						this.showError(error);
@@ -2298,13 +2321,16 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The writing count in the status bar: a snowflake and a number. A
-	 * Markdown note in front is counted from its editor's own buffer, so
-	 * unsaved keystrokes already count; a manuscript stream counts the
-	 * segment being written, or the whole manuscript while none is; a
-	 * selection overrides either, under the same rules. Clicking offers the
-	 * project and manuscript totals, counted on demand — a whole project is
-	 * too much reading to do on every keystroke.
+	 * The writing count in the status bar: a snowflake and a number. A field
+	 * of the plugin's own -- a form in a modal, a step on the dashboard --
+	 * answers for itself while it has focus, because that is where the
+	 * writing is going. Otherwise a Markdown note in front is counted from
+	 * its editor's own buffer, so unsaved keystrokes already count; a
+	 * manuscript stream counts the segment being written, or the whole
+	 * manuscript while none is; a selection overrides any of them, under the
+	 * same rules. Clicking offers the project and manuscript totals, counted
+	 * on demand — a whole project is too much reading to do on every
+	 * keystroke.
 	 */
 	private registerWritingCount(): void {
 		const item = this.addStatusBarItem();
@@ -2318,9 +2344,17 @@ export default class SnowflakeMethodPlugin
 			this.openWritingCountMenu(event);
 		});
 		this.registerEditorExtension(
-			createSelectionWatchExtension((selectedText) => {
-				if (this.editorSelection === selectedText) return;
-				this.editorSelection = selectedText;
+			createSelectionWatchExtension((report) => {
+				// The caret is half of the answer, not only the selection: it
+				// says which of a note's marked sections is being written in.
+				if (
+					this.editorFocus?.path === report?.path &&
+					this.editorFocus?.selectedText === report?.selectedText &&
+					this.editorFocus?.caret === report?.caret
+				) {
+					return;
+				}
+				this.editorFocus = report;
 				this.scheduleWritingCountRefresh();
 			}),
 		);
@@ -2329,6 +2363,22 @@ export default class SnowflakeMethodPlugin
 				this.scheduleWritingCountRefresh();
 			}),
 		);
+		// Focus decides whether a field is being written in at all, so those
+		// two are always worth a recount. Typing and selecting are not: they
+		// fire from every editor in the app, and a caret moving through a long
+		// note must not set that note being counted again.
+		const doc = this.app.workspace.containerEl.doc;
+		for (const event of ['focusin', 'focusout'] as const) {
+			this.registerDomEvent(doc, event, () => {
+				this.scheduleWritingCountRefresh(0);
+			});
+		}
+		for (const event of ['input', 'selectionchange'] as const) {
+			this.registerDomEvent(doc, event, () => {
+				if (this.focusedField() === null) return;
+				this.scheduleWritingCountRefresh();
+			});
+		}
 		this.register(() => {
 			if (this.writingCountTimer !== null) {
 				this.app.workspace.containerEl.win.clearTimeout(
@@ -2395,14 +2445,51 @@ export default class SnowflakeMethodPlugin
 		// the numbers, a screen reader gets what the item is and does.
 		item.setAttribute('aria-label', this.globalT('statusBar.ariaLabel'));
 		item.show();
+		// The chain ends of its own accord: the first count taken after the
+		// field is gone is not a field's count, and arms nothing.
+		if (this.focusedField() !== null) {
+			this.scheduleWritingCountRefresh(FIELD_RECHECK_MS);
+		}
 	}
 
-	/** What the status bar should show for the view in front, or null. */
+	/**
+	 * The plugin's own text field with focus, if one has it. Looked up when a
+	 * count is taken rather than remembered, so a field whose modal closed
+	 * cannot leave its number standing.
+	 */
+	private focusedField(): HTMLInputElement | HTMLTextAreaElement | null {
+		const active = this.app.workspace.containerEl.doc.activeElement;
+		const field =
+			active instanceof HTMLTextAreaElement ||
+			(active instanceof HTMLInputElement && COUNTABLE_FIELD_TYPES.has(active.type))
+				? active
+				: null;
+		return field !== null && isSnowflakeField(field) ? field : null;
+	}
+
+	/** What the status bar should show for what is in front, or null. */
 	private async currentWritingCount(): Promise<{
 		count: WritingCount;
 		selection: boolean;
 	} | null> {
 		const options = this.writingCountOptions();
+		// A field holds what was typed into it and no Markdown around it, so
+		// it is counted as it stands -- the same reading the step 1 hint under
+		// the dashboard's own box gives.
+		const field = this.focusedField();
+		if (field !== null) {
+			const { selectionStart, selectionEnd } = field;
+			const selected =
+				selectionStart !== null &&
+				selectionEnd !== null &&
+				selectionEnd > selectionStart
+					? field.value.slice(selectionStart, selectionEnd)
+					: null;
+			return {
+				count: countWriting(selected ?? field.value, options),
+				selection: selected !== null,
+			};
+		}
 		const stream = this.activeManuscriptView();
 		if (stream !== null) {
 			const context = stream.writingContext();
@@ -2435,16 +2522,75 @@ export default class SnowflakeMethodPlugin
 		}
 		const markdown = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (markdown !== null && markdown.file !== null) {
-			if (this.editorSelection !== null) {
+			// Only what was reported from this very note may speak for it: a
+			// caret carried over from another pane would land anywhere.
+			const focus =
+				this.editorFocus?.path === markdown.file.path ? this.editorFocus : null;
+			if (focus?.selectedText != null) {
 				return {
-					count: this.countSelection(this.editorSelection, options),
+					count: this.countSelection(focus.selectedText, options),
 					selection: true,
 				};
 			}
+			const content = markdown.editor.getValue();
+			const section =
+				focus === null
+					? null
+					: this.countCaretSection(content, focus.caret, options);
 			return {
-				count: this.countMarkdownBuffer(markdown.editor.getValue(), options),
+				count: section ?? this.countMarkdownBuffer(content, options),
 				selection: false,
 			};
+		}
+		return null;
+	}
+
+	/**
+	 * The marked section the caret sits in, counted by itself.
+	 *
+	 * A note's sections are where the writing for one step, one synopsis, one
+	 * field goes, so while the caret is in one that is the piece being
+	 * written, and the note's own total is what it falls back to — the same
+	 * bargain the manuscript stream strikes between a segment and the whole.
+	 * Sections the total leaves out never answer: a generated block is a view
+	 * of the properties and a record section is storage, and neither is a
+	 * number anybody is writing towards.
+	 */
+	private countCaretSection(
+		content: string,
+		caret: number,
+		options: NoteCountOptions,
+	): WritingCount | null {
+		let body: string;
+		let declared: unknown;
+		try {
+			const parsed = parseMarkdownFrontmatter(content);
+			body = parsed.body;
+			declared = documentTypeOf(parsed.frontmatter);
+		} catch {
+			return null;
+		}
+		if (!isDocumentType(declared)) return null;
+		// The body runs to the end of the note, so what precedes it is the
+		// frontmatter, and the caret steps back by exactly that much.
+		const offset = caret - (content.length - body.length);
+		for (const descriptor of managedSectionsForDocument(declared)) {
+			if (descriptor.generated === true || descriptor.protected === true) {
+				continue;
+			}
+			const inspection = inspectMarkedSection(body, descriptor.id);
+			if (inspection.status !== 'present') continue;
+			if (offset < inspection.contentStart || offset > inspection.contentEnd) {
+				continue;
+			}
+			return countWriting(
+				countableProse(
+					body.slice(inspection.contentStart, inspection.contentEnd),
+					[],
+					options,
+				),
+				options,
+			);
 		}
 		return null;
 	}
