@@ -68,6 +68,10 @@ export default defineConfig(
 					],
 					acronyms: ['CJK', 'H1', 'ID', 'POV', '6Z'],
 					ignoreRegex: [
+						// Units rather than sentences: each is interpolated into a
+						// "{count} {unit}" line and must stay lowercase there.
+						'^words?$',
+						'^characters?$',
 						// A frontmatter key, quoted so an author can find it in the
 						// note. It is spelled the way the file spells it, which is
 						// lowercase, and is not the brand.

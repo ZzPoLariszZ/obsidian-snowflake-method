@@ -1,4 +1,5 @@
 import {
+	PROTECTED_SECTION_IDS,
 	countWriting,
 	countableProse,
 	isDocumentType,
@@ -37,6 +38,12 @@ export type WritingCountScope = "project" | "manuscript";
 export interface ScopeWritingCount extends WritingCount {
 	scope: WritingCountScope;
 	notes: number;
+	/**
+	 * Notes the scope holds that could not be read -- broken frontmatter,
+	 * almost always. Their writing is missing from the numbers above, and a
+	 * total that quietly shrank by a chapter is worse than one that says so.
+	 */
+	unreadable: number;
 }
 
 /**
@@ -66,27 +73,103 @@ export class WritingCountService {
 		{ stamp: string; count: WritingCount }
 	>();
 
+	/**
+	 * Where a body's plugin-written sections sit: the generated views and the
+	 * record storage, which the domain already names in one place. Every count
+	 * here asks this rather than re-deciding what the plugin wrote, so the
+	 * whole and the parts can never disagree about it.
+	 */
+	private pluginWritten(
+		body: string,
+		documentType: DocumentType | null,
+	): CountableRange[] {
+		const ranges: CountableRange[] = [];
+		for (const descriptor of documentType === null
+			? []
+			: managedSectionsForDocument(documentType)) {
+			if (!PROTECTED_SECTION_IDS.has(descriptor.id)) continue;
+			const inspection = inspectMarkedSection(body, descriptor.id);
+			if (inspection.status !== "present") continue;
+			ranges.push({
+				from: inspection.contentStart,
+				to: inspection.contentEnd,
+			});
+		}
+		return ranges;
+	}
+
 	/** One body's writing count, its plugin-written sections excluded. */
 	countBody(
 		body: string,
 		documentType: DocumentType | null,
 		options: NoteCountOptions,
 	): WritingCount {
-		const excluded: CountableRange[] = [];
-		for (const descriptor of documentType === null
-			? []
-			: managedSectionsForDocument(documentType)) {
-			if (descriptor.generated !== true && descriptor.protected !== true) {
-				continue;
-			}
+		return countWriting(
+			countableProse(body, this.pluginWritten(body, documentType), options),
+			options,
+		);
+	}
+
+	/**
+	 * One stretch of a body, counted as the part of its note that it is.
+	 *
+	 * Everything outside the stretch is excluded rather than sliced away, so
+	 * every offset stays the note's own: a plugin-written block nested inside
+	 * the stretch drops out exactly as it does from the note's total, and the
+	 * note's title is still the note's, so a stretch holding an author's own
+	 * level-1 heading counts it.
+	 */
+	countRange(
+		body: string,
+		documentType: DocumentType | null,
+		range: CountableRange,
+		options: NoteCountOptions,
+	): WritingCount {
+		return countWriting(
+			countableProse(
+				body,
+				[
+					...this.pluginWritten(body, documentType),
+					{ from: 0, to: range.from },
+					{ from: range.to, to: body.length },
+				],
+				options,
+			),
+			options,
+		);
+	}
+
+	/**
+	 * The marked section an offset sits in, counted on its own, or null when
+	 * the offset is in none the count reads.
+	 *
+	 * A note's sections are where the writing for one step, one synopsis, one
+	 * field goes, so while the caret is in one that is the piece being
+	 * written. Sections the note's total leaves out never answer: a generated
+	 * block is a view of the properties and a record section is storage, and
+	 * neither is a number anybody is writing towards.
+	 */
+	countSectionAt(
+		body: string,
+		documentType: DocumentType,
+		offset: number,
+		options: NoteCountOptions,
+	): WritingCount | null {
+		for (const descriptor of managedSectionsForDocument(documentType)) {
+			if (PROTECTED_SECTION_IDS.has(descriptor.id)) continue;
 			const inspection = inspectMarkedSection(body, descriptor.id);
 			if (inspection.status !== "present") continue;
-			excluded.push({
-				from: inspection.contentStart,
-				to: inspection.contentEnd,
-			});
+			if (offset < inspection.contentStart || offset > inspection.contentEnd) {
+				continue;
+			}
+			return this.countRange(
+				body,
+				documentType,
+				{ from: inspection.contentStart, to: inspection.contentEnd },
+				options,
+			);
 		}
-		return countWriting(countableProse(body, excluded, options), options);
+		return null;
 	}
 
 	/** One note's writing count, or null when the note cannot be read. */
@@ -113,6 +196,24 @@ export class WritingCountService {
 	}
 
 	/**
+	 * Lets go of the counts held for a path the vault no longer has, and with
+	 * `children`, for everything under a folder. Mirrors the repository's own
+	 * `forget` and is called beside it: `mtime` and `size` both survive a
+	 * rename, so a note moved out of a path and another moved in can stamp
+	 * alike, and the second would be answered with the first one's number.
+	 * Renaming through a long session would otherwise leave an entry behind
+	 * for every path a note has ever had.
+	 */
+	forget(path: string, { children = false } = {}): void {
+		this.memo.delete(path);
+		if (!children) return;
+		const prefix = `${path}/`;
+		for (const key of this.memo.keys()) {
+			if (key.startsWith(prefix)) this.memo.delete(key);
+		}
+	}
+
+	/**
 	 * A whole scope's writing count: the manuscript alone, or every Markdown
 	 * note under the project's folder -- managed or not, because a free note
 	 * an author keeps inside the project is their writing too.
@@ -134,18 +235,29 @@ export class WritingCountService {
 		const sum: ScopeWritingCount = {
 			scope,
 			notes: 0,
+			unreadable: 0,
 			cjkCharacters: 0,
 			words: 0,
 			punctuationMarks: 0,
+			charactersWithSpaces: 0,
+			charactersNoSpaces: 0,
 			total: 0,
 		};
 		for (const path of paths) {
 			const count = await this.countNote(path, options);
-			if (count === null) continue;
+			// The paths came from the vault a moment ago, so a note that will
+			// not read is a note that will not parse rather than one that is
+			// gone. Said out loud: silence here reads as writing that vanished.
+			if (count === null) {
+				sum.unreadable += 1;
+				continue;
+			}
 			sum.notes += 1;
 			sum.cjkCharacters += count.cjkCharacters;
 			sum.words += count.words;
 			sum.punctuationMarks += count.punctuationMarks;
+			sum.charactersWithSpaces += count.charactersWithSpaces;
+			sum.charactersNoSpaces += count.charactersNoSpaces;
 			sum.total += count.total;
 		}
 		return sum;

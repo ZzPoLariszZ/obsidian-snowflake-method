@@ -66,7 +66,7 @@ describe('countable prose', () => {
 			expect(total('skip-h1')).toBe(4);
 		});
 
-		it('spends the title on the first H1 the count would have read', () => {
+		it('spends the title on the first H1 the page shows', () => {
 			// The one in the comment is on nobody's page, so the real title is
 			// still the one that goes.
 			const hidden = '%%\n# Draft name\n%%\n\n# Alice\n\nOne two.';
@@ -75,16 +75,24 @@ describe('countable prose', () => {
 					mode: 'ms-word',
 				}).total,
 			).toBe(2);
-			// The same when the H1 sits inside an excluded section.
-			const excluded = '# Scaffolding\n\n# Alice\n\nOne two.';
+		});
+
+		it('leaves the title where the caller excluded it', () => {
+			// Counting one stretch of a note excludes the rest of the note, and
+			// the note still has exactly one title. An excluded stretch is off
+			// this count, not off the page, so the H1 inside it spends the title
+			// and the heading the author wrote further down survives -- without
+			// that, a section would report one heading less than the same words
+			// contribute to the note.
+			const body = '# Alice\n\n# Her winter\n\nOne two.';
 			expect(
 				countWriting(
-					countableProse(excluded, [{ from: 0, to: 15 }], {
+					countableProse(body, [{ from: 0, to: 7 }], {
 						headings: 'skip-first-h1',
 					}),
 					{ mode: 'ms-word' },
 				).total,
-			).toBe(2);
+			).toBe(4);
 		});
 
 		it('passes over every level', () => {
@@ -142,6 +150,72 @@ describe('countable prose', () => {
 		expect(count('one two %% hidden to the end')).toBe(2);
 	});
 
+	it('opens no comment from a marker shown inside code', () => {
+		// Code is shown as written, so a marker quoted in it comments nothing
+		// and the chapter under it still counts.
+		expect(countableProse('Use `%%` here.\n\nChapter one had words.')).toBe(
+			'Use  here.\n\nChapter one had words.',
+		);
+		expect(count('Use `%%` here.\n\nChapter one had words.')).toBe(6);
+		expect(
+			count('```js\nconst a = "%%";\n```\n\nChapter one had words.'),
+		).toBe(4);
+		// The marker in code takes no part, so the two in prose pair with each
+		// other and hide what is between them: one, two, and four remain.
+		expect(count('`%%` one two %% three %% four')).toBe(3);
+	});
+
+	describe('syntax the page draws rather than says', () => {
+		it('counts a table by its cells, not its pipes', () => {
+			const table = '| One | Two |\n| --- | --- |\n| a | b |';
+			expect(count(table)).toBe(4);
+			expect(countableProse(table).replace(/\s+/g, ' ').trim()).toBe(
+				'One Two a b',
+			);
+		});
+
+		it('keeps struck-through text and drops its tildes', () => {
+			// A line through a word does not take it off the page.
+			expect(countableProse('a ~~struck~~ b')).toBe('a struck b');
+			expect(count('a ~~struck~~ b')).toBe(3);
+		});
+
+		it('keeps a highlight and drops its equals', () => {
+			expect(countableProse('记住==这句话==吧')).toBe('记住这句话吧');
+			// A lone pair with a space inside highlights nothing, as in Obsidian.
+			expect(countableProse('one == two == three')).toBe('one == two == three');
+			// What a highlight holds is prose still, links and emphasis included.
+			expect(countableProse('==**[[Alice]]** now==')).toBe('Alice now');
+		});
+
+		it('drops a task box and keeps the task', () => {
+			expect(count('- [ ] do the thing\n- [x] and this one')).toBe(6);
+			expect(countableProse('- [ ] do it').trim()).toBe('do it');
+		});
+
+		it('drops a callout kind and keeps its title', () => {
+			expect(countableProse('> [!note] Title here\n> body words').trim()).toBe(
+				'Title here\n body words',
+			);
+			expect(count('> [!warning]- Folded title\n> body words')).toBe(4);
+			// A nested callout names itself the same way.
+			expect(count('> > [!tip] Inner title')).toBe(2);
+		});
+
+		it('drops a footnote marker and its definition label', () => {
+			expect(countableProse('text[^1]')).toBe('text');
+			expect(countableProse('[^1]: The note itself.').trim()).toBe(
+				'The note itself.',
+			);
+			expect(count('A claim[^src] worth making.\n\n[^src]: Where from.')).toBe(6);
+		});
+
+		it('leaves all of it dead inside code', () => {
+			expect(count('`| a | b |`')).toBe(0);
+			expect(count('```\n==bright== [^1] > [!note] x\n```')).toBe(0);
+		});
+	});
+
 	it('drops block IDs and horizontal rules', () => {
 		expect(count('A paragraph here. ^ab12-cd')).toBe(3);
 		expect(count('one\n\n---\n\ntwo')).toBe(2);
@@ -161,6 +235,18 @@ describe('countable prose', () => {
 			countWriting(countableProse(body, [{ from, to }]), { mode: 'ms-word' })
 				.total,
 		).toBe(4);
+	});
+
+	it('removes an excluded range whose ends arrive the wrong way round', () => {
+		// An empty managed section reports its content ending before it starts.
+		// Read as written that rewinds the splice and emits the stretch twice,
+		// which puts writing into the count that the caller asked to take out.
+		expect(countableProse('abcdefghij', [{ from: 5, to: 3 }])).toBe(
+			'abcdefghij',
+		);
+		expect(countableProse('one two three', [{ from: 8, to: 4 }])).toBe(
+			'one two three',
+		);
 	});
 
 	it('keeps an escaped character and stands a space in for an entity', () => {

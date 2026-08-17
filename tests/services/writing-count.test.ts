@@ -35,6 +35,25 @@ Alice fights the tide.
 Free words outside.
 `;
 
+/**
+ * A note whose generated block sits inside a section the count reads, so the
+ * section and the note have to agree about it, and whose synopsis carries a
+ * heading of the author's own under the note's title.
+ */
+const NESTED_BODY = `# Alice
+
+<!-- snowflake:section:character-synopsis:start -->
+# Her winter
+
+Alice fights the tide.
+
+<!-- snowflake:section:character-fields:start -->
+> [!info] Fields
+> **Storyline**: generated words that must never count
+<!-- snowflake:section:character-fields:end -->
+<!-- snowflake:section:character-synopsis:end -->
+`;
+
 describe("WritingCountService", () => {
   let fakeVault: FakeVault;
   let service: SnowflakeProjectService;
@@ -66,6 +85,8 @@ describe("WritingCountService", () => {
       cjkCharacters: 0,
       words: 11,
       punctuationMarks: 0,
+      charactersWithSpaces: 89,
+      charactersNoSpaces: 60,
       total: 11,
     });
   });
@@ -98,6 +119,8 @@ describe("WritingCountService", () => {
       cjkCharacters: 0,
       words: 4,
       punctuationMarks: 0,
+      charactersWithSpaces: 29,
+      charactersNoSpaces: 23,
       total: 4,
     });
   });
@@ -125,6 +148,111 @@ describe("WritingCountService", () => {
     expect((await service.writingCount.countNote(path, official))?.total).toBe(
       15,
     );
+  });
+
+  describe("one section counted on its own", () => {
+    const caretIn = (needle: string): number => NESTED_BODY.indexOf(needle);
+
+    it("leaves out a plugin-written block nested inside it", () => {
+      // Her winter, Alice fights the tide: the fields block is a view of the
+      // properties wherever it sits, so the section can never come to more
+      // than the note that holds it.
+      expect(
+        service.writingCount.countSectionAt(
+          NESTED_BODY,
+          "character",
+          caretIn("fights"),
+          processor,
+        )?.total,
+      ).toBe(6);
+      expect(
+        service.writingCount.countBody(NESTED_BODY, "character", processor)
+          .total,
+      ).toBe(7);
+    });
+
+    it("keeps the author's own heading and spends the title on the note's", () => {
+      const options = { ...processor, headings: "skip-first-h1" } as const;
+      // Alice goes as the note's title; Her winter is the author's and stays,
+      // in the section exactly as in the note.
+      expect(
+        service.writingCount.countSectionAt(
+          NESTED_BODY,
+          "character",
+          caretIn("fights"),
+          options,
+        )?.total,
+      ).toBe(6);
+      expect(
+        service.writingCount.countBody(NESTED_BODY, "character", options).total,
+      ).toBe(6);
+    });
+
+    it("names no section the note's own total leaves out", () => {
+      // Outside every section the count reads, so the note answers instead.
+      expect(
+        service.writingCount.countSectionAt(
+          NESTED_BODY,
+          "character",
+          caretIn("# Alice"),
+          processor,
+        ),
+      ).toBeNull();
+      // Inside the generated block, which is never a section of its own: the
+      // one holding it answers, and answers without it.
+      expect(
+        service.writingCount.countSectionAt(
+          NESTED_BODY,
+          "character",
+          caretIn("Storyline"),
+          processor,
+        )?.total,
+      ).toBe(6);
+    });
+  });
+
+  it("says how many notes a scope holds that would not read", async () => {
+    const clean = await service.writingCount.countProject(
+      project,
+      "project",
+      processor,
+    );
+    expect(clean.unreadable).toBe(0);
+
+    await fakeVault.create(
+      "Snowflake Projects/Novel/Broken.md",
+      "---\n- not\n- a mapping\n---\n\nWords nobody will count.\n",
+    );
+    const counted = await service.writingCount.countProject(
+      project,
+      "project",
+      processor,
+    );
+
+    // The words are missing from the totals either way; what must not go
+    // missing with them is any sign that a note was left out.
+    expect(counted.unreadable).toBe(1);
+    expect(counted.notes).toBe(clean.notes);
+    expect(counted.total).toBe(clean.total);
+  });
+
+  it("forgets a path so the next note there is not answered for the last", async () => {
+    const path = "Snowflake Projects/Novel/Loose note.md";
+    await fakeVault.create(path, "one two\n");
+    expect((await service.writingCount.countNote(path, processor))?.total).toBe(2);
+
+    // A rename carries a note's modified time and size with it, so the note
+    // that moves into a path can stamp exactly as the one that moved out did.
+    const file = fakeVault.getFileByPath(path);
+    const stat = { ...file!.stat };
+    fakeVault.contents.set(path, "one2two\n");
+    file!.stat.mtime = stat.mtime;
+    file!.stat.size = stat.size;
+
+    service.repository.forget(path);
+    expect((await service.writingCount.countNote(path, processor))?.total).toBe(2);
+    service.writingCount.forget(path);
+    expect((await service.writingCount.countNote(path, processor))?.total).toBe(1);
   });
 
   it("returns null for a note that is not there", async () => {

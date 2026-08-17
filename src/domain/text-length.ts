@@ -54,8 +54,22 @@ export interface WritingCount {
 	cjkCharacters: number;
 	words: number;
 	punctuationMarks: number;
+	/**
+	 * Every character of the writing, marks and spaces and all. Measured
+	 * whatever the convention, because a character is a character to each of
+	 * them; only what they gather into a total differs.
+	 */
+	charactersWithSpaces: number;
+	/** The same, with whitespace left out. */
+	charactersNoSpaces: number;
 	total: number;
 }
+
+/** What a convention gathers. The characters underneath are counted once. */
+type GatheredCount = Omit<
+	WritingCount,
+	'charactersWithSpaces' | 'charactersNoSpaces'
+>;
 
 export interface WritingCountOptions {
 	mode: WritingCountMode;
@@ -133,7 +147,7 @@ function isAstral(character: string): boolean {
  * the middle number is the letters and digits rather than the words they
  * spell, and the marks Chinese writing spends stand with the ordinary ones.
  */
-function countEveryCharacter(text: string): WritingCount {
+function countEveryCharacter(text: string): GatheredCount {
 	let cjkCharacters = 0;
 	let letters = 0;
 	let punctuationMarks = 0;
@@ -156,11 +170,27 @@ function countEveryCharacter(text: string): WritingCount {
 /** The writing in a piece of text, counted by the convention asked for. */
 export function countWriting(
 	text: string,
-	options: WritingCountOptions = { mode: 'jinjiang' },
+	options: WritingCountOptions = { mode: 'ms-word' },
 ): WritingCount {
-	if (countsCharacters(options.mode)) return countEveryCharacter(text);
-	const wordProcessor = options.mode === 'ms-word';
-	const qidian = options.mode === 'qidian';
+	let charactersWithSpaces = 0;
+	let charactersNoSpaces = 0;
+	for (const character of text) {
+		charactersWithSpaces += 1;
+		if (!WHITESPACE.test(character)) charactersNoSpaces += 1;
+	}
+	return {
+		...(countsCharacters(options.mode)
+			? countEveryCharacter(text)
+			: gatherIntoWords(text, options.mode)),
+		charactersWithSpaces,
+		charactersNoSpaces,
+	};
+}
+
+/** The conventions that read writing in words, each with its own marks. */
+function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
+	const wordProcessor = mode === 'ms-word';
+	const qidian = mode === 'qidian';
 	let cjkCharacters = 0;
 	let words = 0;
 	let punctuationMarks = 0;

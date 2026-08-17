@@ -112,7 +112,6 @@ import {
 } from './settings';
 import {
 	inspectManagedDocumentSections,
-	inspectMarkedSection,
 	parseTerm,
 	readMarkedSection,
 	type CustomField,
@@ -196,14 +195,9 @@ const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
  */
 const FIELD_RECHECK_MS = 500;
 
-/**
- * Whether an element sits inside something this plugin drew. Every container
- * of ours carries a `snowflake-method-` class, and nothing else in the app
- * does, so the count follows our own forms and leaves Obsidian's own boxes --
- * the quick switcher, the search pane -- to answer for themselves.
- */
-function isSnowflakeField(element: Element): boolean {
-	return element.closest('[class*="snowflake-method-"]') !== null;
+/** The nearest thing above an element that this plugin put a class on. */
+function markedOwnerOf(element: Element): Element | null {
+	return element.closest('[class*="snowflake-method-"]');
 }
 
 /** The vault path of one of an entity kind's tree root folders. */
@@ -280,8 +274,20 @@ export default class SnowflakeMethodPlugin
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
 	private writingCountTimer: number | null = null;
+	/** When the pending count is due, so a later request cannot delay it. */
+	private writingCountDue = 0;
 	/** Ticks per refresh, so a slow count cannot paint over a newer one. */
 	private writingCountSequence = 0;
+	/** What the status bar last said, so an unchanged count repaints nothing. */
+	private writingCountShown: { line: string; breakdown: string } | null = null;
+	/**
+	 * The plugin's own field the count last followed focus to. Focus events
+	 * arrive from every corner of the app, and most of them change nothing
+	 * about which writing is being counted.
+	 */
+	private writingCountField: Element | null = null;
+	/** Set on teardown: no count may paint into a status bar that is gone. */
+	private unloading = false;
 	/** What is selected in the focused native Markdown editor, or null. */
 	private editorFocus: EditorFocusReport | null = null;
 	/** Which sidebars solo folded away, so leaving it unfolds only those. */
@@ -2363,13 +2369,19 @@ export default class SnowflakeMethodPlugin
 				this.scheduleWritingCountRefresh();
 			}),
 		);
-		// Focus decides whether a field is being written in at all, so those
-		// two are always worth a recount. Typing and selecting are not: they
-		// fire from every editor in the app, and a caret moving through a long
-		// note must not set that note being counted again.
+		// Focus decides whether a field is being written in at all, so a change
+		// of field is worth a recount -- but only a change of field. Every
+		// click in the app moves focus, and a stream in front with nothing
+		// being edited answers a recount by reading its whole manuscript, so
+		// clicking about must not set thousands of notes being summed again.
+		// Typing and selecting are not enough either: they fire from every
+		// editor, and a caret moving through a long note must not recount it.
 		const doc = this.app.workspace.containerEl.doc;
 		for (const event of ['focusin', 'focusout'] as const) {
 			this.registerDomEvent(doc, event, () => {
+				const field = this.focusedField();
+				if (field === this.writingCountField) return;
+				this.writingCountField = field;
 				this.scheduleWritingCountRefresh(0);
 			});
 		}
@@ -2380,6 +2392,11 @@ export default class SnowflakeMethodPlugin
 			});
 		}
 		this.register(() => {
+			// The flag as well as the timer: a count already in flight resumes
+			// after its await, and the status bar item it was going to paint
+			// into is removed with the plugin. Without it that continuation
+			// arms a fresh timer on a dead instance and nothing clears it.
+			this.unloading = true;
 			if (this.writingCountTimer !== null) {
 				this.app.workspace.containerEl.win.clearTimeout(
 					this.writingCountTimer,
@@ -2389,12 +2406,74 @@ export default class SnowflakeMethodPlugin
 		});
 	}
 
-	/** One pending count at a time; a stream of keystrokes keeps one alive. */
+	/** A number as the reader's own locale groups it. */
+	private grouped(value: number): string {
+		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
+		return value.toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US');
+	}
+
+	/**
+	 * The ways one piece of writing measures, one to a line.
+	 *
+	 * The headline number answers to whichever convention is set, so it says
+	 * nothing about the others; this says all of them at once, the way a word
+	 * processor's own statistics panel does. Words is what the two halves come
+	 * to together, since a convention that reads Chinese by the character
+	 * still counts each of those characters as a word.
+	 */
+	private writingCountBreakdown(count: WritingCount): string {
+		return [
+			this.globalT('statusBar.statWords', {
+				count: this.grouped(count.cjkCharacters + count.words),
+			}),
+			this.globalT('statusBar.statCharactersNoSpaces', {
+				count: this.grouped(count.charactersNoSpaces),
+			}),
+			this.globalT('statusBar.statCharactersWithSpaces', {
+				count: this.grouped(count.charactersWithSpaces),
+			}),
+			this.globalT('statusBar.statNonAsianWords', {
+				count: this.grouped(count.words),
+			}),
+			this.globalT('statusBar.statAsianCharacters', {
+				count: this.grouped(count.cjkCharacters),
+			}),
+		].join('\n');
+	}
+
+	/**
+	 * What a count is counted in. Three of the conventions gather writing into
+	 * words and one reads it character by character, and a number labelled
+	 * with the wrong one of those is a number that reads as wrong.
+	 */
+	private writingCountUnit(total: number): string {
+		if (countsCharacters(this.settings.writingCountMode)) {
+			return this.globalT(
+				total === 1 ? 'statusBar.unitCharacter' : 'statusBar.unitCharacters',
+			);
+		}
+		return this.globalT(
+			total === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords',
+		);
+	}
+
+	/**
+	 * One pending count at a time, and the soonest asked for is the one that
+	 * runs. Callers ask from nothing to a second out, and a later request must
+	 * not carry an earlier one with it: a focus change wants the number now,
+	 * and a vault write arriving in the same tick would otherwise hold it back
+	 * a full second -- or, under a stream of writes, re-arm ahead of itself
+	 * forever and leave the previous context's number standing.
+	 */
 	private scheduleWritingCountRefresh(delay = 250): void {
+		if (this.unloading) return;
 		const win = this.app.workspace.containerEl.win;
+		const due = Date.now() + delay;
 		if (this.writingCountTimer !== null) {
+			if (due >= this.writingCountDue) return;
 			win.clearTimeout(this.writingCountTimer);
 		}
+		this.writingCountDue = due;
 		this.writingCountTimer = win.setTimeout(() => {
 			this.writingCountTimer = null;
 			void this.refreshWritingCount().catch((error: unknown) => {
@@ -2410,41 +2489,39 @@ export default class SnowflakeMethodPlugin
 	private async refreshWritingCount(): Promise<void> {
 		const item = this.writingCountItem;
 		const text = this.writingCountText;
-		if (item === null || text === null) return;
+		if (item === null || text === null || this.unloading) return;
 		const sequence = ++this.writingCountSequence;
 		const shown = await this.currentWritingCount();
-		if (sequence !== this.writingCountSequence) return;
+		if (sequence !== this.writingCountSequence || this.unloading) return;
 		if (shown === null) {
+			this.writingCountShown = null;
 			item.hide();
 			return;
 		}
-		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
-		const count = shown.count.total.toLocaleString(
-			locale === 'zh-CN' ? 'zh-CN' : 'en-US',
+		const line = this.globalT(
+			shown.selection ? 'statusBar.selectionWordCount' : 'statusBar.wordCount',
+			{
+				count: this.grouped(shown.count.total),
+				unit: this.writingCountUnit(shown.count.total),
+			},
 		);
-		text.setText(
-			this.globalT(
-				shown.selection ? 'statusBar.selectionWordCount' : 'statusBar.wordCount',
-				{ count, unit: shown.count.total === 1 ? 'word' : 'words' },
-			),
-		);
-		setTooltip(
-			item,
-			this.globalT(
-				countsCharacters(this.settings.writingCountMode)
-					? 'statusBar.breakdownCharacters'
-					: 'statusBar.breakdown',
-				{
-					cjk: shown.count.cjkCharacters,
-					words: shown.count.words,
-					punctuation: shown.count.punctuationMarks,
-				},
-			),
-		);
-		// After the tooltip, which writes its own aria-label: the pointer gets
-		// the numbers, a screen reader gets what the item is and does.
-		item.setAttribute('aria-label', this.globalT('statusBar.ariaLabel'));
-		item.show();
+		const breakdown = this.writingCountBreakdown(shown.count);
+		// A count that says what the last one said needs no writing down. The
+		// re-check below asks twice a second for as long as a field holds
+		// focus, and every one of those answers the same until it is typed in.
+		if (
+			this.writingCountShown?.line !== line ||
+			this.writingCountShown.breakdown !== breakdown
+		) {
+			this.writingCountShown = { line, breakdown };
+			text.setText(line);
+			// The breakdown is the item's name as well as its tooltip: Obsidian
+			// keeps a tooltip in `aria-label`, so a label written after this one
+			// would take the numbers away from the pointer and leave nothing in
+			// their place.
+			setTooltip(item, breakdown);
+			item.show();
+		}
 		// The chain ends of its own accord: the first count taken after the
 		// field is gone is not a field's count, and arms nothing.
 		if (this.focusedField() !== null) {
@@ -2464,7 +2541,30 @@ export default class SnowflakeMethodPlugin
 			(active instanceof HTMLInputElement && COUNTABLE_FIELD_TYPES.has(active.type))
 				? active
 				: null;
-		return field !== null && isSnowflakeField(field) ? field : null;
+		return field !== null && this.ownsField(field) ? field : null;
+	}
+
+	/**
+	 * Whether a field is one this plugin drew.
+	 *
+	 * A class of ours somewhere overhead does not answer it: the focus modes
+	 * mark the document body, the stream marks the workspace splits that hold
+	 * it, and either would make every box in the app -- the quick switcher,
+	 * the search pane, another plugin's view -- read as ours. What answers it
+	 * is where the nearest marked container sits: inside a modal, or inside
+	 * one of our own views. The body and a workspace split contain those
+	 * rather than sitting in them, so they fail on the way past.
+	 */
+	private ownsField(field: Element): boolean {
+		const owner = markedOwnerOf(field);
+		if (owner === null) return false;
+		if (owner.closest('.modal') !== null) return true;
+		for (const type of [DASHBOARD_VIEW_TYPE, MANUSCRIPT_VIEW_TYPE]) {
+			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+				if (leaf.view.containerEl.contains(owner)) return true;
+			}
+		}
+		return false;
 	}
 
 	/** What the status bar should show for what is in front, or null. */
@@ -2546,15 +2646,11 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The marked section the caret sits in, counted by itself.
-	 *
-	 * A note's sections are where the writing for one step, one synopsis, one
-	 * field goes, so while the caret is in one that is the piece being
-	 * written, and the note's own total is what it falls back to — the same
+	 * The marked section the caret sits in, counted by itself — the piece
+	 * being written, with the note's own total to fall back to, the same
 	 * bargain the manuscript stream strikes between a segment and the whole.
-	 * Sections the total leaves out never answer: a generated block is a view
-	 * of the properties and a record section is storage, and neither is a
-	 * number anybody is writing towards.
+	 * Which sections answer and what comes out of them is the service's to
+	 * say, so a section can never report more writing than the note holding it.
 	 */
 	private countCaretSection(
 		content: string,
@@ -2573,26 +2669,12 @@ export default class SnowflakeMethodPlugin
 		if (!isDocumentType(declared)) return null;
 		// The body runs to the end of the note, so what precedes it is the
 		// frontmatter, and the caret steps back by exactly that much.
-		const offset = caret - (content.length - body.length);
-		for (const descriptor of managedSectionsForDocument(declared)) {
-			if (descriptor.generated === true || descriptor.protected === true) {
-				continue;
-			}
-			const inspection = inspectMarkedSection(body, descriptor.id);
-			if (inspection.status !== 'present') continue;
-			if (offset < inspection.contentStart || offset > inspection.contentEnd) {
-				continue;
-			}
-			return countWriting(
-				countableProse(
-					body.slice(inspection.contentStart, inspection.contentEnd),
-					[],
-					options,
-				),
-				options,
-			);
-		}
-		return null;
+		return this.projects.writingCount.countSectionAt(
+			body,
+			declared,
+			caret - (content.length - body.length),
+			options,
+		);
 	}
 
 	/** A note's buffer, its frontmatter set aside — or all of it when broken. */
@@ -2613,12 +2695,24 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	/** A selection counts as the page shows it: same stripping, same rules. */
+	/**
+	 * A selection counts as the page shows it: same stripping, same rules —
+	 * except that a stretch the author drew a line around has no title. A
+	 * level-1 heading is passed over because the plugin wrote it above the
+	 * note, not because a heading is worth nothing, so spending that rule on
+	 * the first heading inside a selection would drop one the author wrote and
+	 * report less writing than the same text adds to the note.
+	 */
 	private countSelection(
 		selection: string,
 		options: NoteCountOptions,
 	): WritingCount {
-		return countWriting(countableProse(selection, [], options), options);
+		const headings =
+			options.headings === 'skip-first-h1' ? 'count' : options.headings;
+		return countWriting(
+			countableProse(selection, [], { ...options, headings }),
+			options,
+		);
 	}
 
 	private writingCountOptions(): NoteCountOptions {
@@ -2700,20 +2794,28 @@ export default class SnowflakeMethodPlugin
 			scope,
 			this.writingCountOptions(),
 		);
-		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
-		return this.globalT(
-			scope === 'project'
-				? 'messages.projectWordCount'
-				: 'messages.manuscriptWordCount',
-			{
-				count: counted.total.toLocaleString(
-					locale === 'zh-CN' ? 'zh-CN' : 'en-US',
-				),
-				unit: counted.total === 1 ? 'word' : 'words',
-				notes: counted.notes,
-				noteUnit: counted.notes === 1 ? 'note' : 'notes',
-			},
-		);
+		// A scope is read as a block: which scope, how many notes it came from,
+		// and then the same five measures a note's own count shows. Notes that
+		// would not read are named when there are any, because their writing is
+		// missing from every number under them.
+		return [
+			this.globalT(
+				scope === 'project'
+					? 'statusBar.scopeProject'
+					: 'statusBar.scopeManuscript',
+			),
+			this.globalT('statusBar.statNotes', {
+				count: this.grouped(counted.notes),
+			}),
+			...(counted.unreadable === 0
+				? []
+				: [
+						this.globalT('statusBar.statUnreadable', {
+							count: this.grouped(counted.unreadable),
+						}),
+					]),
+			this.writingCountBreakdown(counted),
+		].join('\n');
 	}
 
 	/** The palette command: both totals of the context project in one notice. */
@@ -4091,6 +4193,9 @@ export default class SnowflakeMethodPlugin
 		this.projects.repository.forget(file.path, {
 			children: file instanceof TFolder,
 		});
+		this.projects.writingCount.forget(file.path, {
+			children: file instanceof TFolder,
+		});
 		if (!this.touchesProject(file.path)) return;
 		this.invalidateProjectHealth(file.path);
 		this.detachProjectViews(file.path);
@@ -4138,8 +4243,13 @@ export default class SnowflakeMethodPlugin
 		oldPath: string,
 	): Promise<void> {
 		// Before any guard: the parse cache lets the old path's record go. The
-		// new path caches itself on its next read.
+		// new path caches itself on its next read. The counts go with it: a
+		// note's size and modified time both survive a rename, so a count left
+		// under a path another note moves into would be handed straight back.
 		this.projects.repository.forget(oldPath, {
+			children: file instanceof TFolder,
+		});
+		this.projects.writingCount.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
 		// The configured root travels with its folder. Leaving the setting on a

@@ -111,7 +111,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	uiLocale: 'project',
 	defaultProjectLocale: 'system',
 	freeformMode: false,
-	writingCountMode: 'jinjiang',
+	writingCountMode: 'ms-word',
 	writingCountHeadings: 'count',
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,

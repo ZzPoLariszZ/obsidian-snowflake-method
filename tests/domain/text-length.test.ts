@@ -101,6 +101,8 @@ describe('writing count', () => {
 			cjkCharacters: 0,
 			words: 5,
 			punctuationMarks: 0,
+			charactersWithSpaces: 35,
+			charactersNoSpaces: 31,
 			total: 5,
 		});
 	});
@@ -110,6 +112,8 @@ describe('writing count', () => {
 			cjkCharacters: 7,
 			words: 0,
 			punctuationMarks: 0,
+			charactersWithSpaces: 7,
+			charactersNoSpaces: 7,
 			total: 7,
 		});
 	});
@@ -121,6 +125,8 @@ describe('writing count', () => {
 			cjkCharacters: 4,
 			words: 5,
 			punctuationMarks: 0,
+			charactersWithSpaces: 31,
+			charactersNoSpaces: 25,
 			total: 9,
 		});
 	});
@@ -162,6 +168,8 @@ describe('writing count', () => {
 			cjkCharacters: 4,
 			words: 5,
 			punctuationMarks: 2,
+			charactersWithSpaces: 13,
+			charactersNoSpaces: 11,
 			total: 11,
 		});
 		expect(countsCharacters('jinjiang')).toBe(true);

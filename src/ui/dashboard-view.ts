@@ -18,6 +18,7 @@ import {
 	STEP_TWO_SECTION_IDS,
 	areStepPrerequisitesComplete,
 	countWriting,
+	countsCharacters,
 	createDefaultStepStatuses,
 	getFirstIncompleteStep,
 	isProgressStatus,
@@ -4652,13 +4653,22 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-length-count',
 		});
 		const updateHint = (): void => {
-			const { total } = countWriting(textarea.value, {
-				mode: this.host.writingCountMode(),
-			});
+			const mode = this.host.writingCountMode();
+			const { total } = countWriting(textarea.value, { mode });
+			// The step asks for a sentence of a certain length, so the unit has
+			// to say which length: under a convention that counts characters,
+			// calling them words puts the target out by a factor of five.
+			const unit = countsCharacters(mode)
+				? total === 1
+					? 'statusBar.unitCharacter'
+					: 'statusBar.unitCharacters'
+				: total === 1
+					? 'statusBar.unitWord'
+					: 'statusBar.unitWords';
 			lengthCount.setText(
 				this.t('fields.oneSentenceSummaryCount', {
 					count: total,
-					unit: total === 1 ? 'word' : 'words',
+					unit: this.t(unit),
 				}),
 			);
 		};
