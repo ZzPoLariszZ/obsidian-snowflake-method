@@ -82,10 +82,24 @@ export interface SegmentEditorHooks {
 	 * stale.
 	 */
 	onCaretShow?(path: string, top: number, bottom: number): void;
+	/**
+	 * The selection changed: grew, moved, or emptied. `selectedText` is what
+	 * stands selected — every range of it, pointer-drawn or not — or null
+	 * when nothing is. For whoever is counting.
+	 */
+	onSelectionChange?(path: string, selectedText: string | null): void;
 }
 
 /** Marks a change the editor was handed rather than one the author typed. */
 const FROM_ELSEWHERE = Annotation.define<boolean>();
+
+/** Every selected stretch as one string, or null when nothing is selected. */
+function selectedTextOf(state: EditorState): string | null {
+	const parts = state.selection.ranges
+		.filter((range) => !range.empty)
+		.map((range) => state.sliceDoc(range.from, range.to));
+	return parts.length === 0 ? null : parts.join('\n');
+}
 
 /**
  * Markdown highlighting from the grammar itself rather than through
@@ -434,6 +448,15 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				);
 				if ((update.docChanged || update.selectionSet) && !handed && !pointed) {
 					hooks.onCaretMove?.(target.path);
+				}
+				// Unlike the caret, a selection counts however it was drawn:
+				// with the keyboard, with the pointer, or by an edit that
+				// moved its ends.
+				if (update.docChanged || update.selectionSet) {
+					hooks.onSelectionChange?.(
+						target.path,
+						selectedTextOf(update.state),
+					);
 				}
 			}),
 		];

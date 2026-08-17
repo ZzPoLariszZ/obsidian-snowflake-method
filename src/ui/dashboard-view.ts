@@ -17,7 +17,7 @@ import {
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
 	areStepPrerequisitesComplete,
-	countWritingLength,
+	countWriting,
 	createDefaultStepStatuses,
 	getFirstIncompleteStep,
 	isProgressStatus,
@@ -4652,7 +4652,9 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-length-count',
 		});
 		const updateHint = (): void => {
-			const { total } = countWritingLength(textarea.value);
+			const { total } = countWriting(textarea.value, {
+				mode: this.host.writingCountMode(),
+			});
 			lengthCount.setText(
 				this.t('fields.oneSentenceSummaryCount', {
 					count: total,

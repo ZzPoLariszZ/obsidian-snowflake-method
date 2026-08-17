@@ -22,6 +22,7 @@ import type {
 	ManuscriptSegmentText,
 	ManuscriptSegmentViewModel,
 	ManuscriptWindowSettings,
+	ManuscriptWritingContext,
 } from './view-model';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
@@ -91,6 +92,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private anchorPath: string | null = null;
 	private activePath: string | null = null;
 	private editingPath: string | null = null;
+	/** What is selected in the segment being edited, or null. */
+	private editingSelection: string | null = null;
 	/**
 	 * Raised while a click is being put back under the pointer. The click
 	 * promised the words stay where the pointer left them, so the caret
@@ -155,6 +158,21 @@ export class SnowflakeManuscriptView extends ItemView {
 		return { projectPath: this.projectPath, anchorPath: this.anchorPath };
 	}
 
+	/** Read back by the host whenever this stream's writing may have moved. */
+	writingContext(): ManuscriptWritingContext {
+		const entry =
+			this.editingPath === null
+				? undefined
+				: this.mounted.get(this.editingPath);
+		return {
+			projectPath: this.model?.projectPath ?? this.projectPath,
+			editingPath: this.editingPath,
+			body:
+				entry === undefined ? null : (entry.pending ?? entry.text.body),
+			selection: this.editingPath === null ? null : this.editingSelection,
+		};
+	}
+
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
 		const candidate =
 			typeof state === 'object' && state !== null
@@ -213,6 +231,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.model = await this.host.loadManuscript(this.projectPath);
 			this.shape = shapeOf(this.model);
 			this.headerShape = headerShapeOf(settings);
+			// The writing count reads this stream's context back, and the model
+			// is half of that context: a count taken while it was still loading
+			// spoke for the wrong project, and nothing else would correct it.
+			this.host.manuscriptWritingChanged();
 			// The modes are classes and nothing else, so flipping one moves nothing.
 			this.contentEl.toggleClass(
 				'snowflake-method-typewriter',
@@ -873,6 +895,13 @@ export class SnowflakeManuscriptView extends ItemView {
 					if (target === undefined) return;
 					target.pending = body;
 					this.scheduleSave();
+					this.host.manuscriptWritingChanged();
+				},
+				onSelectionChange: (inPath, selectedText) => {
+					if (inPath !== this.editingPath) return;
+					if (this.editingSelection === selectedText) return;
+					this.editingSelection = selectedText;
+					this.host.manuscriptWritingChanged();
 				},
 				onBlur: () => {
 					void this.flushPendingSave().catch((error: unknown) => {
@@ -895,6 +924,8 @@ export class SnowflakeManuscriptView extends ItemView {
 			},
 		);
 		this.editingPath = path;
+		this.editingSelection = null;
+		this.host.manuscriptWritingChanged();
 		this.refreshWriteToggles();
 		// Focus fades only while something is being written, and only around the
 		// note it is written in. Classes, so that starting to write moves nothing.
@@ -1181,6 +1212,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (path === null) return;
 		await this.flushPendingSave();
 		this.editingPath = null;
+		this.editingSelection = null;
+		this.host.manuscriptWritingChanged();
 		this.puttingBack = false;
 		this.walkingIn = false;
 		this.refreshWriteToggles();
@@ -1457,6 +1490,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (this.editingPath === path) {
 			await this.flushPendingSave();
 			this.editingPath = null;
+			this.editingSelection = null;
+			this.host.manuscriptWritingChanged();
 			this.streamEl?.removeClass('is-writing');
 		}
 		await this.backend.unmount(path);

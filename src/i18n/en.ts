@@ -80,6 +80,7 @@ export const en = {
 	'commands.toggleFreeformMode': 'Toggle freeform mode',
 	'commands.freeformModeEnabled': 'Freeform mode enabled.',
 	'commands.freeformModeDisabled': 'Freeform mode disabled.',
+	'commands.countProjectWords': 'Count project words',
 	'settings.projectRoot.name': 'Project root folder',
 	'settings.projectRoot.desc':
 		'Vault-relative folder path for Snowflake projects.',
@@ -99,6 +100,19 @@ export const en = {
 	'settings.protectBoundaries.name': 'Protect managed boundaries',
 	'settings.protectBoundaries.desc':
 		'Protect section markers from accidental edits.',
+	'settings.writingCountMode.name': 'Writing count',
+	'settings.writingCountMode.desc':
+		'Which convention the writing count follows.',
+	'settings.writingCountMode.jinjiang': 'Jinjiang',
+	'settings.writingCountMode.qidian': 'Qidian',
+	'settings.writingCountMode.msWord': 'MS Word',
+	'settings.writingCountHeadings.name': 'Headings in the writing count',
+	'settings.writingCountHeadings.desc':
+		'Whether a heading line counts as writing.\nA note begins with its own name as an H1, which the plugin wrote rather than you.',
+	'settings.writingCountHeadings.count': 'Count every heading',
+	'settings.writingCountHeadings.skipFirstH1': 'Skip the first H1 only',
+	'settings.writingCountHeadings.skipH1': 'Skip every H1',
+	'settings.writingCountHeadings.skipAll': 'Skip every heading',
 	'settings.createFromField.name': 'New notes from a field',
 	'settings.createFromField.desc':
 		'Behaviour when creating a note by typing its name into a field.',
@@ -296,6 +310,18 @@ export const en = {
 	'messages.canvasCreated': 'Created scene canvas “{name}”.',
 	'messages.stepChanged': 'Step {step} status changed to {status}.',
 	'messages.noCurrentProject': 'Open a Snowflake project first.',
+	'messages.projectWordCount': 'Project: {count} {unit} in {notes} {noteUnit}.',
+	'messages.manuscriptWordCount':
+		'Manuscript: {count} {unit} in {notes} {noteUnit}.',
+	'statusBar.wordCount': '{count} {unit}',
+	'statusBar.selectionWordCount': 'Selection: {count} {unit}',
+	'statusBar.breakdown': '{cjk} CJK · {words} words · {punctuation} punctuation',
+	'statusBar.breakdownCharacters':
+		'{cjk} CJK · {words} letters and digits · {punctuation} punctuation',
+	'statusBar.ariaLabel': 'Writing count. Click for project totals.',
+	'statusBar.countProject': 'Count project words',
+	'statusBar.countManuscript': 'Count manuscript words',
+	'statusBar.counting': 'Counting…',
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',

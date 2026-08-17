@@ -6,6 +6,8 @@ import {
 	Notice,
 	Platform,
 	Plugin,
+	setIcon,
+	setTooltip,
 	TFile,
 	TFolder,
 	type EditorPosition,
@@ -21,6 +23,9 @@ import {
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	countWriting,
+	countableProse,
+	countsCharacters,
 	entityKindIds,
 	getFirstIncompleteStep,
 	isDocumentType,
@@ -35,11 +40,14 @@ import {
 	type StepId,
 	type StepStatus,
 	type WorldbuildingKindId,
+	type WritingCount,
+	type WritingCountMode,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
 	areManagedBoundariesUnlocked,
 	createManagedSectionEditorExtension,
+	createSelectionWatchExtension,
 	findEditorViewForMarkdownInfo,
 	flashManagedMarkerIssue,
 	flashManagedSections,
@@ -80,11 +88,13 @@ import {
 	type ArtifactSnapshot,
 	type CharacterRecord,
 	type MemberUsage,
+	type NoteCountOptions,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type WorldbuildingRecord,
+	type WritingCountScope,
 } from './services';
 import {
 	isPathAtOrBelow,
@@ -243,6 +253,14 @@ export default class SnowflakeMethodPlugin
 	projects!: SnowflakeProjectService;
 	private refreshTimer: number | null = null;
 	private refreshProjectLocales = false;
+	/** The writing count in the status bar, and the text span inside it. */
+	private writingCountItem: HTMLElement | null = null;
+	private writingCountText: HTMLElement | null = null;
+	private writingCountTimer: number | null = null;
+	/** Ticks per refresh, so a slow count cannot paint over a newer one. */
+	private writingCountSequence = 0;
+	/** What is selected in the focused native Markdown editor, or null. */
+	private editorSelection: string | null = null;
 	/** Which sidebars solo folded away, so leaving it unfolds only those. */
 	private soloCollapsed: { left: boolean; right: boolean } | null = null;
 	/** Whether solo took the window full screen, so leaving it lets go. */
@@ -365,6 +383,7 @@ export default class SnowflakeMethodPlugin
 		);
 		this.registerCommands();
 		this.registerFileMenu();
+		this.registerWritingCount();
 		this.addSettingTab(new SnowflakeSettingTab(this.app, this));
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
@@ -399,6 +418,10 @@ export default class SnowflakeMethodPlugin
 			this.registerEvent(
 				this.app.workspace.on('active-leaf-change', (leaf) => {
 					this.applyManuscriptModePresence();
+					// A selection reported from the editor just left must not
+					// stand in for whatever is in front now.
+					this.editorSelection = null;
+					this.scheduleWritingCountRefresh(0);
 					void this.activateDashboardLeaf(leaf).catch((error: unknown) => {
 						this.showError(error);
 					});
@@ -421,6 +444,7 @@ export default class SnowflakeMethodPlugin
 				this.soloCollapsed = { left: false, right: false };
 			}
 			this.applyManuscriptModePresence();
+			this.scheduleWritingCountRefresh(0);
 			void this.refreshVisibleDashboardsAfterLayout().catch(
 				(error: unknown) => {
 					this.showError(error);
@@ -483,6 +507,10 @@ export default class SnowflakeMethodPlugin
 
 	isFreeformModeEnabled(): boolean {
 		return this.settings.freeformMode;
+	}
+
+	writingCountMode(): WritingCountMode {
+		return this.settings.writingCountMode;
 	}
 
 	opensFormWhenCreatingFromField(): boolean {
@@ -2140,6 +2168,7 @@ export default class SnowflakeMethodPlugin
 			);
 		}
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
+		this.scheduleWritingCountRefresh(0);
 		await this.refreshDashboards();
 	}
 
@@ -2266,6 +2295,295 @@ export default class SnowflakeMethodPlugin
 			SCROLLBAR_WIDTH_PROPERTY,
 			`${measureScrollbarWidth(targetDocument)}px`,
 		);
+	}
+
+	/**
+	 * The writing count in the status bar: a snowflake and a number. A
+	 * Markdown note in front is counted from its editor's own buffer, so
+	 * unsaved keystrokes already count; a manuscript stream counts the
+	 * segment being written, or the whole manuscript while none is; a
+	 * selection overrides either, under the same rules. Clicking offers the
+	 * project and manuscript totals, counted on demand — a whole project is
+	 * too much reading to do on every keystroke.
+	 */
+	private registerWritingCount(): void {
+		const item = this.addStatusBarItem();
+		item.addClass('mod-clickable', 'snowflake-method-word-count');
+		const icon = item.createSpan({ cls: 'snowflake-method-word-count-icon' });
+		setIcon(icon, 'snowflake');
+		this.writingCountText = item.createSpan();
+		this.writingCountItem = item;
+		item.hide();
+		this.registerDomEvent(item, 'click', (event) => {
+			this.openWritingCountMenu(event);
+		});
+		this.registerEditorExtension(
+			createSelectionWatchExtension((selectedText) => {
+				if (this.editorSelection === selectedText) return;
+				this.editorSelection = selectedText;
+				this.scheduleWritingCountRefresh();
+			}),
+		);
+		this.registerEvent(
+			this.app.workspace.on('editor-change', () => {
+				this.scheduleWritingCountRefresh();
+			}),
+		);
+		this.register(() => {
+			if (this.writingCountTimer !== null) {
+				this.app.workspace.containerEl.win.clearTimeout(
+					this.writingCountTimer,
+				);
+				this.writingCountTimer = null;
+			}
+		});
+	}
+
+	/** One pending count at a time; a stream of keystrokes keeps one alive. */
+	private scheduleWritingCountRefresh(delay = 250): void {
+		const win = this.app.workspace.containerEl.win;
+		if (this.writingCountTimer !== null) {
+			win.clearTimeout(this.writingCountTimer);
+		}
+		this.writingCountTimer = win.setTimeout(() => {
+			this.writingCountTimer = null;
+			void this.refreshWritingCount().catch((error: unknown) => {
+				console.error('Snowflake: could not refresh the writing count', error);
+			});
+		}, delay);
+	}
+
+	manuscriptWritingChanged(): void {
+		this.scheduleWritingCountRefresh();
+	}
+
+	private async refreshWritingCount(): Promise<void> {
+		const item = this.writingCountItem;
+		const text = this.writingCountText;
+		if (item === null || text === null) return;
+		const sequence = ++this.writingCountSequence;
+		const shown = await this.currentWritingCount();
+		if (sequence !== this.writingCountSequence) return;
+		if (shown === null) {
+			item.hide();
+			return;
+		}
+		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
+		const count = shown.count.total.toLocaleString(
+			locale === 'zh-CN' ? 'zh-CN' : 'en-US',
+		);
+		text.setText(
+			this.globalT(
+				shown.selection ? 'statusBar.selectionWordCount' : 'statusBar.wordCount',
+				{ count, unit: shown.count.total === 1 ? 'word' : 'words' },
+			),
+		);
+		setTooltip(
+			item,
+			this.globalT(
+				countsCharacters(this.settings.writingCountMode)
+					? 'statusBar.breakdownCharacters'
+					: 'statusBar.breakdown',
+				{
+					cjk: shown.count.cjkCharacters,
+					words: shown.count.words,
+					punctuation: shown.count.punctuationMarks,
+				},
+			),
+		);
+		// After the tooltip, which writes its own aria-label: the pointer gets
+		// the numbers, a screen reader gets what the item is and does.
+		item.setAttribute('aria-label', this.globalT('statusBar.ariaLabel'));
+		item.show();
+	}
+
+	/** What the status bar should show for the view in front, or null. */
+	private async currentWritingCount(): Promise<{
+		count: WritingCount;
+		selection: boolean;
+	} | null> {
+		const options = this.writingCountOptions();
+		const stream = this.activeManuscriptView();
+		if (stream !== null) {
+			const context = stream.writingContext();
+			if (context.selection !== null) {
+				return {
+					count: this.countSelection(context.selection, options),
+					selection: true,
+				};
+			}
+			if (context.editingPath !== null && context.body !== null) {
+				return {
+					count: this.projects.writingCount.countBody(
+						context.body,
+						'draft',
+						options,
+					),
+					selection: false,
+				};
+			}
+			const project = await this.resolveProject(context.projectPath);
+			if (project === null) return null;
+			return {
+				count: await this.projects.writingCount.countProject(
+					project,
+					'manuscript',
+					options,
+				),
+				selection: false,
+			};
+		}
+		const markdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (markdown !== null && markdown.file !== null) {
+			if (this.editorSelection !== null) {
+				return {
+					count: this.countSelection(this.editorSelection, options),
+					selection: true,
+				};
+			}
+			return {
+				count: this.countMarkdownBuffer(markdown.editor.getValue(), options),
+				selection: false,
+			};
+		}
+		return null;
+	}
+
+	/** A note's buffer, its frontmatter set aside — or all of it when broken. */
+	private countMarkdownBuffer(
+		content: string,
+		options: NoteCountOptions,
+	): WritingCount {
+		try {
+			const parsed = parseMarkdownFrontmatter(content);
+			const declared = documentTypeOf(parsed.frontmatter);
+			return this.projects.writingCount.countBody(
+				parsed.body,
+				isDocumentType(declared) ? declared : null,
+				options,
+			);
+		} catch {
+			return countWriting(countableProse(content, [], options), options);
+		}
+	}
+
+	/** A selection counts as the page shows it: same stripping, same rules. */
+	private countSelection(
+		selection: string,
+		options: NoteCountOptions,
+	): WritingCount {
+		return countWriting(countableProse(selection, [], options), options);
+	}
+
+	private writingCountOptions(): NoteCountOptions {
+		return {
+			mode: this.settings.writingCountMode,
+			headings: this.settings.writingCountHeadings,
+		};
+	}
+
+	private openWritingCountMenu(event: MouseEvent): void {
+		const menu = new Menu();
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('statusBar.countProject'))
+				.setIcon('snowflake')
+				.onClick(() => {
+					void this.noticeWritingCount('project').catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('statusBar.countManuscript'))
+				.setIcon('scroll-text')
+				.onClick(() => {
+					void this.noticeWritingCount('manuscript').catch(
+						(error: unknown) => {
+							this.showError(error);
+						},
+					);
+				}),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/** The project a count should speak about: the one in front, else recent. */
+	private async writingCountProject(): Promise<ProjectSnapshot | null> {
+		const stream = this.activeManuscriptView();
+		if (stream !== null) {
+			return this.resolveProject(stream.writingContext().projectPath);
+		}
+		const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+		if (file != null) return this.projectOfPath(file.path);
+		return this.resolveProject(null);
+	}
+
+	/**
+	 * A sticky notice while a whole scope is read: the first count of a large
+	 * project takes seconds, and a click that answers with nothing for that
+	 * long reads as a click that did nothing.
+	 */
+	private async whileCounting<T>(work: () => Promise<T>): Promise<T> {
+		const notice = new Notice(this.globalT('statusBar.counting'), 0);
+		try {
+			return await work();
+		} finally {
+			notice.hide();
+		}
+	}
+
+	private async noticeWritingCount(scope: WritingCountScope): Promise<void> {
+		const project = await this.writingCountProject();
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		new Notice(
+			await this.whileCounting(() => this.writingCountLine(project, scope)),
+		);
+	}
+
+	private async writingCountLine(
+		project: ProjectSnapshot,
+		scope: WritingCountScope,
+	): Promise<string> {
+		const counted = await this.projects.writingCount.countProject(
+			project,
+			scope,
+			this.writingCountOptions(),
+		);
+		const locale = resolveGlobalLocale(this.settings.uiLocale, moment.locale());
+		return this.globalT(
+			scope === 'project'
+				? 'messages.projectWordCount'
+				: 'messages.manuscriptWordCount',
+			{
+				count: counted.total.toLocaleString(
+					locale === 'zh-CN' ? 'zh-CN' : 'en-US',
+				),
+				unit: counted.total === 1 ? 'word' : 'words',
+				notes: counted.notes,
+				noteUnit: counted.notes === 1 ? 'note' : 'notes',
+			},
+		);
+	}
+
+	/** The palette command: both totals of the context project in one notice. */
+	private async countProjectWords(): Promise<void> {
+		const project = await this.writingCountProject();
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		const [whole, manuscript] = await this.whileCounting(() =>
+			Promise.all([
+				this.writingCountLine(project, 'project'),
+				this.writingCountLine(project, 'manuscript'),
+			]),
+		);
+		new Notice(`${whole}\n${manuscript}`);
 	}
 
 	private registerManagedSectionEditor(): void {
@@ -3089,6 +3407,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'count-project-words',
+			name: this.globalT('commands.countProjectWords'),
+			callback: () => {
+				void this.countProjectWords().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'create-project',
 			name: this.globalT('commands.createProject'),
 			callback: () => void this.openCreateProjectModal(),
@@ -3506,6 +3833,9 @@ export default class SnowflakeMethodPlugin
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
+		// A note written from anywhere — sync, a script, another pane — may be
+		// the one the status bar is counting, or part of the manuscript total.
+		this.scheduleWritingCountRefresh(1000);
 		if (file instanceof TFolder) this.scheduleDefinitionMaterialize(file.path);
 	}
 

@@ -10,6 +10,12 @@ import {
 
 import type SnowflakeMethodPlugin from './main';
 import {
+	isWritingCountHeadings,
+	isWritingCountMode,
+	type WritingCountHeadings,
+	type WritingCountMode,
+} from './domain';
+import {
 	resolveGlobalLocale,
 	t as translate,
 	type UiLocalePreference,
@@ -55,6 +61,19 @@ export interface SnowflakeSettings {
 	 * way of looking — notes, statuses, and structure stay as they are.
 	 */
 	freeformMode: boolean;
+	/**
+	 * Which convention the writing count follows. An author counts by
+	 * whichever one the place they write for counts by, and the places do not
+	 * agree: Jinjiang counts characters where the rest count words.
+	 */
+	writingCountMode: WritingCountMode;
+	/**
+	 * What headings are worth to the writing count. A note's own name stands
+	 * at the top of it as a first-level heading, written by the plugin rather
+	 * than by the author, which is why passing over that one alone is offered
+	 * apart from passing over every heading like it.
+	 */
+	writingCountHeadings: WritingCountHeadings;
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
@@ -92,6 +111,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	uiLocale: 'project',
 	defaultProjectLocale: 'system',
 	freeformMode: false,
+	writingCountMode: 'jinjiang',
+	writingCountHeadings: 'count',
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
@@ -115,6 +136,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'uiLocale',
 	'defaultProjectLocale',
 	'freeformMode',
+	'writingCountMode',
+	'writingCountHeadings',
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
@@ -196,6 +219,12 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.freeformMode === 'boolean'
 				? raw.freeformMode
 				: DEFAULT_SETTINGS.freeformMode,
+		writingCountMode: isWritingCountMode(raw.writingCountMode)
+			? raw.writingCountMode
+			: DEFAULT_SETTINGS.writingCountMode,
+		writingCountHeadings: isWritingCountHeadings(raw.writingCountHeadings)
+			? raw.writingCountHeadings
+			: DEFAULT_SETTINGS.writingCountHeadings,
 		openLongTextInSplit:
 			typeof raw.openLongTextInSplit === 'boolean'
 				? raw.openLongTextInSplit
@@ -421,6 +450,37 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				},
 			},
 			{
+				name: this.t('settings.writingCountMode.name'),
+				desc: this.t('settings.writingCountMode.desc'),
+				control: {
+					type: 'dropdown',
+					key: 'writingCountMode',
+					defaultValue: DEFAULT_SETTINGS.writingCountMode,
+					options: {
+						jinjiang: this.t('settings.writingCountMode.jinjiang'),
+						qidian: this.t('settings.writingCountMode.qidian'),
+						'ms-word': this.t('settings.writingCountMode.msWord'),
+					},
+				},
+			},
+			{
+				name: this.t('settings.writingCountHeadings.name'),
+				desc: this.lines('settings.writingCountHeadings.desc'),
+				control: {
+					type: 'dropdown',
+					key: 'writingCountHeadings',
+					defaultValue: DEFAULT_SETTINGS.writingCountHeadings,
+					options: {
+						count: this.t('settings.writingCountHeadings.count'),
+						'skip-first-h1': this.t(
+							'settings.writingCountHeadings.skipFirstH1',
+						),
+						'skip-h1': this.t('settings.writingCountHeadings.skipH1'),
+						'skip-all': this.t('settings.writingCountHeadings.skipAll'),
+					},
+				},
+			},
+			{
 				name: this.t('settings.createFromField.name'),
 				desc: this.t('settings.createFromField.desc'),
 				control: {
@@ -633,6 +693,16 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'freeformMode':
 				if (typeof value === 'boolean') {
 					this.owner.settings.freeformMode = value;
+				}
+				break;
+			case 'writingCountMode':
+				if (isWritingCountMode(value)) {
+					this.owner.settings.writingCountMode = value;
+				}
+				break;
+			case 'writingCountHeadings':
+				if (isWritingCountHeadings(value)) {
+					this.owner.settings.writingCountHeadings = value;
 				}
 				break;
 			case 'openLongTextInSplit':

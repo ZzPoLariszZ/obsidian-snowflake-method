@@ -6614,3 +6614,23 @@ button.snowflake-method-kind-options {
 	flex: 0 0 auto;
 	color: var(--text-faint);
 }
+
+/* The writing count in the status bar: a snowflake and a number, sharing the
+   row's rhythm. The icon is drawn at the bar's own small size so the item
+   reads as one of the bar's words rather than a badge dropped into it. */
+.status-bar-item.snowflake-method-word-count {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-word-count-icon {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.snowflake-method-word-count-icon .svg-icon {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}

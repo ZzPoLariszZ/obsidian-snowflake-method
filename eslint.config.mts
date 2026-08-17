@@ -51,8 +51,14 @@ export default defineConfig(
 				'error',
 				{
 					brands: [
+						'Chenggua',
 						'Hero’s Journey',
+						'Jinjiang',
 						'Lucide',
+						'MS Word',
+						'NovelBuddy',
+						'Qidian',
+						'Qidian / NovelBuddy',
 						'Markdown',
 						'Obsidian',
 						'Obsidian Canvas',
@@ -60,7 +66,7 @@ export default defineConfig(
 						'Snowflake Archive',
 						'Snowflake Method',
 					],
-					acronyms: ['ID', 'POV', '6Z'],
+					acronyms: ['CJK', 'H1', 'ID', 'POV', '6Z'],
 					ignoreRegex: [
 						// A frontmatter key, quoted so an author can find it in the
 						// note. It is spelled the way the file spells it, which is

@@ -151,6 +151,7 @@ import {
   planFieldsBlockReconcile,
   type MemberDocumentType,
 } from "./mirror-sync";
+import { WritingCountService } from "./writing-count";
 import {
   DEFAULT_PROJECT_ROOT,
   FRONTMATTER_KEYS,
@@ -357,6 +358,8 @@ export class SnowflakeProjectService {
   readonly repository: VaultRepository;
   /** The manuscript of whichever project is being asked about. See its class. */
   readonly manuscript: ManuscriptService;
+  /** The writing counted in notes, one at a time or a scope at a time. */
+  readonly writingCount: WritingCountService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -374,6 +377,7 @@ export class SnowflakeProjectService {
   ) {
     this.repository = new VaultRepository(vault, fileManager, metadataCache);
     this.manuscript = new ManuscriptService(this.repository);
+    this.writingCount = new WritingCountService(this.repository, this.manuscript);
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {

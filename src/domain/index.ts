@@ -1,3 +1,4 @@
+export * from './countable-prose';
 export * from './fingerprint';
 export * from './managed-sections';
 export * from './manuscript';

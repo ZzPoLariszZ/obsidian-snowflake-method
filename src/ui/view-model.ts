@@ -9,6 +9,7 @@ import type {
 	StepStatus,
 	TimeKind,
 	WorldbuildingKindId,
+	WritingCountMode,
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type {
@@ -294,6 +295,19 @@ export interface ManuscriptWindowSettings {
  */
 export type SegmentNamed = () => Promise<void>;
 
+/**
+ * What a stream is doing with words right now, for whoever counts them: the
+ * project whose manuscript it shows, the segment being edited with its
+ * unsaved text, and what stands selected in that segment. All null together
+ * while the stream is prose from end to end.
+ */
+export interface ManuscriptWritingContext {
+	projectPath: string | null;
+	editingPath: string | null;
+	body: string | null;
+	selection: string | null;
+}
+
 export interface ManuscriptHost {
 	t: Translate;
 	translateForProject(
@@ -341,6 +355,14 @@ export interface ManuscriptHost {
 	 * the mode is the author's, not the note's.
 	 */
 	toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void>;
+	/**
+	 * The stream's writing context moved: a segment began or finished being
+	 * edited, its text grew, or its selection changed. Carries nothing,
+	 * because the host reads the context back from whichever stream is in
+	 * front — a report from a stream in a background pane must not speak for
+	 * the one the author is looking at.
+	 */
+	manuscriptWritingChanged(): void;
 }
 
 export interface DashboardHost {
@@ -358,6 +380,8 @@ export interface DashboardHost {
 	showsTableActionsColumn(): boolean;
 	/** True while the dashboard sets the ten steps aside for freeform work. */
 	isFreeformModeEnabled(): boolean;
+	/** The convention the writing count follows. */
+	writingCountMode(): WritingCountMode;
 	/** True while a field that makes a note opens that note's form first. */
 	opensFormWhenCreatingFromField(): boolean;
 	openProjectManager(
