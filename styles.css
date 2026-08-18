@@ -6634,3 +6634,117 @@ button.snowflake-method-kind-options {
 	width: var(--icon-xs);
 	height: var(--icon-xs);
 }
+
+/* The writing session beside the count: a clock (or tomato) and its time.
+   Idle and paused dim the whole item, so the state reads at a glance from
+   across the room, the way a paused player does. */
+.status-bar-item.snowflake-method-session {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-session-icon {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.snowflake-method-session-icon .svg-icon {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.status-bar-item.snowflake-method-session.is-idle {
+	opacity: 0.6;
+}
+
+.status-bar-item.snowflake-method-session.is-paused,
+.status-bar-item.snowflake-method-session.is-break {
+	opacity: 0.45;
+}
+
+/* The session panel, one face in the statistics sidebar and the dashboard's
+   statistics pane alike. */
+.snowflake-method-session-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	max-width: 28em;
+}
+
+.snowflake-method-session-start {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	align-items: stretch;
+}
+
+.snowflake-method-session-start-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--size-2-3);
+}
+
+.snowflake-method-session-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-3);
+	padding: var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.snowflake-method-session-header {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-session-type-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.snowflake-method-session-clock {
+	font-size: 2em;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-session-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-session-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	margin-top: var(--size-2-2);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-session-today-title {
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+}
+
+.snowflake-method-session-today-line {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-statistics-view {
+	padding: var(--size-4-3);
+}

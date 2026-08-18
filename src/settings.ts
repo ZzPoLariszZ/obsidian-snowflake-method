@@ -98,6 +98,15 @@ export interface SnowflakeSettings {
 	/** The line being written held at the middle of the page. */
 	manuscriptTypewriter: boolean;
 	manuscriptFocusLevel: ManuscriptFocusLevel;
+	/** Seconds without an edit before a session's focus time turns idle. */
+	sessionIdleThresholdSeconds: number;
+	sessionCountdownMinutes: number;
+	/** The pomodoro work period; shown to the author as its focus time. */
+	sessionPomodoroWorkMinutes: number;
+	sessionPomodoroBreakMinutes: number;
+	sessionPomodoroAutoRepeat: boolean;
+	/** Focus mode on starts a strict stopwatch session; off ends it. */
+	sessionAutoWithFocusMode: boolean;
 	recentProjectPath: string | null;
 	recentStep: number;
 	certificateCelebrations: Record<string, true>;
@@ -124,6 +133,12 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	showManuscriptSequence: false,
 	manuscriptTypewriter: true,
 	manuscriptFocusLevel: 'off',
+	sessionIdleThresholdSeconds: 60,
+	sessionCountdownMinutes: 45,
+	sessionPomodoroWorkMinutes: 25,
+	sessionPomodoroBreakMinutes: 5,
+	sessionPomodoroAutoRepeat: true,
+	sessionAutoWithFocusMode: false,
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
@@ -149,6 +164,12 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'showManuscriptSequence',
 	'manuscriptTypewriter',
 	'manuscriptFocusLevel',
+	'sessionIdleThresholdSeconds',
+	'sessionCountdownMinutes',
+	'sessionPomodoroWorkMinutes',
+	'sessionPomodoroBreakMinutes',
+	'sessionPomodoroAutoRepeat',
+	'sessionAutoWithFocusMode',
 	'recentProjectPath',
 	'recentStep',
 	'certificateCelebrations',
@@ -262,6 +283,38 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 				? raw.manuscriptTypewriter
 				: DEFAULT_SETTINGS.manuscriptTypewriter,
 		manuscriptFocusLevel: readFocusLevel(raw),
+		sessionIdleThresholdSeconds: integerIn(
+			raw.sessionIdleThresholdSeconds,
+			30,
+			300,
+			DEFAULT_SETTINGS.sessionIdleThresholdSeconds,
+		),
+		sessionCountdownMinutes: integerIn(
+			raw.sessionCountdownMinutes,
+			5,
+			180,
+			DEFAULT_SETTINGS.sessionCountdownMinutes,
+		),
+		sessionPomodoroWorkMinutes: integerIn(
+			raw.sessionPomodoroWorkMinutes,
+			5,
+			90,
+			DEFAULT_SETTINGS.sessionPomodoroWorkMinutes,
+		),
+		sessionPomodoroBreakMinutes: integerIn(
+			raw.sessionPomodoroBreakMinutes,
+			1,
+			30,
+			DEFAULT_SETTINGS.sessionPomodoroBreakMinutes,
+		),
+		sessionPomodoroAutoRepeat:
+			typeof raw.sessionPomodoroAutoRepeat === 'boolean'
+				? raw.sessionPomodoroAutoRepeat
+				: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
+		sessionAutoWithFocusMode:
+			typeof raw.sessionAutoWithFocusMode === 'boolean'
+				? raw.sessionAutoWithFocusMode
+				: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
 		recentProjectPath:
 			typeof raw.recentProjectPath === 'string'
 				? normalizePath(raw.recentProjectPath)
@@ -276,6 +329,21 @@ export function isCreateFromFieldMode(
 	value: unknown,
 ): value is CreateFromFieldMode {
 	return value === 'form' || value === 'now';
+}
+
+/** An integer inside the range, or the default: rejected, never clamped. */
+function integerIn(
+	value: unknown,
+	min: number,
+	max: number,
+	fallback: number,
+): number {
+	return typeof value === 'number' &&
+		Number.isInteger(value) &&
+		value >= min &&
+		value <= max
+		? value
+		: fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -552,6 +620,82 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			// A session starts from the status bar or the palette; what lives
+			// here is only the clocks a new session starts with. A session
+			// already running keeps the clocks it began under.
+			{
+				type: 'group',
+				heading: this.t('settings.session.heading'),
+				cls: 'snowflake-method-session-settings',
+				items: [
+					{
+						name: this.t('settings.sessionIdleThreshold.name'),
+						desc: this.t('settings.sessionIdleThreshold.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionIdleThresholdSeconds',
+							defaultValue: DEFAULT_SETTINGS.sessionIdleThresholdSeconds,
+							min: 30,
+							max: 300,
+							step: 15,
+						},
+					},
+					{
+						name: this.t('settings.sessionCountdown.name'),
+						desc: this.t('settings.sessionCountdown.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionCountdownMinutes',
+							defaultValue: DEFAULT_SETTINGS.sessionCountdownMinutes,
+							min: 5,
+							max: 180,
+							step: 5,
+						},
+					},
+					{
+						name: this.t('settings.sessionPomodoroWork.name'),
+						desc: this.t('settings.sessionPomodoroWork.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionPomodoroWorkMinutes',
+							defaultValue: DEFAULT_SETTINGS.sessionPomodoroWorkMinutes,
+							min: 5,
+							max: 90,
+							step: 5,
+						},
+					},
+					{
+						name: this.t('settings.sessionPomodoroBreak.name'),
+						desc: this.t('settings.sessionPomodoroBreak.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionPomodoroBreakMinutes',
+							defaultValue: DEFAULT_SETTINGS.sessionPomodoroBreakMinutes,
+							min: 1,
+							max: 30,
+							step: 1,
+						},
+					},
+					{
+						name: this.t('settings.sessionPomodoroAutoRepeat.name'),
+						desc: this.t('settings.sessionPomodoroAutoRepeat.desc'),
+						control: {
+							type: 'toggle',
+							key: 'sessionPomodoroAutoRepeat',
+							defaultValue: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
+						},
+					},
+					{
+						name: this.t('settings.sessionAutoStart.name'),
+						desc: this.t('settings.sessionAutoStart.desc'),
+						control: {
+							type: 'toggle',
+							key: 'sessionAutoWithFocusMode',
+							defaultValue: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
+						},
+					},
+				],
+			},
 		];
 	}
 
@@ -758,6 +902,36 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptFocusLevel':
 				if (isManuscriptFocusLevel(value)) {
 					this.owner.settings.manuscriptFocusLevel = value;
+				}
+				break;
+			case 'sessionIdleThresholdSeconds':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionIdleThresholdSeconds = value;
+				}
+				break;
+			case 'sessionCountdownMinutes':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionCountdownMinutes = value;
+				}
+				break;
+			case 'sessionPomodoroWorkMinutes':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionPomodoroWorkMinutes = value;
+				}
+				break;
+			case 'sessionPomodoroBreakMinutes':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionPomodoroBreakMinutes = value;
+				}
+				break;
+			case 'sessionPomodoroAutoRepeat':
+				if (typeof value === 'boolean') {
+					this.owner.settings.sessionPomodoroAutoRepeat = value;
+				}
+				break;
+			case 'sessionAutoWithFocusMode':
+				if (typeof value === 'boolean') {
+					this.owner.settings.sessionAutoWithFocusMode = value;
 				}
 				break;
 			default:

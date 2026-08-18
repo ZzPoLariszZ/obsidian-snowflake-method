@@ -420,6 +420,12 @@ export class VaultRepository {
     await this.vault.process(file, transform);
   }
 
+  /** Reads a plain generated file whole, or null when it is not there. */
+  async readPlainFile(path: string): Promise<string | null> {
+    const file = this.getFile(this.normalize(path));
+    return file === null ? null : this.vault.read(file);
+  }
+
   async createPlainFile(
     path: string,
     content: string,

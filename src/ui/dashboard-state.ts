@@ -15,13 +15,15 @@ export type DashboardPane =
 	| { kind: 'step'; step: StepId }
 	| { kind: 'worldbuilding'; wbKind: WorldbuildingKindId }
 	| { kind: 'definition'; definitionId: DefinitionFileId }
-	| { kind: 'custom-fields' };
+	| { kind: 'custom-fields' }
+	| { kind: 'statistics' };
 
 /** A stable identity for a pane, for continuity and change comparisons. */
 export function dashboardPaneKey(pane: DashboardPane): string {
 	if (pane.kind === 'step') return `step-${pane.step}`;
 	if (pane.kind === 'worldbuilding') return `wb-${pane.wbKind}`;
 	if (pane.kind === 'custom-fields') return 'custom-fields';
+	if (pane.kind === 'statistics') return 'statistics';
 	return `def-${pane.definitionId}`;
 }
 
@@ -48,6 +50,7 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 		return { kind: 'definition', definitionId: candidate.definitionId };
 	}
 	if (candidate.kind === 'custom-fields') return { kind: 'custom-fields' };
+	if (candidate.kind === 'statistics') return { kind: 'statistics' };
 	return null;
 }
 
@@ -75,6 +78,7 @@ export function coerceFreeformPane(pane: DashboardPane): DashboardPane {
 export interface DashboardRailCollapse {
 	steps: boolean;
 	worldbuilding: boolean;
+	creationTools: boolean;
 }
 
 export interface DashboardViewStateSnapshot {
@@ -133,6 +137,10 @@ export function mergeDashboardViewState(
 			typeof collapseCandidate?.worldbuilding === 'boolean'
 				? collapseCandidate.worldbuilding
 				: current.railCollapsed.worldbuilding,
+		creationTools:
+			typeof collapseCandidate?.creationTools === 'boolean'
+				? collapseCandidate.creationTools
+				: current.railCollapsed.creationTools,
 	};
 	const state = {
 		projectPath,
@@ -150,7 +158,10 @@ export function mergeDashboardViewState(
 			dashboardPaneKey(state.selectedPane) !==
 				dashboardPaneKey(current.selectedPane) ||
 			state.railCollapsed.steps !== current.railCollapsed.steps ||
-			state.railCollapsed.worldbuilding !== current.railCollapsed.worldbuilding,
+			state.railCollapsed.worldbuilding !==
+				current.railCollapsed.worldbuilding ||
+			state.railCollapsed.creationTools !==
+				current.railCollapsed.creationTools,
 	};
 }
 

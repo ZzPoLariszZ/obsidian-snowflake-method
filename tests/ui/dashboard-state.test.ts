@@ -15,7 +15,7 @@ import {
 import type { StepId } from '../../src/domain';
 
 const DEFAULT_PANE = { kind: 'step', step: 1 } as const;
-const OPEN_RAIL = { steps: false, worldbuilding: false };
+const OPEN_RAIL = { steps: false, worldbuilding: false, creationTools: false };
 
 describe('dashboard restored state', () => {
 	it('detects persisted project state that arrives after the view opens', () => {
@@ -71,8 +71,30 @@ describe('dashboard restored state', () => {
 		expect(update.state.railCollapsed).toEqual({
 			steps: true,
 			worldbuilding: false,
+			creationTools: false,
 		});
 		expect(update.changed).toBe(true);
+	});
+
+	it('restores the statistics pane and the creation tools fold', () => {
+		const update = mergeDashboardViewState(
+			{
+				projectPath: null,
+				projectTitle: null,
+				selectedStep: 1,
+				selectedPane: DEFAULT_PANE,
+				railCollapsed: OPEN_RAIL,
+			},
+			{
+				selectedPane: { kind: 'statistics' },
+				railCollapsed: { creationTools: true },
+			},
+		);
+
+		expect(update.state.selectedPane).toEqual({ kind: 'statistics' });
+		expect(update.state.railCollapsed.creationTools).toBe(true);
+		expect(update.changed).toBe(true);
+		expect(dashboardPaneKey(update.state.selectedPane)).toBe('statistics');
 	});
 
 	it('restores a definition pane and keys it apart from the others', () => {
@@ -382,11 +404,13 @@ describe('freeform mode panes', () => {
 			definitionId: 'category',
 		};
 		const customFields: DashboardPane = { kind: 'custom-fields' };
+		const statistics: DashboardPane = { kind: 'statistics' };
 		expect(coerceFreeformPane(characters)).toBe(characters);
 		expect(coerceFreeformPane(scenes)).toBe(scenes);
 		expect(coerceFreeformPane(kind)).toBe(kind);
 		expect(coerceFreeformPane(definition)).toBe(definition);
 		expect(coerceFreeformPane(customFields)).toBe(customFields);
+		expect(coerceFreeformPane(statistics)).toBe(statistics);
 	});
 
 	it('lands every hidden step pane on characters', () => {

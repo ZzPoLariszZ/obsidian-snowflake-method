@@ -896,6 +896,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					target.pending = body;
 					this.scheduleSave();
 					this.host.manuscriptWritingChanged();
+					this.host.manuscriptSegmentEdited(changed, body);
 				},
 				onSelectionChange: (inPath, selectedText) => {
 					if (inPath !== this.editingPath) return;

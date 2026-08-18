@@ -97,6 +97,7 @@ import {
 	type EntityGroupId,
 } from './entity-form';
 import { RenderStateKeeper } from './render-state';
+import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
 import { VirtualTable } from './virtual-table';
@@ -218,7 +219,8 @@ interface RailRowSpec {
 	/** Steps are steps to a screen reader; everything else is just current. */
 	current: 'step' | 'true';
 	damaged: boolean;
-	indicator: { count: number } | { status: StepStatus };
+	/** Absent on a row with nothing to count and nothing to report. */
+	indicator?: { count: number } | { status: StepStatus };
 	onClick: () => void;
 }
 
@@ -294,7 +296,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private railCollapsed: DashboardRailCollapse = {
 		steps: false,
 		worldbuilding: false,
+		creationTools: false,
 	};
+	/** Lets go of a mounted session panel before its container is emptied. */
+	private sessionPanelDispose: (() => void) | null = null;
 	/**
 	 * Folded rows of the definition trees, keyed `id/kind/path`. Session
 	 * state like a table's search: a refresh redraws the fold as it stood.
@@ -538,8 +543,28 @@ export class SnowflakeDashboardView extends ItemView {
 		this.opened = false;
 		this.clearCertificateCelebration();
 		this.releaseMemberControls();
+		this.disposeSessionPanel();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
+	}
+
+	private disposeSessionPanel(): void {
+		this.sessionPanelDispose?.();
+		this.sessionPanelDispose = null;
+	}
+
+	/** The statistics pane: the shared session panel in the main panel. */
+	private renderStatisticsPane(layout: HTMLElement): void {
+		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
+		const panel = main.createDiv({
+			cls: 'snowflake-method-panel snowflake-method-statistics-pane',
+		});
+		panel.createEl('h2', { text: this.t('dashboard.statistics') });
+		this.sessionPanelDispose = renderSessionPanel(
+			panel,
+			this.host.writingSessions(),
+		);
+		this.renderedPaneKey = dashboardPaneKey({ kind: 'statistics' });
 	}
 
 	/**
@@ -607,6 +632,11 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel | null,
 	): void {
 		this.lastRender = { projects, model };
+		// Which project the typing in this view belongs to. A session reads it
+		// off the DOM, so a field anywhere below answers for its project
+		// without every panel having to be handed one.
+		if (model === null) delete this.contentEl.dataset.snowflakeProject;
+		else this.contentEl.dataset.snowflakeProject = model.path;
 		// Once a project is in hand, the first render of the session opens on the
 		// step still waiting to be done. Only the first: from here on the step is
 		// whatever the author last moved to, which is what returning to a tab they
@@ -812,6 +842,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (!this.freeformMode) this.renderStepsGroup(groups, model);
 
 		this.renderWorldbuildingGroup(groups, model);
+		this.renderCreationToolsGroup(groups);
 
 		const projectFooter = nav.createDiv({
 			cls: 'snowflake-method-project-footer',
@@ -1033,29 +1064,34 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-label',
 			text: row.label,
 		});
-		const counted = 'count' in row.indicator;
-		const indicator = button.createSpan({
-			cls: `snowflake-method-step-indicator${
-				counted ? ' snowflake-method-worldbuilding-count' : ''
-			}`,
-			attr: {
-				'aria-label': row.damaged
-					? this.t('projectStructure.damagedTitle')
-					: 'count' in row.indicator
-						? String(row.indicator.count)
-						: this.t(`status.${row.indicator.status}`),
-			},
-		});
-		if ('status' in row.indicator) {
-			indicator.dataset.status = row.indicator.status;
-		}
-		if (row.damaged) {
-			indicator.addClass('has-managed-section-issue');
-			setIcon(indicator, 'triangle-alert');
-		} else if ('count' in row.indicator) {
-			this.setCount(indicator, row.indicator.count);
-		} else {
-			indicator.setText(this.statusGlyph(row.indicator.status));
+		if (row.indicator !== undefined || row.damaged) {
+			const spec = row.indicator;
+			const counted = spec !== undefined && 'count' in spec;
+			const indicator = button.createSpan({
+				cls: `snowflake-method-step-indicator${
+					counted ? ' snowflake-method-worldbuilding-count' : ''
+				}`,
+				attr: {
+					'aria-label': row.damaged
+						? this.t('projectStructure.damagedTitle')
+						: spec !== undefined && 'count' in spec
+							? String(spec.count)
+							: spec !== undefined
+								? this.t(`status.${spec.status}`)
+								: '',
+				},
+			});
+			if (spec !== undefined && 'status' in spec) {
+				indicator.dataset.status = spec.status;
+			}
+			if (row.damaged) {
+				indicator.addClass('has-managed-section-issue');
+				setIcon(indicator, 'triangle-alert');
+			} else if (spec !== undefined && 'count' in spec) {
+				this.setCount(indicator, spec.count);
+			} else if (spec !== undefined) {
+				indicator.setText(this.statusGlyph(spec.status));
+			}
 		}
 		button.addEventListener('click', row.onClick);
 	}
@@ -1138,6 +1174,32 @@ export class SnowflakeDashboardView extends ItemView {
 			this.app.workspace.requestSaveLayout();
 		});
 		return body;
+	}
+
+	/**
+	 * The creation tools: what serves the writing without being part of the
+	 * book. One row today -- the writing statistics -- and the group is where
+	 * its siblings will land.
+	 */
+	private renderCreationToolsGroup(nav: HTMLElement): void {
+		const body = this.createRailGroup(
+			nav,
+			'creationTools',
+			this.t('dashboard.creationTools'),
+		);
+		const list = body.createEl('ol', { cls: 'snowflake-method-step-list' });
+		this.renderRailRow(list, {
+			leading: { icon: 'chart-line' },
+			label: this.t('dashboard.statistics'),
+			active: this.selectedPane.kind === 'statistics',
+			current: 'true',
+			damaged: false,
+			onClick: () => {
+				this.selectedPane = { kind: 'statistics' };
+				this.stepChosen = true;
+				void this.refresh();
+			},
+		});
 	}
 
 	/**
@@ -3825,6 +3887,13 @@ export class SnowflakeDashboardView extends ItemView {
 		layout: HTMLElement,
 		model: ProjectDashboardModel,
 	): void {
+		// Whatever the last render mounted must let go before the container
+		// is rebuilt, or its subscription would tick a detached panel forever.
+		this.disposeSessionPanel();
+		if (this.selectedPane.kind === 'statistics') {
+			this.renderStatisticsPane(layout);
+			return;
+		}
 		if (this.selectedPane.kind === 'worldbuilding') {
 			this.renderWorldbuildingPane(layout, model, this.selectedPane.wbKind);
 			return;

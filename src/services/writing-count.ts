@@ -16,16 +16,6 @@ import type { ManuscriptService } from "./manuscript-service";
 import type { ProjectRef } from "./types";
 
 /**
- * What a count may later stand for. Everything here is countable -- the
- * number can be asked for at any time -- but only what is written into notes
- * is trackable: the writing whose growth future features (sessions, goals,
- * analytics) may follow. A dashboard field or a form input is counted with
- * `countWriting` directly and stays countable, because text that has not
- * reached a note is not yet part of the work.
- */
-export type CountTracking = "countable" | "trackable";
-
-/**
  * Everything counting a note asks for: the convention its numbers follow, and
  * what the Markdown around the writing is worth. Text that never was Markdown
  * -- a form field, a dashboard input -- needs only the first half.
@@ -57,8 +47,8 @@ export interface ScopeWritingCount extends WritingCount {
  * marker lines around the sections that do count are HTML comments and
  * disappear on their own.
  *
- * Every result of this service is trackable in the sense above. Reads ride
- * the repository's stat-checked record cache and a stat-keyed memo of the
+ * Every result of this service speaks for a note on disk. Reads ride the
+ * repository's stat-checked record cache and a stat-keyed memo of the
  * finished numbers, so recounting a project touches only the notes that
  * changed since the last time.
  */
@@ -214,24 +204,31 @@ export class WritingCountService {
 	}
 
 	/**
-	 * A whole scope's writing count: the manuscript alone, or every Markdown
-	 * note under the project's folder -- managed or not, because a free note
-	 * an author keeps inside the project is their writing too.
+	 * The notes a scope is counted from: the manuscript's segments, or every
+	 * Markdown note under the project's folder. Writing sessions seed their
+	 * per-note baselines from this same list, so the count and the tracker can
+	 * never mean two different sets of notes by one scope.
 	 */
+	async scopePaths(
+		project: ProjectRef,
+		scope: WritingCountScope,
+	): Promise<string[]> {
+		return scope === "manuscript"
+			? (await this.manuscript.listSegments(project)).map(
+					(segment) => segment.path,
+				)
+			: this.repository
+					.listFilesBelow(project.rootPath)
+					.filter((file) => file.extension === "md")
+					.map((file) => file.path);
+	}
+
 	async countProject(
 		project: ProjectRef,
 		scope: WritingCountScope,
 		options: NoteCountOptions,
 	): Promise<ScopeWritingCount> {
-		const paths =
-			scope === "manuscript"
-				? (await this.manuscript.listSegments(project)).map(
-						(segment) => segment.path,
-					)
-				: this.repository
-						.listFilesBelow(project.rootPath)
-						.filter((file) => file.extension === "md")
-						.map((file) => file.path);
+		const paths = await this.scopePaths(project, scope);
 		const sum: ScopeWritingCount = {
 			scope,
 			notes: 0,

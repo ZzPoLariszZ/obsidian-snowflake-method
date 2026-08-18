@@ -92,4 +92,13 @@ export default defineConfig(
 			'obsidianmd/no-nodejs-modules': 'off',
 		},
 	},
+	{
+		// Tests run in Node, where there is no window to prefer: the popout
+		// rules protect plugin code, and the plugin itself stays under them.
+		files: ['tests/**/*.ts'],
+		rules: {
+			'obsidianmd/prefer-window-timers': 'off',
+			'obsidianmd/no-global-this': 'off',
+		},
+	},
 );

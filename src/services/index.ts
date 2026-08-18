@@ -4,3 +4,4 @@ export * from "./mirror-sync";
 export * from "./project-service";
 export * from "./types";
 export * from "./writing-count";
+export * from "./writing-session";

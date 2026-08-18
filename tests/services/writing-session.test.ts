@@ -1,0 +1,535 @@
+import { beforeEach, describe, expect, it } from "vitest";
+
+import type {
+	WritingSessionRecord,
+	WritingSessionSnapshot,
+	WritingSurfaceActivity,
+} from "../../src/domain";
+import {
+	SnowflakeProjectService,
+	WritingSessionService,
+	type ProjectSnapshot,
+	type StartWritingSessionOptions,
+	type WritingSessionEvent,
+} from "../../src/services";
+import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
+
+const T0 = Date.parse("2026-08-17T10:00:00.000Z");
+const DRAFT = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+const LOOSE = "Snowflake Projects/Novel/Loose note.md";
+const MONTH_FILE =
+	"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026/2026_08_device-a_writing_session.json";
+
+const countOptions = { mode: "ms-word", headings: "count" } as const;
+
+const options = (
+	overrides: Partial<StartWritingSessionOptions> = {},
+): StartWritingSessionOptions => ({
+	scope: "project",
+	type: "stopwatch",
+	writingMode: "draft",
+	startMode: "manual",
+	goal: null,
+	timing: { idleThresholdSeconds: 60 },
+	countOptions,
+	...overrides,
+});
+
+/** A finished session another device might have written, started at `at`. */
+const foreignRecord = (at: number, net: number): WritingSessionRecord => ({
+	uuid: `foreign-${String(at)}`,
+	schemaVersion: 1,
+	startedAt: new Date(at).toISOString(),
+	endedAt: new Date(at + 60_000).toISOString(),
+	timezone: "UTC",
+	countingScope: "project",
+	sessionType: "stopwatch",
+	startMode: "manual",
+	writingMode: "draft",
+	stopReason: "manual",
+	activeIntervals: [
+		{
+			startedAt: new Date(at).toISOString(),
+			endedAt: new Date(at + 60_000).toISOString(),
+		},
+	],
+	idleIntervals: [],
+	pausedIntervals: [],
+	startWordCount: 0,
+	endWordCount: net,
+	addedWordCount: net,
+	deletedWordCount: 0,
+	netWordCount: net,
+	files: [],
+	goal: null,
+	timing: { idleThresholdSeconds: 60 },
+});
+
+describe("WritingSessionService", () => {
+	let fakeVault: FakeVault;
+	let projects: SnowflakeProjectService;
+	let project: ProjectSnapshot;
+	let sessions: WritingSessionService;
+	let clock: number;
+	let events: WritingSessionEvent[];
+	let store: { value: unknown };
+	let timers: {
+		handlers: Map<number, () => void>;
+		flush: () => Promise<void>;
+	};
+
+	const settle = async (): Promise<void> => {
+		for (let i = 0; i < 6; i += 1) {
+			await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+		}
+	};
+
+	const buildService = (): WritingSessionService => {
+		const service = new WritingSessionService({
+			repository: projects.repository,
+			manuscript: projects.manuscript,
+			writingCount: projects.writingCount,
+			recovery: {
+				load: () => store.value,
+				save: (snapshot) => {
+					store.value = snapshot;
+				},
+			},
+			deviceId: () => "device-a",
+			now: () => clock,
+			timezone: () => "UTC",
+			uuid: () => `session-${String(clock)}`,
+			timers: {
+				set: (handler, ms) => {
+					// A zero-delay timer is the service asking for air mid-seed;
+					// held timers would deadlock the start that awaits it.
+					if (ms === 0) {
+						handler();
+						return 0;
+					}
+					const id = timers.handlers.size + 1;
+					timers.handlers.set(id, handler);
+					return id;
+				},
+				clear: (handle) => {
+					timers.handlers.delete(handle as number);
+				},
+			},
+		});
+		service.subscribe((event) => events.push(event));
+		return service;
+	};
+
+	beforeEach(async () => {
+		const environment = createFakeEnvironment();
+		fakeVault = environment.fakeVault;
+		projects = new SnowflakeProjectService(
+			environment.vault,
+			environment.fileManager,
+			environment.metadataCache,
+		);
+		project = await projects.createProject({ title: "Novel", locale: "en" });
+		clock = T0;
+		events = [];
+		store = { value: null };
+		const handlers = new Map<number, () => void>();
+		timers = {
+			handlers,
+			flush: async () => {
+				const pending = [...handlers.values()];
+				handlers.clear();
+				for (const handler of pending) handler();
+				await settle();
+			},
+		};
+		sessions = buildService();
+		await fakeVault.seedFile(LOOSE, "one two three\n");
+	});
+
+	const startSession = async (
+		overrides: Partial<StartWritingSessionOptions> = {},
+	): Promise<void> => {
+		await sessions.start(project, options(overrides));
+		// Past the discard rule, so a stop always leaves a record behind.
+		clock += 20_000;
+	};
+
+	/** An edit on a writing surface, with the defaults most tests want. */
+	const surface = (
+		overrides: Partial<WritingSurfaceActivity> = {},
+	): WritingSurfaceActivity => ({
+		kind: "markdown-editor",
+		path: LOOSE,
+		...overrides,
+	});
+
+	const monthFile = (): { sessions: WritingSessionRecord[] } | null => {
+		const content = fakeVault.contents.get(MONTH_FILE);
+		return content === undefined
+			? null
+			: (JSON.parse(content) as { sessions: WritingSessionRecord[] });
+	};
+
+	it("seeds the baselines to exactly the scope count at start", async () => {
+		await startSession();
+		const counted = await projects.writingCount.countProject(
+			project,
+			"project",
+			countOptions,
+		);
+		expect(sessions.live()?.startWordCount).toBe(counted.total);
+		expect(sessions.live()?.state).toBe("focus");
+	});
+
+	it("credits typing per note, added and deleted apart", async () => {
+		await startSession();
+		sessions.surfaceActivity(surface());
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		sessions.noteChanged(LOOSE, () => "one two four five\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		expect(sessions.live()?.deleted).toBe(1);
+		expect(sessions.live()?.trackedNet).toBe(1);
+		await sessions.stop();
+		const written = monthFile();
+		expect(written?.sessions).toHaveLength(1);
+		expect(written?.sessions[0]?.files).toEqual([
+			{ path: LOOSE, added: 2, deleted: 1, net: 1 },
+		]);
+	});
+
+	it("credits a note born mid-session with the words it was born with", async () => {
+		await startSession();
+		const path = "Snowflake Projects/Novel/Fresh.md";
+		await fakeVault.seedFile(path, "four new words here\n");
+		// The create alone: a note written in one go fires nothing after it,
+		// so waiting for a change would lose everything a form put in it.
+		sessions.noteCreated(path);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(4);
+		// And a later edit of the same note credits only the difference.
+		sessions.noteChanged(path, () => "four new words here again\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(5);
+	});
+
+	it("moves a renamed note's tallies without inventing a delta", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		const moved = "Snowflake Projects/Novel/Moved note.md";
+		fakeVault.rename(LOOSE, moved);
+		sessions.notePathRenamed(LOOSE, moved);
+		sessions.noteChanged(moved, () => "one two three four\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("reads a rename across the word scope as the words going or coming", async () => {
+		await projects.manuscript.writeSegment(
+			DRAFT,
+			"Seven words are in this draft body.",
+		);
+		await startSession({ scope: "manuscript" });
+		// Out of the manuscript: the scope really did lose those words.
+		const parked = "Snowflake Projects/Novel/Parked.md";
+		fakeVault.rename(DRAFT, parked);
+		sessions.notePathRenamed(DRAFT, parked);
+		await timers.flush();
+		expect(sessions.live()?.deleted).toBe(7);
+		expect(sessions.live()?.added).toBe(0);
+		// And back in: nothing was known about it out there, so it arrives at
+		// its full count, the way a note born in the manuscript would.
+		fakeVault.rename(parked, DRAFT);
+		sessions.notePathRenamed(parked, DRAFT);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(7);
+		expect(sessions.live()?.deleted).toBe(7);
+	});
+
+	it("leaves a rename that never touches the word scope alone", async () => {
+		await startSession({ scope: "manuscript" });
+		const elsewhere = "Snowflake Projects/Novel/Elsewhere.md";
+		fakeVault.rename(LOOSE, elsewhere);
+		sessions.notePathRenamed(LOOSE, elsewhere);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("credits a deleted note's last count and keeps its tally", async () => {
+		await startSession();
+		fakeVault.delete(LOOSE);
+		sessions.noteDeleted(LOOSE);
+		await timers.flush();
+		expect(sessions.live()?.deleted).toBe(3);
+		expect(sessions.live()?.trackedNet).toBe(-3);
+		await sessions.stop();
+		// What happened in the note happened: the record still names it, and
+		// says how it ended.
+		expect(monthFile()?.sessions[0]?.files).toEqual([
+			{ path: LOOSE, added: 0, deleted: 3, net: -3 },
+		]);
+	});
+
+	it("credits every note under a deleted folder", async () => {
+		const folder = "Snowflake Projects/Novel/Notebook";
+		await fakeVault.seedFile(`${folder}/One.md`, "one two\n");
+		await fakeVault.seedFile(`${folder}/Two.md`, "three four five\n");
+		await startSession();
+		fakeVault.delete(folder);
+		sessions.noteDeleted(folder, { children: true });
+		await timers.flush();
+		expect(sessions.live()?.deleted).toBe(5);
+	});
+
+	it("credits every note a folder carries into the word scope", async () => {
+		const parked = "Snowflake Projects/Novel/Parked";
+		await fakeVault.seedFile(`${parked}/One.md`, "one two\n");
+		await fakeVault.seedFile(`${parked}/Two.md`, "three four five\n");
+		await startSession({ scope: "manuscript" });
+		const arrived = "Snowflake Projects/Novel/50_Manuscript/Parked";
+		fakeVault.rename(parked, arrived);
+		sessions.notePathRenamed(parked, arrived);
+		await timers.flush();
+		// Nothing was known about either note out there, so both arrive whole.
+		expect(sessions.live()?.added).toBe(5);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("credits no lifecycle event through a pause", async () => {
+		const born = "Snowflake Projects/Novel/Born.md";
+		await startSession();
+		sessions.pause();
+		await fakeVault.seedFile(born, "four new words here\n");
+		sessions.noteCreated(born);
+		fakeVault.delete(LOOSE);
+		sessions.noteDeleted(LOOSE);
+		const parked = "Snowflake Projects/Novel/Parked.md";
+		fakeVault.rename(DRAFT, parked);
+		sessions.notePathRenamed(DRAFT, parked);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.deleted).toBe(0);
+		sessions.resume();
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	it("freezes a pause completely and re-baselines what changed through it", async () => {
+		await startSession();
+		sessions.pause();
+		const frozen = sessions.live()?.durations.totalMs;
+		clock += 60_000;
+		expect(sessions.live()?.durations.totalMs).toBe(frozen);
+		sessions.noteChanged(LOOSE, () => "one two three plus pause words\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		sessions.resume();
+		await settle();
+		// The same content again is no delta: the pause absorbed those words.
+		sessions.noteChanged(LOOSE, () => "one two three plus pause words\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		// Writing after the pause counts from the pause-typed text onward.
+		sessions.noteChanged(LOOSE, () => "one two three plus pause words more\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+	});
+
+	it("writes this device's monthly file and appends the next session", async () => {
+		await startSession();
+		await sessions.stop();
+		expect(monthFile()?.sessions).toHaveLength(1);
+		await startSession();
+		await sessions.stop();
+		const written = monthFile();
+		expect(written?.sessions).toHaveLength(2);
+		expect(written?.sessions[0]?.stopReason).toBe("manual");
+	});
+
+	it("sets a file that will not parse aside whole and starts fresh", async () => {
+		await fakeVault.seedFile(MONTH_FILE, "{ not json");
+		await startSession();
+		await sessions.stop();
+		const aside = [...fakeVault.contents.keys()].find((path) =>
+			path.includes(".corrupted-"),
+		);
+		expect(aside).toBeDefined();
+		expect(fakeVault.contents.get(aside as string)).toBe("{ not json");
+		expect(monthFile()?.sessions).toHaveLength(1);
+		expect(
+			events.some((event) => event.kind === "corrupt-file-preserved"),
+		).toBe(true);
+	});
+
+	it("discards a short empty session without writing anything", async () => {
+		await sessions.start(project, options());
+		clock += 5_000;
+		await sessions.stop();
+		expect(monthFile()).toBeNull();
+		const stopped = events.find((event) => event.kind === "stopped");
+		expect(stopped).toMatchObject({ record: null, reason: "manual" });
+	});
+
+	it("replaces a running session only after its record is written", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four five six\n");
+		const second = sessions.start(project, options({ writingMode: "revision" }));
+		await second;
+		const written = monthFile();
+		expect(written?.sessions).toHaveLength(1);
+		expect(written?.sessions[0]?.stopReason).toBe("replaced-by-new-session");
+		// The pending delta belonged to the first session, not the second.
+		expect(written?.sessions[0]?.addedWordCount).toBe(3);
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.writingMode).toBe("revision");
+	});
+
+	it("takes a strict session's time from the project and its words from the manuscript", async () => {
+		await projects.manuscript.writeSegment(
+			DRAFT,
+			"Seven words are in this draft body.",
+		);
+		await startSession({ scope: "manuscript" });
+		// Consulting a character is part of writing the chapter, so it holds
+		// the clock -- and adds nothing to a manuscript's count.
+		clock += 90_000;
+		sessions.surfaceActivity(surface({ path: LOOSE }));
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		expect(sessions.live()?.state).toBe("focus");
+		expect(sessions.live()?.added).toBe(0);
+		sessions.surfaceActivity(surface({ path: DRAFT }));
+		expect(sessions.live()?.state).toBe("focus");
+	});
+
+	it("leaves a session in focus wherever the author went, until the silence runs long", async () => {
+		await startSession();
+		// Nothing at all happens: no blur, no window event, no report.
+		clock += 59_000;
+		sessions.surfaceActivity(surface());
+		expect(sessions.live()?.state).toBe("focus");
+		clock += 61_000;
+		expect(sessions.live()?.state).toBe("idle");
+		sessions.surfaceActivity(surface());
+		expect(sessions.live()?.state).toBe("focus");
+	});
+
+	it("holds focus for a form field and credits it no words", async () => {
+		await startSession();
+		clock += 90_000;
+		expect(sessions.live()?.state).toBe("idle");
+		// A name, a status, a paragraph of prose: all the same to the clock,
+		// and none of them words until a note holds them.
+		for (const kind of ["dashboard-field", "modal-field"] as const) {
+			sessions.surfaceActivity({ kind, path: project.projectFile });
+			expect(sessions.live()?.state).toBe("focus");
+			expect(sessions.live()?.added).toBe(0);
+			clock += 90_000;
+		}
+	});
+
+	it("counts a form's writing only once the save persists it", async () => {
+		await startSession();
+		sessions.surfaceActivity({ kind: "modal-field", path: project.projectFile });
+		// Typed but not saved: the project has not changed, so nor has the count.
+		expect(sessions.live()?.state).toBe("focus");
+		expect(sessions.live()?.added).toBe(0);
+		// The save is what the session hears, and it hears it once.
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+	});
+
+	it("ignores a surface belonging to another project", async () => {
+		await startSession();
+		clock += 90_000;
+		sessions.surfaceActivity({
+			kind: "dashboard-field",
+			path: "Somewhere Else/Novel/001_Project_Metadata.md",
+		});
+		expect(sessions.live()?.state).toBe("idle");
+		expect(sessions.live()?.added).toBe(0);
+	});
+
+	it("recovers a marked shutdown as one, ended at the captured moment", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		clock += 10_000;
+		sessions.markShutdown();
+		expect(store.value).not.toBeNull();
+
+		const revived = buildService();
+		const record = await revived.recoverAtStartup();
+		expect(record?.stopReason).toBe("app-shutdown");
+		expect(record?.endedAt).toBe(new Date(clock).toISOString());
+		expect(record?.addedWordCount).toBe(2);
+		expect(record?.endWordCount).toBe((record?.startWordCount ?? 0) + 2);
+		expect(store.value).toBeNull();
+		expect(monthFile()?.sessions[0]?.uuid).toBe(record?.uuid);
+	});
+
+	it("recovers an unmarked snapshot as a crash", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		sessions.markShutdown();
+		const marked = store.value as WritingSessionSnapshot;
+		const { markedShutdown: dropped, ...rest } = marked;
+		void dropped;
+		store.value = rest;
+
+		const revived = buildService();
+		const record = await revived.recoverAtStartup();
+		expect(record?.stopReason).toBe("recovered");
+	});
+
+	it("starts an auto session only into silence, and stops only its own", async () => {
+		await startSession();
+		await sessions.startAuto(project, options({ scope: "manuscript" }));
+		expect(sessions.live()?.startMode).toBe("manual");
+		await sessions.stopIfAuto("focus-mode-ended");
+		expect(sessions.isRunning()).toBe(true);
+		await sessions.stop();
+
+		await sessions.startAuto(project, options({ scope: "manuscript" }));
+		expect(sessions.live()?.startMode).toBe("auto");
+		clock += 20_000;
+		await sessions.stopIfAuto("focus-mode-ended");
+		const written = monthFile();
+		expect(
+			written?.sessions[written.sessions.length - 1]?.stopReason,
+		).toBe("focus-mode-ended");
+	});
+
+	it("sums today across every device's file, the live session included", async () => {
+		const foreign =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
+		await fakeVault.seedFile(
+			foreign,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 60 * 60_000, 250)],
+			}),
+		);
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		const summary = await sessions.todaySummary(project);
+		expect(summary.sessions).toBe(2);
+		expect(summary.trackedNet).toBe(252);
+		expect(summary.focusMs).toBe(60_000 + 20_000);
+		// The other device's file was read, never written.
+		expect(fakeVault.processCalls).not.toContain(foreign);
+	});
+});

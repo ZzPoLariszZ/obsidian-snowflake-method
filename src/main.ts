@@ -1,4 +1,5 @@
 import {
+	addIcon,
 	MarkdownView,
 	Menu,
 	moment,
@@ -35,7 +36,12 @@ import {
 	managedSectionHighlightsForStep,
 	managedSectionsForDocument,
 	primaryManagedSectionForStep,
+	formatClock,
+	WRITING_MODES,
+	WRITING_SESSION_TYPES,
 	type DocumentType,
+	type WritingSessionTiming,
+	type WritingSessionType,
 	type EntityKindId,
 	type StepId,
 	type StepStatus,
@@ -96,6 +102,10 @@ import {
 	type SceneRecord,
 	type WorldbuildingRecord,
 	type WritingCountScope,
+	WritingSessionService,
+	type LiveWritingSession,
+	type StartWritingSessionOptions,
+	type WritingSessionEvent,
 } from './services';
 import {
 	isPathAtOrBelow,
@@ -133,6 +143,11 @@ import {
 	type NotePaneRoute,
 } from './ui/note-pane';
 import {
+	STATISTICS_VIEW_TYPE,
+	SnowflakeStatisticsView,
+} from './ui/statistics-view';
+import type { SessionPanelBridge } from './ui/session-panel';
+import {
 	ConfirmMemberDeletionModal,
 	CreateCharacterModal,
 	CreateProjectModal,
@@ -148,9 +163,11 @@ import {
 	type CreateSceneRequest,
 	promptForDefinitionKind,
 	promptForDefinitionPath,
+	StartWritingSessionModal,
 	type EntityFormRequest,
 	type ManageProjectLists,
 	type ManageProjectOption,
+	type StartSessionRequest,
 	type Translate,
 } from './ui/modals';
 import type {
@@ -186,6 +203,25 @@ const MIN_SPLIT_WIDTH_PX = 900;
 
 /** Fields that hold writing. A date, a number, a checkbox holds none. */
 const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
+
+/** Per-device localStorage keys: never data.json, which may sync. */
+const SESSION_RECOVERY_KEY = 'snowflake-method-session-recovery';
+const SESSION_DEVICE_KEY = 'snowflake-method-device-id';
+
+/**
+ * The pomodoro's tomato, drawn here because lucide has none: a round body,
+ * a stem, two leaves, on the 100-unit grid `addIcon` hands out.
+ */
+const POMODORO_ICON = 'snowflake-method-pomodoro';
+const POMODORO_SVG = [
+	'<g fill="none" stroke="currentColor" stroke-width="8"',
+	' stroke-linecap="round" stroke-linejoin="round">',
+	'<path d="M50 32 C 28 32 15 46 15 62 a 35 33 0 0 0 70 0 C 85 46 72 32 50 32 Z"/>',
+	'<path d="M50 30 V 14"/>',
+	'<path d="M50 30 C 43 22 33 19 25 23 c 6 8 16 10 25 7 Z"/>',
+	'<path d="M50 30 C 57 22 67 19 75 23 c -6 8 -16 10 -25 7 Z"/>',
+	'</g>',
+].join('');
 
 /**
  * How often a field being counted is looked at again. A field can stop
@@ -273,6 +309,13 @@ export default class SnowflakeMethodPlugin
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
+	sessions!: WritingSessionService;
+	private lastFocusLevel: ManuscriptFocusLevel = 'off';
+	private sessionItem: HTMLElement | null = null;
+	private sessionIconEl: HTMLElement | null = null;
+	private sessionText: HTMLElement | null = null;
+	private sessionShown: { text: string; tooltip: string; look: string } | null =
+		null;
 	private writingCountTimer: number | null = null;
 	/** When the pending count is due, so a later request cannot delay it. */
 	private writingCountDue = 0;
@@ -357,6 +400,9 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.on('window-open', (_workspaceWindow, targetWindow) => {
 				this.applyMotionPreferenceToDocument(targetWindow.document);
 				this.publishScrollbarWidthToDocument(targetWindow.document);
+				// A popout carries writing surfaces of its own, and a session
+				// must hear the typing in them.
+				this.registerWritingSurfaceWatch(targetWindow.document);
 			}),
 		);
 		this.registerEvent(
@@ -391,6 +437,25 @@ export default class SnowflakeMethodPlugin
 			this.app.metadataCache,
 			this.settings.projectRoot,
 		);
+		this.sessions = new WritingSessionService({
+			repository: this.projects.repository,
+			manuscript: this.projects.manuscript,
+			writingCount: this.projects.writingCount,
+			recovery: {
+				load: () => this.app.loadLocalStorage(SESSION_RECOVERY_KEY) as unknown,
+				save: (snapshot) => {
+					this.app.saveLocalStorage(SESSION_RECOVERY_KEY, snapshot);
+				},
+			},
+			deviceId: () => this.writingSessionDeviceId(),
+			// The plugin-lifetime clock: the main window's, so a popout
+			// closing can never take the session's ticker with it.
+			timers: {
+				set: (handler, ms) => window.setTimeout(handler, ms),
+				clear: (handle) => window.clearTimeout(handle as number),
+			},
+		});
+		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		this.registerManagedSectionEditor();
 		this.registerView(
 			DASHBOARD_VIEW_TYPE,
@@ -399,6 +464,10 @@ export default class SnowflakeMethodPlugin
 		this.registerView(
 			MANUSCRIPT_VIEW_TYPE,
 			(leaf) => new SnowflakeManuscriptView(leaf, this),
+		);
+		this.registerView(
+			STATISTICS_VIEW_TYPE,
+			(leaf) => new SnowflakeStatisticsView(leaf, this.writingSessions()),
 		);
 		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
 			void this.openDashboard();
@@ -413,6 +482,8 @@ export default class SnowflakeMethodPlugin
 		this.registerCommands();
 		this.registerFileMenu();
 		this.registerWritingCount();
+		addIcon(POMODORO_ICON, POMODORO_SVG);
+		this.registerWritingSessions();
 		this.addSettingTab(new SnowflakeSettingTab(this.app, this));
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
@@ -474,6 +545,11 @@ export default class SnowflakeMethodPlugin
 			}
 			this.applyManuscriptModePresence();
 			this.scheduleWritingCountRefresh(0);
+			// A session the last run never closed is finalized before anything
+			// can start a new one over it.
+			void this.sessions.recoverAtStartup().catch((error: unknown) => {
+				this.showError(error);
+			});
 			void this.refreshVisibleDashboardsAfterLayout().catch(
 				(error: unknown) => {
 					this.showError(error);
@@ -488,6 +564,10 @@ export default class SnowflakeMethodPlugin
 	}
 
 	onunload(): void {
+		// First, and synchronously: a running session's snapshot must land in
+		// the per-device store before anything else happens, so the next load
+		// can close the session out instead of losing it.
+		this.sessions.markShutdown();
 		if (this.refreshTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.refreshTimer);
 			this.refreshTimer = null;
@@ -514,6 +594,9 @@ export default class SnowflakeMethodPlugin
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
 		this.applyMotionPreference();
+		// Resynced silently: a level that arrived from outside is not the
+		// author turning focus mode on here, so it starts no session.
+		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		await this.syncCurrentProjectLocale();
 		await this.refreshDashboards();
 	}
@@ -2179,7 +2262,13 @@ export default class SnowflakeMethodPlugin
 
 	async handleSettingsChanged(key: string): Promise<void> {
 		if (key === 'reduceMotion') this.applyMotionPreference();
-		if (key === 'manuscriptFocusLevel') this.applyManuscriptModePresence();
+		if (key === 'manuscriptFocusLevel') {
+			this.applyManuscriptModePresence();
+			// The setting transition, deliberately not the effective focus: a
+			// glance at another tab mid-session accrues idle, it does not end
+			// the session.
+			await this.handleFocusSessionTransition();
+		}
 		if (key === 'projectRoot') {
 			this.projectHealth.clear();
 			const recent = this.settings.recentProjectPath;
@@ -2365,8 +2454,24 @@ export default class SnowflakeMethodPlugin
 			}),
 		);
 		this.registerEvent(
-			this.app.workspace.on('editor-change', () => {
+			this.app.workspace.on('editor-change', (editor, info) => {
 				this.scheduleWritingCountRefresh();
+				const path = info.file?.path;
+				if (path === undefined) return;
+				// The transaction is the activity; the text resolves lazily at
+				// the session's debounce, so a burst of keystrokes never
+				// materializes the note once per key.
+				this.sessions.surfaceActivity({
+					kind: 'markdown-editor',
+					path,
+				});
+				this.sessions.noteChanged(path, () => {
+					try {
+						return editor.getValue();
+					} catch {
+						return null;
+					}
+				});
 			}),
 		);
 		// Focus decides whether a field is being written in at all, so a change
@@ -2404,6 +2509,480 @@ export default class SnowflakeMethodPlugin
 				this.writingCountTimer = null;
 			}
 		});
+	}
+
+	private registerWritingSessions(): void {
+		const item = this.addStatusBarItem();
+		item.addClass('mod-clickable', 'snowflake-method-session');
+		const icon = item.createSpan({ cls: 'snowflake-method-session-icon' });
+		setIcon(icon, 'clock');
+		this.sessionIconEl = icon;
+		this.sessionText = item.createSpan();
+		this.sessionItem = item;
+		// Always on show: with no session running, the icon is how a session
+		// is started, and a control that vanishes cannot be clicked.
+		setTooltip(item, this.globalT('statusBar.sessionStart'));
+		this.registerDomEvent(item, 'click', (event) => {
+			this.openWritingSessionMenu(event);
+		});
+		this.register(
+			this.sessions.subscribe((event) => this.handleSessionEvent(event)),
+		);
+		this.registerWritingSurfaceWatch(this.app.workspace.containerEl.doc);
+	}
+
+	/** This installation's id, minted once and kept out of data.json. */
+	private writingSessionDeviceId(): string {
+		const kept = this.app.loadLocalStorage(SESSION_DEVICE_KEY) as unknown;
+		if (typeof kept === 'string' && kept.length > 0) return kept;
+		const minted = crypto.randomUUID();
+		this.app.saveLocalStorage(SESSION_DEVICE_KEY, minted);
+		return minted;
+	}
+
+	/**
+	 * Watches one document for editing on this plugin's own writing surfaces.
+	 *
+	 * A session follows surfaces rather than editors, because an author
+	 * filling in a character's storyline on the dashboard is writing, and one
+	 * that only heard CodeMirror would call them idle. Only the clock is at
+	 * stake: what a field holds has not reached a note yet, and the words are
+	 * counted when it does.
+	 */
+	private registerWritingSurfaceWatch(doc: Document): void {
+		this.registerDomEvent(doc, 'input', (event) => {
+			const field = this.writingSurfaceField(event.target);
+			if (field === null) return;
+			this.sessions.surfaceActivity({
+				kind:
+					field.closest('.modal') === null ? 'dashboard-field' : 'modal-field',
+				// A modal is drawn outside the view that opened it, so it
+				// carries no mark of its own: the project it would save into
+				// answers instead, which is the one the plugin calls current.
+				path:
+					field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
+						.snowflakeProject ?? this.settings.recentProjectPath,
+			});
+		});
+	}
+
+	/**
+	 * A writing surface of this plugin's own, if the event landed in one. The
+	 * ownership test the writing count already uses, minus Obsidian's
+	 * settings window: a project root is configuration, not writing.
+	 */
+	private writingSurfaceField(
+		target: EventTarget | null,
+	): HTMLInputElement | HTMLTextAreaElement | null {
+		const field =
+			target instanceof HTMLTextAreaElement ||
+			(target instanceof HTMLInputElement &&
+				COUNTABLE_FIELD_TYPES.has(target.type))
+				? target
+				: null;
+		if (field === null || !this.ownsField(field)) return null;
+		return field.closest('.mod-settings') === null ? field : null;
+	}
+
+	private handleSessionEvent(event: WritingSessionEvent): void {
+		if (this.unloading) return;
+		if (event.kind === 'goal-reached') {
+			new Notice(this.globalT('session.notice.goalReached'));
+		} else if (event.kind === 'break-started') {
+			new Notice(
+				this.globalT('session.notice.breakStarted', { cycle: event.cycle }),
+			);
+		} else if (event.kind === 'work-started') {
+			new Notice(
+				this.globalT('session.notice.workStarted', { cycle: event.cycle }),
+			);
+		} else if (event.kind === 'corrupt-file-preserved') {
+			new Notice(
+				this.globalT('session.notice.corruptPreserved', { path: event.path }),
+			);
+		} else if (event.kind === 'recovered' && event.record !== null) {
+			new Notice(this.globalT('session.notice.recovered'));
+		} else if (
+			event.kind === 'stopped' &&
+			event.reason === 'countdown-completed'
+		) {
+			new Notice(this.globalT('session.notice.completed'));
+		}
+		this.repaintWritingSession();
+		if (
+			event.kind === 'started' ||
+			event.kind === 'stopped' ||
+			event.kind === 'recovered'
+		) {
+			this.scheduleRefresh(false);
+		}
+	}
+
+	private repaintWritingSession(): LiveWritingSession | null {
+		const item = this.sessionItem;
+		const icon = this.sessionIconEl;
+		const text = this.sessionText;
+		if (item === null || icon === null || text === null || this.unloading) {
+			return null;
+		}
+		const live = this.sessions.live();
+		const iconName =
+			live === null || live.type === 'stopwatch'
+				? 'clock'
+				: live.type === 'countdown'
+					? 'timer'
+					: POMODORO_ICON;
+		const line =
+			live === null
+				? ''
+				: live.state === 'starting'
+					? this.globalT('statusBar.sessionStarting')
+					: live.type === 'stopwatch'
+						? formatClock(live.durations.totalMs)
+						: formatClock(live.remainingMs ?? 0);
+		const tooltip =
+			live === null
+				? this.globalT('statusBar.sessionStart')
+				: this.writingSessionTooltip(live);
+		const look = [
+			iconName,
+			live?.state ?? 'none',
+			live?.pomodoro?.phase ?? '',
+		].join(':');
+		const shown = this.sessionShown;
+		if (
+			shown !== null &&
+			shown.text === line &&
+			shown.tooltip === tooltip &&
+			shown.look === look
+		) {
+			return live;
+		}
+		this.sessionShown = { text: line, tooltip, look };
+		setIcon(icon, iconName);
+		text.setText(line);
+		item.toggleClass('is-paused', live?.state === 'paused');
+		item.toggleClass('is-idle', live?.state === 'idle');
+		item.toggleClass('is-break', live?.pomodoro?.phase === 'break');
+		setTooltip(item, tooltip);
+		return live;
+	}
+
+	private writingSessionTooltip(live: LiveWritingSession): string {
+		const state =
+			live.pomodoro?.phase === 'break'
+				? 'break'
+				: live.state;
+		const lines = [
+			[
+				this.globalT(`session.type.${live.type}`),
+				this.globalT(`session.state.${state}`),
+				this.globalT(`session.mode.${live.writingMode}`),
+				this.globalT(
+					live.scope === 'project'
+						? 'statusBar.scopeProject'
+						: 'statusBar.scopeManuscript',
+				),
+				...(live.pomodoro === null
+					? []
+					: [
+							this.globalT('session.stat.cycle', {
+								cycle: live.pomodoro.cycle,
+							}),
+						]),
+			].join(' · '),
+			this.globalT('session.stat.focus', {
+				duration: formatClock(live.durations.focusMs),
+			}),
+			this.globalT('session.stat.idle', {
+				duration: formatClock(live.durations.idleMs),
+			}),
+			this.globalT('session.stat.total', {
+				duration: formatClock(live.durations.totalMs),
+			}),
+			this.globalT('session.stat.words', {
+				added: this.grouped(live.added),
+				deleted: this.grouped(live.deleted),
+				net: this.grouped(live.trackedNet),
+			}),
+		];
+		if (live.startWordCount !== null) {
+			lines.push(
+				this.globalT('session.stat.startCount', {
+					count: this.grouped(live.startWordCount),
+				}),
+			);
+		}
+		// A pace over less than a minute of focus is noise, not a number.
+		if (live.durations.focusMs >= 60_000) {
+			lines.push(
+				this.globalT('session.stat.pace', {
+					pace: this.grouped(
+						Math.round(
+							(live.trackedNet * 3_600_000) / live.durations.focusMs,
+						),
+					),
+				}),
+			);
+		}
+		if (live.goal !== null) {
+			if (live.goalMet) {
+				lines.push(this.globalT('session.stat.goalReached'));
+			} else {
+				if (live.goal.netWordTarget !== undefined) {
+					lines.push(
+						this.globalT('session.stat.goalNet', {
+							net: this.grouped(live.trackedNet),
+							target: this.grouped(live.goal.netWordTarget),
+						}),
+					);
+				}
+				if (live.goal.focusTimeTargetSeconds !== undefined) {
+					lines.push(
+						this.globalT('session.stat.goalFocus', {
+							done: formatClock(live.durations.focusMs),
+							target: formatClock(live.goal.focusTimeTargetSeconds * 1000),
+						}),
+					);
+				}
+			}
+		}
+		return lines.join('\n');
+	}
+
+	private openWritingSessionMenu(event: MouseEvent): void {
+		const menu = new Menu();
+		const live = this.sessions.live();
+		if (live === null) {
+			const icons: Record<WritingSessionType, string> = {
+				stopwatch: 'clock',
+				countdown: 'timer',
+				pomodoro: POMODORO_ICON,
+			};
+			for (const type of WRITING_SESSION_TYPES) {
+				menu.addItem((entry) =>
+					entry
+						.setTitle(this.globalT(`sessionMenu.start.${type}`))
+						.setIcon(icons[type])
+						.onClick(() => {
+							void this.startQuickSession(type).catch((error: unknown) => {
+								this.showError(error);
+							});
+						}),
+				);
+			}
+			menu.addItem((entry) =>
+				entry
+					.setTitle(this.globalT('sessionMenu.startWithOptions'))
+					.setIcon('sliders-horizontal')
+					.onClick(() => {
+						this.openStartSessionModal();
+					}),
+			);
+		} else {
+			// A break is not the author's pause to lift; the entry hides.
+			if (live.pomodoro?.phase !== 'break') {
+				menu.addItem((entry) =>
+					entry
+						.setTitle(
+							this.globalT(
+								live.state === 'paused'
+									? 'sessionMenu.resume'
+									: 'sessionMenu.pause',
+							),
+						)
+						.setIcon(live.state === 'paused' ? 'play' : 'pause')
+						.onClick(() => {
+							if (live.state === 'paused') this.sessions.resume();
+							else this.sessions.pause();
+						}),
+				);
+			}
+			menu.addItem((entry) =>
+				entry
+					.setTitle(this.globalT('sessionMenu.stop'))
+					.setIcon('square')
+					.onClick(() => {
+						void this.sessions.stop().catch((error: unknown) => {
+							this.showError(error);
+						});
+					}),
+			);
+			menu.addSeparator();
+			for (const mode of WRITING_MODES) {
+				menu.addItem((entry) =>
+					entry
+						.setTitle(this.globalT(`session.mode.${mode}`))
+						.setChecked(live.writingMode === mode)
+						.onClick(() => {
+							this.sessions.setWritingMode(mode);
+						}),
+				);
+			}
+		}
+		menu.addSeparator();
+		menu.addItem((entry) =>
+			entry
+				.setTitle(this.globalT('sessionMenu.openStatistics'))
+				.setIcon('chart-line')
+				.onClick(() => {
+					void this.openStatisticsView().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/** The clocks a new session starts with, read from the settings once. */
+	private sessionTiming(type: WritingSessionType): WritingSessionTiming {
+		const timing: WritingSessionTiming = {
+			idleThresholdSeconds: this.settings.sessionIdleThresholdSeconds,
+		};
+		if (type === 'countdown') {
+			timing.targetDurationSeconds = this.settings.sessionCountdownMinutes * 60;
+		}
+		if (type === 'pomodoro') {
+			timing.workDurationSeconds =
+				this.settings.sessionPomodoroWorkMinutes * 60;
+			timing.breakDurationSeconds =
+				this.settings.sessionPomodoroBreakMinutes * 60;
+			timing.autoRepeat = this.settings.sessionPomodoroAutoRepeat;
+		}
+		return timing;
+	}
+
+	private async startQuickSession(type: WritingSessionType): Promise<void> {
+		await this.startConfiguredSession({
+			type,
+			scope: 'project',
+			writingMode: 'draft',
+			goal: null,
+		});
+	}
+
+	private async startConfiguredSession(
+		request: StartSessionRequest,
+	): Promise<void> {
+		const project = await this.writingCountProject();
+		if (project === null) {
+			new Notice(this.globalT('messages.noCurrentProject'));
+			return;
+		}
+		const options: StartWritingSessionOptions = {
+			...request,
+			startMode: 'manual',
+			timing: this.sessionTiming(request.type),
+			countOptions: this.writingCountOptions(),
+		};
+		await this.sessions.start(project, options);
+	}
+
+	private openStartSessionModal(): void {
+		new StartWritingSessionModal(this.app, this.globalT, (request) =>
+			this.startConfiguredSession(request),
+		).open();
+	}
+
+	/**
+	 * The auto session that follows the focus-mode setting: turned on from
+	 * off, it starts a strict stopwatch; turned off, it ends the session it
+	 * started and no other. Auto never replaces a manual session.
+	 */
+	private async handleFocusSessionTransition(): Promise<void> {
+		const level = this.settings.manuscriptFocusLevel;
+		const was = this.lastFocusLevel;
+		this.lastFocusLevel = level;
+		if (was === level) return;
+		if (was === 'off' && level !== 'off') {
+			if (!this.settings.sessionAutoWithFocusMode) return;
+			if (this.sessions.isRunning()) return;
+			const project = await this.writingCountProject();
+			if (project === null) return;
+			await this.sessions.startAuto(project, {
+				scope: 'manuscript',
+				type: 'stopwatch',
+				writingMode: 'draft',
+				goal: null,
+				timing: this.sessionTiming('stopwatch'),
+				countOptions: this.writingCountOptions(),
+			});
+			return;
+		}
+		if (was !== 'off' && level === 'off') {
+			await this.sessions.stopIfAuto('focus-mode-ended');
+		}
+	}
+
+	async openStatisticsView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(
+			STATISTICS_VIEW_TYPE,
+		)[0];
+		if (existing !== undefined) {
+			await this.app.workspace.revealLeaf(existing);
+			return;
+		}
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf === null) return;
+		await leaf.setViewState({ type: STATISTICS_VIEW_TYPE, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** The one bridge every session panel renders through. */
+	writingSessions(): SessionPanelBridge {
+		return {
+			t: this.globalT,
+			live: () => this.sessions.live(),
+			todaySummary: async () => {
+				// The running session's own project first: a panel showing a live
+				// Demo session must not read another project's day under it.
+				const live = this.sessions.live();
+				const project =
+					live !== null ? live.project : await this.writingCountProject();
+				return project === null
+					? null
+					: this.sessions.todaySummary(project);
+			},
+			subscribe: (listener) =>
+				this.sessions.subscribe((event) => {
+					listener(
+						event.kind === 'started' ||
+							event.kind === 'stopped' ||
+							event.kind === 'recovered',
+					);
+				}),
+			startQuick: (type) => {
+				void this.startQuickSession(type).catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+			startWithOptions: () => {
+				this.openStartSessionModal();
+			},
+			pauseOrResume: () => {
+				if (this.sessions.live()?.state === 'paused') this.sessions.resume();
+				else this.sessions.pause();
+			},
+			stop: () => {
+				void this.sessions.stop().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+			setWritingMode: (mode) => {
+				this.sessions.setWritingMode(mode);
+			},
+		};
+	}
+
+	/** A stream segment's text changed under the author's typing. */
+	manuscriptSegmentEdited(path: string, body: string): void {
+		this.sessions.surfaceActivity({
+			kind: 'manuscript-segment',
+			path,
+		});
+		// A stream body carries no frontmatter and draft notes carry no
+		// managed sections, so counting it plain matches the note on disk.
+		this.sessions.noteChanged(path, () => body);
 	}
 
 	/** A number as the reader's own locale groups it. */
@@ -3592,6 +4171,57 @@ export default class SnowflakeMethodPlugin
 
 	private registerCommands(): void {
 		this.addCommand({
+			id: 'start-writing-session',
+			name: this.globalT('commands.startWritingSession'),
+			callback: () => {
+				this.openStartSessionModal();
+			},
+		});
+		for (const type of WRITING_SESSION_TYPES) {
+			this.addCommand({
+				id: `start-writing-session-${type}`,
+				name: this.globalT(`commands.startSession.${type}`),
+				callback: () => {
+					void this.startQuickSession(type).catch((error: unknown) => {
+						this.showError(error);
+					});
+				},
+			});
+		}
+		this.addCommand({
+			id: 'pause-resume-writing-session',
+			name: this.globalT('commands.pauseResumeWritingSession'),
+			checkCallback: (checking) => {
+				const live = this.sessions.live();
+				if (live === null || live.pomodoro?.phase === 'break') return false;
+				if (checking) return true;
+				if (live.state === 'paused') this.sessions.resume();
+				else this.sessions.pause();
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'stop-writing-session',
+			name: this.globalT('commands.stopWritingSession'),
+			checkCallback: (checking) => {
+				if (!this.sessions.isRunning()) return false;
+				if (checking) return true;
+				void this.sessions.stop().catch((error: unknown) => {
+					this.showError(error);
+				});
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'open-statistics',
+			name: this.globalT('commands.openStatistics'),
+			callback: () => {
+				void this.openStatisticsView().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'toggle-managed-boundary-protection',
 			name: this.globalT('commands.toggleManagedBoundaries'),
 			callback: () => {
@@ -4055,10 +4685,19 @@ export default class SnowflakeMethodPlugin
 			this.pendingFieldsReconciles.clear();
 		});
 		this.registerEvent(
-			this.app.vault.on('create', (file) => this.handleVaultEvent(file)),
+			this.app.vault.on('create', (file) => {
+				// Born in scope, a note baselines at nothing, so what is then
+				// written into it is credited to the session.
+				if (file instanceof TFile) this.sessions.noteCreated(file.path);
+				this.handleVaultEvent(file);
+			}),
 		);
 		this.registerEvent(
-			this.app.vault.on('modify', (file) => this.handleVaultEvent(file)),
+			this.app.vault.on('modify', (file) => {
+				// Out-of-editor writes move the counts, never the idle clock.
+				if (file instanceof TFile) this.sessions.noteChanged(file.path);
+				this.handleVaultEvent(file);
+			}),
 		);
 		this.registerEvent(
 			this.app.vault.on('delete', (file) => {
@@ -4196,6 +4835,9 @@ export default class SnowflakeMethodPlugin
 		this.projects.writingCount.forget(file.path, {
 			children: file instanceof TFolder,
 		});
+		this.sessions.noteDeleted(file.path, {
+			children: file instanceof TFolder,
+		});
 		if (!this.touchesProject(file.path)) return;
 		this.invalidateProjectHealth(file.path);
 		this.detachProjectViews(file.path);
@@ -4252,6 +4894,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.writingCount.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
+		this.sessions.notePathRenamed(oldPath, file.path);
 		// The configured root travels with its folder. Leaving the setting on a
 		// path that no longer exists would empty the dashboard while every
 		// project note is still on disk. This is checked before the containment

@@ -12,6 +12,7 @@ import type {
 	WritingCountMode,
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
+import type { SessionPanelBridge } from './session-panel';
 import type {
 	CustomFieldTemplateInfo,
 	DefinitionForest,
@@ -363,10 +364,18 @@ export interface ManuscriptHost {
 	 * the one the author is looking at.
 	 */
 	manuscriptWritingChanged(): void;
+	/**
+	 * One segment's text changed under typing, with the text it now holds.
+	 * Unlike the report above this one carries its subject, because a writing
+	 * session tracks the note that was edited wherever its pane sits.
+	 */
+	manuscriptSegmentEdited(path: string, body: string): void;
 }
 
 export interface DashboardHost {
 	t: Translate;
+	/** The bridge the statistics pane renders the session panel through. */
+	writingSessions(): SessionPanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

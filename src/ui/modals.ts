@@ -15,6 +15,9 @@ import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	TIME_KINDS,
+	WRITING_MODES,
+	WRITING_SESSION_SCOPES,
+	WRITING_SESSION_TYPES,
 	addSceneCastMember,
 	foldName,
 	isChoosableScenePov,
@@ -25,6 +28,10 @@ import {
 	type EntityKindId,
 	type ProgressStatus,
 	type TimeKind,
+	type WritingMode,
+	type WritingSessionGoal,
+	type WritingSessionScope,
+	type WritingSessionType,
 	isWorldbuildingKind,
 	type WorldbuildingKindId,
 } from '../domain';
@@ -4430,4 +4437,113 @@ export class ManagedBoundaryUnlockModal extends Modal {
 	onClose(): void {
 		this.contentEl.empty();
 	}
+}
+
+/** What the start-with-options dialog decides; the clocks come from settings. */
+export interface StartSessionRequest {
+	type: WritingSessionType;
+	scope: WritingSessionScope;
+	writingMode: WritingMode;
+	goal: WritingSessionGoal | null;
+}
+
+/**
+ * The start-with-options dialog: the session type, what counts as its scope,
+ * the writing-mode label, and an optional goal. The durations are settings,
+ * not questions to answer at every start.
+ */
+export class StartWritingSessionModal extends SnowflakeFormModal<StartSessionRequest> {
+	private sessionType: WritingSessionType = 'stopwatch';
+	private countingScope: WritingSessionScope = 'project';
+	private writingMode: WritingMode = 'draft';
+	private goalNetEl: HTMLInputElement | null = null;
+	private goalFocusEl: HTMLInputElement | null = null;
+
+	constructor(
+		app: App,
+		t: Translate,
+		onSubmit: SubmitHandler<StartSessionRequest>,
+	) {
+		super(app, t, t('session.modal.title'), onSubmit, 'session.modal.start');
+		this.modalEl.addClass('snowflake-method-session-modal');
+	}
+
+	protected buildForm(): void {
+		new Setting(this.contentEl)
+			.setName(this.t('session.modal.type'))
+			.addDropdown((dropdown) => {
+				for (const type of WRITING_SESSION_TYPES) {
+					dropdown.addOption(type, this.t(`session.type.${type}`));
+				}
+				dropdown.setValue(this.sessionType).onChange((value) => {
+					if ((WRITING_SESSION_TYPES as readonly string[]).includes(value)) {
+						this.sessionType = value as WritingSessionType;
+					}
+				});
+			});
+		new Setting(this.contentEl)
+			.setName(this.t('session.modal.scope'))
+			.setDesc(this.t('session.modal.scopeDesc'))
+			.addDropdown((dropdown) => {
+				for (const scope of WRITING_SESSION_SCOPES) {
+					dropdown.addOption(scope, this.t(`session.scope.${scope}`));
+				}
+				dropdown.setValue(this.countingScope).onChange((value) => {
+					if ((WRITING_SESSION_SCOPES as readonly string[]).includes(value)) {
+						this.countingScope = value as WritingSessionScope;
+					}
+				});
+			});
+		new Setting(this.contentEl)
+			.setName(this.t('session.modal.mode'))
+			.addDropdown((dropdown) => {
+				for (const mode of WRITING_MODES) {
+					dropdown.addOption(mode, this.t(`session.mode.${mode}`));
+				}
+				dropdown.setValue(this.writingMode).onChange((value) => {
+					if ((WRITING_MODES as readonly string[]).includes(value)) {
+						this.writingMode = value as WritingMode;
+					}
+				});
+			});
+		new Setting(this.contentEl)
+			.setName(this.t('session.modal.goalNet'))
+			.setDesc(this.t('session.modal.goalDesc'))
+			.addText((text) => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				this.goalNetEl = text.inputEl;
+			});
+		new Setting(this.contentEl)
+			.setName(this.t('session.modal.goalFocus'))
+			.addText((text) => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				this.goalFocusEl = text.inputEl;
+			});
+	}
+
+	protected collectValue(): StartSessionRequest | null {
+		const goal: WritingSessionGoal = {};
+		const net = positiveInteger(this.goalNetEl?.value);
+		if (net !== null) goal.netWordTarget = net;
+		const focusMinutes = positiveInteger(this.goalFocusEl?.value);
+		if (focusMinutes !== null) goal.focusTimeTargetSeconds = focusMinutes * 60;
+		return {
+			type: this.sessionType,
+			scope: this.countingScope,
+			writingMode: this.writingMode,
+			goal: goal.netWordTarget === undefined &&
+				goal.focusTimeTargetSeconds === undefined
+				? null
+				: goal,
+		};
+	}
+}
+
+/** A whole positive number, or null: a blank goal field is no condition. */
+function positiveInteger(value: string | undefined): number | null {
+	if (value === undefined || value.trim().length === 0) return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }

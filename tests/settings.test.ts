@@ -170,6 +170,47 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
+	it('holds the session clocks to their ranges, or the defaults', () => {
+		expect(DEFAULT_SETTINGS.sessionIdleThresholdSeconds).toBe(60);
+		expect(DEFAULT_SETTINGS.sessionCountdownMinutes).toBe(45);
+		expect(DEFAULT_SETTINGS.sessionPomodoroWorkMinutes).toBe(25);
+		expect(DEFAULT_SETTINGS.sessionPomodoroBreakMinutes).toBe(5);
+		expect(DEFAULT_SETTINGS.sessionPomodoroAutoRepeat).toBe(true);
+		expect(DEFAULT_SETTINGS.sessionAutoWithFocusMode).toBe(false);
+		// Rejected back to the default, never clamped to the nearest bound.
+		expect(
+			sanitizeSettings({ sessionIdleThresholdSeconds: 29 })
+				.sessionIdleThresholdSeconds,
+		).toBe(60);
+		expect(
+			sanitizeSettings({ sessionIdleThresholdSeconds: 301 })
+				.sessionIdleThresholdSeconds,
+		).toBe(60);
+		expect(
+			sanitizeSettings({ sessionIdleThresholdSeconds: 2.5 })
+				.sessionIdleThresholdSeconds,
+		).toBe(60);
+		expect(
+			sanitizeSettings({ sessionIdleThresholdSeconds: 30 })
+				.sessionIdleThresholdSeconds,
+		).toBe(30);
+		expect(
+			sanitizeSettings({ sessionCountdownMinutes: 181 }).sessionCountdownMinutes,
+		).toBe(45);
+		expect(
+			sanitizeSettings({ sessionPomodoroWorkMinutes: 90 })
+				.sessionPomodoroWorkMinutes,
+		).toBe(90);
+		expect(
+			sanitizeSettings({ sessionPomodoroBreakMinutes: 0 })
+				.sessionPomodoroBreakMinutes,
+		).toBe(5);
+		expect(
+			sanitizeSettings({ sessionAutoWithFocusMode: 'yes' })
+				.sessionAutoWithFocusMode,
+		).toBe(false);
+	});
+
 	it('drops settings the plugin no longer keeps, such as the pager size', () => {
 		expect(sanitizeSettings({ memberPageSize: 50 })).not.toHaveProperty(
 			'memberPageSize',
