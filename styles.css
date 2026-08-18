@@ -1188,6 +1188,124 @@
 	font-style: italic;
 }
 
+/* A pane's tab strip. Nothing is ruled between a tab and the field below it:
+   the selected one takes the panel's own fill and stands a pixel into the
+   field, so its fill breaks that line and the two read as one shape. It is
+   marked from above the way the rail marks its selected row from the side.
+
+   The tabs name their element as well as their class: Obsidian dresses every
+   button through `button:not(.clickable-icon)`, which outweighs a class on
+   its own and would leave an unselected tab wearing the app's button fill. */
+.snowflake-method-tabs {
+	/* One measure for the strip: the tabs stand this tall, and the room kept
+	   at either end of the row is the same distance again. */
+	--snowflake-method-tab-height: 2.75rem;
+	/* And one width for every tab, whichever language names it. A Chinese
+	   label runs to four characters where its English counterpart runs to
+	   fifteen, and a row that resizes with the project's language reads as
+	   two different designs. Wide enough for the longest label there is;
+	   anything longer still takes the room it needs. */
+	--snowflake-method-tab-width: 9.5rem;
+	display: flex;
+	align-items: flex-end;
+	gap: var(--size-4-2);
+	padding-inline: var(--snowflake-method-tab-height);
+	/* Above the field in the paint order, so the selected tab's fill can cover
+	   the line the field draws across the join. The strip scrolls sideways
+	   when the tabs outrun it, and a scroller clips what hangs out of it, so
+	   it is the field that reaches up rather than the tab that reaches down. */
+	position: relative;
+	z-index: 1;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.snowflake-method-tabs::-webkit-scrollbar {
+	display: none;
+}
+
+/* Every tab is set at one weight and carries the selected one's edges in
+   transparent, so nothing about a label moves when the selection does. Only
+   the colours change: bolding or bordering the tab on show alone would make
+   the row shift under the pointer as it is read. */
+.snowflake-method-tabs button.snowflake-method-tab {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	min-width: var(--snowflake-method-tab-width);
+	/* Obsidian gives a button a height of its own, which would leave the
+	   label flush against both edges of a taller tab. */
+	height: var(--snowflake-method-tab-height);
+	padding: 0 var(--size-4-4);
+	border: 1px solid transparent;
+	/* The accent rides the top edge itself, so it curves with the corners
+	   and no second line is drawn above or below it. */
+	border-top-width: 3px;
+	border-bottom: 0;
+	border-radius: var(--radius-m) var(--radius-m) 0 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+	white-space: nowrap;
+}
+
+.snowflake-method-tabs button.snowflake-method-tab:hover {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+	color: var(--text-normal);
+}
+
+.snowflake-method-tabs button.snowflake-method-tab.is-active {
+	border-color: var(--background-modifier-border);
+	border-top-color: var(--interactive-accent);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: default;
+}
+
+.snowflake-method-tabs button.snowflake-method-tab.is-active:hover {
+	background: var(--background-primary);
+}
+
+.snowflake-method-tabs button.snowflake-method-tab:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+/* The field the selected tab opens onto: one rounded outline across the pane,
+   holding nothing of its own so what is inside stands on the panel. It takes
+   every line the pane has left, the way a member step's table does, so a
+   reading fills the window rather than ending where its shortest tab does. */
+.snowflake-method-panel.snowflake-method-statistics-pane {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+}
+
+.snowflake-method-tab-panel {
+	flex: 1 1 auto;
+	min-height: 0;
+	/* Its top edge runs in the strip's last row, where the selected tab is
+	   standing: the line is drawn everywhere except behind that tab. */
+	margin-top: -1px;
+	padding: var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	overflow-y: auto;
+}
+
+.snowflake-method-tab-planned {
+	margin: 0;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 .snowflake-method-step-ten-description-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;

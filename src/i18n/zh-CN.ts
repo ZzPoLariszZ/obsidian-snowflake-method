@@ -375,6 +375,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'sessionPanel.todayLine':
 		'{sessions} 次会话 · 专注 {focus} · 总计 {total} · 净增 {net} 字',
 	'statistics.viewTitle': '写作统计',
+	'statistics.tab.sessions': '写作时段',
+	'statistics.tab.prose': '正文分析',
+	'statistics.tab.entities': '实体追踪',
+	'statistics.tab.planned': '规划阶段…',
 	'errors.unknown': '发生了未知错误。',
 	'errors.dashboard': '无法载入雪花写作工作台。',
 	'errors.readOnly': '此项目为只读状态。',
@@ -573,7 +577,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'common.remove': '移除',
 	'dashboard.worldbuilding': '世界观',
 	'dashboard.creationTools': '创作工具',
-	'dashboard.statistics': '统计',
+	'dashboard.statistics': '数据统计',
+	'dashboard.statistics.description':
+		'以数据回看项目，每个标签页衡量写作的不同侧面。',
 	'worldbuilding.kind.time': '时间',
 	'worldbuilding.kind.location': '地点',
 	'worldbuilding.kind.item': '物品',

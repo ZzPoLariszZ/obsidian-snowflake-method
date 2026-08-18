@@ -571,6 +571,24 @@ describe('translation resources', () => {
 		expect(t('en', 'messages.sceneCreated')).toContain('{name}');
 	});
 
+	/**
+	 * The statistics pane names its tab through a built key, so nothing in the
+	 * type checker points at this label. Parity only compares one locale to the
+	 * other, and a label dropped from both would pass it.
+	 */
+	it('names the data statistics pane and every tab on it', () => {
+		expect(en['dashboard.statistics']).toBe('Data statistics');
+		expect(zhCN['dashboard.statistics']).toBe('数据统计');
+		expect(Object.keys(en)).toContain('dashboard.statistics.description');
+		expect(en['statistics.tab.sessions']).toBe('Writing sessions');
+		expect(zhCN['statistics.tab.sessions']).toBe('写作时段');
+		expect(en['statistics.tab.prose']).toBe('Prose analysis');
+		expect(zhCN['statistics.tab.prose']).toBe('正文分析');
+		expect(en['statistics.tab.entities']).toBe('Entity tracking');
+		expect(zhCN['statistics.tab.entities']).toBe('实体追踪');
+		expect(Object.keys(en)).toContain('statistics.tab.planned');
+	});
+
 	it('falls back safely for incremental UI keys', () => {
 		expect(t('zh-CN', 'future.untranslated')).toBe('future.untranslated');
 		expect(translate('en', 'common.save')).toBe('Save');

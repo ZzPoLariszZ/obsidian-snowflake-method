@@ -164,6 +164,15 @@ const DEFINITION_USAGE_PREVIEW = 4;
 const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
+/**
+ * The faces the statistics pane offers, in the order its strip lists them.
+ * Each takes its label from `statistics.tab.<id>`, and every one but the
+ * sessions says only that it is being planned.
+ */
+const STATISTICS_TABS = ['sessions', 'prose', 'entities'] as const;
+
+type StatisticsTab = (typeof STATISTICS_TABS)[number];
+
 const WORLDBUILDING_KIND_ICONS: Record<'time' | 'location' | 'item', string> = {
 	time: 'clock',
 	location: 'map-pin',
@@ -311,6 +320,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly definitionQueries = new Map<string, string>();
 	/** What the template pane's search box holds. */
 	private customFieldsQuery = '';
+	/** Which face of the statistics pane is on show. */
+	private statisticsTab: StatisticsTab = 'sessions';
 	/** The entry the inspector is showing, one per vocabulary. */
 	private readonly definitionSelection = new Map<
 		DefinitionFileChoice,
@@ -553,18 +564,73 @@ export class SnowflakeDashboardView extends ItemView {
 		this.sessionPanelDispose = null;
 	}
 
-	/** The statistics pane: the shared session panel in the main panel. */
+	/**
+	 * The statistics pane: a step-shaped header over a strip of tabs, each one
+	 * a way of reading what the project came to. The sessions are the reading
+	 * that exists; the others name what the strip is being built for.
+	 */
 	private renderStatisticsPane(layout: HTMLElement): void {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		const panel = main.createDiv({
 			cls: 'snowflake-method-panel snowflake-method-statistics-pane',
 		});
-		panel.createEl('h2', { text: this.t('dashboard.statistics') });
-		this.sessionPanelDispose = renderSessionPanel(
-			panel,
-			this.host.writingSessions(),
-		);
+		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
+		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		title.createEl('h2', { text: this.t('dashboard.statistics') });
+		panel.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t('dashboard.statistics.description'),
+		});
+		const strip = panel.createDiv({
+			cls: 'snowflake-method-tabs',
+			attr: { role: 'tablist' },
+		});
+		const body = panel.createDiv({
+			cls: 'snowflake-method-tab-panel',
+			attr: { role: 'tabpanel' },
+		});
+		const buttons = new Map<StatisticsTab, HTMLElement>();
+		// Changing face is not changing project: the pane redraws the frame it
+		// already has rather than asking for the whole model again.
+		const show = (chosen: StatisticsTab): void => {
+			this.statisticsTab = chosen;
+			for (const [tab, button] of buttons) {
+				const active = tab === chosen;
+				button.toggleClass('is-active', active);
+				button.setAttribute('aria-selected', active ? 'true' : 'false');
+			}
+			this.disposeSessionPanel();
+			body.empty();
+			this.renderStatisticsBody(body, chosen);
+		};
+		for (const tab of STATISTICS_TABS) {
+			const button = strip.createEl('button', {
+				cls: 'snowflake-method-tab',
+				text: this.t(`statistics.tab.${tab}`),
+				attr: { type: 'button', role: 'tab' },
+			});
+			button.addEventListener('click', () => {
+				show(tab);
+			});
+			buttons.set(tab, button);
+		}
+		show(this.statisticsTab);
 		this.renderedPaneKey = dashboardPaneKey({ kind: 'statistics' });
+	}
+
+	/** What one face of the statistics pane puts inside the frame. */
+	private renderStatisticsBody(body: HTMLElement, tab: StatisticsTab): void {
+		if (tab === 'sessions') {
+			this.sessionPanelDispose = renderSessionPanel(
+				body,
+				this.host.writingSessions(),
+			);
+			return;
+		}
+		body.createEl('p', {
+			cls: 'snowflake-method-tab-planned',
+			text: this.t('statistics.tab.planned'),
+		});
 	}
 
 	/**

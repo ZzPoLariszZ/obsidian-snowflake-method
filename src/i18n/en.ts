@@ -410,6 +410,10 @@ export const en = {
 	'sessionPanel.todayLine':
 		'{sessions} sessions · focus {focus} · total {total} · net {net} words',
 	'statistics.viewTitle': 'Writing statistics',
+	'statistics.tab.sessions': 'Writing sessions',
+	'statistics.tab.prose': 'Prose analysis',
+	'statistics.tab.entities': 'Entity tracking',
+	'statistics.tab.planned': 'Planning stage…',
 	'errors.unknown': 'Something went wrong.',
 	'errors.dashboard': 'The Snowflake dashboard could not be loaded.',
 	'errors.readOnly': 'This project is read-only.',
@@ -628,7 +632,9 @@ export const en = {
 	'common.remove': 'Remove',
 	'dashboard.worldbuilding': 'Worldbuilding',
 	'dashboard.creationTools': 'Creation tools',
-	'dashboard.statistics': 'Statistics',
+	'dashboard.statistics': 'Data statistics',
+	'dashboard.statistics.description':
+		'Read the project back in data, with each tab measuring a different part of the writing.',
 	'worldbuilding.kind.time': 'Time',
 	'worldbuilding.kind.location': 'Location',
 	'worldbuilding.kind.item': 'Item',
