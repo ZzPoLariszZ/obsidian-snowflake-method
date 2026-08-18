@@ -585,10 +585,14 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-tabs',
 			attr: { role: 'tablist' },
 		});
-		const body = panel.createDiv({
+		const field = panel.createDiv({
 			cls: 'snowflake-method-tab-panel',
 			attr: { role: 'tabpanel' },
 		});
+		// The field draws the frame and its contents scroll inside it, so the
+		// bar can stand in the room between this frame and the pane's edge
+		// rather than on top of the reading.
+		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
 		const buttons = new Map<StatisticsTab, HTMLElement>();
 		// Changing face is not changing project: the pane redraws the frame it
 		// already has rather than asking for the whole model again.
@@ -626,8 +630,8 @@ export class SnowflakeDashboardView extends ItemView {
 			this.sessionPanelDispose = renderSessionPanel(
 				body,
 				this.host.writingSessions({
-					t: (key, vars) => this.t(key, vars),
 					projectPath: this.projectPath,
+					locale: this.projectLocale,
 				}),
 			);
 			return;

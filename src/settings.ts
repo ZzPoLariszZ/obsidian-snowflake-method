@@ -10,11 +10,23 @@ import {
 
 import type SnowflakeMethodPlugin from './main';
 import {
+	DATE_FORMATS,
+	HEATMAP_MEASURES,
+	TREND_MEASURES,
+	TREND_RANGES,
+	WEEK_START_DAYS,
 	WRITING_MODES,
 	WRITING_SESSION_SCOPES,
 	WRITING_SESSION_TYPES,
+	isDateFormat,
+	isWeekStartDay,
 	isWritingCountHeadings,
 	isWritingCountMode,
+	weekdayLabels,
+	type DateFormat,
+	type HeatmapMeasure,
+	type TrendMeasure,
+	type WeekStartDay,
 	type WritingCountHeadings,
 	type WritingCountMode,
 	type WritingMode,
@@ -127,6 +139,15 @@ export interface SnowflakeSettings {
 	sessionStopwatchExpectedMinutes: number;
 	/** Focus mode on starts a strict stopwatch session; off ends it. */
 	sessionAutoWithFocusMode: boolean;
+	/** The day a week is drawn from, which the writing heatmap lays out by. */
+	sessionWeekStart: WeekStartDay;
+	/** How a day is written wherever the writing statistics name one. */
+	sessionDateFormat: DateFormat;
+	/** Which stretch the recent-trend chart is looking back over. */
+	sessionTrendDays: number;
+	/** What that chart is plotting, and what the heatmap is shading. */
+	sessionTrendMeasure: TrendMeasure;
+	sessionHeatmapMeasure: HeatmapMeasure;
 	recentProjectPath: string | null;
 	recentStep: number;
 	certificateCelebrations: Record<string, true>;
@@ -165,6 +186,11 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionWritingMode: 'draft',
 	sessionScope: 'project',
 	sessionStopwatchExpectedMinutes: 0,
+	sessionWeekStart: 'monday',
+	sessionDateFormat: 'YYYY/MM/DD',
+	sessionTrendDays: 30,
+	sessionTrendMeasure: 'net',
+	sessionHeatmapMeasure: 'net',
 	sessionAutoWithFocusMode: false,
 	recentProjectPath: null,
 	recentStep: 1,
@@ -204,6 +230,11 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionScope',
 	'sessionStopwatchExpectedMinutes',
 	'sessionAutoWithFocusMode',
+	'sessionWeekStart',
+	'sessionDateFormat',
+	'sessionTrendDays',
+	'sessionTrendMeasure',
+	'sessionHeatmapMeasure',
 	'recentProjectPath',
 	'recentStep',
 	'certificateCelebrations',
@@ -390,6 +421,30 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.sessionAutoWithFocusMode === 'boolean'
 				? raw.sessionAutoWithFocusMode
 				: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
+		sessionWeekStart: isWeekStartDay(raw.sessionWeekStart)
+			? raw.sessionWeekStart
+			: DEFAULT_SETTINGS.sessionWeekStart,
+		sessionDateFormat: isDateFormat(raw.sessionDateFormat)
+			? raw.sessionDateFormat
+			: DEFAULT_SETTINGS.sessionDateFormat,
+		// Which readings the statistics were last left on. They are the pane's
+		// own memory rather than anything the settings page offers, which is
+		// why they have no row: a chart the author chose stays chosen.
+		sessionTrendDays: (TREND_RANGES as readonly unknown[]).includes(
+			raw.sessionTrendDays,
+		)
+			? (raw.sessionTrendDays as number)
+			: DEFAULT_SETTINGS.sessionTrendDays,
+		sessionTrendMeasure: (TREND_MEASURES as readonly unknown[]).includes(
+			raw.sessionTrendMeasure,
+		)
+			? (raw.sessionTrendMeasure as TrendMeasure)
+			: DEFAULT_SETTINGS.sessionTrendMeasure,
+		sessionHeatmapMeasure: (HEATMAP_MEASURES as readonly unknown[]).includes(
+			raw.sessionHeatmapMeasure,
+		)
+			? (raw.sessionHeatmapMeasure as HeatmapMeasure)
+			: DEFAULT_SETTINGS.sessionHeatmapMeasure,
 		recentProjectPath:
 			typeof raw.recentProjectPath === 'string'
 				? normalizePath(raw.recentProjectPath)
@@ -485,6 +540,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				fragment.appendText(line);
 			}
 		});
+	}
+
+	/** The language this page is written in, which its calendar names follow. */
+	private locale(): string {
+		return resolveGlobalLocale(this.owner.settings.uiLocale, moment.locale());
 	}
 
 	private t(key: string): string {
@@ -725,6 +785,38 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							min: 0,
 							max: 20000,
 							step: 100,
+						},
+					},
+					{
+						name: this.t('settings.sessionWeekStart.name'),
+						desc: this.t('settings.sessionWeekStart.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionWeekStart',
+							defaultValue: DEFAULT_SETTINGS.sessionWeekStart,
+							// Named by the platform's own calendar rather than by
+							// this plugin's copy: a weekday reads the same for
+							// everyone who speaks a language, and is not this
+							// plugin's to translate.
+							options: Object.fromEntries(
+								WEEK_START_DAYS.map((day, at) => [
+									day,
+									weekdayLabels(this.locale(), 'long')[at] ?? day,
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('settings.sessionDateFormat.name'),
+						desc: this.t('settings.sessionDateFormat.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionDateFormat',
+							defaultValue: DEFAULT_SETTINGS.sessionDateFormat,
+							// A format names its own parts, in every language.
+							options: Object.fromEntries(
+								DATE_FORMATS.map((format) => [format, format]),
+							),
 						},
 					},
 					{
@@ -1135,6 +1227,16 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sessionScope':
 				if ((WRITING_SESSION_SCOPES as readonly unknown[]).includes(value)) {
 					this.owner.settings.sessionScope = value as WritingSessionScope;
+				}
+				break;
+			case 'sessionWeekStart':
+				if (isWeekStartDay(value)) {
+					this.owner.settings.sessionWeekStart = value;
+				}
+				break;
+			case 'sessionDateFormat':
+				if (isDateFormat(value)) {
+					this.owner.settings.sessionDateFormat = value;
 				}
 				break;
 			default:

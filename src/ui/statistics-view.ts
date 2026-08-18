@@ -51,7 +51,12 @@ export class SnowflakeStatisticsView extends ItemView {
 	}
 
 	private mount(): void {
-		this.dispose = renderSessionPanel(this.contentEl, this.bridge);
+		// A column beside the writing shows the day it is part of. The readings
+		// that span a month or a year are the pane's, where there is width to
+		// draw them at.
+		this.dispose = renderSessionPanel(this.contentEl, this.bridge, {
+			history: false,
+		});
 	}
 
 	onClose(): Promise<void> {

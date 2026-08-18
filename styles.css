@@ -1210,6 +1210,12 @@
 .snowflake-method-tabs {
 	display: flex;
 	align-items: flex-end;
+	/* The strip gives no ground. Its pane is a column with a height to keep,
+	   so anything that may shrink will be asked to -- and a strip a pixel
+	   shorter than the tabs standing in it clips the accent off the top of the
+	   selected one, because a sideways scroller clips upwards too. The field
+	   below is what the column takes its room from. */
+	flex: 0 0 auto;
 	gap: var(--size-4-2);
 	padding-inline: var(--snowflake-method-tab-height);
 	/* Above the field in the paint order, so the selected tab's fill can cover
@@ -1284,22 +1290,65 @@
    holding nothing of its own so what is inside stands on the panel. It takes
    every line the pane has left, the way a member step's table does, so a
    reading fills the window rather than ending where its shortest tab does. */
+/* Everything above the field keeps its own height; the field is the one part
+   of the pane that stretches, and the one part that gives way. */
+.snowflake-method-statistics-pane > .snowflake-method-panel-header,
+.snowflake-method-statistics-pane > .snowflake-method-step-description {
+	flex: 0 0 auto;
+}
+
 .snowflake-method-panel.snowflake-method-statistics-pane {
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 auto;
+	/* Without this the pane grows to whatever its readings come to and the
+	   whole main column scrolls instead, carrying the pane's own header and
+	   its tab strip off the top. Allowed to shrink, the pane ends where the
+	   column ends and the field below the tabs takes the scrolling. */
+	min-height: 0;
 }
 
 .snowflake-method-tab-panel {
+	/* Where the scrollbar lives: outside this frame's border, in the pane
+	   padding between the frame and the pane's edge, exactly as a member
+	   step's table puts its own. At least a finger of room, so an overlaid
+	   scrollbar lands there too. */
+	--snowflake-method-tab-gutter: max(
+		var(--snowflake-method-scrollbar-width, 0px),
+		var(--size-4-3)
+	);
+	display: flex;
+	flex-direction: column;
 	flex: 1 1 auto;
 	min-height: 0;
 	/* Its top edge runs in the strip's last row, where the selected tab is
 	   standing: the line is drawn everywhere except behind that tab. */
 	margin-top: -1px;
 	padding: var(--snowflake-method-tab-height);
+	/* The far side's inset belongs to the scroller, which carries it out past
+	   the border along with the bar. */
+	padding-inline-end: 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
-	overflow-y: auto;
+}
+
+/* The field's contents scroll, and reach out of the frame by the gutter to do
+   it: the bar ends up beyond the border, in the room between the two frames,
+   and the reach is padded back by the same distance less the bar's width so
+   what is inside still ends where the field's inset says it does. Scroll
+   rather than auto, so that width is spoken for whether or not the readings
+   are tall enough to need it. */
+.snowflake-method-tab-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: scroll;
+	margin-inline-end: calc(
+		-1 * (var(--snowflake-method-tab-gutter) + 1px)
+	);
+	padding-inline-end: calc(
+		var(--snowflake-method-tab-height) + var(--snowflake-method-tab-gutter) +
+			1px - var(--snowflake-method-scrollbar-width, 0px)
+	);
 }
 
 .snowflake-method-tab-planned {
@@ -6806,11 +6855,43 @@ button.snowflake-method-kind-options {
 /* The row keeps the measure of whatever holds it: the statistics field spaces
    its widgets the way it spaces itself, and a sidebar -- which has no such
    field and much less width to give away -- spaces them ordinarily. */
+/* The panel's own box: the row is laid out inside it, and the widgets that
+   span the row are measured against it. It is a wrapper rather than a property
+   of the row itself because a container cannot measure itself. */
+.snowflake-method-session-panel {
+	container-type: inline-size;
+}
+
+/* One measure for the whole row. Three squares and the two gaps between them
+   make its width, and it is always three: a row that fitted four left an empty
+   track beside the three, and the reading that spanned the row was then wider
+   than the three it sat under. Below the width three squares can still be read
+   at, everything stacks in one column instead. */
 .snowflake-method-session-widgets {
+	--snowflake-method-widget-gap: var(
+		--snowflake-method-tab-height,
+		var(--size-4-3)
+	);
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-	gap: var(--snowflake-method-tab-height, var(--size-4-3));
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--snowflake-method-widget-gap);
 	align-items: stretch;
+}
+
+@container (min-width: 34rem) {
+	.snowflake-method-session-widgets {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	/* Three wide and one tall, which is what a widget spanning the row is: the
+	   row is three columns and two gaps, so what is left of it after the gaps,
+	   divided by three, is a square's own side. The `cqi` reaches the panel and
+	   not the widget -- a widget declares a container of its own, and a unit
+	   written in a rule applied to it resolves one box further out, which here
+	   is exactly the box wanted. */
+	.snowflake-method-widget-wide {
+		height: calc((100cqi - 2 * var(--snowflake-method-widget-gap)) / 3);
+	}
 }
 
 /* A square, and one that stays square. Holding the ratio is the easy half;
@@ -6850,7 +6931,7 @@ button.snowflake-method-kind-options {
    widget given more room gives it to what is inside. Every `em` below is a
    share of this. */
 .snowflake-method-widget > * {
-	font-size: max(0.7rem, 5.2cqi);
+	font-size: max(0.7rem, var(--snowflake-method-widget-scale, 5.2cqi));
 }
 
 .snowflake-method-widget-header {
@@ -7112,4 +7193,294 @@ button.snowflake-method-kind-options {
 
 .snowflake-method-statistics-view {
 	padding: var(--size-4-3);
+}
+
+/* The two readings that span the whole row: a stretch of recent days, and a
+   year of them. Neither is a square -- a chart of a hundred and eighty days is
+   a band, and a year of weeks is a longer one -- so they take the row's width
+   and whatever height their own drawing implies.
+
+   They are also not scaled by the box the way a square widget is. A square
+   widget is small and its figure has to shrink with it; these are as wide as
+   the row and hold ordinary interface text, which the drawings sit under. The
+   drawings scale on their own, through their view box. */
+.snowflake-method-widget-wide {
+	--snowflake-method-widget-scale: var(--font-ui-medium);
+	grid-column: 1 / -1;
+	aspect-ratio: auto;
+}
+
+.snowflake-method-widget-wide .snowflake-method-widget-header {
+	flex-wrap: wrap;
+}
+
+.snowflake-method-widget-wide .snowflake-method-widget-body {
+	gap: var(--size-4-3);
+	justify-content: center;
+}
+
+/* What a wide widget is reading, chosen from its own corner rather than from
+   a dialog: these change what is drawn, not what the session does. */
+.snowflake-method-widget-picks {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+/* One width for every chooser, whichever reading it belongs to and whatever
+   it is naming: a row of controls that each sized to their own longest option
+   read as a different control in each widget. */
+.snowflake-method-widget-picks select.snowflake-method-widget-pick {
+	width: 9.5rem;
+	max-width: 100%;
+	flex: 0 1 auto;
+	font-size: var(--font-ui-smaller);
+}
+
+/* The recent trend: a bar to a day, and the line over them that says which
+   way the days are going. */
+/* The chart takes the height the widget has left rather than deciding one
+   from its own width: the widget's height is the row's to set. The floor is
+   what it falls back to where the widget is sized by its contents instead. */
+.snowflake-method-trend-chart {
+	position: relative;
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-height: 10rem;
+}
+
+.snowflake-method-trend-plot {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.snowflake-method-trend-dial {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+/* Gained and lost, in the theme's own success and error and softened, so a
+   wall of bars stays a background for its own numbers rather than shouting
+   over them. One decision colours the chart and today's row alike. */
+.snowflake-method-trend-gain {
+	fill: var(--text-success);
+	fill-opacity: 0.55;
+}
+
+.snowflake-method-trend-loss {
+	fill: var(--text-error);
+	fill-opacity: 0.55;
+}
+
+/* Focus underneath and idle above it, the same accent at two strengths: one
+   pillar is the sitting, and the darker part of it is the writing. */
+.snowflake-method-trend-focus {
+	fill: var(--interactive-accent);
+}
+
+.snowflake-method-trend-idle {
+	fill: var(--interactive-accent);
+	fill-opacity: 0.3;
+}
+
+.snowflake-method-trend-axis {
+	stroke: var(--background-modifier-border);
+	stroke-width: 1.25;
+}
+
+.snowflake-method-trend-grid {
+	stroke: var(--background-modifier-border);
+	stroke-width: 1;
+	stroke-dasharray: 3 4;
+}
+
+.snowflake-method-trend-scale,
+.snowflake-method-trend-date {
+	fill: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: 8px;
+}
+
+.snowflake-method-trend-scale {
+	text-anchor: end;
+}
+
+.snowflake-method-trend-date {
+	text-anchor: middle;
+}
+
+/* A day is opened by clicking anywhere in its column, not on the bar itself,
+   which on a hundred and eighty days would be two pixels of target. */
+.snowflake-method-trend-band {
+	fill: transparent;
+	cursor: pointer;
+}
+
+.snowflake-method-trend-band:hover {
+	fill: var(--text-normal);
+	fill-opacity: 0.07;
+}
+
+/* What a day came to, put over the day it belongs to and left standing until
+   the reader closes it. Clicks pass through it, so it can never sit between a
+   pointer and the day underneath. */
+.snowflake-method-chart-detail {
+	position: absolute;
+	z-index: 2;
+	padding: var(--size-2-2) var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	box-shadow: var(--shadow-s);
+	max-width: 100%;
+	pointer-events: none;
+}
+
+.snowflake-method-chart-detail.is-hidden {
+	display: none;
+}
+
+/* Set in the monospaced face throughout, labels as well as numbers: a card
+   read one day and then the next should keep its shape rather than reflow
+   because one day's count ran to four digits and the next to three. */
+.snowflake-method-chart-detail-day,
+.snowflake-method-chart-detail-value {
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-chart-detail-day {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-chart-detail-value {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-trend-stats {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-around;
+	gap: var(--size-4-4);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-trend-stat {
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-trend-stat-label {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-trend-stat-value {
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	font-size: 1.35em;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
+}
+
+/* The year: a column to a week, a row to a weekday, from whichever day the
+   author starts their weeks on. A sidebar is too narrow to hold fifty-three
+   weeks at a readable size, so it scrolls rather than shrinking them away. */
+/* The box a card is placed in: it holds the scroller rather than sitting
+   inside it, so a card can never widen what it is drawn over. */
+.snowflake-method-heatmap-frame {
+	position: relative;
+	min-height: 0;
+}
+
+.snowflake-method-heatmap-grid {
+	min-height: 0;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: thin;
+}
+
+.snowflake-method-heatmap-dial {
+	display: block;
+	width: 100%;
+	min-width: 26rem;
+	height: auto;
+}
+
+.snowflake-method-heat-label {
+	fill: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: 9px;
+}
+
+.snowflake-method-heat-weekday {
+	text-anchor: end;
+}
+
+/* One hue to a reading and four strengths within it: green for words gained,
+   red for a day that ended shorter than it began, and the theme's accent for
+   time and for goals. A day with nothing on it takes the border's own colour,
+   which is the quietest mark a theme has. */
+.snowflake-method-heat-cell {
+	fill: var(--background-modifier-border);
+}
+
+.snowflake-method-heat-cell[data-heat='gain'] {
+	fill: var(--text-success);
+	fill-opacity: var(--snowflake-method-heat, 1);
+}
+
+.snowflake-method-heat-cell[data-heat='loss'] {
+	fill: var(--text-error);
+	fill-opacity: var(--snowflake-method-heat, 1);
+}
+
+.snowflake-method-heat-cell[data-heat='accent'] {
+	fill: var(--interactive-accent);
+	fill-opacity: var(--snowflake-method-heat, 1);
+}
+
+.snowflake-method-heat-cell {
+	cursor: pointer;
+}
+
+.snowflake-method-heat-cell:hover {
+	stroke: var(--text-normal);
+	stroke-width: 1;
+}
+
+.snowflake-method-heatmap-key {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-2-2);
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.snowflake-method-heat-swatch {
+	width: 0.8em;
+	height: 0.8em;
+	border-radius: 2px;
+	background: var(--background-modifier-border);
+}
+
+.snowflake-method-heat-swatch[data-heat='gain'] {
+	background: var(--text-success);
+	opacity: var(--snowflake-method-heat, 1);
+}
+
+.snowflake-method-heat-swatch[data-heat='accent'] {
+	background: var(--interactive-accent);
+	opacity: var(--snowflake-method-heat, 1);
 }

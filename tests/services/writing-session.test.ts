@@ -532,4 +532,72 @@ describe("WritingSessionService", () => {
 		// The other device's file was read, never written.
 		expect(fakeVault.processCalls).not.toContain(foreign);
 	});
+
+	/**
+	 * A stretch of days is what the trend and the heatmap read, and the days
+	 * nothing was written on are as much a part of it as the days something
+	 * was: a reading that skipped them would draw a month of solid writing out
+	 * of four scattered afternoons.
+	 */
+	it("reads a stretch of days with the empty ones still in it", async () => {
+		const folder =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+		const day = 86_400_000;
+		await fakeVault.seedFile(
+			`${folder}/2026_08_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 3 * day, 120)],
+			}),
+		);
+		await fakeVault.seedFile(
+			`${folder}/2026_07_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 40 * day, 400)],
+			}),
+		);
+
+		const week = await sessions.dailyTotals(project, 7);
+		expect(week).toHaveLength(7);
+		expect(week.map((one) => one.day)).toEqual([
+			"2026-08-11",
+			"2026-08-12",
+			"2026-08-13",
+			"2026-08-14",
+			"2026-08-15",
+			"2026-08-16",
+			"2026-08-17",
+		]);
+		expect(week[3]?.trackedNet).toBe(120);
+		expect(week[4]).toMatchObject({ sessions: 0, trackedNet: 0, focusMs: 0 });
+		// Last month's session is outside the week, and its file is not one the
+		// week has any reason to open.
+		expect(week.reduce((carried, one) => carried + one.sessions, 0)).toBe(1);
+
+		// A longer stretch reaches into the month before it, and a whole year
+		// reaches into a year folder that was never created.
+		const longer = await sessions.dailyTotals(project, 60);
+		expect(longer).toHaveLength(60);
+		expect(longer.reduce((carried, one) => carried + one.trackedNet, 0)).toBe(
+			520,
+		);
+		const year = await sessions.dailyTotals(project, 366);
+		expect(year).toHaveLength(366);
+		expect(year[365]?.day).toBe("2026-08-17");
+		expect(year[0]?.day).toBe("2025-08-17");
+	});
+
+	/** Today is one day of that stretch, and has to agree with it. */
+	it("ends the stretch on the same today the day's own summary reads", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+		const summary = await sessions.todaySummary(project);
+		const [today] = await sessions.dailyTotals(project, 1);
+
+		expect(today).toEqual(summary);
+		expect(today?.day).toBe("2026-08-17");
+		expect(today?.sessions).toBe(1);
+	});
 });

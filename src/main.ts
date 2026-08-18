@@ -1289,9 +1289,7 @@ export default class SnowflakeMethodPlugin
 					: typeof stateStep === 'number' && isStepId(stateStep)
 						? stateStep
 						: this.getRecentStep();
-			this.currentProjectLocale = project.locale;
-			this.settings.recentProjectPath = path;
-			this.settings.recentStep = selectedStep;
+			this.markCurrentProject(path, project.locale, selectedStep);
 			const save = this.saveSettings();
 			await existing.loadIfDeferred();
 			if (existing.view instanceof SnowflakeDashboardView) {
@@ -1313,11 +1311,27 @@ export default class SnowflakeMethodPlugin
 
 		const firstIncomplete = getFirstIncompleteStep(project.steps);
 		await this.openProjectTab(project, firstIncomplete);
-		this.currentProjectLocale = project.locale;
 		this.projectLocalesById.set(project.id, project.locale);
-		this.settings.recentProjectPath = path;
-		this.settings.recentStep = firstIncomplete;
+		this.markCurrentProject(path, project.locale, firstIncomplete);
 		await this.saveSettings();
+	}
+
+	/**
+	 * The project the author is now working in, and the surfaces that follow
+	 * it told so. The statistics sidebar has no project of its own and reads
+	 * whichever one this is, labels included, so every way of arriving at a
+	 * project has to come through here -- opening one from the manager moved
+	 * the sidebar's numbers without moving its language before it did.
+	 */
+	private markCurrentProject(
+		path: string,
+		locale: 'en' | 'zh-CN',
+		step: StepId,
+	): void {
+		this.settings.recentProjectPath = path;
+		this.currentProjectLocale = locale;
+		this.settings.recentStep = step;
+		this.rerenderStatisticsViews();
 	}
 
 	activateProject(
@@ -1332,12 +1346,7 @@ export default class SnowflakeMethodPlugin
 		) {
 			return;
 		}
-		this.settings.recentProjectPath = path;
-		this.currentProjectLocale = locale;
-		this.settings.recentStep = step;
-		// The sidebar has no project of its own and follows this one, so moving
-		// between dashboards is a move it has to be told about.
-		this.rerenderStatisticsViews();
+		this.markCurrentProject(path, locale, step);
 		void this.saveSettings();
 	}
 
@@ -2311,6 +2320,9 @@ export default class SnowflakeMethodPlugin
 			);
 		}
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
+		// Every session widget is showing a session setting somewhere, and the
+		// page they are set from is not one they can see change.
+		if (key.startsWith('session')) this.sessionSettingsChanged();
 		this.scheduleWritingCountRefresh(0);
 		await this.refreshDashboards();
 	}
@@ -3032,11 +3044,50 @@ export default class SnowflakeMethodPlugin
 	 * is open; the sidebar names none and follows the writing.
 	 */
 	writingSessions(context: SessionPanelContext = {}): SessionPanelBridge {
-		const t =
-			context.t ?? ((key, vars) => this.translateForProject(null, key, vars));
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
 		return {
 			t,
+			locale: () =>
+				resolveLocale(
+					this.settings.uiLocale,
+					moment.locale(),
+					projectLocale ??
+						this.currentProjectLocale ??
+						this.resolvedDefaultProjectLocale(),
+				),
+			weekStart: () => this.settings.sessionWeekStart,
+			dateFormat: () => this.settings.sessionDateFormat,
 			live: () => this.sessions.live(),
+			history: async (days) => {
+				const project = await this.resolveProject(context.projectPath ?? null);
+				return project === null
+					? null
+					: this.sessions.dailyTotals(project, days);
+			},
+			view: () => ({
+				trendDays: this.settings.sessionTrendDays,
+				trendMeasure: this.settings.sessionTrendMeasure,
+				heatmapMeasure: this.settings.sessionHeatmapMeasure,
+			}),
+			setView: (patch) => {
+				if (patch.trendDays !== undefined) {
+					this.settings.sessionTrendDays = patch.trendDays;
+				}
+				if (patch.trendMeasure !== undefined) {
+					this.settings.sessionTrendMeasure = patch.trendMeasure;
+				}
+				if (patch.heatmapMeasure !== undefined) {
+					this.settings.sessionHeatmapMeasure = patch.heatmapMeasure;
+				}
+				void this.saveSettings();
+				// Both panels are looking at the same reading, so a switch in
+				// one is a switch in the other.
+				this.sessionSettingsChanged();
+			},
 			todaySummary: async () => {
 				// A pane's day is its own project's day. A panel that named no
 				// project reads the project the author is working in -- the one

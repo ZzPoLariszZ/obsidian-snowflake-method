@@ -1,12 +1,14 @@
 import {
 	SessionTracker,
+	addDays,
+	calendarDay,
 	finalizeSnapshot,
 	isDocumentType,
 	parseMonthFile,
 	parseSessionSnapshot,
 	sessionFilePath,
 	sessionGoalMet,
-	sessionMonthKey,
+	monthsBetween,
 	sessionYearFolder,
 	shouldDiscard,
 	sessionDurations,
@@ -109,6 +111,12 @@ export interface TodayWritingSummary {
 	added: number;
 	deleted: number;
 	trackedNet: number;
+}
+
+/** One calendar day's totals, for a reading that spans more than today. */
+export interface WritingDayTotals extends TodayWritingSummary {
+	/** The day itself, `YYYY-MM-DD` in the reading device's own zone. */
+	day: string;
 }
 
 export interface WritingSessionTimers {
@@ -565,64 +573,99 @@ export class WritingSessionService {
 	}
 
 	/** Today's sessions across every device's file, the live one included. */
-	async todaySummary(project: ProjectRef): Promise<TodayWritingSummary> {
+	async todaySummary(project: ProjectRef): Promise<WritingDayTotals> {
+		const [today] = await this.dailyTotals(project, 1);
+		return today ?? emptyDay(calendarDay(this.now(), this.timezone()));
+	}
+
+	/**
+	 * The last `days` calendar days of this project's writing, oldest first
+	 * and ending today, with a day that holds no sessions still present at
+	 * zero -- a reading of a stretch of time has to show the days nothing was
+	 * written as much as the days something was.
+	 *
+	 * Every device's file for every month the stretch touches is read and its
+	 * sessions merged by uuid, so two machines writing the same month agree,
+	 * and the live session is counted into today the moment it starts rather
+	 * than when it ends. A session belongs to the day it began on, in this
+	 * device's zone: one carried past midnight stays whole in the day that
+	 * began it, and one recorded in another zone is read in this one.
+	 */
+	async dailyTotals(
+		project: ProjectRef,
+		days: number,
+	): Promise<WritingDayTotals[]> {
 		const zone = this.timezone();
-		const nowMs = this.now();
-		const layout = getProjectPathLayout(project.locale);
-		const { year, month } = sessionMonthKey(nowMs, zone);
-		const folder = sessionYearFolder(
-			project.rootPath,
-			layout.directories.writingSessions,
-			year,
-		);
-		const prefix = `${year}_${month}_`;
-		const today = dayKey(nowMs, zone);
-		const byUuid = new Map<string, WritingSessionRecord>();
-		for (const file of this.deps.repository.listDirectFiles(folder)) {
-			if (!file.name.startsWith(prefix)) continue;
-			if (!file.name.endsWith(SESSION_FILE_SUFFIX)) continue;
-			const parsed = parseMonthJson(
-				await this.deps.repository.readPlainFile(file.path),
-			);
-			if (parsed === null) continue;
-			for (const session of parsed.sessions) byUuid.set(session.uuid, session);
+		const today = calendarDay(this.now(), zone);
+		const span = Math.max(1, Math.trunc(days));
+		const first = addDays(today, 1 - span);
+		const byDay = new Map<string, WritingDayTotals>();
+		for (let at = 0; at < span; at += 1) {
+			const day = addDays(first, at);
+			byDay.set(day, emptyDay(day));
 		}
-		const summary: TodayWritingSummary = {
-			sessions: 0,
-			focusMs: 0,
-			idleMs: 0,
-			totalMs: 0,
-			added: 0,
-			deleted: 0,
-			trackedNet: 0,
-		};
-		for (const session of byUuid.values()) {
-			if (dayKey(Date.parse(session.startedAt), zone) !== today) continue;
+		for (const session of (
+			await this.gatherSessions(project, first, today)
+		).values()) {
+			const bucket = byDay.get(calendarDay(Date.parse(session.startedAt), zone));
+			if (bucket === undefined) continue;
 			const durations = sessionDurations(session);
-			summary.sessions += 1;
-			summary.focusMs += durations.focusMs;
-			summary.idleMs += durations.idleMs;
-			summary.totalMs += durations.totalMs;
-			summary.added += session.addedWordCount;
-			summary.deleted += session.deletedWordCount;
-			summary.trackedNet += sessionNets(session).trackedNet;
+			bucket.sessions += 1;
+			bucket.focusMs += durations.focusMs;
+			bucket.idleMs += durations.idleMs;
+			bucket.totalMs += durations.totalMs;
+			bucket.added += session.addedWordCount;
+			bucket.deleted += session.deletedWordCount;
+			bucket.trackedNet += sessionNets(session).trackedNet;
 		}
 		const live = this.live();
-		if (
-			live !== null &&
-			this.liveState?.project.id === project.id &&
-			live.startedAt !== null &&
-			dayKey(live.startedAt, zone) === today
-		) {
-			summary.sessions += 1;
-			summary.focusMs += live.durations.focusMs;
-			summary.idleMs += live.durations.idleMs;
-			summary.totalMs += live.durations.totalMs;
-			summary.added += live.added;
-			summary.deleted += live.deleted;
-			summary.trackedNet += live.trackedNet;
+		const bucket =
+			live === null || live.startedAt === null
+				? undefined
+				: byDay.get(calendarDay(live.startedAt, zone));
+		if (live !== null && bucket !== undefined && this.liveState?.project.id === project.id) {
+			bucket.sessions += 1;
+			bucket.focusMs += live.durations.focusMs;
+			bucket.idleMs += live.durations.idleMs;
+			bucket.totalMs += live.durations.totalMs;
+			bucket.added += live.added;
+			bucket.deleted += live.deleted;
+			bucket.trackedNet += live.trackedNet;
 		}
-		return summary;
+		return [...byDay.values()];
+	}
+
+	/**
+	 * Every stored session filed in the months `from` to `through`, merged by
+	 * uuid across the devices that recorded them. A month file is named for
+	 * the month its sessions began in, so the months a stretch of days touches
+	 * are the only files worth opening.
+	 */
+	private async gatherSessions(
+		project: ProjectRef,
+		from: string,
+		through: string,
+	): Promise<Map<string, WritingSessionRecord>> {
+		const layout = getProjectPathLayout(project.locale);
+		const byUuid = new Map<string, WritingSessionRecord>();
+		for (const { year, months } of monthsBetween(from, through)) {
+			const folder = sessionYearFolder(
+				project.rootPath,
+				layout.directories.writingSessions,
+				year,
+			);
+			const prefixes = months.map((month) => `${year}_${month}_`);
+			for (const file of this.deps.repository.listDirectFiles(folder)) {
+				if (!file.name.endsWith(SESSION_FILE_SUFFIX)) continue;
+				if (!prefixes.some((prefix) => file.name.startsWith(prefix))) continue;
+				const parsed = parseMonthJson(
+					await this.deps.repository.readPlainFile(file.path),
+				);
+				if (parsed === null) continue;
+				for (const session of parsed.sessions) byUuid.set(session.uuid, session);
+			}
+		}
+		return byUuid;
 	}
 
 	/**
@@ -1035,6 +1078,20 @@ export class WritingSessionService {
 	}
 }
 
+/** A day with nothing written on it, which is most days of most years. */
+function emptyDay(day: string): WritingDayTotals {
+	return {
+		day,
+		sessions: 0,
+		focusMs: 0,
+		idleMs: 0,
+		totalMs: 0,
+		added: 0,
+		deleted: 0,
+		trackedNet: 0,
+	};
+}
+
 function seconds(value: number | undefined): number | undefined {
 	return value === undefined ? undefined : value * 1000;
 }
@@ -1075,23 +1132,3 @@ function parseMonthJson(content: string | null): WritingSessionMonthFile | null 
 		return null;
 	}
 }
-
-/** The calendar day of a moment in a zone, for "today" comparisons. */
-function dayKey(ms: number, timeZone: string): string {
-	const date = new Date(ms);
-	try {
-		return new Intl.DateTimeFormat("en-CA", {
-			timeZone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-		}).format(date);
-	} catch {
-		return new Intl.DateTimeFormat("en-CA", {
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-		}).format(date);
-	}
-}
-

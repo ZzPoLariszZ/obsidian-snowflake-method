@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	HEAT_LEVELS,
 	SessionTracker,
+	axisScale,
 	finalizeSnapshot,
+	heatLevels,
 	formatClock,
 	parseMonthFile,
 	parseSessionRecord,
@@ -13,6 +16,7 @@ import {
 	sessionMonthKey,
 	sessionNets,
 	shouldDiscard,
+	trendTone,
 	type SessionTrackerConfig,
 	type TrackerEffect,
 	type WritingSessionRecord,
@@ -466,5 +470,123 @@ describe('recovering an orphaned session', () => {
 		expect(finalizeSnapshot(snapshot({ markedShutdown: true })).stopReason).toBe(
 			'app-shutdown',
 		);
+	});
+
+	/**
+	 * A bar standing on the axis says by its colour what a bar hanging below
+	 * the axis would have said by its place, so the rule is the only thing
+	 * telling a loss from a gain.
+	 */
+	it('colours a trend bar by which way its day went', () => {
+		expect(trendTone('added', 400)).toBe('gain');
+		expect(trendTone('added', 0)).toBe('gain');
+		expect(trendTone('net', 400)).toBe('gain');
+		expect(trendTone('net', -400)).toBe('loss');
+		// Deleted words are a loss however many of them there were.
+		expect(trendTone('deleted', 400)).toBe('loss');
+		expect(trendTone('deleted', 0)).toBe('loss');
+	});
+
+	/**
+	 * A day is shaded against the project's own days rather than a fixed
+	 * number, so what is asserted is the shape of the answer and not the cuts
+	 * themselves: every strength is used, a bigger day is never fainter than a
+	 * smaller one, and a day that lost words is the same strength as the day
+	 * that gained as many, only signed.
+	 */
+	it('bands a project by its own days and signs the losses', () => {
+		const counts = [100, 200, 300, 400, 500, 600, 700, 800];
+		const days = [...counts, 0, -500].map((trackedNet) => ({
+			trackedNet,
+			focusMs: Math.abs(trackedNet) * 1000,
+		}));
+
+		const levels = heatLevels(days, 'net', 0);
+		const written = levels.slice(0, counts.length);
+		expect(new Set(written)).toEqual(new Set([1, 2, 3, 4]));
+		expect([...written].sort((a, b) => a - b)).toEqual(written);
+		expect(levels[counts.length]).toBe(0);
+		// The day that lost five hundred, against the day that gained them.
+		expect(levels[counts.length + 1]).toBe(-(written[4] as number));
+		// Focus reads the same days through their time, which here runs with
+		// their words, so it lands on the same bands.
+		expect(heatLevels(days, 'focus', 0).map(Math.abs)).toEqual(
+			levels.map(Math.abs),
+		);
+	});
+
+	it('shades a day of nothing at all at nothing at all', () => {
+		const quiet = [0, 0, 0].map((trackedNet) => ({ trackedNet, focusMs: 0 }));
+		expect(heatLevels(quiet, 'net', 0)).toEqual([0, 0, 0]);
+		expect(heatLevels([], 'net', 500)).toEqual([]);
+	});
+
+	/**
+	 * A goal is met or it is not: a day at nine tenths of one is a day the
+	 * goal was not met, and half-shading it would say otherwise.
+	 */
+	it('reads a daily goal as met or unmet and nothing between', () => {
+		const days = [499, 500, 501, 5000, -600].map((trackedNet) => ({
+			trackedNet,
+			focusMs: 0,
+		}));
+
+		expect(heatLevels(days, 'goal', 500)).toEqual([
+			0,
+			HEAT_LEVELS,
+			HEAT_LEVELS,
+			HEAT_LEVELS,
+			0,
+		]);
+		// With no goal set there is nothing for a day to have met.
+		expect(heatLevels(days, 'goal', 0)).toEqual([0, 0, 0, 0, 0]);
+	});
+
+	/**
+	 * The tallest day is deliberately not the ceiling. A scale that ends
+	 * exactly at the record says the record twice -- once on the axis and once
+	 * in the readings underneath -- and gives the other days nothing round to
+	 * be measured against.
+	 */
+	it('rules a word chart at round numbers above its tallest day', () => {
+		expect(axisScale(1912, 'net')).toEqual({ top: 2000, step: 500 });
+		expect(axisScale(2000, 'added')).toEqual({ top: 2000, step: 500 });
+		expect(axisScale(699, 'deleted')).toEqual({ top: 800, step: 200 });
+		expect(axisScale(7, 'net')).toEqual({ top: 8, step: 2 });
+		// A stretch with nothing written in it still has an axis.
+		expect(axisScale(0, 'net')).toEqual({ top: 1, step: 1 });
+	});
+
+	it('rules a time chart at the divisions of an hour', () => {
+		const minute = 60_000;
+		const hour = 3_600_000;
+		expect(axisScale(3 * hour, 'time')).toEqual({ top: 3 * hour, step: hour });
+		expect(axisScale(50 * minute, 'time')).toEqual({
+			top: 60 * minute,
+			step: 15 * minute,
+		});
+		expect(axisScale(20 * minute, 'time')).toEqual({
+			top: 20 * minute,
+			step: 5 * minute,
+		});
+		expect(axisScale(8 * hour, 'time')).toEqual({
+			top: 8 * hour,
+			step: 2 * hour,
+		});
+		// A day only holds twenty-four hours, so the step past that is a
+		// fallback rather than a reading -- but it still has to be round.
+		expect(axisScale(100 * hour, 'time')).toEqual({
+			top: 144 * hour,
+			step: 48 * hour,
+		});
+	});
+
+	/** Every ceiling reaches its own tallest day, whatever the numbers are. */
+	it('never rules a chart below the day it has to hold', () => {
+		for (const max of [1, 9, 10, 11, 99, 251, 999, 1001, 123_456]) {
+			const scale = axisScale(max, 'net');
+			expect(scale.top, `${max}`).toBeGreaterThanOrEqual(max);
+			expect(Math.round(scale.top / scale.step)).toBeLessThanOrEqual(5);
+		}
 	});
 });

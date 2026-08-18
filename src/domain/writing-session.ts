@@ -625,6 +625,146 @@ export function sessionMonthKey(
 	return { year, month };
 }
 
+/** The stretches of days a recent-trend reading offers, shortest first. */
+export const TREND_RANGES = [7, 15, 30, 90, 180] as const;
+
+/**
+ * What a recent-trend reading plots. The three word measures are drawn the
+ * same way and differ only in which number a day contributes; time is its own
+ * shape, a sitting split into the writing and the rest of it.
+ */
+export const TREND_MEASURES = ['net', 'added', 'deleted', 'time'] as const;
+export type TrendMeasure = (typeof TREND_MEASURES)[number];
+
+/** What a heatmap shades each day by. */
+export const HEATMAP_MEASURES = ['net', 'focus', 'goal'] as const;
+export type HeatmapMeasure = (typeof HEATMAP_MEASURES)[number];
+
+/**
+ * The days a heatmap covers: a leap year's worth, so the same day last year
+ * is always on it whichever year this is.
+ */
+export const HEATMAP_DAYS = 366;
+
+/**
+ * The steps a clock reading is worth ruling at: the divisions of an hour a
+ * reader already thinks in, rather than whatever a quarter of the tallest day
+ * happens to come to.
+ */
+const TIME_STEPS_MS = [
+	60_000,
+	2 * 60_000,
+	5 * 60_000,
+	10 * 60_000,
+	15 * 60_000,
+	30 * 60_000,
+	3_600_000,
+	2 * 3_600_000,
+	3 * 3_600_000,
+	6 * 3_600_000,
+	12 * 3_600_000,
+	24 * 3_600_000,
+];
+
+/** About this many bands between the axis and the top of a chart. */
+const AXIS_DIVISIONS = 4;
+
+/**
+ * The ceiling a chart is drawn to and the step between its rules. The tallest
+ * day is deliberately not the ceiling: a scale that ends exactly at the record
+ * says the record twice, once here and once in the readings underneath, and
+ * says nothing a reader can measure the other days against. So the scale is
+ * ruled at round numbers and the record simply falls somewhere inside it.
+ */
+export function axisScale(
+	max: number,
+	measure: TrendMeasure,
+): { top: number; step: number } {
+	const rough = Math.max(0, max) / AXIS_DIVISIONS;
+	const step = measure === 'time' ? clockStep(rough) : countStep(rough);
+	return { top: Math.max(step, Math.ceil(max / step) * step), step };
+}
+
+function clockStep(rough: number): number {
+	const step = TIME_STEPS_MS.find((one) => one >= rough);
+	// Past a day a step is whole days, which is as round as time gets.
+	return step ?? Math.ceil(rough / (24 * 3_600_000)) * 24 * 3_600_000;
+}
+
+function countStep(rough: number): number {
+	if (rough <= 1) return 1;
+	const power = 10 ** Math.floor(Math.log10(rough));
+	for (const factor of [1, 2, 2.5, 5]) {
+		const step = power * factor;
+		if (step >= rough) return Math.round(step);
+	}
+	return power * 10;
+}
+
+/** How many strengths a shaded day is drawn in, above nothing at all. */
+export const HEAT_LEVELS = 4;
+
+/** As much of a day as either reading needs: what it wrote, and for how long. */
+export interface DayReading {
+	trackedNet: number;
+	focusMs: number;
+}
+
+/**
+ * Which way a trend's bar went, which is what colours it. Deleted words are a
+ * loss whichever day they fall on, a net below nothing is one too, and
+ * everything else is a gain -- so every bar can stand on the axis and say by
+ * its colour what standing below it would have said by its place.
+ */
+export function trendTone(
+	measure: TrendMeasure,
+	value: number,
+): 'gain' | 'loss' {
+	return measure === 'deleted' || value < 0 ? 'loss' : 'gain';
+}
+
+/**
+ * How darkly each day is shaded, signed where the measure can be: a positive
+ * level is a gain, a negative one a loss, and zero is a day with nothing on
+ * it. A goal answers in two states only -- it was met or it was not, and
+ * shading a day at nine tenths of it would say the goal was nearly a thing
+ * that happened.
+ *
+ * The bands for the other two come from the project's own days rather than
+ * from a number chosen here, so a writer of two hundred words a day and one
+ * of two thousand both see their good days stand out from their quiet ones.
+ */
+export function heatLevels(
+	days: readonly DayReading[],
+	measure: HeatmapMeasure,
+	goal: number,
+): number[] {
+	if (measure === 'goal') {
+		return days.map((day) =>
+			goal > 0 && day.trackedNet >= goal ? HEAT_LEVELS : 0,
+		);
+	}
+	const value = (day: DayReading): number =>
+		measure === 'focus' ? day.focusMs : day.trackedNet;
+	const bands = quartiles(days.map((day) => Math.abs(value(day))));
+	return days.map((day) => {
+		const size = Math.abs(value(day));
+		if (size === 0) return 0;
+		const level =
+			size <= bands[0] ? 1 : size <= bands[1] ? 2 : size <= bands[2] ? 3 : 4;
+		return value(day) < 0 ? -level : level;
+	});
+}
+
+/** The three cuts that split a project's writing days into four bands. */
+function quartiles(values: number[]): [number, number, number] {
+	const sorted = values.filter((value) => value > 0).sort((a, b) => a - b);
+	if (sorted.length === 0) return [0, 0, 0];
+	const at = (share: number): number =>
+		sorted[Math.min(sorted.length - 1, Math.floor(share * sorted.length))] ?? 0;
+	return [at(0.25), at(0.5), at(0.75)];
+}
+
 export const SESSION_FILE_SUFFIX = '_writing_session.json';
 
 /**

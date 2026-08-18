@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { HEATMAP_MEASURES, TREND_MEASURES } from '../../src/domain';
 import {
 	SUPPORTED_LOCALES,
 	en,
@@ -639,6 +640,76 @@ describe('translation resources', () => {
 		expect(t('zh-CN', 'sessionWidget.today.paceValue', { pace: 900 })).toBe(
 			'900 字/小时',
 		);
+	});
+
+	/**
+	 * The two readings that span more than a day build their choosers and their
+	 * tooltips from keys the type checker never sees either, and a tooltip with
+	 * a raw key in it is only ever found by pointing at the right day.
+	 */
+	it('labels the recent trend and the writing heatmap', () => {
+		const keys = [
+			'sessionWidget.trend.title',
+			'sessionWidget.trend.range',
+			'sessionWidget.trend.measure',
+			'sessionWidget.trend.days',
+			'sessionWidget.trend.net',
+			'sessionWidget.trend.added',
+			'sessionWidget.trend.deleted',
+			'sessionWidget.trend.time',
+			'sessionWidget.trend.average',
+			'sessionWidget.trend.highest',
+			'sessionWidget.trend.total',
+			'sessionWidget.trend.hours',
+			'sessionWidget.trend.wordsDetail',
+			'sessionWidget.trend.timeDetail',
+			'sessionWidget.heatmap.title',
+			'sessionWidget.heatmap.measure',
+			'sessionWidget.heatmap.net',
+			'sessionWidget.heatmap.focus',
+			'sessionWidget.heatmap.goal',
+			'sessionWidget.heatmap.less',
+			'sessionWidget.heatmap.more',
+			'sessionWidget.heatmap.netDetail',
+			'sessionWidget.heatmap.focusDetail',
+			'sessionWidget.heatmap.noGoalDetail',
+			'sessionWidget.heatmap.completed',
+			'sessionWidget.heatmap.uncompleted',
+			'settings.sessionWeekStart.name',
+			'settings.sessionWeekStart.desc',
+			'settings.sessionDateFormat.name',
+			'settings.sessionDateFormat.desc',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		// Every measure a chooser offers is named in both languages, and the
+		// chooser builds those names from the vocabulary rather than a list of
+		// its own, so a measure added later is caught here.
+		for (const measure of TREND_MEASURES) {
+			expect(Object.keys(en)).toContain(`sessionWidget.trend.${measure}`);
+			expect(Object.keys(zhCN)).toContain(`sessionWidget.trend.${measure}`);
+		}
+		for (const measure of HEATMAP_MEASURES) {
+			expect(Object.keys(en)).toContain(`sessionWidget.heatmap.${measure}`);
+			expect(Object.keys(zhCN)).toContain(`sessionWidget.heatmap.${measure}`);
+		}
+		expect(t('en', 'sessionWidget.trend.days', { days: 30 })).toBe(
+			'Last 30 days',
+		);
+		expect(t('zh-CN', 'sessionWidget.trend.days', { days: 30 })).toBe(
+			'最近 30 天',
+		);
+		expect(en['sessionWidget.heatmap.title']).toBe('Annual contribution');
+		// Every part of a detail line is a reading in its own right, so each is
+		// capitalized the same way rather than the first alone.
+		for (const key of ['trend.wordsDetail', 'trend.timeDetail'] as const) {
+			for (const part of (en[`sessionWidget.${key}`] as string).split(' · ')) {
+				expect(part[0], part).toBe(part[0]?.toUpperCase());
+			}
+		}
+		expect(zhCN['sessionWidget.heatmap.title']).toBe('年度贡献');
 	});
 
 	/**
