@@ -589,6 +589,73 @@ describe('translation resources', () => {
 		expect(Object.keys(en)).toContain('statistics.tab.planned');
 	});
 
+	/**
+	 * The three session widgets build their row labels and their controls from
+	 * keys the type checker never sees, so a rename that misses one shows up
+	 * as a raw key on the pane rather than as a failure anywhere else.
+	 */
+	it('labels every part of the three session widgets', () => {
+		const keys = [
+			'sessionWidget.goal.title',
+			'sessionWidget.goal.edit',
+			'sessionWidget.goal.progress',
+			'sessionWidget.goal.unset',
+			'sessionWidget.timer.title',
+			'sessionWidget.timer.edit',
+			'sessionWidget.cycle',
+			'sessionWidget.start',
+			'sessionWidget.pause',
+			'sessionWidget.resume',
+			'sessionWidget.stop',
+			'sessionWidget.today.title',
+			'sessionWidget.today.sessions',
+			'sessionWidget.today.total',
+			'sessionWidget.today.focus',
+			'sessionWidget.today.idle',
+			'sessionWidget.today.words',
+			'sessionWidget.today.pace',
+			'sessionWidget.today.paceValue',
+			'modal.dailyGoal.title',
+			'modal.dailyGoal.words',
+			'modal.sessionSetup.title',
+			'modal.sessionSetup.type',
+			'modal.sessionSetup.stage',
+			'modal.sessionSetup.scope',
+			'modal.sessionSetup.focus',
+			'modal.sessionSetup.break',
+			'modal.sessionSetup.expected',
+			'modal.sessionSetup.expectedDesc',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(
+			t('en', 'sessionWidget.goal.progress', { net: '40', goal: '1,000' }),
+		).toBe('40 / 1,000');
+		expect(zhCN['session.type.stopwatch']).toBe('正计时');
+		expect(t('en', 'sessionWidget.cycle', { cycle: '01' })).toBe('Cycle 01');
+		expect(t('zh-CN', 'sessionWidget.cycle', { cycle: '01' })).toBe('周期 01');
+		expect(t('zh-CN', 'sessionWidget.today.paceValue', { pace: 900 })).toBe(
+			'900 字/小时',
+		);
+	});
+
+	/**
+	 * A writing session is a 时段 in Chinese, never a 会话: the second is what a
+	 * chat or a login has, and it read as the wrong kind of thing everywhere a
+	 * sitting at the desk was meant.
+	 */
+	it('calls a writing session a 时段 throughout the Chinese copy', () => {
+		const offenders = Object.entries(zhCN).filter(([, value]) =>
+			value.includes('会话'),
+		);
+		expect(offenders).toEqual([]);
+		expect(zhCN['sessionWidget.today.sessions']).toBe('时段数');
+		expect(zhCN['sessionWidget.timer.title']).toBe('专注计时');
+		expect(zhCN['sessionWidget.today.title']).toBe('今日总结');
+	});
+
 	it('falls back safely for incremental UI keys', () => {
 		expect(t('zh-CN', 'future.untranslated')).toBe('future.untranslated');
 		expect(translate('en', 'common.save')).toBe('Save');

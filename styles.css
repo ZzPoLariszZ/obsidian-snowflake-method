@@ -1133,6 +1133,17 @@
 }
 
 .snowflake-method-panel {
+	/* One measure for a tab strip: the tabs stand this tall, the room kept at
+	   either end of the row is the same distance again, and so is the padding
+	   inside the field they open onto. It is declared here because the strip
+	   and the field are siblings, and a custom property travels down. */
+	--snowflake-method-tab-height: 2.75rem;
+	/* And one width for every tab, whichever language names it. A Chinese
+	   label runs to four characters where its English counterpart runs to
+	   fifteen, and a row that resizes with the project's language reads as
+	   two different designs. Wide enough for the longest label there is;
+	   anything longer still takes the room it needs. */
+	--snowflake-method-tab-width: 9.5rem;
 	min-width: 0;
 	padding: var(--size-4-5);
 	border: 1px solid var(--background-modifier-border);
@@ -1197,15 +1208,6 @@
    button through `button:not(.clickable-icon)`, which outweighs a class on
    its own and would leave an unselected tab wearing the app's button fill. */
 .snowflake-method-tabs {
-	/* One measure for the strip: the tabs stand this tall, and the room kept
-	   at either end of the row is the same distance again. */
-	--snowflake-method-tab-height: 2.75rem;
-	/* And one width for every tab, whichever language names it. A Chinese
-	   label runs to four characters where its English counterpart runs to
-	   fifteen, and a row that resizes with the project's language reads as
-	   two different designs. Wide enough for the longest label there is;
-	   anything longer still takes the room it needs. */
-	--snowflake-method-tab-width: 9.5rem;
 	display: flex;
 	align-items: flex-end;
 	gap: var(--size-4-2);
@@ -1294,7 +1296,7 @@
 	/* Its top edge runs in the strip's last row, where the selected tab is
 	   standing: the line is drawn everywhere except behind that tab. */
 	margin-top: -1px;
-	padding: var(--size-4-4);
+	padding: var(--snowflake-method-tab-height);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	overflow-y: auto;
@@ -5741,9 +5743,17 @@ button.snowflake-method-kind-options {
 	margin: 0;
 }
 
-.snowflake-method-definition-form
-	> .snowflake-method-definition-setting
-	.setting-item-description {
+/* A field's name and its explanation are set the same in every form the
+   plugin opens, whether the row stacks the box under the name or sets it
+   beside: how a row is laid out is one decision, how it reads is another. */
+.snowflake-method-definition-form .setting-item-name {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.4;
+}
+
+.snowflake-method-definition-form .setting-item-description {
 	margin-top: var(--size-2-1);
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
@@ -5758,13 +5768,20 @@ button.snowflake-method-kind-options {
 	max-width: none;
 }
 
-.snowflake-method-definition-form
-	> .snowflake-method-definition-setting
-	.setting-item-name {
-	color: var(--text-normal);
-	font-size: var(--font-ui-medium);
-	font-weight: var(--font-semibold);
-	line-height: 1.4;
+/* One width for every control the timer's dialog offers. A number box and a
+   dropdown are asking the same kind of question of the same row, and left to
+   themselves they answer it at two different sizes. */
+.snowflake-method-session-modal
+	.snowflake-method-definition-setting
+	> .setting-item-control
+	> input[type='number'],
+.snowflake-method-session-modal
+	.snowflake-method-definition-setting
+	> .setting-item-control
+	> select.dropdown {
+	flex: 1 1 auto;
+	width: 100%;
+	max-width: none;
 }
 
 .snowflake-method-definition-form
@@ -6782,85 +6799,315 @@ button.snowflake-method-kind-options {
 	opacity: 0.45;
 }
 
-/* The session panel, one face in the statistics sidebar and the dashboard's
-   statistics pane alike. */
-.snowflake-method-session-panel {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-3);
-	max-width: 28em;
-}
-
-.snowflake-method-session-start {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-2);
+/* The three session widgets, one face in the statistics sidebar and the data
+   statistics pane alike. Each is a square by intent and taller only where its
+   own contents will not fit; the row becomes a column where a column is all
+   the room there is, which is what the sidebar has. */
+/* The row keeps the measure of whatever holds it: the statistics field spaces
+   its widgets the way it spaces itself, and a sidebar -- which has no such
+   field and much less width to give away -- spaces them ordinarily. */
+.snowflake-method-session-widgets {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	gap: var(--snowflake-method-tab-height, var(--size-4-3));
 	align-items: stretch;
 }
 
-.snowflake-method-session-start-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: flex-start;
-	gap: var(--size-2-3);
-}
+/* A square, and one that stays square. Holding the ratio is the easy half;
+   the hard half is that a square only keeps its shape while its contents fit
+   inside it, and at a sidebar's width fixed type and fixed padding do not. So
+   the widget is its own container and everything in it is measured against
+   the widget's width: the dial, the type, the padding and the gaps all shrink
+   with the box, and the shape holds at any width instead of springing open
+   the moment the window narrows.
 
-.snowflake-method-session-card {
+   `min-height: 0` is what makes the ratio final rather than a suggestion --
+   without it a grid item's automatic minimum lets content push the box taller.
+   Everything inside is sized to fit well within the square, so nothing is
+   asked to overflow it. */
+.snowflake-method-widget {
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
-	gap: var(--size-2-3);
-	padding: var(--size-4-3);
+	gap: var(--size-4-2);
+	aspect-ratio: 1;
+	min-width: 0;
+	min-height: 0;
+	padding: var(--size-4-4);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
-	background: var(--background-secondary);
+	background: var(--background-primary);
 }
 
-.snowflake-method-session-header {
-	display: inline-flex;
+/* The scale, set one level in rather than on the widget itself. A container
+   cannot measure itself: a `cqi` written in a rule that applies to the
+   container resolves against the next container outwards, or -- with none --
+   against the viewport, which here is a whole window wide. That is why the
+   type never grew with the box while a ceiling was hiding it, and why it grew
+   to a hundred and fifty pixels the moment the ceiling came off.
+
+   A floor keeps a narrow sidebar readable; there is no ceiling above it, so a
+   widget given more room gives it to what is inside. Every `em` below is a
+   share of this. */
+.snowflake-method-widget > * {
+	font-size: max(0.7rem, 5.2cqi);
+}
+
+.snowflake-method-widget-header {
+	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: var(--size-2-2);
+	flex: 0 0 auto;
+}
+
+.snowflake-method-widget-title {
 	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-session-type-icon {
-	display: inline-flex;
-	align-items: center;
-}
-
-.snowflake-method-session-clock {
-	font-size: 2em;
-	font-variant-numeric: tabular-nums;
+	font-size: 1em;
 	font-weight: var(--font-semibold);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.snowflake-method-session-rows {
+.snowflake-method-widget-settings {
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+/* The widget's own contents take the room the header leaves, spread over it
+   rather than bunched at the top: a square whose figure sits in the middle. */
+.snowflake-method-widget-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	justify-content: center;
+	gap: 3cqi;
+	min-height: 0;
+}
+
+/* The reading under the dial: the day's own two numbers, said as plainly and
+   as large as the figure above them rather than muttered underneath it. */
+.snowflake-method-widget-caption {
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	font-size: 1.5em;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
+	text-align: center;
+}
+
+/* The daily goal: a half-circle filling from the left, with the reading
+   standing in the bowl of the arc rather than beside it. */
+/* As much of the square as the timer's ring takes of its own, so the two read
+   as a pair. A half circle is nearly twice as wide as it is tall, so its width
+   is what runs out first and the reading below it takes up the rest. */
+.snowflake-method-gauge {
+	position: relative;
+	align-self: center;
+	width: min(100%, 96cqi);
+	max-height: 100%;
+}
+
+.snowflake-method-gauge-dial {
+	display: block;
+	width: 100%;
+	height: auto;
+	overflow: visible;
+}
+
+.snowflake-method-gauge-track,
+.snowflake-method-gauge-fill {
+	fill: none;
+	stroke-width: 10;
+	stroke-linecap: round;
+}
+
+.snowflake-method-gauge-track {
+	stroke: var(--background-modifier-border);
+}
+
+.snowflake-method-gauge-fill {
+	stroke: var(--interactive-accent);
+	transition: stroke-dashoffset 240ms ease-out;
+}
+
+/* The figure the widget is for, in the colour the theme uses for its own
+   accents and set in the monospaced face, so a day's reading holds its width
+   from one glance to the next. */
+.snowflake-method-gauge-percent {
+	position: absolute;
+	inset-inline: 0;
+	bottom: 0;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	font-size: 3.1em;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
+	line-height: 1.1;
+	text-align: center;
+}
+
+/* Where the goal itself falls on an arc that runs past it. */
+.snowflake-method-gauge-mark {
+	fill: none;
+	stroke: var(--text-muted);
+	stroke-width: 2;
+	stroke-linecap: round;
+}
+
+/* The clock: a ring closing round the reading, and the ways to move it
+   underneath. A stopwatch has nothing to be a fraction of, so it keeps the
+   ring and never fills it. */
+/* Sized by the room left over, not by the widget's width: the label above it
+   and the buttons below take what they need first, and the ring is what fills
+   the rest. Sizing it off the width instead let the three of them add up to
+   more than the square held, and a centred column overflows both ends of its
+   box without ever counting as scrollable. */
+.snowflake-method-timer-dial {
+	position: relative;
+	align-self: center;
+	flex: 1 1 0;
+	min-height: 0;
+	max-width: 100%;
+	aspect-ratio: 1;
+}
+
+.snowflake-method-timer-ring {
+	display: block;
+	width: 100%;
+	height: 100%;
+	/* Noon rather than three o'clock: a clock's own starting point. */
+	rotate: -90deg;
+	overflow: visible;
+}
+
+.snowflake-method-timer-track,
+.snowflake-method-timer-fill {
+	fill: none;
+	stroke-width: 6;
+	stroke-linecap: round;
+}
+
+.snowflake-method-timer-track {
+	stroke: var(--background-modifier-border);
+}
+
+.snowflake-method-timer-fill {
+	stroke: var(--interactive-accent);
+	transition: stroke-dashoffset 240ms linear;
+}
+
+.snowflake-method-timer-face {
+	position: absolute;
 	display: flex;
 	flex-direction: column;
+	align-items: center;
+	justify-content: center;
 	gap: var(--size-2-1);
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-	font-variant-numeric: tabular-nums;
+	inset: 0;
+	padding: var(--size-4-3);
+	text-align: center;
 }
 
-.snowflake-method-session-controls {
+/* Over the ring rather than inside it, and set to be read first: which clock,
+   what it is doing, and which turn round, in that order on one line. */
+.snowflake-method-timer-kind {
+	flex: 0 0 auto;
+	max-width: 100%;
+	color: var(--text-normal);
+	font-size: 1.2em;
+	font-weight: var(--font-bold);
+	line-height: 1.3;
+	text-align: center;
+}
+
+.snowflake-method-widget-clock {
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
+	font-size: 2.2em;
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
+	line-height: 1.1;
+}
+
+.snowflake-method-widget-controls {
 	display: flex;
 	align-items: center;
-	gap: var(--size-2-2);
-	margin-top: var(--size-2-2);
+	justify-content: center;
+	gap: 2cqi;
+	flex: 0 0 auto;
 	flex-wrap: wrap;
 }
 
-.snowflake-method-session-today-title {
-	font-size: var(--font-ui-small);
+.snowflake-method-widget-controls button.snowflake-method-widget-control {
+	display: inline-flex;
+	align-items: center;
+	gap: 1.5cqi;
+	height: auto;
+	padding: 1.8cqi 3cqi;
+	font-size: 0.95em;
 	font-weight: var(--font-semibold);
-	color: var(--text-muted);
+	white-space: nowrap;
 }
 
-.snowflake-method-session-today-line {
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
+.snowflake-method-widget-controls
+	button.snowflake-method-widget-control:disabled {
+	opacity: 0.45;
+}
+
+.snowflake-method-widget-control > span:first-child {
+	display: inline-flex;
+	align-items: center;
+}
+
+.snowflake-method-widget-control > span:first-child > svg {
+	width: 1em;
+	height: 1em;
+}
+
+/* The day's totals: a label at the start of each row and its reading at the
+   end, so the numbers line up down one edge. */
+/* The day's own inset: these rows run the full width of the widget, so the
+   room between them and its edge is theirs to keep rather than the widget's
+   to give every one of its faces. It is a generous inset, which is what draws
+   the name and its reading in off the two edges towards each other. */
+.snowflake-method-widget-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2.4cqi;
+	padding-inline: 6cqi;
+}
+
+.snowflake-method-widget-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	color: var(--text-normal);
+	font-size: 1.25em;
+	font-weight: var(--font-bold);
+}
+
+.snowflake-method-widget-row-value {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.5em;
+	color: var(--interactive-accent);
+	font-family: var(--font-monospace);
 	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
+}
+
+/* Gained and lost, coloured the way a diff colours them -- from the theme's
+   own success and error, so a reader's palette decides the two greens and reds
+   rather than this file deciding them once for everyone. */
+.snowflake-method-widget-added {
+	color: var(--text-success);
+}
+
+.snowflake-method-widget-deleted {
+	color: var(--text-error);
 }
 
 .snowflake-method-statistics-view {

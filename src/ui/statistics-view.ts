@@ -33,8 +33,25 @@ export class SnowflakeStatisticsView extends ItemView {
 
 	onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-statistics-view');
-		this.dispose = renderSessionPanel(this.contentEl, this.bridge);
+		this.mount();
 		return Promise.resolve();
+	}
+
+	/**
+	 * Builds the panel again. The widgets patch their own numbers as a session
+	 * runs, but their labels are written once, so a change of language or of
+	 * current project is a change they cannot patch their way out of.
+	 */
+	rerender(): void {
+		if (this.dispose === null) return;
+		this.dispose();
+		this.dispose = null;
+		this.contentEl.empty();
+		this.mount();
+	}
+
+	private mount(): void {
+		this.dispose = renderSessionPanel(this.contentEl, this.bridge);
 	}
 
 	onClose(): Promise<void> {

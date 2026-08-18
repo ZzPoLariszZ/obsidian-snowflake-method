@@ -105,6 +105,9 @@ export interface TodayWritingSummary {
 	focusMs: number;
 	idleMs: number;
 	totalMs: number;
+	/** The two halves the net is made of, kept apart as well as summed. */
+	added: number;
+	deleted: number;
 	trackedNet: number;
 }
 
@@ -589,6 +592,8 @@ export class WritingSessionService {
 			focusMs: 0,
 			idleMs: 0,
 			totalMs: 0,
+			added: 0,
+			deleted: 0,
 			trackedNet: 0,
 		};
 		for (const session of byUuid.values()) {
@@ -598,6 +603,8 @@ export class WritingSessionService {
 			summary.focusMs += durations.focusMs;
 			summary.idleMs += durations.idleMs;
 			summary.totalMs += durations.totalMs;
+			summary.added += session.addedWordCount;
+			summary.deleted += session.deletedWordCount;
 			summary.trackedNet += sessionNets(session).trackedNet;
 		}
 		const live = this.live();
@@ -611,6 +618,8 @@ export class WritingSessionService {
 			summary.focusMs += live.durations.focusMs;
 			summary.idleMs += live.durations.idleMs;
 			summary.totalMs += live.durations.totalMs;
+			summary.added += live.added;
+			summary.deleted += live.deleted;
 			summary.trackedNet += live.trackedNet;
 		}
 		return summary;

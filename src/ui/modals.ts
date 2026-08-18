@@ -79,6 +79,7 @@ import {
 	type ProjectRootField,
 } from './project-root-field';
 import { RenderStateKeeper } from './render-state';
+import type { SessionSetup } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import type {
 	DefinitionFileChoice,
@@ -4439,7 +4440,7 @@ export class ManagedBoundaryUnlockModal extends Modal {
 	}
 }
 
-/** What the start-with-options dialog decides; the clocks come from settings. */
+/** Everything a session needs to begin, settled before it does. */
 export interface StartSessionRequest {
 	type: WritingSessionType;
 	scope: WritingSessionScope;
@@ -4448,55 +4449,111 @@ export interface StartSessionRequest {
 }
 
 /**
- * The start-with-options dialog: the session type, what counts as its scope,
- * the writing-mode label, and an optional goal. The durations are settings,
- * not questions to answer at every start.
+ * A row in a session dialog, worn the way every other form the plugin opens
+ * wears its rows: the label above the field it names, both spanning the
+ * dialog. The session dialogs used Obsidian's own side-by-side layout and read
+ * as somebody else's forms next to the rest.
  */
-export class StartWritingSessionModal extends SnowflakeFormModal<StartSessionRequest> {
-	private sessionType: WritingSessionType = 'stopwatch';
-	private countingScope: WritingSessionScope = 'project';
-	private writingMode: WritingMode = 'draft';
-	private goalNetEl: HTMLInputElement | null = null;
-	private goalFocusEl: HTMLInputElement | null = null;
+function sessionRow(parent: HTMLElement, name: string, desc?: string): Setting {
+	const setting = new Setting(parent).setName(name);
+	if (desc !== undefined) setting.setDesc(desc);
+	setting.settingEl.addClass('snowflake-method-definition-setting');
+	return setting;
+}
+
+/**
+ * The daily word goal the goal widget measures against. One field, because
+ * one number is the whole question.
+ */
+export class DailyWordGoalModal extends SnowflakeFormModal<number> {
+	private field: HTMLInputElement | null = null;
 
 	constructor(
 		app: App,
 		t: Translate,
-		onSubmit: SubmitHandler<StartSessionRequest>,
+		private readonly current: number,
+		onSubmit: SubmitHandler<number>,
 	) {
-		super(app, t, t('session.modal.title'), onSubmit, 'session.modal.start');
-		this.modalEl.addClass('snowflake-method-session-modal');
+		super(app, t, t('modal.dailyGoal.title'), onSubmit, 'common.save');
+		this.modalEl.addClass(
+			'snowflake-method-session-modal',
+			'snowflake-method-definition-modal',
+		);
 	}
 
 	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-definition-form');
+		// Not the stacked row the other forms use: one number does not need a
+		// field the width of the dialog, and the box reads better beside the
+		// name it answers to than underneath it.
 		new Setting(this.contentEl)
-			.setName(this.t('session.modal.type'))
-			.addDropdown((dropdown) => {
+			.setName(this.t('modal.dailyGoal.words'))
+			.setDesc(this.t('modal.dailyGoal.desc'))
+			.addText((text) => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = '0';
+				text.setValue(`${this.current}`);
+				this.field = text.inputEl;
+			});
+	}
+
+	protected collectValue(): number | null {
+		return wholeNumber(this.field?.value) ?? this.current;
+	}
+}
+
+/**
+ * The clock a session starts on. Which lengths it asks for follows the clock
+ * itself: a pomodoro alternates two of them, a countdown has one, and a
+ * stopwatch runs until it is stopped -- so its length is an expectation for
+ * the ring to close over rather than a limit on the sitting.
+ */
+export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
+	private sessionType: WritingSessionType;
+	private writingMode: WritingMode;
+	private countingScope: WritingSessionScope;
+	private countdownEl: HTMLInputElement | null = null;
+	private workEl: HTMLInputElement | null = null;
+	private breakEl: HTMLInputElement | null = null;
+	private expectedEl: HTMLInputElement | null = null;
+	private readonly lengthRows = new Map<WritingSessionType, HTMLElement[]>();
+
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly current: SessionSetup,
+		onSubmit: SubmitHandler<SessionSetup>,
+		// Setting the clock and starting on it ask exactly the same questions,
+		// so they are one dialog and differ only in what its button says.
+		submitKey = 'common.save',
+	) {
+		super(app, t, t('modal.sessionSetup.title'), onSubmit, submitKey);
+		this.sessionType = current.type;
+		this.writingMode = current.writingMode;
+		this.countingScope = current.scope;
+		this.modalEl.addClass(
+			'snowflake-method-session-modal',
+			'snowflake-method-definition-modal',
+		);
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-definition-form');
+		sessionRow(this.contentEl, this.t('modal.sessionSetup.type')).addDropdown(
+			(dropdown) => {
 				for (const type of WRITING_SESSION_TYPES) {
 					dropdown.addOption(type, this.t(`session.type.${type}`));
 				}
 				dropdown.setValue(this.sessionType).onChange((value) => {
 					if ((WRITING_SESSION_TYPES as readonly string[]).includes(value)) {
 						this.sessionType = value as WritingSessionType;
+						this.showLengths();
 					}
 				});
-			});
-		new Setting(this.contentEl)
-			.setName(this.t('session.modal.scope'))
-			.setDesc(this.t('session.modal.scopeDesc'))
-			.addDropdown((dropdown) => {
-				for (const scope of WRITING_SESSION_SCOPES) {
-					dropdown.addOption(scope, this.t(`session.scope.${scope}`));
-				}
-				dropdown.setValue(this.countingScope).onChange((value) => {
-					if ((WRITING_SESSION_SCOPES as readonly string[]).includes(value)) {
-						this.countingScope = value as WritingSessionScope;
-					}
-				});
-			});
-		new Setting(this.contentEl)
-			.setName(this.t('session.modal.mode'))
-			.addDropdown((dropdown) => {
+			},
+		);
+		sessionRow(this.contentEl, this.t('modal.sessionSetup.stage')).addDropdown(
+			(dropdown) => {
 				for (const mode of WRITING_MODES) {
 					dropdown.addOption(mode, this.t(`session.mode.${mode}`));
 				}
@@ -4505,40 +4562,117 @@ export class StartWritingSessionModal extends SnowflakeFormModal<StartSessionReq
 						this.writingMode = value as WritingMode;
 					}
 				});
-			});
-		new Setting(this.contentEl)
-			.setName(this.t('session.modal.goalNet'))
-			.setDesc(this.t('session.modal.goalDesc'))
-			.addText((text) => {
-				text.inputEl.type = 'number';
-				text.inputEl.min = '1';
-				this.goalNetEl = text.inputEl;
-			});
-		new Setting(this.contentEl)
-			.setName(this.t('session.modal.goalFocus'))
-			.addText((text) => {
-				text.inputEl.type = 'number';
-				text.inputEl.min = '1';
-				this.goalFocusEl = text.inputEl;
-			});
+			},
+		);
+		sessionRow(this.contentEl, this.t('modal.sessionSetup.scope')).addDropdown(
+			(dropdown) => {
+				for (const scope of WRITING_SESSION_SCOPES) {
+					dropdown.addOption(scope, this.t(`session.scope.${scope}`));
+				}
+				dropdown.setValue(this.countingScope).onChange((value) => {
+					if ((WRITING_SESSION_SCOPES as readonly string[]).includes(value)) {
+						this.countingScope = value as WritingSessionScope;
+					}
+				});
+			},
+		);
+		this.lengthRows.set('pomodoro', [
+			this.minutes(
+				'modal.sessionSetup.focus',
+				this.current.pomodoroWorkMinutes,
+				1,
+				(input) => {
+					this.workEl = input;
+				},
+			),
+			this.minutes(
+				'modal.sessionSetup.break',
+				this.current.pomodoroBreakMinutes,
+				1,
+				(input) => {
+					this.breakEl = input;
+				},
+			),
+		]);
+		this.lengthRows.set('countdown', [
+			this.minutes(
+				'modal.sessionSetup.focus',
+				this.current.countdownMinutes,
+				1,
+				(input) => {
+					this.countdownEl = input;
+				},
+			),
+		]);
+		this.lengthRows.set('stopwatch', [
+			this.minutes(
+				'modal.sessionSetup.expected',
+				this.current.stopwatchExpectedMinutes,
+				0,
+				(input) => {
+					this.expectedEl = input;
+				},
+				this.t('modal.sessionSetup.expectedDesc'),
+			),
+		]);
+		this.showLengths();
 	}
 
-	protected collectValue(): StartSessionRequest | null {
-		const goal: WritingSessionGoal = {};
-		const net = positiveInteger(this.goalNetEl?.value);
-		if (net !== null) goal.netWordTarget = net;
-		const focusMinutes = positiveInteger(this.goalFocusEl?.value);
-		if (focusMinutes !== null) goal.focusTimeTargetSeconds = focusMinutes * 60;
+	private minutes(
+		key: string,
+		value: number,
+		least: number,
+		keep: (input: HTMLInputElement) => void,
+		desc?: string,
+	): HTMLElement {
+		const setting = sessionRow(this.contentEl, this.t(key), desc).addText(
+			(text) => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = `${least}`;
+				text.setValue(`${value}`);
+				keep(text.inputEl);
+			},
+		);
+		return setting.settingEl;
+	}
+
+	/** Only the chosen clock's own lengths stand; the rest step aside. */
+	private showLengths(): void {
+		for (const [type, rows] of this.lengthRows) {
+			for (const row of rows) row.toggle(type === this.sessionType);
+		}
+	}
+
+	protected collectValue(): SessionSetup {
 		return {
 			type: this.sessionType,
-			scope: this.countingScope,
+			countdownMinutes:
+				positiveInteger(this.countdownEl?.value) ??
+				this.current.countdownMinutes,
+			pomodoroWorkMinutes:
+				positiveInteger(this.workEl?.value) ??
+				this.current.pomodoroWorkMinutes,
+			pomodoroBreakMinutes:
+				positiveInteger(this.breakEl?.value) ??
+				this.current.pomodoroBreakMinutes,
+			stopwatchExpectedMinutes:
+				wholeNumber(this.expectedEl?.value) ??
+				this.current.stopwatchExpectedMinutes,
 			writingMode: this.writingMode,
-			goal: goal.netWordTarget === undefined &&
-				goal.focusTimeTargetSeconds === undefined
-				? null
-				: goal,
+			scope: this.countingScope,
+			// The session goals are not this dialog's to ask about; they carry
+			// through untouched rather than being cleared by their absence.
+			goalNetWords: this.current.goalNetWords,
+			goalFocusMinutes: this.current.goalFocusMinutes,
 		};
 	}
+}
+
+/** A whole number at or above zero, or null: zero turns a goal off. */
+function wholeNumber(value: string | undefined): number | null {
+	if (value === undefined || value.trim().length === 0) return null;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 /** A whole positive number, or null: a blank goal field is no condition. */

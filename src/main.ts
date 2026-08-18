@@ -41,6 +41,7 @@ import {
 	WRITING_SESSION_TYPES,
 	type DocumentType,
 	type WritingSessionTiming,
+	type WritingSessionGoal,
 	type WritingSessionType,
 	type EntityKindId,
 	type StepId,
@@ -146,7 +147,11 @@ import {
 	STATISTICS_VIEW_TYPE,
 	SnowflakeStatisticsView,
 } from './ui/statistics-view';
-import type { SessionPanelBridge } from './ui/session-panel';
+import type {
+	SessionPanelBridge,
+	SessionPanelContext,
+	SessionSetup,
+} from './ui/session-panel';
 import {
 	ConfirmMemberDeletionModal,
 	CreateCharacterModal,
@@ -163,7 +168,8 @@ import {
 	type CreateSceneRequest,
 	promptForDefinitionKind,
 	promptForDefinitionPath,
-	StartWritingSessionModal,
+	DailyWordGoalModal,
+	SessionSetupModal,
 	type EntityFormRequest,
 	type ManageProjectLists,
 	type ManageProjectOption,
@@ -376,6 +382,22 @@ export default class SnowflakeMethodPlugin
 			key,
 			vars,
 		);
+
+	/**
+	 * The app's own surfaces that speak about a project rather than about the
+	 * app: the status bar, its menus, and the notices they raise. They follow
+	 * the project the author is working in, the way the dashboard and the
+	 * statistics panels do, so one window is not saying the same thing in two
+	 * languages at once.
+	 *
+	 * The command palette keeps `globalT`. Its names are registered once at
+	 * load and cannot be re-registered, so a palette that followed the project
+	 * would only ever show whichever language happened to be current at start.
+	 */
+	private readonly projectT = (
+		key: string,
+		vars?: Record<string, string | number>,
+	): string => this.translateForProject(null, key, vars);
 
 	readonly translateForProject = (
 		locale: 'en' | 'zh-CN' | null,
@@ -1313,6 +1335,9 @@ export default class SnowflakeMethodPlugin
 		this.settings.recentProjectPath = path;
 		this.currentProjectLocale = locale;
 		this.settings.recentStep = step;
+		// The sidebar has no project of its own and follows this one, so moving
+		// between dashboards is a move it has to be told about.
+		this.rerenderStatisticsViews();
 		void this.saveSettings();
 	}
 
@@ -2521,7 +2546,7 @@ export default class SnowflakeMethodPlugin
 		this.sessionItem = item;
 		// Always on show: with no session running, the icon is how a session
 		// is started, and a control that vanishes cannot be clicked.
-		setTooltip(item, this.globalT('statusBar.sessionStart'));
+		setTooltip(item, this.projectT('statusBar.sessionStart'));
 		this.registerDomEvent(item, 'click', (event) => {
 			this.openWritingSessionMenu(event);
 		});
@@ -2587,26 +2612,26 @@ export default class SnowflakeMethodPlugin
 	private handleSessionEvent(event: WritingSessionEvent): void {
 		if (this.unloading) return;
 		if (event.kind === 'goal-reached') {
-			new Notice(this.globalT('session.notice.goalReached'));
+			new Notice(this.projectT('session.notice.goalReached'));
 		} else if (event.kind === 'break-started') {
 			new Notice(
-				this.globalT('session.notice.breakStarted', { cycle: event.cycle }),
+				this.projectT('session.notice.breakStarted', { cycle: event.cycle }),
 			);
 		} else if (event.kind === 'work-started') {
 			new Notice(
-				this.globalT('session.notice.workStarted', { cycle: event.cycle }),
+				this.projectT('session.notice.workStarted', { cycle: event.cycle }),
 			);
 		} else if (event.kind === 'corrupt-file-preserved') {
 			new Notice(
-				this.globalT('session.notice.corruptPreserved', { path: event.path }),
+				this.projectT('session.notice.corruptPreserved', { path: event.path }),
 			);
 		} else if (event.kind === 'recovered' && event.record !== null) {
-			new Notice(this.globalT('session.notice.recovered'));
+			new Notice(this.projectT('session.notice.recovered'));
 		} else if (
 			event.kind === 'stopped' &&
 			event.reason === 'countdown-completed'
 		) {
-			new Notice(this.globalT('session.notice.completed'));
+			new Notice(this.projectT('session.notice.completed'));
 		}
 		this.repaintWritingSession();
 		if (
@@ -2636,13 +2661,13 @@ export default class SnowflakeMethodPlugin
 			live === null
 				? ''
 				: live.state === 'starting'
-					? this.globalT('statusBar.sessionStarting')
+					? this.projectT('statusBar.sessionStarting')
 					: live.type === 'stopwatch'
 						? formatClock(live.durations.totalMs)
 						: formatClock(live.remainingMs ?? 0);
 		const tooltip =
 			live === null
-				? this.globalT('statusBar.sessionStart')
+				? this.projectT('statusBar.sessionStart')
 				: this.writingSessionTooltip(live);
 		const look = [
 			iconName,
@@ -2675,10 +2700,10 @@ export default class SnowflakeMethodPlugin
 				: live.state;
 		const lines = [
 			[
-				this.globalT(`session.type.${live.type}`),
-				this.globalT(`session.state.${state}`),
-				this.globalT(`session.mode.${live.writingMode}`),
-				this.globalT(
+				this.projectT(`session.type.${live.type}`),
+				this.projectT(`session.state.${state}`),
+				this.projectT(`session.mode.${live.writingMode}`),
+				this.projectT(
 					live.scope === 'project'
 						? 'statusBar.scopeProject'
 						: 'statusBar.scopeManuscript',
@@ -2686,21 +2711,21 @@ export default class SnowflakeMethodPlugin
 				...(live.pomodoro === null
 					? []
 					: [
-							this.globalT('session.stat.cycle', {
+							this.projectT('session.stat.cycle', {
 								cycle: live.pomodoro.cycle,
 							}),
 						]),
 			].join(' · '),
-			this.globalT('session.stat.focus', {
+			this.projectT('session.stat.focus', {
 				duration: formatClock(live.durations.focusMs),
 			}),
-			this.globalT('session.stat.idle', {
+			this.projectT('session.stat.idle', {
 				duration: formatClock(live.durations.idleMs),
 			}),
-			this.globalT('session.stat.total', {
+			this.projectT('session.stat.total', {
 				duration: formatClock(live.durations.totalMs),
 			}),
-			this.globalT('session.stat.words', {
+			this.projectT('session.stat.words', {
 				added: this.grouped(live.added),
 				deleted: this.grouped(live.deleted),
 				net: this.grouped(live.trackedNet),
@@ -2708,7 +2733,7 @@ export default class SnowflakeMethodPlugin
 		];
 		if (live.startWordCount !== null) {
 			lines.push(
-				this.globalT('session.stat.startCount', {
+				this.projectT('session.stat.startCount', {
 					count: this.grouped(live.startWordCount),
 				}),
 			);
@@ -2716,7 +2741,7 @@ export default class SnowflakeMethodPlugin
 		// A pace over less than a minute of focus is noise, not a number.
 		if (live.durations.focusMs >= 60_000) {
 			lines.push(
-				this.globalT('session.stat.pace', {
+				this.projectT('session.stat.pace', {
 					pace: this.grouped(
 						Math.round(
 							(live.trackedNet * 3_600_000) / live.durations.focusMs,
@@ -2727,11 +2752,11 @@ export default class SnowflakeMethodPlugin
 		}
 		if (live.goal !== null) {
 			if (live.goalMet) {
-				lines.push(this.globalT('session.stat.goalReached'));
+				lines.push(this.projectT('session.stat.goalReached'));
 			} else {
 				if (live.goal.netWordTarget !== undefined) {
 					lines.push(
-						this.globalT('session.stat.goalNet', {
+						this.projectT('session.stat.goalNet', {
 							net: this.grouped(live.trackedNet),
 							target: this.grouped(live.goal.netWordTarget),
 						}),
@@ -2739,7 +2764,7 @@ export default class SnowflakeMethodPlugin
 				}
 				if (live.goal.focusTimeTargetSeconds !== undefined) {
 					lines.push(
-						this.globalT('session.stat.goalFocus', {
+						this.projectT('session.stat.goalFocus', {
 							done: formatClock(live.durations.focusMs),
 							target: formatClock(live.goal.focusTimeTargetSeconds * 1000),
 						}),
@@ -2762,7 +2787,7 @@ export default class SnowflakeMethodPlugin
 			for (const type of WRITING_SESSION_TYPES) {
 				menu.addItem((entry) =>
 					entry
-						.setTitle(this.globalT(`sessionMenu.start.${type}`))
+						.setTitle(this.projectT(`sessionMenu.start.${type}`))
 						.setIcon(icons[type])
 						.onClick(() => {
 							void this.startQuickSession(type).catch((error: unknown) => {
@@ -2773,7 +2798,7 @@ export default class SnowflakeMethodPlugin
 			}
 			menu.addItem((entry) =>
 				entry
-					.setTitle(this.globalT('sessionMenu.startWithOptions'))
+					.setTitle(this.projectT('sessionMenu.startWithOptions'))
 					.setIcon('sliders-horizontal')
 					.onClick(() => {
 						this.openStartSessionModal();
@@ -2785,7 +2810,7 @@ export default class SnowflakeMethodPlugin
 				menu.addItem((entry) =>
 					entry
 						.setTitle(
-							this.globalT(
+							this.projectT(
 								live.state === 'paused'
 									? 'sessionMenu.resume'
 									: 'sessionMenu.pause',
@@ -2800,7 +2825,7 @@ export default class SnowflakeMethodPlugin
 			}
 			menu.addItem((entry) =>
 				entry
-					.setTitle(this.globalT('sessionMenu.stop'))
+					.setTitle(this.projectT('sessionMenu.stop'))
 					.setIcon('square')
 					.onClick(() => {
 						void this.sessions.stop().catch((error: unknown) => {
@@ -2812,7 +2837,7 @@ export default class SnowflakeMethodPlugin
 			for (const mode of WRITING_MODES) {
 				menu.addItem((entry) =>
 					entry
-						.setTitle(this.globalT(`session.mode.${mode}`))
+						.setTitle(this.projectT(`session.mode.${mode}`))
 						.setChecked(live.writingMode === mode)
 						.onClick(() => {
 							this.sessions.setWritingMode(mode);
@@ -2823,7 +2848,7 @@ export default class SnowflakeMethodPlugin
 		menu.addSeparator();
 		menu.addItem((entry) =>
 			entry
-				.setTitle(this.globalT('sessionMenu.openStatistics'))
+				.setTitle(this.projectT('sessionMenu.openStatistics'))
 				.setIcon('chart-line')
 				.onClick(() => {
 					void this.openStatisticsView().catch((error: unknown) => {
@@ -2854,11 +2879,70 @@ export default class SnowflakeMethodPlugin
 
 	private async startQuickSession(type: WritingSessionType): Promise<void> {
 		await this.startConfiguredSession({
+			...this.configuredStart(),
 			type,
-			scope: 'project',
-			writingMode: 'draft',
-			goal: null,
 		});
+	}
+
+	/** Every session panel on screen, waiting to be told a setting moved. */
+	private readonly sessionSettingsListeners = new Set<() => void>();
+
+	private sessionSettingsChanged(): void {
+		for (const listener of this.sessionSettingsListeners) listener();
+	}
+
+	/** What the timer dialog settled, stored and announced to every panel. */
+	private async saveSessionSetup(setup: SessionSetup): Promise<void> {
+		this.settings.sessionDefaultType = setup.type;
+		this.settings.sessionCountdownMinutes = setup.countdownMinutes;
+		this.settings.sessionPomodoroWorkMinutes = setup.pomodoroWorkMinutes;
+		this.settings.sessionPomodoroBreakMinutes = setup.pomodoroBreakMinutes;
+		this.settings.sessionGoalNetWords = setup.goalNetWords;
+		this.settings.sessionGoalFocusMinutes = setup.goalFocusMinutes;
+		this.settings.sessionWritingMode = setup.writingMode;
+		this.settings.sessionScope = setup.scope;
+		this.settings.sessionStopwatchExpectedMinutes =
+			setup.stopwatchExpectedMinutes;
+		await this.saveSettings();
+		// The mode is the one part of the setup a running session can still
+		// take, and an author changing it mid-sitting means this sitting rather
+		// than the next one.
+		if (this.sessions.live() !== null) {
+			this.sessions.setWritingMode(setup.writingMode);
+		}
+		this.sessionSettingsChanged();
+	}
+
+	/** The clock and conditions the timer widget shows and starts on. */
+	private sessionSetup(): SessionSetup {
+		return {
+			type: this.settings.sessionDefaultType,
+			countdownMinutes: this.settings.sessionCountdownMinutes,
+			pomodoroWorkMinutes: this.settings.sessionPomodoroWorkMinutes,
+			pomodoroBreakMinutes: this.settings.sessionPomodoroBreakMinutes,
+			goalNetWords: this.settings.sessionGoalNetWords,
+			goalFocusMinutes: this.settings.sessionGoalFocusMinutes,
+			writingMode: this.settings.sessionWritingMode,
+			scope: this.settings.sessionScope,
+			stopwatchExpectedMinutes:
+				this.settings.sessionStopwatchExpectedMinutes,
+		};
+	}
+
+	/** The saved setup as a start request; zero is a condition left off. */
+	private configuredStart(): StartSessionRequest {
+		const setup = this.sessionSetup();
+		const goal: WritingSessionGoal = {};
+		if (setup.goalNetWords > 0) goal.netWordTarget = setup.goalNetWords;
+		if (setup.goalFocusMinutes > 0) {
+			goal.focusTimeTargetSeconds = setup.goalFocusMinutes * 60;
+		}
+		return {
+			type: setup.type,
+			scope: this.settings.sessionScope,
+			writingMode: setup.writingMode,
+			goal: Object.keys(goal).length === 0 ? null : goal,
+		};
 	}
 
 	private async startConfiguredSession(
@@ -2866,7 +2950,7 @@ export default class SnowflakeMethodPlugin
 	): Promise<void> {
 		const project = await this.writingCountProject();
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		const options: StartWritingSessionOptions = {
@@ -2878,9 +2962,21 @@ export default class SnowflakeMethodPlugin
 		await this.sessions.start(project, options);
 	}
 
+	/**
+	 * Setting the clock and starting on it are the same dialog: what a session
+	 * begins under is exactly what the timer is set to, so choosing it here
+	 * settles both, and the button says Start rather than Save.
+	 */
 	private openStartSessionModal(): void {
-		new StartWritingSessionModal(this.app, this.globalT, (request) =>
-			this.startConfiguredSession(request),
+		new SessionSetupModal(
+			this.app,
+			this.projectT,
+			this.sessionSetup(),
+			async (setup) => {
+				await this.saveSessionSetup(setup);
+				await this.startConfiguredSession(this.configuredStart());
+			},
+			'session.modal.start',
 		).open();
 	}
 
@@ -2929,35 +3025,74 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/** The one bridge every session panel renders through. */
-	writingSessions(): SessionPanelBridge {
+	/**
+	 * The one bridge every session panel renders through, over whichever
+	 * project the panel belongs to. A dashboard pane names its own, so a pane
+	 * reads its project's day and speaks its project's language whatever else
+	 * is open; the sidebar names none and follows the writing.
+	 */
+	writingSessions(context: SessionPanelContext = {}): SessionPanelBridge {
+		const t =
+			context.t ?? ((key, vars) => this.translateForProject(null, key, vars));
 		return {
-			t: this.globalT,
+			t,
 			live: () => this.sessions.live(),
 			todaySummary: async () => {
-				// The running session's own project first: a panel showing a live
-				// Demo session must not read another project's day under it.
-				const live = this.sessions.live();
-				const project =
-					live !== null ? live.project : await this.writingCountProject();
+				// A pane's day is its own project's day. A panel that named no
+				// project reads the project the author is working in -- the one
+				// the last dashboard they touched belongs to -- rather than
+				// whichever note happens to be open in the editor beside it.
+				const project = await this.resolveProject(context.projectPath ?? null);
 				return project === null
 					? null
 					: this.sessions.todaySummary(project);
 			},
-			subscribe: (listener) =>
-				this.sessions.subscribe((event) => {
+			subscribe: (listener) => {
+				const fromService = this.sessions.subscribe((event) => {
 					listener(
 						event.kind === 'started' ||
 							event.kind === 'stopped' ||
 							event.kind === 'recovered',
 					);
-				}),
-			startQuick: (type) => {
-				void this.startQuickSession(type).catch((error: unknown) => {
-					this.showError(error);
 				});
+				// A setting changed in one panel's dialog is a setting every
+				// other panel is showing, so the channel is the plugin's rather
+				// than the dialog's: a goal set in the dashboard moves the
+				// sidebar's gauge at the same moment.
+				const settings = (): void => {
+					listener(true);
+				};
+				this.sessionSettingsListeners.add(settings);
+				return () => {
+					fromService();
+					this.sessionSettingsListeners.delete(settings);
+				};
 			},
-			startWithOptions: () => {
-				this.openStartSessionModal();
+			dailyWordGoal: () => this.settings.sessionDailyWordGoal,
+			setup: () => this.sessionSetup(),
+			editDailyWordGoal: () => {
+				new DailyWordGoalModal(
+					this.app,
+					t,
+					this.settings.sessionDailyWordGoal,
+					async (goal) => {
+						this.settings.sessionDailyWordGoal = goal;
+						await this.saveSettings();
+						this.sessionSettingsChanged();
+					},
+				).open();
+			},
+			editSetup: () => {
+				new SessionSetupModal(this.app, t, this.sessionSetup(), (setup) =>
+					this.saveSessionSetup(setup),
+				).open();
+			},
+			start: () => {
+				void this.startConfiguredSession(this.configuredStart()).catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
 			},
 			pauseOrResume: () => {
 				if (this.sessions.live()?.state === 'paused') this.sessions.resume();
@@ -2967,9 +3102,6 @@ export default class SnowflakeMethodPlugin
 				void this.sessions.stop().catch((error: unknown) => {
 					this.showError(error);
 				});
-			},
-			setWritingMode: (mode) => {
-				this.sessions.setWritingMode(mode);
 			},
 		};
 	}
@@ -3002,19 +3134,19 @@ export default class SnowflakeMethodPlugin
 	 */
 	private writingCountBreakdown(count: WritingCount): string {
 		return [
-			this.globalT('statusBar.statWords', {
+			this.projectT('statusBar.statWords', {
 				count: this.grouped(count.cjkCharacters + count.words),
 			}),
-			this.globalT('statusBar.statCharactersNoSpaces', {
+			this.projectT('statusBar.statCharactersNoSpaces', {
 				count: this.grouped(count.charactersNoSpaces),
 			}),
-			this.globalT('statusBar.statCharactersWithSpaces', {
+			this.projectT('statusBar.statCharactersWithSpaces', {
 				count: this.grouped(count.charactersWithSpaces),
 			}),
-			this.globalT('statusBar.statNonAsianWords', {
+			this.projectT('statusBar.statNonAsianWords', {
 				count: this.grouped(count.words),
 			}),
-			this.globalT('statusBar.statAsianCharacters', {
+			this.projectT('statusBar.statAsianCharacters', {
 				count: this.grouped(count.cjkCharacters),
 			}),
 		].join('\n');
@@ -3027,11 +3159,11 @@ export default class SnowflakeMethodPlugin
 	 */
 	private writingCountUnit(total: number): string {
 		if (countsCharacters(this.settings.writingCountMode)) {
-			return this.globalT(
+			return this.projectT(
 				total === 1 ? 'statusBar.unitCharacter' : 'statusBar.unitCharacters',
 			);
 		}
-		return this.globalT(
+		return this.projectT(
 			total === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords',
 		);
 	}
@@ -3077,7 +3209,7 @@ export default class SnowflakeMethodPlugin
 			item.hide();
 			return;
 		}
-		const line = this.globalT(
+		const line = this.projectT(
 			shown.selection ? 'statusBar.selectionWordCount' : 'statusBar.wordCount',
 			{
 				count: this.grouped(shown.count.total),
@@ -3305,7 +3437,7 @@ export default class SnowflakeMethodPlugin
 		const menu = new Menu();
 		menu.addItem((entry) =>
 			entry
-				.setTitle(this.globalT('statusBar.countProject'))
+				.setTitle(this.projectT('statusBar.countProject'))
 				.setIcon('snowflake')
 				.onClick(() => {
 					void this.noticeWritingCount('project').catch((error: unknown) => {
@@ -3315,7 +3447,7 @@ export default class SnowflakeMethodPlugin
 		);
 		menu.addItem((entry) =>
 			entry
-				.setTitle(this.globalT('statusBar.countManuscript'))
+				.setTitle(this.projectT('statusBar.countManuscript'))
 				.setIcon('scroll-text')
 				.onClick(() => {
 					void this.noticeWritingCount('manuscript').catch(
@@ -3345,7 +3477,7 @@ export default class SnowflakeMethodPlugin
 	 * long reads as a click that did nothing.
 	 */
 	private async whileCounting<T>(work: () => Promise<T>): Promise<T> {
-		const notice = new Notice(this.globalT('statusBar.counting'), 0);
+		const notice = new Notice(this.projectT('statusBar.counting'), 0);
 		try {
 			return await work();
 		} finally {
@@ -3356,7 +3488,7 @@ export default class SnowflakeMethodPlugin
 	private async noticeWritingCount(scope: WritingCountScope): Promise<void> {
 		const project = await this.writingCountProject();
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		new Notice(
@@ -3378,18 +3510,18 @@ export default class SnowflakeMethodPlugin
 		// would not read are named when there are any, because their writing is
 		// missing from every number under them.
 		return [
-			this.globalT(
+			this.projectT(
 				scope === 'project'
 					? 'statusBar.scopeProject'
 					: 'statusBar.scopeManuscript',
 			),
-			this.globalT('statusBar.statNotes', {
+			this.projectT('statusBar.statNotes', {
 				count: this.grouped(counted.notes),
 			}),
 			...(counted.unreadable === 0
 				? []
 				: [
-						this.globalT('statusBar.statUnreadable', {
+						this.projectT('statusBar.statUnreadable', {
 							count: this.grouped(counted.unreadable),
 						}),
 					]),
@@ -3401,7 +3533,7 @@ export default class SnowflakeMethodPlugin
 	private async countProjectWords(): Promise<void> {
 		const project = await this.writingCountProject();
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		const [whole, manuscript] = await this.whileCounting(() =>
@@ -3782,7 +3914,7 @@ export default class SnowflakeMethodPlugin
 	private async openCurrentManuscript(): Promise<void> {
 		const project = await this.resolveProject(null);
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		const active = this.app.workspace.getActiveFile();
@@ -4658,7 +4790,7 @@ export default class SnowflakeMethodPlugin
 	private async openManuscriptFor(path: string): Promise<void> {
 		const project = await this.projectOfPath(path);
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		const segments = await this.projects.manuscript.listSegments(project);
@@ -4669,7 +4801,7 @@ export default class SnowflakeMethodPlugin
 	private async openDashboardFor(path: string): Promise<void> {
 		const project = await this.projectOfPath(path);
 		if (project === null) {
-			new Notice(this.globalT('messages.noCurrentProject'));
+			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
 		}
 		await this.selectProject(project.projectFile);
@@ -5023,6 +5155,7 @@ export default class SnowflakeMethodPlugin
 					}
 				}),
 		);
+		this.rerenderStatisticsViews();
 		await this.refreshManuscriptStreams();
 		this.refreshManagedEditors();
 	}
@@ -5075,6 +5208,33 @@ export default class SnowflakeMethodPlugin
 		}
 		this.currentProjectLocale =
 			projects.find((project) => project.projectFile === recent)?.locale ?? null;
+		// The sidebar has no project of its own and follows this one, labels
+		// included, so the moment the language is settled is the moment it has
+		// to be redrawn in it.
+		this.rerenderStatisticsViews();
+	}
+
+	private rerenderStatisticsViews(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			STATISTICS_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeStatisticsView) leaf.view.rerender();
+		}
+		this.repaintProjectSurfaces();
+	}
+
+	/**
+	 * The status bar says the same numbers in the current project's language,
+	 * so a change of project is a change it has to be told about. Both halves
+	 * keep what they last painted and repaint nothing when it matches, and the
+	 * numbers do not move when only the language does -- so the memory of what
+	 * was shown is cleared first, and the repaint takes.
+	 */
+	private repaintProjectSurfaces(): void {
+		this.sessionShown = null;
+		this.writingCountShown = null;
+		this.repaintWritingSession();
+		this.scheduleWritingCountRefresh(0);
 	}
 
 	private async getCurrentProject(): Promise<ProjectSnapshot | null> {

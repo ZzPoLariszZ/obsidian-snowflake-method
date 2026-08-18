@@ -10,10 +10,16 @@ import {
 
 import type SnowflakeMethodPlugin from './main';
 import {
+	WRITING_MODES,
+	WRITING_SESSION_SCOPES,
+	WRITING_SESSION_TYPES,
 	isWritingCountHeadings,
 	isWritingCountMode,
 	type WritingCountHeadings,
 	type WritingCountMode,
+	type WritingMode,
+	type WritingSessionScope,
+	type WritingSessionType,
 } from './domain';
 import {
 	resolveGlobalLocale,
@@ -105,6 +111,20 @@ export interface SnowflakeSettings {
 	sessionPomodoroWorkMinutes: number;
 	sessionPomodoroBreakMinutes: number;
 	sessionPomodoroAutoRepeat: boolean;
+	/** Net words a day is aimed at, and what the goal widget measures. */
+	sessionDailyWordGoal: number;
+	/** The clock a session starts on from the widget, and from the palette. */
+	sessionDefaultType: WritingSessionType;
+	/** Net words a session aims at, or 0 for no such condition. */
+	sessionGoalNetWords: number;
+	/** Focus minutes a session aims at, or 0 for no such condition. */
+	sessionGoalFocusMinutes: number;
+	/** The stage of the writing a session begins in. */
+	sessionWritingMode: WritingMode;
+	/** What a session counts words across: the project, or its manuscript. */
+	sessionScope: WritingSessionScope;
+	/** Minutes a stopwatch sitting is aimed at, or 0 for no expectation. */
+	sessionStopwatchExpectedMinutes: number;
 	/** Focus mode on starts a strict stopwatch session; off ends it. */
 	sessionAutoWithFocusMode: boolean;
 	recentProjectPath: string | null;
@@ -138,6 +158,13 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionPomodoroWorkMinutes: 25,
 	sessionPomodoroBreakMinutes: 5,
 	sessionPomodoroAutoRepeat: true,
+	sessionDailyWordGoal: 1000,
+	sessionDefaultType: 'pomodoro',
+	sessionGoalNetWords: 0,
+	sessionGoalFocusMinutes: 0,
+	sessionWritingMode: 'draft',
+	sessionScope: 'project',
+	sessionStopwatchExpectedMinutes: 0,
 	sessionAutoWithFocusMode: false,
 	recentProjectPath: null,
 	recentStep: 1,
@@ -169,6 +196,13 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionPomodoroWorkMinutes',
 	'sessionPomodoroBreakMinutes',
 	'sessionPomodoroAutoRepeat',
+	'sessionDailyWordGoal',
+	'sessionDefaultType',
+	'sessionGoalNetWords',
+	'sessionGoalFocusMinutes',
+	'sessionWritingMode',
+	'sessionScope',
+	'sessionStopwatchExpectedMinutes',
 	'sessionAutoWithFocusMode',
 	'recentProjectPath',
 	'recentStep',
@@ -311,6 +345,47 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.sessionPomodoroAutoRepeat === 'boolean'
 				? raw.sessionPomodoroAutoRepeat
 				: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
+		sessionDailyWordGoal: integerIn(
+			raw.sessionDailyWordGoal,
+			0,
+			1_000_000,
+			DEFAULT_SETTINGS.sessionDailyWordGoal,
+		),
+		sessionDefaultType: (WRITING_SESSION_TYPES as readonly unknown[]).includes(
+			raw.sessionDefaultType,
+		)
+			? (raw.sessionDefaultType as WritingSessionType)
+			: DEFAULT_SETTINGS.sessionDefaultType,
+		// Zero is the way a goal is turned off rather than a goal of nothing,
+		// so it is a value the range keeps rather than one it corrects.
+		sessionGoalNetWords: integerIn(
+			raw.sessionGoalNetWords,
+			0,
+			1_000_000,
+			DEFAULT_SETTINGS.sessionGoalNetWords,
+		),
+		sessionGoalFocusMinutes: integerIn(
+			raw.sessionGoalFocusMinutes,
+			0,
+			1_440,
+			DEFAULT_SETTINGS.sessionGoalFocusMinutes,
+		),
+		sessionWritingMode: (WRITING_MODES as readonly unknown[]).includes(
+			raw.sessionWritingMode,
+		)
+			? (raw.sessionWritingMode as WritingMode)
+			: DEFAULT_SETTINGS.sessionWritingMode,
+		sessionStopwatchExpectedMinutes: integerIn(
+			raw.sessionStopwatchExpectedMinutes,
+			0,
+			1_440,
+			DEFAULT_SETTINGS.sessionStopwatchExpectedMinutes,
+		),
+		sessionScope: (WRITING_SESSION_SCOPES as readonly unknown[]).includes(
+			raw.sessionScope,
+		)
+			? (raw.sessionScope as WritingSessionScope)
+			: DEFAULT_SETTINGS.sessionScope,
 		sessionAutoWithFocusMode:
 			typeof raw.sessionAutoWithFocusMode === 'boolean'
 				? raw.sessionAutoWithFocusMode
@@ -641,6 +716,33 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: this.t('settings.sessionDailyGoal.name'),
+						desc: this.t('settings.sessionDailyGoal.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionDailyWordGoal',
+							defaultValue: DEFAULT_SETTINGS.sessionDailyWordGoal,
+							min: 0,
+							max: 20000,
+							step: 100,
+						},
+					},
+					{
+						name: this.t('settings.sessionDefaultType.name'),
+						desc: this.t('settings.sessionDefaultType.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionDefaultType',
+							defaultValue: DEFAULT_SETTINGS.sessionDefaultType,
+							options: Object.fromEntries(
+								WRITING_SESSION_TYPES.map((type) => [
+									type,
+									this.t(`session.type.${type}`),
+								]),
+							),
+						},
+					},
+					{
 						name: this.t('settings.sessionCountdown.name'),
 						desc: this.t('settings.sessionCountdown.desc'),
 						control: {
@@ -649,6 +751,18 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							defaultValue: DEFAULT_SETTINGS.sessionCountdownMinutes,
 							min: 5,
 							max: 180,
+							step: 5,
+						},
+					},
+					{
+						name: this.t('settings.sessionStopwatchExpected.name'),
+						desc: this.t('settings.sessionStopwatchExpected.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionStopwatchExpectedMinutes',
+							defaultValue: DEFAULT_SETTINGS.sessionStopwatchExpectedMinutes,
+							min: 0,
+							max: 480,
 							step: 5,
 						},
 					},
@@ -683,6 +797,60 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'toggle',
 							key: 'sessionPomodoroAutoRepeat',
 							defaultValue: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
+						},
+					},
+					{
+						name: this.t('settings.sessionScope.name'),
+						desc: this.t('settings.sessionScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionScope',
+							defaultValue: DEFAULT_SETTINGS.sessionScope,
+							options: Object.fromEntries(
+								WRITING_SESSION_SCOPES.map((scope) => [
+									scope,
+									this.t(`session.scope.${scope}`),
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('settings.sessionWritingMode.name'),
+						desc: this.t('settings.sessionWritingMode.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionWritingMode',
+							defaultValue: DEFAULT_SETTINGS.sessionWritingMode,
+							options: Object.fromEntries(
+								WRITING_MODES.map((mode) => [
+									mode,
+									this.t(`session.mode.${mode}`),
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('settings.sessionGoalNet.name'),
+						desc: this.t('settings.sessionGoalNet.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionGoalNetWords',
+							defaultValue: DEFAULT_SETTINGS.sessionGoalNetWords,
+							min: 0,
+							max: 10000,
+							step: 50,
+						},
+					},
+					{
+						name: this.t('settings.sessionGoalFocus.name'),
+						desc: this.t('settings.sessionGoalFocus.desc'),
+						control: {
+							type: 'slider',
+							key: 'sessionGoalFocusMinutes',
+							defaultValue: DEFAULT_SETTINGS.sessionGoalFocusMinutes,
+							min: 0,
+							max: 480,
+							step: 5,
 						},
 					},
 					{
@@ -932,6 +1100,41 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sessionAutoWithFocusMode':
 				if (typeof value === 'boolean') {
 					this.owner.settings.sessionAutoWithFocusMode = value;
+				}
+				break;
+			case 'sessionDailyWordGoal':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionDailyWordGoal = value;
+				}
+				break;
+			case 'sessionDefaultType':
+				if ((WRITING_SESSION_TYPES as readonly unknown[]).includes(value)) {
+					this.owner.settings.sessionDefaultType = value as WritingSessionType;
+				}
+				break;
+			case 'sessionGoalNetWords':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionGoalNetWords = value;
+				}
+				break;
+			case 'sessionGoalFocusMinutes':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionGoalFocusMinutes = value;
+				}
+				break;
+			case 'sessionWritingMode':
+				if ((WRITING_MODES as readonly unknown[]).includes(value)) {
+					this.owner.settings.sessionWritingMode = value as WritingMode;
+				}
+				break;
+			case 'sessionStopwatchExpectedMinutes':
+				if (typeof value === 'number' && Number.isInteger(value)) {
+					this.owner.settings.sessionStopwatchExpectedMinutes = value;
+				}
+				break;
+			case 'sessionScope':
+				if ((WRITING_SESSION_SCOPES as readonly unknown[]).includes(value)) {
+					this.owner.settings.sessionScope = value as WritingSessionScope;
 				}
 				break;
 			default:

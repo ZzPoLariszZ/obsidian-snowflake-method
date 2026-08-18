@@ -621,9 +621,14 @@ export class SnowflakeDashboardView extends ItemView {
 	/** What one face of the statistics pane puts inside the frame. */
 	private renderStatisticsBody(body: HTMLElement, tab: StatisticsTab): void {
 		if (tab === 'sessions') {
+			// This pane belongs to a project: it reads that project's day and
+			// speaks its language, whatever else is open beside it.
 			this.sessionPanelDispose = renderSessionPanel(
 				body,
-				this.host.writingSessions(),
+				this.host.writingSessions({
+					t: (key, vars) => this.t(key, vars),
+					projectPath: this.projectPath,
+				}),
 			);
 			return;
 		}

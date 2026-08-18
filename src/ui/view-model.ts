@@ -12,7 +12,10 @@ import type {
 	WritingCountMode,
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
-import type { SessionPanelBridge } from './session-panel';
+import type {
+	SessionPanelBridge,
+	SessionPanelContext,
+} from './session-panel';
 import type {
 	CustomFieldTemplateInfo,
 	DefinitionForest,
@@ -375,7 +378,7 @@ export interface ManuscriptHost {
 export interface DashboardHost {
 	t: Translate;
 	/** The bridge the statistics pane renders the session panel through. */
-	writingSessions(): SessionPanelBridge;
+	writingSessions(context: SessionPanelContext): SessionPanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,
