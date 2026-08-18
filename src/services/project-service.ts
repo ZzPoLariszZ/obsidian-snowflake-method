@@ -1025,6 +1025,8 @@ export class SnowflakeProjectService {
       scenes: new Set(["scene"]),
       draft: new Set(["draft"]),
       worldbuilding: new Set(["worldbuilding"]),
+      // Session files are JSON, not managed notes: nothing to own or repair.
+      writingSessions: new Set(),
       materials: new Set(),
       archive: new Set(),
     };
@@ -6669,6 +6671,7 @@ export class SnowflakeProjectService {
       scenes: [8, 9],
       draft: [10],
       worldbuilding: [],
+      writingSessions: [],
       materials: [],
       archive: [],
     };
