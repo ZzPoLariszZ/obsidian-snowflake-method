@@ -49,6 +49,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
+| Data statistics | Time each writing session, aim at a daily goal, and read back where the words and the hours went. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
@@ -151,6 +152,14 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
+### Data statistics
+
+Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane reads a project back as numbers, and its **Writing sessions** tab is the one that measures the time. A sitting starts when you start it, or on its own when focus mode opens. *Prose analysis and entity tracking name the two faces the tab strip is being built for. Both are still in their planning stage.*
+
+<p align="center"><a href="assets/screenshots/data_statistics_01_en.png"><img src="assets/screenshots/data_statistics_01_en.png" width="100%" alt="Data statistics — daily goal, focus timer, today's summary, recent trend, and annual contribution" /></a></p>
+
+<p align="center"><a href="assets/screenshots/data_statistics_02_en.png"><img src="assets/screenshots/data_statistics_02_en.png" width="100%" alt="Data statistics — calendar, weekly and monthly goals, temporal distribution, and writing stages" /></a></p>
+
 <a id="installation"></a>
 
 ## Installation
@@ -202,6 +211,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Add world status | Add a world status to a kind's vocabulary. |
 | Add worldbuilding note | Add a note to a worldbuilding kind you choose. |
 | Close manuscript stream | Close the manuscript stream in the current pane. |
+| Count project words | Report the current project's word count, whole and manuscript alone. |
 | Create project | Create a new Markdown-native Snowflake project. |
 | Create worldbuilding kind | Add a kind of worldbuilding note, with its own folder, pane, and vocabularies. |
 | Go back to where the stream opened | Return to the note the manuscript stream was opened at. |
@@ -216,8 +226,16 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
 | Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
+| Open writing statistics | Open the day's writing readings in a sidebar of their own. |
+| Pause or resume the writing session | Freeze the running session's clock, or set it going again. |
 | Set focus mode to off / on / deep / solo | Set how far focus mode reaches, one command per level. |
 | Split manuscript note at the cursor | Divide the note being written in, at the caret. |
+| Start a countdown writing session | Begin a session that ends when its clock runs out. |
+| Start a pomodoro writing session | Begin a session that alternates work periods with breaks. |
+| Start a stopwatch writing session | Begin a session that runs until you stop it. |
+| Start a writing session with options | Choose the timer, its length, and the writing stage before starting. |
+| Stop the writing session | End the running session and file its record. |
+| Switch statistics scope | Read the statistics for the whole project, or the manuscript alone. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
@@ -253,6 +271,17 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Show order numbers | Off | Show the stored position that decides where a note is read. |
 | Typewriter scrolling | On | Keep the line being written at the middle of the page. |
 | Focus mode | Off | Fade all but the paragraph being written. The solo level shows only the manuscript in full screen. |
+| Word count rule | MS Word | Which tool the word count follows. |
+| Count headings | Skip the first H1 only | Whether heading lines count as writing. |
+| Focus timer type | Pomodoro | Which timer a new session starts with. |
+| Idle after | 60 seconds | Seconds without editing before focus turns to idle. |
+| Writing stage | Draft | Which stage a new session starts in. |
+| Start stopwatch session when focus mode is enabled | On | Begin a sitting by itself whenever focus mode opens. |
+| Statistics scope | Whole project | Which words the writing statistics show. |
+| Daily goal: whole project | 6000 | Net words to write each day across the whole project. Zero turns the goal off. |
+| Daily goal: only manuscript | 4000 | Net words to write each day in the manuscript. Zero turns the goal off. |
+| Week starts on | Monday | The first day of each week in the writing statistics. |
+| Date format | YYYY/MM/DD | How dates are written in the writing statistics. |
 
 <a id="privacy"></a>
 
@@ -301,6 +330,11 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── 62_Location/
     │   ├── 63_Item/
     │   └── 64_Faction/
+    ├── 70_Tool/
+    │   └── 71_Data_Statistics/
+    │       └── 711_Writing_Session/
+    │           └── 2026/
+    │               └── 2026_08_<device>_writing_session.json
     └── ...
 ```
 
@@ -434,6 +468,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
+| 数据统计 | 记录每次写作时段，设定每日目标，回看字数与时间都去了哪里。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
@@ -536,6 +571,14 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
+### 数据统计
+
+写作看得见，才更容易坚持下去。工作台的**数据统计**面板以数据回看项目，其中**写作时段**标签页衡量的是时间。一个时段由你开启，也可以在进入专注模式时自动开始。*正文分析与实体追踪是这条标签栏正在建设的另外两面，目前都还处于规划阶段。*
+
+<p align="center"><a href="assets/screenshots/data_statistics_01_cn.png"><img src="assets/screenshots/data_statistics_01_cn.png" width="100%" alt="数据统计——每日目标、专注计时、今日总结、近期趋势与年度贡献" /></a></p>
+
+<p align="center"><a href="assets/screenshots/data_statistics_02_cn.png"><img src="assets/screenshots/data_statistics_02_cn.png" width="100%" alt="数据统计——日历、每周与每月目标、时间分布与写作阶段" /></a></p>
+
 ## 安装
 
 ### 社区插件市场
@@ -597,6 +640,15 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在这一篇之前插入正文笔记 | 在正在阅读的这一篇之前新增一篇。 |
 | 在这一篇之后插入正文笔记 | 在正在阅读的这一篇之后新增一篇。 |
 | 在光标处拆分正文笔记 | 在光标处把正在写作的笔记一分为二。 |
+| 按选项开始写作时段 | 开始之前先选择计时方式、时长与写作阶段。 |
+| 开始正计时写作时段 | 开始一个直到你停止才结束的时段。 |
+| 开始倒计时写作时段 | 开始一个计时走完即结束的时段。 |
+| 开始番茄钟写作时段 | 开始一个工作与休息交替进行的时段。 |
+| 暂停或继续写作时段 | 冻结正在进行的时段的计时，或让它继续走。 |
+| 停止写作时段 | 结束正在进行的时段，并写下它的记录。 |
+| 打开写作统计 | 在独立的侧栏中打开当天的写作读数。 |
+| 切换数据统计范围 | 在整个项目与仅正文稿之间切换统计范围。 |
+| 统计项目字数 | 报告当前项目的字数，整个项目与仅正文稿各一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 直接切到指定的专注深度，每档一条命令。 |
 | 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
@@ -630,6 +682,17 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 显示顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
 | 打字机滚动 | 开启 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 关 | 淡化正在写的段落之外的一切。仅正文一档会全屏只显示正文。 |
+| 字数统计规则 | 微软 Word | 字数统计遵循哪一种工具的规则。 |
+| 标题计入字数 | 仅忽略第一个一级标题 | 标题行是否计入写作字数。 |
+| 专注计时方式 | 番茄钟 | 新的时段默认使用哪一种计时。 |
+| 多久算摸鱼 | 60 秒 | 多少秒没有编辑后，专注转为摸鱼。 |
+| 写作阶段 | 初稿 | 新的时段默认处于哪一个阶段。 |
+| 开启专注模式时开始正计时时段 | 开启 | 进入专注模式时自动开始一个时段。 |
+| 数据统计范围 | 整个项目 | 写作统计展示哪一部分的字数。 |
+| 每日目标：整个项目 | 6000 | 整个项目每天要写的净增字数。设为 0 将关闭该目标。 |
+| 每日目标：仅正文稿 | 4000 | 正文稿每天要写的净增字数。设为 0 将关闭该目标。 |
+| 每周起始日 | 周一 | 写作统计中每周从哪一天开始。 |
+| 日期格式 | YYYY/MM/DD | 写作统计中日期的书写格式。 |
 
 ## 隐私
 
@@ -674,6 +737,11 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 62_地点/
     │   ├── 63_物品/
     │   └── 64_门派/
+    ├── 70_工具/
+    │   └── 71_数据统计/
+    │       └── 711_写作时段/
+    │           └── 2026/
+    │               └── 2026_08_<设备>_writing_session.json
     └── ...
 ```
 
