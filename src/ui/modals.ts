@@ -4544,6 +4544,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 	private workEl: HTMLInputElement | null = null;
 	private breakEl: HTMLInputElement | null = null;
 	private expectedEl: HTMLInputElement | null = null;
+	private autoRepeat: boolean;
 	private readonly lengthRows = new Map<WritingSessionType, HTMLElement[]>();
 
 	constructor(
@@ -4558,6 +4559,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 		super(app, t, t('modal.sessionSetup.title'), onSubmit, submitKey);
 		this.sessionType = current.type;
 		this.writingMode = current.writingMode;
+		this.autoRepeat = current.pomodoroAutoRepeat;
 		this.modalEl.addClass(
 			'snowflake-method-session-modal',
 			'snowflake-method-definition-modal',
@@ -4608,6 +4610,18 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 					this.breakEl = input;
 				},
 			),
+			// Whether the breaks keep coming round, which is a question only a
+			// pomodoro has and so belongs beside its two lengths. Not the
+			// stacked row the fields above use: a switch is not a field the
+			// width of the dialog, and reads better beside the name it answers
+			// to than underneath it.
+			new Setting(this.contentEl)
+				.setName(this.t('modal.sessionSetup.repeat'))
+				.addToggle((toggle) => {
+					toggle.setValue(this.autoRepeat).onChange((value) => {
+						this.autoRepeat = value;
+					});
+				}).settingEl,
 		]);
 		this.lengthRows.set('countdown', [
 			this.minutes(
@@ -4670,6 +4684,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 			pomodoroBreakMinutes:
 				positiveInteger(this.breakEl?.value) ??
 				this.current.pomodoroBreakMinutes,
+			pomodoroAutoRepeat: this.autoRepeat,
 			stopwatchExpectedMinutes:
 				wholeNumber(this.expectedEl?.value) ??
 				this.current.stopwatchExpectedMinutes,

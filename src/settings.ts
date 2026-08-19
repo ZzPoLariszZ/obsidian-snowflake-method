@@ -125,13 +125,18 @@ export interface SnowflakeSettings {
 	sessionPomodoroAutoRepeat: boolean;
 	/**
 	 * Net words a day is aimed at, one target per scope. Both are kept, and
-	 * `sessionGoalScope` says which is the one being aimed at, so switching
+	 * `sessionDailyGoalScope` says which is the one being aimed at, so switching
 	 * what the charts are showing never moves the target.
 	 */
 	sessionDailyWordGoalProject: number;
 	sessionDailyWordGoalManuscript: number;
-	/** Which scope's writing every goal is judged on. */
-	sessionGoalScope: WritingSessionScope;
+	/**
+	 * Which of the two daily goals is the one being aimed at. Named for the
+	 * goal it chooses between rather than for the session: a session has no
+	 * goal of its own, and calling this the session's goal scope invited
+	 * exactly that reading.
+	 */
+	sessionDailyGoalScope: WritingSessionScope;
 	/** The clock a session starts on from the widget, and from the palette. */
 	sessionDefaultType: WritingSessionType;
 	/** The stage of the writing a session begins in. */
@@ -181,7 +186,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	defaultProjectLocale: 'system',
 	freeformMode: false,
 	writingCountMode: 'ms-word',
-	writingCountHeadings: 'count',
+	writingCountHeadings: 'skip-first-h1',
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
@@ -198,9 +203,9 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionPomodoroWorkMinutes: 25,
 	sessionPomodoroBreakMinutes: 5,
 	sessionPomodoroAutoRepeat: true,
-	sessionDailyWordGoalProject: 1000,
-	sessionDailyWordGoalManuscript: 1000,
-	sessionGoalScope: 'project',
+	sessionDailyWordGoalProject: 6000,
+	sessionDailyWordGoalManuscript: 4000,
+	sessionDailyGoalScope: 'manuscript',
 	sessionDefaultType: 'pomodoro',
 	sessionWritingMode: 'draft',
 	sessionScope: 'project',
@@ -211,7 +216,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionReadingMeasure: 'net',
 	sessionHeatmapGoal: false,
 	sessionBandSpan: 'all',
-	sessionAutoWithFocusMode: false,
+	sessionAutoWithFocusMode: true,
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
@@ -244,7 +249,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionPomodoroAutoRepeat',
 	'sessionDailyWordGoalProject',
 	'sessionDailyWordGoalManuscript',
-	'sessionGoalScope',
+	'sessionDailyGoalScope',
 	'sessionDefaultType',
 	'sessionWritingMode',
 	'sessionScope',
@@ -409,11 +414,11 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			1_000_000,
 			DEFAULT_SETTINGS.sessionDailyWordGoalManuscript,
 		),
-		sessionGoalScope: (WRITING_SESSION_SCOPES as readonly unknown[]).includes(
-			raw.sessionGoalScope,
+		sessionDailyGoalScope: (WRITING_SESSION_SCOPES as readonly unknown[]).includes(
+			raw.sessionDailyGoalScope,
 		)
-			? (raw.sessionGoalScope as WritingSessionScope)
-			: DEFAULT_SETTINGS.sessionGoalScope,
+			? (raw.sessionDailyGoalScope as WritingSessionScope)
+			: DEFAULT_SETTINGS.sessionDailyGoalScope,
 		sessionDefaultType: (WRITING_SESSION_TYPES as readonly unknown[]).includes(
 			raw.sessionDefaultType,
 		)
@@ -677,37 +682,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				},
 			},
 			{
-				name: this.t('settings.writingCountMode.name'),
-				desc: this.t('settings.writingCountMode.desc'),
-				control: {
-					type: 'dropdown',
-					key: 'writingCountMode',
-					defaultValue: DEFAULT_SETTINGS.writingCountMode,
-					options: {
-						jinjiang: this.t('settings.writingCountMode.jinjiang'),
-						qidian: this.t('settings.writingCountMode.qidian'),
-						'ms-word': this.t('settings.writingCountMode.msWord'),
-					},
-				},
-			},
-			{
-				name: this.t('settings.writingCountHeadings.name'),
-				desc: this.lines('settings.writingCountHeadings.desc'),
-				control: {
-					type: 'dropdown',
-					key: 'writingCountHeadings',
-					defaultValue: DEFAULT_SETTINGS.writingCountHeadings,
-					options: {
-						count: this.t('settings.writingCountHeadings.count'),
-						'skip-first-h1': this.t(
-							'settings.writingCountHeadings.skipFirstH1',
-						),
-						'skip-h1': this.t('settings.writingCountHeadings.skipH1'),
-						'skip-all': this.t('settings.writingCountHeadings.skipAll'),
-					},
-				},
-			},
-			{
 				name: this.t('settings.createFromField.name'),
 				desc: this.t('settings.createFromField.desc'),
 				control: {
@@ -779,14 +753,62 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			// A session starts from the status bar or the palette; what lives
-			// here is only the clocks a new session starts with. A session
-			// already running keeps the clocks it began under.
+			// A session starts from the status bar or the palette. What lives here
+			// is what a new one starts with, and how the statistics read it back:
+			// what counts as a word, then the clock, then how a session begins, then
+			// the goal, then how the numbers are shown. A session already running
+			// keeps what it began under.
 			{
 				type: 'group',
 				heading: this.t('settings.session.heading'),
 				cls: 'snowflake-method-session-settings',
 				items: [
+					{
+						name: this.t('settings.writingCountMode.name'),
+						desc: this.t('settings.writingCountMode.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'writingCountMode',
+							defaultValue: DEFAULT_SETTINGS.writingCountMode,
+							options: {
+								jinjiang: this.t('settings.writingCountMode.jinjiang'),
+								qidian: this.t('settings.writingCountMode.qidian'),
+								'ms-word': this.t('settings.writingCountMode.msWord'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.writingCountHeadings.name'),
+						desc: this.t('settings.writingCountHeadings.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'writingCountHeadings',
+							defaultValue: DEFAULT_SETTINGS.writingCountHeadings,
+							options: {
+								count: this.t('settings.writingCountHeadings.count'),
+								'skip-first-h1': this.t(
+									'settings.writingCountHeadings.skipFirstH1',
+								),
+								'skip-h1': this.t('settings.writingCountHeadings.skipH1'),
+								'skip-all': this.t('settings.writingCountHeadings.skipAll'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.sessionDefaultType.name'),
+						desc: this.t('settings.sessionDefaultType.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionDefaultType',
+							defaultValue: DEFAULT_SETTINGS.sessionDefaultType,
+							options: Object.fromEntries(
+								WRITING_SESSION_TYPES.map((type) => [
+									type,
+									this.t(`session.type.${type}`),
+								]),
+							),
+						},
+					},
 					{
 						name: this.t('settings.sessionIdleThreshold.name'),
 						desc: this.t('settings.sessionIdleThreshold.desc'),
@@ -800,43 +822,69 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: this.t('settings.sessionDailyGoalProject.name'),
-						desc: this.t('settings.sessionDailyGoalProject.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionDailyWordGoalProject',
-							defaultValue: DEFAULT_SETTINGS.sessionDailyWordGoalProject,
-							min: 0,
-							max: 20000,
-							step: 100,
-						},
-					},
-					{
-						name: this.t('settings.sessionDailyGoalManuscript.name'),
-						desc: this.t('settings.sessionDailyGoalManuscript.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionDailyWordGoalManuscript',
-							defaultValue:
-								DEFAULT_SETTINGS.sessionDailyWordGoalManuscript,
-							min: 0,
-							max: 20000,
-							step: 100,
-						},
-					},
-					{
-						name: this.t('settings.sessionGoalScope.name'),
-						desc: this.t('settings.sessionGoalScope.desc'),
+						name: this.t('settings.sessionWritingMode.name'),
+						desc: this.t('settings.sessionWritingMode.desc'),
 						control: {
 							type: 'dropdown',
-							key: 'sessionGoalScope',
-							defaultValue: DEFAULT_SETTINGS.sessionGoalScope,
+							key: 'sessionWritingMode',
+							defaultValue: DEFAULT_SETTINGS.sessionWritingMode,
+							options: Object.fromEntries(
+								WRITING_MODES.map((mode) => [
+									mode,
+									this.t(`session.mode.${mode}`),
+								]),
+							),
+						},
+					},
+					{
+						name: this.t('settings.sessionAutoStart.name'),
+						// The name is the whole of it; a gloss would only say
+						// the same words again.
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'sessionAutoWithFocusMode',
+							defaultValue: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
+						},
+					},
+					{
+						name: this.t('settings.sessionScope.name'),
+						desc: this.t('settings.sessionScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'sessionScope',
+							defaultValue: DEFAULT_SETTINGS.sessionScope,
 							options: Object.fromEntries(
 								WRITING_SESSION_SCOPES.map((scope) => [
 									scope,
 									this.t(`session.scope.${scope}`),
 								]),
 							),
+						},
+					},
+					// Typed rather than dragged, because this is the same number the
+					// widget's own dialog asks for and a goal is set once and left.
+					{
+						name: this.t('settings.sessionDailyGoalProject.name'),
+						desc: this.lines('settings.sessionDailyGoalProject.desc'),
+						control: {
+							type: 'number',
+							key: 'sessionDailyWordGoalProject',
+							defaultValue: DEFAULT_SETTINGS.sessionDailyWordGoalProject,
+							min: 0,
+							step: 1,
+						},
+					},
+					{
+						name: this.t('settings.sessionDailyGoalManuscript.name'),
+						desc: this.lines('settings.sessionDailyGoalManuscript.desc'),
+						control: {
+							type: 'number',
+							key: 'sessionDailyWordGoalManuscript',
+							defaultValue:
+								DEFAULT_SETTINGS.sessionDailyWordGoalManuscript,
+							min: 0,
+							step: 1,
 						},
 					},
 					{
@@ -869,117 +917,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							options: Object.fromEntries(
 								DATE_FORMATS.map((format) => [format, format]),
 							),
-						},
-					},
-					{
-						name: this.t('settings.sessionDefaultType.name'),
-						desc: this.t('settings.sessionDefaultType.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'sessionDefaultType',
-							defaultValue: DEFAULT_SETTINGS.sessionDefaultType,
-							options: Object.fromEntries(
-								WRITING_SESSION_TYPES.map((type) => [
-									type,
-									this.t(`session.type.${type}`),
-								]),
-							),
-						},
-					},
-					{
-						name: this.t('settings.sessionCountdown.name'),
-						desc: this.t('settings.sessionCountdown.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionCountdownMinutes',
-							defaultValue: DEFAULT_SETTINGS.sessionCountdownMinutes,
-							min: 5,
-							max: 180,
-							step: 5,
-						},
-					},
-					{
-						name: this.t('settings.sessionStopwatchExpected.name'),
-						desc: this.t('settings.sessionStopwatchExpected.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionStopwatchExpectedMinutes',
-							defaultValue: DEFAULT_SETTINGS.sessionStopwatchExpectedMinutes,
-							min: 0,
-							max: 480,
-							step: 5,
-						},
-					},
-					{
-						name: this.t('settings.sessionPomodoroWork.name'),
-						desc: this.t('settings.sessionPomodoroWork.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionPomodoroWorkMinutes',
-							defaultValue: DEFAULT_SETTINGS.sessionPomodoroWorkMinutes,
-							min: 5,
-							max: 90,
-							step: 5,
-						},
-					},
-					{
-						name: this.t('settings.sessionPomodoroBreak.name'),
-						desc: this.t('settings.sessionPomodoroBreak.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionPomodoroBreakMinutes',
-							defaultValue: DEFAULT_SETTINGS.sessionPomodoroBreakMinutes,
-							min: 1,
-							max: 30,
-							step: 1,
-						},
-					},
-					{
-						name: this.t('settings.sessionPomodoroAutoRepeat.name'),
-						desc: this.t('settings.sessionPomodoroAutoRepeat.desc'),
-						control: {
-							type: 'toggle',
-							key: 'sessionPomodoroAutoRepeat',
-							defaultValue: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
-						},
-					},
-					{
-						name: this.t('settings.sessionScope.name'),
-						desc: this.t('settings.sessionScope.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'sessionScope',
-							defaultValue: DEFAULT_SETTINGS.sessionScope,
-							options: Object.fromEntries(
-								WRITING_SESSION_SCOPES.map((scope) => [
-									scope,
-									this.t(`session.scope.${scope}`),
-								]),
-							),
-						},
-					},
-					{
-						name: this.t('settings.sessionWritingMode.name'),
-						desc: this.t('settings.sessionWritingMode.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'sessionWritingMode',
-							defaultValue: DEFAULT_SETTINGS.sessionWritingMode,
-							options: Object.fromEntries(
-								WRITING_MODES.map((mode) => [
-									mode,
-									this.t(`session.mode.${mode}`),
-								]),
-							),
-						},
-					},
-					{
-						name: this.t('settings.sessionAutoStart.name'),
-						desc: this.t('settings.sessionAutoStart.desc'),
-						control: {
-							type: 'toggle',
-							key: 'sessionAutoWithFocusMode',
-							defaultValue: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
 						},
 					},
 				],
@@ -1222,19 +1159,24 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.sessionAutoWithFocusMode = value;
 				}
 				break;
+			// Typed rather than dragged, so a whole number is what the field
+			// means rather than what it can only produce: 1500.5 words is a
+			// goal of 1501 rather than a goal that silently failed to save.
 			case 'sessionDailyWordGoalProject':
-				if (typeof value === 'number' && Number.isInteger(value)) {
-					this.owner.settings.sessionDailyWordGoalProject = value;
+				if (typeof value === 'number' && Number.isFinite(value)) {
+					this.owner.settings.sessionDailyWordGoalProject =
+						Math.max(0, Math.round(value));
 				}
 				break;
 			case 'sessionDailyWordGoalManuscript':
-				if (typeof value === 'number' && Number.isInteger(value)) {
-					this.owner.settings.sessionDailyWordGoalManuscript = value;
+				if (typeof value === 'number' && Number.isFinite(value)) {
+					this.owner.settings.sessionDailyWordGoalManuscript =
+						Math.max(0, Math.round(value));
 				}
 				break;
-			case 'sessionGoalScope':
+			case 'sessionDailyGoalScope':
 				if ((WRITING_SESSION_SCOPES as readonly unknown[]).includes(value)) {
-					this.owner.settings.sessionGoalScope = value as WritingSessionScope;
+					this.owner.settings.sessionDailyGoalScope = value as WritingSessionScope;
 				}
 				break;
 			case 'sessionDefaultType':

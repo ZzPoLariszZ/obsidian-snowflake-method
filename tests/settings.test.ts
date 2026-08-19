@@ -176,7 +176,21 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.sessionPomodoroWorkMinutes).toBe(25);
 		expect(DEFAULT_SETTINGS.sessionPomodoroBreakMinutes).toBe(5);
 		expect(DEFAULT_SETTINGS.sessionPomodoroAutoRepeat).toBe(true);
-		expect(DEFAULT_SETTINGS.sessionAutoWithFocusMode).toBe(false);
+		// A pomodoro out of the box, and focus mode starting a sitting on its
+		// own: the two the author is most likely to want and least likely to
+		// go looking for.
+		expect(DEFAULT_SETTINGS.sessionDefaultType).toBe('pomodoro');
+		expect(DEFAULT_SETTINGS.sessionAutoWithFocusMode).toBe(true);
+		expect(DEFAULT_SETTINGS.sessionDailyWordGoalProject).toBe(6000);
+		expect(DEFAULT_SETTINGS.sessionDailyWordGoalManuscript).toBe(4000);
+		// The goal aims at the manuscript, because that is the writing a day
+		// is measured by. The statistics still open on the whole project:
+		// which words are counted towards a target and which are shown in a
+		// chart are two questions, and each keeps its own answer.
+		expect(DEFAULT_SETTINGS.sessionDailyGoalScope).toBe('manuscript');
+		expect(DEFAULT_SETTINGS.sessionScope).toBe('project');
+		// A note's own title is an H1 the plugin wrote, never the author's.
+		expect(DEFAULT_SETTINGS.writingCountHeadings).toBe('skip-first-h1');
 		// Rejected back to the default, never clamped to the nearest bound.
 		expect(
 			sanitizeSettings({ sessionIdleThresholdSeconds: 29 })
@@ -205,10 +219,12 @@ describe('settings', () => {
 			sanitizeSettings({ sessionPomodoroBreakMinutes: 0 })
 				.sessionPomodoroBreakMinutes,
 		).toBe(5);
+		// Anything that is not a boolean falls back to the default, whatever
+		// the default happens to be.
 		expect(
 			sanitizeSettings({ sessionAutoWithFocusMode: 'yes' })
 				.sessionAutoWithFocusMode,
-		).toBe(false);
+		).toBe(DEFAULT_SETTINGS.sessionAutoWithFocusMode);
 	});
 
 	it('drops settings the plugin no longer keeps, such as the pager size', () => {

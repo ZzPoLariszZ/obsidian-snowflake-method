@@ -108,15 +108,13 @@ export const en = {
 	'settings.protectBoundaries.name': 'Protect managed boundaries',
 	'settings.protectBoundaries.desc':
 		'Protect section markers from accidental edits.',
-	'settings.writingCountMode.name': 'Writing count',
-	'settings.writingCountMode.desc':
-		'Which convention the writing count follows.',
+	'settings.writingCountMode.name': 'Word count rule',
+	'settings.writingCountMode.desc': 'Which tool the word count follows.',
 	'settings.writingCountMode.jinjiang': 'Jinjiang',
 	'settings.writingCountMode.qidian': 'Qidian',
 	'settings.writingCountMode.msWord': 'MS Word',
-	'settings.writingCountHeadings.name': 'Headings in the writing count',
-	'settings.writingCountHeadings.desc':
-		'Whether a heading line counts as writing.\nA note begins with its own name as an H1, which the plugin wrote rather than you.',
+	'settings.writingCountHeadings.name': 'Count headings',
+	'settings.writingCountHeadings.desc': 'Whether heading lines count as writing.',
 	'settings.writingCountHeadings.count': 'Count every heading',
 	'settings.writingCountHeadings.skipFirstH1': 'Skip the first H1 only',
 	'settings.writingCountHeadings.skipH1': 'Skip every H1',
@@ -160,48 +158,27 @@ export const en = {
 	'settings.session.heading': 'Writing sessions',
 	'settings.sessionIdleThreshold.name': 'Idle after',
 	'settings.sessionIdleThreshold.desc':
-		'Seconds without an edit before focus time turns into idle time. The grace period itself still counts as focus.',
-	'settings.sessionDailyGoalProject.name': 'Daily word goal: whole project',
+		'Seconds changing from focus to idle without editing.',
+	'settings.sessionDailyGoalProject.name': 'Daily goal: whole project',
 	'settings.sessionDailyGoalProject.desc':
-		'Net words a day the goal widget measures against when the goal is aimed at the project. Zero turns the goal off.',
-	'settings.sessionDailyGoalManuscript.name': 'Daily word goal: only manuscript',
+		'Net words to write each day across the whole project.\nSetting to zero will turn the goal off.',
+	'settings.sessionDailyGoalManuscript.name': 'Daily goal: only manuscript',
 	'settings.sessionDailyGoalManuscript.desc':
-		'Net words a day the goal widget measures against when the goal is aimed at the manuscript. Zero turns the goal off.',
-	'settings.sessionGoalScope.name': 'Goal aimed at',
-	'settings.sessionGoalScope.desc':
-		'Which of the two daily goals is the one being aimed at. It stays where it is when the statistics scope changes, so the target never moves under you.',
+		'Net words to write each day in the manuscript.\nSetting to zero will turn the goal off.',
 	'settings.sessionDateFormat.name': 'Date format',
 	'settings.sessionDateFormat.desc':
-		'How a day is written wherever the writing statistics name one.',
+		'How dates are written in the writing statistics.',
 	'settings.sessionWeekStart.name': 'Week starts on',
 	'settings.sessionWeekStart.desc':
-		'The day each week of the writing heatmap begins on.',
-	'settings.sessionDefaultType.name': 'Session timer',
-	'settings.sessionDefaultType.desc':
-		'What the session widget starts on, and what its clock shows at rest.',
+		'The first day of each week in the writing statistics.',
+	'settings.sessionDefaultType.name': 'Focus timer type',
+	'settings.sessionDefaultType.desc': 'Which timer a new session starts with.',
 	'settings.sessionScope.name': 'Statistics scope',
-	'settings.sessionScope.desc':
-		'Which reading the writing statistics show. A session always records both, so this changes nothing about what is kept. Only the notes the project itself made count as its writing, so a plain note with no Snowflake properties is nobody\u2019s word count.',
-	'settings.sessionWritingMode.name': 'Writing mode',
-	'settings.sessionWritingMode.desc':
-		'The stage a session started from the widget begins in.',
-	'settings.sessionCountdown.name': 'Countdown length',
-	'settings.sessionCountdown.desc':
-		'Minutes a countdown session runs before it completes on its own.',
-	'settings.sessionStopwatchExpected.name': 'Stopwatch expected minutes',
-	'settings.sessionStopwatchExpected.desc':
-		'What a stopwatch sitting aims at, for the timer ring to close over. Zero leaves it unlimited.',
-	'settings.sessionPomodoroWork.name': 'Pomodoro focus',
-	'settings.sessionPomodoroWork.desc': 'Minutes of each pomodoro work period.',
-	'settings.sessionPomodoroBreak.name': 'Pomodoro break',
-	'settings.sessionPomodoroBreak.desc':
-		'Minutes of rest between pomodoro work periods. Breaks pause the session.',
-	'settings.sessionPomodoroAutoRepeat.name': 'Repeat pomodoros',
-	'settings.sessionPomodoroAutoRepeat.desc':
-		'Start the next work period when a break ends, until the session is stopped.',
-	'settings.sessionAutoStart.name': 'Sessions follow focus mode',
-	'settings.sessionAutoStart.desc':
-		'Turning focus mode on starts a manuscript stopwatch session, and turning it off ends it.',
+	'settings.sessionScope.desc': 'Which words the writing statistics show.',
+	'settings.sessionWritingMode.name': 'Writing stage',
+	'settings.sessionWritingMode.desc': 'Which stage a new session starts in.',
+	'settings.sessionAutoStart.name':
+		'Start stopwatch session when focus mode is enabled',
 	'dashboard.title': 'Snowflake Method',
 	'dashboard.project': 'Project',
 	'dashboard.projectSwitcher': 'Project switcher',
@@ -431,10 +408,11 @@ export const en = {
 	'modal.dailyGoal.scope.desc':
 		'It will stay when the statistics scope changes.',
 	'modal.sessionSetup.title': 'Set focus timer',
-	'modal.sessionSetup.type': 'Timer type',
+	'modal.sessionSetup.type': 'Focus timer type',
 	'modal.sessionSetup.stage': 'Writing stage',
 	'modal.sessionSetup.focus': 'Focus minutes',
 	'modal.sessionSetup.break': 'Break minutes',
+	'modal.sessionSetup.repeat': 'Repeat pomodoros',
 	'modal.sessionSetup.expected': 'Expected minutes',
 	'modal.sessionSetup.expectedDesc':
 		'Setting to zero will be unlimited.',

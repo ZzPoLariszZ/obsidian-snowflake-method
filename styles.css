@@ -5781,6 +5781,16 @@ button.snowflake-method-kind-options {
 	border: 0;
 }
 
+/* A row that sets its control beside the name rather than under it is still
+   one of this form's rows, so it wears no rule above it either. The form parts
+   its rows with space; a line across the middle of a dialog reads as a
+   division that is not there. */
+.modal.snowflake-method-definition-modal
+	.modal-content.snowflake-method-definition-form
+	> .setting-item {
+	border: 0;
+}
+
 /* The label sits above its field, and an explanation below the label rather
    than beside it, which would squeeze both into halves of one line. */
 .snowflake-method-definition-form

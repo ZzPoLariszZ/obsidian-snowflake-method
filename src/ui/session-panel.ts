@@ -88,6 +88,8 @@ export interface SessionSetup {
 	countdownMinutes: number;
 	pomodoroWorkMinutes: number;
 	pomodoroBreakMinutes: number;
+	/** Whether a finished break rolls straight into the next work period. */
+	pomodoroAutoRepeat: boolean;
 	/** The stage of the writing a session begins in. */
 	writingMode: WritingMode;
 	/**

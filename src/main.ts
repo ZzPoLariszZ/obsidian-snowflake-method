@@ -463,7 +463,7 @@ export default class SnowflakeMethodPlugin
 			repository: this.projects.repository,
 			writingCount: this.projects.writingCount,
 			scope: () => this.settings.sessionScope,
-			goalScope: () => this.settings.sessionGoalScope,
+			goalScope: () => this.settings.sessionDailyGoalScope,
 			recovery: {
 				load: () => this.app.loadLocalStorage(SESSION_RECOVERY_KEY) as unknown,
 				save: (snapshot) => {
@@ -2886,6 +2886,7 @@ export default class SnowflakeMethodPlugin
 		this.settings.sessionCountdownMinutes = setup.countdownMinutes;
 		this.settings.sessionPomodoroWorkMinutes = setup.pomodoroWorkMinutes;
 		this.settings.sessionPomodoroBreakMinutes = setup.pomodoroBreakMinutes;
+		this.settings.sessionPomodoroAutoRepeat = setup.pomodoroAutoRepeat;
 		this.settings.sessionWritingMode = setup.writingMode;
 		this.settings.sessionStopwatchExpectedMinutes =
 			setup.stopwatchExpectedMinutes;
@@ -2901,7 +2902,7 @@ export default class SnowflakeMethodPlugin
 
 	/** Net words a day is aimed at, in whichever scope is being aimed at. */
 	private dailyWordGoal(): number {
-		return this.settings.sessionGoalScope === 'manuscript'
+		return this.settings.sessionDailyGoalScope === 'manuscript'
 			? this.settings.sessionDailyWordGoalManuscript
 			: this.settings.sessionDailyWordGoalProject;
 	}
@@ -2933,6 +2934,7 @@ export default class SnowflakeMethodPlugin
 			countdownMinutes: this.settings.sessionCountdownMinutes,
 			pomodoroWorkMinutes: this.settings.sessionPomodoroWorkMinutes,
 			pomodoroBreakMinutes: this.settings.sessionPomodoroBreakMinutes,
+			pomodoroAutoRepeat: this.settings.sessionPomodoroAutoRepeat,
 			writingMode: this.settings.sessionWritingMode,
 			stopwatchExpectedMinutes:
 				this.settings.sessionStopwatchExpectedMinutes,
@@ -3133,7 +3135,7 @@ export default class SnowflakeMethodPlugin
 			// the goal scope's rather than the lens's: what the charts are
 			// showing must not move the goalposts.
 			dailyWordGoal: () => this.dailyWordGoal(),
-			goalScope: () => this.settings.sessionGoalScope,
+			goalScope: () => this.settings.sessionDailyGoalScope,
 			setup: () => this.sessionSetup(),
 			editDailyWordGoal: () => {
 				new DailyWordGoalModal(
@@ -3142,13 +3144,13 @@ export default class SnowflakeMethodPlugin
 					{
 						project: this.settings.sessionDailyWordGoalProject,
 						manuscript: this.settings.sessionDailyWordGoalManuscript,
-						scope: this.settings.sessionGoalScope,
+						scope: this.settings.sessionDailyGoalScope,
 					},
 					async (goals) => {
 						this.settings.sessionDailyWordGoalProject = goals.project;
 						this.settings.sessionDailyWordGoalManuscript =
 							goals.manuscript;
-						this.settings.sessionGoalScope = goals.scope;
+						this.settings.sessionDailyGoalScope = goals.scope;
 						await this.saveSettings();
 						this.sessionSettingsChanged();
 					},
