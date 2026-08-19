@@ -177,4 +177,21 @@ describe('writing count', () => {
 			expect(countsCharacters(mode)).toBe(false);
 		}
 	});
+
+	/**
+	 * 〇 is a numeral the ideograph property passes over, spelled into
+	 * CJK_CHARACTER by hand. Without this pin, a simplification to bare
+	 * script properties would drop it into the punctuation class -- the
+	 * totals would survive, and the character count would quietly shrink.
+	 */
+	it('counts 〇 as a character, not a mark', () => {
+		expect(countWriting('一九〇五', { mode: 'jinjiang' })).toEqual({
+			cjkCharacters: 4,
+			words: 0,
+			punctuationMarks: 0,
+			charactersWithSpaces: 4,
+			charactersNoSpaces: 4,
+			total: 4,
+		});
+	});
 });

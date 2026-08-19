@@ -416,6 +416,26 @@ describe('reading stored sessions back', () => {
 		);
 	});
 
+	/**
+	 * A stored net is derived from its own halves rather than trusted: a
+	 * number kept twice is a number that can disagree with itself, and a
+	 * hand-merged file must not make one reading of a session disagree with
+	 * another about what its halves add up to.
+	 */
+	it('derives every net from added and deleted', () => {
+		const drifted = JSON.parse(JSON.stringify(record())) as {
+			words: { project: { net: number } };
+			files: { net: number }[];
+		};
+		drifted.words.project.net = 999_999;
+		if (drifted.files[0]) drifted.files[0].net = -999_999;
+		const parsed = parseSessionRecord(drifted);
+		expect(parsed?.words.project.net).toBe(500);
+		expect(parsed?.files[0]?.net).toBe(
+			(parsed?.files[0]?.added ?? 0) - (parsed?.files[0]?.deleted ?? 0),
+		);
+	});
+
 	it('rejects a shape it does not recognize, whole', () => {
 		expect(parseSessionRecord(record({ schemaVersion: 2 as never }))).toBeNull();
 		expect(

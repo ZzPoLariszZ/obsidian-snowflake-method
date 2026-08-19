@@ -205,9 +205,14 @@ export function daysInMonth(day: string): number {
 	return daysBetween(startOfMonth(day), endOfMonth(day)) + 1;
 }
 
+/** How many days into its week a day stands, for a reader who starts on `start`. */
+export function weekLead(day: string, start: WeekStartDay): number {
+	return (dayOfWeek(day) - weekStartIndex(start) + 7) % 7;
+}
+
 /** The day the week holding `day` began on, for a reader who starts on `start`. */
 export function startOfWeek(day: string, start: WeekStartDay): string {
-	return addDays(day, -((dayOfWeek(day) - weekStartIndex(start) + 7) % 7));
+	return addDays(day, -weekLead(day, start));
 }
 
 /**

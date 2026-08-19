@@ -7,6 +7,7 @@ import {
 	type CountableProseOptions,
 	type CountableRange,
 	type DocumentType,
+	type WritingSessionScope,
 	type WritingCount,
 	type WritingCountOptions,
 } from "../domain";
@@ -28,7 +29,12 @@ import type { ProjectRef } from "./types";
  */
 export type NoteCountOptions = WritingCountOptions & CountableProseOptions;
 
-export type WritingCountScope = "project" | "manuscript";
+/**
+ * The two readings are the session's two scopes, one union declared once: a
+ * third scope added to one list but not the other would compile in places
+ * and turn into wrong bucket lookups instead of type errors.
+ */
+export type WritingCountScope = WritingSessionScope;
 
 /** A whole scope's writing, with how many notes it was read from. */
 export interface ScopeWritingCount extends WritingCount {
@@ -265,16 +271,6 @@ export class WritingCountService {
 		project: ProjectRef,
 	): Promise<{ path: string; manuscript: boolean }[]> {
 		return (await this.projectNotes(project)).notes;
-	}
-
-	/** The notes one scope is counted from, as paths. */
-	async scopePaths(
-		project: ProjectRef,
-		scope: WritingCountScope,
-	): Promise<string[]> {
-		return (await this.scopeNotes(project))
-			.filter((note) => scope === "project" || note.manuscript)
-			.map((note) => note.path);
 	}
 
 	/**

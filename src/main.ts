@@ -38,6 +38,7 @@ import {
 	primaryManagedSectionForStep,
 	formatClock,
 	clampSessionValue,
+	sessionPace,
 	WRITING_MODES,
 	WRITING_SESSION_TYPES,
 	type DocumentType,
@@ -80,6 +81,7 @@ import {
 	projectIdOf,
 } from './repository';
 import {
+	sessionClockMs,
 	SnowflakeProjectService,
 	ArchiveFolderIsProjectError,
 	DuplicateNameError,
@@ -2528,10 +2530,7 @@ export default class SnowflakeMethodPlugin
 				// The transaction is the activity; the text resolves lazily at
 				// the session's debounce, so a burst of keystrokes never
 				// materializes the note once per key.
-				this.sessions.surfaceActivity({
-					kind: 'markdown-editor',
-					path,
-				});
+				this.sessions.surfaceActivity(path);
 				this.sessions.noteChanged(path, () => {
 					try {
 						// The leaf reuses one editor across the notes it opens,
@@ -2637,16 +2636,13 @@ export default class SnowflakeMethodPlugin
 		this.registerDomEvent(doc, 'input', (event) => {
 			const field = this.writingSurfaceField(event.target);
 			if (field === null) return;
-			this.sessions.surfaceActivity({
-				kind:
-					field.closest('.modal') === null ? 'dashboard-field' : 'modal-field',
-				// A modal is drawn outside the view that opened it, so it
-				// carries no mark of its own: the project it would save into
-				// answers instead, which is the one the plugin calls current.
-				path:
-					field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
-						.snowflakeProject ?? this.settings.recentProjectPath,
-			});
+			// A modal is drawn outside the view that opened it, so it carries
+			// no mark of its own: the project it would save into answers
+			// instead, which is the one the plugin calls current.
+			this.sessions.surfaceActivity(
+				field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
+					.snowflakeProject ?? this.settings.recentProjectPath,
+			);
 		});
 	}
 
@@ -2719,9 +2715,7 @@ export default class SnowflakeMethodPlugin
 				? ''
 				: live.state === 'starting'
 					? this.projectT('statusBar.sessionStarting')
-					: live.type === 'stopwatch'
-						? formatClock(live.durations.totalMs)
-						: formatClock(live.remainingMs ?? 0);
+					: formatClock(sessionClockMs(live));
 		const tooltip =
 			live === null
 				? this.projectT('statusBar.sessionStart')
@@ -2795,16 +2789,10 @@ export default class SnowflakeMethodPlugin
 				}),
 			);
 		}
-		// A pace over less than a minute of focus is noise, not a number.
-		if (live.durations.focusMs >= 60_000) {
+		const pace = sessionPace(live.trackedNet, live.durations.focusMs);
+		if (pace !== null) {
 			lines.push(
-				this.projectT('session.stat.pace', {
-					pace: this.grouped(
-						Math.round(
-							(live.trackedNet * 3_600_000) / live.durations.focusMs,
-						),
-					),
-				}),
+				this.projectT('session.stat.pace', { pace: this.grouped(pace) }),
 			);
 		}
 		return lines.join('\n');
@@ -3247,10 +3235,7 @@ export default class SnowflakeMethodPlugin
 
 	/** A stream segment's text changed under the author's typing. */
 	manuscriptSegmentEdited(path: string, body: string): void {
-		this.sessions.surfaceActivity({
-			kind: 'manuscript-segment',
-			path,
-		});
+		this.sessions.surfaceActivity(path);
 		// A stream body carries no frontmatter and draft notes carry no
 		// managed sections, so counting it plain matches the note on disk.
 		this.sessions.noteChanged(path, () => body);

@@ -7,6 +7,8 @@ import {
 	syntaxHighlighting,
 } from '@codemirror/language';
 import { parser as markdownParser } from '@lezer/markdown';
+
+import { selectedTextOf } from '../editor';
 import {
 	Annotation,
 	EditorSelection,
@@ -92,14 +94,6 @@ export interface SegmentEditorHooks {
 
 /** Marks a change the editor was handed rather than one the author typed. */
 const FROM_ELSEWHERE = Annotation.define<boolean>();
-
-/** Every selected stretch as one string, or null when nothing is selected. */
-function selectedTextOf(state: EditorState): string | null {
-	const parts = state.selection.ranges
-		.filter((range) => !range.empty)
-		.map((range) => state.sliceDoc(range.from, range.to));
-	return parts.length === 0 ? null : parts.join('\n');
-}
 
 /**
  * Markdown highlighting from the grammar itself rather than through

@@ -11,8 +11,12 @@ export interface EditorFocusReport {
 	caret: number;
 }
 
-/** Every selected stretch as one string, or null when nothing is selected. */
-function selectedTextOf(state: EditorState): string | null {
+/**
+ * Every selected stretch as one string, or null when nothing is selected.
+ * Exported for the one other editor this plugin builds itself, so the two
+ * report a selection by the same rule.
+ */
+export function selectedTextOf(state: EditorState): string | null {
 	const parts = state.selection.ranges
 		.filter((range) => !range.empty)
 		.map((range) => state.sliceDoc(range.from, range.to));

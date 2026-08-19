@@ -5,7 +5,6 @@ import {
 	type WritingSessionRecord,
 	type WritingSessionScope,
 	type WritingSessionSnapshot,
-	type WritingSurfaceActivity,
 } from "../../src/domain";
 import {
 	SnowflakeProjectService,
@@ -207,15 +206,6 @@ describe("WritingSessionService", () => {
 		clock += 20_000;
 	};
 
-	/** An edit on a writing surface, with the defaults most tests want. */
-	const surface = (
-		overrides: Partial<WritingSurfaceActivity> = {},
-	): WritingSurfaceActivity => ({
-		kind: "markdown-editor",
-		path: NOTES,
-		...overrides,
-	});
-
 	const monthFile = (): { sessions: WritingSessionRecord[] } | null => {
 		const content = fakeVault.contents.get(MONTH_FILE);
 		return content === undefined
@@ -236,7 +226,7 @@ describe("WritingSessionService", () => {
 
 	it("credits typing per note, added and deleted apart", async () => {
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(2);
@@ -529,7 +519,7 @@ describe("WritingSessionService", () => {
 		clock += 90_000;
 		// Consulting a character is part of writing the chapter, so it holds
 		// the clock, and it is the project's writing but not the manuscript's.
-		sessions.surfaceActivity(surface({ path: NOTES }));
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, written("one two three four five"));
 		await timers.flush();
 		expect(sessions.live()?.state).toBe("focus");
@@ -585,11 +575,11 @@ describe("WritingSessionService", () => {
 		await startSession();
 		// Nothing at all happens: no blur, no window event, no report.
 		clock += 59_000;
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		expect(sessions.live()?.state).toBe("focus");
 		clock += 61_000;
 		expect(sessions.live()?.state).toBe("idle");
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		expect(sessions.live()?.state).toBe("focus");
 	});
 
@@ -598,9 +588,11 @@ describe("WritingSessionService", () => {
 		clock += 90_000;
 		expect(sessions.live()?.state).toBe("idle");
 		// A name, a status, a paragraph of prose: all the same to the clock,
-		// and none of them words until a note holds them.
-		for (const kind of ["dashboard-field", "modal-field"] as const) {
-			sessions.surfaceActivity({ kind, path: project.projectFile });
+		// and none of them words until a note holds them. A form reports the
+		// project it would save into, and reports it again from a dialog.
+		for (const pass of [0, 1]) {
+			void pass;
+			sessions.surfaceActivity(project.projectFile);
 			expect(sessions.live()?.state).toBe("focus");
 			expect(sessions.live()?.added).toBe(0);
 			clock += 90_000;
@@ -609,7 +601,7 @@ describe("WritingSessionService", () => {
 
 	it("counts a form's writing only once the save persists it", async () => {
 		await startSession();
-		sessions.surfaceActivity({ kind: "modal-field", path: project.projectFile });
+		sessions.surfaceActivity(project.projectFile);
 		// Typed but not saved: the project has not changed, so nor has the count.
 		expect(sessions.live()?.state).toBe("focus");
 		expect(sessions.live()?.added).toBe(0);
@@ -625,10 +617,7 @@ describe("WritingSessionService", () => {
 	it("ignores a surface belonging to another project", async () => {
 		await startSession();
 		clock += 90_000;
-		sessions.surfaceActivity({
-			kind: "dashboard-field",
-			path: "Somewhere Else/Novel/001_Project_Metadata.md",
-		});
+		sessions.surfaceActivity("Somewhere Else/Novel/001_Project_Metadata.md");
 		expect(sessions.live()?.state).toBe("idle");
 		expect(sessions.live()?.added).toBe(0);
 	});
@@ -942,7 +931,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("follows the project when its folder is renamed mid-session", async () => {
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, written("one two three four"));
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(1);
@@ -1010,7 +999,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("keeps the words a stop raced onto the debounce", async () => {
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, () => "one two three four five six\n");
 		// Fire the debounce by hand and stop while the drain is mid-read.
 		const pending = [...timers.handlers.values()];
@@ -1061,7 +1050,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("shrugs off invalid mid-edit frontmatter and reads the disk instead", async () => {
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, () => "---\ntitle: [\n---\nbroken words\n");
 		await timers.flush();
 		// The provider would not parse; the disk still holds the same three
@@ -1123,7 +1112,7 @@ describe("WritingSessionService", () => {
 			}),
 		);
 		clock += 20_000;
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		// The work period runs out on its own clock.
 		clock += 45_000;
 		await timers.flush();
@@ -1198,7 +1187,7 @@ describe("WritingSessionService", () => {
 		// A stop rewrites this device's own file; the other device's stays
 		// held, and the day still reads both sessions.
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		sessions.noteChanged(NOTES, written("one two three four"));
 		await timers.flush();
 		clock += 20_000;
@@ -1239,14 +1228,14 @@ describe("WritingSessionService", () => {
 	 */
 	it("keeps the record's intervals whole when events land mid-stop", async () => {
 		await startSession();
-		sessions.surfaceActivity(surface());
+		sessions.surfaceActivity(NOTES);
 		clock += 30_000;
 		const stopping = sessions.stop();
 		// Land events at every microtask seam of the stop.
 		for (let i = 0; i < 4; i += 1) {
 			await Promise.resolve();
 			clock += 1_000;
-			sessions.surfaceActivity(surface());
+			sessions.surfaceActivity(NOTES);
 			sessions.pause();
 			sessions.resume();
 		}

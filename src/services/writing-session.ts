@@ -43,7 +43,6 @@ import {
 	type WritingSessionSnapshot,
 	type WritingSessionTiming,
 	type WritingSessionType,
-	type WritingSurfaceActivity,
 } from "../domain";
 import { isPathAtOrBelow } from "../project-root";
 import {
@@ -523,8 +522,11 @@ export class WritingSessionService {
 	}
 
 	/**
-	 * Meaningful editing on a writing surface: an editor transaction, or a
-	 * keystroke in one of this plugin's own writing fields.
+	 * Meaningful editing on a writing surface: an editor transaction, a
+	 * stream keystroke, or typing in one of this plugin's own fields. `path`
+	 * is any path inside the project the writing belongs to -- the note an
+	 * editor holds, or the project a form was opened over -- and a report
+	 * that can name none belongs to no session and is dropped.
 	 *
 	 * Time only, and time for the whole project, so a strict session survives
 	 * a detour through a character's notes. What was written is not a
@@ -532,15 +534,13 @@ export class WritingSessionService {
 	 * project, and a form the author cancels never will. Words arrive through
 	 * `noteChanged`, when they are persisted.
 	 */
-	surfaceActivity(surface: WritingSurfaceActivity): void {
+	surfaceActivity(path: string | null): void {
 		const live = this.liveState;
 		// `stopping` ends the observing, not only the clock: the record is
 		// being read out of the tracker, and one more event would write a
 		// second, overlapping close of the same open stretch into it.
 		if (live?.tracker == null || live.stopping) return;
-		if (surface.path === null || !this.inActivityScope(live, surface.path)) {
-			return;
-		}
+		if (path === null || !this.inActivityScope(live, path)) return;
 		this.applyEffects(live, live.tracker.activity(this.now()));
 	}
 
@@ -839,9 +839,13 @@ export class WritingSessionService {
 			const day = addDays(from, at);
 			byDay.set(day, emptyDay(day));
 		}
-		for (const session of (
-			await this.gatherSessions(project, from, through)
-		).values()) {
+		const sessions = await this.gatherSessions(project, from, through);
+		// The running session is read the way spread() reads it: as the
+		// record it would be if it stopped now, merged by id beside the
+		// finished ones -- one loop, one shape, nothing summed twice.
+		const running = this.liveRecord(project);
+		if (running !== null) sessions.set(running.id, running);
+		for (const session of sessions.values()) {
 			const bucket = byDay.get(calendarDay(Date.parse(session.startedAt), zone));
 			if (bucket === undefined) continue;
 			const durations = sessionDurations(session);
@@ -854,21 +858,6 @@ export class WritingSessionService {
 			bucket.deleted += shown.deleted;
 			bucket.trackedNet += shown.net;
 			bucket.goalNet += session.words[this.deps.goalScope()].net;
-		}
-		const live = this.live();
-		const bucket =
-			live === null || live.startedAt === null
-				? undefined
-				: byDay.get(calendarDay(live.startedAt, zone));
-		if (live !== null && bucket !== undefined && this.liveState?.project.id === project.id) {
-			bucket.sessions += 1;
-			bucket.focusMs += live.durations.focusMs;
-			bucket.idleMs += live.durations.idleMs;
-			bucket.totalMs += live.durations.totalMs;
-			bucket.added += live.added;
-			bucket.deleted += live.deleted;
-			bucket.trackedNet += live.trackedNet;
-			bucket.goalNet += live.goalNet;
 		}
 		return [...byDay.values()];
 	}
@@ -1538,6 +1527,18 @@ export class WritingSessionService {
 			}
 		}
 	}
+}
+
+/**
+ * The milliseconds a clock face shows for a running session: elapsed for a
+ * stopwatch, what is left for anything with a deadline. One rule for the
+ * status bar and the timer widget, so the two can never show different
+ * clocks over the same sitting.
+ */
+export function sessionClockMs(live: LiveWritingSession): number {
+	return live.type === "stopwatch"
+		? live.durations.totalMs
+		: (live.remainingMs ?? 0);
 }
 
 /** A day with nothing written on it, which is most days of most years. */

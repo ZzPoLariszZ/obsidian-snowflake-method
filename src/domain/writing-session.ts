@@ -15,7 +15,12 @@
  * behaviour, not a keystroke-level audit trail.
  */
 
-import { DAY_BANDS, splitDayBands } from './calendar';
+import {
+	DAY_BANDS,
+	calendarDay,
+	monthKeyOfDay,
+	splitDayBands,
+} from './calendar';
 
 export const WRITING_SESSION_SCHEMA_VERSION = 1;
 
@@ -644,24 +649,9 @@ export function sessionMonthKey(
 	startedAtMs: number,
 	timeZone: string,
 ): { year: string; month: string } {
-	const date = new Date(startedAtMs);
-	let parts: Intl.DateTimeFormatPart[];
-	try {
-		parts = new Intl.DateTimeFormat('en-CA', {
-			timeZone,
-			year: 'numeric',
-			month: '2-digit',
-		}).formatToParts(date);
-	} catch {
-		// An unknown zone name falls back to wherever this machine is.
-		parts = new Intl.DateTimeFormat('en-CA', {
-			year: 'numeric',
-			month: '2-digit',
-		}).formatToParts(date);
-	}
-	const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-	const month = parts.find((part) => part.type === 'month')?.value ?? '00';
-	return { year, month };
+	// The one place a moment becomes a day already knows the zones and their
+	// fallbacks; the month is that day's, not a second reading of the clock.
+	return monthKeyOfDay(calendarDay(startedAtMs, timeZone));
 }
 
 /** The stretches of days a recent-trend reading offers, shortest first. */
@@ -765,6 +755,21 @@ export interface DayReading {
 }
 
 /**
+ * What one stretch of writing contributes under a measure. One mapping for
+ * every widget that answers the measure dropdown, so a new measure cannot
+ * compile while three charts quietly answer it with different fields.
+ */
+export function readingValue(
+	reading: Pick<DayReading, 'trackedNet' | 'added' | 'deleted' | 'focusMs'>,
+	measure: ReadingMeasure,
+): number {
+	if (measure === 'added') return reading.added;
+	if (measure === 'deleted') return reading.deleted;
+	if (measure === 'time') return reading.focusMs;
+	return reading.trackedNet;
+}
+
+/**
  * Which way a trend's bar went, which is what colours it. Deleted words are a
  * loss whichever day they fall on, a net below nothing is one too, and
  * everything else is a gain -- so every bar can stand on the axis and say by
@@ -801,13 +806,7 @@ export function heatLevels(
 	// Deleted words are counted negative here rather than positive: the day
 	// went backwards, and the grid says so in the colour a loss is drawn in.
 	const value = (day: DayReading): number =>
-		measure === 'time'
-			? day.focusMs
-			: measure === 'added'
-				? day.added
-				: measure === 'deleted'
-					? -day.deleted
-					: day.trackedNet;
+		measure === 'deleted' ? -day.deleted : readingValue(day, measure);
 	const bands = quartiles(days.map((day) => Math.abs(value(day))));
 	return days.map((day) => {
 		const size = Math.abs(value(day));
@@ -978,6 +977,19 @@ export function formatClock(ms: number): string {
 		: `${two(minutes)}:${two(seconds)}`;
 }
 
+/**
+ * Net words per hour of focus, or null under a minute of it: a pace over
+ * less than a minute of focus says more about the arithmetic than about the
+ * writing.
+ */
+export function sessionPace(
+	trackedNet: number,
+	focusMs: number,
+): number | null {
+	if (focusMs < 60_000) return null;
+	return Math.round((trackedNet * 3_600_000) / focusMs);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -1026,7 +1038,10 @@ function parseFiles(value: unknown): SessionFileTally[] | null {
 			path: entry.path,
 			added: entry.added,
 			deleted: entry.deleted,
-			net: entry.net,
+			// Derived rather than trusted: a number kept twice is a number
+			// that can disagree with itself, and a hand-merged file must not
+			// make two readings disagree about one note.
+			net: entry.added - entry.deleted,
 			manuscript: entry.manuscript,
 		});
 	}
@@ -1044,7 +1059,9 @@ function parseWordTotals(value: unknown): SessionWordTotals | null {
 		end: value.end as number,
 		added: value.added as number,
 		deleted: value.deleted as number,
-		net: value.net as number,
+		// Derived rather than trusted, so every reading of this record agrees
+		// with every other about what its own halves add up to.
+		net: (value.added as number) - (value.deleted as number),
 	};
 }
 

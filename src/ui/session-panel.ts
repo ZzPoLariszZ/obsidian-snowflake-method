@@ -16,15 +16,17 @@ import {
 	addDays,
 	addMonths,
 	dayOfMonth,
-	dayOfWeek,
 	daysBetween,
 	daysInMonth,
 	formatClock,
 	monthLabels,
+	readingValue,
+	sessionPace,
 	monthOfDay,
 	monthTitle,
 	startOfMonth,
 	startOfWeek,
+	weekLead,
 	weekOfYear,
 	emptyModes,
 	weekStartIndex,
@@ -40,6 +42,7 @@ import {
 	type WritingSessionScope,
 	type WritingSessionType,
 } from '../domain';
+import { sessionClockMs } from '../services';
 import type {
 	LiveWritingSession,
 	TodayWritingSummary,
@@ -176,9 +179,6 @@ function gaugeMarkPath(fraction: number): string {
 /** The clock's ring, measured the same way: one radius, one circumference. */
 const RING_RADIUS = 54;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-/** A minute of focus before a speed is worth saying; below it, nothing is. */
-const PACE_FLOOR_MS = 60_000;
 
 /** How often the day's own totals are read back off disk while a session runs. */
 const DAY_REREAD_MS = 10_000;
@@ -486,7 +486,7 @@ function renderGoalWidget(
 	const t = bridge.t;
 	const frame = createWidget(parent, {
 		title: goalTitle(bridge, 'goal'),
-		cls: 'snowflake-method-widget-goal',
+		cls: 'snowflake-method-widget-goal snowflake-method-widget-day',
 		settings: {
 			label: t('sessionWidget.goal.edit'),
 			open: () => {
@@ -554,7 +554,7 @@ function renderTimerWidget(
 	const t = bridge.t;
 	const frame = createWidget(parent, {
 		title: t('sessionWidget.timer.title'),
-		cls: 'snowflake-method-widget-timer',
+		cls: 'snowflake-method-widget-timer snowflake-method-widget-day',
 		settings: {
 			label: t('sessionWidget.timer.edit'),
 			open: () => {
@@ -652,9 +652,7 @@ function renderTimerWidget(
 			clock.setText(
 				live.state === 'starting'
 					? t('statusBar.sessionStarting')
-					: live.type === 'stopwatch'
-						? formatClock(live.durations.totalMs)
-						: formatClock(live.remainingMs ?? 0),
+					: formatClock(sessionClockMs(live)),
 			);
 			showRing(ringFraction(live, expectedMs()));
 			const paused = live.state === 'paused';
@@ -707,7 +705,7 @@ function renderTodayWidget(
 	const t = bridge.t;
 	const frame = createWidget(parent, {
 		title: t('sessionWidget.today.title'),
-		cls: 'snowflake-method-widget-today',
+		cls: 'snowflake-method-widget-today snowflake-method-widget-day',
 	});
 	const list = frame.body.createDiv({ cls: 'snowflake-method-widget-rows' });
 	const reading = (key: string): HTMLElement => {
@@ -744,16 +742,11 @@ function renderTodayWidget(
 			idle.setText(formatClock(day.idleMs));
 			added.setText(`+${grouped(day.added)}`);
 			deleted.setText(`-${grouped(day.deleted)}`);
-			// Under a minute of focus, a rate says more about the arithmetic
-			// than about the writing.
+			const speed = sessionPace(day.trackedNet, day.focusMs);
 			pace.setText(
-				day.focusMs < PACE_FLOOR_MS
+				speed === null
 					? '—'
-					: t('sessionWidget.today.paceValue', {
-							pace: Math.round(
-								(day.trackedNet * 3_600_000) / day.focusMs,
-							),
-						}),
+					: t('sessionWidget.today.paceValue', { pace: speed }),
 			);
 		},
 	};
@@ -910,7 +903,7 @@ function renderTrendWidget(
 			range.value = `${view.trendDays}`;
 			measure.value = view.measure;
 			const days = history.slice(Math.max(0, history.length - view.trendDays));
-			const totals = days.map((day) => trendValue(day, view.measure));
+			const totals = days.map((day) => readingValue(day, view.measure));
 			const sum = totals.reduce((carried, one) => carried + one, 0);
 			const top = Math.max(0, ...totals.map(Math.abs));
 			const words = view.measure !== 'time';
@@ -1005,17 +998,7 @@ function createDetail(frame: HTMLElement): {
 	};
 }
 
-/**
- * What one day contributes to a trend. Time answers with the focus it held --
- * the sitting is what the bar draws, and the writing in it is what the
- * readings underneath are about.
- */
-function trendValue(day: WritingDayTotals, measure: ReadingMeasure): number {
-	if (measure === 'net') return day.trackedNet;
-	if (measure === 'added') return day.added;
-	if (measure === 'deleted') return day.deleted;
-	return day.focusMs;
-}
+
 
 /**
  * The bars and the axes they are read against. Every bar stands on the axis,
@@ -1053,7 +1036,7 @@ function drawTrend(
 
 	const words = measure !== 'time';
 	const top = words
-		? Math.max(0, ...days.map((day) => Math.abs(trendValue(day, measure))))
+		? Math.max(0, ...days.map((day) => Math.abs(readingValue(day, measure))))
 		: Math.max(0, ...days.map((day) => day.totalMs));
 	const scale = axisScale(top, measure);
 	const ceiling = scale.top;
@@ -1097,7 +1080,7 @@ function drawTrend(
 	for (const [at, day] of days.entries()) {
 		const x = plot.left + slot * (at + 0.5) - bar / 2;
 		if (words) {
-			const value = trendValue(day, measure);
+			const value = readingValue(day, measure);
 			const size = rise(value);
 			if (size <= 0) continue;
 			svg.append(
@@ -1334,15 +1317,7 @@ function heatDetail(
 /** What one day comes to under a measure, written the way that measure reads. */
 function dayReading(day: WritingDayTotals, measure: ReadingMeasure): string {
 	if (measure === 'time') return formatClock(day.focusMs);
-	return grouped(dayValue(day, measure));
-}
-
-/** And the number behind it, unwritten. */
-function dayValue(day: WritingDayTotals, measure: ReadingMeasure): number {
-	if (measure === 'time') return day.focusMs;
-	if (measure === 'added') return day.added;
-	if (measure === 'deleted') return day.deleted;
-	return day.trackedNet;
+	return grouped(readingValue(day, measure));
 }
 
 /** The grid itself: weeks across, days down, from the week's chosen start. */
@@ -1362,7 +1337,7 @@ function drawHeatmap(
 	// column is a whole week and the rows mean the same thing all the way
 	// across. The days before the stretch begins are simply left empty.
 	const offset = bridge.weekStart();
-	const lead = (dayOfWeek(first.day) - weekStartIndex(offset) + 7) % 7;
+	const lead = weekLead(first.day, offset);
 	const start = addDays(first.day, -lead);
 	const columns = Math.ceil((daysBetween(start, last.day) + 1) / 7);
 	const width = HEAT_INSET.left + columns * CELL_STEP;
@@ -1493,7 +1468,7 @@ function renderCalendarWidget(
 				text: weekdays[(weekStartIndex(start) + at) % 7] ?? '',
 			});
 		}
-		const lead = (dayOfWeek(anchor) - weekStartIndex(start) + 7) % 7;
+		const lead = weekLead(anchor, start);
 		const goal = bridge.dailyWordGoal();
 		for (let week = 0; week < CALENDAR_WEEKS; week += 1) {
 			const opening = addDays(anchor, week * 7 - lead);
@@ -1543,7 +1518,7 @@ function renderCalendarWidget(
 					// what a day that met its goal has earned in miniature.
 					setIcon(met, 'badge-check');
 				}
-				const value = dayValue(totals, chosen);
+				const value = readingValue(totals, chosen);
 				reading.setText(dayReading(totals, chosen));
 				// Words gained and words lost read the way they do everywhere
 				// else here, and time takes the accent the rest of the panel
@@ -1669,14 +1644,7 @@ function renderBandsWidget(
 			measure.value = view.measure;
 			const chosen = view.measure;
 			const words = chosen !== 'time';
-			const value = (band: BandTotals): number =>
-				chosen === 'time'
-					? band.focusMs
-					: chosen === 'added'
-						? band.added
-						: chosen === 'deleted'
-							? band.deleted
-							: band.trackedNet;
+			const value = (band: BandTotals): number => readingValue(band, chosen);
 			// A share is of the work that happened, whichever way a part of it
 			// went: a morning that lost two hundred words was as much of the
 			// day's writing as an evening that gained them.
