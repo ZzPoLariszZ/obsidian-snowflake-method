@@ -14,5 +14,8 @@ main.js
 # Local Obsidian plugin settings
 data.json
 
+# Local development tools, kept to hand rather than shipped
+scripts/
+
 # Operating system files
 .DS_Store
