@@ -8,6 +8,21 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0]
+
+### Added
+
+- The status bar counts the writing in front of you: the note being written, the stretch you have selected, or the marked section the caret sits in. It counts what the page shows rather than the Markdown underneath, so syntax, plugin-written blocks and a note's own title stay out of the number, and its tooltip breaks the total into words, characters with and without spaces, non-Asian words and Asian characters. **Word count rule** chooses whose arithmetic to follow, MS Word, Jinjiang or Qidian, **Count headings** decides whether heading lines are writing, and **Count project words** reports the whole project and the manuscript alone.
+- Writing sessions, timed three ways. A sitting runs as a stopwatch, as a countdown, or as a pomodoro that alternates work with breaks, and it starts from the status bar, from the palette, or by itself when focus mode opens. A session divides its own span into focus, idle and paused time, and every number is derived from timestamps rather than from how many timer ticks happened to fire, so a laptop closed for two hours classifies exactly like two hours watched second by second. Words are credited note by note against the count each note held when the sitting began, and whatever changes while a session is paused sets a new baseline without being credited to it.
+- **Data statistics**, a pane of the dashboard that reads a project back as numbers. Its **Writing sessions** tab opens on the day's goal, the focus timer and today's summary, then reads further back through a recent trend over 7 to 180 days, a year of shaded days, a calendar, weekly and monthly goals that scale with the days each period holds, the hours of the day the writing actually happened in, and how the time divided between planning, drafting, revision and proofreading. Every reading answers for one project in the scope you choose, the whole project or the manuscript alone, while the daily goal keeps a scope of its own so that changing what the charts show never moves the goalposts.
+- **Open writing statistics**, a sidebar carrying the day's goal, clock and summary, for keeping the numbers beside the writing rather than under it. Eight more commands start a sitting on any of the three clocks, pause or stop the one that is running, and switch the scope the readings answer in.
+- Eleven settings under **Writing sessions**, from the count rule and the timer a new sitting starts with, to how long silence runs before focus turns to idle, a daily goal for the project and another for the manuscript, the day a week begins on, and how dates are written.
+- Sessions are stored in the project itself, one JSON file per month per device under `70_Tool/71_Data_Statistics/711_Writing_Session`. Two installations never write the same file, so sync has nothing to merge, and a sitting cut short by a crash or a quit is finished and filed the next time the plugin loads.
+
+### Changed
+
+- The one-sentence summary's length hint follows the **Word count rule** now, and says whether it is counting words or characters. The number under the field and the number in the status bar are arrived at the same way.
+
 ## [0.10.0]
 
 ### Added
@@ -262,6 +277,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.11.0]
+
+### 新增
+
+- 状态栏会统计眼前的写作：正在写的笔记、你选中的一段，或光标所在的标记区段。它统计的是页面显示出来的内容，而不是底下的 Markdown，因此语法、插件写入的区块与笔记自己的标题都不计入，悬停提示则把总数拆成字数、含空格与不含空格的字符数、非亚洲语言单词数与亚洲语言字符数。**字数统计规则**决定遵循哪一种算法，微软 Word、晋江或起点，**标题计入字数**决定标题行算不算写作，**统计项目字数**则报告整个项目与仅正文稿两份数字。
+- 写作时段，三种计时方式。一个时段可以是正计时、倒计时，或工作与休息交替进行的番茄钟，既能从状态栏与命令面板开启，也能在进入专注模式时自动开始。时段把自己的时间分为专注、摸鱼与暂停，所有数字都由时间戳推得，而不是数计时器跳了多少下，因此合上两小时的电脑，与逐秒盯着的两小时判定完全一致。字数按笔记逐篇计入，与每篇笔记在时段开始时的字数相比，而暂停期间发生的改动只会重设基准，不计入这一段的成绩。
+- **数据统计**，工作台中以数据回看项目的面板。**写作时段**标签页开头是当天的目标、专注计时与今日总结，往下依次是最近 7 到 180 天的趋势、整年的贡献格、日历、随各自周期天数伸缩的每周与每月目标、写作真正发生在一天中的哪些时辰，以及时间如何分配在构思、初稿、修改与校对之间。每份读数都只为一个项目作答，范围由你选择，整个项目或仅正文稿，而每日目标保有自己的范围，因此改变图表展示的内容不会移动目标本身。
+- **打开写作统计**，把当天的目标、计时与总结放进独立的侧栏，让数据陪在正文旁边，而不是压在下面。另外八条命令可以用三种计时中的任意一种开始时段、暂停或停止正在进行的那一个，以及切换读数所用的统计范围。
+- **写作时段**分组下的十一项设置，从字数统计规则、新时段默认的计时方式，到多久没有编辑就从专注转为摸鱼、整个项目与仅正文稿各自的每日目标，以及每周从哪一天开始与日期如何书写。
+- 时段保存在项目自己的目录中，位于 `70_工具/71_数据统计/711_写作时段` 之下，每台设备每月一个 JSON 文件。两个安装永远不会写入同一个文件，同步也就无需合并，而被崩溃或退出打断的时段，会在插件下次载入时补完并归档。
+
+### 变更
+
+- 一句话概述下方的长度提示现在遵循**字数统计规则**，与状态栏中的数字以同一种方式得出。
 
 ## [0.10.0]
 
