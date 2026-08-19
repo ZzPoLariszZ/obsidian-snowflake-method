@@ -154,7 +154,10 @@ const BLOCK_ID = /(?:^|[ \t])\^[A-Za-z0-9-]+$/gmu;
  * is, so a lone `==` in prose highlights nothing and an arithmetic line is
  * left alone.
  */
-const HIGHLIGHT = /==(?![\s=])[^\n]*?(?<![\s=])==/gu;
+/* Written without a lookbehind, which the plugin guidelines set aside for
+   mobile: the closing rule -- no space or equals against the final marks --
+   is said by the last character class instead. */
+const HIGHLIGHT = /==(?![\s=])(?:[^\n]*?[^\s=\n])?==/gu;
 /**
  * A callout's `[!type]`, with the fold marker that may follow it. It names
  * the box rather than saying anything inside it, and the title written after
