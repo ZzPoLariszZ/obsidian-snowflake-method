@@ -310,6 +310,17 @@ export class SnowflakeDashboardView extends ItemView {
 	/** Lets go of a mounted session panel before its container is emptied. */
 	private sessionPanelDispose: (() => void) | null = null;
 	/**
+	 * The element the session panel is mounted in, kept across refreshes: the
+	 * panel keeps itself current through its own subscription, so a dashboard
+	 * refresh rebuilds the frame around it and hands the same panel back
+	 * rather than refetching a year of readings on every vault save.
+	 */
+	private sessionPanelHost: HTMLElement | null = null;
+	/** What the mounted panel was built for: its project and its language. */
+	private sessionPanelKey: string | null = null;
+	/** A refresh asked for while the leaf was off screen, owed at reveal. */
+	private refreshQueuedWhileHidden = false;
+	/**
 	 * Folded rows of the definition trees, keyed `id/kind/path`. Session
 	 * state like a table's search: a refresh redraws the fold as it stood.
 	 */
@@ -562,6 +573,9 @@ export class SnowflakeDashboardView extends ItemView {
 	private disposeSessionPanel(): void {
 		this.sessionPanelDispose?.();
 		this.sessionPanelDispose = null;
+		this.sessionPanelHost?.remove();
+		this.sessionPanelHost = null;
+		this.sessionPanelKey = null;
 	}
 
 	/**
@@ -603,7 +617,9 @@ export class SnowflakeDashboardView extends ItemView {
 				button.toggleClass('is-active', active);
 				button.setAttribute('aria-selected', active ? 'true' : 'false');
 			}
-			this.disposeSessionPanel();
+			// Leaving the sessions face lets its panel go; returning to it,
+			// or redrawing the frame around it, hands the same panel back.
+			if (chosen !== 'sessions') this.disposeSessionPanel();
 			body.empty();
 			this.renderStatisticsBody(body, chosen);
 		};
@@ -625,10 +641,26 @@ export class SnowflakeDashboardView extends ItemView {
 	/** What one face of the statistics pane puts inside the frame. */
 	private renderStatisticsBody(body: HTMLElement, tab: StatisticsTab): void {
 		if (tab === 'sessions') {
+			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
+			if (
+				this.sessionPanelDispose !== null &&
+				this.sessionPanelHost !== null &&
+				this.sessionPanelKey === key
+			) {
+				// The same project in the same language: the mounted panel is
+				// already current -- it patches itself off the session's own
+				// events -- so the rebuilt frame takes it back as it stands.
+				body.appendChild(this.sessionPanelHost);
+				return;
+			}
+			this.disposeSessionPanel();
 			// This pane belongs to a project: it reads that project's day and
 			// speaks its language, whatever else is open beside it.
+			const host = body.createDiv();
+			this.sessionPanelHost = host;
+			this.sessionPanelKey = key;
 			this.sessionPanelDispose = renderSessionPanel(
-				body,
+				host,
 				this.host.writingSessions({
 					projectPath: this.projectPath,
 					locale: this.projectLocale,
@@ -660,7 +692,21 @@ export class SnowflakeDashboardView extends ItemView {
 		this.entityTable = null;
 	}
 
+	/** Owes the next reveal a refresh, for events that landed off screen. */
+	queueRefreshWhenShown(): void {
+		this.refreshQueuedWhileHidden = true;
+	}
+
+	onResize(): void {
+		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
+		this.refreshQueuedWhileHidden = false;
+		void this.refresh().catch((error: unknown) => {
+			this.renderError(error);
+		});
+	}
+
 	async refresh(): Promise<void> {
+		this.refreshQueuedWhileHidden = false;
 		// A leaf that has not been told which project it is for has nothing to
 		// draw, and asking the host with no path would have it answer with the
 		// current project — another leaf's. Waiting costs a beat; setState draws
@@ -3963,8 +4009,10 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 	): void {
 		// Whatever the last render mounted must let go before the container
-		// is rebuilt, or its subscription would tick a detached panel forever.
-		this.disposeSessionPanel();
+		// is rebuilt, or its subscription would tick a detached panel forever
+		// -- except on the way back to the statistics pane, whose panel is
+		// carried across the rebuild rather than torn down and refetched.
+		if (this.selectedPane.kind !== 'statistics') this.disposeSessionPanel();
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
 			return;

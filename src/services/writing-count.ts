@@ -151,6 +151,23 @@ export class WritingCountService {
 		offset: number,
 		options: NoteCountOptions,
 	): WritingCount | null {
+		const span = this.sectionSpanAt(body, documentType, offset);
+		return span === null
+			? null
+			: this.countRange(body, documentType, span, options);
+	}
+
+	/**
+	 * Where that section lies, without counting it. Finding the section is a
+	 * few marker scans; counting it is a parse of the whole note -- so a
+	 * caller repainting on every caret move can ask where the caret is first,
+	 * and pay for the count only when the answer has changed.
+	 */
+	sectionSpanAt(
+		body: string,
+		documentType: DocumentType,
+		offset: number,
+	): CountableRange | null {
 		for (const descriptor of managedSectionsForDocument(documentType)) {
 			if (PROTECTED_SECTION_IDS.has(descriptor.id)) continue;
 			const inspection = inspectMarkedSection(body, descriptor.id);
@@ -158,12 +175,7 @@ export class WritingCountService {
 			if (offset < inspection.contentStart || offset > inspection.contentEnd) {
 				continue;
 			}
-			return this.countRange(
-				body,
-				documentType,
-				{ from: inspection.contentStart, to: inspection.contentEnd },
-				options,
-			);
+			return { from: inspection.contentStart, to: inspection.contentEnd };
 		}
 		return null;
 	}

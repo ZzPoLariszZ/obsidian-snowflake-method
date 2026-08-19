@@ -330,6 +330,31 @@ export default class SnowflakeMethodPlugin
 	private writingCountSequence = 0;
 	/** What the status bar last said, so an unchanged count repaints nothing. */
 	private writingCountShown: { line: string; breakdown: string } | null = null;
+
+	/**
+	 * The last buffer counted and what it came to. A caret step schedules a
+	 * recount, but the buffer it lands in is nearly always the buffer the
+	 * last count read: holding an arrow key must not re-parse a novel-sized
+	 * note four times a second to re-derive the same number. One slot each,
+	 * because the hot pattern is "same text as a moment ago", and the slot is
+	 * checked by comparing the text itself -- an identity that cannot go
+	 * stale, whatever path the change arrived by.
+	 */
+	private bufferCountMemo: {
+		body: string;
+		declared: DocumentType | null;
+		options: NoteCountOptions;
+		count: WritingCount;
+	} | null = null;
+
+	/** The same, for the marked section under the caret. */
+	private sectionCountMemo: {
+		body: string;
+		from: number;
+		to: number;
+		options: NoteCountOptions;
+		count: WritingCount;
+	} | null = null;
 	/**
 	 * The plugin's own field the count last followed focus to. Focus events
 	 * arrive from every corner of the app, and most of them change nothing
@@ -491,7 +516,10 @@ export default class SnowflakeMethodPlugin
 		);
 		this.registerView(
 			STATISTICS_VIEW_TYPE,
-			(leaf) => new SnowflakeStatisticsView(leaf, this.writingSessions()),
+			(leaf) =>
+				new SnowflakeStatisticsView(leaf, this.writingSessions(), () =>
+					this.statisticsFingerprint(),
+				),
 		);
 		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
 			void this.openDashboard();
@@ -3423,11 +3451,7 @@ export default class SnowflakeMethodPlugin
 			}
 			if (context.editingPath !== null && context.body !== null) {
 				return {
-					count: this.projects.writingCount.countBody(
-						context.body,
-						'draft',
-						options,
-					),
+					count: this.countBodyMemoized(context.body, 'draft', options),
 					selection: false,
 				};
 			}
@@ -3491,12 +3515,31 @@ export default class SnowflakeMethodPlugin
 		if (!isDocumentType(declared)) return null;
 		// The body runs to the end of the note, so what precedes it is the
 		// frontmatter, and the caret steps back by exactly that much.
-		return this.projects.writingCount.countSectionAt(
+		const span = this.projects.writingCount.sectionSpanAt(
 			body,
 			declared,
 			caret - (content.length - body.length),
+		);
+		if (span === null) return null;
+		const memo = this.sectionCountMemo;
+		if (
+			memo !== null &&
+			memo.from === span.from &&
+			memo.to === span.to &&
+			memo.options.mode === options.mode &&
+			memo.options.headings === options.headings &&
+			memo.body === body
+		) {
+			return memo.count;
+		}
+		const count = this.projects.writingCount.countRange(
+			body,
+			declared,
+			span,
 			options,
 		);
+		this.sectionCountMemo = { body, from: span.from, to: span.to, options, count };
+		return count;
 	}
 
 	/** A note's buffer, its frontmatter set aside — or all of it when broken. */
@@ -3507,7 +3550,7 @@ export default class SnowflakeMethodPlugin
 		try {
 			const parsed = parseMarkdownFrontmatter(content);
 			const declared = documentTypeOf(parsed.frontmatter);
-			return this.projects.writingCount.countBody(
+			return this.countBodyMemoized(
 				parsed.body,
 				isDocumentType(declared) ? declared : null,
 				options,
@@ -3515,6 +3558,27 @@ export default class SnowflakeMethodPlugin
 		} catch {
 			return countWriting(countableProse(content, [], options), options);
 		}
+	}
+
+	/** One body's count, remembered for as long as the body stands still. */
+	private countBodyMemoized(
+		body: string,
+		declared: DocumentType | null,
+		options: NoteCountOptions,
+	): WritingCount {
+		const memo = this.bufferCountMemo;
+		if (
+			memo !== null &&
+			memo.declared === declared &&
+			memo.options.mode === options.mode &&
+			memo.options.headings === options.headings &&
+			memo.body === body
+		) {
+			return memo.count;
+		}
+		const count = this.projects.writingCount.countBody(body, declared, options);
+		this.bufferCountMemo = { body, declared, options, count };
+		return count;
 	}
 
 	/**
@@ -5268,9 +5332,15 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace
 				.getLeavesOfType(DASHBOARD_VIEW_TYPE)
 				.map(async (leaf) => {
-					if (leaf.view instanceof SnowflakeDashboardView) {
-						await leaf.view.refresh();
+					if (!(leaf.view instanceof SnowflakeDashboardView)) return;
+					// An off-screen dashboard keeps its stale frame and pays
+					// the refresh at reveal instead -- the bargain the
+					// manuscript streams already strike.
+					if (!leaf.view.containerEl.isShown()) {
+						leaf.view.queueRefreshWhenShown();
+						return;
 					}
+					await leaf.view.refresh();
 				}),
 		);
 		this.rerenderStatisticsViews();
@@ -5330,6 +5400,16 @@ export default class SnowflakeMethodPlugin
 		// included, so the moment the language is settled is the moment it has
 		// to be redrawn in it.
 		this.rerenderStatisticsViews();
+	}
+
+	/**
+	 * What the sidebar's mounted labels depend on: the language they were
+	 * written in and the project they speak for. While neither moves, a
+	 * rerender is a no-op, so the vault events that ask for one on every
+	 * save cost nothing.
+	 */
+	private statisticsFingerprint(): string {
+		return `${this.currentLocale()}|${this.settings.recentProjectPath ?? ''}`;
 	}
 
 	private rerenderStatisticsViews(): void {

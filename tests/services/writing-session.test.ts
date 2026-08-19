@@ -1172,6 +1172,44 @@ describe("WritingSessionService", () => {
 	});
 
 	/**
+	 * A month file changes only when a session ends, and every reading walks
+	 * the same files: parsed once per on-disk state, a repaint costs a stat
+	 * check rather than a fresh read and re-validation of the whole month.
+	 */
+	it("parses a month file once until it changes on disk", async () => {
+		const foreign =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
+		await fakeVault.seedFile(
+			foreign,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 60 * 60_000, 250)],
+			}),
+		);
+		const reads = (): number =>
+			fakeVault.readCalls.filter((path) => path === foreign).length;
+		const first = await sessions.todaySummary(project);
+		expect(first.trackedNet).toBe(250);
+		const before = reads();
+		expect(before).toBeGreaterThan(0);
+		const again = await sessions.todaySummary(project);
+		expect(again.trackedNet).toBe(250);
+		expect(reads()).toBe(before);
+		// A stop rewrites this device's own file; the other device's stays
+		// held, and the day still reads both sessions.
+		await startSession();
+		sessions.surfaceActivity(surface());
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		clock += 20_000;
+		await sessions.stop();
+		const after = await sessions.todaySummary(project);
+		expect(after.trackedNet).toBe(251);
+		expect(after.sessions).toBe(2);
+		expect(reads()).toBe(before);
+	});
+
+	/**
 	 * A seed that cannot finish must leave no session standing: a liveState
 	 * with no tracker would read as "starting" forever, refusing every auto
 	 * start while crediting nothing.

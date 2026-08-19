@@ -264,6 +264,18 @@ export class WritingSessionService {
 	 * the record without the deltas the drain had already claimed.
 	 */
 	private drainRun: Promise<void> | null = null;
+	/**
+	 * Month files parsed once per on-disk state, keyed the way the count
+	 * service keys its memo: a month file changes only when a session ends,
+	 * and every reading walks the same files -- without this, one panel mount
+	 * parses the same file four times over and every ten-second beat parses
+	 * it again. The parsed records are shared between readers and never
+	 * mutated; anything that rewrites a file moves its stat and misses here.
+	 */
+	private readonly monthMemo = new Map<
+		string,
+		{ stamp: string; file: WritingSessionMonthFile | null }
+	>();
 	private lastSnapshotAt = 0;
 	private unloading = false;
 
@@ -941,9 +953,7 @@ export class WritingSessionService {
 		const byId = new Map<string, WritingSessionRecord>();
 		for (const file of this.deps.repository.listFilesBelow(folder)) {
 			if (!file.name.endsWith(SESSION_FILE_SUFFIX)) continue;
-			const parsed = parseMonthJson(
-				await this.deps.repository.readPlainFile(file.path),
-			);
+			const parsed = await this.readMonthFile(file);
 			if (parsed === null) continue;
 			for (const session of parsed.sessions) byId.set(session.id, session);
 		}
@@ -981,14 +991,27 @@ export class WritingSessionService {
 			for (const file of this.deps.repository.listDirectFiles(folder)) {
 				if (!file.name.endsWith(SESSION_FILE_SUFFIX)) continue;
 				if (!prefixes.some((prefix) => file.name.startsWith(prefix))) continue;
-				const parsed = parseMonthJson(
-					await this.deps.repository.readPlainFile(file.path),
-				);
+				const parsed = await this.readMonthFile(file);
 				if (parsed === null) continue;
 				for (const session of parsed.sessions) byId.set(session.id, session);
 			}
 		}
 		return byId;
+	}
+
+	/** One month file, parsed once per on-disk state and shared read-only. */
+	private async readMonthFile(file: {
+		path: string;
+		stat: { mtime: number; size: number };
+	}): Promise<WritingSessionMonthFile | null> {
+		const stamp = `${String(file.stat.mtime)}:${String(file.stat.size)}`;
+		const kept = this.monthMemo.get(file.path);
+		if (kept !== undefined && kept.stamp === stamp) return kept.file;
+		const parsed = parseMonthJson(
+			await this.deps.repository.readPlainFile(file.path),
+		);
+		this.monthMemo.set(file.path, { stamp, file: parsed });
+		return parsed;
 	}
 
 	/**

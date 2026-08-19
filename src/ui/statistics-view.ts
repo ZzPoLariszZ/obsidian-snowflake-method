@@ -11,10 +11,19 @@ export const STATISTICS_VIEW_TYPE = 'snowflake-method-statistics';
  */
 export class SnowflakeStatisticsView extends ItemView {
 	private dispose: (() => void) | null = null;
+	private shownFingerprint: string | null = null;
 
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly bridge: SessionPanelBridge,
+		/**
+		 * What the mounted labels were written under -- the language and the
+		 * project the sidebar speaks for. A rerender that finds it unchanged
+		 * has nothing to redraw: the widgets patch their own numbers, and
+		 * rebuilding them on every vault save would tear the panel down as
+		 * fast as the author types.
+		 */
+		private readonly fingerprint: () => string,
 	) {
 		super(leaf);
 	}
@@ -44,6 +53,7 @@ export class SnowflakeStatisticsView extends ItemView {
 	 */
 	rerender(): void {
 		if (this.dispose === null) return;
+		if (this.fingerprint() === this.shownFingerprint) return;
 		this.dispose();
 		this.dispose = null;
 		this.contentEl.empty();
@@ -51,6 +61,7 @@ export class SnowflakeStatisticsView extends ItemView {
 	}
 
 	private mount(): void {
+		this.shownFingerprint = this.fingerprint();
 		// A column beside the writing shows the day it is part of. The readings
 		// that span a month or a year are the pane's, where there is width to
 		// draw them at.
