@@ -6872,11 +6872,15 @@ button.snowflake-method-kind-options {
 	container-type: inline-size;
 }
 
-/* One measure for the whole row. Three squares and the two gaps between them
-   make its width, and it is always three: a row that fitted four left an empty
-   track beside the three, and the reading that spanned the row was then wider
-   than the three it sat under. Below the width three squares can still be read
-   at, everything stacks in one column instead. */
+/* One measure for the whole row, and a ladder of them. Squares and the gaps
+   between them make its width, and how many squares is decided by the type
+   rather than by the room: the scale below stops shrinking at its floor while
+   the box carries on, so a card narrower than about 250px is one whose own
+   contents no longer fit inside it. The row sheds a column rather than
+   squeezing another in -- three from 53rem, two from 34rem, one below that,
+   which is all the sidebar has. It never fits four: a row of four left an
+   empty track beside them, and the reading that spanned the row came out
+   wider than the cards it sat under. */
 .snowflake-method-session-widgets {
 	--snowflake-method-widget-gap: var(
 		--snowflake-method-tab-height,
@@ -6888,30 +6892,65 @@ button.snowflake-method-kind-options {
 	align-items: stretch;
 }
 
+/* Where a row will not seat two squares side by side it keeps the day's three
+   readings and puts the stretches away. A column that narrow makes every card
+   as tall as the pane is wide, and ten of them one under another is a scroll
+   rather than a dashboard -- the stretches are the ones that suffer most by
+   it, since a year of weeks and a hundred and eighty days both want width and
+   are given a column instead. Counted rather than named, because the first
+   three are the day itself and the order they are built in says so. The
+   sidebar shows only those three to begin with, so this passes it by. */
+.snowflake-method-session-widgets > .snowflake-method-widget:nth-child(n + 4) {
+	display: none;
+}
+
 @container (min-width: 34rem) {
-	/* Three columns, and rows as tall as one of them is wide: a square's own
-	   side is what is left of the row after its two gaps, divided by three.
+	/* Two columns, and rows at least as tall as one of them is wide: a
+	   square's own side is what is left of the row after its gap, halved.
 	   Sizing the rows rather than the widgets is what lets a reading say how
 	   many squares it takes and be given exactly that -- one spanning the row
 	   is a square tall without being told a height, and a calendar spanning
 	   two columns and two rows is square because both spans measure the same
 	   thing.
 
+	   `minmax` rather than a plain length is the other half of the rule: a
+	   square is where a row starts, not where it ends, so a card whose
+	   contents outgrow it makes the row taller instead of drawing outside it.
+
 	   The `cqi` reaches the panel: the row is not itself a container, so a
 	   unit written in a rule applied to it resolves one box further out, which
 	   here is the box the columns were divided from. */
 	.snowflake-method-session-widgets {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		grid-auto-rows: calc(
-			(100cqi - 2 * var(--snowflake-method-widget-gap)) / 3
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-auto-rows: minmax(
+			calc((100cqi - var(--snowflake-method-widget-gap)) / 2),
+			auto
 		);
-		/* Here the grid decides both of a widget's sides, which has to be said
-		   out loud: a box with an aspect ratio is not stretched by the default
-		   alignment, so a widget spanning two columns took its height from the
-		   row and then drew its width from its own ratio -- one column wide in
-		   a two-column place. Asking for the stretch explicitly makes both
-		   sides definite, which is what leaves the ratio with nothing to do. */
-		justify-items: stretch;
+	}
+
+	/* The row sets the floor from here up, so the card stops setting its own.
+	   Named through the row it sits in, which is what puts it above the card's
+	   own rule further down the file. */
+	.snowflake-method-session-widgets > .snowflake-method-widget {
+		min-height: 0;
+	}
+
+	/* And there is room for the rest of the panel again. */
+	.snowflake-method-session-widgets
+		> .snowflake-method-widget:nth-child(n + 4) {
+		display: flex;
+	}
+
+	/* The day's three readings are a pair and a list. Two columns seat the
+	   pair and leave the list beside a hole, because the wide reading after it
+	   begins a row of its own and nothing later can come up without putting
+	   the panel out of order. Names down one edge and their numbers down the
+	   other is the shape that widens best, so the list takes the row -- and
+	   takes the wider reading's scale with it, rather than setting six rows in
+	   type meant for a square. */
+	.snowflake-method-widget-today {
+		--snowflake-method-widget-scale: max(var(--font-ui-medium), 2.6cqi);
+		grid-column: 1 / -1;
 	}
 
 	.snowflake-method-widget-span-2 {
@@ -6920,6 +6959,25 @@ button.snowflake-method-kind-options {
 
 	.snowflake-method-widget-tall {
 		grid-row: span 2;
+	}
+}
+
+@container (min-width: 53rem) {
+	/* Three columns, once a third of the row is still a card its type fits
+	   in. The day's three readings come back onto one row together, so the
+	   list gives the row back and is a square again. */
+	.snowflake-method-session-widgets {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-auto-rows: minmax(
+			calc((100cqi - 2 * var(--snowflake-method-widget-gap)) / 3),
+			auto
+		);
+	}
+
+	.snowflake-method-widget-today {
+		/* Invalid on purpose: it sends the scale below back to its fallback. */
+		--snowflake-method-widget-scale: initial;
+		grid-column: auto;
 	}
 }
 
@@ -6940,26 +6998,33 @@ button.snowflake-method-kind-options {
 	font-size: var(--font-ui-medium);
 }
 
-/* A square, and one that stays square. Holding the ratio is the easy half;
-   the hard half is that a square only keeps its shape while its contents fit
-   inside it, and at a sidebar's width fixed type and fixed padding do not. So
-   the widget is its own container and everything in it is measured against
-   the widget's width: the dial, the type, the padding and the gaps all shrink
+/* A square, and one that starts square. Holding the shape is the easy half;
+   the hard half is that a square only keeps it while its contents fit inside
+   it, and at a sidebar's width fixed type and fixed padding do not. So the
+   widget is its own container and everything in it is measured against the
+   widget's width: the dial, the type, the padding and the gaps all shrink
    with the box, and the shape holds at any width instead of springing open
    the moment the window narrows.
 
-   `min-height: 0` is what makes the ratio final rather than a suggestion --
-   without it a grid item's automatic minimum lets content push the box taller.
-   Everything inside is sized to fit well within the square, so nothing is
-   asked to overflow it. */
+   Where the type reaches its floor and stops shrinking, the box stops with
+   it: the square is a minimum rather than a fixed height, so a card that can
+   no longer hold what is in it grows taller instead of drawing outside
+   itself. A ratio cannot say that -- it settles both sides at once, which is
+   what had a cramped card painting its first row above its own top border and
+   its last below the bottom one.
+
+   In one column the widget's width is the panel's, and that is what makes
+   `100cqi` the square here: the unit resolves against the panel because a
+   container cannot measure itself. It holds while the column is the panel's
+   full width and the panel has no padding of its own. From two columns up the
+   row sets the floor instead and this is turned off. */
 .snowflake-method-widget {
 	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
-	aspect-ratio: 1;
 	min-width: 0;
-	min-height: 0;
+	min-height: 100cqi;
 	padding: var(--size-4-4);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
@@ -7206,20 +7271,32 @@ button.snowflake-method-kind-options {
 	padding-inline: 6cqi;
 }
 
+/* A name and its reading on one line, and on two lines where one will not
+   hold them both: a sidebar can be dragged narrower than the shortest of
+   these rows, and a reading that will not fit beside its name belongs under
+   it rather than outside the card. The card grows by a line to take it. */
 .snowflake-method-widget-row {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
 	gap: var(--size-4-2);
+	flex-wrap: wrap;
 	color: var(--text-normal);
 	font-size: 1.25em;
 	font-weight: var(--font-bold);
 }
 
+/* The automatic margin is what holds the reading at the far edge once it is
+   on a line of its own, where there is no name left to be spaced away from.
+   Its own two halves part in turn, so the narrowest row is one number to a
+   line rather than a number reaching past the border. */
 .snowflake-method-widget-row-value {
 	display: inline-flex;
 	align-items: baseline;
+	justify-content: flex-end;
 	gap: 0.5em;
+	flex-wrap: wrap;
+	margin-inline-start: auto;
 	color: var(--interactive-accent);
 	font-family: var(--font-monospace);
 	font-variant-numeric: tabular-nums;
@@ -7253,7 +7330,7 @@ button.snowflake-method-kind-options {
 .snowflake-method-widget-wide {
 	--snowflake-method-widget-scale: var(--font-ui-medium);
 	grid-column: 1 / -1;
-	aspect-ratio: auto;
+	min-height: 0;
 }
 
 .snowflake-method-widget-wide .snowflake-method-widget-header {
@@ -7289,13 +7366,18 @@ button.snowflake-method-kind-options {
    way the days are going. */
 /* The chart takes the height the widget has left rather than deciding one
    from its own width: the widget's height is the row's to set. The floor is
-   what it falls back to where the widget is sized by its contents instead. */
+   what it falls back to where the widget is sized by its contents instead,
+   and it is set at what the narrowest row can actually spare -- a card of
+   250px has 216px inside it, and the header, the three figures under the
+   chart and the gaps between them take 120 of those. Asking for more than
+   the rest was how this reading came to draw its top gridline above the card
+   and its figures below it. */
 .snowflake-method-trend-chart {
 	position: relative;
 	display: flex;
 	flex: 1 1 0;
 	flex-direction: column;
-	min-height: 10rem;
+	min-height: 6rem;
 }
 
 .snowflake-method-trend-plot {
@@ -7597,8 +7679,14 @@ button.snowflake-method-kind-options {
 	align-items: stretch;
 }
 
+/* A week's own height, and a ceiling on it. The scale a calendar is set in
+   has a floor of its own, so `5em` stops shrinking while the card does not,
+   and six weeks of a height that will not fall is more than a narrow card
+   holds. The share of the width is what carries on down past that floor; the
+   `em` is what the reader sees wherever there is room, since it is the
+   smaller of the two at every width the calendar was drawn for. */
 .snowflake-method-calendar-week {
-	height: 5em;
+	height: min(5em, 13.5cqi);
 	border-top: 1px solid var(--background-modifier-border);
 }
 
@@ -7824,11 +7912,17 @@ button.snowflake-method-kind-options {
 	gap: 2cqi;
 }
 
+/* Sized by the room the key and the name leave, not by the widget's width,
+   which is the same way the clock's ring is sized and for the same reason: a
+   basis of `auto` asks the row for a whole square and gets it, and the ring
+   then sits in a card half again as tall as the ones beside it. From zero it
+   asks for nothing and takes what is left. */
 .snowflake-method-modes-dial {
 	position: relative;
 	align-self: center;
 	min-height: 0;
-	flex: 1 1 auto;
+	max-width: 100%;
+	flex: 1 1 0;
 	aspect-ratio: 1;
 }
 
