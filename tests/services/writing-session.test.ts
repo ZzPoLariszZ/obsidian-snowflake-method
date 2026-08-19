@@ -974,6 +974,35 @@ describe("WritingSessionService", () => {
 	});
 
 	/**
+	 * A month file is named for the month its own device was in when the
+	 * session began, and another zone's month can sit a day across from this
+	 * one's: the walk has to open the neighbouring months too, or a session
+	 * vanishes from the very day it is shown on.
+	 */
+	it("finds a session another zone filed under the neighbouring month", async () => {
+		// Started 09:30 on 2026-09-01 in a UTC+14 zone: that moment is
+		// 2026-08-31T19:30Z, the last of August to this device reading in UTC.
+		const startedAt = Date.parse("2026-08-31T19:30:00.000Z");
+		const september =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_09_device-b_writing_session.json";
+		await fakeVault.seedFile(
+			september,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(startedAt, 250)],
+			}),
+		);
+		const days = await sessions.totalsBetween(
+			project,
+			"2026-08-31",
+			"2026-08-31",
+		);
+		expect(days).toHaveLength(1);
+		expect(days[0]?.sessions).toBe(1);
+		expect(days[0]?.trackedNet).toBe(250);
+	});
+
+	/**
 	 * The debounce drain runs outside the mutation queue, so a stop can land
 	 * while a drain holds deltas it has already claimed from the pending map.
 	 * The stop must wait for that drain, or the record is written without the

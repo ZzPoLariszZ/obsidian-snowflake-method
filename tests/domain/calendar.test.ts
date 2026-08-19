@@ -144,11 +144,28 @@ describe('calendar', () => {
 		expect(weekOfYear('2026-01-01', 'monday')).toBe(1);
 		expect(weekOfYear('2026-01-04', 'monday')).toBe(1);
 		expect(weekOfYear('2026-01-05', 'monday')).toBe(2);
-		expect(weekOfYear('2026-12-31', 'monday')).toBe(53);
 		// The first of January 2026 is a Thursday, so a Sunday-started week
 		// opens three days earlier and the split lands elsewhere.
 		expect(weekOfYear('2026-01-03', 'sunday')).toBe(1);
 		expect(weekOfYear('2026-01-04', 'sunday')).toBe(2);
+	});
+
+	/**
+	 * The week that holds the first of January is week one however it is
+	 * asked for -- by its January days or by its December ones. A calendar
+	 * grid asks by the row's opening day, which for January's first row lies
+	 * in the old December: numbered against the old year it would read 53,
+	 * and the year's rows would run 53, 2, 3 with no week one anywhere.
+	 */
+	it('gives a week spanning New Year to the year it runs into', () => {
+		// 2025-12-29 opens the Monday week that holds 2026-01-01.
+		expect(weekOfYear('2025-12-29', 'monday')).toBe(1);
+		expect(weekOfYear('2025-12-31', 'monday')).toBe(1);
+		// The week before belongs whole to 2025 and keeps its old number.
+		expect(weekOfYear('2025-12-28', 'monday')).toBe(52);
+		// 2026-12-31 sits in the week that holds 2027-01-01.
+		expect(weekOfYear('2026-12-31', 'monday')).toBe(1);
+		expect(weekOfYear('2026-12-27', 'monday')).toBe(52);
 	});
 
 	it('names a month the way the reader names it', () => {

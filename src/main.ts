@@ -2573,6 +2573,18 @@ export default class SnowflakeMethodPlugin
 			this.sessions.subscribe((event) => this.handleSessionEvent(event)),
 		);
 		this.registerWritingSurfaceWatch(this.app.workspace.containerEl.doc);
+		// Popout windows already on screen never fire `window-open` again --
+		// a plugin update or a disable-enable with one open -- so their
+		// documents are gathered from the leaves they hold. Windows opened
+		// later arrive through the `window-open` handler instead, so no
+		// document is watched twice.
+		const watched = new Set<Document>([this.app.workspace.containerEl.doc]);
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const doc = leaf.view.containerEl.doc;
+			if (watched.has(doc)) return;
+			watched.add(doc);
+			this.registerWritingSurfaceWatch(doc);
+		});
 	}
 
 	/** This installation's id, minted once and kept out of data.json. */
@@ -3182,12 +3194,13 @@ export default class SnowflakeMethodPlugin
 				).open();
 			},
 			start: () => {
-				// Started from a pane, the sitting is that pane's project's:
-				// a Start button that began a session somewhere else would
-				// leave the pane it was pressed on still saying Start.
+				// Started from a panel, the sitting is that panel's project's
+				// -- the same one every reading above resolves, the sidebar's
+				// included. A Start that resolved the project any other way
+				// could begin a session the panel itself then refuses to show.
 				void this.startConfiguredSession(
 					this.configuredStart(),
-					context.projectPath ?? null,
+					panelProject(),
 				).catch((error: unknown) => {
 					this.showError(error);
 				});

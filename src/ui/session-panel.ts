@@ -184,6 +184,14 @@ const PACE_FLOOR_MS = 60_000;
 const DAY_REREAD_MS = 10_000;
 
 /**
+ * How often the panel checks whether the calendar has turned over. Every
+ * repaint otherwise rides a session event, and a night with no session
+ * running sends none: without its own slow clock the panel would greet the
+ * morning still calling yesterday today.
+ */
+const DAY_WATCH_MS = 60_000;
+
+/**
  * Renders the three session widgets into `container` and keeps them current:
  * the day's goal, the clock, and what the day came to. The once-a-second
  * updates patch these widgets' own text nodes; nothing here ever asks a host
@@ -329,9 +337,22 @@ export function renderSessionPanel(
 	refreshHistory();
 	refreshSpread();
 	refreshToday();
+	// The one clock the panel keeps for itself: the day can turn over with no
+	// session running and so no event to ride, and every reading here is a
+	// reading of a named day.
+	let watchedDay = bridge.today();
+	const dayWatch = window.setInterval(() => {
+		const day = bridge.today();
+		if (day === watchedDay) return;
+		watchedDay = day;
+		refreshToday();
+		refreshSpread();
+		calendar?.refresh();
+	}, DAY_WATCH_MS);
 
 	return () => {
 		disposed = true;
+		window.clearInterval(dayWatch);
 		unsubscribe();
 		trend?.dispose();
 		calendar?.dispose();
@@ -1226,7 +1247,14 @@ function renderHeatmapWidget(
 			measure.value = chosen;
 			const levels = heatLevels(history, chosen, bridge.dailyWordGoal());
 			const start = bridge.weekStart();
-			const mark = [chosen, start, levels.join('')].join('|');
+			// The window's first day is part of what is drawn -- every cell's
+			// date, the month labels, the weekday lead -- so it is part of the
+			// key: a year of unbroken zeros slides at midnight with the level
+			// string unchanged, and without the day it would keep yesterday's
+			// dates on the grid.
+			const mark = [chosen, start, history[0]?.day ?? '', levels.join('')].join(
+				'|',
+			);
 			if (mark === drawn) return;
 			drawn = mark;
 			drawKey(key, t, chosen);

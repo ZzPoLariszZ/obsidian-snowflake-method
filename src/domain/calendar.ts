@@ -218,7 +218,11 @@ export function startOfWeek(day: string, start: WeekStartDay): string {
  * it every week of the year.
  */
 export function weekOfYear(day: string, start: WeekStartDay): number {
-	const opening = startOfWeek(`${day.slice(0, 4)}-01-01`, start);
+	// The year a week belongs to is the year its last day is in: a week that
+	// crosses New Year holds the first of January, and that makes it week one
+	// of the year it runs into rather than week 53 of the one it left.
+	const year = addDays(startOfWeek(day, start), 6).slice(0, 4);
+	const opening = startOfWeek(`${year}-01-01`, start);
 	return Math.floor(daysBetween(opening, day) / 7) + 1;
 }
 

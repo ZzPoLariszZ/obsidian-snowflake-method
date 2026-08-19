@@ -6890,6 +6890,10 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedProjectComplete = false;
 		this.renderedStep = null;
 		this.releaseMemberControls();
+		// Whatever the last render mounted must let go here too: an error
+		// screen that only detached the panel would leave its subscription
+		// ticking a ghost for as long as the retry button stands.
+		this.disposeSessionPanel();
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

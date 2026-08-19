@@ -1,6 +1,7 @@
 import {
 	SessionTracker,
 	addDays,
+	addMonths,
 	calendarDay,
 	daysBetween,
 	emptyBands,
@@ -962,7 +963,15 @@ export class WritingSessionService {
 	): Promise<Map<string, WritingSessionRecord>> {
 		const layout = getProjectPathLayout(project.locale);
 		const byId = new Map<string, WritingSessionRecord>();
-		for (const { year, months } of monthsBetween(from, through)) {
+		// A file is named for the month its own device was in when the session
+		// began; this reader's months can sit a calendar day either side of
+		// that at a zone's edge. So the walk opens one month more on each side
+		// and lets the day buckets do the filtering -- two small files against
+		// a session silently missing from the day it is shown on.
+		for (const { year, months } of monthsBetween(
+			addMonths(from, -1),
+			addMonths(through, 1),
+		)) {
 			const folder = sessionYearFolder(
 				project.rootPath,
 				layout.directories.writingSessions,
