@@ -1,27 +1,40 @@
 import { setIcon } from 'obsidian';
 
 import {
+	BAND_SPANS,
+	DAY_BANDS,
 	HEATMAP_DAYS,
-	HEATMAP_MEASURES,
 	HEAT_LEVELS,
+	WRITING_MODES,
 	axisScale,
+	bandLabel,
 	formatDay,
 	heatLevels,
 	trendTone,
-	TREND_MEASURES,
+	READING_MEASURES,
 	TREND_RANGES,
 	addDays,
+	addMonths,
 	dayOfMonth,
 	dayOfWeek,
 	daysBetween,
+	daysInMonth,
 	formatClock,
 	monthLabels,
 	monthOfDay,
+	monthTitle,
+	startOfMonth,
+	startOfWeek,
+	weekOfYear,
+	emptyModes,
 	weekStartIndex,
 	weekdayLabels,
+	type BandSpan,
+	type BandTotals,
 	type DateFormat,
 	type HeatmapMeasure,
-	type TrendMeasure,
+	type ModeTotals,
+	type ReadingMeasure,
 	type WeekStartDay,
 	type WritingMode,
 	type WritingSessionScope,
@@ -31,6 +44,7 @@ import type {
 	LiveWritingSession,
 	TodayWritingSummary,
 	WritingDayTotals,
+	WritingSpread,
 } from '../services';
 
 /**
@@ -51,8 +65,15 @@ export interface SessionPanelContext {
  */
 export interface SessionHistoryView {
 	trendDays: number;
-	trendMeasure: TrendMeasure;
-	heatmapMeasure: HeatmapMeasure;
+	/**
+	 * What all four readings of the writing are measuring. They share it: a
+	 * reader who has just asked the trend about deleted words has asked the
+	 * year, the month and the hours of the day the same question.
+	 */
+	measure: ReadingMeasure;
+	/** Whether the year is shading the goal instead, which only it can. */
+	heatmapGoal: boolean;
+	bandSpan: BandSpan;
 }
 
 /** What a panel puts in, beyond the three widgets every panel carries. */
@@ -96,10 +117,16 @@ export interface SessionPanelBridge {
 	weekStart(): WeekStartDay;
 	/** How the author writes a date down. */
 	dateFormat(): DateFormat;
+	/** The day the reading device is on, which is the day a calendar marks. */
+	today(): string;
 	live(): LiveWritingSession | null;
 	todaySummary(): Promise<WritingDayTotals | null>;
 	/** The last `days` days of this panel's project, oldest first. */
 	history(days: number): Promise<WritingDayTotals[] | null>;
+	/** Every day of the month `anchor` falls in, the empty ones included. */
+	month(anchor: string): Promise<WritingDayTotals[] | null>;
+	/** How this project's sittings fell across a day, and across the work. */
+	spread(span: BandSpan): Promise<WritingSpread | null>;
 	view(): SessionHistoryView;
 	setView(patch: Partial<SessionHistoryView>): void;
 	/** Fires on every change; `structural` marks a start, stop or recovery. */
@@ -184,6 +211,12 @@ export function renderSessionPanel(
 	const showHistory = options.history ?? true;
 	const trend = showHistory ? renderTrendWidget(root, bridge) : null;
 	const heatmap = showHistory ? renderHeatmapWidget(root, bridge) : null;
+	const calendar = showHistory ? renderCalendarWidget(root, bridge) : null;
+	const goals = showHistory
+		? SPAN_GOALS.map((span) => renderSpanGoalWidget(root, bridge, span))
+		: [];
+	const bands = showHistory ? renderBandsWidget(root, bridge) : null;
+	const modes = showHistory ? renderModesWidget(root, bridge) : null;
 
 	// A refresh may find the panel already gone; the token stops a late
 	// answer from writing into a detached element for nothing.
@@ -193,6 +226,7 @@ export function renderSessionPanel(
 	const paintHistory = (): void => {
 		trend?.update(history);
 		heatmap?.update(history);
+		for (const gauge of goals) gauge.update(history);
 	};
 	const refreshHistory = (): void => {
 		if (!showHistory) return;
@@ -207,6 +241,37 @@ export function renderSessionPanel(
 				// A year that cannot be read leaves the last one standing.
 			});
 	};
+	// The two readings drawn from the sittings themselves rather than from the
+	// days they fell on. One walk answers both, so a span two widgets want is
+	// fetched once and the answer handed to each of them.
+	let spreads = new Map<BandSpan, Promise<WritingSpread | null>>();
+	const spreadFor = (span: BandSpan): Promise<WritingSpread | null> => {
+		let pending = spreads.get(span);
+		if (pending === undefined) {
+			pending = bridge.spread(span).catch(() => null);
+			spreads.set(span, pending);
+		}
+		return pending;
+	};
+	const paintSpread = (): void => {
+		if (bands !== null) {
+			void spreadFor(bridge.view().bandSpan).then((spread) => {
+				if (!disposed && spread !== null) bands.update(spread);
+			});
+		}
+		// Which stages the work went through is a question about the whole of
+		// it, whatever stretch the hours beside it are being read over.
+		if (modes !== null) {
+			void spreadFor('all').then((spread) => {
+				if (!disposed && spread !== null) modes.update(spread);
+			});
+		}
+	};
+	const refreshSpread = (): void => {
+		if (!showHistory) return;
+		spreads = new Map();
+		paintSpread();
+	};
 	const refreshToday = (): void => {
 		lastReadAt = Date.now();
 		void bridge
@@ -215,6 +280,7 @@ export function renderSessionPanel(
 				if (disposed) return;
 				today.update(summary);
 				goal.update(summary);
+				calendar?.patch(summary);
 				if (summary === null) return;
 				// Today is the last day of the year behind it, and it moves while
 				// it is written. The fresher reading is dropped into place rather
@@ -243,17 +309,23 @@ export function renderSessionPanel(
 		// the month's records, and the change events arrive once a second, so
 		// the day is re-read on its own slower beat -- fast enough for a figure
 		// measured over a whole day, and at once when a session begins or ends.
-		if (structural) refreshHistory();
+		if (structural) {
+			refreshHistory();
+			refreshSpread();
+			calendar?.refresh();
+		}
 		if (structural || Date.now() - lastReadAt >= DAY_REREAD_MS) refreshToday();
 	});
 	timer.update();
 	refreshHistory();
+	refreshSpread();
 	refreshToday();
 
 	return () => {
 		disposed = true;
 		unsubscribe();
 		trend?.dispose();
+		calendar?.dispose();
 		panel.remove();
 	};
 }
@@ -290,23 +362,20 @@ function createWidget(
 	};
 }
 
-/** The day's net words against the day's goal, drawn as a filling arc. */
-function renderGoalWidget(
-	parent: HTMLElement,
-	bridge: SessionPanelBridge,
-): { update: (summary: TodayWritingSummary | null) => void } {
-	const t = bridge.t;
-	const frame = createWidget(parent, {
-		title: t('sessionWidget.goal.title'),
-		cls: 'snowflake-method-widget-goal',
-		settings: {
-			label: t('sessionWidget.goal.edit'),
-			open: () => {
-				bridge.editDailyWordGoal();
-			},
-		},
-	});
+/** The two stretches a daily goal adds up to, beside the day itself. */
+const SPAN_GOALS = ['week', 'month'] as const;
+type SpanGoal = (typeof SPAN_GOALS)[number];
 
+/**
+ * A half circle filling towards a target, with the reading standing in its
+ * bowl rather than beside it. Three widgets ask the same question over three
+ * lengths of time, so the dial that answers it is built once and told the two
+ * numbers.
+ */
+function createGauge(
+	frame: WidgetFrame,
+	t: SessionPanelBridge['t'],
+): (net: number, target: number) => void {
 	const gauge = frame.body.createDiv({ cls: 'snowflake-method-gauge' });
 	const svg = frame.body.doc.createElementNS(SVG_NS, 'svg');
 	svg.setAttribute('viewBox', '0 0 120 66');
@@ -333,34 +402,96 @@ function renderGoalWidget(
 		cls: 'snowflake-method-widget-caption',
 	});
 
+	return (net, target) => {
+		// A dial with no goal on it has no goal to mark.
+		mark.setAttribute('visibility', target > 0 ? 'visible' : 'hidden');
+		if (target <= 0) {
+			percent.setText('—');
+			caption.setText(t('sessionWidget.goal.unset'));
+			fill.setAttribute('stroke-dashoffset', `${GAUGE_LENGTH}`);
+			return;
+		}
+		const share = net / target;
+		// The reading is the stretch's own number, however far past the goal it
+		// went. The arc is what the dial can hold: words lost leave it at
+		// nothing rather than behind it, and anything beyond 120% fills it.
+		const drawn = Math.min(GAUGE_CEILING, Math.max(0, share));
+		percent.setText(`${Math.round(share * 100)}%`);
+		caption.setText(
+			t('sessionWidget.goal.progress', {
+				net: grouped(net),
+				goal: grouped(target),
+			}),
+		);
+		fill.setAttribute(
+			'stroke-dashoffset',
+			`${GAUGE_LENGTH * (1 - drawn / GAUGE_CEILING)}`,
+		);
+	};
+}
+
+/** The day's net words against the day's goal, drawn as a filling arc. */
+function renderGoalWidget(
+	parent: HTMLElement,
+	bridge: SessionPanelBridge,
+): { update: (summary: TodayWritingSummary | null) => void } {
+	const t = bridge.t;
+	const frame = createWidget(parent, {
+		title: t('sessionWidget.goal.title'),
+		cls: 'snowflake-method-widget-goal',
+		settings: {
+			label: t('sessionWidget.goal.edit'),
+			open: () => {
+				bridge.editDailyWordGoal();
+			},
+		},
+	});
+	const show = createGauge(frame, t);
 	return {
 		update: (summary) => {
-			const target = bridge.dailyWordGoal();
-			const net = summary?.trackedNet ?? 0;
-			// A dial with no goal on it has no goal to mark.
-			mark.setAttribute('visibility', target > 0 ? 'visible' : 'hidden');
-			if (target <= 0) {
-				percent.setText('—');
-				caption.setText(t('sessionWidget.goal.unset'));
-				fill.setAttribute('stroke-dashoffset', `${GAUGE_LENGTH}`);
-				return;
+			show(summary?.trackedNet ?? 0, bridge.dailyWordGoal());
+		},
+	};
+}
+
+/**
+ * The same dial over a week and over a month. Neither carries a goal of its
+ * own: a week asks for seven days of the daily one and a month for as many
+ * days as it holds, so one number set in one place moves all three widgets --
+ * and a short February asks for less than a long March, which is the only way
+ * a month's target can be honest about the month it is.
+ */
+function renderSpanGoalWidget(
+	parent: HTMLElement,
+	bridge: SessionPanelBridge,
+	span: SpanGoal,
+): { update: (history: WritingDayTotals[]) => void } {
+	const t = bridge.t;
+	const frame = createWidget(parent, {
+		title: t(`sessionWidget.${span}.title`),
+		cls: `snowflake-method-widget-goal snowflake-method-widget-${span}`,
+		settings: {
+			label: t('sessionWidget.goal.edit'),
+			open: () => {
+				bridge.editDailyWordGoal();
+			},
+		},
+	});
+	const show = createGauge(frame, t);
+	return {
+		update: (history) => {
+			const today = bridge.today();
+			const from =
+				span === 'week'
+					? startOfWeek(today, bridge.weekStart())
+					: startOfMonth(today);
+			// The history ends today, so the days still to come in this week or
+			// this month are simply not in it to be counted.
+			let net = 0;
+			for (const day of history) {
+				if (day.day >= from) net += day.trackedNet;
 			}
-			const share = net / target;
-			// The reading is the day's own number, however far past the goal it
-			// went. The arc is what the dial can hold: words lost leave it at
-			// nothing rather than behind it, and a day beyond 120% fills it.
-			const drawn = Math.min(GAUGE_CEILING, Math.max(0, share));
-			percent.setText(`${Math.round(share * 100)}%`);
-			caption.setText(
-				t('sessionWidget.goal.progress', {
-					net: grouped(net),
-					goal: grouped(target),
-				}),
-			);
-			fill.setAttribute(
-				'stroke-dashoffset',
-				`${GAUGE_LENGTH * (1 - drawn / GAUGE_CEILING)}`,
-			);
+			show(net, bridge.dailyWordGoal() * (span === 'week' ? 7 : daysInMonth(today)));
 		},
 	};
 }
@@ -591,6 +722,47 @@ const LABEL_EM = 4.6;
 /** Enough of a day to see, however thin the slot it is drawn in. */
 const TREND_BAR_SHARE = 0.68;
 
+/** How far the top of a bar is rounded, in the chart's own units. */
+const TREND_RADIUS = 3;
+
+/**
+ * A bar standing on the axis. Only the top is rounded, and only when the bar
+ * is the top of its pillar: where a sitting is split into its writing and the
+ * rest of it, the line between the two is a boundary rather than an end. The
+ * radius gives way to whatever the bar can spare, so a hundred and eighty days
+ * of two-pixel bars stay bars rather than turning into beads.
+ */
+function barPath(
+	x: number,
+	top: number,
+	width: number,
+	height: number,
+	round: boolean,
+): string {
+	const r = round ? Math.min(TREND_RADIUS, width / 2, height) : 0;
+	const right = x + width;
+	const bottom = top + height;
+	const to = (value: number): string => value.toFixed(2);
+	return [
+		`M ${to(x)} ${to(bottom)}`,
+		`L ${to(x)} ${to(top + r)}`,
+		`A ${r} ${r} 0 0 1 ${to(x + r)} ${to(top)}`,
+		`L ${to(right - r)} ${to(top)}`,
+		`A ${r} ${r} 0 0 1 ${to(right)} ${to(top + r)}`,
+		`L ${to(right)} ${to(bottom)}`,
+		'Z',
+	].join(' ');
+}
+
+/**
+ * How many weeks a month is drawn over, whatever it needs. A grid that grew
+ * and shrank by a row would move every date under it from one month to the
+ * next; six is what the longest month can ask for, so six is what every month
+ * is given. The month is anchored at the top of it -- its first day always
+ * falls in the first row -- and the spare week trails off into the next month.
+ */
+const CALENDAR_WEEKS = 6;
+
 /** A heatmap cell and the room round it, in the same coordinate space. */
 const CELL_SIZE = 11;
 const CELL_GAP = 3;
@@ -625,13 +797,13 @@ function renderTrendWidget(
 	const measure = createPick(
 		picks,
 		t('sessionWidget.trend.measure'),
-		TREND_MEASURES.map((name) => [name, t(`sessionWidget.trend.${name}`)]),
+		measureOptions(t),
 	);
 	range.addEventListener('change', () => {
 		bridge.setView({ trendDays: Number(range.value) });
 	});
 	measure.addEventListener('change', () => {
-		bridge.setView({ trendMeasure: measure.value as TrendMeasure });
+		bridge.setView({ measure: measure.value as ReadingMeasure });
 	});
 
 	const chart = frame.body.createDiv({ cls: 'snowflake-method-trend-chart' });
@@ -656,7 +828,7 @@ function renderTrendWidget(
 	// height from its width, because the widget's height is set by the grid it
 	// spans. So the drawing is told the box, and redrawn when the box changes.
 	let shown: WritingDayTotals[] = [];
-	let shape: TrendMeasure = 'net';
+	let shape: ReadingMeasure = 'net';
 	let picked: string | null = null;
 	const paint = (): void => {
 		drawTrend(plot, bridge, shown, shape);
@@ -685,19 +857,19 @@ function renderTrendWidget(
 		update: (history) => {
 			const view = bridge.view();
 			range.value = `${view.trendDays}`;
-			measure.value = view.trendMeasure;
+			measure.value = view.measure;
 			const days = history.slice(Math.max(0, history.length - view.trendDays));
-			const totals = days.map((day) => trendValue(day, view.trendMeasure));
+			const totals = days.map((day) => trendValue(day, view.measure));
 			const sum = totals.reduce((carried, one) => carried + one, 0);
 			const top = Math.max(0, ...totals.map(Math.abs));
-			const words = view.trendMeasure !== 'time';
+			const words = view.measure !== 'time';
 			const say = (value: number): string =>
 				words ? grouped(Math.round(value)) : formatClock(Math.round(value));
 			average.setText(say(days.length === 0 ? 0 : sum / days.length));
 			highest.setText(say(top));
 			cumulative.setText(say(sum));
 			shown = days;
-			shape = view.trendMeasure;
+			shape = view.measure;
 			paint();
 		},
 	};
@@ -714,7 +886,7 @@ function dayClicked(event: MouseEvent): string | null {
 function dayDetail(
 	bridge: SessionPanelBridge,
 	day: WritingDayTotals,
-	measure: TrendMeasure,
+	measure: ReadingMeasure,
 ): string[] {
 	return [
 		formatDay(day.day, bridge.dateFormat()),
@@ -787,7 +959,7 @@ function createDetail(frame: HTMLElement): {
  * the sitting is what the bar draws, and the writing in it is what the
  * readings underneath are about.
  */
-function trendValue(day: WritingDayTotals, measure: TrendMeasure): number {
+function trendValue(day: WritingDayTotals, measure: ReadingMeasure): number {
 	if (measure === 'net') return day.trackedNet;
 	if (measure === 'added') return day.added;
 	if (measure === 'deleted') return day.deleted;
@@ -804,7 +976,7 @@ function drawTrend(
 	chart: HTMLElement,
 	bridge: SessionPanelBridge,
 	days: WritingDayTotals[],
-	measure: TrendMeasure,
+	measure: ReadingMeasure,
 ): void {
 	const t = bridge.t;
 	chart.empty();
@@ -878,11 +1050,8 @@ function drawTrend(
 			const size = rise(value);
 			if (size <= 0) continue;
 			svg.append(
-				svgEl(doc, 'rect', {
-					x,
-					y: plot.bottom - size,
-					width: bar,
-					height: size,
+				svgEl(doc, 'path', {
+					d: barPath(x, plot.bottom - size, bar, size, true),
 					// Deleted words are a loss however the day is read, and a
 					// negative net is one too; everything else is a gain.
 					class: `snowflake-method-trend-${trendTone(measure, value)}`,
@@ -890,21 +1059,21 @@ function drawTrend(
 			);
 			continue;
 		}
-		// A sitting, split where the writing stopped: focus on the axis, and
-		// the rest of the time standing on it.
+		// A sitting drawn as one pillar with the writing inside it: the whole
+		// of the time in the paler accent, and the focus standing in front of
+		// it from the axis up. Both are rounded at the top, which is what makes
+		// the writing read as a pillar within a pillar rather than as two
+		// blocks stacked -- a rounded top under a square bottom would leave two
+		// notches of background where they met.
 		for (const [part, span] of [
+			['idle', day.totalMs],
 			['focus', day.focusMs],
-			['idle', day.idleMs],
 		] as const) {
 			const size = rise(span);
 			if (size <= 0) continue;
-			const below = part === 'focus' ? 0 : rise(day.focusMs);
 			svg.append(
-				svgEl(doc, 'rect', {
-					x,
-					y: plot.bottom - below - size,
-					width: bar,
-					height: size,
+				svgEl(doc, 'path', {
+					d: barPath(x, plot.bottom - size, bar, size, true),
 					class: `snowflake-method-trend-${part}`,
 				}),
 			);
@@ -971,13 +1140,16 @@ function renderHeatmapWidget(
 	const measure = createPick(
 		frame.header.createDiv({ cls: 'snowflake-method-widget-picks' }),
 		t('sessionWidget.heatmap.measure'),
-		HEATMAP_MEASURES.map((name) => [
-			name,
-			t(`sessionWidget.heatmap.${name}`),
-		]),
+		[...measureOptions(t), ['goal', t('sessionWidget.heatmap.goal')] as const],
 	);
 	measure.addEventListener('change', () => {
-		bridge.setView({ heatmapMeasure: measure.value as HeatmapMeasure });
+		// The goal is this reading's own; anything else is the measure all four
+		// share, so choosing it moves the other three -- and choosing one of
+		// them anywhere puts this reading back on it.
+		const chosen = measure.value as HeatmapMeasure;
+		bridge.setView(
+			chosen === 'goal' ? { heatmapGoal: true } : { measure: chosen },
+		);
 	});
 	// The card is a sibling of the scroller rather than a child of it: an
 	// absolutely placed child counts towards a scroll container's own content,
@@ -1018,7 +1190,8 @@ function renderHeatmapWidget(
 
 	return {
 		update: (history) => {
-			chosen = bridge.view().heatmapMeasure;
+			const view = bridge.view();
+			chosen = view.heatmapGoal ? 'goal' : view.measure;
 			shown = history;
 			measure.value = chosen;
 			const levels = heatLevels(history, chosen, bridge.dailyWordGoal());
@@ -1059,9 +1232,19 @@ function drawKey(
 	}
 	key.createSpan({ text: t('sessionWidget.heatmap.less') });
 	for (const level of HEAT_OPACITIES) {
-		swatch(measure === 'net' ? 'gain' : 'accent', level);
+		swatch(heatHue(measure), level);
 	}
 	key.createSpan({ text: t('sessionWidget.heatmap.more') });
+}
+
+/**
+ * The hue a reading is shaded in: time takes the accent, words the colour of
+ * the way they went. Net is drawn as a gain here because a day below nothing
+ * is shaded negative and takes the loss colour from its own level.
+ */
+function heatHue(measure: HeatmapMeasure): string {
+	if (measure === 'time' || measure === 'goal') return 'accent';
+	return measure === 'deleted' ? 'loss' : 'gain';
 }
 
 /** What one day of the grid says when it is opened. */
@@ -1073,23 +1256,35 @@ function heatDetail(
 	const t = bridge.t;
 	const goal = bridge.dailyWordGoal();
 	const said =
-		measure === 'focus'
-			? t('sessionWidget.heatmap.focusDetail', {
-					focus: formatClock(day.focusMs),
-				})
-			: measure === 'net'
-				? t('sessionWidget.heatmap.netDetail', { net: grouped(day.trackedNet) })
-				: goal <= 0
-					? t('sessionWidget.heatmap.noGoalDetail')
-					: // The grid reads a goal as met or unmet, and so does the card:
-						// a share of the way there is a reading the shading does not
-						// offer and the day was not judged on.
-						t(
-							day.trackedNet >= goal
-								? 'sessionWidget.heatmap.completed'
-								: 'sessionWidget.heatmap.uncompleted',
-						);
+		measure === 'goal'
+			? goal <= 0
+				? t('sessionWidget.heatmap.noGoalDetail')
+				: // The grid reads a goal as met or unmet, and so does the card:
+					// a share of the way there is a reading the shading does not
+					// offer and the day was not judged on.
+					t(
+						day.trackedNet >= goal
+							? 'sessionWidget.heatmap.completed'
+							: 'sessionWidget.heatmap.uncompleted',
+					)
+			: // Every other reading names itself and says its number, so the
+				// card reads the same whichever of them the grid is on.
+				`${t(`sessionWidget.measure.${measure}`)} ${dayReading(day, measure)}`;
 	return [formatDay(day.day, bridge.dateFormat()), said];
+}
+
+/** What one day comes to under a measure, written the way that measure reads. */
+function dayReading(day: WritingDayTotals, measure: ReadingMeasure): string {
+	if (measure === 'time') return formatClock(day.focusMs);
+	return grouped(dayValue(day, measure));
+}
+
+/** And the number behind it, unwritten. */
+function dayValue(day: WritingDayTotals, measure: ReadingMeasure): number {
+	if (measure === 'time') return day.focusMs;
+	if (measure === 'added') return day.added;
+	if (measure === 'deleted') return day.deleted;
+	return day.trackedNet;
 }
 
 /** The grid itself: weeks across, days down, from the week's chosen start. */
@@ -1165,7 +1360,7 @@ function drawHeatmap(
 				class: 'snowflake-method-heat-cell',
 			});
 			cell.dataset.heat =
-				level === 0 ? 'none' : level < 0 ? 'loss' : measure === 'net' ? 'gain' : 'accent';
+				level === 0 ? 'none' : level < 0 ? 'loss' : heatHue(measure);
 			cell.style.setProperty(
 				'--snowflake-method-heat',
 				`${HEAT_OPACITIES[Math.abs(level) - 1] ?? 1}`,
@@ -1175,6 +1370,509 @@ function drawHeatmap(
 		}
 	}
 	grid.append(svg);
+}
+
+/**
+ * A month at a time, one cell to a day: what the day came to, and a mark on
+ * the days that met the goal. The weeks are drawn from the day the reader
+ * starts a week on, and the days either side of the month are drawn empty so
+ * that every row is a whole week rather than a ragged one.
+ *
+ * It reads its own month rather than taking a slice of the year the two
+ * readings above it share, because a reader can walk back past that year --
+ * and a month is one or two files to open, which is what the year cost too.
+ */
+function renderCalendarWidget(
+	parent: HTMLElement,
+	bridge: SessionPanelBridge,
+): {
+	refresh: () => void;
+	patch: (summary: WritingDayTotals | null) => void;
+	dispose: () => void;
+} {
+	const t = bridge.t;
+	const frame = createWidget(parent, {
+		title: t('sessionWidget.calendar.title'),
+		cls: 'snowflake-method-widget-span-2 snowflake-method-widget-tall snowflake-method-widget-calendar',
+	});
+	const measure = createPick(
+		frame.header.createDiv({ cls: 'snowflake-method-widget-picks' }),
+		t('sessionWidget.calendar.measure'),
+		measureOptions(t),
+	);
+	measure.addEventListener('change', () => {
+		bridge.setView({ measure: measure.value as ReadingMeasure });
+	});
+
+	const bar = frame.body.createDiv({ cls: 'snowflake-method-calendar-bar' });
+	const back = stepButton(bar, 'chevron-left', t('sessionWidget.calendar.previous'));
+	const title = bar.createSpan({ cls: 'snowflake-method-calendar-month' });
+	const forward = stepButton(bar, 'chevron-right', t('sessionWidget.calendar.next'));
+	const grid = frame.body.createDiv({ cls: 'snowflake-method-calendar-grid' });
+
+	let alive = true;
+	let anchor = startOfMonth(bridge.today());
+	let days = new Map<string, WritingDayTotals>();
+
+	const paint = (): void => {
+		const chosen = bridge.view().measure;
+		const locale = bridge.locale();
+		const start = bridge.weekStart();
+		const today = bridge.today();
+		measure.value = chosen;
+		title.setText(monthTitle(anchor, locale));
+		// There is nothing ahead of today to read, so this month is as far
+		// forward as the walk goes.
+		forward.disabled = anchor === startOfMonth(today);
+		grid.empty();
+		const weekdays = weekdayLabels(locale, 'short');
+		const head = grid.createDiv({ cls: 'snowflake-method-calendar-head' });
+		// The names line up over the days, so they start where the days do.
+		head.createSpan({ cls: 'snowflake-method-calendar-weekno' });
+		for (let at = 0; at < 7; at += 1) {
+			head.createDiv({
+				cls: 'snowflake-method-calendar-weekday',
+				text: weekdays[(weekStartIndex(start) + at) % 7] ?? '',
+			});
+		}
+		const lead = (dayOfWeek(anchor) - weekStartIndex(start) + 7) % 7;
+		const goal = bridge.dailyWordGoal();
+		for (let week = 0; week < CALENDAR_WEEKS; week += 1) {
+			const opening = addDays(anchor, week * 7 - lead);
+			const row = grid.createDiv({ cls: 'snowflake-method-calendar-week' });
+			// The week's own number, at the left end of the line it opens. It is
+			// built like a day -- a number over a reading line, the reading
+			// line left empty -- so that the two columns stack to the same
+			// height and their numbers come out level with one another.
+			const weekno = row.createSpan({
+				cls: 'snowflake-method-calendar-weekno',
+			});
+			weekno.createSpan({
+				cls: 'snowflake-method-calendar-weekno-text',
+				text: `${weekOfYear(opening, start)}`,
+			});
+			weekno.createSpan({ cls: 'snowflake-method-calendar-value' });
+			for (let at = 0; at < 7; at += 1) {
+				const day = addDays(opening, at);
+				const cell = row.createDiv({ cls: 'snowflake-method-calendar-day' });
+				// The days either side keep the weeks whole and say nothing:
+				// they belong to a month this reading is not of.
+				const outside = day.slice(0, 7) !== anchor.slice(0, 7);
+				if (outside) cell.addClass('is-outside');
+				if (day === today) cell.addClass('is-today');
+				cell.createSpan({
+					cls: 'snowflake-method-calendar-date',
+					text: `${dayOfMonth(day)}`,
+				});
+				// Every day of the month says what it came to, nothing
+				// included: a day that moved nothing is a reading, and leaving
+				// it blank would make it look like a day with no answer.
+				const reading = cell.createSpan({
+					cls: 'snowflake-method-calendar-value',
+				});
+				const totals = outside ? undefined : days.get(day);
+				// A day still being written is not a day with a reading: today
+				// would say what it has come to so far and be wrong again a
+				// sentence later, and a day that has not happened has nothing
+				// to be wrong about. Both stay blank.
+				if (totals === undefined || day >= today) continue;
+				if (goal > 0 && totals.trackedNet >= goal) {
+					const met = cell.createSpan({
+						cls: 'snowflake-method-calendar-met',
+						attr: { 'aria-label': t('sessionWidget.calendar.met') },
+					});
+					// The same mark step ten awards a finished project, which is
+					// what a day that met its goal has earned in miniature.
+					setIcon(met, 'badge-check');
+				}
+				const value = dayValue(totals, chosen);
+				reading.setText(dayReading(totals, chosen));
+				// Words gained and words lost read the way they do everywhere
+				// else here, and time takes the accent the rest of the panel
+				// measures time in. Nothing at all is coloured as nothing:
+				// a day that moved no words did not gain any.
+				if (value !== 0) {
+					reading.dataset.tone =
+						chosen === 'time' ? 'focus' : trendTone(chosen, value);
+				}
+			}
+		}
+	};
+
+	const refresh = (): void => {
+		const wanted = anchor;
+		void bridge
+			.month(wanted)
+			.then((month) => {
+				if (!alive || month === null || wanted !== anchor) return;
+				days = new Map(month.map((day) => [day.day, day]));
+				paint();
+			})
+			.catch(() => {
+				// A month that cannot be read leaves the last one standing.
+			});
+	};
+	const step = (count: number): void => {
+		anchor = addMonths(anchor, count);
+		// The shape is redrawn at once and filled in when the month arrives, so
+		// a click never leaves the reader looking at the month they left.
+		days = new Map();
+		paint();
+		refresh();
+	};
+	back.addEventListener('click', () => {
+		step(-1);
+	});
+	forward.addEventListener('click', () => {
+		step(1);
+	});
+	paint();
+	refresh();
+
+	return {
+		refresh,
+		patch: (summary) => {
+			const shown = summary === null ? undefined : days.get(summary.day);
+			if (summary === null || shown === undefined) return;
+			if (
+				shown.trackedNet === summary.trackedNet &&
+				shown.focusMs === summary.focusMs
+			) {
+				return;
+			}
+			days.set(summary.day, summary);
+			paint();
+		},
+		dispose: () => {
+			alive = false;
+		},
+	};
+}
+
+/** A quiet arrow, dressed the way the app dresses its icon buttons. */
+function stepButton(
+	parent: HTMLElement,
+	icon: string,
+	label: string,
+): HTMLButtonElement {
+	const button = parent.createEl('button', {
+		cls: 'clickable-icon snowflake-method-calendar-step',
+		attr: { type: 'button', 'aria-label': label },
+	});
+	setIcon(button, icon);
+	return button;
+}
+
+/**
+ * Which hours of the day the writing happened in. A session is cut at every
+ * boundary it crosses, so the reading is of the clock rather than of the day
+ * a sitting was filed to -- one that ran from eleven at night to one in the
+ * morning shows in both of the parts it touched.
+ */
+function renderBandsWidget(
+	parent: HTMLElement,
+	bridge: SessionPanelBridge,
+): { update: (spread: WritingSpread) => void } {
+	const t = bridge.t;
+	const frame = createWidget(parent, {
+		title: t('sessionWidget.bands.title'),
+		cls: 'snowflake-method-widget-span-2 snowflake-method-widget-bands',
+	});
+	const picks = frame.header.createDiv({ cls: 'snowflake-method-widget-picks' });
+	const span = createPick(
+		picks,
+		t('sessionWidget.bands.span'),
+		BAND_SPANS.map((name) => [name, t(`sessionWidget.bands.${name}`)]),
+	);
+	const measure = createPick(picks, t('sessionWidget.bands.measure'), measureOptions(t));
+	span.addEventListener('change', () => {
+		bridge.setView({ bandSpan: span.value as BandSpan });
+	});
+	measure.addEventListener('change', () => {
+		bridge.setView({ measure: measure.value as ReadingMeasure });
+	});
+	const list = frame.body.createDiv({ cls: 'snowflake-method-band-rows' });
+	const rows = DAY_BANDS.map((_unused, at) => {
+		const row = list.createDiv({ cls: 'snowflake-method-band-row' });
+		row.createSpan({ cls: 'snowflake-method-band-label', text: bandLabel(at) });
+		const track = row.createDiv({ cls: 'snowflake-method-band-track' });
+		return {
+			row,
+			fill: track.createDiv({ cls: 'snowflake-method-band-fill' }),
+			share: row.createSpan({ cls: 'snowflake-method-band-share' }),
+		};
+	});
+
+	return {
+		update: (spread) => {
+			const view = bridge.view();
+			span.value = view.bandSpan;
+			measure.value = view.measure;
+			const chosen = view.measure;
+			const words = chosen !== 'time';
+			const value = (band: BandTotals): number =>
+				chosen === 'time'
+					? band.focusMs
+					: chosen === 'added'
+						? band.added
+						: chosen === 'deleted'
+							? band.deleted
+							: band.trackedNet;
+			// A share is of the work that happened, whichever way a part of it
+			// went: a morning that lost two hundred words was as much of the
+			// day's writing as an evening that gained them.
+			const whole = spread.bands.reduce(
+				(carried, band) => carried + Math.abs(value(band)),
+				0,
+			);
+			for (const [at, band] of spread.bands.entries()) {
+				const row = rows[at];
+				if (row === undefined) continue;
+				const share = whole === 0 ? 0 : Math.abs(value(band)) / whole;
+				row.fill.style.width = `${(share * 100).toFixed(1)}%`;
+				row.fill.dataset.tone = words ? trendTone(chosen, value(band)) : 'focus';
+				row.share.setText(
+					whole === 0
+						? '—'
+						: t('sessionWidget.bands.share', {
+								share: (share * 100).toFixed(1),
+							}),
+				);
+				// The number the share is of, for a reader who wants it: a
+				// percentage says how the day divided, not how much it came to.
+				row.row.setAttribute(
+					'title',
+					`${bandLabel(at)} · ${
+						words
+							? grouped(Math.round(value(band)))
+							: formatClock(value(band))
+					}`,
+				);
+			}
+		},
+	};
+}
+
+/**
+ * The ring of writing stages: the circle its thickness is measured from, how
+ * thick it is, how far its corners are rounded, and the arc taken out between
+ * one stage and the next. The gap is an arc length at the middle of the ring,
+ * so it looks the same width wherever it falls.
+ */
+const MODE_MID = 42;
+const MODE_THICK = 18;
+const MODE_CORNER = 4;
+const MODE_GAP = 7;
+
+/** How much thicker a stage is drawn while it is the one being read. */
+const MODE_LIFT = 5;
+
+/** The least a stage may be drawn as, so a few minutes still show. */
+const MODE_SLIVER = 1.5 / MODE_MID;
+
+/**
+ * How strongly each stage is drawn, palest first. One hue throughout at four
+ * strengths: these are four parts of one piece of work rather than four
+ * different things, and the ring darkens as the work moves from planning to
+ * proofreading.
+ */
+const MODE_SHADES = WRITING_MODES.map(
+	(_unused, at) => 0.5 + (0.5 * at) / Math.max(1, WRITING_MODES.length - 1),
+);
+
+/**
+ * One stage as a filled shape: a slice of the ring with all four of its
+ * corners rounded. A stroked arc cannot draw this -- a stroke's ends are
+ * either cut square or capped with a half circle as wide as the stroke, and
+ * that cap is a bulge, not a corner -- so each stage is its own path.
+ *
+ * Two concentric circles are tangent along the line through their centres, so
+ * a corner's own circle sits on the ray through the point it rounds: that is
+ * what makes the four fillets meet the arcs and the radial edges cleanly
+ * rather than nearly.
+ */
+function stagePath(from: number, to: number, thick: number): string {
+	const outer = MODE_MID + thick / 2;
+	const inner = MODE_MID - thick / 2;
+	// A corner can be no more than half the ring is thick, and no more of the
+	// sweep than the sweep has to give: a stage of a few minutes would
+	// otherwise be all corner and no arc.
+	const corner = Math.max(
+		0.01,
+		Math.min(MODE_CORNER, thick / 2, ((to - from) * inner) / 2),
+	);
+	const outerSeat = outer - corner;
+	const innerSeat = inner + corner;
+	const outerTurn = Math.asin(corner / outerSeat);
+	const innerTurn = Math.asin(corner / innerSeat);
+	const outerReach = Math.sqrt(outerSeat * outerSeat - corner * corner);
+	const innerReach = Math.sqrt(innerSeat * innerSeat - corner * corner);
+	const at = (radius: number, angle: number): string =>
+		`${(60 + radius * Math.cos(angle)).toFixed(2)} ${(
+			60 +
+			radius * Math.sin(angle)
+		).toFixed(2)}`;
+	const wide = (span: number): number => (span > Math.PI ? 1 : 0);
+	return [
+		`M ${at(outer, from + outerTurn)}`,
+		`A ${outer} ${outer} 0 ${wide(to - from - 2 * outerTurn)} 1 ${at(outer, to - outerTurn)}`,
+		`A ${corner} ${corner} 0 0 1 ${at(outerReach, to)}`,
+		`L ${at(innerReach, to)}`,
+		`A ${corner} ${corner} 0 0 1 ${at(inner, to - innerTurn)}`,
+		`A ${inner} ${inner} 0 ${wide(to - from - 2 * innerTurn)} 0 ${at(inner, from + innerTurn)}`,
+		`A ${corner} ${corner} 0 0 1 ${at(innerReach, from)}`,
+		`L ${at(outerReach, from)}`,
+		`A ${corner} ${corner} 0 0 1 ${at(outer, from + outerTurn)}`,
+		'Z',
+	].join(' ');
+}
+
+/**
+ * How the whole of the work divided between the stages of it. Sittings are
+ * weighed by the focus time in them rather than by the words they produced:
+ * planning and proofreading are writing that shows in the manuscript hardly at
+ * all, and counting them by their words would say they never happened.
+ *
+ * The ring says the shares and the key says which stage is which. An exact
+ * number is a question rather than a caption, so it is asked by clicking a
+ * stage and answered in the middle of the ring.
+ */
+function renderModesWidget(
+	parent: HTMLElement,
+	bridge: SessionPanelBridge,
+): { update: (spread: WritingSpread) => void } {
+	const t = bridge.t;
+	const frame = createWidget(parent, {
+		title: t('sessionWidget.modes.title'),
+		cls: 'snowflake-method-widget-modes',
+	});
+	const doc = frame.body.doc;
+	const dial = frame.body.createDiv({ cls: 'snowflake-method-modes-dial' });
+	const svg = svgEl(doc, 'svg', {
+		viewBox: '0 0 120 120',
+		focusable: 'false',
+		class: 'snowflake-method-modes-ring',
+	});
+	// Drawn only while there is nothing to divide: behind separated stages it
+	// would fill the very gaps that separate them.
+	const track = svgEl(doc, 'circle', {
+		cx: 60,
+		cy: 60,
+		r: MODE_MID,
+		'stroke-width': MODE_THICK,
+		class: 'snowflake-method-modes-track',
+	});
+	svg.append(track);
+	const arcs = WRITING_MODES.map((mode, at) => {
+		const arc = svgEl(doc, 'path', { class: 'snowflake-method-modes-arc' });
+		arc.dataset.mode = mode;
+		arc.style.setProperty('--snowflake-method-stage', `${MODE_SHADES[at] ?? 1}`);
+		svg.append(arc);
+		return arc;
+	});
+	dial.append(svg);
+	// What the ring is of, standing in the hole it leaves: the whole of the
+	// focus time until a stage is asked about, and that stage's own reading
+	// after.
+	const middle = dial.createDiv({ cls: 'snowflake-method-modes-middle' });
+	const name = middle.createDiv({ cls: 'snowflake-method-modes-name' });
+	const value = middle.createDiv({ cls: 'snowflake-method-modes-value' });
+	const note = middle.createDiv({ cls: 'snowflake-method-modes-note' });
+	const key = frame.body.createDiv({ cls: 'snowflake-method-modes-key' });
+	const entries = WRITING_MODES.map((mode, at) => {
+		const row = key.createDiv({ cls: 'snowflake-method-modes-entry' });
+		row.dataset.mode = mode;
+		const dot = row.createSpan({ cls: 'snowflake-method-modes-dot' });
+		dot.style.setProperty('--snowflake-method-stage', `${MODE_SHADES[at] ?? 1}`);
+		row.createSpan({
+			cls: 'snowflake-method-modes-label',
+			text: t(`session.mode.${mode}`),
+		});
+		return row;
+	});
+
+	let totals: ModeTotals[] = emptyModes();
+	let picked: WritingMode | null = null;
+	const paint = (): void => {
+		const whole = totals.reduce((carried, mode) => carried + mode.focusMs, 0);
+		track.setAttribute('visibility', whole === 0 ? 'visible' : 'hidden');
+		// A quarter of the way round is a quarter of the ring, read from twelve
+		// o'clock rather than from three.
+		const gap = MODE_GAP / MODE_MID;
+		let before = 0;
+		for (const [at, mode] of totals.entries()) {
+			const share = whole === 0 ? 0 : mode.focusMs / whole;
+			const arc = arcs[at];
+			if (arc !== undefined) {
+				arc.setAttribute('visibility', share > 0 ? 'visible' : 'hidden');
+				if (share > 0) {
+					const from = -Math.PI / 2 + before * 2 * Math.PI + gap / 2;
+					const to = -Math.PI / 2 + (before + share) * 2 * Math.PI - gap / 2;
+					arc.setAttribute(
+						'd',
+						stagePath(
+							from,
+							from + Math.max(MODE_SLIVER, to - from),
+							mode.mode === picked ? MODE_THICK + MODE_LIFT : MODE_THICK,
+						),
+					);
+				}
+			}
+			const entry = entries[at];
+			entry?.classList.toggle('is-picked', mode.mode === picked);
+			entry?.setAttribute(
+				'title',
+				`${t(`session.mode.${mode.mode}`)} · ${formatClock(mode.focusMs)}`,
+			);
+			before += share;
+		}
+		const chosen = totals.find((mode) => mode.mode === picked);
+		name.setText(chosen === undefined ? '' : t(`session.mode.${chosen.mode}`));
+		value.setText(whole === 0 ? '—' : formatClock(chosen?.focusMs ?? whole));
+		note.setText(
+			chosen === undefined || whole === 0
+				? t('sessionWidget.modes.focus')
+				: t('sessionWidget.modes.share', {
+						share: Math.round((chosen.focusMs / whole) * 100),
+					}),
+		);
+	};
+	frame.body.addEventListener('click', (event) => {
+		const found =
+			event.target instanceof Element
+				? event.target.closest('[data-mode]')
+				: null;
+		const mode =
+			found instanceof HTMLElement || found instanceof SVGElement
+				? found.dataset.mode
+				: undefined;
+		// The same stage twice puts the whole back, and so does anywhere else.
+		picked =
+			mode === undefined || mode === picked ? null : (mode as WritingMode);
+		paint();
+	});
+	paint();
+
+	return {
+		update: (spread) => {
+			totals = spread.modes;
+			paint();
+		},
+	};
+}
+
+/**
+ * The measures a reading offers, named once. Every widget builds its chooser
+ * from this, so the four of them offer the same words for the same things --
+ * which is the half of sharing a measure that a reader actually sees.
+ */
+function measureOptions(
+	t: SessionPanelBridge['t'],
+): (readonly [string, string])[] {
+	return READING_MEASURES.map((name) => [
+		name,
+		t(`sessionWidget.measure.${name}`),
+	]);
 }
 
 /** A labelled chooser, dressed the way the app dresses its own. */

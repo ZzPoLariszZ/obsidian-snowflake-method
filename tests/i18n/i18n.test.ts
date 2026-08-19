@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { HEATMAP_MEASURES, TREND_MEASURES } from '../../src/domain';
+import {
+	BAND_SPANS,
+	HEATMAP_MEASURES,
+	READING_MEASURES,
+	WRITING_MODES,
+} from '../../src/domain';
 import {
 	SUPPORTED_LOCALES,
 	en,
@@ -653,10 +658,6 @@ describe('translation resources', () => {
 			'sessionWidget.trend.range',
 			'sessionWidget.trend.measure',
 			'sessionWidget.trend.days',
-			'sessionWidget.trend.net',
-			'sessionWidget.trend.added',
-			'sessionWidget.trend.deleted',
-			'sessionWidget.trend.time',
 			'sessionWidget.trend.average',
 			'sessionWidget.trend.highest',
 			'sessionWidget.trend.total',
@@ -665,13 +666,9 @@ describe('translation resources', () => {
 			'sessionWidget.trend.timeDetail',
 			'sessionWidget.heatmap.title',
 			'sessionWidget.heatmap.measure',
-			'sessionWidget.heatmap.net',
-			'sessionWidget.heatmap.focus',
 			'sessionWidget.heatmap.goal',
 			'sessionWidget.heatmap.less',
 			'sessionWidget.heatmap.more',
-			'sessionWidget.heatmap.netDetail',
-			'sessionWidget.heatmap.focusDetail',
 			'sessionWidget.heatmap.noGoalDetail',
 			'sessionWidget.heatmap.completed',
 			'sessionWidget.heatmap.uncompleted',
@@ -684,17 +681,20 @@ describe('translation resources', () => {
 			expect(Object.keys(en), key).toContain(key);
 			expect(Object.keys(zhCN), key).toContain(key);
 		}
-		// Every measure a chooser offers is named in both languages, and the
-		// chooser builds those names from the vocabulary rather than a list of
-		// its own, so a measure added later is caught here.
-		for (const measure of TREND_MEASURES) {
-			expect(Object.keys(en)).toContain(`sessionWidget.trend.${measure}`);
-			expect(Object.keys(zhCN)).toContain(`sessionWidget.trend.${measure}`);
+		// All four readings share one measure and therefore one set of names,
+		// built from the vocabulary rather than from a list of their own, so a
+		// measure added later is caught here. The year's own extra reading is
+		// the only one named beside them.
+		for (const measure of READING_MEASURES) {
+			expect(Object.keys(en)).toContain(`sessionWidget.measure.${measure}`);
+			expect(Object.keys(zhCN)).toContain(`sessionWidget.measure.${measure}`);
 		}
 		for (const measure of HEATMAP_MEASURES) {
-			expect(Object.keys(en)).toContain(`sessionWidget.heatmap.${measure}`);
-			expect(Object.keys(zhCN)).toContain(`sessionWidget.heatmap.${measure}`);
+			if (measure === 'goal') continue;
+			expect(READING_MEASURES as readonly string[]).toContain(measure);
 		}
+		expect(Object.keys(en)).toContain('sessionWidget.heatmap.goal');
+		expect(Object.keys(zhCN)).toContain('sessionWidget.heatmap.goal');
 		expect(t('en', 'sessionWidget.trend.days', { days: 30 })).toBe(
 			'Last 30 days',
 		);
@@ -710,6 +710,53 @@ describe('translation resources', () => {
 			}
 		}
 		expect(zhCN['sessionWidget.heatmap.title']).toBe('年度贡献');
+	});
+
+	/**
+	 * The five readings under them build their choosers from the vocabulary
+	 * too, and two of them name a measure from a list they share, so a measure
+	 * added to either is caught here rather than in a chooser.
+	 */
+	it('labels the calendar, the two goals, the hours and the modes', () => {
+		const keys = [
+			'sessionWidget.calendar.title',
+			'sessionWidget.calendar.measure',
+			'sessionWidget.calendar.previous',
+			'sessionWidget.calendar.next',
+			'sessionWidget.calendar.met',
+			'sessionWidget.week.title',
+			'sessionWidget.month.title',
+			'sessionWidget.bands.title',
+			'sessionWidget.bands.span',
+			'sessionWidget.bands.measure',
+			'sessionWidget.bands.share',
+			'sessionWidget.modes.title',
+			'sessionWidget.modes.focus',
+			'sessionWidget.modes.share',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		for (const span of BAND_SPANS) {
+			expect(Object.keys(en)).toContain(`sessionWidget.bands.${span}`);
+			expect(Object.keys(zhCN)).toContain(`sessionWidget.bands.${span}`);
+		}
+		// The donut names its slices from the session vocabulary the start
+		// dialog already speaks, so the two can never drift apart.
+		for (const mode of WRITING_MODES) {
+			expect(Object.keys(en)).toContain(`session.mode.${mode}`);
+			expect(Object.keys(zhCN)).toContain(`session.mode.${mode}`);
+		}
+		expect(t('en', 'sessionWidget.bands.share', { share: '32.1' })).toBe(
+			'32.1%',
+		);
+		expect(en['sessionWidget.week.title']).toBe('Weekly goal');
+		expect(zhCN['sessionWidget.month.title']).toBe('每月目标');
+		expect(en['sessionWidget.bands.title']).toBe('Temporal distribution');
+		expect(zhCN['sessionWidget.bands.title']).toBe('时间分布');
+		expect(en['sessionWidget.modes.title']).toBe('Writing stages');
+		expect(zhCN['sessionWidget.modes.title']).toBe('写作阶段');
 	});
 
 	/**

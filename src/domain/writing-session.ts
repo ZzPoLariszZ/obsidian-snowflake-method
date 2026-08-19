@@ -15,6 +15,8 @@
  * behaviour, not a keystroke-level audit trail.
  */
 
+import { DAY_BANDS, splitDayBands } from './calendar';
+
 export const WRITING_SESSION_SCHEMA_VERSION = 1;
 
 export const WRITING_SESSION_TYPES = [
@@ -629,15 +631,22 @@ export function sessionMonthKey(
 export const TREND_RANGES = [7, 15, 30, 90, 180] as const;
 
 /**
- * What a recent-trend reading plots. The three word measures are drawn the
- * same way and differ only in which number a day contributes; time is its own
+ * What a reading of the writing measures. One vocabulary for all four of them
+ * -- the recent trend, the annual contribution, the calendar and the parts of
+ * the day -- because they are four views of one question, and a reader who has
+ * just asked one of them about deleted words has asked all of them. The three
+ * word measures differ only in which number a day contributes; time is its own
  * shape, a sitting split into the writing and the rest of it.
  */
-export const TREND_MEASURES = ['net', 'added', 'deleted', 'time'] as const;
-export type TrendMeasure = (typeof TREND_MEASURES)[number];
+export const READING_MEASURES = ['net', 'added', 'deleted', 'time'] as const;
+export type ReadingMeasure = (typeof READING_MEASURES)[number];
 
-/** What a heatmap shades each day by. */
-export const HEATMAP_MEASURES = ['net', 'focus', 'goal'] as const;
+/**
+ * What a heatmap shades each day by: any reading measure, or whether the day
+ * met its goal -- which is the one reading none of the others offers, and so
+ * the one that does not travel with them.
+ */
+export const HEATMAP_MEASURES = [...READING_MEASURES, 'goal'] as const;
 export type HeatmapMeasure = (typeof HEATMAP_MEASURES)[number];
 
 /**
@@ -678,7 +687,7 @@ const AXIS_DIVISIONS = 4;
  */
 export function axisScale(
 	max: number,
-	measure: TrendMeasure,
+	measure: ReadingMeasure,
 ): { top: number; step: number } {
 	const rough = Math.max(0, max) / AXIS_DIVISIONS;
 	const step = measure === 'time' ? clockStep(rough) : countStep(rough);
@@ -704,9 +713,11 @@ function countStep(rough: number): number {
 /** How many strengths a shaded day is drawn in, above nothing at all. */
 export const HEAT_LEVELS = 4;
 
-/** As much of a day as either reading needs: what it wrote, and for how long. */
+/** As much of a day as a reading needs: what it wrote, and for how long. */
 export interface DayReading {
 	trackedNet: number;
+	added: number;
+	deleted: number;
 	focusMs: number;
 }
 
@@ -717,7 +728,7 @@ export interface DayReading {
  * its colour what standing below it would have said by its place.
  */
 export function trendTone(
-	measure: TrendMeasure,
+	measure: ReadingMeasure,
 	value: number,
 ): 'gain' | 'loss' {
 	return measure === 'deleted' || value < 0 ? 'loss' : 'gain';
@@ -744,8 +755,16 @@ export function heatLevels(
 			goal > 0 && day.trackedNet >= goal ? HEAT_LEVELS : 0,
 		);
 	}
+	// Deleted words are counted negative here rather than positive: the day
+	// went backwards, and the grid says so in the colour a loss is drawn in.
 	const value = (day: DayReading): number =>
-		measure === 'focus' ? day.focusMs : day.trackedNet;
+		measure === 'time'
+			? day.focusMs
+			: measure === 'added'
+				? day.added
+				: measure === 'deleted'
+					? -day.deleted
+					: day.trackedNet;
 	const bands = quartiles(days.map((day) => Math.abs(value(day))));
 	return days.map((day) => {
 		const size = Math.abs(value(day));
@@ -765,6 +784,103 @@ function quartiles(values: number[]): [number, number, number] {
 	return [at(0.25), at(0.5), at(0.75)];
 }
 
+/** Which sittings a time-of-day reading is drawn from. */
+export const BAND_SPANS = ['today', 'yesterday', 'all'] as const;
+export type BandSpan = (typeof BAND_SPANS)[number];
+
+/** What a project's sessions put into one part of a day. */
+export interface BandTotals {
+	focusMs: number;
+	totalMs: number;
+	added: number;
+	deleted: number;
+	trackedNet: number;
+}
+
+/** A day's parts with nothing in any of them. */
+export function emptyBands(): BandTotals[] {
+	return DAY_BANDS.map(() => ({
+		focusMs: 0,
+		totalMs: 0,
+		added: 0,
+		deleted: 0,
+		trackedNet: 0,
+	}));
+}
+
+/**
+ * How one session's sitting and its writing fall across the parts of a day.
+ *
+ * The time is exact: every interval is cut at each boundary it crosses, so a
+ * sitting from half past eight to ten is counted half an hour into the early
+ * band and an hour into the next. The words are not, and cannot be -- a
+ * session records what it observed being written, never the minute each word
+ * arrived -- so they are spread over the session's own hours in the
+ * proportion it was writing in them: by focus where there was any, and by the
+ * sitting itself where the whole of it was idle. It is an apportionment, not
+ * a timestamp, and the fractions it leaves are what a percentage is made of.
+ */
+export function sessionBands(
+	record: Pick<
+		WritingSessionRecord,
+		'activeIntervals' | 'idleIntervals' | 'addedWordCount' | 'deletedWordCount'
+	>,
+	timeZone: string,
+): BandTotals[] {
+	const bands = emptyBands();
+	const add = (list: readonly SessionInterval[], focus: boolean): void => {
+		for (const span of list) {
+			const spread = splitDayBands(
+				Date.parse(span.startedAt),
+				Date.parse(span.endedAt),
+				timeZone,
+			);
+			for (const [at, ms] of spread.entries()) {
+				const band = bands[at];
+				if (band === undefined) continue;
+				if (focus) band.focusMs += ms;
+				band.totalMs += ms;
+			}
+		}
+	};
+	add(record.activeIntervals, true);
+	add(record.idleIntervals, false);
+	const focusMs = bands.reduce((carried, band) => carried + band.focusMs, 0);
+	const totalMs = bands.reduce((carried, band) => carried + band.totalMs, 0);
+	for (const band of bands) {
+		const share =
+			focusMs > 0
+				? band.focusMs / focusMs
+				: totalMs > 0
+					? band.totalMs / totalMs
+					: 0;
+		band.added = record.addedWordCount * share;
+		band.deleted = record.deletedWordCount * share;
+		band.trackedNet = band.added - band.deleted;
+	}
+	return bands;
+}
+
+/** What one writing mode came to over the sessions that were in it. */
+export interface ModeTotals {
+	mode: WritingMode;
+	sessions: number;
+	focusMs: number;
+	totalMs: number;
+	trackedNet: number;
+}
+
+/** Every mode at nothing, in the order the stages of a manuscript come. */
+export function emptyModes(): ModeTotals[] {
+	return WRITING_MODES.map((mode) => ({
+		mode,
+		sessions: 0,
+		focusMs: 0,
+		totalMs: 0,
+		trackedNet: 0,
+	}));
+}
+
 export const SESSION_FILE_SUFFIX = '_writing_session.json';
 
 /**
@@ -782,7 +898,7 @@ export function sessionFilePath(
 	deviceId: string,
 ): string {
 	const { year, month } = sessionMonthKey(startedAtMs, timeZone);
-	const base = projectRoot.length === 0 ? sessionsDir : `${projectRoot}/${sessionsDir}`;
+	const base = sessionsFolder(projectRoot, sessionsDir);
 	return `${base}/${year}/${year}_${month}_${deviceId}${SESSION_FILE_SUFFIX}`;
 }
 
@@ -792,19 +908,31 @@ export function sessionYearFolder(
 	sessionsDir: string,
 	year: string,
 ): string {
-	const base = projectRoot.length === 0 ? sessionsDir : `${projectRoot}/${sessionsDir}`;
-	return `${base}/${year}`;
+	return `${sessionsFolder(projectRoot, sessionsDir)}/${year}`;
 }
 
-/** MM:SS under an hour, H:MM:SS from there on. */
+/** The folder every year of a project's sessions is filed under. */
+export function sessionsFolder(
+	projectRoot: string,
+	sessionsDir: string,
+): string {
+	return projectRoot.length === 0 ? sessionsDir : `${projectRoot}/${sessionsDir}`;
+}
+
+/**
+ * MM:SS under an hour and HH:MM:SS from there on, every part two digits wide.
+ * The hour appears only once there is one to report -- a length that has not
+ * reached an hour says so by having no hour on it -- and the padding is what
+ * keeps a column of readings a column rather than a ragged edge.
+ */
 export function formatClock(ms: number): string {
 	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+	const two = (value: number): string => String(value).padStart(2, '0');
 	const seconds = totalSeconds % 60;
 	const minutes = Math.floor(totalSeconds / 60) % 60;
 	const hours = Math.floor(totalSeconds / 3600);
-	const two = (value: number): string => String(value).padStart(2, '0');
 	return hours > 0
-		? `${String(hours)}:${two(minutes)}:${two(seconds)}`
+		? `${two(hours)}:${two(minutes)}:${two(seconds)}`
 		: `${two(minutes)}:${two(seconds)}`;
 }
 

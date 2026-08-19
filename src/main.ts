@@ -3049,6 +3049,17 @@ export default class SnowflakeMethodPlugin
 			key: string,
 			vars?: Record<string, string | number>,
 		): string => this.translateForProject(projectLocale, key, vars);
+		// Every reading below is of one project's sessions, and which project
+		// that is has one answer: a pane names its own, and a panel that named
+		// none reads the project the author is working in -- the one the last
+		// dashboard they touched belongs to -- rather than whichever note
+		// happens to be open in the editor beside it.
+		const read = async <T>(
+			from: (project: ProjectSnapshot) => Promise<T>,
+		): Promise<T | null> => {
+			const project = await this.resolveProject(context.projectPath ?? null);
+			return project === null ? null : from(project);
+		};
 		return {
 			t,
 			locale: () =>
@@ -3061,43 +3072,45 @@ export default class SnowflakeMethodPlugin
 				),
 			weekStart: () => this.settings.sessionWeekStart,
 			dateFormat: () => this.settings.sessionDateFormat,
+			today: () => this.sessions.today(),
 			live: () => this.sessions.live(),
-			history: async (days) => {
-				const project = await this.resolveProject(context.projectPath ?? null);
-				return project === null
-					? null
-					: this.sessions.dailyTotals(project, days);
-			},
+			history: async (days) =>
+				read((project) => this.sessions.dailyTotals(project, days)),
+			month: async (anchor) =>
+				read((project) => this.sessions.monthTotals(project, anchor)),
+			spread: async (span) =>
+				read((project) => this.sessions.spread(project, span)),
 			view: () => ({
 				trendDays: this.settings.sessionTrendDays,
-				trendMeasure: this.settings.sessionTrendMeasure,
-				heatmapMeasure: this.settings.sessionHeatmapMeasure,
+				measure: this.settings.sessionReadingMeasure,
+				heatmapGoal: this.settings.sessionHeatmapGoal,
+				bandSpan: this.settings.sessionBandSpan,
 			}),
 			setView: (patch) => {
 				if (patch.trendDays !== undefined) {
 					this.settings.sessionTrendDays = patch.trendDays;
 				}
-				if (patch.trendMeasure !== undefined) {
-					this.settings.sessionTrendMeasure = patch.trendMeasure;
+				if (patch.measure !== undefined) {
+					this.settings.sessionReadingMeasure = patch.measure;
+					// Choosing a measure chooses it for every reading, and the
+					// year's own goal shading is not one of them: a reader who
+					// asks the trend about net words has asked the year too,
+					// and would not expect it to still be on the goal.
+					this.settings.sessionHeatmapGoal = false;
 				}
-				if (patch.heatmapMeasure !== undefined) {
-					this.settings.sessionHeatmapMeasure = patch.heatmapMeasure;
+				if (patch.heatmapGoal !== undefined) {
+					this.settings.sessionHeatmapGoal = patch.heatmapGoal;
+				}
+				if (patch.bandSpan !== undefined) {
+					this.settings.sessionBandSpan = patch.bandSpan;
 				}
 				void this.saveSettings();
 				// Both panels are looking at the same reading, so a switch in
 				// one is a switch in the other.
 				this.sessionSettingsChanged();
 			},
-			todaySummary: async () => {
-				// A pane's day is its own project's day. A panel that named no
-				// project reads the project the author is working in -- the one
-				// the last dashboard they touched belongs to -- rather than
-				// whichever note happens to be open in the editor beside it.
-				const project = await this.resolveProject(context.projectPath ?? null);
-				return project === null
-					? null
-					: this.sessions.todaySummary(project);
-			},
+			todaySummary: async () =>
+				read((project) => this.sessions.todaySummary(project)),
 			subscribe: (listener) => {
 				const fromService = this.sessions.subscribe((event) => {
 					listener(

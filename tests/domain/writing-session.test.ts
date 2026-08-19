@@ -14,9 +14,12 @@ import {
 	sessionFilePath,
 	sessionGoalMet,
 	sessionMonthKey,
+	sessionBands,
 	sessionNets,
 	shouldDiscard,
 	trendTone,
+	emptyModes,
+	type DayReading,
 	type SessionTrackerConfig,
 	type TrackerEffect,
 	type WritingSessionRecord,
@@ -329,10 +332,16 @@ describe('session arithmetic', () => {
 		expect(durations.totalMs).toBe(10 * MINUTE);
 	});
 
-	it('formats a clock the way a timer reads', () => {
+	/**
+	 * The hour shows once there is one to show, and every part is two digits
+	 * wide, so a column of readings stays a column.
+	 */
+	it('formats a clock the way a timer reads, padded throughout', () => {
 		expect(formatClock(0)).toBe('00:00');
 		expect(formatClock(61 * SECOND)).toBe('01:01');
-		expect(formatClock(3661 * SECOND)).toBe('1:01:01');
+		expect(formatClock(2723 * SECOND)).toBe('45:23');
+		expect(formatClock(3661 * SECOND)).toBe('01:01:01');
+		expect(formatClock(360_000 * SECOND)).toBe('100:00:00');
 	});
 });
 
@@ -487,6 +496,32 @@ describe('recovering an orphaned session', () => {
 		expect(trendTone('deleted', 0)).toBe('loss');
 	});
 
+	/** A day of the grid, built from the one number a test cares about. */
+	const reading = (
+		trackedNet: number,
+		focusMs = Math.abs(trackedNet) * 1000,
+	): DayReading => ({
+		trackedNet,
+		added: Math.max(0, trackedNet),
+		deleted: Math.max(0, -trackedNet),
+		focusMs,
+	});
+
+	/**
+	 * The four readings share one measure, so the grid has to answer for all of
+	 * it -- and deleted words are a day going backwards however they are
+	 * counted, which is why they shade as a loss from a positive number.
+	 */
+	it('shades added words as a gain and deleted words as a loss', () => {
+		const days = [reading(300), reading(-300), reading(0, 0)];
+		const sign = (levels: number[]): number[] => levels.map(Math.sign);
+		// The strength is the project's own business; the direction is not.
+		expect(sign(heatLevels(days, 'added', 0))).toEqual([1, 0, 0]);
+		expect(sign(heatLevels(days, 'deleted', 0))).toEqual([0, -1, 0]);
+		expect(sign(heatLevels(days, 'net', 0))).toEqual([1, -1, 0]);
+		expect(sign(heatLevels(days, 'time', 0))).toEqual([1, 1, 0]);
+	});
+
 	/**
 	 * A day is shaded against the project's own days rather than a fixed
 	 * number, so what is asserted is the shape of the answer and not the cuts
@@ -496,10 +531,7 @@ describe('recovering an orphaned session', () => {
 	 */
 	it('bands a project by its own days and signs the losses', () => {
 		const counts = [100, 200, 300, 400, 500, 600, 700, 800];
-		const days = [...counts, 0, -500].map((trackedNet) => ({
-			trackedNet,
-			focusMs: Math.abs(trackedNet) * 1000,
-		}));
+		const days = [...counts, 0, -500].map((net) => reading(net));
 
 		const levels = heatLevels(days, 'net', 0);
 		const written = levels.slice(0, counts.length);
@@ -510,13 +542,13 @@ describe('recovering an orphaned session', () => {
 		expect(levels[counts.length + 1]).toBe(-(written[4] as number));
 		// Focus reads the same days through their time, which here runs with
 		// their words, so it lands on the same bands.
-		expect(heatLevels(days, 'focus', 0).map(Math.abs)).toEqual(
+		expect(heatLevels(days, 'time', 0).map(Math.abs)).toEqual(
 			levels.map(Math.abs),
 		);
 	});
 
 	it('shades a day of nothing at all at nothing at all', () => {
-		const quiet = [0, 0, 0].map((trackedNet) => ({ trackedNet, focusMs: 0 }));
+		const quiet = [0, 0, 0].map(() => reading(0, 0));
 		expect(heatLevels(quiet, 'net', 0)).toEqual([0, 0, 0]);
 		expect(heatLevels([], 'net', 500)).toEqual([]);
 	});
@@ -526,10 +558,7 @@ describe('recovering an orphaned session', () => {
 	 * goal was not met, and half-shading it would say otherwise.
 	 */
 	it('reads a daily goal as met or unmet and nothing between', () => {
-		const days = [499, 500, 501, 5000, -600].map((trackedNet) => ({
-			trackedNet,
-			focusMs: 0,
-		}));
+		const days = [499, 500, 501, 5000, -600].map((net) => reading(net, 0));
 
 		expect(heatLevels(days, 'goal', 500)).toEqual([
 			0,
@@ -588,5 +617,99 @@ describe('recovering an orphaned session', () => {
 			expect(scale.top, `${max}`).toBeGreaterThanOrEqual(max);
 			expect(Math.round(scale.top / scale.step)).toBeLessThanOrEqual(5);
 		}
+	});
+});
+
+describe('a session across the parts of a day', () => {
+	const sitting = (
+		from: string,
+		to: string,
+		words = 0,
+	): Pick<
+		WritingSessionRecord,
+		'activeIntervals' | 'idleIntervals' | 'addedWordCount' | 'deletedWordCount'
+	> => ({
+		activeIntervals: [{ startedAt: from, endedAt: to }],
+		idleIntervals: [],
+		addedWordCount: words,
+		deletedWordCount: 0,
+	});
+
+	it('cuts a sitting at every boundary it crosses', () => {
+		const bands = sessionBands(
+			sitting('2026-08-18T08:00:00Z', '2026-08-18T13:00:00Z'),
+			'UTC',
+		);
+		expect(bands[0]?.focusMs).toBe(3_600_000);
+		expect(bands[1]?.focusMs).toBe(3 * 3_600_000);
+		expect(bands[2]?.focusMs).toBe(3_600_000);
+		expect(bands[0]?.totalMs).toBe(3_600_000);
+	});
+
+	/**
+	 * A session records what it observed being written, never the minute each
+	 * word arrived, so the words follow the hours the session was writing in.
+	 */
+	it('spreads the words over the hours in the proportion of the focus', () => {
+		const bands = sessionBands(
+			sitting('2026-08-18T08:00:00Z', '2026-08-18T10:00:00Z', 300),
+			'UTC',
+		);
+		// An hour before nine and an hour after it: half the words each.
+		expect(bands[0]?.added).toBe(150);
+		expect(bands[1]?.added).toBe(150);
+		expect(bands[0]?.trackedNet).toBe(150);
+		const total = bands.reduce((carried, band) => carried + band.added, 0);
+		expect(total).toBe(300);
+	});
+
+	it('falls back to the sitting itself where none of it was focus', () => {
+		const bands = sessionBands(
+			{
+				activeIntervals: [],
+				idleIntervals: [
+					{ startedAt: '2026-08-18T13:00:00Z', endedAt: '2026-08-18T14:00:00Z' },
+				],
+				addedWordCount: 40,
+				deletedWordCount: 10,
+			},
+			'UTC',
+		);
+		expect(bands[2]?.added).toBe(40);
+		expect(bands[2]?.deleted).toBe(10);
+		expect(bands[2]?.trackedNet).toBe(30);
+		expect(bands[2]?.focusMs).toBe(0);
+		expect(bands[2]?.totalMs).toBe(3_600_000);
+	});
+
+	it('leaves a session of no length with nothing in any part', () => {
+		const bands = sessionBands(
+			sitting('2026-08-18T08:00:00Z', '2026-08-18T08:00:00Z', 90),
+			'UTC',
+		);
+		expect(bands.every((band) => band.added === 0 && band.totalMs === 0)).toBe(
+			true,
+		);
+	});
+
+	it('reads a session in the zone the reader is in', () => {
+		// Two in the afternoon at UTC is ten in the morning in New York.
+		const bands = sessionBands(
+			sitting('2026-08-18T14:00:00Z', '2026-08-18T15:00:00Z'),
+			'America/New_York',
+		);
+		expect(bands[1]?.focusMs).toBe(3_600_000);
+		expect(bands[2]?.focusMs).toBe(0);
+	});
+
+	it('starts every writing mode at nothing, in the order they come', () => {
+		const modes = emptyModes();
+		expect(modes.map((mode) => mode.mode)).toEqual([
+			'planning',
+			'draft',
+			'revision',
+			'proofreading',
+		]);
+		expect(modes.every((mode) => mode.focusMs === 0)).toBe(true);
 	});
 });

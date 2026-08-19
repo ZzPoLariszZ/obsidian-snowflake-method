@@ -10,9 +10,9 @@ import {
 
 import type SnowflakeMethodPlugin from './main';
 import {
+	BAND_SPANS,
 	DATE_FORMATS,
-	HEATMAP_MEASURES,
-	TREND_MEASURES,
+	READING_MEASURES,
 	TREND_RANGES,
 	WEEK_START_DAYS,
 	WRITING_MODES,
@@ -23,9 +23,9 @@ import {
 	isWritingCountHeadings,
 	isWritingCountMode,
 	weekdayLabels,
+	type BandSpan,
 	type DateFormat,
-	type HeatmapMeasure,
-	type TrendMeasure,
+	type ReadingMeasure,
 	type WeekStartDay,
 	type WritingCountHeadings,
 	type WritingCountMode,
@@ -145,9 +145,21 @@ export interface SnowflakeSettings {
 	sessionDateFormat: DateFormat;
 	/** Which stretch the recent-trend chart is looking back over. */
 	sessionTrendDays: number;
-	/** What that chart is plotting, and what the heatmap is shading. */
-	sessionTrendMeasure: TrendMeasure;
-	sessionHeatmapMeasure: HeatmapMeasure;
+	/**
+	 * What every reading of the writing is measuring: the trend plots it, the
+	 * year shades it, the calendar writes it under its dates and the parts of
+	 * the day divide it. One number, because asking one of them a question is
+	 * asking all of them.
+	 */
+	sessionReadingMeasure: ReadingMeasure;
+	/**
+	 * Whether the annual contribution is shading whether the day's goal was
+	 * met instead. It is the one reading the others cannot show, so it is the
+	 * one that does not travel with them.
+	 */
+	sessionHeatmapGoal: boolean;
+	/** Which sittings the time-of-day reading is drawn from. */
+	sessionBandSpan: BandSpan;
 	recentProjectPath: string | null;
 	recentStep: number;
 	certificateCelebrations: Record<string, true>;
@@ -189,8 +201,9 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionWeekStart: 'monday',
 	sessionDateFormat: 'YYYY/MM/DD',
 	sessionTrendDays: 30,
-	sessionTrendMeasure: 'net',
-	sessionHeatmapMeasure: 'net',
+	sessionReadingMeasure: 'net',
+	sessionHeatmapGoal: false,
+	sessionBandSpan: 'all',
 	sessionAutoWithFocusMode: false,
 	recentProjectPath: null,
 	recentStep: 1,
@@ -233,8 +246,9 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionWeekStart',
 	'sessionDateFormat',
 	'sessionTrendDays',
-	'sessionTrendMeasure',
-	'sessionHeatmapMeasure',
+	'sessionReadingMeasure',
+	'sessionHeatmapGoal',
+	'sessionBandSpan',
 	'recentProjectPath',
 	'recentStep',
 	'certificateCelebrations',
@@ -435,16 +449,20 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		)
 			? (raw.sessionTrendDays as number)
 			: DEFAULT_SETTINGS.sessionTrendDays,
-		sessionTrendMeasure: (TREND_MEASURES as readonly unknown[]).includes(
-			raw.sessionTrendMeasure,
+		sessionReadingMeasure: (READING_MEASURES as readonly unknown[]).includes(
+			raw.sessionReadingMeasure,
 		)
-			? (raw.sessionTrendMeasure as TrendMeasure)
-			: DEFAULT_SETTINGS.sessionTrendMeasure,
-		sessionHeatmapMeasure: (HEATMAP_MEASURES as readonly unknown[]).includes(
-			raw.sessionHeatmapMeasure,
+			? (raw.sessionReadingMeasure as ReadingMeasure)
+			: DEFAULT_SETTINGS.sessionReadingMeasure,
+		sessionHeatmapGoal:
+			typeof raw.sessionHeatmapGoal === 'boolean'
+				? raw.sessionHeatmapGoal
+				: DEFAULT_SETTINGS.sessionHeatmapGoal,
+		sessionBandSpan: (BAND_SPANS as readonly unknown[]).includes(
+			raw.sessionBandSpan,
 		)
-			? (raw.sessionHeatmapMeasure as HeatmapMeasure)
-			: DEFAULT_SETTINGS.sessionHeatmapMeasure,
+			? (raw.sessionBandSpan as BandSpan)
+			: DEFAULT_SETTINGS.sessionBandSpan,
 		recentProjectPath:
 			typeof raw.recentProjectPath === 'string'
 				? normalizePath(raw.recentProjectPath)

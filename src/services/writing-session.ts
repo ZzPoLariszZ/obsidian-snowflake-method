@@ -2,20 +2,30 @@ import {
 	SessionTracker,
 	addDays,
 	calendarDay,
+	daysBetween,
+	emptyBands,
+	emptyModes,
+	endOfMonth,
 	finalizeSnapshot,
 	isDocumentType,
 	parseMonthFile,
 	parseSessionSnapshot,
+	sessionBands,
 	sessionFilePath,
 	sessionGoalMet,
 	monthsBetween,
+	sessionsFolder,
 	sessionYearFolder,
 	shouldDiscard,
 	sessionDurations,
 	sessionNets,
+	startOfMonth,
 	toSessionIntervals,
 	SESSION_FILE_SUFFIX,
 	WRITING_SESSION_SCHEMA_VERSION,
+	type BandSpan,
+	type BandTotals,
+	type ModeTotals,
 	type PomodoroPhase,
 	type SessionDurations,
 	type SessionStartMode,
@@ -119,6 +129,17 @@ export interface WritingDayTotals extends TodayWritingSummary {
 	day: string;
 }
 
+/**
+ * A project's sittings read across a day and across the work: which hours
+ * they happened in, and which stage of the writing they were spent on.
+ */
+export interface WritingSpread {
+	/** One entry per `DAY_BANDS`, in that order. */
+	bands: BandTotals[];
+	/** One entry per `WRITING_MODES`, in that order. */
+	modes: ModeTotals[];
+}
+
 export interface WritingSessionTimers {
 	set(handler: () => void, ms: number): unknown;
 	clear(handle: unknown): void;
@@ -218,6 +239,15 @@ export class WritingSessionService {
 			(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
 		this.uuid = deps.uuid ?? (() => crypto.randomUUID());
 		this.timers = deps.timers;
+	}
+
+	/**
+	 * The day this device is on. Every reading of a stretch of days is anchored
+	 * to it, so a display that has to name the day it is showing asks the same
+	 * clock and the same zone the readings were built from.
+	 */
+	today(): string {
+		return calendarDay(this.now(), this.timezone());
 	}
 
 	subscribe(listener: (event: WritingSessionEvent) => void): () => void {
@@ -580,32 +610,59 @@ export class WritingSessionService {
 
 	/**
 	 * The last `days` calendar days of this project's writing, oldest first
-	 * and ending today, with a day that holds no sessions still present at
-	 * zero -- a reading of a stretch of time has to show the days nothing was
-	 * written as much as the days something was.
-	 *
-	 * Every device's file for every month the stretch touches is read and its
-	 * sessions merged by uuid, so two machines writing the same month agree,
-	 * and the live session is counted into today the moment it starts rather
-	 * than when it ends. A session belongs to the day it began on, in this
-	 * device's zone: one carried past midnight stays whole in the day that
-	 * began it, and one recorded in another zone is read in this one.
+	 * and ending today.
 	 */
 	async dailyTotals(
 		project: ProjectRef,
 		days: number,
 	): Promise<WritingDayTotals[]> {
-		const zone = this.timezone();
-		const today = calendarDay(this.now(), zone);
+		const today = calendarDay(this.now(), this.timezone());
 		const span = Math.max(1, Math.trunc(days));
-		const first = addDays(today, 1 - span);
+		return this.totalsBetween(project, addDays(today, 1 - span), today);
+	}
+
+	/**
+	 * Every day of the month `anchor` falls in, the days still to come
+	 * included and empty: a calendar is a shape before it is a reading, and
+	 * one that stopped at today would change shape every morning.
+	 */
+	async monthTotals(
+		project: ProjectRef,
+		anchor: string,
+	): Promise<WritingDayTotals[]> {
+		return this.totalsBetween(
+			project,
+			startOfMonth(anchor),
+			endOfMonth(anchor),
+		);
+	}
+
+	/**
+	 * `from` through `through` inclusive, oldest first, with a day that holds
+	 * no sessions still present at zero -- a reading of a stretch of time has
+	 * to show the days nothing was written as much as the days something was.
+	 *
+	 * Every device's file for every month the stretch touches is read and its
+	 * sessions merged by uuid, so two machines writing the same month agree,
+	 * and the live session is counted in the moment it starts rather than when
+	 * it ends. A session belongs to the day it began on, in this device's
+	 * zone: one carried past midnight stays whole in the day that began it,
+	 * and one recorded in another zone is read in this one.
+	 */
+	async totalsBetween(
+		project: ProjectRef,
+		from: string,
+		through: string,
+	): Promise<WritingDayTotals[]> {
+		const zone = this.timezone();
 		const byDay = new Map<string, WritingDayTotals>();
-		for (let at = 0; at < span; at += 1) {
-			const day = addDays(first, at);
+		const span = daysBetween(from, through);
+		for (let at = 0; at <= span; at += 1) {
+			const day = addDays(from, at);
 			byDay.set(day, emptyDay(day));
 		}
 		for (const session of (
-			await this.gatherSessions(project, first, today)
+			await this.gatherSessions(project, from, through)
 		).values()) {
 			const bucket = byDay.get(calendarDay(Date.parse(session.startedAt), zone));
 			if (bucket === undefined) continue;
@@ -633,6 +690,89 @@ export class WritingSessionService {
 			bucket.trackedNet += live.trackedNet;
 		}
 		return [...byDay.values()];
+	}
+
+	/**
+	 * How a project's sittings were spread over the hours of a day, and over
+	 * the stages of the writing. One walk answers both, because both are the
+	 * same sessions asked a different question -- and over `all`, that walk is
+	 * every month the project has ever recorded.
+	 */
+	async spread(project: ProjectRef, span: BandSpan): Promise<WritingSpread> {
+		const zone = this.timezone();
+		const today = calendarDay(this.now(), zone);
+		const only =
+			span === "all" ? null : span === "yesterday" ? addDays(today, -1) : today;
+		const sessions =
+			only === null
+				? await this.everySession(project)
+				: await this.gatherSessions(project, only, only);
+		const running = this.liveRecord(project);
+		if (running !== null) sessions.set(running.uuid, running);
+		const bands = emptyBands();
+		const modes = emptyModes();
+		const byMode = new Map(modes.map((entry) => [entry.mode, entry]));
+		for (const session of sessions.values()) {
+			// A month file holds the whole month, so a single day still has to
+			// be picked out of it.
+			if (only !== null && calendarDay(Date.parse(session.startedAt), zone) !== only) {
+				continue;
+			}
+			const durations = sessionDurations(session);
+			const mode = byMode.get(session.writingMode);
+			if (mode !== undefined) {
+				mode.sessions += 1;
+				mode.focusMs += durations.focusMs;
+				mode.totalMs += durations.totalMs;
+				mode.trackedNet += sessionNets(session).trackedNet;
+			}
+			for (const [at, part] of sessionBands(session, zone).entries()) {
+				const band = bands[at];
+				if (band === undefined) continue;
+				band.focusMs += part.focusMs;
+				band.totalMs += part.totalMs;
+				band.added += part.added;
+				band.deleted += part.deleted;
+				band.trackedNet += part.trackedNet;
+			}
+		}
+		return { bands, modes };
+	}
+
+	/**
+	 * The running session as the record it would be if it stopped now, so a
+	 * reading can count it beside the finished ones. The stop reason such a
+	 * record carries is the one recovery would have given it; nothing reads it
+	 * here, and nothing stores it.
+	 */
+	private liveRecord(project: ProjectRef): WritingSessionRecord | null {
+		const live = this.liveState;
+		if (live?.tracker == null || live.project.id !== project.id) return null;
+		return finalizeSnapshot(this.buildSnapshot(live, false));
+	}
+
+	/**
+	 * Every session this project has ever filed, whichever month or year or
+	 * device it came from, merged by uuid.
+	 */
+	private async everySession(
+		project: ProjectRef,
+	): Promise<Map<string, WritingSessionRecord>> {
+		const layout = getProjectPathLayout(project.locale);
+		const folder = sessionsFolder(
+			project.rootPath,
+			layout.directories.writingSessions,
+		);
+		const byUuid = new Map<string, WritingSessionRecord>();
+		for (const file of this.deps.repository.listFilesBelow(folder)) {
+			if (!file.name.endsWith(SESSION_FILE_SUFFIX)) continue;
+			const parsed = parseMonthJson(
+				await this.deps.repository.readPlainFile(file.path),
+			);
+			if (parsed === null) continue;
+			for (const session of parsed.sessions) byUuid.set(session.uuid, session);
+		}
+		return byUuid;
 	}
 
 	/**

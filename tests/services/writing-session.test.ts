@@ -600,4 +600,128 @@ describe("WritingSessionService", () => {
 		expect(today?.day).toBe("2026-08-17");
 		expect(today?.sessions).toBe(1);
 	});
+
+	/**
+	 * A calendar is a shape before it is a reading: the days still to come are
+	 * part of the month it is drawing, and one that stopped at today would
+	 * change shape every morning.
+	 */
+	it("reads a whole month, the days still to come included", async () => {
+		const folder =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+		const day = 86_400_000;
+		await fakeVault.seedFile(
+			`${folder}/2026_08_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 3 * day, 120)],
+			}),
+		);
+		await fakeVault.seedFile(
+			`${folder}/2026_07_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 40 * day, 400)],
+			}),
+		);
+
+		const august = await sessions.monthTotals(project, "2026-08-17");
+		expect(august).toHaveLength(31);
+		expect(august[0]?.day).toBe("2026-08-01");
+		expect(august[30]?.day).toBe("2026-08-31");
+		expect(august[13]).toMatchObject({ day: "2026-08-14", trackedNet: 120 });
+		// The rest of the month is drawn, and empty.
+		expect(august[30]).toMatchObject({ sessions: 0, trackedNet: 0 });
+
+		// A month the reader walked back to is read the same way.
+		const july = await sessions.monthTotals(project, "2026-07-20");
+		expect(july).toHaveLength(31);
+		expect(july[7]).toMatchObject({ day: "2026-07-08", trackedNet: 400 });
+	});
+
+	/**
+	 * The hours a project was written in, and the stages it was written at.
+	 * A sitting belongs to the part of the day its clock ran through, not to
+	 * the day it was filed under.
+	 */
+	it("spreads a day's sittings over the parts of the day", async () => {
+		const folder =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+		const morning = Date.parse("2026-08-17T07:30:00.000Z");
+		await fakeVault.seedFile(
+			`${folder}/2026_08_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(morning, 100), foreignRecord(T0, 50)],
+			}),
+		);
+
+		const today = await sessions.spread(project, "today");
+		// Half past seven is the first part of the day; ten is the second.
+		expect(today.bands[0]).toMatchObject({ focusMs: 60_000, added: 100 });
+		expect(today.bands[1]).toMatchObject({ focusMs: 60_000, added: 50 });
+		expect(today.bands[6]?.totalMs).toBe(0);
+		const draft = today.modes.find((mode) => mode.mode === "draft");
+		expect(draft).toMatchObject({ sessions: 2, focusMs: 120_000 });
+		expect(today.modes.find((mode) => mode.mode === "planning")?.sessions).toBe(
+			0,
+		);
+	});
+
+	it("tells yesterday's sittings from today's", async () => {
+		const folder =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+		await fakeVault.seedFile(
+			`${folder}/2026_08_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 86_400_000, 90)],
+			}),
+		);
+
+		const yesterday = await sessions.spread(project, "yesterday");
+		expect(yesterday.bands[1]?.added).toBe(90);
+		const today = await sessions.spread(project, "today");
+		expect(today.bands[1]?.added).toBe(0);
+		expect(today.modes.every((mode) => mode.sessions === 0)).toBe(true);
+	});
+
+	/** Every month of every year, which is what "all time" has to mean. */
+	it("reaches every year folder when the whole record is asked for", async () => {
+		const base =
+			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session";
+		await fakeVault.seedFile(
+			`${base}/2026/2026_07_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(Date.parse("2026-07-08T20:00:00.000Z"), 400)],
+			}),
+		);
+		await fakeVault.seedFile(
+			`${base}/2025/2025_12_device-b_writing_session.json`,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(Date.parse("2025-12-02T04:00:00.000Z"), 60)],
+			}),
+		);
+
+		const all = await sessions.spread(project, "all");
+		// Eight in the evening, and four in the morning a year earlier.
+		expect(all.bands[4]?.added).toBe(400);
+		expect(all.bands[6]?.added).toBe(60);
+		expect(all.modes.find((mode) => mode.mode === "draft")?.sessions).toBe(2);
+	});
+
+	it("counts the running session into the spread it belongs to", async () => {
+		await startSession({ writingMode: "revision" });
+		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		await timers.flush();
+
+		const today = await sessions.spread(project, "today");
+		expect(today.bands[1]?.focusMs).toBe(20_000);
+		// The two words the edit added to what the note already held.
+		expect(today.bands[1]?.added).toBe(2);
+		const revision = today.modes.find((mode) => mode.mode === "revision");
+		expect(revision).toMatchObject({ sessions: 1, focusMs: 20_000 });
+	});
 });

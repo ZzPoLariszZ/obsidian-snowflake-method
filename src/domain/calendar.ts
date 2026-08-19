@@ -183,3 +183,151 @@ function labels(
 		format.format(new Date(at(index))),
 	);
 }
+
+/** The first day of the month a day falls in. */
+export function startOfMonth(day: string): string {
+	return `${day.slice(0, 7)}-01`;
+}
+
+/** The first day of the month `count` months from the one `day` is in. */
+export function addMonths(day: string, count: number): string {
+	const at = new Date(dayMs(startOfMonth(day)));
+	return fromMs(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + count, 1));
+}
+
+/** The last day of the month a day falls in. */
+export function endOfMonth(day: string): string {
+	return addDays(addMonths(day, 1), -1);
+}
+
+/** How many days that month holds, which is what a month is asked for. */
+export function daysInMonth(day: string): number {
+	return daysBetween(startOfMonth(day), endOfMonth(day)) + 1;
+}
+
+/** The day the week holding `day` began on, for a reader who starts on `start`. */
+export function startOfWeek(day: string, start: WeekStartDay): string {
+	return addDays(day, -((dayOfWeek(day) - weekStartIndex(start) + 7) % 7));
+}
+
+/**
+ * Which week of its year a day falls in, counting from the reader's own first
+ * day of the week: week one is the week that holds the first of January, so a
+ * week begun in December belongs to the year it runs into. Not the ISO number,
+ * which always counts Mondays -- a grid drawn from Sundays would disagree with
+ * it every week of the year.
+ */
+export function weekOfYear(day: string, start: WeekStartDay): number {
+	const opening = startOfWeek(`${day.slice(0, 4)}-01-01`, start);
+	return Math.floor(daysBetween(opening, day) / 7) + 1;
+}
+
+/**
+ * A month named the way its reader's language names it -- "August 2026" in
+ * one, "2026年8月" in another. Calendar data again, so it comes from the
+ * platform rather than from a locale file.
+ */
+export function monthTitle(day: string, locale: string): string {
+	return new Intl.DateTimeFormat(locale, {
+		year: 'numeric',
+		month: 'long',
+		timeZone: 'UTC',
+	}).format(new Date(dayMs(day)));
+}
+
+/**
+ * How far a zone stood from UTC at a moment, in milliseconds. A stored
+ * session carries the moments it happened at and nothing about the hours they
+ * felt like, so this is what turns one into the other.
+ */
+export function zoneOffsetMs(ms: number, timeZone: string): number {
+	const options: Intl.DateTimeFormatOptions = {
+		hour12: false,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+	};
+	let parts: Intl.DateTimeFormatPart[];
+	try {
+		parts = new Intl.DateTimeFormat('en-CA', { timeZone, ...options }).formatToParts(
+			new Date(ms),
+		);
+	} catch {
+		// An unknown zone name falls back to wherever this machine is.
+		parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(new Date(ms));
+	}
+	const value = (type: string): number =>
+		Number(parts.find((part) => part.type === type)?.value ?? '0');
+	// Midnight reads as hour 24 in some engines under a 24-hour cycle.
+	const local = Date.UTC(
+		value('year'),
+		value('month') - 1,
+		value('day'),
+		value('hour') % 24,
+		value('minute'),
+		value('second'),
+	);
+	return local - Math.floor(ms / 1000) * 1000;
+}
+
+/**
+ * The parts of a day a reading splits a sitting across. They begin at six
+ * because that is where a writing day begins, and the small hours come last
+ * because that is where they are met -- at the end of the day they were
+ * worked into, not the start of the one they are dated to.
+ */
+export const DAY_BANDS = [
+	{ from: 6, to: 9 },
+	{ from: 9, to: 12 },
+	{ from: 12, to: 15 },
+	{ from: 15, to: 18 },
+	{ from: 18, to: 21 },
+	{ from: 21, to: 24 },
+	{ from: 0, to: 6 },
+] as const;
+
+/** Which part of the day an hour falls in. */
+export function bandOfHour(hour: number): number {
+	for (const [at, band] of DAY_BANDS.entries()) {
+		if (hour >= band.from && hour < band.to) return at;
+	}
+	return DAY_BANDS.length - 1;
+}
+
+/** A part of the day written as the hours of the clock it runs between. */
+export function bandLabel(band: number): string {
+	const span = DAY_BANDS[band] ?? DAY_BANDS[0];
+	const oclock = (hour: number): string => `${String(hour).padStart(2, '0')}:00`;
+	return `${oclock(span.from)}-${oclock(span.to)}`;
+}
+
+/**
+ * How much of a stretch of time fell in each part of the day, read in the
+ * given zone. The offset is taken once, at the moment the stretch began, and
+ * held for the whole of it: a sitting runs to minutes or hours, and on the
+ * two days a year a zone shifts this moves a boundary by an hour rather than
+ * moving the reading.
+ */
+export function splitDayBands(
+	from: number,
+	to: number,
+	timeZone: string,
+): number[] {
+	const spread = DAY_BANDS.map(() => 0);
+	if (!(to > from)) return spread;
+	const offset = zoneOffsetMs(from, timeZone);
+	let cursor = from + offset;
+	const end = to + offset;
+	while (cursor < end) {
+		const dayStart = Math.floor(cursor / DAY_MS) * DAY_MS;
+		const at = bandOfHour((cursor - dayStart) / 3_600_000);
+		const band = DAY_BANDS[at] ?? DAY_BANDS[0];
+		const until = Math.min(dayStart + band.to * 3_600_000, end);
+		spread[at] = (spread[at] ?? 0) + (until - cursor);
+		cursor = until;
+	}
+	return spread;
+}
