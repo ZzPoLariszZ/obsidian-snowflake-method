@@ -41,7 +41,7 @@ import {
 	WRITING_SESSION_TYPES,
 	type DocumentType,
 	type WritingSessionTiming,
-	type WritingSessionGoal,
+	type WritingSessionScope,
 	type WritingSessionType,
 	type EntityKindId,
 	type StepId,
@@ -461,8 +461,9 @@ export default class SnowflakeMethodPlugin
 		);
 		this.sessions = new WritingSessionService({
 			repository: this.projects.repository,
-			manuscript: this.projects.manuscript,
 			writingCount: this.projects.writingCount,
+			scope: () => this.settings.sessionScope,
+			goalScope: () => this.settings.sessionGoalScope,
 			recovery: {
 				load: () => this.app.loadLocalStorage(SESSION_RECOVERY_KEY) as unknown,
 				save: (snapshot) => {
@@ -2623,9 +2624,7 @@ export default class SnowflakeMethodPlugin
 
 	private handleSessionEvent(event: WritingSessionEvent): void {
 		if (this.unloading) return;
-		if (event.kind === 'goal-reached') {
-			new Notice(this.projectT('session.notice.goalReached'));
-		} else if (event.kind === 'break-started') {
+		if (event.kind === 'break-started') {
 			new Notice(
 				this.projectT('session.notice.breakStarted', { cycle: event.cycle }),
 			);
@@ -2716,7 +2715,7 @@ export default class SnowflakeMethodPlugin
 				this.projectT(`session.state.${state}`),
 				this.projectT(`session.mode.${live.writingMode}`),
 				this.projectT(
-					live.scope === 'project'
+					this.settings.sessionScope === 'project'
 						? 'statusBar.scopeProject'
 						: 'statusBar.scopeManuscript',
 				),
@@ -2761,28 +2760,6 @@ export default class SnowflakeMethodPlugin
 					),
 				}),
 			);
-		}
-		if (live.goal !== null) {
-			if (live.goalMet) {
-				lines.push(this.projectT('session.stat.goalReached'));
-			} else {
-				if (live.goal.netWordTarget !== undefined) {
-					lines.push(
-						this.projectT('session.stat.goalNet', {
-							net: this.grouped(live.trackedNet),
-							target: this.grouped(live.goal.netWordTarget),
-						}),
-					);
-				}
-				if (live.goal.focusTimeTargetSeconds !== undefined) {
-					lines.push(
-						this.projectT('session.stat.goalFocus', {
-							done: formatClock(live.durations.focusMs),
-							target: formatClock(live.goal.focusTimeTargetSeconds * 1000),
-						}),
-					);
-				}
-			}
 		}
 		return lines.join('\n');
 	}
@@ -2909,10 +2886,7 @@ export default class SnowflakeMethodPlugin
 		this.settings.sessionCountdownMinutes = setup.countdownMinutes;
 		this.settings.sessionPomodoroWorkMinutes = setup.pomodoroWorkMinutes;
 		this.settings.sessionPomodoroBreakMinutes = setup.pomodoroBreakMinutes;
-		this.settings.sessionGoalNetWords = setup.goalNetWords;
-		this.settings.sessionGoalFocusMinutes = setup.goalFocusMinutes;
 		this.settings.sessionWritingMode = setup.writingMode;
-		this.settings.sessionScope = setup.scope;
 		this.settings.sessionStopwatchExpectedMinutes =
 			setup.stopwatchExpectedMinutes;
 		await this.saveSettings();
@@ -2925,6 +2899,33 @@ export default class SnowflakeMethodPlugin
 		this.sessionSettingsChanged();
 	}
 
+	/** Net words a day is aimed at, in whichever scope is being aimed at. */
+	private dailyWordGoal(): number {
+		return this.settings.sessionGoalScope === 'manuscript'
+			? this.settings.sessionDailyWordGoalManuscript
+			: this.settings.sessionDailyWordGoalProject;
+	}
+
+	/**
+	 * Switches which reading every widget is showing. Nothing is recounted and
+	 * nothing is rewritten: a session records both scopes, so this only
+	 * changes the question being asked of what is already on disk. The goal
+	 * scope is left where it is, which is the point of it being its own.
+	 */
+	private toggleSessionScope(): void {
+		const scope: WritingSessionScope =
+			this.settings.sessionScope === 'project' ? 'manuscript' : 'project';
+		this.settings.sessionScope = scope;
+		void this.saveSettings();
+		new Notice(
+			this.projectT('messages.sessionScopeSwitched', {
+				scope: this.projectT(`session.scope.${scope}`),
+			}),
+		);
+		this.sessionSettingsChanged();
+		this.rerenderStatisticsViews();
+	}
+
 	/** The clock and conditions the timer widget shows and starts on. */
 	private sessionSetup(): SessionSetup {
 		return {
@@ -2932,35 +2933,26 @@ export default class SnowflakeMethodPlugin
 			countdownMinutes: this.settings.sessionCountdownMinutes,
 			pomodoroWorkMinutes: this.settings.sessionPomodoroWorkMinutes,
 			pomodoroBreakMinutes: this.settings.sessionPomodoroBreakMinutes,
-			goalNetWords: this.settings.sessionGoalNetWords,
-			goalFocusMinutes: this.settings.sessionGoalFocusMinutes,
 			writingMode: this.settings.sessionWritingMode,
-			scope: this.settings.sessionScope,
 			stopwatchExpectedMinutes:
 				this.settings.sessionStopwatchExpectedMinutes,
 		};
 	}
 
-	/** The saved setup as a start request; zero is a condition left off. */
+	/** The saved setup as a start request. */
 	private configuredStart(): StartSessionRequest {
 		const setup = this.sessionSetup();
-		const goal: WritingSessionGoal = {};
-		if (setup.goalNetWords > 0) goal.netWordTarget = setup.goalNetWords;
-		if (setup.goalFocusMinutes > 0) {
-			goal.focusTimeTargetSeconds = setup.goalFocusMinutes * 60;
-		}
-		return {
-			type: setup.type,
-			scope: this.settings.sessionScope,
-			writingMode: setup.writingMode,
-			goal: Object.keys(goal).length === 0 ? null : goal,
-		};
+		return { type: setup.type, writingMode: setup.writingMode };
 	}
 
 	private async startConfiguredSession(
 		request: StartSessionRequest,
+		projectPath: string | null = null,
 	): Promise<void> {
-		const project = await this.writingCountProject();
+		const project =
+			projectPath === null
+				? await this.writingCountProject()
+				: await this.resolveProject(projectPath);
 		if (project === null) {
 			new Notice(this.projectT('messages.noCurrentProject'));
 			return;
@@ -3008,10 +3000,8 @@ export default class SnowflakeMethodPlugin
 			const project = await this.writingCountProject();
 			if (project === null) return;
 			await this.sessions.startAuto(project, {
-				scope: 'manuscript',
 				type: 'stopwatch',
 				writingMode: 'draft',
-				goal: null,
 				timing: this.sessionTiming('stopwatch'),
 				countOptions: this.writingCountOptions(),
 			});
@@ -3054,10 +3044,17 @@ export default class SnowflakeMethodPlugin
 		// none reads the project the author is working in -- the one the last
 		// dashboard they touched belongs to -- rather than whichever note
 		// happens to be open in the editor beside it.
+		// Which project this panel speaks for: a pane names its own, and the
+		// sidebar names none and speaks for the one being worked in. Every
+		// reading below is of that project, the running session included --
+		// switch project and the sidebar switches with it, rather than leaving
+		// a neighbour's clock ticking over a day that is not being shown.
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
 		const read = async <T>(
 			from: (project: ProjectSnapshot) => Promise<T>,
 		): Promise<T | null> => {
-			const project = await this.resolveProject(context.projectPath ?? null);
+			const project = await this.resolveProject(panelProject());
 			return project === null ? null : from(project);
 		};
 		return {
@@ -3073,7 +3070,7 @@ export default class SnowflakeMethodPlugin
 			weekStart: () => this.settings.sessionWeekStart,
 			dateFormat: () => this.settings.sessionDateFormat,
 			today: () => this.sessions.today(),
-			live: () => this.sessions.live(),
+			live: () => this.sessions.live(panelProject() ?? undefined),
 			history: async (days) =>
 				read((project) => this.sessions.dailyTotals(project, days)),
 			month: async (anchor) =>
@@ -3132,15 +3129,26 @@ export default class SnowflakeMethodPlugin
 					this.sessionSettingsListeners.delete(settings);
 				};
 			},
-			dailyWordGoal: () => this.settings.sessionDailyWordGoal,
+			// The target the gauges read is the one being aimed at, which is
+			// the goal scope's rather than the lens's: what the charts are
+			// showing must not move the goalposts.
+			dailyWordGoal: () => this.dailyWordGoal(),
+			goalScope: () => this.settings.sessionGoalScope,
 			setup: () => this.sessionSetup(),
 			editDailyWordGoal: () => {
 				new DailyWordGoalModal(
 					this.app,
 					t,
-					this.settings.sessionDailyWordGoal,
-					async (goal) => {
-						this.settings.sessionDailyWordGoal = goal;
+					{
+						project: this.settings.sessionDailyWordGoalProject,
+						manuscript: this.settings.sessionDailyWordGoalManuscript,
+						scope: this.settings.sessionGoalScope,
+					},
+					async (goals) => {
+						this.settings.sessionDailyWordGoalProject = goals.project;
+						this.settings.sessionDailyWordGoalManuscript =
+							goals.manuscript;
+						this.settings.sessionGoalScope = goals.scope;
 						await this.saveSettings();
 						this.sessionSettingsChanged();
 					},
@@ -3152,11 +3160,15 @@ export default class SnowflakeMethodPlugin
 				).open();
 			},
 			start: () => {
-				void this.startConfiguredSession(this.configuredStart()).catch(
-					(error: unknown) => {
-						this.showError(error);
-					},
-				);
+				// Started from a pane, the sitting is that pane's project's:
+				// a Start button that began a session somewhere else would
+				// leave the pane it was pressed on still saying Start.
+				void this.startConfiguredSession(
+					this.configuredStart(),
+					context.projectPath ?? null,
+				).catch((error: unknown) => {
+					this.showError(error);
+				});
 			},
 			pauseOrResume: () => {
 				if (this.sessions.live()?.state === 'paused') this.sessions.resume();
@@ -4371,6 +4383,13 @@ export default class SnowflakeMethodPlugin
 			name: this.globalT('commands.startWritingSession'),
 			callback: () => {
 				this.openStartSessionModal();
+			},
+		});
+		this.addCommand({
+			id: 'toggle-session-scope',
+			name: this.globalT('commands.toggleSessionScope'),
+			callback: () => {
+				this.toggleSessionScope();
 			},
 		});
 		for (const type of WRITING_SESSION_TYPES) {

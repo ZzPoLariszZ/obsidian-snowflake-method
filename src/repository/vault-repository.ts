@@ -964,17 +964,38 @@ export class VaultRepository {
     documentType?: string,
     projectId?: string,
   ): Promise<ManagedEntryRecord[]> {
-    const matches: ManagedEntryRecord[] = [];
+    return (await this.surveyManagedEntriesBelow(folderPath, documentType, projectId))
+      .entries;
+  }
+
+  /**
+   * The same walk, with the notes it could not read at all counted rather
+   * than dropped. A note whose frontmatter has broken cannot say whose it is,
+   * so it can neither be matched nor safely written off as somebody else's,
+   * and a word count that quietly shrank by a chapter is worse than one that
+   * says a note was left out. A note that reads perfectly well and belongs to
+   * another project is not unreadable; it is simply not this one's.
+   */
+  async surveyManagedEntriesBelow(
+    folderPath: string,
+    documentType?: string,
+    projectId?: string,
+  ): Promise<{ entries: ManagedEntryRecord[]; unreadable: number }> {
+    const entries: ManagedEntryRecord[] = [];
+    let unreadable = 0;
     for (const file of this.listFilesBelow(folderPath)) {
       if (file.extension !== "md") continue;
       const entry = await this.entryOf(file);
-      if (entry === null) continue;
+      if (entry === null) {
+        unreadable += 1;
+        continue;
+      }
       if (!isManagedFrontmatter(entry.frontmatter)) continue;
       if (documentType && documentTypeOf(entry.frontmatter) !== documentType) continue;
       if (projectId && projectIdOf(entry.frontmatter) !== projectId) continue;
-      matches.push(entry);
+      entries.push(entry);
     }
-    return matches;
+    return { entries, unreadable };
   }
 
   /**

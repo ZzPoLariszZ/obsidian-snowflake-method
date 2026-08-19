@@ -10,7 +10,13 @@ import {
 	type WritingCount,
 	type WritingCountOptions,
 } from "../domain";
-import { documentTypeOf, type VaultRepository } from "../repository";
+import {
+	documentTypeOf,
+	isManagedFrontmatter,
+	projectIdOf,
+	type VaultRepository,
+} from "../repository";
+import { isPathAtOrBelow } from "../project-root";
 import { inspectMarkedSection } from "../templates";
 import type { ManuscriptService } from "./manuscript-service";
 import type { ProjectRef } from "./types";
@@ -204,59 +210,148 @@ export class WritingCountService {
 	}
 
 	/**
-	 * The notes a scope is counted from: the manuscript's segments, or every
-	 * Markdown note under the project's folder. Writing sessions seed their
-	 * per-note baselines from this same list, so the count and the tracker can
-	 * never mean two different sets of notes by one scope.
+	 * Every note the project's own writing lives in, with the manuscript's own
+	 * marked out among them.
+	 *
+	 * Both scopes are read from what a note declares rather than from where it
+	 * sits: the project's writing is its managed notes carrying its id, and the
+	 * manuscript's is the ones among those that call themselves drafts and lie
+	 * in a draft folder, which is the predicate `listSegments` gathers by. A
+	 * note made by hand under the project folder with no Snowflake frontmatter
+	 * belongs to no project and is nobody's word count, and one nested here
+	 * from another project belongs to that one.
+	 *
+	 * One listing answers both, so the whole and the part can never be counted
+	 * off two different sets of notes.
 	 */
+	private async projectNotes(project: ProjectRef): Promise<{
+		notes: { path: string; manuscript: boolean }[];
+		unreadable: number;
+	}> {
+		const survey = await this.repository.surveyManagedEntriesBelow(
+			project.rootPath,
+			undefined,
+			project.id,
+		);
+		return {
+			notes: survey.entries.map((entry) => ({
+				path: entry.path,
+				manuscript:
+					documentTypeOf(entry.frontmatter) === "draft" &&
+					this.manuscript.isInManuscriptFolder(project, entry.path),
+			})),
+			unreadable: survey.unreadable,
+		};
+	}
+
+	/**
+	 * Every note of the project with the scopes it belongs to, which is what a
+	 * writing session seeds its per-note baselines from. One walk, so the
+	 * count and the tracker can never mean two different sets of notes.
+	 */
+	async scopeNotes(
+		project: ProjectRef,
+	): Promise<{ path: string; manuscript: boolean }[]> {
+		return (await this.projectNotes(project)).notes;
+	}
+
+	/** The notes one scope is counted from, as paths. */
 	async scopePaths(
 		project: ProjectRef,
 		scope: WritingCountScope,
 	): Promise<string[]> {
-		return scope === "manuscript"
-			? (await this.manuscript.listSegments(project)).map(
-					(segment) => segment.path,
-				)
-			: this.repository
-					.listFilesBelow(project.rootPath)
-					.filter((file) => file.extension === "md")
-					.map((file) => file.path);
+		return (await this.scopeNotes(project))
+			.filter((note) => scope === "project" || note.manuscript)
+			.map((note) => note.path);
 	}
 
+	/**
+	 * Which scopes hold one note, for a note that turned up after a walk.
+	 * Answers by the declarations `projectNotes` reads, but from the file
+	 * rather than from the index, because a note written a moment ago is
+	 * exactly the note the index has not caught up with.
+	 */
+	async scopesOf(
+		project: ProjectRef,
+		path: string,
+	): Promise<WritingCountScope[]> {
+		if (!isPathAtOrBelow(path, project.rootPath)) return [];
+		const record = await this.repository.tryReadManaged(path);
+		if (record === null) return [];
+		if (!isManagedFrontmatter(record.frontmatter)) return [];
+		if (projectIdOf(record.frontmatter) !== project.id) return [];
+		return documentTypeOf(record.frontmatter) === "draft" &&
+			this.manuscript.isInManuscriptFolder(project, path)
+			? ["project", "manuscript"]
+			: ["project"];
+	}
+
+	/**
+	 * Every scope's writing, from one walk over the project's own notes. The
+	 * manuscript is counted as the subset of the project it is, so the two can
+	 * never be read off different moments or by different rules.
+	 */
+	async countScopes(
+		project: ProjectRef,
+		options: NoteCountOptions,
+	): Promise<Record<WritingCountScope, ScopeWritingCount>> {
+		const totals: Record<WritingCountScope, ScopeWritingCount> = {
+			project: emptyScopeCount("project"),
+			manuscript: emptyScopeCount("manuscript"),
+		};
+		const { notes, unreadable } = await this.projectNotes(project);
+		// A note under the project folder that will not read may well be one
+		// of the project's own, so the project says it was left out. The
+		// manuscript cannot claim it: a note that cannot say what it is
+		// certainly cannot say it is a draft.
+		totals.project.unreadable = unreadable;
+		for (const note of notes) {
+			const count = await this.countNote(note.path, options);
+			const scopes: WritingCountScope[] = note.manuscript
+				? ["project", "manuscript"]
+				: ["project"];
+			for (const scope of scopes) {
+				const sum = totals[scope];
+				// The paths came from the vault a moment ago, so a note that
+				// will not read is a note that will not parse rather than one
+				// that is gone. Said out loud: silence here reads as writing
+				// that vanished.
+				if (count === null) {
+					sum.unreadable += 1;
+					continue;
+				}
+				sum.notes += 1;
+				sum.cjkCharacters += count.cjkCharacters;
+				sum.words += count.words;
+				sum.punctuationMarks += count.punctuationMarks;
+				sum.charactersWithSpaces += count.charactersWithSpaces;
+				sum.charactersNoSpaces += count.charactersNoSpaces;
+				sum.total += count.total;
+			}
+		}
+		return totals;
+	}
+
+	/** One scope's writing, picked out of the walk that reads them both. */
 	async countProject(
 		project: ProjectRef,
 		scope: WritingCountScope,
 		options: NoteCountOptions,
 	): Promise<ScopeWritingCount> {
-		const paths = await this.scopePaths(project, scope);
-		const sum: ScopeWritingCount = {
-			scope,
-			notes: 0,
-			unreadable: 0,
-			cjkCharacters: 0,
-			words: 0,
-			punctuationMarks: 0,
-			charactersWithSpaces: 0,
-			charactersNoSpaces: 0,
-			total: 0,
-		};
-		for (const path of paths) {
-			const count = await this.countNote(path, options);
-			// The paths came from the vault a moment ago, so a note that will
-			// not read is a note that will not parse rather than one that is
-			// gone. Said out loud: silence here reads as writing that vanished.
-			if (count === null) {
-				sum.unreadable += 1;
-				continue;
-			}
-			sum.notes += 1;
-			sum.cjkCharacters += count.cjkCharacters;
-			sum.words += count.words;
-			sum.punctuationMarks += count.punctuationMarks;
-			sum.charactersWithSpaces += count.charactersWithSpaces;
-			sum.charactersNoSpaces += count.charactersNoSpaces;
-			sum.total += count.total;
-		}
-		return sum;
+		return (await this.countScopes(project, options))[scope];
 	}
+}
+
+function emptyScopeCount(scope: WritingCountScope): ScopeWritingCount {
+	return {
+		scope,
+		notes: 0,
+		unreadable: 0,
+		cjkCharacters: 0,
+		words: 0,
+		punctuationMarks: 0,
+		charactersWithSpaces: 0,
+		charactersNoSpaces: 0,
+		total: 0,
+	};
 }

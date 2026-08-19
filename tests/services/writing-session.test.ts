@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type {
-	WritingSessionRecord,
-	WritingSessionSnapshot,
-	WritingSurfaceActivity,
+import {
+	SCHEMA_VERSION,
+	type WritingSessionRecord,
+	type WritingSessionScope,
+	type WritingSessionSnapshot,
+	type WritingSurfaceActivity,
 } from "../../src/domain";
 import {
 	SnowflakeProjectService,
@@ -16,33 +18,37 @@ import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const T0 = Date.parse("2026-08-17T10:00:00.000Z");
 const DRAFT = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+/** A note of the project that is not the manuscript's: in one scope, not both. */
+const NOTES = "Snowflake Projects/Novel/80_Material/Notes.md";
+/** A note nobody's project made, which is therefore nobody's word count. */
 const LOOSE = "Snowflake Projects/Novel/Loose note.md";
 const MONTH_FILE =
-	"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026/2026_08_device-a_writing_session.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_writing_session.json";
 
 const countOptions = { mode: "ms-word", headings: "count" } as const;
 
 const options = (
 	overrides: Partial<StartWritingSessionOptions> = {},
 ): StartWritingSessionOptions => ({
-	scope: "project",
 	type: "stopwatch",
 	writingMode: "draft",
 	startMode: "manual",
-	goal: null,
 	timing: { idleThresholdSeconds: 60 },
 	countOptions,
 	...overrides,
 });
 
 /** A finished session another device might have written, started at `at`. */
-const foreignRecord = (at: number, net: number): WritingSessionRecord => ({
-	uuid: `foreign-${String(at)}`,
+const foreignRecord = (
+	at: number,
+	net: number,
+	manuscriptNet = net,
+): WritingSessionRecord => ({
+	id: `session-foreign-${String(at)}`,
 	schemaVersion: 1,
 	startedAt: new Date(at).toISOString(),
 	endedAt: new Date(at + 60_000).toISOString(),
 	timezone: "UTC",
-	countingScope: "project",
 	sessionType: "stopwatch",
 	startMode: "manual",
 	writingMode: "draft",
@@ -55,13 +61,17 @@ const foreignRecord = (at: number, net: number): WritingSessionRecord => ({
 	],
 	idleIntervals: [],
 	pausedIntervals: [],
-	startWordCount: 0,
-	endWordCount: net,
-	addedWordCount: net,
-	deletedWordCount: 0,
-	netWordCount: net,
+	words: {
+		project: { start: 0, end: net, added: net, deleted: 0, net },
+		manuscript: {
+			start: 0,
+			end: manuscriptNet,
+			added: manuscriptNet,
+			deleted: 0,
+			net: manuscriptNet,
+		},
+	},
 	files: [],
-	goal: null,
 	timing: { idleThresholdSeconds: 60 },
 });
 
@@ -71,6 +81,8 @@ describe("WritingSessionService", () => {
 	let project: ProjectSnapshot;
 	let sessions: WritingSessionService;
 	let clock: number;
+	let lens: WritingSessionScope;
+	let goalScope: WritingSessionScope;
 	let events: WritingSessionEvent[];
 	let store: { value: unknown };
 	let timers: {
@@ -87,7 +99,6 @@ describe("WritingSessionService", () => {
 	const buildService = (): WritingSessionService => {
 		const service = new WritingSessionService({
 			repository: projects.repository,
-			manuscript: projects.manuscript,
 			writingCount: projects.writingCount,
 			recovery: {
 				load: () => store.value,
@@ -96,6 +107,8 @@ describe("WritingSessionService", () => {
 				},
 			},
 			deviceId: () => "device-a",
+			scope: () => lens,
+			goalScope: () => goalScope,
 			now: () => clock,
 			timezone: () => "UTC",
 			uuid: () => `session-${String(clock)}`,
@@ -130,6 +143,8 @@ describe("WritingSessionService", () => {
 		);
 		project = await projects.createProject({ title: "Novel", locale: "en" });
 		clock = T0;
+		lens = "project";
+		goalScope = "project";
 		events = [];
 		store = { value: null };
 		const handlers = new Map<number, () => void>();
@@ -143,8 +158,46 @@ describe("WritingSessionService", () => {
 			},
 		};
 		sessions = buildService();
-		await fakeVault.seedFile(LOOSE, "one two three\n");
+		await seedNote(NOTES, "one two three");
+		await fakeVault.seedFile(LOOSE, "loose words nobody claimed\n");
 	});
+
+	/**
+	 * A note of the project, which is what a project's writing is counted
+	 * from: a file under the folder proves nothing, and only what the note
+	 * declares says whose writing it holds.
+	 */
+	const seedNote = async (
+		path: string,
+		body: string,
+		documentType = "material",
+	): Promise<void> => {
+		await fakeVault.seedFile(
+			path,
+			[
+				"---",
+				`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+				`snowflake-document: ${documentType}`,
+				`snowflake-project-id: ${project.id}`,
+				"---",
+				"",
+				`${body}\n`,
+			].join("\n"),
+		);
+	};
+
+	/** The same note rewritten, as a text provider the way an editor hands one. */
+	const written = (body: string, documentType = "material") =>
+		(): string =>
+			[
+				"---",
+				`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+				`snowflake-document: ${documentType}`,
+				`snowflake-project-id: ${project.id}`,
+				"---",
+				"",
+				`${body}\n`,
+			].join("\n");
 
 	const startSession = async (
 		overrides: Partial<StartWritingSessionOptions> = {},
@@ -159,7 +212,7 @@ describe("WritingSessionService", () => {
 		overrides: Partial<WritingSurfaceActivity> = {},
 	): WritingSurfaceActivity => ({
 		kind: "markdown-editor",
-		path: LOOSE,
+		path: NOTES,
 		...overrides,
 	});
 
@@ -184,10 +237,10 @@ describe("WritingSessionService", () => {
 	it("credits typing per note, added and deleted apart", async () => {
 		await startSession();
 		sessions.surfaceActivity(surface());
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(2);
-		sessions.noteChanged(LOOSE, () => "one two four five\n");
+		sessions.noteChanged(NOTES, () => "one two four five\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(2);
 		expect(sessions.live()?.deleted).toBe(1);
@@ -196,66 +249,95 @@ describe("WritingSessionService", () => {
 		const written = monthFile();
 		expect(written?.sessions).toHaveLength(1);
 		expect(written?.sessions[0]?.files).toEqual([
-			{ path: LOOSE, added: 2, deleted: 1, net: 1 },
+			{ path: NOTES, added: 2, deleted: 1, net: 1, manuscript: false },
 		]);
 	});
 
 	it("credits a note born mid-session with the words it was born with", async () => {
 		await startSession();
-		const path = "Snowflake Projects/Novel/Fresh.md";
-		await fakeVault.seedFile(path, "four new words here\n");
+		const path = "Snowflake Projects/Novel/80_Material/Fresh.md";
+		await seedNote(path, "four new words here");
 		// The create alone: a note written in one go fires nothing after it,
 		// so waiting for a change would lose everything a form put in it.
 		sessions.noteCreated(path);
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(4);
 		// And a later edit of the same note credits only the difference.
-		sessions.noteChanged(path, () => "four new words here again\n");
+		sessions.noteChanged(path, written("four new words here again"));
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(5);
 	});
 
 	it("moves a renamed note's tallies without inventing a delta", async () => {
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four\n");
+		sessions.noteChanged(NOTES, written("one two three four"));
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(1);
-		const moved = "Snowflake Projects/Novel/Moved note.md";
-		fakeVault.rename(LOOSE, moved);
-		sessions.notePathRenamed(LOOSE, moved);
-		sessions.noteChanged(moved, () => "one two three four\n");
+		const moved = "Snowflake Projects/Novel/80_Material/Moved note.md";
+		fakeVault.rename(NOTES, moved);
+		sessions.notePathRenamed(NOTES, moved);
+		sessions.noteChanged(moved, written("one two three four"));
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(1);
 		expect(sessions.live()?.deleted).toBe(0);
 	});
 
-	it("reads a rename across the word scope as the words going or coming", async () => {
+	/**
+	 * The rule the whole reading rests on: a note is read under the membership
+	 * it has now, so what it wrote before the move moves with it. Nothing is
+	 * typed between the two assertions.
+	 */
+	it("carries a note's whole tally across the manuscript's edge", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(3);
+		lens = "manuscript";
+		expect(sessions.live()?.added).toBe(0);
+		// Into the manuscript, as one of its own: everything it wrote arrives
+		// with it, and it never left the project's reading.
+		const inside = "Snowflake Projects/Novel/50_Manuscript/Moved.md";
+		await seedNote(inside, "one two three four five six", "draft");
+		fakeVault.delete(NOTES);
+		fakeVault.rename(inside, `${inside}.tmp`);
+		fakeVault.rename(`${inside}.tmp`, inside);
+		sessions.notePathRenamed(NOTES, inside);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(3);
+		lens = "project";
+		expect(sessions.live()?.added).toBe(3);
+		// And back out again: the whole of it leaves the manuscript reading.
+		const outside = "Snowflake Projects/Novel/80_Material/Moved.md";
+		fakeVault.rename(inside, outside);
+		sessions.notePathRenamed(inside, outside);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(3);
+		lens = "manuscript";
+		expect(sessions.live()?.added).toBe(0);
+	});
+
+	it("reads a rename out of the project as the words going", async () => {
 		await projects.manuscript.writeSegment(
 			DRAFT,
 			"Seven words are in this draft body.",
 		);
-		await startSession({ scope: "manuscript" });
-		// Out of the manuscript: the scope really did lose those words.
-		const parked = "Snowflake Projects/Novel/Parked.md";
+		await startSession();
+		// Out of the project altogether: it really did lose those words, and
+		// both readings say so, because the manuscript is inside the project.
+		const parked = "Parked.md";
 		fakeVault.rename(DRAFT, parked);
 		sessions.notePathRenamed(DRAFT, parked);
 		await timers.flush();
 		expect(sessions.live()?.deleted).toBe(7);
-		expect(sessions.live()?.added).toBe(0);
-		// And back in: nothing was known about it out there, so it arrives at
-		// its full count, the way a note born in the manuscript would.
-		fakeVault.rename(parked, DRAFT);
-		sessions.notePathRenamed(parked, DRAFT);
-		await timers.flush();
-		expect(sessions.live()?.added).toBe(7);
+		lens = "manuscript";
 		expect(sessions.live()?.deleted).toBe(7);
 	});
 
-	it("leaves a rename that never touches the word scope alone", async () => {
-		await startSession({ scope: "manuscript" });
-		const elsewhere = "Snowflake Projects/Novel/Elsewhere.md";
-		fakeVault.rename(LOOSE, elsewhere);
-		sessions.notePathRenamed(LOOSE, elsewhere);
+	it("leaves a rename inside one scope alone", async () => {
+		await startSession();
+		const elsewhere = "Snowflake Projects/Novel/80_Material/Elsewhere.md";
+		fakeVault.rename(NOTES, elsewhere);
+		sessions.notePathRenamed(NOTES, elsewhere);
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(0);
 		expect(sessions.live()?.deleted).toBe(0);
@@ -263,8 +345,8 @@ describe("WritingSessionService", () => {
 
 	it("credits a deleted note's last count and keeps its tally", async () => {
 		await startSession();
-		fakeVault.delete(LOOSE);
-		sessions.noteDeleted(LOOSE);
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
 		await timers.flush();
 		expect(sessions.live()?.deleted).toBe(3);
 		expect(sessions.live()?.trackedNet).toBe(-3);
@@ -272,14 +354,14 @@ describe("WritingSessionService", () => {
 		// What happened in the note happened: the record still names it, and
 		// says how it ended.
 		expect(monthFile()?.sessions[0]?.files).toEqual([
-			{ path: LOOSE, added: 0, deleted: 3, net: -3 },
+			{ path: NOTES, added: 0, deleted: 3, net: -3, manuscript: false },
 		]);
 	});
 
 	it("credits every note under a deleted folder", async () => {
-		const folder = "Snowflake Projects/Novel/Notebook";
-		await fakeVault.seedFile(`${folder}/One.md`, "one two\n");
-		await fakeVault.seedFile(`${folder}/Two.md`, "three four five\n");
+		const folder = "Snowflake Projects/Novel/80_Material/Notebook";
+		await seedNote(`${folder}/One.md`, "one two");
+		await seedNote(`${folder}/Two.md`, "three four five");
 		await startSession();
 		fakeVault.delete(folder);
 		sessions.noteDeleted(folder, { children: true });
@@ -287,28 +369,52 @@ describe("WritingSessionService", () => {
 		expect(sessions.live()?.deleted).toBe(5);
 	});
 
-	it("credits every note a folder carries into the word scope", async () => {
-		const parked = "Snowflake Projects/Novel/Parked";
-		await fakeVault.seedFile(`${parked}/One.md`, "one two\n");
-		await fakeVault.seedFile(`${parked}/Two.md`, "three four five\n");
-		await startSession({ scope: "manuscript" });
+	it("credits every note a folder carries into the project", async () => {
+		// Notes of this project, parked outside its folder: what they declare
+		// is only half the answer, and until they are under the root they are
+		// not the project's writing.
+		const parked = "Parked";
+		await seedNote(`${parked}/One.md`, "one two");
+		await seedNote(`${parked}/Two.md`, "three four five", "draft");
+		await startSession();
+		expect(sessions.live()?.added).toBe(0);
 		const arrived = "Snowflake Projects/Novel/50_Manuscript/Parked";
 		fakeVault.rename(parked, arrived);
 		sessions.notePathRenamed(parked, arrived);
 		await timers.flush();
-		// Nothing was known about either note out there, so both arrive whole.
+		// Nothing was known about either note out there, so both arrive whole
+		// -- and only the one that calls itself a draft joins the manuscript.
 		expect(sessions.live()?.added).toBe(5);
 		expect(sessions.live()?.deleted).toBe(0);
+		lens = "manuscript";
+		expect(sessions.live()?.added).toBe(3);
+	});
+
+	/**
+	 * A file under the project folder is not the project's writing. Only what
+	 * a note declares says whose words it holds, and a note nobody's project
+	 * made is asked once and then left alone -- including on its second save,
+	 * which is where a wider gate would have started counting it.
+	 */
+	it("counts nothing for a note the project never made", async () => {
+		await startSession();
+		sessions.noteChanged(LOOSE, () => "loose words nobody claimed at all\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		sessions.noteChanged(LOOSE, () => "loose words nobody claimed at all again\n");
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.files).toBe(0);
 	});
 
 	it("credits no lifecycle event through a pause", async () => {
-		const born = "Snowflake Projects/Novel/Born.md";
+		const born = "Snowflake Projects/Novel/80_Material/Born.md";
 		await startSession();
 		sessions.pause();
-		await fakeVault.seedFile(born, "four new words here\n");
+		await seedNote(born, "four new words here");
 		sessions.noteCreated(born);
-		fakeVault.delete(LOOSE);
-		sessions.noteDeleted(LOOSE);
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
 		const parked = "Snowflake Projects/Novel/Parked.md";
 		fakeVault.rename(DRAFT, parked);
 		sessions.notePathRenamed(DRAFT, parked);
@@ -327,17 +433,17 @@ describe("WritingSessionService", () => {
 		const frozen = sessions.live()?.durations.totalMs;
 		clock += 60_000;
 		expect(sessions.live()?.durations.totalMs).toBe(frozen);
-		sessions.noteChanged(LOOSE, () => "one two three plus pause words\n");
+		sessions.noteChanged(NOTES, () => "one two three plus pause words\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(0);
 		sessions.resume();
 		await settle();
 		// The same content again is no delta: the pause absorbed those words.
-		sessions.noteChanged(LOOSE, () => "one two three plus pause words\n");
+		sessions.noteChanged(NOTES, () => "one two three plus pause words\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(0);
 		// Writing after the pause counts from the pause-typed text onward.
-		sessions.noteChanged(LOOSE, () => "one two three plus pause words more\n");
+		sessions.noteChanged(NOTES, () => "one two three plus pause words more\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(1);
 	});
@@ -379,34 +485,100 @@ describe("WritingSessionService", () => {
 
 	it("replaces a running session only after its record is written", async () => {
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four five six\n");
+		sessions.noteChanged(NOTES, () => "one two three four five six\n");
 		const second = sessions.start(project, options({ writingMode: "revision" }));
 		await second;
 		const written = monthFile();
 		expect(written?.sessions).toHaveLength(1);
 		expect(written?.sessions[0]?.stopReason).toBe("replaced-by-new-session");
 		// The pending delta belonged to the first session, not the second.
-		expect(written?.sessions[0]?.addedWordCount).toBe(3);
+		expect(written?.sessions[0]?.words.project.added).toBe(3);
 		expect(sessions.live()?.added).toBe(0);
 		expect(sessions.live()?.writingMode).toBe("revision");
 	});
 
-	it("takes a strict session's time from the project and its words from the manuscript", async () => {
+	/**
+	 * The heart of it: one session, both readings. What was written outside
+	 * the manuscript is the project's writing and not the manuscript's, and
+	 * neither number is lost by the reader looking at the other.
+	 */
+	/**
+	 * One session runs at a time across the whole vault, so a panel that
+	 * belongs to a project has to be able to ask whether the running one is
+	 * its own -- or every project's timer shows the same clock over the same
+	 * words under a different project's name.
+	 */
+	it("owns up to one project's sitting and disowns everybody else's", async () => {
+		await startSession();
+		const mine = project.projectFile;
+		expect(sessions.live(mine)?.id).toBe(sessions.live()?.id);
+		expect(sessions.live("Somewhere Else/001_Project_Metadata.md")).toBeNull();
+		// Asking for nobody in particular still answers, which is what the
+		// sidebar does: it belongs to no project and follows the writing.
+		expect(sessions.live()).not.toBeNull();
+		await sessions.stop();
+		expect(sessions.live(mine)).toBeNull();
+	});
+
+	it("records the project's words and the manuscript's from one sitting", async () => {
 		await projects.manuscript.writeSegment(
 			DRAFT,
 			"Seven words are in this draft body.",
 		);
-		await startSession({ scope: "manuscript" });
-		// Consulting a character is part of writing the chapter, so it holds
-		// the clock -- and adds nothing to a manuscript's count.
+		await startSession();
 		clock += 90_000;
-		sessions.surfaceActivity(surface({ path: LOOSE }));
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		// Consulting a character is part of writing the chapter, so it holds
+		// the clock, and it is the project's writing but not the manuscript's.
+		sessions.surfaceActivity(surface({ path: NOTES }));
+		sessions.noteChanged(NOTES, written("one two three four five"));
 		await timers.flush();
 		expect(sessions.live()?.state).toBe("focus");
+		expect(sessions.live()?.added).toBe(2);
+		lens = "manuscript";
 		expect(sessions.live()?.added).toBe(0);
-		sessions.surfaceActivity(surface({ path: DRAFT }));
-		expect(sessions.live()?.state).toBe("focus");
+		// And the draft itself, which is both.
+		await projects.manuscript.writeSegment(
+			DRAFT,
+			"Seven words are in this draft body, plus three.",
+		);
+		sessions.noteChanged(DRAFT);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		lens = "project";
+		expect(sessions.live()?.added).toBe(4);
+		await sessions.stop();
+		const stored = monthFile()?.sessions[0];
+		expect(stored?.words.project.added).toBe(4);
+		expect(stored?.words.manuscript.added).toBe(2);
+		expect(stored?.files).toEqual([
+			{ path: NOTES, added: 2, deleted: 0, net: 2, manuscript: false },
+			{ path: DRAFT, added: 2, deleted: 0, net: 2, manuscript: true },
+		]);
+	});
+
+	/**
+	 * The two ends of one reading have to be read by one rule, or the gap
+	 * between them is arithmetic rather than writing.
+	 */
+	it("reads both scopes' start and end totals from the same walk", async () => {
+		await projects.manuscript.writeSegment(
+			DRAFT,
+			"Seven words are in this draft body.",
+		);
+		await startSession();
+		const counted = await projects.writingCount.countScopes(
+			project,
+			countOptions,
+		);
+		expect(sessions.live()?.startWordCount).toBe(counted.project.total);
+		lens = "manuscript";
+		expect(sessions.live()?.startWordCount).toBe(counted.manuscript.total);
+		await sessions.stop();
+		const stored = monthFile()?.sessions[0];
+		expect(stored?.words.project.start).toBe(counted.project.total);
+		expect(stored?.words.project.end).toBe(counted.project.total);
+		expect(stored?.words.manuscript.start).toBe(counted.manuscript.total);
+		expect(stored?.words.manuscript.end).toBe(counted.manuscript.total);
 	});
 
 	it("leaves a session in focus wherever the author went, until the silence runs long", async () => {
@@ -442,10 +614,10 @@ describe("WritingSessionService", () => {
 		expect(sessions.live()?.state).toBe("focus");
 		expect(sessions.live()?.added).toBe(0);
 		// The save is what the session hears, and it hears it once.
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(2);
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(2);
 	});
@@ -463,7 +635,7 @@ describe("WritingSessionService", () => {
 
 	it("recovers a marked shutdown as one, ended at the captured moment", async () => {
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		clock += 10_000;
 		sessions.markShutdown();
@@ -473,15 +645,24 @@ describe("WritingSessionService", () => {
 		const record = await revived.recoverAtStartup();
 		expect(record?.stopReason).toBe("app-shutdown");
 		expect(record?.endedAt).toBe(new Date(clock).toISOString());
-		expect(record?.addedWordCount).toBe(2);
-		expect(record?.endWordCount).toBe((record?.startWordCount ?? 0) + 2);
+		expect(record?.words.project.added).toBe(2);
+		expect(record?.words.project.end).toBe(
+			(record?.words.project.start ?? 0) + 2,
+		);
+		// Recovery derives both, from the files rather than from a total kept
+		// beside them: the note was not the manuscript's, so it moved nothing
+		// there and the manuscript's end is its own start.
+		expect(record?.words.manuscript.added).toBe(0);
+		expect(record?.words.manuscript.end).toBe(
+			record?.words.manuscript.start,
+		);
 		expect(store.value).toBeNull();
-		expect(monthFile()?.sessions[0]?.uuid).toBe(record?.uuid);
+		expect(monthFile()?.sessions[0]?.id).toBe(record?.id);
 	});
 
 	it("recovers an unmarked snapshot as a crash", async () => {
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		sessions.markShutdown();
 		const marked = store.value as WritingSessionSnapshot;
@@ -496,13 +677,13 @@ describe("WritingSessionService", () => {
 
 	it("starts an auto session only into silence, and stops only its own", async () => {
 		await startSession();
-		await sessions.startAuto(project, options({ scope: "manuscript" }));
+		await sessions.startAuto(project, options({ writingMode: "revision" }));
 		expect(sessions.live()?.startMode).toBe("manual");
 		await sessions.stopIfAuto("focus-mode-ended");
 		expect(sessions.isRunning()).toBe(true);
 		await sessions.stop();
 
-		await sessions.startAuto(project, options({ scope: "manuscript" }));
+		await sessions.startAuto(project, options({ writingMode: "revision" }));
 		expect(sessions.live()?.startMode).toBe("auto");
 		clock += 20_000;
 		await sessions.stopIfAuto("focus-mode-ended");
@@ -512,9 +693,37 @@ describe("WritingSessionService", () => {
 		).toBe("focus-mode-ended");
 	});
 
+	/**
+	 * One file on disk, two answers. Nothing is recounted and nothing is
+	 * rewritten: the lens only chooses which of the two numbers a record
+	 * already holds is the one being read.
+	 */
+	it("answers a stored day in whichever scope is being read", async () => {
+		const foreign =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
+		await fakeVault.seedFile(
+			foreign,
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 60 * 60_000, 250, 90)],
+			}),
+		);
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(250);
+		lens = "manuscript";
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(90);
+		// The goal reads its own scope throughout, so switching what the
+		// charts show never moves which days met the target.
+		expect((await sessions.todaySummary(project)).goalNet).toBe(250);
+		goalScope = "manuscript";
+		expect((await sessions.todaySummary(project)).goalNet).toBe(90);
+		lens = "project";
+		expect((await sessions.todaySummary(project)).goalNet).toBe(90);
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(250);
+	});
+
 	it("sums today across every device's file, the live session included", async () => {
 		const foreign =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_writing_session.json";
 		await fakeVault.seedFile(
 			foreign,
 			JSON.stringify({
@@ -523,7 +732,7 @@ describe("WritingSessionService", () => {
 			}),
 		);
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		const summary = await sessions.todaySummary(project);
 		expect(summary.sessions).toBe(2);
@@ -541,7 +750,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("reads a stretch of days with the empty ones still in it", async () => {
 		const folder =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026";
 		const day = 86_400_000;
 		await fakeVault.seedFile(
 			`${folder}/2026_08_device-b_writing_session.json`,
@@ -591,7 +800,7 @@ describe("WritingSessionService", () => {
 	/** Today is one day of that stretch, and has to agree with it. */
 	it("ends the stretch on the same today the day's own summary reads", async () => {
 		await startSession();
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 		const summary = await sessions.todaySummary(project);
 		const [today] = await sessions.dailyTotals(project, 1);
@@ -608,7 +817,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("reads a whole month, the days still to come included", async () => {
 		const folder =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026";
 		const day = 86_400_000;
 		await fakeVault.seedFile(
 			`${folder}/2026_08_device-b_writing_session.json`,
@@ -646,7 +855,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("spreads a day's sittings over the parts of the day", async () => {
 		const folder =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026";
 		const morning = Date.parse("2026-08-17T07:30:00.000Z");
 		await fakeVault.seedFile(
 			`${folder}/2026_08_device-b_writing_session.json`,
@@ -670,7 +879,7 @@ describe("WritingSessionService", () => {
 
 	it("tells yesterday's sittings from today's", async () => {
 		const folder =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session/2026";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026";
 		await fakeVault.seedFile(
 			`${folder}/2026_08_device-b_writing_session.json`,
 			JSON.stringify({
@@ -689,7 +898,7 @@ describe("WritingSessionService", () => {
 	/** Every month of every year, which is what "all time" has to mean. */
 	it("reaches every year folder when the whole record is asked for", async () => {
 		const base =
-			"Snowflake Projects/Novel/70_Tool/71_Statistics/711_Writing_Session";
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session";
 		await fakeVault.seedFile(
 			`${base}/2026/2026_07_device-b_writing_session.json`,
 			JSON.stringify({
@@ -714,7 +923,7 @@ describe("WritingSessionService", () => {
 
 	it("counts the running session into the spread it belongs to", async () => {
 		await startSession({ writingMode: "revision" });
-		sessions.noteChanged(LOOSE, () => "one two three four five\n");
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
 		await timers.flush();
 
 		const today = await sessions.spread(project, "today");

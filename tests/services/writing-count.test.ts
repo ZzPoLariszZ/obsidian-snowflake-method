@@ -283,11 +283,34 @@ describe("WritingCountService", () => {
     expect(counted.total).toBe(7);
   });
 
-  it("counts the project scope across managed and free notes alike", async () => {
+  /**
+   * A file under the project folder proves nothing about whose writing it
+   * holds. Only what a note declares does, so a note nobody's project made
+   * and a note another project made are both outside this one's count.
+   */
+  it("counts only the notes the project itself declares", async () => {
     await service.manuscript.writeSegment(DRAFT, "Seven words are in this draft body.");
+    const before = await service.writingCount.countProject(
+      project,
+      "project",
+      processor,
+    );
+
     await fakeVault.create(
       "Snowflake Projects/Novel/Loose note.md",
       "Four loose words here.\n",
+    );
+    await fakeVault.create(
+      "Snowflake Projects/Novel/Borrowed.md",
+      [
+        "---",
+        "snowflake-schema: 3",
+        "snowflake-document: material",
+        "snowflake-project-id: some-other-project",
+        "---",
+        "",
+        "Words belonging to somebody else.\n",
+      ].join("\n"),
     );
 
     const counted = await service.writingCount.countProject(
@@ -297,8 +320,48 @@ describe("WritingCountService", () => {
     );
 
     expect(counted.scope).toBe("project");
-    // The draft, the loose note, and the project's own scaffolding notes.
-    expect(counted.notes).toBeGreaterThan(2);
-    expect(counted.total).toBeGreaterThanOrEqual(11);
+    expect(counted.notes).toBe(before.notes);
+    expect(counted.total).toBe(before.total);
+    // Neither is unreadable: both read perfectly well and simply are not this
+    // project's writing.
+    expect(counted.unreadable).toBe(0);
+  });
+
+  /**
+   * The manuscript is the subset of the project it is, so both are read off
+   * one walk and can never be counted at two different moments or by two
+   * different rules.
+   */
+  it("reads both scopes from one walk and agrees with each on its own", async () => {
+    await service.manuscript.writeSegment(DRAFT, "Seven words are in this draft body.");
+
+    const scopes = await service.writingCount.countScopes(project, processor);
+    expect(scopes.manuscript.notes).toBe(1);
+    expect(scopes.manuscript.total).toBe(7);
+    expect(scopes.project.notes).toBeGreaterThan(scopes.manuscript.notes);
+    expect(scopes.project.total).toBeGreaterThanOrEqual(scopes.manuscript.total);
+
+    for (const scope of ["project", "manuscript"] as const) {
+      expect(
+        await service.writingCount.countProject(project, scope, processor),
+      ).toEqual(scopes[scope]);
+    }
+  });
+
+  it("says which scopes hold one note, and which hold none", async () => {
+    await service.manuscript.writeSegment(DRAFT, "Seven words are in this draft body.");
+    await fakeVault.create(
+      "Snowflake Projects/Novel/Loose note.md",
+      "Four loose words here.\n",
+    );
+
+    const scopesOf = (path: string) =>
+      service.writingCount.scopesOf(project, path);
+    expect(await scopesOf(DRAFT)).toEqual(["project", "manuscript"]);
+    expect(await scopesOf(`${project.rootPath}/00_System/001_Project_Metadata.md`)).toEqual([
+      "project",
+    ]);
+    expect(await scopesOf("Snowflake Projects/Novel/Loose note.md")).toEqual([]);
+    expect(await scopesOf("Elsewhere/Other.md")).toEqual([]);
   });
 });

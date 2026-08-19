@@ -73,7 +73,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       // One key for the whole chain: ensureFolder builds every level, and a
       // single entry keeps the id-recovery walk from visiting 70_Tool three
       // times over.
-      writingSessions: "70_Tool/71_Statistics/711_Writing_Session",
+      writingSessions: "70_Tool/71_Data_Statistics/711_Writing_Session",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -94,7 +94,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       scenes: "40_场景",
       draft: "50_正文",
       worldbuilding: "60_世界观",
-      writingSessions: "70_工具/71_统计/711_写作时段",
+      writingSessions: "70_工具/71_数据统计/711_写作时段",
       materials: "80_素材",
       archive: "90_存档",
     },

@@ -12,11 +12,11 @@ import {
 	parseSessionSnapshot,
 	sessionDurations,
 	sessionFilePath,
-	sessionGoalMet,
 	sessionMonthKey,
 	sessionBands,
 	sessionNets,
 	shouldDiscard,
+	tallyScopes,
 	trendTone,
 	emptyModes,
 	type DayReading,
@@ -250,12 +250,11 @@ describe('the session tracker', () => {
 const record = (
 	overrides: Partial<WritingSessionRecord> = {},
 ): WritingSessionRecord => ({
-	uuid: 'a-session',
+	id: 'session-a',
 	schemaVersion: 1,
 	startedAt: new Date(T0).toISOString(),
 	endedAt: new Date(T0 + 10 * MINUTE).toISOString(),
 	timezone: 'UTC',
-	countingScope: 'project',
 	sessionType: 'stopwatch',
 	startMode: 'manual',
 	writingMode: 'draft',
@@ -273,35 +272,63 @@ const record = (
 		},
 	],
 	pausedIntervals: [],
-	startWordCount: 1000,
-	endWordCount: 1700,
-	addedWordCount: 520,
-	deletedWordCount: 20,
-	netWordCount: 500,
-	files: [{ path: 'Novel/50_Manuscript/One.md', added: 520, deleted: 20, net: 500 }],
-	goal: { netWordTarget: 400 },
+	words: {
+		project: { start: 1000, end: 1700, added: 520, deleted: 20, net: 500 },
+		manuscript: { start: 600, end: 900, added: 320, deleted: 20, net: 300 },
+	},
+	files: [
+		{
+			path: 'Novel/50_Manuscript/One.md',
+			added: 320,
+			deleted: 20,
+			net: 300,
+			manuscript: true,
+		},
+		{
+			path: 'Novel/20_Character/Ana.md',
+			added: 200,
+			deleted: 0,
+			net: 200,
+			manuscript: false,
+		},
+	],
 	timing: { idleThresholdSeconds: 60 },
 	...overrides,
 });
 
 describe('session arithmetic', () => {
 	it('tells tracked net, scope net change, and the gap apart', () => {
-		const nets = sessionNets(record());
+		const nets = sessionNets(record(), 'project');
 		expect(nets.trackedNet).toBe(500);
 		expect(nets.scopeNetChange).toBe(700);
 		expect(nets.otherChanges).toBe(200);
 	});
 
-	it('completes a goal only when every configured condition holds', () => {
-		expect(sessionGoalMet(null, 9999, 9999 * 1000)).toBe(false);
-		expect(sessionGoalMet({}, 9999, 9999 * 1000)).toBe(false);
-		expect(sessionGoalMet({ netWordTarget: 500 }, 500, 0)).toBe(true);
-		expect(
-			sessionGoalMet({ netWordTarget: 500, focusTimeTargetSeconds: 600 }, 500, 599 * 1000),
-		).toBe(false);
-		expect(
-			sessionGoalMet({ netWordTarget: 500, focusTimeTargetSeconds: 600 }, 500, 600 * 1000),
-		).toBe(true);
+	/**
+	 * The same sitting, asked the other question. A session records both, so
+	 * which one is read is the reader's to choose and never the record's.
+	 */
+	it('answers for whichever scope it is asked about', () => {
+		const nets = sessionNets(record(), 'manuscript');
+		expect(nets.trackedNet).toBe(300);
+		expect(nets.scopeNetChange).toBe(300);
+		expect(nets.otherChanges).toBe(0);
+	});
+
+	/**
+	 * A note's whole contribution is read under the membership it has now, so
+	 * the scope totals are a sum over the files and never a second copy of the
+	 * number that could drift from them.
+	 */
+	it('sums each scope from the per-note tallies', () => {
+		const totals = tallyScopes(record().files);
+		expect(totals.project).toEqual({ added: 520, deleted: 20 });
+		expect(totals.manuscript).toEqual({ added: 320, deleted: 20 });
+	});
+
+	it('moves a note\u2019s whole tally when its membership moves', () => {
+		const files = record().files.map((file) => ({ ...file, manuscript: true }));
+		expect(tallyScopes(files).manuscript).toEqual({ added: 520, deleted: 20 });
 	});
 
 	it('discards only a short session with nothing written', () => {
@@ -315,8 +342,10 @@ describe('session arithmetic', () => {
 						},
 					],
 					idleIntervals: [],
-					addedWordCount: added,
-					deletedWordCount: deleted,
+					words: {
+						project: { start: 0, end: 0, added, deleted, net: added - deleted },
+						manuscript: { start: 0, end: 0, added: 0, deleted: 0, net: 0 },
+					},
 				}),
 			);
 		expect(short(0, 0, 14.9)).toBe(true);
@@ -393,7 +422,19 @@ describe('reading stored sessions back', () => {
 			parseSessionRecord(record({ stopReason: 'rage-quit' as never })),
 		).toBeNull();
 		expect(
-			parseSessionRecord(record({ addedWordCount: '520' as never })),
+			parseSessionRecord(
+				record({ words: { project: { added: '520' } } as never }),
+			),
+		).toBeNull();
+		// Both readings or none: a record that names only one is a record
+		// half of whose questions cannot be answered.
+		expect(
+			parseSessionRecord(record({ words: { project: record().words.project } as never })),
+		).toBeNull();
+		expect(
+			parseSessionRecord(
+				record({ files: [{ path: 'One.md', added: 1, deleted: 0, net: 1 }] as never }),
+			),
 		).toBeNull();
 		expect(
 			parseSessionRecord(
@@ -406,7 +447,7 @@ describe('reading stored sessions back', () => {
 		const file = { schemaVersion: 1, sessions: [record()] };
 		expect(parseMonthFile(JSON.parse(JSON.stringify(file)))).toEqual(file);
 		expect(
-			parseMonthFile({ schemaVersion: 1, sessions: [record(), { uuid: 'x' }] }),
+			parseMonthFile({ schemaVersion: 1, sessions: [record(), { id: 'x' }] }),
 		).toBeNull();
 	});
 });
@@ -414,20 +455,18 @@ describe('reading stored sessions back', () => {
 const snapshot = (
 	overrides: Partial<WritingSessionSnapshot> = {},
 ): WritingSessionSnapshot => ({
-	uuid: 'live-session',
+	id: 'session-live',
 	schemaVersion: 1,
 	projectRoot: 'Snowflake Projects/Novel',
 	projectPath: 'Snowflake Projects/Novel/001_Project_Metadata.md',
-	sessionsDir: '70_Tool/71_Statistics/711_Writing_Session',
+	sessionsDir: '70_Tool/71_Data_Statistics/711_Writing_Session',
 	startedAt: new Date(T0).toISOString(),
 	timezone: 'UTC',
-	countingScope: 'manuscript',
 	sessionType: 'stopwatch',
 	startMode: 'auto',
 	writingMode: 'draft',
-	goal: null,
 	timing: { idleThresholdSeconds: 60 },
-	startWordCount: 2000,
+	start: { project: 2000, manuscript: 800 },
 	activeIntervals: [
 		{
 			startedAt: new Date(T0).toISOString(),
@@ -440,9 +479,22 @@ const snapshot = (
 	openStartedAt: new Date(T0 + 5 * MINUTE).toISOString(),
 	capturedAt: new Date(T0 + 6 * MINUTE).toISOString(),
 	lastActivityAt: new Date(T0 + 4 * MINUTE).toISOString(),
-	addedWordCount: 120,
-	deletedWordCount: 20,
-	files: [{ path: 'Novel/50_Manuscript/One.md', added: 120, deleted: 20, net: 100 }],
+	files: [
+		{
+			path: 'Novel/50_Manuscript/One.md',
+			added: 90,
+			deleted: 20,
+			net: 70,
+			manuscript: true,
+		},
+		{
+			path: 'Novel/20_Character/Ana.md',
+			added: 30,
+			deleted: 0,
+			net: 30,
+			manuscript: false,
+		},
+	],
 	...overrides,
 });
 
@@ -453,7 +505,7 @@ describe('recovering an orphaned session', () => {
 			stored,
 		);
 		expect(parseSessionSnapshot(null)).toBeNull();
-		expect(parseSessionSnapshot({ uuid: 'x' })).toBeNull();
+		expect(parseSessionSnapshot({ id: 'x' })).toBeNull();
 		expect(
 			parseSessionSnapshot(snapshot({ capturedAt: 'yesterday-ish' })),
 		).toBeNull();
@@ -470,9 +522,22 @@ describe('recovering an orphaned session', () => {
 				endedAt: new Date(T0 + 6 * MINUTE).toISOString(),
 			},
 		]);
-		expect(finalized.netWordCount).toBe(100);
-		// The scope was never recounted: the end derives from what was seen.
-		expect(finalized.endWordCount).toBe(2100);
+		// Neither scope was recounted: each end derives from its own start
+		// and the net its own files add up to.
+		expect(finalized.words.project).toEqual({
+			start: 2000,
+			end: 2100,
+			added: 120,
+			deleted: 20,
+			net: 100,
+		});
+		expect(finalized.words.manuscript).toEqual({
+			start: 800,
+			end: 870,
+			added: 90,
+			deleted: 20,
+			net: 70,
+		});
 	});
 
 	it('reads a marked shutdown as one', () => {
@@ -505,6 +570,7 @@ describe('recovering an orphaned session', () => {
 		added: Math.max(0, trackedNet),
 		deleted: Math.max(0, -trackedNet),
 		focusMs,
+		goalNet: trackedNet,
 	});
 
 	/**
@@ -572,6 +638,19 @@ describe('recovering an orphaned session', () => {
 	});
 
 	/**
+	 * The goal is judged on its own scope, not on the one the grid happens to
+	 * be showing. Switching what the charts read must not change which days
+	 * met the target, so the two numbers travel side by side.
+	 */
+	it('judges the goal on its own net, whatever the grid is showing', () => {
+		const days: DayReading[] = [
+			{ trackedNet: 900, added: 900, deleted: 0, focusMs: 0, goalNet: 100 },
+			{ trackedNet: 100, added: 100, deleted: 0, focusMs: 0, goalNet: 900 },
+		];
+		expect(heatLevels(days, 'goal', 500)).toEqual([0, HEAT_LEVELS]);
+	});
+
+	/**
 	 * The tallest day is deliberately not the ceiling. A scale that ends
 	 * exactly at the record says the record twice -- once on the axis and once
 	 * in the readings underneath -- and gives the other days nothing round to
@@ -627,18 +706,21 @@ describe('a session across the parts of a day', () => {
 		words = 0,
 	): Pick<
 		WritingSessionRecord,
-		'activeIntervals' | 'idleIntervals' | 'addedWordCount' | 'deletedWordCount'
+		'activeIntervals' | 'idleIntervals' | 'words'
 	> => ({
 		activeIntervals: [{ startedAt: from, endedAt: to }],
 		idleIntervals: [],
-		addedWordCount: words,
-		deletedWordCount: 0,
+		words: {
+			project: { start: 0, end: words, added: words, deleted: 0, net: words },
+			manuscript: { start: 0, end: 0, added: 0, deleted: 0, net: 0 },
+		},
 	});
 
 	it('cuts a sitting at every boundary it crosses', () => {
 		const bands = sessionBands(
 			sitting('2026-08-18T08:00:00Z', '2026-08-18T13:00:00Z'),
 			'UTC',
+			'project',
 		);
 		expect(bands[0]?.focusMs).toBe(3_600_000);
 		expect(bands[1]?.focusMs).toBe(3 * 3_600_000);
@@ -654,6 +736,7 @@ describe('a session across the parts of a day', () => {
 		const bands = sessionBands(
 			sitting('2026-08-18T08:00:00Z', '2026-08-18T10:00:00Z', 300),
 			'UTC',
+			'project',
 		);
 		// An hour before nine and an hour after it: half the words each.
 		expect(bands[0]?.added).toBe(150);
@@ -670,10 +753,13 @@ describe('a session across the parts of a day', () => {
 				idleIntervals: [
 					{ startedAt: '2026-08-18T13:00:00Z', endedAt: '2026-08-18T14:00:00Z' },
 				],
-				addedWordCount: 40,
-				deletedWordCount: 10,
+				words: {
+					project: { start: 0, end: 30, added: 40, deleted: 10, net: 30 },
+					manuscript: { start: 0, end: 0, added: 0, deleted: 0, net: 0 },
+				},
 			},
 			'UTC',
+			'project',
 		);
 		expect(bands[2]?.added).toBe(40);
 		expect(bands[2]?.deleted).toBe(10);
@@ -686,6 +772,7 @@ describe('a session across the parts of a day', () => {
 		const bands = sessionBands(
 			sitting('2026-08-18T08:00:00Z', '2026-08-18T08:00:00Z', 90),
 			'UTC',
+			'project',
 		);
 		expect(bands.every((band) => band.added === 0 && band.totalMs === 0)).toBe(
 			true,
@@ -697,6 +784,7 @@ describe('a session across the parts of a day', () => {
 		const bands = sessionBands(
 			sitting('2026-08-18T14:00:00Z', '2026-08-18T15:00:00Z'),
 			'America/New_York',
+			'project',
 		);
 		expect(bands[1]?.focusMs).toBe(3_600_000);
 		expect(bands[2]?.focusMs).toBe(0);

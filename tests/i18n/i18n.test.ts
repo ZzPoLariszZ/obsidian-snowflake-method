@@ -622,11 +622,15 @@ describe('translation resources', () => {
 			'sessionWidget.today.pace',
 			'sessionWidget.today.paceValue',
 			'modal.dailyGoal.title',
-			'modal.dailyGoal.words',
+			'modal.dailyGoal.words.project',
+			'modal.dailyGoal.words.manuscript',
+			'modal.dailyGoal.desc.project',
+			'modal.dailyGoal.desc.manuscript',
+			'modal.dailyGoal.scope',
+			'modal.dailyGoal.scope.desc',
 			'modal.sessionSetup.title',
 			'modal.sessionSetup.type',
 			'modal.sessionSetup.stage',
-			'modal.sessionSetup.scope',
 			'modal.sessionSetup.focus',
 			'modal.sessionSetup.break',
 			'modal.sessionSetup.expected',
@@ -751,8 +755,28 @@ describe('translation resources', () => {
 		expect(t('en', 'sessionWidget.bands.share', { share: '32.1' })).toBe(
 			'32.1%',
 		);
-		expect(en['sessionWidget.week.title']).toBe('Weekly goal');
-		expect(zhCN['sessionWidget.month.title']).toBe('每月目标');
+		// The gauges name the scope they are measuring, so a goal on the
+		// project beside a day read as the manuscript reads as two questions.
+		expect(en['sessionWidget.week.title']).toBe('Weekly goal ({scope})');
+		expect(zhCN['sessionWidget.month.title']).toBe('每月目标（{scope}）');
+		for (const scope of ['project', 'manuscript'] as const) {
+			expect(Object.keys(en)).toContain(`session.scope.short.${scope}`);
+			expect(Object.keys(zhCN)).toContain(`session.scope.short.${scope}`);
+		}
+		// A goal field and the scope it is aimed at are named the same way, so
+		// the dialog reads as one question rather than two vocabularies.
+		expect(en['modal.dailyGoal.words.project']).toContain(
+			en['session.scope.project'].toLowerCase(),
+		);
+		expect(en['modal.dailyGoal.words.manuscript']).toContain(
+			en['session.scope.manuscript'].toLowerCase(),
+		);
+		expect(zhCN['modal.dailyGoal.words.project']).toContain(
+			zhCN['session.scope.project'],
+		);
+		expect(zhCN['modal.dailyGoal.words.manuscript']).toContain(
+			zhCN['session.scope.manuscript'],
+		);
 		expect(en['sessionWidget.bands.title']).toBe('Temporal distribution');
 		expect(zhCN['sessionWidget.bands.title']).toBe('时间分布');
 		expect(en['sessionWidget.modes.title']).toBe('Writing stages');

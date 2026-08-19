@@ -29,7 +29,6 @@ import {
 	type ProgressStatus,
 	type TimeKind,
 	type WritingMode,
-	type WritingSessionGoal,
 	type WritingSessionScope,
 	type WritingSessionType,
 	isWorldbuildingKind,
@@ -4443,9 +4442,7 @@ export class ManagedBoundaryUnlockModal extends Modal {
 /** Everything a session needs to begin, settled before it does. */
 export interface StartSessionRequest {
 	type: WritingSessionType;
-	scope: WritingSessionScope;
 	writingMode: WritingMode;
-	goal: WritingSessionGoal | null;
 }
 
 /**
@@ -4461,20 +4458,31 @@ function sessionRow(parent: HTMLElement, name: string, desc?: string): Setting {
 	return setting;
 }
 
+/** A day's targets: one per scope, and which of them is being aimed at. */
+export interface DailyWordGoals {
+	project: number;
+	manuscript: number;
+	scope: WritingSessionScope;
+}
+
 /**
- * The daily word goal the goal widget measures against. One field, because
- * one number is the whole question.
+ * The daily word goals the goal widget measures against. Two targets rather
+ * than one, because the project and the manuscript are two different day's
+ * work, and a third field saying which is the one being aimed at -- so that
+ * changing what the charts are showing never moves the target.
  */
-export class DailyWordGoalModal extends SnowflakeFormModal<number> {
-	private field: HTMLInputElement | null = null;
+export class DailyWordGoalModal extends SnowflakeFormModal<DailyWordGoals> {
+	private readonly fields = new Map<WritingSessionScope, HTMLInputElement>();
+	private aimedAt: WritingSessionScope;
 
 	constructor(
 		app: App,
 		t: Translate,
-		private readonly current: number,
-		onSubmit: SubmitHandler<number>,
+		private readonly current: DailyWordGoals,
+		onSubmit: SubmitHandler<DailyWordGoals>,
 	) {
 		super(app, t, t('modal.dailyGoal.title'), onSubmit, 'common.save');
+		this.aimedAt = current.scope;
 		this.modalEl.addClass(
 			'snowflake-method-session-modal',
 			'snowflake-method-definition-modal',
@@ -4483,22 +4491,43 @@ export class DailyWordGoalModal extends SnowflakeFormModal<number> {
 
 	protected buildForm(): void {
 		this.contentEl.addClass('snowflake-method-definition-form');
-		// Not the stacked row the other forms use: one number does not need a
+		// Not the stacked rows the other forms use: a number does not need a
 		// field the width of the dialog, and the box reads better beside the
 		// name it answers to than underneath it.
+		for (const scope of WRITING_SESSION_SCOPES) {
+			new Setting(this.contentEl)
+				.setName(this.t(`modal.dailyGoal.words.${scope}`))
+				.setDesc(this.t(`modal.dailyGoal.desc.${scope}`))
+				.addText((text) => {
+					text.inputEl.type = 'number';
+					text.inputEl.min = '0';
+					text.setValue(`${this.current[scope]}`);
+					this.fields.set(scope, text.inputEl);
+				});
+		}
 		new Setting(this.contentEl)
-			.setName(this.t('modal.dailyGoal.words'))
-			.setDesc(this.t('modal.dailyGoal.desc'))
-			.addText((text) => {
-				text.inputEl.type = 'number';
-				text.inputEl.min = '0';
-				text.setValue(`${this.current}`);
-				this.field = text.inputEl;
+			.setName(this.t('modal.dailyGoal.scope'))
+			.setDesc(this.t('modal.dailyGoal.scope.desc'))
+			.addDropdown((dropdown) => {
+				for (const scope of WRITING_SESSION_SCOPES) {
+					dropdown.addOption(scope, this.t(`session.scope.${scope}`));
+				}
+				dropdown.setValue(this.aimedAt).onChange((value) => {
+					if ((WRITING_SESSION_SCOPES as readonly string[]).includes(value)) {
+						this.aimedAt = value as WritingSessionScope;
+					}
+				});
 			});
 	}
 
-	protected collectValue(): number | null {
-		return wholeNumber(this.field?.value) ?? this.current;
+	protected collectValue(): DailyWordGoals | null {
+		const read = (scope: WritingSessionScope): number =>
+			wholeNumber(this.fields.get(scope)?.value) ?? this.current[scope];
+		return {
+			project: read("project"),
+			manuscript: read("manuscript"),
+			scope: this.aimedAt,
+		};
 	}
 }
 
@@ -4511,7 +4540,6 @@ export class DailyWordGoalModal extends SnowflakeFormModal<number> {
 export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 	private sessionType: WritingSessionType;
 	private writingMode: WritingMode;
-	private countingScope: WritingSessionScope;
 	private countdownEl: HTMLInputElement | null = null;
 	private workEl: HTMLInputElement | null = null;
 	private breakEl: HTMLInputElement | null = null;
@@ -4530,7 +4558,6 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 		super(app, t, t('modal.sessionSetup.title'), onSubmit, submitKey);
 		this.sessionType = current.type;
 		this.writingMode = current.writingMode;
-		this.countingScope = current.scope;
 		this.modalEl.addClass(
 			'snowflake-method-session-modal',
 			'snowflake-method-definition-modal',
@@ -4560,18 +4587,6 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 				dropdown.setValue(this.writingMode).onChange((value) => {
 					if ((WRITING_MODES as readonly string[]).includes(value)) {
 						this.writingMode = value as WritingMode;
-					}
-				});
-			},
-		);
-		sessionRow(this.contentEl, this.t('modal.sessionSetup.scope')).addDropdown(
-			(dropdown) => {
-				for (const scope of WRITING_SESSION_SCOPES) {
-					dropdown.addOption(scope, this.t(`session.scope.${scope}`));
-				}
-				dropdown.setValue(this.countingScope).onChange((value) => {
-					if ((WRITING_SESSION_SCOPES as readonly string[]).includes(value)) {
-						this.countingScope = value as WritingSessionScope;
 					}
 				});
 			},
@@ -4659,11 +4674,8 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 				wholeNumber(this.expectedEl?.value) ??
 				this.current.stopwatchExpectedMinutes,
 			writingMode: this.writingMode,
-			scope: this.countingScope,
 			// The session goals are not this dialog's to ask about; they carry
 			// through untouched rather than being cleared by their absence.
-			goalNetWords: this.current.goalNetWords,
-			goalFocusMinutes: this.current.goalFocusMinutes,
 		};
 	}
 }

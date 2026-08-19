@@ -48,6 +48,7 @@ export const en = {
 	'commands.pauseResumeWritingSession': 'Pause or resume the writing session',
 	'commands.stopWritingSession': 'Stop the writing session',
 	'commands.openStatistics': 'Open writing statistics',
+	'commands.toggleSessionScope': 'Switch statistics scope',
 	'commands.manuscriptFocus.off': 'Focus mode is off.',
 	'commands.manuscriptFocus.on': 'Focus mode is on.',
 	'commands.manuscriptFocus.deep':
@@ -160,9 +161,15 @@ export const en = {
 	'settings.sessionIdleThreshold.name': 'Idle after',
 	'settings.sessionIdleThreshold.desc':
 		'Seconds without an edit before focus time turns into idle time. The grace period itself still counts as focus.',
-	'settings.sessionDailyGoal.name': 'Daily word goal',
-	'settings.sessionDailyGoal.desc':
-		'Net words a day the goal widget measures against. Zero turns the goal off.',
+	'settings.sessionDailyGoalProject.name': 'Daily word goal: whole project',
+	'settings.sessionDailyGoalProject.desc':
+		'Net words a day the goal widget measures against when the goal is aimed at the project. Zero turns the goal off.',
+	'settings.sessionDailyGoalManuscript.name': 'Daily word goal: only manuscript',
+	'settings.sessionDailyGoalManuscript.desc':
+		'Net words a day the goal widget measures against when the goal is aimed at the manuscript. Zero turns the goal off.',
+	'settings.sessionGoalScope.name': 'Goal aimed at',
+	'settings.sessionGoalScope.desc':
+		'Which of the two daily goals is the one being aimed at. It stays where it is when the statistics scope changes, so the target never moves under you.',
 	'settings.sessionDateFormat.name': 'Date format',
 	'settings.sessionDateFormat.desc':
 		'How a day is written wherever the writing statistics name one.',
@@ -172,18 +179,12 @@ export const en = {
 	'settings.sessionDefaultType.name': 'Session timer',
 	'settings.sessionDefaultType.desc':
 		'What the session widget starts on, and what its clock shows at rest.',
-	'settings.sessionScope.name': 'Counting scope',
+	'settings.sessionScope.name': 'Statistics scope',
 	'settings.sessionScope.desc':
-		'What a session counts as writing: any note of the project, or only the manuscript.',
+		'Which reading the writing statistics show. A session always records both, so this changes nothing about what is kept. Only the notes the project itself made count as its writing, so a plain note with no Snowflake properties is nobody\u2019s word count.',
 	'settings.sessionWritingMode.name': 'Writing mode',
 	'settings.sessionWritingMode.desc':
 		'The stage a session started from the widget begins in.',
-	'settings.sessionGoalNet.name': 'Session goal: net words',
-	'settings.sessionGoalNet.desc':
-		'Net words a session started from the widget aims at. Zero leaves the condition off.',
-	'settings.sessionGoalFocus.name': 'Session goal: focus minutes',
-	'settings.sessionGoalFocus.desc':
-		'Focus minutes a session started from the widget aims at. Zero leaves the condition off.',
 	'settings.sessionCountdown.name': 'Countdown length',
 	'settings.sessionCountdown.desc':
 		'Minutes a countdown session runs before it completes on its own.',
@@ -362,6 +363,7 @@ export const en = {
 	'messages.canvasCreated': 'Created scene canvas “{name}”.',
 	'messages.stepChanged': 'Step {step} status changed to {status}.',
 	'messages.noCurrentProject': 'Open a Snowflake project first.',
+	'messages.sessionScopeSwitched': 'Writing statistics now show: {scope}.',
 	'statusBar.wordCount': '{count} {unit}',
 	'statusBar.selectionWordCount': 'Selection: {count} {unit}',
 	'statusBar.unitWord': 'word',
@@ -387,6 +389,8 @@ export const en = {
 	'session.type.pomodoro': 'Pomodoro',
 	'session.scope.project': 'Whole project',
 	'session.scope.manuscript': 'Only manuscript',
+	'session.scope.short.project': 'Project',
+	'session.scope.short.manuscript': 'Manuscript',
 	'session.state.starting': 'Starting',
 	'session.state.focus': 'Focus',
 	'session.state.idle': 'Idle',
@@ -403,9 +407,6 @@ export const en = {
 	'session.stat.words': 'Added {added} · deleted {deleted} · net {net}',
 	'session.stat.startCount': 'Start count: {count}',
 	'session.stat.pace': 'Pace: {pace} per focus hour',
-	'session.stat.goalNet': 'Goal: {net} of {target} words',
-	'session.stat.goalFocus': 'Goal: {done} of {target} focus',
-	'session.stat.goalReached': 'Goal reached',
 	'sessionMenu.start.stopwatch': 'Start stopwatch',
 	'sessionMenu.start.countdown': 'Start countdown',
 	'sessionMenu.start.pomodoro': 'Start pomodoro',
@@ -414,7 +415,6 @@ export const en = {
 	'sessionMenu.resume': 'Resume session',
 	'sessionMenu.stop': 'Stop session',
 	'sessionMenu.openStatistics': 'Open statistic sidebar',
-	'session.notice.goalReached': 'Session goal reached.',
 	'session.notice.breakStarted': 'Pomodoro {cycle} done. Break time.',
 	'session.notice.workStarted': 'Break over. Pomodoro {cycle} begins.',
 	'session.notice.completed': 'Writing session complete.',
@@ -423,18 +423,22 @@ export const en = {
 		'A session file would not read and was set aside as {path}.',
 	'session.modal.start': 'Start',
 	'modal.dailyGoal.title': 'Set daily goal',
-	'modal.dailyGoal.words': 'Net word count',
-	'modal.dailyGoal.desc': 'Setting to zero will turn the goal off.',
+	'modal.dailyGoal.words.project': 'Net word count: whole project',
+	'modal.dailyGoal.desc.project': 'Setting to zero will turn the goal off.',
+	'modal.dailyGoal.words.manuscript': 'Net word count: only manuscript',
+	'modal.dailyGoal.desc.manuscript': 'Setting to zero will turn the goal off.',
+	'modal.dailyGoal.scope': 'Goal aimed at',
+	'modal.dailyGoal.scope.desc':
+		'It will stay when the statistics scope changes.',
 	'modal.sessionSetup.title': 'Set focus timer',
 	'modal.sessionSetup.type': 'Timer type',
 	'modal.sessionSetup.stage': 'Writing stage',
-	'modal.sessionSetup.scope': 'Counting scope',
 	'modal.sessionSetup.focus': 'Focus minutes',
 	'modal.sessionSetup.break': 'Break minutes',
 	'modal.sessionSetup.expected': 'Expected minutes',
 	'modal.sessionSetup.expectedDesc':
 		'Setting to zero will be unlimited.',
-	'sessionWidget.goal.title': 'Daily goal',
+	'sessionWidget.goal.title': 'Daily goal ({scope})',
 	'sessionWidget.goal.edit': 'Set the daily word goal',
 	'sessionWidget.goal.progress': '{net} / {goal}',
 	'sessionWidget.goal.unset': 'No daily goal set.',
@@ -482,8 +486,8 @@ export const en = {
 	'sessionWidget.calendar.previous': 'Previous month',
 	'sessionWidget.calendar.next': 'Next month',
 	'sessionWidget.calendar.met': 'Daily goal met',
-	'sessionWidget.week.title': 'Weekly goal',
-	'sessionWidget.month.title': 'Monthly goal',
+	'sessionWidget.week.title': 'Weekly goal ({scope})',
+	'sessionWidget.month.title': 'Monthly goal ({scope})',
 	'sessionWidget.bands.title': 'Temporal distribution',
 	'sessionWidget.bands.span': 'Days counted',
 	'sessionWidget.bands.measure': 'What to compare',

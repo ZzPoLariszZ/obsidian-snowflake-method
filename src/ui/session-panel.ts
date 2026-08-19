@@ -88,14 +88,8 @@ export interface SessionSetup {
 	countdownMinutes: number;
 	pomodoroWorkMinutes: number;
 	pomodoroBreakMinutes: number;
-	/** Net words the session aims at, or 0 for no such condition. */
-	goalNetWords: number;
-	/** Focus minutes the session aims at, or 0 for no such condition. */
-	goalFocusMinutes: number;
 	/** The stage of the writing a session begins in. */
 	writingMode: WritingMode;
-	/** What the session counts words across: the project, or its manuscript. */
-	scope: WritingSessionScope;
 	/**
 	 * Minutes a stopwatch sitting is aimed at, or 0 for none. A stopwatch runs
 	 * until it is stopped either way -- this is what the ring closes over, not
@@ -133,6 +127,8 @@ export interface SessionPanelBridge {
 	subscribe(listener: (structural: boolean) => void): () => void;
 	/** Net words a day is aimed at, or 0 when no goal is set. */
 	dailyWordGoal(): number;
+	/** Which scope that target, and every goal mark, is measured in. */
+	goalScope(): WritingSessionScope;
 	setup(): SessionSetup;
 	/**
 	 * Opens the dialog that sets the daily word goal. Saving it reaches every
@@ -317,6 +313,17 @@ export function renderSessionPanel(
 		if (structural || Date.now() - lastReadAt >= DAY_REREAD_MS) refreshToday();
 	});
 	timer.update();
+	// The dials and the day are painted at their resting state now, before
+	// anything is read off disk. Every one of them carries labels with numbers
+	// under them, and a first frame that draws the labels over nothing and
+	// fills them in once the read lands reads as a flicker rather than as a
+	// widget arriving. The clock beside them has always painted straight away;
+	// these now do the same, and the read that follows moves a number instead
+	// of conjuring one. The charts are left alone: they have no text to leave
+	// blank, and an axis cannot be ruled before the box has been laid out.
+	goal.update(null);
+	today.update(null);
+	for (const gauge of goals) gauge.update([]);
 	refreshHistory();
 	refreshSpread();
 	refreshToday();
@@ -332,6 +339,8 @@ export function renderSessionPanel(
 
 interface WidgetFrame {
 	header: HTMLElement;
+	/** The name itself, for a widget whose name answers to a setting. */
+	title: HTMLElement;
 	body: HTMLElement;
 }
 
@@ -344,7 +353,7 @@ function createWidget(
 		cls: `snowflake-method-widget ${spec.cls}`,
 	});
 	const header = widget.createDiv({ cls: 'snowflake-method-widget-header' });
-	header.createSpan({
+	const title = header.createSpan({
 		cls: 'snowflake-method-widget-title',
 		text: spec.title,
 	});
@@ -358,8 +367,24 @@ function createWidget(
 	}
 	return {
 		header,
+		title,
 		body: widget.createDiv({ cls: 'snowflake-method-widget-body' }),
 	};
+}
+
+/**
+ * A gauge's name, which says whose goal it is measuring. Re-read on every
+ * repaint rather than fixed when the widget was built: the goal can be aimed
+ * somewhere else while the panel is on screen, and a dial still labelled with
+ * the scope it used to answer for would be worse than one labelled with none.
+ */
+function goalTitle(
+	bridge: SessionPanelBridge,
+	widget: 'goal' | SpanGoal,
+): string {
+	return bridge.t(`sessionWidget.${widget}.title`, {
+		scope: bridge.t(`session.scope.short.${bridge.goalScope()}`),
+	});
 }
 
 /** The two stretches a daily goal adds up to, beside the day itself. */
@@ -437,7 +462,7 @@ function renderGoalWidget(
 ): { update: (summary: TodayWritingSummary | null) => void } {
 	const t = bridge.t;
 	const frame = createWidget(parent, {
-		title: t('sessionWidget.goal.title'),
+		title: goalTitle(bridge, 'goal'),
 		cls: 'snowflake-method-widget-goal',
 		settings: {
 			label: t('sessionWidget.goal.edit'),
@@ -449,7 +474,8 @@ function renderGoalWidget(
 	const show = createGauge(frame, t);
 	return {
 		update: (summary) => {
-			show(summary?.trackedNet ?? 0, bridge.dailyWordGoal());
+			frame.title.setText(goalTitle(bridge, 'goal'));
+			show(summary?.goalNet ?? 0, bridge.dailyWordGoal());
 		},
 	};
 }
@@ -468,7 +494,7 @@ function renderSpanGoalWidget(
 ): { update: (history: WritingDayTotals[]) => void } {
 	const t = bridge.t;
 	const frame = createWidget(parent, {
-		title: t(`sessionWidget.${span}.title`),
+		title: goalTitle(bridge, span),
 		cls: `snowflake-method-widget-goal snowflake-method-widget-${span}`,
 		settings: {
 			label: t('sessionWidget.goal.edit'),
@@ -480,6 +506,7 @@ function renderSpanGoalWidget(
 	const show = createGauge(frame, t);
 	return {
 		update: (history) => {
+			frame.title.setText(goalTitle(bridge, span));
 			const today = bridge.today();
 			const from =
 				span === 'week'
@@ -489,7 +516,7 @@ function renderSpanGoalWidget(
 			// this month are simply not in it to be counted.
 			let net = 0;
 			for (const day of history) {
-				if (day.day >= from) net += day.trackedNet;
+				if (day.day >= from) net += day.goalNet;
 			}
 			show(net, bridge.dailyWordGoal() * (span === 'week' ? 7 : daysInMonth(today)));
 		},
@@ -686,6 +713,7 @@ function renderTodayWidget(
 				added: 0,
 				deleted: 0,
 				trackedNet: 0,
+				goalNet: 0,
 			};
 			sessions.setText(`${day.sessions}`);
 			total.setText(formatClock(day.totalMs));
@@ -1263,7 +1291,7 @@ function heatDetail(
 					// a share of the way there is a reading the shading does not
 					// offer and the day was not judged on.
 					t(
-						day.trackedNet >= goal
+						day.goalNet >= goal
 							? 'sessionWidget.heatmap.completed'
 							: 'sessionWidget.heatmap.uncompleted',
 					)
@@ -1476,7 +1504,7 @@ function renderCalendarWidget(
 				// sentence later, and a day that has not happened has nothing
 				// to be wrong about. Both stay blank.
 				if (totals === undefined || day >= today) continue;
-				if (goal > 0 && totals.trackedNet >= goal) {
+				if (goal > 0 && totals.goalNet >= goal) {
 					const met = cell.createSpan({
 						cls: 'snowflake-method-calendar-met',
 						attr: { 'aria-label': t('sessionWidget.calendar.met') },
@@ -1536,6 +1564,7 @@ function renderCalendarWidget(
 			if (summary === null || shown === undefined) return;
 			if (
 				shown.trackedNet === summary.trackedNet &&
+				shown.goalNet === summary.goalNet &&
 				shown.focusMs === summary.focusMs
 			) {
 				return;

@@ -55,19 +55,34 @@ export interface SessionInterval {
 	endedAt: string;
 }
 
-/** What one note contributed to a session's observed writing. */
+/**
+ * What one note contributed to a session's observed writing.
+ *
+ * `manuscript` is the note's membership as it stood when the record was
+ * written, not as it stood when each word was typed: a note's whole tally
+ * follows it in and out of the manuscript, so the flag is terminal and the
+ * scope totals above can be checked against a sum over these.
+ */
 export interface SessionFileTally {
 	path: string;
 	added: number;
 	deleted: number;
 	net: number;
+	manuscript: boolean;
 }
 
-/** Every configured condition must be met for the goal to complete. */
-export interface WritingSessionGoal {
-	netWordTarget?: number;
-	focusTimeTargetSeconds?: number;
+/** What a session observed being written, under one way of counting it. */
+export interface SessionWordTotals {
+	/** Scope totals at the ends: snapshots, not sums of the deltas below. */
+	start: number;
+	end: number;
+	added: number;
+	deleted: number;
+	net: number;
 }
+
+/** Both readings of one sitting. Manuscript is the project's subset. */
+export type SessionWords = Record<WritingSessionScope, SessionWordTotals>;
 
 /**
  * The clocks a session was started with, frozen for its whole life so a
@@ -84,13 +99,13 @@ export interface WritingSessionTiming {
 }
 
 export interface WritingSessionRecord {
-	uuid: string;
+	/** `session-<uuid>`: the kind of thing it is, then which one. */
+	id: string;
 	schemaVersion: typeof WRITING_SESSION_SCHEMA_VERSION;
 	startedAt: string;
 	endedAt: string;
 	/** IANA zone of the device that ran the session. */
 	timezone: string;
-	countingScope: WritingSessionScope;
 	sessionType: WritingSessionType;
 	startMode: SessionStartMode;
 	writingMode: WritingMode;
@@ -98,14 +113,8 @@ export interface WritingSessionRecord {
 	activeIntervals: SessionInterval[];
 	idleIntervals: SessionInterval[];
 	pausedIntervals: SessionInterval[];
-	/** Scope totals at the ends: snapshots, not sums of the deltas below. */
-	startWordCount: number;
-	endWordCount: number;
-	addedWordCount: number;
-	deletedWordCount: number;
-	netWordCount: number;
+	words: SessionWords;
 	files: SessionFileTally[];
-	goal: WritingSessionGoal | null;
 	timing: WritingSessionTiming;
 }
 
@@ -129,7 +138,7 @@ export interface WritingSessionMonthFile {
  * time the snapshot already represents.
  */
 export interface WritingSessionSnapshot {
-	uuid: string;
+	id: string;
 	schemaVersion: typeof WRITING_SESSION_SCHEMA_VERSION;
 	projectRoot: string;
 	projectPath: string;
@@ -141,13 +150,12 @@ export interface WritingSessionSnapshot {
 	sessionsDir: string;
 	startedAt: string;
 	timezone: string;
-	countingScope: WritingSessionScope;
 	sessionType: WritingSessionType;
 	startMode: SessionStartMode;
 	writingMode: WritingMode;
-	goal: WritingSessionGoal | null;
 	timing: WritingSessionTiming;
-	startWordCount: number;
+	/** Each scope's total when the session began. */
+	start: Record<WritingSessionScope, number>;
 	activeIntervals: SessionInterval[];
 	idleIntervals: SessionInterval[];
 	pausedIntervals: SessionInterval[];
@@ -155,8 +163,12 @@ export interface WritingSessionSnapshot {
 	openStartedAt: string;
 	capturedAt: string;
 	lastActivityAt: string;
-	addedWordCount: number;
-	deletedWordCount: number;
+	/**
+	 * Every note the session has moved, with the membership it had at capture.
+	 * The scope totals are not stored beside them: they are the sum of these
+	 * under each scope, and a number kept twice is a number that can disagree
+	 * with itself.
+	 */
 	files: SessionFileTally[];
 	markedShutdown?: boolean;
 }
@@ -543,13 +555,12 @@ export function sessionDurations(
  * reconciled away.
  */
 export function sessionNets(
-	record: Pick<
-		WritingSessionRecord,
-		'addedWordCount' | 'deletedWordCount' | 'startWordCount' | 'endWordCount'
-	>,
+	record: Pick<WritingSessionRecord, 'words'>,
+	scope: WritingSessionScope,
 ): { trackedNet: number; scopeNetChange: number; otherChanges: number } {
-	const trackedNet = record.addedWordCount - record.deletedWordCount;
-	const scopeNetChange = record.endWordCount - record.startWordCount;
+	const words = record.words[scope];
+	const trackedNet = words.added - words.deleted;
+	const scopeNetChange = words.end - words.start;
 	return {
 		trackedNet,
 		scopeNetChange,
@@ -557,21 +568,25 @@ export function sessionNets(
 	};
 }
 
-/** All configured goal conditions met; an empty goal is never "reached". */
-export function sessionGoalMet(
-	goal: WritingSessionGoal | null,
-	trackedNet: number,
-	focusMs: number,
-): boolean {
-	if (goal === null) return false;
-	const conditions: boolean[] = [];
-	if (goal.netWordTarget !== undefined) {
-		conditions.push(trackedNet >= goal.netWordTarget);
+/**
+ * Each scope's observed writing, summed from the per-note tallies. This is the
+ * only place a scope total comes from: a note's whole contribution is read
+ * under the membership the note has now, so moving one into the manuscript
+ * brings everything it wrote across with it, and nothing has to be adjusted
+ * for that to happen.
+ */
+export function tallyScopes(
+	files: readonly SessionFileTally[],
+): Record<WritingSessionScope, { added: number; deleted: number }> {
+	const totals = { project: { added: 0, deleted: 0 }, manuscript: { added: 0, deleted: 0 } };
+	for (const file of files) {
+		totals.project.added += file.added;
+		totals.project.deleted += file.deleted;
+		if (!file.manuscript) continue;
+		totals.manuscript.added += file.added;
+		totals.manuscript.deleted += file.deleted;
 	}
-	if (goal.focusTimeTargetSeconds !== undefined) {
-		conditions.push(focusMs >= goal.focusTimeTargetSeconds * 1000);
-	}
-	return conditions.length > 0 && conditions.every((met) => met);
+	return totals;
 }
 
 const DISCARD_BELOW_MS = 15_000;
@@ -583,17 +598,16 @@ const DISCARD_BELOW_MS = 15_000;
 export function shouldDiscard(
 	record: Pick<
 		WritingSessionRecord,
-		| 'activeIntervals'
-		| 'idleIntervals'
-		| 'pausedIntervals'
-		| 'addedWordCount'
-		| 'deletedWordCount'
+		'activeIntervals' | 'idleIntervals' | 'pausedIntervals' | 'words'
 	>,
 ): boolean {
+	// The project is asked because it holds the manuscript: nothing written
+	// can be zero there and something somewhere else.
+	const words = record.words.project;
 	return (
 		sessionDurations(record).totalMs < DISCARD_BELOW_MS &&
-		record.addedWordCount === 0 &&
-		record.deletedWordCount === 0
+		words.added === 0 &&
+		words.deleted === 0
 	);
 }
 
@@ -719,6 +733,12 @@ export interface DayReading {
 	added: number;
 	deleted: number;
 	focusMs: number;
+	/**
+	 * The net the goal is judged on, which is the goal scope's rather than the
+	 * lens's: switching what the charts are showing must not change which days
+	 * met the target.
+	 */
+	goalNet: number;
 }
 
 /**
@@ -752,7 +772,7 @@ export function heatLevels(
 ): number[] {
 	if (measure === 'goal') {
 		return days.map((day) =>
-			goal > 0 && day.trackedNet >= goal ? HEAT_LEVELS : 0,
+			goal > 0 && day.goalNet >= goal ? HEAT_LEVELS : 0,
 		);
 	}
 	// Deleted words are counted negative here rather than positive: the day
@@ -821,12 +841,11 @@ export function emptyBands(): BandTotals[] {
  * a timestamp, and the fractions it leaves are what a percentage is made of.
  */
 export function sessionBands(
-	record: Pick<
-		WritingSessionRecord,
-		'activeIntervals' | 'idleIntervals' | 'addedWordCount' | 'deletedWordCount'
-	>,
+	record: Pick<WritingSessionRecord, 'activeIntervals' | 'idleIntervals' | 'words'>,
 	timeZone: string,
+	scope: WritingSessionScope,
 ): BandTotals[] {
+	const words = record.words[scope];
 	const bands = emptyBands();
 	const add = (list: readonly SessionInterval[], focus: boolean): void => {
 		for (const span of list) {
@@ -854,8 +873,8 @@ export function sessionBands(
 				: totalMs > 0
 					? band.totalMs / totalMs
 					: 0;
-		band.added = record.addedWordCount * share;
-		band.deleted = record.deletedWordCount * share;
+		band.added = words.added * share;
+		band.deleted = words.deleted * share;
 		band.trackedNet = band.added - band.deleted;
 	}
 	return bands;
@@ -979,29 +998,51 @@ function parseFiles(value: unknown): SessionFileTally[] | null {
 		) {
 			return null;
 		}
+		if (typeof entry.manuscript !== 'boolean') return null;
 		files.push({
 			path: entry.path,
 			added: entry.added,
 			deleted: entry.deleted,
 			net: entry.net,
+			manuscript: entry.manuscript,
 		});
 	}
 	return files;
 }
 
-function parseGoal(value: unknown): WritingSessionGoal | null | undefined {
-	if (value === null || value === undefined) return null;
-	if (!isRecord(value)) return undefined;
-	const goal: WritingSessionGoal = {};
-	if (value.netWordTarget !== undefined) {
-		if (!isFiniteNumber(value.netWordTarget)) return undefined;
-		goal.netWordTarget = value.netWordTarget;
+/** One scope's five numbers, or null when any of them is not one. */
+function parseWordTotals(value: unknown): SessionWordTotals | null {
+	if (!isRecord(value)) return null;
+	for (const key of ['start', 'end', 'added', 'deleted', 'net'] as const) {
+		if (!isFiniteNumber(value[key])) return null;
 	}
-	if (value.focusTimeTargetSeconds !== undefined) {
-		if (!isFiniteNumber(value.focusTimeTargetSeconds)) return undefined;
-		goal.focusTimeTargetSeconds = value.focusTimeTargetSeconds;
+	return {
+		start: value.start as number,
+		end: value.end as number,
+		added: value.added as number,
+		deleted: value.deleted as number,
+		net: value.net as number,
+	};
+}
+
+/** Both scopes' totals; a record missing either is a record we cannot read. */
+function parseWords(value: unknown): SessionWords | null {
+	if (!isRecord(value)) return null;
+	const project = parseWordTotals(value.project);
+	const manuscript = parseWordTotals(value.manuscript);
+	if (project === null || manuscript === null) return null;
+	return { project, manuscript };
+}
+
+/** One number per scope, as the snapshot's opening totals are kept. */
+function parseScopeNumbers(
+	value: unknown,
+): Record<WritingSessionScope, number> | null {
+	if (!isRecord(value)) return null;
+	if (!isFiniteNumber(value.project) || !isFiniteNumber(value.manuscript)) {
+		return null;
 	}
-	return goal;
+	return { project: value.project, manuscript: value.manuscript };
 }
 
 function parseTiming(value: unknown): WritingSessionTiming | null {
@@ -1036,10 +1077,9 @@ function parseTiming(value: unknown): WritingSessionTiming | null {
 export function parseSessionRecord(value: unknown): WritingSessionRecord | null {
 	if (!isRecord(value)) return null;
 	if (value.schemaVersion !== WRITING_SESSION_SCHEMA_VERSION) return null;
-	if (typeof value.uuid !== 'string' || value.uuid.length === 0) return null;
+	if (typeof value.id !== 'string' || value.id.length === 0) return null;
 	if (!isIsoDate(value.startedAt) || !isIsoDate(value.endedAt)) return null;
 	if (typeof value.timezone !== 'string') return null;
-	if (!isOneOf(WRITING_SESSION_SCOPES, value.countingScope)) return null;
 	if (!isOneOf(WRITING_SESSION_TYPES, value.sessionType)) return null;
 	if (value.startMode !== 'manual' && value.startMode !== 'auto') return null;
 	if (!isOneOf(WRITING_MODES, value.writingMode)) return null;
@@ -1050,28 +1090,18 @@ export function parseSessionRecord(value: unknown): WritingSessionRecord | null 
 	if (activeIntervals === null || idleIntervals === null || pausedIntervals === null) {
 		return null;
 	}
-	for (const key of [
-		'startWordCount',
-		'endWordCount',
-		'addedWordCount',
-		'deletedWordCount',
-		'netWordCount',
-	] as const) {
-		if (!isFiniteNumber(value[key])) return null;
-	}
+	const words = parseWords(value.words);
+	if (words === null) return null;
 	const files = parseFiles(value.files);
 	if (files === null) return null;
-	const goal = parseGoal(value.goal);
-	if (goal === undefined) return null;
 	const timing = parseTiming(value.timing);
 	if (timing === null) return null;
 	return {
-		uuid: value.uuid,
+		id: value.id,
 		schemaVersion: WRITING_SESSION_SCHEMA_VERSION,
 		startedAt: value.startedAt,
 		endedAt: value.endedAt,
 		timezone: value.timezone,
-		countingScope: value.countingScope,
 		sessionType: value.sessionType,
 		startMode: value.startMode,
 		writingMode: value.writingMode,
@@ -1079,13 +1109,8 @@ export function parseSessionRecord(value: unknown): WritingSessionRecord | null 
 		activeIntervals,
 		idleIntervals,
 		pausedIntervals,
-		startWordCount: value.startWordCount as number,
-		endWordCount: value.endWordCount as number,
-		addedWordCount: value.addedWordCount as number,
-		deletedWordCount: value.deletedWordCount as number,
-		netWordCount: value.netWordCount as number,
+		words,
 		files,
-		goal,
 		timing,
 	};
 }
@@ -1108,7 +1133,7 @@ export function parseSessionSnapshot(
 ): WritingSessionSnapshot | null {
 	if (!isRecord(value)) return null;
 	if (value.schemaVersion !== WRITING_SESSION_SCHEMA_VERSION) return null;
-	if (typeof value.uuid !== 'string' || value.uuid.length === 0) return null;
+	if (typeof value.id !== 'string' || value.id.length === 0) return null;
 	if (typeof value.projectRoot !== 'string') return null;
 	if (typeof value.projectPath !== 'string') return null;
 	if (typeof value.sessionsDir !== 'string' || value.sessionsDir.length === 0) {
@@ -1116,15 +1141,13 @@ export function parseSessionSnapshot(
 	}
 	if (!isIsoDate(value.startedAt)) return null;
 	if (typeof value.timezone !== 'string') return null;
-	if (!isOneOf(WRITING_SESSION_SCOPES, value.countingScope)) return null;
 	if (!isOneOf(WRITING_SESSION_TYPES, value.sessionType)) return null;
 	if (value.startMode !== 'manual' && value.startMode !== 'auto') return null;
 	if (!isOneOf(WRITING_MODES, value.writingMode)) return null;
-	const goal = parseGoal(value.goal);
-	if (goal === undefined) return null;
 	const timing = parseTiming(value.timing);
 	if (timing === null) return null;
-	if (!isFiniteNumber(value.startWordCount)) return null;
+	const start = parseScopeNumbers(value.start);
+	if (start === null) return null;
 	const activeIntervals = parseIntervals(value.activeIntervals);
 	const idleIntervals = parseIntervals(value.idleIntervals);
 	const pausedIntervals = parseIntervals(value.pausedIntervals);
@@ -1141,12 +1164,6 @@ export function parseSessionSnapshot(
 	if (!isIsoDate(value.openStartedAt)) return null;
 	if (!isIsoDate(value.capturedAt)) return null;
 	if (!isIsoDate(value.lastActivityAt)) return null;
-	if (
-		!isFiniteNumber(value.addedWordCount) ||
-		!isFiniteNumber(value.deletedWordCount)
-	) {
-		return null;
-	}
 	const files = parseFiles(value.files);
 	if (files === null) return null;
 	if (
@@ -1156,20 +1173,18 @@ export function parseSessionSnapshot(
 		return null;
 	}
 	return {
-		uuid: value.uuid,
+		id: value.id,
 		schemaVersion: WRITING_SESSION_SCHEMA_VERSION,
 		projectRoot: value.projectRoot,
 		projectPath: value.projectPath,
 		sessionsDir: value.sessionsDir,
 		startedAt: value.startedAt,
 		timezone: value.timezone,
-		countingScope: value.countingScope,
 		sessionType: value.sessionType,
 		startMode: value.startMode,
 		writingMode: value.writingMode,
-		goal,
 		timing,
-		startWordCount: value.startWordCount,
+		start,
 		activeIntervals,
 		idleIntervals,
 		pausedIntervals,
@@ -1177,8 +1192,6 @@ export function parseSessionSnapshot(
 		openStartedAt: value.openStartedAt,
 		capturedAt: value.capturedAt,
 		lastActivityAt: value.lastActivityAt,
-		addedWordCount: value.addedWordCount,
-		deletedWordCount: value.deletedWordCount,
 		files,
 		...(value.markedShutdown === true ? { markedShutdown: true } : {}),
 	};
@@ -1187,9 +1200,9 @@ export function parseSessionSnapshot(
 /**
  * Turns an orphaned snapshot into the finished session it describes. The
  * open stretch closes at `capturedAt` -- the moment the snapshot truly
- * represents -- and the end count is derived from the start and the tracked
- * net, because counting the vault at recovery time would measure a later
- * moment than the session lived through.
+ * represents -- and each scope's end count is derived from its own start and
+ * the net its files add up to, because counting the vault at recovery time
+ * would measure a later moment than the session lived through.
  */
 export function finalizeSnapshot(
 	snapshot: WritingSessionSnapshot,
@@ -1208,14 +1221,21 @@ export function finalizeSnapshot(
 		else if (snapshot.openPhase === 'idle') idleIntervals.push(closed);
 		else pausedIntervals.push(closed);
 	}
-	const net = snapshot.addedWordCount - snapshot.deletedWordCount;
+	const observed = tallyScopes(snapshot.files);
+	const words = Object.fromEntries(
+		WRITING_SESSION_SCOPES.map((scope) => {
+			const { added, deleted } = observed[scope];
+			const net = added - deleted;
+			const start = snapshot.start[scope];
+			return [scope, { start, end: start + net, added, deleted, net }];
+		}),
+	) as SessionWords;
 	return {
-		uuid: snapshot.uuid,
+		id: snapshot.id,
 		schemaVersion: WRITING_SESSION_SCHEMA_VERSION,
 		startedAt: snapshot.startedAt,
 		endedAt: snapshot.capturedAt,
 		timezone: snapshot.timezone,
-		countingScope: snapshot.countingScope,
 		sessionType: snapshot.sessionType,
 		startMode: snapshot.startMode,
 		writingMode: snapshot.writingMode,
@@ -1223,13 +1243,8 @@ export function finalizeSnapshot(
 		activeIntervals,
 		idleIntervals,
 		pausedIntervals,
-		startWordCount: snapshot.startWordCount,
-		endWordCount: snapshot.startWordCount + net,
-		addedWordCount: snapshot.addedWordCount,
-		deletedWordCount: snapshot.deletedWordCount,
-		netWordCount: net,
+		words,
 		files: [...snapshot.files],
-		goal: snapshot.goal,
 		timing: snapshot.timing,
 	};
 }
