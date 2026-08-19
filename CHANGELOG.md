@@ -30,6 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Archiving or restoring from the manager no longer repaints the lists from a reading of the vault taken before the folder moved, which could show a project as both archived and active at once.
 - The count above a list of rows and the row menus below it stand on one line, in the vocabulary trees and the custom field tables alike.
 
+## [0.9.0]
+
 ### Added
 
 - Custom fields on any member note. A field is a title and whatever you write under it, added and reordered as cards in the member's form, and kept in a section of the note's own. The plugin writes nothing into them and reads them for nothing else, so they hold whatever this story needs that the built-in fields do not.
@@ -282,6 +284,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - 手动把项目拖入或拖出 `Snowflake Archive` 都会被察觉。此前拖出后项目会从各处列表中消失，直到别的操作唤醒插件，而拖入时已打开的正文标签页仍会继续写入一个已经不在原处的项目。
 - 在管理器中归档或恢复，不会再用移动之前读到的项目列表重绘，此前这可能让同一个项目同时出现在归档与活动两处。
 - 列表上方的计数与下方各行的菜单按钮对齐到同一条竖线上，词表树与自定义字段表格都是如此。
+
+## [0.9.0]
 
 ### 新增
 
