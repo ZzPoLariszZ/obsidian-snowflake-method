@@ -211,6 +211,14 @@ interface LiveState {
 	/** The latest text source per changed note, disk read when undefined. */
 	pending: Map<string, NoteTextProvider | undefined>;
 	dirtyWhilePaused: Map<string, NoteTextProvider | undefined>;
+	/**
+	 * Notes whose baseline must be reset from disk before any more deltas are
+	 * read for them -- what changed through a pause whose text the editor
+	 * could not answer for at the thaw. Processed by the drain ahead of
+	 * `pending`, so a keystroke landing right after a resume is measured
+	 * against the paused state rather than crediting it.
+	 */
+	rebase: Set<string>;
 	/** What each note contributed. The scope totals are sums of these. */
 	perFile: Map<string, FileTally>;
 	stopping: boolean;
@@ -249,6 +257,12 @@ export class WritingSessionService {
 	private tickHandle: unknown = null;
 	private debounceHandle: unknown = null;
 	private draining = false;
+	/**
+	 * The drain the debounce last fired, so a stop can wait for it: a drain
+	 * runs outside the mutation queue, and a stop that raced one would write
+	 * the record without the deltas the drain had already claimed.
+	 */
+	private drainRun: Promise<void> | null = null;
 	private lastSnapshotAt = 0;
 	private unloading = false;
 
@@ -324,7 +338,10 @@ export class WritingSessionService {
 	 */
 	live(projectFile?: string): LiveWritingSession | null {
 		const live = this.liveState;
-		if (live === null) return null;
+		// A stopping session is over: its clock must not be ticked while its
+		// record is read out of the tracker, and the readings pick it up again
+		// from the record the moment the stop lands.
+		if (live === null || live.stopping) return null;
 		if (projectFile !== undefined && live.project.projectFile !== projectFile) {
 			return null;
 		}
@@ -372,6 +389,11 @@ export class WritingSessionService {
 	start(project: ProjectRef, options: StartWritingSessionOptions): Promise<void> {
 		return this.enqueue(async () => {
 			if (this.liveState !== null) {
+				// Checked here, where the queue landed, not where the call was
+				// made: an auto start decided against silence may find a
+				// manual sitting underway by the time its turn comes, and a
+				// sitting the author started is never the machine's to replace.
+				if (options.startMode === "auto") return;
 				await this.finishLive("replaced-by-new-session", null);
 			}
 			const layout = getProjectPathLayout(project.locale);
@@ -394,12 +416,26 @@ export class WritingSessionService {
 				reclassify: new Set(),
 				pending: new Map(),
 				dirtyWhilePaused: new Map(),
+				rebase: new Set(),
 				perFile: new Map(),
 				stopping: false,
 			};
 			this.liveState = live;
 			this.emit({ kind: "started" });
-			await this.seedBaselines(live);
+			try {
+				await this.seedBaselines(live);
+			} catch (error) {
+				// A seed that cannot finish leaves no session standing: with
+				// no tracker it would read as "starting" forever, refusing
+				// every start while crediting nothing. Nothing was
+				// snapshotted yet, so the recovery store is not ours to touch.
+				if (this.liveState === live) {
+					this.liveState = null;
+					this.clearTimers();
+					this.emit({ kind: "changed" });
+				}
+				throw error;
+			}
 			if (this.liveState !== live) return;
 			const startedAt = this.now();
 			live.tracker = new SessionTracker(
@@ -436,13 +472,21 @@ export class WritingSessionService {
 
 	/** Stops the auto-started session a focus-mode exit owns, and no other. */
 	stopIfAuto(reason: SessionStopReason): Promise<void> {
-		if (this.liveState?.startMode !== "auto") return Promise.resolve();
-		return this.stop(reason);
+		const live = this.liveState;
+		if (live?.startMode !== "auto") return Promise.resolve();
+		// The sitting it means to stop is named now and checked again where
+		// the queue lands: by then that one may already be gone, and whatever
+		// replaced it is not a focus-mode exit's to end.
+		const id = live.id;
+		return this.enqueue(async () => {
+			if (this.liveState?.id !== id) return;
+			await this.finishLive(reason, null);
+		});
 	}
 
 	pause(): void {
 		const live = this.liveState;
-		if (live?.tracker == null) return;
+		if (live?.tracker == null || live.stopping) return;
 		this.applyEffects(live, live.tracker.pause(this.now()));
 		this.snapshot(live);
 		this.emit({ kind: "changed" });
@@ -450,21 +494,16 @@ export class WritingSessionService {
 
 	resume(): void {
 		const live = this.liveState;
-		if (live?.tracker == null) return;
+		if (live?.tracker == null || live.stopping) return;
 		this.applyEffects(live, live.tracker.resume(this.now()));
-		// What changed while frozen re-baselines without being credited:
-		// a pause is a pause, whatever was typed through it.
-		for (const [path, content] of live.dirtyWhilePaused) {
-			void this.rebaseline(live, path, resolveText(content));
-		}
-		live.dirtyWhilePaused.clear();
+		this.rebaselineFrozen(live);
 		this.snapshot(live);
 		this.emit({ kind: "changed" });
 	}
 
 	setWritingMode(mode: WritingMode): void {
 		const live = this.liveState;
-		if (live === null) return;
+		if (live === null || live.stopping) return;
 		live.writingMode = mode;
 		this.snapshot(live);
 		this.emit({ kind: "changed" });
@@ -482,7 +521,10 @@ export class WritingSessionService {
 	 */
 	surfaceActivity(surface: WritingSurfaceActivity): void {
 		const live = this.liveState;
-		if (live?.tracker == null) return;
+		// `stopping` ends the observing, not only the clock: the record is
+		// being read out of the tracker, and one more event would write a
+		// second, overlapping close of the same open stretch into it.
+		if (live?.tracker == null || live.stopping) return;
 		if (surface.path === null || !this.inActivityScope(live, surface.path)) {
 			return;
 		}
@@ -497,7 +539,9 @@ export class WritingSessionService {
 	 */
 	noteChanged(path: string, content?: NoteTextProvider): void {
 		const live = this.liveState;
-		if (live === null || !this.worthReading(live, path)) return;
+		if (live === null || live.stopping || !this.worthReading(live, path)) {
+			return;
+		}
 		if (live.tracker?.currentPhase() === "paused") {
 			live.dirtyWhilePaused.set(path, content);
 			return;
@@ -516,7 +560,9 @@ export class WritingSessionService {
 	 */
 	noteCreated(path: string): void {
 		const live = this.liveState;
-		if (live === null || !this.worthReading(live, path)) return;
+		if (live === null || live.stopping || !this.worthReading(live, path)) {
+			return;
+		}
 		live.outside.delete(path);
 		this.noteChanged(path);
 	}
@@ -529,7 +575,7 @@ export class WritingSessionService {
 	 */
 	noteDeleted(path: string, { children = false } = {}): void {
 		const live = this.liveState;
-		if (live === null) return;
+		if (live === null || live.stopping) return;
 		const prefix = `${path}/`;
 		const gone = [...live.baseline.keys()].filter(
 			(key) => key === path || (children && key.startsWith(prefix)),
@@ -552,8 +598,13 @@ export class WritingSessionService {
 		// and the record has to file that tally somewhere.
 		live.outside.delete(path);
 		live.reclassify.delete(path);
+		live.rebase.delete(path);
 		if (children) {
-			for (const set of [live.outside, live.reclassify] as const) {
+			for (const set of [
+				live.outside,
+				live.reclassify,
+				live.rebase,
+			] as const) {
 				for (const key of [...set]) {
 					if (key.startsWith(prefix)) set.delete(key);
 				}
@@ -579,7 +630,27 @@ export class WritingSessionService {
 	 */
 	notePathRenamed(oldPath: string, newPath: string): void {
 		const live = this.liveState;
-		if (live === null) return;
+		if (live === null || live.stopping) return;
+		// The project itself may be what moved. A session holds its ref for
+		// its whole life, so a rename of the root -- or of a folder above it
+		// -- rebinds the ref before any note is judged against it: judged
+		// against the old root, every note would read as having left the
+		// project, and the whole count would be credited as deleted.
+		const shifted = (path: string): string =>
+			path === oldPath ? newPath : `${newPath}${path.slice(oldPath.length)}`;
+		if (isPathAtOrBelow(live.project.rootPath, oldPath)) {
+			live.project = {
+				...live.project,
+				rootPath: shifted(live.project.rootPath),
+				projectFile: isPathAtOrBelow(live.project.projectFile, oldPath)
+					? shifted(live.project.projectFile)
+					: live.project.projectFile,
+			};
+		} else if (live.project.projectFile === oldPath) {
+			// The project note alone can move too, and the panels filter the
+			// running session by it.
+			live.project = { ...live.project, projectFile: newPath };
+		}
 		const prefix = `${oldPath}/`;
 		const keys = new Set<string>();
 		for (const map of [
@@ -592,8 +663,10 @@ export class WritingSessionService {
 				if (key === oldPath || key.startsWith(prefix)) keys.add(key);
 			}
 		}
-		for (const key of live.manuscript) {
-			if (key === oldPath || key.startsWith(prefix)) keys.add(key);
+		for (const set of [live.manuscript, live.rebase] as const) {
+			for (const key of set) {
+				if (key === oldPath || key.startsWith(prefix)) keys.add(key);
+			}
 		}
 		for (const key of keys) {
 			const destination =
@@ -603,6 +676,7 @@ export class WritingSessionService {
 			moveKey(live.pending, key, destination);
 			moveKey(live.dirtyWhilePaused, key, destination);
 			if (live.manuscript.delete(key)) live.manuscript.add(destination);
+			if (live.rebase.delete(key)) live.rebase.add(destination);
 			live.outside.delete(key);
 			live.reclassify.add(destination);
 		}
@@ -650,10 +724,19 @@ export class WritingSessionService {
 	recoverAtStartup(): Promise<WritingSessionRecord | null> {
 		return this.enqueue(async () => {
 			const snapshot = parseSessionSnapshot(this.deps.recovery.load());
-			this.deps.recovery.save(null);
-			if (snapshot === null) return null;
+			if (snapshot === null) {
+				this.deps.recovery.save(null);
+				return null;
+			}
 			const record = finalizeSnapshot(snapshot);
-			if (shouldDiscard(record)) return null;
+			if (shouldDiscard(record)) {
+				this.deps.recovery.save(null);
+				return null;
+			}
+			// The snapshot is the only copy of the session until the record is
+			// safely down, so it is cleared after the write, not before: a
+			// failed append then leaves it for the next launch to try again,
+			// and the by-id merge makes a second try harmless.
 			await this.appendRecord(
 				snapshot.projectRoot,
 				snapshot.sessionsDir,
@@ -661,6 +744,7 @@ export class WritingSessionService {
 				snapshot.timezone,
 				record,
 			);
+			this.deps.recovery.save(null);
 			this.emit({ kind: "recovered", record });
 			return record;
 		});
@@ -675,7 +759,10 @@ export class WritingSessionService {
 		this.unloading = true;
 		this.clearTimers();
 		const live = this.liveState;
-		if (live?.tracker == null) return;
+		// A session already stopping has its record in flight and its tracker
+		// being read out; ticking it here would corrupt that read, and the
+		// last periodic snapshot still stands in the store as the safety net.
+		if (live?.tracker == null || live.stopping) return;
 		live.tracker.tick(this.now());
 		this.deps.recovery.save(this.buildSnapshot(live, true));
 	}
@@ -832,7 +919,9 @@ export class WritingSessionService {
 	 */
 	private liveRecord(project: ProjectRef): WritingSessionRecord | null {
 		const live = this.liveState;
-		if (live?.tracker == null || live.project.id !== project.id) return null;
+		if (live?.tracker == null || live.stopping || live.project.id !== project.id) {
+			return null;
+		}
 		return finalizeSnapshot(this.buildSnapshot(live, false));
 	}
 
@@ -961,6 +1050,7 @@ export class WritingSessionService {
 		live.baseline.delete(path);
 		live.pending.delete(path);
 		live.dirtyWhilePaused.delete(path);
+		live.rebase.delete(path);
 		live.outside.add(path);
 	}
 
@@ -1037,7 +1127,7 @@ export class WritingSessionService {
 		if (this.unloading || this.debounceHandle !== null) return;
 		this.debounceHandle = this.timers.set(() => {
 			this.debounceHandle = null;
-			void this.drain();
+			this.drainRun = this.drain();
 		}, DEBOUNCE_MS);
 	}
 
@@ -1051,7 +1141,11 @@ export class WritingSessionService {
 		try {
 			const live = this.liveState;
 			if (live === null || live.tracker === null || live.stopping) return;
-			while (live.reclassify.size > 0 || live.pending.size > 0) {
+			while (
+				live.reclassify.size > 0 ||
+				live.rebase.size > 0 ||
+				live.pending.size > 0
+			) {
 				// Where the moved notes landed is settled first: a note that
 				// arrived from outside queues itself for reading here, and one
 				// that left has its words credited before anything else asks
@@ -1060,6 +1154,15 @@ export class WritingSessionService {
 					live.reclassify.delete(path);
 					if (this.liveState !== live) return;
 					await this.reclassifyPath(live, path);
+				}
+				// Then the baselines a pause left to the disk, ahead of any
+				// delta for the same notes: measured the other way round, the
+				// paused-time words would be credited to the first keystroke
+				// after the thaw.
+				for (const path of [...live.rebase]) {
+					live.rebase.delete(path);
+					if (this.liveState !== live) return;
+					await this.rebaseline(live, path, undefined);
 				}
 				const entries = [...live.pending];
 				live.pending.clear();
@@ -1088,6 +1191,19 @@ export class WritingSessionService {
 		content: string | undefined,
 	): Promise<number | null> {
 		if (content !== undefined) {
+			const total = this.totalFromText(live, content);
+			if (total !== null) return total;
+			// Mid-edit frontmatter passes through invalid states; the disk
+			// answers instead, and a note unreadable there too simply waits
+			// for its next valid save, baseline intact.
+		}
+		const count = await this.deps.writingCount.countNote(path, live.options);
+		return count?.total ?? null;
+	}
+
+	/** A body's total under the session's options, or null when it will not parse. */
+	private totalFromText(live: LiveState, content: string): number | null {
+		try {
 			const parsed = parseMarkdownFrontmatter(content);
 			const declared = documentTypeOf(parsed.frontmatter);
 			return this.deps.writingCount.countBody(
@@ -1095,9 +1211,31 @@ export class WritingSessionService {
 				isDocumentType(declared) ? declared : null,
 				live.options,
 			).total;
+		} catch {
+			return null;
 		}
-		const count = await this.deps.writingCount.countNote(path, live.options);
-		return count?.total ?? null;
+	}
+
+	/**
+	 * What changed while the clock was frozen re-baselines without being
+	 * credited: a pause is a pause, whatever was typed through it. A note the
+	 * editor can still answer for is settled here and now, synchronously,
+	 * before anything typed after the thaw can be measured; one only the disk
+	 * knows is queued ahead of the deltas instead.
+	 */
+	private rebaselineFrozen(live: LiveState): void {
+		for (const [path, content] of live.dirtyWhilePaused) {
+			const text = resolveText(content);
+			const total =
+				text === undefined ? null : this.totalFromText(live, text);
+			if (total !== null) {
+				live.baseline.set(path, total);
+				continue;
+			}
+			live.rebase.add(path);
+		}
+		live.dirtyWhilePaused.clear();
+		if (live.rebase.size > 0) this.armDebounce();
 	}
 
 	/** Sets a note's baseline to what it now holds, crediting nothing. */
@@ -1124,6 +1262,11 @@ export class WritingSessionService {
 				this.snapshot(live);
 				this.emit({ kind: "break-started", cycle: effect.cycle });
 			} else if (effect.kind === "work-started") {
+				// A break ending on its own clock is a resume nobody clicked:
+				// what changed through it re-baselines the same way, or the
+				// first keystroke of the new period would be credited with
+				// everything typed during the break.
+				this.rebaselineFrozen(live);
 				this.snapshot(live);
 				this.emit({ kind: "work-started", cycle: effect.cycle });
 			} else {
@@ -1148,8 +1291,11 @@ export class WritingSessionService {
 			this.emit({ kind: "stopped", record: null, reason });
 			return;
 		}
-		// Deltas still on the debounce belong to this session.
-		this.draining = false;
+		// Deltas still on the debounce belong to this session. A drain the
+		// debounce already fired keeps the entries it claimed: the stop waits
+		// for it to finish crediting them before reading the totals, and the
+		// flush below picks up whatever never left the queue.
+		await this.drainRun;
 		await this.drainInto(live);
 		const stopped = live.tracker.stop(endAt ?? this.now());
 		// One walk answers both scopes, so the ends of the two readings are
@@ -1183,12 +1329,15 @@ export class WritingSessionService {
 			timing: live.timing,
 		};
 		this.liveState = null;
-		this.deps.recovery.save(null);
 		this.clearTimers();
 		if (shouldDiscard(record)) {
+			this.deps.recovery.save(null);
 			this.emit({ kind: "stopped", record: null, reason });
 			return;
 		}
+		// The last periodic snapshot stands until the record is safely down:
+		// cleared first, a crash between the two would lose the session whole,
+		// where recovering that snapshot loses at most its final seconds.
 		await this.appendRecord(
 			live.project.rootPath,
 			live.sessionsDir,
@@ -1196,6 +1345,7 @@ export class WritingSessionService {
 			live.timezone,
 			record,
 		);
+		this.deps.recovery.save(null);
 		this.emit({ kind: "stopped", record, reason });
 	}
 
@@ -1204,6 +1354,10 @@ export class WritingSessionService {
 		for (const path of [...live.reclassify]) {
 			live.reclassify.delete(path);
 			await this.reclassifyPath(live, path);
+		}
+		for (const path of [...live.rebase]) {
+			live.rebase.delete(path);
+			await this.rebaseline(live, path, undefined);
 		}
 		for (const [path, content] of [...live.pending]) {
 			live.pending.delete(path);
@@ -1289,7 +1443,10 @@ export class WritingSessionService {
 	}
 
 	private snapshot(live: LiveState): void {
-		if (live.tracker === null || this.unloading) return;
+		// A stopping session must never be snapshotted again: its record is
+		// on its way to the vault, and a late snapshot would be "recovered"
+		// on the next launch as a second copy of the same session.
+		if (live.tracker === null || live.stopping || this.unloading) return;
 		this.lastSnapshotAt = this.now();
 		this.deps.recovery.save(this.buildSnapshot(live, false));
 	}

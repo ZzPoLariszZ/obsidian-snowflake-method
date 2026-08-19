@@ -2506,7 +2506,12 @@ export default class SnowflakeMethodPlugin
 				});
 				this.sessions.noteChanged(path, () => {
 					try {
-						return editor.getValue();
+						// The leaf reuses one editor across the notes it opens,
+						// and the debounce reads this later: by then the editor
+						// may hold a different note, whose text must not be
+						// counted as this one's. A swapped editor answers
+						// nothing, and the disk answers instead.
+						return info.file?.path === path ? editor.getValue() : null;
 					} catch {
 						return null;
 					}

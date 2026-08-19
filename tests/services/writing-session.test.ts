@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	SCHEMA_VERSION,
@@ -932,5 +932,281 @@ describe("WritingSessionService", () => {
 		expect(today.bands[1]?.added).toBe(2);
 		const revision = today.modes.find((mode) => mode.mode === "revision");
 		expect(revision).toMatchObject({ sessions: 1, focusMs: 20_000 });
+	});
+
+	/**
+	 * A session holds its project ref for its whole life, so when the project
+	 * folder itself moves the ref must move with it: judged against the old
+	 * root, every note would read as having left the project, and the whole
+	 * word count would be credited as deleted in one stroke.
+	 */
+	it("follows the project when its folder is renamed mid-session", async () => {
+		await startSession();
+		sessions.surfaceActivity(surface());
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		const oldRoot = "Snowflake Projects/Novel";
+		const newRoot = "Snowflake Projects/Novel Renamed";
+		fakeVault.rename(oldRoot, newRoot);
+		sessions.notePathRenamed(oldRoot, newRoot);
+		await timers.flush();
+		expect(sessions.live()?.deleted).toBe(0);
+		expect(sessions.live()?.added).toBe(1);
+		// Writing under the new root still counts as the project's own.
+		const movedNotes = `${newRoot}/80_Material/Notes.md`;
+		sessions.noteChanged(movedNotes, written("one two three four five"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		clock += 20_000;
+		await sessions.stop();
+		// And the record lands under the root the project has now, not the
+		// path it left behind.
+		const moved = fakeVault.contents.get(
+			`${newRoot}/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_writing_session.json`,
+		);
+		expect(moved).toBeDefined();
+		const parsed = JSON.parse(moved ?? "{}") as {
+			sessions: { words: { project: { added: number; deleted: number } } }[];
+		};
+		expect(parsed.sessions[0]?.words.project.added).toBe(2);
+		expect(parsed.sessions[0]?.words.project.deleted).toBe(0);
+	});
+
+	/**
+	 * The debounce drain runs outside the mutation queue, so a stop can land
+	 * while a drain holds deltas it has already claimed from the pending map.
+	 * The stop must wait for that drain, or the record is written without the
+	 * last words typed.
+	 */
+	it("keeps the words a stop raced onto the debounce", async () => {
+		await startSession();
+		sessions.surfaceActivity(surface());
+		sessions.noteChanged(NOTES, () => "one two three four five six\n");
+		// Fire the debounce by hand and stop while the drain is mid-read.
+		const pending = [...timers.handlers.values()];
+		timers.handlers.clear();
+		for (const handler of pending) handler();
+		await sessions.stop();
+		await settle();
+		const written = monthFile();
+		expect(written?.sessions).toHaveLength(1);
+		expect(written?.sessions[0]?.words.project.added).toBe(3);
+		expect(store.value).toBeNull();
+	});
+
+	/**
+	 * The auto checks are re-run where the queue lands, not only where the
+	 * call was made: a stale check must neither let an auto start replace a
+	 * queued manual sitting, nor let a focus-mode stop kill the manual
+	 * sitting that replaced its auto one.
+	 */
+	it("never lets a stale auto check replace or stop a manual sitting", async () => {
+		const manual = sessions.start(project, options());
+		// Checked before the manual start has run: the silence is stale.
+		const auto = sessions.startAuto(
+			project,
+			options({ writingMode: "revision" }),
+		);
+		await Promise.all([manual, auto]);
+		clock += 20_000;
+		expect(sessions.live()?.startMode).toBe("manual");
+		await sessions.stop();
+
+		await sessions.startAuto(project, options({ writingMode: "revision" }));
+		clock += 20_000;
+		// The manual start is queued; the focus-mode exit still sees its auto
+		// session and asks for a stop that must die with that session.
+		const replacing = sessions.start(project, options());
+		const stopped = sessions.stopIfAuto("focus-mode-ended");
+		await Promise.all([replacing, stopped]);
+		clock += 20_000;
+		expect(sessions.live()?.startMode).toBe("manual");
+		await sessions.stop();
+	});
+
+	/**
+	 * An editor buffer passes through invalid frontmatter mid-edit. The count
+	 * falls back to the disk rather than throwing away the whole drain -- and
+	 * with it every other note's delta and, at a stop, the record itself.
+	 */
+	it("shrugs off invalid mid-edit frontmatter and reads the disk instead", async () => {
+		await startSession();
+		sessions.surfaceActivity(surface());
+		sessions.noteChanged(NOTES, () => "---\ntitle: [\n---\nbroken words\n");
+		await timers.flush();
+		// The provider would not parse; the disk still holds the same three
+		// words the baseline was seeded with.
+		expect(sessions.live()?.added).toBe(0);
+		expect(sessions.live()?.deleted).toBe(0);
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		await sessions.stop();
+		expect(monthFile()?.sessions).toHaveLength(1);
+	});
+
+	/**
+	 * The crash snapshot is the only copy of the session until its record is
+	 * safely down: cleared first, one failed write would lose the sitting for
+	 * good; cleared after, the next launch simply tries again.
+	 */
+	it("keeps the crash snapshot until the recovered record is written", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, () => "one two three four five\n");
+		await timers.flush();
+		clock += 10_000;
+		sessions.markShutdown();
+		const snapshot = store.value;
+		expect(snapshot).not.toBeNull();
+
+		const revived = buildService();
+		const failing = vi
+			.spyOn(projects.repository, "createPlainFile")
+			.mockRejectedValueOnce(new Error("disk full"));
+		await expect(revived.recoverAtStartup()).rejects.toThrow("disk full");
+		expect(store.value).toEqual(snapshot);
+		failing.mockRestore();
+
+		const record = await revived.recoverAtStartup();
+		expect(record).not.toBeNull();
+		expect(store.value).toBeNull();
+		expect(monthFile()?.sessions).toHaveLength(1);
+	});
+
+	/**
+	 * A break that ends on its own clock is a resume nobody clicked: what
+	 * changed through it must re-baseline exactly as a manual resume would,
+	 * or the first keystroke of the new period is credited with everything
+	 * typed during the break.
+	 */
+	it("credits nothing typed through an automatic break", async () => {
+		await sessions.start(
+			project,
+			options({
+				type: "pomodoro",
+				timing: {
+					idleThresholdSeconds: 6_000,
+					workDurationSeconds: 60,
+					breakDurationSeconds: 30,
+					autoRepeat: true,
+				},
+			}),
+		);
+		clock += 20_000;
+		sessions.surfaceActivity(surface());
+		// The work period runs out on its own clock.
+		clock += 45_000;
+		await timers.flush();
+		expect(sessions.live()?.state).toBe("paused");
+		sessions.noteChanged(NOTES, written("one two three plus break words"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		// The break ends by itself; nobody clicks resume.
+		clock += 31_000;
+		await timers.flush();
+		expect(sessions.live()?.state).toBe("focus");
+		// The same text again is no delta: the break absorbed those words.
+		sessions.noteChanged(NOTES, written("one two three plus break words"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		sessions.noteChanged(
+			NOTES,
+			written("one two three plus break words more"),
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+	});
+
+	/**
+	 * A note only the disk knows about re-baselines through the drain, ahead
+	 * of any delta for the same note: measured the other way round, the
+	 * paused-time words would be credited to the first keystroke after the
+	 * thaw.
+	 */
+	it("re-baselines a note only the disk knows before the next delta", async () => {
+		await startSession();
+		sessions.pause();
+		// A sync client rewrites the note while the clock is frozen: no
+		// editor holds it, so only the disk can say what it holds now.
+		fakeVault.write(NOTES, written("one two three plus paused sync words")());
+		sessions.noteChanged(NOTES);
+		sessions.resume();
+		// The author types straight away, before any disk read has landed.
+		sessions.noteChanged(
+			NOTES,
+			written("one two three plus paused sync words again"),
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		expect(sessions.live()?.deleted).toBe(0);
+	});
+
+	/**
+	 * A seed that cannot finish must leave no session standing: a liveState
+	 * with no tracker would read as "starting" forever, refusing every auto
+	 * start while crediting nothing.
+	 */
+	it("stands down cleanly when the baseline seed fails", async () => {
+		const failing = vi
+			.spyOn(projects.writingCount, "countNote")
+			.mockRejectedValueOnce(new Error("read failed"));
+		await expect(sessions.start(project, options())).rejects.toThrow(
+			"read failed",
+		);
+		expect(sessions.isRunning()).toBe(false);
+		expect(sessions.live()).toBeNull();
+		failing.mockRestore();
+		// And the next start is not haunted by the failed one.
+		await startSession();
+		expect(sessions.live()?.state).toBe("focus");
+		await sessions.stop();
+		expect(monthFile()?.sessions).toHaveLength(1);
+	});
+
+	/**
+	 * Once a stop is reading the record out of the tracker, nothing may move
+	 * the tracker again: an event landing mid-stop would close the same open
+	 * stretch a second time, and the record would carry overlapping intervals
+	 * counted twice by every reading.
+	 */
+	it("keeps the record's intervals whole when events land mid-stop", async () => {
+		await startSession();
+		sessions.surfaceActivity(surface());
+		clock += 30_000;
+		const stopping = sessions.stop();
+		// Land events at every microtask seam of the stop.
+		for (let i = 0; i < 4; i += 1) {
+			await Promise.resolve();
+			clock += 1_000;
+			sessions.surfaceActivity(surface());
+			sessions.pause();
+			sessions.resume();
+		}
+		await stopping;
+		await settle();
+		const record = monthFile()?.sessions[0];
+		expect(record).toBeDefined();
+		const endedAt = Date.parse(record?.endedAt ?? "");
+		const spans = [
+			...(record?.activeIntervals ?? []),
+			...(record?.idleIntervals ?? []),
+			...(record?.pausedIntervals ?? []),
+		]
+			.map(
+				(span) =>
+					[Date.parse(span.startedAt), Date.parse(span.endedAt)] as const,
+			)
+			.sort((left, right) => left[0] - right[0]);
+		expect(spans.length).toBeGreaterThan(0);
+		for (const [from, to] of spans) {
+			expect(from).toBeLessThanOrEqual(to);
+			expect(to).toBeLessThanOrEqual(endedAt);
+		}
+		for (let i = 1; i < spans.length; i += 1) {
+			const previous = spans[i - 1] ?? [0, 0];
+			const current = spans[i] ?? [0, 0];
+			expect(current[0]).toBeGreaterThanOrEqual(previous[1]);
+		}
 	});
 });
