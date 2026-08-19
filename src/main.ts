@@ -37,6 +37,7 @@ import {
 	managedSectionsForDocument,
 	primaryManagedSectionForStep,
 	formatClock,
+	clampSessionValue,
 	WRITING_MODES,
 	WRITING_SESSION_TYPES,
 	type DocumentType,
@@ -2882,14 +2883,27 @@ export default class SnowflakeMethodPlugin
 
 	/** What the timer dialog settled, stored and announced to every panel. */
 	private async saveSessionSetup(setup: SessionSetup): Promise<void> {
+		// Clamped into the same limits the next launch will load them under,
+		// so a length never works all day and comes back different tomorrow.
 		this.settings.sessionDefaultType = setup.type;
-		this.settings.sessionCountdownMinutes = setup.countdownMinutes;
-		this.settings.sessionPomodoroWorkMinutes = setup.pomodoroWorkMinutes;
-		this.settings.sessionPomodoroBreakMinutes = setup.pomodoroBreakMinutes;
+		this.settings.sessionCountdownMinutes = clampSessionValue(
+			'countdownMinutes',
+			setup.countdownMinutes,
+		);
+		this.settings.sessionPomodoroWorkMinutes = clampSessionValue(
+			'pomodoroWorkMinutes',
+			setup.pomodoroWorkMinutes,
+		);
+		this.settings.sessionPomodoroBreakMinutes = clampSessionValue(
+			'pomodoroBreakMinutes',
+			setup.pomodoroBreakMinutes,
+		);
 		this.settings.sessionPomodoroAutoRepeat = setup.pomodoroAutoRepeat;
 		this.settings.sessionWritingMode = setup.writingMode;
-		this.settings.sessionStopwatchExpectedMinutes =
-			setup.stopwatchExpectedMinutes;
+		this.settings.sessionStopwatchExpectedMinutes = clampSessionValue(
+			'stopwatchExpectedMinutes',
+			setup.stopwatchExpectedMinutes,
+		);
 		await this.saveSettings();
 		// The mode is the one part of the setup a running session can still
 		// take, and an author changing it mid-sitting means this sitting rather
@@ -3147,9 +3161,10 @@ export default class SnowflakeMethodPlugin
 						scope: this.settings.sessionDailyGoalScope,
 					},
 					async (goals) => {
-						this.settings.sessionDailyWordGoalProject = goals.project;
+						this.settings.sessionDailyWordGoalProject =
+							clampSessionValue('dailyWordGoal', goals.project);
 						this.settings.sessionDailyWordGoalManuscript =
-							goals.manuscript;
+							clampSessionValue('dailyWordGoal', goals.manuscript);
 						this.settings.sessionDailyGoalScope = goals.scope;
 						await this.saveSettings();
 						this.sessionSettingsChanged();

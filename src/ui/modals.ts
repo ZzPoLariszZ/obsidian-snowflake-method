@@ -14,11 +14,13 @@ import {
 import {
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
+	SESSION_LIMITS,
 	TIME_KINDS,
 	WRITING_MODES,
 	WRITING_SESSION_SCOPES,
 	WRITING_SESSION_TYPES,
 	addSceneCastMember,
+	clampSessionValue,
 	foldName,
 	isChoosableScenePov,
 	isNameTaken,
@@ -27,6 +29,7 @@ import {
 	safeFileName,
 	type EntityKindId,
 	type ProgressStatus,
+	type SessionLimit,
 	type TimeKind,
 	type WritingMode,
 	type WritingSessionScope,
@@ -4500,7 +4503,8 @@ export class DailyWordGoalModal extends SnowflakeFormModal<DailyWordGoals> {
 				.setDesc(this.t(`modal.dailyGoal.desc.${scope}`))
 				.addText((text) => {
 					text.inputEl.type = 'number';
-					text.inputEl.min = '0';
+					text.inputEl.min = `${SESSION_LIMITS.dailyWordGoal.min}`;
+					text.inputEl.max = `${SESSION_LIMITS.dailyWordGoal.max}`;
 					text.setValue(`${this.current[scope]}`);
 					this.fields.set(scope, text.inputEl);
 				});
@@ -4522,7 +4526,10 @@ export class DailyWordGoalModal extends SnowflakeFormModal<DailyWordGoals> {
 
 	protected collectValue(): DailyWordGoals | null {
 		const read = (scope: WritingSessionScope): number =>
-			wholeNumber(this.fields.get(scope)?.value) ?? this.current[scope];
+			clampSessionValue(
+				'dailyWordGoal',
+				wholeNumber(this.fields.get(scope)?.value) ?? this.current[scope],
+			);
 		return {
 			project: read("project"),
 			manuscript: read("manuscript"),
@@ -4597,7 +4604,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 			this.minutes(
 				'modal.sessionSetup.focus',
 				this.current.pomodoroWorkMinutes,
-				1,
+				'pomodoroWorkMinutes',
 				(input) => {
 					this.workEl = input;
 				},
@@ -4605,7 +4612,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 			this.minutes(
 				'modal.sessionSetup.break',
 				this.current.pomodoroBreakMinutes,
-				1,
+				'pomodoroBreakMinutes',
 				(input) => {
 					this.breakEl = input;
 				},
@@ -4627,7 +4634,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 			this.minutes(
 				'modal.sessionSetup.focus',
 				this.current.countdownMinutes,
-				1,
+				'countdownMinutes',
 				(input) => {
 					this.countdownEl = input;
 				},
@@ -4637,7 +4644,7 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 			this.minutes(
 				'modal.sessionSetup.expected',
 				this.current.stopwatchExpectedMinutes,
-				0,
+				'stopwatchExpectedMinutes',
 				(input) => {
 					this.expectedEl = input;
 				},
@@ -4650,14 +4657,18 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 	private minutes(
 		key: string,
 		value: number,
-		least: number,
+		limit: SessionLimit,
 		keep: (input: HTMLInputElement) => void,
 		desc?: string,
 	): HTMLElement {
+		// The field wears the same bounds the loader holds the value to, so
+		// what the dialog accepts is what the next launch keeps.
+		const range = SESSION_LIMITS[limit];
 		const setting = sessionRow(this.contentEl, this.t(key), desc).addText(
 			(text) => {
 				text.inputEl.type = 'number';
-				text.inputEl.min = `${least}`;
+				text.inputEl.min = `${range.min}`;
+				text.inputEl.max = `${range.max}`;
 				text.setValue(`${value}`);
 				keep(text.inputEl);
 			},
@@ -4675,19 +4686,27 @@ export class SessionSetupModal extends SnowflakeFormModal<SessionSetup> {
 	protected collectValue(): SessionSetup {
 		return {
 			type: this.sessionType,
-			countdownMinutes:
+			countdownMinutes: clampSessionValue(
+				'countdownMinutes',
 				positiveInteger(this.countdownEl?.value) ??
-				this.current.countdownMinutes,
-			pomodoroWorkMinutes:
+					this.current.countdownMinutes,
+			),
+			pomodoroWorkMinutes: clampSessionValue(
+				'pomodoroWorkMinutes',
 				positiveInteger(this.workEl?.value) ??
-				this.current.pomodoroWorkMinutes,
-			pomodoroBreakMinutes:
+					this.current.pomodoroWorkMinutes,
+			),
+			pomodoroBreakMinutes: clampSessionValue(
+				'pomodoroBreakMinutes',
 				positiveInteger(this.breakEl?.value) ??
-				this.current.pomodoroBreakMinutes,
+					this.current.pomodoroBreakMinutes,
+			),
 			pomodoroAutoRepeat: this.autoRepeat,
-			stopwatchExpectedMinutes:
+			stopwatchExpectedMinutes: clampSessionValue(
+				'stopwatchExpectedMinutes',
 				wholeNumber(this.expectedEl?.value) ??
-				this.current.stopwatchExpectedMinutes,
+					this.current.stopwatchExpectedMinutes,
+			),
 			writingMode: this.writingMode,
 			// The session goals are not this dialog's to ask about; they carry
 			// through untouched rather than being cleared by their absence.

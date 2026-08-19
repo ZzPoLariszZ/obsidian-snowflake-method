@@ -191,26 +191,36 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.sessionScope).toBe('project');
 		// A note's own title is an H1 the plugin wrote, never the author's.
 		expect(DEFAULT_SETTINGS.writingCountHeadings).toBe('skip-first-h1');
-		// Rejected back to the default, never clamped to the nearest bound.
+		// Clamped to the nearest bound, never silently reset: the dialogs and
+		// this loader hold a value to the same limits, so a number that worked
+		// all day is at worst pulled to the edge of its range overnight --
+		// only what is not a number at all falls back to the default.
 		expect(
 			sanitizeSettings({ sessionIdleThresholdSeconds: 29 })
 				.sessionIdleThresholdSeconds,
-		).toBe(60);
+		).toBe(30);
 		expect(
 			sanitizeSettings({ sessionIdleThresholdSeconds: 301 })
 				.sessionIdleThresholdSeconds,
-		).toBe(60);
+		).toBe(300);
 		expect(
 			sanitizeSettings({ sessionIdleThresholdSeconds: 2.5 })
 				.sessionIdleThresholdSeconds,
-		).toBe(60);
+		).toBe(30);
 		expect(
 			sanitizeSettings({ sessionIdleThresholdSeconds: 30 })
 				.sessionIdleThresholdSeconds,
 		).toBe(30);
 		expect(
+			sanitizeSettings({ sessionIdleThresholdSeconds: 'long' })
+				.sessionIdleThresholdSeconds,
+		).toBe(60);
+		expect(
 			sanitizeSettings({ sessionCountdownMinutes: 181 }).sessionCountdownMinutes,
-		).toBe(45);
+		).toBe(180);
+		expect(
+			sanitizeSettings({ sessionCountdownMinutes: 3 }).sessionCountdownMinutes,
+		).toBe(5);
 		expect(
 			sanitizeSettings({ sessionPomodoroWorkMinutes: 90 })
 				.sessionPomodoroWorkMinutes,
@@ -218,7 +228,11 @@ describe('settings', () => {
 		expect(
 			sanitizeSettings({ sessionPomodoroBreakMinutes: 0 })
 				.sessionPomodoroBreakMinutes,
-		).toBe(5);
+		).toBe(1);
+		expect(
+			sanitizeSettings({ sessionDailyWordGoalProject: 2_000_000 })
+				.sessionDailyWordGoalProject,
+		).toBe(1_000_000);
 		// Anything that is not a boolean falls back to the default, whatever
 		// the default happens to be.
 		expect(

@@ -98,6 +98,29 @@ export interface WritingSessionTiming {
 	autoRepeat?: boolean;
 }
 
+/**
+ * The bounds a session's numbers live inside, wherever they are set. One
+ * table for the load-time sanitizer, the dialogs and the settings page, so a
+ * value a dialog accepts is a value the next launch keeps: two lists of the
+ * same ranges is how a setting comes to work all day and vanish overnight.
+ */
+export const SESSION_LIMITS = {
+	idleThresholdSeconds: { min: 30, max: 300 },
+	countdownMinutes: { min: 5, max: 180 },
+	pomodoroWorkMinutes: { min: 5, max: 90 },
+	pomodoroBreakMinutes: { min: 1, max: 30 },
+	stopwatchExpectedMinutes: { min: 0, max: 1_440 },
+	dailyWordGoal: { min: 0, max: 1_000_000 },
+} as const;
+
+export type SessionLimit = keyof typeof SESSION_LIMITS;
+
+/** The nearest value the limit allows: numbers are clamped, never rejected. */
+export function clampSessionValue(limit: SessionLimit, value: number): number {
+	const { min, max } = SESSION_LIMITS[limit];
+	return Math.min(max, Math.max(min, Math.round(value)));
+}
+
 export interface WritingSessionRecord {
 	/** `session-<uuid>`: the kind of thing it is, then which one. */
 	id: string;

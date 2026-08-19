@@ -16,8 +16,10 @@ import {
 	TREND_RANGES,
 	WEEK_START_DAYS,
 	WRITING_MODES,
+	SESSION_LIMITS,
 	WRITING_SESSION_SCOPES,
 	WRITING_SESSION_TYPES,
+	clampSessionValue,
 	isDateFormat,
 	isWeekStartDay,
 	isWritingCountHeadings,
@@ -30,6 +32,7 @@ import {
 	type WritingCountHeadings,
 	type WritingCountMode,
 	type WritingMode,
+	type SessionLimit,
 	type WritingSessionScope,
 	type WritingSessionType,
 } from './domain';
@@ -376,26 +379,22 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		manuscriptFocusLevel: readFocusLevel(raw),
 		sessionIdleThresholdSeconds: integerIn(
 			raw.sessionIdleThresholdSeconds,
-			30,
-			300,
+			'idleThresholdSeconds',
 			DEFAULT_SETTINGS.sessionIdleThresholdSeconds,
 		),
 		sessionCountdownMinutes: integerIn(
 			raw.sessionCountdownMinutes,
-			5,
-			180,
+			'countdownMinutes',
 			DEFAULT_SETTINGS.sessionCountdownMinutes,
 		),
 		sessionPomodoroWorkMinutes: integerIn(
 			raw.sessionPomodoroWorkMinutes,
-			5,
-			90,
+			'pomodoroWorkMinutes',
 			DEFAULT_SETTINGS.sessionPomodoroWorkMinutes,
 		),
 		sessionPomodoroBreakMinutes: integerIn(
 			raw.sessionPomodoroBreakMinutes,
-			1,
-			30,
+			'pomodoroBreakMinutes',
 			DEFAULT_SETTINGS.sessionPomodoroBreakMinutes,
 		),
 		sessionPomodoroAutoRepeat:
@@ -404,14 +403,12 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 				: DEFAULT_SETTINGS.sessionPomodoroAutoRepeat,
 		sessionDailyWordGoalProject: integerIn(
 			raw.sessionDailyWordGoalProject,
-			0,
-			1_000_000,
+			'dailyWordGoal',
 			DEFAULT_SETTINGS.sessionDailyWordGoalProject,
 		),
 		sessionDailyWordGoalManuscript: integerIn(
 			raw.sessionDailyWordGoalManuscript,
-			0,
-			1_000_000,
+			'dailyWordGoal',
 			DEFAULT_SETTINGS.sessionDailyWordGoalManuscript,
 		),
 		sessionDailyGoalScope: (WRITING_SESSION_SCOPES as readonly unknown[]).includes(
@@ -433,8 +430,7 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			: DEFAULT_SETTINGS.sessionWritingMode,
 		sessionStopwatchExpectedMinutes: integerIn(
 			raw.sessionStopwatchExpectedMinutes,
-			0,
-			1_440,
+			'stopwatchExpectedMinutes',
 			DEFAULT_SETTINGS.sessionStopwatchExpectedMinutes,
 		),
 		sessionScope: (WRITING_SESSION_SCOPES as readonly unknown[]).includes(
@@ -490,18 +486,14 @@ export function isCreateFromFieldMode(
 	return value === 'form' || value === 'now';
 }
 
-/** An integer inside the range, or the default: rejected, never clamped. */
-function integerIn(
-	value: unknown,
-	min: number,
-	max: number,
-	fallback: number,
-): number {
-	return typeof value === 'number' &&
-		Number.isInteger(value) &&
-		value >= min &&
-		value <= max
-		? value
+/**
+ * A number held inside the limit the dialogs also enforce: clamped, so a
+ * value that worked yesterday never silently becomes the default tomorrow.
+ * Only what is not a number at all falls back.
+ */
+function integerIn(value: unknown, limit: SessionLimit, fallback: number): number {
+	return typeof value === 'number' && Number.isFinite(value)
+		? clampSessionValue(limit, value)
 		: fallback;
 }
 
@@ -816,8 +808,8 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'slider',
 							key: 'sessionIdleThresholdSeconds',
 							defaultValue: DEFAULT_SETTINGS.sessionIdleThresholdSeconds,
-							min: 30,
-							max: 300,
+							min: SESSION_LIMITS.idleThresholdSeconds.min,
+							max: SESSION_LIMITS.idleThresholdSeconds.max,
 							step: 15,
 						},
 					},
@@ -1165,13 +1157,13 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sessionDailyWordGoalProject':
 				if (typeof value === 'number' && Number.isFinite(value)) {
 					this.owner.settings.sessionDailyWordGoalProject =
-						Math.max(0, Math.round(value));
+						clampSessionValue('dailyWordGoal', value);
 				}
 				break;
 			case 'sessionDailyWordGoalManuscript':
 				if (typeof value === 'number' && Number.isFinite(value)) {
 					this.owner.settings.sessionDailyWordGoalManuscript =
-						Math.max(0, Math.round(value));
+						clampSessionValue('dailyWordGoal', value);
 				}
 				break;
 			case 'sessionDailyGoalScope':
