@@ -62,25 +62,34 @@ export function formatDay(day: string, format: DateFormat): string {
 }
 
 /**
+ * One formatter per zone, built once and reused: formatters are immutable,
+ * and this runs on every keystroke's rollover check, where constructing one
+ * costs more than the formatting itself.
+ */
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
  * The calendar day a moment falls on in a zone. This is the one place a
  * moment becomes a day, and every reading of a stored session goes through
  * it, so a device's own zone decides its days throughout.
  */
 export function calendarDay(ms: number, timeZone: string): string {
-	const date = new Date(ms);
-	const options: Intl.DateTimeFormatOptions = {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-	};
-	try {
-		return new Intl.DateTimeFormat('en-CA', { timeZone, ...options }).format(
-			date,
-		);
-	} catch {
-		// An unknown zone name falls back to wherever this machine is.
-		return new Intl.DateTimeFormat('en-CA', options).format(date);
+	let formatter = dayFormatters.get(timeZone);
+	if (formatter === undefined) {
+		const options: Intl.DateTimeFormatOptions = {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+		};
+		try {
+			formatter = new Intl.DateTimeFormat('en-CA', { timeZone, ...options });
+		} catch {
+			// An unknown zone name falls back to wherever this machine is.
+			formatter = new Intl.DateTimeFormat('en-CA', options);
+		}
+		dayFormatters.set(timeZone, formatter);
 	}
+	return formatter.format(new Date(ms));
 }
 
 /** The moment a day begins, read as UTC, which is where the arithmetic runs. */
