@@ -128,8 +128,13 @@ export interface SessionPanelBridge {
 	spread(span: BandSpan): Promise<WritingSpread | null>;
 	view(): SessionHistoryView;
 	setView(patch: Partial<SessionHistoryView>): void;
-	/** Fires on every change; `structural` marks a start, stop or recovery. */
-	subscribe(listener: (structural: boolean) => void): () => void;
+	/**
+	 * Fires on every change; `structural` marks a start, stop or recovery,
+	 * and `counted` a change that moved word totals rather than a clock tick.
+	 */
+	subscribe(
+		listener: (structural: boolean, counted?: boolean) => void,
+	): () => void;
 	/** Net words a day is aimed at, or 0 when no goal is set. */
 	dailyWordGoal(): number;
 	/** Which scope that target, and every goal mark, is measured in. */
@@ -308,19 +313,22 @@ export function renderSessionPanel(
 			});
 	};
 
-	const unsubscribe = bridge.subscribe((structural) => {
+	const unsubscribe = bridge.subscribe((structural, counted = false) => {
 		timer.update();
 		// The day's totals count the live session in, so they move while it is
-		// written rather than only when it ends. Reading them costs a walk over
-		// the month's records, and the change events arrive once a second, so
-		// the day is re-read on its own slower beat -- fast enough for a figure
-		// measured over a whole day, and at once when a session begins or ends.
+		// written rather than only when it ends. A running clock's events
+		// arrive once a second, so those ride a slower beat -- but a counted
+		// change is read at once: it is the words themselves moving, it has no
+		// tick coming behind it, and a throttle that swallowed the last one
+		// would leave the day stale until the next keystroke.
 		if (structural) {
 			refreshHistory();
 			refreshSpread();
 			calendar?.refresh();
 		}
-		if (structural || Date.now() - lastReadAt >= DAY_REREAD_MS) refreshToday();
+		if (structural || counted || Date.now() - lastReadAt >= DAY_REREAD_MS) {
+			refreshToday();
+		}
 	});
 	timer.update();
 	// The dials and the day are painted at their resting state now, before
@@ -734,6 +742,7 @@ function renderTodayWidget(
 				added: 0,
 				deleted: 0,
 				trackedNet: 0,
+				timedNet: 0,
 				goalNet: 0,
 			};
 			sessions.setText(`${day.sessions}`);
@@ -742,7 +751,9 @@ function renderTodayWidget(
 			idle.setText(formatClock(day.idleMs));
 			added.setText(`+${grouped(day.added)}`);
 			deleted.setText(`-${grouped(day.deleted)}`);
-			const speed = sessionPace(day.trackedNet, day.focusMs);
+			// Pace is words over focus, and only sessions have focus: the
+			// day's untimed words stay out of it by reading the timed net.
+			const speed = sessionPace(day.timedNet, day.focusMs);
 			pace.setText(
 				speed === null
 					? '—'

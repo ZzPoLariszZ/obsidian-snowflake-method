@@ -640,6 +640,7 @@ export class SnowflakeProjectService {
     );
     await this.repository.createManagedFile({
       path: projectPath,
+      userInput: true,
       template: projectTemplate(title, locale),
       frontmatter: projectFrontmatter(
         projectId,
@@ -696,7 +697,9 @@ export class SnowflakeProjectService {
     await this.repository.updateFrontmatter(projectFile, {
       [FRONTMATTER_KEYS.projectName]: nextTitle,
     });
-    await this.repository.updateFirstHeading(projectFile, nextTitle);
+    await this.repository.updateFirstHeading(projectFile, nextTitle, {
+      userInput: true,
+    });
     return this.loadProject(projectFile);
   }
 
@@ -791,7 +794,10 @@ export class SnowflakeProjectService {
       ...(renamed ? { [FRONTMATTER_KEYS.projectName]: title } : {}),
     }));
     if (renamed) {
-      await this.repository.updateFirstHeading(projectFile, title);
+      // The deconflicted title is the machine's choice, not typed writing.
+      await this.repository.updateFirstHeading(projectFile, title, {
+        userInput: false,
+      });
     }
     return {
       project: await this.loadProject(projectFile),
@@ -888,6 +894,7 @@ export class SnowflakeProjectService {
         template: projectTemplate(title, "en"),
         frontmatter: projectFrontmatter(projectId, title, "en"),
         uniqueOnConflict: true,
+        userInput: false,
       });
       markCreated(result, created.path);
       projectRecord = await this.repository.readManaged(created.path);
@@ -1054,6 +1061,7 @@ export class SnowflakeProjectService {
           path,
           template: systemTemplate.template,
           frontmatter,
+          userInput: false,
         });
         markCreated(result, path);
       } else if (this.repository.getFile(path) !== null) {
@@ -1321,6 +1329,7 @@ export class SnowflakeProjectService {
         path: normalized,
         template: template.template,
         frontmatter: systemTemplateFrontmatter(template, project),
+        userInput: false,
       });
       return this.loadProject(project.projectFile);
     }
@@ -1619,6 +1628,7 @@ export class SnowflakeProjectService {
         normalized,
         template.template,
         systemTemplateFrontmatter(template, project),
+        { userInput: false },
       );
       return this.loadProject(project.projectFile);
     }
@@ -1658,6 +1668,7 @@ export class SnowflakeProjectService {
         path: normalized,
         template: storyArtifactTemplate(artifact.step, project.locale),
         frontmatter: commonFrontmatter(artifact.document, project.id),
+        userInput: false,
       });
       return this.loadProject(project.projectFile);
     }
@@ -1916,6 +1927,7 @@ export class SnowflakeProjectService {
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
+      userInput: true,
       template: characterTemplate(name, project.locale, {
         fieldsBlock: renderCharacterFieldsBlock(
           project.locale,
@@ -1973,6 +1985,8 @@ export class SnowflakeProjectService {
         created.path,
         createdRecords,
         characterUpdateLayout(name, project.locale),
+        undefined,
+        { userInput: true },
       );
     }
     return this.characterFromRecord(
@@ -2221,7 +2235,7 @@ export class SnowflakeProjectService {
   private async syncNoteHeading(path: string, title: string): Promise<void> {
     const record = await this.repository.readManaged(path);
     if (firstHeading(record.body) === null) return;
-    await this.repository.updateFirstHeading(path, title);
+    await this.repository.updateFirstHeading(path, title, { userInput: true });
   }
 
   private async renameManagedNote(path: string, title: string): Promise<string> {
@@ -2749,6 +2763,7 @@ export class SnowflakeProjectService {
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
+      userInput: true,
       template: sceneTemplate(title, project.locale, {
         fieldsBlock: sceneFieldsBlock(
           project.locale,
@@ -2809,6 +2824,8 @@ export class SnowflakeProjectService {
         created.path,
         createdRecords,
         sceneUpdateLayout(title, project.locale),
+        undefined,
+        { userInput: true },
       );
     }
     return this.sceneFromRecord(
@@ -3225,6 +3242,7 @@ export class SnowflakeProjectService {
             ),
           },
           layout: characterUpdateLayout(character.name, project.locale),
+          userInput: false,
         });
         migrated += 1;
       } catch (error) {
@@ -3260,6 +3278,7 @@ export class SnowflakeProjectService {
           },
           layout: sceneUpdateLayout(scene.title, project.locale),
           remove: [{ sectionId: "scene-conflict", headings: legacyHeadings }],
+          userInput: false,
         });
         migrated += 1;
       } catch (error) {
@@ -3391,6 +3410,7 @@ export class SnowflakeProjectService {
           path,
           template: systemTemplate.template,
           frontmatter,
+          userInput: false,
         });
         settled = true;
         continue;
@@ -3402,6 +3422,7 @@ export class SnowflakeProjectService {
         path,
         systemTemplate.template,
         frontmatter,
+        { userInput: false },
       );
       settled = true;
     }
@@ -3491,7 +3512,9 @@ export class SnowflakeProjectService {
       stale[sectionId] = value;
     }
     if (Object.keys(stale).length === 0) return;
-    await this.repository.updateSections(member.path, stale);
+    await this.repository.updateSections(member.path, stale, undefined, {
+      userInput: false,
+    });
   }
 
 
@@ -3721,6 +3744,7 @@ export class SnowflakeProjectService {
     const created = await this.repository.createManagedFile({
       path: normalizePath(`${folder}/${safeFileName(name)}.md`),
       uniqueOnConflict: true,
+      userInput: false,
       template: entityTemplate(name, kind, project.locale, {
         fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
       }),
@@ -3953,12 +3977,9 @@ export class SnowflakeProjectService {
       // A folder the plugin is in the middle of raising is not a folder made
       // by hand, and the pass raising it is the one holding the description.
       if (this.ensuringDefinitionNodes.has(nodeFolder)) continue;
-      await this.syncDefinitionNode(
-        project,
-        owner.id,
-        owner.rootPath,
-        nodeFolder,
-      );
+      await this.syncDefinitionNode(project, owner.id, owner.rootPath, nodeFolder, "", {
+        userInput: false,
+      });
     }
   }
 
@@ -3976,7 +3997,9 @@ export class SnowflakeProjectService {
         const rootPath = definitionRootPath(project, kind, id);
         if (this.repository.getFolder(rootPath) === null) continue;
         for (const nodeFolder of this.definitionNodeFolders(rootPath)) {
-          await this.syncDefinitionNode(project, id, rootPath, nodeFolder);
+          await this.syncDefinitionNode(project, id, rootPath, nodeFolder, "", {
+            userInput: false,
+          });
         }
       }
     }
@@ -4270,6 +4293,7 @@ export class SnowflakeProjectService {
           rootPath,
           folderPath,
           index === segments.length - 1 ? description : "",
+          { userInput: true },
         );
       }
     } finally {
@@ -4306,7 +4330,8 @@ export class SnowflakeProjectService {
     id: DefinitionFileId,
     rootPath: string,
     folderPath: string,
-    description = "",
+    description: string,
+    { userInput }: { userInput: boolean },
   ): Promise<boolean> {
     const path = normalizePath(`${folderPath}/${basename(folderPath)}.md`);
     const taxonomyPath = taxonomyPathFromTarget(folderPath, rootPath) ?? "";
@@ -4336,6 +4361,7 @@ export class SnowflakeProjectService {
       try {
         await this.repository.createManagedFile({
           path,
+          userInput,
           template: definitionTemplate(id, project.locale, {
             taxonomyPath,
             description: offered,
@@ -4395,6 +4421,7 @@ export class SnowflakeProjectService {
     await this.repository.reshapeSections(path, {
       values: { "definition-fields": expected },
       layout: [{ id: "definition-fields", heading: "" }],
+      userInput,
     });
     return false;
   }
@@ -4418,12 +4445,9 @@ export class SnowflakeProjectService {
     }
     const owner = this.definitionRootOf(project, folderPath);
     if (owner === null || folderPath === owner.rootPath) return false;
-    await this.syncDefinitionNode(
-      project,
-      owner.id,
-      owner.rootPath,
-      folderPath,
-    );
+    await this.syncDefinitionNode(project, owner.id, owner.rootPath, folderPath, "", {
+      userInput: false,
+    });
     return true;
   }
 
@@ -4482,7 +4506,9 @@ export class SnowflakeProjectService {
     // Every node below moved with it, and each one's generated block spells
     // its path: brought current here rather than left to the next pass.
     for (const nodeFolder of this.definitionNodeFolders(rootPath, newFolder)) {
-      await this.syncDefinitionNode(project, id, rootPath, nodeFolder);
+      await this.syncDefinitionNode(project, id, rootPath, nodeFolder, "", {
+        userInput: false,
+      });
     }
     await this.rewriteDefinitionReferences(
       project,
@@ -4666,7 +4692,9 @@ export class SnowflakeProjectService {
     }
     // A note that was missing is made here with the description in hand; one
     // that stands has just been told, and the sync re-renders its block.
-    await this.syncDefinitionNode(project, id, rootPath, folderPath, trimmed);
+    await this.syncDefinitionNode(project, id, rootPath, folderPath, trimmed, {
+      userInput: true,
+    });
   }
 
   /**
@@ -4800,7 +4828,9 @@ export class SnowflakeProjectService {
       expectedBlock: target.expected,
     });
     if (plan === null) return false;
-    await this.repository.updateSections(path, { [plan.sectionId]: plan.value });
+    await this.repository.updateSections(path, { [plan.sectionId]: plan.value }, undefined, {
+      userInput: false,
+    });
     return true;
   }
 
@@ -4901,6 +4931,7 @@ export class SnowflakeProjectService {
     const created = await this.repository.createManagedFile({
       path: normalizePath(`${folder}/${safeFileName(name)}.md`),
       uniqueOnConflict: true,
+      userInput: true,
       template: entityTemplate(name, kind, project.locale, {
         fieldsBlock: renderEntityFieldsBlock(project.locale, kind, view),
         notes: input.notes,
@@ -4947,6 +4978,8 @@ export class SnowflakeProjectService {
         created.path,
         recordValues,
         entityUpdateLayout(name, kind, project.locale),
+        undefined,
+        { userInput: true },
       );
     }
     return this.entityFromRecord(
@@ -5772,12 +5805,15 @@ export class SnowflakeProjectService {
       const created = normalizePath(`${root}/${name}.md`);
       await this.repository.createManagedFile({
         path: created,
+        userInput: true,
         template,
         frontmatter,
       });
       return { ok: true, path: created };
     }
-    await this.repository.replaceManagedFile(path, template, frontmatter);
+    await this.repository.replaceManagedFile(path, template, frontmatter, {
+      userInput: true,
+    });
     return { ok: true, path };
   }
 
@@ -5898,6 +5934,7 @@ export class SnowflakeProjectService {
       values: {},
       layout: [],
       remove: emptied,
+      userInput: false,
     });
   }
 
@@ -6068,8 +6105,13 @@ export class SnowflakeProjectService {
     };
   }
 
-  async updateSection(path: string, sectionId: string, value: string): Promise<void> {
-    await this.repository.updateSection(path, sectionId, value);
+  async updateSection(
+    path: string,
+    sectionId: string,
+    value: string,
+    options: { userInput: boolean },
+  ): Promise<void> {
+    await this.repository.updateSection(path, sectionId, value, options);
   }
 
   async updateSections(
@@ -6077,7 +6119,11 @@ export class SnowflakeProjectService {
     values: Readonly<Record<string, string>>,
     expectedRevision: string,
   ): Promise<void> {
-    await this.repository.updateSections(path, values, expectedRevision);
+    // The step panels' save button is the only door to this method, so what
+    // passes through it is a person's writing by definition.
+    await this.repository.updateSections(path, values, expectedRevision, {
+      userInput: true,
+    });
   }
 
   private async recoverProjectId(rootPath: string): Promise<string | null> {
@@ -6313,6 +6359,7 @@ export class SnowflakeProjectService {
         template,
         frontmatter: commonFrontmatter(documentType, project.id),
         uniqueOnConflict: true,
+        userInput: false,
       });
       const sectionCheck = await this.repository.checkSections(ensured.path, template.sections);
       recordSectionCheckResults(result, ensured.path, sectionCheck);
@@ -7874,7 +7921,9 @@ export class SnowflakeProjectService {
     // therefore cannot leave the structured fields partially updated. Upsert
     // rather than update: a note from before the fields block gains it on its
     // first edit, at its canonical place in the layout.
-    await this.repository.upsertSections(path, sectionValues, layout, expectedRevision);
+    await this.repository.upsertSections(path, sectionValues, layout, expectedRevision, {
+      userInput: true,
+    });
     if (!hasFrontmatter) return;
 
     const afterSections = await this.repository.readManaged(path);
@@ -7895,6 +7944,7 @@ export class SnowflakeProjectService {
           rollbackValues,
           layout,
           afterSectionsRevision,
+          { userInput: true },
         );
       } catch (rollbackError) {
         if (rollbackError instanceof ConcurrentChangeError) throw rollbackError;

@@ -1288,3 +1288,280 @@ export function finalizeSnapshot(
 		timing: snapshot.timing,
 	};
 }
+
+/*
+ * The untimed day: words recorded while no session's clock was running.
+ *
+ * One record per device, per project, per calendar day, holding only what was
+ * written -- no intervals, no timing, no stop reason, because there was no
+ * clock to have any. It lives in its own file, under its own suffix, so a
+ * build that predates it keeps reading the session files untouched instead of
+ * rejecting a month it half understands.
+ */
+
+export const UNTIMED_FILE_SUFFIX = '_untimed_writing.json';
+
+/** `untimed-<device>-<day>`: device-unique, so readers can merge by id. */
+export function untimedDayId(deviceId: string, day: string): string {
+	return `untimed-${deviceId}-${day}`;
+}
+
+/**
+ * Where one device files one month of untimed days, beside the session files:
+ * `<root>/<sessions dir>/<year>/<year>_<month>_<device>_untimed_writing.json`.
+ * A day is filed by the month it names, in the zone it was recorded under.
+ */
+export function untimedFilePath(
+	projectRoot: string,
+	sessionsDir: string,
+	day: string,
+	deviceId: string,
+): string {
+	const { year, month } = monthKeyOfDay(day);
+	const base = sessionsFolder(projectRoot, sessionsDir);
+	return `${base}/${year}/${year}_${month}_${deviceId}${UNTIMED_FILE_SUFFIX}`;
+}
+
+/** What an untimed day observed, under one way of counting it. */
+export interface UntimedWordTotals {
+	added: number;
+	deleted: number;
+	net: number;
+}
+
+/** Both readings of one untimed day. Manuscript is the project's subset. */
+export type UntimedWords = Record<WritingSessionScope, UntimedWordTotals>;
+
+/**
+ * A session tally with the note's last standing count riding along. The
+ * standing count is what a deletion credits, and it is persisted with the
+ * ledger itself -- in the day's file and in the recovery snapshot alike --
+ * so every way a day comes back rebuilds its baselines from the one place.
+ * Optional because tallies written before the field existed must keep
+ * parsing, and because a note can be tallied after its baseline is gone.
+ */
+export interface UntimedFileTally extends SessionFileTally {
+	standing?: number;
+}
+
+export interface UntimedDayRecord {
+	/** `untimed-<device>-<day>`: the kind of thing it is, then which one. */
+	id: string;
+	/** `YYYY-MM-DD` in the recording device's own zone. */
+	day: string;
+	/** IANA zone the day was read in when it was recorded. */
+	timezone: string;
+	/**
+	 * When this copy of the day was filed, UTC ISO. A day on disk is a
+	 * trailing copy of a ledger that lives in memory while it accrues, and
+	 * this is what says how far it trails: anyone reading the file can see
+	 * the number is as of this moment, not as of now. Optional only because
+	 * files written before the field existed must keep parsing.
+	 */
+	updatedAt?: string;
+	/**
+	 * The counting convention the day was measured under, so a reader taking
+	 * the standing counts back into a live ledger can tell whether they were
+	 * measured by its own rule. Optional for files from before the fields.
+	 */
+	countMode?: string;
+	countHeadings?: string;
+	words: UntimedWords;
+	files: UntimedFileTally[];
+}
+
+/** One device's untimed days for one month, as stored in the vault. */
+export interface UntimedMonthFile {
+	schemaVersion: typeof WRITING_SESSION_SCHEMA_VERSION;
+	days: UntimedDayRecord[];
+}
+
+/**
+ * One project's untimed day as persisted for crash recovery: enough to file
+ * the record without the project ever being rescanned. The tallied notes'
+ * standing counts ride on the tallies themselves; every other note re-seeds
+ * from the disk on its next touch.
+ */
+export interface UntimedStateSnapshot {
+	projectId: string;
+	projectRoot: string;
+	sessionsDir: string;
+	day: string;
+	timezone: string;
+	/**
+	 * The counting convention the day was frozen under. A resume that finds a
+	 * different convention in force drops the standing counts rather than
+	 * diffing one rule's numbers under the other. Optional for snapshots from
+	 * before the fields existed, which are treated as unknown.
+	 */
+	countMode?: string;
+	countHeadings?: string;
+	/**
+	 * The last count seen per tallied note, from builds that carried them in
+	 * a side map rather than on the tallies. Read, never written: kept only
+	 * so one relaunch across the format change loses nothing.
+	 */
+	baselines?: Record<string, number>;
+	files: UntimedFileTally[];
+}
+
+/** Every accruing untimed day, snapshotted together under one key. */
+export interface UntimedTrackingSnapshot {
+	schemaVersion: typeof WRITING_SESSION_SCHEMA_VERSION;
+	states: UntimedStateSnapshot[];
+}
+
+/**
+ * An untimed record's totals are always derived from its per-note tallies at
+ * build time, so the record cannot disagree with its own files.
+ */
+export function untimedWordsFromFiles(
+	files: readonly SessionFileTally[],
+): UntimedWords {
+	const observed = tallyScopes(files);
+	return Object.fromEntries(
+		WRITING_SESSION_SCOPES.map((scope) => {
+			const { added, deleted } = observed[scope];
+			return [scope, { added, deleted, net: added - deleted }];
+		}),
+	) as UntimedWords;
+}
+
+const DAY_SHAPE = /^\d{4}-\d{2}-\d{2}$/u;
+
+function parseUntimedWordTotals(value: unknown): UntimedWordTotals | null {
+	if (!isRecord(value)) return null;
+	if (!isFiniteNumber(value.added) || !isFiniteNumber(value.deleted)) {
+		return null;
+	}
+	return {
+		added: value.added,
+		deleted: value.deleted,
+		// Derived rather than trusted, like every other net in this file.
+		net: value.added - value.deleted,
+	};
+}
+
+function parseUntimedWords(value: unknown): UntimedWords | null {
+	if (!isRecord(value)) return null;
+	const project = parseUntimedWordTotals(value.project);
+	const manuscript = parseUntimedWordTotals(value.manuscript);
+	if (project === null || manuscript === null) return null;
+	return { project, manuscript };
+}
+
+/**
+ * Session tallies with their optional standing counts. The base shape parses
+ * exactly as a session's, and a standing count survives only as a finite
+ * non-negative number -- anything else drops the field, never the tally.
+ */
+function parseUntimedFiles(value: unknown): UntimedFileTally[] | null {
+	const files = parseFiles(value);
+	if (files === null || !Array.isArray(value)) return files;
+	return files.map((tally, at) => {
+		const entry: unknown = value[at];
+		if (!isRecord(entry)) return tally;
+		const standing = entry.standing;
+		if (!isFiniteNumber(standing) || standing < 0) return tally;
+		return { ...tally, standing };
+	});
+}
+
+/** An optional convention stamp: a non-empty string or nothing. */
+function parseConvention(value: unknown): string | undefined {
+	return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Reads a stored untimed day back, as strictly as a session record. */
+export function parseUntimedDayRecord(value: unknown): UntimedDayRecord | null {
+	if (!isRecord(value)) return null;
+	if (typeof value.id !== 'string' || value.id.length === 0) return null;
+	if (typeof value.day !== 'string' || !DAY_SHAPE.test(value.day)) return null;
+	if (typeof value.timezone !== 'string') return null;
+	if (value.updatedAt !== undefined && !isIsoDate(value.updatedAt)) {
+		return null;
+	}
+	const words = parseUntimedWords(value.words);
+	if (words === null) return null;
+	const files = parseUntimedFiles(value.files);
+	if (files === null) return null;
+	const countMode = parseConvention(value.countMode);
+	const countHeadings = parseConvention(value.countHeadings);
+	return {
+		id: value.id,
+		day: value.day,
+		timezone: value.timezone,
+		...(value.updatedAt === undefined
+			? {}
+			: { updatedAt: value.updatedAt }),
+		...(countMode === undefined ? {} : { countMode }),
+		...(countHeadings === undefined ? {} : { countHeadings }),
+		words,
+		files,
+	};
+}
+
+/** A whole untimed file, or null: one day this build cannot read rejects it. */
+export function parseUntimedFile(value: unknown): UntimedMonthFile | null {
+	if (!isRecord(value)) return null;
+	if (value.schemaVersion !== WRITING_SESSION_SCHEMA_VERSION) return null;
+	if (!Array.isArray(value.days)) return null;
+	const days: UntimedDayRecord[] = [];
+	for (const entry of value.days) {
+		const day = parseUntimedDayRecord(entry);
+		if (day === null) return null;
+		days.push(day);
+	}
+	return { schemaVersion: WRITING_SESSION_SCHEMA_VERSION, days };
+}
+
+export function parseUntimedSnapshot(
+	value: unknown,
+): UntimedTrackingSnapshot | null {
+	if (!isRecord(value)) return null;
+	if (value.schemaVersion !== WRITING_SESSION_SCHEMA_VERSION) return null;
+	if (!Array.isArray(value.states)) return null;
+	const states: UntimedStateSnapshot[] = [];
+	for (const entry of value.states) {
+		if (!isRecord(entry)) return null;
+		if (typeof entry.projectId !== 'string' || entry.projectId.length === 0) {
+			return null;
+		}
+		if (typeof entry.projectRoot !== 'string') return null;
+		if (
+			typeof entry.sessionsDir !== 'string' ||
+			entry.sessionsDir.length === 0
+		) {
+			return null;
+		}
+		if (typeof entry.day !== 'string' || !DAY_SHAPE.test(entry.day)) {
+			return null;
+		}
+		if (typeof entry.timezone !== 'string') return null;
+		let baselines: Record<string, number> | undefined;
+		if (entry.baselines !== undefined) {
+			if (!isRecord(entry.baselines)) return null;
+			baselines = {};
+			for (const [path, total] of Object.entries(entry.baselines)) {
+				if (!isFiniteNumber(total)) return null;
+				baselines[path] = total;
+			}
+		}
+		const files = parseUntimedFiles(entry.files);
+		if (files === null) return null;
+		const countMode = parseConvention(entry.countMode);
+		const countHeadings = parseConvention(entry.countHeadings);
+		states.push({
+			projectId: entry.projectId,
+			projectRoot: entry.projectRoot,
+			sessionsDir: entry.sessionsDir,
+			day: entry.day,
+			timezone: entry.timezone,
+			...(countMode === undefined ? {} : { countMode }),
+			...(countHeadings === undefined ? {} : { countHeadings }),
+			...(baselines === undefined ? {} : { baselines }),
+			files,
+		});
+	}
+	return { schemaVersion: WRITING_SESSION_SCHEMA_VERSION, states };
+}

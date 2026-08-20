@@ -154,6 +154,11 @@ export interface SnowflakeSettings {
 	sessionStopwatchExpectedMinutes: number;
 	/** Focus mode on starts a strict stopwatch session; off ends it. */
 	sessionAutoWithFocusMode: boolean;
+	/**
+	 * Whether writing outside a session is recorded into the daily untimed
+	 * record. Time-related metrics stay session-only either way.
+	 */
+	sessionTrackUntimedWords: boolean;
 	/** The day a week is drawn from, which the writing heatmap lays out by. */
 	sessionWeekStart: WeekStartDay;
 	/** How a day is written wherever the writing statistics name one. */
@@ -220,6 +225,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	sessionHeatmapGoal: false,
 	sessionBandSpan: 'all',
 	sessionAutoWithFocusMode: true,
+	sessionTrackUntimedWords: true,
 	recentProjectPath: null,
 	recentStep: 1,
 	certificateCelebrations: {},
@@ -258,6 +264,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'sessionScope',
 	'sessionStopwatchExpectedMinutes',
 	'sessionAutoWithFocusMode',
+	'sessionTrackUntimedWords',
 	'sessionWeekStart',
 	'sessionDateFormat',
 	'sessionTrendDays',
@@ -442,6 +449,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.sessionAutoWithFocusMode === 'boolean'
 				? raw.sessionAutoWithFocusMode
 				: DEFAULT_SETTINGS.sessionAutoWithFocusMode,
+		sessionTrackUntimedWords:
+			typeof raw.sessionTrackUntimedWords === 'boolean'
+				? raw.sessionTrackUntimedWords
+				: DEFAULT_SETTINGS.sessionTrackUntimedWords,
 		sessionWeekStart: isWeekStartDay(raw.sessionWeekStart)
 			? raw.sessionWeekStart
 			: DEFAULT_SETTINGS.sessionWeekStart,
@@ -840,6 +851,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: this.t('settings.sessionTrackUntimed.name'),
+						desc: this.t('settings.sessionTrackUntimed.desc'),
+						control: {
+							type: 'toggle',
+							key: 'sessionTrackUntimedWords',
+							defaultValue: DEFAULT_SETTINGS.sessionTrackUntimedWords,
+						},
+					},
+					{
 						name: this.t('settings.sessionScope.name'),
 						desc: this.t('settings.sessionScope.desc'),
 						control: {
@@ -1149,6 +1169,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sessionAutoWithFocusMode':
 				if (typeof value === 'boolean') {
 					this.owner.settings.sessionAutoWithFocusMode = value;
+				}
+				break;
+			case 'sessionTrackUntimedWords':
+				if (typeof value === 'boolean') {
+					this.owner.settings.sessionTrackUntimedWords = value;
 				}
 				break;
 			// Typed rather than dragged, so a whole number is what the field

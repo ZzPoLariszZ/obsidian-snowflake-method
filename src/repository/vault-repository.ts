@@ -73,6 +73,13 @@ export interface CreateManagedFileOptions {
   template: MarkdownTemplate;
   frontmatter: ManagedFrontmatter;
   uniqueOnConflict?: boolean;
+  /**
+   * True where the note carries what a person typed into a form. Required,
+   * not defaulted: whether a write is a person's writing decides whether its
+   * words are credited, and a new call site must say so out loud rather than
+   * inherit a silent false that classifies typed words as machinery.
+   */
+  userInput: boolean;
 }
 
 export interface CreateManagedFileResult {
@@ -306,6 +313,17 @@ export class VaultRepository {
 
   private readonly writingPaths = new Set<string>();
 
+  /**
+   * Told about every body this repository writes -- the content it found, the
+   * content it left, and whether a person's input is what the write carried.
+   * The writing-session service listens: the plugin's own saves are how modal
+   * and dashboard writing keeps crediting words, now that vault events answer
+   * only for strangers.
+   */
+  onBodyWrite:
+    | ((path: string, before: string, after: string, userInput: boolean) => void)
+    | null = null;
+
   private async withWriteMark<T>(
     path: string,
     write: () => Promise<T>,
@@ -322,10 +340,19 @@ export class VaultRepository {
     file: TFile,
     normalized: string,
     transform: (current: string) => string,
+    userInput: boolean,
   ): Promise<void> {
+    let observed: { before: string; after: string } | null = null;
     await this.withWriteMark(normalized, () =>
-      this.vault.process(file, transform),
+      this.vault.process(file, (current) => {
+        const next = transform(current);
+        observed = next === current ? null : { before: current, after: next };
+        return next;
+      }),
     );
+    if (observed === null) return;
+    const { before, after } = observed;
+    this.onBodyWrite?.(normalized, before, after, userInput);
   }
 
   async readManaged(path: string): Promise<ManagedFileRecord> {
@@ -406,6 +433,13 @@ export class VaultRepository {
       ...options.frontmatter,
       "snowflake-schema": SCHEMA_VERSION,
     });
+    // A created note is a body write from nothing, reported like any other,
+    // read back after the frontmatter lands so the observer sees the note as
+    // it stands rather than a bare template a type cannot be parsed from.
+    if (this.onBodyWrite !== null) {
+      const content = await this.vault.read(file);
+      this.onBodyWrite(file.path, "", content, options.userInput);
+    }
     return { path: file.path, file, created: true, frontmatterRepaired: false };
   }
 
@@ -447,6 +481,7 @@ export class VaultRepository {
     path: string,
     template: MarkdownTemplate,
     frontmatter: ManagedFrontmatter,
+    { userInput }: { userInput: boolean },
   ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
@@ -459,6 +494,7 @@ export class VaultRepository {
       file,
       normalized,
       () => `---\n${yaml}\n---\n${template.body}`,
+      userInput,
     );
   }
 
@@ -547,7 +583,11 @@ export class VaultRepository {
     );
   }
 
-  async updateFirstHeading(path: string, title: string): Promise<void> {
+  async updateFirstHeading(
+    path: string,
+    title: string,
+    { userInput }: { userInput: boolean },
+  ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
     if (!file) throw new ManagedFileNotFoundError(normalized);
@@ -568,7 +608,7 @@ export class VaultRepository {
       }
       const body = parsed.body.replace(/^(?:\r?\n)+/u, "");
       return `${prefix}${heading}${body ? `\n\n${body}` : "\n"}`;
-    });
+    }, userInput);
   }
 
   /**
@@ -583,7 +623,8 @@ export class VaultRepository {
   async replaceBody(
     path: string,
     body: string,
-    expectedRevision?: string,
+    expectedRevision: string | undefined,
+    { userInput }: { userInput: boolean },
   ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
@@ -598,17 +639,23 @@ export class VaultRepository {
       }
       const prefix = current.slice(0, current.length - parsed.body.length);
       return `${prefix}${body}`;
-    });
+    }, userInput);
   }
 
-  async updateSection(path: string, sectionId: string, value: string): Promise<void> {
-    await this.updateSections(path, { [sectionId]: value });
+  async updateSection(
+    path: string,
+    sectionId: string,
+    value: string,
+    options: { userInput: boolean },
+  ): Promise<void> {
+    await this.updateSections(path, { [sectionId]: value }, undefined, options);
   }
 
   async updateSections(
     path: string,
     values: Readonly<Record<string, string>>,
-    expectedRevision?: string,
+    expectedRevision: string | undefined,
+    { userInput }: { userInput: boolean },
   ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
@@ -666,7 +713,7 @@ export class VaultRepository {
         );
       }
       return next;
-    });
+    }, userInput);
   }
 
   /**
@@ -681,6 +728,7 @@ export class VaultRepository {
       layout: readonly SectionLayoutEntry[];
       remove?: readonly { sectionId: string; headings: readonly string[] }[];
       expectedRevision?: string;
+      userInput: boolean;
     },
   ): Promise<void> {
     const normalized = this.normalize(path);
@@ -767,7 +815,7 @@ export class VaultRepository {
         );
       }
       return next;
-    });
+    }, options.userInput);
   }
 
   /**
@@ -780,7 +828,8 @@ export class VaultRepository {
     path: string,
     values: Readonly<Record<string, string>>,
     layout: readonly SectionLayoutEntry[],
-    expectedRevision?: string,
+    expectedRevision: string | undefined,
+    { userInput }: { userInput: boolean },
   ): Promise<void> {
     const normalized = this.normalize(path);
     const file = this.getFile(normalized);
@@ -845,7 +894,7 @@ export class VaultRepository {
         );
       }
       return next;
-    });
+    }, userInput);
   }
 
   async checkSections(

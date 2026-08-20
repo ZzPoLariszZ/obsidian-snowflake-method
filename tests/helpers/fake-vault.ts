@@ -71,6 +71,10 @@ export class FakeVault {
   /** Every file opened, so a test can tell a read from an answer already held. */
   readonly readCalls: string[] = [];
   failNextCreatePath: string | null = null;
+  /** One simulated write failure for `process`, the way a vault can refuse. */
+  failNextProcessPath: string | null = null;
+  /** One simulated read failure, the way transient I/O can refuse. */
+  failNextReadPath: string | null = null;
 
   private readonly root: FakeFolder;
   /**
@@ -134,6 +138,10 @@ export class FakeVault {
   }
 
   async read(file: TFile): Promise<string> {
+    if (this.failNextReadPath === file.path) {
+      this.failNextReadPath = null;
+      throw new Error(`Simulated read failure: ${file.path}`);
+    }
     const content = this.contents.get(file.path);
     if (content === undefined) throw new Error(`Missing content: ${file.path}`);
     this.readCalls.push(file.path);
@@ -141,6 +149,10 @@ export class FakeVault {
   }
 
   async process(file: TFile, callback: (data: string) => string): Promise<string> {
+    if (this.failNextProcessPath === file.path) {
+      this.failNextProcessPath = null;
+      throw new Error(`Simulated process failure: ${file.path}`);
+    }
     const current = await this.read(file);
     const next = callback(current);
     this.write(file.path, next);

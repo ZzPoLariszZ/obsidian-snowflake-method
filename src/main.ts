@@ -216,6 +216,7 @@ const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
 /** Per-device localStorage keys: never data.json, which may sync. */
 const SESSION_RECOVERY_KEY = 'snowflake-method-session-recovery';
 const SESSION_DEVICE_KEY = 'snowflake-method-device-id';
+const UNTIMED_RECOVERY_KEY = 'snowflake-method-untimed-recovery';
 
 /**
  * The pomodoro's tomato, drawn here because lucide has none: a round body,
@@ -314,6 +315,7 @@ export default class SnowflakeMethodPlugin
 	settings: SnowflakeSettings = { ...DEFAULT_SETTINGS };
 	projects!: SnowflakeProjectService;
 	private refreshTimer: number | null = null;
+	private projectRescanTimer: number | null = null;
 	private refreshProjectLocales = false;
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
@@ -384,6 +386,13 @@ export default class SnowflakeMethodPlugin
 	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
 	/** Root folders of the projects discovered under the configured root. */
 	private readonly knownProjectRoots = new Set<string>();
+	/**
+	 * The discovered projects by root folder, for resolving which project a
+	 * path belongs to without a read: the untimed tracking asks on every edit
+	 * anywhere in the vault. Read-only projects are left out, because nothing
+	 * records into them.
+	 */
+	private readonly knownProjectsByRoot = new Map<string, ProjectRef>();
 	/** Draft notes a project links to from outside its own folder, by root. */
 	private readonly externalDrafts = new Map<string, string>();
 	/** Member notes waiting for the fields-block reconcile pass. */
@@ -499,6 +508,17 @@ export default class SnowflakeMethodPlugin
 				},
 			},
 			deviceId: () => this.writingSessionDeviceId(),
+			isNoteOpen: (path) => this.isNoteOpenInEditor(path),
+			trackUntimed: () => this.settings.sessionTrackUntimedWords,
+			projectAtPath: (path) => this.projectRefAtPath(path),
+			countOptions: () => this.writingCountOptions(),
+			untimedRecovery: {
+				load: () =>
+					this.app.loadLocalStorage(UNTIMED_RECOVERY_KEY) as unknown,
+				save: (snapshot) => {
+					this.app.saveLocalStorage(UNTIMED_RECOVERY_KEY, snapshot);
+				},
+			},
 			// The plugin-lifetime clock: the main window's, so a popout
 			// closing can never take the session's ticker with it.
 			timers: {
@@ -506,6 +526,18 @@ export default class SnowflakeMethodPlugin
 				clear: (handle) => window.clearTimeout(handle as number),
 			},
 		});
+		// The plugin's own saves are how modal and dashboard writing keeps
+		// crediting words, now that vault events answer only for strangers.
+		this.projects.repository.onBodyWrite = (path, before, after, userInput) => {
+			this.sessions.notePersistedByPlugin(path, before, after, userInput);
+		};
+		// And a merge's absorbed segment reports what it held, so the removal
+		// weighs against the text the merge credits into the survivor. A
+		// segment is the manuscript's by definition, which is what the note
+		// itself can no longer be asked once it is gone.
+		this.projects.manuscript.onSegmentRemoved = (path, body) => {
+			this.sessions.noteRemovedByPlugin(path, body, { manuscript: true });
+		};
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		this.registerManagedSectionEditor();
 		this.registerView(
@@ -599,6 +631,13 @@ export default class SnowflakeMethodPlugin
 			}
 			this.applyManuscriptModePresence();
 			this.scheduleWritingCountRefresh(0);
+			// The path-to-project map fills from the first scan, and the scan
+			// is kicked here rather than waited for from a dashboard: with no
+			// pane open, untimed words would otherwise go unclaimed until one
+			// was.
+			void this.discoverProjects().catch((error: unknown) => {
+				this.showError(error);
+			});
 			// A session the last run never closed is finalized before anything
 			// can start a new one over it.
 			void this.sessions.recoverAtStartup().catch((error: unknown) => {
@@ -625,6 +664,12 @@ export default class SnowflakeMethodPlugin
 		if (this.refreshTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.refreshTimer);
 			this.refreshTimer = null;
+		}
+		if (this.projectRescanTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(
+				this.projectRescanTimer,
+			);
+			this.projectRescanTimer = null;
 		}
 		// The app is handed back as it stands: nothing faded, nothing folded.
 		const body = this.app.workspace.containerEl.doc.body;
@@ -844,9 +889,13 @@ export default class SnowflakeMethodPlugin
 		);
 		this.projectLocalesById.clear();
 		this.knownProjectRoots.clear();
+		this.knownProjectsByRoot.clear();
 		for (const project of projects) {
 			this.projectLocalesById.set(project.id, project.locale);
 			this.knownProjectRoots.add(project.rootPath);
+			if (!project.readOnly) {
+				this.knownProjectsByRoot.set(project.rootPath, project);
+			}
 		}
 		for (const rootPath of this.externalDrafts.keys()) {
 			if (!this.knownProjectRoots.has(rootPath)) {
@@ -871,6 +920,18 @@ export default class SnowflakeMethodPlugin
 			this.isDirectProjectFile(path) ||
 			this.isLinkedDraft(path)
 		);
+	}
+
+	/**
+	 * The writable project whose folder holds `path`, from the last scan, or
+	 * null. Pure string work over a handful of roots: cheap enough to ask on
+	 * every edit, and empty only before the first scan has run.
+	 */
+	private projectRefAtPath(path: string): ProjectRef | null {
+		for (const [rootPath, project] of this.knownProjectsByRoot) {
+			if (isPathAtOrBelow(path, rootPath)) return project;
+		}
+		return null;
 	}
 
 	/** A draft a project links to from outside its own folder. */
@@ -2352,6 +2413,11 @@ export default class SnowflakeMethodPlugin
 			);
 		}
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
+		// Turning untimed tracking off files what the day has so far; the
+		// stored records keep contributing to every reading either way.
+		if (key === 'sessionTrackUntimedWords') {
+			await this.sessions.untimedTrackingChanged();
+		}
 		// Every session widget is showing a session setting somewhere, and the
 		// page they are set from is not one they can see change.
 		if (key.startsWith('session')) this.sessionSettingsChanged();
@@ -2621,6 +2687,38 @@ export default class SnowflakeMethodPlugin
 		const minted = crypto.randomUUID();
 		this.app.saveLocalStorage(SESSION_DEVICE_KEY, minted);
 		return minted;
+	}
+
+	/**
+	 * Whether a note is on somebody's screen to be written in: a markdown
+	 * leaf in editing mode in any window, or the manuscript stream's editing
+	 * segment. A vault write to such a note is its own editor's save echo,
+	 * never an external edit, and the sessions must leave it to the editor to
+	 * settle. A reading-mode leaf does not count: it has no buffer to echo
+	 * and fires no editor events, so a write under it really is external and
+	 * skipping the rebase would hand the foreign delta to the next keystroke.
+	 */
+	private isNoteOpenInEditor(path: string): boolean {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			if (
+				leaf.view instanceof MarkdownView &&
+				leaf.view.file?.path === path &&
+				leaf.view.getMode() === 'source'
+			) {
+				return true;
+			}
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			if (
+				leaf.view instanceof SnowflakeManuscriptView &&
+				leaf.view.editingSegment() === path
+			) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -3163,6 +3261,7 @@ export default class SnowflakeMethodPlugin
 						event.kind === 'started' ||
 							event.kind === 'stopped' ||
 							event.kind === 'recovered',
+						event.kind === 'changed' && event.counted === true,
 					);
 				});
 				// A setting changed in one panel's dialog is a setting every
@@ -3902,6 +4001,20 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	private async toggleUntimedTracking(): Promise<void> {
+		const enabled = !this.settings.sessionTrackUntimedWords;
+		this.settings.sessionTrackUntimedWords = enabled;
+		await this.saveSettings();
+		await this.handleSettingsChanged('sessionTrackUntimedWords');
+		new Notice(
+			this.globalT(
+				enabled
+					? 'commands.untimedTrackingEnabled'
+					: 'commands.untimedTrackingDisabled',
+			),
+		);
+	}
+
 	private async toggleCreateFromField(): Promise<void> {
 		const opensForm = this.settings.createFromField !== 'form';
 		this.settings.createFromField = opensForm ? 'form' : 'now';
@@ -4584,6 +4697,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-untimed-word-tracking',
+			name: this.globalT('commands.toggleUntimedTracking'),
+			callback: () => {
+				void this.toggleUntimedTracking().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'count-project-words',
 			name: this.globalT('commands.countProjectWords'),
 			callback: () => {
@@ -4993,8 +5115,17 @@ export default class SnowflakeMethodPlugin
 		);
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
-				// Out-of-editor writes move the counts, never the idle clock.
-				if (file instanceof TFile) this.sessions.noteChanged(file.path);
+				// An out-of-editor write is not this device's writing: it moves
+				// no counts and no clock, and only re-baselines what it touched
+				// so the next keystroke is not credited with it. The plugin's
+				// own saves report themselves through the repository instead,
+				// and their modify echo is skipped by its write mark.
+				if (
+					file instanceof TFile &&
+					!this.projects.repository.isWritingPath(file.path)
+				) {
+					this.sessions.noteWrittenExternally(file.path);
+				}
 				this.handleVaultEvent(file);
 			}),
 		);
@@ -5233,8 +5364,15 @@ export default class SnowflakeMethodPlugin
 
 		this.invalidateProjectHealth(oldPath);
 		this.invalidateProjectHealth(file.path);
-		// Whatever the scan holds was true of the old arrangement.
+		// Whatever the scan holds was true of the old arrangement, so it is
+		// dropped at once: a reader in the next tick must never be handed a
+		// project under the name it has just stopped having.
 		this.invalidateProjectDiscovery();
+		// Refilling the path-to-project map is the part that costs a walk --
+		// the untimed tracking resolves against it on every edit -- so that
+		// is coalesced: a folder move fires one rename per descendant, and
+		// rescanning per event would walk the vault once per file.
+		this.scheduleProjectRescan();
 		if (leftTheRoot) {
 			// Views cannot follow a project out of the scan's reach, and a
 			// stream left in a background tab never notices on its own.
@@ -5291,6 +5429,26 @@ export default class SnowflakeMethodPlugin
 		if (basename(systemFolder) !== layout.directories.system) return false;
 		const projectFolder = parentPath(systemFolder);
 		return parentPath(projectFolder) === this.settings.projectRoot;
+	}
+
+	/**
+	 * One project rescan for a whole burst of arrangement changes. The timer
+	 * lives on the workspace window like the refresh beat's. Dropping the
+	 * stale scan is the caller's to do, and immediately: this only refills
+	 * what was dropped, and a reader that got there first has already done
+	 * the work for it.
+	 */
+	private scheduleProjectRescan(): void {
+		const workspaceWindow = this.app.workspace.containerEl.win;
+		if (this.projectRescanTimer !== null) {
+			workspaceWindow.clearTimeout(this.projectRescanTimer);
+		}
+		this.projectRescanTimer = workspaceWindow.setTimeout(() => {
+			this.projectRescanTimer = null;
+			void this.discoverProjects().catch((error: unknown) => {
+				this.showError(error);
+			});
+		}, REFRESH_DELAY_MS);
 	}
 
 	private scheduleRefresh(refreshProjectLocales = false): void {

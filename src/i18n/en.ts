@@ -88,6 +88,11 @@ export const en = {
 	'commands.toggleFreeformMode': 'Toggle freeform mode',
 	'commands.freeformModeEnabled': 'Freeform mode enabled.',
 	'commands.freeformModeDisabled': 'Freeform mode disabled.',
+	'commands.toggleUntimedTracking': 'Toggle writing count outside sessions',
+	'commands.untimedTrackingEnabled':
+		'Writing count outside sessions enabled.',
+	'commands.untimedTrackingDisabled':
+		'Writing count outside sessions disabled.',
 	'commands.countProjectWords': 'Count project words',
 	'settings.projectRoot.name': 'Project root folder',
 	'settings.projectRoot.desc':
@@ -179,6 +184,9 @@ export const en = {
 	'settings.sessionWritingMode.desc': 'Which stage a new session starts in.',
 	'settings.sessionAutoStart.name':
 		'Start stopwatch session when focus mode is enabled',
+	'settings.sessionTrackUntimed.name': 'Track writing count outside sessions',
+	'settings.sessionTrackUntimed.desc':
+		'Time-related metrics will remain session-only.',
 	'dashboard.title': 'Snowflake Method',
 	'dashboard.project': 'Project',
 	'dashboard.projectSwitcher': 'Project switcher',

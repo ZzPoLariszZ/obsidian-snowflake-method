@@ -239,6 +239,17 @@ describe('settings', () => {
 			sanitizeSettings({ sessionAutoWithFocusMode: 'yes' })
 				.sessionAutoWithFocusMode,
 		).toBe(DEFAULT_SETTINGS.sessionAutoWithFocusMode);
+		// Words count outside sessions from the first install onward; a writer
+		// who wants only session words turns it off, and the choice holds.
+		expect(DEFAULT_SETTINGS.sessionTrackUntimedWords).toBe(true);
+		expect(
+			sanitizeSettings({ sessionTrackUntimedWords: false })
+				.sessionTrackUntimedWords,
+		).toBe(false);
+		expect(
+			sanitizeSettings({ sessionTrackUntimedWords: 'yes' })
+				.sessionTrackUntimedWords,
+		).toBe(true);
 	});
 
 	it('drops settings the plugin no longer keeps, such as the pager size', () => {

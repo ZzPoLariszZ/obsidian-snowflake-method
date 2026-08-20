@@ -15,6 +15,7 @@ import {
 	documentTypeOf,
 	isManagedFrontmatter,
 	projectIdOf,
+	type ManagedFileRecord,
 	type VaultRepository,
 } from "../repository";
 import { isPathAtOrBelow } from "../project-root";
@@ -74,6 +75,11 @@ export class WritingCountService {
 		string,
 		{ stamp: string; count: WritingCount }
 	>();
+	/** The whole-body counts, memoized apart so the two rules never mix. */
+	private readonly wholeMemo = new Map<
+		string,
+		{ stamp: string; count: WritingCount }
+	>();
 
 	/**
 	 * Where a body's plugin-written sections sit: the generated views and the
@@ -110,6 +116,67 @@ export class WritingCountService {
 			countableProse(body, this.pluginWritten(body, documentType), options),
 			options,
 		);
+	}
+
+	/**
+	 * One body's writing count with nothing set aside, the plugin-written
+	 * sections included. This is the rule the session ledgers measure by, so
+	 * that a save into a rendered block and the deletion of the note that
+	 * holds it weigh the same -- while every note total on display keeps
+	 * excluding those blocks through `countBody`.
+	 */
+	countBodyWhole(body: string, options: NoteCountOptions): WritingCount {
+		// `countBody` with no document type excludes nothing, which is exactly
+		// this rule; delegated so the two rules ride one counting pipeline and
+		// a change to it can never reach one and miss the other.
+		return this.countBody(body, null, options);
+	}
+
+	/** `countNote` under the whole-body rule, memoized beside it. */
+	async countNoteWhole(
+		path: string,
+		options: NoteCountOptions,
+	): Promise<WritingCount | null> {
+		return this.memoizedNote(this.wholeMemo, path, options, (record) =>
+			this.countBodyWhole(record.body, options),
+		);
+	}
+
+	/**
+	 * Both rules of one note from a single read: the display total and the
+	 * ledger's whole-body total, each landing in its own memo. A note with no
+	 * plugin-written sections -- every draft, for one -- counts the same under
+	 * both rules, and the second pass is skipped rather than recomputed, which
+	 * is what keeps a session's seed from counting a whole project twice.
+	 */
+	async countNoteBoth(
+		path: string,
+		options: NoteCountOptions,
+	): Promise<{ display: WritingCount; whole: WritingCount } | null> {
+		const record = await this.repository.tryReadManaged(path);
+		if (record === null) return null;
+		const stamp = this.stampOf(record, options);
+		const keptDisplay = this.memo.get(path);
+		const keptWhole = this.wholeMemo.get(path);
+		if (keptDisplay?.stamp === stamp && keptWhole?.stamp === stamp) {
+			return { display: keptDisplay.count, whole: keptWhole.count };
+		}
+		const declared = documentTypeOf(record.frontmatter);
+		const excluded = this.pluginWritten(
+			record.body,
+			isDocumentType(declared) ? declared : null,
+		);
+		const display = countWriting(
+			countableProse(record.body, excluded, options),
+			options,
+		);
+		const whole =
+			excluded.length === 0
+				? display
+				: this.countBodyWhole(record.body, options);
+		this.memo.set(path, { stamp, count: display });
+		this.wholeMemo.set(path, { stamp, count: whole });
+		return { display, whole };
 	}
 
 	/**
@@ -191,22 +258,44 @@ export class WritingCountService {
 		path: string,
 		options: NoteCountOptions,
 	): Promise<WritingCount | null> {
+		return this.memoizedNote(this.memo, path, options, (record) => {
+			const declared = documentTypeOf(record.frontmatter);
+			return this.countBody(
+				record.body,
+				isDocumentType(declared) ? declared : null,
+				options,
+			);
+		});
+	}
+
+	/**
+	 * Every option belongs in the stamp: the same unchanged note counts
+	 * differently under each, and a memo that forgot which one it held
+	 * would answer the second convention with the first one's number.
+	 */
+	private stampOf(record: ManagedFileRecord, options: NoteCountOptions): string {
+		return `${record.file.stat.mtime}:${record.file.stat.size}:${options.mode}:${options.headings}`;
+	}
+
+	/**
+	 * One note counted under one rule, memoized by the note's stat and every
+	 * option. The stamp and the memo protocol live here alone, so the two
+	 * rules cannot drift apart in how they remember.
+	 */
+	private async memoizedNote(
+		memo: Map<string, { stamp: string; count: WritingCount }>,
+		path: string,
+		options: NoteCountOptions,
+		count: (record: ManagedFileRecord) => WritingCount,
+	): Promise<WritingCount | null> {
 		const record = await this.repository.tryReadManaged(path);
 		if (record === null) return null;
-		// Every option belongs in the stamp: the same unchanged note counts
-		// differently under each, and a memo that forgot which one it held
-		// would answer the second convention with the first one's number.
-		const stamp = `${record.file.stat.mtime}:${record.file.stat.size}:${options.mode}:${options.headings}`;
-		const kept = this.memo.get(path);
+		const stamp = this.stampOf(record, options);
+		const kept = memo.get(path);
 		if (kept !== undefined && kept.stamp === stamp) return kept.count;
-		const declared = documentTypeOf(record.frontmatter);
-		const count = this.countBody(
-			record.body,
-			isDocumentType(declared) ? declared : null,
-			options,
-		);
-		this.memo.set(path, { stamp, count });
-		return count;
+		const counted = count(record);
+		memo.set(path, { stamp, count: counted });
+		return counted;
 	}
 
 	/**
@@ -220,10 +309,13 @@ export class WritingCountService {
 	 */
 	forget(path: string, { children = false } = {}): void {
 		this.memo.delete(path);
+		this.wholeMemo.delete(path);
 		if (!children) return;
 		const prefix = `${path}/`;
-		for (const key of this.memo.keys()) {
-			if (key.startsWith(prefix)) this.memo.delete(key);
+		for (const map of [this.memo, this.wholeMemo] as const) {
+			for (const key of map.keys()) {
+				if (key.startsWith(prefix)) map.delete(key);
+			}
 		}
 	}
 

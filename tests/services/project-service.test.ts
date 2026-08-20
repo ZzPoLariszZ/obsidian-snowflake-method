@@ -2105,6 +2105,7 @@ describe("SnowflakeProjectService", () => {
       summaryPath!,
       "one-sentence-summary",
       "Changed before a future-schema upgrade.",
+      { userInput: false },
     );
     await fakeFileManager.processFrontMatter(
       fakeVault.getFileByPath(project.projectFile)!,
@@ -2162,6 +2163,7 @@ describe("SnowflakeProjectService", () => {
       summaryPath!,
       "one-sentence-summary",
       "A changed one-sentence summary.",
+      { userInput: false },
     );
 
     reloaded = await service.loadProject(project);
@@ -2212,6 +2214,7 @@ describe("SnowflakeProjectService", () => {
       summaryPath!,
       "one-sentence-summary",
       "A changed summary for a skipped planning step.",
+      { userInput: false },
     );
 
     const reconciled = await service.reconcileRevisionStatuses(project);
@@ -2252,6 +2255,7 @@ describe("SnowflakeProjectService", () => {
       summaryPath!,
       "one-sentence-summary",
       "Changed while another status update is arriving.",
+      { userInput: false },
     );
     fakeFileManager.beforeNextFrontmatterProcess = async (file) => {
       if (file.path !== project.projectFile) return;

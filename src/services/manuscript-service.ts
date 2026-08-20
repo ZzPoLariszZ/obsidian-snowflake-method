@@ -87,6 +87,15 @@ export class ManuscriptService {
   constructor(readonly repository: VaultRepository) {}
 
   /**
+   * Told when a merge trashes the absorbed note, with the body it held. The
+   * writing-session service listens: a vault delete event cannot say what
+   * the note contained, and without this a merge outside a session would
+   * credit the absorbed text as newly written while the removal credited
+   * nothing -- the day would gain a segment nobody wrote.
+   */
+  onSegmentRemoved: ((path: string, body: string) => void) | null = null;
+
+  /**
    * Every note of the manuscript, in the order it reads in.
    *
    * A manuscript is what is in the manuscript folder, at any depth, and nothing
@@ -183,7 +192,9 @@ export class ManuscriptService {
     body: string,
     expectedRevision?: string,
   ): Promise<void> {
-    await this.repository.replaceBody(path, body, expectedRevision);
+    await this.repository.replaceBody(path, body, expectedRevision, {
+      userInput: true,
+    });
   }
 
   async appendSegment(
@@ -257,8 +268,12 @@ export class ManuscriptService {
     const before = `${source.body.slice(0, cut).replace(/\n+$/u, "")}\n`;
     const after = `${source.body.slice(cut).replace(/^\n+/u, "").replace(/\n+$/u, "")}\n`;
 
-    await this.repository.replaceBody(created, after);
-    await this.repository.replaceBody(source.path, before, source.revision);
+    await this.repository.replaceBody(created, after, undefined, {
+      userInput: true,
+    });
+    await this.repository.replaceBody(source.path, before, source.revision, {
+      userInput: true,
+    });
     return created;
   }
 
@@ -295,7 +310,12 @@ export class ManuscriptService {
       /^\n+/u,
       "",
     )}`;
-    await this.repository.replaceBody(earlier.path, joined, head.revision);
+    await this.repository.replaceBody(earlier.path, joined, head.revision, {
+      userInput: true,
+    });
+    // Reported before the trash, so the removal is credited from the body in
+    // hand and the delete event that follows finds it already settled.
+    this.onSegmentRemoved?.(later.path, tail.body);
     await this.repository.trashFile(later.path);
     return { kept: earlier.path, removed: later.path };
   }
@@ -337,6 +357,7 @@ export class ManuscriptService {
         `${project.rootPath}/${layout.directories.draft}/${safeFileName(name)}.md`,
       ),
       uniqueOnConflict: true,
+      userInput: true,
       template: manuscriptSegmentTemplate(name, project.locale),
       frontmatter: {
         [FRONTMATTER_KEYS.schema]: SCHEMA_VERSION,

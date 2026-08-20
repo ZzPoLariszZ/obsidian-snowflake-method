@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	HEAT_LEVELS,
+	SESSION_FILE_SUFFIX,
 	SessionTracker,
+	UNTIMED_FILE_SUFFIX,
 	axisScale,
 	finalizeSnapshot,
 	heatLevels,
@@ -10,6 +12,9 @@ import {
 	parseMonthFile,
 	parseSessionRecord,
 	parseSessionSnapshot,
+	parseUntimedDayRecord,
+	parseUntimedFile,
+	parseUntimedSnapshot,
 	sessionDurations,
 	sessionFilePath,
 	sessionMonthKey,
@@ -19,9 +24,13 @@ import {
 	tallyScopes,
 	trendTone,
 	emptyModes,
+	untimedDayId,
+	untimedFilePath,
+	untimedWordsFromFiles,
 	type DayReading,
 	type SessionTrackerConfig,
 	type TrackerEffect,
+	type UntimedDayRecord,
 	type WritingSessionRecord,
 	type WritingSessionSnapshot,
 } from '../../src/domain';
@@ -819,5 +828,198 @@ describe('a session across the parts of a day', () => {
 			'proofreading',
 		]);
 		expect(modes.every((mode) => mode.focusMs === 0)).toBe(true);
+	});
+});
+
+describe('the untimed day', () => {
+	const day = (
+		overrides: Partial<UntimedDayRecord> = {},
+	): UntimedDayRecord => ({
+		id: 'untimed-device-a-2026-08-17',
+		day: '2026-08-17',
+		timezone: 'UTC',
+		words: {
+			project: { added: 6, deleted: 1, net: 5 },
+			manuscript: { added: 4, deleted: 0, net: 4 },
+		},
+		files: [
+			{ path: 'Draft.md', added: 4, deleted: 0, net: 4, manuscript: true },
+			{ path: 'Notes.md', added: 2, deleted: 1, net: 1, manuscript: false },
+		],
+		...overrides,
+	});
+
+	it('round-trips an untimed file and rejects one bad day in it', () => {
+		const file = { schemaVersion: 1, days: [day()] };
+		const parsed = parseUntimedFile(JSON.parse(JSON.stringify(file)));
+		expect(parsed).toEqual(file);
+		// Nets are derived, never trusted, like every other net in a record.
+		const doctored = JSON.parse(JSON.stringify(file)) as {
+			schemaVersion: number;
+			days: { words: { project: { net: number } } }[];
+		};
+		doctored.days[0]!.words.project.net = 999;
+		expect(parseUntimedFile(doctored)?.days[0]?.words.project.net).toBe(5);
+		expect(
+			parseUntimedFile({ schemaVersion: 1, days: [day(), { id: '' }] }),
+		).toBeNull();
+		expect(parseUntimedFile({ schemaVersion: 2, days: [] })).toBeNull();
+		expect(
+			parseUntimedFile({
+				schemaVersion: 1,
+				days: [day({ day: 'yesterday' })],
+			}),
+		).toBeNull();
+	});
+
+	it('names the untimed file beside the sessions and out of their reach', () => {
+		expect(
+			untimedFilePath('Books/Novel', '70_Tool/71/711', '2026-08-17', 'dev'),
+		).toBe('Books/Novel/70_Tool/71/711/2026/2026_08_dev_untimed_writing.json');
+		expect(untimedDayId('dev', '2026-08-17')).toBe('untimed-dev-2026-08-17');
+		// The mixed-version guarantee: a session reader filtering by its own
+		// suffix can never open an untimed file by accident, so a build from
+		// before these files keeps reading every session untouched.
+		expect(UNTIMED_FILE_SUFFIX.endsWith(SESSION_FILE_SUFFIX)).toBe(false);
+	});
+
+	it('keeps the filed moment when one is written, and demands none', () => {
+		const stamped = day({ updatedAt: '2026-08-17T10:31:00.000Z' });
+		const parsed = parseUntimedFile({ schemaVersion: 1, days: [stamped] });
+		expect(parsed?.days[0]?.updatedAt).toBe('2026-08-17T10:31:00.000Z');
+		// A file from before the field existed still parses whole.
+		expect(
+			parseUntimedFile({ schemaVersion: 1, days: [day()] })?.days[0],
+		).not.toHaveProperty('updatedAt');
+		expect(
+			parseUntimedFile({
+				schemaVersion: 1,
+				days: [day({ updatedAt: 'just now' })],
+			}),
+		).toBeNull();
+	});
+
+	it('derives an untimed record words from its files', () => {
+		const words = untimedWordsFromFiles(day().files);
+		expect(words.project).toEqual({ added: 6, deleted: 1, net: 5 });
+		expect(words.manuscript).toEqual({ added: 4, deleted: 0, net: 4 });
+	});
+
+	it('round-trips the untimed tracking snapshot and rejects garbage', () => {
+		const snapshot = {
+			schemaVersion: 1,
+			states: [
+				{
+					projectId: 'p-1',
+					projectRoot: 'Books/Novel',
+					sessionsDir: '70_Tool/71/711',
+					day: '2026-08-17',
+					timezone: 'UTC',
+					files: [
+						{
+							path: 'Notes.md',
+							added: 2,
+							deleted: 0,
+							net: 2,
+							manuscript: false,
+						},
+					],
+				},
+			],
+		};
+		expect(parseUntimedSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(
+			snapshot,
+		);
+		const carried = {
+			...snapshot,
+			states: [
+				{ ...snapshot.states[0]!, baselines: { 'Notes.md': 5 } },
+			],
+		};
+		expect(
+			parseUntimedSnapshot(JSON.parse(JSON.stringify(carried))),
+		).toEqual(carried);
+		expect(
+			parseUntimedSnapshot({
+				...carried,
+				states: [
+					{ ...snapshot.states[0]!, baselines: { 'Notes.md': 'many' } },
+				],
+			}),
+		).toBeNull();
+		expect(parseUntimedSnapshot(null)).toBeNull();
+		expect(parseUntimedSnapshot({ schemaVersion: 1, states: [{}] })).toBeNull();
+	});
+
+	it('carries a standing count on a tally, and only a sound one', () => {
+		const record = day({
+			files: [
+				{
+					path: 'Notes.md',
+					added: 2,
+					deleted: 1,
+					net: 1,
+					manuscript: false,
+					standing: 7,
+				},
+			],
+			words: {
+				project: { added: 2, deleted: 1, net: 1 },
+				manuscript: { added: 0, deleted: 0, net: 0 },
+			},
+		});
+		const parsed = parseUntimedDayRecord(JSON.parse(JSON.stringify(record)));
+		expect(parsed?.files[0]?.standing).toBe(7);
+		// A broken standing count drops the field, never the tally: the day
+		// still reads whole, only the deletion falls back to the floor.
+		const doctored = JSON.parse(JSON.stringify(record)) as {
+			files: { standing: unknown }[];
+		};
+		doctored.files[0]!.standing = -3;
+		const softened = parseUntimedDayRecord(doctored);
+		expect(softened).not.toBeNull();
+		expect(softened?.files[0]?.standing).toBeUndefined();
+	});
+
+	it('keeps the counting convention a day was measured under', () => {
+		const stamped = day({ countMode: 'ms-word', countHeadings: 'count' });
+		const parsed = parseUntimedDayRecord(JSON.parse(JSON.stringify(stamped)));
+		expect(parsed?.countMode).toBe('ms-word');
+		expect(parsed?.countHeadings).toBe('count');
+		// Absent on older files, and an empty stamp is no stamp.
+		expect(parseUntimedDayRecord(JSON.parse(JSON.stringify(day())))?.countMode).toBeUndefined();
+		const blank = parseUntimedDayRecord({
+			...JSON.parse(JSON.stringify(day())),
+			countMode: '',
+		});
+		expect(blank).not.toBeNull();
+		expect(blank?.countMode).toBeUndefined();
+		const snapshot = {
+			schemaVersion: 1,
+			states: [
+				{
+					projectId: 'p-1',
+					projectRoot: 'Books/Novel',
+					sessionsDir: '70_Tool/71/711',
+					day: '2026-08-17',
+					timezone: 'UTC',
+					countMode: 'ms-word',
+					countHeadings: 'skip-all',
+					files: [
+						{
+							path: 'Notes.md',
+							added: 2,
+							deleted: 0,
+							net: 2,
+							manuscript: false,
+							standing: 5,
+						},
+					],
+				},
+			],
+		};
+		expect(
+			parseUntimedSnapshot(JSON.parse(JSON.stringify(snapshot))),
+		).toEqual(snapshot);
 	});
 });

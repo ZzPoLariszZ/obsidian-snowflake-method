@@ -9,10 +9,12 @@ import {
 import {
 	SnowflakeProjectService,
 	WritingSessionService,
+	type NoteCountOptions,
 	type ProjectSnapshot,
 	type StartWritingSessionOptions,
 	type WritingSessionEvent,
 } from "../../src/services";
+import { isPathAtOrBelow } from "../../src/project-root";
 import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const T0 = Date.parse("2026-08-17T10:00:00.000Z");
@@ -23,6 +25,8 @@ const NOTES = "Snowflake Projects/Novel/80_Material/Notes.md";
 const LOOSE = "Snowflake Projects/Novel/Loose note.md";
 const MONTH_FILE =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_writing_session.json";
+const UNTIMED_FILE =
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_untimed_writing.json";
 
 const countOptions = { mode: "ms-word", headings: "count" } as const;
 
@@ -84,8 +88,19 @@ describe("WritingSessionService", () => {
 	let goalScope: WritingSessionScope;
 	let events: WritingSessionEvent[];
 	let store: { value: unknown };
+	let untimedStore: { value: unknown };
+	/** Paths "open in an editor", whose save echoes must not re-baseline. */
+	let openNotes: Set<string>;
+	/** Whether untimed tracking is on, the way the setting would say it. */
+	let untimedOn: boolean;
+	/** What projectAtPath resolves against, the way main's scan map would. */
+	let projectRefs: ProjectSnapshot[];
+	/** The convention in force, mutable the way the settings would be. */
+	let activeCountOptions: NoteCountOptions;
 	let timers: {
 		handlers: Map<number, () => void>;
+		/** Every delay a timer was asked for, in the order they were set. */
+		delays: number[];
 		flush: () => Promise<void>;
 	};
 
@@ -108,11 +123,24 @@ describe("WritingSessionService", () => {
 			deviceId: () => "device-a",
 			scope: () => lens,
 			goalScope: () => goalScope,
+			isNoteOpen: (path) => openNotes.has(path),
+			trackUntimed: () => untimedOn,
+			projectAtPath: (path) =>
+				projectRefs.find((ref) => isPathAtOrBelow(path, ref.rootPath)) ??
+				null,
+			countOptions: () => activeCountOptions,
+			untimedRecovery: {
+				load: () => untimedStore.value,
+				save: (snapshot) => {
+					untimedStore.value = snapshot;
+				},
+			},
 			now: () => clock,
 			timezone: () => "UTC",
 			uuid: () => `session-${String(clock)}`,
 			timers: {
 				set: (handler, ms) => {
+					timers.delays.push(ms);
 					// A zero-delay timer is the service asking for air mid-seed;
 					// held timers would deadlock the start that awaits it.
 					if (ms === 0) {
@@ -129,6 +157,11 @@ describe("WritingSessionService", () => {
 			},
 		});
 		service.subscribe((event) => events.push(event));
+		// Wired the way main.ts wires it: the repository reports its own body
+		// writes, which is how the plugin's saves are credited.
+		projects.repository.onBodyWrite = (path, before, after, userInput) => {
+			service.notePersistedByPlugin(path, before, after, userInput);
+		};
 		return service;
 	};
 
@@ -146,9 +179,15 @@ describe("WritingSessionService", () => {
 		goalScope = "project";
 		events = [];
 		store = { value: null };
+		untimedStore = { value: null };
+		openNotes = new Set();
+		untimedOn = true;
+		projectRefs = [project];
+		activeCountOptions = countOptions;
 		const handlers = new Map<number, () => void>();
 		timers = {
 			handlers,
+			delays: [],
 			flush: async () => {
 				const pending = [...handlers.values()];
 				handlers.clear();
@@ -243,19 +282,64 @@ describe("WritingSessionService", () => {
 		]);
 	});
 
-	it("credits a note born mid-session with the words it was born with", async () => {
+	it("leaves a born note's words for its first editor event", async () => {
 		await startSession();
 		const path = "Snowflake Projects/Novel/80_Material/Fresh.md";
 		await seedNote(path, "four new words here");
-		// The create alone: a note written in one go fires nothing after it,
-		// so waiting for a change would lose everything a form put in it.
+		// The create alone credits nothing: sync delivers new notes the same
+		// way, content and all, and counting them here would credit another
+		// device's writing to this one.
 		sessions.noteCreated(path);
 		await timers.flush();
-		expect(sessions.live()?.added).toBe(4);
-		// And a later edit of the same note credits only the difference.
+		expect(sessions.live()?.added).toBe(0);
+		// The first editor event reads the note against the empty baseline the
+		// create left behind, so everything it was born with is credited then.
 		sessions.noteChanged(path, written("four new words here again"));
 		await timers.flush();
 		expect(sessions.live()?.added).toBe(5);
+	});
+
+	it("re-baselines a sync-born note before the editor reaches it", async () => {
+		await startSession();
+		const path = "Snowflake Projects/Novel/80_Material/Arrived.md";
+		await seedNote(path, "four synced words here");
+		sessions.noteCreated(path);
+		sessions.noteWrittenExternally(path);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		// The rebase measured the note as it arrived, so a later edit credits
+		// only its own delta.
+		sessions.noteChanged(path, written("four synced words here plus"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+	});
+
+	it("ignores an external write and re-baselines the closed note instead", async () => {
+		await startSession();
+		fakeVault.write(NOTES, written("one two three four five six")());
+		sessions.noteWrittenExternally(NOTES);
+		await timers.flush();
+		// Three words arrived from outside and none of them were credited.
+		expect(sessions.live()?.added).toBe(0);
+		// The next editor event is measured against the external state.
+		sessions.noteChanged(NOTES, written("one two three four five six seven"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+	});
+
+	it("leaves an open note's save echo to its own editor", async () => {
+		await startSession();
+		openNotes.add(NOTES);
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+		// The autosave's vault event lands while the disk still lags the
+		// editor. Re-baselining from that stale disk would credit the lag
+		// over again at the next keystroke.
+		sessions.noteWrittenExternally(NOTES);
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(3);
 	});
 
 	it("moves a renamed note's tallies without inventing a delta", async () => {
@@ -1205,7 +1289,7 @@ describe("WritingSessionService", () => {
 	 */
 	it("stands down cleanly when the baseline seed fails", async () => {
 		const failing = vi
-			.spyOn(projects.writingCount, "countNote")
+			.spyOn(projects.writingCount, "countNoteBoth")
 			.mockRejectedValueOnce(new Error("read failed"));
 		await expect(sessions.start(project, options())).rejects.toThrow(
 			"read failed",
@@ -1264,5 +1348,976 @@ describe("WritingSessionService", () => {
 			const current = spans[i] ?? [0, 0];
 			expect(current[0]).toBeGreaterThanOrEqual(previous[1]);
 		}
+	});
+
+	const CHARACTER = "Snowflake Projects/Novel/20_Character/Alice.md";
+
+	/** A character note whose fields block holds `motivation`, rendered. */
+	const characterNote = (motivation: string): string =>
+		[
+			"---",
+			`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+			"snowflake-document: character",
+			`snowflake-project-id: ${project.id}`,
+			"---",
+			"",
+			"<!-- snowflake:section:character-fields:start -->",
+			`**Motivation**: ${motivation}`,
+			"<!-- snowflake:section:character-fields:end -->",
+			"",
+			"Alice walks on stage.\n",
+		].join("\n");
+
+	it("credits editor typing outside any session to the day's untimed words", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		// Two words, not five: the baseline seeded from the disk as it stood
+		// before the edit, never from nothing.
+		expect(day.added).toBe(2);
+		expect(day.trackedNet).toBe(2);
+		expect(day.goalNet).toBe(2);
+		expect(day.sessions).toBe(0);
+		expect(day.focusMs).toBe(0);
+		expect(day.totalMs).toBe(0);
+		expect(day.timedNet).toBe(0);
+		expect(sessions.isRunning()).toBe(false);
+	});
+
+	it("marks word-bearing changes so panels can read the day at once", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// The drain that moved the words says so; a throttled panel reads the
+		// day immediately on this rather than waiting out its slow beat.
+		expect(
+			events.some(
+				(event) => event.kind === "changed" && event.counted === true,
+			),
+		).toBe(true);
+		await startSession();
+		events.length = 0;
+		sessions.setWritingMode("revision");
+		// A change that moved no words carries no such mark.
+		expect(
+			events.some(
+				(event) => event.kind === "changed" && event.counted === true,
+			),
+		).toBe(false);
+	});
+
+	it("credits a plugin save outside any session through the repository feed", async () => {
+		fakeVault.write(DRAFT, written("alpha beta gamma", "draft")());
+		await projects.manuscript.writeSegment(DRAFT, "alpha beta gamma delta\n");
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		// One word: the save was measured against the text it replaced.
+		expect(day.added).toBe(1);
+		expect(day.sessions).toBe(0);
+	});
+
+	it("credits a field-block edit by who caused it, never by where it landed", async () => {
+		await fakeVault.seedFile(CHARACTER, characterNote("wants the crown"));
+		sessions.notePersistedByPlugin(
+			CHARACTER,
+			characterNote("wants the crown"),
+			characterNote("wants the crown very badly"),
+			true,
+		);
+		await timers.flush();
+		// The prose outside the block did not move; the typed words did.
+		expect((await sessions.todaySummary(project)).added).toBe(2);
+		// A reconcile re-rendering the same block credits nothing, however
+		// much of it it rewrites.
+		sessions.notePersistedByPlugin(
+			CHARACTER,
+			characterNote("wants the crown very badly"),
+			characterNote("rendered wholly anew by the reconcile pass"),
+			false,
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(2);
+		expect(day.deleted).toBe(0);
+	});
+
+	it("weighs a note's creation and deletion the same, blocks included", async () => {
+		await fakeVault.seedFile(CHARACTER, characterNote("wants the crown"));
+		sessions.notePersistedByPlugin(
+			CHARACTER,
+			"",
+			characterNote("wants the crown"),
+			true,
+		);
+		await timers.flush();
+		const created = await sessions.todaySummary(project);
+		// More than the prose alone: the rendered block counted in with it.
+		expect(created.added).toBeGreaterThan(4);
+		fakeVault.delete(CHARACTER);
+		sessions.noteDeleted(CHARACTER);
+		const gone = await sessions.todaySummary(project);
+		// And the whole of it counted out again: creating a character and
+		// deleting it nets zero, with no ghost words left where the rendered
+		// block used to be.
+		expect(gone.deleted).toBe(created.added);
+		expect(gone.trackedNet).toBe(0);
+	});
+
+	it("credits a form's field edit to the running session once", async () => {
+		await fakeVault.seedFile(CHARACTER, characterNote("wants the crown"));
+		await startSession();
+		sessions.notePersistedByPlugin(
+			CHARACTER,
+			characterNote("wants the crown"),
+			characterNote("wants the crown very badly"),
+			true,
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(2);
+	});
+
+	it("gates untimed capture per project while a session runs", async () => {
+		const second = await projects.createProject({
+			title: "Second",
+			locale: "en",
+		});
+		projectRefs.push(second);
+		const otherNote = "Snowflake Projects/Second/80_Material/Ideas.md";
+		const otherText = (body: string): string =>
+			[
+				"---",
+				`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+				"snowflake-document: material",
+				`snowflake-project-id: ${second.id}`,
+				"---",
+				"",
+				`${body}\n`,
+			].join("\n");
+		await fakeVault.seedFile(otherNote, otherText("first thoughts"));
+		await startSession();
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		sessions.noteChanged(otherNote, () =>
+			otherText("first thoughts arrive tonight"),
+		);
+		await timers.flush();
+		// The session took its own project's words...
+		expect(sessions.live()?.added).toBe(2);
+		// ...and only the session did: nothing doubled into an untimed day.
+		const own = await sessions.todaySummary(project);
+		expect(own.trackedNet).toBe(2);
+		expect(own.sessions).toBe(1);
+		// The other project kept its untimed capture through it all.
+		const other = await sessions.todaySummary(second);
+		expect(other.trackedNet).toBe(2);
+		expect(other.sessions).toBe(0);
+	});
+
+	it("re-seeds after a session so its words are not credited again", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(2);
+		await startSession();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven"),
+		);
+		await timers.flush();
+		// The autosave lands what the session watched being typed.
+		fakeVault.write(NOTES, written("one two three four five six seven")());
+		await sessions.stop();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven eight"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		// 2 untimed + 4 in the session + 1 after it -- not the session's four
+		// over again, which is what a baseline kept through it would credit.
+		expect(day.trackedNet).toBe(7);
+		expect(day.timedNet).toBe(4);
+		expect(day.sessions).toBe(1);
+	});
+
+	it("rolls the day over, files yesterday whole and keeps counting", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		clock += 26 * 3_600_000;
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		const file = JSON.parse(fakeVault.contents.get(UNTIMED_FILE) ?? "{}") as {
+			days: { id: string; day: string; words: { project: { net: number } } }[];
+		};
+		// Yesterday is filed whole; today may already be there too, carried by
+		// the flush beat -- one record per day either way, never a duplicate.
+		expect(new Set(file.days.map((day) => day.id)).size).toBe(
+			file.days.length,
+		);
+		const filed = file.days.find((day) => day.day === "2026-08-17");
+		expect(filed?.id).toBe("untimed-device-a-2026-08-17");
+		expect(filed?.words.project.net).toBe(2);
+		const [yesterday, today] = await sessions.dailyTotals(project, 2);
+		expect(yesterday?.trackedNet).toBe(2);
+		expect(today?.trackedNet).toBe(1);
+	});
+
+	it("upserts one record per device and day across a toggle cycle", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		const filed = JSON.parse(fakeVault.contents.get(UNTIMED_FILE) ?? "{}") as {
+			days: { words: { project: { net: number } } }[];
+		};
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(2);
+		// Typing while off credits nothing new, and the filed day still reads.
+		sessions.noteChanged(NOTES, written("one two three four five nothing"));
+		await timers.flush();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(2);
+		// Back on: the day continues as one record, not a second copy.
+		untimedOn = true;
+		fakeVault.write(NOTES, written("one two three four five")());
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		const upserted = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(upserted.days).toHaveLength(1);
+		expect(upserted.days[0]?.words.project.net).toBe(3);
+	});
+
+	it("files the accruing day on the flush beat, not only at its end", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// The day is underway and nothing has reached the vault yet.
+		expect(fakeVault.contents.get(UNTIMED_FILE)).toBeUndefined();
+		// The beat those credits armed fires, and the vault catches up
+		// mid-day: another device sees today, and a lost localStorage now
+		// costs minutes rather than the day.
+		await timers.flush();
+		const filed = JSON.parse(fakeVault.contents.get(UNTIMED_FILE) ?? "{}") as {
+			days: {
+				id: string;
+				updatedAt?: string;
+				words: { project: { net: number } };
+			}[];
+		};
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(2);
+		// The record says when this copy of the day was filed, so a reader of
+		// the file can tell a trailing number from a settled one.
+		expect(filed.days[0]?.updatedAt).toBe(new Date(clock).toISOString());
+		// The day keeps accruing into the same record, not a second copy.
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		await timers.flush();
+		const upserted = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: { words: { project: { net: number } } }[] };
+		expect(upserted.days).toHaveLength(1);
+		expect(upserted.days[0]?.words.project.net).toBe(3);
+	});
+
+	it("holds the write to the ceiling when the credits never go quiet", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// Fresh dirt is paced by the quiet spell.
+		expect(timers.delays[timers.delays.length - 1]).toBe(5 * 60_000);
+		// Sixteen minutes of dirt later the first write fails, keeping the
+		// dirt's age; the next credit finds the ceiling spent and the write
+		// goes out at once -- the fake runs zero-delay timers immediately, so
+		// the ceiling shows as the file landing with no further beat.
+		clock += 16 * 60_000;
+		fakeVault.failNextCreatePath = UNTIMED_FILE;
+		fakeVault.write(NOTES, written("one two three four five")());
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		// No session ran, so the one zero-delay timer is the spent ceiling.
+		expect(timers.delays).toContain(0);
+		const filed = JSON.parse(fakeVault.contents.get(UNTIMED_FILE) ?? "{}") as {
+			days: { words: { project: { net: number } } }[];
+		};
+		expect(filed.days).toHaveLength(1);
+		expect(filed.days[0]?.words.project.net).toBe(3);
+	});
+
+	it("resumes a same-day untimed snapshot where the day still is", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		expect(untimedStore.value).not.toBeNull();
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		// Nothing filed: the day is still underway, resumed in memory.
+		expect(fakeVault.contents.get(UNTIMED_FILE)).toBeUndefined();
+		expect((await sessions.todaySummary(project)).trackedNet).toBe(2);
+		expect(untimedStore.value).not.toBeNull();
+	});
+
+	it("finalizes a past-day untimed snapshot into its file", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		clock += 26 * 3_600_000;
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		const file = JSON.parse(fakeVault.contents.get(UNTIMED_FILE) ?? "{}") as {
+			days: { day: string }[];
+		};
+		expect(file.days).toHaveLength(1);
+		expect(file.days[0]?.day).toBe("2026-08-17");
+		expect(untimedStore.value).toBeNull();
+		const [yesterday] = await sessions.dailyTotals(project, 2);
+		expect(yesterday?.trackedNet).toBe(2);
+	});
+
+	it("keeps the untimed snapshot until its record is written", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		clock += 26 * 3_600_000;
+		sessions = buildService();
+		fakeVault.failNextCreatePath = UNTIMED_FILE;
+		await sessions.recoverAtStartup();
+		await settle();
+		expect(fakeVault.contents.get(UNTIMED_FILE)).toBeUndefined();
+		// The snapshot still carries the day for the next launch to retry.
+		expect(untimedStore.value).not.toBeNull();
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		const retried = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: unknown[] };
+		expect(retried.days).toHaveLength(1);
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("reads untimed words into words and goals but never into time or pace", async () => {
+		const foreign =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-b_untimed_writing.json";
+		await fakeVault.seedFile(
+			foreign,
+			JSON.stringify({
+				schemaVersion: 1,
+				days: [
+					{
+						id: "untimed-device-b-2026-08-17",
+						day: "2026-08-17",
+						timezone: "UTC",
+						words: {
+							project: { added: 10, deleted: 1, net: 9 },
+							manuscript: { added: 4, deleted: 0, net: 4 },
+						},
+						files: [
+							{ path: DRAFT, added: 4, deleted: 0, net: 4, manuscript: true },
+							{ path: NOTES, added: 6, deleted: 1, net: 5, manuscript: false },
+						],
+					},
+				],
+			}),
+		);
+		await fakeVault.seedFile(
+			MONTH_FILE.replace("device-a", "device-b"),
+			JSON.stringify({
+				schemaVersion: 1,
+				sessions: [foreignRecord(T0 - 3_600_000, 100, 40)],
+			}),
+		);
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(110);
+		expect(day.deleted).toBe(1);
+		expect(day.trackedNet).toBe(109);
+		expect(day.goalNet).toBe(109);
+		expect(day.sessions).toBe(1);
+		expect(day.focusMs).toBe(60_000);
+		expect(day.timedNet).toBe(100);
+		lens = "manuscript";
+		goalScope = "manuscript";
+		const strict = await sessions.todaySummary(project);
+		expect(strict.added).toBe(44);
+		expect(strict.trackedNet).toBe(44);
+		expect(strict.timedNet).toBe(40);
+		expect(strict.goalNet).toBe(44);
+	});
+
+	it("keeps untimed words out of the temporal spread", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		const today = await sessions.spread(project, "today");
+		expect(today.bands.every((band) => band.added === 0)).toBe(true);
+		expect(today.modes.every((mode) => mode.trackedNet === 0)).toBe(true);
+	});
+
+	it("credits an untimed deletion only for notes it credited today", async () => {
+		fakeVault.write(DRAFT, written("draft words standing here", "draft")());
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		// A member the day never wrote in: known to the tracker, uncredited.
+		sessions.noteWrittenExternally(DRAFT);
+		await timers.flush();
+		sessions.noteDeleted(DRAFT);
+		expect((await sessions.todaySummary(project)).deleted).toBe(0);
+		// The note the day did write in credits what it last held.
+		sessions.noteDeleted(NOTES);
+		const day = await sessions.todaySummary(project);
+		expect(day.deleted).toBe(5);
+		expect(day.added).toBe(2);
+	});
+
+	it("credits a deletion after a session from the session's own ledger", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		await startSession();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven"),
+		);
+		await timers.flush();
+		fakeVault.write(NOTES, written("one two three four five six seven")());
+		await sessions.stop();
+		// Deleted without another touch: the baselines the session handed
+		// back are what know the note stood at seven words.
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		expect((await sessions.todaySummary(project)).deleted).toBe(7);
+	});
+
+	it("credits a deletion after a relaunch from the snapshot's baselines", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		const day = await sessions.todaySummary(project);
+		// The note stood at five words, and the relaunch did not forget it.
+		expect(day.deleted).toBe(5);
+		expect(day.trackedNet).toBe(-3);
+	});
+
+	it("still takes back the day's own words when every baseline is lost", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		sessions.markShutdown();
+		// A snapshot from before any standing count was carried: no side map,
+		// no per-tally standing, no convention stamp.
+		const held = untimedStore.value as {
+			states: {
+				baselines?: unknown;
+				countMode?: unknown;
+				countHeadings?: unknown;
+				files: { standing?: unknown }[];
+			}[];
+		};
+		for (const state of held.states) {
+			delete state.baselines;
+			delete state.countMode;
+			delete state.countHeadings;
+			for (const tally of state.files) delete tally.standing;
+		}
+		sessions = buildService();
+		await sessions.recoverAtStartup();
+		await settle();
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		const day = await sessions.todaySummary(project);
+		// The standing count is unknowable, but the day put two words in and
+		// the deletion takes at least those back out.
+		expect(day.deleted).toBe(2);
+		expect(day.trackedNet).toBe(0);
+	});
+
+	it("carries untimed state through a project folder rename", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		const oldRoot = "Snowflake Projects/Novel";
+		const newRoot = "Snowflake Projects/Novel Renamed";
+		fakeVault.rename(oldRoot, newRoot);
+		sessions.notePathRenamed(oldRoot, newRoot);
+		projectRefs = [
+			{
+				...project,
+				rootPath: newRoot,
+				projectFile: project.projectFile.replace(oldRoot, newRoot),
+			},
+		];
+		const movedNotes = `${newRoot}/80_Material/Notes.md`;
+		sessions.noteChanged(movedNotes, written("one two three four five six"));
+		await timers.flush();
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		const moved = fakeVault.contents.get(
+			`${newRoot}/70_Tool/71_Data_Statistics/711_Writing_Session/2026/2026_08_device-a_untimed_writing.json`,
+		);
+		expect(moved).toBeDefined();
+		const parsed = JSON.parse(moved ?? "{}") as {
+			days: { words: { project: { added: number; deleted: number } } }[];
+		};
+		expect(parsed.days[0]?.words.project.added).toBe(3);
+		expect(parsed.days[0]?.words.project.deleted).toBe(0);
+	});
+
+	it("records typing through a pause to the untimed day", async () => {
+		await startSession();
+		sessions.pause();
+		sessions.noteChanged(NOTES, written("one two three plus paused words"));
+		await timers.flush();
+		// The session's clock and ledger stay frozen; the words land anyway.
+		expect(sessions.live()?.added).toBe(0);
+		const paused = await sessions.todaySummary(project);
+		expect(paused.added).toBe(3);
+		expect(paused.trackedNet).toBe(3);
+		expect(paused.timedNet).toBe(0);
+		// The thaw re-measures against what the untimed ledger settled: the
+		// paused words are not credited a second time.
+		sessions.resume();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three plus paused words typed"),
+		);
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(1);
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.trackedNet).toBe(4);
+		expect(day.timedNet).toBe(1);
+	});
+
+	it("counts words typed just before a pause exactly once", async () => {
+		await startSession();
+		// Typed while the clock ran, with the drain still on the debounce.
+		let text = written("one two three four")();
+		sessions.noteChanged(NOTES, () => text);
+		// The pause lands first; the provider now answers with the paused
+		// text, so a drain reading it would hand the session the whole lot.
+		sessions.pause();
+		text = written("one two three four five six")();
+		sessions.noteChanged(NOTES, () => text);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(3);
+		expect(day.deleted).toBe(0);
+		// One word belonged to the running clock, two to the freeze.
+		expect(day.timedNet).toBe(1);
+		expect(sessions.live()?.added).toBe(1);
+	});
+
+	it("keeps the words typed in the last beat before a resume", async () => {
+		await startSession();
+		sessions.pause();
+		// Typed during the pause, with no drain between it and the thaw.
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		sessions.resume();
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(2);
+		expect(day.trackedNet).toBe(2);
+		// The freeze recorded them, so the clock claims none of them.
+		expect(day.timedNet).toBe(0);
+		// And the session comes back measured against them, not crediting
+		// them a second time at its next keystroke.
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six"),
+		);
+		await timers.flush();
+		const after = await sessions.todaySummary(project);
+		expect(after.added).toBe(3);
+		expect(after.timedNet).toBe(1);
+	});
+
+	it("keeps a deleted note's words in the reading they were filed under", async () => {
+		fakeVault.write(DRAFT, written("alpha beta", "draft")());
+		sessions.noteChanged(DRAFT, written("alpha beta gamma delta", "draft"));
+		await timers.flush();
+		lens = "manuscript";
+		goalScope = "manuscript";
+		const before = await sessions.todaySummary(project);
+		expect(before.added).toBe(2);
+		// The note goes; its tally stays behind under its membership, which
+		// a session that seeds from the notes that exist cannot know.
+		fakeVault.delete(DRAFT);
+		sessions.noteDeleted(DRAFT);
+		await startSession();
+		await sessions.stop();
+		const after = await sessions.todaySummary(project);
+		expect(after.added).toBe(2);
+		// And a pause hands its memberships over the same way.
+		await startSession();
+		sessions.pause();
+		const paused = await sessions.todaySummary(project);
+		expect(paused.added).toBe(2);
+	});
+
+	it("records typing through a pomodoro break to the untimed day", async () => {
+		await sessions.start(
+			project,
+			options({
+				type: "pomodoro",
+				timing: {
+					idleThresholdSeconds: 6_000,
+					workDurationSeconds: 60,
+					breakDurationSeconds: 30,
+					autoRepeat: true,
+				},
+			}),
+		);
+		clock += 20_000;
+		sessions.surfaceActivity(NOTES);
+		// The work period runs out on its own clock; the break begins.
+		clock += 45_000;
+		await timers.flush();
+		expect(sessions.live()?.state).toBe("paused");
+		sessions.noteChanged(NOTES, written("one two three plus break words"));
+		await timers.flush();
+		expect(sessions.live()?.added).toBe(0);
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(3);
+		expect(day.timedNet).toBe(0);
+	});
+
+	it("does not double-credit a deletion the session already settled", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		fakeVault.write(NOTES, written("one two three four five")());
+		await startSession();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven"),
+		);
+		await timers.flush();
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		// The session credits the standing seven once; the dormant untimed
+		// day, whose morning tallied two of those words, must not subtract
+		// them again.
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.deleted).toBe(7);
+		expect(day.trackedNet).toBe(-3);
+		await sessions.stop();
+		const after = await sessions.todaySummary(project);
+		expect(after.deleted).toBe(7);
+	});
+
+	it("credits a post-stop deletion of a note only the session wrote", async () => {
+		await startSession();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven"),
+		);
+		await timers.flush();
+		fakeVault.write(NOTES, written("one two three four five six seven")());
+		await sessions.stop();
+		// No untimed tally exists for the note; the baseline the session
+		// vouched for at its stop is what knows it stood at seven.
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.deleted).toBe(7);
+		expect(day.trackedNet).toBe(-3);
+	});
+
+	it("nets a manuscript merge outside a session to nothing", async () => {
+		const SECOND = "Snowflake Projects/Novel/50_Manuscript/Second.md";
+		const before = written("head words", "draft")();
+		const after = written(
+			"head words absorbed tail words standing here",
+			"draft",
+		)();
+		sessions.notePersistedByPlugin(DRAFT, before, after, true);
+		sessions.noteRemovedByPlugin(
+			SECOND,
+			"absorbed tail words standing here\n",
+			{ manuscript: true },
+		);
+		sessions.noteDeleted(SECOND);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(5);
+		expect(day.deleted).toBe(5);
+		expect(day.trackedNet).toBe(0);
+		// And under the lens the merge is actually about: the survivor's
+		// growth and the absorbed note's removal are both the manuscript's,
+		// so the reading a novelist watches does not gain a segment nobody
+		// wrote.
+		lens = "manuscript";
+		goalScope = "manuscript";
+		const strict = await sessions.todaySummary(project);
+		expect(strict.added).toBe(5);
+		expect(strict.deleted).toBe(5);
+		expect(strict.trackedNet).toBe(0);
+		expect(strict.goalNet).toBe(0);
+	});
+
+	it("lets a deleted project's untimed day go instead of resurrecting it", async () => {
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		sessions.noteDeleted("Snowflake Projects/Novel", { children: true });
+		// The armed flush finds nothing to file: the state went with the
+		// project, and no ghost of its folder tree comes back.
+		await timers.flush();
+		await settle();
+		expect(fakeVault.contents.has(UNTIMED_FILE)).toBe(false);
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("hydrates one copy of a day, never the disk under an unfiled flush", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		await timers.flush();
+		expect(fakeVault.contents.has(UNTIMED_FILE)).toBe(true);
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		// The switch-off files the whole day, but the write fails: the record
+		// waits in memory while the disk keeps the older copy of the same id.
+		fakeVault.failNextProcessPath = UNTIMED_FILE;
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		untimedOn = true;
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six seven"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		// Three words waited unfiled, one was typed now; the disk's stale two
+		// are the same day again, not more of it.
+		expect(day.added).toBe(4);
+		expect(day.deleted).toBe(0);
+		await timers.flush();
+		const parsed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: { words: { project: { added: number } } }[] };
+		expect(parsed.days).toHaveLength(1);
+		expect(parsed.days[0]?.words.project.added).toBe(4);
+	});
+
+	it("retries a failed hydrate read instead of clobbering the day", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		await timers.flush();
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		untimedOn = true;
+		// The day's first read back fails once; the fold must wait for the
+		// retry rather than be marked done and skipped forever.
+		fakeVault.failNextReadPath = UNTIMED_FILE;
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(3);
+		await timers.flush();
+		const parsed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: { words: { project: { added: number } } }[] };
+		expect(parsed.days).toHaveLength(1);
+		expect(parsed.days[0]?.words.project.added).toBe(3);
+	});
+
+	it("keeps a rebase queued across midnight from crediting foreign words", async () => {
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		fakeVault.write(
+			NOTES,
+			written("one two three four foreign sync words landed")(),
+		);
+		sessions.noteWrittenExternally(NOTES);
+		clock += 24 * 60 * 60_000;
+		await timers.flush();
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four foreign sync words landed typed"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(1);
+		expect(day.deleted).toBe(0);
+	});
+
+	it("credits a deletion into the day it happens, not yesterday", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		clock += 24 * 60 * 60_000;
+		fakeVault.delete(NOTES);
+		sessions.noteDeleted(NOTES);
+		const totals = await sessions.dailyTotals(project, 2);
+		expect(totals[0]?.added).toBe(2);
+		expect(totals[0]?.deleted).toBe(0);
+		expect(totals[1]?.deleted).toBe(5);
+		expect(totals[1]?.trackedNet).toBe(-5);
+	});
+
+	it("hands baselines to a fresh untimed day at the stop", async () => {
+		await startSession();
+		sessions.noteChanged(NOTES, written("one two three four five six"));
+		await timers.flush();
+		await sessions.stop();
+		// The disk still lags the editor; the handed-over baseline is what
+		// keeps the session's tail from being credited a second time.
+		sessions.noteChanged(
+			NOTES,
+			written("one two three four five six typed"),
+		);
+		await timers.flush();
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(4);
+		expect(day.timedNet).toBe(3);
+	});
+
+	it("survives the tracking toggling off under a parked drain", async () => {
+		const real = projects.writingCount.countNoteWhole.bind(
+			projects.writingCount,
+		);
+		const parked = vi
+			.spyOn(projects.writingCount, "countNoteWhole")
+			.mockImplementationOnce(async (path, opts) => {
+				untimedOn = false;
+				void sessions.untimedTrackingChanged();
+				await settle();
+				return real(path, opts);
+			});
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		await settle();
+		parked.mockRestore();
+		// The in-flight delta lands nowhere rather than in a detached ledger
+		// nothing would ever flush or snapshot.
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(0);
+		expect(untimedStore.value).toBeNull();
+	});
+
+	it("credits a save that follows a mechanical rewrite in the same beat", async () => {
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		fakeVault.write(NOTES, written("one two three four rendered")());
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three four")(),
+			written("one two three four rendered")(),
+			false,
+		);
+		sessions.notePersistedByPlugin(
+			NOTES,
+			written("one two three four rendered")(),
+			written("one two three four rendered typed words")(),
+			true,
+		);
+		fakeVault.write(
+			NOTES,
+			written("one two three four rendered typed words")(),
+		);
+		await timers.flush();
+		// The mechanical word re-baselined away; the typed two survived the
+		// rebase that would have read the disk after the save.
+		const day = await sessions.todaySummary(project);
+		expect(day.added).toBe(3);
+		expect(day.deleted).toBe(0);
+	});
+
+	it("re-freezes the convention with the day and drops cross-rule baselines", async () => {
+		sessions.noteChanged(NOTES, written("# Head\n\none two three"));
+		await timers.flush();
+		fakeVault.write(NOTES, written("# Head\n\none two three")());
+		activeCountOptions = { mode: "ms-word", headings: "skip-all" };
+		clock += 24 * 60 * 60_000;
+		// The same text under the new rule: the rules' disagreement over the
+		// heading must read as nothing, not as a word appearing or vanishing.
+		sessions.noteChanged(NOTES, written("# Head\n\none two three"));
+		await timers.flush();
+		const totals = await sessions.dailyTotals(project, 2);
+		expect(totals[0]?.added).toBe(1);
+		expect(totals[1]?.added).toBe(0);
+		expect(totals[1]?.deleted).toBe(0);
+		sessions.noteChanged(NOTES, written("# Head\n\none two three four"));
+		await timers.flush();
+		untimedOn = false;
+		await sessions.untimedTrackingChanged();
+		await settle();
+		const parsed = JSON.parse(
+			fakeVault.contents.get(UNTIMED_FILE) ?? "{}",
+		) as { days: { day: string; countHeadings?: string }[] };
+		const byDay = new Map(parsed.days.map((day) => [day.day, day]));
+		expect(byDay.get("2026-08-17")?.countHeadings).toBe("count");
+		expect(byDay.get("2026-08-18")?.countHeadings).toBe("skip-all");
+	});
+
+	it("re-arms the drain a stopping session cleared for another project", async () => {
+		const second = await projects.createProject({
+			title: "Second",
+			locale: "en",
+		});
+		projectRefs = [project, second];
+		const OTHER = `${second.rootPath}/80_Material/Other.md`;
+		await fakeVault.seedFile(
+			OTHER,
+			[
+				"---",
+				`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+				"snowflake-document: material",
+				`snowflake-project-id: ${second.id}`,
+				"---",
+				"",
+				"other words\n",
+			].join("\n"),
+		);
+		const otherTyped = (): string =>
+			[
+				"---",
+				`snowflake-schema: ${String(SCHEMA_VERSION)}`,
+				"snowflake-document: material",
+				`snowflake-project-id: ${second.id}`,
+				"---",
+				"",
+				"other words typed here\n",
+			].join("\n");
+		await startSession();
+		sessions.noteChanged(OTHER, otherTyped);
+		// The stop clears the shared debounce; the other project's queued
+		// words must get it re-armed rather than stranded.
+		await sessions.stop();
+		await timers.flush();
+		const day = await sessions.todaySummary(second);
+		expect(day.added).toBe(2);
+	});
+
+	it("announces recovered untimed words to painted panels", async () => {
+		sessions.noteChanged(NOTES, written("one two three four"));
+		await timers.flush();
+		sessions.markShutdown();
+		sessions = buildService();
+		events.length = 0;
+		await sessions.recoverAtStartup();
+		await settle();
+		expect(
+			events.some(
+				(event) => event.kind === "changed" && event.counted,
+			),
+		).toBe(true);
+	});
+
+	it("shows yesterday whole on the reading that rolls it over", async () => {
+		sessions.noteChanged(NOTES, written("one two three four five"));
+		await timers.flush();
+		clock += 24 * 60 * 60_000;
+		// This very reading performs the rollover; yesterday must not be
+		// short on it and whole only on the next.
+		const totals = await sessions.dailyTotals(project, 2);
+		expect(totals[0]?.added).toBe(2);
+		expect(totals[1]?.added).toBe(0);
 	});
 });

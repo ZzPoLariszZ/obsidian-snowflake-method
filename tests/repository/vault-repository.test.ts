@@ -30,6 +30,7 @@ describe("VaultRepository", () => {
 
   it("creates folders and managed files through Vault and processFrontMatter", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Projects/Novel/10_Summary/11_One_Sentence_Summary.md",
       template: {
         body: `# One-Sentence Summary\n\n${renderMarkedSection("one-sentence-summary")}\n`,
@@ -90,6 +91,7 @@ describe("VaultRepository", () => {
   it("uses a safe suffix and never overwrites a conflicting file", async () => {
     await fakeVault.seedFile("Characters/Ada.md", "personal note");
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Characters/Ada.md",
       uniqueOnConflict: true,
       template: { body: "# Ada\n", sections: [] },
@@ -107,6 +109,7 @@ describe("VaultRepository", () => {
     const original = "---\n: invalid: yaml\n---\nPrivate notes";
     await fakeVault.seedFile("10_Summary/11_One_Sentence_Summary.md", original);
     const ensured = await repository.ensureManagedFile({
+      userInput: false,
       path: "10_Summary/11_One_Sentence_Summary.md",
       uniqueOnConflict: true,
       template: { body: "# One-Sentence Summary\n", sections: [] },
@@ -134,7 +137,9 @@ describe("VaultRepository", () => {
       UnsupportedSchemaError,
     );
     await expect(
-      repository.updateSection(file.path, "one-sentence-summary", "No"),
+      repository.updateSection(file.path, "one-sentence-summary", "No", {
+        userInput: false,
+      }),
     ).rejects.toBeInstanceOf(
       UnsupportedSchemaError,
     );
@@ -153,13 +158,16 @@ describe("VaultRepository", () => {
 
     expect((await repository.readManaged(file.path)).readOnly).toBe(true);
     await expect(
-      repository.updateSection(file.path, "one-sentence-summary", "replace"),
+      repository.updateSection(file.path, "one-sentence-summary", "replace", {
+        userInput: false,
+      }),
     ).rejects.toBeInstanceOf(InvalidManagedDocumentError);
     expect(fakeVault.contents.get(file.path)).toContain("keep me");
   });
 
   it("does not allow a frontmatter patch to upgrade its own schema", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Current.md",
       template: { body: "# Current\n", sections: [] },
       frontmatter: {
@@ -176,6 +184,7 @@ describe("VaultRepository", () => {
 
   it("reports missing sections without changing the original note", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Scene.md",
       template: { body: "# Scene\n\nUser notes.\n", sections: [] },
       frontmatter: {
@@ -208,6 +217,7 @@ describe("VaultRepository", () => {
       renderMarkedSection("healthy", "Keep"),
     ].join("\n");
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Precise conflicts.md",
       template: { body: source, sections: [] },
       frontmatter: {
@@ -238,6 +248,7 @@ describe("VaultRepository", () => {
       "",
     ].join("\n");
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Noncanonical synopsis.md",
       template: { body: noncanonical, sections: [] },
       frontmatter: {
@@ -263,6 +274,7 @@ describe("VaultRepository", () => {
 
   it("preserves a valid unknown section while reporting a missing known section", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Future scene.md",
       template: {
         body: `# Scene\n\n${renderMarkedSection("future-section", "Future data")}\n`,
@@ -288,6 +300,7 @@ describe("VaultRepository", () => {
 
   it("checks marker damage without entering a Vault.process write cycle", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Concurrent repair.md",
       template: { body: "# Scene\n\nUser prose.\n", sections: [] },
       frontmatter: {
@@ -332,6 +345,7 @@ describe("VaultRepository", () => {
 
   it("updates several marked sections atomically and rejects a stale form", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "One Paragraph Summary.md",
       template: {
         body: `${renderMarkedSection("one-paragraph-summary", "old summary")}\n${renderMarkedSection("description", "old description")}`,
@@ -353,6 +367,7 @@ describe("VaultRepository", () => {
           description: "stale description",
         },
         fingerprint(opened),
+        { userInput: false },
       ),
     ).rejects.toBeInstanceOf(ConcurrentChangeError);
     expect(fakeVault.contents.get(created.path)).toContain("external description");
@@ -366,6 +381,7 @@ describe("VaultRepository", () => {
         description: "new description",
       },
       fingerprint(current),
+      { userInput: false },
     );
     expect(fakeVault.contents.get(created.path)).toContain("new summary");
     expect(fakeVault.contents.get(created.path)).toContain("new description");
@@ -373,6 +389,7 @@ describe("VaultRepository", () => {
 
   it("rejects values that forge managed markers without writing any part of the batch", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Step One.md",
       template: {
         body: `${renderMarkedSection("genre", "Mystery")}\n${renderMarkedSection("one-sentence-summary", "Original sentence")}`,
@@ -394,6 +411,7 @@ describe("VaultRepository", () => {
           "one-sentence-summary": "A stale replacement that must not be written.",
         },
         fingerprint(before),
+        { userInput: false },
       ),
     ).rejects.toMatchObject({ code: "unsafe-section" });
 
@@ -411,6 +429,7 @@ describe("VaultRepository", () => {
       "<!-- snowflake:section:ending:end -->",
     ].join("\n");
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Nested sections.md",
       template: { body: nested, sections: [] },
       frontmatter: {
@@ -421,7 +440,9 @@ describe("VaultRepository", () => {
     const before = fakeVault.contents.get(created.path) ?? "";
 
     await expect(
-      repository.updateSections(created.path, { opening: "New", ending: "New" }),
+      repository.updateSections(created.path, { opening: "New", ending: "New" }, undefined, {
+        userInput: false,
+      }),
     ).rejects.toMatchObject({ code: "unsafe-section" });
     const repair = await repository.checkSections(created.path, [
       { id: "opening", heading: "## Opening" },
@@ -448,6 +469,7 @@ describe("VaultRepository", () => {
     };
 
     const ensured = await repository.ensureManagedFile({
+      userInput: false,
       path: file.path,
       template,
       frontmatter: {
@@ -475,6 +497,7 @@ describe("VaultRepository", () => {
       { id: "scene-planning", heading: "## Planning" },
     ];
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Upsert.md",
       template: {
         body: `# Arrival\n\n## Events\n\n${renderMarkedSection("scene-events", "The gate closes.")}\n`,
@@ -494,6 +517,8 @@ describe("VaultRepository", () => {
         "scene-planning": "Reveal the pass.",
       },
       layout,
+      undefined,
+      { userInput: false },
     );
 
     const content = fakeVault.contents.get(created.path) ?? "";
@@ -524,6 +549,7 @@ describe("VaultRepository", () => {
       "<!-- snowflake:section:scene-events:end -->",
     ].join("\n");
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Damaged upsert.md",
       template: { body: damaged, sections: [] },
       frontmatter: {
@@ -541,6 +567,8 @@ describe("VaultRepository", () => {
           { id: "scene-fields", heading: "" },
           { id: "scene-events", heading: "## Events" },
         ],
+        undefined,
+        { userInput: false },
       ),
     ).rejects.toMatchObject({ code: "unsafe-section" });
     expect(fakeVault.contents.get(created.path)).toBe(before);
@@ -548,6 +576,7 @@ describe("VaultRepository", () => {
 
   it("refuses a stale upsert the way updateSections does", async () => {
     const created = await repository.createManagedFile({
+      userInput: false,
       path: "Stale upsert.md",
       template: { body: "# Arrival\n", sections: [] },
       frontmatter: {
@@ -564,6 +593,7 @@ describe("VaultRepository", () => {
         { "scene-fields": "Block" },
         [{ id: "scene-fields", heading: "" }],
         fingerprint(opened),
+        { userInput: false },
       ),
     ).rejects.toBeInstanceOf(ConcurrentChangeError);
     expect(fakeVault.contents.get(created.path)).toContain("External line.");
@@ -571,6 +601,7 @@ describe("VaultRepository", () => {
 
   it("forgets a path's record, and a folder's records with it", async () => {
     const managed = (name: string) => ({
+      userInput: false,
       path: name,
       template: { body: "# Note\n", sections: [] },
       frontmatter: {
