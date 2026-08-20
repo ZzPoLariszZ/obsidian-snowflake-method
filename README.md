@@ -154,7 +154,7 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 ### Data statistics
 
-Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane reads a project back as numbers, and its **Writing sessions** tab is the one that measures the time. A sitting starts when you start it, or on its own when focus mode opens. *Prose analysis and entity tracking name the two faces the tab strip is being built for. Both are still in their planning stage.*
+Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane reads a project back as numbers, and its **Writing sessions** tab is the one that measures the time. A sitting starts when you start it, or on its own when focus mode opens. Words written with no sitting running are still counted, so a morning at the manuscript belongs to the day whether or not you remembered to start the clock, and only the time is left to the sittings. *Prose analysis and entity tracking name the two faces the tab strip is being built for. Both are still in their planning stage.*
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_en.png"><img src="assets/screenshots/data_statistics_01_en.png" width="100%" alt="Data statistics — daily goal, focus timer, today's summary, recent trend, and annual contribution" /></a></p>
 
@@ -246,6 +246,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
 | Toggle the actions column in tables | Show or hide each row's actions column. |
 | Toggle typewriter scrolling | Hold the line being written at the middle of the page. |
+| Toggle writing count outside sessions | Start or stop recording the words written while no session is running. |
 | Update notes in older format | Update every note an older release wrote. |
 
 Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing.
@@ -277,6 +278,7 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Idle after | 60 seconds | Seconds without editing before focus turns to idle. |
 | Writing stage | Draft | Which stage a new session starts in. |
 | Start stopwatch session when focus mode is enabled | On | Begin a sitting by itself whenever focus mode opens. |
+| Track writing count outside sessions | On | Record the words written while no session is running. Time-related readings stay session-only. |
 | Statistics scope | Whole project | Which words the writing statistics show. |
 | Daily goal: whole project | 6000 | Net words to write each day across the whole project. Zero turns the goal off. |
 | Daily goal: only manuscript | 4000 | Net words to write each day in the manuscript. Zero turns the goal off. |
@@ -573,7 +575,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 数据统计
 
-写作看得见，才更容易坚持下去。工作台的**数据统计**面板以数据回看项目，其中**写作时段**标签页衡量的是时间。一个时段由你开启，也可以在进入专注模式时自动开始。*正文分析与实体追踪是这条标签栏正在建设的另外两面，目前都还处于规划阶段。*
+写作看得见，才更容易坚持下去。工作台的**数据统计**面板以数据回看项目，其中**写作时段**标签页衡量的是时间。一个时段由你开启，也可以在进入专注模式时自动开始。没有开启时段时写下的字数同样会被记下，因此在正文里度过的一个早晨，无论你是否记得开始计时，都算进这一天，只有时间仍然只由时段来计。*正文分析与实体追踪是这条标签栏正在建设的另外两面，目前都还处于规划阶段。*
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_cn.png"><img src="assets/screenshots/data_statistics_01_cn.png" width="100%" alt="数据统计——每日目标、专注计时、今日总结、近期趋势与年度贡献" /></a></p>
 
@@ -648,6 +650,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 停止写作时段 | 结束正在进行的时段，并写下它的记录。 |
 | 打开写作统计 | 在独立的侧栏中打开当天的写作读数。 |
 | 切换数据统计范围 | 在整个项目与仅正文稿之间切换统计范围。 |
+| 切换写作时段外的字数记录 | 开启或关闭对写作时段之外字数的记录。 |
 | 统计项目字数 | 报告当前项目的字数，整个项目与仅正文稿各一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 直接切到指定的专注深度，每档一条命令。 |
 | 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -688,6 +691,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 多久算摸鱼 | 60 秒 | 多少秒没有编辑后，专注转为摸鱼。 |
 | 写作阶段 | 初稿 | 新的时段默认处于哪一个阶段。 |
 | 开启专注模式时开始正计时时段 | 开启 | 进入专注模式时自动开始一个时段。 |
+| 在写作时段之外记录字数 | 开启 | 记录没有写作时段时写下的字数。时间相关的统计仍只来自写作时段。 |
 | 数据统计范围 | 整个项目 | 写作统计展示哪一部分的字数。 |
 | 每日目标：整个项目 | 6000 | 整个项目每天要写的净增字数。设为 0 将关闭该目标。 |
 | 每日目标：仅正文稿 | 4000 | 正文稿每天要写的净增字数。设为 0 将关闭该目标。 |
