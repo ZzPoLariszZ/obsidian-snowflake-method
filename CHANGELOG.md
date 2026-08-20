@@ -8,6 +8,17 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0]
+
+### Added
+
+- Writing counts without a clock. Words written while no session is running are recorded against the day they were written on, so a morning spent in the manuscript belongs to that day whether or not a sitting was started for it. Each day is kept for one project and one device in a file of its own beside the session records, and it joins today's words, the recent trend, the annual contribution, the calendar, and the daily, weekly and monthly goals. Focus, idle, total time, the session count, pace, the hours of the day and the writing stages stay session-only, because a day of writing with no clock behind it has no time to report. **Track writing count outside sessions** decides whether any of this is recorded, with a command of the same name, and turning it off stops the recording rather than the archive, so the days already written go on being read.
+- Words written while a session is paused, and words written through a pomodoro break, are recorded the same way. The clock stays frozen and the sitting still reports no time for them, so pausing to think, or letting a break run on, no longer means the writing that happens in it goes uncounted.
+
+### Changed
+
+- Whether a change counts as writing is decided by where it came from rather than by which part of a note it landed in. Text typed into a form, a dashboard panel or one of the rendered field blocks is credited when it is saved, so a character's motivation weighs the same as a paragraph of the manuscript. A note rewritten by the plugin itself, by a migration, by a repair or by sync sets a new baseline without being credited to anyone, which is what keeps another device's writing out of this device's day. The note totals on display are unchanged, and go on leaving plugin-written blocks out.
+
 ## [0.11.0]
 
 ### Added
@@ -277,6 +288,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.12.0]
+
+### 新增
+
+- 没有计时，字数照样算。没有写作时段在进行时写下的字数，会记在它们被写下的那一天，因此在正文里度过的一个早晨，无论有没有为它开启时段，都属于那一天。每一天按项目与设备各自成篇，与时段记录并排存放，并汇入今日字数、近期趋势、年度贡献、日历，以及每日、每周与每月目标。专注、摸鱼、总时长、时段数、写作速度、一天中的时辰分布与写作阶段仍然只来自时段，因为没有计时的一天，本就没有时间可报。**在写作时段之外记录字数**决定这一切记不记，并配有同名命令，关闭它停下的是记录而不是档案，已经写下的那些天照常可读。
+- 写作时段暂停期间，以及番茄钟休息期间写下的字数，同样这样记下。计时保持冻结，这些字数也不会计入该时段的时间，因此停下来想一想，或者让休息多走一会儿，都不再意味着其间的写作无人记数。
+
+### 变更
+
+- 一处改动算不算写作，现在由它从何而来决定，而不是由它落在笔记的哪一部分决定。在表单、工作台面板或渲染出的字段区块中输入的文字，会在保存时计入，因此一个角色的动机与正文中的一段分量相同。由插件自身、迁移、修复或同步重写的笔记只会重设基准，不计给任何人，正是这一点把别台设备的写作挡在这台设备的一天之外。展示用的笔记字数不变，仍旧不计插件写入的区块。
 
 ## [0.11.0]
 
