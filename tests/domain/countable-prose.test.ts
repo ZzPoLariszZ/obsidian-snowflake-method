@@ -180,6 +180,23 @@ describe('countable prose', () => {
 			expect(count('a ~~struck~~ b')).toBe(3);
 		});
 
+		it('reads no tilde fence, so an empty strikethrough swallows nothing', () => {
+			// `~~~~` alone on a line is a code fence to CommonMark, and an
+			// unclosed one hides the rest of the note. This counter is a
+			// writer's: the run stays the literal marks it is, and every word
+			// after it keeps counting.
+			expect(countableProse('alpha beta\n\n~~~~\n\ngamma delta')).toBe(
+				'alpha beta\n\n~~~~\n\ngamma delta',
+			);
+			// Word-processor counting reads the standing run as a token of its
+			// own, as Word would: the four words after it are all still there.
+			expect(count('alpha beta\n\n~~~~\n\ngamma delta')).toBe(5);
+			expect(count('~~~~hello world\n\ngamma delta')).toBe(4);
+			expect(count('~~~\nfenced words\n~~~')).toBe(4);
+			// Backtick fences still mean code.
+			expect(count('```\nfenced words\n```')).toBe(0);
+		});
+
 		it('keeps a highlight and drops its equals', () => {
 			expect(countableProse('记住==这句话==吧')).toBe('记住这句话吧');
 			// A lone pair with a space inside highlights nothing, as in Obsidian.

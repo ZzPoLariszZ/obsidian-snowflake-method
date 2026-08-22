@@ -12,6 +12,7 @@ import type {
 	WritingCountMode,
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
+import type { WikilinkTarget } from './segment-editor-backend';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -286,6 +287,10 @@ export interface ManuscriptWindowSettings {
 	typewriter: boolean;
 	/** How far the fading reaches; 'off' fades nothing. */
 	focusLevel: 'off' | 'on' | 'deep' | 'solo';
+	/** Brackets and quotes close themselves in the editor. */
+	autoPairBrackets: boolean;
+	/** Emphasis markers close themselves in the editor. */
+	autoPairMarkdown: boolean;
 }
 
 /**
@@ -321,6 +326,14 @@ export interface ManuscriptHost {
 	): string;
 	manuscriptWindowSettings(): ManuscriptWindowSettings;
 	loadManuscript(projectPath: string | null): Promise<ManuscriptModel | null>;
+	/**
+	 * The entities the wikilink popup may offer for one project, each name
+	 * and alias already shaped into an entry. Empty when there is no project
+	 * to draw from.
+	 */
+	listWikilinkTargets(
+		projectPath: string | null,
+	): Promise<readonly WikilinkTarget[]>;
 	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
 	/** How the Vault last saw a segment's file, without opening it. */
 	manuscriptSegmentStamp(path: string): string | null;

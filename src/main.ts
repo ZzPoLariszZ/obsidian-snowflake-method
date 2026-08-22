@@ -106,6 +106,7 @@ import {
 	type SceneRecord,
 	type WorldbuildingRecord,
 	type WritingCountScope,
+	toWikiLink,
 	WritingSessionService,
 	type LiveWritingSession,
 	type StartWritingSessionOptions,
@@ -136,11 +137,20 @@ import {
 	DASHBOARD_VIEW_TYPE,
 	SnowflakeDashboardView,
 } from './ui/dashboard-view';
+import { entityGroupLabel, entityGroupsOf } from './ui/entity-form';
 import {
+	MANUSCRIPT_EDITING_HOVER_SOURCE,
+	MANUSCRIPT_READING_HOVER_SOURCE,
 	MANUSCRIPT_VIEW_TYPE,
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import type { WikilinkTarget } from './ui/segment-editor-backend';
+import {
+	collectWikilinkTargets,
+	type WikilinkProjectMembers,
+	type WikilinkSourceRecord,
+} from './ui/wikilink-complete';
 import {
 	routeNotePane,
 	type NotePaneLeaf,
@@ -555,6 +565,18 @@ export default class SnowflakeMethodPlugin
 					this.statisticsFingerprint(),
 				),
 		);
+		// Two feeds so the core Page preview plugin offers each with its own
+		// modifier default: rendered manuscript prose previews on a plain
+		// hover like any reading view, the stream's editor asks for the
+		// modifier like any editing view. Both stay adjustable there.
+		this.registerHoverLinkSource(MANUSCRIPT_READING_HOVER_SOURCE, {
+			display: this.globalT('manuscript.hoverSource.reading'),
+			defaultMod: false,
+		});
+		this.registerHoverLinkSource(MANUSCRIPT_EDITING_HOVER_SOURCE, {
+			display: this.globalT('manuscript.hoverSource.editing'),
+			defaultMod: true,
+		});
 		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
 			void this.openDashboard();
 		});
@@ -4263,6 +4285,8 @@ export default class SnowflakeMethodPlugin
 			showSequence: this.settings.showManuscriptSequence,
 			typewriter: this.settings.manuscriptTypewriter,
 			focusLevel: this.settings.manuscriptFocusLevel,
+			autoPairBrackets: this.settings.manuscriptAutoPairBrackets,
+			autoPairMarkdown: this.settings.manuscriptAutoPairMarkdown,
 		};
 	}
 
@@ -4326,6 +4350,56 @@ export default class SnowflakeMethodPlugin
 				readOnly: segment.readOnly,
 			})),
 		};
+	}
+
+	async listWikilinkTargets(
+		projectPath: string | null,
+	): Promise<readonly WikilinkTarget[]> {
+		// resolveProject rather than the known-projects map, which leaves
+		// read-only projects out: their members still hold names a link can
+		// point at, even when nothing here may edit them.
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		const asSource = (
+			record: { path: string; rank: number; aliases: string[] },
+			name: string,
+		): WikilinkSourceRecord => ({
+			path: record.path,
+			name,
+			rank: record.rank,
+			aliases: record.aliases,
+		});
+		const times = entitiesOf(project, 'time');
+		const members: WikilinkProjectMembers = {
+			groups: entityGroupsOf(project.worldbuildingKinds),
+			characters: project.characters.map((record) =>
+				asSource(record, record.name),
+			),
+			scenes: project.scenes.map((record) => asSource(record, record.title)),
+			// The pickers' rule, kept: a time whose kind this release no longer
+			// knows is still a time, and a point is what an unnamed one is.
+			timeOf: (kind) =>
+				times
+					.filter((entity) =>
+						kind === 'point'
+							? entity.timeKind === 'point' || entity.timeKind === null
+							: entity.timeKind === kind,
+					)
+					.map((entity) => asSource(entity, entity.name)),
+			ofKind: (kind) =>
+				entitiesOf(project, kind).map((entity) =>
+					asSource(entity, entity.name),
+				),
+		};
+		const projectT = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(project.locale, key, vars);
+		return collectWikilinkTargets(
+			members,
+			(group) => entityGroupLabel(projectT, group),
+			toWikiLink,
+		);
 	}
 
 	async readManuscriptSegment(path: string): Promise<ManuscriptSegmentText> {
@@ -4919,6 +4993,14 @@ export default class SnowflakeMethodPlugin
 			id: 'manuscript-insert-note-before',
 			name: this.globalT('commands.manuscriptInsertBefore'),
 			checkCallback: inStream((view) => view.insertBesideActive('before')),
+		});
+		this.addCommand({
+			id: 'manuscript-stop-editing',
+			name: this.globalT('commands.manuscriptStopEditing'),
+			checkCallback: inStream(
+				(view) => view.stopEditing(),
+				(view) => view.isEditing(),
+			),
 		});
 		this.addCommand({
 			id: 'toggle-manuscript-note-paths',

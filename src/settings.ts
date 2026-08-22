@@ -119,6 +119,10 @@ export interface SnowflakeSettings {
 	/** The line being written held at the middle of the page. */
 	manuscriptTypewriter: boolean;
 	manuscriptFocusLevel: ManuscriptFocusLevel;
+	/** Brackets and quotes close themselves in the manuscript editor. */
+	manuscriptAutoPairBrackets: boolean;
+	/** Emphasis markers close themselves in the manuscript editor. */
+	manuscriptAutoPairMarkdown: boolean;
 	/** Seconds without an edit before a session's focus time turns idle. */
 	sessionIdleThresholdSeconds: number;
 	sessionCountdownMinutes: number;
@@ -205,6 +209,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
 	manuscriptTypewriter: true,
+	manuscriptAutoPairBrackets: true,
+	manuscriptAutoPairMarkdown: true,
 	manuscriptFocusLevel: 'off',
 	sessionIdleThresholdSeconds: 60,
 	sessionCountdownMinutes: 45,
@@ -250,6 +256,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'showManuscriptPath',
 	'showManuscriptSequence',
 	'manuscriptTypewriter',
+	'manuscriptAutoPairBrackets',
+	'manuscriptAutoPairMarkdown',
 	'manuscriptFocusLevel',
 	'sessionIdleThresholdSeconds',
 	'sessionCountdownMinutes',
@@ -383,6 +391,14 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.manuscriptTypewriter === 'boolean'
 				? raw.manuscriptTypewriter
 				: DEFAULT_SETTINGS.manuscriptTypewriter,
+		manuscriptAutoPairBrackets:
+			typeof raw.manuscriptAutoPairBrackets === 'boolean'
+				? raw.manuscriptAutoPairBrackets
+				: DEFAULT_SETTINGS.manuscriptAutoPairBrackets,
+		manuscriptAutoPairMarkdown:
+			typeof raw.manuscriptAutoPairMarkdown === 'boolean'
+				? raw.manuscriptAutoPairMarkdown
+				: DEFAULT_SETTINGS.manuscriptAutoPairMarkdown,
 		manuscriptFocusLevel: readFocusLevel(raw),
 		sessionIdleThresholdSeconds: integerIn(
 			raw.sessionIdleThresholdSeconds,
@@ -742,6 +758,24 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'toggle',
 							key: 'manuscriptTypewriter',
 							defaultValue: DEFAULT_SETTINGS.manuscriptTypewriter,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptAutoPairBrackets.name'),
+						desc: this.t('settings.manuscriptAutoPairBrackets.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptAutoPairBrackets',
+							defaultValue: DEFAULT_SETTINGS.manuscriptAutoPairBrackets,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptAutoPairMarkdown.name'),
+						desc: this.t('settings.manuscriptAutoPairMarkdown.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptAutoPairMarkdown',
+							defaultValue: DEFAULT_SETTINGS.manuscriptAutoPairMarkdown,
 						},
 					},
 					{
@@ -1134,6 +1168,16 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptTypewriter':
 				if (typeof value === 'boolean') {
 					this.owner.settings.manuscriptTypewriter = value;
+				}
+				break;
+			case 'manuscriptAutoPairBrackets':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptAutoPairBrackets = value;
+				}
+				break;
+			case 'manuscriptAutoPairMarkdown':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptAutoPairMarkdown = value;
 				}
 				break;
 			case 'manuscriptFocusLevel':

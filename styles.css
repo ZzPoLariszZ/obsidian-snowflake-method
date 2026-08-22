@@ -4738,6 +4738,124 @@
 	scrollbar-gutter: stable;
 }
 
+/* With the formatting bar above it the page becomes a column: the bar keeps
+   its height and the stream takes the rest. Gated by a class the view sets
+   only when the bar exists, so the empty state keeps its own layout. */
+.snowflake-method-manuscript-view.view-content.is-toolbar {
+	display: flex;
+	flex-direction: column;
+}
+
+.snowflake-method-manuscript-view.is-toolbar .snowflake-method-manuscript-stream {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
+}
+
+.snowflake-method-manuscript-toolbar {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-2-1);
+	padding: var(--size-2-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+}
+
+.snowflake-method-toolbar-separator {
+	width: 1px;
+	align-self: stretch;
+	margin-inline: var(--size-2-2);
+	background-color: var(--background-modifier-border);
+}
+
+/* Inert while nothing is being written in: greyed rather than gone, because
+   a bar that came and went would move the page under the reader. */
+.snowflake-method-toolbar-button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.snowflake-method-toolbar-button:disabled:hover {
+	background-color: transparent;
+}
+
+/* The wikilink popup, escaped to a body-parented host so the stream's
+   hidden overflow cannot clip it. Dressed as Obsidian dresses its own
+   suggestion popups -- the same font size, row padding, rounded rows, row
+   gap and list inset as .suggestion-item and .suggestion -- so the two read
+   as one design. The host class keeps every rule here off other plugins'
+   CodeMirror tooltips, and is written three times throughout this block:
+   CodeMirror's base theme addresses the same elements through a generated
+   class, two tooltip classes and two element names, and the tripled host
+   class is what outweighs that strictly, whatever order the stylesheets
+   loaded in, without reaching for the forbidden important flag. */
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip {
+	z-index: var(--layer-menu);
+	background-color: var(--suggestion-background, var(--background-primary));
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	overflow: hidden;
+	max-width: 500px;
+}
+
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul {
+	max-height: 300px;
+	padding: var(--size-2-3);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-medium);
+	white-space: pre-wrap;
+}
+
+/* Obsidian's own stylesheet sizes CodeMirror's option rows down to the small
+   UI size; the row must say its size itself, and from a heavier selector. */
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul li[role='option'] {
+	padding: var(--size-2-3) var(--size-4-3);
+	margin-bottom: 1px;
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	cursor: var(--cursor);
+	line-height: var(--line-height-tight);
+}
+
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips
+	.cm-tooltip-autocomplete
+	ul
+	li[aria-selected] {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* The group separators: the group's name with a rule under it, running the
+   list's width. Named twice because CodeMirror has rendered the header as
+   a li with this class and as a bare completion-section element, depending
+   on the version Obsidian ships. */
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection,
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section {
+	display: block;
+	padding: var(--size-2-3) var(--size-4-3) var(--size-2-1);
+	margin-bottom: var(--size-2-1);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	list-style: none;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* Aliases sit indented beneath their primary and read quieter, the way the
+   character table writes what a member also goes by under its name and
+   Obsidian's own popups write a suggestion's note. The selector rides the
+   same ul as the base row rule so the indent outweighs that rule's own
+   padding. */
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul li[role='option'].snowflake-method-completion-alias {
+	padding-inline-start: calc(var(--size-4-3) + var(--size-4-4));
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 /* The manuscript reads at the width Obsidian gives a note, wherever the pane
    happens to be, so a wide window does not stretch a line past reading length. */
 .snowflake-method-segment,

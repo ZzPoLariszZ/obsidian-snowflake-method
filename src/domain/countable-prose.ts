@@ -15,7 +15,8 @@
  * Obsidian added on its own, so wikilinks, `%%` comments, block IDs,
  * highlights, callout kinds and footnote markers are found by hand first.
  * Everything works in ranges over the one original body, so the two passes
- * cannot disagree about where anything is.
+ * cannot disagree about where anything is. One thing the grammar is not
+ * allowed to read: a tilde code fence, see `TILDE_RUN`.
  *
  * Kept free of Obsidian types and of the DOM, so all of it can be exercised
  * without a workspace.
@@ -145,6 +146,21 @@ interface Elision {
 	emit?: string;
 }
 
+/**
+ * Three or more tildes, which CommonMark reads as a code fence when they
+ * open a line -- and an unclosed fence swallows the rest of the note. This
+ * is a writer's counter: the tildes a writer types are strikethrough
+ * markers, and the `~~~~` an empty strikethrough leaves on a line, or a
+ * deleted placeholder leaves behind, must never take a chapter off the
+ * count. So the parser is shown the body with every such run masked by a
+ * same-length run of plain punctuation -- same length, so every range it
+ * reports still indexes the original body -- and tilde fences do not exist
+ * for the count. Backtick fences keep meaning code. Nothing else changes
+ * hands: a run of three or more tildes is never a strikethrough delimiter,
+ * so the page shows it as the literal marks it is, and so does the count.
+ */
+const TILDE_RUN = /~{3,}/gu;
+
 /** Obsidian's own syntax, which no Markdown grammar reads as anything. */
 const WIKILINK = /(!?)\[\[([^\]\n]*?)(?:\|([^\]\n]*))?\]\]/gu;
 const BLOCK_ID = /(?:^|[ \t])\^[A-Za-z0-9-]+$/gmu;
@@ -262,7 +278,8 @@ export function countableProse(
 	// heading is the note's title cannot be told until the comments are known.
 	const codeRanges: CountableRange[] = [];
 	const headings: CountableRange[] = [];
-	markdownParser.parse(body).iterate({
+	const fenceless = body.replace(TILDE_RUN, (run) => ','.repeat(run.length));
+	markdownParser.parse(fenceless).iterate({
 		enter: (node) => {
 			if (insideWikilink(node.from, node.to)) return false;
 			if (skippedHeadings !== null && skippedHeadings.has(node.name)) {

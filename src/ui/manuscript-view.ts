@@ -1,10 +1,13 @@
 import {
 	ItemView,
+	Keymap,
 	MarkdownRenderer,
 	Menu,
 	Notice,
+	Scope,
 	setIcon,
 	setTooltip,
+	type HoverPopover,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from 'obsidian';
@@ -14,7 +17,9 @@ import { confirmSegmentMerge } from './modals';
 import {
 	PublicCodeMirrorBackend,
 	type SegmentEditorBackend,
+	type SegmentEditorCommandId,
 	type SegmentEditorHandle,
+	type WikilinkTarget,
 } from './segment-editor-backend';
 import type {
 	ManuscriptHost,
@@ -26,6 +31,17 @@ import type {
 } from './view-model';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
+
+/**
+ * The two hover-preview feeds, registered in main so the core Page preview
+ * plugin lists each with its own modifier default: rendered prose previews
+ * on a plain hover the way reading views do, while the editor asks for the
+ * modifier the way editing views do.
+ */
+export const MANUSCRIPT_READING_HOVER_SOURCE =
+	'snowflake-method-manuscript-reading';
+export const MANUSCRIPT_EDITING_HOVER_SOURCE =
+	'snowflake-method-manuscript-editing';
 
 /** Long enough that a sentence is not written to disk a letter at a time. */
 const SAVE_DELAY_MS = 800;
@@ -78,6 +94,8 @@ interface MountedSegment {
  * several.
  */
 export class SnowflakeManuscriptView extends ItemView {
+	/** The page-preview popover over this view's links, held as HoverParent. */
+	hoverPopover: HoverPopover | null = null;
 	private readonly host: ManuscriptHost;
 	private readonly backend: SegmentEditorBackend = new PublicCodeMirrorBackend();
 	private readonly mounted = new Map<string, MountedSegment>();
@@ -110,6 +128,14 @@ export class SnowflakeManuscriptView extends ItemView {
 	private walkingIn = false;
 	private stateDelivered = false;
 	private streamEl: HTMLElement | null = null;
+	/** The formatting bar's buttons, greyed together while nothing is edited. */
+	private toolbarButtons: HTMLButtonElement[] = [];
+	/**
+	 * The `[[` popup's feed, fetched once per quiet stretch and shared by
+	 * every keystroke. Nulled whenever the project may have changed shape,
+	 * so a member created mid-writing appears on the next popup.
+	 */
+	private wikilinkTargets: Promise<readonly WikilinkTarget[]> | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
 	/**
@@ -138,6 +164,37 @@ export class SnowflakeManuscriptView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, host: ManuscriptHost) {
 		super(leaf);
 		this.host = host;
+		// The chords live in the view's scope, not only in the editor's
+		// keymap, because Obsidian binds Cmd/Ctrl+B, I and E to its own
+		// editor commands by default and consumes them at the window before
+		// CodeMirror can see a key. A view's scope outranks those bindings
+		// exactly while the view is focused, which is exactly the reach these
+		// three should have. The editor keymap keeps the same bindings for
+		// anyone who unbinds Obsidian's.
+		const scope = new Scope(this.app.scope);
+		this.scope = scope;
+		scope.register(['Mod'], 'e', () => {
+			// One way only: back to prose. Opening an editor is the click's
+			// job, which lands the caret under the clicked words; a blind
+			// toggle would jump the page by the difference between prose
+			// and Markdown heights. While reading, the press is passed on.
+			if (this.editingPath === null) return true;
+			void this.stopEditing().catch((error: unknown) => {
+				this.showError(error);
+			});
+			return false;
+		});
+		const chord = (key: string, command: SegmentEditorCommandId): void => {
+			scope.register(['Mod'], key, () => {
+				// With no note being written in, the press is not this
+				// view's: passed on rather than swallowed.
+				if (this.editingPath === null) return true;
+				this.execToolbar(command);
+				return false;
+			});
+		};
+		chord('b', 'bold');
+		chord('i', 'italic');
 	}
 
 	getViewType(): string {
@@ -224,6 +281,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	async refresh(): Promise<void> {
 		if (this.refreshing) return;
 		this.refreshing = true;
+		this.wikilinkTargets = null;
 		try {
 			const settings = this.host.manuscriptWindowSettings();
 			const previousShape = this.shape;
@@ -456,6 +514,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async render(): Promise<void> {
 		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
 		this.contentEl.empty();
+		this.contentEl.removeClass('is-toolbar');
+		this.toolbarButtons = [];
 		this.streamEl = null;
 		this.tail = 0;
 		const model = this.model;
@@ -464,6 +524,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.renderEmpty();
 			return;
 		}
+		// The column layout arrives with the bar and leaves with it, so the
+		// empty state above keeps the layout it always had.
+		this.contentEl.addClass('is-toolbar');
+		this.renderToolbar();
 		this.streamEl = this.contentEl.createDiv({
 			cls: 'snowflake-method-manuscript-stream',
 		});
@@ -494,6 +558,113 @@ export class SnowflakeManuscriptView extends ItemView {
 		renderEmptyStateAction(actions, this.t('manuscript.createFirst'), () => {
 			void this.createSegment({ atEnd: true });
 		});
+	}
+
+	/**
+	 * The formatting bar above the stream: undo and redo, the heading levels,
+	 * and the inline marks. Always present while a manuscript is, and inert
+	 * until a note is being written in — a bar that came and went with the
+	 * editor would bounce the whole page under the reader every toggle.
+	 */
+	private renderToolbar(): void {
+		const bar = this.contentEl.createDiv({
+			cls: 'snowflake-method-manuscript-toolbar',
+		});
+		this.toolbarButtons = [];
+		const button = (
+			icon: string,
+			label: string,
+			act: (event: MouseEvent) => void,
+		): void => {
+			const el = bar.createEl('button', {
+				cls: 'clickable-icon snowflake-method-toolbar-button',
+				attr: { type: 'button' },
+			});
+			setIcon(el, icon);
+			setTooltip(el, label);
+			// Pressing a button must not lift the caret out of the editor:
+			// the command acts on the selection the author is holding there.
+			el.addEventListener('mousedown', (event) => {
+				event.preventDefault();
+			});
+			el.addEventListener('click', act);
+			this.toolbarButtons.push(el);
+		};
+		const command = (
+			id: SegmentEditorCommandId,
+			icon: string,
+			key: string,
+		): void => {
+			button(icon, this.t(key), () => {
+				this.execToolbar(id);
+			});
+		};
+		const separator = (): void => {
+			bar.createDiv({ cls: 'snowflake-method-toolbar-separator' });
+		};
+		command('undo', 'undo-2', 'manuscript.toolbar.undo');
+		command('redo', 'redo-2', 'manuscript.toolbar.redo');
+		separator();
+		command('heading-2', 'heading-2', 'manuscript.toolbar.heading2');
+		command('heading-3', 'heading-3', 'manuscript.toolbar.heading3');
+		button('heading', this.t('manuscript.toolbar.heading'), (event) => {
+			this.openHeadingMenu(event);
+		});
+		separator();
+		command('bold', 'bold', 'manuscript.toolbar.bold');
+		command('italic', 'italic', 'manuscript.toolbar.italic');
+		command('strikethrough', 'strikethrough', 'manuscript.toolbar.strikethrough');
+		command('underline', 'underline', 'manuscript.toolbar.underline');
+		command('highlight', 'highlighter', 'manuscript.toolbar.highlight');
+		this.refreshToolbar();
+	}
+
+	/**
+	 * Every heading level in one menu: the four the bar has no button of its
+	 * own for, alongside the two it has, so the menu reads as one ladder.
+	 */
+	private openHeadingMenu(event: MouseEvent): void {
+		if (this.editingPath === null) return;
+		const menu = new Menu();
+		for (const level of [1, 2, 3, 4, 5, 6] as const) {
+			menu.addItem((item) => {
+				item.setTitle(this.t('manuscript.toolbar.headingLevel', { level }))
+					.setIcon(`heading-${level}`)
+					.onClick(() => {
+						this.execToolbar(`heading-${level}`);
+					});
+			});
+		}
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * One shared fetch per quiet stretch: the promise itself is the cache,
+	 * so keystrokes racing the first `[[` coalesce on it. A failed read is
+	 * let go of, and the next popup simply asks again.
+	 */
+	private wikilinkTargetsFeed(): Promise<readonly WikilinkTarget[]> {
+		if (this.wikilinkTargets === null) {
+			const fetched = this.host.listWikilinkTargets(this.projectPath);
+			this.wikilinkTargets = fetched;
+			fetched.catch(() => {
+				if (this.wikilinkTargets === fetched) this.wikilinkTargets = null;
+			});
+		}
+		return this.wikilinkTargets;
+	}
+
+	/** A toolbar press, delivered to whichever note is being written in. */
+	private execToolbar(command: SegmentEditorCommandId): void {
+		const path = this.editingPath;
+		if (path === null) return;
+		this.backend.handle(path)?.exec(command);
+	}
+
+	/** The bar is live exactly while some note is being written in. */
+	private refreshToolbar(): void {
+		const disabled = this.editingPath === null;
+		for (const el of this.toolbarButtons) el.disabled = disabled;
 	}
 
 	/**
@@ -796,6 +967,22 @@ export class SnowflakeManuscriptView extends ItemView {
 		else await this.activateSegment(path);
 	}
 
+	/** Whether some note is being written in right now. */
+	isEditing(): boolean {
+		return this.editingPath !== null;
+	}
+
+	/**
+	 * Puts the note being written in back to prose, from the keyboard or
+	 * the palette. Nothing while reading: the way into an editor is a click
+	 * on the words, which is the one way that keeps them under the pointer.
+	 * Public because the command palette and the view's own key scope both
+	 * reach for it.
+	 */
+	async stopEditing(): Promise<void> {
+		if (this.editingPath !== null) await this.deactivateSegment();
+	}
+
 	/**
 	 * Says which way the toggle would go, in its icon and in its tooltip.
 	 *
@@ -842,13 +1029,49 @@ export class SnowflakeManuscriptView extends ItemView {
 			this,
 		);
 		rendered.addEventListener('click', (event) => {
-			// A link inside the prose is a link, not an invitation to edit.
-			if ((event.target as HTMLElement | null)?.closest('a') !== null) return;
+			// A link inside the prose is a link, not an invitation to edit —
+			// and an internal one is this view's to open, because a rendered
+			// div outside a Markdown view has nobody else answering it.
+			const anchor = (event.target as HTMLElement | null)?.closest('a') ?? null;
+			if (anchor !== null) {
+				if (anchor.classList.contains('internal-link')) {
+					event.preventDefault();
+					const linktext =
+						anchor.getAttribute('data-href') ??
+						anchor.getAttribute('href') ??
+						'';
+					if (linktext.length > 0) {
+						void this.app.workspace
+							.openLinkText(linktext, entry.path, Keymap.isModEvent(event))
+							.catch((error: unknown) => {
+								this.showError(error);
+							});
+					}
+				}
+				return;
+			}
 			void this.activateSegment(entry.path, clickedWords(event)).catch(
 				(error: unknown) => {
 					this.showError(error);
 				},
 			);
+		});
+		rendered.addEventListener('mouseover', (event) => {
+			const anchor =
+				(event.target as HTMLElement | null)?.closest('a.internal-link') ??
+				null;
+			if (anchor === null) return;
+			const linktext =
+				anchor.getAttribute('data-href') ?? anchor.getAttribute('href') ?? '';
+			if (linktext.length === 0) return;
+			this.app.workspace.trigger('hover-link', {
+				event,
+				source: MANUSCRIPT_READING_HOVER_SOURCE,
+				hoverParent: this,
+				targetEl: anchor,
+				linktext,
+				sourcePath: entry.path,
+			});
 		});
 	}
 
@@ -886,8 +1109,17 @@ export class SnowflakeManuscriptView extends ItemView {
 
 		entry.bodyEl.empty();
 		entry.bodyEl.addClass('is-editing');
+		// Pairing preferences are baked into the mount, so a settings change
+		// reaches the author the next time a note opens for editing.
+		const pairing = this.host.manuscriptWindowSettings();
 		entry.editor = await this.backend.mount(
-			{ path, body: entry.pending ?? entry.text.body, readOnly: false },
+			{
+				path,
+				body: entry.pending ?? entry.text.body,
+				readOnly: false,
+				autoPairBrackets: pairing.autoPairBrackets,
+				autoPairMarkdown: pairing.autoPairMarkdown,
+			},
 			entry.bodyEl,
 			{
 				onChange: (changed, body) => {
@@ -909,6 +1141,25 @@ export class SnowflakeManuscriptView extends ItemView {
 						this.showError(error);
 					});
 				},
+				onToggleReading: (read) => {
+					void this.toggleSegment(read).catch((error: unknown) => {
+						this.showError(error);
+					});
+				},
+				wikilinkTargets: () => this.wikilinkTargetsFeed(),
+				onLinkHover: (hoveredPath, event, targetEl, linktext) => {
+					// The core Page preview plugin reads this source's own
+					// modifier setting, so the editor asks for ctrl or cmd
+					// unless the author changes it there.
+					this.app.workspace.trigger('hover-link', {
+						event,
+						source: MANUSCRIPT_EDITING_HOVER_SOURCE,
+						hoverParent: this,
+						targetEl,
+						linktext,
+						sourcePath: hoveredPath,
+					});
+				},
 				onCaretMove: (moved) => {
 					if (!this.host.manuscriptWindowSettings().typewriter) return;
 					const target = this.mounted.get(moved);
@@ -928,6 +1179,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.editingSelection = null;
 		this.host.manuscriptWritingChanged();
 		this.refreshWriteToggles();
+		this.refreshToolbar();
 		// Focus fades only while something is being written, and only around the
 		// note it is written in. Classes, so that starting to write moves nothing.
 		this.streamEl?.addClass('is-writing');
@@ -1211,6 +1463,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async deactivateSegment(): Promise<void> {
 		const path = this.editingPath;
 		if (path === null) return;
+		this.wikilinkTargets = null;
 		await this.flushPendingSave();
 		this.editingPath = null;
 		this.editingSelection = null;
@@ -1218,6 +1471,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.puttingBack = false;
 		this.walkingIn = false;
 		this.refreshWriteToggles();
+		this.refreshToolbar();
 		this.streamEl?.removeClass('is-writing');
 		this.mounted.get(path)?.el.removeClass('is-writing');
 		// The note going back to prose may be anywhere, including above the reader,

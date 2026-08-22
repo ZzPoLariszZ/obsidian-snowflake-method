@@ -596,6 +596,79 @@ describe('translation resources', () => {
 	});
 
 	/**
+	 * The manuscript toolbar builds its buttons from a spec loop, and the
+	 * toggle command's name goes through the untyped global accessor, so the
+	 * type checker never sees any of these keys. Dropped from both locales
+	 * they would render as raw keys and every other check would pass.
+	 */
+	it('labels every manuscript toolbar control in both languages', () => {
+		expect(en['commands.manuscriptStopEditing']).toBe(
+			'Stop editing the current manuscript note',
+		);
+		expect(zhCN['commands.manuscriptStopEditing']).toBe('退出当前正文笔记的编辑');
+		expect(en['manuscript.toolbar.undo']).toBe('Undo');
+		expect(zhCN['manuscript.toolbar.undo']).toBe('撤销');
+		expect(en['manuscript.toolbar.redo']).toBe('Redo');
+		expect(zhCN['manuscript.toolbar.redo']).toBe('重做');
+		expect(en['manuscript.toolbar.heading2']).toBe('Heading 2');
+		expect(zhCN['manuscript.toolbar.heading2']).toBe('标题 2');
+		expect(en['manuscript.toolbar.heading3']).toBe('Heading 3');
+		expect(zhCN['manuscript.toolbar.heading3']).toBe('标题 3');
+		expect(en['manuscript.toolbar.heading']).toBe('Heading levels');
+		expect(zhCN['manuscript.toolbar.heading']).toBe('标题级别');
+		expect(en['manuscript.toolbar.headingLevel']).toBe('Heading {level}');
+		expect(zhCN['manuscript.toolbar.headingLevel']).toBe('标题 {level}');
+		expect(en['manuscript.toolbar.bold']).toBe('Bold');
+		expect(zhCN['manuscript.toolbar.bold']).toBe('粗体');
+		expect(en['manuscript.toolbar.italic']).toBe('Italic');
+		expect(zhCN['manuscript.toolbar.italic']).toBe('斜体');
+		expect(en['manuscript.toolbar.strikethrough']).toBe('Strikethrough');
+		expect(zhCN['manuscript.toolbar.strikethrough']).toBe('删除线');
+		expect(en['manuscript.toolbar.underline']).toBe('Underline');
+		expect(zhCN['manuscript.toolbar.underline']).toBe('下划线');
+		expect(en['manuscript.toolbar.highlight']).toBe('Highlight');
+		expect(zhCN['manuscript.toolbar.highlight']).toBe('高亮');
+	});
+
+	/**
+	 * The hover-preview feeds register through the untyped global accessor
+	 * and their names surface in Obsidian's own Page preview settings, where
+	 * a raw key would look like a broken plugin.
+	 */
+	it('names both manuscript hover sources in both languages', () => {
+		expect(en['manuscript.hoverSource.reading']).toBe(
+			'Snowflake Method manuscript (reading)',
+		);
+		expect(zhCN['manuscript.hoverSource.reading']).toBe('雪花写作法正文（阅读）');
+		expect(en['manuscript.hoverSource.editing']).toBe(
+			'Snowflake Method manuscript (editing)',
+		);
+		expect(zhCN['manuscript.hoverSource.editing']).toBe('雪花写作法正文（编辑）');
+	});
+
+	/**
+	 * The settings page reads its labels through an untyped accessor, so the
+	 * auto-pair rows would render raw keys if these went missing from both
+	 * locales at once.
+	 */
+	it('labels the auto-pair settings in both languages', () => {
+		expect(en['settings.manuscriptAutoPairBrackets.name']).toBe(
+			'Auto-pair brackets and quotes',
+		);
+		expect(zhCN['settings.manuscriptAutoPairBrackets.name']).toBe(
+			'自动配对括号与引号',
+		);
+		expect(Object.keys(en)).toContain('settings.manuscriptAutoPairBrackets.desc');
+		expect(en['settings.manuscriptAutoPairMarkdown.name']).toBe(
+			'Auto-pair Markdown syntax',
+		);
+		expect(zhCN['settings.manuscriptAutoPairMarkdown.name']).toBe(
+			'自动配对 Markdown 语法',
+		);
+		expect(Object.keys(en)).toContain('settings.manuscriptAutoPairMarkdown.desc');
+	});
+
+	/**
 	 * The three session widgets build their row labels and their controls from
 	 * keys the type checker never sees, so a rename that misses one shows up
 	 * as a raw key on the pane rather than as a failure anywhere else.
