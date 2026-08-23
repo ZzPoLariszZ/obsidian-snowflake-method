@@ -58,130 +58,127 @@ function starsAfter(state: EditorState, pos: number): number {
 }
 
 /**
+ * How a marker pair is recognised around or inside a range.
+ *
+ * The two families differ only here. A literal pair -- strikethrough,
+ * highlight, underline -- can be looked for verbatim. Bold and italic share
+ * one delimiter and cannot: `***` is both at once, so what decides is the run
+ * of stars on each side.
+ */
+interface PairShape {
+	open: string;
+	close: string;
+	/** The pair stands immediately outside the range. */
+	outside: (from: number, to: number) => boolean;
+	/** The pair stands immediately inside the range. */
+	inside: (from: number, to: number) => boolean;
+}
+
+/**
  * Bold and italic share one delimiter, so a toggle cannot look for its own
- * pair verbatim — `***` is bold and italic at once. What decides is the run
+ * pair verbatim -- `***` is bold and italic at once. What decides is the run
  * of stars on each side: italic holds when both runs are odd, bold when both
  * hold two or more. Toggling removes or adds its own width, which walks the
  * whole ladder correctly: `**|**` + italic gives `***|***`, bold on that
  * gives `*|*`, italic on that gives nothing at all.
  */
-function starToggle(
-	state: EditorState,
-	range: SelectionRange,
-	width: 1 | 2,
-): { changes: ChangeSpec[]; range: SelectionRange } {
+function starShape(state: EditorState, width: 1 | 2): PairShape {
+	const mark = '*'.repeat(width);
 	const active = (before: number, after: number): boolean =>
 		width === 1 ? before % 2 === 1 && after % 2 === 1 : before >= 2 && after >= 2;
-	const mark = '*'.repeat(width);
-	if (range.empty) {
-		const pos = range.head;
-		if (active(starsBefore(state, pos), starsAfter(state, pos))) {
-			return {
-				changes: [
-					{ from: pos - width, to: pos },
-					{ from: pos, to: pos + width },
-				],
-				range: EditorSelection.cursor(pos - width),
-			};
-		}
-		return {
-			changes: [{ from: pos, insert: mark + mark }],
-			range: EditorSelection.cursor(pos + width),
-		};
-	}
-	const { from, to } = range;
-	if (active(starsBefore(state, from), starsAfter(state, to))) {
-		return {
-			changes: [
-				{ from: from - width, to: from },
-				{ from: to, to: to + width },
-			],
-			range: EditorSelection.range(from - width, to - width),
-		};
-	}
-	const innerBefore = starsAfter(state, from);
-	const innerAfter = starsBefore(state, to);
-	if (innerBefore + innerAfter <= to - from && active(innerBefore, innerAfter)) {
-		return {
-			changes: [
-				{ from, to: from + width },
-				{ from: to - width, to },
-			],
-			range: EditorSelection.range(from, to - 2 * width),
-		};
-	}
 	return {
-		changes: [
-			{ from, insert: mark },
-			{ from: to, insert: mark },
-		],
-		range: EditorSelection.range(from + width, to + width),
+		open: mark,
+		close: mark,
+		outside: (from, to) => active(starsBefore(state, from), starsAfter(state, to)),
+		inside: (from, to) => {
+			const before = starsAfter(state, from);
+			const after = starsBefore(state, to);
+			return before + after <= to - from && active(before, after);
+		},
 	};
 }
 
 /**
- * The literal pairs — strikethrough, highlight, underline — where the marker
+ * The literal pairs -- strikethrough, highlight, underline -- where the marker
  * text itself can be looked for on each side of the range.
  */
-function pairToggle(
-	state: EditorState,
+function literalShape(state: EditorState, open: string, close: string): PairShape {
+	return {
+		open,
+		close,
+		outside: (from, to) =>
+			state.sliceDoc(from - open.length, from) === open &&
+			state.sliceDoc(to, to + close.length) === close,
+		inside: (from, to) => {
+			const selected = state.sliceDoc(from, to);
+			return (
+				selected.length >= open.length + close.length &&
+				selected.startsWith(open) &&
+				selected.endsWith(close)
+			);
+		},
+	};
+}
+
+/**
+ * One toggle, whatever the pair is made of.
+ *
+ * The same five answers in the same order for every marker: an empty caret
+ * already wrapped comes unwrapped, an empty caret bare gets the pair with the
+ * caret between; a range wrapped outside is stripped outside, one wrapped
+ * inside is stripped inside, and anything else is wrapped. Only the
+ * recognising differs, which is what `PairShape` carries -- written twice, the
+ * selection arithmetic below had to be got right twice and could be got wrong
+ * in only one.
+ */
+function toggleAround(
 	range: SelectionRange,
-	open: string,
-	close: string,
+	shape: PairShape,
 ): { changes: ChangeSpec[]; range: SelectionRange } {
+	const openWidth = shape.open.length;
+	const closeWidth = shape.close.length;
 	if (range.empty) {
 		const pos = range.head;
-		if (
-			state.sliceDoc(pos - open.length, pos) === open &&
-			state.sliceDoc(pos, pos + close.length) === close
-		) {
+		if (shape.outside(pos, pos)) {
 			return {
 				changes: [
-					{ from: pos - open.length, to: pos },
-					{ from: pos, to: pos + close.length },
+					{ from: pos - openWidth, to: pos },
+					{ from: pos, to: pos + closeWidth },
 				],
-				range: EditorSelection.cursor(pos - open.length),
+				range: EditorSelection.cursor(pos - openWidth),
 			};
 		}
 		return {
-			changes: [{ from: pos, insert: open + close }],
-			range: EditorSelection.cursor(pos + open.length),
+			changes: [{ from: pos, insert: shape.open + shape.close }],
+			range: EditorSelection.cursor(pos + openWidth),
 		};
 	}
 	const { from, to } = range;
-	if (
-		state.sliceDoc(from - open.length, from) === open &&
-		state.sliceDoc(to, to + close.length) === close
-	) {
+	if (shape.outside(from, to)) {
 		return {
 			changes: [
-				{ from: from - open.length, to: from },
-				{ from: to, to: to + close.length },
+				{ from: from - openWidth, to: from },
+				{ from: to, to: to + closeWidth },
 			],
-			range: EditorSelection.range(from - open.length, to - open.length),
+			range: EditorSelection.range(from - openWidth, to - openWidth),
 		};
 	}
-	const selected = state.sliceDoc(from, to);
-	if (
-		selected.length >= open.length + close.length &&
-		selected.startsWith(open) &&
-		selected.endsWith(close)
-	) {
+	if (shape.inside(from, to)) {
 		return {
 			changes: [
-				{ from, to: from + open.length },
-				{ from: to - close.length, to },
+				{ from, to: from + openWidth },
+				{ from: to - closeWidth, to },
 			],
-			range: EditorSelection.range(from, to - open.length - close.length),
+			range: EditorSelection.range(from, to - openWidth - closeWidth),
 		};
 	}
 	return {
 		changes: [
-			{ from, insert: open },
-			{ from: to, insert: close },
+			{ from, insert: shape.open },
+			{ from: to, insert: shape.close },
 		],
 		// The close lands after the inner text, so only the open shifts it.
-		range: EditorSelection.range(from + open.length, to + open.length),
+		range: EditorSelection.range(from + openWidth, to + openWidth),
 	};
 }
 
@@ -195,12 +192,11 @@ export function toggleInline(
 	marker: InlineMarker,
 ): TransactionSpec | null {
 	if (state.readOnly) return null;
-	if (marker === 'bold' || marker === 'italic') {
-		const width = marker === 'bold' ? 2 : 1;
-		return state.changeByRange((range) => starToggle(state, range, width));
-	}
-	const { open, close } = INLINE_PAIRS[marker];
-	return state.changeByRange((range) => pairToggle(state, range, open, close));
+	const shape =
+		marker === 'bold' || marker === 'italic'
+			? starShape(state, marker === 'bold' ? 2 : 1)
+			: literalShape(state, INLINE_PAIRS[marker].open, INLINE_PAIRS[marker].close);
+	return state.changeByRange((range) => toggleAround(range, shape));
 }
 
 const HEADING_PREFIX = /^(#{1,6})[ \t]+/u;
