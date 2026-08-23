@@ -47,6 +47,19 @@ const OPAQUE_BLOCKS = new Set([
 	'CommentBlock',
 ]);
 
+/**
+ * Blocks that hold other blocks. Their own blank lines are not the
+ * manuscript's gap -- the page spaces a list's items by the theme's list
+ * spacing, not by the paragraph gap -- and the walk goes down through them,
+ * because a code fence written inside a list item is still code.
+ */
+const CONTAINER_BLOCKS = new Set([
+	'BulletList',
+	'OrderedList',
+	'ListItem',
+	'Blockquote',
+]);
+
 export function paragraphLayout(
 	state: EditorState,
 	from: number,
@@ -66,18 +79,31 @@ export function paragraphLayout(
 		to,
 		enter: (node) => {
 			if (node.name === 'Document') return true;
-			if (node.name === 'Paragraph') {
-				const opening = doc.lineAt(node.from);
-				first.push(opening.from);
-				const last = doc.lineAt(node.to).number;
-				for (let number = opening.number; number <= last; number += 1) {
-					lines.push(doc.line(number).from);
-				}
-			} else if (OPAQUE_BLOCKS.has(node.name)) {
+			if (OPAQUE_BLOCKS.has(node.name)) {
+				// At whatever depth it was written: a fence inside a list item
+				// is as much code as one standing on its own, and squeezing a
+				// blank line in the middle of it would be nonsense.
 				opaque.push({ from: node.from, to: node.to });
+				return false;
 			}
-			// Only the document's own children: a paragraph inside a list or
-			// a quote is the list's or the quote's, as it is on the page.
+			if (CONTAINER_BLOCKS.has(node.name)) {
+				opaque.push({ from: node.from, to: node.to });
+				return true;
+			}
+			if (node.name === 'Paragraph') {
+				// Only the document's own: a paragraph inside a list or a quote
+				// is the list's or the quote's, as it is on the page. Asked of
+				// the parent rather than of a depth count, so the answer does
+				// not depend on how the walk arrived.
+				if (node.node.parent?.name === 'Document') {
+					const opening = doc.lineAt(node.from);
+					first.push(opening.from);
+					const last = doc.lineAt(node.to).number;
+					for (let number = opening.number; number <= last; number += 1) {
+						lines.push(doc.line(number).from);
+					}
+				}
+			}
 			return false;
 		},
 	});

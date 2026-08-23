@@ -161,6 +161,43 @@ interface Elision {
  */
 const TILDE_RUN = /~{3,}/gu;
 
+/**
+ * Where a pair of tilde fences stands, as the page reads them.
+ *
+ * The count does not read a tilde fence as code -- see `TILDE_RUN` -- because
+ * an unclosed one would take a chapter off the count, and in a writer's hands
+ * those tildes are strikethrough marks. Obsidian does read them, though, and
+ * the one place that difference can be felt is the comment marker: `%%` inside
+ * a fence opens nothing on the page, and if the count let it open a comment
+ * there, an author writing *about* Obsidian's own syntax would silently lose
+ * every word below it. So a matched pair is found here by the text alone and
+ * the markers between them are left inert, while the words between them go on
+ * counting as the prose this counter takes them for.
+ */
+const TILDE_FENCE_OPEN = /^ {0,3}(~{3,})[^\n]*$/u;
+const TILDE_FENCE_CLOSE = /^ {0,3}(~{3,})\s*$/u;
+
+function tildeFenceRanges(body: string): CountableRange[] {
+	const ranges: CountableRange[] = [];
+	let at = 0;
+	let open: { from: number; width: number } | null = null;
+	for (const line of body.split('\n')) {
+		const end = at + line.length;
+		if (open === null) {
+			const found = TILDE_FENCE_OPEN.exec(line);
+			if (found?.[1] !== undefined) open = { from: at, width: found[1].length };
+		} else {
+			const found = TILDE_FENCE_CLOSE.exec(line);
+			if (found?.[1] !== undefined && found[1].length >= open.width) {
+				ranges.push({ from: open.from, to: end });
+				open = null;
+			}
+		}
+		at = end + 1;
+	}
+	return ranges;
+}
+
 /** Obsidian's own syntax, which no Markdown grammar reads as anything. */
 const WIKILINK = /(!?)\[\[([^\]\n]*?)(?:\|([^\]\n]*))?\]\]/gu;
 const BLOCK_ID = /(?:^|[ \t])\^[A-Za-z0-9-]+$/gmu;
@@ -341,8 +378,11 @@ export function countableProse(
 	// cannot stand in for this one. What the caller excluded is deliberately
 	// not here: those stretches are off this count, not off the page.
 	const hidden: CountableRange[] = [...codeRanges];
+	// A tilde fence is not code to this counter, but its contents are still
+	// shown as written, so a comment marker inside one opens nothing.
+	const inert = [...codeRanges, ...tildeFenceRanges(body)];
 	const insideCode = (at: number): boolean =>
-		codeRanges.some((range) => at >= range.from && at < range.to);
+		inert.some((range) => at >= range.from && at < range.to);
 	// Obsidian comments hide everything to the closing `%%`, and an unclosed
 	// one hides everything to the end of the note, which is how the page
 	// renders it. A `%%` inside code opens nothing: code is shown as written,

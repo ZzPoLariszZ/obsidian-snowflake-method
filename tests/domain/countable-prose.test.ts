@@ -197,6 +197,22 @@ describe('countable prose', () => {
 			expect(count('```\nfenced words\n```')).toBe(0);
 		});
 
+		it('opens no comment on a marker written inside a tilde fence', () => {
+			// The page shows what is between a pair of tilde fences as written,
+			// so a `%%` there is two characters rather than the start of a
+			// comment. Letting it open one would hide every word below it, which
+			// is the very thing not reading the fence as code exists to prevent.
+			// Two words above, the fence runs and the four words between them,
+			// and -- the point of it -- the two words below still there.
+			expect(count('alpha beta\n\n~~~\n%% not a comment\n~~~\n\ngamma delta')).toBe(
+				10,
+			);
+			expect(countableProse('one\n\n~~~\n%% x\n~~~\n\ntwo')).toContain('two');
+			// A marker in prose still opens one, and an unclosed one still hides
+			// what follows, which is how the page renders it.
+			expect(count('alpha beta\n\n%% not a comment\n\ngamma delta')).toBe(2);
+		});
+
 		it('keeps a highlight and drops its equals', () => {
 			expect(countableProse('记住==这句话==吧')).toBe('记住这句话吧');
 			// A lone pair with a space inside highlights nothing, as in Obsidian.

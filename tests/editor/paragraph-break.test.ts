@@ -31,6 +31,31 @@ describe('paragraphBreak', () => {
 		expect(pressEnter('One.\n\nTwo.', 5)).toBe('One.\n\n|\n\nTwo.');
 	});
 
+	it('declines inside a table written without its outer pipes', () => {
+		const table = 'Name | Age\n--- | ---\nBo | 3';
+		// The end of each row in turn: headings, dashes, and a body row.
+		expect(pressEnter(table, 10)).toBeNull();
+		expect(pressEnter(table, 20)).toBeNull();
+		expect(pressEnter(table, 27)).toBeNull();
+	});
+
+	it('declines inside a table written with its outer pipes', () => {
+		const table = '| Name | Age |\n| --- | --- |\n| Bo | 3 |';
+		expect(pressEnter(table, 14)).toBeNull();
+		expect(pressEnter(table, 39)).toBeNull();
+	});
+
+	it('answers on the prose around a table', () => {
+		const doc = 'Before\n\nName | Age\n--- | ---\nBo | 3\n\nAfter';
+		expect(pressEnter(doc, 6)).toBe('Before\n\n|\n\nName | Age\n--- | ---\nBo | 3\n\nAfter');
+		expect(pressEnter(doc, 42)).toBe(`${doc}\n\n|`);
+	});
+
+	it('answers under a row of dashes that underlines a heading', () => {
+		// No pipe, so it is a setext heading rather than a table.
+		expect(pressEnter('Title\n---\n\nProse.', 17)).toBe('Title\n---\n\nProse.\n\n|');
+	});
+
 	it('replaces a selection the way typing would', () => {
 		expect(pressEnter('One two three', 3, 7)).toBe('One\n\n| three');
 	});

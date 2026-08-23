@@ -38,12 +38,59 @@ const KEEPS_PLAIN_ENTER = new Set([
 /** How long to spend parsing up to the caret before deciding. */
 const PARSE_MS = 20;
 
+/** One cell of the row of dashes that turns two lines into a table. */
+const DELIMITER_CELL = /^\s*:?-+:?\s*$/u;
+
+/**
+ * Whether a line is the row of dashes under a table's headings. A pipe is
+ * required: a bare row of dashes underlines a heading instead, which is a
+ * different thing entirely. The outer pipes are optional, as they are in the
+ * tables Obsidian reads.
+ */
+function isDelimiterRow(text: string): boolean {
+	if (!text.includes('|')) return false;
+	const cells = text
+		.trim()
+		.replace(/^\|/u, '')
+		.replace(/\|$/u, '')
+		.split('|');
+	return cells.every((cell) => DELIMITER_CELL.test(cell));
+}
+
+/**
+ * Whether the line at `number` belongs to a table.
+ *
+ * The grammar here is CommonMark, which has no tables at all, so the text has
+ * to say. A table is the run of lines around the caret with a row of dashes
+ * somewhere below its first line: everything from the headings down is the
+ * table's, and a blank line above or below ends it, which is exactly how the
+ * page reads one. Rows written without their outer pipes are a table too --
+ * the reason the leading-pipe test alone was not enough, since Enter would
+ * cut such a table in half and orphan every row under the break.
+ */
+function insideTable(
+	doc: EditorState['doc'],
+	number: number,
+): boolean {
+	const blank = (at: number): boolean => doc.line(at).text.trim().length === 0;
+	let start = number;
+	while (start > 1 && !blank(start - 1)) start -= 1;
+	let end = number;
+	while (end < doc.lines && !blank(end + 1)) end += 1;
+	for (let at = start + 1; at <= end; at += 1) {
+		if (isDelimiterRow(doc.line(at).text)) return number >= at - 1;
+	}
+	return false;
+}
+
 export function paragraphBreak(state: EditorState): TransactionSpec | null {
 	const range = state.selection.main;
 	const line = state.doc.lineAt(range.head);
-	// The grammar here is CommonMark alone; a table is rows of paragraph to
-	// it, so a row is told by its first character.
+	// A row still being typed, before the dashes under it exist, is already a
+	// row; a table that has its dashes is read whole, pipes on the outside or
+	// not.
 	if (/^\s*\|/u.test(line.text)) return null;
+	if (insideTable(state.doc, line.number)) return null;
 	const tree = ensureSyntaxTree(state, range.head, PARSE_MS) ?? syntaxTree(state);
 	for (
 		let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(

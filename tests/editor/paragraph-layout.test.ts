@@ -95,6 +95,42 @@ describe('paragraphLayout', () => {
 		expect(layoutOf(doc)).toEqual({ first: [1, 9], lines: [1, 9], blank: [2, 8] });
 	});
 
+	it('keeps a blank line inside a code block nested in a list as code', () => {
+		const doc = [
+			'Text', // 1
+			'', // 2
+			'- item', // 3
+			'', // 4
+			'  ```', // 5
+			'  code', // 6
+			'', // 7
+			'  more', // 8
+			'  ```', // 9
+			'', // 10
+			'After', // 11
+		].join('\n');
+		const layout = layoutOf(doc);
+		expect(layout.blank).not.toContain(7);
+		expect(layout.first).toEqual([1, 11]);
+		expect(layout.lines).toEqual([1, 11]);
+	});
+
+	it('leaves a loose list`s own blank lines to the list', () => {
+		expect(layoutOf('- one\n\n- two')).toEqual({
+			first: [],
+			lines: [],
+			blank: [],
+		});
+	});
+
+	it('leaves a blank line between a list item`s paragraphs to the list', () => {
+		const layout = layoutOf('- one\n\n  two\n\nAfter');
+		// Line 2 is the list's own; line 4 stands between the list and the
+		// paragraph below it, which is a gap of the manuscript's like any other.
+		expect(layout.blank).toEqual([4]);
+		expect(layout.first).toEqual([5]);
+	});
+
 	it('makes the first blank line of a run the gap and a second one a line of its own', () => {
 		// Enter at the end of a note that ends in a newline: gap, the line
 		// just opened, and the note's own trailing newline as the gap below.
