@@ -3646,7 +3646,7 @@ export class SnowflakeProjectService {
     for (const { kind } of fields) {
       const entities = entitiesOf(project, kind);
       for (const entity of entities) {
-        known.set(`${kind} ${foldName(entity.name)}`, entity.path);
+        known.set(`${kind}\0${foldName(entity.name)}`, entity.path);
       }
       const last = entities[entities.length - 1];
       ranks.set(kind, last === undefined ? 0 : last.rank);
@@ -3672,7 +3672,7 @@ export class SnowflakeProjectService {
             adopted.push(link);
             continue;
           }
-          const key = `${field.kind} ${foldName(term.text)}`;
+          const key = `${field.kind}\0${foldName(term.text)}`;
           let path = known.get(key);
           if (path === undefined) {
             const rank = (ranks.get(field.kind) ?? 0) + RANK_GAP;
