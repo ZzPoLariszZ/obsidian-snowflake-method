@@ -6,14 +6,18 @@
  * because the file name a note is given collapses them too — so "Ada  Lovelace"
  * and "Ada Lovelace" would be asking for the same note. Composed first, so a
  * name typed with combining accents matches the same name typed with precomposed
- * ones, which no author would expect to be two different characters.
+ * ones, which no author would expect to be two different characters. Case is
+ * folded with `toLowerCase` rather than the locale-aware one, so that two names
+ * are the same pair of names on every machine: under a Turkish locale the
+ * locale-aware fold turns I into ı, and a note would stop answering to its own
+ * name for no reason its author could see.
  */
 export function foldName(value: string): string {
 	return value
 		.normalize('NFC')
 		.replace(/\s+/gu, ' ')
 		.trim()
-		.toLocaleLowerCase();
+		.toLowerCase();
 }
 
 /**

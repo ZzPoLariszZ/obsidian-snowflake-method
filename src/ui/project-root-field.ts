@@ -60,7 +60,7 @@ class ProjectRootSuggest extends FieldSuggest<TFolder> {
 		if (!showAll && trimmedQuery === displayProjectRoot(this.currentRoot())) {
 			return [];
 		}
-		const normalizedQuery = showAll ? '' : trimmedQuery.toLocaleLowerCase();
+		const normalizedQuery = showAll ? '' : trimmedQuery.toLowerCase();
 		// Runs on every keystroke; getAllLoadedFiles() would walk every note and
 		// attachment in the Vault to arrive at the same list.
 		const folders = this.app.vault.getAllFolders(true);
@@ -70,7 +70,7 @@ class ProjectRootSuggest extends FieldSuggest<TFolder> {
 		}
 		return [...unique.entries()]
 			.filter(([path]) =>
-				displayProjectRoot(path).toLocaleLowerCase().includes(normalizedQuery),
+				displayProjectRoot(path).toLowerCase().includes(normalizedQuery),
 			)
 			.sort(([left], [right]) => {
 				if (left.length === 0) return -1;

@@ -11,6 +11,8 @@
  * half read the same numbers from the same place.
  */
 
+import { foldName } from './names';
+
 export type ManuscriptGuide = 'none' | 'solid' | 'dashed';
 
 export const MANUSCRIPT_GUIDES: readonly ManuscriptGuide[] = [
@@ -291,8 +293,9 @@ export function rememberFontFamily(
 	limit: number = RECENT_FONT_LIMIT,
 ): string[] {
 	const chosen = sanitizeFontFamily(family);
+	const chosenKey = foldName(chosen);
 	const kept = sanitizeRecentFonts(recent).filter(
-		(name) => name.toLocaleLowerCase() !== chosen.toLocaleLowerCase(),
+		(name) => foldName(name) !== chosenKey,
 	);
 	if (chosen.length === 0) return kept.slice(0, limit);
 	return [chosen, ...kept].slice(0, limit);
@@ -305,7 +308,10 @@ export function sanitizeRecentFonts(value: unknown): string[] {
 	const kept: string[] = [];
 	for (const entry of value) {
 		const name = sanitizeFontFamily(entry);
-		const key = name.toLocaleLowerCase();
+		// The domain's own comparison form, which composes as well as folds:
+		// a face named with combining accents is one face, not two rows of the
+		// same six that look identical.
+		const key = foldName(name);
 		if (name.length === 0 || seen.has(key)) continue;
 		seen.add(key);
 		kept.push(name);

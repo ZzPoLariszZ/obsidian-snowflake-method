@@ -70,10 +70,10 @@ export function optionsMatching<T extends { label: string }>(
 	options: readonly T[],
 	query: string,
 ): T[] {
-	const needle = query.trim().toLocaleLowerCase();
+	const needle = query.trim().toLowerCase();
 	if (needle.length === 0) return [...options];
 	return options.filter((option) =>
-		option.label.toLocaleLowerCase().includes(needle),
+		option.label.toLowerCase().includes(needle),
 	);
 }
 

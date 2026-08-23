@@ -174,9 +174,9 @@ export function memberMatches(
 	texts: readonly string[],
 	query: string,
 ): boolean {
-	const needle = query.trim().toLocaleLowerCase();
+	const needle = query.trim().toLowerCase();
 	if (needle.length === 0) return true;
-	return texts.some((text) => text.toLocaleLowerCase().includes(needle));
+	return texts.some((text) => text.toLowerCase().includes(needle));
 }
 
 export interface DashboardRenderSnapshot {

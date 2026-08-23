@@ -11,8 +11,19 @@
 /** Word characters in the blocking sense: only ASCII words hold together. */
 const WORD = /[a-z0-9]/u;
 
+/*
+ * Case is folded with `toLowerCase`, never `toLocaleLowerCase`: the locale-aware
+ * one folds by whatever locale the machine happens to run under, and under a
+ * Turkish or Azeri one an I becomes a dotless ı, which the query's own i then
+ * fails to match -- an entity gone from the list for no reason its author could
+ * see. The V8 shortcut for plain Latin-1 hides it until one character of the name
+ * is not Latin-1, which in a manuscript is any curly apostrophe and every Chinese
+ * name. A matching key is not writing shown to anyone, so it wants the one
+ * mapping that is the same everywhere, which is also what keeps the promise
+ * above: the same numbers headless and live.
+ */
 function foldToPoints(text: string): string[] {
-	return [...text.toLocaleLowerCase()];
+	return [...text.toLowerCase()];
 }
 
 function wordStart(candidate: readonly string[], at: number): boolean {
