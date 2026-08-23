@@ -10,6 +10,8 @@ export default defineConfig(
 		'esbuild.config.mjs',
 		'version-bump.mjs',
 		'versions.json',
+		// Local tooling outside the plugin: the smoke-vault fixture generator.
+		'scripts',
 		'main.js',
 		// package.json is deliberately not here: Obsidian's own config lints it
 		// for dependencies it would rather a plugin did without, and ignoring the
