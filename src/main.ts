@@ -227,6 +227,12 @@ import type {
 import { ManuscriptSaveConflict, kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
+/**
+ * How long a flurry of settings writes is gathered before it reaches the disk.
+ * A typography slider answers at every stop it crosses so the page follows the
+ * hand; the file is written once the hand stops.
+ */
+const SETTINGS_SAVE_DELAY_MS = 400;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
@@ -337,6 +343,9 @@ export default class SnowflakeMethodPlugin
 {
 	settings: SnowflakeSettings = { ...DEFAULT_SETTINGS };
 	projects!: SnowflakeProjectService;
+	/** The settings page, kept so a value changed elsewhere can reach its rows. */
+	private settingTab: SnowflakeSettingTab | null = null;
+	private settingsSaveTimer: number | null = null;
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
 	private refreshProjectLocales = false;
@@ -605,7 +614,8 @@ export default class SnowflakeMethodPlugin
 		this.registerWritingCount();
 		addIcon(POMODORO_ICON, POMODORO_SVG);
 		this.registerWritingSessions();
-		this.addSettingTab(new SnowflakeSettingTab(this.app, this));
+		this.settingTab = new SnowflakeSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
 				const view = findEditorViewForMarkdownInfo(info);
@@ -696,6 +706,13 @@ export default class SnowflakeMethodPlugin
 		// the per-device store before anything else happens, so the next load
 		// can close the session out instead of losing it.
 		this.sessions.markShutdown();
+		// A typography change still waiting on its timer, written now: the drag
+		// that made it is the author's choice whether or not they paused after it.
+		if (this.settingsSaveTimer !== null) {
+			window.clearTimeout(this.settingsSaveTimer);
+			this.settingsSaveTimer = null;
+			void this.saveSettings();
+		}
 		if (this.refreshTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.refreshTimer);
 			this.refreshTimer = null;
@@ -2408,6 +2425,35 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
+	/**
+	 * Saves, but not this instant.
+	 *
+	 * A typography slider is answered at every stop it crosses, so that the page
+	 * follows the hand dragging it. Each of those used to write the whole of
+	 * data.json -- two dozen full rewrites for one drag of the font size, and two
+	 * dozen file events for whatever is syncing the vault. The page is dressed
+	 * from the settings in memory and needs nothing from the disk, so the disk is
+	 * told once the hand comes to rest. Whatever is waiting is written on unload,
+	 * so a drag and a quit in the same breath still lands.
+	 */
+	saveSettingsSoon(): void {
+		if (this.settingsSaveTimer !== null) {
+			window.clearTimeout(this.settingsSaveTimer);
+		}
+		this.settingsSaveTimer = window.setTimeout(() => {
+			this.settingsSaveTimer = null;
+			void this.saveSettings();
+		}, SETTINGS_SAVE_DELAY_MS);
+	}
+
+	/** Writes a deferred save now, if one is waiting. */
+	async flushSettingsSave(): Promise<void> {
+		if (this.settingsSaveTimer === null) return;
+		window.clearTimeout(this.settingsSaveTimer);
+		this.settingsSaveTimer = null;
+		await this.saveSettings();
+	}
+
 	async saveSettings(): Promise<void> {
 		const snapshot: SnowflakeSettings = {
 			...this.settings,
@@ -2429,6 +2475,10 @@ export default class SnowflakeMethodPlugin
 		// dragged live.
 		if (isManuscriptPresentationKey(key)) {
 			this.applyManuscriptPresentation();
+			// The settings page shows these same values, and in 1.13 it stands
+			// in a window of its own, so it can be open beside the popover that
+			// just wrote one. It declines while it is the page doing the writing.
+			this.settingTab?.refreshPresentationRows();
 			return;
 		}
 		if (key === 'reduceMotion') this.applyMotionPreference();
@@ -4393,12 +4443,15 @@ export default class SnowflakeMethodPlugin
 		}
 		if (patch.guide !== undefined) keep('manuscriptGuide', sanitizeGuide(patch.guide));
 		if (changed.length === 0) {
+			// Only the recent-font list moved, which nothing on the page shows.
 			if (patch.fontFamily === undefined) return;
-			await this.saveSettings();
+			this.saveSettingsSoon();
 			return;
 		}
-		await this.saveSettings();
+		// The page first: it reads the settings in memory, and putting the write
+		// ahead of it made every stop of a drag wait on the disk.
 		for (const key of changed) await this.handleSettingsChanged(key);
+		this.saveSettingsSoon();
 	}
 
 	async setManuscriptEnterParagraph(on: boolean): Promise<void> {

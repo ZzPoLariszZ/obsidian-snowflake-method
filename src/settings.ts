@@ -52,6 +52,7 @@ import {
 	type ManuscriptTextAlign,
 	type ManuscriptTint,
 	type ReadingMeasure,
+	type ManuscriptPresentation,
 	type WeekStartDay,
 	type WritingCountHeadings,
 	type WritingCountMode,
@@ -372,19 +373,36 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
  * count to recompute, no dashboard to redraw -- which is what lets a slider
  * be dragged live.
  */
-const MANUSCRIPT_PRESENTATION_KEYS = new Set<keyof SnowflakeSettings>([
-	'manuscriptFontFamily',
-	'manuscriptFontSize',
-	'manuscriptLineHeight',
-	'manuscriptContentWidth',
-	'manuscriptParagraphSpacing',
-	'manuscriptFirstLineIndent',
-	'manuscriptTextAlign',
-	'manuscriptHyphenation',
-	'manuscriptTintLight',
-	'manuscriptTintDark',
-	'manuscriptGuide',
-]);
+/**
+ * Which setting holds each value of the page's dress.
+ *
+ * Written as a record over the dress's own fields, so a field added to
+ * `ManuscriptPresentation` and forgotten here will not compile. That matters
+ * more than it looks: the set below decides which changes reach an open stream
+ * at once, and a key missing from it gave a setting that saved perfectly well
+ * and never showed up until the view was rebuilt -- with nothing failing to
+ * say so.
+ */
+export const PRESENTATION_SETTINGS_KEYS: Record<
+	keyof ManuscriptPresentation,
+	keyof SnowflakeSettings
+> = {
+	fontFamily: 'manuscriptFontFamily',
+	fontSize: 'manuscriptFontSize',
+	lineHeight: 'manuscriptLineHeight',
+	contentWidth: 'manuscriptContentWidth',
+	paragraphSpacing: 'manuscriptParagraphSpacing',
+	firstLineIndent: 'manuscriptFirstLineIndent',
+	textAlign: 'manuscriptTextAlign',
+	hyphenation: 'manuscriptHyphenation',
+	tintLight: 'manuscriptTintLight',
+	tintDark: 'manuscriptTintDark',
+	guide: 'manuscriptGuide',
+};
+
+const MANUSCRIPT_PRESENTATION_KEYS = new Set<keyof SnowflakeSettings>(
+	Object.values(PRESENTATION_SETTINGS_KEYS),
+);
 
 export function isManuscriptPresentationKey(key: string): boolean {
 	return MANUSCRIPT_PRESENTATION_KEYS.has(key as keyof SnowflakeSettings);
@@ -689,12 +707,55 @@ function isDefaultProjectLocale(value: unknown): value is DefaultProjectLocale {
 	return value === 'system' || value === 'en' || value === 'zh-CN';
 }
 
+/**
+ * How long the settings page waits before showing a value changed elsewhere.
+ * Long enough that a slider dragged in the popover rebuilds this page once at
+ * the end rather than at every stop it crosses.
+ */
+const PRESENTATION_SYNC_MS = 150;
+
 export class SnowflakeSettingTab extends PluginSettingTab {
 	private readonly owner: SnowflakeMethodPlugin;
+	/** Raised while this page is the one writing, so it does not answer itself. */
+	private writing = false;
+	private syncTimer: number | null = null;
 
 	constructor(app: App, plugin: SnowflakeMethodPlugin) {
 		super(app, plugin);
 		this.owner = plugin;
+	}
+
+	/**
+	 * Told when a value this page shows was changed somewhere else.
+	 *
+	 * The popover over a manuscript writes the same settings this page does,
+	 * and in Obsidian 1.13 the settings open in a window of their own, so both
+	 * can be on screen at once. A row left showing the old value is not merely
+	 * stale: the next nudge of that slider writes the old value's neighbour,
+	 * quietly undoing what was chosen in the popover. The page is rebuilt from
+	 * the settings instead, which is the one thing that reaches the declared
+	 * rows as well as the drawn ones.
+	 *
+	 * Not while this page is the one writing, which would rebuild a control
+	 * under the hand dragging it, and not once per stop of someone else's drag
+	 * either: the last change of a flurry is the one worth showing.
+	 */
+	refreshPresentationRows(): void {
+		if (this.writing) return;
+		const win = this.containerEl.win;
+		if (this.syncTimer !== null) win.clearTimeout(this.syncTimer);
+		this.syncTimer = win.setTimeout(() => {
+			this.syncTimer = null;
+			this.update();
+		}, PRESENTATION_SYNC_MS);
+	}
+
+	hide(): void {
+		if (this.syncTimer !== null) {
+			this.containerEl.win.clearTimeout(this.syncTimer);
+			this.syncTimer = null;
+		}
+		super.hide();
 	}
 
 	/**
@@ -1714,11 +1775,27 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				break;
 		}
 
-		await this.owner.saveSettings();
-		// handleSettingsChanged rebuilds this page for the keys whose rows
-		// describe the value in force; uiLocale is rebuilt here because every
-		// label on the page is resolved through it.
-		await this.owner.handleSettingsChanged(key);
+		this.writing = true;
+		try {
+			// A presentation key dresses the page from the settings in memory and
+			// wants nothing from the disk, so it is answered first and the file
+			// catches up once the slider stops. Everything else is written before
+			// it is announced, since what hears of it may go on to read the file.
+			// Either way the announcement reaches this page again through
+			// refreshPresentationRows, which declines while this flag is up: the
+			// row that started it is already showing what it wrote.
+			if (isManuscriptPresentationKey(key)) {
+				await this.owner.handleSettingsChanged(key);
+				this.owner.saveSettingsSoon();
+			} else {
+				await this.owner.saveSettings();
+				await this.owner.handleSettingsChanged(key);
+			}
+		} finally {
+			this.writing = false;
+		}
+		// uiLocale is rebuilt here because every label on the page is resolved
+		// through it.
 		if (key === 'uiLocale') this.update();
 	}
 }

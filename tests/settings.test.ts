@@ -11,6 +11,7 @@ import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
 	isManuscriptPresentationKey,
+	PRESENTATION_SETTINGS_KEYS,
 	sanitizeSettings,
 	type SnowflakeSettings,
 } from '../src/settings';
@@ -73,6 +74,7 @@ function writableSettingTab(): {
 	const plugin = {
 		settings,
 		saveSettings: async () => undefined,
+		saveSettingsSoon: () => undefined,
 		handleSettingsChanged: async () => undefined,
 	} as unknown as SnowflakeMethodPlugin;
 	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
@@ -363,6 +365,11 @@ describe('settings', () => {
 		}
 		expect(isManuscriptPresentationKey('manuscriptWindow')).toBe(false);
 		expect(isManuscriptPresentationKey('manuscriptTypewriter')).toBe(false);
+		// And the walk above covers the dress entire, so a twelfth value cannot
+		// be added with a row on the page and no way through to an open stream.
+		expect(Object.keys(wanted).sort()).toEqual(
+			Object.values(PRESENTATION_SETTINGS_KEYS).sort(),
+		);
 	});
 
 	/**
