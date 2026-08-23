@@ -489,6 +489,18 @@ export interface SegmentEditorHandle {
 		screenY: number,
 		near: number,
 	): number | null;
+	/**
+	 * The mirror of `seek`: which words stand at a height on the screen, said
+	 * as a place in the text, and where exactly they sit.
+	 *
+	 * `seek` answers the arrival, when a click on the page has to become a
+	 * caret in the editor. This answers the departure. The two layouts disagree
+	 * by however much syntax and headings weigh, so a note going back to prose
+	 * moves everything the reader was looking at, and the only thing both
+	 * halves agree on is the text itself: the caller turns this offset into a
+	 * place on the rendered page and scrolls by the difference.
+	 */
+	place(screenY: number): { at: number; top: number } | null;
 	/** Runs one editing command as the author's own edit. False when it did nothing. */
 	exec(command: SegmentEditorCommandId): boolean;
 	/**
@@ -724,6 +736,23 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				if (found === null) return null;
 				const coords = view.coordsAtPos(position);
 				return coords === null ? null : coords.top - screenY;
+			},
+			place: (screenY: number) => {
+				const box = view.contentDOM.getBoundingClientRect();
+				if (box.height === 0) return null;
+				// Clamped into the text: the height asked about is the top of the
+				// page, which on a note the reader is only part way into sits above
+				// the editor's first line, and there is no place there to hold.
+				const y = Math.min(Math.max(screenY, box.top + 1), box.bottom - 1);
+				// Imprecise on purpose: at the very left of a line the point can
+				// fall in the padding, and the nearest place is the honest answer.
+				const at = view.posAtCoords({ x: box.left + 1, y }, false);
+				// Where that place actually is, rather than the height asked about.
+				// The two differ by up to a line, since the character under the
+				// point starts above it, and that difference is the whole error the
+				// hold is trying to keep out.
+				const coords = view.coordsAtPos(at);
+				return coords === null ? null : { at, top: coords.top };
 			},
 			exec: (command: SegmentEditorCommandId) =>
 				runEditorCommand(view, command),

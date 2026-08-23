@@ -202,16 +202,49 @@ let memo: { source: string; projection: ProseProjection } | null = null;
  * the wrong copy scrolls the page somewhere the author never was — worse than
  * the small shift of doing nothing.
  */
+function projectionOf(source: string): ProseProjection {
+	if (memo === null || memo.source !== source) {
+		memo = { source, projection: projectProse(source) };
+	}
+	return memo.projection;
+}
+
+/**
+ * The other direction: where in the projected prose a place in the source
+ * falls.
+ *
+ * `findPassage` answers the click, which starts on the page and asks about the
+ * file. Leaving an editor asks the reverse — the caret line, or whatever line
+ * stands at the top of the page, is a place in the file, and the question is
+ * where those words will be once the note is prose again. The answer is an
+ * index into the same projection both halves match on, which the caller walks
+ * the rendered text against.
+ *
+ * `sourceIndexOf` rises as the projection walks the source once and in order,
+ * so the first surviving character at or after a source position is a binary
+ * search. A position past the last of them answers with the last, which is the
+ * end of the note and the honest place to hold.
+ */
+export function projectedIndexAt(source: string, at: number): number | null {
+	const { sourceIndexOf } = projectionOf(source);
+	if (sourceIndexOf.length === 0) return null;
+	let low = 0;
+	let high = sourceIndexOf.length;
+	while (low < high) {
+		const mid = Math.floor((low + high) / 2);
+		if ((sourceIndexOf[mid] ?? 0) < at) low = mid + 1;
+		else high = mid;
+	}
+	return Math.min(low, sourceIndexOf.length - 1);
+}
+
 export function findPassage(
 	source: string,
 	passage: string,
 	lead: number,
 	near: number,
 ): number | null {
-	if (memo === null || memo.source !== source) {
-		memo = { source, projection: projectProse(source) };
-	}
-	const { text, sourceIndexOf } = memo.projection;
+	const { text, sourceIndexOf } = projectionOf(source);
 
 	// The passage under the projection's own rule, and the pointer's place in
 	// it counted in surviving characters.

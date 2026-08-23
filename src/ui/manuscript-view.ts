@@ -18,6 +18,7 @@ import {
 } from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import { confirmSegmentMerge } from './modals';
+import { projectedIndexAt } from './prose-projection';
 import {
 	openPresentationPanel,
 	type PresentationPanel,
@@ -1049,6 +1050,83 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
+	 * Holds the reader's place across a note going back to prose.
+	 *
+	 * `holdPosition` pins the top of the note straddling the top of the page,
+	 * which is the right anchor when the note that changed is somewhere else --
+	 * and no anchor at all when it is this one. A reader a page into a chapter
+	 * has that chapter's top far above them, fixed, moving not at all while the
+	 * prose around them reflows by however much the two layouts disagree; the
+	 * hold then measured no movement and corrected nothing. Measured on a
+	 * chapter set at two lines: the paragraph under the reader's eye left the
+	 * page entirely, two thousand two hundred pixels down.
+	 *
+	 * Nothing in the DOM survives the swap to be held on to -- the editor's
+	 * lines are destroyed and the page's blocks built fresh -- so the anchor is
+	 * the text itself, the one thing both halves agree on. The words at the top
+	 * of the page are asked for as a place in the file, and after the swap that
+	 * place is found again in the rendered prose. This is `seek` in reverse,
+	 * and the same projection answers both.
+	 */
+	private holdProse(path: string): (() => void) | null {
+		const stream = this.streamEl;
+		const entry = this.mounted.get(path);
+		const editor = entry?.editor ?? null;
+		if (stream === null || entry === undefined || editor === null) return null;
+		const edge = stream.getBoundingClientRect().top;
+		const note = entry.el.getBoundingClientRect();
+		// Only while the reader is inside this note. Above it or below it the
+		// note's own top is the honest anchor, and `holdPosition` has it.
+		if (note.top >= edge || note.bottom <= edge) return null;
+		const place = editor.place(edge);
+		if (place === null) return null;
+		const projected = projectedIndexAt(entry.pending ?? entry.text.body, place.at);
+		if (projected === null) return null;
+		const was = place.top;
+		return () => {
+			if (!entry.el.isConnected) return;
+			const rendered = entry.bodyEl.querySelector(
+				'.snowflake-method-segment-rendered',
+			);
+			if (!(rendered instanceof HTMLElement)) return;
+			const now = this.proseTopAt(rendered, projected);
+			if (now === null) return;
+			const delta = now - was;
+			if (Math.abs(delta) < 1) return;
+			this.scrollBy(delta);
+		};
+	}
+
+	/**
+	 * Where the projection's nth surviving character sits on the rendered page.
+	 *
+	 * The projection drops whitespace and keeps everything the page shows, so
+	 * counting the rendered text the same way walks the two in step. A range
+	 * around the character answers where it is, which is finer than the block
+	 * holding it and costs no more.
+	 */
+	private proseTopAt(rendered: HTMLElement, projected: number): number | null {
+		const doc = rendered.ownerDocument;
+		const walker = doc.createTreeWalker(rendered, NodeFilter.SHOW_TEXT);
+		let seen = 0;
+		for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+			const text = node.nodeValue ?? '';
+			for (let index = 0; index < text.length; index += 1) {
+				if (/\s/u.test(text.charAt(index))) continue;
+				if (seen === projected) {
+					const range = doc.createRange();
+					range.setStart(node, index);
+					range.setEnd(node, index + 1);
+					const box = range.getBoundingClientRect();
+					return box.height === 0 ? null : box.top;
+				}
+				seen += 1;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * The note straddling the top of the page, for when no finer block answers.
 	 * The same pick `holdPosition` makes, handed back as an element so the
 	 * caller can hold it the way it holds the other two.
@@ -1813,7 +1891,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		// on, and putting the prose back shoves that note down the page, so the
 		// release chases it. Measured on a split, a swap that should have moved
 		// nothing threw the reader four and a half thousand pixels into the book.
-		const release = this.holdPosition();
+		//
+		// Held on the words themselves where the reader is inside this very
+		// note, since then its top is fixed and says nothing about where they
+		// were; `holdPosition` answers every other case.
+		const release = this.holdProse(path) ?? this.holdPosition();
 		await this.quietly(async () => {
 			await this.backend.unmount(path);
 			const entry = this.mounted.get(path);
