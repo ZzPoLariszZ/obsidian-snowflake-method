@@ -1013,8 +1013,11 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * every note: the caret line while a note is being written in and that
 	 * line is on the page, else the block at the top of the page — a
 	 * paragraph, a heading, an editor line — and failing both, the note
-	 * straddling the top, which `holdPosition` pins. Corrections go through
-	 * `scrollBy`, so a page that shrank grows the room it needs.
+	 * straddling the top. All three corrections go through `scrollBy`, so a
+	 * page that shrank grows the room it needs: the note straddling the top
+	 * used to be pinned by `holdPosition`, which writes `scrollTop` straight
+	 * and cannot, so a reader at the end of the manuscript who made the text
+	 * smaller watched the note slide down the page anyway.
 	 */
 	private holdView(): () => void {
 		const stream = this.streamEl;
@@ -1034,18 +1037,29 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.scrollBy(delta);
 			};
 		}
-		const block = this.blockAtTop(stream, box);
-		if (block !== null) {
-			const was = block.getBoundingClientRect().top;
-			return () => {
-				if (!block.isConnected) return;
-				const delta = block.getBoundingClientRect().top - was;
-				if (Math.abs(delta) < 1) return;
-				this.scrollBy(delta);
-			};
-		}
-		const release = this.holdPosition();
-		return release;
+		const anchor = this.blockAtTop(stream, box) ?? this.noteAtTop(box);
+		if (anchor === null) return () => undefined;
+		const was = anchor.getBoundingClientRect().top;
+		return () => {
+			if (!anchor.isConnected) return;
+			const delta = anchor.getBoundingClientRect().top - was;
+			if (Math.abs(delta) < 1) return;
+			this.scrollBy(delta);
+		};
+	}
+
+	/**
+	 * The note straddling the top of the page, for when no finer block answers.
+	 * The same pick `holdPosition` makes, handed back as an element so the
+	 * caller can hold it the way it holds the other two.
+	 */
+	private noteAtTop(box: DOMRect): HTMLElement | null {
+		return (
+			[...this.mounted.values()]
+				.map((entry) => ({ el: entry.el, seen: entry.el.getBoundingClientRect() }))
+				.filter((held) => held.seen.bottom > box.top)
+				.sort((left, right) => left.seen.top - right.seen.top)[0]?.el ?? null
+		);
 	}
 
 	/**
@@ -1057,11 +1071,20 @@ export class SnowflakeManuscriptView extends ItemView {
 		const doc = stream.ownerDocument;
 		const x = box.left + box.width / 2;
 		for (const down of [64, 96, 128, 176]) {
-			const hit = doc.elementFromPoint(x, box.top + down);
-			const block =
-				hit?.closest('.snowflake-method-segment-rendered > *, .cm-line') ??
-				null;
-			if (block !== null && stream.contains(block)) return block;
+			// Everything under the point rather than only the topmost thing.
+			// The typography popover is parented to the body and stands over
+			// this very column -- it is opened from a button above it, and it
+			// is the change it makes that asks for this hold -- so a single hit
+			// test answered with the panel, found no block under any of the
+			// four probes, and quietly gave up the fine hold every time the
+			// dress was changed while reading. Any other overlay, a notice or a
+			// hover preview, blinded it the same way.
+			for (const hit of doc.elementsFromPoint(x, box.top + down)) {
+				const block = hit.closest(
+					'.snowflake-method-segment-rendered > *, .cm-line',
+				);
+				if (block !== null && stream.contains(block)) return block;
+			}
 		}
 		return null;
 	}
