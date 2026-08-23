@@ -905,6 +905,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: this.t('settings.manuscriptEnterParagraph.name'),
+						desc: this.lines('settings.manuscriptEnterParagraph.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptEnterParagraph',
+							defaultValue: DEFAULT_SETTINGS.manuscriptEnterParagraph,
+						},
+					},
+					{
 						name: this.t('settings.manuscriptFocus.name'),
 						desc: '',
 						// Rendered rather than declared: the row's own name carries the
@@ -963,7 +972,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptContentWidth.name'),
-						desc: this.lines('settings.manuscriptContentWidth.desc'),
+						desc: this.t('settings.manuscriptContentWidth.desc'),
 						render: (setting) =>
 							this.renderStops(
 								setting,
@@ -978,7 +987,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptParagraphSpacing.name'),
-						desc: this.lines('settings.manuscriptParagraphSpacing.desc'),
+						desc: this.t('settings.manuscriptParagraphSpacing.desc'),
 						render: (setting) =>
 							this.renderStops(
 								setting,
@@ -995,7 +1004,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptFirstLineIndent.name'),
-						desc: this.lines('settings.manuscriptFirstLineIndent.desc'),
+						desc: this.t('settings.manuscriptFirstLineIndent.desc'),
 						render: (setting) =>
 							this.renderStops(
 								setting,
@@ -1009,7 +1018,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptTextAlign.name'),
-						desc: this.lines('settings.manuscriptTextAlign.desc'),
+						desc: this.t('settings.manuscriptTextAlign.desc'),
 						control: {
 							type: 'dropdown',
 							key: 'manuscriptTextAlign',
@@ -1022,7 +1031,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptGuide.name'),
-						desc: this.lines('settings.manuscriptGuide.desc'),
+						desc: this.t('settings.manuscriptGuide.desc'),
 						control: {
 							type: 'dropdown',
 							key: 'manuscriptGuide',
@@ -1036,7 +1045,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptHyphenation.name'),
-						desc: this.lines('settings.manuscriptHyphenation.desc'),
+						desc: this.t('settings.manuscriptHyphenation.desc'),
 						control: {
 							type: 'toggle',
 							key: 'manuscriptHyphenation',
@@ -1044,23 +1053,14 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: this.t('settings.manuscriptEnterParagraph.name'),
-						desc: this.lines('settings.manuscriptEnterParagraph.desc'),
-						control: {
-							type: 'toggle',
-							key: 'manuscriptEnterParagraph',
-							defaultValue: DEFAULT_SETTINGS.manuscriptEnterParagraph,
-						},
-					},
-					{
 						name: this.t('settings.manuscriptTintLight.name'),
-						desc: this.lines('settings.manuscriptTintLight.desc'),
+						desc: this.t('settings.manuscriptTintLight.desc'),
 						render: (setting) =>
 							this.renderTint(setting, 'manuscriptTintLight', MANUSCRIPT_TINTS.light),
 					},
 					{
 						name: this.t('settings.manuscriptTintDark.name'),
-						desc: this.lines('settings.manuscriptTintDark.desc'),
+						desc: this.t('settings.manuscriptTintDark.desc'),
 						render: (setting) =>
 							this.renderTint(setting, 'manuscriptTintDark', MANUSCRIPT_TINTS.dark),
 					},

@@ -152,13 +152,13 @@ export const en = {
 		'Keep the current line at the middle of the page.',
 	'settings.manuscriptAutoPairBrackets.name': 'Auto-pair brackets and quotes',
 	'settings.manuscriptAutoPairBrackets.desc':
-		'Typing an opening bracket or quote in the manuscript closes it, full-width CJK pairs included, and deleting one removes both.',
+		'Typing brackets or quotes in the manuscript closes the pair.',
 	'settings.manuscriptAutoPairMarkdown.name': 'Auto-pair Markdown syntax',
 	'settings.manuscriptAutoPairMarkdown.desc':
-		'Typing bold, italic, highlight, or strikethrough markers closes the pair as you type.',
+		'Typing bold, italic or other markers in the manuscript closes the pair.',
 	'settings.manuscriptEnterParagraph.name': 'Enter starts a new paragraph',
 	'settings.manuscriptEnterParagraph.desc':
-		'Enter puts the blank line Markdown needs between paragraphs, so the next line is a paragraph of its own, with its indent and spacing. Shift+Enter breaks the line inside the paragraph.\nLists, quotes, code and tables keep the plain Enter.',
+		'Typing Enter puts an extra blank line between paragraphs.\nTyping Shift+Enter breaks the line inside the paragraph.',
 	'settings.manuscriptFocus.name': 'Focus mode',
 	'settings.manuscriptFocus.levelOff': 'Off',
 	'settings.manuscriptFocus.levelOn': 'On',
@@ -170,51 +170,48 @@ export const en = {
 	'settings.manuscriptFocus.deep': 'Same as on, but the dashboard fades as well.',
 	'settings.manuscriptFocus.solo':
 		'Only the manuscript, in full screen.\nEverything returns when you leave.',
-	'settings.manuscriptAppearance.heading': 'Manuscript appearance',
+	'settings.manuscriptAppearance.heading': 'Manuscript typography',
 	'settings.manuscriptAppearance.themeDefault': 'Theme default',
 	'settings.manuscriptAppearance.pixels': '{value} px',
 	'settings.manuscriptAppearance.reset': 'Reset to default',
 	'settings.manuscriptFontFamily.name': 'Font family',
 	'settings.manuscriptFontFamily.desc':
-		'The typeface the manuscript is read and written in, in both views.\nPicked from the fonts this machine has, or typed for one it does not.',
+		'Choose the font used for manuscript text.\nRestart Obsidian to see newly installed fonts.',
 	'settings.manuscriptFontFamily.placeholder': 'Theme text font',
 	'settings.manuscriptFontFamily.use': 'Use “{value}”',
 	'settings.manuscriptFontFamily.recent': 'Recent fonts',
 	'settings.manuscriptFontFamily.all': 'All fonts',
 	'settings.manuscriptFontFamily.missing': '{value} is not installed on this device',
 	'settings.manuscriptFontSize.name': 'Font size',
-	'settings.manuscriptFontSize.desc':
-		'The size of the manuscript’s text, in both views.',
+	'settings.manuscriptFontSize.desc': 'Adjust the size of manuscript text.',
 	'settings.manuscriptLineHeight.name': 'Line height',
 	'settings.manuscriptLineHeight.desc':
-		'The height of each line as a multiple of the font size, in both views.',
+		'Adjust spacing between lines of manuscript text.',
 	'settings.manuscriptContentWidth.name': 'Content width',
 	'settings.manuscriptContentWidth.desc':
-		'The width of the text column, in pixels.\nThe theme default is the width Obsidian gives a note.',
+		'Set the maximum width of manuscript content.',
 	'settings.manuscriptParagraphSpacing.name': 'Paragraph spacing',
-	'settings.manuscriptParagraphSpacing.desc':
-		'The space between paragraphs, in lines.\nOne line is the blank line Markdown puts between them, the same on the page as in the editor. A quarter of a line is the least, so the editor always keeps a blank line to stand on.',
+	'settings.manuscriptParagraphSpacing.desc': 'Adjust space between paragraphs.',
 	'settings.manuscriptParagraphSpacing.line': '{value} line',
 	'settings.manuscriptParagraphSpacing.lines': '{value} lines',
 	'settings.manuscriptFirstLineIndent.name': 'First-line indent',
 	'settings.manuscriptFirstLineIndent.desc':
-		'How far the first line of each paragraph is set in, in character widths.\nTwo is the usual indent for CJK prose.',
+		'Set the indent at the start of paragraphs.',
 	'settings.manuscriptFirstLineIndent.none': 'None',
 	'settings.manuscriptFirstLineIndent.value': '{value} em',
 	'settings.manuscriptTextAlign.name': 'Text alignment',
-	'settings.manuscriptTextAlign.desc':
-		'How paragraphs sit in the column, on the page and in the editor alike.\nJustified text usually wants hyphenation.',
+	'settings.manuscriptTextAlign.desc': 'Choose how paragraph text is aligned.',
 	'settings.manuscriptTextAlign.start': 'Left',
 	'settings.manuscriptTextAlign.justify': 'Justified',
 	'settings.manuscriptHyphenation.name': 'Automatic hyphenation',
 	'settings.manuscriptHyphenation.desc':
-		'Break long words at line ends with a hyphen, from the browser’s dictionary for the project’s language.\nMost useful with justified text.',
+		'Break long words at line endings automatically.',
 	'settings.manuscriptTintLight.name': 'Background in light mode',
 	'settings.manuscriptTintLight.desc':
-		'The page behind the manuscript while Obsidian is in light mode.\nThe theme’s own, one of four tints, or any color.',
+		'Choose the manuscript background color in light mode.',
 	'settings.manuscriptTintDark.name': 'Background in dark mode',
 	'settings.manuscriptTintDark.desc':
-		'The page behind the manuscript while Obsidian is in dark mode.\nThe theme’s own, one of four tints, or any color.',
+		'Choose the manuscript background color in dark mode.',
 	'settings.manuscriptTint.themeDefault': 'Theme default',
 	'settings.manuscriptTint.custom': 'Custom color',
 	'settings.manuscriptTint.sage': 'Sage',
@@ -226,8 +223,7 @@ export const en = {
 	'settings.manuscriptTint.plum': 'Plum',
 	'settings.manuscriptTint.indigo': 'Indigo',
 	'settings.manuscriptGuide.name': 'Grid lines',
-	'settings.manuscriptGuide.desc':
-		'Lines drawn under each line of the note being written in, across the content width, to write along.\nThe notes around it, rendered, carry none. A gap narrower than a line has no line of its own.',
+	'settings.manuscriptGuide.desc': 'Show guides behind manuscript content.',
 	'settings.manuscriptGuide.none': 'None',
 	'settings.manuscriptGuide.solid': 'Solid',
 	'settings.manuscriptGuide.dashed': 'Dashed',
@@ -1241,7 +1237,7 @@ export const en = {
 	'manuscript.toolbar.strikethrough': 'Strikethrough',
 	'manuscript.toolbar.underline': 'Underline',
 	'manuscript.toolbar.highlight': 'Highlight',
-	'manuscript.toolbar.presentation': 'Appearance',
+	'manuscript.toolbar.presentation': 'Typography',
 	'manuscript.changedElsewhere':
 		'The note changed outside this stream while you were writing in it. The text here is kept, and the next save writes it over that change.',
 	'manuscript.hoverSource.reading': 'Snowflake Method manuscript (reading)',
