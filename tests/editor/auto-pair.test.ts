@@ -308,6 +308,32 @@ describe('the tracked-closer field', () => {
 		expect(trackedClosers(state)).toEqual([]);
 	});
 
+	it('carries what a closer knows about itself, not only where it is', () => {
+		// The pair a formatting command places, and the author's very next
+		// keystroke. Rebuilding the entries around `pos` dropped `command`, so
+		// from that keystroke on the pair read as one the author had typed --
+		// and a space at its centre then took the closing marker away with it,
+		// dismantling the emphasis they had just asked for.
+		const base = EditorState.create({ doc: '****', extensions: autoPair(ALL) });
+		let state = base.update({
+			effects: addTracked.of([
+				{ pos: 2, close: '*', command: true },
+				{ pos: 3, close: '*', command: true },
+			]),
+		}).state;
+		state = state.update({ changes: { from: 2, insert: 'a' } }).state;
+		expect(trackedClosers(state)).toEqual([
+			{ pos: 3, close: '*', command: true },
+			{ pos: 4, close: '*', command: true },
+		]);
+		// And back again, which is where the space used to land.
+		state = state.update({ changes: { from: 2, to: 3 } }).state;
+		expect(trackedClosers(state)).toEqual([
+			{ pos: 2, close: '*', command: true },
+			{ pos: 3, close: '*', command: true },
+		]);
+	});
+
 	it('keeps a multi-character closer while its text stands', () => {
 		const base = EditorState.create({ doc: '<u></u>', extensions: autoPair(ALL) });
 		let state = base.update({

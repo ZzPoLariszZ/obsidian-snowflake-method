@@ -317,7 +317,14 @@ const trackedField = StateField.define<readonly TrackedCloser[]>({
 			const moved: TrackedCloser[] = [];
 			for (const entry of next) {
 				const pos = tr.changes.mapPos(entry.pos, 1, MapMode.TrackDel);
-				if (pos !== null) moved.push({ pos, close: entry.close });
+				// Spread rather than rebuilt field by field. Naming the two that
+				// mattered dropped `command`, so a pair a formatting command had
+				// placed became an ordinary typed pair at the author's very next
+				// keystroke, and a space at its centre then took the closer away
+				// with it. `addTracked`'s own mapping above spreads for the same
+				// reason: what a closer knows about itself must survive being
+				// carried along.
+				if (pos !== null) moved.push({ ...entry, pos });
 			}
 			next = moved;
 		}
