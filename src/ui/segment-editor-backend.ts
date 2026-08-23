@@ -326,17 +326,16 @@ const paragraphLines = ViewPlugin.fromClass(
 );
 
 /**
- * A row of the wikilink popup as CodeMirror holds it, with the builder's
- * mark on the one row the popup should open on.
+ * A row of the wikilink popup as CodeMirror holds it, carrying the option the
+ * builder made it from -- which is how a row is recognised as this plugin's,
+ * and how the row the popup should open on is found again.
  */
 interface WikilinkCompletion extends Completion {
-	preferred: boolean;
+	opensOn: boolean;
 }
 
-function isWikilinkCompletion(
-	completion: Completion,
-): completion is WikilinkCompletion {
-	return 'preferred' in completion;
+function opensOn(completion: Completion): boolean {
+	return (completion as Partial<WikilinkCompletion>).opensOn === true;
 }
 
 /**
@@ -344,27 +343,31 @@ function isWikilinkCompletion(
  * always the first: an entity's name heads its block even when it was one of
  * its aliases that matched, and the author who typed the alias should be
  * able to take it with Enter. CodeMirror puts the highlight on the first row
- * of every fresh result, so each fresh result is answered with a move to the
- * preferred row -- deferred one microtask, because a listener may not
- * dispatch while the update it is told of is still in progress, and dropped
- * if the result has moved on by then. A result that only moved the highlight
- * keeps the same rows, so the author's own arrowing is never undone.
+ * of every fresh result, so a fresh result is answered with a move to that
+ * row -- deferred one microtask, because a listener may not dispatch while
+ * the update it is told of is still in progress.
+ *
+ * "Fresh" is asked of the rows themselves rather than of the array holding
+ * them. CodeMirror does hand back the same array while only the highlight
+ * moves, but nothing in its published contract says so, and a version that
+ * stopped would either strand this listener or, worse, have it undo every
+ * arrow press a microtask after it landed. The mark is the plugin's own, put
+ * on exactly one row per result, so a list already sitting on its opening row
+ * is left alone whatever array it arrives in -- and the author's arrowing with
+ * it.
  */
 const preferredRow = EditorView.updateListener.of((update) => {
 	const completions = currentCompletions(update.state);
-	if (
-		completions.length === 0 ||
-		completions === currentCompletions(update.startState)
-	) {
-		return;
-	}
-	const index = completions.findIndex(
-		(completion) => isWikilinkCompletion(completion) && completion.preferred,
-	);
-	if (index <= 0 || selectedCompletionIndex(update.state) === index) return;
+	const index = completions.findIndex(opensOn);
+	if (index <= 0) return;
+	const at = selectedCompletionIndex(update.state);
+	// Row 0 is where CodeMirror puts a fresh result, and the only place this
+	// listener acts from; anywhere else is where the author has taken it.
+	if (at !== 0) return;
 	const { view } = update;
 	view.dom.win.queueMicrotask(() => {
-		if (currentCompletions(view.state) !== completions) return;
+		if (selectedCompletionIndex(view.state) !== 0) return;
+		if (currentCompletions(view.state)[index] !== completions[index]) return;
 		view.dispatch({ effects: setSelectedCompletion(index) });
 	});
 });
@@ -733,10 +736,11 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			}
 			if (context.aborted || targets.length === 0) return null;
 			const query = context.state.sliceDoc(match.from + 2, context.pos);
-			const options = wikilinkOptions(targets, query).map(
-				(option): WikilinkCompletion => ({
+			const offer = wikilinkOptions(targets, query);
+			const options = offer.options.map(
+				(option, at): WikilinkCompletion => ({
 					label: option.label,
-					preferred: option.preferred,
+					opensOn: at === offer.preferred,
 					type: option.alias ? 'wikilink-alias' : undefined,
 					section: option.section,
 					apply: (view, _completion, from, to) => {

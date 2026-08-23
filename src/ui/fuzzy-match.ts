@@ -46,29 +46,31 @@ function substringAt(
 }
 
 /**
- * Whether the candidate begins with the query, folded the way `fuzzyScore`
- * folds: what an author types from the start of a name is a stronger claim
- * on it than the same letters found further in. The empty query begins
- * nothing.
+ * How a candidate answered a query.
+ *
+ * `fromStart` says the candidate begins with what was typed, which is a
+ * stronger claim on a name than the same letters found further in. It falls
+ * out of the scoring rather than being asked for separately: answering it
+ * apart meant folding both strings a second time and scanning them again, for
+ * something the scorer had just worked out and thrown away.
  */
-export function matchesFromStart(query: string, candidate: string): boolean {
-	const q = foldToPoints(query.trim());
-	if (q.length === 0) return false;
-	return substringAt(foldToPoints(candidate), q) === 0;
+export interface FuzzyMatch {
+	score: number;
+	fromStart: boolean;
 }
 
 /**
  * Higher is better; null when the candidate does not match at all. The empty
  * query matches everything at zero, which keeps an unfiltered list in its
- * caller's own order.
+ * caller's own order, and begins nothing.
  *
  * An exact substring always outranks a scattered subsequence: substring
  * scores live at 600 and above, subsequence scores at 500 and below. Within
  * each band, earlier, word-aligned and tighter matches score higher.
  */
-export function fuzzyScore(query: string, candidate: string): number | null {
+export function fuzzyMatch(query: string, candidate: string): FuzzyMatch | null {
 	const q = foldToPoints(query.trim());
-	if (q.length === 0) return 0;
+	if (q.length === 0) return { score: 0, fromStart: false };
 	const c = foldToPoints(candidate);
 
 	const at = substringAt(c, q);
@@ -76,7 +78,7 @@ export function fuzzyScore(query: string, candidate: string): number | null {
 		let score = 1000 - at * 2 - Math.min(c.length - q.length, 100);
 		if (at === 0) score += 50;
 		if (wordStart(c, at)) score += 100;
-		return Math.max(600, score);
+		return { score: Math.max(600, score), fromStart: at === 0 };
 	}
 
 	let score = 0;
@@ -99,5 +101,12 @@ export function fuzzyScore(query: string, candidate: string): number | null {
 		cursor = found + 1;
 	}
 	score -= Math.min(c.length - q.length, 50);
-	return Math.min(500, score);
+	// A scattered match never begins the candidate: had it, the substring
+	// branch above would have taken it.
+	return { score: Math.min(500, score), fromStart: false };
+}
+
+/** The score alone, for callers with nothing to say about where it matched. */
+export function fuzzyScore(query: string, candidate: string): number | null {
+	return fuzzyMatch(query, candidate)?.score ?? null;
 }

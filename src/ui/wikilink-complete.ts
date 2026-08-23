@@ -1,4 +1,4 @@
-import { fuzzyScore, matchesFromStart } from './fuzzy-match';
+import { fuzzyMatch, type FuzzyMatch } from './fuzzy-match';
 import type { WikilinkTarget } from './segment-editor-backend';
 
 /**
@@ -85,14 +85,19 @@ export interface WikilinkOption {
 	insert: string;
 	/** True for alias entries, which render indented under their primary. */
 	alias: boolean;
-	/**
-	 * True on the one row the popup opens on. The name of the best-placed
-	 * entity, unless what was typed fits one of its aliases better: the
-	 * alias when the name did not match at all, or when the typed text
-	 * begins the alias and does not begin the name.
-	 */
-	preferred: boolean;
 	section: { name: string; rank: number };
+}
+
+/** The rows to offer, and which of them the popup should open on. */
+export interface WikilinkOffer {
+	options: WikilinkOption[];
+	/**
+	 * Where the highlight starts: the name of the best-placed entity, unless
+	 * what was typed fits one of its aliases better -- the alias when the name
+	 * did not match at all, or when the typed text begins the alias and does
+	 * not begin the name. Zero for an empty list, which has nothing to point at.
+	 */
+	preferred: number;
 }
 
 /**
@@ -110,77 +115,90 @@ export interface WikilinkOption {
 export function wikilinkOptions(
 	targets: readonly WikilinkTarget[],
 	query: string,
-): WikilinkOption[] {
+): WikilinkOffer {
+	/** One entry of one entity, with how it answered the query. */
 	interface Scored {
 		target: WikilinkTarget;
 		/** Null when this entry does not match the query at all. */
-		score: number | null;
-		fromStart: boolean;
+		match: FuzzyMatch | null;
 	}
-	const buckets = new Map<string, Scored[]>();
+	/** One entity's entries, with the sort keys worked out once. */
+	interface Bucket {
+		entries: Scored[];
+		groupRank: number;
+		rank: number;
+		name: string;
+		best: number;
+	}
+	const buckets = new Map<string, Bucket>();
 	for (const target of targets) {
-		const score = fuzzyScore(query, target.label);
-		const entry: Scored = {
-			target,
-			score,
-			fromStart: score !== null && matchesFromStart(query, target.label),
-		};
+		const match = fuzzyMatch(query, target.label);
 		const key = `${String(target.groupRank)}|${target.memberPath}`;
 		const bucket = buckets.get(key);
-		if (bucket === undefined) buckets.set(key, [entry]);
-		else bucket.push(entry);
+		if (bucket === undefined) {
+			buckets.set(key, {
+				entries: [{ target, match }],
+				groupRank: target.groupRank,
+				rank: target.rank,
+				name: target.memberName,
+				best: match?.score ?? -Infinity,
+			});
+		} else {
+			bucket.entries.push({ target, match });
+			bucket.best = Math.max(bucket.best, match?.score ?? -Infinity);
+		}
 	}
-	const bestScore = (bucket: readonly Scored[]): number =>
-		Math.max(...bucket.map((entry) => entry.score ?? -Infinity));
+	// Sorted on keys already in hand: an entity's best score used to be worked
+	// out afresh inside the comparator, once for each side of every comparison.
 	const ordered = [...buckets.values()]
-		.filter((bucket) => bucket.some((entry) => entry.score !== null))
+		.filter((bucket) => bucket.best > -Infinity)
 		.sort((left, right) => {
-			const a = left[0];
-			const b = right[0];
-			if (a === undefined || b === undefined) return 0;
-			if (a.target.groupRank !== b.target.groupRank) {
-				return a.target.groupRank - b.target.groupRank;
+			if (left.groupRank !== right.groupRank) {
+				return left.groupRank - right.groupRank;
 			}
-			const bestLeft = bestScore(left);
-			const bestRight = bestScore(right);
-			if (bestLeft !== bestRight) return bestRight - bestLeft;
-			if (a.target.rank !== b.target.rank) return a.target.rank - b.target.rank;
-			if (a.target.memberName < b.target.memberName) return -1;
-			return a.target.memberName > b.target.memberName ? 1 : 0;
+			if (left.best !== right.best) return right.best - left.best;
+			if (left.rank !== right.rank) return left.rank - right.rank;
+			if (left.name < right.name) return -1;
+			return left.name > right.name ? 1 : 0;
 		});
 	const options: WikilinkOption[] = [];
+	let preferred = 0;
 	for (const [place, bucket] of ordered.entries()) {
-		const name = bucket.find((entry) => entry.target.entry === 'name') ?? null;
+		const name =
+			bucket.entries.find((entry) => entry.target.entry === 'name') ?? null;
 		// Aliases stay in declaration order except that the matched ones come
 		// first, themselves ordered by how well they fit.
-		const aliases = bucket
+		const aliases = bucket.entries
 			.filter((entry) => entry.target.entry === 'alias')
 			.sort((left, right) => {
-				if ((left.score === null) !== (right.score === null)) {
-					return left.score === null ? 1 : -1;
+				if ((left.match === null) !== (right.match === null)) {
+					return left.match === null ? 1 : -1;
 				}
-				if (left.score === null || right.score === null) return 0;
-				if (left.fromStart !== right.fromStart) return left.fromStart ? -1 : 1;
-				return right.score - left.score;
+				if (left.match === null || right.match === null) return 0;
+				if (left.match.fromStart !== right.match.fromStart) {
+					return left.match.fromStart ? -1 : 1;
+				}
+				return right.match.score - left.match.score;
 			});
-		const bestAlias = aliases.find((entry) => entry.score !== null) ?? null;
+		const bestAlias = aliases.find((entry) => entry.match !== null) ?? null;
 		const nameWins =
-			name !== null &&
-			name.score !== null &&
-			(name.fromStart || bestAlias === null || !bestAlias.fromStart);
-		const preferred = place === 0 ? (nameWins ? name : (bestAlias ?? name)) : null;
+			name?.match != null &&
+			(name.match.fromStart ||
+				bestAlias?.match == null ||
+				!bestAlias.match.fromStart);
+		const opensOn = nameWins ? name : (bestAlias ?? name);
 		for (const entry of [...(name === null ? [] : [name]), ...aliases]) {
+			if (place === 0 && entry === opensOn) preferred = options.length;
 			const { target } = entry;
 			options.push({
 				label: target.label,
 				insert: target.insert,
 				alias: target.entry === 'alias',
-				preferred: entry === preferred,
 				section: { name: target.groupLabel, rank: target.groupRank },
 			});
 		}
 	}
-	return options;
+	return { options, preferred };
 }
 
 /**

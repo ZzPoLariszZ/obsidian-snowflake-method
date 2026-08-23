@@ -3,9 +3,11 @@ import {
 	collectWikilinkTargets,
 	wikilinkOptions,
 	wikilinkReplaceRange,
+	type WikilinkOption,
 	type WikilinkProjectMembers,
 	type WikilinkSourceRecord,
 } from '../../src/ui/wikilink-complete';
+import type { WikilinkTarget } from '../../src/ui/segment-editor-backend';
 
 /** The shape `toWikiLink` writes, close enough for these assertions. */
 function fakeLink(path: string, alias: string): string {
@@ -87,6 +89,12 @@ describe('collectWikilinkTargets', () => {
 });
 
 describe('wikilinkOptions', () => {
+	/** The rows alone, for the many assertions that only care about those. */
+	const rowsOf = (
+		list: readonly WikilinkTarget[],
+		query: string,
+	): WikilinkOption[] => wikilinkOptions(list, query).options;
+
 	const targets = collectWikilinkTargets(
 		membersWith({
 			characters: [
@@ -112,7 +120,7 @@ describe('wikilinkOptions', () => {
 	);
 
 	it('returns the whole roster in group, rank, name-first order when empty', () => {
-		const options = wikilinkOptions(targets, '');
+		const options = rowsOf(targets, '');
 		expect(options.map((option) => option.label)).toEqual([
 			'Alice',
 			'Ali',
@@ -137,15 +145,15 @@ describe('wikilinkOptions', () => {
 	});
 
 	it('offers a member whole when only an alias matches, the name on top', () => {
-		const options = wikilinkOptions(targets, 'bob');
+		const options = rowsOf(targets, 'bob');
 		expect(options.map((option) => option.label)).toEqual(['张三', 'Bob']);
 		expect(options.map((option) => option.alias)).toEqual([false, true]);
 		expect(options[1]?.insert).toBe('[[Demo/20_Character/Zhang|Bob]]');
 	});
 
 	it('opens on the alias that was typed when the name did not match', () => {
-		const options = wikilinkOptions(targets, 'bob');
-		expect(options.map((option) => option.preferred)).toEqual([false, true]);
+		const offer = wikilinkOptions(targets, 'bob');
+		expect(offer.options[offer.preferred]?.label).toBe('Bob');
 	});
 
 	it('tells two members who share an alias apart by their names', () => {
@@ -159,7 +167,7 @@ describe('wikilinkOptions', () => {
 			labelOf,
 			fakeLink,
 		);
-		const options = wikilinkOptions(shared, 'jj');
+		const options = rowsOf(shared, 'jj');
 		expect(options.map((option) => option.label)).toEqual([
 			'Character 001',
 			'jjb',
@@ -168,14 +176,9 @@ describe('wikilinkOptions', () => {
 			'jjb',
 			'002',
 		]);
-		expect(options.map((option) => option.preferred)).toEqual([
-			false,
-			true,
-			false,
-			false,
-			false,
-			false,
-		]);
+		const offer = wikilinkOptions(shared, 'jj');
+		expect(offer.preferred).toBe(1);
+		expect(offer.options[offer.preferred]?.label).toBe('jjb');
 	});
 
 	it('moves the matched aliases to the head, typed-from-the-start first', () => {
@@ -193,7 +196,7 @@ describe('wikilinkOptions', () => {
 			labelOf,
 			fakeLink,
 		);
-		expect(wikilinkOptions(many, 'bob').map((option) => option.label)).toEqual([
+		expect(rowsOf(many, 'bob').map((option) => option.label)).toEqual([
 			'Robert',
 			'Bob',
 			'Bobby',
@@ -203,7 +206,7 @@ describe('wikilinkOptions', () => {
 	});
 
 	it('keeps an entity`s entries together, primary first', () => {
-		const options = wikilinkOptions(targets, 'ali');
+		const options = rowsOf(targets, 'ali');
 		expect(options.map((option) => option.label)).toEqual([
 			'Alice',
 			'Ali',
@@ -214,12 +217,14 @@ describe('wikilinkOptions', () => {
 	});
 
 	it('opens on the name whenever the typed text begins it', () => {
-		expect(
-			wikilinkOptions(targets, 'ali').map((option) => option.preferred),
-		).toEqual([true, false, false, false]);
-		expect(
-			wikilinkOptions(targets, '').map((option) => option.preferred),
-		).toEqual([true, false, false, false, false, false]);
+		expect(wikilinkOptions(targets, 'ali').preferred).toBe(0);
+		expect(wikilinkOptions(targets, '').preferred).toBe(0);
+	});
+
+	it('points at nothing in particular when the list is empty', () => {
+		const offer = wikilinkOptions(targets, 'nothing here');
+		expect(offer.options).toEqual([]);
+		expect(offer.preferred).toBe(0);
 	});
 
 	it('opens on an alias typed from its start when the name merely contains it', () => {
@@ -237,27 +242,15 @@ describe('wikilinkOptions', () => {
 			labelOf,
 			fakeLink,
 		);
-		expect(
-			wikilinkOptions(numbered, '001').map((option) => [
-				option.label,
-				option.preferred,
-			]),
-		).toEqual([
-			['Character 001', false],
-			['001', true],
-			['No. 001', false],
+		const typed = wikilinkOptions(numbered, '001');
+		expect(typed.options.map((option) => option.label)).toEqual([
+			'Character 001',
+			'001',
+			'No. 001',
 		]);
+		expect(typed.options[typed.preferred]?.label).toBe('001');
 		// Nothing typed from the start: the name keeps the opening row.
-		expect(
-			wikilinkOptions(numbered, '01').map((option) => [
-				option.label,
-				option.preferred,
-			]),
-		).toEqual([
-			['Character 001', true],
-			['001', false],
-			['No. 001', false],
-		]);
+		expect(wikilinkOptions(numbered, '01').preferred).toBe(0);
 	});
 
 	it('orders entities by rank when their scores tie', () => {
@@ -271,7 +264,7 @@ describe('wikilinkOptions', () => {
 			labelOf,
 			fakeLink,
 		);
-		expect(wikilinkOptions(tied, '').map((option) => option.label)).toEqual([
+		expect(rowsOf(tied, '').map((option) => option.label)).toEqual([
 			'Early',
 			'Late',
 		]);

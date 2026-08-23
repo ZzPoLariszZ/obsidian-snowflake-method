@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fuzzyScore, matchesFromStart } from '../../src/ui/fuzzy-match';
+import { fuzzyMatch, fuzzyScore } from '../../src/ui/fuzzy-match';
 
 function scoreOf(query: string, candidate: string): number {
 	const score = fuzzyScore(query, candidate);
@@ -45,17 +45,25 @@ describe('fuzzyScore', () => {
 	});
 });
 
-describe('matchesFromStart', () => {
-	it('is true only when the candidate begins with the folded query', () => {
-		expect(matchesFromStart('ali', 'Alice')).toBe(true);
-		expect(matchesFromStart(' ALI ', 'alice')).toBe(true);
-		expect(matchesFromStart('lic', 'Alice')).toBe(false);
-		expect(matchesFromStart('小', '小张')).toBe(true);
-		expect(matchesFromStart('张', '小张')).toBe(false);
+describe('fuzzyMatch', () => {
+	const startsWith = (query: string, candidate: string): boolean =>
+		fuzzyMatch(query, candidate)?.fromStart === true;
+
+	it('reports fromStart only when the candidate begins with the folded query', () => {
+		expect(startsWith('ali', 'Alice')).toBe(true);
+		expect(startsWith(' ALI ', 'alice')).toBe(true);
+		expect(startsWith('lic', 'Alice')).toBe(false);
+		expect(startsWith('小', '小张')).toBe(true);
+		expect(startsWith('张', '小张')).toBe(false);
 	});
 
-	it('begins nothing on an empty query', () => {
-		expect(matchesFromStart('', 'Alice')).toBe(false);
-		expect(matchesFromStart('   ', 'Alice')).toBe(false);
+	it('begins nothing on an empty query, and nothing on no match', () => {
+		expect(startsWith('', 'Alice')).toBe(false);
+		expect(startsWith('   ', 'Alice')).toBe(false);
+		expect(fuzzyMatch('zzz', 'Alice')).toBeNull();
+	});
+
+	it('reports the same score the scorer alone reports', () => {
+		expect(fuzzyMatch('ali', 'Alice')?.score).toBe(fuzzyScore('ali', 'Alice'));
 	});
 });
