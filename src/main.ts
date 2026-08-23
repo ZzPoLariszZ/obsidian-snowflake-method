@@ -297,13 +297,29 @@ function categoryDisplayPath(raw: string, categoryRoot: string): string {
 }
 
 /**
- * How much room a scrollbar takes in this window. Overlaid ones, and the ones
- * Obsidian hides outright, take none; the ones Windows and Linux draw take about
- * a dozen pixels. The panels hand that much back out of the padding they already
- * keep, so a scrollbar costs no extra room -- but only a measurement can say
- * whether there is anything to hand back, and a theme can change the answer.
+ * How much room a scrollbar takes in this window, or null when the window
+ * cannot say yet.
+ *
+ * Overlaid ones, and the ones Obsidian hides outright, take none; the ones
+ * Windows and Linux draw take about a dozen pixels. The panels hand that much
+ * back out of the padding they already keep, so a scrollbar costs no extra
+ * room -- but only a measurement can say whether there is anything to hand
+ * back, and a theme can change the answer.
+ *
+ * Measured the way the panels reserve their room, with `scrollbar-gutter`
+ * rather than a forced scrollbar: those are the same number on most machines
+ * and need not be, and the number wanted here is the one the stylesheet will
+ * actually spend.
+ *
+ * Null when nothing was laid out. A window still being built measures every
+ * box at zero, and zero is a real answer here -- it is the answer for an
+ * overlaid scrollbar -- so a zero taken too early cannot afterwards be told
+ * from a true one. That is worth guarding rather than rounding off: the
+ * padding a panel hands back is `pad - width`, so a width wrongly read as
+ * zero gives the whole padding back and then loses the gutter's width off the
+ * inside, which walks every field in the dialog left of the title above them.
  */
-function measureScrollbarWidth(targetDocument: Document): number {
+function measureScrollbarWidth(targetDocument: Document): number | null {
 	const probe = targetDocument.body.createDiv();
 	// Dressed here rather than from the stylesheet: this runs before the plugin's
 	// own stylesheet reaches the document, and a probe with no scrollbar to
@@ -313,12 +329,14 @@ function measureScrollbarWidth(targetDocument: Document): number {
 		top: '-9999px',
 		width: '100px',
 		height: '100px',
-		overflowY: 'scroll',
+		overflowY: 'auto',
+		scrollbarGutter: 'stable',
 		visibility: 'hidden',
 	});
+	const laidOut = probe.offsetWidth > 0;
 	const width = probe.offsetWidth - probe.clientWidth;
 	probe.remove();
-	return width;
+	return laidOut ? width : null;
 }
 
 /** Tab group of a leaf; the companion pane is tracked by this identity. */
@@ -491,6 +509,9 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.on('window-open', (_workspaceWindow, targetWindow) => {
 				this.applyMotionPreferenceToDocument(targetWindow.document);
 				this.publishScrollbarWidthToDocument(targetWindow.document);
+				this.registerDomEvent(targetWindow, 'focus', () => {
+					this.publishScrollbarWidthToDocument(targetWindow.document);
+				});
 				// A popout carries writing surfaces of its own, and a session
 				// must hear the typing in them.
 				this.registerWritingSurfaceWatch(targetWindow.document);
@@ -511,7 +532,26 @@ export default class SnowflakeMethodPlugin
 		this.registerEvent(
 			this.app.workspace.on('css-change', () => this.publishScrollbarWidth()),
 		);
+		// So can the machine, without saying so. macOS draws overlaid bars that
+		// take no room and classic ones that take about a dozen pixels, and it
+		// changes its mind when a mouse is plugged in or the setting is touched
+		// -- neither of which this plugin hears about. The panels and tables
+		// hand back exactly this many pixels out of their own padding, so a
+		// number that has gone stale walks a table's body out of line with its
+		// header. Asked again whenever the window comes forward, which is when
+		// an author returns from having changed such a thing, and written back
+		// only when it moved.
+		this.registerDomEvent(window, 'focus', () => {
+			this.publishScrollbarWidth();
+		});
 		this.publishScrollbarWidth();
+		// Again once there is a workspace to measure against. The load above runs
+		// while Obsidian is still assembling its window, where every box measures
+		// zero -- and zero is what a machine with overlaid scrollbars truthfully
+		// reports, so it stands unchallenged for the rest of the session.
+		this.app.workspace.onLayoutReady(() => {
+			this.publishScrollbarWidth();
+		});
 		this.register(() => {
 			for (const targetDocument of this.motionDocuments) {
 				targetDocument.body.classList.remove(REDUCE_MOTION_CLASS);
@@ -2637,10 +2677,20 @@ export default class SnowflakeMethodPlugin
 
 	private publishScrollbarWidthToDocument(targetDocument: Document): void {
 		this.scrollbarDocuments.add(targetDocument);
-		targetDocument.body.style.setProperty(
+		const width = measureScrollbarWidth(targetDocument);
+		// Nothing is published from a window that could not answer: the value
+		// left standing is either a true one from before or none at all, and
+		// asking again once the workspace is ready costs one probe.
+		if (width === null) return;
+		const next = `${String(width)}px`;
+		// Written only when it has actually moved. This is asked again every
+		// time the window comes forward, and writing the same value back would
+		// have every rule reading it re-evaluated for nothing.
+		const shown = targetDocument.body.style.getPropertyValue(
 			SCROLLBAR_WIDTH_PROPERTY,
-			`${measureScrollbarWidth(targetDocument)}px`,
 		);
+		if (shown === next) return;
+		targetDocument.body.style.setProperty(SCROLLBAR_WIDTH_PROPERTY, next);
 	}
 
 	/**
