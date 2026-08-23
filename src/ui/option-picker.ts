@@ -205,6 +205,13 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		if (isCreateSuggestion(suggestion)) {
 			el.addClass('snowflake-method-option-picker-create');
 			el.setText(this.creating?.label(suggestion.create) ?? suggestion.create);
+			// Dressed like any other row, from what was typed. In the font list
+			// this row only appears when the machine really can set text in that
+			// face, which makes it the one row where seeing the face matters
+			// most -- and it was the one row that showed the interface font
+			// instead. The typed text is handed over as the option's value,
+			// which is what a dress reads.
+			this.dress?.(el, { value: suggestion.create, label: suggestion.create });
 			return;
 		}
 		el.setText(suggestion.label);
@@ -260,25 +267,39 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	 * everything done here is something the list manages without.
 	 *
 	 * Two things are done with it. A key means the author is reaching for the
-	 * list, so the highlight held back on opening comes out -- and comes out at
-	 * the end the key came from, rather than one row past it, because a list
-	 * nobody has moved in yet is a list with nothing chosen. And a heading
-	 * names what follows rather than being something to stand on, so the
-	 * highlight carries on over it the way it was going.
+	 * list, so the highlight held back on opening comes out -- and a key that
+	 * steps by one comes out at the end it came from, rather than one row past
+	 * it, because a list nobody has moved in yet is a list with nothing chosen.
+	 * Only a key that steps: Home, End and the page keys name the row they want
+	 * outright, and the framework has already put the highlight there, so
+	 * reading them as an end would send each of them to the wrong one. And a
+	 * heading names what follows rather than being something to stand on, so
+	 * the highlight carries on over it the way it was going.
 	 */
 	onSelectedChange(value: Suggestion | null, event?: Event | null): void {
-		const key = (event as { key?: unknown } | null | undefined)?.key;
+		const stroke = event as
+			| { key?: unknown; ctrlKey?: unknown }
+			| null
+			| undefined;
+		const key = stroke?.key;
 		const typed = typeof key === 'string';
-		const back = key === 'ArrowUp' || key === 'PageUp' || key === 'Home';
+		// Obsidian binds Ctrl+P and Ctrl+N to the arrows on macOS.
+		const chord = stroke?.ctrlKey === true;
+		const up = key === 'ArrowUp' || (chord && key === 'p');
+		const down = key === 'ArrowDown' || (chord && key === 'n');
+		// Which way the highlight was travelling, for carrying it past a
+		// heading: Home and PageDown arrive from above, End and PageUp from
+		// below.
+		const backward = up || key === 'PageUp' || key === 'End';
 		const suggestEl = this.popoverEl();
 		const idle = suggestEl?.hasClass('is-selection-idle') === true;
 		if (typed) suggestEl?.removeClass('is-selection-idle');
-		if (typed && idle) {
-			this.selectFromEnd(back);
+		if (idle && (up || down)) {
+			this.selectFromEnd(up);
 			return;
 		}
 		if (value !== null && value !== undefined && isSectionHeading(value)) {
-			this.stepOverHeading(back ? -1 : 1);
+			this.stepOverHeading(backward ? -1 : 1);
 		}
 	}
 
@@ -677,6 +698,11 @@ export function buildOptionPicker(
 		creating.suggest,
 		true,
 	);
+	// Forwarded here as well as in the single-value field: `dress` is declared
+	// on the config both builders share, so a caller passing it to this one was
+	// taking a silent no-op with nothing to warn them -- the rows would simply
+	// come out plain.
+	suggest.dress = config.dress ?? null;
 	wireFrame(frame, suggest);
 	// Backspace on an empty query removes the last tag, as tag inputs do.
 	input.addEventListener('keydown', (event) => {

@@ -5704,6 +5704,17 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	line-height: 1;
 }
 
+/* A length written in the theme's own units, handed to the browser to work
+   out: a slider's rail is in pixels, and a theme that says its measure in rem
+   or in percent has to be asked what that comes to here. Out of the flow and
+   unseen, and taken away again in the same breath it was added. */
+.snowflake-method-length-probe {
+	position: absolute;
+	visibility: hidden;
+	height: 0;
+	pointer-events: none;
+}
+
 .snowflake-method-presentation-row .slider-value {
 	display: none;
 }

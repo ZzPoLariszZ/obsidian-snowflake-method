@@ -38,7 +38,18 @@ export function localFontFamilies(): readonly string[] {
  */
 export async function loadLocalFontFamilies(win: Window): Promise<readonly string[]> {
 	if (families.length > 0) return families;
-	asking ??= askMachine(win);
+	if (asking === null) {
+		const ask = askMachine(win);
+		asking = ask;
+		// Cleared here rather than inside `askMachine`, and only once the
+		// assignment above has landed. A build with no font access API returns
+		// without ever awaiting, so a `finally` inside would run first and clear
+		// a slot that had nothing in it yet -- pinning the empty answer for the
+		// rest of the session, which is the opposite of what this file promises.
+		void ask.finally(() => {
+			if (asking === ask) asking = null;
+		});
+	}
 	return asking;
 }
 
@@ -53,8 +64,6 @@ async function askMachine(win: Window): Promise<readonly string[]> {
 	} catch {
 		// The window had not been touched, or the machine would rather not say.
 		// Either way the next field to open asks again.
-	} finally {
-		asking = null;
 	}
 	return families;
 }
@@ -67,6 +76,15 @@ const BASELINES = ['monospace', 'serif', 'sans-serif'];
 
 /** What has already been measured; a machine's fonts do not change under it. */
 const rendered = new Map<string, boolean>();
+
+/**
+ * How many measurements are kept. The picker asks this of whatever stands in
+ * the field, so typing a name leaves an answer for each of its prefixes, and
+ * the keys are whatever anyone types. Far more than a session of picking needs,
+ * and emptied rather than pruned when it fills: the cost of being wrong is one
+ * measurement taken again.
+ */
+const RENDERED_LIMIT = 256;
 
 /**
  * Whether this machine can actually set text in a family.
@@ -96,10 +114,33 @@ export function fontFamilyRenders(win: Window, family: string): boolean {
 		probe.style.setProperty('font-family', list);
 		return probe.offsetWidth;
 	};
-	const answer = BASELINES.filter((base) => base !== name.toLowerCase()).some(
-		(base) => measure(base) !== measure(`${quoted}, ${base}`),
-	);
+	// The sample is only one line wide because the stylesheet says so. Without
+	// the plugin's own sheet in this window the span is an ordinary inline box
+	// that wraps to the body's width, every list measures the same, and every
+	// face on the machine would read as absent -- so the reading is checked
+	// before it is believed.
+	const measurable =
+		win.getComputedStyle(probe).whiteSpace === 'nowrap' &&
+		measure(BASELINES[0] ?? 'monospace') > 0;
+	let answer = false;
+	if (measurable) {
+		for (const base of BASELINES) {
+			if (base === name.toLowerCase()) continue;
+			if (measure(base) !== measure(`${quoted}, ${base}`)) {
+				answer = true;
+				break;
+			}
+		}
+	}
 	probe.remove();
+	if (!measurable) {
+		// Nothing was learnt, so nothing is remembered, and the answer errs
+		// towards offering the face: a wrong yes offers a row that does little,
+		// where a wrong no marks a face the author has as missing and hides the
+		// row that would let them set it.
+		return true;
+	}
+	if (rendered.size >= RENDERED_LIMIT) rendered.clear();
 	rendered.set(name, answer);
 	return answer;
 }

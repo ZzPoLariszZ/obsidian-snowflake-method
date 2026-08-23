@@ -58,6 +58,32 @@ export interface StopSliderSpec {
  * it -- and while the setting is there, the handle waits at the stop nearest
  * what the theme is already doing, so a drag starts from what is on the page.
  */
+/** Numbers written without a unit, which are already what they measure. */
+const BARE_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)$/u;
+
+/**
+ * What a theme's own variable comes to, in the units the stops are written in.
+ *
+ * A custom property holds a sequence of tokens rather than a length, so
+ * `getPropertyValue` hands back `40rem` exactly as the theme wrote it and
+ * reading a number off the front of that gives 40 -- a plausible-looking
+ * figure that is six stops from where the page actually is, and no arithmetic
+ * afterwards can tell it was wrong. A unitless value (a line height) is its own
+ * answer; anything else is handed to the browser to work out, against the very
+ * element the manuscript is measured beside, which is the only thing that knows
+ * what one rem or one percent is worth here.
+ */
+function themeVarValue(el: HTMLElement, name: string): number | null {
+	const raw = el.win.getComputedStyle(el).getPropertyValue(name).trim();
+	if (raw.length === 0) return null;
+	if (BARE_NUMBER.test(raw)) return Number.parseFloat(raw);
+	const probe = el.createDiv({ cls: 'snowflake-method-length-probe' });
+	probe.style.setProperty('width', raw);
+	const width = probe.getBoundingClientRect().width;
+	probe.detach();
+	return width > 0 ? width : null;
+}
+
 export function addStopSlider(
 	setting: Setting,
 	spec: StopSliderSpec,
@@ -72,11 +98,8 @@ export function addStopSlider(
 	const atTheme = (stop: number): boolean => stop <= 0 && !spec.stops.includes(0);
 	const themeStop = (): number => {
 		if (spec.themeVar === undefined) return first;
-		const el = setting.settingEl;
-		const measured = Number.parseFloat(
-			el.win.getComputedStyle(el).getPropertyValue(spec.themeVar),
-		);
-		return Number.isFinite(measured) ? measured : first;
+		const measured = themeVarValue(setting.settingEl, spec.themeVar);
+		return measured ?? first;
 	};
 	const indexOf = (stop: number): number =>
 		nearestStop(spec.stops, atTheme(stop) ? themeStop() : stop);
@@ -297,19 +320,19 @@ export function addFontFamilyPicker(
 			rows.push({ value: family, label: family, section: spec.sections.all });
 		}
 		// Whatever the setting holds stays on offer, so the field can always
-		// show what it is holding -- marked only when this machine really has
-		// no such face, rather than whenever the list happens to lack it.
-		if (
-			current.length > 0 &&
-			!installed.includes(current) &&
-			!spec.recent().includes(current)
-		) {
-			rows.push({
-				value: current,
-				label: current,
-				section: spec.sections.all,
-				missing: !fontFamilyRenders(win, current),
-			});
+		// show what it is holding.
+		if (current.length > 0 && !rows.some((row) => row.value === current)) {
+			rows.push({ value: current, label: current, section: spec.sections.all });
+		}
+		// And it is marked wherever it happens to stand. Choosing a face puts it
+		// at the head of the recent list, so the face in force is almost always
+		// in that list rather than on a row of its own -- marking only the row of
+		// its own left a machine that lacks the face naming it in plain type,
+		// while the manuscript quietly wore the theme's, with nothing saying why.
+		if (current.length > 0 && !fontFamilyRenders(win, current)) {
+			for (const row of rows) {
+				if (row.value === current) row.missing = true;
+			}
 		}
 		return rows;
 	};
