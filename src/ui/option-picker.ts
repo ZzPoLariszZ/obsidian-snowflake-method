@@ -45,6 +45,17 @@ function isSectionHeading(suggestion: Suggestion): suggestion is SectionHeading 
 	return 'heading' in suggestion;
 }
 
+/**
+ * What the framework's own selection holds, for the two things this picker
+ * asks of it. Every field is optional: a build without them leaves the list
+ * behaving as it always did.
+ */
+interface SelectionState {
+	values?: readonly Suggestion[];
+	selectedItem?: number;
+	setSelectedItem?: (index: number, event: Event | null) => void;
+}
+
 /** The options not yet picked, in the order the picker offers them. */
 export function unpickedOptions<T extends { value: string }>(
 	options: readonly T[],
@@ -233,11 +244,73 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		suggestEl.addClass('is-selection-idle');
 		if (this.selectionWatched) return;
 		this.selectionWatched = true;
-		const wake = (): void => suggestEl.removeClass('is-selection-idle');
-		suggestEl.addEventListener('pointermove', wake);
-		this.inputEl.addEventListener('keydown', (event) => {
-			if (event.key === 'ArrowDown' || event.key === 'ArrowUp') wake();
+		// The pointer wakes the list where it enters it. The keyboard wakes it
+		// through `onSelectedChange` below, because the app's own keymap takes
+		// an arrow key at the document and the field never sees it: a listener
+		// here was never called, which is why the arrows used to do nothing
+		// until the pointer had been over the list first.
+		suggestEl.addEventListener('pointermove', () => {
+			this.popoverEl()?.removeClass('is-selection-idle');
 		});
+	}
+
+	/**
+	 * Told by the framework whenever the highlight moves, and by what. Not part
+	 * of the published API -- a hook the selection calls if it is there -- so
+	 * everything done here is something the list manages without.
+	 *
+	 * Two things are done with it. A key means the author is reaching for the
+	 * list, so the highlight held back on opening comes out -- and comes out at
+	 * the end the key came from, rather than one row past it, because a list
+	 * nobody has moved in yet is a list with nothing chosen. And a heading
+	 * names what follows rather than being something to stand on, so the
+	 * highlight carries on over it the way it was going.
+	 */
+	onSelectedChange(value: Suggestion | null, event?: Event | null): void {
+		const key = (event as { key?: unknown } | null | undefined)?.key;
+		const typed = typeof key === 'string';
+		const back = key === 'ArrowUp' || key === 'PageUp' || key === 'Home';
+		const suggestEl = this.popoverEl();
+		const idle = suggestEl?.hasClass('is-selection-idle') === true;
+		if (typed) suggestEl?.removeClass('is-selection-idle');
+		if (typed && idle) {
+			this.selectFromEnd(back);
+			return;
+		}
+		if (value !== null && value !== undefined && isSectionHeading(value)) {
+			this.stepOverHeading(back ? -1 : 1);
+		}
+	}
+
+	/** The framework's own selection, which is no part of the published API. */
+	private selectionState(): SelectionState | null {
+		const { suggestions } = this as unknown as { suggestions?: SelectionState };
+		return suggestions ?? null;
+	}
+
+	/** Puts the highlight on the row the key was reaching for from outside. */
+	private selectFromEnd(back: boolean): void {
+		const selection = this.selectionState();
+		const values = selection?.values;
+		const set = selection?.setSelectedItem;
+		if (values === undefined || set === undefined || values.length === 0) return;
+		set.call(selection, back ? values.length - 1 : 0, null);
+	}
+
+	/** Carries the highlight past a heading, in the direction it was going. */
+	private stepOverHeading(step: number): void {
+		const selection = this.selectionState();
+		const values = selection?.values;
+		const at = selection?.selectedItem;
+		const set = selection?.setSelectedItem;
+		if (values === undefined || at === undefined || set === undefined) return;
+		let next = at;
+		for (let i = 0; i < values.length; i += 1) {
+			next = (next + step + values.length) % values.length;
+			const row = values[next];
+			if (row === undefined || !isSectionHeading(row)) break;
+		}
+		if (next !== at) set.call(selection, next, null);
 	}
 
 	close(): void {
