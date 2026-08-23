@@ -16,7 +16,9 @@ import {
 	historyKeymap,
 	insertNewline,
 	redo,
+	redoDepth,
 	undo,
+	undoDepth,
 } from '@codemirror/commands';
 import {
 	defaultHighlightStyle,
@@ -606,19 +608,31 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 	}
 
 	async unmount(path: string): Promise<void> {
+		// Taken down before the view is looked for, so that a mount which threw
+		// after making its host still gives the host up: the host is made first
+		// and the map entry written last, and gating the whole teardown on the
+		// map left an orphan div and its listener in the body for the life of
+		// the window, unreachable the moment the path was mounted again.
+		this.tooltipHosts.get(path)?.remove();
+		this.tooltipHosts.delete(path);
 		const view = this.views.get(path);
 		if (view === undefined) return;
 		this.views.delete(path);
 		this.parked.delete(path);
-		this.parked.set(path, view.state.toJSON({ history: historyField }));
-		while (this.parked.size > PublicCodeMirrorBackend.PARKED_LIMIT) {
-			const oldest = this.parked.keys().next().value;
-			if (oldest === undefined) break;
-			this.parked.delete(oldest);
+		// Parked only when there is something to come back to. The whole
+		// document is serialized along with the history, so a note merely opened
+		// and read would leave a copy of itself here, eight of them at a time,
+		// for nothing: an empty history restores nothing that a fresh mount does
+		// not already give.
+		if (undoDepth(view.state) > 0 || redoDepth(view.state) > 0) {
+			this.parked.set(path, view.state.toJSON({ history: historyField }));
+			while (this.parked.size > PublicCodeMirrorBackend.PARKED_LIMIT) {
+				const oldest = this.parked.keys().next().value;
+				if (oldest === undefined) break;
+				this.parked.delete(oldest);
+			}
 		}
 		view.destroy();
-		this.tooltipHosts.get(path)?.remove();
-		this.tooltipHosts.delete(path);
 		return Promise.resolve();
 	}
 

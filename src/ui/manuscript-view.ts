@@ -13,7 +13,6 @@ import {
 } from 'obsidian';
 
 import {
-	PRESENTATION_PROPERTIES,
 	presentationShape,
 	presentationStyle,
 } from '../domain';
@@ -176,11 +175,17 @@ export class SnowflakeManuscriptView extends ItemView {
 	private settling = 0;
 	/** The queue that keeps window changes from running over one another. */
 	private windowing: Promise<void> = Promise.resolve();
+	/** One activation at a time: see `activateSegment`. */
+	private editing: Promise<void> = Promise.resolve();
 	private saveTimer: number | null = null;
 	private saveWindow: Window | null = null;
 	/** The flush in progress, if any: the next one waits its turn behind it. */
 	private saving: Promise<void> = Promise.resolve();
 	private refreshing = false;
+	/** A refresh asked for while one was running, run once that one is done. */
+	private refreshAgain = false;
+	/** The project the cached wikilink targets were fetched for. */
+	private wikilinkProject: string | null = null;
 	private readonly t = (
 		key: string,
 		vars?: Record<string, string | number>,
@@ -314,7 +319,13 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * whole method exists to avoid.
 	 */
 	async refresh(): Promise<void> {
-		if (this.refreshing) return;
+		if (this.refreshing) {
+			// Asked for while one was running: what the running one loaded is
+			// already out of date, and dropping the request left the page showing
+			// one project while the leaf had been told to show another.
+			this.refreshAgain = true;
+			return;
+		}
 		this.refreshing = true;
 		this.wikilinkTargets = null;
 		try {
@@ -345,7 +356,15 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.applyPresentation();
 			// The popover shows the Enter toggle too, which is no part of the
 			// dress the shape above memoises: kept in step here, cheaply.
-			this.presentationPanel?.sync(settings.presentation);
+			//
+			// Read afresh rather than from the snapshot taken at the top of this
+			// method: loading a manuscript is awaited, and a slider dragged in
+			// the popover during that wait would be handed back the value it had
+			// before the drag -- the handle snapping back while the page kept
+			// the new measure, and the next drag starting from the wrong stop.
+			this.presentationPanel?.sync(
+				this.host.manuscriptWindowSettings().presentation,
+			);
 
 			const project = this.model?.projectPath ?? null;
 			if (
@@ -380,6 +399,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			}
 		} finally {
 			this.refreshing = false;
+		}
+		if (this.refreshAgain) {
+			this.refreshAgain = false;
+			await this.refresh();
 		}
 	}
 
@@ -734,11 +757,19 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * One shared fetch per quiet stretch: the promise itself is the cache,
 	 * so keystrokes racing the first `[[` coalesce on it. A failed read is
 	 * let go of, and the next popup simply asks again.
+	 *
+	 * Asked of the project on the page rather than the one the leaf was last
+	 * told to show. The two part company while a refresh is in flight, and a
+	 * link is not a label but a path written into a file: offering this
+	 * project's entities over another project's chapter would put a link to a
+	 * note that chapter cannot reach, and nothing afterwards would say so.
 	 */
 	private wikilinkTargetsFeed(): Promise<readonly WikilinkTarget[]> {
-		if (this.wikilinkTargets === null) {
-			const fetched = this.host.listWikilinkTargets(this.projectPath);
+		const shown = this.model?.projectPath ?? this.projectPath;
+		if (this.wikilinkTargets === null || this.wikilinkProject !== shown) {
+			const fetched = this.host.listWikilinkTargets(shown);
 			this.wikilinkTargets = fetched;
+			this.wikilinkProject = shown;
 			fetched.catch(() => {
 				if (this.wikilinkTargets === fetched) this.wikilinkTargets = null;
 			});
@@ -932,15 +963,22 @@ export class SnowflakeManuscriptView extends ItemView {
 		// leaf's too, and the ground it stands on is the same ground. Custom
 		// properties are inherited, so everything inside reads them as before.
 		const root = this.containerEl;
+		// A value of null is a measure left at the theme's own, and removing the
+		// property is what hands it back to the theme.
+		//
+		// The font list is not checked here for whether the page can read it.
+		// It cannot usefully be: the list always ends in `var(--font-text)`, and
+		// a declaration holding a var() is valid at parse time whatever else is
+		// in it, so the check could only ever answer yes. Nor would answering
+		// tell us anything -- the question is whether the machine has the face,
+		// and CSS.supports asks about syntax and never about availability. The
+		// fallback the page needs is the one already written into the value:
+		// an unknown face falls through to the theme's font on its own. Whether
+		// this machine really has a face is settled where it can be, by
+		// measuring one, in `font-families.ts`.
 		for (const [name, value] of Object.entries(style.properties)) {
-			// A font list the page cannot read is the theme's font, not no font.
-			const usable =
-				value !== null &&
-				(name !== PRESENTATION_PROPERTIES.font ||
-					typeof CSS === 'undefined' ||
-					CSS.supports('font-family', value));
-			if (usable) root.style.setProperty(name, value);
-			else root.style.removeProperty(name);
+			if (value === null) root.style.removeProperty(name);
+			else root.style.setProperty(name, value);
 		}
 		for (const [name, on] of Object.entries(style.classes)) {
 			this.contentEl.toggleClass(name, on);
@@ -958,12 +996,11 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * line is on the page, else the block at the top of the page — a
 	 * paragraph, a heading, an editor line — and failing both, the note
 	 * straddling the top, which `holdPosition` pins. Corrections go through
-	 * `scrollBy`, so a page that shrank grows the room it needs. A hold says
-	 * whether it had to move anything.
+	 * `scrollBy`, so a page that shrank grows the room it needs.
 	 */
-	private holdView(): () => boolean {
+	private holdView(): () => void {
 		const stream = this.streamEl;
-		if (stream === null) return () => false;
+		if (stream === null) return () => undefined;
 		const box = stream.getBoundingClientRect();
 		const editing =
 			this.editingPath === null ? undefined : this.mounted.get(this.editingPath);
@@ -973,29 +1010,24 @@ export class SnowflakeManuscriptView extends ItemView {
 			const was = band.top;
 			return () => {
 				const now = editor.caretBand()?.top ?? null;
-				if (now === null) return false;
+				if (now === null) return;
 				const delta = now - was;
-				if (Math.abs(delta) < 1) return false;
+				if (Math.abs(delta) < 1) return;
 				this.scrollBy(delta);
-				return true;
 			};
 		}
 		const block = this.blockAtTop(stream, box);
 		if (block !== null) {
 			const was = block.getBoundingClientRect().top;
 			return () => {
-				if (!block.isConnected) return false;
+				if (!block.isConnected) return;
 				const delta = block.getBoundingClientRect().top - was;
-				if (Math.abs(delta) < 1) return false;
+				if (Math.abs(delta) < 1) return;
 				this.scrollBy(delta);
-				return true;
 			};
 		}
 		const release = this.holdPosition();
-		return () => {
-			release();
-			return false;
-		};
+		return release;
 	}
 
 	/**
@@ -1021,7 +1053,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * counted as the view's own scrolling. One change of dress at a time: a
 	 * newer one takes the page over and this one stands down.
 	 */
-	private settleLook(hold: () => boolean): void {
+	private settleLook(hold: () => void): void {
 		const win = this.contentEl.win;
 		const token = {};
 		this.settlingLook = token;
@@ -1316,7 +1348,28 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * that had one back to rendered. One editor at a time is what the stable
 	 * backend offers; the swap is where that has to be honoured.
 	 */
-	private async activateSegment(
+	private activateSegment(
+		path: string,
+		clicked?: ClickedWords,
+		arriving?: 'start' | 'end',
+		crossing?: CrossingHold,
+	): Promise<void> {
+		// One at a time. The swap awaits a save and then a re-render of the note
+		// being left, and for most of that stretch `editingPath` is already null
+		// -- so a second click arriving inside it passed the guard below, mounted
+		// a second editor, and left the first one live and unreachable: still
+		// taking text, still saving it, still scrolling the page, and beyond the
+		// reach of the toolbar or of stopping. Queued rather than refused,
+		// because the click that arrives mid-swap is a real one and the author
+		// means it.
+		const run = this.editing
+			.catch(() => undefined)
+			.then(() => this.activateSegmentNow(path, clicked, arriving, crossing));
+		this.editing = run.catch(() => undefined);
+		return run;
+	}
+
+	private async activateSegmentNow(
 		path: string,
 		clicked?: ClickedWords,
 		arriving?: 'start' | 'end',
@@ -1985,6 +2038,15 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.editingSelection = null;
 			this.host.manuscriptWritingChanged();
 			this.streamEl?.removeClass('is-writing');
+			// The note being written in can go without anyone leaving it: renamed,
+			// merged away, or deleted from another window, it simply drops out of
+			// the sequence and the window unloads it. The bar above the page has
+			// to hear about that from here, because the refresh that brought the
+			// news re-renders in place and never rebuilds the bar -- and a bar
+			// left lit with no editor behind it takes every press and does
+			// nothing with it.
+			this.refreshWriteToggles();
+			this.refreshToolbar();
 		}
 		await this.backend.unmount(path);
 		this.mounted.delete(path);
