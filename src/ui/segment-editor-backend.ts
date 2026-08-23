@@ -269,30 +269,36 @@ const breaksParagraph = (view: EditorView): boolean => {
  * one its alignment and hyphenation, and a blank line the gap.
  */
 function layoutDecorations(view: EditorView): DecorationSet {
+	const { doc } = view.state;
 	// The grammar is parsed in the background a few thousand characters at a
-	// time, and a state just made has parsed only its first three thousand;
-	// the lines in view, deep in a long note, would be drawn plain and then
-	// redrawn in the page's dress a moment later when the parse caught up --
-	// a visible jump on every click into a note. So the parse is brought up
-	// to the end of the viewport here, before the lines are decorated, which
-	// costs a few milliseconds once and nothing after.
+	// time, and a state just made has parsed only its first three thousand, so
+	// the parse is brought up to the whole note here before the lines are
+	// decorated. Measured on a fifteen thousand character chapter: one and a
+	// half milliseconds, once.
 	const tree =
-		ensureSyntaxTree(view.state, view.viewport.to, LAYOUT_PARSE_MS) ??
+		ensureSyntaxTree(view.state, doc.length, LAYOUT_PARSE_MS) ??
 		syntaxTree(view.state);
-	const first = new Set<number>();
-	const lines = new Set<number>();
-	const blank = new Set<number>();
-	for (const range of view.visibleRanges) {
-		const layout = paragraphLayout(view.state, range.from, range.to, tree);
-		for (const at of layout.first) first.add(at);
-		for (const at of layout.lines) lines.add(at);
-		for (const at of layout.blank) blank.add(at);
-	}
+	// The whole note, not the lines in view.
+	//
+	// Decorating the viewport meant decorating wherever the viewport happened
+	// to be at the moment the editor was built -- which is not where the reader
+	// is. Mounting empties the note's body first, so the page around it
+	// collapses and settles again over the frames that follow, and the caret is
+	// sought after that; the lines the reader actually ends up looking at were
+	// therefore drawn once undecorated, ragged and unindented, and dressed a
+	// frame or two later when the viewport caught up. Recorded on a click into
+	// the middle of a chapter: plain at 99ms, justified and indented at 154ms.
+	//
+	// Laying out the whole note costs a tenth of a millisecond on that same
+	// chapter and nothing on scrolling, since the answer no longer depends on
+	// where the page is. CodeMirror draws only the lines in view whatever the
+	// set holds.
+	const layout = paragraphLayout(view.state, 0, doc.length, tree);
 	return Decoration.set(
 		[
-			...[...first].map((at) => PARAGRAPH_FIRST.range(at)),
-			...[...lines].map((at) => PARAGRAPH_LINE.range(at)),
-			...[...blank].map((at) => BLANK_LINE.range(at)),
+			...layout.first.map((at) => PARAGRAPH_FIRST.range(at)),
+			...layout.lines.map((at) => PARAGRAPH_LINE.range(at)),
+			...layout.blank.map((at) => BLANK_LINE.range(at)),
 		],
 		true,
 	);
@@ -303,8 +309,10 @@ function layoutDecorations(view: EditorView): DecorationSet {
  * blocks, always. The page gives a paragraph its indent and its gap, and the
  * stylesheet gives these lines the same from the same variables — so a change
  * of typography is live without an editor reconfiguration, and the two halves
- * cannot drift apart. Rebuilt when the text or the viewport moves, and when
- * the grammar has parsed further, which a new tree identity says.
+ * cannot drift apart. Rebuilt when the text changes and when the grammar has
+ * parsed further, which a new tree identity says; not when the page scrolls,
+ * because the whole note is marked at once and scrolling reveals lines that
+ * are already dressed.
  */
 const paragraphLines = ViewPlugin.fromClass(
 	class {
@@ -317,7 +325,6 @@ const paragraphLines = ViewPlugin.fromClass(
 		update(update: ViewUpdate): void {
 			if (
 				update.docChanged ||
-				update.viewportChanged ||
 				syntaxTree(update.startState) !== syntaxTree(update.state)
 			) {
 				this.decorations = layoutDecorations(update.view);
