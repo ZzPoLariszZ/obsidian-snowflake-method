@@ -2210,23 +2210,38 @@ export class SnowflakeManuscriptView extends ItemView {
 		for (const entry of this.mounted.values()) {
 			const pending = entry.pending;
 			if (pending === null || pending === entry.text.body) continue;
-			try {
-				const saved = await this.host.saveManuscriptSegment(
-					entry.path,
-					pending,
-					entry.text.revision,
-				);
-				entry.text = { ...entry.text, body: pending, ...saved };
-				// Typing that arrived while this save was on its way is still
-				// pending, and the next flush carries it.
-				if (entry.pending === pending) entry.pending = null;
-			} catch (error) {
-				if (!(error instanceof ManuscriptSaveConflict)) {
-					this.showError(error);
-					continue;
-				}
+			if ((await this.writePending(entry, pending)) === 'changed') {
 				await this.takeChangedNote(entry, pending);
 			}
+		}
+	}
+
+	/**
+	 * Writes one segment's text and moves its base revision on.
+	 *
+	 * Says which of the three things happened, because the caller answers one
+	 * of them and only reports the others: a note that changed underneath is
+	 * not a failure, it is a note to be taken over.
+	 */
+	private async writePending(
+		entry: MountedSegment,
+		pending: string,
+	): Promise<'written' | 'changed' | 'failed'> {
+		try {
+			const saved = await this.host.saveManuscriptSegment(
+				entry.path,
+				pending,
+				entry.text.revision,
+			);
+			entry.text = { ...entry.text, body: pending, ...saved };
+			// Typing that arrived while this save was on its way is still
+			// pending, and the next flush carries it.
+			if (entry.pending === pending) entry.pending = null;
+			return 'written';
+		} catch (error) {
+			if (error instanceof ManuscriptSaveConflict) return 'changed';
+			this.showError(error);
+			return 'failed';
 		}
 	}
 
@@ -2258,7 +2273,21 @@ export class SnowflakeManuscriptView extends ItemView {
 			return;
 		}
 		new Notice(this.t('manuscript.changedElsewhere'));
-		this.scheduleSave();
+		// Written here rather than left to the timer the notice used to arm.
+		// The revision above is the one on disk, so this write is taken, and
+		// taking it now is what keeps the promise the notice just made. A timer
+		// only fires if the entry is still mounted when it does, and the very
+		// events that cause a conflict take entries away: the note renamed or
+		// merged from another window unmounts it, the reader scrolling on lets
+		// it out of the loaded window, and closing the view clears the timer
+		// outright -- each of them dropping the entry that held the only copy
+		// of what the author had typed.
+		if ((await this.writePending(entry, pending)) === 'changed') {
+			// Changed again between the reading above and this write, which
+			// takes two writers in the same instant. Left pending for the
+			// timer, which is where this stood before.
+			this.scheduleSave();
+		}
 	}
 
 	private async createSegment(
