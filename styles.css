@@ -4966,19 +4966,36 @@ body.theme-dark
 	color: var(--text-normal);
 }
 
-/* The group separators: the group's name with a rule under it, running the
-   list's width. Named twice because CodeMirror has rendered the header as
-   a li with this class and as a bare completion-section element, depending
-   on the version Obsidian ships. */
+/* The group headings, dressed as the headings of the plugin's option lists
+   are (the font list's "Recent fonts" and "All fonts"): the group's name in
+   the small muted interface face, with a rule above it, which is where one
+   group ends and the next begins -- except at the top of the list, where
+   there is nothing to divide. The rule runs edge to edge the way Obsidian's
+   menu separators do, reaching through the list's inset with a negative
+   margin the padding gives back, so the name still lines up with the rows.
+   Named twice because CodeMirror has rendered the heading as a li with this
+   class and as a bare completion-section element, depending on the version
+   Obsidian ships. */
 .snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection,
 .snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section {
 	display: block;
-	padding: var(--size-2-3) var(--size-4-3) var(--size-2-1);
-	margin-bottom: var(--size-2-1);
-	color: var(--text-faint);
+	margin: var(--size-4-2) calc(var(--size-2-3) * -1) 1px;
+	padding: var(--size-4-2) calc(var(--size-4-3) + var(--size-2-3)) var(--size-2-3);
+	border-top: 1px solid var(--background-modifier-border);
+	/* CodeMirror's base theme rules the heading off underneath instead. */
+	border-bottom: 0;
+	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	line-height: var(--line-height-tight);
 	list-style: none;
-	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection:first-child,
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section:first-child {
+	margin-top: 0;
+	padding-top: var(--size-2-3);
+	border-top: 0;
 }
 
 /* Aliases sit indented beneath their primary and read quieter, the way the
@@ -5666,6 +5683,12 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	font-weight: var(--font-medium);
 	line-height: var(--line-height-tight);
 	pointer-events: none;
+}
+
+.snowflake-method-suggestions .suggestion-item.snowflake-method-option-picker-heading:first-child {
+	margin-top: 0;
+	padding-top: var(--size-2-3);
+	border-top: 0;
 }
 
 /* The sample the font picker measures to tell whether this machine really has
