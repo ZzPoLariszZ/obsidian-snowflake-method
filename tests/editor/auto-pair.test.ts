@@ -19,7 +19,7 @@ function scan(
 	after: string,
 	extra?: Partial<PairScan>,
 ): PairScan {
-	return {
+	const base = {
 		typed,
 		before,
 		after,
@@ -29,6 +29,9 @@ function scan(
 		options: ALL,
 		...extra,
 	};
+	// Pairs are the author's own unless a case says otherwise, so the typed
+	// run follows the tracked one by default.
+	return { typedAfter: base.trackedAfter, ...base };
 }
 
 describe('planPairInput for brackets and quotes', () => {
@@ -232,6 +235,19 @@ describe('planPairWhitespace', () => {
 		expect(planPairWhitespace(scan(' ', '(', ')', { trackedAfter: 1 }))).toBeNull();
 		expect(planPairWhitespace(scan(' ', '*', '*'))).toBeNull();
 		expect(planPairWhitespace(scan(' ', '*x', '*', { trackedAfter: 1 }))).toBeNull();
+	});
+
+	it('leaves a pair a formatting command placed alone', () => {
+		// Mod+B on an empty caret, then a space: the author is writing inside
+		// the bold they just asked for, not starting a list.
+		expect(
+			planPairWhitespace(
+				scan(' ', '**', '**', { trackedAfter: 2, typedAfter: 0 }),
+			),
+		).toBeNull();
+		expect(
+			planPairWhitespace(scan(' ', '*', '*', { trackedAfter: 1, typedAfter: 0 })),
+		).toBeNull();
 	});
 });
 

@@ -36,6 +36,7 @@ import {
 	selectedTextOf,
 	toggleHeading,
 	toggleInline,
+	trackedRunAt,
 	wikilinkAt,
 	type HeadingLevel,
 	type InlineMarker,
@@ -426,11 +427,9 @@ function markCommandClosers(view: EditorView, marker: InlineMarker): void {
 		if (marker === 'underline') {
 			// One entry for the whole tag: per-character tracking would let a
 			// typed `<` step into its middle.
-			entries.push({ pos: range.to, close });
+			entries.push({ pos: range.to, close, command: true });
 		} else {
-			for (const [at, char] of [...close].entries()) {
-				entries.push({ pos: range.to + at, close: char });
-			}
+			entries.push(...trackedRunAt(range.to, close, { command: true }));
 		}
 	}
 	if (entries.length > 0) view.dispatch({ effects: addTracked.of(entries) });

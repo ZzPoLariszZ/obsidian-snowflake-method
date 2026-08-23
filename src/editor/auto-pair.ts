@@ -33,6 +33,15 @@ export interface AutoPairOptions {
 export interface TrackedCloser {
 	pos: number;
 	close: string;
+	/**
+	 * True when a formatting command placed this closer rather than the author
+	 * typing its opener. The two behave alike under Backspace and under a typed
+	 * closer, and differ in one place only: a space at the centre of a pair the
+	 * author typed is them starting a list item, while a space at the centre of
+	 * a pair a command placed is them writing inside the emphasis they just
+	 * asked for, which must survive.
+	 */
+	command?: boolean;
 }
 
 const ASCII_BRACKETS: Readonly<Record<string, string>> = {
@@ -105,6 +114,8 @@ export interface PairScan {
 	empty: boolean;
 	/** Contiguous tracked closers from the caret onward. */
 	trackedAfter: number;
+	/** The same run, counting only closers the author's own typing placed. */
+	typedAfter: number;
 	/** Whether the character just before the caret is a tracked closer. */
 	prevTracked: boolean;
 	options: AutoPairOptions;
@@ -216,6 +227,11 @@ export function planPairInput(scan: PairScan): PairPlan {
  * Whitespace typed at the centre of an empty marker pair cancels it: `*|*`
  * plus a space is a list item being started, not emphasis, and CommonMark
  * would not honour a space-leading delimiter anyway.
+ *
+ * Only for a pair the author typed. A pair a formatting command placed is one
+ * they asked for by name, and the first thing they type inside it may perfectly
+ * well be a space -- taking the closers away there would delete the emphasis
+ * they had just switched on and leave the opening marks stranded in the line.
  */
 export function planPairWhitespace(scan: PairScan): { dropClosers: number } | null {
 	if (!scan.options.markdown || !scan.empty) return null;
@@ -223,7 +239,7 @@ export function planPairWhitespace(scan: PairScan): { dropClosers: number } | nu
 	if (prev === undefined || !MARKERS.has(prev)) return null;
 	const runBefore = tailRun(scan.before, prev);
 	const runAfter = headRun(scan.after, prev);
-	if (runBefore >= 1 && runBefore === runAfter && scan.trackedAfter >= runAfter) {
+	if (runBefore >= 1 && runBefore === runAfter && scan.typedAfter >= runAfter) {
 		return { dropClosers: runAfter };
 	}
 	return null;
@@ -325,11 +341,15 @@ export function trackedClosers(state: EditorState): readonly TrackedCloser[] {
 function contiguousTrackedFrom(
 	tracked: readonly TrackedCloser[],
 	pos: number,
+	typedOnly = false,
 ): number {
 	// Multi-character closers answer only Backspace: a typed `<` must never
 	// step into the middle of a tracked underline tag.
 	const positions = new Set(
-		tracked.filter((entry) => entry.close.length === 1).map((entry) => entry.pos),
+		tracked
+			.filter((entry) => entry.close.length === 1)
+			.filter((entry) => !typedOnly || entry.command !== true)
+			.map((entry) => entry.pos),
 	);
 	let count = 0;
 	while (positions.has(pos + count)) count += 1;
@@ -350,15 +370,30 @@ function scanAt(
 		after: state.sliceDoc(to, Math.min(state.doc.length, to + 8)),
 		empty: from === to,
 		trackedAfter: contiguousTrackedFrom(tracked, to),
+		typedAfter: contiguousTrackedFrom(tracked, to, true),
 		prevTracked: tracked.some((entry) => entry.pos === from - 1),
 		options,
 	};
 }
 
-function trackedRunAt(pos: number, close: string): TrackedCloser[] {
+/**
+ * A multi-character closer as the engine tracks it: one entry per character,
+ * so Backspace takes the pair apart a layer at a time and a typed closer steps
+ * over exactly one of them.
+ *
+ * Exported for the formatting commands, which place their own pairs and hand
+ * them here to be tracked. This convention is the engine's, and a second copy
+ * of it in the toolbar's code would come apart the first time the engine
+ * changed its mind about what a tracked run looks like.
+ */
+export function trackedRunAt(
+	pos: number,
+	close: string,
+	options: { command?: boolean } = {},
+): TrackedCloser[] {
 	const entries: TrackedCloser[] = [];
 	for (const [at, char] of [...close].entries()) {
-		entries.push({ pos: pos + at, close: char });
+		entries.push({ pos: pos + at, close: char, ...options });
 	}
 	return entries;
 }
