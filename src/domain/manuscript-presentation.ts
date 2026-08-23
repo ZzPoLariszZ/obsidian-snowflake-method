@@ -187,8 +187,10 @@ export function sizeOrTheme(
 	fallback: number,
 ): number {
 	if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+	// Zero and below is the theme's own, which is outside the range rather than
+	// at the bottom of it; everything else is held to the range in one place.
 	if (value <= 0) return 0;
-	return Math.min(max, Math.max(min, value));
+	return numberIn(value, min, max, fallback);
 }
 
 export function sanitizeFontSize(value: unknown): number {
@@ -393,9 +395,7 @@ export function presentationStyle(look: ManuscriptPresentation): PresentationSty
 			// The setting is the width of the text column; the segment's box
 			// carries a column of padding on each side inside its max-width.
 			[PRESENTATION_PROPERTIES.width]:
-				look.contentWidth > 0
-					? `calc(${String(look.contentWidth)}px + var(--size-4-6) * 2)`
-					: null,
+				look.contentWidth > 0 ? `${String(look.contentWidth)}px` : null,
 			[PRESENTATION_PROPERTIES.paragraphSpacing]: String(look.paragraphSpacing),
 			[PRESENTATION_PROPERTIES.indent]: `${String(look.firstLineIndent)}em`,
 			// The stylesheet falls back to the theme's ragged right and to manual
@@ -417,19 +417,20 @@ export function presentationStyle(look: ManuscriptPresentation): PresentationSty
 
 /** One string per distinct look, so a view can tell a change from a repeat. */
 export function presentationShape(look: ManuscriptPresentation): string {
+	// Read off what the page is actually given rather than from a second list of
+	// the fields. The list had to be kept in step with the interface by hand, and
+	// nothing would have said if it were not: a field added to the dress but
+	// forgotten here would leave the page never noticing that field change. This
+	// cannot fall behind, and it is the sharper question besides -- two looks that
+	// produce the same properties and classes are the same look, whatever numbers
+	// they were written with.
+	const style = presentationStyle(look);
 	return [
-		look.fontFamily,
-		look.fontSize,
-		look.lineHeight,
-		look.contentWidth,
-		look.paragraphSpacing,
-		look.firstLineIndent,
-		look.textAlign,
-		look.hyphenation,
-		look.tintLight,
-		look.tintDark,
-		look.guide,
-	]
-		.map(String)
-		.join('|');
+		...Object.entries(style.properties).map(
+			([name, value]) => `${name}:${value ?? ''}`,
+		),
+		...Object.entries(style.classes).map(
+			([name, on]) => `${name}:${on ? '1' : '0'}`,
+		),
+	].join('|');
 }

@@ -306,7 +306,9 @@ describe('presentationStyle', () => {
 			[PRESENTATION_PROPERTIES.fontSize]: '18px',
 			[PRESENTATION_PROPERTIES.lineHeight]: '1.8',
 			// The text column plus the padding the segment box carries.
-			[PRESENTATION_PROPERTIES.width]: 'calc(760px + var(--size-4-6) * 2)',
+			// The text column alone: the box's own padding is added by the
+			// stylesheet, next to where that padding is set.
+			[PRESENTATION_PROPERTIES.width]: '760px',
 			[PRESENTATION_PROPERTIES.paragraphSpacing]: '0.5',
 			[PRESENTATION_PROPERTIES.indent]: '2em',
 			[PRESENTATION_PROPERTIES.align]: null,
@@ -341,6 +343,37 @@ describe('presentationShape', () => {
 		);
 		expect(presentationShape(look({ tintDark: '#202e47' }))).not.toBe(
 			presentationShape(look({ tintLight: '#202e47' })),
+		);
+	});
+
+	it('covers every field the page is dressed from', () => {
+		// Read off the dress rather than a list of its own, so a field added to
+		// `presentationStyle` and forgotten here cannot leave the page blind to
+		// that field. Every field is walked and each must move the shape.
+		const fields: [keyof ManuscriptPresentation, unknown][] = [
+			['fontFamily', 'Iowan Old Style'],
+			['fontSize', 18],
+			['lineHeight', 1.8],
+			['contentWidth', 760],
+			['paragraphSpacing', 0.5],
+			['firstLineIndent', 2],
+			['textAlign', 'justify'],
+			['hyphenation', true],
+			['tintLight', '#c7e0c7'],
+			['tintDark', '#202e47'],
+			['guide', 'dashed'],
+		];
+		const base = presentationShape(look());
+		for (const [field, value] of fields) {
+			expect(
+				presentationShape(look({ [field]: value })),
+				`${field} must move the shape`,
+			).not.toBe(base);
+		}
+		// And the walk covers the whole interface, so a twelfth field is a
+		// failing test rather than a silent gap.
+		expect(fields.map(([field]) => field).sort()).toEqual(
+			Object.keys(look()).sort(),
 		);
 	});
 });

@@ -4918,6 +4918,21 @@ body.theme-dark
 	max-width: 14rem;
 }
 
+/* A group's name standing above the first of its rows. Two lists offer their
+   options in parts and both write this heading -- the option pickers' own
+   suggestion list and the wikilink popup, which is CodeMirror's -- and they
+   are different enough elements that no one selector reaches both. What they
+   look like is said once here instead, so the two cannot drift apart under a
+   theme the way two copies of the same declarations would. */
+body {
+	--snowflake-method-list-heading-gap: var(--size-4-2);
+	--snowflake-method-list-heading-rule: 1px solid
+		var(--background-modifier-border);
+	--snowflake-method-list-heading-color: var(--text-muted);
+	--snowflake-method-list-heading-size: var(--font-ui-smaller);
+	--snowflake-method-list-heading-weight: var(--font-medium);
+}
+
 /* The wikilink popup, escaped to a body-parented host so the stream's
    hidden overflow cannot clip it. Dressed as Obsidian dresses its own
    suggestion popups -- the same font size, row padding, rounded rows, row
@@ -4979,14 +4994,15 @@ body.theme-dark
 .snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection,
 .snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section {
 	display: block;
-	margin: var(--size-4-2) calc(var(--size-2-3) * -1) 1px;
-	padding: var(--size-4-2) calc(var(--size-4-3) + var(--size-2-3)) var(--size-2-3);
-	border-top: 1px solid var(--background-modifier-border);
+	margin: var(--snowflake-method-list-heading-gap) calc(var(--size-2-3) * -1) 1px;
+	padding: var(--snowflake-method-list-heading-gap)
+		calc(var(--size-4-3) + var(--size-2-3)) var(--size-2-3);
+	border-top: var(--snowflake-method-list-heading-rule);
 	/* CodeMirror's base theme rules the heading off underneath instead. */
 	border-bottom: 0;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-medium);
+	color: var(--snowflake-method-list-heading-color);
+	font-size: var(--snowflake-method-list-heading-size);
+	font-weight: var(--snowflake-method-list-heading-weight);
 	line-height: var(--line-height-tight);
 	list-style: none;
 }
@@ -5011,11 +5027,25 @@ body.theme-dark
 
 /* The manuscript reads at the width Obsidian gives a note, wherever the pane
    happens to be, so a wide window does not stretch a line past reading length
-   -- or at the width the author set, which the view writes as a variable
-   with this box's own padding already added. */
+   -- or at the width the author set, which the view writes as a variable.
+
+   That variable is the text column, and this box is border-box with a column
+   of padding on each side, so the padding is added back here. Named once: the
+   sum used to be built in the domain, which meant a change to the padding
+   below silently moved every author's column by twice the difference, with
+   nothing on either side to notice. Obsidian's own measure needs no such
+   addition, being a box width already. */
 .snowflake-method-segment,
 .snowflake-method-manuscript-end {
-	max-width: var(--snowflake-method-manuscript-width, var(--file-line-width));
+	/* Unset, the sum holds a var() that resolves to nothing, which makes the
+	   whole custom property invalid -- and a var() reading an invalid property
+	   takes its fallback. So the theme's own measure is used as it stands,
+	   being a box width already, and the author's is used with the padding
+	   added. */
+	--snowflake-method-manuscript-box: calc(
+		var(--snowflake-method-manuscript-width) + var(--size-4-6) * 2
+	);
+	max-width: var(--snowflake-method-manuscript-box, var(--file-line-width));
 	margin-inline: auto;
 	padding-inline: var(--size-4-6);
 }
@@ -5672,15 +5702,15 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    written in. A rule above it says where one group ends and the next begins,
    except at the top of the list, where there is nothing to divide. */
 .snowflake-method-suggestions .suggestion-item.snowflake-method-option-picker-heading {
-	margin-top: var(--size-4-2);
-	padding-top: var(--size-4-2);
-	border-top: 1px solid var(--background-modifier-border);
+	margin-top: var(--snowflake-method-list-heading-gap);
+	padding-top: var(--snowflake-method-list-heading-gap);
+	border-top: var(--snowflake-method-list-heading-rule);
 	border-radius: 0;
 	background-color: transparent;
-	color: var(--text-muted);
+	color: var(--snowflake-method-list-heading-color);
 	font-family: var(--font-interface);
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-medium);
+	font-size: var(--snowflake-method-list-heading-size);
+	font-weight: var(--snowflake-method-list-heading-weight);
 	line-height: var(--line-height-tight);
 	pointer-events: none;
 }
