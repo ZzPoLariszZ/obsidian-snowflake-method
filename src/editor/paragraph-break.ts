@@ -73,6 +73,14 @@ function insideTable(
 	number: number,
 ): boolean {
 	const blank = (at: number): boolean => doc.line(at).text.trim().length === 0;
+	// A blank line is in no block, the table above it least of all: it is what
+	// ended the table. Without this the walk below climbs out of the blank line
+	// into the rows, finds their dashes, and answers that the caret is in a
+	// table -- so Enter on the empty line under a table fell through to the
+	// plain one, and the next thing written became a soft break glued to the
+	// paragraph after it. `paragraphAround` draws the same line for the same
+	// reason.
+	if (blank(number)) return false;
 	let start = number;
 	while (start > 1 && !blank(start - 1)) start -= 1;
 	let end = number;

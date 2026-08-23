@@ -39,6 +39,22 @@ describe('paragraphBreak', () => {
 		expect(pressEnter(table, 27)).toBeNull();
 	});
 
+	it('answers on the blank line under a table, which is not the table', () => {
+		// The line that ended the table belongs to no block. Reading it as one
+		// of the rows put a single newline there, and the next thing written
+		// became a soft break glued to the paragraph below.
+		expect(pressEnter('Name | Age\n--- | ---\nBo | 3\n\nAfter', 28)).toBe(
+			'Name | Age\n--- | ---\nBo | 3\n\n|\n\nAfter',
+		);
+		expect(
+			pressEnter('| Name | Age |\n| --- | --- |\n| Bo | 3 |\n\nAfter', 40),
+		).toBe('| Name | Age |\n| --- | --- |\n| Bo | 3 |\n\n|\n\nAfter');
+		// The same line with nothing after it at all.
+		expect(pressEnter('Name | Age\n--- | ---\nBo | 3\n', 28)).toBe(
+			'Name | Age\n--- | ---\nBo | 3\n\n|\n',
+		);
+	});
+
 	it('declines inside a table written with its outer pipes', () => {
 		const table = '| Name | Age |\n| --- | --- |\n| Bo | 3 |';
 		expect(pressEnter(table, 14)).toBeNull();
