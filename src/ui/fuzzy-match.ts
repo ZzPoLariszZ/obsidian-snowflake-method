@@ -35,6 +35,18 @@ function substringAt(
 }
 
 /**
+ * Whether the candidate begins with the query, folded the way `fuzzyScore`
+ * folds: what an author types from the start of a name is a stronger claim
+ * on it than the same letters found further in. The empty query begins
+ * nothing.
+ */
+export function matchesFromStart(query: string, candidate: string): boolean {
+	const q = foldToPoints(query.trim());
+	if (q.length === 0) return false;
+	return substringAt(foldToPoints(candidate), q) === 0;
+}
+
+/**
  * Higher is better; null when the candidate does not match at all. The empty
  * query matches everything at zero, which keeps an unfiltered list in its
  * caller's own order.

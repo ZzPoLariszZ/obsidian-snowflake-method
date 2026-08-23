@@ -1,4 +1,4 @@
-import { fuzzyScore } from './fuzzy-match';
+import { fuzzyScore, matchesFromStart } from './fuzzy-match';
 import type { WikilinkTarget } from './segment-editor-backend';
 
 /**
@@ -85,16 +85,27 @@ export interface WikilinkOption {
 	insert: string;
 	/** True for alias entries, which render indented under their primary. */
 	alias: boolean;
+	/**
+	 * True on the one row the popup opens on. The name of the best-placed
+	 * entity, unless what was typed fits one of its aliases better: the
+	 * alias when the name did not match at all, or when the typed text
+	 * begins the alias and does not begin the name.
+	 */
+	preferred: boolean;
 	section: { name: string; rank: number };
 }
 
 /**
- * Filter and rank. Every entry is matched against its own label alone, so a
- * query that fits only an alias surfaces just that alias row. The display
- * stays hierarchical: groups keep rail order, an entity's surviving entries
- * stay together with the primary first, and entities take their place from
- * their best-scoring entry, then snowflake rank, then name. An empty query
- * is the whole roster in group, rank, name-before-aliases order.
+ * Filter and rank. Every entry is matched against its own label alone, and
+ * an entity whose name or any alias matches is offered whole: its name first,
+ * then every alias, the ones that matched moved to the head of the aliases
+ * (typed from the start before merely containing, closer before looser,
+ * declaration order last), so the name an author knows an alias by always
+ * stands above it, and two members who share an alias are told apart.
+ * Groups keep rail order, and entities take their place from their
+ * best-scoring entry, then snowflake rank, then name. An empty query is the
+ * whole roster in group, rank, name-before-aliases order. Exactly one row is
+ * marked preferred: see `WikilinkOption.preferred`.
  */
 export function wikilinkOptions(
 	targets: readonly WikilinkTarget[],
@@ -102,39 +113,69 @@ export function wikilinkOptions(
 ): WikilinkOption[] {
 	interface Scored {
 		target: WikilinkTarget;
-		score: number;
+		/** Null when this entry does not match the query at all. */
+		score: number | null;
+		fromStart: boolean;
 	}
 	const buckets = new Map<string, Scored[]>();
 	for (const target of targets) {
 		const score = fuzzyScore(query, target.label);
-		if (score === null) continue;
+		const entry: Scored = {
+			target,
+			score,
+			fromStart: score !== null && matchesFromStart(query, target.label),
+		};
 		const key = `${String(target.groupRank)}|${target.memberPath}`;
 		const bucket = buckets.get(key);
-		if (bucket === undefined) buckets.set(key, [{ target, score }]);
-		else bucket.push({ target, score });
+		if (bucket === undefined) buckets.set(key, [entry]);
+		else bucket.push(entry);
 	}
-	const ordered = [...buckets.values()].sort((left, right) => {
-		const a = left[0];
-		const b = right[0];
-		if (a === undefined || b === undefined) return 0;
-		if (a.target.groupRank !== b.target.groupRank) {
-			return a.target.groupRank - b.target.groupRank;
-		}
-		const bestLeft = Math.max(...left.map((entry) => entry.score));
-		const bestRight = Math.max(...right.map((entry) => entry.score));
-		if (bestLeft !== bestRight) return bestRight - bestLeft;
-		if (a.target.rank !== b.target.rank) return a.target.rank - b.target.rank;
-		if (a.target.memberName < b.target.memberName) return -1;
-		return a.target.memberName > b.target.memberName ? 1 : 0;
-	});
+	const bestScore = (bucket: readonly Scored[]): number =>
+		Math.max(...bucket.map((entry) => entry.score ?? -Infinity));
+	const ordered = [...buckets.values()]
+		.filter((bucket) => bucket.some((entry) => entry.score !== null))
+		.sort((left, right) => {
+			const a = left[0];
+			const b = right[0];
+			if (a === undefined || b === undefined) return 0;
+			if (a.target.groupRank !== b.target.groupRank) {
+				return a.target.groupRank - b.target.groupRank;
+			}
+			const bestLeft = bestScore(left);
+			const bestRight = bestScore(right);
+			if (bestLeft !== bestRight) return bestRight - bestLeft;
+			if (a.target.rank !== b.target.rank) return a.target.rank - b.target.rank;
+			if (a.target.memberName < b.target.memberName) return -1;
+			return a.target.memberName > b.target.memberName ? 1 : 0;
+		});
 	const options: WikilinkOption[] = [];
-	for (const bucket of ordered) {
-		// Collection order already reads name first, aliases as declared.
-		for (const { target } of bucket) {
+	for (const [place, bucket] of ordered.entries()) {
+		const name = bucket.find((entry) => entry.target.entry === 'name') ?? null;
+		// Aliases stay in declaration order except that the matched ones come
+		// first, themselves ordered by how well they fit.
+		const aliases = bucket
+			.filter((entry) => entry.target.entry === 'alias')
+			.sort((left, right) => {
+				if ((left.score === null) !== (right.score === null)) {
+					return left.score === null ? 1 : -1;
+				}
+				if (left.score === null || right.score === null) return 0;
+				if (left.fromStart !== right.fromStart) return left.fromStart ? -1 : 1;
+				return right.score - left.score;
+			});
+		const bestAlias = aliases.find((entry) => entry.score !== null) ?? null;
+		const nameWins =
+			name !== null &&
+			name.score !== null &&
+			(name.fromStart || bestAlias === null || !bestAlias.fromStart);
+		const preferred = place === 0 ? (nameWins ? name : (bestAlias ?? name)) : null;
+		for (const entry of [...(name === null ? [] : [name]), ...aliases]) {
+			const { target } = entry;
 			options.push({
 				label: target.label,
 				insert: target.insert,
 				alias: target.entry === 'alias',
+				preferred: entry === preferred,
 				section: { name: target.groupLabel, rank: target.groupRank },
 			});
 		}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fuzzyScore } from '../../src/ui/fuzzy-match';
+import { fuzzyScore, matchesFromStart } from '../../src/ui/fuzzy-match';
 
 function scoreOf(query: string, candidate: string): number {
 	const score = fuzzyScore(query, candidate);
@@ -42,5 +42,20 @@ describe('fuzzyScore', () => {
 		expect(scoreOf('花', '雪花')).toBeGreaterThan(0);
 		expect(scoreOf('爱丽丝', '爱丽丝·门罗')).toBeGreaterThan(scoreOf('爱丝', '爱丽丝·门罗'));
 		expect(fuzzyScore('丝爱', '爱丽丝')).toBeNull();
+	});
+});
+
+describe('matchesFromStart', () => {
+	it('is true only when the candidate begins with the folded query', () => {
+		expect(matchesFromStart('ali', 'Alice')).toBe(true);
+		expect(matchesFromStart(' ALI ', 'alice')).toBe(true);
+		expect(matchesFromStart('lic', 'Alice')).toBe(false);
+		expect(matchesFromStart('小', '小张')).toBe(true);
+		expect(matchesFromStart('张', '小张')).toBe(false);
+	});
+
+	it('begins nothing on an empty query', () => {
+		expect(matchesFromStart('', 'Alice')).toBe(false);
+		expect(matchesFromStart('   ', 'Alice')).toBe(false);
 	});
 });

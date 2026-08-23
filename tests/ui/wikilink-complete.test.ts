@@ -136,21 +136,128 @@ describe('wikilinkOptions', () => {
 		});
 	});
 
-	it('matches every entry on its own label alone', () => {
+	it('offers a member whole when only an alias matches, the name on top', () => {
 		const options = wikilinkOptions(targets, 'bob');
-		expect(options.map((option) => option.label)).toEqual(['Bob']);
-		expect(options[0]?.alias).toBe(true);
-		expect(options[0]?.insert).toBe('[[Demo/20_Character/Zhang|Bob]]');
+		expect(options.map((option) => option.label)).toEqual(['张三', 'Bob']);
+		expect(options.map((option) => option.alias)).toEqual([false, true]);
+		expect(options[1]?.insert).toBe('[[Demo/20_Character/Zhang|Bob]]');
 	});
 
-	it('keeps an entity`s surviving entries together, primary first', () => {
+	it('opens on the alias that was typed when the name did not match', () => {
+		const options = wikilinkOptions(targets, 'bob');
+		expect(options.map((option) => option.preferred)).toEqual([false, true]);
+	});
+
+	it('tells two members who share an alias apart by their names', () => {
+		const shared = collectWikilinkTargets(
+			membersWith({
+				characters: [
+					{ path: 'a.md', name: 'Character 001', rank: 1024, aliases: ['001', 'jjb'] },
+					{ path: 'b.md', name: 'Character 002', rank: 2048, aliases: ['002', 'jjb'] },
+				],
+			}),
+			labelOf,
+			fakeLink,
+		);
+		const options = wikilinkOptions(shared, 'jj');
+		expect(options.map((option) => option.label)).toEqual([
+			'Character 001',
+			'jjb',
+			'001',
+			'Character 002',
+			'jjb',
+			'002',
+		]);
+		expect(options.map((option) => option.preferred)).toEqual([
+			false,
+			true,
+			false,
+			false,
+			false,
+			false,
+		]);
+	});
+
+	it('moves the matched aliases to the head, typed-from-the-start first', () => {
+		const many = collectWikilinkTargets(
+			membersWith({
+				characters: [
+					{
+						path: 'a.md',
+						name: 'Robert',
+						rank: 1024,
+						aliases: ['Bobby', 'Rob', 'Bob', 'The Stag'],
+					},
+				],
+			}),
+			labelOf,
+			fakeLink,
+		);
+		expect(wikilinkOptions(many, 'bob').map((option) => option.label)).toEqual([
+			'Robert',
+			'Bob',
+			'Bobby',
+			'Rob',
+			'The Stag',
+		]);
+	});
+
+	it('keeps an entity`s entries together, primary first', () => {
 		const options = wikilinkOptions(targets, 'ali');
 		expect(options.map((option) => option.label)).toEqual([
 			'Alice',
 			'Ali',
+			'爱丽丝',
 			'Alight',
 		]);
-		expect(options.map((option) => option.section.rank)).toEqual([0, 0, 1]);
+		expect(options.map((option) => option.section.rank)).toEqual([0, 0, 0, 1]);
+	});
+
+	it('opens on the name whenever the typed text begins it', () => {
+		expect(
+			wikilinkOptions(targets, 'ali').map((option) => option.preferred),
+		).toEqual([true, false, false, false]);
+		expect(
+			wikilinkOptions(targets, '').map((option) => option.preferred),
+		).toEqual([true, false, false, false, false, false]);
+	});
+
+	it('opens on an alias typed from its start when the name merely contains it', () => {
+		const numbered = collectWikilinkTargets(
+			membersWith({
+				characters: [
+					{
+						path: 'a.md',
+						name: 'Character 001',
+						rank: 1024,
+						aliases: ['No. 001', '001'],
+					},
+				],
+			}),
+			labelOf,
+			fakeLink,
+		);
+		expect(
+			wikilinkOptions(numbered, '001').map((option) => [
+				option.label,
+				option.preferred,
+			]),
+		).toEqual([
+			['Character 001', false],
+			['001', true],
+			['No. 001', false],
+		]);
+		// Nothing typed from the start: the name keeps the opening row.
+		expect(
+			wikilinkOptions(numbered, '01').map((option) => [
+				option.label,
+				option.preferred,
+			]),
+		).toEqual([
+			['Character 001', true],
+			['001', false],
+			['No. 001', false],
+		]);
 	});
 
 	it('orders entities by rank when their scores tie', () => {

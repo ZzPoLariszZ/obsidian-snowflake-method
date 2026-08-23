@@ -2,6 +2,7 @@ import {
 	autocompletion,
 	closeCompletion,
 	completionKeymap,
+	currentCompletions,
 	selectedCompletionIndex,
 	setSelectedCompletion,
 	type Completion,
@@ -322,6 +323,50 @@ const paragraphLines = ViewPlugin.fromClass(
 	},
 	{ decorations: (plugin) => plugin.decorations },
 );
+
+/**
+ * A row of the wikilink popup as CodeMirror holds it, with the builder's
+ * mark on the one row the popup should open on.
+ */
+interface WikilinkCompletion extends Completion {
+	preferred: boolean;
+}
+
+function isWikilinkCompletion(
+	completion: Completion,
+): completion is WikilinkCompletion {
+	return 'preferred' in completion;
+}
+
+/**
+ * Opens the popup on the row that best fits what was typed, which is not
+ * always the first: an entity's name heads its block even when it was one of
+ * its aliases that matched, and the author who typed the alias should be
+ * able to take it with Enter. CodeMirror puts the highlight on the first row
+ * of every fresh result, so each fresh result is answered with a move to the
+ * preferred row -- deferred one microtask, because a listener may not
+ * dispatch while the update it is told of is still in progress, and dropped
+ * if the result has moved on by then. A result that only moved the highlight
+ * keeps the same rows, so the author's own arrowing is never undone.
+ */
+const preferredRow = EditorView.updateListener.of((update) => {
+	const completions = currentCompletions(update.state);
+	if (
+		completions.length === 0 ||
+		completions === currentCompletions(update.startState)
+	) {
+		return;
+	}
+	const index = completions.findIndex(
+		(completion) => isWikilinkCompletion(completion) && completion.preferred,
+	);
+	if (index <= 0 || selectedCompletionIndex(update.state) === index) return;
+	const { view } = update;
+	view.dom.win.queueMicrotask(() => {
+		if (currentCompletions(view.state) !== completions) return;
+		view.dispatch({ effects: setSelectedCompletion(index) });
+	});
+});
 
 /**
  * Runs one editing command as the author's own edit.
@@ -690,8 +735,9 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			if (context.aborted || targets.length === 0) return null;
 			const query = context.state.sliceDoc(match.from + 2, context.pos);
 			const options = wikilinkOptions(targets, query).map(
-				(option): Completion => ({
+				(option): WikilinkCompletion => ({
 					label: option.label,
+					preferred: option.preferred,
 					type: option.alias ? 'wikilink-alias' : undefined,
 					section: option.section,
 					apply: (view, _completion, from, to) => {
@@ -854,6 +900,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 									: '',
 						}),
 						tooltips({ position: 'fixed', parent: tooltipHost }),
+						preferredRow,
 						// First among the keymaps: ArrowUp and ArrowDown must
 						// move the popup's selection while it is open, not walk
 						// out of the note. Every binding here declines while
