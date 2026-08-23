@@ -209,7 +209,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			// job, which lands the caret under the clicked words; a blind
 			// toggle would jump the page by the difference between prose
 			// and Markdown heights. While reading, the press is passed on.
-			if (this.editingPath === null) return true;
+			if (this.editingPath === null || !this.holdsFocus()) return true;
 			void this.stopEditing().catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -217,15 +217,33 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		const chord = (key: string, command: SegmentEditorCommandId): void => {
 			scope.register(['Mod'], key, () => {
-				// With no note being written in, the press is not this
-				// view's: passed on rather than swallowed.
-				if (this.editingPath === null) return true;
+				// With no note being written in, or with the caret somewhere
+				// that is not this view, the press is not this view's: passed
+				// on rather than swallowed.
+				if (this.editingPath === null || !this.holdsFocus()) return true;
 				this.execToolbar(command);
 				return false;
 			});
 		};
 		chord('b', 'bold');
 		chord('i', 'italic');
+	}
+
+	/**
+	 * Whether the caret is anywhere in this view.
+	 *
+	 * A view's scope outranks Obsidian's own bindings while the leaf is the
+	 * active one, which is not the same as the author working in it: the
+	 * typography popover is parented to the body, so a slider, a dropdown or a
+	 * toggle inside it holds the caret while the leaf stays active. Cmd+B
+	 * pressed there ran the bold command against the note behind the panel and
+	 * Cmd+E ended the writing session from inside it, neither of them anywhere
+	 * the author was looking. Measured against the leaf rather than the page,
+	 * so the header and the toolbar still count as this view.
+	 */
+	private holdsFocus(): boolean {
+		const active = this.containerEl.doc.activeElement;
+		return active !== null && this.containerEl.contains(active);
 	}
 
 	getViewType(): string {
