@@ -156,6 +156,9 @@ export const en = {
 	'settings.manuscriptAutoPairMarkdown.name': 'Auto-pair Markdown syntax',
 	'settings.manuscriptAutoPairMarkdown.desc':
 		'Typing bold, italic, highlight, or strikethrough markers closes the pair as you type.',
+	'settings.manuscriptEnterParagraph.name': 'Enter starts a new paragraph',
+	'settings.manuscriptEnterParagraph.desc':
+		'Enter puts the blank line Markdown needs between paragraphs, so the next line is a paragraph of its own, with its indent and spacing. Shift+Enter breaks the line inside the paragraph.\nLists, quotes, code and tables keep the plain Enter.',
 	'settings.manuscriptFocus.name': 'Focus mode',
 	'settings.manuscriptFocus.levelOff': 'Off',
 	'settings.manuscriptFocus.levelOn': 'On',
@@ -167,6 +170,67 @@ export const en = {
 	'settings.manuscriptFocus.deep': 'Same as on, but the dashboard fades as well.',
 	'settings.manuscriptFocus.solo':
 		'Only the manuscript, in full screen.\nEverything returns when you leave.',
+	'settings.manuscriptAppearance.heading': 'Manuscript appearance',
+	'settings.manuscriptAppearance.themeDefault': 'Theme default',
+	'settings.manuscriptAppearance.pixels': '{value} px',
+	'settings.manuscriptAppearance.reset': 'Reset to default',
+	'settings.manuscriptFontFamily.name': 'Font family',
+	'settings.manuscriptFontFamily.desc':
+		'The typeface the manuscript is read and written in, in both views.\nPicked from the fonts this machine has, or typed for one it does not.',
+	'settings.manuscriptFontFamily.placeholder': 'Theme text font',
+	'settings.manuscriptFontFamily.use': 'Use “{value}”',
+	'settings.manuscriptFontFamily.recent': 'Recent fonts',
+	'settings.manuscriptFontFamily.all': 'All fonts',
+	'settings.manuscriptFontFamily.missing': '{value} is not installed on this device',
+	'settings.manuscriptFontSize.name': 'Font size',
+	'settings.manuscriptFontSize.desc':
+		'The size of the manuscript’s text, in both views.',
+	'settings.manuscriptLineHeight.name': 'Line height',
+	'settings.manuscriptLineHeight.desc':
+		'The height of each line as a multiple of the font size, in both views.',
+	'settings.manuscriptContentWidth.name': 'Content width',
+	'settings.manuscriptContentWidth.desc':
+		'The width of the text column, in pixels.\nThe theme default is the width Obsidian gives a note.',
+	'settings.manuscriptParagraphSpacing.name': 'Paragraph spacing',
+	'settings.manuscriptParagraphSpacing.desc':
+		'The space between paragraphs, in lines.\nOne line is the blank line Markdown puts between them, the same on the page as in the editor. A quarter of a line is the least, so the editor always keeps a blank line to stand on.',
+	'settings.manuscriptParagraphSpacing.line': '{value} line',
+	'settings.manuscriptParagraphSpacing.lines': '{value} lines',
+	'settings.manuscriptFirstLineIndent.name': 'First-line indent',
+	'settings.manuscriptFirstLineIndent.desc':
+		'How far the first line of each paragraph is set in, in character widths.\nTwo is the usual indent for CJK prose.',
+	'settings.manuscriptFirstLineIndent.none': 'None',
+	'settings.manuscriptFirstLineIndent.value': '{value} em',
+	'settings.manuscriptTextAlign.name': 'Text alignment',
+	'settings.manuscriptTextAlign.desc':
+		'How paragraphs sit in the column, on the page and in the editor alike.\nJustified text usually wants hyphenation.',
+	'settings.manuscriptTextAlign.start': 'Left',
+	'settings.manuscriptTextAlign.justify': 'Justified',
+	'settings.manuscriptHyphenation.name': 'Automatic hyphenation',
+	'settings.manuscriptHyphenation.desc':
+		'Break long words at line ends with a hyphen, from the browser’s dictionary for the project’s language.\nMost useful with justified text.',
+	'settings.manuscriptTintLight.name': 'Background in light mode',
+	'settings.manuscriptTintLight.desc':
+		'The page behind the manuscript while Obsidian is in light mode.\nThe theme’s own, one of four tints, or any color.',
+	'settings.manuscriptTintDark.name': 'Background in dark mode',
+	'settings.manuscriptTintDark.desc':
+		'The page behind the manuscript while Obsidian is in dark mode.\nThe theme’s own, one of four tints, or any color.',
+	'settings.manuscriptTint.themeDefault': 'Theme default',
+	'settings.manuscriptTint.custom': 'Custom color',
+	'settings.manuscriptTint.sage': 'Sage',
+	'settings.manuscriptTint.parchment': 'Parchment',
+	'settings.manuscriptTint.mist': 'Mist',
+	'settings.manuscriptTint.blush': 'Blush',
+	'settings.manuscriptTint.midnight': 'Midnight',
+	'settings.manuscriptTint.slate': 'Slate',
+	'settings.manuscriptTint.plum': 'Plum',
+	'settings.manuscriptTint.indigo': 'Indigo',
+	'settings.manuscriptGuide.name': 'Grid lines',
+	'settings.manuscriptGuide.desc':
+		'Lines drawn under each line of the note being written in, across the content width, to write along.\nThe notes around it, rendered, carry none. A gap narrower than a line has no line of its own.',
+	'settings.manuscriptGuide.none': 'None',
+	'settings.manuscriptGuide.solid': 'Solid',
+	'settings.manuscriptGuide.dashed': 'Dashed',
 	'settings.session.heading': 'Writing sessions',
 	'settings.sessionIdleThreshold.name': 'Idle after',
 	'settings.sessionIdleThreshold.desc':
@@ -1177,6 +1241,9 @@ export const en = {
 	'manuscript.toolbar.strikethrough': 'Strikethrough',
 	'manuscript.toolbar.underline': 'Underline',
 	'manuscript.toolbar.highlight': 'Highlight',
+	'manuscript.toolbar.presentation': 'Appearance',
+	'manuscript.changedElsewhere':
+		'The note changed outside this stream while you were writing in it. The text here is kept, and the next save writes it over that change.',
 	'manuscript.hoverSource.reading': 'Snowflake Method manuscript (reading)',
 	'manuscript.hoverSource.editing': 'Snowflake Method manuscript (editing)',
 	'manuscript.typewriterOn': 'Typewriter scrolling: on',

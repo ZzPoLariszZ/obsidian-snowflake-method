@@ -647,6 +647,101 @@ describe('translation resources', () => {
 	});
 
 	/**
+	 * The appearance rows, and the popover that repeats them over the
+	 * manuscript, read their labels through the same untyped accessors, so
+	 * every key is swept here in both locales.
+	 */
+	it('labels the manuscript appearance settings in both languages', () => {
+		const keys = [
+			'settings.manuscriptAppearance.heading',
+			'settings.manuscriptAppearance.themeDefault',
+			'settings.manuscriptAppearance.pixels',
+			'settings.manuscriptAppearance.reset',
+			'settings.manuscriptFontFamily.name',
+			'settings.manuscriptFontFamily.desc',
+			'settings.manuscriptFontFamily.placeholder',
+			'settings.manuscriptFontFamily.use',
+			'settings.manuscriptFontFamily.missing',
+			'settings.manuscriptFontFamily.recent',
+			'settings.manuscriptFontFamily.all',
+			'settings.manuscriptFontSize.name',
+			'settings.manuscriptFontSize.desc',
+			'settings.manuscriptLineHeight.name',
+			'settings.manuscriptLineHeight.desc',
+			'settings.manuscriptContentWidth.name',
+			'settings.manuscriptContentWidth.desc',
+			'settings.manuscriptParagraphSpacing.name',
+			'settings.manuscriptParagraphSpacing.desc',
+			'settings.manuscriptParagraphSpacing.line',
+			'settings.manuscriptParagraphSpacing.lines',
+			'settings.manuscriptFirstLineIndent.name',
+			'settings.manuscriptFirstLineIndent.desc',
+			'settings.manuscriptFirstLineIndent.none',
+			'settings.manuscriptFirstLineIndent.value',
+			'settings.manuscriptTextAlign.name',
+			'settings.manuscriptTextAlign.desc',
+			'settings.manuscriptTextAlign.start',
+			'settings.manuscriptTextAlign.justify',
+			'settings.manuscriptHyphenation.name',
+			'settings.manuscriptHyphenation.desc',
+			'settings.manuscriptTintLight.name',
+			'settings.manuscriptTintLight.desc',
+			'settings.manuscriptTintDark.name',
+			'settings.manuscriptTintDark.desc',
+			'settings.manuscriptTint.themeDefault',
+			'settings.manuscriptTint.custom',
+			'settings.manuscriptGuide.name',
+			'settings.manuscriptGuide.desc',
+			'settings.manuscriptGuide.none',
+			'settings.manuscriptGuide.solid',
+			'settings.manuscriptGuide.dashed',
+			'manuscript.toolbar.presentation',
+		];
+		for (const name of [
+			'sage',
+			'parchment',
+			'mist',
+			'blush',
+			'midnight',
+			'slate',
+			'plum',
+			'indigo',
+		]) {
+			keys.push(`settings.manuscriptTint.${name}`);
+		}
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(en['settings.manuscriptAppearance.heading']).toBe('Manuscript appearance');
+		expect(zhCN['settings.manuscriptAppearance.heading']).toBe('正文外观');
+		// The guides are named for what they draw rather than for how they run,
+		// and each style is one word in both languages.
+		expect(en['settings.manuscriptGuide.name']).toBe('Grid lines');
+		expect(zhCN['settings.manuscriptGuide.name']).toBe('网格线');
+		expect(en['settings.manuscriptGuide.solid']).toBe('Solid');
+		expect(en['settings.manuscriptGuide.dashed']).toBe('Dashed');
+		expect(zhCN['settings.manuscriptGuide.solid']).toBe('实线');
+		expect(zhCN['settings.manuscriptGuide.dashed']).toBe('虚线');
+	});
+
+	/**
+	 * Said from the stream through the project locale's untyped accessor when
+	 * a note changed under a save, so both locales must carry it.
+	 */
+	it('labels the Enter setting in both languages', () => {
+		expect(en['settings.manuscriptEnterParagraph.name']).toBe(
+			'Enter starts a new paragraph',
+		);
+		expect(Object.keys(zhCN)).toContain('settings.manuscriptEnterParagraph.desc');
+	});
+
+	it('tells the author a note changed elsewhere, in both languages', () => {
+		expect(en['manuscript.changedElsewhere']).toContain('kept');
+		expect(Object.keys(zhCN)).toContain('manuscript.changedElsewhere');
+	});
+
+	/**
 	 * The settings page reads its labels through an untyped accessor, so the
 	 * auto-pair rows would render raw keys if these went missing from both
 	 * locales at once.

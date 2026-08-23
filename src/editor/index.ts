@@ -4,5 +4,8 @@ export * from './managed-section-editor';
 export * from './managed-section-locale';
 export * from './managed-section-navigation';
 export * from './managed-section-ranges';
+export * from './markdown-language';
+export * from './paragraph-break';
+export * from './paragraph-layout';
 export * from './selection-watch';
 export * from './wikilink-spans';

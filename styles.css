@@ -4722,9 +4722,56 @@
 	margin-top: var(--size-4-4);
 }
 
+/* The ground the page stands on: the theme's own, or the tint the author
+   chose for the mode Obsidian is in, set by the view as variables on the leaf
+   and read here by mode. Everything in the leaf that has to paint an opaque
+   ground -- the header over the page, the bar, a sticky header, the block over
+   a boundary -- paints this one, so a tinted manuscript is tinted throughout.
+   The variables are written on the leaf rather than on the page because the
+   header is the leaf's, outside the page; being custom properties, everything
+   inside reads them wherever they are set. */
+.workspace-leaf-content[data-type='snowflake-method-manuscript'] {
+	--snowflake-method-manuscript-surface: var(--background-primary);
+}
+
 .snowflake-method-manuscript-view.view-content {
 	padding: 0;
 	overflow: hidden;
+}
+
+/* The strip above the page, with the view's name and its own buttons: white
+   over a tinted page reads as something else's, so it takes the same ground.
+   The app paints a focused leaf's header through `.is-focused
+   .workspace-leaf.mod-active .view-header`, which outweighs one class and an
+   attribute; the leaf class is written three times for the weight, not for the
+   meaning, as the blocks above do. */
+.workspace-leaf-content.workspace-leaf-content.workspace-leaf-content[data-type='snowflake-method-manuscript']
+	.view-header {
+	background-color: var(--snowflake-method-manuscript-surface);
+}
+
+/* Painted from a selector heavier than the app's own `.workspace-split.mod-root
+   .view-content`, which would otherwise keep the page white under a tinted bar
+   and tinted headers. The class is written three times for the weight, not for
+   the meaning, as the popup block above does. */
+.snowflake-method-manuscript-view.snowflake-method-manuscript-view.snowflake-method-manuscript-view.view-content {
+	background-color: var(--snowflake-method-manuscript-surface);
+}
+
+body.theme-light
+	.workspace-leaf-content[data-type='snowflake-method-manuscript'] {
+	--snowflake-method-manuscript-surface: var(
+		--snowflake-method-manuscript-tint-light,
+		var(--background-primary)
+	);
+}
+
+body.theme-dark
+	.workspace-leaf-content[data-type='snowflake-method-manuscript'] {
+	--snowflake-method-manuscript-surface: var(
+		--snowflake-method-manuscript-tint-dark,
+		var(--background-primary)
+	);
 }
 
 .snowflake-method-manuscript-stream {
@@ -4761,7 +4808,7 @@
 	gap: var(--size-2-1);
 	padding: var(--size-2-2) var(--size-4-3);
 	border-bottom: 1px solid var(--background-modifier-border);
-	background-color: var(--background-primary);
+	background-color: var(--snowflake-method-manuscript-surface);
 }
 
 .snowflake-method-toolbar-separator {
@@ -4780,6 +4827,95 @@
 
 .snowflake-method-toolbar-button:disabled:hover {
 	background-color: transparent;
+}
+
+/* The dress popover, hung under its bar button and body-parented so the
+   stream's own overflow cannot clip it, in the layer the dashboard's filter
+   panel uses: above the workspace, below menus. Dressed as the app dresses a
+   dialog, because that is what it is and the plugin's own dialogs are what it
+   is read beside: the modal's ground, border, radius and shadow, its title
+   size, and the close in the corner a dialog keeps one in. */
+.snowflake-method-presentation-panel {
+	position: fixed;
+	z-index: var(--layer-popover);
+	display: flex;
+	flex-direction: column;
+	/* Wide enough for the longest row to stand on one line: the ground's five
+	   swatches and its chip, beside a name that says which mode they dress. */
+	width: 27rem;
+	max-width: calc(100vw - var(--size-4-4));
+	max-height: calc(100vh - var(--size-4-16));
+	overflow: hidden;
+	padding: var(--size-4-4);
+	border: var(--modal-border-width) solid var(--modal-border-color);
+	border-radius: var(--modal-radius);
+	background-color: var(--modal-background);
+	box-shadow: var(--shadow-l);
+}
+
+/* The row a dialog opens with: what this is, and the way out of it. */
+.snowflake-method-presentation-panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	margin-bottom: 0.75em;
+}
+
+.snowflake-method-presentation-panel-title {
+	color: var(--text-normal);
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-semibold);
+	line-height: var(--line-height-tight);
+}
+
+.snowflake-method-presentation-panel-close {
+	flex: 0 0 auto;
+}
+
+/* Only the rows scroll, so the title stays where it was put. The scroller
+   reaches out across the panel's own padding and hands back whatever the bar
+   does not need, so the rows end where the title above them does whether or
+   not there are enough of them to scroll. */
+.snowflake-method-presentation-panel-body {
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(-1 * var(--size-4-4));
+	padding-inline-end: max(
+		0px,
+		calc(var(--size-4-4) - var(--snowflake-method-scrollbar-width, 0px))
+	);
+}
+
+/* A setting row is laid out for a wide page; here the name takes the room it
+   needs and the control the rest, on one line -- inside the padding the card
+   is drawn with, which is what tells a row from the panel it sits in.
+
+   The app starts a row's parts at its top, which is right on the settings
+   page, where a description runs on below the name and the control belongs
+   beside the first line of it. Here there are no descriptions, so the card is
+   as tall as whatever control it holds, and a name left at the top rode above
+   the middle of its own card -- six pixels of it in the rows holding a field
+   or a list. On one line means on one centre line. */
+.snowflake-method-presentation-panel .setting-item {
+	align-items: center;
+	padding: var(--size-4-3);
+}
+
+.snowflake-method-presentation-panel .setting-item-info {
+	flex: 0 1 auto;
+	margin-inline-end: var(--size-4-3);
+}
+
+.snowflake-method-presentation-panel .setting-item-control {
+	flex: 1 1 auto;
+	justify-content: flex-end;
+}
+
+.snowflake-method-presentation-panel input[type='text'] {
+	width: 100%;
+	max-width: 14rem;
 }
 
 /* The wikilink popup, escaped to a body-parented host so the stream's
@@ -4857,10 +4993,12 @@
 }
 
 /* The manuscript reads at the width Obsidian gives a note, wherever the pane
-   happens to be, so a wide window does not stretch a line past reading length. */
+   happens to be, so a wide window does not stretch a line past reading length
+   -- or at the width the author set, which the view writes as a variable
+   with this box's own padding already added. */
 .snowflake-method-segment,
 .snowflake-method-manuscript-end {
-	max-width: var(--file-line-width);
+	max-width: var(--snowflake-method-manuscript-width, var(--file-line-width));
 	margin-inline: auto;
 	padding-inline: var(--size-4-6);
 }
@@ -4889,7 +5027,7 @@
 	gap: var(--size-4-2);
 	min-height: calc(var(--size-4-6) + var(--size-4-2));
 	padding-bottom: var(--size-4-2);
-	background-color: var(--background-primary);
+	background-color: var(--snowflake-method-manuscript-surface);
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
 }
@@ -4946,28 +5084,46 @@
 	opacity: 1;
 }
 
+/* The body is a stacking context of its own, so the guide layer each editor
+   line draws under its text (below) stays under the text and above the
+   page's ground, whatever the theme puts between the two. */
 .snowflake-method-segment-body {
-	font-family: var(--font-text);
-	font-size: var(--font-text-size);
-	line-height: var(--line-height-normal);
+	isolation: isolate;
 }
 
-/* The rendered half and the editing half have to occupy the same space, or the
-   page jumps by the difference at the moment the author clicks into it. */
+/* The typography both halves share, from the page's own variables where the
+   author has set them and the theme's where not. The rendered half and the
+   editing half have to occupy the same space, or the page jumps by the
+   difference at the moment the author clicks into it -- so one rule dresses
+   the body, the rendered root inside it (where nothing Obsidian says about
+   .markdown-rendered can stand between the body and the prose) and the
+   editor. */
+.snowflake-method-segment-body,
+.snowflake-method-segment-body .snowflake-method-segment-rendered,
+.snowflake-method-segment-body .cm-editor {
+	font-family: var(--snowflake-method-manuscript-font, var(--font-text));
+	font-size: var(--snowflake-method-manuscript-font-size, var(--font-text-size));
+	line-height: var(
+		--snowflake-method-manuscript-line-height,
+		var(--line-height-normal)
+	);
+}
+
 .snowflake-method-segment-body .cm-editor {
 	background: transparent;
-	font-family: var(--font-text);
-	font-size: var(--font-text-size);
-	line-height: var(--line-height-normal);
 }
 
 .snowflake-method-segment-body .cm-editor.cm-focused {
 	outline: none;
 }
 
+/* The editor never scrolls on its own -- the stream does -- so its scroller
+   need not clip, and must not: the caret after a space that hangs past the
+   end of a row (below) stands just outside the column. */
 .snowflake-method-segment-body .cm-scroller {
 	font-family: inherit;
 	line-height: inherit;
+	overflow: visible;
 }
 
 .snowflake-method-segment-body .cm-content {
@@ -4975,8 +5131,121 @@
 	caret-color: var(--caret-color);
 }
 
+/* The editor breaks its rows where the page breaks them. CodeMirror wraps
+   with break-spaces, under which a space that no longer fits at the end of
+   a row is carried to the start of the next, where it takes up room and can
+   push that row's last word down; the page collapses the same space at the
+   break. Under pre-wrap the space hangs past the end of its row instead, as
+   the page's does, and the rows come out the same -- measured identical,
+   hyphenation points included. */
+.snowflake-method-segment-body .cm-content.cm-lineWrapping {
+	white-space: pre-wrap;
+}
+
 .snowflake-method-segment-body .cm-line {
 	padding-inline: 0;
+}
+
+/* Reading: the gap below a paragraph is Obsidian's own paragraph spacing,
+   re-expressed in lines of the paragraph's line height so that paragraphs,
+   lists and quotes all follow the one setting; the indent is the page's. */
+.snowflake-method-segment-rendered {
+	--p-spacing: calc(
+		var(--snowflake-method-manuscript-paragraph-spacing, 1) * 1lh
+	);
+	/* A word too long for the column breaks inside it, as it does in the
+	   editor (CodeMirror's overflow-wrap: anywhere), rather than running out
+	   of the column as Obsidian's rendering alone would let it. */
+	overflow-wrap: break-word;
+}
+
+.snowflake-method-segment-rendered.markdown-rendered > p {
+	text-indent: var(--snowflake-method-manuscript-indent, 0);
+	text-align: var(--snowflake-method-manuscript-align, start);
+	hyphens: var(--snowflake-method-manuscript-hyphens, manual);
+}
+
+/* Editing: the blank line between paragraphs IS the gap, and the first line
+   of a paragraph carries the indent, both marked by the editor from the
+   Markdown grammar so the two halves agree on which lines those are. The
+   blank line that is the gap keeps the text's font, so the caret standing
+   on it is the caret of every other line; only its line box is the gap's
+   height, S times the line height, and a caret taller than the box stands
+   over the neighbouring rows' leading, as it would on any tightly set line.
+   The setting never goes below a quarter line, and the arrow keys never step
+   over the line however narrow it is, so it always stays usable. A blank
+   line of its own -- a second one in a row, where a paragraph is about to
+   be written -- is not marked as a gap at all, and stands at full height
+   with the indent, so the first letter typed on it moves nothing. */
+.snowflake-method-segment-body .cm-line.snowflake-method-paragraph-first {
+	text-indent: var(--snowflake-method-manuscript-indent, 0);
+}
+
+/* Every line of a paragraph sits in the column as the page's paragraphs do,
+   and breaks its words the same way; the page's headings, lists and quotes
+   keep the theme's, so their lines here are left alone too. */
+.snowflake-method-segment-body .cm-line.snowflake-method-paragraph-line {
+	text-align: var(--snowflake-method-manuscript-align, start);
+	hyphens: var(--snowflake-method-manuscript-hyphens, manual);
+}
+
+.snowflake-method-segment-body .cm-line.snowflake-method-blank-line {
+	line-height: calc(
+		var(--snowflake-method-manuscript-line-height, var(--line-height-normal)) *
+			var(--snowflake-method-manuscript-paragraph-spacing, 1)
+	);
+}
+
+/* The guides: a rule under every row of the note being written in, drawn
+   by each editor line in a layer under its own text and masked to one pixel
+   row per line height, so a paragraph gap of any size leaves the rules
+   under the text rows where they belong. A blank line keeps the pitch of
+   the text around it, like ruled paper: its rules fall one text line apart
+   from its top, and whatever would fall past its bottom is not drawn, so a
+   gap of less than a line has no rule of its own and a gap of two lines has
+   two. Dashes are a stripe pattern behind the same mask. The rendered notes
+   around carry none: their headings and lists stand on no line grid, and
+   the aid is for the writing hand. */
+.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line,
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line {
+	position: relative;
+}
+
+.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line::before,
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-color: rgba(var(--mono-rgb-100), 0.12);
+	-webkit-mask-image: linear-gradient(to top, black 1px, transparent 1px);
+	-webkit-mask-size: 100% 1lh;
+	mask-image: linear-gradient(to top, black 1px, transparent 1px);
+	mask-size: 100% 1lh;
+}
+
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::before {
+	background-color: transparent;
+	background-image: repeating-linear-gradient(
+		to right,
+		rgba(var(--mono-rgb-100), 0.12) 0 6px,
+		transparent 6px 10px
+	);
+}
+
+.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::before,
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::before {
+	-webkit-mask-size: 100%
+		calc(
+			var(--snowflake-method-manuscript-font-size, var(--font-text-size)) *
+				var(--snowflake-method-manuscript-line-height, var(--line-height-normal))
+		);
+	mask-size: 100%
+		calc(
+			var(--snowflake-method-manuscript-font-size, var(--font-text-size)) *
+				var(--snowflake-method-manuscript-line-height, var(--line-height-normal))
+		);
 }
 
 .snowflake-method-segment-body.is-editing {
@@ -5026,7 +5295,7 @@
 	align-items: center;
 	gap: var(--size-4-1);
 	padding-inline: var(--size-4-2);
-	background-color: var(--background-primary);
+	background-color: var(--snowflake-method-manuscript-surface);
 	opacity: 0;
 	transition: opacity 120ms ease-in-out;
 }
@@ -5332,6 +5601,218 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    the column every other control ends on. The four levels still announce
    themselves: the handle snaps, and the name and description follow the
    drag. */
+
+/* The appearance rows, on the settings page and in the popover over the
+   manuscript alike: the value in words beside the slider, as the focus row
+   names its level, and the slider's own number put away. */
+.snowflake-method-presentation-value {
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	min-width: 5.5em;
+	text-align: right;
+}
+
+/* Every control in these rows ends on one column. The app gives a slider two
+   pixels of margin all round, which left the rails standing short of the
+   dropdowns, the toggles and the swatches beside them; only the end is taken
+   back, so the handle still has its room at the other three sides. */
+.snowflake-method-presentation-row input.slider {
+	margin-inline-end: 0;
+}
+
+/* Two lists of two or three short words come out two different widths when
+   each is measured from its own longest one. Both take the width the app
+   gives a slider, so every control that has a width of its own stands in one
+   column. The settings page draws its choice rows itself, without the row
+   class, so the group's own class carries the rule there. */
+.snowflake-method-presentation-row select.dropdown,
+.snowflake-method-appearance-settings select.dropdown {
+	width: var(--snowflake-method-presentation-control, 100px);
+}
+
+/* On the settings page the app leaves a dropdown's own box transparent and
+   paints a chevron on a round slab two pixels inside it, so the choice rows
+   stopped short of the column the sliders, toggles and swatches beside them
+   end on. The box is nudged out by those two pixels: what is painted lands on
+   the column, and nothing is painted in the overhang. The popover's rows keep
+   the app's default dropdown, which paints its own slab to its edge and needs
+   no nudge. */
+.snowflake-method-appearance-settings select.dropdown {
+	margin-inline-end: -2px;
+}
+
+/* The font list, which is the picker every other field of this plugin uses,
+   held to the width the row's other controls end on. */
+.snowflake-method-font-picker {
+	width: 100%;
+	max-width: 14rem;
+}
+
+/* A list offered in parts -- the faces used lately, then all of them. The
+   name of each group is a row of its own, so it is never lit up with the
+   option under it: the pointer passes through it, choosing it does nothing,
+   and it is set in the interface font whatever face the rows themselves are
+   written in. A rule above it says where one group ends and the next begins,
+   except at the top of the list, where there is nothing to divide. */
+.snowflake-method-suggestions .suggestion-item.snowflake-method-option-picker-heading {
+	margin-top: var(--size-4-2);
+	padding-top: var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background-color: transparent;
+	color: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	line-height: var(--line-height-tight);
+	pointer-events: none;
+}
+
+/* The sample the font picker measures to tell whether this machine really has
+   the face someone typed: off the page, out of the flow, and large enough for
+   one face to measure differently from another. */
+.snowflake-method-font-probe {
+	position: absolute;
+	top: -9999px;
+	left: -9999px;
+	visibility: hidden;
+	white-space: nowrap;
+	font-size: 48px;
+	line-height: 1;
+}
+
+.snowflake-method-presentation-row .slider-value {
+	display: none;
+}
+
+/* The button that puts a measure back to what it was before anything was
+   chosen -- the theme's own size, or none at all -- on the slider's left,
+   where it is read before the rail rather than after it. The app dims a
+   disabled icon itself, which is what it wears while there is nothing to put
+   back. */
+.snowflake-method-presentation-row .snowflake-method-presentation-reset {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	padding: var(--size-2-1) var(--size-2-2);
+}
+
+/* The page's ground, offered as swatches: the theme's own first, drawn as
+   the theme's background with a stroke through it, then the tints, then --
+   past a divider, in a shape of its own -- the system's color picker for any
+   other color. The one in force wears the accent ring. A button, so it
+   reaches the keyboard and the screen reader like any other control, but
+   dressed as a swatch rather than as the slab the app gives a button.
+
+   The strip's class is written into every rule below because the app paints
+   a button through `button:not(.clickable-icon)`, which outweighs a lone
+   class: a swatch that took its color from a custom property was still
+   painted the app's grey. Two classes and the element name settle it, in the
+   way the rest of this file settles such things, without an important flag. */
+.snowflake-method-tint-swatches {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch,
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch:hover {
+	width: var(--size-4-6);
+	height: var(--size-4-6);
+	padding: 0;
+	border: 2px solid var(--background-modifier-border);
+	border-radius: 50%;
+	background-color: var(--snowflake-method-swatch, var(--background-primary));
+	box-shadow: none;
+	cursor: var(--cursor);
+}
+
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch:hover {
+	border-color: var(--text-muted);
+}
+
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch.is-theme,
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch.is-theme:hover {
+	background-image: linear-gradient(
+		135deg,
+		transparent 44%,
+		var(--text-faint) 44% 56%,
+		transparent 56%
+	);
+}
+
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch.is-selected,
+.snowflake-method-tint-swatches button.snowflake-method-tint-swatch.is-selected:hover,
+.snowflake-method-tint-custom.is-selected {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* Where the tints end and every other color begins. */
+.snowflake-method-tint-divider {
+	width: 1px;
+	height: var(--size-4-4);
+	margin-inline: var(--size-2-1);
+	background-color: var(--background-modifier-border);
+}
+
+/* Any color at all, told from the tints by its shape: a rounded oblong
+   rather than a circle, holding the app's own color input drawn to fill it.
+   The spectrum shows through while the page stands on one of the swatches,
+   and the color itself once that is what the page is standing on. */
+.snowflake-method-tint-custom {
+	--swatch-width: var(--size-4-8);
+	--swatch-height: var(--size-4-6);
+	--swatch-shadow: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--size-4-8);
+	height: var(--size-4-6);
+	overflow: hidden;
+	border: 2px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background-image: conic-gradient(
+		from 0.5turn,
+		var(--color-red),
+		var(--color-orange),
+		var(--color-yellow),
+		var(--color-green),
+		var(--color-cyan),
+		var(--color-blue),
+		var(--color-purple),
+		var(--color-pink),
+		var(--color-red)
+	);
+}
+
+.snowflake-method-tint-custom:hover {
+	border-color: var(--text-muted);
+}
+
+.snowflake-method-tint-custom .snowflake-method-tint-picker {
+	width: 100%;
+	height: 100%;
+	padding: 0;
+	border: none;
+	background-color: transparent;
+	cursor: var(--cursor);
+}
+
+.snowflake-method-tint-custom.is-empty .snowflake-method-tint-picker {
+	opacity: 0;
+}
+
+.snowflake-method-tint-custom .snowflake-method-tint-picker::-webkit-color-swatch-wrapper {
+	padding: 0;
+}
+
+.snowflake-method-tint-custom .snowflake-method-tint-picker::-webkit-color-swatch {
+	width: 100%;
+	height: 100%;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+}
 
 /* == Worldbuilding ======================================================== */
 

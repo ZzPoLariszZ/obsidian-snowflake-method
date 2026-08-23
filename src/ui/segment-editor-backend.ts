@@ -13,23 +13,25 @@ import {
 	history,
 	historyField,
 	historyKeymap,
+	insertNewline,
 	redo,
 	undo,
 } from '@codemirror/commands';
 import {
-	Language,
 	defaultHighlightStyle,
-	defineLanguageFacet,
-	languageDataProp,
+	ensureSyntaxTree,
 	syntaxHighlighting,
+	syntaxTree,
 } from '@codemirror/language';
-import { parser as markdownParser } from '@lezer/markdown';
 
 import {
 	INLINE_PAIRS,
+	MARKDOWN_LANGUAGE,
 	addTracked,
 	autoPair,
 	deleteAutoPair,
+	paragraphBreak,
+	paragraphLayout,
 	selectedTextOf,
 	toggleHeading,
 	toggleInline,
@@ -132,6 +134,13 @@ export type SegmentEditorCommandId =
 export interface SegmentEditorHooks {
 	onChange(path: string, body: string): void;
 	onBlur(path: string): void;
+	/**
+	 * Whether Enter puts the paragraph break Markdown needs (and Shift+Enter
+	 * the plain line break). Asked at every press rather than read at mount,
+	 * so the popover over the manuscript can flip it for the editor already
+	 * open. Absent, Enter is CodeMirror's own.
+	 */
+	enterParagraph?(): boolean;
 	/** Mod+E inside the editor: the author asked to read this note. */
 	onToggleReading?(path: string): void;
 	/**
@@ -186,33 +195,6 @@ export interface SegmentEditorHooks {
 /** Marks a change the editor was handed rather than one the author typed. */
 const FROM_ELSEWHERE = Annotation.define<boolean>();
 
-/**
- * Markdown highlighting from the grammar itself rather than through
- * `@codemirror/lang-markdown`.
- *
- * That package reaches for the HTML, CSS and JavaScript grammars so it can
- * highlight inside fenced code blocks, and none of them can be shaken back out
- * again: together they are 176 KB of the plugin's download, to colour code a
- * novel does not contain. The grammar on its own is 35 KB and knows headings,
- * emphasis, links, quotes and lists, which is what a manuscript is written in.
- */
-const MARKDOWN_DATA = defineLanguageFacet({
-	commentTokens: { block: { open: '<!--', close: '-->' } },
-});
-
-const MARKDOWN = new Language(
-	MARKDOWN_DATA,
-	markdownParser.configure({
-		props: [
-			languageDataProp.add((type) =>
-				type.isTop ? MARKDOWN_DATA : undefined,
-			),
-		],
-	}),
-	[],
-	'markdown',
-);
-
 const CARET_PARAGRAPH = Decoration.line({
 	class: 'snowflake-method-caret-paragraph',
 });
@@ -248,6 +230,93 @@ const caretParagraph = ViewPlugin.fromClass(
 		update(update: ViewUpdate): void {
 			if (update.docChanged || update.selectionSet) {
 				this.decorations = lightParagraph(update.state);
+			}
+		}
+	},
+	{ decorations: (plugin) => plugin.decorations },
+);
+
+const PARAGRAPH_FIRST = Decoration.line({
+	class: 'snowflake-method-paragraph-first',
+});
+
+const PARAGRAPH_LINE = Decoration.line({
+	class: 'snowflake-method-paragraph-line',
+});
+
+const BLANK_LINE = Decoration.line({
+	class: 'snowflake-method-blank-line',
+});
+
+/** How long one update may spend parsing ahead for the lines in view. */
+const LAYOUT_PARSE_MS = 50;
+
+/** Enter as the manuscript's paragraph break; declines outside prose. */
+const breaksParagraph = (view: EditorView): boolean => {
+	const spec = paragraphBreak(view.state);
+	if (spec === null) return false;
+	view.dispatch(spec);
+	return true;
+};
+
+/**
+ * The lines the page indents, aligns or spaces, found over what is on
+ * screen: the first line of a paragraph carries the indent, every line of
+ * one its alignment and hyphenation, and a blank line the gap.
+ */
+function layoutDecorations(view: EditorView): DecorationSet {
+	// The grammar is parsed in the background a few thousand characters at a
+	// time, and a state just made has parsed only its first three thousand;
+	// the lines in view, deep in a long note, would be drawn plain and then
+	// redrawn in the page's dress a moment later when the parse caught up --
+	// a visible jump on every click into a note. So the parse is brought up
+	// to the end of the viewport here, before the lines are decorated, which
+	// costs a few milliseconds once and nothing after.
+	const tree =
+		ensureSyntaxTree(view.state, view.viewport.to, LAYOUT_PARSE_MS) ??
+		syntaxTree(view.state);
+	const first = new Set<number>();
+	const lines = new Set<number>();
+	const blank = new Set<number>();
+	for (const range of view.visibleRanges) {
+		const layout = paragraphLayout(view.state, range.from, range.to, tree);
+		for (const at of layout.first) first.add(at);
+		for (const at of layout.lines) lines.add(at);
+		for (const at of layout.blank) blank.add(at);
+	}
+	return Decoration.set(
+		[
+			...[...first].map((at) => PARAGRAPH_FIRST.range(at)),
+			...[...lines].map((at) => PARAGRAPH_LINE.range(at)),
+			...[...blank].map((at) => BLANK_LINE.range(at)),
+		],
+		true,
+	);
+}
+
+/**
+ * Marks the first line of every paragraph and every blank line between
+ * blocks, always. The page gives a paragraph its indent and its gap, and the
+ * stylesheet gives these lines the same from the same variables — so a change
+ * of typography is live without an editor reconfiguration, and the two halves
+ * cannot drift apart. Rebuilt when the text or the viewport moves, and when
+ * the grammar has parsed further, which a new tree identity says.
+ */
+const paragraphLines = ViewPlugin.fromClass(
+	class {
+		decorations: DecorationSet;
+
+		constructor(view: EditorView) {
+			this.decorations = layoutDecorations(view);
+		}
+
+		update(update: ViewUpdate): void {
+			if (
+				update.docChanged ||
+				update.viewportChanged ||
+				syntaxTree(update.startState) !== syntaxTree(update.state)
+			) {
+				this.decorations = layoutDecorations(update.view);
 			}
 		}
 	},
@@ -366,6 +435,13 @@ export interface SegmentEditorHandle {
 	): number | null;
 	/** Runs one editing command as the author's own edit. False when it did nothing. */
 	exec(command: SegmentEditorCommandId): boolean;
+	/**
+	 * Asks the editor to measure its lines again on the next frame. The page
+	 * calls this when it changes the typography under the editor, because the
+	 * editor notices a resize on its own only after a debounce, and the page
+	 * is holding its place against heights it wants corrected now.
+	 */
+	remeasure(): void;
 	focus(): void;
 	destroy(): void;
 }
@@ -528,6 +604,9 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 			},
 			cursor: () => view.state.selection.main.head,
+			remeasure: () => {
+				view.requestMeasure();
+			},
 			caretBand: () => {
 				const coords = view.coordsAtPos(view.state.selection.main.head);
 				return coords === null
@@ -678,11 +757,20 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			(view: EditorView): boolean => {
 				const selection = view.state.selection.main;
 				if (!selection.empty) return false;
+				const at = edge === 'start' ? 0 : view.state.doc.length;
+				// A caret on another document line than the edge's cannot be
+				// on its visual row, whatever the rows measure: a blank line
+				// squeezed to a paragraph gap's height sits inside a text
+				// row's leading without being that row.
+				if (
+					view.state.doc.lineAt(selection.head).number !==
+					view.state.doc.lineAt(at).number
+				) {
+					return false;
+				}
 				const row = view.coordsAtPos(selection.head);
 				if (row === null) return reveal(view, selection.head);
-				const corner = view.coordsAtPos(
-					edge === 'start' ? 0 : view.state.doc.length,
-				);
+				const corner = view.coordsAtPos(at);
 				// An edge the editor has not laid out is nowhere near the
 				// caret's rendered row.
 				if (corner === null) return false;
@@ -694,6 +782,51 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				hooks.onCaretLeave?.(target.path, edge);
 				return true;
 			};
+		// Vertical motion never steps over a line. CodeMirror looks for the
+		// next row half a text height below the caret's, and a blank line
+		// squeezed to a paragraph gap narrower than that is not there to be
+		// found: the caret would go from the last row of one paragraph to
+		// the first of the next, and the line between them could only be
+		// reached with the mouse. When the move would skip a line, the caret
+		// goes to the line it skipped instead, keeping its goal column.
+		const stepsOverNoLine =
+			(forward: boolean) =>
+			(view: EditorView): boolean => {
+				const range = view.state.selection.main;
+				if (!range.empty) return false;
+				const doc = view.state.doc;
+				const line = doc.lineAt(range.head);
+				const next = line.number + (forward ? 1 : -1);
+				if (next < 1 || next > doc.lines) return false;
+				const moved = view.moveVertically(range, forward);
+				const landed = doc.lineAt(moved.head).number;
+				if (forward ? landed <= next : landed >= next) return false;
+				view.dispatch({
+					selection: EditorSelection.cursor(
+						doc.line(next).from,
+						moved.assoc,
+						moved.bidiLevel ?? undefined,
+						moved.goalColumn,
+					),
+					scrollIntoView: true,
+					userEvent: 'select',
+				});
+				return true;
+			};
+		// Enter as the paragraph break, behind the popup's own Enter (its
+		// keymap comes first) and ahead of the default keymap's. The setting
+		// is asked for at each press, so a flip in the popover reaches this
+		// editor at once; off, both bindings decline and the default keymap
+		// answers.
+		const paragraphs = (): boolean => hooks.enterParagraph?.() === true;
+		const enter: Extension[] = target.readOnly
+			? []
+			: [
+					keymap.of([
+						{ key: 'Enter', run: (view) => paragraphs() && breaksParagraph(view) },
+						{ key: 'Shift-Enter', run: (view) => paragraphs() && insertNewline(view) },
+					]),
+				];
 		// Pairing preferences are the target's, frozen at mount like readOnly:
 		// a settings change reaches the next editor opened, not this one.
 		const pairing =
@@ -830,15 +963,19 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			]),
 			keymap.of([
 				{ key: 'ArrowUp', run: climbsOut('start') },
+				{ key: 'ArrowUp', run: stepsOverNoLine(false) },
 				{ key: 'ArrowLeft', run: walksOut('start') },
 				{ key: 'ArrowDown', run: climbsOut('end') },
+				{ key: 'ArrowDown', run: stepsOverNoLine(true) },
 				{ key: 'ArrowRight', run: walksOut('end') },
 			]),
+			...enter,
 			keymap.of([...defaultKeymap, ...historyKeymap]),
-			MARKDOWN,
+			MARKDOWN_LANGUAGE,
 			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 			EditorView.lineWrapping,
 			caretParagraph,
+			paragraphLines,
 			EditorView.updateListener.of((update) => {
 				const handed = update.transactions.some(
 					(transaction) => transaction.annotation(FROM_ELSEWHERE) === true,

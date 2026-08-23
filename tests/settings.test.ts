@@ -10,6 +10,7 @@ import {
 import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
+	isManuscriptPresentationKey,
 	sanitizeSettings,
 	type SnowflakeSettings,
 } from '../src/settings';
@@ -256,6 +257,133 @@ describe('settings', () => {
 		expect(sanitizeSettings({ memberPageSize: 50 })).not.toHaveProperty(
 			'memberPageSize',
 		);
+	});
+
+	it('dresses the page from the theme by default, and holds each value to its range', () => {
+		expect(DEFAULT_SETTINGS.manuscriptFontFamily).toBe('');
+		expect(DEFAULT_SETTINGS.manuscriptFontSize).toBe(0);
+		expect(DEFAULT_SETTINGS.manuscriptLineHeight).toBe(0);
+		expect(DEFAULT_SETTINGS.manuscriptContentWidth).toBe(0);
+		// One blank line, which is what the editor has always shown.
+		expect(DEFAULT_SETTINGS.manuscriptParagraphSpacing).toBe(1);
+		expect(DEFAULT_SETTINGS.manuscriptFirstLineIndent).toBe(0);
+		expect(DEFAULT_SETTINGS.manuscriptTextAlign).toBe('start');
+		expect(DEFAULT_SETTINGS.manuscriptHyphenation).toBe(false);
+		expect(DEFAULT_SETTINGS.manuscriptEnterParagraph).toBe(true);
+		expect(DEFAULT_SETTINGS.manuscriptTintLight).toBe('');
+		expect(DEFAULT_SETTINGS.manuscriptTintDark).toBe('');
+		expect(DEFAULT_SETTINGS.manuscriptGuide).toBe('none');
+
+		const read = (raw: Record<string, unknown>): SnowflakeSettings =>
+			sanitizeSettings(raw);
+		expect(
+			read({ manuscriptFontFamily: ' Iowan Old Style , serif ' }).manuscriptFontFamily,
+		).toBe('Iowan Old Style, serif');
+		expect(read({ manuscriptFontFamily: 42 }).manuscriptFontFamily).toBe('');
+		// The faces the picker offers at the top of its list are stored as a
+		// list of font lists, newest first, without repeats.
+		expect(DEFAULT_SETTINGS.manuscriptRecentFonts).toEqual([]);
+		expect(
+			read({ manuscriptRecentFonts: ['Georgia', 'Georgia', 42, ''] })
+				.manuscriptRecentFonts,
+		).toEqual(['Georgia']);
+		expect(read({ manuscriptRecentFonts: 'Georgia' }).manuscriptRecentFonts).toEqual(
+			[],
+		);
+		expect(read({ manuscriptFontSize: 18 }).manuscriptFontSize).toBe(18);
+		expect(read({ manuscriptFontSize: 2 }).manuscriptFontSize).toBe(12);
+		expect(read({ manuscriptFontSize: '18' }).manuscriptFontSize).toBe(0);
+		expect(read({ manuscriptLineHeight: 1.8 }).manuscriptLineHeight).toBe(1.8);
+		expect(read({ manuscriptLineHeight: 1.1 }).manuscriptLineHeight).toBe(1.4);
+		expect(read({ manuscriptLineHeight: 9 }).manuscriptLineHeight).toBe(3);
+		expect(read({ manuscriptContentWidth: 760 }).manuscriptContentWidth).toBe(760);
+		expect(read({ manuscriptContentWidth: 99999 }).manuscriptContentWidth).toBe(2000);
+		expect(
+			read({ manuscriptParagraphSpacing: 0.5 }).manuscriptParagraphSpacing,
+		).toBe(0.5);
+		// Never below a quarter of a line: the editor must keep a blank line
+		// the caret can stand on, and the page keeps the same gap.
+		expect(read({ manuscriptParagraphSpacing: 0 }).manuscriptParagraphSpacing).toBe(
+			0.25,
+		);
+		expect(
+			read({ manuscriptParagraphSpacing: 'wide' }).manuscriptParagraphSpacing,
+		).toBe(1);
+		expect(read({ manuscriptFirstLineIndent: 2 }).manuscriptFirstLineIndent).toBe(2);
+		expect(read({ manuscriptFirstLineIndent: -2 }).manuscriptFirstLineIndent).toBe(
+			0,
+		);
+		expect(read({ manuscriptTextAlign: 'justify' }).manuscriptTextAlign).toBe('justify');
+		expect(read({ manuscriptTextAlign: 'center' }).manuscriptTextAlign).toBe('start');
+		expect(read({ manuscriptHyphenation: true }).manuscriptHyphenation).toBe(true);
+		expect(read({ manuscriptHyphenation: 'yes' }).manuscriptHyphenation).toBe(false);
+		expect(read({ manuscriptEnterParagraph: false }).manuscriptEnterParagraph).toBe(false);
+		expect(read({ manuscriptEnterParagraph: 'no' }).manuscriptEnterParagraph).toBe(true);
+		expect(read({ manuscriptTintLight: '#C7E0C7' }).manuscriptTintLight).toBe(
+			'#c7e0c7',
+		);
+		expect(read({ manuscriptTintLight: 'sage' }).manuscriptTintLight).toBe('');
+		expect(read({ manuscriptTintDark: '#202e47' }).manuscriptTintDark).toBe(
+			'#202e47',
+		);
+		for (const guide of ['none', 'solid', 'dashed'] as const) {
+			expect(read({ manuscriptGuide: guide }).manuscriptGuide).toBe(guide);
+		}
+		expect(read({ manuscriptGuide: 'dotted' }).manuscriptGuide).toBe('none');
+	});
+
+	/**
+	 * The appearance rows are rendered rather than declared, so the walk above
+	 * never reaches them: each key is stored by hand here, which also proves
+	 * it is in SETTINGS_KEYS, without which setControlValue answers nothing.
+	 */
+	it('stores every appearance key the rendered rows hand over', async () => {
+		const wanted: Partial<SnowflakeSettings> = {
+			manuscriptFontFamily: 'Georgia, serif',
+			manuscriptFontSize: 18,
+			manuscriptLineHeight: 1.8,
+			manuscriptContentWidth: 760,
+			manuscriptParagraphSpacing: 0.5,
+			manuscriptFirstLineIndent: 2,
+			manuscriptTextAlign: 'justify',
+			manuscriptHyphenation: true,
+			manuscriptTintLight: '#e5d8be',
+			manuscriptTintDark: '#202e47',
+			manuscriptGuide: 'dashed',
+		};
+		for (const [key, value] of Object.entries(wanted)) {
+			const { tab, settings } = writableSettingTab();
+			expect(isManuscriptPresentationKey(key), key).toBe(true);
+			await tab.setControlValue(key, value);
+			expect({ key, value: settings[key as keyof SnowflakeSettings] }).toEqual({
+				key,
+				value,
+			});
+			expect(tab.getControlValue(key)).toEqual(value);
+		}
+		expect(isManuscriptPresentationKey('manuscriptWindow')).toBe(false);
+		expect(isManuscriptPresentationKey('manuscriptTypewriter')).toBe(false);
+	});
+
+	/**
+	 * Two silent ways to lose a setting: a key missing from the literal
+	 * sanitizeSettings returns is dropped on every load, and a key missing
+	 * from SETTINGS_KEYS makes its row a no-op. Both are parity with the
+	 * defaults, so both are held here.
+	 */
+	it('keeps every default through a load and offers every key to its row', () => {
+		const keys = Object.keys(DEFAULT_SETTINGS).sort();
+		expect(Object.keys(sanitizeSettings({ ...DEFAULT_SETTINGS })).sort()).toEqual(
+			keys,
+		);
+		const { tab } = writableSettingTab();
+		for (const key of keys) {
+			// The root is shown as a path rather than stored as one.
+			if (key === 'projectRoot') continue;
+			expect(tab.getControlValue(key), key).toEqual(
+				DEFAULT_SETTINGS[key as keyof SnowflakeSettings],
+			);
+		}
 	});
 
 	it('starts with typewriter scrolling on and focus off, and holds a choice', () => {

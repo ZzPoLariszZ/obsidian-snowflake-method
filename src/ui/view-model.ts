@@ -3,6 +3,7 @@ import type { Menu } from 'obsidian';
 import type {
 	CharacterType,
 	EntityKindId,
+	ManuscriptPresentation,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
 	StepId,
@@ -267,6 +268,18 @@ export function kindEntities(
 	return model.worldbuilding[kind] ?? [];
 }
 
+/**
+ * A save the note refused because it had changed on disk since the stream
+ * last read it. A class of its own, so the stream can tell it from a failure
+ * and take the note's new revision without losing the author's text.
+ */
+export class ManuscriptSaveConflict extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'ManuscriptSaveConflict';
+	}
+}
+
 export interface ManuscriptSegmentText {
 	path: string;
 	/** Everything below the frontmatter. The frontmatter is never shown. */
@@ -291,6 +304,12 @@ export interface ManuscriptWindowSettings {
 	autoPairBrackets: boolean;
 	/** Emphasis markers close themselves in the editor. */
 	autoPairMarkdown: boolean;
+	/** Enter puts the paragraph break; Shift+Enter the plain line break. */
+	enterParagraph: boolean;
+	/** The faces most recently set, newest first, for the font picker's list. */
+	recentFonts: readonly string[];
+	/** How the page is dressed: typography, ground and guides, both halves. */
+	presentation: ManuscriptPresentation;
 }
 
 /**
@@ -372,6 +391,16 @@ export interface ManuscriptHost {
 	 * the mode is the author's, not the note's.
 	 */
 	toggleManuscriptMode(mode: 'typewriter' | 'focus'): Promise<void>;
+	/**
+	 * The page's dress, changed from the stream's own popover. One dress for
+	 * every stream, as the settings page sets it: saved, and announced so
+	 * every open stream hears of it.
+	 */
+	setManuscriptPresentation(
+		patch: Partial<ManuscriptPresentation>,
+	): Promise<void>;
+	/** Whether Enter puts the paragraph break, changed from the popover. */
+	setManuscriptEnterParagraph(on: boolean): Promise<void>;
 	/**
 	 * The stream's writing context moved: a segment began or finished being
 	 * edited, its text grew, or its selection changed. Carries nothing,

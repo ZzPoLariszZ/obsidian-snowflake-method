@@ -51,6 +51,18 @@ import {
 	type WorldbuildingKindId,
 	type WritingCount,
 	type WritingCountMode,
+	sanitizeContentWidth,
+	sanitizeFirstLineIndent,
+	sanitizeFontFamily,
+	sanitizeFontSize,
+	sanitizeGuide,
+	sanitizeHyphenation,
+	sanitizeLineHeight,
+	sanitizeParagraphSpacing,
+	rememberFontFamily,
+	sanitizeTextAlign,
+	sanitizeTint,
+	type ManuscriptPresentation,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -121,6 +133,7 @@ import {
 import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
+	isManuscriptPresentationKey,
 	sanitizeSettings,
 	type ManuscriptFocusLevel,
 	type SnowflakeSettings,
@@ -211,7 +224,7 @@ import type {
 	SceneViewModel,
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
-import { kindEntities } from './ui/view-model';
+import { ManuscriptSaveConflict, kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
@@ -2410,6 +2423,14 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async handleSettingsChanged(key: string): Promise<void> {
+		// The page's dress reaches every open stream as variables, and nothing
+		// else needs to hear of it: no count to take again, no dashboard to
+		// redraw. Answered first and alone, which is what lets a slider be
+		// dragged live.
+		if (isManuscriptPresentationKey(key)) {
+			this.applyManuscriptPresentation();
+			return;
+		}
 		if (key === 'reduceMotion') this.applyMotionPreference();
 		if (key === 'manuscriptFocusLevel') {
 			this.applyManuscriptModePresence();
@@ -4287,7 +4308,120 @@ export default class SnowflakeMethodPlugin
 			focusLevel: this.settings.manuscriptFocusLevel,
 			autoPairBrackets: this.settings.manuscriptAutoPairBrackets,
 			autoPairMarkdown: this.settings.manuscriptAutoPairMarkdown,
+			enterParagraph: this.settings.manuscriptEnterParagraph,
+			recentFonts: this.settings.manuscriptRecentFonts,
+			presentation: this.manuscriptPresentation(),
 		};
+	}
+
+	/** How the manuscript page is dressed, from the settings that dress it. */
+	manuscriptPresentation(): ManuscriptPresentation {
+		return {
+			fontFamily: this.settings.manuscriptFontFamily,
+			fontSize: this.settings.manuscriptFontSize,
+			lineHeight: this.settings.manuscriptLineHeight,
+			contentWidth: this.settings.manuscriptContentWidth,
+			paragraphSpacing: this.settings.manuscriptParagraphSpacing,
+			firstLineIndent: this.settings.manuscriptFirstLineIndent,
+			textAlign: this.settings.manuscriptTextAlign,
+			hyphenation: this.settings.manuscriptHyphenation,
+			tintLight: this.settings.manuscriptTintLight,
+			tintDark: this.settings.manuscriptTintDark,
+			guide: this.settings.manuscriptGuide,
+		};
+	}
+
+	/**
+	 * The page's dress, changed from a stream's own popover: each value held
+	 * to its range exactly as the settings page holds it, saved once, and
+	 * announced key by key so every open stream hears of it.
+	 */
+	async setManuscriptPresentation(
+		patch: Partial<ManuscriptPresentation>,
+	): Promise<void> {
+		const changed: string[] = [];
+		const keep = <K extends keyof SnowflakeSettings>(
+			key: K,
+			value: SnowflakeSettings[K],
+		): void => {
+			if (this.settings[key] === value) return;
+			this.settings[key] = value;
+			changed.push(key);
+		};
+		if (patch.fontFamily !== undefined) {
+			keep('manuscriptFontFamily', sanitizeFontFamily(patch.fontFamily));
+			// The face goes to the top of the picker's list, which is a note of
+			// what was used rather than a change of dress: saved with the rest,
+			// announced to nobody.
+			this.settings.manuscriptRecentFonts = rememberFontFamily(
+				this.settings.manuscriptRecentFonts,
+				this.settings.manuscriptFontFamily,
+			);
+		}
+		if (patch.fontSize !== undefined) {
+			keep('manuscriptFontSize', sanitizeFontSize(patch.fontSize));
+		}
+		if (patch.lineHeight !== undefined) {
+			keep('manuscriptLineHeight', sanitizeLineHeight(patch.lineHeight));
+		}
+		if (patch.contentWidth !== undefined) {
+			keep('manuscriptContentWidth', sanitizeContentWidth(patch.contentWidth));
+		}
+		if (patch.paragraphSpacing !== undefined) {
+			keep(
+				'manuscriptParagraphSpacing',
+				sanitizeParagraphSpacing(patch.paragraphSpacing),
+			);
+		}
+		if (patch.firstLineIndent !== undefined) {
+			keep(
+				'manuscriptFirstLineIndent',
+				sanitizeFirstLineIndent(patch.firstLineIndent),
+			);
+		}
+		if (patch.textAlign !== undefined) {
+			keep('manuscriptTextAlign', sanitizeTextAlign(patch.textAlign));
+		}
+		if (patch.hyphenation !== undefined) {
+			keep('manuscriptHyphenation', sanitizeHyphenation(patch.hyphenation));
+		}
+		if (patch.tintLight !== undefined) {
+			keep('manuscriptTintLight', sanitizeTint(patch.tintLight));
+		}
+		if (patch.tintDark !== undefined) {
+			keep('manuscriptTintDark', sanitizeTint(patch.tintDark));
+		}
+		if (patch.guide !== undefined) keep('manuscriptGuide', sanitizeGuide(patch.guide));
+		if (changed.length === 0) {
+			if (patch.fontFamily === undefined) return;
+			await this.saveSettings();
+			return;
+		}
+		await this.saveSettings();
+		for (const key of changed) await this.handleSettingsChanged(key);
+	}
+
+	async setManuscriptEnterParagraph(on: boolean): Promise<void> {
+		if (this.settings.manuscriptEnterParagraph === on) return;
+		this.settings.manuscriptEnterParagraph = on;
+		await this.saveSettings();
+		await this.handleSettingsChanged('manuscriptEnterParagraph');
+	}
+
+	/**
+	 * Every open stream dressed afresh, hidden ones included: a stream in a
+	 * background tab or another window has no other way of hearing that the
+	 * page changed under it, and it should come back looking right. A leaf
+	 * not loaded yet reads the settings when it opens.
+	 */
+	private applyManuscriptPresentation(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeManuscriptView) {
+				leaf.view.applyPresentation();
+			}
+		}
 	}
 
 	/**
@@ -4430,7 +4564,7 @@ export default class SnowflakeMethodPlugin
 			// two views of one note is an ordinary thing to have arranged and this
 			// is the one moment it costs them something.
 			if (error instanceof ConcurrentChangeError) {
-				throw new Error(
+				throw new ManuscriptSaveConflict(
 					this.translateForProject(
 						this.projectLocaleOfPath(path),
 						'errors.concurrentChange',

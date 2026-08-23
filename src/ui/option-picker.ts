@@ -10,6 +10,13 @@ export interface PickerOption {
 	value: string;
 	label: string;
 	/**
+	 * The group this option belongs to, for a list offered in parts -- the
+	 * faces used lately, then all of them. Named on every option of the group,
+	 * not only its first: the list is built from whatever survives the search,
+	 * so which option opens a group is only known once it has been.
+	 */
+	section?: string;
+	/**
 	 * The note or entry this names is no longer in the project. It stays on
 	 * offer, because a field cannot silently drop what an author wrote — but it
 	 * is marked, so it reads as something to settle rather than a choice.
@@ -23,10 +30,19 @@ interface CreateSuggestion {
 	create: string;
 }
 
-type Suggestion = PickerOption | CreateSuggestion;
+/** The name of a group, standing above the first of its options. */
+interface SectionHeading {
+	heading: string;
+}
+
+type Suggestion = PickerOption | CreateSuggestion | SectionHeading;
 
 function isCreateSuggestion(suggestion: Suggestion): suggestion is CreateSuggestion {
 	return 'create' in suggestion;
+}
+
+function isSectionHeading(suggestion: Suggestion): suggestion is SectionHeading {
+	return 'heading' in suggestion;
 }
 
 /** The options not yet picked, in the order the picker offers them. */
@@ -77,6 +93,12 @@ export function offersCreating(
  * same option cannot be picked twice.
  */
 class OptionSuggest extends FieldSuggest<Suggestion> {
+	/**
+	 * Dresses a row for a picker whose options look like what they name -- a
+	 * font list, where each name is written in its own face. Null for the
+	 * pickers whose rows are simply words.
+	 */
+	dress: ((el: HTMLElement, option: PickerOption | null) => void) | null = null;
 	private showAll = false;
 	// The framework exposes no way to ask whether the list is showing, and a
 	// refresh must not pop open a list the author had dismissed.
@@ -101,6 +123,8 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		private readonly creating: {
 			label: (query: string) => string;
 			run: (query: string) => void;
+			/** Whether the field can take what was typed. Anything, when left out. */
+			offers?: (query: string) => boolean;
 			/** Every option, picked or not, so a taken name is not offered again. */
 			allOptions: () => readonly PickerOption[];
 		} | null,
@@ -138,9 +162,20 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		const showAll = this.showAll;
 		this.showAll = false;
 		const typed = showAll ? '' : query;
-		const matches: Suggestion[] = optionsMatching(this.listCandidates(), typed);
+		// A list offered in parts puts the name of each group above the first of
+		// its options -- of whatever survives the search, which is why the
+		// headings are worked out here rather than fixed to particular options.
+		const matches: Suggestion[] = [];
+		let group: string | null = null;
+		for (const option of optionsMatching(this.listCandidates(), typed)) {
+			const section = option.section ?? null;
+			if (section !== null && section !== group) matches.push({ heading: section });
+			group = section;
+			matches.push(option);
+		}
 		if (
 			this.creating !== null &&
+			(this.creating.offers?.(typed.trim()) ?? true) &&
 			offersCreating(this.creating.allOptions(), typed)
 		) {
 			matches.push({ create: typed.trim() });
@@ -149,6 +184,13 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	}
 
 	renderSuggestion(suggestion: Suggestion, el: HTMLElement): void {
+		if (isSectionHeading(suggestion)) {
+			// A name for what follows, not a row to land on: the stylesheet takes
+			// the pointer off it, and choosing it does nothing.
+			el.addClass('snowflake-method-option-picker-heading');
+			el.setText(suggestion.heading);
+			return;
+		}
 		if (isCreateSuggestion(suggestion)) {
 			el.addClass('snowflake-method-option-picker-create');
 			el.setText(this.creating?.label(suggestion.create) ?? suggestion.create);
@@ -158,6 +200,7 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		if (suggestion.missing === true) {
 			el.addClass('snowflake-method-option-picker-missing');
 		}
+		this.dress?.(el, suggestion);
 	}
 
 	open(): void {
@@ -210,6 +253,8 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	}
 
 	selectSuggestion(suggestion: Suggestion): void {
+		// A heading names what follows and holds nothing to choose.
+		if (isSectionHeading(suggestion)) return;
 		// Read before anything can tear the list down, so the refresh can put the
 		// author back where they were reading.
 		const scrollTop = this.popoverScrollTop();
@@ -354,10 +399,20 @@ interface OptionPickerBaseConfig {
 	required?: boolean;
 	/** Says what is wrong with an option marked missing. */
 	missingLabel?: (label: string) => string;
+	/**
+	 * Dresses a row, and the field showing that value, for a picker whose
+	 * options look like what they name. Told null when the field is unset.
+	 */
+	dress?: (el: HTMLElement, option: PickerOption | null) => void;
 	/** Omitted when the field cannot create an option it does not have. */
 	create?: {
 		/** Names the create row, given exactly what was typed. */
 		label: (typed: string) => string;
+		/**
+		 * Whether what was typed is worth offering at all, for a field that can
+		 * only take some of what can be typed. Everything, when left out.
+		 */
+		offers?: (typed: string) => boolean;
 		/**
 		 * Creates the option and reports it back, or reports null when the author
 		 * backed out. Awaited, so the field can pick what it just created.
@@ -381,6 +436,8 @@ export interface OptionFieldConfig extends OptionPickerBaseConfig {
 }
 
 export interface OptionPicker {
+	/** Shows what the field holds now, for a value that changed elsewhere. */
+	refresh(): void;
 	/** Closes a suggestion list left open when the field goes away. */
 	destroy(): void;
 }
@@ -562,7 +619,7 @@ export function buildOptionPicker(
 	});
 	renderTags();
 
-	return { destroy: () => suggest.destroy() };
+	return { refresh: renderTags, destroy: () => suggest.destroy() };
 }
 
 /**
@@ -589,7 +646,8 @@ export function buildOptionField(
 			? config.emptyPlaceholder
 			: config.placeholder;
 		// The value lives in the input here, so the field itself carries the
-		// mark a tag would have carried.
+		// mark a tag would have carried -- and whatever dress its rows wear.
+		config.dress?.(input, option ?? null);
 		const missing = option?.missing === true;
 		input.toggleClass('snowflake-method-option-picker-missing', missing);
 		setTooltip(
@@ -625,6 +683,7 @@ export function buildOptionField(
 		creating.suggest,
 		false,
 	);
+	suggest.dress = config.dress ?? null;
 	wireFrame(frame, suggest);
 	// The text is the value, so typing starts a fresh search rather than editing
 	// the name of what is already there — and the list opens on the way in, the
@@ -650,7 +709,7 @@ export function buildOptionField(
 	});
 	showValue();
 
-	return { destroy: () => suggest.destroy() };
+	return { refresh: showValue, destroy: () => suggest.destroy() };
 }
 
 interface Creating {
@@ -681,6 +740,7 @@ function creatingFor(
 	return {
 		suggest: {
 			label: create.label,
+			offers: create.offers,
 			allOptions: config.options,
 			run: (typed) => {
 				running += 1;

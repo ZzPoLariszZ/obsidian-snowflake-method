@@ -11,7 +11,14 @@ import {
 import type SnowflakeMethodPlugin from './main';
 import {
 	BAND_SPANS,
+	CONTENT_WIDTH_STOPS,
 	DATE_FORMATS,
+	FIRST_LINE_INDENT_STOPS,
+	FONT_SIZE_STOPS,
+	LINE_HEIGHT_STOPS,
+	MANUSCRIPT_TINTS,
+	PARAGRAPH_SPACING_STOPS,
+	PRESENTATION_THEME_VARS,
 	READING_MEASURES,
 	TREND_RANGES,
 	WEEK_START_DAYS,
@@ -21,12 +28,29 @@ import {
 	WRITING_SESSION_TYPES,
 	clampSessionValue,
 	isDateFormat,
+	isManuscriptGuide,
+	isManuscriptTextAlign,
+	rememberFontFamily,
 	isWeekStartDay,
 	isWritingCountHeadings,
 	isWritingCountMode,
+	sanitizeContentWidth,
+	sanitizeFirstLineIndent,
+	sanitizeFontFamily,
+	sanitizeFontSize,
+	sanitizeGuide,
+	sanitizeHyphenation,
+	sanitizeLineHeight,
+	sanitizeParagraphSpacing,
+	sanitizeRecentFonts,
+	sanitizeTextAlign,
+	sanitizeTint,
 	weekdayLabels,
 	type BandSpan,
 	type DateFormat,
+	type ManuscriptGuide,
+	type ManuscriptTextAlign,
+	type ManuscriptTint,
 	type ReadingMeasure,
 	type WeekStartDay,
 	type WritingCountHeadings,
@@ -46,6 +70,11 @@ import {
 	isValidProjectRoot,
 	normalizeProjectRoot,
 } from './project-root';
+import {
+	addFontFamilyPicker,
+	addStopSlider,
+	addTintSwatches,
+} from './ui/presentation-controls';
 import {
 	buildProjectRootField,
 	type ProjectRootField,
@@ -123,6 +152,32 @@ export interface SnowflakeSettings {
 	manuscriptAutoPairBrackets: boolean;
 	/** Emphasis markers close themselves in the manuscript editor. */
 	manuscriptAutoPairMarkdown: boolean;
+	/** Enter puts the paragraph break Markdown needs; Shift+Enter the plain break. */
+	manuscriptEnterParagraph: boolean;
+	/** The manuscript's typeface as typed; empty for the theme's text font. */
+	manuscriptFontFamily: string;
+	/** The faces most recently set, newest first, for the top of the picker. */
+	manuscriptRecentFonts: string[];
+	/** Pixels; 0 for the theme's text size. */
+	manuscriptFontSize: number;
+	/** Unitless; 0 for the theme's line height. */
+	manuscriptLineHeight: number;
+	/** Pixels of text column; 0 for the width Obsidian gives a note. */
+	manuscriptContentWidth: number;
+	/** The gap between paragraphs, in lines; never below a quarter of one. */
+	manuscriptParagraphSpacing: number;
+	/** How far the first line of a paragraph is set in, in em. */
+	manuscriptFirstLineIndent: number;
+	/** How paragraphs sit in the column: the theme's ragged right, or justified. */
+	manuscriptTextAlign: ManuscriptTextAlign;
+	/** Long words broken at line ends with a hyphen, from the browser's dictionary. */
+	manuscriptHyphenation: boolean;
+	/** The page's color in light mode: '' for the theme's, else #rrggbb. */
+	manuscriptTintLight: string;
+	/** The page's color in dark mode: '' for the theme's, else #rrggbb. */
+	manuscriptTintDark: string;
+	/** Lines drawn under the text to write along, if any. */
+	manuscriptGuide: ManuscriptGuide;
 	/** Seconds without an edit before a session's focus time turns idle. */
 	sessionIdleThresholdSeconds: number;
 	sessionCountdownMinutes: number;
@@ -211,7 +266,20 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptTypewriter: true,
 	manuscriptAutoPairBrackets: true,
 	manuscriptAutoPairMarkdown: true,
+	manuscriptEnterParagraph: true,
 	manuscriptFocusLevel: 'off',
+	manuscriptFontFamily: '',
+	manuscriptRecentFonts: [],
+	manuscriptFontSize: 0,
+	manuscriptLineHeight: 0,
+	manuscriptContentWidth: 0,
+	manuscriptParagraphSpacing: 1,
+	manuscriptFirstLineIndent: 0,
+	manuscriptTextAlign: 'start',
+	manuscriptHyphenation: false,
+	manuscriptTintLight: '',
+	manuscriptTintDark: '',
+	manuscriptGuide: 'none',
 	sessionIdleThresholdSeconds: 60,
 	sessionCountdownMinutes: 45,
 	sessionPomodoroWorkMinutes: 25,
@@ -258,7 +326,20 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptTypewriter',
 	'manuscriptAutoPairBrackets',
 	'manuscriptAutoPairMarkdown',
+	'manuscriptEnterParagraph',
 	'manuscriptFocusLevel',
+	'manuscriptFontFamily',
+	'manuscriptRecentFonts',
+	'manuscriptFontSize',
+	'manuscriptLineHeight',
+	'manuscriptContentWidth',
+	'manuscriptParagraphSpacing',
+	'manuscriptFirstLineIndent',
+	'manuscriptTextAlign',
+	'manuscriptHyphenation',
+	'manuscriptTintLight',
+	'manuscriptTintDark',
+	'manuscriptGuide',
 	'sessionIdleThresholdSeconds',
 	'sessionCountdownMinutes',
 	'sessionPomodoroWorkMinutes',
@@ -284,6 +365,30 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'certificateCelebrations',
 	'recentManuscriptNotes',
 ]);
+
+/**
+ * The keys that dress the manuscript page. A change to one reaches every open
+ * stream at once, as variables on the page, and touches nothing else -- no
+ * count to recompute, no dashboard to redraw -- which is what lets a slider
+ * be dragged live.
+ */
+const MANUSCRIPT_PRESENTATION_KEYS = new Set<keyof SnowflakeSettings>([
+	'manuscriptFontFamily',
+	'manuscriptFontSize',
+	'manuscriptLineHeight',
+	'manuscriptContentWidth',
+	'manuscriptParagraphSpacing',
+	'manuscriptFirstLineIndent',
+	'manuscriptTextAlign',
+	'manuscriptHyphenation',
+	'manuscriptTintLight',
+	'manuscriptTintDark',
+	'manuscriptGuide',
+]);
+
+export function isManuscriptPresentationKey(key: string): boolean {
+	return MANUSCRIPT_PRESENTATION_KEYS.has(key as keyof SnowflakeSettings);
+}
 
 export function sanitizeSettings(input: unknown): SnowflakeSettings {
 	const raw = isRecord(input) ? input : {};
@@ -399,7 +504,27 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.manuscriptAutoPairMarkdown === 'boolean'
 				? raw.manuscriptAutoPairMarkdown
 				: DEFAULT_SETTINGS.manuscriptAutoPairMarkdown,
+		manuscriptEnterParagraph:
+			typeof raw.manuscriptEnterParagraph === 'boolean'
+				? raw.manuscriptEnterParagraph
+				: DEFAULT_SETTINGS.manuscriptEnterParagraph,
 		manuscriptFocusLevel: readFocusLevel(raw),
+		manuscriptFontFamily: sanitizeFontFamily(raw.manuscriptFontFamily),
+		manuscriptRecentFonts: sanitizeRecentFonts(raw.manuscriptRecentFonts),
+		manuscriptFontSize: sanitizeFontSize(raw.manuscriptFontSize),
+		manuscriptLineHeight: sanitizeLineHeight(raw.manuscriptLineHeight),
+		manuscriptContentWidth: sanitizeContentWidth(raw.manuscriptContentWidth),
+		manuscriptParagraphSpacing: sanitizeParagraphSpacing(
+			raw.manuscriptParagraphSpacing,
+		),
+		manuscriptFirstLineIndent: sanitizeFirstLineIndent(
+			raw.manuscriptFirstLineIndent,
+		),
+		manuscriptTextAlign: sanitizeTextAlign(raw.manuscriptTextAlign),
+		manuscriptHyphenation: sanitizeHyphenation(raw.manuscriptHyphenation),
+		manuscriptTintLight: sanitizeTint(raw.manuscriptTintLight),
+		manuscriptTintDark: sanitizeTint(raw.manuscriptTintDark),
+		manuscriptGuide: sanitizeGuide(raw.manuscriptGuide),
 		sessionIdleThresholdSeconds: integerIn(
 			raw.sessionIdleThresholdSeconds,
 			'idleThresholdSeconds',
@@ -595,13 +720,14 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		return resolveGlobalLocale(this.owner.settings.uiLocale, moment.locale());
 	}
 
-	private t(key: string): string {
+	private t(key: string, vars?: Record<string, string | number>): string {
 		// This page is global UI, so 'project' falls back to Obsidian's language
 		// -- but an explicit English or Chinese choice has to be honoured here,
 		// including on the control that sets it.
 		return translate(
 			resolveGlobalLocale(this.owner.settings.uiLocale, moment.locale()),
 			key,
+			vars,
 		);
 	}
 
@@ -787,6 +913,156 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						// read right however the level was changed while this page was
 						// closed.
 						render: (setting) => this.renderFocusMode(setting),
+					},
+				],
+			},
+			// The page's dress, under a heading of its own: what the manuscript
+			// looks like is a different question from how it behaves, and an
+			// author who has found the look they want never needs to come back
+			// here. The same controls are offered over the manuscript itself,
+			// from the formatting bar.
+			{
+				type: 'group',
+				heading: this.t('settings.manuscriptAppearance.heading'),
+				cls: 'snowflake-method-manuscript-settings snowflake-method-appearance-settings',
+				items: [
+					{
+						name: this.t('settings.manuscriptFontFamily.name'),
+						desc: this.lines('settings.manuscriptFontFamily.desc'),
+						render: (setting) => this.renderFontFamily(setting),
+					},
+					{
+						name: this.t('settings.manuscriptFontSize.name'),
+						desc: this.t('settings.manuscriptFontSize.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptFontSize',
+								FONT_SIZE_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: this.t('settings.manuscriptAppearance.pixels', { value }),
+								PRESENTATION_THEME_VARS.fontSize,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptLineHeight.name'),
+						desc: this.t('settings.manuscriptLineHeight.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptLineHeight',
+								LINE_HEIGHT_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: String(value),
+								PRESENTATION_THEME_VARS.lineHeight,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptContentWidth.name'),
+						desc: this.lines('settings.manuscriptContentWidth.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptContentWidth',
+								CONTENT_WIDTH_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: this.t('settings.manuscriptAppearance.pixels', { value }),
+								PRESENTATION_THEME_VARS.contentWidth,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptParagraphSpacing.name'),
+						desc: this.lines('settings.manuscriptParagraphSpacing.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptParagraphSpacing',
+								PARAGRAPH_SPACING_STOPS,
+								(value) =>
+									this.t(
+										value === 1
+											? 'settings.manuscriptParagraphSpacing.line'
+											: 'settings.manuscriptParagraphSpacing.lines',
+										{ value },
+									),
+							),
+					},
+					{
+						name: this.t('settings.manuscriptFirstLineIndent.name'),
+						desc: this.lines('settings.manuscriptFirstLineIndent.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptFirstLineIndent',
+								FIRST_LINE_INDENT_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptFirstLineIndent.none')
+										: this.t('settings.manuscriptFirstLineIndent.value', { value }),
+							),
+					},
+					{
+						name: this.t('settings.manuscriptTextAlign.name'),
+						desc: this.lines('settings.manuscriptTextAlign.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptTextAlign',
+							defaultValue: DEFAULT_SETTINGS.manuscriptTextAlign,
+							options: {
+								start: this.t('settings.manuscriptTextAlign.start'),
+								justify: this.t('settings.manuscriptTextAlign.justify'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptGuide.name'),
+						desc: this.lines('settings.manuscriptGuide.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptGuide',
+							defaultValue: DEFAULT_SETTINGS.manuscriptGuide,
+							options: {
+								none: this.t('settings.manuscriptGuide.none'),
+								solid: this.t('settings.manuscriptGuide.solid'),
+								dashed: this.t('settings.manuscriptGuide.dashed'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptHyphenation.name'),
+						desc: this.lines('settings.manuscriptHyphenation.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptHyphenation',
+							defaultValue: DEFAULT_SETTINGS.manuscriptHyphenation,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptEnterParagraph.name'),
+						desc: this.lines('settings.manuscriptEnterParagraph.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptEnterParagraph',
+							defaultValue: DEFAULT_SETTINGS.manuscriptEnterParagraph,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptTintLight.name'),
+						desc: this.lines('settings.manuscriptTintLight.desc'),
+						render: (setting) =>
+							this.renderTint(setting, 'manuscriptTintLight', MANUSCRIPT_TINTS.light),
+					},
+					{
+						name: this.t('settings.manuscriptTintDark.name'),
+						desc: this.lines('settings.manuscriptTintDark.desc'),
+						render: (setting) =>
+							this.renderTint(setting, 'manuscriptTintDark', MANUSCRIPT_TINTS.dark),
 					},
 				],
 			},
@@ -1025,6 +1301,95 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * A slider over stops for one of the page's measures, the stop named
+	 * beside it and a button on its left that puts the measure back to what
+	 * it was before anything was chosen. The key is stored as any other, and
+	 * what was stored is shown back, so a value held to its range reads as
+	 * what it became.
+	 */
+	private renderStops(
+		setting: Setting,
+		key:
+			| 'manuscriptFontSize'
+			| 'manuscriptLineHeight'
+			| 'manuscriptContentWidth'
+			| 'manuscriptParagraphSpacing'
+			| 'manuscriptFirstLineIndent',
+		stops: readonly number[],
+		format: (value: number) => string,
+		themeVar?: string,
+	): void {
+		const handle = addStopSlider(setting, {
+			stops,
+			value: this.owner.settings[key],
+			resetValue: DEFAULT_SETTINGS[key],
+			resetLabel: this.t('settings.manuscriptAppearance.reset'),
+			themeVar,
+			format,
+			onPick: (value) => {
+				if (value === this.owner.settings[key]) return;
+				void this.setControlValue(key, value).then(() => {
+					handle.sync(this.owner.settings[key]);
+				});
+			},
+		});
+	}
+
+	/** The page's ground for one mode: swatches and the color picker. */
+	private renderTint(
+		setting: Setting,
+		key: 'manuscriptTintLight' | 'manuscriptTintDark',
+		presets: readonly ManuscriptTint[],
+	): void {
+		const handle = addTintSwatches(setting, {
+			value: this.owner.settings[key],
+			presets: presets.map((tint) => ({
+				hex: tint.hex,
+				label: this.t(`settings.manuscriptTint.${tint.name}`),
+			})),
+			labels: {
+				themeDefault: this.t('settings.manuscriptTint.themeDefault'),
+				custom: this.t('settings.manuscriptTint.custom'),
+			},
+			onPick: (value) => {
+				if (value === this.owner.settings[key]) return;
+				void this.setControlValue(key, value).then(() => {
+					handle.sync(this.owner.settings[key]);
+				});
+			},
+		});
+	}
+
+	/**
+	 * The font, picked from what this machine has. Reports back how to take the
+	 * list down again: it can be left open when the page goes away.
+	 */
+	private renderFontFamily(setting: Setting): () => void {
+		const name = this.t('settings.manuscriptFontFamily.name');
+		const handle = addFontFamilyPicker(this.app, setting, {
+			value: this.owner.settings.manuscriptFontFamily,
+			themeLabel: this.t('settings.manuscriptFontFamily.placeholder'),
+			placeholder: this.t('settings.manuscriptFontFamily.placeholder'),
+			label: name,
+			recent: () => this.owner.settings.manuscriptRecentFonts,
+			sections: {
+				recent: this.t('settings.manuscriptFontFamily.recent'),
+				all: this.t('settings.manuscriptFontFamily.all'),
+			},
+			useLabel: (typed) =>
+				this.t('settings.manuscriptFontFamily.use', { value: typed }),
+			missingLabel: (face) =>
+				this.t('settings.manuscriptFontFamily.missing', { value: face }),
+			onPick: (value) => {
+				void this.setControlValue('manuscriptFontFamily', value).then(() => {
+					handle.sync(this.owner.settings.manuscriptFontFamily);
+				});
+			},
+		});
+		return () => handle.destroy?.();
+	}
+
+	/**
 	 * Builds the project-root field into a setting row, and reports back how to
 	 * take it down again — the list it can leave open outlives the row itself.
 	 */
@@ -1180,9 +1545,81 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.manuscriptAutoPairMarkdown = value;
 				}
 				break;
+			case 'manuscriptEnterParagraph':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptEnterParagraph = value;
+				}
+				break;
 			case 'manuscriptFocusLevel':
 				if (isManuscriptFocusLevel(value)) {
 					this.owner.settings.manuscriptFocusLevel = value;
+				}
+				break;
+			// The page's dress. Each value is held to the same range the load
+			// path holds it to, so what a slider, a swatch or a field hands over
+			// lands exactly as it would have from disk.
+			case 'manuscriptFontFamily':
+				if (typeof value === 'string') {
+					this.owner.settings.manuscriptFontFamily = sanitizeFontFamily(value);
+					// The face goes to the top of the picker's list wherever it
+					// was set, so both places offer the same recent few.
+					this.owner.settings.manuscriptRecentFonts = rememberFontFamily(
+						this.owner.settings.manuscriptRecentFonts,
+						this.owner.settings.manuscriptFontFamily,
+					);
+				}
+				break;
+			case 'manuscriptFontSize':
+				if (typeof value === 'number') {
+					this.owner.settings.manuscriptFontSize = sanitizeFontSize(value);
+				}
+				break;
+			case 'manuscriptLineHeight':
+				if (typeof value === 'number') {
+					this.owner.settings.manuscriptLineHeight = sanitizeLineHeight(value);
+				}
+				break;
+			case 'manuscriptContentWidth':
+				if (typeof value === 'number') {
+					this.owner.settings.manuscriptContentWidth =
+						sanitizeContentWidth(value);
+				}
+				break;
+			case 'manuscriptParagraphSpacing':
+				if (typeof value === 'number') {
+					this.owner.settings.manuscriptParagraphSpacing =
+						sanitizeParagraphSpacing(value);
+				}
+				break;
+			case 'manuscriptFirstLineIndent':
+				if (typeof value === 'number') {
+					this.owner.settings.manuscriptFirstLineIndent =
+						sanitizeFirstLineIndent(value);
+				}
+				break;
+			case 'manuscriptTextAlign':
+				if (isManuscriptTextAlign(value)) {
+					this.owner.settings.manuscriptTextAlign = value;
+				}
+				break;
+			case 'manuscriptHyphenation':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptHyphenation = value;
+				}
+				break;
+			case 'manuscriptTintLight':
+				if (typeof value === 'string') {
+					this.owner.settings.manuscriptTintLight = sanitizeTint(value);
+				}
+				break;
+			case 'manuscriptTintDark':
+				if (typeof value === 'string') {
+					this.owner.settings.manuscriptTintDark = sanitizeTint(value);
+				}
+				break;
+			case 'manuscriptGuide':
+				if (isManuscriptGuide(value)) {
+					this.owner.settings.manuscriptGuide = value;
 				}
 				break;
 			case 'sessionIdleThresholdSeconds':

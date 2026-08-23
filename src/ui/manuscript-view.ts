@@ -12,8 +12,17 @@ import {
 	type WorkspaceLeaf,
 } from 'obsidian';
 
+import {
+	PRESENTATION_PROPERTIES,
+	presentationShape,
+	presentationStyle,
+} from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import { confirmSegmentMerge } from './modals';
+import {
+	openPresentationPanel,
+	type PresentationPanel,
+} from './presentation-panel';
 import {
 	PublicCodeMirrorBackend,
 	type SegmentEditorBackend,
@@ -21,13 +30,14 @@ import {
 	type SegmentEditorHandle,
 	type WikilinkTarget,
 } from './segment-editor-backend';
-import type {
-	ManuscriptHost,
-	ManuscriptModel,
-	ManuscriptSegmentText,
-	ManuscriptSegmentViewModel,
-	ManuscriptWindowSettings,
-	ManuscriptWritingContext,
+import {
+	ManuscriptSaveConflict,
+	type ManuscriptHost,
+	type ManuscriptModel,
+	type ManuscriptSegmentText,
+	type ManuscriptSegmentViewModel,
+	type ManuscriptWindowSettings,
+	type ManuscriptWritingContext,
 } from './view-model';
 
 export const MANUSCRIPT_VIEW_TYPE = 'snowflake-method-manuscript';
@@ -56,6 +66,14 @@ const SETTLING_FRAMES = 6;
  * stillness — it runs its full term unless the author takes the page first.
  */
 const ARRIVAL_FRAMES = 90;
+
+/**
+ * How long a change of dress keeps holding the page. The editor measures its
+ * lines afresh a frame after being asked and the rendered notes reflow at
+ * once, so a hold replayed over these milliseconds keeps the page still
+ * through both.
+ */
+const LOOK_SETTLING_MS = 150;
 
 /** One press deeper each time, and off again past the deepest. */
 export const NEXT_FOCUS_LEVEL = {
@@ -138,6 +156,12 @@ export class SnowflakeManuscriptView extends ItemView {
 	private wikilinkTargets: Promise<readonly WikilinkTarget[]> | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
+	/** The dress the page wears, so a refresh can tell a change from a repeat. */
+	private presentationShape = '';
+	/** The change of dress being held still, if one is; a newer one takes over. */
+	private settlingLook: object | null = null;
+	/** The dress popover, while it is open under the bar's palette button. */
+	private presentationPanel: PresentationPanel | null = null;
 	/**
 	 * Raised while this view is the one moving the page.
 	 *
@@ -154,6 +178,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private windowing: Promise<void> = Promise.resolve();
 	private saveTimer: number | null = null;
 	private saveWindow: Window | null = null;
+	/** The flush in progress, if any: the next one waits its turn behind it. */
+	private saving: Promise<void> = Promise.resolve();
 	private refreshing = false;
 	private readonly t = (
 		key: string,
@@ -256,12 +282,21 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.contentEl.addClass('snowflake-method-manuscript-view');
+		// The dress popover shows the ground for the mode in force; a theme
+		// change may have swapped the mode under it, so it closes and reopens
+		// right rather than showing the other mode's tints.
+		this.registerEvent(
+			this.app.workspace.on('css-change', () => {
+				this.closePresentationPanel();
+			}),
+		);
 		// A leaf Obsidian restores gets its state after onOpen. Rendering before
 		// it lands would paint whichever project happens to be current.
 		if (this.stateDelivered) await this.refresh();
 	}
 
 	async onClose(): Promise<void> {
+		this.closePresentationPanel();
 		await this.flushPendingSave();
 		this.clearSaveTimer();
 		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
@@ -302,6 +337,15 @@ export class SnowflakeManuscriptView extends ItemView {
 				'snowflake-method-focus',
 				settings.focusLevel !== 'off',
 			);
+			// The page speaks the project's language, not the app's: hyphenation
+			// dictionaries and CJK font fallback follow this tag, and an English
+			// manuscript under a Chinese Obsidian should still break its words.
+			if (this.model === null) this.contentEl.removeAttribute('lang');
+			else this.contentEl.setAttribute('lang', this.model.locale);
+			this.applyPresentation();
+			// The popover shows the Enter toggle too, which is no part of the
+			// dress the shape above memoises: kept in step here, cheaply.
+			this.presentationPanel?.sync(settings.presentation);
 
 			const project = this.model?.projectPath ?? null;
 			if (
@@ -513,6 +557,7 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	private async render(): Promise<void> {
 		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
+		this.closePresentationPanel();
 		this.contentEl.empty();
 		this.contentEl.removeClass('is-toolbar');
 		this.toolbarButtons = [];
@@ -616,7 +661,54 @@ export class SnowflakeManuscriptView extends ItemView {
 		command('strikethrough', 'strikethrough', 'manuscript.toolbar.strikethrough');
 		command('underline', 'underline', 'manuscript.toolbar.underline');
 		command('highlight', 'highlighter', 'manuscript.toolbar.highlight');
+		separator();
+		// The page's dress, offered where the page is: the same controls as
+		// the settings tab, over the manuscript, so a change is seen as it is
+		// made. Live while reading too, so it is not among the buttons an
+		// editor greys.
+		const dress = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-presentation',
+			attr: { type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
+		});
+		setIcon(dress, 'palette');
+		setTooltip(dress, this.t('manuscript.toolbar.presentation'));
+		dress.addEventListener('mousedown', (event) => {
+			event.preventDefault();
+		});
+		dress.addEventListener('click', () => {
+			this.togglePresentationPanel(dress);
+		});
 		this.refreshToolbar();
+	}
+
+	/** The dress popover, opened under its button or closed again. */
+	private togglePresentationPanel(anchor: HTMLElement): void {
+		if (this.presentationPanel !== null) {
+			this.closePresentationPanel();
+			return;
+		}
+		this.presentationPanel = openPresentationPanel({
+			app: this.app,
+			anchor,
+			t: this.t,
+			look: () => this.host.manuscriptWindowSettings().presentation,
+			set: (patch) => this.host.setManuscriptPresentation(patch),
+			recentFonts: () => this.host.manuscriptWindowSettings().recentFonts,
+			enterParagraph: () => this.host.manuscriptWindowSettings().enterParagraph,
+			setEnterParagraph: (on) => this.host.setManuscriptEnterParagraph(on),
+			onClose: (how) => {
+				this.presentationPanel = null;
+				// Back to the words, unless the author has clicked somewhere
+				// else: they were writing before they reached for the dress.
+				if (how !== 'pointer' && this.editingPath !== null) {
+					this.backend.focus(this.editingPath);
+				}
+			},
+		});
+	}
+
+	private closePresentationPanel(): void {
+		this.presentationPanel?.close('view');
 	}
 
 	/**
@@ -810,6 +902,150 @@ export class SnowflakeManuscriptView extends ItemView {
 		stream.style.setProperty(
 			'--snowflake-method-manuscript-tail',
 			`${String(room)}px`,
+		);
+	}
+
+	/**
+	 * Dresses the page: the typography both halves share, the ground it
+	 * stands on and the guide lines, as variables and classes on the view's
+	 * root, where the stylesheet reads them with the theme's own as fallback.
+	 *
+	 * Cheap to call on every refresh, because a dress the page already wears
+	 * is recognised and nothing is touched. A new one changes the height of
+	 * every note at once, so whatever the reader is looking at is held where
+	 * it is — the caret line while writing, else the block at the top of the
+	 * page — and held again over the frames in which the editor measures its
+	 * lines afresh. Hidden, the page takes the dress and holds nothing: there
+	 * is no geometry to hold.
+	 */
+	applyPresentation(): void {
+		const look = this.host.manuscriptWindowSettings().presentation;
+		const shape = presentationShape(look);
+		if (shape === this.presentationShape) return;
+		this.presentationShape = shape;
+		const hold =
+			this.streamEl !== null && this.contentEl.isShown()
+				? this.holdView()
+				: null;
+		const style = presentationStyle(look);
+		// On the leaf rather than on the page: the header above the page is the
+		// leaf's too, and the ground it stands on is the same ground. Custom
+		// properties are inherited, so everything inside reads them as before.
+		const root = this.containerEl;
+		for (const [name, value] of Object.entries(style.properties)) {
+			// A font list the page cannot read is the theme's font, not no font.
+			const usable =
+				value !== null &&
+				(name !== PRESENTATION_PROPERTIES.font ||
+					typeof CSS === 'undefined' ||
+					CSS.supports('font-family', value));
+			if (usable) root.style.setProperty(name, value);
+			else root.style.removeProperty(name);
+		}
+		for (const [name, on] of Object.entries(style.classes)) {
+			this.contentEl.toggleClass(name, on);
+		}
+		if (this.editingPath !== null) {
+			this.mounted.get(this.editingPath)?.editor?.remeasure();
+		}
+		if (hold !== null) this.settleLook(hold);
+		this.presentationPanel?.sync(look);
+	}
+
+	/**
+	 * Holds what the reader is looking at through a change that reshapes
+	 * every note: the caret line while a note is being written in and that
+	 * line is on the page, else the block at the top of the page — a
+	 * paragraph, a heading, an editor line — and failing both, the note
+	 * straddling the top, which `holdPosition` pins. Corrections go through
+	 * `scrollBy`, so a page that shrank grows the room it needs. A hold says
+	 * whether it had to move anything.
+	 */
+	private holdView(): () => boolean {
+		const stream = this.streamEl;
+		if (stream === null) return () => false;
+		const box = stream.getBoundingClientRect();
+		const editing =
+			this.editingPath === null ? undefined : this.mounted.get(this.editingPath);
+		const editor = editing?.editor ?? null;
+		const band = editor?.caretBand() ?? null;
+		if (editor !== null && band !== null && band.top >= box.top && band.bottom <= box.bottom) {
+			const was = band.top;
+			return () => {
+				const now = editor.caretBand()?.top ?? null;
+				if (now === null) return false;
+				const delta = now - was;
+				if (Math.abs(delta) < 1) return false;
+				this.scrollBy(delta);
+				return true;
+			};
+		}
+		const block = this.blockAtTop(stream, box);
+		if (block !== null) {
+			const was = block.getBoundingClientRect().top;
+			return () => {
+				if (!block.isConnected) return false;
+				const delta = block.getBoundingClientRect().top - was;
+				if (Math.abs(delta) < 1) return false;
+				this.scrollBy(delta);
+				return true;
+			};
+		}
+		const release = this.holdPosition();
+		return () => {
+			release();
+			return false;
+		};
+	}
+
+	/**
+	 * The block standing at the top of the page, probed in the middle of the
+	 * column a little below the sticky header and then further down, past a
+	 * boundary or a gap the first probe may have landed in.
+	 */
+	private blockAtTop(stream: HTMLElement, box: DOMRect): Element | null {
+		const doc = stream.ownerDocument;
+		const x = box.left + box.width / 2;
+		for (const down of [64, 96, 128, 176]) {
+			const hit = doc.elementFromPoint(x, box.top + down);
+			const block =
+				hit?.closest('.snowflake-method-segment-rendered > *, .cm-line') ??
+				null;
+			if (block !== null && stream.contains(block)) return block;
+		}
+		return null;
+	}
+
+	/**
+	 * Replays a hold now and on every frame for a short while, all of it
+	 * counted as the view's own scrolling. One change of dress at a time: a
+	 * newer one takes the page over and this one stands down.
+	 */
+	private settleLook(hold: () => boolean): void {
+		const win = this.contentEl.win;
+		const token = {};
+		this.settlingLook = token;
+		void this.quietly(
+			() =>
+				new Promise<void>((resolve) => {
+					const started = win.performance.now();
+					const again = (): void => {
+						if (this.settlingLook !== token) {
+							resolve();
+							return;
+						}
+						hold();
+						if (win.performance.now() - started < LOOK_SETTLING_MS) {
+							win.requestAnimationFrame(again);
+							return;
+						}
+						this.settlingLook = null;
+						this.settleTail();
+						resolve();
+					};
+					hold();
+					win.requestAnimationFrame(again);
+				}),
 		);
 	}
 
@@ -1147,6 +1383,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					});
 				},
 				wikilinkTargets: () => this.wikilinkTargetsFeed(),
+				enterParagraph: () => this.host.manuscriptWindowSettings().enterParagraph,
 				onLinkHover: (hoveredPath, event, targetEl, linktext) => {
 					// The core Page preview plugin reads this source's own
 					// modifier setting, so the editor asks for ctrl or cmd
@@ -1892,8 +2129,21 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.saveWindow = null;
 	}
 
-	/** Writes every segment holding unsaved text, and only those. */
-	private async flushPendingSave(): Promise<void> {
+	/**
+	 * Writes every segment holding unsaved text, and only those, one flush at
+	 * a time. The timer, a blur and a deactivation can all ask within a moment
+	 * of one another, and two flushes in flight at once carried the same text
+	 * to the note with the same revision: the second found the first's save
+	 * already there and reported the note as changed under it. Queued, the
+	 * second finds nothing left to write.
+	 */
+	private flushPendingSave(): Promise<void> {
+		const run = this.saving.then(() => this.flushNow());
+		this.saving = run.catch(() => undefined);
+		return run;
+	}
+
+	private async flushNow(): Promise<void> {
 		this.clearSaveTimer();
 		for (const entry of this.mounted.values()) {
 			const pending = entry.pending;
@@ -1905,13 +2155,48 @@ export class SnowflakeManuscriptView extends ItemView {
 					entry.text.revision,
 				);
 				entry.text = { ...entry.text, body: pending, ...saved };
-				entry.pending = null;
+				// Typing that arrived while this save was on its way is still
+				// pending, and the next flush carries it.
+				if (entry.pending === pending) entry.pending = null;
 			} catch (error) {
-				// The file moved on underneath. Keeping the typed text and saying so
-				// is the only answer that cannot lose it.
-				this.showError(error);
+				if (!(error instanceof ManuscriptSaveConflict)) {
+					this.showError(error);
+					continue;
+				}
+				await this.takeChangedNote(entry, pending);
 			}
 		}
+	}
+
+	/**
+	 * The note changed on disk between the stream's last reading of it and
+	 * this save. Either the change is this very text, arrived by some other
+	 * road, and there is nothing left to do; or it is somebody else's, and
+	 * then the author's text here is kept -- they are the one writing -- the
+	 * note's new revision becomes the base, a notice says so, and the save
+	 * that follows writes their text over the change. What is never done is
+	 * to drop what they typed, or to leave the editor unable to save again,
+	 * which is what refusing and stopping there came to: the revision the
+	 * stream held never moved on, so every save after the first was refused.
+	 */
+	private async takeChangedNote(
+		entry: MountedSegment,
+		pending: string,
+	): Promise<void> {
+		let fresh: ManuscriptSegmentText;
+		try {
+			fresh = await this.host.readManuscriptSegment(entry.path);
+		} catch (error) {
+			this.showError(error);
+			return;
+		}
+		entry.text = fresh;
+		if (fresh.body === pending) {
+			if (entry.pending === pending) entry.pending = null;
+			return;
+		}
+		new Notice(this.t('manuscript.changedElsewhere'));
+		this.scheduleSave();
 	}
 
 	private async createSegment(
