@@ -96,6 +96,7 @@ import {
 	type DefinitionPathSource,
 	type EntityGroupId,
 } from './entity-form';
+import { followAnchor } from './anchored-panel';
 import { RenderStateKeeper } from './render-state';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
@@ -127,8 +128,6 @@ const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
 const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
 
 /** How the filter panel sits: under its button, and off the window's edge. */
-const PANEL_ANCHOR_GAP = 4;
-const PANEL_EDGE_GAP = 8;
 
 /** One question the funnel asks: a labelled picker over one vocabulary. */
 interface MemberFilterRow {
@@ -5601,20 +5600,12 @@ export class SnowflakeDashboardView extends ItemView {
 
 		// Under the funnel and lined up with its end, in the layer above
 		// everything: the panel covers a table that scrolls, and a panel inside
-		// it would be clipped by it.
+		// it would be clipped by it. Where exactly, and keeping it there, is the
+		// shared panel helper's -- the manuscript's typography popover hangs the
+		// same way, and this one gains from that: it now stays inside the window
+		// and follows the funnel when a sidebar folds under it.
 		const view = anchor.win;
-		const place = (): void => {
-			const box = anchor.getBoundingClientRect();
-			const room = view.innerWidth - panel.offsetWidth - PANEL_EDGE_GAP;
-			panel.style.top = `${String(box.bottom + PANEL_ANCHOR_GAP)}px`;
-			panel.style.left = `${String(
-				Math.max(
-					PANEL_EDGE_GAP,
-					Math.min(box.right - panel.offsetWidth, room),
-				),
-			)}px`;
-		};
-		place();
+		const unfollow = followAnchor(panel, anchor, view);
 		anchor.setAttribute('aria-expanded', 'true');
 
 		// A click inside the panel is the author using it, and one inside a
@@ -5640,13 +5631,12 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		view.addEventListener('mousedown', dismiss, true);
 		view.addEventListener('keydown', onKey, true);
-		view.addEventListener('resize', place);
 		this.filterPanel = {
 			el: panel,
 			release: () => {
 				view.removeEventListener('mousedown', dismiss, true);
 				view.removeEventListener('keydown', onKey, true);
-				view.removeEventListener('resize', place);
+				unfollow();
 				anchor.setAttribute('aria-expanded', 'false');
 			},
 		};

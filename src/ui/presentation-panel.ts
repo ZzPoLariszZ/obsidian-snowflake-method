@@ -1,5 +1,7 @@
 import { setIcon, setTooltip, Setting, type App } from 'obsidian';
 
+import { followAnchor } from './anchored-panel';
+
 import {
 	CONTENT_WIDTH_STOPS,
 	DEFAULT_MANUSCRIPT_PRESENTATION,
@@ -55,8 +57,6 @@ export interface PresentationPanel {
 	close(how?: PanelCloseReason): void;
 }
 
-const PANEL_ANCHOR_GAP = 4;
-const PANEL_EDGE_GAP = 8;
 
 export function openPresentationPanel(
 	deps: PresentationPanelDeps,
@@ -286,16 +286,9 @@ export function openPresentationPanel(
 
 	// Under the button and lined up with its end, in the layer above the
 	// workspace: the panel covers a page that scrolls, and a panel inside it
-	// would be clipped by it.
-	const place = (): void => {
-		const box = anchor.getBoundingClientRect();
-		const room = win.innerWidth - panel.offsetWidth - PANEL_EDGE_GAP;
-		panel.style.top = `${String(box.bottom + PANEL_ANCHOR_GAP)}px`;
-		panel.style.left = `${String(
-			Math.max(PANEL_EDGE_GAP, Math.min(box.right - panel.offsetWidth, room)),
-		)}px`;
-	};
-	place();
+	// would be clipped by it. Where exactly, and keeping it there, is the
+	// shared panel helper's -- the dashboard's filter panel hangs the same way.
+	const unfollow = followAnchor(panel, anchor, win);
 	anchor.setAttribute('aria-expanded', 'true');
 
 	let open = true;
@@ -304,7 +297,7 @@ export function openPresentationPanel(
 		open = false;
 		win.removeEventListener('mousedown', dismiss, true);
 		win.removeEventListener('keydown', onKey, true);
-		win.removeEventListener('resize', place);
+		unfollow();
 		anchor.setAttribute('aria-expanded', 'false');
 		family.destroy?.();
 		panel.remove();
@@ -335,7 +328,6 @@ export function openPresentationPanel(
 	};
 	win.addEventListener('mousedown', dismiss, true);
 	win.addEventListener('keydown', onKey, true);
-	win.addEventListener('resize', place);
 
 	return { el: panel, sync, close };
 }
