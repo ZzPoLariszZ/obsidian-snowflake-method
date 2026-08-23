@@ -424,6 +424,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private opened = false;
 	private refreshing = false;
 	private refreshPending = false;
+	/** The refresh now running, for a caller that arrived in the middle of it. */
+	private refreshRun: Promise<void> = Promise.resolve();
 	private rendered = false;
 	private renderedProjectId: string | null = null;
 	private renderedProjectPath: string | null = null;
@@ -713,8 +715,18 @@ export class SnowflakeDashboardView extends ItemView {
 		if (this.projectPath === null && !this.stateDelivered) return;
 		if (this.refreshing) {
 			this.refreshPending = true;
+			// The run in flight drains this flag before it finishes, so waiting
+			// on it is waiting on this request too. Returning here instead left
+			// a caller that needed the drawing done -- a command opening a form
+			// off a view it had just revealed -- reading a model that was not
+			// there yet, and quietly doing nothing at all.
+			await this.refreshRun;
 			return;
 		}
+		let settle = (): void => undefined;
+		this.refreshRun = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
 		this.refreshing = true;
 		try {
 			do {
@@ -740,6 +752,7 @@ export class SnowflakeDashboardView extends ItemView {
 			} while (this.refreshPending);
 		} finally {
 			this.refreshing = false;
+			settle();
 		}
 	}
 
@@ -1110,19 +1123,39 @@ export class SnowflakeDashboardView extends ItemView {
 	 * Characters and scenes keep their own panes and their own forms, which is
 	 * where those two have always been written.
 	 */
-	async startEntityCreation(kind: EntityKindId): Promise<void> {
+	async startEntityCreation(
+		kind: EntityKindId,
+		/**
+		 * Whether to bring the pane that keeps this kind to the front first.
+		 *
+		 * What the rail's own buttons want: the note about to be made belongs
+		 * there, and the form closes onto the list it joined. A command fired
+		 * from somewhere else passes false -- it was asked to make a character,
+		 * not to be taken to step seven, and moving the page under an author who
+		 * was reading something else is not what they asked for.
+		 */
+		show = true,
+	): Promise<void> {
+		// A dashboard revealed a moment ago has not drawn yet, and the model is
+		// what the form is built from. Drawn here rather than given up on: a
+		// command that reveals this view and asks in the same breath used to
+		// open nothing at all, silently, while the same request made after a
+		// pause worked perfectly.
+		if (this.lastRender?.model == null) await this.refresh();
 		if (this.lastRender?.model == null) return;
-		this.selectedPane =
-			kind === 'character'
-				? { kind: 'step', step: 7 }
-				: kind === 'scene'
-					? { kind: 'step', step: 8 }
-					: { kind: 'worldbuilding', wbKind: kind };
-		if (this.selectedPane.kind === 'step') {
-			this.selectedStep = this.selectedPane.step;
+		if (show) {
+			this.selectedPane =
+				kind === 'character'
+					? { kind: 'step', step: 7 }
+					: kind === 'scene'
+						? { kind: 'step', step: 8 }
+						: { kind: 'worldbuilding', wbKind: kind };
+			if (this.selectedPane.kind === 'step') {
+				this.selectedStep = this.selectedPane.step;
+			}
+			this.stepChosen = true;
+			await this.refresh();
 		}
-		this.stepChosen = true;
-		await this.refresh();
 		const model = this.lastRender.model;
 		if (model === null) return;
 		if (kind === 'character') this.openCreateCharacter(model);

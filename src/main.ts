@@ -180,13 +180,10 @@ import type {
 } from './ui/session-panel';
 import {
 	ConfirmMemberDeletionModal,
-	CreateCharacterModal,
 	CreateProjectModal,
-	CreateSceneModal,
 	ManageProjectsModal,
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
-	promptForNewCharacter,
 	promptForSegmentTitle,
 	type CharacterOption,
 	type CreateCharacterRequest,
@@ -6283,58 +6280,32 @@ export default class SnowflakeMethodPlugin
 		await this.refreshDashboards();
 	}
 
+	/**
+	 * The palette's way in to the same form the dashboard's own button opens.
+	 *
+	 * Asked of the dashboard rather than built here. A member form offers the
+	 * universal rows -- aliases, category, the record editors -- only when it is
+	 * handed the project context they draw on, and a form built straight from a
+	 * command has none: the command quietly opened a shorter form than the
+	 * button did, missing the very fields these notes are filed by. The
+	 * worldbuilding command already went this way; the other two did not.
+	 */
 	private async openCreateCharacterModal(): Promise<void> {
 		try {
-			const project = await this.requireCurrentProject();
-			new CreateCharacterModal(
-				this.app,
-				this.t,
-				project.characters.map((character) => character.name),
-				async (request) => {
-					await this.createCharacter(request);
-					await this.refreshDashboards();
-				},
-			).open();
+			await this.requireCurrentProject();
+			const view = await this.revealDashboard();
+			await view?.startEntityCreation('character', false);
 		} catch (error) {
 			this.showError(error);
 		}
 	}
 
+	/** As above: the dashboard's own scene form, opened from the palette. */
 	private async openCreateSceneModal(): Promise<void> {
 		try {
-			const project = await this.requireCurrentProject();
-			new CreateSceneModal(
-				this.app,
-				this.t,
-				project.characters.map((character) => ({
-					id: character.id,
-					path: character.path,
-					name: character.name,
-				})),
-				project.scenes.map((scene) => scene.title),
-				async (request) => {
-					await this.createScene(request);
-					await this.refreshDashboards();
-				},
-				undefined,
-				// The taken names come from the scene form rather than from the
-				// snapshot above, which was read before any character created from
-				// there existed.
-				async (name, takenNames) => {
-					const created = await promptForNewCharacter(
-						this.app,
-						this.t,
-						takenNames,
-						name,
-						(request) => this.createCharacter(request),
-					);
-					if (created === null) return null;
-					// The field behind the form is waiting on this, so the dashboard
-					// redraw is left to catch up on its own rather than kept in front.
-					void this.refreshDashboards();
-					return created;
-				},
-			).open();
+			await this.requireCurrentProject();
+			const view = await this.revealDashboard();
+			await view?.startEntityCreation('scene', false);
 		} catch (error) {
 			this.showError(error);
 		}
