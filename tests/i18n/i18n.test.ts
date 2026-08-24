@@ -698,14 +698,14 @@ describe('translation resources', () => {
 			'manuscript.toolbar.presentation',
 		];
 		for (const name of [
-			'sage',
-			'parchment',
-			'mist',
-			'blush',
-			'midnight',
-			'slate',
-			'plum',
-			'indigo',
+			'sageGreen',
+			'parchmentBeige',
+			'mistBlue',
+			'mistPink',
+			'midnightBlue',
+			'slateGray',
+			'plumPurple',
+			'indigoBlue',
 		]) {
 			keys.push(`settings.manuscriptTint.${name}`);
 		}

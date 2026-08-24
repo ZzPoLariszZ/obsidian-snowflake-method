@@ -89,16 +89,16 @@ export const MANUSCRIPT_TINTS: {
 	readonly dark: readonly ManuscriptTint[];
 } = {
 	light: [
-		{ hex: '#c7e0c7', name: 'sage' },
-		{ hex: '#e5d8be', name: 'parchment' },
-		{ hex: '#d3deeb', name: 'mist' },
-		{ hex: '#f0dde1', name: 'blush' },
+		{ hex: '#c7e0c7', name: 'sageGreen' },
+		{ hex: '#e5d8be', name: 'parchmentBeige' },
+		{ hex: '#d3deeb', name: 'mistBlue' },
+		{ hex: '#f0dde1', name: 'mistPink' },
 	],
 	dark: [
-		{ hex: '#202e47', name: 'midnight' },
-		{ hex: '#4f555d', name: 'slate' },
-		{ hex: '#60406b', name: 'plum' },
-		{ hex: '#2d2e61', name: 'indigo' },
+		{ hex: '#202e47', name: 'midnightBlue' },
+		{ hex: '#4f555d', name: 'slateGray' },
+		{ hex: '#60406b', name: 'plumPurple' },
+		{ hex: '#2d2e61', name: 'indigoBlue' },
 	],
 };
 
