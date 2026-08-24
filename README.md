@@ -47,6 +47,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
+| Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
 | Data statistics | Time each writing session, aim at a daily goal, and read back where the words and the hours went. |
@@ -149,6 +150,10 @@ A novel is easier to write in chapters and easier to read as a book. The manuscr
 In the manuscript stream, click any chapter and it becomes an editing view, and it returns to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the caret, or (iii) merge it into the next one.*
 
 **Typewriter scrolling** keeps the line being written at the middle of the page. **Focus mode** fades everything except the paragraph being written, and its deepest level, solo, shows only the manuscript in full screen. Each has a button in every chapter's header, and the arrow keys walk the caret from one chapter into the next.
+
+**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings, alongside a background tint for light and dark mode and grid lines to write along. Reading and writing share one contract, so a chapter is laid out the same whether you are reading it or writing in it, and the typography button in the toolbar opens the same controls over the page itself.
+
+<p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted ground, justified with automatic hyphenation, first lines indented, dashed grid lines behind the text, and focus mode keeping the paragraph being written in full ink" /></a></p>
 
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
@@ -261,7 +266,7 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Interface language | Follow project | Follow the current project, Obsidian, English, or Simplified Chinese. |
 | Default project language | System language | Set the language used when creating projects. |
 | Freeform mode | Off | Hide the ten steps and their progress. Characters and scenes join the worldbuilding list. |
-| Open notes beside dashboard | On | Reuse a companion pane for notes. |
+| Open notes beside the dashboard | On | Reuse a companion pane for notes. |
 | Reduce animations | Off | Replace animations with static visuals. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
 | Show progress status in tables | Off | Add a progress status column to the member tables. |
@@ -272,6 +277,20 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Show order numbers | Off | Show the stored position that decides where a note is read. |
 | Typewriter scrolling | On | Keep the line being written at the middle of the page. |
 | Focus mode | Off | Fade all but the paragraph being written. The solo level shows only the manuscript in full screen. |
+| Auto-pair brackets and quotes | On | Typing brackets or quotes in the manuscript closes the pair. |
+| Auto-pair Markdown syntax | On | Typing bold, italic or other markers in the manuscript closes the pair. |
+| Enter starts a new paragraph | On | Typing Enter puts an extra blank line between paragraphs. Typing Shift+Enter breaks the line inside the paragraph. |
+| Font family | Theme default | Choose the font used for manuscript text. Restart Obsidian to see newly installed fonts. |
+| Font size | Theme default | Adjust the size of manuscript text. |
+| Line height | Theme default | Adjust spacing between lines of manuscript text. |
+| Content width | Theme default | Set the maximum width of manuscript content. |
+| Paragraph spacing | 1 line | Adjust space between paragraphs. |
+| First-line indent | None | Set the indent at the start of paragraphs. |
+| Text alignment | Justified | Choose how paragraph text is aligned. |
+| Automatic hyphenation | Off | Break long words at line endings automatically. |
+| Background in light mode | Theme default | Choose the manuscript background color in light mode. |
+| Background in dark mode | Theme default | Choose the manuscript background color in dark mode. |
+| Grid lines | None | Show guides behind manuscript content. |
 | Word count rule | MS Word | Which tool the word count follows. |
 | Count headings | Skip the first H1 only | Whether heading lines count as writing. |
 | Focus timer type | Pomodoro | Which timer a new session starts with. |
@@ -468,6 +487,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
 | 项目归档 | 把暂时写完的项目收起来，想要时再取回。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
+| 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
 | 数据统计 | 记录每次写作时段，设定每日目标，回看字数与时间都去了哪里。 |
@@ -570,6 +590,10 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 在正文流中，点击任意一章，它就变成编辑视图；当你转到另一章时，它又回到阅读视图。你可以*（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把它并入下一章。*
 
 **打字机滚动**让正在写的一行保持在页面中部。**专注模式**淡化正在写的段落之外的一切；最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮，方向键也可以带着光标从一章移动到下一章。
+
+**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都是设置项，还有浅色与深色模式各自的背景底色，以及可以照着写的网格线。阅读与写作共用同一套排版，因此无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮就在正文之上打开同样的这些控件。
+
+<p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
@@ -685,6 +709,20 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 显示顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
 | 打字机滚动 | 开启 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 关 | 淡化正在写的段落之外的一切。仅正文一档会全屏只显示正文。 |
+| 自动配对括号与引号 | 开启 | 在正文中输入括号或引号时自动补全另一半。 |
+| 自动配对 Markdown 语法 | 开启 | 在正文中输入加粗、斜体等标记时自动补全另一半。 |
+| 回车开始新段落 | 开启 | 按回车会在段落之间多留一个空行。按 Shift+回车则在段内换行。 |
+| 字体 | 跟随主题 | 选择正文使用的字体。重启 Obsidian 后才能看到新装的字体。 |
+| 字号 | 跟随主题 | 调整正文文字的大小。 |
+| 行高 | 跟随主题 | 调整正文行与行之间的间距。 |
+| 正文宽度 | 跟随主题 | 设置正文内容的最大宽度。 |
+| 段间距 | 1 行 | 调整段落之间的间距。 |
+| 首行缩进 | 无 | 设置段落起始处的缩进。 |
+| 文本对齐 | 两端对齐 | 选择段落文本的对齐方式。 |
+| 自动连字符 | 关闭 | 自动在行末断开长单词。 |
+| 浅色模式背景 | 跟随主题 | 选择浅色模式下正文的背景颜色。 |
+| 深色模式背景 | 跟随主题 | 选择深色模式下正文的背景颜色。 |
+| 网格线 | 无 | 在正文内容后面显示辅助线。 |
 | 字数统计规则 | 微软 Word | 字数统计遵循哪一种工具的规则。 |
 | 标题计入字数 | 仅忽略第一个一级标题 | 标题行是否计入写作字数。 |
 | 专注计时方式 | 番茄钟 | 新的时段默认使用哪一种计时。 |
