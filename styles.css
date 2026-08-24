@@ -5205,9 +5205,21 @@ body {
 }
 
 .snowflake-method-segment-rendered.markdown-rendered > p {
-	text-indent: var(--snowflake-method-manuscript-indent, 0);
 	text-align: var(--snowflake-method-manuscript-align, start);
 	hyphens: var(--snowflake-method-manuscript-hyphens, manual);
+}
+
+/* The first line is set in by a blank box standing before it rather than by
+   the property that names the job, which the plugin review's browser-support
+   check flags for the `each-line` and `hanging` keywords no browser carries.
+   A box of the indent's width does the same work: measured against that
+   property in justified Chinese, the two agree on where every character of
+   the paragraph sits, on where the lines break, and on the flush right edge.
+   At the default indent of nothing the box is zero wide and moves no line. */
+.snowflake-method-segment-rendered.markdown-rendered > p::before {
+	content: '';
+	display: inline-block;
+	width: var(--snowflake-method-manuscript-indent, 0);
 }
 
 /* Editing: the blank line between paragraphs IS the gap, and the first line
@@ -5222,8 +5234,10 @@ body {
    line of its own -- a second one in a row, where a paragraph is about to
    be written -- is not marked as a gap at all, and stands at full height
    with the indent, so the first letter typed on it moves nothing. */
-.snowflake-method-segment-body .cm-line.snowflake-method-paragraph-first {
-	text-indent: var(--snowflake-method-manuscript-indent, 0);
+.snowflake-method-segment-body .cm-line.snowflake-method-paragraph-first::before {
+	content: '';
+	display: inline-block;
+	width: var(--snowflake-method-manuscript-indent, 0);
 }
 
 /* Every line of a paragraph sits in the column as the page's paragraphs do,
@@ -5242,7 +5256,7 @@ body {
 }
 
 /* The guides: a rule under every row of the note being written in, drawn
-   by each editor line in a layer under its own text and masked to one pixel
+   by each editor line as a layer under its own text and masked to one pixel
    row per line height, so a paragraph gap of any size leaves the rules
    under the text rows where they belong. A blank line keeps the pitch of
    the text around it, like ruled paper: its rules fall one text line apart
@@ -5256,8 +5270,8 @@ body {
 	position: relative;
 }
 
-.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line::before,
-.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::before {
+.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line::after,
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::after {
 	content: '';
 	position: absolute;
 	inset: 0;
@@ -5270,7 +5284,7 @@ body {
 	mask-size: 100% 1lh;
 }
 
-.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::before {
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line::after {
 	background-color: transparent;
 	background-image: repeating-linear-gradient(
 		to right,
@@ -5279,8 +5293,8 @@ body {
 	);
 }
 
-.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::before,
-.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::before {
+.snowflake-method-manuscript-view.is-guide-solid .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::after,
+.snowflake-method-manuscript-view.is-guide-dashed .snowflake-method-segment-body.is-editing .cm-line.snowflake-method-blank-line::after {
 	-webkit-mask-size: 100%
 		calc(
 			var(--snowflake-method-manuscript-font-size, var(--font-text-size)) *

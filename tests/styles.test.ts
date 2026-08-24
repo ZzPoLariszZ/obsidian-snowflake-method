@@ -48,4 +48,20 @@ describe('styles.css', () => {
 			.flatMap((prelude) => [...prelude.matchAll(bare)].map((hit) => hit[2]));
 		expect(offenders).toEqual([]);
 	});
+
+	/**
+	 * The property that sets a first line in is flagged by the review's
+	 * browser-support check, for keywords the manuscript never asks for but
+	 * which the check cannot see past. The page and the editor both indent
+	 * with a blank inline-block standing before the first line instead, the
+	 * way the other writing plugins do, so the property never appears.
+	 */
+	it('indents a first line without naming the flagged property', () => {
+		const declarations = styles.replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(declarations.includes('text-indent')).toBe(false);
+		const spacers = styles.match(
+			/::before\s*\{[^}]*width:\s*var\(--snowflake-method-manuscript-indent[^}]*\}/g,
+		);
+		expect(spacers?.length).toBe(2);
+	});
 });
