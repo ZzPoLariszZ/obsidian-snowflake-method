@@ -8,6 +8,35 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0]
+
+### Added
+
+- **Manuscript typography**, a page you set yourself. Font family, font size, line height, content width, paragraph spacing, first-line indent, text alignment and automatic hyphenation are all yours to choose, alongside a background tint for light and dark mode and grid lines to write along. Reading and writing take their measures from one contract, so a chapter is laid out the same whether you are reading it or writing in it, and every measure left at the theme's own stays the theme's. The **Typography** button in the manuscript toolbar opens the same controls over the page itself, so a change is seen where it lands rather than in a settings window somewhere else, and the reading position is held while the page reshapes under it. Four tints per mode stand beside a custom color, Sage green, Parchment beige, Mist blue and Mist pink by day, Midnight blue, Slate gray, Plum purple and Indigo blue by night.
+- **Writing in the manuscript**, with the tools prose asks for. A toolbar over the stream carries undo and redo, heading levels one through six, bold, italic, strikethrough, underline and highlight, and Cmd or Ctrl with B and I reach the first two from the keyboard. Typing `[[` offers the project's own members, characters, scenes, times, locations and every kind of your own, each under the heading of the group it belongs to. An alias is offered under the name it belongs to, so two members who share one can still be told apart. Brackets, quotes and the Markdown emphasis markers close themselves as they are typed, full width as well as half. Enter puts the blank line a Markdown paragraph needs and Shift+Enter keeps the plain line break, in prose alone, so lists, quotes, tables and code keep the Enter they expect. **Auto-pair brackets and quotes**, **Auto-pair Markdown syntax** and **Enter starts a new paragraph** each turn their own half of this off.
+
+### Changed
+
+- The space between paragraphs is measured in lines now, and one line is what it is set to. The editor is unchanged, since a blank line there was always one line high, and the reading view grows to meet it, which for a manuscript left at the theme's own spacing is a wider gap than before. **Paragraph spacing** sets it anywhere from a quarter line to three, on the page and in the editor alike.
+- Manuscript prose is justified unless you ask otherwise. **Text alignment** offers left beside it, and **Automatic hyphenation**, off by default, breaks long words at line ends from the browser's dictionary for the project's language. An existing manuscript that has never had its alignment set will read as justified after upgrading.
+
+### Fixed
+
+- Enter on the blank line under a table starts a paragraph rather than a soft break. The line that had ended the table was read as one of its rows, so what was written there arrived glued to the paragraph below it.
+- A space at the centre of a pair a formatting command placed no longer takes the closing marker with it. Bold or italic switched on at an empty caret survived only until the next keystroke, after which a space dismantled it.
+- A chapter opens dressed. Clicking into one deep in a long chapter drew its lines unaligned and unindented for a moment, until the page's own typography caught up.
+- Text kept after a save conflict is written. When a note had changed elsewhere the notice promised the words here were kept, and the writing of them was left to a timer that never fired if the chapter left the loaded window first.
+- The reading position holds when a chapter goes back to prose, and while the typography changes under it. Leaving an editor from a page into a chapter used to carry the reader a long way off, because what was held was the chapter's own top rather than the words in front of them.
+- Cmd or Ctrl with B, I and E belong to the manuscript only while the caret is in it. Pressed with a slider or a field of the typography popover focused, they used to reach the chapter behind the panel.
+- Table headers line up with their bodies, and a dialog's fields with its header and footer. The scrollbar width the layout reserves was measured before there was a window to measure it in, and never again, so it stayed at zero.
+- The character and scene forms the command palette opens are the dashboard's own, with every field they have there, and they no longer carry the page to a step nobody asked for.
+- A picker's arrow keys walk its list from the moment it opens, its create row is dressed as the rest of the list is, and a font this machine cannot set is marked as missing rather than offered.
+- The wikilink popup's group headings are dressed as every other list's headings are, and a link's kind is parted from its name by a character a name cannot hold.
+- One editor is open at a time, fed by the project the page is actually showing.
+- A typography slider dresses the page as it moves and writes the file once it comes to rest, rather than writing on every step of the drag.
+- A name folds the same way whatever locale the machine runs in.
+- Fences, tables and blocks inside other blocks are read as the page reads them, both in what counts as writing and in what Enter does.
+
 ## [0.12.0]
 
 ### Added
@@ -288,6 +317,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.13.0]
+
+### 新增
+
+- **正文排版**，版面由你来定。字体、字号、行高、正文宽度、段间距、首行缩进、文本对齐与自动连字符都可以自己选，另有浅色与深色模式各自的背景底色，以及可以照着写的网格线。阅读与写作取自同一套排版，因此无论你是在读一章还是在写一章，版面都一样，凡是留给主题的那一项，仍旧交给主题。正文工具栏中的**排版**按钮就在正文之上打开同样的这些控件，改动落在哪里就在哪里看见，不必去另一个设置窗口，版面在脚下重排时阅读位置也会被稳住。每种模式各有四种底色与一个自定义颜色，白天是鼠尾草绿、羊皮纸黄、薄雾蓝与薄雾粉，夜里是午夜蓝、石板灰、梅紫与靛蓝。
+- **在正文里写作**，配齐散文需要的工具。正文流之上的工具栏提供撤销与重做、一到六级标题、加粗、斜体、删除线、下划线与高亮，Cmd 或 Ctrl 加 B、I 也可以从键盘直接使用前两项。输入 `[[` 会列出本项目自己的成员，角色、场景、时间、地点，以及你自建的每一种类别，各自归在所属分组的标题之下。别名列在它所属的名字之下，因此两个共用同一别名的成员依然分辨得清。括号、引号与 Markdown 强调标记在输入时自动补全另一半，全角与半角皆然。回车会补上 Markdown 段落所需的空行，Shift+回车保留普通换行，且只在散文中如此，列表、引用、表格与代码仍保留它们各自期待的回车。**自动配对括号与引号**、**自动配对 Markdown 语法**与**回车开始新段落**可以各自关掉其中一半。
+
+### 变更
+
+- 段落之间的间距现在以行计，默认为一行。编辑器不变，因为那里的空行本就是一行高，阅读视图则随之增高，对于沿用主题间距的正文来说，这个间隙比以前更宽。**段间距**可在四分之一行到三行之间设置，页面与编辑器一致。
+- 正文默认两端对齐。**文本对齐**旁边还有左对齐，**自动连字符**默认关闭，开启后会按项目语言用浏览器的词典在行末断开长单词。升级之后，从未设过对齐方式的既有正文会以两端对齐呈现。
+
+### 修复
+
+- 在表格下方的空行上按回车，开始的是新段落而不是段内换行。那一行本是结束表格的空行，却被当成了表格的一行，于是写在那里的文字会与下方的段落黏在一起。
+- 由格式命令放下的一对标记，中间输入空格不再把收尾的标记一并带走。在空光标处开启的加粗或斜体，此前只能撑到下一次按键，之后一个空格就会把它拆散。
+- 一章打开时就是它该有的样子。点进一篇长章节的深处，此前会先画出未对齐、未缩进的几行，稍后页面自己的排版才追上来。
+- 保存冲突后保留下来的文字会被写入。当一篇笔记在别处被改动时，提示说这里的文字会保留，而真正的写入被交给了一个计时器，若该章先一步离开已载入的范围，它便永不触发。
+- 一章回到阅读态时，以及排版在脚下变化时，阅读位置都稳得住。此前从一章的中途离开编辑器，会把读者带出很远，因为被稳住的是这一章自己的顶端，而不是眼前的文字。
+- Cmd 或 Ctrl 加 B、I、E 只在光标位于正文之中时才属于正文。此前当焦点落在排版浮层的滑块或输入框上时，这些按键会越过面板作用到后面的章节。
+- 表格的表头与表体重新对齐，对话框的字段也与它的页眉页脚对齐。版面为滚动条预留的宽度，此前是在还没有窗口可量的时候量的，之后再未重量，于是一直停在零。
+- 命令面板打开的角色与场景表单就是工作台自己的那一份，字段一个不少，也不会再把页面带到没人要去的步骤。
+- 选择器的方向键从列表打开的那一刻起就能走动，新建行的样式与列表其余部分一致，本机无法使用的字体会被标为缺失而不是照常提供。
+- 双链浮层的分组标题与其他列表的标题样式一致，链接的类别与名称之间用名称不可能包含的字符隔开。
+- 同一时刻只有一个编辑器打开，且由页面真正在显示的那个项目供给。
+- 排版滑块在拖动时即时改变版面，待其停稳后才写入文件，而不是在拖动的每一步都写。
+- 无论机器运行在哪种区域设置下，名称的折叠方式都一致。
+- 围栏代码、表格，以及嵌套在其他区块中的区块，都按页面阅读它们的方式来读，无论是计入写作字数，还是回车的行为。
 
 ## [0.12.0]
 
