@@ -8,6 +8,7 @@ import {
 	type Completion,
 	type CompletionContext,
 	type CompletionResult,
+	type CompletionSection,
 } from '@codemirror/autocomplete';
 import {
 	defaultKeymap,
@@ -345,6 +346,27 @@ interface WikilinkCompletion extends Completion {
 
 function opensOn(completion: Completion): boolean {
 	return (completion as Partial<WikilinkCompletion>).opensOn === true;
+}
+
+/**
+ * The heading above a group of rows. CodeMirror draws one itself for a
+ * section that brings none, and which element it draws has changed with the
+ * version: a bare `completion-section` in what Obsidian ships now, a
+ * `li.cm-completionSection` before that. Drawing it here makes it one
+ * element, the plugin's own, whichever version is underneath, and spares the
+ * stylesheet a type selector for an element no browser knows.
+ *
+ * It is an `li` because the list is a `ul`, it is told from a row by carrying
+ * no id -- which is how CodeMirror itself skips it when it walks the list to
+ * move the highlight -- and `presentation` keeps it out of the way of the
+ * listbox the rows are announced as.
+ */
+function sectionHeader(section: CompletionSection): HTMLElement {
+	return createEl('li', {
+		cls: 'snowflake-method-completion-section',
+		text: section.name,
+		attr: { role: 'presentation' },
+	});
 }
 
 /**
@@ -792,7 +814,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 					label: option.label,
 					opensOn: at === offer.preferred,
 					type: option.alias ? 'wikilink-alias' : undefined,
-					section: option.section,
+					section: { ...option.section, header: sectionHeader },
 					apply: (view, _completion, from, to) => {
 						const range = wikilinkReplaceRange(
 							from,

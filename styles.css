@@ -4988,27 +4988,25 @@ body {
    there is nothing to divide. The rule runs edge to edge the way Obsidian's
    menu separators do, reaching through the list's inset with a negative
    margin the padding gives back, so the name still lines up with the rows.
-   Named twice because CodeMirror has rendered the heading as a li with this
-   class and as a bare completion-section element, depending on the version
-   Obsidian ships. */
-.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection,
-.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section {
+   The editor draws the heading itself, as an li of its own class, so this
+   names one element rather than guessing at whichever one the CodeMirror
+   underneath would have drawn. */
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul li.snowflake-method-completion-section {
 	display: block;
 	margin: var(--snowflake-method-list-heading-gap) calc(var(--size-2-3) * -1) 1px;
 	padding: var(--snowflake-method-list-heading-gap)
 		calc(var(--size-4-3) + var(--size-2-3)) var(--size-2-3);
 	border-top: var(--snowflake-method-list-heading-rule);
-	/* CodeMirror's base theme rules the heading off underneath instead. */
-	border-bottom: 0;
 	color: var(--snowflake-method-list-heading-color);
 	font-size: var(--snowflake-method-list-heading-size);
 	font-weight: var(--snowflake-method-list-heading-weight);
 	line-height: var(--line-height-tight);
 	list-style: none;
+	/* A heading is nothing to click, whatever the base theme says of a row. */
+	cursor: default;
 }
 
-.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul .cm-completionSection:first-child,
-.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul completion-section:first-child {
+.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips.snowflake-method-cm-tooltips .cm-tooltip-autocomplete ul li.snowflake-method-completion-section:first-child {
 	margin-top: 0;
 	padding-top: var(--size-2-3);
 	border-top: 0;

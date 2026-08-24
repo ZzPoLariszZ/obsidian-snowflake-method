@@ -29,4 +29,23 @@ describe('styles.css', () => {
 	it('leaves the theme its say', () => {
 		expect(styles.includes('!important')).toBe(false);
 	});
+
+	/**
+	 * A hyphenated name in element position is a custom element, and naming
+	 * one ties the stylesheet to whatever library happens to draw it: the
+	 * wikilink popup's group heading was `completion-section` in one
+	 * CodeMirror and `li.cm-completionSection` in another, so the file named
+	 * both and would have had to name the next. The plugin draws that heading
+	 * itself now, and every element the file names is one the browser knows.
+	 */
+	it('names no element a browser would not know', () => {
+		const bare = /(^|[\s>+~(,])([a-z][a-z\d]*(?:-[a-z\d]+)+)(?![-\w])/g;
+		const offenders = [
+			...styles.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{/g),
+		]
+			.map((rule) => (rule[1] ?? '').trim())
+			.filter((prelude) => !prelude.startsWith('@'))
+			.flatMap((prelude) => [...prelude.matchAll(bare)].map((hit) => hit[2]));
+		expect(offenders).toEqual([]);
+	});
 });
