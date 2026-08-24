@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+	DEFAULT_MANUSCRIPT_PRESENTATION,
+	type ManuscriptPresentation,
+} from '../src/domain';
 
 import {
 	displayProjectRoot,
@@ -275,6 +279,15 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.manuscriptTintLight).toBe('');
 		expect(DEFAULT_SETTINGS.manuscriptTintDark).toBe('');
 		expect(DEFAULT_SETTINGS.manuscriptGuide).toBe('none');
+
+		// And every one of them is the domain's value rather than a second
+		// copy of it. Walked through the mapping, so a twelfth dress field is
+		// covered the day it is added.
+		for (const [field, key] of Object.entries(PRESENTATION_SETTINGS_KEYS)) {
+			expect(DEFAULT_SETTINGS[key]).toEqual(
+				DEFAULT_MANUSCRIPT_PRESENTATION[field as keyof ManuscriptPresentation],
+			);
+		}
 
 		const read = (raw: Record<string, unknown>): SnowflakeSettings =>
 			sanitizeSettings(raw);

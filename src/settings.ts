@@ -16,6 +16,7 @@ import {
 	FIRST_LINE_INDENT_STOPS,
 	FONT_SIZE_STOPS,
 	LINE_HEIGHT_STOPS,
+	DEFAULT_MANUSCRIPT_PRESENTATION,
 	MANUSCRIPT_TINTS,
 	PARAGRAPH_SPACING_STOPS,
 	PRESENTATION_THEME_VARS,
@@ -269,18 +270,24 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptAutoPairMarkdown: true,
 	manuscriptEnterParagraph: true,
 	manuscriptFocusLevel: 'off',
-	manuscriptFontFamily: '',
+	// Read from the dress rather than written out again. These eleven had been
+	// a second copy of `DEFAULT_MANUSCRIPT_PRESENTATION`, kept in step by hand
+	// and by nothing else: the sanitizers fall back to the domain's table while
+	// a fresh install got this one, so the two disagreeing meant a stored value
+	// repaired to a number no new vault would ever be given, and the reset
+	// button on a row putting back something the page had never shown.
+	manuscriptFontFamily: DEFAULT_MANUSCRIPT_PRESENTATION.fontFamily,
 	manuscriptRecentFonts: [],
-	manuscriptFontSize: 0,
-	manuscriptLineHeight: 0,
-	manuscriptContentWidth: 0,
-	manuscriptParagraphSpacing: 1,
-	manuscriptFirstLineIndent: 0,
-	manuscriptTextAlign: 'justify',
-	manuscriptHyphenation: false,
-	manuscriptTintLight: '',
-	manuscriptTintDark: '',
-	manuscriptGuide: 'none',
+	manuscriptFontSize: DEFAULT_MANUSCRIPT_PRESENTATION.fontSize,
+	manuscriptLineHeight: DEFAULT_MANUSCRIPT_PRESENTATION.lineHeight,
+	manuscriptContentWidth: DEFAULT_MANUSCRIPT_PRESENTATION.contentWidth,
+	manuscriptParagraphSpacing: DEFAULT_MANUSCRIPT_PRESENTATION.paragraphSpacing,
+	manuscriptFirstLineIndent: DEFAULT_MANUSCRIPT_PRESENTATION.firstLineIndent,
+	manuscriptTextAlign: DEFAULT_MANUSCRIPT_PRESENTATION.textAlign,
+	manuscriptHyphenation: DEFAULT_MANUSCRIPT_PRESENTATION.hyphenation,
+	manuscriptTintLight: DEFAULT_MANUSCRIPT_PRESENTATION.tintLight,
+	manuscriptTintDark: DEFAULT_MANUSCRIPT_PRESENTATION.tintDark,
+	manuscriptGuide: DEFAULT_MANUSCRIPT_PRESENTATION.guide,
 	sessionIdleThresholdSeconds: 60,
 	sessionCountdownMinutes: 45,
 	sessionPomodoroWorkMinutes: 25,
