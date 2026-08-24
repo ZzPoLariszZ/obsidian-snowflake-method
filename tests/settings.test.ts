@@ -269,7 +269,7 @@ describe('settings', () => {
 		// One blank line, which is what the editor has always shown.
 		expect(DEFAULT_SETTINGS.manuscriptParagraphSpacing).toBe(1);
 		expect(DEFAULT_SETTINGS.manuscriptFirstLineIndent).toBe(0);
-		expect(DEFAULT_SETTINGS.manuscriptTextAlign).toBe('start');
+		expect(DEFAULT_SETTINGS.manuscriptTextAlign).toBe('justify');
 		expect(DEFAULT_SETTINGS.manuscriptHyphenation).toBe(false);
 		expect(DEFAULT_SETTINGS.manuscriptEnterParagraph).toBe(true);
 		expect(DEFAULT_SETTINGS.manuscriptTintLight).toBe('');
@@ -316,7 +316,7 @@ describe('settings', () => {
 			0,
 		);
 		expect(read({ manuscriptTextAlign: 'justify' }).manuscriptTextAlign).toBe('justify');
-		expect(read({ manuscriptTextAlign: 'center' }).manuscriptTextAlign).toBe('start');
+		expect(read({ manuscriptTextAlign: 'center' }).manuscriptTextAlign).toBe('justify');
 		expect(read({ manuscriptHyphenation: true }).manuscriptHyphenation).toBe(true);
 		expect(read({ manuscriptHyphenation: 'yes' }).manuscriptHyphenation).toBe(false);
 		expect(read({ manuscriptEnterParagraph: false }).manuscriptEnterParagraph).toBe(false);

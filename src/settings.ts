@@ -276,7 +276,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptContentWidth: 0,
 	manuscriptParagraphSpacing: 1,
 	manuscriptFirstLineIndent: 0,
-	manuscriptTextAlign: 'start',
+	manuscriptTextAlign: 'justify',
 	manuscriptHyphenation: false,
 	manuscriptTintLight: '',
 	manuscriptTintDark: '',

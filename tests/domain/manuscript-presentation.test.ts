@@ -127,14 +127,14 @@ describe('sanitizers', () => {
 
 	it('know ragged right and justified, and a plain on or off for hyphens', () => {
 		expect(MANUSCRIPT_TEXT_ALIGNS).toEqual(['start', 'justify']);
-		expect(DEFAULT_MANUSCRIPT_PRESENTATION.textAlign).toBe('start');
+		expect(DEFAULT_MANUSCRIPT_PRESENTATION.textAlign).toBe('justify');
 		expect(DEFAULT_MANUSCRIPT_PRESENTATION.hyphenation).toBe(false);
 		for (const align of MANUSCRIPT_TEXT_ALIGNS) {
 			expect(isManuscriptTextAlign(align)).toBe(true);
 			expect(sanitizeTextAlign(align)).toBe(align);
 		}
-		expect(sanitizeTextAlign('center')).toBe('start');
-		expect(sanitizeTextAlign(undefined)).toBe('start');
+		expect(sanitizeTextAlign('center')).toBe('justify');
+		expect(sanitizeTextAlign(undefined)).toBe('justify');
 		expect(sanitizeHyphenation(true)).toBe(true);
 		expect(sanitizeHyphenation('yes')).toBe(false);
 	});
@@ -262,7 +262,7 @@ describe('presentationStyle', () => {
 			[PRESENTATION_PROPERTIES.width]: null,
 			[PRESENTATION_PROPERTIES.paragraphSpacing]: '1',
 			[PRESENTATION_PROPERTIES.indent]: '0em',
-			[PRESENTATION_PROPERTIES.align]: null,
+			[PRESENTATION_PROPERTIES.align]: 'justify',
 			[PRESENTATION_PROPERTIES.hyphens]: null,
 			[PRESENTATION_PROPERTIES.tintLight]: null,
 			[PRESENTATION_PROPERTIES.tintDark]: null,
@@ -273,11 +273,19 @@ describe('presentationStyle', () => {
 		});
 	});
 
-	it('writes justified text and automatic hyphens only when asked for', () => {
-		const style = presentationStyle(look({ textAlign: 'justify', hyphenation: true }));
+	it('writes justified text at rest and ragged right when it is asked for', () => {
+		const style = presentationStyle(look({ hyphenation: true }));
+		// Justified is the default, so the property is written without asking.
 		expect(style.properties[PRESENTATION_PROPERTIES.align]).toBe('justify');
 		expect(style.properties[PRESENTATION_PROPERTIES.hyphens]).toBe('auto');
-		expect(presentationShape(look({ textAlign: 'justify' }))).not.toBe(
+		// Left is the choice now, and it is the one the stylesheet's own
+		// fallback answers, so the property comes off rather than going on.
+		expect(
+			presentationStyle(look({ textAlign: 'start' })).properties[
+				PRESENTATION_PROPERTIES.align
+			],
+		).toBeNull();
+		expect(presentationShape(look({ textAlign: 'start' }))).not.toBe(
 			presentationShape(look()),
 		);
 		expect(presentationShape(look({ hyphenation: true }))).not.toBe(
@@ -311,7 +319,7 @@ describe('presentationStyle', () => {
 			[PRESENTATION_PROPERTIES.width]: '760px',
 			[PRESENTATION_PROPERTIES.paragraphSpacing]: '0.5',
 			[PRESENTATION_PROPERTIES.indent]: '2em',
-			[PRESENTATION_PROPERTIES.align]: null,
+			[PRESENTATION_PROPERTIES.align]: 'justify',
 			[PRESENTATION_PROPERTIES.hyphens]: null,
 			[PRESENTATION_PROPERTIES.tintLight]: '#e5d8be',
 			[PRESENTATION_PROPERTIES.tintDark]: '#202e47',
@@ -357,7 +365,7 @@ describe('presentationShape', () => {
 			['contentWidth', 760],
 			['paragraphSpacing', 0.5],
 			['firstLineIndent', 2],
-			['textAlign', 'justify'],
+			['textAlign', 'start'],
 			['hyphenation', true],
 			['tintLight', '#c7e0c7'],
 			['tintDark', '#202e47'],

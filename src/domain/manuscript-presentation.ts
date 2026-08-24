@@ -70,7 +70,7 @@ export const DEFAULT_MANUSCRIPT_PRESENTATION: Readonly<ManuscriptPresentation> =
 	// round, because the editor is where the author feels a jump.
 	paragraphSpacing: 1,
 	firstLineIndent: 0,
-	textAlign: 'start',
+	textAlign: 'justify',
 	hyphenation: false,
 	tintLight: '',
 	tintDark: '',
