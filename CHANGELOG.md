@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1]
+
+### Changed
+
+- The first line of a paragraph is set in by a blank box of the indent's width rather than by the CSS property that names the job, which the community review's browser-support check reports for keywords no manuscript uses. Measured against that property at the manuscript's own settings, the two put every character in the same place, break the lines in the same places and leave the same flush right edge, and an indent left at nothing moves no line.
+- The wikilink popup draws its own group headings rather than dressing whichever element the CodeMirror underneath would have drawn them as. They look exactly as they did, and they will go on looking that way when that element changes again.
+
 ## [0.13.0]
 
 ### Added
@@ -317,6 +324,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.13.1]
+
+### 变更
+
+- 段落的首行缩进改由一个与缩进等宽的空盒子撑出，不再使用那个以此命名的 CSS 属性，社区审查的浏览器兼容检查会因为正文从不使用的几个关键字而报告它。在正文自己的设置下与该属性逐项比对，两者让每个字落在同一位置，在同样的地方换行，右端同样对齐，缩进留作零时也不会挪动任何一行。
+- 双链浮层的分组标题改由插件自己绘制，不再去装点底下的 CodeMirror 恰好画出的那个元素。它们的样子与此前分毫不差，日后那个元素再变，样子也依然如此。
 
 ## [0.13.0]
 
