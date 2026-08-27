@@ -84,8 +84,48 @@ export interface EntityOccurrence {
 	candidates: MentionCandidate[];
 }
 
-/** The one occurrence kind so far; custom text and regex rules join here. */
-export type Occurrence = EntityOccurrence;
+/** One registered sensitive term found on the page. */
+export interface SensitiveOccurrence {
+	type: 'sensitive';
+	path: string;
+	/** Body-relative offsets: `body.slice(from, to)` is the matched text. */
+	from: number;
+	to: number;
+	matchedText: string;
+	/** The term as the list registers it, a case variant folded back. */
+	term: string;
+}
+
+/** One stretch of quoted dialogue, quote marks included. */
+export interface DialogueOccurrence {
+	type: 'dialogue';
+	path: string;
+	from: number;
+	to: number;
+	/** The quoted stretch itself; a view truncates it for display. */
+	matchedText: string;
+}
+
+/**
+ * One custom highlight rule's match. Transient by design: these dress the
+ * segments the stream has loaded and are discarded with them -- never
+ * counted, never stored.
+ */
+export interface HighlightOccurrence {
+	type: 'highlight';
+	path: string;
+	from: number;
+	to: number;
+	matchedText: string;
+	ruleId: string;
+}
+
+/** Everything an analysis can pin to a spot in a note. */
+export type Occurrence =
+	| EntityOccurrence
+	| SensitiveOccurrence
+	| DialogueOccurrence
+	| HighlightOccurrence;
 
 /**
  * A boundary-checked raw hit: the persistable half of the pipeline,
@@ -443,6 +483,19 @@ export interface MentionMark {
 	from: number;
 	to: number;
 	classes: string;
+	/** A hover title, carried onto the mark's element when set. */
+	title?: string;
+	/**
+	 * One inline custom property, e.g. `--snowflake-method-highlight-color:
+	 * #aabbcc`. The value is built from a sanitized hex color upstream; no
+	 * user CSS passes through here.
+	 */
+	styleVar?: string;
+	occurrence: Occurrence;
+}
+
+/** A mark the entity planner made: its occurrence is an entity mention. */
+export interface EntityMentionMark extends MentionMark {
 	occurrence: EntityOccurrence;
 }
 
@@ -456,7 +509,7 @@ export function planMentionMarks(
 	occurrences: readonly EntityOccurrence[],
 	occurrenceIgnores: readonly MentionIgnore[],
 	mode: MentionHighlightMode,
-): MentionMark[] {
+): EntityMentionMark[] {
 	if (mode === 'off') return [];
 	const visible = applyOccurrenceIgnores(
 		occurrences,

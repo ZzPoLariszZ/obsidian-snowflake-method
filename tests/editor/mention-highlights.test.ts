@@ -80,3 +80,41 @@ describe('mention highlight decorations', () => {
 		expect(ranges(swallowed, body.length)).toEqual([]);
 	});
 });
+
+describe('dress-only decorations', () => {
+	it('carries a mark title and inline custom property as attributes', () => {
+		const mark: MentionMark = {
+			from: 4,
+			to: 7,
+			classes: 'snowflake-method-highlight is-deco-wavy',
+			title: 'Weather words',
+			styleVar: '--snowflake-method-highlight-color: #aabbcc',
+			occurrence: {
+				type: 'highlight',
+				path: 'note.md',
+				from: 4,
+				to: 7,
+				matchedText: 'fog',
+				ruleId: 'rule-one',
+			},
+		};
+		const set = mentionDecorations([mark]);
+		let attributes: unknown = null;
+		set.between(0, 10, (from, to, value) => {
+			attributes = (value.spec as { attributes?: unknown }).attributes;
+		});
+		expect(attributes).toEqual({
+			title: 'Weather words',
+			style: '--snowflake-method-highlight-color: #aabbcc',
+		});
+	});
+
+	it('adds no attributes where a mark carries none', () => {
+		const set = mentionDecorations(marksOf('Alice left.'));
+		let attributes: unknown = 'unread';
+		set.between(0, 5, (from, to, value) => {
+			attributes = (value.spec as { attributes?: unknown }).attributes;
+		});
+		expect(attributes).toBeUndefined();
+	});
+});

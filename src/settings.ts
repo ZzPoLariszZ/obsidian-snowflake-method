@@ -31,8 +31,11 @@ import {
 	isDateFormat,
 	isManuscriptGuide,
 	isManuscriptTextAlign,
+	isDialoguePresentation,
 	isMentionHighlightMode,
+	newHighlightRuleId,
 	rememberFontFamily,
+	sanitizeCustomHighlightRules,
 	isWeekStartDay,
 	isWritingCountHeadings,
 	isWritingCountMode,
@@ -49,7 +52,9 @@ import {
 	sanitizeTint,
 	weekdayLabels,
 	type BandSpan,
+	type CustomHighlightRule,
 	type DateFormat,
+	type DialoguePresentation,
 	type ManuscriptGuide,
 	type ManuscriptTextAlign,
 	type ManuscriptTint,
@@ -184,6 +189,32 @@ export interface SnowflakeSettings {
 	manuscriptTintDark: string;
 	/** Lines drawn under the text to write along, if any. */
 	manuscriptGuide: ManuscriptGuide;
+	/** The master switch over every custom highlight rule at once. */
+	customHighlightsEnabled: boolean;
+	/**
+	 * The custom highlight rules: literal or regular-expression, dress only.
+	 * Their matches are transient; the rules are all that persists.
+	 */
+	customHighlightRules: CustomHighlightRule[];
+	/** Whether the sensitive-word list is matched, counted and tracked. */
+	sensitiveWordsEnabled: boolean;
+	/** The sensitive words themselves, one term per line. */
+	sensitiveWords: string;
+	/** Whether dialogue ranges are read at all. */
+	dialogueDetectionEnabled: boolean;
+	/** Which quote styles open dialogue: “ ”, " ", 「 」, 『 』. */
+	dialogueQuotesCurly: boolean;
+	dialogueQuotesStraight: boolean;
+	dialogueQuotesCorner: boolean;
+	dialogueQuotesWhite: boolean;
+	/** How the stream shows dialogue: not at all, tinted, or all else faded. */
+	dialoguePresentation: DialoguePresentation;
+	/** Reading speed over space-delimited words, for the statistics. */
+	readingWordsPerMinute: number;
+	/** Reading speed over CJK characters, for the statistics. */
+	readingCjkCharactersPerMinute: number;
+	/** The reader's own stopwords for word frequency, free text. */
+	customStopwords: string;
 	/** Seconds without an edit before a session's focus time turns idle. */
 	sessionIdleThresholdSeconds: number;
 	sessionCountdownMinutes: number;
@@ -293,6 +324,19 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptTintLight: DEFAULT_MANUSCRIPT_PRESENTATION.tintLight,
 	manuscriptTintDark: DEFAULT_MANUSCRIPT_PRESENTATION.tintDark,
 	manuscriptGuide: DEFAULT_MANUSCRIPT_PRESENTATION.guide,
+	customHighlightsEnabled: true,
+	customHighlightRules: [],
+	sensitiveWordsEnabled: true,
+	sensitiveWords: '',
+	dialogueDetectionEnabled: true,
+	dialogueQuotesCurly: true,
+	dialogueQuotesStraight: true,
+	dialogueQuotesCorner: true,
+	dialogueQuotesWhite: true,
+	dialoguePresentation: 'off',
+	readingWordsPerMinute: 250,
+	readingCjkCharactersPerMinute: 400,
+	customStopwords: '',
 	sessionIdleThresholdSeconds: 60,
 	sessionCountdownMinutes: 45,
 	sessionPomodoroWorkMinutes: 25,
@@ -354,6 +398,19 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptTintLight',
 	'manuscriptTintDark',
 	'manuscriptGuide',
+	'customHighlightsEnabled',
+	'customHighlightRules',
+	'sensitiveWordsEnabled',
+	'sensitiveWords',
+	'dialogueDetectionEnabled',
+	'dialogueQuotesCurly',
+	'dialogueQuotesStraight',
+	'dialogueQuotesCorner',
+	'dialogueQuotesWhite',
+	'dialoguePresentation',
+	'readingWordsPerMinute',
+	'readingCjkCharactersPerMinute',
+	'customStopwords',
 	'sessionIdleThresholdSeconds',
 	'sessionCountdownMinutes',
 	'sessionPomodoroWorkMinutes',
@@ -561,6 +618,52 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		manuscriptTintLight: sanitizeTint(raw.manuscriptTintLight),
 		manuscriptTintDark: sanitizeTint(raw.manuscriptTintDark),
 		manuscriptGuide: sanitizeGuide(raw.manuscriptGuide),
+		customHighlightsEnabled:
+			typeof raw.customHighlightsEnabled === 'boolean'
+				? raw.customHighlightsEnabled
+				: DEFAULT_SETTINGS.customHighlightsEnabled,
+		customHighlightRules: sanitizeCustomHighlightRules(
+			raw.customHighlightRules,
+		),
+		sensitiveWordsEnabled:
+			typeof raw.sensitiveWordsEnabled === 'boolean'
+				? raw.sensitiveWordsEnabled
+				: DEFAULT_SETTINGS.sensitiveWordsEnabled,
+		sensitiveWords: boundedText(raw.sensitiveWords),
+		dialogueDetectionEnabled:
+			typeof raw.dialogueDetectionEnabled === 'boolean'
+				? raw.dialogueDetectionEnabled
+				: DEFAULT_SETTINGS.dialogueDetectionEnabled,
+		dialogueQuotesCurly:
+			typeof raw.dialogueQuotesCurly === 'boolean'
+				? raw.dialogueQuotesCurly
+				: DEFAULT_SETTINGS.dialogueQuotesCurly,
+		dialogueQuotesStraight:
+			typeof raw.dialogueQuotesStraight === 'boolean'
+				? raw.dialogueQuotesStraight
+				: DEFAULT_SETTINGS.dialogueQuotesStraight,
+		dialogueQuotesCorner:
+			typeof raw.dialogueQuotesCorner === 'boolean'
+				? raw.dialogueQuotesCorner
+				: DEFAULT_SETTINGS.dialogueQuotesCorner,
+		dialogueQuotesWhite:
+			typeof raw.dialogueQuotesWhite === 'boolean'
+				? raw.dialogueQuotesWhite
+				: DEFAULT_SETTINGS.dialogueQuotesWhite,
+		dialoguePresentation: isDialoguePresentation(raw.dialoguePresentation)
+			? raw.dialoguePresentation
+			: DEFAULT_SETTINGS.dialoguePresentation,
+		readingWordsPerMinute: readingSpeed(
+			raw.readingWordsPerMinute,
+			DEFAULT_SETTINGS.readingWordsPerMinute,
+			2000,
+		),
+		readingCjkCharactersPerMinute: readingSpeed(
+			raw.readingCjkCharactersPerMinute,
+			DEFAULT_SETTINGS.readingCjkCharactersPerMinute,
+			3000,
+		),
+		customStopwords: boundedText(raw.customStopwords),
 		sessionIdleThresholdSeconds: integerIn(
 			raw.sessionIdleThresholdSeconds,
 			'idleThresholdSeconds',
@@ -683,6 +786,33 @@ function integerIn(value: unknown, limit: SessionLimit, fallback: number): numbe
 	return typeof value === 'number' && Number.isFinite(value)
 		? clampSessionValue(limit, value)
 		: fallback;
+}
+
+/** Free-text list fields held to a size a settings file stays comfortable at. */
+const TEXT_SETTING_LIMIT = 20000;
+
+function boundedText(value: unknown): string {
+	return typeof value === 'string' ? value.slice(0, TEXT_SETTING_LIMIT) : '';
+}
+
+/** A reading speed: clamped like the session numbers, never silently reset. */
+function readingSpeed(value: unknown, fallback: number, max: number): number {
+	return typeof value === 'number' && Number.isFinite(value)
+		? Math.min(max, Math.max(10, Math.round(value)))
+		: fallback;
+}
+
+/** Whether any of a regex rule's patterns will not compile. */
+function ruleIsBroken(rule: CustomHighlightRule): boolean {
+	if (rule.kind !== 'regex') return false;
+	return rule.patterns.some((pattern) => {
+		try {
+			void new RegExp(pattern, 'gu');
+			return false;
+		} catch {
+			return true;
+		}
+	});
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1337,7 +1467,282 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			{
+				type: 'group',
+				heading: this.t('settings.customMatching.heading'),
+				cls: 'snowflake-method-analysis-settings',
+				items: [
+					{
+						name: this.t('settings.customMatching.enable'),
+						desc: this.t('settings.customMatching.enableDesc'),
+						control: {
+							type: 'toggle',
+							key: 'customHighlightsEnabled',
+							defaultValue: DEFAULT_SETTINGS.customHighlightsEnabled,
+						},
+					},
+				],
+			},
+			// The rules themselves: the plugin's one settings-owned collection,
+			// carried by the framework's list affordances -- add, drag, delete --
+			// with a dialog for everything a row holds. A list cannot sit inside
+			// a group, so it stands beside its section's heading.
+			{
+				type: 'list',
+				heading: this.t('settings.customMatching.rules'),
+				cls: 'snowflake-method-analysis-settings',
+				emptyState: this.t('settings.customMatching.empty'),
+				addItem: {
+					name: this.t('settings.customMatching.add'),
+					action: () => {
+						void this.addCustomRule();
+					},
+				},
+				onDelete: (index) => {
+					void this.deleteCustomRule(index);
+				},
+				onReorder: (from, to) => {
+					void this.reorderCustomRules(from, to);
+				},
+				items: this.owner.settings.customHighlightRules.map(
+					(rule, index) => ({
+						name:
+							rule.name.length > 0
+								? rule.name
+								: this.customRuleKindLabel(rule.kind),
+						desc: this.customRuleRowDesc(rule),
+						action: () => {
+							void this.editCustomRule(index);
+						},
+					}),
+				),
+			},
+			{
+				type: 'group',
+				heading: this.t('settings.sensitiveWords.heading'),
+				cls: 'snowflake-method-analysis-settings',
+				items: [
+					{
+						name: this.t('settings.sensitiveWords.enable'),
+						desc: this.t('settings.sensitiveWords.enableDesc'),
+						control: {
+							type: 'toggle',
+							key: 'sensitiveWordsEnabled',
+							defaultValue: DEFAULT_SETTINGS.sensitiveWordsEnabled,
+						},
+					},
+					{
+						name: this.t('settings.sensitiveWords.list'),
+						desc: this.lines('settings.sensitiveWords.listDesc'),
+						control: {
+							type: 'textarea',
+							key: 'sensitiveWords',
+							defaultValue: DEFAULT_SETTINGS.sensitiveWords,
+						},
+					},
+				],
+			},
+			{
+				type: 'group',
+				heading: this.t('settings.dialogue.heading'),
+				cls: 'snowflake-method-analysis-settings',
+				items: [
+					{
+						name: this.t('settings.dialogue.enable'),
+						desc: this.t('settings.dialogue.enableDesc'),
+						control: {
+							type: 'toggle',
+							key: 'dialogueDetectionEnabled',
+							defaultValue: DEFAULT_SETTINGS.dialogueDetectionEnabled,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesCurly'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesCurly',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesCurly,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesStraight'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesStraight',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesStraight,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesCorner'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesCorner',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesCorner,
+						},
+					},
+					{
+						name: this.t('settings.dialogue.quotesWhite'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'dialogueQuotesWhite',
+							defaultValue: DEFAULT_SETTINGS.dialogueQuotesWhite,
+						},
+					},
+					{
+						name: this.t('settings.dialoguePresentation.name'),
+						desc: this.t('settings.dialoguePresentation.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'dialoguePresentation',
+							defaultValue: DEFAULT_SETTINGS.dialoguePresentation,
+							options: {
+								off: this.t('settings.dialoguePresentation.off'),
+								highlight: this.t(
+									'settings.dialoguePresentation.highlight',
+								),
+								focus: this.t('settings.dialoguePresentation.focus'),
+							},
+						},
+					},
+				],
+			},
+			{
+				type: 'group',
+				heading: this.t('settings.proseStatistics.heading'),
+				cls: 'snowflake-method-analysis-settings',
+				items: [
+					{
+						name: this.t('settings.readingWordsPerMinute.name'),
+						desc: this.t('settings.readingWordsPerMinute.desc'),
+						control: {
+							type: 'number',
+							key: 'readingWordsPerMinute',
+							defaultValue: DEFAULT_SETTINGS.readingWordsPerMinute,
+							min: 10,
+							step: 10,
+						},
+					},
+					{
+						name: this.t('settings.readingCjkCharactersPerMinute.name'),
+						desc: this.t('settings.readingCjkCharactersPerMinute.desc'),
+						control: {
+							type: 'number',
+							key: 'readingCjkCharactersPerMinute',
+							defaultValue: DEFAULT_SETTINGS.readingCjkCharactersPerMinute,
+							min: 10,
+							step: 10,
+						},
+					},
+					{
+						name: this.t('settings.customStopwords.name'),
+						desc: this.lines('settings.customStopwords.desc'),
+						control: {
+							type: 'textarea',
+							key: 'customStopwords',
+							defaultValue: DEFAULT_SETTINGS.customStopwords,
+						},
+					},
+				],
+			},
 		];
+	}
+
+	private customRuleKindLabel(kind: CustomHighlightRule['kind']): string {
+		return this.t(
+			kind === 'literal'
+				? 'settings.customMatching.kindLiteral'
+				: 'settings.customMatching.kindRegex',
+		);
+	}
+
+	/** One rule row's summary: kind, size, and whatever needs saying. */
+	private customRuleRowDesc(rule: CustomHighlightRule): string {
+		let desc =
+			rule.patterns.length === 1
+				? this.t('settings.customMatching.ruleDescOne', {
+						kind: this.customRuleKindLabel(rule.kind),
+					})
+				: this.t('settings.customMatching.ruleDesc', {
+						kind: this.customRuleKindLabel(rule.kind),
+						count: rule.patterns.length,
+					});
+		if (!rule.enabled) desc += ` · ${this.t('settings.customMatching.off')}`;
+		if (ruleIsBroken(rule)) {
+			desc += ` · ${this.t('settings.customMatching.broken')}`;
+		}
+		return desc;
+	}
+
+	private async addCustomRule(): Promise<void> {
+		const result = await this.owner.promptHighlightRule(this.translator(), {
+			title: this.t('modal.highlightRule.createTitle'),
+			submitLabel: this.t('common.create'),
+		});
+		if (result === null) return;
+		await this.owner.updateCustomHighlightRules([
+			...this.owner.settings.customHighlightRules,
+			{ id: newHighlightRuleId(), ...result },
+		]);
+		this.update();
+	}
+
+	private async editCustomRule(index: number): Promise<void> {
+		const rule = this.owner.settings.customHighlightRules[index];
+		if (rule === undefined) return;
+		const result = await this.owner.promptHighlightRule(this.translator(), {
+			title: this.t('modal.highlightRule.editTitle'),
+			submitLabel: this.t('common.save'),
+			initial: rule,
+		});
+		if (result === null) return;
+		await this.owner.updateCustomHighlightRules(
+			this.owner.settings.customHighlightRules.map((kept, at) =>
+				// The kind stays what it was: the modal locked it too.
+				at === index ? { ...kept, ...result, kind: kept.kind } : kept,
+			),
+		);
+		this.update();
+	}
+
+	private async deleteCustomRule(index: number): Promise<void> {
+		const rule = this.owner.settings.customHighlightRules[index];
+		if (rule === undefined) return;
+		const name =
+			rule.name.length > 0 ? rule.name : this.customRuleKindLabel(rule.kind);
+		const confirmed = await this.owner.confirmHighlightRuleDeletion(
+			this.translator(),
+			name,
+		);
+		if (confirmed) {
+			await this.owner.updateCustomHighlightRules(
+				this.owner.settings.customHighlightRules.filter(
+					(kept, at) => at !== index,
+				),
+			);
+		}
+		// Rendered either way: a declined delete puts the row back.
+		this.update();
+	}
+
+	private async reorderCustomRules(from: number, to: number): Promise<void> {
+		const rules = [...this.owner.settings.customHighlightRules];
+		const [moved] = rules.splice(from, 1);
+		if (moved === undefined) return;
+		rules.splice(to, 0, moved);
+		await this.owner.updateCustomHighlightRules(rules);
+		this.update();
+	}
+
+	/** The tab's own copy handed to a dialog in the shape dialogs take. */
+	private translator(): (
+		key: string,
+		vars?: Record<string, string | number>,
+	) => string {
+		return (key, vars) => this.t(key, vars);
 	}
 
 	/**
@@ -1714,6 +2119,77 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptGuide':
 				if (isManuscriptGuide(value)) {
 					this.owner.settings.manuscriptGuide = value;
+				}
+				break;
+			// The analysis switches. The rules array itself has no case here:
+			// its list mutates through the plugin's own update path, the way
+			// the recent fonts do.
+			case 'customHighlightsEnabled':
+				if (typeof value === 'boolean') {
+					this.owner.settings.customHighlightsEnabled = value;
+				}
+				break;
+			case 'sensitiveWordsEnabled':
+				if (typeof value === 'boolean') {
+					this.owner.settings.sensitiveWordsEnabled = value;
+				}
+				break;
+			case 'sensitiveWords':
+				if (typeof value === 'string') {
+					this.owner.settings.sensitiveWords = boundedText(value);
+				}
+				break;
+			case 'dialogueDetectionEnabled':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueDetectionEnabled = value;
+				}
+				break;
+			case 'dialogueQuotesCurly':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesCurly = value;
+				}
+				break;
+			case 'dialogueQuotesStraight':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesStraight = value;
+				}
+				break;
+			case 'dialogueQuotesCorner':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesCorner = value;
+				}
+				break;
+			case 'dialogueQuotesWhite':
+				if (typeof value === 'boolean') {
+					this.owner.settings.dialogueQuotesWhite = value;
+				}
+				break;
+			case 'dialoguePresentation':
+				if (isDialoguePresentation(value)) {
+					this.owner.settings.dialoguePresentation = value;
+				}
+				break;
+			case 'readingWordsPerMinute':
+				if (typeof value === 'number') {
+					this.owner.settings.readingWordsPerMinute = readingSpeed(
+						value,
+						DEFAULT_SETTINGS.readingWordsPerMinute,
+						2000,
+					);
+				}
+				break;
+			case 'readingCjkCharactersPerMinute':
+				if (typeof value === 'number') {
+					this.owner.settings.readingCjkCharactersPerMinute = readingSpeed(
+						value,
+						DEFAULT_SETTINGS.readingCjkCharactersPerMinute,
+						3000,
+					);
+				}
+				break;
+			case 'customStopwords':
+				if (typeof value === 'string') {
+					this.owner.settings.customStopwords = boundedText(value);
 				}
 				break;
 			case 'manuscriptMentionHighlight':

@@ -79,13 +79,15 @@ export function projectMentionMarks(
 		if (to <= from) return;
 		const first = sourceIndexOf[from];
 		if (first === undefined || first >= mark.to) return;
-		spans.push({
-			from,
-			to,
-			index,
-			text: mark.occurrence.matchedText.replace(/\s+/gu, ''),
-			mark,
-		});
+		// What a correct wrap must gather: the stretch's own visible
+		// characters, read off the projection rather than the raw slice, so a
+		// mark that spans syntax -- a quoted stretch holding emphasis -- still
+		// verifies against what the page really shows.
+		let text = '';
+		for (let at = from; at < to; at += 1) {
+			text += body.charAt(sourceIndexOf[at] ?? 0);
+		}
+		spans.push({ from, to, index, text, mark });
 	});
 	return spans;
 }
@@ -107,6 +109,27 @@ interface CoveredSegment {
 export function applyMentionMarks(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
+): void {
+	applyMarkSpans(rendered, spans, true);
+}
+
+/**
+ * The dialogue dress on the rendered half: the same wrap, minus the index
+ * attribute -- dialogue marks answer to no click and belong to no lookup
+ * array. Applied before the mention wrap, so the mention spans nest inside
+ * the quoted stretch they stand in.
+ */
+export function applyDialogueMarks(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan[],
+): void {
+	applyMarkSpans(rendered, spans, false);
+}
+
+function applyMarkSpans(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan[],
+	indexed: boolean,
 ): void {
 	if (spans.length === 0) return;
 	const doc = rendered.ownerDocument;
@@ -155,10 +178,12 @@ export function applyMentionMarks(
 		if (anchor instanceof HTMLElement) {
 			const span = (list[0] as CoveredSegment).span;
 			anchor.addClasses(span.mark.classes.split(' '));
-			anchor.setAttribute(
-				'data-snowflake-method-mention',
-				String(span.index),
-			);
+			if (indexed) {
+				anchor.setAttribute(
+					'data-snowflake-method-mention',
+					String(span.index),
+				);
+			}
 			continue;
 		}
 		const text = node.nodeValue ?? '';
@@ -166,12 +191,23 @@ export function applyMentionMarks(
 		let at = 0;
 		for (const segment of [...list].sort((left, right) => left.start - right.start)) {
 			if (segment.start > at) pieces.append(text.slice(at, segment.start));
+			const mark = segment.span.mark;
 			pieces.append(
 				createSpan({
-					cls: segment.span.mark.classes,
+					cls: mark.classes,
 					text: text.slice(segment.start, segment.end),
 					attr: {
-						'data-snowflake-method-mention': String(segment.span.index),
+						...(indexed
+							? {
+									'data-snowflake-method-mention': String(
+										segment.span.index,
+									),
+								}
+							: {}),
+						...(mark.title === undefined ? {} : { title: mark.title }),
+						...(mark.styleVar === undefined
+							? {}
+							: { style: mark.styleVar }),
 					},
 				}),
 			);
@@ -184,22 +220,31 @@ export function applyMentionMarks(
 
 const MENTION_CLASSES = [
 	'snowflake-method-mention',
+	'snowflake-method-sensitive',
+	'snowflake-method-highlight',
+	'snowflake-method-dialogue',
 	'is-linked',
 	'is-unlinked',
 	'is-first',
 	'is-ambiguous',
+	'is-deco-background',
+	'is-deco-color',
+	'is-deco-underline',
+	'is-deco-wavy',
+	'is-deco-bold',
 ];
+
+const MARK_SPANS =
+	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue';
+const MARK_ANCHORS =
+	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue';
 
 /** Takes a segment's dress back off, wraps unwrapped and anchors undressed. */
 export function clearMentionMarks(rendered: HTMLElement): void {
-	for (const wrap of Array.from(
-		rendered.querySelectorAll('span.snowflake-method-mention'),
-	)) {
+	for (const wrap of Array.from(rendered.querySelectorAll(MARK_SPANS))) {
 		wrap.replaceWith(...Array.from(wrap.childNodes));
 	}
-	for (const anchor of Array.from(
-		rendered.querySelectorAll('a.snowflake-method-mention'),
-	)) {
+	for (const anchor of Array.from(rendered.querySelectorAll(MARK_ANCHORS))) {
 		anchor.removeClasses(MENTION_CLASSES);
 		anchor.removeAttribute('data-snowflake-method-mention');
 	}

@@ -13,20 +13,32 @@ import {
 } from 'obsidian';
 
 import {
+	DIALOGUE_PRESENTATIONS,
 	MENTION_HIGHLIGHT_MODES,
 	analyzeMentions,
+	combineMentionMarks,
+	dialogueRanges,
+	planDialogueMarks,
+	planHighlightMarks,
 	planMentionMarks,
+	planSensitiveMarks,
 	presentationShape,
 	presentationStyle,
+	sensitiveOccurrencesOf,
 	splitMentionIgnores,
+	type CompiledHighlightRules,
+	type DialoguePresentation,
+	type DialogueStyle,
 	type EntityMatcher,
 	type EntityOccurrence,
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
+	type SensitiveMatcher,
 } from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import {
+	applyDialogueMarks,
 	applyMentionMarks,
 	clearMentionMarks,
 	projectMentionMarks,
@@ -122,6 +134,8 @@ interface MountedSegment {
 		body: string;
 		occurrences: EntityOccurrence[];
 		marks: MentionMark[];
+		/** The dialogue layer apart: never indexed, free to sit under marks. */
+		dialogue: MentionMark[];
 	} | null;
 }
 
@@ -129,6 +143,13 @@ interface MountedSegment {
 interface MentionFeedState {
 	matcher: EntityMatcher;
 	ignores: readonly MentionIgnore[];
+	/** The dress-only families, disabled features handed in empty. */
+	sensitive: SensitiveMatcher;
+	highlights: CompiledHighlightRules;
+	dialogue: {
+		styles: readonly DialogueStyle[];
+		presentation: DialoguePresentation;
+	};
 }
 
 const sameMentionMarks = (
@@ -1097,6 +1118,22 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	private async applyMentionDress(): Promise<void> {
 		const state = await this.mentionFeedFor();
+		// The dialogue looks are container classes over one mark class: the
+		// tint under highlight, and under focus the page's ink stepping back
+		// while the quoted stretches keep full strength. Neither stands while
+		// detection has no styles to read with.
+		const dialogue =
+			state !== null && state.dialogue.styles.length > 0
+				? state.dialogue.presentation
+				: 'off';
+		this.contentEl.toggleClass(
+			'snowflake-method-dialogue-highlight',
+			dialogue === 'highlight',
+		);
+		this.contentEl.toggleClass(
+			'snowflake-method-dialogue-focus',
+			dialogue === 'focus',
+		);
 		for (const entry of this.mounted.values()) {
 			if (entry.editor !== null) {
 				entry.editor.refreshMentions();
@@ -1122,7 +1159,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		const mode = this.host.manuscriptWindowSettings().mentionHighlight;
 		const body = entry.pending ?? entry.text.body;
 		let occurrences: EntityOccurrence[] = [];
-		let marks: MentionMark[] = [];
+		let entityMarks: MentionMark[] = [];
 		if (state !== null && mode !== 'off' && state.matcher.patternCount > 0) {
 			const split = splitMentionIgnores(state.ignores);
 			occurrences = analyzeMentions(
@@ -1132,18 +1169,31 @@ export class SnowflakeManuscriptView extends ItemView {
 				state.matcher,
 				split.candidate,
 			);
-			marks = planMentionMarks(occurrences, split.occurrence, mode);
+			entityMarks = planMentionMarks(occurrences, split.occurrence, mode);
 		}
+		const marks =
+			state === null
+				? entityMarks
+				: combineMentionMarks(
+						entityMarks,
+						...this.dressOnlyMarks(state, entry.path, body),
+					);
+		const dialogue =
+			state === null ? [] : this.dialogueDressMarks(state, entry.path, body);
 		const previous = entry.mentions;
-		entry.mentions = { body, occurrences, marks };
+		entry.mentions = { body, occurrences, marks, dialogue };
 		if (
 			previous !== null &&
 			previous.body === body &&
-			sameMentionMarks(previous.marks, marks)
+			sameMentionMarks(previous.marks, marks) &&
+			sameMentionMarks(previous.dialogue, dialogue)
 		) {
 			return;
 		}
 		clearMentionMarks(rendered);
+		// Dialogue wraps first, so the indexed marks nest inside the quoted
+		// stretch they stand in rather than losing the overlap outright.
+		applyDialogueMarks(rendered, projectMentionMarks(body, dialogue));
 		applyMentionMarks(rendered, projectMentionMarks(body, marks));
 	}
 
@@ -1173,21 +1223,85 @@ export class SnowflakeManuscriptView extends ItemView {
 	): readonly MentionMark[] {
 		const state = this.mentionState;
 		const mode = this.host.manuscriptWindowSettings().mentionHighlight;
-		if (state === null || mode === 'off' || state.matcher.patternCount === 0) {
+		if (state === null) return [];
+		let occurrences: EntityOccurrence[] = [];
+		let entityMarks: MentionMark[] = [];
+		if (mode !== 'off' && state.matcher.patternCount > 0) {
+			const split = splitMentionIgnores(state.ignores);
+			occurrences = analyzeMentions(
+				path,
+				body,
+				[],
+				state.matcher,
+				split.candidate,
+			);
+			entityMarks = planMentionMarks(occurrences, split.occurrence, mode);
+		}
+		const marks = combineMentionMarks(
+			entityMarks,
+			...this.dressOnlyMarks(state, path, body),
+		);
+		const dialogue = this.dialogueDressMarks(state, path, body);
+		const entry = this.mounted.get(path);
+		if (entry !== undefined) {
+			entry.mentions = { body, occurrences, marks, dialogue };
+		}
+		// The editor's decoration set takes overlap in stride: the dialogue
+		// layer simply nests around whatever marks stand inside it.
+		return dialogue.length === 0 ? marks : [...marks, ...dialogue];
+	}
+
+	/**
+	 * The families that dress and do nothing else: sensitive warnings, and
+	 * the custom rules whose matches live and die with the loaded segment.
+	 */
+	private dressOnlyMarks(
+		state: MentionFeedState,
+		path: string,
+		body: string,
+	): MentionMark[][] {
+		const sets: MentionMark[][] = [];
+		if (state.sensitive.termCount > 0) {
+			sets.push(
+				planSensitiveMarks(
+					sensitiveOccurrencesOf(path, state.sensitive.collect(body)),
+				),
+			);
+		}
+		if (state.highlights.matchableCount > 0) {
+			sets.push(
+				planHighlightMarks(
+					path,
+					body,
+					state.highlights.collect(body),
+					state.highlights.rules,
+				),
+			);
+		}
+		return sets;
+	}
+
+	/**
+	 * The dialogue layer, when a presentation asks for it: separate from the
+	 * combined marks, because a quoted stretch overlaps whatever stands
+	 * inside it and must sit under those marks, not against them.
+	 */
+	private dialogueDressMarks(
+		state: MentionFeedState,
+		path: string,
+		body: string,
+	): MentionMark[] {
+		if (
+			state.dialogue.presentation === 'off' ||
+			state.dialogue.styles.length === 0
+		) {
 			return [];
 		}
-		const split = splitMentionIgnores(state.ignores);
-		const occurrences = analyzeMentions(
+		return planDialogueMarks(
 			path,
 			body,
-			[],
-			state.matcher,
-			split.candidate,
+			dialogueRanges(body, state.dialogue.styles),
 		);
-		const marks = planMentionMarks(occurrences, split.occurrence, mode);
-		const entry = this.mounted.get(path);
-		if (entry !== undefined) entry.mentions = { body, occurrences, marks };
-		return marks;
 	}
 
 	private primeEditorMentions(entry: MountedSegment): void {
@@ -1213,7 +1327,10 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.host.mentionIgnores(shown),
 			])
 				.then(([matcher, ignores]) => {
-					const state = matcher === null ? null : { matcher, ignores };
+					const state =
+						matcher === null
+							? null
+							: { matcher, ignores, ...this.host.manuscriptDressFeeds() };
 					if (this.mentionFeed === fetched) this.mentionState = state;
 					return state;
 				})
@@ -1251,6 +1368,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		const kept = entry.mentions;
 		const mark = kept?.marks[Number(el.getAttribute('data-snowflake-method-mention'))];
 		if (kept === null || kept === undefined || mark === undefined) return;
+		// Only entity mentions carry a menu; the other mark kinds are dress.
+		if (mark.occurrence.type !== 'entity') return;
 		openMentionMenu({
 			occurrence: mark.occurrence,
 			noteOccurrences: kept.occurrences,
@@ -1339,6 +1458,25 @@ export class SnowflakeManuscriptView extends ItemView {
 					.onClick(() => {
 						void this.host
 							.setManuscriptMentionHighlight(mode)
+							.catch((error: unknown) => {
+								this.showError(error);
+							});
+					}),
+			);
+		}
+		// Dialogue keeps its own three faces under the same button: reading
+		// mentions and reading speech are the two lenses this bar offers.
+		menu.addSeparator();
+		const dialogue = this.mentionState?.dialogue.presentation ??
+			this.host.manuscriptDressFeeds().dialogue.presentation;
+		for (const mode of DIALOGUE_PRESENTATIONS) {
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t(`settings.dialoguePresentation.${mode}`))
+					.setChecked(mode === dialogue)
+					.onClick(() => {
+						void this.host
+							.setDialoguePresentation(mode)
 							.catch((error: unknown) => {
 								this.showError(error);
 							});
@@ -2502,6 +2640,8 @@ export class SnowflakeManuscriptView extends ItemView {
 				if (entry === undefined || mention === null || entry.mentions === null) {
 					return;
 				}
+				// Sensitive and custom marks are dress alone: no menu entries.
+				if (mention.occurrence.type !== 'entity') return;
 				const editing = entry.editor;
 				addMentionMenuItems(into, {
 					occurrence: mention.occurrence,

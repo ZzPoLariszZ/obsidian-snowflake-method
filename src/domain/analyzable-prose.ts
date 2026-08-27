@@ -191,3 +191,73 @@ export function analyzableRanges(
 	keep(cursor, body.length);
 	return ranges;
 }
+
+/** One analyzable character and where it stands in the source. */
+export interface AnalyzableChar {
+	ch: string;
+	at: number;
+}
+
+/**
+ * The analyzable stream cut into paragraphs, for the analyses that reason
+ * per paragraph -- dialogue pairing, sentence counting. A blank line -- a
+ * whitespace run holding two newlines, wherever it stands -- ends one, and
+ * so does a newline swallowed with dropped syntax between two kept
+ * stretches. A single newline inside a paragraph is a soft break and stays,
+ * which is what lets one speech wrap across lines.
+ */
+export function analyzableParagraphs(
+	body: string,
+	excludeRanges: readonly CountableRange[] = [],
+): AnalyzableChar[][] {
+	const stream: AnalyzableChar[] = [];
+	const breakBefore = new Set<number>();
+	let previousEnd: number | null = null;
+	for (const range of analyzableRanges(body, excludeRanges)) {
+		if (
+			previousEnd !== null &&
+			body.slice(previousEnd, range.from).includes('\n')
+		) {
+			breakBefore.add(stream.length);
+		}
+		previousEnd = range.to;
+		for (let at = range.from; at < range.to; at += 1) {
+			stream.push({ ch: body.charAt(at), at });
+		}
+	}
+	const paragraphs: AnalyzableChar[][] = [];
+	let current: AnalyzableChar[] = [];
+	const close = (): void => {
+		if (current.length > 0) paragraphs.push(current);
+		current = [];
+	};
+	for (let at = 0; at < stream.length; ) {
+		if (breakBefore.has(at)) close();
+		const entry = stream[at] as AnalyzableChar;
+		if (entry.ch !== '\n') {
+			current.push(entry);
+			at += 1;
+			continue;
+		}
+		// A newline opens a whitespace run; a second newline inside it is a
+		// blank line, and the run itself belongs to no paragraph.
+		let newlines = 1;
+		let end = at + 1;
+		while (
+			end < stream.length &&
+			/\s/u.test((stream[end] as AnalyzableChar).ch)
+		) {
+			if ((stream[end] as AnalyzableChar).ch === '\n') newlines += 1;
+			end += 1;
+		}
+		if (newlines >= 2) {
+			close();
+			at = end;
+			continue;
+		}
+		current.push(entry);
+		at += 1;
+	}
+	close();
+	return paragraphs;
+}

@@ -36,6 +36,10 @@ import {
 	type WritingSessionType,
 	isWorldbuildingKind,
 	type WorldbuildingKindId,
+	HIGHLIGHT_DECORATIONS,
+	type CustomHighlightRule,
+	type HighlightDecoration,
+	type HighlightRuleKind,
 } from '../domain';
 import type { MemberUsage } from '../services';
 import { FieldSuggest } from './field-suggest';
@@ -4726,4 +4730,275 @@ function positiveInteger(value: string | undefined): number | null {
 	if (value === undefined || value.trim().length === 0) return null;
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export interface HighlightRuleFormResult {
+	name: string;
+	kind: HighlightRuleKind;
+	patterns: string[];
+	enabled: boolean;
+	decoration: HighlightDecoration;
+	color: string | null;
+}
+
+/**
+ * Asks what a custom highlight rule matches and how it dresses: on create
+ * with a kind still to choose, on edit with the kind standing -- patterns
+ * keep their meaning, so a rule never changes language mid-life. Resolves
+ * to the answers, or to null however the dialog was dismissed.
+ */
+export function promptForHighlightRule(
+	app: App,
+	t: Translate,
+	options: {
+		title: string;
+		submitLabel: string;
+		initial?: CustomHighlightRule;
+	},
+): Promise<HighlightRuleFormResult | null> {
+	return new Promise((resolve) => {
+		new HighlightRuleModal(app, t, options, resolve).open();
+	});
+}
+
+/** The line numbers of regex patterns that will not compile, one-based. */
+function brokenPatternLines(kind: HighlightRuleKind, text: string): number[] {
+	if (kind !== 'regex') return [];
+	const lines: number[] = [];
+	text.split(/\r?\n/u).forEach((line, at) => {
+		const source = line.trim();
+		if (source.length === 0) return;
+		try {
+			void new RegExp(source, 'gu');
+		} catch {
+			lines.push(at + 1);
+		}
+	});
+	return lines;
+}
+
+class HighlightRuleModal extends Modal {
+	private answered: HighlightRuleFormResult | null = null;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly options: {
+			title: string;
+			submitLabel: string;
+			initial?: CustomHighlightRule;
+		},
+		private readonly onResolve: (result: HighlightRuleFormResult | null) => void,
+	) {
+		super(app);
+		this.setTitle(options.title);
+		this.modalEl.addClass(
+			'snowflake-method-form-modal',
+			'snowflake-method-definition-modal',
+		);
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.addClass('snowflake-method-definition-form');
+		const initial = this.options.initial;
+		let name = initial?.name ?? '';
+		let kind: HighlightRuleKind = initial?.kind ?? 'literal';
+		let patternText = (initial?.patterns ?? []).join('\n');
+		let enabled = initial?.enabled ?? true;
+		let decoration: HighlightDecoration = initial?.decoration ?? 'background';
+		let color = initial?.color ?? null;
+		let nameInput: HTMLInputElement | null = null;
+		let patternWarning: FieldWarning | null = null;
+		const kindLabel = (of: HighlightRuleKind): string =>
+			this.t(
+				of === 'literal'
+					? 'settings.customMatching.kindLiteral'
+					: 'settings.customMatching.kindRegex',
+			);
+		// A pattern that will not compile is named by its line and blocks the
+		// submit; a literal rule has nothing to object to.
+		const showObjection = (): string | null => {
+			const broken = brokenPatternLines(kind, patternText);
+			const objection =
+				broken.length === 0
+					? null
+					: this.t('modal.highlightRule.patternInvalid', {
+							line: String(broken[0] ?? 1),
+						});
+			patternWarning?.show(objection);
+			return objection;
+		};
+		const submit = (): void => {
+			if (name.trim().length === 0) {
+				nameInput?.focus();
+				return;
+			}
+			if (showObjection() !== null) return;
+			const patterns = patternText
+				.split(/\r?\n/u)
+				.map((line) => line.trim())
+				.filter((line) => line.length > 0);
+			this.answered = {
+				name: name.trim(),
+				kind,
+				patterns,
+				enabled,
+				decoration,
+				color,
+			};
+			this.close();
+		};
+		const nameRow = new Setting(this.contentEl).setName(
+			`${this.t('modal.highlightRule.name')} *`,
+		);
+		nameRow.settingEl.addClass('snowflake-method-definition-setting');
+		nameRow.addText((text) => {
+			nameInput = text.inputEl;
+			text.setValue(name).onChange((next) => {
+				name = next;
+			});
+			text.inputEl.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					submit();
+				}
+			});
+			window.setTimeout(() => {
+				text.inputEl.focus();
+				text.inputEl.select();
+			}, 0);
+		});
+		const kindRow = new Setting(this.contentEl).setName(
+			this.t('modal.highlightRule.kind'),
+		);
+		kindRow.settingEl.addClass('snowflake-method-definition-setting');
+		if (initial === undefined) {
+			kindRow.addDropdown((dropdown) => {
+				dropdown
+					.addOption('literal', kindLabel('literal'))
+					.addOption('regex', kindLabel('regex'))
+					.setValue(kind)
+					.onChange((next) => {
+						kind = next === 'regex' ? 'regex' : 'literal';
+						showObjection();
+					});
+			});
+		} else {
+			// Locked on edit: patterns keep the meaning they were written in.
+			kindRow.controlEl.createSpan({ text: kindLabel(kind) });
+		}
+		const patternsRow = new Setting(this.contentEl)
+			.setName(this.t('modal.highlightRule.patterns'))
+			.setDesc(this.t('modal.highlightRule.patternsDesc'));
+		patternsRow.settingEl.addClass(
+			'snowflake-method-definition-setting',
+			'snowflake-method-definition-description',
+		);
+		patternsRow.addTextArea((text) => {
+			text
+				.setValue(patternText)
+				.setPlaceholder(this.t('modal.highlightRule.patternsPlaceholder'))
+				.onChange((next) => {
+					patternText = next;
+					showObjection();
+				});
+		});
+		patternWarning = new FieldWarning(patternsRow.settingEl, null);
+		showObjection();
+		const decorationRow = new Setting(this.contentEl).setName(
+			this.t('modal.highlightRule.decoration'),
+		);
+		decorationRow.settingEl.addClass('snowflake-method-definition-setting');
+		decorationRow.addDropdown((dropdown) => {
+			for (const option of HIGHLIGHT_DECORATIONS) {
+				dropdown.addOption(
+					option,
+					this.t(`modal.highlightRule.decoration.${option}`),
+				);
+			}
+			dropdown.setValue(decoration).onChange((next) => {
+				decoration = (
+					HIGHLIGHT_DECORATIONS as readonly string[]
+				).includes(next)
+					? (next as HighlightDecoration)
+					: 'background';
+			});
+		});
+		// The color row: the accent by default, one picked hex otherwise. The
+		// toggle is what stores null, because a picker always holds some value.
+		const colorRow = new Setting(this.contentEl)
+			.setName(this.t('modal.highlightRule.color'))
+			.setDesc(this.t('modal.highlightRule.followAccent'));
+		colorRow.settingEl.addClass('snowflake-method-definition-setting');
+		let picked = color ?? '#888888';
+		colorRow.addColorPicker((picker) => {
+			picker.setValue(picked).onChange((next) => {
+				picked = next;
+				if (color !== null) color = next;
+			});
+		});
+		colorRow.addToggle((toggle) => {
+			toggle.setValue(color === null).onChange((follows) => {
+				color = follows ? null : picked;
+			});
+		});
+		const enabledRow = new Setting(this.contentEl).setName(
+			this.t('modal.highlightRule.enabled'),
+		);
+		enabledRow.settingEl.addClass('snowflake-method-definition-setting');
+		enabledRow.addToggle((toggle) => {
+			toggle.setValue(enabled).onChange((next) => {
+				enabled = next;
+			});
+		});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.options.submitLabel,
+			attr: { type: 'button' },
+		});
+		confirm.addEventListener('click', submit);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.answered);
+	}
+}
+
+/** Asks whether one highlight rule should go, true only if the author said so. */
+export function confirmHighlightRuleDeletion(
+	app: App,
+	t: Translate,
+	ruleName: string,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmHighlightRuleDeletionModal(app, t, ruleName, resolve).open();
+	});
+}
+
+class ConfirmHighlightRuleDeletionModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly ruleName: string,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
+		this.setTitle(t('modal.highlightRule.deleteTitle', { name: ruleName }));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
+			text: this.t('modal.highlightRule.deleteBody', { name: this.ruleName }),
+		});
+	}
 }

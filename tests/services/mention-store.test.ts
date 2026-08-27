@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { MentionIgnore } from "../../src/domain";
 import {
+	ANALYSIS_FILE_SCHEMA_VERSION,
 	MENTION_STORE_SCHEMA_VERSION,
 	MentionStore,
 	SnowflakeProjectService,
+	type AnalysisFile,
 	type ProjectSnapshot,
 } from "../../src/services";
 import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
@@ -13,6 +15,8 @@ const IGNORES =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Manuscript_Analysis/mention_ignores.json";
 const INDEX =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/dev-a_mention_index.json";
+const ANALYSIS =
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/dev-a_analysis_stats.json";
 
 const noteRule: MentionIgnore = {
 	scope: "note",
@@ -167,5 +171,86 @@ describe("MentionStore", () => {
 		await store.writeIndex(project, base);
 		await store.writeIndex(project, { ...base, fingerprint: "fp1-def" });
 		expect((await store.readIndex(project))?.fingerprint).toBe("fp1-def");
+	});
+
+	it("pins the shipped mention formats: the analysis file moves alone", () => {
+		// The ignores and the index validate against this constant; changing
+		// it quarantines every reader's own rules on their next edit.
+		expect(MENTION_STORE_SCHEMA_VERSION).toBe(1);
+		expect(ANALYSIS_FILE_SCHEMA_VERSION).toBe(1);
+	});
+
+	it("round-trips this device's analysis under its own name", async () => {
+		const file: AnalysisFile = {
+			schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+			sensitiveFingerprint: "fp1-s",
+			dialogueFingerprint: "fp1-d",
+			statsFingerprint: "fp1-t",
+			tokensFingerprint: "fp1-w",
+			notes: {
+				"Snowflake Projects/Novel/50_Manuscript/Chapter 1.md": {
+					stamp: "1:2",
+					sensitive: [{ term: "damn", matchedText: "Damn", from: 0, to: 4 }],
+					dialogue: [[6, 12]],
+					stats: {
+						cjk: 0,
+						words: 9,
+						sentences: 2,
+						dialogueCjk: 0,
+						dialogueWords: 3,
+					},
+					tokens: [["fog", 2]],
+				},
+			},
+		};
+		await store.writeAnalysis(project, file);
+		expect(fakeVault.contents.has(ANALYSIS)).toBe(true);
+		expect(await store.readAnalysis(project)).toEqual(file);
+		await store.writeAnalysis(project, {
+			...file,
+			sensitiveFingerprint: "fp1-s2",
+		});
+		expect((await store.readAnalysis(project))?.sensitiveFingerprint).toBe(
+			"fp1-s2",
+		);
+	});
+
+	it("reads a broken analysis as absent and a family out of shape as null", async () => {
+		await fakeVault.seedFile(ANALYSIS, "{ not json");
+		expect(await store.readAnalysis(project)).toBeNull();
+		fakeVault.contents.set(
+			ANALYSIS,
+			JSON.stringify({
+				schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+				sensitiveFingerprint: "a",
+				dialogueFingerprint: "b",
+				statsFingerprint: "c",
+				tokensFingerprint: "d",
+				notes: {
+					good: {
+						stamp: "1:2",
+						sensitive: null,
+						dialogue: "wrong",
+						stats: { cjk: 1 },
+						tokens: [["fog", 2]],
+					},
+					dropped: { sensitive: [] },
+				},
+			}),
+		);
+		const read = await store.readAnalysis(project);
+		expect(Object.keys(read?.notes ?? {})).toEqual(["good"]);
+		expect(read?.notes.good).toEqual({
+			stamp: "1:2",
+			sensitive: null,
+			dialogue: null,
+			stats: null,
+			tokens: [["fog", 2]],
+		});
+		fakeVault.contents.set(
+			ANALYSIS,
+			JSON.stringify({ schemaVersion: 99, notes: {} }),
+		);
+		expect(await store.readAnalysis(project)).toBeNull();
 	});
 });

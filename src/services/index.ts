@@ -1,5 +1,6 @@
 export * from "./definition-files";
 export * from "./manuscript-service";
+export * from "./manuscript-analysis";
 export * from "./mention-index";
 export * from "./mention-store";
 export * from "./mirror-sync";

@@ -62,11 +62,27 @@ import {
 	rememberFontFamily,
 	sanitizeTextAlign,
 	sanitizeTint,
+	DEFAULT_STOPWORDS_EN,
+	DEFAULT_STOPWORDS_ZH,
+	DIALOGUE_STYLE_TOKENS,
+	compileCustomHighlightRules,
+	hasWordSegmenter,
+	highlightRulesFingerprint,
+	parseQuotePair,
+	parseSensitiveWords,
+	parseStopwords,
+	sanitizeCustomHighlightRules,
+	type CompiledHighlightRules,
+	type CustomHighlightRule,
+	type DialogueOccurrence,
+	type DialoguePresentation,
+	type DialogueStyle,
 	type EntityMatcher,
 	type EntityOccurrence,
 	type ManuscriptPresentation,
 	type MentionHighlightMode,
 	type MentionIgnore,
+	type SensitiveMatcher,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -114,9 +130,12 @@ import {
 	taxonomyPathFromValue,
 	type ArtifactSnapshot,
 	type CharacterRecord,
+	type AnalysisConfig,
+	type DialogueChapterAggregate,
 	type MemberUsage,
 	type MentionAggregate,
 	type NoteCountOptions,
+	type SensitiveTermAggregate,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SaveCustomFieldTemplateResult,
@@ -184,6 +203,7 @@ import type {
 	SessionPanelContext,
 	SessionSetup,
 } from './ui/session-panel';
+import type { ProsePanelBridge } from './ui/prose-panel';
 import {
 	ConfirmMemberDeletionModal,
 	CreateProjectModal,
@@ -199,7 +219,10 @@ import {
 	promptForDefinitionPath,
 	DailyWordGoalModal,
 	SessionSetupModal,
+	confirmHighlightRuleDeletion,
+	promptForHighlightRule,
 	type EntityFormRequest,
+	type HighlightRuleFormResult,
 	type ManageProjectLists,
 	type ManageProjectOption,
 	type StartSessionRequest,
@@ -424,6 +447,8 @@ export default class SnowflakeMethodPlugin
 		ProjectSnapshot,
 		EntityMatcher
 	>();
+	/** The compiled highlight rules, valid while their fingerprint holds. */
+	private highlightRuleSet: CompiledHighlightRules | null = null;
 	/**
 	 * The plugin's own field the count last followed focus to. Focus events
 	 * arrive from every corner of the app, and most of them change nothing
@@ -2560,6 +2585,22 @@ export default class SnowflakeMethodPlugin
 			this.applyManuscriptMentionMode();
 			return;
 		}
+		// Custom highlight rules are dress alone -- transient marks over the
+		// loaded segments -- so the same re-dress is again the whole change.
+		if (key === 'customHighlightRules' || key === 'customHighlightsEnabled') {
+			this.applyManuscriptMentionMode();
+			return;
+		}
+		// How dialogue shows is likewise dress on text the streams hold.
+		if (key === 'dialoguePresentation') {
+			this.applyManuscriptMentionMode();
+			return;
+		}
+		// The sensitive list re-dresses at once too, but its counts feed the
+		// tracking pane and the statistics, so it also falls through.
+		if (key === 'sensitiveWords' || key === 'sensitiveWordsEnabled') {
+			this.applyManuscriptMentionMode();
+		}
 		if (key === 'reduceMotion') this.applyMotionPreference();
 		if (key === 'manuscriptFocusLevel') {
 			this.applyManuscriptModePresence();
@@ -3362,6 +3403,85 @@ export default class SnowflakeMethodPlugin
 	 * reads its project's day and speaks its project's language whatever else
 	 * is open; the sidebar names none and follows the writing.
 	 */
+	/**
+	 * The bridge the prose panel reads through, shaped like the sessions
+	 * bridge below and resolving its project the same way.
+	 */
+	proseStatistics(context: SessionPanelContext = {}): ProsePanelBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const read = async <T>(
+			from: (project: ProjectSnapshot) => Promise<T>,
+		): Promise<T | null> => {
+			const project = await this.resolveProject(panelProject());
+			return project === null ? null : from(project);
+		};
+		return {
+			t,
+			statistics: async () =>
+				read((project) =>
+					this.projects.analysis.statistics(
+						project,
+						this.analysisConfigFor(project),
+					),
+				),
+			frequency: async ({ includeStopwords, includeEntities }) =>
+				read(async (project) => {
+					const stopwords = includeStopwords
+						? null
+						: this.frequencyStopwords();
+					const exclude = includeEntities
+						? null
+						: await this.entityExclusionTerms(project);
+					return this.projects.analysis.frequency(
+						project,
+						this.analysisConfigFor(project),
+						{ stopwords, exclude },
+					);
+				}),
+			readingSpeeds: () => ({
+				wordsPerMinute: this.settings.readingWordsPerMinute,
+				cjkPerMinute: this.settings.readingCjkCharactersPerMinute,
+			}),
+			openChapter: async (path) => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return;
+				await this.openManuscriptStream(project.projectFile, path);
+			},
+			segmenterAvailable: () => hasWordSegmenter(),
+		};
+	}
+
+	/**
+	 * The stopword set frequency reads with: both built-in lists at once --
+	 * a Chinese manuscript still holds English function words, and the two
+	 * lists cannot collide -- plus whatever the reader added.
+	 */
+	private frequencyStopwords(): Set<string> {
+		return new Set([
+			...DEFAULT_STOPWORDS_EN,
+			...DEFAULT_STOPWORDS_ZH,
+			...parseStopwords(this.settings.customStopwords),
+		]);
+	}
+
+	/** Every entity label, normalized the way tokens are (D20: whole labels). */
+	private async entityExclusionTerms(
+		project: ProjectSnapshot,
+	): Promise<Set<string>> {
+		const targets = await this.listWikilinkTargets(project.projectFile);
+		return new Set(
+			targets
+				.map((target) => target.label.trim().normalize('NFC').toLowerCase())
+				.filter((label) => label.length > 0),
+		);
+	}
+
 	writingSessions(context: SessionPanelContext = {}): SessionPanelBridge {
 		const projectLocale = context.locale ?? null;
 		const t = (
@@ -4605,6 +4725,88 @@ export default class SnowflakeMethodPlugin
 		return matcher;
 	}
 
+	/**
+	 * The dress-only matchers, read straight from settings and memoized
+	 * behind their own fingerprints: the sensitive list through the analysis
+	 * service's slot, the highlight rules through one here. A disabled
+	 * feature hands back its empty shape, which matches nothing for free.
+	 */
+	manuscriptDressFeeds(): {
+		sensitive: SensitiveMatcher;
+		highlights: CompiledHighlightRules;
+		dialogue: {
+			styles: readonly DialogueStyle[];
+			presentation: DialoguePresentation;
+		};
+	} {
+		const terms = this.settings.sensitiveWordsEnabled
+			? parseSensitiveWords(this.settings.sensitiveWords)
+			: [];
+		const rules = this.settings.customHighlightsEnabled
+			? this.settings.customHighlightRules
+			: [];
+		const print = highlightRulesFingerprint(rules);
+		if (
+			this.highlightRuleSet === null ||
+			this.highlightRuleSet.fingerprint !== print
+		) {
+			this.highlightRuleSet = compileCustomHighlightRules(rules);
+		}
+		return {
+			sensitive: this.projects.analysis.sensitiveMatcherFor(terms),
+			highlights: this.highlightRuleSet,
+			dialogue: {
+				styles: this.dialogueStylesFromSettings(),
+				presentation: this.settings.dialoguePresentation,
+			},
+		};
+	}
+
+	/** Stores the dialogue presentation the way the highlight mode is stored. */
+	async setDialoguePresentation(mode: DialoguePresentation): Promise<void> {
+		if (this.settings.dialoguePresentation === mode) return;
+		this.settings.dialoguePresentation = mode;
+		await this.saveSettings();
+		await this.handleSettingsChanged('dialoguePresentation');
+	}
+
+	/**
+	 * The rule dialogs, opened on the settings tab's behalf: the tab must
+	 * stay importable where Obsidian's Modal does not exist, so the classes
+	 * live in the modals module and the tab reaches them through here.
+	 */
+	promptHighlightRule(
+		translate: Translate,
+		options: {
+			title: string;
+			submitLabel: string;
+			initial?: CustomHighlightRule;
+		},
+	): Promise<HighlightRuleFormResult | null> {
+		return promptForHighlightRule(this.app, translate, options);
+	}
+
+	confirmHighlightRuleDeletion(
+		translate: Translate,
+		ruleName: string,
+	): Promise<boolean> {
+		return confirmHighlightRuleDeletion(this.app, translate, ruleName);
+	}
+
+	/** Replaces the rule list whole: the settings tab's one mutation path. */
+	async updateCustomHighlightRules(
+		next: readonly CustomHighlightRule[],
+	): Promise<void> {
+		this.settings.customHighlightRules = sanitizeCustomHighlightRules([
+			...next,
+		]);
+		await this.saveSettings();
+		await this.handleSettingsChanged('customHighlightRules');
+		// An open settings page re-reads its rows: the tab's own actions call
+		// this too, harmlessly twice, and any other caller heals it for free.
+		this.settingTab?.update();
+	}
+
 	/** One note's occurrences under the project index, ignores applied. */
 	async manuscriptOccurrences(
 		projectPath: string | null,
@@ -4624,6 +4826,75 @@ export default class SnowflakeMethodPlugin
 		const matcher = await this.manuscriptEntityMatcher(projectPath);
 		if (project === null || matcher === null) return null;
 		return this.projects.mentions.aggregate(project, matcher);
+	}
+
+	/** The quote styles the settings have switched on, as pairs. */
+	private dialogueStylesFromSettings(): DialogueStyle[] {
+		if (!this.settings.dialogueDetectionEnabled) return [];
+		const chosen: string[] = [];
+		if (this.settings.dialogueQuotesCurly) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.curly);
+		}
+		if (this.settings.dialogueQuotesStraight) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.straight);
+		}
+		if (this.settings.dialogueQuotesCorner) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.corner);
+		}
+		if (this.settings.dialogueQuotesWhite) {
+			chosen.push(DIALOGUE_STYLE_TOKENS.white);
+		}
+		return chosen
+			.map((token) => parseQuotePair(token))
+			.filter((style): style is DialogueStyle => style !== null);
+	}
+
+	/** What the analysis reads of the settings, for one project's locale. */
+	private analysisConfigFor(project: ProjectSnapshot): AnalysisConfig {
+		return {
+			sensitiveTerms: this.settings.sensitiveWordsEnabled
+				? parseSensitiveWords(this.settings.sensitiveWords)
+				: [],
+			dialogueStyles: this.dialogueStylesFromSettings(),
+			locale: project.locale,
+		};
+	}
+
+	/** Every sensitive term's spots, for the tracking pane. */
+	async sensitiveMentionAggregate(
+		projectPath: string | null,
+	): Promise<SensitiveTermAggregate[] | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		return this.projects.analysis.sensitiveAggregate(
+			project,
+			this.analysisConfigFor(project),
+		);
+	}
+
+	/** The chapters holding dialogue, for the tracking pane. */
+	async dialogueMentionChapters(
+		projectPath: string | null,
+	): Promise<DialogueChapterAggregate[] | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		return this.projects.analysis.dialogueChapters(
+			project,
+			this.analysisConfigFor(project),
+		);
+	}
+
+	/** One chapter's quoted stretches, read fresh for the pane's expansion. */
+	async dialogueMentionOccurrences(
+		projectPath: string | null,
+		path: string,
+	): Promise<DialogueOccurrence[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		return this.projects.analysis.dialogueOccurrences(
+			this.analysisConfigFor(project),
+			path,
+		);
 	}
 
 	/** The project the tracking pane follows: a shown stream's, else recent. */
@@ -4656,7 +4927,7 @@ export default class SnowflakeMethodPlugin
 	/** Opens the stream at one occurrence and flashes it where it stands. */
 	async openManuscriptMention(
 		projectPath: string | null,
-		occurrence: EntityOccurrence,
+		occurrence: { path: string; from: number; to: number },
 	): Promise<void> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return;
@@ -5075,6 +5346,19 @@ export default class SnowflakeMethodPlugin
 				void this.openMentionTracking().catch((error: unknown) => {
 					this.showError(error);
 				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-custom-highlights',
+			name: this.globalT('commands.toggleCustomHighlights'),
+			callback: () => {
+				this.settings.customHighlightsEnabled =
+					!this.settings.customHighlightsEnabled;
+				void this.saveSettings()
+					.then(() => this.handleSettingsChanged('customHighlightsEnabled'))
+					.catch((error: unknown) => {
+						this.showError(error);
+					});
 			},
 		});
 		this.addCommand({
@@ -5787,6 +6071,9 @@ export default class SnowflakeMethodPlugin
 		this.projects.mentions.forget(file.path, {
 			children: file instanceof TFolder,
 		});
+		this.projects.analysis.forget(file.path, {
+			children: file instanceof TFolder,
+		});
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -5847,6 +6134,9 @@ export default class SnowflakeMethodPlugin
 			children: file instanceof TFolder,
 		});
 		this.projects.mentions.forget(oldPath, {
+			children: file instanceof TFolder,
+		});
+		this.projects.analysis.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
 		this.sessions.notePathRenamed(oldPath, file.path);

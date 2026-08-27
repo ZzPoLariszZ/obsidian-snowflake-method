@@ -5296,6 +5296,218 @@ body {
 	transition: background-color 400ms ease-out;
 }
 
+/* Dialogue dress: one mark class, two container-chosen looks, both
+   metrics-neutral. Highlight tints the quoted stretches; focus is the
+   inverse of the writing focus in spirit but works by ink rather than
+   opacity, because a quote is part of a line -- the page's text color steps
+   back and the quoted stretches keep full strength. Marks with colors of
+   their own inherit the fade outside dialogue and the full ink inside it. */
+.snowflake-method-dialogue-highlight .snowflake-method-dialogue {
+	border-radius: 2px;
+	background-color: color-mix(in srgb, var(--color-cyan) 14%, transparent);
+}
+
+.snowflake-method-dialogue-focus .snowflake-method-segment-body {
+	color: color-mix(in srgb, var(--text-normal) 35%, transparent);
+	transition: color 200ms ease-in-out;
+}
+
+.snowflake-method-dialogue-focus .snowflake-method-dialogue {
+	color: var(--text-normal);
+}
+
+.snowflake-method-dialogue-focus .snowflake-method-mention,
+.snowflake-method-dialogue-focus .snowflake-method-sensitive,
+.snowflake-method-dialogue-focus .snowflake-method-highlight {
+	color: inherit;
+}
+
+/* The pane's sensitive-term names wear the same warning color their marks do. */
+.snowflake-method-mention-view-name.is-sensitive {
+	color: var(--color-red);
+}
+
+/* Sensitive words: one fixed warning presentation, no states to carry.
+   Metrics-neutral like every mark here, so climbsOut keeps measuring true. */
+.snowflake-method-sensitive {
+	color: var(--color-red);
+	text-decoration: underline wavy;
+	text-decoration-color: color-mix(in srgb, var(--color-red) 55%, transparent);
+}
+
+/* Custom highlight rules: the decoration is a class, the color one custom
+   property the mark carries inline, the accent standing in where none is
+   set. Dress only -- no cursor, no states, no menus. */
+.snowflake-method-highlight.is-deco-background {
+	border-radius: 2px;
+	background-color: color-mix(
+		in srgb,
+		var(--snowflake-method-highlight-color, var(--interactive-accent)) 22%,
+		transparent
+	);
+}
+
+.snowflake-method-highlight.is-deco-color {
+	color: var(--snowflake-method-highlight-color, var(--interactive-accent));
+}
+
+.snowflake-method-highlight.is-deco-underline {
+	text-decoration: underline;
+	text-decoration-color: var(
+		--snowflake-method-highlight-color,
+		var(--interactive-accent)
+	);
+}
+
+.snowflake-method-highlight.is-deco-wavy {
+	text-decoration: underline wavy;
+	text-decoration-color: var(
+		--snowflake-method-highlight-color,
+		var(--interactive-accent)
+	);
+}
+
+.snowflake-method-highlight.is-deco-bold {
+	color: var(--snowflake-method-highlight-color, var(--interactive-accent));
+	/* Weight without width: shadows lay nothing out, so the editor's row
+	   measuring stays true where a real font-weight would re-wrap lines. */
+	text-shadow:
+		0 0 0.5px currentColor,
+		0 0 0.5px currentColor;
+}
+
+/* The prose panel: the statistics pane's Prose analysis face. Plain rows and
+   one table over theme tokens, a reading and no more. */
+.snowflake-method-prose-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-prose-controls {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-2-2);
+	min-height: var(--size-4-6);
+}
+
+.snowflake-method-prose-state {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.snowflake-method-prose-summary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-prose-summary-item {
+	padding: var(--size-4-1) var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	min-width: 7rem;
+}
+
+.snowflake-method-prose-summary-value {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.snowflake-method-prose-summary-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.snowflake-method-prose-scroll {
+	max-height: 22rem;
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+
+.snowflake-method-prose-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-prose-table thead th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background-color: var(--background-secondary);
+	text-align: start;
+	padding: var(--size-4-1) var(--size-4-2);
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+	white-space: nowrap;
+}
+
+.snowflake-method-prose-table td {
+	padding: var(--size-2-2) var(--size-4-2);
+	border-top: 1px solid var(--background-modifier-border);
+	white-space: nowrap;
+}
+
+.snowflake-method-prose-column-chapter {
+	width: 40%;
+	white-space: normal;
+}
+
+.snowflake-method-prose-chapter {
+	cursor: pointer;
+	color: var(--text-normal);
+}
+
+.snowflake-method-prose-chapter:hover {
+	color: var(--text-accent);
+}
+
+.snowflake-method-prose-frequency-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-1);
+}
+
+.snowflake-method-prose-frequency-search {
+	flex: 1;
+	min-width: 10rem;
+}
+
+.snowflake-method-prose-frequency-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.snowflake-method-prose-frequency-list {
+	max-height: 18rem;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-2-2) 0;
+}
+
+.snowflake-method-prose-frequency-row {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	padding: var(--size-2-1) var(--size-4-2);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-prose-frequency-count {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
 /* The tracking pane: plain rows over theme tokens, a reading and no more. */
 .snowflake-method-mention-view {
 	padding: var(--size-4-2) var(--size-4-3);

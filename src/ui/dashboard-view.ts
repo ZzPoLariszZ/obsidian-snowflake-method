@@ -74,6 +74,7 @@ import {
 	type Translate,
 } from './modals';
 import {
+	STATISTICS_TABS,
 	coerceFreeformPane,
 	dashboardHasHealthIssues,
 	dashboardPaneKey,
@@ -84,6 +85,7 @@ import {
 	shouldShowGlobalStructureIssue,
 	type DashboardPane,
 	type DashboardRailCollapse,
+	type StatisticsTab,
 } from './dashboard-state';
 import {
 	buildOptionField,
@@ -98,6 +100,7 @@ import {
 } from './entity-form';
 import { followAnchor } from './anchored-panel';
 import { RenderStateKeeper } from './render-state';
+import { renderProsePanel, type ProsePanelHandle } from './prose-panel';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
@@ -163,14 +166,8 @@ const DEFINITION_USAGE_PREVIEW = 4;
 const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
-/**
- * The faces the statistics pane offers, in the order its strip lists them.
- * Each takes its label from `statistics.tab.<id>`, and every one but the
- * sessions says only that it is being planned.
- */
-const STATISTICS_TABS = ['sessions', 'prose', 'entities'] as const;
-
-type StatisticsTab = (typeof STATISTICS_TABS)[number];
+// The statistics tab strip's faces live in dashboard-state, because which
+// face is on show is view state a reload restores.
 
 const WORLDBUILDING_KIND_ICONS: Record<'time' | 'location' | 'item', string> = {
 	time: 'clock',
@@ -317,6 +314,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private sessionPanelHost: HTMLElement | null = null;
 	/** What the mounted panel was built for: its project and its language. */
 	private sessionPanelKey: string | null = null;
+	/** The prose panel, kept across rebuilds the way the session panel is. */
+	private prosePanel: ProsePanelHandle | null = null;
+	private prosePanelHost: HTMLElement | null = null;
+	private prosePanelKey: string | null = null;
 	/** A refresh asked for while the leaf was off screen, owed at reveal. */
 	private refreshQueuedWhileHidden = false;
 	/**
@@ -476,6 +477,7 @@ export class SnowflakeDashboardView extends ItemView {
 			selectedStep: this.selectedStep,
 			selectedPane: this.selectedPane,
 			railCollapsed: this.railCollapsed,
+			statisticsTab: this.statisticsTab,
 		};
 	}
 
@@ -489,6 +491,7 @@ export class SnowflakeDashboardView extends ItemView {
 				selectedStep: this.selectedStep,
 				selectedPane: this.selectedPane,
 				railCollapsed: this.railCollapsed,
+				statisticsTab: this.statisticsTab,
 			},
 			state,
 		);
@@ -497,6 +500,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.selectedStep = update.state.selectedStep;
 		this.selectedPane = update.state.selectedPane;
 		this.railCollapsed = update.state.railCollapsed;
+		this.statisticsTab = update.state.statisticsTab;
 		// During workspace restoration Obsidian may open an ItemView before it
 		// delivers the persisted view state, so this is the first moment a
 		// restored leaf can be drawn at all — hence rendering when nothing has
@@ -567,6 +571,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.clearCertificateCelebration();
 		this.releaseMemberControls();
 		this.disposeSessionPanel();
+		this.disposeProsePanel();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -577,6 +582,14 @@ export class SnowflakeDashboardView extends ItemView {
 		this.sessionPanelHost?.remove();
 		this.sessionPanelHost = null;
 		this.sessionPanelKey = null;
+	}
+
+	private disposeProsePanel(): void {
+		this.prosePanel?.dispose();
+		this.prosePanel = null;
+		this.prosePanelHost?.remove();
+		this.prosePanelHost = null;
+		this.prosePanelKey = null;
 	}
 
 	/**
@@ -618,9 +631,10 @@ export class SnowflakeDashboardView extends ItemView {
 				button.toggleClass('is-active', active);
 				button.setAttribute('aria-selected', active ? 'true' : 'false');
 			}
-			// Leaving the sessions face lets its panel go; returning to it,
-			// or redrawing the frame around it, hands the same panel back.
+			// Leaving a face lets its panel go; returning to it, or redrawing
+			// the frame around it, hands the same panel back.
 			if (chosen !== 'sessions') this.disposeSessionPanel();
+			if (chosen !== 'prose') this.disposeProsePanel();
 			body.empty();
 			this.renderStatisticsBody(body, chosen);
 		};
@@ -663,6 +677,32 @@ export class SnowflakeDashboardView extends ItemView {
 			this.sessionPanelDispose = renderSessionPanel(
 				host,
 				this.host.writingSessions({
+					projectPath: this.projectPath,
+					locale: this.projectLocale,
+				}),
+			);
+			return;
+		}
+		if (tab === 'prose') {
+			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
+			if (
+				this.prosePanel !== null &&
+				this.prosePanelHost !== null &&
+				this.prosePanelKey === key
+			) {
+				// The same project again: the mounted panel keeps its reading
+				// and the handback refresh costs only stamp checks.
+				body.appendChild(this.prosePanelHost);
+				this.prosePanel.refresh();
+				return;
+			}
+			this.disposeProsePanel();
+			const host = body.createDiv();
+			this.prosePanelHost = host;
+			this.prosePanelKey = key;
+			this.prosePanel = renderProsePanel(
+				host,
+				this.host.proseStatistics({
 					projectPath: this.projectPath,
 					locale: this.projectLocale,
 				}),
@@ -4044,7 +4084,10 @@ export class SnowflakeDashboardView extends ItemView {
 		// is rebuilt, or its subscription would tick a detached panel forever
 		// -- except on the way back to the statistics pane, whose panel is
 		// carried across the rebuild rather than torn down and refetched.
-		if (this.selectedPane.kind !== 'statistics') this.disposeSessionPanel();
+		if (this.selectedPane.kind !== 'statistics') {
+			this.disposeSessionPanel();
+			this.disposeProsePanel();
+		}
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
 			return;

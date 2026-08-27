@@ -26,6 +26,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{
 				projectPath: 'Snowflake Projects/Novel/00_System/001_Project_Metadata.md',
@@ -44,6 +45,7 @@ describe('dashboard restored state', () => {
 				// is a pane all the same.
 				selectedPane: { kind: 'step', step: 4 },
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			changed: true,
 		});
@@ -57,6 +59,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{
 				selectedPane: { kind: 'worldbuilding', wbKind: 'time' },
@@ -84,6 +87,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{
 				selectedPane: { kind: 'statistics' },
@@ -105,6 +109,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{ selectedPane: { kind: 'definition', definitionId: 'world-status' } },
 		);
@@ -133,6 +138,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{ selectedPane: { kind: 'custom-fields' } },
 		);
@@ -150,6 +156,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 3,
 				selectedPane: { kind: 'step', step: 3 },
 				railCollapsed: OPEN_RAIL,
+				statisticsTab: 'sessions',
 			},
 			{ projectPath: null, projectTitle: null, selectedStep: 1 },
 		);
@@ -160,6 +167,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 1,
 			selectedPane: { kind: 'step', step: 1 },
 			railCollapsed: OPEN_RAIL,
+			statisticsTab: 'sessions',
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -171,6 +179,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 3 as const,
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
+			statisticsTab: 'sessions' as const,
 		};
 
 		expect(
@@ -192,6 +201,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 3 as const,
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
+			statisticsTab: 'sessions' as const,
 		};
 		const update = mergeDashboardViewState(current, {
 			selectedPane: { kind: 'worldbuilding', wbKind: 'Faction' },
@@ -421,5 +431,32 @@ describe('freeform mode panes', () => {
 				step: 7,
 			});
 		}
+	});
+});
+
+describe('the statistics tab in view state', () => {
+	const current = {
+		projectPath: null,
+		projectTitle: null,
+		selectedStep: 1 as const,
+		selectedPane: DEFAULT_PANE,
+		railCollapsed: OPEN_RAIL,
+		statisticsTab: 'sessions' as const,
+	};
+
+	it('restores a saved face and reports the move', () => {
+		const update = mergeDashboardViewState(current, {
+			statisticsTab: 'prose',
+		});
+		expect(update.state.statisticsTab).toBe('prose');
+		expect(update.changed).toBe(true);
+	});
+
+	it('leaves an unknown face on the one standing', () => {
+		const update = mergeDashboardViewState(current, {
+			statisticsTab: 'charts',
+		});
+		expect(update.state.statisticsTab).toBe('sessions');
+		expect(update.changed).toBe(false);
 	});
 });

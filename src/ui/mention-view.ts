@@ -15,11 +15,22 @@ import { ItemView, setIcon, setTooltip, type WorkspaceLeaf } from 'obsidian';
 
 import {
 	occurrenceContext,
+	type DialogueOccurrence,
 	type EntityOccurrence,
 	type MentionIgnore,
 } from '../domain';
-import type { EntityMentionAggregate, MentionAggregate } from '../services';
-import { mentionEntityRows, mentionNoteTitle as noteTitle } from './mention-rows';
+import type {
+	DialogueChapterAggregate,
+	EntityMentionAggregate,
+	MentionAggregate,
+	SensitiveTermAggregate,
+} from '../services';
+import {
+	mentionEntityRows,
+	mentionNoteTitle as noteTitle,
+	sensitiveTermRows,
+	truncateMiddle,
+} from './mention-rows';
 import type { MentionViewHost } from './view-model';
 
 export const MENTION_VIEW_TYPE = 'snowflake-method-mentions';
@@ -35,6 +46,15 @@ export class SnowflakeMentionView extends ItemView {
 	private expanded: string | null = null;
 	private aggregate: MentionAggregate | null = null;
 	private ignores: readonly MentionIgnore[] = [];
+	private sensitive: SensitiveTermAggregate[] | null = null;
+	private dialogueChapters: DialogueChapterAggregate[] | null = null;
+	private expandedTerm: string | null = null;
+	private expandedDialogue: string | null = null;
+	/** The expanded chapter's quoted stretches, read on expansion. */
+	private dialogueDetail: {
+		path: string;
+		occurrences: DialogueOccurrence[];
+	} | null = null;
 	private projectPath: string | null = null;
 	private loading = false;
 	private refreshAgain = false;
@@ -76,12 +96,18 @@ export class SnowflakeMentionView extends ItemView {
 		try {
 			this.projectPath = this.host.mentionProjectPath();
 			this.bodies.clear();
-			const [aggregate, ignores] = await Promise.all([
-				this.host.manuscriptMentionAggregate(this.projectPath),
-				this.host.mentionIgnores(this.projectPath),
-			]);
+			const [aggregate, ignores, sensitive, dialogueChapters] =
+				await Promise.all([
+					this.host.manuscriptMentionAggregate(this.projectPath),
+					this.host.mentionIgnores(this.projectPath),
+					this.host.sensitiveMentionAggregate(this.projectPath),
+					this.host.dialogueMentionChapters(this.projectPath),
+				]);
 			this.aggregate = aggregate;
 			this.ignores = ignores;
+			this.sensitive = sensitive;
+			this.dialogueChapters = dialogueChapters;
+			this.dialogueDetail = null;
 		} finally {
 			this.loading = false;
 		}
@@ -94,13 +120,18 @@ export class SnowflakeMentionView extends ItemView {
 		this.render();
 	}
 
-	/** The expanded entity's chapters, read once each for their context lines. */
+	/** The expanded rows' chapters, read once each for their context lines. */
 	private async prepareContexts(): Promise<void> {
+		const wanted: { path: string }[] = [];
 		const entity = this.aggregate?.entities.find(
 			(candidate) => candidate.memberPath === this.expanded,
 		);
-		if (entity === undefined) return;
-		for (const occurrence of entity.occurrences) {
+		if (entity !== undefined) wanted.push(...entity.occurrences);
+		const term = this.sensitive?.find(
+			(candidate) => candidate.term === this.expandedTerm,
+		);
+		if (term !== undefined) wanted.push(...term.occurrences);
+		for (const occurrence of wanted) {
 			if (this.bodies.has(occurrence.path)) continue;
 			try {
 				const segment = await this.host.readManuscriptSegment(
@@ -163,6 +194,9 @@ export class SnowflakeMentionView extends ItemView {
 
 		this.entityListEl = root.createDiv();
 		this.renderEntityList();
+
+		this.renderSensitiveSection(root);
+		this.renderDialogueSection(root);
 
 		const unresolved = this.aggregate.unresolved;
 		if (unresolved.length > 0) {
@@ -262,9 +296,129 @@ export class SnowflakeMentionView extends ItemView {
 		}
 	}
 
+	/**
+	 * Every sensitive term with its count, expanding to the spots. The
+	 * section stands only while the feature has terms to speak of.
+	 */
+	private renderSensitiveSection(root: HTMLElement): void {
+		const rows = sensitiveTermRows(this.sensitive);
+		if (rows.length === 0) return;
+		const t = this.host.t;
+		root.createEl('h3', {
+			cls: 'snowflake-method-mention-view-heading',
+			text: t('mentionView.sensitiveHeading'),
+		});
+		for (const entry of rows) {
+			const row = root.createDiv({
+				cls: 'snowflake-method-mention-view-row',
+			});
+			const head = row.createDiv({
+				cls: 'snowflake-method-mention-view-row-head',
+			});
+			head.createSpan({
+				cls: 'snowflake-method-mention-view-name is-sensitive',
+				text: entry.term,
+			});
+			head.createSpan({
+				cls: 'snowflake-method-mention-view-counts',
+				text: t('mentionView.sensitiveCount', { total: entry.total }),
+			});
+			head.addEventListener('click', () => {
+				this.expandedTerm =
+					this.expandedTerm === entry.term ? null : entry.term;
+				void this.prepareContexts().then(() => {
+					this.render();
+				});
+			});
+			if (this.expandedTerm !== entry.term) continue;
+			const list = row.createDiv({
+				cls: 'snowflake-method-mention-view-occurrences',
+			});
+			for (const occurrence of entry.occurrences) {
+				this.renderOccurrenceRow(list, occurrence);
+			}
+		}
+	}
+
+	/**
+	 * Dialogue chapter by chapter, expanding to the quoted stretches read
+	 * fresh on the click -- the cache holds offsets, the row shows text.
+	 */
+	private renderDialogueSection(root: HTMLElement): void {
+		const chapters = this.dialogueChapters ?? [];
+		if (chapters.length === 0) return;
+		const t = this.host.t;
+		root.createEl('h3', {
+			cls: 'snowflake-method-mention-view-heading',
+			text: t('mentionView.dialogueHeading'),
+		});
+		for (const chapter of chapters) {
+			const row = root.createDiv({
+				cls: 'snowflake-method-mention-view-row',
+			});
+			const head = row.createDiv({
+				cls: 'snowflake-method-mention-view-row-head',
+			});
+			head.createSpan({
+				cls: 'snowflake-method-mention-view-name',
+				text: chapter.title,
+			});
+			head.createSpan({
+				cls: 'snowflake-method-mention-view-counts',
+				text: t('mentionView.dialogueCount', { count: chapter.count }),
+			});
+			head.addEventListener('click', () => {
+				if (this.expandedDialogue === chapter.path) {
+					this.expandedDialogue = null;
+					this.dialogueDetail = null;
+					this.render();
+					return;
+				}
+				this.expandedDialogue = chapter.path;
+				this.loadDialogueDetail(chapter.path);
+			});
+			if (this.expandedDialogue !== chapter.path) continue;
+			if (this.dialogueDetail?.path !== chapter.path) {
+				// A refresh dropped the loaded detail while the row stood
+				// expanded; ask again rather than leaving an empty expansion.
+				this.loadDialogueDetail(chapter.path);
+				continue;
+			}
+			const list = row.createDiv({
+				cls: 'snowflake-method-mention-view-occurrences',
+			});
+			for (const occurrence of this.dialogueDetail.occurrences) {
+				const line = list.createDiv({
+					cls: 'snowflake-method-mention-view-occurrence',
+				});
+				line.createSpan({
+					cls: 'snowflake-method-mention-view-context',
+					text: truncateMiddle(occurrence.matchedText, 64),
+				});
+				line.addEventListener('click', () => {
+					void this.host
+						.openManuscriptMention(this.projectPath, occurrence)
+						.catch(() => undefined);
+				});
+			}
+		}
+	}
+
+	/** Reads one chapter's quoted stretches and renders them when they land. */
+	private loadDialogueDetail(path: string): void {
+		void this.host
+			.dialogueMentionOccurrences(this.projectPath, path)
+			.then((occurrences) => {
+				if (this.expandedDialogue !== path) return;
+				this.dialogueDetail = { path, occurrences };
+				this.render();
+			})
+			.catch(() => undefined);
+	}
+
 	private renderOccurrenceRow(
 		host: HTMLElement,
-		occurrence: EntityOccurrence,
+		occurrence: { path: string; from: number; to: number },
 	): void {
 		const row = host.createDiv({
 			cls: 'snowflake-method-mention-view-occurrence',

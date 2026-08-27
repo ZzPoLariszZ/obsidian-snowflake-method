@@ -7,6 +7,14 @@ import {
 } from '../domain';
 import type { ManagedSectionIssueViewModel } from './view-model';
 
+/** The faces of the Data statistics pane, in the order the strip draws. */
+export const STATISTICS_TABS = ['sessions', 'prose', 'entities'] as const;
+export type StatisticsTab = (typeof STATISTICS_TABS)[number];
+
+export function isStatisticsTab(value: unknown): value is StatisticsTab {
+	return (STATISTICS_TABS as readonly unknown[]).includes(value);
+}
+
 /**
  * What the main panel is showing: one step, one worldbuilding kind, one of
  * the definition vocabularies, or the custom-field template tables.
@@ -88,6 +96,8 @@ export interface DashboardViewStateSnapshot {
 	selectedStep: StepId;
 	selectedPane: DashboardPane;
 	railCollapsed: DashboardRailCollapse;
+	/** Which face of the statistics pane a reload lands back on. */
+	statisticsTab: StatisticsTab;
 }
 
 export interface DashboardViewStateUpdate {
@@ -142,12 +152,16 @@ export function mergeDashboardViewState(
 				? collapseCandidate.creationTools
 				: current.railCollapsed.creationTools,
 	};
+	const statisticsTab = isStatisticsTab(candidate.statisticsTab)
+		? candidate.statisticsTab
+		: current.statisticsTab;
 	const state = {
 		projectPath,
 		projectTitle,
 		selectedStep,
 		selectedPane,
 		railCollapsed,
+		statisticsTab,
 	};
 	return {
 		state,
@@ -161,7 +175,8 @@ export function mergeDashboardViewState(
 			state.railCollapsed.worldbuilding !==
 				current.railCollapsed.worldbuilding ||
 			state.railCollapsed.creationTools !==
-				current.railCollapsed.creationTools,
+				current.railCollapsed.creationTools ||
+			state.statisticsTab !== current.statisticsTab,
 	};
 }
 

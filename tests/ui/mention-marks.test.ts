@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	analyzeMentions,
 	buildEntityMatcher,
+	combineMentionMarks,
+	dialogueRanges,
+	planDialogueMarks,
 	planMentionMarks,
 	type CountableRange,
 	type MentionMark,
@@ -83,5 +86,48 @@ describe('rendered mention mapping', () => {
 		expect(withExcludes[0]).toMatchObject({ from: 0, to: 5 });
 		const without = projectMentionMarks(body, marksFor(body, [alice]));
 		expect(without[0]).toMatchObject({ from: 7, to: 12 });
+	});
+});
+
+describe('combined families on the visible sequence', () => {
+	it('keeps every family addressable by its combined index', () => {
+		const body = 'so **Alice** saw the fog';
+		const combined = combineMentionMarks(marksFor(body, [alice]), [
+			{
+				from: 21,
+				to: 24,
+				classes: 'snowflake-method-highlight is-deco-color',
+				title: 'Weather',
+				occurrence: {
+					type: 'highlight',
+					path: 'note.md',
+					from: 21,
+					to: 24,
+					matchedText: 'fog',
+					ruleId: 'rule-one',
+				},
+			},
+		]);
+		const spans = projectMentionMarks(body, combined);
+		expect(spans.map((span) => [span.index, span.text])).toEqual([
+			[0, 'Alice'],
+			[1, 'fog'],
+		]);
+		expect(spans[1]?.mark.title).toBe('Weather');
+	});
+});
+
+describe('marks that span syntax', () => {
+	it('verifies a quoted stretch by its visible characters', () => {
+		const body = '他说：「**走**吧」。';
+		const marks = planDialogueMarks(
+			'note.md',
+			body,
+			dialogueRanges(body, [{ open: '「', close: '」' }]),
+		);
+		const spans = projectMentionMarks(body, marks);
+		expect(spans).toHaveLength(1);
+		// The emphasis marks never show, so the wrap must expect 「走吧」.
+		expect(spans[0]?.text).toBe('「走吧」');
 	});
 });

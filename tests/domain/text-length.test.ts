@@ -4,6 +4,7 @@ import {
 	WRITING_COUNT_MODES,
 	countWriting,
 	countsCharacters,
+	scriptSplit,
 	type WritingCountMode,
 } from '../../src/domain';
 
@@ -193,5 +194,22 @@ describe('writing count', () => {
 			charactersNoSpaces: 4,
 			total: 4,
 		});
+	});
+});
+
+describe('the script split', () => {
+	it('reads Chinese by the character and English by the word', () => {
+		expect(scriptSplit('他们缓缓地走过')).toEqual({ cjk: 7, words: 0 });
+		expect(scriptSplit('The old sea fog')).toEqual({ cjk: 0, words: 4 });
+	});
+
+	it('splits mixed writing without letting marks in', () => {
+		expect(scriptSplit('小Alice是好人')).toEqual({ cjk: 4, words: 1 });
+		expect(scriptSplit('你好，world!')).toEqual({ cjk: 2, words: 1 });
+	});
+
+	it('reads nothing from silence', () => {
+		expect(scriptSplit('')).toEqual({ cjk: 0, words: 0 });
+		expect(scriptSplit('  \n ')).toEqual({ cjk: 0, words: 0 });
 	});
 });

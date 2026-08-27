@@ -2,14 +2,18 @@ import type { Menu } from 'obsidian';
 
 import type {
 	CharacterType,
+	CompiledHighlightRules,
+	DialogueOccurrence,
+	DialoguePresentation,
+	DialogueStyle,
 	EntityKindId,
 	EntityMatcher,
-	EntityOccurrence,
 	ManuscriptPresentation,
 	MentionHighlightMode,
 	MentionIgnore,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
+	SensitiveMatcher,
 	StepId,
 	StepStatus,
 	TimeKind,
@@ -18,6 +22,7 @@ import type {
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
+import type { ProsePanelBridge } from './prose-panel';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -25,11 +30,13 @@ import type {
 import type {
 	CustomFieldTemplateInfo,
 	DefinitionForest,
+	DialogueChapterAggregate,
 	KindMutationResult,
 	MemberUsage,
 	MentionAggregate,
 	ProjectStructureIssueCode,
 	SaveCustomFieldTemplateResult,
+	SensitiveTermAggregate,
 } from '../services';
 
 import type {
@@ -440,6 +447,23 @@ export interface ManuscriptHost {
 	manuscriptEntityMatcher(
 		projectPath: string | null,
 	): Promise<EntityMatcher | null>;
+	/**
+	 * The dress-only matchers and modes, read straight from settings: the
+	 * sensitive list, the compiled highlight rules, and how dialogue shows --
+	 * each feature empty or off when disabled. Synchronous because the
+	 * settings are already in hand, and memoized behind fingerprints so
+	 * asking is free.
+	 */
+	manuscriptDressFeeds(): {
+		sensitive: SensitiveMatcher;
+		highlights: CompiledHighlightRules;
+		dialogue: {
+			styles: readonly DialogueStyle[];
+			presentation: DialoguePresentation;
+		};
+	};
+	/** Stores the dialogue presentation, from the bar's own menu. */
+	setDialoguePresentation(mode: DialoguePresentation): Promise<void>;
 	/** Opens the tracking pane, from the bar's own menu. */
 	openMentionTracking(): Promise<void>;
 	/**
@@ -479,17 +503,35 @@ export interface MentionViewHost {
 	): Promise<void>;
 	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
 	openManagedFile(path: string): Promise<void>;
-	/** Opens the stream at the occurrence and flashes it. */
+	/**
+	 * Opens the stream at the spot and flashes it. Structural on purpose:
+	 * every occurrence kind carries these three, and the jump needs no more.
+	 */
 	openManuscriptMention(
 		projectPath: string | null,
-		occurrence: EntityOccurrence,
+		occurrence: { path: string; from: number; to: number },
 	): Promise<void>;
+	/** Every sensitive term's spots, or null where no project stands. */
+	sensitiveMentionAggregate(
+		projectPath: string | null,
+	): Promise<SensitiveTermAggregate[] | null>;
+	/** The chapters holding dialogue, or null where no project stands. */
+	dialogueMentionChapters(
+		projectPath: string | null,
+	): Promise<DialogueChapterAggregate[] | null>;
+	/** One chapter's quoted stretches, read fresh on expansion. */
+	dialogueMentionOccurrences(
+		projectPath: string | null,
+		path: string,
+	): Promise<DialogueOccurrence[]>;
 }
 
 export interface DashboardHost {
 	t: Translate;
 	/** The bridge the statistics pane renders the session panel through. */
 	writingSessions(context: SessionPanelContext): SessionPanelBridge;
+	/** The bridge the statistics pane renders the prose panel through. */
+	proseStatistics(context: SessionPanelContext): ProsePanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

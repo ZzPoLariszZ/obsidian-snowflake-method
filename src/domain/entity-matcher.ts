@@ -66,9 +66,11 @@ export interface EntityMatcher {
 
 /**
  * The strings one label is matched as: itself, and its NFC and NFD
- * spellings when they differ. Empty labels match nothing.
+ * spellings when they differ. Empty labels match nothing. Shared with the
+ * other literal matchers -- sensitive words, highlight rules -- so every
+ * feature spells Unicode the same way.
  */
-function patternForms(label: string): string[] {
+export function patternForms(label: string): string[] {
 	const trimmed = label.trim();
 	if (trimmed.length === 0) return [];
 	return [...new Set([trimmed, trimmed.normalize('NFC'), trimmed.normalize('NFD')])];

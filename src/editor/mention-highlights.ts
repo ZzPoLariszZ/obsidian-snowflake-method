@@ -60,12 +60,17 @@ export function mentionDecorations(
 	marks: readonly MentionMark[],
 ): DecorationSet {
 	return Decoration.set(
-		marks.map((mark) =>
-			Decoration.mark({ class: mark.classes, mentionMark: mark }).range(
-				mark.from,
-				mark.to,
-			),
-		),
+		marks.map((mark) => {
+			const attributes = {
+				...(mark.title === undefined ? {} : { title: mark.title }),
+				...(mark.styleVar === undefined ? {} : { style: mark.styleVar }),
+			};
+			return Decoration.mark({
+				class: mark.classes,
+				mentionMark: mark,
+				...(Object.keys(attributes).length === 0 ? {} : { attributes }),
+			}).range(mark.from, mark.to);
+		}),
 		true,
 	);
 }
@@ -154,17 +159,20 @@ export function mentionMarkAt(
 	if (plugin === null) return null;
 	const at = view.posAtCoords({ x, y });
 	if (at === null) return null;
+	// Marks may nest -- a mention inside a quoted stretch -- and the pointer
+	// means the innermost thing under it, so the shortest span answers.
 	let found: MentionMark | null = null;
+	let foundLength = Number.POSITIVE_INFINITY;
 	plugin.decorations.between(at, at, (from, to, value) => {
 		const mark = (value.spec as { mentionMark?: MentionMark }).mentionMark;
-		if (mark === undefined) return;
+		if (mark === undefined || to - from >= foundLength) return;
+		foundLength = to - from;
 		found = {
 			...mark,
 			from,
 			to,
 			occurrence: { ...mark.occurrence, from, to },
 		};
-		return false;
 	});
 	return found;
 }

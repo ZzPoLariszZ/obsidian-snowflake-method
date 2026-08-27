@@ -151,6 +151,7 @@ import {
   planFieldsBlockReconcile,
   type MemberDocumentType,
 } from "./mirror-sync";
+import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
 import { WritingCountService } from "./writing-count";
@@ -366,6 +367,8 @@ export class SnowflakeProjectService {
   readonly mentionStore: MentionStore;
   /** Entity mentions per note, stamped, persisted, lazily fresh. */
   readonly mentions: MentionIndexService;
+  /** Sensitive words, dialogue, prose statistics and word tokens, likewise. */
+  readonly analysis: ManuscriptAnalysisService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -404,6 +407,12 @@ export class SnowflakeProjectService {
         : { onCorrupt: analysis.onCorrupt }),
     });
     this.mentions = new MentionIndexService(
+      this.repository,
+      this.manuscript,
+      this.mentionStore,
+      analysis.timers ?? null,
+    );
+    this.analysis = new ManuscriptAnalysisService(
       this.repository,
       this.manuscript,
       this.mentionStore,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_MANUSCRIPT_PRESENTATION,
+	type CustomHighlightRule,
 	type ManuscriptPresentation,
 } from '../src/domain';
 
@@ -636,5 +637,119 @@ describe('settings', () => {
 		expect(movedWithRename('Snowflake Projects', 'Other', 'Renamed')).toBeNull();
 		expect(movedWithRename('Snowflake Projects', 'Snowflake', 'Novels')).toBeNull();
 		expect(movedWithRename('', 'Snowflake Projects', 'Novels')).toBeNull();
+	});
+});
+
+describe('manuscript analysis settings', () => {
+	const stored = (over: Partial<SnowflakeSettings>): SnowflakeSettings =>
+		sanitizeSettings({ ...DEFAULT_SETTINGS, ...over });
+
+	it('keeps a stored rule list and reads junk as none', () => {
+		const rules: CustomHighlightRule[] = [
+			{
+				id: 'rule-a',
+				name: 'Weather',
+				kind: 'literal',
+				patterns: ['fog', 'mist'],
+				enabled: true,
+				decoration: 'underline',
+				color: '#aabbcc',
+			},
+		];
+		expect(stored({ customHighlightRules: rules }).customHighlightRules).toEqual(
+			rules,
+		);
+		expect(
+			sanitizeSettings({ ...DEFAULT_SETTINGS, customHighlightRules: 'junk' })
+				.customHighlightRules,
+		).toEqual([]);
+	});
+
+	it('clamps the reading speeds and falls back only from junk', () => {
+		expect(stored({ readingWordsPerMinute: 100000 }).readingWordsPerMinute).toBe(
+			2000,
+		);
+		expect(stored({ readingWordsPerMinute: 3 }).readingWordsPerMinute).toBe(10);
+		expect(
+			stored({ readingCjkCharactersPerMinute: 512.6 })
+				.readingCjkCharactersPerMinute,
+		).toBe(513);
+		expect(
+			sanitizeSettings({ ...DEFAULT_SETTINGS, readingWordsPerMinute: 'fast' })
+				.readingWordsPerMinute,
+		).toBe(250);
+	});
+
+	it('holds the free-text lists to their storage bound', () => {
+		const long = 'x'.repeat(30000);
+		expect(stored({ sensitiveWords: long }).sensitiveWords).toHaveLength(20000);
+		expect(stored({ customStopwords: 'the 的' }).customStopwords).toBe('the 的');
+		expect(
+			sanitizeSettings({ ...DEFAULT_SETTINGS, sensitiveWords: 42 })
+				.sensitiveWords,
+		).toBe('');
+	});
+
+	it('stores the textarea values the sweep cannot exercise', async () => {
+		const { tab } = writableSettingTab();
+		await tab.setControlValue('sensitiveWords', 'damn\n乌鸦');
+		expect(tab.getControlValue('sensitiveWords')).toBe('damn\n乌鸦');
+		await tab.setControlValue('customStopwords', 'the 的');
+		expect(tab.getControlValue('customStopwords')).toBe('the 的');
+	});
+});
+
+describe('highlight rule rows', () => {
+	const withRules = (): SnowflakeSettingTab => {
+		const plugin = {
+			settings: {
+				...DEFAULT_SETTINGS,
+				customHighlightRules: [
+					{
+						id: 'a',
+						name: 'Weather',
+						kind: 'literal',
+						patterns: ['fog', 'mist'],
+						enabled: true,
+						decoration: 'background',
+						color: null,
+					},
+					{
+						id: 'b',
+						name: '',
+						kind: 'regex',
+						patterns: ['('],
+						enabled: false,
+						decoration: 'wavy',
+						color: null,
+					},
+				] satisfies CustomHighlightRule[],
+			},
+		} as SnowflakeMethodPlugin;
+		return new SnowflakeSettingTab({} as never, plugin);
+	};
+
+	it('names each rule and says what needs saying in the summary', () => {
+		const items = withRules().getSettingDefinitions();
+		const list = items.find(
+			(item) => (item as { type?: string }).type === 'list',
+		) as { items?: { name: string; desc?: string }[] } | undefined;
+		expect(list?.items).toHaveLength(2);
+		const [weather, broken] = list?.items ?? [];
+		expect(weather?.name).toBe('Weather');
+		expect(weather?.desc).toBe('Literal text · 2 patterns');
+		// A nameless rule is named by its kind; a broken or disabled one says so.
+		expect(broken?.name).toBe('Regular expression');
+		expect(broken?.desc).toContain('· 1 pattern ·');
+		expect(broken?.desc).toContain('Off');
+		expect(broken?.desc).toContain('does not compile');
+	});
+
+	it('offers no rule rows where no rules stand', () => {
+		const items = settingTabFor('en').getSettingDefinitions();
+		const list = items.find(
+			(item) => (item as { type?: string }).type === 'list',
+		) as { items?: unknown[] } | undefined;
+		expect(list?.items).toEqual([]);
 	});
 });

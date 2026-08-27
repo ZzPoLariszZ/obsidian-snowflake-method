@@ -2,6 +2,7 @@ import {
 	isMentionIgnore,
 	type MentionHit,
 	type MentionIgnore,
+	type SensitiveHit,
 } from "../domain";
 import type { VaultRepository } from "../repository";
 import { getProjectPathLayout, type ProjectRef } from "./types";
@@ -38,6 +39,47 @@ export interface MentionIndexFile {
 	/** The entity matcher's combined fingerprint the hits were found with. */
 	fingerprint: string;
 	notes: Record<string, MentionIndexNote>;
+}
+
+/**
+ * The manuscript analysis cache is its own file with its own schema line:
+ * the constant above is shared by the ignores -- user data whose quarantine
+ * must never fire on a cache-format change -- so this one moves alone.
+ */
+export const ANALYSIS_FILE_SCHEMA_VERSION = 1;
+
+/** What the statistics keep per note: small numbers, cheap to hold. */
+export interface NoteProseStats {
+	cjk: number;
+	words: number;
+	sentences: number;
+	dialogueCjk: number;
+	dialogueWords: number;
+}
+
+/**
+ * One note's analysis families, each nullable on its own: a family whose
+ * fingerprint moved is dropped alone, and the expensive tokens survive a
+ * sensitive-list edit untouched.
+ */
+export interface AnalysisNoteRecord {
+	/** `${mtime}:${size}` of the note every kept family was read from. */
+	stamp: string;
+	sensitive: SensitiveHit[] | null;
+	/** Dialogue ranges as `[from, to]` pairs. */
+	dialogue: [number, number][] | null;
+	stats: NoteProseStats | null;
+	/** The note's word tokens as `[term, count]` pairs, filter-free. */
+	tokens: [string, number][] | null;
+}
+
+export interface AnalysisFile {
+	schemaVersion: number;
+	sensitiveFingerprint: string;
+	dialogueFingerprint: string;
+	statsFingerprint: string;
+	tokensFingerprint: string;
+	notes: Record<string, AnalysisNoteRecord>;
 }
 
 export interface MentionStoreDeps {
@@ -132,6 +174,32 @@ export class MentionStore {
 	): Promise<void> {
 		const path = this.indexPath(project);
 		const serialized = JSON.stringify(index);
+		if (this.deps.repository.getFile(path) === null) {
+			await this.deps.repository.createPlainFile(path, serialized);
+			return;
+		}
+		await this.deps.repository.updatePlainFile(path, () => serialized);
+	}
+
+	analysisPath(project: ProjectRef): string {
+		const layout = getProjectPathLayout(project.locale);
+		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}_analysis_stats.json`;
+	}
+
+	/**
+	 * This device's persisted analysis, or null when there is none to trust.
+	 * A cache like the index: never quarantined, simply rebuilt.
+	 */
+	async readAnalysis(project: ProjectRef): Promise<AnalysisFile | null> {
+		const content = await this.deps.repository.readPlainFile(
+			this.analysisPath(project),
+		);
+		return parseAnalysisFile(content);
+	}
+
+	async writeAnalysis(project: ProjectRef, file: AnalysisFile): Promise<void> {
+		const path = this.analysisPath(project);
+		const serialized = JSON.stringify(file);
 		if (this.deps.repository.getFile(path) === null) {
 			await this.deps.repository.createPlainFile(path, serialized);
 			return;
@@ -247,6 +315,70 @@ function parseIndexFile(content: string | null): MentionIndexFile | null {
 	return {
 		schemaVersion: MENTION_STORE_SCHEMA_VERSION,
 		fingerprint: parsed.fingerprint,
+		notes,
+	};
+}
+
+/**
+ * Reads an analysis file leniently, family by family: a note entry without
+ * its stamp is dropped, and a family that does not hold its shape is read
+ * as absent -- recomputed lazily -- rather than dooming the note or the
+ * file. A schema this build does not write reads as no file at all.
+ */
+function parseAnalysisFile(content: string | null): AnalysisFile | null {
+	const parsed = parseJsonObject(content);
+	if (parsed === null) return null;
+	if (parsed.schemaVersion !== ANALYSIS_FILE_SCHEMA_VERSION) return null;
+	const prints = [
+		parsed.sensitiveFingerprint,
+		parsed.dialogueFingerprint,
+		parsed.statsFingerprint,
+		parsed.tokensFingerprint,
+	];
+	if (prints.some((print) => typeof print !== "string")) return null;
+	if (typeof parsed.notes !== "object" || parsed.notes === null) return null;
+	const isPairList = (value: unknown): boolean =>
+		Array.isArray(value) &&
+		value.every(
+			(pair) =>
+				Array.isArray(pair) &&
+				pair.length === 2 &&
+				typeof pair[1] === "number",
+		);
+	const isStats = (value: unknown): value is NoteProseStats =>
+		typeof value === "object" &&
+		value !== null &&
+		["cjk", "words", "sentences", "dialogueCjk", "dialogueWords"].every(
+			(field) =>
+				typeof (value as Record<string, unknown>)[field] === "number",
+		);
+	const notes: Record<string, AnalysisNoteRecord> = {};
+	for (const [path, note] of Object.entries(
+		parsed.notes as Record<string, unknown>,
+	)) {
+		if (typeof note !== "object" || note === null) continue;
+		const entry = note as Record<string, unknown>;
+		if (typeof entry.stamp !== "string") continue;
+		notes[path] = {
+			stamp: entry.stamp,
+			sensitive: Array.isArray(entry.sensitive)
+				? (entry.sensitive as SensitiveHit[])
+				: null,
+			dialogue: isPairList(entry.dialogue)
+				? (entry.dialogue as [number, number][])
+				: null,
+			stats: isStats(entry.stats) ? entry.stats : null,
+			tokens: isPairList(entry.tokens)
+				? (entry.tokens as [string, number][])
+				: null,
+		};
+	}
+	return {
+		schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+		sensitiveFingerprint: parsed.sensitiveFingerprint as string,
+		dialogueFingerprint: parsed.dialogueFingerprint as string,
+		statsFingerprint: parsed.statsFingerprint as string,
+		tokensFingerprint: parsed.tokensFingerprint as string,
 		notes,
 	};
 }

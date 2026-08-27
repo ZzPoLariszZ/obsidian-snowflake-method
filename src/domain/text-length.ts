@@ -282,3 +282,23 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		total: cjkCharacters + words + punctuationMarks,
 	};
 }
+
+/**
+ * The script split reading time and dialogue ratios rest on: writing counted
+ * one character at a time on one side, space-delimited words on the other.
+ * Chenggua already draws that line -- Latin gathered into words, every other
+ * script counted alone, marks kept out of both -- so this reads its measured
+ * rules rather than drawing the line again, and stays the same whatever
+ * convention the user displays counts in.
+ */
+export interface ScriptSplit {
+	/** Characters counted one by one: CJK, and any other unspaced script. */
+	cjk: number;
+	/** Space-delimited words. */
+	words: number;
+}
+
+export function scriptSplit(text: string): ScriptSplit {
+	const count = countWriting(text, { mode: 'chenggua' });
+	return { cjk: count.cjkCharacters, words: count.words };
+}

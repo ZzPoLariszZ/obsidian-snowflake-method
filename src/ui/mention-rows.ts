@@ -3,7 +3,11 @@
  * apart from the view so the ordering is pinned without a workspace.
  */
 
-import type { EntityMentionAggregate, MentionAggregate } from '../services';
+import type {
+	EntityMentionAggregate,
+	MentionAggregate,
+	SensitiveTermAggregate,
+} from '../services';
 
 /** The name a note is filed under, which is how chapters are shown here. */
 export const mentionNoteTitle = (path: string): string =>
@@ -29,4 +33,29 @@ export function mentionEntityRows(
 				right.total - left.total ||
 				left.memberName.localeCompare(right.memberName),
 		);
+}
+
+/**
+ * The sensitive terms as the pane shows them: most found first, the quiet
+ * ones still listed -- a term that never appears is an answer too.
+ */
+export function sensitiveTermRows(
+	aggregates: readonly SensitiveTermAggregate[] | null,
+): SensitiveTermAggregate[] {
+	if (aggregates === null) return [];
+	return [...aggregates].sort(
+		(left, right) =>
+			right.total - left.total || left.term.localeCompare(right.term),
+	);
+}
+
+/**
+ * A long quoted stretch cut in the middle: the opening and the close are
+ * what identify a speech, so both survive the cut.
+ */
+export function truncateMiddle(text: string, max: number): string {
+	const flat = text.replace(/\s+/gu, ' ');
+	if (flat.length <= max) return flat;
+	const half = Math.max(1, Math.floor((max - 1) / 2));
+	return `${flat.slice(0, half)}…${flat.slice(flat.length - half)}`;
 }
