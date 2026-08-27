@@ -7,45 +7,35 @@
  * grammar -- where rendered words sit in the source -- and drops all
  * whitespace to do it, which is exactly what a counter cannot afford: two
  * words with their space removed are one. So this is a sibling rather than a
- * caller: the same parser, the same elision idiom, tuned so that what
- * remains still reads as text.
+ * caller: the same elision idiom, tuned so that what remains still reads as
+ * text.
  *
- * The grammar is CommonMark plus the three GitHub extensions Obsidian
- * renders -- tables, task lists, strikethrough -- and knows nothing of what
- * Obsidian added on its own, so wikilinks, `%%` comments, block IDs,
- * highlights, callout kinds and footnote markers are found by hand first.
- * Everything works in ranges over the one original body, so the two passes
- * cannot disagree about where anything is. One thing the grammar is not
- * allowed to read: a tilde code fence, see `TILDE_RUN`.
+ * The grammar, and the finding of everything Obsidian added that no grammar
+ * reads -- wikilinks, `%%` comments, block IDs, highlights, callout kinds,
+ * footnote markers, and the tilde-fence masking -- live in
+ * `markdown-scan.ts`, shared with the analysis that asks where the prose
+ * sits, so the two can never disagree about where anything is. Everything
+ * works in ranges over the one original body.
  *
  * Kept free of Obsidian types and of the DOM, so all of it can be exercised
  * without a workspace.
  */
 
 import {
-	Strikethrough,
-	Table,
-	TaskList,
-	parser as commonMarkParser,
-} from '@lezer/markdown';
-
-/**
- * The grammar the page is read with. Obsidian renders these three GitHub
- * extensions, and a parser without them hands their syntax through as writing:
- * a three-row table would count its own pipes and dashes as a dozen words the
- * reader never sees.
- */
-const markdownParser = commonMarkParser.configure([
-	Table,
-	TaskList,
-	Strikethrough,
-]);
-
-/** A stretch of the body that is not the author's writing. */
-export interface CountableRange {
-	from: number;
-	to: number;
-}
+	BLOCK_ID_PATTERN,
+	CALLOUT_KIND_PATTERN,
+	CODE_NODES,
+	type CountableRange,
+	FOOTNOTE_MARK_PATTERN,
+	HIGHLIGHT_PATTERN,
+	MARK_NODES,
+	SILENT_NODES,
+	hiddenCommentRanges,
+	maskTildeFences,
+	scanParser,
+	tildeFenceRanges,
+	wikilinkSpans,
+} from './markdown-scan';
 
 export const WRITING_COUNT_HEADINGS = [
 	'count',
@@ -81,47 +71,10 @@ export interface CountableProseOptions {
 }
 
 /**
- * Syntax drawn around the prose rather than read as part of it. The last
- * three come with the GitHub extensions: `TableDelimiter` is every `|` and
- * the whole `| --- |` row under a header, `TaskMarker` the `[ ]` a checkbox
- * is drawn from, `StrikethroughMark` the `~~` pairs around text that is still
- * on the page and still counts.
- */
-const MARKS = new Set([
-	'HeaderMark',
-	'QuoteMark',
-	'ListMark',
-	'LinkMark',
-	'EmphasisMark',
-	'CodeMark',
-	'CodeInfo',
-	'LinkTitle',
-	'LinkLabel',
-	'TableDelimiter',
-	'TaskMarker',
-	'StrikethroughMark',
-]);
-
-/** Constructs that put no writing of their own on the page. */
-const SILENT = new Set([
-	'HorizontalRule',
-	'HTMLBlock',
-	'CommentBlock',
-	'ProcessingInstructionBlock',
-	'LinkReference',
-	'Image',
-	'HTMLTag',
-	'Comment',
-	'ProcessingInstruction',
-]);
-
-/** Code is written, but it is not writing. Dropped whole, fences and all. */
-const CODE = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
-
-/**
  * Headings by level, each name covering both spellings Markdown allows: `#`
  * before the text, and the row of `=` or `-` under it. Their marks are in
- * MARKS already, so these sets matter only when the text itself is dropped.
+ * MARK_NODES already, so these sets matter only when the text itself is
+ * dropped.
  */
 const HEADING_1 = new Set(['ATXHeading1', 'SetextHeading1']);
 const HEADINGS = new Set([
@@ -145,84 +98,6 @@ interface Elision {
 	to: number;
 	emit?: string;
 }
-
-/**
- * Three or more tildes, which CommonMark reads as a code fence when they
- * open a line -- and an unclosed fence swallows the rest of the note. This
- * is a writer's counter: the tildes a writer types are strikethrough
- * markers, and the `~~~~` an empty strikethrough leaves on a line, or a
- * deleted placeholder leaves behind, must never take a chapter off the
- * count. So the parser is shown the body with every such run masked by a
- * same-length run of plain punctuation -- same length, so every range it
- * reports still indexes the original body -- and tilde fences do not exist
- * for the count. Backtick fences keep meaning code. Nothing else changes
- * hands: a run of three or more tildes is never a strikethrough delimiter,
- * so the page shows it as the literal marks it is, and so does the count.
- */
-const TILDE_RUN = /~{3,}/gu;
-
-/**
- * Where a pair of tilde fences stands, as the page reads them.
- *
- * The count does not read a tilde fence as code -- see `TILDE_RUN` -- because
- * an unclosed one would take a chapter off the count, and in a writer's hands
- * those tildes are strikethrough marks. Obsidian does read them, though, and
- * the one place that difference can be felt is the comment marker: `%%` inside
- * a fence opens nothing on the page, and if the count let it open a comment
- * there, an author writing *about* Obsidian's own syntax would silently lose
- * every word below it. So a matched pair is found here by the text alone and
- * the markers between them are left inert, while the words between them go on
- * counting as the prose this counter takes them for.
- */
-const TILDE_FENCE_OPEN = /^ {0,3}(~{3,})[^\n]*$/u;
-const TILDE_FENCE_CLOSE = /^ {0,3}(~{3,})\s*$/u;
-
-function tildeFenceRanges(body: string): CountableRange[] {
-	const ranges: CountableRange[] = [];
-	let at = 0;
-	let open: { from: number; width: number } | null = null;
-	for (const line of body.split('\n')) {
-		const end = at + line.length;
-		if (open === null) {
-			const found = TILDE_FENCE_OPEN.exec(line);
-			if (found?.[1] !== undefined) open = { from: at, width: found[1].length };
-		} else {
-			const found = TILDE_FENCE_CLOSE.exec(line);
-			if (found?.[1] !== undefined && found[1].length >= open.width) {
-				ranges.push({ from: open.from, to: end });
-				open = null;
-			}
-		}
-		at = end + 1;
-	}
-	return ranges;
-}
-
-/** Obsidian's own syntax, which no Markdown grammar reads as anything. */
-const WIKILINK = /(!?)\[\[([^\]\n]*?)(?:\|([^\]\n]*))?\]\]/gu;
-const BLOCK_ID = /(?:^|[ \t])\^[A-Za-z0-9-]+$/gmu;
-/**
- * A highlight shows what is between its `==` pairs and nothing of the pairs
- * themselves. Held to one line and to a non-space at either end, as emphasis
- * is, so a lone `==` in prose highlights nothing and an arithmetic line is
- * left alone.
- */
-/* Written without a lookbehind, which the plugin guidelines set aside for
-   mobile: the closing rule -- no space or equals against the final marks --
-   is said by the last character class instead. */
-const HIGHLIGHT = /==(?![\s=])(?:[^\n]*?[^\s=\n])?==/gu;
-/**
- * A callout's `[!type]`, with the fold marker that may follow it. It names
- * the box rather than saying anything inside it, and the title written after
- * it on the same line is writing like any other.
- */
-const CALLOUT_KIND = /^[ \t]*(?:>[ \t]*)+(\[![^\]\n]*\][+-]?)/gmu;
-/**
- * A footnote's marker: the reference, which the page replaces with a number
- * the author never typed, and the label that opens its definition. What the
- * definition then says is writing and stays.
- */
-const FOOTNOTE_MARK = /^[ \t]*\[\^[^\]\s]+\]:|\[\^[^\]\s]+\]/gmu;
 
 /**
  * The body as countable text: marker and syntax characters spliced out,
@@ -270,14 +145,14 @@ export function countableProse(
 	// not count as findings of their own inside a range that is already
 	// spoken for.
 	const wikilinks: CountableRange[] = [];
-	for (const match of body.matchAll(WIKILINK)) {
-		const range = { from: match.index, to: match.index + match[0].length };
+	for (const span of wikilinkSpans(body)) {
+		const range = { from: span.from, to: span.to };
 		wikilinks.push(range);
-		if (match[1] === '!') {
+		if (span.embed) {
 			drops.push(range);
 			continue;
 		}
-		emits.push({ ...range, emit: match[3] ?? match[2] ?? '' });
+		emits.push({ ...range, emit: body.slice(span.visibleFrom, span.visibleTo) });
 	}
 	const insideWikilink = (from: number, to: number): boolean =>
 		wikilinks.some((range) => from >= range.from && to <= range.to);
@@ -290,20 +165,20 @@ export function countableProse(
 		if (insideWikilink(from, to)) return;
 		drops.push({ from, to });
 	};
-	for (const match of body.matchAll(HIGHLIGHT)) {
+	for (const match of body.matchAll(HIGHLIGHT_PATTERN)) {
 		const from = match.index;
 		const to = from + match[0].length;
 		// Only the pairs: what they hold is prose, and may hold a link of its own.
 		if (insideWikilink(from, to)) continue;
 		drops.push({ from, to: from + 2 }, { from: to - 2, to });
 	}
-	for (const match of body.matchAll(CALLOUT_KIND)) {
+	for (const match of body.matchAll(CALLOUT_KIND_PATTERN)) {
 		// The group ends the match, so its start is that much back from the end.
 		const kind = match[1] ?? '';
 		const to = match.index + match[0].length;
 		dropOutsideWikilinks(to - kind.length, to);
 	}
-	for (const match of body.matchAll(FOOTNOTE_MARK)) {
+	for (const match of body.matchAll(FOOTNOTE_MARK_PATTERN)) {
 		dropOutsideWikilinks(match.index, match.index + match[0].length);
 	}
 
@@ -315,8 +190,7 @@ export function countableProse(
 	// heading is the note's title cannot be told until the comments are known.
 	const codeRanges: CountableRange[] = [];
 	const headings: CountableRange[] = [];
-	const fenceless = body.replace(TILDE_RUN, (run) => ','.repeat(run.length));
-	markdownParser.parse(fenceless).iterate({
+	scanParser.parse(maskTildeFences(body)).iterate({
 		enter: (node) => {
 			if (insideWikilink(node.from, node.to)) return false;
 			if (skippedHeadings !== null && skippedHeadings.has(node.name)) {
@@ -328,11 +202,11 @@ export function countableProse(
 				autolinks += 1;
 				return true;
 			}
-			if (CODE.has(node.name)) {
+			if (CODE_NODES.has(node.name)) {
 				codeRanges.push({ from: node.from, to: node.to });
 				return false;
 			}
-			if (MARKS.has(node.name) || SILENT.has(node.name)) {
+			if (MARK_NODES.has(node.name) || SILENT_NODES.has(node.name)) {
 				drops.push({ from: node.from, to: node.to });
 				return false;
 			}
@@ -383,33 +257,9 @@ export function countableProse(
 	const inert = [...codeRanges, ...tildeFenceRanges(body)];
 	const insideCode = (at: number): boolean =>
 		inert.some((range) => at >= range.from && at < range.to);
-	// Obsidian comments hide everything to the closing `%%`, and an unclosed
-	// one hides everything to the end of the note, which is how the page
-	// renders it. A `%%` inside code opens nothing: code is shown as written,
-	// so a comment marker quoted in a fence or a span must not swallow the
-	// chapter under it.
-	const nextMarker = (from: number): number => {
-		for (let at = from; at <= body.length; ) {
-			const found = body.indexOf('%%', at);
-			if (found === -1) return -1;
-			if (!insideCode(found)) return found;
-			at = found + 2;
-		}
-		return -1;
-	};
-	for (let at = 0; ; ) {
-		const open = nextMarker(at);
-		if (open === -1) break;
-		const close = nextMarker(open + 2);
-		if (close === -1) {
-			hidden.push({ from: open, to: body.length });
-			break;
-		}
-		hidden.push({ from: open, to: close + 2 });
-		at = close + 2;
-	}
+	hidden.push(...hiddenCommentRanges(body, insideCode));
 
-	for (const match of body.matchAll(BLOCK_ID)) {
+	for (const match of body.matchAll(BLOCK_ID_PATTERN)) {
 		hidden.push({ from: match.index, to: match.index + match[0].length });
 	}
 

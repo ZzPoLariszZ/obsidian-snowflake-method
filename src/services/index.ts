@@ -1,5 +1,7 @@
 export * from "./definition-files";
 export * from "./manuscript-service";
+export * from "./mention-index";
+export * from "./mention-store";
 export * from "./mirror-sync";
 export * from "./project-service";
 export * from "./types";

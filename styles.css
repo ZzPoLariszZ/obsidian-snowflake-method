@@ -5255,6 +5255,154 @@ body {
 	);
 }
 
+/* Entity mentions, both halves in one dress: the editor's mark decorations
+   and the rendered wrap write the same classes. Said by the letters
+   themselves -- color and underline, nothing that measures -- because the
+   editor decides same-visual-row by measured coordinates, and a mark that
+   changed a line's metrics would bend the arrow keys at the note's edges.
+   A linked mention rendered as an anchor keeps the theme's own link color:
+   the theme's anchor rules outweigh this one class, which is right, since
+   the link is already telling the reader everything. */
+.snowflake-method-mention {
+	color: var(--interactive-accent);
+}
+
+/* Unlinked is the state with something to do, so it carries the pointer and
+   the dotted line under it: a click asks what to do about it, and the line
+   firms up while the pointer stands on it. */
+.snowflake-method-mention.is-unlinked {
+	cursor: pointer;
+	text-decoration: underline dotted;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--interactive-accent) 55%,
+		transparent
+	);
+}
+
+.snowflake-method-mention.is-ambiguous {
+	text-decoration-style: wavy;
+}
+
+.snowflake-method-mention.is-unlinked:hover {
+	text-decoration-style: solid;
+}
+
+/* The recall flash: a jump from the tracking pane lands here, and the spot
+   says so for a breath, then eases back. Tripled so it outweighs even the
+   dressed anchors while it lasts. */
+.snowflake-method-mention.is-recalled.is-recalled.is-recalled {
+	background-color: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+	transition: background-color 400ms ease-out;
+}
+
+/* The tracking pane: plain rows over theme tokens, a reading and no more. */
+.snowflake-method-mention-view {
+	padding: var(--size-4-2) var(--size-4-3);
+	overflow-y: auto;
+}
+
+.snowflake-method-mention-view-controls {
+	display: flex;
+	gap: var(--size-2-2);
+	align-items: center;
+	margin-bottom: var(--size-4-2);
+}
+
+.snowflake-method-mention-view-search {
+	flex: 1;
+	min-width: 0;
+}
+
+.snowflake-method-mention-view-heading {
+	margin: var(--size-4-4) 0 var(--size-4-1);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.snowflake-method-mention-view-empty {
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+	padding: var(--size-4-1) 0;
+}
+
+.snowflake-method-mention-view-row {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-mention-view-row-head {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: var(--size-4-1) var(--size-2-2);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+}
+
+.snowflake-method-mention-view-row-head:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.snowflake-method-mention-view-name {
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-mention-view-counts,
+.snowflake-method-mention-view-span {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.snowflake-method-mention-view-occurrences {
+	padding: 0 0 var(--size-4-2) var(--size-4-3);
+}
+
+.snowflake-method-mention-view-occurrence {
+	display: flex;
+	flex-direction: column;
+	padding: var(--size-2-2);
+	cursor: pointer;
+	border-radius: var(--radius-s);
+}
+
+.snowflake-method-mention-view-occurrence:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.snowflake-method-mention-view-chapter {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.snowflake-method-mention-view-context {
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-mention-view-ignore {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-2) 0;
+}
+
+.snowflake-method-mention-view-ignore-badge {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background-color: var(--background-secondary);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-2);
+	white-space: nowrap;
+}
+
+.snowflake-method-mention-view-ignore-text {
+	flex: 1;
+	min-width: 0;
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* The guides: a rule under every row of the note being written in, drawn
    by each editor line as a layer under its own text and masked to one pixel
    row per line height, so a paragraph gap of any size leaves the rules

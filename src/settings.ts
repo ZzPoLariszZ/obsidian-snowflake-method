@@ -31,6 +31,7 @@ import {
 	isDateFormat,
 	isManuscriptGuide,
 	isManuscriptTextAlign,
+	isMentionHighlightMode,
 	rememberFontFamily,
 	isWeekStartDay,
 	isWritingCountHeadings,
@@ -52,6 +53,7 @@ import {
 	type ManuscriptGuide,
 	type ManuscriptTextAlign,
 	type ManuscriptTint,
+	type MentionHighlightMode,
 	type ReadingMeasure,
 	type ManuscriptPresentation,
 	type WeekStartDay,
@@ -150,6 +152,8 @@ export interface SnowflakeSettings {
 	/** The line being written held at the middle of the page. */
 	manuscriptTypewriter: boolean;
 	manuscriptFocusLevel: ManuscriptFocusLevel;
+	/** Which entity mentions the stream marks where they stand in the prose. */
+	manuscriptMentionHighlight: MentionHighlightMode;
 	/** Brackets and quotes close themselves in the manuscript editor. */
 	manuscriptAutoPairBrackets: boolean;
 	/** Emphasis markers close themselves in the manuscript editor. */
@@ -270,6 +274,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptAutoPairMarkdown: true,
 	manuscriptEnterParagraph: true,
 	manuscriptFocusLevel: 'off',
+	manuscriptMentionHighlight: 'off',
 	// Read from the dress rather than written out again. These eleven had been
 	// a second copy of `DEFAULT_MANUSCRIPT_PRESENTATION`, kept in step by hand
 	// and by nothing else: the sanitizers fall back to the domain's table while
@@ -336,6 +341,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptAutoPairMarkdown',
 	'manuscriptEnterParagraph',
 	'manuscriptFocusLevel',
+	'manuscriptMentionHighlight',
 	'manuscriptFontFamily',
 	'manuscriptRecentFonts',
 	'manuscriptFontSize',
@@ -534,6 +540,11 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 				? raw.manuscriptEnterParagraph
 				: DEFAULT_SETTINGS.manuscriptEnterParagraph,
 		manuscriptFocusLevel: readFocusLevel(raw),
+		manuscriptMentionHighlight: isMentionHighlightMode(
+			raw.manuscriptMentionHighlight,
+		)
+			? raw.manuscriptMentionHighlight
+			: DEFAULT_SETTINGS.manuscriptMentionHighlight,
 		manuscriptFontFamily: sanitizeFontFamily(raw.manuscriptFontFamily),
 		manuscriptRecentFonts: sanitizeRecentFonts(raw.manuscriptRecentFonts),
 		manuscriptFontSize: sanitizeFontSize(raw.manuscriptFontSize),
@@ -990,6 +1001,21 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						// read right however the level was changed while this page was
 						// closed.
 						render: (setting) => this.renderFocusMode(setting),
+					},
+					{
+						name: this.t('settings.mentionHighlight.name'),
+						desc: this.t('settings.mentionHighlight.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptMentionHighlight',
+							defaultValue: DEFAULT_SETTINGS.manuscriptMentionHighlight,
+							options: {
+								off: this.t('settings.mentionHighlight.off'),
+								first: this.t('settings.mentionHighlight.first'),
+								unlinked: this.t('settings.mentionHighlight.unlinked'),
+								all: this.t('settings.mentionHighlight.all'),
+							},
+						},
 					},
 				],
 			},
@@ -1688,6 +1714,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptGuide':
 				if (isManuscriptGuide(value)) {
 					this.owner.settings.manuscriptGuide = value;
+				}
+				break;
+			case 'manuscriptMentionHighlight':
+				if (isMentionHighlightMode(value)) {
+					this.owner.settings.manuscriptMentionHighlight = value;
 				}
 				break;
 			case 'sessionIdleThresholdSeconds':

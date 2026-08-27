@@ -13,10 +13,25 @@ import {
 } from 'obsidian';
 
 import {
+	MENTION_HIGHLIGHT_MODES,
+	analyzeMentions,
+	planMentionMarks,
 	presentationShape,
 	presentationStyle,
+	splitMentionIgnores,
+	type EntityMatcher,
+	type EntityOccurrence,
+	type MentionCandidate,
+	type MentionIgnore,
+	type MentionMark,
 } from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
+import {
+	applyMentionMarks,
+	clearMentionMarks,
+	projectMentionMarks,
+} from './mention-marks';
+import { addMentionMenuItems, openMentionMenu } from './mention-menu';
 import { confirmSegmentMerge } from './modals';
 import { projectedIndexAt } from './prose-projection';
 import {
@@ -98,7 +113,35 @@ interface MountedSegment {
 	editor: SegmentEditorHandle | null;
 	/** Text typed but not yet on disk. */
 	pending: string | null;
+	/**
+	 * What the mention machinery last analyzed here: the body it read, every
+	 * occurrence in document order (the menus count ordinals off this), and
+	 * the marks the mode chose. Null until a dress has run.
+	 */
+	mentions: {
+		body: string;
+		occurrences: EntityOccurrence[];
+		marks: MentionMark[];
+	} | null;
 }
+
+/** What the mention feed answers with: the roster's matcher, the ignores. */
+interface MentionFeedState {
+	matcher: EntityMatcher;
+	ignores: readonly MentionIgnore[];
+}
+
+const sameMentionMarks = (
+	left: readonly MentionMark[],
+	right: readonly MentionMark[],
+): boolean =>
+	left.length === right.length &&
+	left.every(
+		(mark, index) =>
+			mark.from === right[index]?.from &&
+			mark.to === right[index]?.to &&
+			mark.classes === right[index]?.classes,
+	);
 
 /**
  * The manuscript as one page.
@@ -154,6 +197,15 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * so a member created mid-writing appears on the next popup.
 	 */
 	private wikilinkTargets: Promise<readonly WikilinkTarget[]> | null = null;
+	/**
+	 * The mention machinery's feed, fetched once per quiet stretch and shared
+	 * by both halves: the roster's matcher and the reader's ignore rules.
+	 * Nulled with the wikilink feed above, for the same reasons.
+	 */
+	private mentionFeed: Promise<MentionFeedState | null> | null = null;
+	private mentionProject: string | null = null;
+	/** The feed's last answer, for the synchronous ask the editor makes. */
+	private mentionState: MentionFeedState | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
 	/** The dress the page wears, so a refresh can tell a change from a repeat. */
@@ -347,6 +399,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 		this.refreshing = true;
 		this.wikilinkTargets = null;
+		this.mentionFeed = null;
+		this.mentionState = null;
 		try {
 			const settings = this.host.manuscriptWindowSettings();
 			const previousShape = this.shape;
@@ -405,6 +459,10 @@ export class SnowflakeManuscriptView extends ItemView {
 				}
 				await this.applyWindow();
 				await this.refreshMountedBodies();
+				// The notes that did not re-render keep their old dress, and the
+				// roster behind it may be why this refresh fired: a member just
+				// created should light up where it already stands.
+				this.applyMentionMode();
 				return;
 			}
 
@@ -720,6 +778,20 @@ export class SnowflakeManuscriptView extends ItemView {
 		dress.addEventListener('click', () => {
 			this.togglePresentationPanel(dress);
 		});
+		// Which mentions the page marks, live while reading for the same
+		// reason the dress is: it is how the page is read, not an edit.
+		const mentions = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-mentions',
+			attr: { type: 'button', 'aria-haspopup': 'menu' },
+		});
+		setIcon(mentions, 'scan-text');
+		setTooltip(mentions, this.t('manuscript.toolbar.mentions'));
+		mentions.addEventListener('mousedown', (event) => {
+			event.preventDefault();
+		});
+		mentions.addEventListener('click', (event) => {
+			this.openMentionModeMenu(event);
+		});
 		this.refreshToolbar();
 	}
 
@@ -1010,6 +1082,370 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
+	 * Re-dresses both halves for the mention mode and ignore rules now in
+	 * force. The feed is dropped first, because the one thing every caller
+	 * of this has in common is that what it held -- the roster or the
+	 * ignores -- may just have changed.
+	 */
+	applyMentionMode(): void {
+		this.mentionFeed = null;
+		this.mentionState = null;
+		void this.applyMentionDress().catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	private async applyMentionDress(): Promise<void> {
+		const state = await this.mentionFeedFor();
+		for (const entry of this.mounted.values()) {
+			if (entry.editor !== null) {
+				entry.editor.refreshMentions();
+				continue;
+			}
+			this.dressRendered(entry, state);
+		}
+	}
+
+	/**
+	 * One segment's rendered half dressed for the mode in force: analyzed,
+	 * planned, and wrapped -- unless the marks came out exactly as they
+	 * already stand, in which case the DOM is left alone.
+	 */
+	private dressRendered(
+		entry: MountedSegment,
+		state: MentionFeedState | null,
+	): void {
+		const rendered = entry.bodyEl.querySelector(
+			'.snowflake-method-segment-rendered',
+		);
+		if (!(rendered instanceof HTMLElement)) return;
+		const mode = this.host.manuscriptWindowSettings().mentionHighlight;
+		const body = entry.pending ?? entry.text.body;
+		let occurrences: EntityOccurrence[] = [];
+		let marks: MentionMark[] = [];
+		if (state !== null && mode !== 'off' && state.matcher.patternCount > 0) {
+			const split = splitMentionIgnores(state.ignores);
+			occurrences = analyzeMentions(
+				entry.path,
+				body,
+				[],
+				state.matcher,
+				split.candidate,
+			);
+			marks = planMentionMarks(occurrences, split.occurrence, mode);
+		}
+		const previous = entry.mentions;
+		entry.mentions = { body, occurrences, marks };
+		if (
+			previous !== null &&
+			previous.body === body &&
+			sameMentionMarks(previous.marks, marks)
+		) {
+			return;
+		}
+		clearMentionMarks(rendered);
+		applyMentionMarks(rendered, projectMentionMarks(body, marks));
+	}
+
+	/** The rendered dress, once the feed answers, if nothing moved meanwhile. */
+	private dressRenderedSoon(entry: MountedSegment): void {
+		const body = entry.pending ?? entry.text.body;
+		void this.mentionFeedFor()
+			.then((state) => {
+				if (!entry.el.isConnected || entry.editor !== null) return;
+				if ((entry.pending ?? entry.text.body) !== body) return;
+				this.dressRendered(entry, state);
+			})
+			.catch((error: unknown) => {
+				this.showError(error);
+			});
+	}
+
+	/**
+	 * The marks the segment editor asks for on a pause in typing. Answered
+	 * from the feed's last answer rather than awaiting one: the editor's ask
+	 * is synchronous, and an editor mounted before the feed resolved is
+	 * re-asked by `primeEditorMentions` the moment it does.
+	 */
+	private editorMentionMarks(
+		path: string,
+		body: string,
+	): readonly MentionMark[] {
+		const state = this.mentionState;
+		const mode = this.host.manuscriptWindowSettings().mentionHighlight;
+		if (state === null || mode === 'off' || state.matcher.patternCount === 0) {
+			return [];
+		}
+		const split = splitMentionIgnores(state.ignores);
+		const occurrences = analyzeMentions(
+			path,
+			body,
+			[],
+			state.matcher,
+			split.candidate,
+		);
+		const marks = planMentionMarks(occurrences, split.occurrence, mode);
+		const entry = this.mounted.get(path);
+		if (entry !== undefined) entry.mentions = { body, occurrences, marks };
+		return marks;
+	}
+
+	private primeEditorMentions(entry: MountedSegment): void {
+		const mounted = entry.editor;
+		void this.mentionFeedFor()
+			.then((state) => {
+				if (state === null) return;
+				if (this.mounted.get(entry.path)?.editor !== mounted) return;
+				mounted?.refreshMentions();
+			})
+			.catch(() => undefined);
+	}
+
+	/**
+	 * The feed both halves share, per project on the page, like the wikilink
+	 * feed above it and for the same reasons.
+	 */
+	private mentionFeedFor(): Promise<MentionFeedState | null> {
+		const shown = this.model?.projectPath ?? this.projectPath;
+		if (this.mentionFeed === null || this.mentionProject !== shown) {
+			const fetched: Promise<MentionFeedState | null> = Promise.all([
+				this.host.manuscriptEntityMatcher(shown),
+				this.host.mentionIgnores(shown),
+			])
+				.then(([matcher, ignores]) => {
+					const state = matcher === null ? null : { matcher, ignores };
+					if (this.mentionFeed === fetched) this.mentionState = state;
+					return state;
+				})
+				.catch(() => {
+					if (this.mentionFeed === fetched) this.mentionFeed = null;
+					return null;
+				});
+			this.mentionFeed = fetched;
+			this.mentionProject = shown;
+		}
+		return this.mentionFeed;
+	}
+
+	/** The mention a right-click on the rendered half landed on, if any. */
+	private renderedMentionAt(
+		entry: MountedSegment | undefined,
+		event: MouseEvent,
+	): MentionMark | null {
+		if (entry === undefined || entry.mentions === null) return null;
+		const el =
+			(event.target as HTMLElement | null)?.closest(
+				'.snowflake-method-mention',
+			) ?? null;
+		if (!(el instanceof HTMLElement)) return null;
+		const index = Number(el.getAttribute('data-snowflake-method-mention'));
+		return entry.mentions.marks[index] ?? null;
+	}
+
+	/** The menu a click on an unlinked rendered mention opens. */
+	private openRenderedMentionMenu(
+		entry: MountedSegment,
+		el: HTMLElement,
+		event: MouseEvent,
+	): void {
+		const kept = entry.mentions;
+		const mark = kept?.marks[Number(el.getAttribute('data-snowflake-method-mention'))];
+		if (kept === null || kept === undefined || mark === undefined) return;
+		openMentionMenu({
+			occurrence: mark.occurrence,
+			noteOccurrences: kept.occurrences,
+			t: this.t,
+			...(this.model?.readOnly === true
+				? {}
+				: {
+						onConvert: (candidate: MentionCandidate) => {
+							void this.convertRendered(entry, mark, candidate).catch(
+								(error: unknown) => {
+									this.showError(error);
+								},
+							);
+						},
+					}),
+			onOpen: (candidate) => {
+				void this.host.openManagedFile(candidate.memberPath).catch(
+					(error: unknown) => {
+						this.showError(error);
+					},
+				);
+			},
+			onIgnore: (rule) => {
+				void this.host
+					.addMentionIgnore(this.model?.projectPath ?? this.projectPath, rule)
+					.catch((error: unknown) => {
+						this.showError(error);
+					});
+			},
+			event,
+		});
+	}
+
+	/**
+	 * Converts one rendered mention into its link, failing closed: a stamp
+	 * that moved, or text no longer standing as analyzed, cancels and
+	 * refreshes rather than searching for another spot to guess at.
+	 */
+	private async convertRendered(
+		entry: MountedSegment,
+		mark: MentionMark,
+		candidate: MentionCandidate,
+	): Promise<void> {
+		const occurrence = mark.occurrence;
+		const stale = async (): Promise<void> => {
+			new Notice(this.t('manuscript.mention.stale'));
+			await this.refreshMountedBodies();
+		};
+		if (
+			entry.pending !== null ||
+			this.host.manuscriptSegmentStamp(entry.path) !== entry.text.stamp ||
+			entry.text.body.slice(occurrence.from, occurrence.to) !==
+				occurrence.matchedText
+		) {
+			await stale();
+			return;
+		}
+		const body = entry.text.body;
+		const next =
+			body.slice(0, occurrence.from) +
+			candidate.insert +
+			body.slice(occurrence.to);
+		const saved = await this.host.saveManuscriptSegment(
+			entry.path,
+			next,
+			entry.text.revision,
+		);
+		entry.text = {
+			...entry.text,
+			body: next,
+			revision: saved.revision,
+			stamp: saved.stamp,
+		};
+		await this.renderSegmentBody(entry);
+	}
+
+	/** The four highlight modes, offered from the bar's own button. */
+	private openMentionModeMenu(event: MouseEvent): void {
+		const menu = new Menu();
+		const current = this.host.manuscriptWindowSettings().mentionHighlight;
+		for (const mode of MENTION_HIGHLIGHT_MODES) {
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t(`settings.mentionHighlight.${mode}`))
+					.setChecked(mode === current)
+					.onClick(() => {
+						void this.host
+							.setManuscriptMentionHighlight(mode)
+							.catch((error: unknown) => {
+								this.showError(error);
+							});
+					}),
+			);
+		}
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(this.t('manuscript.toolbar.trackMentions'))
+				.setIcon('scan-text')
+				.onClick(() => {
+					void this.host.openMentionTracking().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}),
+		);
+		menu.showAtMouseEvent(event);
+	}
+
+	/**
+	 * Brings one mention onto the screen and flashes it: the tracking pane's
+	 * jump. The stream may still be opening, so the segment and its dress
+	 * are each given a moment to arrive before the reveal gives up quietly.
+	 */
+	async revealMention(path: string, from: number, to: number): Promise<void> {
+		const win = this.contentEl.win;
+		const beat = (): Promise<void> =>
+			new Promise((resolve) => win.setTimeout(resolve, 100));
+		for (let waited = 0; !this.mounted.has(path) && waited < 20; waited += 1) {
+			await beat();
+		}
+		const entry = this.mounted.get(path);
+		if (entry === undefined) return;
+		await this.revealSegment(path);
+		for (let waited = 0; entry.mentions === null && waited < 10; waited += 1) {
+			await beat();
+		}
+		const index =
+			entry.mentions?.marks.findIndex(
+				(mark) => mark.from === from && mark.to === to,
+			) ?? -1;
+		let el: HTMLElement | null = null;
+		if (index >= 0) {
+			const dressed = entry.bodyEl.querySelector(
+				`[data-snowflake-method-mention="${String(index)}"]`,
+			);
+			if (dressed instanceof HTMLElement) el = dressed;
+		}
+		// The mode may not be dressing this occurrence at all: a linked
+		// mention under "unlinked", everything under "off". The pane's list
+		// does not narrow with the mode, so the reveal plants a locator of
+		// its own where none stands, and takes it back out after the flash.
+		let planted: HTMLElement | null = null;
+		if (el === null && entry.editor === null) {
+			const rendered = entry.bodyEl.querySelector(
+				'.snowflake-method-segment-rendered',
+			);
+			if (rendered instanceof HTMLElement) {
+				const body = entry.pending ?? entry.text.body;
+				const stub: MentionMark = {
+					from,
+					to,
+					classes: 'snowflake-method-mention is-recall-target',
+					occurrence: {
+						type: 'entity',
+						path,
+						from,
+						to,
+						matchedText: body.slice(from, to),
+						resolution: 'unique',
+						resolvedMemberPath: null,
+						candidates: [],
+					},
+				};
+				applyMentionMarks(rendered, projectMentionMarks(body, [stub]));
+				const target = rendered.querySelector('.is-recall-target');
+				if (target instanceof HTMLElement) {
+					// Off the menus' index space: a locator is not a mention.
+					target.setAttribute('data-snowflake-method-mention', '-1');
+					planted = target;
+					el = target;
+				}
+			}
+		}
+		if (el === null) return;
+		el.scrollIntoView({ block: 'center' });
+		el.addClass('is-recalled');
+		const held = el;
+		win.setTimeout(() => {
+			held.removeClass('is-recalled');
+			if (planted === null) return;
+			if (planted.instanceOf(HTMLAnchorElement)) {
+				planted.removeClasses([
+					'snowflake-method-mention',
+					'is-recall-target',
+				]);
+				planted.removeAttribute('data-snowflake-method-mention');
+			} else {
+				const parent = planted.parentElement;
+				planted.replaceWith(...Array.from(planted.childNodes));
+				parent?.normalize();
+			}
+		}, 900);
+	}
+
+	/**
 	 * Holds what the reader is looking at through a change that reshapes
 	 * every note: the caret line while a note is being written in and that
 	 * line is on the page, else the block at the top of the page — a
@@ -1226,6 +1662,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			text,
 			editor: null,
 			pending: null,
+			mentions: null,
 		};
 		this.mounted.set(path, entry);
 		await this.renderSegmentBody(entry);
@@ -1405,6 +1842,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async renderSegmentBody(entry: MountedSegment): Promise<void> {
 		entry.bodyEl.empty();
 		entry.bodyEl.removeClass('is-editing');
+		// The DOM the old dress was applied to is gone with the emptying.
+		entry.mentions = null;
 		const rendered = entry.bodyEl.createDiv({
 			cls: 'snowflake-method-segment-rendered markdown-rendered',
 		});
@@ -1415,7 +1854,20 @@ export class SnowflakeManuscriptView extends ItemView {
 			entry.path,
 			this,
 		);
+		this.dressRenderedSoon(entry);
 		rendered.addEventListener('click', (event) => {
+			// An unlinked mention wears the pointer cursor, and a click on it
+			// asks what to do about it rather than opening the editor: that
+			// is the one affordance the highlight adds to reading.
+			const mention =
+				(event.target as HTMLElement | null)?.closest(
+					'span.snowflake-method-mention.is-unlinked',
+				) ?? null;
+			if (mention instanceof HTMLElement) {
+				event.preventDefault();
+				this.openRenderedMentionMenu(entry, mention, event);
+				return;
+			}
 			// A link inside the prose is a link, not an invitation to edit —
 			// and an internal one is this view's to open, because a rendered
 			// div outside a Markdown view has nobody else answering it.
@@ -1555,6 +2007,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					});
 				},
 				wikilinkTargets: () => this.wikilinkTargetsFeed(),
+				mentionMarks: (inPath, body) => this.editorMentionMarks(inPath, body),
 				enterParagraph: () => this.host.manuscriptWindowSettings().enterParagraph,
 				onLinkHover: (hoveredPath, event, targetEl, linktext) => {
 					// The core Page preview plugin reads this source's own
@@ -1589,6 +2042,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.host.manuscriptWritingChanged();
 		this.refreshWriteToggles();
 		this.refreshToolbar();
+		// The editor asked for its marks at mount, before the feed had
+		// necessarily answered; asked again the moment it has.
+		this.primeEditorMentions(entry);
 		// Focus fades only while something is being written, and only around the
 		// note it is written in. Classes, so that starting to write moves nothing.
 		this.streamEl?.addClass('is-writing');
@@ -2033,9 +2489,76 @@ export class SnowflakeManuscriptView extends ItemView {
 				);
 			}
 
+			// A right-click on a mention offers what can be done about it at
+			// the head of the plugin's group, whichever half it landed in: the
+			// editor answers by coordinates, the rendered half by the element
+			// under the pointer. The click's own subject outranks the standing
+			// entries below it.
+			const entry = this.mounted.get(segment.path);
+			const mention =
+				entry?.editor?.mentionAt(event.clientX, event.clientY) ??
+				this.renderedMentionAt(entry, event);
+			const mentionLead = (into: Menu): void => {
+				if (entry === undefined || mention === null || entry.mentions === null) {
+					return;
+				}
+				const editing = entry.editor;
+				addMentionMenuItems(into, {
+					occurrence: mention.occurrence,
+					noteOccurrences: entry.mentions.occurrences,
+					t: this.t,
+					section,
+					...(this.model?.readOnly === true
+						? {}
+						: {
+								onConvert: (candidate: MentionCandidate) => {
+									if (editing !== null) {
+										const done = editing.splice(
+											mention.from,
+											mention.to,
+											mention.occurrence.matchedText,
+											candidate.insert,
+										);
+										if (!done) {
+											new Notice(this.t('manuscript.mention.stale'));
+										}
+										return;
+									}
+									void this.convertRendered(entry, mention, candidate).catch(
+										(error: unknown) => {
+											this.showError(error);
+										},
+									);
+								},
+							}),
+					onOpen: (candidate) => {
+						void this.host.openManagedFile(candidate.memberPath).catch(
+							(error: unknown) => {
+								this.showError(error);
+							},
+						);
+					},
+					onIgnore: (rule) => {
+						void this.host
+							.addMentionIgnore(
+								this.model?.projectPath ?? this.projectPath,
+								rule,
+							)
+							.catch((error: unknown) => {
+								this.showError(error);
+							});
+					},
+				});
+			};
+
 			// The manuscript's own two, in the plugin's section rather than loose
 			// among Obsidian's, so the whole group reads in one language.
-			this.host.addProjectMenuSection(menu, segment.path, MANUSCRIPT_VIEW_TYPE);
+			this.host.addProjectMenuSection(
+				menu,
+				segment.path,
+				MANUSCRIPT_VIEW_TYPE,
+				mentionLead,
+			);
 			menu.addItem((item) =>
 				item
 					.setSection(section)

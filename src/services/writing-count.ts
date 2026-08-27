@@ -19,7 +19,7 @@ import {
 	type VaultRepository,
 } from "../repository";
 import { isPathAtOrBelow } from "../project-root";
-import { inspectMarkedSection } from "../templates";
+import { inspectMarkedSection, pluginWrittenRanges } from "../templates";
 import type { ManuscriptService } from "./manuscript-service";
 import type { ProjectRef } from "./types";
 
@@ -82,28 +82,15 @@ export class WritingCountService {
 	>();
 
 	/**
-	 * Where a body's plugin-written sections sit: the generated views and the
-	 * record storage, which the domain already names in one place. Every count
-	 * here asks this rather than re-deciding what the plugin wrote, so the
-	 * whole and the parts can never disagree about it.
+	 * Where a body's plugin-written sections sit, asked of the shared helper
+	 * the manuscript analysis reads too, so no two readings of one note can
+	 * disagree about what the plugin wrote.
 	 */
 	private pluginWritten(
 		body: string,
 		documentType: DocumentType | null,
 	): CountableRange[] {
-		const ranges: CountableRange[] = [];
-		for (const descriptor of documentType === null
-			? []
-			: managedSectionsForDocument(documentType)) {
-			if (!PROTECTED_SECTION_IDS.has(descriptor.id)) continue;
-			const inspection = inspectMarkedSection(body, descriptor.id);
-			if (inspection.status !== "present") continue;
-			ranges.push({
-				from: inspection.contentStart,
-				to: inspection.contentEnd,
-			});
-		}
-		return ranges;
+		return pluginWrittenRanges(body, documentType);
 	}
 
 	/** One body's writing count, its plugin-written sections excluded. */

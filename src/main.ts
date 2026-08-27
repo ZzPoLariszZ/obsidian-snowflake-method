@@ -62,7 +62,11 @@ import {
 	rememberFontFamily,
 	sanitizeTextAlign,
 	sanitizeTint,
+	type EntityMatcher,
+	type EntityOccurrence,
 	type ManuscriptPresentation,
+	type MentionHighlightMode,
+	type MentionIgnore,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -111,6 +115,7 @@ import {
 	type ArtifactSnapshot,
 	type CharacterRecord,
 	type MemberUsage,
+	type MentionAggregate,
 	type NoteCountOptions,
 	type ProjectRef,
 	type ProjectSnapshot,
@@ -158,6 +163,7 @@ import {
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import { MENTION_VIEW_TYPE, SnowflakeMentionView } from './ui/mention-view';
 import type { WikilinkTarget } from './ui/segment-editor-backend';
 import {
 	collectWikilinkTargets,
@@ -406,6 +412,18 @@ export default class SnowflakeMethodPlugin
 		options: NoteCountOptions;
 		count: WritingCount;
 	} | null = null;
+
+	/**
+	 * The entity matcher per snapshot. A snapshot object stands until the
+	 * project's tree digest moves, so a quiet stream refresh answers here
+	 * without so much as a fingerprint; the service's own fingerprint slot
+	 * then keeps the automaton across digest moves that left the roster
+	 * alone.
+	 */
+	private readonly entityMatcherMemo = new WeakMap<
+		ProjectSnapshot,
+		EntityMatcher
+	>();
 	/**
 	 * The plugin's own field the count last followed focus to. Focus events
 	 * arrive from every corner of the app, and most of them change nothing
@@ -564,6 +582,20 @@ export default class SnowflakeMethodPlugin
 			this.app.fileManager,
 			this.app.metadataCache,
 			this.settings.projectRoot,
+			{
+				// The session device id names the mention index file too: one
+				// identity per install, and vault sync never contests either.
+				deviceId: () => this.writingSessionDeviceId(),
+				now: () => Date.now(),
+				// The main window's clock, as the sessions take theirs: a
+				// popout closing never takes the flush timer with it.
+				timers: {
+					set: (handler, ms) => window.setTimeout(handler, ms),
+					clear: (handle) => {
+						window.clearTimeout(handle as number);
+					},
+				},
+			},
 		);
 		this.sessions = new WritingSessionService({
 			repository: this.projects.repository,
@@ -623,6 +655,10 @@ export default class SnowflakeMethodPlugin
 				new SnowflakeStatisticsView(leaf, this.writingSessions(), () =>
 					this.statisticsFingerprint(),
 				),
+		);
+		this.registerView(
+			MENTION_VIEW_TYPE,
+			(leaf) => new SnowflakeMentionView(leaf, this),
 		);
 		// Two feeds so the core Page preview plugin offers each with its own
 		// modifier default: rendered manuscript prose previews on a plain
@@ -2518,6 +2554,12 @@ export default class SnowflakeMethodPlugin
 			this.settingTab?.refreshPresentationRows();
 			return;
 		}
+		// Which mentions the streams mark is likewise a dress on text they
+		// already hold: re-dressing the open streams is the whole change.
+		if (key === 'manuscriptMentionHighlight') {
+			this.applyManuscriptMentionMode();
+			return;
+		}
 		if (key === 'reduceMotion') this.applyMotionPreference();
 		if (key === 'manuscriptFocusLevel') {
 			this.applyManuscriptModePresence();
@@ -4408,6 +4450,7 @@ export default class SnowflakeMethodPlugin
 			enterParagraph: this.settings.manuscriptEnterParagraph,
 			recentFonts: this.settings.manuscriptRecentFonts,
 			presentation: this.manuscriptPresentation(),
+			mentionHighlight: this.settings.manuscriptMentionHighlight,
 		};
 	}
 
@@ -4508,6 +4551,131 @@ export default class SnowflakeMethodPlugin
 		await this.handleSettingsChanged('manuscriptEnterParagraph');
 	}
 
+	async setManuscriptMentionHighlight(
+		mode: MentionHighlightMode,
+	): Promise<void> {
+		if (this.settings.manuscriptMentionHighlight === mode) return;
+		this.settings.manuscriptMentionHighlight = mode;
+		await this.saveSettings();
+		await this.handleSettingsChanged('manuscriptMentionHighlight');
+	}
+
+	async mentionIgnores(
+		projectPath: string | null,
+	): Promise<readonly MentionIgnore[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		return this.projects.mentionStore.readIgnores(project);
+	}
+
+	async addMentionIgnore(
+		projectPath: string | null,
+		rule: MentionIgnore,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.projects.mentionStore.addIgnore(project, rule);
+		this.applyManuscriptMentionMode();
+	}
+
+	async removeMentionIgnore(
+		projectPath: string | null,
+		rule: MentionIgnore,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.projects.mentionStore.removeIgnore(project, rule);
+		this.applyManuscriptMentionMode();
+	}
+
+	/**
+	 * The matcher for one project's roster: the same names and aliases the
+	 * wikilink popup offers, so what highlights is exactly what completes.
+	 */
+	async manuscriptEntityMatcher(
+		projectPath: string | null,
+	): Promise<EntityMatcher | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		const kept = this.entityMatcherMemo.get(project);
+		if (kept !== undefined) return kept;
+		const targets = await this.listWikilinkTargets(projectPath);
+		const matcher = this.projects.mentions.matcherFor(targets);
+		this.entityMatcherMemo.set(project, matcher);
+		return matcher;
+	}
+
+	/** One note's occurrences under the project index, ignores applied. */
+	async manuscriptOccurrences(
+		projectPath: string | null,
+		path: string,
+	): Promise<readonly EntityOccurrence[]> {
+		const project = await this.resolveProject(projectPath);
+		const matcher = await this.manuscriptEntityMatcher(projectPath);
+		if (project === null || matcher === null) return [];
+		return this.projects.mentions.occurrencesOf(project, matcher, path);
+	}
+
+	/** The whole manuscript folded per entity, for the tracking pane. */
+	async manuscriptMentionAggregate(
+		projectPath: string | null,
+	): Promise<MentionAggregate | null> {
+		const project = await this.resolveProject(projectPath);
+		const matcher = await this.manuscriptEntityMatcher(projectPath);
+		if (project === null || matcher === null) return null;
+		return this.projects.mentions.aggregate(project, matcher);
+	}
+
+	/** The project the tracking pane follows: a shown stream's, else recent. */
+	mentionProjectPath(): string | null {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			if (!(leaf.view instanceof SnowflakeManuscriptView)) continue;
+			if (!leaf.view.containerEl.isShown()) continue;
+			const state = leaf.getViewState().state;
+			const path = state?.projectPath;
+			if (typeof path === 'string' && path.length > 0) return path;
+		}
+		return this.settings.recentProjectPath;
+	}
+
+	/** Opens (or reveals) the tracking pane, in the right sidebar by default. */
+	async openMentionTracking(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(MENTION_VIEW_TYPE)[0];
+		const leaf = existing ?? this.app.workspace.getRightLeaf(false);
+		if (leaf === null) return;
+		if (existing === undefined) {
+			await leaf.setViewState({ type: MENTION_VIEW_TYPE, active: true });
+		}
+		await leaf.loadIfDeferred();
+		await this.app.workspace.revealLeaf(leaf);
+		if (leaf.view instanceof SnowflakeMentionView) await leaf.view.refresh();
+	}
+
+	/** Opens the stream at one occurrence and flashes it where it stands. */
+	async openManuscriptMention(
+		projectPath: string | null,
+		occurrence: EntityOccurrence,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.openManuscriptStream(project.projectFile, occurrence.path);
+		const leaf = this.app.workspace
+			.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
+			.find(
+				(candidate) =>
+					candidate.getViewState().state?.projectPath === project.projectFile,
+			);
+		if (leaf?.view instanceof SnowflakeManuscriptView) {
+			await leaf.view.revealMention(
+				occurrence.path,
+				occurrence.from,
+				occurrence.to,
+			);
+		}
+	}
+
 	/**
 	 * Every open stream dressed afresh, hidden ones included: a stream in a
 	 * background tab or another window has no other way of hearing that the
@@ -4522,6 +4690,23 @@ export default class SnowflakeMethodPlugin
 				leaf.view.applyPresentation();
 			}
 		}
+	}
+
+	/**
+	 * Every open stream re-dressed for the mention mode or ignore rules now
+	 * in force, hidden ones included, for the same reason the presentation
+	 * reaches them all.
+	 */
+	private applyManuscriptMentionMode(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			MANUSCRIPT_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeManuscriptView) {
+				leaf.view.applyMentionMode();
+			}
+		}
+		// The tracking pane reads the same rules, so it hears of them too.
+		this.refreshMentionViews();
 	}
 
 	/**
@@ -4883,6 +5068,15 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private registerCommands(): void {
+		this.addCommand({
+			id: 'open-entity-mentions',
+			name: this.globalT('commands.openMentions'),
+			callback: () => {
+				void this.openMentionTracking().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
 		this.addCommand({
 			id: 'start-writing-session',
 			name: this.globalT('commands.startWritingSession'),
@@ -5338,13 +5532,22 @@ export default class SnowflakeMethodPlugin
 	 * `source` is where the menu was raised, so the section can leave out the way
 	 * back to somewhere the author is already standing.
 	 */
-	addProjectMenuSection(menu: Menu, path: string, source?: string): void {
+	addProjectMenuSection(
+		menu: Menu,
+		path: string,
+		source?: string,
+		lead?: (menu: Menu) => void,
+	): void {
 		const locale = this.projectLocaleOfPath(path);
 		const t = (key: string): string => this.translateForProject(locale, key);
 		const section = 'snowflake-method';
 		menu.addItem((item) =>
 			item.setSection(section).setIsLabel(true).setTitle(t('plugin.name')),
 		);
+		// What the click itself was about leads the group, ahead of the
+		// standing entries: a mention under the pointer outranks the doors
+		// that are always there.
+		lead?.(menu);
 		if (source !== MANUSCRIPT_VIEW_TYPE) {
 			menu.addItem((item) =>
 				item
@@ -5581,6 +5784,9 @@ export default class SnowflakeMethodPlugin
 		this.projects.writingCount.forget(file.path, {
 			children: file instanceof TFolder,
 		});
+		this.projects.mentions.forget(file.path, {
+			children: file instanceof TFolder,
+		});
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -5638,6 +5844,9 @@ export default class SnowflakeMethodPlugin
 			children: file instanceof TFolder,
 		});
 		this.projects.writingCount.forget(oldPath, {
+			children: file instanceof TFolder,
+		});
+		this.projects.mentions.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
 		this.sessions.notePathRenamed(oldPath, file.path);
@@ -5804,7 +6013,21 @@ export default class SnowflakeMethodPlugin
 		);
 		this.rerenderStatisticsViews();
 		await this.refreshManuscriptStreams();
+		this.refreshMentionViews();
 		this.refreshManagedEditors();
+	}
+
+	/**
+	 * Every shown tracking pane, re-read. Hidden ones keep their frame and
+	 * pay the refresh at reveal, the bargain the dashboards strike; the
+	 * stamped index makes a post-edit refresh recompute one chapter.
+	 */
+	private refreshMentionViews(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(MENTION_VIEW_TYPE)) {
+			if (!(leaf.view instanceof SnowflakeMentionView)) continue;
+			if (!leaf.view.containerEl.isShown()) continue;
+			void leaf.view.refresh().catch(() => undefined);
+		}
 	}
 
 	private refreshManagedEditors(relock = false): void {

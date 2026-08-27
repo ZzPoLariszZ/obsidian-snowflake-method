@@ -5,6 +5,7 @@ export * from './managed-section-locale';
 export * from './managed-section-navigation';
 export * from './managed-section-ranges';
 export * from './markdown-language';
+export * from './mention-highlights';
 export * from './paragraph-break';
 export * from './paragraph-layout';
 export * from './selection-watch';

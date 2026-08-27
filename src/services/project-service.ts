@@ -151,6 +151,8 @@ import {
   planFieldsBlockReconcile,
   type MemberDocumentType,
 } from "./mirror-sync";
+import { MentionIndexService } from "./mention-index";
+import { MentionStore } from "./mention-store";
 import { WritingCountService } from "./writing-count";
 import {
   DEFAULT_PROJECT_ROOT,
@@ -360,6 +362,10 @@ export class SnowflakeProjectService {
   readonly manuscript: ManuscriptService;
   /** The writing counted in notes, one at a time or a scope at a time. */
   readonly writingCount: WritingCountService;
+  /** The mention analysis files: the reader's ignores, this device's index. */
+  readonly mentionStore: MentionStore;
+  /** Entity mentions per note, stamped, persisted, lazily fresh. */
+  readonly mentions: MentionIndexService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -374,10 +380,35 @@ export class SnowflakeProjectService {
     fileManager: FileManager,
     metadataCache: MetadataCache,
     readonly defaultRoot = DEFAULT_PROJECT_ROOT,
+    analysis: {
+      /** The device the mention index file is named for. */
+      deviceId?: () => string;
+      now?: () => number;
+      onCorrupt?: (path: string) => void;
+      /** The main window's clock, for the index's pacing and quiet flush. */
+      timers?: {
+        set: (handler: () => void, ms: number) => unknown;
+        clear: (handle: unknown) => void;
+      };
+    } = {},
   ) {
     this.repository = new VaultRepository(vault, fileManager, metadataCache);
     this.manuscript = new ManuscriptService(this.repository);
     this.writingCount = new WritingCountService(this.repository, this.manuscript);
+    this.mentionStore = new MentionStore({
+      repository: this.repository,
+      deviceId: analysis.deviceId ?? ((): string => "device"),
+      now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.onCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onCorrupt }),
+    });
+    this.mentions = new MentionIndexService(
+      this.repository,
+      this.manuscript,
+      this.mentionStore,
+      analysis.timers ?? null,
+    );
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
@@ -1032,8 +1063,11 @@ export class SnowflakeProjectService {
       scenes: new Set(["scene"]),
       draft: new Set(["draft"]),
       worldbuilding: new Set(["worldbuilding"]),
-      // Session files are JSON, not managed notes: nothing to own or repair.
+      // Session and analysis files are JSON, not managed notes: nothing to
+      // own or repair.
       writingSessions: new Set(),
+      manuscriptAnalysis: new Set(),
+      mentionIndex: new Set(),
       materials: new Set(),
       archive: new Set(),
     };
@@ -6719,6 +6753,8 @@ export class SnowflakeProjectService {
       draft: [10],
       worldbuilding: [],
       writingSessions: [],
+      manuscriptAnalysis: [],
+      mentionIndex: [],
       materials: [],
       archive: [],
     };

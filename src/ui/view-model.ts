@@ -3,7 +3,11 @@ import type { Menu } from 'obsidian';
 import type {
 	CharacterType,
 	EntityKindId,
+	EntityMatcher,
+	EntityOccurrence,
 	ManuscriptPresentation,
+	MentionHighlightMode,
+	MentionIgnore,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
 	StepId,
@@ -23,6 +27,7 @@ import type {
 	DefinitionForest,
 	KindMutationResult,
 	MemberUsage,
+	MentionAggregate,
 	ProjectStructureIssueCode,
 	SaveCustomFieldTemplateResult,
 } from '../services';
@@ -310,6 +315,8 @@ export interface ManuscriptWindowSettings {
 	recentFonts: readonly string[];
 	/** How the page is dressed: typography, ground and guides, both halves. */
 	presentation: ManuscriptPresentation;
+	/** Which entity mentions the stream marks where they stand in the prose. */
+	mentionHighlight: MentionHighlightMode;
 }
 
 /**
@@ -379,8 +386,17 @@ export interface ManuscriptHost {
 		sectionId?: string,
 		highlightSectionIds?: readonly string[],
 	): Promise<void>;
-	/** This plugin's own labelled group of items, as the file menu shows them. */
-	addProjectMenuSection(menu: Menu, path: string, source?: string): void;
+	/**
+	 * This plugin's own labelled group of items, as the file menu shows them.
+	 * `lead` items land right after the group's label, ahead of the standing
+	 * entries, for whatever the click itself was about.
+	 */
+	addProjectMenuSection(
+		menu: Menu,
+		path: string,
+		source?: string,
+		lead?: (menu: Menu) => void,
+	): void;
 	/** Records where the author was working, for the dashboard to offer later. */
 	rememberManuscriptNote(projectId: string, path: string): void;
 	/** Joins a note with the one after it, the earlier one surviving. */
@@ -401,6 +417,31 @@ export interface ManuscriptHost {
 	): Promise<void>;
 	/** Whether Enter puts the paragraph break, changed from the popover. */
 	setManuscriptEnterParagraph(on: boolean): Promise<void>;
+	/** Which entity mentions the streams mark, changed from the toolbar. */
+	setManuscriptMentionHighlight(mode: MentionHighlightMode): Promise<void>;
+	/** The reader's mention-ignore rules for one project. */
+	mentionIgnores(
+		projectPath: string | null,
+	): Promise<readonly MentionIgnore[]>;
+	/** Writes one ignore rule, then re-dresses every open stream. */
+	addMentionIgnore(
+		projectPath: string | null,
+		rule: MentionIgnore,
+	): Promise<void>;
+	/** Takes one ignore rule back out, then re-dresses every open stream. */
+	removeMentionIgnore(
+		projectPath: string | null,
+		rule: MentionIgnore,
+	): Promise<void>;
+	/**
+	 * The matcher for the project's roster, the wikilink popup's own list:
+	 * what highlights is exactly what completes. Null without a project.
+	 */
+	manuscriptEntityMatcher(
+		projectPath: string | null,
+	): Promise<EntityMatcher | null>;
+	/** Opens the tracking pane, from the bar's own menu. */
+	openMentionTracking(): Promise<void>;
 	/**
 	 * The stream's writing context moved: a segment began or finished being
 	 * edited, its text grew, or its selection changed. Carries nothing,
@@ -415,6 +456,34 @@ export interface ManuscriptHost {
 	 * session tracks the note that was edited wherever its pane sits.
 	 */
 	manuscriptSegmentEdited(path: string, body: string): void;
+}
+
+/**
+ * What the tracking pane reads and does: the index's aggregate, the ignore
+ * rules, and the two jumps out of it -- into the stream at an occurrence,
+ * and into a member's note.
+ */
+export interface MentionViewHost {
+	t: Translate;
+	/** The project the pane follows: the active stream's, else the recent one. */
+	mentionProjectPath(): string | null;
+	manuscriptMentionAggregate(
+		projectPath: string | null,
+	): Promise<MentionAggregate | null>;
+	mentionIgnores(
+		projectPath: string | null,
+	): Promise<readonly MentionIgnore[]>;
+	removeMentionIgnore(
+		projectPath: string | null,
+		rule: MentionIgnore,
+	): Promise<void>;
+	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
+	openManagedFile(path: string): Promise<void>;
+	/** Opens the stream at the occurrence and flashes it. */
+	openManuscriptMention(
+		projectPath: string | null,
+		occurrence: EntityOccurrence,
+	): Promise<void>;
 }
 
 export interface DashboardHost {

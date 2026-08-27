@@ -34,8 +34,11 @@ import {
 	addTracked,
 	autoPair,
 	deleteAutoPair,
+	mentionHighlights,
+	mentionMarkAt,
 	paragraphBreak,
 	paragraphLayout,
+	refreshMentionHighlights,
 	selectedTextOf,
 	toggleHeading,
 	toggleInline,
@@ -45,6 +48,7 @@ import {
 	type InlineMarker,
 	type TrackedCloser,
 } from '../editor';
+import type { MentionMark } from '../domain';
 import {
 	Annotation,
 	EditorSelection,
@@ -153,6 +157,13 @@ export interface SegmentEditorHooks {
 	 * Fetched lazily and cached above this interface; the editor only asks.
 	 */
 	wikilinkTargets?(): Promise<readonly WikilinkTarget[]>;
+	/**
+	 * The mention marks one body wears right now, mode and ignores already
+	 * applied. Asked synchronously on a pause in typing, never per keystroke;
+	 * the view answers from state it already holds, empty while its roster
+	 * is still warming.
+	 */
+	mentionMarks?(path: string, body: string): readonly MentionMark[];
 	/**
 	 * The pointer stands in a wikilink in the editor's raw text. Fired for
 	 * every move within one, and again when a modifier comes down over it —
@@ -525,6 +536,19 @@ export interface SegmentEditorHandle {
 	place(screenY: number): { at: number; top: number } | null;
 	/** Runs one editing command as the author's own edit. False when it did nothing. */
 	exec(command: SegmentEditorCommandId): boolean;
+	/** Asks the editor to re-plan its mention marks from the current body. */
+	refreshMentions(): void;
+	/**
+	 * The mention under a screen point, re-anchored to where its decoration
+	 * stands now, for the context menu. Null off any mention.
+	 */
+	mentionAt(x: number, y: number): MentionMark | null;
+	/**
+	 * One guarded replacement as the author's own edit: declined when the
+	 * text at the range is no longer `expected`, because the analysis a menu
+	 * acted on may be a pause behind the typing.
+	 */
+	splice(from: number, to: number, expected: string, insert: string): boolean;
 	/**
 	 * Asks the editor to measure its lines again on the next frame. The page
 	 * calls this when it changes the typography under the editor, because the
@@ -778,6 +802,20 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			},
 			exec: (command: SegmentEditorCommandId) =>
 				runEditorCommand(view, command),
+			refreshMentions: () => {
+				refreshMentionHighlights(view);
+			},
+			mentionAt: (x: number, y: number) => mentionMarkAt(view, x, y),
+			splice: (from: number, to: number, expected: string, insert: string) => {
+				if (view.state.sliceDoc(from, to) !== expected) return false;
+				view.dispatch({
+					changes: { from, to, insert },
+					selection: EditorSelection.cursor(from + insert.length),
+					userEvent: 'input.complete',
+					scrollIntoView: true,
+				});
+				return true;
+			},
 			focus: () => {
 				view.focus();
 			},
@@ -1098,6 +1136,14 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			EditorView.lineWrapping,
 			caretParagraph,
 			paragraphLines,
+			...(target.readOnly || hooks.mentionMarks === undefined
+				? []
+				: [
+						mentionHighlights({
+							marks: (body) =>
+								hooks.mentionMarks?.(target.path, body) ?? [],
+						}),
+					]),
 			EditorView.updateListener.of((update) => {
 				const handed = update.transactions.some(
 					(transaction) => transaction.annotation(FROM_ELSEWHERE) === true,

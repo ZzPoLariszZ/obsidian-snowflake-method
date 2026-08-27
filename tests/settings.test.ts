@@ -406,6 +406,21 @@ describe('settings', () => {
 		}
 	});
 
+	it('reads the mention highlight choice and falls back to off', () => {
+		expect(
+			sanitizeSettings({
+				...DEFAULT_SETTINGS,
+				manuscriptMentionHighlight: 'unlinked',
+			}).manuscriptMentionHighlight,
+		).toBe('unlinked');
+		expect(
+			sanitizeSettings({
+				...DEFAULT_SETTINGS,
+				manuscriptMentionHighlight: 'sometimes',
+			}).manuscriptMentionHighlight,
+		).toBe('off');
+	});
+
 	it('starts with typewriter scrolling on and focus off, and holds a choice', () => {
 		expect(DEFAULT_SETTINGS.manuscriptTypewriter).toBe(true);
 		expect(DEFAULT_SETTINGS.manuscriptFocusLevel).toBe('off');

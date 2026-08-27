@@ -45,6 +45,8 @@ export const PROJECT_DIRECTORY_KEYS = [
   "draft",
   "worldbuilding",
   "writingSessions",
+  "manuscriptAnalysis",
+  "mentionIndex",
   "materials",
   "archive",
 ] as const;
@@ -74,6 +76,10 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       // single entry keeps the id-recovery walk from visiting 70_Tool three
       // times over.
       writingSessions: "70_Tool/71_Data_Statistics/711_Writing_Session",
+      // Two sibling data folders: the reader's own analysis choices, and the
+      // per-device mention index cache beside them.
+      manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Manuscript_Analysis",
+      mentionIndex: "70_Tool/71_Data_Statistics/713_Mention_Index",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -95,6 +101,8 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       draft: "50_正文",
       worldbuilding: "60_世界观",
       writingSessions: "70_工具/71_数据统计/711_写作时段",
+      manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
+      mentionIndex: "70_工具/71_数据统计/713_提及索引",
       materials: "80_素材",
       archive: "90_存档",
     },
