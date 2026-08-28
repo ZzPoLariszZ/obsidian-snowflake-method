@@ -2049,13 +2049,33 @@
 }
 
 /* The wrap no longer clips, so each half rounds its own corners: the header
-   strip the top pair, the body the bottom-left it still owns. The header's
-   horizontal scroll is set from the body's, so it never scrolls itself. */
+   strip the top pair, the body the bottom-left it still owns.
+
+   The header is the body's geometric twin: the same reach into the gutter,
+   the same padding back, and a real vertical scrollbar lane -- always
+   present, never with anything to scroll -- where the body keeps its own.
+   Whatever a scrollbar mode does to the body's width and clip edge it does
+   to the header's the same way, so the halves agree in every mode by
+   sharing one construction, not by the measured variable being right.
+
+   A reserved `scrollbar-gutter` is not that twin: Chromium sizes the box
+   by the reservation but neither clips against it -- the header strip
+   painted through it into the gutter beside the frame -- nor scrolls into
+   it, which parked a synced header one scrollbar short of the body's far
+   edge. So the header never scrolls at all: the frame's scroll handler
+   carries the header table sideways by a transform instead, which has no
+   clamp to hit. */
 .snowflake-method-table-head {
 	flex: 0 0 auto;
-	overflow: hidden;
+	overflow-x: hidden;
+	overflow-y: scroll;
 	border-start-start-radius: calc(var(--radius-s) - 1px);
 	border-start-end-radius: calc(var(--radius-s) - 1px);
+	margin-inline-end: calc(-1 * var(--snowflake-method-table-gutter));
+	padding-inline-end: calc(
+		var(--snowflake-method-table-gutter) -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
 }
 
 /* The body reaches out of the frame by the gutter and pads the reach back,
@@ -2069,6 +2089,7 @@
 	min-height: 0;
 	overflow-x: auto;
 	overflow-y: scroll;
+	scrollbar-gutter: stable;
 	margin-inline-end: calc(-1 * var(--snowflake-method-table-gutter));
 	padding-inline-end: calc(
 		var(--snowflake-method-table-gutter) -

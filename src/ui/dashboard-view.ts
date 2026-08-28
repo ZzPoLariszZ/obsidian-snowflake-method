@@ -1695,7 +1695,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body } = this.buildTableFrame(
 			panel,
 			'snowflake-method-entity-table',
 			[
@@ -1744,7 +1744,6 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			onScroll: (top) => {
 				this.entityScroll.set(kind, top);
-				headWrap.scrollLeft = bodyWrap.scrollLeft;
 			},
 			onMeasure: (height) => {
 				this.entityRowHeight = height;
@@ -5355,7 +5354,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body } = this.buildTableFrame(
 			panel,
 			'snowflake-method-character-table',
 			[
@@ -5402,7 +5401,6 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			onScroll: (top) => {
 				this.characterScroll = top;
-				headWrap.scrollLeft = bodyWrap.scrollLeft;
 			},
 			onMeasure: (height) => {
 				this.characterRowHeight = height;
@@ -5748,7 +5746,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// Member tables lay the member grid; a caller with fewer columns says
 		// so here.
 		columnClasses: readonly string[] = this.tableColumnClasses(),
-	): { headWrap: HTMLElement; bodyWrap: HTMLElement; body: HTMLElement } {
+	): { bodyWrap: HTMLElement; body: HTMLElement } {
 		const shown = this.host.showsTableActionsColumn()
 			? [...headers, this.t('table.actions')]
 			: headers;
@@ -5768,7 +5766,17 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 		const headerRow = headTable.createEl('thead').createEl('tr');
 		for (const text of shown) headerRow.createEl('th', { text });
-		return { headWrap, bodyWrap, body: bodyTable.createEl('tbody') };
+		// The header never scrolls itself (the stylesheet says why): the
+		// body's scroll carries the header table sideways by a transform,
+		// which reaches the far edge in every scrollbar mode.
+		let carried = '';
+		bodyWrap.addEventListener('scroll', () => {
+			const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
+			if (shift === carried) return;
+			carried = shift;
+			headTable.style.transform = shift;
+		});
+		return { bodyWrap, body: bodyTable.createEl('tbody') };
 	}
 
 	private renderCharacterRow(
@@ -6003,7 +6011,7 @@ export class SnowflakeDashboardView extends ItemView {
 		setIcon(filterButton, 'funnel');
 		setTooltip(filterButton, this.t('table.filter'));
 
-		const { headWrap, bodyWrap, body } = this.buildTableFrame(
+		const { bodyWrap, body } = this.buildTableFrame(
 			panel,
 			'snowflake-method-scene-table',
 			['order', 'sceneName', 'scenePov', 'conflict'].map((key) =>
@@ -6046,7 +6054,6 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			onScroll: (top) => {
 				this.sceneScroll = top;
-				headWrap.scrollLeft = bodyWrap.scrollLeft;
 			},
 			onMeasure: (height) => {
 				this.sceneRowHeight = height;
