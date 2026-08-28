@@ -5204,7 +5204,15 @@ export default class SnowflakeMethodPlugin
 		for (const leaf of this.app.workspace.getLeavesOfType(
 			MANUSCRIPT_VIEW_TYPE,
 		)) {
-			if (!leaf.view.containerEl.isShown()) continue;
+			if (!leaf.view.containerEl.isShown()) {
+				// A hidden stream pays at reveal instead: without the debt, an
+				// alias added while a member note covered the stream stayed
+				// undressed until the mode was touched or the app reloaded.
+				if (leaf.view instanceof SnowflakeManuscriptView) {
+					leaf.view.queueRefreshWhenShown();
+				}
+				continue;
+			}
 			await leaf.loadIfDeferred();
 			if (leaf.view instanceof SnowflakeManuscriptView) {
 				await leaf.view.refresh();
@@ -6315,7 +6323,10 @@ export default class SnowflakeMethodPlugin
 	private refreshMentionViews(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType(MENTION_VIEW_TYPE)) {
 			if (!(leaf.view instanceof SnowflakeMentionView)) continue;
-			if (!leaf.view.containerEl.isShown()) continue;
+			if (!leaf.view.containerEl.isShown()) {
+				leaf.view.queueRefreshWhenShown();
+				continue;
+			}
 			void leaf.view.refresh().catch(() => undefined);
 		}
 	}

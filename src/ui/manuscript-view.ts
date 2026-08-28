@@ -262,6 +262,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	private refreshing = false;
 	/** A refresh asked for while one was running, run once that one is done. */
 	private refreshAgain = false;
+	/** A refresh that landed while hidden, owed at the next reveal. */
+	private refreshQueuedWhileHidden = false;
 	/** The project the cached wikilink targets were fetched for. */
 	private wikilinkProject: string | null = null;
 	private readonly t = (
@@ -404,6 +406,19 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.contentEl.empty();
 	}
 
+	/** Owes the next reveal a refresh, for events that landed off screen. */
+	queueRefreshWhenShown(): void {
+		this.refreshQueuedWhileHidden = true;
+	}
+
+	onResize(): void {
+		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
+		this.refreshQueuedWhileHidden = false;
+		void this.refresh().catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
 	/**
 	 * Re-reads the manuscript and shows whatever changed.
 	 *
@@ -415,6 +430,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * whole method exists to avoid.
 	 */
 	async refresh(): Promise<void> {
+		this.refreshQueuedWhileHidden = false;
 		if (this.refreshing) {
 			// Asked for while one was running: what the running one loaded is
 			// already out of date, and dropping the request left the page showing

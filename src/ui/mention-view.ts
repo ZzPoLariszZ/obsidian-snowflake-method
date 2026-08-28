@@ -58,6 +58,8 @@ export class SnowflakeMentionView extends ItemView {
 	private projectPath: string | null = null;
 	private loading = false;
 	private refreshAgain = false;
+	/** A refresh that landed while hidden, owed at the next reveal. */
+	private refreshQueuedWhileHidden = false;
 	/** Chapter bodies read for context lines, once per refresh. */
 	private readonly bodies = new Map<string, string>();
 
@@ -86,7 +88,19 @@ export class SnowflakeMentionView extends ItemView {
 		await this.refresh();
 	}
 
+	/** Owes the next reveal a refresh, for events that landed off screen. */
+	queueRefreshWhenShown(): void {
+		this.refreshQueuedWhileHidden = true;
+	}
+
+	onResize(): void {
+		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
+		this.refreshQueuedWhileHidden = false;
+		void this.refresh().catch(() => undefined);
+	}
+
 	async refresh(): Promise<void> {
+		this.refreshQueuedWhileHidden = false;
 		if (this.loading) {
 			this.refreshAgain = true;
 			return;
