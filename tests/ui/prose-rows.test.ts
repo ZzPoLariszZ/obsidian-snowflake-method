@@ -4,6 +4,7 @@ import { t as translate } from '../../src/i18n';
 import type { ManuscriptProseStatistics } from '../../src/services';
 import {
 	averageSentenceLength,
+	cloudWords,
 	dialoguePercent,
 	filterFrequencyRows,
 	formatDecimal,
@@ -106,6 +107,43 @@ describe('averages and shares', () => {
 			averageSentence: null,
 			dialoguePercent: null,
 		});
+	});
+});
+
+describe('the word cloud', () => {
+	const ranked = [
+		{ term: 'sea', count: 100 },
+		{ term: 'fog', count: 10 },
+		{ term: 'rope', count: 1 },
+	];
+
+	it('weighs the chosen words on a log scale, ends pinned', () => {
+		const byTerm = new Map(
+			cloudWords(ranked, 3).map((word) => [word.term, word.weight]),
+		);
+		expect(byTerm.get('sea')).toBe(1);
+		expect(byTerm.get('rope')).toBe(0);
+		expect(byTerm.get('fog')).toBeCloseTo(0.5, 5);
+	});
+
+	it('keeps only the top of the ranking and scatters it stably', () => {
+		const two = cloudWords(ranked, 2);
+		expect(new Set(two.map((word) => word.term))).toEqual(
+			new Set(['sea', 'fog']),
+		);
+		expect(cloudWords(ranked, 2)).toEqual(two);
+	});
+
+	it('weighs a uniform field at the middle, and nothing as nothing', () => {
+		const flat = cloudWords(
+			[
+				{ term: 'one', count: 4 },
+				{ term: 'two', count: 4 },
+			],
+			5,
+		);
+		expect(flat.map((word) => word.weight)).toEqual([0.5, 0.5]);
+		expect(cloudWords([], 10)).toEqual([]);
 	});
 });
 

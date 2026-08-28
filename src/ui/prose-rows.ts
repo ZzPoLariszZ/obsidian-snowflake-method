@@ -114,3 +114,55 @@ export function filterFrequencyRows(
 	if (needle.length === 0) return [...rows];
 	return rows.filter((row) => row.term.includes(needle));
 }
+
+export interface CloudWord {
+	term: string;
+	count: number;
+	/** 0 for the rarest of the chosen words, 1 for the commonest. */
+	weight: number;
+	/**
+	 * The term's own die roll in [0, 1): every whim of the presentation --
+	 * a tilt, a drift, a color -- derives from this, so the same word falls
+	 * the same way every time the cloud is drawn.
+	 */
+	seed: number;
+}
+
+/** A stable pseudo-shuffle: the cloud looks scattered, never re-scatters. */
+function cloudOrderOf(term: string): number {
+	let hash = 5381;
+	for (let index = 0; index < term.length; index += 1) {
+		hash = ((hash << 5) + hash + term.charCodeAt(index)) >>> 0;
+	}
+	return hash;
+}
+
+/**
+ * The cloud's words: the most frequent `limit` terms, each weighed on a log
+ * scale -- word counts are Zipfian, and a linear scale would leave one giant
+ * and dust -- then scattered by a hash of the term itself, so the layout
+ * holds still across repaints. A uniform field weighs in at the middle.
+ */
+export function cloudWords(
+	rows: readonly FrequencyRow[],
+	limit: number,
+): CloudWord[] {
+	const top = rows.slice(0, Math.max(0, limit));
+	if (top.length === 0) return [];
+	const most = Math.max(...top.map((row) => row.count));
+	const least = Math.min(...top.map((row) => row.count));
+	const spread = Math.log(most) - Math.log(least);
+	return top
+		.map((row) => ({
+			term: row.term,
+			count: row.count,
+			weight:
+				spread <= 0 ? 0.5 : (Math.log(row.count) - Math.log(least)) / spread,
+			seed: cloudOrderOf(row.term) / 4294967296,
+		}))
+		.sort(
+			(left, right) =>
+				cloudOrderOf(left.term) - cloudOrderOf(right.term) ||
+				left.term.localeCompare(right.term),
+		);
+}

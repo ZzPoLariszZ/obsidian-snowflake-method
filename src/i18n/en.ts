@@ -1368,6 +1368,7 @@ export const en = {
 		'This device has no word segmenter, so CJK text is counted one character at a time.',
 	'prose.frequency.more':
 		'Showing {shown} of {total} words. Search to reach the rest.',
+	'prose.cloud.heading': 'Word cloud',
 	'prose.time.lessThanMinute': '< 1 min',
 	'prose.time.minutes': '{minutes} min',
 	'prose.time.hoursMinutes': '{hours} h {minutes} min',

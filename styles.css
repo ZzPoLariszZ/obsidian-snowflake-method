@@ -5404,6 +5404,7 @@ body {
    frame keep the close ranks of a member panel. */
 .snowflake-method-prose-panel {
 	position: relative;
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	gap: var(--snowflake-method-tab-height, var(--size-4-3));
@@ -5413,6 +5414,23 @@ body {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
+}
+
+/* A pane too narrow for tables keeps the cards and the sky, the bargain
+   the session widgets strike: the chapters and the frequency list wait for
+   room. The threshold sits above the table's own floor -- the measured
+   columns hold 38.5rem between them -- so the table is never shown in a
+   state where it must scroll sideways or starve its chapter names. */
+.snowflake-method-prose-chapters,
+.snowflake-method-prose-frequency {
+	display: none;
+}
+
+@container (min-width: 45rem) {
+	.snowflake-method-prose-chapters,
+	.snowflake-method-prose-frequency {
+		display: flex;
+	}
 }
 
 .snowflake-method-prose-section-heading {
@@ -5620,6 +5638,63 @@ col.snowflake-method-prose-column-dialogue {
 	.snowflake-method-prose-frequency-share {
 	color: var(--text-accent);
 	font-weight: var(--font-semibold);
+}
+
+/* The cloud's toolbar holds only the two filters, kept to the right end the
+   way the frequency's pair stands opposite its search. */
+.snowflake-method-prose-section .snowflake-method-prose-cloud-controls {
+	justify-content: flex-end;
+}
+
+/* The cloud itself: scattered type in one fixed frame, centred both ways,
+   sized from the shared interface scale so the weights read as em factors.
+   What cannot fit at sixty words is clipped rather than scrolled -- a sky,
+   not a list. */
+.snowflake-method-prose-cloud-frame {
+	height: 18rem;
+	overflow: hidden;
+	/* A ring of quiet between the border and the outermost words: the sky
+	   is laid inside the padded box, so nothing touches the frame. */
+	padding: var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+}
+
+/* The cloud is laid by d3-cloud and drawn as SVG text, its native shape:
+   the anchor point, the rotation and the collision masks all agree. */
+.snowflake-method-prose-cloud {
+	height: 100%;
+	overflow: hidden;
+	font-size: var(--font-ui-medium);
+}
+
+.snowflake-method-prose-cloud svg {
+	display: block;
+}
+
+/* One family of shades from the theme's own accent, prominence wearing the
+   strength: full accent for the headliners, mixed-down grades beneath. The
+   text takes its ink from the shade classes through currentColor. */
+.snowflake-method-prose-cloud-word {
+	fill: currentColor;
+	color: var(--text-normal);
+}
+
+.snowflake-method-prose-cloud-word.is-shade-strong {
+	color: var(--text-accent);
+}
+
+.snowflake-method-prose-cloud-word.is-shade-deep {
+	color: color-mix(in srgb, var(--text-accent) 65%, var(--text-normal));
+}
+
+.snowflake-method-prose-cloud-word.is-shade-mid {
+	color: color-mix(in srgb, var(--text-accent) 45%, var(--text-muted));
+}
+
+.snowflake-method-prose-cloud-word.is-shade-soft {
+	color: color-mix(in srgb, var(--text-accent) 25%, var(--text-muted));
 }
 
 /* The tail of a capped list: what is shown of how many, and that the search

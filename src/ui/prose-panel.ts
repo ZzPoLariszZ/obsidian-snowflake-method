@@ -12,6 +12,7 @@
  * computing rather than standing empty.
  */
 
+import cloud from 'd3-cloud';
 import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { FrequencyRow } from '../domain';
@@ -19,6 +20,7 @@ import type { ManuscriptProseStatistics, ManuscriptProseRow } from '../services'
 import type { Translate } from './modals';
 import {
 	averageSentenceLength,
+	cloudWords,
 	dialoguePercent,
 	filterFrequencyRows,
 	formatDecimal,
@@ -50,6 +52,10 @@ export interface ProsePanelHandle {
 /** Frequency rows drawn at once; the search reaches past them. */
 const MAX_FREQUENCY_ROWS = 200;
 
+/** Words offered to the cloud, the frequency list's own top slice: the
+ *  layout keeps what fits and lets the rest go. */
+const MAX_CLOUD_TERMS = 200;
+
 const PROSE_COLUMNS = [
 	'chapter',
 	'length',
@@ -77,6 +83,11 @@ export function renderProsePanel(
 	let includeStopwords = false;
 	let includeEntities = false;
 	let frequencyToken = 0;
+	let cloudRows: FrequencyRow[] = [];
+	let cloudTotal = 0;
+	let cloudStopwords = false;
+	let cloudEntities = false;
+	let cloudToken = 0;
 
 	// The head: what the panel is doing, and the one explicit refresh -- a
 	// whole-manuscript reading is too heavy to recompute on every vault save.
@@ -275,6 +286,45 @@ export function renderProsePanel(
 		cls: 'snowflake-method-prose-frequency-list',
 	});
 
+	// The cloud: the same counting read as the frequency list, under its own
+	// pair of filters, drawn as scattered type rather than ranked rows.
+	const cloudSection = root.createDiv({
+		cls: 'snowflake-method-prose-section',
+	});
+	cloudSection.createEl('h3', {
+		cls: 'snowflake-method-prose-section-heading',
+		text: t('prose.cloud.heading'),
+	});
+	const cloudControls = cloudSection.createDiv({
+		cls: 'snowflake-method-table-toolbar snowflake-method-prose-cloud-controls',
+	});
+	toggle(
+		cloudControls,
+		t('prose.frequency.includeStopwords'),
+		() => cloudStopwords,
+		(next) => {
+			cloudStopwords = next;
+		},
+		() => {
+			refreshCloud();
+		},
+	);
+	toggle(
+		cloudControls,
+		t('prose.frequency.includeEntities'),
+		() => cloudEntities,
+		(next) => {
+			cloudEntities = next;
+		},
+		() => {
+			refreshCloud();
+		},
+	);
+	const cloudFrame = cloudSection.createDiv({
+		cls: 'snowflake-method-prose-cloud-frame',
+	});
+	const cloudEl = cloudFrame.createDiv({ cls: 'snowflake-method-prose-cloud' });
+
 	const paintSummary = (): void => {
 		summaryEl.empty();
 		if (statistics === null) return;
@@ -374,6 +424,172 @@ export function renderProsePanel(
 			.catch(() => undefined);
 	};
 
+	/** A second and third die from the one seed, decorrelated by primes. */
+	const rollOf = (seed: number, prime: number): number => (seed * prime) % 1;
+
+	// One hue family, graded: the commonest words wear the accent at full
+	// strength and the rest recede through mixed-down shades of it, the way
+	// printed clouds keep to a palette rather than a paintbox. A little of
+	// the die keeps neighbours in one tier from reading as one mass.
+	const shadeOf = (weight: number, seed: number): string => {
+		const flip = rollOf(seed, 104729) < 0.35;
+		if (weight > 0.75) return flip ? 'deep' : 'strong';
+		if (weight > 0.45) return flip ? 'strong' : 'deep';
+		if (weight > 0.2) return flip ? 'deep' : 'mid';
+		return flip ? 'mid' : 'soft';
+	};
+
+	interface CloudDatum {
+		text: string;
+		size: number;
+		/** The 0..1 frequency weight; `weight` is d3-cloud's own font field. */
+		strength: number;
+		seed: number;
+		count: number;
+		rotate?: number;
+		x?: number;
+		y?: number;
+	}
+
+	const cloudFontWeight = (strength: number): string =>
+		strength > 0.75
+			? '700'
+			: strength > 0.45
+				? '600'
+				: strength > 0.2
+					? '500'
+					: '400';
+
+	let cloudPaintedWidth = 0;
+	let cloudPaint = 0;
+	let cloudLayout: { stop: () => unknown } | null = null;
+	const paintCloud = (): void => {
+		cloudEl.empty();
+		cloudLayout?.stop();
+		const frameWidth = cloudEl.clientWidth;
+		const frameHeight = cloudEl.clientHeight;
+		// Hidden, there is nothing to measure against: the reveal's refresh
+		// and the observer below both repaint once there is room.
+		cloudPaintedWidth = frameWidth;
+		if (frameWidth === 0 || frameHeight === 0) return;
+		const paint = (cloudPaint += 1);
+		const face = getComputedStyle(cloudEl);
+		const basePx = parseFloat(face.fontSize) || 15;
+		// Biggest first, so the headliners take the middle of the spiral and
+		// everything smaller packs into the coves around them. The weight
+		// spans just over a doubling of the base size: enough hierarchy to
+		// read at a glance, no single word owning the sky.
+		const words = cloudWords(cloudRows, MAX_CLOUD_TERMS).sort(
+			(left, right) => right.count - left.count,
+		);
+		// The layout rolls its own dice for jitter; handed a die seeded from
+		// the reading itself, one reading is one sky, every time it is drawn.
+		let state = 0;
+		for (const word of words) {
+			state = (state + Math.floor(word.seed * 4294967296)) >>> 0;
+		}
+		const random = (): number => {
+			state = (state + 0x6d2b79f5) >>> 0;
+			let t = state;
+			t = Math.imul(t ^ (t >>> 15), t | 1);
+			t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+		};
+		const layout = cloud<CloudDatum>()
+			.size([frameWidth, frameHeight])
+			.words(
+				words.map((word) => ({
+					text: word.term,
+					size: Math.round((0.85 + word.weight * 1.75) * basePx),
+					strength: word.weight,
+					seed: word.seed,
+					count: word.count,
+				})),
+			)
+			.padding(2)
+			.font(face.fontFamily)
+			.fontWeight((datum) => cloudFontWeight(datum.strength))
+			.fontSize((datum) => datum.size)
+			// A few short words stand on end the way printed clouds set them;
+			// the biggest stay level, headlines are for reading.
+			.rotate((datum) =>
+				rollOf(datum.seed, 7919) < 0.16 &&
+				datum.strength < 0.7 &&
+				datum.text.length <= 6
+					? 90
+					: 0,
+			)
+			.random(random)
+			.on('end', (placed) => {
+				if (disposed || paint !== cloudPaint) return;
+				const svg = cloudEl.createSvg('svg', {
+					attr: {
+						width: frameWidth,
+						height: frameHeight,
+						viewBox: `0 0 ${String(frameWidth)} ${String(frameHeight)}`,
+					},
+				});
+				const centre = svg.createSvg('g', {
+					attr: {
+						transform: `translate(${String(frameWidth / 2)},${String(frameHeight / 2)})`,
+					},
+				});
+				for (const word of placed) {
+					const el = centre.createSvg('text', {
+						// An array rather than one spaced string: the SVG
+						// helper feeds classList tokens one at a time.
+						cls: [
+							'snowflake-method-prose-cloud-word',
+							`is-shade-${shadeOf(word.strength, word.seed)}`,
+						],
+						attr: {
+							'text-anchor': 'middle',
+							transform: `translate(${String(word.x ?? 0)},${String(word.y ?? 0)}) rotate(${String(word.rotate ?? 0)})`,
+							'font-size': `${String(word.size)}px`,
+							'font-weight': cloudFontWeight(word.strength),
+						},
+					});
+					el.textContent = word.text;
+					const share = frequencySharePercent(word.count, cloudTotal);
+					setTooltip(
+						el as unknown as HTMLElement,
+						share === null
+							? String(word.count)
+							: `${String(word.count)} (${share}%)`,
+					);
+				}
+			});
+		cloudLayout = layout;
+		layout.start();
+	};
+
+	const refreshCloud = (): void => {
+		const token = (cloudToken += 1);
+		void bridge
+			.frequency({
+				includeStopwords: cloudStopwords,
+				includeEntities: cloudEntities,
+			})
+			.then((read) => {
+				if (disposed || token !== cloudToken) return;
+				cloudRows = read?.rows ?? [];
+				cloudTotal = read?.total ?? 0;
+				paintCloud();
+			})
+			.catch(() => undefined);
+	};
+
+	// A cloud is packed against its box: when the pane hands the box a new
+	// width -- a drag, a reveal from nothing -- the sky is laid again, and
+	// the chapter table is renudged for the case where the narrow pane hid
+	// it before it ever measured itself.
+	const cloudObserver = new ResizeObserver(() => {
+		if (disposed || cloudEl.clientWidth === cloudPaintedWidth) return;
+		virtual.setTotal(entries.length);
+		paintCloud();
+	});
+	cloudObserver.observe(cloudEl);
+
 	const paint = (): void => {
 		if (statistics === null) {
 			stateText.setText(t('prose.noProject'));
@@ -409,6 +625,7 @@ export function renderProsePanel(
 				statistics = next;
 				paint();
 				refreshFrequency();
+				refreshCloud();
 				if (refreshAgain) {
 					refreshAgain = false;
 					refresh();
@@ -425,6 +642,8 @@ export function renderProsePanel(
 		refresh,
 		dispose: (): void => {
 			disposed = true;
+			cloudLayout?.stop();
+			cloudObserver.disconnect();
 			virtual.destroy();
 			root.remove();
 		},
