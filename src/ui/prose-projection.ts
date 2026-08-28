@@ -13,8 +13,8 @@
  * highlights with, its syntax stripped, its whitespace dropped, and every
  * surviving character remembering where in the source it came from. Rendered
  * text given the same stripping matches it exactly — across emphasis, links,
- * headings, soft breaks and paragraph joins alike — and the match maps back to
- * the precise character the pointer was on.
+ * wikilinks and embeds, headings, soft breaks and paragraph joins alike — and
+ * the match maps back to the precise character the pointer was on.
  *
  * Whitespace is dropped rather than collapsed because the page is not even
  * consistent about it: a soft break renders as a `<br>` whose textContent is
@@ -27,6 +27,8 @@
  */
 
 import { parser as markdownParser } from '@lezer/markdown';
+
+import { wikilinkSpans } from '../domain';
 
 export interface ProseProjection {
 	/** The prose alone: syntax stripped, whitespace dropped. */
@@ -109,8 +111,12 @@ interface Elision {
 	at?: number;
 }
 
+/** Regions the page shows verbatim, wikilink syntax included. */
+const CODE = new Set(['InlineCode', 'FencedCode', 'CodeBlock']);
+
 export function projectProse(source: string): ProseProjection {
 	const elisions: Elision[] = [];
+	const codeRanges: { from: number; to: number }[] = [];
 	// Inside `<https://…>` the URL is the link's own text; everywhere else it is
 	// the half of a link the page never shows.
 	let autolinks = 0;
@@ -118,6 +124,10 @@ export function projectProse(source: string): ProseProjection {
 		enter: (node) => {
 			if (node.name === 'Autolink') {
 				autolinks += 1;
+				return true;
+			}
+			if (CODE.has(node.name)) {
+				codeRanges.push({ from: node.from, to: node.to });
 				return true;
 			}
 			if (MARKS.has(node.name) || SILENT.has(node.name)) {
@@ -156,6 +166,43 @@ export function projectProse(source: string): ProseProjection {
 			if (node.name === 'Autolink') autolinks -= 1;
 		},
 	});
+
+	// Wikilinks are Obsidian's, not Markdown's: the grammar above reads
+	// `[[path|alias]]` as prose with brackets while the page shows the alias
+	// alone, and every passage overlapping a link used to fail its lookup for
+	// it. The shown text is a literal slice of the source, so a link projects
+	// as its visible half with the rest elided -- an embed shows nothing of
+	// its own line at all. A link inside code stands verbatim on the page and
+	// is left alone, and one swallowed whole by something already hidden (a
+	// comment, say) defers to it; only the bracket noise the grammar found
+	// wholly inside a surviving link is discarded.
+	const links = wikilinkSpans(source).filter(
+		(link) =>
+			!codeRanges.some((code) => link.from < code.to && code.from < link.to) &&
+			!elisions.some(
+				(kept) =>
+					kept.from < link.to &&
+					link.from < kept.to &&
+					!(kept.from >= link.from && kept.to <= link.to),
+			),
+	);
+	if (links.length > 0) {
+		const survivors = elisions.filter(
+			(kept) =>
+				!links.some((link) => kept.from >= link.from && kept.to <= link.to),
+		);
+		for (const link of links) {
+			if (link.embed) {
+				survivors.push({ from: link.from, to: link.to });
+				continue;
+			}
+			survivors.push({ from: link.from, to: link.visibleFrom });
+			survivors.push({ from: link.visibleTo, to: link.to });
+		}
+		survivors.sort((left, right) => left.from - right.from);
+		elisions.length = 0;
+		elisions.push(...survivors);
+	}
 
 	// One pass over the source, stepping around the elisions — which arrive in
 	// document order, none inside another, because a skipped subtree was never

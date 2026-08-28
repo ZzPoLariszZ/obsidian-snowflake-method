@@ -20,6 +20,15 @@ describe('projectProse', () => {
 		// The B of Body sits after the heading and the blank line.
 		expect(projection.sourceIndexOf[5]).toBe(9);
 	});
+
+	it('projects a wikilink as the text the page shows for it', () => {
+		const source = '去[[Demo/Alice|小艾]]家。';
+		const projection = projectProse(source);
+		expect(projection.text).toBe('去小艾家。');
+		// The alias characters stand at their own source offsets.
+		expect(projection.sourceIndexOf[1]).toBe(source.indexOf('|') + 1);
+		expect(projection.sourceIndexOf[3]).toBe(source.indexOf('家'));
+	});
 });
 
 describe('findPassage', () => {
@@ -130,6 +139,63 @@ describe('findPassage', () => {
 		expect(findPassage(source, refrain, 0, 0.02)).toBe(source.indexOf(refrain));
 		expect(findPassage(source, refrain, 0, 0.98)).toBe(
 			source.lastIndexOf(refrain),
+		);
+	});
+
+	it('reads a piped wikilink as its alias alone', () => {
+		// What the reader saw was `恐怕非薰儿小姐莫属`; what the file holds is the
+		// link with its target hidden. A click anywhere in the paragraph, the
+		// alias itself included, must land on its own words.
+		const source =
+			'这个称呼，恐怕非[[演示/20_角色/萧薰儿|薰儿]]小姐莫属，旁人是当不起的。';
+		const passage = '这个称呼，恐怕非薰儿小姐莫属，旁人是当不起的。';
+		expect(findPassage(source, passage, passage.indexOf('恐怕'), 0.5)).toBe(
+			source.indexOf('恐怕'),
+		);
+		expect(findPassage(source, passage, passage.indexOf('小姐'), 0.5)).toBe(
+			source.indexOf('小姐'),
+		);
+		expect(findPassage(source, passage, passage.indexOf('薰儿小'), 0.5)).toBe(
+			source.indexOf('|') + 1,
+		);
+	});
+
+	it('reads a bare wikilink as its written target', () => {
+		const source = '门口站着的正是[[萧薰儿]]本人，谁也没有想到。';
+		const passage = '门口站着的正是萧薰儿本人，谁也没有想到。';
+		expect(findPassage(source, passage, passage.indexOf('萧薰儿'), 0)).toBe(
+			source.indexOf('萧薰儿'),
+		);
+		expect(findPassage(source, passage, passage.indexOf('本人'), 0)).toBe(
+			source.indexOf('本人'),
+		);
+	});
+
+	it('reads past an embed as the page does: as nothing', () => {
+		const source = '山谷的清晨![[晨雾照片.png]]总是先冷后暖，等雾散了才见人。';
+		const passage = '山谷的清晨总是先冷后暖，等雾散了才见人。';
+		expect(findPassage(source, passage, passage.indexOf('总是'), 0)).toBe(
+			source.indexOf('总是'),
+		);
+	});
+
+	it('leaves a wikilink inside code standing verbatim', () => {
+		const source = '语法写作 `[[目标|别名]]` 的样子，方括号照原样显示。';
+		const passage = '语法写作 [[目标|别名]] 的样子，方括号照原样显示。';
+		expect(findPassage(source, passage, passage.indexOf('别名'), 0)).toBe(
+			source.indexOf('别名'),
+		);
+		expect(findPassage(source, passage, passage.indexOf('方括号'), 0)).toBe(
+			source.indexOf('方括号'),
+		);
+	});
+
+	it('defers to a comment that already hides the link whole', () => {
+		const source =
+			'前半句还在页面上<!-- [[隐藏目标|链接]] -->后半句也还在页面上。';
+		const passage = '前半句还在页面上后半句也还在页面上。';
+		expect(findPassage(source, passage, passage.indexOf('后半句'), 0)).toBe(
+			source.indexOf('后半句'),
 		);
 	});
 
