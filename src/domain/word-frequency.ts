@@ -10,15 +10,30 @@
  * Latin word runs plus CJK single characters, and the availability is part
  * of the tokenizer's fingerprint so two vocabularies never mix in one cache.
  *
+ * The dictionary knows no invented names: 萧薰儿 comes back as three
+ * fragments, and the surname alone tops the table. The roster is the cure --
+ * a token lexicon built from every entity name and alias is consulted first,
+ * each hit counted whole as one token under the label's normalized form, and
+ * only the gaps between hits reach the segmenter. Matching follows the
+ * mention matcher exactly: the same Unicode forms, the same word-boundary
+ * rule, the same exact case, so a name is atomic precisely where a mention
+ * would be found. A possessive right after a name -- Alice's -- folds into
+ * the name rather than leaving a stray s behind.
+ *
  * Per-note token maps are counted filter-free. Stopwords -- the built-in
  * lists and the reader's own -- and entity exclusion apply at aggregation,
- * so flipping a toggle re-reads nothing.
+ * so flipping a toggle re-reads nothing. Entity exclusion works by whole
+ * normalized labels, which the lexicon's atomic tokens now meet exactly.
  *
  * Kept free of Obsidian types and of the DOM.
  */
 
+import { buildPatternMatcher, type PatternEntry } from './aho-corasick';
 import { analyzableRanges } from './analyzable-prose';
+import { patternForms } from './entity-matcher';
+import { fingerprint } from './fingerprint';
 import type { CountableRange } from './markdown-scan';
+import { hasWordBoundary } from './mentions';
 
 /** Bump when tokenization rules change: it invalidates persisted tokens. */
 export const WORD_TOKENIZER_VERSION = 1;
@@ -107,27 +122,129 @@ function fallbackTokens(counts: Map<string, number>, text: string): void {
 	close();
 }
 
+/** One name found whole: the span it holds and the term it counts under. */
+export interface AtomicToken {
+	from: number;
+	to: number;
+	/** The label normalized the way tokens are -- what the count carries. */
+	term: string;
+}
+
+/**
+ * The tokenizer's user dictionary: the project's names and aliases, matched
+ * ahead of the segmenter so an invented name is one token, not fragments.
+ */
+export interface TokenLexicon {
+	/** Over the sorted label set: part of the tokens fingerprint. */
+	readonly fingerprint: string;
+	/** How many distinct labels the roster spelled. */
+	readonly termCount: number;
+	cut(body: string, range: CountableRange): AtomicToken[];
+}
+
+/**
+ * Over the distinct trimmed labels alone, order blind: what invalidates
+ * persisted tokens is the roster's spelling, nothing else.
+ */
+export function lexiconFingerprint(labels: readonly string[]): string {
+	const distinct = new Set<string>();
+	for (const label of labels) {
+		const trimmed = label.trim();
+		if (trimmed.length > 0) distinct.add(trimmed);
+	}
+	return fingerprint([...distinct].sort());
+}
+
+/**
+ * Builds the lexicon the way the entity matcher is built -- the same Unicode
+ * forms, exact case -- and reads its hits the way mentions are read: the
+ * word-boundary rule with its CJK limitation, then leftmost-longest across
+ * whatever overlaps, so the spans handed back never touch.
+ */
+export function buildTokenLexicon(labels: readonly string[]): TokenLexicon {
+	const entries: PatternEntry<string>[] = [];
+	const distinct = new Set<string>();
+	for (const label of labels) {
+		const trimmed = label.trim();
+		if (trimmed.length === 0 || distinct.has(trimmed)) continue;
+		distinct.add(trimmed);
+		const term = normalize(trimmed);
+		for (const form of patternForms(trimmed)) {
+			entries.push({ pattern: form, payload: term });
+		}
+	}
+	const matcher = buildPatternMatcher(entries);
+	return {
+		fingerprint: lexiconFingerprint(labels),
+		termCount: distinct.size,
+		cut(body: string, range: CountableRange): AtomicToken[] {
+			if (matcher.patternCount === 0) return [];
+			const hits = matcher
+				.findAll(body.slice(range.from, range.to), range.from)
+				.filter((hit) => hasWordBoundary(body, hit.from, hit.to, range))
+				// Longest first at one start, so the greedy pass below keeps it.
+				.sort((left, right) => left.from - right.from || right.to - left.to);
+			const atoms: AtomicToken[] = [];
+			let end = range.from;
+			for (const hit of hits) {
+				if (hit.from < end) continue;
+				const term = hit.payloads[0];
+				if (term === undefined) continue;
+				atoms.push({ from: hit.from, to: hit.to, term });
+				end = hit.to;
+			}
+			return atoms;
+		},
+	};
+}
+
+/**
+ * Past a possessive glued to a name -- Alice's, straight or typographic --
+ * so the suffix folds into the name instead of counting a stray s. A letter
+ * right after the s means some other word, which is left alone.
+ */
+function skipPossessive(body: string, at: number, ceiling: number): number {
+	const apostrophe = body.charAt(at);
+	if (apostrophe !== "'" && apostrophe !== '’') return at;
+	const suffix = body.charAt(at + 1);
+	if ((suffix !== 's' && suffix !== 'S') || at + 2 > ceiling) return at;
+	const after = at + 2 < ceiling ? body.charAt(at + 2) : '';
+	return after !== '' && FALLBACK_WORD.test(after) ? at : at + 2;
+}
+
 /**
  * One note's tokens, counted. The analyzable stretches are read one at a
- * time so a token can never fuse across syntax, exactly as matches cannot.
+ * time so a token can never fuse across syntax, exactly as matches cannot;
+ * within each stretch the lexicon's names are counted whole first and the
+ * segmenter reads only the prose between them.
  */
 export function tokenizeProse(
 	body: string,
 	excludeRanges: readonly CountableRange[],
 	locale: string,
+	lexicon: TokenLexicon | null = null,
 	ctor: WordSegmenterCtor | null = platformSegmenter(),
 ): Map<string, number> {
 	const counts = new Map<string, number>();
-	for (const range of analyzableRanges(body, excludeRanges)) {
-		const slice = body.slice(range.from, range.to);
+	const segmentInto = (slice: string): void => {
+		if (slice.length === 0) return;
 		if (ctor === null) {
 			fallbackTokens(counts, slice);
-			continue;
+			return;
 		}
 		for (const segment of segmenterFor(locale, ctor).segment(slice)) {
 			if (segment.isWordLike !== true) continue;
 			countToken(counts, segment.segment);
 		}
+	};
+	for (const range of analyzableRanges(body, excludeRanges)) {
+		let at = range.from;
+		for (const atom of lexicon?.cut(body, range) ?? []) {
+			segmentInto(body.slice(at, atom.from));
+			countToken(counts, atom.term);
+			at = skipPossessive(body, atom.to, range.to);
+		}
+		segmentInto(body.slice(at, range.to));
 	}
 	return counts;
 }

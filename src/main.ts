@@ -3424,10 +3424,10 @@ export default class SnowflakeMethodPlugin
 		return {
 			t,
 			statistics: async () =>
-				read((project) =>
+				read(async (project) =>
 					this.projects.analysis.statistics(
 						project,
-						this.analysisConfigFor(project),
+						await this.analysisConfigFor(project),
 					),
 				),
 			frequency: async ({ includeStopwords, includeEntities }) =>
@@ -3440,7 +3440,7 @@ export default class SnowflakeMethodPlugin
 						: await this.entityExclusionTerms(project);
 					return this.projects.analysis.frequency(
 						project,
-						this.analysisConfigFor(project),
+						await this.analysisConfigFor(project),
 						{ stopwords, exclude },
 					);
 				}),
@@ -4849,14 +4849,23 @@ export default class SnowflakeMethodPlugin
 			.filter((style): style is DialogueStyle => style !== null);
 	}
 
-	/** What the analysis reads of the settings, for one project's locale. */
-	private analysisConfigFor(project: ProjectSnapshot): AnalysisConfig {
+	/**
+	 * What the analysis reads of the settings, for one project's locale --
+	 * plus the roster's names and aliases, which the tokenizer counts whole
+	 * ahead of the dictionary. The same rows the wikilink popup offers, so
+	 * what tokenizes atomically is exactly what completes and matches.
+	 */
+	private async analysisConfigFor(
+		project: ProjectSnapshot,
+	): Promise<AnalysisConfig> {
+		const targets = await this.listWikilinkTargets(project.projectFile);
 		return {
 			sensitiveTerms: this.settings.sensitiveWordsEnabled
 				? parseSensitiveWords(this.settings.sensitiveWords)
 				: [],
 			dialogueStyles: this.dialogueStylesFromSettings(),
 			locale: project.locale,
+			entityTerms: targets.map((target) => target.label),
 		};
 	}
 
@@ -4868,7 +4877,7 @@ export default class SnowflakeMethodPlugin
 		if (project === null) return null;
 		return this.projects.analysis.sensitiveAggregate(
 			project,
-			this.analysisConfigFor(project),
+			await this.analysisConfigFor(project),
 		);
 	}
 
@@ -4880,7 +4889,7 @@ export default class SnowflakeMethodPlugin
 		if (project === null) return null;
 		return this.projects.analysis.dialogueChapters(
 			project,
-			this.analysisConfigFor(project),
+			await this.analysisConfigFor(project),
 		);
 	}
 
@@ -4892,7 +4901,7 @@ export default class SnowflakeMethodPlugin
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return [];
 		return this.projects.analysis.dialogueOccurrences(
-			this.analysisConfigFor(project),
+			await this.analysisConfigFor(project),
 			path,
 		);
 	}

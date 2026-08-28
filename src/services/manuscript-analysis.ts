@@ -1,5 +1,6 @@
 import {
 	buildSensitiveMatcher,
+	buildTokenLexicon,
 	dialogueOccurrencesOf,
 	dialogueRanges,
 	dialogueSplit,
@@ -8,6 +9,7 @@ import {
 	frequencyRows,
 	hasWordSegmenter,
 	isDocumentType,
+	lexiconFingerprint,
 	mergeTokenCounts,
 	sensitiveFingerprint,
 	sensitiveOccurrencesOf,
@@ -18,6 +20,7 @@ import {
 	type FrequencyRow,
 	type SensitiveMatcher,
 	type SensitiveOccurrence,
+	type TokenLexicon,
 } from "../domain";
 import { documentTypeOf, type VaultRepository } from "../repository";
 import { pluginWrittenRanges } from "../templates";
@@ -74,6 +77,12 @@ export interface AnalysisConfig {
 	dialogueStyles: readonly DialogueStyle[];
 	/** The tokenizer's locale hint, usually the project's. */
 	locale: string;
+	/**
+	 * Every entity name and alias as the roster spells it: the tokenizer's
+	 * user dictionary, so an invented name counts whole instead of as the
+	 * fragments a general dictionary would cut it into.
+	 */
+	entityTerms: readonly string[];
 }
 
 /** The four family fingerprints one config answers to. */
@@ -114,6 +123,9 @@ export class ManuscriptAnalysisService {
 	/** One matcher at a time, validated by the term list's fingerprint. */
 	private sensitiveMatcher: SensitiveMatcher | null = null;
 
+	/** One lexicon at a time, validated the same way. */
+	private lexicon: TokenLexicon | null = null;
+
 	private readonly states = new Map<string, ProjectAnalysisState>();
 	private readonly flushQueue = new Set<string>();
 	private flushHandle: unknown = null;
@@ -139,6 +151,15 @@ export class ManuscriptAnalysisService {
 		}
 		this.sensitiveMatcher = buildSensitiveMatcher(terms);
 		return this.sensitiveMatcher;
+	}
+
+	private lexiconFor(labels: readonly string[]): TokenLexicon {
+		const print = lexiconFingerprint(labels);
+		if (this.lexicon !== null && this.lexicon.fingerprint === print) {
+			return this.lexicon;
+		}
+		this.lexicon = buildTokenLexicon(labels);
+		return this.lexicon;
 	}
 
 	/** Every sensitive term's spots, folded per term in list order. */
@@ -296,10 +317,13 @@ export class ManuscriptAnalysisService {
 			dialogue,
 			// The stats carry the dialogue split, so they stale together.
 			stats: fingerprint([STATS_VERSION, dialogue]),
+			// The roster is the tokenizer's dictionary, so a renamed entity
+			// re-tokenizes: the walk is breathed and the other families ride.
 			tokens: fingerprint([
 				WORD_TOKENIZER_VERSION,
 				config.locale,
 				hasWordSegmenter(),
+				lexiconFingerprint(config.entityTerms),
 			]),
 		};
 	}
@@ -453,7 +477,14 @@ export class ManuscriptAnalysisService {
 				dialogueCjk: split.dialogue.cjk,
 				dialogueWords: split.dialogue.words,
 			},
-			tokens: [...tokenizeProse(record.body, excluded, config.locale)],
+			tokens: [
+				...tokenizeProse(
+					record.body,
+					excluded,
+					config.locale,
+					this.lexiconFor(config.entityTerms),
+				),
+			],
 		};
 		state.notes.set(path, fresh);
 		this.markDirty(state);

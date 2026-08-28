@@ -21,6 +21,7 @@ const config = (over: Partial<AnalysisConfig> = {}): AnalysisConfig => ({
 	sensitiveTerms: ["damn"],
 	dialogueStyles: styles("「」", "“”"),
 	locale: "zh",
+	entityTerms: [],
 	...over,
 });
 
@@ -201,6 +202,47 @@ describe("ManuscriptAnalysisService", () => {
 			config({ sensitiveTerms: ["other"] }),
 		);
 		expect(reads).toHaveBeenCalled();
+		reads.mockRestore();
+	});
+
+	it("counts roster names whole and lets exclusion catch them", async () => {
+		await chapter("One", "萧炎笑了。萧炎走了。");
+		const rostered = config({ entityTerms: ["萧炎"] });
+		const rows = await service.analysis.frequency(project, rostered, {
+			stopwords: null,
+			exclude: null,
+		});
+		expect(rows.find((row) => row.term === "萧炎")?.count).toBe(2);
+		expect(rows.some((row) => row.term === "萧")).toBe(false);
+		// The exclusion set holds whole normalized labels, which now match.
+		const excluded = await service.analysis.frequency(project, rostered, {
+			stopwords: null,
+			exclude: new Set(["萧炎"]),
+		});
+		expect(excluded.some((row) => row.term === "萧炎")).toBe(false);
+	});
+
+	it("re-tokenizes when the roster moves, the other families warm", async () => {
+		await chapter("One", "Damn the fog. 「走吧」他说。");
+		await service.analysis.statistics(project, config());
+		await service.analysis.frequency(project, config(), {
+			stopwords: null,
+			exclude: null,
+		});
+		const reads = vi.spyOn(service.repository, "tryReadManaged");
+		const renamed = config({ entityTerms: ["fog"] });
+		// Statistics, sensitive and dialogue fingerprints have not moved.
+		await service.analysis.statistics(project, renamed);
+		await service.analysis.sensitiveAggregate(project, renamed);
+		await service.analysis.dialogueChapters(project, renamed);
+		expect(reads).not.toHaveBeenCalled();
+		// The tokens family alone went stale and pays the read.
+		const rows = await service.analysis.frequency(project, renamed, {
+			stopwords: null,
+			exclude: null,
+		});
+		expect(reads).toHaveBeenCalled();
+		expect(rows.find((row) => row.term === "fog")?.count).toBe(1);
 		reads.mockRestore();
 	});
 
