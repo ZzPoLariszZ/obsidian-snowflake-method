@@ -465,6 +465,19 @@ export default class SnowflakeMethodPlugin
 	private soloFullscreen = false;
 	private readonly motionDocuments = new Set<Document>();
 	private readonly scrollbarDocuments = new Set<Document>();
+
+	/**
+	 * One hidden probe per published document, watched for size: macOS swaps
+	 * overlay scrollbars for classic ones when a mouse arrives, silently and
+	 * mid-session, and the probe's content box is the one thing in the page
+	 * that provably moves when it happens. The observer re-publishes the
+	 * measured width the moment it fires, so the panels and tables reading
+	 * it never sit a whole focus-cycle out of date.
+	 */
+	private readonly scrollbarSentinels = new Map<
+		Document,
+		{ probe: HTMLElement; observer: ResizeObserver }
+	>();
 	private resolveProjectScanReady: () => void = () => undefined;
 	/** Vault discovery must not contribute to the plugin onload critical path. */
 	private readonly projectScanReady = new Promise<void>((resolve) => {
@@ -565,6 +578,7 @@ export default class SnowflakeMethodPlugin
 					SCROLLBAR_WIDTH_PROPERTY,
 				);
 				this.scrollbarDocuments.delete(targetWindow.document);
+				this.dropScrollbarSentinel(targetWindow.document);
 			}),
 		);
 		this.applyMotionPreference();
@@ -601,6 +615,9 @@ export default class SnowflakeMethodPlugin
 				targetDocument.body.style.removeProperty(SCROLLBAR_WIDTH_PROPERTY);
 			}
 			this.scrollbarDocuments.clear();
+			for (const targetDocument of [...this.scrollbarSentinels.keys()]) {
+				this.dropScrollbarSentinel(targetDocument);
+			}
 		});
 		this.projects = new SnowflakeProjectService(
 			this.app.vault,
@@ -2757,6 +2774,7 @@ export default class SnowflakeMethodPlugin
 
 	private publishScrollbarWidthToDocument(targetDocument: Document): void {
 		this.scrollbarDocuments.add(targetDocument);
+		this.ensureScrollbarSentinel(targetDocument);
 		const width = measureScrollbarWidth(targetDocument);
 		// Nothing is published from a window that could not answer: the value
 		// left standing is either a true one from before or none at all, and
@@ -2771,6 +2789,36 @@ export default class SnowflakeMethodPlugin
 		);
 		if (shown === next) return;
 		targetDocument.body.style.setProperty(SCROLLBAR_WIDTH_PROPERTY, next);
+	}
+
+	private ensureScrollbarSentinel(targetDocument: Document): void {
+		if (this.scrollbarSentinels.has(targetDocument)) return;
+		const probe = targetDocument.body.createDiv();
+		probe.setCssStyles({
+			position: 'absolute',
+			top: '-9999px',
+			width: '100px',
+			height: '100px',
+			overflowY: 'auto',
+			scrollbarGutter: 'stable',
+			visibility: 'hidden',
+			pointerEvents: 'none',
+		});
+		const observer = new ResizeObserver(() => {
+			// The publish writes only when the value moved, so the observer's
+			// own first call after `observe` costs one skipped write.
+			this.publishScrollbarWidthToDocument(targetDocument);
+		});
+		observer.observe(probe);
+		this.scrollbarSentinels.set(targetDocument, { probe, observer });
+	}
+
+	private dropScrollbarSentinel(targetDocument: Document): void {
+		const sentinel = this.scrollbarSentinels.get(targetDocument);
+		if (sentinel === undefined) return;
+		sentinel.observer.disconnect();
+		sentinel.probe.remove();
+		this.scrollbarSentinels.delete(targetDocument);
 	}
 
 	/**
