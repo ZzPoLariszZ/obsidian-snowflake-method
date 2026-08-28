@@ -12,15 +12,18 @@
  * computing rather than standing empty.
  */
 
-import { setIcon, setTooltip } from 'obsidian';
+import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { FrequencyRow } from '../domain';
 import type { ManuscriptProseStatistics, ManuscriptProseRow } from '../services';
 import type { Translate } from './modals';
 import {
+	averageSentenceLength,
 	dialoguePercent,
 	filterFrequencyRows,
+	formatDecimal,
 	formatReadingTime,
+	frequencySharePercent,
 	proseSummary,
 	readingMinutes,
 	type ReadingSpeeds,
@@ -33,7 +36,7 @@ export interface ProsePanelBridge {
 	frequency(options: {
 		includeStopwords: boolean;
 		includeEntities: boolean;
-	}): Promise<FrequencyRow[] | null>;
+	}): Promise<{ rows: FrequencyRow[]; total: number } | null>;
 	readingSpeeds(): ReadingSpeeds;
 	openChapter(path: string): Promise<void>;
 	segmenterAvailable(): boolean;
@@ -67,7 +70,9 @@ export function renderProsePanel(
 	let refreshAgain = false;
 	let statistics: ManuscriptProseStatistics | null = null;
 	let entries: ManuscriptProseRow[] = [];
+	let chapterQuery = '';
 	let frequency: FrequencyRow[] = [];
+	let frequencyTotal = 0;
 	let frequencyQuery = '';
 	let includeStopwords = false;
 	let includeEntities = false;
@@ -91,21 +96,59 @@ export function renderProsePanel(
 	});
 
 	const summaryEl = root.createDiv({ cls: 'snowflake-method-prose-summary' });
-	const tableWrap = root.createDiv({ cls: 'snowflake-method-prose-scroll' });
-	const table = tableWrap.createEl('table', {
-		cls: 'snowflake-method-prose-table',
+	// The chapters and the frequency each stand as a titled section, spaced
+	// from the cards and from each other the way the session widgets are.
+	const chapterSection = root.createDiv({
+		cls: 'snowflake-method-prose-section snowflake-method-prose-chapters',
 	});
-	const headRow = table.createEl('thead').createEl('tr');
+	chapterSection.createEl('h3', {
+		cls: 'snowflake-method-prose-section-heading',
+		text: t('prose.table.heading'),
+	});
+	// The member tables' own toolbar above the chapters: Obsidian's search
+	// input, filtering the rows by title the way the character table's does.
+	const chapterToolbar = chapterSection.createDiv({
+		cls: 'snowflake-method-table-toolbar',
+	});
+	const chapterSearch = new SearchComponent(chapterToolbar);
+	chapterSearch.setPlaceholder(t('prose.table.searchChapters'));
+	chapterSearch.onChange((next) => {
+		chapterQuery = next;
+		paint();
+	});
+	// The dashboard's own table frame, laid by hand the way `buildTableFrame`
+	// lays it: one wrap, a header strip the body's scroll carries sideways by
+	// a transform (the table-head styles say why it must not scroll itself),
+	// and one colgroup worn twice so the halves agree on their columns.
+	const tableWrap = chapterSection.createDiv({
+		cls: 'snowflake-method-table-wrap snowflake-method-prose-table-wrap',
+	});
+	const headWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-head' });
+	const bodyWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-body' });
+	const tableClasses = 'snowflake-method-table snowflake-method-prose-table';
+	const headTable = headWrap.createEl('table', { cls: tableClasses });
+	const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
+	for (const table of [headTable, bodyTable]) {
+		const columns = table.createEl('colgroup');
+		for (const column of PROSE_COLUMNS) {
+			columns.createEl('col', {
+				cls: `snowflake-method-prose-column-${column}`,
+			});
+		}
+	}
+	const headRow = headTable.createEl('thead').createEl('tr');
 	for (const column of PROSE_COLUMNS) {
-		headRow.createEl('th', {
+		const head = headRow.createEl('th', {
 			cls: `snowflake-method-prose-column-${column}`,
 			text: t(`prose.table.${column}`),
 		});
+		if (column !== 'chapter') head.addClass('snowflake-method-prose-numeric');
 	}
-	const tableBody = table.createEl('tbody');
+	const tableBody = bodyTable.createEl('tbody');
 	const heights = new Map<string, number>();
+	let headCarried = '';
 	const virtual = new VirtualTable({
-		scroller: tableWrap,
+		scroller: bodyWrap,
 		body: tableBody,
 		columns: PROSE_COLUMNS.length,
 		estimatedRowHeight: 28,
@@ -122,56 +165,69 @@ export function renderProsePanel(
 			const cell = (
 				column: (typeof PROSE_COLUMNS)[number],
 				text: string,
-			): HTMLElement =>
-				tr.createEl('td', {
+			): HTMLElement => {
+				const made = tr.createEl('td', {
 					cls: `snowflake-method-prose-column-${column}`,
 					text,
 					attr: { 'data-label': t(`prose.table.${column}`) },
 				});
+				if (column !== 'chapter') {
+					made.addClass('snowflake-method-prose-numeric');
+				}
+				return made;
+			};
 			const title = cell('chapter', row.title);
 			title.addClass('snowflake-method-prose-chapter');
+			title.addClass('snowflake-method-table-primary');
 			title.addEventListener('click', () => {
 				void bridge.openChapter(row.path).catch(() => undefined);
 			});
 			cell('length', String(row.cjk + row.words));
 			cell('readingTime', formatReadingTime(readingMinutes(row, speeds), t));
 			cell('sentences', String(row.sentences));
-			const average = averageOf(row);
-			cell('averageSentence', average === null ? '' : String(average));
+			const average = averageSentenceLength(row, row.sentences);
+			cell('averageSentence', average === null ? '' : formatDecimal(average));
 			const share = dialoguePercent(row);
-			cell('dialogue', share === null ? '' : `${String(share)}%`);
+			cell('dialogue', share === null ? '' : `${formatDecimal(share)}%`);
 		},
 		renderTail: () => undefined,
-		onScroll: () => undefined,
+		onScroll: () => {
+			const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
+			if (shift === headCarried) return;
+			headCarried = shift;
+			headTable.style.transform = shift;
+		},
 		onMeasure: () => undefined,
 	});
 
 	// The frequency block: its filters are read here and applied at the
 	// service's own read, so a toggle never re-reads a chapter.
 	const frequencySection = root.createDiv({
-		cls: 'snowflake-method-prose-frequency',
+		cls: 'snowflake-method-prose-section snowflake-method-prose-frequency',
 	});
 	frequencySection.createEl('h3', {
-		cls: 'snowflake-method-mention-view-heading',
+		cls: 'snowflake-method-prose-section-heading',
 		text: t('prose.frequency.heading'),
 	});
 	const frequencyControls = frequencySection.createDiv({
-		cls: 'snowflake-method-prose-frequency-controls',
+		cls: 'snowflake-method-table-toolbar snowflake-method-prose-frequency-controls',
 	});
-	const search = frequencyControls.createEl('input', {
-		cls: 'snowflake-method-prose-frequency-search',
-		attr: { type: 'search', placeholder: t('prose.frequency.searchPlaceholder') },
-	});
-	search.addEventListener('input', () => {
-		frequencyQuery = search.value;
+	// The search opens the row at the left, the way the chapter table's does;
+	// the two filters keep to the right end of the same row.
+	const search = new SearchComponent(frequencyControls);
+	search.setPlaceholder(t('prose.frequency.searchPlaceholder'));
+	search.onChange((next) => {
+		frequencyQuery = next;
 		paintFrequency();
 	});
 	const toggle = (
+		container: HTMLElement,
 		label: string,
 		read: () => boolean,
 		write: (next: boolean) => void,
+		changed: () => void,
 	): void => {
-		const wrap = frequencyControls.createEl('label', {
+		const wrap = container.createEl('label', {
 			cls: 'snowflake-method-prose-frequency-toggle',
 		});
 		const box = wrap.createEl('input', { attr: { type: 'checkbox' } });
@@ -179,21 +235,29 @@ export function renderProsePanel(
 		wrap.appendText(label);
 		box.addEventListener('change', () => {
 			write(box.checked);
-			refreshFrequency();
+			changed();
 		});
 	};
 	toggle(
+		frequencyControls,
 		t('prose.frequency.includeStopwords'),
 		() => includeStopwords,
 		(next) => {
 			includeStopwords = next;
 		},
+		() => {
+			refreshFrequency();
+		},
 	);
 	toggle(
+		frequencyControls,
 		t('prose.frequency.includeEntities'),
 		() => includeEntities,
 		(next) => {
 			includeEntities = next;
+		},
+		() => {
+			refreshFrequency();
 		},
 	);
 	if (!bridge.segmenterAvailable()) {
@@ -202,74 +266,93 @@ export function renderProsePanel(
 			text: t('prose.frequency.fallbackNote'),
 		});
 	}
-	const frequencyList = frequencySection.createDiv({
+	// The frame draws the border and the list inside it scrolls, so the
+	// scrollbar can ride the gutter beyond the border the way the tables' do.
+	const frequencyFrame = frequencySection.createDiv({
+		cls: 'snowflake-method-prose-frequency-frame',
+	});
+	const frequencyList = frequencyFrame.createDiv({
 		cls: 'snowflake-method-prose-frequency-list',
 	});
-
-	const averageOf = (row: ManuscriptProseRow): number | null => {
-		if (row.sentences <= 0) return null;
-		return Math.round(((row.cjk + row.words) / row.sentences) * 10) / 10;
-	};
 
 	const paintSummary = (): void => {
 		summaryEl.empty();
 		if (statistics === null) return;
 		const summary = proseSummary(statistics, bridge.readingSpeeds(), t);
+		// The widget cards' own order: the muted title above, the figure below.
 		const item = (label: string, value: string): void => {
 			const box = summaryEl.createDiv({
 				cls: 'snowflake-method-prose-summary-item',
 			});
 			box.createDiv({
-				cls: 'snowflake-method-prose-summary-value',
-				text: value,
-			});
-			box.createDiv({
 				cls: 'snowflake-method-prose-summary-label',
 				text: label,
+			});
+			box.createDiv({
+				cls: 'snowflake-method-prose-summary-value',
+				text: value,
 			});
 		};
 		item(t('prose.summary.readingTime'), summary.readingTime);
 		if (summary.averageChapter !== null) {
 			item(t('prose.summary.averageChapter'), summary.averageChapter);
 		}
-		item(t('prose.summary.sentences'), String(summary.sentences));
+		if (summary.sentencesPerChapter !== null) {
+			item(
+				t('prose.summary.sentencesPerChapter'),
+				formatDecimal(summary.sentencesPerChapter),
+			);
+		}
 		if (summary.averageSentence !== null) {
-			item(t('prose.summary.averageSentence'), String(summary.averageSentence));
+			item(
+				t('prose.summary.averageSentence'),
+				formatDecimal(summary.averageSentence),
+			);
 		}
 		if (summary.dialoguePercent !== null) {
 			item(
 				t('prose.summary.dialogueShare'),
-				`${String(summary.dialoguePercent)}%`,
+				`${formatDecimal(summary.dialoguePercent)}%`,
 			);
 		}
 	};
 
 	const paintFrequency = (): void => {
 		frequencyList.empty();
+		// An empty answer keeps an empty frame: whether nothing matched the
+		// search or nothing has been counted, the silence says it.
 		const filtered = filterFrequencyRows(frequency, frequencyQuery);
-		if (filtered.length === 0) {
-			frequencyList.createDiv({
-				cls: 'snowflake-method-mention-view-empty',
-				text: t('prose.frequency.empty'),
-			});
-			return;
-		}
 		for (const row of filtered.slice(0, MAX_FREQUENCY_ROWS)) {
 			const line = frequencyList.createDiv({
 				cls: 'snowflake-method-prose-frequency-row',
 			});
+			// Past one word in two hundred, a term is a habit worth seeing:
+			// the row says so in the accent rather than waiting to be read.
+			if (
+				frequencyTotal > 0 &&
+				(row.count / frequencyTotal) * 100 > 0.5
+			) {
+				line.addClass('is-major');
+			}
 			line.createSpan({
 				cls: 'snowflake-method-prose-frequency-term',
 				text: row.term,
 			});
-			line.createSpan({
+			const numbers = line.createSpan({
 				cls: 'snowflake-method-prose-frequency-count',
 				text: String(row.count),
 			});
+			const share = frequencySharePercent(row.count, frequencyTotal);
+			if (share !== null) {
+				numbers.createSpan({
+					cls: 'snowflake-method-prose-frequency-share',
+					text: `(${share}%)`,
+				});
+			}
 		}
 		if (filtered.length > MAX_FREQUENCY_ROWS) {
 			frequencyList.createDiv({
-				cls: 'snowflake-method-mention-view-empty',
+				cls: 'snowflake-method-prose-frequency-more',
 				text: t('prose.frequency.more', {
 					shown: MAX_FREQUENCY_ROWS,
 					total: filtered.length,
@@ -282,9 +365,10 @@ export function renderProsePanel(
 		const token = (frequencyToken += 1);
 		void bridge
 			.frequency({ includeStopwords, includeEntities })
-			.then((rows) => {
+			.then((read) => {
 				if (disposed || token !== frequencyToken) return;
-				frequency = rows ?? [];
+				frequency = read?.rows ?? [];
+				frequencyTotal = read?.total ?? 0;
 				paintFrequency();
 			})
 			.catch(() => undefined);
@@ -297,7 +381,13 @@ export function renderProsePanel(
 		}
 		stateText.setText('');
 		paintSummary();
-		entries = statistics.perNote;
+		const needle = chapterQuery.trim().toLowerCase();
+		entries =
+			needle.length === 0
+				? statistics.perNote
+				: statistics.perNote.filter((row) =>
+						row.title.toLowerCase().includes(needle),
+					);
 		virtual.setTotal(entries.length);
 	};
 

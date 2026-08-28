@@ -5399,18 +5399,48 @@ body {
 
 /* The prose panel: the statistics pane's Prose analysis face. Plain rows and
    one table over theme tokens, a reading and no more. */
+/* The cards, the chapters and the frequency stand apart at the session
+   widgets' own spacing; inside a section, the title, the toolbar and the
+   frame keep the close ranks of a member panel. */
 .snowflake-method-prose-panel {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--snowflake-method-tab-height, var(--size-4-3));
+}
+
+.snowflake-method-prose-section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 }
 
+.snowflake-method-prose-section-heading {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+/* Left rather than the member toolbars' right: these searches open their
+   sections, with nothing else competing for the row. */
+.snowflake-method-prose-section .snowflake-method-table-toolbar {
+	justify-content: flex-start;
+	margin: 0;
+}
+
+/* The band between the tab strip and the cards is the sessions panel's own
+   spacing, and this panel keeps it by taking no room of its own: the state
+   text and the refresh button ride inside that band, laid over it. */
 .snowflake-method-prose-controls {
+	position: absolute;
+	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+	inset-inline: 0;
+	height: var(--snowflake-method-tab-height, 2.75rem);
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: var(--size-2-2);
-	min-height: var(--size-4-6);
 }
 
 .snowflake-method-prose-state {
@@ -5424,82 +5454,116 @@ body {
 	gap: var(--size-4-2);
 }
 
+/* The session widgets' own card: the same frame, the muted title above at
+   the widgets' own title size, the figure centred under it in the accent
+   ink and the monospaced tabular face every dashboard reading wears. */
 .snowflake-method-prose-summary-item {
-	padding: var(--size-4-1) var(--size-4-2);
+	flex: 1 1 9rem;
+	min-width: 9rem;
+	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
-	min-width: 7rem;
-}
-
-.snowflake-method-prose-summary-value {
-	font-size: var(--font-ui-medium);
-	font-weight: var(--font-semibold);
-	color: var(--text-normal);
+	background: var(--background-primary);
 }
 
 .snowflake-method-prose-summary-label {
-	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
+	text-align: center;
+	margin-block-end: var(--size-4-3);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.snowflake-method-prose-scroll {
-	max-height: 22rem;
-	overflow: auto;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
+.snowflake-method-prose-summary-value {
+	color: var(--text-accent);
+	text-align: center;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-large);
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--font-bold);
 }
 
+/* The shared table frame sized for this panel: a reading capped at a page
+   rather than a pane-filling flex child, the body scrolling past the cap. */
+.snowflake-method-prose-table-wrap {
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+/* The head-and-body gutter symmetry lives on the shared frame now; this
+   panel holds its body at one fixed page, however many chapters fill it,
+   so the frequency below never wanders as the manuscript grows. */
+.snowflake-method-prose-table-wrap .snowflake-method-table-body {
+	height: 24rem;
+}
+
+/* Fixed layout, so both tables lay their columns from the one colgroup and
+   the table width alone: the header's short labels and the body's long
+   titles can never bargain their way to different grids. */
 .snowflake-method-prose-table {
-	width: 100%;
-	border-collapse: collapse;
-	font-size: var(--font-ui-small);
+	table-layout: fixed;
 }
 
-.snowflake-method-prose-table thead th {
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	background-color: var(--background-secondary);
-	text-align: start;
-	padding: var(--size-4-1) var(--size-4-2);
-	color: var(--text-muted);
-	font-weight: var(--font-medium);
+/* The measured columns read as one figure after another: aligned to the
+   end, the values in the monospaced tabular face, the headers in the same
+   interface face every other table titles its columns in. The last cell
+   gives back the room member rows keep for their menu button, which these
+   rows do not have. Element-qualified and doubled to stand level with the
+   shared rules they adjust, winning by order. */
+th.snowflake-method-prose-numeric {
+	text-align: end;
+}
+
+td.snowflake-method-prose-numeric {
+	text-align: end;
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
 
-.snowflake-method-prose-table td {
-	padding: var(--size-2-2) var(--size-4-2);
-	border-top: 1px solid var(--background-modifier-border);
-	white-space: nowrap;
+.snowflake-method-table.snowflake-method-prose-table td:last-child {
+	padding-inline-end: var(--size-4-3);
 }
 
+/* The chapter column flexes; every measured column holds a fixed width, so
+   the header table and the body table lay the same grid. */
 .snowflake-method-prose-column-chapter {
-	width: 40%;
 	white-space: normal;
+}
+
+col.snowflake-method-prose-column-length {
+	width: 7rem;
+}
+
+col.snowflake-method-prose-column-readingTime {
+	width: 8.5rem;
+}
+
+col.snowflake-method-prose-column-sentences {
+	width: 7rem;
+}
+
+col.snowflake-method-prose-column-averageSentence {
+	width: 8.5rem;
+}
+
+col.snowflake-method-prose-column-dialogue {
+	width: 7.5rem;
 }
 
 .snowflake-method-prose-chapter {
 	cursor: pointer;
-	color: var(--text-normal);
 }
 
 .snowflake-method-prose-chapter:hover {
 	color: var(--text-accent);
 }
 
-.snowflake-method-prose-frequency-controls {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--size-4-2);
-	margin-bottom: var(--size-4-1);
-}
-
-.snowflake-method-prose-frequency-search {
-	flex: 1;
-	min-width: 10rem;
-}
-
+/* The toolbar class carries the layout; the first toggle carries the whole
+   pair to the row's right end, opposite the search. */
 .snowflake-method-prose-frequency-toggle {
 	display: inline-flex;
 	align-items: center;
@@ -5508,25 +5572,77 @@ body {
 	color: var(--text-muted);
 }
 
-.snowflake-method-prose-frequency-list {
-	max-height: 18rem;
-	overflow-y: auto;
+.snowflake-method-prose-frequency-controls
+	> .snowflake-method-prose-frequency-toggle:first-of-type {
+	margin-inline-start: auto;
+}
+
+/* The frame draws the border the way the table wrap does, and the list
+   inside reaches into the gutter so its scrollbar rides beyond the border
+   rather than against the words. */
+.snowflake-method-prose-frequency-frame {
+	--snowflake-method-table-gutter: max(
+		var(--snowflake-method-scrollbar-width, 0px),
+		var(--size-4-3)
+	);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	padding: var(--size-2-2) 0;
+	border-radius: var(--radius-s);
+	background: var(--background-primary);
+}
+
+.snowflake-method-prose-frequency-list {
+	height: 18rem;
+	overflow-y: scroll;
+	scrollbar-gutter: stable;
+	padding-block: var(--size-2-2);
+	margin-inline-end: calc(-1 * var(--snowflake-method-table-gutter));
+	padding-inline-end: calc(
+		var(--snowflake-method-table-gutter) -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
 }
 
 .snowflake-method-prose-frequency-row {
 	display: flex;
 	justify-content: space-between;
 	gap: var(--size-4-2);
-	padding: var(--size-2-1) var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-3);
+	font-size: var(--font-ui-medium);
+}
+
+/* One word in two hundred is a habit: the whole row's figures wear the
+   accent so the list's heavy hitters read at a glance. */
+.snowflake-method-prose-frequency-row.is-major
+	.snowflake-method-prose-frequency-term,
+.snowflake-method-prose-frequency-row.is-major
+	.snowflake-method-prose-frequency-count,
+.snowflake-method-prose-frequency-row.is-major
+	.snowflake-method-prose-frequency-share {
+	color: var(--text-accent);
+	font-weight: var(--font-semibold);
+}
+
+/* The tail of a capped list: what is shown of how many, and that the search
+   reaches the rest -- said once, centred, in the accent so it reads as the
+   list's own voice rather than a stray row. */
+.snowflake-method-prose-frequency-more {
+	text-align: center;
+	padding: var(--size-4-2) var(--size-4-3);
+	color: var(--text-accent);
 	font-size: var(--font-ui-small);
 }
 
 .snowflake-method-prose-frequency-count {
-	color: var(--text-muted);
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
 	font-variant-numeric: tabular-nums;
+}
+
+/* The term's share of everything counted, said after its count and more
+   quietly: the count answers "how many", the share "how much of the book". */
+.snowflake-method-prose-frequency-share {
+	margin-inline-start: var(--size-4-2);
+	color: var(--text-muted);
 }
 
 /* The tracking pane: plain rows over theme tokens, a reading and no more. */

@@ -35,32 +35,51 @@ export function formatReadingTime(minutes: number, t: Translate): string {
 }
 
 /**
- * Units per sentence, one decimal: words per sentence for English prose and
+ * Units per sentence, unrounded: words per sentence for English prose and
  * characters per sentence for Chinese, by the same split reading time uses.
- * Null where nothing is measured.
+ * Null where nothing is measured; the display rounds, not the measure.
  */
 export function averageSentenceLength(
 	units: { cjk: number; words: number },
 	sentences: number,
 ): number | null {
 	if (sentences <= 0) return null;
-	return Math.round(((units.cjk + units.words) / sentences) * 10) / 10;
+	return (units.cjk + units.words) / sentences;
 }
 
-/** The dialogue share of the writing, in whole percent; null off nothing. */
+/** The dialogue share of the writing, unrounded percent; null off nothing. */
 export function dialoguePercent(
 	stats: Pick<NoteProseStats, 'cjk' | 'words' | 'dialogueCjk' | 'dialogueWords'>,
 ): number | null {
 	const total = stats.cjk + stats.words;
 	if (total <= 0) return null;
-	return Math.round(((stats.dialogueCjk + stats.dialogueWords) / total) * 100);
+	return ((stats.dialogueCjk + stats.dialogueWords) / total) * 100;
+}
+
+/** How every derived figure is written: two decimals, always both. */
+export function formatDecimal(value: number): string {
+	return value.toFixed(2);
+}
+
+/**
+ * One term's share of everything counted, in percent against the whole
+ * vocabulary rather than the filtered view, so a toggle never moves it.
+ * Null while nothing is counted.
+ */
+export function frequencySharePercent(
+	count: number,
+	total: number,
+): string | null {
+	if (total <= 0) return null;
+	return formatDecimal((count / total) * 100);
 }
 
 export interface ProseSummary {
 	readingTime: string;
 	/** Null while the manuscript holds no chapters. */
 	averageChapter: string | null;
-	sentences: number;
+	/** Sentences per chapter, unrounded; null while there are no chapters. */
+	sentencesPerChapter: number | null;
 	averageSentence: number | null;
 	dialoguePercent: number | null;
 }
@@ -79,7 +98,8 @@ export function proseSummary(
 			totals.chapters > 0
 				? formatReadingTime(minutes / totals.chapters, t)
 				: null,
-		sentences: totals.sentences,
+		sentencesPerChapter:
+			totals.chapters > 0 ? totals.sentences / totals.chapters : null,
 		averageSentence: averageSentenceLength(totals, totals.sentences),
 		dialoguePercent: dialoguePercent(totals),
 	};

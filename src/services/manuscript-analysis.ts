@@ -253,7 +253,11 @@ export class ManuscriptAnalysisService {
 		return { perNote, totals };
 	}
 
-	/** The manuscript's word frequency, filters applied at this read alone. */
+	/**
+	 * The manuscript's word frequency, filters applied at this read alone.
+	 * The total counts every token before any filter, so a term's share of
+	 * the writing holds still while the stopword toggle flips.
+	 */
 	async frequency(
 		project: ProjectRef,
 		config: AnalysisConfig,
@@ -261,13 +265,16 @@ export class ManuscriptAnalysisService {
 			stopwords: ReadonlySet<string> | null;
 			exclude: ReadonlySet<string> | null;
 		},
-	): Promise<FrequencyRow[]> {
+	): Promise<{ rows: FrequencyRow[]; total: number }> {
 		const state = await this.stateFor(project, config);
 		const maps: (readonly (readonly [string, number])[])[] = [];
 		await this.walk(project, state, config, "tokens", (path, record) => {
 			if (record.tokens !== null) maps.push(record.tokens);
 		});
-		return frequencyRows(mergeTokenCounts(maps), filters);
+		const merged = mergeTokenCounts(maps);
+		let total = 0;
+		for (const count of merged.values()) total += count;
+		return { rows: frequencyRows(merged, filters), total };
 	}
 
 	/** The mirror of every other per-note cache's `forget`. */

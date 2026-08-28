@@ -208,18 +208,22 @@ describe("ManuscriptAnalysisService", () => {
 	it("counts roster names whole and lets exclusion catch them", async () => {
 		await chapter("One", "萧炎笑了。萧炎走了。");
 		const rostered = config({ entityTerms: ["萧炎"] });
-		const rows = await service.analysis.frequency(project, rostered, {
-			stopwords: null,
-			exclude: null,
-		});
+		const { rows, total } = await service.analysis.frequency(
+			project,
+			rostered,
+			{ stopwords: null, exclude: null },
+		);
 		expect(rows.find((row) => row.term === "萧炎")?.count).toBe(2);
 		expect(rows.some((row) => row.term === "萧")).toBe(false);
-		// The exclusion set holds whole normalized labels, which now match.
+		// The total counts every token, so it equals the rows' own sum here
+		// and holds still when a filter thins the rows below.
+		expect(total).toBe(rows.reduce((sum, row) => sum + row.count, 0));
 		const excluded = await service.analysis.frequency(project, rostered, {
 			stopwords: null,
 			exclude: new Set(["萧炎"]),
 		});
-		expect(excluded.some((row) => row.term === "萧炎")).toBe(false);
+		expect(excluded.rows.some((row) => row.term === "萧炎")).toBe(false);
+		expect(excluded.total).toBe(total);
 	});
 
 	it("re-tokenizes when the roster moves, the other families warm", async () => {
@@ -237,7 +241,7 @@ describe("ManuscriptAnalysisService", () => {
 		await service.analysis.dialogueChapters(project, renamed);
 		expect(reads).not.toHaveBeenCalled();
 		// The tokens family alone went stale and pays the read.
-		const rows = await service.analysis.frequency(project, renamed, {
+		const { rows } = await service.analysis.frequency(project, renamed, {
 			stopwords: null,
 			exclude: null,
 		});
@@ -246,15 +250,21 @@ describe("ManuscriptAnalysisService", () => {
 		reads.mockRestore();
 	});
 
-	it("filters frequency at read time", async () => {
+	it("filters frequency at read time, the total unfiltered", async () => {
 		await chapter("One", "The fog and the fog again.");
-		const rows = await service.analysis.frequency(project, config(), {
-			stopwords: new Set(["the", "and"]),
-			exclude: new Set(["again"]),
-		});
+		const { rows, total } = await service.analysis.frequency(
+			project,
+			config(),
+			{
+				stopwords: new Set(["the", "and"]),
+				exclude: new Set(["again"]),
+			},
+		);
 		expect(rows[0]).toEqual({ term: "fog", count: 2 });
 		expect(rows.some((row) => row.term === "the")).toBe(false);
 		expect(rows.some((row) => row.term === "again")).toBe(false);
+		// Every token of the chapter and of the Draft seed, filters or not.
+		expect(total).toBeGreaterThan(rows.reduce((sum, row) => sum + row.count, 0));
 	});
 
 	it("forgets a note and its children like every other cache", async () => {

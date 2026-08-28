@@ -6,7 +6,9 @@ import {
 	averageSentenceLength,
 	dialoguePercent,
 	filterFrequencyRows,
+	formatDecimal,
 	formatReadingTime,
+	frequencySharePercent,
 	proseSummary,
 	readingMinutes,
 	type ReadingSpeeds,
@@ -26,26 +28,45 @@ describe('reading time', () => {
 	});
 
 	it('speaks minutes the way a reader would', () => {
-		expect(formatReadingTime(0.4, t)).toBe('Under a minute');
+		expect(formatReadingTime(0.4, t)).toBe('< 1 min');
 		expect(formatReadingTime(12.4, t)).toBe('12 min');
 		expect(formatReadingTime(125, t)).toBe('2 h 5 min');
 	});
 });
 
 describe('averages and shares', () => {
-	it('reads units per sentence to one decimal, or nothing off nothing', () => {
+	it('reads units per sentence unrounded, or nothing off nothing', () => {
 		expect(averageSentenceLength({ cjk: 100, words: 0 }, 8)).toBe(12.5);
 		expect(averageSentenceLength({ cjk: 0, words: 45 }, 3)).toBe(15);
+		expect(averageSentenceLength({ cjk: 100, words: 0 }, 3)).toBeCloseTo(
+			33.3333,
+			3,
+		);
 		expect(averageSentenceLength({ cjk: 0, words: 0 }, 0)).toBeNull();
 	});
 
-	it('reads the dialogue share in whole percent', () => {
+	it('reads the dialogue share unrounded', () => {
 		expect(
 			dialoguePercent({ cjk: 80, words: 20, dialogueCjk: 30, dialogueWords: 3 }),
 		).toBe(33);
 		expect(
+			dialoguePercent({ cjk: 60, words: 0, dialogueCjk: 20, dialogueWords: 0 }),
+		).toBeCloseTo(33.3333, 3);
+		expect(
 			dialoguePercent({ cjk: 0, words: 0, dialogueCjk: 0, dialogueWords: 0 }),
 		).toBeNull();
+	});
+
+	it('writes every derived figure with both decimals', () => {
+		expect(formatDecimal(12.5)).toBe('12.50');
+		expect(formatDecimal(100 / 3)).toBe('33.33');
+		expect(formatDecimal(0)).toBe('0.00');
+	});
+
+	it('says a share of the whole vocabulary, or nothing off nothing', () => {
+		expect(frequencySharePercent(135, 3100)).toBe('4.35');
+		expect(frequencySharePercent(1, 3100)).toBe('0.03');
+		expect(frequencySharePercent(9, 0)).toBeNull();
 	});
 
 	it('folds the totals into one summary strip', () => {
@@ -63,7 +84,7 @@ describe('averages and shares', () => {
 		expect(proseSummary(statistics, speeds, t)).toEqual({
 			readingTime: '2 min',
 			averageChapter: '1 min',
-			sentences: 40,
+			sentencesPerChapter: 20,
 			averageSentence: 20,
 			dialoguePercent: 25,
 		});
@@ -79,9 +100,9 @@ describe('averages and shares', () => {
 			},
 		};
 		expect(proseSummary(silent, speeds, t)).toEqual({
-			readingTime: 'Under a minute',
+			readingTime: '< 1 min',
 			averageChapter: null,
-			sentences: 0,
+			sentencesPerChapter: null,
 			averageSentence: null,
 			dialoguePercent: null,
 		});
