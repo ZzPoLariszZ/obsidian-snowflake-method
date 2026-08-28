@@ -161,7 +161,11 @@ const sameMentionMarks = (
 		(mark, index) =>
 			mark.from === right[index]?.from &&
 			mark.to === right[index]?.to &&
-			mark.classes === right[index]?.classes,
+			mark.classes === right[index]?.classes &&
+			// The hover title and the color variable dress the page as much as
+			// the classes do: a renamed or recolored rule must repaint.
+			mark.title === right[index]?.title &&
+			mark.styleVar === right[index]?.styleVar,
 	);
 
 /**

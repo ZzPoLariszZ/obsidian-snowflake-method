@@ -85,13 +85,19 @@ describe('sanitizing stored rules', () => {
 });
 
 describe('the compilation fingerprint', () => {
-	it('ignores what is read live at plan time', () => {
+	it('moves with everything the dress reads: style edits repaint', () => {
+		// The memo hands the plan its names, colors and decorations along with
+		// the automaton, so a fingerprint blind to them served the old look.
 		const base = highlightRulesFingerprint([rule({})]);
+		expect(highlightRulesFingerprint([rule({ name: 'Renamed' })])).not.toBe(
+			base,
+		);
 		expect(
-			highlightRulesFingerprint([
-				rule({ name: 'Renamed', color: '#aabbcc', decoration: 'wavy' }),
-			]),
-		).toBe(base);
+			highlightRulesFingerprint([rule({ color: '#aabbcc' })]),
+		).not.toBe(base);
+		expect(
+			highlightRulesFingerprint([rule({ decoration: 'wavy' })]),
+		).not.toBe(base);
 	});
 
 	it('moves with patterns and with the enabled set', () => {

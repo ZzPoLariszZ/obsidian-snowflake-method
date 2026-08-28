@@ -112,9 +112,12 @@ export function sanitizeCustomHighlightRules(
 }
 
 /**
- * What a compilation depends on: the enabled rules' patterns and kinds.
- * Names, colors and decorations are read live at plan time, so editing them
- * never costs a rebuild.
+ * What the memoized compilation stands for: everything the dress reads from
+ * it -- the patterns and kinds that decide what matches, and the names,
+ * decorations and colors the plan styles the matches with. All of it keys
+ * the memo, because the compiled set carries the rules the plan reads: a
+ * fingerprint blind to a recolor handed back the old look until a reload.
+ * Rebuilding on a style edit costs microseconds at rule-list scale.
  */
 export function highlightRulesFingerprint(
 	rules: readonly CustomHighlightRule[],
@@ -122,7 +125,14 @@ export function highlightRulesFingerprint(
 	return fingerprint(
 		rules
 			.filter((rule) => rule.enabled)
-			.map((rule) => [rule.id, rule.kind, rule.patterns]),
+			.map((rule) => [
+				rule.id,
+				rule.kind,
+				rule.patterns,
+				rule.name,
+				rule.decoration,
+				rule.color,
+			]),
 	);
 }
 

@@ -9,6 +9,7 @@ import {
 	TFolder,
 	getIconIds,
 	setIcon,
+	type ToggleComponent,
 } from 'obsidian';
 
 import {
@@ -4926,21 +4927,29 @@ class HighlightRuleModal extends Modal {
 			});
 		});
 		// The color row: the accent by default, one picked hex otherwise. The
-		// toggle is what stores null, because a picker always holds some value.
+		// toggle is what stores null, because a picker always holds some value
+		// -- and picking a color IS choosing it, so the act flips the toggle
+		// off itself rather than waiting for a second gesture that most
+		// authors never guessed they owed.
 		const colorRow = new Setting(this.contentEl)
 			.setName(this.t('modal.highlightRule.color'))
 			.setDesc(this.t('modal.highlightRule.followAccent'));
 		colorRow.settingEl.addClass('snowflake-method-definition-setting');
 		let picked = color ?? '#888888';
+		let follows: ToggleComponent | null = null;
 		colorRow.addColorPicker((picker) => {
 			picker.setValue(picked).onChange((next) => {
 				picked = next;
-				if (color !== null) color = next;
+				color = next;
+				// Idempotent against setValue firing onChange or not: the
+				// toggle's own handler would set the same color again.
+				follows?.setValue(false);
 			});
 		});
 		colorRow.addToggle((toggle) => {
-			toggle.setValue(color === null).onChange((follows) => {
-				color = follows ? null : picked;
+			follows = toggle;
+			toggle.setValue(color === null).onChange((following) => {
+				color = following ? null : picked;
 			});
 		});
 		const enabledRow = new Setting(this.contentEl).setName(
