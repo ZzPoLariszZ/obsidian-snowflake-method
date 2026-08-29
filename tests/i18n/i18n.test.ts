@@ -713,8 +713,8 @@ describe('translation resources', () => {
 			expect(Object.keys(en), key).toContain(key);
 			expect(Object.keys(zhCN), key).toContain(key);
 		}
-		expect(en['settings.manuscriptAppearance.heading']).toBe('Manuscript typography');
-		expect(zhCN['settings.manuscriptAppearance.heading']).toBe('正文排版');
+		expect(en['settings.manuscriptAppearance.heading']).toBe('Typography');
+		expect(zhCN['settings.manuscriptAppearance.heading']).toBe('排版');
 		// The guides are named for what they draw rather than for how they run,
 		// and each style is one word in both languages.
 		expect(en['settings.manuscriptGuide.name']).toBe('Grid lines');

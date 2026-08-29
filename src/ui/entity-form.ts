@@ -609,9 +609,10 @@ export interface PickedEntity {
  * starts a drag, or selecting the text in a field would carry the card off
  * instead; what a drop means is the caller's, who owns the order. The state
  * holder empties on drop before the caller redraws, so a source element
- * retired by the redraw cannot strand a drag in flight.
+ * retired by the redraw cannot strand a drag in flight. Exported for the
+ * settings page, whose highlight rules wear the same card.
  */
-function wireCardDrag<T>(
+export function wireCardDrag<T>(
 	el: HTMLElement,
 	handle: HTMLElement,
 	state: { dragging: T | null },

@@ -2680,10 +2680,22 @@
 /* These dialogs stand as tall as their fields rather than filling the frame,
    so the content does not grow — but it must still be allowed to shrink, or
    the scroller below never engages and a window too short for the form hides
-   its last fields and the buttons under them with no way to reach either. */
+   its last fields and the buttons under them with no way to reach either.
+   Shrinking below the fields' own height takes the min-height release, and
+   the scrolling happens here rather than on the dialog box, whose own
+   scroll would carry the title away over the first focused field. */
 .snowflake-method-project-modal .modal-content,
 .snowflake-method-compact-form-modal .modal-content {
 	flex: 0 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	/* The scroll clip would shave the focus ring off fields that reach the
+	   box's edge: the clip edge steps out into the dialog's own padding and
+	   the same room comes back as padding, so rings paint whole while the
+	   fields stand where they stood. */
+	margin-inline: calc(-1 * var(--size-2-3));
+	padding-inline: var(--size-2-3);
+	padding-block-end: var(--size-2-3);
 }
 
 .snowflake-method-project-form {
@@ -2725,9 +2737,13 @@
 	border-top: 0;
 }
 
+/* A column, so a row that carries a description stacks it under its name;
+   a lone name still stands centred in the same little box as before. */
 .snowflake-method-project-form > .setting-item > .setting-item-info {
 	display: flex;
-	align-items: center;
+	align-items: stretch;
+	flex-direction: column;
+	justify-content: center;
 	flex: 0 0 auto;
 	min-height: 1.5rem;
 	min-width: 0;
@@ -2749,12 +2765,14 @@
 	width: 100%;
 }
 
+/* Writable one-liners and dropdowns share the form's full width; a color
+   swatch and a toggle's hidden checkbox keep their native size. */
 .modal:is(
 		.snowflake-method-project-modal,
 		.snowflake-method-compact-form-modal
 	)
 	.modal-content.snowflake-method-project-form
-	input,
+	input:not([type='color']):not([type='checkbox']),
 .modal:is(
 		.snowflake-method-project-modal,
 		.snowflake-method-compact-form-modal
@@ -2767,6 +2785,50 @@
 	min-height: var(--input-height);
 	font-size: var(--font-ui-small);
 	box-sizing: border-box;
+}
+
+/* A word list stretches like the one-line controls but keeps its own height:
+   room for a few lines, and a handle to ask for more. */
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-compact-form-modal
+	)
+	.modal-content.snowflake-method-project-form
+	textarea {
+	width: 100%;
+	max-width: none;
+	min-height: calc(3 * 1.4em + var(--size-4-1) * 2);
+	font-size: var(--font-ui-small);
+	box-sizing: border-box;
+	resize: vertical;
+}
+
+/* The kind a rule was written in, shown but no longer chosen: a control's
+   place, a description's voice. */
+.snowflake-method-project-form .snowflake-method-rule-kind-fixed {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* Style and color on one line: the decoration list yields what the color
+   strip needs and keeps the rest, so the row ends where every other row
+   ends. */
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-compact-form-modal
+	)
+	.modal-content.snowflake-method-project-form
+	.snowflake-method-rule-style
+	select {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+}
+
+.snowflake-method-project-form
+	.snowflake-method-rule-style
+	.snowflake-method-tint-custom {
+	flex: 0 0 auto;
 }
 
 .snowflake-method-project-manager-modal {
@@ -6443,7 +6505,10 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    column. The settings page draws its choice rows itself, without the row
    class, so the group's own class carries the rule there. */
 .snowflake-method-presentation-row select.dropdown,
-.snowflake-method-appearance-settings select.dropdown {
+.snowflake-method-manuscript-settings
+	.setting-item-heading
+	~ .setting-item
+	select.dropdown {
 	width: var(--snowflake-method-presentation-control, 100px);
 }
 
@@ -6454,7 +6519,13 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    the column, and nothing is painted in the overhang. The popover's rows keep
    the app's default dropdown, which paints its own slab to its edge and needs
    no nudge. */
-.snowflake-method-appearance-settings select.dropdown {
+/* The typography rows are the ones past their subheading in the manuscript
+   card, now that the section is a subsection: the sibling walk stands in
+   for the wrapper class the merged group used to wear. */
+.snowflake-method-manuscript-settings
+	.setting-item-heading
+	~ .setting-item
+	select.dropdown {
 	margin-inline-end: -2px;
 }
 
@@ -6891,7 +6962,8 @@ button.snowflake-method-kind-options {
 /* Under the cards, where the next record will appear, and quiet the way the
    add row under a table is quiet. */
 .snowflake-method-record-body button.snowflake-method-record-more,
-.snowflake-method-record-editor button.snowflake-method-record-add {
+.snowflake-method-record-editor button.snowflake-method-record-add,
+.snowflake-method-settings-rules button.snowflake-method-record-add {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -6909,7 +6981,8 @@ button.snowflake-method-kind-options {
 }
 
 .snowflake-method-record-body button.snowflake-method-record-more:hover,
-.snowflake-method-record-editor button.snowflake-method-record-add:hover {
+.snowflake-method-record-editor button.snowflake-method-record-add:hover,
+.snowflake-method-settings-rules button.snowflake-method-record-add:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
@@ -7689,6 +7762,182 @@ button.snowflake-method-kind-options {
 	flex: 0 0 auto;
 	align-items: center;
 	color: var(--text-muted);
+}
+
+/* The settings page folded the dashboard's way: every section is one card,
+   its own heading dressed as the kind sections' toggle -- chevron before
+   the name, the whole line one target lighting up under the pointer -- and
+   the rows beneath hidden while the card rests closed, so the fold and what
+   it opens always share one ground. The dress row is plumbing, never shown. */
+.snowflake-method-settings-dress {
+	display: none;
+}
+
+/* The pane keeps its scrollbar lane whether or not an opened fold has grown
+   the page past the frame, so the cards stand one width open or closed.
+   Overlay scrollbars reserve nothing, and nothing changes there. */
+.vertical-tab-content.snowflake-method-settings {
+	scrollbar-gutter: stable;
+}
+
+.snowflake-method-settings-section.is-collapsed
+	.setting-item:not(.snowflake-method-settings-fold) {
+	display: none;
+}
+
+.snowflake-method-settings .snowflake-method-settings-fold {
+	gap: var(--size-4-2);
+	padding: var(--size-2-3);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.snowflake-method-settings .snowflake-method-settings-fold:hover {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-settings .snowflake-method-settings-fold:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus);
+	outline-offset: -2px;
+}
+
+/* Every section one outlined card, heading and rows on one ground; inside
+   it each row stands as a soft block of its own, parted by air rather than
+   hairlines. The page's groups are all ours -- the sections -- so the card
+   cloth is cut once for the scope. */
+.snowflake-method-settings .setting-group {
+	margin-block-end: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-primary);
+}
+
+.snowflake-method-settings .setting-group .setting-items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+.snowflake-method-settings
+	.setting-group
+	.setting-item:not(.setting-item-heading) {
+	padding: var(--size-4-5);
+	border: none;
+	border-radius: var(--radius-l);
+	background: var(--background-primary-alt);
+}
+
+/* The page draws its row dividers as a zero-height border worn by each
+   row's ::before; blocks parted by air have no line left to draw. */
+.snowflake-method-settings .setting-group .setting-item::before {
+	display: none;
+}
+
+/* The word lists and the one-line boxes end on one column: numbers and
+   textareas share a width by declaration rather than by coincidence, and a
+   list stands at least three lines tall so it reads as the list it is. */
+.snowflake-method-settings .setting-item input[type='number'],
+.snowflake-method-settings .setting-item textarea {
+	width: 12rem;
+}
+
+.snowflake-method-settings .setting-item textarea {
+	min-height: calc(3 * 1.3em + var(--size-2-2) * 2);
+	resize: vertical;
+}
+
+/* The highlight rules row is a bare shelf: the record cards it holds carry
+   their own frames, so the row sheds the soft block the other rows wear and
+   stacks the entity form's cards, the add button beneath them. */
+.snowflake-method-settings
+	.setting-group
+	.setting-item.snowflake-method-settings-rules {
+	/* A fixed handle, the record editors' own, so the fields line up. */
+	--snowflake-record-handle: 1.25rem;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--size-2-3);
+	padding: 0;
+	background: transparent;
+}
+
+/* Folded, the shelf folds with its section: said one class deeper than the
+   shelf's own display, so the fold outranks it whatever their order. */
+.snowflake-method-settings
+	.snowflake-method-settings-section.is-collapsed
+	.setting-item.snowflake-method-settings-rules {
+	display: none;
+}
+
+/* The app parts a row's first child from its control column; this row is a
+   stack, not two columns, so the part would only narrow the cards. */
+.snowflake-method-settings
+	.setting-item.snowflake-method-settings-rules
+	> :first-child {
+	margin-inline-end: 0;
+}
+
+/* Short copy beside input-height controls: the body meets the handle and
+   the buttons at their middle rather than hanging above them. */
+.snowflake-method-settings-rule .snowflake-method-record-body {
+	justify-content: center;
+	min-height: var(--input-height);
+	gap: var(--size-2-1);
+}
+
+/* The body is the way into the rule's editor, and says so under the pointer
+   and to the keyboard. */
+.snowflake-method-settings-rule-body {
+	padding: var(--size-2-1) var(--size-2-2);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.snowflake-method-settings-rule-body:hover {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-settings-rule-body:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus);
+	outline-offset: 2px;
+}
+
+/* Whether a rule runs, the card says itself: a paused rule's name steps
+   back to muted ink. */
+.snowflake-method-settings-rule.is-paused .snowflake-method-settings-rule-name {
+	color: var(--text-muted);
+}
+
+/* The pause sits beside the trash, cut to the same cloth but in the theme's
+   own icon ink rather than the trash's red. */
+.snowflake-method-record-card-pause.clickable-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	height: var(--input-height);
+}
+
+/* The heading's native margin holds air before the rows; closed, there are
+   no rows to hold it for, and it would sit as extra ground under the bar --
+   dropped, the card's own padding stands equal above and below. */
+.snowflake-method-settings
+	.snowflake-method-settings-section.is-collapsed
+	.setting-item-heading {
+	margin-block-end: 0;
+}
+
+/* A subsection heading inside a card -- Display and Editing under General:
+   the stack's own gap already parts it from the row above and below, so the
+   native margin steps aside and a little lead-in stands instead. */
+.snowflake-method-settings .setting-items .setting-item-heading {
+	margin-block: var(--size-4-2) 0;
+	padding-inline: var(--size-2-3);
 }
 
 /* A step above the rows it heads, so a kind is found by glancing rather than

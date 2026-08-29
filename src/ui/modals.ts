@@ -9,7 +9,6 @@ import {
 	TFolder,
 	getIconIds,
 	setIcon,
-	type ToggleComponent,
 } from 'obsidian';
 
 import {
@@ -44,6 +43,7 @@ import {
 } from '../domain';
 import type { MemberUsage } from '../services';
 import { FieldSuggest } from './field-suggest';
+import { addColorChip } from './presentation-controls';
 import {
 	duplicateFieldTitle,
 	parseCustomFields,
@@ -4737,7 +4737,6 @@ export interface HighlightRuleFormResult {
 	name: string;
 	kind: HighlightRuleKind;
 	patterns: string[];
-	enabled: boolean;
 	decoration: HighlightDecoration;
 	color: string | null;
 }
@@ -4793,20 +4792,19 @@ class HighlightRuleModal extends Modal {
 	) {
 		super(app);
 		this.setTitle(options.title);
-		this.modalEl.addClass(
-			'snowflake-method-form-modal',
-			'snowflake-method-definition-modal',
-		);
+		// The compact form's own cloth, the highlight options dialog's twin:
+		// stacked names in the form's face, no dividers, and the controls
+		// stretched to one shared width.
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
 	}
 
 	onOpen(): void {
 		this.contentEl.empty();
-		this.contentEl.addClass('snowflake-method-definition-form');
+		this.contentEl.addClass('snowflake-method-project-form');
 		const initial = this.options.initial;
 		let name = initial?.name ?? '';
 		let kind: HighlightRuleKind = initial?.kind ?? 'literal';
 		let patternText = (initial?.patterns ?? []).join('\n');
-		let enabled = initial?.enabled ?? true;
 		let decoration: HighlightDecoration = initial?.decoration ?? 'background';
 		let color = initial?.color ?? null;
 		let nameInput: HTMLInputElement | null = null;
@@ -4844,7 +4842,6 @@ class HighlightRuleModal extends Modal {
 				name: name.trim(),
 				kind,
 				patterns,
-				enabled,
 				decoration,
 				color,
 			};
@@ -4853,7 +4850,6 @@ class HighlightRuleModal extends Modal {
 		const nameRow = new Setting(this.contentEl).setName(
 			`${this.t('modal.highlightRule.name')} *`,
 		);
-		nameRow.settingEl.addClass('snowflake-method-definition-setting');
 		nameRow.addText((text) => {
 			nameInput = text.inputEl;
 			text.setValue(name).onChange((next) => {
@@ -4873,7 +4869,6 @@ class HighlightRuleModal extends Modal {
 		const kindRow = new Setting(this.contentEl).setName(
 			this.t('modal.highlightRule.kind'),
 		);
-		kindRow.settingEl.addClass('snowflake-method-definition-setting');
 		if (initial === undefined) {
 			kindRow.addDropdown((dropdown) => {
 				dropdown
@@ -4887,14 +4882,15 @@ class HighlightRuleModal extends Modal {
 			});
 		} else {
 			// Locked on edit: patterns keep the meaning they were written in.
-			kindRow.controlEl.createSpan({ text: kindLabel(kind) });
+			kindRow.controlEl.createSpan({
+				cls: 'snowflake-method-rule-kind-fixed',
+				text: kindLabel(kind),
+			});
 		}
-		const patternsRow = new Setting(this.contentEl)
-			.setName(this.t('modal.highlightRule.patterns'))
-			.setDesc(this.t('modal.highlightRule.patternsDesc'));
-		patternsRow.settingEl.addClass(
-			'snowflake-method-definition-setting',
-			'snowflake-method-definition-description',
+		// The placeholder already says one per line, so the row carries no
+		// description of its own.
+		const patternsRow = new Setting(this.contentEl).setName(
+			this.t('modal.highlightRule.patterns'),
 		);
 		patternsRow.addTextArea((text) => {
 			text
@@ -4907,11 +4903,15 @@ class HighlightRuleModal extends Modal {
 		});
 		patternWarning = new FieldWarning(patternsRow.settingEl, null);
 		showObjection();
-		const decorationRow = new Setting(this.contentEl).setName(
+		// Style and color share the row: the decoration list on the left and,
+		// at its end, the chip the manuscript ground is picked with. A rule
+		// that never picked a color stores null and dresses in the accent;
+		// the chip shows the spectrum until a color is chosen.
+		const styleRow = new Setting(this.contentEl).setName(
 			this.t('modal.highlightRule.decoration'),
 		);
-		decorationRow.settingEl.addClass('snowflake-method-definition-setting');
-		decorationRow.addDropdown((dropdown) => {
+		styleRow.settingEl.addClass('snowflake-method-rule-style');
+		styleRow.addDropdown((dropdown) => {
 			for (const option of HIGHLIGHT_DECORATIONS) {
 				dropdown.addOption(
 					option,
@@ -4926,40 +4926,14 @@ class HighlightRuleModal extends Modal {
 					: 'background';
 			});
 		});
-		// The color row: the accent by default, one picked hex otherwise. The
-		// toggle is what stores null, because a picker always holds some value
-		// -- and picking a color IS choosing it, so the act flips the toggle
-		// off itself rather than waiting for a second gesture that most
-		// authors never guessed they owed.
-		const colorRow = new Setting(this.contentEl)
-			.setName(this.t('modal.highlightRule.color'))
-			.setDesc(this.t('modal.highlightRule.followAccent'));
-		colorRow.settingEl.addClass('snowflake-method-definition-setting');
-		let picked = color ?? '#888888';
-		let follows: ToggleComponent | null = null;
-		colorRow.addColorPicker((picker) => {
-			picker.setValue(picked).onChange((next) => {
-				picked = next;
-				color = next;
-				// Idempotent against setValue firing onChange or not: the
-				// toggle's own handler would set the same color again.
-				follows?.setValue(false);
-			});
-		});
-		colorRow.addToggle((toggle) => {
-			follows = toggle;
-			toggle.setValue(color === null).onChange((following) => {
-				color = following ? null : picked;
-			});
-		});
-		const enabledRow = new Setting(this.contentEl).setName(
-			this.t('modal.highlightRule.enabled'),
-		);
-		enabledRow.settingEl.addClass('snowflake-method-definition-setting');
-		enabledRow.addToggle((toggle) => {
-			toggle.setValue(enabled).onChange((next) => {
-				enabled = next;
-			});
+		let colorControl: { sync(next: string): void } | null = null;
+		colorControl = addColorChip(styleRow, {
+			value: color ?? '',
+			label: this.t('modal.highlightRule.color'),
+			onPick: (value) => {
+				color = value.length > 0 ? value : null;
+				colorControl?.sync(value);
+			},
 		});
 		const actions = this.contentEl.createDiv({
 			cls: 'snowflake-method-modal-actions',

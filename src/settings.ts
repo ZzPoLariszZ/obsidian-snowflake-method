@@ -1,10 +1,14 @@
 import {
 	App,
+	Modal,
 	Notice,
 	moment,
 	normalizePath,
 	PluginSettingTab,
-	type Setting,
+	setIcon,
+	setTooltip,
+	Setting,
+	type SettingDefinition,
 	type SettingDefinitionItem,
 } from 'obsidian';
 
@@ -17,6 +21,8 @@ import {
 	FONT_SIZE_STOPS,
 	LINE_HEIGHT_STOPS,
 	DEFAULT_MANUSCRIPT_PRESENTATION,
+	DIALOGUE_PRESENTATIONS,
+	MENTION_HIGHLIGHT_MODES,
 	MANUSCRIPT_TINTS,
 	PARAGRAPH_SPACING_STOPS,
 	PRESENTATION_THEME_VARS,
@@ -79,6 +85,7 @@ import {
 	isValidProjectRoot,
 	normalizeProjectRoot,
 } from './project-root';
+import { wireCardDrag } from './ui/entity-form';
 import {
 	addFontFamilyPicker,
 	addStopSlider,
@@ -198,6 +205,9 @@ export interface SnowflakeSettings {
 	customHighlightRules: CustomHighlightRule[];
 	/** Whether the sensitive-word list is matched, counted and tracked. */
 	sensitiveWordsEnabled: boolean;
+	/** Dress alone: whether registered sensitive words are marked in the
+	 *  manuscript. The section's own toggle governs the counting. */
+	sensitiveHighlight: boolean;
 	/** The sensitive words themselves, one term per line. */
 	sensitiveWords: string;
 	/** Whether dialogue ranges are read at all. */
@@ -327,6 +337,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	customHighlightsEnabled: true,
 	customHighlightRules: [],
 	sensitiveWordsEnabled: true,
+	sensitiveHighlight: true,
 	sensitiveWords: '',
 	dialogueDetectionEnabled: true,
 	dialogueQuotesCurly: true,
@@ -401,6 +412,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'customHighlightsEnabled',
 	'customHighlightRules',
 	'sensitiveWordsEnabled',
+	'sensitiveHighlight',
 	'sensitiveWords',
 	'dialogueDetectionEnabled',
 	'dialogueQuotesCurly',
@@ -625,6 +637,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		customHighlightRules: sanitizeCustomHighlightRules(
 			raw.customHighlightRules,
 		),
+		sensitiveHighlight:
+			typeof raw.sensitiveHighlight === 'boolean'
+				? raw.sensitiveHighlight
+				: DEFAULT_SETTINGS.sensitiveHighlight,
 		sensitiveWordsEnabled:
 			typeof raw.sensitiveWordsEnabled === 'boolean'
 				? raw.sensitiveWordsEnabled
@@ -802,19 +818,6 @@ function readingSpeed(value: unknown, fallback: number, max: number): number {
 		: fallback;
 }
 
-/** Whether any of a regex rule's patterns will not compile. */
-function ruleIsBroken(rule: CustomHighlightRule): boolean {
-	if (rule.kind !== 'regex') return false;
-	return rule.patterns.some((pattern) => {
-		try {
-			void new RegExp(pattern, 'gu');
-			return false;
-		} catch {
-			return true;
-		}
-	});
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -862,6 +865,129 @@ function isDefaultProjectLocale(value: unknown): value is DefaultProjectLocale {
  */
 const PRESENTATION_SYNC_MS = 150;
 
+/** Every count the window slider offers, nought to twenty-five: the
+ *  typography sliders' own dress, worn by the one behaviour slider. */
+const MANUSCRIPT_WINDOW_STOPS: readonly number[] = Array.from(
+	{ length: 26 },
+	(_, at) => at,
+);
+
+/** Every stop the idle slider offers, the session limits walked in
+ *  quarter-minute steps -- the typography sliders' dress on session time. */
+const SESSION_IDLE_STOPS: readonly number[] = Array.from(
+	{
+		length:
+			(SESSION_LIMITS.idleThresholdSeconds.max -
+				SESSION_LIMITS.idleThresholdSeconds.min) /
+				15 +
+			1,
+	},
+	(_, at) => SESSION_LIMITS.idleThresholdSeconds.min + at * 15,
+);
+
+/** The four families' choices, drafted in a dialog and saved together. */
+interface HighlightOptionsDraft {
+	entities: MentionHighlightMode;
+	sensitive: boolean;
+	dialogue: DialoguePresentation;
+	custom: boolean;
+}
+
+/**
+ * One dialog for the whole highlight dress: Entities, Sensitive words,
+ * Dialogues and Custom highlight each a dropdown, applied only when Save is
+ * pressed -- closing any other way keeps what stood.
+ */
+class HighlightOptionsModal extends Modal {
+	constructor(
+		app: App,
+		private readonly options: {
+			t: (key: string) => string;
+			current: HighlightOptionsDraft;
+			save: (next: HighlightOptionsDraft) => Promise<void>;
+		},
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const t = this.options.t;
+		// The compact form's own cloth: stacked names in the form's face, no
+		// dividers, and every control stretched to one shared width.
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+		this.contentEl.addClass('snowflake-method-project-form');
+		this.titleEl.setText(t('settings.mentionHighlight.name'));
+		const draft: HighlightOptionsDraft = { ...this.options.current };
+		const off = t('settings.mentionHighlight.off');
+		const on = t('settings.mentionHighlight.on');
+		new Setting(this.contentEl)
+			.setName(t('settings.mentionHighlight.entities'))
+			.addDropdown((dropdown) => {
+				for (const mode of MENTION_HIGHLIGHT_MODES) {
+					dropdown.addOption(mode, t(`settings.mentionHighlight.${mode}`));
+				}
+				dropdown.setValue(draft.entities).onChange((value) => {
+					draft.entities = value as MentionHighlightMode;
+				});
+			});
+		new Setting(this.contentEl)
+			.setName(t('settings.sensitiveWords.heading'))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('off', off)
+					.addOption('on', on)
+					.setValue(draft.sensitive ? 'on' : 'off')
+					.onChange((value) => {
+						draft.sensitive = value === 'on';
+					});
+			});
+		new Setting(this.contentEl)
+			.setName(t('settings.mentionHighlight.dialogues'))
+			.addDropdown((dropdown) => {
+				for (const mode of DIALOGUE_PRESENTATIONS) {
+					dropdown.addOption(
+						mode,
+						t(`settings.dialoguePresentation.${mode}`),
+					);
+				}
+				dropdown.setValue(draft.dialogue).onChange((value) => {
+					draft.dialogue = value as DialoguePresentation;
+				});
+			});
+		new Setting(this.contentEl)
+			.setName(t('settings.mentionHighlight.custom'))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('off', off)
+					.addOption('on', on)
+					.setValue(draft.custom ? 'on' : 'off')
+					.onChange((value) => {
+						draft.custom = value === 'on';
+					});
+			});
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const save = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: t('common.save'),
+			attr: { type: 'button' },
+		});
+		save.addEventListener('click', () => {
+			void this.options
+				.save(draft)
+				.then(() => {
+					this.close();
+				})
+				.catch(() => undefined);
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 export class SnowflakeSettingTab extends PluginSettingTab {
 	private readonly owner: SnowflakeMethodPlugin;
 	/** Raised while this page is the one writing, so it does not answer itself. */
@@ -903,6 +1029,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			this.containerEl.win.clearTimeout(this.syncTimer);
 			this.syncTimer = null;
 		}
+		// The scope class rides the settings pane itself, which every tab
+		// shares: when another tab takes the pane, the cloth leaves with us
+		// rather than dressing whoever renders there next.
+		this.containerEl.removeClass('snowflake-method-settings');
 		super.hide();
 	}
 
@@ -941,112 +1071,198 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 
+	/** Which fold sections stand open: the page rests folded the way the
+	 *  dashboard's kind sections do, and a closed section's rows are not
+	 *  rendered at all -- the ledger lives for the app session. */
+	private readonly openSections = new Set<string>();
+
+	/**
+	 * Rides first among every section's items and never shows: its render is
+	 * the hook that dresses the section's card -- the group's own heading
+	 * turned into the dashboard sections' fold toggle, chevron and all, and
+	 * the rows beneath hidden while the section rests closed. One card holds
+	 * the heading and its rows, so the fold and what it opens share one
+	 * ground. A toggle moves classes alone, never a re-render; an update()
+	 * from elsewhere rebuilds the page and this render dresses it again.
+	 */
+	private sectionDress(key: string): SettingDefinition {
+		return {
+			name: '',
+			render: (setting) => {
+				// The scope the fold styling hangs from -- the declarative
+				// renderer owns the page, so the class rides the rows in.
+				this.containerEl.addClass('snowflake-method-settings');
+				const row = setting.settingEl;
+				row.addClass('snowflake-method-settings-dress');
+				const card = row.closest('.setting-group');
+				if (!(card instanceof HTMLElement)) return;
+				card.addClass('snowflake-method-settings-section');
+				const heading = card.querySelector('.setting-item-heading');
+				if (!(heading instanceof HTMLElement)) return;
+				const apply = (): void => {
+					const open = this.openSections.has(key);
+					card.toggleClass('is-collapsed', !open);
+					heading.setAttribute('aria-expanded', String(open));
+					const chevron = heading.querySelector(
+						'.snowflake-method-definition-section-chevron',
+					);
+					if (chevron instanceof HTMLElement) {
+						setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
+					}
+				};
+				if (!heading.hasClass('snowflake-method-settings-fold')) {
+					heading.addClass('snowflake-method-settings-fold');
+					heading.setAttribute('role', 'button');
+					heading.setAttribute('tabindex', '0');
+					heading.prepend(
+						createSpan({
+							cls: 'snowflake-method-definition-section-chevron',
+							attr: { 'aria-hidden': 'true' },
+						}),
+					);
+					const flip = (): void => {
+						if (!this.openSections.delete(key)) {
+							this.openSections.add(key);
+						}
+						apply();
+					};
+					heading.addEventListener('click', flip);
+					heading.addEventListener('keydown', (event) => {
+						if (event.key !== 'Enter' && event.key !== ' ') return;
+						event.preventDefault();
+						flip();
+					});
+				}
+				apply();
+			},
+		};
+	}
+
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{
-				name: this.t('settings.projectRoot.name'),
-				desc: this.t('settings.projectRoot.desc'),
-				// Rendered rather than declared as a `folder` control, so this is
-				// the same field the project manager offers — one frame, one list,
-				// one set of manners — instead of two controls that merely ask the
-				// same question.
-				render: (setting) => this.renderProjectRoot(setting),
-			},
-			{
-				name: this.t('settings.uiLocale.name'),
-				desc: this.t('settings.uiLocale.desc'),
-				control: {
-					type: 'dropdown',
-					key: 'uiLocale',
-					defaultValue: DEFAULT_SETTINGS.uiLocale,
-					options: {
-						project: this.t('settings.locale.project'),
-						system: this.t('settings.locale.system'),
-						en: 'English',
-						'zh-CN': '简体中文',
+				type: 'group',
+				heading: this.t('settings.section.general'),
+				items: [
+					this.sectionDress('general'),
+				{
+					name: this.t('settings.projectRoot.name'),
+					desc: this.t('settings.projectRoot.desc'),
+					// Rendered rather than declared as a `folder` control, so this is
+					// the same field the project manager offers — one frame, one list,
+					// one set of manners — instead of two controls that merely ask the
+					// same question.
+					render: (setting) => this.renderProjectRoot(setting),
+				},
+				{
+					name: this.t('settings.uiLocale.name'),
+					desc: this.t('settings.uiLocale.desc'),
+					control: {
+						type: 'dropdown',
+						key: 'uiLocale',
+						defaultValue: DEFAULT_SETTINGS.uiLocale,
+						options: {
+							project: this.t('settings.locale.project'),
+							system: this.t('settings.locale.system'),
+							en: 'English',
+							'zh-CN': '简体中文',
+						},
 					},
 				},
-			},
-			{
-				name: this.t('settings.projectLocale.name'),
-				desc: this.t('settings.projectLocale.desc'),
-				control: {
-					type: 'dropdown',
-					key: 'defaultProjectLocale',
-					defaultValue: DEFAULT_SETTINGS.defaultProjectLocale,
-					options: {
-						system: this.t('settings.locale.system'),
-						en: 'English',
-						'zh-CN': '简体中文',
+				{
+					name: this.t('settings.projectLocale.name'),
+					desc: this.t('settings.projectLocale.desc'),
+					control: {
+						type: 'dropdown',
+						key: 'defaultProjectLocale',
+						defaultValue: DEFAULT_SETTINGS.defaultProjectLocale,
+						options: {
+							system: this.t('settings.locale.system'),
+							en: 'English',
+							'zh-CN': '简体中文',
+						},
 					},
 				},
-			},
-			{
-				name: this.t('settings.freeformMode.name'),
-				desc: this.lines('settings.freeformMode.desc'),
-				control: {
-					type: 'toggle',
-					key: 'freeformMode',
-					defaultValue: DEFAULT_SETTINGS.freeformMode,
-				},
-			},
-			{
-				name: this.t('settings.split.name'),
-				desc: this.t('settings.split.desc'),
-				control: {
-					type: 'toggle',
-					key: 'openLongTextInSplit',
-					defaultValue: DEFAULT_SETTINGS.openLongTextInSplit,
-				},
-			},
-			{
-				name: this.t('settings.reduceMotion.name'),
-				desc: this.t('settings.reduceMotion.desc'),
-				control: {
-					type: 'toggle',
-					key: 'reduceMotion',
-					defaultValue: DEFAULT_SETTINGS.reduceMotion,
-				},
-			},
-			{
-				name: this.t('settings.tableActionsColumn.name'),
-				desc: this.lines('settings.tableActionsColumn.desc'),
-				control: {
-					type: 'toggle',
-					key: 'showTableActionsColumn',
-					defaultValue: DEFAULT_SETTINGS.showTableActionsColumn,
-				},
-			},
-			{
-				name: this.t('settings.tableProgressStatus.name'),
-				desc: this.t('settings.tableProgressStatus.desc'),
-				control: {
-					type: 'toggle',
-					key: 'showTableProgressStatus',
-					defaultValue: DEFAULT_SETTINGS.showTableProgressStatus,
-				},
-			},
-			{
-				name: this.t('settings.protectBoundaries.name'),
-				desc: this.t('settings.protectBoundaries.desc'),
-				control: {
-					type: 'toggle',
-					key: 'protectManagedBoundaries',
-					defaultValue: DEFAULT_SETTINGS.protectManagedBoundaries,
-				},
-			},
-			{
-				name: this.t('settings.createFromField.name'),
-				desc: this.t('settings.createFromField.desc'),
-				control: {
-					type: 'dropdown',
-					key: 'createFromField',
-					defaultValue: DEFAULT_SETTINGS.createFromField,
-					options: {
-						form: this.t('settings.createFromField.form'),
-						now: this.t('settings.createFromField.now'),
+				{
+					name: this.t('settings.freeformMode.name'),
+					desc: this.lines('settings.freeformMode.desc'),
+					control: {
+						type: 'toggle',
+						key: 'freeformMode',
+						defaultValue: DEFAULT_SETTINGS.freeformMode,
 					},
 				},
+					{
+						name: this.t('settings.section.display'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+				{
+					name: this.t('settings.split.name'),
+					desc: this.t('settings.split.desc'),
+					control: {
+						type: 'toggle',
+						key: 'openLongTextInSplit',
+						defaultValue: DEFAULT_SETTINGS.openLongTextInSplit,
+					},
+				},
+				{
+					name: this.t('settings.tableActionsColumn.name'),
+					desc: this.lines('settings.tableActionsColumn.desc'),
+					control: {
+						type: 'toggle',
+						key: 'showTableActionsColumn',
+						defaultValue: DEFAULT_SETTINGS.showTableActionsColumn,
+					},
+				},
+				{
+					name: this.t('settings.tableProgressStatus.name'),
+					desc: this.t('settings.tableProgressStatus.desc'),
+					control: {
+						type: 'toggle',
+						key: 'showTableProgressStatus',
+						defaultValue: DEFAULT_SETTINGS.showTableProgressStatus,
+					},
+				},
+				{
+					name: this.t('settings.reduceMotion.name'),
+					desc: this.t('settings.reduceMotion.desc'),
+					control: {
+						type: 'toggle',
+						key: 'reduceMotion',
+						defaultValue: DEFAULT_SETTINGS.reduceMotion,
+					},
+				},
+					{
+						name: this.t('settings.section.editing'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+				{
+					name: this.t('settings.createFromField.name'),
+					desc: this.t('settings.createFromField.desc'),
+					control: {
+						type: 'dropdown',
+						key: 'createFromField',
+						defaultValue: DEFAULT_SETTINGS.createFromField,
+						options: {
+							form: this.t('settings.createFromField.form'),
+							now: this.t('settings.createFromField.now'),
+						},
+					},
+				},
+				{
+					name: this.t('settings.protectBoundaries.name'),
+					desc: this.t('settings.protectBoundaries.desc'),
+					control: {
+						type: 'toggle',
+						key: 'protectManagedBoundaries',
+						defaultValue: DEFAULT_SETTINGS.protectManagedBoundaries,
+					},
+				},
+				],
 			},
 			// Under a heading of their own: three settings that mean nothing to an
 			// author who never opens the manuscript, and that would otherwise sit
@@ -1056,35 +1272,17 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				heading: this.t('settings.manuscript.heading'),
 				cls: 'snowflake-method-manuscript-settings',
 				items: [
+					this.sectionDress('manuscript'),
 					{
 						name: this.t('settings.manuscriptWindow.name'),
 						desc: this.t('settings.manuscriptWindow.desc'),
-						control: {
-							type: 'slider',
-							key: 'manuscriptWindow',
-							defaultValue: DEFAULT_SETTINGS.manuscriptWindow,
-							min: 0,
-							max: 25,
-							step: 1,
-						},
-					},
-					{
-						name: this.t('settings.manuscriptPath.name'),
-						desc: this.t('settings.manuscriptPath.desc'),
-						control: {
-							type: 'toggle',
-							key: 'showManuscriptPath',
-							defaultValue: DEFAULT_SETTINGS.showManuscriptPath,
-						},
-					},
-					{
-						name: this.t('settings.manuscriptSequence.name'),
-						desc: this.t('settings.manuscriptSequence.desc'),
-						control: {
-							type: 'toggle',
-							key: 'showManuscriptSequence',
-							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
-						},
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptWindow',
+								MANUSCRIPT_WINDOW_STOPS,
+								(value) => String(value),
+							),
 					},
 					{
 						name: this.t('settings.manuscriptTypewriter.name'),
@@ -1093,6 +1291,32 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'toggle',
 							key: 'manuscriptTypewriter',
 							defaultValue: DEFAULT_SETTINGS.manuscriptTypewriter,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptFocus.name'),
+						desc: '',
+						// Rendered rather than declared: the row's own name carries the
+						// level in force and its description explains it, both rewritten
+						// as the slider moves — and, being built at display time, both
+						// read right however the level was changed while this page was
+						// closed.
+						render: (setting) => this.renderFocusMode(setting),
+					},
+					{
+						name: this.t('settings.mentionHighlight.name'),
+						desc: this.t('settings.mentionHighlight.desc'),
+						render: (setting) => {
+							this.renderHighlightMatrix(setting);
+						},
+					},
+					{
+						name: this.t('settings.manuscriptEnterParagraph.name'),
+						desc: this.lines('settings.manuscriptEnterParagraph.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptEnterParagraph',
+							defaultValue: DEFAULT_SETTINGS.manuscriptEnterParagraph,
 						},
 					},
 					{
@@ -1114,51 +1338,34 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: this.t('settings.manuscriptEnterParagraph.name'),
-						desc: this.lines('settings.manuscriptEnterParagraph.desc'),
+						name: this.t('settings.manuscriptPath.name'),
+						desc: this.t('settings.manuscriptPath.desc'),
 						control: {
 							type: 'toggle',
-							key: 'manuscriptEnterParagraph',
-							defaultValue: DEFAULT_SETTINGS.manuscriptEnterParagraph,
+							key: 'showManuscriptPath',
+							defaultValue: DEFAULT_SETTINGS.showManuscriptPath,
 						},
 					},
 					{
-						name: this.t('settings.manuscriptFocus.name'),
-						desc: '',
-						// Rendered rather than declared: the row's own name carries the
-						// level in force and its description explains it, both rewritten
-						// as the slider moves — and, being built at display time, both
-						// read right however the level was changed while this page was
-						// closed.
-						render: (setting) => this.renderFocusMode(setting),
-					},
-					{
-						name: this.t('settings.mentionHighlight.name'),
-						desc: this.t('settings.mentionHighlight.desc'),
+						name: this.t('settings.manuscriptSequence.name'),
+						desc: this.t('settings.manuscriptSequence.desc'),
 						control: {
-							type: 'dropdown',
-							key: 'manuscriptMentionHighlight',
-							defaultValue: DEFAULT_SETTINGS.manuscriptMentionHighlight,
-							options: {
-								off: this.t('settings.mentionHighlight.off'),
-								first: this.t('settings.mentionHighlight.first'),
-								unlinked: this.t('settings.mentionHighlight.unlinked'),
-								all: this.t('settings.mentionHighlight.all'),
-							},
+							type: 'toggle',
+							key: 'showManuscriptSequence',
+							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
 						},
 					},
-				],
-			},
-			// The page's dress, under a heading of its own: what the manuscript
-			// looks like is a different question from how it behaves, and an
-			// author who has found the look they want never needs to come back
-			// here. The same controls are offered over the manuscript itself,
-			// from the formatting bar.
-			{
-				type: 'group',
-				heading: this.t('settings.manuscriptAppearance.heading'),
-				cls: 'snowflake-method-manuscript-settings snowflake-method-appearance-settings',
-				items: [
+				// The page's dress, under a heading of its own: what the manuscript
+				// looks like is a different question from how it behaves, and an
+				// author who has found the look they want never needs to come back
+				// here. The same controls are offered over the manuscript itself,
+				// from the formatting bar.
+					{
+						name: this.t('settings.manuscriptAppearance.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
 					{
 						name: this.t('settings.manuscriptFontFamily.name'),
 						desc: this.lines('settings.manuscriptFontFamily.desc'),
@@ -1290,16 +1497,22 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
-			// A session starts from the status bar or the palette. What lives here
-			// is what a new one starts with, and how the statistics read it back:
-			// what counts as a word, then the clock, then how a session begins, then
-			// the goal, then how the numbers are shown. A session already running
-			// keeps what it began under.
 			{
 				type: 'group',
-				heading: this.t('settings.session.heading'),
-				cls: 'snowflake-method-session-settings',
+				heading: this.t('dashboard.statistics'),
 				items: [
+					this.sectionDress('statistics'),
+					// A session starts from the status bar or the palette. What lives here
+					// is what a new one starts with, and how the statistics read it back:
+					// what counts as a word, then the clock, then how a session begins, then
+					// the goal, then how the numbers are shown. A session already running
+					// keeps what it began under.
+					{
+						name: this.t('settings.session.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
 					{
 						name: this.t('settings.writingCountMode.name'),
 						desc: this.t('settings.writingCountMode.desc'),
@@ -1349,14 +1562,16 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.sessionIdleThreshold.name'),
 						desc: this.t('settings.sessionIdleThreshold.desc'),
-						control: {
-							type: 'slider',
-							key: 'sessionIdleThresholdSeconds',
-							defaultValue: DEFAULT_SETTINGS.sessionIdleThresholdSeconds,
-							min: SESSION_LIMITS.idleThresholdSeconds.min,
-							max: SESSION_LIMITS.idleThresholdSeconds.max,
-							step: 15,
-						},
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'sessionIdleThresholdSeconds',
+								SESSION_IDLE_STOPS,
+								(value) =>
+									this.t('settings.sessionIdleThreshold.seconds', {
+										value,
+									}),
+							),
 					},
 					{
 						name: this.t('settings.sessionWritingMode.name'),
@@ -1465,70 +1680,45 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							),
 						},
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: this.t('settings.customMatching.heading'),
-				cls: 'snowflake-method-analysis-settings',
-				items: [
 					{
-						name: this.t('settings.customMatching.enable'),
-						desc: this.t('settings.customMatching.enableDesc'),
-						control: {
-							type: 'toggle',
-							key: 'customHighlightsEnabled',
-							defaultValue: DEFAULT_SETTINGS.customHighlightsEnabled,
+						name: this.t('settings.proseStatistics.heading'),
+						render: (setting) => {
+							setting.setHeading();
 						},
 					},
-				],
-			},
-			// The rules themselves: the plugin's one settings-owned collection,
-			// carried by the framework's list affordances -- add, drag, delete --
-			// with a dialog for everything a row holds. A list cannot sit inside
-			// a group, so it stands beside its section's heading.
-			{
-				type: 'list',
-				heading: this.t('settings.customMatching.rules'),
-				cls: 'snowflake-method-analysis-settings',
-				emptyState: this.t('settings.customMatching.empty'),
-				addItem: {
-					name: this.t('settings.customMatching.add'),
-					action: () => {
-						void this.addCustomRule();
-					},
-				},
-				onDelete: (index) => {
-					void this.deleteCustomRule(index);
-				},
-				onReorder: (from, to) => {
-					void this.reorderCustomRules(from, to);
-				},
-				items: this.owner.settings.customHighlightRules.map(
-					(rule, index) => ({
-						name:
-							rule.name.length > 0
-								? rule.name
-								: this.customRuleKindLabel(rule.kind),
-						desc: this.customRuleRowDesc(rule),
-						action: () => {
-							void this.editCustomRule(index);
-						},
-					}),
-				),
-			},
-			{
-				type: 'group',
-				heading: this.t('settings.sensitiveWords.heading'),
-				cls: 'snowflake-method-analysis-settings',
-				items: [
 					{
-						name: this.t('settings.sensitiveWords.enable'),
-						desc: this.t('settings.sensitiveWords.enableDesc'),
+						name: this.t('settings.readingWordsPerMinute.name'),
 						control: {
-							type: 'toggle',
-							key: 'sensitiveWordsEnabled',
-							defaultValue: DEFAULT_SETTINGS.sensitiveWordsEnabled,
+							type: 'number',
+							key: 'readingWordsPerMinute',
+							defaultValue: DEFAULT_SETTINGS.readingWordsPerMinute,
+							min: 10,
+							step: 10,
+						},
+					},
+					{
+						name: this.t('settings.readingCjkCharactersPerMinute.name'),
+						control: {
+							type: 'number',
+							key: 'readingCjkCharactersPerMinute',
+							defaultValue: DEFAULT_SETTINGS.readingCjkCharactersPerMinute,
+							min: 10,
+							step: 10,
+						},
+					},
+					{
+						name: this.t('settings.customStopwords.name'),
+						desc: this.lines('settings.customStopwords.desc'),
+						control: {
+							type: 'textarea',
+							key: 'customStopwords',
+							defaultValue: DEFAULT_SETTINGS.customStopwords,
+						},
+					},
+					{
+						name: this.t('settings.section.sensitiveRules'),
+						render: (setting) => {
+							setting.setHeading();
 						},
 					},
 					{
@@ -1540,20 +1730,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							defaultValue: DEFAULT_SETTINGS.sensitiveWords,
 						},
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: this.t('settings.dialogue.heading'),
-				cls: 'snowflake-method-analysis-settings',
-				items: [
 					{
-						name: this.t('settings.dialogue.enable'),
-						desc: this.t('settings.dialogue.enableDesc'),
-						control: {
-							type: 'toggle',
-							key: 'dialogueDetectionEnabled',
-							defaultValue: DEFAULT_SETTINGS.dialogueDetectionEnabled,
+						name: this.t('settings.dialogue.heading'),
+						render: (setting) => {
+							setting.setHeading();
 						},
 					},
 					{
@@ -1593,57 +1773,19 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: this.t('settings.dialoguePresentation.name'),
-						desc: this.t('settings.dialoguePresentation.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'dialoguePresentation',
-							defaultValue: DEFAULT_SETTINGS.dialoguePresentation,
-							options: {
-								off: this.t('settings.dialoguePresentation.off'),
-								highlight: this.t(
-									'settings.dialoguePresentation.highlight',
-								),
-								focus: this.t('settings.dialoguePresentation.focus'),
-							},
+						name: this.t('settings.customMatching.heading'),
+						render: (setting) => {
+							setting.setHeading();
 						},
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: this.t('settings.proseStatistics.heading'),
-				cls: 'snowflake-method-analysis-settings',
-				items: [
+					// The rules themselves: the plugin's one settings-owned
+					// collection, drawn as the entity form's record cards --
+					// the handle that moves one, the body that opens it, the
+					// pause that rests it, and the trash that removes it.
 					{
-						name: this.t('settings.readingWordsPerMinute.name'),
-						desc: this.t('settings.readingWordsPerMinute.desc'),
-						control: {
-							type: 'number',
-							key: 'readingWordsPerMinute',
-							defaultValue: DEFAULT_SETTINGS.readingWordsPerMinute,
-							min: 10,
-							step: 10,
-						},
-					},
-					{
-						name: this.t('settings.readingCjkCharactersPerMinute.name'),
-						desc: this.t('settings.readingCjkCharactersPerMinute.desc'),
-						control: {
-							type: 'number',
-							key: 'readingCjkCharactersPerMinute',
-							defaultValue: DEFAULT_SETTINGS.readingCjkCharactersPerMinute,
-							min: 10,
-							step: 10,
-						},
-					},
-					{
-						name: this.t('settings.customStopwords.name'),
-						desc: this.lines('settings.customStopwords.desc'),
-						control: {
-							type: 'textarea',
-							key: 'customStopwords',
-							defaultValue: DEFAULT_SETTINGS.customStopwords,
+						name: '',
+						render: (setting) => {
+							this.renderCustomRules(setting);
 						},
 					},
 				],
@@ -1659,33 +1801,131 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		);
 	}
 
-	/** One rule row's summary: kind, size, and whatever needs saying. */
-	private customRuleRowDesc(rule: CustomHighlightRule): string {
-		let desc =
-			rule.patterns.length === 1
-				? this.t('settings.customMatching.ruleDescOne', {
-						kind: this.customRuleKindLabel(rule.kind),
-					})
-				: this.t('settings.customMatching.ruleDesc', {
-						kind: this.customRuleKindLabel(rule.kind),
-						count: rule.patterns.length,
-					});
-		if (!rule.enabled) desc += ` · ${this.t('settings.customMatching.off')}`;
-		if (ruleIsBroken(rule)) {
-			desc += ` · ${this.t('settings.customMatching.broken')}`;
-		}
-		return desc;
+	/** Every rule's card name, in order: its own, or its kind's when unnamed. */
+	customRuleNames(): string[] {
+		return this.owner.settings.customHighlightRules.map((rule) =>
+			rule.name.length > 0
+				? rule.name
+				: this.customRuleKindLabel(rule.kind),
+		);
+	}
+
+	/**
+	 * The rules drawn as the entity form's record cards, on the bare ground of
+	 * their settings row: each card a handle, a clickable body that opens the
+	 * editor, a pause button saying whether the rule runs, and the trash. The
+	 * add button stands under the cards, where the next rule will appear.
+	 */
+	private renderCustomRules(setting: Setting): void {
+		const row = setting.settingEl;
+		row.empty();
+		row.addClass('snowflake-method-settings-rules');
+		const names = this.customRuleNames();
+		const cards = row.createDiv({ cls: 'snowflake-method-record-cards' });
+		// One holder per render: a drop redraws the page, which retires the
+		// cards along with whatever drag they were part of.
+		const dragState: { dragging: number | null } = { dragging: null };
+		names.forEach((name, index) => {
+			this.renderCustomRuleCard(cards, name, index, dragState);
+		});
+		const add = row.createEl('button', {
+			cls: 'snowflake-method-record-add',
+			text: this.t('settings.customMatching.add'),
+			attr: { type: 'button' },
+		});
+		add.addEventListener('click', () => {
+			void this.addCustomRule();
+		});
+	}
+
+	private renderCustomRuleCard(
+		cards: HTMLElement,
+		name: string,
+		index: number,
+		dragState: { dragging: number | null },
+	): void {
+		const rule = this.owner.settings.customHighlightRules[index];
+		if (rule === undefined) return;
+		const card = cards.createDiv({
+			cls: 'snowflake-method-record-card snowflake-method-settings-rule',
+		});
+		card.toggleClass('is-paused', !rule.enabled);
+		const handle = card.createDiv({
+			cls: 'snowflake-method-record-drag',
+			attr: { 'aria-label': this.t('form.record.reorder') },
+		});
+		setIcon(handle, 'grip-vertical');
+		wireCardDrag(card, handle, dragState, index, (from) => {
+			void this.reorderCustomRules(from, index);
+		});
+		const body = card.createDiv({
+			cls: 'snowflake-method-record-body snowflake-method-settings-rule-body',
+			attr: { role: 'button', tabindex: '0' },
+		});
+		body.createDiv({
+			cls: 'snowflake-method-settings-rule-name',
+			text: name,
+		});
+		const edit = (): void => {
+			void this.editCustomRule(index);
+		};
+		body.addEventListener('click', edit);
+		body.addEventListener('keydown', (event) => {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			edit();
+		});
+		const pause = card.createEl('button', {
+			cls: 'snowflake-method-record-card-pause clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.t(
+					rule.enabled
+						? 'settings.customMatching.pause'
+						: 'settings.customMatching.resume',
+				),
+			},
+		});
+		setIcon(pause, rule.enabled ? 'pause' : 'play');
+		pause.addEventListener('click', () => {
+			void this.toggleCustomRule(index);
+		});
+		const close = card.createEl('button', {
+			cls: 'snowflake-method-record-card-close clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.t('modal.highlightRule.deleteTitle', {
+					name,
+				}),
+			},
+		});
+		setIcon(close, 'trash-2');
+		close.addEventListener('click', () => {
+			void this.deleteCustomRule(index);
+		});
+	}
+
+	/** Rests a running rule or wakes a paused one, in place. */
+	private async toggleCustomRule(index: number): Promise<void> {
+		await this.owner.updateCustomHighlightRules(
+			this.owner.settings.customHighlightRules.map((kept, at) =>
+				at === index ? { ...kept, enabled: !kept.enabled } : kept,
+			),
+		);
+		this.update();
 	}
 
 	private async addCustomRule(): Promise<void> {
 		const result = await this.owner.promptHighlightRule(this.translator(), {
 			title: this.t('modal.highlightRule.createTitle'),
-			submitLabel: this.t('common.create'),
+			submitLabel: this.t('common.add'),
 		});
 		if (result === null) return;
+		// A rule is born running: whether it runs lives on the card's own
+		// pause button, not in the dialog.
 		await this.owner.updateCustomHighlightRules([
 			...this.owner.settings.customHighlightRules,
-			{ id: newHighlightRuleId(), ...result },
+			{ id: newHighlightRuleId(), enabled: true, ...result },
 		]);
 		this.update();
 	}
@@ -1806,6 +2046,44 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 * what was stored is shown back, so a value held to its range reads as
 	 * what it became.
 	 */
+	/**
+	 * The highlight options behind one gear: a dialog with the four families
+	 * as dropdowns -- Entities, Sensitive words, Dialogues, Custom highlight
+	 * -- and a Save that writes them together, so the whole dress is set in
+	 * one place. The manuscript toolbar's menu offers the same four live.
+	 */
+	private renderHighlightMatrix(setting: Setting): void {
+		const button = setting.controlEl.createEl('button', {
+			cls: 'clickable-icon snowflake-method-highlight-menu',
+			attr: { type: 'button', 'aria-haspopup': 'dialog' },
+		});
+		setIcon(button, 'settings');
+		setTooltip(button, this.t('settings.mentionHighlight.name'));
+		button.addEventListener('click', () => {
+			new HighlightOptionsModal(this.app, {
+				t: (key) => this.t(key),
+				current: {
+					entities: this.owner.settings.manuscriptMentionHighlight,
+					sensitive: this.owner.settings.sensitiveHighlight,
+					dialogue: this.owner.settings.dialoguePresentation,
+					custom: this.owner.settings.customHighlightsEnabled,
+				},
+				save: async (next) => {
+					await this.setControlValue(
+						'manuscriptMentionHighlight',
+						next.entities,
+					);
+					await this.setControlValue('sensitiveHighlight', next.sensitive);
+					await this.setControlValue('dialoguePresentation', next.dialogue);
+					await this.setControlValue(
+						'customHighlightsEnabled',
+						next.custom,
+					);
+				},
+			}).open();
+		});
+	}
+
 	private renderStops(
 		setting: Setting,
 		key:
@@ -1813,7 +2091,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			| 'manuscriptLineHeight'
 			| 'manuscriptContentWidth'
 			| 'manuscriptParagraphSpacing'
-			| 'manuscriptFirstLineIndent',
+			| 'manuscriptFirstLineIndent'
+			| 'manuscriptWindow'
+			| 'sessionIdleThresholdSeconds',
 		stops: readonly number[],
 		format: (value: number) => string,
 		themeVar?: string,
@@ -2132,6 +2412,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sensitiveWordsEnabled':
 				if (typeof value === 'boolean') {
 					this.owner.settings.sensitiveWordsEnabled = value;
+				}
+				break;
+			case 'sensitiveHighlight':
+				if (typeof value === 'boolean') {
+					this.owner.settings.sensitiveHighlight = value;
 				}
 				break;
 			case 'sensitiveWords':

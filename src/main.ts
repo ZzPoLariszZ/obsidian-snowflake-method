@@ -2608,7 +2608,11 @@ export default class SnowflakeMethodPlugin
 		}
 		// Custom highlight rules are dress alone -- transient marks over the
 		// loaded segments -- so the same re-dress is again the whole change.
-		if (key === 'customHighlightRules' || key === 'customHighlightsEnabled') {
+		if (
+			key === 'customHighlightRules' ||
+			key === 'customHighlightsEnabled' ||
+			key === 'sensitiveHighlight'
+		) {
 			this.applyManuscriptMentionMode();
 			return;
 		}
@@ -4742,6 +4746,8 @@ export default class SnowflakeMethodPlugin
 			recentFonts: this.settings.manuscriptRecentFonts,
 			presentation: this.manuscriptPresentation(),
 			mentionHighlight: this.settings.manuscriptMentionHighlight,
+			sensitiveHighlight: this.settings.sensitiveHighlight,
+			customHighlights: this.settings.customHighlightsEnabled,
 		};
 	}
 
@@ -4910,9 +4916,10 @@ export default class SnowflakeMethodPlugin
 			presentation: DialoguePresentation;
 		};
 	} {
-		const terms = this.settings.sensitiveWordsEnabled
-			? parseSensitiveWords(this.settings.sensitiveWords)
-			: [];
+		const terms =
+			this.settings.sensitiveWordsEnabled && this.settings.sensitiveHighlight
+				? parseSensitiveWords(this.settings.sensitiveWords)
+				: [];
 		const rules = this.settings.customHighlightsEnabled
 			? this.settings.customHighlightRules
 			: [];
@@ -4931,6 +4938,22 @@ export default class SnowflakeMethodPlugin
 				presentation: this.settings.dialoguePresentation,
 			},
 		};
+	}
+
+	/** Turns the sensitive-word marks, stored like the other dress choices. */
+	async setSensitiveHighlight(on: boolean): Promise<void> {
+		if (this.settings.sensitiveHighlight === on) return;
+		this.settings.sensitiveHighlight = on;
+		await this.saveSettings();
+		await this.handleSettingsChanged('sensitiveHighlight');
+	}
+
+	/** Turns the custom rules' master switch, as the command does. */
+	async setCustomHighlights(on: boolean): Promise<void> {
+		if (this.settings.customHighlightsEnabled === on) return;
+		this.settings.customHighlightsEnabled = on;
+		await this.saveSettings();
+		await this.handleSettingsChanged('customHighlightsEnabled');
 	}
 
 	/** Stores the dialogue presentation the way the highlight mode is stored. */

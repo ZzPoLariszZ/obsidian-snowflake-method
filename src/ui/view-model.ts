@@ -315,6 +315,10 @@ export interface ManuscriptWindowSettings {
 	autoPairMarkdown: boolean;
 	/** Enter puts the paragraph break; Shift+Enter the plain line break. */
 	enterParagraph: boolean;
+	/** Whether the registered sensitive words are marked on the page. */
+	sensitiveHighlight: boolean;
+	/** The custom rules' master switch, the one the command also flips. */
+	customHighlights: boolean;
 	/** The faces most recently set, newest first, for the font picker's list. */
 	recentFonts: readonly string[];
 	/** How the page is dressed: typography, ground and guides, both halves. */
@@ -461,6 +465,10 @@ export interface ManuscriptHost {
 	};
 	/** Stores the dialogue presentation, from the bar's own menu. */
 	setDialoguePresentation(mode: DialoguePresentation): Promise<void>;
+	/** Turns the sensitive-word marks, the settings page's own switch. */
+	setSensitiveHighlight(on: boolean): Promise<void>;
+	/** Turns the custom rules' marks, master of the whole family. */
+	setCustomHighlights(on: boolean): Promise<void>;
 	/**
 	 * The stream's writing context moved: a segment began or finished being
 	 * edited, its text grew, or its selection changed. Carries nothing,

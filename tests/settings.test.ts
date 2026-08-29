@@ -44,6 +44,9 @@ function settingRows(
 				continue;
 			}
 			if (!('name' in item)) continue;
+			// A nameless row is plumbing -- the fold dress each section hides
+			// at its head -- not a row the page shows anyone.
+			if (String(item.name).length === 0) continue;
 			const control = item.control as
 				| { key?: string; options?: Record<string, string> }
 				| undefined;
@@ -729,27 +732,16 @@ describe('highlight rule rows', () => {
 		return new SnowflakeSettingTab({} as never, plugin);
 	};
 
-	it('names each rule and says what needs saying in the summary', () => {
-		const items = withRules().getSettingDefinitions();
-		const list = items.find(
-			(item) => (item as { type?: string }).type === 'list',
-		) as { items?: { name: string; desc?: string }[] } | undefined;
-		expect(list?.items).toHaveLength(2);
-		const [weather, broken] = list?.items ?? [];
-		expect(weather?.name).toBe('Weather');
-		expect(weather?.desc).toBe('Literal text · 2 patterns');
-		// A nameless rule is named by its kind; a broken or disabled one says so.
-		expect(broken?.name).toBe('Regular expression');
-		expect(broken?.desc).toContain('· 1 pattern ·');
-		expect(broken?.desc).toContain('Off');
-		expect(broken?.desc).toContain('does not compile');
+	it('names each rule, a nameless one by its kind, and nothing more', () => {
+		// The card carries the name alone: kind, pattern count, and whether
+		// the rule runs all live elsewhere (the editor and the pause button).
+		expect(withRules().customRuleNames()).toEqual([
+			'Weather',
+			'Regular expression',
+		]);
 	});
 
 	it('offers no rule rows where no rules stand', () => {
-		const items = settingTabFor('en').getSettingDefinitions();
-		const list = items.find(
-			(item) => (item as { type?: string }).type === 'list',
-		) as { items?: unknown[] } | undefined;
-		expect(list?.items).toEqual([]);
+		expect(settingTabFor('en').customRuleNames()).toEqual([]);
 	});
 });

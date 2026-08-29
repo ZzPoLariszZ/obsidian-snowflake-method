@@ -253,6 +253,58 @@ export function addTintSwatches(
 	return { sync: mark };
 }
 
+export interface ColorChipSpec {
+	/** '' while no color is picked; else a lowercase hex color. */
+	value: string;
+	label: string;
+	onPick(value: string): void;
+}
+
+/**
+ * The tint strip's chip alone, for a row that offers any color and nothing
+ * else: the spectrum shows through until a color is picked, and the color
+ * itself from then on. Same shape, same cloth, no swatches before it.
+ */
+export function addColorChip(
+	setting: Setting,
+	spec: ColorChipSpec,
+): ControlHandle<string> {
+	const chip = setting.controlEl.createDiv({
+		cls: 'snowflake-method-tint-custom',
+	});
+	let picker: ColorComponent | null = null;
+	setting.addColorPicker((component) => {
+		picker = component;
+		// The picker has to hold some color even while none is picked; a
+		// neutral grey waits out of sight behind the spectrum.
+		component
+			.setValue(spec.value.length > 0 ? spec.value : '#888888')
+			.onChange((hex) => {
+				spec.onPick(hex.toLowerCase());
+			});
+	});
+	// The component keeps its input to itself; it is the last thing added to
+	// the row, and it goes into the chip.
+	const added = setting.controlEl.lastElementChild;
+	const pickerEl = added?.instanceOf(HTMLInputElement) === true ? added : null;
+	if (pickerEl !== null) {
+		chip.appendChild(pickerEl);
+		pickerEl.addClass('snowflake-method-tint-picker');
+		pickerEl.setAttribute('aria-label', spec.label);
+		setTooltip(pickerEl, spec.label);
+	}
+	const mark = (current: string): void => {
+		const chosen = current.length > 0;
+		chip.toggleClass('is-selected', chosen);
+		chip.toggleClass('is-empty', !chosen);
+		if (picker !== null && chosen && picker.getValue() !== current) {
+			picker.setValue(current);
+		}
+	};
+	mark(spec.value);
+	return { sync: mark };
+}
+
 export interface FontFamilySpec {
 	value: string;
 	/** The first row of the list, and what an unset field reads as. */

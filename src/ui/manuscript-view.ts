@@ -1480,42 +1480,71 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/** The four highlight modes, offered from the bar's own button. */
+	/**
+	 * Every family of marks under one button, each a titled section: the
+	 * entities with their four modes, sensitive words and the custom rules
+	 * as plain switches, dialogue with its three faces -- the settings
+	 * page's own gear offers the same four in a dialog.
+	 */
 	private openMentionModeMenu(event: MouseEvent): void {
 		const menu = new Menu();
-		const current = this.host.manuscriptWindowSettings().mentionHighlight;
-		for (const mode of MENTION_HIGHLIGHT_MODES) {
+		const settings = this.host.manuscriptWindowSettings();
+		const label = (text: string): void => {
+			menu.addItem((item) => item.setTitle(text).setIsLabel(true));
+		};
+		const pick = (
+			text: string,
+			checked: boolean,
+			apply: () => Promise<void>,
+		): void => {
 			menu.addItem((item) =>
 				item
-					.setTitle(this.t(`settings.mentionHighlight.${mode}`))
-					.setChecked(mode === current)
+					.setTitle(text)
+					.setChecked(checked)
 					.onClick(() => {
-						void this.host
-							.setManuscriptMentionHighlight(mode)
-							.catch((error: unknown) => {
-								this.showError(error);
-							});
+						void apply().catch((error: unknown) => {
+							this.showError(error);
+						});
 					}),
 			);
+		};
+		const off = this.t('settings.mentionHighlight.off');
+		const on = this.t('settings.mentionHighlight.on');
+		label(this.t('settings.mentionHighlight.entities'));
+		for (const mode of MENTION_HIGHLIGHT_MODES) {
+			pick(
+				this.t(`settings.mentionHighlight.${mode}`),
+				mode === settings.mentionHighlight,
+				() => this.host.setManuscriptMentionHighlight(mode),
+			);
 		}
-		// Dialogue keeps its own three faces under the same button: reading
-		// mentions and reading speech are the two lenses this bar offers.
+		menu.addSeparator();
+		label(this.t('settings.sensitiveWords.heading'));
+		pick(off, !settings.sensitiveHighlight, () =>
+			this.host.setSensitiveHighlight(false),
+		);
+		pick(on, settings.sensitiveHighlight, () =>
+			this.host.setSensitiveHighlight(true),
+		);
 		menu.addSeparator();
 		const dialogue = this.mentionState?.dialogue.presentation ??
 			this.host.manuscriptDressFeeds().dialogue.presentation;
+		label(this.t('settings.mentionHighlight.dialogues'));
 		for (const mode of DIALOGUE_PRESENTATIONS) {
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t(`settings.dialoguePresentation.${mode}`))
-					.setChecked(mode === dialogue)
-					.onClick(() => {
-						void this.host
-							.setDialoguePresentation(mode)
-							.catch((error: unknown) => {
-								this.showError(error);
-							});
-					}),
+			pick(
+				this.t(`settings.dialoguePresentation.${mode}`),
+				mode === dialogue,
+				() => this.host.setDialoguePresentation(mode),
 			);
 		}
+		menu.addSeparator();
+		label(this.t('settings.mentionHighlight.custom'));
+		pick(off, !settings.customHighlights, () =>
+			this.host.setCustomHighlights(false),
+		);
+		pick(on, settings.customHighlights, () =>
+			this.host.setCustomHighlights(true),
+		);
 		menu.showAtMouseEvent(event);
 	}
 
