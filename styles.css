@@ -5736,6 +5736,193 @@ col.snowflake-method-prose-column-dialogue {
 	color: var(--text-muted);
 }
 
+/* The tracking panel: the statistics pane's Entity tracking face. The folds
+   and their frame are the custom field panes' own classes; what is styled
+   here is only what this surface adds -- the four tracking columns, the
+   first/last lines, and the distribution's barcode. */
+.snowflake-method-tracking-row {
+	cursor: pointer;
+}
+
+/* The band's search keeps the left end, the state and the refresh the
+   right: the auto margin is the whole layout. */
+.snowflake-method-tracking-panel
+	.snowflake-method-prose-controls
+	.search-input-container {
+	flex: 0 1 16rem;
+	margin-inline-end: auto;
+}
+
+/* The definition panes stand their frame off their toolbar by this margin;
+   here the panel's own gap already is that spacing, so the frame starts
+   where every other tab's first block does. */
+.snowflake-method-template-sections.snowflake-method-tracking-sections {
+	margin-block-start: 0;
+}
+
+/* A row's cells read as one line however tall its tallest cell stands:
+   the three-line count centres its neighbours rather than topping them. */
+.snowflake-method-tracking-table th,
+.snowflake-method-tracking-table td {
+	vertical-align: middle;
+}
+
+/* No row menu rides these rows, so the last cell gives back the room the
+   shared rule reserves for one -- with it, the centred distribution stood
+   off its middle. Doubled to stand level with that rule's :not() and win
+   by order. */
+.snowflake-method-table.snowflake-method-tracking-table td:last-child {
+	position: static;
+	padding-inline-end: var(--size-4-3);
+}
+
+/* Nothing found where nothing should be found: the tick and the theme's
+   own green, the alert's shape worn by better news. */
+.snowflake-method-character-empty.is-good {
+	color: var(--color-green);
+}
+
+col.snowflake-method-tracking-column-name {
+	width: 12rem;
+}
+
+col.snowflake-method-tracking-column-count {
+	width: 9rem;
+}
+
+col.snowflake-method-tracking-column-span {
+	width: 14rem;
+}
+
+/* The three measured columns' widths in one: whatever pair stands beside
+   this column then splits exactly the distribution's span, and the stacked
+   tables' seams line up. */
+col.snowflake-method-tracking-column-mention {
+	width: 35rem;
+}
+
+/* What was silenced wears the warning's warm ink, and the words the
+   manuscript should not say wear the delete button's: the same tokens
+   those surfaces read, never their resolved colors. */
+.snowflake-method-tracking-unresolved-text {
+	color: var(--color-orange);
+}
+
+.snowflake-method-tracking-sensitive-name {
+	color: var(--text-error);
+}
+
+/* The scope's one line: the words at the start, the remove at the far end,
+   both centred on the line -- the trash in the delete button's own ink. */
+.snowflake-method-tracking-scope-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-tracking-scope-row .snowflake-method-tracking-remove {
+	color: var(--text-error);
+	/* Trimmed to the count badge's box, so the trash hangs plumb under the
+	   circled number at the fold's end. */
+	padding: var(--size-2-1);
+}
+
+.snowflake-method-tracking-counts {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+}
+
+/* Each count line pairs its word with its figure: the word at the start,
+   the number at the end in the monospaced tabular face, so a column of
+   counts reads as a ledger. */
+.snowflake-method-tracking-count-line {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-tracking-count-number {
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A cell that is one figure: at the end, in the same ledger face.
+   Element-qualified to stand level with the shared cell alignment and win
+   by order. */
+td.snowflake-method-tracking-numeric {
+	text-align: end;
+	font-family: var(--font-monospace);
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-tracking-span {
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-tracking-span-line {
+	display: flex;
+	gap: var(--size-2-3);
+	white-space: nowrap;
+}
+
+.snowflake-method-tracking-span-label {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+}
+
+/* Whatever can be clicked says so in the accent, the links' own ink. */
+.snowflake-method-tracking-link {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.snowflake-method-tracking-link:hover {
+	color: var(--text-accent-hover);
+}
+
+/* The barcode of the book: a baseline that rises where the mentions are.
+   The cell centres it so the wave reads against the row, not its corner. */
+.snowflake-method-tracking-distribution-cell {
+	vertical-align: middle;
+}
+
+.snowflake-method-tracking-distribution {
+	display: block;
+	width: 100%;
+	/* Centred in a generous column rather than stretched across it: the
+	   figure keeps a readable span, the heading keeps the column's start. */
+	max-width: 24rem;
+	margin-inline: auto;
+	height: 16px;
+	color: var(--text-muted);
+}
+
+.snowflake-method-tracking-distribution-path {
+	stroke: currentColor;
+	stroke-width: 1.2px;
+}
+
+.snowflake-method-tracking-modal {
+	width: min(42rem, 90vw);
+}
+
+.snowflake-method-tracking-modal-subtitle {
+	margin-block-end: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-tracking-modal-chapter {
+	margin: var(--size-4-3) 0 var(--size-2-2);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
 /* The tracking pane: plain rows over theme tokens, a reading and no more. */
 .snowflake-method-mention-view {
 	padding: var(--size-4-2) var(--size-4-3);

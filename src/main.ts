@@ -132,6 +132,7 @@ import {
 	type CharacterRecord,
 	type AnalysisConfig,
 	type DialogueChapterAggregate,
+	type EntityMentionAggregate,
 	type MemberUsage,
 	type MentionAggregate,
 	type NoteCountOptions,
@@ -203,6 +204,10 @@ import type {
 	SessionPanelContext,
 	SessionSetup,
 } from './ui/session-panel';
+import type {
+	EntitiesPanelBridge,
+	TrackingKindSection,
+} from './ui/entities-panel';
 import type { ProsePanelBridge } from './ui/prose-panel';
 import {
 	ConfirmMemberDeletionModal,
@@ -3502,6 +3507,125 @@ export default class SnowflakeMethodPlugin
 				await this.openManuscriptStream(project.projectFile, path);
 			},
 			segmenterAvailable: () => hasWordSegmenter(),
+		};
+	}
+
+	/**
+	 * The tracking panel's bridge: the sidebar pane's readings regrouped for
+	 * a designed surface -- entities gathered under their kinds in rail
+	 * order, the chapter axis beside them so a distribution knows where the
+	 * book begins and ends.
+	 */
+	entityTracking(context: SessionPanelContext = {}): EntitiesPanelBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const kindLabel = (kind: string): string => {
+			if (kind === 'character' || kind === 'scene') {
+				return t(`definition.kind.${kind}`);
+			}
+			return isWorldbuildingKind(kind)
+				? t(`worldbuilding.kind.${kind}`)
+				: kind;
+		};
+		return {
+			t,
+			tracking: async () => {
+				const projectPath = panelProject();
+				if (projectPath === null) return null;
+				const model = await this.loadDashboardModel(projectPath);
+				const aggregate =
+					await this.manuscriptMentionAggregate(projectPath);
+				if (model === null || aggregate === null) return null;
+				const [ignores, sensitive, dialogue] = await Promise.all([
+					this.mentionIgnores(projectPath),
+					this.sensitiveMentionAggregate(projectPath),
+					this.dialogueMentionChapters(projectPath),
+				]);
+				const project = await this.resolveProject(projectPath);
+				const perNote =
+					project === null
+						? []
+						: (
+								await this.projects.analysis.statistics(
+									project,
+									await this.analysisConfigFor(project),
+								)
+							).perNote;
+				const chapters = perNote.map(({ path, title }) => ({
+					path,
+					title,
+				}));
+				const dialogueUnits = new Map(
+					perNote.map((note) => [
+						note.path,
+						note.dialogueCjk + note.dialogueWords,
+					]),
+				);
+				const kindOf = new Map<string, string>();
+				for (const member of model.characters) {
+					kindOf.set(member.path, 'character');
+				}
+				for (const member of model.scenes) kindOf.set(member.path, 'scene');
+				for (const kind of model.worldbuildingKinds) {
+					for (const member of model.worldbuilding[kind.id] ?? []) {
+						kindOf.set(member.path, kind.id);
+					}
+				}
+				const byKind = new Map<string, EntityMentionAggregate[]>();
+				for (const entity of aggregate.entities) {
+					const kind = kindOf.get(entity.memberPath);
+					if (kind === undefined) continue;
+					const held = byKind.get(kind);
+					if (held === undefined) byKind.set(kind, [entity]);
+					else held.push(entity);
+				}
+				const kinds: TrackingKindSection[] = entityKindIds(
+					model.worldbuildingKinds,
+				).map((kind) => ({
+					id: kind,
+					label: kindLabel(kind),
+					rows: (byKind.get(kind) ?? []).sort(
+						(left, right) =>
+							right.total - left.total ||
+							left.memberName.localeCompare(right.memberName),
+					),
+				}));
+				return {
+					kinds,
+					unresolved: aggregate.unresolved,
+					sensitive: sensitive ?? [],
+					dialogue: (dialogue ?? []).map((chapter) => ({
+						...chapter,
+						units: dialogueUnits.get(chapter.path) ?? 0,
+					})),
+					ignores,
+					chapters,
+				};
+			},
+			dialogueOccurrences: (path) =>
+				this.dialogueMentionOccurrences(panelProject(), path),
+			readSegmentBody: async (path) => {
+				try {
+					return (await this.readManuscriptSegment(path)).body;
+				} catch {
+					return '';
+				}
+			},
+			openMention: (occurrence) =>
+				this.openManuscriptMention(panelProject(), occurrence),
+			openChapter: async (path) => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return;
+				await this.openManuscriptStream(project.projectFile, path);
+			},
+			openMember: (path) => this.openManagedFile(path),
+			removeIgnore: (rule) =>
+				this.removeMentionIgnore(panelProject(), rule),
 		};
 	}
 

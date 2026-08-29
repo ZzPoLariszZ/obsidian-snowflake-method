@@ -101,6 +101,10 @@ import {
 import { followAnchor } from './anchored-panel';
 import { RenderStateKeeper } from './render-state';
 import {
+	renderEntitiesPanel,
+	type EntitiesPanelHandle,
+} from './entities-panel';
+import {
 	renderProsePanel,
 	type ProseFilterMemory,
 	type ProsePanelHandle,
@@ -330,6 +334,12 @@ export class SnowflakeDashboardView extends ItemView {
 		lengthMin: null,
 		lengthMax: null,
 	};
+	private entitiesPanel: EntitiesPanelHandle | null = null;
+	private entitiesPanelHost: HTMLElement | null = null;
+	private entitiesPanelKey: string | null = null;
+	/** Which tracking folds stand closed, outliving the panel like the
+	 *  filters do: a tab switch hands the folds back as they were left. */
+	private readonly trackingCollapse = new Set<string>();
 	/** A refresh asked for while the leaf was off screen, owed at reveal. */
 	private refreshQueuedWhileHidden = false;
 	/**
@@ -584,6 +594,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.releaseMemberControls();
 		this.disposeSessionPanel();
 		this.disposeProsePanel();
+		this.disposeEntitiesPanel();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -602,6 +613,14 @@ export class SnowflakeDashboardView extends ItemView {
 		this.prosePanelHost?.remove();
 		this.prosePanelHost = null;
 		this.prosePanelKey = null;
+	}
+
+	private disposeEntitiesPanel(): void {
+		this.entitiesPanel?.dispose();
+		this.entitiesPanel = null;
+		this.entitiesPanelHost?.remove();
+		this.entitiesPanelHost = null;
+		this.entitiesPanelKey = null;
 	}
 
 	/**
@@ -647,6 +666,7 @@ export class SnowflakeDashboardView extends ItemView {
 			// the frame around it, hands the same panel back.
 			if (chosen !== 'sessions') this.disposeSessionPanel();
 			if (chosen !== 'prose') this.disposeProsePanel();
+			if (chosen !== 'entities') this.disposeEntitiesPanel();
 			body.empty();
 			this.renderStatisticsBody(body, chosen);
 		};
@@ -719,6 +739,34 @@ export class SnowflakeDashboardView extends ItemView {
 					locale: this.projectLocale,
 				}),
 				this.proseFilters,
+			);
+			return;
+		}
+		if (tab === 'entities') {
+			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
+			if (
+				this.entitiesPanel !== null &&
+				this.entitiesPanelHost !== null &&
+				this.entitiesPanelKey === key
+			) {
+				// The same project again: the mounted panel keeps its reading
+				// and the handback refresh costs only stamp checks.
+				body.appendChild(this.entitiesPanelHost);
+				this.entitiesPanel.refresh();
+				return;
+			}
+			this.disposeEntitiesPanel();
+			const host = body.createDiv();
+			this.entitiesPanelHost = host;
+			this.entitiesPanelKey = key;
+			this.entitiesPanel = renderEntitiesPanel(
+				this.app,
+				host,
+				this.host.entityTracking({
+					projectPath: this.projectPath,
+					locale: this.projectLocale,
+				}),
+				this.trackingCollapse,
 			);
 			return;
 		}
@@ -4099,6 +4147,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (this.selectedPane.kind !== 'statistics') {
 			this.disposeSessionPanel();
 			this.disposeProsePanel();
+			this.disposeEntitiesPanel();
 		}
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);

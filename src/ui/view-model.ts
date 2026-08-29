@@ -22,6 +22,7 @@ import type {
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
+import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
 import type {
 	SessionPanelBridge,
@@ -532,6 +533,8 @@ export interface DashboardHost {
 	writingSessions(context: SessionPanelContext): SessionPanelBridge;
 	/** The bridge the statistics pane renders the prose panel through. */
 	proseStatistics(context: SessionPanelContext): ProsePanelBridge;
+	/** The bridge the statistics pane renders the tracking panel through. */
+	entityTracking(context: SessionPanelContext): EntitiesPanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,
