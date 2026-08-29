@@ -9,6 +9,7 @@ import {
 	filterChapterRows,
 	filterFrequencyRows,
 	formatDecimal,
+	formatPercent,
 	formatReadingTime,
 	frequencySharePercent,
 	parseLengthBound,
@@ -66,9 +67,16 @@ describe('averages and shares', () => {
 		expect(formatDecimal(0)).toBe('0.00');
 	});
 
+	it('writes every percent at one width, a lone digit fed a zero', () => {
+		expect(formatPercent(9.39)).toBe('09.39');
+		expect(formatPercent(34.07)).toBe('34.07');
+		expect(formatPercent(0)).toBe('00.00');
+		expect(formatPercent(100)).toBe('100.00');
+	});
+
 	it('says a share of the whole vocabulary, or nothing off nothing', () => {
-		expect(frequencySharePercent(135, 3100)).toBe('4.35');
-		expect(frequencySharePercent(1, 3100)).toBe('0.03');
+		expect(frequencySharePercent(135, 3100)).toBe('04.35');
+		expect(frequencySharePercent(1, 3100)).toBe('00.03');
 		expect(frequencySharePercent(9, 0)).toBeNull();
 	});
 

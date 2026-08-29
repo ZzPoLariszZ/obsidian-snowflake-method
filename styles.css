@@ -5435,7 +5435,7 @@ body {
 /* A pane too narrow for tables keeps the cards and the sky, the bargain
    the session widgets strike: the chapters and the frequency list wait for
    room. The threshold sits above the table's own floor -- the measured
-   columns hold 38.5rem between them -- so the table is never shown in a
+   columns hold 40rem between them -- so the table is never shown in a
    state where it must scroll sideways or starve its chapter names. */
 .snowflake-method-prose-chapters,
 .snowflake-method-prose-frequency {
@@ -5585,7 +5585,7 @@ col.snowflake-method-prose-column-averageSentence {
 }
 
 col.snowflake-method-prose-column-dialogue {
-	width: 7.5rem;
+	width: 9rem;
 }
 
 .snowflake-method-prose-chapter {

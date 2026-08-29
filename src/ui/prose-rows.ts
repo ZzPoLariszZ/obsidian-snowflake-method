@@ -66,6 +66,16 @@ export function formatDecimal(value: number): string {
 }
 
 /**
+ * How every percent is written: two decimals and at least two whole digits,
+ * a single one fed with a leading zero, so shares stacked in a column hold
+ * one width -- 09.39 under 34.07 -- and only a full hundred runs longer.
+ */
+export function formatPercent(value: number): string {
+	const text = formatDecimal(value);
+	return text.length < 5 ? `0${text}` : text;
+}
+
+/**
  * One term's share of everything counted, in percent against the whole
  * vocabulary rather than the filtered view, so a toggle never moves it.
  * Null while nothing is counted.
@@ -75,7 +85,7 @@ export function frequencySharePercent(
 	total: number,
 ): string | null {
 	if (total <= 0) return null;
-	return formatDecimal((count / total) * 100);
+	return formatPercent((count / total) * 100);
 }
 
 export interface ProseSummary {

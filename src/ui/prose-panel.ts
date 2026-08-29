@@ -26,6 +26,7 @@ import {
 	filterChapterRows,
 	filterFrequencyRows,
 	formatDecimal,
+	formatPercent,
 	formatReadingTime,
 	frequencySharePercent,
 	parseLengthBound,
@@ -339,7 +340,14 @@ export function renderProsePanel(
 			const average = averageSentenceLength(row, row.sentences);
 			cell('averageSentence', average === null ? '' : formatDecimal(average));
 			const share = dialoguePercent(row);
-			cell('dialogue', share === null ? '' : `${formatDecimal(share)}%`);
+			// The count first and the share after it in brackets, the way the
+			// frequency rows say their numbers: how much, then how much of it.
+			cell(
+				'dialogue',
+				share === null
+					? ''
+					: `${String(row.dialogueCjk + row.dialogueWords)} (${formatPercent(share)}%)`,
+			);
 		},
 		renderTail: () => undefined,
 		onScroll: () => {
@@ -500,7 +508,7 @@ export function renderProsePanel(
 		if (summary.dialoguePercent !== null) {
 			item(
 				t('prose.summary.dialogueShare'),
-				`${formatDecimal(summary.dialoguePercent)}%`,
+				`${formatPercent(summary.dialoguePercent)}%`,
 			);
 		}
 	};
