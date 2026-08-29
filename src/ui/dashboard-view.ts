@@ -2567,6 +2567,9 @@ export class SnowflakeDashboardView extends ItemView {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		this.renderedPaneKey = dashboardPaneKey({ kind: 'custom-fields' });
 		const panel = main.createDiv({ cls: 'snowflake-method-panel' });
+		// The definition panes' stance: the title, the search and the way in
+		// hold still, and the frame below them takes the rest of the window.
+		panel.addClass('snowflake-method-template-panel');
 		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
 		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
 		title.createEl('h2', { text: this.t('dashboard.customFields') });
@@ -2592,20 +2595,29 @@ export class SnowflakeDashboardView extends ItemView {
 		const sections = panel.createDiv({
 			cls: 'snowflake-method-template-sections',
 		});
+		// The frame holds still; what scrolls is a borderless reach inside
+		// it, the member tables' bargain, so the bar rides between the
+		// frames rather than over the rows.
+		const scroll = sections.createDiv({
+			cls: 'snowflake-method-template-scroll',
+		});
 		const painters = entityKindIds(model.worldbuildingKinds).map((kind) =>
-			this.renderCustomFieldsSection(sections, model, kind),
+			this.renderCustomFieldsSection(scroll, model, kind),
 		);
-		const noMatches = sections.createEl('p', {
+		const noMatches = scroll.createEl('p', {
 			cls: 'snowflake-method-definition-empty is-hidden',
 			text: this.t('definition.noMatches'),
 		});
+		// Whatever the kinds did not need: it closes the last section with
+		// the line that parts one from the next, while there is room left to
+		// close -- and holds no line over the no-matches sentence.
+		const tail = scroll.createDiv({ cls: 'snowflake-method-template-tail' });
 		search.onChange((value) => {
 			this.customFieldsQuery = value;
 			const found = painters.reduce((total, paint) => total + paint(), 0);
-			noMatches.toggleClass(
-				'is-hidden',
-				!(value.trim().length > 0 && found === 0),
-			);
+			const empty = value.trim().length > 0 && found === 0;
+			noMatches.toggleClass('is-hidden', !empty);
+			tail.toggleClass('is-hidden', empty);
 		});
 	}
 

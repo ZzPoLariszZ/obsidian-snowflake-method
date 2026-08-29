@@ -7865,6 +7865,76 @@ button.snowflake-method-kind-options {
 	overflow: clip;
 }
 
+/* The custom fields pane stands the way the definition panes do: the title,
+   the description, the search and the way in hold still, and the frame
+   below them takes whatever the window leaves. */
+.snowflake-method-template-panel {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.snowflake-method-template-panel .snowflake-method-template-sections {
+	--snowflake-method-table-gutter: max(
+		var(--snowflake-method-scrollbar-width, 0px),
+		var(--size-4-3)
+	);
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 8rem;
+	overflow: visible;
+}
+
+/* What scrolls is a borderless reach inside the standing frame, the member
+   tables' bargain worn whole: it leans out of the frame by the gutter and
+   pads the reach back less the bar's width, so the rows end at the border
+   and the bar rides between this frame and the panel's. Its own start
+   corners carry the frame's curve, which keeps a stuck bar from squaring
+   the corner it is clipped by. */
+.snowflake-method-template-scroll {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: scroll;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(-1 * var(--snowflake-method-table-gutter));
+	padding-inline-end: calc(
+		var(--snowflake-method-table-gutter) -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
+	border-start-start-radius: calc(var(--radius-m) - 1px);
+	border-end-start-radius: calc(var(--radius-m) - 1px);
+}
+
+/* The far corner the clip cannot reach: a stuck heading's own background
+   wears the curve instead, cut from the same colour it stands on, so the
+   frame's stroke stays whole where the box would have covered it. */
+.snowflake-method-template-panel .snowflake-method-definition-section-header {
+	border-start-start-radius: calc(var(--radius-m) - 1px);
+	border-start-end-radius: calc(var(--radius-m) - 1px);
+}
+
+/* Whatever the kinds did not need: it closes the last section with the same
+   line that parts one from the next, and only while there is room to give
+   -- filled to the floor it is nothing at all. Hidden, it keeps the room
+   and drops the line, for the search that found no section to close. */
+.snowflake-method-template-tail {
+	flex: 1 1 0;
+	min-height: 0;
+	background-image: linear-gradient(
+		to bottom,
+		var(--background-modifier-border) 0 1px,
+		transparent 1px
+	);
+}
+
+.snowflake-method-template-tail.is-hidden {
+	background-image: none;
+}
+
 /* Inside the frame a table sheds its own box: the frame holds the sides,
    the parting line between kinds holds the bottom, and the header strip
    opens it — every line drawn once. It is also as tall as its rows: the
@@ -7879,6 +7949,18 @@ button.snowflake-method-kind-options {
 .snowflake-method-template-sections .snowflake-method-table-head,
 .snowflake-method-template-sections .snowflake-method-table-body {
 	border-radius: 0;
+}
+
+/* And sheds its scrollbar with it: a template table never scrolls on its
+   own -- the section's scroller or the tab's does that -- so the lane and
+   the reach the member tables keep for their bar would only stand here as
+   an empty track in the gap between the frames. */
+.snowflake-method-template-sections .snowflake-method-table-head,
+.snowflake-method-template-sections .snowflake-method-table-body {
+	overflow-y: hidden;
+	scrollbar-gutter: auto;
+	margin-inline-end: 0;
+	padding-inline-end: 0;
 }
 
 /* The table's header strip rides the scrollport one heading down, under the
