@@ -100,7 +100,11 @@ import {
 } from './entity-form';
 import { followAnchor } from './anchored-panel';
 import { RenderStateKeeper } from './render-state';
-import { renderProsePanel, type ProsePanelHandle } from './prose-panel';
+import {
+	renderProsePanel,
+	type ProseFilterMemory,
+	type ProsePanelHandle,
+} from './prose-panel';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
@@ -318,6 +322,12 @@ export class SnowflakeDashboardView extends ItemView {
 	private prosePanel: ProsePanelHandle | null = null;
 	private prosePanelHost: HTMLElement | null = null;
 	private prosePanelKey: string | null = null;
+	/** The prose filters outlive the panel: leaving the tab disposes it, and
+	 *  these hand the standing choices back to the next one. */
+	private readonly proseFilters: ProseFilterMemory = {
+		includeStopwords: false,
+		includeEntities: false,
+	};
 	/** A refresh asked for while the leaf was off screen, owed at reveal. */
 	private refreshQueuedWhileHidden = false;
 	/**
@@ -706,6 +716,7 @@ export class SnowflakeDashboardView extends ItemView {
 					projectPath: this.projectPath,
 					locale: this.projectLocale,
 				}),
+				this.proseFilters,
 			);
 			return;
 		}

@@ -49,6 +49,18 @@ export interface ProsePanelHandle {
 	dispose(): void;
 }
 
+/**
+ * The panel's filters, owned by the caller rather than the panel: leaving
+ * the tab disposes the panel, and this hands the standing choices back to
+ * the next one. The two toggles are one truth for the frequency list and
+ * the cloud both -- the two views count the same reading, so their filters
+ * agree by construction.
+ */
+export interface ProseFilterMemory {
+	includeStopwords: boolean;
+	includeEntities: boolean;
+}
+
 /** Frequency rows drawn at once; the search reaches past them. */
 const MAX_FREQUENCY_ROWS = 200;
 
@@ -68,6 +80,7 @@ const PROSE_COLUMNS = [
 export function renderProsePanel(
 	container: HTMLElement,
 	bridge: ProsePanelBridge,
+	filters: ProseFilterMemory,
 ): ProsePanelHandle {
 	const t = bridge.t;
 	const root = container.createDiv({ cls: 'snowflake-method-prose-panel' });
@@ -80,14 +93,7 @@ export function renderProsePanel(
 	let frequency: FrequencyRow[] = [];
 	let frequencyTotal = 0;
 	let frequencyQuery = '';
-	let includeStopwords = false;
-	let includeEntities = false;
 	let frequencyToken = 0;
-	let cloudRows: FrequencyRow[] = [];
-	let cloudTotal = 0;
-	let cloudStopwords = false;
-	let cloudEntities = false;
-	let cloudToken = 0;
 
 	// The head: what the panel is doing, and the one explicit refresh -- a
 	// whole-manuscript reading is too heavy to recompute on every vault save.
@@ -237,7 +243,7 @@ export function renderProsePanel(
 		read: () => boolean,
 		write: (next: boolean) => void,
 		changed: () => void,
-	): void => {
+	): HTMLInputElement => {
 		const wrap = container.createEl('label', {
 			cls: 'snowflake-method-prose-frequency-toggle',
 		});
@@ -248,29 +254,48 @@ export function renderProsePanel(
 			write(box.checked);
 			changed();
 		});
+		return box;
 	};
-	toggle(
-		frequencyControls,
-		t('prose.frequency.includeStopwords'),
-		() => includeStopwords,
-		(next) => {
-			includeStopwords = next;
-		},
-		() => {
-			refreshFrequency();
-		},
-	);
-	toggle(
-		frequencyControls,
-		t('prose.frequency.includeEntities'),
-		() => includeEntities,
-		(next) => {
-			includeEntities = next;
-		},
-		() => {
-			refreshFrequency();
-		},
-	);
+	// One truth, two rows of switches: the frequency's pair and the cloud's
+	// pair read and write the same filters, so flipping either updates both
+	// faces and one fresh count serves the two of them.
+	const stopwordBoxes: HTMLInputElement[] = [];
+	const entityBoxes: HTMLInputElement[] = [];
+	const syncFilterBoxes = (): void => {
+		for (const box of stopwordBoxes) box.checked = filters.includeStopwords;
+		for (const box of entityBoxes) box.checked = filters.includeEntities;
+	};
+	const filterPair = (container: HTMLElement): void => {
+		stopwordBoxes.push(
+			toggle(
+				container,
+				t('prose.frequency.includeStopwords'),
+				() => filters.includeStopwords,
+				(next) => {
+					filters.includeStopwords = next;
+				},
+				() => {
+					syncFilterBoxes();
+					refreshCounts();
+				},
+			),
+		);
+		entityBoxes.push(
+			toggle(
+				container,
+				t('prose.frequency.includeEntities'),
+				() => filters.includeEntities,
+				(next) => {
+					filters.includeEntities = next;
+				},
+				() => {
+					syncFilterBoxes();
+					refreshCounts();
+				},
+			),
+		);
+	};
+	filterPair(frequencyControls);
 	if (!bridge.segmenterAvailable()) {
 		frequencySection.createDiv({
 			cls: 'snowflake-method-mention-view-empty',
@@ -298,28 +323,7 @@ export function renderProsePanel(
 	const cloudControls = cloudSection.createDiv({
 		cls: 'snowflake-method-table-toolbar snowflake-method-prose-cloud-controls',
 	});
-	toggle(
-		cloudControls,
-		t('prose.frequency.includeStopwords'),
-		() => cloudStopwords,
-		(next) => {
-			cloudStopwords = next;
-		},
-		() => {
-			refreshCloud();
-		},
-	);
-	toggle(
-		cloudControls,
-		t('prose.frequency.includeEntities'),
-		() => cloudEntities,
-		(next) => {
-			cloudEntities = next;
-		},
-		() => {
-			refreshCloud();
-		},
-	);
+	filterPair(cloudControls);
 	const cloudFrame = cloudSection.createDiv({
 		cls: 'snowflake-method-prose-cloud-frame',
 	});
@@ -411,15 +415,19 @@ export function renderProsePanel(
 		}
 	};
 
-	const refreshFrequency = (): void => {
+	const refreshCounts = (): void => {
 		const token = (frequencyToken += 1);
 		void bridge
-			.frequency({ includeStopwords, includeEntities })
+			.frequency({
+				includeStopwords: filters.includeStopwords,
+				includeEntities: filters.includeEntities,
+			})
 			.then((read) => {
 				if (disposed || token !== frequencyToken) return;
 				frequency = read?.rows ?? [];
 				frequencyTotal = read?.total ?? 0;
 				paintFrequency();
+				paintCloud();
 			})
 			.catch(() => undefined);
 	};
@@ -479,7 +487,7 @@ export function renderProsePanel(
 		// everything smaller packs into the coves around them. The weight
 		// spans just over a doubling of the base size: enough hierarchy to
 		// read at a glance, no single word owning the sky.
-		const words = cloudWords(cloudRows, MAX_CLOUD_TERMS).sort(
+		const words = cloudWords(frequency, MAX_CLOUD_TERMS).sort(
 			(left, right) => right.count - left.count,
 		);
 		// The layout rolls its own dice for jitter; handed a die seeded from
@@ -550,7 +558,7 @@ export function renderProsePanel(
 						},
 					});
 					el.textContent = word.text;
-					const share = frequencySharePercent(word.count, cloudTotal);
+					const share = frequencySharePercent(word.count, frequencyTotal);
 					setTooltip(
 						el as unknown as HTMLElement,
 						share === null
@@ -561,22 +569,6 @@ export function renderProsePanel(
 			});
 		cloudLayout = layout;
 		layout.start();
-	};
-
-	const refreshCloud = (): void => {
-		const token = (cloudToken += 1);
-		void bridge
-			.frequency({
-				includeStopwords: cloudStopwords,
-				includeEntities: cloudEntities,
-			})
-			.then((read) => {
-				if (disposed || token !== cloudToken) return;
-				cloudRows = read?.rows ?? [];
-				cloudTotal = read?.total ?? 0;
-				paintCloud();
-			})
-			.catch(() => undefined);
 	};
 
 	// A cloud is packed against its box: when the pane hands the box a new
@@ -624,8 +616,7 @@ export function renderProsePanel(
 				if (disposed) return;
 				statistics = next;
 				paint();
-				refreshFrequency();
-				refreshCloud();
+				refreshCounts();
 				if (refreshAgain) {
 					refreshAgain = false;
 					refresh();
