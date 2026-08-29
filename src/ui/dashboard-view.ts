@@ -337,9 +337,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private entitiesPanel: EntitiesPanelHandle | null = null;
 	private entitiesPanelHost: HTMLElement | null = null;
 	private entitiesPanelKey: string | null = null;
-	/** Which tracking folds stand closed, outliving the panel like the
-	 *  filters do: a tab switch hands the folds back as they were left. */
-	private readonly trackingCollapse = new Set<string>();
+	/** Which tracking folds stand OPEN -- everything else rests closed --
+	 *  outliving the panel like the filters do: a tab switch hands the
+	 *  folds back as they were left. */
+	private readonly trackingOpen = new Set<string>();
 	/** A refresh asked for while the leaf was off screen, owed at reveal. */
 	private refreshQueuedWhileHidden = false;
 	/**
@@ -347,8 +348,9 @@ export class SnowflakeDashboardView extends ItemView {
 	 * state like a table's search: a refresh redraws the fold as it stood.
 	 */
 	private readonly definitionCollapse = new Set<string>();
-	/** Folded kind sections, keyed `id/kind`. */
-	private readonly definitionSectionCollapse = new Set<string>();
+	/** The kind sections stand folded until asked: these are the OPEN ones,
+	 *  keyed `id/kind` -- the custom fields pane shares the ledger. */
+	private readonly definitionSectionOpen = new Set<string>();
 	/** What each tree's search box holds, keyed `id/kind`. */
 	private readonly definitionQueries = new Map<string, string>();
 	/** What the template pane's search box holds. */
@@ -766,7 +768,7 @@ export class SnowflakeDashboardView extends ItemView {
 					projectPath: this.projectPath,
 					locale: this.projectLocale,
 				}),
-				this.trackingCollapse,
+				this.trackingOpen,
 			);
 			return;
 		}
@@ -2252,7 +2254,7 @@ export class SnowflakeDashboardView extends ItemView {
 						),
 					);
 				}
-				this.definitionSectionCollapse.delete(`${id}/${kind}`);
+				this.definitionSectionOpen.add(`${id}/${kind}`);
 				this.definitionSelection.set(id, { kind, taxonomyPath });
 				repaintTrees();
 				markSelected();
@@ -2311,7 +2313,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-definition-section-header',
 		});
 		const collapsed = (): boolean =>
-			this.definitionSectionCollapse.has(sectionKey);
+			!this.definitionSectionOpen.has(sectionKey);
 		const toggle = header.createEl('button', {
 			cls: 'snowflake-method-definition-section-toggle',
 			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
@@ -2380,6 +2382,13 @@ export class SnowflakeDashboardView extends ItemView {
 				return 0;
 			}
 			rows.empty();
+			// A folded tree is not built at all: its rows are made when the
+			// fold opens and unmade when it closes, so five kinds at rest
+			// cost five headers.
+			if (!open) {
+				section.removeClass('is-hidden');
+				return 0;
+			}
 			// A match is worth nothing without the branch it hangs from, so the
 			// ancestors of every hit come along.
 			const shown = new Set<string>();
@@ -2446,8 +2455,8 @@ export class SnowflakeDashboardView extends ItemView {
 			return found;
 		};
 		toggle.addEventListener('click', () => {
-			if (!this.definitionSectionCollapse.delete(sectionKey)) {
-				this.definitionSectionCollapse.add(sectionKey);
+			if (!this.definitionSectionOpen.delete(sectionKey)) {
+				this.definitionSectionOpen.add(sectionKey);
 			}
 			paint();
 		});
@@ -2636,7 +2645,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-definition-section-header',
 		});
 		const collapsed = (): boolean =>
-			this.definitionSectionCollapse.has(sectionKey);
+			!this.definitionSectionOpen.has(sectionKey);
 		const toggle = header.createEl('button', {
 			cls: 'snowflake-method-definition-section-toggle',
 			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
@@ -2668,6 +2677,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-definition-section-body',
 		});
 		let rows: { template: CustomFieldTemplateInfo; row: HTMLElement }[] = [];
+		let filled = false;
 		if (templates.length === 0) {
 			// The same sentence an empty tree says, worn the same way; the
 			// toolbar's Add template is the way in, as it is for the trees.
@@ -2680,13 +2690,20 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			setIcon(icon, 'triangle-alert');
 			empty.createSpan({ text: this.t('customFields.empty') });
-		} else {
-			rows = this.renderCustomFieldsTable(body, model, kind, templates);
+			filled = true;
 		}
+		// The table is not built until its fold first opens: a closed kind
+		// costs its header and count alone.
+		const fill = (): void => {
+			if (filled) return;
+			filled = true;
+			rows = this.renderCustomFieldsTable(body, model, kind, templates);
+		};
 		const paint = (): number => {
 			const query = this.customFieldsQuery;
 			const searching = query.trim().length > 0;
 			const open = searching || !collapsed();
+			if (open) fill();
 			body.toggleClass('is-collapsed', !open);
 			toggle.setAttribute('aria-expanded', String(open));
 			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
@@ -2703,8 +2720,8 @@ export class SnowflakeDashboardView extends ItemView {
 			return found;
 		};
 		toggle.addEventListener('click', () => {
-			if (!this.definitionSectionCollapse.delete(sectionKey)) {
-				this.definitionSectionCollapse.add(sectionKey);
+			if (!this.definitionSectionOpen.delete(sectionKey)) {
+				this.definitionSectionOpen.add(sectionKey);
 			}
 			paint();
 		});

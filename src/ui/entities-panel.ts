@@ -351,7 +351,7 @@ export function renderEntitiesPanel(
 	app: App,
 	container: HTMLElement,
 	bridge: EntitiesPanelBridge,
-	collapse: Set<string>,
+	open: Set<string>,
 ): EntitiesPanelHandle {
 	const t = bridge.t;
 	// The prose panel's frame: the same relative root whose controls band
@@ -406,8 +406,18 @@ export function renderEntitiesPanel(
 		void bridge.openMention(occurrence).catch(() => undefined);
 	};
 
-	/** One fold, the definition sections' own markup and memory. */
-	const fold = (key: string, label: string, count: number): HTMLElement => {
+	/**
+	 * One fold, the definition sections' own markup and memory -- filled
+	 * lazily: a closed section is its header and count alone, and the body
+	 * is built the first time it opens. A search sets every fold aside the
+	 * way the definition trees do, so a hit never hides behind a header.
+	 */
+	const fold = (
+		key: string,
+		label: string,
+		count: number,
+		fill: (body: HTMLElement) => void,
+	): void => {
 		const section = sections.createDiv({
 			cls: 'snowflake-method-definition-section',
 		});
@@ -436,19 +446,23 @@ export function renderEntitiesPanel(
 		const body = section.createDiv({
 			cls: 'snowflake-method-definition-section-body',
 		});
-		const paint = (): void => {
-			const open = !collapse.has(key);
-			body.toggleClass('is-collapsed', !open);
-			toggle.setAttribute('aria-expanded', String(open));
-			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
+		let filled = false;
+		const paintFold = (): void => {
+			const shown = searching() || open.has(key);
+			if (shown && !filled) {
+				filled = true;
+				fill(body);
+			}
+			body.toggleClass('is-collapsed', !shown);
+			toggle.setAttribute('aria-expanded', String(shown));
+			setIcon(chevron, shown ? 'chevron-down' : 'chevron-right');
 		};
 		toggle.addEventListener('click', () => {
-			if (collapse.has(key)) collapse.delete(key);
-			else collapse.add(key);
-			paint();
+			if (open.has(key)) open.delete(key);
+			else open.add(key);
+			paintFold();
 		});
-		paint();
-		return body;
+		paintFold();
 	};
 
 	/** The shared split frame, one colgroup worn twice, head carried by
@@ -643,70 +657,73 @@ export function renderEntitiesPanel(
 			),
 		);
 		if (searching() && shown.length === 0) return;
-		const body = fold(
+		fold(
 			'unresolved',
 			t('mentionView.unresolvedHeading'),
 			shown.length,
+			(body) => {
+				if (shown.length === 0) {
+					emptyState(body, t('mentionView.empty'), true);
+					return;
+				}
+				// The text column holds the width the entity tables' three
+				// measured columns hold together, so the candidates and the
+				// chapter split exactly the span the distribution takes, and
+				// the seams line up.
+				const tbody = tableFrame(
+					body,
+					['mention', 'candidates', 'source'],
+					[
+						t('tracking.column.text'),
+						t('tracking.column.candidates'),
+						t('prose.table.chapter'),
+					],
+				);
+				for (const occurrence of shown.slice(0, MAX_SECTION_ROWS)) {
+					const tr = tbody.createEl('tr', {
+						cls: 'snowflake-method-tracking-row',
+					});
+					tr.createEl('td', {
+						cls: 'snowflake-method-table-primary snowflake-method-tracking-unresolved-text',
+						text: occurrence.matchedText,
+						attr: { 'data-label': t('tracking.column.text') },
+					});
+					const candidates = tr.createEl('td', {
+						attr: { 'data-label': t('tracking.column.candidates') },
+					});
+					// One line a candidate, each the way into its member's
+					// note; the row's own click keeps meaning the jump.
+					for (const candidate of occurrence.candidates) {
+						const line = candidates.createDiv();
+						const named = line.createSpan({
+							cls: 'snowflake-method-tracking-link',
+							text: candidate.memberName,
+						});
+						named.addEventListener('click', (event) => {
+							event.stopPropagation();
+							void bridge
+								.openMember(candidate.memberPath)
+								.catch(() => undefined);
+						});
+					}
+					const chapter = tr.createEl('td', {
+						attr: { 'data-label': t('prose.table.chapter') },
+					});
+					const link = chapter.createSpan({
+						cls: 'snowflake-method-tracking-link',
+						text: chapterTitle(occurrence.path),
+					});
+					link.addEventListener('click', (event) => {
+						event.stopPropagation();
+						jump(occurrence);
+					});
+					tr.addEventListener('click', () => {
+						jump(occurrence);
+					});
+				}
+				moreLine(body, shown.length);
+			},
 		);
-		if (shown.length === 0) {
-			emptyState(body, t('mentionView.empty'), true);
-			return;
-		}
-		// The text column holds the width the entity tables' three measured
-		// columns hold together, so the candidates and the chapter split
-		// exactly the span the distribution takes, and the seams line up.
-		const tbody = tableFrame(
-			body,
-			['mention', 'candidates', 'source'],
-			[
-				t('tracking.column.text'),
-				t('tracking.column.candidates'),
-				t('prose.table.chapter'),
-			],
-		);
-		for (const occurrence of shown.slice(0, MAX_SECTION_ROWS)) {
-			const tr = tbody.createEl('tr', {
-				cls: 'snowflake-method-tracking-row',
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-table-primary snowflake-method-tracking-unresolved-text',
-				text: occurrence.matchedText,
-				attr: { 'data-label': t('tracking.column.text') },
-			});
-			const candidates = tr.createEl('td', {
-				attr: { 'data-label': t('tracking.column.candidates') },
-			});
-			// One line a candidate, each the way into its member's note; the
-			// row's own click keeps meaning the jump to the spot.
-			for (const candidate of occurrence.candidates) {
-				const line = candidates.createDiv();
-				const named = line.createSpan({
-					cls: 'snowflake-method-tracking-link',
-					text: candidate.memberName,
-				});
-				named.addEventListener('click', (event) => {
-					event.stopPropagation();
-					void bridge
-						.openMember(candidate.memberPath)
-						.catch(() => undefined);
-				});
-			}
-			const chapter = tr.createEl('td', {
-				attr: { 'data-label': t('prose.table.chapter') },
-			});
-			const link = chapter.createSpan({
-				cls: 'snowflake-method-tracking-link',
-				text: chapterTitle(occurrence.path),
-			});
-			link.addEventListener('click', (event) => {
-				event.stopPropagation();
-				jump(occurrence);
-			});
-			tr.addEventListener('click', () => {
-				jump(occurrence);
-			});
-		}
-		moreLine(body, shown.length);
 	};
 
 	const renderKind = (section: TrackingKindSection): void => {
@@ -714,67 +731,68 @@ export function renderEntitiesPanel(
 			matches(entity.memberName),
 		);
 		if (searching() && shown.length === 0) return;
-		const body = fold(`kind/${section.id}`, section.label, shown.length);
-		if (shown.length === 0) {
-			emptyState(body, t('mentionView.empty'), false);
-			return;
-		}
-		const tbody = tableFrame(
-			body,
-			['name', 'count', 'span', 'distribution'],
-			[
-				t('table.name'),
-				t('tracking.column.count'),
-				t('tracking.column.span'),
-				t('tracking.column.distribution'),
-			],
-		);
-		for (const entity of shown.slice(0, MAX_SECTION_ROWS)) {
-			const tr = tbody.createEl('tr', {
-				cls: 'snowflake-method-tracking-row',
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-table-primary',
-				text: entity.memberName,
-				attr: { 'data-label': t('table.name') },
-			});
-			const counts = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-counts',
-				attr: { 'data-label': t('tracking.column.count') },
-			});
-			countLine(counts, t('tracking.total'), entity.total);
-			countLine(counts, t('tracking.linked'), entity.linked);
-			countLine(counts, t('tracking.unlinked'), entity.unlinked);
-			const span = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-span',
-				attr: { 'data-label': t('tracking.column.span') },
-			});
-			const first = entity.occurrences[0];
-			const last = entity.occurrences[entity.occurrences.length - 1];
-			if (first !== undefined) {
-				chapterLink(span, t('tracking.first'), first);
+		fold(`kind/${section.id}`, section.label, shown.length, (body) => {
+			if (shown.length === 0) {
+				emptyState(body, t('mentionView.empty'), false);
+				return;
 			}
-			if (last !== undefined) {
-				chapterLink(span, t('tracking.last'), last);
+			const tbody = tableFrame(
+				body,
+				['name', 'count', 'span', 'distribution'],
+				[
+					t('table.name'),
+					t('tracking.column.count'),
+					t('tracking.column.span'),
+					t('tracking.column.distribution'),
+				],
+			);
+			for (const entity of shown.slice(0, MAX_SECTION_ROWS)) {
+				const tr = tbody.createEl('tr', {
+					cls: 'snowflake-method-tracking-row',
+				});
+				tr.createEl('td', {
+					cls: 'snowflake-method-table-primary',
+					text: entity.memberName,
+					attr: { 'data-label': t('table.name') },
+				});
+				const counts = tr.createEl('td', {
+					cls: 'snowflake-method-tracking-counts',
+					attr: { 'data-label': t('tracking.column.count') },
+				});
+				countLine(counts, t('tracking.total'), entity.total);
+				countLine(counts, t('tracking.linked'), entity.linked);
+				countLine(counts, t('tracking.unlinked'), entity.unlinked);
+				const span = tr.createEl('td', {
+					cls: 'snowflake-method-tracking-span',
+					attr: { 'data-label': t('tracking.column.span') },
+				});
+				const first = entity.occurrences[0];
+				const last = entity.occurrences[entity.occurrences.length - 1];
+				if (first !== undefined) {
+					chapterLink(span, t('tracking.first'), first);
+				}
+				if (last !== undefined) {
+					chapterLink(span, t('tracking.last'), last);
+				}
+				const distribution = tr.createEl('td', {
+					cls: 'snowflake-method-tracking-distribution-cell',
+					attr: { 'data-label': t('tracking.column.distribution') },
+				});
+				drawDistribution(distribution, entity.occurrences);
+				tr.addEventListener('click', () => {
+					openMentionModal(
+						entity.memberName,
+						t('mentionView.counts', {
+							total: entity.total,
+							linked: entity.linked,
+							unlinked: entity.unlinked,
+						}),
+						entity.occurrences,
+					);
+				});
 			}
-			const distribution = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-distribution-cell',
-				attr: { 'data-label': t('tracking.column.distribution') },
-			});
-			drawDistribution(distribution, entity.occurrences);
-			tr.addEventListener('click', () => {
-				openMentionModal(
-					entity.memberName,
-					t('mentionView.counts', {
-						total: entity.total,
-						linked: entity.linked,
-						unlinked: entity.unlinked,
-					}),
-					entity.occurrences,
-				);
-			});
-		}
-		moreLine(body, shown.length);
+			moreLine(body, shown.length);
+		});
 	};
 
 	const renderSensitive = (terms: readonly SensitiveTermAggregate[]): void => {
@@ -784,116 +802,125 @@ export function renderEntitiesPanel(
 			(term) => term.total > 0 && matches(term.term),
 		);
 		if (searching() && shown.length === 0) return;
-		const body = fold(
+		fold(
 			'sensitive',
 			t('mentionView.sensitiveHeading'),
 			shown.length,
-		);
-		if (shown.length === 0) {
-			emptyState(body, t('mentionView.empty'), true);
-			return;
-		}
-		const tbody = tableFrame(
-			body,
-			['name', 'count', 'span', 'distribution'],
-			[
-				t('table.name'),
-				t('tracking.column.count'),
-				t('tracking.column.span'),
-				t('tracking.column.distribution'),
-			],
-		);
-		for (const term of shown.slice(0, MAX_SECTION_ROWS)) {
-			const tr = tbody.createEl('tr', {
-				cls: 'snowflake-method-tracking-row',
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-table-primary snowflake-method-tracking-sensitive-name',
-				text: term.term,
-				attr: { 'data-label': t('table.name') },
-			});
-			const counts = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-counts',
-				attr: { 'data-label': t('tracking.column.count') },
-			});
-			countLine(counts, t('tracking.total'), term.total);
-			const span = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-span',
-				attr: { 'data-label': t('tracking.column.span') },
-			});
-			const first = term.occurrences[0];
-			const last = term.occurrences[term.occurrences.length - 1];
-			if (first !== undefined) chapterLink(span, t('tracking.first'), first);
-			if (last !== undefined) chapterLink(span, t('tracking.last'), last);
-			const distribution = tr.createEl('td', {
-				cls: 'snowflake-method-tracking-distribution-cell',
-				attr: { 'data-label': t('tracking.column.distribution') },
-			});
-			drawDistribution(distribution, term.occurrences);
-			tr.addEventListener('click', () => {
-				openMentionModal(
-					term.term,
-					t('tracking.countTotal', { count: term.total }),
-					term.occurrences,
+			(body) => {
+				if (shown.length === 0) {
+					emptyState(body, t('mentionView.empty'), true);
+					return;
+				}
+				const tbody = tableFrame(
+					body,
+					['name', 'count', 'span', 'distribution'],
+					[
+						t('table.name'),
+						t('tracking.column.count'),
+						t('tracking.column.span'),
+						t('tracking.column.distribution'),
+					],
 				);
-			});
-		}
-		moreLine(body, shown.length);
+				for (const term of shown.slice(0, MAX_SECTION_ROWS)) {
+					const tr = tbody.createEl('tr', {
+						cls: 'snowflake-method-tracking-row',
+					});
+					tr.createEl('td', {
+						cls: 'snowflake-method-table-primary snowflake-method-tracking-sensitive-name',
+						text: term.term,
+						attr: { 'data-label': t('table.name') },
+					});
+					const counts = tr.createEl('td', {
+						cls: 'snowflake-method-tracking-counts',
+						attr: { 'data-label': t('tracking.column.count') },
+					});
+					countLine(counts, t('tracking.total'), term.total);
+					const span = tr.createEl('td', {
+						cls: 'snowflake-method-tracking-span',
+						attr: { 'data-label': t('tracking.column.span') },
+					});
+					const first = term.occurrences[0];
+					const last = term.occurrences[term.occurrences.length - 1];
+					if (first !== undefined) {
+						chapterLink(span, t('tracking.first'), first);
+					}
+					if (last !== undefined) {
+						chapterLink(span, t('tracking.last'), last);
+					}
+					const distribution = tr.createEl('td', {
+						cls: 'snowflake-method-tracking-distribution-cell',
+						attr: { 'data-label': t('tracking.column.distribution') },
+					});
+					drawDistribution(distribution, term.occurrences);
+					tr.addEventListener('click', () => {
+						openMentionModal(
+							term.term,
+							t('tracking.countTotal', { count: term.total }),
+							term.occurrences,
+						);
+					});
+				}
+				moreLine(body, shown.length);
+			},
+		);
 	};
 
 	const renderDialogue = (chapters: readonly TrackingDialogueRow[]): void => {
 		const shown = chapters.filter((chapter) => matches(chapter.title));
 		if (searching() && shown.length === 0) return;
-		const body = fold(
+		fold(
 			'dialogue',
 			t('mentionView.dialogueHeading'),
 			shown.length,
+			(body) => {
+				if (shown.length === 0) {
+					emptyState(body, t('mentionView.empty'), false);
+					return;
+				}
+				// The chapter takes the unresolved text column's width, and
+				// the two counts split the pair beside it: the stacked
+				// tables keep one grid.
+				const tbody = tableFrame(
+					body,
+					['mention', 'stretches', 'words'],
+					[
+						t('prose.table.chapter'),
+						t('tracking.column.stretches'),
+						t('tracking.column.words'),
+					],
+				);
+				for (const chapter of shown.slice(0, MAX_SECTION_ROWS)) {
+					const tr = tbody.createEl('tr', {
+						cls: 'snowflake-method-tracking-row',
+					});
+					tr.createEl('td', {
+						cls: 'snowflake-method-table-primary',
+						text: chapter.title,
+						attr: { 'data-label': t('prose.table.chapter') },
+					});
+					tr.createEl('td', {
+						cls: 'snowflake-method-tracking-counts snowflake-method-tracking-numeric',
+						text: String(chapter.count),
+						attr: { 'data-label': t('tracking.column.stretches') },
+					});
+					tr.createEl('td', {
+						cls: 'snowflake-method-tracking-counts snowflake-method-tracking-numeric',
+						text: String(chapter.units),
+						attr: { 'data-label': t('tracking.column.words') },
+					});
+					tr.addEventListener('click', () => {
+						void bridge
+							.dialogueOccurrences(chapter.path)
+							.then((occurrences) => {
+								if (disposed) return;
+								openMentionModal(chapter.title, null, occurrences);
+							})
+							.catch(() => undefined);
+					});
+				}
+				moreLine(body, shown.length);
+			},
 		);
-		if (shown.length === 0) {
-			emptyState(body, t('mentionView.empty'), false);
-			return;
-		}
-		// The chapter takes the unresolved text column's width, and the two
-		// counts split the pair beside it: the stacked tables keep one grid.
-		const tbody = tableFrame(
-			body,
-			['mention', 'stretches', 'words'],
-			[
-				t('prose.table.chapter'),
-				t('tracking.column.stretches'),
-				t('tracking.column.words'),
-			],
-		);
-		for (const chapter of shown.slice(0, MAX_SECTION_ROWS)) {
-			const tr = tbody.createEl('tr', {
-				cls: 'snowflake-method-tracking-row',
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-table-primary',
-				text: chapter.title,
-				attr: { 'data-label': t('prose.table.chapter') },
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-tracking-counts snowflake-method-tracking-numeric',
-				text: String(chapter.count),
-				attr: { 'data-label': t('tracking.column.stretches') },
-			});
-			tr.createEl('td', {
-				cls: 'snowflake-method-tracking-counts snowflake-method-tracking-numeric',
-				text: String(chapter.units),
-				attr: { 'data-label': t('tracking.column.words') },
-			});
-			tr.addEventListener('click', () => {
-				void bridge
-					.dialogueOccurrences(chapter.path)
-					.then((occurrences) => {
-						if (disposed) return;
-						openMentionModal(chapter.title, null, occurrences);
-					})
-					.catch(() => undefined);
-			});
-		}
-		moreLine(body, shown.length);
 	};
 
 	const renderIgnores = (rules: readonly MentionIgnore[]): void => {
@@ -913,81 +940,82 @@ export function renderEntitiesPanel(
 			matches(rule.matchedText, badgeOf(rule), namedOf(rule)),
 		);
 		if (searching() && shown.length === 0) return;
-		const body = fold('ignores', t('mentionView.ignoreHeading'), shown.length);
-		if (shown.length === 0) {
-			emptyState(body, t('mentionView.ignoreEmpty'), false);
-			return;
-		}
-		// A rule that names one spot or one chapter can be visited: the
-		// occurrence rule's ordinal is walked back to its offsets over the
-		// chapter's body, and a note rule opens its chapter's head. Only the
-		// manuscript-wide rule has nowhere to point.
-		const visitRule = async (rule: MentionIgnore): Promise<void> => {
-			if (rule.scope === 'manuscript') return;
-			if (rule.scope === 'note') {
+		fold('ignores', t('mentionView.ignoreHeading'), shown.length, (body) => {
+			if (shown.length === 0) {
+				emptyState(body, t('mentionView.ignoreEmpty'), false);
+				return;
+			}
+			// A rule that names one spot or one chapter can be visited: the
+			// occurrence rule's ordinal is walked back to its offsets over
+			// the chapter's body, and a note rule opens its chapter's head.
+			// Only the manuscript-wide rule has nowhere to point.
+			const visitRule = async (rule: MentionIgnore): Promise<void> => {
+				if (rule.scope === 'manuscript') return;
+				if (rule.scope === 'note') {
+					await bridge.openChapter(rule.notePath);
+					return;
+				}
+				const chapterBody = await bridge.readSegmentBody(rule.notePath);
+				const offsets = occurrenceOffsets(
+					chapterBody,
+					rule.matchedText,
+					rule.ordinal,
+				);
+				if (offsets !== null) {
+					await bridge.openMention({ path: rule.notePath, ...offsets });
+					return;
+				}
 				await bridge.openChapter(rule.notePath);
-				return;
-			}
-			const chapterBody = await bridge.readSegmentBody(rule.notePath);
-			const offsets = occurrenceOffsets(
-				chapterBody,
-				rule.matchedText,
-				rule.ordinal,
+			};
+			// Two columns only: the scope takes the whole span the
+			// distribution takes elsewhere, and carries the remove at its
+			// far end -- a red trash on the line, no column of its own.
+			const tbody = tableFrame(
+				body,
+				['mention', 'scope'],
+				[t('tracking.column.text'), t('tracking.column.scope')],
 			);
-			if (offsets !== null) {
-				await bridge.openMention({ path: rule.notePath, ...offsets });
-				return;
-			}
-			await bridge.openChapter(rule.notePath);
-		};
-		// Two columns only: the scope takes the whole span the distribution
-		// takes elsewhere, and carries the remove at its far end -- a red
-		// trash on the line, no column of its own.
-		const tbody = tableFrame(
-			body,
-			['mention', 'scope'],
-			[t('tracking.column.text'), t('tracking.column.scope')],
-		);
-		for (const rule of shown.slice(0, MAX_SECTION_ROWS)) {
-			const tr = tbody.createEl('tr');
-			tr.createEl('td', {
-				cls: 'snowflake-method-table-primary',
-				text: namedOf(rule),
-				attr: { 'data-label': t('tracking.column.text') },
-			});
-			const scope = tr.createEl('td', {
-				attr: { 'data-label': t('tracking.column.scope') },
-			});
-			const line = scope.createDiv({
-				cls: 'snowflake-method-tracking-scope-row',
-			});
-			if (rule.scope === 'manuscript') {
-				line.createSpan({ text: badgeOf(rule) });
-			} else {
-				const link = line.createSpan({
-					cls: 'snowflake-method-tracking-link',
-					text: badgeOf(rule),
+			for (const rule of shown.slice(0, MAX_SECTION_ROWS)) {
+				const tr = tbody.createEl('tr');
+				tr.createEl('td', {
+					cls: 'snowflake-method-table-primary',
+					text: namedOf(rule),
+					attr: { 'data-label': t('tracking.column.text') },
 				});
-				link.addEventListener('click', () => {
-					void visitRule(rule).catch(() => undefined);
+				const scope = tr.createEl('td', {
+					attr: { 'data-label': t('tracking.column.scope') },
+				});
+				const line = scope.createDiv({
+					cls: 'snowflake-method-tracking-scope-row',
+				});
+				if (rule.scope === 'manuscript') {
+					line.createSpan({ text: badgeOf(rule) });
+				} else {
+					const link = line.createSpan({
+						cls: 'snowflake-method-tracking-link',
+						text: badgeOf(rule),
+					});
+					link.addEventListener('click', () => {
+						void visitRule(rule).catch(() => undefined);
+					});
+				}
+				const remove = line.createEl('button', {
+					cls: 'clickable-icon snowflake-method-tracking-remove',
+					attr: { type: 'button' },
+				});
+				setIcon(remove, 'trash-2');
+				setTooltip(remove, t('mentionView.remove'));
+				remove.addEventListener('click', () => {
+					void bridge
+						.removeIgnore(rule)
+						.then(() => {
+							refresh();
+						})
+						.catch(() => undefined);
 				});
 			}
-			const remove = line.createEl('button', {
-				cls: 'clickable-icon snowflake-method-tracking-remove',
-				attr: { type: 'button' },
-			});
-			setIcon(remove, 'trash-2');
-			setTooltip(remove, t('mentionView.remove'));
-			remove.addEventListener('click', () => {
-				void bridge
-					.removeIgnore(rule)
-					.then(() => {
-						refresh();
-					})
-					.catch(() => undefined);
-			});
-		}
-		moreLine(body, shown.length);
+			moreLine(body, shown.length);
+		});
 	};
 
 	const paint = (): void => {
