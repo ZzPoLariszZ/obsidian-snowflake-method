@@ -6,10 +6,12 @@ import {
 	averageSentenceLength,
 	cloudWords,
 	dialoguePercent,
+	filterChapterRows,
 	filterFrequencyRows,
 	formatDecimal,
 	formatReadingTime,
 	frequencySharePercent,
+	parseLengthBound,
 	proseSummary,
 	readingMinutes,
 	type ReadingSpeeds,
@@ -144,6 +146,45 @@ describe('the word cloud', () => {
 		);
 		expect(flat.map((word) => word.weight)).toEqual([0.5, 0.5]);
 		expect(cloudWords([], 10)).toEqual([]);
+	});
+});
+
+describe('the chapter filter', () => {
+	const row = (title: string, cjk: number, words: number) => ({
+		path: `${title}.md`,
+		title,
+		cjk,
+		words,
+		sentences: 1,
+		dialogueCjk: 0,
+		dialogueWords: 0,
+	});
+	const chapters = [row('Fog', 100, 0), row('Rope', 0, 250), row('Sea', 900, 100)];
+
+	it('reads a typed bound, and nothing from blanks or noise', () => {
+		expect(parseLengthBound('250')).toBe(250);
+		expect(parseLengthBound(' 42 ')).toBe(42);
+		expect(parseLengthBound('')).toBeNull();
+		expect(parseLengthBound('   ')).toBeNull();
+		expect(parseLengthBound('many')).toBeNull();
+		expect(parseLengthBound('-9')).toBe(0);
+	});
+
+	it('bounds the length from either side, ends inclusive', () => {
+		const titles = (min: number | null, max: number | null): string[] =>
+			filterChapterRows(chapters, '', { min, max }).map((entry) => entry.title);
+		expect(titles(null, null)).toEqual(['Fog', 'Rope', 'Sea']);
+		expect(titles(250, null)).toEqual(['Rope', 'Sea']);
+		expect(titles(null, 250)).toEqual(['Fog', 'Rope']);
+		expect(titles(101, 999)).toEqual(['Rope']);
+	});
+
+	it('narrows by the title and the length together', () => {
+		expect(
+			filterChapterRows(chapters, 'o', { min: 200, max: null }).map(
+				(entry) => entry.title,
+			),
+		).toEqual(['Rope']);
 	});
 });
 

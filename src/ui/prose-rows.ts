@@ -5,7 +5,11 @@
  */
 
 import type { FrequencyRow } from '../domain';
-import type { ManuscriptProseStatistics, NoteProseStats } from '../services';
+import type {
+	ManuscriptProseRow,
+	ManuscriptProseStatistics,
+	NoteProseStats,
+} from '../services';
 import type { Translate } from './modals';
 
 export interface ReadingSpeeds {
@@ -103,6 +107,43 @@ export function proseSummary(
 		averageSentence: averageSentenceLength(totals, totals.sentences),
 		dialoguePercent: dialoguePercent(totals),
 	};
+}
+
+/** The chapter filter's bounds; null on either side is no bound there. */
+export interface LengthBounds {
+	min: number | null;
+	max: number | null;
+}
+
+/** A bound as typed: blank is no bound, and anything unreadable is too. */
+export function parseLengthBound(text: string): number | null {
+	const trimmed = text.trim();
+	if (trimmed.length === 0) return null;
+	const value = Number(trimmed);
+	if (!Number.isFinite(value)) return null;
+	return Math.max(0, value);
+}
+
+/**
+ * The chapter table's search and length filter in one pass: the title the
+ * way every member search matches, the length -- the chapter's own counted
+ * units -- against inclusive bounds.
+ */
+export function filterChapterRows(
+	rows: readonly ManuscriptProseRow[],
+	query: string,
+	bounds: LengthBounds,
+): ManuscriptProseRow[] {
+	const needle = query.trim().toLowerCase();
+	return rows.filter((row) => {
+		if (needle.length > 0 && !row.title.toLowerCase().includes(needle)) {
+			return false;
+		}
+		const length = row.cjk + row.words;
+		if (bounds.min !== null && length < bounds.min) return false;
+		if (bounds.max !== null && length > bounds.max) return false;
+		return true;
+	});
 }
 
 /** The frequency table's search, matched the way the pane's own search is. */

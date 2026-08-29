@@ -2000,6 +2000,19 @@
 	font-size: var(--font-ui-smaller);
 }
 
+/* A bounded question on one line: two ends of a range sharing the row,
+   each free to shrink so the pair never outgrows the panel. */
+.snowflake-method-filter-range {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+}
+
+.snowflake-method-filter-range input {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
 /* Two buttons, in the order they are weighed: clearing the fields is the
    aside, and confirming is what the panel is for. */
 .snowflake-method-filter-panel-actions {

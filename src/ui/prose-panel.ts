@@ -17,15 +17,18 @@ import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { FrequencyRow } from '../domain';
 import type { ManuscriptProseStatistics, ManuscriptProseRow } from '../services';
+import { followAnchor } from './anchored-panel';
 import type { Translate } from './modals';
 import {
 	averageSentenceLength,
 	cloudWords,
 	dialoguePercent,
+	filterChapterRows,
 	filterFrequencyRows,
 	formatDecimal,
 	formatReadingTime,
 	frequencySharePercent,
+	parseLengthBound,
 	proseSummary,
 	readingMinutes,
 	type ReadingSpeeds,
@@ -59,6 +62,9 @@ export interface ProsePanelHandle {
 export interface ProseFilterMemory {
 	includeStopwords: boolean;
 	includeEntities: boolean;
+	/** The chapter table's length bounds; null is no bound on that side. */
+	lengthMin: number | null;
+	lengthMax: number | null;
 }
 
 /** Frequency rows drawn at once; the search reaches past them. */
@@ -132,6 +138,134 @@ export function renderProsePanel(
 	chapterSearch.onChange((next) => {
 		chapterQuery = next;
 		paint();
+	});
+	const chapterCount = chapterToolbar.createSpan({
+		cls: 'snowflake-method-table-count',
+	});
+	const filterSlot = chapterToolbar.createDiv({
+		cls: 'snowflake-method-table-filter',
+	});
+	const filterButton = filterSlot.createEl('button', {
+		cls: 'clickable-icon snowflake-method-filter-button',
+		attr: {
+			type: 'button',
+			'aria-haspopup': 'dialog',
+			'aria-expanded': 'false',
+			'aria-label': t('table.filter'),
+		},
+	});
+	setIcon(filterButton, 'funnel');
+	setTooltip(filterButton, t('table.filter'));
+	const markFilterButton = (): void => {
+		filterButton.toggleClass(
+			'is-active',
+			filters.lengthMin !== null || filters.lengthMax !== null,
+		);
+	};
+	markFilterButton();
+
+	// The member tables' own filter dialog, asked the chapter question: the
+	// one numeric column worth narrowing by is the length, bounded from
+	// either side. A draft until confirmed, nothing until then.
+	let filterPanel: { el: HTMLElement; release: () => void } | null = null;
+	const closeFilterPanel = (): void => {
+		const open = filterPanel;
+		if (open === null) return;
+		filterPanel = null;
+		open.release();
+		open.el.remove();
+	};
+	const openLengthFilter = (anchor: HTMLElement): void => {
+		closeFilterPanel();
+		const view = anchor.win;
+		const panel = view.activeDocument.body.createDiv({
+			cls: 'snowflake-method-filter-panel',
+			attr: { role: 'dialog', 'aria-label': t('table.filter') },
+		});
+		panel.createDiv({
+			cls: 'snowflake-method-filter-panel-title',
+			text: t('table.filter'),
+		});
+		const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
+		const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
+		field.createDiv({
+			cls: 'snowflake-method-filter-label',
+			text: t('prose.table.length'),
+		});
+		const range = field.createDiv({ cls: 'snowflake-method-filter-range' });
+		const bound = (placeholder: string, value: number | null): HTMLInputElement => {
+			const input = range.createEl('input', {
+				attr: { type: 'text', inputmode: 'numeric', placeholder },
+			});
+			if (value !== null) input.value = String(value);
+			return input;
+		};
+		const minInput = bound(t('prose.filter.min'), filters.lengthMin);
+		const maxInput = bound(t('prose.filter.max'), filters.lengthMax);
+		const actions = panel.createDiv({
+			cls: 'snowflake-method-filter-panel-actions',
+		});
+		const reset = actions.createEl('button', {
+			cls: 'snowflake-method-filter-reset',
+			text: t('table.filterReset'),
+			attr: { type: 'button' },
+		});
+		// Clears the fields rather than the table, the way the member panel's
+		// reset does: the panel has one way out, and this is not it.
+		reset.addEventListener('click', () => {
+			minInput.value = '';
+			maxInput.value = '';
+		});
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: t('table.filterConfirm'),
+			attr: { type: 'button' },
+		});
+		const apply = (): void => {
+			filters.lengthMin = parseLengthBound(minInput.value);
+			filters.lengthMax = parseLengthBound(maxInput.value);
+			closeFilterPanel();
+			markFilterButton();
+			paint();
+		};
+		confirm.addEventListener('click', apply);
+		for (const input of [minInput, maxInput]) {
+			input.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') apply();
+			});
+		}
+		const unfollow = followAnchor(panel, anchor, view);
+		anchor.setAttribute('aria-expanded', 'true');
+		const dismiss = (event: MouseEvent): void => {
+			const target = event.target as Node | null;
+			if (target === null) return;
+			if (panel.contains(target) || anchor.contains(target)) return;
+			closeFilterPanel();
+		};
+		const onKey = (event: KeyboardEvent): void => {
+			if (event.key !== 'Escape') return;
+			closeFilterPanel();
+			anchor.focus();
+		};
+		view.addEventListener('mousedown', dismiss, true);
+		view.addEventListener('keydown', onKey, true);
+		filterPanel = {
+			el: panel,
+			release: () => {
+				view.removeEventListener('mousedown', dismiss, true);
+				view.removeEventListener('keydown', onKey, true);
+				unfollow();
+				anchor.setAttribute('aria-expanded', 'false');
+			},
+		};
+		minInput.focus();
+	};
+	filterButton.addEventListener('click', () => {
+		if (filterPanel !== null) {
+			closeFilterPanel();
+			return;
+		}
+		openLengthFilter(filterButton);
 	});
 	// The dashboard's own table frame, laid by hand the way `buildTableFrame`
 	// lays it: one wrap, a header strip the body's scroll carries sideways by
@@ -589,13 +723,18 @@ export function renderProsePanel(
 		}
 		stateText.setText('');
 		paintSummary();
-		const needle = chapterQuery.trim().toLowerCase();
-		entries =
-			needle.length === 0
-				? statistics.perNote
-				: statistics.perNote.filter((row) =>
-						row.title.toLowerCase().includes(needle),
-					);
+		entries = filterChapterRows(statistics.perNote, chapterQuery, {
+			min: filters.lengthMin,
+			max: filters.lengthMax,
+		});
+		chapterCount.setText(
+			entries.length === statistics.perNote.length
+				? ''
+				: t('table.filteredCount', {
+						shown: entries.length,
+						total: statistics.perNote.length,
+					}),
+		);
 		virtual.setTotal(entries.length);
 	};
 
@@ -633,6 +772,7 @@ export function renderProsePanel(
 		refresh,
 		dispose: (): void => {
 			disposed = true;
+			closeFilterPanel();
 			cloudLayout?.stop();
 			cloudObserver.disconnect();
 			virtual.destroy();

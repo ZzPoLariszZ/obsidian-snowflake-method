@@ -1369,6 +1369,8 @@ export const en = {
 	'prose.frequency.more':
 		'Showing {shown} of {total} words. Search to reach the rest.',
 	'prose.cloud.heading': 'Word cloud',
+	'prose.filter.min': 'Min',
+	'prose.filter.max': 'Max',
 	'prose.time.lessThanMinute': '< 1 min',
 	'prose.time.minutes': '{minutes} min',
 	'prose.time.hoursMinutes': '{hours} h {minutes} min',

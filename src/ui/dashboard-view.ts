@@ -327,6 +327,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly proseFilters: ProseFilterMemory = {
 		includeStopwords: false,
 		includeEntities: false,
+		lengthMin: null,
+		lengthMax: null,
 	};
 	/** A refresh asked for while the leaf was off screen, owed at reveal. */
 	private refreshQueuedWhileHidden = false;

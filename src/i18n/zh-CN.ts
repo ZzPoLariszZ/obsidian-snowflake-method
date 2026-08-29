@@ -1256,6 +1256,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'prose.frequency.fallbackNote': '此设备没有分词器，中日韩文字按单字统计。',
 	'prose.frequency.more': '显示 {shown} / {total} 个词，搜索可查看其余。',
 	'prose.cloud.heading': '词云',
+	'prose.filter.min': '最小',
+	'prose.filter.max': '最大',
 	'prose.time.lessThanMinute': '< 1 分钟',
 	'prose.time.minutes': '{minutes} 分钟',
 	'prose.time.hoursMinutes': '{hours} 小时 {minutes} 分钟',
