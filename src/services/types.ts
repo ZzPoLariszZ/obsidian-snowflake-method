@@ -78,8 +78,8 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       writingSessions: "70_Tool/71_Data_Statistics/711_Writing_Session",
       // Two sibling data folders: the reader's own analysis choices, and the
       // per-device mention index cache beside them.
-      manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Manuscript_Analysis",
-      mentionIndex: "70_Tool/71_Data_Statistics/713_Mention_Index",
+      manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Prose_Analysis",
+      mentionIndex: "70_Tool/71_Data_Statistics/713_Entity_Tracking",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -102,7 +102,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       worldbuilding: "60_世界观",
       writingSessions: "70_工具/71_数据统计/711_写作时段",
       manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
-      mentionIndex: "70_工具/71_数据统计/713_提及索引",
+      mentionIndex: "70_工具/71_数据统计/713_实体追踪",
       materials: "80_素材",
       archive: "90_存档",
     },

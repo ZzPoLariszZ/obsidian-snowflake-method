@@ -11,7 +11,7 @@ import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 const ALICE = "Snowflake Projects/Novel/20_Character/Alice.md";
 const BOB = "Snowflake Projects/Novel/20_Character/Bob.md";
 const INDEX_FILE =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/device_mention_index.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/device_mention_index.json";
 
 const source = (
 	label: string,

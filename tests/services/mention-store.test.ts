@@ -12,11 +12,11 @@ import {
 import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const IGNORES =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Manuscript_Analysis/mention_ignores.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Prose_Analysis/mention_ignores.json";
 const INDEX =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/dev-a_mention_index.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/dev-a_mention_index.json";
 const ANALYSIS =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/dev-a_analysis_stats.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/dev-a_analysis_stats.json";
 
 const noteRule: MentionIgnore = {
 	scope: "note",

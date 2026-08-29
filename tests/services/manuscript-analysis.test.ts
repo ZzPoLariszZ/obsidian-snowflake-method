@@ -10,7 +10,7 @@ import {
 import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const ANALYSIS_FILE =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Mention_Index/device_analysis_stats.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/device_analysis_stats.json";
 
 const styles = (...tokens: readonly string[]): DialogueStyle[] =>
 	tokens

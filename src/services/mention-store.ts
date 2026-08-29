@@ -173,7 +173,9 @@ export class MentionStore {
 		index: MentionIndexFile,
 	): Promise<void> {
 		const path = this.indexPath(project);
-		const serialized = JSON.stringify(index);
+		// Dressed like the session files: a reader opening the cache in the
+		// vault meets lines, not one endless one.
+		const serialized = `${JSON.stringify(index, null, "\t")}\n`;
 		if (this.deps.repository.getFile(path) === null) {
 			await this.deps.repository.createPlainFile(path, serialized);
 			return;
@@ -199,7 +201,7 @@ export class MentionStore {
 
 	async writeAnalysis(project: ProjectRef, file: AnalysisFile): Promise<void> {
 		const path = this.analysisPath(project);
-		const serialized = JSON.stringify(file);
+		const serialized = `${JSON.stringify(file, null, "\t")}\n`;
 		if (this.deps.repository.getFile(path) === null) {
 			await this.deps.repository.createPlainFile(path, serialized);
 			return;
