@@ -7881,6 +7881,32 @@ button.snowflake-method-kind-options {
 	border-radius: 0;
 }
 
+/* The table's header strip rides the scrollport one heading down, under the
+   kind's stuck bar, while its own rows pass beneath it -- the pair covers
+   the top edge completely, so no row ever reads through above them. The
+   strip's own background closes the gutter sliver its cells do not reach. */
+.snowflake-method-template-sections .snowflake-method-table-head {
+	position: sticky;
+	top: var(--snowflake-definition-heading);
+	z-index: 1;
+	background: var(--background-primary);
+}
+
+/* The statistics tab's scroller wears the frame inset as its own padding,
+   and Chromium keeps sticky boxes out of a scroller's padding -- left at
+   nought, a stuck bar parks that far down and scrolling rows show through
+   the band above it. Both stick offsets reach back up by the inset, so the
+   bar meets the tab strip and the band closes. */
+.snowflake-method-tracking-sections .snowflake-method-definition-section-header {
+	top: calc(-1 * var(--snowflake-method-tab-height));
+}
+
+.snowflake-method-tracking-sections .snowflake-method-table-head {
+	top: calc(
+		var(--snowflake-definition-heading) - var(--snowflake-method-tab-height)
+	);
+}
+
 .snowflake-method-template-table tr.is-hidden {
 	display: none;
 }
