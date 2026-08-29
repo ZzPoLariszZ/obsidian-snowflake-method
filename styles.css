@@ -5150,19 +5150,15 @@ body {
    whichever way round the reading toggle happens to be. A mode button whose
    mode is on stays visible: it is the one telling the author something. */
 .snowflake-method-segment-write,
-.snowflake-method-segment-open,
-.snowflake-method-mode-toggle {
+.snowflake-method-segment-open {
 	opacity: 0;
 	transition: opacity 120ms ease-in-out;
 }
 
 .snowflake-method-segment:hover .snowflake-method-segment-write,
 .snowflake-method-segment:hover .snowflake-method-segment-open,
-.snowflake-method-segment:hover .snowflake-method-mode-toggle,
 .snowflake-method-segment-write:focus-visible,
-.snowflake-method-segment-open:focus-visible,
-.snowflake-method-mode-toggle:focus-visible,
-.snowflake-method-mode-toggle.is-active {
+.snowflake-method-segment-open:focus-visible {
 	opacity: 1;
 }
 
@@ -5357,11 +5353,6 @@ body {
 .snowflake-method-dialogue-focus .snowflake-method-sensitive,
 .snowflake-method-dialogue-focus .snowflake-method-highlight {
 	color: inherit;
-}
-
-/* The pane's sensitive-term names wear the same warning color their marks do. */
-.snowflake-method-mention-view-name.is-sensitive {
-	color: var(--color-red);
 }
 
 /* Sensitive words: one fixed warning presentation, no states to carry.
@@ -5998,65 +5989,13 @@ td.snowflake-method-tracking-numeric {
 	height: 0.85rem;
 }
 
-/* The tracking pane: plain rows over theme tokens, a reading and no more. */
-.snowflake-method-mention-view {
-	padding: var(--size-4-2) var(--size-4-3);
-	overflow-y: auto;
-}
-
-.snowflake-method-mention-view-controls {
-	display: flex;
-	gap: var(--size-2-2);
-	align-items: center;
-	margin-bottom: var(--size-4-2);
-}
-
-.snowflake-method-mention-view-search {
-	flex: 1;
-	min-width: 0;
-}
-
-.snowflake-method-mention-view-heading {
-	margin: var(--size-4-4) 0 var(--size-4-1);
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
-}
-
+/* Rows the tracking modal and panel still share from the old pane's cloth:
+   one jump per line, the words around the match, and the quiet sentence a
+   section with nothing says. */
 .snowflake-method-mention-view-empty {
 	color: var(--text-faint);
 	font-size: var(--font-ui-small);
 	padding: var(--size-4-1) 0;
-}
-
-.snowflake-method-mention-view-row {
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.snowflake-method-mention-view-row-head {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	padding: var(--size-4-1) var(--size-2-2);
-	cursor: pointer;
-	border-radius: var(--radius-s);
-}
-
-.snowflake-method-mention-view-row-head:hover {
-	background-color: var(--background-modifier-hover);
-}
-
-.snowflake-method-mention-view-name {
-	font-weight: var(--font-semibold);
-}
-
-.snowflake-method-mention-view-counts,
-.snowflake-method-mention-view-span {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-.snowflake-method-mention-view-occurrences {
-	padding: 0 0 var(--size-4-2) var(--size-4-3);
 }
 
 .snowflake-method-mention-view-occurrence {
@@ -6071,38 +6010,8 @@ td.snowflake-method-tracking-numeric {
 	background-color: var(--background-modifier-hover);
 }
 
-.snowflake-method-mention-view-chapter {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
 .snowflake-method-mention-view-context {
 	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-mention-view-ignore {
-	display: flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	padding: var(--size-2-2) 0;
-}
-
-.snowflake-method-mention-view-ignore-badge {
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	background-color: var(--background-secondary);
-	border-radius: var(--radius-s);
-	padding: 0 var(--size-2-2);
-	white-space: nowrap;
-}
-
-.snowflake-method-mention-view-ignore-text {
-	flex: 1;
-	min-width: 0;
-	font-size: var(--font-ui-small);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 /* The guides: a rule under every row of the note being written in, drawn
@@ -6319,10 +6228,9 @@ td.snowflake-method-tracking-numeric {
    layout — so entering and leaving it moves nothing at all. Solo is the one
    mode whose point is to change the layout, and it says so by existing. */
 
-/* The mode buttons, lit while their mode is on. */
+/* The toolbar's mode buttons, lit while their mode is on. */
 .snowflake-method-mode-toggle.is-active {
 	color: var(--interactive-accent);
-	opacity: 1;
 }
 
 /* Inside the stream, while something is being written: the note in hand keeps

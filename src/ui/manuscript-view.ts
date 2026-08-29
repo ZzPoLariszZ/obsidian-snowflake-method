@@ -216,6 +216,10 @@ export class SnowflakeManuscriptView extends ItemView {
 	private streamEl: HTMLElement | null = null;
 	/** The formatting bar's buttons, greyed together while nothing is edited. */
 	private toolbarButtons: HTMLButtonElement[] = [];
+	/** The toolbar's two writing-mode buttons, repainted as settings move. */
+	private readonly modeToggles: Partial<
+		Record<'typewriter' | 'focus', HTMLButtonElement>
+	> = {};
 	/**
 	 * The `[[` popup's feed, fetched once per quiet stretch and shared by
 	 * every keystroke. Nulled whenever the project may have changed shape,
@@ -462,6 +466,9 @@ export class SnowflakeManuscriptView extends ItemView {
 				'snowflake-method-focus',
 				settings.focusLevel !== 'off',
 			);
+			// The toolbar's pair wears the same truth: lit and captioned anew.
+			this.paintModeToggle('typewriter');
+			this.paintModeToggle('focus');
 			// The page speaks the project's language, not the app's: hyphenation
 			// dictionaries and CJK font fallback follow this tag, and an English
 			// manuscript under a Chinese Obsidian should still break its words.
@@ -833,6 +840,12 @@ export class SnowflakeManuscriptView extends ItemView {
 		mentions.addEventListener('click', (event) => {
 			this.openMentionModeMenu(event);
 		});
+		// The writing modes, one pair for the whole stream: they are the
+		// author's rather than any note's, so they stand with the other
+		// stream-wide controls instead of riding every segment's header.
+		separator();
+		this.renderModeToggle(bar, 'typewriter');
+		this.renderModeToggle(bar, 'focus');
 		this.refreshToolbar();
 	}
 
@@ -1503,17 +1516,6 @@ export class SnowflakeManuscriptView extends ItemView {
 					}),
 			);
 		}
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item
-				.setTitle(this.t('manuscript.toolbar.trackMentions'))
-				.setIcon('scan-text')
-				.onClick(() => {
-					void this.host.openMentionTracking().catch((error: unknown) => {
-						this.showError(error);
-					});
-				}),
-		);
 		menu.showAtMouseEvent(event);
 	}
 
@@ -1858,10 +1860,6 @@ export class SnowflakeManuscriptView extends ItemView {
 		// Not offered on a note that cannot be written in, because pressing it
 		// would do nothing: activateSegment turns a read-only segment away.
 		if (this.model?.readOnly !== true && !segment.readOnly) {
-			// Writing modes first, then the way in and out of writing: the pair
-			// reads left to right as how to write, then whether to.
-			this.renderModeToggle(actions, 'typewriter');
-			this.renderModeToggle(actions, 'focus');
 			const write = actions.createEl('button', {
 				// `view-action` alongside `clickable-icon` for the size Obsidian gives
 				// the same button in a note's own header: 28 by 24, on a 16px icon.
@@ -1894,22 +1892,39 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
-	 * One writing-mode button. The modes are the author's rather than any
-	 * note's, so pressing this one turns every stream at once — and every
-	 * header carries the same pair, because the header is pinned to the top of
-	 * the page, which is what keeps them in reach however deep the book. The
-	 * typewriter button is a switch; the focus button walks the levels, one
-	 * press deeper each time and off again past the deepest.
+	 * One writing-mode button on the toolbar. The modes are the author's
+	 * rather than any note's, so pressing one turns every stream at once.
+	 * The typewriter button is a switch; the focus button walks the levels,
+	 * one press deeper each time and off again past the deepest.
 	 */
 	private renderModeToggle(
-		actions: HTMLElement,
+		bar: HTMLElement,
 		mode: 'typewriter' | 'focus',
 	): void {
-		const settings = this.host.manuscriptWindowSettings();
-		const toggle = actions.createEl('button', {
-			cls: 'clickable-icon view-action snowflake-method-mode-toggle',
+		const toggle = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-mode-toggle',
 			attr: { type: 'button' },
 		});
+		// Like the other toolbar buttons: pressing it must not lift the caret
+		// out of whichever editor is holding it.
+		toggle.addEventListener('mousedown', (event) => {
+			event.preventDefault();
+		});
+		toggle.addEventListener('click', () => {
+			void this.host.toggleManuscriptMode(mode).catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
+		this.modeToggles[mode] = toggle;
+		this.paintModeToggle(mode);
+	}
+
+	/** The button's face redrawn from the settings: lit while on, and the
+	 *  tooltip telling the state it holds and the state a press brings. */
+	private paintModeToggle(mode: 'typewriter' | 'focus'): void {
+		const toggle = this.modeToggles[mode];
+		if (toggle === undefined || !toggle.isConnected) return;
+		const settings = this.host.manuscriptWindowSettings();
 		if (mode === 'typewriter') {
 			const on = settings.typewriter;
 			toggle.toggleClass('is-active', on);
@@ -1929,12 +1944,6 @@ export class SnowflakeManuscriptView extends ItemView {
 			setTooltip(toggle, `${state}\n${then}`);
 			setIcon(toggle, 'focus');
 		}
-		toggle.addEventListener('click', (event) => {
-			event.stopPropagation();
-			void this.host.toggleManuscriptMode(mode).catch((error: unknown) => {
-				this.showError(error);
-			});
-		});
 	}
 
 	/**

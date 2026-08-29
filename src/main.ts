@@ -183,7 +183,6 @@ import {
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
-import { MENTION_VIEW_TYPE, SnowflakeMentionView } from './ui/mention-view';
 import type { WikilinkTarget } from './ui/segment-editor-backend';
 import {
 	collectWikilinkTargets,
@@ -703,10 +702,6 @@ export default class SnowflakeMethodPlugin
 					this.statisticsFingerprint(),
 				),
 		);
-		this.registerView(
-			MENTION_VIEW_TYPE,
-			(leaf) => new SnowflakeMentionView(leaf, this),
-		);
 		// Two feeds so the core Page preview plugin offers each with its own
 		// modifier default: rendered manuscript prose previews on a plain
 		// hover like any reading view, the stream's editor asks for the
@@ -764,6 +759,10 @@ export default class SnowflakeMethodPlugin
 		);
 
 		this.app.workspace.onLayoutReady(() => {
+			// The tracking pane's view is gone -- the dashboard's Entity
+			// tracking tab is its home now -- and a workspace still holding
+			// one of its leaves would show an empty placeholder forever.
+			this.app.workspace.detachLeavesOfType('snowflake-method-mentions');
 			this.resolveProjectScanReady();
 			this.registerVaultListeners();
 			this.registerEvent(
@@ -5092,19 +5091,6 @@ export default class SnowflakeMethodPlugin
 		return this.settings.recentProjectPath;
 	}
 
-	/** Opens (or reveals) the tracking pane, in the right sidebar by default. */
-	async openMentionTracking(): Promise<void> {
-		const existing = this.app.workspace.getLeavesOfType(MENTION_VIEW_TYPE)[0];
-		const leaf = existing ?? this.app.workspace.getRightLeaf(false);
-		if (leaf === null) return;
-		if (existing === undefined) {
-			await leaf.setViewState({ type: MENTION_VIEW_TYPE, active: true });
-		}
-		await leaf.loadIfDeferred();
-		await this.app.workspace.revealLeaf(leaf);
-		if (leaf.view instanceof SnowflakeMentionView) await leaf.view.refresh();
-	}
-
 	/** Opens the stream at one occurrence and flashes it where it stands. */
 	async openManuscriptMention(
 		projectPath: string | null,
@@ -5157,13 +5143,11 @@ export default class SnowflakeMethodPlugin
 				leaf.view.applyMentionMode();
 			}
 		}
-		// The tracking pane reads the same rules, so it hears of them too.
-		this.refreshMentionViews();
 	}
 
 	/**
-	 * Turns one of the manuscript's writing modes, from the buttons every
-	 * segment header carries: typewriter on and off, focus mode one level
+	 * Turns one of the manuscript's writing modes, from the pair the stream's
+	 * toolbar carries: typewriter on and off, focus mode one level
 	 * deeper — and off again past the deepest. One mode for the whole app
 	 * rather than one per stream, because the modes are about how the author
 	 * writes, not about which book they are writing in.
@@ -5528,15 +5512,6 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private registerCommands(): void {
-		this.addCommand({
-			id: 'open-entity-mentions',
-			name: this.globalT('commands.openMentions'),
-			callback: () => {
-				void this.openMentionTracking().catch((error: unknown) => {
-					this.showError(error);
-				});
-			},
-		});
 		this.addCommand({
 			id: 'toggle-custom-highlights',
 			name: this.globalT('commands.toggleCustomHighlights'),
@@ -6492,24 +6467,7 @@ export default class SnowflakeMethodPlugin
 		);
 		this.rerenderStatisticsViews();
 		await this.refreshManuscriptStreams();
-		this.refreshMentionViews();
 		this.refreshManagedEditors();
-	}
-
-	/**
-	 * Every shown tracking pane, re-read. Hidden ones keep their frame and
-	 * pay the refresh at reveal, the bargain the dashboards strike; the
-	 * stamped index makes a post-edit refresh recompute one chapter.
-	 */
-	private refreshMentionViews(): void {
-		for (const leaf of this.app.workspace.getLeavesOfType(MENTION_VIEW_TYPE)) {
-			if (!(leaf.view instanceof SnowflakeMentionView)) continue;
-			if (!leaf.view.containerEl.isShown()) {
-				leaf.view.queueRefreshWhenShown();
-				continue;
-			}
-			void leaf.view.refresh().catch(() => undefined);
-		}
 	}
 
 	private refreshManagedEditors(relock = false): void {

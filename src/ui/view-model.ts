@@ -3,7 +3,6 @@ import type { Menu } from 'obsidian';
 import type {
 	CharacterType,
 	CompiledHighlightRules,
-	DialogueOccurrence,
 	DialoguePresentation,
 	DialogueStyle,
 	EntityKindId,
@@ -31,13 +30,10 @@ import type {
 import type {
 	CustomFieldTemplateInfo,
 	DefinitionForest,
-	DialogueChapterAggregate,
 	KindMutationResult,
 	MemberUsage,
-	MentionAggregate,
 	ProjectStructureIssueCode,
 	SaveCustomFieldTemplateResult,
-	SensitiveTermAggregate,
 } from '../services';
 
 import type {
@@ -465,8 +461,6 @@ export interface ManuscriptHost {
 	};
 	/** Stores the dialogue presentation, from the bar's own menu. */
 	setDialoguePresentation(mode: DialoguePresentation): Promise<void>;
-	/** Opens the tracking pane, from the bar's own menu. */
-	openMentionTracking(): Promise<void>;
 	/**
 	 * The stream's writing context moved: a segment began or finished being
 	 * edited, its text grew, or its selection changed. Carries nothing,
@@ -481,50 +475,6 @@ export interface ManuscriptHost {
 	 * session tracks the note that was edited wherever its pane sits.
 	 */
 	manuscriptSegmentEdited(path: string, body: string): void;
-}
-
-/**
- * What the tracking pane reads and does: the index's aggregate, the ignore
- * rules, and the two jumps out of it -- into the stream at an occurrence,
- * and into a member's note.
- */
-export interface MentionViewHost {
-	t: Translate;
-	/** The project the pane follows: the active stream's, else the recent one. */
-	mentionProjectPath(): string | null;
-	manuscriptMentionAggregate(
-		projectPath: string | null,
-	): Promise<MentionAggregate | null>;
-	mentionIgnores(
-		projectPath: string | null,
-	): Promise<readonly MentionIgnore[]>;
-	removeMentionIgnore(
-		projectPath: string | null,
-		rule: MentionIgnore,
-	): Promise<void>;
-	readManuscriptSegment(path: string): Promise<ManuscriptSegmentText>;
-	openManagedFile(path: string): Promise<void>;
-	/**
-	 * Opens the stream at the spot and flashes it. Structural on purpose:
-	 * every occurrence kind carries these three, and the jump needs no more.
-	 */
-	openManuscriptMention(
-		projectPath: string | null,
-		occurrence: { path: string; from: number; to: number },
-	): Promise<void>;
-	/** Every sensitive term's spots, or null where no project stands. */
-	sensitiveMentionAggregate(
-		projectPath: string | null,
-	): Promise<SensitiveTermAggregate[] | null>;
-	/** The chapters holding dialogue, or null where no project stands. */
-	dialogueMentionChapters(
-		projectPath: string | null,
-	): Promise<DialogueChapterAggregate[] | null>;
-	/** One chapter's quoted stretches, read fresh on expansion. */
-	dialogueMentionOccurrences(
-		projectPath: string | null,
-		path: string,
-	): Promise<DialogueOccurrence[]>;
 }
 
 export interface DashboardHost {
