@@ -1333,7 +1333,7 @@ export const en = {
 	'mentionView.noProject': 'No project to read.',
 	'mentionView.empty': 'No mentions',
 	'mentionView.computing': 'Reading the manuscript…',
-	'mentionView.searchPlaceholder': 'Filter entities…',
+	'mentionView.searchPlaceholder': 'Search mentions',
 	'mentionView.refresh': 'Refresh',
 	'mentionView.counts': '{total} mentions · {linked} linked · {unlinked} unlinked',
 	'mentionView.first': 'First: {name}',

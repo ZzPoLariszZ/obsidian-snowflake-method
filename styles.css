@@ -5753,13 +5753,6 @@ col.snowflake-method-prose-column-dialogue {
 	margin-inline-end: auto;
 }
 
-/* The definition panes stand their frame off their toolbar by this margin;
-   here the panel's own gap already is that spacing, so the frame starts
-   where every other tab's first block does. */
-.snowflake-method-template-sections.snowflake-method-tracking-sections {
-	margin-block-start: 0;
-}
-
 /* A row's cells read as one line however tall its tallest cell stands:
    the three-line count centres its neighbours rather than topping them. */
 .snowflake-method-tracking-table th,
@@ -7858,8 +7851,11 @@ button.snowflake-method-kind-options {
    trees stand in — this pane scrolls as a whole, so a plain border is the
    frame, and clip keeps the square headings inside the curve without making
    the box a scrollport of its own. */
+/* The frame keeps no room of its own above: wherever it stands -- under the
+   custom fields toolbar, first in a statistics tab -- the neighbour before
+   it already holds the spacing, and a flex panel would stack rather than
+   collapse a second margin here. */
 .snowflake-method-template-sections {
-	margin-block-start: var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	overflow: clip;

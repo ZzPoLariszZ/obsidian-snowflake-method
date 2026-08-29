@@ -1222,7 +1222,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'mentionView.noProject': '没有可读取的项目。',
 	'mentionView.empty': '未发现提及',
 	'mentionView.computing': '正在读取正文……',
-	'mentionView.searchPlaceholder': '筛选实体……',
+	'mentionView.searchPlaceholder': '搜索提及',
 	'mentionView.refresh': '刷新',
 	'mentionView.counts': '提及 {total} 次 · 已链接 {linked} · 未链接 {unlinked}',
 	'mentionView.first': '首次：{name}',
