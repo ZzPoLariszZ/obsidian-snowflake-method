@@ -1324,10 +1324,12 @@
 	/* Its top edge runs in the strip's last row, where the selected tab is
 	   standing: the line is drawn everywhere except behind that tab. */
 	margin-top: -1px;
-	padding: var(--snowflake-method-tab-height);
-	/* The far side's inset belongs to the scroller, which carries it out past
-	   the border along with the bar. */
-	padding-inline-end: 0;
+	/* Every inset belongs to the scroller, none to this frame: kept inside
+	   the scrollport, the inset is room a focus ring on whatever stands at
+	   the content's edge can paint over instead of dying on the clip line,
+	   and the prose panel's controls band -- laid over the top inset from
+	   inside the scroller -- stays visible instead of being clipped away. */
+	padding: 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 }
@@ -1342,6 +1344,7 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: scroll;
+	padding: var(--snowflake-method-tab-height);
 	margin-inline-end: calc(
 		-1 * (var(--snowflake-method-tab-gutter) + 1px)
 	);
