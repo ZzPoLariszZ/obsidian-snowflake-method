@@ -373,6 +373,17 @@ describe('entity mentions', () => {
 			});
 		});
 
+		it('takes a wider tail when asked, the lead-in held short', () => {
+			// The modal clamps its rows to one line: a short window before the
+			// match keeps it near the row's start, the tail fills the rest.
+			const body = '他们抵达黑塔城之后又继续前行了很远';
+			expect(occurrenceContext(body, 4, 7, 2, 6)).toEqual({
+				before: '…抵达',
+				match: '黑塔城',
+				after: '之后又继续前…',
+			});
+		});
+
 		it('reads around a linked mention as the page shows it', () => {
 			// The occurrence bounds the alias; the window before it holds the
 			// link's target in the source, and must never hand that back.

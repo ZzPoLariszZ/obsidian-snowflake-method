@@ -4,6 +4,7 @@ import type { MentionAggregate } from '../../src/services';
 import {
 	mentionEntityRows,
 	sensitiveTermRows,
+	truncateEnd,
 	truncateMiddle,
 } from '../../src/ui/mention-rows';
 
@@ -67,5 +68,11 @@ describe('sensitive rows and truncation', () => {
 		expect(cut.endsWith('」')).toBe(true);
 		expect(cut).toContain('…');
 		expect(truncateMiddle('a  b\n\nc', 10)).toBe('a b c');
+	});
+
+	it('cuts a clamped line at the end, the head kept whole', () => {
+		expect(truncateEnd('「短句」', 10)).toBe('「短句」');
+		expect(truncateEnd(`「${'长'.repeat(40)}」`, 11)).toBe(`「${'长'.repeat(9)}…`);
+		expect(truncateEnd('a  b\n\nc', 10)).toBe('a b c');
 	});
 });

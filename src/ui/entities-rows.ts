@@ -88,6 +88,38 @@ export function occurrenceOffsets(
 	return null;
 }
 
+/**
+ * A gate over async work: at most `limit` tasks run at once, the rest
+ * waiting their turn in the order they arrived. The mention modal reads
+ * chapter bodies through one, so a wide book fills its lines steadily
+ * instead of bursting every read at the vault at once.
+ */
+export function taskPool(
+	limit: number,
+): <T>(task: () => Promise<T>) => Promise<T> {
+	let active = 0;
+	const waiting: (() => void)[] = [];
+	const step = (): void => {
+		if (active >= limit) return;
+		const next = waiting.shift();
+		if (next === undefined) return;
+		active += 1;
+		next();
+	};
+	return <T>(task: () => Promise<T>): Promise<T> =>
+		new Promise<T>((resolve, reject) => {
+			waiting.push(() => {
+				void task()
+					.then(resolve, reject)
+					.finally(() => {
+						active -= 1;
+						step();
+					});
+			});
+			step();
+		});
+}
+
 /** Occurrences gathered by chapter, first-seen order kept -- which is the
  *  manuscript's, since the lists arrive in manuscript order. */
 export function groupByChapter<T extends { path: string }>(

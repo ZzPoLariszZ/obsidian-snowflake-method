@@ -5910,17 +5910,99 @@ td.snowflake-method-tracking-numeric {
 	width: min(42rem, 90vw);
 }
 
+.snowflake-method-tracking-modal-toolbar {
+	display: flex;
+	gap: var(--size-2-2);
+	align-items: center;
+	margin-block-end: var(--size-4-1);
+	min-height: var(--input-height);
+}
+
 .snowflake-method-tracking-modal-subtitle {
-	margin-block-end: var(--size-4-2);
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }
 
+.snowflake-method-tracking-modal-actions {
+	display: flex;
+	gap: var(--size-2-1);
+	margin-inline-start: auto;
+}
+
+/* The list scrolls under a standing toolbar, so the sort and the fold-all
+   stay reachable however far the chapters run. Its scrollbar lane is
+   reserved up front and handed back out of the dialog's own padding, the
+   manager list's bargain: the rows keep their width whether or not the bar
+   is standing, and the bar rides the spacing instead of the words. */
+.snowflake-method-tracking-modal-list {
+	max-height: 65vh;
+	overflow-y: auto;
+	scrollbar-gutter: stable;
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-4))
+	);
+}
+
+/* The bar rides the top of the scrollport while its chapter passes, the
+   next one pushing it out -- opaque, and above the rows it lets through. */
 .snowflake-method-tracking-modal-chapter {
-	margin: var(--size-4-3) 0 var(--size-2-2);
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	margin: var(--size-4-2) 0 var(--size-2-1);
+	padding: var(--size-2-2) var(--size-2-3);
+	border-radius: var(--radius-s);
+	background-color: var(--background-secondary);
 	color: var(--text-normal);
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
+}
+
+/* A row holds one line of the page's own words: the clamp cuts the tail,
+   the extraction already kept the match near the row's start. */
+.snowflake-method-tracking-modal .snowflake-method-mention-view-context {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-tracking-modal .snowflake-method-mention-view-occurrence {
+	margin-block-end: var(--size-2-2);
+}
+
+.snowflake-method-tracking-modal-match {
+	color: var(--text-accent);
+}
+
+.snowflake-method-tracking-modal-pending {
+	color: var(--text-faint);
+}
+
+.snowflake-method-tracking-modal-more {
+	display: flex;
+	gap: var(--size-2-1);
+	align-items: center;
+	padding: var(--size-2-2);
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.snowflake-method-tracking-modal-more:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-tracking-modal-more-icon {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+}
+
+.snowflake-method-tracking-modal-more-icon svg {
+	width: 0.85rem;
+	height: 0.85rem;
 }
 
 /* The tracking pane: plain rows over theme tokens, a reading and no more. */

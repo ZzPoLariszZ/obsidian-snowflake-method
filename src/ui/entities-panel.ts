@@ -22,9 +22,11 @@ import type {
 import {
 	distributionPath,
 	distributionSpans,
+	groupByChapter,
 	occurrenceOffsets,
+	taskPool,
 } from './entities-rows';
-import { mentionNoteTitle, truncateMiddle } from './mention-rows';
+import { mentionNoteTitle, truncateEnd } from './mention-rows';
 import type { Translate } from './modals';
 
 /** One kind's table: its label and its mentioned members, busiest first. */
@@ -79,76 +81,269 @@ export interface EntitiesPanelHandle {
 /** Rows past this many are counted but not drawn, the pane's own bargain. */
 const MAX_SECTION_ROWS = 200;
 
-/** One prepared line of the modal: the jump and the words shown for it. */
-interface ModalRow {
-	occurrence: { path: string; from: number; to: number };
+/** One jump the modal can make: a mention's place in the manuscript. */
+interface ModalJump {
+	path: string;
+	from: number;
+	to: number;
+}
+
+/** One prepared line of a modal row: the words shown around the match. */
+interface ModalContext {
 	before: string;
 	match: string;
 	after: string;
 }
 
+/** One chapter of the modal: its heading and every jump inside it. */
 interface ModalGroup {
+	path: string;
 	title: string;
-	rows: ModalRow[];
+	occurrences: ModalJump[];
 }
 
 /**
- * Every mention of one row, grouped by chapter: the click jumps and the
- * modal steps aside, so the spot is reachable the moment it is named.
+ * Every mention of one row, grouped by chapter the way the search pane
+ * groups its hits: one line per chapter at rest, the rest folded behind a
+ * count, and each line's words read lazily as its chapter's body arrives --
+ * the modal opens before any file is read. A toolbar flips the chapter
+ * order and expands or collapses every fold at once; the click on a line
+ * jumps, and the modal steps aside.
  */
 class MentionListModal extends Modal {
+	private readonly expanded = new Set<string>();
+	private newestFirst = false;
+	/** Lines already read, kept across sort flips and fold toggles. */
+	private readonly contexts = new Map<string, ModalContext | null>();
+	private listEl: HTMLElement | null = null;
+	private expandButton: HTMLButtonElement | null = null;
+	private pass = 0;
+
 	constructor(
 		app: App,
 		private readonly options: {
 			title: string;
 			subtitle: string | null;
+			t: Translate;
 			groups: ModalGroup[];
-			onJump: (occurrence: {
-				path: string;
-				from: number;
-				to: number;
-			}) => void;
+			/** One row's words, read lazily; null where the body cannot be. */
+			context: (occurrence: ModalJump) => Promise<ModalContext | null>;
+			onJump: (occurrence: ModalJump) => void;
 		},
 	) {
 		super(app);
 	}
 
 	onOpen(): void {
+		const t = this.options.t;
 		this.modalEl.addClass('snowflake-method-tracking-modal');
 		this.titleEl.setText(this.options.title);
 		const root = this.contentEl;
 		root.empty();
+		const toolbar = root.createDiv({
+			cls: 'snowflake-method-tracking-modal-toolbar',
+		});
 		if (this.options.subtitle !== null) {
-			root.createDiv({
+			toolbar.createSpan({
 				cls: 'snowflake-method-tracking-modal-subtitle',
 				text: this.options.subtitle,
 			});
 		}
-		for (const group of this.options.groups) {
-			root.createDiv({
-				cls: 'snowflake-method-tracking-modal-chapter',
-				text: group.title,
-			});
-			for (const row of group.rows) {
-				const line = root.createDiv({
-					cls: 'snowflake-method-mention-view-occurrence',
-				});
-				const context = line.createSpan({
-					cls: 'snowflake-method-mention-view-context',
-				});
-				context.appendText(row.before);
-				context.createEl('strong', { text: row.match });
-				context.appendText(row.after);
-				line.addEventListener('click', () => {
-					this.close();
-					this.options.onJump(row.occurrence);
-				});
+		const actions = toolbar.createDiv({
+			cls: 'snowflake-method-tracking-modal-actions',
+		});
+		// Both buttons stand whatever the shape of the reading -- a lone
+		// chapter or a lone line leaves them idle, not missing.
+		const sort = actions.createEl('button', {
+			cls: 'clickable-icon',
+			attr: { type: 'button' },
+		});
+		const paintSort = (): void => {
+			setIcon(
+				sort,
+				this.newestFirst
+					? 'arrow-up-narrow-wide'
+					: 'arrow-down-narrow-wide',
+			);
+			setTooltip(
+				sort,
+				t(
+					this.newestFirst
+						? 'tracking.orderFirstFirst'
+						: 'tracking.orderLastFirst',
+				),
+			);
+		};
+		sort.addEventListener('click', () => {
+			this.newestFirst = !this.newestFirst;
+			paintSort();
+			this.renderList();
+		});
+		paintSort();
+		this.expandButton = actions.createEl('button', {
+			cls: 'clickable-icon',
+			attr: { type: 'button' },
+		});
+		this.expandButton.addEventListener('click', () => {
+			const opened = this.allExpanded();
+			this.expanded.clear();
+			if (!opened) {
+				for (const group of this.expandable()) {
+					this.expanded.add(group.path);
+				}
 			}
-		}
+			this.paintExpand();
+			this.renderList();
+		});
+		this.paintExpand();
+		this.listEl = root.createDiv({
+			cls: 'snowflake-method-tracking-modal-list',
+		});
+		this.renderList();
 	}
 
 	onClose(): void {
+		this.pass += 1;
 		this.contentEl.empty();
+	}
+
+	private expandable(): ModalGroup[] {
+		return this.options.groups.filter(
+			(group) => group.occurrences.length > 1,
+		);
+	}
+
+	/** True only where there is something to have opened: a reading with no
+	 *  folds rests as "expand all", never as an already-collapsed one. */
+	private allExpanded(): boolean {
+		const expandable = this.expandable();
+		return (
+			expandable.length > 0 &&
+			expandable.every((group) => this.expanded.has(group.path))
+		);
+	}
+
+	private paintExpand(): void {
+		const button = this.expandButton;
+		if (button === null) return;
+		const opened = this.allExpanded();
+		setIcon(button, opened ? 'chevrons-down-up' : 'chevrons-up-down');
+		setTooltip(
+			button,
+			this.options.t(opened ? 'tracking.collapseAll' : 'tracking.expandAll'),
+		);
+	}
+
+	/** Chapters land a batch a frame, so a wide book opens without a stall. */
+	private renderList(): void {
+		const list = this.listEl;
+		if (list === null) return;
+		this.pass += 1;
+		const pass = this.pass;
+		list.empty();
+		const ordered = this.newestFirst
+			? [...this.options.groups].reverse()
+			: this.options.groups;
+		let done = 0;
+		const step = (): void => {
+			if (pass !== this.pass || !list.isConnected) return;
+			for (const group of ordered.slice(done, done + 40)) {
+				this.renderGroup(list.createDiv(), group);
+				done += 1;
+			}
+			if (done < ordered.length) list.win.requestAnimationFrame(step);
+		};
+		step();
+	}
+
+	private renderGroup(host: HTMLElement, group: ModalGroup): void {
+		host.empty();
+		host.createDiv({
+			cls: 'snowflake-method-tracking-modal-chapter',
+			text: group.title,
+		});
+		const open = this.expanded.has(group.path);
+		const shown = open ? group.occurrences : group.occurrences.slice(0, 1);
+		for (const occurrence of shown) {
+			this.renderRow(host, occurrence, group.title);
+		}
+		const hidden = group.occurrences.length - 1;
+		if (hidden <= 0) return;
+		const more = host.createDiv({
+			cls: 'snowflake-method-tracking-modal-more',
+		});
+		more.createSpan({
+			text: open
+				? this.options.t('tracking.showLess')
+				: this.options.t('tracking.moreResults', { count: hidden }),
+		});
+		const chevron = more.createSpan({
+			cls: 'snowflake-method-tracking-modal-more-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
+		setIcon(chevron, open ? 'chevron-up' : 'chevron-down');
+		more.addEventListener('click', () => {
+			if (open) this.expanded.delete(group.path);
+			else this.expanded.add(group.path);
+			this.renderGroup(host, group);
+			this.paintExpand();
+		});
+	}
+
+	private renderRow(
+		host: HTMLElement,
+		occurrence: ModalJump,
+		fallback: string,
+	): void {
+		const line = host.createDiv({
+			cls: 'snowflake-method-mention-view-occurrence',
+		});
+		const context = line.createSpan({
+			cls: 'snowflake-method-mention-view-context',
+		});
+		const key = `${occurrence.path}|${String(occurrence.from)}`;
+		const held = this.contexts.get(key);
+		if (held !== undefined) {
+			this.paintRow(context, held, fallback);
+		} else {
+			context.createSpan({
+				cls: 'snowflake-method-tracking-modal-pending',
+				text: '…',
+			});
+			void this.options
+				.context(occurrence)
+				.then((read) => {
+					this.contexts.set(key, read);
+					if (!context.isConnected) return;
+					context.empty();
+					this.paintRow(context, read, fallback);
+				})
+				.catch(() => undefined);
+		}
+		line.addEventListener('click', () => {
+			this.close();
+			this.options.onJump(occurrence);
+		});
+	}
+
+	private paintRow(
+		host: HTMLElement,
+		read: ModalContext | null,
+		fallback: string,
+	): void {
+		if (read === null) {
+			host.createEl('strong', {
+				cls: 'snowflake-method-tracking-modal-match',
+				text: fallback,
+			});
+			return;
+		}
+		host.appendText(read.before);
+		host.createEl('strong', {
+			cls: 'snowflake-method-tracking-modal-match',
+			text: read.match,
+		});
+		host.appendText(read.after);
 	}
 }
 
@@ -393,44 +588,50 @@ export function renderEntitiesPanel(
 		});
 	};
 
-	/** Reads the involved chapters and opens the modal over their words. */
+	/**
+	 * Opens the modal at once over the grouped occurrences: chapter bodies
+	 * are read lazily behind it, a few at a time and none twice, and each
+	 * line fills in as its chapter arrives -- nothing waits for it all. The
+	 * words are the projection's, so a row shows the page's text, the match
+	 * held short of the line clamp.
+	 */
 	const openMentionModal = (
 		title: string,
 		subtitle: string | null,
-		occurrences: readonly { path: string; from: number; to: number }[],
+		occurrences: readonly ModalJump[],
 	): void => {
-		void (async () => {
-			const bodies = new Map<string, string>();
-			for (const occurrence of occurrences) {
-				if (bodies.has(occurrence.path)) continue;
-				bodies.set(
-					occurrence.path,
-					await bridge.readSegmentBody(occurrence.path),
+		const pooled = taskPool(6);
+		const bodies = new Map<string, Promise<string>>();
+		const bodyOf = (path: string): Promise<string> => {
+			const held = bodies.get(path);
+			if (held !== undefined) return held;
+			const read = pooled(() => bridge.readSegmentBody(path));
+			bodies.set(path, read);
+			return read;
+		};
+		new MentionListModal(app, {
+			title,
+			subtitle,
+			t,
+			groups: groupByChapter(occurrences).map((group) => ({
+				path: group.path,
+				title: chapterTitle(group.path),
+				occurrences: group.occurrences,
+			})),
+			context: async (occurrence) => {
+				const body = await bodyOf(occurrence.path);
+				if (body.length === 0) return null;
+				const read = occurrenceContext(
+					body,
+					occurrence.from,
+					occurrence.to,
+					24,
+					88,
 				);
-			}
-			const groups = new Map<string, ModalRow[]>();
-			for (const occurrence of occurrences) {
-				const body = bodies.get(occurrence.path) ?? '';
-				const context =
-					body.length > 0
-						? occurrenceContext(body, occurrence.from, occurrence.to)
-						: { before: '', match: chapterTitle(occurrence.path), after: '' };
-				const row: ModalRow = { occurrence, ...context };
-				const held = groups.get(occurrence.path);
-				if (held === undefined) groups.set(occurrence.path, [row]);
-				else held.push(row);
-			}
-			if (disposed) return;
-			new MentionListModal(app, {
-				title,
-				subtitle,
-				groups: [...groups.entries()].map(([path, rows]) => ({
-					title: chapterTitle(path),
-					rows,
-				})),
-				onJump: jump,
-			}).open();
-		})().catch(() => undefined);
+				return { ...read, match: truncateEnd(read.match, 96) };
+			},
+			onJump: jump,
+		}).open();
 	};
 
 	const renderUnresolved = (occurrences: readonly EntityOccurrence[]): void => {
@@ -687,22 +888,7 @@ export function renderEntitiesPanel(
 					.dialogueOccurrences(chapter.path)
 					.then((occurrences) => {
 						if (disposed) return;
-						new MentionListModal(app, {
-							title: chapter.title,
-							subtitle: null,
-							groups: [
-								{
-									title: chapter.title,
-									rows: occurrences.map((occurrence) => ({
-										occurrence,
-										before: '',
-										match: truncateMiddle(occurrence.matchedText, 64),
-										after: '',
-									})),
-								},
-							],
-							onJump: jump,
-						}).open();
+						openMentionModal(chapter.title, null, occurrences);
 					})
 					.catch(() => undefined);
 			});

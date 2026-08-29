@@ -5,6 +5,7 @@ import {
 	distributionSpans,
 	groupByChapter,
 	occurrenceOffsets,
+	taskPool,
 } from '../../src/ui/entities-rows';
 
 describe('the mention distribution', () => {
@@ -65,6 +66,45 @@ describe('grouping by chapter', () => {
 
 	it('groups nothing as nothing', () => {
 		expect(groupByChapter([])).toEqual([]);
+	});
+});
+
+describe('the task pool', () => {
+	it('runs at most the limit at once and starts the rest in order', async () => {
+		const pooled = taskPool(2);
+		const releases: (() => void)[] = [];
+		const started: number[] = [];
+		const jobs = [0, 1, 2, 3].map((id) =>
+			pooled(
+				() =>
+					new Promise<number>((resolve) => {
+						started.push(id);
+						releases.push(() => {
+							resolve(id);
+						});
+					}),
+			),
+		);
+		expect(started).toEqual([0, 1]);
+		releases[0]?.();
+		await expect(jobs[0]).resolves.toBe(0);
+		expect(started).toEqual([0, 1, 2]);
+		releases[1]?.();
+		releases[2]?.();
+		await Promise.all([jobs[1], jobs[2]]);
+		expect(started).toEqual([0, 1, 2, 3]);
+		releases[3]?.();
+		await expect(jobs[3]).resolves.toBe(3);
+	});
+
+	it('lets a failure through without holding the lane', async () => {
+		const pooled = taskPool(1);
+		await expect(
+			pooled(() => Promise.reject(new Error('burst'))),
+		).rejects.toThrow('burst');
+		await expect(pooled(() => Promise.resolve('after'))).resolves.toBe(
+			'after',
+		);
 	});
 });
 

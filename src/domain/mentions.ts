@@ -576,13 +576,16 @@ function contextProjection(body: string): {
  * and hand back half its path. Whitespace survives, unlike the matching
  * walk's, because a context line is read, not matched. Held to the
  * occurrence's own line, a partial word at a clipped edge dropped when a
- * whole one is left, and an ellipsis standing where text was cut.
+ * whole one is left, and an ellipsis standing where text was cut. The two
+ * sides may be asked for unevenly: a caller clamping rows to one line keeps
+ * the lead-in short and lets the tail run to the clamp.
  */
 export function occurrenceContext(
 	body: string,
 	from: number,
 	to: number,
 	radius = 28,
+	afterRadius = radius,
 ): { before: string; match: string; after: string } {
 	const { text, sourceIndexOf } = contextProjection(body);
 	const indexAt = (at: number): number => {
@@ -607,7 +610,11 @@ export function occurrenceContext(
 		before = `…${whole.length > 0 ? whole : before}`;
 	}
 	let end = shownTo;
-	while (end < text.length && end - shownTo < radius && text[end] !== '\n') {
+	while (
+		end < text.length &&
+		end - shownTo < afterRadius &&
+		text[end] !== '\n'
+	) {
 		end += 1;
 	}
 	let after = text.slice(shownTo, end);
