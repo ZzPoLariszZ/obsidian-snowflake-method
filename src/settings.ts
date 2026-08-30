@@ -203,16 +203,13 @@ export interface SnowflakeSettings {
 	 * Their matches are transient; the rules are all that persists.
 	 */
 	customHighlightRules: CustomHighlightRule[];
-	/** Whether the sensitive-word list is matched, counted and tracked. */
-	sensitiveWordsEnabled: boolean;
 	/** Dress alone: whether registered sensitive words are marked in the
-	 *  manuscript. The section's own toggle governs the counting. */
+	 *  manuscript. An empty word list is what turns the counting off. */
 	sensitiveHighlight: boolean;
 	/** The sensitive words themselves, one term per line. */
 	sensitiveWords: string;
-	/** Whether dialogue ranges are read at all. */
-	dialogueDetectionEnabled: boolean;
-	/** Which quote styles open dialogue: “ ”, " ", 「 」, 『 』. */
+	/** Which quote styles open dialogue: “ ”, " ", 「 」, 『 』. All four off
+	 *  is what turns dialogue reading off. */
 	dialogueQuotesCurly: boolean;
 	dialogueQuotesStraight: boolean;
 	dialogueQuotesCorner: boolean;
@@ -336,10 +333,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptGuide: DEFAULT_MANUSCRIPT_PRESENTATION.guide,
 	customHighlightsEnabled: true,
 	customHighlightRules: [],
-	sensitiveWordsEnabled: true,
 	sensitiveHighlight: true,
 	sensitiveWords: '',
-	dialogueDetectionEnabled: true,
 	dialogueQuotesCurly: true,
 	dialogueQuotesStraight: true,
 	dialogueQuotesCorner: true,
@@ -411,10 +406,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptGuide',
 	'customHighlightsEnabled',
 	'customHighlightRules',
-	'sensitiveWordsEnabled',
 	'sensitiveHighlight',
 	'sensitiveWords',
-	'dialogueDetectionEnabled',
 	'dialogueQuotesCurly',
 	'dialogueQuotesStraight',
 	'dialogueQuotesCorner',
@@ -641,15 +634,7 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.sensitiveHighlight === 'boolean'
 				? raw.sensitiveHighlight
 				: DEFAULT_SETTINGS.sensitiveHighlight,
-		sensitiveWordsEnabled:
-			typeof raw.sensitiveWordsEnabled === 'boolean'
-				? raw.sensitiveWordsEnabled
-				: DEFAULT_SETTINGS.sensitiveWordsEnabled,
 		sensitiveWords: boundedText(raw.sensitiveWords),
-		dialogueDetectionEnabled:
-			typeof raw.dialogueDetectionEnabled === 'boolean'
-				? raw.dialogueDetectionEnabled
-				: DEFAULT_SETTINGS.dialogueDetectionEnabled,
 		dialogueQuotesCurly:
 			typeof raw.dialogueQuotesCurly === 'boolean'
 				? raw.dialogueQuotesCurly
@@ -979,7 +964,11 @@ class HighlightOptionsModal extends Modal {
 				.then(() => {
 					this.close();
 				})
-				.catch(() => undefined);
+				.catch(() => {
+					// The dialog stays for another try, and says why it is
+					// still here rather than swallowing the refusal.
+					new Notice(t('settings.mentionHighlight.saveFailed'));
+				});
 		});
 	}
 
@@ -2069,16 +2058,45 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					custom: this.owner.settings.customHighlightsEnabled,
 				},
 				save: async (next) => {
-					await this.setControlValue(
-						'manuscriptMentionHighlight',
-						next.entities,
-					);
-					await this.setControlValue('sensitiveHighlight', next.sensitive);
-					await this.setControlValue('dialoguePresentation', next.dialogue);
-					await this.setControlValue(
-						'customHighlightsEnabled',
-						next.custom,
-					);
+					// One write for all four, not four writes in a row: a
+					// refusal mid-sequence would leave some families applied
+					// and some mutated-but-unsaved, silently flushed by the
+					// next unrelated save. All or nothing instead.
+					const settings = this.owner.settings;
+					const before: HighlightOptionsDraft = {
+						entities: settings.manuscriptMentionHighlight,
+						sensitive: settings.sensitiveHighlight,
+						dialogue: settings.dialoguePresentation,
+						custom: settings.customHighlightsEnabled,
+					};
+					settings.manuscriptMentionHighlight = next.entities;
+					settings.sensitiveHighlight = next.sensitive;
+					settings.dialoguePresentation = next.dialogue;
+					settings.customHighlightsEnabled = next.custom;
+					try {
+						await this.owner.saveSettings();
+					} catch (error) {
+						// The disk refused: memory steps back to what the
+						// disk still holds, so nothing dangles half-applied.
+						settings.manuscriptMentionHighlight = before.entities;
+						settings.sensitiveHighlight = before.sensitive;
+						settings.dialoguePresentation = before.dialogue;
+						settings.customHighlightsEnabled = before.custom;
+						throw error;
+					}
+					this.writing = true;
+					try {
+						await this.owner.handleSettingsChanged(
+							'manuscriptMentionHighlight',
+						);
+						await this.owner.handleSettingsChanged('sensitiveHighlight');
+						await this.owner.handleSettingsChanged('dialoguePresentation');
+						await this.owner.handleSettingsChanged(
+							'customHighlightsEnabled',
+						);
+					} finally {
+						this.writing = false;
+					}
 				},
 			}).open();
 		});
@@ -2409,11 +2427,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.customHighlightsEnabled = value;
 				}
 				break;
-			case 'sensitiveWordsEnabled':
-				if (typeof value === 'boolean') {
-					this.owner.settings.sensitiveWordsEnabled = value;
-				}
-				break;
 			case 'sensitiveHighlight':
 				if (typeof value === 'boolean') {
 					this.owner.settings.sensitiveHighlight = value;
@@ -2422,11 +2435,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'sensitiveWords':
 				if (typeof value === 'string') {
 					this.owner.settings.sensitiveWords = boundedText(value);
-				}
-				break;
-			case 'dialogueDetectionEnabled':
-				if (typeof value === 'boolean') {
-					this.owner.settings.dialogueDetectionEnabled = value;
 				}
 				break;
 			case 'dialogueQuotesCurly':

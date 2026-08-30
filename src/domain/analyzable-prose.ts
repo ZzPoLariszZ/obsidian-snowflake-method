@@ -54,6 +54,15 @@ export interface AnalyzableRange {
 }
 
 /**
+ * One reading kept: a live dress pass asks for the same body's projection
+ * once per family -- mentions, sensitive words, highlight rules, dialogue,
+ * then both rendered projections -- and the markdown parse inside is the
+ * expensive part. Held only for the no-exclusions ask, which is every one
+ * of those; callers read the shared array and never write into it.
+ */
+let rangesMemo: { body: string; ranges: AnalyzableRange[] } | null = null;
+
+/**
  * The body's prose as ranges over the original text, everything that is not
  * the author's matchable writing taken out: markup, code, comments, hidden
  * syntax, and every stretch of `excludeRanges` -- plugin-written sections,
@@ -62,6 +71,19 @@ export interface AnalyzableRange {
 export function analyzableRanges(
 	body: string,
 	excludeRanges: readonly CountableRange[] = [],
+): AnalyzableRange[] {
+	if (excludeRanges.length > 0) {
+		return computeAnalyzableRanges(body, excludeRanges);
+	}
+	if (rangesMemo === null || rangesMemo.body !== body) {
+		rangesMemo = { body, ranges: computeAnalyzableRanges(body, []) };
+	}
+	return rangesMemo.ranges;
+}
+
+function computeAnalyzableRanges(
+	body: string,
+	excludeRanges: readonly CountableRange[],
 ): AnalyzableRange[] {
 	// A range whose ends arrive the wrong way round holds nothing -- an empty
 	// managed section reports its content ending one character before it

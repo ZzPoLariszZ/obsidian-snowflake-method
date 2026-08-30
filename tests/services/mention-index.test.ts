@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MentionSource } from "../../src/domain";
 import {
@@ -174,6 +174,99 @@ describe("MentionIndexService", () => {
 		// The next walk simply reads it back in.
 		const { entities } = await service.mentions.aggregate(project, matcher);
 		expect(entities).toHaveLength(1);
+	});
+
+	it("lets a deleted project's pending flush die with its state", async () => {
+		const path = await chapter("One", "Alice waited.");
+		const matcher = service.mentions.matcherFor(ROSTER);
+		await service.mentions.aggregate(project, matcher);
+		// A chapter forgotten first leaves the state dirty, as the vault's
+		// delete events do; forgetting the root itself must cancel that
+		// write, or the flush would rebuild the dead project's folders.
+		service.mentions.forget(path);
+		service.mentions.forget("Snowflake Projects/Novel", { children: true });
+		await service.mentions.flush(project);
+		const written = JSON.parse(
+			fakeVault.contents.get(INDEX_FILE) ?? "null",
+		) as { notes: Record<string, unknown> } | null;
+		expect(written?.notes[path]).toBeDefined();
+	});
+
+	it("sheds a persisted record whose note is gone, on the cold fold-in", async () => {
+		const path = await chapter("One", "Alice waited.");
+		const matcher = service.mentions.matcherFor(ROSTER);
+		await service.mentions.aggregate(project, matcher);
+		// The rename happened while no service was loaded: the file still
+		// carries the old path, and no walk would ever probe it again.
+		const written = JSON.parse(fakeVault.contents.get(INDEX_FILE) ?? "null") as {
+			schemaVersion: number;
+			fingerprint: string;
+			notes: Record<string, unknown>;
+		};
+		written.notes["Snowflake Projects/Novel/50_Manuscript/Gone.md"] =
+			written.notes[path];
+		fakeVault.contents.set(INDEX_FILE, JSON.stringify(written));
+		const fresh = new MentionIndexService(
+			service.repository,
+			service.manuscript,
+			service.mentionStore,
+		);
+		await fresh.aggregate(project, fresh.matcherFor(ROSTER));
+		await fresh.flush(project);
+		const after = JSON.parse(fakeVault.contents.get(INDEX_FILE) ?? "null") as {
+			notes: Record<string, unknown>;
+		} | null;
+		expect(
+			after?.notes["Snowflake Projects/Novel/50_Manuscript/Gone.md"],
+		).toBeUndefined();
+		expect(after?.notes[path]).toBeDefined();
+	});
+
+	it("makes a second cold caller wait out the fold-in instead of walking", async () => {
+		await chapter("One", "Alice waited.");
+		const matcher = service.mentions.matcherFor(ROSTER);
+		await service.mentions.aggregate(project, matcher);
+		const store = service.mentionStore;
+		const slowRead = store.readIndex.bind(store);
+		const reads = vi.spyOn(store, "readIndex").mockImplementation(async (ref) => {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			return slowRead(ref);
+		});
+		const writes = vi.spyOn(store, "writeIndex");
+		const fresh = new MentionIndexService(
+			service.repository,
+			service.manuscript,
+			store,
+		);
+		const freshMatcher = fresh.matcherFor(ROSTER);
+		// Both walks race one cold state. A caller handed it before the file
+		// folded in would recompute everything and write it back; a caller
+		// made to wait finds every entry warm and writes nothing.
+		await Promise.all([
+			fresh.aggregate(project, freshMatcher),
+			fresh.aggregate(project, freshMatcher),
+		]);
+		reads.mockRestore();
+		expect(writes).not.toHaveBeenCalled();
+		writes.mockRestore();
+	});
+
+	it("keeps a failed flush dirty, so the next pass retries the write", async () => {
+		const path = await chapter("One", "Alice waited.");
+		const matcher = service.mentions.matcherFor(ROSTER);
+		await service.mentions.aggregate(project, matcher);
+		service.mentions.forget(path);
+		const store = service.mentionStore;
+		const failing = vi
+			.spyOn(store, "writeIndex")
+			.mockRejectedValueOnce(new Error("locked"));
+		await expect(service.mentions.flush(project)).rejects.toThrow("locked");
+		failing.mockRestore();
+		await service.mentions.flush(project);
+		const written = JSON.parse(
+			fakeVault.contents.get(INDEX_FILE) ?? "null",
+		) as { notes: Record<string, unknown> } | null;
+		expect(written?.notes[path]).toBeUndefined();
 	});
 
 	it("reuses one matcher for one roster, however often it is asked", () => {

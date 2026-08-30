@@ -1388,8 +1388,10 @@ export class SnowflakeManuscriptView extends ItemView {
 				'.snowflake-method-mention',
 			) ?? null;
 		if (!(el instanceof HTMLElement)) return null;
-		const index = Number(el.getAttribute('data-snowflake-method-mention'));
-		return entry.mentions.marks[index] ?? null;
+		// A missing attribute must answer null, not coerce to the first mark.
+		const raw = el.getAttribute('data-snowflake-method-mention');
+		if (raw === null) return null;
+		return entry.mentions.marks[Number(raw)] ?? null;
 	}
 
 	/** The menu a click on an unlinked rendered mention opens. */
@@ -1581,7 +1583,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		// mention under "unlinked", everything under "off". The pane's list
 		// does not narrow with the mode, so the reveal plants a locator of
 		// its own where none stands, and takes it back out after the flash.
-		let planted: HTMLElement | null = null;
+		let planted: HTMLElement[] = [];
 		if (el === null && entry.editor === null) {
 			const rendered = entry.bodyEl.querySelector(
 				'.snowflake-method-segment-rendered',
@@ -1604,31 +1606,31 @@ export class SnowflakeManuscriptView extends ItemView {
 					},
 				};
 				applyMentionMarks(rendered, projectMentionMarks(body, [stub]));
-				const target = rendered.querySelector('.is-recall-target');
-				if (target instanceof HTMLElement) {
+				// A stretch crossing emphasis, a link or a dressed mention
+				// wraps as several pieces: every one flashes, and every one
+				// comes back out -- a piece left behind would stand dressed
+				// forever and answer clicks as a mention it is not.
+				planted = Array.from(
+					rendered.querySelectorAll('span.is-recall-target'),
+				).filter((piece): piece is HTMLElement =>
+					piece.instanceOf(HTMLElement),
+				);
+				for (const piece of planted) {
 					// Off the menus' index space: a locator is not a mention.
-					target.setAttribute('data-snowflake-method-mention', '-1');
-					planted = target;
-					el = target;
+					piece.setAttribute('data-snowflake-method-mention', '-1');
 				}
+				el = planted[0] ?? null;
 			}
 		}
 		if (el === null) return;
 		el.scrollIntoView({ block: 'center' });
-		el.addClass('is-recalled');
-		const held = el;
+		const flashed = planted.length > 0 ? planted : [el];
+		for (const piece of flashed) piece.addClass('is-recalled');
 		win.setTimeout(() => {
-			held.removeClass('is-recalled');
-			if (planted === null) return;
-			if (planted.instanceOf(HTMLAnchorElement)) {
-				planted.removeClasses([
-					'snowflake-method-mention',
-					'is-recall-target',
-				]);
-				planted.removeAttribute('data-snowflake-method-mention');
-			} else {
-				const parent = planted.parentElement;
-				planted.replaceWith(...Array.from(planted.childNodes));
+			for (const piece of flashed) piece.removeClass('is-recalled');
+			for (const piece of planted) {
+				const parent = piece.parentElement;
+				piece.replaceWith(...Array.from(piece.childNodes));
 				parent?.normalize();
 			}
 		}, 900);
@@ -2701,9 +2703,25 @@ export class SnowflakeManuscriptView extends ItemView {
 				// Sensitive and custom marks are dress alone: no menu entries.
 				if (mention.occurrence.type !== 'entity') return;
 				const editing = entry.editor;
+				// The editor's answer is mapped to the document as it stands
+				// mid-debounce, while `entry.mentions` still holds the last
+				// plan's offsets; an ignore ordinal counted across those two
+				// spaces silences the wrong occurrence. Fresh analysis of the
+				// live text puts the count in the click's own space.
+				const feed = this.mentionState;
+				const noteOccurrences =
+					editing !== null && feed !== null
+						? analyzeMentions(
+								segment.path,
+								editing.read(),
+								[],
+								feed.matcher,
+								splitMentionIgnores(feed.ignores).candidate,
+							)
+						: entry.mentions.occurrences;
 				addMentionMenuItems(into, {
 					occurrence: mention.occurrence,
-					noteOccurrences: entry.mentions.occurrences,
+					noteOccurrences,
 					t: this.t,
 					section,
 					...(this.model?.readOnly === true

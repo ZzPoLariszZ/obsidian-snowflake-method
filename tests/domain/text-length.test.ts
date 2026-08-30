@@ -212,4 +212,12 @@ describe('the script split', () => {
 		expect(scriptSplit('')).toEqual({ cjk: 0, words: 0 });
 		expect(scriptSplit('  \n ')).toEqual({ cjk: 0, words: 0 });
 	});
+
+	it('measures a decomposed spelling like its composed form', () => {
+		// NFD carries the accent as a combining mark, which the counting
+		// would otherwise tally as a standalone character.
+		expect(scriptSplit('cafe\u0301')).toEqual({ cjk: 0, words: 1 });
+		expect(scriptSplit('cafe\u0301')).toEqual(scriptSplit('café'));
+		expect(scriptSplit('\u1112\u1161\u11ab')).toEqual(scriptSplit('한'));
+	});
 });

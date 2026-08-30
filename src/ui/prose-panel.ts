@@ -93,6 +93,7 @@ export function renderProsePanel(
 	const root = container.createDiv({ cls: 'snowflake-method-prose-panel' });
 	let disposed = false;
 	let loading = false;
+	let failed = false;
 	let refreshAgain = false;
 	let statistics: ManuscriptProseStatistics | null = null;
 	let entries: ManuscriptProseRow[] = [];
@@ -726,7 +727,15 @@ export function renderProsePanel(
 
 	const paint = (): void => {
 		if (statistics === null) {
-			stateText.setText(t('prose.noProject'));
+			// Null has three faces: still reading, a read that failed, and a
+			// vault with no project. Only the last may claim so.
+			stateText.setText(
+				loading
+					? t('prose.computing')
+					: failed
+						? t('prose.loadFailed')
+						: t('prose.noProject'),
+			);
 			return;
 		}
 		stateText.setText('');
@@ -760,6 +769,7 @@ export function renderProsePanel(
 			.statistics()
 			.then((next) => {
 				loading = false;
+				failed = false;
 				if (disposed) return;
 				statistics = next;
 				paint();
@@ -770,7 +780,18 @@ export function renderProsePanel(
 				}
 			})
 			.catch(() => {
+				// A failed read may not wear the computing label forever, and
+				// a refresh queued behind it still deserves its turn.
 				loading = false;
+				failed = true;
+				if (disposed) return;
+				if (refreshAgain) {
+					refreshAgain = false;
+					refresh();
+					return;
+				}
+				if (statistics === null) paint();
+				else stateText.setText(t('prose.loadFailed'));
 			});
 	};
 

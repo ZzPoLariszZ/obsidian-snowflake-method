@@ -101,10 +101,12 @@ interface CoveredSegment {
 
 /**
  * Dresses one rendered segment with its spans: covered stretches of text
- * nodes wrapped in mention spans, a stretch inside an internal link classing
- * the anchor instead, and every span verified against what it gathered
- * before anything is touched. Marks never overlap -- overlap resolution
- * settled that -- so each visible character answers to at most one span.
+ * nodes wrapped in mention spans -- inside an internal link the same as
+ * anywhere else, so two marks sharing one link's text each keep their own
+ * index, title and color -- and every span verified against what it
+ * gathered before anything is touched. Marks never overlap -- overlap
+ * resolution settled that -- so each visible character answers to at most
+ * one span.
  */
 export function applyMentionMarks(
 	rendered: HTMLElement,
@@ -174,18 +176,6 @@ function applyMarkSpans(
 		byNode.set(segment.node, list);
 	}
 	for (const [node, list] of byNode) {
-		const anchor = node.parentElement?.closest('a.internal-link') ?? null;
-		if (anchor instanceof HTMLElement) {
-			const span = (list[0] as CoveredSegment).span;
-			anchor.addClasses(span.mark.classes.split(' '));
-			if (indexed) {
-				anchor.setAttribute(
-					'data-snowflake-method-mention',
-					String(span.index),
-				);
-			}
-			continue;
-		}
 		const text = node.nodeValue ?? '';
 		const pieces = createFragment();
 		let at = 0;

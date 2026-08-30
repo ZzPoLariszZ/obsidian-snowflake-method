@@ -18,13 +18,13 @@ import {
 	MENTION_STORE_SCHEMA_VERSION,
 	type MentionStore,
 } from "./mention-store";
+import {
+	BREATH_MS,
+	QuietFlushingNoteCache,
+	type NoteCacheState,
+	type NoteCacheTimers,
+} from "./note-cache";
 import type { ProjectRef } from "./types";
-
-/** Time-paced yielding, the seed walk's rule: a warm pass crosses thousands
- *  of notes per breath, a cold one a handful, and the app stays alive. */
-const BREATH_MS = 12;
-/** How long a recompute may sit in memory before the index file hears of it. */
-const FLUSH_QUIET_MS = 5_000;
 
 export interface EntityMentionAggregate {
 	memberPath: string;
@@ -50,14 +50,9 @@ interface NoteHits {
 	hits: MentionHit[];
 }
 
-interface ProjectIndexState {
-	project: ProjectRef;
+interface ProjectIndexState extends NoteCacheState<NoteHits> {
 	/** The matcher fingerprint every held entry was found under. */
 	fingerprint: string;
-	/** Whether this device's persisted file has been folded in. */
-	loaded: boolean;
-	dirty: boolean;
-	notes: Map<string, NoteHits>;
 }
 
 /**
@@ -73,7 +68,10 @@ interface ProjectIndexState {
  * than occurrences: candidate ignores act before overlap resolution, so
  * any resolved form would bake yesterday's rules in.
  */
-export class MentionIndexService {
+export class MentionIndexService extends QuietFlushingNoteCache<
+	NoteHits,
+	ProjectIndexState
+> {
 	/**
 	 * One matcher at a time, validated by fingerprint. The automaton is not
 	 * cached apart from its metadata: the payloads inside it are the
@@ -81,10 +79,6 @@ export class MentionIndexService {
 	 * and roster edits are rare, hand-paced changes.
 	 */
 	private matcher: EntityMatcher | null = null;
-
-	private readonly states = new Map<string, ProjectIndexState>();
-	private readonly flushQueue = new Set<string>();
-	private flushHandle: unknown = null;
 
 	constructor(
 		private readonly repository: VaultRepository,
@@ -97,11 +91,18 @@ export class MentionIndexService {
 		 * straight through and writing waits for an explicit `flush` -- which
 		 * is the honest shape wherever no window stands, the tests included.
 		 */
-		private readonly timers: {
-			set: (handler: () => void, ms: number) => unknown;
-			clear: (handle: unknown) => void;
-		} | null = null,
-	) {}
+		timers: NoteCacheTimers | null = null,
+	) {
+		super(timers);
+	}
+
+	protected persist(state: ProjectIndexState): Promise<void> {
+		return this.store.writeIndex(state.project, {
+			schemaVersion: MENTION_STORE_SCHEMA_VERSION,
+			fingerprint: state.fingerprint,
+			notes: Object.fromEntries(state.notes),
+		});
+	}
 
 	matcherFor(sources: readonly MentionSource[]): EntityMatcher {
 		const prints = entityMatcherFingerprints(sources);
@@ -192,44 +193,11 @@ export class MentionIndexService {
 			}
 		}
 		// The cold walk is the one worth remembering: everything it computed
-		// lands in this device's file before the answer goes out.
-		await this.flush(project);
+		// lands in this device's file before the answer goes out. A write
+		// that fails does not take the computed answer with it -- the flush
+		// re-marked itself and the quiet timer retries.
+		await this.flush(project).catch(() => undefined);
 		return { entities: [...entities.values()], unresolved };
-	}
-
-	/** The mirror of every other per-note cache's `forget`. */
-	forget(path: string, { children = false } = {}): void {
-		for (const state of this.states.values()) {
-			if (state.notes.delete(path)) this.markDirty(state);
-			if (!children) continue;
-			const prefix = `${path}/`;
-			for (const key of state.notes.keys()) {
-				if (!key.startsWith(prefix)) continue;
-				state.notes.delete(key);
-				this.markDirty(state);
-			}
-		}
-	}
-
-	/** Writes what this project's state holds, when anything changed. */
-	async flush(project: ProjectRef): Promise<void> {
-		const state = this.states.get(project.rootPath);
-		if (state === undefined || !state.dirty) return;
-		state.dirty = false;
-		this.flushQueue.delete(project.rootPath);
-		if (
-			this.flushQueue.size === 0 &&
-			this.flushHandle !== null &&
-			this.timers !== null
-		) {
-			this.timers.clear(this.flushHandle);
-			this.flushHandle = null;
-		}
-		await this.store.writeIndex(project, {
-			schemaVersion: MENTION_STORE_SCHEMA_VERSION,
-			fingerprint: state.fingerprint,
-			notes: Object.fromEntries(state.notes),
-		});
 	}
 
 	private async stateFor(
@@ -238,6 +206,7 @@ export class MentionIndexService {
 	): Promise<ProjectIndexState> {
 		const kept = this.states.get(project.rootPath);
 		if (kept !== undefined && kept.fingerprint === matcher.fingerprint) {
+			await kept.hydrated;
 			return kept;
 		}
 		// A moved fingerprint invalidates every held entry at once: the
@@ -245,17 +214,34 @@ export class MentionIndexService {
 		const state: ProjectIndexState = {
 			project,
 			fingerprint: matcher.fingerprint,
-			loaded: false,
+			hydrated: Promise.resolve(),
 			dirty: false,
 			notes: new Map(),
 		};
 		this.states.set(project.rootPath, state);
-		const persisted = await this.store.readIndex(project);
-		state.loaded = true;
-		if (persisted !== null && persisted.fingerprint === matcher.fingerprint) {
+		state.hydrated = (async () => {
+			const persisted = await this.store.readIndex(project);
+			if (persisted === null || persisted.fingerprint !== matcher.fingerprint) {
+				return;
+			}
+			let pruned = false;
 			for (const [path, note] of Object.entries(persisted.notes)) {
+				// A note deleted or renamed while no state was loaded left its
+				// record behind; the fold-in is where such orphans die.
+				if (this.manuscript.segmentStamp(path) === null) {
+					pruned = true;
+					continue;
+				}
 				state.notes.set(path, note);
 			}
+			if (pruned) this.markDirty(state);
+		})();
+		try {
+			await state.hydrated;
+		} catch (error) {
+			// A failed read must not poison the slot: the next caller retries.
+			this.states.delete(project.rootPath);
+			throw error;
 		}
 		return state;
 	}
@@ -297,31 +283,4 @@ export class MentionIndexService {
 		return hits;
 	}
 
-	private markDirty(state: ProjectIndexState): void {
-		state.dirty = true;
-		this.flushQueue.add(state.project.rootPath);
-		if (this.timers === null || this.flushHandle !== null) return;
-		this.flushHandle = this.timers.set(() => {
-			this.flushHandle = null;
-			for (const rootPath of [...this.flushQueue]) {
-				const queued = this.states.get(rootPath);
-				if (queued === undefined) {
-					this.flushQueue.delete(rootPath);
-					continue;
-				}
-				void this.flush(queued.project);
-			}
-		}, FLUSH_QUIET_MS);
-	}
-
-	/** A macrotask's worth of air, so a cold walk never freezes the app. */
-	private breathe(): Promise<void> {
-		const timers = this.timers;
-		if (timers === null) return Promise.resolve();
-		return new Promise((resolve) => {
-			timers.set(() => {
-				resolve();
-			}, 0);
-		});
-	}
 }

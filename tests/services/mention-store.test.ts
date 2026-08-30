@@ -162,6 +162,81 @@ describe("MentionStore", () => {
 		expect(await store.readIndex(project)).toBeNull();
 	});
 
+	it("drops an index entry whose hits are out of shape, alone", async () => {
+		await fakeVault.seedFile(
+			INDEX,
+			JSON.stringify({
+				schemaVersion: MENTION_STORE_SCHEMA_VERSION,
+				fingerprint: "fp1-abc",
+				notes: {
+					// A mangled hit under a valid stamp must never be served warm:
+					// the entry reads as absent and recomputes on its next read.
+					poisoned: { stamp: "1:2", hits: [42] },
+					limbless: {
+						stamp: "1:2",
+						hits: [{ from: 0, to: 5, matchedText: "Alice", link: null }],
+					},
+					whole: {
+						stamp: "1:2",
+						hits: [
+							{
+								from: 0,
+								to: 5,
+								matchedText: "Alice",
+								link: null,
+								candidates: [
+									{
+										label: "Alice",
+										entry: "name",
+										memberPath:
+											"Snowflake Projects/Novel/20_Character/Alice.md",
+										memberName: "Alice",
+										group: "character",
+										groupRank: 0,
+										rank: 0,
+										insert: "[[Alice]]",
+									},
+								],
+							},
+						],
+					},
+				},
+			}),
+		);
+		expect(Object.keys((await store.readIndex(project))?.notes ?? {})).toEqual([
+			"whole",
+		]);
+	});
+
+	it("reads a half-shaped pair or hit list as an absent family", async () => {
+		await fakeVault.seedFile(
+			ANALYSIS,
+			JSON.stringify({
+				schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+				sensitiveFingerprint: "a",
+				dialogueFingerprint: "b",
+				statsFingerprint: "c",
+				tokensFingerprint: "d",
+				notes: {
+					kept: {
+						stamp: "1:2",
+						sensitive: [{ term: "damn", from: 0 }],
+						dialogue: [["6", 12]],
+						stats: null,
+						tokens: [[null, 5]],
+					},
+				},
+			}),
+		);
+		expect((await store.readAnalysis(project))?.notes.kept).toEqual({
+			stamp: "1:2",
+			sensitive: null,
+			dialogue: null,
+			stats: null,
+			tokens: null,
+		});
+	});
+
 	it("replaces the index in place on the next write", async () => {
 		const base = {
 			schemaVersion: MENTION_STORE_SCHEMA_VERSION,

@@ -118,4 +118,16 @@ describe('analyzable prose', () => {
 		expect(slices(body, ranges).join('')).toBe(' Bob');
 		expect(ranges.every((range) => range.link === null)).toBe(true);
 	});
+
+	it('reads one body once for every family of one dress pass', () => {
+		// The no-exclusions projection is shared: a pass asks for it four to
+		// six times over the identical body, and only the first pays the parse.
+		const body = 'so **Alice** ran';
+		const first = analyzableRanges(body);
+		expect(analyzableRanges(body)).toBe(first);
+		expect(analyzableRanges(`${body}!`)).not.toBe(first);
+		const excluded = analyzableRanges(body, [{ from: 0, to: 3 }]);
+		expect(excluded).not.toBe(first);
+		expect(analyzableRanges(body)).not.toBe(excluded);
+	});
 });

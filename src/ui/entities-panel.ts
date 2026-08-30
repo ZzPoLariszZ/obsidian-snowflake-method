@@ -23,7 +23,6 @@ import {
 	distributionPath,
 	distributionSpans,
 	groupByChapter,
-	occurrenceOffsets,
 	taskPool,
 } from './entities-rows';
 import { mentionNoteTitle, truncateEnd } from './mention-rows';
@@ -61,6 +60,15 @@ export interface EntitiesPanelBridge {
 	dialogueOccurrences(path: string): Promise<DialogueOccurrence[]>;
 	/** A chapter's body for context lines; empty where it cannot be read. */
 	readSegmentBody(path: string): Promise<string>;
+	/**
+	 * An occurrence ignore walked back to its spot over the same analyzed
+	 * occurrences its ordinal was counted in; null where it no longer lands.
+	 */
+	locateIgnore(rule: {
+		notePath: string;
+		matchedText: string;
+		ordinal: number;
+	}): Promise<{ from: number; to: number } | null>;
 	openMention(occurrence: {
 		path: string;
 		from: number;
@@ -361,6 +369,7 @@ export function renderEntitiesPanel(
 	});
 	let disposed = false;
 	let loading = false;
+	let failed = false;
 	let refreshAgain = false;
 	let reading: TrackingReading | null = null;
 	let titles = new Map<string, string>();
@@ -947,20 +956,16 @@ export function renderEntitiesPanel(
 			}
 			// A rule that names one spot or one chapter can be visited: the
 			// occurrence rule's ordinal is walked back to its offsets over
-			// the chapter's body, and a note rule opens its chapter's head.
-			// Only the manuscript-wide rule has nowhere to point.
+			// the analyzed occurrences it was counted in, and a note rule
+			// opens its chapter's head. Only the manuscript-wide rule has
+			// nowhere to point.
 			const visitRule = async (rule: MentionIgnore): Promise<void> => {
 				if (rule.scope === 'manuscript') return;
 				if (rule.scope === 'note') {
 					await bridge.openChapter(rule.notePath);
 					return;
 				}
-				const chapterBody = await bridge.readSegmentBody(rule.notePath);
-				const offsets = occurrenceOffsets(
-					chapterBody,
-					rule.matchedText,
-					rule.ordinal,
-				);
+				const offsets = await bridge.locateIgnore(rule);
 				if (offsets !== null) {
 					await bridge.openMention({ path: rule.notePath, ...offsets });
 					return;
@@ -1021,7 +1026,15 @@ export function renderEntitiesPanel(
 	const paint = (): void => {
 		sections.empty();
 		if (reading === null) {
-			stateText.setText(t('mentionView.noProject'));
+			// Null has three faces: still reading, a read that failed, and a
+			// vault with no project. Only the last may claim so.
+			stateText.setText(
+				loading
+					? t('mentionView.computing')
+					: failed
+						? t('mentionView.loadFailed')
+						: t('mentionView.noProject'),
+			);
 			return;
 		}
 		stateText.setText('');
@@ -1047,6 +1060,7 @@ export function renderEntitiesPanel(
 			.tracking()
 			.then((next) => {
 				loading = false;
+				failed = false;
 				if (disposed) return;
 				reading = next;
 				paint();
@@ -1056,7 +1070,18 @@ export function renderEntitiesPanel(
 				}
 			})
 			.catch(() => {
+				// A failed read may not wear the computing label forever, and
+				// a refresh queued behind it still deserves its turn.
 				loading = false;
+				failed = true;
+				if (disposed) return;
+				if (refreshAgain) {
+					refreshAgain = false;
+					refresh();
+					return;
+				}
+				if (reading === null) paint();
+				else stateText.setText(t('mentionView.loadFailed'));
 			});
 	};
 

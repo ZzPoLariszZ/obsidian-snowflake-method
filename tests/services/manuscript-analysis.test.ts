@@ -267,6 +267,44 @@ describe("ManuscriptAnalysisService", () => {
 		expect(total).toBeGreaterThan(rows.reduce((sum, row) => sum + row.count, 0));
 	});
 
+	it("recomputes only the family whose fingerprint moved", async () => {
+		await chapter("One", "Damn it.");
+		await service.analysis.sensitiveAggregate(project, config());
+		// A sensitive-list edit nulls one family alone; the expensive tokens
+		// ride through warm, so the tokenizer's lexicon is never asked for.
+		const lexicons = vi.spyOn(
+			service.analysis as unknown as { lexiconFor: () => unknown },
+			"lexiconFor",
+		);
+		const rows = await service.analysis.sensitiveAggregate(
+			project,
+			config({ sensitiveTerms: ["blast"] }),
+		);
+		expect(rows.find((row) => row.term === "blast")?.total).toBe(0);
+		expect(lexicons).not.toHaveBeenCalled();
+		lexicons.mockRestore();
+	});
+
+	it("lets an edited chapter move the merged frequencies", async () => {
+		const path = await chapter("One", "fog fog");
+		const before = await service.analysis.frequency(project, config(), {
+			stopwords: null,
+			exclude: null,
+		});
+		expect(before.rows[0]).toEqual({ term: "fog", count: 2 });
+		const read = await service.manuscript.readSegment(path);
+		await service.manuscript.writeSegment(
+			path,
+			"fog lantern lantern",
+			read.revision,
+		);
+		const after = await service.analysis.frequency(project, config(), {
+			stopwords: null,
+			exclude: null,
+		});
+		expect(after.rows[0]).toEqual({ term: "lantern", count: 2 });
+	});
+
 	it("forgets a note and its children like every other cache", async () => {
 		const path = await chapter("One", "Damn it.");
 		await service.analysis.sensitiveAggregate(project, config());
@@ -278,6 +316,21 @@ describe("ManuscriptAnalysisService", () => {
 		expect(written?.notes[path]).toBeUndefined();
 		const rows = await service.analysis.sensitiveAggregate(project, config());
 		expect(rows.find((row) => row.term === "damn")?.total).toBe(1);
+	});
+
+	it("lets a deleted project's pending flush die with its state", async () => {
+		const path = await chapter("One", "Damn it.");
+		await service.analysis.sensitiveAggregate(project, config());
+		// The vault's delete events forget the chapters first, then the
+		// root; the root must take the pending write down with it, or the
+		// flush would rebuild the dead project's folders.
+		service.analysis.forget(path);
+		service.analysis.forget("Snowflake Projects/Novel", { children: true });
+		await service.analysis.flush(project);
+		const written = JSON.parse(
+			fakeVault.contents.get(ANALYSIS_FILE) ?? "null",
+		) as { notes: Record<string, unknown> } | null;
+		expect(written?.notes[path]).toBeDefined();
 	});
 
 	it("reuses one sensitive matcher for one list", () => {

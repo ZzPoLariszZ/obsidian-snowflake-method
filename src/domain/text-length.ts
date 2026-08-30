@@ -299,6 +299,10 @@ export interface ScriptSplit {
 }
 
 export function scriptSplit(text: string): ScriptSplit {
-	const count = countWriting(text, { mode: 'chenggua' });
+	// Composed first: a decomposed body carries its accents as combining
+	// marks, which the counting would tally alone as characters -- NFD
+	// "café" must not measure differently from its NFC spelling. Offsets
+	// never leave this function, so normalizing bends nothing.
+	const count = countWriting(text.normalize('NFC'), { mode: 'chenggua' });
 	return { cjk: count.cjkCharacters, words: count.words };
 }

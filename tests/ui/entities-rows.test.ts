@@ -4,7 +4,6 @@ import {
 	distributionPath,
 	distributionSpans,
 	groupByChapter,
-	occurrenceOffsets,
 	taskPool,
 } from '../../src/ui/entities-rows';
 
@@ -105,28 +104,5 @@ describe('the task pool', () => {
 		await expect(pooled(() => Promise.resolve('after'))).resolves.toBe(
 			'after',
 		);
-	});
-});
-
-describe('walking an ordinal back to its offsets', () => {
-	it('lands on the nth same-text occurrence, zero-based', () => {
-		expect(occurrenceOffsets('雾里有雾。', '雾', 0)).toEqual({
-			from: 0,
-			to: 1,
-		});
-		expect(occurrenceOffsets('雾里有雾。', '雾', 1)).toEqual({
-			from: 3,
-			to: 4,
-		});
-	});
-
-	it('counts without overlaps, the way the matcher hit', () => {
-		expect(occurrenceOffsets('aaaa', 'aa', 1)).toEqual({ from: 2, to: 4 });
-	});
-
-	it('answers nothing where the ordinal no longer lands', () => {
-		expect(occurrenceOffsets('雾里有雾。', '雾', 2)).toBeNull();
-		expect(occurrenceOffsets('fog', 'rope', 0)).toBeNull();
-		expect(occurrenceOffsets('fog', '', 0)).toBeNull();
 	});
 });

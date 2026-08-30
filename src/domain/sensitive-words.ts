@@ -44,8 +44,13 @@ export function parseSensitiveWords(text: string): string[] {
 	return terms;
 }
 
+/**
+ * Order included deliberately: when two listings collide as case variants,
+ * the earlier one names their shared hits, so a reorder changes what a
+ * stored hit means and must move the print with it.
+ */
 export function sensitiveFingerprint(terms: readonly string[]): string {
-	return fingerprint([...terms].sort());
+	return fingerprint([...terms]);
 }
 
 /** The case spellings one term is found as, itself always first. */

@@ -172,15 +172,7 @@ export class MentionStore {
 		project: ProjectRef,
 		index: MentionIndexFile,
 	): Promise<void> {
-		const path = this.indexPath(project);
-		// Dressed like the session files: a reader opening the cache in the
-		// vault meets lines, not one endless one.
-		const serialized = `${JSON.stringify(index, null, "\t")}\n`;
-		if (this.deps.repository.getFile(path) === null) {
-			await this.deps.repository.createPlainFile(path, serialized);
-			return;
-		}
-		await this.deps.repository.updatePlainFile(path, () => serialized);
+		await this.writeJsonFile(this.indexPath(project), index);
 	}
 
 	analysisPath(project: ProjectRef): string {
@@ -200,11 +192,25 @@ export class MentionStore {
 	}
 
 	async writeAnalysis(project: ProjectRef, file: AnalysisFile): Promise<void> {
-		const path = this.analysisPath(project);
-		const serialized = `${JSON.stringify(file, null, "\t")}\n`;
+		await this.writeJsonFile(this.analysisPath(project), file);
+	}
+
+	/**
+	 * Create-or-update, dressed like the session files: a reader opening the
+	 * cache in the vault meets lines, not one endless one. Two flushes can
+	 * race the first-ever create -- a quiet timer against a walk's end -- so
+	 * a create that fails while the file now stands falls through to the
+	 * update instead of failing the flush.
+	 */
+	private async writeJsonFile(path: string, payload: unknown): Promise<void> {
+		const serialized = `${JSON.stringify(payload, null, "\t")}\n`;
 		if (this.deps.repository.getFile(path) === null) {
-			await this.deps.repository.createPlainFile(path, serialized);
-			return;
+			try {
+				await this.deps.repository.createPlainFile(path, serialized);
+				return;
+			} catch (error) {
+				if (this.deps.repository.getFile(path) === null) throw error;
+			}
 		}
 		await this.deps.repository.updatePlainFile(path, () => serialized);
 	}
@@ -292,8 +298,45 @@ function parseIgnoreFile(content: string | null): MentionIgnoreFile | null {
 	};
 }
 
+/**
+ * One stored hit examined limb by limb: a mangled hit under a still-valid
+ * stamp would otherwise be served warm forever, crashing every read that
+ * touches its candidates -- exactly what a cache must never manage.
+ */
+function isStoredHit(value: unknown): value is MentionHit {
+	if (typeof value !== "object" || value === null) return false;
+	const hit = value as Record<string, unknown>;
+	const link = hit.link as Record<string, unknown> | null;
+	return (
+		typeof hit.from === "number" &&
+		typeof hit.to === "number" &&
+		typeof hit.matchedText === "string" &&
+		(link === null ||
+			(typeof link === "object" && typeof link.target === "string")) &&
+		Array.isArray(hit.candidates) &&
+		hit.candidates.every(
+			(candidate) =>
+				typeof candidate === "object" &&
+				candidate !== null &&
+				typeof (candidate as Record<string, unknown>).label === "string" &&
+				((candidate as Record<string, unknown>).entry === "name" ||
+					(candidate as Record<string, unknown>).entry === "alias") &&
+				typeof (candidate as Record<string, unknown>).memberPath ===
+					"string" &&
+				typeof (candidate as Record<string, unknown>).memberName ===
+					"string" &&
+				typeof (candidate as Record<string, unknown>).group === "string" &&
+				typeof (candidate as Record<string, unknown>).groupRank ===
+					"number" &&
+				typeof (candidate as Record<string, unknown>).rank === "number" &&
+				typeof (candidate as Record<string, unknown>).insert === "string",
+		)
+	);
+}
+
 /** Reads an index file leniently: a note entry that does not hold its shape
- *  is dropped alone, because every entry stands or falls by its own stamp. */
+ *  is dropped alone -- and recomputed on its next read -- because every
+ *  entry stands or falls by its own stamp. */
 function parseIndexFile(content: string | null): MentionIndexFile | null {
 	const parsed = parseJsonObject(content);
 	if (parsed === null) return null;
@@ -309,9 +352,10 @@ function parseIndexFile(content: string | null): MentionIndexFile | null {
 		if (typeof entry.stamp !== "string" || !Array.isArray(entry.hits)) {
 			continue;
 		}
+		if (!entry.hits.every(isStoredHit)) continue;
 		notes[path] = {
 			stamp: entry.stamp,
-			hits: entry.hits as MentionHit[],
+			hits: entry.hits,
 		};
 	}
 	return {
@@ -339,14 +383,25 @@ function parseAnalysisFile(content: string | null): AnalysisFile | null {
 	];
 	if (prints.some((print) => typeof print !== "string")) return null;
 	if (typeof parsed.notes !== "object" || parsed.notes === null) return null;
-	const isPairList = (value: unknown): boolean =>
+	// Both halves of a pair carry weight: a null term or a string offset
+	// under a valid stamp would be served warm forever, so a list either
+	// holds its whole shape or reads as absent and recomputes.
+	const isPairList = (value: unknown, first: "string" | "number"): boolean =>
 		Array.isArray(value) &&
 		value.every(
 			(pair) =>
 				Array.isArray(pair) &&
 				pair.length === 2 &&
+				typeof pair[0] === first &&
 				typeof pair[1] === "number",
 		);
+	const isSensitiveHit = (value: unknown): value is SensitiveHit =>
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as Record<string, unknown>).term === "string" &&
+		typeof (value as Record<string, unknown>).matchedText === "string" &&
+		typeof (value as Record<string, unknown>).from === "number" &&
+		typeof (value as Record<string, unknown>).to === "number";
 	const isStats = (value: unknown): value is NoteProseStats =>
 		typeof value === "object" &&
 		value !== null &&
@@ -363,14 +418,15 @@ function parseAnalysisFile(content: string | null): AnalysisFile | null {
 		if (typeof entry.stamp !== "string") continue;
 		notes[path] = {
 			stamp: entry.stamp,
-			sensitive: Array.isArray(entry.sensitive)
-				? (entry.sensitive as SensitiveHit[])
-				: null,
-			dialogue: isPairList(entry.dialogue)
+			sensitive:
+				Array.isArray(entry.sensitive) && entry.sensitive.every(isSensitiveHit)
+					? entry.sensitive
+					: null,
+			dialogue: isPairList(entry.dialogue, "number")
 				? (entry.dialogue as [number, number][])
 				: null,
 			stats: isStats(entry.stats) ? entry.stats : null,
-			tokens: isPairList(entry.tokens)
+			tokens: isPairList(entry.tokens, "string")
 				? (entry.tokens as [string, number][])
 				: null,
 		};

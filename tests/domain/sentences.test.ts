@@ -20,6 +20,12 @@ describe('counting sentences', () => {
 		expect(countSentences('"Go home." He waved.')).toBe(2);
 	});
 
+	it('lets a fullwidth closing bracket ride the same way', () => {
+		expect(countSentences('（他走了。）')).toBe(1);
+		expect(countSentences('他说完了。（真的。）她信了。')).toBe(3);
+		expect(countSentences('(He left.)')).toBe(1);
+	});
+
 	it('keeps a full stop inside numbers and names whole', () => {
 		expect(countSentences('Pi is 3.14 for short.')).toBe(1);
 		expect(countSentences('He mailed file.txt today.')).toBe(1);

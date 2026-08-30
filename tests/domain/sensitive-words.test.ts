@@ -21,8 +21,10 @@ describe('reading the list', () => {
 		expect(parseSensitiveWords('damn\ndamn\nDamn')).toEqual(['damn', 'Damn']);
 	});
 
-	it('fingerprints the terms, order set aside', () => {
-		expect(sensitiveFingerprint(['a', 'b'])).toBe(
+	it('fingerprints the terms in their listed order', () => {
+		// A reorder can rename a case-colliding pair's shared hits, so the
+		// print moves with the order and stored results recompute honestly.
+		expect(sensitiveFingerprint(['a', 'b'])).not.toBe(
 			sensitiveFingerprint(['b', 'a']),
 		);
 		expect(sensitiveFingerprint(['a'])).not.toBe(sensitiveFingerprint(['b']));

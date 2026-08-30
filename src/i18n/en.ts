@@ -1311,7 +1311,12 @@ export const en = {
 	'manuscript.mention.ignoreCandidateManuscript':
 		'Ignore {name} in whole manuscript',
 	'manuscript.mention.stale': 'The note changed, so nothing was converted.',
+	'mention.notice.ignoresPreserved':
+		'The ignore rules would not read and were set aside as {path}.',
+	'settings.mentionHighlight.saveFailed':
+		'The highlight choices could not be saved. Try again.',
 	'mentionView.noProject': 'No project to read.',
+	'mentionView.loadFailed': 'The reading failed. Refresh to try again.',
 	'mentionView.empty': 'No mentions',
 	'mentionView.computing': 'Reading the manuscript…',
 	'mentionView.searchPlaceholder': 'Search mentions',
@@ -1322,6 +1327,7 @@ export const en = {
 	'mentionView.dialogueHeading': 'Dialogue',
 	'prose.computing': 'Reading the manuscript…',
 	'prose.noProject': 'No project to read yet.',
+	'prose.loadFailed': 'The reading failed. Refresh to try again.',
 	'prose.refresh': 'Refresh',
 	'prose.summary.readingTime': 'Total reading time',
 	'prose.summary.averageChapter': 'Reading time per chapter',

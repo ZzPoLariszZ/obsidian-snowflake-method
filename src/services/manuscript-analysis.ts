@@ -31,14 +31,19 @@ import {
 	type MentionStore,
 	type NoteProseStats,
 } from "./mention-store";
+import {
+	BREATH_MS,
+	QuietFlushingNoteCache,
+	type NoteCacheState,
+	type NoteCacheTimers,
+} from "./note-cache";
 import type { ProjectRef } from "./types";
-
-/** The mention index's own rhythm, kept in step deliberately. */
-const BREATH_MS = 12;
-const FLUSH_QUIET_MS = 5_000;
 
 /** Bump when what `stats` measures changes: it drops the stored numbers. */
 const STATS_VERSION = 1;
+
+/** One matcher for every no-terms ask, so it never contests the memo slot. */
+const EMPTY_SENSITIVE_MATCHER = buildSensitiveMatcher([]);
 
 export type { NoteProseStats } from "./mention-store";
 
@@ -93,11 +98,13 @@ interface FamilyPrints {
 	tokens: string;
 }
 
-interface ProjectAnalysisState {
-	project: ProjectRef;
+interface ProjectAnalysisState extends NoteCacheState<AnalysisNoteRecord> {
 	prints: FamilyPrints;
-	dirty: boolean;
-	notes: Map<string, AnalysisNoteRecord>;
+	/**
+	 * Moves whenever any note's tokens change hands -- recomputed, forgotten,
+	 * or pruned -- so the frequency memo below knows when its merge stands.
+	 */
+	tokensEpoch: number;
 }
 
 /** The last path segment, extension set aside: how a chapter is titled. */
@@ -119,29 +126,59 @@ const titleOf = (path: string): string =>
  * Freshness is had on read, never by background work, exactly as the
  * mention index has it; `forget` is the one wiring into vault events.
  */
-export class ManuscriptAnalysisService {
+export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
+	AnalysisNoteRecord,
+	ProjectAnalysisState
+> {
 	/** One matcher at a time, validated by the term list's fingerprint. */
 	private sensitiveMatcher: SensitiveMatcher | null = null;
 
 	/** One lexicon at a time, validated the same way. */
 	private lexicon: TokenLexicon | null = null;
 
-	private readonly states = new Map<string, ProjectAnalysisState>();
-	private readonly flushQueue = new Set<string>();
-	private flushHandle: unknown = null;
+	/**
+	 * The whole manuscript's tokens merged once and sorted once: the panel
+	 * asks again on every filter flip and every handback, and only the
+	 * filters change between those asks. Valid while the state stands and no
+	 * note's tokens moved.
+	 */
+	private frequencyMemo: {
+		state: ProjectAnalysisState;
+		tokensEpoch: number;
+		rows: FrequencyRow[];
+		total: number;
+	} | null = null;
 
 	constructor(
 		private readonly repository: VaultRepository,
 		private readonly manuscript: ManuscriptService,
 		private readonly store: MentionStore,
 		/** The main window's clock, or null for the timerless test shape. */
-		private readonly timers: {
-			set: (handler: () => void, ms: number) => unknown;
-			clear: (handle: unknown) => void;
-		} | null = null,
-	) {}
+		timers: NoteCacheTimers | null = null,
+	) {
+		super(timers);
+	}
+
+	protected persist(state: ProjectAnalysisState): Promise<void> {
+		return this.store.writeAnalysis(state.project, {
+			schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+			sensitiveFingerprint: state.prints.sensitive,
+			dialogueFingerprint: state.prints.dialogue,
+			statsFingerprint: state.prints.stats,
+			tokensFingerprint: state.prints.tokens,
+			notes: Object.fromEntries(state.notes),
+		});
+	}
+
+	protected override noteForgotten(state: ProjectAnalysisState): void {
+		state.tokensEpoch += 1;
+	}
 
 	sensitiveMatcherFor(terms: readonly string[]): SensitiveMatcher {
+		// The no-terms ask goes to a shared empty matcher: the dress path
+		// asks with an empty list whenever highlighting is off, and must not
+		// evict the analysis path's real matcher from the one slot.
+		if (terms.length === 0) return EMPTY_SENSITIVE_MATCHER;
 		const print = sensitiveFingerprint(terms);
 		if (
 			this.sensitiveMatcher !== null &&
@@ -271,48 +308,37 @@ export class ManuscriptAnalysisService {
 		await this.walk(project, state, config, "tokens", (path, record) => {
 			if (record.tokens !== null) maps.push(record.tokens);
 		});
-		const merged = mergeTokenCounts(maps);
-		let total = 0;
-		for (const count of merged.values()) total += count;
-		return { rows: frequencyRows(merged, filters), total };
-	}
-
-	/** The mirror of every other per-note cache's `forget`. */
-	forget(path: string, { children = false } = {}): void {
-		for (const state of this.states.values()) {
-			if (state.notes.delete(path)) this.markDirty(state);
-			if (!children) continue;
-			const prefix = `${path}/`;
-			for (const key of state.notes.keys()) {
-				if (!key.startsWith(prefix)) continue;
-				state.notes.delete(key);
-				this.markDirty(state);
-			}
-		}
-	}
-
-	/** Writes what this project's state holds, when anything changed. */
-	async flush(project: ProjectRef): Promise<void> {
-		const state = this.states.get(project.rootPath);
-		if (state === undefined || !state.dirty) return;
-		state.dirty = false;
-		this.flushQueue.delete(project.rootPath);
+		const kept = this.frequencyMemo;
+		let rows: FrequencyRow[];
+		let total: number;
 		if (
-			this.flushQueue.size === 0 &&
-			this.flushHandle !== null &&
-			this.timers !== null
+			kept !== null &&
+			kept.state === state &&
+			kept.tokensEpoch === state.tokensEpoch
 		) {
-			this.timers.clear(this.flushHandle);
-			this.flushHandle = null;
+			({ rows, total } = kept);
+		} else {
+			const merged = mergeTokenCounts(maps);
+			total = 0;
+			for (const count of merged.values()) total += count;
+			rows = frequencyRows(merged, { stopwords: null, exclude: null });
+			this.frequencyMemo = {
+				state,
+				tokensEpoch: state.tokensEpoch,
+				rows,
+				total,
+			};
 		}
-		await this.store.writeAnalysis(project, {
-			schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
-			sensitiveFingerprint: state.prints.sensitive,
-			dialogueFingerprint: state.prints.dialogue,
-			statsFingerprint: state.prints.stats,
-			tokensFingerprint: state.prints.tokens,
-			notes: Object.fromEntries(state.notes),
-		});
+		// The filters ask only whether a term stays, so filtering the sorted
+		// whole preserves exactly the order a filtered sort would give.
+		return {
+			rows: rows.filter(
+				(row) =>
+					(filters.stopwords === null || !filters.stopwords.has(row.term)) &&
+					(filters.exclude === null || !filters.exclude.has(row.term)),
+			),
+			total,
+		};
 	}
 
 	private printsFor(config: AnalysisConfig): FamilyPrints {
@@ -353,7 +379,10 @@ export class ManuscriptAnalysisService {
 			left.tokens === right.tokens;
 		const kept = this.states.get(project.rootPath);
 		if (kept !== undefined) {
-			if (same(kept.prints, prints)) return kept;
+			if (same(kept.prints, prints)) {
+				await kept.hydrated;
+				return kept;
+			}
 			const carried = new Map<string, AnalysisNoteRecord>();
 			for (const [path, note] of kept.notes) {
 				carried.set(path, {
@@ -369,23 +398,38 @@ export class ManuscriptAnalysisService {
 			const moved: ProjectAnalysisState = {
 				project,
 				prints,
-				dirty: true,
+				hydrated: Promise.resolve(),
+				dirty: false,
 				notes: carried,
+				tokensEpoch: 0,
 			};
 			this.states.set(project.rootPath, moved);
-			this.flushQueue.add(project.rootPath);
+			// Through `markDirty`, not a bare queue add: the nulled families
+			// are a change worth persisting even if no walk follows, and only
+			// `markDirty` arms the quiet timer that writes them.
+			this.markDirty(moved);
 			return moved;
 		}
 		const state: ProjectAnalysisState = {
 			project,
 			prints,
+			hydrated: Promise.resolve(),
 			dirty: false,
 			notes: new Map(),
+			tokensEpoch: 0,
 		};
 		this.states.set(project.rootPath, state);
-		const persisted = await this.store.readAnalysis(project);
-		if (persisted !== null) {
+		state.hydrated = (async () => {
+			const persisted = await this.store.readAnalysis(project);
+			if (persisted === null) return;
+			let pruned = false;
 			for (const [path, note] of Object.entries(persisted.notes)) {
+				// A note deleted or renamed while no state was loaded left its
+				// record behind; the fold-in is where such orphans die.
+				if (this.manuscript.segmentStamp(path) === null) {
+					pruned = true;
+					continue;
+				}
 				state.notes.set(path, {
 					stamp: note.stamp,
 					sensitive:
@@ -404,6 +448,14 @@ export class ManuscriptAnalysisService {
 							: null,
 				});
 			}
+			if (pruned) this.markDirty(state);
+		})();
+		try {
+			await state.hydrated;
+		} catch (error) {
+			// A failed read must not poison the slot: the next caller retries.
+			this.states.delete(project.rootPath);
+			throw error;
 		}
 		return state;
 	}
@@ -431,14 +483,17 @@ export class ManuscriptAnalysisService {
 				lastBreath = Date.now();
 			}
 		}
-		await this.flush(project);
+		// A write that fails does not take the computed answer with it: the
+		// flush re-marked itself and the quiet timer retries.
+		await this.flush(project).catch(() => undefined);
 	}
 
 	/**
 	 * One note's record with the needed family standing: the stat answers
-	 * first so a warm entry costs no read, and a missing family costs the
-	 * one read that refreshes all four -- the read is the expense, not the
-	 * computing.
+	 * first so a warm entry costs no read. A missing family costs one read,
+	 * and only the families actually gone are recomputed from it -- a
+	 * sensitive-list edit must not pay for re-tokenizing the whole book when
+	 * the tokens rode through warm.
 	 */
 	private async ensure(
 		state: ProjectAnalysisState,
@@ -448,7 +503,10 @@ export class ManuscriptAnalysisService {
 	): Promise<AnalysisNoteRecord | null> {
 		const probed = this.manuscript.segmentStamp(path);
 		if (probed === null) {
-			if (state.notes.delete(path)) this.markDirty(state);
+			if (state.notes.delete(path)) {
+				this.noteForgotten(state);
+				this.markDirty(state);
+			}
 			return null;
 		}
 		const kept = state.notes.get(path);
@@ -457,72 +515,69 @@ export class ManuscriptAnalysisService {
 		}
 		const record = await this.repository.tryReadManaged(path);
 		if (record === null) {
-			if (state.notes.delete(path)) this.markDirty(state);
+			if (state.notes.delete(path)) {
+				this.noteForgotten(state);
+				this.markDirty(state);
+			}
 			return null;
 		}
 		const stamp = `${String(record.file.stat.mtime)}:${String(record.file.stat.size)}`;
+		// Warm families carry over only against the read's own stamp, not the
+		// probe's: the file may have moved between the two, and then nothing
+		// the old record holds speaks for what was just read.
+		const warm = kept !== undefined && kept.stamp === stamp ? kept : null;
 		const declared = documentTypeOf(record.frontmatter);
 		const excluded = pluginWrittenRanges(
 			record.body,
 			isDocumentType(declared) ? declared : null,
 		);
-		const ranges = dialogueRanges(record.body, config.dialogueStyles, excluded);
-		const split = dialogueSplit(record.body, ranges, excluded);
+		// The dialogue ranges feed both the dialogue family and the stats
+		// split, so they are computed once and only when either needs them.
+		let laidRanges: ReturnType<typeof dialogueRanges> | null = null;
+		const rangesOf = (): ReturnType<typeof dialogueRanges> =>
+			(laidRanges ??= dialogueRanges(
+				record.body,
+				config.dialogueStyles,
+				excluded,
+			));
 		const fresh: AnalysisNoteRecord = {
 			stamp,
-			sensitive: this.sensitiveMatcherFor(config.sensitiveTerms).collect(
-				record.body,
-				excluded,
-			),
-			dialogue: ranges.map((range) => [range.from, range.to]),
-			stats: {
-				// The two halves of the split cover exactly the analyzable
-				// prose, so their sum is the note's whole writing.
-				cjk: split.dialogue.cjk + split.narrative.cjk,
-				words: split.dialogue.words + split.narrative.words,
-				sentences: countSentences(record.body, excluded),
-				dialogueCjk: split.dialogue.cjk,
-				dialogueWords: split.dialogue.words,
-			},
-			tokens: [
-				...tokenizeProse(
+			sensitive:
+				warm?.sensitive ??
+				this.sensitiveMatcherFor(config.sensitiveTerms).collect(
 					record.body,
 					excluded,
-					config.locale,
-					this.lexiconFor(config.entityTerms),
 				),
-			],
+			dialogue:
+				warm?.dialogue ?? rangesOf().map((range) => [range.from, range.to]),
+			stats:
+				warm?.stats ??
+				((): NoteProseStats => {
+					const split = dialogueSplit(record.body, rangesOf(), excluded);
+					return {
+						// The two halves of the split cover exactly the
+						// analyzable prose, so their sum is the whole writing.
+						cjk: split.dialogue.cjk + split.narrative.cjk,
+						words: split.dialogue.words + split.narrative.words,
+						sentences: countSentences(record.body, excluded),
+						dialogueCjk: split.dialogue.cjk,
+						dialogueWords: split.dialogue.words,
+					};
+				})(),
+			tokens:
+				warm?.tokens ?? [
+					...tokenizeProse(
+						record.body,
+						excluded,
+						config.locale,
+						this.lexiconFor(config.entityTerms),
+					),
+				],
 		};
+		if (fresh.tokens !== warm?.tokens) state.tokensEpoch += 1;
 		state.notes.set(path, fresh);
 		this.markDirty(state);
 		return fresh;
 	}
 
-	private markDirty(state: ProjectAnalysisState): void {
-		state.dirty = true;
-		this.flushQueue.add(state.project.rootPath);
-		if (this.timers === null || this.flushHandle !== null) return;
-		this.flushHandle = this.timers.set(() => {
-			this.flushHandle = null;
-			for (const rootPath of [...this.flushQueue]) {
-				const queued = this.states.get(rootPath);
-				if (queued === undefined) {
-					this.flushQueue.delete(rootPath);
-					continue;
-				}
-				void this.flush(queued.project);
-			}
-		}, FLUSH_QUIET_MS);
-	}
-
-	/** A macrotask's worth of air, so a cold walk never freezes the app. */
-	private breathe(): Promise<void> {
-		const timers = this.timers;
-		if (timers === null) return Promise.resolve();
-		return new Promise((resolve) => {
-			timers.set(() => {
-				resolve();
-			}, 0);
-		});
-	}
 }

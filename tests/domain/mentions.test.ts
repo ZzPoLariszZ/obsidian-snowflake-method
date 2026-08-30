@@ -54,6 +54,16 @@ describe('entity mentions', () => {
 		expect(found[0]?.resolution).toBe('unique');
 	});
 
+	it('lets a name beat an alias across an equal-length overlap', () => {
+		const body = '夏林深处有雾。';
+		const found = mentions(body, [
+			source('夏林', 'name', 'Demo/20_Character/夏林.md'),
+			source('林深', 'alias', 'Demo/20_Character/林深.md'),
+		]);
+		expect(found.map((entry) => entry.matchedText)).toEqual(['夏林']);
+		expect(found[0]?.resolvedMemberPath).toBe('Demo/20_Character/夏林.md');
+	});
+
 	it('never matches a Latin name inside another word', () => {
 		expect(mentions('Malice struck.', [source('Alice', 'name', alice)])).toEqual(
 			[],
@@ -107,6 +117,28 @@ describe('entity mentions', () => {
 
 		it('reads a bare shortest link as the member it names', () => {
 			const [found] = mentions('[[Alice]] waited.', [
+				source('Alice', 'name', alice),
+			]);
+			expect(found?.resolution).toBe('wikilink');
+			expect(found?.resolvedMemberPath).toBe(alice);
+		});
+
+		it('reads a heading or block tail as aim inside the member, not past it', () => {
+			const [byHeading] = mentions('[[Alice#Backstory|Alice]] waited.', [
+				source('Alice', 'name', alice),
+			]);
+			expect(byHeading?.resolution).toBe('wikilink');
+			expect(byHeading?.resolvedMemberPath).toBe(alice);
+			const [byBlock] = mentions(
+				'[[Demo/20_Character/Alice#^quote|Alice]] waited.',
+				[source('Alice', 'name', alice)],
+			);
+			expect(byBlock?.resolution).toBe('wikilink');
+			expect(byBlock?.resolvedMemberPath).toBe(alice);
+		});
+
+		it('reads a link differing only in case as the member it opens', () => {
+			const [found] = mentions('[[alice|Alice]] waited.', [
 				source('Alice', 'name', alice),
 			]);
 			expect(found?.resolution).toBe('wikilink');
@@ -371,6 +403,17 @@ describe('entity mentions', () => {
 				match: '黑塔城',
 				after: '之后又继续…',
 			});
+		});
+
+		it('never clips the window through a surrogate pair', () => {
+			// 𠮷 is two UTF-16 units; in unspaced prose no word repair runs at
+			// the window's edge, so the edge itself must respect the pair.
+			const lead = occurrenceContext('一𠮷雾见了', 3, 4, 1, 1);
+			expect(lead.match).toBe('雾');
+			expect(lead.before.includes('\udc42')).toBe(false);
+			const tail = occurrenceContext('雾𠮷见', 0, 1, 1, 1);
+			expect(tail.match).toBe('雾');
+			expect(tail.after.includes('\ud842')).toBe(false);
 		});
 
 		it('takes a wider tail when asked, the lead-in held short', () => {

@@ -65,6 +65,7 @@ import {
 	DEFAULT_STOPWORDS_EN,
 	DEFAULT_STOPWORDS_ZH,
 	DIALOGUE_STYLE_TOKENS,
+	analyzeMentions,
 	compileCustomHighlightRules,
 	hasWordSegmenter,
 	highlightRulesFingerprint,
@@ -72,6 +73,7 @@ import {
 	parseSensitiveWords,
 	parseStopwords,
 	sanitizeCustomHighlightRules,
+	splitMentionIgnores,
 	type CompiledHighlightRules,
 	type CustomHighlightRule,
 	type DialogueOccurrence,
@@ -633,6 +635,13 @@ export default class SnowflakeMethodPlugin
 				// identity per install, and vault sync never contests either.
 				deviceId: () => this.writingSessionDeviceId(),
 				now: () => Date.now(),
+				// The ignores are the reader's own choices: a quarantine is
+				// told the way a session file's is, never silently.
+				onCorrupt: (path) => {
+					new Notice(
+						this.projectT('mention.notice.ignoresPreserved', { path }),
+					);
+				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
 				timers: {
@@ -825,6 +834,10 @@ export default class SnowflakeMethodPlugin
 		// the per-device store before anything else happens, so the next load
 		// can close the session out instead of losing it.
 		this.sessions.markShutdown();
+		// The caches' quiet-flush timers die here, or a disabled plugin would
+		// still write index files into the vault seconds after unload.
+		this.projects.mentions.dispose();
+		this.projects.analysis.dispose();
 		// A typography change still waiting on its timer, written now: the drag
 		// that made it is the author's choice whether or not they paused after it.
 		if (this.settingsSaveTimer !== null) {
@@ -2623,7 +2636,7 @@ export default class SnowflakeMethodPlugin
 		}
 		// The sensitive list re-dresses at once too, but its counts feed the
 		// tracking pane and the statistics, so it also falls through.
-		if (key === 'sensitiveWords' || key === 'sensitiveWordsEnabled') {
+		if (key === 'sensitiveWords') {
 			this.applyManuscriptMentionMode();
 		}
 		if (key === 'reduceMotion') this.applyMotionPreference();
@@ -3618,6 +3631,34 @@ export default class SnowflakeMethodPlugin
 				} catch {
 					return '';
 				}
+			},
+			locateIgnore: async (rule) => {
+				// The ordinal was counted over the note's analyzed occurrences
+				// -- link targets, code and glued substrings never among them
+				// -- so only that same analysis can walk it back to its spot.
+				const projectPath = panelProject();
+				const matcher = await this.manuscriptEntityMatcher(projectPath);
+				if (matcher === null) return null;
+				let body: string;
+				try {
+					body = (await this.readManuscriptSegment(rule.notePath)).body;
+				} catch {
+					return null;
+				}
+				const { candidate } = splitMentionIgnores(
+					await this.mentionIgnores(projectPath),
+				);
+				const same = analyzeMentions(
+					rule.notePath,
+					body,
+					[],
+					matcher,
+					candidate,
+				).filter((entry) => entry.matchedText === rule.matchedText);
+				const found = same[rule.ordinal];
+				return found === undefined
+					? null
+					: { from: found.from, to: found.to };
 			},
 			openMention: (occurrence) =>
 				this.openManuscriptMention(panelProject(), occurrence),
@@ -4916,10 +4957,9 @@ export default class SnowflakeMethodPlugin
 			presentation: DialoguePresentation;
 		};
 	} {
-		const terms =
-			this.settings.sensitiveWordsEnabled && this.settings.sensitiveHighlight
-				? parseSensitiveWords(this.settings.sensitiveWords)
-				: [];
+		const terms = this.settings.sensitiveHighlight
+			? parseSensitiveWords(this.settings.sensitiveWords)
+			: [];
 		const rules = this.settings.customHighlightsEnabled
 			? this.settings.customHighlightRules
 			: [];
@@ -5022,9 +5062,9 @@ export default class SnowflakeMethodPlugin
 		return this.projects.mentions.aggregate(project, matcher);
 	}
 
-	/** The quote styles the settings have switched on, as pairs. */
+	/** The quote styles the settings have switched on, as pairs: all four
+	 *  off is how dialogue reading is turned off. */
 	private dialogueStylesFromSettings(): DialogueStyle[] {
-		if (!this.settings.dialogueDetectionEnabled) return [];
 		const chosen: string[] = [];
 		if (this.settings.dialogueQuotesCurly) {
 			chosen.push(DIALOGUE_STYLE_TOKENS.curly);
@@ -5054,9 +5094,7 @@ export default class SnowflakeMethodPlugin
 	): Promise<AnalysisConfig> {
 		const targets = await this.listWikilinkTargets(project.projectFile);
 		return {
-			sensitiveTerms: this.settings.sensitiveWordsEnabled
-				? parseSensitiveWords(this.settings.sensitiveWords)
-				: [],
+			sensitiveTerms: parseSensitiveWords(this.settings.sensitiveWords),
 			dialogueStyles: this.dialogueStylesFromSettings(),
 			locale: project.locale,
 			entityTerms: targets.map((target) => target.label),

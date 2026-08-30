@@ -65,30 +65,6 @@ export function distributionPath(
 }
 
 /**
- * An occurrence ignore walked back to its offsets: the ordinal counts the
- * note's same-text occurrences in order, non-overlapping the way the
- * matcher's hits are, so the walk advances by the text's own length. Null
- * where the text has moved and the ordinal no longer lands.
- */
-export function occurrenceOffsets(
-	body: string,
-	matchedText: string,
-	ordinal: number,
-): { from: number; to: number } | null {
-	if (matchedText.length === 0) return null;
-	let seen = -1;
-	let index = body.indexOf(matchedText);
-	while (index !== -1) {
-		seen += 1;
-		if (seen === ordinal) {
-			return { from: index, to: index + matchedText.length };
-		}
-		index = body.indexOf(matchedText, index + matchedText.length);
-	}
-	return null;
-}
-
-/**
  * A gate over async work: at most `limit` tasks run at once, the rest
  * waiting their turn in the order they arrived. The mention modal reads
  * chapter bodies through one, so a wide book fills its lines steadily

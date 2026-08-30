@@ -23,7 +23,7 @@ import {
 import type { CountableRange } from './markdown-scan';
 
 const TERMINATOR = /[。．！？!?…⋯.]/u;
-const CLOSER = /[”』」’")]/u;
+const CLOSER = /[”』」’")）】》〉]/u;
 const WORD = /[\p{L}\p{N}]/u;
 
 /** Whether the character at `at` ends a sentence, the `.` rule applied. */

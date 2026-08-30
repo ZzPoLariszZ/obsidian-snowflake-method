@@ -284,12 +284,15 @@ function stemOf(path: string): string {
 /**
  * Whether a link's target means this member. An exact path match does; so
  * does a bare name equal to the member's own, which is how Obsidian's
- * shortest links are written. A target that names some other path is not
- * softened into a match by sharing a stem: it points where it points.
+ * shortest links are written. A `#heading` or `#^block` tail is aim inside
+ * the note, not another note, and case never separates what Obsidian
+ * resolves together. A target that names some other path is not softened
+ * into a match by sharing a stem: it points where it points.
  */
 function targetMeans(target: string, memberPath: string): boolean {
-	const linked = target.replace(/\.md$/u, '');
-	const member = memberPath.replace(/\.md$/u, '');
+	const named = target.split('#', 1)[0] ?? target;
+	const linked = named.replace(/\.md$/u, '').toLowerCase();
+	const member = memberPath.replace(/\.md$/u, '').toLowerCase();
 	if (linked === member) return true;
 	return !linked.includes('/') && linked === stemOf(member);
 }
@@ -333,8 +336,8 @@ export function resolveMentions(
 		left.from < right.to && right.from < left.to;
 	const better = (left: MentionHit, right: MentionHit): number =>
 		right.to - right.from - (left.to - left.from) ||
-		Number(!right.candidates.some((c) => c.entry === 'name')) -
-			Number(!left.candidates.some((c) => c.entry === 'name')) ||
+		Number(!left.candidates.some((c) => c.entry === 'name')) -
+			Number(!right.candidates.some((c) => c.entry === 'name')) ||
 		Math.min(...left.candidates.map((c) => c.groupRank)) -
 			Math.min(...right.candidates.map((c) => c.groupRank)) ||
 		Math.min(...left.candidates.map((c) => c.rank)) -
@@ -604,6 +607,13 @@ export function occurrenceContext(
 	while (start > 0 && shownFrom - start < radius && text[start - 1] !== '\n') {
 		start -= 1;
 	}
+	// Never on the low half of a surrogate pair: in unspaced prose no word
+	// boundary repairs the window's edge, so an astral character cut here
+	// would show as a lone replacement mark. The window shrinks one unit.
+	const startUnit = text.charCodeAt(start);
+	if (start < shownFrom && startUnit >= 0xdc00 && startUnit <= 0xdfff) {
+		start += 1;
+	}
 	let before = text.slice(start, shownFrom);
 	if (start > 0 && text.charAt(start - 1) !== '\n') {
 		const whole = before.replace(/^\S+\s+/u, '');
@@ -616,6 +626,11 @@ export function occurrenceContext(
 		text[end] !== '\n'
 	) {
 		end += 1;
+	}
+	// The tail's mirror: never end on the high half of a pair.
+	const endUnit = text.charCodeAt(end - 1);
+	if (end > shownTo && endUnit >= 0xd800 && endUnit <= 0xdbff) {
+		end -= 1;
 	}
 	let after = text.slice(shownTo, end);
 	if (end < text.length && text.charAt(end) !== '\n') {
