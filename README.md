@@ -50,7 +50,9 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
-| Data statistics | Time each writing session, aim at a daily goal, and read back where the words and the hours went. |
+| Writing sessions | Time each sitting, aim at a daily goal, and read back where the words and the hours went. |
+| Prose analysis | Read the draft back as reading time, sentences, dialogue share, and the words you lean on. |
+| Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions where they stand. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
@@ -159,17 +161,33 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 ### Data statistics
 
-Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane reads a project back as numbers, and its **Writing sessions** tab is the one that measures the time. A sitting starts when you start it, or on its own when focus mode opens. Words written with no sitting running are still counted, so a morning at the manuscript belongs to the day whether or not you remembered to start the clock, and only the time is left to the sittings. *Prose analysis and entity tracking name the two faces the tab strip is being built for. Both are still in their planning stage.*
+Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane reads a project back as numbers, one tab to a question. **Writing sessions** measures the time, **Prose analysis** measures the prose, and **Entity tracking** follows who and what that prose names.
+
+**Writing sessions** is where the clock lives. A sitting starts when you start it, or on its own when focus mode opens. Words written with no sitting running are still counted, so a morning at the manuscript belongs to the day whether or not you remembered to start the clock, and only the time is left to the sittings.
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_en.png"><img src="assets/screenshots/data_statistics_01_en.png" width="100%" alt="Data statistics — daily goal, focus timer, today's summary, recent trend, and annual contribution" /></a></p>
 
 <p align="center"><a href="assets/screenshots/data_statistics_02_en.png"><img src="assets/screenshots/data_statistics_02_en.png" width="100%" alt="Data statistics — calendar, weekly and monthly goals, temporal distribution, and writing stages" /></a></p>
 
+**Prose analysis** reads the draft back as prose. Total reading time, reading time per chapter, sentences per chapter, words per sentence and the share of the writing that is dialogue stand at the head, and under them every chapter keeps a row of its own, searched by title and narrowed by length. **Word frequency** counts the words themselves and ranks them, with a word cloud of the ones you lean on. Stopwords and the names of your own characters and places stay outside the count until you ask for them, and Chinese is read as words rather than as single characters.
+
+<p align="center"><a href="assets/screenshots/prose_analysis_en.png"><img src="assets/screenshots/prose_analysis_en.png" width="100%" alt="Prose analysis — reading time, sentences and dialogue share at the head, a searchable chapter table, and word frequency ranked with a word cloud" /></a></p>
+
+**Entity tracking** follows the cast through the draft. Every character, scene, time, location, item and kind of your own that the manuscript names keeps a row: how often it is mentioned, how many of those mentions are already links, the first and last chapter to name it, and a distribution that reads the whole book as one line. Open a row and every mention is there, gathered by chapter with the sentence around it, and choosing one jumps to that spot in the manuscript. Sensitive words you have listed, dialogue by chapter, mentions no single member can claim, and the ignore rules you have written each keep a section of their own.
+
+<p align="center"><a href="assets/screenshots/entity_tracking_1_en.png"><img src="assets/screenshots/entity_tracking_1_en.png" width="100%" alt="Entity tracking — foldable sections by kind, a character table with counts, first and last mention and a distribution line, over a window listing every mention gathered by chapter" /></a></p>
+
+**The same reading dresses the manuscript itself.** A name written as plain text is marked where it stands, a name already written as a link is marked as the link it is, and a right-click offers to turn the plain one into a link or to leave it alone here, in this chapter, or anywhere it appears. The toolbar's highlight menu carries the switches: first mention, unlinked mentions or all mentions for entities, and one each for sensitive words, dialogue and **custom highlight rules** of your own, literal or regular expression, in the color and decoration you choose.
+
+<p align="center"><a href="assets/screenshots/entity_tracking_2_en.png"><img src="assets/screenshots/entity_tracking_2_en.png" width="100%" alt="A chapter in the manuscript stream with a character name marked in the accent color where it stands in the prose" /></a></p>
+
 <a id="installation"></a>
 
 ## Installation
 
-### Community plugins
+Install from the community plugin browser unless you have a reason not to. It carries the reviewed release and keeps up with Obsidian's own updates. BRAT and manual installation are there for beta builds and for vaults that install nothing on their own.
+
+### Community plugins (recommended)
 
 1. Open **Settings → Community plugins** in Obsidian.
 2. Select **Browse** and search for **Snowflake Method**.
@@ -241,6 +259,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Start a writing session with options | Choose the timer, its length, and the writing stage before starting. |
 | Stop the writing session | End the running session and file its record. |
 | Switch statistics scope | Read the statistics for the whole project, or the manuscript alone. |
+| Toggle custom highlights | Apply your own highlight rules to the manuscript, or set them aside. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
@@ -277,6 +296,7 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Show order numbers | Off | Show the stored position that decides where a note is read. |
 | Typewriter scrolling | On | Keep the line being written at the middle of the page. |
 | Focus mode | Off | Fade all but the paragraph being written. The solo level shows only the manuscript in full screen. |
+| Highlight mentions | Entities and dialogue off, the rest on | Mark entity names and aliases, sensitive words, dialogue, and your own rules. Each of the four has its own switch, and entities can be marked at their first mention, only where they are not yet links, or everywhere. |
 | Auto-pair brackets and quotes | On | Typing brackets or quotes in the manuscript closes the pair. |
 | Auto-pair Markdown syntax | On | Typing bold, italic or other markers in the manuscript closes the pair. |
 | Enter starts a new paragraph | On | Typing Enter puts an extra blank line between paragraphs. Typing Shift+Enter breaks the line inside the paragraph. |
@@ -303,6 +323,12 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Daily goal: only manuscript | 4000 | Net words to write each day in the manuscript. Zero turns the goal off. |
 | Week starts on | Monday | The first day of each week in the writing statistics. |
 | Date format | YYYY/MM/DD | How dates are written in the writing statistics. |
+| Reading speed, words per minute | 250 | How fast the prose analysis assumes you read words. |
+| Reading speed, CJK characters per minute | 400 | How fast the prose analysis assumes you read CJK characters. |
+| Custom stopwords | None | Words to keep out of the frequency count, beyond the built-in lists. One per line. |
+| Custom sensitive words | None | The terms the entity tracking watches for and counts. One per line. |
+| Dialogue quote styles | All four on | Which quote marks open dialogue: “ ”, " ", 「 」 and 『 』. |
+| Custom highlight rules | None | Your own rules, literal text or regular expression, each in the color and decoration you choose. |
 
 <a id="privacy"></a>
 
@@ -353,13 +379,20 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   └── 64_Faction/
     ├── 70_Tool/
     │   └── 71_Data_Statistics/
-    │       └── 711_Writing_Session/
-    │           └── 2026/
-    │               └── 2026_08_<device>_writing_session.json
+    │       ├── 711_Writing_Session/
+    │       │   └── 2026/
+    │       │       └── 2026_08_<device>_writing_session.json
+    │       ├── 712_Prose_Analysis/
+    │       │   └── mention_ignores.json
+    │       └── 713_Entity_Tracking/
+    │           ├── <device>_mention_index.json
+    │           └── <device>_analysis_stats.json
     └── ...
 ```
 
 </details>
+
+Writing sessions are recorded per device, so syncing never has two machines writing one file, and the ignore rules you write while tracking entities are a single shared file that travels with the Vault. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
 
 Archiving a project moves its whole folder into `Snowflake Archive`, a folder beside the projects rather than inside any of them. Nothing in the notes changes, and because a project keeps every reference within its own folder, no link is left dangling while it is away. The project manager lists what is in there and restores any of it, giving the project a free name if the one it left under has since been taken. Moving a folder in or out by hand works the same way, so the archive is a place rather than a mechanism.
 
@@ -490,7 +523,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
-| 数据统计 | 记录每次写作时段，设定每日目标，回看字数与时间都去了哪里。 |
+| 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都去了哪里。 |
+| 正文分析 | 把草稿读成阅读时间、句数、对话占比，以及你最常用的那些词。 |
+| 实体追踪 | 追踪每个角色、地点与物品贯穿正文的足迹，并在原处标出它们的提及。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
@@ -587,7 +622,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 <p align="center"><img src="assets/screenshots/manuscript-stream-cn.gif" width="100%" alt="把整部正文当作一页连续读写" /></p>
 
-在正文流中，点击任意一章，它就变成编辑视图；当你转到另一章时，它又回到阅读视图。你可以*（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把它并入下一章。*
+在正文流中，点击任意一章，它就变成编辑视图；当你转到另一章时，它又回到阅读视图。你可以<em>（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把它并入下一章。</em>
 
 **打字机滚动**让正在写的一行保持在页面中部。**专注模式**淡化正在写的段落之外的一切；最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮，方向键也可以带着光标从一章移动到下一章。
 
@@ -599,15 +634,31 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 数据统计
 
-写作看得见，才更容易坚持下去。工作台的**数据统计**面板以数据回看项目，其中**写作时段**标签页衡量的是时间。一个时段由你开启，也可以在进入专注模式时自动开始。没有开启时段时写下的字数同样会被记下，因此在正文里度过的一个早晨，无论你是否记得开始计时，都算进这一天，只有时间仍然只由时段来计。*正文分析与实体追踪是这条标签栏正在建设的另外两面，目前都还处于规划阶段。*
+写作看得见，才更容易坚持下去。工作台的**数据统计**面板以数据回看项目，每个标签页各答一个问题：**写作时段**衡量时间，**正文分析**衡量正文本身，**实体追踪**则追踪正文写到了谁、写到了什么。
+
+**写作时段**是计时的那一页。一个时段由你开启，也可以在进入专注模式时自动开始。没有开启时段时写下的字数同样会被记下，因此在正文里度过的一个早晨，无论你是否记得开始计时，都算进这一天，只有时间仍然只由时段来计。
 
 <p align="center"><a href="assets/screenshots/data_statistics_01_cn.png"><img src="assets/screenshots/data_statistics_01_cn.png" width="100%" alt="数据统计——每日目标、专注计时、今日总结、近期趋势与年度贡献" /></a></p>
 
 <p align="center"><a href="assets/screenshots/data_statistics_02_cn.png"><img src="assets/screenshots/data_statistics_02_cn.png" width="100%" alt="数据统计——日历、每周与每月目标、时间分布与写作阶段" /></a></p>
 
+**正文分析**把草稿当作正文来读。总阅读时间、每章阅读时间、每章句数、每句字数，以及对话在全部文字中所占的比例列在最上方，其下每一章各占一行，可以按标题搜索，也可以按篇幅筛选。**词频**则统计并排出词语本身，还有一片由你最常用的词组成的词云。停用词与你自己的角色、地点等名称默认不计入其中，需要时再勾选。中文按词来读，而不是逐字来数。
+
+<p align="center"><a href="assets/screenshots/prose_analysis_cn.png"><img src="assets/screenshots/prose_analysis_cn.png" width="100%" alt="正文分析——最上方的阅读时间、句数与对话占比，可搜索的章节表格，以及排出名次并配有词云的词频" /></a></p>
+
+**实体追踪**追踪出场的人与物贯穿全书的足迹。正文写到的每一个角色、场景、时间、地点、物品以及你自定义的种类各占一行：被提及了多少次，其中已经是链接的有多少，首次与末次提及在哪一章，还有一条把整本书读成一行的分布线。展开一行，每一处提及都在那里，按章节聚拢，并带着它前后的句子，点击其中一处即可跳到正文中的那个位置。你列出的敏感词、按章节统计的对话、无法归属到某一位成员的提及，以及你写下的忽略规则，也各占一节。
+
+<p align="center"><a href="assets/screenshots/entity_tracking_1_cn.png"><img src="assets/screenshots/entity_tracking_1_cn.png" width="100%" alt="实体追踪——按种类折叠的分节、带计数与首末次提及及分布线的角色表格，以及一个按章节聚拢列出每一处提及的窗口" /></a></p>
+
+**同一份读取也会为正文本身着色。** 以纯文本写下的名字会在原处被标出，已经写成链接的名字则按链接本身的样子标出，右键可以把纯文本的那一处转成链接，也可以只在此处、在本章或在任何出现之处将它放过。工具栏的高亮菜单里是这些开关：实体可选首次提及、未链接的提及或全部提及，敏感词、对话与你自定义的**高亮规则**各有一个，规则可用文本或正则表达式书写，颜色与装饰由你来选。
+
+<p align="center"><a href="assets/screenshots/entity_tracking_2_cn.png"><img src="assets/screenshots/entity_tracking_2_cn.png" width="100%" alt="正文流中的一章，角色名在正文原处以强调色标出" /></a></p>
+
 ## 安装
 
-### 社区插件市场
+除非有特别的理由，建议从社区插件市场安装。它装上的是经过审核的发布版本，也会跟随 Obsidian 自身的更新。BRAT 与手动安装则留给测试版本，以及不自行安装任何东西的仓库。
+
+### 社区插件市场（推荐）
 
 1. 在 Obsidian 中打开 **设置 → 第三方插件**。
 2. 选择 **浏览**，搜索 **Snowflake Method（雪花写作法）**。
@@ -678,6 +729,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 统计项目字数 | 报告当前项目的字数，整个项目与仅正文稿各一份。 |
 | 将专注模式设为关／开／深度／仅正文 | 直接切到指定的专注深度，每档一条命令。 |
 | 切换打字机滚动 | 让正在写的一行保持在页面中部。 |
+| 切换自定义高亮 | 让你自己的高亮规则作用于正文，或者暂时收起它们。 |
 | 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记所存的位置。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
@@ -709,6 +761,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 显示顺序编号 | 关闭 | 显示决定笔记阅读位置的所存编号。 |
 | 打字机滚动 | 开启 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 关 | 淡化正在写的段落之外的一切。仅正文一档会全屏只显示正文。 |
+| 高亮提及 | 实体与对话关闭，其余开启 | 标出实体名称与别名、敏感词、对话，以及你自己的规则。四者各有一个开关，实体还可以只标首次提及、只标尚未写成链接的提及，或者全部标出。 |
 | 自动配对括号与引号 | 开启 | 在正文中输入括号或引号时自动补全另一半。 |
 | 自动配对 Markdown 语法 | 开启 | 在正文中输入加粗、斜体等标记时自动补全另一半。 |
 | 回车开始新段落 | 开启 | 按回车会在段落之间多留一个空行。按 Shift+回车则在段内换行。 |
@@ -735,6 +788,12 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 每日目标：仅正文稿 | 4000 | 正文稿每天要写的净增字数。设为 0 将关闭该目标。 |
 | 每周起始日 | 周一 | 写作统计中每周从哪一天开始。 |
 | 日期格式 | YYYY/MM/DD | 写作统计中日期的书写格式。 |
+| 阅读速度（词／分钟） | 250 | 正文分析按每分钟多少个词来估算阅读时间。 |
+| 阅读速度（字／分钟） | 400 | 正文分析按每分钟多少个中日韩文字来估算阅读时间。 |
+| 自定义停用词 | 无 | 在内置词表之外，还要排除在词频统计之外的词。每行一个。 |
+| 自定义敏感词 | 无 | 实体追踪要留意并统计的词。每行一个。 |
+| 对话引号样式 | 四种全部开启 | 哪些引号会开启一段对话：“ ”、" "、「 」与『 』。 |
+| 自定义高亮规则 | 无 | 你自己的规则，可用文本或正则表达式书写，颜色与装饰由你来选。 |
 
 ## 隐私
 
@@ -781,13 +840,20 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   └── 64_门派/
     ├── 70_工具/
     │   └── 71_数据统计/
-    │       └── 711_写作时段/
-    │           └── 2026/
-    │               └── 2026_08_<设备>_writing_session.json
+    │       ├── 711_写作时段/
+    │       │   └── 2026/
+    │       │       └── 2026_08_<设备>_writing_session.json
+    │       ├── 712_正文分析/
+    │       │   └── mention_ignores.json
+    │       └── 713_实体追踪/
+    │           ├── <设备>_mention_index.json
+    │           └── <设备>_analysis_stats.json
     └── ...
 ```
 
 </details>
+
+写作时段按设备分开记录，同步时不会有两台机器争写同一个文件，而实体追踪时写下的忽略规则是随 Vault 一同流转的单一共享文件。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
 
 归档项目会把它的整个文件夹移入 `Snowflake Archive`。这个文件夹与各个项目并列，而不在任何项目之内。笔记本身不会有任何改动，而且项目的所有引用都在自己的文件夹内，因此归档期间不会留下任何断链。项目管理器会列出其中的项目并随时取回，若原来的名称已被占用，会为它取一个未被使用的名称。手动把文件夹移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
 
