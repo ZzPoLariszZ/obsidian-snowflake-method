@@ -8,6 +8,27 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0]
+
+### Added
+
+- **Entity tracking**, the cast followed through the draft. Every character, scene, time, location, item and kind of your own that the manuscript names is found where it stands, whether it was written as a link or as plain text. The **Entity tracking** tab in Data statistics gives each one a row: how often it is mentioned, how many of those mentions are already links, the first and last chapter to name it, and a distribution that reads the whole book as one line. Open a row and every mention is there, gathered by chapter with the sentence around it, and choosing one jumps to that spot in the manuscript. In the stream itself a mention is marked where it stands, and a right-click turns a plain name into a link or leaves it alone here, in this chapter, or anywhere it appears. **Highlight mentions** chooses whether to mark the first mention of each member, only the mentions not yet written as links, or all of them, and entities are left unmarked until you choose one.
+- **Prose analysis**, the draft read back as prose. Total reading time, reading time per chapter, sentences per chapter, words per sentence and the share of the writing that is dialogue stand at the head of the tab, and under them every chapter keeps a row of its own, searched by title and narrowed by length. **Word frequency** counts and ranks the words themselves, with a word cloud of the ones you lean on. Stopwords and the names of your own members stay outside the count until you ask for them, and Chinese is read as words rather than as single characters. **Reading speed, words per minute** and **Reading speed, CJK characters per minute** set what the reading times assume, and **Custom stopwords** adds your own to the built-in lists.
+- **Sensitive words**, the terms you would rather catch early. List them under **Custom sensitive words**, one per line, and they are marked in the manuscript and counted in entity tracking beside the members. A term written in Latin letters is found in lower case, capitalised and in capitals alike.
+- **Dialogue**, told apart from narration by the quote marks around it. Curly quotes, straight quotes, corner brackets and white corner brackets each carry their own switch, dialogue is counted per chapter and across the whole manuscript, and **Show dialogue** either marks the quoted stretches or fades everything around them.
+- **Custom highlight rules**, your own patterns marked in the manuscript. A rule is literal text or a regular expression, carries as many patterns as you like, and is drawn in the color and decoration you choose. The rules are dress alone, never counted and never written into your notes, and **Toggle custom highlights** turns the whole set off and on from the command palette.
+
+### Changed
+
+- The settings page is folded into carded sections, each opening to what it holds, and the four families of highlighting are set together behind one menu rather than scattered down the page.
+- The custom field pane stands in a frame of its own, scrolls inside it, and closes with a tail line, as the other rail panes do.
+
+### Fixed
+
+- Clicking prose that holds a link puts the caret in the words you clicked. The passage was sought in the text as written, so every link before the click carried the caret further off by the length of the address it hides.
+- Table headers stay aligned with their bodies after the system switches between light and dark mode. The scrollbar width the layout reserves was measured once and never asked for again.
+- A manuscript stream or dashboard hidden behind another tab is refreshed when it comes back into view, rather than showing what it held when it was covered.
+
 ## [0.13.1]
 
 ### Changed
@@ -324,6 +345,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.14.0]
+
+### 新增
+
+- **实体追踪**，追随出场的人与物贯穿全书。正文写到的每一个角色、场景、时间、地点、物品以及你自建的种类，无论写成链接还是写成纯文本，都会在原处被找到。数据统计中的**实体追踪**标签页为它们各列一行：被提及了多少次，其中已经是链接的有多少，首次与末次提及在哪一章，还有一条把整本书读成一行的分布线。展开一行，每一处提及都在那里，按章节聚拢并带着前后的句子，点击其中一处便可跳到正文里的那个位置。正文之中，提及会在原处被标出，右键可以把纯文本的名字转成链接，也可以只在此处、在本章或在任何出现之处将它放过。**高亮提及**决定标出哪一些：每位成员的首次提及、尚未写成链接的提及，或者全部。实体的标记默认关闭，由你选定一种之后才会出现。
+- **正文分析**，把草稿当作正文来读。总阅读时间、每章阅读时间、每章句数、每句字数，以及对话在全部文字中所占的比例列在标签页的最上方，其下每一章各占一行，可以按标题搜索，也可以按篇幅筛选。**词频**统计并排出词语本身，还有一片由你最常用的词组成的词云。停用词与你自己的成员名称默认不计入其中，需要时再勾选。中文按词来读，而不是逐字来数。**阅读速度（词/分钟）**与**阅读速度（字/分钟）**决定阅读时间以什么速度估算，**自定义停用词**则在内置词表之外加上你自己的那些。
+- **敏感词**，那些你希望早些发现的词。在**自定义敏感词**中每行写一个，它们便会在正文中被标出，并在实体追踪里与成员并列计数。以拉丁字母写下的词，小写、首字母大写与全大写都能找到。
+- **对话**，由包裹它的引号与叙述分开。弯引号、直引号、直角引号与双直角引号各有各的开关，对话会按章与全书分别计数，**对话呈现**则或者标出引起来的段落，或者把它周围的一切淡去。
+- **自定义高亮规则**，把你自己的样式标进正文。一条规则可以是文本，也可以是正则表达式，能带任意多个模式，并以你选定的颜色与装饰绘出。这些规则只管外观，从不计数，也从不写进你的笔记，**切换自定义高亮**可以在命令面板中把整组开关一次。
+
+### 变更
+
+- 设置页折成一张张卡片式分区，各自展开各自所辖的内容，四类高亮也集中到一个菜单之后一同设置，不再散落在整页各处。
+- 自定义字段面板有了自己的边框，在框内滚动，并以一条尾线收束，与侧栏其他面板一致。
+
+### 修复
+
+- 点击含有链接的正文时，光标会落在你点的那几个字上。此前查找位置用的是写下的原文，因此点击处之前的每一个链接，都会把光标再推远它所藏地址那么长的一段。
+- 系统在浅色与深色模式之间切换之后，表头依然与表身对齐。此前版面预留的滚动条宽度只量过一次，之后再没有问过。
+- 被其他标签页遮住的正文流或工作台，在重新露出时会刷新，而不再显示它被遮住时的内容。
 
 ## [0.13.1]
 
