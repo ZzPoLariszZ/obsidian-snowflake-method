@@ -1,5 +1,3 @@
-import { setIcon } from 'obsidian';
-
 import type { Revision } from '../domain';
 import type { Translate } from './modals';
 
@@ -44,7 +42,12 @@ export interface RevisionRailCallbacks {
 	onAccept(revision: Revision): void;
 	onReject(revision: Revision): void;
 	onDiscard(revision: Revision): void;
-	onEditSave(revision: Revision, proposed: string, comment: string): void;
+	/**
+	 * Takes an edited revision. False means it was refused -- the card stays
+	 * open on what was typed instead of closing over a save that never
+	 * happened.
+	 */
+	onEditSave(revision: Revision, proposed: string, comment: string): boolean;
 	onDraftSave(proposed: string, comment: string): void;
 	onDraftCancel(): void;
 }
@@ -91,73 +94,202 @@ export function renderRevisionRail(
 
 	const t = callbacks.t;
 
-	const excerpt = (text: string, limit = 160): string =>
-		text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
+	/**
+	 * Where a card's buttons stand. The answers to a proposal share the
+	 * card's width between them, since each is as likely as the next; the
+	 * form's pair sits at the right, where a dialog keeps what closes it.
+	 */
+	const actionRow = (card: HTMLElement, shape: 'balanced' | 'end'): HTMLElement =>
+		card.createDiv({
+			cls: `snowflake-method-revision-actions is-${shape}`,
+		});
 
-	const iconButton = (
+	const actionButton = (
 		host: HTMLElement,
-		icon: string,
 		label: string,
 		onClick: () => void,
+		primary = false,
 	): void => {
 		const button = host.createEl('button', {
-			cls: 'snowflake-method-revision-action',
+			cls: primary
+				? 'mod-cta snowflake-method-revision-action'
+				: 'snowflake-method-revision-action',
+			text: label,
 			attr: { type: 'button', 'aria-label': label, title: label },
 		});
-		setIcon(button, icon);
-		button.createSpan({ text: label });
 		button.addEventListener('click', (event) => {
 			event.stopPropagation();
 			onClick();
 		});
 	};
 
-	/** The editable face: proposed text and comment, save and cancel. */
+	/**
+	 * One titled block: the field's name over its value, the shape the
+	 * plugin's own forms use everywhere else. Every card is read as named
+	 * parts this way -- what the text says now, what it would say, and why --
+	 * rather than as three anonymous paragraphs that only their styling tells
+	 * apart.
+	 */
+	const fieldBlock = (
+		host: HTMLElement,
+		part: 'type' | 'original' | 'proposed' | 'comment',
+		label: string,
+	): HTMLElement => {
+		const field = host.createDiv({
+			cls: `snowflake-method-revision-field is-${part}`,
+		});
+		field.createDiv({ cls: 'snowflake-method-revision-label', text: label });
+		return field;
+	};
+
+	/** A field's value, shown whole: a card trims nothing it was given. */
+	const valueBlock = (
+		host: HTMLElement,
+		part: 'original' | 'proposed' | 'comment',
+		label: string,
+		text: string,
+	): void => {
+		fieldBlock(host, part, label).createDiv({
+			cls: 'snowflake-method-revision-value',
+			text,
+		});
+	};
+
+	/**
+	 * What the revision would do, as the card's first field: the word alone
+	 * in the colour of its kind, since a saved card is read rather than
+	 * operated and a coloured slab at its head only competes with the two
+	 * grounds that matter.
+	 */
+	const typeBlock = (
+		host: HTMLElement,
+		kind: Revision['kind'] | 'conflict',
+		text: string,
+	): HTMLElement => {
+		const value = fieldBlock(host, 'type', t('manuscript.revision.type'))
+			.createDiv({
+				cls: 'snowflake-method-revision-value',
+				attr: { 'data-kind': kind },
+			});
+		value.createSpan({ text });
+		return value;
+	};
+
+	/**
+	 * A text area tall enough for all of it: the words are shown whole, never
+	 * as much of them as the rows happened to hold. The rows are the floor --
+	 * three where the author is expected to write, one for the original,
+	 * which is given rather than asked for and so is exactly as tall as it
+	 * is. The drag handle still raises any of them, and a card built in a
+	 * pane nobody is looking at measures nothing and is left at its rows
+	 * until it is drawn somewhere real.
+	 */
+	const growToFit = (input: HTMLTextAreaElement): void => {
+		if (input.value.length === 0) return;
+		// Its height is still the rows', so scrollHeight is either those rows
+		// or everything in it, whichever is taller; the borders the box sizes
+		// inside are added back.
+		if (input.offsetHeight === 0) return;
+		const frame = input.offsetHeight - input.clientHeight;
+		input.setCssStyles({ height: `${String(input.scrollHeight + frame)}px` });
+	};
+
+	const inputBlock = (
+		host: HTMLElement,
+		part: 'original' | 'proposed' | 'comment',
+		label: string,
+		options: {
+			value: string;
+			rows?: number;
+			placeholder?: string;
+			readOnly?: boolean;
+		},
+	): HTMLTextAreaElement => {
+		const field = fieldBlock(host, part, label);
+		const input = field.createEl('textarea', {
+			cls: 'snowflake-method-revision-input',
+			attr: {
+				rows: String(options.rows ?? 3),
+				'aria-label': label,
+				...(options.placeholder === undefined
+					? {}
+					: { placeholder: options.placeholder }),
+				// The words being revised are shown, not offered: they are
+				// what the proposal is measured against, and a card that let
+				// them be typed over would be promising an edit it cannot
+				// make.
+				...(options.readOnly === true ? { readonly: 'readonly' } : {}),
+			},
+		});
+		if (options.readOnly === true) input.addClass('is-readonly');
+		input.value = options.value;
+		growToFit(input);
+		return input;
+	};
+
+	/**
+	 * The editable face: the three fields named and filled, cancel and save.
+	 * No kind here -- while a revision is being written the author is looking
+	 * at their own words and their replacement, and a word like "Replace"
+	 * above them says nothing the two fields do not. The proposal is always
+	 * offered, deletions included: emptying it is how a replacement becomes a
+	 * deletion, and filling it again is the way back.
+	 */
 	const renderForm = (
 		card: HTMLElement,
 		options: {
-			kind: Revision['kind'];
+			originalText: string;
 			proposed: string;
 			comment: string;
 			onSave(proposed: string, comment: string): void;
 			onCancel(): void;
 		},
 	): void => {
-		let proposedInput: HTMLTextAreaElement | null = null;
-		if (options.kind !== 'delete') {
-			proposedInput = card.createEl('textarea', {
-				cls: 'snowflake-method-revision-input',
-				attr: {
-					rows: '3',
-					placeholder: t('manuscript.revision.proposedPlaceholder'),
-					'aria-label': t('manuscript.revision.proposed'),
-				},
+		const fields = card.createDiv({
+			cls: 'snowflake-method-revision-fields',
+		});
+		if (options.originalText.length > 0) {
+			inputBlock(fields, 'original', t('manuscript.revision.original'), {
+				value: options.originalText,
+				rows: 1,
+				readOnly: true,
 			});
-			proposedInput.value = options.proposed;
 		}
-		const commentInput = card.createEl('textarea', {
-			cls: 'snowflake-method-revision-input',
-			attr: {
-				rows: '2',
-				placeholder: t('manuscript.revision.commentPlaceholder'),
-				'aria-label': t('manuscript.revision.comment'),
+		const proposedInput = inputBlock(
+			fields,
+			'proposed',
+			t('manuscript.revision.proposed'),
+			{
+				value: options.proposed,
+				placeholder: t('manuscript.revision.proposedPlaceholder'),
 			},
-		});
-		commentInput.value = options.comment;
-		const actions = card.createDiv({
-			cls: 'snowflake-method-revision-actions',
-		});
-		iconButton(actions, 'check', t('manuscript.revision.save'), () => {
-			options.onSave(proposedInput?.value ?? '', commentInput.value);
-		});
-		iconButton(actions, 'x', t('manuscript.revision.cancel'), () => {
+		);
+		const commentInput = inputBlock(
+			fields,
+			'comment',
+			t('manuscript.revision.commentOptional'),
+			{
+				value: options.comment,
+				placeholder: t('manuscript.revision.commentPlaceholder'),
+			},
+		);
+		const actions = actionRow(card, 'end');
+		actionButton(actions, t('manuscript.revision.cancel'), () => {
 			options.onCancel();
 		});
+		actionButton(
+			actions,
+			t('manuscript.revision.save'),
+			() => {
+				options.onSave(proposedInput.value, commentInput.value);
+			},
+			true,
+		);
 		// Never let focus scroll: at this moment the card may not have been
 		// given its top yet, and scrolling a card at the rail's origin into
 		// view is a jump to the segment's head. The card stands beside the
 		// words that were clicked, which are already on the screen.
-		(proposedInput ?? commentInput).focus({ preventScroll: true });
+		proposedInput.focus({ preventScroll: true });
 	};
 
 	const renderRestCard = (
@@ -167,39 +299,55 @@ export function renderRevisionRail(
 		beginEdit: () => void,
 	): void => {
 		const revision = entry.revision;
-		card.createDiv({
-			cls: 'snowflake-method-revision-kind',
-			text: t(`manuscript.revision.kind.${revision.kind}`),
+		const fields = card.createDiv({
+			cls: 'snowflake-method-revision-fields',
 		});
+		typeBlock(
+			fields,
+			revision.kind,
+			t(`manuscript.revision.kind.${revision.kind}`),
+		);
 		if (revision.kind !== 'insert') {
-			card.createDiv({
-				cls: 'snowflake-method-revision-original',
-				text: excerpt(revision.originalText),
-			});
+			valueBlock(
+				fields,
+				'original',
+				t('manuscript.revision.original'),
+				revision.originalText,
+			);
 		}
 		if (revision.kind !== 'delete') {
-			card.createDiv({
-				cls: 'snowflake-method-revision-proposed',
-				text: excerpt(revision.proposed),
-			});
+			valueBlock(
+				fields,
+				'proposed',
+				t('manuscript.revision.proposed'),
+				revision.proposed,
+			);
 		}
 		if (revision.comment.length > 0) {
-			card.createDiv({
-				cls: 'snowflake-method-revision-comment',
-				text: revision.comment,
-			});
+			valueBlock(
+				fields,
+				'comment',
+				t('manuscript.revision.comment'),
+				revision.comment,
+			);
 		}
 		if (readOnly) return;
-		const actions = card.createDiv({
-			cls: 'snowflake-method-revision-actions',
-		});
-		iconButton(actions, 'check', t('manuscript.revision.accept'), () => {
-			callbacks.onAccept(revision);
-		});
-		iconButton(actions, 'x', t('manuscript.revision.reject'), () => {
+		// Left to right the row runs from the mildest to the one that
+		// rewrites the manuscript, so the button under the pointer after a
+		// glance is never the one that changes the text.
+		const actions = actionRow(card, 'balanced');
+		actionButton(actions, t('manuscript.revision.edit'), beginEdit);
+		actionButton(actions, t('manuscript.revision.reject'), () => {
 			callbacks.onReject(revision);
 		});
-		iconButton(actions, 'pencil', t('manuscript.revision.edit'), beginEdit);
+		actionButton(
+			actions,
+			t('manuscript.revision.accept'),
+			() => {
+				callbacks.onAccept(revision);
+			},
+			true,
+		);
 	};
 
 	const renderConflictCard = (
@@ -208,33 +356,47 @@ export function renderRevisionRail(
 		readOnly: boolean,
 	): void => {
 		card.addClass('is-conflict');
-		card.createDiv({
-			cls: 'snowflake-method-revision-kind',
+		const fields = card.createDiv({
+			cls: 'snowflake-method-revision-fields',
+		});
+		// Still typed by what it would have done, with the badge saying why
+		// it can no longer do it.
+		const type = typeBlock(
+			fields,
+			'conflict',
+			t(`manuscript.revision.kind.${revision.kind}`),
+		);
+		type.createSpan({
+			cls: 'snowflake-method-revision-badge',
 			text: t('manuscript.revision.conflict'),
 		});
 		if (revision.originalText.length > 0) {
-			card.createDiv({
-				cls: 'snowflake-method-revision-original',
-				text: excerpt(revision.originalText),
-			});
+			valueBlock(
+				fields,
+				'original',
+				t('manuscript.revision.original'),
+				revision.originalText,
+			);
 		}
 		if (revision.proposed.length > 0) {
-			card.createDiv({
-				cls: 'snowflake-method-revision-proposed',
-				text: excerpt(revision.proposed),
-			});
+			valueBlock(
+				fields,
+				'proposed',
+				t('manuscript.revision.proposed'),
+				revision.proposed,
+			);
 		}
 		if (revision.comment.length > 0) {
-			card.createDiv({
-				cls: 'snowflake-method-revision-comment',
-				text: revision.comment,
-			});
+			valueBlock(
+				fields,
+				'comment',
+				t('manuscript.revision.comment'),
+				revision.comment,
+			);
 		}
 		if (readOnly) return;
-		const actions = card.createDiv({
-			cls: 'snowflake-method-revision-actions',
-		});
-		iconButton(actions, 'trash-2', t('manuscript.revision.discard'), () => {
+		const actions = actionRow(card, 'end');
+		actionButton(actions, t('manuscript.revision.discard'), () => {
 			callbacks.onDiscard(revision);
 		});
 	};
@@ -273,12 +435,17 @@ export function renderRevisionRail(
 				state.editing = true;
 				card.empty();
 				renderForm(card, {
-					kind: entry.revision.kind,
+					originalText: entry.revision.originalText,
 					proposed: entry.revision.proposed,
 					comment: entry.revision.comment,
 					onSave: (proposed, comment) => {
+						// A refused save leaves the card open on what was
+						// typed: the author gets the notice and their words
+						// both, instead of one at the price of the other.
+						if (!callbacks.onEditSave(entry.revision, proposed, comment)) {
+							return;
+						}
 						state.editing = false;
-						callbacks.onEditSave(entry.revision, proposed, comment);
 					},
 					onCancel: () => {
 						state.editing = false;
@@ -287,6 +454,10 @@ export function renderRevisionRail(
 						sync(model);
 					},
 				});
+				// Both faces are drawn in place, and they are not the same
+				// height: without a fresh placement the cards below stay where
+				// the shorter one left them, and the taller one covers them.
+				sync(model);
 			});
 			cards.set(key, state);
 		}
@@ -297,18 +468,8 @@ export function renderRevisionRail(
 				draftEl = rail.createDiv({
 					cls: 'snowflake-method-revision-card is-draft',
 				});
-				draftEl.createDiv({
-					cls: 'snowflake-method-revision-kind',
-					text: t(`manuscript.revision.kind.${model.draft.kind}`),
-				});
-				if (model.draft.originalText.length > 0) {
-					draftEl.createDiv({
-						cls: 'snowflake-method-revision-original',
-						text: excerpt(model.draft.originalText),
-					});
-				}
 				renderForm(draftEl, {
-					kind: model.draft.kind,
+					originalText: model.draft.originalText,
 					proposed: '',
 					comment: '',
 					onSave: (proposed, comment) => {

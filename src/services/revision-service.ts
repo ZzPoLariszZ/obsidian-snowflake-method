@@ -37,7 +37,14 @@ export class RevisionService {
 		});
 	}
 
-	/** Rewrites one revision's proposed text and comment; false when gone. */
+	/**
+	 * Rewrites one revision's proposed text and comment; false when gone.
+	 * The kind follows the proposal the same way it did at creation: a range
+	 * revision left proposing nothing is a deletion, and one given words
+	 * again is a replacement, so the two are the same revision seen at two
+	 * moments rather than two things the author must choose between. An
+	 * insertion has no text under it to fall back to and stays what it is.
+	 */
 	update(
 		project: ProjectRef,
 		id: string,
@@ -53,10 +60,13 @@ export class RevisionService {
 				revision.id === id
 					? {
 							...revision,
-							// A deletion proposes nothing by definition; editing
-							// its comment must not quietly turn it into a
-							// replacement.
-							proposed: revision.kind === "delete" ? "" : patch.proposed,
+							kind:
+								revision.kind === 'insert'
+									? revision.kind
+									: patch.proposed.length === 0
+										? 'delete'
+										: 'replace',
+							proposed: patch.proposed,
 							comment: patch.comment,
 						}
 					: revision,

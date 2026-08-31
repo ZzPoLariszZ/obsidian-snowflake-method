@@ -1565,12 +1565,20 @@ export class SnowflakeManuscriptView extends ItemView {
 				rethrow(this.host.discardRevision(projectPath(), revision.id));
 			},
 			onEditSave: (revision, proposed, comment) => {
+				// An insertion proposing nothing would insert nothing: the
+				// refusal the draft gets, at the one place an existing
+				// revision can be emptied.
+				if (revision.kind === 'insert' && proposed.length === 0) {
+					new Notice(this.t('manuscript.revision.emptyProposed'));
+					return false;
+				}
 				rethrow(
 					this.host.updateRevision(projectPath(), revision.id, {
 						proposed,
 						comment,
 					}),
 				);
+				return true;
 			},
 			onDraftSave: (proposed, comment) => {
 				const entry = entryNow();

@@ -5527,12 +5527,18 @@ body {
 	width: min(260px, 70%);
 }
 
+/* A card is a note pinned in the margin: a stripe down its binding edge in
+   the revision colour so the eye ties it to the marked words, a quiet frame,
+   and its parts laid out as named fields rather than as three paragraphs
+   that only their styling tells apart. */
 .snowflake-method-revision-card {
 	position: absolute;
 	right: 0;
 	left: 0;
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid
+		color-mix(in srgb, var(--color-yellow) 55%, transparent);
 	border-radius: var(--radius-m);
 	background-color: var(--background-primary);
 	box-shadow: var(--shadow-s);
@@ -5541,72 +5547,164 @@ body {
 	   move the card, and the slide is what tells the reader it is the
 	   same card following its text. A card is born with its top already
 	   set in the same pass that makes it, so nothing flies in from
-	   nowhere. Top only -- the overlay toggle repositions sideways, and
-	   a card sailing across the prose on a pane resize would be worse
-	   than the hop. */
-	transition: top 250ms ease-out;
+	   nowhere. Position is animated on top only -- the overlay toggle
+	   repositions sideways, and a card sailing across the prose on a pane
+	   resize would be worse than the hop; the rest paints without moving
+	   anything. */
+	transition:
+		top 250ms ease-out,
+		border-color 150ms ease-out,
+		box-shadow 150ms ease-out;
+}
+
+.snowflake-method-revision-card:hover {
+	border-color: var(--background-modifier-border-hover);
+	border-left-color: var(--color-yellow);
+	box-shadow: var(--shadow-l);
 }
 
 .snowflake-method-revision-card.is-conflict {
-	border-color: color-mix(in srgb, var(--color-red) 55%, transparent);
+	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+	border-left-color: var(--color-red);
 }
 
+.snowflake-method-revision-card.is-conflict:hover {
+	border-color: color-mix(in srgb, var(--color-red) 65%, transparent);
+	border-left-color: var(--color-red);
+}
+
+/* The card being written stands out from the ones already made. */
 .snowflake-method-revision-card.is-draft {
-	border-color: color-mix(in srgb, var(--color-yellow) 65%, transparent);
+	border-color: color-mix(in srgb, var(--color-yellow) 45%, transparent);
+	border-left-color: var(--color-yellow);
+	box-shadow: var(--shadow-l);
 }
 
-.snowflake-method-revision-kind {
-	margin-bottom: var(--size-4-1);
+.snowflake-method-revision-fields {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-revision-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	min-width: 0;
+}
+
+.snowflake-method-revision-label {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
+	line-height: var(--line-height-tight);
 }
 
-.snowflake-method-revision-card.is-conflict .snowflake-method-revision-kind {
-	color: var(--color-red);
-}
-
-.snowflake-method-revision-original {
-	color: var(--text-muted);
-	text-decoration: line-through;
-	overflow-wrap: anywhere;
-}
-
-.snowflake-method-revision-proposed {
+/* The grounds are the whole distinction: what stands there now, what would
+   stand there instead, and the aside about it. No line through the original
+   -- the text itself already wears one where it stands, and a struck copy in
+   the card is only harder to read. Whatever the field holds is shown whole,
+   its own line breaks included. */
+.snowflake-method-revision-value {
+	padding: var(--size-2-2) var(--size-4-1);
+	border-radius: var(--radius-s);
+	background-color: var(--background-secondary);
 	color: var(--text-normal);
+	line-height: var(--line-height-tight);
+	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
 
-.snowflake-method-revision-comment {
-	margin-top: var(--size-4-1);
-	color: var(--text-faint);
-	overflow-wrap: anywhere;
+/* The kind is said in ink rather than on a slab: one coloured word under its
+   own field name, leaving the two grounds below it to mean what they mean.
+   Each colour is carried toward the page's own ink so it stays legible in
+   either theme. */
+.snowflake-method-revision-field.is-type .snowflake-method-revision-value {
+	padding: 0;
+	background-color: transparent;
+	color: color-mix(in srgb, var(--color-yellow) 60%, var(--text-normal));
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-revision-field.is-type
+	.snowflake-method-revision-value[data-kind='insert'] {
+	color: color-mix(in srgb, var(--color-green) 60%, var(--text-normal));
+}
+
+.snowflake-method-revision-field.is-type
+	.snowflake-method-revision-value[data-kind='delete'] {
+	color: color-mix(in srgb, var(--color-red) 60%, var(--text-normal));
+}
+
+.snowflake-method-revision-field.is-type
+	.snowflake-method-revision-value[data-kind='conflict'] {
+	color: var(--text-muted);
+}
+
+.snowflake-method-revision-field.is-original .snowflake-method-revision-value {
+	background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
+	color: var(--text-muted);
+}
+
+.snowflake-method-revision-field.is-proposed .snowflake-method-revision-value {
+	background-color: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.snowflake-method-revision-field.is-comment .snowflake-method-revision-value {
+	padding: 0 0 0 var(--size-4-2);
+	border-left: 2px solid var(--background-modifier-border);
+	border-radius: 0;
+	background-color: transparent;
+	color: var(--text-muted);
 }
 
 .snowflake-method-revision-input {
 	width: 100%;
-	margin-top: var(--size-4-1);
+	box-sizing: border-box;
 	resize: vertical;
 	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+}
+
+/* The words being revised, given as they stand: readable, selectable, and
+   not typeable over. */
+.snowflake-method-revision-input.is-readonly {
+	border-color: transparent;
+	background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
+	color: var(--text-muted);
+	cursor: default;
 }
 
 .snowflake-method-revision-actions {
 	display: flex;
 	gap: var(--size-4-1);
-	margin-top: var(--size-4-2);
+	margin-top: var(--size-4-3);
+}
+
+/* The three answers to a proposal are equally likely, so they divide the
+   card between them and the row ends where the card does. */
+.snowflake-method-revision-actions.is-balanced
+	.snowflake-method-revision-action {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+/* What closes a form sits where a dialog keeps it. */
+.snowflake-method-revision-actions.is-end {
+	justify-content: flex-end;
 }
 
 .snowflake-method-revision-action {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	padding: var(--size-2-2) var(--size-4-1);
+	padding: var(--size-2-2) var(--size-4-2);
+	overflow: hidden;
 	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
-.snowflake-method-revision-action svg {
-	width: var(--icon-xs);
-	height: var(--icon-xs);
+/* The conflict badge rides after the kind instead of before a table cell. */
+.snowflake-method-revision-value .snowflake-method-revision-badge {
+	margin-inline: var(--size-4-1) 0;
 }
 
 /* The revision table on the task management pane: the statistics tables'

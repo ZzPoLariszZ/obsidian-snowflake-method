@@ -191,18 +191,47 @@ describe("RevisionService", () => {
 		);
 	});
 
-	it("a deletion's proposed text stays empty through an edit", async () => {
-		const revision = makeRevision("rev-1", {
-			kind: "delete",
-			proposed: "",
-		});
-		await revisions.create(project, revision);
+	it("a deletion given words back becomes a replacement", async () => {
+		await revisions.create(
+			project,
+			makeRevision("rev-1", { kind: "delete", proposed: "" }),
+		);
 		await revisions.update(project, "rev-1", {
-			proposed: "smuggled",
+			proposed: "a white egret",
 			comment: "note",
 		});
 		const [kept] = await revisions.list(project);
-		expect(kept).toMatchObject({ kind: "delete", proposed: "", comment: "note" });
+		expect(kept).toMatchObject({
+			kind: "replace",
+			proposed: "a white egret",
+			comment: "note",
+		});
+	});
+
+	it("a replacement emptied becomes a deletion", async () => {
+		await revisions.create(
+			project,
+			makeRevision("rev-1", { kind: "replace", proposed: "a white egret" }),
+		);
+		await revisions.update(project, "rev-1", { proposed: "", comment: "cut" });
+		const [kept] = await revisions.list(project);
+		expect(kept).toMatchObject({ kind: "delete", proposed: "", comment: "cut" });
+	});
+
+	it("an insertion stays an insertion whatever it proposes", async () => {
+		await revisions.create(
+			project,
+			makeRevision("rev-1", {
+				kind: "insert",
+				from: 4,
+				to: 4,
+				originalText: "",
+				proposed: "a heron",
+			}),
+		);
+		await revisions.update(project, "rev-1", { proposed: "", comment: "" });
+		const [kept] = await revisions.list(project);
+		expect(kept).toMatchObject({ kind: "insert", proposed: "" });
 	});
 
 	it("removes for accept, reject and discard alike", async () => {
