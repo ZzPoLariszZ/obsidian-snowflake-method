@@ -19,11 +19,49 @@ import {
 	Decoration,
 	EditorView,
 	ViewPlugin,
+	WidgetType,
 	type DecorationSet,
 	type ViewUpdate,
 } from '@codemirror/view';
 
 import type { MentionMark } from '../domain';
+
+/**
+ * Obsidian puts its element builders on every window it opens, which is how a
+ * popout builds elements of its own; the published Window type does not say
+ * so, and this is the one thing here that needs them.
+ */
+interface BuilderWindow extends Window {
+	createFragment(): DocumentFragment;
+}
+
+/**
+ * A mark with nothing under it: a revision's insertion point, which is a
+ * position rather than a stretch of text. An empty inline span standing in the
+ * position, so the bar its class draws is at the place itself rather than on
+ * the edge of some character beside it -- and so a point in a run of spaces, at
+ * the end of a line, on a blank line, or in an empty note is shown exactly
+ * where it is. Empty and inline: it adds no width, no break opportunity and no
+ * height, and the line measures as it did without it.
+ */
+class PointMarkWidget extends WidgetType {
+	constructor(private readonly classes: string) {
+		super();
+	}
+
+	eq(other: PointMarkWidget): boolean {
+		return other.classes === this.classes;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		// Built in the editor's OWN window, so a stream in a popout gets an
+		// element that window can hold, and through a fragment because that is
+		// where Obsidian's builder can put one and still hand it back loose for
+		// CodeMirror to place.
+		const win = view.dom.win as BuilderWindow;
+		return win.createFragment().createSpan({ cls: this.classes });
+	}
+}
 
 export interface MentionHighlightConfig {
 	/**
@@ -55,12 +93,22 @@ export function refreshMentionHighlights(view: EditorView): void {
  * Marks as a decoration set, each carrying its mark in the spec so a hit
  * test can hand back the occurrence. Exported for the headless tests that
  * pin the round-trip and the mapping this plugin leans on.
+ *
+ * A mark of no width is a position rather than a stretch, and becomes a widget
+ * standing in it. It carries no `mentionMark`: nothing is under it to be
+ * right-clicked, and a zero-length span would otherwise win every hit test at
+ * its own offset by being the shortest thing there.
  */
 export function mentionDecorations(
 	marks: readonly MentionMark[],
 ): DecorationSet {
 	return Decoration.set(
 		marks.map((mark) => {
+			if (mark.to <= mark.from) {
+				return Decoration.widget({
+					widget: new PointMarkWidget(mark.classes),
+				}).range(mark.from);
+			}
 			const attributes = {
 				...(mark.title === undefined ? {} : { title: mark.title }),
 				...(mark.styleVar === undefined ? {} : { style: mark.styleVar }),

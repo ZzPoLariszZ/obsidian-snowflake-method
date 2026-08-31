@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { captureRevision } from '../../src/domain';
 import {
+	filterRevisionRows,
 	revisionTableRows,
 	type RevisionNoteReading,
+	type RevisionRow,
 } from '../../src/ui/revision-panel';
 
 const ONE = '50_Manuscript/Chapter 1.md';
@@ -75,5 +77,65 @@ describe('shaping the revision table', () => {
 		const byId = new Map(rows.map((row) => [row.id, row]));
 		expect(byId.get('rev-a')?.status).toBe('conflict');
 		expect(byId.get('rev-b')?.status).toBe('live');
+	});
+});
+
+describe('searching the revision table', () => {
+	const row = (over: Partial<RevisionRow>): RevisionRow => ({
+		id: 'rev',
+		path: ONE,
+		title: 'Chapter 1',
+		kind: 'replace',
+		original: 'grey heron',
+		proposed: 'grey egret',
+		comment: '',
+		status: 'live',
+		from: 4,
+		to: 14,
+		...over,
+	});
+	const kindOf = (kind: RevisionRow['kind']): string =>
+		({ replace: 'Replace', insert: 'Insert', delete: 'Delete' })[kind];
+
+	it('keeps every row while nothing is typed', () => {
+		const rows = [row({ id: 'a' }), row({ id: 'b' })];
+		expect(filterRevisionRows(rows, '   ', kindOf).map((hit) => hit.id)).toEqual([
+			'a',
+			'b',
+		]);
+	});
+
+	it('matches any of the words a row shows, whatever the case', () => {
+		const rows = [
+			row({ id: 'a', original: 'grey heron' }),
+			row({ id: 'b', original: 'the water', proposed: 'the shallows' }),
+			row({ id: 'c', original: 'dusk', comment: 'Ask about the HERON' }),
+			row({ id: 'd', original: 'dawn', title: 'Heron Chapter' }),
+		];
+		expect(filterRevisionRows(rows, 'heron', kindOf).map((hit) => hit.id)).toEqual(
+			['a', 'c', 'd'],
+		);
+		expect(
+			filterRevisionRows(rows, 'shallows', kindOf).map((hit) => hit.id),
+		).toEqual(['b']);
+	});
+
+	it('matches the kind as the reader is shown it, not as it is stored', () => {
+		const rows = [
+			row({ id: 'a', kind: 'insert' }),
+			row({ id: 'b', kind: 'delete' }),
+		];
+		expect(filterRevisionRows(rows, 'Insert', kindOf).map((hit) => hit.id)).toEqual(
+			['a'],
+		);
+		// A kind named in another language finds nothing here, which is the
+		// point: the table is searched in the words it is drawn in.
+		expect(filterRevisionRows(rows, '插入', kindOf)).toEqual([]);
+	});
+
+	it('leaves the rows it was handed alone', () => {
+		const rows = [row({ id: 'a' }), row({ id: 'b', original: 'dusk' })];
+		filterRevisionRows(rows, 'dusk', kindOf);
+		expect(rows.map((hit) => hit.id)).toEqual(['a', 'b']);
 	});
 });

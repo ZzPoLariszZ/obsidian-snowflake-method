@@ -273,11 +273,11 @@ describe('planning the dress', () => {
 		expect(anchors.get('rev-5')).toEqual({ from: 21, to: 24 });
 	});
 
-	it('an insertion borrows the first visible character after the point', () => {
+	it('an insertion touching a word borrows it, marked before', () => {
 		const { plan } = planRevisionMarks('50/one.md', BODY, [
-			capture('insert', 14, 14),
+			capture('insert', 15, 15),
 		]);
-		// The point sits before the space; the carrier is the "s" of "stood".
+		// The point stands on the "s" of "stood", with nothing in between.
 		expect(plan).toEqual([
 			expect.objectContaining({
 				from: 15,
@@ -285,7 +285,78 @@ describe('planning the dress', () => {
 				classes: 'snowflake-method-revision is-insertion',
 			}),
 		]);
+		expect(plan[0]?.occurrence).toMatchObject({ from: 15, to: 15 });
+	});
+
+	it('a point before a space belongs to the word behind it', () => {
+		const { plan } = planRevisionMarks('50/one.md', BODY, [
+			capture('insert', 14, 14),
+		]);
+		// The space between "heron" and "stood": the bar goes at the end of
+		// "heron", not a space away at the head of "stood".
+		expect(plan).toEqual([
+			expect.objectContaining({
+				from: 13,
+				to: 14,
+				classes: 'snowflake-method-revision is-insertion is-insertion-after',
+			}),
+		]);
 		expect(plan[0]?.occurrence).toMatchObject({ from: 14, to: 14 });
+	});
+
+	it('a point inside a run of spaces belongs to the word behind it', () => {
+		const body = 'The grey heron    stood in the shallows.';
+		// Every position in the run, the one against the next word included.
+		for (const at of [14, 15, 16, 17]) {
+			const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', `rev-${String(at)}`, 7);
+			const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+			expect(plan).toEqual([
+				expect.objectContaining({
+					from: 13,
+					to: 14,
+					classes: 'snowflake-method-revision is-insertion is-insertion-after',
+				}),
+			]);
+		}
+	});
+
+	it('the word behind is taken across a break as readily as along a line', () => {
+		const body = `${BODY}\n\n   The water held still.`;
+		// A blank line, and the whitespace opening the line after it: the page
+		// shows one gap between two paragraphs however these positions differ,
+		// and its near edge is where the paragraph above ends.
+		for (const at of [
+			BODY.length,
+			BODY.length + 1,
+			BODY.length + 2,
+			BODY.length + 3,
+			BODY.length + 4,
+		]) {
+			const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', `rev-${String(at)}`, 7);
+			const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+			expect(plan).toEqual([
+				expect.objectContaining({
+					from: BODY.length - 1,
+					to: BODY.length,
+					classes: 'snowflake-method-revision is-insertion is-insertion-after',
+				}),
+			]);
+		}
+	});
+
+	it('only a point with nothing behind it anywhere looks ahead', () => {
+		const body = `\n   The water held still.`;
+		for (const at of [0, 1, 2, 3]) {
+			const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', `rev-${String(at)}`, 7);
+			const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+			expect(plan).toEqual([
+				expect.objectContaining({
+					from: 4,
+					to: 5,
+					classes: 'snowflake-method-revision is-insertion',
+				}),
+			]);
+		}
 	});
 
 	it('at the body end it borrows the last character, marked after', () => {
@@ -339,12 +410,16 @@ describe('planning the dress', () => {
 		]);
 	});
 
-	it('a point on a blank line borrows across the break', () => {
+	it('a point on a blank line takes the paragraph above, not the one below', () => {
 		const body = `${BODY}\n\nThe water held still.`;
 		const at = BODY.length + 1;
 		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-10', 7);
 		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
-		expect(plan[0]).toMatchObject({ from: BODY.length + 2, to: BODY.length + 3 });
+		expect(plan[0]).toMatchObject({
+			from: BODY.length - 1,
+			to: BODY.length,
+			classes: 'snowflake-method-revision is-insertion is-insertion-after',
+		});
 	});
 
 	it('a whitespace-only body plans no mark but keeps the anchor', () => {
@@ -364,6 +439,87 @@ describe('planning the dress', () => {
 		]);
 		expect(plan).toEqual([]);
 		expect(conflicts.map((rev) => rev.id)).toEqual(['rev-1']);
+	});
+});
+
+/**
+ * The editor's own plan. It borrows no character at all: an insertion is a mark
+ * of no width standing in the position, drawn there as a bar, so there is no
+ * case where the point is shown somewhere other than where the caret was and
+ * none where it cannot be shown.
+ */
+describe('planning the dress for the editor', () => {
+	const point = (body: string, at: number): unknown => {
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-x', 7);
+		return planRevisionMarks('50/one.md', body, [rev], true).plan[0];
+	};
+	const bar = (
+		at: number,
+	): { from: number; to: number; classes: string } => ({
+		from: at,
+		to: at,
+		classes: 'snowflake-method-revision is-insertion is-point',
+	});
+
+	it('stands in the position, whatever the position is', () => {
+		const body = `${BODY}   \n\n\n   The water held still.`;
+		const places = [
+			0, // the head of the note
+			14, // a single space between two words
+			15, // hard against a word
+			BODY.length, // the end of a paragraph
+			BODY.length + 1, // inside its trailing spaces
+			BODY.length + 3, // past them, at the break
+			BODY.length + 5, // a blank line between two paragraphs
+			BODY.length + 8, // the whitespace opening the next line
+			body.length, // the end of the note
+		];
+		for (const at of places) {
+			expect(point(body, at)).toMatchObject(bar(at));
+		}
+	});
+
+	it('every position in a run of spaces keeps its own place', () => {
+		const body = 'The grey heron    stood in the shallows.';
+		for (const at of [14, 15, 16, 17, 18]) {
+			expect(point(body, at)).toMatchObject(bar(at));
+		}
+	});
+
+	it('a body with nothing in it still shows its point', () => {
+		// The page has no character to borrow here and draws nothing; the
+		// editor has a position, which is all it ever needed.
+		for (const body of ['', '  \n\n  ']) {
+			const at = Math.min(3, body.length);
+			const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-6', 7);
+			const { plan, anchors } = planRevisionMarks('50/one.md', body, [rev], true);
+			expect(plan).toEqual([expect.objectContaining(bar(at))]);
+			expect(anchors.get('rev-6')).toEqual({ from: at, to: at });
+			expect(planRevisionMarks('50/one.md', body, [rev]).plan).toEqual([]);
+		}
+	});
+
+	it('covers every revision the page covers, and the same anchors', () => {
+		const body = 'The grey heron    stood in the shallows.';
+		const revisions = [
+			captureRevision('50/one.md', body, 'insert', 15, 15, 'x', '', 'rev-a', 7),
+			captureRevision('50/one.md', body, 'replace', 4, 8, 'x', '', 'rev-b', 7),
+			captureRevision('50/one.md', body, 'insert', 30, 30, 'x', '', 'rev-c', 7),
+		];
+		const page = planRevisionMarks('50/one.md', body, revisions);
+		const editor = planRevisionMarks('50/one.md', body, revisions, true);
+		const ids = (marks: typeof page.plan): unknown[] =>
+			marks
+				.map((mark) =>
+					mark.occurrence.type === 'revision' ? mark.occurrence.revisionId : null,
+				)
+				.sort();
+		// Only where the bars are drawn differs: nothing is left unmarked in
+		// one half that the other marks, and the cards read the same offsets.
+		expect(ids(editor.plan)).toEqual(ids(page.plan));
+		expect(ids(page.plan)).toEqual(['rev-a', 'rev-b', 'rev-c']);
+		expect([...editor.anchors]).toEqual([...page.anchors]);
+		expect(editor.conflicts).toEqual(page.conflicts);
 	});
 });
 

@@ -156,9 +156,11 @@ describe('the revision layer on the rendered half', () => {
 		]);
 		const spans = projectMentionMarks(body, plan);
 		expect(spans).toHaveLength(1);
-		expect(spans[0]).toMatchObject({ from: 6, to: 7, text: 'a' });
+		// The point is in the space, so it rides the "e" that ends the word
+		// behind it, and the bar is drawn on that letter's far side.
+		expect(spans[0]).toMatchObject({ from: 5, to: 6, text: 'e' });
 		expect(spans[0]?.mark.classes).toBe(
-			'snowflake-method-revision is-insertion',
+			'snowflake-method-revision is-insertion is-insertion-after',
 		);
 	});
 

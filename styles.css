@@ -5479,12 +5479,22 @@ body {
 	text-decoration: line-through;
 }
 
-/* An insertion is a point, and a point cannot be wrapped: the mark rides the
-   nearest visible character and draws a bar at the edge facing the point --
-   absolutely positioned, so the carrier keeps its width and the editor's row
-   measuring stays true. */
+/* An insertion is a point. In the editor it is drawn as a bar standing in the
+   position itself, on an empty span of no width, so it is exact wherever the
+   caret was put. The page has no such position -- its wrap holds no empty span
+   and it draws any run of whitespace as one gap -- so there the mark rides the
+   character beside the point and the bar goes on the edge facing it. The bar is
+   absolutely positioned either way, so nothing it stands on changes width and
+   the editor's row measuring stays true. */
 .snowflake-method-revision.is-insertion {
 	position: relative;
+}
+
+/* Empty, so it has no width of its own; inline, so it opens no place for a
+   line to break. What it holds is the bar, and nothing else. */
+.snowflake-method-revision.is-insertion.is-point {
+	display: inline;
+	width: 0;
 }
 
 .snowflake-method-revision.is-insertion::after {
@@ -5751,44 +5761,83 @@ body {
 	margin-inline: var(--size-4-1) 0;
 }
 
-/* The revision table on the task management pane: the statistics tables'
-   frame with its own columns. The three text columns share the room evenly
-   and the place column keeps what a title and a badge need. */
-.snowflake-method-revision-panel-toolbar {
-	display: flex;
+/* The revision table on the task management pane: the tracking panel's frame
+   -- the same inset, the same band under the tab strip -- with its own five
+   columns. The face is filled rather than grown into: the host carries the
+   scrollport's height down to the panel, the panel down to the table, and the
+   table's body is then a box with a height, which is what the virtual window
+   needs to draw a windowful instead of every row the project holds. */
+.snowflake-method-revision-panel-host,
+.snowflake-method-revision-panel {
+	height: 100%;
+}
+
+.snowflake-method-revision-table-wrap.is-hidden,
+.snowflake-method-revision-panel .search-input-container.is-hidden,
+.snowflake-method-revision-panel .snowflake-method-character-empty.is-hidden {
+	display: none;
+}
+
+/* The kind takes a word's room, the place a title's and the button beside it;
+   the three texts share everything left, evenly, by asking for nothing. */
+col.snowflake-method-revision-column-type {
+	width: 7rem;
+}
+
+col.snowflake-method-revision-column-place {
+	width: 13rem;
+}
+
+/* Every text is shown whole here, so the shared rules that keep a member's
+   name to one line -- the wide table's second column, the narrow cards' first
+   three -- are given back: the cells wrap rather than clip, and a run with
+   nowhere to break breaks anyway rather than pushing the grid sideways. The
+   headings wrap on the same terms: two of them are two words, and in a narrow
+   pane a second line is better than a word lying across the column beside it.
+   Doubled to stand level with those rules and win by order. */
+.snowflake-method-table.snowflake-method-revision-table th,
+.snowflake-method-table.snowflake-method-revision-table td {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: normal;
+	text-overflow: clip;
+}
+
+/* No row menu rides these rows, so the place cell gives back the room the
+   shared rule reserves for one. Doubled to stand level with that rule's
+   :not() and win by order. */
+.snowflake-method-table.snowflake-method-revision-table td:last-child {
+	position: static;
+	padding-inline-end: var(--size-4-3);
+}
+
+/* What the revision would do, in the ink its card wears: the same three
+   colours, carried toward the page's own so each stays legible in either
+   theme. */
+.snowflake-method-revision-type {
+	color: color-mix(in srgb, var(--color-yellow) 60%, var(--text-normal));
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-revision-type[data-kind='insert'] {
+	color: color-mix(in srgb, var(--color-green) 60%, var(--text-normal));
+}
+
+.snowflake-method-revision-type[data-kind='delete'] {
+	color: color-mix(in srgb, var(--color-red) 60%, var(--text-normal));
+}
+
+/* A revision its chapter no longer answers for wears the tracking tables'
+   warning ink and the alert that goes with it, in place of the link the
+   living rows carry. */
+.snowflake-method-revision-conflict {
+	display: inline-flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: var(--size-4-2);
-	margin-bottom: var(--size-4-2);
-}
-
-.snowflake-method-revision-panel-state {
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-revision-column-original,
-.snowflake-method-revision-column-proposed,
-.snowflake-method-revision-column-comment {
-	width: 26%;
-}
-
-.snowflake-method-revision-column-place {
-	width: 22%;
-}
-
-.snowflake-method-revision-cell-original {
-	text-decoration: line-through;
-	color: var(--text-muted);
-}
-
-.snowflake-method-revision-place {
-	padding: 0;
-	border: none;
-	background: none;
-	box-shadow: none;
-	cursor: pointer;
-	color: var(--text-normal);
+	gap: var(--size-2-2);
+	min-width: 0;
+	overflow: hidden;
+	color: var(--color-orange);
+	text-overflow: ellipsis;
 }
 
 .snowflake-method-revision-badge {
@@ -5799,11 +5848,6 @@ body {
 	background-color: color-mix(in srgb, var(--color-red) 18%, transparent);
 	color: var(--color-red);
 	font-size: var(--font-ui-smaller);
-}
-
-.snowflake-method-revision-place-title {
-	margin-inline-end: var(--size-4-1);
-	color: var(--text-muted);
 }
 
 /* The prose panel: the statistics pane's Prose analysis face. Plain rows and
@@ -6138,8 +6182,12 @@ col.snowflake-method-prose-column-dialogue {
 }
 
 /* The band's search keeps the left end, the state and the refresh the
-   right: the auto margin is the whole layout. */
+   right: the auto margin is the whole layout. The revision table's band is
+   laid the same way, from the same rule, so the two faces agree. */
 .snowflake-method-tracking-panel
+	.snowflake-method-prose-controls
+	.search-input-container,
+.snowflake-method-revision-panel
 	.snowflake-method-prose-controls
 	.search-input-container {
 	flex: 0 1 16rem;

@@ -117,4 +117,78 @@ describe('dress-only decorations', () => {
 		});
 		expect(attributes).toBeUndefined();
 	});
+
+	/**
+	 * A mark of no width is a position rather than a stretch of text, and a
+	 * mark decoration may not be empty -- CodeMirror refuses one. It becomes a
+	 * widget standing in the position, which is how an insertion bar is drawn
+	 * where a caret was rather than on some character beside it.
+	 */
+	it('turns a mark of no width into a widget in that position', () => {
+		const body = 'Alice left.';
+		const pointMark: MentionMark = {
+			from: 6,
+			to: 6,
+			classes: 'snowflake-method-revision is-insertion is-point',
+			occurrence: {
+				type: 'revision',
+				path: 'note.md',
+				from: 6,
+				to: 6,
+				matchedText: '',
+				revisionId: 'rev-1',
+			},
+		};
+		const set = mentionDecorations([...marksOf(body), pointMark]);
+		const found: { from: number; to: number; widget: unknown; mark: unknown }[] =
+			[];
+		set.between(0, body.length, (from, to, value) => {
+			const spec = value.spec as {
+				widget?: { toDOM?: unknown };
+				mentionMark?: unknown;
+			};
+			if (spec.widget === undefined) return;
+			found.push({ from, to, widget: spec.widget, mark: spec.mentionMark });
+		});
+		expect(found).toHaveLength(1);
+		expect(found[0]).toMatchObject({ from: 6, to: 6 });
+		// No mark in the spec: nothing is under it, and a zero-length span
+		// would otherwise win every hit test at its own offset.
+		expect(found[0]?.mark).toBeUndefined();
+		const widget = found[0]?.widget as {
+			toDOM(view: unknown): { tagName: string; className: string };
+			eq(other: unknown): boolean;
+		};
+		// Built from the view's OWN document, so a stream in a popout window
+		// gets an element that window can hold. There is no DOM in this
+		// runtime, so the document stands in for one and reports what it was
+		// asked to build.
+		let asked: { cls?: string } | null = null;
+		const created = widget.toDOM({
+			dom: {
+				win: {
+					createFragment: () => ({
+						createSpan: (options: { cls?: string }) => {
+							asked = options;
+							return { tagName: 'SPAN', className: options.cls ?? '' };
+						},
+					}),
+				},
+			},
+		});
+		expect(asked).toEqual({
+			cls: 'snowflake-method-revision is-insertion is-point',
+		});
+		expect(created.className).toBe(
+			'snowflake-method-revision is-insertion is-point',
+		);
+		// Two points of the same kind compare equal, so a redraw that changes
+		// nothing replaces no DOM.
+		const twin = mentionDecorations([pointMark]);
+		let other: unknown = null;
+		twin.between(6, 6, (from, to, value) => {
+			other = (value.spec as { widget?: unknown }).widget;
+		});
+		expect(widget.eq(other)).toBe(true);
+	});
 });

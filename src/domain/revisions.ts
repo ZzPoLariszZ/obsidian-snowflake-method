@@ -281,45 +281,38 @@ export function orderRevisions(
 const WHITESPACE = /\s/;
 
 /**
- * The single character an insertion marker rides: the first visible one at or
- * after the point, else the last one before it -- marked `after` so the bar
- * draws on its far side. The rendered wrap cannot hold a zero-length span,
- * and a whitespace character has no visible presence to carry a mark, so the
- * marker borrows a neighbour and draws its bar at the edge facing the point.
+ * The single character an insertion marker rides on the PAGE, and which side of
+ * it the bar is drawn on. The editor needs none of this -- it draws a bar at
+ * the position itself -- but the page has no such position to draw at. Its wrap
+ * holds no zero-length span, its text is only the visible characters, and a run
+ * of whitespace of any size is drawn as one gap. So the page borrows a
+ * character and draws the bar on the edge facing the point.
  *
- * The search stops at a line break before it stops at anything else. An
- * insertion at the end of a paragraph has nothing visible after it on its own
- * line, and a bar drawn on the next paragraph's first letter says the words
- * would arrive there -- a paragraph away from where they would actually go.
- * The line the point stands on is asked first in both directions, and only a
- * point on a line with no words at all borrows across a break.
+ * One rule, at every scale: the character the point stands on if that character
+ * is visible, else the nearest visible character BEHIND it, whose far edge is
+ * where the page draws the gap the point stands in. Only a point with nothing
+ * behind it in the whole note -- the head of the note, its opening whitespace --
+ * looks forward. Behind rather than ahead because ahead is what keeps being
+ * wrong: a word away in a run of spaces, a paragraph away at the end of one, a
+ * paragraph away again on a blank line between two.
  */
 function insertionCarrier(
 	body: string,
 	point: number,
 ): { from: number; to: number; side: 'before' | 'after' } | null {
-	const onLine = (from: number, step: -1 | 1): number | null => {
-		for (let at = from; at >= 0 && at < body.length; at += step) {
-			const character = body.charAt(at);
-			if (character === '\n') return null;
-			if (!WHITESPACE.test(character)) return at;
-		}
-		return null;
-	};
-	const ahead = onLine(point, 1);
-	if (ahead !== null) return { from: ahead, to: ahead + 1, side: 'before' };
-	const behind = onLine(point - 1, -1);
-	if (behind !== null) return { from: behind, to: behind + 1, side: 'after' };
-	// A point on a blank line belongs to no line's words: it takes the
-	// nearest visible character either way rather than going unmarked.
-	for (let at = point; at < body.length; at += 1) {
-		if (!WHITESPACE.test(body.charAt(at))) {
-			return { from: at, to: at + 1, side: 'before' };
-		}
+	const here = point >= 0 && point < body.length ? body.charAt(point) : '';
+	// Touching a word: the bar stands before it, with nothing in between.
+	if (here !== '' && !WHITESPACE.test(here)) {
+		return { from: point, to: point + 1, side: 'before' };
 	}
 	for (let at = point - 1; at >= 0; at -= 1) {
 		if (!WHITESPACE.test(body.charAt(at))) {
 			return { from: at, to: at + 1, side: 'after' };
+		}
+	}
+	for (let at = point; at < body.length; at += 1) {
+		if (!WHITESPACE.test(body.charAt(at))) {
+			return { from: at, to: at + 1, side: 'before' };
 		}
 	}
 	return null;
@@ -340,11 +333,20 @@ export interface RevisionPlan {
  * for the cards to say so. A separate layer from the indexed mention marks,
  * like the dialogue dress and for the same reason: a revision overlaps
  * whatever stands inside it.
+ *
+ * `exactPoints` is the editor asking. An insertion there is planned as a mark
+ * of no width at all, standing at the point itself: the editor draws it as a
+ * bar in the position, borrowing no character, so it is exact wherever the
+ * caret was put -- inside a run of spaces, at the end of a line, on a blank
+ * line between two paragraphs, in a note holding nothing yet. The page cannot
+ * hold a mark of no width, so it leaves the flag off and takes the character
+ * beside the point instead.
  */
 export function planRevisionMarks(
 	path: string,
 	body: string,
 	revisions: readonly Revision[],
+	exactPoints = false,
 ): RevisionPlan {
 	const plan: MentionMark[] = [];
 	const anchors = new Map<string, { from: number; to: number }>();
@@ -366,9 +368,21 @@ export function planRevisionMarks(
 			revisionId: rev.id,
 		};
 		if (rev.kind === 'insert') {
+			if (exactPoints) {
+				// Nothing under it and nothing borrowed: the editor puts a bar
+				// in the position, so there is no case where the point cannot
+				// be shown and none where it is shown somewhere else.
+				plan.push({
+					from: anchor.from,
+					to: anchor.from,
+					classes: 'snowflake-method-revision is-insertion is-point',
+					occurrence,
+				});
+				continue;
+			}
 			const carrier = insertionCarrier(body, anchor.from);
-			// A note of nothing but whitespace has no character to mark; the
-			// card still stands, so nothing of the revision is lost.
+			// A note of nothing but whitespace has no character for the page to
+			// mark; the card still stands, so nothing of the revision is lost.
 			if (carrier === null) continue;
 			plan.push({
 				from: carrier.from,

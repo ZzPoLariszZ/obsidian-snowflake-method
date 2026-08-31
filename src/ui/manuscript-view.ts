@@ -1345,6 +1345,12 @@ export class SnowflakeManuscriptView extends ItemView {
 		);
 		const dialogue = this.dialogueDressMarks(state, path, body);
 		const revisions = planRevisionMarks(path, body, state.revisions);
+		// The editor shows every space the author typed, so an insertion bar
+		// stands exactly where the caret stood rather than beside the nearest
+		// word: in here, the gap between two words is a real place. Only the
+		// decorations handed back wear it -- what is kept describes what the
+		// page draws, which is what the card rail looks its anchors up in.
+		const editorRevisions = planRevisionMarks(path, body, state.revisions, true);
 		const entry = this.mounted.get(path);
 		if (entry !== undefined) {
 			entry.mentions = { body, occurrences, marks, dialogue, revisions };
@@ -1357,7 +1363,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		// The editor's decoration set takes overlap in stride: the dialogue
 		// and revision layers simply nest around whatever marks stand inside
 		// them.
-		return [...marks, ...dialogue, ...revisions.plan];
+		return [...marks, ...dialogue, ...editorRevisions.plan];
 	}
 
 	/**

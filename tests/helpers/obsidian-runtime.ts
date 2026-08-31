@@ -61,6 +61,20 @@ export class Modal {
 	open(): void {}
 	close(): void {}
 }
+/**
+ * Stands in only so a module that builds one can be imported. The tests
+ * exercise the pure helpers beside it, never the input itself, which needs a
+ * DOM this runtime does not have.
+ */
+export class SearchComponent {
+	constructor(..._arguments: unknown[]) {}
+	setPlaceholder(_text: string): this {
+		return this;
+	}
+	onChange(_handler: (value: string) => void): this {
+		return this;
+	}
+}
 /** Enough of a Setting for code paths that only construct rows. */
 export class Setting {
 	constructor(..._arguments: unknown[]) {}

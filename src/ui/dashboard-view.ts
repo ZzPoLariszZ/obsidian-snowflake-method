@@ -870,7 +870,12 @@ export class SnowflakeDashboardView extends ItemView {
 				return;
 			}
 			this.disposeRevisionPanel();
-			const host = body.createDiv();
+			// Named, because the panel inside it is one table filling the face:
+			// the host carries the face's height down to it, and the table's
+			// body becomes a scrollport that draws only the rows it shows.
+			const host = body.createDiv({
+				cls: 'snowflake-method-revision-panel-host',
+			});
 			this.revisionPanelHost = host;
 			this.revisionPanelKey = key;
 			this.revisionPanel = renderRevisionPanel(
