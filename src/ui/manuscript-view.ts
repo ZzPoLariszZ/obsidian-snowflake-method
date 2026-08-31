@@ -404,9 +404,27 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.closePresentationPanel();
-		await this.flushPendingSave();
+		// Guarded step by step: this is teardown, and a single rejection --
+		// a parting save hitting a conflict, one segment's unmount going
+		// wrong -- must not stop what follows. An EditorView that teardown
+		// never reaches keeps its window listeners and retries its stale
+		// scroll target on every resize for the life of the window, logging
+		// a layout-read error each time.
+		try {
+			await this.flushPendingSave();
+		} catch (error) {
+			console.error('Snowflake: the parting save failed', error);
+		}
 		this.clearSaveTimer();
-		for (const path of [...this.mounted.keys()]) await this.unmountSegment(path);
+		for (const path of [...this.mounted.keys()]) {
+			try {
+				await this.unmountSegment(path);
+			} catch (error) {
+				console.error('Snowflake: could not unmount a segment', path, error);
+			}
+		}
+		// Whatever the loop could not take down, the backend still destroys.
+		this.backend.destroyAll();
 		this.contentEl.empty();
 	}
 

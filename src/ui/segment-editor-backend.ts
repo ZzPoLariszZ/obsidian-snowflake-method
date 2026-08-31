@@ -88,6 +88,8 @@ export interface SegmentEditorBackend {
 		hooks: SegmentEditorHooks,
 	): Promise<SegmentEditorHandle>;
 	unmount(path: string): Promise<void>;
+	/** Destroys every remaining view; the teardown's final guarantee. */
+	destroyAll(): void;
 	focus(path: string): void;
 	/** The mounted editor for a segment, if this backend has one. */
 	handle(path: string): SegmentEditorHandle | null;
@@ -415,6 +417,46 @@ const preferredRow = EditorView.updateListener.of((update) => {
 });
 
 /**
+ * Holds the editor at its whole-document layout.
+ *
+ * A segment editor stands in a scrolling column, not in a scroller of its
+ * own, and it replaces prose that was rendered in full — yet CodeMirror lays
+ * out only the visible stretch and estimates the rest. The estimator samples
+ * character width from ASCII-only lines, so for CJK prose every estimate is
+ * severalfold short: a freshly mounted chapter collapses to a fraction of its
+ * height, grows back in waves as lines get measured, and any line the reader
+ * never scrolled near keeps its wrong height for good. Obsidian's CodeMirror
+ * build widens the laid-out range to the whole document while its `printing`
+ * flag is up (its own print handler works exactly this way), and heights once
+ * measured are kept, so the flag is held for the editor's whole life: the
+ * document is laid out true from the first frame, the way the prose it
+ * replaced already was.
+ *
+ * The flag is an internal of that build, so everything here is
+ * feature-detected: an Obsidian without it leaves this a no-op and the editor
+ * behaves as before. `measureNow` runs the layout synchronously — wanted at
+ * mount, where the caller is about to measure the swap — and is otherwise
+ * left to the editor's own scheduled measure.
+ */
+function layoutWholeDocument(view: EditorView, measureNow: boolean): void {
+	const shaped = view as unknown as {
+		viewState?: { printing?: unknown };
+		measure?: (flush?: boolean) => void;
+	};
+	const state = shaped.viewState;
+	if (state === undefined || typeof state.printing !== 'boolean') return;
+	if (state.printing) return;
+	state.printing = true;
+	try {
+		if (measureNow && typeof shaped.measure === 'function') shaped.measure();
+		else view.requestMeasure();
+	} catch {
+		// The flag is held even when this measure failed; the editor's own
+		// next measure completes the layout.
+	}
+}
+
+/**
  * Runs one editing command as the author's own edit.
  *
  * Everything but undo and redo dispatches a plain user transaction, which is
@@ -643,6 +685,11 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				}),
 			parent: container,
 		});
+		// Before the caller measures the swap: the whole note laid out and
+		// measured in this same breath, so the segment is born at its true
+		// height instead of collapsing to an estimate and growing back in
+		// waves under the reader.
+		layoutWholeDocument(view, true);
 		this.views.set(target.path, view);
 		return this.toHandle(target.path, view);
 	}
@@ -705,6 +752,26 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 		this.views.get(path)?.focus();
 	}
 
+	/**
+	 * Destroys every view still standing: the last line of a teardown, after
+	 * the orderly unmounts have had their chance. Undestroyed views are not
+	 * idle -- each keeps a resize listener on its window and retries any
+	 * scroll target it never satisfied -- so leaking one leaks noise forever.
+	 */
+	destroyAll(): void {
+		for (const [path, view] of this.views) {
+			this.tooltipHosts.get(path)?.remove();
+			this.tooltipHosts.delete(path);
+			try {
+				view.destroy();
+			} catch {
+				// A view half-gone already cannot be helped further.
+			}
+		}
+		this.views.clear();
+		this.tooltipHosts.clear();
+	}
+
 	handle(path: string): SegmentEditorHandle | null {
 		const view = this.views.get(path);
 		return view === undefined ? null : this.toHandle(path, view);
@@ -731,6 +798,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			},
 			cursor: () => view.state.selection.main.head,
 			remeasure: () => {
+				layoutWholeDocument(view, false);
 				view.requestMeasure();
 			},
 			caretBand: () => {
@@ -1086,17 +1154,20 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			// view owns the page, so the view is given the caret and the choice.
 			EditorView.scrollHandler.of((view, range) => {
 				if (hooks.onCaretShow === undefined) return false;
-				const coords = view.coordsAtPos(range.head);
-				if (coords !== null) {
-					hooks.onCaretShow(target.path, coords.top, coords.bottom);
-					return true;
-				}
-				// A caret with no layout yet still has an address: estimated
-				// line heights say roughly where its line sits. Rough is
-				// enough — the view lands nearby and settles on measured
-				// ground over the frames that follow. Refusing here would
-				// hand the scroll back to the editor's own answer, which is
-				// the several-notes throw this handler exists to prevent.
+				// Never `coordsAtPos` in here. This handler runs inside the
+				// editor's own measure pass, and when that pass was entered
+				// synchronously — the view asking for the caret band flushes
+				// a scheduled measure, which drains the pending scroll — a
+				// layout read throws "Reading the editor layout isn't
+				// allowed during an update". Obsidian catches and logs the
+				// throw, and a handler that threw did not answer, so the
+				// editor scrolls by its own reckoning: the several-notes
+				// throw this handler exists to prevent. The height map costs
+				// no layout read and always answers — estimates where a line
+				// has not been measured, the whole wrapped line where it has
+				// — and rough is enough: the view lands nearby, and
+				// `keepRevealing` settles onto the measured caret over the
+				// frames that follow.
 				const line = view.lineBlockAt(range.head);
 				const top = view.documentTop + line.top;
 				hooks.onCaretShow(target.path, top, top + line.height);
