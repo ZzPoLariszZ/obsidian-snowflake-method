@@ -139,23 +139,69 @@ describe('anchoring a range', () => {
 });
 
 describe('anchoring an insertion', () => {
-	it('holds while the junction holds, and typing at the point breaks it', () => {
-		const rev = capture('insert', 14, 14);
-		expect(anchorRevision(BODY, rev)).toEqual({
+	it('holds while its sides hold', () => {
+		expect(anchorRevision(BODY, capture('insert', 14, 14))).toEqual({
 			state: 'anchored',
 			from: 14,
 			to: 14,
 		});
-		const typedAt = `${BODY.slice(0, 14)}X${BODY.slice(14)}`;
-		expect(anchorRevision(typedAt, rev)).toEqual({ state: 'conflict' });
 	});
 
-	it('moves with its junction when text lands elsewhere', () => {
+	it('words typed at the point leave it standing in front of them', () => {
+		// The text behind still ends where the point was put, so the point is
+		// still there: it holds to what is behind it, as the bar is drawn.
+		const rev = capture('insert', 14, 14);
+		const typedAt = `${BODY.slice(0, 14)}, and then,${BODY.slice(14)}`;
+		expect(anchorRevision(typedAt, rev)).toEqual({
+			state: 'anchored',
+			from: 14,
+			to: 14,
+		});
+	});
+
+	it('rewriting ahead of the point leaves the side behind holding it', () => {
+		const rev = capture('insert', 14, 14);
+		const reworded = BODY.replace('stood', 'waited');
+		expect(reworded.slice(14, 14 + rev.after.length)).not.toBe(rev.after);
+		expect(anchorRevision(reworded, rev)).toEqual({
+			state: 'anchored',
+			from: 14,
+			to: 14,
+		});
+	});
+
+	it('rewriting behind the point leaves the side ahead holding it', () => {
+		const rev = capture('insert', 14, 14);
+		const reworded = BODY.replace('grey', 'great grey');
+		expect(reworded).not.toContain(rev.before);
+		expect(anchorRevision(reworded, rev)).toEqual({
+			state: 'moved',
+			from: 20,
+			to: 20,
+		});
+	});
+
+	it('moves with both sides when the text lands elsewhere', () => {
 		const rev = capture('insert', 14, 14);
 		expect(anchorRevision(`Early. ${BODY}`, rev)).toEqual({
 			state: 'moved',
 			from: 21,
 			to: 21,
+		});
+	});
+
+	it('sides that answer with different places are a conflict', () => {
+		// Each half of the sentence is still in the note, but they no longer
+		// meet anywhere, so no offset can be called the place.
+		const rev = capture('insert', 14, 14);
+		const pulledApart = `${BODY.slice(14)} ${BODY.slice(0, 14)}`;
+		expect(anchorRevision(pulledApart, rev)).toEqual({ state: 'conflict' });
+	});
+
+	it('both sides gone is a conflict', () => {
+		const rev = capture('insert', 14, 14);
+		expect(anchorRevision('A wholly different sentence.', rev)).toEqual({
+			state: 'conflict',
 		});
 	});
 
@@ -165,7 +211,7 @@ describe('anchoring an insertion', () => {
 		expect(anchorRevision('words now', rev)).toEqual({ state: 'conflict' });
 	});
 
-	it('at the body end the junction is the before half alone', () => {
+	it('at the body end the side behind is the only side there is', () => {
 		const rev = capture('insert', BODY.length, BODY.length);
 		expect(rev.after).toBe('');
 		expect(anchorRevision(`Early. ${BODY}`, rev)).toEqual({

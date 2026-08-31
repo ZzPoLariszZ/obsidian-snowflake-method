@@ -188,34 +188,67 @@ export function resolvePassage(
 }
 
 /**
+ * Where an insertion's point stands now. A range revision has its own text to
+ * be recognised by; a point has nothing but the words on either side of it, so
+ * the two sides are witnesses and EITHER of them is enough. Rewriting inside
+ * the sixteen characters on one side leaves the other side still naming the
+ * place, which is the difference between a point that survives ordinary work
+ * around it and one that dies of a comma.
+ *
+ * A point holds to the text behind it -- the same rule the page draws by -- so
+ * words typed at the point itself find the bar still standing in front of them
+ * rather than a conflict. Only two answers that disagree, or none at all, mean
+ * the place is gone: the sides no longer meet anywhere, so no offset can be
+ * called the spot the author meant.
+ */
+function anchorInsertion(body: string, rev: Revision): RevisionAnchor {
+	if (rev.before.length === 0 && rev.after.length === 0) {
+		// Captured in an empty note: the point exists only while the note stays
+		// empty, because nothing marks it once there are words -- and this must
+		// be asked first, or the checks below pass on nothing at all.
+		return body.length === 0
+			? { state: 'anchored', from: 0, to: 0 }
+			: { state: 'conflict' };
+	}
+	// At the stored offset, one side still standing means the point never
+	// moved: the other side is what changed, under the point rather than
+	// beneath it.
+	const behindHolds =
+		rev.before.length > 0 &&
+		body.slice(Math.max(0, rev.from - rev.before.length), rev.from) === rev.before;
+	const aheadHolds =
+		rev.after.length > 0 &&
+		body.slice(rev.from, rev.from + rev.after.length) === rev.after;
+	if (behindHolds || aheadHolds) {
+		return { state: 'anchored', from: rev.from, to: rev.from };
+	}
+	// Neither side stands there any more, so each is looked for on its own,
+	// with the opposite side as the tie-breaker between copies of it.
+	const behind =
+		rev.before.length > 0
+			? (resolvePassage(body, rev.before, '', rev.after)?.to ?? null)
+			: null;
+	const ahead =
+		rev.after.length > 0
+			? (resolvePassage(body, rev.after, rev.before, '')?.from ?? null)
+			: null;
+	if (behind !== null && ahead !== null && behind !== ahead) {
+		return { state: 'conflict' };
+	}
+	const point = behind ?? ahead;
+	if (point === null) return { state: 'conflict' };
+	return { state: 'moved', from: point, to: point };
+}
+
+/**
  * Where one revision stands against the body as it is now. Text still at its
  * stored offsets is anchored; found whole in one other place, moved; found
  * nowhere, or in more places than the context can tell apart, conflict. An
- * insertion anchors by its junction -- the stored before and after meeting at
- * the point -- and anything typed at the point itself breaks the junction,
- * which is the honest answer: the spot the author meant is gone.
+ * insertion, having no text of its own, is anchored by its two sides in
+ * `anchorInsertion`.
  */
 export function anchorRevision(body: string, rev: Revision): RevisionAnchor {
-	if (rev.kind === 'insert') {
-		const junction = rev.before + rev.after;
-		if (junction.length === 0) {
-			// Captured in an empty note: the point exists only while the note
-			// stays empty, because nothing marks it once there are words --
-			// and this must be asked first, or the checks below pass on
-			// nothing at all.
-			return body.length === 0
-				? { state: 'anchored', from: 0, to: 0 }
-				: { state: 'conflict' };
-		}
-		const holds =
-			body.slice(Math.max(0, rev.from - rev.before.length), rev.from) ===
-				rev.before && body.slice(rev.from, rev.from + rev.after.length) === rev.after;
-		if (holds) return { state: 'anchored', from: rev.from, to: rev.from };
-		const spots = occurrencesOf(body, junction);
-		if (spots.length !== 1) return { state: 'conflict' };
-		const point = (spots[0] ?? 0) + rev.before.length;
-		return { state: 'moved', from: point, to: point };
-	}
+	if (rev.kind === 'insert') return anchorInsertion(body, rev);
 	if (body.slice(rev.from, rev.to) === rev.originalText) {
 		return { state: 'anchored', from: rev.from, to: rev.to };
 	}
