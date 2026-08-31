@@ -1441,6 +1441,8 @@ export const en = {
 	'manuscript.revision.save': 'Save',
 	'manuscript.revision.cancel': 'Cancel',
 	'manuscript.revision.discard': 'Discard',
+	'manuscript.revision.previous': 'Previous revision',
+	'manuscript.revision.next': 'Next revision',
 	'manuscript.newSegment': 'New manuscript note',
 	'manuscript.segmentTitle': 'Name',
 	'manuscript.segmentTitlePlaceholder': 'Chapter 1',

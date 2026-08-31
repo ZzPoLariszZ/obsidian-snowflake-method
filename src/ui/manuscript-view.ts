@@ -28,6 +28,7 @@ import {
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
+	orderRevisions,
 	overlapsLive,
 	planDialogueMarks,
 	planHighlightMarks,
@@ -1591,7 +1592,74 @@ export class SnowflakeManuscriptView extends ItemView {
 				const entry = entryNow();
 				if (entry !== undefined) this.syncRevisionRail(entry);
 			},
+			hasNeighbour: (revision, step) =>
+				this.revisionNeighbour(revision, step) !== null,
+			onJump: (revision, step) => {
+				rethrow(this.jumpToRevision(revision, step));
+			},
 		});
+	}
+
+	/**
+	 * The revision one step back or on from this one, through the whole
+	 * manuscript rather than this note alone: a reader answering proposals
+	 * works down the stream, and the next one is as likely to be in the next
+	 * chapter as in this paragraph.
+	 */
+	private revisionNeighbour(revision: Revision, step: -1 | 1): Revision | null {
+		const order = orderRevisions(
+			this.mentionState?.revisions ?? [],
+			(this.model?.segments ?? []).map((segment) => segment.path),
+		);
+		const index = order.findIndex((candidate) => candidate.id === revision.id);
+		if (index < 0) return null;
+		return order[index + step] ?? null;
+	}
+
+	/**
+	 * Walks to the neighbouring card and leaves the reader looking at it, lit
+	 * for a beat so the eye finds it in the margin. A note already loaded is
+	 * scrolled to rather than gone to: going to one closes the editor and
+	 * moves the window, which is a heavy answer for a card a screen away. The
+	 * card is given a moment to be drawn, since a note arriving is rendered,
+	 * dressed and only then railed.
+	 */
+	private async jumpToRevision(
+		revision: Revision,
+		step: -1 | 1,
+	): Promise<void> {
+		const next = this.revisionNeighbour(revision, step);
+		if (next === null) return;
+		const win = this.contentEl.win;
+		const beat = (): Promise<void> =>
+			new Promise((resolve) => win.setTimeout(resolve, 100));
+		if (!this.mounted.has(next.path)) await this.revealSegment(next.path);
+		const cardNow = (): HTMLElement | null =>
+			this.mounted.get(next.path)?.rail?.cardFor(next.id) ?? null;
+		let card = cardNow();
+		for (let waited = 0; card === null && waited < 20; waited += 1) {
+			await beat();
+			card = cardNow();
+		}
+		if (card === null) return;
+		const found = card;
+		found.scrollIntoView({ block: 'center' });
+		found.addClass('is-jumped');
+		// The scroll lays out prose the height map had only estimated, and the
+		// rail re-measures behind it: the card that was just centred can be
+		// hundreds of pixels from where it was left, further on a note of CJK
+		// the estimator reads short. Once that has settled, if the card moved,
+		// it is centred again -- twice at most, so a rail that keeps shifting
+		// cannot hold the page.
+		for (let settle = 0; settle < 2; settle += 1) {
+			const was = found.getBoundingClientRect().top;
+			await beat();
+			if (Math.abs(found.getBoundingClientRect().top - was) <= 4) break;
+			found.scrollIntoView({ block: 'center' });
+		}
+		win.setTimeout(() => {
+			found.removeClass('is-jumped');
+		}, 900);
 	}
 
 	/**

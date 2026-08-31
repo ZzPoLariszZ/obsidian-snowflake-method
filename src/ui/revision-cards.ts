@@ -1,3 +1,5 @@
+import { setIcon } from 'obsidian';
+
 import type { Revision } from '../domain';
 import type { Translate } from './modals';
 
@@ -50,10 +52,20 @@ export interface RevisionRailCallbacks {
 	onEditSave(revision: Revision, proposed: string, comment: string): boolean;
 	onDraftSave(proposed: string, comment: string): void;
 	onDraftCancel(): void;
+	/**
+	 * Whether a card stands one step back (-1) or on (+1) from this one,
+	 * anywhere in the manuscript. False greys the arrow rather than leaving it
+	 * to answer a click with nothing.
+	 */
+	hasNeighbour(revision: Revision, step: -1 | 1): boolean;
+	/** Takes the reader to the card one step back or on. */
+	onJump(revision: Revision, step: -1 | 1): void;
 }
 
 export interface RevisionRail {
 	sync(model: RevisionRailModel): void;
+	/** The card standing for this revision, conflicts included. */
+	cardFor(id: string): HTMLElement | null;
 	dispose(): void;
 }
 
@@ -173,6 +185,59 @@ export function renderRevisionRail(
 			});
 		value.createSpan({ text });
 		return value;
+	};
+
+	/**
+	 * The pair in the card's upper corner: one step back through the
+	 * manuscript's revisions, one step on. A proposal is answered here, and
+	 * the next proposal is usually pages away -- these carry the reader there
+	 * instead of leaving them to hunt the margin for the next marked passage.
+	 * Arrows rather than words: the pair is a compass, not two more things to
+	 * read, and words in the corner would crowd the field names beside them.
+	 */
+	const navGroup = (host: HTMLElement, revision: Revision): void => {
+		const nav = host.createDiv({ cls: 'snowflake-method-revision-nav' });
+		const arrow = (step: -1 | 1, icon: string, label: string): void => {
+			const button = nav.createEl('button', {
+				cls: 'clickable-icon snowflake-method-revision-nav-step',
+				attr: {
+					type: 'button',
+					'aria-label': label,
+					title: label,
+					// The first and the last card say so plainly.
+					...(callbacks.hasNeighbour(revision, step)
+						? {}
+						: { disabled: 'disabled' }),
+				},
+			});
+			setIcon(button, icon);
+			button.addEventListener('click', (event) => {
+				event.stopPropagation();
+				callbacks.onJump(revision, step);
+			});
+		};
+		arrow(-1, 'chevron-up', t('manuscript.revision.previous'));
+		arrow(1, 'chevron-down', t('manuscript.revision.next'));
+	};
+
+	/**
+	 * A saved card's top line: what the revision would do at the left, the two
+	 * arrows at the right. Handed back so a conflict can pin its badge after
+	 * the kind.
+	 */
+	const cardHead = (
+		card: HTMLElement,
+		revision: Revision,
+		kind: Revision['kind'] | 'conflict',
+	): HTMLElement => {
+		const head = card.createDiv({ cls: 'snowflake-method-revision-head' });
+		const type = typeBlock(
+			head,
+			kind,
+			t(`manuscript.revision.kind.${revision.kind}`),
+		);
+		navGroup(head, revision);
+		return type;
 	};
 
 	/**
@@ -299,14 +364,10 @@ export function renderRevisionRail(
 		beginEdit: () => void,
 	): void => {
 		const revision = entry.revision;
+		cardHead(card, revision, revision.kind);
 		const fields = card.createDiv({
 			cls: 'snowflake-method-revision-fields',
 		});
-		typeBlock(
-			fields,
-			revision.kind,
-			t(`manuscript.revision.kind.${revision.kind}`),
-		);
 		if (revision.kind !== 'insert') {
 			valueBlock(
 				fields,
@@ -356,16 +417,12 @@ export function renderRevisionRail(
 		readOnly: boolean,
 	): void => {
 		card.addClass('is-conflict');
+		// Still typed by what it would have done, with the badge saying why
+		// it can no longer do it.
+		const type = cardHead(card, revision, 'conflict');
 		const fields = card.createDiv({
 			cls: 'snowflake-method-revision-fields',
 		});
-		// Still typed by what it would have done, with the badge saying why
-		// it can no longer do it.
-		const type = typeBlock(
-			fields,
-			'conflict',
-			t(`manuscript.revision.kind.${revision.kind}`),
-		);
 		type.createSpan({
 			cls: 'snowflake-method-revision-badge',
 			text: t('manuscript.revision.conflict'),
@@ -542,6 +599,8 @@ export function renderRevisionRail(
 
 	return {
 		sync,
+		cardFor: (id) =>
+			cards.get(id)?.el ?? cards.get(`conflict:${id}`)?.el ?? null,
 		dispose: () => {
 			rail.remove();
 		},

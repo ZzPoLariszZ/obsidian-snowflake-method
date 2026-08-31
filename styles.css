@@ -5580,6 +5580,53 @@ body {
 	box-shadow: var(--shadow-l);
 }
 
+/* Where an arrow just landed: lit for a beat, and fading through the frame's
+   own transition, so the eye finds the card the jump brought up without
+   having to sweep the margin for what moved. Last of the card rules, so it
+   outranks the hover and conflict frames it is drawn over. */
+.snowflake-method-revision-card.is-jumped {
+	border-color: var(--interactive-accent);
+	border-left-color: var(--interactive-accent);
+	box-shadow: var(--shadow-l);
+}
+
+/* A saved card's top line: the kind at the left and the two arrows at the
+   right, level with it. The kind takes the room that is left so a conflict
+   badge wraps under its word instead of pushing the arrows off the corner. */
+.snowflake-method-revision-head {
+	display: flex;
+	gap: var(--size-4-2);
+	align-items: flex-start;
+	justify-content: space-between;
+	margin-bottom: var(--size-4-2);
+}
+
+.snowflake-method-revision-head .snowflake-method-revision-field {
+	flex: 1 1 auto;
+}
+
+.snowflake-method-revision-nav {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-revision-nav-step {
+	--icon-size: var(--icon-xs);
+
+	padding: var(--size-2-2);
+	color: var(--text-muted);
+}
+
+/* An end of the manuscript is shown rather than clicked into: the arrow stays
+   where it is, greyed, and does not light up under the pointer. */
+.snowflake-method-revision-nav-step:disabled,
+.snowflake-method-revision-nav-step:disabled:hover {
+	background-color: transparent;
+	color: var(--text-faint);
+	cursor: default;
+}
+
 .snowflake-method-revision-fields {
 	display: flex;
 	flex-direction: column;

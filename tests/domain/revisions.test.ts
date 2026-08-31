@@ -5,6 +5,7 @@ import {
 	anchorRevision,
 	captureRevision,
 	isRevision,
+	orderRevisions,
 	overlapsLive,
 	planRevisionMarks,
 	refreshAnchors,
@@ -215,6 +216,41 @@ describe('overlap between live revisions', () => {
 	it('a conflicted revision holds no ground', () => {
 		const edited = BODY.replace('grey heron', 'grey-heron');
 		expect(overlapsLive(edited, standing, '50/one.md', 4, 14)).toBeNull();
+	});
+});
+
+describe('reading order across the manuscript', () => {
+	const at = (id: string, path: string, from: number): Revision => ({
+		...capture('replace', 4, 14),
+		id,
+		path,
+		from,
+		to: from + 4,
+	});
+
+	it('follows the notes as the manuscript orders them, then the offsets', () => {
+		const order = orderRevisions(
+			[at('c', '50/two.md', 10), at('b', '50/one.md', 40), at('a', '50/one.md', 4)],
+			['50/one.md', '50/two.md'],
+		);
+		expect(order.map((rev) => rev.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('a revision whose note the stream does not carry is left out', () => {
+		const order = orderRevisions(
+			[at('a', '50/one.md', 4), at('gone', '50/deleted.md', 0)],
+			['50/one.md'],
+		);
+		expect(order.map((rev) => rev.id)).toEqual(['a']);
+	});
+
+	it('two at one point keep a settled order, and the input is untouched', () => {
+		const given = [at('z', '50/one.md', 4), at('a', '50/one.md', 4)];
+		expect(orderRevisions(given, ['50/one.md']).map((rev) => rev.id)).toEqual([
+			'a',
+			'z',
+		]);
+		expect(given.map((rev) => rev.id)).toEqual(['z', 'a']);
 	});
 });
 

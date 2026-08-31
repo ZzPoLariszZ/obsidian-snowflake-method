@@ -252,6 +252,32 @@ export function overlapsLive(
 	return null;
 }
 
+/**
+ * Every revision in reading order: by the note it belongs to, as the
+ * manuscript itself orders its notes, then by where in that note it begins.
+ * A revision whose note the order does not name is left out -- there is
+ * nowhere to take the reader. Stored offsets, not anchored ones: the notes
+ * outside the loaded window have no live body to anchor against, and the
+ * order has to be the same one wherever it is asked from.
+ */
+export function orderRevisions(
+	revisions: readonly Revision[],
+	paths: readonly string[],
+): Revision[] {
+	const rank = new Map(paths.map((path, index) => [path, index]));
+	return revisions
+		.filter((rev) => rank.has(rev.path))
+		.sort((left, right) => {
+			const byNote = (rank.get(left.path) ?? 0) - (rank.get(right.path) ?? 0);
+			if (byNote !== 0) return byNote;
+			if (left.from !== right.from) return left.from - right.from;
+			// Two revisions at one point still need an order that holds
+			// still between reads, or the pair of arrows would disagree
+			// with itself.
+			return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+		});
+}
+
 const WHITESPACE = /\s/;
 
 /**

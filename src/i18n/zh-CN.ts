@@ -1329,6 +1329,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.revision.save': '保存',
 	'manuscript.revision.cancel': '取消',
 	'manuscript.revision.discard': '丢弃',
+	'manuscript.revision.previous': '上一条修订',
+	'manuscript.revision.next': '下一条修订',
 	'manuscript.newSegment': '新建正文笔记',
 	'manuscript.segmentTitle': '名称',
 	'manuscript.segmentTitlePlaceholder': '第一章',
