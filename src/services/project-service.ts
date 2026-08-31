@@ -1023,6 +1023,19 @@ export class SnowflakeProjectService {
       else markCreated(result, folder);
     }
 
+    // The folders are all standing now, so anything an older build filed in
+    // the wrong one can come home. Only where its own home is empty: a file
+    // already there is the live one, and the other is a leftover nothing
+    // reads rather than something to move onto it.
+    for (const { former, home } of this.mentionStore.formerStatisticsFiles(
+      project,
+    )) {
+      if (this.repository.getFile(former) === null) continue;
+      if (this.repository.get(home) !== null) continue;
+      await this.repository.renameFile(former, home);
+      markRepaired(result, home);
+    }
+
     // Like the bases below, a tree root's existence is the contract: its
     // folders are the author's taxonomy, and the health checker is what
     // watches over the node files and the links pointing in. Every entity
@@ -1404,6 +1417,17 @@ export class SnowflakeProjectService {
         throw new Error(`No canonical project base was found for "${normalized}".`);
       }
       await this.repository.createPlainFile(normalized, base.content);
+      return this.loadProject(project.projectFile);
+    }
+
+    if (issue.code === "misfiled-statistics-file") {
+      const home = this.mentionStore
+        .formerStatisticsFiles(project)
+        .find((candidate) => candidate.former === normalized)?.home;
+      if (home === undefined) {
+        throw new Error(`No statistics file belongs at "${normalized}".`);
+      }
+      await this.repository.renameFile(normalized, home);
       return this.loadProject(project.projectFile);
     }
 
@@ -6815,6 +6839,24 @@ export class SnowflakeProjectService {
         stepIds: [],
         canOpen: false,
         repairable: this.repository.get(path) === null,
+      });
+    }
+
+    // The two statistics files a build before the folders were named after
+    // their tabs left in each other's. Reported only where the file's own home
+    // stands empty: with something already there, the one in the old folder is
+    // a leftover nothing reads, and moving it would land on the live copy.
+    for (const { former, home } of this.mentionStore.formerStatisticsFiles(
+      project,
+    )) {
+      if (this.repository.getFile(former) === null) continue;
+      if (this.repository.get(home) !== null) continue;
+      add({
+        code: "misfiled-statistics-file",
+        path: former,
+        stepIds: [],
+        canOpen: false,
+        repairable: true,
       });
     }
 

@@ -633,6 +633,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 		'在此修复会写入可读取的值。',
 	'projectStructure.issue.missing-directory': '缺少该项目文件夹。',
 	'projectStructure.action.missing-directory': '在此修复会创建它。',
+	'projectStructure.issue.misfiled-statistics-file':
+		'该统计文件仍在旧版本存放它的文件夹里。',
+	'projectStructure.action.misfiled-statistics-file':
+		'在此修复会把它移到对应标签页的文件夹。',
 	'projectStructure.issue.missing-artifact': '缺少该项目笔记。',
 	'projectStructure.action.missing-artifact':
 		'在此修复会按所属步骤的模板写入它。',

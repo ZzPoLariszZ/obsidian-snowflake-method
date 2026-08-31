@@ -166,6 +166,29 @@ export class MentionStore {
 	}
 
 	/**
+	 * The two files a build before this one filed in each other's folders, each
+	 * beside the home it belongs in: the rules, and this device's own analysis
+	 * cache. Both move by themselves in time -- the rules on the next edit, the
+	 * cache on the next write -- so this is for the health check, which offers
+	 * to do it now instead. Another device's cache is not named here: it is
+	 * that device's to move, and taking it would cost it a rebuild.
+	 */
+	formerStatisticsFiles(
+		project: ProjectRef,
+	): { former: string; home: string }[] {
+		return [
+			{
+				former: this.formerIgnoresPath(project),
+				home: this.ignoresPath(project),
+			},
+			{
+				former: this.formerAnalysisPath(project),
+				home: this.analysisPath(project),
+			},
+		];
+	}
+
+	/**
 	 * The project's ignore rules, read once per file version: a stamp match
 	 * answers from memory, anything else re-reads. A file that will not parse
 	 * is quarantined and read as empty; a missing file is simply no rules yet.

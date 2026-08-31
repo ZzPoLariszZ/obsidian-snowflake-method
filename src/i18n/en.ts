@@ -694,6 +694,10 @@ export const en = {
 		'Repairing here writes a value it can read.',
 	'projectStructure.issue.missing-directory': 'This project folder is missing.',
 	'projectStructure.action.missing-directory': 'Repairing here creates it.',
+	'projectStructure.issue.misfiled-statistics-file':
+		'This statistics file is in the folder an older version kept it in.',
+	'projectStructure.action.misfiled-statistics-file':
+		'Repairing here moves it beside the tab that shows it.',
 	'projectStructure.issue.missing-artifact': 'This project note is missing.',
 	'projectStructure.action.missing-artifact':
 		'Repairing here writes it from the template for its step.',

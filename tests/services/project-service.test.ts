@@ -288,6 +288,79 @@ describe("SnowflakeProjectService", () => {
 	expect(fakeVault.processCalls).toHaveLength(processCallsBeforeCheck);
   });
 
+  it("offers to bring a statistics file home from an older build's folder", async () => {
+    const project = await service.createProject({ name: "Older layout" });
+    const statistics = `${project.rootPath}/70_Tool/71_Data_Statistics`;
+    const former = `${statistics}/712_Prose_Analysis/mention_ignores.json`;
+    const home = `${statistics}/713_Entity_Tracking/mention_ignores.json`;
+    await fakeVault.seedFile(former, '{"schemaVersion":1,"ignores":[]}\n');
+
+    const seen = await service.loadProject(project.projectFile);
+    expect(seen.structureIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "misfiled-statistics-file",
+          path: former,
+          repairable: true,
+          canOpen: false,
+        }),
+      ]),
+    );
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      former,
+    );
+    expect(fakeVault.getFileByPath(home)).not.toBeNull();
+    expect(fakeVault.getAbstractFileByPath(former)).toBeNull();
+    expect(repaired.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "misfiled-statistics-file" }),
+      ]),
+    );
+  });
+
+  it("says nothing where the file's own home is already taken", async () => {
+    // Two builds sharing a vault leave a copy in each folder. The one this
+    // build reads is home; the other is a leftover, and moving it onto the
+    // live copy is the one thing the repair must never do.
+    const project = await service.createProject({ name: "Both places" });
+    const statistics = `${project.rootPath}/70_Tool/71_Data_Statistics`;
+    const former = `${statistics}/712_Prose_Analysis/mention_ignores.json`;
+    const home = `${statistics}/713_Entity_Tracking/mention_ignores.json`;
+    await fakeVault.seedFile(former, '{"schemaVersion":1,"ignores":[]}\n');
+    await fakeVault.seedFile(home, '{"schemaVersion":1,"ignores":[]}\n');
+
+    const seen = await service.loadProject(project.projectFile);
+    expect(seen.structureIssues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "misfiled-statistics-file" }),
+      ]),
+    );
+    const result = await service.repairProject(project.rootPath);
+    expect(fakeVault.getFileByPath(former)).not.toBeNull();
+    expect(result.repaired).not.toContain(home);
+  });
+
+  it("brings every misfiled statistics file home in a whole-project repair", async () => {
+    const project = await service.createProject({ name: "Full repair" });
+    const statistics = `${project.rootPath}/70_Tool/71_Data_Statistics`;
+    const formerRules = `${statistics}/712_Prose_Analysis/mention_ignores.json`;
+    const formerCache = `${statistics}/713_Entity_Tracking/device_analysis_stats.json`;
+    await fakeVault.seedFile(formerRules, '{"schemaVersion":1,"ignores":[]}\n');
+    await fakeVault.seedFile(formerCache, "{}\n");
+
+    const result = await service.repairProject(project.rootPath);
+    expect(fakeVault.getAbstractFileByPath(formerRules)).toBeNull();
+    expect(fakeVault.getAbstractFileByPath(formerCache)).toBeNull();
+    expect(result.repaired).toEqual(
+      expect.arrayContaining([
+        `${statistics}/713_Entity_Tracking/mention_ignores.json`,
+        `${statistics}/712_Prose_Analysis/device_analysis_stats.json`,
+      ]),
+    );
+  });
+
   it("repairs only the explicitly selected missing project note or folder", async () => {
     const project = await service.createProject({ name: "Targeted repair" });
     const summaryPath = `${project.rootPath}/10_Summary/11_One_Sentence_Summary.md`;

@@ -278,6 +278,10 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   "missing-definition-node",
   "unresolved-definition-link",
   "stale-definition-alias",
+  // A statistics file still standing in the folder an older build filed it
+  // in. The plugin reads it where it stands and moves it in its own time, so
+  // this is an offer rather than damage: repairing here moves it now.
+  "misfiled-statistics-file",
   // Notes carry a worldbuilding kind the registry does not list, which a
   // hand-restored backup or a hand-edited registry can leave behind. The
   // repair registers the kind and ensures its folder, so the notes come back
