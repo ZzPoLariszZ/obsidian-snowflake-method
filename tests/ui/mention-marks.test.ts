@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
 	analyzeMentions,
 	buildEntityMatcher,
+	captureRevision,
 	combineMentionMarks,
 	dialogueRanges,
 	planDialogueMarks,
 	planMentionMarks,
+	planRevisionMarks,
 	type CountableRange,
 	type MentionMark,
 	type MentionSource,
@@ -129,5 +131,48 @@ describe('marks that span syntax', () => {
 		expect(spans).toHaveLength(1);
 		// The emphasis marks never show, so the wrap must expect 「走吧」.
 		expect(spans[0]?.text).toBe('「走吧」');
+	});
+});
+
+describe('the revision layer on the rendered half', () => {
+	it('projects a revision range across syntax like any other mark', () => {
+		const body = 'so **grey heron** ran';
+		const from = body.indexOf('grey');
+		const { plan } = planRevisionMarks('note.md', body, [
+			captureRevision('note.md', body, 'replace', from, from + 10, 'crane', '', 'rev-1', 7),
+		]);
+		const spans = projectMentionMarks(body, plan);
+		expect(spans).toHaveLength(1);
+		// Visible: s o g r e y h e r o n r a n -- the asterisks are not shown.
+		expect(spans[0]).toMatchObject({ from: 2, to: 11, text: 'greyheron' });
+		expect(spans[0]?.mark.classes).toBe('snowflake-method-revision is-replace');
+	});
+
+	it('an insertion carrier is one visible character wide', () => {
+		const body = 'before after';
+		const point = body.indexOf(' ');
+		const { plan } = planRevisionMarks('note.md', body, [
+			captureRevision('note.md', body, 'insert', point, point, 'x', '', 'rev-2', 7),
+		]);
+		const spans = projectMentionMarks(body, plan);
+		expect(spans).toHaveLength(1);
+		expect(spans[0]).toMatchObject({ from: 6, to: 7, text: 'a' });
+		expect(spans[0]?.mark.classes).toBe(
+			'snowflake-method-revision is-insertion',
+		);
+	});
+
+	it('rides apart from the mention layer, whose indices it never shifts', () => {
+		const body = 'so Alice ran';
+		const mentionMarks = marksFor(body, [alice]);
+		const { plan } = planRevisionMarks('note.md', body, [
+			captureRevision('note.md', body, 'replace', 0, body.length, 'x', '', 'rev-3', 7),
+		]);
+		const mentionSpans = projectMentionMarks(body, mentionMarks);
+		const revisionSpans = projectMentionMarks(body, plan);
+		expect(mentionSpans[0]?.index).toBe(0);
+		expect(revisionSpans[0]?.index).toBe(0);
+		expect(mentionSpans[0]?.text).toBe('Alice');
+		expect(revisionSpans[0]?.text).toBe('soAliceran');
 	});
 });

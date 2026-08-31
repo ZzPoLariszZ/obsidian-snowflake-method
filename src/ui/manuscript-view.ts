@@ -13,37 +13,46 @@ import {
 } from 'obsidian';
 
 import {
-	DIALOGUE_PRESENTATIONS,
-	MENTION_HIGHLIGHT_MODES,
 	analyzeMentions,
+	anchorRevision,
+	captureRevision,
 	combineMentionMarks,
-	dialogueRanges,
-	planDialogueMarks,
-	planHighlightMarks,
-	planMentionMarks,
-	planSensitiveMarks,
-	presentationShape,
-	presentationStyle,
-	sensitiveOccurrencesOf,
-	splitMentionIgnores,
 	type CompiledHighlightRules,
+	DIALOGUE_PRESENTATIONS,
 	type DialoguePresentation,
+	dialogueRanges,
 	type DialogueStyle,
 	type EntityMatcher,
 	type EntityOccurrence,
+	MENTION_HIGHLIGHT_MODES,
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
+	overlapsLive,
+	planDialogueMarks,
+	planHighlightMarks,
+	planMentionMarks,
+	planRevisionMarks,
+	planSensitiveMarks,
+	presentationShape,
+	presentationStyle,
+	resolvePassage,
+	type Revision,
+	type RevisionPlan,
 	type SensitiveMatcher,
+	sensitiveOccurrencesOf,
+	splitMentionIgnores,
 } from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import {
 	applyDialogueMarks,
 	applyMentionMarks,
+	applyRevisionMarks,
 	clearMentionMarks,
 	projectMentionMarks,
 } from './mention-marks';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
+import { renderRevisionRail, type RevisionRail } from './revision-cards';
 import { confirmSegmentMerge } from './modals';
 import { projectedIndexAt } from './prose-projection';
 import {
@@ -136,13 +145,19 @@ interface MountedSegment {
 		marks: MentionMark[];
 		/** The dialogue layer apart: never indexed, free to sit under marks. */
 		dialogue: MentionMark[];
+		/** The revision layer apart again, with its anchors and conflicts. */
+		revisions: RevisionPlan;
 	} | null;
+	/** The card rail at the segment's right, once it has revisions to show. */
+	rail: RevisionRail | null;
 }
 
 /** What the mention feed answers with: the roster's matcher, the ignores. */
 interface MentionFeedState {
 	matcher: EntityMatcher;
 	ignores: readonly MentionIgnore[];
+	/** The project's standing revisions, re-anchored per body at plan time. */
+	revisions: readonly Revision[];
 	/** The dress-only families, disabled features handed in empty. */
 	sensitive: SensitiveMatcher;
 	highlights: CompiledHighlightRules;
@@ -235,6 +250,22 @@ export class SnowflakeManuscriptView extends ItemView {
 	private mentionProject: string | null = null;
 	/** The feed's last answer, for the synchronous ask the editor makes. */
 	private mentionState: MentionFeedState | null = null;
+
+	/** One trailing timer per segment behind the editor's geometry events. */
+	private readonly revisionRailTimers = new Map<string, number>();
+
+	/** The one revision being made right now, view-local until saved. */
+	private revisionDraft:
+		| {
+				path: string;
+				kind: Revision['kind'];
+				from: number;
+				to: number;
+				originalText: string;
+				/** Where the card stands, captured at creation (D7). */
+				top: number | null;
+		  }
+		| null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
 	/** The dress the page wears, so a refresh can tell a change from a repeat. */
@@ -434,6 +465,13 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	onResize(): void {
+		if (this.containerEl.isShown()) {
+			// The rail's room and every card's height answer to the pane.
+			for (const entry of this.mounted.values()) {
+				if (entry.rail !== null) this.syncRevisionRail(entry);
+			}
+			this.syncRevisionOverlay();
+		}
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
 		void this.refresh().catch((error: unknown) => {
@@ -1231,21 +1269,33 @@ export class SnowflakeManuscriptView extends ItemView {
 					);
 		const dialogue =
 			state === null ? [] : this.dialogueDressMarks(state, entry.path, body);
+		const revisions = planRevisionMarks(
+			entry.path,
+			body,
+			state?.revisions ?? [],
+		);
 		const previous = entry.mentions;
-		entry.mentions = { body, occurrences, marks, dialogue };
+		entry.mentions = { body, occurrences, marks, dialogue, revisions };
 		if (
 			previous !== null &&
 			previous.body === body &&
 			sameMentionMarks(previous.marks, marks) &&
-			sameMentionMarks(previous.dialogue, dialogue)
+			sameMentionMarks(previous.dialogue, dialogue) &&
+			sameMentionMarks(previous.revisions.plan, revisions.plan) &&
+			previous.revisions.conflicts.length === revisions.conflicts.length
 		) {
+			this.syncRevisionRail(entry);
 			return;
 		}
 		clearMentionMarks(rendered);
-		// Dialogue wraps first, so the indexed marks nest inside the quoted
-		// stretch they stand in rather than losing the overlap outright.
+		// The revision layer wraps outermost -- it overlaps whatever stands
+		// inside it -- then dialogue, so the indexed marks nest inside the
+		// quoted stretch they stand in rather than losing the overlap
+		// outright.
+		applyRevisionMarks(rendered, projectMentionMarks(body, revisions.plan));
 		applyDialogueMarks(rendered, projectMentionMarks(body, dialogue));
 		applyMentionMarks(rendered, projectMentionMarks(body, marks));
+		this.syncRevisionRail(entry);
 	}
 
 	/** The rendered dress, once the feed answers, if nothing moved meanwhile. */
@@ -1293,13 +1343,20 @@ export class SnowflakeManuscriptView extends ItemView {
 			...this.dressOnlyMarks(state, path, body),
 		);
 		const dialogue = this.dialogueDressMarks(state, path, body);
+		const revisions = planRevisionMarks(path, body, state.revisions);
 		const entry = this.mounted.get(path);
 		if (entry !== undefined) {
-			entry.mentions = { body, occurrences, marks, dialogue };
+			entry.mentions = { body, occurrences, marks, dialogue, revisions };
+			// Asked from inside the editor's own update: the rail waits its
+			// turn behind a timer rather than a frame, because a hidden
+			// window stops giving frames and the cards still deserve their
+			// places when it comes back.
+			this.scheduleRevisionRailSync(path);
 		}
 		// The editor's decoration set takes overlap in stride: the dialogue
-		// layer simply nests around whatever marks stand inside it.
-		return dialogue.length === 0 ? marks : [...marks, ...dialogue];
+		// and revision layers simply nest around whatever marks stand inside
+		// them.
+		return [...marks, ...dialogue, ...revisions.plan];
 	}
 
 	/**
@@ -1355,6 +1412,400 @@ export class SnowflakeManuscriptView extends ItemView {
 		);
 	}
 
+	/**
+	 * Where one body offset sits, measured from the segment's own top: the
+	 * editor answers by coordinates, the rendered half by the dressed piece.
+	 * Null while nothing measurable stands there -- an unlaid line far down a
+	 * long note, a whitespace-only body -- and the rail then simply stacks
+	 * the card after the one before it.
+	 */
+	private revisionAnchorTop(
+		entry: MountedSegment,
+		revisionId: string,
+		from: number,
+	): number | null {
+		const base = entry.el.getBoundingClientRect().top;
+		if (entry.editor !== null) {
+			const band = entry.editor.bandAt(from);
+			if (band !== null) return band.top - base;
+			// A dead or empty handle mid-swap: fall through to whatever the
+			// rendered half still shows rather than answering nothing.
+		}
+		const kept = entry.mentions;
+		if (kept === null) return null;
+		const index = kept.revisions.plan.findIndex(
+			(mark) =>
+				mark.occurrence.type === 'revision' &&
+				mark.occurrence.revisionId === revisionId,
+		);
+		if (index < 0) return null;
+		const piece = entry.bodyEl.querySelector(
+			`[data-snowflake-method-revision="${String(index)}"]`,
+		);
+		if (!(piece instanceof HTMLElement)) return null;
+		return piece.getBoundingClientRect().top - base;
+	}
+
+	/**
+	 * Brings one segment's card rail level with its planned revisions: cards
+	 * for what anchors, conflict cards for what does not, and the draft being
+	 * written if it belongs here. A segment with nothing to show gives its
+	 * rail back rather than keeping an empty column standing.
+	 */
+	private syncRevisionRail(entry: MountedSegment): void {
+		// While a click or an arrival is still being compensated, nothing
+		// here may read layout: the geometry hook asks again once the page
+		// has been given back.
+		if (this.puttingBack || this.walkingIn) return;
+		// Mid-swap -- no editor and no rendered prose yet -- and freshly
+		// re-rendered -- no analysis yet -- keep the standing cards as they
+		// are: tearing the rail down on a gap that lasts two frames is how
+		// cards flicker away and come back somewhere wrong.
+		const kept = entry.mentions;
+		if (kept === null) return;
+		if (
+			entry.editor === null &&
+			!(
+				entry.bodyEl.querySelector('.snowflake-method-segment-rendered')
+					instanceof HTMLElement
+			)
+		) {
+			return;
+		}
+		const feed = this.mentionState?.revisions ?? [];
+		const draft =
+			this.revisionDraft !== null && this.revisionDraft.path === entry.path
+				? this.revisionDraft
+				: null;
+		const plan = kept.revisions;
+		const wanted =
+			draft !== null ||
+			plan.anchors.size > 0 ||
+			plan.conflicts.length > 0;
+		if (!wanted) {
+			entry.rail?.dispose();
+			entry.rail = null;
+			this.syncRevisionOverlay();
+			return;
+		}
+		entry.rail ??= this.buildRevisionRail(entry.path);
+		const entries = [...plan.anchors.entries()].flatMap(([id, anchor]) => {
+			const revision = feed.find((candidate) => candidate.id === id);
+			if (revision === undefined) return [];
+			return [
+				{
+					revision,
+					from: anchor.from,
+					to: anchor.to,
+					top: this.revisionAnchorTop(entry, id, anchor.from),
+				},
+			];
+		});
+		entries.sort((left, right) => left.from - right.from);
+		entry.rail.sync({
+			entries,
+			conflicts: [...plan.conflicts],
+			draft,
+			readOnly: this.model?.readOnly === true || entry.text.readOnly,
+		});
+		this.syncRevisionOverlay();
+	}
+
+	/**
+	 * The rail's follow-up, debounced behind the editor's own geometry
+	 * events: every measured viewport, revised height and resize says the
+	 * cards may sit wrong, and a beat after the last such word the rail is
+	 * asked again. This is what turns the height map's estimates into
+	 * measured tops -- at mount, on scroll into unmeasured prose, and
+	 * through every settle -- without a frame loop that guesses at when
+	 * the editor is done.
+	 */
+	private scheduleRevisionRailSync(path: string): void {
+		const kept = this.revisionRailTimers.get(path);
+		if (kept !== undefined) this.contentEl.win.clearTimeout(kept);
+		this.revisionRailTimers.set(
+			path,
+			this.contentEl.win.setTimeout(() => {
+				this.revisionRailTimers.delete(path);
+				const entry = this.mounted.get(path);
+				if (entry === undefined) return;
+				// A sync would decline while a click is being compensated;
+				// come back once instead of losing the ask.
+				if (this.puttingBack || this.walkingIn) {
+					this.scheduleRevisionRailSync(path);
+					return;
+				}
+				this.syncRevisionRail(entry);
+			}, 80),
+		);
+	}
+
+	/** The callbacks one segment's rail answers with, looked up per call. */
+	private buildRevisionRail(path: string): RevisionRail {
+		const entryNow = (): MountedSegment | undefined => this.mounted.get(path);
+		const projectPath = (): string | null =>
+			this.model?.projectPath ?? this.projectPath;
+		const rethrow = (work: Promise<unknown>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		const host = this.mounted.get(path);
+		if (host === undefined) throw new Error(`No segment at "${path}".`);
+		return renderRevisionRail(host.el, {
+			t: this.t,
+			onAccept: (revision) => {
+				const entry = entryNow();
+				if (entry !== undefined) rethrow(this.acceptRevision(entry, revision));
+			},
+			onReject: (revision) => {
+				rethrow(this.host.discardRevision(projectPath(), revision.id));
+			},
+			onDiscard: (revision) => {
+				rethrow(this.host.discardRevision(projectPath(), revision.id));
+			},
+			onEditSave: (revision, proposed, comment) => {
+				rethrow(
+					this.host.updateRevision(projectPath(), revision.id, {
+						proposed,
+						comment,
+					}),
+				);
+			},
+			onDraftSave: (proposed, comment) => {
+				const entry = entryNow();
+				if (entry !== undefined) {
+					rethrow(this.saveRevisionDraft(entry, proposed, comment));
+				}
+			},
+			onDraftCancel: () => {
+				this.revisionDraft = null;
+				const entry = entryNow();
+				if (entry !== undefined) this.syncRevisionRail(entry);
+			},
+		});
+	}
+
+	/**
+	 * Widens the rail's room or narrows it: with margin beside the column the
+	 * cards stand in the margin, and in a tight pane they overlay the right
+	 * edge on a surface of their own instead of squeezing the prose.
+	 */
+	private syncRevisionOverlay(): void {
+		const stream = this.streamEl;
+		if (stream === null) return;
+		// A hidden pane measures zero wide and would flap the overlay on;
+		// the reveal's own resize re-asks with real numbers.
+		if (!this.contentEl.isShown()) return;
+		const sample = [...this.mounted.values()][0];
+		const margin =
+			sample === undefined
+				? 0
+				: (stream.clientWidth - sample.el.offsetWidth) / 2;
+		this.contentEl.toggleClass('is-revision-overlay', margin < 300);
+	}
+
+	/**
+	 * Begins a revision where the right-click said: the editor's selection or
+	 * caret when the segment is being written in, the rendered selection
+	 * resolved against the body when it reads -- refused with a notice when
+	 * the words stand in more places than one -- and a bare rendered click
+	 * walks in first, exactly as a plain click would, and proposes an
+	 * insertion at the caret it lands.
+	 */
+	private async beginRevisionDraft(
+		entry: MountedSegment,
+		event: MouseEvent,
+	): Promise<void> {
+		const editing = entry.editor;
+		if (editing !== null) {
+			const selection = editing.selection();
+			const body = editing.read();
+			this.revisionDraft = {
+				path: entry.path,
+				kind: selection.from === selection.to ? 'insert' : 'replace',
+				from: selection.from,
+				to: selection.to,
+				originalText: body.slice(selection.from, selection.to),
+				top: this.draftTopFrom(entry, editing.bandAt(selection.from)),
+			};
+			this.syncRevisionRail(entry);
+			return;
+		}
+		const body = entry.pending ?? entry.text.body;
+		const selection = this.contentEl.win.getSelection()?.toString() ?? '';
+		if (selection.trim().length > 0) {
+			const found = resolvePassage(body, selection, '', '');
+			if (found === null) {
+				new Notice(this.t('manuscript.revision.ambiguous'));
+				return;
+			}
+			this.revisionDraft = {
+				path: entry.path,
+				kind: 'replace',
+				from: found.from,
+				to: found.to,
+				originalText: body.slice(found.from, found.to),
+				// The rendered half has no offset-to-pixel answer of its
+				// own for a range nothing has wrapped yet, but the click
+				// itself says where the words are.
+				top: event.clientY - entry.el.getBoundingClientRect().top,
+			};
+			this.syncRevisionRail(entry);
+			return;
+		}
+		await this.activateSegment(entry.path, clickedWords(event));
+		const mounted = this.mounted.get(entry.path);
+		const editor = mounted?.editor;
+		if (mounted === undefined || editor === null || editor === undefined) {
+			return;
+		}
+		const at = editor.cursor();
+		this.revisionDraft = {
+			path: entry.path,
+			kind: 'insert',
+			from: at,
+			to: at,
+			originalText: '',
+			top: this.draftTopFrom(mounted, editor.bandAt(at)),
+		};
+		this.syncRevisionRail(mounted);
+	}
+
+	/** A band on the screen turned into a card top within the segment. */
+	private draftTopFrom(
+		entry: MountedSegment,
+		band: { top: number } | null,
+	): number | null {
+		if (band === null) return null;
+		return band.top - entry.el.getBoundingClientRect().top;
+	}
+
+	/**
+	 * Saves the draft as a revision, or says why it cannot: a range whose
+	 * text moved on since the menu opened, a spot another revision already
+	 * covers, or an insertion proposing nothing.
+	 */
+	private async saveRevisionDraft(
+		entry: MountedSegment,
+		proposed: string,
+		comment: string,
+	): Promise<void> {
+		const draft = this.revisionDraft;
+		if (draft === null || draft.path !== entry.path) return;
+		const body =
+			entry.editor === null
+				? (entry.pending ?? entry.text.body)
+				: entry.editor.read();
+		if (
+			draft.kind !== 'insert' &&
+			body.slice(draft.from, draft.to) !== draft.originalText
+		) {
+			new Notice(this.t('manuscript.mention.stale'));
+			this.revisionDraft = null;
+			this.syncRevisionRail(entry);
+			return;
+		}
+		const kind =
+			draft.kind === 'replace' && proposed.length === 0
+				? 'delete'
+				: draft.kind;
+		if (kind === 'insert' && proposed.length === 0) {
+			new Notice(this.t('manuscript.revision.emptyProposed'));
+			return;
+		}
+		const standing = this.mentionState?.revisions ?? [];
+		if (
+			overlapsLive(body, standing, entry.path, draft.from, draft.to) !== null
+		) {
+			new Notice(this.t('manuscript.revision.overlap'));
+			return;
+		}
+		const revision = captureRevision(
+			entry.path,
+			body,
+			kind,
+			draft.from,
+			draft.to,
+			proposed,
+			comment.trim(),
+			this.host.mintRevisionId(),
+			Date.now(),
+		);
+		this.revisionDraft = null;
+		await this.host.createRevision(
+			this.model?.projectPath ?? this.projectPath,
+			revision,
+		);
+	}
+
+	/**
+	 * Accepts one revision: re-anchored against the text as it stands this
+	 * moment, applied as the author's own edit where an editor is open --
+	 * undoable, counted, saved like typing -- and through the guarded save
+	 * path where the segment reads. The record goes only after the text did.
+	 */
+	private async acceptRevision(
+		entry: MountedSegment,
+		revision: Revision,
+	): Promise<void> {
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		const stale = async (): Promise<void> => {
+			new Notice(this.t('manuscript.mention.stale'));
+			await this.refreshMountedBodies();
+			this.applyMentionMode();
+		};
+		const editing = entry.editor;
+		if (editing !== null) {
+			const body = editing.read();
+			const anchor = anchorRevision(body, revision);
+			if (anchor.state === 'conflict') {
+				await stale();
+				return;
+			}
+			const done = editing.splice(
+				anchor.from,
+				anchor.to,
+				body.slice(anchor.from, anchor.to),
+				revision.proposed,
+			);
+			if (!done) {
+				await stale();
+				return;
+			}
+			await this.host.discardRevision(projectPath, revision.id);
+			return;
+		}
+		if (
+			entry.pending !== null ||
+			this.host.manuscriptSegmentStamp(entry.path) !== entry.text.stamp
+		) {
+			await stale();
+			return;
+		}
+		const body = entry.text.body;
+		const anchor = anchorRevision(body, revision);
+		if (anchor.state === 'conflict') {
+			await stale();
+			return;
+		}
+		const next =
+			body.slice(0, anchor.from) + revision.proposed + body.slice(anchor.to);
+		const saved = await this.host.saveManuscriptSegment(
+			entry.path,
+			next,
+			entry.text.revision,
+		);
+		entry.text = {
+			...entry.text,
+			body: next,
+			revision: saved.revision,
+			stamp: saved.stamp,
+		};
+		await this.renderSegmentBody(entry);
+		await this.host.discardRevision(projectPath, revision.id);
+	}
+
 	private primeEditorMentions(entry: MountedSegment): void {
 		const mounted = entry.editor;
 		void this.mentionFeedFor()
@@ -1376,12 +1827,18 @@ export class SnowflakeManuscriptView extends ItemView {
 			const fetched: Promise<MentionFeedState | null> = Promise.all([
 				this.host.manuscriptEntityMatcher(shown),
 				this.host.mentionIgnores(shown),
+				this.host.manuscriptRevisions(shown),
 			])
-				.then(([matcher, ignores]) => {
+				.then(([matcher, ignores, revisions]) => {
 					const state =
 						matcher === null
 							? null
-							: { matcher, ignores, ...this.host.manuscriptDressFeeds() };
+							: {
+									matcher,
+									ignores,
+									revisions,
+									...this.host.manuscriptDressFeeds(),
+								};
 					if (this.mentionFeed === fetched) this.mentionState = state;
 					return state;
 				})
@@ -1872,6 +2329,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			editor: null,
 			pending: null,
 			mentions: null,
+			rail: null,
 		};
 		this.mounted.set(path, entry);
 		await this.renderSegmentBody(entry);
@@ -2251,6 +2709,9 @@ export class SnowflakeManuscriptView extends ItemView {
 				onCaretShow: (shown, top, bottom) => {
 					this.showCaret(shown, top, bottom);
 				},
+				onGeometryChange: (moved) => {
+					this.scheduleRevisionRailSync(moved);
+				},
 			},
 		);
 		this.editingPath = path;
@@ -2279,6 +2740,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		// would otherwise be the final word on where the reader ends up.
 		this.puttingBack = clicked !== undefined;
 		this.walkingIn = arriving !== undefined;
+		// The first editor-era card sync, a beat after the swap: precise
+		// where the editor has laid out, held in place where it has not.
+		this.scheduleRevisionRailSync(path);
 		entry.editor.focus();
 		if (clicked !== undefined) this.keepPuttingBack(entry, clicked);
 		if (arriving !== undefined) {
@@ -2569,10 +3033,13 @@ export class SnowflakeManuscriptView extends ItemView {
 		// were; `holdPosition` answers every other case.
 		const release = this.holdProse(path) ?? this.holdPosition();
 		await this.quietly(async () => {
-			await this.backend.unmount(path);
 			const entry = this.mounted.get(path);
+			// The handle goes first: unmount destroys the view, and anything
+			// asking a destroyed editor for coordinates mid-swap would place
+			// every revision card at the segment's head.
+			if (entry !== undefined) entry.editor = null;
+			await this.backend.unmount(path);
 			if (entry === undefined) return;
-			entry.editor = null;
 			await this.renderSegmentBody(entry);
 		});
 		release();
@@ -2793,6 +3260,22 @@ export class SnowflakeManuscriptView extends ItemView {
 				MANUSCRIPT_VIEW_TYPE,
 				mentionLead,
 			);
+			if (this.model?.readOnly !== true && entry?.text.readOnly !== true) {
+				menu.addItem((item) =>
+					item
+						.setSection(section)
+						.setTitle(this.t('manuscript.revision.create'))
+						.setIcon('message-square-plus')
+						.onClick(() => {
+							if (entry === undefined) return;
+							void this.beginRevisionDraft(entry, event).catch(
+								(error: unknown) => {
+									this.showError(error);
+								},
+							);
+						}),
+				);
+			}
 			menu.addItem((item) =>
 				item
 					.setSection(section)
@@ -2930,6 +3413,15 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 		await this.backend.unmount(path);
 		this.mounted.delete(path);
+		// The rail goes with the element; a draft being written here goes
+		// too, because its anchor left the page.
+		const timer = this.revisionRailTimers.get(path);
+		if (timer !== undefined) {
+			this.contentEl.win.clearTimeout(timer);
+			this.revisionRailTimers.delete(path);
+		}
+		entry.rail = null;
+		if (this.revisionDraft?.path === path) this.revisionDraft = null;
 		entry.el.remove();
 	}
 
@@ -2939,6 +3431,16 @@ export class SnowflakeManuscriptView extends ItemView {
 		// scroll as notes are let go of moves it too, and answering that is how
 		// the view ends up chasing itself.
 		if (stream === null || this.settling > 0) return;
+		// Scrolling brings unmeasured editor prose toward the light: ask the
+		// active editor to measure again and the rail to re-align once the
+		// numbers land. Debounced behind the shared timer, cheap to repeat.
+		if (this.editingPath !== null) {
+			const editing = this.mounted.get(this.editingPath);
+			if (editing?.editor != null && editing.rail !== null) {
+				editing.editor.remeasure();
+				this.scheduleRevisionRailSync(this.editingPath);
+			}
+		}
 		const offsets = [...this.mounted.values()].map((entry) => ({
 			path: entry.path,
 			top: entry.el.offsetTop,
@@ -3117,6 +3619,9 @@ export class SnowflakeManuscriptView extends ItemView {
 			// Typing that arrived while this save was on its way is still
 			// pending, and the next flush carries it.
 			if (entry.pending === pending) entry.pending = null;
+			// Revised text may have moved: the stored anchors follow the file,
+			// quietly, and nobody waits on it.
+			this.host.manuscriptRevisionsSaved(entry.path, pending);
 			return 'written';
 		} catch (error) {
 			if (error instanceof ManuscriptSaveConflict) return 'changed';

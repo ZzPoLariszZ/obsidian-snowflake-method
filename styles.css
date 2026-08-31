@@ -5466,6 +5466,204 @@ body {
 		0 0 0.5px currentColor;
 }
 
+/* Revisions: a proposed change worn where it stands. The two range kinds
+   share one look -- a soft yellow ground and a line through the words the
+   proposal would take -- and both stay metrics-neutral like every mark here.
+   The struck line is the plain keyword only: the review's browser-support
+   check vouches for no style or color longhand, and the default ink reads
+   right on both grounds. */
+.snowflake-method-revision.is-replace,
+.snowflake-method-revision.is-delete {
+	border-radius: 2px;
+	background-color: color-mix(in srgb, var(--color-yellow) 24%, transparent);
+	text-decoration: line-through;
+}
+
+/* An insertion is a point, and a point cannot be wrapped: the mark rides the
+   nearest visible character and draws a bar at the edge facing the point --
+   absolutely positioned, so the carrier keeps its width and the editor's row
+   measuring stays true. */
+.snowflake-method-revision.is-insertion {
+	position: relative;
+}
+
+.snowflake-method-revision.is-insertion::after {
+	content: '';
+	position: absolute;
+	top: 0.05em;
+	bottom: 0.05em;
+	left: -1px;
+	width: 2px;
+	border-radius: 1px;
+	background-color: var(--color-yellow);
+}
+
+.snowflake-method-revision.is-insertion.is-insertion-after::after {
+	right: -1px;
+	left: auto;
+}
+
+/* The revision rail: one absolute column standing in the margin at the
+   segment's right, cards stacked down it by the view's own measuring. The
+   segment is its containing block, which is the one place position:relative
+   appears on the stream. */
+.snowflake-method-segment {
+	position: relative;
+}
+
+.snowflake-method-revision-rail {
+	position: absolute;
+	top: 0;
+	left: calc(100% + var(--size-4-2));
+	z-index: 1;
+	width: 260px;
+}
+
+/* A pane too narrow for a margin lays the cards over the right edge on a
+   surface of their own instead of squeezing the prose. */
+.is-revision-overlay .snowflake-method-revision-rail {
+	right: 0;
+	left: auto;
+	width: min(260px, 70%);
+}
+
+.snowflake-method-revision-card {
+	position: absolute;
+	right: 0;
+	left: 0;
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+	/* A relocation glides instead of teleporting: edits above an anchor
+	   move the card, and the slide is what tells the reader it is the
+	   same card following its text. A card is born with its top already
+	   set in the same pass that makes it, so nothing flies in from
+	   nowhere. Top only -- the overlay toggle repositions sideways, and
+	   a card sailing across the prose on a pane resize would be worse
+	   than the hop. */
+	transition: top 250ms ease-out;
+}
+
+.snowflake-method-revision-card.is-conflict {
+	border-color: color-mix(in srgb, var(--color-red) 55%, transparent);
+}
+
+.snowflake-method-revision-card.is-draft {
+	border-color: color-mix(in srgb, var(--color-yellow) 65%, transparent);
+}
+
+.snowflake-method-revision-kind {
+	margin-bottom: var(--size-4-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-revision-card.is-conflict .snowflake-method-revision-kind {
+	color: var(--color-red);
+}
+
+.snowflake-method-revision-original {
+	color: var(--text-muted);
+	text-decoration: line-through;
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-revision-proposed {
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-revision-comment {
+	margin-top: var(--size-4-1);
+	color: var(--text-faint);
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-revision-input {
+	width: 100%;
+	margin-top: var(--size-4-1);
+	resize: vertical;
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-revision-actions {
+	display: flex;
+	gap: var(--size-4-1);
+	margin-top: var(--size-4-2);
+}
+
+.snowflake-method-revision-action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-2) var(--size-4-1);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-revision-action svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+/* The revision table on the task management pane: the statistics tables'
+   frame with its own columns. The three text columns share the room evenly
+   and the place column keeps what a title and a badge need. */
+.snowflake-method-revision-panel-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-2);
+}
+
+.snowflake-method-revision-panel-state {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-revision-column-original,
+.snowflake-method-revision-column-proposed,
+.snowflake-method-revision-column-comment {
+	width: 26%;
+}
+
+.snowflake-method-revision-column-place {
+	width: 22%;
+}
+
+.snowflake-method-revision-cell-original {
+	text-decoration: line-through;
+	color: var(--text-muted);
+}
+
+.snowflake-method-revision-place {
+	padding: 0;
+	border: none;
+	background: none;
+	box-shadow: none;
+	cursor: pointer;
+	color: var(--text-normal);
+}
+
+.snowflake-method-revision-badge {
+	display: inline-block;
+	margin-inline-end: var(--size-4-1);
+	padding: 0 var(--size-4-1);
+	border-radius: var(--radius-s);
+	background-color: color-mix(in srgb, var(--color-red) 18%, transparent);
+	color: var(--color-red);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-revision-place-title {
+	margin-inline-end: var(--size-4-1);
+	color: var(--text-muted);
+}
+
 /* The prose panel: the statistics pane's Prose analysis face. Plain rows and
    one table over theme tokens, a reading and no more. */
 /* The cards, the chapters and the frequency stand apart at the session

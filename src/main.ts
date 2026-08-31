@@ -85,6 +85,7 @@ import {
 	type MentionHighlightMode,
 	type MentionIgnore,
 	type SensitiveMatcher,
+	type Revision,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -115,6 +116,7 @@ import {
 	projectIdOf,
 } from './repository';
 import {
+	createStableId,
 	sessionClockMs,
 	SnowflakeProjectService,
 	ArchiveFolderIsProjectError,
@@ -186,6 +188,11 @@ import {
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
 import type { WikilinkTarget } from './ui/segment-editor-backend';
+import {
+	revisionTableRows,
+	type RevisionNoteReading,
+	type RevisionPanelBridge,
+} from './ui/revision-panel';
 import {
 	collectWikilinkTargets,
 	type WikilinkProjectMembers,
@@ -3476,6 +3483,62 @@ export default class SnowflakeMethodPlugin
 	 * The bridge the prose panel reads through, shaped like the sessions
 	 * bridge below and resolving its project the same way.
 	 */
+	revisionTable(context: SessionPanelContext = {}): RevisionPanelBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		return {
+			t,
+			rows: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				const revisions = await this.projects.revisions.list(project);
+				if (revisions.length === 0) return [];
+				const segments = await this.projects.manuscript.listSegments(
+					project,
+				);
+				const notes = new Map<string, RevisionNoteReading>();
+				segments.forEach((segment, ordinal) => {
+					notes.set(segment.path, {
+						title: segment.title,
+						ordinal,
+						body: null,
+					});
+				});
+				// Only chapters that carry revisions are read, one read each:
+				// standing is derived against the body, never trusted stored.
+				for (const path of new Set(
+					revisions.map((revision) => revision.path),
+				)) {
+					const kept = notes.get(path);
+					try {
+						const { body } = await this.readManuscriptSegment(path);
+						if (kept === undefined) {
+							notes.set(path, {
+								title: path.split('/').pop() ?? path,
+								ordinal: Number.MAX_SAFE_INTEGER,
+								body,
+							});
+						} else {
+							kept.body = body;
+						}
+					} catch {
+						// A chapter that cannot be read leaves its body null,
+						// and every revision on it shows as a conflict.
+					}
+				}
+				return revisionTableRows(revisions, notes);
+			},
+			open: (occurrence) =>
+				this.openManuscriptMention(panelProject(), occurrence),
+			discard: (id) => this.discardRevision(panelProject(), id),
+		};
+	}
+
 	proseStatistics(context: SessionPanelContext = {}): ProsePanelBridge {
 		const projectLocale = context.locale ?? null;
 		const t = (
@@ -4926,6 +4989,73 @@ export default class SnowflakeMethodPlugin
 		this.applyManuscriptMentionMode();
 	}
 
+	async manuscriptRevisions(
+		projectPath: string | null,
+	): Promise<readonly Revision[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		return this.projects.revisions.list(project);
+	}
+
+	async createRevision(
+		projectPath: string | null,
+		revision: Revision,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.projects.revisions.create(project, revision);
+		await this.announceRevisionsChanged();
+	}
+
+	async updateRevision(
+		projectPath: string | null,
+		id: string,
+		patch: { proposed: string; comment: string },
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.projects.revisions.update(project, id, patch);
+		await this.announceRevisionsChanged();
+	}
+
+	async discardRevision(
+		projectPath: string | null,
+		id: string,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.projects.revisions.remove(project, id);
+		await this.announceRevisionsChanged();
+	}
+
+	mintRevisionId(): string {
+		return createStableId('revision');
+	}
+
+	/**
+	 * A saved body may have carried revised text to new offsets: the store is
+	 * brought level quietly, and only a real move re-dresses anything. Fire
+	 * and forget from the save path, which must not wait on this.
+	 */
+	manuscriptRevisionsSaved(path: string, body: string): void {
+		void (async () => {
+			const project = await this.projectOfPath(path);
+			if (project === null) return;
+			const moved = await this.projects.revisions.refreshAnchorsOnSave(
+				project,
+				path,
+				body,
+			);
+			if (moved) await this.announceRevisionsChanged();
+		})().catch(() => undefined);
+	}
+
+	/** Streams re-dress and dashboards re-read after any revision mutation. */
+	private async announceRevisionsChanged(): Promise<void> {
+		this.applyManuscriptMentionMode();
+		await this.refreshDashboards();
+	}
+
 	/**
 	 * The matcher for one project's roster: the same names and aliases the
 	 * wikilink popup offers, so what highlights is exactly what completes.
@@ -6299,6 +6429,10 @@ export default class SnowflakeMethodPlugin
 		this.projects.analysis.forget(file.path, {
 			children: file instanceof TFolder,
 		});
+		// The revision memo is keyed by project root: a deleted or archived
+		// project folder takes its memo with it, and a deleted note simply
+		// stops anchoring, which the derived standing already says.
+		this.projects.revisions.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -6364,6 +6498,19 @@ export default class SnowflakeMethodPlugin
 		this.projects.analysis.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
+		this.projects.revisions.evict(oldPath);
+		// User data follows its note: a renamed chapter keeps its revisions,
+		// where the caches above simply recompute under the new name.
+		void (async () => {
+			const project = await this.projectOfPath(file.path);
+			if (project === null) return;
+			const carried = await this.projects.revisions.renameNotePaths(
+				project,
+				oldPath,
+				file.path,
+			);
+			if (carried) await this.announceRevisionsChanged();
+		})().catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
 		// The configured root travels with its folder. Leaving the setting on a
 		// path that no longer exists would empty the dashboard while every

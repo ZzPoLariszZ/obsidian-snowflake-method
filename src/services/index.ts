@@ -5,6 +5,8 @@ export * from "./mention-index";
 export * from "./mention-store";
 export * from "./mirror-sync";
 export * from "./project-service";
+export * from "./revision-store";
+export * from "./revision-service";
 export * from "./types";
 export * from "./writing-count";
 export * from "./writing-session";

@@ -112,7 +112,7 @@ export function applyMentionMarks(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
 ): void {
-	applyMarkSpans(rendered, spans, true);
+	applyMarkSpans(rendered, spans, 'data-snowflake-method-mention');
 }
 
 /**
@@ -125,13 +125,26 @@ export function applyDialogueMarks(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
 ): void {
-	applyMarkSpans(rendered, spans, false);
+	applyMarkSpans(rendered, spans, null);
+}
+
+/**
+ * The revision dress: its own layer with its own index attribute, applied
+ * around the indexed mention wrap the way the dialogue layer is, because a
+ * revision overlaps whatever stands inside it and must not steal the
+ * mentions' click index.
+ */
+export function applyRevisionMarks(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan[],
+): void {
+	applyMarkSpans(rendered, spans, 'data-snowflake-method-revision');
 }
 
 function applyMarkSpans(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
-	indexed: boolean,
+	indexAttr: string | null,
 ): void {
 	if (spans.length === 0) return;
 	const doc = rendered.ownerDocument;
@@ -187,13 +200,9 @@ function applyMarkSpans(
 					cls: mark.classes,
 					text: text.slice(segment.start, segment.end),
 					attr: {
-						...(indexed
-							? {
-									'data-snowflake-method-mention': String(
-										segment.span.index,
-									),
-								}
-							: {}),
+						...(indexAttr === null
+							? {}
+							: { [indexAttr]: String(segment.span.index) }),
 						...(mark.title === undefined ? {} : { title: mark.title }),
 						...(mark.styleVar === undefined
 							? {}
@@ -213,6 +222,7 @@ const MENTION_CLASSES = [
 	'snowflake-method-sensitive',
 	'snowflake-method-highlight',
 	'snowflake-method-dialogue',
+	'snowflake-method-revision',
 	'is-linked',
 	'is-unlinked',
 	'is-first',
@@ -222,12 +232,16 @@ const MENTION_CLASSES = [
 	'is-deco-underline',
 	'is-deco-wavy',
 	'is-deco-bold',
+	'is-replace',
+	'is-delete',
+	'is-insertion',
+	'is-insertion-after',
 ];
 
 const MARK_SPANS =
-	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue';
+	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue, span.snowflake-method-revision';
 const MARK_ANCHORS =
-	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue';
+	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue, a.snowflake-method-revision';
 
 /** Takes a segment's dress back off, wraps unwrapped and anchors undressed. */
 export function clearMentionMarks(rendered: HTMLElement): void {
@@ -237,6 +251,7 @@ export function clearMentionMarks(rendered: HTMLElement): void {
 	for (const anchor of Array.from(rendered.querySelectorAll(MARK_ANCHORS))) {
 		anchor.removeClasses(MENTION_CLASSES);
 		anchor.removeAttribute('data-snowflake-method-mention');
+		anchor.removeAttribute('data-snowflake-method-revision');
 	}
 	rendered.normalize();
 }

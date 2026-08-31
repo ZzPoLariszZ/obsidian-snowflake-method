@@ -75,6 +75,7 @@ import {
 } from './modals';
 import {
 	STATISTICS_TABS,
+	TASKS_TABS,
 	coerceFreeformPane,
 	dashboardHasHealthIssues,
 	dashboardPaneKey,
@@ -86,6 +87,7 @@ import {
 	type DashboardPane,
 	type DashboardRailCollapse,
 	type StatisticsTab,
+	type TasksTab,
 } from './dashboard-state';
 import {
 	buildOptionField,
@@ -109,6 +111,10 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
+import {
+	renderRevisionPanel,
+	type RevisionPanelHandle,
+} from './revision-panel';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
@@ -337,6 +343,10 @@ export class SnowflakeDashboardView extends ItemView {
 	private entitiesPanel: EntitiesPanelHandle | null = null;
 	private entitiesPanelHost: HTMLElement | null = null;
 	private entitiesPanelKey: string | null = null;
+	/** The revision table, kept across rebuilds the way its siblings are. */
+	private revisionPanel: RevisionPanelHandle | null = null;
+	private revisionPanelHost: HTMLElement | null = null;
+	private revisionPanelKey: string | null = null;
 	/** Which tracking folds stand OPEN -- everything else rests closed --
 	 *  outliving the panel like the filters do: a tab switch hands the
 	 *  folds back as they were left. */
@@ -357,6 +367,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private customFieldsQuery = '';
 	/** Which face of the statistics pane is on show. */
 	private statisticsTab: StatisticsTab = 'sessions';
+	private tasksTab: TasksTab = 'revision';
 	/** The entry the inspector is showing, one per vocabulary. */
 	private readonly definitionSelection = new Map<
 		DefinitionFileChoice,
@@ -502,6 +513,7 @@ export class SnowflakeDashboardView extends ItemView {
 			selectedPane: this.selectedPane,
 			railCollapsed: this.railCollapsed,
 			statisticsTab: this.statisticsTab,
+			tasksTab: this.tasksTab,
 		};
 	}
 
@@ -516,6 +528,7 @@ export class SnowflakeDashboardView extends ItemView {
 				selectedPane: this.selectedPane,
 				railCollapsed: this.railCollapsed,
 				statisticsTab: this.statisticsTab,
+				tasksTab: this.tasksTab,
 			},
 			state,
 		);
@@ -525,6 +538,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.selectedPane = update.state.selectedPane;
 		this.railCollapsed = update.state.railCollapsed;
 		this.statisticsTab = update.state.statisticsTab;
+		this.tasksTab = update.state.tasksTab;
 		// During workspace restoration Obsidian may open an ItemView before it
 		// delivers the persisted view state, so this is the first moment a
 		// restored leaf can be drawn at all — hence rendering when nothing has
@@ -597,6 +611,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.disposeSessionPanel();
 		this.disposeProsePanel();
 		this.disposeEntitiesPanel();
+		this.disposeRevisionPanel();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -623,6 +638,14 @@ export class SnowflakeDashboardView extends ItemView {
 		this.entitiesPanelHost?.remove();
 		this.entitiesPanelHost = null;
 		this.entitiesPanelKey = null;
+	}
+
+	private disposeRevisionPanel(): void {
+		this.revisionPanel?.dispose();
+		this.revisionPanel = null;
+		this.revisionPanelHost?.remove();
+		this.revisionPanelHost = null;
+		this.revisionPanelKey = null;
 	}
 
 	/**
@@ -769,6 +792,93 @@ export class SnowflakeDashboardView extends ItemView {
 					locale: this.projectLocale,
 				}),
 				this.trackingOpen,
+			);
+			return;
+		}
+		body.createEl('p', {
+			cls: 'snowflake-method-tab-planned',
+			text: this.t('statistics.tab.planned'),
+		});
+	}
+
+	/**
+	 * The task management pane: the statistics pane's shape over its own
+	 * strip. The revision table is the face that exists; the other three name
+	 * what the strip is being built for.
+	 */
+	private renderTasksPane(layout: HTMLElement): void {
+		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
+		const panel = main.createDiv({
+			cls: 'snowflake-method-panel snowflake-method-statistics-pane',
+		});
+		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
+		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
+		title.createEl('h2', { text: this.t('dashboard.tasks') });
+		panel.createEl('p', {
+			cls: 'snowflake-method-step-description',
+			text: this.t('dashboard.tasks.description'),
+		});
+		const strip = panel.createDiv({
+			cls: 'snowflake-method-tabs',
+			attr: { role: 'tablist' },
+		});
+		const field = panel.createDiv({
+			cls: 'snowflake-method-tab-panel',
+			attr: { role: 'tabpanel' },
+		});
+		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
+		const buttons = new Map<TasksTab, HTMLElement>();
+		const show = (chosen: TasksTab): void => {
+			this.tasksTab = chosen;
+			for (const [tab, button] of buttons) {
+				const active = tab === chosen;
+				button.toggleClass('is-active', active);
+				button.setAttribute('aria-selected', active ? 'true' : 'false');
+			}
+			if (chosen !== 'revision') this.disposeRevisionPanel();
+			body.empty();
+			this.renderTasksBody(body, chosen);
+		};
+		for (const tab of TASKS_TABS) {
+			const button = strip.createEl('button', {
+				cls: 'snowflake-method-tab',
+				text: this.t(`tasks.tab.${tab}`),
+				attr: { type: 'button', role: 'tab' },
+			});
+			button.addEventListener('click', () => {
+				show(tab);
+			});
+			buttons.set(tab, button);
+		}
+		show(this.tasksTab);
+		this.renderedPaneKey = dashboardPaneKey({ kind: 'tasks' });
+	}
+
+	/** What one face of the task management pane puts inside the frame. */
+	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
+		if (tab === 'revision') {
+			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
+			if (
+				this.revisionPanel !== null &&
+				this.revisionPanelHost !== null &&
+				this.revisionPanelKey === key
+			) {
+				// The same project again: the mounted panel keeps its reading
+				// and the handback refresh re-anchors against fresh stamps.
+				body.appendChild(this.revisionPanelHost);
+				this.revisionPanel.refresh();
+				return;
+			}
+			this.disposeRevisionPanel();
+			const host = body.createDiv();
+			this.revisionPanelHost = host;
+			this.revisionPanelKey = key;
+			this.revisionPanel = renderRevisionPanel(
+				host,
+				this.host.revisionTable({
+					projectPath: this.projectPath,
+					locale: this.projectLocale,
+				}),
 			);
 			return;
 		}
@@ -1452,6 +1562,18 @@ export class SnowflakeDashboardView extends ItemView {
 			damaged: false,
 			onClick: () => {
 				this.selectedPane = { kind: 'statistics' };
+				this.stepChosen = true;
+				void this.refresh();
+			},
+		});
+		this.renderRailRow(list, {
+			leading: { icon: 'list-todo' },
+			label: this.t('dashboard.tasks'),
+			active: this.selectedPane.kind === 'tasks',
+			current: 'true',
+			damaged: false,
+			onClick: () => {
+				this.selectedPane = { kind: 'tasks' };
 				this.stepChosen = true;
 				void this.refresh();
 			},
@@ -4178,8 +4300,13 @@ export class SnowflakeDashboardView extends ItemView {
 			this.disposeProsePanel();
 			this.disposeEntitiesPanel();
 		}
+		if (this.selectedPane.kind !== 'tasks') this.disposeRevisionPanel();
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
+			return;
+		}
+		if (this.selectedPane.kind === 'tasks') {
+			this.renderTasksPane(layout);
 			return;
 		}
 		if (this.selectedPane.kind === 'worldbuilding') {

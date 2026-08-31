@@ -15,6 +15,19 @@ export function isStatisticsTab(value: unknown): value is StatisticsTab {
 	return (STATISTICS_TABS as readonly unknown[]).includes(value);
 }
 
+/** The faces of the Task management pane; revision is the one built. */
+export const TASKS_TABS = [
+	'tasks',
+	'foreshadowing',
+	'revision',
+	'stickyNotes',
+] as const;
+export type TasksTab = (typeof TASKS_TABS)[number];
+
+export function isTasksTab(value: unknown): value is TasksTab {
+	return (TASKS_TABS as readonly unknown[]).includes(value);
+}
+
 /**
  * What the main panel is showing: one step, one worldbuilding kind, one of
  * the definition vocabularies, or the custom-field template tables.
@@ -24,7 +37,8 @@ export type DashboardPane =
 	| { kind: 'worldbuilding'; wbKind: WorldbuildingKindId }
 	| { kind: 'definition'; definitionId: DefinitionFileId }
 	| { kind: 'custom-fields' }
-	| { kind: 'statistics' };
+	| { kind: 'statistics' }
+	| { kind: 'tasks' };
 
 /** A stable identity for a pane, for continuity and change comparisons. */
 export function dashboardPaneKey(pane: DashboardPane): string {
@@ -32,6 +46,7 @@ export function dashboardPaneKey(pane: DashboardPane): string {
 	if (pane.kind === 'worldbuilding') return `wb-${pane.wbKind}`;
 	if (pane.kind === 'custom-fields') return 'custom-fields';
 	if (pane.kind === 'statistics') return 'statistics';
+	if (pane.kind === 'tasks') return 'tasks';
 	return `def-${pane.definitionId}`;
 }
 
@@ -59,6 +74,7 @@ export function parseDashboardPane(value: unknown): DashboardPane | null {
 	}
 	if (candidate.kind === 'custom-fields') return { kind: 'custom-fields' };
 	if (candidate.kind === 'statistics') return { kind: 'statistics' };
+	if (candidate.kind === 'tasks') return { kind: 'tasks' };
 	return null;
 }
 
@@ -98,6 +114,8 @@ export interface DashboardViewStateSnapshot {
 	railCollapsed: DashboardRailCollapse;
 	/** Which face of the statistics pane a reload lands back on. */
 	statisticsTab: StatisticsTab;
+	/** Which face of the task management pane a reload lands back on. */
+	tasksTab: TasksTab;
 }
 
 export interface DashboardViewStateUpdate {
@@ -155,6 +173,9 @@ export function mergeDashboardViewState(
 	const statisticsTab = isStatisticsTab(candidate.statisticsTab)
 		? candidate.statisticsTab
 		: current.statisticsTab;
+	const tasksTab = isTasksTab(candidate.tasksTab)
+		? candidate.tasksTab
+		: current.tasksTab;
 	const state = {
 		projectPath,
 		projectTitle,
@@ -162,6 +183,7 @@ export function mergeDashboardViewState(
 		selectedPane,
 		railCollapsed,
 		statisticsTab,
+		tasksTab,
 	};
 	return {
 		state,
@@ -176,7 +198,8 @@ export function mergeDashboardViewState(
 				current.railCollapsed.worldbuilding ||
 			state.railCollapsed.creationTools !==
 				current.railCollapsed.creationTools ||
-			state.statisticsTab !== current.statisticsTab,
+			state.statisticsTab !== current.statisticsTab ||
+			state.tasksTab !== current.tasksTab,
 	};
 }
 

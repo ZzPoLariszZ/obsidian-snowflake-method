@@ -154,6 +154,7 @@ import {
 import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
+import { RevisionService } from "./revision-service";
 import { WritingCountService } from "./writing-count";
 import {
   DEFAULT_PROJECT_ROOT,
@@ -369,6 +370,8 @@ export class SnowflakeProjectService {
   readonly mentions: MentionIndexService;
   /** Sensitive words, dialogue, prose statistics and word tokens, likewise. */
   readonly analysis: ManuscriptAnalysisService;
+  /** Proposed manuscript changes: user data beside the caches above. */
+  readonly revisions: RevisionService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -418,6 +421,12 @@ export class SnowflakeProjectService {
       this.mentionStore,
       analysis.timers ?? null,
     );
+    this.revisions = new RevisionService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.onCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onCorrupt }),
+    });
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
@@ -1077,6 +1086,7 @@ export class SnowflakeProjectService {
       writingSessions: new Set(),
       manuscriptAnalysis: new Set(),
       mentionIndex: new Set(),
+      revisions: new Set(),
       materials: new Set(),
       archive: new Set(),
     };
@@ -6764,6 +6774,7 @@ export class SnowflakeProjectService {
       writingSessions: [],
       manuscriptAnalysis: [],
       mentionIndex: [],
+      revisions: [],
       materials: [],
       archive: [],
     };
@@ -9393,7 +9404,7 @@ function readWikiLinkList(value: unknown): string[] {
   return [...new Set(paths)];
 }
 
-function createStableId(prefix: string): string {
+export function createStableId(prefix: string): string {
   const uuid = typeof window === "undefined" ? undefined : window.crypto?.randomUUID?.();
   if (uuid) return `${prefix}-${uuid}`;
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;

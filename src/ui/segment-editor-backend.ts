@@ -203,6 +203,11 @@ export interface SegmentEditorHooks {
 	 */
 	onCaretShow?(path: string, top: number, bottom: number): void;
 	/**
+	 * The editor's geometry moved: lines measured, the viewport laid out,
+	 * heights revised. The revision cards re-align themselves on it.
+	 */
+	onGeometryChange?(path: string): void;
+	/**
 	 * The selection changed: grew, moved, or emptied. `selectedText` is what
 	 * stands selected — every range of it, pointer-drawn or not — or null
 	 * when nothing is. For whoever is counting.
@@ -535,12 +540,21 @@ export interface SegmentEditorHandle {
 	write(body: string): void;
 	/** Caret position within the body, for splitting the segment at it. */
 	cursor(): number;
+	/** The main selection's range within the body, empty at the caret. */
+	selection(): { from: number; to: number };
 	/**
 	 * Where the caret line sits on the screen, or null while the editor has
 	 * not laid that line out. The view scrolls by this to hold the line
 	 * steady, and to settle a landing once the layout firms up.
 	 */
 	caretBand(): { top: number; bottom: number } | null;
+	/**
+	 * Where one body offset sits on the screen: the exact wrapped row where
+	 * it is drawn, the measured band of its line where it is not, and null
+	 * only once the view is gone. The revision cards align themselves by
+	 * this, and hold their ground on null.
+	 */
+	bandAt(pos: number): { top: number; bottom: number } | null;
 	/**
 	 * Puts the caret at one end of the note, as the author's own arrival — an
 	 * arrow key carried them in from the neighbouring note, so the modes that
@@ -797,6 +811,10 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 			},
 			cursor: () => view.state.selection.main.head,
+			selection: () => {
+				const main = view.state.selection.main;
+				return { from: main.from, to: main.to };
+			},
 			remeasure: () => {
 				layoutWholeDocument(view, false);
 				view.requestMeasure();
@@ -806,6 +824,27 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				return coords === null
 					? null
 					: { top: coords.top, bottom: coords.bottom };
+			},
+			bandAt: (pos: number) => {
+				// A destroyed view answers nothing -- deactivation has a
+				// breath where a stale handle can still be asked. A live one
+				// always answers: the exact wrapped row where the position is
+				// drawn, and the height map's band for its line otherwise.
+				// The whole-document layout keeps that map measured rather
+				// than estimated, so the fallback is the true top of the
+				// paragraph -- reached only where CodeMirror elides a stretch
+				// of a very long note from the DOM.
+				if ((view as unknown as { destroyed?: boolean }).destroyed === true) {
+					return null;
+				}
+				const at = Math.max(0, Math.min(pos, view.state.doc.length));
+				const coords = view.coordsAtPos(at);
+				if (coords !== null) {
+					return { top: coords.top, bottom: coords.bottom };
+				}
+				const line = view.lineBlockAt(at);
+				const top = view.documentTop + line.top;
+				return { top, bottom: top + line.height };
 			},
 			enter: (edge: 'start' | 'end') => {
 				view.dispatch({
@@ -1152,6 +1191,15 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			// the editor's reckoning of where to scroll goes stale mid-scroll,
 			// and an arrow key could throw the reader across several notes. The
 			// view owns the page, so the view is given the caret and the choice.
+			EditorView.updateListener.of((update) => {
+				if (update.geometryChanged) {
+					// Obsidian's print handler drops the whole-document flag
+					// half a second after a print; the next geometry event
+					// picks it back up.
+					layoutWholeDocument(update.view, false);
+					hooks.onGeometryChange?.(target.path);
+				}
+			}),
 			EditorView.scrollHandler.of((view, range) => {
 				if (hooks.onCaretShow === undefined) return false;
 				// Never `coordsAtPos` in here. This handler runs inside the

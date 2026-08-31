@@ -27,6 +27,7 @@ describe('dashboard restored state', () => {
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{
 				projectPath: 'Snowflake Projects/Novel/00_System/001_Project_Metadata.md',
@@ -46,6 +47,7 @@ describe('dashboard restored state', () => {
 				selectedPane: { kind: 'step', step: 4 },
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			changed: true,
 		});
@@ -60,6 +62,7 @@ describe('dashboard restored state', () => {
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{
 				selectedPane: { kind: 'worldbuilding', wbKind: 'time' },
@@ -88,6 +91,7 @@ describe('dashboard restored state', () => {
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{
 				selectedPane: { kind: 'statistics' },
@@ -110,6 +114,7 @@ describe('dashboard restored state', () => {
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{ selectedPane: { kind: 'definition', definitionId: 'world-status' } },
 		);
@@ -139,6 +144,7 @@ describe('dashboard restored state', () => {
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{ selectedPane: { kind: 'custom-fields' } },
 		);
@@ -157,6 +163,7 @@ describe('dashboard restored state', () => {
 				selectedPane: { kind: 'step', step: 3 },
 				railCollapsed: OPEN_RAIL,
 				statisticsTab: 'sessions',
+				tasksTab: 'revision',
 			},
 			{ projectPath: null, projectTitle: null, selectedStep: 1 },
 		);
@@ -168,6 +175,7 @@ describe('dashboard restored state', () => {
 			selectedPane: { kind: 'step', step: 1 },
 			railCollapsed: OPEN_RAIL,
 			statisticsTab: 'sessions',
+			tasksTab: 'revision',
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -180,6 +188,7 @@ describe('dashboard restored state', () => {
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
 			statisticsTab: 'sessions' as const,
+			tasksTab: 'revision' as const,
 		};
 
 		expect(
@@ -202,6 +211,7 @@ describe('dashboard restored state', () => {
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
 			statisticsTab: 'sessions' as const,
+			tasksTab: 'revision' as const,
 		};
 		const update = mergeDashboardViewState(current, {
 			selectedPane: { kind: 'worldbuilding', wbKind: 'Faction' },
@@ -442,6 +452,7 @@ describe('the statistics tab in view state', () => {
 		selectedPane: DEFAULT_PANE,
 		railCollapsed: OPEN_RAIL,
 		statisticsTab: 'sessions' as const,
+			tasksTab: 'revision' as const,
 	};
 
 	it('restores a saved face and reports the move', () => {
@@ -458,5 +469,31 @@ describe('the statistics tab in view state', () => {
 		});
 		expect(update.state.statisticsTab).toBe('sessions');
 		expect(update.changed).toBe(false);
+	});
+});
+
+describe('the task management pane state', () => {
+	it('round-trips the tasks pane and its tab, refusing strangers', () => {
+		const current = {
+			projectPath: null,
+			projectTitle: null,
+			selectedStep: 1 as StepId,
+			selectedPane: DEFAULT_PANE,
+			railCollapsed: OPEN_RAIL,
+			statisticsTab: 'sessions' as const,
+			tasksTab: 'revision' as const,
+		};
+		const update = mergeDashboardViewState(current, {
+			selectedPane: { kind: 'tasks' },
+			tasksTab: 'foreshadowing',
+		});
+		expect(update.state.selectedPane).toEqual({ kind: 'tasks' });
+		expect(update.state.tasksTab).toBe('foreshadowing');
+		expect(update.changed).toBe(true);
+		const refused = mergeDashboardViewState(current, {
+			tasksTab: 'kanban',
+		});
+		expect(refused.state.tasksTab).toBe('revision');
+		expect(refused.changed).toBe(false);
 	});
 });

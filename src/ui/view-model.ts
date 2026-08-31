@@ -12,6 +12,7 @@ import type {
 	MentionIgnore,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
+	Revision,
 	SensitiveMatcher,
 	StepId,
 	StepStatus,
@@ -23,6 +24,7 @@ import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
 import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
+import type { RevisionPanelBridge } from './revision-panel';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -431,6 +433,30 @@ export interface ManuscriptHost {
 	mentionIgnores(
 		projectPath: string | null,
 	): Promise<readonly MentionIgnore[]>;
+	/** The project's standing revisions, for the feed both halves share. */
+	manuscriptRevisions(
+		projectPath: string | null,
+	): Promise<readonly Revision[]>;
+	/** Writes one revision, then re-dresses streams and dashboards. */
+	createRevision(
+		projectPath: string | null,
+		revision: Revision,
+	): Promise<void>;
+	/** Rewrites one revision's proposed text and comment. */
+	updateRevision(
+		projectPath: string | null,
+		id: string,
+		patch: { proposed: string; comment: string },
+	): Promise<void>;
+	/** Takes one revision out: an accept, a reject or a discard alike. */
+	discardRevision(projectPath: string | null, id: string): Promise<void>;
+	/**
+	 * A segment's body reached the file: stored revision offsets are brought
+	 * level with it, quietly, and everyone re-dresses only if one moved.
+	 */
+	manuscriptRevisionsSaved(path: string, body: string): void;
+	/** A fresh id for a revision about to be captured. */
+	mintRevisionId(): string;
 	/** Writes one ignore rule, then re-dresses every open stream. */
 	addMentionIgnore(
 		projectPath: string | null,
@@ -493,6 +519,8 @@ export interface DashboardHost {
 	proseStatistics(context: SessionPanelContext): ProsePanelBridge;
 	/** The bridge the statistics pane renders the tracking panel through. */
 	entityTracking(context: SessionPanelContext): EntitiesPanelBridge;
+	/** The bridge the task management pane renders the revision table through. */
+	revisionTable(context: SessionPanelContext): RevisionPanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

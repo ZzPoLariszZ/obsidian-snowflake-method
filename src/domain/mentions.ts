@@ -120,12 +120,26 @@ export interface HighlightOccurrence {
 	ruleId: string;
 }
 
+/**
+ * One revision standing in the manuscript: a proposed change's own spot. A
+ * point for an insertion, `from === to`, with nothing matched at it.
+ */
+export interface RevisionOccurrence {
+	type: 'revision';
+	path: string;
+	from: number;
+	to: number;
+	matchedText: string;
+	revisionId: string;
+}
+
 /** Everything an analysis can pin to a spot in a note. */
 export type Occurrence =
 	| EntityOccurrence
 	| SensitiveOccurrence
 	| DialogueOccurrence
-	| HighlightOccurrence;
+	| HighlightOccurrence
+	| RevisionOccurrence;
 
 /**
  * A boundary-checked raw hit: the persistable half of the pipeline,

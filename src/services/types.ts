@@ -47,6 +47,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "writingSessions",
   "manuscriptAnalysis",
   "mentionIndex",
+  "revisions",
   "materials",
   "archive",
 ] as const;
@@ -80,6 +81,9 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       // per-device mention index cache beside them.
       manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Prose_Analysis",
       mentionIndex: "70_Tool/71_Data_Statistics/713_Entity_Tracking",
+      // The task-management chain, one entry like the statistics chain above:
+      // the revision file is the only tenant until its sibling tabs are built.
+      revisions: "70_Tool/72_Task_Management/723_Revision",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -103,6 +107,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       writingSessions: "70_工具/71_数据统计/711_写作时段",
       manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
       mentionIndex: "70_工具/71_数据统计/713_实体追踪",
+      revisions: "70_工具/72_任务管理/723_修订",
       materials: "80_素材",
       archive: "90_存档",
     },

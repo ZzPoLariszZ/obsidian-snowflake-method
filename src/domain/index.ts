@@ -14,6 +14,7 @@ export * from './mentions';
 export * from './names';
 export * from './plot-fields';
 export * from './rank';
+export * from './revisions';
 export * from './scene';
 export * from './sensitive-words';
 export * from './sentences';
