@@ -5705,21 +5705,18 @@ body {
 	color: var(--text-muted);
 }
 
+/* The same column of text as the block above it: the input's frame counts
+   toward its inset, so the padding gives back what the border takes and the
+   words break in the same places whether the card is being read or written
+   in. A theme drawing frameless inputs pays nothing and lands there too. */
 .snowflake-method-revision-input {
 	width: 100%;
+	padding: calc(var(--size-2-2) - var(--input-border-width, 1px))
+		calc(var(--size-4-1) - var(--input-border-width, 1px));
 	box-sizing: border-box;
 	resize: vertical;
 	font-size: var(--font-ui-small);
 	line-height: var(--line-height-tight);
-}
-
-/* The words being revised, given as they stand: readable, selectable, and
-   not typeable over. */
-.snowflake-method-revision-input.is-readonly {
-	border-color: transparent;
-	background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
-	color: var(--text-muted);
-	cursor: default;
 }
 
 .snowflake-method-revision-actions {

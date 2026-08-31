@@ -286,11 +286,32 @@ const WHITESPACE = /\s/;
  * draws on its far side. The rendered wrap cannot hold a zero-length span,
  * and a whitespace character has no visible presence to carry a mark, so the
  * marker borrows a neighbour and draws its bar at the edge facing the point.
+ *
+ * The search stops at a line break before it stops at anything else. An
+ * insertion at the end of a paragraph has nothing visible after it on its own
+ * line, and a bar drawn on the next paragraph's first letter says the words
+ * would arrive there -- a paragraph away from where they would actually go.
+ * The line the point stands on is asked first in both directions, and only a
+ * point on a line with no words at all borrows across a break.
  */
 function insertionCarrier(
 	body: string,
 	point: number,
 ): { from: number; to: number; side: 'before' | 'after' } | null {
+	const onLine = (from: number, step: -1 | 1): number | null => {
+		for (let at = from; at >= 0 && at < body.length; at += step) {
+			const character = body.charAt(at);
+			if (character === '\n') return null;
+			if (!WHITESPACE.test(character)) return at;
+		}
+		return null;
+	};
+	const ahead = onLine(point, 1);
+	if (ahead !== null) return { from: ahead, to: ahead + 1, side: 'before' };
+	const behind = onLine(point - 1, -1);
+	if (behind !== null) return { from: behind, to: behind + 1, side: 'after' };
+	// A point on a blank line belongs to no line's words: it takes the
+	// nearest visible character either way rather than going unmarked.
 	for (let at = point; at < body.length; at += 1) {
 		if (!WHITESPACE.test(body.charAt(at))) {
 			return { from: at, to: at + 1, side: 'before' };

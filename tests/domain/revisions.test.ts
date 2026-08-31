@@ -301,6 +301,52 @@ describe('planning the dress', () => {
 		]);
 	});
 
+	it('at a paragraph end it stays on that paragraph, marked after', () => {
+		const body = `${BODY}\n\nThe water held still.`;
+		const rev = captureRevision(
+			'50/one.md',
+			body,
+			'insert',
+			BODY.length,
+			BODY.length,
+			' It waited.',
+			'',
+			'rev-8',
+			7,
+		);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		// The full stop that ends the paragraph, not the "T" of the next one.
+		expect(plan).toEqual([
+			expect.objectContaining({
+				from: BODY.length - 1,
+				to: BODY.length,
+				classes: 'snowflake-method-revision is-insertion is-insertion-after',
+			}),
+		]);
+	});
+
+	it('at a paragraph start it stays on that paragraph, marked before', () => {
+		const body = `${BODY}\n\nThe water held still.`;
+		const at = BODY.length + 2;
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-9', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		expect(plan).toEqual([
+			expect.objectContaining({
+				from: at,
+				to: at + 1,
+				classes: 'snowflake-method-revision is-insertion',
+			}),
+		]);
+	});
+
+	it('a point on a blank line borrows across the break', () => {
+		const body = `${BODY}\n\nThe water held still.`;
+		const at = BODY.length + 1;
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-10', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		expect(plan[0]).toMatchObject({ from: BODY.length + 2, to: BODY.length + 3 });
+	});
+
 	it('a whitespace-only body plans no mark but keeps the anchor', () => {
 		const body = '  \n\n  ';
 		const rev = captureRevision('50/one.md', body, 'insert', 3, 3, 'x', '', 'rev-6', 7);

@@ -103,8 +103,20 @@ export function renderRevisionRail(
 	const rail = segmentEl.createDiv({ cls: 'snowflake-method-revision-rail' });
 	const cards = new Map<string, CardState>();
 	let draftEl: HTMLElement | null = null;
+	/** The last thing the rail was asked to show, for placing it again. */
+	let held: RevisionRailModel | null = null;
 
 	const t = callbacks.t;
+
+	/**
+	 * Places the standing cards again, on nothing newer than what they
+	 * already say: a card that changed height under the author's hands has to
+	 * push the ones below it down, and only the stacking pass knows where
+	 * they go.
+	 */
+	const restack = (): void => {
+		if (held !== null) sync(held);
+	};
 
 	/**
 	 * Where a card's buttons stand. The answers to a proposal share the
@@ -242,53 +254,52 @@ export function renderRevisionRail(
 
 	/**
 	 * A text area tall enough for all of it: the words are shown whole, never
-	 * as much of them as the rows happened to hold. The rows are the floor --
-	 * three where the author is expected to write, one for the original,
-	 * which is given rather than asked for and so is exactly as tall as it
-	 * is. The drag handle still raises any of them, and a card built in a
-	 * pane nobody is looking at measures nothing and is left at its rows
-	 * until it is drawn somewhere real.
+	 * as much of them as the three rows happened to hold, and never behind a
+	 * scrollbar. The rows are only the floor, the drag handle still raises
+	 * one, and a card built in a pane nobody is looking at measures nothing
+	 * and is left at its rows until it is drawn somewhere real.
+	 *
+	 * `keepTaller` is for the growing that happens under the author's hands:
+	 * a box may rise to hold what is being typed, but never fall back, or a
+	 * box the author dragged taller would collapse at the next keystroke.
 	 */
-	const growToFit = (input: HTMLTextAreaElement): void => {
+	const growToFit = (input: HTMLTextAreaElement, keepTaller = false): void => {
 		if (input.value.length === 0) return;
 		// Its height is still the rows', so scrollHeight is either those rows
 		// or everything in it, whichever is taller; the borders the box sizes
 		// inside are added back.
 		if (input.offsetHeight === 0) return;
 		const frame = input.offsetHeight - input.clientHeight;
-		input.setCssStyles({ height: `${String(input.scrollHeight + frame)}px` });
+		const wanted = input.scrollHeight + frame;
+		if (keepTaller && wanted <= input.offsetHeight) return;
+		input.setCssStyles({ height: `${String(wanted)}px` });
 	};
 
 	const inputBlock = (
 		host: HTMLElement,
-		part: 'original' | 'proposed' | 'comment',
+		part: 'proposed' | 'comment',
 		label: string,
-		options: {
-			value: string;
-			rows?: number;
-			placeholder?: string;
-			readOnly?: boolean;
-		},
+		options: { value: string; placeholder: string },
 	): HTMLTextAreaElement => {
 		const field = fieldBlock(host, part, label);
 		const input = field.createEl('textarea', {
 			cls: 'snowflake-method-revision-input',
 			attr: {
-				rows: String(options.rows ?? 3),
+				rows: '3',
 				'aria-label': label,
-				...(options.placeholder === undefined
-					? {}
-					: { placeholder: options.placeholder }),
-				// The words being revised are shown, not offered: they are
-				// what the proposal is measured against, and a card that let
-				// them be typed over would be promising an edit it cannot
-				// make.
-				...(options.readOnly === true ? { readonly: 'readonly' } : {}),
+				placeholder: options.placeholder,
 			},
 		});
-		if (options.readOnly === true) input.addClass('is-readonly');
 		input.value = options.value;
 		growToFit(input);
+		// Typing past the bottom of the box raises it instead of pushing the
+		// words out of sight, and the rail is told, since a card that grew
+		// while nothing restacked would grow over the one below it.
+		input.addEventListener('input', () => {
+			const before = input.offsetHeight;
+			growToFit(input, true);
+			if (input.offsetHeight !== before) restack();
+		});
 		return input;
 	};
 
@@ -299,6 +310,12 @@ export function renderRevisionRail(
 	 * above them says nothing the two fields do not. The proposal is always
 	 * offered, deletions included: emptying it is how a replacement becomes a
 	 * deletion, and filling it again is the way back.
+	 *
+	 * The original is drawn here exactly as the resting card draws it, in the
+	 * same block on the same ground. It is not offered for typing, so a text
+	 * area gave it nothing but a narrower column that broke its lines
+	 * somewhere else, a scrollbar of its own, and a drag handle for a box
+	 * with nothing to reveal.
 	 */
 	const renderForm = (
 		card: HTMLElement,
@@ -314,11 +331,12 @@ export function renderRevisionRail(
 			cls: 'snowflake-method-revision-fields',
 		});
 		if (options.originalText.length > 0) {
-			inputBlock(fields, 'original', t('manuscript.revision.original'), {
-				value: options.originalText,
-				rows: 1,
-				readOnly: true,
-			});
+			valueBlock(
+				fields,
+				'original',
+				t('manuscript.revision.original'),
+				options.originalText,
+			);
 		}
 		const proposedInput = inputBlock(
 			fields,
@@ -459,6 +477,7 @@ export function renderRevisionRail(
 	};
 
 	const sync = (model: RevisionRailModel): void => {
+		held = model;
 		const wanted = new Set<string>();
 		const order: { key: string; top: number | null }[] = [];
 
