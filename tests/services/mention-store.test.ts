@@ -12,10 +12,15 @@ import {
 import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const IGNORES =
-	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Prose_Analysis/mention_ignores.json";
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/mention_ignores.json";
 const INDEX =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/dev-a_mention_index.json";
 const ANALYSIS =
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Prose_Analysis/dev-a_analysis_stats.json";
+/** Where a build before the folders were told apart left the same two files. */
+const FORMER_IGNORES =
+	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/712_Prose_Analysis/mention_ignores.json";
+const FORMER_ANALYSIS =
 	"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/dev-a_analysis_stats.json";
 
 const noteRule: MentionIgnore = {
@@ -114,6 +119,37 @@ describe("MentionStore", () => {
 				path.includes(".corrupted-"),
 			),
 		).toBe(true);
+	});
+
+	it("reads rules an older build left in the prose analysis folder", async () => {
+		await fakeVault.seedFile(
+			FORMER_IGNORES,
+			JSON.stringify({
+				schemaVersion: MENTION_STORE_SCHEMA_VERSION,
+				ignores: [noteRule],
+			}),
+		);
+		// Read where they stand, and left standing there: a vault shared with
+		// the build that wrote them goes on agreeing with it.
+		expect(await store.readIgnores(project)).toEqual([noteRule]);
+		expect(fakeVault.contents.has(FORMER_IGNORES)).toBe(true);
+		expect(fakeVault.contents.has(IGNORES)).toBe(false);
+	});
+
+	it("moves those rules home on the first edit, leaving nothing behind", async () => {
+		await fakeVault.seedFile(
+			FORMER_IGNORES,
+			JSON.stringify({
+				schemaVersion: MENTION_STORE_SCHEMA_VERSION,
+				ignores: [noteRule],
+			}),
+		);
+		const second: MentionIgnore = { ...noteRule, matchedText: "Bob" };
+		expect(await store.addIgnore(project, second)).toBe(true);
+		expect(fakeVault.contents.has(FORMER_IGNORES)).toBe(false);
+		expect(fakeVault.contents.get(IGNORES)).toContain('"Bob"');
+		// The rule that was already written survives the move.
+		expect(await store.readIgnores(project)).toEqual([noteRule, second]);
 	});
 
 	it("round-trips this device's index and leaves other devices' files alone", async () => {
@@ -288,6 +324,39 @@ describe("MentionStore", () => {
 		expect((await store.readAnalysis(project))?.sensitiveFingerprint).toBe(
 			"fp1-s2",
 		);
+	});
+
+	it("reads an older build's cache once and sweeps it when this one writes", async () => {
+		const file: AnalysisFile = {
+			schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+			sensitiveFingerprint: "fp1-s",
+			dialogueFingerprint: "fp1-d",
+			statsFingerprint: "fp1-t",
+			tokensFingerprint: "fp1-w",
+			notes: {},
+		};
+		await fakeVault.seedFile(FORMER_ANALYSIS, JSON.stringify(file));
+		// The word tokens in there are the expensive half, so the cache is
+		// read where it stands rather than thrown away.
+		expect(await store.readAnalysis(project)).toEqual(file);
+		await store.writeAnalysis(project, file);
+		expect(fakeVault.contents.has(ANALYSIS)).toBe(true);
+		expect(fakeVault.contents.has(FORMER_ANALYSIS)).toBe(false);
+	});
+
+	it("leaves another device's stale cache for that device to sweep", async () => {
+		const theirs =
+			"Snowflake Projects/Novel/70_Tool/71_Data_Statistics/713_Entity_Tracking/dev-b_analysis_stats.json";
+		await fakeVault.seedFile(theirs, "{}");
+		await store.writeAnalysis(project, {
+			schemaVersion: ANALYSIS_FILE_SCHEMA_VERSION,
+			sensitiveFingerprint: "fp1-s",
+			dialogueFingerprint: "fp1-d",
+			statsFingerprint: "fp1-t",
+			tokensFingerprint: "fp1-w",
+			notes: {},
+		});
+		expect(fakeVault.contents.has(theirs)).toBe(true);
 	});
 
 	it("reads a broken analysis as absent and a family out of shape as null", async () => {

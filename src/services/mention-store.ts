@@ -112,9 +112,52 @@ export class MentionStore {
 
 	constructor(private readonly deps: MentionStoreDeps) {}
 
+	/**
+	 * The rules stand beside the index they qualify, under the tab that shows
+	 * them: an ignore rule is entity tracking, and the folders are named after
+	 * the tabs. A build before this one had these two files in each other's
+	 * folders, so both are still read from wherever they stand.
+	 */
 	ignoresPath(project: ProjectRef): string {
 		const layout = getProjectPathLayout(project.locale);
+		return `${project.rootPath}/${layout.directories.mentionIndex}/mention_ignores.json`;
+	}
+
+	/** Where an older build left the rules: prose analysis, one folder up. */
+	private formerIgnoresPath(project: ProjectRef): string {
+		const layout = getProjectPathLayout(project.locale);
 		return `${project.rootPath}/${layout.directories.manuscriptAnalysis}/mention_ignores.json`;
+	}
+
+	/**
+	 * The path a rules file actually stands at, its own home preferred. A read
+	 * moves nothing: rules written by an older build keep working exactly where
+	 * they are, and a vault shared with one goes on agreeing with it.
+	 */
+	private standingIgnoresPath(project: ProjectRef): string {
+		const path = this.ignoresPath(project);
+		if (this.deps.repository.getFile(path) !== null) return path;
+		const former = this.formerIgnoresPath(project);
+		return this.deps.repository.getFile(former) === null ? path : former;
+	}
+
+	/**
+	 * The same, for a write: a file still standing where the older build left
+	 * it moves home first, so one edit never leaves two files to disagree. A
+	 * move that will not go is not the edit -- the rules stay where they are
+	 * and the change still lands on them.
+	 */
+	private async settledIgnoresPath(project: ProjectRef): Promise<string> {
+		const path = this.ignoresPath(project);
+		if (this.deps.repository.getFile(path) !== null) return path;
+		const former = this.formerIgnoresPath(project);
+		if (this.deps.repository.getFile(former) === null) return path;
+		try {
+			await this.deps.repository.renameFile(former, path);
+		} catch {
+			return this.deps.repository.getFile(former) === null ? path : former;
+		}
+		return path;
 	}
 
 	indexPath(project: ProjectRef): string {
@@ -128,7 +171,7 @@ export class MentionStore {
 	 * is quarantined and read as empty; a missing file is simply no rules yet.
 	 */
 	async readIgnores(project: ProjectRef): Promise<readonly MentionIgnore[]> {
-		const path = this.ignoresPath(project);
+		const path = this.standingIgnoresPath(project);
 		const file = this.deps.repository.getFile(path);
 		if (file === null) {
 			this.ignoreMemo.delete(project.rootPath);
@@ -187,24 +230,52 @@ export class MentionStore {
 		await this.writeJsonFile(this.indexPath(project), index);
 	}
 
+	/**
+	 * The prose analysis folder, where the statistics and the word tokens are
+	 * shown. The sensitive and dialogue families ride in the same file because
+	 * one read refreshes all four, which is the economy the whole cache rests
+	 * on; the two that answer the tracking tab are its passengers.
+	 */
 	analysisPath(project: ProjectRef): string {
+		const layout = getProjectPathLayout(project.locale);
+		return `${project.rootPath}/${layout.directories.manuscriptAnalysis}/${this.deps.deviceId()}_analysis_stats.json`;
+	}
+
+	/** Where an older build left this device's cache: entity tracking. */
+	private formerAnalysisPath(project: ProjectRef): string {
 		const layout = getProjectPathLayout(project.locale);
 		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}_analysis_stats.json`;
 	}
 
 	/**
 	 * This device's persisted analysis, or null when there is none to trust.
-	 * A cache like the index: never quarantined, simply rebuilt.
+	 * A cache like the index: never quarantined, simply rebuilt. The older
+	 * build's copy is read once rather than thrown away, because the word
+	 * tokens in it are the expensive half of the whole file.
 	 */
 	async readAnalysis(project: ProjectRef): Promise<AnalysisFile | null> {
-		const content = await this.deps.repository.readPlainFile(
-			this.analysisPath(project),
+		const own = parseAnalysisFile(
+			await this.deps.repository.readPlainFile(this.analysisPath(project)),
 		);
-		return parseAnalysisFile(content);
+		if (own !== null) return own;
+		return parseAnalysisFile(
+			await this.deps.repository.readPlainFile(this.formerAnalysisPath(project)),
+		);
 	}
 
 	async writeAnalysis(project: ProjectRef, file: AnalysisFile): Promise<void> {
 		await this.writeJsonFile(this.analysisPath(project), file);
+		// The numbers now stand in their own folder, so the copy the older
+		// build left is stale from this moment. Only this device's own is
+		// swept: every other device clears its own the next time it writes.
+		const former = this.formerAnalysisPath(project);
+		if (this.deps.repository.getFile(former) === null) return;
+		try {
+			await this.deps.repository.trashFile(former);
+		} catch {
+			// A cache that will not go is a file the reader can delete
+			// themselves; what it held is already written where it belongs.
+		}
 	}
 
 	/**
@@ -236,7 +307,7 @@ export class MentionStore {
 		project: ProjectRef,
 		mutate: (ignores: readonly MentionIgnore[]) => MentionIgnore[] | null,
 	): Promise<boolean> {
-		const path = this.ignoresPath(project);
+		const path = await this.settledIgnoresPath(project);
 		this.ignoreMemo.delete(project.rootPath);
 		const serialize = (ignores: MentionIgnore[]): string =>
 			`${JSON.stringify(
