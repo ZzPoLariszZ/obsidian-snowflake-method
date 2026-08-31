@@ -3342,6 +3342,12 @@ export class SnowflakeManuscriptView extends ItemView {
 						.setSection(section)
 						.setTitle(this.t('manuscript.revision.create'))
 						.setIcon('message-square-plus')
+						// A revision is made at the cursor, so it is offered
+						// where there is one, exactly as splitting is: on a note
+						// being read the entry stands greyed rather than
+						// answering a right-click by walking into the text on
+						// its own.
+						.setDisabled(this.editingPath !== segment.path)
 						.onClick(() => {
 							if (entry === undefined) return;
 							void this.beginRevisionDraft(entry, event).catch(
