@@ -270,9 +270,9 @@ describe("MentionStore", () => {
 					stats: {
 						cjk: 0,
 						words: 9,
+						counted: 9,
 						sentences: 2,
-						dialogueCjk: 0,
-						dialogueWords: 3,
+						dialogueCounted: 3,
 					},
 					tokens: [["fog", 2]],
 				},

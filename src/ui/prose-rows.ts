@@ -39,25 +39,25 @@ export function formatReadingTime(minutes: number, t: Translate): string {
 }
 
 /**
- * Units per sentence, unrounded: words per sentence for English prose and
- * characters per sentence for Chinese, by the same split reading time uses.
- * Null where nothing is measured; the display rounds, not the measure.
+ * Units per sentence, unrounded: whatever the reader's convention counts, so
+ * words per sentence for English prose and characters per sentence for
+ * Chinese, in the same units the length column shows. Null where nothing is
+ * measured; the display rounds, not the measure.
  */
 export function averageSentenceLength(
-	units: { cjk: number; words: number },
+	units: Pick<NoteProseStats, 'counted'>,
 	sentences: number,
 ): number | null {
 	if (sentences <= 0) return null;
-	return (units.cjk + units.words) / sentences;
+	return units.counted / sentences;
 }
 
 /** The dialogue share of the writing, unrounded percent; null off nothing. */
 export function dialoguePercent(
-	stats: Pick<NoteProseStats, 'cjk' | 'words' | 'dialogueCjk' | 'dialogueWords'>,
+	stats: Pick<NoteProseStats, 'counted' | 'dialogueCounted'>,
 ): number | null {
-	const total = stats.cjk + stats.words;
-	if (total <= 0) return null;
-	return ((stats.dialogueCjk + stats.dialogueWords) / total) * 100;
+	if (stats.counted <= 0) return null;
+	return (stats.dialogueCounted / stats.counted) * 100;
 }
 
 /** How every derived figure is written: two decimals, always both. */
@@ -149,7 +149,7 @@ export function filterChapterRows(
 		if (needle.length > 0 && !row.title.toLowerCase().includes(needle)) {
 			return false;
 		}
-		const length = row.cjk + row.words;
+		const length = row.counted;
 		if (bounds.min !== null && length < bounds.min) return false;
 		if (bounds.max !== null && length > bounds.max) return false;
 		return true;

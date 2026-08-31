@@ -20,6 +20,7 @@ const styles = (...tokens: readonly string[]): DialogueStyle[] =>
 const config = (over: Partial<AnalysisConfig> = {}): AnalysisConfig => ({
 	sensitiveTerms: ["damn"],
 	dialogueStyles: styles("「」", "“”"),
+	count: { mode: "ms-word", headings: "count" },
 	locale: "zh",
 	entityTerms: [],
 	...over,
@@ -61,31 +62,68 @@ describe("ManuscriptAnalysisService", () => {
 			first,
 			second,
 		]);
+		// The script split reads nine characters of writing; the reader's own
+		// convention counts the four marks around them too, and says thirteen.
 		expect(perNote[1]).toMatchObject({
 			title: "One",
 			cjk: 9,
 			words: 0,
+			counted: 13,
 			sentences: 1,
-			dialogueCjk: 3,
-			dialogueWords: 0,
+			dialogueCounted: 5,
 		});
 		expect(perNote[2]).toMatchObject({
 			cjk: 0,
 			words: 4,
+			counted: 4,
 			sentences: 2,
-			dialogueCjk: 0,
+			dialogueCounted: 0,
 		});
 		// The Draft seed is measured honestly: "# Draft" and "Write here."
 		// are three words and two sentences of its own.
-		expect(perNote[0]).toMatchObject({ cjk: 0, words: 3, sentences: 2 });
+		expect(perNote[0]).toMatchObject({ cjk: 0, words: 3, counted: 3 });
 		expect(totals).toEqual({
 			cjk: 9,
 			words: 7,
+			counted: 20,
 			sentences: 5,
-			dialogueCjk: 3,
-			dialogueWords: 0,
+			dialogueCounted: 5,
 			chapters: 3,
 		});
+	});
+
+	it("counts a chapter's length by the convention the reader set", async () => {
+		const path = await chapter("One", "# Title\n\nHe said 「你好」.");
+		const lengthOf = async (over: Partial<AnalysisConfig>): Promise<number> => {
+			const { perNote } = await service.analysis.statistics(
+				project,
+				config(over),
+			);
+			return perNote.find((row) => row.path === path)?.counted ?? -1;
+		};
+		// The title is worth a word to one rule and nothing to the next, and
+		// Jinjiang reads the same chapter a character at a time.
+		expect(await lengthOf({ count: { mode: "ms-word", headings: "count" } })).toBe(
+			8,
+		);
+		expect(
+			await lengthOf({ count: { mode: "ms-word", headings: "skip-all" } }),
+		).toBe(7);
+		expect(
+			await lengthOf({ count: { mode: "jinjiang", headings: "skip-all" } }),
+		).toBe(11);
+		// Every one of them is the number the writing count itself gives for
+		// that note, which is what the status bar says: one chapter, one length,
+		// wherever it is quoted.
+		for (const count of [
+			{ mode: "ms-word", headings: "count" },
+			{ mode: "ms-word", headings: "skip-all" },
+			{ mode: "jinjiang", headings: "skip-all" },
+		] as const) {
+			expect(await service.writingCount.countNote(path, count)).toMatchObject({
+				total: await lengthOf({ count }),
+			});
+		}
 	});
 
 	it("folds sensitive terms with zero-count rows kept", async () => {
@@ -187,6 +225,7 @@ describe("ManuscriptAnalysisService", () => {
 		const fresh = new ManuscriptAnalysisService(
 			service.repository,
 			service.manuscript,
+			service.writingCount,
 			service.mentionStore,
 		);
 		const reads = vi.spyOn(service.repository, "tryReadManaged");
@@ -345,7 +384,7 @@ describe("ManuscriptAnalysisService", () => {
 		expect(await service.analysis.sensitiveAggregate(project, off)).toEqual([]);
 		expect(await service.analysis.dialogueChapters(project, off)).toEqual([]);
 		const { totals } = await service.analysis.statistics(project, off);
-		expect(totals.dialogueCjk).toBe(0);
+		expect(totals.dialogueCounted).toBe(0);
 		expect(totals.cjk).toBe(4);
 	});
 });

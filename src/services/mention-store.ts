@@ -48,13 +48,25 @@ export interface MentionIndexFile {
  */
 export const ANALYSIS_FILE_SCHEMA_VERSION = 1;
 
-/** What the statistics keep per note: small numbers, cheap to hold. */
+/**
+ * What the statistics keep per note: small numbers, cheap to hold.
+ *
+ * Two measures, because two questions are asked. `cjk` and `words` are the
+ * script split -- writing counted one character at a time on one side and in
+ * words on the other -- and reading time is the only thing that needs it, a
+ * minute of Chinese and a minute of English holding different amounts. Every
+ * number a reader is shown is `counted` instead: the note's length under the
+ * counting convention the reader chose, the same number their status bar says,
+ * so no two places in the plugin can quote one chapter differently.
+ */
 export interface NoteProseStats {
 	cjk: number;
 	words: number;
+	/** The note's length by the reader's own convention. */
+	counted: number;
 	sentences: number;
-	dialogueCjk: number;
-	dialogueWords: number;
+	/** How much of that length stands inside quotation marks. */
+	dialogueCounted: number;
 }
 
 /**
@@ -405,7 +417,7 @@ function parseAnalysisFile(content: string | null): AnalysisFile | null {
 	const isStats = (value: unknown): value is NoteProseStats =>
 		typeof value === "object" &&
 		value !== null &&
-		["cjk", "words", "sentences", "dialogueCjk", "dialogueWords"].every(
+		["cjk", "words", "counted", "sentences", "dialogueCounted"].every(
 			(field) =>
 				typeof (value as Record<string, unknown>)[field] === "number",
 		);

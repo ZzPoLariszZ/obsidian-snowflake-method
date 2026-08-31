@@ -3640,10 +3640,7 @@ export default class SnowflakeMethodPlugin
 					title,
 				}));
 				const dialogueUnits = new Map(
-					perNote.map((note) => [
-						note.path,
-						note.dialogueCjk + note.dialogueWords,
-					]),
+					perNote.map((note) => [note.path, note.dialogueCounted]),
 				);
 				const kindOf = new Map<string, string>();
 				for (const member of model.characters) {
@@ -5226,6 +5223,7 @@ export default class SnowflakeMethodPlugin
 		return {
 			sensitiveTerms: parseSensitiveWords(this.settings.sensitiveWords),
 			dialogueStyles: this.dialogueStylesFromSettings(),
+			count: this.writingCountOptions(),
 			locale: project.locale,
 			entityTerms: targets.map((target) => target.label),
 		};

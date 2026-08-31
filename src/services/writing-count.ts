@@ -93,14 +93,31 @@ export class WritingCountService {
 		return pluginWrittenRanges(body, documentType);
 	}
 
+	/**
+	 * The rule underneath every count here: the body as the page shows it,
+	 * counted by the convention asked for, with the stretches handed in left
+	 * out of both. Everything else in this service is a way of choosing those
+	 * stretches, and the manuscript analysis measures a chapter's length
+	 * through this too, so no two readings of one note can quote it
+	 * differently.
+	 */
+	countExcluding(
+		body: string,
+		excluded: readonly CountableRange[],
+		options: NoteCountOptions,
+	): WritingCount {
+		return countWriting(countableProse(body, excluded, options), options);
+	}
+
 	/** One body's writing count, its plugin-written sections excluded. */
 	countBody(
 		body: string,
 		documentType: DocumentType | null,
 		options: NoteCountOptions,
 	): WritingCount {
-		return countWriting(
-			countableProse(body, this.pluginWritten(body, documentType), options),
+		return this.countExcluding(
+			body,
+			this.pluginWritten(body, documentType),
 			options,
 		);
 	}
@@ -153,10 +170,7 @@ export class WritingCountService {
 			record.body,
 			isDocumentType(declared) ? declared : null,
 		);
-		const display = countWriting(
-			countableProse(record.body, excluded, options),
-			options,
-		);
+		const display = this.countExcluding(record.body, excluded, options);
 		const whole =
 			excluded.length === 0
 				? display
@@ -181,16 +195,13 @@ export class WritingCountService {
 		range: CountableRange,
 		options: NoteCountOptions,
 	): WritingCount {
-		return countWriting(
-			countableProse(
-				body,
-				[
-					...this.pluginWritten(body, documentType),
-					{ from: 0, to: range.from },
-					{ from: range.to, to: body.length },
-				],
-				options,
-			),
+		return this.countExcluding(
+			body,
+			[
+				...this.pluginWritten(body, documentType),
+				{ from: 0, to: range.from },
+				{ from: range.to, to: body.length },
+			],
 			options,
 		);
 	}

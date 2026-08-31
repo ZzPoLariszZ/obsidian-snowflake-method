@@ -335,7 +335,7 @@ export function renderProsePanel(
 			title.addEventListener('click', () => {
 				void bridge.openChapter(row.path).catch(() => undefined);
 			});
-			cell('length', String(row.cjk + row.words));
+			cell('length', String(row.counted));
 			cell('readingTime', formatReadingTime(readingMinutes(row, speeds), t));
 			cell('sentences', String(row.sentences));
 			const average = averageSentenceLength(row, row.sentences);
@@ -347,7 +347,7 @@ export function renderProsePanel(
 				'dialogue',
 				share === null
 					? ''
-					: `${String(row.dialogueCjk + row.dialogueWords)} (${formatPercent(share)}%)`,
+					: `${String(row.dialogueCounted)} (${formatPercent(share)}%)`,
 			);
 		},
 		renderTail: () => undefined,

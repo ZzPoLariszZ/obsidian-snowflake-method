@@ -15,6 +15,7 @@ import {
 	sensitiveOccurrencesOf,
 	tokenizeProse,
 	WORD_TOKENIZER_VERSION,
+	type CountableRange,
 	type DialogueOccurrence,
 	type DialogueStyle,
 	type FrequencyRow,
@@ -25,6 +26,7 @@ import {
 import { documentTypeOf, type VaultRepository } from "../repository";
 import { pluginWrittenRanges } from "../templates";
 import type { ManuscriptService } from "./manuscript-service";
+import type { NoteCountOptions, WritingCountService } from "./writing-count";
 import {
 	ANALYSIS_FILE_SCHEMA_VERSION,
 	type AnalysisNoteRecord,
@@ -40,7 +42,7 @@ import {
 import type { ProjectRef } from "./types";
 
 /** Bump when what `stats` measures changes: it drops the stored numbers. */
-const STATS_VERSION = 1;
+const STATS_VERSION = 2;
 
 /** One matcher for every no-terms ask, so it never contests the memo slot. */
 const EMPTY_SENSITIVE_MATCHER = buildSensitiveMatcher([]);
@@ -80,6 +82,12 @@ export interface ManuscriptProseStatistics {
 export interface AnalysisConfig {
 	sensitiveTerms: readonly string[];
 	dialogueStyles: readonly DialogueStyle[];
+	/**
+	 * The convention the reader counts by, and what headings are worth to it:
+	 * the same options the status bar counts with, so a chapter's length is one
+	 * number wherever it is quoted.
+	 */
+	count: NoteCountOptions;
 	/** The tokenizer's locale hint, usually the project's. */
 	locale: string;
 	/**
@@ -110,6 +118,27 @@ interface ProjectAnalysisState extends NoteCacheState<AnalysisNoteRecord> {
 /** The last path segment, extension set aside: how a chapter is titled. */
 const titleOf = (path: string): string =>
 	path.replace(/\.md$/u, "").split("/").pop() ?? path;
+
+/**
+ * Everything a body holds except these ranges, which is how a count is asked
+ * about one part of a note: the counting rule takes what to leave out, never
+ * what to read, so that every offset stays the note's own and a plugin-written
+ * block inside the part drops out of it exactly as it drops out of the whole.
+ * The ranges arrive in order and never overlap, as `dialogueRanges` leaves them.
+ */
+function outside(
+	ranges: readonly { from: number; to: number }[],
+	length: number,
+): CountableRange[] {
+	const gaps: CountableRange[] = [];
+	let at = 0;
+	for (const range of ranges) {
+		if (range.from > at) gaps.push({ from: at, to: range.from });
+		at = Math.max(at, range.to);
+	}
+	if (at < length) gaps.push({ from: at, to: length });
+	return gaps;
+}
 
 /**
  * The manuscript analysis beside the mention index: sensitive-word hits,
@@ -152,6 +181,8 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 	constructor(
 		private readonly repository: VaultRepository,
 		private readonly manuscript: ManuscriptService,
+		/** The counting rule itself, so a chapter's length is measured once. */
+		private readonly writingCount: WritingCountService,
 		private readonly store: MentionStore,
 		/** The main window's clock, or null for the timerless test shape. */
 		timers: NoteCacheTimers | null = null,
@@ -271,9 +302,9 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 		const totals = {
 			cjk: 0,
 			words: 0,
+			counted: 0,
 			sentences: 0,
-			dialogueCjk: 0,
-			dialogueWords: 0,
+			dialogueCounted: 0,
 			chapters: 0,
 		};
 		await this.walk(project, state, config, "stats", (path, record) => {
@@ -282,9 +313,9 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 			perNote.push({ path, title: titleOf(path), ...stats });
 			totals.cjk += stats.cjk;
 			totals.words += stats.words;
+			totals.counted += stats.counted;
 			totals.sentences += stats.sentences;
-			totals.dialogueCjk += stats.dialogueCjk;
-			totals.dialogueWords += stats.dialogueWords;
+			totals.dialogueCounted += stats.dialogueCounted;
 			totals.chapters += 1;
 		});
 		return { perNote, totals };
@@ -348,8 +379,15 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 		return {
 			sensitive: sensitiveFingerprint(config.sensitiveTerms),
 			dialogue,
-			// The stats carry the dialogue split, so they stale together.
-			stats: fingerprint([STATS_VERSION, dialogue]),
+			// The stats carry the dialogue split, so they stale together -- and
+			// the length they hold is counted by the reader's convention, so a
+			// changed convention drops them the same way.
+			stats: fingerprint([
+				STATS_VERSION,
+				dialogue,
+				config.count.mode,
+				config.count.headings,
+			]),
 			// The roster is the tokenizer's dictionary, so a renamed entity
 			// re-tokenizes: the walk is breathed and the other families ride.
 			tokens: fingerprint([
@@ -553,15 +591,30 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 			stats:
 				warm?.stats ??
 				((): NoteProseStats => {
-					const split = dialogueSplit(record.body, rangesOf(), excluded);
+					const quoted = rangesOf();
+					const split = dialogueSplit(record.body, quoted, excluded);
+					// The length the reader is shown is counted by the counting
+					// rule itself -- the same call the status bar makes -- and
+					// the dialogue's length is that same call with everything
+					// outside the quotation marks set aside, so the share
+					// divides into the length it is a share of.
+					const length = (also: readonly CountableRange[] = []): number =>
+						this.writingCount.countExcluding(
+							record.body,
+							also.length === 0 ? excluded : [...excluded, ...also],
+							config.count,
+						).total;
 					return {
 						// The two halves of the split cover exactly the
 						// analyzable prose, so their sum is the whole writing.
 						cjk: split.dialogue.cjk + split.narrative.cjk,
 						words: split.dialogue.words + split.narrative.words,
+						counted: length(),
 						sentences: countSentences(record.body, excluded),
-						dialogueCjk: split.dialogue.cjk,
-						dialogueWords: split.dialogue.words,
+						dialogueCounted:
+							quoted.length === 0
+								? 0
+								: length(outside(quoted, record.body.length)),
 					};
 				})(),
 			tokens:

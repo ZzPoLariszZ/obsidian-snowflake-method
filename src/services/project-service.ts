@@ -418,6 +418,7 @@ export class SnowflakeProjectService {
     this.analysis = new ManuscriptAnalysisService(
       this.repository,
       this.manuscript,
+      this.writingCount,
       this.mentionStore,
       analysis.timers ?? null,
     );

@@ -40,25 +40,21 @@ describe('reading time', () => {
 
 describe('averages and shares', () => {
 	it('reads units per sentence unrounded, or nothing off nothing', () => {
-		expect(averageSentenceLength({ cjk: 100, words: 0 }, 8)).toBe(12.5);
-		expect(averageSentenceLength({ cjk: 0, words: 45 }, 3)).toBe(15);
-		expect(averageSentenceLength({ cjk: 100, words: 0 }, 3)).toBeCloseTo(
-			33.3333,
-			3,
-		);
-		expect(averageSentenceLength({ cjk: 0, words: 0 }, 0)).toBeNull();
+		// The counted length, which is what the length column shows: the two
+		// numbers a reader can see must divide into each other.
+		expect(averageSentenceLength({ counted: 100 }, 8)).toBe(12.5);
+		expect(averageSentenceLength({ counted: 45 }, 3)).toBe(15);
+		expect(averageSentenceLength({ counted: 100 }, 3)).toBeCloseTo(33.3333, 3);
+		expect(averageSentenceLength({ counted: 0 }, 0)).toBeNull();
 	});
 
 	it('reads the dialogue share unrounded', () => {
-		expect(
-			dialoguePercent({ cjk: 80, words: 20, dialogueCjk: 30, dialogueWords: 3 }),
-		).toBe(33);
-		expect(
-			dialoguePercent({ cjk: 60, words: 0, dialogueCjk: 20, dialogueWords: 0 }),
-		).toBeCloseTo(33.3333, 3);
-		expect(
-			dialoguePercent({ cjk: 0, words: 0, dialogueCjk: 0, dialogueWords: 0 }),
-		).toBeNull();
+		expect(dialoguePercent({ counted: 100, dialogueCounted: 33 })).toBe(33);
+		expect(dialoguePercent({ counted: 60, dialogueCounted: 20 })).toBeCloseTo(
+			33.3333,
+			3,
+		);
+		expect(dialoguePercent({ counted: 0, dialogueCounted: 0 })).toBeNull();
 	});
 
 	it('writes every derived figure with both decimals', () => {
@@ -86,9 +82,11 @@ describe('averages and shares', () => {
 			totals: {
 				cjk: 800,
 				words: 0,
+				// Reading time comes off the script split above; every number a
+				// reader compares with another comes off these two.
+				counted: 900,
 				sentences: 40,
-				dialogueCjk: 200,
-				dialogueWords: 0,
+				dialogueCounted: 225,
 				chapters: 2,
 			},
 		};
@@ -96,7 +94,7 @@ describe('averages and shares', () => {
 			readingTime: '2 min',
 			averageChapter: '1 min',
 			sentencesPerChapter: 20,
-			averageSentence: 20,
+			averageSentence: 22.5,
 			dialoguePercent: 25,
 		});
 		const silent: ManuscriptProseStatistics = {
@@ -104,9 +102,9 @@ describe('averages and shares', () => {
 			totals: {
 				cjk: 0,
 				words: 0,
+				counted: 0,
 				sentences: 0,
-				dialogueCjk: 0,
-				dialogueWords: 0,
+				dialogueCounted: 0,
 				chapters: 0,
 			},
 		};
@@ -158,16 +156,16 @@ describe('the word cloud', () => {
 });
 
 describe('the chapter filter', () => {
-	const row = (title: string, cjk: number, words: number) => ({
+	const row = (title: string, counted: number) => ({
 		path: `${title}.md`,
 		title,
-		cjk,
-		words,
+		cjk: counted,
+		words: 0,
+		counted,
 		sentences: 1,
-		dialogueCjk: 0,
-		dialogueWords: 0,
+		dialogueCounted: 0,
 	});
-	const chapters = [row('Fog', 100, 0), row('Rope', 0, 250), row('Sea', 900, 100)];
+	const chapters = [row('Fog', 100), row('Rope', 250), row('Sea', 1000)];
 
 	it('reads a typed bound, and nothing from blanks or noise', () => {
 		expect(parseLengthBound('250')).toBe(250);
