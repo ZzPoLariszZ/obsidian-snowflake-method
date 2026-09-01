@@ -634,7 +634,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'projectStructure.issue.missing-directory': '缺少该项目文件夹。',
 	'projectStructure.action.missing-directory': '在此修复会创建它。',
 	'projectStructure.issue.misfiled-statistics-file':
-		'该统计文件仍在旧版本存放它的文件夹里。',
+		'该文件仍在旧版本存放它的文件夹里。',
 	'projectStructure.action.misfiled-statistics-file':
 		'在此修复会把它移到对应标签页的文件夹。',
 	'projectStructure.issue.missing-artifact': '缺少该项目笔记。',
@@ -1318,6 +1318,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.revision.ambiguous': '这段文字出现在多处。请点击进入正文后再选择。',
 	'manuscript.revision.emptyProposed': '插入修订需要建议文本。',
 	'manuscript.revision.overlap': '该位置已有另一条修订。',
+	'manuscript.revision.corruptPreserved': '修订文件无法读取，已另存为 {path}。',
 	'manuscript.revision.kind.replace': '替换',
 	'manuscript.revision.kind.insert': '插入',
 	'manuscript.revision.kind.delete': '删除',

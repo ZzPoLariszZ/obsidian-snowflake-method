@@ -4,9 +4,11 @@ import {
 	REVISION_CONTEXT_CHARS,
 	anchorRevision,
 	captureRevision,
+	insertionPointHolds,
 	isRevision,
 	orderRevisions,
 	overlapsLive,
+	passageContext,
 	planRevisionMarks,
 	refreshAnchors,
 	resolvePassage,
@@ -616,5 +618,107 @@ describe('refreshing anchors at save time', () => {
 		const { next, changed } = refreshAnchors(BODY, [rev]);
 		expect(changed).toBe(false);
 		expect(next[0]).toBe(rev);
+	});
+});
+
+describe('a point and a range over one letter', () => {
+	// `overlapsLive` lets a point stand at a range's edge on purpose, and
+	// relocation can bring the two together besides. The page holds no two
+	// marks over one character -- the wrap verifies what each gathered and
+	// drops the pair -- so the plan must never hand it a pair.
+	const overlapping = (plan: { from: number; to: number }[]): boolean =>
+		plan.some((mark, index) =>
+			plan.some(
+				(other, at) => at !== index && mark.from < other.to && other.from < mark.to,
+			),
+		);
+
+	it('a point at a replacement head wears its bar on the replacement', () => {
+		const { plan, anchors } = planRevisionMarks('50/one.md', BODY, [
+			capture('replace', 4, 14),
+			{ ...capture('insert', 4, 4), id: 'rev-point' },
+		]);
+		expect(overlapping(plan)).toBe(false);
+		expect(plan).toEqual([
+			expect.objectContaining({
+				from: 4,
+				to: 14,
+				classes: 'snowflake-method-revision is-replace is-insertion',
+			}),
+		]);
+		// The replacement keeps its own element and its own anchor; the point
+		// gives up an element, never its place.
+		expect(plan[0]?.occurrence).toMatchObject({ revisionId: 'rev-1' });
+		expect(anchors.get('rev-point')).toEqual({ from: 4, to: 4 });
+	});
+
+	it('a point at a replacement tail wears its bar there too', () => {
+		// The character behind offset 14 is the "n" of "heron", inside the
+		// range: borrowing it would take the replacement off the page.
+		const { plan } = planRevisionMarks('50/one.md', BODY, [
+			capture('replace', 4, 14),
+			{ ...capture('insert', 14, 14), id: 'rev-point' },
+		]);
+		expect(overlapping(plan)).toBe(false);
+		expect(plan).toEqual([
+			expect.objectContaining({
+				from: 4,
+				to: 14,
+				classes:
+					'snowflake-method-revision is-replace is-insertion is-insertion-after',
+			}),
+		]);
+	});
+
+	it('two points at one spot raise one bar between them', () => {
+		const { plan, anchors } = planRevisionMarks('50/one.md', BODY, [
+			{ ...capture('insert', 15, 15), id: 'rev-a' },
+			{ ...capture('insert', 15, 15), id: 'rev-b' },
+		]);
+		expect(overlapping(plan)).toBe(false);
+		expect(plan).toHaveLength(1);
+		expect(anchors.get('rev-a')).toEqual({ from: 15, to: 15 });
+		expect(anchors.get('rev-b')).toEqual({ from: 15, to: 15 });
+	});
+
+	it('the editor keeps them apart, having room for a mark of no width', () => {
+		const { plan } = planRevisionMarks(
+			'50/one.md',
+			BODY,
+			[capture('replace', 4, 14), { ...capture('insert', 4, 4), id: 'rev-point' }],
+			true,
+		);
+		expect(plan).toHaveLength(2);
+		expect(plan.map((mark) => mark.classes)).toEqual([
+			'snowflake-method-revision is-insertion is-point',
+			'snowflake-method-revision is-replace',
+		]);
+	});
+});
+
+describe('proving an insertion point again', () => {
+	it('either side standing is enough, and neither is not', () => {
+		const rev = capture('insert', 14, 14);
+		expect(insertionPointHolds(BODY, 14, rev.before, rev.after)).toBe(true);
+		// The words behind rewritten: the side ahead still holds it.
+		const ahead = `The great grey heron${BODY.slice(14)}`;
+		expect(insertionPointHolds(ahead, 20, rev.before, rev.after)).toBe(true);
+		// Both sides gone from that offset: the point is no longer proved.
+		expect(insertionPointHolds('Nothing of the kind at all.', 14, rev.before, rev.after)).toBe(
+			false,
+		);
+	});
+
+	it('a point captured with no witnesses belongs to an empty note alone', () => {
+		expect(insertionPointHolds('', 0, '', '')).toBe(true);
+		expect(insertionPointHolds('Words.', 0, '', '')).toBe(false);
+	});
+
+	it('the context a place is written down with is the same everywhere', () => {
+		const rev = capture('replace', 4, 14);
+		expect(passageContext(BODY, 4, 14)).toEqual({
+			before: rev.before,
+			after: rev.after,
+		});
 	});
 });

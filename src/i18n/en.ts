@@ -695,7 +695,7 @@ export const en = {
 	'projectStructure.issue.missing-directory': 'This project folder is missing.',
 	'projectStructure.action.missing-directory': 'Repairing here creates it.',
 	'projectStructure.issue.misfiled-statistics-file':
-		'This statistics file is in the folder an older version kept it in.',
+		'This file is in the folder an older version kept it in.',
 	'projectStructure.action.misfiled-statistics-file':
 		'Repairing here moves it beside the tab that shows it.',
 	'projectStructure.issue.missing-artifact': 'This project note is missing.',
@@ -1430,6 +1430,8 @@ export const en = {
 		'Those words stand in more than one place. Click into the text and select them there.',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
 	'manuscript.revision.overlap': 'Another revision already covers that spot.',
+	'manuscript.revision.corruptPreserved':
+		'The revisions would not read and were set aside as {path}.',
 	'manuscript.revision.kind.replace': 'Replace',
 	'manuscript.revision.kind.insert': 'Insert',
 	'manuscript.revision.kind.delete': 'Delete',

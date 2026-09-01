@@ -74,6 +74,43 @@ export function isRevision(value: unknown): value is Revision {
 }
 
 /**
+ * The text either side of a passage, as much of it as a revision keeps.
+ * These are the witnesses a stored place is judged by, so they are read the
+ * same way everywhere a place is written down: at capture, at a save-time
+ * refresh, and while a draft is still being decided.
+ */
+export function passageContext(
+	body: string,
+	from: number,
+	to: number,
+): { before: string; after: string } {
+	return {
+		before: body.slice(Math.max(0, from - REVISION_CONTEXT_CHARS), from),
+		after: body.slice(to, to + REVISION_CONTEXT_CHARS),
+	};
+}
+
+/**
+ * Whether an insertion point still stands where it was written down. Either
+ * witness holding is enough -- work on one side of a point costs it nothing
+ * -- and a point captured with no witnesses at all belongs to an empty note
+ * and to nothing else.
+ */
+export function insertionPointHolds(
+	body: string,
+	point: number,
+	before: string,
+	after: string,
+): boolean {
+	if (before.length === 0 && after.length === 0) return body.length === 0;
+	return (
+		(before.length > 0 &&
+			body.slice(Math.max(0, point - before.length), point) === before) ||
+		(after.length > 0 && body.slice(point, point + after.length) === after)
+	);
+}
+
+/**
  * A new revision captured off the body it was made in: the covered text and
  * its context are read here, so every caller stores the same truth.
  */
@@ -88,18 +125,17 @@ export function captureRevision(
 	id: string,
 	createdAt: number,
 ): Revision {
+	const end = kind === 'insert' ? from : to;
+	const { before, after } = passageContext(body, from, end);
 	return {
 		id,
 		path,
 		kind,
 		from,
-		to: kind === 'insert' ? from : to,
-		originalText: kind === 'insert' ? '' : body.slice(from, to),
-		before: body.slice(Math.max(0, from - REVISION_CONTEXT_CHARS), from),
-		after: body.slice(
-			kind === 'insert' ? from : to,
-			(kind === 'insert' ? from : to) + REVISION_CONTEXT_CHARS,
-		),
+		to: end,
+		originalText: kind === 'insert' ? '' : body.slice(from, end),
+		before,
+		after,
 		proposed: kind === 'delete' ? '' : proposed,
 		comment,
 		createdAt,
@@ -213,13 +249,7 @@ function anchorInsertion(body: string, rev: Revision): RevisionAnchor {
 	// At the stored offset, one side still standing means the point never
 	// moved: the other side is what changed, under the point rather than
 	// beneath it.
-	const behindHolds =
-		rev.before.length > 0 &&
-		body.slice(Math.max(0, rev.from - rev.before.length), rev.from) === rev.before;
-	const aheadHolds =
-		rev.after.length > 0 &&
-		body.slice(rev.from, rev.from + rev.after.length) === rev.after;
-	if (behindHolds || aheadHolds) {
+	if (insertionPointHolds(body, rev.from, rev.before, rev.after)) {
 		return { state: 'anchored', from: rev.from, to: rev.from };
 	}
 	// Neither side stands there any more, so each is looked for on its own,
@@ -384,6 +414,7 @@ export function planRevisionMarks(
 	const plan: MentionMark[] = [];
 	const anchors = new Map<string, { from: number; to: number }>();
 	const conflicts: Revision[] = [];
+	const points: RevisionOccurrence[] = [];
 	for (const rev of revisions) {
 		if (rev.path !== path) continue;
 		const anchor = anchorRevision(body, rev);
@@ -400,32 +431,10 @@ export function planRevisionMarks(
 			matchedText: body.slice(anchor.from, anchor.to),
 			revisionId: rev.id,
 		};
+		// The points wait for the ranges: where a borrowed character can be
+		// taken from depends on what the ranges have already claimed.
 		if (rev.kind === 'insert') {
-			if (exactPoints) {
-				// Nothing under it and nothing borrowed: the editor puts a bar
-				// in the position, so there is no case where the point cannot
-				// be shown and none where it is shown somewhere else.
-				plan.push({
-					from: anchor.from,
-					to: anchor.from,
-					classes: 'snowflake-method-revision is-insertion is-point',
-					occurrence,
-				});
-				continue;
-			}
-			const carrier = insertionCarrier(body, anchor.from);
-			// A note of nothing but whitespace has no character for the page to
-			// mark; the card still stands, so nothing of the revision is lost.
-			if (carrier === null) continue;
-			plan.push({
-				from: carrier.from,
-				to: carrier.to,
-				classes:
-					carrier.side === 'after'
-						? 'snowflake-method-revision is-insertion is-insertion-after'
-						: 'snowflake-method-revision is-insertion',
-				occurrence,
-			});
+			points.push(occurrence);
 			continue;
 		}
 		plan.push({
@@ -435,6 +444,50 @@ export function planRevisionMarks(
 				rev.kind === 'delete'
 					? 'snowflake-method-revision is-delete'
 					: 'snowflake-method-revision is-replace',
+			occurrence,
+		});
+	}
+	for (const occurrence of points) {
+		if (exactPoints) {
+			// Nothing under it and nothing borrowed: the editor puts a bar
+			// in the position, so there is no case where the point cannot
+			// be shown and none where it is shown somewhere else.
+			plan.push({
+				from: occurrence.from,
+				to: occurrence.from,
+				classes: 'snowflake-method-revision is-insertion is-point',
+				occurrence,
+			});
+			continue;
+		}
+		const carrier = insertionCarrier(body, occurrence.from);
+		// A note of nothing but whitespace has no character for the page to
+		// mark; the card still stands, so nothing of the revision is lost.
+		if (carrier === null) continue;
+		const side = carrier.side === 'after' ? ' is-insertion-after' : '';
+		// A point may stand at a range's edge -- `overlapsLive` lets it, and
+		// relocation can bring the two together besides -- and the borrowed
+		// character is then one the range already marks. The page holds no
+		// two marks over one character: the wrap verifies what each gathered
+		// and drops the pair rather than choosing between them, which would
+		// take a whole replacement's strike and tint off the page. So the bar
+		// is worn by the mark already standing there instead of raising a
+		// second one over the same letter. It is drawn in the same place
+		// either way; what it gives up is an element of its own, so its card
+		// stacks rather than standing beside its bar.
+		const standing = plan.find(
+			(mark) => mark.from < carrier.to && carrier.from < mark.to,
+		);
+		if (standing !== undefined) {
+			if (!standing.classes.includes('is-insertion')) {
+				standing.classes += ` is-insertion${side}`;
+			}
+			continue;
+		}
+		plan.push({
+			from: carrier.from,
+			to: carrier.to,
+			classes: `snowflake-method-revision is-insertion${side}`,
 			occurrence,
 		});
 	}
@@ -456,11 +509,7 @@ export function refreshAnchors(
 	const next = revisions.map((rev) => {
 		const anchor = anchorRevision(body, rev);
 		if (anchor.state === 'conflict') return rev;
-		const before = body.slice(
-			Math.max(0, anchor.from - REVISION_CONTEXT_CHARS),
-			anchor.from,
-		);
-		const after = body.slice(anchor.to, anchor.to + REVISION_CONTEXT_CHARS);
+		const { before, after } = passageContext(body, anchor.from, anchor.to);
 		if (
 			rev.from === anchor.from &&
 			rev.to === anchor.to &&

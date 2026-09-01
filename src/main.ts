@@ -116,6 +116,7 @@ import {
 	projectIdOf,
 } from './repository';
 import {
+	ADVISORY_STRUCTURE_ISSUE_CODES,
 	createStableId,
 	sessionClockMs,
 	SnowflakeProjectService,
@@ -647,6 +648,14 @@ export default class SnowflakeMethodPlugin
 				onCorrupt: (path) => {
 					new Notice(
 						this.projectT('mention.notice.ignoresPreserved', { path }),
+					);
+				},
+				// Told apart from the ignores above, because they are not the
+				// same loss: what was set aside here is every proposal the
+				// author had standing in this project.
+				onRevisionsCorrupt: (path) => {
+					new Notice(
+						this.projectT('manuscript.revision.corruptPreserved', { path }),
 					);
 				},
 				// The main window's clock, as the sessions take theirs: a
@@ -1551,7 +1560,7 @@ export default class SnowflakeMethodPlugin
 					projectT,
 					`projectStructure.action.${issue.code}`,
 				),
-				blocking: true,
+				blocking: !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
 				kind: 'structure',
 				stepIds: issue.stepIds,
 				canOpen: issue.canOpen,
@@ -4994,35 +5003,54 @@ export default class SnowflakeMethodPlugin
 		return this.projects.revisions.list(project);
 	}
 
+	/**
+	 * The gate every revision mutation passes. A project that will not resolve
+	 * -- its folder renamed or gone while a stream still stands open on it --
+	 * and a project the plugin may not write to both answer null here, so a
+	 * mutation refuses rather than quietly doing nothing: the card in the
+	 * margin and the row in the table each decide what to show on what they
+	 * are told back.
+	 */
+	private async writableProject(
+		projectPath: string | null,
+	): Promise<ProjectSnapshot | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null || project.readOnly) return null;
+		return project;
+	}
+
 	async createRevision(
 		projectPath: string | null,
 		revision: Revision,
-	): Promise<void> {
-		const project = await this.resolveProject(projectPath);
-		if (project === null) return;
-		await this.projects.revisions.create(project, revision);
-		await this.announceRevisionsChanged();
+	): Promise<boolean> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return false;
+		const took = await this.projects.revisions.create(project, revision);
+		if (took) await this.announceRevisionsChanged();
+		return took;
 	}
 
 	async updateRevision(
 		projectPath: string | null,
 		id: string,
 		patch: { proposed: string; comment: string },
-	): Promise<void> {
-		const project = await this.resolveProject(projectPath);
-		if (project === null) return;
-		await this.projects.revisions.update(project, id, patch);
-		await this.announceRevisionsChanged();
+	): Promise<boolean> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return false;
+		const took = await this.projects.revisions.update(project, id, patch);
+		if (took) await this.announceRevisionsChanged();
+		return took;
 	}
 
 	async discardRevision(
 		projectPath: string | null,
 		id: string,
-	): Promise<void> {
-		const project = await this.resolveProject(projectPath);
-		if (project === null) return;
-		await this.projects.revisions.remove(project, id);
-		await this.announceRevisionsChanged();
+	): Promise<boolean> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return false;
+		const took = await this.projects.revisions.remove(project, id);
+		if (took) await this.announceRevisionsChanged();
+		return took;
 	}
 
 	mintRevisionId(): string {
@@ -6476,6 +6504,56 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
+	/**
+	 * The projects a rename reaches, each as it stands after it.
+	 *
+	 * Two shapes, and asking which project the new path belongs to answers
+	 * only the first. A note or a folder renamed INSIDE a project leaves the
+	 * root alone, so the root that held it still holds it. A project's own
+	 * folder renamed carries the root itself -- and the map this reads has not
+	 * caught up, so the new name matches no known root at all, and a project
+	 * asked for by that name comes back as nothing while every revision it
+	 * holds is quietly left pointing at chapters under the old one. The
+	 * pre-rename map is exactly the right thing to read here: it is the
+	 * picture the paths in the file were written against. A moved project is
+	 * then read at its new address, where its metadata note already stands.
+	 */
+	private async projectsCrossedByRename(
+		oldPath: string,
+		newPath: string,
+	): Promise<ProjectSnapshot[]> {
+		const roots = [...this.knownProjectRoots];
+		const carried = roots.map((rootPath) => ({
+			rootPath,
+			movedRoot: movedWithRename(rootPath, oldPath, newPath),
+		}));
+		const touched = carried.filter(
+			({ rootPath, movedRoot }) =>
+				movedRoot !== null || isPathAtOrBelow(oldPath, rootPath),
+		);
+		if (touched.length === 0) return [];
+		const discovered = await this.discoverProjects();
+		const found: ProjectSnapshot[] = [];
+		for (const { rootPath, movedRoot } of touched) {
+			const project = discovered.find(
+				(candidate) => candidate.rootPath === rootPath,
+			);
+			if (project === undefined) continue;
+			const projectFile =
+				movedRoot === null
+					? project.projectFile
+					: (movedWithRename(project.projectFile, oldPath, newPath) ??
+						project.projectFile);
+			try {
+				found.push(await this.projects.loadProject(projectFile));
+			} catch {
+				// A project the rename left unreadable keeps its revisions
+				// where they are rather than losing them to a throw.
+			}
+		}
+		return found;
+	}
+
 	private async handleVaultRename(
 		file: TAbstractFile,
 		oldPath: string,
@@ -6500,13 +6578,21 @@ export default class SnowflakeMethodPlugin
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name.
 		void (async () => {
-			const project = await this.projectOfPath(file.path);
-			if (project === null) return;
-			const carried = await this.projects.revisions.renameNotePaths(
-				project,
+			let carried = false;
+			for (const project of await this.projectsCrossedByRename(
 				oldPath,
 				file.path,
-			);
+			)) {
+				if (
+					await this.projects.revisions.renameNotePaths(
+						project,
+						oldPath,
+						file.path,
+					)
+				) {
+					carried = true;
+				}
+			}
 			if (carried) await this.announceRevisionsChanged();
 		})().catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);

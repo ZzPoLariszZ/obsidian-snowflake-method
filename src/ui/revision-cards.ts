@@ -29,6 +29,14 @@ export interface RevisionDraft {
 	from: number;
 	to: number;
 	originalText: string;
+	/**
+	 * The text either side of the spot when the draft was begun. A range
+	 * proves its place by the words under it; a point has no words of its
+	 * own, so these are the only witnesses it has that the note has not moved
+	 * beneath it while the card stood open.
+	 */
+	before: string;
+	after: string;
 	top: number | null;
 }
 
@@ -45,11 +53,15 @@ export interface RevisionRailCallbacks {
 	onReject(revision: Revision): void;
 	onDiscard(revision: Revision): void;
 	/**
-	 * Takes an edited revision. False means it was refused -- the card stays
-	 * open on what was typed instead of closing over a save that never
-	 * happened.
+	 * Takes an edited revision, and answers once the write has either landed
+	 * or failed. False means it was refused -- the card stays open on what was
+	 * typed instead of closing over a save that never happened.
 	 */
-	onEditSave(revision: Revision, proposed: string, comment: string): boolean;
+	onEditSave(
+		revision: Revision,
+		proposed: string,
+		comment: string,
+	): Promise<boolean>;
 	onDraftSave(proposed: string, comment: string): void;
 	onDraftCancel(): void;
 	/**
@@ -96,6 +108,10 @@ interface CardState {
 	editing: boolean;
 }
 
+/** What makes one draft a different proposal from another. */
+const draftKeyOf = (draft: RevisionDraft): string =>
+	`${draft.kind}:${String(draft.from)}:${String(draft.to)}`;
+
 export function renderRevisionRail(
 	segmentEl: HTMLElement,
 	callbacks: RevisionRailCallbacks,
@@ -103,16 +119,20 @@ export function renderRevisionRail(
 	const rail = segmentEl.createDiv({ cls: 'snowflake-method-revision-rail' });
 	const cards = new Map<string, CardState>();
 	let draftEl: HTMLElement | null = null;
+	/** Which draft the standing form was built for, so a new one rebuilds it. */
+	let draftKey: string | null = null;
 	/** The last thing the rail was asked to show, for placing it again. */
 	let held: RevisionRailModel | null = null;
 
 	const t = callbacks.t;
 
 	/**
-	 * Places the standing cards again, on nothing newer than what they
-	 * already say: a card that changed height under the author's hands has to
-	 * push the ones below it down, and only the stacking pass knows where
-	 * they go.
+	 * Draws and places the cards again on the newest thing the rail was told,
+	 * which is what a form opening or closing goes through: a card that
+	 * changed height under the author's hands has to push the ones below it
+	 * down, and only the stacking pass knows where they go. Deliberately not
+	 * the model the form was opened over -- cards have come and gone since,
+	 * and reviving that older picture would take them with it.
 	 */
 	const restack = (): void => {
 		if (held !== null) sync(held);
@@ -487,9 +507,15 @@ export function renderRevisionRail(
 			const key = `conflict:${revision.id}`;
 			wanted.add(key);
 			order.push({ key, top: null });
-			const kept = cards.get(key);
-			if (kept !== undefined) continue;
-			const card = rail.createDiv({ cls: 'snowflake-method-revision-card' });
+			// Redrawn in place like a resting card, and for the same reason:
+			// what it says can change under it -- a note turning read-only
+			// takes its Discard away, and text edited from the table arrives
+			// here -- and a card drawn once would go on offering what it was
+			// born offering.
+			const card =
+				cards.get(key)?.el ??
+				rail.createDiv({ cls: 'snowflake-method-revision-card' });
+			card.empty();
 			renderConflictCard(card, revision, model.readOnly);
 			cards.set(key, { el: card, editing: false });
 		}
@@ -517,29 +543,47 @@ export function renderRevisionRail(
 					onSave: (proposed, comment) => {
 						// A refused save leaves the card open on what was
 						// typed: the author gets the notice and their words
-						// both, instead of one at the price of the other.
-						if (!callbacks.onEditSave(entry.revision, proposed, comment)) {
-							return;
-						}
-						state.editing = false;
+						// both, instead of one at the price of the other. The
+						// answer is waited for, because a save that fails
+						// fails after the write was tried, and closing the
+						// form before then would close it over nothing.
+						void (async () => {
+							const took = await callbacks.onEditSave(
+								entry.revision,
+								proposed,
+								comment,
+							);
+							if (!took) return;
+							state.editing = false;
+							restack();
+						})();
 					},
 					onCancel: () => {
 						state.editing = false;
-						card.empty();
-						renderRestCard(card, entry, model.readOnly, () => undefined);
-						sync(model);
+						restack();
 					},
 				});
 				// Both faces are drawn in place, and they are not the same
 				// height: without a fresh placement the cards below stay where
 				// the shorter one left them, and the taller one covers them.
-				sync(model);
+				restack();
 			});
 			cards.set(key, state);
 		}
 
 		if (model.draft !== null) {
 			order.push({ key: 'draft', top: model.draft.top });
+			// A second revision begun while the first is still being written
+			// is a different proposal about a different passage: the form is
+			// built again for it, rather than the standing card keeping the
+			// earlier passage's text on show while the save goes to the new
+			// one's offsets.
+			const key = draftKeyOf(model.draft);
+			if (draftEl !== null && key !== draftKey) {
+				draftEl.remove();
+				draftEl = null;
+			}
+			draftKey = key;
 			if (draftEl === null) {
 				draftEl = rail.createDiv({
 					cls: 'snowflake-method-revision-card is-draft',
@@ -559,10 +603,19 @@ export function renderRevisionRail(
 		} else if (draftEl !== null) {
 			draftEl.remove();
 			draftEl = null;
+			draftKey = null;
 		}
 
 		for (const [key, state] of cards) {
 			if (wanted.has(key)) continue;
+			// A card being written in outlives the revision it was drawn for.
+			// The author is mid-sentence in it, and the element holds the only
+			// copy of that sentence; it keeps its place in the stack and goes
+			// on the first sync after the form closes.
+			if (state.editing) {
+				order.push({ key, top: null });
+				continue;
+			}
 			state.el.remove();
 			cards.delete(key);
 		}

@@ -106,8 +106,11 @@ export interface RevisionPanelBridge {
 	rows(): Promise<RevisionRow[] | null>;
 	/** Opens the stream at one revision's spot and flashes it. */
 	open(occurrence: { path: string; from: number; to: number }): Promise<void>;
-	/** Discards one revision: the conflict row's only action. */
-	discard(id: string): Promise<void>;
+	/**
+	 * Takes one revision out, which is the conflict row's only action. False
+	 * where the write never happened.
+	 */
+	discard(id: string): Promise<boolean>;
 }
 
 export interface RevisionPanelHandle {

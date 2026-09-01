@@ -45,14 +45,20 @@ export class RevisionService {
 	 * moments rather than two things the author must choose between. An
 	 * insertion has no text under it to fall back to and stays what it is.
 	 */
-	update(
+	async update(
 		project: ProjectRef,
 		id: string,
 		patch: { proposed: string; comment: string },
 	): Promise<boolean> {
-		return this.store.updateRevisions(project, (revisions) => {
+		// Answered on whether the record now says what was asked, not on
+		// whether a write was needed to make it say so: the card in the margin
+		// closes on this, and re-typing a proposal into the same words is a
+		// finished edit rather than a refused one.
+		let stood = false;
+		await this.store.updateRevisions(project, (revisions) => {
 			const kept = revisions.find((revision) => revision.id === id);
 			if (kept === undefined) return null;
+			stood = true;
 			if (kept.proposed === patch.proposed && kept.comment === patch.comment) {
 				return null;
 			}
@@ -72,6 +78,7 @@ export class RevisionService {
 					: revision,
 			);
 		});
+		return stood;
 	}
 
 	/** Takes one revision out -- an accept, a reject, or a discard alike. */

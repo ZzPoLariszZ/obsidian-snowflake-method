@@ -391,6 +391,13 @@ export class SnowflakeProjectService {
       deviceId?: () => string;
       now?: () => number;
       onCorrupt?: (path: string) => void;
+      /**
+       * Told when a revisions file is set aside, separately from the caches
+       * above: those recompute from the notes, while revisions are the
+       * author's own writing and nothing can bring them back. The reader has
+       * to be told which of the two it was.
+       */
+      onRevisionsCorrupt?: (path: string) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -424,9 +431,9 @@ export class SnowflakeProjectService {
     );
     this.revisions = new RevisionService(this.repository, {
       now: analysis.now ?? ((): number => Date.now()),
-      ...(analysis.onCorrupt === undefined
+      ...(analysis.onRevisionsCorrupt === undefined
         ? {}
-        : { onCorrupt: analysis.onCorrupt }),
+        : { onCorrupt: analysis.onRevisionsCorrupt }),
     });
   }
 

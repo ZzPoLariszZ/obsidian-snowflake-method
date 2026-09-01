@@ -24,12 +24,14 @@ import {
 	type DialogueStyle,
 	type EntityMatcher,
 	type EntityOccurrence,
+	insertionPointHolds,
 	MENTION_HIGHLIGHT_MODES,
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
 	orderRevisions,
 	overlapsLive,
+	passageContext,
 	planDialogueMarks,
 	planHighlightMarks,
 	planMentionMarks,
@@ -53,7 +55,11 @@ import {
 	projectMentionMarks,
 } from './mention-marks';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
-import { renderRevisionRail, type RevisionRail } from './revision-cards';
+import {
+	renderRevisionRail,
+	type RevisionDraft,
+	type RevisionRail,
+} from './revision-cards';
 import { confirmSegmentMerge } from './modals';
 import { projectedIndexAt } from './prose-projection';
 import {
@@ -255,18 +261,13 @@ export class SnowflakeManuscriptView extends ItemView {
 	/** One trailing timer per segment behind the editor's geometry events. */
 	private readonly revisionRailTimers = new Map<string, number>();
 
-	/** The one revision being made right now, view-local until saved. */
-	private revisionDraft:
-		| {
-				path: string;
-				kind: Revision['kind'];
-				from: number;
-				to: number;
-				originalText: string;
-				/** Where the card stands, captured at creation (D7). */
-				top: number | null;
-		  }
-		| null = null;
+	/**
+	 * The one revision being made right now, view-local until saved. The shape
+	 * the rail draws it from, so the card and the record it becomes are read
+	 * off one thing -- the witnesses either side included, which is how the
+	 * spot is proved again at save time.
+	 */
+	private revisionDraft: RevisionDraft | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
 	/** The dress the page wears, so a refresh can tell a change from a repeat. */
@@ -1479,7 +1480,6 @@ export class SnowflakeManuscriptView extends ItemView {
 		) {
 			return;
 		}
-		const feed = this.mentionState?.revisions ?? [];
 		const draft =
 			this.revisionDraft !== null && this.revisionDraft.path === entry.path
 				? this.revisionDraft
@@ -1495,6 +1495,17 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.syncRevisionOverlay();
 			return;
 		}
+		// The feed is dropped to null for as long as it takes to fetch again,
+		// and every revision mutation drops it. The plan above still holds
+		// what the last dress found, so the cards are wanted; what cannot be
+		// answered in that gap is which revision each of them is FOR. Read
+		// there, every card would look like one the rail no longer wants and
+		// the sweep would take them all off -- an open edit form and the
+		// sentence being typed into it among them. The fetch ends in a dress,
+		// which asks here again.
+		const state = this.mentionState;
+		if (state === null) return;
+		const feed = state.revisions;
 		entry.rail ??= this.buildRevisionRail(entry.path);
 		const entries = [...plan.anchors.entries()].flatMap(([id, anchor]) => {
 			const revision = feed.find((candidate) => candidate.id === id);
@@ -1571,7 +1582,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			onDiscard: (revision) => {
 				rethrow(this.host.discardRevision(projectPath(), revision.id));
 			},
-			onEditSave: (revision, proposed, comment) => {
+			onEditSave: async (revision, proposed, comment) => {
 				// An insertion proposing nothing would insert nothing: the
 				// refusal the draft gets, at the one place an existing
 				// revision can be emptied.
@@ -1579,13 +1590,20 @@ export class SnowflakeManuscriptView extends ItemView {
 					new Notice(this.t('manuscript.revision.emptyProposed'));
 					return false;
 				}
-				rethrow(
-					this.host.updateRevision(projectPath(), revision.id, {
-						proposed,
-						comment,
-					}),
-				);
-				return true;
+				// Answered on what the write did, not on having started one:
+				// a project that cannot be resolved writes nothing at all, and
+				// a card closing over that would put the old text back under
+				// the author's own words on the next sync.
+				try {
+					return await this.host.updateRevision(
+						projectPath(),
+						revision.id,
+						{ proposed, comment },
+					);
+				} catch (error) {
+					this.showError(error);
+					return false;
+				}
 			},
 			onDraftSave: (proposed, comment) => {
 				const entry = entryNow();
@@ -1709,6 +1727,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				from: selection.from,
 				to: selection.to,
 				originalText: body.slice(selection.from, selection.to),
+				...passageContext(body, selection.from, selection.to),
 				top: this.draftTopFrom(entry, editing.bandAt(selection.from)),
 			};
 			this.syncRevisionRail(entry);
@@ -1728,6 +1747,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				from: found.from,
 				to: found.to,
 				originalText: body.slice(found.from, found.to),
+				...passageContext(body, found.from, found.to),
 				// The rendered half has no offset-to-pixel answer of its
 				// own for a range nothing has wrapped yet, but the click
 				// itself says where the words are.
@@ -1749,6 +1769,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			from: at,
 			to: at,
 			originalText: '',
+			...passageContext(editor.read(), at, at),
 			top: this.draftTopFrom(mounted, editor.bandAt(at)),
 		};
 		this.syncRevisionRail(mounted);
@@ -1779,10 +1800,18 @@ export class SnowflakeManuscriptView extends ItemView {
 			entry.editor === null
 				? (entry.pending ?? entry.text.body)
 				: entry.editor.read();
-		if (
-			draft.kind !== 'insert' &&
-			body.slice(draft.from, draft.to) !== draft.originalText
-		) {
+		// The note goes on being written in while the card stands open, so the
+		// spot is proved again here rather than trusted from when the menu
+		// opened. A range is proved by the words under it; a point has none,
+		// and is proved by the witnesses either side -- without which an
+		// insertion would be written down wherever its old offset now lands,
+		// anchored and wrong, or with no witnesses at all and in conflict from
+		// the moment it was made.
+		const stale =
+			draft.kind === 'insert'
+				? !insertionPointHolds(body, draft.from, draft.before, draft.after)
+				: body.slice(draft.from, draft.to) !== draft.originalText;
+		if (stale) {
 			new Notice(this.t('manuscript.mention.stale'));
 			this.revisionDraft = null;
 			this.syncRevisionRail(entry);
@@ -1884,6 +1913,12 @@ export class SnowflakeManuscriptView extends ItemView {
 			revision: saved.revision,
 			stamp: saved.stamp,
 		};
+		// Accepting moved every word after it, and the note's other revisions
+		// describe where they stood before that. The editor's own saves go
+		// through `writePending`, which says so; a write made here has to say
+		// so itself, or the ones left behind keep hunting for their text from
+		// offsets and contexts a whole proposal out of date.
+		this.host.manuscriptRevisionsSaved(entry.path, next);
 		await this.renderSegmentBody(entry);
 		await this.host.discardRevision(projectPath, revision.id);
 	}
@@ -2035,6 +2070,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			revision: saved.revision,
 			stamp: saved.stamp,
 		};
+		// A link is longer than the words it replaced, so everything after it
+		// moved: the note's revisions are brought level, the same as after any
+		// other write this view makes.
+		this.host.manuscriptRevisionsSaved(entry.path, next);
 		await this.renderSegmentBody(entry);
 	}
 
@@ -2973,6 +3012,26 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	private showCaret(path: string, top: number, bottom: number): void {
 		if (this.puttingBack || this.walkingIn) return;
+		// The band is the whole wrapped line, not the caret's own row: the
+		// scroll handler may not read layout, so this is as fine an answer as
+		// it can give. A paragraph of several rows is therefore three cases,
+		// not two. Wholly on the page, the caret is too, and nothing moves --
+		// the common one, and it costs nothing. Wholly off it, the caret is
+		// off with it and the rough correction is right. Straddling an edge,
+		// the caret may be perfectly visible on a middle row, and correcting
+		// off the paragraph's far edge would haul the page to its first row on
+		// every keystroke -- so no rough move is made at all, and the measured
+		// caret settles it over the frames that follow.
+		const stream = this.streamEl;
+		if (stream === null) return;
+		const rect = stream.getBoundingClientRect();
+		const upper = rect.top + 56;
+		const lower = rect.bottom - 32;
+		if (top >= upper && bottom <= lower) return;
+		if (bottom > upper && top < lower) {
+			this.keepRevealing(path);
+			return;
+		}
 		if (this.revealCaret(top, bottom) !== 0) this.keepRevealing(path);
 	}
 

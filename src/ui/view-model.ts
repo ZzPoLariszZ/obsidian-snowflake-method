@@ -437,19 +437,24 @@ export interface ManuscriptHost {
 	manuscriptRevisions(
 		projectPath: string | null,
 	): Promise<readonly Revision[]>;
-	/** Writes one revision, then re-dresses streams and dashboards. */
+	/**
+	 * Writes one revision, then re-dresses streams and dashboards. False when
+	 * the write did not happen -- no project answers for the path any more, or
+	 * the project is read-only -- so a caller can say so rather than assuming
+	 * its words landed.
+	 */
 	createRevision(
 		projectPath: string | null,
 		revision: Revision,
-	): Promise<void>;
-	/** Rewrites one revision's proposed text and comment. */
+	): Promise<boolean>;
+	/** Rewrites one revision's proposed text and comment; false as above. */
 	updateRevision(
 		projectPath: string | null,
 		id: string,
 		patch: { proposed: string; comment: string },
-	): Promise<void>;
+	): Promise<boolean>;
 	/** Takes one revision out: an accept, a reject or a discard alike. */
-	discardRevision(projectPath: string | null, id: string): Promise<void>;
+	discardRevision(projectPath: string | null, id: string): Promise<boolean>;
 	/**
 	 * A segment's body reached the file: stored revision offsets are brought
 	 * level with it, quietly, and everyone re-dresses only if one moved.

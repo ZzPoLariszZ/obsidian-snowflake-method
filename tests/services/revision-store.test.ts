@@ -180,12 +180,15 @@ describe("RevisionService", () => {
 			from: 4,
 			to: 14,
 		});
+		// Answered on whether the record now says what was asked, not on
+		// whether a write was needed: re-typing a proposal into the same words
+		// is a finished edit, and the card in the margin closes on this.
 		expect(
 			await revisions.update(project, "rev-1", {
 				proposed: "white egret",
 				comment: "closer",
 			}),
-		).toBe(false);
+		).toBe(true);
 		expect(await revisions.update(project, "gone", { proposed: "x", comment: "" })).toBe(
 			false,
 		);

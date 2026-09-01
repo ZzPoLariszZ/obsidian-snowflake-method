@@ -292,6 +292,16 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
 export type ProjectStructureIssueCode =
   (typeof PROJECT_STRUCTURE_ISSUE_CODES)[number];
 
+/**
+ * The issues that are an offer rather than damage. The plugin reads what they
+ * name perfectly well and would put it right in its own time; the health
+ * report lists them so the author may do it now instead, and they must not
+ * put the project's health in the red for a file that is only where an older
+ * build kept it.
+ */
+export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCode> =
+  new Set<ProjectStructureIssueCode>(["misfiled-statistics-file"]);
+
 /** A project-level contract problem that exists before marker inspection. */
 export interface ProjectStructureIssue {
   code: ProjectStructureIssueCode;
