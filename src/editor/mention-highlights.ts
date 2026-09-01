@@ -209,11 +209,21 @@ export function mentionMarkAt(
 	if (at === null) return null;
 	// Marks may nest -- a mention inside a quoted stretch -- and the pointer
 	// means the innermost thing under it, so the shortest span answers.
+	//
+	// A revision's dress is not one of the things the pointer can mean: it
+	// answers no menu of its own, its handle is the card in the margin, and
+	// it is narrower than the mention it sits inside as often as not -- a
+	// replacement over a surname inside an entity's full name. Letting it
+	// answer would hand back a mark with nothing to offer and hide the
+	// mention underneath, which no other layer can do: a quoted stretch is
+	// always longer than what stands in it, and overlapping sensitive and
+	// custom marks are resolved away before they are ever planned.
 	let found: MentionMark | null = null;
 	let foundLength = Number.POSITIVE_INFINITY;
 	plugin.decorations.between(at, at, (from, to, value) => {
 		const mark = (value.spec as { mentionMark?: MentionMark }).mentionMark;
-		if (mark === undefined || to - from >= foundLength) return;
+		if (mark === undefined || mark.occurrence.type === 'revision') return;
+		if (to - from >= foundLength) return;
 		foundLength = to - from;
 		found = {
 			...mark,
