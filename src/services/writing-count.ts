@@ -109,6 +109,25 @@ export class WritingCountService {
 		return countWriting(countableProse(body, excluded, options), options);
 	}
 
+	/**
+	 * The same count, for stretches that are to be read as separate pieces
+	 * rather than as one run of prose: a gap stands where each excluded
+	 * stretch was, so nothing on one side of it joins what is on the other.
+	 * This is the measure for a set of passages scattered through a note --
+	 * its dialogue, say -- where `countExcluding` would let the last word of
+	 * one passage and the first of the next close into a single word.
+	 */
+	countStretches(
+		body: string,
+		excluded: readonly CountableRange[],
+		options: NoteCountOptions,
+	): WritingCount {
+		return countWriting(
+			countableProse(body, excluded, { ...options, separator: '\n' }),
+			options,
+		);
+	}
+
 	/** One body's writing count, its plugin-written sections excluded. */
 	countBody(
 		body: string,

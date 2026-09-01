@@ -126,6 +126,22 @@ describe("ManuscriptAnalysisService", () => {
 		}
 	});
 
+	it("counts two lines of speech as two, not as one word between them", async () => {
+		// Straight ASCII quotes, which close no run of their own: joined up,
+		// the "there," ending one line and the "Bye" opening the next would
+		// gather into a single word and the dialogue would read one short.
+		const path = await chapter("One", '"Hi there," he said. "Bye now," she left.');
+		const { perNote } = await service.analysis.statistics(
+			project,
+			config({ dialogueStyles: styles('""'), sensitiveTerms: [] }),
+		);
+		const row = perNote.find((kept) => kept.path === path);
+		expect(row).toMatchObject({ counted: 8, dialogueCounted: 4 });
+		// And the share is a share of the length beside it, not of some other
+		// reading of the same chapter.
+		expect((row?.dialogueCounted ?? 0) / (row?.counted ?? 1)).toBe(0.5);
+	});
+
 	it("folds sensitive terms with zero-count rows kept", async () => {
 		const path = await chapter("One", "Damn the fog. He said damn.");
 		const rows = await service.analysis.sensitiveAggregate(

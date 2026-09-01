@@ -42,7 +42,7 @@ import {
 import type { ProjectRef } from "./types";
 
 /** Bump when what `stats` measures changes: it drops the stored numbers. */
-const STATS_VERSION = 2;
+const STATS_VERSION = 3;
 
 /** One matcher for every no-terms ask, so it never contests the memo slot. */
 const EMPTY_SENSITIVE_MATCHER = buildSensitiveMatcher([]);
@@ -597,24 +597,30 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 					// rule itself -- the same call the status bar makes -- and
 					// the dialogue's length is that same call with everything
 					// outside the quotation marks set aside, so the share
-					// divides into the length it is a share of.
-					const length = (also: readonly CountableRange[] = []): number =>
-						this.writingCount.countExcluding(
-							record.body,
-							also.length === 0 ? excluded : [...excluded, ...also],
-							config.count,
-						).total;
+					// divides into the length it is a share of. The quoted
+					// stretches are counted as the separate pieces they are:
+					// run together, the close of one line of speech and the
+					// open of the next would gather into a single word in
+					// every convention that reads writing in words.
 					return {
 						// The two halves of the split cover exactly the
 						// analyzable prose, so their sum is the whole writing.
 						cjk: split.dialogue.cjk + split.narrative.cjk,
 						words: split.dialogue.words + split.narrative.words,
-						counted: length(),
+						counted: this.writingCount.countExcluding(
+							record.body,
+							excluded,
+							config.count,
+						).total,
 						sentences: countSentences(record.body, excluded),
 						dialogueCounted:
 							quoted.length === 0
 								? 0
-								: length(outside(quoted, record.body.length)),
+								: this.writingCount.countStretches(
+										record.body,
+										[...excluded, ...outside(quoted, record.body.length)],
+										config.count,
+									).total,
 					};
 				})(),
 			tokens:

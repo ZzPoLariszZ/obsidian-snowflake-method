@@ -68,6 +68,17 @@ export function isWritingCountHeadings(
 
 export interface CountableProseOptions {
 	headings: WritingCountHeadings;
+	/**
+	 * What stands where each of `excludeRanges` was taken out. Nothing by
+	 * default, because the page closes what it hides. Counting a set of
+	 * stretches on their own is the other case: named by the gaps between
+	 * them, they would run together where a gap was, and one quoted line and
+	 * the next are two pieces of dialogue rather than one word reaching
+	 * through the narration between. Whitespace is the separator to ask for
+	 * -- every convention here passes over it, so it adds nothing to a count
+	 * while still closing a run.
+	 */
+	separator?: string;
 }
 
 /**
@@ -104,8 +115,9 @@ interface Elision {
  * link display text left in their place, and every stretch of `excludeRanges`
  * removed with the rest. Whitespace survives untouched, so words keep the
  * separation the source gave them; nothing new is inserted between what
- * remains, because the page does not separate them either -- a comment
- * between two halves of a word hides, and the halves close up.
+ * remains unless `options.separator` asks for it, because the page does not
+ * separate them either -- a comment between two halves of a word hides, and
+ * the halves close up.
  *
  * Headings are writing unless `options` says otherwise, and a heading passed
  * over takes everything on its line with it, links and emphasis included.
@@ -125,9 +137,13 @@ export function countableProse(
 	// managed section reports its content ending one character before it starts
 	// -- and read as written it would rewind the splice at the end of this
 	// function and emit its stretch twice instead of removing it.
+	// Only what the CALLER excluded may carry the separator: the syntax drops
+	// below take marks out of the middle of words, and a gap opened there
+	// would split one word into two.
 	const drops: Elision[] = excludeRanges.map(({ from, to }) => ({
 		from,
 		to: Math.max(from, to),
+		...(options.separator === undefined ? {} : { emit: options.separator }),
 	}));
 	const emits: Elision[] = [];
 	const skippedHeadings =
