@@ -5521,11 +5521,16 @@ body {
 	position: relative;
 }
 
+/* Positioned, so the cards stand over the prose in the overlay mode below,
+   and z-index 0 rather than 1 so they stand UNDER the chapter's own sticky
+   header: the segment sets no z-index of its own, which leaves the two in one
+   stacking context, and a rail matching the header would win it on DOM order
+   alone -- a card covering the header's buttons and swallowing their clicks. */
 .snowflake-method-revision-rail {
 	position: absolute;
 	top: 0;
 	left: calc(100% + var(--size-4-2));
-	z-index: 1;
+	z-index: 0;
 	width: 260px;
 }
 
