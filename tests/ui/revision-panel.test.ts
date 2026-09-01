@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { captureRevision } from '../../src/domain';
+import { captureRevision, orderRevisions } from '../../src/domain';
 import {
 	filterRevisionRows,
 	revisionTableRows,
@@ -25,8 +25,8 @@ describe('shaping the revision table', () => {
 				captureRevision(ONE, BODY, 'replace', 4, 14, 'x', '', 'rev-a', 7),
 			],
 			notes([
-				[ONE, { title: 'Chapter 1', ordinal: 0, body: BODY }],
-				[TWO, { title: 'Chapter 2', ordinal: 1, body: BODY }],
+				[ONE, { title: 'Chapter 1', body: BODY }],
+				[TWO, { title: 'Chapter 2', body: BODY }],
 			]),
 		);
 		expect(rows.map((row) => row.id)).toEqual(['rev-a', 'rev-c', 'rev-b']);
@@ -39,11 +39,28 @@ describe('shaping the revision table', () => {
 		});
 	});
 
+	it('orders by the rule the cards step through, ties broken alike', () => {
+		// Two points at one spot: the table and the chevrons have to break the
+		// tie the same way, or the list reads one order and walks another.
+		const given = [
+			captureRevision(ONE, BODY, 'insert', 14, 14, 'x', '', 'rev-z', 7),
+			captureRevision(ONE, BODY, 'insert', 14, 14, 'y', '', 'rev-a', 7),
+		];
+		const rows = revisionTableRows(
+			given,
+			notes([[ONE, { title: 'Chapter 1', body: BODY }]]),
+		);
+		expect(rows.map((row) => row.id)).toEqual(['rev-a', 'rev-z']);
+		expect(rows.map((row) => row.id)).toEqual(
+			orderRevisions(given, [ONE]).map((revision) => revision.id),
+		);
+	});
+
 	it('re-anchors against the body it is handed', () => {
 		const grown = `Early. ${BODY}`;
 		const rows = revisionTableRows(
 			[captureRevision(ONE, BODY, 'replace', 4, 14, 'x', '', 'rev-a', 7)],
-			notes([[ONE, { title: 'Chapter 1', ordinal: 0, body: grown }]]),
+			notes([[ONE, { title: 'Chapter 1', body: grown }]]),
 		);
 		expect(rows[0]).toMatchObject({ status: 'live', from: 11, to: 21 });
 	});
@@ -54,7 +71,7 @@ describe('shaping the revision table', () => {
 				captureRevision(ONE, BODY, 'replace', 4, 14, 'x', '', 'rev-a', 7),
 				captureRevision(TWO, BODY, 'delete', 4, 14, '', '', 'rev-b', 7),
 			],
-			notes([[ONE, { title: 'Chapter 1', ordinal: 0, body: null }]]),
+			notes([[ONE, { title: 'Chapter 1', body: null }]]),
 		);
 		expect(rows.map((row) => row.status)).toEqual(['conflict', 'conflict']);
 		// The stored offsets stand in for a spot that cannot be derived.
@@ -72,7 +89,7 @@ describe('shaping the revision table', () => {
 				// the edit, and the same-length replacement leaves it anchored.
 				captureRevision(ONE, BODY, 'insert', 37, 37, 'x', '', 'rev-b', 7),
 			],
-			notes([[ONE, { title: 'Chapter 1', ordinal: 0, body: edited }]]),
+			notes([[ONE, { title: 'Chapter 1', body: edited }]]),
 		);
 		const byId = new Map(rows.map((row) => [row.id, row]));
 		expect(byId.get('rev-a')?.status).toBe('conflict');

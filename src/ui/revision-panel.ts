@@ -17,15 +17,18 @@
 
 import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import { anchorRevision, type Revision } from '../domain';
+import { anchorRevision, orderRevisions, type Revision } from '../domain';
 import type { Translate } from './modals';
 import { VirtualTable } from './virtual-table';
 
-/** One chapter as the table needs it: its title, order, and body to anchor by. */
+/**
+ * One chapter as the table needs it: its title and the body to anchor by. The
+ * map that holds these carries the manuscript's own order in its keys, which
+ * is where the rows take their order from, so no chapter carries a position
+ * that could fall out of step with the order it was put in at.
+ */
 export interface RevisionNoteReading {
 	title: string;
-	/** Manuscript position, for sorting rows the way the book reads. */
-	ordinal: number;
 	/** The body as read; null where the note could not be read at all. */
 	body: string | null;
 }
@@ -53,7 +56,21 @@ export function revisionTableRows(
 	revisions: readonly Revision[],
 	notes: ReadonlyMap<string, RevisionNoteReading>,
 ): RevisionRow[] {
-	const rows = revisions.map((revision): RevisionRow => {
+	// One order for the table and the cards alike, drawn by the comparator the
+	// chevrons walk: the chapters in the order the map holds them, then the
+	// strays it does not name at all -- a revision on a note the manuscript
+	// never listed is still a row, and the row that discards it. Stored
+	// offsets order it, which is `orderRevisions`'s own rule: a table sorted by
+	// where a revision stands now and cards stepped through by where it was
+	// filed would send the reader two ways through the same list.
+	const strays = revisions
+		.map((revision) => revision.path)
+		.filter((path) => !notes.has(path));
+	const ordered = orderRevisions(revisions, [
+		...notes.keys(),
+		...new Set(strays),
+	]);
+	return ordered.map((revision): RevisionRow => {
 		const note = notes.get(revision.path);
 		const anchor =
 			note === undefined || note.body === null
@@ -72,12 +89,6 @@ export function revisionTableRows(
 			to: anchor.state === 'conflict' ? revision.to : anchor.to,
 		};
 	});
-	rows.sort((left, right) => {
-		const leftNote = notes.get(left.path)?.ordinal ?? Number.MAX_SAFE_INTEGER;
-		const rightNote = notes.get(right.path)?.ordinal ?? Number.MAX_SAFE_INTEGER;
-		return leftNote - rightNote || left.from - right.from;
-	});
-	return rows;
 }
 
 /**

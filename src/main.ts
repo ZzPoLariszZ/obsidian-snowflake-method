@@ -3510,14 +3510,12 @@ export default class SnowflakeMethodPlugin
 				const segments = await this.projects.manuscript.listSegments(
 					project,
 				);
+				// Filled in manuscript order and read back in it: the map's own
+				// key order is what the rows are sorted by.
 				const notes = new Map<string, RevisionNoteReading>();
-				segments.forEach((segment, ordinal) => {
-					notes.set(segment.path, {
-						title: segment.title,
-						ordinal,
-						body: null,
-					});
-				});
+				for (const segment of segments) {
+					notes.set(segment.path, { title: segment.title, body: null });
+				}
 				// Only chapters that carry revisions are read, one read each:
 				// standing is derived against the body, never trusted stored.
 				for (const path of new Set(
@@ -3529,7 +3527,6 @@ export default class SnowflakeMethodPlugin
 						if (kept === undefined) {
 							notes.set(path, {
 								title: path.split('/').pop() ?? path,
-								ordinal: Number.MAX_SAFE_INTEGER,
 								body,
 							});
 						} else {
