@@ -53,6 +53,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Writing sessions | Time each sitting, aim at a daily goal, and read back where the words and the hours went. |
 | Prose analysis | Read the draft back as reading time, sentences, dialogue share, and the words you lean on. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions where they stand. |
+| Revision | Propose a replacement, a deletion or an insertion beside the manuscript, and change the chapter only when the proposal is accepted. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
@@ -158,6 +159,14 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted ground, justified with automatic hyphenation, first lines indented, dashed grid lines behind the text, and focus mode keeping the paragraph being written in full ink" /></a></p>
 
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
+
+### Revision
+
+A change is easier to judge before it is made. Click into a chapter of the manuscript stream, select the words in question and choose **Create revision** from the right-click menu: the selection becomes a **replacement**, or a **deletion** when the proposed text is left empty, and a bare caret makes an **insertion** at that point. The words a proposal would take are struck through where they stand and an insertion is marked by a bar at its place, but the chapter itself does not change. A proposal lives beside the manuscript rather than in it, so nothing is counted, analyzed or tracked until it is accepted.
+
+Each proposal is a card in the margin at the chapter's right, holding the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it, **Reject** removes the proposal and leaves the text as it was, and **Edit** changes the proposal or the comment. The arrows on a card walk from one proposal to the next through the whole manuscript. A proposal follows its words as you write above and around them, and one whose words you have changed directly is shown as a conflict, to be discarded rather than applied. The dashboard's **Task management** pane lists every open proposal in its **Revision** tab, and its place column jumps to where it stands.
+
+<p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three revisions beside a chapter in the manuscript stream: a replacement and a deletion struck through in the prose, an insertion marked by a bar, and a card for each with the original text, the proposed text, a comment, and Accept, Reject and Edit" /></a></p>
 
 ### Data statistics
 
@@ -378,21 +387,24 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   ├── 63_Item/
     │   └── 64_Faction/
     ├── 70_Tool/
-    │   └── 71_Data_Statistics/
-    │       ├── 711_Writing_Session/
-    │       │   └── 2026/
-    │       │       └── 2026_08_<device>_writing_session.json
-    │       ├── 712_Prose_Analysis/
-    │       │   └── mention_ignores.json
-    │       └── 713_Entity_Tracking/
-    │           ├── <device>_mention_index.json
-    │           └── <device>_analysis_stats.json
+    │   ├── 71_Data_Statistics/
+    │   │   ├── 711_Writing_Session/
+    │   │   │   └── 2026/
+    │   │   │       └── 2026_08_<device>_writing_session.json
+    │   │   ├── 712_Prose_Analysis/
+    │   │   │   └── <device>_analysis_stats.json
+    │   │   └── 713_Entity_Tracking/
+    │   │       ├── mention_ignores.json
+    │   │       └── <device>_mention_index.json
+    │   └── 72_Task_Management/
+    │       └── 723_Revision/
+    │           └── revisions.json
     └── ...
 ```
 
 </details>
 
-Writing sessions are recorded per device, so syncing never has two machines writing one file, and the ignore rules you write while tracking entities are a single shared file that travels with the Vault. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
+Writing sessions are recorded per device, so syncing never has two machines writing one file. The ignore rules you write while tracking entities and the revisions you propose are each a single shared file that travels with the Vault. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
 
 Archiving a project moves its whole folder into `Snowflake Archive`, a folder beside the projects rather than inside any of them. Nothing in the notes changes, and because a project keeps every reference within its own folder, no link is left dangling while it is away. The project manager lists what is in there and restores any of it, giving the project a free name if the one it left under has since been taken. Moving a folder in or out by hand works the same way, so the archive is a place rather than a mechanism.
 
@@ -526,6 +538,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都去了哪里。 |
 | 正文分析 | 把草稿读成阅读时间、句数、对话占比，以及你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品贯穿正文的足迹，并在原处标出它们的提及。 |
+| 修订 | 在正文旁提出替换、删除或插入的建议，只在接受时才改动正文。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
@@ -631,6 +644,14 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
+
+### 修订
+
+改动先看清楚，再落到纸上。在正文流中点进一章，选中要改的文字，在右键菜单里选择**新建修订**：所选文字成为一处**替换**，建议文本留空则成为一处**删除**，只放一个光标则在该处**插入**。将被改掉的文字会在原处划去，插入处以一道竖线标出，但这一章本身不会改变。修订存放在正文之旁，而不在正文之内，因此在接受之前，它不计入字数、分析与追踪。
+
+每一处修订都是章节右侧页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，如同你亲手打出的一样。**拒绝**会移除修订，正文保持原样。**编辑**可以改动建议文本与备注。卡片上的箭头可以在整部正文的修订之间逐一跳转。修订会跟着它所指的文字走，你在它前后继续写作时也不会走失。若你直接改动了它所指的文字，它会标为冲突，只能丢弃，不能应用。工作台的**任务管理**面板会在**修订**标签页中列出所有未处理的修订，位置一栏可以跳到它所在之处。
+
+<p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流中一章旁的三处修订：替换与删除在正文中划去，插入以一道竖线标出，每一处各有一张卡片，写着原文、建议文本与备注，以及接受、拒绝与编辑" /></a></p>
 
 ### 数据统计
 
@@ -839,21 +860,24 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   ├── 63_物品/
     │   └── 64_门派/
     ├── 70_工具/
-    │   └── 71_数据统计/
-    │       ├── 711_写作时段/
-    │       │   └── 2026/
-    │       │       └── 2026_08_<设备>_writing_session.json
-    │       ├── 712_正文分析/
-    │       │   └── mention_ignores.json
-    │       └── 713_实体追踪/
-    │           ├── <设备>_mention_index.json
-    │           └── <设备>_analysis_stats.json
+    │   ├── 71_数据统计/
+    │   │   ├── 711_写作时段/
+    │   │   │   └── 2026/
+    │   │   │       └── 2026_08_<设备>_writing_session.json
+    │   │   ├── 712_正文分析/
+    │   │   │   └── <设备>_analysis_stats.json
+    │   │   └── 713_实体追踪/
+    │   │       ├── mention_ignores.json
+    │   │       └── <设备>_mention_index.json
+    │   └── 72_任务管理/
+    │       └── 723_修订/
+    │           └── revisions.json
     └── ...
 ```
 
 </details>
 
-写作时段按设备分开记录，同步时不会有两台机器争写同一个文件，而实体追踪时写下的忽略规则是随 Vault 一同流转的单一共享文件。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
+写作时段按设备分开记录，同步时不会有两台机器争写同一个文件。实体追踪时写下的忽略规则与你提出的修订，各是随 Vault 一同流转的单一共享文件。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
 
 归档项目会把它的整个文件夹移入 `Snowflake Archive`。这个文件夹与各个项目并列，而不在任何项目之内。笔记本身不会有任何改动，而且项目的所有引用都在自己的文件夹内，因此归档期间不会留下任何断链。项目管理器会列出其中的项目并随时取回，若原来的名称已被占用，会为它取一个未被使用的名称。手动把文件夹移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
 
