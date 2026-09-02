@@ -287,6 +287,11 @@ export class SnowflakeManuscriptView extends ItemView {
 		null;
 	/** That feed's last answer, for the synchronous asks both halves make. */
 	private milestoneTotals: ReadonlyMap<string, number> | null = null;
+	/**
+	 * Whether a dress has run without the totals since they were last asked
+	 * for, so their arrival knows whether anything on the page waits on it.
+	 */
+	private milestonesWithheld = false;
 	/** The later notes' re-dress, a beat after the editing note's total moved. */
 	private milestoneTimer: number | null = null;
 
@@ -744,7 +749,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	async exportWholeManuscript(): Promise<void> {
 		const model = this.model;
 		if (model === null) return;
-		await this.flushNow();
+		await this.flushPendingSave();
 		await this.host.exportManuscript(model.projectPath);
 	}
 
@@ -759,7 +764,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async exportSegment(path: string): Promise<void> {
 		const model = this.model;
 		if (model === null) return;
-		await this.flushNow();
+		await this.flushPendingSave();
 		await this.host.exportManuscriptSegment(model.projectPath, path);
 	}
 
@@ -771,7 +776,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async copySegment(path: string): Promise<void> {
 		const model = this.model;
 		if (model === null) return;
-		await this.flushNow();
+		await this.flushPendingSave();
 		const text = await this.host.manuscriptSegmentPlainText(model.projectPath, path);
 		if (text === null) return;
 		await this.contentEl.win.navigator.clipboard.writeText(text);
@@ -1319,10 +1324,11 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	private async applyMentionDress(): Promise<void> {
-		const [state] = await Promise.all([
-			this.mentionFeedFor(),
-			this.milestoneFeedFor(),
-		]);
+		// The totals are asked for and left to land on their own: a cold walk
+		// of a long book must not hold the dress, and the notes dressed
+		// without them are dressed again when they answer.
+		void this.milestoneFeedFor();
+		const state = await this.mentionFeedFor();
 		// The dialogue looks are container classes over one mark class: the
 		// tint under highlight, and under focus the page's ink stepping back
 		// while the quoted stretches keep full strength. Neither stands while
@@ -1429,8 +1435,9 @@ export class SnowflakeManuscriptView extends ItemView {
 	/** The rendered dress, once the feed answers, if nothing moved meanwhile. */
 	private dressRenderedSoon(entry: MountedSegment): void {
 		const body = entry.pending ?? entry.text.body;
-		void Promise.all([this.mentionFeedFor(), this.milestoneFeedFor()])
-			.then(([state]) => {
+		void this.milestoneFeedFor();
+		void this.mentionFeedFor()
+			.then((state) => {
 				if (!entry.el.isConnected || entry.editor !== null) return;
 				if ((entry.pending ?? entry.text.body) !== body) return;
 				this.dressRendered(entry, state);
@@ -1538,9 +1545,14 @@ export class SnowflakeManuscriptView extends ItemView {
 				.manuscriptSegmentTotals(shown)
 				.then((totals) => {
 					if (this.milestoneFeed !== fetched) return totals;
-					const late = this.milestoneTotals === null;
 					this.milestoneTotals = totals;
-					if (late) this.redressMilestones(null);
+					const late = this.milestonesWithheld;
+					this.milestonesWithheld = false;
+					// Only a page dressed without the totals is dressed again,
+					// and only once the mention feed has answered: before that
+					// the dress awaiting it draws everything, and a re-dress
+					// against no mention state would strip the page bare.
+					if (late && this.mentionState !== null) this.redressMilestones(null);
 					return totals;
 				})
 				.catch(() => {
@@ -1617,7 +1629,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		const settings = this.milestoneSettings();
 		if (settings === null) return [];
 		const before = this.prefixBefore(path, settings);
-		if (before === null) return [];
+		if (before === null) {
+			this.milestonesWithheld = true;
+			return [];
+		}
 		const plan = milestonePositions(
 			body,
 			[],

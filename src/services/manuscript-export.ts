@@ -41,10 +41,10 @@ export interface ManuscriptExportPlan {
   targets: ManuscriptExportTarget[];
 }
 
-/** The export folder lies inside the manuscript, where a written file would read as a note. */
+/** The export folder lies inside the project, where a written file would read as one of its notes. */
 export class ExportIntoManuscriptError extends Error {
   constructor(readonly path: string) {
-    super(`The export folder "${path}" lies inside the manuscript.`);
+    super(`The export folder "${path}" lies inside the project.`);
     this.name = "ExportIntoManuscriptError";
   }
 }
@@ -86,7 +86,7 @@ export class ManuscriptExportService {
   ): Promise<ManuscriptExportPlan> {
     const folder = normalizeFolder(options.folder);
     const base = folder.length === 0 ? "" : `${folder}/`;
-    if (this.manuscript.isInManuscriptFolder(project, `${base}export.md`)) {
+    if (this.insideProject(project, folder)) {
       throw new ExportIntoManuscriptError(folder);
     }
     const title = safeFileName(project.title);
@@ -154,6 +154,23 @@ export class ManuscriptExportService {
       await createOrUpdatePlainFile(this.repository, target.path, target.content);
     }
     return plan.targets.map((target) => target.path);
+  }
+
+  /**
+   * Whether the folder lies inside the project -- at or below the project's
+   * own folder -- where anything written is read as the project's: a folder
+   * made under a definition tree is raised as a node of it, a note under the
+   * manuscript as a chapter. A project standing at the Vault root has no
+   * folder of its own to keep out of, so there the manuscript folders alone
+   * are refused.
+   */
+  private insideProject(project: ProjectRef, folder: string): boolean {
+    const root = normalizeFolder(project.rootPath);
+    if (root.length === 0) {
+      const base = folder.length === 0 ? "" : `${folder}/`;
+      return this.manuscript.isInManuscriptFolder(project, `${base}export.md`);
+    }
+    return folder === root || folder.startsWith(`${root}/`);
   }
 
   private textOf(

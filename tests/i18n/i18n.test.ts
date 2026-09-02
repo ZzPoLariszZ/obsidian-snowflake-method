@@ -1070,6 +1070,8 @@ describe('automatic chapter number copy', () => {
 			'manuscript.renumberFollowers',
 			'manuscript.renumberFollowersDown',
 			'messages.segmentsRenumbered',
+			'messages.segmentsRenumberedSkipped',
+			'messages.segmentsNotRenumbered',
 			'errors.renumberConflict',
 		];
 		for (const key of keys) {
@@ -1093,6 +1095,11 @@ describe('automatic chapter number copy', () => {
 			expect(locale['manuscript.renumberFollowers']).toContain('{count}');
 			expect(locale['manuscript.renumberFollowersDown']).toContain('{count}');
 			expect(locale['errors.renumberConflict']).toContain('{path}');
+			// The notes a renumbering could not touch are counted where it says
+			// what it did, and said on their own when it did nothing.
+			expect(locale['messages.segmentsRenumberedSkipped']).toContain('{count}');
+			expect(locale['messages.segmentsRenumberedSkipped']).toContain('{skipped}');
+			expect(locale['messages.segmentsNotRenumbered']).toContain('{skipped}');
 		}
 	});
 });

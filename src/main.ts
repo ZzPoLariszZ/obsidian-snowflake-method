@@ -5182,7 +5182,7 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * Plans, asks once about the files that already stand, writes, and says
-	 * where. A folder inside the manuscript is refused before anything is
+	 * where. A folder inside the project is refused before anything is
 	 * planned, because a file written there would read as a note.
 	 */
 	private async runExport(
@@ -5843,15 +5843,14 @@ export default class SnowflakeMethodPlugin
 			this.segmentTitlePrompt(t, proposal),
 			async ({ title, renumber }) => {
 				await onNamed?.();
-				if (renumber && proposal !== null) {
-					await this.renumberFollowers(project, proposal, t);
-				}
-				if ('after' in placement) {
-					return manuscript.insertSegmentAfter(project, placement.after, title);
-				}
-				return 'atStart' in placement
-					? manuscript.prependSegment(project, title)
-					: manuscript.appendSegment(project, title);
+				return this.placeSegment(t, () =>
+					manuscript.createSegmentAt(
+						project,
+						placement,
+						title,
+						this.renamesFor(proposal, renumber),
+					),
+				);
 			},
 		);
 	}
@@ -5875,14 +5874,14 @@ export default class SnowflakeMethodPlugin
 			this.segmentTitlePrompt(t, proposal),
 			async ({ title, renumber }) => {
 				await onNamed?.();
-				if (renumber && proposal !== null) {
-					await this.renumberFollowers(project, proposal, t);
-				}
-				return this.projects.manuscript.splitSegment(
-					project,
-					path,
-					offset,
-					title,
+				return this.placeSegment(t, () =>
+					this.projects.manuscript.splitSegmentAt(
+						project,
+						path,
+						offset,
+						title,
+						this.renamesFor(proposal, renumber),
+					),
 				);
 			},
 		);
@@ -5961,25 +5960,32 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * Moves the numbered notes after the new one up by one, as the author
-	 * asked. A name the batch cannot take refuses the whole batch, said in the
-	 * form's own notice so the author can change the name or step back.
+	 * Makes a note with the renumbering the author asked for -- the batch
+	 * settled inside the service before the note is made, and put back if the
+	 * note cannot be -- and says what moved. A name the batch cannot take
+	 * refuses the whole thing, said in the form's own notice so the author can
+	 * change the name or step back.
 	 */
-	private async renumberFollowers(
-		project: ProjectSnapshot,
-		proposal: ChapterNumberProposal & { paths: string[] },
+	private async placeSegment(
 		t: (key: string, vars?: Record<string, string | number>) => string,
-	): Promise<void> {
-		let outcome: SegmentRenameOutcome;
+		place: () => Promise<{ path: string; renumbered: SegmentRenameOutcome }>,
+	): Promise<string> {
+		let placed: { path: string; renumbered: SegmentRenameOutcome };
 		try {
-			outcome = await this.projects.manuscript.renameSegments(
-				project,
-				this.followerRenames(proposal),
-			);
+			placed = await place();
 		} catch (error) {
 			throw this.renumberError(error, t);
 		}
-		this.noticeRenumbered(outcome, t);
+		this.noticeRenumbered(placed.renumbered, t);
+		return placed.path;
+	}
+
+	/** The renames the author agreed to: the followers' when the toggle was on. */
+	private renamesFor(
+		proposal: (ChapterNumberProposal & { paths: string[] }) | null,
+		renumber: boolean,
+	): { path: string; title: string }[] {
+		return renumber && proposal !== null ? this.followerRenames(proposal) : [];
 	}
 
 	/** The renames a proposal's followers ask for, each note by its path. */
@@ -6003,16 +6009,24 @@ export default class SnowflakeMethodPlugin
 			: error;
 	}
 
+	/**
+	 * What the renumbering did, the notes it could not touch included: a
+	 * read-only note keeps its name, and an author who asked for the move
+	 * is told so rather than left to find the old number standing.
+	 */
 	private noticeRenumbered(
 		outcome: SegmentRenameOutcome,
 		t: (key: string, vars?: Record<string, string | number>) => string,
 	): void {
-		if (outcome.renamed.length === 0) return;
+		const count = outcome.renamed.length;
+		const skipped = outcome.skipped.length;
+		if (count === 0 && skipped === 0) return;
 		new Notice(
-			t('messages.segmentsRenumbered', {
-				count: outcome.renamed.length,
-				skipped: outcome.skipped.length,
-			}),
+			skipped === 0
+				? t('messages.segmentsRenumbered', { count })
+				: count === 0
+					? t('messages.segmentsNotRenumbered', { skipped })
+					: t('messages.segmentsRenumberedSkipped', { count, skipped }),
 		);
 	}
 
@@ -7029,6 +7043,9 @@ export default class SnowflakeMethodPlugin
 		return found;
 	}
 
+	/** The revision carries of the renames so far, each waiting on the one before. */
+	private renameCarry: Promise<void> = Promise.resolve();
+
 	private async handleVaultRename(
 		file: TAbstractFile,
 		oldPath: string,
@@ -7051,25 +7068,31 @@ export default class SnowflakeMethodPlugin
 		});
 		this.projects.revisions.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
-		// where the caches above simply recompute under the new name.
-		void (async () => {
-			let carried = false;
-			for (const project of await this.projectsCrossedByRename(
-				oldPath,
-				file.path,
-			)) {
-				if (
-					await this.projects.revisions.renameNotePaths(
-						project,
-						oldPath,
-						file.path,
-					)
-				) {
-					carried = true;
+		// where the caches above simply recompute under the new name. Carried
+		// in the order the renames came, one after another: a renumbering
+		// renames dependent notes back to back, and a later carry overtaking
+		// an earlier one would file a note's revisions under the name another
+		// note had just taken.
+		this.renameCarry = this.renameCarry
+			.then(async () => {
+				let carried = false;
+				for (const project of await this.projectsCrossedByRename(
+					oldPath,
+					file.path,
+				)) {
+					if (
+						await this.projects.revisions.renameNotePaths(
+							project,
+							oldPath,
+							file.path,
+						)
+					) {
+						carried = true;
+					}
 				}
-			}
-			if (carried) await this.announceRevisionsChanged();
-		})().catch(() => undefined);
+				if (carried) await this.announceRevisionsChanged();
+			})
+			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
 		// The configured root travels with its folder. Leaving the setting on a
 		// path that no longer exists would empty the dashboard while every

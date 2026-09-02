@@ -42,6 +42,33 @@ describe('export prose', () => {
 		).toBe('Title\n  One.\n  Two.\n');
 	});
 
+	it('reads every line of words as a paragraph, as the stream does, and keeps the indents the author typed', () => {
+		// Tight spacing: one paragraph per line, no blank line between them.
+		const tight = '　　第一段。\n　　第二段。\n第三段。\n';
+		expect(exportProse(tight, [], { ...cjk, paragraphSpacing: false })).toBe(
+			'　　第一段。\n　　第二段。\n　　第三段。\n',
+		);
+		expect(exportProse(tight, [], { ...cjk, indent: false, paragraphSpacing: false })).toBe(
+			'第一段。\n第二段。\n第三段。\n',
+		);
+		// A comment between two lines hides nothing about the line after it.
+		expect(exportProse('A.\n%%\nnote\n%%\nB.\n', [], latin)).toBe('  A.\n  B.\n');
+		// An indent typed in spaces keeps its width rather than collapsing.
+		expect(exportProse('  Once upon a time.\n   Three deep.\n', [], latin)).toBe(
+			'  Once upon a time.\n   Three deep.\n',
+		);
+	});
+
+	it('spells every entity the page spells, and none it does not know', () => {
+		expect(exportProse('5 &times; 3 &reg; &laquo;q&raquo;\n', [], { ...latin, indent: false })).toBe(
+			'5 × 3 ® «q»\n',
+		);
+		// A name off the prototype is no entity: a space, as any unknown one.
+		expect(exportProse('a &constructor; b &toString; c\n', [], { ...latin, indent: false })).toBe(
+			'a b c\n',
+		);
+	});
+
 	it('draws a hard break as the line it is, its continuation unindented', () => {
 		expect(exportProse('line one\\\nline two\n', [], latin)).toBe(
 			'  line one\nline two\n',

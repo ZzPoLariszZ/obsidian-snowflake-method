@@ -191,6 +191,50 @@ describe('a format rule', () => {
 	});
 });
 
+describe('a rule reads only its own numeral and keeps its spelling past a power of ten', () => {
+	it('moves the chapter number, never a literal numeral earlier in the format', () => {
+		const volumes = compileChapterRule(custom('format', '卷一 第{zh}章'));
+		expect(volumes?.read('卷一 第一章 相遇')).toMatchObject({ number: 1, from: 4, to: 5 });
+		expect(volumes?.increment('卷一 第一章 相遇')).toBe('卷一 第二章 相遇');
+		expect(volumes?.head('卷一 第二章 相遇')).toBe('卷一 第二章');
+		const books = compileChapterRule(custom('regex', '^Book 1 Chapter (\\d+)'));
+		expect(books?.increment('Book 1 Chapter 1 Dawn')).toBe('Book 1 Chapter 2 Dawn');
+		const twins = compileChapterRule(custom('regex', '^(?:\\d+)-(\\d+)'));
+		expect(twins?.increment('12-12')).toBe('12-13');
+	});
+
+	it('offers a format head whole, whatever follows the placeholder, so the note it names is read by the rule', () => {
+		const parts = compileChapterRule(custom('format', 'Part {n}:'));
+		if (parts === null) throw new Error('did not compile');
+		expect(parts.seed()).toBe('Part 1:');
+		expect(parts.head('Part 3: Foo')).toBe('Part 3:');
+		expect(proposeChapterNumber(['Part 1: A', 'Part 2: B', 'Part 3: C'], 3, parts)).toEqual({
+			head: 'Part 4:',
+			followers: [],
+		});
+		expect(parts.read('Part 4: New')).toMatchObject({ number: 4 });
+		const dotted = compileChapterRule(custom('format', 'Chapter {n}.'));
+		expect(dotted?.head('chapter 7. Dusk')).toBe('Chapter 7.');
+		expect(dotted?.increment('chapter 7. Dusk')).toBe('chapter 8. Dusk');
+	});
+
+	it('keeps a fixed width across ten and a thousand, up and down', () => {
+		const two = compileChapterRule(custom('format', 'Ch {nn}'));
+		expect(two?.increment('Ch 99 x')).toBe('Ch 100 x');
+		expect(two?.read('Ch 100 x')).toMatchObject({ number: 100 });
+		expect(two?.decrement('Ch 10 x')).toBe('Ch 09 x');
+		expect(two?.read('Ch 09 x')).toMatchObject({ number: 9 });
+		const four = compileChapterRule(custom('format', 'Chapter {nnnn}'));
+		expect(four?.decrement('Chapter 1000 x')).toBe('Chapter 0999 x');
+		expect(four?.increment('Chapter 9999 x')).toBe('Chapter 10000 x');
+		expect(four?.read('Chapter 10000 x')).toMatchObject({ number: 10000 });
+		// {n} declares no width: the title's own spelling decides.
+		const any = compileChapterRule(custom('format', '第 {n} 章'));
+		expect(any?.decrement('第 10 章 b')).toBe('第 9 章 b');
+		expect(any?.decrement('第 0010 章 b')).toBe('第 0009 章 b');
+	});
+});
+
 describe('a regex rule', () => {
 	const padded = custom('regex', '^第\\s*(?!0000)\\d{4}\\s*章\\s+.+$', '第0001章');
 	const english = custom('regex', '^Chapter (?!0000)\\d{4}\\s+.+$');

@@ -1506,6 +1506,10 @@ export const en = {
 	'manuscript.renumberFollowersDown':
 		'Move the {count} numbered notes after it down by one',
 	'messages.segmentsRenumbered': 'Renumbered {count} notes.',
+	'messages.segmentsRenumberedSkipped':
+		'Renumbered {count} notes. {skipped} read-only notes kept their names.',
+	'messages.segmentsNotRenumbered':
+		'No notes were renumbered. {skipped} read-only notes kept their names.',
 	'errors.renumberConflict':
 		'A note cannot be renumbered because {path} is already taken.',
 	'manuscript.toolbar.export': 'Export the manuscript as plain text',
@@ -1525,7 +1529,7 @@ export const en = {
 	'messages.exportNothing': 'There is nothing to export.',
 	'messages.copiedNote': 'Copied the note as plain text.',
 	'errors.exportIntoManuscript':
-		'The export folder {path} lies inside the manuscript. Choose another folder.',
+		'The export folder {path} lies inside the project. Choose another folder.',
 	'manuscript.copySelection': 'Copy',
 	'manuscript.revision.create': 'Create revision',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',

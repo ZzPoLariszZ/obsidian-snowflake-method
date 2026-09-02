@@ -42,6 +42,12 @@ export interface ManuscriptSegmentRecord extends ManuscriptSegment {
   storedSequence: unknown;
 }
 
+/** Where a new note goes: after a note, at the start, or at the end. */
+export type SegmentPlacement =
+  | { after: string }
+  | { atStart: true }
+  | { atEnd: true };
+
 /** What a batch of renames did: each note's old and new path, and the notes left alone. */
 export interface SegmentRenameOutcome {
   renamed: { from: string; to: string }[];
@@ -62,6 +68,14 @@ interface RenameStep {
 interface RenamePlan {
   steps: RenameStep[];
   skipped: string[];
+}
+
+/** One rename done, with what it takes to put it back. */
+interface RenameDone {
+  from: string;
+  to: string;
+  /** The heading as it stood when the rename rewrote it; null when it was left alone. */
+  heading: string | null;
 }
 
 export interface ManuscriptSegmentContent {
@@ -324,6 +338,12 @@ export class ManuscriptService {
       normalizePath(path),
       title,
     );
+    await this.cutInto(path, offset, created);
+    return created;
+  }
+
+  /** The cut itself: what stands from `offset` on moves into `created`. */
+  private async cutInto(path: string, offset: number, created: string): Promise<void> {
     const source = await this.readSegment(path);
     const cut = Math.max(0, Math.min(offset, source.body.length));
     // Blank lines at the seam are closed up and nothing else is touched --
@@ -352,7 +372,65 @@ export class ManuscriptService {
       cut,
       cut + lead,
     );
-    return created;
+  }
+
+  /**
+   * Makes a new note where `placement` says, renaming the notes after it as
+   * `renames` says -- the renumbering that moves numbered notes up to make
+   * room -- and answers with the new note's path and what was renamed. The
+   * batch is settled first, the new note's own name counted as one no
+   * rename may take; then the notes move, and the note is made among them,
+   * so a note taking a bare number finds the name just vacated. A note that
+   * cannot be made puts every rename back, so nothing is left half done and
+   * the same names can be asked for again.
+   */
+  async createSegmentAt(
+    project: ProjectRef,
+    placement: SegmentPlacement,
+    title: string,
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{ path: string; renumbered: SegmentRenameOutcome }> {
+    const run = await this.runRenames(
+      await this.planRenames(project, renames, [], [
+        this.plannedSegmentPath(project, title),
+      ]),
+    );
+    try {
+      const path =
+        "after" in placement
+          ? await this.insertSegmentAfter(project, placement.after, title)
+          : "atStart" in placement
+            ? await this.prependSegment(project, title)
+            : await this.appendSegment(project, title);
+      return { path, renumbered: run.outcome };
+    } catch (error) {
+      await this.undoRenames(run.done);
+      throw error;
+    }
+  }
+
+  /** `splitSegment` with the renumbering `createSegmentAt` does, settled and undone the same way. */
+  async splitSegmentAt(
+    project: ProjectRef,
+    path: string,
+    offset: number,
+    title: string,
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{ path: string; renumbered: SegmentRenameOutcome }> {
+    const run = await this.runRenames(
+      await this.planRenames(project, renames, [], [
+        this.plannedSegmentPath(project, title),
+      ]),
+    );
+    let created: string;
+    try {
+      created = await this.insertSegmentAfter(project, normalizePath(path), title);
+    } catch (error) {
+      await this.undoRenames(run.done);
+      throw error;
+    }
+    await this.cutInto(path, offset, created);
+    return { path: created, renumbered: run.outcome };
   }
 
   /**
@@ -418,7 +496,7 @@ export class ManuscriptService {
     // hand and the delete event that follows finds it already settled.
     this.onSegmentRemoved?.(later.path, tail.body);
     await this.repository.trashFile(later.path);
-    const renumbered = await this.runRenames(plan);
+    const { outcome: renumbered } = await this.runRenames(plan);
     return { kept: earlier.path, removed: later.path, renumbered };
   }
 
@@ -457,7 +535,7 @@ export class ManuscriptService {
     project: ProjectRef,
     renames: readonly { path: string; title: string }[],
   ): Promise<SegmentRenameOutcome> {
-    return this.runRenames(await this.planRenames(project, renames));
+    return (await this.runRenames(await this.planRenames(project, renames))).outcome;
   }
 
   /**
@@ -467,12 +545,14 @@ export class ManuscriptService {
    * move up, the first note first when they move down -- which is read off
    * the names rather than told, so the same batch serves both. Two notes
    * trading names have no such order and refuse the batch. `freeing` names
-   * paths the caller is about to vacate, counted as free here.
+   * paths the caller is about to vacate, counted as free here; `reserving`
+   * names paths the caller is about to take itself, which no rename may.
    */
   private async planRenames(
     project: ProjectRef,
     renames: readonly { path: string; title: string }[],
     freeing: readonly string[] = [],
+    reserving: readonly string[] = [],
   ): Promise<RenamePlan> {
     const skipped: string[] = [];
     const steps: RenameStep[] = [];
@@ -515,7 +595,7 @@ export class ManuscriptService {
     }
 
     const freed = new Set(freeing.map((path) => normalizePath(path)));
-    const taken = new Set<string>();
+    const taken = new Set(reserving.map((path) => normalizePath(path)));
     for (const step of steps) {
       const occupied =
         this.repository.get(step.to) !== null && !freed.has(step.to);
@@ -526,19 +606,41 @@ export class ManuscriptService {
     return { steps, skipped };
   }
 
-  private async runRenames(plan: RenamePlan): Promise<SegmentRenameOutcome> {
-    const renamed: { from: string; to: string }[] = [];
+  private async runRenames(
+    plan: RenamePlan,
+  ): Promise<{ outcome: SegmentRenameOutcome; done: RenameDone[] }> {
+    const done: RenameDone[] = [];
     for (const step of plan.steps) {
       const record = await this.repository.readManaged(step.from);
       const to = await this.repository.renameFile(step.from, step.to);
-      renamed.push({ from: step.from, to });
-      if (firstHeading(record.body) === step.stem) {
+      const heading = firstHeading(record.body);
+      const own = headingNamesStem(heading, step.stem);
+      done.push({ from: step.from, to, heading: own ? heading : null });
+      if (own) {
         await this.repository.updateFirstHeading(to, step.title, {
           userInput: true,
         });
       }
     }
-    return { renamed, skipped: plan.skipped };
+    return {
+      outcome: {
+        renamed: done.map(({ from, to }) => ({ from, to })),
+        skipped: plan.skipped,
+      },
+      done,
+    };
+  }
+
+  /** Puts a batch back, the last rename first, headings included. */
+  private async undoRenames(done: readonly RenameDone[]): Promise<void> {
+    for (const step of [...done].reverse()) {
+      const from = await this.repository.renameFile(step.to, step.from);
+      if (step.heading !== null) {
+        await this.repository.updateFirstHeading(from, step.heading, {
+          userInput: true,
+        });
+      }
+    }
   }
 
   /** Regular intervals in the manuscript's current order. Returns what changed. */
@@ -554,11 +656,8 @@ export class ManuscriptService {
   ): Promise<string> {
     const name = title.trim();
     if (!name) throw new Error("Segment title is required.");
-    const layout = getProjectPathLayout(project.locale);
     const created = await this.repository.createManagedFile({
-      path: normalizePath(
-        `${project.rootPath}/${layout.directories.draft}/${safeFileName(name)}.md`,
-      ),
+      path: this.plannedSegmentPath(project, name),
       uniqueOnConflict: true,
       userInput: true,
       template: manuscriptSegmentTemplate(name, project.locale),
@@ -570,6 +669,16 @@ export class ManuscriptService {
       },
     });
     return created.path;
+  }
+
+  /** Where a note of this title is made, before any clash moves it along. */
+  private plannedSegmentPath(project: ProjectRef, title: string): string {
+    const name = title.trim();
+    if (!name) throw new Error("Segment title is required.");
+    const layout = getProjectPathLayout(project.locale);
+    return normalizePath(
+      `${project.rootPath}/${layout.directories.draft}/${safeFileName(name)}.md`,
+    );
   }
 
   /**
@@ -735,6 +844,25 @@ function draftFolders(project: ProjectRef): string[] {
   return [...names].map((name) =>
     normalizePath(`${project.rootPath}/${name}`),
   );
+}
+
+/**
+ * Whether a note's first heading is still the name the note was made under.
+ * The heading holds the title as it was typed; the stem is what
+ * `safeFileName` made of it, and a clash may have added " (2)", so the
+ * heading is read the same way before the two are compared.
+ */
+function headingNamesStem(heading: string | null, stem: string): boolean {
+  if (heading === null) return false;
+  let safe: string;
+  try {
+    safe = safeFileName(heading);
+  } catch {
+    return false;
+  }
+  if (safe === stem) return true;
+  const clashed = /^(.*) \(\d+\)$/u.exec(stem);
+  return clashed !== null && clashed[1] === safe;
 }
 
 /** The folder a path stands in, or the empty string for the Vault root. */

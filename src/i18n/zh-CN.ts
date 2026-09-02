@@ -1382,6 +1382,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.renumberFollowers': '将其后 {count} 篇带编号笔记的编号加一',
 	'manuscript.renumberFollowersDown': '将其后 {count} 篇带编号笔记的编号减一',
 	'messages.segmentsRenumbered': '已重新编号 {count} 篇笔记。',
+	'messages.segmentsRenumberedSkipped':
+		'已重新编号 {count} 篇笔记，{skipped} 篇只读笔记保持原名。',
+	'messages.segmentsNotRenumbered':
+		'未重新编号任何笔记，{skipped} 篇只读笔记保持原名。',
 	'errors.renumberConflict': '无法重新编号：{path} 已被占用。',
 	'manuscript.toolbar.export': '导出正文为纯文本',
 	'manuscript.exportNote': '将本篇笔记导出为纯文本',
@@ -1398,7 +1402,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.exportedMany': '已将 {count} 个文件导出到 {folder}。',
 	'messages.exportNothing': '没有可导出的内容。',
 	'messages.copiedNote': '已将本篇笔记复制为纯文本。',
-	'errors.exportIntoManuscript': '导出文件夹 {path} 位于正文之内，请另选一个文件夹。',
+	'errors.exportIntoManuscript': '导出文件夹 {path} 位于项目之内，请另选一个文件夹。',
 	'manuscript.copySelection': '复制',
 	'manuscript.revision.create': '新建修订',
 	'manuscript.revision.emptyProposed': '插入修订需要建议文本。',

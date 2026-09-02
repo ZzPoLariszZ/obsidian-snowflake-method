@@ -28,7 +28,7 @@
 
 import { parser as markdownParser } from '@lezer/markdown';
 
-import { firstAtOrAfter, wikilinkSpans } from '../domain';
+import { decodeEntity, firstAtOrAfter, wikilinkSpans } from '../domain';
 
 export interface ProseProjection {
 	/** The prose alone: syntax stripped, whitespace dropped. */
@@ -66,38 +66,6 @@ const SILENT = new Set([
 	// A backslash before the newline, and the backslash is not whitespace.
 	'HardBreak',
 ]);
-
-/** The named entities prose reaches for; the rest are numeric or left alone. */
-const NAMED_ENTITIES: Readonly<Record<string, string>> = {
-	'&amp;': '&',
-	'&lt;': '<',
-	'&gt;': '>',
-	'&quot;': '"',
-	'&apos;': "'",
-	'&hellip;': '…',
-	'&mdash;': '—',
-	'&ndash;': '–',
-	'&lsquo;': '‘',
-	'&rsquo;': '’',
-	'&ldquo;': '“',
-	'&rdquo;': '”',
-	'&copy;': '©',
-	'&reg;': '®',
-	'&trade;': '™',
-	'&times;': '×',
-	'&middot;': '·',
-	'&nbsp;': ' ',
-};
-
-function decodeEntity(entity: string): string | null {
-	const named = NAMED_ENTITIES[entity];
-	if (named !== undefined) return named;
-	const numeric = /^&#(x?)([0-9a-f]+);$/i.exec(entity);
-	const digits = numeric?.[2];
-	if (numeric === null || digits === undefined) return null;
-	const code = parseInt(digits, numeric[1] === '' ? 10 : 16);
-	return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : null;
-}
 
 /**
  * A stretch of source the projection does not carry verbatim: markup, which

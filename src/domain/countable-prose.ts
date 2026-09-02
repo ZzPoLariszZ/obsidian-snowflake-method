@@ -157,30 +157,34 @@ interface Elision {
 /**
  * The named entities a manuscript is likely to spell a mark with. Numeric
  * forms decode on their own; anything else stays a space, as it is to the
- * count.
+ * count. The one table for every reading: the page's projection decodes
+ * through it too, so what the export spells is what the page shows.
  */
-const NAMED_ENTITIES: Readonly<Record<string, string>> = {
-	amp: '&',
-	lt: '<',
-	gt: '>',
-	quot: '"',
-	apos: "'",
-	nbsp: ' ',
-	ensp: ' ',
-	emsp: ' ',
-	thinsp: ' ',
-	hellip: '…',
-	ndash: '–',
-	mdash: '—',
-	lsquo: '‘',
-	rsquo: '’',
-	ldquo: '“',
-	rdquo: '”',
-	laquo: '«',
-	raquo: '»',
-	copy: '©',
-	middot: '·',
-};
+const NAMED_ENTITIES: ReadonlyMap<string, string> = new Map([
+	['amp', '&'],
+	['lt', '<'],
+	['gt', '>'],
+	['quot', '"'],
+	['apos', "'"],
+	['nbsp', ' '],
+	['ensp', ' '],
+	['emsp', ' '],
+	['thinsp', ' '],
+	['hellip', '…'],
+	['ndash', '–'],
+	['mdash', '—'],
+	['lsquo', '‘'],
+	['rsquo', '’'],
+	['ldquo', '“'],
+	['rdquo', '”'],
+	['laquo', '«'],
+	['raquo', '»'],
+	['copy', '©'],
+	['middot', '·'],
+	['reg', '®'],
+	['trade', '™'],
+	['times', '×'],
+]);
 
 /**
  * The character an HTML entity spells, or null for one this does not know.
@@ -194,7 +198,9 @@ export function decodeEntity(entity: string): string | null {
 	if (match === null) return null;
 	if (match[1] !== undefined) return fromCodePoint(Number.parseInt(match[1], 10));
 	if (match[2] !== undefined) return fromCodePoint(Number.parseInt(match[2], 16));
-	return NAMED_ENTITIES[match[3] ?? ''] ?? null;
+	// A map rather than an object, so `&constructor;` finds no entity rather
+	// than a function off the prototype.
+	return NAMED_ENTITIES.get(match[3] ?? '') ?? null;
 }
 
 function fromCodePoint(code: number): string | null {

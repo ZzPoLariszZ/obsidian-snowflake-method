@@ -65,6 +65,12 @@ const LATIN_INDENT = '  ';
  * runs parted only by vanished lines are one gap, as wide as the widest of
  * them, so a code block between two paragraphs leaves the one blank line the
  * author put on either side of it rather than the sum.
+ *
+ * Every line of words is a paragraph of its own, which is how the stream
+ * reads the manuscript: a paragraph per line, with the blank lines between
+ * them as spacing, whether the author puts one there or not. The one line
+ * that is not a paragraph is the one a hard break runs into -- the author's
+ * own break inside a paragraph -- which continues the line above it.
  */
 export function exportProse(
 	body: string,
@@ -93,11 +99,18 @@ export function exportProse(
 	};
 	const content: string[] = lineStarts.map(() => '');
 	const headingLine: boolean[] = lineStarts.map(() => false);
+	// The lines a hard break runs into, which continue rather than begin.
+	const continued: boolean[] = lineStarts.map(() => false);
 	for (const piece of pieces) {
 		// A stand-in's newline is a hard break's: it ends the line and puts
 		// nothing on it, and what follows belongs to the line after by its own
 		// offset. The body's own text is cut at its newlines, each part on
 		// the line its offset says.
+		if (piece.from === null && piece.text === '\n') {
+			const next = lineOf(piece.at) + 1;
+			if (next < continued.length) continued[next] = true;
+			continue;
+		}
 		let offset = 0;
 		for (const part of piece.text.split('\n')) {
 			const line = lineOf((piece.from ?? piece.at) + offset);
@@ -111,7 +124,6 @@ export function exportProse(
 
 	const indent = options.script === 'cjk' ? CJK_INDENT : LATIN_INDENT;
 	const out: string[] = [];
-	let openParagraph = false;
 	let run = 0;
 	let gap = 0;
 	for (let index = 0; index < lineStarts.length; index += 1) {
@@ -121,14 +133,17 @@ export function exportProse(
 		if (source.trim().length === 0) {
 			run += 1;
 			gap = Math.max(gap, run);
-			openParagraph = false;
 			continue;
 		}
-		// Inner runs of ASCII spaces collapse as the page collapses them; an
-		// ideographic space is a character of the writing and stays.
-		const line = (content[index] ?? '')
-			.replace(/[ \t]{2,}/gu, ' ')
-			.replace(/\s+$/u, '');
+		// The indent is measured before anything collapses, so one the author
+		// typed in spaces keeps its width. Inner runs of ASCII spaces collapse
+		// as the page collapses them; an ideographic space is a character of
+		// the writing and stays.
+		const raw = content[index] ?? '';
+		const lead = raw.length - raw.trimStart().length;
+		const line =
+			raw.slice(0, lead) +
+			raw.slice(lead).replace(/[ \t]{2,}/gu, ' ').replace(/\s+$/u, '');
 		if (line.trim().length === 0) {
 			run = 0;
 			continue;
@@ -139,12 +154,11 @@ export function exportProse(
 		run = 0;
 		gap = 0;
 		const heading = headingLine[index] === true;
-		const lead = line.length - line.trimStart().length;
 		let written: string;
-		if (heading || openParagraph || !options.indent) written = line.trimStart();
-		else written = lead > 0 ? line : indent + line;
+		if (heading || continued[index] === true || !options.indent) {
+			written = line.trimStart();
+		} else written = lead > 0 ? line : indent + line;
 		out.push(written);
-		openParagraph = !heading;
 	}
 	return out.length === 0 ? '' : `${out.join('\n')}\n`;
 }

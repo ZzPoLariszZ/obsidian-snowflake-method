@@ -131,6 +131,12 @@ export interface ChapterNumber {
 	from: number;
 	to: number;
 	spelling: 'arabic' | 'chinese';
+	/**
+	 * The width the rule spells an Arabic number in, when it declares one:
+	 * two for `{nn}`. Kept so a number stepped past a power of ten stays as
+	 * wide as the rule reads.
+	 */
+	width?: number;
 }
 
 export interface ChapterNumbering {
@@ -241,7 +247,11 @@ const UNIT_WORD = /^\s*[章回节卷部话集幕篇]/u;
 const FORMAT_PLACEHOLDER = /\{(n+|zh)\}/gu;
 
 /** The numeral run in `text` from `offset` on, as a number with its place. */
-function readRun(text: string, offset: number): ChapterNumber | null {
+function readRun(
+	text: string,
+	offset: number,
+	width?: number,
+): ChapterNumber | null {
 	const arabic = ARABIC_RUN.exec(text);
 	const chinese = CHINESE_RUN.exec(text);
 	const first =
@@ -256,15 +266,26 @@ function readRun(text: string, offset: number): ChapterNumber | null {
 	const number =
 		spelling === 'arabic' ? Number.parseInt(run, 10) : parseChineseNumeral(run);
 	if (number === null || !Number.isSafeInteger(number) || number < 1) return null;
-	return { number, from: offset + first.index, to: offset + first.index + run.length, spelling };
+	return {
+		number,
+		from: offset + first.index,
+		to: offset + first.index + run.length,
+		spelling,
+		...(width === undefined || spelling !== 'arabic' ? {} : { width }),
+	};
 }
 
-/** The number spelled as the run it replaces was: width and script kept. */
+/**
+ * The number spelled as the run it replaces was: script kept, and zero-padded
+ * as the title spells it or as wide as the rule declares, whichever is wider,
+ * so `第 10 章` under `{nn}` steps down to `第 09 章` and never out of the rule.
+ */
 function spellLike(title: string, found: ChapterNumber, next: number): string {
-	const run = title.slice(found.from, found.to);
 	if (found.spelling === 'chinese') return toChineseNumeral(next);
-	const padded = run.length > 1 && run.startsWith('0');
-	return padded ? String(next).padStart(run.length, '0') : String(next);
+	const run = title.slice(found.from, found.to);
+	const kept = run.length > 1 && run.startsWith('0') ? run.length : 0;
+	const width = Math.max(kept, found.width ?? 0);
+	return width > 0 ? String(next).padStart(width, '0') : String(next);
 }
 
 function headOf(title: string, found: ChapterNumber): string {
@@ -283,6 +304,7 @@ function buildNumbering(
 	style: ChapterNumberingStyle,
 	read: (title: string) => ChapterNumber | null,
 	seed: string | null,
+	head: (title: string, found: ChapterNumber) => string = headOf,
 ): ChapterNumbering {
 	const moved = (title: string, by: number): string | null => {
 		const found = read(title);
@@ -300,23 +322,43 @@ function buildNumbering(
 		decrement: (title) => moved(title, -1),
 		head: (title) => {
 			const found = read(title);
-			return found === null ? null : headOf(title, found);
+			return found === null ? null : head(title, found);
 		},
 		seed: () => seed,
 	};
 }
 
-/** A reader for a preset: the pattern's first group is the numeral run. */
+/**
+ * Where a match's group stands, read off the match's own indices (the `d`
+ * flag) rather than searched for in the match: a literal earlier in the
+ * pattern that happens to spell the same numerals -- a volume number before
+ * the chapter's -- must never be taken for the number.
+ */
+function groupSpan(
+	match: RegExpExecArray,
+	group: number,
+): [number, number] | null {
+	const indexed = match as RegExpExecArray & {
+		indices?: ([number, number] | undefined)[];
+	};
+	return indexed.indices?.[group] ?? null;
+}
+
+/**
+ * A reader for a pattern whose first group is the numeral run, compiled with
+ * the `d` flag; `width` is the digit width the rule declares, if any.
+ */
 function presetReader(
 	pattern: RegExp,
+	width?: number,
 ): (title: string) => ChapterNumber | null {
 	return (title) => {
 		const match = pattern.exec(title);
 		if (match === null) return null;
 		const group = match[1];
-		if (group === undefined) return null;
-		const from = match.index + match[0].indexOf(group);
-		return readRun(group, from);
+		const span = groupSpan(match, 1);
+		if (group === undefined || span === null) return null;
+		return readRun(group, span[0], width);
 	};
 }
 
@@ -331,7 +373,7 @@ export function chapterRuleProblem(
 ): ChapterRuleProblem | null {
 	if (kind === 'regex') {
 		try {
-			new RegExp(text, 'u');
+			new RegExp(text, 'du');
 			return null;
 		} catch {
 			return 'pattern';
@@ -348,33 +390,42 @@ const FORMAT_SPLIT = /(\{(?:n+|zh)\})/u;
  * The pattern a format describes, matching the style as it is written: the
  * literal parts as they stand, a space where the format has one, and its
  * first placeholder the numeral run the reader takes -- `{n}` any run of
- * digits, `{nnnn}` exactly that many, so `第 {nnnn} 章` reads `第 0003 章`
- * and not `第 3 章`, which is a name in another style; `{zh}` a run of
- * Chinese numerals. Later placeholders match without being read. Anchored
- * at the head, since a format spells the head and the name follows it;
- * case-blind, as the English preset is, since case is not a style.
+ * digits, `{nnnn}` at least that many, so `第 {nnnn} 章` reads `第 0003 章`
+ * and `第 10000 章` but not `第 3 章`, which is a name in another style;
+ * `{zh}` a run of Chinese numerals. Later placeholders match without being
+ * read. Anchored at the head, since a format spells the head and the name
+ * follows it; case-blind, as the English preset is, since case is not a
+ * style. The width the first placeholder declares comes back beside the
+ * pattern, for the numbers written under it to keep.
  */
-function formatRulePattern(format: string): RegExp {
+function formatRulePattern(format: string): { pattern: RegExp; width?: number } {
 	let group = false;
+	let width: number | undefined;
 	const source = format
 		.split(FORMAT_SPLIT)
 		.map((part) => {
 			if (part.length === 0) return '';
 			if (FORMAT_SPLIT.test(part)) {
+				const fixed =
+					part !== '{zh}' && part.length > 3 ? part.length - 2 : undefined;
 				const run =
 					part === '{zh}'
 						? `[${CHINESE_NUMERAL_CHARS}]+`
-						: part.length > 3
-							? `\\d{${part.length - 2}}`
-							: '\\d+';
+						: fixed === undefined
+							? '\\d+'
+							: `\\d{${fixed},}`;
 				const open = group ? '(?:' : '(';
+				if (!group) width = fixed;
 				group = true;
 				return `${open}${run})`;
 			}
 			return part.replace(REGEX_SPECIALS, '\\$&').replace(/\s+/gu, '\\s+');
 		})
 		.join('');
-	return new RegExp(`^${source}`, 'iu');
+	return {
+		pattern: new RegExp(`^${source}`, 'diu'),
+		...(width === undefined ? {} : { width }),
+	};
 }
 
 /**
@@ -394,22 +445,24 @@ export function compileChapterRule(
 		return null;
 	}
 	if (rule.kind === 'format') {
+		const { pattern, width } = formatRulePattern(rule.text);
 		return buildNumbering(
 			'custom',
-			presetReader(formatRulePattern(rule.text)),
+			presetReader(pattern, width),
 			formatChapterNumber(rule.text, 1),
+			// The head is the format spelled for the number, whatever follows
+			// the placeholder included, so a note named from the offer is
+			// read by the rule that made it.
+			(_title, found) => formatChapterNumber(rule.text, found.number),
 		);
 	}
-	const pattern = new RegExp(rule.text, 'u');
+	const pattern = new RegExp(rule.text, 'du');
 	const read = (title: string): ChapterNumber | null => {
 		const match = pattern.exec(title);
 		if (match === null) return null;
 		const group = match[1];
-		if (group !== undefined) {
-			// The group's place is its first appearance inside the match:
-			// exact for a numeral run, which is what a group here holds.
-			return readRun(group, match.index + match[0].indexOf(group));
-		}
+		const span = group === undefined ? null : groupSpan(match, 1);
+		if (group !== undefined && span !== null) return readRun(group, span[0]);
 		return readRun(match[0], match.index);
 	};
 	return buildNumbering('custom', read, rule.seed.length > 0 ? rule.seed : null);
@@ -428,19 +481,21 @@ export function compileChapterNumbering(
 		case 'chinese':
 			return buildNumbering(
 				'chinese',
-				presetReader(new RegExp(`^第\\s*([${CHINESE_NUMERAL_CHARS}]+)\\s*章`, 'u')),
+				presetReader(
+					new RegExp(`^第\\s*([${CHINESE_NUMERAL_CHARS}]+)\\s*章`, 'du'),
+				),
 				'第一章',
 			);
 		case 'chinese-arabic':
 			return buildNumbering(
 				'chinese-arabic',
-				presetReader(/^第\s*(\d+)\s*章/u),
+				presetReader(new RegExp('^第\\s*(\\d+)\\s*章', 'du')),
 				'第 1 章',
 			);
 		case 'english':
 			return buildNumbering(
 				'english',
-				presetReader(/^chapter\s+(\d+)/iu),
+				presetReader(new RegExp('^chapter\\s+(\\d+)', 'diu')),
 				'Chapter 1',
 			);
 		case 'custom':

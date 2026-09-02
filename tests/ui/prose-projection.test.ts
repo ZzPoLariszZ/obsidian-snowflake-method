@@ -69,3 +69,11 @@ describe('projectedIndexAt', () => {
 		expect(sourceIndexOf[at ?? 0]).toBe(2);
 	});
 });
+
+describe('projectProse entities', () => {
+	it('spells the entities the export spells, through the one table', () => {
+		expect(projectProse('5 &times; 3 &laquo;q&raquo;').text).toBe('5×3«q»');
+		// One it cannot name passes through as written.
+		expect(projectProse('&constructor; a').text).toBe('&constructor;a');
+	});
+});
