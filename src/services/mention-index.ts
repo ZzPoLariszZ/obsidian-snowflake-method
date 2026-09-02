@@ -12,6 +12,7 @@ import {
 	type MentionSource,
 } from "../domain";
 import { documentTypeOf, type VaultRepository } from "../repository";
+import { fileStamp } from "./json-store";
 import { pluginWrittenRanges } from "../templates";
 import type { ManuscriptService } from "./manuscript-service";
 import {
@@ -268,7 +269,7 @@ export class MentionIndexService extends QuietFlushingNoteCache<
 		}
 		// Stored against the read's own stat, so the pair cannot disagree; a
 		// write landing between the probe and the read only re-reads next time.
-		const stamp = `${String(record.file.stat.mtime)}:${String(record.file.stat.size)}`;
+		const stamp = fileStamp(record.file);
 		const declared = documentTypeOf(record.frontmatter);
 		const hits = collectMentionHits(
 			record.body,

@@ -29,10 +29,12 @@ import type { MentionMark } from '../domain';
 /**
  * Obsidian puts its element builders on every window it opens, which is how a
  * popout builds elements of its own; the published Window type does not say
- * so, and this is the one thing here that needs them.
+ * so, and this is the one thing here that needs them. The builder on a node
+ * would append to that node, and the document's own `createElement` is not
+ * this plugin's idiom, so the window's builder it is.
  */
 interface BuilderWindow extends Window {
-	createFragment(): DocumentFragment;
+	createSpan(options: { cls: string }): HTMLSpanElement;
 }
 
 /**
@@ -54,12 +56,10 @@ class PointMarkWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		// Built in the editor's OWN window, so a stream in a popout gets an
-		// element that window can hold, and through a fragment because that is
-		// where Obsidian's builder can put one and still hand it back loose for
-		// CodeMirror to place.
-		const win = view.dom.win as BuilderWindow;
-		return win.createFragment().createSpan({ cls: this.classes });
+		// Built by the editor's OWN window, so a stream in a popout gets an
+		// element that window can hold, and built loose, for CodeMirror to
+		// place.
+		return (view.dom.win as BuilderWindow).createSpan({ cls: this.classes });
 	}
 }
 
@@ -95,9 +95,13 @@ export function refreshMentionHighlights(view: EditorView): void {
  * pin the round-trip and the mapping this plugin leans on.
  *
  * A mark of no width is a position rather than a stretch, and becomes a widget
- * standing in it. It carries no `mentionMark`: nothing is under it to be
- * right-clicked, and a zero-length span would otherwise win every hit test at
- * its own offset by being the shortest thing there.
+ * standing in it. It carries no `mentionMark`, and neither does a mark that
+ * says it is silent: nothing under either answers a right-click, and a mark
+ * left in the hit test with nothing to offer would win it -- a zero-length
+ * span by being the shortest thing at its offset, a revision by being
+ * narrower than the mention it stands inside as often as not -- and hide the
+ * mention underneath. Decided here, once, as the marks are built, rather than
+ * in the hit test by what kind of mark it turned out to be.
  */
 export function mentionDecorations(
 	marks: readonly MentionMark[],
@@ -115,7 +119,7 @@ export function mentionDecorations(
 			};
 			return Decoration.mark({
 				class: mark.classes,
-				mentionMark: mark,
+				...(mark.silent === true ? {} : { mentionMark: mark }),
 				...(Object.keys(attributes).length === 0 ? {} : { attributes }),
 			}).range(mark.from, mark.to);
 		}),
@@ -208,21 +212,14 @@ export function mentionMarkAt(
 	const at = view.posAtCoords({ x, y });
 	if (at === null) return null;
 	// Marks may nest -- a mention inside a quoted stretch -- and the pointer
-	// means the innermost thing under it, so the shortest span answers.
-	//
-	// A revision's dress is not one of the things the pointer can mean: it
-	// answers no menu of its own, its handle is the card in the margin, and
-	// it is narrower than the mention it sits inside as often as not -- a
-	// replacement over a surname inside an entity's full name. Letting it
-	// answer would hand back a mark with nothing to offer and hide the
-	// mention underneath, which no other layer can do: a quoted stretch is
-	// always longer than what stands in it, and overlapping sensitive and
-	// custom marks are resolved away before they are ever planned.
+	// means the innermost thing under it, so the shortest span answers. The
+	// dress-only layers were built without a `mentionMark` and are not here
+	// to be found: `mentionDecorations` says why.
 	let found: MentionMark | null = null;
 	let foundLength = Number.POSITIVE_INFINITY;
 	plugin.decorations.between(at, at, (from, to, value) => {
 		const mark = (value.spec as { mentionMark?: MentionMark }).mentionMark;
-		if (mark === undefined || mark.occurrence.type === 'revision') return;
+		if (mark === undefined) return;
 		if (to - from >= foundLength) return;
 		foundLength = to - from;
 		found = {

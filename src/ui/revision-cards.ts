@@ -1,6 +1,6 @@
 import { setIcon } from 'obsidian';
 
-import type { Revision } from '../domain';
+import { revisionKindFor, type Revision } from '../domain';
 import type { Translate } from './modals';
 
 /**
@@ -15,9 +15,6 @@ import type { Translate } from './modals';
 
 export interface RevisionCardEntry {
 	revision: Revision;
-	/** Where the revision's text stands NOW, in body offsets. */
-	from: number;
-	to: number;
 	/** The anchor's top relative to the segment, or null while unmeasurable. */
 	top: number | null;
 }
@@ -50,8 +47,12 @@ export interface RevisionRailModel {
 export interface RevisionRailCallbacks {
 	t: Translate;
 	onAccept(revision: Revision): void;
-	onReject(revision: Revision): void;
-	onDiscard(revision: Revision): void;
+	/**
+	 * Takes the revision out: a rejection from a resting card and a discard
+	 * from a conflict card are one call, since taking a revision out is the
+	 * same work whichever word the button wore.
+	 */
+	onRetire(revision: Revision): void;
 	/**
 	 * Takes an edited revision, and answers once the write has either landed
 	 * or failed. False means it was refused -- the card stays open on what was
@@ -83,6 +84,12 @@ export interface RevisionRail {
 	sync(model: RevisionRailModel): void;
 	/** The card standing for this revision, conflicts included. */
 	cardFor(id: string): HTMLElement | null;
+	/**
+	 * Whether a card is open for editing. The form holds the only copy of
+	 * what is being typed into it, so whoever would take the rail down asks
+	 * this first.
+	 */
+	editing(): boolean;
 	dispose(): void;
 }
 
@@ -111,11 +118,41 @@ export function stackCards(
 interface CardState {
 	el: HTMLElement;
 	editing: boolean;
+	/** What the card was last drawn from, so an unchanged one is left alone. */
+	print: string;
 }
 
-/** What makes one draft a different proposal from another. */
-const draftKeyOf = (draft: RevisionDraft): string =>
-	`${draft.kind}:${String(draft.from)}:${String(draft.to)}`;
+/**
+ * What makes one draft a different proposal from another: the spot, and the
+ * words under it. The same offsets over other words are another proposal --
+ * the note was rewritten there while the card stood open -- and a form kept
+ * on the offsets alone would go on showing the earlier words as the original
+ * while the record saved from it names the later ones.
+ */
+export const draftKeyOf = (draft: RevisionDraft): string =>
+	`${draft.kind}:${String(draft.from)}:${String(draft.to)}:${draft.originalText}`;
+
+/**
+ * Everything a resting card is drawn from. A card whose print has not
+ * changed since it was last drawn is left exactly as it stands: the rail is
+ * asked to sync on every scroll and every settled keystroke, and a card
+ * rebuilt under the pointer swaps the button out between the press and the
+ * release, so the click lands on nothing.
+ */
+export const cardPrint = (
+	revision: Revision,
+	readOnly: boolean,
+	neighbours: [boolean, boolean],
+): string =>
+	JSON.stringify([
+		revision.id,
+		revision.kind,
+		revision.originalText,
+		revision.proposed,
+		revision.comment,
+		readOnly,
+		neighbours,
+	]);
 
 export function renderRevisionRail(
 	segmentEl: HTMLElement,
@@ -141,6 +178,27 @@ export function renderRevisionRail(
 	 */
 	const restack = (): void => {
 		if (held !== null) sync(held);
+	};
+
+	/** Brings the held model level with an edit that has just landed. */
+	const saved = (id: string, proposed: string, comment: string): void => {
+		if (held === null) return;
+		held = {
+			...held,
+			entries: held.entries.map((entry) =>
+				entry.revision.id === id
+					? {
+							...entry,
+							revision: {
+								...entry.revision,
+								kind: revisionKindFor(entry.revision.kind, proposed),
+								proposed,
+								comment,
+							},
+						}
+					: entry,
+			),
+		};
 	};
 
 	/**
@@ -442,7 +500,7 @@ export function renderRevisionRail(
 		const actions = actionRow(card, 'balanced');
 		actionButton(actions, t('manuscript.revision.edit'), beginEdit);
 		actionButton(actions, t('manuscript.revision.reject'), () => {
-			callbacks.onReject(revision);
+			callbacks.onRetire(revision);
 		});
 		actionButton(
 			actions,
@@ -497,7 +555,7 @@ export function renderRevisionRail(
 		if (readOnly) return;
 		const actions = actionRow(card, 'end');
 		actionButton(actions, t('manuscript.revision.discard'), () => {
-			callbacks.onDiscard(revision);
+			callbacks.onRetire(revision);
 		});
 	};
 
@@ -509,6 +567,17 @@ export function renderRevisionRail(
 		// Conflicts first, pinned to the head of the stack: they have no spot
 		// in the text to stand beside any more.
 		for (const revision of model.conflicts) {
+			// A card open for editing goes on standing for its revision even
+			// once the note stops answering for it: the form holds what is
+			// being typed, and a conflict card raised beside it would be a
+			// second card for one revision. The conflict shows once the form
+			// closes, on the sync that follows.
+			const open = cards.get(revision.id);
+			if (open?.editing === true) {
+				wanted.add(revision.id);
+				order.push({ key: revision.id, top: null });
+				continue;
+			}
 			const key = `conflict:${revision.id}`;
 			wanted.add(key);
 			order.push({ key, top: null });
@@ -516,13 +585,15 @@ export function renderRevisionRail(
 			// what it says can change under it -- a note turning read-only
 			// takes its Discard away, and text edited from the table arrives
 			// here -- and a card drawn once would go on offering what it was
-			// born offering.
+			// born offering. Only when something did change, though.
+			const print = cardPrint(revision, model.readOnly, [false, false]);
+			const kept = cards.get(key);
+			if (kept !== undefined && kept.print === print) continue;
 			const card =
-				cards.get(key)?.el ??
-				rail.createDiv({ cls: 'snowflake-method-revision-card' });
+				kept?.el ?? rail.createDiv({ cls: 'snowflake-method-revision-card' });
 			card.empty();
 			renderConflictCard(card, revision, model.readOnly);
-			cards.set(key, { el: card, editing: false });
+			cards.set(key, { el: card, editing: false, print });
 		}
 
 		for (const entry of model.entries) {
@@ -530,16 +601,25 @@ export function renderRevisionRail(
 			wanted.add(key);
 			order.push({ key, top: entry.top });
 			const kept = cards.get(key);
-			// A card being edited keeps its element and its unsaved text; a
-			// resting card is cheap to redraw in place.
+			// A card being edited keeps its element and its unsaved text, and
+			// a resting card that would be drawn the same is left as it is.
 			if (kept !== undefined && kept.editing) continue;
+			const print = cardPrint(entry.revision, model.readOnly, [
+				callbacks.hasNeighbour(entry.revision, -1),
+				callbacks.hasNeighbour(entry.revision, 1),
+			]);
+			if (kept !== undefined && kept.print === print) continue;
 			const card =
 				kept?.el ?? rail.createDiv({ cls: 'snowflake-method-revision-card' });
 			card.empty();
 			card.removeClass('is-conflict');
-			const state: CardState = { el: card, editing: false };
+			const state: CardState = { el: card, editing: false, print };
 			renderRestCard(card, entry, model.readOnly, () => {
 				state.editing = true;
+				// The card no longer shows its print, so the sync that follows
+				// the form closing draws it afresh rather than leaving the
+				// form standing as an unchanged card.
+				state.print = '';
 				card.empty();
 				renderForm(card, {
 					originalText: entry.revision.originalText,
@@ -560,6 +640,13 @@ export function renderRevisionRail(
 							);
 							if (!took) return;
 							state.editing = false;
+							// The card is drawn again from what the rail last
+							// held, and that is the revision from before the
+							// save: the fresh feed arrives a read later. So the
+							// held copy is told what was just written, or the
+							// card would show the words the author replaced
+							// until the note is dressed again.
+							saved(entry.revision.id, proposed, comment);
 							restack();
 						})();
 					},
@@ -579,10 +666,11 @@ export function renderRevisionRail(
 		if (model.draft !== null) {
 			order.push({ key: 'draft', top: model.draft.top });
 			// A second revision begun while the first is still being written
-			// is a different proposal about a different passage: the form is
-			// built again for it, rather than the standing card keeping the
-			// earlier passage's text on show while the save goes to the new
-			// one's offsets.
+			// is a different proposal -- about another passage, or about the
+			// same offsets over words the note no longer holds there -- and
+			// the form is built again for it, rather than the standing card
+			// keeping the earlier text on show while the save goes to the new
+			// one.
 			const key = draftKeyOf(model.draft);
 			if (draftEl !== null && key !== draftKey) {
 				draftEl.remove();
@@ -681,6 +769,7 @@ export function renderRevisionRail(
 		sync,
 		cardFor: (id) =>
 			cards.get(id)?.el ?? cards.get(`conflict:${id}`)?.el ?? null,
+		editing: () => [...cards.values()].some((state) => state.editing),
 		dispose: () => {
 			rail.remove();
 		},

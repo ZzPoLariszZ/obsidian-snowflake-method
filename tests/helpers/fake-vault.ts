@@ -155,7 +155,9 @@ export class FakeVault {
     }
     const current = await this.read(file);
     const next = callback(current);
-    this.write(file.path, next);
+    // As Obsidian's own `process` does: a callback handing its input back
+    // writes nothing, so the file's stamp stays what it was.
+    if (next !== current) this.write(file.path, next);
     this.processCalls.push(file.path);
     return next;
   }

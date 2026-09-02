@@ -86,6 +86,7 @@ import {
 	type MentionIgnore,
 	type SensitiveMatcher,
 	type Revision,
+	fileStem,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -116,7 +117,6 @@ import {
 	projectIdOf,
 } from './repository';
 import {
-	ADVISORY_STRUCTURE_ISSUE_CODES,
 	createStableId,
 	sessionClockMs,
 	SnowflakeProjectService,
@@ -716,6 +716,12 @@ export default class SnowflakeMethodPlugin
 		this.projects.manuscript.onSegmentRemoved = (path, body) => {
 			this.sessions.noteRemovedByPlugin(path, body, { manuscript: true });
 		};
+		// A body reaching the file may have carried revised text to new
+		// offsets: the store is brought level quietly, once, for every writer
+		// alike, and only a real move re-dresses anything.
+		this.projects.manuscript.onSegmentWritten = (path, body) => {
+			void this.levelRevisions(path, body).catch(() => undefined);
+		};
 		// And text that walks from one note into another takes its revisions
 		// with it. `left` is the departing note as it stood, which is what
 		// sorts the travellers from the stayers -- by where their words
@@ -730,7 +736,7 @@ export default class SnowflakeMethodPlugin
 			shift,
 		) => {
 			void (async () => {
-				const project = await this.writableProjectOfPath(into);
+				const project = this.projectRefAtPath(into);
 				if (project === null) return;
 				const carried = await this.projects.revisions.carryTextBetweenNotes(
 					project,
@@ -1078,7 +1084,7 @@ export default class SnowflakeMethodPlugin
 				// a file that is merely where an older build kept it sends the
 				// author looking for a fault the report will not name.
 				hasStructureIssues: snapshot.structureIssues.some(
-					(issue) => !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
+					(issue) => issue.blocking,
 				),
 				hasMarkerIssues: this.projectHasMarkerIssues(snapshot),
 			};
@@ -1605,7 +1611,7 @@ export default class SnowflakeMethodPlugin
 					projectT,
 					`projectStructure.action.${issue.code}`,
 				),
-				blocking: !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
+				blocking: issue.blocking,
 				kind: 'structure',
 				stepIds: issue.stepIds,
 				canOpen: issue.canOpen,
@@ -3566,27 +3572,29 @@ export default class SnowflakeMethodPlugin
 				for (const segment of segments) {
 					notes.set(segment.path, { title: segment.title, body: null });
 				}
-				// Only chapters that carry revisions are read, one read each:
-				// standing is derived against the body, never trusted stored.
-				for (const path of new Set(
-					revisions.map((revision) => revision.path),
-				)) {
+				// Only chapters that carry revisions are read, one read each and
+				// all at once: standing is derived against the body, never
+				// trusted stored. A chapter that cannot be read leaves its body
+				// null, and every revision on it shows as a conflict.
+				const paths = [...new Set(revisions.map((revision) => revision.path))];
+				const bodies = await Promise.all(
+					paths.map((path) =>
+						this.readManuscriptSegment(path).then(
+							({ body }) => body,
+							() => null,
+						),
+					),
+				);
+				paths.forEach((path, index) => {
+					const body = bodies[index] ?? null;
+					if (body === null) return;
 					const kept = notes.get(path);
-					try {
-						const { body } = await this.readManuscriptSegment(path);
-						if (kept === undefined) {
-							notes.set(path, {
-								title: path.split('/').pop() ?? path,
-								body,
-							});
-						} else {
-							kept.body = body;
-						}
-					} catch {
-						// A chapter that cannot be read leaves its body null,
-						// and every revision on it shows as a conflict.
+					if (kept === undefined) {
+						notes.set(path, { title: fileStem(path), body });
+					} else {
+						kept.body = body;
 					}
-				}
+				});
 				return revisionTableRows(revisions, notes);
 			},
 			open: (occurrence) =>
@@ -5067,69 +5075,66 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The project that actually holds a path, and may be written to.
-	 *
-	 * `projectOfPath` ends by falling back to the project last opened, which
-	 * is a sound answer for opening a view and a dangerous one for a write:
-	 * during the window after a project folder moves, and before the first
-	 * scan at startup, a save under no known root would resolve to whichever
-	 * project the author last looked at, read ITS revisions file -- setting it
-	 * aside as damaged if it will not parse -- and skip the levelling the
-	 * saved note actually asked for.
+	 * One revision mutation, through the gate and out to every view: `work`
+	 * says what changed, and only a change is announced. Null from the gate
+	 * is a refusal, answered as false without touching the store.
 	 */
-	private async writableProjectOfPath(
-		path: string,
-	): Promise<ProjectSnapshot | null> {
-		for (const rootPath of this.knownProjectRoots) {
-			if (!isPathAtOrBelow(path, rootPath)) continue;
-			for (const candidate of await this.discoverProjects()) {
-				if (candidate.rootPath !== rootPath) continue;
-				const project = await this.projects.loadProject(
-					candidate.projectFile,
-				);
-				return project.readOnly ? null : project;
-			}
-		}
-		return null;
+	private async mutateRevisions<T>(
+		projectPath: string | null,
+		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
+		refused: T,
+	): Promise<T> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return refused;
+		const { result, changed } = await work(project);
+		if (changed) await this.announceRevisionsChanged();
+		return result;
 	}
 
-	async createRevision(
+	createRevision(
 		projectPath: string | null,
 		revision: Revision,
 	): Promise<boolean> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return false;
-		const took = await this.projects.revisions.create(project, revision);
-		if (took) await this.announceRevisionsChanged();
-		return took;
+		return this.mutateRevisions(
+			projectPath,
+			async (project) => {
+				const took = await this.projects.revisions.create(project, revision);
+				return { result: took, changed: took };
+			},
+			false,
+		);
 	}
 
-	async updateRevision(
+	updateRevision(
 		projectPath: string | null,
 		id: string,
 		patch: { proposed: string; comment: string },
 	): Promise<boolean> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return false;
-		const took = await this.projects.revisions.update(project, id, patch);
-		if (took) await this.announceRevisionsChanged();
-		return took;
+		return this.mutateRevisions(
+			projectPath,
+			async (project) => {
+				const took = await this.projects.revisions.update(project, id, patch);
+				return { result: took, changed: took };
+			},
+			false,
+		);
 	}
 
-	async discardRevision(
-		projectPath: string | null,
-		id: string,
-	): Promise<boolean> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return false;
-		const took = await this.projects.revisions.remove(project, id);
-		if (took) await this.announceRevisionsChanged();
+	discardRevision(projectPath: string | null, id: string): Promise<boolean> {
 		// Answered on whether the record is gone, not on whether this call is
 		// what took it out. A card asking to be rid of a revision another view
 		// discarded a moment earlier has got exactly what it asked for, and
-		// only a refusal -- the project above answering null -- is news worth
-		// telling an author who has just had their text changed for them.
-		return true;
+		// only a refusal -- the gate answering null, or the store declining
+		// to write over a file from a newer build -- is news worth telling an
+		// author who has just had their text changed for them.
+		return this.mutateRevisions(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.revisions.remove(project, id);
+				return { result: outcome !== 'refused', changed: outcome === 'removed' };
+			},
+			false,
+		);
 	}
 
 	mintRevisionId(): string {
@@ -5137,27 +5142,35 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * A saved body may have carried revised text to new offsets: the store is
-	 * brought level quietly, and only a real move re-dresses anything. Fire
-	 * and forget from the save path, which must not wait on this.
+	 * Brings one note's stored revision offsets level with the body that
+	 * just reached the file. The project is the scan's own record of it --
+	 * pure string work over a handful of roots -- rather than a load: this
+	 * runs behind every save, and a load whose digest the save itself just
+	 * changed would rebuild the whole snapshot each time, for projects that
+	 * have never made a revision. `projectOfPath`'s fallback to the project
+	 * last opened is not used here either: a save under no known root must
+	 * touch no other project's file.
 	 */
-	manuscriptRevisionsSaved(path: string, body: string): void {
-		void (async () => {
-			const project = await this.writableProjectOfPath(path);
-			if (project === null) return;
-			const moved = await this.projects.revisions.refreshAnchorsOnSave(
-				project,
-				path,
-				body,
-			);
-			if (moved) await this.announceRevisionsChanged();
-		})().catch(() => undefined);
+	private async levelRevisions(path: string, body: string): Promise<void> {
+		const project = this.projectRefAtPath(path);
+		if (project === null) return;
+		const moved = await this.projects.revisions.refreshAnchorsOnSave(
+			project,
+			path,
+			body,
+		);
+		if (moved) await this.announceRevisionsChanged();
 	}
 
-	/** Streams re-dress and dashboards re-read after any revision mutation. */
+	/**
+	 * Streams re-dress and dashboards re-read after any revision mutation.
+	 * The streams are dressed here, once: a dashboard refresh would reload
+	 * every stream's manuscript and dress it a second time on the way, for a
+	 * change that touched no note.
+	 */
 	private async announceRevisionsChanged(): Promise<void> {
 		this.applyManuscriptMentionMode();
-		await this.refreshDashboards();
+		await this.refreshDashboards({ streams: false });
 	}
 
 	/**
@@ -6825,7 +6838,9 @@ export default class SnowflakeMethodPlugin
 		}, REFRESH_DELAY_MS);
 	}
 
-	private async refreshDashboards(): Promise<void> {
+	private async refreshDashboards(
+		options: { streams?: boolean } = {},
+	): Promise<void> {
 		await Promise.all(
 			this.app.workspace
 				.getLeavesOfType(DASHBOARD_VIEW_TYPE)
@@ -6842,7 +6857,7 @@ export default class SnowflakeMethodPlugin
 				}),
 		);
 		this.rerenderStatisticsViews();
-		await this.refreshManuscriptStreams();
+		if (options.streams !== false) await this.refreshManuscriptStreams();
 		this.refreshManagedEditors();
 	}
 

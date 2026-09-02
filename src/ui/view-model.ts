@@ -461,11 +461,6 @@ export interface ManuscriptHost {
 	 * is what was asked.
 	 */
 	discardRevision(projectPath: string | null, id: string): Promise<boolean>;
-	/**
-	 * A segment's body reached the file: stored revision offsets are brought
-	 * level with it, quietly, and everyone re-dresses only if one moved.
-	 */
-	manuscriptRevisionsSaved(path: string, body: string): void;
 	/** A fresh id for a revision about to be captured. */
 	mintRevisionId(): string;
 	/** Writes one ignore rule, then re-dresses every open stream. */

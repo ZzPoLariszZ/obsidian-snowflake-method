@@ -28,7 +28,7 @@
 
 import { parser as markdownParser } from '@lezer/markdown';
 
-import { wikilinkSpans } from '../domain';
+import { firstAtOrAfter, wikilinkSpans } from '../domain';
 
 export interface ProseProjection {
 	/** The prose alone: syntax stripped, whitespace dropped. */
@@ -275,14 +275,7 @@ function projectionOf(source: string): ProseProjection {
 export function projectedIndexAt(source: string, at: number): number | null {
 	const { sourceIndexOf } = projectionOf(source);
 	if (sourceIndexOf.length === 0) return null;
-	let low = 0;
-	let high = sourceIndexOf.length;
-	while (low < high) {
-		const mid = Math.floor((low + high) / 2);
-		if ((sourceIndexOf[mid] ?? 0) < at) low = mid + 1;
-		else high = mid;
-	}
-	return Math.min(low, sourceIndexOf.length - 1);
+	return Math.min(firstAtOrAfter(sourceIndexOf, at), sourceIndexOf.length - 1);
 }
 
 export function findPassage(

@@ -159,20 +159,18 @@ describe('dress-only decorations', () => {
 			toDOM(view: unknown): { tagName: string; className: string };
 			eq(other: unknown): boolean;
 		};
-		// Built from the view's OWN document, so a stream in a popout window
-		// gets an element that window can hold. There is no DOM in this
-		// runtime, so the document stands in for one and reports what it was
-		// asked to build.
+		// Built by the view's OWN window, so a stream in a popout window gets
+		// an element that window can hold. There is no DOM in this runtime,
+		// so the window stands in for one and reports what it was asked to
+		// build.
 		let asked: { cls?: string } | null = null;
 		const created = widget.toDOM({
 			dom: {
 				win: {
-					createFragment: () => ({
-						createSpan: (options: { cls?: string }) => {
-							asked = options;
-							return { tagName: 'SPAN', className: options.cls ?? '' };
-						},
-					}),
+					createSpan: (options: { cls?: string }) => {
+						asked = options;
+						return { tagName: 'SPAN', className: options.cls ?? '' };
+					},
 				},
 			},
 		});
@@ -190,5 +188,33 @@ describe('dress-only decorations', () => {
 			other = (value.spec as { widget?: unknown }).widget;
 		});
 		expect(widget.eq(other)).toBe(true);
+	});
+});
+
+describe('marks that answer no menu', () => {
+	it('a silent mark is drawn without a mentionMark, so the hit test passes over it', () => {
+		const quiet: MentionMark = {
+			from: 0,
+			to: 5,
+			classes: 'snowflake-method-revision is-replace',
+			silent: true,
+			occurrence: {
+				type: 'entity',
+				path: '50/one.md',
+				from: 0,
+				to: 5,
+				matchedText: 'Alice',
+				resolution: 'unique',
+				resolvedMemberPath: null,
+				candidates: [],
+			},
+		};
+		const loud: MentionMark = { ...quiet, silent: undefined, from: 6, to: 10 };
+		const set = mentionDecorations([quiet, loud]);
+		const carried: boolean[] = [];
+		set.between(0, 10, (_from, _to, value) => {
+			carried.push((value.spec as { mentionMark?: unknown }).mentionMark !== undefined);
+		});
+		expect(carried).toEqual([false, true]);
 	});
 });

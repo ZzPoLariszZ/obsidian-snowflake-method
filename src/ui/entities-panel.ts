@@ -27,6 +27,8 @@ import {
 } from './entities-rows';
 import { mentionNoteTitle, truncateEnd } from './mention-rows';
 import type { Translate } from './modals';
+import { refreshLoop } from './refresh-loop';
+import { buildTableFrame } from './virtual-table';
 
 /** One kind's table: its label and its mentioned members, busiest first. */
 export interface TrackingKindSection {
@@ -37,7 +39,11 @@ export interface TrackingKindSection {
 
 /** One dialogue chapter with how much it speaks, units beside stretches. */
 export interface TrackingDialogueRow extends DialogueChapterAggregate {
-	/** The chapter's counted dialogue units: characters plus words. */
+	/**
+	 * The chapter's dialogue as the counting rule in force counts it, the
+	 * quotation marks included: the same reading the prose table's share
+	 * divides by, so the two panes quote one number.
+	 */
 	units: number;
 }
 
@@ -367,10 +373,6 @@ export function renderEntitiesPanel(
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-tracking-panel',
 	});
-	let disposed = false;
-	let loading = false;
-	let failed = false;
-	let refreshAgain = false;
 	let reading: TrackingReading | null = null;
 	let titles = new Map<string, string>();
 	let query = '';
@@ -480,32 +482,14 @@ export function renderEntitiesPanel(
 		host: HTMLElement,
 		columns: readonly string[],
 		headers: readonly string[],
-	): HTMLElement => {
-		const wrap = host.createDiv({ cls: 'snowflake-method-table-wrap' });
-		const headWrap = wrap.createDiv({ cls: 'snowflake-method-table-head' });
-		const bodyWrap = wrap.createDiv({ cls: 'snowflake-method-table-body' });
-		const tableClasses = 'snowflake-method-table snowflake-method-tracking-table';
-		const headTable = headWrap.createEl('table', { cls: tableClasses });
-		const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
-		for (const table of [headTable, bodyTable]) {
-			const cols = table.createEl('colgroup');
-			for (const column of columns) {
-				cols.createEl('col', {
-					cls: `snowflake-method-tracking-column-${column}`,
-				});
-			}
-		}
-		const headRow = headTable.createEl('thead').createEl('tr');
-		for (const text of headers) headRow.createEl('th', { text });
-		let carried = '';
-		bodyWrap.addEventListener('scroll', () => {
-			const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
-			if (shift === carried) return;
-			carried = shift;
-			headTable.style.transform = shift;
-		});
-		return bodyTable.createEl('tbody');
-	};
+	): HTMLElement =>
+		buildTableFrame(host, {
+			tableCls: 'snowflake-method-tracking-table',
+			columns: columns.map(
+				(column) => `snowflake-method-tracking-column-${column}`,
+			),
+			headers,
+		}).body;
 
 	/** The one filter over every section, matched the way the pane's is. */
 	const matches = (...texts: (string | undefined)[]): boolean => {
@@ -921,7 +905,7 @@ export function renderEntitiesPanel(
 						void bridge
 							.dialogueOccurrences(chapter.path)
 							.then((occurrences) => {
-								if (disposed) return;
+								if (loop.disposed) return;
 								openMentionModal(chapter.title, null, occurrences);
 							})
 							.catch(() => undefined);
@@ -1029,9 +1013,9 @@ export function renderEntitiesPanel(
 			// Null has three faces: still reading, a read that failed, and a
 			// vault with no project. Only the last may claim so.
 			stateText.setText(
-				loading
+				loop.loading
 					? t('mentionView.computing')
-					: failed
+					: loop.failed
 						? t('mentionView.loadFailed')
 						: t('mentionView.noProject'),
 			);
@@ -1048,41 +1032,22 @@ export function renderEntitiesPanel(
 		renderIgnores(reading.ignores);
 	};
 
+	const loop = refreshLoop<TrackingReading | null>({
+		read: () => bridge.tracking(),
+		onStart: () => {
+			if (reading === null) stateText.setText(t('mentionView.computing'));
+		},
+		onRead: (next) => {
+			reading = next;
+			paint();
+		},
+		onFail: () => {
+			if (reading === null) paint();
+			else stateText.setText(t('mentionView.loadFailed'));
+		},
+	});
 	const refresh = (): void => {
-		if (disposed) return;
-		if (loading) {
-			refreshAgain = true;
-			return;
-		}
-		loading = true;
-		if (reading === null) stateText.setText(t('mentionView.computing'));
-		void bridge
-			.tracking()
-			.then((next) => {
-				loading = false;
-				failed = false;
-				if (disposed) return;
-				reading = next;
-				paint();
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-				}
-			})
-			.catch(() => {
-				// A failed read may not wear the computing label forever, and
-				// a refresh queued behind it still deserves its turn.
-				loading = false;
-				failed = true;
-				if (disposed) return;
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-					return;
-				}
-				if (reading === null) paint();
-				else stateText.setText(t('mentionView.loadFailed'));
-			});
+		loop.refresh();
 	};
 
 	refresh();
@@ -1090,7 +1055,7 @@ export function renderEntitiesPanel(
 	return {
 		refresh,
 		dispose: (): void => {
-			disposed = true;
+			loop.dispose();
 			root.remove();
 		},
 	};

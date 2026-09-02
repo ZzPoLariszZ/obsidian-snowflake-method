@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	REVISION_CONTEXT_CHARS,
 	anchorRevision,
+	anchorSpot,
 	compareRevisionsAtOneSpot,
+	firstAtOrAfter,
 	captureRevision,
 	insertionPointHolds,
 	isRevision,
@@ -15,6 +17,7 @@ import {
 	resolvePassage,
 	revealSpan,
 	type Revision,
+	revisionKindFor,
 } from '../../src/domain';
 
 const BODY = 'The grey heron stood in the shallows, watching the water.';
@@ -27,6 +30,42 @@ const capture = (
 	body = BODY,
 ): Revision =>
 	captureRevision('50/one.md', body, kind, from, to, proposed, 'a note', 'rev-1', 7);
+
+describe('what a revision is, by what it proposes', () => {
+	it('a range proposing nothing is a deletion, and words bring it back', () => {
+		expect(revisionKindFor('replace', '')).toBe('delete');
+		expect(revisionKindFor('delete', 'again')).toBe('replace');
+		expect(revisionKindFor('replace', 'still')).toBe('replace');
+	});
+
+	it('an insertion stays an insertion whatever it proposes', () => {
+		expect(revisionKindFor('insert', '')).toBe('insert');
+		expect(revisionKindFor('insert', 'words')).toBe('insert');
+	});
+});
+
+describe('anchoring a spot that is not yet a revision', () => {
+	it('a draft moves with its words the way a saved revision does', () => {
+		// A draft carries what a revision carries -- the words under it and
+		// the text either side -- so a keystroke above the passage moves it
+		// rather than making it stale.
+		const draft = {
+			kind: 'replace' as const,
+			from: 4,
+			to: 14,
+			originalText: BODY.slice(4, 14),
+			...passageContext(BODY, 4, 14),
+		};
+		expect(anchorSpot(`x${BODY}`, draft)).toEqual({
+			state: 'moved',
+			from: 5,
+			to: 15,
+		});
+		expect(anchorSpot('A wholly different sentence.', draft)).toEqual({
+			state: 'conflict',
+		});
+	});
+});
 
 describe('capturing a revision', () => {
 	it('reads the covered text and its context off the body', () => {
@@ -200,6 +239,21 @@ describe('anchoring an insertion', () => {
 		const rev = capture('insert', 14, 14);
 		const pulledApart = `${BODY.slice(14)} ${BODY.slice(0, 14)}`;
 		expect(anchorRevision(pulledApart, rev)).toEqual({ state: 'conflict' });
+	});
+
+	it('sides found apart but in order keep the point to the text behind', () => {
+		// Words typed at the point, then the passage moved down the note in
+		// the same unsaved burst: neither side stands at the stored offset,
+		// but the side behind still ends before the side ahead begins, so the
+		// bar stays in front of the words typed at it -- the same answer the
+		// point gives when the offset has not moved.
+		const rev = capture('insert', 14, 14);
+		const typedThenMoved = `Early.\n\n${BODY.slice(0, 14)}, and then,${BODY.slice(14)}`;
+		expect(anchorRevision(typedThenMoved, rev)).toEqual({
+			state: 'moved',
+			from: 8 + 14,
+			to: 8 + 14,
+		});
 	});
 
 	it('both sides gone is a conflict', () => {
@@ -842,5 +896,33 @@ describe('the stretch a jump can flash', () => {
 
 	it('a note with nothing visible in it has nothing to show', () => {
 		expect(revealSpan('   \n\n  ', 3, 3)).toBeNull();
+	});
+});
+
+describe('the one search every projection makes', () => {
+	it('answers the first index at or after, and the length past the end', () => {
+		expect(firstAtOrAfter([2, 5, 9], 0)).toBe(0);
+		expect(firstAtOrAfter([2, 5, 9], 5)).toBe(1);
+		expect(firstAtOrAfter([2, 5, 9], 6)).toBe(2);
+		expect(firstAtOrAfter([2, 5, 9], 10)).toBe(3);
+		expect(firstAtOrAfter([], 4)).toBe(0);
+	});
+});
+
+describe('ordering by where the words stand', () => {
+	it('places a revision by its body where one is in hand, by the store where none is', () => {
+		// A stored 100 and a stored 200 in one chapter, the first's paragraph
+		// moved below the second's: the cards are drawn by where the words
+		// are, so the arrows on them must walk the same way.
+		const early = captureRevision('50/one.md', BODY, 'replace', 4, 14, 'x', '', 'rev-early', 7);
+		const late = captureRevision('50/one.md', BODY, 'replace', 21, 24, 'y', '', 'rev-late', 7);
+		const swapped = `${BODY.slice(15)} ${BODY.slice(0, 15)}`;
+		expect(swapped.indexOf('grey heron')).toBeGreaterThan(swapped.indexOf('stood'));
+		expect(
+			orderRevisions([early, late], ['50/one.md'], () => swapped).map((rev) => rev.id),
+		).toEqual(['rev-late', 'rev-early']);
+		expect(
+			orderRevisions([early, late], ['50/one.md'], () => null).map((rev) => rev.id),
+		).toEqual(['rev-early', 'rev-late']);
 	});
 });

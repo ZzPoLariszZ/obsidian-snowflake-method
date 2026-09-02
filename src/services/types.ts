@@ -345,6 +345,13 @@ export interface ProjectStructureIssue {
   canOpen: boolean;
   /** True only when the issue has a deterministic, content-preserving fix. */
   repairable: boolean;
+  /**
+   * Whether the issue is damage, or an offer the report lists and nothing
+   * else acts on. Set once where the issue is found, from its code, so every
+   * reader -- the health flag, the report, the reconciliation, a step's own
+   * warning -- asks the issue rather than a set of codes.
+   */
+  blocking: boolean;
 }
 
 /**

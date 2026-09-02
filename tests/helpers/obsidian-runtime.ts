@@ -55,6 +55,9 @@ export const editorLivePreviewField = StateField.define<boolean>({
 });
 export function setIcon(..._arguments: unknown[]): void {}
 export function setTooltip(..._arguments: unknown[]): void {}
+export class Notice {
+	constructor(..._arguments: unknown[]) {}
+}
 /** Enough of a Modal for classes to extend; tests never open one. */
 export class Modal {
 	constructor(..._arguments: unknown[]) {}

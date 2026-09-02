@@ -11,7 +11,7 @@
  * itself, because nothing was written down about the trouble.
  */
 
-import { visibleOffsets } from './analyzable-prose';
+import { firstAtOrAfter, visibleOffsets } from './analyzable-prose';
 import type { MentionMark, RevisionOccurrence } from './mentions';
 
 export const REVISION_KINDS = ['replace', 'insert', 'delete'] as const;
@@ -225,6 +225,17 @@ export function resolvePassage(
 }
 
 /**
+ * What a place in the note is proved by: a range by the words under it, a
+ * point by the words either side. A stored revision carries these, and so
+ * does a draft still being written, which is why the two are anchored by one
+ * function rather than by a rule and a copy of it.
+ */
+export type RevisionSpot = Pick<
+	Revision,
+	'kind' | 'from' | 'to' | 'originalText' | 'before' | 'after'
+>;
+
+/**
  * Where an insertion's point stands now. A range revision has its own text to
  * be recognised by; a point has nothing but the words on either side of it, so
  * the two sides are witnesses and EITHER of them is enough. Rewriting inside
@@ -234,12 +245,16 @@ export function resolvePassage(
  *
  * A point holds to the text behind it -- the same rule the page draws by -- so
  * words typed at the point itself find the bar still standing in front of them
- * rather than a conflict. Only two answers that disagree, or none at all, mean
- * the place is gone: the sides no longer meet anywhere, so no offset can be
- * called the spot the author meant.
+ * rather than a conflict. That rule is kept when the sides are found apart
+ * but still in order: whatever now stands between them was put in at the
+ * point, and the bar stays in front of it, exactly as it does when the same
+ * words are typed there with the offset unmoved. Only sides that have crossed
+ * -- the text ahead now standing before the text behind -- or none found at
+ * all mean the place is gone: the sides no longer meet anywhere, so no
+ * offset can be called the spot the author meant.
  */
-function anchorInsertion(body: string, rev: Revision): RevisionAnchor {
-	if (rev.before.length === 0 && rev.after.length === 0) {
+function anchorInsertion(body: string, spot: RevisionSpot): RevisionAnchor {
+	if (spot.before.length === 0 && spot.after.length === 0) {
 		// Captured in an empty note: the point exists only while the note stays
 		// empty, because nothing marks it once there are words -- and this must
 		// be asked first, or the checks below pass on nothing at all.
@@ -250,20 +265,20 @@ function anchorInsertion(body: string, rev: Revision): RevisionAnchor {
 	// At the stored offset, one side still standing means the point never
 	// moved: the other side is what changed, under the point rather than
 	// beneath it.
-	if (insertionPointHolds(body, rev.from, rev.before, rev.after)) {
-		return { state: 'anchored', from: rev.from, to: rev.from };
+	if (insertionPointHolds(body, spot.from, spot.before, spot.after)) {
+		return { state: 'anchored', from: spot.from, to: spot.from };
 	}
 	// Neither side stands there any more, so each is looked for on its own,
 	// with the opposite side as the tie-breaker between copies of it.
 	const behind =
-		rev.before.length > 0
-			? (resolvePassage(body, rev.before, '', rev.after)?.to ?? null)
+		spot.before.length > 0
+			? (resolvePassage(body, spot.before, '', spot.after)?.to ?? null)
 			: null;
 	const ahead =
-		rev.after.length > 0
-			? (resolvePassage(body, rev.after, rev.before, '')?.from ?? null)
+		spot.after.length > 0
+			? (resolvePassage(body, spot.after, spot.before, '')?.from ?? null)
 			: null;
-	if (behind !== null && ahead !== null && behind !== ahead) {
+	if (behind !== null && ahead !== null && behind > ahead) {
 		return { state: 'conflict' };
 	}
 	const point = behind ?? ahead;
@@ -272,20 +287,47 @@ function anchorInsertion(body: string, rev: Revision): RevisionAnchor {
 }
 
 /**
- * Where one revision stands against the body as it is now. Text still at its
+ * Where a place stands against the body as it is now. Text still at its
  * stored offsets is anchored; found whole in one other place, moved; found
  * nowhere, or in more places than the context can tell apart, conflict. An
  * insertion, having no text of its own, is anchored by its two sides in
  * `anchorInsertion`.
  */
-export function anchorRevision(body: string, rev: Revision): RevisionAnchor {
-	if (rev.kind === 'insert') return anchorInsertion(body, rev);
-	if (body.slice(rev.from, rev.to) === rev.originalText) {
-		return { state: 'anchored', from: rev.from, to: rev.to };
+export function anchorSpot(body: string, spot: RevisionSpot): RevisionAnchor {
+	if (spot.kind === 'insert') return anchorInsertion(body, spot);
+	if (body.slice(spot.from, spot.to) === spot.originalText) {
+		return { state: 'anchored', from: spot.from, to: spot.to };
 	}
-	const found = resolvePassage(body, rev.originalText, rev.before, rev.after);
+	const found = resolvePassage(
+		body,
+		spot.originalText,
+		spot.before,
+		spot.after,
+	);
 	if (found === null) return { state: 'conflict' };
 	return { state: 'moved', from: found.from, to: found.to };
+}
+
+/** Where one revision stands against the body as it is now: `anchorSpot`. */
+export function anchorRevision(body: string, rev: Revision): RevisionAnchor {
+	return anchorSpot(body, rev);
+}
+
+/**
+ * What a revision IS, read off what it proposes: a range proposing nothing is
+ * a deletion, and one given words again is a replacement -- the same
+ * revision seen at two moments rather than two things the author must choose
+ * between. An insertion has no text under it to fall back to and stays what
+ * it is. Stated once, because a draft being saved and a card being edited
+ * both ask, and the two answering differently would make one revision a
+ * deletion in the margin and a replacement in the table.
+ */
+export function revisionKindFor(
+	kind: RevisionKind,
+	proposed: string,
+): RevisionKind {
+	if (kind === 'insert') return kind;
+	return proposed.length === 0 ? 'delete' : 'replace';
 }
 
 /** The live revision another would overlap on this note, if any. */
@@ -320,21 +362,42 @@ export function overlapsLive(
  * Every revision in reading order: by the note it belongs to, as the
  * manuscript itself orders its notes, then by where in that note it begins.
  * A revision whose note the order does not name is left out -- there is
- * nowhere to take the reader. Stored offsets, not anchored ones: the notes
- * outside the loaded window have no live body to anchor against, and the
- * order has to be the same one wherever it is asked from.
+ * nowhere to take the reader.
+ *
+ * Where a body is in hand, the place is the one the words hold NOW; where
+ * none is -- a note outside the loaded window -- the stored offset stands in.
+ * The cards beside a note are drawn by where their words are, and the arrows
+ * on them walk this order, so the two are made from one reading wherever
+ * that reading exists.
  */
 export function orderRevisions(
 	revisions: readonly Revision[],
 	paths: readonly string[],
+	bodyOf: (path: string) => string | null = () => null,
 ): Revision[] {
 	const rank = new Map(paths.map((path, index) => [path, index]));
+	// Each note's body is read once, and each revision placed once, before
+	// the sort asks about pairs.
+	const bodies = new Map<string, string | null>();
+	const placeOf = (rev: Revision): number => {
+		if (!bodies.has(rev.path)) bodies.set(rev.path, bodyOf(rev.path));
+		const body = bodies.get(rev.path) ?? null;
+		if (body === null) return rev.from;
+		const anchor = anchorRevision(body, rev);
+		return anchor.state === 'conflict' ? rev.from : anchor.from;
+	};
+	const placed = new Map(
+		revisions
+			.filter((rev) => rank.has(rev.path))
+			.map((rev) => [rev.id, placeOf(rev)] as const),
+	);
 	return revisions
 		.filter((rev) => rank.has(rev.path))
 		.sort((left, right) => {
 			const byNote = (rank.get(left.path) ?? 0) - (rank.get(right.path) ?? 0);
 			if (byNote !== 0) return byNote;
-			if (left.from !== right.from) return left.from - right.from;
+			const at = (placed.get(left.id) ?? 0) - (placed.get(right.id) ?? 0);
+			if (at !== 0) return at;
 			return compareRevisionsAtOneSpot(left, right);
 		});
 }
@@ -367,13 +430,7 @@ function insertionCarrier(
 	shown: readonly number[],
 ): { from: number; to: number; side: 'before' | 'after' } | null {
 	// The first shown offset at or after the point.
-	let low = 0;
-	let high = shown.length;
-	while (low < high) {
-		const mid = Math.floor((low + high) / 2);
-		if ((shown[mid] ?? 0) < point) low = mid + 1;
-		else high = mid;
-	}
+	const low = firstAtOrAfter(shown, point);
 	const at = shown[low];
 	// Touching a word: the bar stands before it, with nothing in between.
 	if (at === point) return wholeCharacterAt(body, point, 'before');
@@ -519,6 +576,7 @@ export function planRevisionMarks(
 					? 'snowflake-method-revision is-delete'
 					: 'snowflake-method-revision is-replace',
 			occurrence,
+			silent: true,
 		});
 	}
 	// Only the page borrows a character, and only when a point asks for one:
@@ -536,6 +594,7 @@ export function planRevisionMarks(
 				to: occurrence.from,
 				classes: 'snowflake-method-revision is-insertion is-point',
 				occurrence,
+				silent: true,
 			});
 			continue;
 		}
@@ -568,6 +627,7 @@ export function planRevisionMarks(
 			to: carrier.to,
 			classes: `snowflake-method-revision is-insertion${side}`,
 			occurrence,
+			silent: true,
 		});
 	}
 	plan.sort((left, right) => left.from - right.from || left.to - right.to);

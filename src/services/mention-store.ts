@@ -5,6 +5,12 @@ import {
 	type SensitiveHit,
 } from "../domain";
 import type { VaultRepository } from "../repository";
+import {
+	createOrUpdatePlainFile,
+	fileStamp,
+	parseJsonObject,
+	quarantineJsonFile,
+} from "./json-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 
 /**
@@ -200,7 +206,7 @@ export class MentionStore {
 			this.ignoreMemo.delete(project.rootPath);
 			return [];
 		}
-		const stamp = `${String(file.stat.mtime)}:${String(file.stat.size)}`;
+		const stamp = fileStamp(file);
 		const kept = this.ignoreMemo.get(project.rootPath);
 		if (kept !== undefined && kept.stamp === stamp) return kept.ignores;
 		const content = await this.deps.repository.readPlainFile(path);
@@ -309,16 +315,11 @@ export class MentionStore {
 	 * update instead of failing the flush.
 	 */
 	private async writeJsonFile(path: string, payload: unknown): Promise<void> {
-		const serialized = `${JSON.stringify(payload, null, "\t")}\n`;
-		if (this.deps.repository.getFile(path) === null) {
-			try {
-				await this.deps.repository.createPlainFile(path, serialized);
-				return;
-			} catch (error) {
-				if (this.deps.repository.getFile(path) === null) throw error;
-			}
-		}
-		await this.deps.repository.updatePlainFile(path, () => serialized);
+		await createOrUpdatePlainFile(
+			this.deps.repository,
+			path,
+			`${JSON.stringify(payload, null, "\t")}\n`,
+		);
 	}
 
 	/**
@@ -341,7 +342,13 @@ export class MentionStore {
 		if (this.deps.repository.getFile(path) === null) {
 			const next = mutate([]);
 			if (next === null) return false;
-			await this.deps.repository.createPlainFile(path, serialize(next));
+			// Two views can race the first-ever create; the loser writes over
+			// what the winner made rather than failing the author's click.
+			await createOrUpdatePlainFile(
+				this.deps.repository,
+				path,
+				serialize(next),
+			);
 			return true;
 		}
 		let corrupt = false;
@@ -366,11 +373,11 @@ export class MentionStore {
 	}
 
 	private async quarantine(path: string): Promise<void> {
-		const aside = path.replace(
-			/\.json$/u,
-			`.corrupted-${String(this.deps.now())}.json`,
+		const aside = await quarantineJsonFile(
+			this.deps.repository,
+			this.deps.now,
+			path,
 		);
-		await this.deps.repository.renameFile(path, aside);
 		this.deps.onCorrupt?.(aside);
 	}
 }
@@ -545,17 +552,4 @@ function parseAnalysisFile(content: string | null): AnalysisFile | null {
 		tokensFingerprint: parsed.tokensFingerprint as string,
 		notes,
 	};
-}
-
-function parseJsonObject(
-	content: string | null,
-): Record<string, unknown> | null {
-	if (content === null) return null;
-	try {
-		const parsed: unknown = JSON.parse(content);
-		if (typeof parsed !== "object" || parsed === null) return null;
-		return parsed as Record<string, unknown>;
-	} catch {
-		return null;
-	}
 }

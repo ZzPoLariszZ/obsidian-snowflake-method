@@ -1,4 +1,4 @@
-import { normalizePath, type TFile } from "obsidian";
+import { normalizePath } from "obsidian";
 
 import {
   FRONTMATTER_KEYS,
@@ -21,6 +21,7 @@ import {
   type ManagedEntryRecord,
   type VaultRepository,
 } from "../repository";
+import { fileStamp } from "./json-store";
 import { manuscriptSegmentTemplate } from "../templates";
 import {
   PROJECT_PATH_LAYOUTS,
@@ -126,6 +127,15 @@ export class ManuscriptService {
     | null = null;
 
   /**
+   * Told after a note's body reaches the file, with the body written. The
+   * revisions listen: their stored offsets are brought level with the note
+   * here, once, for every writer alike -- the stream's saves, an accepted
+   * proposal, a link conversion, a split's remainder -- rather than by each
+   * caller remembering to say so after its own write.
+   */
+  onSegmentWritten: ((path: string, body: string) => void) | null = null;
+
+  /**
    * Every note of the manuscript, in the order it reads in.
    *
    * A manuscript is what is in the manuscript folder, at any depth, and nothing
@@ -194,7 +204,7 @@ export class ManuscriptService {
       title: fileStem(record.path),
       body: record.body,
       revision: fingerprint(record.content),
-      stamp: stampOf(record.file),
+      stamp: fileStamp(record.file),
       readOnly: record.readOnly,
     };
   }
@@ -209,7 +219,7 @@ export class ManuscriptService {
    */
   segmentStamp(path: string): string | null {
     const file = this.repository.getFile(path);
-    return file === null ? null : stampOf(file);
+    return file === null ? null : fileStamp(file);
   }
 
   /**
@@ -225,6 +235,7 @@ export class ManuscriptService {
     await this.repository.replaceBody(path, body, expectedRevision, {
       userInput: true,
     });
+    this.onSegmentWritten?.(normalizePath(path), body);
   }
 
   async appendSegment(
@@ -304,6 +315,9 @@ export class ManuscriptService {
     await this.repository.replaceBody(source.path, before, source.revision, {
       userInput: true,
     });
+    // The note that was cut keeps its head: what stays is levelled against
+    // what it now holds, and what leaves is carried below.
+    this.onSegmentWritten?.(source.path, before);
     // Everything from the cut down now lives in the new note, its offsets
     // shorter by the cut plus whatever blank lines the seam swallowed.
     const tail = source.body.slice(cut);
@@ -558,9 +572,6 @@ function resolve(
   });
 }
 
-function stampOf(file: TFile): string {
-  return `${file.stat.mtime}:${file.stat.size}`;
-}
 
 function asStored(record: ManagedEntryRecord): StoredSegment {
   return {

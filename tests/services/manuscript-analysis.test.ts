@@ -142,6 +142,20 @@ describe("ManuscriptAnalysisService", () => {
 		expect((row?.dialogueCounted ?? 0) / (row?.counted ?? 1)).toBe(0.5);
 	});
 
+	it("never shows the dialogue as more than the whole", async () => {
+		// Read in words, one word can reach across a quotation mark: to the
+		// whole this is one word, to the two lines of speech read as pieces
+		// it is two. A share above the whole is not a share of anything.
+		const path = await chapter("One", '"Hi","Bye"');
+		const { perNote, totals } = await service.analysis.statistics(
+			project,
+			config({ dialogueStyles: styles('""'), sensitiveTerms: [] }),
+		);
+		const row = perNote.find((kept) => kept.path === path);
+		expect(row?.dialogueCounted).toBeLessThanOrEqual(row?.counted ?? 0);
+		expect(totals.dialogueCounted).toBeLessThanOrEqual(totals.counted);
+	});
+
 	it("folds sensitive terms with zero-count rows kept", async () => {
 		const path = await chapter("One", "Damn the fog. He said damn.");
 		const rows = await service.analysis.sensitiveAggregate(

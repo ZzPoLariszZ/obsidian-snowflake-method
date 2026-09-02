@@ -119,6 +119,23 @@ export function visibleOffsets(
 
 const VISIBLE_GAP = /\s/u;
 
+/**
+ * The index of the first entry of a sorted array at or after `at`, which is
+ * the array's length when none is. The one search every projection makes --
+ * a body offset into the visible sequence, a visible index back -- stated
+ * here so the past-the-end answer is the same wherever it is asked.
+ */
+export function firstAtOrAfter(sorted: readonly number[], at: number): number {
+	let low = 0;
+	let high = sorted.length;
+	while (low < high) {
+		const mid = Math.floor((low + high) / 2);
+		if ((sorted[mid] ?? 0) < at) low = mid + 1;
+		else high = mid;
+	}
+	return low;
+}
+
 function computeAnalyzableRanges(
 	body: string,
 	excludeRanges: readonly CountableRange[],

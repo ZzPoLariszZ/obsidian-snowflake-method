@@ -98,8 +98,9 @@ describe('shaping the revision table', () => {
 		expect(rows.map((row) => row.status)).toEqual(['conflict', 'conflict']);
 		// The stored offsets stand in for a spot that cannot be derived.
 		expect(rows[0]).toMatchObject({ from: 4, to: 14, title: 'Chapter 1' });
-		// A chapter the manuscript never listed still names itself.
-		expect(rows[1]?.title).toBe('Chapter 2.md');
+		// A chapter the manuscript never listed still names itself, as every
+		// other table names a note: by its stem, not its file name.
+		expect(rows[1]?.title).toBe('Chapter 2');
 	});
 
 	it('an edited-inside range shows as a conflict beside its live peers', () => {

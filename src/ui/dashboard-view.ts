@@ -118,7 +118,8 @@ import {
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
-import { VirtualTable } from './virtual-table';
+import { KeptPanel } from './kept-panel';
+import { buildTableFrame, VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
 	CreatedProject,
@@ -317,21 +318,15 @@ export class SnowflakeDashboardView extends ItemView {
 		worldbuilding: false,
 		creationTools: false,
 	};
-	/** Lets go of a mounted session panel before its container is emptied. */
-	private sessionPanelDispose: (() => void) | null = null;
 	/**
-	 * The element the session panel is mounted in, kept across refreshes: the
-	 * panel keeps itself current through its own subscription, so a dashboard
-	 * refresh rebuilds the frame around it and hands the same panel back
-	 * rather than refetching a year of readings on every vault save.
+	 * The session panel, kept across refreshes: it keeps itself current
+	 * through its own subscription, so a dashboard refresh rebuilds the frame
+	 * around it and hands the same panel back rather than refetching a year
+	 * of readings on every vault save.
 	 */
-	private sessionPanelHost: HTMLElement | null = null;
-	/** What the mounted panel was built for: its project and its language. */
-	private sessionPanelKey: string | null = null;
+	private readonly sessionPanel = new KeptPanel<{ dispose(): void }>();
 	/** The prose panel, kept across rebuilds the way the session panel is. */
-	private prosePanel: ProsePanelHandle | null = null;
-	private prosePanelHost: HTMLElement | null = null;
-	private prosePanelKey: string | null = null;
+	private readonly prosePanel = new KeptPanel<ProsePanelHandle>();
 	/** The prose filters outlive the panel: leaving the tab disposes it, and
 	 *  these hand the standing choices back to the next one. */
 	private readonly proseFilters: ProseFilterMemory = {
@@ -340,13 +335,9 @@ export class SnowflakeDashboardView extends ItemView {
 		lengthMin: null,
 		lengthMax: null,
 	};
-	private entitiesPanel: EntitiesPanelHandle | null = null;
-	private entitiesPanelHost: HTMLElement | null = null;
-	private entitiesPanelKey: string | null = null;
+	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
 	/** The revision table, kept across rebuilds the way its siblings are. */
-	private revisionPanel: RevisionPanelHandle | null = null;
-	private revisionPanelHost: HTMLElement | null = null;
-	private revisionPanelKey: string | null = null;
+	private readonly revisionPanel = new KeptPanel<RevisionPanelHandle>();
 	/** Which tracking folds stand OPEN -- everything else rests closed --
 	 *  outliving the panel like the filters do: a tab switch hands the
 	 *  folds back as they were left. */
@@ -608,44 +599,12 @@ export class SnowflakeDashboardView extends ItemView {
 		this.opened = false;
 		this.clearCertificateCelebration();
 		this.releaseMemberControls();
-		this.disposeSessionPanel();
-		this.disposeProsePanel();
-		this.disposeEntitiesPanel();
-		this.disposeRevisionPanel();
+		this.sessionPanel.dispose();
+		this.prosePanel.dispose();
+		this.entitiesPanel.dispose();
+		this.revisionPanel.dispose();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
-	}
-
-	private disposeSessionPanel(): void {
-		this.sessionPanelDispose?.();
-		this.sessionPanelDispose = null;
-		this.sessionPanelHost?.remove();
-		this.sessionPanelHost = null;
-		this.sessionPanelKey = null;
-	}
-
-	private disposeProsePanel(): void {
-		this.prosePanel?.dispose();
-		this.prosePanel = null;
-		this.prosePanelHost?.remove();
-		this.prosePanelHost = null;
-		this.prosePanelKey = null;
-	}
-
-	private disposeEntitiesPanel(): void {
-		this.entitiesPanel?.dispose();
-		this.entitiesPanel = null;
-		this.entitiesPanelHost?.remove();
-		this.entitiesPanelHost = null;
-		this.entitiesPanelKey = null;
-	}
-
-	private disposeRevisionPanel(): void {
-		this.revisionPanel?.dispose();
-		this.revisionPanel = null;
-		this.revisionPanelHost?.remove();
-		this.revisionPanelHost = null;
-		this.revisionPanelKey = null;
 	}
 
 	/**
@@ -654,16 +613,53 @@ export class SnowflakeDashboardView extends ItemView {
 	 * that exists; the others name what the strip is being built for.
 	 */
 	private renderStatisticsPane(layout: HTMLElement): void {
+		this.renderTabbedPane(layout, {
+			kind: 'statistics',
+			tabs: STATISTICS_TABS,
+			label: (tab) => this.t(`statistics.tab.${tab}`),
+			current: () => this.statisticsTab,
+			choose: (tab) => {
+				this.statisticsTab = tab;
+				// Leaving a face lets its panel go; returning to it, or
+				// redrawing the frame around it, hands the same panel back.
+				if (tab !== 'sessions') this.sessionPanel.dispose();
+				if (tab !== 'prose') this.prosePanel.dispose();
+				if (tab !== 'entities') this.entitiesPanel.dispose();
+			},
+			body: (body, tab) => {
+				this.renderStatisticsBody(body, tab);
+			},
+		});
+	}
+
+	/**
+	 * One pane of tabs: a titled frame, a strip of faces, and a field the
+	 * chosen face fills. Changing face is not changing project: the pane
+	 * redraws the field it already has rather than asking for the whole model
+	 * again. Shared by every pane built this way, so the strip is one strip.
+	 */
+	private renderTabbedPane<T extends string>(
+		layout: HTMLElement,
+		pane: {
+			kind: 'statistics' | 'tasks';
+			tabs: readonly T[];
+			label: (tab: T) => string;
+			current: () => T;
+			/** Remembers the face chosen and lets the faces left go. */
+			choose: (tab: T) => void;
+			body: (body: HTMLElement, tab: T) => void;
+		},
+	): void {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
 		const panel = main.createDiv({
 			cls: 'snowflake-method-panel snowflake-method-statistics-pane',
 		});
 		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
 		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
-		title.createEl('h2', { text: this.t('dashboard.statistics') });
+		title.createEl('h2', { text: this.t(`dashboard.${pane.kind}`) });
 		panel.createEl('p', {
 			cls: 'snowflake-method-step-description',
-			text: this.t('dashboard.statistics.description'),
+			text: this.t(`dashboard.${pane.kind}.description`),
 		});
 		const strip = panel.createDiv({
 			cls: 'snowflake-method-tabs',
@@ -677,28 +673,21 @@ export class SnowflakeDashboardView extends ItemView {
 		// bar can stand in the room between this frame and the pane's edge
 		// rather than on top of the reading.
 		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
-		const buttons = new Map<StatisticsTab, HTMLElement>();
-		// Changing face is not changing project: the pane redraws the frame it
-		// already has rather than asking for the whole model again.
-		const show = (chosen: StatisticsTab): void => {
-			this.statisticsTab = chosen;
+		const buttons = new Map<T, HTMLElement>();
+		const show = (chosen: T): void => {
+			pane.choose(chosen);
 			for (const [tab, button] of buttons) {
 				const active = tab === chosen;
 				button.toggleClass('is-active', active);
 				button.setAttribute('aria-selected', active ? 'true' : 'false');
 			}
-			// Leaving a face lets its panel go; returning to it, or redrawing
-			// the frame around it, hands the same panel back.
-			if (chosen !== 'sessions') this.disposeSessionPanel();
-			if (chosen !== 'prose') this.disposeProsePanel();
-			if (chosen !== 'entities') this.disposeEntitiesPanel();
 			body.empty();
-			this.renderStatisticsBody(body, chosen);
+			pane.body(body, chosen);
 		};
-		for (const tab of STATISTICS_TABS) {
+		for (const tab of pane.tabs) {
 			const button = strip.createEl('button', {
 				cls: 'snowflake-method-tab',
-				text: this.t(`statistics.tab.${tab}`),
+				text: pane.label(tab),
 				attr: { type: 'button', role: 'tab' },
 			});
 			button.addEventListener('click', () => {
@@ -706,92 +695,75 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			buttons.set(tab, button);
 		}
-		show(this.statisticsTab);
-		this.renderedPaneKey = dashboardPaneKey({ kind: 'statistics' });
+		show(pane.current());
+		this.renderedPaneKey = dashboardPaneKey({ kind: pane.kind });
 	}
 
 	/** What one face of the statistics pane puts inside the frame. */
 	private renderStatisticsBody(body: HTMLElement, tab: StatisticsTab): void {
+		// What each panel is built for: its project and its language. The
+		// same again hands the mounted panel back into the rebuilt frame.
+		const key = this.panelKey();
 		if (tab === 'sessions') {
-			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
-			if (
-				this.sessionPanelDispose !== null &&
-				this.sessionPanelHost !== null &&
-				this.sessionPanelKey === key
-			) {
-				// The same project in the same language: the mounted panel is
-				// already current -- it patches itself off the session's own
-				// events -- so the rebuilt frame takes it back as it stands.
-				body.appendChild(this.sessionPanelHost);
-				return;
-			}
-			this.disposeSessionPanel();
+			// The mounted panel is already current -- it patches itself off
+			// the session's own events -- so it is taken back as it stands.
+			if (this.sessionPanel.reuse(body, key) !== null) return;
 			// This pane belongs to a project: it reads that project's day and
 			// speaks its language, whatever else is open beside it.
 			const host = body.createDiv();
-			this.sessionPanelHost = host;
-			this.sessionPanelKey = key;
-			this.sessionPanelDispose = renderSessionPanel(
-				host,
-				this.host.writingSessions({
-					projectPath: this.projectPath,
-					locale: this.projectLocale,
-				}),
-			);
+			this.sessionPanel.keep(host, key, {
+				dispose: renderSessionPanel(
+					host,
+					this.host.writingSessions({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+				),
+			});
 			return;
 		}
 		if (tab === 'prose') {
-			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
-			if (
-				this.prosePanel !== null &&
-				this.prosePanelHost !== null &&
-				this.prosePanelKey === key
-			) {
-				// The same project again: the mounted panel keeps its reading
-				// and the handback refresh costs only stamp checks.
-				body.appendChild(this.prosePanelHost);
-				this.prosePanel.refresh();
+			// The mounted panel keeps its reading, and the handback refresh
+			// costs only stamp checks.
+			const kept = this.prosePanel.reuse(body, key);
+			if (kept !== null) {
+				kept.refresh();
 				return;
 			}
-			this.disposeProsePanel();
 			const host = body.createDiv();
-			this.prosePanelHost = host;
-			this.prosePanelKey = key;
-			this.prosePanel = renderProsePanel(
+			this.prosePanel.keep(
 				host,
-				this.host.proseStatistics({
-					projectPath: this.projectPath,
-					locale: this.projectLocale,
-				}),
-				this.proseFilters,
+				key,
+				renderProsePanel(
+					host,
+					this.host.proseStatistics({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					this.proseFilters,
+				),
 			);
 			return;
 		}
 		if (tab === 'entities') {
-			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
-			if (
-				this.entitiesPanel !== null &&
-				this.entitiesPanelHost !== null &&
-				this.entitiesPanelKey === key
-			) {
-				// The same project again: the mounted panel keeps its reading
-				// and the handback refresh costs only stamp checks.
-				body.appendChild(this.entitiesPanelHost);
-				this.entitiesPanel.refresh();
+			const kept = this.entitiesPanel.reuse(body, key);
+			if (kept !== null) {
+				kept.refresh();
 				return;
 			}
-			this.disposeEntitiesPanel();
 			const host = body.createDiv();
-			this.entitiesPanelHost = host;
-			this.entitiesPanelKey = key;
-			this.entitiesPanel = renderEntitiesPanel(
-				this.app,
+			this.entitiesPanel.keep(
 				host,
-				this.host.entityTracking({
-					projectPath: this.projectPath,
-					locale: this.projectLocale,
-				}),
-				this.trackingOpen,
+				key,
+				renderEntitiesPanel(
+					this.app,
+					host,
+					this.host.entityTracking({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					this.trackingOpen,
+				),
 			);
 			return;
 		}
@@ -807,83 +779,52 @@ export class SnowflakeDashboardView extends ItemView {
 	 * what the strip is being built for.
 	 */
 	private renderTasksPane(layout: HTMLElement): void {
-		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
-		const panel = main.createDiv({
-			cls: 'snowflake-method-panel snowflake-method-statistics-pane',
+		this.renderTabbedPane(layout, {
+			kind: 'tasks',
+			tabs: TASKS_TABS,
+			label: (tab) => this.t(`tasks.tab.${tab}`),
+			current: () => this.tasksTab,
+			choose: (tab) => {
+				this.tasksTab = tab;
+				if (tab !== 'revision') this.revisionPanel.dispose();
+			},
+			body: (body, tab) => {
+				this.renderTasksBody(body, tab);
+			},
 		});
-		const header = panel.createDiv({ cls: 'snowflake-method-panel-header' });
-		const title = header.createDiv({ cls: 'snowflake-method-panel-title' });
-		title.createEl('h2', { text: this.t('dashboard.tasks') });
-		panel.createEl('p', {
-			cls: 'snowflake-method-step-description',
-			text: this.t('dashboard.tasks.description'),
-		});
-		const strip = panel.createDiv({
-			cls: 'snowflake-method-tabs',
-			attr: { role: 'tablist' },
-		});
-		const field = panel.createDiv({
-			cls: 'snowflake-method-tab-panel',
-			attr: { role: 'tabpanel' },
-		});
-		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
-		const buttons = new Map<TasksTab, HTMLElement>();
-		const show = (chosen: TasksTab): void => {
-			this.tasksTab = chosen;
-			for (const [tab, button] of buttons) {
-				const active = tab === chosen;
-				button.toggleClass('is-active', active);
-				button.setAttribute('aria-selected', active ? 'true' : 'false');
-			}
-			if (chosen !== 'revision') this.disposeRevisionPanel();
-			body.empty();
-			this.renderTasksBody(body, chosen);
-		};
-		for (const tab of TASKS_TABS) {
-			const button = strip.createEl('button', {
-				cls: 'snowflake-method-tab',
-				text: this.t(`tasks.tab.${tab}`),
-				attr: { type: 'button', role: 'tab' },
-			});
-			button.addEventListener('click', () => {
-				show(tab);
-			});
-			buttons.set(tab, button);
-		}
-		show(this.tasksTab);
-		this.renderedPaneKey = dashboardPaneKey({ kind: 'tasks' });
+	}
+
+	/** What a kept panel is built for: its project and its language. */
+	private panelKey(): string {
+		return `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
 	}
 
 	/** What one face of the task management pane puts inside the frame. */
 	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
 		if (tab === 'revision') {
-			const key = `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
-			if (
-				this.revisionPanel !== null &&
-				this.revisionPanelHost !== null &&
-				this.revisionPanelKey === key
-			) {
-				// The same project again: the mounted panel keeps its reading
-				// and the handback refresh re-anchors against fresh stamps.
-				body.appendChild(this.revisionPanelHost);
-				this.revisionPanel.refresh();
+			// The mounted panel keeps its reading, and the handback refresh
+			// re-anchors against fresh stamps.
+			const kept = this.revisionPanel.reuse(body, this.panelKey());
+			if (kept !== null) {
+				kept.refresh();
 				return;
 			}
-			this.disposeRevisionPanel();
 			// Named, because the panel inside it is one table filling the face:
 			// the host carries the face's height down to it, and the table's
 			// body becomes a scrollport that draws only the rows it shows.
 			const host = body.createDiv({
 				cls: 'snowflake-method-revision-panel-host',
 			});
-			this.revisionPanelHost = host;
-			this.revisionPanelKey = key;
-			this.revisionPanel = renderRevisionPanel(
+			this.revisionPanel.keep(
 				host,
-				this.host.revisionTable({
-					projectPath: this.projectPath,
-					locale: this.projectLocale,
-				}),
+				this.panelKey(),
+				renderRevisionPanel(
+					host,
+					this.host.revisionTable({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+				),
 			);
 			return;
 		}
@@ -4301,11 +4242,11 @@ export class SnowflakeDashboardView extends ItemView {
 		// -- except on the way back to the statistics pane, whose panel is
 		// carried across the rebuild rather than torn down and refetched.
 		if (this.selectedPane.kind !== 'statistics') {
-			this.disposeSessionPanel();
-			this.disposeProsePanel();
-			this.disposeEntitiesPanel();
+			this.sessionPanel.dispose();
+			this.prosePanel.dispose();
+			this.entitiesPanel.dispose();
 		}
-		if (this.selectedPane.kind !== 'tasks') this.disposeRevisionPanel();
+		if (this.selectedPane.kind !== 'tasks') this.revisionPanel.dispose();
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
 			return;
@@ -4918,8 +4859,9 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		path: string,
 	): string[] {
+		// Damage only: an offer the report lists must not light a member red.
 		return model.structureIssues
-			.filter((issue) => issue.path === path)
+			.filter((issue) => issue.blocking && issue.path === path)
 			.map((issue) => issue.message);
 	}
 
@@ -5973,33 +5915,14 @@ export class SnowflakeDashboardView extends ItemView {
 		const shown = this.host.showsTableActionsColumn()
 			? [...headers, this.t('table.actions')]
 			: headers;
-		const wrap = panel.createDiv({ cls: 'snowflake-method-table-wrap' });
-		const headWrap = wrap.createDiv({ cls: 'snowflake-method-table-head' });
-		const tableClasses = `snowflake-method-table ${tableCls}${
-			this.host.showsTableActionsColumn() ? ' has-actions-column' : ''
-		}`;
-		const headTable = headWrap.createEl('table', { cls: tableClasses });
-		const bodyWrap = wrap.createDiv({ cls: 'snowflake-method-table-body' });
-		const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
-		for (const table of [headTable, bodyTable]) {
-			const columns = table.createEl('colgroup');
-			for (const cls of columnClasses) {
-				columns.createEl('col', { cls });
-			}
-		}
-		const headerRow = headTable.createEl('thead').createEl('tr');
-		for (const text of shown) headerRow.createEl('th', { text });
-		// The header never scrolls itself (the stylesheet says why): the
-		// body's scroll carries the header table sideways by a transform,
-		// which reaches the far edge in every scrollbar mode.
-		let carried = '';
-		bodyWrap.addEventListener('scroll', () => {
-			const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
-			if (shift === carried) return;
-			carried = shift;
-			headTable.style.transform = shift;
+		const { bodyWrap, body } = buildTableFrame(panel, {
+			tableCls: `${tableCls}${
+				this.host.showsTableActionsColumn() ? ' has-actions-column' : ''
+			}`,
+			columns: columnClasses,
+			headers: shown,
 		});
-		return { bodyWrap, body: bodyTable.createEl('tbody') };
+		return { bodyWrap, body };
 	}
 
 	private renderCharacterRow(
@@ -7237,7 +7160,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// Whatever the last render mounted must let go here too: an error
 		// screen that only detached the panel would leave its subscription
 		// ticking a ghost for as long as the retry button stands.
-		this.disposeSessionPanel();
+		this.sessionPanel.dispose();
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

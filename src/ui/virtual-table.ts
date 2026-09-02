@@ -288,3 +288,65 @@ export class VirtualTable {
 		return true;
 	}
 }
+
+/** The pieces of a split-header table frame a caller fills and scrolls. */
+export interface TableFrame {
+	/** The whole frame, for hiding and showing. */
+	wrap: HTMLElement;
+	headTable: HTMLElement;
+	/** The scroller the rows live in: what a virtual table is given. */
+	bodyWrap: HTMLElement;
+	/** The body the rows are drawn into. */
+	body: HTMLElement;
+}
+
+/**
+ * The split frame every table here stands in: one wrap, a header strip the
+ * body's scroll carries sideways by a transform (the table-head styles say
+ * why it must never scroll itself), and one colgroup worn twice so the two
+ * halves agree on their columns. Stated once, because the stylesheet keys on
+ * these class names and the carry idiom alike, and four frames laid by hand
+ * were four places for either to drift.
+ */
+export function buildTableFrame(
+	host: HTMLElement,
+	options: {
+		/** Classes on the wrap beside the frame's own. */
+		wrapCls?: string;
+		/** Classes both tables wear. */
+		tableCls: string;
+		/** One column class per column, in order. */
+		columns: readonly string[];
+		/** One header per column: its text, and any class of its own. */
+		headers: readonly (string | { text: string; cls?: string })[];
+	},
+): TableFrame {
+	const wrap = host.createDiv({
+		cls: `snowflake-method-table-wrap${
+			options.wrapCls === undefined ? '' : ` ${options.wrapCls}`
+		}`,
+	});
+	const headWrap = wrap.createDiv({ cls: 'snowflake-method-table-head' });
+	const bodyWrap = wrap.createDiv({ cls: 'snowflake-method-table-body' });
+	const tableCls = `snowflake-method-table ${options.tableCls}`;
+	const headTable = headWrap.createEl('table', { cls: tableCls });
+	const bodyTable = bodyWrap.createEl('table', { cls: tableCls });
+	for (const table of [headTable, bodyTable]) {
+		const cols = table.createEl('colgroup');
+		for (const cls of options.columns) cols.createEl('col', { cls });
+	}
+	const headRow = headTable.createEl('thead').createEl('tr');
+	for (const header of options.headers) {
+		const { text, cls } =
+			typeof header === 'string' ? { text: header, cls: undefined } : header;
+		headRow.createEl('th', { text, ...(cls === undefined ? {} : { cls }) });
+	}
+	let carried = '';
+	bodyWrap.addEventListener('scroll', () => {
+		const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
+		if (shift === carried) return;
+		carried = shift;
+		headTable.style.transform = shift;
+	});
+	return { wrap, headTable, bodyWrap, body: bodyTable.createEl('tbody') };
+}

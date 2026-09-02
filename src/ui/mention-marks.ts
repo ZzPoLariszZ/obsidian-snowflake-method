@@ -22,6 +22,7 @@
 import {
 	type CountableRange,
 	type MentionMark,
+	firstAtOrAfter,
 	visibleOffsets,
 } from '../domain';
 
@@ -58,16 +59,7 @@ export function projectMentionMarks(
 	// character chosen there is one this can always draw.
 	const sourceIndexOf = visibleOffsets(body, excludeRanges);
 	// The first visible character at or after a source position.
-	const indexAt = (at: number): number => {
-		let low = 0;
-		let high = sourceIndexOf.length;
-		while (low < high) {
-			const mid = Math.floor((low + high) / 2);
-			if ((sourceIndexOf[mid] ?? 0) < at) low = mid + 1;
-			else high = mid;
-		}
-		return low;
-	};
+	const indexAt = (at: number): number => firstAtOrAfter(sourceIndexOf, at);
 	const spans: RenderedMentionSpan[] = [];
 	marks.forEach((mark, index) => {
 		const from = indexAt(mark.from);

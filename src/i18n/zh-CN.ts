@@ -1318,7 +1318,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'manuscript.openNote': '单独打开这篇笔记',
 	'manuscript.copySelection': '复制',
 	'manuscript.revision.create': '新建修订',
-	'manuscript.revision.ambiguous': '这段文字出现在多处。请点击进入正文后再选择。',
 	'manuscript.revision.emptyProposed': '插入修订需要建议文本。',
 	'manuscript.revision.overlap': '该位置已有另一条修订。',
 	'manuscript.revision.newerSchema': '这些修订由更新版本的插件写入。请更新插件后再读取。',

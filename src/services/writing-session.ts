@@ -59,6 +59,7 @@ import {
 	parseMarkdownFrontmatter,
 	type VaultRepository,
 } from "../repository";
+import { fileStamp, quarantineJsonFile } from "./json-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 import type { NoteCountOptions, WritingCountService } from "./writing-count";
 
@@ -1815,7 +1816,7 @@ export class WritingSessionService {
 		file: { path: string; stat: { mtime: number; size: number } },
 		parse: (content: string | null) => T | null,
 	): Promise<T | null> {
-		const stamp = `${String(file.stat.mtime)}:${String(file.stat.size)}`;
+		const stamp = fileStamp(file);
 		const kept = memo.get(file.path);
 		if (kept !== undefined && kept.stamp === stamp) return kept.file;
 		const parsed = parse(await this.deps.repository.readPlainFile(file.path));
@@ -1955,11 +1956,11 @@ export class WritingSessionService {
 			return serialize(build.merge(parsed));
 		});
 		if (!corrupt) return;
-		const aside = path.replace(
-			/\.json$/u,
-			`.corrupted-${String(this.now())}.json`,
+		const aside = await quarantineJsonFile(
+			this.deps.repository,
+			this.now,
+			path,
 		);
-		await this.deps.repository.renameFile(path, aside);
 		await this.deps.repository.createPlainFile(path, serialize(build.fresh()));
 		this.emit({ kind: "corrupt-file-preserved", path: aside });
 	}

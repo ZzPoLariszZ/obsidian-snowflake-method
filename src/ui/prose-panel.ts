@@ -34,7 +34,8 @@ import {
 	readingMinutes,
 	type ReadingSpeeds,
 } from './prose-rows';
-import { VirtualTable } from './virtual-table';
+import { refreshLoop } from './refresh-loop';
+import { VirtualTable, buildTableFrame } from './virtual-table';
 
 export interface ProsePanelBridge {
 	t: Translate;
@@ -91,10 +92,6 @@ export function renderProsePanel(
 ): ProsePanelHandle {
 	const t = bridge.t;
 	const root = container.createDiv({ cls: 'snowflake-method-prose-panel' });
-	let disposed = false;
-	let loading = false;
-	let failed = false;
-	let refreshAgain = false;
 	let statistics: ManuscriptProseStatistics | null = null;
 	let entries: ManuscriptProseRow[] = [];
 	let chapterQuery = '';
@@ -269,37 +266,20 @@ export function renderProsePanel(
 		}
 		openLengthFilter(filterButton);
 	});
-	// The dashboard's own table frame, laid by hand the way `buildTableFrame`
-	// lays it: one wrap, a header strip the body's scroll carries sideways by
-	// a transform (the table-head styles say why it must not scroll itself),
-	// and one colgroup worn twice so the halves agree on their columns.
-	const tableWrap = chapterSection.createDiv({
-		cls: 'snowflake-method-table-wrap snowflake-method-prose-table-wrap',
-	});
-	const headWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-head' });
-	const bodyWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-body' });
-	const tableClasses = 'snowflake-method-table snowflake-method-prose-table';
-	const headTable = headWrap.createEl('table', { cls: tableClasses });
-	const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
-	for (const table of [headTable, bodyTable]) {
-		const columns = table.createEl('colgroup');
-		for (const column of PROSE_COLUMNS) {
-			columns.createEl('col', {
-				cls: `snowflake-method-prose-column-${column}`,
-			});
-		}
-	}
-	const headRow = headTable.createEl('thead').createEl('tr');
-	for (const column of PROSE_COLUMNS) {
-		const head = headRow.createEl('th', {
-			cls: `snowflake-method-prose-column-${column}`,
+	const { bodyWrap, body: tableBody } = buildTableFrame(chapterSection, {
+		wrapCls: 'snowflake-method-prose-table-wrap',
+		tableCls: 'snowflake-method-prose-table',
+		columns: PROSE_COLUMNS.map(
+			(column) => `snowflake-method-prose-column-${column}`,
+		),
+		headers: PROSE_COLUMNS.map((column) => ({
+			cls: `snowflake-method-prose-column-${column}${
+				column === 'chapter' ? '' : ' snowflake-method-prose-numeric'
+			}`,
 			text: t(`prose.table.${column}`),
-		});
-		if (column !== 'chapter') head.addClass('snowflake-method-prose-numeric');
-	}
-	const tableBody = bodyTable.createEl('tbody');
+		})),
+	});
 	const heights = new Map<string, number>();
-	let headCarried = '';
 	const virtual = new VirtualTable({
 		scroller: bodyWrap,
 		body: tableBody,
@@ -351,12 +331,7 @@ export function renderProsePanel(
 			);
 		},
 		renderTail: () => undefined,
-		onScroll: () => {
-			const shift = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
-			if (shift === headCarried) return;
-			headCarried = shift;
-			headTable.style.transform = shift;
-		},
+		onScroll: () => undefined,
 		onMeasure: () => undefined,
 	});
 
@@ -566,7 +541,7 @@ export function renderProsePanel(
 				includeEntities: filters.includeEntities,
 			})
 			.then((read) => {
-				if (disposed || token !== frequencyToken) return;
+				if (loop.disposed || token !== frequencyToken) return;
 				frequency = read?.rows ?? [];
 				frequencyTotal = read?.total ?? 0;
 				paintFrequency();
@@ -672,7 +647,7 @@ export function renderProsePanel(
 			)
 			.random(random)
 			.on('end', (placed) => {
-				if (disposed || paint !== cloudPaint) return;
+				if (loop.disposed || paint !== cloudPaint) return;
 				const svg = cloudEl.createSvg('svg', {
 					attr: {
 						width: frameWidth,
@@ -719,7 +694,7 @@ export function renderProsePanel(
 	// the chapter table is renudged for the case where the narrow pane hid
 	// it before it ever measured itself.
 	const cloudObserver = new ResizeObserver(() => {
-		if (disposed || cloudEl.clientWidth === cloudPaintedWidth) return;
+		if (loop.disposed || cloudEl.clientWidth === cloudPaintedWidth) return;
 		virtual.setTotal(entries.length);
 		paintCloud();
 	});
@@ -730,9 +705,9 @@ export function renderProsePanel(
 			// Null has three faces: still reading, a read that failed, and a
 			// vault with no project. Only the last may claim so.
 			stateText.setText(
-				loading
+				loop.loading
 					? t('prose.computing')
-					: failed
+					: loop.failed
 						? t('prose.loadFailed')
 						: t('prose.noProject'),
 			);
@@ -755,44 +730,25 @@ export function renderProsePanel(
 		virtual.setTotal(entries.length);
 	};
 
-	const refresh = (): void => {
-		if (disposed) return;
-		if (loading) {
-			refreshAgain = true;
-			return;
-		}
-		loading = true;
+	const loop = refreshLoop<ManuscriptProseStatistics | null>({
+		read: () => bridge.statistics(),
 		// Paint-at-rest-then-patch: the standing reading keeps showing while
 		// the fresh one is walked; only the very first fill says computing.
-		if (statistics === null) stateText.setText(t('prose.computing'));
-		void bridge
-			.statistics()
-			.then((next) => {
-				loading = false;
-				failed = false;
-				if (disposed) return;
-				statistics = next;
-				paint();
-				refreshCounts();
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-				}
-			})
-			.catch(() => {
-				// A failed read may not wear the computing label forever, and
-				// a refresh queued behind it still deserves its turn.
-				loading = false;
-				failed = true;
-				if (disposed) return;
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-					return;
-				}
-				if (statistics === null) paint();
-				else stateText.setText(t('prose.loadFailed'));
-			});
+		onStart: () => {
+			if (statistics === null) stateText.setText(t('prose.computing'));
+		},
+		onRead: (next) => {
+			statistics = next;
+			paint();
+			refreshCounts();
+		},
+		onFail: () => {
+			if (statistics === null) paint();
+			else stateText.setText(t('prose.loadFailed'));
+		},
+	});
+	const refresh = (): void => {
+		loop.refresh();
 	};
 
 	refresh();
@@ -800,7 +756,7 @@ export function renderProsePanel(
 	return {
 		refresh,
 		dispose: (): void => {
-			disposed = true;
+			loop.dispose();
 			closeFilterPanel();
 			cloudLayout?.stop();
 			cloudObserver.disconnect();

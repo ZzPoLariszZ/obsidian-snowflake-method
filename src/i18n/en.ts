@@ -1430,8 +1430,6 @@ export const en = {
 	'manuscript.openNote': 'Open this note on its own',
 	'manuscript.copySelection': 'Copy',
 	'manuscript.revision.create': 'Create revision',
-	'manuscript.revision.ambiguous':
-		'Those words stand in more than one place. Click into the text and select them there.',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
 	'manuscript.revision.overlap': 'Another revision already covers that spot.',
 	'manuscript.revision.newerSchema':

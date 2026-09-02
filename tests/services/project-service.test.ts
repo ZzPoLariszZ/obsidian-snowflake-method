@@ -308,6 +308,8 @@ describe("SnowflakeProjectService", () => {
         path: revisions,
         stepIds: [],
         repairable: true,
+        // An offer, not damage: the issue says so itself.
+        blocking: false,
       }),
     ]);
     // Advisory, so nothing counts it as damage.

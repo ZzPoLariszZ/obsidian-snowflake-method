@@ -24,6 +24,7 @@ import {
 	type TokenLexicon,
 } from "../domain";
 import { documentTypeOf, type VaultRepository } from "../repository";
+import { fileStamp } from "./json-store";
 import { pluginWrittenRanges } from "../templates";
 import type { ManuscriptService } from "./manuscript-service";
 import type { NoteCountOptions, WritingCountService } from "./writing-count";
@@ -559,7 +560,7 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 			}
 			return null;
 		}
-		const stamp = `${String(record.file.stat.mtime)}:${String(record.file.stat.size)}`;
+		const stamp = fileStamp(record.file);
 		// Warm families carry over only against the read's own stamp, not the
 		// probe's: the file may have moved between the two, and then nothing
 		// the old record holds speaks for what was just read.
@@ -602,25 +603,38 @@ export class ManuscriptAnalysisService extends QuietFlushingNoteCache<
 					// run together, the close of one line of speech and the
 					// open of the next would gather into a single word in
 					// every convention that reads writing in words.
+					const counted = this.writingCount.countExcluding(
+						record.body,
+						excluded,
+						config.count,
+					).total;
+					// Read as pieces, the dialogue can come to a word or two
+					// more than the whole read straight through: a convention
+					// that reads writing in words lets one word reach across a
+					// quotation mark, and a mark that closes one line of speech
+					// and opens the next with nothing but punctuation between
+					// is one word to the whole and two to the pieces. The
+					// dialogue is a part of the writing, and is never shown as
+					// more than all of it.
+					const dialogueCounted =
+						quoted.length === 0
+							? 0
+							: Math.min(
+									counted,
+									this.writingCount.countStretches(
+										record.body,
+										[...excluded, ...outside(quoted, record.body.length)],
+										config.count,
+									).total,
+								);
 					return {
 						// The two halves of the split cover exactly the
 						// analyzable prose, so their sum is the whole writing.
 						cjk: split.dialogue.cjk + split.narrative.cjk,
 						words: split.dialogue.words + split.narrative.words,
-						counted: this.writingCount.countExcluding(
-							record.body,
-							excluded,
-							config.count,
-						).total,
+						counted,
 						sentences: countSentences(record.body, excluded),
-						dialogueCounted:
-							quoted.length === 0
-								? 0
-								: this.writingCount.countStretches(
-										record.body,
-										[...excluded, ...outside(quoted, record.body.length)],
-										config.count,
-									).total,
+						dialogueCounted,
 					};
 				})(),
 			tokens:

@@ -1,4 +1,10 @@
-import { anchorRevision, refreshAnchors, type Revision } from "../domain";
+import {
+	anchorRevision,
+	refreshAnchors,
+	revisionKindFor,
+	type Revision,
+} from "../domain";
+import { movedWithRename } from "../project-root";
 import type { VaultRepository } from "../repository";
 import { RevisionStore } from "./revision-store";
 import type { ProjectRef } from "./types";
@@ -44,11 +50,8 @@ export class RevisionService {
 
 	/**
 	 * Rewrites one revision's proposed text and comment; false when gone.
-	 * The kind follows the proposal the same way it did at creation: a range
-	 * revision left proposing nothing is a deletion, and one given words
-	 * again is a replacement, so the two are the same revision seen at two
-	 * moments rather than two things the author must choose between. An
-	 * insertion has no text under it to fall back to and stays what it is.
+	 * The kind follows the proposal the way `revisionKindFor` says, the same
+	 * rule the draft was saved by.
 	 */
 	async update(
 		project: ProjectRef,
@@ -64,21 +67,21 @@ export class RevisionService {
 			const kept = revisions.find((revision) => revision.id === id);
 			if (kept === undefined) return null;
 			stood = true;
-			if (kept.proposed === patch.proposed && kept.comment === patch.comment) {
+			if (
+				kept.proposed === patch.proposed &&
+				kept.comment === patch.comment.trim()
+			) {
 				return null;
 			}
 			return revisions.map((revision) =>
 				revision.id === id
 					? {
 							...revision,
-							kind:
-								revision.kind === 'insert'
-									? revision.kind
-									: patch.proposed.length === 0
-										? 'delete'
-										: 'replace',
+							kind: revisionKindFor(revision.kind, patch.proposed),
 							proposed: patch.proposed,
-							comment: patch.comment,
+							// Trimmed as it is at creation, so a comment of spaces
+							// is no comment on either path.
+							comment: patch.comment.trim(),
 						}
 					: revision,
 			);
@@ -86,12 +89,30 @@ export class RevisionService {
 		return stood;
 	}
 
-	/** Takes one revision out -- an accept, a reject, or a discard alike. */
-	remove(project: ProjectRef, id: string): Promise<boolean> {
-		return this.store.updateRevisions(project, (revisions) => {
+	/**
+	 * Takes one revision out -- an accept, a reject, or a discard alike --
+	 * and says which of three things happened. A record already gone and a
+	 * write the store refused both end with nothing written, but they are not
+	 * the same news: the first is what was asked for, the second leaves the
+	 * record standing, and a caller that has already applied the proposal to
+	 * the author's text is owed the difference.
+	 */
+	async remove(
+		project: ProjectRef,
+		id: string,
+	): Promise<'removed' | 'absent' | 'refused'> {
+		// The store calls the mutate only over a file it will write; a
+		// refused file never reaches it.
+		let asked = false;
+		let found = false;
+		await this.store.updateRevisions(project, (revisions) => {
+			asked = true;
 			const next = revisions.filter((revision) => revision.id !== id);
-			return next.length === revisions.length ? null : next;
+			found = next.length !== revisions.length;
+			return found ? next : null;
 		});
+		if (!asked) return 'refused';
+		return found ? 'removed' : 'absent';
 	}
 
 	/**
@@ -126,24 +147,27 @@ export class RevisionService {
 		oldPath: string,
 		newPath: string,
 	): Promise<boolean> {
+		// The rule the root setting moves by, so a rename carries the
+		// revisions and the setting the same way.
+		const carried = (path: string): string | null =>
+			movedWithRename(path, oldPath, newPath);
 		const standing = await this.store.readRevisions(project);
-		const folder = `${oldPath}/`;
-		const carried = (path: string): string | null => {
-			if (path === oldPath) return newPath;
-			if (path.startsWith(folder)) {
-				return `${newPath}/${path.slice(folder.length)}`;
-			}
-			return null;
-		};
 		if (!standing.some((revision) => carried(revision.path) !== null)) {
 			return false;
 		}
-		return this.store.updateRevisions(project, (revisions) =>
-			revisions.map((revision) => {
+		return this.store.updateRevisions(project, (revisions) => {
+			// Asked again over the file as it is: a folder rename arrives as
+			// one event per note inside it, and every one of them read the
+			// same memo before the first had written. Only the one that finds
+			// something still to move writes.
+			if (!revisions.some((revision) => carried(revision.path) !== null)) {
+				return null;
+			}
+			return revisions.map((revision) => {
 				const moved = carried(revision.path);
 				return moved === null ? revision : { ...revision, path: moved };
-			}),
-		);
+			});
+		});
 	}
 
 	/**
@@ -161,11 +185,12 @@ export class RevisionService {
 	 * this whole hook exists to prevent.
 	 *
 	 * So each revision is put back on the departing body first, and it is the
-	 * place its own words hold THERE that decides. Everything at or after `at`
-	 * follows them, offsets moved by `shift`. A range that STRADDLES the
-	 * departure point stays where it is: its text was torn in two, and a
-	 * conflict is the honest answer rather than half a proposal carried to a
-	 * note that holds half its words. A revision whose words are already gone
+	 * place its own words hold THERE that decides. Everything after `at`
+	 * follows them, offsets moved by `shift`, and so does a range beginning
+	 * at `at` itself; a point standing at `at` stays with the text behind it.
+	 * A range that STRADDLES the departure point stays where it is: its text
+	 * was torn in two, and a conflict is the honest answer rather than half a
+	 * proposal carried to a note that holds half its words. A revision whose words are already gone
 	 * from the departing body has nothing better than its stored offsets to be
 	 * placed by, and is carried on those, since being on the surviving note is
 	 * still nearer the truth than being on one that is about to be trashed.
@@ -187,8 +212,17 @@ export class RevisionService {
 			const anchor = anchorRevision(body, revision);
 			return anchor.state === 'conflict' ? revision.from : anchor.from;
 		};
-		const goes = (revision: Revision): boolean =>
-			revision.path === from && standsAt(revision) >= at;
+		// A range beginning at the cut travels: its words are the new note's
+		// first. A point standing exactly there does not, unless nothing
+		// stands behind it: a point holds to the text behind it, and that text
+		// stays where it is, while the words ahead of it lose the seam's blank
+		// lines on the way and could no longer speak for it there.
+		const goes = (revision: Revision): boolean => {
+			if (revision.path !== from) return false;
+			const stands = standsAt(revision);
+			if (stands !== at) return stands > at;
+			return revision.kind !== 'insert' || revision.before.length === 0;
+		};
 		const standing = await this.store.readRevisions(project);
 		if (!standing.some(goes)) return false;
 		return this.store.updateRevisions(project, (revisions) => {

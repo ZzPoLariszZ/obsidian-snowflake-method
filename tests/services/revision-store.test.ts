@@ -146,6 +146,90 @@ describe("RevisionStore", () => {
 		).toBe(false);
 	});
 
+	it("carries an entry it cannot read through every write, untouched", async () => {
+		// A sync merge bent one record out of shape. It is not served, but it
+		// is not the store's to throw away either: the next unrelated write
+		// puts it back exactly, for a build that can read it.
+		const bent = { ...makeRevision("rev-bent"), createdAt: "yesterday" };
+		await fakeVault.seedFile(
+			FILE,
+			JSON.stringify({
+				schemaVersion: REVISION_STORE_SCHEMA_VERSION,
+				revisions: [makeRevision("rev-1"), bent],
+			}),
+		);
+		expect((await store.readRevisions(project)).map((kept) => kept.id)).toEqual([
+			"rev-1",
+		]);
+		expect(
+			await store.updateRevisions(project, (standing) => [
+				...standing,
+				makeRevision("rev-2"),
+			]),
+		).toBe(true);
+		const written = JSON.parse(fakeVault.contents.get(FILE) ?? "{}") as {
+			revisions: unknown[];
+		};
+		expect(written.revisions).toHaveLength(3);
+		expect(written.revisions).toContainEqual(bent);
+		expect((await store.readRevisions(project)).map((kept) => kept.id)).toEqual([
+			"rev-1",
+			"rev-2",
+		]);
+	});
+
+	it("reads the schema line before the shape, so a newer layout is foreign", async () => {
+		// A build that knows more may lay the file out differently; judged by
+		// shape first it would be damage, and set aside on a synced vault.
+		const written = JSON.stringify({ schemaVersion: 99, entries: [] });
+		await fakeVault.seedFile(FILE, written);
+		expect(await store.readRevisions(project)).toEqual([]);
+		expect(foreign).toEqual([[FILE, 99]]);
+		expect(asides).toEqual([]);
+		expect(fakeVault.contents.get(FILE)).toBe(written);
+	});
+
+	it("a schema from before the first is damage, not the future", async () => {
+		await fakeVault.seedFile(
+			FILE,
+			JSON.stringify({ schemaVersion: 0, revisions: [makeRevision("rev-1")] }),
+		);
+		expect(await store.readRevisions(project)).toEqual([]);
+		expect(foreign).toEqual([]);
+		expect(asides).toHaveLength(1);
+	});
+
+	it("a refused write keeps the memo, so the notice is not given again", async () => {
+		await fakeVault.seedFile(
+			FILE,
+			JSON.stringify({ schemaVersion: 99, revisions: [makeRevision("rev-1")] }),
+		);
+		await store.readRevisions(project);
+		expect(foreign).toHaveLength(1);
+		expect(await store.updateRevisions(project, () => [makeRevision("rev-2")])).toBe(
+			false,
+		);
+		expect(foreign).toHaveLength(2);
+		// The file is exactly as the memo describes it: nothing to re-read,
+		// nothing to say twice.
+		await store.readRevisions(project);
+		expect(foreign).toHaveLength(2);
+	});
+
+	it("a write that found nothing to change keeps the memo", async () => {
+		// The common case of every save that moved no revision: the file is
+		// exactly as the memo describes it, so the reader after it has
+		// nothing to re-read.
+		await store.updateRevisions(project, () => [makeRevision("rev-1")]);
+		await store.readRevisions(project);
+		const reads = fakeVault.readCalls.filter((path) => path === FILE).length;
+		expect(await store.updateRevisions(project, () => null)).toBe(false);
+		await store.readRevisions(project);
+		expect(fakeVault.readCalls.filter((path) => path === FILE)).toHaveLength(
+			reads + 1,
+		);
+	});
+
 	it("still sets aside a file that is damaged rather than merely newer", async () => {
 		await fakeVault.seedFile(FILE, '{"schemaVersion": 1, "revisions": 7}');
 		expect(await store.readRevisions(project)).toEqual([]);
@@ -236,6 +320,13 @@ describe("RevisionService", () => {
 		});
 	});
 
+	it("trims the comment on an edit as it is trimmed at creation", async () => {
+		await revisions.create(project, makeRevision("rev-1"));
+		await revisions.update(project, "rev-1", { proposed: "x", comment: "  " });
+		const [kept] = await revisions.list(project);
+		expect(kept?.comment).toBe("");
+	});
+
 	it("a replacement emptied becomes a deletion", async () => {
 		await revisions.create(
 			project,
@@ -262,11 +353,22 @@ describe("RevisionService", () => {
 		expect(kept).toMatchObject({ kind: "insert", proposed: "" });
 	});
 
-	it("removes for accept, reject and discard alike", async () => {
+	it("removes for accept, reject and discard alike, and says which happened", async () => {
 		await revisions.create(project, makeRevision("rev-1"));
-		expect(await revisions.remove(project, "rev-1")).toBe(true);
-		expect(await revisions.remove(project, "rev-1")).toBe(false);
+		expect(await revisions.remove(project, "rev-1")).toBe("removed");
+		// Gone already is what was asked for, and is not a refusal.
+		expect(await revisions.remove(project, "rev-1")).toBe("absent");
 		expect(await revisions.list(project)).toEqual([]);
+	});
+
+	it("a removal the store will not write is refused, not absent", async () => {
+		// A card that has already applied the proposal to the text is owed the
+		// difference: the record is still standing.
+		await fakeVault.seedFile(
+			FILE,
+			JSON.stringify({ schemaVersion: 99, revisions: [makeRevision("rev-1")] }),
+		);
+		expect(await revisions.remove(project, "rev-1")).toBe("refused");
 	});
 
 	it("brings stored offsets level with a saved body, once", async () => {
@@ -472,6 +574,46 @@ describe("RevisionService carry between notes", () => {
 		expect(kept).toMatchObject({ path: OTHER, from: 24, to: 34 });
 	});
 
+	it("a point standing exactly at the cut stays with the text behind it", async () => {
+		// Split with the caret at the end of a paragraph: the words ahead of
+		// the point leave, but the point holds to the words behind it, which
+		// stay -- and carried, it would land where neither side could speak
+		// for it, in conflict from the moment it arrived.
+		const point = captureRevision(CHAPTER, BODY, "insert", 14, 14, "x", "", "rev-p", 7);
+		await service.revisions.create(project, point);
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				14,
+				14,
+			),
+		).toBe(false);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: CHAPTER, from: 14 });
+	});
+
+	it("a point at the very start of the departing text travels with it", async () => {
+		// Nothing behind it to hold to: its only witness is ahead, and ahead
+		// is going.
+		const point = captureRevision(CHAPTER, BODY, "insert", 0, 0, "x", "", "rev-p", 7);
+		await service.revisions.create(project, point);
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				0,
+				0,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 0, to: 0 });
+	});
+
 	it("a note that carried nothing leaves the file alone", async () => {
 		await service.revisions.create(project, makeRevision("rev-1"));
 		expect(
@@ -491,14 +633,40 @@ describe("RevisionService rename carry", () => {
 	let service: SnowflakeProjectService;
 	let project: ProjectSnapshot;
 
+	let fakeVault: FakeVault;
 	beforeEach(async () => {
 		const environment = createFakeEnvironment();
+		fakeVault = environment.fakeVault;
 		service = new SnowflakeProjectService(
 			environment.vault,
 			environment.fileManager,
 			environment.metadataCache,
 		);
 		project = await service.createProject({ title: "Novel", locale: "en" });
+	});
+
+	it("writes once for a rename that moved something, and not at all for one that did not", async () => {
+		// A folder rename arrives as one event per note inside it, and every
+		// one reads the same memo before the first has written: only the one
+		// that still finds something to move may write.
+		const chapter = "Snowflake Projects/Novel/50_Manuscript/Chapter 1.md";
+		await service.revisions.create(project, makeRevision("rev-1"));
+		const before = fakeVault.contents.get(FILE);
+		expect(
+			await service.revisions.renameNotePaths(
+				project,
+				"Snowflake Projects/Novel/50_Manuscript/Elsewhere.md",
+				"Snowflake Projects/Novel/50_Manuscript/Nowhere.md",
+			),
+		).toBe(false);
+		expect(fakeVault.contents.get(FILE)).toBe(before);
+		expect(
+			await service.revisions.renameNotePaths(
+				project,
+				chapter,
+				"Snowflake Projects/Novel/50_Manuscript/Chapter 1 renamed.md",
+			),
+		).toBe(true);
 	});
 
 	it("carries a note's revisions to its new path, offsets untouched", async () => {

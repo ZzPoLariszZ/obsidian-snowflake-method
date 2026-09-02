@@ -1,5 +1,11 @@
 import { isRevision, type Revision } from "../domain";
 import type { VaultRepository } from "../repository";
+import {
+	createOrUpdatePlainFile,
+	fileStamp,
+	parseJsonObject,
+	quarantineJsonFile,
+} from "./json-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 
 /**
@@ -20,7 +26,10 @@ import { getProjectPathLayout, type ProjectRef } from "./types";
  * schema it does not KNOW is left exactly where it is -- untouched, unwritten
  * and reported -- rather than renamed aside as damage. On a synced vault the
  * second case is ordinary: one device updates before the other, and the older
- * one must not answer by quarantining every proposal the newer one holds.
+ * one must not answer by quarantining every proposal the newer one holds. The
+ * same care goes down to the single entry: one this build cannot read is
+ * carried through every write as it was found, where the ignores would let
+ * it go.
  */
 
 export const REVISION_STORE_SCHEMA_VERSION = 1;
@@ -44,6 +53,12 @@ export class RevisionStore {
 		string,
 		{ stamp: string; revisions: readonly Revision[] }
 	>();
+	/**
+	 * Reads under way, by project root. Every stream and every dashboard asks
+	 * in the same tick after a mutation empties the memo, and each would
+	 * otherwise read and parse the same file; the first read answers them all.
+	 */
+	private readonly pending = new Map<string, Promise<readonly Revision[]>>();
 
 	constructor(private readonly deps: RevisionStoreDeps) {}
 
@@ -70,23 +85,33 @@ export class RevisionStore {
 			this.memo.delete(project.rootPath);
 			return [];
 		}
-		const stamp = `${String(file.stat.mtime)}:${String(file.stat.size)}`;
+		const stamp = fileStamp(file);
 		const kept = this.memo.get(project.rootPath);
 		if (kept !== undefined && kept.stamp === stamp) return kept.revisions;
-		const content = await this.deps.repository.readPlainFile(path);
-		const reading = parseRevisionFile(content);
-		if (reading.state === 'foreign') {
-			this.memo.set(project.rootPath, { stamp, revisions: [] });
-			this.deps.onForeign?.(path, reading.version);
-			return [];
+		const underway = this.pending.get(project.rootPath);
+		if (underway !== undefined) return underway;
+		const reading = (async (): Promise<readonly Revision[]> => {
+			const content = await this.deps.repository.readPlainFile(path);
+			const read = parseRevisionFile(content);
+			if (read.state === 'foreign') {
+				this.memo.set(project.rootPath, { stamp, revisions: [] });
+				this.deps.onForeign?.(path, read.version);
+				return [];
+			}
+			if (read.state === 'unreadable') {
+				await this.quarantine(path);
+				this.memo.delete(project.rootPath);
+				return [];
+			}
+			this.memo.set(project.rootPath, { stamp, revisions: read.revisions });
+			return read.revisions;
+		})();
+		this.pending.set(project.rootPath, reading);
+		try {
+			return await reading;
+		} finally {
+			this.pending.delete(project.rootPath);
 		}
-		if (reading.state === 'unreadable') {
-			await this.quarantine(path);
-			this.memo.delete(project.rootPath);
-			return [];
-		}
-		this.memo.set(project.rootPath, { stamp, revisions: reading.revisions });
-		return reading.revisions;
 	}
 
 	/**
@@ -100,8 +125,7 @@ export class RevisionStore {
 		mutate: (revisions: readonly Revision[]) => Revision[] | null,
 	): Promise<boolean> {
 		const path = this.revisionsPath(project);
-		this.memo.delete(project.rootPath);
-		const serialize = (revisions: Revision[]): string =>
+		const serialize = (revisions: unknown[]): string =>
 			`${JSON.stringify(
 				{ schemaVersion: REVISION_STORE_SCHEMA_VERSION, revisions },
 				null,
@@ -110,7 +134,12 @@ export class RevisionStore {
 		if (this.deps.repository.getFile(path) === null) {
 			const next = mutate([]);
 			if (next === null) return false;
-			await this.deps.repository.createPlainFile(path, serialize(next));
+			await createOrUpdatePlainFile(
+				this.deps.repository,
+				path,
+				serialize(next),
+			);
+			this.memo.delete(project.rootPath);
 			return true;
 		}
 		let corrupt = false;
@@ -129,8 +158,16 @@ export class RevisionStore {
 			const next = mutate(reading.revisions);
 			if (next === null) return current;
 			changed = true;
-			return serialize(next);
+			// The entries this build could not read go back as they came.
+			return serialize([...next, ...reading.strays]);
 		});
+		// The memo is let go only over a write. A mutate that found nothing
+		// to change, and a write refused below, both leave the file exactly
+		// as the memo describes it -- and a memo dropped anyway costs the next
+		// reader a read and a parse of the same bytes, and for a foreign file
+		// a second notice about the same version, against the one-per-version
+		// promise `readRevisions` makes.
+		if (changed) this.memo.delete(project.rootPath);
 		// Refused, not rewritten and not set aside: writing this build's own
 		// schema over it would drop every proposal the newer build understood
 		// and this one could not read. The caller answers false, which the
@@ -141,6 +178,7 @@ export class RevisionStore {
 		}
 		if (!corrupt) return changed;
 		await this.quarantine(path);
+		this.memo.delete(project.rootPath);
 		const next = mutate([]);
 		if (next === null) return false;
 		await this.deps.repository.createPlainFile(path, serialize(next));
@@ -153,18 +191,29 @@ export class RevisionStore {
 	}
 
 	private async quarantine(path: string): Promise<void> {
-		const aside = path.replace(
-			/\.json$/u,
-			`.corrupted-${String(this.deps.now())}.json`,
+		const aside = await quarantineJsonFile(
+			this.deps.repository,
+			this.deps.now,
+			path,
 		);
-		await this.deps.repository.renameFile(path, aside);
 		this.deps.onCorrupt?.(aside);
 	}
 }
 
 /** What a reading of the file came to. */
 export type RevisionFileReading =
-	| { state: "read"; revisions: Revision[] }
+	| {
+			state: "read";
+			revisions: Revision[];
+			/**
+			 * The entries this build could not read as revisions, kept as they
+			 * were found. They are not served, but they are not thrown away
+			 * either: the next write puts them back exactly, so a record a
+			 * sync merge bent out of shape waits for a build that can read it
+			 * instead of vanishing under an unrelated save.
+			 */
+			strays: unknown[];
+	  }
 	/** Plainly a revision file, and written to a schema this build lacks. */
 	| { state: "foreign"; version: number }
 	| { state: "unreadable" };
@@ -172,32 +221,35 @@ export type RevisionFileReading =
 /**
  * Reads a revision file, or says why it could not.
  *
- * Individual entries that fail the shape are dropped rather than dooming the
- * file. A schema line this build does not know is told apart from damage: the
- * file parsed, it says what it is, and the only thing wrong with it is that
- * it was written by a build that knows more. That answer is what keeps a
- * synced vault's older device from setting the newer one's work aside.
+ * The schema line is read before anything else about the shape, because it
+ * is what says whose shape to expect. A build that knows more may lay the
+ * file out differently, and a shape test made first would call that damage
+ * and set the file aside -- the one thing this store promises a synced vault
+ * it will never do. A schema from the future is refused, not read; one from
+ * the past belongs to a migration, of which there are none yet, so it is
+ * damage in the plain sense: nothing ever wrote it.
  *
- * When the version is one day raised, an OLDER file belongs in a migration
- * arm here rather than in `foreign` -- refusing is the safe answer for a
- * schema from the future, not for one from the past.
+ * Individual entries that fail the shape are set apart rather than dooming
+ * the file, and carried through every write untouched.
  */
 function parseRevisionFile(content: string | null): RevisionFileReading {
-	if (content === null) return { state: "unreadable" };
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(content);
-	} catch {
-		return { state: "unreadable" };
-	}
-	if (typeof parsed !== "object" || parsed === null) {
-		return { state: "unreadable" };
-	}
-	const file = parsed as Record<string, unknown>;
-	if (!Array.isArray(file.revisions)) return { state: "unreadable" };
+	const file = parseJsonObject(content);
+	if (file === null) return { state: "unreadable" };
 	if (typeof file.schemaVersion !== "number") return { state: "unreadable" };
-	if (file.schemaVersion !== REVISION_STORE_SCHEMA_VERSION) {
+	if (file.schemaVersion > REVISION_STORE_SCHEMA_VERSION) {
 		return { state: "foreign", version: file.schemaVersion };
 	}
-	return { state: "read", revisions: file.revisions.filter(isRevision) };
+	if (file.schemaVersion < REVISION_STORE_SCHEMA_VERSION) {
+		// The migration arm: a file written by an earlier schema is brought
+		// up to this one here. Version 1 is the first there has been.
+		return { state: "unreadable" };
+	}
+	if (!Array.isArray(file.revisions)) return { state: "unreadable" };
+	const revisions: Revision[] = [];
+	const strays: unknown[] = [];
+	for (const entry of file.revisions) {
+		if (isRevision(entry)) revisions.push(entry);
+		else strays.push(entry);
+	}
+	return { state: "read", revisions, strays };
 }

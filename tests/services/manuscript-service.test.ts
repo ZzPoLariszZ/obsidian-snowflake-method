@@ -174,6 +174,21 @@ describe("ManuscriptService", () => {
     );
   });
 
+  it("says when a note's body reached the file, for every writer alike", async () => {
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    const written: [string, string][] = [];
+    service.manuscript.onSegmentWritten = (path, body) => {
+      written.push([path, body]);
+    };
+    await service.manuscript.writeSegment(draft, "# Draft\n\nWords.\n");
+    expect(written).toEqual([[draft, "# Draft\n\nWords.\n"]]);
+    // A split writes the note it cut too, and says so for that one; the
+    // remainder is reported by the carry, which knows what moved.
+    const source = await service.manuscript.readSegment(draft);
+    await service.manuscript.splitSegment(project, draft, source.body.length, "Two");
+    expect(written[written.length - 1]?.[0]).toBe(draft);
+  });
+
   it("says where a split sent the text, and how far its offsets moved", async () => {
     // Revisions are stored against a note and an offset, so text that walks
     // to a new file without saying so leaves every proposal on it hunting

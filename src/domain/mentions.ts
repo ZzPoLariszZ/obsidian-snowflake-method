@@ -22,7 +22,7 @@
  * Kept free of Obsidian types and of the DOM.
  */
 
-import { analyzableRanges } from './analyzable-prose';
+import { analyzableRanges, firstAtOrAfter } from './analyzable-prose';
 import type { CountableRange } from './markdown-scan';
 import type { EntityMatcher, MentionCandidate } from './entity-matcher';
 
@@ -509,6 +509,12 @@ export interface MentionMark {
 	 */
 	styleVar?: string;
 	occurrence: Occurrence;
+	/**
+	 * A mark that answers no menu: dress only. The editor's hit test passes
+	 * over it, so a silent mark standing inside a mention never hides the
+	 * mention from a right-click.
+	 */
+	silent?: true;
 }
 
 /** A mark the entity planner made: its occurrence is an entity mention. */
@@ -605,16 +611,7 @@ export function occurrenceContext(
 	afterRadius = radius,
 ): { before: string; match: string; after: string } {
 	const { text, sourceIndexOf } = contextProjection(body);
-	const indexAt = (at: number): number => {
-		let low = 0;
-		let high = sourceIndexOf.length;
-		while (low < high) {
-			const mid = Math.floor((low + high) / 2);
-			if ((sourceIndexOf[mid] ?? 0) < at) low = mid + 1;
-			else high = mid;
-		}
-		return low;
-	};
+	const indexAt = (at: number): number => firstAtOrAfter(sourceIndexOf, at);
 	const shownFrom = indexAt(from);
 	const shownTo = Math.max(indexAt(to), shownFrom);
 	let start = shownFrom;

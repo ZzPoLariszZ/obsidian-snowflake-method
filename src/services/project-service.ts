@@ -623,9 +623,7 @@ export class SnowflakeProjectService {
         // build kept it, or a folder this plugin makes on demand, must not
         // quietly stop a project's steps from ever falling out of complete
         // again -- which nothing in the interface would explain.
-        project.structureIssues.some(
-          (issue) => !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
-        ) ||
+        project.structureIssues.some((issue) => issue.blocking) ||
         this.projectHasBlockingManagedSectionIssues(project) ||
         project.needsReview.length === 0
       ) {
@@ -4123,7 +4121,7 @@ export class SnowflakeProjectService {
     kind: EntityKindId,
     record: ManagedFileRecord,
     stepIds: StepId[],
-    add: (issue: ProjectStructureIssue) => void,
+    add: (issue: Omit<ProjectStructureIssue, "blocking">) => void,
   ): void {
     const categoryRoot = definitionRootPath(project, kind, "category");
     const roots = DEFINITION_FILE_IDS.map((id) =>
@@ -4207,7 +4205,7 @@ export class SnowflakeProjectService {
     project: { rootPath: string },
     record: ManagedFileRecord,
     stepIds: StepId[],
-    add: (issue: ProjectStructureIssue) => void,
+    add: (issue: Omit<ProjectStructureIssue, "blocking">) => void,
   ): void {
     const found = new Map<string, string[]>();
     for (const field of [...MEMBER_LINK_FIELDS, CATEGORY_LINK_FIELD]) {
@@ -4261,7 +4259,7 @@ export class SnowflakeProjectService {
     project: { rootPath: string; locale: ProjectLanguage },
     record: ManagedFileRecord,
     stepIds: StepId[],
-    add: (issue: ProjectStructureIssue) => void,
+    add: (issue: Omit<ProjectStructureIssue, "blocking">) => void,
   ): void {
     const dangling = new Set<string>();
     for (const term of memberRecordTerms(record, project.locale)) {
@@ -6711,16 +6709,16 @@ export class SnowflakeProjectService {
     ) {
       return issues;
     }
-    const add = (issue: ProjectStructureIssue): void => {
+    const add = (found: Omit<ProjectStructureIssue, "blocking">): void => {
       if (
         !issues.some(
           (candidate) =>
-            candidate.code === issue.code &&
-            candidate.path === issue.path &&
-            candidate.field === issue.field,
+            candidate.code === found.code &&
+            candidate.path === found.path &&
+            candidate.field === found.field,
         )
       ) {
-        issues.push(issue);
+        issues.push(withSeverity(found));
       }
     };
     const metadata = projectRecord.frontmatter;
@@ -9551,4 +9549,15 @@ function isPlainRecord(value: unknown): boolean {
 function isStepStatusRecord(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return STEP_IDS.every((step) => isStepStatus(value[String(step)]));
+}
+
+/**
+ * An issue with its severity read off its code: advisory codes are an offer
+ * the report lists, everything else is damage. The one place the set of
+ * advisory codes is consulted.
+ */
+function withSeverity(
+  found: Omit<ProjectStructureIssue, "blocking">,
+): ProjectStructureIssue {
+  return { ...found, blocking: !ADVISORY_STRUCTURE_ISSUE_CODES.has(found.code) };
 }

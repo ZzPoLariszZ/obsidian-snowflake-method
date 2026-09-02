@@ -166,5 +166,6 @@ export function planDialogueMarks(
 		to: occurrence.to,
 		classes: 'snowflake-method-dialogue',
 		occurrence,
+		silent: true,
 	}));
 }

@@ -15,16 +15,18 @@
  * the panel back across frame rebuilds and calls `refresh()`.
  */
 
-import { SearchComponent, setIcon, setTooltip } from 'obsidian';
+import { Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import {
 	anchorRevision,
+	fileStem,
 	orderRevisions,
 	revealSpan,
 	type Revision,
 } from '../domain';
 import type { Translate } from './modals';
-import { VirtualTable } from './virtual-table';
+import { refreshLoop } from './refresh-loop';
+import { VirtualTable, buildTableFrame } from './virtual-table';
 
 /**
  * One chapter as the table needs it: its title and the body to anchor by. The
@@ -70,17 +72,18 @@ export function revisionTableRows(
 	// One order for the table and the cards alike, drawn by the comparator the
 	// chevrons walk: the chapters in the order the map holds them, then the
 	// strays it does not name at all -- a revision on a note the manuscript
-	// never listed is still a row, and the row that discards it. Stored
-	// offsets order it, which is `orderRevisions`'s own rule: a table sorted by
-	// where a revision stands now and cards stepped through by where it was
-	// filed would send the reader two ways through the same list.
+	// never listed is still a row, and the row that discards it. Each row is
+	// placed by where its words stand in the body read for it, which is what
+	// the cards beside that note are placed by too, so the list reads in the
+	// order the margin walks.
 	const strays = revisions
 		.map((revision) => revision.path)
 		.filter((path) => !notes.has(path));
-	const ordered = orderRevisions(revisions, [
-		...notes.keys(),
-		...new Set(strays),
-	]);
+	const ordered = orderRevisions(
+		revisions,
+		[...notes.keys(), ...new Set(strays)],
+		(path) => notes.get(path)?.body ?? null,
+	);
 	return ordered.map((revision): RevisionRow => {
 		const note = notes.get(revision.path);
 		const anchor =
@@ -90,7 +93,7 @@ export function revisionTableRows(
 		return {
 			id: revision.id,
 			path: revision.path,
-			title: note?.title ?? revision.path.split('/').pop() ?? revision.path,
+			title: note?.title ?? fileStem(revision.path),
 			kind: revision.kind,
 			original: revision.originalText,
 			proposed: revision.proposed,
@@ -186,30 +189,21 @@ export function renderRevisionPanel(
 	setIcon(refreshButton, 'refresh-cw');
 	setTooltip(refreshButton, t('revisionTable.refresh'));
 
-	const tableWrap = root.createDiv({
-		cls: 'snowflake-method-table-wrap snowflake-method-revision-table-wrap',
-	});
-	const headWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-head' });
-	const bodyWrap = tableWrap.createDiv({ cls: 'snowflake-method-table-body' });
-	const tableClasses = 'snowflake-method-table snowflake-method-revision-table';
-	const headTable = headWrap.createEl('table', { cls: tableClasses });
-	const bodyTable = bodyWrap.createEl('table', { cls: tableClasses });
-	for (const table of [headTable, bodyTable]) {
-		const columns = table.createEl('colgroup');
-		for (const column of REVISION_COLUMNS) {
-			columns.createEl('col', {
-				cls: `snowflake-method-revision-column-${column}`,
-			});
-		}
-	}
-	const headRow = headTable.createEl('thead').createEl('tr');
-	for (const column of REVISION_COLUMNS) {
-		headRow.createEl('th', {
+	const {
+		wrap: tableWrap,
+		bodyWrap,
+		body: tableBody,
+	} = buildTableFrame(root, {
+		wrapCls: 'snowflake-method-revision-table-wrap',
+		tableCls: 'snowflake-method-revision-table',
+		columns: REVISION_COLUMNS.map(
+			(column) => `snowflake-method-revision-column-${column}`,
+		),
+		headers: REVISION_COLUMNS.map((column) => ({
 			cls: `snowflake-method-revision-column-${column}`,
 			text: t(`revisionTable.${column}`),
-		});
-	}
-	const tableBody = bodyTable.createEl('tbody');
+		})),
+	});
 
 	// The tracking sections' own empty sentence, shown in the table's place: a
 	// grid with a header and no rows says less than one line saying so.
@@ -227,7 +221,6 @@ export function renderRevisionPanel(
 	/** Everything read, and the part of it the search leaves standing. */
 	let reading: RevisionRow[] | null = null;
 	let shown: RevisionRow[] = [];
-	let headCarried = '';
 	const kindOf = (kind: Revision['kind']): string =>
 		t(`manuscript.revision.kind.${kind}`);
 	const virtual = new VirtualTable({
@@ -293,8 +286,13 @@ export function renderRevisionPanel(
 				discard.addEventListener('click', () => {
 					void bridge
 						.discard(row.id)
-						.then(() => {
-							refresh();
+						.then((gone) => {
+							// A refusal is said, as the card in the margin says
+							// it: the row would otherwise come straight back
+							// with nothing to explain why the click did nothing.
+							// A discard that landed has already refreshed this
+							// panel through the host, so nothing is read twice.
+							if (!gone) new Notice(t('manuscript.revision.refused'));
 						})
 						.catch(() => undefined);
 				});
@@ -316,20 +314,10 @@ export function renderRevisionPanel(
 			});
 		},
 		renderTail: () => undefined,
-		onScroll: () => {
-			const carried = `translateX(${String(-bodyWrap.scrollLeft)}px)`;
-			if (carried !== headCarried) {
-				headCarried = carried;
-				headTable.style.transform = carried;
-			}
-		},
+		onScroll: () => undefined,
 		onMeasure: () => undefined,
 	});
 
-	let disposed = false;
-	let loading = false;
-	let failed = false;
-	let refreshAgain = false;
 
 	/**
 	 * What the frame shows: the table, the empty line, or neither. The window
@@ -349,9 +337,9 @@ export function renderRevisionPanel(
 			emptyLine.addClass('is-hidden');
 			virtual.setTotal(0);
 			stateText.setText(
-				loading
+				loop.loading
 					? t('revisionTable.loading')
-					: failed
+					: loop.failed
 						? t('revisionTable.loadFailed')
 						: t('revisionTable.noProject'),
 			);
@@ -364,44 +352,25 @@ export function renderRevisionPanel(
 		virtual.setTotal(shown.length);
 	};
 
+	const loop = refreshLoop<RevisionRow[] | null>({
+		read: () => bridge.rows(),
+		onStart: () => {
+			if (reading === null) paint();
+		},
+		onRead: (next) => {
+			reading = next;
+			// The rows are new text at new widths, so nothing measured of
+			// the old ones is worth carrying.
+			heights.clear();
+			paint();
+		},
+		onFail: () => {
+			if (reading === null) paint();
+			else stateText.setText(t('revisionTable.loadFailed'));
+		},
+	});
 	const refresh = (): void => {
-		if (disposed) return;
-		if (loading) {
-			refreshAgain = true;
-			return;
-		}
-		loading = true;
-		if (reading === null) paint();
-		void bridge
-			.rows()
-			.then((next) => {
-				loading = false;
-				failed = false;
-				if (disposed) return;
-				reading = next;
-				// The rows are new text at new widths, so nothing measured of
-				// the old ones is worth carrying.
-				heights.clear();
-				paint();
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-				}
-			})
-			.catch(() => {
-				// A failed read may not wear the reading label forever, and a
-				// refresh queued behind it still deserves its turn.
-				loading = false;
-				failed = true;
-				if (disposed) return;
-				if (refreshAgain) {
-					refreshAgain = false;
-					refresh();
-					return;
-				}
-				if (reading === null) paint();
-				else stateText.setText(t('revisionTable.loadFailed'));
-			});
+		loop.refresh();
 	};
 
 	refreshButton.addEventListener('click', () => {
@@ -412,7 +381,7 @@ export function renderRevisionPanel(
 	return {
 		refresh,
 		dispose: (): void => {
-			disposed = true;
+			loop.dispose();
 			virtual.destroy();
 			root.remove();
 		},

@@ -134,6 +134,8 @@ describe('the dialogue dress', () => {
 				from: 3,
 				to: 7,
 				classes: 'snowflake-method-dialogue',
+				// Dress only: a quoted stretch answers no menu of its own.
+				silent: true,
 				occurrence: {
 					type: 'dialogue',
 					path: 'note.md',
