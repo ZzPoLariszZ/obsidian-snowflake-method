@@ -8,6 +8,18 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0]
+
+### Added
+
+- **Word milestones**, the running count marked in the margin. Beside the line that reaches each interval, five hundred words by default, a small label gives the count reached there, by the same rule as the status bar. **Milestone mode** counts across the whole manuscript in reading order or starts again at every chapter, and the labels follow the writing: as a chapter grows its marks move, and across the whole manuscript so do the marks of every chapter after it. **Show word milestones** turns them on, and a pane too narrow to hold the labels withholds them rather than drawing them over the prose.
+- **Automatic chapter numbers**, a new chapter numbered from the one before it. **Numbering style** offers Chinese numerals (第一章), Chinese with Arabic numerals (第 1 章), English (Chapter 1), or rules of your own, written as a simplified format such as `第{nnnn}章` or `Chapter {n}:` or as a regular expression, with one rule running at a time. With a style on, the naming form has two fields, the number already filled in and the name you came to type, and, when numbered chapters follow, a switch that moves each of them up by one. Merging a numbered chapter into the one before it offers the mirror, moving the chapters after it down by one so the count closes over the gap. The renames are settled before anything is written and refused whole when a name is taken, a chapter whose heading you rewrote keeps that heading, and a chapter the rule does not read stays where it is. A number keeps the spelling its title already has, `第十章` to `第十一章` and `Chapter 0009` to `Chapter 0010`.
+- **Plain-text export**, the manuscript written out with every Markdown and Obsidian mark taken out: headings as their words, links as their text, comments and block ids gone, entities as the characters they stand for. The export button in the stream's toolbar writes the whole book, as one file with a blank line, a line of dashes or three asterisks between chapters, or as one file per chapter in a folder numbered in reading order, and every chapter's header has a button that exports the chapter alone and another that copies it to the clipboard as the same text. Each line of prose is a paragraph, indented with two ideographic spaces in a Chinese project and two em spaces otherwise unless you typed an indent, or stripped of its indent, and blank lines between paragraphs are kept or dropped, as the **Export** settings say. Files go to `Snowflake Export` beside the projects unless **Export folder** names another, never inside a project, with a `.txt` or `.md` extension and the same text inside either way. A file that already stands there is written over only after you agree, unsaved typing is saved first, and three commands do the same from the palette.
+
+### Changed
+
+- The focus mode slider has a reset button like the other sliders, and the settings page keeps its controls to one width: a number box and a folder field measure the same, a description that runs long wraps rather than squeezing its control, and a row with a name alone sits level with its control.
+
 ## [0.15.0]
 
 ### Added
@@ -364,6 +376,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.16.0]
+
+### 新增
+
+- **字数里程碑**，在页边标出累计字数。达到每个间隔的那一行旁会有一个小标签，写着此处到达的字数，默认每五百字一处，按状态栏同一套规则计数。**里程碑模式**可以在整部正文中按阅读顺序连续累计，也可以在每章重新计数。标签会跟着写作走：一章变长，它的里程碑随之移动，在整部正文模式下其后每一章的里程碑也一同移动。由**显示字数里程碑**开启。窗格太窄放不下标签时会把标签收起，而不是画在正文之上。
+- **自动章节编号**，新章节按前一章接着编号。**编号样式**提供中文数字（第一章）、中文加阿拉伯数字（第 1 章）、英文（Chapter 1），或你自己的规则，可用简化格式（如`第{nnnn}章`或`Chapter {n}:`）或正则表达式书写，同一时间只有一条规则生效。开启样式后，命名表单有两个字段，编号已经填好，名称由你来写。其后有带编号的章节时，还有一个开关把它们各顺延一号。把带编号的一章并入前一章时会给出相反的选项，把其后的章节各减一号，让编号重新连续。所有重命名都在写入之前先行核对，有名称被占用时整批拒绝，标题已被你改写的章节保留你的标题，规则读不出编号的章节原地不动。编号沿用标题原有的写法：`第十章`到`第十一章`，`Chapter 0009`到`Chapter 0010`。
+- **纯文本导出**，把正文去掉所有 Markdown 与 Obsidian 标记后写出来：标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原为它所代表的字符。正文流工具栏的导出按钮导出整部正文，可以合成一个文件，章节之间以空行、一行短横线或三个星号分隔，也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有一个只导出这一章的按钮，和一个把同样的文本复制到剪贴板的按钮。每一行文字都是一个段落，中文项目以两个全角空格缩进，其他项目以两个 em 空格缩进，你自己打了缩进则保留，也可以一律去掉缩进，段落之间的空行照**导出**设置保留或去掉。文件默认保存到项目旁的 `Snowflake Export`，也可以在**导出文件夹**里另指定，但不能在项目之内，扩展名为 `.txt` 或 `.md`，两者内容相同。目标位置已有文件时只有在你同意之后才会覆盖，未保存的输入会先保存，命令面板里也有对应的三条命令。
+
+### 变更
+
+- 专注模式的滑块和其他滑块一样有了复位按钮，设置页面的控件也统一了宽度：数字框与文件夹框宽度相同，过长的说明会换行而不会挤压控件，只有名称的一行与它的控件对齐。
 
 ## [0.15.0]
 
