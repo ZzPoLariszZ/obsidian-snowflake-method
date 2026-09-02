@@ -87,6 +87,15 @@ import {
 	type SensitiveMatcher,
 	type Revision,
 	fileStem,
+	compileChapterNumbering,
+	sanitizeChapterNumberRules,
+	proposeChapterNumber,
+	proposeChapterRemoval,
+	type ChapterFollower,
+	type ChapterNumbering,
+	type ChapterNumberRule,
+	type ChapterNumberProposal,
+	type ChapterRemovalProposal,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -110,6 +119,7 @@ import {
 import {
 	ConcurrentChangeError,
 	ManagedFileNotFoundError,
+	PathConflictError,
 	UnsafeSectionError,
 	UnsupportedSchemaError,
 	documentTypeOf,
@@ -120,6 +130,12 @@ import {
 	createStableId,
 	sessionClockMs,
 	SnowflakeProjectService,
+	ExportIntoManuscriptError,
+	projectExportRoot,
+	type ManuscriptExportOptions,
+	type ManuscriptExportPlan,
+	type ManuscriptExportScope,
+	type SegmentRenameOutcome,
 	ArchiveFolderIsProjectError,
 	DuplicateNameError,
 	KindRegistrationRefusedError,
@@ -225,6 +241,9 @@ import {
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
 	promptForSegmentTitle,
+	confirmSegmentMerge,
+	confirmExportReplace,
+	type SegmentTitlePrompt,
 	type CharacterOption,
 	type CreateCharacterRequest,
 	type CreateProjectRequest,
@@ -235,8 +254,11 @@ import {
 	SessionSetupModal,
 	confirmHighlightRuleDeletion,
 	promptForHighlightRule,
+	promptForChapterNumberRule,
+	confirmChapterNumberRuleDeletion,
 	type EntityFormRequest,
 	type HighlightRuleFormResult,
+	type ChapterNumberRuleFormResult,
 	type ManageProjectLists,
 	type ManageProjectOption,
 	type StartSessionRequest,
@@ -2706,6 +2728,21 @@ export default class SnowflakeMethodPlugin
 			this.applyManuscriptMentionMode();
 			return;
 		}
+		// The numbering rule is read when a note is named, and the export
+		// settings when a file is written; nothing standing changes with them.
+		if (key.startsWith('manuscriptChapterNumber')) return;
+		if (key.startsWith('export')) return;
+		// The word milestones are dress on the count the streams already take
+		// of the text they hold, so re-dressing the open streams is the whole
+		// change here too.
+		if (
+			key === 'manuscriptMilestones' ||
+			key === 'manuscriptMilestoneMode' ||
+			key === 'manuscriptMilestoneInterval'
+		) {
+			this.applyManuscriptMentionMode();
+			return;
+		}
 		// The sensitive list re-dresses at once too, but its counts feed the
 		// tracking pane and the statistics, so it also falls through.
 		if (key === 'sensitiveWords') {
@@ -4866,12 +4903,56 @@ export default class SnowflakeMethodPlugin
 		this.scheduleRefresh();
 	}
 
+	/**
+	 * Joins a note with the one after it, once the author has said so. With
+	 * numbering on and the note going numbered, the dialog also asks whether
+	 * the numbered notes after it close the gap -- the mirror of the move up
+	 * an inserted note asks for -- and those renames are settled before
+	 * anything is joined, so a name that cannot be taken refuses the whole
+	 * merge with nothing done. Resolves false when the author declined, or
+	 * there was nothing after the note to join.
+	 */
 	async mergeManuscriptSegments(
 		projectPath: string,
 		path: string,
-	): Promise<void> {
-		await this.projects.mergeManuscriptSegments(projectPath, path);
+		onAgreed?: SegmentNamed,
+	): Promise<boolean> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return false;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		// Read from the notes as they stand on disk, as the naming form reads
+		// them, so the pair and the notes after them are the ones the merge
+		// will find.
+		const segments = await this.projects.manuscript.listSegmentsFromFiles(project);
+		const target = normalizePath(path);
+		const at = segments.findIndex((segment) => segment.path === target);
+		const kept = segments[at];
+		const removed = segments[at + 1];
+		if (kept === undefined || removed === undefined) return false;
+		const proposal = this.chapterRemovalProposal(segments, at + 1);
+		const choice = await confirmSegmentMerge(this.app, t, {
+			kept: kept.title,
+			removed: removed.title,
+			followers: proposal?.followers.length ?? 0,
+		});
+		if (choice === null) return false;
+		await onAgreed?.();
+		const renames =
+			choice.renumber && proposal !== null ? this.followerRenames(proposal) : [];
+		let merged: { renumbered: SegmentRenameOutcome };
+		try {
+			merged = await this.projects.mergeManuscriptSegments(
+				projectPath,
+				path,
+				renames,
+			);
+		} catch (error) {
+			throw this.renumberError(error, t);
+		}
 		this.followMergedNote(projectPath, path);
+		this.noticeRenumbered(merged.renumbered, t);
+		return true;
 	}
 
 	/**
@@ -4913,6 +4994,12 @@ export default class SnowflakeMethodPlugin
 			mentionHighlight: this.settings.manuscriptMentionHighlight,
 			sensitiveHighlight: this.settings.sensitiveHighlight,
 			customHighlights: this.settings.customHighlightsEnabled,
+			milestones: {
+				enabled: this.settings.manuscriptMilestones,
+				mode: this.settings.manuscriptMilestoneMode,
+				interval: this.settings.manuscriptMilestoneInterval,
+				count: this.writingCountOptions(),
+			},
 		};
 	}
 
@@ -5056,6 +5143,105 @@ export default class SnowflakeMethodPlugin
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return [];
 		return this.projects.revisions.list(project);
+	}
+
+	/** The export as the settings describe it, the folder resolved. */
+	private exportOptions(): ManuscriptExportOptions {
+		return {
+			folder:
+				this.settings.exportFolder.length === 0
+					? projectExportRoot(this.settings.projectRoot)
+					: this.settings.exportFolder,
+			format: this.settings.exportFormat,
+			indent: this.settings.exportIndent,
+			paragraphSpacing: this.settings.exportParagraphSpacing,
+			layout: this.settings.exportManuscriptLayout,
+			separator: this.settings.exportChapterSeparator,
+		};
+	}
+
+	async exportManuscript(projectPath: string | null): Promise<void> {
+		await this.runExport(projectPath, { kind: 'manuscript' });
+	}
+
+	async exportManuscriptSegment(
+		projectPath: string | null,
+		path: string,
+	): Promise<void> {
+		await this.runExport(projectPath, { kind: 'segment', path });
+	}
+
+	async manuscriptSegmentPlainText(
+		projectPath: string | null,
+		path: string,
+	): Promise<string | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		return this.projects.exporter.segmentText(project, path, this.exportOptions());
+	}
+
+	/**
+	 * Plans, asks once about the files that already stand, writes, and says
+	 * where. A folder inside the manuscript is refused before anything is
+	 * planned, because a file written there would read as a note.
+	 */
+	private async runExport(
+		projectPath: string | null,
+		scope: ManuscriptExportScope,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		let plan: ManuscriptExportPlan;
+		try {
+			plan = await this.projects.exporter.plan(project, scope, this.exportOptions());
+		} catch (error) {
+			if (error instanceof ExportIntoManuscriptError) {
+				new Notice(t('errors.exportIntoManuscript', { path: error.path }));
+				return;
+			}
+			throw error;
+		}
+		if (plan.targets.length === 0) {
+			new Notice(t('messages.exportNothing'));
+			return;
+		}
+		const standing = plan.targets.filter((target) => target.exists);
+		if (standing.length > 0) {
+			const agreed = await confirmExportReplace(
+				this.app,
+				t,
+				standing.map((target) => target.path),
+			);
+			if (!agreed) return;
+		}
+		const written = await this.projects.exporter.write(plan);
+		const first = written[0] ?? '';
+		new Notice(
+			written.length === 1
+				? t('messages.exported', { path: first })
+				: t('messages.exportedMany', {
+						count: written.length,
+						folder: first.slice(0, Math.max(0, first.lastIndexOf('/'))),
+					}),
+		);
+	}
+
+	async manuscriptSegmentTotals(
+		projectPath: string | null,
+	): Promise<ReadonlyMap<string, number>> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return new Map();
+		const win = this.app.workspace.containerEl.win;
+		return this.projects.writingCount.countManuscriptTotals(
+			project,
+			this.writingCountOptions(),
+			() =>
+				new Promise((resolve) => {
+					win.setTimeout(resolve, 0);
+				}),
+		);
 	}
 
 	/**
@@ -5285,6 +5471,39 @@ export default class SnowflakeMethodPlugin
 		await this.handleSettingsChanged('customHighlightRules');
 		// An open settings page re-reads its rows: the tab's own actions call
 		// this too, harmlessly twice, and any other caller heals it for free.
+		this.settingTab?.update();
+	}
+
+	promptChapterNumberRule(
+		translate: Translate,
+		options: {
+			title: string;
+			submitLabel: string;
+			initial?: ChapterNumberRule;
+		},
+	): Promise<ChapterNumberRuleFormResult | null> {
+		return promptForChapterNumberRule(this.app, translate, options);
+	}
+
+	confirmChapterNumberRuleDeletion(
+		translate: Translate,
+		ruleName: string,
+	): Promise<boolean> {
+		return confirmChapterNumberRuleDeletion(this.app, translate, ruleName);
+	}
+
+	/**
+	 * Replaces the numbering rules whole, the settings tab's one mutation
+	 * path; the sanitizer keeps one rule running at most.
+	 */
+	async updateChapterNumberRules(
+		next: readonly ChapterNumberRule[],
+	): Promise<void> {
+		this.settings.manuscriptChapterNumberRules = sanitizeChapterNumberRules([
+			...next,
+		]);
+		await this.saveSettings();
+		await this.handleSettingsChanged('manuscriptChapterNumberRules');
 		this.settingTab?.update();
 	}
 
@@ -5615,15 +5834,18 @@ export default class SnowflakeMethodPlugin
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
 		const manuscript = this.projects.manuscript;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		const proposal = await this.chapterNumberProposal(project, placement);
 		return promptForSegmentTitle(
 			this.app,
-			(key, vars) => this.translateForProject(project.locale, key, vars),
-			this.translateForProject(
-				project.locale,
-				'manuscript.defaultSegmentTitle',
-			),
-			async (title) => {
+			t,
+			this.segmentTitlePrompt(t, proposal),
+			async ({ title, renumber }) => {
 				await onNamed?.();
+				if (renumber && proposal !== null) {
+					await this.renumberFollowers(project, proposal, t);
+				}
 				if ('after' in placement) {
 					return manuscript.insertSegmentAfter(project, placement.after, title);
 				}
@@ -5642,15 +5864,20 @@ export default class SnowflakeMethodPlugin
 	): Promise<string | null> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return null;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		// The new note goes right after the one being split, so it is numbered
+		// from that one, and the notes after it move along the same way.
+		const proposal = await this.chapterNumberProposal(project, { after: path });
 		return promptForSegmentTitle(
 			this.app,
-			(key, vars) => this.translateForProject(project.locale, key, vars),
-			this.translateForProject(
-				project.locale,
-				'manuscript.defaultSegmentTitle',
-			),
-			async (title) => {
+			t,
+			this.segmentTitlePrompt(t, proposal),
+			async ({ title, renumber }) => {
 				await onNamed?.();
+				if (renumber && proposal !== null) {
+					await this.renumberFollowers(project, proposal, t);
+				}
 				return this.projects.manuscript.splitSegment(
 					project,
 					path,
@@ -5658,6 +5885,134 @@ export default class SnowflakeMethodPlugin
 					title,
 				);
 			},
+		);
+	}
+
+	/** The numbering rule the settings describe, or null while it is off or unusable. */
+	private chapterNumbering(): ChapterNumbering | null {
+		return compileChapterNumbering({
+			style: this.settings.manuscriptChapterNumbering,
+			rules: this.settings.manuscriptChapterNumberRules,
+		});
+	}
+
+	/**
+	 * What the rule offers a note placed here: read from the notes as they
+	 * stand on disk, because a note made a moment ago is exactly the one the
+	 * index has not caught up with, and it is the one before the new note.
+	 */
+	private async chapterNumberProposal(
+		project: ProjectSnapshot,
+		placement: { after: string } | { atStart: true } | { atEnd: true },
+	): Promise<(ChapterNumberProposal & { paths: string[] }) | null> {
+		const numbering = this.chapterNumbering();
+		if (numbering === null) return null;
+		const segments = await this.projects.manuscript.listSegmentsFromFiles(project);
+		let insertAt = segments.length;
+		if ('after' in placement) {
+			const target = normalizePath(placement.after);
+			const index = segments.findIndex((segment) => segment.path === target);
+			insertAt = index === -1 ? segments.length : index + 1;
+		} else if ('atStart' in placement) {
+			insertAt = 0;
+		}
+		return {
+			...proposeChapterNumber(
+				segments.map((segment) => segment.title),
+				insertAt,
+				numbering,
+			),
+			paths: segments.map((segment) => segment.path),
+		};
+	}
+
+	/**
+	 * What the rule asks of the notes after the one at `removeAt` once it is
+	 * gone: the numbered ones move down by one, closing the gap, when the
+	 * note going was numbered itself.
+	 */
+	private chapterRemovalProposal(
+		segments: readonly { path: string; title: string }[],
+		removeAt: number,
+	): (ChapterRemovalProposal & { paths: string[] }) | null {
+		const numbering = this.chapterNumbering();
+		if (numbering === null) return null;
+		return {
+			...proposeChapterRemoval(
+				segments.map((segment) => segment.title),
+				removeAt,
+				numbering,
+			),
+			paths: segments.map((segment) => segment.path),
+		};
+	}
+
+	private segmentTitlePrompt(
+		t: (key: string, vars?: Record<string, string | number>) => string,
+		proposal: ChapterNumberProposal | null,
+	): SegmentTitlePrompt {
+		return {
+			preset: t('manuscript.defaultSegmentTitle'),
+			numbering:
+				proposal === null
+					? null
+					: { head: proposal.head, followers: proposal.followers.length },
+		};
+	}
+
+	/**
+	 * Moves the numbered notes after the new one up by one, as the author
+	 * asked. A name the batch cannot take refuses the whole batch, said in the
+	 * form's own notice so the author can change the name or step back.
+	 */
+	private async renumberFollowers(
+		project: ProjectSnapshot,
+		proposal: ChapterNumberProposal & { paths: string[] },
+		t: (key: string, vars?: Record<string, string | number>) => string,
+	): Promise<void> {
+		let outcome: SegmentRenameOutcome;
+		try {
+			outcome = await this.projects.manuscript.renameSegments(
+				project,
+				this.followerRenames(proposal),
+			);
+		} catch (error) {
+			throw this.renumberError(error, t);
+		}
+		this.noticeRenumbered(outcome, t);
+	}
+
+	/** The renames a proposal's followers ask for, each note by its path. */
+	private followerRenames(proposal: {
+		followers: readonly ChapterFollower[];
+		paths: readonly string[];
+	}): { path: string; title: string }[] {
+		return proposal.followers.flatMap((follower) => {
+			const path = proposal.paths[follower.index];
+			return path === undefined ? [] : [{ path, title: follower.next }];
+		});
+	}
+
+	/** A refused name said in the author's words; anything else as it came. */
+	private renumberError(
+		error: unknown,
+		t: (key: string, vars?: Record<string, string | number>) => string,
+	): unknown {
+		return error instanceof PathConflictError
+			? new Error(t('errors.renumberConflict', { path: error.path }))
+			: error;
+	}
+
+	private noticeRenumbered(
+		outcome: SegmentRenameOutcome,
+		t: (key: string, vars?: Record<string, string | number>) => string,
+	): void {
+		if (outcome.renamed.length === 0) return;
+		new Notice(
+			t('messages.segmentsRenumbered', {
+				count: outcome.renamed.length,
+				skipped: outcome.skipped.length,
+			}),
 		);
 	}
 
@@ -6168,6 +6523,29 @@ export default class SnowflakeMethodPlugin
 			id: 'manuscript-back-to-anchor',
 			name: this.globalT('commands.manuscriptBackToAnchor'),
 			checkCallback: inStream((view) => view.goToAnchor()),
+		});
+		// The manuscript as plain text: the whole book from the stream, and the
+		// note the page is centred on, written or copied.
+		this.addCommand({
+			id: 'export-manuscript',
+			name: this.globalT('commands.exportManuscript'),
+			checkCallback: inStream((view) => view.exportWholeManuscript()),
+		});
+		this.addCommand({
+			id: 'export-manuscript-note',
+			name: this.globalT('commands.exportManuscriptNote'),
+			checkCallback: inStream(
+				(view) => view.exportActiveSegment(),
+				(view) => view.activeSegment() !== null,
+			),
+		});
+		this.addCommand({
+			id: 'copy-manuscript-note',
+			name: this.globalT('commands.copyManuscriptNote'),
+			checkCallback: inStream(
+				(view) => view.copyActiveSegment(),
+				(view) => view.activeSegment() !== null,
+			),
 		});
 		this.addCommand({
 			id: 'manuscript-insert-note-after',

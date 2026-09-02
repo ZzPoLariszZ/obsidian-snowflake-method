@@ -6,8 +6,10 @@ import {
 	captureRevision,
 	combineMentionMarks,
 	dialogueRanges,
+	milestonePositions,
 	planDialogueMarks,
 	planMentionMarks,
+	planMilestoneMarks,
 	planRevisionMarks,
 	type CountableRange,
 	type MentionMark,
@@ -176,5 +178,44 @@ describe('the revision layer on the rendered half', () => {
 		expect(revisionSpans[0]?.index).toBe(0);
 		expect(mentionSpans[0]?.text).toBe('Alice');
 		expect(revisionSpans[0]?.text).toBe('soAliceran');
+	});
+});
+
+describe('the milestone layer on the rendered half', () => {
+	it('projects a milestone onto the one visible character it stands on', () => {
+		const body = 'so **Alice** ran far';
+		const plan = milestonePositions(
+			body,
+			[],
+			{ mode: 'ms-word', headings: 'count' },
+			2,
+		);
+		const spans = projectMentionMarks(
+			body,
+			planMilestoneMarks('note.md', body, plan, (count) => String(count)),
+		);
+		// Visible: s o A l i c e r a n f a r -- Alice is the second word and
+		// far the fourth, and the asterisks never show.
+		expect(
+			spans.map((span) => [span.from, span.to, span.text, span.mark.label]),
+		).toEqual([
+			[2, 3, 'A', '2'],
+			[10, 11, 'f', '4'],
+		]);
+	});
+
+	it('spans both units of a character past the BMP', () => {
+		const body = '𠮷野家';
+		const plan = milestonePositions(
+			body,
+			[],
+			{ mode: 'chenggua', headings: 'count' },
+			1,
+		);
+		const spans = projectMentionMarks(
+			body,
+			planMilestoneMarks('note.md', body, plan, (count) => String(count)),
+		);
+		expect(spans[0]).toMatchObject({ from: 0, to: 2, text: '𠮷' });
 	});
 });

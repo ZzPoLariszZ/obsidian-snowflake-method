@@ -2765,6 +2765,35 @@
 	width: 100%;
 }
 
+/* The renumber question, asked the same way by the naming form and the merge
+   dialog: what it decides on the left, the toggle at the right edge, on one
+   line and with nothing under it. The words take a click as a checkbox's
+   label does. */
+.snowflake-method-renumber-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	min-width: 0;
+}
+
+.snowflake-method-renumber-row > .checkbox-container {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-renumber-label {
+	flex: 1 1 auto;
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	line-height: 1.4;
+	min-width: 0;
+	cursor: default;
+}
+
+.snowflake-method-merge-segments-modal .snowflake-method-renumber-row {
+	margin-top: var(--size-4-4);
+}
+
 /* Writable one-liners and dropdowns share the form's full width; a color
    swatch and a toggle's hidden checkbox keep their native size. */
 .modal:is(
@@ -5212,16 +5241,34 @@ body {
    whichever way round the reading toggle happens to be. A mode button whose
    mode is on stays visible: it is the one telling the author something. */
 .snowflake-method-segment-write,
+.snowflake-method-segment-copy,
+.snowflake-method-segment-export,
 .snowflake-method-segment-open {
 	opacity: 0;
 	transition: opacity 120ms ease-in-out;
 }
 
 .snowflake-method-segment:hover .snowflake-method-segment-write,
+.snowflake-method-segment:hover .snowflake-method-segment-copy,
+.snowflake-method-segment:hover .snowflake-method-segment-export,
 .snowflake-method-segment:hover .snowflake-method-segment-open,
 .snowflake-method-segment-write:focus-visible,
+.snowflake-method-segment-copy:focus-visible,
+.snowflake-method-segment-export:focus-visible,
 .snowflake-method-segment-open:focus-visible {
 	opacity: 1;
+}
+
+/* The paths an export would write over, listed as paths: one per line, in
+   the interface face, never wrapped mid-name where a reader could lose which
+   file is meant. */
+.snowflake-method-export-paths {
+	margin: var(--size-4-2) 0;
+	padding-inline-start: var(--size-4-5);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
 }
 
 /* The body is a stacking context of its own, so the guide layer each editor
@@ -5282,7 +5329,11 @@ body {
 	white-space: pre-wrap;
 }
 
+/* Positioned, so a milestone label drawn by a mark inside the line measures
+   its distance from the line's own edge, which is the column's; the writing
+   guides below assume the same. */
 .snowflake-method-segment-body .cm-line {
+	position: relative;
 	padding-inline: 0;
 }
 
@@ -5540,6 +5591,53 @@ body {
 	right: 0;
 	left: auto;
 	width: min(260px, 70%);
+}
+
+/* Word milestones: the count reached at each interval, drawn beside the row
+   that holds the character the count reached it on. The mark is one
+   character wide and changes nothing about how the row measures. The label
+   is a pseudo-element taken out of the flow: an absolutely positioned box
+   with no `top` of its own takes the static position of the inline it came
+   from -- the very row -- while `right` is measured from its containing
+   block. That block is the line in the editor and the block in the rendered
+   half, both positioned so that the label's right edge stands the same
+   distance left of the column's edge on either side. The label's line box is
+   the row's, so a smaller face still sits on the row rather than at its top. */
+.snowflake-method-segment-rendered.markdown-rendered > * {
+	position: relative;
+}
+
+.snowflake-method-milestone::before {
+	content: attr(data-snowflake-method-label);
+	position: absolute;
+	/* Clear of the editing stripe: the body being written in draws a two
+	   pixel stripe twelve pixels out from the column, and the label stands
+	   eight further, in the reading half as well, so it holds its place when
+	   the author clicks into the note. */
+	right: calc(100% + var(--size-4-3) + 2px + var(--size-4-2));
+	color: var(--text-faint);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+	font-style: normal;
+	font-variant-numeric: tabular-nums;
+	line-height: calc(
+		var(--snowflake-method-manuscript-line-height, var(--line-height-normal)) *
+			var(--snowflake-method-manuscript-font-size, var(--font-text-size))
+	);
+	text-decoration: none;
+	white-space: nowrap;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* A pane whose margin cannot hold the labels withholds them: drawn inside
+   the column they would cover the prose, and past the stream's edge they
+   would be clipped to a fragment. Hidden rather than gone, so each label is
+   still laid out where its rule puts it, and the view can measure whether a
+   widened pane holds it again. */
+.is-milestone-tight .snowflake-method-milestone::before {
+	visibility: hidden;
 }
 
 /* A card is a note pinned in the margin: a stripe down its binding edge in

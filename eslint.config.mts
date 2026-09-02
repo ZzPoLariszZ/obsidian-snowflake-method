@@ -66,6 +66,7 @@ export default defineConfig(
 						'Obsidian Canvas',
 						'Snowflake',
 						'Snowflake Archive',
+						'Snowflake Export',
 						'Snowflake Method',
 					],
 					acronyms: ['CJK', 'H1', 'ID', 'POV', '6Z'],
@@ -83,6 +84,12 @@ export default defineConfig(
 						'^point-of-view character$',
 						'^ and describe exactly what happens',
 						'^to create a “timeline”',
+						// The numbering presets name their example titles, which
+						// carry a capital of their own.
+						'Arabic numerals \\(第 1 章\\)',
+						'English \\(Chapter 1\\)',
+						// The rule dialog's example first number, a title too.
+						'Chapter 0001',
 					],
 				},
 			],

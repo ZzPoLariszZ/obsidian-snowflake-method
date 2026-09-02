@@ -38,7 +38,15 @@ import {
 	isManuscriptGuide,
 	isManuscriptTextAlign,
 	isDialoguePresentation,
+	newChapterRuleId,
+	sanitizeChapterNumberRules,
+	isChapterNumberingStyle,
+	isExportFormat,
+	isExportLayout,
+	isExportSeparator,
 	isMentionHighlightMode,
+	isMilestoneInterval,
+	isMilestoneMode,
 	newHighlightRuleId,
 	rememberFontFamily,
 	sanitizeCustomHighlightRules,
@@ -64,7 +72,13 @@ import {
 	type ManuscriptGuide,
 	type ManuscriptTextAlign,
 	type ManuscriptTint,
+	type ChapterNumberingStyle,
+	type ChapterNumberRule,
+	type ExportFormat,
+	type ExportLayout,
+	type ExportSeparator,
 	type MentionHighlightMode,
+	type MilestoneMode,
 	type ReadingMeasure,
 	type ManuscriptPresentation,
 	type WeekStartDay,
@@ -161,6 +175,27 @@ export interface SnowflakeSettings {
 	manuscriptWindow: number;
 	showManuscriptPath: boolean;
 	showManuscriptSequence: boolean;
+	/** Word milestones drawn in the margin beside the rows the count reaches. */
+	manuscriptMilestones: boolean;
+	/** Whether the count runs on through the manuscript or restarts per note. */
+	manuscriptMilestoneMode: MilestoneMode;
+	/** Units of the writing count between one milestone and the next. */
+	manuscriptMilestoneInterval: number;
+	/** How a new manuscript note is offered its number, if at all. */
+	manuscriptChapterNumbering: ChapterNumberingStyle;
+	/** The custom rules, of which one runs at a time; read when the style is custom. */
+	manuscriptChapterNumberRules: ChapterNumberRule[];
+	/** The Vault folder exports go under; empty for the folder beside the projects. */
+	exportFolder: string;
+	exportFormat: ExportFormat;
+	/** Begin every exported paragraph with the manuscript's indent. */
+	exportIndent: boolean;
+	/** Keep the blank lines between exported paragraphs as written. */
+	exportParagraphSpacing: boolean;
+	/** The whole manuscript as one file, or one file per note in a folder. */
+	exportManuscriptLayout: ExportLayout;
+	/** What stands between two notes in a single exported file. */
+	exportChapterSeparator: ExportSeparator;
 	/** The line being written held at the middle of the page. */
 	manuscriptTypewriter: boolean;
 	manuscriptFocusLevel: ManuscriptFocusLevel;
@@ -307,6 +342,17 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptWindow: 5,
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
+	manuscriptMilestones: false,
+	manuscriptMilestoneMode: 'manuscript',
+	manuscriptMilestoneInterval: 500,
+	manuscriptChapterNumbering: 'off',
+	manuscriptChapterNumberRules: [],
+	exportFolder: '',
+	exportFormat: 'txt',
+	exportIndent: true,
+	exportParagraphSpacing: true,
+	exportManuscriptLayout: 'single',
+	exportChapterSeparator: 'blank',
 	manuscriptTypewriter: true,
 	manuscriptAutoPairBrackets: true,
 	manuscriptAutoPairMarkdown: true,
@@ -386,6 +432,17 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptWindow',
 	'showManuscriptPath',
 	'showManuscriptSequence',
+	'manuscriptMilestones',
+	'manuscriptMilestoneMode',
+	'manuscriptMilestoneInterval',
+	'manuscriptChapterNumbering',
+	'manuscriptChapterNumberRules',
+	'exportFolder',
+	'exportFormat',
+	'exportIndent',
+	'exportParagraphSpacing',
+	'exportManuscriptLayout',
+	'exportChapterSeparator',
 	'manuscriptTypewriter',
 	'manuscriptAutoPairBrackets',
 	'manuscriptAutoPairMarkdown',
@@ -585,6 +642,47 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.showManuscriptSequence === 'boolean'
 				? raw.showManuscriptSequence
 				: DEFAULT_SETTINGS.showManuscriptSequence,
+		manuscriptMilestones:
+			typeof raw.manuscriptMilestones === 'boolean'
+				? raw.manuscriptMilestones
+				: DEFAULT_SETTINGS.manuscriptMilestones,
+		manuscriptMilestoneMode: isMilestoneMode(raw.manuscriptMilestoneMode)
+			? raw.manuscriptMilestoneMode
+			: DEFAULT_SETTINGS.manuscriptMilestoneMode,
+		manuscriptMilestoneInterval: isMilestoneInterval(
+			raw.manuscriptMilestoneInterval,
+		)
+			? raw.manuscriptMilestoneInterval
+			: DEFAULT_SETTINGS.manuscriptMilestoneInterval,
+		manuscriptChapterNumbering: isChapterNumberingStyle(
+			raw.manuscriptChapterNumbering,
+		)
+			? raw.manuscriptChapterNumbering
+			: DEFAULT_SETTINGS.manuscriptChapterNumbering,
+		manuscriptChapterNumberRules: sanitizeChapterNumberRules(
+			raw.manuscriptChapterNumberRules,
+		),
+		exportFolder:
+			typeof raw.exportFolder === 'string'
+				? normalizeProjectRoot(raw.exportFolder)
+				: DEFAULT_SETTINGS.exportFolder,
+		exportFormat: isExportFormat(raw.exportFormat)
+			? raw.exportFormat
+			: DEFAULT_SETTINGS.exportFormat,
+		exportIndent:
+			typeof raw.exportIndent === 'boolean'
+				? raw.exportIndent
+				: DEFAULT_SETTINGS.exportIndent,
+		exportParagraphSpacing:
+			typeof raw.exportParagraphSpacing === 'boolean'
+				? raw.exportParagraphSpacing
+				: DEFAULT_SETTINGS.exportParagraphSpacing,
+		exportManuscriptLayout: isExportLayout(raw.exportManuscriptLayout)
+			? raw.exportManuscriptLayout
+			: DEFAULT_SETTINGS.exportManuscriptLayout,
+		exportChapterSeparator: isExportSeparator(raw.exportChapterSeparator)
+			? raw.exportChapterSeparator
+			: DEFAULT_SETTINGS.exportChapterSeparator,
 		manuscriptTypewriter:
 			typeof raw.manuscriptTypewriter === 'boolean'
 				? raw.manuscriptTypewriter
@@ -1344,6 +1442,87 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							defaultValue: DEFAULT_SETTINGS.showManuscriptSequence,
 						},
 					},
+					// The word milestones, under a heading of their own: a reading
+					// aid over the count, kept apart from how the page behaves.
+					{
+						name: this.t('settings.milestones.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('settings.manuscriptMilestones.name'),
+						desc: this.t('settings.manuscriptMilestones.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptMilestones',
+							defaultValue: DEFAULT_SETTINGS.manuscriptMilestones,
+						},
+					},
+					{
+						name: this.t('settings.manuscriptMilestoneMode.name'),
+						desc: this.t('settings.manuscriptMilestoneMode.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptMilestoneMode',
+							defaultValue: DEFAULT_SETTINGS.manuscriptMilestoneMode,
+							options: {
+								manuscript: this.t('settings.manuscriptMilestoneMode.manuscript'),
+								chapter: this.t('settings.manuscriptMilestoneMode.chapter'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptMilestoneInterval.name'),
+						desc: this.t('settings.manuscriptMilestoneInterval.desc'),
+						control: {
+							type: 'number',
+							key: 'manuscriptMilestoneInterval',
+							defaultValue: DEFAULT_SETTINGS.manuscriptMilestoneInterval,
+							min: 1,
+							step: 1,
+							validate: (value) =>
+								isMilestoneInterval(value)
+									? undefined
+									: this.t('settings.manuscriptMilestoneInterval.invalid'),
+						},
+					},
+					// The number a new note is offered, under a heading of its own.
+					{
+						name: this.t('settings.chapterNumbering.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('settings.manuscriptChapterNumbering.name'),
+						desc: this.t('settings.manuscriptChapterNumbering.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptChapterNumbering',
+							defaultValue: DEFAULT_SETTINGS.manuscriptChapterNumbering,
+							options: {
+								off: this.t('settings.manuscriptChapterNumbering.off'),
+								chinese: this.t('settings.manuscriptChapterNumbering.chinese'),
+								'chinese-arabic': this.t(
+									'settings.manuscriptChapterNumbering.chineseArabic',
+								),
+								english: this.t('settings.manuscriptChapterNumbering.english'),
+								custom: this.t('settings.manuscriptChapterNumbering.custom'),
+							},
+						},
+					},
+					// The custom rules, drawn as the highlight rules are and shown
+					// only while the style is custom: the dropdown's own change
+					// re-reads the page, so the shelf follows the choice at once.
+					{
+						name: '',
+						visible: () =>
+							this.owner.settings.manuscriptChapterNumbering === 'custom',
+						render: (setting) => {
+							this.renderNumberRules(setting);
+						},
+					},
 				// The page's dress, under a heading of its own: what the manuscript
 				// looks like is a different question from how it behaves, and an
 				// author who has found the look they want never needs to come back
@@ -1779,6 +1958,93 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			// What leaves the Vault as plain text, and how it is laid out on the
+			// way out. Its own section: an export is neither the plugin's manner
+			// nor the manuscript's dress.
+			{
+				type: 'group',
+				heading: this.t('settings.section.export'),
+				items: [
+					this.sectionDress('export'),
+					{
+						name: this.t('settings.exportFolder.name'),
+						desc: this.lines('settings.exportFolder.desc'),
+						control: {
+							type: 'folder',
+							key: 'exportFolder',
+							defaultValue: DEFAULT_SETTINGS.exportFolder,
+							includeRoot: true,
+							placeholder: this.t('settings.exportFolder.placeholder'),
+						},
+					},
+					{
+						name: this.t('settings.exportFormat.name'),
+						desc: this.t('settings.exportFormat.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'exportFormat',
+							defaultValue: DEFAULT_SETTINGS.exportFormat,
+							options: {
+								txt: this.t('settings.exportFormat.txt'),
+								md: this.t('settings.exportFormat.md'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.exportIndent.name'),
+						desc: this.lines('settings.exportIndent.desc'),
+						control: {
+							type: 'toggle',
+							key: 'exportIndent',
+							defaultValue: DEFAULT_SETTINGS.exportIndent,
+						},
+					},
+					{
+						name: this.t('settings.exportParagraphSpacing.name'),
+						desc: this.lines('settings.exportParagraphSpacing.desc'),
+						control: {
+							type: 'toggle',
+							key: 'exportParagraphSpacing',
+							defaultValue: DEFAULT_SETTINGS.exportParagraphSpacing,
+						},
+					},
+					{
+						name: this.t('settings.exportManuscript.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('settings.exportManuscriptLayout.name'),
+						desc: this.lines('settings.exportManuscriptLayout.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'exportManuscriptLayout',
+							defaultValue: DEFAULT_SETTINGS.exportManuscriptLayout,
+							options: {
+								single: this.t('settings.exportManuscriptLayout.single'),
+								folder: this.t('settings.exportManuscriptLayout.folder'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.exportChapterSeparator.name'),
+						desc: this.t('settings.exportChapterSeparator.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'exportChapterSeparator',
+							defaultValue: DEFAULT_SETTINGS.exportChapterSeparator,
+							disabled: () =>
+								this.owner.settings.exportManuscriptLayout !== 'single',
+							options: {
+								blank: this.t('settings.exportChapterSeparator.blank'),
+								rule: this.t('settings.exportChapterSeparator.rule'),
+								asterisks: this.t('settings.exportChapterSeparator.asterisks'),
+							},
+						},
+					},
+				],
+			},
 		];
 	}
 
@@ -1963,6 +2229,177 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		if (moved === undefined) return;
 		rules.splice(to, 0, moved);
 		await this.owner.updateCustomHighlightRules(rules);
+		this.update();
+	}
+
+	/**
+	 * The custom numbering rules, drawn as the highlight rules are: a card
+	 * per rule with its text, the handle that moves it, a pause button
+	 * saying whether it runs, and the trash, the add button beneath. One
+	 * runs at a time, and the cards say which.
+	 */
+	private renderNumberRules(setting: Setting): void {
+		const row = setting.settingEl;
+		row.empty();
+		row.addClass('snowflake-method-settings-rules');
+		const rules = this.owner.settings.manuscriptChapterNumberRules;
+		const cards = row.createDiv({ cls: 'snowflake-method-record-cards' });
+		// One holder per render: a drop redraws the page, which retires the
+		// cards along with whatever drag they were part of.
+		const dragState: { dragging: number | null } = { dragging: null };
+		rules.forEach((rule, index) => {
+			this.renderNumberRuleCard(cards, rule, index, dragState);
+		});
+		const add = row.createEl('button', {
+			cls: 'snowflake-method-record-add',
+			text: this.t('settings.chapterNumberRules.add'),
+			attr: { type: 'button' },
+		});
+		add.addEventListener('click', () => {
+			void this.addNumberRule();
+		});
+	}
+
+	private renderNumberRuleCard(
+		cards: HTMLElement,
+		rule: ChapterNumberRule,
+		index: number,
+		dragState: { dragging: number | null },
+	): void {
+		const card = cards.createDiv({
+			cls: 'snowflake-method-record-card snowflake-method-settings-rule',
+		});
+		card.toggleClass('is-paused', !rule.enabled);
+		const handle = card.createDiv({
+			cls: 'snowflake-method-record-drag',
+			attr: { 'aria-label': this.t('form.record.reorder') },
+		});
+		setIcon(handle, 'grip-vertical');
+		wireCardDrag(card, handle, dragState, index, (from) => {
+			void this.reorderNumberRules(from, index);
+		});
+		const body = card.createDiv({
+			cls: 'snowflake-method-record-body snowflake-method-settings-rule-body',
+			attr: { role: 'button', tabindex: '0' },
+		});
+		body.createDiv({
+			cls: 'snowflake-method-settings-rule-name',
+			text: rule.text,
+		});
+		const edit = (): void => {
+			void this.editNumberRule(index);
+		};
+		body.addEventListener('click', edit);
+		body.addEventListener('keydown', (event) => {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			edit();
+		});
+		const pause = card.createEl('button', {
+			cls: 'snowflake-method-record-card-pause clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.t(
+					rule.enabled
+						? 'settings.chapterNumberRules.pause'
+						: 'settings.chapterNumberRules.resume',
+				),
+			},
+		});
+		setIcon(pause, rule.enabled ? 'pause' : 'play');
+		pause.addEventListener('click', () => {
+			void this.toggleNumberRule(index);
+		});
+		const close = card.createEl('button', {
+			cls: 'snowflake-method-record-card-close clickable-icon',
+			attr: {
+				type: 'button',
+				'aria-label': this.t('modal.chapterNumberRule.deleteTitle', {
+					name: rule.text,
+				}),
+			},
+		});
+		setIcon(close, 'trash-2');
+		close.addEventListener('click', () => {
+			void this.deleteNumberRule(index);
+		});
+	}
+
+	/**
+	 * Rests the running rule, or wakes a paused one and rests whichever ran:
+	 * one rule runs at a time, so waking is also the way to switch.
+	 */
+	private async toggleNumberRule(index: number): Promise<void> {
+		await this.owner.updateChapterNumberRules(
+			this.owner.settings.manuscriptChapterNumberRules.map((kept, at) =>
+				at === index
+					? { ...kept, enabled: !kept.enabled }
+					: { ...kept, enabled: false },
+			),
+		);
+		this.update();
+	}
+
+	private async addNumberRule(): Promise<void> {
+		const result = await this.owner.promptChapterNumberRule(this.translator(), {
+			title: this.t('modal.chapterNumberRule.createTitle'),
+			submitLabel: this.t('common.add'),
+		});
+		if (result === null) return;
+		// A rule is born running, and one runs at a time: the one that ran
+		// rests, and its card's own pause button wakes it again.
+		await this.owner.updateChapterNumberRules([
+			...this.owner.settings.manuscriptChapterNumberRules.map((kept) => ({
+				...kept,
+				enabled: false,
+			})),
+			{ id: newChapterRuleId(), enabled: true, ...result },
+		]);
+		this.update();
+	}
+
+	private async editNumberRule(index: number): Promise<void> {
+		const rule = this.owner.settings.manuscriptChapterNumberRules[index];
+		if (rule === undefined) return;
+		const result = await this.owner.promptChapterNumberRule(this.translator(), {
+			title: this.t('modal.chapterNumberRule.editTitle'),
+			submitLabel: this.t('common.save'),
+			initial: rule,
+		});
+		if (result === null) return;
+		await this.owner.updateChapterNumberRules(
+			this.owner.settings.manuscriptChapterNumberRules.map((kept, at) =>
+				// The kind stays what it was: the dialog locked it too.
+				at === index ? { ...kept, ...result, kind: kept.kind } : kept,
+			),
+		);
+		this.update();
+	}
+
+	private async deleteNumberRule(index: number): Promise<void> {
+		const rule = this.owner.settings.manuscriptChapterNumberRules[index];
+		if (rule === undefined) return;
+		const confirmed = await this.owner.confirmChapterNumberRuleDeletion(
+			this.translator(),
+			rule.text,
+		);
+		if (confirmed) {
+			await this.owner.updateChapterNumberRules(
+				this.owner.settings.manuscriptChapterNumberRules.filter(
+					(kept, at) => at !== index,
+				),
+			);
+		}
+		// Rendered either way: a declined delete puts the row back.
+		this.update();
+	}
+
+	private async reorderNumberRules(from: number, to: number): Promise<void> {
+		const rules = [...this.owner.settings.manuscriptChapterNumberRules];
+		const [moved] = rules.splice(from, 1);
+		if (moved === undefined) return;
+		rules.splice(to, 0, moved);
+		await this.owner.updateChapterNumberRules(rules);
 		this.update();
 	}
 
@@ -2325,6 +2762,56 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'showManuscriptSequence':
 				if (typeof value === 'boolean') {
 					this.owner.settings.showManuscriptSequence = value;
+				}
+				break;
+			case 'manuscriptMilestones':
+				if (typeof value === 'boolean') {
+					this.owner.settings.manuscriptMilestones = value;
+				}
+				break;
+			case 'manuscriptMilestoneMode':
+				if (isMilestoneMode(value)) {
+					this.owner.settings.manuscriptMilestoneMode = value;
+				}
+				break;
+			case 'manuscriptMilestoneInterval':
+				if (isMilestoneInterval(value)) {
+					this.owner.settings.manuscriptMilestoneInterval = value;
+				}
+				break;
+			case 'manuscriptChapterNumbering':
+				if (isChapterNumberingStyle(value)) {
+					this.owner.settings.manuscriptChapterNumbering = value;
+					// The custom rule's rows follow the choice at once.
+					this.update();
+				}
+				break;
+			case 'exportFolder':
+				if (typeof value === 'string') {
+					this.owner.settings.exportFolder = normalizeProjectRoot(value);
+				}
+				break;
+			case 'exportFormat':
+				if (isExportFormat(value)) this.owner.settings.exportFormat = value;
+				break;
+			case 'exportIndent':
+				if (typeof value === 'boolean') this.owner.settings.exportIndent = value;
+				break;
+			case 'exportParagraphSpacing':
+				if (typeof value === 'boolean') {
+					this.owner.settings.exportParagraphSpacing = value;
+				}
+				break;
+			case 'exportManuscriptLayout':
+				if (isExportLayout(value)) {
+					this.owner.settings.exportManuscriptLayout = value;
+					// The separator row follows the layout at once.
+					this.update();
+				}
+				break;
+			case 'exportChapterSeparator':
+				if (isExportSeparator(value)) {
+					this.owner.settings.exportChapterSeparator = value;
 				}
 				break;
 			case 'manuscriptTypewriter':

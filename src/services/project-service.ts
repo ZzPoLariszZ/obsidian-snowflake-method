@@ -141,11 +141,14 @@ import {
   type ProjectBaseDefinition,
   type ProjectBaseId,
   type SystemTemplateDefinition,
+  firstHeading,
 } from "../templates";
 import {
   ManuscriptService,
   type ManuscriptSegmentRecord,
+  type SegmentRenameOutcome,
 } from "./manuscript-service";
+import { ManuscriptExportService } from "./manuscript-export";
 import {
   isMemberDocumentType,
   planFieldsBlockReconcile,
@@ -374,6 +377,8 @@ export class SnowflakeProjectService {
   readonly analysis: ManuscriptAnalysisService;
   /** Proposed manuscript changes: user data beside the caches above. */
   readonly revisions: RevisionService;
+  /** The manuscript as plain text files, for the export buttons and the copy. */
+  readonly exporter: ManuscriptExportService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -446,6 +451,7 @@ export class SnowflakeProjectService {
         ? {}
         : { onForeign: analysis.onRevisionsForeign }),
     });
+    this.exporter = new ManuscriptExportService(this.repository, this.manuscript);
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {
@@ -4945,13 +4951,19 @@ export class SnowflakeProjectService {
    * opening of the manuscript, and merging that note into its neighbour would
    * leave the project pointing at something in the trash.
    */
+  /**
+   * Joins a note with the one after it, renaming the notes after that as
+   * `renames` says -- the renumbering that closes over a numbered note going
+   * -- and answers with the project as it now stands and what was renamed.
+   */
   async mergeManuscriptSegments(
     projectLocator: ProjectLocator,
     path: string,
-  ): Promise<ProjectSnapshot> {
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{ project: ProjectSnapshot; renumbered: SegmentRenameOutcome }> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
-    const merged = await this.manuscript.mergeWithNext(project, path);
+    const merged = await this.manuscript.mergeWithNext(project, path, renames);
     if (merged === null) {
       throw new Error(`There is no manuscript note after "${normalizePath(path)}".`);
     }
@@ -4960,7 +4972,10 @@ export class SnowflakeProjectService {
         [FRONTMATTER_KEYS.draft]: toWikiLink(merged.kept, fileStem(merged.kept)),
       });
     }
-    return this.loadProject(project.projectFile);
+    return {
+      project: await this.loadProject(project.projectFile),
+      renumbered: merged.renumbered,
+    };
   }
 
   async reorderScene(
@@ -9510,12 +9525,6 @@ function basename(path: string): string {
 
 function normalizeHeading(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
-}
-
-/** The first level-one heading, matched exactly as updateFirstHeading writes it. */
-function firstHeading(body: string): string | null {
-  const match = /^#(?:[ \t]+)(.*)$/mu.exec(body);
-  return match ? normalizeHeading(match[1] ?? "") : null;
 }
 
 function trySafeFileName(value: string): string | null {

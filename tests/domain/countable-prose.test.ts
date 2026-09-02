@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	WRITING_COUNT_HEADINGS,
 	countWriting,
+	countablePieces,
 	countableProse,
+	type CountablePiece,
 	type WritingCountHeadings,
 } from '../../src/domain';
 
@@ -293,5 +296,111 @@ describe('countable prose', () => {
 
 	it('reads CJK prose through markdown unharmed', () => {
 		expect(count('**雪花**写作法之[[角色/爱丽丝|爱丽丝]]')).toBe(9);
+	});
+});
+
+describe('countable pieces', () => {
+	const FIXTURES = [
+		'[[Character/Alice|Alice]] met [[Bob]] at **noon**.',
+		'# Alice\n\nOne two three.\n\n## Her winter\n\nFour five.',
+		'Alice\n=====\n\nOne two three.',
+		'one %% hidden %% two\n\n```js\ncode\n```\n\nthree ^ab12',
+		'a \\* b and a&nbsp;b and line one\\\nline two',
+		'> [!note] Title here\n> body words\n\n- [ ] do it\n\n| One | Two |\n| --- | --- |\n| a | b |',
+		'记住==这句话==吧，之[[角色/爱丽丝|爱丽丝]]',
+		'alpha beta\n\n~~~~\n\ngamma delta',
+		'',
+	];
+	const join = (pieces: readonly CountablePiece[]): string =>
+		pieces.map((piece) => piece.text).join('');
+
+	it('joins back to the countable text, whatever the heading rule', () => {
+		for (const body of FIXTURES) {
+			for (const headings of WRITING_COUNT_HEADINGS) {
+				expect(join(countablePieces(body, [], { headings })), body).toBe(
+					countableProse(body, [], { headings }),
+				);
+			}
+		}
+	});
+
+	it('says where each piece of the body stands', () => {
+		for (const body of FIXTURES) {
+			for (const piece of countablePieces(body)) {
+				if (piece.from === null) continue;
+				expect(body.slice(piece.from, piece.from + piece.text.length)).toBe(
+					piece.text,
+				);
+			}
+		}
+	});
+
+	it('carries a link display text and an escaped character at their own offsets', () => {
+		const body = 'see [[Character/Alice|Alice]] and \\* here';
+		const pieces = countablePieces(body);
+		expect(pieces.find((piece) => piece.text === 'Alice')?.from).toBe(
+			body.indexOf('|Alice') + 1,
+		);
+		expect(pieces.find((piece) => piece.text === '*')?.from).toBe(
+			body.indexOf('\\*') + 1,
+		);
+	});
+
+	it('gives a stand-in no place in the body', () => {
+		const shape = (body: string, options?: Parameters<typeof countablePieces>[2]) =>
+			countablePieces(body, [], options).map((piece) => [piece.text, piece.from]);
+		expect(shape('a&nbsp;b')).toEqual([
+			['a', 0],
+			[' ', null],
+			['b', 7],
+		]);
+		expect(shape('one\\\ntwo')).toEqual([
+			['one', 0],
+			[' ', null],
+			['two', 5],
+		]);
+		expect(
+			countablePieces('ab', [{ from: 1, to: 1 }], {
+				headings: 'count',
+				separator: '\n',
+			}).map((piece) => [piece.text, piece.from]),
+		).toEqual([
+			['a', 0],
+			['\n', null],
+			['b', 1],
+		]);
+	});
+
+	it('tells a heading piece from a paragraph piece, whatever the count makes of headings', () => {
+		const body = '# Alice\n\nOne two.\n\nHer winter\n----------\n\nThree.';
+		const pieces = countablePieces(body);
+		expect(
+			pieces.filter((piece) => piece.heading === true).map((piece) => piece.text),
+		).toEqual([' Alice', 'Her winter\n']);
+		expect(
+			pieces.filter((piece) => piece.heading !== true).map((piece) => piece.text),
+		).toEqual(['\n\nOne two.\n\n', '\n\nThree.']);
+		// A link's display text inside a heading is a heading piece too.
+		const linked = countablePieces('## About [[Character/Alice|Alice]]\n\nText.');
+		expect(linked.find((piece) => piece.text === 'Alice')?.heading).toBe(true);
+		expect(linked.find((piece) => piece.text === '\n\nText.')?.heading).toBeUndefined();
+	});
+
+	it('decodes an entity and keeps a hard break as a line only when asked', () => {
+		const spelled = 'Tom &amp; Jerry &#20320;&#x597d;&bogus;';
+		expect(join(countablePieces(spelled))).toBe('Tom   Jerry    ');
+		expect(
+			join(countablePieces(spelled, [], { headings: 'count', entities: 'decode' })),
+		).toBe('Tom & Jerry 你好 ');
+		const broken = 'line one\\\nline two';
+		expect(join(countablePieces(broken))).toBe('line one line two');
+		expect(
+			join(countablePieces(broken, [], { headings: 'count', hardBreak: 'newline' })),
+		).toBe('line one\nline two');
+	});
+
+	it('takes an empty display text as no piece at all', () => {
+		expect(countablePieces('[[Alice|]] x').map((piece) => piece.text)).toEqual([' x']);
+		expect(countablePieces('')).toEqual([]);
 	});
 });

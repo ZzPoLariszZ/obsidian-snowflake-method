@@ -5,6 +5,7 @@ import {
 	countWriting,
 	countsCharacters,
 	scriptSplit,
+	writingUnitStarts,
 	type WritingCountMode,
 } from '../../src/domain';
 
@@ -219,5 +220,68 @@ describe('the script split', () => {
 		expect(scriptSplit('cafe\u0301')).toEqual({ cjk: 0, words: 1 });
 		expect(scriptSplit('cafe\u0301')).toEqual(scriptSplit('café'));
 		expect(scriptSplit('\u1112\u1161\u11ab')).toEqual(scriptSplit('한'));
+	});
+});
+
+describe('where the counted units begin', () => {
+	it('lists one start per counted unit, in order, under every convention', () => {
+		for (const [text] of MEASURED) {
+			for (const mode of WRITING_COUNT_MODES) {
+				const starts = writingUnitStarts(text, { mode });
+				expect(starts.length, `${mode}: ${text}`).toBe(
+					countWriting(text, { mode }).total,
+				);
+				starts.forEach((start, index) => {
+					expect(start).toBeGreaterThanOrEqual(0);
+					expect(start).toBeLessThan(text.length);
+					expect(/\s/u.test(text.charAt(start)), `${mode}: ${text} at ${start}`).toBe(
+						false,
+					);
+					if (index > 0) {
+						expect(start).toBeGreaterThanOrEqual(starts[index - 1] ?? 0);
+					}
+				});
+			}
+		}
+	});
+
+	it('starts a word at its first character and a mark where it stands', () => {
+		expect(writingUnitStarts('Hello, world!', { mode: 'ms-word' })).toEqual([0, 7]);
+		expect(writingUnitStarts('  Hello, world!', { mode: 'ms-word' })).toEqual([
+			2, 9,
+		]);
+		expect(writingUnitStarts('雪花写作', { mode: 'chenggua' })).toEqual([0, 1, 2, 3]);
+		// The dashes count one each to Chenggua and stand where they are.
+		expect(writingUnitStarts('第一章——开始', { mode: 'chenggua' })).toEqual([
+			0, 1, 2, 3, 4, 5, 6,
+		]);
+		// A word processor parts the words at the dashes and counts them nothing.
+		expect(writingUnitStarts('第一章——开始', { mode: 'ms-word' })).toEqual([
+			0, 1, 2, 5, 6,
+		]);
+	});
+
+	it('lists a character the platforms read twice at the one place', () => {
+		// 𠮷 is two code units, and Chenggua counts it two: both stand on it,
+		// and the character after it starts past both units.
+		expect(writingUnitStarts('𠮷野', { mode: 'chenggua' })).toEqual([0, 0, 2]);
+	});
+
+	it('reads every character alone for Jinjiang, whitespace and its blind spot passed over', () => {
+		expect(writingUnitStarts('a b', { mode: 'jinjiang' })).toEqual([0, 2]);
+		expect(writingUnitStarts('你好?', { mode: 'jinjiang' })).toEqual([0, 1]);
+	});
+
+	it('starts a run at the character that gave it something to count', () => {
+		// A hyphen counts nothing to Qidian and leaves the run open, so the
+		// word begins at its first letter, not at the hyphen before it.
+		expect(writingUnitStarts('-well-written', { mode: 'qidian' })).toEqual([1]);
+		// Qidian's foreign marks stand apart from the word between them.
+		expect(writingUnitStarts('«bonjour»', { mode: 'qidian' })).toEqual([0, 1, 8]);
+	});
+
+	it('answers nothing for text with nothing to count', () => {
+		expect(writingUnitStarts('', { mode: 'ms-word' })).toEqual([]);
+		expect(writingUnitStarts('  \n\t', { mode: 'chenggua' })).toEqual([]);
 	});
 });

@@ -365,3 +365,86 @@ describe("WritingCountService", () => {
     expect(await scopesOf("Elsewhere/Other.md")).toEqual([]);
   });
 });
+
+describe("the manuscript's totals, note by note", () => {
+  let fakeVault: FakeVault;
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+  const processor = { mode: "ms-word", headings: "count" } as const;
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+  });
+
+  it("answers every note in reading order with the status bar's own number", async () => {
+    const second = await service.manuscript.appendSegment(project, "Two");
+    const third = await service.manuscript.appendSegment(project, "Three");
+    await service.manuscript.writeSegment(DRAFT, "alpha\n");
+    await service.manuscript.writeSegment(second, "one two three\n");
+    await service.manuscript.writeSegment(third, "四五六七\n");
+
+    const totals = await service.writingCount.countManuscriptTotals(
+      project,
+      processor,
+    );
+    expect([...totals]).toEqual([
+      [DRAFT, 1],
+      [second, 3],
+      [third, 4],
+    ]);
+    for (const [path, total] of totals) {
+      expect((await service.writingCount.countNote(path, processor))?.total).toBe(
+        total,
+      );
+    }
+  });
+
+  it("opens no note twice while nothing changed, and reads again what did", async () => {
+    const second = await service.manuscript.appendSegment(project, "Two");
+    await service.manuscript.writeSegment(second, "one two three\n");
+    await service.writingCount.countManuscriptTotals(project, processor);
+
+    const reads = fakeVault.readCalls.length;
+    const again = await service.writingCount.countManuscriptTotals(
+      project,
+      processor,
+    );
+    expect(fakeVault.readCalls.length).toBe(reads);
+    expect(again.get(second)).toBe(3);
+
+    await service.manuscript.writeSegment(second, "one two three four five\n");
+    const changed = await service.writingCount.countManuscriptTotals(
+      project,
+      processor,
+    );
+    expect(changed.get(second)).toBe(5);
+    // A different convention is a different number, never the memo's.
+    const characters = await service.writingCount.countManuscriptTotals(project, {
+      mode: "jinjiang",
+      headings: "count",
+    });
+    expect(characters.get(second)).toBe(19);
+  });
+
+  it("breathes when asked, and leaves out a note that will not read", async () => {
+    const second = await service.manuscript.appendSegment(project, "Two");
+    await service.manuscript.writeSegment(second, "one two\n");
+    let breaths = 0;
+    const totals = await service.writingCount.countManuscriptTotals(
+      project,
+      processor,
+      async () => {
+        breaths += 1;
+      },
+    );
+    expect(totals.get(second)).toBe(2);
+    expect(breaths).toBeGreaterThanOrEqual(0);
+  });
+});

@@ -745,3 +745,116 @@ describe('highlight rule rows', () => {
 		expect(settingTabFor('en').customRuleNames()).toEqual([]);
 	});
 });
+
+describe('word milestone settings', () => {
+	it('start off, over the whole manuscript, every five hundred units', () => {
+		expect(DEFAULT_SETTINGS.manuscriptMilestones).toBe(false);
+		expect(DEFAULT_SETTINGS.manuscriptMilestoneMode).toBe('manuscript');
+		expect(DEFAULT_SETTINGS.manuscriptMilestoneInterval).toBe(500);
+	});
+
+	it('keeps a whole interval of at least one and falls back from anything else', () => {
+		const interval = (value: unknown): number =>
+			sanitizeSettings({ manuscriptMilestoneInterval: value })
+				.manuscriptMilestoneInterval;
+		expect(interval(1)).toBe(1);
+		expect(interval(250)).toBe(250);
+		expect(interval(0)).toBe(500);
+		expect(interval(-1)).toBe(500);
+		expect(interval(2.5)).toBe(500);
+		expect(interval('x')).toBe(500);
+		expect(interval(10_000_000)).toBe(500);
+	});
+
+	it('knows the two modes and nothing else', () => {
+		const mode = (value: unknown): string =>
+			sanitizeSettings({ manuscriptMilestoneMode: value }).manuscriptMilestoneMode;
+		expect(mode('chapter')).toBe('chapter');
+		expect(mode('manuscript')).toBe('manuscript');
+		expect(mode('note')).toBe('manuscript');
+		expect(
+			sanitizeSettings({ manuscriptMilestones: 'yes' }).manuscriptMilestones,
+		).toBe(false);
+		expect(sanitizeSettings({ manuscriptMilestones: true }).manuscriptMilestones).toBe(
+			true,
+		);
+	});
+});
+
+describe('automatic chapter number settings', () => {
+	it('start off, with no custom rule yet', () => {
+		expect(DEFAULT_SETTINGS.manuscriptChapterNumbering).toBe('off');
+		expect(DEFAULT_SETTINGS.manuscriptChapterNumberRules).toEqual([]);
+	});
+
+	it('keeps a known style and falls back from anything else', () => {
+		const style = (value: unknown): string =>
+			sanitizeSettings({ manuscriptChapterNumbering: value })
+				.manuscriptChapterNumbering;
+		expect(style('chinese')).toBe('chinese');
+		expect(style('chinese-arabic')).toBe('chinese-arabic');
+		expect(style('english')).toBe('english');
+		expect(style('custom')).toBe('custom');
+		expect(style('roman')).toBe('off');
+		expect(style(3)).toBe('off');
+	});
+
+	it('keeps the custom rules as stored, junk dropped and one running at most', () => {
+		const kept = sanitizeSettings({
+			manuscriptChapterNumberRules: [
+				{ id: 'a', kind: 'format', text: '第{nnnn}章', enabled: true },
+				{ id: 'b', kind: 'regex', text: '^第(\\d', seed: '第0001章', enabled: true },
+				{ id: 'c', kind: 'words', text: 'Chapter {n}' },
+			],
+		});
+		expect(kept.manuscriptChapterNumberRules).toEqual([
+			{ id: 'a', kind: 'format', text: '第{nnnn}章', seed: '', enabled: true },
+			// Kept as typed even though it does not compile yet; the dialog objects, the store does not.
+			{ id: 'b', kind: 'regex', text: '^第(\\d', seed: '第0001章', enabled: false },
+		]);
+		expect(
+			sanitizeSettings({ manuscriptChapterNumberRules: 'none' })
+				.manuscriptChapterNumberRules,
+		).toEqual([]);
+	});
+});
+
+describe('export settings', () => {
+	it('start with the folder beside the projects, plain text, indent and spacing kept, one file', () => {
+		expect(DEFAULT_SETTINGS.exportFolder).toBe('');
+		expect(DEFAULT_SETTINGS.exportFormat).toBe('txt');
+		expect(DEFAULT_SETTINGS.exportIndent).toBe(true);
+		expect(DEFAULT_SETTINGS.exportParagraphSpacing).toBe(true);
+		expect(DEFAULT_SETTINGS.exportManuscriptLayout).toBe('single');
+		expect(DEFAULT_SETTINGS.exportChapterSeparator).toBe('blank');
+	});
+
+	it('keeps known choices and falls back from anything else', () => {
+		const kept = sanitizeSettings({
+			exportFolder: '/Out/',
+			exportFormat: 'md',
+			exportIndent: false,
+			exportParagraphSpacing: false,
+			exportManuscriptLayout: 'folder',
+			exportChapterSeparator: 'asterisks',
+		});
+		expect(kept.exportFolder).toBe('Out');
+		expect(kept.exportFormat).toBe('md');
+		expect(kept.exportIndent).toBe(false);
+		expect(kept.exportParagraphSpacing).toBe(false);
+		expect(kept.exportManuscriptLayout).toBe('folder');
+		expect(kept.exportChapterSeparator).toBe('asterisks');
+		const fallen = sanitizeSettings({
+			exportFolder: '/',
+			exportFormat: 'docx',
+			exportManuscriptLayout: 'zip',
+			exportChapterSeparator: 'title',
+			exportIndent: 'yes',
+		});
+		expect(fallen.exportFolder).toBe('');
+		expect(fallen.exportFormat).toBe('txt');
+		expect(fallen.exportManuscriptLayout).toBe('single');
+		expect(fallen.exportChapterSeparator).toBe('blank');
+		expect(fallen.exportIndent).toBe(true);
+	});
+});

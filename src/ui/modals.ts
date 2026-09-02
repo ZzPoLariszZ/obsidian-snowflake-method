@@ -7,11 +7,14 @@ import {
 	Setting,
 	SuggestModal,
 	TFolder,
+	ToggleComponent,
 	getIconIds,
 	setIcon,
 } from 'obsidian';
 
 import {
+	CHAPTER_RULE_KINDS,
+	chapterRuleProblem,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	SESSION_LIMITS,
@@ -37,6 +40,8 @@ import {
 	isWorldbuildingKind,
 	type WorldbuildingKindId,
 	HIGHLIGHT_DECORATIONS,
+	type ChapterNumberRule,
+	type ChapterRuleKind,
 	type CustomHighlightRule,
 	type HighlightDecoration,
 	type HighlightRuleKind,
@@ -774,23 +779,48 @@ export class CreateProjectModal extends SnowflakeFormModal<CreateProjectRequest>
 }
 
 /**
+ * What the naming form opens with: the plain name offered while numbering is
+ * off, or, with numbering on, the numbered head offered -- empty when the
+ * rule has nothing to offer -- and how many later notes the number would
+ * move along.
+ */
+export interface SegmentTitlePrompt {
+	preset: string;
+	numbering: { head: string | null; followers: number } | null;
+}
+
+/** What the author settled on: the whole name, and whether later notes move. */
+export interface SegmentTitleChoice {
+	title: string;
+	renumber: boolean;
+}
+
+/**
  * The one question a new manuscript segment has to answer. Deliberately not the
  * duplicate-name form the character and scene modals use: nothing links to a
  * segment by name, so two chapters may share one, and a manuscript is no place
  * to be refused a title.
+ *
+ * With numbering on the question has two parts, named: the number, offered
+ * already filled in and open to change, and the name, which is what the
+ * author came to type. They join with one space. A third row, shown only
+ * when later notes carry numbers, asks whether those move up by one.
  */
-class SegmentTitleModal extends SnowflakeFormModal<string> {
+class SegmentTitleModal extends SnowflakeFormModal<SegmentTitleChoice> {
+	private head: string;
 	private title: string;
+	private renumber = true;
 
 	constructor(
 		app: App,
 		t: Translate,
-		presetTitle: string,
-		onSubmit: SubmitHandler<string>,
+		private readonly prompt: SegmentTitlePrompt,
+		onSubmit: SubmitHandler<SegmentTitleChoice>,
 		private readonly settle: () => void,
 	) {
 		super(app, t, t('manuscript.newSegment'), onSubmit);
-		this.title = presetTitle;
+		this.head = prompt.numbering?.head ?? '';
+		this.title = prompt.numbering === null ? prompt.preset : '';
 		this.modalEl.addClass('snowflake-method-project-modal');
 		this.modalEl.addClass('snowflake-method-compact-form-modal');
 	}
@@ -799,32 +829,57 @@ class SegmentTitleModal extends SnowflakeFormModal<string> {
 		// The same form the project dialogs use, so naming a chapter looks like
 		// naming anything else rather than like a dialog of its own.
 		this.contentEl.addClass('snowflake-method-project-form');
+		const numbering = this.prompt.numbering;
+		if (numbering !== null) {
+			new Setting(this.contentEl)
+				.setName(this.t('manuscript.segmentNumber'))
+				.addText((text) => {
+					text.setValue(this.head).onChange((value) => {
+						this.head = value;
+					});
+				});
+		}
 		new Setting(this.contentEl)
 			.setName(this.t('manuscript.segmentTitle'))
 			.addText((text) => {
-				text
-					.setPlaceholder(this.t('manuscript.segmentTitlePlaceholder'))
-					.setValue(this.title)
-					.onChange((value) => {
-						this.title = value;
-					});
-				// The one field this form has, so it takes the caret without the
-				// author reaching for it. Timed by the window the form is in,
-				// which is not the app's when it opened in a popout.
+				if (numbering === null) {
+					text.setPlaceholder(this.t('manuscript.segmentTitlePlaceholder'));
+				}
+				text.setValue(this.title).onChange((value) => {
+					this.title = value;
+				});
+				// The field the author came to type in, so it takes the caret
+				// without them reaching for it. Timed by the window the form is
+				// in, which is not the app's when it opened in a popout.
 				this.contentEl.win.setTimeout(() => {
 					text.inputEl.focus();
 					text.inputEl.select();
 				}, 0);
 			});
+		if (numbering !== null && numbering.followers > 0) {
+			renumberRow(
+				this.contentEl,
+				this.t('manuscript.renumberFollowers', { count: numbering.followers }),
+				this.renumber,
+				(value) => {
+					this.renumber = value;
+				},
+			);
+		}
 	}
 
-	protected collectValue(): string | null {
-		const title = this.title.trim();
+	protected collectValue(): SegmentTitleChoice | null {
+		const title = [this.head.trim(), this.title.trim()]
+			.filter((part) => part.length > 0)
+			.join(' ');
 		if (title.length === 0) {
 			new Notice(this.t('manuscript.segmentTitleRequired'));
 			return null;
 		}
-		return title;
+		return {
+			title,
+			renumber: this.renumber && (this.prompt.numbering?.followers ?? 0) > 0,
+		};
 	}
 
 	onClose(): void {
@@ -840,17 +895,17 @@ class SegmentTitleModal extends SnowflakeFormModal<string> {
 export function promptForSegmentTitle(
 	app: App,
 	t: Translate,
-	presetTitle: string,
-	create: (title: string) => Promise<string>,
+	prompt: SegmentTitlePrompt,
+	create: (choice: SegmentTitleChoice) => Promise<string>,
 ): Promise<string | null> {
 	return new Promise((resolve) => {
 		const outcome: { created: string | null } = { created: null };
 		new SegmentTitleModal(
 			app,
 			t,
-			presetTitle,
-			async (title) => {
-				outcome.created = await create(title);
+			prompt,
+			async (choice) => {
+				outcome.created = await create(choice);
 			},
 			() => resolve(outcome.created),
 		).open();
@@ -4311,8 +4366,49 @@ export class ConfirmKindDeletionModal extends ConfirmModal {
 }
 
 /**
- * Asks whether two manuscript notes should be joined, resolving true only if
- * the author said so.
+ * The renumber question as both dialogs ask it: what it decides on the
+ * left, the toggle at the right edge, on one line and nothing under it. The
+ * naming form lays its rows out one way and the merge dialog another, so
+ * this is drawn as its own row rather than as a settings row, to read the
+ * same in each.
+ */
+function renumberRow(
+	container: HTMLElement,
+	text: string,
+	value: boolean,
+	onChange: (value: boolean) => void,
+): void {
+	const row = container.createDiv({ cls: 'snowflake-method-renumber-row' });
+	const label = row.createSpan({
+		cls: 'snowflake-method-renumber-label',
+		text,
+	});
+	const toggle = new ToggleComponent(row).setValue(value).onChange(onChange);
+	// The words are part of the control, as a checkbox's label is: a click on
+	// them is a click on the toggle, so it flips and says so once.
+	label.addEventListener('click', () => {
+		toggle.toggleEl.click();
+	});
+}
+
+/**
+ * What the merge dialog opens with: the two names, and how many later notes
+ * carry a number the note going would leave a gap in.
+ */
+export interface SegmentMergePrompt {
+	kept: string;
+	removed: string;
+	followers: number;
+}
+
+/** What the author settled on: whether the later numbered notes close up. */
+export interface SegmentMergeChoice {
+	renumber: boolean;
+}
+
+/**
+ * Asks whether two manuscript notes should be joined, resolving to the
+ * author's answer, or to null when they declined.
  *
  * A merge is the one manuscript action that takes a note away, and undoing it
  * means splitting again at a seam nothing records. Every other action here is
@@ -4321,11 +4417,10 @@ export class ConfirmKindDeletionModal extends ConfirmModal {
 export function confirmSegmentMerge(
 	app: App,
 	t: Translate,
-	kept: string,
-	removed: string,
-): Promise<boolean> {
+	prompt: SegmentMergePrompt,
+): Promise<SegmentMergeChoice | null> {
 	return new Promise((resolve) => {
-		new ConfirmSegmentMergeModal(app, t, kept, removed, resolve).open();
+		new ConfirmSegmentMergeModal(app, t, prompt, resolve).open();
 	});
 }
 
@@ -4338,14 +4433,14 @@ export function confirmSegmentMerge(
  */
 class ConfirmSegmentMergeModal extends Modal {
 	private confirmed = false;
+	private renumber = true;
 	private buttons: HTMLElement | null = null;
 
 	constructor(
 		app: App,
 		private readonly t: Translate,
-		private readonly kept: string,
-		private readonly removed: string,
-		private readonly onResolve: (confirmed: boolean) => void,
+		private readonly prompt: SegmentMergePrompt,
+		private readonly onResolve: (choice: SegmentMergeChoice | null) => void,
 	) {
 		super(app);
 		this.setTitle(t('modal.mergeSegments.title'));
@@ -4359,13 +4454,28 @@ class ConfirmSegmentMergeModal extends Modal {
 			// the way Obsidian wraps a filename rather than widening the dialog.
 			cls: 'u-break-word',
 			text: this.t('modal.mergeSegments.question', {
-				removed: this.removed,
-				kept: this.kept,
+				removed: this.prompt.removed,
+				kept: this.prompt.kept,
 			}),
 		});
 		this.contentEl.createEl('p', {
 			text: this.t('modal.mergeSegments.consequence'),
 		});
+		// The mirror of the naming form's toggle: a numbered note going leaves
+		// a gap in the count, and the notes after it can close it. Shown only
+		// when there are such notes, so the plain merge stays the plain dialog.
+		if (this.prompt.followers > 0) {
+			renumberRow(
+				this.contentEl,
+				this.t('manuscript.renumberFollowersDown', {
+					count: this.prompt.followers,
+				}),
+				this.renumber,
+				(value) => {
+					this.renumber = value;
+				},
+			);
+		}
 
 		const buttons = this.modalEl.createDiv({ cls: 'modal-button-container' });
 		this.buttons = buttons;
@@ -4404,7 +4514,11 @@ class ConfirmSegmentMergeModal extends Modal {
 		this.buttons = null;
 		// Resolves however the modal closed -- button, Escape, or the title bar --
 		// so the caller is never left waiting on a dialog the author dismissed.
-		this.onResolve(this.confirmed);
+		this.onResolve(
+			this.confirmed
+				? { renumber: this.renumber && this.prompt.followers > 0 }
+				: null,
+		);
 	}
 }
 
@@ -4984,4 +5098,304 @@ class ConfirmHighlightRuleDeletionModal extends ConfirmModal {
 			text: this.t('modal.highlightRule.deleteBody', { name: this.ruleName }),
 		});
 	}
+}
+
+export interface ChapterNumberRuleFormResult {
+	kind: ChapterRuleKind;
+	text: string;
+	/** A regex rule's first number, written out; empty for none, and for a format rule. */
+	seed: string;
+}
+
+/**
+ * Asks how a custom numbering rule is written: on create with a kind still
+ * to choose -- a format, or a regular expression -- and on edit with the
+ * kind standing, so a rule never changes language mid-life. Each kind has
+ * fields of its own, examples in their descriptions, and the dialog refuses
+ * a format with no placeholder and an expression that does not compile.
+ * Resolves to the answers, or to null however the dialog was dismissed.
+ */
+export function promptForChapterNumberRule(
+	app: App,
+	t: Translate,
+	options: {
+		title: string;
+		submitLabel: string;
+		initial?: ChapterNumberRule;
+	},
+): Promise<ChapterNumberRuleFormResult | null> {
+	return new Promise((resolve) => {
+		new ChapterNumberRuleModal(app, t, options, resolve).open();
+	});
+}
+
+/** A description of several lines, each on a line of its own. */
+function describeLines(setting: Setting, text: string): void {
+	for (const [at, line] of text.split('\n').entries()) {
+		if (at > 0) setting.descEl.createEl('br');
+		setting.descEl.appendText(line);
+	}
+}
+
+class ChapterNumberRuleModal extends Modal {
+	private answered: ChapterNumberRuleFormResult | null = null;
+
+	constructor(
+		app: App,
+		private readonly t: Translate,
+		private readonly options: {
+			title: string;
+			submitLabel: string;
+			initial?: ChapterNumberRule;
+		},
+		private readonly onResolve: (
+			result: ChapterNumberRuleFormResult | null,
+		) => void,
+	) {
+		super(app);
+		this.setTitle(options.title);
+		// The highlight rule dialog's own cloth: stacked names, no dividers,
+		// the controls stretched to one shared width.
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		this.contentEl.addClass('snowflake-method-project-form');
+		const initial = this.options.initial;
+		let kind: ChapterRuleKind = initial?.kind ?? 'format';
+		// Each kind keeps its own text, so a rule half-written in one
+		// language survives a look at the other.
+		let formatText = initial?.kind === 'format' ? initial.text : '';
+		let patternText = initial?.kind === 'regex' ? initial.text : '';
+		let seed = initial?.seed ?? '';
+		const inputs: Partial<Record<ChapterRuleKind, HTMLInputElement>> = {};
+		const warnings: Partial<Record<ChapterRuleKind, FieldWarning>> = {};
+		const rows: Partial<Record<ChapterRuleKind, Setting[]>> = {};
+		const kindLabel = (of: ChapterRuleKind): string =>
+			this.t(
+				of === 'format'
+					? 'settings.chapterNumberRules.kindFormat'
+					: 'settings.chapterNumberRules.kindRegex',
+			);
+		const textOf = (): string =>
+			(kind === 'format' ? formatText : patternText).trim();
+		// The field in hand objects to what cannot be used -- a format with
+		// no placeholder, an expression that does not compile -- and blocks
+		// the submit. A field still empty is not wrong yet, only unwritten.
+		const showObjection = (): string | null => {
+			const text = textOf();
+			const problem = text.length === 0 ? null : chapterRuleProblem(kind, text);
+			const objection =
+				problem === null
+					? null
+					: this.t(
+							problem === 'format'
+								? 'modal.chapterNumberRule.formatInvalid'
+								: 'modal.chapterNumberRule.patternInvalid',
+						);
+			warnings[kind]?.show(objection);
+			return objection;
+		};
+		const showKind = (): void => {
+			for (const of of CHAPTER_RULE_KINDS) {
+				for (const row of rows[of] ?? []) row.settingEl.toggle(of === kind);
+			}
+			showObjection();
+		};
+		const submit = (): void => {
+			const text = textOf();
+			if (text.length === 0) {
+				inputs[kind]?.focus();
+				return;
+			}
+			if (showObjection() !== null) return;
+			this.answered = {
+				kind,
+				text,
+				seed: kind === 'regex' ? seed.trim() : '',
+			};
+			this.close();
+		};
+		const submitOnEnter = (input: HTMLInputElement): void => {
+			input.addEventListener('keydown', (event) => {
+				if (event.key !== 'Enter') return;
+				event.preventDefault();
+				submit();
+			});
+		};
+		const kindRow = new Setting(this.contentEl).setName(
+			this.t('modal.chapterNumberRule.kind'),
+		);
+		if (initial === undefined) {
+			kindRow.addDropdown((dropdown) => {
+				dropdown
+					.addOption('format', kindLabel('format'))
+					.addOption('regex', kindLabel('regex'))
+					.setValue(kind)
+					.onChange((next) => {
+						kind = next === 'regex' ? 'regex' : 'format';
+						showKind();
+						inputs[kind]?.focus();
+					});
+			});
+		} else {
+			// Locked on edit: the text keeps the language it was written in.
+			kindRow.controlEl.createSpan({
+				cls: 'snowflake-method-rule-kind-fixed',
+				text: kindLabel(kind),
+			});
+		}
+		const formatRow = new Setting(this.contentEl).setName(
+			this.t('modal.chapterNumberRule.format'),
+		);
+		describeLines(formatRow, this.t('modal.chapterNumberRule.formatDesc'));
+		formatRow.addText((text) => {
+			inputs.format = text.inputEl;
+			text
+				.setValue(formatText)
+				.setPlaceholder('Chapter {nnnn}')
+				.onChange((next) => {
+					formatText = next;
+					showObjection();
+				});
+			submitOnEnter(text.inputEl);
+		});
+		warnings.format = new FieldWarning(formatRow.settingEl, inputs.format ?? null);
+		rows.format = [formatRow];
+		const patternRow = new Setting(this.contentEl).setName(
+			this.t('modal.chapterNumberRule.pattern'),
+		);
+		describeLines(patternRow, this.t('modal.chapterNumberRule.patternDesc'));
+		patternRow.addText((text) => {
+			inputs.regex = text.inputEl;
+			text
+				.setValue(patternText)
+				.setPlaceholder('^Chapter\\s*(?!0000)\\d{4}\\s+.+$')
+				.onChange((next) => {
+					patternText = next;
+					showObjection();
+				});
+			submitOnEnter(text.inputEl);
+		});
+		warnings.regex = new FieldWarning(patternRow.settingEl, inputs.regex ?? null);
+		const seedRow = new Setting(this.contentEl).setName(
+			this.t('modal.chapterNumberRule.seed'),
+		);
+		describeLines(seedRow, this.t('modal.chapterNumberRule.seedDesc'));
+		seedRow.addText((text) => {
+			text
+				.setValue(seed)
+				.setPlaceholder('Chapter 0001')
+				.onChange((next) => {
+					seed = next;
+				});
+			submitOnEnter(text.inputEl);
+		});
+		rows.regex = [patternRow, seedRow];
+		showKind();
+		window.setTimeout(() => {
+			inputs[kind]?.focus();
+		}, 0);
+		const actions = this.contentEl.createDiv({
+			cls: 'snowflake-method-modal-actions',
+		});
+		const cancel = actions.createEl('button', {
+			text: this.t('common.cancel'),
+			attr: { type: 'button' },
+		});
+		cancel.addEventListener('click', () => this.close());
+		const confirm = actions.createEl('button', {
+			cls: 'mod-cta',
+			text: this.options.submitLabel,
+			attr: { type: 'button' },
+		});
+		confirm.addEventListener('click', submit);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.onResolve(this.answered);
+	}
+}
+
+/** Asks whether one numbering rule should go, true only if the author said so. */
+export function confirmChapterNumberRuleDeletion(
+	app: App,
+	t: Translate,
+	ruleName: string,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmChapterNumberRuleDeletionModal(app, t, ruleName, resolve).open();
+	});
+}
+
+class ConfirmChapterNumberRuleDeletionModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly ruleName: string,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(app, t, { label: t('actions.delete'), style: 'mod-warning' }, onResolve);
+		this.setTitle(t('modal.chapterNumberRule.deleteTitle', { name: ruleName }));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
+			text: this.t('modal.chapterNumberRule.deleteBody', {
+				name: this.ruleName,
+			}),
+		});
+	}
+}
+
+/**
+ * Asks whether an export may write over the files already standing at its
+ * paths, naming them. Closing any other way is a refusal, and a refusal
+ * writes nothing.
+ */
+class ConfirmExportReplaceModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly paths: readonly string[],
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(
+			app,
+			t,
+			{ label: t('modal.exportReplace.confirm'), style: 'mod-warning' },
+			onResolve,
+		);
+		this.setTitle(t('modal.exportReplace.title'));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', {
+			text: this.t('modal.exportReplace.question', { count: this.paths.length }),
+		});
+		const shown = this.paths.slice(0, 8);
+		const list = body.createEl('ul', { cls: 'snowflake-method-export-paths' });
+		for (const path of shown) list.createEl('li', { text: path });
+		if (this.paths.length > shown.length) {
+			list.createEl('li', {
+				text: this.t('modal.exportReplace.more', {
+					count: this.paths.length - shown.length,
+				}),
+			});
+		}
+		body.createEl('p', { text: this.t('modal.exportReplace.consequence') });
+	}
+}
+
+/** True when the author agreed to write over the files named. */
+export function confirmExportReplace(
+	app: App,
+	t: Translate,
+	paths: readonly string[],
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmExportReplaceModal(app, t, paths, resolve).open();
+	});
 }

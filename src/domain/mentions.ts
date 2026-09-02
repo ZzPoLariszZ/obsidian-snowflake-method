@@ -133,13 +133,29 @@ export interface RevisionOccurrence {
 	revisionId: string;
 }
 
+/**
+ * A word milestone: the character the count's Nth unit begins on, for a
+ * count that is a multiple of the reader's interval. Dress alone, never
+ * indexed and never asked anything.
+ */
+export interface MilestoneOccurrence {
+	type: 'milestone';
+	path: string;
+	from: number;
+	to: number;
+	matchedText: string;
+	/** The count reached at `from`. */
+	count: number;
+}
+
 /** Everything an analysis can pin to a spot in a note. */
 export type Occurrence =
 	| EntityOccurrence
 	| SensitiveOccurrence
 	| DialogueOccurrence
 	| HighlightOccurrence
-	| RevisionOccurrence;
+	| RevisionOccurrence
+	| MilestoneOccurrence;
 
 /**
  * A boundary-checked raw hit: the persistable half of the pipeline,
@@ -508,6 +524,12 @@ export interface MentionMark {
 	 * user CSS passes through here.
 	 */
 	styleVar?: string;
+	/**
+	 * A short label the page draws beside the mark, carried onto the mark's
+	 * element as `data-snowflake-method-label` in both halves and drawn from
+	 * there by the stylesheet. A milestone's count.
+	 */
+	label?: string;
 	occurrence: Occurrence;
 	/**
 	 * A mark that answers no menu: dress only. The editor's hit test passes

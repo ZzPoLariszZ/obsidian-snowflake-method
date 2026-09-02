@@ -588,6 +588,17 @@ export function draftTemplate(language: TemplateLanguage): MarkdownTemplate {
 }
 
 /**
+ * The first level-one heading a body carries, its inner whitespace collapsed
+ * exactly as `updateFirstHeading` writes it, or null for a body with none.
+ * Shared by everything that asks whether a note's heading is still the name
+ * the note was made under.
+ */
+export function firstHeading(body: string): string | null {
+  const match = /^#(?:[ \t]+)(.*)$/mu.exec(body);
+  return match ? (match[1] ?? "").replace(/\s+/gu, " ").trim() : null;
+}
+
+/**
  * A new segment of the manuscript. The heading is the name the author just gave
  * the note, which is theirs to change afterwards -- nothing checks it, the way
  * nothing checks the draft's heading, because everything below the frontmatter

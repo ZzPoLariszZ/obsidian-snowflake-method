@@ -9,6 +9,8 @@ import {
 	type DocumentType,
 	type WritingSessionScope,
 	type WritingCount,
+	type WritingCountHeadings,
+	type WritingCountMode,
 	type WritingCountOptions,
 } from "../domain";
 import {
@@ -79,6 +81,23 @@ export class WritingCountService {
 	private readonly wholeMemo = new Map<
 		string,
 		{ stamp: string; count: WritingCount }
+	>();
+
+	/**
+	 * Each manuscript note's total under the options it was counted with,
+	 * validated by the stamp the Vault reports without opening the note. The
+	 * milestones ask for every chapter's length on every refresh of a stream,
+	 * and a walk that opened every note to find them unchanged would be the
+	 * cost of reading the book each time.
+	 */
+	private readonly manuscriptMemo = new Map<
+		string,
+		{
+			stamp: string;
+			mode: WritingCountMode;
+			headings: WritingCountHeadings;
+			total: number;
+		}
 	>();
 
 	/**
@@ -327,13 +346,63 @@ export class WritingCountService {
 	forget(path: string, { children = false } = {}): void {
 		this.memo.delete(path);
 		this.wholeMemo.delete(path);
+		this.manuscriptMemo.delete(path);
 		if (!children) return;
 		const prefix = `${path}/`;
-		for (const map of [this.memo, this.wholeMemo] as const) {
+		for (const map of [this.memo, this.wholeMemo, this.manuscriptMemo] as const) {
 			for (const key of map.keys()) {
 				if (key.startsWith(prefix)) map.delete(key);
 			}
 		}
+	}
+
+	/**
+	 * Every manuscript note's total in reading order, for the count that
+	 * accumulates across chapters. Stamp first: a note the Vault reports
+	 * unchanged answers from the memo without being opened, and the rest are
+	 * counted through `countNote`, so each number is the status bar's own. A
+	 * note that will not read is left out rather than counted as nothing, so
+	 * the caller can tell silence from an empty chapter. `breathe` is awaited
+	 * every few milliseconds of work, so a cold walk of a long book never
+	 * holds the window.
+	 */
+	async countManuscriptTotals(
+		project: ProjectRef,
+		options: NoteCountOptions,
+		breathe?: () => Promise<void>,
+	): Promise<Map<string, number>> {
+		const totals = new Map<string, number>();
+		let lastBreath = Date.now();
+		for (const segment of await this.manuscript.listSegments(project)) {
+			const stamp = this.manuscript.segmentStamp(segment.path);
+			const kept = this.manuscriptMemo.get(segment.path);
+			if (
+				stamp !== null &&
+				kept !== undefined &&
+				kept.stamp === stamp &&
+				kept.mode === options.mode &&
+				kept.headings === options.headings
+			) {
+				totals.set(segment.path, kept.total);
+				continue;
+			}
+			const count = await this.countNote(segment.path, options);
+			if (count === null) continue;
+			totals.set(segment.path, count.total);
+			if (stamp !== null) {
+				this.manuscriptMemo.set(segment.path, {
+					stamp,
+					mode: options.mode,
+					headings: options.headings,
+					total: count.total,
+				});
+			}
+			if (breathe !== undefined && Date.now() - lastBreath >= TOTALS_BREATH_MS) {
+				await breathe();
+				lastBreath = Date.now();
+			}
+		}
+		return totals;
 	}
 
 	/**
@@ -458,6 +527,9 @@ export class WritingCountService {
 		return (await this.countScopes(project, options))[scope];
 	}
 }
+
+/** How long a manuscript walk works between breaths, when it is asked to. */
+const TOTALS_BREATH_MS = 12;
 
 function emptyScopeCount(scope: WritingCountScope): ScopeWritingCount {
 	return {

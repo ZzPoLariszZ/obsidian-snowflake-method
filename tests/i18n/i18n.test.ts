@@ -1009,3 +1009,148 @@ describe('locale resolution', () => {
 		expect(isSupportedLocale('zh-TW')).toBe(false);
 	});
 });
+
+describe('word milestone copy', () => {
+	it('labels the milestone settings and the label itself in both languages', () => {
+		const keys = [
+			'settings.milestones.heading',
+			'settings.manuscriptMilestones.name',
+			'settings.manuscriptMilestones.desc',
+			'settings.manuscriptMilestoneMode.name',
+			'settings.manuscriptMilestoneMode.desc',
+			'settings.manuscriptMilestoneMode.manuscript',
+			'settings.manuscriptMilestoneMode.chapter',
+			'settings.manuscriptMilestoneInterval.name',
+			'settings.manuscriptMilestoneInterval.desc',
+			'settings.manuscriptMilestoneInterval.invalid',
+			'manuscript.milestoneLabel',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(en['settings.milestones.heading']).toBe('Word milestone');
+		expect(zhCN['settings.milestones.heading']).toBe('字数里程碑');
+		// The label reads as the mockup does: a count and its unit, and in
+		// Chinese the two stand together.
+		expect(en['manuscript.milestoneLabel']).toBe('{count} {unit}');
+		expect(zhCN['manuscript.milestoneLabel']).toBe('{count}{unit}');
+	});
+});
+
+describe('automatic chapter number copy', () => {
+	it('labels the numbering settings, the rule dialog, the naming form and its messages in both languages', () => {
+		const keys = [
+			'settings.chapterNumbering.heading',
+			'settings.manuscriptChapterNumbering.name',
+			'settings.manuscriptChapterNumbering.desc',
+			'settings.manuscriptChapterNumbering.off',
+			'settings.manuscriptChapterNumbering.chinese',
+			'settings.manuscriptChapterNumbering.chineseArabic',
+			'settings.manuscriptChapterNumbering.english',
+			'settings.manuscriptChapterNumbering.custom',
+			'settings.chapterNumberRules.add',
+			'settings.chapterNumberRules.kindFormat',
+			'settings.chapterNumberRules.kindRegex',
+			'settings.chapterNumberRules.pause',
+			'settings.chapterNumberRules.resume',
+			'modal.chapterNumberRule.createTitle',
+			'modal.chapterNumberRule.editTitle',
+			'modal.chapterNumberRule.kind',
+			'modal.chapterNumberRule.format',
+			'modal.chapterNumberRule.formatDesc',
+			'modal.chapterNumberRule.formatInvalid',
+			'modal.chapterNumberRule.pattern',
+			'modal.chapterNumberRule.patternDesc',
+			'modal.chapterNumberRule.patternInvalid',
+			'modal.chapterNumberRule.seed',
+			'modal.chapterNumberRule.seedDesc',
+			'modal.chapterNumberRule.deleteTitle',
+			'modal.chapterNumberRule.deleteBody',
+			'manuscript.segmentNumber',
+			'manuscript.renumberFollowers',
+			'manuscript.renumberFollowersDown',
+			'messages.segmentsRenumbered',
+			'errors.renumberConflict',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(en['settings.chapterNumbering.heading']).toBe('Automatic chapter number');
+		expect(zhCN['settings.chapterNumbering.heading']).toBe('自动章节编号');
+		// The dialog carries the two example patterns the rule was asked for,
+		// and the format examples with each placeholder.
+		for (const locale of [en, zhCN]) {
+			expect(locale['modal.chapterNumberRule.patternDesc']).toContain(
+				'^第\\s*(?!0000)\\d{4}\\s*章\\s+.+$',
+			);
+			expect(locale['modal.chapterNumberRule.patternDesc']).toContain(
+				'^Chapter\\s*(?!0000)\\d{4}\\s+.+$',
+			);
+			expect(locale['modal.chapterNumberRule.formatDesc']).toContain('Chapter {nnnn}');
+			expect(locale['modal.chapterNumberRule.formatDesc']).toContain('第{zh}章');
+			expect(locale['modal.chapterNumberRule.deleteTitle']).toContain('{name}');
+			expect(locale['manuscript.renumberFollowers']).toContain('{count}');
+			expect(locale['manuscript.renumberFollowersDown']).toContain('{count}');
+			expect(locale['errors.renumberConflict']).toContain('{path}');
+		}
+	});
+});
+
+describe('plaintext export copy', () => {
+	it('labels the export section, the buttons, the commands and the messages in both languages', () => {
+		const keys = [
+			'settings.section.export',
+			'settings.exportFolder.name',
+			'settings.exportFolder.desc',
+			'settings.exportFolder.placeholder',
+			'settings.exportFormat.name',
+			'settings.exportFormat.desc',
+			'settings.exportFormat.md',
+			'settings.exportFormat.txt',
+			'settings.exportIndent.name',
+			'settings.exportIndent.desc',
+			'settings.exportParagraphSpacing.name',
+			'settings.exportParagraphSpacing.desc',
+			'settings.exportManuscript.heading',
+			'settings.exportManuscriptLayout.name',
+			'settings.exportManuscriptLayout.desc',
+			'settings.exportManuscriptLayout.single',
+			'settings.exportManuscriptLayout.folder',
+			'settings.exportChapterSeparator.name',
+			'settings.exportChapterSeparator.desc',
+			'settings.exportChapterSeparator.blank',
+			'settings.exportChapterSeparator.rule',
+			'settings.exportChapterSeparator.asterisks',
+			'manuscript.toolbar.export',
+			'manuscript.exportNote',
+			'manuscript.copyNote',
+			'commands.exportManuscript',
+			'commands.exportManuscriptNote',
+			'commands.copyManuscriptNote',
+			'modal.exportReplace.title',
+			'modal.exportReplace.question',
+			'modal.exportReplace.more',
+			'modal.exportReplace.consequence',
+			'modal.exportReplace.confirm',
+			'messages.exported',
+			'messages.exportedMany',
+			'messages.exportNothing',
+			'messages.copiedNote',
+			'errors.exportIntoManuscript',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(en['settings.section.export']).toBe('Export');
+		expect(zhCN['settings.section.export']).toBe('导出');
+		for (const locale of [en, zhCN]) {
+			expect(locale['messages.exported']).toContain('{path}');
+			expect(locale['messages.exportedMany']).toContain('{count}');
+			expect(locale['modal.exportReplace.question']).toContain('{count}');
+			expect(locale['errors.exportIntoManuscript']).toContain('{path}');
+		}
+	});
+});

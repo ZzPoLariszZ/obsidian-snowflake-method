@@ -129,6 +129,19 @@ export function applyRevisionMarks(
 	applyMarkSpans(rendered, spans, 'data-snowflake-method-revision');
 }
 
+/**
+ * The milestone dress: one character per milestone, its label riding as an
+ * attribute for the stylesheet to draw in the margin. Applied outermost --
+ * before every other layer -- so the label's box is never positioned by
+ * some other family's span standing around it.
+ */
+export function applyMilestoneMarks(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan[],
+): void {
+	applyMarkSpans(rendered, spans, 'data-snowflake-method-milestone');
+}
+
 function applyMarkSpans(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
@@ -195,6 +208,9 @@ function applyMarkSpans(
 						...(mark.styleVar === undefined
 							? {}
 							: { style: mark.styleVar }),
+						...(mark.label === undefined
+							? {}
+							: { 'data-snowflake-method-label': mark.label }),
 					},
 				}),
 			);
@@ -211,6 +227,7 @@ const MENTION_CLASSES = [
 	'snowflake-method-highlight',
 	'snowflake-method-dialogue',
 	'snowflake-method-revision',
+	'snowflake-method-milestone',
 	'is-linked',
 	'is-unlinked',
 	'is-first',
@@ -227,9 +244,9 @@ const MENTION_CLASSES = [
 ];
 
 const MARK_SPANS =
-	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue, span.snowflake-method-revision';
+	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue, span.snowflake-method-revision, span.snowflake-method-milestone';
 const MARK_ANCHORS =
-	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue, a.snowflake-method-revision';
+	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue, a.snowflake-method-revision, a.snowflake-method-milestone';
 
 /** Takes a segment's dress back off, wraps unwrapped and anchors undressed. */
 export function clearMentionMarks(rendered: HTMLElement): void {
@@ -240,6 +257,8 @@ export function clearMentionMarks(rendered: HTMLElement): void {
 		anchor.removeClasses(MENTION_CLASSES);
 		anchor.removeAttribute('data-snowflake-method-mention');
 		anchor.removeAttribute('data-snowflake-method-revision');
+		anchor.removeAttribute('data-snowflake-method-milestone');
+		anchor.removeAttribute('data-snowflake-method-label');
 	}
 	rendered.normalize();
 }

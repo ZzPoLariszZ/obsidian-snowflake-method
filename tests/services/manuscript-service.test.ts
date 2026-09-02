@@ -808,3 +808,218 @@ describe("what a manuscript costs to read", () => {
     expect(service.manuscript.segmentStamp("Nowhere.md")).toBeNull();
   });
 });
+
+describe("renaming manuscript notes in a batch", () => {
+  let fakeVault: FakeVault;
+  let renameCalls: Array<{ from: string; to: string }>;
+  let service: SnowflakeProjectService;
+  let project: ProjectSnapshot;
+  const folder = "Snowflake Projects/Novel/50_Manuscript";
+
+  const titles = async (): Promise<string[]> =>
+    (await service.manuscript.listSegments(project)).map(({ title }) => title);
+  const bodyOf = (path: string): string =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").body;
+  const sequenceOf = (path: string): unknown =>
+    parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter[
+      FRONTMATTER_KEYS.manuscriptSequence
+    ];
+
+  beforeEach(async () => {
+    const environment = createFakeEnvironment();
+    fakeVault = environment.fakeVault;
+    renameCalls = environment.fakeFileManager.renameCalls;
+    service = new SnowflakeProjectService(
+      environment.vault,
+      environment.fileManager,
+      environment.metadataCache,
+    );
+    project = await service.createProject({ title: "Novel", locale: "en" });
+    for (const title of ["Chapter 3", "Chapter 4", "Chapter 5"]) {
+      await service.manuscript.appendSegment(project, title);
+    }
+  });
+
+  it("moves every note up by one, the last first, so no name is ever taken twice", async () => {
+    const before = renameCalls.length;
+    const sequences = [3, 4, 5].map((n) => sequenceOf(`${folder}/Chapter ${n}.md`));
+
+    const outcome = await service.manuscript.renameSegments(project, [
+      { path: `${folder}/Chapter 3.md`, title: "Chapter 4" },
+      { path: `${folder}/Chapter 4.md`, title: "Chapter 5" },
+      { path: `${folder}/Chapter 5.md`, title: "Chapter 6" },
+    ]);
+
+    expect(renameCalls.slice(before).map((call) => call.to.split("/").pop())).toEqual([
+      "Chapter 6.md",
+      "Chapter 5.md",
+      "Chapter 4.md",
+    ]);
+    expect(outcome).toEqual({
+      renamed: [
+        { from: `${folder}/Chapter 5.md`, to: `${folder}/Chapter 6.md` },
+        { from: `${folder}/Chapter 4.md`, to: `${folder}/Chapter 5.md` },
+        { from: `${folder}/Chapter 3.md`, to: `${folder}/Chapter 4.md` },
+      ],
+      skipped: [],
+    });
+    expect(await titles()).toEqual(["Draft", "Chapter 4", "Chapter 5", "Chapter 6"]);
+    // The positions are the notes' own and never move with a name.
+    expect([4, 5, 6].map((n) => sequenceOf(`${folder}/Chapter ${n}.md`))).toEqual(
+      sequences,
+    );
+  });
+
+  it("rewrites the heading only where it still is the name the note was made under", async () => {
+    // One author kept the heading the template wrote; another wrote their own.
+    await service.manuscript.writeSegment(
+      `${folder}/Chapter 4.md`,
+      "# The Long Road\n\nWords.\n",
+    );
+
+    await service.manuscript.renameSegments(project, [
+      { path: `${folder}/Chapter 3.md`, title: "Chapter 4" },
+      { path: `${folder}/Chapter 4.md`, title: "Chapter 5" },
+      { path: `${folder}/Chapter 5.md`, title: "Chapter 6" },
+    ]);
+
+    expect(bodyOf(`${folder}/Chapter 4.md`)).toContain("# Chapter 4\n");
+    expect(bodyOf(`${folder}/Chapter 4.md`)).not.toContain("# Chapter 3");
+    expect(bodyOf(`${folder}/Chapter 5.md`)).toContain("# The Long Road\n");
+    expect(bodyOf(`${folder}/Chapter 6.md`)).toContain("# Chapter 6\n");
+  });
+
+  it("refuses the whole batch when a name it needs is taken by a note outside it", async () => {
+    await fakeVault.create(`${folder}/Chapter 6.md`, "# Stray\n\nNot a draft.\n");
+    const before = renameCalls.length;
+
+    await expect(
+      service.manuscript.renameSegments(project, [
+        { path: `${folder}/Chapter 4.md`, title: "Chapter 5" },
+        { path: `${folder}/Chapter 5.md`, title: "Chapter 6" },
+      ]),
+    ).rejects.toThrow(/Chapter 6\.md/u);
+
+    expect(renameCalls.length).toBe(before);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+  });
+
+  it("refuses a batch that would give two notes one name", async () => {
+    const before = renameCalls.length;
+    await expect(
+      service.manuscript.renameSegments(project, [
+        { path: `${folder}/Chapter 3.md`, title: "Chapter 9" },
+        { path: `${folder}/Chapter 4.md`, title: "Chapter 9" },
+      ]),
+    ).rejects.toThrow(/Chapter 9\.md/u);
+    expect(renameCalls.length).toBe(before);
+  });
+
+  it("moves every note down by one, the first first, so each takes the name the note before it gave up", async () => {
+    const before = renameCalls.length;
+
+    const outcome = await service.manuscript.renameSegments(project, [
+      { path: `${folder}/Chapter 3.md`, title: "Chapter 2" },
+      { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+      { path: `${folder}/Chapter 5.md`, title: "Chapter 4" },
+    ]);
+
+    expect(renameCalls.slice(before).map((call) => call.to.split("/").pop())).toEqual([
+      "Chapter 2.md",
+      "Chapter 3.md",
+      "Chapter 4.md",
+    ]);
+    expect(outcome.renamed.map(({ to }) => to.split("/").pop())).toEqual([
+      "Chapter 2.md",
+      "Chapter 3.md",
+      "Chapter 4.md",
+    ]);
+    expect(await titles()).toEqual(["Draft", "Chapter 2", "Chapter 3", "Chapter 4"]);
+    expect(bodyOf(`${folder}/Chapter 2.md`)).toContain("# Chapter 2\n");
+  });
+
+  it("reads the order off the names, however the batch is written", async () => {
+    const before = renameCalls.length;
+
+    await service.manuscript.renameSegments(project, [
+      { path: `${folder}/Chapter 5.md`, title: "Chapter 4" },
+      { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+      { path: `${folder}/Chapter 3.md`, title: "Chapter 2" },
+    ]);
+
+    expect(renameCalls.slice(before).map((call) => call.to.split("/").pop())).toEqual([
+      "Chapter 2.md",
+      "Chapter 3.md",
+      "Chapter 4.md",
+    ]);
+  });
+
+  it("refuses a batch in which two notes would trade names", async () => {
+    const before = renameCalls.length;
+    await expect(
+      service.manuscript.renameSegments(project, [
+        { path: `${folder}/Chapter 3.md`, title: "Chapter 4" },
+        { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+      ]),
+    ).rejects.toThrow(/Chapter [34]\.md/u);
+    expect(renameCalls.length).toBe(before);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+  });
+
+  it("closes the gap a merged note leaves, the freed name taken first", async () => {
+    const before = renameCalls.length;
+
+    const { renumbered } = await service.mergeManuscriptSegments(
+      project.projectFile,
+      `${folder}/Draft.md`,
+      [
+        { path: `${folder}/Chapter 4.md`, title: "Chapter 3" },
+        { path: `${folder}/Chapter 5.md`, title: "Chapter 4" },
+      ],
+    );
+
+    expect(renumbered.renamed.map(({ to }) => to.split("/").pop())).toEqual([
+      "Chapter 3.md",
+      "Chapter 4.md",
+    ]);
+    expect(renameCalls.slice(before).map((call) => call.to.split("/").pop())).toEqual([
+      "Chapter 3.md",
+      "Chapter 4.md",
+    ]);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4"]);
+    // The absorbed text is in the survivor, and the note that took the freed
+    // name carries it as its heading too.
+    expect(bodyOf(`${folder}/Draft.md`)).toContain("# Chapter 3\n");
+    expect(bodyOf(`${folder}/Chapter 3.md`)).toContain("# Chapter 3\n");
+    expect(bodyOf(`${folder}/Chapter 3.md`)).not.toContain("# Chapter 4");
+  });
+
+  it("refuses the whole merge when a name the renumbering needs is taken, nothing joined", async () => {
+    await fakeVault.create(`${folder}/Chapter 2.md`, "# Stray\n\nNot a draft.\n");
+    const before = renameCalls.length;
+
+    await expect(
+      service.mergeManuscriptSegments(project.projectFile, `${folder}/Chapter 3.md`, [
+        { path: `${folder}/Chapter 5.md`, title: "Chapter 2" },
+      ]),
+    ).rejects.toThrow(/Chapter 2\.md/u);
+
+    expect(renameCalls.length).toBe(before);
+    expect(await titles()).toEqual(["Draft", "Chapter 3", "Chapter 4", "Chapter 5"]);
+    expect(fakeVault.getFileByPath(`${folder}/Chapter 4.md`)).not.toBeNull();
+  });
+
+  it("leaves a note alone whose name does not change, and answers nothing for an empty batch", async () => {
+    expect(await service.manuscript.renameSegments(project, [])).toEqual({
+      renamed: [],
+      skipped: [],
+    });
+    const before = renameCalls.length;
+    expect(
+      await service.manuscript.renameSegments(project, [
+        { path: `${folder}/Chapter 3.md`, title: "Chapter 3" },
+      ]),
+    ).toEqual({ renamed: [], skipped: [] });
+    expect(renameCalls.length).toBe(before);
+  });
+});

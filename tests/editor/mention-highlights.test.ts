@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	analyzeMentions,
 	buildEntityMatcher,
+	milestonePositions,
 	planMentionMarks,
+	planMilestoneMarks,
 	type MentionMark,
 	type MentionSource,
 } from '../../src/domain';
@@ -216,5 +218,30 @@ describe('marks that answer no menu', () => {
 			carried.push((value.spec as { mentionMark?: unknown }).mentionMark !== undefined);
 		});
 		expect(carried).toEqual([false, true]);
+	});
+});
+
+describe('milestone labels in the editor', () => {
+	it('carries a mark label as a data attribute, and answers no menu', () => {
+		const body = 'one two three four';
+		const marks = planMilestoneMarks(
+			'note.md',
+			body,
+			milestonePositions(body, [], { mode: 'ms-word', headings: 'count' }, 2),
+			(count) => `${count} words`,
+		);
+		const set = mentionDecorations(marks);
+		const attributes: unknown[] = [];
+		const menus: boolean[] = [];
+		set.between(0, body.length, (from, to, value) => {
+			const spec = value.spec as { attributes?: unknown; mentionMark?: unknown };
+			attributes.push(spec.attributes);
+			menus.push(spec.mentionMark !== undefined);
+		});
+		expect(attributes).toEqual([
+			{ 'data-snowflake-method-label': '2 words' },
+			{ 'data-snowflake-method-label': '4 words' },
+		]);
+		expect(menus).toEqual([false, false]);
 	});
 });

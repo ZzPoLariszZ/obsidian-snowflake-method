@@ -1,4 +1,5 @@
 export * from "./definition-files";
+export * from "./manuscript-export";
 export * from "./manuscript-service";
 export * from "./manuscript-analysis";
 export * from "./mention-index";

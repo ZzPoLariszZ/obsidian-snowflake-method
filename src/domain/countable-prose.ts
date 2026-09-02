@@ -82,6 +82,48 @@ export interface CountableProseOptions {
 }
 
 /**
+ * What a reading may ask of the pieces beyond what the count asks. Kept
+ * apart from `CountableProseOptions`, whose fields are stamped into the
+ * count's memo keys: nothing here changes a count, and a count must never
+ * learn of it.
+ */
+export interface CountablePiecesOptions extends CountableProseOptions {
+	/**
+	 * What stands for a hard line break: the count's space, or the newline
+	 * the page draws, for a reading that keeps the author's lines.
+	 */
+	hardBreak?: 'space' | 'newline';
+	/**
+	 * What stands for an HTML entity: the count's space, or the character
+	 * the entity spells, for a reading meant to be read rather than counted.
+	 * An entity this does not know still becomes a space.
+	 */
+	entities?: 'space' | 'decode';
+}
+
+/**
+ * One stretch of the countable text and where it came from. `from` is the
+ * body offset of the first character when the text is the body's own -- a
+ * kept slice, a link's display text, an escaped character -- and null when
+ * it is a stand-in the body never held: the space for a hard break or an
+ * entity, or the separator a caller asked for. `heading` marks text standing
+ * inside a heading, whatever the count makes of headings, and a piece is
+ * inside a heading entirely or not at all.
+ */
+export interface CountablePiece {
+	text: string;
+	from: number | null;
+	/**
+	 * The body offset the piece begins at, whatever it holds: `from` for the
+	 * body's own text, and for a stand-in the place of what it stands for.
+	 * This is what lets a reading say which line of the source a piece came
+	 * from.
+	 */
+	at: number;
+	heading?: true;
+}
+
+/**
  * Headings by level, each name covering both spellings Markdown allows: `#`
  * before the text, and the row of `=` or `-` under it. Their marks are in
  * MARK_NODES already, so these sets matter only when the text itself is
@@ -108,6 +150,57 @@ interface Elision {
 	from: number;
 	to: number;
 	emit?: string;
+	/** Where `emit` stands in the body, when it is a slice of the body. */
+	at?: number;
+}
+
+/**
+ * The named entities a manuscript is likely to spell a mark with. Numeric
+ * forms decode on their own; anything else stays a space, as it is to the
+ * count.
+ */
+const NAMED_ENTITIES: Readonly<Record<string, string>> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	nbsp: ' ',
+	ensp: ' ',
+	emsp: ' ',
+	thinsp: ' ',
+	hellip: '…',
+	ndash: '–',
+	mdash: '—',
+	lsquo: '‘',
+	rsquo: '’',
+	ldquo: '“',
+	rdquo: '”',
+	laquo: '«',
+	raquo: '»',
+	copy: '©',
+	middot: '·',
+};
+
+/**
+ * The character an HTML entity spells, or null for one this does not know.
+ * `&#N;` and `&#xH;` decode by number; a number that is no character --
+ * zero, a surrogate, past the last plane -- is unknown too.
+ */
+export function decodeEntity(entity: string): string | null {
+	const match = /^&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));$/u.exec(
+		entity,
+	);
+	if (match === null) return null;
+	if (match[1] !== undefined) return fromCodePoint(Number.parseInt(match[1], 10));
+	if (match[2] !== undefined) return fromCodePoint(Number.parseInt(match[2], 16));
+	return NAMED_ENTITIES[match[3] ?? ''] ?? null;
+}
+
+function fromCodePoint(code: number): string | null {
+	if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return null;
+	if (code >= 0xd800 && code <= 0xdfff) return null;
+	return String.fromCodePoint(code);
 }
 
 /**
@@ -133,6 +226,23 @@ export function countableProse(
 	excludeRanges: readonly CountableRange[] = [],
 	options: CountableProseOptions = { headings: 'count' },
 ): string {
+	return countablePieces(body, excludeRanges, options)
+		.map((piece) => piece.text)
+		.join('');
+}
+
+/**
+ * The same text as `countableProse`, in the pieces it is made of, each
+ * saying where in the body it stands. This is what lets a place in the
+ * countable text -- the character a count reached -- be carried back to the
+ * body it was read from, and what lets a reading tell a heading's line from
+ * a paragraph's.
+ */
+export function countablePieces(
+	body: string,
+	excludeRanges: readonly CountableRange[] = [],
+	options: CountablePiecesOptions = { headings: 'count' },
+): CountablePiece[] {
 	// A range whose ends arrive the wrong way round holds nothing -- an empty
 	// managed section reports its content ending one character before it starts
 	// -- and read as written it would rewind the splice at the end of this
@@ -168,7 +278,11 @@ export function countableProse(
 			drops.push(range);
 			continue;
 		}
-		emits.push({ ...range, emit: body.slice(span.visibleFrom, span.visibleTo) });
+		emits.push({
+			...range,
+			emit: body.slice(span.visibleFrom, span.visibleTo),
+			at: span.visibleFrom,
+		});
 	}
 	const insideWikilink = (from: number, to: number): boolean =>
 		wikilinks.some((range) => from >= range.from && to <= range.to);
@@ -206,9 +320,15 @@ export function countableProse(
 	// heading is the note's title cannot be told until the comments are known.
 	const codeRanges: CountableRange[] = [];
 	const headings: CountableRange[] = [];
+	// Every heading, whatever the count makes of it, so a piece can say it
+	// stands in one. In document order, as the walk enters them.
+	const allHeadings: CountableRange[] = [];
 	scanParser.parse(maskTildeFences(body)).iterate({
 		enter: (node) => {
 			if (insideWikilink(node.from, node.to)) return false;
+			if (HEADINGS.has(node.name)) {
+				allHeadings.push({ from: node.from, to: node.to });
+			}
 			if (skippedHeadings !== null && skippedHeadings.has(node.name)) {
 				headings.push({ from: node.from, to: node.to });
 				// Kept open: a heading that turns out to stay still needs its
@@ -231,9 +351,14 @@ export function countableProse(
 				return false;
 			}
 			// The backslash is syntax; the newline it precedes still breaks the
-			// line on the page, so a space stands in for the pair.
+			// line on the page, so a space stands in for the pair -- or the
+			// newline itself, for a reading that keeps the author's lines.
 			if (node.name === 'HardBreak') {
-				emits.push({ from: node.from, to: node.to, emit: ' ' });
+				emits.push({
+					from: node.from,
+					to: node.to,
+					emit: options.hardBreak === 'newline' ? '\n' : ' ',
+				});
 				return false;
 			}
 			if (node.name === 'Escape') {
@@ -242,6 +367,7 @@ export function countableProse(
 					from: node.from,
 					to: node.to,
 					emit: body.slice(node.from + 1, node.to),
+					at: node.from + 1,
 				});
 				return false;
 			}
@@ -249,9 +375,17 @@ export function countableProse(
 			// Decoding it buys one punctuation character at most; read as raw
 			// text, `&amp;` would put a word on the page that is not there. A
 			// space is the one stand-in that can never be counted and never
-			// fuses its neighbours.
+			// fuses its neighbours -- and a reading meant to be read asks for
+			// the character instead.
 			if (node.name === 'Entity') {
-				emits.push({ from: node.from, to: node.to, emit: ' ' });
+				emits.push({
+					from: node.from,
+					to: node.to,
+					emit:
+						options.entities === 'decode'
+							? (decodeEntity(body.slice(node.from, node.to)) ?? ' ')
+							: ' ',
+				});
 				return false;
 			}
 			return true;
@@ -304,15 +438,42 @@ export function countableProse(
 	const elisions = [...drops, ...surviving].sort(
 		(left, right) => left.from - right.from || left.to - right.to,
 	);
-	const kept: string[] = [];
+	const insideHeading = (at: number): boolean =>
+		allHeadings.some((heading) => at >= heading.from && at < heading.to);
+	const pieces: CountablePiece[] = [];
+	// A kept slice is cut at every heading's edges, so no piece straddles the
+	// line between a heading and the paragraph after it.
+	const keep = (from: number, to: number): void => {
+		let at = from;
+		for (const heading of allHeadings) {
+			if (heading.to <= at || heading.from >= to) continue;
+			if (heading.from > at) {
+				pieces.push({ text: body.slice(at, heading.from), from: at, at });
+				at = heading.from;
+			}
+			const end = Math.min(heading.to, to);
+			pieces.push({ text: body.slice(at, end), from: at, at, heading: true });
+			at = end;
+		}
+		if (at < to) pieces.push({ text: body.slice(at, to), from: at, at });
+	};
 	let cursor = 0;
 	for (const elision of elisions) {
-		if (elision.from > cursor) kept.push(body.slice(cursor, elision.from));
-		if (elision.emit !== undefined && elision.to > cursor) {
-			kept.push(elision.emit);
+		if (elision.from > cursor) keep(cursor, elision.from);
+		if (
+			elision.emit !== undefined &&
+			elision.emit.length > 0 &&
+			elision.to > cursor
+		) {
+			pieces.push({
+				text: elision.emit,
+				from: elision.at ?? null,
+				at: elision.at ?? elision.from,
+				...(insideHeading(elision.from) ? { heading: true as const } : {}),
+			});
 		}
 		cursor = Math.max(cursor, elision.to);
 	}
-	kept.push(body.slice(cursor));
-	return kept.join('');
+	if (cursor < body.length) keep(cursor, body.length);
+	return pieces;
 }

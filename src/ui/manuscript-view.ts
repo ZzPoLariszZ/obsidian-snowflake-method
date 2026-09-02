@@ -19,6 +19,7 @@ import {
 	captureRevision,
 	combineMentionMarks,
 	type CompiledHighlightRules,
+	countsCharacters,
 	DIALOGUE_PRESENTATIONS,
 	type DialoguePresentation,
 	dialogueRanges,
@@ -29,6 +30,7 @@ import {
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
+	milestonePositions,
 	compareRevisionsAtOneSpot,
 	orderRevisions,
 	overlapsLive,
@@ -36,6 +38,7 @@ import {
 	planDialogueMarks,
 	planHighlightMarks,
 	planMentionMarks,
+	planMilestoneMarks,
 	planRevisionMarks,
 	planSensitiveMarks,
 	presentationShape,
@@ -46,11 +49,14 @@ import {
 	type SensitiveMatcher,
 	sensitiveOccurrencesOf,
 	splitMentionIgnores,
+	type WritingCountHeadings,
+	type WritingCountMode,
 } from '../domain';
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import {
 	applyDialogueMarks,
 	applyMentionMarks,
+	applyMilestoneMarks,
 	applyRevisionMarks,
 	clearMentionMarks,
 	projectMentionMarks,
@@ -61,7 +67,6 @@ import {
 	type RevisionDraft,
 	type RevisionRail,
 } from './revision-cards';
-import { confirmSegmentMerge } from './modals';
 import { projectedIndexAt } from './prose-projection';
 import {
 	openPresentationPanel,
@@ -155,9 +160,22 @@ interface MountedSegment {
 		dialogue: MentionMark[];
 		/** The revision layer apart again, with its anchors and conflicts. */
 		revisions: RevisionPlan;
+		/** The milestone layer: silent marks carrying the labels the page draws. */
+		milestones: MentionMark[];
 	} | null;
 	/** The card rail at the segment's right, once it has revisions to show. */
 	rail: RevisionRail | null;
+	/**
+	 * The note's writing under the milestones' convention, by the text it was
+	 * counted from, so the notes after it can add it up without counting it
+	 * again. Null until a milestone pass has read the note.
+	 */
+	milestoneTotal: {
+		body: string;
+		mode: WritingCountMode;
+		headings: WritingCountHeadings;
+		total: number;
+	} | null;
 }
 
 /** What the mention feed answers with: the roster's matcher, the ignores. */
@@ -188,7 +206,8 @@ const sameMentionMarks = (
 			// The hover title and the color variable dress the page as much as
 			// the classes do: a renamed or recolored rule must repaint.
 			mark.title === right[index]?.title &&
-			mark.styleVar === right[index]?.styleVar,
+			mark.styleVar === right[index]?.styleVar &&
+			mark.label === right[index]?.label,
 	);
 
 /**
@@ -258,6 +277,18 @@ export class SnowflakeManuscriptView extends ItemView {
 	private mentionProject: string | null = null;
 	/** The feed's last answer, for the synchronous ask the editor makes. */
 	private mentionState: MentionFeedState | null = null;
+	/**
+	 * The manuscript's per-note totals, for the milestones that run on
+	 * through the book. Fetched apart from the mention feed, because a cold
+	 * walk of a long book must not hold up the dress of the notes on the
+	 * page, and nulled with it. Null while no such count is asked for.
+	 */
+	private milestoneFeed: Promise<ReadonlyMap<string, number> | null> | null =
+		null;
+	/** That feed's last answer, for the synchronous asks both halves make. */
+	private milestoneTotals: ReadonlyMap<string, number> | null = null;
+	/** The later notes' re-dress, a beat after the editing note's total moved. */
+	private milestoneTimer: number | null = null;
 
 	/** One trailing timer per segment behind the editor's geometry events. */
 	private readonly revisionRailTimers = new Map<string, number>();
@@ -462,6 +493,10 @@ export class SnowflakeManuscriptView extends ItemView {
 			console.error('Snowflake: the parting save failed', error);
 		}
 		this.clearSaveTimer();
+		if (this.milestoneTimer !== null) {
+			this.contentEl.win.clearTimeout(this.milestoneTimer);
+			this.milestoneTimer = null;
+		}
 		for (const path of [...this.mounted.keys()]) {
 			try {
 				await this.unmountSegment(path);
@@ -517,6 +552,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.wikilinkTargets = null;
 		this.mentionFeed = null;
 		this.mentionState = null;
+		this.milestoneFeed = null;
+		this.milestoneTotals = null;
 		try {
 			const settings = this.host.manuscriptWindowSettings();
 			const previousShape = this.shape;
@@ -696,6 +733,49 @@ export class SnowflakeManuscriptView extends ItemView {
 	/** True once there is a manuscript to move around in. */
 	hasSegments(): boolean {
 		return (this.model?.segments.length ?? 0) > 0;
+	}
+
+	/** The note the page is centred on, for the commands that act on "this note". */
+	activeSegment(): string | null {
+		return this.activePath;
+	}
+
+	/** The whole manuscript as plain text files, the unsaved text saved first. */
+	async exportWholeManuscript(): Promise<void> {
+		const model = this.model;
+		if (model === null) return;
+		await this.flushNow();
+		await this.host.exportManuscript(model.projectPath);
+	}
+
+	async exportActiveSegment(): Promise<void> {
+		if (this.activePath !== null) await this.exportSegment(this.activePath);
+	}
+
+	async copyActiveSegment(): Promise<void> {
+		if (this.activePath !== null) await this.copySegment(this.activePath);
+	}
+
+	private async exportSegment(path: string): Promise<void> {
+		const model = this.model;
+		if (model === null) return;
+		await this.flushNow();
+		await this.host.exportManuscriptSegment(model.projectPath, path);
+	}
+
+	/**
+	 * One note's plain text onto the clipboard -- this window's clipboard,
+	 * which in a popout is the popout's own -- with a notice, since nothing on
+	 * the page changes to say it happened.
+	 */
+	private async copySegment(path: string): Promise<void> {
+		const model = this.model;
+		if (model === null) return;
+		await this.flushNow();
+		const text = await this.host.manuscriptSegmentPlainText(model.projectPath, path);
+		if (text === null) return;
+		await this.contentEl.win.navigator.clipboard.writeText(text);
+		new Notice(this.t('messages.copiedNote'));
 	}
 
 	/** Moves the reader one segment along, loading it if it is not held yet. */
@@ -910,6 +990,22 @@ export class SnowflakeManuscriptView extends ItemView {
 		});
 		mentions.addEventListener('click', (event) => {
 			this.openMentionModeMenu(event);
+		});
+		// The manuscript as plain text, live while reading for the same reason
+		// again: it reads the notes and edits none of them.
+		const exporter = bar.createEl('button', {
+			cls: 'clickable-icon snowflake-method-toolbar-button snowflake-method-toolbar-export',
+			attr: { type: 'button' },
+		});
+		setIcon(exporter, 'book-down');
+		setTooltip(exporter, this.t('manuscript.toolbar.export'));
+		exporter.addEventListener('mousedown', (event) => {
+			event.preventDefault();
+		});
+		exporter.addEventListener('click', () => {
+			void this.exportWholeManuscript().catch((error: unknown) => {
+				this.showError(error);
+			});
 		});
 		// The writing modes, one pair for the whole stream: they are the
 		// author's rather than any note's, so they stand with the other
@@ -1215,13 +1311,18 @@ export class SnowflakeManuscriptView extends ItemView {
 	applyMentionMode(): void {
 		this.mentionFeed = null;
 		this.mentionState = null;
+		this.milestoneFeed = null;
+		this.milestoneTotals = null;
 		void this.applyMentionDress().catch((error: unknown) => {
 			this.showError(error);
 		});
 	}
 
 	private async applyMentionDress(): Promise<void> {
-		const state = await this.mentionFeedFor();
+		const [state] = await Promise.all([
+			this.mentionFeedFor(),
+			this.milestoneFeedFor(),
+		]);
 		// The dialogue looks are container classes over one mark class: the
 		// tint under highlight, and under focus the page's ink stepping back
 		// while the quoted stretches keep full strength. Neither stands while
@@ -1289,24 +1390,36 @@ export class SnowflakeManuscriptView extends ItemView {
 			body,
 			state?.revisions ?? [],
 		);
+		const milestones = this.milestoneMarks(entry.path, body);
 		const previous = entry.mentions;
-		entry.mentions = { body, occurrences, marks, dialogue, revisions };
+		entry.mentions = {
+			body,
+			occurrences,
+			marks,
+			dialogue,
+			revisions,
+			milestones,
+		};
 		if (
 			previous !== null &&
 			previous.body === body &&
 			sameMentionMarks(previous.marks, marks) &&
 			sameMentionMarks(previous.dialogue, dialogue) &&
 			sameMentionMarks(previous.revisions.plan, revisions.plan) &&
-			previous.revisions.conflicts.length === revisions.conflicts.length
+			previous.revisions.conflicts.length === revisions.conflicts.length &&
+			sameMentionMarks(previous.milestones, milestones)
 		) {
 			this.syncRevisionRail(entry);
 			return;
 		}
 		clearMentionMarks(rendered);
-		// The revision layer wraps outermost -- it overlaps whatever stands
-		// inside it -- then dialogue, so the indexed marks nest inside the
-		// quoted stretch they stand in rather than losing the overlap
-		// outright.
+		// The milestone layer wraps outermost of all: its label is positioned
+		// from the block it stands in, and a span of another family standing
+		// around it -- an insertion's, which is positioned -- would take that
+		// place. Then the revision layer -- it overlaps whatever stands inside
+		// it -- then dialogue, so the indexed marks nest inside the quoted
+		// stretch they stand in rather than losing the overlap outright.
+		applyMilestoneMarks(rendered, projectMentionMarks(body, milestones));
 		applyRevisionMarks(rendered, projectMentionMarks(body, revisions.plan));
 		applyDialogueMarks(rendered, projectMentionMarks(body, dialogue));
 		applyMentionMarks(rendered, projectMentionMarks(body, marks));
@@ -1316,8 +1429,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	/** The rendered dress, once the feed answers, if nothing moved meanwhile. */
 	private dressRenderedSoon(entry: MountedSegment): void {
 		const body = entry.pending ?? entry.text.body;
-		void this.mentionFeedFor()
-			.then((state) => {
+		void Promise.all([this.mentionFeedFor(), this.milestoneFeedFor()])
+			.then(([state]) => {
 				if (!entry.el.isConnected || entry.editor !== null) return;
 				if ((entry.pending ?? entry.text.body) !== body) return;
 				this.dressRendered(entry, state);
@@ -1366,18 +1479,203 @@ export class SnowflakeManuscriptView extends ItemView {
 		// a character is only ever asked for when the page is drawn.
 		const revisions = planRevisionMarks(path, body, state.revisions, true);
 		const entry = this.mounted.get(path);
+		const known = entry?.milestoneTotal?.total ?? null;
+		const milestones = this.milestoneMarks(path, body);
 		if (entry !== undefined) {
-			entry.mentions = { body, occurrences, marks, dialogue, revisions };
+			entry.mentions = {
+				body,
+				occurrences,
+				marks,
+				dialogue,
+				revisions,
+				milestones,
+			};
 			// Asked from inside the editor's own update: the rail waits its
 			// turn behind a timer rather than a frame, because a hidden
 			// window stops giving frames and the cards still deserve their
 			// places when it comes back.
 			this.scheduleRevisionRailSync(path);
+			// A count that moved here moves every milestone in the notes after
+			// this one, when the count runs on through the book: they are
+			// re-dressed a beat later, from outside the editor's update.
+			if (
+				known !== (entry.milestoneTotal?.total ?? null) &&
+				this.milestoneSettings()?.mode === 'manuscript'
+			) {
+				this.scheduleMilestoneRedress();
+			}
 		}
-		// The editor's decoration set takes overlap in stride: the dialogue
-		// and revision layers simply nest around whatever marks stand inside
-		// them.
-		return [...marks, ...dialogue, ...revisions.plan];
+		// The editor's decoration set takes overlap in stride: the dialogue,
+		// revision and milestone layers simply nest around whatever marks
+		// stand inside them.
+		return [...marks, ...dialogue, ...revisions.plan, ...milestones];
+	}
+
+	/** The milestone settings in force, or null while none are drawn. */
+	private milestoneSettings(): ManuscriptWindowSettings['milestones'] | null {
+		const settings = this.host.manuscriptWindowSettings().milestones;
+		return settings.enabled ? settings : null;
+	}
+
+	/**
+	 * The per-note totals for the count that runs on through the manuscript,
+	 * fetched once per quiet stretch, like the mention feed and apart from
+	 * it. Resolves to null where no such count is asked for. When the answer
+	 * arrives after a dress has run without it, every note on the page is
+	 * dressed again: a milestone late is better than one drawn wrong or a
+	 * page that waits for the whole book to be read.
+	 */
+	private milestoneFeedFor(): Promise<ReadonlyMap<string, number> | null> {
+		const settings = this.milestoneSettings();
+		if (settings === null || settings.mode !== 'manuscript') {
+			this.milestoneFeed = null;
+			this.milestoneTotals = null;
+			return Promise.resolve(null);
+		}
+		if (this.milestoneFeed === null) {
+			const shown = this.model?.projectPath ?? this.projectPath;
+			const fetched: Promise<ReadonlyMap<string, number> | null> = this.host
+				.manuscriptSegmentTotals(shown)
+				.then((totals) => {
+					if (this.milestoneFeed !== fetched) return totals;
+					const late = this.milestoneTotals === null;
+					this.milestoneTotals = totals;
+					if (late) this.redressMilestones(null);
+					return totals;
+				})
+				.catch(() => {
+					if (this.milestoneFeed === fetched) this.milestoneFeed = null;
+					return null;
+				});
+			this.milestoneFeed = fetched;
+		}
+		return this.milestoneFeed;
+	}
+
+	/**
+	 * The writing the manuscript holds ahead of one note, for the count that
+	 * runs on through the book: the notes on the page by their live text --
+	 * typed and unsaved included -- and the rest by the totals feed. Null
+	 * until the feed has answered, because a number that left out the
+	 * chapters before it would be wrong rather than merely late.
+	 */
+	private prefixBefore(
+		path: string,
+		settings: NonNullable<ReturnType<SnowflakeManuscriptView['milestoneSettings']>>,
+	): number | null {
+		if (settings.mode === 'chapter') return 0;
+		const totals = this.milestoneTotals;
+		if (totals === null) return null;
+		let before = 0;
+		for (const segment of this.model?.segments ?? []) {
+			if (segment.path === path) return before;
+			const entry = this.mounted.get(segment.path);
+			before +=
+				entry === undefined
+					? (totals.get(segment.path) ?? 0)
+					: this.liveTotal(entry, settings);
+		}
+		return before;
+	}
+
+	/**
+	 * One mounted note's writing under the settings, by the text it holds:
+	 * the editor's own document where one is open -- the one truth for a
+	 * note being written in, whatever put the text there -- else the typed
+	 * text not yet on disk, else the note as read.
+	 */
+	private liveTotal(
+		entry: MountedSegment,
+		settings: NonNullable<ReturnType<SnowflakeManuscriptView['milestoneSettings']>>,
+	): number {
+		const body = entry.editor?.read() ?? entry.pending ?? entry.text.body;
+		const kept = entry.milestoneTotal;
+		if (
+			kept !== null &&
+			kept.body === body &&
+			kept.mode === settings.count.mode &&
+			kept.headings === settings.count.headings
+		) {
+			return kept.total;
+		}
+		const { total } = milestonePositions(body, [], settings.count, settings.interval);
+		entry.milestoneTotal = {
+			body,
+			mode: settings.count.mode,
+			headings: settings.count.headings,
+			total,
+		};
+		return total;
+	}
+
+	/**
+	 * One note's milestone marks: the count's own reading of the body, from
+	 * wherever the book stands ahead of it. Nothing while milestones are off,
+	 * and nothing yet while the book ahead is still being read.
+	 */
+	private milestoneMarks(path: string, body: string): MentionMark[] {
+		const settings = this.milestoneSettings();
+		if (settings === null) return [];
+		const before = this.prefixBefore(path, settings);
+		if (before === null) return [];
+		const plan = milestonePositions(
+			body,
+			[],
+			settings.count,
+			settings.interval,
+			before,
+		);
+		const entry = this.mounted.get(path);
+		if (entry !== undefined) {
+			entry.milestoneTotal = {
+				body,
+				mode: settings.count.mode,
+				headings: settings.count.headings,
+				total: plan.total,
+			};
+		}
+		return planMilestoneMarks(path, body, plan, (count) =>
+			this.milestoneLabel(count, settings.count.mode),
+		);
+	}
+
+	/** A milestone's label: the count and the unit the status bar counts in. */
+	private milestoneLabel(count: number, mode: WritingCountMode): string {
+		const unit = countsCharacters(mode)
+			? this.t(count === 1 ? 'statusBar.unitCharacter' : 'statusBar.unitCharacters')
+			: this.t(count === 1 ? 'statusBar.unitWord' : 'statusBar.unitWords');
+		return this.t('manuscript.milestoneLabel', { count, unit });
+	}
+
+	/**
+	 * Dresses the notes after `after` again -- every note, for null -- for
+	 * milestones that moved with a count ahead of them. The editing note is
+	 * asked to re-plan its own marks; a rendered note is re-dressed outright,
+	 * and its memo leaves the DOM alone where nothing moved.
+	 */
+	private redressMilestones(after: string | null): void {
+		const order = this.model?.segments ?? [];
+		const from =
+			after === null ? -1 : order.findIndex((segment) => segment.path === after);
+		for (const segment of order.slice(from + 1)) {
+			const entry = this.mounted.get(segment.path);
+			if (entry === undefined) continue;
+			if (entry.editor !== null) {
+				entry.editor.refreshMentions();
+				continue;
+			}
+			this.dressRendered(entry, this.mentionState);
+		}
+	}
+
+	/** The later notes' re-dress, a beat behind the editing note's re-plan. */
+	private scheduleMilestoneRedress(): void {
+		const win = this.contentEl.win;
+		if (this.milestoneTimer !== null) win.clearTimeout(this.milestoneTimer);
+		this.milestoneTimer = win.setTimeout(() => {
+			this.milestoneTimer = null;
+			this.redressMilestones(this.editingPath);
+		}, 80);
 	}
 
 	/**
@@ -1776,6 +2074,40 @@ export class SnowflakeManuscriptView extends ItemView {
 				? 0
 				: (stream.clientWidth - sample.el.offsetWidth) / 2;
 		this.contentEl.toggleClass('is-revision-overlay', margin < 300);
+		this.contentEl.toggleClass('is-milestone-tight', !this.milestonesFit(stream));
+	}
+
+	/**
+	 * Whether the margin holds the milestone labels: every label drawn, laid
+	 * out where its rule puts it, still stands inside the stream with a little
+	 * room to spare. Withheld otherwise, all of them at once -- a label drawn
+	 * over the prose would hide what it counts, and one past the stream's edge
+	 * would be clipped to a fragment. Measured on the labels' own boxes rather
+	 * than from the pane's margin, so a label answers for its own width (a
+	 * count of six figures needs more margin than one of three) and the rule's
+	 * offset is read from the layout instead of being repeated here. A
+	 * withheld label is hidden, not gone, so it is still laid out and the
+	 * measure can find that a widened pane holds it again.
+	 */
+	private milestonesFit(stream: HTMLElement): boolean {
+		const win = this.contentEl.win;
+		const edge = stream.getBoundingClientRect().left + stream.clientLeft;
+		for (const label of Array.from(
+			stream.querySelectorAll<HTMLElement>('.snowflake-method-milestone'),
+		)) {
+			// The label is positioned from the nearest positioned ancestor,
+			// which is the row's line or block, and its `left` resolves to
+			// the used distance from that block's padding edge.
+			const block = label.offsetParent;
+			if (block === null) continue;
+			const left = Number.parseFloat(
+				win.getComputedStyle(label, '::before').left,
+			);
+			if (!Number.isFinite(left)) continue;
+			const stands = block.getBoundingClientRect().left + block.clientLeft + left;
+			if (stands - edge < 8) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -2488,6 +2820,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			pending: null,
 			mentions: null,
 			rail: null,
+			milestoneTotal: null,
 		};
 		this.mounted.set(path, entry);
 		await this.renderSegmentBody(entry);
@@ -2539,6 +2872,32 @@ export class SnowflakeManuscriptView extends ItemView {
 				});
 			});
 		}
+		// This note as plain text: onto the clipboard, or into a file. Reads,
+		// both of them, so a note that cannot be written in still offers them.
+		const copy = actions.createEl('button', {
+			cls: 'clickable-icon view-action snowflake-method-segment-copy',
+			attr: { type: 'button' },
+		});
+		setIcon(copy, 'copy');
+		setTooltip(copy, this.t('manuscript.copyNote'));
+		copy.addEventListener('click', (event) => {
+			event.stopPropagation();
+			void this.copySegment(segment.path).catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
+		const exporter = actions.createEl('button', {
+			cls: 'clickable-icon view-action snowflake-method-segment-export',
+			attr: { type: 'button' },
+		});
+		setIcon(exporter, 'file-down');
+		setTooltip(exporter, this.t('manuscript.exportNote'));
+		exporter.addEventListener('click', (event) => {
+			event.stopPropagation();
+			void this.exportSegment(segment.path).catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
 		const open = actions.createEl('button', {
 			cls: 'clickable-icon view-action snowflake-method-segment-open',
 			attr: { type: 'button' },
@@ -3303,23 +3662,17 @@ export class SnowflakeManuscriptView extends ItemView {
 	private async mergeAt(path: string): Promise<void> {
 		const model = this.model;
 		if (model === null || model.readOnly) return;
-		const at = model.segments.findIndex((segment) => segment.path === path);
-		const kept = model.segments[at];
-		const removed = model.segments[at + 1];
-		if (kept === undefined || removed === undefined) return;
-		// Asked before anything is put away, because the answer may be no. This is
-		// the one action here that takes a note away, and taking the editor down
-		// first would move the page while the author was still deciding.
-		const agreed = await confirmSegmentMerge(
-			this.app,
-			this.t,
-			kept.title,
-			removed.title,
-		);
-		if (!agreed) return;
-		await this.deactivateSegment();
 		try {
-			await this.host.mergeManuscriptSegments(model.projectPath, path);
+			// The host asks first, and the editor is put away only once the answer
+			// is yes. This is the one action here that takes a note away, and
+			// taking the editor down first would move the page while the author
+			// was still deciding.
+			const merged = await this.host.mergeManuscriptSegments(
+				model.projectPath,
+				path,
+				() => this.deactivateSegment(),
+			);
+			if (!merged) return;
 			this.activePath = path;
 			await this.refresh();
 		} catch (error) {

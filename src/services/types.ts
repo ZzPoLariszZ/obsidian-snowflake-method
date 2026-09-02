@@ -36,6 +36,20 @@ export function projectArchiveRoot(rootPath: string): string {
     : `${rootPath}/${PROJECT_ARCHIVE_FOLDER}`;
 }
 
+/**
+ * Where exported manuscripts go unless the reader names a folder: beside the
+ * projects, like the archive, and unlocalized for the same reason. Discovery
+ * looks one level down for a project file and finds none there.
+ */
+export const PROJECT_EXPORT_FOLDER = "Snowflake Export";
+
+/** The export folder under one configured project root. */
+export function projectExportRoot(rootPath: string): string {
+  return rootPath.length === 0
+    ? PROJECT_EXPORT_FOLDER
+    : `${rootPath}/${PROJECT_EXPORT_FOLDER}`;
+}
+
 export const PROJECT_DIRECTORY_KEYS = [
   "system",
   "summaries",

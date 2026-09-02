@@ -9,6 +9,8 @@ import type {
 	EntityMatcher,
 	ManuscriptPresentation,
 	MentionHighlightMode,
+	MilestoneCountOptions,
+	MilestoneMode,
 	MentionIgnore,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
@@ -327,6 +329,18 @@ export interface ManuscriptWindowSettings {
 	presentation: ManuscriptPresentation;
 	/** Which entity mentions the stream marks where they stand in the prose. */
 	mentionHighlight: MentionHighlightMode;
+	/**
+	 * The word milestones drawn beside the rows: whether at all, what the
+	 * count accumulates over, every how many units, and the convention it
+	 * counts by -- the status bar's own, so a milestone never disagrees with
+	 * the number the reader is shown.
+	 */
+	milestones: {
+		enabled: boolean;
+		mode: MilestoneMode;
+		interval: number;
+		count: MilestoneCountOptions;
+	};
 }
 
 /**
@@ -409,8 +423,16 @@ export interface ManuscriptHost {
 	): void;
 	/** Records where the author was working, for the dashboard to offer later. */
 	rememberManuscriptNote(projectId: string, path: string): void;
-	/** Joins a note with the one after it, the earlier one surviving. */
-	mergeManuscriptSegments(projectPath: string, path: string): Promise<void>;
+	/**
+	 * Joins a note with the one after it, the earlier one surviving, once the
+	 * author has agreed to it. `onAgreed` runs between the answer and the
+	 * join, as `onNamed` does above. Resolves false when nothing was joined.
+	 */
+	mergeManuscriptSegments(
+		projectPath: string,
+		path: string,
+		onAgreed?: SegmentNamed,
+	): Promise<boolean>;
 	/**
 	 * Turns one writing mode for every stream at once: typewriter on and off,
 	 * focus around its levels. The buttons live in each segment's header, but
@@ -437,6 +459,26 @@ export interface ManuscriptHost {
 	manuscriptRevisions(
 		projectPath: string | null,
 	): Promise<readonly Revision[]>;
+	/**
+	 * Every manuscript note's writing count in reading order, under the
+	 * status bar's convention, for the milestones that accumulate across
+	 * chapters. A note that will not read is absent from the map.
+	 */
+	manuscriptSegmentTotals(
+		projectPath: string | null,
+	): Promise<ReadonlyMap<string, number>>;
+	/** Writes the whole manuscript as plain text under the export settings. */
+	exportManuscript(projectPath: string | null): Promise<void>;
+	/** Writes one note as plain text under the export settings. */
+	exportManuscriptSegment(
+		projectPath: string | null,
+		path: string,
+	): Promise<void>;
+	/** One note's plain text under the export settings, for the clipboard. */
+	manuscriptSegmentPlainText(
+		projectPath: string | null,
+		path: string,
+	): Promise<string | null>;
 	/**
 	 * Writes one revision, then re-dresses streams and dashboards. False when
 	 * the write did not happen -- no project answers for the path any more, or

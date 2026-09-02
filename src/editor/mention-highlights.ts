@@ -116,6 +116,9 @@ export function mentionDecorations(
 			const attributes = {
 				...(mark.title === undefined ? {} : { title: mark.title }),
 				...(mark.styleVar === undefined ? {} : { style: mark.styleVar }),
+				...(mark.label === undefined
+					? {}
+					: { 'data-snowflake-method-label': mark.label }),
 			};
 			return Decoration.mark({
 				class: mark.classes,

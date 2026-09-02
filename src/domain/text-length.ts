@@ -143,21 +143,36 @@ function isAstral(character: string): boolean {
 }
 
 /**
+ * Told where each counted unit begins, as a UTF-16 index into the text: a
+ * word's first character, a character counted alone, a mark that stands
+ * alone. The count itself passes nothing; whoever needs the places gets them
+ * from the very scan that made the numbers, so the two can never disagree.
+ */
+type UnitReporter = (index: number) => void;
+
+/**
  * Every character on the page, one each. Nothing is gathered into a word, so
  * the middle number is the letters and digits rather than the words they
  * spell, and the marks Chinese writing spends stand with the ordinary ones.
  */
-function countEveryCharacter(text: string): GatheredCount {
+function countEveryCharacter(
+	text: string,
+	onUnit?: UnitReporter,
+): GatheredCount {
 	let cjkCharacters = 0;
 	let letters = 0;
 	let punctuationMarks = 0;
+	let at = 0;
 	for (const character of text) {
+		const here = at;
+		at += character.length;
 		if (WHITESPACE.test(character)) continue;
 		if (UNCOUNTED_CHARACTER.test(character)) continue;
 		if (CJK_CHARACTER.test(character)) cjkCharacters += 1;
 		else if (CJK_PUNCTUATION.test(character) || PUNCTUATION.test(character)) {
 			punctuationMarks += 1;
 		} else letters += 1;
+		onUnit?.(here);
 	}
 	return {
 		cjkCharacters,
@@ -187,8 +202,34 @@ export function countWriting(
 	};
 }
 
+/**
+ * Where each counted unit of the writing begins, in text order: one UTF-16
+ * index per unit, so the list is exactly as long as the count's total. A
+ * word begins at its first character, a character counted alone at itself,
+ * a mark that stands alone at itself; a character the platform conventions
+ * read twice is listed twice at the one place. Taken from the same scan
+ * `countWriting` counts with, never from a reading of its own, which is
+ * what lets a milestone stand on the very character the count reached.
+ */
+export function writingUnitStarts(
+	text: string,
+	options: WritingCountOptions = { mode: 'ms-word' },
+): number[] {
+	const starts: number[] = [];
+	const report = (index: number): void => {
+		starts.push(index);
+	};
+	if (countsCharacters(options.mode)) countEveryCharacter(text, report);
+	else gatherIntoWords(text, options.mode, report);
+	return starts;
+}
+
 /** The conventions that read writing in words, each with its own marks. */
-function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
+function gatherIntoWords(
+	text: string,
+	mode: WritingCountMode,
+	onUnit?: UnitReporter,
+): GatheredCount {
 	const wordProcessor = mode === 'ms-word';
 	const qidian = mode === 'qidian';
 	let cjkCharacters = 0;
@@ -201,9 +242,19 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 	let runHasWord = false;
 	let runHasPunctuation = false;
 	let runIsForeign = false;
+	// Where the open run began: the first character that gave it something
+	// to count, which is where the word it becomes is said to stand.
+	let runStart = 0;
+	// The character being read, as an index into the text.
+	let here = 0;
 	const closeRun = (): void => {
-		if (runHasWord) words += 1;
-		else if (runHasPunctuation) punctuationMarks += 1;
+		if (runHasWord) {
+			words += 1;
+			onUnit?.(runStart);
+		} else if (runHasPunctuation) {
+			punctuationMarks += 1;
+			onUnit?.(runStart);
+		}
 		runHasWord = false;
 		runHasPunctuation = false;
 		runIsForeign = false;
@@ -212,9 +263,13 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 	const standsAlone = (): void => {
 		closeRun();
 		punctuationMarks += 1;
+		onUnit?.(here);
 	};
 
+	let at = 0;
 	for (const character of text) {
+		here = at;
+		at += character.length;
 		if (WHITESPACE.test(character)) {
 			closeRun();
 			continue;
@@ -224,7 +279,11 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		if (qidian && QIDIAN_HYPHEN.test(character)) continue;
 		if (!wordProcessor && isAstral(character)) {
 			closeRun();
-			if (CJK_CHARACTER.test(character)) cjkCharacters += 2;
+			if (CJK_CHARACTER.test(character)) {
+				cjkCharacters += 2;
+				onUnit?.(here);
+				onUnit?.(here);
+			}
 			continue;
 		}
 		if (wordProcessor && WORD_PROCESSOR_SEPARATOR.test(character)) {
@@ -234,6 +293,7 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		if (CJK_CHARACTER.test(character)) {
 			closeRun();
 			cjkCharacters += 1;
+			onUnit?.(here);
 			continue;
 		}
 		if (CJK_PUNCTUATION.test(character)) {
@@ -250,7 +310,10 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		}
 		if (qidian && !isAscii(character) && SYMBOL_OR_SELECTOR.test(character)) {
 			closeRun();
-			if (!isAstral(character)) punctuationMarks += 1;
+			if (!isAstral(character)) {
+				punctuationMarks += 1;
+				onUnit?.(here);
+			}
 			continue;
 		}
 		// Where a convention draws the line between writing gathered into
@@ -263,6 +326,7 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		if (countedAlone) {
 			closeRun();
 			cjkCharacters += 1;
+			onUnit?.(here);
 			continue;
 		}
 		// A run of marks from outside ASCII stands apart from the words
@@ -270,6 +334,8 @@ function gatherIntoWords(text: string, mode: WritingCountMode): GatheredCount {
 		const foreign = qidian && !isAscii(character) && PUNCTUATION.test(character);
 		if (foreign !== runIsForeign) closeRun();
 		runIsForeign = foreign;
+		// A run with nothing counted in it yet begins on this character.
+		if (!runHasWord && !runHasPunctuation) runStart = here;
 		if (WORD_CHARACTER.test(character)) runHasWord = true;
 		else if (PUNCTUATION.test(character)) runHasPunctuation = true;
 	}

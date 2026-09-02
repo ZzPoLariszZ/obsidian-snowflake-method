@@ -16,13 +16,14 @@ import {
 } from "../domain";
 import {
   ManagedFileNotFoundError,
+  PathConflictError,
   UnsupportedSchemaError,
   projectIdOf,
   type ManagedEntryRecord,
   type VaultRepository,
 } from "../repository";
 import { fileStamp } from "./json-store";
-import { manuscriptSegmentTemplate } from "../templates";
+import { firstHeading, manuscriptSegmentTemplate } from "../templates";
 import {
   PROJECT_PATH_LAYOUTS,
   getProjectPathLayout,
@@ -39,6 +40,28 @@ export interface ManuscriptSegmentRecord extends ManuscriptSegment {
    * here is what lets one pass over the notes answer both questions.
    */
   storedSequence: unknown;
+}
+
+/** What a batch of renames did: each note's old and new path, and the notes left alone. */
+export interface SegmentRenameOutcome {
+  renamed: { from: string; to: string }[];
+  /** Notes the plugin may not write to, left under their old names. */
+  skipped: string[];
+}
+
+/** One rename of a batch, settled and ready to run. */
+interface RenameStep {
+  from: string;
+  to: string;
+  title: string;
+  /** The name the note carries now, for the heading guard. */
+  stem: string;
+}
+
+/** A batch settled before its first rename, in the order the renames run. */
+interface RenamePlan {
+  steps: RenameStep[];
+  skipped: string[];
 }
 
 export interface ManuscriptSegmentContent {
@@ -340,11 +363,22 @@ export class ManuscriptService {
    * note takes the start of it, which is where a reader was already going to
    * meet this text. The later note goes to the trash with nothing in it that is
    * not now in the survivor.
+   *
+   * `renames` are the renumberings that follow the note going -- the numbered
+   * notes after it moving down by one -- and they are settled before anything
+   * is joined or thrown away, with the later note's own name counted as free
+   * since it is about to be. A name the batch cannot take refuses the whole
+   * merge with nothing done, the way it refuses a batch on its own.
    */
   async mergeWithNext(
     project: ProjectRef,
     path: string,
-  ): Promise<{ kept: string; removed: string } | null> {
+    renames: readonly { path: string; title: string }[] = [],
+  ): Promise<{
+    kept: string;
+    removed: string;
+    renumbered: SegmentRenameOutcome;
+  } | null> {
     const target = normalizePath(path);
     const segments = await this.orderAround(project, pairAt(target));
     const index = segments.findIndex((segment) => segment.path === target);
@@ -359,6 +393,7 @@ export class ManuscriptService {
       );
     }
 
+    const plan = await this.planRenames(project, renames, [later.path]);
     const head = await this.readSegment(earlier.path);
     const tail = await this.readSegment(later.path);
     const joined = `${head.body.replace(/\n+$/u, "")}\n\n${tail.body.replace(
@@ -383,7 +418,8 @@ export class ManuscriptService {
     // hand and the delete event that follows finds it already settled.
     this.onSegmentRemoved?.(later.path, tail.body);
     await this.repository.trashFile(later.path);
-    return { kept: earlier.path, removed: later.path };
+    const renumbered = await this.runRenames(plan);
+    return { kept: earlier.path, removed: later.path, renumbered };
   }
 
   /**
@@ -402,6 +438,107 @@ export class ManuscriptService {
       before,
       moveSegment(before, normalizePath(path), toIndex),
     );
+  }
+
+  /**
+   * Renames manuscript notes in one batch, for the renumbering that follows a
+   * chapter inserted among numbered ones or taken from among them. Each note
+   * keeps its folder and its position; only its name changes -- and its
+   * heading, where the heading is still the name the note was made under,
+   * since a heading the author wrote is theirs.
+   *
+   * The batch is settled before the first rename: every destination is
+   * checked against the Vault and against the batch itself, in the order the
+   * renames will run. A destination that is not free refuses the whole batch
+   * with nothing renamed. Notes the plugin may not write to are skipped and
+   * named in the answer.
+   */
+  async renameSegments(
+    project: ProjectRef,
+    renames: readonly { path: string; title: string }[],
+  ): Promise<SegmentRenameOutcome> {
+    return this.runRenames(await this.planRenames(project, renames));
+  }
+
+  /**
+   * The batch settled: every rename checked, and put in the order it can
+   * run. A note taking a name another note in the batch is giving up runs
+   * after that note has given it up -- the last note first when the numbers
+   * move up, the first note first when they move down -- which is read off
+   * the names rather than told, so the same batch serves both. Two notes
+   * trading names have no such order and refuse the batch. `freeing` names
+   * paths the caller is about to vacate, counted as free here.
+   */
+  private async planRenames(
+    project: ProjectRef,
+    renames: readonly { path: string; title: string }[],
+    freeing: readonly string[] = [],
+  ): Promise<RenamePlan> {
+    const skipped: string[] = [];
+    const steps: RenameStep[] = [];
+    if (renames.length === 0) return { steps, skipped };
+    const ordered = await this.listSegmentsFromFiles(project);
+    const pending: RenameStep[] = [];
+    for (const rename of renames) {
+      const from = normalizePath(rename.path);
+      const segment = ordered.find((entry) => entry.path === from);
+      if (segment === undefined) throw new ManagedFileNotFoundError(from);
+      if (segment.readOnly) {
+        skipped.push(from);
+        continue;
+      }
+      const to = normalizePath(
+        `${parentOf(from)}/${safeFileName(rename.title)}.md`,
+      );
+      if (to === from) continue;
+      pending.push({ from, to, title: rename.title, stem: segment.title });
+    }
+
+    // Each step waits on the step, if any, that is giving up the name it
+    // takes; the chain from a step to what it waits on runs deepest first.
+    const bySource = new Map(pending.map((step) => [step.from, step]));
+    const placed = new Set<RenameStep>();
+    for (const start of pending) {
+      const trail: RenameStep[] = [];
+      const onTrail = new Set<RenameStep>();
+      let step: RenameStep | undefined = start;
+      while (step !== undefined && !placed.has(step)) {
+        if (onTrail.has(step)) throw new PathConflictError(step.to);
+        onTrail.add(step);
+        trail.push(step);
+        step = bySource.get(step.to);
+      }
+      for (const queued of trail.reverse()) {
+        placed.add(queued);
+        steps.push(queued);
+      }
+    }
+
+    const freed = new Set(freeing.map((path) => normalizePath(path)));
+    const taken = new Set<string>();
+    for (const step of steps) {
+      const occupied =
+        this.repository.get(step.to) !== null && !freed.has(step.to);
+      if (occupied || taken.has(step.to)) throw new PathConflictError(step.to);
+      taken.add(step.to);
+      freed.add(step.from);
+    }
+    return { steps, skipped };
+  }
+
+  private async runRenames(plan: RenamePlan): Promise<SegmentRenameOutcome> {
+    const renamed: { from: string; to: string }[] = [];
+    for (const step of plan.steps) {
+      const record = await this.repository.readManaged(step.from);
+      const to = await this.repository.renameFile(step.from, step.to);
+      renamed.push({ from: step.from, to });
+      if (firstHeading(record.body) === step.stem) {
+        await this.repository.updateFirstHeading(to, step.title, {
+          userInput: true,
+        });
+      }
+    }
+    return { renamed, skipped: plan.skipped };
   }
 
   /** Regular intervals in the manuscript's current order. Returns what changed. */
@@ -600,3 +737,8 @@ function draftFolders(project: ProjectRef): string[] {
   );
 }
 
+/** The folder a path stands in, or the empty string for the Vault root. */
+function parentOf(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index === -1 ? "" : path.slice(0, index);
+}

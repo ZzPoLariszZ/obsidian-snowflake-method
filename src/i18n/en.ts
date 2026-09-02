@@ -97,6 +97,7 @@ export const en = {
 		'Writing count outside sessions disabled.',
 	'commands.countProjectWords': 'Count project words',
 	'settings.section.general': 'General',
+	'settings.section.export': 'Export',
 	'settings.section.display': 'Display',
 	'settings.section.editing': 'Editing',
 	'settings.projectRoot.name': 'Project root folder',
@@ -229,6 +230,81 @@ export const en = {
 	'modal.highlightRule.deleteTitle': 'Delete {name}',
 	'modal.highlightRule.deleteBody':
 		'The rule {name} and its patterns will be removed. Highlights disappear at once; nothing else is touched.',
+	'settings.milestones.heading': 'Word milestone',
+	'settings.manuscriptMilestones.name': 'Show word milestones',
+	'settings.manuscriptMilestones.desc':
+		'Mark the count reached at each interval in the margin, beside the line that reaches it.',
+	'settings.manuscriptMilestoneMode.name': 'Milestone mode',
+	'settings.manuscriptMilestoneMode.desc':
+		'Count on through the whole manuscript in reading order, or start again at every note.',
+	'settings.manuscriptMilestoneMode.manuscript': 'Whole manuscript',
+	'settings.manuscriptMilestoneMode.chapter': 'Per chapter',
+	'settings.manuscriptMilestoneInterval.name': 'Milestone interval',
+	'settings.manuscriptMilestoneInterval.desc':
+		'How much writing lies between one milestone and the next, in the units the word count uses.',
+	'settings.manuscriptMilestoneInterval.invalid':
+		'The interval must be a whole number of at least 1.',
+	'settings.chapterNumbering.heading': 'Automatic chapter number',
+	'settings.manuscriptChapterNumbering.name': 'Numbering style',
+	'settings.manuscriptChapterNumbering.desc':
+		'A new manuscript note is offered the number after the note before it, and the numbered notes after it can move up by one.',
+	'settings.manuscriptChapterNumbering.off': 'Off',
+	'settings.manuscriptChapterNumbering.chinese': 'Chinese numerals (第一章)',
+	'settings.manuscriptChapterNumbering.chineseArabic':
+		'Chinese with Arabic numerals (第 1 章)',
+	'settings.manuscriptChapterNumbering.english': 'English (Chapter 1)',
+	'settings.manuscriptChapterNumbering.custom': 'Custom',
+	'settings.chapterNumberRules.add': 'Add more rules…',
+	'settings.chapterNumberRules.kindFormat': 'Simplified format',
+	'settings.chapterNumberRules.kindRegex': 'Regular expression',
+	'settings.chapterNumberRules.pause': 'Pause rule',
+	'settings.chapterNumberRules.resume': 'Resume rule',
+	'modal.chapterNumberRule.createTitle': 'Add numbering rule',
+	'modal.chapterNumberRule.editTitle': 'Edit numbering rule',
+	'modal.chapterNumberRule.kind': 'Rule kind',
+	'modal.chapterNumberRule.format': 'Simplified format',
+	'modal.chapterNumberRule.formatDesc':
+		'The numbered head as it is written:\n• {n} for the number\n• {nnnn} for the zero-padding number to that many digits\n• {zh} for the Chinese number\n\nExamples:\n• 第 {n} 章 - 第 1 章\n• Chapter {nnnn} - Chapter 0001\n• 第{zh}章 - 第一章',
+	'modal.chapterNumberRule.formatInvalid':
+		'The format needs {n}, {nnnn} or {zh} in it.',
+	'modal.chapterNumberRule.pattern': 'Regular expression',
+	'modal.chapterNumberRule.patternDesc':
+		'A regular expression a numbered head matches.\n\nExamples:\n• ^Chapter\\s*(?!0000)\\d{4}\\s+.+$\n• ^第\\s*(?!0000)\\d{4}\\s*章\\s+.+$',
+	'modal.chapterNumberRule.patternInvalid':
+		'The pattern does not compile as a regular expression.',
+	'modal.chapterNumberRule.seed': 'First head (optional)',
+	'modal.chapterNumberRule.seedDesc':
+		'Should offer when the manuscript carries no matched heads.\nAn expression reads numbers but cannot write the first one.\n\nExamples:\n• Chapter 0001\n• 第 0001 章',
+	'modal.chapterNumberRule.deleteTitle': 'Delete {name}',
+	'modal.chapterNumberRule.deleteBody':
+		'The rule {name} will be removed. Names already given stay as they are.',
+	'settings.exportFolder.name': 'Export folder',
+	'settings.exportFolder.desc':
+		'A folder in this vault where exported files are written. Leave it empty for Snowflake Export beside the projects.\nFiles that left the manuscript since an earlier export are never deleted.',
+	'settings.exportFolder.placeholder': 'Snowflake Export',
+	'settings.exportFormat.name': 'Export format',
+	'settings.exportFormat.desc':
+		'Both hold the same plain text, every Markdown and Obsidian mark taken out. Only the file name differs.',
+	'settings.exportFormat.md': 'Markdown (.md)',
+	'settings.exportFormat.txt': 'Plain text (.txt)',
+	'settings.exportIndent.name': 'Preserve first-line indentation',
+	'settings.exportIndent.desc':
+		'Chinese projects begin every paragraph with two full-width spaces, other projects with two em spaces, unless the note already indents it.\nOff strips any indent typed in the note.',
+	'settings.exportParagraphSpacing.name': 'Preserve extra paragraph spacing',
+	'settings.exportParagraphSpacing.desc':
+		'Keep the blank lines between paragraphs as the notes have them.\nOff puts one paragraph on each line, the web platform convention, which a Markdown reader runs together.',
+	'settings.exportManuscript.heading': 'Whole manuscript',
+	'settings.exportManuscriptLayout.name': 'Layout',
+	'settings.exportManuscriptLayout.desc':
+		'One file holding every note in reading order, or a folder named after the project with one numbered file per note.',
+	'settings.exportManuscriptLayout.single': 'One file',
+	'settings.exportManuscriptLayout.folder': 'One file per note in a folder',
+	'settings.exportChapterSeparator.name': 'Between notes',
+	'settings.exportChapterSeparator.desc':
+		'What stands between one note and the next in a single file.',
+	'settings.exportChapterSeparator.blank': 'A blank line',
+	'settings.exportChapterSeparator.rule': 'A line of dashes',
+	'settings.exportChapterSeparator.asterisks': 'Three asterisks',
 	'settings.manuscriptAppearance.heading': 'Typography',
 	'settings.manuscriptAppearance.themeDefault': 'Theme default',
 	'settings.manuscriptAppearance.pixels': '{value} px',
@@ -1428,6 +1504,32 @@ export const en = {
 	'manuscript.focusNext.solo': 'Click for: solo',
 	'manuscript.focusNext.off': 'Click to turn off',
 	'manuscript.openNote': 'Open this note on its own',
+	'manuscript.milestoneLabel': '{count} {unit}',
+	'manuscript.segmentNumber': 'Chapter number',
+	'manuscript.renumberFollowers': 'Move the {count} numbered notes after it up by one',
+	'manuscript.renumberFollowersDown':
+		'Move the {count} numbered notes after it down by one',
+	'messages.segmentsRenumbered': 'Renumbered {count} notes.',
+	'errors.renumberConflict':
+		'A note cannot be renumbered because {path} is already taken.',
+	'manuscript.toolbar.export': 'Export the manuscript as plain text',
+	'manuscript.exportNote': 'Export this note as plain text',
+	'manuscript.copyNote': 'Copy this note as plain text',
+	'commands.exportManuscript': 'Export the manuscript as plain text',
+	'commands.exportManuscriptNote': 'Export the current manuscript note as plain text',
+	'commands.copyManuscriptNote': 'Copy the current manuscript note as plain text',
+	'modal.exportReplace.title': 'Replace exported files',
+	'modal.exportReplace.question': '{count} of the files already stand:',
+	'modal.exportReplace.more': 'and {count} more',
+	'modal.exportReplace.consequence':
+		'Exporting writes over them. Nothing else in the vault is touched.',
+	'modal.exportReplace.confirm': 'Replace',
+	'messages.exported': 'Exported to {path}.',
+	'messages.exportedMany': 'Exported {count} files to {folder}.',
+	'messages.exportNothing': 'There is nothing to export.',
+	'messages.copiedNote': 'Copied the note as plain text.',
+	'errors.exportIntoManuscript':
+		'The export folder {path} lies inside the manuscript. Choose another folder.',
 	'manuscript.copySelection': 'Copy',
 	'manuscript.revision.create': 'Create revision',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
