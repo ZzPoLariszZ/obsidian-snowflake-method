@@ -50,6 +50,9 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
 | Focus mode | Fade everything except the paragraph being written, in four levels. |
+| Word milestones | Mark the word count in the margin every so many words, across the whole manuscript or afresh in each chapter. |
+| Automatic chapter numbers | Number a new chapter from the one before it, in a Chinese or English style or a rule of your own, and move the chapters after it along. |
+| Plain-text export | Write the manuscript, or one chapter, as plain text into the Vault, or copy a chapter to the clipboard with every mark taken out. |
 | Writing sessions | Time each sitting, aim at a daily goal, and read back where the words and the hours went. |
 | Prose analysis | Read the draft back as reading time, sentences, dialogue share, and the words you lean on. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions where they stand. |
@@ -158,6 +161,12 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted ground, justified with automatic hyphenation, first lines indented, dashed grid lines behind the text, and focus mode keeping the paragraph being written in full ink" /></a></p>
 
+**Word milestones** put the running word count in the margin, beside the line that reaches each interval, five hundred words by default. They count by the same rule as the status bar, across the whole manuscript in reading order or afresh in every chapter, and they follow your typing: as a chapter grows, its marks move, and in whole-manuscript mode so do the marks of every chapter after it. Switch them on under **Word milestone** in the settings.
+
+**Automatic chapter numbers** offer a new chapter the number after the one before it. Choose a style under **Automatic chapter number**: `第一章`, `第 1 章` or `Chapter 1`, or a rule of your own written as a simplified format such as `第{nnnn}章` or `Chapter {n}:` or as a regular expression. With a style on, the naming form has two fields, the number already filled in and the name you came to type, and a switch that moves every numbered chapter after the new one up by one. Merging a numbered chapter away offers the mirror, moving the chapters after it down by one so the count closes over the gap. A chapter whose name the rule does not read is left where it is, and a chapter whose heading you have rewritten keeps that heading.
+
+**Plain-text export** writes the manuscript into the Vault with every Markdown and Obsidian mark taken out: headings as their words, links as their text, comments and block ids gone, entities spelled as the characters they stand for. The export button in the toolbar writes the whole book, either as one file with a blank line, a line of dashes or three asterisks between chapters, or as one file per chapter in a folder numbered in reading order. Every chapter's header has a button that exports that chapter alone and another that copies it to the clipboard as the same text. Files go to `Snowflake Export` beside the projects unless the settings name another folder, with a `.txt` or `.md` extension and the same text inside either way. Each line of prose is a paragraph, indented or not as you choose, and blank lines between paragraphs are kept or dropped the same way. A file that already stands at the destination is written over only after you agree.
+
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
 ### Revision
@@ -243,9 +252,12 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Add world status | Add a world status to a kind's vocabulary. |
 | Add worldbuilding note | Add a note to a worldbuilding kind you choose. |
 | Close manuscript stream | Close the manuscript stream in the current pane. |
+| Copy the current manuscript note as plain text | Put the note the page is centred on onto the clipboard, every mark taken out. |
 | Count project words | Report the current project's word count, whole and manuscript alone. |
 | Create project | Create a new Markdown-native Snowflake project. |
 | Create worldbuilding kind | Add a kind of worldbuilding note, with its own folder, pane, and vocabularies. |
+| Export the current manuscript note as plain text | Write the note the page is centred on as plain text into the export folder. |
+| Export the manuscript as plain text | Write the whole manuscript as plain text into the export folder. |
 | Go back to where the stream opened | Return to the note the manuscript stream was opened at. |
 | Go to the next manuscript note | Move one note further into the manuscript. |
 | Go to the previous manuscript note | Move one note back through the manuscript. |
@@ -282,7 +294,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Toggle writing count outside sessions | Start or stop recording the words written while no session is running. |
 | Update notes in older format | Update every note an older release wrote. |
 
-Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing.
+Commands that act on the manuscript are offered only while a manuscript stream is the current view, and **Split manuscript note at the cursor** only while a note in it is open for writing. The two that act on the current note take the note the page is centred on.
 
 <a id="settings"></a>
 
@@ -309,6 +321,10 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Auto-pair brackets and quotes | On | Typing brackets or quotes in the manuscript closes the pair. |
 | Auto-pair Markdown syntax | On | Typing bold, italic or other markers in the manuscript closes the pair. |
 | Enter starts a new paragraph | On | Typing Enter puts an extra blank line between paragraphs. Typing Shift+Enter breaks the line inside the paragraph. |
+| Show word milestones | Off | Mark the word count beside the line that reaches each interval. |
+| Milestone mode | Per chapter | Count across the whole manuscript or recount for each note. |
+| Milestone interval | 500 | Words between each milestone. |
+| Numbering style | Off | Number a new chapter from the one before it: Chinese (第一章), Chinese with Arabic numerals (第 1 章), English (Chapter 1), or rules of your own written as a simplified format or a regular expression. |
 | Font family | Theme default | Choose the font used for manuscript text. Restart Obsidian to see newly installed fonts. |
 | Font size | Theme default | Adjust the size of manuscript text. |
 | Line height | Theme default | Adjust spacing between lines of manuscript text. |
@@ -338,6 +354,12 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 | Custom sensitive words | None | The terms the entity tracking watches for and counts. One per line. |
 | Dialogue quote styles | All four on | Which quote marks open dialogue: “ ”, " ", 「 」 and 『 』. |
 | Custom highlight rules | None | Your own rules, literal text or regular expression, each in the color and decoration you choose. |
+| Export folder | Snowflake Export beside the projects | Folder where exported files are saved. A folder inside a project is refused. |
+| Export format | Plain text (.txt) | Markdown (.md) or plain text (.txt). Both hold the same plain text, every Markdown and Obsidian mark removed. |
+| Preserve first-line indentation | On | Keep first-line indentation on paragraphs. |
+| Preserve extra paragraph spacing | Off | Keep blank lines between paragraphs. |
+| Layout | One file | Export the manuscript as one file or as one file per note. |
+| Between notes | Blank line | What separates notes when exporting as one file: a blank line, a line of dashes or three asterisks. |
 
 <a id="privacy"></a>
 
@@ -407,6 +429,8 @@ Each project is stored as a direct child of the configured project root. Its fol
 Writing sessions are recorded per device, so syncing never has two machines writing one file. The ignore rules you write while tracking entities and the revisions you propose are each a single shared file that travels with the Vault. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
 
 Archiving a project moves its whole folder into `Snowflake Archive`, a folder beside the projects rather than inside any of them. Nothing in the notes changes, and because a project keeps every reference within its own folder, no link is left dangling while it is away. The project manager lists what is in there and restores any of it, giving the project a free name if the one it left under has since been taken. Moving a folder in or out by hand works the same way, so the archive is a place rather than a mechanism.
+
+Exporting writes plain-text files into `Snowflake Export`, a folder beside the projects like the archive, unless the settings name another folder outside the project. Files that left the manuscript since an earlier export are never deleted.
 
 A manuscript may be one note or many, arranged in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming one never changes where it is read, and the manuscript stream presents them in that order as a single page.
 
@@ -535,6 +559,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落之外的一切。 |
+| 字数里程碑 | 每隔若干字在页边标出字数，可在整部正文中连续累计，也可按章节重新计数。 |
+| 自动章节编号 | 新章节按前一章接着编号，可用中文、英文样式或自定义规则，其后的章节随之顺延。 |
+| 纯文本导出 | 把整部正文或单独一章导出为 Vault 内的纯文本文件，或把一章去掉所有标记后复制到剪贴板。 |
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都去了哪里。 |
 | 正文分析 | 把草稿读成阅读时间、句数、对话占比，以及你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品贯穿正文的足迹，并在原处标出它们的提及。 |
@@ -643,6 +670,12 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
 
+**字数里程碑**会在页边标出累计字数，就在达到每个间隔的那一行旁边，默认每五百字一处。它按状态栏同一套字数规则计数，可以在整部正文中按阅读顺序连续累计，也可以在每章重新计数，并且会跟着你的写作走：一章变长，它的里程碑随之移动，在整部正文模式下其后每一章的里程碑也一同移动。在设置的**字数里程碑**一节中开启。
+
+**自动章节编号**会为新章节给出前一章之后的编号。在**自动章节编号**一节中选择样式：`第一章`、`第 1 章`或`Chapter 1`，也可以用简化格式（如`第{nnnn}章`或`Chapter {n}:`）或正则表达式写一条自己的规则。开启样式后，命名表单有两个字段，编号已经填好，名称由你来写，还有一个开关，可以把新章节之后所有带编号的章节顺延一号。把带编号的一章并入前一章时会给出相反的选项，把其后的章节各减一号，让编号重新连续。规则读不出编号的章节原地不动，标题已被你改写的章节也保留你的标题。
+
+**纯文本导出**会把正文写入 Vault，去掉所有 Markdown 与 Obsidian 标记：标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原为它所代表的字符。工具栏的导出按钮导出整部正文，可以合成一个文件，章节之间以空行、一行短横线或三个星号分隔，也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有一个只导出这一章的按钮，和一个把同样的文本复制到剪贴板的按钮。文件默认保存到项目旁的 `Snowflake Export`，除非设置里另指定了文件夹，扩展名为 `.txt` 或 `.md`，两者内容相同。每一行文字都是一个段落，是否缩进由你选择，段落之间的空行也照此保留或去掉。目标位置已有文件时，只有在你同意之后才会覆盖。
+
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
 ### 修订
@@ -738,6 +771,9 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在这一篇之前插入正文笔记 | 在正在阅读的这一篇之前新增一篇。 |
 | 在这一篇之后插入正文笔记 | 在正在阅读的这一篇之后新增一篇。 |
 | 在光标处拆分正文笔记 | 在光标处把正在写作的笔记一分为二。 |
+| 导出正文为纯文本 | 把整部正文作为纯文本写入导出文件夹。 |
+| 将当前正文笔记导出为纯文本 | 把页面正中的这一篇作为纯文本写入导出文件夹。 |
+| 复制当前正文笔记为纯文本 | 把页面正中的这一篇去掉所有标记后放到剪贴板。 |
 | 按选项开始写作时段 | 开始之前先选择计时方式、时长与写作阶段。 |
 | 开始正计时写作时段 | 开始一个直到你停止才结束的时段。 |
 | 开始倒计时写作时段 | 开始一个计时走完即结束的时段。 |
@@ -761,7 +797,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
 | 切换自由模式 | 隐藏十个步骤与进度，或者把它们找回来。 |
 
-与正文相关的命令仅在当前视图为正文流时提供，其中**在光标处拆分正文笔记**还需要其中有一篇笔记正处于写作状态。
+与正文相关的命令仅在当前视图为正文流时提供，其中**在光标处拆分正文笔记**还需要其中有一篇笔记正处于写作状态。两条针对当前笔记的命令作用于页面正中的那一篇。
 
 ## 设置
 
@@ -786,6 +822,10 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 自动配对括号与引号 | 开启 | 在正文中输入括号或引号时自动补全另一半。 |
 | 自动配对 Markdown 语法 | 开启 | 在正文中输入加粗、斜体等标记时自动补全另一半。 |
 | 回车开始新段落 | 开启 | 按回车会在段落之间多留一个空行。按 Shift+回车则在段内换行。 |
+| 显示字数里程碑 | 关闭 | 在达到每个间隔的那一行旁标出字数。 |
+| 里程碑模式 | 按章节 | 在整部正文中连续累计，或在每篇笔记中重新计数。 |
+| 里程碑间隔 | 500 | 相邻两个里程碑之间的字数。 |
+| 编号样式 | 关闭 | 新章节按前一章接着编号：中文（第一章）、中文加阿拉伯数字（第 1 章）、英文（Chapter 1），或用简化格式或正则表达式书写的自定义规则。 |
 | 字体 | 跟随主题 | 选择正文使用的字体。重启 Obsidian 后才能看到新装的字体。 |
 | 字号 | 跟随主题 | 调整正文文字的大小。 |
 | 行高 | 跟随主题 | 调整正文行与行之间的间距。 |
@@ -815,6 +855,12 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 自定义敏感词 | 无 | 实体追踪要留意并统计的词。每行一个。 |
 | 对话引号样式 | 四种全部开启 | 哪些引号会开启一段对话：“ ”、" "、「 」与『 』。 |
 | 自定义高亮规则 | 无 | 你自己的规则，可用文本或正则表达式书写，颜色与装饰由你来选。 |
+| 导出文件夹 | 项目旁的 Snowflake Export | 导出文件保存到的文件夹。项目内部的文件夹会被拒绝。 |
+| 导出格式 | 纯文本（.txt） | Markdown（.md）或纯文本（.txt）。两者内容相同，所有 Markdown 与 Obsidian 标记都会去掉。 |
+| 保留首行缩进 | 开启 | 保留段落的首行缩进。 |
+| 保留段落间空行 | 关闭 | 保留段落之间的空行。 |
+| 布局 | 一个文件 | 将正文导出为一个文件，或每篇笔记一个文件。 |
+| 笔记之间 | 空行 | 导出为一个文件时笔记之间的分隔：空行、一行短横线或三个星号。 |
 
 ## 隐私
 
@@ -880,6 +926,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 写作时段按设备分开记录，同步时不会有两台机器争写同一个文件。实体追踪时写下的忽略规则与你提出的修订，各是随 Vault 一同流转的单一共享文件。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
 
 归档项目会把它的整个文件夹移入 `Snowflake Archive`。这个文件夹与各个项目并列，而不在任何项目之内。笔记本身不会有任何改动，而且项目的所有引用都在自己的文件夹内，因此归档期间不会留下任何断链。项目管理器会列出其中的项目并随时取回，若原来的名称已被占用，会为它取一个未被使用的名称。手动把文件夹移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
+
+导出会把纯文本文件写入 `Snowflake Export`，它和归档文件夹一样与各个项目并列，除非设置里另指定了一个项目之外的文件夹。此前导出过、后来从正文中移走的笔记，其文件不会被删除。
 
 正文可以只有一篇笔记，也可以有许多篇，文件夹如何组织都可以。每篇笔记都用 `snowflake-manuscript-sequence` 记录自己的位置，因此移动或重命名笔记都不会改变它的阅读顺序；正文流会按该顺序把它们呈现为一整页。
 
