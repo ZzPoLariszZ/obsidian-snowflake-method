@@ -6985,8 +6985,10 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 /* Every control in these rows ends on one column. The app gives a slider two
    pixels of margin all round, which left the rails standing short of the
    dropdowns, the toggles and the swatches beside them; only the end is taken
-   back, so the handle still has its room at the other three sides. */
-.snowflake-method-presentation-row input.slider {
+   back, so the handle still has its room at the other three sides. The focus
+   row's slider ends on the same column, its reset button beside the others'. */
+.snowflake-method-presentation-row input.slider,
+.snowflake-method-focus-row input.slider {
 	margin-inline-end: 0;
 }
 
@@ -6994,10 +6996,13 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    each is measured from its own longest one. Both take the width the app
    gives a slider, so every control that has a width of its own stands in one
    column. The settings page draws its choice rows itself, without the row
-   class, so the group's own class carries the rule there. */
+   class, so the walk from the appearance heading -- whose rows are the last
+   of the group -- carries the rule there, and no other heading's rows take
+   it: the milestone and numbering dropdowns above keep the width the app
+   fits to their answer. */
 .snowflake-method-presentation-row select.dropdown,
 .snowflake-method-manuscript-settings
-	.setting-item-heading
+	.snowflake-method-appearance-heading
 	~ .setting-item
 	select.dropdown {
 	width: var(--snowflake-method-presentation-control, 100px);
@@ -7010,11 +7015,11 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    the column, and nothing is painted in the overhang. The popover's rows keep
    the app's default dropdown, which paints its own slab to its edge and needs
    no nudge. */
-/* The typography rows are the ones past their subheading in the manuscript
-   card, now that the section is a subsection: the sibling walk stands in
-   for the wrapper class the merged group used to wear. */
+/* The typography rows are the ones past their own subheading in the
+   manuscript card, now that the section is a subsection: the sibling walk
+   stands in for the wrapper class the merged group used to wear. */
 .snowflake-method-manuscript-settings
-	.setting-item-heading
+	.snowflake-method-appearance-heading
 	~ .setting-item
 	select.dropdown {
 	margin-inline-end: -2px;
@@ -7082,11 +7087,12 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 }
 
 /* The button that puts a measure back to what it was before anything was
-   chosen -- the theme's own size, or none at all -- on the slider's left,
-   where it is read before the rail rather than after it. The app dims a
-   disabled icon itself, which is what it wears while there is nothing to put
-   back. */
-.snowflake-method-presentation-row .snowflake-method-presentation-reset {
+   chosen -- the theme's own size, or none at all, or focus off -- on the
+   slider's left, where it is read before the rail rather than after it. The
+   app dims a disabled icon itself, which is what it wears while there is
+   nothing to put back. The focus row carries the same button. */
+.snowflake-method-presentation-row .snowflake-method-presentation-reset,
+.snowflake-method-focus-row .snowflake-method-presentation-reset {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
 	padding: var(--size-2-1) var(--size-2-2);
@@ -8268,6 +8274,9 @@ button.snowflake-method-kind-options {
    the page past the frame, so the cards stand one width open or closed.
    Overlay scrollbars reserve nothing, and nothing changes there. */
 .vertical-tab-content.snowflake-method-settings {
+	/* The width every one-line box on the page ends at: numbers, textareas
+	   and the two folder fields, so the column reads as one. */
+	--snowflake-method-settings-box: 12rem;
 	scrollbar-gutter: stable;
 }
 
@@ -8328,12 +8337,44 @@ button.snowflake-method-kind-options {
 	display: none;
 }
 
-/* The word lists and the one-line boxes end on one column: numbers and
-   textareas share a width by declaration rather than by coincidence, and a
-   list stands at least three lines tall so it reads as the list it is. */
+/* The words yield, the control does not. Obsidian lets a row's two columns
+   shrink alike, and a long description outweighs a dropdown, which in a
+   narrow settings window is left showing the first letters of its answer.
+   Here the control stands at its own size and the description wraps into
+   whatever is left. */
+.snowflake-method-settings .setting-group .setting-item > .setting-item-control {
+	flex-shrink: 0;
+}
+
+/* A row with nothing under its name stands the name level with the control
+   beside it. The app tops its two columns, which a description hides and a
+   lone name shows: seventeen pixels of name against a thirty-pixel dropdown.
+   The info column is at least a control's height with the name centred in
+   it; a row with a description is taller than that already and keeps its
+   place. */
+.snowflake-method-settings
+	.setting-group
+	.setting-item:not(.setting-item-heading)
+	> .setting-item-info {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	min-height: var(--input-height);
+}
+
+/* The word lists and the one-line boxes end on one column: numbers,
+   textareas and the folder fields share a width by declaration rather than
+   by coincidence, and a list stands at least three lines tall so it reads as
+   the list it is. The folder field's own cap, cut for the app's widgets, is
+   set aside here for the column. */
 .snowflake-method-settings .setting-item input[type='number'],
 .snowflake-method-settings .setting-item textarea {
-	width: 12rem;
+	width: var(--snowflake-method-settings-box);
+}
+
+.snowflake-method-settings .setting-item-control > .snowflake-method-root-field {
+	width: var(--snowflake-method-settings-box);
+	max-width: none;
 }
 
 .snowflake-method-settings .setting-item textarea {

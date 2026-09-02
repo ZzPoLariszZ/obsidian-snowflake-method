@@ -10,6 +10,8 @@ import {
 	Setting,
 	type SettingDefinition,
 	type SettingDefinitionItem,
+	type ExtraButtonComponent,
+	type SliderComponent,
 } from 'obsidian';
 
 import type SnowflakeMethodPlugin from './main';
@@ -343,14 +345,14 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	showManuscriptPath: true,
 	showManuscriptSequence: false,
 	manuscriptMilestones: false,
-	manuscriptMilestoneMode: 'manuscript',
+	manuscriptMilestoneMode: 'chapter',
 	manuscriptMilestoneInterval: 500,
 	manuscriptChapterNumbering: 'off',
 	manuscriptChapterNumberRules: [],
 	exportFolder: '',
 	exportFormat: 'txt',
 	exportIndent: true,
-	exportParagraphSpacing: true,
+	exportParagraphSpacing: false,
 	exportManuscriptLayout: 'single',
 	exportChapterSeparator: 'blank',
 	manuscriptTypewriter: true,
@@ -1496,7 +1498,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 					{
 						name: this.t('settings.manuscriptChapterNumbering.name'),
-						desc: this.t('settings.manuscriptChapterNumbering.desc'),
 						control: {
 							type: 'dropdown',
 							key: 'manuscriptChapterNumbering',
@@ -1532,6 +1533,10 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						name: this.t('settings.manuscriptAppearance.heading'),
 						render: (setting) => {
 							setting.setHeading();
+							// The stylesheet walks from this heading to the choice rows
+							// under it, which are the last of the group; the rows above
+							// keep the app's own dropdown widths.
+							setting.settingEl.addClass('snowflake-method-appearance-heading');
 						},
 					},
 					{
@@ -1969,17 +1974,13 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.exportFolder.name'),
 						desc: this.lines('settings.exportFolder.desc'),
-						control: {
-							type: 'folder',
-							key: 'exportFolder',
-							defaultValue: DEFAULT_SETTINGS.exportFolder,
-							includeRoot: true,
-							placeholder: this.t('settings.exportFolder.placeholder'),
-						},
+						// The project root's own field rather than the app's folder
+						// box, so the page's two folder rows are one control.
+						render: (setting) => this.renderExportFolder(setting),
 					},
 					{
 						name: this.t('settings.exportFormat.name'),
-						desc: this.t('settings.exportFormat.desc'),
+						desc: this.lines('settings.exportFormat.desc'),
 						control: {
 							type: 'dropdown',
 							key: 'exportFormat',
@@ -2030,12 +2031,13 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.exportChapterSeparator.name'),
 						desc: this.t('settings.exportChapterSeparator.desc'),
+						// Only a single file has anything between its notes, so the
+						// row stands only while that is the layout.
+						visible: () => this.owner.settings.exportManuscriptLayout === 'single',
 						control: {
 							type: 'dropdown',
 							key: 'exportChapterSeparator',
 							defaultValue: DEFAULT_SETTINGS.exportChapterSeparator,
-							disabled: () =>
-								this.owner.settings.exportManuscriptLayout !== 'single',
 							options: {
 								blank: this.t('settings.exportChapterSeparator.blank'),
 								rule: this.t('settings.exportChapterSeparator.rule'),
@@ -2438,14 +2440,42 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		const value = setting.controlEl.createSpan({
 			cls: 'snowflake-method-focus-value',
 		});
+		let reset: ExtraButtonComponent | null = null;
+		let slider: SliderComponent | null = null;
 		const dress = (): void => {
 			const level = this.owner.settings.manuscriptFocusLevel;
 			value.setText(this.t(labelKeys[level]));
 			setting.setDesc(this.t(`settings.manuscriptFocus.${level}`));
+			// Nothing to put back while focus is already where the button would
+			// take it, and the app dims an icon that says it is disabled.
+			const spent = level === DEFAULT_SETTINGS.manuscriptFocusLevel;
+			if (reset !== null) {
+				reset.setDisabled(spent);
+				reset.extraSettingsEl.setAttribute('aria-disabled', String(spent));
+			}
 		};
-		dress();
-		setting.addSlider((slider) =>
-			slider
+		// The button the appearance sliders carry, on the slider's left: focus
+		// back to what it was before anything was chosen.
+		setting.addExtraButton((component) => {
+			reset = component;
+			component.extraSettingsEl.addClass('snowflake-method-presentation-reset');
+			component
+				.setIcon('rotate-ccw')
+				.setTooltip(this.t('settings.manuscriptAppearance.reset'))
+				.onClick(() => {
+					const level = DEFAULT_SETTINGS.manuscriptFocusLevel;
+					if (level === this.owner.settings.manuscriptFocusLevel) return;
+					void this.setControlValue('manuscriptFocusLevel', level).then(() => {
+						// Stored first, so the handle's own answer to being put
+						// here is the nothing the guard below makes of it.
+						slider?.setValue(Math.max(0, levels.indexOf(level)));
+						dress();
+					});
+				});
+		});
+		setting.addSlider((component) => {
+			slider = component;
+			component
 				.setLimits(0, levels.length - 1, 1)
 				.setValue(
 					Math.max(
@@ -2461,8 +2491,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					const level = levels[picked] ?? 'off';
 					if (level === this.owner.settings.manuscriptFocusLevel) return;
 					void this.setControlValue('manuscriptFocusLevel', level).then(dress);
-				}),
-		);
+				});
+		});
+		dress();
 	}
 
 	/**
@@ -2628,16 +2659,56 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 * take it down again — the list it can leave open outlives the row itself.
 	 */
 	private renderProjectRoot(setting: Setting): () => void {
-		const field = buildProjectRootField(this.app, setting.controlEl, {
+		return this.renderFolderField(setting, {
 			label: this.t('settings.projectRoot.name'),
 			placeholder: this.t('settings.projectRoot.placeholder'),
-			currentRoot: this.owner.settings.projectRoot,
+			current: () => this.owner.settings.projectRoot,
+			display: displayProjectRoot,
+			offerVaultRoot: true,
+			commit: (value, field) => this.commitProjectRoot(value, field),
+		});
+	}
+
+	/**
+	 * The export folder, asked for with the project root's field. An empty
+	 * box is the folder beside the projects, which the placeholder names, so
+	 * the empty string reads as nothing rather than as the vault root, and
+	 * the vault root is not in the list: nothing would stand for it.
+	 */
+	private renderExportFolder(setting: Setting): () => void {
+		return this.renderFolderField(setting, {
+			label: this.t('settings.exportFolder.name'),
+			placeholder: this.t('settings.exportFolder.placeholder'),
+			current: () => this.owner.settings.exportFolder,
+			display: (root) => normalizeProjectRoot(root),
+			offerVaultRoot: false,
+			commit: (value, field) => this.commitExportFolder(value, field),
+		});
+	}
+
+	private renderFolderField(
+		setting: Setting,
+		spec: {
+			label: string;
+			placeholder: string;
+			current: () => string;
+			display: (root: string) => string;
+			offerVaultRoot: boolean;
+			commit: (value: string, field: ProjectRootField) => Promise<void>;
+		},
+	): () => void {
+		const field = buildProjectRootField(this.app, setting.controlEl, {
+			label: spec.label,
+			placeholder: spec.placeholder,
+			currentRoot: spec.current(),
+			display: spec.display,
+			offerVaultRoot: spec.offerVaultRoot,
 			onChooseRoot: (root) => {
-				void this.commitProjectRoot(root, field);
+				void spec.commit(root, field);
 			},
 		});
 		const commit = (): void => {
-			void this.commitProjectRoot(field.inputEl.value, field);
+			void spec.commit(field.inputEl.value, field);
 		};
 		// Committing on the way out would fight the chevron, which takes focus off
 		// the box on its way to opening the list.
@@ -2673,6 +2744,26 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			await this.setControlValue('projectRoot', root);
 		}
 		field.showValue(this.owner.settings.projectRoot);
+	}
+
+	/**
+	 * Takes an export folder the author typed or picked, refused and put back
+	 * the same way as a project root; an empty box is the default folder.
+	 */
+	private async commitExportFolder(
+		value: string,
+		field: ProjectRootField,
+	): Promise<void> {
+		if (!isValidProjectRoot(value)) {
+			new Notice(this.t('settings.exportFolder.invalid'));
+			field.showValue(this.owner.settings.exportFolder);
+			return;
+		}
+		const folder = normalizeProjectRoot(value);
+		if (folder !== this.owner.settings.exportFolder) {
+			await this.setControlValue('exportFolder', folder);
+		}
+		field.showValue(this.owner.settings.exportFolder);
 	}
 
 	getControlValue(key: string): unknown {

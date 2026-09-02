@@ -25,6 +25,13 @@ export interface ProjectRootFieldConfig {
 	placeholder: string;
 	/** The root as stored, which is the empty string for the vault root. */
 	currentRoot: string;
+	/**
+	 * How a stored root reads in the box and the list; the project root's own
+	 * spelling unless a field means something else by the empty string.
+	 */
+	display?: (root: string) => string;
+	/** Whether the vault root heads the list. On unless said otherwise. */
+	offerVaultRoot?: boolean;
 	/** A folder picked from the list. */
 	onChooseRoot: (root: string) => void;
 }
@@ -37,6 +44,8 @@ class ProjectRootSuggest extends FieldSuggest<TFolder> {
 		inputEl: HTMLInputElement,
 		fieldEl: HTMLElement,
 		private readonly currentRoot: () => string,
+		private readonly display: (root: string) => string,
+		private readonly offerVaultRoot: boolean,
 		private readonly onChooseRoot: (root: string) => void,
 	) {
 		super(app, inputEl, fieldEl);
@@ -57,20 +66,22 @@ class ProjectRootSuggest extends FieldSuggest<TFolder> {
 		this.showAll = false;
 		// Landing in the field is not a question, so the value already there
 		// offers nothing; the chevron is how the whole list is asked for.
-		if (!showAll && trimmedQuery === displayProjectRoot(this.currentRoot())) {
+		if (!showAll && trimmedQuery === this.display(this.currentRoot())) {
 			return [];
 		}
 		const normalizedQuery = showAll ? '' : trimmedQuery.toLowerCase();
 		// Runs on every keystroke; getAllLoadedFiles() would walk every note and
 		// attachment in the Vault to arrive at the same list.
-		const folders = this.app.vault.getAllFolders(true);
+		const folders = this.app.vault.getAllFolders(this.offerVaultRoot);
 		const unique = new Map<string, TFolder>();
 		for (const folder of folders) {
 			unique.set(normalizeProjectRoot(folder.path), folder);
 		}
 		return [...unique.entries()]
-			.filter(([path]) =>
-				displayProjectRoot(path).toLowerCase().includes(normalizedQuery),
+			.filter(
+				([path]) =>
+					(this.offerVaultRoot || path.length > 0) &&
+					this.display(path).toLowerCase().includes(normalizedQuery),
 			)
 			.sort(([left], [right]) => {
 				if (left.length === 0) return -1;
@@ -81,12 +92,12 @@ class ProjectRootSuggest extends FieldSuggest<TFolder> {
 	}
 
 	renderSuggestion(folder: TFolder, el: HTMLElement): void {
-		el.setText(displayProjectRoot(folder.path));
+		el.setText(this.display(folder.path));
 	}
 
 	selectSuggestion(folder: TFolder): void {
 		const root = normalizeProjectRoot(folder.path);
-		this.setValue(displayProjectRoot(root));
+		this.setValue(this.display(root));
 		this.close();
 		this.onChooseRoot(root);
 	}
@@ -98,10 +109,11 @@ export function buildProjectRootField(
 	config: ProjectRootFieldConfig,
 ): ProjectRootField {
 	let currentRoot = config.currentRoot;
+	const display = config.display ?? displayProjectRoot;
 	const control = container.createDiv({ cls: 'snowflake-method-root-field' });
 	const input = control.createEl('input', {
 		type: 'text',
-		value: displayProjectRoot(currentRoot),
+		value: display(currentRoot),
 		placeholder: config.placeholder,
 		attr: { 'aria-label': config.label, spellcheck: 'false' },
 	});
@@ -116,6 +128,8 @@ export function buildProjectRootField(
 		input,
 		control,
 		() => currentRoot,
+		display,
+		config.offerVaultRoot ?? true,
 		config.onChooseRoot,
 	);
 	// The chevron opens the list rather than taking focus off the text box.
@@ -131,7 +145,7 @@ export function buildProjectRootField(
 		selectorEl: selector,
 		showValue: (root) => {
 			currentRoot = root;
-			input.value = displayProjectRoot(root);
+			input.value = display(root);
 		},
 		destroy: () => suggest.destroy(),
 	};

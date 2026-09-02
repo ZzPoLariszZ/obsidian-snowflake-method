@@ -747,9 +747,9 @@ describe('highlight rule rows', () => {
 });
 
 describe('word milestone settings', () => {
-	it('start off, over the whole manuscript, every five hundred units', () => {
+	it('start off, per chapter, every five hundred units', () => {
 		expect(DEFAULT_SETTINGS.manuscriptMilestones).toBe(false);
-		expect(DEFAULT_SETTINGS.manuscriptMilestoneMode).toBe('manuscript');
+		expect(DEFAULT_SETTINGS.manuscriptMilestoneMode).toBe('chapter');
 		expect(DEFAULT_SETTINGS.manuscriptMilestoneInterval).toBe(500);
 	});
 
@@ -771,7 +771,7 @@ describe('word milestone settings', () => {
 			sanitizeSettings({ manuscriptMilestoneMode: value }).manuscriptMilestoneMode;
 		expect(mode('chapter')).toBe('chapter');
 		expect(mode('manuscript')).toBe('manuscript');
-		expect(mode('note')).toBe('manuscript');
+		expect(mode('note')).toBe('chapter');
 		expect(
 			sanitizeSettings({ manuscriptMilestones: 'yes' }).manuscriptMilestones,
 		).toBe(false);
@@ -820,11 +820,11 @@ describe('automatic chapter number settings', () => {
 });
 
 describe('export settings', () => {
-	it('start with the folder beside the projects, plain text, indent and spacing kept, one file', () => {
+	it('start with the folder beside the projects, plain text, indent kept, spacing dropped, one file', () => {
 		expect(DEFAULT_SETTINGS.exportFolder).toBe('');
 		expect(DEFAULT_SETTINGS.exportFormat).toBe('txt');
 		expect(DEFAULT_SETTINGS.exportIndent).toBe(true);
-		expect(DEFAULT_SETTINGS.exportParagraphSpacing).toBe(true);
+		expect(DEFAULT_SETTINGS.exportParagraphSpacing).toBe(false);
 		expect(DEFAULT_SETTINGS.exportManuscriptLayout).toBe('single');
 		expect(DEFAULT_SETTINGS.exportChapterSeparator).toBe('blank');
 	});

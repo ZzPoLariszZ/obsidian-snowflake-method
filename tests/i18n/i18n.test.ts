@@ -1043,7 +1043,6 @@ describe('automatic chapter number copy', () => {
 		const keys = [
 			'settings.chapterNumbering.heading',
 			'settings.manuscriptChapterNumbering.name',
-			'settings.manuscriptChapterNumbering.desc',
 			'settings.manuscriptChapterNumbering.off',
 			'settings.manuscriptChapterNumbering.chinese',
 			'settings.manuscriptChapterNumbering.chineseArabic',
@@ -1105,6 +1104,7 @@ describe('plaintext export copy', () => {
 			'settings.exportFolder.name',
 			'settings.exportFolder.desc',
 			'settings.exportFolder.placeholder',
+			'settings.exportFolder.invalid',
 			'settings.exportFormat.name',
 			'settings.exportFormat.desc',
 			'settings.exportFormat.md',

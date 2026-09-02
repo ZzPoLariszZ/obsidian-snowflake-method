@@ -233,26 +233,23 @@ export const en = {
 	'settings.milestones.heading': 'Word milestone',
 	'settings.manuscriptMilestones.name': 'Show word milestones',
 	'settings.manuscriptMilestones.desc':
-		'Mark the count reached at each interval in the margin, beside the line that reaches it.',
+		'Mark the word count beside the line that reaches each interval.',
 	'settings.manuscriptMilestoneMode.name': 'Milestone mode',
 	'settings.manuscriptMilestoneMode.desc':
-		'Count on through the whole manuscript in reading order, or start again at every note.',
+		'Count across the whole manuscript or recount for each note.',
 	'settings.manuscriptMilestoneMode.manuscript': 'Whole manuscript',
 	'settings.manuscriptMilestoneMode.chapter': 'Per chapter',
 	'settings.manuscriptMilestoneInterval.name': 'Milestone interval',
-	'settings.manuscriptMilestoneInterval.desc':
-		'How much writing lies between one milestone and the next, in the units the word count uses.',
+	'settings.manuscriptMilestoneInterval.desc': 'Words between each milestone.',
 	'settings.manuscriptMilestoneInterval.invalid':
 		'The interval must be a whole number of at least 1.',
 	'settings.chapterNumbering.heading': 'Automatic chapter number',
 	'settings.manuscriptChapterNumbering.name': 'Numbering style',
-	'settings.manuscriptChapterNumbering.desc':
-		'A new manuscript note is offered the number after the note before it, and the numbered notes after it can move up by one.',
 	'settings.manuscriptChapterNumbering.off': 'Off',
-	'settings.manuscriptChapterNumbering.chinese': 'Chinese numerals (第一章)',
+	'settings.manuscriptChapterNumbering.chinese': 'Chinese - 第一章',
 	'settings.manuscriptChapterNumbering.chineseArabic':
-		'Chinese with Arabic numerals (第 1 章)',
-	'settings.manuscriptChapterNumbering.english': 'English (Chapter 1)',
+		'Chinese (Arabic numerals) - 第 1 章',
+	'settings.manuscriptChapterNumbering.english': 'English - Chapter 1',
 	'settings.manuscriptChapterNumbering.custom': 'Custom',
 	'settings.chapterNumberRules.add': 'Add more rules…',
 	'settings.chapterNumberRules.kindFormat': 'Simplified format',
@@ -280,30 +277,29 @@ export const en = {
 		'The rule {name} will be removed. Names already given stay as they are.',
 	'settings.exportFolder.name': 'Export folder',
 	'settings.exportFolder.desc':
-		'A folder in this vault where exported files are written. Leave it empty for Snowflake Export beside the projects.\nFiles that left the manuscript since an earlier export are never deleted.',
+		'Folder where exported files are saved.\nLeave empty to use "Snowflake Export" beside the project.',
 	'settings.exportFolder.placeholder': 'Snowflake Export',
+	'settings.exportFolder.invalid': 'Enter a valid vault-relative folder path.',
 	'settings.exportFormat.name': 'Export format',
 	'settings.exportFormat.desc':
-		'Both hold the same plain text, every Markdown and Obsidian mark taken out. Only the file name differs.',
+		'Both formats contain the same plain text.\nAll Markdown and Obsidian syntax will be removed.',
 	'settings.exportFormat.md': 'Markdown (.md)',
 	'settings.exportFormat.txt': 'Plain text (.txt)',
 	'settings.exportIndent.name': 'Preserve first-line indentation',
-	'settings.exportIndent.desc':
-		'Chinese projects begin every paragraph with two full-width spaces, other projects with two em spaces, unless the note already indents it.\nOff strips any indent typed in the note.',
+	'settings.exportIndent.desc': 'Keep first-line indentation to paragraphs.',
 	'settings.exportParagraphSpacing.name': 'Preserve extra paragraph spacing',
-	'settings.exportParagraphSpacing.desc':
-		'Keep the blank lines between paragraphs as the notes have them.\nOff puts one paragraph on each line, the web platform convention, which a Markdown reader runs together.',
+	'settings.exportParagraphSpacing.desc': 'Keep blank lines between paragraphs.',
 	'settings.exportManuscript.heading': 'Whole manuscript',
 	'settings.exportManuscriptLayout.name': 'Layout',
 	'settings.exportManuscriptLayout.desc':
-		'One file holding every note in reading order, or a folder named after the project with one numbered file per note.',
+		'Export the manuscript as one file or as one file per note.',
 	'settings.exportManuscriptLayout.single': 'One file',
-	'settings.exportManuscriptLayout.folder': 'One file per note in a folder',
+	'settings.exportManuscriptLayout.folder': 'One file per note',
 	'settings.exportChapterSeparator.name': 'Between notes',
 	'settings.exportChapterSeparator.desc':
-		'What stands between one note and the next in a single file.',
-	'settings.exportChapterSeparator.blank': 'A blank line',
-	'settings.exportChapterSeparator.rule': 'A line of dashes',
+		'Choose what separates notes when exporting as one file.',
+	'settings.exportChapterSeparator.blank': 'Blank line',
+	'settings.exportChapterSeparator.rule': 'Line of dashes',
 	'settings.exportChapterSeparator.asterisks': 'Three asterisks',
 	'settings.manuscriptAppearance.heading': 'Typography',
 	'settings.manuscriptAppearance.themeDefault': 'Theme default',
