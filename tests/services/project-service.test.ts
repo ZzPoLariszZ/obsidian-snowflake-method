@@ -15,6 +15,7 @@ import {
   parseMarkdownFrontmatter,
 } from "../../src/repository";
 import {
+  ADVISORY_STRUCTURE_ISSUE_CODES,
   ArchiveFolderIsProjectError,
   DuplicateNameError,
   FRONTMATTER_KEYS,
@@ -286,6 +287,47 @@ describe("SnowflakeProjectService", () => {
 	expect(new Map(fakeVault.contents)).toEqual(beforeCheck);
 	expect(fakeFileManager.frontmatterCalls).toHaveLength(frontmatterCallsBeforeCheck);
 	expect(fakeVault.processCalls).toHaveLength(processCallsBeforeCheck);
+  });
+
+  it("does not call a project damaged for a folder it makes on demand", async () => {
+    // Every project made before revisions existed lacks this folder, and the
+    // store builds the chain on its way to the first write. Reported as
+    // damage it would red every upgraded vault over a folder nothing is
+    // waiting for, and stop step reconciliation while it stood.
+    const project = await service.createProject({ name: "Older layout" });
+    const revisions = `${project.rootPath}/70_Tool/72_Task_Management/723_Revision`;
+    fakeVault.delete(revisions);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === revisions,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: revisions,
+        stepIds: [],
+        repairable: true,
+      }),
+    ]);
+    // Advisory, so nothing counts it as damage.
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
+  it("creates the on-demand folder when the report is asked to", async () => {
+    const project = await service.createProject({ name: "Older layout" });
+    const revisions = `${project.rootPath}/70_Tool/72_Task_Management/723_Revision`;
+    fakeVault.delete(revisions);
+    await service.loadProject(project.projectFile);
+
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      revisions,
+    );
+
+    expect(
+      repaired.structureIssues.some((issue) => issue.path === revisions),
+    ).toBe(false);
   });
 
   it("offers to bring a statistics file home from an older build's folder", async () => {

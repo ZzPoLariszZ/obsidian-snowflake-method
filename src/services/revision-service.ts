@@ -1,4 +1,4 @@
-import { refreshAnchors, type Revision } from "../domain";
+import { anchorRevision, refreshAnchors, type Revision } from "../domain";
 import type { VaultRepository } from "../repository";
 import { RevisionStore } from "./revision-store";
 import type { ProjectRef } from "./types";
@@ -16,12 +16,17 @@ export class RevisionService {
 
 	constructor(
 		repository: VaultRepository,
-		deps: { now: () => number; onCorrupt?: (path: string) => void },
+		deps: {
+			now: () => number;
+			onCorrupt?: (path: string) => void;
+			onForeign?: (path: string, version: number) => void;
+		},
 	) {
 		this.store = new RevisionStore({
 			repository,
 			now: deps.now,
 			...(deps.onCorrupt === undefined ? {} : { onCorrupt: deps.onCorrupt }),
+			...(deps.onForeign === undefined ? {} : { onForeign: deps.onForeign }),
 		});
 	}
 
@@ -139,6 +144,71 @@ export class RevisionService {
 				return moved === null ? revision : { ...revision, path: moved };
 			}),
 		);
+	}
+
+	/**
+	 * Carries revisions after text that moved from one note into another,
+	 * which a split and a merge both do.
+	 *
+	 * Which revisions travel is decided against `body` -- the departing note
+	 * as it stood at the moment of the move -- and never against the offsets
+	 * on file. Those offsets are a memory of the last levelling, and the
+	 * levelling is a quiet errand behind each save: an author who types a
+	 * paragraph and splits below it has a store still describing the note as
+	 * it was two paragraphs ago. Sorted by that memory, a proposal whose words
+	 * went into the new note is left behind on the old one, pointing at
+	 * whatever now stands where it used to be -- which is the one outcome
+	 * this whole hook exists to prevent.
+	 *
+	 * So each revision is put back on the departing body first, and it is the
+	 * place its own words hold THERE that decides. Everything at or after `at`
+	 * follows them, offsets moved by `shift`. A range that STRADDLES the
+	 * departure point stays where it is: its text was torn in two, and a
+	 * conflict is the honest answer rather than half a proposal carried to a
+	 * note that holds half its words. A revision whose words are already gone
+	 * from the departing body has nothing better than its stored offsets to be
+	 * placed by, and is carried on those, since being on the surviving note is
+	 * still nearer the truth than being on one that is about to be trashed.
+	 *
+	 * The offsets this lands on are exact wherever the words were found, and
+	 * whoever writes the bodies levels the contexts afterwards.
+	 */
+	async carryTextBetweenNotes(
+		project: ProjectRef,
+		from: string,
+		into: string,
+		body: string,
+		at: number,
+		shift: number,
+	): Promise<boolean> {
+		// Where each revision's own words stand in the note being left, which
+		// is the only reading of it that can be trusted here.
+		const standsAt = (revision: Revision): number => {
+			const anchor = anchorRevision(body, revision);
+			return anchor.state === 'conflict' ? revision.from : anchor.from;
+		};
+		const goes = (revision: Revision): boolean =>
+			revision.path === from && standsAt(revision) >= at;
+		const standing = await this.store.readRevisions(project);
+		if (!standing.some(goes)) return false;
+		return this.store.updateRevisions(project, (revisions) => {
+			if (!revisions.some(goes)) return null;
+			return revisions.map((revision) => {
+				if (!goes(revision)) return revision;
+				// Moved as one piece, never as two ends. A revision's width is
+				// the length of the text it remembers, and the store's own
+				// reader drops an entry whose offsets stop saying so -- which
+				// clamping each end on its own would do to anything landing
+				// at the head of the note it arrives in.
+				const start = Math.max(0, standsAt(revision) - shift);
+				return {
+					...revision,
+					path: into,
+					from: start,
+					to: start + (revision.to - revision.from),
+				};
+			});
+		});
 	}
 
 	/** Lets a project's memo go, for a root renamed or deleted. */

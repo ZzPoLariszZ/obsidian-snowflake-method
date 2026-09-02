@@ -658,6 +658,12 @@ export default class SnowflakeMethodPlugin
 						this.projectT('manuscript.revision.corruptPreserved', { path }),
 					);
 				},
+				// Not a loss and not damage: another device wrote the file with
+				// a build that knows more than this one, and this one has left
+				// it exactly as it found it.
+				onRevisionsForeign: () => {
+					new Notice(this.projectT('manuscript.revision.newerSchema'));
+				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
 				timers: {
@@ -709,6 +715,40 @@ export default class SnowflakeMethodPlugin
 		// itself can no longer be asked once it is gone.
 		this.projects.manuscript.onSegmentRemoved = (path, body) => {
 			this.sessions.noteRemovedByPlugin(path, body, { manuscript: true });
+		};
+		// And text that walks from one note into another takes its revisions
+		// with it. `left` is the departing note as it stood, which is what
+		// sorts the travellers from the stayers -- by where their words
+		// actually were rather than by where the store last wrote them down.
+		// Both bodies are written by the time this fires, so the levelling
+		// afterwards reads what stands in the note that received them.
+		this.projects.manuscript.onSegmentTextCarried = (
+			from,
+			into,
+			left,
+			at,
+			shift,
+		) => {
+			void (async () => {
+				const project = await this.writableProjectOfPath(into);
+				if (project === null) return;
+				const carried = await this.projects.revisions.carryTextBetweenNotes(
+					project,
+					from,
+					into,
+					left,
+					at,
+					shift,
+				);
+				if (!carried) return;
+				const { body } = await this.readManuscriptSegment(into);
+				await this.projects.revisions.refreshAnchorsOnSave(
+					project,
+					into,
+					body,
+				);
+				await this.announceRevisionsChanged();
+			})().catch(() => undefined);
 		};
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		this.registerManagedSectionEditor();
@@ -1034,7 +1074,12 @@ export default class SnowflakeMethodPlugin
 			const snapshot = await this.projects.loadProject(project);
 			this.rememberDraft(snapshot);
 			return {
-				hasStructureIssues: snapshot.structureIssues.length > 0,
+				// Advisory issues are an offer, not damage: a triangle here over
+				// a file that is merely where an older build kept it sends the
+				// author looking for a fault the report will not name.
+				hasStructureIssues: snapshot.structureIssues.some(
+					(issue) => !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
+				),
 				hasMarkerIssues: this.projectHasMarkerIssues(snapshot),
 			};
 		} catch {
@@ -2483,7 +2528,12 @@ export default class SnowflakeMethodPlugin
 						(entity) => entity.healthIssues,
 					),
 				),
-			].filter((issue) => issue.blocking);
+				// Blocking issues, and any issue the report itself can put
+				// right. An advisory one is not damage and lights nothing, but
+				// it is exactly what this report exists to offer: filtered out
+				// here, its Repair button could not be reached from anywhere
+				// in the plugin.
+			].filter((issue) => issue.blocking || issue.repairable);
 			const uniqueIssues = [
 				...new Map(
 					issues.map((issue) => [
@@ -5016,6 +5066,33 @@ export default class SnowflakeMethodPlugin
 		return project;
 	}
 
+	/**
+	 * The project that actually holds a path, and may be written to.
+	 *
+	 * `projectOfPath` ends by falling back to the project last opened, which
+	 * is a sound answer for opening a view and a dangerous one for a write:
+	 * during the window after a project folder moves, and before the first
+	 * scan at startup, a save under no known root would resolve to whichever
+	 * project the author last looked at, read ITS revisions file -- setting it
+	 * aside as damaged if it will not parse -- and skip the levelling the
+	 * saved note actually asked for.
+	 */
+	private async writableProjectOfPath(
+		path: string,
+	): Promise<ProjectSnapshot | null> {
+		for (const rootPath of this.knownProjectRoots) {
+			if (!isPathAtOrBelow(path, rootPath)) continue;
+			for (const candidate of await this.discoverProjects()) {
+				if (candidate.rootPath !== rootPath) continue;
+				const project = await this.projects.loadProject(
+					candidate.projectFile,
+				);
+				return project.readOnly ? null : project;
+			}
+		}
+		return null;
+	}
+
 	async createRevision(
 		projectPath: string | null,
 		revision: Revision,
@@ -5047,7 +5124,12 @@ export default class SnowflakeMethodPlugin
 		if (project === null) return false;
 		const took = await this.projects.revisions.remove(project, id);
 		if (took) await this.announceRevisionsChanged();
-		return took;
+		// Answered on whether the record is gone, not on whether this call is
+		// what took it out. A card asking to be rid of a revision another view
+		// discarded a moment earlier has got exactly what it asked for, and
+		// only a refusal -- the project above answering null -- is news worth
+		// telling an author who has just had their text changed for them.
+		return true;
 	}
 
 	mintRevisionId(): string {
@@ -5061,7 +5143,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	manuscriptRevisionsSaved(path: string, body: string): void {
 		void (async () => {
-			const project = await this.projectOfPath(path);
+			const project = await this.writableProjectOfPath(path);
 			if (project === null) return;
 			const moved = await this.projects.revisions.refreshAnchorsOnSave(
 				project,
@@ -6532,8 +6614,13 @@ export default class SnowflakeMethodPlugin
 		const discovered = await this.discoverProjects();
 		const found: ProjectSnapshot[] = [];
 		for (const { rootPath, movedRoot } of touched) {
+			// Found by where the project stands NOW. The scan above ran after
+			// the rename, so a project whose own folder moved answers to its
+			// new root and to nothing else: asked for by the old one it comes
+			// back as nothing at all, and every revision it holds is left
+			// pointing at chapters under a name the vault no longer has.
 			const project = discovered.find(
-				(candidate) => candidate.rootPath === rootPath,
+				(candidate) => candidate.rootPath === (movedRoot ?? rootPath),
 			);
 			if (project === undefined) continue;
 			const projectFile =

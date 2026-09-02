@@ -157,7 +157,9 @@ import { MentionStore } from "./mention-store";
 import { RevisionService } from "./revision-service";
 import { WritingCountService } from "./writing-count";
 import {
+  ADVISORY_STRUCTURE_ISSUE_CODES,
   DEFAULT_PROJECT_ROOT,
+  ON_DEMAND_DIRECTORY_KEYS,
   FRONTMATTER_KEYS,
   PROJECT_DIRECTORY_KEYS,
   PROJECT_PATH_LAYOUTS,
@@ -398,6 +400,12 @@ export class SnowflakeProjectService {
        * to be told which of the two it was.
        */
       onRevisionsCorrupt?: (path: string) => void;
+      /**
+       * Told when a revisions file was written by a build that knows a newer
+       * schema. Nothing was touched and nothing was lost: the reader is asked
+       * to update, not told about damage.
+       */
+      onRevisionsForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -434,6 +442,9 @@ export class SnowflakeProjectService {
       ...(analysis.onRevisionsCorrupt === undefined
         ? {}
         : { onCorrupt: analysis.onRevisionsCorrupt }),
+      ...(analysis.onRevisionsForeign === undefined
+        ? {}
+        : { onForeign: analysis.onRevisionsForeign }),
     });
   }
 
@@ -608,7 +619,13 @@ export class SnowflakeProjectService {
       locator = project.projectFile;
       if (
         project.readOnly ||
-        project.structureIssues.length > 0 ||
+        // Advisory issues are not damage: a file merely left where an older
+        // build kept it, or a folder this plugin makes on demand, must not
+        // quietly stop a project's steps from ever falling out of complete
+        // again -- which nothing in the interface would explain.
+        project.structureIssues.some(
+          (issue) => !ADVISORY_STRUCTURE_ISSUE_CODES.has(issue.code),
+        ) ||
         this.projectHasBlockingManagedSectionIssues(project) ||
         project.needsReview.length === 0
       ) {
@@ -1383,7 +1400,10 @@ export class SnowflakeProjectService {
       throw new Error(`No repairable missing project item was found at "${normalized}".`);
     }
 
-    if (issue.code === "missing-directory") {
+    if (
+      issue.code === "missing-directory" ||
+      issue.code === "missing-on-demand-directory"
+    ) {
       await this.repository.ensureFolder(normalized);
       return this.loadProject(project.projectFile);
     }
@@ -6816,7 +6836,9 @@ export class SnowflakeProjectService {
       );
       if (this.repository.getFolder(path) !== null) continue;
       add({
-        code: "missing-directory",
+        code: ON_DEMAND_DIRECTORY_KEYS.has(directory)
+          ? "missing-on-demand-directory"
+          : "missing-directory",
         path,
         stepIds: [...directorySteps[directory]],
         canOpen: false,

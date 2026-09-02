@@ -174,6 +174,92 @@ describe("ManuscriptService", () => {
     );
   });
 
+  it("says where a split sent the text, and how far its offsets moved", async () => {
+    // Revisions are stored against a note and an offset, so text that walks
+    // to a new file without saying so leaves every proposal on it hunting
+    // for words the note it names no longer holds.
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    await service.manuscript.writeSegment(
+      draft,
+      "# Draft\n\nBefore the cut.\n\nAfter the cut.\n",
+    );
+    const source = await service.manuscript.readSegment(draft);
+    const cut = source.body.indexOf("After the cut.");
+    const carried: unknown[] = [];
+    service.manuscript.onSegmentTextCarried = (from, into, body, at, shift) => {
+      carried.push({ from, into, body, at, shift });
+    };
+
+    const created = await service.manuscript.splitSegment(
+      project,
+      draft,
+      cut,
+      "Chapter Two",
+    );
+
+    // The seam swallowed no blank lines here: the cut is already the first
+    // character of the text that travels.
+    expect(carried).toEqual([
+      { from: draft, into: created, body: source.body, at: cut, shift: cut },
+    ]);
+    // And the arithmetic it reports is true of the bodies that were written.
+    const after = (await service.manuscript.readSegment(created)).body;
+    expect(after.slice(0, 5)).toBe(source.body.slice(cut, cut + 5));
+  });
+
+  it("counts the blank lines a split's seam closes up", async () => {
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    await service.manuscript.writeSegment(
+      draft,
+      "# Draft\n\nBefore the cut.\n\nAfter the cut.\n",
+    );
+    const source = await service.manuscript.readSegment(draft);
+    // Cut on the blank line, so the tail opens with newlines that are tidied
+    // away: the text travels further than the cut alone would say.
+    const cut = source.body.indexOf("After the cut.") - 1;
+    const carried: { at: number; shift: number }[] = [];
+    service.manuscript.onSegmentTextCarried = (_from, _into, _body, at, shift) => {
+      carried.push({ at, shift });
+    };
+
+    await service.manuscript.splitSegment(project, draft, cut, "Chapter Two");
+
+    expect(carried).toEqual([{ at: cut, shift: cut + 1 }]);
+  });
+
+  it("says where a merge sent the absorbed note's text", async () => {
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    const two = await service.manuscript.appendSegment(project, "Two");
+    await service.manuscript.writeSegment(draft, "# Draft\n\nThe opening.\n");
+    await service.manuscript.writeSegment(two, "# Two\n\nWhat follows.\n");
+    const carried: {
+      from: string;
+      into: string;
+      body: string;
+      shift: number;
+    }[] = [];
+    service.manuscript.onSegmentTextCarried = (from, into, body, _at, shift) => {
+      carried.push({ from, into, body, shift });
+    };
+
+    await service.mergeManuscriptSegments(project.projectFile, draft);
+
+    // Forward, not back: a negative shift, since the absorbed text now
+    // stands after the survivor's own. And the body reported is the absorbed
+    // note's own, which is what a listener sorts its records against.
+    expect(carried).toEqual([
+      {
+        from: two,
+        into: draft,
+        body: "# Two\n\nWhat follows.\n",
+        shift: -"# Draft\n\nThe opening.".length - 2,
+      },
+    ]);
+    // Which is exactly where the tail landed in the joined body.
+    const joined = (await service.manuscript.readSegment(draft)).body;
+    expect(joined.indexOf("# Two")).toBe("# Draft\n\nThe opening.".length + 2);
+  });
+
   it("merges a segment into the one before it, keeping the earlier place", async () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     const two = await service.manuscript.appendSegment(

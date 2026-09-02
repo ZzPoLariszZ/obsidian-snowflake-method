@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	REVISION_CONTEXT_CHARS,
 	anchorRevision,
+	compareRevisionsAtOneSpot,
 	captureRevision,
 	insertionPointHolds,
 	isRevision,
@@ -12,6 +13,7 @@ import {
 	planRevisionMarks,
 	refreshAnchors,
 	resolvePassage,
+	revealSpan,
 	type Revision,
 } from '../../src/domain';
 
@@ -392,6 +394,57 @@ describe('planning the dress', () => {
 		}
 	});
 
+	it('borrows a character the page shows, never a syntax mark', () => {
+		// A heading's `#` is not whitespace, but the page never renders it:
+		// borrowed, the mark maps onto no visible character and is dropped, so
+		// the card stands in the margin pointing at a bar nobody drew.
+		const body = '# Chapter one\n\nThe grey heron stood.';
+		const rev = captureRevision('50/one.md', body, 'insert', 0, 0, 'x', '', 'rev-h', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		expect(plan).toEqual([
+			expect.objectContaining({
+				// The "C" of the title, which is the first thing shown.
+				from: 2,
+				to: 3,
+				classes: 'snowflake-method-revision is-insertion',
+			}),
+		]);
+	});
+
+	it('a link closing a paragraph is passed over for the word inside it', () => {
+		const body = 'He watched [[Lin Qinghuan]]\n\nThe water held still.';
+		const at = body.indexOf('\n\n');
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-l', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		// The "n" ending the link's display text, not the "]" beside the point.
+		expect(plan[0]).toMatchObject({
+			from: at - 3,
+			to: at - 2,
+			classes: 'snowflake-method-revision is-insertion is-insertion-after',
+		});
+		expect(body.slice(at - 3, at - 2)).toBe('n');
+	});
+
+	it('borrows a whole character, both halves of a surrogate pair', () => {
+		// An ideograph outside the basic plane is two code units. Half of one
+		// is not a character: wrapped alone it draws as a replacement glyph
+		// and leaves the other half loose in the text beside it.
+		const body = 'He is called \u{20BB7}\u7530.';
+		const at = body.indexOf('\u{20BB7}');
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-s', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		expect(plan[0]).toMatchObject({ from: at, to: at + 2 });
+		expect(body.slice(at, at + 2)).toBe('\u{20BB7}');
+	});
+
+	it('a point landing on the tail half takes the pair from its head', () => {
+		const body = 'He is called \u{20BB7}\u7530.';
+		const at = body.indexOf('\u{20BB7}') + 1;
+		const rev = captureRevision('50/one.md', body, 'insert', at, at, 'x', '', 'rev-t', 7);
+		const { plan } = planRevisionMarks('50/one.md', body, [rev]);
+		expect(plan[0]).toMatchObject({ from: at - 1, to: at + 1 });
+	});
+
 	it('only a point with nothing behind it anywhere looks ahead', () => {
 		const body = `\n   The water held still.`;
 		for (const at of [0, 1, 2, 3]) {
@@ -720,5 +773,74 @@ describe('proving an insertion point again', () => {
 			before: rev.before,
 			after: rev.after,
 		});
+	});
+});
+
+describe('two revisions standing at one spot', () => {
+	// Sharing an offset is allowed: a point may stand at a range's edge, and
+	// two ranges may meet end to start. Whatever draws them and whatever walks
+	// them have to break that tie the same way, or the chevron on the upper
+	// card steps past the card drawn directly beneath it -- and the tie falls
+	// on randomly minted ids, so it would do that for half the pairs that ever
+	// occur and never come right on its own.
+	it('is the rule the ordering itself breaks ties by', () => {
+		const left = { ...capture('insert', 14, 14), id: 'rev-a' };
+		const right = { ...capture('insert', 14, 14), id: 'rev-z' };
+		expect(compareRevisionsAtOneSpot(left, right)).toBeLessThan(0);
+		expect(compareRevisionsAtOneSpot(right, left)).toBeGreaterThan(0);
+		expect(compareRevisionsAtOneSpot(left, left)).toBe(0);
+		expect(
+			orderRevisions([right, left], ['50/one.md']).map((rev) => rev.id),
+		).toEqual(['rev-a', 'rev-z']);
+	});
+
+	it('a rail sorting by the same helper walks the cards it drew', () => {
+		// What the margin does: down the note by where each stands now, then
+		// this rule. Fed the same pair, the two orders have to match.
+		const given = [
+			{ ...capture('insert', 14, 14), id: 'rev-z' },
+			{ ...capture('insert', 14, 14), id: 'rev-a' },
+		];
+		const drawn = [...given].sort(
+			(left, right) =>
+				left.from - right.from || compareRevisionsAtOneSpot(left, right),
+		);
+		expect(drawn.map((rev) => rev.id)).toEqual(
+			orderRevisions(given, ['50/one.md']).map((rev) => rev.id),
+		);
+	});
+});
+
+describe('the stretch a jump can flash', () => {
+	it('a range is shown as itself', () => {
+		expect(revealSpan(BODY, 4, 14)).toEqual({ from: 4, to: 14 });
+	});
+
+	it('a point is shown on the character its bar rides', () => {
+		// The same answer the dress draws by, which is the whole point of
+		// sharing it: a jump borrowing the other side would send the reader to
+		// a spot carrying no mark.
+		const { plan } = planRevisionMarks('50/one.md', BODY, [
+			capture('insert', 14, 14),
+		]);
+		expect(revealSpan(BODY, 14, 14)).toEqual({ from: 13, to: 14 });
+		expect(revealSpan(BODY, 14, 14)).toEqual({
+			from: plan[0]?.from,
+			to: plan[0]?.to,
+		});
+	});
+
+	it('a point at a line end borrows behind it, not the newline ahead', () => {
+		// Borrowed ahead this is the `\n`, which the page never renders: the
+		// span collapses and the reader is taken nowhere at all.
+		const body = `${BODY}\n\nThe water held still.`;
+		expect(revealSpan(body, BODY.length, BODY.length)).toEqual({
+			from: BODY.length - 1,
+			to: BODY.length,
+		});
+	});
+
+	it('a note with nothing visible in it has nothing to show', () => {
+		expect(revealSpan('   \n\n  ', 3, 3)).toBeNull();
 	});
 });

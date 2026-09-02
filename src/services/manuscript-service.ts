@@ -96,6 +96,36 @@ export class ManuscriptService {
   onSegmentRemoved: ((path: string, body: string) => void) | null = null;
 
   /**
+   * Told when text crosses from one note into another, which a split and a
+   * merge both do. Revisions listen: they are stored against a note and an
+   * offset, so text that walks to a new file without saying so leaves every
+   * proposal on it hunting for words that are no longer in the note named --
+   * a conflict card whose only offer is to discard a proposal about text
+   * that is alive and unchanged one note over.
+   *
+   * `body` is the departing note as it stood a moment before the write, `at`
+   * where the travelling text starts in it, and `shift` how far its offsets
+   * move: text at `p` in `body`, `p` at or after `at`, stands at `p - shift`
+   * in `into`. The arithmetic lives here because the seam is tidied here, and
+   * only this knows how much of it was closed up.
+   *
+   * The body is handed over rather than left to the listener to read back,
+   * because by the time anyone could read it the note no longer holds this
+   * text -- and a listener working from remembered offsets alone would sort
+   * the travellers from the stayers by a memory of the note rather than by
+   * the note itself.
+   */
+  onSegmentTextCarried:
+    | ((
+        from: string,
+        into: string,
+        body: string,
+        at: number,
+        shift: number,
+      ) => void)
+    | null = null;
+
+  /**
    * Every note of the manuscript, in the order it reads in.
    *
    * A manuscript is what is in the manuscript folder, at any depth, and nothing
@@ -274,6 +304,17 @@ export class ManuscriptService {
     await this.repository.replaceBody(source.path, before, source.revision, {
       userInput: true,
     });
+    // Everything from the cut down now lives in the new note, its offsets
+    // shorter by the cut plus whatever blank lines the seam swallowed.
+    const tail = source.body.slice(cut);
+    const lead = tail.length - tail.replace(/^\n+/u, "").length;
+    this.onSegmentTextCarried?.(
+      source.path,
+      created,
+      source.body,
+      cut,
+      cut + lead,
+    );
     return created;
   }
 
@@ -313,6 +354,17 @@ export class ManuscriptService {
     await this.repository.replaceBody(earlier.path, joined, head.revision, {
       userInput: true,
     });
+    // The later note's text now stands after the survivor's, one blank line
+    // between them, so its offsets move forward rather than back.
+    const prefix = head.body.replace(/\n+$/u, "").length + 2;
+    const lead = tail.body.length - tail.body.replace(/^\n+/u, "").length;
+    this.onSegmentTextCarried?.(
+      later.path,
+      earlier.path,
+      tail.body,
+      0,
+      lead - prefix,
+    );
     // Reported before the trash, so the removal is credited from the body in
     // hand and the delete event that follows finds it already settled.
     this.onSegmentRemoved?.(later.path, tail.body);

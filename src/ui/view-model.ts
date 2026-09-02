@@ -453,7 +453,13 @@ export interface ManuscriptHost {
 		id: string,
 		patch: { proposed: string; comment: string },
 	): Promise<boolean>;
-	/** Takes one revision out: an accept, a reject or a discard alike. */
+	/**
+	 * Takes one revision out: an accept, a reject or a discard alike. False
+	 * only when the write was refused, so a caller that has already changed
+	 * the author's text can say the record it meant to retire is still there.
+	 * A revision another view removed first answers true: it is gone, which
+	 * is what was asked.
+	 */
 	discardRevision(projectPath: string | null, id: string): Promise<boolean>;
 	/**
 	 * A segment's body reached the file: stored revision offsets are brought

@@ -29,6 +29,7 @@ import {
 	type MentionCandidate,
 	type MentionIgnore,
 	type MentionMark,
+	compareRevisionsAtOneSpot,
 	orderRevisions,
 	overlapsLive,
 	passageContext,
@@ -1519,7 +1520,15 @@ export class SnowflakeManuscriptView extends ItemView {
 				},
 			];
 		});
-		entries.sort((left, right) => left.from - right.from);
+		// Down the note by where each revision stands now, and where two stand
+		// at one spot, by the rule the chevrons walk. Broken any other way the
+		// arrow on a card steps past the card drawn just below it, for as long
+		// as the pair shares an offset.
+		entries.sort(
+			(left, right) =>
+				left.from - right.from ||
+				compareRevisionsAtOneSpot(left.revision, right.revision),
+		);
 		entry.rail.sync({
 			entries,
 			conflicts: [...plan.conflicts],
@@ -1576,11 +1585,13 @@ export class SnowflakeManuscriptView extends ItemView {
 				const entry = entryNow();
 				if (entry !== undefined) rethrow(this.acceptRevision(entry, revision));
 			},
+			// One call for both faces: taking a revision out is the same work
+			// whether the button said reject or discard.
 			onReject: (revision) => {
-				rethrow(this.host.discardRevision(projectPath(), revision.id));
+				rethrow(this.retireRevision(revision));
 			},
 			onDiscard: (revision) => {
-				rethrow(this.host.discardRevision(projectPath(), revision.id));
+				rethrow(this.retireRevision(revision));
 			},
 			onEditSave: async (revision, proposed, comment) => {
 				// An insertion proposing nothing would insert nothing: the
@@ -1605,10 +1616,14 @@ export class SnowflakeManuscriptView extends ItemView {
 					return false;
 				}
 			},
-			onDraftSave: (proposed, comment) => {
+			onDraftSave: async (proposed, comment) => {
 				const entry = entryNow();
-				if (entry !== undefined) {
-					rethrow(this.saveRevisionDraft(entry, proposed, comment));
+				if (entry === undefined) return false;
+				try {
+					return await this.saveRevisionDraft(entry, proposed, comment);
+				} catch (error) {
+					this.showError(error);
+					return false;
 				}
 			},
 			onDraftCancel: () => {
@@ -1622,6 +1637,15 @@ export class SnowflakeManuscriptView extends ItemView {
 				rethrow(this.jumpToRevision(revision, step));
 			},
 		});
+	}
+
+	/** Takes a revision out and says so when the write is refused. */
+	private async retireRevision(revision: Revision): Promise<void> {
+		const gone = await this.host.discardRevision(
+			this.model?.projectPath ?? this.projectPath,
+			revision.id,
+		);
+		if (!gone) new Notice(this.t('manuscript.revision.refused'));
 	}
 
 	/**
@@ -1793,9 +1817,20 @@ export class SnowflakeManuscriptView extends ItemView {
 		entry: MountedSegment,
 		proposed: string,
 		comment: string,
-	): Promise<void> {
+	): Promise<boolean> {
 		const draft = this.revisionDraft;
-		if (draft === null || draft.path !== entry.path) return;
+		if (draft === null || draft.path !== entry.path) return false;
+		// Read through the feed rather than off whatever the view happens to
+		// be holding. `applyMentionMode` and `refresh` both null the state
+		// synchronously and fill it back an await later, and an empty list
+		// read in that window makes the overlap guard below wave through the
+		// very clash it exists to refuse -- after which the page drops one of
+		// the two marks and a revision stands with a card and no dress at all.
+		// Asked first, so everything the save is judged on is read after the
+		// one await and nothing can shift underneath the judging.
+		const standing =
+			(this.mentionState ?? (await this.mentionFeedFor()))?.revisions ?? [];
+		if (this.revisionDraft !== draft) return false;
 		const body =
 			entry.editor === null
 				? (entry.pending ?? entry.text.body)
@@ -1815,7 +1850,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			new Notice(this.t('manuscript.mention.stale'));
 			this.revisionDraft = null;
 			this.syncRevisionRail(entry);
-			return;
+			return false;
 		}
 		const kind =
 			draft.kind === 'replace' && proposed.length === 0
@@ -1823,14 +1858,13 @@ export class SnowflakeManuscriptView extends ItemView {
 				: draft.kind;
 		if (kind === 'insert' && proposed.length === 0) {
 			new Notice(this.t('manuscript.revision.emptyProposed'));
-			return;
+			return false;
 		}
-		const standing = this.mentionState?.revisions ?? [];
 		if (
 			overlapsLive(body, standing, entry.path, draft.from, draft.to) !== null
 		) {
 			new Notice(this.t('manuscript.revision.overlap'));
-			return;
+			return false;
 		}
 		const revision = captureRevision(
 			entry.path,
@@ -1843,11 +1877,21 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.host.mintRevisionId(),
 			Date.now(),
 		);
-		this.revisionDraft = null;
-		await this.host.createRevision(
+		// Answered on what the write did, not on having started one, and the
+		// draft is let go only once it has landed somewhere. A refusal here
+		// used to take the author's proposal and comment down with it: the
+		// card was already cleared, so the words went at the next sync with
+		// nothing said about where they had gone.
+		const took = await this.host.createRevision(
 			this.model?.projectPath ?? this.projectPath,
 			revision,
 		);
+		if (!took) {
+			new Notice(this.t('manuscript.revision.refused'));
+			return false;
+		}
+		this.revisionDraft = null;
+		return true;
 	}
 
 	/**
@@ -1884,7 +1928,14 @@ export class SnowflakeManuscriptView extends ItemView {
 				await stale();
 				return;
 			}
-			await this.host.discardRevision(projectPath, revision.id);
+			// The text is in the note now. A refused record leaves the two out
+			// of step -- the proposal applied, the revision still standing,
+			// and its own original no longer anywhere to be found, so it comes
+			// back as a conflict -- which the author is owed a word about
+			// rather than left to discover in the margin.
+			if (!(await this.host.discardRevision(projectPath, revision.id))) {
+				new Notice(this.t('manuscript.revision.refused'));
+			}
 			return;
 		}
 		if (
@@ -1920,7 +1971,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		// offsets and contexts a whole proposal out of date.
 		this.host.manuscriptRevisionsSaved(entry.path, next);
 		await this.renderSegmentBody(entry);
-		await this.host.discardRevision(projectPath, revision.id);
+		if (!(await this.host.discardRevision(projectPath, revision.id))) {
+			new Notice(this.t('manuscript.revision.refused'));
+		}
 	}
 
 	private primeEditorMentions(entry: MountedSegment): void {
@@ -2217,6 +2270,16 @@ export class SnowflakeManuscriptView extends ItemView {
 				}
 				el = planted[0] ?? null;
 			}
+		}
+		// A segment open in the editor has no rendered spans to plant a
+		// locator in, so the reveal is made in the editor's own terms: the
+		// band the offset stands in, brought onto the page the way the caret
+		// is. No flash, but the reader is taken to the spot rather than left
+		// looking at the top of a chapter wondering what the click did.
+		if (el === null && entry.editor !== null) {
+			const band = entry.editor.bandAt(from);
+			if (band !== null) this.revealCaret(band.top, band.bottom);
+			return;
 		}
 		if (el === null) return;
 		el.scrollIntoView({ block: 'center' });

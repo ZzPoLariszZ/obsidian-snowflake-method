@@ -694,6 +694,10 @@ export const en = {
 		'Repairing here writes a value it can read.',
 	'projectStructure.issue.missing-directory': 'This project folder is missing.',
 	'projectStructure.action.missing-directory': 'Repairing here creates it.',
+	'projectStructure.issue.missing-on-demand-directory':
+		'This project folder has not been created yet.',
+	'projectStructure.action.missing-on-demand-directory':
+		'Repairing here creates it now. The plugin creates it by itself when it first has something to put there.',
 	'projectStructure.issue.misfiled-statistics-file':
 		'This file is in the folder an older version kept it in.',
 	'projectStructure.action.misfiled-statistics-file':
@@ -1430,6 +1434,10 @@ export const en = {
 		'Those words stand in more than one place. Click into the text and select them there.',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',
 	'manuscript.revision.overlap': 'Another revision already covers that spot.',
+	'manuscript.revision.newerSchema':
+		'These revisions were written by a newer version of the plugin. Update it to read them.',
+	'manuscript.revision.refused':
+		'The revision could not be written, so nothing was saved.',
 	'manuscript.revision.corruptPreserved':
 		'The revisions would not read and were set aside as {path}.',
 	'manuscript.revision.kind.replace': 'Replace',

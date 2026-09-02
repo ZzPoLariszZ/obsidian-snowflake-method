@@ -20,9 +20,9 @@
  */
 
 import {
-	analyzableRanges,
 	type CountableRange,
 	type MentionMark,
+	visibleOffsets,
 } from '../domain';
 
 const WHITESPACE = /\s/;
@@ -54,13 +54,9 @@ export function projectMentionMarks(
 	marks: readonly MentionMark[],
 	excludeRanges: readonly CountableRange[] = [],
 ): RenderedMentionSpan[] {
-	const sourceIndexOf: number[] = [];
-	for (const range of analyzableRanges(body, excludeRanges)) {
-		for (let at = range.from; at < range.to; at += 1) {
-			if (WHITESPACE.test(body.charAt(at))) continue;
-			sourceIndexOf.push(at);
-		}
-	}
+	// The same sequence the domain picks an insertion's carrier out of, so a
+	// character chosen there is one this can always draw.
+	const sourceIndexOf = visibleOffsets(body, excludeRanges);
 	// The first visible character at or after a source position.
 	const indexAt = (at: number): number => {
 		let low = 0;

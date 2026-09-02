@@ -26,6 +26,7 @@ describe("RevisionStore", () => {
 	let project: ProjectSnapshot;
 	let store: RevisionStore;
 	let asides: string[];
+	let foreign: [string, number][];
 
 	beforeEach(async () => {
 		const environment = createFakeEnvironment();
@@ -37,10 +38,12 @@ describe("RevisionStore", () => {
 		);
 		project = await service.createProject({ title: "Novel", locale: "en" });
 		asides = [];
+		foreign = [];
 		store = new RevisionStore({
 			repository: service.repository,
 			now: () => 1234,
 			onCorrupt: (path) => asides.push(path),
+			onForeign: (path, version) => foreign.push([path, version]),
 		});
 	});
 
@@ -107,25 +110,47 @@ describe("RevisionStore", () => {
 		expect(asides).toEqual([aside]);
 	});
 
-	it("refuses a schema it does not write, preserving it aside on the next change", async () => {
-		await fakeVault.seedFile(
-			FILE,
-			JSON.stringify({ schemaVersion: 99, revisions: [makeRevision("rev-1")] }),
-		);
+	it("leaves a schema it does not know exactly where it stands", async () => {
+		// A synced vault where one device updated first. Setting the newer
+		// build's file aside would take every proposal the author has standing
+		// with it, and sync would carry the rename back to the device that
+		// could read them.
+		const written = JSON.stringify({
+			schemaVersion: 99,
+			revisions: [makeRevision("rev-1")],
+		});
+		await fakeVault.seedFile(FILE, written);
 		expect(await store.readRevisions(project)).toEqual([]);
-		const revision = makeRevision("rev-2");
+		expect(foreign).toEqual([[FILE, 99]]);
+		expect(asides).toEqual([]);
+		expect(fakeVault.contents.get(FILE)).toBe(written);
+	});
+
+	it("refuses to write over a schema it does not know", async () => {
+		const written = JSON.stringify({
+			schemaVersion: 99,
+			revisions: [makeRevision("rev-1")],
+		});
+		await fakeVault.seedFile(FILE, written);
 		expect(
 			await store.updateRevisions(project, (standing) => [
 				...standing,
-				revision,
+				makeRevision("rev-2"),
 			]),
-		).toBe(true);
+		).toBe(false);
+		expect(fakeVault.contents.get(FILE)).toBe(written);
 		expect(
 			[...fakeVault.contents.keys()].some((path) =>
-				path.includes(".corrupted-1234"),
+				path.includes(".corrupted-"),
 			),
-		).toBe(true);
-		expect(await store.readRevisions(project)).toEqual([revision]);
+		).toBe(false);
+	});
+
+	it("still sets aside a file that is damaged rather than merely newer", async () => {
+		await fakeVault.seedFile(FILE, '{"schemaVersion": 1, "revisions": 7}');
+		expect(await store.readRevisions(project)).toEqual([]);
+		expect(asides).toHaveLength(1);
+		expect(foreign).toEqual([]);
 	});
 
 	it("evicts a memo for a root let go", async () => {
@@ -276,6 +301,189 @@ describe("RevisionService", () => {
 			),
 		).toBe(false);
 		expect(fakeVault.contents.get(FILE)).toBe(stamp);
+	});
+});
+
+describe("RevisionService carry between notes", () => {
+	let service: SnowflakeProjectService;
+	let project: ProjectSnapshot;
+	const OTHER = "Snowflake Projects/Novel/50_Manuscript/Chapter 2.md";
+
+	beforeEach(async () => {
+		const environment = createFakeEnvironment();
+		service = new SnowflakeProjectService(
+			environment.vault,
+			environment.fileManager,
+			environment.metadataCache,
+		);
+		project = await service.createProject({ title: "Novel", locale: "en" });
+	});
+
+	it("a split sends what stood below the cut after its words", async () => {
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				0,
+				0,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 4, to: 14 });
+	});
+
+	it("offsets move by the distance the text moved", async () => {
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				4,
+				3,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 1, to: 11 });
+	});
+
+	it("a merge carries forward, the offsets growing", async () => {
+		await service.revisions.create(project, makeRevision("rev-1"));
+		// The absorbed note's text now stands after the survivor's.
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				0,
+				-20,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 24, to: 34 });
+	});
+
+	it("what stands above the departure point stays where it is", async () => {
+		await service.revisions.create(project, makeRevision("rev-1"));
+		// A revision at 4..14 with the cut at 30: its words did not travel.
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				30,
+				30,
+			),
+		).toBe(false);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: CHAPTER, from: 4, to: 14 });
+	});
+
+	it("keeps its width when it lands at the head of the new note", async () => {
+		// A seam that swallowed blank lines can send a revision past the start
+		// of the note it arrives in. Clamped end by end it would come to rest
+		// narrower than the text it remembers, and the store's own reader
+		// drops an entry whose offsets stop agreeing with its original.
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				4,
+				10,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 0, to: 10 });
+		// Which is to say it survived the read at all.
+		expect(kept?.to ?? 0).toBe((kept?.from ?? 0) + "grey heron".length);
+	});
+
+	it("sorts the travellers by where their words stand, not by the store", async () => {
+		// The levelling behind a save is a quiet errand, and a split does not
+		// wait for it: an author who types a paragraph and cuts below it has a
+		// store still describing the note as it was before the typing. Read
+		// that way, a proposal whose words went into the new note is left
+		// behind on the old one, pointing at whatever now stands there.
+		const GROWN = `Some words typed above. ${BODY}`;
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				GROWN,
+				20,
+				20,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		// 24 + 4 in the note it left, so 8 in the note it arrives in.
+		expect(kept).toMatchObject({ path: OTHER, from: 8, to: 18 });
+		expect(GROWN.slice(20).slice(8, 18)).toBe("grey heron");
+	});
+
+	it("leaves behind what the store thought had travelled", async () => {
+		// The same mistrust the other way: offsets that overstate where a
+		// revision stands would send it after text it is not part of.
+		await service.revisions.create(
+			project,
+			makeRevision("rev-1", { from: 40, to: 50 }),
+		);
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				BODY,
+				20,
+				20,
+			),
+		).toBe(false);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: CHAPTER });
+	});
+
+	it("carries a revision whose words are already gone, rather than stranding it", async () => {
+		// A merge takes the whole of the absorbed note and then trashes it. A
+		// proposal that cannot find its words there has only its stored
+		// offsets to travel on, and travelling is still better than being left
+		// on a note that is about to stop existing.
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				CHAPTER,
+				OTHER,
+				"Nothing of the sort stands here any more.",
+				0,
+				-20,
+			),
+		).toBe(true);
+		const [kept] = await service.revisions.list(project);
+		expect(kept).toMatchObject({ path: OTHER, from: 24, to: 34 });
+	});
+
+	it("a note that carried nothing leaves the file alone", async () => {
+		await service.revisions.create(project, makeRevision("rev-1"));
+		expect(
+			await service.revisions.carryTextBetweenNotes(
+				project,
+				OTHER,
+				CHAPTER,
+				BODY,
+				0,
+				0,
+			),
+		).toBe(false);
 	});
 });
 

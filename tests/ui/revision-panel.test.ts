@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { captureRevision, orderRevisions } from '../../src/domain';
+import { captureRevision, orderRevisions, revealSpan } from '../../src/domain';
 import {
 	filterRevisionRows,
 	revisionTableRows,
@@ -37,6 +37,28 @@ describe('shaping the revision table', () => {
 			to: 14,
 			original: 'grey heron',
 		});
+	});
+
+	it('gives an insertion row the stretch the page can actually flash', () => {
+		// A point has no width to show. The character it borrows is chosen by
+		// the same rule the bar is drawn by, so the reader lands on the mark
+		// rather than beside it -- and a jump borrowing the other side would
+		// take the newline at a line end, which the page never renders at all.
+		const rows = revisionTableRows(
+			[captureRevision(ONE, BODY, 'insert', 14, 14, 'x', '', 'rev-i', 7)],
+			notes([[ONE, { title: 'Chapter 1', body: BODY }]]),
+		);
+		expect(rows[0]).toMatchObject({ from: 14, to: 14 });
+		expect(rows[0]?.reveal).toEqual(revealSpan(BODY, 14, 14));
+		expect(rows[0]?.reveal).toEqual({ from: 13, to: 14 });
+	});
+
+	it('a row the note cannot answer for has nothing to flash', () => {
+		const rows = revisionTableRows(
+			[captureRevision(ONE, BODY, 'replace', 4, 14, 'x', '', 'rev-x', 7)],
+			notes([[ONE, { title: 'Chapter 1', body: null }]]),
+		);
+		expect(rows[0]).toMatchObject({ status: 'conflict', reveal: null });
 	});
 
 	it('orders by the rule the cards step through, ties broken alike', () => {
@@ -109,6 +131,7 @@ describe('searching the revision table', () => {
 		status: 'live',
 		from: 4,
 		to: 14,
+		reveal: { from: 4, to: 14 },
 		...over,
 	});
 	const kindOf = (kind: RevisionRow['kind']): string =>

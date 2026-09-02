@@ -62,7 +62,12 @@ export interface RevisionRailCallbacks {
 		proposed: string,
 		comment: string,
 	): Promise<boolean>;
-	onDraftSave(proposed: string, comment: string): void;
+	/**
+	 * Takes the drafted revision, and answers once the write has either
+	 * landed or failed. False keeps the form open on what was typed, as the
+	 * edit face does: the words a refusal cannot save are still the author's.
+	 */
+	onDraftSave(proposed: string, comment: string): Promise<boolean>;
 	onDraftCancel(): void;
 	/**
 	 * Whether a card stands one step back (-1) or on (+1) from this one,
@@ -593,7 +598,10 @@ export function renderRevisionRail(
 					proposed: '',
 					comment: '',
 					onSave: (proposed, comment) => {
-						callbacks.onDraftSave(proposed, comment);
+						// Waited for, and the card left standing until it
+						// lands: a form closed over a refused write takes the
+						// proposal with it and leaves nothing to try again.
+						void callbacks.onDraftSave(proposed, comment);
 					},
 					onCancel: () => {
 						callbacks.onDraftCancel();

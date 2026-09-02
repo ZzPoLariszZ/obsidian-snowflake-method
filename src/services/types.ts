@@ -287,6 +287,10 @@ export const PROJECT_STRUCTURE_ISSUE_CODES = [
   // repair registers the kind and ensures its folder, so the notes come back
   // into the fold instead of standing invisible.
   "unregistered-worldbuilding-kind",
+  // A folder the plugin builds for itself the moment it has something to put
+  // in it. Absent, nothing is wrong and nothing is waiting: this is an offer
+  // to tidy the tree now, not damage to be repaired before work can go on.
+  "missing-on-demand-directory",
 ] as const;
 
 export type ProjectStructureIssueCode =
@@ -300,7 +304,24 @@ export type ProjectStructureIssueCode =
  * build kept it.
  */
 export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCode> =
-  new Set<ProjectStructureIssueCode>(["misfiled-statistics-file"]);
+  new Set<ProjectStructureIssueCode>([
+    "misfiled-statistics-file",
+    "missing-on-demand-directory",
+  ]);
+
+/**
+ * The directories the plugin makes for itself the first time it has something
+ * to write there, rather than at creation.
+ *
+ * The 711-713 folders are not these: they are part of the shape a project is
+ * built with, and a project missing one is a project to put right. A revisions
+ * folder is only ever wanted once the author has proposed a change, and the
+ * store ensures the chain on its way to the first write -- so demanding one up
+ * front would mark every project made before this feature as damaged over a
+ * folder nothing is waiting for.
+ */
+export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
+  new Set<ProjectDirectoryKey>(["revisions"]);
 
 /** A project-level contract problem that exists before marker inspection. */
 export interface ProjectStructureIssue {

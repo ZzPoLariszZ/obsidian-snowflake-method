@@ -81,6 +81,44 @@ export function analyzableRanges(
 	return rangesMemo.ranges;
 }
 
+let visibleMemo: { body: string; offsets: number[] } | null = null;
+
+/**
+ * Every body offset the page actually shows, in order: inside the prose
+ * ranges and not whitespace. This is the sequence the rendered halves index
+ * into, so it is also the only sequence a mark can be drawn over -- a stretch
+ * holding none of these offsets is dropped rather than guessed at.
+ *
+ * Shared so that whoever CHOOSES an offset and whoever DRAWS it are reading
+ * one answer. A carrier picked out of the raw body can land on a `#` or a
+ * link's bracket, which the page never renders, and the mark for it then
+ * vanishes with nothing said.
+ *
+ * Held for the no-exclusions ask, as the ranges are: callers read the shared
+ * array and never write into it.
+ */
+export function visibleOffsets(
+	body: string,
+	excludeRanges: readonly CountableRange[] = [],
+): number[] {
+	if (excludeRanges.length === 0) {
+		if (visibleMemo !== null && visibleMemo.body === body) {
+			return visibleMemo.offsets;
+		}
+	}
+	const offsets: number[] = [];
+	for (const range of analyzableRanges(body, excludeRanges)) {
+		for (let at = range.from; at < range.to; at += 1) {
+			if (VISIBLE_GAP.test(body.charAt(at))) continue;
+			offsets.push(at);
+		}
+	}
+	if (excludeRanges.length === 0) visibleMemo = { body, offsets };
+	return offsets;
+}
+
+const VISIBLE_GAP = /\s/u;
+
 function computeAnalyzableRanges(
 	body: string,
 	excludeRanges: readonly CountableRange[],

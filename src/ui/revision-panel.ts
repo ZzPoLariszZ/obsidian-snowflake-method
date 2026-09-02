@@ -17,7 +17,12 @@
 
 import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import { anchorRevision, orderRevisions, type Revision } from '../domain';
+import {
+	anchorRevision,
+	orderRevisions,
+	revealSpan,
+	type Revision,
+} from '../domain';
 import type { Translate } from './modals';
 import { VirtualTable } from './virtual-table';
 
@@ -45,6 +50,12 @@ export interface RevisionRow {
 	/** Where the revision stands now; the stored offsets for a conflict. */
 	from: number;
 	to: number;
+	/**
+	 * The stretch the reader can actually be shown, which for an insertion is
+	 * the character its bar rides rather than the point itself. Null where the
+	 * note could not be read, or holds nothing visible to borrow.
+	 */
+	reveal: { from: number; to: number } | null;
 }
 
 /**
@@ -87,6 +98,10 @@ export function revisionTableRows(
 			status: anchor.state === 'conflict' ? 'conflict' : 'live',
 			from: anchor.state === 'conflict' ? revision.from : anchor.from,
 			to: anchor.state === 'conflict' ? revision.to : anchor.to,
+			reveal:
+				note?.body == null || anchor.state === 'conflict'
+					? null
+					: revealSpan(note.body, anchor.from, anchor.to),
 		};
 	});
 }
@@ -291,11 +306,12 @@ export function renderRevisionPanel(
 				text: row.title,
 			});
 			jump.addEventListener('click', () => {
-				// An insertion is a point, and a point flashes nothing: the
-				// jump borrows the character after it, the way its mark does.
-				const to = row.from === row.to ? row.to + 1 : row.to;
+				// An insertion is a point, and a point flashes nothing. The
+				// character it borrows is chosen where the bar is drawn, so
+				// the reader lands on the mark rather than beside it.
+				const spot = row.reveal ?? { from: row.from, to: row.to };
 				void bridge
-					.open({ path: row.path, from: row.from, to })
+					.open({ path: row.path, from: spot.from, to: spot.to })
 					.catch(() => undefined);
 			});
 		},
