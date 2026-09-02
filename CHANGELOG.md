@@ -8,6 +8,25 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0]
+
+### Added
+
+- **Revisions**, a change proposed beside the manuscript before it is made. Click into a chapter, select the words in question and choose **Create revision** from the right-click menu: the selection becomes a replacement, or a deletion when the proposed text is left empty, and a bare caret makes an insertion at that point. The words a proposal would take are struck through where they stand and an insertion is marked by a bar at its place, but the chapter itself does not change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin at the chapter's right, holding its type, the original text, the proposed text and a comment. **Accept** writes the change into the chapter as your own edit, so it can be undone and counts as writing, **Reject** removes the proposal and leaves the text as it was, and **Edit** changes the proposed text or the comment, where a deletion given words becomes a replacement again. The arrows on a card walk from one proposal to the next through the whole manuscript. A proposal follows its words as you write above and around them and when a chapter is split or merged, and one whose words you have changed directly is shown as a conflict, to be discarded rather than applied. Two proposals cannot cover the same words. The proposals live in one shared file under the project's task management folder, which travels with the vault, is set aside rather than read if it will not parse, and is left alone if a newer version of the plugin wrote it.
+- **Task management**, a new dashboard pane for the work around the writing. Its **Revision** tab lists every open proposal with its type, original text, proposed text, comment and place, searched by any of them, and the place jumps to where the proposal stands in the manuscript. A conflicting proposal shows its conflict there with a discard button. The **Tasks**, **Foreshadowing** and **Sticky notes** tabs are named ahead of what they will hold.
+- The health check knows a folder the plugin only creates when it first has something to put there, such as the revisions folder in a project made before this version, and offers to create it now as advice rather than reporting the project as damaged.
+
+### Changed
+
+- The ignore rules written while tracking entities now live in the entity tracking folder and the prose statistics cache in the prose analysis folder, each beside the tab that shows it. A file left where an older version kept it goes on being read there, is moved home the first time it is written, and the health check offers to move it for you.
+
+### Fixed
+
+- A chapter opened for editing is laid out whole from its first frame. CodeMirror lays out only the visible stretch and estimates the rest from lines of Latin letters, so a Chinese chapter collapsed to a fraction of its height and grew back in waves as the reader scrolled, and lines never scrolled near kept the wrong height for good.
+- Closing the manuscript stream takes every editor down with it. One that teardown missed kept listening to the window and logged a layout error on every resize until the window closed.
+- The length of a chapter in prose analysis is counted by the same convention as the status bar, words or CJK characters with headings treated as you have set, so a chapter is one number wherever it is quoted, and the dialogue share divides into that same length.
+- Two lines of speech with narration between them are counted as two pieces of dialogue rather than closing into one word across the gap, which left the dialogue share short, and the share can no longer exceed the whole.
+
 ## [0.14.0]
 
 ### Added
@@ -345,6 +364,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.15.0]
+
+### 新增
+
+- **修订**，先在正文旁提出改动，再决定是否落笔。点进一章，选中要改的文字，在右键菜单里选择**新建修订**：所选文字成为一处替换，建议文本留空则成为一处删除，只放一个光标则在该处插入。将被改掉的文字会在原处划去，插入处以一道竖线标出，但这一章本身不会改变，在接受之前也不计入字数、分析与追踪。每一处修订都是章节右侧页边的一张卡片，写着类型、原文、建议文本与备注。**接受**会把改动作为你自己的编辑写进这一章，因此可以撤销，也计入写作字数。**拒绝**会移除修订，正文保持原样。**编辑**可以改动建议文本与备注，一处删除填上文字后又会成为替换。卡片上的箭头可以在整部正文的修订之间逐一跳转。修订会跟着它所指的文字走，你在它前后继续写作、拆分或合并章节时都不会走失。若你直接改动了它所指的文字，它会标为冲突，只能丢弃，不能应用。两处修订不能覆盖同一段文字。所有修订保存在项目任务管理文件夹下的同一个共享文件里，随 Vault 一同流转。文件无法解析时会被另存而不是读取，由更新版本的插件写入时则原样保留。
+- **任务管理**，工作台新增的一个面板，打理写作之外的事务。其中的**修订**标签页列出每一处未处理的修订：类型、原文、建议文本、备注与位置，可按其中任何一项搜索，点击位置便跳到修订在正文中的所在之处。发生冲突的修订会在这里标出冲突，并附有丢弃按钮。**任务**、**伏笔**与**便签**三个标签页先占好位置，等待各自的内容。
+- 健康检查认得那些插件只在第一次有东西要放时才会创建的文件夹，例如在本版本之前创建的项目里的修订文件夹，并以提示而非受损的方式提供立即创建的选项。
+
+### 变更
+
+- 实体追踪时写下的忽略规则现在放在实体追踪文件夹里，正文统计缓存放在正文分析文件夹里，各自挨着显示它的标签页。旧版本留在原处的文件仍会在原处被读取，第一次写入时搬回自己的位置，健康检查也可以替你搬过去。
+
+### 修复
+
+- 打开编辑的一章从第一帧起就完整排版。CodeMirror 只排版可见部分，其余高度按拉丁字母的行估算，因此一章中文会先缩成实际高度的一小部分，再随着阅读一波波长回来，而读者从未滚动到附近的行会一直保持错误的高度。
+- 关闭正文流时会把每一个编辑器一并拆除。此前被拆除遗漏的编辑器会一直监听窗口，每次调整窗口大小都记录一次排版错误，直到窗口关闭。
+- 正文分析中一章的篇幅按与状态栏相同的规则计数，按词或按字，标题是否计入也遵从你的设置，因此一章的长度在任何地方引用都是同一个数，对话占比也以这个长度为分母。
+- 中间隔着叙述的两句对话按两段对话分别计数，而不再在间隙处并成一个词，此前对话占比因此偏低，如今占比也不会再超过整体。
 
 ## [0.14.0]
 
