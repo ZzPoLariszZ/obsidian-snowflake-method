@@ -1026,6 +1026,40 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 	}
 
+	/**
+	 * A sticky note's changes reach this view without a render: its own saves
+	 * are routed past the refresh, since a frame rebuild would re-parent the
+	 * tab's live editor at every one. The health report reads sticky notes all
+	 * the same, so a note damaged or mended by hand, or repaired from the
+	 * report, moves the verdict the rail's shield shows. Re-read here from a
+	 * fresh model, and only a verdict that moved redraws the frame.
+	 */
+	async reconcileHealth(): Promise<void> {
+		// A run in flight paints from a model of its own: waited for, so the
+		// verdict compared below is the one on show.
+		await this.refreshRun;
+		const shown = this.lastRender?.model ?? null;
+		if (shown === null) return;
+		const requestedProjectPath = this.projectPath;
+		let model: ProjectDashboardModel | null;
+		try {
+			model = await this.host.loadDashboardModel(requestedProjectPath);
+		} catch {
+			// The next refresh shows what went wrong in the frame, where an
+			// error belongs; a notice over a sticky note being typed does not.
+			return;
+		}
+		if (
+			model === null ||
+			requestedProjectPath !== this.projectPath ||
+			this.lastRender?.model !== shown ||
+			dashboardHasHealthIssues(model) === dashboardHasHealthIssues(shown)
+		) {
+			return;
+		}
+		await this.refresh();
+	}
+
 	private get freeformMode(): boolean {
 		return this.host.isFreeformModeEnabled();
 	}

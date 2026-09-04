@@ -5783,7 +5783,30 @@ export default class SnowflakeMethodPlugin
 		this.stickyNoteNotifyTimer = workspaceWindow.setTimeout(() => {
 			this.stickyNoteNotifyTimer = null;
 			this.stickyNoteHub.notify();
+			this.reconcileDashboardHealth();
 		}, REFRESH_DELAY_MS);
+	}
+
+	/**
+	 * The shield in a dashboard's rail is painted from its model, and a sticky
+	 * file is the one kind whose changes reach the dashboards without a
+	 * refresh. Each shown dashboard re-reads its verdict instead and redraws
+	 * only when the verdict moved; a hidden one owes the refresh at reveal,
+	 * as it does for every other change.
+	 */
+	private reconcileDashboardHealth(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			DASHBOARD_VIEW_TYPE,
+		)) {
+			if (!(leaf.view instanceof SnowflakeDashboardView)) continue;
+			if (!leaf.view.containerEl.isShown()) {
+				leaf.view.queueRefreshWhenShown();
+				continue;
+			}
+			void leaf.view.reconcileHealth().catch((error: unknown) => {
+				this.showError(error);
+			});
+		}
 	}
 
 	createRevision(
@@ -7790,10 +7813,13 @@ export default class SnowflakeMethodPlugin
 
 	private handleVaultEvent(file: TAbstractFile): void {
 		if (!this.touchesProject(file.path)) return;
-		// A sticky note is no part of the dashboard model: the surfaces showing
-		// it are told directly, and the dashboards keep their frames, which a
-		// refresh would rebuild around the tab's live editor at every save.
+		// A sticky note is told to the surfaces showing it directly, and the
+		// dashboards keep their frames, which a refresh would rebuild around
+		// the tab's live editor at every save. The health report reads sticky
+		// notes all the same, so the cached verdict is dropped here and the
+		// bell has every dashboard re-read its own.
 		if (file instanceof TFile && isStickyNotePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
 			this.scheduleStickyNoteNotify();
 			this.scheduleWritingCountRefresh(1000);
 			return;
@@ -7932,6 +7958,7 @@ export default class SnowflakeMethodPlugin
 		});
 		if (!this.touchesProject(file.path)) return;
 		if (file instanceof TFile && isStickyNotePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
 			this.scheduleStickyNoteNotify();
 			return;
 		}
@@ -8095,12 +8122,16 @@ export default class SnowflakeMethodPlugin
 			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
 		// A sticky note renamed or moved keeps its identity in its frontmatter:
-		// the surfaces find it again by id, and the dashboard model is untouched.
+		// the surfaces find it again by id. Its health can move with it -- a
+		// note dragged out of the folder stops being one, and a note dragged
+		// in is read as one -- so the verdict is re-read as after a save.
 		if (
 			file instanceof TFile &&
 			(isStickyNotePath(oldPath) || isStickyNotePath(file.path)) &&
 			(this.touchesProject(oldPath) || this.touchesProject(file.path))
 		) {
+			this.invalidateProjectHealth(oldPath);
+			this.invalidateProjectHealth(file.path);
 			this.scheduleStickyNoteNotify();
 			return;
 		}
