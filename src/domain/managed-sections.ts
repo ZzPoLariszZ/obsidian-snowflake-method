@@ -121,6 +121,7 @@ export const MANAGED_SECTIONS_BY_DOCUMENT: Readonly<
 	draft: [],
 	material: [],
 	archive: [],
+	'sticky-note': [],
 };
 
 export function managedSectionsForDocument(

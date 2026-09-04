@@ -124,6 +124,12 @@ import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
+import {
+	renderStickyNoteBoard,
+	stickyBoardMemory,
+	type StickyNoteBoardHandle,
+	type StickyNoteBoardMemory,
+} from './sticky-note-board';
 import { buildTableFrame, VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
@@ -352,6 +358,10 @@ export class SnowflakeDashboardView extends ItemView {
 		role: '',
 		standing: '',
 	};
+	/** The sticky-note board, kept across rebuilds the way its siblings are. */
+	private readonly stickyNotePanel = new KeptPanel<StickyNoteBoardHandle>();
+	/** Its search, colour, sort and fold outlive it, as the other filters do. */
+	private readonly stickyNoteFilters: StickyNoteBoardMemory = stickyBoardMemory();
 	/** Which tracking folds stand OPEN -- everything else rests closed --
 	 *  outliving the panel like the filters do: a tab switch hands the
 	 *  folds back as they were left. */
@@ -618,6 +628,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.entitiesPanel.dispose();
 		this.revisionPanel.dispose();
 		this.foreshadowingPanel.dispose();
+		this.stickyNotePanel.dispose();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -663,6 +674,8 @@ export class SnowflakeDashboardView extends ItemView {
 			/** Remembers the face chosen and lets the faces left go. */
 			choose: (tab: T) => void;
 			body: (body: HTMLElement, tab: T) => void;
+			/** A face that scrolls itself: the field then stands still and lends it its reach. */
+			selfScrolling?: (tab: T) => boolean;
 		},
 	): void {
 		const main = layout.createEl('main', { cls: 'snowflake-method-main' });
@@ -697,6 +710,7 @@ export class SnowflakeDashboardView extends ItemView {
 				button.setAttribute('aria-selected', active ? 'true' : 'false');
 			}
 			body.empty();
+			body.toggleClass('is-self-scrolling', pane.selfScrolling?.(chosen) ?? false);
 			pane.body(body, chosen);
 		};
 		for (const tab of pane.tabs) {
@@ -803,10 +817,12 @@ export class SnowflakeDashboardView extends ItemView {
 				this.tasksTab = tab;
 				if (tab !== 'revision') this.revisionPanel.dispose();
 				if (tab !== 'foreshadowing') this.foreshadowingPanel.dispose();
+				if (tab !== 'stickyNotes') this.stickyNotePanel.dispose();
 			},
 			body: (body, tab) => {
 				this.renderTasksBody(body, tab);
 			},
+			selfScrolling: (tab) => tab === 'stickyNotes',
 		});
 	}
 
@@ -827,6 +843,41 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/** What one face of the task management pane puts inside the frame. */
 	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
+		if (tab === 'stickyNotes') {
+			// The board keeps its own reading and its cards; a handback only
+			// re-reads and lets a mounted editor measure its new place.
+			const kept = this.stickyNotePanel.reuse(body, this.panelKey());
+			if (kept !== null) {
+				kept.refresh();
+				kept.remeasure();
+				return;
+			}
+			const host = body.createDiv({
+				cls: 'snowflake-method-sticky-board-host',
+			});
+			this.stickyNotePanel.keep(
+				host,
+				this.panelKey(),
+				renderStickyNoteBoard(
+					host,
+					this.host.stickyNotes({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						app: this.app,
+						surface: 'dashboard',
+						compact: false,
+						archive: true,
+						controls: 'band',
+						memory: this.stickyNoteFilters,
+						component: this,
+						locale: this.projectLocale ?? this.host.getDefaultProjectLocale(),
+					},
+				),
+			);
+			return;
+		}
 		if (tab === 'foreshadowing') {
 			const kept = this.foreshadowingPanel.reuse(body, this.foreshadowingPanelKey());
 			if (kept !== null) {
@@ -4309,6 +4360,7 @@ export class SnowflakeDashboardView extends ItemView {
 		if (this.selectedPane.kind !== 'tasks') {
 			this.revisionPanel.dispose();
 			this.foreshadowingPanel.dispose();
+			this.stickyNotePanel.dispose();
 		}
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);

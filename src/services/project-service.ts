@@ -6,10 +6,15 @@ import {
 } from "obsidian";
 
 import {
+  DEFAULT_STICKY_NOTE_COLOR,
   MIN_SUPPORTED_SCHEMA_VERSION,
   RANK_GAP,
   SCHEMA_VERSION,
   STEP_IDS,
+  STICKY_NOTE_DOCUMENT,
+  STICKY_NOTE_FRONTMATTER_ORDER,
+  formatStickyNoteCreated,
+  isStickyNoteColor,
   isWritableSchemaVersion,
   managedSectionsForDocument,
   optionalSectionIds,
@@ -24,6 +29,7 @@ import {
   fingerprint,
   foldName,
   freeName,
+  parseStickyNoteCreated,
   safeFileName,
   WORLDBUILDING_KIND_DEFINITIONS,
   isDocumentType,
@@ -158,6 +164,7 @@ import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
+import { StickyNoteService } from "./sticky-note-service";
 import { RevisionService } from "./revision-service";
 import { WritingCountService } from "./writing-count";
 import {
@@ -380,6 +387,8 @@ export class SnowflakeProjectService {
   readonly revisions: RevisionService;
   /** Foreshadowing threads and their occurrences: user data beside the revisions. */
   readonly foreshadowing: ForeshadowingService;
+  /** Sticky notes: Markdown files under task management, listed and written here. */
+  readonly stickyNotes: StickyNoteService;
   /** The manuscript as plain text files, for the export buttons and the copy. */
   readonly exporter: ManuscriptExportService;
   /**
@@ -465,6 +474,9 @@ export class SnowflakeProjectService {
       ...(analysis.onForeshadowingForeign === undefined
         ? {}
         : { onForeign: analysis.onForeshadowingForeign }),
+    });
+    this.stickyNotes = new StickyNoteService(this.repository, {
+      mintId: () => createStableId("sticky-note"),
     });
     this.exporter = new ManuscriptExportService(this.repository, this.manuscript);
   }
@@ -1145,6 +1157,9 @@ export class SnowflakeProjectService {
       mentionIndex: new Set(),
       foreshadowing: new Set(),
       revisions: new Set(),
+      // Sticky notes are managed notes of their own type, owned and repaired
+      // like members.
+      stickyNotes: new Set(["sticky-note"]),
       materials: new Set(),
       archive: new Set(),
     };
@@ -1780,7 +1795,13 @@ export class SnowflakeProjectService {
       if (patch === null || Object.keys(patch).length === 0) {
         throw new Error(`The note metadata issue at "${normalized}" cannot be repaired safely.`);
       }
-      await this.repository.updateFrontmatter(normalized, patch);
+      // A sticky note's keys settle into their own order as they are put
+      // back, as every other write to one leaves them.
+      await this.repository.updateFrontmatter(
+        normalized,
+        patch,
+        issue.expected === STICKY_NOTE_DOCUMENT ? STICKY_NOTE_FRONTMATTER_ORDER : undefined,
+      );
       return this.loadProject(project.projectFile);
     }
 
@@ -1887,6 +1908,26 @@ export class SnowflakeProjectService {
     const record = await this.repository.readManaged(issue.path);
     const expected = issue.expected;
     if (!expected || !isDocumentType(expected)) return null;
+
+    if (expected === STICKY_NOTE_DOCUMENT) {
+      const usedIds = new Set<string>();
+      for (const file of this.repository.listDirectFiles(parentOf(record.path))) {
+        if (file.extension !== "md" || file.path === record.path) continue;
+        const candidate = await this.repository.tryReadManaged(file.path);
+        const id =
+          candidate === null
+            ? null
+            : normalizeStableId(candidate.frontmatter[FRONTMATTER_KEYS.stickyNoteId]);
+        if (id !== null) usedIds.add(id);
+      }
+      const file = this.repository.getFile(record.path);
+      return safeStickyNoteMetadataRepairPatch(
+        record,
+        project.id,
+        usedIds,
+        file?.stat.ctime ?? Date.now(),
+      );
+    }
 
     if (!isMemberDocumentType(expected)) {
       return safeCommonMetadataRepairPatch(record, expected, project.id);
@@ -6857,6 +6898,7 @@ export class SnowflakeProjectService {
       mentionIndex: [],
       foreshadowing: [],
       revisions: [],
+      stickyNotes: [],
       materials: [],
       archive: [],
     };
@@ -7307,6 +7349,65 @@ export class SnowflakeProjectService {
     };
     await inspectCollection("characters", "character", [3, 5, 7]);
     await inspectCollection("scenes", "scene", [8, 9]);
+
+    // Sticky notes are managed notes like members, and inspected like them
+    // for what makes one readable: the schema, the type, the project, a
+    // unique id, a colour the palette has, a birth that parses, and a
+    // set-aside flag that is a flag. No step hinges on them. A note in the
+    // folder that says nothing of the kind is the author's own and left
+    // alone.
+    {
+      const folderPath = normalizePath(
+        `${project.rootPath}/${layout.directories.stickyNotes}`,
+      );
+      const stableIds = new Set<string>();
+      const files =
+        this.repository.getFolder(folderPath) === null
+          ? []
+          : this.repository.listDirectFiles(folderPath);
+      for (const file of files) {
+        if (file.extension !== "md") continue;
+        const record = await this.repository.tryReadManaged(file.path);
+        if (record === null) continue;
+        if (record.schemaVersion !== null && record.schemaVersion > SCHEMA_VERSION) {
+          continue;
+        }
+        const frontmatter = record.frontmatter;
+        const looksManaged =
+          documentTypeOf(frontmatter) === STICKY_NOTE_DOCUMENT ||
+          hasOwn(frontmatter, FRONTMATTER_KEYS.stickyNoteId);
+        if (!looksManaged) continue;
+        const stableId = asOptionalString(frontmatter[FRONTMATTER_KEYS.stickyNoteId]);
+        const idsBeforeCurrent = new Set(stableIds);
+        const stableIdIsUnique = stableId !== null && !stableIds.has(stableId);
+        if (stableId !== null) stableIds.add(stableId);
+        if (
+          isCurrentOrNewerSchema(frontmatter) &&
+          documentTypeOf(frontmatter) === STICKY_NOTE_DOCUMENT &&
+          hasMatchingProjectId(frontmatter) &&
+          stableIdIsUnique &&
+          isStickyNoteColor(frontmatter[FRONTMATTER_KEYS.stickyNoteColor]) &&
+          parseStickyNoteCreated(frontmatter[FRONTMATTER_KEYS.created]) !== null &&
+          typeof frontmatter[FRONTMATTER_KEYS.archived] === "boolean"
+        ) {
+          continue;
+        }
+        add({
+          code: "invalid-artifact-metadata",
+          path: record.path,
+          stepIds: [],
+          expected: STICKY_NOTE_DOCUMENT,
+          canOpen: true,
+          repairable:
+            safeStickyNoteMetadataRepairPatch(
+              record,
+              project.id,
+              idsBeforeCurrent,
+              file.stat.ctime,
+            ) !== null,
+        });
+      }
+    }
 
     // Worldbuilding notes are members like any other and are inspected like
     // any other: the name they are filed under, the links they store, and the
@@ -8194,6 +8295,55 @@ function safeCommonMetadataRepairPatch(
   if (projectId !== expectedProjectId) {
     if (projectId !== null) return null;
     patch[FRONTMATTER_KEYS.projectId] = expectedProjectId;
+  }
+  return patch;
+}
+
+/**
+ * What a sticky note is put back to when its properties no longer read: the
+ * common three, an id of its own where it has none or shares one, the
+ * palette's default where the colour is not the palette's, its file's own
+ * birth where the stamp does not parse, and a flag where the flag is a word.
+ * The body is never touched.
+ */
+function safeStickyNoteMetadataRepairPatch(
+  record: ManagedFileRecord,
+  expectedProjectId: string,
+  usedIds: ReadonlySet<string>,
+  createdFallback: number,
+): ManagedFrontmatter | null {
+  const patch = safeCommonMetadataRepairPatch(
+    record,
+    STICKY_NOTE_DOCUMENT,
+    expectedProjectId,
+  );
+  if (patch === null) return null;
+  const frontmatter = record.frontmatter;
+
+  const rawId = normalizeStableId(frontmatter[FRONTMATTER_KEYS.stickyNoteId]);
+  const stickyNoteId =
+    rawId !== null && !usedIds.has(rawId)
+      ? rawId
+      : createUniqueStableId("sticky-note", usedIds);
+  if (frontmatter[FRONTMATTER_KEYS.stickyNoteId] !== stickyNoteId) {
+    patch[FRONTMATTER_KEYS.stickyNoteId] = stickyNoteId;
+  }
+
+  if (!isStickyNoteColor(frontmatter[FRONTMATTER_KEYS.stickyNoteColor])) {
+    patch[FRONTMATTER_KEYS.stickyNoteColor] = DEFAULT_STICKY_NOTE_COLOR;
+  }
+
+  if (parseStickyNoteCreated(frontmatter[FRONTMATTER_KEYS.created]) === null) {
+    const born = new Date(createdFallback);
+    patch[FRONTMATTER_KEYS.created] = formatStickyNoteCreated(
+      born,
+      born.getTimezoneOffset(),
+    );
+  }
+
+  const archived = frontmatter[FRONTMATTER_KEYS.archived];
+  if (typeof archived !== "boolean") {
+    patch[FRONTMATTER_KEYS.archived] = archived === "true";
   }
   return patch;
 }

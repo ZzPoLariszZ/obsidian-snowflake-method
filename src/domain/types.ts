@@ -54,6 +54,9 @@ export const DOCUMENT_TYPES = [
 	'draft',
 	'material',
 	'archive',
+	// A sticky note under task management: the body is the note, and the
+	// frontmatter says which project it belongs to, its colour and its birth.
+	'sticky-note',
 ] as const;
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -93,9 +96,10 @@ export const FRONTMATTER_KEYS = {
 	stepStatuses: 'snowflake-step-status',
 	reviewedFingerprints: 'snowflake-reviewed-fingerprints',
 	draft: 'snowflake-draft',
-	// Present only on the metadata note of a project filed in the archive
-	// folder. The location is what hides an archived project; the key is for
-	// anyone reading the folder by hand, and it is removed on the way back.
+	// On the metadata note of a project filed in the archive folder, where the
+	// location is what hides the project and the key is for anyone reading the
+	// folder by hand, removed on the way back. And on a sticky note set aside,
+	// where it is the whole of the archiving: written false on an active one.
 	archived: 'snowflake-archived',
 	// The authored worldbuilding kinds, as a list of kind folder names in rail
 	// order. The registry is what makes a custom kind exist: a folder under the
@@ -140,6 +144,12 @@ export const FRONTMATTER_KEYS = {
 	timeKind: 'snowflake-time-kind',
 	timeStart: 'snowflake-time-start',
 	timeEnd: 'snowflake-time-end',
+	// A sticky note's own identity, colour and birth: the id survives renames,
+	// the colour is one of the eight macaron ids, and the created stamp is
+	// what the boards sort by, the file name being only a courtesy.
+	stickyNoteId: 'snowflake-sticky-note-id',
+	stickyNoteColor: 'snowflake-sticky-note-color',
+	created: 'snowflake-created',
 } as const;
 
 /**

@@ -34,6 +34,7 @@ import type { WikilinkTarget } from './segment-editor-backend';
 import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
 import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
+import type { StickyNoteBridge } from './sticky-note-bridge';
 import type { RevisionPanelBridge } from './revision-panel';
 import type {
 	SessionPanelBridge,
@@ -656,6 +657,8 @@ export interface DashboardHost {
 	revisionTable(context: SessionPanelContext): RevisionPanelBridge;
 	/** The bridge the task management pane renders the foreshadowing table through. */
 	foreshadowingTable(context: SessionPanelContext): ForeshadowingPanelBridge;
+	/** The bridge the task management pane and the sidebar render the sticky notes through. */
+	stickyNotes(context: SessionPanelContext): StickyNoteBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

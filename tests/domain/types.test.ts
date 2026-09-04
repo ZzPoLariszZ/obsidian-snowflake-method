@@ -24,6 +24,7 @@ describe('document types', () => {
 			'draft',
 			'material',
 			'archive',
+			'sticky-note',
 		]);
 		for (const documentType of DOCUMENT_TYPES) {
 			expect(isDocumentType(documentType)).toBe(true);

@@ -316,6 +316,29 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("treats the sticky-notes folder as made on demand as well", async () => {
+    // The folder is built by the first note written into it, so a project
+    // from before sticky notes existed is offered the folder, not marked.
+    const project = await service.createProject({ name: "Older layout" });
+    const stickyNotes = `${project.rootPath}/70_Tool/72_Task_Management/724_Sticky_Note`;
+    fakeVault.delete(stickyNotes);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === stickyNotes,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: stickyNotes,
+        stepIds: [],
+        repairable: true,
+        blocking: false,
+      }),
+    ]);
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
   it("creates the on-demand folder when the report is asked to", async () => {
     const project = await service.createProject({ name: "Older layout" });
     const revisions = `${project.rootPath}/70_Tool/72_Task_Management/723_Revision`;

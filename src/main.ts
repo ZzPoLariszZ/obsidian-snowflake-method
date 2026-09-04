@@ -100,6 +100,10 @@ import {
 	sanitizeChapterNumberRules,
 	proposeChapterNumber,
 	proposeChapterRemoval,
+	DEFAULT_STICKY_NOTE_COLOR,
+	STICKY_NOTE_LOCAL_STATE_KEY,
+	stickyNotePreview,
+	type StickyNoteColor,
 	type ChapterFollower,
 	type ChapterNumbering,
 	type ChapterNumberRule,
@@ -173,6 +177,8 @@ import {
 	type SceneRecord,
 	type WorldbuildingRecord,
 	type WritingCountScope,
+	isStickyNotePath,
+	type StickyNoteRecord,
 	toWikiLink,
 	WritingSessionService,
 	type LiveWritingSession,
@@ -223,6 +229,20 @@ import {
 	foreshadowingTableItems,
 	type ForeshadowingNoteReading,
 } from './ui/foreshadowing-rows';
+import type {
+	StickyNoteBridge,
+	StickyNoteKey,
+	StickyNoteFloatOptions,
+} from './ui/sticky-note-bridge';
+import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
+import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
+import { StickyNoteSaveConflict } from './ui/sticky-note-editing';
+import { StickyNoteFloatLayer } from './ui/sticky-note-float';
+import { StickyNoteHub } from './ui/sticky-note-hub';
+import {
+	STICKY_NOTES_VIEW_TYPE,
+	SnowflakeStickyNotesView,
+} from './ui/sticky-notes-view';
 import type { WikilinkTarget } from './ui/segment-editor-backend';
 import {
 	revisionTableRows,
@@ -448,10 +468,18 @@ export default class SnowflakeMethodPlugin
 	private refreshTimer: number | null = null;
 	private projectRescanTimer: number | null = null;
 	private refreshProjectLocales = false;
+	/** The sticky-note surfaces' own bell, rung once a burst of vault events has settled. */
+	private stickyNoteNotifyTimer: number | null = null;
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
 	sessions!: WritingSessionService;
+	/** What every sticky-note surface shares: claims, the device's memory of the panels, the bell. */
+	stickyNoteHub!: StickyNoteHub;
+	/** The floating sticky notes, one layer per window, made when a window first floats one. */
+	private readonly stickyLayers = new Map<Document, StickyNoteFloatLayer>();
+	/** The project the layers were last reconciled to; undefined before the first pass. */
+	private stickyFloatsProject: string | null | undefined = undefined;
 	private lastFocusLevel: ManuscriptFocusLevel = 'off';
 	private sessionItem: HTMLElement | null = null;
 	private sessionIconEl: HTMLElement | null = null;
@@ -634,6 +662,9 @@ export default class SnowflakeMethodPlugin
 				);
 				this.scrollbarDocuments.delete(targetWindow.document);
 				this.dropScrollbarSentinel(targetWindow.document);
+				// The popout's floating notes go with it, their memory kept.
+				this.stickyLayers.get(targetWindow.document)?.destroy();
+				this.stickyLayers.delete(targetWindow.document);
 			}),
 		);
 		this.applyMotionPreference();
@@ -756,6 +787,12 @@ export default class SnowflakeMethodPlugin
 				clear: (handle) => window.clearTimeout(handle as number),
 			},
 		});
+		this.stickyNoteHub = new StickyNoteHub({
+			load: () => this.app.loadLocalStorage(STICKY_NOTE_LOCAL_STATE_KEY) as unknown,
+			save: (state) => {
+				this.app.saveLocalStorage(STICKY_NOTE_LOCAL_STATE_KEY, state);
+			},
+		});
 		// The plugin's own saves are how modal and dashboard writing keeps
 		// crediting words, now that vault events answer only for strangers.
 		this.projects.repository.onBodyWrite = (path, before, after, userInput) => {
@@ -846,6 +883,15 @@ export default class SnowflakeMethodPlugin
 					this.statisticsFingerprint(),
 				),
 		);
+		this.registerView(
+			STICKY_NOTES_VIEW_TYPE,
+			(leaf) =>
+				new SnowflakeStickyNotesView(leaf, {
+					bridge: () => this.stickyNotes(),
+					fingerprint: () => this.statisticsFingerprint(),
+					locale: () => this.currentLocale(),
+				}),
+		);
 		// Two feeds so the core Page preview plugin offers each with its own
 		// modifier default: rendered manuscript prose previews on a plain
 		// hover like any reading view, the stream's editor asks for the
@@ -858,6 +904,10 @@ export default class SnowflakeMethodPlugin
 			display: this.globalT('manuscript.hoverSource.editing'),
 			defaultMod: true,
 		});
+		this.registerHoverLinkSource(STICKY_NOTE_HOVER_SOURCE, {
+			display: this.globalT('stickyNotes.viewTitle'),
+			defaultMod: true,
+		});
 		this.addRibbonIcon('snowflake', this.globalT('commands.openDashboard'), () => {
 			void this.openDashboard();
 		});
@@ -868,6 +918,11 @@ export default class SnowflakeMethodPlugin
 				void this.openCurrentManuscript();
 			},
 		);
+		this.addRibbonIcon('sticker', this.globalT('commands.newStickyNote'), () => {
+			void this.createStickyNoteAndFloat().catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
 		this.registerCommands();
 		this.registerFileMenu();
 		this.registerWritingCount();
@@ -903,6 +958,11 @@ export default class SnowflakeMethodPlugin
 		);
 
 		this.app.workspace.onLayoutReady(() => {
+			// The notes this device remembers floating come back before anything
+			// else asks for them.
+			void this.reconcileStickyFloats().catch((error: unknown) => {
+				this.showError(error);
+			});
 			// The tracking pane's view is gone -- the dashboard's Entity
 			// tracking tab is its home now -- and a workspace still holding
 			// one of its leaves would show an empty placeholder forever.
@@ -969,6 +1029,15 @@ export default class SnowflakeMethodPlugin
 		// the per-device store before anything else happens, so the next load
 		// can close the session out instead of losing it.
 		this.sessions.markShutdown();
+		// Typed sticky-note text still waiting on its quiet timer lands now, and
+		// every editor lets its note go.
+		void this.stickyNoteHub.claims.releaseAll();
+		for (const layer of this.stickyLayers.values()) layer.destroy();
+		this.stickyLayers.clear();
+		if (this.stickyNoteNotifyTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(this.stickyNoteNotifyTimer);
+			this.stickyNoteNotifyTimer = null;
+		}
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
 		this.projects.mentions.dispose();
@@ -3625,6 +3694,20 @@ export default class SnowflakeMethodPlugin
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
+	async openStickyNotesView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(
+			STICKY_NOTES_VIEW_TYPE,
+		)[0];
+		if (existing !== undefined) {
+			await this.app.workspace.revealLeaf(existing);
+			return;
+		}
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf === null) return;
+		await leaf.setViewState({ type: STICKY_NOTES_VIEW_TYPE, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
 	/** The one bridge every session panel renders through. */
 	/**
 	 * The one bridge every session panel renders through, over whichever
@@ -3822,6 +3905,99 @@ export default class SnowflakeMethodPlugin
 			},
 			deleteOccurrence: (id, occurrenceId) =>
 				this.deleteForeshadowingOccurrence(panelProject(), id, occurrenceId),
+		};
+	}
+
+	stickyNotes(context: SessionPanelContext = {}): StickyNoteBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		return {
+			t,
+			hub: this.stickyNoteHub,
+			read: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					readOnly: project.readOnly,
+					notes: await this.projects.stickyNotes.list(project),
+				};
+			},
+			readNote: (path) => this.projects.stickyNotes.read(path),
+			stamp: (path) => this.projects.stickyNotes.stamp(path),
+			editorPreferences: () => ({
+				autoPairBrackets: this.settings.manuscriptAutoPairBrackets,
+				autoPairMarkdown: this.settings.manuscriptAutoPairMarkdown,
+			}),
+			create: (color) => this.createStickyNote(panelProject(), color),
+			writeBody: (path, body, expectedRevision) =>
+				this.writeStickyNoteBody(path, body, expectedRevision),
+			setColor: (note, color) =>
+				this.mutateStickyNote(panelProject(), async () => {
+					await this.projects.stickyNotes.setColor(note.path, color);
+				}),
+			// The editor lets go before the flag is written, so the archive
+			// can never land on top of a save that was still on its way.
+			archive: (note) =>
+				this.mutateStickyNote(panelProject(), async () => {
+					await this.stickyNoteHub.claims.evict(note.id);
+					await this.projects.stickyNotes.setArchived(note.path, true);
+					this.closeStickyFloats(note.id);
+				}),
+			restore: (note) =>
+				this.mutateStickyNote(panelProject(), async () => {
+					await this.projects.stickyNotes.setArchived(note.path, false);
+				}),
+			deleteNote: async (note) => {
+				const project = await this.writableProject(panelProject());
+				if (project === null) return false;
+				const current = await this.projects.stickyNotes.read(note.path);
+				// Gone already is what was asked; declining is not a refusal.
+				if (current === null) return true;
+				const confirmed = await confirmStickyNoteDeletion(
+					this.app,
+					t,
+					stickyNotePreview(current.body),
+				);
+				if (!confirmed) return true;
+				return this.mutateStickyNote(panelProject(), async () => {
+					await this.stickyNoteHub.claims.evict(note.id);
+					await this.projects.stickyNotes.trash(note.path);
+					this.closeStickyFloats(note.id);
+					this.stickyNoteHub.forget(note.id);
+				});
+			},
+			deleteArchived: async (notes) => {
+				const project = await this.writableProject(panelProject());
+				if (project === null) return false;
+				// Only what is still set aside goes: a note restored or gone
+				// since the board read is left where it stands.
+				const standing: StickyNoteKey[] = [];
+				for (const note of notes) {
+					const current = await this.projects.stickyNotes.read(note.path);
+					if (current?.archived === true) standing.push(note);
+				}
+				if (standing.length === 0) return true;
+				const confirmed = await confirmStickyNoteEmptying(this.app, t, standing.length);
+				if (!confirmed) return true;
+				return this.mutateStickyNote(panelProject(), async () => {
+					for (const note of standing) {
+						await this.stickyNoteHub.claims.evict(note.id);
+						await this.projects.stickyNotes.trash(note.path);
+						this.closeStickyFloats(note.id);
+						this.stickyNoteHub.forget(note.id);
+					}
+				});
+			},
+			openNote: (path) => this.openManagedFile(path),
+			float: (id, win, options) => this.floatStickyNote(id, win, options),
+			isFloating: (id, win) => this.isStickyNoteFloating(id, win),
 		};
 	}
 
@@ -5471,6 +5647,145 @@ export default class SnowflakeMethodPlugin
 		return result;
 	}
 
+	/**
+	 * One sticky-note mutation through the writable gate and out to every
+	 * surface. Null from the gate is a refusal, answered as false without
+	 * touching the file; the surfaces decide what to show on what they are
+	 * told back.
+	 */
+	private async mutateStickyNote(
+		projectPath: string | null,
+		work: (project: ProjectSnapshot) => Promise<void>,
+	): Promise<boolean> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return false;
+		await work(project);
+		this.stickyNoteHub.notify();
+		return true;
+	}
+
+	private async createStickyNote(
+		projectPath: string | null,
+		color: StickyNoteColor = DEFAULT_STICKY_NOTE_COLOR,
+	): Promise<StickyNoteRecord | null> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return null;
+		const note = await this.projects.stickyNotes.create(project, color);
+		this.stickyNoteHub.notify();
+		return note;
+	}
+
+	/**
+	 * A sticky note's body, written under the revision its editor holds. A
+	 * file that moved on meanwhile says so in the author's own words rather
+	 * than the repository's, as the manuscript's save does.
+	 */
+	private async writeStickyNoteBody(
+		path: string,
+		body: string,
+		expectedRevision: string,
+	): Promise<StickyNoteRecord> {
+		try {
+			return await this.projects.stickyNotes.writeBody(path, body, expectedRevision);
+		} catch (error) {
+			if (error instanceof ConcurrentChangeError) {
+				throw new StickyNoteSaveConflict(
+					this.translateForProject(
+						this.projectLocaleOfPath(path),
+						'errors.concurrentChange',
+					),
+				);
+			}
+			throw error;
+		}
+	}
+
+	/** The palette and the ribbon: a new note, floating in the author's window, ready to type into. */
+	private async createStickyNoteAndFloat(): Promise<void> {
+		const note = await this.createStickyNote(this.settings.recentProjectPath);
+		if (note === null) {
+			new Notice(this.projectT('messages.noCurrentProject'));
+			return;
+		}
+		await this.floatStickyNote(
+			note.id,
+			this.app.workspace.containerEl.win.activeWindow,
+			{ mode: 'editing', focus: true },
+		);
+	}
+
+	/** The layer of one window, made the first time that window floats a note. */
+	private stickyLayerFor(win: Window): StickyNoteFloatLayer {
+		const doc = win.document;
+		let layer = this.stickyLayers.get(doc);
+		if (layer === undefined) {
+			layer = new StickyNoteFloatLayer(doc, {
+				app: this.app,
+				plugin: this,
+				bridge: this.stickyNotes(),
+				locale: () => this.currentLocale(),
+			});
+			this.stickyLayers.set(doc, layer);
+		}
+		return layer;
+	}
+
+	private async floatStickyNote(
+		id: string,
+		win: Window,
+		options: StickyNoteFloatOptions = {},
+	): Promise<void> {
+		const project = await this.resolveProject(null);
+		if (project === null) return;
+		const note = (await this.projects.stickyNotes.list(project)).find(
+			(candidate) => candidate.id === id,
+		);
+		if (note === undefined || note.archived) return;
+		this.stickyLayerFor(win).open(note, project.projectFile, options);
+	}
+
+	private isStickyNoteFloating(id: string, win: Window): boolean {
+		return this.stickyLayers.get(win.document)?.has(id) ?? false;
+	}
+
+	private closeStickyFloats(id: string): void {
+		for (const layer of this.stickyLayers.values()) layer.close(id);
+	}
+
+	/**
+	 * Every window's floating notes brought level with the current project:
+	 * at layout-ready, and whenever the project moves. The main window's
+	 * layer is made here if nothing has made it yet, so notes remembered
+	 * open come back at the next start without a first float.
+	 */
+	private async reconcileStickyFloats(): Promise<void> {
+		const recent = this.settings.recentProjectPath;
+		this.stickyFloatsProject = recent;
+		const project = await this.resolveProject(null);
+		const projectPath = project?.projectFile ?? null;
+		const notes = project === null ? [] : await this.projects.stickyNotes.list(project);
+		this.stickyLayerFor(this.app.workspace.containerEl.win);
+		for (const layer of this.stickyLayers.values()) {
+			layer.reconcile(projectPath, notes);
+		}
+	}
+
+	/**
+	 * A sticky file changed in the vault: every surface reads again once the
+	 * burst has settled. The main window's clock, so a popout closing can
+	 * never take the bell with it.
+	 */
+	private scheduleStickyNoteNotify(): void {
+		const workspaceWindow = this.app.workspace.containerEl.win;
+		if (this.stickyNoteNotifyTimer !== null) {
+			workspaceWindow.clearTimeout(this.stickyNoteNotifyTimer);
+		}
+		this.stickyNoteNotifyTimer = workspaceWindow.setTimeout(() => {
+			this.stickyNoteNotifyTimer = null;
+			this.stickyNoteHub.notify();
+		}, REFRESH_DELAY_MS);
+	}
+
 	createRevision(
 		projectPath: string | null,
 		revision: Revision,
@@ -7075,6 +7390,28 @@ export default class SnowflakeMethodPlugin
 				return available;
 			},
 		});
+		this.addCommand({
+			id: 'open-sticky-notes',
+			name: this.globalT('commands.openStickyNotes'),
+			callback: () => {
+				void this.openStickyNotesView().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'new-sticky-note',
+			name: this.globalT('commands.newStickyNote'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.createStickyNoteAndFloat().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
 		for (const base of ['characters', 'scenes'] as const) {
 			this.addCommand({
 				id: base === 'characters' ? 'open-character-base' : 'open-scene-base',
@@ -7453,6 +7790,14 @@ export default class SnowflakeMethodPlugin
 
 	private handleVaultEvent(file: TAbstractFile): void {
 		if (!this.touchesProject(file.path)) return;
+		// A sticky note is no part of the dashboard model: the surfaces showing
+		// it are told directly, and the dashboards keep their frames, which a
+		// refresh would rebuild around the tab's live editor at every save.
+		if (file instanceof TFile && isStickyNotePath(file.path)) {
+			this.scheduleStickyNoteNotify();
+			this.scheduleWritingCountRefresh(1000);
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -7586,6 +7931,12 @@ export default class SnowflakeMethodPlugin
 			children: file instanceof TFolder,
 		});
 		if (!this.touchesProject(file.path)) return;
+		if (file instanceof TFile && isStickyNotePath(file.path)) {
+			this.scheduleStickyNoteNotify();
+			return;
+		}
+		// A project folder going takes its notes' surfaces with it.
+		if (file instanceof TFolder) this.scheduleStickyNoteNotify();
 		this.invalidateProjectHealth(file.path);
 		this.detachProjectViews(file.path);
 		this.scheduleRefresh(true);
@@ -7743,6 +8094,18 @@ export default class SnowflakeMethodPlugin
 			})
 			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
+		// A sticky note renamed or moved keeps its identity in its frontmatter:
+		// the surfaces find it again by id, and the dashboard model is untouched.
+		if (
+			file instanceof TFile &&
+			(isStickyNotePath(oldPath) || isStickyNotePath(file.path)) &&
+			(this.touchesProject(oldPath) || this.touchesProject(file.path))
+		) {
+			this.scheduleStickyNoteNotify();
+			return;
+		}
+		// A project folder moving takes its notes' surfaces with it.
+		if (file instanceof TFolder) this.scheduleStickyNoteNotify();
 		// The configured root travels with its folder. Leaving the setting on a
 		// path that no longer exists would empty the dashboard while every
 		// project note is still on disk. This is checked before the containment
@@ -7980,6 +8343,16 @@ export default class SnowflakeMethodPlugin
 			STATISTICS_VIEW_TYPE,
 		)) {
 			if (leaf.view instanceof SnowflakeStatisticsView) leaf.view.rerender();
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			STICKY_NOTES_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeStickyNotesView) leaf.view.rerender();
+		}
+		if (this.stickyFloatsProject !== this.settings.recentProjectPath) {
+			void this.reconcileStickyFloats().catch((error: unknown) => {
+				this.showError(error);
+			});
 		}
 		this.repaintProjectSurfaces();
 	}

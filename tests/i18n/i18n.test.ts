@@ -7,7 +7,9 @@ import {
 	OCCURRENCE_ROLES,
 	READING_MEASURES,
 	WRITING_MODES,
+	STICKY_NOTE_COLORS,
 } from '../../src/domain';
+import { TASKS_TABS } from '../../src/ui/dashboard-state';
 import {
 	SUPPORTED_LOCALES,
 	en,
@@ -1308,5 +1310,35 @@ describe('foreshadowing copy', () => {
 		}
 		expect(en['manuscript.foreshadowing.corruptPreserved']).toContain('{path}');
 		expect(zhCN['manuscript.foreshadowing.corruptPreserved']).toContain('{path}');
+	});
+});
+
+/**
+ * The sticky-note copy reaches the screen through built keys -- the tab
+ * label, the colour names -- that the type checker never sees go missing.
+ */
+describe('sticky note copy', () => {
+	it('names every task management tab in both languages', () => {
+		for (const tab of TASKS_TABS) {
+			expect(Object.keys(en), tab).toContain(`tasks.tab.${tab}`);
+			expect(Object.keys(zhCN), tab).toContain(`tasks.tab.${tab}`);
+		}
+		expect(en['tasks.tab.stickyNotes']).toBe('Sticky notes');
+		expect(zhCN['tasks.tab.stickyNotes']).toBe('便签');
+	});
+
+	it('names the commands, the sidebar and every macaron colour in both languages', () => {
+		expect(en['commands.newStickyNote']).toBe('New sticky note');
+		expect(zhCN['commands.newStickyNote']).toBe('新建便签');
+		expect(en['commands.openStickyNotes']).toBe('Open sticky notes');
+		expect(zhCN['commands.openStickyNotes']).toBe('打开便签');
+		expect(zhCN['stickyNotes.viewTitle']).toBe('便签');
+		for (const color of STICKY_NOTE_COLORS) {
+			expect(Object.keys(en), color).toContain(`stickyNotes.color.${color}`);
+			expect(Object.keys(zhCN), color).toContain(`stickyNotes.color.${color}`);
+		}
+		expect(zhCN['stickyNotes.color.macaron-8']).toBe('香芋');
+		expect(zhCN['stickyNotes.archive']).toBe('归档');
+		expect(zhCN['stickyNotes.float']).toBe('悬浮');
 	});
 });
