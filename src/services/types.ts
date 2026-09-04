@@ -61,6 +61,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "writingSessions",
   "manuscriptAnalysis",
   "mentionIndex",
+  "foreshadowing",
   "revisions",
   "materials",
   "archive",
@@ -95,8 +96,10 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       // per-device mention index cache beside them.
       manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Prose_Analysis",
       mentionIndex: "70_Tool/71_Data_Statistics/713_Entity_Tracking",
-      // The task-management chain, one entry like the statistics chain above:
-      // the revision file is the only tenant until its sibling tabs are built.
+      // The task-management chain, one entry per tenant like the statistics
+      // chain above: the foreshadowing file and the revision file, each in
+      // its own folder, the Tasks and Sticky notes slots still to be built.
+      foreshadowing: "70_Tool/72_Task_Management/722_Foreshadowing",
       revisions: "70_Tool/72_Task_Management/723_Revision",
       materials: "80_Material",
       archive: "90_Archive",
@@ -121,6 +124,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       writingSessions: "70_工具/71_数据统计/711_写作时段",
       manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
       mentionIndex: "70_工具/71_数据统计/713_实体追踪",
+      foreshadowing: "70_工具/72_任务管理/722_伏笔",
       revisions: "70_工具/72_任务管理/723_修订",
       materials: "80_素材",
       archive: "90_存档",
@@ -329,13 +333,14 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  *
  * The 711-713 folders are not these: they are part of the shape a project is
  * built with, and a project missing one is a project to put right. A revisions
- * folder is only ever wanted once the author has proposed a change, and the
- * store ensures the chain on its way to the first write -- so demanding one up
- * front would mark every project made before this feature as damaged over a
- * folder nothing is waiting for.
+ * folder is only ever wanted once the author has proposed a change, and a
+ * foreshadowing folder once a thread has been set up; each store ensures its
+ * chain on the way to the first write -- so demanding one up front would mark
+ * every project made before the feature as damaged over a folder nothing is
+ * waiting for.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
-  new Set<ProjectDirectoryKey>(["revisions"]);
+  new Set<ProjectDirectoryKey>(["foreshadowing", "revisions"]);
 
 /** A project-level contract problem that exists before marker inspection. */
 export interface ProjectStructureIssue {

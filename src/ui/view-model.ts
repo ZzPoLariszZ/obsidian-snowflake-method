@@ -7,11 +7,18 @@ import type {
 	DialogueStyle,
 	EntityKindId,
 	EntityMatcher,
+	EntityRosterEntry,
+	Foreshadowing,
+	ForeshadowingEdit,
+	ForeshadowingOccurrence,
+	ForeshadowingRef,
 	ManuscriptPresentation,
 	MentionHighlightMode,
 	MilestoneCountOptions,
 	MilestoneMode,
 	MentionIgnore,
+	OccurrencePlacement,
+	OccurrenceRole,
 	ProgressStatus,
 	ProjectWorldbuildingKind,
 	Revision,
@@ -26,6 +33,7 @@ import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
 import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
+import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
 import type { RevisionPanelBridge } from './revision-panel';
 import type {
 	SessionPanelBridge,
@@ -505,6 +513,83 @@ export interface ManuscriptHost {
 	discardRevision(projectPath: string | null, id: string): Promise<boolean>;
 	/** A fresh id for a revision about to be captured. */
 	mintRevisionId(): string;
+	/** The project's foreshadowing, for the feed both halves share. */
+	manuscriptForeshadowings(
+		projectPath: string | null,
+	): Promise<readonly Foreshadowing[]>;
+	/**
+	 * Writes one thread, then re-dresses streams and dashboards. False when
+	 * the write did not happen -- no project answers for the path, the
+	 * project is read-only, or the store refused -- so a form can stay open
+	 * on what was typed rather than assuming its words landed.
+	 */
+	createForeshadowing(
+		projectPath: string | null,
+		item: Foreshadowing,
+	): Promise<boolean>;
+	/** The edit form's save, one write; false as above, or when the thread is gone. */
+	editForeshadowing(
+		projectPath: string | null,
+		id: string,
+		next: ForeshadowingEdit,
+	): Promise<boolean>;
+	/**
+	 * Takes one thread out with every occurrence it holds. False only when
+	 * the write was refused; a thread another view deleted first answers
+	 * true, since it is gone, which is what was asked.
+	 */
+	deleteForeshadowing(projectPath: string | null, id: string): Promise<boolean>;
+	/** Appends one occurrence to a thread; false as for `createForeshadowing`. */
+	addForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrence: ForeshadowingOccurrence,
+	): Promise<boolean>;
+	/** Rewrites one occurrence's role and note; false as above. */
+	updateForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+		patch: { role: OccurrenceRole; note: string },
+	): Promise<boolean>;
+	/** Takes one occurrence out; false only when the write was refused. */
+	deleteForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+	): Promise<boolean>;
+	/** Puts one occurrence on a fresh passage; false as for `editForeshadowing`. */
+	relinkForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+		placement: OccurrencePlacement,
+	): Promise<boolean>;
+	/** Fresh ids for a thread and an occurrence about to be captured. */
+	mintForeshadowingId(): string;
+	mintOccurrenceId(): string;
+	/**
+	 * Every entity a thread may be about, with the stable id a ref is kept
+	 * by and the group the pickers list it under. Read-only projects answer
+	 * too: their members still hold names a ref can point at.
+	 */
+	foreshadowingEntityRoster(
+		projectPath: string | null,
+	): Promise<readonly EntityRosterEntry[]>;
+	/**
+	 * Every occurrence no chapter still answers for, project-wide, for the
+	 * relink search. A sweep over every chapter carrying occurrences, so it
+	 * is asked only when the author opens that search.
+	 */
+	unresolvedForeshadowingOccurrences(
+		projectPath: string | null,
+	): Promise<readonly ForeshadowingRef[]>;
+	/**
+	 * Opens the thread's own editor -- name, description, status, related
+	 * entities, and the role and note of each occurrence -- whose save is one
+	 * write. Resolves when the dialog closes, whichever way.
+	 */
+	openForeshadowingEditor(projectPath: string | null, id: string): Promise<void>;
 	/** Writes one ignore rule, then re-dresses every open stream. */
 	addMentionIgnore(
 		projectPath: string | null,
@@ -569,6 +654,8 @@ export interface DashboardHost {
 	entityTracking(context: SessionPanelContext): EntitiesPanelBridge;
 	/** The bridge the task management pane renders the revision table through. */
 	revisionTable(context: SessionPanelContext): RevisionPanelBridge;
+	/** The bridge the task management pane renders the foreshadowing table through. */
+	foreshadowingTable(context: SessionPanelContext): ForeshadowingPanelBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

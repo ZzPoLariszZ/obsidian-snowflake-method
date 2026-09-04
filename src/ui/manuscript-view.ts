@@ -14,8 +14,11 @@ import {
 
 import {
 	analyzeMentions,
+	anchorOccurrence,
 	anchorRevision,
 	anchorSpot,
+	captureOccurrence,
+	captureOccurrencePlacement,
 	captureRevision,
 	combineMentionMarks,
 	type CompiledHighlightRules,
@@ -31,11 +34,19 @@ import {
 	type MentionIgnore,
 	type MentionMark,
 	milestonePositions,
+	compareOccurrencesAtOneSpot,
 	compareRevisionsAtOneSpot,
+	type Foreshadowing,
+	type ForeshadowingOccurrence,
+	type ForeshadowingPlan,
+	type OccurrencePlacement,
+	type OccurrenceRole,
+	orderOccurrences,
 	orderRevisions,
 	overlapsLive,
 	passageContext,
 	planDialogueMarks,
+	planForeshadowingMarks,
 	planHighlightMarks,
 	planMentionMarks,
 	planMilestoneMarks,
@@ -55,12 +66,18 @@ import {
 import { activeSegmentAt, planWindow } from './manuscript-window';
 import {
 	applyDialogueMarks,
+	applyForeshadowingMarks,
 	applyMentionMarks,
 	applyMilestoneMarks,
 	applyRevisionMarks,
 	clearMentionMarks,
 	projectMentionMarks,
 } from './mention-marks';
+import {
+	promptForForeshadowing,
+	promptForForeshadowingPick,
+	promptForOccurrenceRelink,
+} from './foreshadowing-form';
 import { addMentionMenuItems, openMentionMenu } from './mention-menu';
 import {
 	renderRevisionRail,
@@ -160,6 +177,8 @@ interface MountedSegment {
 		dialogue: MentionMark[];
 		/** The revision layer apart again, with its anchors and conflicts. */
 		revisions: RevisionPlan;
+		/** The foreshadowing layer likewise, with its anchors and unresolved. */
+		foreshadowing: ForeshadowingPlan;
 		/** The milestone layer: silent marks carrying the labels the page draws. */
 		milestones: MentionMark[];
 	} | null;
@@ -184,6 +203,8 @@ interface MentionFeedState {
 	ignores: readonly MentionIgnore[];
 	/** The project's standing revisions, re-anchored per body at plan time. */
 	revisions: readonly Revision[];
+	/** The project's foreshadowing, re-anchored per body at plan time. */
+	foreshadowings: readonly Foreshadowing[];
 	/** The dress-only families, disabled features handed in empty. */
 	sensitive: SensitiveMatcher;
 	highlights: CompiledHighlightRules;
@@ -192,6 +213,20 @@ interface MentionFeedState {
 		presentation: DialoguePresentation;
 	};
 }
+
+/** The thread and occurrence a feed holds under one occurrence id. */
+const occurrenceRefIn = (
+	items: readonly Foreshadowing[],
+	occurrenceId: string,
+): { item: Foreshadowing; occurrence: ForeshadowingOccurrence } | null => {
+	for (const item of items) {
+		const occurrence = item.occurrences.find(
+			(candidate) => candidate.id === occurrenceId,
+		);
+		if (occurrence !== undefined) return { item, occurrence };
+	}
+	return null;
+};
 
 const sameMentionMarks = (
 	left: readonly MentionMark[],
@@ -308,6 +343,30 @@ export class SnowflakeManuscriptView extends ItemView {
 		segments: readonly unknown[];
 		dressings: readonly unknown[];
 		order: readonly Revision[];
+	} | null = null;
+	/**
+	 * The manuscript order of each thread's occurrences, held on the same
+	 * three things the revisions' order is. A card's arrows walk the chain
+	 * of its OWN thread -- a payoff is answered by looking back at what it
+	 * pays off, not at the next thread's plant three chapters on -- so this
+	 * is a map from thread to chain rather than one list.
+	 */
+	/**
+	 * Whether the project has an occurrence waiting to be relinked, as the
+	 * last sweep of the chapters found it for the feed it answered: what the
+	 * context menu reads to offer the relink entry, since a menu is built in
+	 * the moment and a sweep reads chapters.
+	 */
+	private unresolvedSweep: {
+		feed: readonly Foreshadowing[];
+		any: boolean;
+	} | null = null;
+	private unresolvedSweepPending: readonly Foreshadowing[] | null = null;
+	private occurrenceOrderMemo: {
+		foreshadowings: readonly Foreshadowing[];
+		segments: readonly unknown[];
+		dressings: readonly unknown[];
+		chains: ReadonlyMap<string, readonly ForeshadowingOccurrence[]>;
 	} | null = null;
 
 	/**
@@ -523,7 +582,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (this.containerEl.isShown()) {
 			// The rail's room and every card's height answer to the pane.
 			for (const entry of this.mounted.values()) {
-				if (entry.rail !== null) this.syncRevisionRail(entry);
+				if (entry.rail !== null) this.syncSegmentRail(entry);
 			}
 			this.syncRevisionOverlay();
 		}
@@ -1396,6 +1455,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			body,
 			state?.revisions ?? [],
 		);
+		const foreshadowing = this.foreshadowingPlan(entry.path, body, state);
 		const milestones = this.milestoneMarks(entry.path, body);
 		const previous = entry.mentions;
 		entry.mentions = {
@@ -1404,6 +1464,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			marks,
 			dialogue,
 			revisions,
+			foreshadowing,
 			milestones,
 		};
 		if (
@@ -1413,23 +1474,33 @@ export class SnowflakeManuscriptView extends ItemView {
 			sameMentionMarks(previous.dialogue, dialogue) &&
 			sameMentionMarks(previous.revisions.plan, revisions.plan) &&
 			previous.revisions.conflicts.length === revisions.conflicts.length &&
+			sameMentionMarks(previous.foreshadowing.plan, foreshadowing.plan) &&
+			previous.foreshadowing.conflicts.length ===
+				foreshadowing.conflicts.length &&
 			sameMentionMarks(previous.milestones, milestones)
 		) {
-			this.syncRevisionRail(entry);
+			this.syncSegmentRail(entry);
 			return;
 		}
 		clearMentionMarks(rendered);
 		// The milestone layer wraps outermost of all: its label is positioned
 		// from the block it stands in, and a span of another family standing
 		// around it -- an insertion's, which is positioned -- would take that
-		// place. Then the revision layer -- it overlaps whatever stands inside
-		// it -- then dialogue, so the indexed marks nest inside the quoted
-		// stretch they stand in rather than losing the overlap outright.
+		// place. Then the foreshadowing layer, whose stretches are the longer
+		// ones -- a sentence against a phrase -- so the nesting reads the way
+		// the marks do; then the revision layer -- it overlaps whatever
+		// stands inside it -- then dialogue, so the indexed marks nest inside
+		// the quoted stretch they stand in rather than losing the overlap
+		// outright.
 		applyMilestoneMarks(rendered, projectMentionMarks(body, milestones));
+		applyForeshadowingMarks(
+			rendered,
+			projectMentionMarks(body, foreshadowing.plan),
+		);
 		applyRevisionMarks(rendered, projectMentionMarks(body, revisions.plan));
 		applyDialogueMarks(rendered, projectMentionMarks(body, dialogue));
 		applyMentionMarks(rendered, projectMentionMarks(body, marks));
-		this.syncRevisionRail(entry);
+		this.syncSegmentRail(entry);
 	}
 
 	/** The rendered dress, once the feed answers, if nothing moved meanwhile. */
@@ -1485,6 +1556,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		// whichever way the points are drawn, and the page's own borrowing of
 		// a character is only ever asked for when the page is drawn.
 		const revisions = planRevisionMarks(path, body, state.revisions, true);
+		const foreshadowing = this.foreshadowingPlan(path, body, state);
 		const entry = this.mounted.get(path);
 		const known = entry?.milestoneTotal?.total ?? null;
 		const milestones = this.milestoneMarks(path, body);
@@ -1495,13 +1567,14 @@ export class SnowflakeManuscriptView extends ItemView {
 				marks,
 				dialogue,
 				revisions,
+				foreshadowing,
 				milestones,
 			};
 			// Asked from inside the editor's own update: the rail waits its
 			// turn behind a timer rather than a frame, because a hidden
 			// window stops giving frames and the cards still deserve their
 			// places when it comes back.
-			this.scheduleRevisionRailSync(path);
+			this.scheduleSegmentRailSync(path);
 			// A count that moved here moves every milestone in the notes after
 			// this one, when the count runs on through the book: they are
 			// re-dressed a beat later, from outside the editor's update.
@@ -1513,9 +1586,48 @@ export class SnowflakeManuscriptView extends ItemView {
 			}
 		}
 		// The editor's decoration set takes overlap in stride: the dialogue,
-		// revision and milestone layers simply nest around whatever marks
-		// stand inside them.
-		return [...marks, ...dialogue, ...revisions.plan, ...milestones];
+		// revision, foreshadowing and milestone layers simply nest around
+		// whatever marks stand inside them, overlapping threads included.
+		return [
+			...marks,
+			...dialogue,
+			...revisions.plan,
+			...foreshadowing.plan,
+			...milestones,
+		];
+	}
+
+	/**
+	 * One note's foreshadowing dress, titled for the pointer: the thread's
+	 * name and this appearance's role, so overlapping threads can be told
+	 * apart by hovering. The planner has no translator, so the title is put
+	 * on here, in the one place both halves read.
+	 */
+	private foreshadowingPlan(
+		path: string,
+		body: string,
+		state: MentionFeedState | null,
+	): ForeshadowingPlan {
+		const items = state?.foreshadowings ?? [];
+		const planned = planForeshadowingMarks(path, body, items);
+		const roles = new Map<string, OccurrenceRole>();
+		for (const item of items) {
+			for (const occurrence of item.occurrences) {
+				roles.set(occurrence.id, occurrence.role);
+			}
+		}
+		return {
+			...planned,
+			plan: planned.plan.map((mark) => {
+				const role =
+					mark.occurrence.type === 'foreshadowing'
+						? roles.get(mark.occurrence.occurrenceId)
+						: undefined;
+				if (role === undefined) return mark;
+				const label = this.t(`foreshadowing.role.${role}`);
+				return { ...mark, title: `${mark.title ?? ''} · ${label}` };
+			}),
+		};
 	}
 
 	/** The milestone settings in force, or null while none are drawn. */
@@ -1753,10 +1865,13 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * long note, a whitespace-only body -- and the rail then simply stacks
 	 * the card after the one before it.
 	 */
-	private revisionAnchorTop(
+	private markAnchorTop(
 		entry: MountedSegment,
-		revisionId: string,
 		from: number,
+		plan: readonly MentionMark[],
+		attribute: string,
+		names: (mark: MentionMark) => boolean,
+		borrows: boolean,
 	): number | null {
 		const base = entry.el.getBoundingClientRect().top;
 		if (entry.editor !== null) {
@@ -1765,29 +1880,62 @@ export class SnowflakeManuscriptView extends ItemView {
 			// A dead or empty handle mid-swap: fall through to whatever the
 			// rendered half still shows rather than answering nothing.
 		}
-		const kept = entry.mentions;
-		if (kept === null) return null;
-		const plan = kept.revisions.plan;
-		let index = plan.findIndex(
-			(mark) =>
-				mark.occurrence.type === 'revision' &&
-				mark.occurrence.revisionId === revisionId,
-		);
+		let index = plan.findIndex(names);
 		// A point at a range's edge has no mark of its own: the range's mark
 		// wears its bar. The card is placed by that mark, which is drawn where
 		// the bar is, rather than sent to the head of the segment as a card
 		// with no anchor.
-		if (index < 0) {
+		if (index < 0 && borrows) {
 			index = plan.findIndex(
 				(mark) => mark.from <= from && from <= mark.to,
 			);
 		}
 		if (index < 0) return null;
 		const piece = entry.bodyEl.querySelector(
-			`[data-snowflake-method-revision="${String(index)}"]`,
+			`[${attribute}="${String(index)}"]`,
 		);
 		if (!(piece instanceof HTMLElement)) return null;
 		return piece.getBoundingClientRect().top - base;
+	}
+
+	/** Where one revision's card belongs, by its mark or the bar it borrows. */
+	private revisionAnchorTop(
+		entry: MountedSegment,
+		revisionId: string,
+		from: number,
+	): number | null {
+		return this.markAnchorTop(
+			entry,
+			from,
+			entry.mentions?.revisions.plan ?? [],
+			'data-snowflake-method-revision',
+			(mark) =>
+				mark.occurrence.type === 'revision' &&
+				mark.occurrence.revisionId === revisionId,
+			true,
+		);
+	}
+
+	/**
+	 * Where one occurrence's card belongs. An occurrence is always a range
+	 * with a mark of its own, so nothing is borrowed; a mark the wrap
+	 * declined to draw measures null and the card follows the one above it.
+	 */
+	private foreshadowingAnchorTop(
+		entry: MountedSegment,
+		occurrenceId: string,
+		from: number,
+	): number | null {
+		return this.markAnchorTop(
+			entry,
+			from,
+			entry.mentions?.foreshadowing.plan ?? [],
+			'data-snowflake-method-foreshadowing',
+			(mark) =>
+				mark.occurrence.type === 'foreshadowing' &&
+				mark.occurrence.occurrenceId === occurrenceId,
+			false,
+		);
 	}
 
 	/**
@@ -1796,7 +1944,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * written if it belongs here. A segment with nothing to show gives its
 	 * rail back rather than keeping an empty column standing.
 	 */
-	private syncRevisionRail(entry: MountedSegment): void {
+	private syncSegmentRail(entry: MountedSegment): void {
 		// While a click or an arrival is still being compensated, nothing
 		// here may read layout: the geometry hook asks again once the page
 		// has been given back.
@@ -1821,8 +1969,9 @@ export class SnowflakeManuscriptView extends ItemView {
 				? this.revisionDraft
 				: null;
 		const plan = kept.revisions;
-		// Wanted for what the plan holds, or for a form still open in it: the
-		// rail keeps an edited card past its revision on its own, but only if
+		const threads = kept.foreshadowing;
+		// Wanted for what the plans hold, or for a form still open in it: the
+		// rail keeps an edited card past its record on its own, but only if
 		// it is still standing to keep it. A revision discarded from the table
 		// while its form is open here would otherwise take the rail, the form
 		// and the sentence being typed into it down together.
@@ -1830,6 +1979,8 @@ export class SnowflakeManuscriptView extends ItemView {
 			draft !== null ||
 			plan.anchors.size > 0 ||
 			plan.conflicts.length > 0 ||
+			threads.anchors.size > 0 ||
+			threads.conflicts.length > 0 ||
 			entry.rail?.editing() === true;
 		if (!wanted) {
 			entry.rail?.dispose();
@@ -1848,7 +1999,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		const state = this.mentionState;
 		if (state === null) return;
 		const feed = state.revisions;
-		entry.rail ??= this.buildRevisionRail(entry.path);
+		entry.rail ??= this.buildSegmentRail(entry.path);
 		const standing = [...plan.anchors.entries()].flatMap(([id, anchor]) => {
 			const revision = feed.find((candidate) => candidate.id === id);
 			if (revision === undefined) return [];
@@ -1869,11 +2020,38 @@ export class SnowflakeManuscriptView extends ItemView {
 				left.from - right.from ||
 				compareRevisionsAtOneSpot(left.revision, right.revision),
 		);
+		// The thread cards by the same rule, from the same feed.
+		const occurrences = [...threads.anchors.entries()].flatMap(
+			([id, anchor]) => {
+				const ref = occurrenceRefIn(state.foreshadowings, id);
+				if (ref === null) return [];
+				return [
+					{
+						...ref,
+						from: anchor.from,
+						top: this.foreshadowingAnchorTop(entry, id, anchor.from),
+					},
+				];
+			},
+		);
+		occurrences.sort(
+			(left, right) =>
+				left.from - right.from ||
+				compareOccurrencesAtOneSpot(left.occurrence, right.occurrence),
+		);
 		entry.rail.sync({
 			entries: standing.map(({ revision, top }) => ({ revision, top })),
 			conflicts: [...plan.conflicts],
 			draft,
 			readOnly: this.model?.readOnly === true || entry.text.readOnly,
+			foreshadowing: {
+				entries: occurrences.map(({ item, occurrence, top }) => ({
+					item,
+					occurrence,
+					top,
+				})),
+				unresolved: threads.conflicts.map((ref) => ({ ...ref, top: null })),
+			},
 		});
 		this.syncRevisionOverlay();
 	}
@@ -1887,7 +2065,7 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * through every settle -- without a frame loop that guesses at when
 	 * the editor is done.
 	 */
-	private scheduleRevisionRailSync(path: string): void {
+	private scheduleSegmentRailSync(path: string): void {
 		const kept = this.revisionRailTimers.get(path);
 		if (kept !== undefined) this.contentEl.win.clearTimeout(kept);
 		this.revisionRailTimers.set(
@@ -1902,13 +2080,13 @@ export class SnowflakeManuscriptView extends ItemView {
 				// away gives none until it is shown again, which a timer that
 				// re-armed itself would go on doing every beat until then.
 				if (this.puttingBack || this.walkingIn) return;
-				this.syncRevisionRail(entry);
+				this.syncSegmentRail(entry);
 			}, 80),
 		);
 	}
 
 	/** The callbacks one segment's rail answers with, looked up per call. */
-	private buildRevisionRail(path: string): RevisionRail {
+	private buildSegmentRail(path: string): RevisionRail {
 		const entryNow = (): MountedSegment | undefined => this.mounted.get(path);
 		const projectPath = (): string | null =>
 			this.model?.projectPath ?? this.projectPath;
@@ -1964,14 +2142,311 @@ export class SnowflakeManuscriptView extends ItemView {
 			onDraftCancel: () => {
 				this.revisionDraft = null;
 				const entry = entryNow();
-				if (entry !== undefined) this.syncRevisionRail(entry);
+				if (entry !== undefined) this.syncSegmentRail(entry);
 			},
 			hasNeighbour: (revision, step) =>
 				this.revisionNeighbour(revision, step) !== null,
 			onJump: (revision, step) => {
 				rethrow(this.jumpToRevision(revision, step));
 			},
+			foreshadowing: {
+				onEditSave: async (item, occurrence, patch) => {
+					// Answered on what the write did, as the revision edit is.
+					try {
+						return await this.host.updateForeshadowingOccurrence(
+							projectPath(),
+							item.id,
+							occurrence.id,
+							{ role: patch.role, note: patch.note.trim() },
+						);
+					} catch (error) {
+						this.showError(error);
+						return false;
+					}
+				},
+				onDelete: (item, occurrence) => {
+					rethrow(this.deleteOccurrence(item, occurrence));
+				},
+				onOpen: (item) => {
+					rethrow(this.host.openForeshadowingEditor(projectPath(), item.id));
+				},
+				hasNeighbour: (item, occurrence, step) =>
+					this.occurrenceNeighbour(item, occurrence, step) !== null,
+				onJump: (item, occurrence, step) => {
+					rethrow(this.jumpToOccurrence(item, occurrence, step));
+				},
+			},
 		});
+	}
+
+	/**
+	 * The passage a foreshadowing would be anchored to: the editor's own
+	 * selection on the note being written in, and nothing anywhere else --
+	 * the one place a revision is begun from too, and for the same reason:
+	 * the editor's offsets are exact, and a selection in the rendered half
+	 * would have to be guessed back into the source. A foreshadowing has no
+	 * meaning at a caret, since there is no passage there, so an empty
+	 * selection answers null and the menu greys its entries.
+	 */
+	private selectedPassage(entry: MountedSegment): OccurrencePlacement | null {
+		if (this.editingPath !== entry.path) return null;
+		const editing = entry.editor;
+		if (editing === null) return null;
+		const selection = editing.selection();
+		if (selection.from === selection.to) return null;
+		return captureOccurrencePlacement(
+			entry.path,
+			editing.read(),
+			selection.from,
+			selection.to,
+		);
+	}
+
+	/** The chapter's name as the stream shows it, for a dialog's place line. */
+	private segmentTitle(path: string): string {
+		return (
+			this.model?.segments.find((segment) => segment.path === path)?.title ??
+			(path.split('/').pop() ?? path).replace(/\.md$/u, '')
+		);
+	}
+
+	/**
+	 * The passage proved again against the note as it stands now: the
+	 * dialog stood open while the note went on being written in, so the
+	 * spot is re-anchored by the rule a saved occurrence is proved by, and
+	 * only words the note no longer holds anywhere refuse the save -- thrown,
+	 * so the form stays open on what was typed.
+	 */
+	private provePassage(
+		path: string,
+		passage: OccurrencePlacement,
+	): { body: string; from: number; to: number } {
+		const entry = this.mounted.get(path);
+		if (entry === undefined) {
+			throw new Error(this.t('manuscript.foreshadowing.stale'));
+		}
+		const body =
+			entry.editor === null
+				? (entry.pending ?? entry.text.body)
+				: entry.editor.read();
+		const anchor = anchorOccurrence(body, passage);
+		if (anchor.state === 'conflict') {
+			throw new Error(this.t('manuscript.foreshadowing.stale'));
+		}
+		return { body, from: anchor.from, to: anchor.to };
+	}
+
+	/** Creates a thread from the selection, which becomes its first occurrence. */
+	private async openCreateForeshadowing(path: string): Promise<void> {
+		const entry = this.mounted.get(path);
+		const passage = entry === undefined ? null : this.selectedPassage(entry);
+		if (passage === null) return;
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		// Fetched before the dialog opens: the picker decides at build time
+		// whether it has anything to offer.
+		const roster = await this.host.foreshadowingEntityRoster(projectPath);
+		await promptForForeshadowing(
+			this.app,
+			this.t,
+			{
+				title: this.t('modal.foreshadowing.title'),
+				submitLabelKey: 'common.create',
+				roster,
+				seedOccurrence: {
+					title: this.segmentTitle(path),
+					text: passage.originalText,
+					role: 'plant',
+				},
+			},
+			async (result) => {
+				const { body, from, to } = this.provePassage(path, passage);
+				const initial = result.initial ?? { role: 'plant', note: '' };
+				const occurrence = captureOccurrence(
+					path,
+					body,
+					from,
+					to,
+					initial.role,
+					initial.note,
+					this.host.mintOccurrenceId(),
+				);
+				const now = Date.now();
+				const took = await this.host.createForeshadowing(projectPath, {
+					id: this.host.mintForeshadowingId(),
+					name: result.name,
+					description: result.description,
+					status: result.status,
+					related: result.related,
+					createdAt: now,
+					updatedAt: now,
+					occurrences: [occurrence],
+				});
+				if (!took) throw new Error(this.t('manuscript.foreshadowing.refused'));
+			},
+		);
+	}
+
+	/** Adds the selection to a thread already standing, as one more occurrence. */
+	private async openAddToForeshadowing(path: string): Promise<void> {
+		const entry = this.mounted.get(path);
+		const passage = entry === undefined ? null : this.selectedPassage(entry);
+		if (passage === null) return;
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		const items = await this.host.manuscriptForeshadowings(projectPath);
+		if (items.length === 0) {
+			new Notice(this.t('manuscript.foreshadowing.pickEmpty'));
+			return;
+		}
+		await promptForForeshadowingPick(
+			this.app,
+			this.t,
+			items,
+			{ title: this.segmentTitle(path), text: passage.originalText },
+			async ({ foreshadowingId, role, note }) => {
+				const { body, from, to } = this.provePassage(path, passage);
+				const item = items.find((candidate) => candidate.id === foreshadowingId);
+				// The same thread marking the same words twice is a slip, not
+				// a second appearance; two threads over one passage are fine.
+				const duplicate = item?.occurrences.some((held) => {
+					if (held.path !== path) return false;
+					const anchor = anchorOccurrence(body, held);
+					return (
+						anchor.state !== 'conflict' &&
+						anchor.from === from &&
+						anchor.to === to
+					);
+				});
+				if (duplicate === true) {
+					throw new Error(this.t('manuscript.foreshadowing.duplicate'));
+				}
+				const took = await this.host.addForeshadowingOccurrence(
+					projectPath,
+					foreshadowingId,
+					captureOccurrence(
+						path,
+						body,
+						from,
+						to,
+						role,
+						note,
+						this.host.mintOccurrenceId(),
+					),
+				);
+				if (!took) throw new Error(this.t('manuscript.foreshadowing.refused'));
+			},
+		);
+	}
+
+	/** Puts the selection under an occurrence its chapter no longer answers for. */
+	private async openRelinkOccurrence(path: string): Promise<void> {
+		const entry = this.mounted.get(path);
+		const passage = entry === undefined ? null : this.selectedPassage(entry);
+		if (passage === null) return;
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		const waiting = await this.host.unresolvedForeshadowingOccurrences(projectPath);
+		if (waiting.length === 0) {
+			new Notice(this.t('manuscript.foreshadowing.noUnresolved'));
+			return;
+		}
+		const titles = new Map(
+			(this.model?.segments ?? []).map((segment) => [segment.path, segment.title]),
+		);
+		await promptForOccurrenceRelink(
+			this.app,
+			this.t,
+			waiting,
+			titles,
+			{ title: this.segmentTitle(path), text: passage.originalText },
+			async ({ foreshadowingId, occurrenceId }) => {
+				await this.commitRelink(path, passage, foreshadowingId, occurrenceId);
+			},
+		);
+	}
+
+	/**
+	 * Whether the relink entry has anything to offer: an occurrence the page
+	 * already shows unresolved, one on a chapter the manuscript no longer
+	 * lists, or one the last sweep of the chapters found. A sweep not yet
+	 * run for this feed is started, so the next menu can answer.
+	 */
+	private hasUnresolvedOccurrence(): boolean {
+		const threads = this.mentionState?.foreshadowings ?? [];
+		if (threads.length === 0) return false;
+		for (const entry of this.mounted.values()) {
+			if ((entry.mentions?.foreshadowing.conflicts.length ?? 0) > 0) return true;
+		}
+		const listed = new Set(
+			(this.model?.segments ?? []).map((segment) => segment.path),
+		);
+		if (
+			threads.some((item) =>
+				item.occurrences.some((occurrence) => !listed.has(occurrence.path)),
+			)
+		) {
+			return true;
+		}
+		const sweep = this.unresolvedSweep;
+		if (sweep !== null && sweep.feed === threads) return sweep.any;
+		this.sweepUnresolved(this.model?.projectPath ?? this.projectPath, threads);
+		return false;
+	}
+
+	/**
+	 * Reads the chapters carrying occurrences once per feed, and only when
+	 * the feed holds any: a feed of empty threads has nothing to relink.
+	 */
+	private sweepUnresolved(
+		projectPath: string | null,
+		feed: readonly Foreshadowing[],
+	): void {
+		if (this.unresolvedSweep?.feed === feed || this.unresolvedSweepPending === feed) {
+			return;
+		}
+		if (feed.every((item) => item.occurrences.length === 0)) {
+			this.unresolvedSweep = { feed, any: false };
+			return;
+		}
+		this.unresolvedSweepPending = feed;
+		void this.host
+			.unresolvedForeshadowingOccurrences(projectPath)
+			.then((waiting) => {
+				if (this.unresolvedSweepPending !== feed) return;
+				this.unresolvedSweepPending = null;
+				this.unresolvedSweep = { feed, any: waiting.length > 0 };
+			})
+			.catch(() => {
+				if (this.unresolvedSweepPending === feed) this.unresolvedSweepPending = null;
+			});
+	}
+
+	/** The relink itself: the passage proved again, then written whole. */
+	private async commitRelink(
+		path: string,
+		passage: OccurrencePlacement,
+		foreshadowingId: string,
+		occurrenceId: string,
+	): Promise<void> {
+		const { body, from, to } = this.provePassage(path, passage);
+		const took = await this.host.relinkForeshadowingOccurrence(
+			this.model?.projectPath ?? this.projectPath,
+			foreshadowingId,
+			occurrenceId,
+			captureOccurrencePlacement(path, body, from, to),
+		);
+		if (!took) throw new Error(this.t('manuscript.foreshadowing.refused'));
+	}
+
+	/** Takes one occurrence out and says so when the write is refused. */
+	private async deleteOccurrence(
+		item: Foreshadowing,
+		occurrence: ForeshadowingOccurrence,
+	): Promise<void> {
+		const gone = await this.host.deleteForeshadowingOccurrence(
+			this.model?.projectPath ?? this.projectPath,
+			item.id,
+			occurrence.id,
+		);
+		if (!gone) new Notice(this.t('manuscript.foreshadowing.refused'));
 	}
 
 	/** Takes a revision out and says so when the write is refused. */
@@ -2040,12 +2515,81 @@ export class SnowflakeManuscriptView extends ItemView {
 	): Promise<void> {
 		const next = this.revisionNeighbour(revision, step);
 		if (next === null) return;
+		await this.jumpToCard(next.path, (rail) => rail.cardFor(next.id));
+	}
+
+	/**
+	 * Every occurrence of one thread in manuscript order, worked out once per
+	 * feed, per model and per dressing, as the revisions' order is; the
+	 * chains are placed by the body each mounted note was last dressed
+	 * from, so the arrows walk the cards' own order.
+	 */
+	private occurrenceChain(itemId: string): readonly ForeshadowingOccurrence[] {
+		const foreshadowings = this.mentionState?.foreshadowings ?? [];
+		const segments = this.model?.segments ?? [];
+		const dressings = [...this.mounted.values()].map((entry) => entry.mentions);
+		const memo = this.occurrenceOrderMemo;
+		if (
+			memo !== null &&
+			memo.foreshadowings === foreshadowings &&
+			memo.segments === segments &&
+			memo.dressings.length === dressings.length &&
+			memo.dressings.every((kept, index) => kept === dressings[index])
+		) {
+			return memo.chains.get(itemId) ?? [];
+		}
+		const paths = segments.map((segment) => segment.path);
+		const bodyOf = (path: string): string | null =>
+			this.mounted.get(path)?.mentions?.body ?? null;
+		const chains = new Map(
+			foreshadowings.map(
+				(item) => [item.id, orderOccurrences(item, paths, bodyOf)] as const,
+			),
+		);
+		this.occurrenceOrderMemo = { foreshadowings, segments, dressings, chains };
+		return chains.get(itemId) ?? [];
+	}
+
+	/** The same thread's occurrence one step back or on from this one. */
+	private occurrenceNeighbour(
+		item: Foreshadowing,
+		occurrence: ForeshadowingOccurrence,
+		step: -1 | 1,
+	): ForeshadowingOccurrence | null {
+		const chain = this.occurrenceChain(item.id);
+		const index = chain.findIndex((candidate) => candidate.id === occurrence.id);
+		if (index < 0) return null;
+		return chain[index + step] ?? null;
+	}
+
+	private async jumpToOccurrence(
+		item: Foreshadowing,
+		occurrence: ForeshadowingOccurrence,
+		step: -1 | 1,
+	): Promise<void> {
+		const next = this.occurrenceNeighbour(item, occurrence, step);
+		if (next === null) return;
+		await this.jumpToCard(next.path, (rail) => rail.cardForOccurrence(next.id));
+	}
+
+	/**
+	 * Walks to a card and leaves the reader looking at it, lit for a beat so
+	 * the eye finds it in the margin. The card is asked for by name rather
+	 * than handed in: a note arriving is rendered, dressed and only then
+	 * railed, so it may not exist yet, and it is given a moment to.
+	 */
+	private async jumpToCard(
+		path: string,
+		cardAt: (rail: RevisionRail) => HTMLElement | null,
+	): Promise<void> {
 		const win = this.contentEl.win;
 		const beat = (): Promise<void> =>
 			new Promise((resolve) => win.setTimeout(resolve, 100));
-		if (!this.mounted.has(next.path)) await this.revealSegment(next.path);
-		const cardNow = (): HTMLElement | null =>
-			this.mounted.get(next.path)?.rail?.cardFor(next.id) ?? null;
+		if (!this.mounted.has(path)) await this.revealSegment(path);
+		const cardNow = (): HTMLElement | null => {
+			const rail = this.mounted.get(path)?.rail ?? null;
+			return rail === null ? null : cardAt(rail);
+		};
 		let card = cardNow();
 		for (let waited = 0; card === null && waited < 20; waited += 1) {
 			await beat();
@@ -2145,7 +2689,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			...passageContext(body, selection.from, selection.to),
 			top: this.draftTopFrom(entry, editing.bandAt(selection.from)),
 		};
-		this.syncRevisionRail(entry);
+		this.syncSegmentRail(entry);
 	}
 
 	/** A band on the screen turned into a card top within the segment. */
@@ -2332,8 +2876,9 @@ export class SnowflakeManuscriptView extends ItemView {
 				this.host.manuscriptEntityMatcher(shown),
 				this.host.mentionIgnores(shown),
 				this.host.manuscriptRevisions(shown),
+				this.host.manuscriptForeshadowings(shown),
 			])
-				.then(([matcher, ignores, revisions]) => {
+				.then(([matcher, ignores, revisions, foreshadowings]) => {
 					const state =
 						matcher === null
 							? null
@@ -2341,9 +2886,11 @@ export class SnowflakeManuscriptView extends ItemView {
 									matcher,
 									ignores,
 									revisions,
+									foreshadowings,
 									...this.host.manuscriptDressFeeds(),
 								};
 					if (this.mentionFeed === fetched) this.mentionState = state;
+					if (state !== null) this.sweepUnresolved(shown, state.foreshadowings);
 					return state;
 				})
 				.catch(() => {
@@ -2534,6 +3081,22 @@ export class SnowflakeManuscriptView extends ItemView {
 	 * jump. The stream may still be opening, so the segment and its dress
 	 * are each given a moment to arrive before the reveal gives up quietly.
 	 */
+	/**
+	 * Walks to an occurrence's card once its chapter is on the page: the way
+	 * the table reaches an unresolved occurrence, whose card is pinned at the
+	 * head of the chapter's rail and whose passage is nowhere to flash.
+	 */
+	async revealOccurrenceCard(path: string, occurrenceId: string): Promise<void> {
+		const win = this.contentEl.win;
+		const beat = (): Promise<void> =>
+			new Promise((resolve) => win.setTimeout(resolve, 100));
+		for (let waited = 0; !this.mounted.has(path) && waited < 20; waited += 1) {
+			await beat();
+		}
+		if (!this.mounted.has(path)) return;
+		await this.jumpToCard(path, (rail) => rail.cardForOccurrence(occurrenceId));
+	}
+
 	async revealMention(path: string, from: number, to: number): Promise<void> {
 		const win = this.contentEl.win;
 		const beat = (): Promise<void> =>
@@ -3242,7 +3805,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					this.showCaret(shown, top, bottom);
 				},
 				onGeometryChange: (moved) => {
-					this.scheduleRevisionRailSync(moved);
+					this.scheduleSegmentRailSync(moved);
 				},
 			},
 		);
@@ -3274,7 +3837,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.walkingIn = arriving !== undefined;
 		// The first editor-era card sync, a beat after the swap: precise
 		// where the editor has laid out, held in place where it has not.
-		this.scheduleRevisionRailSync(path);
+		this.scheduleSegmentRailSync(path);
 		entry.editor.focus();
 		if (clicked !== undefined) this.keepPuttingBack(entry, clicked);
 		if (arriving !== undefined) {
@@ -3356,7 +3919,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		// last frame lets it have its turn.
 		const settled = (): void => {
 			this.puttingBack = false;
-			this.scheduleRevisionRailSync(entry.path);
+			this.scheduleSegmentRailSync(entry.path);
 		};
 		const again = (): void => {
 			if (this.editingPath !== entry.path || entry.pending !== untouched) {
@@ -3499,7 +4062,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			if (arrival === undefined) return;
 			this.walkingIn = false;
 			// As after a click's settling: the rail waited, and is asked now.
-			this.scheduleRevisionRailSync(path);
+			this.scheduleSegmentRailSync(path);
 		};
 		const again = (): void => {
 			const entry = this.mounted.get(path);
@@ -3831,6 +4394,53 @@ export class SnowflakeManuscriptView extends ItemView {
 							if (entry !== undefined) this.beginRevisionDraft(entry);
 						}),
 				);
+				// A foreshadowing is anchored to a passage, so its entries are
+				// offered where one is selected and greyed where none is: on a
+				// note being read, and at a bare caret, which marks nothing.
+				const passage =
+					entry === undefined ? null : this.selectedPassage(entry);
+				const threads = this.mentionState?.foreshadowings ?? [];
+				const guarded = (work: Promise<void>): void => {
+					void work.catch((error: unknown) => {
+						this.showError(error);
+					});
+				};
+				menu.addItem((item) =>
+					item
+						.setSection(section)
+						.setTitle(this.t('manuscript.foreshadowing.create'))
+						.setIcon('sparkles')
+						.setDisabled(passage === null)
+						.onClick(() => {
+							guarded(this.openCreateForeshadowing(segment.path));
+						}),
+				);
+				if (threads.length > 0) {
+					menu.addItem((item) =>
+						item
+							.setSection(section)
+							.setTitle(this.t('manuscript.foreshadowing.addExisting'))
+							.setIcon('bookmark-plus')
+							.setDisabled(passage === null)
+							.onClick(() => {
+								guarded(this.openAddToForeshadowing(segment.path));
+							}),
+					);
+				}
+				// Offered only while something waits to be relinked: an entry
+				// whose dialog could only say there is nothing is no entry.
+				if (this.hasUnresolvedOccurrence()) {
+					menu.addItem((item) =>
+						item
+							.setSection(section)
+							.setTitle(this.t('manuscript.foreshadowing.relink'))
+							.setIcon('link')
+							.setDisabled(passage === null)
+							.onClick(() => {
+								guarded(this.openRelinkOccurrence(segment.path));
+							}),
+					);
+				}
 			}
 			menu.addItem((item) =>
 				item
@@ -3994,7 +4604,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			const editing = this.mounted.get(this.editingPath);
 			if (editing?.editor != null && editing.rail !== null) {
 				editing.editor.remeasure();
-				this.scheduleRevisionRailSync(this.editingPath);
+				this.scheduleSegmentRailSync(this.editingPath);
 			}
 		}
 		const offsets = [...this.mounted.values()].map((entry) => ({

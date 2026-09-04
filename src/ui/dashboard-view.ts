@@ -112,6 +112,11 @@ import {
 	type ProsePanelHandle,
 } from './prose-panel';
 import {
+	renderForeshadowingPanel,
+	type ForeshadowingFilterMemory,
+	type ForeshadowingPanelHandle,
+} from './foreshadowing-panel';
+import {
 	renderRevisionPanel,
 	type RevisionPanelHandle,
 } from './revision-panel';
@@ -338,6 +343,15 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
 	/** The revision table, kept across rebuilds the way its siblings are. */
 	private readonly revisionPanel = new KeptPanel<RevisionPanelHandle>();
+	/** The foreshadowing table, kept across rebuilds the way its siblings are. */
+	private readonly foreshadowingPanel =
+		new KeptPanel<ForeshadowingPanelHandle>();
+	/** Its filters outlive it, as the prose filters do. */
+	private readonly foreshadowingFilters: ForeshadowingFilterMemory = {
+		status: '',
+		role: '',
+		standing: '',
+	};
 	/** Which tracking folds stand OPEN -- everything else rests closed --
 	 *  outliving the panel like the filters do: a tab switch hands the
 	 *  folds back as they were left. */
@@ -603,6 +617,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.prosePanel.dispose();
 		this.entitiesPanel.dispose();
 		this.revisionPanel.dispose();
+		this.foreshadowingPanel.dispose();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -787,6 +802,7 @@ export class SnowflakeDashboardView extends ItemView {
 			choose: (tab) => {
 				this.tasksTab = tab;
 				if (tab !== 'revision') this.revisionPanel.dispose();
+				if (tab !== 'foreshadowing') this.foreshadowingPanel.dispose();
 			},
 			body: (body, tab) => {
 				this.renderTasksBody(body, tab);
@@ -799,8 +815,52 @@ export class SnowflakeDashboardView extends ItemView {
 		return `${this.projectPath ?? ''}|${this.projectLocale ?? ''}`;
 	}
 
+	/**
+	 * The thread table is laid by the two table settings as well, so a
+	 * toggle from the palette builds it afresh rather than reshaping it.
+	 */
+	private foreshadowingPanelKey(): string {
+		return `${this.panelKey()}|${
+			this.host.showsTableProgressStatus() ? 'status' : ''
+		}|${this.host.showsTableActionsColumn() ? 'actions' : ''}`;
+	}
+
 	/** What one face of the task management pane puts inside the frame. */
 	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
+		if (tab === 'foreshadowing') {
+			const kept = this.foreshadowingPanel.reuse(body, this.foreshadowingPanelKey());
+			if (kept !== null) {
+				kept.refresh();
+				return;
+			}
+			const host = body.createDiv({
+				cls: 'snowflake-method-foreshadowing-panel-host',
+			});
+			this.foreshadowingPanel.keep(
+				host,
+				this.foreshadowingPanelKey(),
+				renderForeshadowingPanel(
+					host,
+					this.host.foreshadowingTable({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						filters: this.foreshadowingFilters,
+						// The dashboard's own funnel popover, lent: it owns the
+						// pickers' lifetime and the outside-click rules.
+						filterOpen: () => this.filterPanel !== null,
+						openFilter: (anchor, rows, changed) => {
+							this.openFilterPanel(anchor, rows, changed);
+						},
+						closeFilter: () => {
+							this.closeFilterPanel();
+						},
+					},
+				),
+			);
+			return;
+		}
 		if (tab === 'revision') {
 			// The mounted panel keeps its reading, and the handback refresh
 			// re-anchors against fresh stamps.
@@ -4246,7 +4306,10 @@ export class SnowflakeDashboardView extends ItemView {
 			this.prosePanel.dispose();
 			this.entitiesPanel.dispose();
 		}
-		if (this.selectedPane.kind !== 'tasks') this.revisionPanel.dispose();
+		if (this.selectedPane.kind !== 'tasks') {
+			this.revisionPanel.dispose();
+			this.foreshadowingPanel.dispose();
+		}
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
 			return;

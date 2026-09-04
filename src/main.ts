@@ -86,6 +86,15 @@ import {
 	type MentionIgnore,
 	type SensitiveMatcher,
 	type Revision,
+	type EntityRosterEntry,
+	type Foreshadowing,
+	type ForeshadowingEdit,
+	type ForeshadowingOccurrence,
+	type ForeshadowingRef,
+	type OccurrencePlacement,
+	type OccurrenceRole,
+	anchorOccurrence,
+	orderOccurrences,
 	fileStem,
 	compileChapterNumbering,
 	sanitizeChapterNumberRules,
@@ -204,6 +213,16 @@ import {
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import {
+	confirmForeshadowingDeletion,
+	promptForForeshadowing,
+	promptForForeshadowingOccurrence,
+} from './ui/foreshadowing-form';
+import type { ForeshadowingPanelBridge } from './ui/foreshadowing-panel';
+import {
+	foreshadowingTableItems,
+	type ForeshadowingNoteReading,
+} from './ui/foreshadowing-rows';
 import type { WikilinkTarget } from './ui/segment-editor-backend';
 import {
 	revisionTableRows,
@@ -686,6 +705,17 @@ export default class SnowflakeMethodPlugin
 				onRevisionsForeign: () => {
 					new Notice(this.projectT('manuscript.revision.newerSchema'));
 				},
+				// The foreshadowing file, told apart the same two ways.
+				onForeshadowingCorrupt: (path) => {
+					new Notice(
+						this.projectT('manuscript.foreshadowing.corruptPreserved', {
+							path,
+						}),
+					);
+				},
+				onForeshadowingForeign: () => {
+					new Notice(this.projectT('manuscript.foreshadowing.newerSchema'));
+				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
 				timers: {
@@ -743,6 +773,7 @@ export default class SnowflakeMethodPlugin
 		// alike, and only a real move re-dresses anything.
 		this.projects.manuscript.onSegmentWritten = (path, body) => {
 			void this.levelRevisions(path, body).catch(() => undefined);
+			void this.levelForeshadowing(path, body).catch(() => undefined);
 		};
 		// And text that walks from one note into another takes its revisions
 		// with it. `left` is the departing note as it stood, which is what
@@ -760,22 +791,42 @@ export default class SnowflakeMethodPlugin
 			void (async () => {
 				const project = this.projectRefAtPath(into);
 				if (project === null) return;
-				const carried = await this.projects.revisions.carryTextBetweenNotes(
-					project,
-					from,
-					into,
-					left,
-					at,
-					shift,
-				);
-				if (!carried) return;
+				// Two files, two carries, one levelling read and one announce.
+				const [carriedRevisions, carriedThreads] = await Promise.all([
+					this.projects.revisions.carryTextBetweenNotes(
+						project,
+						from,
+						into,
+						left,
+						at,
+						shift,
+					),
+					this.projects.foreshadowing.carryTextBetweenNotes(
+						project,
+						from,
+						into,
+						left,
+						at,
+						shift,
+					),
+				]);
+				if (!carriedRevisions && !carriedThreads) return;
 				const { body } = await this.readManuscriptSegment(into);
-				await this.projects.revisions.refreshAnchorsOnSave(
-					project,
-					into,
-					body,
-				);
-				await this.announceRevisionsChanged();
+				if (carriedRevisions) {
+					await this.projects.revisions.refreshAnchorsOnSave(
+						project,
+						into,
+						body,
+					);
+				}
+				if (carriedThreads) {
+					await this.projects.foreshadowing.refreshAnchorsOnSave(
+						project,
+						into,
+						body,
+					);
+				}
+				await this.announceMarginRecordsChanged();
 			})().catch(() => undefined);
 		};
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
@@ -3640,6 +3691,140 @@ export default class SnowflakeMethodPlugin
 		};
 	}
 
+	/**
+	 * The bridge the foreshadowing table reads through, shaped like the
+	 * revision one: rows freshly anchored against the chapters that carry
+	 * occurrences, and every dialog opened from here rather than in the panel.
+	 */
+	foreshadowingTable(context: SessionPanelContext = {}): ForeshadowingPanelBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		return {
+			t,
+			read: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				const items = await this.projects.foreshadowing.list(project);
+				if (items.length === 0) return { items: [], readOnly: project.readOnly };
+				const [segments, roster] = await Promise.all([
+					this.projects.manuscript.listSegments(project),
+					this.foreshadowingEntityRoster(project.projectFile),
+				]);
+				const notes = new Map<string, ForeshadowingNoteReading>();
+				for (const segment of segments) {
+					notes.set(segment.path, { title: segment.title, body: null });
+				}
+				// Only chapters carrying occurrences are read, one read each and
+				// all at once; a chapter that cannot be read leaves its body
+				// null, and every occurrence on it reads as unresolved.
+				const paths = [
+					...new Set(
+						items.flatMap((item) =>
+							item.occurrences.map((occurrence) => occurrence.path),
+						),
+					),
+				];
+				const bodies = await Promise.all(
+					paths.map((path) =>
+						this.readManuscriptSegment(path).then(
+							({ body }) => body,
+							() => null,
+						),
+					),
+				);
+				paths.forEach((path, index) => {
+					const body = bodies[index] ?? null;
+					if (body === null) return;
+					const kept = notes.get(path);
+					if (kept === undefined) {
+						notes.set(path, { title: fileStem(path), body });
+					} else {
+						kept.body = body;
+					}
+				});
+				return {
+					items: foreshadowingTableItems(items, notes, roster),
+					readOnly: project.readOnly,
+				};
+			},
+			open: (occurrence) =>
+				this.openManuscriptMention(panelProject(), occurrence),
+			openUnresolved: (path, occurrenceId) =>
+				this.openManuscriptOccurrenceCard(panelProject(), path, occurrenceId),
+			showsProgressStatus: () => this.showsTableProgressStatus(),
+			showsActionsColumn: () => this.showsTableActionsColumn(),
+			add: () => this.openCreateForeshadowingModal(panelProject()),
+			editItem: (id) => this.openForeshadowingEditor(panelProject(), id),
+			editOccurrence: async (id, occurrenceId) => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return;
+				const item = (await this.projects.foreshadowing.list(project)).find(
+					(candidate) => candidate.id === id,
+				);
+				const occurrence = item?.occurrences.find(
+					(candidate) => candidate.id === occurrenceId,
+				);
+				if (item === undefined || occurrence === undefined) return;
+				const segments = await this.projects.manuscript.listSegments(project);
+				const title =
+					segments.find((segment) => segment.path === occurrence.path)?.title ??
+					fileStem(occurrence.path);
+				const body = await this.readManuscriptSegment(occurrence.path).then(
+					(read) => read.body,
+					() => null,
+				);
+				await promptForForeshadowingOccurrence(
+					this.app,
+					t,
+					{
+						title,
+						text: occurrence.originalText,
+						unresolved:
+							body === null ||
+							anchorOccurrence(body, occurrence).state === 'conflict',
+						reveal: () => {
+							this.revealForeshadowingOccurrence(project.projectFile, occurrence);
+						},
+					},
+					{ role: occurrence.role, note: occurrence.note },
+					async (patch) => {
+						const took = await this.updateForeshadowingOccurrence(
+							project.projectFile,
+							id,
+							occurrenceId,
+							patch,
+						);
+						if (!took) throw new Error(t('manuscript.foreshadowing.refused'));
+					},
+				);
+			},
+			deleteItem: async (id) => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return false;
+				const item = (await this.projects.foreshadowing.list(project)).find(
+					(candidate) => candidate.id === id,
+				);
+				// Gone already is what was asked; declining is not a refusal.
+				if (item === undefined) return true;
+				const confirmed = await confirmForeshadowingDeletion(
+					this.app,
+					t,
+					item.name,
+					item.occurrences.length,
+				);
+				if (!confirmed) return true;
+				return this.deleteForeshadowing(project.projectFile, id);
+			},
+			deleteOccurrence: (id, occurrenceId) =>
+				this.deleteForeshadowingOccurrence(panelProject(), id, occurrenceId),
+		};
+	}
+
 	proseStatistics(context: SessionPanelContext = {}): ProsePanelBridge {
 		const projectLocale = context.locale ?? null;
 		const t = (
@@ -5145,6 +5330,14 @@ export default class SnowflakeMethodPlugin
 		return this.projects.revisions.list(project);
 	}
 
+	async manuscriptForeshadowings(
+		projectPath: string | null,
+	): Promise<readonly Foreshadowing[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		return this.projects.foreshadowing.list(project);
+	}
+
 	/** The export as the settings describe it, the folder resolved. */
 	private exportOptions(): ManuscriptExportOptions {
 		return {
@@ -5261,11 +5454,12 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * One revision mutation, through the gate and out to every view: `work`
-	 * says what changed, and only a change is announced. Null from the gate
-	 * is a refusal, answered as false without touching the store.
+	 * One mutation of a margin record -- a revision or a foreshadowing --
+	 * through the gate and out to every view: `work` says what changed, and
+	 * only a change is announced. Null from the gate is a refusal, answered
+	 * as false without touching the store.
 	 */
-	private async mutateRevisions<T>(
+	private async mutateMarginRecords<T>(
 		projectPath: string | null,
 		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
 		refused: T,
@@ -5273,7 +5467,7 @@ export default class SnowflakeMethodPlugin
 		const project = await this.writableProject(projectPath);
 		if (project === null) return refused;
 		const { result, changed } = await work(project);
-		if (changed) await this.announceRevisionsChanged();
+		if (changed) await this.announceMarginRecordsChanged();
 		return result;
 	}
 
@@ -5281,7 +5475,7 @@ export default class SnowflakeMethodPlugin
 		projectPath: string | null,
 		revision: Revision,
 	): Promise<boolean> {
-		return this.mutateRevisions(
+		return this.mutateMarginRecords(
 			projectPath,
 			async (project) => {
 				const took = await this.projects.revisions.create(project, revision);
@@ -5296,7 +5490,7 @@ export default class SnowflakeMethodPlugin
 		id: string,
 		patch: { proposed: string; comment: string },
 	): Promise<boolean> {
-		return this.mutateRevisions(
+		return this.mutateMarginRecords(
 			projectPath,
 			async (project) => {
 				const took = await this.projects.revisions.update(project, id, patch);
@@ -5313,7 +5507,7 @@ export default class SnowflakeMethodPlugin
 		// only a refusal -- the gate answering null, or the store declining
 		// to write over a file from a newer build -- is news worth telling an
 		// author who has just had their text changed for them.
-		return this.mutateRevisions(
+		return this.mutateMarginRecords(
 			projectPath,
 			async (project) => {
 				const outcome = await this.projects.revisions.remove(project, id);
@@ -5325,6 +5519,142 @@ export default class SnowflakeMethodPlugin
 
 	mintRevisionId(): string {
 		return createStableId('revision');
+	}
+
+	createForeshadowing(
+		projectPath: string | null,
+		item: Foreshadowing,
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const took = await this.projects.foreshadowing.create(project, item);
+				return { result: took, changed: took };
+			},
+			false,
+		);
+	}
+
+	editForeshadowing(
+		projectPath: string | null,
+		id: string,
+		next: ForeshadowingEdit,
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.edit(
+					project,
+					id,
+					next,
+				);
+				return { result: outcome === 'written', changed: outcome === 'written' };
+			},
+			false,
+		);
+	}
+
+	deleteForeshadowing(projectPath: string | null, id: string): Promise<boolean> {
+		// Answered on whether the thread is gone, as `discardRevision` is.
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.deleteItem(
+					project,
+					id,
+				);
+				return { result: outcome !== 'refused', changed: outcome === 'deleted' };
+			},
+			false,
+		);
+	}
+
+	addForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrence: ForeshadowingOccurrence,
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.addOccurrence(
+					project,
+					id,
+					occurrence,
+				);
+				return { result: outcome === 'written', changed: outcome === 'written' };
+			},
+			false,
+		);
+	}
+
+	updateForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+		patch: { role: OccurrenceRole; note: string },
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.updateOccurrence(
+					project,
+					id,
+					occurrenceId,
+					patch,
+				);
+				return { result: outcome === 'written', changed: outcome === 'written' };
+			},
+			false,
+		);
+	}
+
+	deleteForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.deleteOccurrence(
+					project,
+					id,
+					occurrenceId,
+				);
+				return { result: outcome !== 'refused', changed: outcome === 'deleted' };
+			},
+			false,
+		);
+	}
+
+	relinkForeshadowingOccurrence(
+		projectPath: string | null,
+		id: string,
+		occurrenceId: string,
+		placement: OccurrencePlacement,
+	): Promise<boolean> {
+		return this.mutateMarginRecords(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.foreshadowing.relinkOccurrence(
+					project,
+					id,
+					occurrenceId,
+					placement,
+				);
+				return { result: outcome === 'written', changed: outcome === 'written' };
+			},
+			false,
+		);
+	}
+
+	mintForeshadowingId(): string {
+		return createStableId('foreshadowing');
+	}
+
+	mintOccurrenceId(): string {
+		return createStableId('occurrence');
 	}
 
 	/**
@@ -5345,16 +5675,29 @@ export default class SnowflakeMethodPlugin
 			path,
 			body,
 		);
-		if (moved) await this.announceRevisionsChanged();
+		if (moved) await this.announceMarginRecordsChanged();
+	}
+
+	/** The same errand for the foreshadowing file, behind the same save. */
+	private async levelForeshadowing(path: string, body: string): Promise<void> {
+		const project = this.projectRefAtPath(path);
+		if (project === null) return;
+		const moved = await this.projects.foreshadowing.refreshAnchorsOnSave(
+			project,
+			path,
+			body,
+		);
+		if (moved) await this.announceMarginRecordsChanged();
 	}
 
 	/**
-	 * Streams re-dress and dashboards re-read after any revision mutation.
+	 * Streams re-dress and dashboards re-read after any mutation of the
+	 * records kept beside the manuscript -- a revision or a foreshadowing.
 	 * The streams are dressed here, once: a dashboard refresh would reload
 	 * every stream's manuscript and dress it a second time on the way, for a
 	 * change that touched no note.
 	 */
-	private async announceRevisionsChanged(): Promise<void> {
+	private async announceMarginRecordsChanged(): Promise<void> {
 		this.applyManuscriptMentionMode();
 		await this.refreshDashboards({ streams: false });
 	}
@@ -5643,6 +5986,30 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * Opens the stream at the chapter an unresolved occurrence was lost in
+	 * and lights its card, which the rail pins at the chapter's head: there
+	 * is no passage left to flash, so the card is what the row points at.
+	 */
+	async openManuscriptOccurrenceCard(
+		projectPath: string | null,
+		path: string,
+		occurrenceId: string,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.openManuscriptStream(project.projectFile, path);
+		const leaf = this.app.workspace
+			.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
+			.find(
+				(candidate) =>
+					candidate.getViewState().state?.projectPath === project.projectFile,
+			);
+		if (leaf?.view instanceof SnowflakeManuscriptView) {
+			await leaf.view.revealOccurrenceCard(path, occurrenceId);
+		}
+	}
+
+	/**
 	 * Every open stream dressed afresh, hidden ones included: a stream in a
 	 * background tab or another window has no other way of hearing that the
 	 * page changed under it, and it should come back looking right. A leaf
@@ -5783,6 +6150,266 @@ export default class SnowflakeMethodPlugin
 			(group) => entityGroupLabel(projectT, group),
 			toWikiLink,
 		);
+	}
+
+	async foreshadowingEntityRoster(
+		projectPath: string | null,
+	): Promise<readonly EntityRosterEntry[]> {
+		// resolveProject for the reason `listWikilinkTargets` gives: a
+		// read-only project's members still hold names a ref can point at.
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		const roster: EntityRosterEntry[] = [
+			...project.characters.map((record) => ({
+				kind: 'character',
+				id: record.characterId,
+				name: record.name,
+				path: record.path,
+				group: 'character',
+			})),
+			...project.scenes.map((record) => ({
+				kind: 'scene',
+				id: record.sceneId,
+				name: record.title,
+				path: record.path,
+				group: 'scene',
+			})),
+		];
+		for (const kind of project.worldbuildingKinds) {
+			for (const entity of entitiesOf(project, kind.id)) {
+				roster.push({
+					kind: kind.id,
+					id: entity.entityId,
+					name: entity.name,
+					path: entity.path,
+					// The pickers' split: a time is a point or a period, and a
+					// point is what an unnamed one is.
+					group:
+						kind.id === 'time'
+							? entity.timeKind === 'period'
+								? 'time-period'
+								: 'time-point'
+							: kind.id,
+				});
+			}
+		}
+		return roster;
+	}
+
+	/**
+	 * A new thread with no occurrence yet, from the table's Add or the
+	 * palette: the form empty, and one write when it is saved. Occurrences
+	 * come later, from a selection in the stream.
+	 */
+	async openCreateForeshadowingModal(projectPath: string | null): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(project.locale, key, vars);
+		const roster = await this.foreshadowingEntityRoster(project.projectFile);
+		await promptForForeshadowing(
+			this.app,
+			t,
+			{
+				title: t('modal.foreshadowing.title'),
+				submitLabelKey: 'common.create',
+				roster,
+			},
+			async (result) => {
+				const now = Date.now();
+				const took = await this.createForeshadowing(project.projectFile, {
+					id: createStableId('foreshadowing'),
+					name: result.name,
+					description: result.description,
+					status: result.status,
+					related: result.related,
+					createdAt: now,
+					updatedAt: now,
+					occurrences: [],
+				});
+				if (!took) throw new Error(t('manuscript.foreshadowing.refused'));
+			},
+		);
+	}
+
+	async openForeshadowingEditor(
+		projectPath: string | null,
+		id: string,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const items = await this.projects.foreshadowing.list(project);
+		const item = items.find((candidate) => candidate.id === id);
+		if (item === undefined) return;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(project.locale, key, vars);
+		const [roster, segments] = await Promise.all([
+			this.foreshadowingEntityRoster(project.projectFile),
+			this.projects.manuscript.listSegments(project),
+		]);
+		const titles = new Map(
+			segments.map((segment) => [segment.path, segment.title] as const),
+		);
+		// Each occurrence's standing, read against its chapter now, so the
+		// form can say which ones the manuscript no longer answers for.
+		const paths = [
+			...new Set(item.occurrences.map((occurrence) => occurrence.path)),
+		];
+		const bodies = new Map<string, string | null>();
+		await Promise.all(
+			paths.map(async (path) => {
+				bodies.set(
+					path,
+					await this.readManuscriptSegment(path).then(
+						({ body }) => body,
+						() => null,
+					),
+				);
+			}),
+		);
+		const bodyOf = (path: string): string | null => bodies.get(path) ?? null;
+		// In manuscript order, which is the number each card wears: the
+		// chapters as listed, then any note the list no longer names.
+		const ordered = orderOccurrences(
+			item,
+			[
+				...segments.map((segment) => segment.path),
+				...paths.filter((path) => !titles.has(path)),
+			],
+			bodyOf,
+		);
+		await promptForForeshadowing(
+			this.app,
+			t,
+			{
+				title: t('modal.foreshadowing.editTitle'),
+				submitLabelKey: 'common.save',
+				roster,
+				initial: {
+					name: item.name,
+					description: item.description,
+					status: item.status,
+					related: item.related,
+					occurrences: ordered.map((occurrence) => {
+						const body = bodyOf(occurrence.path);
+						return {
+							id: occurrence.id,
+							role: occurrence.role,
+							note: occurrence.note,
+							title: titles.get(occurrence.path) ?? fileStem(occurrence.path),
+							text: occurrence.originalText,
+							unresolved:
+								body === null ||
+								anchorOccurrence(body, occurrence).state === 'conflict',
+						};
+					}),
+				},
+				onReveal: (occurrenceId) => {
+					const occurrence = item.occurrences.find(
+						(candidate) => candidate.id === occurrenceId,
+					);
+					if (occurrence !== undefined) {
+						this.revealForeshadowingOccurrence(project.projectFile, occurrence);
+					}
+				},
+				onDelete: async () => {
+					const confirmed = await confirmForeshadowingDeletion(
+						this.app,
+						t,
+						item.name,
+						item.occurrences.length,
+					);
+					if (!confirmed) return false;
+					return this.deleteForeshadowing(project.projectFile, id);
+				},
+			},
+			async (result) => {
+				// One write for the whole form, occurrence deletions included.
+				const took = await this.editForeshadowing(project.projectFile, id, {
+					name: result.name,
+					description: result.description,
+					status: result.status,
+					related: result.related,
+					occurrences: result.occurrences,
+				});
+				if (!took) throw new Error(t('manuscript.foreshadowing.refused'));
+			},
+		);
+	}
+
+	/**
+	 * Shows an occurrence in the stream from a dialog standing open over it:
+	 * the chapter read afresh, since the dialog may have stood open over an
+	 * edit, then the passage where it stands now, or the pinned card when
+	 * nothing stands.
+	 */
+	revealForeshadowingOccurrence(
+		projectPath: string,
+		occurrence: ForeshadowingOccurrence,
+	): void {
+		void this.readManuscriptSegment(occurrence.path)
+			.then(({ body }) => anchorOccurrence(body, occurrence))
+			.catch(() => ({ state: 'conflict' as const }))
+			.then((anchor) =>
+				anchor.state === 'conflict'
+					? this.openManuscriptOccurrenceCard(
+							projectPath,
+							occurrence.path,
+							occurrence.id,
+						)
+					: this.openManuscriptMention(projectPath, {
+							path: occurrence.path,
+							from: anchor.from,
+							to: anchor.to,
+						}),
+			);
+	}
+
+	async unresolvedForeshadowingOccurrences(
+		projectPath: string | null,
+	): Promise<readonly ForeshadowingRef[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		const items = await this.projects.foreshadowing.list(project);
+		// Only chapters carrying occurrences are read, one read each and all
+		// at once; a chapter that will not read leaves its body null, and
+		// every occurrence on it is unresolved.
+		const paths = [
+			...new Set(
+				items.flatMap((item) =>
+					item.occurrences.map((occurrence) => occurrence.path),
+				),
+			),
+		];
+		const bodies = new Map<string, string | null>();
+		await Promise.all(
+			paths.map(async (path) => {
+				bodies.set(
+					path,
+					await this.readManuscriptSegment(path).then(
+						({ body }) => body,
+						() => null,
+					),
+				);
+			}),
+		);
+		const unresolved: ForeshadowingRef[] = [];
+		for (const item of items) {
+			for (const occurrence of item.occurrences) {
+				const body = bodies.get(occurrence.path) ?? null;
+				if (
+					body === null ||
+					anchorOccurrence(body, occurrence).state === 'conflict'
+				) {
+					unresolved.push({ item, occurrence });
+				}
+			}
+		}
+		return unresolved;
 	}
 
 	async readManuscriptSegment(path: string): Promise<ManuscriptSegmentText> {
@@ -6437,6 +7064,17 @@ export default class SnowflakeMethodPlugin
 				return available;
 			},
 		});
+		this.addCommand({
+			id: 'add-foreshadowing',
+			name: this.globalT('commands.addForeshadowing'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openCreateForeshadowingModal(this.settings.recentProjectPath);
+				}
+				return available;
+			},
+		});
 		for (const base of ['characters', 'scenes'] as const) {
 			this.addCommand({
 				id: base === 'characters' ? 'open-character-base' : 'open-scene-base',
@@ -6943,6 +7581,7 @@ export default class SnowflakeMethodPlugin
 		// project folder takes its memo with it, and a deleted note simply
 		// stops anchoring, which the derived standing already says.
 		this.projects.revisions.evict(file.path);
+		this.projects.foreshadowing.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -7067,6 +7706,7 @@ export default class SnowflakeMethodPlugin
 			children: file instanceof TFolder,
 		});
 		this.projects.revisions.evict(oldPath);
+		this.projects.foreshadowing.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering
@@ -7089,8 +7729,17 @@ export default class SnowflakeMethodPlugin
 					) {
 						carried = true;
 					}
+					if (
+						await this.projects.foreshadowing.renameNotePaths(
+							project,
+							oldPath,
+							file.path,
+						)
+					) {
+						carried = true;
+					}
 				}
-				if (carried) await this.announceRevisionsChanged();
+				if (carried) await this.announceMarginRecordsChanged();
 			})
 			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);

@@ -142,6 +142,51 @@ export function applyMilestoneMarks(
 	applyMarkSpans(rendered, spans, 'data-snowflake-method-milestone');
 }
 
+/**
+ * The foreshadowing dress: its own layer with its own index attribute, like
+ * the revision layer -- but applied in bands, because two threads may be
+ * planted in one sentence. The wrap gives each visible character to at most
+ * one span, so a second span over the same words would gather nothing,
+ * fail its own verification and vanish, with its card left standing in the
+ * margin. Bands are applied outermost first, so a containing occurrence
+ * wraps the one nested inside it exactly as the layers above wrap it.
+ */
+export function applyForeshadowingMarks(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan[],
+): void {
+	for (const band of markBands(spans)) {
+		applyMarkSpans(rendered, band, 'data-snowflake-method-foreshadowing');
+	}
+}
+
+/**
+ * Spans split into layers, none of which overlaps within itself: the
+ * interval partition, greedy first-fit over spans sorted by where they begin
+ * with the longer of two at one place first, which puts a container in an
+ * earlier band than anything it contains. Each band comes out ascending,
+ * which the wrap's cursor walk requires, and every span keeps the index it
+ * was given, so the cards' lookup is not disturbed. Pure, so the policy is
+ * testable without a DOM.
+ */
+export function markBands(
+	spans: readonly RenderedMentionSpan[],
+): RenderedMentionSpan[][] {
+	const sorted = [...spans].sort(
+		(left, right) => left.from - right.from || right.to - left.to,
+	);
+	const bands: RenderedMentionSpan[][] = [];
+	for (const span of sorted) {
+		const band = bands.find((candidate) => {
+			const last = candidate[candidate.length - 1];
+			return last === undefined || last.to <= span.from;
+		});
+		if (band === undefined) bands.push([span]);
+		else band.push(span);
+	}
+	return bands;
+}
+
 function applyMarkSpans(
 	rendered: HTMLElement,
 	spans: readonly RenderedMentionSpan[],
@@ -227,6 +272,7 @@ const MENTION_CLASSES = [
 	'snowflake-method-highlight',
 	'snowflake-method-dialogue',
 	'snowflake-method-revision',
+	'snowflake-method-foreshadowing',
 	'snowflake-method-milestone',
 	'is-linked',
 	'is-unlinked',
@@ -241,12 +287,19 @@ const MENTION_CLASSES = [
 	'is-delete',
 	'is-insertion',
 	'is-insertion-after',
+	'is-plant',
+	'is-reinforce',
+	'is-payoff',
+	'is-planned',
+	'is-active',
+	'is-resolved',
+	'is-abandoned',
 ];
 
 const MARK_SPANS =
-	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue, span.snowflake-method-revision, span.snowflake-method-milestone';
+	'span.snowflake-method-mention, span.snowflake-method-sensitive, span.snowflake-method-highlight, span.snowflake-method-dialogue, span.snowflake-method-revision, span.snowflake-method-foreshadowing, span.snowflake-method-milestone';
 const MARK_ANCHORS =
-	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue, a.snowflake-method-revision, a.snowflake-method-milestone';
+	'a.snowflake-method-mention, a.snowflake-method-sensitive, a.snowflake-method-highlight, a.snowflake-method-dialogue, a.snowflake-method-revision, a.snowflake-method-foreshadowing, a.snowflake-method-milestone';
 
 /** Takes a segment's dress back off, wraps unwrapped and anchors undressed. */
 export function clearMentionMarks(rendered: HTMLElement): void {
@@ -257,6 +310,7 @@ export function clearMentionMarks(rendered: HTMLElement): void {
 		anchor.removeClasses(MENTION_CLASSES);
 		anchor.removeAttribute('data-snowflake-method-mention');
 		anchor.removeAttribute('data-snowflake-method-revision');
+		anchor.removeAttribute('data-snowflake-method-foreshadowing');
 		anchor.removeAttribute('data-snowflake-method-milestone');
 		anchor.removeAttribute('data-snowflake-method-label');
 	}

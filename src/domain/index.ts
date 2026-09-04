@@ -8,6 +8,7 @@ export * from './dialogue';
 export * from './entity-matcher';
 export * from './export-prose';
 export * from './fingerprint';
+export * from './foreshadowing';
 export * from './managed-sections';
 export * from './manuscript';
 export * from './manuscript-presentation';

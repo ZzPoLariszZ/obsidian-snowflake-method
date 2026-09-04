@@ -1,5 +1,6 @@
 import {
-	anchorRevision,
+	passageStandsAt,
+	passageTravels,
 	refreshAnchors,
 	revisionKindFor,
 	type Revision,
@@ -208,21 +209,16 @@ export class RevisionService {
 	): Promise<boolean> {
 		// Where each revision's own words stand in the note being left, which
 		// is the only reading of it that can be trusted here.
-		const standsAt = (revision: Revision): number => {
-			const anchor = anchorRevision(body, revision);
-			return anchor.state === 'conflict' ? revision.from : anchor.from;
-		};
+		const standsAt = (revision: Revision): number =>
+			passageStandsAt(body, revision);
 		// A range beginning at the cut travels: its words are the new note's
 		// first. A point standing exactly there does not, unless nothing
 		// stands behind it: a point holds to the text behind it, and that text
 		// stays where it is, while the words ahead of it lose the seam's blank
-		// lines on the way and could no longer speak for it there.
-		const goes = (revision: Revision): boolean => {
-			if (revision.path !== from) return false;
-			const stands = standsAt(revision);
-			if (stands !== at) return stands > at;
-			return revision.kind !== 'insert' || revision.before.length === 0;
-		};
+		// lines on the way and could no longer speak for it there. The rule is
+		// the shared one, so a foreshadowing occurrence travels by it too.
+		const goes = (revision: Revision): boolean =>
+			revision.path === from && passageTravels(body, revision, at);
 		const standing = await this.store.readRevisions(project);
 		if (!standing.some(goes)) return false;
 		return this.store.updateRevisions(project, (revisions) => {

@@ -1,6 +1,9 @@
 import { Notice, getLinkpath, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
+	FORESHADOWING_STATUSES,
+	type ForeshadowingStatus,
+	isForeshadowingStatus,
 	foldName,
 	type ProgressStatus,
 	type ProjectWorldbuildingKind,
@@ -555,6 +558,35 @@ export function addProgressStatusControl(
 }
 
 /**
+ * A foreshadowing's status, worn where a member wears its progress: the same
+ * bare select on the title row, always holding one of the four. The two
+ * vocabularies are unrelated, so this is a sibling rather than a widening.
+ */
+export function addForeshadowingStatusControl(
+	container: HTMLElement,
+	t: Translate,
+	initial: ForeshadowingStatus,
+	onChange: (value: ForeshadowingStatus) => void,
+): HTMLSelectElement {
+	const select = container.createEl('select', {
+		cls: 'dropdown snowflake-method-status-select',
+		attr: { 'aria-label': t('manuscript.foreshadowing.status') },
+	});
+	for (const status of FORESHADOWING_STATUSES) {
+		const option = select.createEl('option', {
+			value: status,
+			text: t(`foreshadowing.status.${status}`),
+		});
+		option.selected = status === initial;
+	}
+	select.addEventListener('change', () => {
+		const value = select.value;
+		onChange(isForeshadowingStatus(value) ? value : 'planned');
+	});
+	return select;
+}
+
+/**
  * The kinds of note a record can point at. Time is split by what a time note
  * is, because picking "the year it happened" and "the war it happened during"
  * are different choices even though both are time notes. The groups are not a
@@ -602,6 +634,74 @@ export function entityGroupLabel(t: Translate, group: EntityGroupId): string {
 export interface PickedEntity {
 	group: EntityGroupId;
 	option: PickerOption;
+}
+
+/**
+ * The chooser a record's target wears before it has one: the option picker's
+ * own frame, so a record's fields all read as the same kind of control,
+ * opened by a click anywhere on it. The thread form's related entities are
+ * chosen through the same frame, which is why it stands outside the editor.
+ */
+export function renderRecordPickFrame(
+	container: HTMLElement,
+	placeholder: string,
+	open: () => void,
+): void {
+	const picker = container.createDiv({
+		cls: 'snowflake-method-option-picker is-single snowflake-method-record-pick',
+	});
+	const field = picker.createDiv({
+		cls: 'snowflake-method-option-picker-field',
+	});
+	const values = field.createDiv({
+		cls: 'snowflake-method-option-picker-values',
+	});
+	values.createSpan({
+		cls: 'snowflake-method-record-pick-placeholder',
+		text: placeholder,
+	});
+	const selector = field.createEl('button', {
+		cls: 'clickable-icon snowflake-method-option-picker-selector',
+		attr: { type: 'button', 'aria-label': placeholder },
+	});
+	setIcon(selector, 'chevrons-up-down');
+	picker.addEventListener('click', () => {
+		open();
+	});
+}
+
+/** One reference: what it is, what it points at, and a way to drop it. */
+export function renderRecordLine(
+	container: HTMLElement,
+	line: {
+		label: string;
+		text: string;
+		missing: boolean;
+		/** Said over the value when the note it names is gone. */
+		missingTitle: string;
+		removeLabel: string;
+	},
+	remove: () => void,
+): void {
+	const el = container.createDiv({ cls: 'snowflake-method-record-line' });
+	el.createDiv({
+		cls: 'snowflake-method-record-line-label',
+		text: line.label,
+	});
+	const value = el.createDiv({
+		cls: 'snowflake-method-record-line-value',
+		text: line.text,
+	});
+	if (line.missing) {
+		value.addClass('snowflake-method-option-picker-missing');
+		setTooltip(value, line.missingTitle);
+	}
+	const button = el.createEl('button', {
+		cls: 'snowflake-method-record-line-remove clickable-icon',
+		attr: { type: 'button', 'aria-label': line.removeLabel },
+	});
+	setIcon(button, 'circle-minus');
+	button.addEventListener('click', remove);
 }
 
 /**
@@ -930,7 +1030,7 @@ export class RecordCardsEditor {
 				targetEl.empty();
 				if (card.target !== null) el.removeClass('is-missing-target');
 				if (card.target === null) {
-					this.renderTargetPicker(
+					renderRecordPickFrame(
 						targetEl,
 						this.context.t('form.record.chooseTarget'),
 						() => {
@@ -947,11 +1047,13 @@ export class RecordCardsEditor {
 					);
 					return;
 				}
-				this.renderLine(
+				renderRecordLine(
 					targetEl,
-					this.lineLabel(card.target),
-					termText(card.target),
-					this.isMissing(card.target),
+					this.line(
+						this.lineLabel(card.target),
+						termText(card.target),
+						this.isMissing(card.target),
+					),
 					() => {
 						card.target = null;
 						card.renderTarget();
@@ -1018,38 +1120,6 @@ export class RecordCardsEditor {
 	}
 
 	/**
-	 * The target is a value the record holds, so it wears the option picker's
-	 * frame like every other field that names something.
-	 */
-	private renderTargetPicker(
-		container: HTMLElement,
-		placeholder: string,
-		open: () => void,
-	): void {
-		const picker = container.createDiv({
-			cls: 'snowflake-method-option-picker is-single snowflake-method-record-pick',
-		});
-		const field = picker.createDiv({
-			cls: 'snowflake-method-option-picker-field',
-		});
-		const values = field.createDiv({
-			cls: 'snowflake-method-option-picker-values',
-		});
-		values.createSpan({
-			cls: 'snowflake-method-record-pick-placeholder',
-			text: placeholder,
-		});
-		const selector = field.createEl('button', {
-			cls: 'clickable-icon snowflake-method-option-picker-selector',
-			attr: { type: 'button', 'aria-label': placeholder },
-		});
-		setIcon(selector, 'chevrons-up-down');
-		picker.addEventListener('click', () => {
-			open();
-		});
-	}
-
-	/**
 	 * A line is labelled by what it points at, never by the connector the line
 	 * will be written with: `at` and `when` are for reading the note, and the
 	 * form talks about locations and times.
@@ -1077,7 +1147,7 @@ export class RecordCardsEditor {
 				clause.kind === 'span'
 					? this.isMissing(clause.start) || this.isMissing(clause.end)
 					: this.isMissing(clause.term);
-			this.renderLine(card.contextsEl, label, text, missing, () => {
+			renderRecordLine(card.contextsEl, this.line(label, text, missing), () => {
 				card.clauses.splice(index, 1);
 				this.renderContexts(card);
 			});
@@ -1090,36 +1160,19 @@ export class RecordCardsEditor {
 		return path !== null && linkLeadsNowhere(this.context.app, path);
 	}
 
-	/** One reference: what it is, what it points at, and a way to drop it. */
-	private renderLine(
-		container: HTMLElement,
+	/** A reference line's words, in the form's own copy. */
+	private line(
 		label: string,
 		text: string,
 		missing: boolean,
-		remove: () => void,
-	): void {
-		const line = container.createDiv({ cls: 'snowflake-method-record-line' });
-		line.createDiv({
-			cls: 'snowflake-method-record-line-label',
-			text: label,
-		});
-		const value = line.createDiv({
-			cls: 'snowflake-method-record-line-value',
+	): Parameters<typeof renderRecordLine>[1] {
+		return {
+			label,
 			text,
-		});
-		if (missing) {
-			value.addClass('snowflake-method-option-picker-missing');
-			setTooltip(value, this.context.t('form.referenceMissing', { name: text }));
-		}
-		const button = line.createEl('button', {
-			cls: 'snowflake-method-record-line-remove clickable-icon',
-			attr: {
-				type: 'button',
-				'aria-label': this.context.t('form.record.removeLine', { name: text }),
-			},
-		});
-		setIcon(button, 'circle-minus');
-		button.addEventListener('click', remove);
+			missing,
+			missingTitle: this.context.t('form.referenceMissing', { name: text }),
+			removeLabel: this.context.t('form.record.removeLine', { name: text }),
+		};
 	}
 }
 

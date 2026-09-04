@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	BAND_SPANS,
+	FORESHADOWING_STATUSES,
 	HEATMAP_MEASURES,
+	OCCURRENCE_ROLES,
 	READING_MEASURES,
 	WRITING_MODES,
 } from '../../src/domain';
@@ -1159,5 +1161,152 @@ describe('plaintext export copy', () => {
 			expect(locale['modal.exportReplace.question']).toContain('{count}');
 			expect(locale['errors.exportIntoManuscript']).toContain('{path}');
 		}
+	});
+});
+
+/**
+ * The foreshadowing copy is read through untyped accessors -- a status or a
+ * role interpolated into its key, a table column named by its id -- so the
+ * type checker never sees a key go missing. The sweep does.
+ */
+describe('foreshadowing copy', () => {
+	it('names every status and role in both languages, in the words the author fixed', () => {
+		for (const status of FORESHADOWING_STATUSES) {
+			expect(Object.keys(en), status).toContain(`foreshadowing.status.${status}`);
+			expect(Object.keys(zhCN), status).toContain(`foreshadowing.status.${status}`);
+		}
+		for (const role of OCCURRENCE_ROLES) {
+			expect(Object.keys(en), role).toContain(`foreshadowing.role.${role}`);
+			expect(Object.keys(zhCN), role).toContain(`foreshadowing.role.${role}`);
+		}
+		expect(zhCN['tasks.tab.foreshadowing']).toBe('伏笔');
+		expect(zhCN['foreshadowing.item']).toBe('伏笔');
+		expect(zhCN['foreshadowing.occurrence']).toBe('落点');
+		expect(zhCN['foreshadowing.role.plant']).toBe('埋设');
+		expect(zhCN['foreshadowing.role.reinforce']).toBe('强化');
+		expect(zhCN['foreshadowing.role.payoff']).toBe('回收');
+		expect(zhCN['foreshadowing.status.resolved']).toBe('已回收');
+	});
+
+	it('labels the stream flows, the cards and the dialogs in both languages', () => {
+		const keys = [
+			'manuscript.foreshadowing.create',
+			'manuscript.foreshadowing.addExisting',
+			'manuscript.foreshadowing.relink',
+			'manuscript.foreshadowing.addTitle',
+			'manuscript.foreshadowing.relinkTitle',
+			'manuscript.foreshadowing.role',
+			'manuscript.foreshadowing.status',
+			'manuscript.foreshadowing.name',
+			'manuscript.foreshadowing.description',
+			'manuscript.foreshadowing.note',
+			'manuscript.foreshadowing.noteOptional',
+			'manuscript.foreshadowing.notePlaceholder',
+			'manuscript.foreshadowing.place',
+			'manuscript.foreshadowing.passage',
+			'manuscript.foreshadowing.pick',
+			'manuscript.foreshadowing.pickPlaceholder',
+			'manuscript.foreshadowing.pickEmpty',
+			'manuscript.foreshadowing.pickRequired',
+			'manuscript.foreshadowing.occurrencePick',
+			'manuscript.foreshadowing.occurrencePlaceholder',
+			'manuscript.foreshadowing.unresolved',
+			'manuscript.foreshadowing.unresolvedHint',
+			'manuscript.foreshadowing.noUnresolved',
+			'manuscript.foreshadowing.text',
+			'manuscript.foreshadowing.stale',
+			'manuscript.foreshadowing.duplicate',
+			'manuscript.foreshadowing.refused',
+			'manuscript.foreshadowing.open',
+			'manuscript.foreshadowing.edit',
+			'manuscript.foreshadowing.delete',
+			'manuscript.foreshadowing.save',
+			'manuscript.foreshadowing.cancel',
+			'manuscript.foreshadowing.previous',
+			'manuscript.foreshadowing.next',
+			'modal.foreshadowing.title',
+			'modal.foreshadowing.editTitle',
+			'modal.foreshadowing.name',
+			'modal.foreshadowing.nameRequired',
+			'modal.foreshadowing.description',
+			'modal.foreshadowing.related',
+			'modal.foreshadowing.relatedPlaceholder',
+			'modal.foreshadowing.relatedEmpty',
+			'modal.foreshadowing.relatedRemove',
+			'modal.foreshadowing.relatedMissing',
+			'modal.foreshadowing.initialOccurrence',
+			'modal.foreshadowing.occurrences',
+			'modal.foreshadowing.occurrencesEmpty',
+			'modal.foreshadowing.occurrenceDelete',
+			'modal.foreshadowing.deleteTitle',
+			'modal.foreshadowing.deleteDescription',
+			'modal.occurrence.title',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		for (const key of [
+			'modal.foreshadowing.relatedRemove',
+			'modal.foreshadowing.relatedMissing',
+			'modal.foreshadowing.deleteTitle',
+		]) {
+			expect(en[key as keyof typeof en]).toContain('{name}');
+			expect(zhCN[key as keyof typeof zhCN]).toContain('{name}');
+		}
+		expect(en['modal.foreshadowing.deleteDescription']).toContain('{count}');
+		expect(zhCN['modal.foreshadowing.deleteDescription']).toContain('{count}');
+		// One verb for an occurrence's going, everywhere it is offered.
+		expect(en['manuscript.foreshadowing.delete']).toBe('Delete');
+		expect(zhCN['manuscript.foreshadowing.delete']).toBe('删除');
+		expect(zhCN['modal.foreshadowing.occurrenceDelete']).toContain('删除');
+	});
+
+	it('labels the table, its funnel and its actions in both languages', () => {
+		const keys = [
+			'foreshadowingTable.name',
+			'foreshadowingTable.description',
+			'foreshadowingTable.related',
+			'foreshadowingTable.role',
+			'foreshadowingTable.place',
+			'foreshadowingTable.empty',
+			'foreshadowingTable.noProject',
+			'foreshadowingTable.loading',
+			'foreshadowingTable.loadFailed',
+			'foreshadowingTable.refresh',
+			'foreshadowingTable.searchPlaceholder',
+			'foreshadowingTable.add',
+			'foreshadowingTable.none',
+			'foreshadowingTable.unresolved',
+			'foreshadowingTable.editOccurrence',
+			'foreshadowingTable.editItem',
+			'foreshadowingTable.deleteOccurrence',
+			'foreshadowingTable.deleteItem',
+			'foreshadowingTable.filterAllStatuses',
+			'foreshadowingTable.filterAllRoles',
+			'foreshadowingTable.standing',
+			'foreshadowingTable.filterAllStandings',
+			'foreshadowingTable.unresolvedOnly',
+			'foreshadowingTable.refused',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		// The Role column must never read as "Character" in Chinese.
+		expect(zhCN['foreshadowingTable.role']).not.toBe(zhCN['form.group.character']);
+	});
+
+	it('labels the notices the stores raise in both languages', () => {
+		const keys = [
+			'manuscript.foreshadowing.newerSchema',
+			'manuscript.foreshadowing.corruptPreserved',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		expect(en['manuscript.foreshadowing.corruptPreserved']).toContain('{path}');
+		expect(zhCN['manuscript.foreshadowing.corruptPreserved']).toContain('{path}');
 	});
 });

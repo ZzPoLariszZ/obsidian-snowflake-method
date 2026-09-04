@@ -157,6 +157,7 @@ import {
 import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
+import { ForeshadowingService } from "./foreshadowing-service";
 import { RevisionService } from "./revision-service";
 import { WritingCountService } from "./writing-count";
 import {
@@ -377,6 +378,8 @@ export class SnowflakeProjectService {
   readonly analysis: ManuscriptAnalysisService;
   /** Proposed manuscript changes: user data beside the caches above. */
   readonly revisions: RevisionService;
+  /** Foreshadowing threads and their occurrences: user data beside the revisions. */
+  readonly foreshadowing: ForeshadowingService;
   /** The manuscript as plain text files, for the export buttons and the copy. */
   readonly exporter: ManuscriptExportService;
   /**
@@ -411,6 +414,9 @@ export class SnowflakeProjectService {
        * to update, not told about damage.
        */
       onRevisionsForeign?: (path: string, version: number) => void;
+      /** The same two, for the foreshadowing file: its own file, its own notices. */
+      onForeshadowingCorrupt?: (path: string) => void;
+      onForeshadowingForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -450,6 +456,15 @@ export class SnowflakeProjectService {
       ...(analysis.onRevisionsForeign === undefined
         ? {}
         : { onForeign: analysis.onRevisionsForeign }),
+    });
+    this.foreshadowing = new ForeshadowingService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.onForeshadowingCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onForeshadowingCorrupt }),
+      ...(analysis.onForeshadowingForeign === undefined
+        ? {}
+        : { onForeign: analysis.onForeshadowingForeign }),
     });
     this.exporter = new ManuscriptExportService(this.repository, this.manuscript);
   }
@@ -1128,6 +1143,7 @@ export class SnowflakeProjectService {
       writingSessions: new Set(),
       manuscriptAnalysis: new Set(),
       mentionIndex: new Set(),
+      foreshadowing: new Set(),
       revisions: new Set(),
       materials: new Set(),
       archive: new Set(),
@@ -6839,6 +6855,7 @@ export class SnowflakeProjectService {
       writingSessions: [],
       manuscriptAnalysis: [],
       mentionIndex: [],
+      foreshadowing: [],
       revisions: [],
       materials: [],
       archive: [],

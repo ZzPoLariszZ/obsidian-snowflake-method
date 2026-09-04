@@ -2462,7 +2462,8 @@
 	box-sizing: border-box;
 }
 
-.snowflake-method-character-edit {
+.snowflake-method-character-edit,
+.snowflake-method-split-primary {
 	width: 100%;
 	min-width: 0;
 	overflow: hidden;
@@ -5564,6 +5565,34 @@ body {
 	left: auto;
 }
 
+/* Foreshadowing: a thread the author is tracking, worn at each place it
+   touches the page. One ground for the whole family, so a plant, its echo
+   and its payoff read as one thread rather than three unrelated tints, and
+   the role told by the line under it -- dotted where the thread is laid
+   down, absent where it is only echoed, solid where it is paid off. The
+   thread's own name rides as the mark's title, which both halves already
+   carry, so overlapping threads can be told apart by pointing at them. A
+   thread given up keeps its places but fades. Metrics-neutral like every
+   mark here: a ground and a decoration lay nothing out. */
+.snowflake-method-foreshadowing {
+	border-radius: 2px;
+	background-color: color-mix(in srgb, var(--color-purple) 22%, transparent);
+}
+
+.snowflake-method-foreshadowing.is-plant {
+	text-decoration: underline dotted;
+	text-decoration-color: color-mix(in srgb, var(--color-purple) 70%, transparent);
+}
+
+.snowflake-method-foreshadowing.is-payoff {
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--color-purple) 70%, transparent);
+}
+
+.snowflake-method-foreshadowing.is-abandoned {
+	background-color: color-mix(in srgb, var(--color-purple) 10%, transparent);
+}
+
 /* The revision rail: one absolute column standing in the margin at the
    segment's right, cards stacked down it by the view's own measuring. The
    segment is its containing block, which is the one place position:relative
@@ -5641,17 +5670,18 @@ body {
 }
 
 /* A card is a note pinned in the margin: a stripe down its binding edge in
-   the revision colour so the eye ties it to the marked words, a quiet frame,
+   its family's colour so the eye ties it to the marked words, a quiet frame,
    and its parts laid out as named fields rather than as three paragraphs
-   that only their styling tells apart. */
-.snowflake-method-revision-card {
+   that only their styling tells apart. The frame, the shadow and the glide
+   are the rail's, shared by every family of card it holds -- a revision's
+   and a foreshadowing's alike -- and the stripe is the family's own. */
+.snowflake-method-rail-card {
 	position: absolute;
 	right: 0;
 	left: 0;
 	padding: var(--size-4-2) var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
-	border-left: 3px solid
-		color-mix(in srgb, var(--color-yellow) 55%, transparent);
+	border-left: 3px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-primary);
 	box-shadow: var(--shadow-s);
@@ -5670,20 +5700,18 @@ body {
 		box-shadow 150ms ease-out;
 }
 
-.snowflake-method-revision-card:hover {
+.snowflake-method-rail-card:hover {
 	border-color: var(--background-modifier-border-hover);
-	border-left-color: var(--color-yellow);
 	box-shadow: var(--shadow-l);
 }
 
-.snowflake-method-revision-card.is-conflict {
-	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
-	border-left-color: var(--color-red);
+/* A revision's stripe is the revision colour, full under the pointer. */
+.snowflake-method-revision-card {
+	border-left-color: color-mix(in srgb, var(--color-yellow) 55%, transparent);
 }
 
-.snowflake-method-revision-card.is-conflict:hover {
-	border-color: color-mix(in srgb, var(--color-red) 65%, transparent);
-	border-left-color: var(--color-red);
+.snowflake-method-revision-card:hover {
+	border-left-color: var(--color-yellow);
 }
 
 /* The card being written stands out from the ones already made. */
@@ -5693,11 +5721,34 @@ body {
 	box-shadow: var(--shadow-l);
 }
 
+/* A thread's card wears the thread's colour on its binding edge, the way a
+   revision's wears the revision colour. */
+.snowflake-method-foreshadowing-card {
+	border-left-color: color-mix(in srgb, var(--color-purple) 55%, transparent);
+}
+
+.snowflake-method-foreshadowing-card:hover {
+	border-left-color: var(--color-purple);
+}
+
+/* A card whose words are gone -- a revision in conflict, an occurrence
+   unresolved -- is framed in the warning colour whichever family it is.
+   After the family stripes, so it wins by order. */
+.snowflake-method-rail-card.is-conflict {
+	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+	border-left-color: var(--color-red);
+}
+
+.snowflake-method-rail-card.is-conflict:hover {
+	border-color: color-mix(in srgb, var(--color-red) 65%, transparent);
+	border-left-color: var(--color-red);
+}
+
 /* Where an arrow just landed: lit for a beat, and fading through the frame's
    own transition, so the eye finds the card the jump brought up without
    having to sweep the margin for what moved. Last of the card rules, so it
    outranks the hover and conflict frames it is drawn over. */
-.snowflake-method-revision-card.is-jumped {
+.snowflake-method-rail-card.is-jumped {
 	border-color: var(--interactive-accent);
 	border-left-color: var(--interactive-accent);
 	box-shadow: var(--shadow-l);
@@ -5706,7 +5757,7 @@ body {
 /* A saved card's top line: the kind at the left and the two arrows at the
    right, level with it. The kind takes the room that is left so a conflict
    badge wraps under its word instead of pushing the arrows off the corner. */
-.snowflake-method-revision-head {
+.snowflake-method-rail-head {
 	display: flex;
 	gap: var(--size-4-2);
 	align-items: flex-start;
@@ -5714,17 +5765,34 @@ body {
 	margin-bottom: var(--size-4-2);
 }
 
-.snowflake-method-revision-head .snowflake-method-revision-field {
+.snowflake-method-rail-head .snowflake-method-rail-field {
 	flex: 1 1 auto;
 }
 
-.snowflake-method-revision-nav {
+/* A thread card's head is a two-by-two grid: the field's name with the
+   compass at its right, and under them the role with the status centred
+   under the compass. The second column is as wide as the wider of the two,
+   so the word and the arrows read as one column down the corner. */
+.snowflake-method-foreshadowing-card .snowflake-method-rail-field.is-role {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--size-2-2) var(--size-4-2);
+	align-items: start;
+}
+
+.snowflake-method-foreshadowing-card
+	.snowflake-method-rail-field.is-role
+	.snowflake-method-rail-nav {
+	justify-self: end;
+}
+
+.snowflake-method-rail-nav {
 	display: flex;
 	flex: 0 0 auto;
 	gap: var(--size-2-1);
 }
 
-.snowflake-method-revision-nav-step {
+.snowflake-method-rail-nav-step {
 	--icon-size: var(--icon-xs);
 
 	padding: var(--size-2-2);
@@ -5733,27 +5801,27 @@ body {
 
 /* An end of the manuscript is shown rather than clicked into: the arrow stays
    where it is, greyed, and does not light up under the pointer. */
-.snowflake-method-revision-nav-step:disabled,
-.snowflake-method-revision-nav-step:disabled:hover {
+.snowflake-method-rail-nav-step:disabled,
+.snowflake-method-rail-nav-step:disabled:hover {
 	background-color: transparent;
 	color: var(--text-faint);
 	cursor: default;
 }
 
-.snowflake-method-revision-fields {
+.snowflake-method-rail-fields {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 }
 
-.snowflake-method-revision-field {
+.snowflake-method-rail-field {
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-2-2);
 	min-width: 0;
 }
 
-.snowflake-method-revision-label {
+.snowflake-method-rail-label {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	font-weight: var(--font-semibold);
@@ -5765,7 +5833,7 @@ body {
    -- the text itself already wears one where it stands, and a struck copy in
    the card is only harder to read. Whatever the field holds is shown whole,
    its own line breaks included. */
-.snowflake-method-revision-value {
+.snowflake-method-rail-value {
 	padding: var(--size-2-2) var(--size-4-1);
 	border-radius: var(--radius-s);
 	background-color: var(--background-secondary);
@@ -5779,38 +5847,38 @@ body {
    own field name, leaving the two grounds below it to mean what they mean.
    Each colour is carried toward the page's own ink so it stays legible in
    either theme. */
-.snowflake-method-revision-field.is-type .snowflake-method-revision-value {
+.snowflake-method-rail-field.is-type .snowflake-method-rail-value {
 	padding: 0;
 	background-color: transparent;
 	color: color-mix(in srgb, var(--color-yellow) 60%, var(--text-normal));
 	font-weight: var(--font-semibold);
 }
 
-.snowflake-method-revision-field.is-type
-	.snowflake-method-revision-value[data-kind='insert'] {
+.snowflake-method-rail-field.is-type
+	.snowflake-method-rail-value[data-kind='insert'] {
 	color: color-mix(in srgb, var(--color-green) 60%, var(--text-normal));
 }
 
-.snowflake-method-revision-field.is-type
-	.snowflake-method-revision-value[data-kind='delete'] {
+.snowflake-method-rail-field.is-type
+	.snowflake-method-rail-value[data-kind='delete'] {
 	color: color-mix(in srgb, var(--color-red) 60%, var(--text-normal));
 }
 
-.snowflake-method-revision-field.is-type
-	.snowflake-method-revision-value[data-kind='conflict'] {
+.snowflake-method-rail-field.is-type
+	.snowflake-method-rail-value[data-kind='conflict'] {
 	color: var(--text-muted);
 }
 
-.snowflake-method-revision-field.is-original .snowflake-method-revision-value {
+.snowflake-method-rail-field.is-original .snowflake-method-rail-value {
 	background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
 	color: var(--text-muted);
 }
 
-.snowflake-method-revision-field.is-proposed .snowflake-method-revision-value {
+.snowflake-method-rail-field.is-proposed .snowflake-method-rail-value {
 	background-color: color-mix(in srgb, var(--color-green) 12%, transparent);
 }
 
-.snowflake-method-revision-field.is-comment .snowflake-method-revision-value {
+.snowflake-method-rail-field.is-comment .snowflake-method-rail-value {
 	padding: 0 0 0 var(--size-4-2);
 	border-left: 2px solid var(--background-modifier-border);
 	border-radius: 0;
@@ -5822,7 +5890,7 @@ body {
    toward its inset, so the padding gives back what the border takes and the
    words break in the same places whether the card is being read or written
    in. A theme drawing frameless inputs pays nothing and lands there too. */
-.snowflake-method-revision-input {
+.snowflake-method-rail-input {
 	width: 100%;
 	padding: calc(var(--size-2-2) - var(--input-border-width, 1px))
 		calc(var(--size-4-1) - var(--input-border-width, 1px));
@@ -5832,7 +5900,7 @@ body {
 	line-height: var(--line-height-tight);
 }
 
-.snowflake-method-revision-actions {
+.snowflake-method-rail-actions {
 	display: flex;
 	gap: var(--size-4-1);
 	margin-top: var(--size-4-3);
@@ -5840,18 +5908,18 @@ body {
 
 /* The three answers to a proposal are equally likely, so they divide the
    card between them and the row ends where the card does. */
-.snowflake-method-revision-actions.is-balanced
-	.snowflake-method-revision-action {
+.snowflake-method-rail-actions.is-balanced
+	.snowflake-method-rail-action {
 	flex: 1 1 0;
 	min-width: 0;
 }
 
 /* What closes a form sits where a dialog keeps it. */
-.snowflake-method-revision-actions.is-end {
+.snowflake-method-rail-actions.is-end {
 	justify-content: flex-end;
 }
 
-.snowflake-method-revision-action {
+.snowflake-method-rail-action {
 	padding: var(--size-2-2) var(--size-4-2);
 	overflow: hidden;
 	font-size: var(--font-ui-smaller);
@@ -5859,9 +5927,244 @@ body {
 	text-overflow: ellipsis;
 }
 
+/* The answer that takes something away, in the ink the tables give their
+   delete. */
+.snowflake-method-rail-action.is-danger:not(:disabled) {
+	color: var(--text-error);
+}
+
 /* The conflict badge rides after the kind instead of before a table cell. */
-.snowflake-method-revision-value .snowflake-method-revision-badge {
+.snowflake-method-rail-value .snowflake-method-rail-badge {
 	margin-inline: var(--size-4-1) 0;
+}
+
+/* What this appearance does, in the ink the table gives the role, with the
+   unresolved badge, when there is one, after it at the row's own gap; and
+   the thread's status in the word the table gives it -- the same two
+   classes, so the card and the row can never disagree about a colour. */
+.snowflake-method-rail-field.is-role .snowflake-method-rail-value {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-1);
+	padding: 0;
+	background-color: transparent;
+}
+
+.snowflake-method-rail-field.is-role .snowflake-method-rail-badge {
+	margin-inline: 0;
+}
+
+.snowflake-method-rail-status {
+	justify-self: stretch;
+	align-self: center;
+	text-align: center;
+	white-space: nowrap;
+}
+
+/* The words the occurrence marks, on the thread's own ground: the way the
+   dialog shows them, and the page. */
+.snowflake-method-rail-field.is-passage .snowflake-method-rail-value {
+	background-color: color-mix(in srgb, var(--color-purple) 12%, transparent);
+}
+
+/* The role chosen in the edit face: the theme's own dropdown at the card's
+   own size. */
+.snowflake-method-rail-select {
+	width: 100%;
+	font-size: var(--font-ui-small);
+}
+
+/* What an unresolved card asks the author to do, said once and quietly:
+   the words it marked are gone, and only a fresh selection can put it
+   back. */
+.snowflake-method-rail-hint {
+	margin-top: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: var(--line-height-tight);
+	/* Two sentences on two lines, as the copy breaks them. */
+	white-space: pre-line;
+}
+
+/* The thread's own dialog: the member form's grid, with the description, the
+   entities it touches, the first occurrence and the occurrence list each
+   taking a row of their own. */
+.snowflake-method-foreshadowing-modal .snowflake-method-foreshadowing-wide {
+	grid-column: 1 / -1;
+}
+
+/* The entities the thread touches: one line each, and under them, a little
+   apart, the chooser a relationship's target wears, which stays after every
+   pick. The control the block sits in aligns its text to the end, and the
+   lines read from the start like a record card's. */
+.snowflake-method-foreshadowing-related {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	width: 100%;
+	text-align: start;
+}
+
+/* The chooser's chevron stands its border, its margin and half its box in
+   from the frame's edge; the remove button, half its own wider box from the
+   line's. Two pixels of padding bring the two centres onto one vertical. */
+.snowflake-method-foreshadowing-related .snowflake-method-record-line {
+	padding-inline-end: var(--size-2-1);
+}
+
+/* Where the selection stands, and the words themselves, above the fields
+   that describe what they do: the thread's ground on the words, so the
+   dialog shows the passage the way the page will. */
+.snowflake-method-foreshadowing-place {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-foreshadowing-place-label {
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-foreshadowing-passage {
+	padding: var(--size-2-2) var(--size-4-1);
+	border-radius: var(--radius-s);
+	background-color: color-mix(in srgb, var(--color-purple) 12%, transparent);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+	/* A setting's control aligns its text to the end; prose reads from the
+	   start wherever the words are shown. */
+	text-align: start;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* In a setting's control, a flex row that stretches nothing along itself,
+   the ground runs the row's whole width rather than the words' own. */
+.setting-item-control > .snowflake-method-foreshadowing-passage {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* The occurrences a thread holds, one card each in the dress a record card
+   wears in the member forms: where the record's drag handle goes, the number
+   the occurrence stands at in the manuscript (the order is the manuscript's,
+   not the author's); then four lines in the shape a record card gives what
+   it points at, each named at the left -- the role, the chapter, the words
+   and the note -- and the trash riding the first. The position is read here
+   and never typed into; an occurrence moves only by a selection. */
+.snowflake-method-record-order {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 1.25rem;
+	width: 1.25rem;
+	height: var(--input-height);
+}
+
+.snowflake-method-record-order-number {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1rem;
+	height: 1rem;
+	border: 1px solid var(--text-muted);
+	border-radius: 50%;
+	color: var(--text-muted);
+	font-size: var(--font-smallest);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+
+/* A control standing where a line's value goes takes the line's width. */
+.snowflake-method-foreshadowing-field-line .snowflake-method-record-line-field {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+}
+
+/* The first line stands the line's own inset below the card's top, so the
+   number and the trash, which ride that line, step down the same. */
+.snowflake-method-foreshadowing-occurrence-card .snowflake-method-record-order,
+.snowflake-method-foreshadowing-occurrence-card
+	.snowflake-method-record-card-close.clickable-icon {
+	margin-block-start: var(--size-2-1);
+}
+
+.snowflake-method-foreshadowing-occurrence-place {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	max-width: 100%;
+}
+
+.snowflake-method-foreshadowing-occurrence-place-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Where the host can show the occurrence, the chapter's name is the way
+   there, in the link ink the table gives it -- on the card's line and in
+   the occurrence's own dialog alike. */
+.snowflake-method-foreshadowing-occurrence-place-title.is-link {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.snowflake-method-foreshadowing-occurrence-place-title.is-link:hover,
+.snowflake-method-foreshadowing-occurrence-place-title.is-link:focus-visible {
+	text-decoration: underline;
+}
+
+/* An occurrence its chapter no longer answers for, in the tracking tables'
+   warning ink, the name included. */
+.snowflake-method-foreshadowing-occurrence-place.is-unresolved,
+.snowflake-method-foreshadowing-occurrence-place.is-unresolved
+	.snowflake-method-foreshadowing-occurrence-place-title.is-link {
+	color: var(--color-orange);
+}
+
+/* The words and the note run to several lines, so their names stand on
+   the first line of each rather than halfway down: the name takes the
+   field's own top inset and line height. The one-line clamp is given back
+   for the words. */
+.snowflake-method-record-line.snowflake-method-foreshadowing-text-line,
+.snowflake-method-record-line.snowflake-method-foreshadowing-note-line {
+	align-items: flex-start;
+}
+
+.snowflake-method-foreshadowing-text-line .snowflake-method-record-line-label {
+	padding-block-start: var(--size-2-2);
+	line-height: var(--line-height-tight);
+}
+
+.snowflake-method-foreshadowing-note-line .snowflake-method-record-line-label {
+	padding-block-start: calc(var(--size-4-1) + var(--input-border-width));
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-foreshadowing-text-line .snowflake-method-record-line-value {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	text-overflow: clip;
+	white-space: pre-wrap;
+}
+
+/* The same warning said in full in the occurrence dialog, on the two lines
+   the copy breaks it into. */
+.snowflake-method-foreshadowing-unresolved-hint {
+	color: var(--color-orange);
+	font-size: var(--font-ui-small);
+	white-space: pre-line;
+}
+
+/* The one thing in the form that takes the thread away stands at the start
+   of the footer, across from Cancel and Save. */
+.snowflake-method-modal-actions .snowflake-method-modal-leading-action {
+	margin-inline-end: auto;
 }
 
 /* The revision table on the task management pane: the tracking panel's frame
@@ -5943,7 +6246,7 @@ col.snowflake-method-revision-column-place {
 	text-overflow: ellipsis;
 }
 
-.snowflake-method-revision-badge {
+.snowflake-method-rail-badge {
 	display: inline-block;
 	margin-inline-end: var(--size-4-1);
 	padding: 0 var(--size-4-1);
@@ -5951,6 +6254,202 @@ col.snowflake-method-revision-column-place {
 	background-color: color-mix(in srgb, var(--color-red) 18%, transparent);
 	color: var(--color-red);
 	font-size: var(--font-ui-smaller);
+}
+
+/* The Foreshadowing face: the revision table's frame with six columns and one
+   row per occurrence. A thread's own cells -- name, description, related --
+   are drawn on every row of the thread and shown on its first row alone, the
+   rule between them dropped, so the head's cell reads as one cell standing
+   over the rows beneath. Hovering any row lights the whole thread. */
+.snowflake-method-foreshadowing-panel-host,
+.snowflake-method-foreshadowing-panel {
+	height: 100%;
+}
+
+.snowflake-method-foreshadowing-table-wrap.is-hidden,
+.snowflake-method-foreshadowing-panel .search-input-container.is-hidden,
+.snowflake-method-foreshadowing-panel .snowflake-method-filter-button.is-hidden,
+.snowflake-method-foreshadowing-panel .snowflake-method-character-empty.is-hidden {
+	display: none;
+}
+
+/* The add button stands at the band's end, where a member table keeps its
+   own, set off by one icon button's inset: the two icon buttons keep that
+   much air inside their boxes around their glyphs, so without it the eye
+   read the glyphs as further apart than the glyph and the button. */
+.snowflake-method-foreshadowing-add {
+	flex: 0 0 auto;
+	margin-inline-start: var(--size-2-3);
+	white-space: nowrap;
+}
+
+/* Six columns, two buttons in the last, so the floor is higher than the
+   shared 40rem. */
+.snowflake-method-table.snowflake-method-foreshadowing-table {
+	min-width: 60rem;
+}
+
+col.snowflake-method-foreshadowing-column-name {
+	width: 12rem;
+}
+
+col.snowflake-method-foreshadowing-column-related {
+	width: 10rem;
+}
+
+col.snowflake-method-foreshadowing-column-role {
+	width: 6rem;
+}
+
+col.snowflake-method-foreshadowing-column-place {
+	width: 13rem;
+}
+
+/* Two split buttons side by side, each with its word standing clear of its
+   edges, and the cell's own padding kept on either side of the pair. */
+col.snowflake-method-foreshadowing-column-actions {
+	width: 14rem;
+}
+
+/* Every text shows whole, and the positional clamps are given back: the
+   shared nth-child rules name a member's columns, not these. Doubled to stand
+   level with them and win by order. */
+.snowflake-method-table.snowflake-method-foreshadowing-table th,
+.snowflake-method-table.snowflake-method-foreshadowing-table td {
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: normal;
+	text-overflow: clip;
+}
+
+/* With the column shown the actions cell is the buttons' own and no row
+   menu rides the rows; without it the shared rule stands, and the ellipsis
+   rides at the end of the place cell as it does on a member row. */
+.snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column
+	td:last-child {
+	position: static;
+	padding-inline-end: var(--size-4-3);
+}
+
+/* The two buttons share the cell's width in halves rather than keeping the
+   member row's one-button width, so Delete has room for its word and the
+   pair ends where the cell's padding begins, the same distance from the
+   frame on both sides. */
+.snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column
+	td:last-child
+	> .snowflake-method-table-actions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+}
+
+.snowflake-method-foreshadowing-table .snowflake-method-character-split-button {
+	width: auto;
+	min-width: 0;
+}
+
+/* A thread's cell on a row after its first: the words are there for the
+   narrow cards and hidden here, and the rule under the cell above it is
+   dropped, so the head's cell runs on down the thread. */
+.snowflake-method-foreshadowing-table td.is-continued
+	.snowflake-method-foreshadowing-item-cell {
+	display: none;
+}
+
+.snowflake-method-foreshadowing-table tr:not(.is-group-tail) td.is-item {
+	border-bottom: 0;
+}
+
+/* The row hover is the thread's, not the row's: the shared rule is given
+   back, and the class the panel puts on every row of the hovered thread
+   lights them together. Doubled to win by order. */
+.snowflake-method-table.snowflake-method-foreshadowing-table tbody tr:hover td {
+	background: transparent;
+}
+
+.snowflake-method-table.snowflake-method-foreshadowing-table
+	tbody
+	tr.is-group-hover
+	td {
+	background: var(--background-modifier-hover);
+}
+
+/* What the occurrence does, in the thread's ink; a plant a shade cooler and
+   a payoff a shade warmer than the echo between them. The card in the
+   margin wears the same word, so the two can never disagree. */
+.snowflake-method-foreshadowing-role {
+	color: color-mix(in srgb, var(--color-purple) 60%, var(--text-normal));
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-foreshadowing-role[data-role='plant'] {
+	color: color-mix(in srgb, var(--color-blue) 60%, var(--text-normal));
+}
+
+.snowflake-method-foreshadowing-role[data-role='payoff'] {
+	color: color-mix(in srgb, var(--color-green) 60%, var(--text-normal));
+}
+
+/* An occurrence whose words are gone says so in the quiet ink of a
+   conflict, wherever the role is shown. */
+.snowflake-method-foreshadowing-role[data-role='unresolved'] {
+	color: var(--text-muted);
+}
+
+/* An occurrence its chapter no longer answers for: the tracking tables'
+   warning ink, the alert with it, in place of the link the living rows carry
+   -- and a link all the same, to the card pinned at the chapter's head. */
+.snowflake-method-foreshadowing-unresolved {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+	overflow: hidden;
+	color: var(--color-orange);
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-foreshadowing-unresolved.is-link {
+	cursor: pointer;
+}
+
+.snowflake-method-foreshadowing-unresolved.is-link:hover {
+	text-decoration: underline;
+}
+
+/* The entities the thread touches, one to a line; one the project no longer
+   holds keeps its name and says the name is all that is left. */
+.snowflake-method-foreshadowing-related-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-foreshadowing-related-name.is-missing {
+	color: var(--text-faint);
+	text-decoration: line-through;
+}
+
+/* A row with no occurrence still stands, and says so. */
+.snowflake-method-foreshadowing-none {
+	color: var(--text-faint);
+}
+
+/* What the search or the funnel landed on, marked where every occurrence row
+   has a cell: a tint the hover replaces and an edge it cannot. */
+.snowflake-method-table.snowflake-method-foreshadowing-table tr.is-match td {
+	background: color-mix(in srgb, var(--text-accent) 8%, transparent);
+}
+
+.snowflake-method-table.snowflake-method-foreshadowing-table
+	tr.is-match
+	td.snowflake-method-foreshadowing-column-role {
+	box-shadow: inset 3px 0 0 0 var(--text-accent);
+}
+
+/* The delete primary shares the split's shape, not the standalone delete
+   button's fixed width. */
+.snowflake-method-foreshadowing-delete:not(:disabled) {
+	color: var(--text-error);
 }
 
 /* The prose panel: the statistics pane's Prose analysis face. Plain rows and
@@ -6020,6 +6519,12 @@ col.snowflake-method-revision-column-place {
 .snowflake-method-prose-state {
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
+}
+
+/* Nothing to say takes no room: with the state empty, the funnel and the
+   refresh stand one gap apart, as the refresh and the add button do. */
+.snowflake-method-prose-state:empty {
+	display: none;
 }
 
 .snowflake-method-prose-summary {
@@ -6291,6 +6796,9 @@ col.snowflake-method-prose-column-dialogue {
 	.snowflake-method-prose-controls
 	.search-input-container,
 .snowflake-method-revision-panel
+	.snowflake-method-prose-controls
+	.search-input-container,
+.snowflake-method-foreshadowing-panel
 	.snowflake-method-prose-controls
 	.search-input-container {
 	flex: 0 1 16rem;
@@ -7321,6 +7829,26 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 .snowflake-method-entity-status.is-in-revision {
 	color: var(--color-yellow);
+}
+
+/* The four faces of a foreshadowing, in the progress words' own inks:
+   waiting, in play, paid off, set aside -- the last in the ink a delete
+   wears, and struck too, so it reads without colour. */
+.snowflake-method-entity-status.is-planned {
+	color: var(--text-faint);
+}
+
+.snowflake-method-entity-status.is-active {
+	color: var(--color-blue);
+}
+
+.snowflake-method-entity-status.is-resolved {
+	color: var(--color-green);
+}
+
+.snowflake-method-entity-status.is-abandoned {
+	color: var(--text-error);
+	text-decoration: line-through;
 }
 
 /* Record editors sit below the form's grid, the full width of it: a titled
@@ -10356,4 +10884,34 @@ button.snowflake-method-kind-options {
 .snowflake-method-modes-entry.is-picked .snowflake-method-modes-label {
 	color: var(--text-normal);
 	font-weight: var(--font-semibold);
+}
+
+/* A pane too narrow for a grid: the shared sheet turns every row into a
+   card, and a thread's cells are shown on every card again so each card is
+   whole, the borders the wide layout dropped between a thread's rows given
+   back. Doubled to stand level with those rules and win by order. */
+@container snowflake-dashboard (max-width: 42rem) {
+	/* The six-column floor above outranks the shared reset by its second
+	   class, so it is given back here in the same terms. */
+	.snowflake-method-table.snowflake-method-foreshadowing-table {
+		min-width: 0;
+	}
+
+	.snowflake-method-table.snowflake-method-foreshadowing-table
+		td.is-continued
+		.snowflake-method-foreshadowing-item-cell {
+		display: block;
+	}
+
+	.snowflake-method-table.snowflake-method-foreshadowing-table
+		tr:not(.is-group-tail)
+		td.is-item {
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.snowflake-method-table.snowflake-method-foreshadowing-table
+		tr.is-match
+		td.snowflake-method-foreshadowing-column-role {
+		box-shadow: none;
+	}
 }

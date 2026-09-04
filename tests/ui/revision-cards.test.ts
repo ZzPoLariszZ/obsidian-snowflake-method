@@ -35,6 +35,27 @@ describe('stacking the rail', () => {
 	it('an empty rail places nothing', () => {
 		expect(stackCards([]).size).toBe(0);
 	});
+
+	it('stacks a foreshadowing card and a revision card by their tops alone', () => {
+		// Two families, one column: a card is placed by where its words are,
+		// never by which family it belongs to, and an unresolved occurrence
+		// at the head floors the measured cards below it as a conflict does.
+		const placed = stackCards(
+			[
+				{ key: 'fs-conflict:occ-9', top: null, height: 30 },
+				{ key: 'fs:occ-1', top: 20, height: 50 },
+				{ key: 'rev-1', top: 20, height: 40 },
+				{ key: 'fs:occ-2', top: 300, height: 40 },
+				{ key: 'rev-2', top: 310, height: 40 },
+			],
+			8,
+		);
+		expect(placed.get('fs-conflict:occ-9')).toBe(0);
+		expect(placed.get('fs:occ-1')).toBe(38);
+		expect(placed.get('rev-1')).toBe(96);
+		expect(placed.get('fs:occ-2')).toBe(300);
+		expect(placed.get('rev-2')).toBe(348);
+	});
 });
 
 const BODY = 'The grey heron stood in the shallows, watching the water.';

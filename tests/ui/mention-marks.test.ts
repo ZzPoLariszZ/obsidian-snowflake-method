@@ -3,19 +3,22 @@ import { describe, expect, it } from 'vitest';
 import {
 	analyzeMentions,
 	buildEntityMatcher,
+	captureOccurrence,
 	captureRevision,
 	combineMentionMarks,
 	dialogueRanges,
 	milestonePositions,
 	planDialogueMarks,
+	planForeshadowingMarks,
 	planMentionMarks,
 	planMilestoneMarks,
 	planRevisionMarks,
 	type CountableRange,
+	type Foreshadowing,
 	type MentionMark,
 	type MentionSource,
 } from '../../src/domain';
-import { projectMentionMarks } from '../../src/ui/mention-marks';
+import { markBands, projectMentionMarks } from '../../src/ui/mention-marks';
 
 const source = (
 	label: string,
@@ -217,5 +220,70 @@ describe('the milestone layer on the rendered half', () => {
 			planMilestoneMarks('note.md', body, plan, (count) => String(count)),
 		);
 		expect(spans[0]).toMatchObject({ from: 0, to: 2, text: '𠮷' });
+	});
+});
+
+describe('banding the foreshadowing dress', () => {
+	const BODY = 'The grey heron stood in the shallows, watching the *water* by [[Alice|her]].';
+	const thread = (
+		id: string,
+		spans: readonly [number, number][],
+	): Foreshadowing => ({
+		id,
+		name: `Thread ${id}`,
+		description: '',
+		status: 'active',
+		related: [],
+		createdAt: 1,
+		updatedAt: 1,
+		occurrences: spans.map(([from, to], index) =>
+			captureOccurrence('50/one.md', BODY, from, to, 'plant', '', `${id}-${String(index)}`),
+		),
+	});
+	const spansOf = (threads: Foreshadowing[]) =>
+		projectMentionMarks(BODY, planForeshadowingMarks('50/one.md', BODY, threads).plan);
+
+	it('puts a containing occurrence in an earlier band than the one inside it', () => {
+		const bands = markBands(spansOf([thread('inner', [[9, 14]]), thread('outer', [[4, 28]])]));
+		expect(bands).toHaveLength(2);
+		// Spans stand in the visible sequence; the marks keep the body offsets.
+		expect(bands[0]?.map((span) => [span.mark.from, span.mark.to])).toEqual([[4, 28]]);
+		expect(bands[1]?.map((span) => [span.mark.from, span.mark.to])).toEqual([[9, 14]]);
+	});
+
+	it('gives three mutually overlapping occurrences three bands, each disjoint and ascending', () => {
+		const bands = markBands(
+			spansOf([thread('a', [[4, 20]]), thread('b', [[9, 28]]), thread('c', [[15, 36]])]),
+		);
+		expect(bands).toHaveLength(3);
+		for (const band of bands) {
+			for (let index = 1; index < band.length; index += 1) {
+				expect(band[index - 1]!.to).toBeLessThanOrEqual(band[index]!.from);
+			}
+		}
+	});
+
+	it('keeps disjoint occurrences in one band, in the order they came', () => {
+		const spans = spansOf([thread('a', [[4, 14], [30, 38]]), thread('b', [[15, 20]])]);
+		const bands = markBands(spans);
+		expect(bands).toHaveLength(1);
+		expect(bands[0]?.map((span) => span.mark.from)).toEqual([4, 15, 30]);
+	});
+
+	it('leaves every span its index, and answers nothing for nothing', () => {
+		const spans = spansOf([thread('inner', [[9, 14]]), thread('outer', [[4, 28]])]);
+		const indexes = new Set(spans.map((span) => span.index));
+		expect(markBands(spans).flat().map((span) => span.index).sort()).toEqual(
+			[...indexes].sort(),
+		);
+		expect(markBands([])).toEqual([]);
+	});
+
+	it('projects a thread across emphasis and a link to the words it marked', () => {
+		const water = BODY.indexOf('*water*') + 1;
+		const her = BODY.indexOf('her]]');
+		const [first, second] = spansOf([thread('a', [[water, water + 5]]), thread('b', [[her, her + 3]])]);
+		expect(first?.text).toBe('water');
+		expect(second?.text).toBe('her');
 	});
 });

@@ -134,6 +134,22 @@ export interface RevisionOccurrence {
 }
 
 /**
+ * One occurrence of a foreshadowing standing in the manuscript: the passage
+ * it was anchored to, and which thread it belongs to. Dress alone, like the
+ * revision layer, and named by ids rather than by the record, so this module
+ * stays free of the foreshadowing module that reads it.
+ */
+export interface ForeshadowingMarkOccurrence {
+	type: 'foreshadowing';
+	path: string;
+	from: number;
+	to: number;
+	matchedText: string;
+	foreshadowingId: string;
+	occurrenceId: string;
+}
+
+/**
  * A word milestone: the character the count's Nth unit begins on, for a
  * count that is a multiple of the reader's interval. Dress alone, never
  * indexed and never asked anything.
@@ -155,6 +171,7 @@ export type Occurrence =
 	| DialogueOccurrence
 	| HighlightOccurrence
 	| RevisionOccurrence
+	| ForeshadowingMarkOccurrence
 	| MilestoneOccurrence;
 
 /**

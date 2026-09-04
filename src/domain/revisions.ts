@@ -9,6 +9,12 @@
  * that cannot be found in one certain place is in conflict. No status field
  * exists to fall out of date, and an edit undone un-conflicts a revision by
  * itself, because nothing was written down about the trouble.
+ *
+ * The anchoring half of this module -- `passageContext`, `resolvePassage`,
+ * `anchorSpot`, and the helpers that place, level, order and carry a stored
+ * passage -- is shared: a foreshadowing occurrence (`foreshadowing.ts`) is
+ * anchored by the same rules, so a place proved for one is proved the same
+ * way for the other.
  */
 
 import { firstAtOrAfter, visibleOffsets } from './analyzable-prose';
@@ -314,6 +320,56 @@ export function anchorRevision(body: string, rev: Revision): RevisionAnchor {
 }
 
 /**
+ * Where a stored place's own words stand in the body as it is now, or where
+ * it last said they were when the body no longer answers. The one reading a
+ * sort, a carry and a table row are all placed by.
+ */
+export function passageStandsAt(body: string, spot: RevisionSpot): number {
+	const anchor = anchorSpot(body, spot);
+	return anchor.state === 'conflict' ? spot.from : anchor.from;
+}
+
+/**
+ * The offsets and contexts a stored place would take against `body`, or null
+ * where it is already level or the body no longer answers for it -- an undo
+ * may yet bring the text back, and rewriting the place would erase where it
+ * will come back to.
+ */
+export function levelledPassage(
+	body: string,
+	spot: RevisionSpot,
+): { from: number; to: number; before: string; after: string } | null {
+	const anchor = anchorSpot(body, spot);
+	if (anchor.state === 'conflict') return null;
+	const { before, after } = passageContext(body, anchor.from, anchor.to);
+	if (
+		spot.from === anchor.from &&
+		spot.to === anchor.to &&
+		spot.before === before &&
+		spot.after === after
+	) {
+		return null;
+	}
+	return { from: anchor.from, to: anchor.to, before, after };
+}
+
+/**
+ * Whether a stored place travels with the text leaving a note at `at`.
+ * Everything past the cut follows its words, and so does a range beginning
+ * at the cut itself; a point standing there stays with the text behind it
+ * unless nothing stands behind it at all.
+ */
+export function passageTravels(
+	body: string,
+	spot: RevisionSpot,
+	at: number,
+): boolean {
+	const stands = passageStandsAt(body, spot);
+	if (stands !== at) return stands > at;
+	return spot.kind !== 'insert' || spot.before.length === 0;
+}
+
+/**
  * What a revision IS, read off what it proposes: a range proposing nothing is
  * a deletion, and one given words again is a replacement -- the same
  * revision seen at two moments rather than two things the author must choose
@@ -359,10 +415,11 @@ export function overlapsLive(
 }
 
 /**
- * Every revision in reading order: by the note it belongs to, as the
- * manuscript itself orders its notes, then by where in that note it begins.
- * A revision whose note the order does not name is left out -- there is
- * nowhere to take the reader.
+ * Everything carrying a stored place, in reading order: by the note it
+ * belongs to, as the manuscript itself orders its notes, then by where in
+ * that note it begins. A place on a note the order does not name is left out
+ * -- there is nowhere to take the reader. Ties at one spot break on the id,
+ * which is settled and random.
  *
  * Where a body is in hand, the place is the one the words hold NOW; where
  * none is -- a note outside the loaded window -- the stored offset stands in.
@@ -370,36 +427,44 @@ export function overlapsLive(
  * on them walk this order, so the two are made from one reading wherever
  * that reading exists.
  */
+export function orderPassages<
+	T extends RevisionSpot & { id: string; path: string },
+>(
+	passages: readonly T[],
+	paths: readonly string[],
+	bodyOf: (path: string) => string | null = () => null,
+): T[] {
+	const rank = new Map(paths.map((path, index) => [path, index]));
+	// Each note's body is read once, and each passage placed once, before
+	// the sort asks about pairs.
+	const bodies = new Map<string, string | null>();
+	const placeOf = (passage: T): number => {
+		if (!bodies.has(passage.path)) {
+			bodies.set(passage.path, bodyOf(passage.path));
+		}
+		const body = bodies.get(passage.path) ?? null;
+		return body === null ? passage.from : passageStandsAt(body, passage);
+	};
+	const named = passages.filter((passage) => rank.has(passage.path));
+	const placed = new Map(
+		named.map((passage) => [passage.id, placeOf(passage)] as const),
+	);
+	return named.sort((left, right) => {
+		const byNote = (rank.get(left.path) ?? 0) - (rank.get(right.path) ?? 0);
+		if (byNote !== 0) return byNote;
+		const at = (placed.get(left.id) ?? 0) - (placed.get(right.id) ?? 0);
+		if (at !== 0) return at;
+		return compareRevisionsAtOneSpot(left, right);
+	});
+}
+
+/** Every revision in reading order: `orderPassages` over the revisions. */
 export function orderRevisions(
 	revisions: readonly Revision[],
 	paths: readonly string[],
 	bodyOf: (path: string) => string | null = () => null,
 ): Revision[] {
-	const rank = new Map(paths.map((path, index) => [path, index]));
-	// Each note's body is read once, and each revision placed once, before
-	// the sort asks about pairs.
-	const bodies = new Map<string, string | null>();
-	const placeOf = (rev: Revision): number => {
-		if (!bodies.has(rev.path)) bodies.set(rev.path, bodyOf(rev.path));
-		const body = bodies.get(rev.path) ?? null;
-		if (body === null) return rev.from;
-		const anchor = anchorRevision(body, rev);
-		return anchor.state === 'conflict' ? rev.from : anchor.from;
-	};
-	const placed = new Map(
-		revisions
-			.filter((rev) => rank.has(rev.path))
-			.map((rev) => [rev.id, placeOf(rev)] as const),
-	);
-	return revisions
-		.filter((rev) => rank.has(rev.path))
-		.sort((left, right) => {
-			const byNote = (rank.get(left.path) ?? 0) - (rank.get(right.path) ?? 0);
-			if (byNote !== 0) return byNote;
-			const at = (placed.get(left.id) ?? 0) - (placed.get(right.id) ?? 0);
-			if (at !== 0) return at;
-			return compareRevisionsAtOneSpot(left, right);
-		});
+	return orderPassages(revisions, paths, bodyOf);
 }
 
 /**
@@ -484,8 +549,8 @@ function wholeCharacterAt(
  * is not loaded and has no body to measure against.
  */
 export function compareRevisionsAtOneSpot(
-	left: Revision,
-	right: Revision,
+	left: { id: string },
+	right: { id: string },
 ): number {
 	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
@@ -646,19 +711,10 @@ export function refreshAnchors(
 ): { next: Revision[]; changed: boolean } {
 	let changed = false;
 	const next = revisions.map((rev) => {
-		const anchor = anchorRevision(body, rev);
-		if (anchor.state === 'conflict') return rev;
-		const { before, after } = passageContext(body, anchor.from, anchor.to);
-		if (
-			rev.from === anchor.from &&
-			rev.to === anchor.to &&
-			rev.before === before &&
-			rev.after === after
-		) {
-			return rev;
-		}
+		const levelled = levelledPassage(body, rev);
+		if (levelled === null) return rev;
 		changed = true;
-		return { ...rev, from: anchor.from, to: anchor.to, before, after };
+		return { ...rev, ...levelled };
 	});
 	return { next, changed };
 }

@@ -1,16 +1,24 @@
-import { setIcon } from 'obsidian';
-
-import { revisionKindFor, type Revision } from '../domain';
+import { revisionKindFor, type OccurrenceRole, type Revision } from '../domain';
+import {
+	foreshadowingCardPrint,
+	renderForeshadowingCard,
+	renderForeshadowingForm,
+	renderUnresolvedOccurrenceCard,
+	type ForeshadowingCardEntry,
+	type ForeshadowingRailCallbacks,
+} from './foreshadowing-cards';
 import type { Translate } from './modals';
+import { railParts } from './rail-parts';
 
 /**
- * The revision rail: one absolutely positioned column per segment, standing
+ * The margin rail: one absolutely positioned column per segment, standing
  * to the right of the manuscript, holding a card per revision the segment
- * carries. The stream computes where each revision's text sits and hands the
- * tops in; the rail draws the cards and settles collisions by pushing down,
- * the way a margin of comments does. Cards being edited keep their elements
- * and their unsaved text across a sync, because a dress refresh mid-thought
- * must not eat a sentence.
+ * carries and a card per foreshadowing occurrence standing in it. The stream
+ * computes where each card's text sits and hands the tops in; the rail draws
+ * the cards and settles collisions by pushing down, the way a margin of
+ * comments does, both families in one stack. Cards being edited keep their
+ * elements and their unsaved text across a sync, because a dress refresh
+ * mid-thought must not eat a sentence.
  */
 
 export interface RevisionCardEntry {
@@ -42,6 +50,12 @@ export interface RevisionRailModel {
 	conflicts: Revision[];
 	draft: RevisionDraft | null;
 	readOnly: boolean;
+	/** The foreshadowing family sharing this rail. */
+	foreshadowing: {
+		entries: ForeshadowingCardEntry[];
+		/** Occurrences the note no longer answers for; pinned, top always null. */
+		unresolved: ForeshadowingCardEntry[];
+	};
 }
 
 export interface RevisionRailCallbacks {
@@ -78,12 +92,16 @@ export interface RevisionRailCallbacks {
 	hasNeighbour(revision: Revision, step: -1 | 1): boolean;
 	/** Takes the reader to the card one step back or on. */
 	onJump(revision: Revision, step: -1 | 1): void;
+	/** What the foreshadowing cards answer with. */
+	foreshadowing: ForeshadowingRailCallbacks;
 }
 
 export interface RevisionRail {
 	sync(model: RevisionRailModel): void;
 	/** The card standing for this revision, conflicts included. */
 	cardFor(id: string): HTMLElement | null;
+	/** The card standing for this occurrence, unresolved ones included. */
+	cardForOccurrence(occurrenceId: string): HTMLElement | null;
 	/**
 	 * Whether a card is open for editing. The form holds the only copy of
 	 * what is being typed into it, so whoever would take the rail down asks
@@ -154,6 +172,11 @@ export const cardPrint = (
 		neighbours,
 	]);
 
+/** The rail's own key for a foreshadowing card, and for its unresolved face. */
+const occurrenceKey = (occurrenceId: string): string => `fs:${occurrenceId}`;
+const unresolvedKey = (occurrenceId: string): string =>
+	`fs-conflict:${occurrenceId}`;
+
 export function renderRevisionRail(
 	segmentEl: HTMLElement,
 	callbacks: RevisionRailCallbacks,
@@ -180,6 +203,8 @@ export function renderRevisionRail(
 		if (held !== null) sync(held);
 	};
 
+	const parts = railParts(restack);
+
 	/** Brings the held model level with an edit that has just landed. */
 	const saved = (id: string, proposed: string, comment: string): void => {
 		if (held === null) return;
@@ -201,65 +226,30 @@ export function renderRevisionRail(
 		};
 	};
 
-	/**
-	 * Where a card's buttons stand. The answers to a proposal share the
-	 * card's width between them, since each is as likely as the next; the
-	 * form's pair sits at the right, where a dialog keeps what closes it.
-	 */
-	const actionRow = (card: HTMLElement, shape: 'balanced' | 'end'): HTMLElement =>
-		card.createDiv({
-			cls: `snowflake-method-revision-actions is-${shape}`,
-		});
-
-	const actionButton = (
-		host: HTMLElement,
-		label: string,
-		onClick: () => void,
-		primary = false,
+	/** The same, for an occurrence's role and note just written. */
+	const savedOccurrence = (
+		occurrenceId: string,
+		patch: { role: OccurrenceRole; note: string },
 	): void => {
-		const button = host.createEl('button', {
-			cls: primary
-				? 'mod-cta snowflake-method-revision-action'
-				: 'snowflake-method-revision-action',
-			text: label,
-			attr: { type: 'button', 'aria-label': label, title: label },
-		});
-		button.addEventListener('click', (event) => {
-			event.stopPropagation();
-			onClick();
-		});
-	};
-
-	/**
-	 * One titled block: the field's name over its value, the shape the
-	 * plugin's own forms use everywhere else. Every card is read as named
-	 * parts this way -- what the text says now, what it would say, and why --
-	 * rather than as three anonymous paragraphs that only their styling tells
-	 * apart.
-	 */
-	const fieldBlock = (
-		host: HTMLElement,
-		part: 'type' | 'original' | 'proposed' | 'comment',
-		label: string,
-	): HTMLElement => {
-		const field = host.createDiv({
-			cls: `snowflake-method-revision-field is-${part}`,
-		});
-		field.createDiv({ cls: 'snowflake-method-revision-label', text: label });
-		return field;
-	};
-
-	/** A field's value, shown whole: a card trims nothing it was given. */
-	const valueBlock = (
-		host: HTMLElement,
-		part: 'original' | 'proposed' | 'comment',
-		label: string,
-		text: string,
-	): void => {
-		fieldBlock(host, part, label).createDiv({
-			cls: 'snowflake-method-revision-value',
-			text,
-		});
+		if (held === null) return;
+		held = {
+			...held,
+			foreshadowing: {
+				...held.foreshadowing,
+				entries: held.foreshadowing.entries.map((entry) =>
+					entry.occurrence.id === occurrenceId
+						? {
+								...entry,
+								occurrence: {
+									...entry.occurrence,
+									role: patch.role,
+									note: patch.note,
+								},
+							}
+						: entry,
+				),
+			},
+		};
 	};
 
 	/**
@@ -273,46 +263,14 @@ export function renderRevisionRail(
 		kind: Revision['kind'] | 'conflict',
 		text: string,
 	): HTMLElement => {
-		const value = fieldBlock(host, 'type', t('manuscript.revision.type'))
+		const value = parts
+			.fieldBlock(host, 'type', t('manuscript.revision.type'))
 			.createDiv({
-				cls: 'snowflake-method-revision-value',
+				cls: 'snowflake-method-rail-value',
 				attr: { 'data-kind': kind },
 			});
 		value.createSpan({ text });
 		return value;
-	};
-
-	/**
-	 * The pair in the card's upper corner: one step back through the
-	 * manuscript's revisions, one step on. A proposal is answered here, and
-	 * the next proposal is usually pages away -- these carry the reader there
-	 * instead of leaving them to hunt the margin for the next marked passage.
-	 * Arrows rather than words: the pair is a compass, not two more things to
-	 * read, and words in the corner would crowd the field names beside them.
-	 */
-	const navGroup = (host: HTMLElement, revision: Revision): void => {
-		const nav = host.createDiv({ cls: 'snowflake-method-revision-nav' });
-		const arrow = (step: -1 | 1, icon: string, label: string): void => {
-			const button = nav.createEl('button', {
-				cls: 'clickable-icon snowflake-method-revision-nav-step',
-				attr: {
-					type: 'button',
-					'aria-label': label,
-					title: label,
-					// The first and the last card say so plainly.
-					...(callbacks.hasNeighbour(revision, step)
-						? {}
-						: { disabled: 'disabled' }),
-				},
-			});
-			setIcon(button, icon);
-			button.addEventListener('click', (event) => {
-				event.stopPropagation();
-				callbacks.onJump(revision, step);
-			});
-		};
-		arrow(-1, 'chevron-up', t('manuscript.revision.previous'));
-		arrow(1, 'chevron-down', t('manuscript.revision.next'));
 	};
 
 	/**
@@ -325,65 +283,24 @@ export function renderRevisionRail(
 		revision: Revision,
 		kind: Revision['kind'] | 'conflict',
 	): HTMLElement => {
-		const head = card.createDiv({ cls: 'snowflake-method-revision-head' });
+		const head = parts.headBlock(card);
 		const type = typeBlock(
 			head,
 			kind,
 			t(`manuscript.revision.kind.${revision.kind}`),
 		);
-		navGroup(head, revision);
-		return type;
-	};
-
-	/**
-	 * A text area tall enough for all of it: the words are shown whole, never
-	 * as much of them as the three rows happened to hold, and never behind a
-	 * scrollbar. The rows are only the floor, the drag handle still raises
-	 * one, and a card built in a pane nobody is looking at measures nothing
-	 * and is left at its rows until it is drawn somewhere real.
-	 *
-	 * `keepTaller` is for the growing that happens under the author's hands:
-	 * a box may rise to hold what is being typed, but never fall back, or a
-	 * box the author dragged taller would collapse at the next keystroke.
-	 */
-	const growToFit = (input: HTMLTextAreaElement, keepTaller = false): void => {
-		if (input.value.length === 0) return;
-		// Its height is still the rows', so scrollHeight is either those rows
-		// or everything in it, whichever is taller; the borders the box sizes
-		// inside are added back.
-		if (input.offsetHeight === 0) return;
-		const frame = input.offsetHeight - input.clientHeight;
-		const wanted = input.scrollHeight + frame;
-		if (keepTaller && wanted <= input.offsetHeight) return;
-		input.setCssStyles({ height: `${String(wanted)}px` });
-	};
-
-	const inputBlock = (
-		host: HTMLElement,
-		part: 'proposed' | 'comment',
-		label: string,
-		options: { value: string; placeholder: string },
-	): HTMLTextAreaElement => {
-		const field = fieldBlock(host, part, label);
-		const input = field.createEl('textarea', {
-			cls: 'snowflake-method-revision-input',
-			attr: {
-				rows: '3',
-				'aria-label': label,
-				placeholder: options.placeholder,
+		parts.navGroup(
+			head,
+			{
+				previous: t('manuscript.revision.previous'),
+				next: t('manuscript.revision.next'),
 			},
-		});
-		input.value = options.value;
-		growToFit(input);
-		// Typing past the bottom of the box raises it instead of pushing the
-		// words out of sight, and the rail is told, since a card that grew
-		// while nothing restacked would grow over the one below it.
-		input.addEventListener('input', () => {
-			const before = input.offsetHeight;
-			growToFit(input, true);
-			if (input.offsetHeight !== before) restack();
-		});
-		return input;
+			(step) => callbacks.hasNeighbour(revision, step),
+			(step) => {
+				callbacks.onJump(revision, step);
+			},
+		);
+		return type;
 	};
 
 	/**
@@ -410,18 +327,16 @@ export function renderRevisionRail(
 			onCancel(): void;
 		},
 	): void => {
-		const fields = card.createDiv({
-			cls: 'snowflake-method-revision-fields',
-		});
+		const fields = parts.fieldsBlock(card);
 		if (options.originalText.length > 0) {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'original',
 				t('manuscript.revision.original'),
 				options.originalText,
 			);
 		}
-		const proposedInput = inputBlock(
+		const proposedInput = parts.inputBlock(
 			fields,
 			'proposed',
 			t('manuscript.revision.proposed'),
@@ -430,7 +345,7 @@ export function renderRevisionRail(
 				placeholder: t('manuscript.revision.proposedPlaceholder'),
 			},
 		);
-		const commentInput = inputBlock(
+		const commentInput = parts.inputBlock(
 			fields,
 			'comment',
 			t('manuscript.revision.commentOptional'),
@@ -439,17 +354,17 @@ export function renderRevisionRail(
 				placeholder: t('manuscript.revision.commentPlaceholder'),
 			},
 		);
-		const actions = actionRow(card, 'end');
-		actionButton(actions, t('manuscript.revision.cancel'), () => {
+		const actions = parts.actionRow(card, 'end');
+		parts.actionButton(actions, t('manuscript.revision.cancel'), () => {
 			options.onCancel();
 		});
-		actionButton(
+		parts.actionButton(
 			actions,
 			t('manuscript.revision.save'),
 			() => {
 				options.onSave(proposedInput.value, commentInput.value);
 			},
-			true,
+			'primary',
 		);
 		// Never let focus scroll: at this moment the card may not have been
 		// given its top yet, and scrolling a card at the rail's origin into
@@ -466,11 +381,9 @@ export function renderRevisionRail(
 	): void => {
 		const revision = entry.revision;
 		cardHead(card, revision, revision.kind);
-		const fields = card.createDiv({
-			cls: 'snowflake-method-revision-fields',
-		});
+		const fields = parts.fieldsBlock(card);
 		if (revision.kind !== 'insert') {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'original',
 				t('manuscript.revision.original'),
@@ -478,7 +391,7 @@ export function renderRevisionRail(
 			);
 		}
 		if (revision.kind !== 'delete') {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'proposed',
 				t('manuscript.revision.proposed'),
@@ -486,7 +399,7 @@ export function renderRevisionRail(
 			);
 		}
 		if (revision.comment.length > 0) {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'comment',
 				t('manuscript.revision.comment'),
@@ -497,18 +410,18 @@ export function renderRevisionRail(
 		// Left to right the row runs from the mildest to the one that
 		// rewrites the manuscript, so the button under the pointer after a
 		// glance is never the one that changes the text.
-		const actions = actionRow(card, 'balanced');
-		actionButton(actions, t('manuscript.revision.edit'), beginEdit);
-		actionButton(actions, t('manuscript.revision.reject'), () => {
+		const actions = parts.actionRow(card, 'balanced');
+		parts.actionButton(actions, t('manuscript.revision.edit'), beginEdit);
+		parts.actionButton(actions, t('manuscript.revision.reject'), () => {
 			callbacks.onRetire(revision);
 		});
-		actionButton(
+		parts.actionButton(
 			actions,
 			t('manuscript.revision.accept'),
 			() => {
 				callbacks.onAccept(revision);
 			},
-			true,
+			'primary',
 		);
 	};
 
@@ -521,15 +434,13 @@ export function renderRevisionRail(
 		// Still typed by what it would have done, with the badge saying why
 		// it can no longer do it.
 		const type = cardHead(card, revision, 'conflict');
-		const fields = card.createDiv({
-			cls: 'snowflake-method-revision-fields',
-		});
+		const fields = parts.fieldsBlock(card);
 		type.createSpan({
-			cls: 'snowflake-method-revision-badge',
+			cls: 'snowflake-method-rail-badge',
 			text: t('manuscript.revision.conflict'),
 		});
 		if (revision.originalText.length > 0) {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'original',
 				t('manuscript.revision.original'),
@@ -537,7 +448,7 @@ export function renderRevisionRail(
 			);
 		}
 		if (revision.proposed.length > 0) {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'proposed',
 				t('manuscript.revision.proposed'),
@@ -545,7 +456,7 @@ export function renderRevisionRail(
 			);
 		}
 		if (revision.comment.length > 0) {
-			valueBlock(
+			parts.valueBlock(
 				fields,
 				'comment',
 				t('manuscript.revision.comment'),
@@ -553,11 +464,20 @@ export function renderRevisionRail(
 			);
 		}
 		if (readOnly) return;
-		const actions = actionRow(card, 'end');
-		actionButton(actions, t('manuscript.revision.discard'), () => {
+		const actions = parts.actionRow(card, 'end');
+		parts.actionButton(actions, t('manuscript.revision.discard'), () => {
 			callbacks.onRetire(revision);
 		});
 	};
+
+	const foreshadowingOptions = (
+		readOnly: boolean,
+	): {
+		t: Translate;
+		parts: typeof parts;
+		readOnly: boolean;
+		callbacks: ForeshadowingRailCallbacks;
+	} => ({ t, parts, readOnly, callbacks: callbacks.foreshadowing });
 
 	const sync = (model: RevisionRailModel): void => {
 		held = model;
@@ -590,9 +510,48 @@ export function renderRevisionRail(
 			const kept = cards.get(key);
 			if (kept !== undefined && kept.print === print) continue;
 			const card =
-				kept?.el ?? rail.createDiv({ cls: 'snowflake-method-revision-card' });
+				kept?.el ??
+				rail.createDiv({
+					cls: 'snowflake-method-rail-card snowflake-method-revision-card',
+				});
 			card.empty();
 			renderConflictCard(card, revision, model.readOnly);
+			cards.set(key, { el: card, editing: false, print });
+		}
+
+		// The unresolved occurrences, pinned beside the conflicts by the same
+		// rule, and kept past their record while a form is open in them.
+		for (const entry of model.foreshadowing.unresolved) {
+			const openKey = occurrenceKey(entry.occurrence.id);
+			const open = cards.get(openKey);
+			if (open?.editing === true) {
+				wanted.add(openKey);
+				order.push({ key: openKey, top: null });
+				continue;
+			}
+			const key = unresolvedKey(entry.occurrence.id);
+			wanted.add(key);
+			order.push({ key, top: null });
+			const print = foreshadowingCardPrint(
+				entry.item,
+				entry.occurrence,
+				model.readOnly,
+				[false, false],
+				true,
+			);
+			const kept = cards.get(key);
+			if (kept !== undefined && kept.print === print) continue;
+			const card =
+				kept?.el ??
+				rail.createDiv({
+					cls: 'snowflake-method-rail-card snowflake-method-foreshadowing-card',
+				});
+			card.empty();
+			renderUnresolvedOccurrenceCard(
+				card,
+				entry,
+				foreshadowingOptions(model.readOnly),
+			);
 			cards.set(key, { el: card, editing: false, print });
 		}
 
@@ -610,7 +569,10 @@ export function renderRevisionRail(
 			]);
 			if (kept !== undefined && kept.print === print) continue;
 			const card =
-				kept?.el ?? rail.createDiv({ cls: 'snowflake-method-revision-card' });
+				kept?.el ??
+				rail.createDiv({
+					cls: 'snowflake-method-rail-card snowflake-method-revision-card',
+				});
 			card.empty();
 			card.removeClass('is-conflict');
 			const state: CardState = { el: card, editing: false, print };
@@ -663,6 +625,65 @@ export function renderRevisionRail(
 			cards.set(key, state);
 		}
 
+		// The foreshadowing cards, by the same rules as the revisions above.
+		for (const entry of model.foreshadowing.entries) {
+			const key = occurrenceKey(entry.occurrence.id);
+			wanted.add(key);
+			order.push({ key, top: entry.top });
+			const kept = cards.get(key);
+			if (kept !== undefined && kept.editing) continue;
+			const print = foreshadowingCardPrint(
+				entry.item,
+				entry.occurrence,
+				model.readOnly,
+				[
+					callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, -1),
+					callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, 1),
+				],
+				false,
+			);
+			if (kept !== undefined && kept.print === print) continue;
+			const card =
+				kept?.el ??
+				rail.createDiv({
+					cls: 'snowflake-method-rail-card snowflake-method-foreshadowing-card',
+				});
+			card.empty();
+			card.removeClass('is-conflict');
+			const state: CardState = { el: card, editing: false, print };
+			renderForeshadowingCard(card, entry, {
+				...foreshadowingOptions(model.readOnly),
+				beginEdit: () => {
+					state.editing = true;
+					state.print = '';
+					card.empty();
+					renderForeshadowingForm(card, entry, {
+						t,
+						parts,
+						onSave: (patch) => {
+							void (async () => {
+								const took = await callbacks.foreshadowing.onEditSave(
+									entry.item,
+									entry.occurrence,
+									patch,
+								);
+								if (!took) return;
+								state.editing = false;
+								savedOccurrence(entry.occurrence.id, patch);
+								restack();
+							})();
+						},
+						onCancel: () => {
+							state.editing = false;
+							restack();
+						},
+					});
+					restack();
+				},
+			});
+			cards.set(key, state);
+		}
+
 		if (model.draft !== null) {
 			order.push({ key: 'draft', top: model.draft.top });
 			// A second revision begun while the first is still being written
@@ -679,7 +700,7 @@ export function renderRevisionRail(
 			draftKey = key;
 			if (draftEl === null) {
 				draftEl = rail.createDiv({
-					cls: 'snowflake-method-revision-card is-draft',
+					cls: 'snowflake-method-rail-card snowflake-method-revision-card is-draft',
 				});
 				renderForm(draftEl, {
 					originalText: model.draft.originalText,
@@ -769,6 +790,10 @@ export function renderRevisionRail(
 		sync,
 		cardFor: (id) =>
 			cards.get(id)?.el ?? cards.get(`conflict:${id}`)?.el ?? null,
+		cardForOccurrence: (id) =>
+			cards.get(occurrenceKey(id))?.el ??
+			cards.get(unresolvedKey(id))?.el ??
+			null,
 		editing: () => [...cards.values()].some((state) => state.editing),
 		dispose: () => {
 			rail.remove();

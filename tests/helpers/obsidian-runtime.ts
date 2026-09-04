@@ -97,3 +97,48 @@ export class Setting {
 		return this;
 	}
 }
+
+/**
+ * Enough of a Menu for a module that builds one to be imported: the panels
+ * put their row menus together with it, and a missing named export is a
+ * link error before any test runs. Nothing here is ever shown.
+ */
+class MenuItemStub {
+	setTitle(): this {
+		return this;
+	}
+	setIcon(): this {
+		return this;
+	}
+	setWarning(): this {
+		return this;
+	}
+	setDisabled(): this {
+		return this;
+	}
+	setSection(): this {
+		return this;
+	}
+	onClick(): this {
+		return this;
+	}
+}
+
+export class Menu {
+	addItem(build: (item: MenuItemStub) => void): this {
+		build(new MenuItemStub());
+		return this;
+	}
+	addSeparator(): this {
+		return this;
+	}
+	setParentElement(): this {
+		return this;
+	}
+	showAtMouseEvent(): this {
+		return this;
+	}
+	hide(): this {
+		return this;
+	}
+}

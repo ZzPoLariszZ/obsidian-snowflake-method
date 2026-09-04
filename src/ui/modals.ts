@@ -472,7 +472,7 @@ function addNoteList(
 	for (const title of titles) list.createEl('li', { text: title });
 }
 
-type SubmitHandler<T> = (value: T) => Promise<void>;
+export type SubmitHandler<T> = (value: T) => Promise<void>;
 
 /**
  * The rule that a name may not be one another record of its kind already
@@ -570,7 +570,7 @@ function isCrossWindowHTMLElement(
 	);
 }
 
-abstract class SnowflakeFormModal<T> extends Modal {
+export abstract class SnowflakeFormModal<T> extends Modal {
 	protected t: Translate;
 	private readonly submitHandler: SubmitHandler<T>;
 	private readonly submitLabelKey: string;
@@ -596,6 +596,17 @@ abstract class SnowflakeFormModal<T> extends Modal {
 
 	protected abstract buildForm(): void;
 	protected abstract collectValue(): T | null;
+
+	/**
+	 * What stands at the start of the footer, across from Cancel and the
+	 * submit, put there before those two: nothing, unless a form has a
+	 * button that takes the whole record away and wants it at the foot with
+	 * the others rather than among the fields.
+	 */
+	protected leadingActions(actions: HTMLElement): void {
+		// Nothing stands there in most forms; the row is the override's.
+		void actions;
+	}
 
 	/** Everything a record editor needs, wired to this modal's own dialogs. */
 	protected recordContext(
@@ -657,6 +668,7 @@ abstract class SnowflakeFormModal<T> extends Modal {
 			cls: 'snowflake-method-modal-actions',
 		});
 		this.actionsEl = actions;
+		this.leadingActions(actions);
 		const cancel = actions.createEl('button', {
 			text: this.t('common.cancel'),
 		});
@@ -2301,7 +2313,7 @@ export interface DefinitionDeletionCost {
  * -- button, Escape, or the title bar -- counts as declining, and no caller is
  * ever left waiting on a question the author walked away from.
  */
-abstract class ConfirmModal extends Modal {
+export abstract class ConfirmModal extends Modal {
 	private confirmed = false;
 
 	protected constructor(
@@ -2393,7 +2405,7 @@ class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
 	constructor(
 		app: App,
 		private readonly t: Translate,
-		private readonly context: MemberFormContext,
+		private readonly context: EntityReferenceSource,
 		private readonly done: (picked: PickedEntity | null) => void,
 	) {
 		super(app);
@@ -2420,6 +2432,7 @@ class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
 		);
 		const typed = query.trim();
 		if (
+			this.context.createIn === undefined ||
 			typed.length === 0 ||
 			options.some((option) => option.label === typed)
 		) {
@@ -2466,11 +2479,11 @@ class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
 			return;
 		}
 		if (choice.kind === 'create') {
-			this.pending = this.context
-				.createIn(choice.group, choice.name)
-				.then((option) =>
-					option === null ? null : { group: choice.group, option },
-				);
+			const created = this.context.createIn?.(choice.group, choice.name);
+			if (created === undefined) return;
+			this.pending = created.then((option) =>
+				option === null ? null : { group: choice.group, option },
+			);
 		}
 	}
 
@@ -2492,10 +2505,21 @@ type ReferenceChoice =
 	| { kind: 'entity'; group: EntityGroupId; option: PickerOption }
 	| { kind: 'create'; group: EntityGroupId; name: string };
 
+/**
+ * What the reference dialog asks of whoever opens it: the kinds, each kind's
+ * notes, and -- only where a form can make one -- a way to create the note
+ * typed but not found. A form without `createIn` offers no create row.
+ */
+export type EntityReferenceSource = Pick<
+	MemberFormContext,
+	'groups' | 'entitiesIn'
+> &
+	Partial<Pick<MemberFormContext, 'createIn'>>;
+
 export function promptForEntityReference(
 	app: App,
 	t: Translate,
-	context: MemberFormContext,
+	context: EntityReferenceSource,
 ): Promise<PickedEntity | null> {
 	return new Promise((resolve) => {
 		new EntityReferenceModal(app, t, context, resolve).open();
