@@ -166,6 +166,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 
 	private readonly rendered: HTMLElement;
 	private readonly emptyEl: HTMLElement;
+	private readonly bodyEl: HTMLElement;
 	private readonly editorEl: HTMLElement;
 	private readonly createdEl: HTMLElement;
 	private readonly modeButton: HTMLButtonElement | null = null;
@@ -343,6 +344,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		}
 
 		const body = this.el.createDiv({ cls: 'snowflake-method-sticky-body' });
+		this.bodyEl = body;
 		this.rendered = body.createDiv({
 			cls: 'snowflake-method-sticky-rendered markdown-rendered',
 			attr: { tabindex: '0' },
@@ -574,11 +576,44 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		this.options.onModeChange?.('editing');
 		if (!focus) return;
 		handle.focus();
-		if (clicked !== undefined) {
-			handle.seek(clicked.passage, clicked.lead, clicked.screenY, clicked.near);
-		} else {
-			handle.enter('end');
-		}
+		if (clicked !== undefined) this.putBack(handle, clicked);
+		else handle.enter('end');
+	}
+
+	/**
+	 * The caret under the words clicked, and the words back where they stood.
+	 * The two faces wear one dress (styles.css), so the words stand very nearly
+	 * where they stood -- a heading's line height apart at most -- and the body
+	 * is scrolled by whatever `seek` says remains, measured from the top of
+	 * the row clicked so the row lands where the rendered row was. Asked again
+	 * over the next two frames, as the stream asks, because the first answer
+	 * comes from an editor that has not measured itself yet; it stops the
+	 * moment the author types or leaves.
+	 */
+	private putBack(handle: SegmentEditorHandle, clicked: ClickedWords): void {
+		const session = this.session;
+		const win = this.el.win;
+		let frames = 0;
+		const again = (): void => {
+			if (
+				this.editor !== handle ||
+				session === null ||
+				this.session !== session ||
+				session.pending !== null
+			) {
+				return;
+			}
+			const gone = handle.seek(
+				clicked.passage,
+				clicked.lead,
+				clicked.rowTop,
+				clicked.near,
+			);
+			if (gone !== null && gone !== 0) this.bodyEl.scrollTop += gone;
+			frames += 1;
+			if (frames < 3) win.requestAnimationFrame(again);
+		};
+		again();
 	}
 
 	private async leaveEditing(): Promise<void> {

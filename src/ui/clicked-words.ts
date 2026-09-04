@@ -12,6 +12,15 @@ export interface ClickedWords {
 	lead: number;
 	/** Where on the screen it was, so it can be put back there. */
 	screenY: number;
+	/**
+	 * The top of the row the pointer was on. A caller putting the words back
+	 * by this rather than by the pointer's own height lands the editor's row
+	 * where the rendered row stood, so the glyph clicked does not move at all;
+	 * the pointer's height, which stands somewhere inside the glyph, would set
+	 * the row half a line lower. The pointer's height when the row could not
+	 * be measured.
+	 */
+	rowTop: number;
 	/** How far through the note, for telling repeated wording apart. */
 	near: number;
 }
@@ -62,8 +71,34 @@ export function clickedWords(
 		passage: prose.slice(from, at + 48),
 		lead: at - from,
 		screenY: event.clientY,
+		rowTop: rowTopAt(doc, spot) ?? event.clientY,
 		near: at / Math.max(1, prose.length),
 	};
+}
+
+/**
+ * The top of the row a caret position stands on: the box of the character
+ * after it, or, at the end of a text node where there is none, of the one
+ * before. Null when neither has a box to measure.
+ */
+function rowTopAt(
+	doc: Document,
+	spot: { node: Node; offset: number },
+): number | null {
+	const length = spot.node.textContent?.length ?? 0;
+	const spans: [number, number][] = [
+		[spot.offset, spot.offset + 1],
+		[spot.offset - 1, spot.offset],
+	];
+	for (const [start, end] of spans) {
+		if (start < 0 || end > length || start >= end) continue;
+		const range = doc.createRange();
+		range.setStart(spot.node, start);
+		range.setEnd(spot.node, end);
+		const box = range.getBoundingClientRect();
+		if (box.height > 0) return box.top;
+	}
+	return null;
 }
 
 /**

@@ -11131,7 +11131,37 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	line-height: var(--line-height-normal);
 }
 
-.snowflake-method-sticky-rendered {
+/* One line of the body's, as a length. Registered so that it is computed
+   where it is declared -- on the body, whose line it is -- and inherited as
+   that many pixels: an unregistered property would carry the token down and
+   a heading would resolve it against its own, taller line. Where the
+   registration is not understood the token is carried, and a heading's
+   margins are a line of its own, which is close. */
+@property --snowflake-method-sticky-line {
+	syntax: '<length>';
+	inherits: true;
+	initial-value: 0px;
+}
+
+.snowflake-method-sticky-body {
+	--snowflake-method-sticky-line: 1lh;
+}
+
+/* The two faces wear one dress, as the stream's halves do. The rendered root
+   takes the body's type in so many words, where nothing a theme says about
+   .markdown-rendered can stand between the body and the prose, and the
+   editor (below) does the same. A paragraph's gap is one line of the body's,
+   which is the blank line the editor shows between paragraphs, and so are a
+   heading's margins; a word too long for the column breaks inside it on
+   both faces, as CodeMirror breaks it. So the words stand where they stood
+   when the author clicks into them, and the caret lands under the pointer. */
+.snowflake-method-sticky-body .snowflake-method-sticky-rendered {
+	--p-spacing: var(--snowflake-method-sticky-line);
+	--heading-spacing: var(--snowflake-method-sticky-line);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	overflow-wrap: break-word;
 	cursor: text;
 }
 
@@ -11175,6 +11205,24 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	font-family: inherit;
 	line-height: inherit;
 	overflow: visible;
+}
+
+/* No padding of the editor's own: the first line stands where the rendered
+   face's first line stood, and every row is as wide as the page's. */
+.snowflake-method-sticky-editor .cm-content {
+	padding: 0;
+	caret-color: var(--caret-color);
+}
+
+/* Rows break where the rendered face breaks them: under pre-wrap a space at
+   the end of a row hangs past it as the page's does, where CodeMirror's
+   break-spaces would carry it to the next row and push a word down. */
+.snowflake-method-sticky-editor .cm-content.cm-lineWrapping {
+	white-space: pre-wrap;
+}
+
+.snowflake-method-sticky-editor .cm-line {
+	padding-inline: 0;
 }
 
 /* A card the filter dropped but the author is still writing in stands on,
