@@ -2250,8 +2250,12 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (passage === null) return;
 		const projectPath = this.model?.projectPath ?? this.projectPath;
 		// Fetched before the dialog opens: the picker decides at build time
-		// whether it has anything to offer.
-		const roster = await this.host.foreshadowingEntityRoster(projectPath);
+		// whether it has anything to offer, and the name field which names
+		// the standing threads already answer to.
+		const [roster, items] = await Promise.all([
+			this.host.foreshadowingEntityRoster(projectPath),
+			this.host.manuscriptForeshadowings(projectPath),
+		]);
 		await promptForForeshadowing(
 			this.app,
 			this.t,
@@ -2259,6 +2263,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				title: this.t('modal.foreshadowing.title'),
 				submitLabelKey: 'common.create',
 				roster,
+				takenNames: items.map((item) => item.name),
 				seedOccurrence: {
 					title: this.segmentTitle(path),
 					text: passage.originalText,

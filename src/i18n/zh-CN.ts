@@ -1523,6 +1523,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.foreshadowing.editTitle': '编辑伏笔',
 	'modal.foreshadowing.name': '名称',
 	'modal.foreshadowing.nameRequired': '名称不能为空。',
+	'modal.foreshadowing.nameTaken': '已有同名伏笔。',
 	'modal.foreshadowing.description': '描述',
 	'modal.foreshadowing.related': '关联条目',
 	'modal.foreshadowing.relatedPlaceholder': '选择关联条目…',

@@ -1661,6 +1661,7 @@ export const en = {
 	'modal.foreshadowing.editTitle': 'Edit foreshadowing',
 	'modal.foreshadowing.name': 'Name',
 	'modal.foreshadowing.nameRequired': 'A name is required.',
+	'modal.foreshadowing.nameTaken': 'Another foreshadowing already has this name.',
 	'modal.foreshadowing.description': 'Description',
 	'modal.foreshadowing.related': 'Related entities',
 	'modal.foreshadowing.relatedPlaceholder': 'Choose an entity…',

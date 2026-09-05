@@ -22,6 +22,7 @@ import {
 	ConfirmModal,
 	promptForEntityReference,
 	SnowflakeFormModal,
+	UniqueNameField,
 	type EntityReferenceSource,
 	type SubmitHandler,
 	type Translate,
@@ -75,6 +76,12 @@ export interface ForeshadowingFormOptions {
 	submitLabelKey: string;
 	/** Every entity the project can point at. */
 	roster: readonly EntityRosterEntry[];
+	/**
+	 * The names the project's other threads already answer to. An edit
+	 * passes every name but its own, so saving a form without touching the
+	 * name is never mistaken for claiming one that is taken.
+	 */
+	takenNames: readonly string[];
 	/** What the form opens on; absent for a new thread. */
 	initial?: {
 		name: string;
@@ -199,6 +206,8 @@ function roleSelect(
  */
 class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 	private name: string;
+	/** The rule the name is held to: not one another thread answers to. */
+	private readonly uniqueName: UniqueNameField;
 	private description: string;
 	private status: ForeshadowingStatus;
 	/** The picked entities, by id. */
@@ -226,6 +235,11 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 		);
 		const initial = options.initial;
 		this.name = initial?.name ?? '';
+		this.uniqueName = new UniqueNameField(
+			options.takenNames,
+			initial?.name ?? null,
+			() => this.t('modal.foreshadowing.nameTaken'),
+		);
 		this.description = initial?.description ?? '';
 		this.status = initial?.status ?? 'planned';
 		this.related = (initial?.related ?? []).map((ref) => ref.id);
@@ -255,11 +269,16 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 		addForeshadowingStatusControl(this.titleControls(), t, this.status, (value) => {
 			this.status = value;
 		});
+		let nameInput: HTMLInputElement | null = null;
 		const nameSetting = new Setting(this.contentEl)
 			.setName(`${t('modal.foreshadowing.name')} *`)
 			.addText((text) => {
+				nameInput = text.inputEl;
 				text.setValue(this.name).onChange((value) => {
 					this.name = value;
+					// On every keystroke, so a name already taken is answered
+					// while it is still being typed rather than at Save.
+					this.uniqueName.show(value);
 				});
 				// The field the author came to type in, when the thread is
 				// new; an edit opens with nothing focused, like every form.
@@ -273,6 +292,9 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			'snowflake-method-character-setting',
 			'snowflake-method-character-name-setting',
 		);
+		// The line under the field, kept whether or not it has anything to
+		// say, so an objection never moves the form under the author.
+		this.uniqueName.attach(nameSetting.settingEl, nameInput, this.name);
 		const descriptionSetting = new Setting(this.contentEl)
 			.setName(t('modal.foreshadowing.description'))
 			.addTextArea((area) => {
@@ -645,6 +667,13 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 		const name = this.name.trim();
 		if (name.length === 0) {
 			new Notice(this.t('modal.foreshadowing.nameRequired'));
+			return null;
+		}
+		const objection = this.uniqueName.objection(name);
+		if (objection !== null) {
+			// As a notice too: the line under the field has said so all along,
+			// but a form scrolled down to its occurrences has it out of sight.
+			new Notice(objection);
 			return null;
 		}
 		return {

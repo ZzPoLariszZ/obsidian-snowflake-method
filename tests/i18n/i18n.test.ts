@@ -1227,6 +1227,7 @@ describe('foreshadowing copy', () => {
 			'modal.foreshadowing.editTitle',
 			'modal.foreshadowing.name',
 			'modal.foreshadowing.nameRequired',
+			'modal.foreshadowing.nameTaken',
 			'modal.foreshadowing.description',
 			'modal.foreshadowing.related',
 			'modal.foreshadowing.relatedPlaceholder',

@@ -519,7 +519,7 @@ class FieldWarning {
 	}
 }
 
-class UniqueNameField {
+export class UniqueNameField {
 	private warning: FieldWarning | null = null;
 
 	constructor(

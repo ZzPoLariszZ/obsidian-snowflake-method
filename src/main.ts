@@ -6573,7 +6573,12 @@ export default class SnowflakeMethodPlugin
 			key: string,
 			vars?: Record<string, string | number>,
 		): string => this.translateForProject(project.locale, key, vars);
-		const roster = await this.foreshadowingEntityRoster(project.projectFile);
+		// The roster for the picker, and the standing threads for the names
+		// the new one may not take.
+		const [roster, items] = await Promise.all([
+			this.foreshadowingEntityRoster(project.projectFile),
+			this.projects.foreshadowing.list(project),
+		]);
 		await promptForForeshadowing(
 			this.app,
 			t,
@@ -6581,6 +6586,7 @@ export default class SnowflakeMethodPlugin
 				title: t('modal.foreshadowing.title'),
 				submitLabelKey: 'common.create',
 				roster,
+				takenNames: items.map((item) => item.name),
 			},
 			async (result) => {
 				const now = Date.now();
@@ -6643,6 +6649,10 @@ export default class SnowflakeMethodPlugin
 				title: t('modal.foreshadowing.editTitle'),
 				submitLabelKey: 'common.save',
 				roster,
+				// Every name but its own: keeping a name is not taking one.
+				takenNames: items
+					.filter((other) => other.id !== id)
+					.map((other) => other.name),
 				initial: {
 					name: item.name,
 					description: item.description,
