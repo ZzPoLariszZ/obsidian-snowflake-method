@@ -188,6 +188,7 @@ import {
 	type ProjectSnapshot,
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
+	type TaskWrite,
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isStickyNotePath,
@@ -4217,14 +4218,19 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	private editTask(projectPath: string | null, id: string, next: TaskEdit): Promise<boolean> {
-		return this.mutateTasks(
+	/**
+	 * One task's edit, answering with the store's own word: a task gone since
+	 * the form opened is "absent", which the form must not take for a save,
+	 * or what was typed into it would close with the dialog and be lost.
+	 */
+	private editTask(projectPath: string | null, id: string, next: TaskEdit): Promise<TaskWrite> {
+		return this.mutateTasks<TaskWrite>(
 			projectPath,
 			async (project) => {
 				const wrote = await this.projects.tasks.edit(project, id, next);
-				return { result: wrote !== 'refused', changed: wrote === 'written' };
+				return { result: wrote, changed: wrote === 'written' };
 			},
-			false,
+			'refused',
 		);
 	}
 
@@ -4342,8 +4348,11 @@ export default class SnowflakeMethodPlugin
 				},
 			},
 			async (result) => {
+				// A save is only a save when the store wrote, or found nothing to
+				// write; anything else keeps the form open with what was typed.
 				const wrote = await this.editTask(project.projectFile, id, result);
-				if (!wrote) throw new Error(t('taskBoard.refused'));
+				if (wrote === 'absent') throw new Error(t('modal.task.gone'));
+				if (wrote !== 'written') throw new Error(t('taskBoard.refused'));
 			},
 		);
 	}

@@ -1622,6 +1622,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.task.relatedEmpty': '暂无可关联的实体。',
 	'modal.task.relatedRemove': '移除 {name}',
 	'modal.task.relatedMissing': '{name} 已不在项目中。',
+	'modal.task.gone': '该任务已不在项目中，未保存任何内容。关闭前请先复制所需文字。',
 	'manuscript.revision.kind.replace': '替换',
 	'manuscript.revision.kind.insert': '插入',
 	'manuscript.revision.kind.delete': '删除',

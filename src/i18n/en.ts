@@ -1766,6 +1766,8 @@ export const en = {
 	'modal.task.relatedEmpty': 'No entities to relate yet.',
 	'modal.task.relatedRemove': 'Remove {name}',
 	'modal.task.relatedMissing': '{name} is no longer in the project.',
+	'modal.task.gone':
+		'This task is no longer in the project, so nothing was saved. Copy what you need before closing.',
 	'manuscript.revision.kind.replace': 'Replace',
 	'manuscript.revision.kind.insert': 'Insert',
 	'manuscript.revision.kind.delete': 'Delete',

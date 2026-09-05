@@ -1431,6 +1431,7 @@ describe('task copy', () => {
 			'modal.task.relatedEmpty',
 			'modal.task.relatedRemove',
 			'modal.task.relatedMissing',
+			'modal.task.gone',
 			'revisionTable.standing',
 			'revisionTable.filterAllStandings',
 			'revisionTable.conflictOnly',
