@@ -133,18 +133,27 @@ export class TaskService {
 	/**
 	 * Takes tasks out for good, one write for one or many, and says which
 	 * of three things happened: gone as asked, none of them there, or a
-	 * write the store refused with every task left standing.
+	 * write the store refused with every task left standing. Emptying the
+	 * archive asks for the archived ones alone: the ids were gathered
+	 * before a confirmation stood open, and a task brought back meanwhile
+	 * -- by another window, another device, or a hand in the file -- is
+	 * spared by the flag it wears at the moment of the write, not the
+	 * moment of the question.
 	 */
 	async remove(
 		project: ProjectRef,
 		ids: readonly string[],
+		options: { archivedOnly?: boolean } = {},
 	): Promise<TaskDeletion> {
 		const gone = new Set(ids);
 		let asked = false;
 		let found = false;
 		await this.store.updateTasks(project, (tasks) => {
 			asked = true;
-			const next = tasks.filter((task) => !gone.has(task.id));
+			const next = tasks.filter(
+				(task) =>
+					!gone.has(task.id) || (options.archivedOnly === true && !task.archived),
+			);
 			found = next.length !== tasks.length;
 			return found ? next : null;
 		});

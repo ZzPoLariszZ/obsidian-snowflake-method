@@ -426,6 +426,37 @@ describe("TaskService", () => {
 		expect(await tasks.remove(project, ["a"])).toBe("absent");
 	});
 
+	it("emptying the archive spares a task brought back while the question stood", async () => {
+		await tasks.create(project, makeTask("keep-me", { archived: true }));
+		await tasks.create(project, makeTask("gone", { archived: true }));
+		await tasks.create(project, makeTask("late", { archived: false }));
+		await tasks.create(project, makeTask("active"));
+		// What the board gathered before the confirmation opened.
+		const standing = (await tasks.list(project))
+			.filter((task) => task.archived)
+			.map((task) => task.id);
+		expect(standing).toEqual(["keep-me", "gone"]);
+		// While it stood: one restored elsewhere, one archived elsewhere.
+		expect(await tasks.setArchived(project, "keep-me", false)).toBe("written");
+		expect(await tasks.setArchived(project, "late", true)).toBe("written");
+		expect(await tasks.remove(project, standing, { archivedOnly: true })).toBe("deleted");
+		expect(
+			(await tasks.list(project)).map((task) => [task.id, task.archived]),
+		).toEqual([
+			["keep-me", false],
+			["late", true],
+			["active", false],
+		]);
+		// Nothing archived left among the named: no write, and absent says so.
+		expect(await tasks.remove(project, ["keep-me", "active"], { archivedOnly: true })).toBe(
+			"absent",
+		);
+		expect(ids(await tasks.list(project))).toEqual(["keep-me", "late", "active"]);
+		// A plain delete still takes an active task, as the card's own Delete does.
+		expect(await tasks.remove(project, ["active"])).toBe("deleted");
+		expect(ids(await tasks.list(project))).toEqual(["keep-me", "late"]);
+	});
+
 	it("tells a task that is gone from a write the store refused", async () => {
 		await tasks.create(project, makeTask("a"));
 		const edit = editOf(makeTask("a"), { title: "x" });

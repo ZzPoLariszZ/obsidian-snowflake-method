@@ -4172,14 +4172,16 @@ export default class SnowflakeMethodPlugin
 				const project = await this.writableProject(panelProject());
 				if (project === null) return false;
 				// Only what is still set aside goes: a task restored or gone
-				// since the board read is left where it stands.
+				// since the board read is left where it stands, and one
+				// restored while the confirmation stands open is spared by
+				// the write itself, which reads the flag afresh.
 				const standing = (await this.projects.tasks.list(project))
 					.filter((task) => task.archived && ids.includes(task.id))
 					.map((task) => task.id);
 				if (standing.length === 0) return true;
 				const confirmed = await confirmTaskArchiveEmptying(this.app, t, standing.length);
 				if (!confirmed) return true;
-				return this.removeTasks(panelProject(), standing);
+				return this.removeTasks(panelProject(), standing, { archivedOnly: true });
 			},
 		};
 	}
@@ -4237,11 +4239,15 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	private removeTasks(projectPath: string | null, ids: readonly string[]): Promise<boolean> {
+	private removeTasks(
+		projectPath: string | null,
+		ids: readonly string[],
+		options: { archivedOnly?: boolean } = {},
+	): Promise<boolean> {
 		return this.mutateTasks(
 			projectPath,
 			async (project) => {
-				const outcome = await this.projects.tasks.remove(project, ids);
+				const outcome = await this.projects.tasks.remove(project, ids, options);
 				return { result: outcome !== 'refused', changed: outcome === 'deleted' };
 			},
 			false,

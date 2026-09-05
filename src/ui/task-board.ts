@@ -470,6 +470,7 @@ export function renderTaskBoard(
 			};
 			el.addEventListener('click', open);
 			el.addEventListener('keydown', (event) => {
+				if (event.target !== el) return;
 				if (event.key !== 'Enter' && event.key !== ' ') return;
 				event.preventDefault();
 				open();
@@ -489,7 +490,11 @@ export function renderTaskBoard(
 			}
 			edit();
 		});
+		// Only the card's own key: the More button inside it activates
+		// itself, and a key that bubbled up from it would open the editor
+		// and cancel the click the button was about to make of it.
 		el.addEventListener('keydown', (event) => {
+			if (event.target !== el) return;
 			if (event.key !== 'Enter' && event.key !== ' ') return;
 			event.preventDefault();
 			edit();
