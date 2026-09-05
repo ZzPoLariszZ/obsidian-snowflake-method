@@ -4061,7 +4061,11 @@ export default class SnowflakeMethodPlugin
 		const rows = settle(revisions, []);
 		return {
 			sources: {
-				dailyGoal: goal,
+				// A history that would not read leaves the goal cards out, as a
+				// failed source leaves its issue cards out: the goal is the
+				// author's setting, not a reading, and a period reached would
+				// otherwise show as untouched until a read landed.
+				dailyGoal: history.status === 'fulfilled' ? goal : 0,
 				goalNet: {
 					day: goalNetSince(days, today),
 					week: goalNetSince(days, weekFrom),
