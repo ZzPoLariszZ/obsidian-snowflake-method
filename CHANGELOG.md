@@ -8,6 +8,17 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0]
+
+### Added
+
+- **Tasks**, the last of the four Task management tabs, a board of six columns: To do, In progress, Blocked, In review, Done and Cancelled. Your own tasks are cards you write, each holding a title no other task answers to, a description, a priority from Low to Urgent, a due date and the characters, scenes and worldbuilding notes it is about, each followed by its identity rather than its title, so renaming a note never loses the link. **Add task** on the tab and **New task** in the command palette open the form, a card is dragged within its column to reorder it and into another to change its status, and its menu carries **Edit**, a move to any of the other columns for where a drag will not do, **Archive** and **Delete**. An urgent task wears a stripe down its edge and a due date already past turns red, a look rather than a status, and a task done or cancelled is never overdue. The rest of the board the plugin fills itself, worked out afresh on every read and never written into the file: the daily, weekly and monthly writing goals, moving from To do through In progress to Done as the words land, the foreshadowing threads still under way and the occurrences whose chapter no longer answers for them, the revisions still standing and the ones whose words have changed underneath, the mentions no single entity can claim, the sensitive words you have listed, and the sticky notes waiting to be read. Each of them stands in the column its count puts it in, opens the tab it was counted from narrowed to what it counted, and goes when there is nothing left to count, and **Toggle derived tasks on the task board** sets them all aside. The band above the board searches every card and narrows the columns by kind, by priority and by due date, and **Archived** folds underneath with a search and a funnel of its own, **Restore** and **Delete** on every card, and a way to empty the whole fold behind a confirmation. Your own tasks live in one file under the project's task management folder, beside the revisions and the foreshadowing and read by the same rules, and the board keeps up with the writing as it happens: a word counted, a foreshadowing resolved, a revision accepted, a note archived, or midnight turning the day, each reaches it without a refresh.
+- The **Revision** tab has a funnel beside its search, narrowing the table to one type of proposal, replace, insert or delete, or to the conflicts alone. A conflicting row's chapter name is now a link as a living row's is: there is no passage left to flash, so it opens the chapter the words were lost in and lights the card pinned at the head of its margin.
+
+### Changed
+
+- Chinese no longer says 未解决 or 待定 where it can say what has actually happened. A mention several entities could answer to is 有歧义的提及, and a foreshadowing occurrence whose marked words are gone is 锚点失效, put back through 重新锚定锚点失效的伏笔落点. A revision whose words changed underneath was already 冲突 and stays so, and both tables label the funnel row 锚点. English is unchanged.
+
 ## [0.17.0]
 
 ### Added
@@ -396,6 +407,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.18.0]
+
+### 新增
+
+- **任务**，任务管理四个标签页中的最后一个，是一块看板，共有六列：待处理、进行中、阻塞中、待检查、已完成与已取消。你自己的任务是一张张卡片，写着不与其他任务重名的标题、一段描述、从低到紧急的优先级、截止日期，以及它写到的角色、场景与世界观笔记，各按自身的身份而非标题认人，因此重命名笔记不会丢掉关联。标签页上的**添加任务**与命令面板中的**新建任务**都会打开表单，卡片可以在同一列中拖动排序，也可以拖到另一列来改变状态，卡片的菜单里则有**编辑**、不便拖动时移到其他任意一列、**归档**与**删除**。紧急的任务在卡片左侧多一道竖条，已经过期的截止日期会变红，这只是外观而非状态，已完成或已取消的任务从不算作过期。看板的另一半由插件自己填上，每次读取都重新算出，从不写进文件：每日、每周与每月的写作目标，随着字数落下从待处理经进行中走到已完成，仍在进行的伏笔线索与所在章节已无法对应的落点，尚待处理的修订与文字已在其下改动过的那些，无法归到某一个实体名下的提及，你列出的敏感词，还有等着查看的便签。它们各自停在数目所指的那一列，点击便会打开它所计的那个标签页，并按它所计的内容收窄，数目归零则自行消失，命令面板中的**切换任务看板中的派生任务**可以把它们一并收起。看板上方的搜索会搜遍每一张卡片，也可以按类型、优先级与截止日期收窄，**已归档**折叠在看板下方，有自己的搜索与筛选，每张卡片上带着**恢复**与**删除**，也可以在一次确认之后清空整个折叠区。你自己的任务存放在项目任务管理文件夹下的一个文件里，与修订、伏笔并列，读写规则相同。看板也跟得上正在进行的写作：记下一笔字数、回收一处伏笔、接受一处修订、归档一张便签，或是午夜换了一天，都会自动反映在看板上，无需手动刷新。
+- **修订**标签页的搜索旁多了一个筛选，可以只看某一种修订，替换、插入或删除，也可以只看有冲突的那些。有冲突的一行，其章节名如今也像正常行一样是链接：那段文字已经无处可跳，于是它会打开文字所在的那一章，并点亮页边顶端固定的那张卡片。
+
+### 变更
+
+- 中文界面不再用「未解决」或「待定」来称呼本可以说清楚的事情。可能对应多个实体的提及称为**有歧义的提及**，所标文字已经不在的伏笔落点称为**锚点失效**，可以通过**重新锚定锚点失效的伏笔落点**接回。文字已在其下改动过的修订原本就叫**冲突**，维持不变，两张表格的筛选行都改称**锚点**。英文表述不变。
 
 ## [0.17.0]
 
