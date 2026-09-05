@@ -14,7 +14,7 @@ import {
 import type { FilterRow } from './filter-rows';
 import { grouped, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
-import { planCardRepaint } from './sticky-note-layout';
+import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
 	TASK_DUE_FILTERS,
 	columnsOf,
@@ -61,12 +61,40 @@ const DAY_WATCH_MS = 60_000;
 /**
  * One card on the board: its element, wired once, and the reading it
  * currently wears. The listeners read the card through the entry, so a
- * repaint redresses the element rather than wiring it again.
+ * repaint redresses the element rather than wiring it again, and the parts
+ * built with it are rewritten rather than remade, so a More button holding
+ * the focus is the same button after the paint.
  */
 interface CardEntry {
 	el: HTMLElement;
 	card: TaskCard;
+	title: HTMLElement;
+	/** The derived card's count or progress, or the manual card's More button. */
+	badge: HTMLElement;
+	/** The manual card's priority and due line, refilled on each dressing; nothing in it takes the focus. */
+	meta: HTMLElement | null;
 }
+
+/** One card on the shelf: built once, its two buttons the same across every fill. */
+interface ShelfEntry {
+	el: HTMLElement;
+	task: Task;
+	title: HTMLElement;
+	restore: HTMLButtonElement;
+	remove: HTMLButtonElement;
+	meta: HTMLElement;
+}
+
+/** What held the focus on the board before a paint, so it can be given back or handed on after. */
+interface FocusHold {
+	id: string;
+	part: 'card' | 'more' | 'restore' | 'delete';
+	el: Element;
+	/** The card beside it on the surface, for when the card itself has gone. */
+	neighbour: Element | null;
+}
+
+const CARD_SELECTOR = '.snowflake-method-task-card';
 
 /** One column: its head, its scrolling body, and the cards it shows by id. */
 interface Lane {
@@ -304,7 +332,7 @@ export function renderTaskBoard(
 		attr: { role: 'list' },
 	});
 	const { line: archiveEmpty, text: archiveEmptyText } = renderEmptyLine(archiveList, '');
-	const shelf = new Map<string, HTMLElement>();
+	const shelf = new Map<string, ShelfEntry>();
 	emptyButton.addEventListener('click', () => {
 		if (reading === null) return;
 		const ids = reading.tasks.filter((task) => task.archived).map((task) => task.id);
@@ -529,104 +557,137 @@ export function renderTaskBoard(
 		});
 	};
 
-	/** Dresses a card's element from its reading, on the first paint and every one after. */
-	const dressCard = (entry: CardEntry, current: TaskBoardReading): void => {
-		const { el, card } = entry;
-		el.empty();
-		el.className = 'snowflake-method-task-card';
+	/**
+	 * Builds a card's element once: the parts a dressing rewrites rather
+	 * than remakes, so a More button holding the focus is still there, and
+	 * still focused, after a read redresses the card around it.
+	 */
+	const buildCard = (el: HTMLElement, card: TaskCard): CardEntry => {
 		el.setAttribute('role', 'listitem');
 		el.setAttribute('tabindex', '0');
+		el.setAttribute('data-id', cardId(card));
+		el.setAttribute('data-origin', card.origin);
+		const head = el.createDiv({ cls: 'snowflake-method-task-card-head' });
+		const title = head.createDiv({ cls: 'snowflake-method-task-card-title' });
 		if (card.origin === 'derived') {
-			const derived = card.derived;
-			el.setAttribute('data-id', cardId(card));
-			el.setAttribute('data-origin', 'derived');
-			el.setAttribute('data-key', derived.key);
+			el.setAttribute('data-key', card.derived.key);
 			el.setAttribute('draggable', 'false');
 			setTooltip(el, t('tasks.derived.tooltip'));
-			const head = el.createDiv({ cls: 'snowflake-method-task-card-head' });
-			head.createDiv({
-				cls: 'snowflake-method-task-card-title',
-				text: t(`tasks.derived.${derived.key}`),
-			});
-			if (derived.progress !== null) {
-				head.createSpan({
-					cls: 'snowflake-method-task-progress',
-					text: t('tasks.derived.progress', {
-						net: grouped(derived.progress.net),
-						goal: grouped(derived.progress.goal),
-					}),
-				});
-			} else if (derived.count !== null) {
-				head.createSpan({
-					cls: 'snowflake-method-step-indicator snowflake-method-task-count',
-					text: String(derived.count),
-				});
-			}
-			return;
+			title.setText(t(`tasks.derived.${card.derived.key}`));
+			return { el, card, title, badge: head.createSpan(), meta: null };
 		}
-		const task = card.task;
-		el.setAttribute('data-id', task.id);
-		el.setAttribute('data-origin', 'manual');
-		el.setAttribute('data-priority', task.priority);
-		el.setAttribute('draggable', readOnly ? 'false' : 'true');
-		const head = el.createDiv({ cls: 'snowflake-method-task-card-head' });
-		const title = head.createDiv({ cls: 'snowflake-method-task-card-title', text: task.title });
-		setTooltip(title, task.title);
 		const more = head.createEl('button', {
 			cls: 'clickable-icon snowflake-method-task-more',
 			attr: { type: 'button', 'aria-label': t('taskBoard.more'), 'aria-haspopup': 'menu' },
 		});
 		setIcon(more, 'ellipsis');
+		const entry: CardEntry = {
+			el,
+			card,
+			title,
+			badge: more,
+			meta: el.createDiv({ cls: 'snowflake-method-task-card-meta' }),
+		};
 		more.addEventListener('click', (event) => {
 			event.stopPropagation();
-			openMenu(event, task);
+			if (entry.card.origin === 'manual') openMenu(event, entry.card.task);
 		});
-		const meta = el.createDiv({ cls: 'snowflake-method-task-card-meta' });
-		prioritySpan(meta, task.priority);
-		dueSpan(meta, task, current);
+		return entry;
+	};
+
+	/** Dresses a card from its reading, on the first paint and every one after, remaking nothing that can hold the focus. */
+	const dressCard = (entry: CardEntry, current: TaskBoardReading): void => {
+		const { el, card, badge } = entry;
+		el.className = 'snowflake-method-task-card';
+		if (card.origin === 'derived') {
+			const derived = card.derived;
+			if (derived.progress !== null) {
+				badge.className = 'snowflake-method-task-progress';
+				badge.setText(
+					t('tasks.derived.progress', {
+						net: grouped(derived.progress.net),
+						goal: grouped(derived.progress.goal),
+					}),
+				);
+			} else if (derived.count !== null) {
+				badge.className = 'snowflake-method-step-indicator snowflake-method-task-count';
+				badge.setText(String(derived.count));
+			} else {
+				badge.className = 'is-hidden';
+				badge.setText('');
+			}
+			return;
+		}
+		const task = card.task;
+		el.setAttribute('data-priority', task.priority);
+		el.setAttribute('draggable', readOnly ? 'false' : 'true');
+		entry.title.setText(task.title);
+		setTooltip(entry.title, task.title);
+		if (entry.meta !== null) {
+			entry.meta.empty();
+			prioritySpan(entry.meta, task.priority);
+			dueSpan(entry.meta, task, current);
+		}
 	};
 
 	/**
-	 * An archived card: the board's own face, the column it left worn on
-	 * its top edge as the lane wears it, and the two ways off the shelf
-	 * beside the title where a board card keeps its menu.
+	 * An archived card, built once: the board's own face, the column it
+	 * left worn on its top edge as the lane wears it, and the two ways off
+	 * the shelf beside the title where a board card keeps its menu. The
+	 * buttons read the task through the entry, so a fill never remakes
+	 * them and one holding the focus keeps it.
 	 */
-	const fillArchivedCard = (el: HTMLElement, task: Task, current: TaskBoardReading): void => {
-		el.empty();
-		el.className = 'snowflake-method-task-card is-archived';
+	const buildArchivedCard = (el: HTMLElement, task: Task): ShelfEntry => {
 		el.setAttribute('role', 'listitem');
 		el.setAttribute('data-id', task.id);
 		el.setAttribute('data-origin', 'manual');
-		el.setAttribute('data-status', task.status);
-		el.setAttribute('data-priority', task.priority);
-		setTooltip(el, t(`tasks.status.${task.status}`));
 		const head = el.createDiv({ cls: 'snowflake-method-task-card-head' });
-		const title = head.createDiv({ cls: 'snowflake-method-task-card-title', text: task.title });
-		setTooltip(title, task.title);
+		const title = head.createDiv({ cls: 'snowflake-method-task-card-title' });
 		const actions = head.createDiv({ cls: 'snowflake-method-task-card-actions' });
 		const restore = actions.createEl('button', {
-			cls: 'clickable-icon',
+			cls: 'clickable-icon snowflake-method-task-restore',
 			attr: { type: 'button', 'aria-label': t('taskBoard.restore') },
 		});
 		setIcon(restore, 'archive-restore');
 		setTooltip(restore, t('taskBoard.restore'));
-		restore.disabled = readOnly;
-		restore.addEventListener('click', () => {
-			act(bridge.restore(task.id));
-		});
 		const remove = actions.createEl('button', {
 			cls: 'clickable-icon snowflake-method-task-delete',
 			attr: { type: 'button', 'aria-label': t('actions.delete') },
 		});
 		setIcon(remove, 'trash-2');
 		setTooltip(remove, t('actions.delete'));
-		remove.disabled = readOnly;
-		remove.addEventListener('click', () => {
-			act(bridge.deleteTask(task.id));
+		const entry: ShelfEntry = {
+			el,
+			task,
+			title,
+			restore,
+			remove,
+			meta: el.createDiv({ cls: 'snowflake-method-task-card-meta' }),
+		};
+		restore.addEventListener('click', () => {
+			act(bridge.restore(entry.task.id));
 		});
-		const meta = el.createDiv({ cls: 'snowflake-method-task-card-meta' });
-		prioritySpan(meta, task.priority);
-		dueSpan(meta, task, current);
+		remove.addEventListener('click', () => {
+			act(bridge.deleteTask(entry.task.id));
+		});
+		return entry;
+	};
+
+	/** Fills an archived card from its task, on the first paint and every one after. */
+	const fillArchivedCard = (entry: ShelfEntry, task: Task, current: TaskBoardReading): void => {
+		entry.task = task;
+		const { el } = entry;
+		el.className = 'snowflake-method-task-card is-archived';
+		el.setAttribute('data-status', task.status);
+		el.setAttribute('data-priority', task.priority);
+		setTooltip(el, t(`tasks.status.${task.status}`));
+		entry.title.setText(task.title);
+		setTooltip(entry.title, task.title);
+		entry.restore.disabled = readOnly;
+		entry.remove.disabled = readOnly;
+		entry.meta.empty();
+		prioritySpan(entry.meta, task.priority);
+		dueSpan(entry.meta, task, current);
 	};
 
 	const clearMark = (): void => {
@@ -698,15 +759,25 @@ export function renderTaskBoard(
 		for (const id of plan.add) {
 			const card = byId.get(id);
 			if (card === undefined) continue;
-			const entry: CardEntry = { el: lane.body.createDiv(), card };
+			// Before the tail, where every card stands; the moves below carry
+			// it earlier when it belongs earlier.
+			const el = lane.body.createDiv();
+			lane.body.insertBefore(el, lane.tail);
+			const entry = buildCard(el, card);
 			lane.cards.set(id, entry);
 			wireCard(entry);
 			dressCard(entry, current);
 		}
-		// Walked in order before the tail, which leaves them in that order.
-		for (const id of plan.order) {
-			const entry = lane.cards.get(id);
-			if (entry !== undefined) lane.body.insertBefore(entry.el, lane.tail);
+		// Only the cards out of place move: a card moved in the DOM drops the
+		// document's focus with no blur to say so. The tail carries no id,
+		// so a move before it is a move to the column's end.
+		const present = Array.from(lane.body.children).map(
+			(child) => child.getAttribute('data-id') ?? '',
+		);
+		for (const move of planCardMoves(present, plan.order)) {
+			const el = lane.cards.get(move.id)?.el;
+			if (el === undefined) continue;
+			lane.body.insertBefore(el, lane.cards.get(move.before)?.el ?? lane.tail);
 		}
 		lane.count.setText(String(cards.length));
 	};
@@ -715,24 +786,99 @@ export function renderTaskBoard(
 		const byId = new Map(archived.map((task) => [task.id, task] as const));
 		const plan = planCardRepaint([...shelf.keys()], [...byId.keys()], []);
 		for (const id of plan.remove) {
-			shelf.get(id)?.remove();
+			shelf.get(id)?.el.remove();
 			shelf.delete(id);
 		}
 		for (const id of plan.keep) {
-			const el = shelf.get(id);
+			const entry = shelf.get(id);
 			const task = byId.get(id);
-			if (el !== undefined && task !== undefined) fillArchivedCard(el, task, current);
+			if (entry !== undefined && task !== undefined) fillArchivedCard(entry, task, current);
 		}
 		for (const id of plan.add) {
 			const task = byId.get(id);
 			if (task === undefined) continue;
-			const el = archiveGrid.createDiv();
-			shelf.set(id, el);
-			fillArchivedCard(el, task, current);
+			const entry = buildArchivedCard(archiveGrid.createDiv(), task);
+			shelf.set(id, entry);
+			fillArchivedCard(entry, task, current);
 		}
-		for (const id of plan.order) {
-			const el = shelf.get(id);
-			if (el !== undefined) archiveGrid.appendChild(el);
+		// As on the lanes: only a card out of place moves.
+		const present = Array.from(archiveGrid.children).map(
+			(child) => child.getAttribute('data-id') ?? '',
+		);
+		for (const move of planCardMoves(present, plan.order)) {
+			const el = shelf.get(move.id)?.el;
+			if (el === undefined) continue;
+			archiveGrid.insertBefore(el, shelf.get(move.before)?.el ?? null);
+		}
+	};
+
+	/**
+	 * What holds the focus on the board as a paint begins: the control, the
+	 * card it stands in and the card beside that one, so that whatever the
+	 * paint does to it the focus has somewhere to go afterwards.
+	 */
+	const holdFocus = (): FocusHold | null => {
+		const active = root.doc.activeElement;
+		if (active === null || !root.contains(active)) return null;
+		const card = active.closest(CARD_SELECTOR);
+		if (card === null) return null;
+		const part = active === card
+			? 'card'
+			: active.classList.contains('snowflake-method-task-more')
+				? 'more'
+				: active.classList.contains('snowflake-method-task-restore')
+					? 'restore'
+					: active.classList.contains('snowflake-method-task-delete')
+						? 'delete'
+						: 'card';
+		const next = card.nextElementSibling;
+		const previous = card.previousElementSibling;
+		const neighbour =
+			next?.matches(CARD_SELECTOR) === true
+				? next
+				: previous?.matches(CARD_SELECTOR) === true
+					? previous
+					: null;
+		return { id: card.getAttribute('data-id') ?? '', part, el: active, neighbour };
+	};
+
+	/** The control standing for a held focus now: on a lane, or on the shelf the card went to. */
+	const controlOf = (id: string, part: FocusHold['part']): Element | null => {
+		for (const lane of lanes.values()) {
+			const entry = lane.cards.get(id);
+			if (entry === undefined) continue;
+			return part === 'more' && entry.card.origin === 'manual' ? entry.badge : entry.el;
+		}
+		const shelved = shelf.get(id);
+		if (shelved === undefined) return null;
+		return part === 'delete' ? shelved.remove : shelved.restore;
+	};
+
+	/** A shelf card takes no focus itself; its Restore stands in for it. */
+	const focusable = (el: Element): Element | null =>
+		el.matches('.is-archived') ? el.querySelector('.snowflake-method-task-restore') : el;
+
+	/**
+	 * Gives the focus back after a paint, when the paint took it: to the
+	 * control itself where it still stands (moved in the DOM, which drops
+	 * the focus with no blur), to the control standing for the same card
+	 * now where the card went to another column or the shelf, else to the
+	 * card that stood beside it. Never scrolls: the paint kept the scroll
+	 * positions, and the author did not ask to go anywhere.
+	 */
+	const giveFocusBack = (hold: FocusHold | null): void => {
+		if (hold === null) return;
+		const doc = root.doc;
+		const active = doc.activeElement;
+		if (active !== null && active !== doc.body && root.contains(active)) return;
+		const target = root.contains(hold.el)
+			? hold.el
+			: (controlOf(hold.id, hold.part) ??
+				(hold.neighbour !== null && root.contains(hold.neighbour)
+					? focusable(hold.neighbour)
+					: null));
+		if (target !== null && 'focus' in target) {
+			(target as HTMLElement).focus({ preventScroll: true });
 		}
 	};
 
@@ -770,6 +916,7 @@ export function renderTaskBoard(
 		}
 		readOnly = reading.readOnly;
 		addButton.disabled = readOnly;
+		const hold = holdFocus();
 		const cards = taskCards(reading.tasks, reading.derived);
 		const context = filterContext(reading);
 		const shown = filterTaskCards(cards, memory.query, memory, context);
@@ -811,6 +958,7 @@ export function renderTaskBoard(
 				t(archived.length === 0 ? 'taskBoard.archiveEmpty' : 'taskBoard.archiveNoMatch'),
 			);
 		}
+		giveFocusBack(hold);
 		restoreScroll();
 	};
 

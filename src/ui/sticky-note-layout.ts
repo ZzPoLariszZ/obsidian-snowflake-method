@@ -192,6 +192,53 @@ export function planCardRepaint(
 	};
 }
 
+/** One card to move, and the card it then stands before. */
+export interface CardMove {
+	id: string;
+	/** The id of the card it is put before, which may be one the order never named. */
+	before: string;
+}
+
+/**
+ * The moves that bring the cards standing on a surface, in `present` order,
+ * into `order`, touching only the ones out of place: a card moved in the
+ * DOM drops the document's focus with no blur to say so, so a card already
+ * where it belongs is left alone. Cards the order does not name -- a pinned
+ * card, a lane's tail -- keep their place and are stepped over, and an id
+ * not on the surface is skipped. The walk is greedy, in the order's own
+ * order, which is the walk both boards made by hand before.
+ */
+export function planCardMoves(
+	present: readonly string[],
+	order: readonly string[],
+): CardMove[] {
+	const ordered = new Set(order);
+	const sequence = [...present];
+	const moves: CardMove[] = [];
+	let cursor = 0;
+	for (const id of order) {
+		while (
+			cursor < sequence.length &&
+			sequence[cursor] !== id &&
+			!ordered.has(sequence[cursor] ?? '')
+		) {
+			cursor += 1;
+		}
+		if (sequence[cursor] === id) {
+			cursor += 1;
+			continue;
+		}
+		const at = sequence.indexOf(id);
+		if (at === -1) continue;
+		sequence.splice(at, 1);
+		sequence.splice(cursor, 0, id);
+		const before = sequence[cursor + 1];
+		if (before !== undefined) moves.push({ id, before });
+		cursor += 1;
+	}
+	return moves;
+}
+
 /**
  * Lays `items` down `size` at a time, the first batch now and each later one
  * on a frame, so a long list opens without a stall. Stops when `live` says

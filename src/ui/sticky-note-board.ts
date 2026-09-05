@@ -31,7 +31,7 @@ import {
 	type StickyNoteCardHandle,
 	type StickyNoteSurface,
 } from './sticky-note-card';
-import { batchSchedule, planCardRepaint } from './sticky-note-layout';
+import { batchSchedule, planCardMoves, planCardRepaint } from './sticky-note-layout';
 
 /** What one row of controls narrows a lane by: the words, the colour, the order. */
 export interface StickyNoteBoardLens {
@@ -491,24 +491,13 @@ export function renderStickyNoteBoard(
 		// the grid afterwards is given it back.
 		const doc = from.grid.doc;
 		const active = doc.activeElement;
-		const ordered = new Set(plan.order);
-		let cursor: Element | null = from.grid.firstElementChild;
-		for (const id of plan.order) {
-			const card = from.cards.get(id);
+		const present = Array.from(from.grid.children).map(
+			(child) => child.getAttribute('data-id') ?? '',
+		);
+		for (const move of planCardMoves(present, plan.order)) {
+			const card = from.cards.get(move.id);
 			if (card === undefined) continue;
-			// Cards the order does not name -- pinned, or coming down -- keep their place.
-			while (
-				cursor !== null &&
-				cursor !== card.el &&
-				!ordered.has(cursor.getAttribute('data-id') ?? '')
-			) {
-				cursor = cursor.nextElementSibling;
-			}
-			if (cursor === card.el) {
-				cursor = cursor.nextElementSibling;
-				continue;
-			}
-			from.grid.insertBefore(card.el, cursor);
+			from.grid.insertBefore(card.el, from.cards.get(move.before)?.el ?? null);
 		}
 		if (
 			active !== null &&

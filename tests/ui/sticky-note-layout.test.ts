@@ -8,6 +8,7 @@ import {
 	defaultFloatState,
 	dragGeometry,
 	formatStickyCreated,
+	planCardMoves,
 	planCardRepaint,
 	resizeGeometry,
 } from '../../src/ui/sticky-note-layout';
@@ -98,6 +99,41 @@ describe('card repaint plan', () => {
 			add: ['d'],
 			order: ['c', 'd'],
 		});
+	});
+});
+
+describe('card moves', () => {
+	it('moves nothing when the order already stands', () => {
+		expect(planCardMoves(['a', 'b', 'c'], ['a', 'b', 'c'])).toEqual([]);
+		expect(planCardMoves([], [])).toEqual([]);
+	});
+
+	it('moves only the card out of place, before the card it now precedes', () => {
+		expect(planCardMoves(['a', 'b', 'c'], ['c', 'a', 'b'])).toEqual([{ id: 'c', before: 'a' }]);
+		expect(planCardMoves(['a', 'b', 'c'], ['a', 'c', 'b'])).toEqual([{ id: 'c', before: 'b' }]);
+	});
+
+	it('walks the order greedily, as the boards did by hand', () => {
+		expect(planCardMoves(['a', 'b', 'c'], ['b', 'c', 'a'])).toEqual([
+			{ id: 'b', before: 'a' },
+			{ id: 'c', before: 'a' },
+		]);
+	});
+
+	it('steps over cards the order does not name, and may put a card before one of them', () => {
+		// A pinned card at the head, and a lane's tail at the end, keep their places.
+		expect(planCardMoves(['pinned', 'a', 'b'], ['b', 'a'])).toEqual([{ id: 'b', before: 'a' }]);
+		expect(planCardMoves(['a', 'b', ''], ['b', 'a'])).toEqual([{ id: 'b', before: 'a' }]);
+		expect(planCardMoves(['a', 'pinned', 'b'], ['b', 'a'])).toEqual([{ id: 'b', before: 'a' }]);
+		expect(planCardMoves(['a', 'b', 'pinned', 'c'], ['a', 'c', 'b'])).toEqual([
+			{ id: 'c', before: 'b' },
+		]);
+	});
+
+	it('skips an id that is not on the surface, and leaves its input alone', () => {
+		const present = ['a', 'b'];
+		expect(planCardMoves(present, ['c', 'b', 'a'])).toEqual([{ id: 'b', before: 'a' }]);
+		expect(present).toEqual(['a', 'b']);
 	});
 });
 
