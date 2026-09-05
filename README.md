@@ -58,6 +58,8 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions where they stand. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript, and change the chapter only when the proposal is accepted. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
+| Foreshadowing | Follow a thread from its plant to its payoff, marked at every passage that carries it and listed with all of them. |
+| Sticky notes | Keep an idea or a reminder on a colored note, on the dashboard, in a sidebar of its own, or floating over the workspace. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Use English or Simplified Chinese independently for the interface and each project. |
 
@@ -169,13 +171,21 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 **All actions stay quick when the book is long (under 20ms on average).** Measured on a vault of more than 9000 notes: two projects of 1500 chapters, each chapter with more than 2000 English words or Chinese characters, and a third holding 300 characters, 3000 scenes and 1500 more chapters.
 
-### Revision
+### Task management
 
-A change is easier to judge before it is made. Click into a chapter of the manuscript stream, select the words in question and choose **Create revision** from the right-click menu: the selection becomes a **replacement**, or a **deletion** when the proposed text is left empty, and a bare caret makes an **insertion** at that point. The words a proposal would take are struck through where they stand and an insertion is marked by a bar at its place, but the chapter itself does not change. A proposal lives beside the manuscript rather than in it, so nothing is counted, analyzed or tracked until it is accepted.
+The work around the writing has a pane of its own. The dashboard's **Task management** pane keeps four tabs, each holding a different kind of note to self. **Tasks** is still in the planning stage. The other three are below.
 
-Each proposal is a card in the margin at the chapter's right, holding the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it, **Reject** removes the proposal and leaves the text as it was, and **Edit** changes the proposal or the comment. The arrows on a card walk from one proposal to the next through the whole manuscript. A proposal follows its words as you write above and around them, and one whose words you have changed directly is shown as a conflict, to be discarded rather than applied. The dashboard's **Task management** pane lists every open proposal in its **Revision** tab, and its place column jumps to where it stands.
+**Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread and choose **Create foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**, each marked as a plant, a reinforcement or the payoff, while the thread itself is planned, active, resolved or abandoned. Every occurrence is marked where it stands in the prose and keeps a card in the margin at the chapter's right, holding the role, the thread's status, its name and description, the words marked and a note of your own. An occurrence follows its words as you write above and around them, and words you rewrite directly leave it unresolved rather than lost, to be put back on the passage that replaced them. The tab gives every occurrence a row, searched by name and narrowed by status, by role, or to the unresolved alone.
+
+<p align="center"><a href="assets/screenshots/foreshadowing_en.png"><img src="assets/screenshots/foreshadowing_en.png" width="100%" alt="Two foreshadowing occurrences marked in a chapter of the manuscript stream, each with a card in the right margin holding its role and status, the thread's name and description, the words marked, a note, and Open, Edit and Delete" /></a></p>
+
+**Revision** makes a change easier to judge before it is made. Select the words in question and choose **Create revision** from the same menu: the selection becomes a replacement, or a deletion when the proposed text is left empty, and a bare caret makes an insertion at that point. The words a proposal would take are struck through where they stand, but the chapter itself does not change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each one is a card in the margin holding the original text, the proposed text and a comment, where **Accept** writes the change into the chapter as if you had typed it, **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal follows its words as you write around them, and one whose words you have changed directly is shown as a conflict, to be discarded rather than applied.
 
 <p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three revisions beside a chapter in the manuscript stream: a replacement and a deletion struck through in the prose, an insertion marked by a bar, and a card for each with the original text, the proposed text, a comment, and Accept, Reject and Edit" /></a></p>
+
+**Sticky notes** hold what does not belong in a record: an idea, a reminder, or a question to come back to. **New sticky note** in the Command palette, the sticker in the ribbon and **Add sticky note** on the tab each make one and open it ready to write in. A note has two faces, its prose clicked to write in with the plugin's own editor and Escape to read it back as rendered Markdown, and one file is shown three ways at once: a card on the dashboard, a compact card in a sidebar of its own, and a floating panel over the workspace that drags by its head, resizes from any edge, pins in place and thins to let the page show through. Where a panel stands is remembered on that device, and focus mode never fades it, solo included. Eight colors tell the notes apart at a glance, and **Archive** sets one aside into a fold under the board, closing every panel of it, to be read, restored, or deleted there.
+
+<p align="center"><a href="assets/screenshots/sticky_note_en.png"><img src="assets/screenshots/sticky_note_en.png" width="100%" alt="The dashboard's Sticky notes tab with two colored cards and a collapsed archive, the same two notes as compact cards in the sidebar, and both floating as resizable panels over the workspace" /></a></p>
 
 ### Data statistics
 
@@ -247,6 +257,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 |---|---|
 | Add category | Add a category to a kind's vocabulary. |
 | Add character | Add a shared character note to the current project. |
+| Add foreshadowing | Add a foreshadowing thread to the current project. |
 | Add relationship | Add a relationship to a kind's vocabulary. |
 | Add scene | Add a shared scene note to the current project. |
 | Add world status | Add a world status to a kind's vocabulary. |
@@ -263,12 +274,14 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Go to the previous manuscript note | Move one note back through the manuscript. |
 | Insert a manuscript note after this one | Add a note directly after the one being read. |
 | Insert a manuscript note before this one | Add a note directly before the one being read. |
+| New sticky note | Make a sticky note in the current project and open it floating. |
 | Open character base | Open the Bases view of the current project's characters. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
 | Open manuscript stream | Open the manuscript, at the note last written in. |
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
+| Open sticky notes | Open the current project's sticky notes in a sidebar of their own. |
 | Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
 | Open writing statistics | Open the day's writing readings in a sidebar of their own. |
 | Pause or resume the writing session | Freeze the running session's clock, or set it going again. |
@@ -278,14 +291,15 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Start a pomodoro writing session | Begin a session that alternates work periods with breaks. |
 | Start a stopwatch writing session | Begin a session that runs until you stop it. |
 | Start a writing session with options | Choose the timer, its length, and the writing stage before starting. |
+| Stop editing the current manuscript note | Leave the note the page is centred on, and read it back. |
 | Stop the writing session | End the running session and file its record. |
 | Switch statistics scope | Read the statistics for the whole project, or the manuscript alone. |
 | Toggle custom highlights | Apply your own highlight rules to the manuscript, or set them aside. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
-| Toggle notes beside dashboard | Choose between a companion pane and regular tabs. |
 | Toggle opening a form for new notes from a field | Choose whether a note created from a picker field opens its form first. |
+| Toggle opening notes beside the dashboard | Choose between a companion pane and regular tabs. |
 | Toggle order numbers in the manuscript | Show or hide each manuscript note's stored position. |
 | Toggle progress status in tables | Show or hide the progress status column. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
@@ -419,14 +433,18 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   │       ├── mention_ignores.json
     │   │       └── <device>_mention_index.json
     │   └── 72_Task_Management/
-    │       └── 723_Revision/
-    │           └── revisions.json
+    │       ├── 722_Foreshadowing/
+    │       │   └── foreshadowing.json
+    │       ├── 723_Revision/
+    │       │   └── revisions.json
+    │       └── 724_Sticky_Note/
+    │           └── 20260904T223121.847+0800.md
     └── ...
 ```
 
 </details>
 
-Writing sessions are recorded per device, so syncing never has two machines writing one file. The ignore rules you write while tracking entities and the revisions you propose are each a single shared file that travels with the Vault. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
+Writing sessions are recorded per device, so syncing never has two machines writing one file. The ignore rules you write while tracking entities, the revisions you propose and the threads you foreshadow are each a single shared file that travels with the Vault. A sticky note is a Markdown file of its own, and where its floating panel stands is remembered per device rather than written into the note. The entity index and prose statistics beside them are caches rather than records. The plugin rebuilds them from the manuscript whenever they are missing or out of date, so deleting them costs nothing but the time to read the book again.
 
 Archiving a project moves its whole folder into `Snowflake Archive`, a folder beside the projects rather than inside any of them. Nothing in the notes changes, and because a project keeps every reference within its own folder, no link is left dangling while it is away. The project manager lists what is in there and restores any of it, giving the project a free name if the one it left under has since been taken. Moving a folder in or out by hand works the same way, so the archive is a place rather than a mechanism.
 
@@ -567,6 +585,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 实体追踪 | 追踪每个角色、地点与物品贯穿正文的足迹，并在原处标出它们的提及。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只在接受时才改动正文。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
+| 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们一并列出。 |
+| 便签 | 把想法或提醒写在一张彩色便签上，可停在工作台、独立侧栏，或悬浮于工作区之上。 |
 | 安全修复 | 检测项目结构问题并补齐安全项目，不覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
 
@@ -678,13 +698,21 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境为一个超过 9000 篇笔记的库：其中两个项目各有 1500 章，每章都在 2000 个英文单词或中文字以上，另一个项目包含 300 个角色、3000 个场景与另外 1500 章。
 
-### 修订
+### 任务管理
 
-改动先看清楚，再落到纸上。在正文流中点进一章，选中要改的文字，在右键菜单里选择**新建修订**：所选文字成为一处**替换**，建议文本留空则成为一处**删除**，只放一个光标则在该处**插入**。将被改掉的文字会在原处划去，插入处以一道竖线标出，但这一章本身不会改变。修订存放在正文之旁，而不在正文之内，因此在接受之前，它不计入字数、分析与追踪。
+写作之外的事务，自有一块面板。工作台的**任务管理**面板共有四个标签页，每个承载一类给自己的记录。其中**任务**仍处于规划阶段，其余三个如下。
 
-每一处修订都是章节右侧页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，如同你亲手打出的一样。**拒绝**会移除修订，正文保持原样。**编辑**可以改动建议文本与备注。卡片上的箭头可以在整部正文的修订之间逐一跳转。修订会跟着它所指的文字走，你在它前后继续写作时也不会走失。若你直接改动了它所指的文字，它会标为冲突，只能丢弃，不能应用。工作台的**任务管理**面板会在**修订**标签页中列出所有未处理的修订，位置一栏可以跳到它所在之处。
+**伏笔**顺着一条线索，从埋设一路走到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**，此后的段落用**加入已有伏笔**并入同一条线索，每一处标为埋设、强化或回收，线索本身则处于计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片，写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作时也不会走失，若你直接改写了那段文字，它只是变为未解决，而不会丢失，可以再接到替换后的段落上。标签页中每一处落点各占一行，可按名称搜索，也可按状态、环节或仅未解决筛选。
+
+<p align="center"><a href="assets/screenshots/foreshadowing_cn.png"><img src="assets/screenshots/foreshadowing_cn.png" width="100%" alt="正文流中一章里标出的两处伏笔落点，右侧页边各有一张卡片，写着环节与状态、伏笔的名称与描述、所标的文字、备注，以及打开、编辑与删除" /></a></p>
+
+**修订**让改动先看清楚，再落到纸上。选中要改的文字，在同一个菜单里选择**新建修订**：所选文字成为一处替换，建议文本留空则成为一处删除，只放一个光标则在该处插入。将被改掉的文字会在原处划去，但这一章本身不会改变，在接受之前，它也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注，**接受**会把改动写进这一章，如同你亲手打出的一样，**拒绝**会移除修订并让正文保持原样，**编辑**可以改动建议文本与备注。修订会跟着它所指的文字走，若你直接改动了那段文字，它会标为冲突，只能丢弃，不能应用。
 
 <p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流中一章旁的三处修订：替换与删除在正文中划去，插入以一道竖线标出，每一处各有一张卡片，写着原文、建议文本与备注，以及接受、拒绝与编辑" /></a></p>
+
+**便签**用来放不必进记录的东西：一个想法、一句提醒，或者一个稍后再回来的问题。命令面板中的**新建便签**、侧边栏的便签图标，以及标签页上的**添加便签**，都会新建一张并立刻打开，可以直接写。每张便签都有两面，点击正文即可用插件自带的编辑器书写，按 Escape 则读回渲染后的 Markdown，而同一个文件会同时以三种样子出现：工作台上的卡片、独立侧栏中的紧凑卡片，以及浮于工作区之上的面板，可以拖动标题栏移动、从任意边缘缩放、固定位置，也可以调淡让底下的页面透出来。面板停在哪里会按设备记住，专注模式也从不淡化它，仅正文一档同样如此。八种颜色便于一眼分辨，**归档**会把便签收进面板下方的折叠区，同时关闭它的所有悬浮面板，在那里可以阅读、恢复或删除。
+
+<p align="center"><a href="assets/screenshots/sticky_note_cn.png"><img src="assets/screenshots/sticky_note_cn.png" width="100%" alt="工作台的便签标签页中两张彩色卡片与折叠起来的归档，侧栏中同样的两张紧凑卡片，以及悬浮于工作区之上、可缩放的两个面板" /></a></p>
 
 ### 数据统计
 
@@ -750,6 +778,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 |---|---|
 | 添加角色 | 为当前项目添加共享角色笔记。 |
 | 添加场景 | 为当前项目添加共享场景笔记。 |
+| 添加伏笔 | 为当前项目添加一条伏笔线索。 |
 | 添加世界观笔记 | 为你选定的世界观种类添加一篇笔记。 |
 | 创建世界观种类 | 新增一类世界观笔记，它有自己的文件夹、面板与词表。 |
 | 添加类别 | 为某一种类的词表添加一个类别。 |
@@ -771,6 +800,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 在这一篇之前插入正文笔记 | 在正在阅读的这一篇之前新增一篇。 |
 | 在这一篇之后插入正文笔记 | 在正在阅读的这一篇之后新增一篇。 |
 | 在光标处拆分正文笔记 | 在光标处把正在写作的笔记一分为二。 |
+| 退出当前正文笔记的编辑 | 退出页面正中那一篇的写作状态，读回渲染后的样子。 |
 | 导出正文为纯文本 | 把整部正文作为纯文本写入导出文件夹。 |
 | 将当前正文笔记导出为纯文本 | 把页面正中的这一篇作为纯文本写入导出文件夹。 |
 | 复制当前正文笔记为纯文本 | 把页面正中的这一篇去掉所有标记后放到剪贴板。 |
@@ -781,6 +811,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 暂停或继续写作时段 | 冻结正在进行的时段的计时，或让它继续走。 |
 | 停止写作时段 | 结束正在进行的时段，并写下它的记录。 |
 | 打开写作统计 | 在独立的侧栏中打开当天的写作读数。 |
+| 新建便签 | 在当前项目中新建一张便签，并以悬浮面板打开。 |
+| 打开便签 | 在独立的侧栏中打开当前项目的便签。 |
 | 切换数据统计范围 | 在整个项目与仅正文稿之间切换统计范围。 |
 | 切换写作时段外的字数记录 | 开启或关闭对写作时段之外字数的记录。 |
 | 统计项目字数 | 报告当前项目的字数，整个项目与仅正文稿各一份。 |
@@ -916,14 +948,18 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   │       ├── mention_ignores.json
     │   │       └── <设备>_mention_index.json
     │   └── 72_任务管理/
-    │       └── 723_修订/
-    │           └── revisions.json
+    │       ├── 722_伏笔/
+    │       │   └── foreshadowing.json
+    │       ├── 723_修订/
+    │       │   └── revisions.json
+    │       └── 724_便签/
+    │           └── 20260904T223121.847+0800.md
     └── ...
 ```
 
 </details>
 
-写作时段按设备分开记录，同步时不会有两台机器争写同一个文件。实体追踪时写下的忽略规则与你提出的修订，各是随 Vault 一同流转的单一共享文件。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
+写作时段按设备分开记录，同步时不会有两台机器争写同一个文件。实体追踪时写下的忽略规则、你提出的修订与你追踪的伏笔，各是随 Vault 一同流转的单一共享文件。每张便签自成一个 Markdown 文件，其悬浮面板停在哪里则按设备记住，不写进笔记。旁边的实体索引与正文统计则是缓存，而不是记录。它们缺失或过期时，插件都会从正文重新建立，因此删掉它们至多只是再读一遍全书的时间。
 
 归档项目会把它的整个文件夹移入 `Snowflake Archive`。这个文件夹与各个项目并列，而不在任何项目之内。笔记本身不会有任何改动，而且项目的所有引用都在自己的文件夹内，因此归档期间不会留下任何断链。项目管理器会列出其中的项目并随时取回，若原来的名称已被占用，会为它取一个未被使用的名称。手动把文件夹移入或移出的效果完全相同，归档只是一个位置，而不是一套机制。
 
