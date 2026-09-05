@@ -197,9 +197,9 @@ export function derivedTaskTarget(key: DerivedTaskKey): TaskNavigationTarget {
 		case 'sensitiveWords':
 			return { kind: 'tracking', section: 'sensitive' };
 		case 'openForeshadowings':
-			return { kind: 'foreshadowing', status: ['planned', 'active'], standing: '' };
+			return { kind: 'foreshadowing', status: 'active', standing: '' };
 		case 'unresolvedForeshadowings':
-			return { kind: 'foreshadowing', status: [], standing: 'unresolved' };
+			return { kind: 'foreshadowing', status: '', standing: 'unresolved' };
 		case 'pendingRevisions':
 			return { kind: 'revision', standing: '' };
 		case 'unresolvedRevisions':

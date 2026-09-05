@@ -91,7 +91,6 @@ import {
 } from './dashboard-state';
 import {
 	buildOptionField,
-	buildOptionPicker,
 	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
@@ -112,7 +111,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
-import type { FilterRow, LentFilterPopover, OneFilterRow } from './filter-rows';
+import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
 	renderForeshadowingPanel,
 	type ForeshadowingFilterMemory,
@@ -165,8 +164,8 @@ const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
 
 /** How the filter panel sits: under its button, and off the window's edge. */
 
-/** One question a member table's funnel asks: a picker taking one answer. */
-type MemberFilterRow = OneFilterRow;
+/** One question a member table's funnel asks: the shared row shape. */
+type MemberFilterRow = FilterRow;
 
 /**
  * Both member tables are laid by the same four columns, so stepping between
@@ -352,12 +351,12 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
 	/** The foreshadowing table's filters outlive it, as the prose filters do. */
 	private readonly foreshadowingFilters: ForeshadowingFilterMemory = {
-		status: [],
-		role: [],
+		status: '',
+		role: '',
 		standing: '',
 	};
-	/** The revision table's one filter, kept the same way. */
-	private readonly revisionFilters: RevisionFilterMemory = { standing: '' };
+	/** The revision table's filters, kept the same way. */
+	private readonly revisionFilters: RevisionFilterMemory = { kind: '', standing: '' };
 	/**
 	 * The task tabs' panels -- the board, the revision table, the
 	 * foreshadowing table and the sticky board -- each kept across rebuilds
@@ -971,14 +970,15 @@ export class SnowflakeDashboardView extends ItemView {
 			case 'foreshadowing':
 				this.selectedPane = { kind: 'tasks' };
 				this.tasksTab = 'foreshadowing';
-				this.foreshadowingFilters.status = [...target.status];
-				this.foreshadowingFilters.role = [];
+				this.foreshadowingFilters.status = target.status;
+				this.foreshadowingFilters.role = '';
 				this.foreshadowingFilters.standing = target.standing;
 				this.taskPanels.foreshadowing.dispose();
 				break;
 			case 'revision':
 				this.selectedPane = { kind: 'tasks' };
 				this.tasksTab = 'revision';
+				this.revisionFilters.kind = '';
 				this.revisionFilters.standing = target.standing;
 				this.taskPanels.revision.dispose();
 				break;
@@ -5837,7 +5837,6 @@ export class SnowflakeDashboardView extends ItemView {
 		apply: (next: 'all' | ProgressStatus) => void,
 	): MemberFilterRow {
 		return {
-			kind: 'one',
 			label: this.t('table.progressStatus'),
 			placeholder: this.t('table.filterAllStatuses'),
 			empty: 'all',
@@ -5860,7 +5859,6 @@ export class SnowflakeDashboardView extends ItemView {
 		apply: (next: string) => void,
 	): MemberFilterRow {
 		return {
-			kind: 'one',
 			label: this.t('table.category'),
 			placeholder: this.t('table.filterAllCategories'),
 			empty: '',
@@ -5911,7 +5909,6 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			),
 			{
-				kind: 'one',
 				label: this.t('table.scenePov'),
 				placeholder: this.t('table.filterAllPov'),
 				empty: '',
@@ -5935,7 +5932,6 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
-				kind: 'one',
 				label: this.t('table.sceneTime'),
 				placeholder: this.t('table.filterAllTimes'),
 				empty: '',
@@ -5946,7 +5942,6 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
-				kind: 'one',
 				label: this.t('table.sceneLocation'),
 				placeholder: this.t('table.filterAllLocations'),
 				empty: '',
@@ -5957,7 +5952,6 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
-				kind: 'one',
 				label: this.t('table.sceneCharacters'),
 				placeholder: this.t('table.filterAllCast'),
 				empty: '',
@@ -6014,13 +6008,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// What the panel is being set to, until it is confirmed. The table keeps
 		// showing what it was showing while the fields are being worked out, and
 		// a panel dismissed without confirming changes nothing.
-		const draft: (string | string[])[] = rows.map((entry) =>
-			entry.kind === 'many' ? [...entry.values] : entry.value,
-		);
-		const heldOf = (index: number): string[] => {
-			const value = draft[index];
-			return Array.isArray(value) ? value : [];
-		};
+		const draft = rows.map((entry) => entry.value);
 		// Rebuilt rather than reassigned: a picker shows the value it was built
 		// with, so the reset below has to build the fields again to show them
 		// back at rest.
@@ -6033,37 +6021,13 @@ export class SnowflakeDashboardView extends ItemView {
 					cls: 'snowflake-method-filter-label',
 					text: entry.label,
 				});
-				// A question taking several answers is a tag field; one taking
-				// one is a picker with the placeholder standing as the unset row.
-				if (entry.kind === 'many') {
-					this.memberFilterPickers.push(
-						buildOptionPicker(this.app, field, {
-							options: () => entry.options(),
-							picked: () => heldOf(index),
-							pick: (value) => {
-								draft[index] = [...heldOf(index), value];
-							},
-							unpick: (value) => {
-								draft[index] = heldOf(index).filter((held) => held !== value);
-							},
-							removeLabel: entry.removeLabel,
-							label: entry.label,
-							placeholder: entry.placeholder,
-							emptyPlaceholder: entry.placeholder,
-						}),
-					);
-					return;
-				}
 				this.memberFilterPickers.push(
 					buildOptionField(this.app, field, {
 						options: () => [
 							{ value: entry.empty, label: entry.placeholder },
 							...entry.options(),
 						],
-						value: () => {
-							const value = draft[index];
-							return typeof value === 'string' ? value : entry.empty;
-						},
+						value: () => draft[index] ?? entry.empty,
 						choose: (value) => {
 							draft[index] = value;
 						},
@@ -6087,7 +6051,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// and this is not it.
 		reset.addEventListener('click', () => {
 			rows.forEach((entry, index) => {
-				draft[index] = entry.kind === 'many' ? [] : entry.empty;
+				draft[index] = entry.empty;
 			});
 			fill();
 		});
@@ -6098,12 +6062,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		confirm.addEventListener('click', () => {
 			rows.forEach((entry, index) => {
-				if (entry.kind === 'many') {
-					entry.apply(heldOf(index));
-					return;
-				}
-				const value = draft[index];
-				entry.apply(typeof value === 'string' ? value : entry.empty);
+				entry.apply(draft[index] ?? entry.empty);
 			});
 			this.closeFilterPanel();
 			changed();

@@ -216,12 +216,12 @@ describe('where a derived card opens', () => {
 		});
 		expect(derivedTaskTarget('openForeshadowings')).toEqual({
 			kind: 'foreshadowing',
-			status: ['planned', 'active'],
+			status: 'active',
 			standing: '',
 		});
 		expect(derivedTaskTarget('unresolvedForeshadowings')).toEqual({
 			kind: 'foreshadowing',
-			status: [],
+			status: '',
 			standing: 'unresolved',
 		});
 		expect(derivedTaskTarget('pendingRevisions')).toEqual({ kind: 'revision', standing: '' });

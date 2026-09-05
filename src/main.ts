@@ -3754,6 +3754,8 @@ export default class SnowflakeMethodPlugin
 			},
 			open: (occurrence) =>
 				this.openManuscriptMention(panelProject(), occurrence),
+			openUnresolved: (path, revisionId) =>
+				this.openManuscriptRevisionCard(panelProject(), path, revisionId),
 			discard: (id) => this.discardRevision(panelProject(), id),
 		};
 	}
@@ -4069,9 +4071,7 @@ export default class SnowflakeMethodPlugin
 				unresolvedMentions: settle(mentions, null)?.unresolved.length ?? 0,
 				sensitiveWords: (settle(sensitive, null) ?? []).filter((term) => term.total > 0)
 					.length,
-				openForeshadowings: items.filter(
-					(item) => item.status === 'planned' || item.status === 'active',
-				).length,
+				openForeshadowings: items.filter((item) => item.status === 'active').length,
 				unresolvedForeshadowings: items
 					.flatMap((item) => item.occurrences)
 					.filter((occurrence) => occurrence.standing === 'unresolved').length,
@@ -6763,10 +6763,38 @@ export default class SnowflakeMethodPlugin
 		path: string,
 		occurrenceId: string,
 	): Promise<void> {
+		await this.openManuscriptCard(projectPath, path, (view) =>
+			view.revealOccurrenceCard(path, occurrenceId),
+		);
+	}
+
+	/**
+	 * The same for a revision its chapter no longer answers for: the
+	 * conflict card is pinned at the chapter's head the way an unresolved
+	 * occurrence's is, and the revision table's warned place reaches it.
+	 */
+	async openManuscriptRevisionCard(
+		projectPath: string | null,
+		path: string,
+		revisionId: string,
+	): Promise<void> {
+		await this.openManuscriptCard(projectPath, path, (view) =>
+			view.revealRevisionCard(path, revisionId),
+		);
+	}
+
+	/**
+	 * Opens the stream at one chapter and walks to a card pinned on its
+	 * rail. A chapter the manuscript no longer lists has no place in the
+	 * stream: the note itself is opened, where the words were lost.
+	 */
+	private async openManuscriptCard(
+		projectPath: string | null,
+		path: string,
+		reveal: (view: SnowflakeManuscriptView) => Promise<void>,
+	): Promise<void> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return;
-		// A chapter the manuscript no longer lists has no place in the
-		// stream: the note itself is opened, where the words were lost.
 		const listed = (await this.projects.manuscript.listSegments(project)).some(
 			(segment) => segment.path === path,
 		);
@@ -6782,7 +6810,7 @@ export default class SnowflakeMethodPlugin
 					candidate.getViewState().state?.projectPath === project.projectFile,
 			);
 		if (leaf?.view instanceof SnowflakeManuscriptView) {
-			await leaf.view.revealOccurrenceCard(path, occurrenceId);
+			await reveal(leaf.view);
 		}
 	}
 

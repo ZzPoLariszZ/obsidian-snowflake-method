@@ -70,7 +70,7 @@ const labels = {
 	role: (role: string): string => `role:${role}`,
 	unresolved: 'Unresolved',
 };
-const none: ForeshadowingFilters = { status: [], role: [], standing: '' };
+const none: ForeshadowingFilters = { status: '', role: '', standing: '' };
 
 describe('shaping the foreshadowing table', () => {
 	it('gives a thread one row per occurrence, and one row when it has none', () => {
@@ -165,19 +165,13 @@ describe('searching and filtering the foreshadowing table', () => {
 	});
 
 	it('the status filter drops whole threads and marks nothing', () => {
-		const match = filterForeshadowingItems(shaped(), '', { ...none, status: ['planned'] }, labels);
+		const match = filterForeshadowingItems(shaped(), '', { ...none, status: 'planned' }, labels);
 		expect(match.items.map((row) => row.id)).toEqual(['lock']);
 		expect(match.matched.size).toBe(0);
 	});
 
-	it('several statuses keep a thread standing in any of them', () => {
-		const match = filterForeshadowingItems(shaped(), '', { ...none, status: ['planned', 'active'] }, labels);
-		expect(match.items.map((row) => row.id)).toEqual(['lock', 'key']);
-		expect(match.matched.size).toBe(0);
-	});
-
 	it('the role filter keeps threads holding that role, marks those rows, and drops a bare thread', () => {
-		const match = filterForeshadowingItems(shaped(), '', { ...none, role: ['payoff'] }, labels);
+		const match = filterForeshadowingItems(shaped(), '', { ...none, role: 'payoff' }, labels);
 		expect(match.items.map((row) => row.id)).toEqual(['key']);
 		expect([...match.matched]).toEqual(['pay']);
 	});
@@ -211,13 +205,13 @@ describe('searching and filtering the foreshadowing table', () => {
 		const before = JSON.stringify(rows);
 		// The query lands on the thread's name; the funnel then says which of
 		// its rows to indicate, and the status filter can still drop it whole.
-		const match = filterForeshadowingItems(rows, 'silver', { status: ['active'], role: ['plant'], standing: '' }, labels);
+		const match = filterForeshadowingItems(rows, 'silver', { status: 'active', role: 'plant', standing: '' }, labels);
 		expect(match.items.map((row) => row.id)).toEqual(['key']);
 		expect(match.items[0]?.occurrences).toHaveLength(2);
 		expect([...match.matched]).toEqual(['plant']);
-		expect(filterForeshadowingItems(rows, 'silver', { status: ['planned'], role: ['plant'], standing: '' }, labels).items).toEqual([]);
+		expect(filterForeshadowingItems(rows, 'silver', { status: 'planned', role: 'plant', standing: '' }, labels).items).toEqual([]);
 		// A funnel the thread cannot answer drops it even when the query lands.
-		expect(filterForeshadowingItems(rows, 'silver', { status: [], role: ['reinforce'], standing: '' }, labels).items).toEqual([]);
+		expect(filterForeshadowingItems(rows, 'silver', { status: '', role: 'reinforce', standing: '' }, labels).items).toEqual([]);
 		expect(JSON.stringify(rows)).toBe(before);
 	});
 });

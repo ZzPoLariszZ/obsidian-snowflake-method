@@ -1434,7 +1434,7 @@ describe('task copy', () => {
 			'revisionTable.standing',
 			'revisionTable.filterAllStandings',
 			'revisionTable.conflictOnly',
-			'table.filterRemove',
+			'revisionTable.filterAllTypes',
 		];
 		for (const key of keys) {
 			expect(Object.keys(en), key).toContain(key);
@@ -1449,7 +1449,6 @@ describe('task copy', () => {
 			expect(locale['tasks.derived.progress']).toContain('{goal}');
 			expect(locale['modal.task.relatedRemove']).toContain('{name}');
 			expect(locale['modal.task.relatedMissing']).toContain('{name}');
-			expect(locale['table.filterRemove']).toContain('{label}');
 		}
 	});
 });

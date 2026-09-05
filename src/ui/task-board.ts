@@ -142,7 +142,6 @@ export function renderTaskBoard(
 
 	// The two questions the board and the archive both ask.
 	const priorityRow = (filters: SharedTaskFilters): FilterRow => ({
-		kind: 'one',
 		label: t('taskBoard.priority'),
 		placeholder: t('taskBoard.filterAllPriorities'),
 		empty: '',
@@ -157,7 +156,6 @@ export function renderTaskBoard(
 		},
 	});
 	const dueRow = (filters: SharedTaskFilters): FilterRow => ({
-		kind: 'one',
 		label: t('taskBoard.filterDue'),
 		placeholder: t('taskBoard.filterAllDue'),
 		empty: '',
@@ -171,7 +169,6 @@ export function renderTaskBoard(
 	// The funnel's questions, in the dashboard's own popover.
 	const filterRows = (): FilterRow[] => [
 		{
-			kind: 'one',
 			label: t('taskBoard.filterOrigin'),
 			placeholder: t('taskBoard.filterAllOrigins'),
 			empty: '',
@@ -316,7 +313,6 @@ export function renderTaskBoard(
 	// The archive's funnel asks the board's two questions of the shelf alone.
 	const archiveFilterRows = (): FilterRow[] => [
 		{
-			kind: 'one',
 			label: t('status.label'),
 			placeholder: t('taskBoard.filterAllStatuses'),
 			empty: '',

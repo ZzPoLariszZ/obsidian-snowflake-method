@@ -6305,7 +6305,8 @@ col.snowflake-method-revision-column-place {
 
 /* A revision its chapter no longer answers for wears the tracking tables'
    warning ink and the alert that goes with it, in place of the link the
-   living rows carry. */
+   living rows carry -- and a link all the same, to the card pinned at the
+   chapter's head, as the foreshadowing table's unresolved rows are. */
 .snowflake-method-revision-conflict {
 	display: inline-flex;
 	align-items: center;
@@ -6314,6 +6315,14 @@ col.snowflake-method-revision-column-place {
 	overflow: hidden;
 	color: var(--color-orange);
 	text-overflow: ellipsis;
+}
+
+.snowflake-method-revision-conflict.is-link {
+	cursor: pointer;
+}
+
+.snowflake-method-revision-conflict.is-link:hover {
+	text-decoration: underline;
 }
 
 .snowflake-method-rail-badge {

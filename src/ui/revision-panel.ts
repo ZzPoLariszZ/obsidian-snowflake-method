@@ -4,8 +4,8 @@
  * proposes, the note it was written about -- with the Place column jumping to
  * the spot in the stream. Standing is derived here as everywhere: each row is
  * re-anchored against its chapter's body as read this moment, and a revision
- * the body no longer answers for shows as a conflict whose one action is
- * discard.
+ * the body no longer answers for shows as a conflict, whose place opens the
+ * card pinned at its chapter's head and whose one action is discard.
  *
  * The frame is the Entity tracking face's: the search at the left of the band
  * under the tab strip, the state and the refresh at its right, and nothing of
@@ -18,11 +18,13 @@
 import { Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import {
+	REVISION_KINDS,
 	anchorRevision,
 	fileStem,
 	orderRevisions,
 	revealSpan,
 	type Revision,
+	type RevisionKind,
 } from '../domain';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
@@ -116,17 +118,29 @@ export function revisionTableRows(
  * the tracking pane's is: every word a row shows is searched, the kind it
  * wears included, so what is typed finds what is read. `kindOf` names a
  * row's kind in the reader's own language, which is the only part of a row
- * the table draws rather than holds. The funnel asks one thing: whether to
- * keep only the rows the chapter no longer answers for.
+ * the table draws rather than holds. The funnel asks two things: the kind
+ * to keep, and whether to keep only the rows the chapter no longer answers
+ * for.
  */
+export interface RevisionFilters {
+	/** '' means the question is not being asked. */
+	kind: RevisionKind | '';
+	standing: 'conflict' | '';
+}
+
+const NO_REVISION_FILTERS: RevisionFilters = { kind: '', standing: '' };
+
 export function filterRevisionRows(
 	rows: readonly RevisionRow[],
 	query: string,
 	kindOf: (kind: Revision['kind']) => string,
-	standing: 'conflict' | '' = '',
+	filters: RevisionFilters = NO_REVISION_FILTERS,
 ): RevisionRow[] {
-	const held =
-		standing === '' ? rows : rows.filter((row) => row.status === 'conflict');
+	const held = rows.filter(
+		(row) =>
+			(filters.kind === '' || row.kind === filters.kind) &&
+			(filters.standing === '' || row.status === 'conflict'),
+	);
 	const needle = query.trim().toLowerCase();
 	if (needle.length === 0) return [...held];
 	return held.filter((row) =>
@@ -143,14 +157,21 @@ export interface RevisionPanelBridge {
 	/** Opens the stream at one revision's spot and flashes it. */
 	open(occurrence: { path: string; from: number; to: number }): Promise<void>;
 	/**
+	 * Opens the chapter a conflict was lost in and lights its card, pinned
+	 * at the head of the chapter's rail, as the foreshadowing table does.
+	 */
+	openUnresolved(path: string, revisionId: string): Promise<void>;
+	/**
 	 * Takes one revision out, which is the conflict row's only action. False
 	 * where the write never happened.
 	 */
 	discard(id: string): Promise<boolean>;
 }
 
-/** The filter, owned by the dashboard so it outlives the panel. */
+/** The filters, owned by the dashboard so they outlive the panel. */
 export interface RevisionFilterMemory {
+	/** One kind to keep alone; '' asks nothing. */
+	kind: string;
 	/** 'conflict' narrows to the rows the chapter no longer answers for; '' asks nothing. */
 	standing: string;
 }
@@ -219,12 +240,27 @@ export function renderRevisionPanel(
 	setIcon(refreshButton, 'refresh-cw');
 	setTooltip(refreshButton, t('revisionTable.refresh'));
 
-	// The one question the funnel asks, in the dashboard's own popover.
-	const standingOf = (): 'conflict' | '' =>
-		filters.standing === 'conflict' ? 'conflict' : '';
+	// The two questions the funnel asks, in the dashboard's own popover:
+	// the kind, and the standing.
+	const kindOf = (kind: Revision['kind']): string =>
+		t(`manuscript.revision.kind.${kind}`);
+	const asked = (): RevisionFilters => ({
+		kind: REVISION_KINDS.find((kind) => kind === filters.kind) ?? '',
+		standing: filters.standing === 'conflict' ? 'conflict' : '',
+	});
 	const filterRows = (): FilterRow[] => [
 		{
-			kind: 'one',
+			label: t('revisionTable.type'),
+			placeholder: t('revisionTable.filterAllTypes'),
+			empty: '',
+			options: () =>
+				REVISION_KINDS.map((kind) => ({ value: kind, label: kindOf(kind) })),
+			value: filters.kind,
+			apply: (value) => {
+				filters.kind = value;
+			},
+		},
+		{
 			label: t('revisionTable.standing'),
 			placeholder: t('revisionTable.filterAllStandings'),
 			empty: '',
@@ -238,7 +274,8 @@ export function renderRevisionPanel(
 		},
 	];
 	const markFilterButton = (): void => {
-		filterButton.toggleClass('is-active', standingOf() !== '');
+		const { kind, standing } = asked();
+		filterButton.toggleClass('is-active', kind !== '' || standing !== '');
 	};
 	filterButton.addEventListener('click', () => {
 		if (controls.filterOpen()) {
@@ -276,8 +313,6 @@ export function renderRevisionPanel(
 	/** Everything read, and the part of it the search leaves standing. */
 	let reading: RevisionRow[] | null = null;
 	let shown: RevisionRow[] = [];
-	const kindOf = (kind: Revision['kind']): string =>
-		t(`manuscript.revision.kind.${kind}`);
 	const virtual = new VirtualTable({
 		scroller: bodyWrap,
 		body: tableBody,
@@ -319,8 +354,12 @@ export function renderRevisionPanel(
 			if (row.status === 'conflict') {
 				// A revision its chapter no longer answers for: the tracking
 				// tables' warning ink, alert and all, and the one action left.
+				// The warning is the link, as the foreshadowing table's is:
+				// there is no passage left to flash, so it opens the chapter
+				// the words were lost in and lights the card pinned at the
+				// head of its rail.
 				const warned = line.createSpan({
-					cls: 'snowflake-method-revision-conflict',
+					cls: 'snowflake-method-revision-conflict is-link',
 				});
 				const icon = warned.createSpan({
 					cls: 'snowflake-method-character-empty-icon',
@@ -329,6 +368,9 @@ export function renderRevisionPanel(
 				setIcon(icon, 'triangle-alert');
 				warned.createSpan({ text: row.title });
 				setTooltip(warned, t('manuscript.revision.conflict'));
+				warned.addEventListener('click', () => {
+					void bridge.openUnresolved(row.path, row.id).catch(() => undefined);
+				});
 				const discard = line.createEl('button', {
 					cls: 'clickable-icon snowflake-method-tracking-remove',
 					attr: {
@@ -401,7 +443,7 @@ export function renderRevisionPanel(
 			);
 			return;
 		}
-		shown = filterRevisionRows(reading, query, kindOf, standingOf());
+		shown = filterRevisionRows(reading, query, kindOf, asked());
 		stateText.setText(
 			shown.length === reading.length
 				? ''

@@ -24,7 +24,7 @@ export type TaskNavigationTarget =
 	| { kind: 'tracking'; section: 'unresolved' | 'sensitive' }
 	| {
 			kind: 'foreshadowing';
-			status: ForeshadowingStatus[];
+			status: ForeshadowingStatus | '';
 			standing: 'unresolved' | '';
 	  }
 	| { kind: 'revision'; standing: 'conflict' | '' }

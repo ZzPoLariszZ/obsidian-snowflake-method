@@ -179,4 +179,22 @@ describe('searching the revision table', () => {
 		filterRevisionRows(rows, 'dusk', kindOf);
 		expect(rows.map((hit) => hit.id)).toEqual(['a', 'b']);
 	});
+
+	it('the funnel keeps one kind, the conflicts, or both at once, under the search', () => {
+		const rows = [
+			row({ id: 'a', kind: 'insert' }),
+			row({ id: 'b', kind: 'delete', status: 'conflict', reveal: null }),
+			row({ id: 'c', kind: 'insert', status: 'conflict', reveal: null, comment: 'dusk' }),
+		];
+		const ids = (query: string, kind: 'insert' | '', standing: 'conflict' | ''): string[] =>
+			filterRevisionRows(rows, query, kindOf, { kind, standing }).map((hit) => hit.id);
+		expect(ids('', '', '')).toEqual(['a', 'b', 'c']);
+		expect(ids('', 'insert', '')).toEqual(['a', 'c']);
+		expect(ids('', '', 'conflict')).toEqual(['b', 'c']);
+		expect(ids('', 'insert', 'conflict')).toEqual(['c']);
+		// The search narrows what the funnel left, never widens it.
+		expect(ids('dusk', 'insert', '')).toEqual(['c']);
+		expect(ids('dusk', '', 'conflict')).toEqual(['c']);
+		expect(ids('dusk', 'insert', 'conflict')).toEqual(['c']);
+	});
 });

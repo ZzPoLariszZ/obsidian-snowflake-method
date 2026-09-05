@@ -3125,16 +3125,28 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
-	 * Brings one mention onto the screen and flashes it: the tracking pane's
-	 * jump. The stream may still be opening, so the segment and its dress
-	 * are each given a moment to arrive before the reveal gives up quietly.
-	 */
-	/**
 	 * Walks to an occurrence's card once its chapter is on the page: the way
 	 * the table reaches an unresolved occurrence, whose card is pinned at the
 	 * head of the chapter's rail and whose passage is nowhere to flash.
 	 */
 	async revealOccurrenceCard(path: string, occurrenceId: string): Promise<void> {
+		await this.revealPinnedCard(path, (rail) => rail.cardForOccurrence(occurrenceId));
+	}
+
+	/** The same walk to a revision's card, which a conflict pins the same way. */
+	async revealRevisionCard(path: string, revisionId: string): Promise<void> {
+		await this.revealPinnedCard(path, (rail) => rail.cardFor(revisionId));
+	}
+
+	/**
+	 * Waits for the chapter to mount, then walks to the card the rail names.
+	 * The stream may still be opening, so the chapter is given a moment to
+	 * arrive before the reveal gives up quietly.
+	 */
+	private async revealPinnedCard(
+		path: string,
+		cardAt: (rail: RevisionRail) => HTMLElement | null,
+	): Promise<void> {
 		const win = this.contentEl.win;
 		const beat = (): Promise<void> =>
 			new Promise((resolve) => win.setTimeout(resolve, 100));
@@ -3142,9 +3154,14 @@ export class SnowflakeManuscriptView extends ItemView {
 			await beat();
 		}
 		if (!this.mounted.has(path)) return;
-		await this.jumpToCard(path, (rail) => rail.cardForOccurrence(occurrenceId));
+		await this.jumpToCard(path, cardAt);
 	}
 
+	/**
+	 * Brings one mention onto the screen and flashes it: the tracking pane's
+	 * jump. The stream may still be opening, so the segment and its dress
+	 * are each given a moment to arrive before the reveal gives up quietly.
+	 */
 	async revealMention(path: string, from: number, to: number): Promise<void> {
 		const win = this.contentEl.win;
 		const beat = (): Promise<void> =>

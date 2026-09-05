@@ -59,10 +59,10 @@ export interface ForeshadowingPanelBridge {
 	deleteOccurrence(id: string, occurrenceId: string): Promise<boolean>;
 }
 
-/** The filters, owned by the dashboard so they outlive the panel; status and role take several. */
+/** The filters, owned by the dashboard so they outlive the panel. */
 export interface ForeshadowingFilterMemory {
-	status: string[];
-	role: string[];
+	status: string;
+	role: string;
 	standing: string;
 }
 
@@ -141,12 +141,8 @@ export function renderForeshadowingPanel(
 		role: (role: OccurrenceRole): string => t(`foreshadowing.role.${role}`),
 		unresolved: t('manuscript.foreshadowing.unresolved'),
 	};
-	// Status and role take several answers: a thread standing in any of the
-	// statuses picked, an occurrence in any of the roles.
-	const removeLabel = (label: string): string => t('table.filterRemove', { label });
 	const filterRows = (): FilterRow[] => [
 		{
-			kind: 'many',
 			label: t('status.label'),
 			placeholder: t('foreshadowingTable.filterAllStatuses'),
 			empty: '',
@@ -155,27 +151,23 @@ export function renderForeshadowingPanel(
 					value: status,
 					label: labels.status(status),
 				})),
-			values: filters.status,
-			apply: (values) => {
-				filters.status = values;
+			value: filters.status,
+			apply: (value) => {
+				filters.status = value;
 			},
-			removeLabel,
 		},
 		{
-			kind: 'many',
 			label: t('foreshadowingTable.role'),
 			placeholder: t('foreshadowingTable.filterAllRoles'),
 			empty: '',
 			options: () =>
 				OCCURRENCE_ROLES.map((role) => ({ value: role, label: labels.role(role) })),
-			values: filters.role,
-			apply: (values) => {
-				filters.role = values;
+			value: filters.role,
+			apply: (value) => {
+				filters.role = value;
 			},
-			removeLabel,
 		},
 		{
-			kind: 'one',
 			label: t('foreshadowingTable.standing'),
 			placeholder: t('foreshadowingTable.filterAllStandings'),
 			empty: '',
@@ -191,9 +183,7 @@ export function renderForeshadowingPanel(
 	const markFilterButton = (): void => {
 		filterButton.toggleClass(
 			'is-active',
-			filters.status.length > 0 ||
-				filters.role.length > 0 ||
-				filters.standing !== '',
+			filters.status !== '' || filters.role !== '' || filters.standing !== '',
 		);
 	};
 	filterButton.addEventListener('click', () => {
@@ -551,8 +541,8 @@ export function renderForeshadowingPanel(
 			reading.items,
 			query,
 			{
-				status: filters.status.filter(isForeshadowingStatus),
-				role: filters.role.filter(isOccurrenceRole),
+				status: isForeshadowingStatus(filters.status) ? filters.status : '',
+				role: isOccurrenceRole(filters.role) ? filters.role : '',
 				standing: filters.standing === 'unresolved' ? 'unresolved' : '',
 			},
 			labels,
