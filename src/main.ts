@@ -18,29 +18,64 @@ import {
 } from 'obsidian';
 
 import {
+	DEFAULT_STICKY_NOTE_COLOR,
+	DEFAULT_STOPWORDS_EN,
+	DEFAULT_STOPWORDS_ZH,
 	DEFINITION_FILE_IDS,
+	DIALOGUE_STYLE_TOKENS,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	STICKY_NOTE_LOCAL_STATE_KEY,
+	TEMPLATE_SECTION_IDS,
+	WRITING_MODES,
+	WRITING_SESSION_TYPES,
+	analyzeMentions,
+	anchorOccurrence,
+	clampSessionValue,
+	compileChapterNumbering,
+	compileCustomHighlightRules,
 	countWriting,
 	countableProse,
 	countsCharacters,
 	entityKindIds,
+	fileStem,
+	formatClock,
 	getFirstIncompleteStep,
+	hasWordSegmenter,
+	highlightRulesFingerprint,
 	isDocumentType,
 	isStepId,
 	isWorldbuildingKind,
-	TEMPLATE_SECTION_IDS,
 	managedSectionHighlightsForStep,
 	managedSectionsForDocument,
+	occurrenceUnresolved,
+	orderForeshadowings,
+	orderOccurrences,
+	parseQuotePair,
+	parseSensitiveWords,
+	parseStopwords,
 	primaryManagedSectionForStep,
-	formatClock,
-	clampSessionValue,
+	proposeChapterNumber,
+	proposeChapterRemoval,
+	rememberFontFamily,
+	sanitizeChapterNumberRules,
+	sanitizeContentWidth,
+	sanitizeCustomHighlightRules,
+	sanitizeFirstLineIndent,
+	sanitizeFontFamily,
+	sanitizeFontSize,
+	sanitizeGuide,
+	sanitizeHyphenation,
+	sanitizeLineHeight,
+	sanitizeParagraphSpacing,
+	sanitizeTextAlign,
+	sanitizeTint,
 	sessionPace,
-	WRITING_MODES,
-	WRITING_SESSION_TYPES,
+	splitMentionIgnores,
+	stickyNotePreview,
 	type DocumentType,
 	type WritingSessionTiming,
 	type WritingSessionScope,
@@ -51,29 +86,6 @@ import {
 	type WorldbuildingKindId,
 	type WritingCount,
 	type WritingCountMode,
-	sanitizeContentWidth,
-	sanitizeFirstLineIndent,
-	sanitizeFontFamily,
-	sanitizeFontSize,
-	sanitizeGuide,
-	sanitizeHyphenation,
-	sanitizeLineHeight,
-	sanitizeParagraphSpacing,
-	rememberFontFamily,
-	sanitizeTextAlign,
-	sanitizeTint,
-	DEFAULT_STOPWORDS_EN,
-	DEFAULT_STOPWORDS_ZH,
-	DIALOGUE_STYLE_TOKENS,
-	analyzeMentions,
-	compileCustomHighlightRules,
-	hasWordSegmenter,
-	highlightRulesFingerprint,
-	parseQuotePair,
-	parseSensitiveWords,
-	parseStopwords,
-	sanitizeCustomHighlightRules,
-	splitMentionIgnores,
 	type CompiledHighlightRules,
 	type CustomHighlightRule,
 	type DialogueOccurrence,
@@ -93,16 +105,6 @@ import {
 	type ForeshadowingRef,
 	type OccurrencePlacement,
 	type OccurrenceRole,
-	anchorOccurrence,
-	orderOccurrences,
-	fileStem,
-	compileChapterNumbering,
-	sanitizeChapterNumberRules,
-	proposeChapterNumber,
-	proposeChapterRemoval,
-	DEFAULT_STICKY_NOTE_COLOR,
-	STICKY_NOTE_LOCAL_STATE_KEY,
-	stickyNotePreview,
 	type StickyNoteColor,
 	type ChapterFollower,
 	type ChapterNumbering,
@@ -236,7 +238,7 @@ import type {
 } from './ui/sticky-note-bridge';
 import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
-import { StickyNoteSaveConflict } from './ui/sticky-note-editing';
+import { StickyNoteGone, StickyNoteSaveConflict } from './ui/sticky-note-editing';
 import { StickyNoteFloatLayer } from './ui/sticky-note-float';
 import { StickyNoteHub } from './ui/sticky-note-hub';
 import {
@@ -480,6 +482,8 @@ export default class SnowflakeMethodPlugin
 	private readonly stickyLayers = new Map<Document, StickyNoteFloatLayer>();
 	/** The project the layers were last reconciled to; undefined before the first pass. */
 	private stickyFloatsProject: string | null | undefined = undefined;
+	/** The chapters the relink sweep read, each under the stamp it was read at. */
+	private readonly sweptBodies = new Map<string, { stamp: string; body: string }>();
 	private lastFocusLevel: ManuscriptFocusLevel = 'off';
 	private sessionItem: HTMLElement | null = null;
 	private sessionIconEl: HTMLElement | null = null;
@@ -809,8 +813,7 @@ export default class SnowflakeMethodPlugin
 		// offsets: the store is brought level quietly, once, for every writer
 		// alike, and only a real move re-dresses anything.
 		this.projects.manuscript.onSegmentWritten = (path, body) => {
-			void this.levelRevisions(path, body).catch(() => undefined);
-			void this.levelForeshadowing(path, body).catch(() => undefined);
+			void this.levelMarginRecords(path, body).catch(() => undefined);
 		};
 		// And text that walks from one note into another takes its revisions
 		// with it. `left` is the departing note as it stood, which is what
@@ -825,44 +828,25 @@ export default class SnowflakeMethodPlugin
 			at,
 			shift,
 		) => {
-			void (async () => {
+			// Answered as a promise so a split can wait for the travellers to
+			// have left before the head is levelled.
+			return (async () => {
 				const project = this.projectRefAtPath(into);
 				if (project === null) return;
-				// Two files, two carries, one levelling read and one announce.
-				const [carriedRevisions, carriedThreads] = await Promise.all([
-					this.projects.revisions.carryTextBetweenNotes(
-						project,
-						from,
-						into,
-						left,
-						at,
-						shift,
+				// Every file at once, one levelling read and one announce.
+				const stores = this.projects.marginRecords;
+				const carried = await Promise.all(
+					stores.map((store) =>
+						store.carryTextBetweenNotes(project, from, into, left, at, shift),
 					),
-					this.projects.foreshadowing.carryTextBetweenNotes(
-						project,
-						from,
-						into,
-						left,
-						at,
-						shift,
-					),
-				]);
-				if (!carriedRevisions && !carriedThreads) return;
+				);
+				if (!carried.some(Boolean)) return;
 				const { body } = await this.readManuscriptSegment(into);
-				if (carriedRevisions) {
-					await this.projects.revisions.refreshAnchorsOnSave(
-						project,
-						into,
-						body,
-					);
-				}
-				if (carriedThreads) {
-					await this.projects.foreshadowing.refreshAnchorsOnSave(
-						project,
-						into,
-						body,
-					);
-				}
+				await Promise.all(
+					stores
+						.filter((_store, index) => carried[index] === true)
+						.map((store) => store.refreshAnchorsOnSave(project, into, body)),
+				);
 				await this.announceMarginRecordsChanged();
 			})().catch(() => undefined);
 		};
@@ -3748,24 +3732,15 @@ export default class SnowflakeMethodPlugin
 				// trusted stored. A chapter that cannot be read leaves its body
 				// null, and every revision on it shows as a conflict.
 				const paths = [...new Set(revisions.map((revision) => revision.path))];
-				const bodies = await Promise.all(
-					paths.map((path) =>
-						this.readManuscriptSegment(path).then(
-							({ body }) => body,
-							() => null,
-						),
-					),
-				);
-				paths.forEach((path, index) => {
-					const body = bodies[index] ?? null;
-					if (body === null) return;
+				for (const [path, body] of await this.readSegmentBodies(paths)) {
+					if (body === null) continue;
 					const kept = notes.get(path);
 					if (kept === undefined) {
 						notes.set(path, { title: fileStem(path), body });
 					} else {
 						kept.body = body;
 					}
-				});
+				}
 				return revisionTableRows(revisions, notes);
 			},
 			open: (occurrence) =>
@@ -3805,31 +3780,20 @@ export default class SnowflakeMethodPlugin
 				// Only chapters carrying occurrences are read, one read each and
 				// all at once; a chapter that cannot be read leaves its body
 				// null, and every occurrence on it reads as unresolved.
+				// A chapter the manuscript no longer lists is not read: nothing
+				// can show its passage, so its rows wait to be relinked, as the
+				// stream and the sweep say too.
 				const paths = [
 					...new Set(
 						items.flatMap((item) =>
 							item.occurrences.map((occurrence) => occurrence.path),
 						),
 					),
-				];
-				const bodies = await Promise.all(
-					paths.map((path) =>
-						this.readManuscriptSegment(path).then(
-							({ body }) => body,
-							() => null,
-						),
-					),
-				);
-				paths.forEach((path, index) => {
-					const body = bodies[index] ?? null;
-					if (body === null) return;
+				].filter((path) => notes.has(path));
+				for (const [path, body] of await this.readSegmentBodies(paths)) {
 					const kept = notes.get(path);
-					if (kept === undefined) {
-						notes.set(path, { title: fileStem(path), body });
-					} else {
-						kept.body = body;
-					}
-				});
+					if (body !== null && kept !== undefined) kept.body = body;
+				}
 				return {
 					items: foreshadowingTableItems(items, notes, roster),
 					readOnly: project.readOnly,
@@ -3867,9 +3831,7 @@ export default class SnowflakeMethodPlugin
 					{
 						title,
 						text: occurrence.originalText,
-						unresolved:
-							body === null ||
-							anchorOccurrence(body, occurrence).state === 'conflict',
+						unresolved: occurrenceUnresolved(body, occurrence),
 						reveal: () => {
 							this.revealForeshadowingOccurrence(project.projectFile, occurrence);
 						},
@@ -5678,7 +5640,9 @@ export default class SnowflakeMethodPlugin
 	/**
 	 * A sticky note's body, written under the revision its editor holds. A
 	 * file that moved on meanwhile says so in the author's own words rather
-	 * than the repository's, as the manuscript's save does.
+	 * than the repository's, as the manuscript's save does; a file that is
+	 * not there says so in the editor's own terms, and the editor keeps the
+	 * text for the note's return under another name.
 	 */
 	private async writeStickyNoteBody(
 		path: string,
@@ -5688,6 +5652,9 @@ export default class SnowflakeMethodPlugin
 		try {
 			return await this.projects.stickyNotes.writeBody(path, body, expectedRevision);
 		} catch (error) {
+			if (error instanceof ManagedFileNotFoundError) {
+				throw new StickyNoteGone(error.message);
+			}
 			if (error instanceof ConcurrentChangeError) {
 				throw new StickyNoteSaveConflict(
 					this.translateForProject(
@@ -5702,9 +5669,18 @@ export default class SnowflakeMethodPlugin
 
 	/** The palette and the ribbon: a new note, floating in the author's window, ready to type into. */
 	private async createStickyNoteAndFloat(): Promise<void> {
-		const note = await this.createStickyNote(this.settings.recentProjectPath);
-		if (note === null) {
+		const project = await this.resolveProject(this.settings.recentProjectPath);
+		if (project === null) {
 			new Notice(this.projectT('messages.noCurrentProject'));
+			return;
+		}
+		if (project.readOnly) {
+			new Notice(this.projectT('errors.readOnly'));
+			return;
+		}
+		const note = await this.createStickyNote(project.projectFile);
+		if (note === null) {
+			new Notice(this.projectT('stickyNotes.refused'));
 			return;
 		}
 		await this.floatStickyNote(
@@ -5724,6 +5700,9 @@ export default class SnowflakeMethodPlugin
 				plugin: this,
 				bridge: this.stickyNotes(),
 				locale: () => this.currentLocale(),
+				// The main window keeps the device's memory of the panels; a
+				// popout's panels last the popout's own life.
+				remembers: doc === this.app.workspace.containerEl.doc,
 			});
 			this.stickyLayers.set(doc, layer);
 		}
@@ -5741,7 +5720,11 @@ export default class SnowflakeMethodPlugin
 			(candidate) => candidate.id === id,
 		);
 		if (note === undefined || note.archived) return;
-		this.stickyLayerFor(win).open(note, project.projectFile, options);
+		this.stickyLayerFor(win).open(
+			note,
+			{ path: project.projectFile, readOnly: project.readOnly },
+			options,
+		);
 	}
 
 	private isStickyNoteFloating(id: string, win: Window): boolean {
@@ -5761,13 +5744,49 @@ export default class SnowflakeMethodPlugin
 	private async reconcileStickyFloats(): Promise<void> {
 		const recent = this.settings.recentProjectPath;
 		this.stickyFloatsProject = recent;
+		// Nothing standing and nothing remembered open: nothing to put away
+		// and nothing to bring back, so the project is not loaded for it.
+		const standing = [...this.stickyLayers.values()].some((layer) => layer.hasAny());
+		if (!standing && !this.stickyNoteHub.anyOpen()) {
+			this.stickyLayerFor(this.app.workspace.containerEl.win);
+			return;
+		}
 		const project = await this.resolveProject(null);
-		const projectPath = project?.projectFile ?? null;
 		const notes = project === null ? [] : await this.projects.stickyNotes.list(project);
+		// The project moved again while this was reading: the run that
+		// follows speaks for it, and this one must not put its panels away.
+		if (this.settings.recentProjectPath !== recent) return;
+		const target =
+			project === null
+				? null
+				: { path: project.projectFile, readOnly: project.readOnly };
 		this.stickyLayerFor(this.app.workspace.containerEl.win);
 		for (const layer of this.stickyLayers.values()) {
-			layer.reconcile(projectPath, notes);
+			layer.reconcile(target, notes);
 		}
+	}
+
+	/**
+	 * A note the main window remembers floating, standing in the current
+	 * project and not floating now, comes back: its frontmatter mended, or
+	 * the note found again under another name. Asked cheaply first, from
+	 * the scan's own record of the project and the notes' memoised reads,
+	 * so the common bell -- a save in a note already standing -- loads nothing.
+	 */
+	private async restoreStickyFloats(): Promise<void> {
+		const recent = this.settings.recentProjectPath;
+		if (recent === null) return;
+		const ref = this.projectRefAtPath(recent);
+		if (ref === null) return;
+		const layer = this.stickyLayers.get(this.app.workspace.containerEl.doc);
+		const notes = await this.projects.stickyNotes.list(ref);
+		const waiting = notes.some(
+			(note) =>
+				!note.archived &&
+				!(layer?.has(note.id) ?? false) &&
+				this.stickyNoteHub.floatState(note.id)?.open === true,
+		);
+		if (waiting) await this.reconcileStickyFloats();
 	}
 
 	/**
@@ -5784,6 +5803,9 @@ export default class SnowflakeMethodPlugin
 			this.stickyNoteNotifyTimer = null;
 			this.stickyNoteHub.notify();
 			this.reconcileDashboardHealth();
+			void this.restoreStickyFloats().catch((error: unknown) => {
+				this.showError(error);
+			});
 		}, REFRESH_DELAY_MS);
 	}
 
@@ -6005,27 +6027,17 @@ export default class SnowflakeMethodPlugin
 	 * last opened is not used here either: a save under no known root must
 	 * touch no other project's file.
 	 */
-	private async levelRevisions(path: string, body: string): Promise<void> {
+	private async levelMarginRecords(path: string, body: string): Promise<void> {
 		const project = this.projectRefAtPath(path);
 		if (project === null) return;
-		const moved = await this.projects.revisions.refreshAnchorsOnSave(
-			project,
-			path,
-			body,
+		// Every file at once, and one announce for whatever moved: each
+		// announce re-dresses every stream and rebuilds every dashboard.
+		const moved = await Promise.all(
+			this.projects.marginRecords.map((store) =>
+				store.refreshAnchorsOnSave(project, path, body),
+			),
 		);
-		if (moved) await this.announceMarginRecordsChanged();
-	}
-
-	/** The same errand for the foreshadowing file, behind the same save. */
-	private async levelForeshadowing(path: string, body: string): Promise<void> {
-		const project = this.projectRefAtPath(path);
-		if (project === null) return;
-		const moved = await this.projects.foreshadowing.refreshAnchorsOnSave(
-			project,
-			path,
-			body,
-		);
-		if (moved) await this.announceMarginRecordsChanged();
+		if (moved.some(Boolean)) await this.announceMarginRecordsChanged();
 	}
 
 	/**
@@ -6335,6 +6347,15 @@ export default class SnowflakeMethodPlugin
 	): Promise<void> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return;
+		// A chapter the manuscript no longer lists has no place in the
+		// stream: the note itself is opened, where the words were lost.
+		const listed = (await this.projects.manuscript.listSegments(project)).some(
+			(segment) => segment.path === path,
+		);
+		if (!listed) {
+			await this.openManagedFile(path);
+			return;
+		}
 		await this.openManuscriptStream(project.projectFile, path);
 		const leaf = this.app.workspace
 			.getLeavesOfType(MANUSCRIPT_VIEW_TYPE)
@@ -6542,6 +6563,12 @@ export default class SnowflakeMethodPlugin
 	async openCreateForeshadowingModal(projectPath: string | null): Promise<void> {
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return;
+		// Refused at the door rather than at Save, where the panel's own Add
+		// is already greyed: a form filled in for nothing is worse than a word.
+		if (project.readOnly) {
+			new Notice(this.translateForProject(project.locale, 'errors.readOnly'));
+			return;
+		}
 		const t = (
 			key: string,
 			vars?: Record<string, string | number>,
@@ -6597,18 +6624,7 @@ export default class SnowflakeMethodPlugin
 		const paths = [
 			...new Set(item.occurrences.map((occurrence) => occurrence.path)),
 		];
-		const bodies = new Map<string, string | null>();
-		await Promise.all(
-			paths.map(async (path) => {
-				bodies.set(
-					path,
-					await this.readManuscriptSegment(path).then(
-						({ body }) => body,
-						() => null,
-					),
-				);
-			}),
-		);
+		const bodies = await this.readSegmentBodies(paths);
 		const bodyOf = (path: string): string | null => bodies.get(path) ?? null;
 		// In manuscript order, which is the number each card wears: the
 		// chapters as listed, then any note the list no longer names.
@@ -6640,9 +6656,7 @@ export default class SnowflakeMethodPlugin
 							note: occurrence.note,
 							title: titles.get(occurrence.path) ?? fileStem(occurrence.path),
 							text: occurrence.originalText,
-							unresolved:
-								body === null ||
-								anchorOccurrence(body, occurrence).state === 'conflict',
+							unresolved: occurrenceUnresolved(body, occurrence),
 						};
 					}),
 				},
@@ -6673,6 +6687,7 @@ export default class SnowflakeMethodPlugin
 					status: result.status,
 					related: result.related,
 					occurrences: result.occurrences,
+					removed: result.removed,
 				});
 				if (!took) throw new Error(t('manuscript.foreshadowing.refused'));
 			},
@@ -6713,16 +6728,73 @@ export default class SnowflakeMethodPlugin
 		const project = await this.resolveProject(projectPath);
 		if (project === null) return [];
 		const items = await this.projects.foreshadowing.list(project);
-		// Only chapters carrying occurrences are read, one read each and all
-		// at once; a chapter that will not read leaves its body null, and
-		// every occurrence on it is unresolved.
+		// A chapter the manuscript no longer lists -- moved out of its folder
+		// -- has no place the stream can show, so what stands on it waits to
+		// be relinked, as the stream reads it too; its file is not opened.
+		const listed = new Set(
+			(await this.projects.manuscript.listSegments(project)).map(
+				(segment) => segment.path,
+			),
+		);
+		// Only listed chapters carrying occurrences are read, one read each
+		// and all at once -- and only when their stamp moved since the last
+		// sweep; a chapter that will not read leaves its body null, and every
+		// occurrence on it is unresolved.
 		const paths = [
 			...new Set(
 				items.flatMap((item) =>
 					item.occurrences.map((occurrence) => occurrence.path),
 				),
 			),
-		];
+		].filter((path) => listed.has(path));
+		const bodies = new Map<string, string | null>();
+		await Promise.all(
+			paths.map(async (path) => {
+				bodies.set(path, await this.sweptBody(path));
+			}),
+		);
+		const unresolved: ForeshadowingRef[] = [];
+		for (const item of items) {
+			for (const occurrence of item.occurrences) {
+				if (occurrenceUnresolved(bodies.get(occurrence.path) ?? null, occurrence)) {
+					unresolved.push({ item, occurrence });
+				}
+			}
+		}
+		return unresolved;
+	}
+
+	/**
+	 * The threads in the order the dashboard's table lists them -- status
+	 * first, then first appearance in the manuscript -- for a picker that
+	 * should read as the table does.
+	 */
+	async orderedForeshadowings(
+		projectPath: string | null,
+	): Promise<readonly Foreshadowing[]> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return [];
+		const [items, segments] = await Promise.all([
+			this.projects.foreshadowing.list(project),
+			this.projects.manuscript.listSegments(project),
+		]);
+		const paths = segments.map((segment) => segment.path);
+		const carrying = new Set(
+			items.flatMap((item) => item.occurrences.map((occurrence) => occurrence.path)),
+		);
+		const bodies = await this.readSegmentBodies(
+			paths.filter((path) => carrying.has(path)),
+		);
+		return orderForeshadowings(items, paths, (path) => bodies.get(path) ?? null);
+	}
+
+	/**
+	 * The bodies of the chapters named, read all at once; a chapter that
+	 * will not read is null, and every record on it reads as unresolved.
+	 */
+	private async readSegmentBodies(
+		paths: readonly string[],
+	): Promise<Map<string, string | null>> {
 		const bodies = new Map<string, string | null>();
 		await Promise.all(
 			paths.map(async (path) => {
@@ -6735,19 +6807,22 @@ export default class SnowflakeMethodPlugin
 				);
 			}),
 		);
-		const unresolved: ForeshadowingRef[] = [];
-		for (const item of items) {
-			for (const occurrence of item.occurrences) {
-				const body = bodies.get(occurrence.path) ?? null;
-				if (
-					body === null ||
-					anchorOccurrence(body, occurrence).state === 'conflict'
-				) {
-					unresolved.push({ item, occurrence });
-				}
-			}
+		return bodies;
+	}
+
+	/** A chapter's body for the sweep, read again only once its stamp has moved. */
+	private async sweptBody(path: string): Promise<string | null> {
+		const stamp = this.projects.manuscript.segmentStamp(path);
+		if (stamp === null) return null;
+		const kept = this.sweptBodies.get(path);
+		if (kept !== undefined && kept.stamp === stamp) return kept.body;
+		try {
+			const { body } = await this.readManuscriptSegment(path);
+			this.sweptBodies.set(path, { stamp, body });
+			return body;
+		} catch {
+			return null;
 		}
-		return unresolved;
 	}
 
 	async readManuscriptSegment(path: string): Promise<ManuscriptSegmentText> {
@@ -7951,8 +8026,7 @@ export default class SnowflakeMethodPlugin
 		// The revision memo is keyed by project root: a deleted or archived
 		// project folder takes its memo with it, and a deleted note simply
 		// stops anchoring, which the derived standing already says.
-		this.projects.revisions.evict(file.path);
-		this.projects.foreshadowing.evict(file.path);
+		for (const store of this.projects.marginRecords) store.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -8083,8 +8157,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.analysis.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
-		this.projects.revisions.evict(oldPath);
-		this.projects.foreshadowing.evict(oldPath);
+		for (const store of this.projects.marginRecords) store.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering
@@ -8098,23 +8171,10 @@ export default class SnowflakeMethodPlugin
 					oldPath,
 					file.path,
 				)) {
-					if (
-						await this.projects.revisions.renameNotePaths(
-							project,
-							oldPath,
-							file.path,
-						)
-					) {
-						carried = true;
-					}
-					if (
-						await this.projects.foreshadowing.renameNotePaths(
-							project,
-							oldPath,
-							file.path,
-						)
-					) {
-						carried = true;
+					for (const store of this.projects.marginRecords) {
+						if (await store.renameNotePaths(project, oldPath, file.path)) {
+							carried = true;
+						}
 					}
 				}
 				if (carried) await this.announceMarginRecordsChanged();
@@ -8125,15 +8185,19 @@ export default class SnowflakeMethodPlugin
 		// the surfaces find it again by id. Its health can move with it -- a
 		// note dragged out of the folder stops being one, and a note dragged
 		// in is read as one -- so the verdict is re-read as after a save.
-		if (
-			file instanceof TFile &&
-			(isStickyNotePath(oldPath) || isStickyNotePath(file.path)) &&
-			(this.touchesProject(oldPath) || this.touchesProject(file.path))
-		) {
-			this.invalidateProjectHealth(oldPath);
-			this.invalidateProjectHealth(file.path);
-			this.scheduleStickyNoteNotify();
-			return;
+		if (file instanceof TFile) {
+			const wasSticky = isStickyNotePath(oldPath) && this.touchesProject(oldPath);
+			const isSticky = isStickyNotePath(file.path) && this.touchesProject(file.path);
+			if (wasSticky || isSticky) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleStickyNoteNotify();
+				// A note renamed within the folder concerns the sticky surfaces
+				// alone. One carried across the folder's line -- a chapter
+				// dragged in, a note dragged out -- is one the manuscript and
+				// the dashboards must hear of as well, below.
+				if (wasSticky && isSticky) return;
+			}
 		}
 		// A project folder moving takes its notes' surfaces with it.
 		if (file instanceof TFolder) this.scheduleStickyNoteNotify();

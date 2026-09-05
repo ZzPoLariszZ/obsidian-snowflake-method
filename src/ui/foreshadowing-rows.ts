@@ -1,5 +1,6 @@
 import {
 	anchorOccurrence,
+	fileStem,
 	orderForeshadowings,
 	orderOccurrences,
 	resolveEntityRefs,
@@ -57,9 +58,6 @@ export interface ForeshadowingTableItem {
 	createdAt: number;
 }
 
-const stemOf = (path: string): string =>
-	(path.split('/').pop() ?? path).replace(/\.md$/u, '');
-
 /**
  * Every thread shaped for the table: in table order, each occurrence placed
  * by where its words stand in the body handed in -- standing is derived
@@ -98,7 +96,7 @@ export function foreshadowingTableItems(
 					role: occurrence.role,
 					note: occurrence.note,
 					path: occurrence.path,
-					title: notes.get(occurrence.path)?.title ?? stemOf(occurrence.path),
+					title: notes.get(occurrence.path)?.title ?? fileStem(occurrence.path),
 					standing: live ? 'live' : 'unresolved',
 					from,
 					to,

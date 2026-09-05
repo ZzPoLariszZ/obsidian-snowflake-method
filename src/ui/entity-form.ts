@@ -524,6 +524,43 @@ export const PROGRESS_STATUS_ORDER = [
 ] as const;
 
 /**
+ * A bare select over a closed vocabulary, in the theme's dress: every value
+ * an option under its label, the initial one chosen, and a value the select
+ * reports that the vocabulary lacks -- which the DOM cannot produce, though
+ * the type cannot know it -- read as the fallback. The status controls, the
+ * occurrence role and the rail's role select are all this one shape.
+ */
+export function addEnumSelect<T extends string>(
+	container: HTMLElement,
+	spec: {
+		cls: string;
+		ariaLabel: string;
+		values: readonly T[];
+		label: (value: T) => string;
+		initial: T;
+		is: (value: string) => value is T;
+		fallback: T;
+		onChange?: (value: T) => void;
+	},
+): HTMLSelectElement {
+	const select = container.createEl('select', {
+		cls: spec.cls,
+		attr: { 'aria-label': spec.ariaLabel },
+	});
+	for (const value of spec.values) {
+		const option = select.createEl('option', { value, text: spec.label(value) });
+		option.selected = value === spec.initial;
+	}
+	const onChange = spec.onChange;
+	if (onChange !== undefined) {
+		select.addEventListener('change', () => {
+			onChange(spec.is(select.value) ? select.value : spec.fallback);
+		});
+	}
+	return select;
+}
+
+/**
  * The progress status, worn where a step wears it: a bare select in the header
  * beside the title, no label of its own, and always holding one of the four.
  * A member is somewhere in its progress the moment it exists, so there is
@@ -535,26 +572,17 @@ export function addProgressStatusControl(
 	initial: ProgressStatus,
 	onChange: (value: ProgressStatus) => void,
 ): HTMLSelectElement {
-	const select = container.createEl('select', {
+	return addEnumSelect(container, {
 		cls: 'dropdown snowflake-method-status-select',
-		attr: { 'aria-label': t('form.progressStatus') },
+		ariaLabel: t('form.progressStatus'),
+		values: PROGRESS_STATUS_ORDER,
+		label: (status) => t(`status.${status}`),
+		initial,
+		is: (value): value is ProgressStatus =>
+			(PROGRESS_STATUS_ORDER as readonly string[]).includes(value),
+		fallback: 'not-started',
+		onChange,
 	});
-	for (const status of PROGRESS_STATUS_ORDER) {
-		const option = select.createEl('option', {
-			value: status,
-			text: t(`status.${status}`),
-		});
-		option.selected = status === initial;
-	}
-	select.addEventListener('change', () => {
-		const value = select.value;
-		onChange(
-			PROGRESS_STATUS_ORDER.includes(value as ProgressStatus)
-				? (value as ProgressStatus)
-				: 'not-started',
-		);
-	});
-	return select;
 }
 
 /**
@@ -568,22 +596,16 @@ export function addForeshadowingStatusControl(
 	initial: ForeshadowingStatus,
 	onChange: (value: ForeshadowingStatus) => void,
 ): HTMLSelectElement {
-	const select = container.createEl('select', {
+	return addEnumSelect(container, {
 		cls: 'dropdown snowflake-method-status-select',
-		attr: { 'aria-label': t('manuscript.foreshadowing.status') },
+		ariaLabel: t('manuscript.foreshadowing.status'),
+		values: FORESHADOWING_STATUSES,
+		label: (status) => t(`foreshadowing.status.${status}`),
+		initial,
+		is: isForeshadowingStatus,
+		fallback: 'planned',
+		onChange,
 	});
-	for (const status of FORESHADOWING_STATUSES) {
-		const option = select.createEl('option', {
-			value: status,
-			text: t(`foreshadowing.status.${status}`),
-		});
-		option.selected = status === initial;
-	}
-	select.addEventListener('change', () => {
-		const value = select.value;
-		onChange(isForeshadowingStatus(value) ? value : 'planned');
-	});
-	return select;
 }
 
 /**

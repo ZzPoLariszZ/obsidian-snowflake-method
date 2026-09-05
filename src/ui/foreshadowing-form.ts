@@ -2,6 +2,7 @@ import { Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	OCCURRENCE_ROLES,
+	fileStem,
 	isOccurrenceRole,
 	type EntityRef,
 	type EntityRosterEntry,
@@ -11,6 +12,7 @@ import {
 	type OccurrenceRole,
 } from '../domain';
 import {
+	addEnumSelect,
 	addForeshadowingStatusControl,
 	entityGroupLabel,
 	renderRecordLine,
@@ -24,6 +26,7 @@ import {
 	type SubmitHandler,
 	type Translate,
 } from './modals';
+import { truncateEnd } from './mention-rows';
 import { buildOptionField, type OptionPicker } from './option-picker';
 
 /**
@@ -59,8 +62,10 @@ export interface ForeshadowingFormResult {
 	description: string;
 	status: ForeshadowingStatus;
 	related: EntityRef[];
-	/** The occurrences that survive, role and note as edited. */
+	/** The occurrences the form showed and kept, role and note as edited. */
 	occurrences: { id: string; role: OccurrenceRole; note: string }[];
+	/** The occurrences the form took out. */
+	removed: string[];
 	/** The occurrence a stream selection is asking to add; null otherwise. */
 	initial: { role: OccurrenceRole; note: string } | null;
 }
@@ -93,26 +98,48 @@ export interface ForeshadowingFormOptions {
 	onReveal?: (occurrenceId: string) => void;
 }
 
-/** A passage shown in a dialog: the whole of a short one, the head of a long one. */
-const clip = (text: string, max: number): string =>
-	text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-
-/** The chapter and the words, above the fields that describe them. */
-function passageLine(
+/**
+ * The two named rows every occurrence dialog opens with, above the fields
+ * that describe the occurrence: the position -- the chapter, a link to the
+ * passage where the host can show it -- and the words whole, on the
+ * thread's ground. One shape for the three dialogs, however each was
+ * reached: editing an occurrence from the table, adding the selection to a
+ * thread, relinking one.
+ */
+function placeRows(
 	host: HTMLElement,
 	t: Translate,
-	place: { title: string; text: string },
+	place: { title: string; text: string; unresolved?: boolean; reveal?: () => void },
 ): void {
-	const line = host.createDiv({ cls: 'snowflake-method-foreshadowing-place' });
-	line.createSpan({
-		cls: 'snowflake-method-foreshadowing-place-label',
-		text: t('manuscript.foreshadowing.place'),
+	const position = new Setting(host).setName(t('manuscript.foreshadowing.place'));
+	const name = position.controlEl.createSpan({
+		cls: 'snowflake-method-foreshadowing-occurrence-place-title',
+		text: place.title,
 	});
-	line.createSpan({ text: place.title });
-	host.createDiv({
-		cls: 'snowflake-method-foreshadowing-passage',
-		text: clip(place.text, 160),
-	});
+	if (place.unresolved === true) {
+		position.controlEl.addClass('snowflake-method-foreshadowing-occurrence-place');
+		position.controlEl.addClass('is-unresolved');
+		position.setDesc(t('manuscript.foreshadowing.unresolvedHint'));
+		position.descEl.addClass('snowflake-method-foreshadowing-unresolved-hint');
+	}
+	const reveal = place.reveal;
+	if (reveal !== undefined) {
+		name.addClass('is-link');
+		name.setAttr('role', 'link');
+		name.setAttr('tabindex', '0');
+		name.addEventListener('click', reveal);
+		name.addEventListener('keydown', (event) => {
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			reveal();
+		});
+	}
+	new Setting(host)
+		.setName(t('manuscript.foreshadowing.text'))
+		.controlEl.createDiv({
+			cls: 'snowflake-method-foreshadowing-passage',
+			text: place.text,
+		});
 }
 
 function addRoleDropdown(
@@ -152,21 +179,16 @@ function roleSelect(
 	initial: OccurrenceRole,
 	onChange: (role: OccurrenceRole) => void,
 ): HTMLSelectElement {
-	const select = host.createEl('select', {
+	return addEnumSelect(host, {
 		cls: 'dropdown',
-		attr: { 'aria-label': t('manuscript.foreshadowing.role') },
+		ariaLabel: t('manuscript.foreshadowing.role'),
+		values: OCCURRENCE_ROLES,
+		label: (role) => t(`foreshadowing.role.${role}`),
+		initial,
+		is: isOccurrenceRole,
+		fallback: initial,
+		onChange,
 	});
-	for (const role of OCCURRENCE_ROLES) {
-		const option = select.createEl('option', {
-			value: role,
-			text: t(`foreshadowing.role.${role}`),
-		});
-		option.selected = role === initial;
-	}
-	select.addEventListener('change', () => {
-		onChange(isOccurrenceRole(select.value) ? select.value : initial);
-	});
-	return select;
 }
 
 /**
@@ -182,6 +204,8 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 	/** The picked entities, by id. */
 	private related: string[];
 	private readonly occurrences: ForeshadowingOccurrenceDraft[];
+	/** The ids the trash took out, staged until Save like the rest. */
+	private readonly removed: string[] = [];
 	private seed: { role: OccurrenceRole; note: string } | null;
 	/** Everything an id may stand for: the roster, and the stored refs it lacks. */
 	private readonly refs = new Map<string, EntityRef>();
@@ -287,9 +311,15 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			attr: { type: 'button' },
 		});
 		button.addEventListener('click', () => {
-			void onDelete().then((gone) => {
-				if (gone) this.close();
-			});
+			void onDelete()
+				.then((gone) => {
+					if (gone) this.close();
+				})
+				.catch((error: unknown) => {
+					new Notice(
+						error instanceof Error ? error.message : this.t('errors.unknown'),
+					);
+				});
 		});
 	}
 
@@ -417,6 +447,7 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			const { body } = this.occurrenceCard(cards, at + 1, (card) => {
 				const index = this.occurrences.indexOf(occurrence);
 				if (index >= 0) this.occurrences.splice(index, 1);
+				this.removed.push(occurrence.id);
 				card.remove();
 				// The numbers are the order the survivors stand in.
 				cards
@@ -631,6 +662,7 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 				role,
 				note: note.trim(),
 			})),
+			removed: [...this.removed],
 			initial:
 				this.seed === null
 					? null
@@ -656,6 +688,9 @@ export function promptForForeshadowing(
 }
 
 /** Where an occurrence stands, as its own dialog shows it. */
+/** The picker's box in a dialog row: the row's whole width, as the role's dropdown takes it. */
+const PICKER_CLS = 'snowflake-method-foreshadowing-picker';
+
 export interface OccurrencePlace {
 	title: string;
 	/** The words, whole. */
@@ -693,40 +728,7 @@ class OccurrenceModal extends SnowflakeFormModal<{
 	protected buildForm(): void {
 		const t = this.t;
 		this.contentEl.addClass('snowflake-method-project-form');
-		// The same named rows the role and the note stand in: the position,
-		// which is the way to the passage where the host can show it, and
-		// the words whole.
-		const position = new Setting(this.contentEl).setName(
-			t('manuscript.foreshadowing.place'),
-		);
-		const name = position.controlEl.createSpan({
-			cls: 'snowflake-method-foreshadowing-occurrence-place-title',
-			text: this.place.title,
-		});
-		if (this.place.unresolved) {
-			position.controlEl.addClass('snowflake-method-foreshadowing-occurrence-place');
-			position.controlEl.addClass('is-unresolved');
-			position.setDesc(t('manuscript.foreshadowing.unresolvedHint'));
-			position.descEl.addClass('snowflake-method-foreshadowing-unresolved-hint');
-		}
-		const reveal = this.place.reveal;
-		if (reveal !== undefined) {
-			name.addClass('is-link');
-			name.setAttr('role', 'link');
-			name.setAttr('tabindex', '0');
-			name.addEventListener('click', reveal);
-			name.addEventListener('keydown', (event) => {
-				if (event.key !== 'Enter' && event.key !== ' ') return;
-				event.preventDefault();
-				reveal();
-			});
-		}
-		new Setting(this.contentEl)
-			.setName(t('manuscript.foreshadowing.text'))
-			.controlEl.createDiv({
-				cls: 'snowflake-method-foreshadowing-passage',
-				text: this.place.text,
-			});
+		placeRows(this.contentEl, t, this.place);
 		addRoleDropdown(
 			new Setting(this.contentEl).setName(t('manuscript.foreshadowing.role')),
 			t,
@@ -804,12 +806,15 @@ class PickForeshadowingModal extends SnowflakeFormModal<PickedForeshadowing> {
 	protected buildForm(): void {
 		const t = this.t;
 		this.contentEl.addClass('snowflake-method-project-form');
-		passageLine(this.contentEl, t, this.place);
+		placeRows(this.contentEl, t, this.place);
 		const pick = new Setting(this.contentEl).setName(
 			t('manuscript.foreshadowing.pick'),
 		);
+		// The threads come in the table's order -- status first, then first
+		// appearance -- so the headings the sections make are the table's
+		// groups, each once.
 		this.pickers.push(
-			buildOptionField(this.app, pick.controlEl.createDiv(), {
+			buildOptionField(this.app, pick.controlEl.createDiv({ cls: PICKER_CLS }), {
 				options: () =>
 					this.items.map((item) => ({
 						value: item.id,
@@ -912,22 +917,17 @@ class RelinkOccurrenceModal extends SnowflakeFormModal<RelinkChoice> {
 	protected buildForm(): void {
 		const t = this.t;
 		this.contentEl.addClass('snowflake-method-project-form');
-		passageLine(this.contentEl, t, this.place);
+		placeRows(this.contentEl, t, this.place);
 		const pick = new Setting(this.contentEl).setName(
 			t('manuscript.foreshadowing.occurrencePick'),
 		);
 		this.pickers.push(
-			buildOptionField(this.app, pick.controlEl.createDiv(), {
+			buildOptionField(this.app, pick.controlEl.createDiv({ cls: PICKER_CLS }), {
 				options: () =>
 					this.waiting.map(({ item, occurrence }) => ({
 						value: occurrence.id,
-						label: `${item.name} · ${t(`foreshadowing.role.${occurrence.role}`)} · “${clip(occurrence.originalText, 40)}”`,
-						section:
-							this.titles.get(occurrence.path) ??
-							(occurrence.path.split('/').pop() ?? occurrence.path).replace(
-								/\.md$/u,
-								'',
-							),
+						label: `${item.name} · ${t(`foreshadowing.role.${occurrence.role}`)} · “${truncateEnd(occurrence.originalText, 40)}”`,
+						section: this.titles.get(occurrence.path) ?? fileStem(occurrence.path),
 					})),
 				label: t('manuscript.foreshadowing.occurrencePick'),
 				placeholder: t('manuscript.foreshadowing.occurrencePlaceholder'),

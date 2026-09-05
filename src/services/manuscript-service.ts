@@ -160,7 +160,7 @@ export class ManuscriptService {
         body: string,
         at: number,
         shift: number,
-      ) => void)
+      ) => void | Promise<void>)
     | null = null;
 
   /**
@@ -358,20 +358,23 @@ export class ManuscriptService {
     await this.repository.replaceBody(source.path, before, source.revision, {
       userInput: true,
     });
-    // The note that was cut keeps its head: what stays is levelled against
-    // what it now holds, and what leaves is carried below.
-    this.onSegmentWritten?.(source.path, before);
     // Everything from the cut down now lives in the new note, its offsets
-    // shorter by the cut plus whatever blank lines the seam swallowed.
+    // shorter by the cut plus whatever blank lines the seam swallowed. The
+    // carry goes first, and whole: levelling the head before the travellers
+    // have left would re-anchor a tail occurrence onto the head's copy of
+    // its words, wherever a plant and its payoff share a phrase.
     const tail = source.body.slice(cut);
     const lead = tail.length - tail.replace(/^\n+/u, "").length;
-    this.onSegmentTextCarried?.(
+    await this.onSegmentTextCarried?.(
       source.path,
       created,
       source.body,
       cut,
       cut + lead,
     );
+    // The note that was cut keeps its head: what stays is levelled against
+    // what it now holds.
+    this.onSegmentWritten?.(source.path, before);
   }
 
   /**
@@ -485,7 +488,7 @@ export class ManuscriptService {
     // between them, so its offsets move forward rather than back.
     const prefix = head.body.replace(/\n+$/u, "").length + 2;
     const lead = tail.body.length - tail.body.replace(/^\n+/u, "").length;
-    this.onSegmentTextCarried?.(
+    void this.onSegmentTextCarried?.(
       later.path,
       earlier.path,
       tail.body,

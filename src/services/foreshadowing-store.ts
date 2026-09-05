@@ -1,9 +1,5 @@
 import { readForeshadowing, type Foreshadowing } from "../domain";
-import {
-	JsonRecordStore,
-	type JsonRecordFileReading,
-	type JsonRecordStoreDeps,
-} from "./json-record-store";
+import { JsonRecordStore, type JsonRecordStoreDeps } from "./json-record-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 
 /**
@@ -19,15 +15,10 @@ import { getProjectPathLayout, type ProjectRef } from "./types";
 
 export const FORESHADOWING_STORE_SCHEMA_VERSION = 1;
 
-export type ForeshadowingStoreDeps = JsonRecordStoreDeps;
-
-/** What a reading of the file came to. */
-export type ForeshadowingFileReading = JsonRecordFileReading<Foreshadowing>;
-
 export class ForeshadowingStore {
 	private readonly store: JsonRecordStore<Foreshadowing>;
 
-	constructor(deps: ForeshadowingStoreDeps) {
+	constructor(deps: JsonRecordStoreDeps) {
 		this.store = new JsonRecordStore<Foreshadowing>(
 			{
 				pathOf: (project) => {

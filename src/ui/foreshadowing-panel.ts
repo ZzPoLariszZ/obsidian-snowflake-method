@@ -16,6 +16,7 @@ import {
 } from './foreshadowing-rows';
 import type { Translate } from './modals';
 import type { PickerOption } from './option-picker';
+import { renderEmptyLine, renderSplitButton } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { VirtualTable, buildTableFrame } from './virtual-table';
 
@@ -230,28 +231,26 @@ export function renderForeshadowingPanel(
 			text: column === 'actions' ? t('table.actions') : t(`foreshadowingTable.${column}`),
 		})),
 	});
-	const emptyLine = root.createEl('p', { cls: 'snowflake-method-character-empty' });
-	const emptyIcon = emptyLine.createSpan({
-		cls: 'snowflake-method-character-empty-icon',
-		attr: { 'aria-hidden': 'true' },
-	});
-	setIcon(emptyIcon, 'triangle-alert');
-	emptyLine.createSpan({ text: t('foreshadowingTable.empty') });
+	const { line: emptyLine } = renderEmptyLine(root, t('foreshadowingTable.empty'));
 
 	const heights = new Map<string, number>();
 	let reading: ForeshadowingReading | null = null;
 	let rows: ForeshadowingFlatRow[] = [];
 
-	/** A refused change is said, as the revision table says it. */
+	/** A refused change is said, as the revision table says it; so is one that failed. */
 	const told = (work: Promise<boolean>): void => {
 		void work
 			.then((done) => {
 				if (!done) new Notice(t('foreshadowingTable.refused'));
 			})
-			.catch(() => undefined);
+			.catch(() => {
+				new Notice(t('foreshadowingTable.refused'));
+			});
 	};
 	const opened = (work: Promise<void>): void => {
-		void work.catch(() => undefined);
+		void work.catch((error: unknown) => {
+			new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+		});
 	};
 	/** The thread's cells are the head row's; hovering any row lights them all. */
 	const hoverGroup = (itemId: string, on: boolean): void => {
@@ -267,42 +266,23 @@ export function renderForeshadowingPanel(
 			attr: { 'aria-label': t('foreshadowingTable.none') },
 		});
 	};
-	/**
-	 * A split button: the primary at the left, the menu of the rest behind
-	 * the chevron, the member tables' own shape.
-	 */
+	/** The member tables' own split button, the primary dressed for this table. */
 	const splitButton = (
 		host: HTMLElement,
 		primary: { label: string; tip: string; cls: string; run: () => void },
 		items: (menu: Menu) => void,
 		readOnly: boolean,
 	): void => {
-		const wrap = host.createDiv({ cls: 'snowflake-method-character-split-button' });
-		const button = wrap.createEl('button', {
-			cls: `snowflake-method-split-primary ${primary.cls}`,
-			text: primary.label,
-			attr: { type: 'button' },
-		});
-		setTooltip(button, primary.tip);
-		button.disabled = readOnly;
-		button.addEventListener('click', primary.run);
-		const trigger = wrap.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': t('table.actions'),
+		renderSplitButton(host, {
+			primary: {
+				cls: `snowflake-method-split-primary ${primary.cls}`,
+				label: primary.label,
+				tip: primary.tip,
+				disabled: readOnly,
+				run: primary.run,
 			},
-		});
-		setIcon(
-			trigger.createSpan({ cls: 'snowflake-method-character-action-menu-icon' }),
-			'chevron-down',
-		);
-		trigger.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.setParentElement(wrap);
-			items(menu);
-			menu.showAtMouseEvent(event);
+			menuLabel: t('table.actions'),
+			items,
 		});
 	};
 

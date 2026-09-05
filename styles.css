@@ -5327,37 +5327,43 @@ body {
 	);
 }
 
-.snowflake-method-segment-body .cm-editor {
+/* The editor's own dress taken off, once, for every body that shows one
+   note on two faces -- the stream's segments and the sticky notes wear the
+   same class -- so the faces occupy the same space and a click across the
+   swap lands where it was: no ground, no focus ring, a scroller that does
+   not scroll (the body does) and so need not clip, no padding of the
+   editor's own, and rows that break where the page breaks them. CodeMirror
+   wraps with break-spaces, under which a space that no longer fits at the
+   end of a row is carried to the start of the next, where it takes up room
+   and can push that row's last word down; the page collapses the same space
+   at the break. Under pre-wrap the space hangs past the end of its row
+   instead, as the page's does, and the rows come out the same -- measured
+   identical, hyphenation points included. */
+.snowflake-method-two-faces .cm-editor {
 	background: transparent;
 }
 
-.snowflake-method-segment-body .cm-editor.cm-focused {
+.snowflake-method-two-faces .cm-editor.cm-focused {
 	outline: none;
 }
 
-/* The editor never scrolls on its own -- the stream does -- so its scroller
-   need not clip, and must not: the caret after a space that hangs past the
-   end of a row (below) stands just outside the column. */
-.snowflake-method-segment-body .cm-scroller {
+.snowflake-method-two-faces .cm-scroller {
 	font-family: inherit;
 	line-height: inherit;
 	overflow: visible;
 }
 
-.snowflake-method-segment-body .cm-content {
+.snowflake-method-two-faces .cm-content {
 	padding: 0;
 	caret-color: var(--caret-color);
 }
 
-/* The editor breaks its rows where the page breaks them. CodeMirror wraps
-   with break-spaces, under which a space that no longer fits at the end of
-   a row is carried to the start of the next, where it takes up room and can
-   push that row's last word down; the page collapses the same space at the
-   break. Under pre-wrap the space hangs past the end of its row instead, as
-   the page's does, and the rows come out the same -- measured identical,
-   hyphenation points included. */
-.snowflake-method-segment-body .cm-content.cm-lineWrapping {
+.snowflake-method-two-faces .cm-content.cm-lineWrapping {
 	white-space: pre-wrap;
+}
+
+.snowflake-method-two-faces .cm-line {
+	padding-inline: 0;
 }
 
 /* Positioned, so a milestone label drawn by a mark inside the line measures
@@ -5365,7 +5371,6 @@ body {
    guides below assume the same. */
 .snowflake-method-segment-body .cm-line {
 	position: relative;
-	padding-inline: 0;
 }
 
 /* Reading: the gap below a paragraph is Obsidian's own paragraph spacing,
@@ -5777,8 +5782,11 @@ body {
 /* Where an arrow just landed: lit for a beat, and fading through the frame's
    own transition, so the eye finds the card the jump brought up without
    having to sweep the margin for what moved. Last of the card rules, so it
-   outranks the hover and conflict frames it is drawn over. */
-.snowflake-method-rail-card.is-jumped {
+   outranks the hover and conflict frames it is drawn over -- named with its
+   own hover too, since the hovered conflict frame is the more specific of
+   the two and order alone would not beat it. */
+.snowflake-method-rail-card.is-jumped,
+.snowflake-method-rail-card.is-jumped:hover {
 	border-color: var(--interactive-accent);
 	border-left-color: var(--interactive-accent);
 	box-shadow: var(--shadow-l);
@@ -6042,21 +6050,9 @@ body {
 	padding-inline-end: var(--size-2-1);
 }
 
-/* Where the selection stands, and the words themselves, above the fields
-   that describe what they do: the thread's ground on the words, so the
-   dialog shows the passage the way the page will. */
-.snowflake-method-foreshadowing-place {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-4-1);
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-foreshadowing-place-label {
-	font-weight: var(--font-semibold);
-}
-
+/* The words themselves, in the dialog's text row above the fields that
+   describe what they do: the thread's ground on them, so the dialog shows
+   the passage the way the page will. */
 .snowflake-method-foreshadowing-passage {
 	padding: var(--size-2-2) var(--size-4-1);
 	border-radius: var(--radius-s);
@@ -6071,8 +6067,10 @@ body {
 }
 
 /* In a setting's control, a flex row that stretches nothing along itself,
-   the ground runs the row's whole width rather than the words' own. */
-.setting-item-control > .snowflake-method-foreshadowing-passage {
+   the ground runs the row's whole width rather than the words' own -- and
+   so does the thread picker's box, as the role's dropdown beside it does. */
+.setting-item-control > .snowflake-method-foreshadowing-passage,
+.setting-item-control > .snowflake-method-foreshadowing-picker {
 	flex: 1 1 auto;
 	min-width: 0;
 }
@@ -11105,17 +11103,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: default;
 }
 
-/* The colour as a dot: on the card's own colour button and in the archive. */
-.snowflake-method-sticky-dot {
-	display: inline-block;
-	width: 0.85em;
-	height: 0.85em;
-	border: 1px solid var(--snowflake-method-sticky-edge);
-	border-radius: 50%;
-	background-color: var(--snowflake-method-sticky-ground);
-	vertical-align: middle;
-}
-
 .snowflake-method-sticky-color[aria-expanded='true'],
 .snowflake-method-sticky-alpha-toggle[aria-expanded='true'] {
 	color: var(--text-accent);
@@ -11188,41 +11175,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
-/* The editor wears the body's own type, as the stream's does (above): the
-   two faces occupy the same space, so the card does not jump at the swap. */
+/* The editor wears the body's own type; its own dress is taken off by the
+   two-faces rules the stream shares (see the segment body above), so the
+   two faces occupy the same space and the card does not jump at the swap. */
 .snowflake-method-sticky-editor .cm-editor {
-	background: transparent;
 	font-family: inherit;
 	font-size: inherit;
 	line-height: inherit;
-}
-
-.snowflake-method-sticky-editor .cm-editor.cm-focused {
-	outline: none;
-}
-
-.snowflake-method-sticky-editor .cm-scroller {
-	font-family: inherit;
-	line-height: inherit;
-	overflow: visible;
-}
-
-/* No padding of the editor's own: the first line stands where the rendered
-   face's first line stood, and every row is as wide as the page's. */
-.snowflake-method-sticky-editor .cm-content {
-	padding: 0;
-	caret-color: var(--caret-color);
-}
-
-/* Rows break where the rendered face breaks them: under pre-wrap a space at
-   the end of a row hangs past it as the page's does, where CodeMirror's
-   break-spaces would carry it to the next row and push a word down. */
-.snowflake-method-sticky-editor .cm-content.cm-lineWrapping {
-	white-space: pre-wrap;
-}
-
-.snowflake-method-sticky-editor .cm-line {
-	padding-inline: 0;
 }
 
 /* A card the filter dropped but the author is still writing in stands on,
@@ -11459,7 +11418,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	padding: var(--size-2-3) var(--size-4-3);
 }
 
-.snowflake-method-sticky-alpha-range {
+/* Under its panel, so the width outranks the app's own for range inputs. */
+.snowflake-method-sticky-alpha-panel .snowflake-method-sticky-alpha-range {
 	width: 10rem;
 	min-width: 0;
 }

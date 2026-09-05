@@ -124,6 +124,7 @@ import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
+import { renderSplitButton } from './pane-parts';
 import {
 	renderStickyNoteBoard,
 	stickyBoardMemory,
@@ -315,6 +316,12 @@ function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
 }
 const ACTIVE_STEP_SELECTOR = '.snowflake-method-step-button.is-active';
 
+/** A task tab's kept panel: let go, or drawn into a tab body. */
+interface KeptTaskPanel {
+	dispose(): void;
+	render(body: HTMLElement): void;
+}
+
 export class SnowflakeDashboardView extends ItemView {
 	private readonly host: DashboardHost;
 	private readonly stepDrafts = new Map<
@@ -347,19 +354,97 @@ export class SnowflakeDashboardView extends ItemView {
 		lengthMax: null,
 	};
 	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
-	/** The revision table, kept across rebuilds the way its siblings are. */
-	private readonly revisionPanel = new KeptPanel<RevisionPanelHandle>();
-	/** The foreshadowing table, kept across rebuilds the way its siblings are. */
-	private readonly foreshadowingPanel =
-		new KeptPanel<ForeshadowingPanelHandle>();
-	/** Its filters outlive it, as the prose filters do. */
+	/** The foreshadowing table's filters outlive it, as the prose filters do. */
 	private readonly foreshadowingFilters: ForeshadowingFilterMemory = {
 		status: '',
 		role: '',
 		standing: '',
 	};
-	/** The sticky-note board, kept across rebuilds the way its siblings are. */
-	private readonly stickyNotePanel = new KeptPanel<StickyNoteBoardHandle>();
+	/**
+	 * The task tabs' panels -- the revision table, the foreshadowing table
+	 * and the sticky board -- each kept across rebuilds the way the session
+	 * panel is, under the key it was built for, and disposed, switched and
+	 * drawn by one rule over this table rather than by three lists kept by
+	 * hand.
+	 */
+	private readonly taskPanels: Record<Exclude<TasksTab, 'tasks'>, KeptTaskPanel> = {
+		revision: this.keptTaskPanel<RevisionPanelHandle>({
+			key: () => this.panelKey(),
+			// Named, because the panel inside it is one table filling the
+			// face: the host carries the face's height down to it, and the
+			// table's body becomes a scrollport that draws only the rows it
+			// shows.
+			hostCls: 'snowflake-method-revision-panel-host',
+			build: (host) =>
+				renderRevisionPanel(
+					host,
+					this.host.revisionTable({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+				),
+			// The mounted panel keeps its reading, and the handback refresh
+			// re-anchors against fresh stamps.
+			handback: (kept) => {
+				kept.refresh();
+			},
+		}),
+		foreshadowing: this.keptTaskPanel<ForeshadowingPanelHandle>({
+			key: () => this.foreshadowingPanelKey(),
+			hostCls: 'snowflake-method-foreshadowing-panel-host',
+			build: (host) =>
+				renderForeshadowingPanel(
+					host,
+					this.host.foreshadowingTable({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						filters: this.foreshadowingFilters,
+						// The dashboard's own funnel popover, lent: it owns the
+						// pickers' lifetime and the outside-click rules.
+						filterOpen: () => this.filterPanel !== null,
+						openFilter: (anchor, rows, changed) => {
+							this.openFilterPanel(anchor, rows, changed);
+						},
+						closeFilter: () => {
+							this.closeFilterPanel();
+						},
+					},
+				),
+			handback: (kept) => {
+				kept.refresh();
+			},
+		}),
+		stickyNotes: this.keptTaskPanel<StickyNoteBoardHandle>({
+			key: () => this.panelKey(),
+			hostCls: 'snowflake-method-sticky-board-host',
+			build: (host) =>
+				renderStickyNoteBoard(
+					host,
+					this.host.stickyNotes({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						app: this.app,
+						surface: 'dashboard',
+						compact: false,
+						archive: true,
+						controls: 'band',
+						memory: this.stickyNoteFilters,
+						component: this,
+						locale: this.projectLocale ?? this.host.getDefaultProjectLocale(),
+					},
+				),
+			// The board keeps its own reading and its cards; a handback only
+			// re-reads and lets a mounted editor measure its new place.
+			handback: (kept) => {
+				kept.refresh();
+				kept.remeasure();
+			},
+		}),
+	};
 	/** Its search, colour, sort and fold outlive it, as the other filters do. */
 	private readonly stickyNoteFilters: StickyNoteBoardMemory = stickyBoardMemory();
 	/** Which tracking folds stand OPEN -- everything else rests closed --
@@ -623,12 +708,8 @@ export class SnowflakeDashboardView extends ItemView {
 		this.opened = false;
 		this.clearCertificateCelebration();
 		this.releaseMemberControls();
-		this.sessionPanel.dispose();
-		this.prosePanel.dispose();
-		this.entitiesPanel.dispose();
-		this.revisionPanel.dispose();
-		this.foreshadowingPanel.dispose();
-		this.stickyNotePanel.dispose();
+		this.disposeStatisticsPanels();
+		this.disposeTaskPanels();
 		this.viewTitleIconEl?.remove();
 		this.viewTitleIconEl = null;
 	}
@@ -648,9 +729,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.statisticsTab = tab;
 				// Leaving a face lets its panel go; returning to it, or
 				// redrawing the frame around it, hands the same panel back.
-				if (tab !== 'sessions') this.sessionPanel.dispose();
-				if (tab !== 'prose') this.prosePanel.dispose();
-				if (tab !== 'entities') this.entitiesPanel.dispose();
+				this.disposeStatisticsPanels(tab);
 			},
 			body: (body, tab) => {
 				this.renderStatisticsBody(body, tab);
@@ -815,9 +894,7 @@ export class SnowflakeDashboardView extends ItemView {
 			current: () => this.tasksTab,
 			choose: (tab) => {
 				this.tasksTab = tab;
-				if (tab !== 'revision') this.revisionPanel.dispose();
-				if (tab !== 'foreshadowing') this.foreshadowingPanel.dispose();
-				if (tab !== 'stickyNotes') this.stickyNotePanel.dispose();
+				this.disposeTaskPanels(tab);
 			},
 			body: (body, tab) => {
 				this.renderTasksBody(body, tab);
@@ -843,106 +920,56 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/** What one face of the task management pane puts inside the frame. */
 	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
-		if (tab === 'stickyNotes') {
-			// The board keeps its own reading and its cards; a handback only
-			// re-reads and lets a mounted editor measure its new place.
-			const kept = this.stickyNotePanel.reuse(body, this.panelKey());
-			if (kept !== null) {
-				kept.refresh();
-				kept.remeasure();
-				return;
-			}
-			const host = body.createDiv({
-				cls: 'snowflake-method-sticky-board-host',
-			});
-			this.stickyNotePanel.keep(
-				host,
-				this.panelKey(),
-				renderStickyNoteBoard(
-					host,
-					this.host.stickyNotes({
-						projectPath: this.projectPath,
-						locale: this.projectLocale,
-					}),
-					{
-						app: this.app,
-						surface: 'dashboard',
-						compact: false,
-						archive: true,
-						controls: 'band',
-						memory: this.stickyNoteFilters,
-						component: this,
-						locale: this.projectLocale ?? this.host.getDefaultProjectLocale(),
-					},
-				),
-			);
-			return;
-		}
-		if (tab === 'foreshadowing') {
-			const kept = this.foreshadowingPanel.reuse(body, this.foreshadowingPanelKey());
-			if (kept !== null) {
-				kept.refresh();
-				return;
-			}
-			const host = body.createDiv({
-				cls: 'snowflake-method-foreshadowing-panel-host',
-			});
-			this.foreshadowingPanel.keep(
-				host,
-				this.foreshadowingPanelKey(),
-				renderForeshadowingPanel(
-					host,
-					this.host.foreshadowingTable({
-						projectPath: this.projectPath,
-						locale: this.projectLocale,
-					}),
-					{
-						filters: this.foreshadowingFilters,
-						// The dashboard's own funnel popover, lent: it owns the
-						// pickers' lifetime and the outside-click rules.
-						filterOpen: () => this.filterPanel !== null,
-						openFilter: (anchor, rows, changed) => {
-							this.openFilterPanel(anchor, rows, changed);
-						},
-						closeFilter: () => {
-							this.closeFilterPanel();
-						},
-					},
-				),
-			);
-			return;
-		}
-		if (tab === 'revision') {
-			// The mounted panel keeps its reading, and the handback refresh
-			// re-anchors against fresh stamps.
-			const kept = this.revisionPanel.reuse(body, this.panelKey());
-			if (kept !== null) {
-				kept.refresh();
-				return;
-			}
-			// Named, because the panel inside it is one table filling the face:
-			// the host carries the face's height down to it, and the table's
-			// body becomes a scrollport that draws only the rows it shows.
-			const host = body.createDiv({
-				cls: 'snowflake-method-revision-panel-host',
-			});
-			this.revisionPanel.keep(
-				host,
-				this.panelKey(),
-				renderRevisionPanel(
-					host,
-					this.host.revisionTable({
-						projectPath: this.projectPath,
-						locale: this.projectLocale,
-					}),
-				),
-			);
+		if (tab !== 'tasks') {
+			this.taskPanels[tab].render(body);
 			return;
 		}
 		body.createEl('p', {
 			cls: 'snowflake-method-tab-planned',
 			text: this.t('statistics.tab.planned'),
 		});
+	}
+
+	/** Every task tab's panel let go, but the one named. */
+	private disposeTaskPanels(except: TasksTab | null = null): void {
+		for (const tab of TASKS_TABS) {
+			if (tab === 'tasks' || tab === except) continue;
+			this.taskPanels[tab].dispose();
+		}
+	}
+
+	/** Every statistics tab's panel let go, but the one named. */
+	private disposeStatisticsPanels(except: StatisticsTab | null = null): void {
+		if (except !== 'sessions') this.sessionPanel.dispose();
+		if (except !== 'prose') this.prosePanel.dispose();
+		if (except !== 'entities') this.entitiesPanel.dispose();
+	}
+
+	/**
+	 * One task tab's panel: handed back under the key it was kept for, or
+	 * built afresh into a host of its own, and let go on request.
+	 */
+	private keptTaskPanel<T extends { dispose(): void }>(spec: {
+		key: () => string;
+		hostCls: string;
+		build: (host: HTMLElement) => T;
+		handback: (kept: T) => void;
+	}): KeptTaskPanel {
+		const panel = new KeptPanel<T>();
+		return {
+			dispose: () => {
+				panel.dispose();
+			},
+			render: (body) => {
+				const kept = panel.reuse(body, spec.key());
+				if (kept !== null) {
+					spec.handback(kept);
+					return;
+				}
+				const host = body.createDiv({ cls: spec.hostCls });
+				panel.keep(host, spec.key(), spec.build(host));
+			},
+		};
 	}
 
 	/**
@@ -976,7 +1003,15 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
-	async refresh(): Promise<void> {
+	/**
+	 * Reads the project again and draws it. With `onlyIf`, the frame is
+	 * redrawn only when the model just read passes it -- the health verdict's
+	 * re-read asks that -- and a request that arrives meanwhile is drawn in
+	 * full, as every request is.
+	 */
+	async refresh(
+		onlyIf?: (model: ProjectDashboardModel | null) => boolean,
+	): Promise<void> {
 		this.refreshQueuedWhileHidden = false;
 		// A leaf that has not been told which project it is for has nothing to
 		// draw, and asking the host with no path would have it answer with the
@@ -998,6 +1033,9 @@ export class SnowflakeDashboardView extends ItemView {
 			settle = resolve;
 		});
 		this.refreshing = true;
+		// The gate holds for this request alone: a later one, drawn by the
+		// same run, asked for the whole frame.
+		let gate = onlyIf ?? null;
 		try {
 			do {
 				this.refreshPending = false;
@@ -1015,9 +1053,18 @@ export class SnowflakeDashboardView extends ItemView {
 						this.leaf.detach();
 						return;
 					}
-					this.render(projects, model);
+					if (gate === null || gate(model)) {
+						this.keepingFocus(() => {
+							this.render(projects, model);
+						});
+					}
 				} catch (error) {
-					this.renderError(error);
+					// A gated re-read that failed says nothing here: the next
+					// refresh shows what went wrong in the frame, where an
+					// error belongs, and not over a note being typed in.
+					if (gate === null) this.renderError(error);
+				} finally {
+					gate = null;
 				}
 			} while (this.refreshPending);
 		} finally {
@@ -1040,24 +1087,31 @@ export class SnowflakeDashboardView extends ItemView {
 		await this.refreshRun;
 		const shown = this.lastRender?.model ?? null;
 		if (shown === null) return;
-		const requestedProjectPath = this.projectPath;
-		let model: ProjectDashboardModel | null;
-		try {
-			model = await this.host.loadDashboardModel(requestedProjectPath);
-		} catch {
-			// The next refresh shows what went wrong in the frame, where an
-			// error belongs; a notice over a sticky note being typed does not.
-			return;
-		}
+		const verdict = dashboardHasHealthIssues(shown);
+		await this.refresh(
+			(model) => model !== null && dashboardHasHealthIssues(model) !== verdict,
+		);
+	}
+
+	/**
+	 * A frame rebuild empties the root and puts the kept panels back, which
+	 * takes the document's focus off whatever was being typed in among them
+	 * -- a sticky note's editor, say, when a writing record lands or the
+	 * health verdict moves -- and with no blur to say so. Whatever held the
+	 * focus and came back attached is given it again.
+	 */
+	private keepingFocus(work: () => void): void {
+		const doc = this.contentEl.doc;
+		const active = doc.activeElement;
+		work();
 		if (
-			model === null ||
-			requestedProjectPath !== this.projectPath ||
-			this.lastRender?.model !== shown ||
-			dashboardHasHealthIssues(model) === dashboardHasHealthIssues(shown)
+			active !== null &&
+			doc.activeElement !== active &&
+			this.contentEl.contains(active) &&
+			'focus' in active
 		) {
-			return;
+			(active as HTMLElement).focus({ preventScroll: true });
 		}
-		await this.refresh();
 	}
 
 	private get freeformMode(): boolean {
@@ -4386,16 +4440,8 @@ export class SnowflakeDashboardView extends ItemView {
 		// is rebuilt, or its subscription would tick a detached panel forever
 		// -- except on the way back to the statistics pane, whose panel is
 		// carried across the rebuild rather than torn down and refetched.
-		if (this.selectedPane.kind !== 'statistics') {
-			this.sessionPanel.dispose();
-			this.prosePanel.dispose();
-			this.entitiesPanel.dispose();
-		}
-		if (this.selectedPane.kind !== 'tasks') {
-			this.revisionPanel.dispose();
-			this.foreshadowingPanel.dispose();
-			this.stickyNotePanel.dispose();
-		}
+		if (this.selectedPane.kind !== 'statistics') this.disposeStatisticsPanels();
+		if (this.selectedPane.kind !== 'tasks') this.disposeTaskPanels();
 		if (this.selectedPane.kind === 'statistics') {
 			this.renderStatisticsPane(layout);
 			return;
@@ -4953,36 +4999,16 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { 'data-label': this.t('table.actions') },
 		});
 		const group = cell.createDiv({ cls: 'snowflake-method-table-actions' });
-		const splitButton = group.createDiv({
-			cls: 'snowflake-method-character-split-button',
-		});
-		const primary = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-edit',
-			text: member.primaryLabel,
-			attr: { type: 'button' },
-		});
-		primary.disabled = member.primaryDisabled;
-		primary.addEventListener('click', member.primary);
-		const trigger = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
-			},
-		});
-		setIcon(
-			trigger.createSpan({
-				cls: 'snowflake-method-character-action-menu-icon',
-			}),
-			'chevron-down',
-		);
 		// No felling in this menu: that is the button beside it.
-		trigger.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			member.items(menu);
-			menu.showAtMouseEvent(event);
+		renderSplitButton(group, {
+			primary: {
+				cls: 'snowflake-method-character-edit',
+				label: member.primaryLabel,
+				disabled: member.primaryDisabled,
+				run: member.primary,
+			},
+			menuLabel: this.t('table.actions'),
+			items: member.items,
 		});
 		const remove = group.createEl('button', {
 			cls: 'snowflake-method-character-delete',
@@ -5466,51 +5492,36 @@ export class SnowflakeDashboardView extends ItemView {
 		const openBase = (): void => {
 			void this.runAndRefresh(() => this.host.openProjectBase(id));
 		};
-		const splitButton = actions.createDiv({
-			cls: 'snowflake-method-character-split-button snowflake-method-base-split-button',
-		});
-		const open = splitButton.createEl('button', {
-			cls: 'snowflake-method-open-base',
-			text: this.t('actions.openBase'),
-			attr: { type: 'button' },
-		});
-		open.addEventListener('click', openBase);
-		const actionMenu = splitButton.createEl('button', {
-			cls: 'snowflake-method-character-action-menu-trigger',
-			attr: {
-				type: 'button',
-				'aria-haspopup': 'menu',
-				'aria-label': this.t('table.actions'),
+		renderSplitButton(actions, {
+			cls: 'snowflake-method-base-split-button',
+			primary: {
+				cls: 'snowflake-method-open-base',
+				label: this.t('actions.openBase'),
+				run: openBase,
 			},
-		});
-		const menuIcon = actionMenu.createSpan({
-			cls: 'snowflake-method-character-action-menu-icon',
-		});
-		setIcon(menuIcon, 'chevron-down');
-		actionMenu.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.setParentElement(splitButton);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('actions.restoreBase'))
-					.setIcon('rotate-ccw')
-					.setDisabled(model.readOnly)
-					.onClick(() => {
-						new ConfirmRestoreBaseModal(this.app, this.t, (confirmed) => {
-							if (!confirmed) return;
-							void this.runAndRefresh(() =>
-								this.host.restoreProjectBase(id),
-							);
-						}).open();
-					}),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle(this.t('actions.openBase'))
-					.setIcon('layout-grid')
-					.onClick(openBase),
-			);
-			menu.showAtMouseEvent(event);
+			menuLabel: this.t('table.actions'),
+			items: (menu) => {
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.restoreBase'))
+						.setIcon('rotate-ccw')
+						.setDisabled(model.readOnly)
+						.onClick(() => {
+							new ConfirmRestoreBaseModal(this.app, this.t, (confirmed) => {
+								if (!confirmed) return;
+								void this.runAndRefresh(() =>
+									this.host.restoreProjectBase(id),
+								);
+							}).open();
+						}),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle(this.t('actions.openBase'))
+						.setIcon('layout-grid')
+						.onClick(openBase),
+				);
+			},
 		});
 	}
 
@@ -7307,9 +7318,10 @@ export class SnowflakeDashboardView extends ItemView {
 		this.renderedStep = null;
 		this.releaseMemberControls();
 		// Whatever the last render mounted must let go here too: an error
-		// screen that only detached the panel would leave its subscription
+		// screen that only detached a panel would leave its subscription
 		// ticking a ghost for as long as the retry button stands.
-		this.sessionPanel.dispose();
+		this.disposeStatisticsPanels();
+		this.disposeTaskPanels();
 		this.contentEl.empty();
 		this.contentEl.addClass('snowflake-method-dashboard');
 		const message =

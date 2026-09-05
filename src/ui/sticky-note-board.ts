@@ -19,8 +19,9 @@ import {
 	type StickyNoteSort,
 } from '../domain';
 import type { StickyNoteRecord } from '../services';
-import { followAnchor } from './anchored-panel';
+import { hangPanel } from './anchored-panel';
 import type { Translate } from './modals';
+import { renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { PublicCodeMirrorBackend } from './segment-editor-backend';
 import type { StickyNoteBridge, StickyNoteReading } from './sticky-note-bridge';
@@ -155,80 +156,61 @@ function renderControls(
 	};
 	const openFilterPanel = (anchor: HTMLElement): void => {
 		closeFilterPanel();
-		const win = anchor.win;
-		const panel = win.activeDocument.body.createDiv({
+		// Held on an object: the button is made inside the build and focused after.
+		const focus: { button: HTMLButtonElement | null } = { button: null };
+		filterPanel = hangPanel(anchor, {
 			cls: 'snowflake-method-filter-panel snowflake-method-sticky-filter-panel',
-			attr: { role: 'dialog', 'aria-label': t('table.filter') },
-		});
-		panel.createDiv({
-			cls: 'snowflake-method-filter-panel-title',
-			text: t('table.filter'),
-		});
-		const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
-		const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
-		field.createDiv({
-			cls: 'snowflake-method-filter-label',
-			text: t('stickyNotes.color'),
-		});
-		// A swatch chosen once narrows to its colour; chosen again it lets go,
-		// and with none chosen every colour shows.
-		let draft = lens.color;
-		const strip = renderStickySwatches(field, {
-			value: draft,
-			t,
-			onPick: (value) => {
-				draft = draft === value ? '' : value;
-				strip.sync(draft);
+			label: t('table.filter'),
+			build: (panel) => {
+				panel.createDiv({
+					cls: 'snowflake-method-filter-panel-title',
+					text: t('table.filter'),
+				});
+				const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
+				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
+				field.createDiv({
+					cls: 'snowflake-method-filter-label',
+					text: t('stickyNotes.color'),
+				});
+				// A swatch chosen once narrows to its colour; chosen again it
+				// lets go, and with none chosen every colour shows.
+				let draft = lens.color;
+				const strip = renderStickySwatches(field, {
+					value: draft,
+					t,
+					onPick: (value) => {
+						draft = draft === value ? '' : value;
+						strip.sync(draft);
+					},
+				});
+				const actions = panel.createDiv({
+					cls: 'snowflake-method-filter-panel-actions',
+				});
+				const reset = actions.createEl('button', {
+					cls: 'snowflake-method-filter-reset',
+					text: t('table.filterReset'),
+					attr: { type: 'button' },
+				});
+				reset.addEventListener('click', () => {
+					draft = '';
+					strip.sync(draft);
+				});
+				const confirm = actions.createEl('button', {
+					cls: 'mod-cta',
+					text: t('table.filterConfirm'),
+					attr: { type: 'button' },
+				});
+				focus.button = confirm;
+				confirm.addEventListener('click', () => {
+					lens.color = draft;
+					closeFilterPanel();
+					markFilterButton();
+					spec.onChange();
+				});
 			},
+			onClose: closeFilterPanel,
 		});
-		const actions = panel.createDiv({
-			cls: 'snowflake-method-filter-panel-actions',
-		});
-		const reset = actions.createEl('button', {
-			cls: 'snowflake-method-filter-reset',
-			text: t('table.filterReset'),
-			attr: { type: 'button' },
-		});
-		reset.addEventListener('click', () => {
-			draft = '';
-			strip.sync(draft);
-		});
-		const confirm = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: t('table.filterConfirm'),
-			attr: { type: 'button' },
-		});
-		confirm.addEventListener('click', () => {
-			lens.color = draft;
-			closeFilterPanel();
-			markFilterButton();
-			spec.onChange();
-		});
-		const unfollow = followAnchor(panel, anchor, win);
-		anchor.setAttribute('aria-expanded', 'true');
-		const dismiss = (event: MouseEvent): void => {
-			const target = event.target as Node | null;
-			if (target === null) return;
-			if (panel.contains(target) || anchor.contains(target)) return;
-			closeFilterPanel();
-		};
-		const onKey = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') return;
-			closeFilterPanel();
-			anchor.focus();
-		};
-		win.addEventListener('mousedown', dismiss, true);
-		win.addEventListener('keydown', onKey, true);
-		filterPanel = {
-			el: panel,
-			release: () => {
-				win.removeEventListener('mousedown', dismiss, true);
-				win.removeEventListener('keydown', onKey, true);
-				unfollow();
-				anchor.setAttribute('aria-expanded', 'false');
-			},
-		};
-		confirm.focus();
+		focus.button?.focus();
 	};
 	filterButton.addEventListener('click', () => {
 		if (filterPanel !== null) closeFilterPanel();
@@ -305,17 +287,6 @@ export function renderStickyNoteBoard(
 			});
 	});
 
-	/** The line said when there is nothing to show: the warning sign and the words, as the other tabs say it. */
-	const emptyLineIn = (host: HTMLElement, text: string): { line: HTMLElement; text: HTMLElement } => {
-		const line = host.createEl('p', { cls: 'snowflake-method-character-empty' });
-		const icon = line.createSpan({
-			cls: 'snowflake-method-character-empty-icon',
-			attr: { 'aria-hidden': 'true' },
-		});
-		setIcon(icon, 'triangle-alert');
-		return { line, text: line.createSpan({ text }) };
-	};
-
 	// The cards scroll in a scroller of their own under the band, so the
 	// search and its buttons stay put however far the board runs.
 	const scroll = root.createDiv({ cls: 'snowflake-method-sticky-scroll' });
@@ -323,7 +294,7 @@ export function renderStickyNoteBoard(
 		cls: 'snowflake-method-sticky-grid',
 		attr: { role: 'list' },
 	});
-	const { line: emptyLine, text: emptyText } = emptyLineIn(scroll, '');
+	const { line: emptyLine, text: emptyText } = renderEmptyLine(scroll, '');
 
 	// The archive as the project manager pins its archived projects: a
 	// section under the scrolling cards, a toggle row with the count in a
@@ -400,7 +371,7 @@ export function renderStickyNoteBoard(
 			cls: 'snowflake-method-sticky-grid snowflake-method-sticky-archive-grid',
 			attr: { role: 'list' },
 		});
-		const { line: empty, text: archiveEmptyText } = emptyLineIn(list, '');
+		const { line: empty, text: archiveEmptyText } = renderEmptyLine(list, '');
 		archive = {
 			section,
 			count,
@@ -513,9 +484,39 @@ export function renderStickyNoteBoard(
 			card.update(note);
 			card.el.toggleClass('is-pinned', !byId.has(id));
 		}
+		// The standing cards brought into the order, moving only the ones out
+		// of place: a card moved in the DOM drops the document's focus, with
+		// no blur to say so, and the card being typed in is in this order
+		// every time the bell rings. Whatever held the focus and is still on
+		// the grid afterwards is given it back.
+		const doc = from.grid.doc;
+		const active = doc.activeElement;
+		const ordered = new Set(plan.order);
+		let cursor: Element | null = from.grid.firstElementChild;
 		for (const id of plan.order) {
 			const card = from.cards.get(id);
-			if (card !== undefined) from.grid.appendChild(card.el);
+			if (card === undefined) continue;
+			// Cards the order does not name -- pinned, or coming down -- keep their place.
+			while (
+				cursor !== null &&
+				cursor !== card.el &&
+				!ordered.has(cursor.getAttribute('data-id') ?? '')
+			) {
+				cursor = cursor.nextElementSibling;
+			}
+			if (cursor === card.el) {
+				cursor = cursor.nextElementSibling;
+				continue;
+			}
+			from.grid.insertBefore(card.el, cursor);
+		}
+		if (
+			active !== null &&
+			doc.activeElement !== active &&
+			from.grid.contains(active) &&
+			'focus' in active
+		) {
+			(active as HTMLElement).focus({ preventScroll: true });
 		}
 		from.cancel?.();
 		from.pass += 1;

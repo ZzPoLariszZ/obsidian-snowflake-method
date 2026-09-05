@@ -17,7 +17,7 @@ import { SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import type { FrequencyRow } from '../domain';
 import type { ManuscriptProseStatistics, ManuscriptProseRow } from '../services';
-import { followAnchor } from './anchored-panel';
+import { hangPanel } from './anchored-panel';
 import type { Translate } from './modals';
 import {
 	averageSentenceLength,
@@ -176,88 +176,70 @@ export function renderProsePanel(
 	};
 	const openLengthFilter = (anchor: HTMLElement): void => {
 		closeFilterPanel();
-		const view = anchor.win;
-		const panel = view.activeDocument.body.createDiv({
+		// Held on an object: the field is made inside the build and focused after.
+		const first: { input: HTMLInputElement | null } = { input: null };
+		filterPanel = hangPanel(anchor, {
 			cls: 'snowflake-method-filter-panel',
-			attr: { role: 'dialog', 'aria-label': t('table.filter') },
-		});
-		panel.createDiv({
-			cls: 'snowflake-method-filter-panel-title',
-			text: t('table.filter'),
-		});
-		const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
-		const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
-		field.createDiv({
-			cls: 'snowflake-method-filter-label',
-			text: t('prose.table.length'),
-		});
-		const range = field.createDiv({ cls: 'snowflake-method-filter-range' });
-		const bound = (placeholder: string, value: number | null): HTMLInputElement => {
-			const input = range.createEl('input', {
-				attr: { type: 'text', inputmode: 'numeric', placeholder },
-			});
-			if (value !== null) input.value = String(value);
-			return input;
-		};
-		const minInput = bound(t('prose.filter.min'), filters.lengthMin);
-		const maxInput = bound(t('prose.filter.max'), filters.lengthMax);
-		const actions = panel.createDiv({
-			cls: 'snowflake-method-filter-panel-actions',
-		});
-		const reset = actions.createEl('button', {
-			cls: 'snowflake-method-filter-reset',
-			text: t('table.filterReset'),
-			attr: { type: 'button' },
-		});
-		// Clears the fields rather than the table, the way the member panel's
-		// reset does: the panel has one way out, and this is not it.
-		reset.addEventListener('click', () => {
-			minInput.value = '';
-			maxInput.value = '';
-		});
-		const confirm = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: t('table.filterConfirm'),
-			attr: { type: 'button' },
-		});
-		const apply = (): void => {
-			filters.lengthMin = parseLengthBound(minInput.value);
-			filters.lengthMax = parseLengthBound(maxInput.value);
-			closeFilterPanel();
-			markFilterButton();
-			paint();
-		};
-		confirm.addEventListener('click', apply);
-		for (const input of [minInput, maxInput]) {
-			input.addEventListener('keydown', (event) => {
-				if (event.key === 'Enter') apply();
-			});
-		}
-		const unfollow = followAnchor(panel, anchor, view);
-		anchor.setAttribute('aria-expanded', 'true');
-		const dismiss = (event: MouseEvent): void => {
-			const target = event.target as Node | null;
-			if (target === null) return;
-			if (panel.contains(target) || anchor.contains(target)) return;
-			closeFilterPanel();
-		};
-		const onKey = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') return;
-			closeFilterPanel();
-			anchor.focus();
-		};
-		view.addEventListener('mousedown', dismiss, true);
-		view.addEventListener('keydown', onKey, true);
-		filterPanel = {
-			el: panel,
-			release: () => {
-				view.removeEventListener('mousedown', dismiss, true);
-				view.removeEventListener('keydown', onKey, true);
-				unfollow();
-				anchor.setAttribute('aria-expanded', 'false');
+			label: t('table.filter'),
+			build: (panel) => {
+				panel.createDiv({
+					cls: 'snowflake-method-filter-panel-title',
+					text: t('table.filter'),
+				});
+				const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
+				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
+				field.createDiv({
+					cls: 'snowflake-method-filter-label',
+					text: t('prose.table.length'),
+				});
+				const range = field.createDiv({ cls: 'snowflake-method-filter-range' });
+				const bound = (placeholder: string, value: number | null): HTMLInputElement => {
+					const input = range.createEl('input', {
+						attr: { type: 'text', inputmode: 'numeric', placeholder },
+					});
+					if (value !== null) input.value = String(value);
+					return input;
+				};
+				const min = bound(t('prose.filter.min'), filters.lengthMin);
+				const max = bound(t('prose.filter.max'), filters.lengthMax);
+				first.input = min;
+				const actions = panel.createDiv({
+					cls: 'snowflake-method-filter-panel-actions',
+				});
+				const reset = actions.createEl('button', {
+					cls: 'snowflake-method-filter-reset',
+					text: t('table.filterReset'),
+					attr: { type: 'button' },
+				});
+				// Clears the fields rather than the table, the way the member
+				// panel's reset does: the panel has one way out, and this is
+				// not it.
+				reset.addEventListener('click', () => {
+					min.value = '';
+					max.value = '';
+				});
+				const confirm = actions.createEl('button', {
+					cls: 'mod-cta',
+					text: t('table.filterConfirm'),
+					attr: { type: 'button' },
+				});
+				const apply = (): void => {
+					filters.lengthMin = parseLengthBound(min.value);
+					filters.lengthMax = parseLengthBound(max.value);
+					closeFilterPanel();
+					markFilterButton();
+					paint();
+				};
+				confirm.addEventListener('click', apply);
+				for (const input of [min, max]) {
+					input.addEventListener('keydown', (event) => {
+						if (event.key === 'Enter') apply();
+					});
+				}
 			},
-		};
-		minInput.focus();
+			onClose: closeFilterPanel,
+		});
+		first.input?.focus();
 	};
 	filterButton.addEventListener('click', () => {
 		if (filterPanel !== null) {

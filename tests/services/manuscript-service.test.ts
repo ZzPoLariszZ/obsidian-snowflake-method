@@ -222,6 +222,31 @@ describe("ManuscriptService", () => {
     expect(after.slice(0, 5)).toBe(source.body.slice(cut, cut + 5));
   });
 
+  it("carries the tail away before the head is levelled", async () => {
+    const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
+    await service.manuscript.writeSegment(
+      draft,
+      "# Draft\n\nBefore the cut.\n\nAfter the cut.\n",
+    );
+    const source = await service.manuscript.readSegment(draft);
+    const cut = source.body.indexOf("After the cut.");
+    const order: string[] = [];
+    service.manuscript.onSegmentTextCarried = async () => {
+      // The carry takes its time, as a store's write does.
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push("carried");
+    };
+    service.manuscript.onSegmentWritten = () => {
+      order.push("written");
+    };
+
+    await service.manuscript.splitSegment(project, draft, cut, "Chapter Two");
+
+    // Levelling the head first would re-anchor a tail occurrence onto the
+    // head's copy of its words, wherever a plant and its payoff share a phrase.
+    expect(order).toEqual(["carried", "written"]);
+  });
+
   it("counts the blank lines a split's seam closes up", async () => {
     const draft = "Snowflake Projects/Novel/50_Manuscript/Draft.md";
     await service.manuscript.writeSegment(

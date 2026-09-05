@@ -165,6 +165,7 @@ import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { StickyNoteService } from "./sticky-note-service";
+import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
 import { WritingCountService } from "./writing-count";
 import {
@@ -387,6 +388,8 @@ export class SnowflakeProjectService {
   readonly revisions: RevisionService;
   /** Foreshadowing threads and their occurrences: user data beside the revisions. */
   readonly foreshadowing: ForeshadowingService;
+  /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
+  readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
   readonly stickyNotes: StickyNoteService;
   /** The manuscript as plain text files, for the export buttons and the copy. */
@@ -475,6 +478,7 @@ export class SnowflakeProjectService {
         ? {}
         : { onForeign: analysis.onForeshadowingForeign }),
     });
+    this.marginRecords = [this.revisions, this.foreshadowing];
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
     });
@@ -7351,11 +7355,12 @@ export class SnowflakeProjectService {
     await inspectCollection("scenes", "scene", [8, 9]);
 
     // Sticky notes are managed notes like members, and inspected like them
-    // for what makes one readable: the schema, the type, the project, a
-    // unique id, a colour the palette has, a birth that parses, and a
-    // set-aside flag that is a flag. No step hinges on them. A note in the
-    // folder that says nothing of the kind is the author's own and left
-    // alone.
+    // for what makes one readable: the schema, the type, the project and a
+    // unique id. A colour the palette lacks, a birth that will not parse and
+    // a set-aside flag that is a word are read leniently by every surface
+    // (`readStickyNoteFrontmatter`), so they are no fault here. No step
+    // hinges on them. A note in the folder that says nothing of the kind is
+    // the author's own and left alone.
     {
       const folderPath = normalizePath(
         `${project.rootPath}/${layout.directories.stickyNotes}`,
@@ -7367,8 +7372,25 @@ export class SnowflakeProjectService {
           : this.repository.listDirectFiles(folderPath);
       for (const file of files) {
         if (file.extension !== "md") continue;
-        const record = await this.repository.tryReadManaged(file.path);
-        if (record === null) continue;
+        let record: ManagedFileRecord;
+        try {
+          record = await this.repository.readManaged(file.path);
+        } catch (error) {
+          if (error instanceof ManagedFileNotFoundError) continue;
+          if (!(error instanceof InvalidManagedDocumentError)) throw error;
+          // Frontmatter that will not parse hides the note from every
+          // surface, and nothing else says so. Not a repair: only the author
+          // knows what the block was meant to say.
+          add({
+            code: "invalid-artifact-metadata",
+            path: file.path,
+            stepIds: [],
+            expected: STICKY_NOTE_DOCUMENT,
+            canOpen: true,
+            repairable: false,
+          });
+          continue;
+        }
         if (record.schemaVersion !== null && record.schemaVersion > SCHEMA_VERSION) {
           continue;
         }
@@ -7385,10 +7407,7 @@ export class SnowflakeProjectService {
           isCurrentOrNewerSchema(frontmatter) &&
           documentTypeOf(frontmatter) === STICKY_NOTE_DOCUMENT &&
           hasMatchingProjectId(frontmatter) &&
-          stableIdIsUnique &&
-          isStickyNoteColor(frontmatter[FRONTMATTER_KEYS.stickyNoteColor]) &&
-          parseStickyNoteCreated(frontmatter[FRONTMATTER_KEYS.created]) !== null &&
-          typeof frontmatter[FRONTMATTER_KEYS.archived] === "boolean"
+          stableIdIsUnique
         ) {
           continue;
         }

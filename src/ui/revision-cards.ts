@@ -355,12 +355,12 @@ export function renderRevisionRail(
 			},
 		);
 		const actions = parts.actionRow(card, 'end');
-		parts.actionButton(actions, t('manuscript.revision.cancel'), () => {
+		parts.actionButton(actions, t('common.cancel'), () => {
 			options.onCancel();
 		});
 		parts.actionButton(
 			actions,
-			t('manuscript.revision.save'),
+			t('common.save'),
 			() => {
 				options.onSave(proposedInput.value, commentInput.value);
 			},
@@ -411,7 +411,7 @@ export function renderRevisionRail(
 		// rewrites the manuscript, so the button under the pointer after a
 		// glance is never the one that changes the text.
 		const actions = parts.actionRow(card, 'balanced');
-		parts.actionButton(actions, t('manuscript.revision.edit'), beginEdit);
+		parts.actionButton(actions, t('actions.edit'), beginEdit);
 		parts.actionButton(actions, t('manuscript.revision.reject'), () => {
 			callbacks.onRetire(revision);
 		});
@@ -479,209 +479,227 @@ export function renderRevisionRail(
 		callbacks: ForeshadowingRailCallbacks;
 	} => ({ t, parts, readOnly, callbacks: callbacks.foreshadowing });
 
+	/**
+	 * A form opened in a standing card, and closed again: the card holds its
+	 * unsaved text through every sync while the form stands, a refused save
+	 * leaves it open on what was typed, and a landed one is told to the held
+	 * model before the card is drawn afresh -- the fresh feed arrives a read
+	 * later, and the card would otherwise show the words the author replaced
+	 * until the note is dressed again.
+	 */
+	const editable = (
+		state: CardState,
+		card: HTMLElement,
+		openForm: (finish: {
+			save: (commit: () => Promise<boolean>, landed: () => void) => void;
+			cancel: () => void;
+		}) => void,
+	): void => {
+		state.editing = true;
+		// The card no longer shows its print, so the sync that follows the
+		// form closing draws it afresh rather than leaving the form standing
+		// as an unchanged card.
+		state.print = '';
+		card.empty();
+		openForm({
+			save: (commit, landed) => {
+				// The answer is waited for, because a save that fails fails
+				// after the write was tried, and closing the form before then
+				// would close it over nothing.
+				void (async () => {
+					const took = await commit();
+					if (!took) return;
+					state.editing = false;
+					landed();
+					restack();
+				})();
+			},
+			cancel: () => {
+				state.editing = false;
+				restack();
+			},
+		});
+		// Both faces are drawn in place, and they are not the same height:
+		// without a fresh placement the cards below stay where the shorter
+		// one left them, and the taller one covers them.
+		restack();
+	};
+
 	const sync = (model: RevisionRailModel): void => {
 		held = model;
 		const wanted = new Set<string>();
-		const order: { key: string; top: number | null }[] = [];
+		// A pinned card has no anchor to stand beside and keeps the head of
+		// the stack, whatever top it was last placed at.
+		const order: { key: string; top: number | null; pinned?: boolean }[] = [];
+
+		/**
+		 * One card brought level: wanted, given its place in the order, and
+		 * redrawn only when its print moved -- what it says can change under
+		 * it, a note turning read-only takes a Discard away, text edited from
+		 * the table arrives here, a neighbour comes or goes -- or left whole
+		 * while a form is open in it, since the element then holds the only
+		 * copy of what is being typed.
+		 */
+		const place = (spec: {
+			key: string;
+			top: number | null;
+			pinned?: boolean;
+			cls: string;
+			print: string;
+			draw: (card: HTMLElement, state: CardState) => void;
+		}): void => {
+			wanted.add(spec.key);
+			order.push({ key: spec.key, top: spec.top, pinned: spec.pinned });
+			const kept = cards.get(spec.key);
+			if (kept !== undefined && (kept.editing || kept.print === spec.print)) return;
+			const card =
+				kept?.el ?? rail.createDiv({ cls: `snowflake-method-rail-card ${spec.cls}` });
+			card.empty();
+			card.removeClass('is-conflict');
+			const state: CardState = { el: card, editing: false, print: spec.print };
+			spec.draw(card, state);
+			cards.set(spec.key, state);
+		};
+
+		/**
+		 * A card with a form open in it stands on for its record even once
+		 * the note stops answering for it, pinned: the form holds what is
+		 * being typed, and a conflict card raised beside it would be a second
+		 * card for one record. The conflict shows once the form closes, on
+		 * the sync that follows. True when the card is standing so.
+		 */
+		const holdOpen = (key: string): boolean => {
+			if (cards.get(key)?.editing !== true) return false;
+			wanted.add(key);
+			order.push({ key, top: null, pinned: true });
+			return true;
+		};
+
+		const neighbours = (entry: ForeshadowingCardEntry): [boolean, boolean] => [
+			callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, -1),
+			callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, 1),
+		];
 
 		// Conflicts first, pinned to the head of the stack: they have no spot
-		// in the text to stand beside any more.
+		// in the text to stand beside any more. The arrows are drawn live, so
+		// every print carries them, or a neighbour coming or going would
+		// leave a card's compass stale.
 		for (const revision of model.conflicts) {
-			// A card open for editing goes on standing for its revision even
-			// once the note stops answering for it: the form holds what is
-			// being typed, and a conflict card raised beside it would be a
-			// second card for one revision. The conflict shows once the form
-			// closes, on the sync that follows.
-			const open = cards.get(revision.id);
-			if (open?.editing === true) {
-				wanted.add(revision.id);
-				order.push({ key: revision.id, top: null });
-				continue;
-			}
-			const key = `conflict:${revision.id}`;
-			wanted.add(key);
-			order.push({ key, top: null });
-			// Redrawn in place like a resting card, and for the same reason:
-			// what it says can change under it -- a note turning read-only
-			// takes its Discard away, and text edited from the table arrives
-			// here -- and a card drawn once would go on offering what it was
-			// born offering. Only when something did change, though.
-			const print = cardPrint(revision, model.readOnly, [false, false]);
-			const kept = cards.get(key);
-			if (kept !== undefined && kept.print === print) continue;
-			const card =
-				kept?.el ??
-				rail.createDiv({
-					cls: 'snowflake-method-rail-card snowflake-method-revision-card',
-				});
-			card.empty();
-			renderConflictCard(card, revision, model.readOnly);
-			cards.set(key, { el: card, editing: false, print });
+			if (holdOpen(revision.id)) continue;
+			place({
+				key: `conflict:${revision.id}`,
+				top: null,
+				pinned: true,
+				cls: 'snowflake-method-revision-card',
+				print: cardPrint(revision, model.readOnly, [
+					callbacks.hasNeighbour(revision, -1),
+					callbacks.hasNeighbour(revision, 1),
+				]),
+				draw: (card) => {
+					renderConflictCard(card, revision, model.readOnly);
+				},
+			});
 		}
 
 		// The unresolved occurrences, pinned beside the conflicts by the same
 		// rule, and kept past their record while a form is open in them.
 		for (const entry of model.foreshadowing.unresolved) {
-			const openKey = occurrenceKey(entry.occurrence.id);
-			const open = cards.get(openKey);
-			if (open?.editing === true) {
-				wanted.add(openKey);
-				order.push({ key: openKey, top: null });
-				continue;
-			}
-			const key = unresolvedKey(entry.occurrence.id);
-			wanted.add(key);
-			order.push({ key, top: null });
-			const print = foreshadowingCardPrint(
-				entry.item,
-				entry.occurrence,
-				model.readOnly,
-				[false, false],
-				true,
-			);
-			const kept = cards.get(key);
-			if (kept !== undefined && kept.print === print) continue;
-			const card =
-				kept?.el ??
-				rail.createDiv({
-					cls: 'snowflake-method-rail-card snowflake-method-foreshadowing-card',
-				});
-			card.empty();
-			renderUnresolvedOccurrenceCard(
-				card,
-				entry,
-				foreshadowingOptions(model.readOnly),
-			);
-			cards.set(key, { el: card, editing: false, print });
+			if (holdOpen(occurrenceKey(entry.occurrence.id))) continue;
+			place({
+				key: unresolvedKey(entry.occurrence.id),
+				top: null,
+				pinned: true,
+				cls: 'snowflake-method-foreshadowing-card',
+				print: foreshadowingCardPrint(
+					entry.item,
+					entry.occurrence,
+					model.readOnly,
+					neighbours(entry),
+					true,
+				),
+				draw: (card) => {
+					renderUnresolvedOccurrenceCard(
+						card,
+						entry,
+						foreshadowingOptions(model.readOnly),
+					);
+				},
+			});
 		}
 
 		for (const entry of model.entries) {
-			const key = entry.revision.id;
-			wanted.add(key);
-			order.push({ key, top: entry.top });
-			const kept = cards.get(key);
-			// A card being edited keeps its element and its unsaved text, and
-			// a resting card that would be drawn the same is left as it is.
-			if (kept !== undefined && kept.editing) continue;
-			const print = cardPrint(entry.revision, model.readOnly, [
-				callbacks.hasNeighbour(entry.revision, -1),
-				callbacks.hasNeighbour(entry.revision, 1),
-			]);
-			if (kept !== undefined && kept.print === print) continue;
-			const card =
-				kept?.el ??
-				rail.createDiv({
-					cls: 'snowflake-method-rail-card snowflake-method-revision-card',
-				});
-			card.empty();
-			card.removeClass('is-conflict');
-			const state: CardState = { el: card, editing: false, print };
-			renderRestCard(card, entry, model.readOnly, () => {
-				state.editing = true;
-				// The card no longer shows its print, so the sync that follows
-				// the form closing draws it afresh rather than leaving the
-				// form standing as an unchanged card.
-				state.print = '';
-				card.empty();
-				renderForm(card, {
-					originalText: entry.revision.originalText,
-					proposed: entry.revision.proposed,
-					comment: entry.revision.comment,
-					onSave: (proposed, comment) => {
-						// A refused save leaves the card open on what was
-						// typed: the author gets the notice and their words
-						// both, instead of one at the price of the other. The
-						// answer is waited for, because a save that fails
-						// fails after the write was tried, and closing the
-						// form before then would close it over nothing.
-						void (async () => {
-							const took = await callbacks.onEditSave(
-								entry.revision,
-								proposed,
-								comment,
-							);
-							if (!took) return;
-							state.editing = false;
-							// The card is drawn again from what the rail last
-							// held, and that is the revision from before the
-							// save: the fresh feed arrives a read later. So the
-							// held copy is told what was just written, or the
-							// card would show the words the author replaced
-							// until the note is dressed again.
-							saved(entry.revision.id, proposed, comment);
-							restack();
-						})();
-					},
-					onCancel: () => {
-						state.editing = false;
-						restack();
-					},
-				});
-				// Both faces are drawn in place, and they are not the same
-				// height: without a fresh placement the cards below stay where
-				// the shorter one left them, and the taller one covers them.
-				restack();
+			place({
+				key: entry.revision.id,
+				top: entry.top,
+				cls: 'snowflake-method-revision-card',
+				print: cardPrint(entry.revision, model.readOnly, [
+					callbacks.hasNeighbour(entry.revision, -1),
+					callbacks.hasNeighbour(entry.revision, 1),
+				]),
+				draw: (card, state) => {
+					renderRestCard(card, entry, model.readOnly, () => {
+						editable(state, card, (finish) => {
+							renderForm(card, {
+								originalText: entry.revision.originalText,
+								proposed: entry.revision.proposed,
+								comment: entry.revision.comment,
+								onSave: (proposed, comment) => {
+									finish.save(
+										() => callbacks.onEditSave(entry.revision, proposed, comment),
+										() => {
+											saved(entry.revision.id, proposed, comment);
+										},
+									);
+								},
+								onCancel: finish.cancel,
+							});
+						});
+					});
+				},
 			});
-			cards.set(key, state);
 		}
 
 		// The foreshadowing cards, by the same rules as the revisions above.
 		for (const entry of model.foreshadowing.entries) {
-			const key = occurrenceKey(entry.occurrence.id);
-			wanted.add(key);
-			order.push({ key, top: entry.top });
-			const kept = cards.get(key);
-			if (kept !== undefined && kept.editing) continue;
-			const print = foreshadowingCardPrint(
-				entry.item,
-				entry.occurrence,
-				model.readOnly,
-				[
-					callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, -1),
-					callbacks.foreshadowing.hasNeighbour(entry.item, entry.occurrence, 1),
-				],
-				false,
-			);
-			if (kept !== undefined && kept.print === print) continue;
-			const card =
-				kept?.el ??
-				rail.createDiv({
-					cls: 'snowflake-method-rail-card snowflake-method-foreshadowing-card',
-				});
-			card.empty();
-			card.removeClass('is-conflict');
-			const state: CardState = { el: card, editing: false, print };
-			renderForeshadowingCard(card, entry, {
-				...foreshadowingOptions(model.readOnly),
-				beginEdit: () => {
-					state.editing = true;
-					state.print = '';
-					card.empty();
-					renderForeshadowingForm(card, entry, {
-						t,
-						parts,
-						onSave: (patch) => {
-							void (async () => {
-								const took = await callbacks.foreshadowing.onEditSave(
-									entry.item,
-									entry.occurrence,
-									patch,
-								);
-								if (!took) return;
-								state.editing = false;
-								savedOccurrence(entry.occurrence.id, patch);
-								restack();
-							})();
-						},
-						onCancel: () => {
-							state.editing = false;
-							restack();
+			place({
+				key: occurrenceKey(entry.occurrence.id),
+				top: entry.top,
+				cls: 'snowflake-method-foreshadowing-card',
+				print: foreshadowingCardPrint(
+					entry.item,
+					entry.occurrence,
+					model.readOnly,
+					neighbours(entry),
+					false,
+				),
+				draw: (card, state) => {
+					renderForeshadowingCard(card, entry, {
+						...foreshadowingOptions(model.readOnly),
+						beginEdit: () => {
+							editable(state, card, (finish) => {
+								renderForeshadowingForm(card, entry, {
+									t,
+									parts,
+									onSave: (patch) => {
+										finish.save(
+											() =>
+												callbacks.foreshadowing.onEditSave(
+													entry.item,
+													entry.occurrence,
+													patch,
+												),
+											() => {
+												savedOccurrence(entry.occurrence.id, patch);
+											},
+										);
+									},
+									onCancel: finish.cancel,
+								});
+							});
 						},
 					});
-					restack();
 				},
 			});
-			cards.set(key, state);
 		}
 
 		if (model.draft !== null) {
@@ -750,20 +768,25 @@ export function renderRevisionRail(
 		// where it stands, not at the head as an anchorless stranger --
 		// which was exactly how one freshly measured card ended up floored
 		// beneath every held one.
-		const resolved = order.map(({ key, top }) => {
+		const resolved = order.map(({ key, top, pinned }) => {
 			const el = key === 'draft' ? draftEl : (cards.get(key)?.el ?? null);
 			const standing = el === null ? NaN : parseFloat(el.style.top);
 			return {
 				key,
 				el,
-				top: top ?? (Number.isNaN(standing) ? null : standing),
+				top:
+					pinned === true
+						? null
+						: (top ?? (Number.isNaN(standing) ? null : standing)),
 			};
 		});
 
 		// Stacking only ever pushes down, so the cards must enter it in the
-		// order of their anchors: conflicts first (they alone still have no
-		// top), then everything else by where it belongs -- the draft merged
-		// among the standing cards, not appended after them.
+		// order of their anchors: the pinned cards first (conflicts and
+		// unresolved occurrences, which have no top and never take the one
+		// they were last placed at), then everything else by where it
+		// belongs -- the draft merged among the standing cards, not appended
+		// after them.
 		resolved.sort((left, right) => {
 			const leftTop = left.top ?? Number.NEGATIVE_INFINITY;
 			const rightTop = right.top ?? Number.NEGATIVE_INFINITY;

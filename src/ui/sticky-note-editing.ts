@@ -27,13 +27,21 @@ export class StickyNoteSaveConflict extends Error {
 	override readonly name = 'StickyNoteSaveConflict';
 }
 
+/** The file is not there to write: deleted, or renamed and not yet found again. */
+export class StickyNoteGone extends Error {
+	override readonly name = 'StickyNoteGone';
+}
+
 export interface StickyNoteEditTimers {
 	set(handler: () => void, delayMs: number): unknown;
 	clear(handle: unknown): void;
 }
 
 export interface StickyNoteEditIo {
-	/** Writes the body under the revision, or throws `StickyNoteSaveConflict`. */
+	/**
+	 * Writes the body under the revision, or throws `StickyNoteSaveConflict`
+	 * when the revision moved and `StickyNoteGone` when the file is not there.
+	 */
 	write(
 		path: string,
 		body: string,
@@ -46,7 +54,10 @@ export interface StickyNoteEditIo {
 	onSaved(record: StickyNoteRecord): void;
 	/** A real body conflict: the author's text was kept and written over it. */
 	onConflict(): void;
-	/** The file went away under the editor; the pending text is kept, unsaved. */
+	/**
+	 * The file went away under the editor. The pending text is kept, unsaved
+	 * and untried, until the note is found again under another name.
+	 */
 	onGone(): void;
 	onError(error: unknown): void;
 }
@@ -54,14 +65,23 @@ export interface StickyNoteEditIo {
 export class StickyNoteEditSession {
 	private held: StickyNoteRecord;
 
-	/** The body the editor last agreed with the file on. */
-	private base: string;
-
 	private pendingBody: string | null = null;
 
 	private timer: unknown = null;
 
+	/** The body a write is carrying to the file right now. */
+	private writing: string | null = null;
+
 	private saving: Promise<void> = Promise.resolve();
+
+	/** The file was not there the last time a write reached for it. */
+	private goneFlag = false;
+
+	/** Set while the closing flush runs: no timer is armed past it. */
+	private disposing = false;
+
+	/** A conflict met during the closing flush asks it to go once more. */
+	private retryWanted = false;
 
 	private disposed = false;
 
@@ -71,7 +91,6 @@ export class StickyNoteEditSession {
 		private readonly delayMs = STICKY_NOTE_SAVE_DELAY_MS,
 	) {
 		this.held = record;
-		this.base = record.body;
 	}
 
 	/** The revision and fields last agreed with the file. */
@@ -79,8 +98,9 @@ export class StickyNoteEditSession {
 		return this.held;
 	}
 
+	/** The body the editor last agreed with the file on: the held record's own. */
 	get baseBody(): string {
-		return this.base;
+		return this.held.body;
 	}
 
 	/** Typed text the file does not hold yet; null when they agree. */
@@ -88,15 +108,26 @@ export class StickyNoteEditSession {
 		return this.pendingBody;
 	}
 
-	/** The editor's text changed under typing. Equal to the base, nothing waits. */
+	/** Whether the file went away under the editor and has not been found again. */
+	get gone(): boolean {
+		return this.goneFlag;
+	}
+
+	/**
+	 * The editor's text changed under typing. Equal to the base, nothing
+	 * waits -- unless a write is in flight, since the base is about to move
+	 * to what that write carries, and a return to the old words is then a
+	 * change the file has yet to hear of.
+	 */
 	changed(body: string): void {
 		if (this.disposed) return;
 		this.clearTimer();
-		if (body === this.base) {
+		if (body === this.held.body && this.writing === null) {
 			this.pendingBody = null;
 			return;
 		}
 		this.pendingBody = body;
+		if (this.goneFlag) return;
 		this.arm();
 	}
 
@@ -119,24 +150,57 @@ export class StickyNoteEditSession {
 	take(record: StickyNoteRecord): 'adopted' | 'kept' {
 		if (this.pendingBody === null) {
 			this.held = record;
-			this.base = record.body;
+			this.found();
 			return 'adopted';
 		}
-		if (record.body === this.base) {
+		if (record.body === this.held.body) {
 			this.held = record;
+			this.found();
 			return 'adopted';
+		}
+		// The typing goes on over a body the file no longer holds, and the
+		// next flush sorts that out against the file -- under the file's
+		// name as it is now, or the write would reach for a path that is gone.
+		if (record.path !== this.held.path) {
+			this.held = { ...this.held, path: record.path };
+			this.found();
 		}
 		return 'kept';
 	}
 
-	/** Clears the timer, flushes what is pending, and answers nothing more. */
+	/**
+	 * Clears the timer and flushes what is pending. A file that keeps moving
+	 * under the closing flush is met a bounded number of times, here, rather
+	 * than by a timer that would fire after the editor has gone; then nothing
+	 * more is answered.
+	 */
 	async dispose(): Promise<void> {
 		this.clearTimer();
-		await this.flush();
+		this.disposing = true;
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			this.retryWanted = false;
+			await this.flush();
+			if (!this.retryWanted) break;
+		}
 		this.disposed = true;
 	}
 
+	/** Lets the pending text go unwritten: the file is not there to take it. */
+	discard(): void {
+		this.clearTimer();
+		this.disposed = true;
+	}
+
+	/** The file is there again under the name just taken: what waits goes on its way. */
+	private found(): void {
+		if (!this.goneFlag) return;
+		this.goneFlag = false;
+		if (this.pendingBody !== null) this.arm();
+	}
+
 	private arm(): void {
+		if (this.disposed || this.disposing) return;
+		this.clearTimer();
 		this.timer = this.io.timers.set(() => {
 			this.timer = null;
 			void this.flush();
@@ -151,25 +215,48 @@ export class StickyNoteEditSession {
 
 	private adopt(written: StickyNoteRecord, body: string): void {
 		this.held = written;
-		this.base = body;
 		if (this.pendingBody === body) this.pendingBody = null;
 	}
 
 	private async flushNow(): Promise<void> {
+		if (this.disposed || this.goneFlag) return;
 		const body = this.pendingBody;
 		if (body === null) return;
 		this.clearTimer();
 		try {
-			const written = await this.io.write(this.held.path, body, this.held.revision);
+			const written = await this.write(this.held.path, body, this.held.revision);
 			this.adopt(written, body);
 			this.io.onSaved(written);
 		} catch (error) {
+			if (error instanceof StickyNoteGone) {
+				this.lost();
+				return;
+			}
 			if (!(error instanceof StickyNoteSaveConflict)) {
 				this.io.onError(error);
 				return;
 			}
 			await this.resolveConflict(body);
 		}
+	}
+
+	/** One write, marked as in flight for as long as it is. */
+	private async write(
+		path: string,
+		body: string,
+		revision: string,
+	): Promise<StickyNoteRecord> {
+		this.writing = body;
+		try {
+			return await this.io.write(path, body, revision);
+		} finally {
+			this.writing = null;
+		}
+	}
+
+	private lost(): void {
+		this.goneFlag = true;
+		this.io.onGone();
 	}
 
 	private async resolveConflict(body: string): Promise<void> {
@@ -181,7 +268,7 @@ export class StickyNoteEditSession {
 			return;
 		}
 		if (fresh === null) {
-			this.io.onGone();
+			this.lost();
 			return;
 		}
 		if (fresh.body === body) {
@@ -190,20 +277,24 @@ export class StickyNoteEditSession {
 			this.io.onSaved(fresh);
 			return;
 		}
-		const frontmatterOnly = fresh.body === this.base;
+		const frontmatterOnly = fresh.body === this.held.body;
 		this.held = fresh;
-		if (!frontmatterOnly) {
-			this.base = fresh.body;
-			this.io.onConflict();
-		}
+		if (!frontmatterOnly) this.io.onConflict();
 		try {
-			const written = await this.io.write(fresh.path, body, fresh.revision);
+			const written = await this.write(fresh.path, body, fresh.revision);
 			this.adopt(written, body);
 			this.io.onSaved(written);
 		} catch (error) {
+			if (error instanceof StickyNoteGone) {
+				this.lost();
+				return;
+			}
 			if (error instanceof StickyNoteSaveConflict) {
-				// Moved again while this was being sorted out: the next pause tries again.
-				if (this.pendingBody !== null && !this.disposed) this.arm();
+				// Moved again while this was being sorted out: the next pause
+				// tries again, or the closing flush itself where one is running.
+				if (this.pendingBody === null || this.disposed) return;
+				if (this.disposing) this.retryWanted = true;
+				else this.arm();
 				return;
 			}
 			this.io.onError(error);

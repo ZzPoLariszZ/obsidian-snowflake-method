@@ -99,9 +99,11 @@ export class ForeshadowingService {
 
 	/**
 	 * The edit form's save, one write: the thread's own limbs and the role
-	 * and note of every occurrence it still holds. An occurrence left out of
-	 * `next` is deleted, one it names but the record lacks is ignored, and
-	 * no place limb is touched -- a place changes only by a relink.
+	 * and note of every occurrence it still holds. An occurrence named in
+	 * `removed` is deleted, one the form never saw -- added from the stream
+	 * while the form stood open -- is kept as it stands, one it names but the
+	 * record lacks is ignored, and no place limb is touched -- a place
+	 * changes only by a relink.
 	 *
 	 * Answered on whether the record now says what was asked, not on whether
 	 * a write was needed to make it say so: a form saved over its own words
@@ -116,9 +118,11 @@ export class ForeshadowingService {
 			const asked = new Map(
 				next.occurrences.map((occurrence) => [occurrence.id, occurrence] as const),
 			);
+			const removed = new Set(next.removed);
 			const occurrences = kept.occurrences.flatMap((occurrence) => {
+				if (removed.has(occurrence.id)) return [];
 				const wanted = asked.get(occurrence.id);
-				if (wanted === undefined) return [];
+				if (wanted === undefined) return [occurrence];
 				const note = wanted.note.trim();
 				if (occurrence.role === wanted.role && occurrence.note === note) {
 					return [occurrence];

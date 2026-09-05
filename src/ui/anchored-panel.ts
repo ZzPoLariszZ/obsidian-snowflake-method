@@ -9,9 +9,10 @@
  * once, so the two cannot fall out of step -- which they had already begun to,
  * one of them having learnt to stay on screen while the other had not.
  *
- * Dismissal is left to each caller: what counts as a click outside differs
- * between them, and that is a question about the panel's contents rather than
- * about where it sits.
+ * Dismissal is here too, for the panels that share one rule -- a press
+ * outside the panel and its button, or Escape, puts it away -- with room for
+ * a caller to name what else counts as inside (a suggestion list the panel's
+ * own field opened, say); the two that need that still spell their own.
  */
 
 /** The gap between a panel and the button it hangs from. */
@@ -46,6 +47,69 @@ export function placePanel(panel: HTMLElement, anchor: HTMLElement, win: Window)
 	panel.style.left = `${String(
 		Math.max(PANEL_EDGE_GAP, Math.min(box.right - panel.offsetWidth, room)),
 	)}px`;
+}
+
+/** A panel hung under a button, and the way to take it down. */
+export interface HungPanel {
+	el: HTMLElement;
+	/** Stops following and listening; the caller removes the element. */
+	release: () => void;
+}
+
+/**
+ * Hangs a panel under its anchor in the window's body -- so nothing clips
+ * it -- following the anchor when the layout moves, and takes it down at a
+ * press outside it or at Escape, which is stopped there so nothing under
+ * the panel reads the same key: a card whose Escape leaves Editing, say.
+ * Escape hands the focus back to the button.
+ */
+export function hangPanel(
+	anchor: HTMLElement,
+	spec: {
+		cls: string;
+		label: string;
+		build(panel: HTMLElement): void;
+		/** What a press inside counts as inside besides the panel and the button. */
+		ignore?: string;
+		onClose(): void;
+	},
+): HungPanel {
+	const win = anchor.win;
+	const panel = win.activeDocument.body.createDiv({
+		cls: spec.cls,
+		attr: { role: 'dialog', 'aria-label': spec.label },
+	});
+	spec.build(panel);
+	const unfollow = followAnchor(panel, anchor, win);
+	const dismiss = (event: MouseEvent): void => {
+		const target = event.target as Node | null;
+		if (target === null) return;
+		if (panel.contains(target) || anchor.contains(target)) return;
+		if (spec.ignore !== undefined) {
+			// The target may be a text node; its element is what carries the class.
+			const element = 'closest' in target ? (target as Element) : target.parentElement;
+			if (element?.closest(spec.ignore) != null) return;
+		}
+		spec.onClose();
+	};
+	const onKey = (event: KeyboardEvent): void => {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		spec.onClose();
+		anchor.focus();
+	};
+	win.addEventListener('mousedown', dismiss, true);
+	win.addEventListener('keydown', onKey, true);
+	anchor.setAttribute('aria-expanded', 'true');
+	return {
+		el: panel,
+		release: () => {
+			win.removeEventListener('mousedown', dismiss, true);
+			win.removeEventListener('keydown', onKey, true);
+			unfollow();
+			anchor.setAttribute('aria-expanded', 'false');
+		},
+	};
 }
 
 /**

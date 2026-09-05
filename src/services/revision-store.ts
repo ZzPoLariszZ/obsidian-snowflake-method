@@ -1,9 +1,5 @@
 import { isRevision, type Revision } from "../domain";
-import {
-	JsonRecordStore,
-	type JsonRecordFileReading,
-	type JsonRecordStoreDeps,
-} from "./json-record-store";
+import { JsonRecordStore, type JsonRecordStoreDeps } from "./json-record-store";
 import { getProjectPathLayout, type ProjectRef } from "./types";
 
 /**
@@ -19,15 +15,10 @@ import { getProjectPathLayout, type ProjectRef } from "./types";
 
 export const REVISION_STORE_SCHEMA_VERSION = 1;
 
-export type RevisionStoreDeps = JsonRecordStoreDeps;
-
-/** What a reading of the file came to. */
-export type RevisionFileReading = JsonRecordFileReading<Revision>;
-
 export class RevisionStore {
 	private readonly store: JsonRecordStore<Revision>;
 
-	constructor(deps: RevisionStoreDeps) {
+	constructor(deps: JsonRecordStoreDeps) {
 		this.store = new JsonRecordStore<Revision>(
 			{
 				pathOf: (project) => {

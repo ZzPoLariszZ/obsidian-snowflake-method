@@ -8,8 +8,9 @@
  * What the layer remembers -- where a panel stands, how large, locked or not,
  * how transparent, which face it shows, and whether it is open -- is the
  * device's own (the hub's per-device state), written a moment after the last
- * move rather than on every pixel. A note floats at most once per window; a
- * second request raises the panel that stands.
+ * move rather than on every pixel. Only the main window's layer remembers:
+ * a popout's panels last the popout's own life. A note floats at most once
+ * per window; a second request raises the panel that stands.
  */
 
 import { Component, type App, type Plugin } from 'obsidian';
@@ -38,6 +39,14 @@ export interface StickyNoteFloatLayerDeps {
 	plugin: Plugin;
 	bridge: StickyNoteBridge;
 	locale(): string;
+	/** Whether this layer writes and restores the device's memory of the panels: the main window's does. */
+	remembers: boolean;
+}
+
+/** The project a panel's note belongs to, and whether the plugin may write in it. */
+export interface StickyNoteFloatProject {
+	path: string;
+	readOnly: boolean;
 }
 
 interface FloatingPanel {
@@ -93,7 +102,7 @@ export class StickyNoteFloatLayer {
 	/** Shows a note as a panel, or raises the one already standing. */
 	open(
 		note: StickyNoteRecord,
-		projectPath: string,
+		project: StickyNoteFloatProject,
 		options: StickyNoteFloatOptions = {},
 	): void {
 		if (this.destroyed) return;
@@ -119,7 +128,7 @@ export class StickyNoteFloatLayer {
 		if (options.mode !== undefined) state.mode = options.mode;
 		const panel: Partial<FloatingPanel> & { state: StickyNoteFloatState } = {
 			state,
-			projectPath,
+			projectPath: project.path,
 			persistTimer: null,
 		};
 		const card = renderStickyNoteCard(
@@ -132,12 +141,14 @@ export class StickyNoteFloatLayer {
 				component: this.component,
 				backend: this.backend,
 				locale: this.deps.locale(),
-				readOnly: note.readOnly,
+				// The project's verdict as the boards have it, and the note's own.
+				readOnly: project.readOnly || note.readOnly,
 				ownerId: this.ownerId,
 			},
 			{
 				surface: 'floating',
 				initialMode: state.mode,
+				initialFocus: options.focus === true,
 				floating: {
 					locked: state.locked,
 					alpha: state.alpha,
@@ -174,13 +185,15 @@ export class StickyNoteFloatLayer {
 			true,
 		);
 		this.raise(note.id);
-		this.deps.bridge.hub.patchFloatState(note.id, { ...whole.state, open: true });
+		if (this.deps.remembers) {
+			this.deps.bridge.hub.patchFloatState(note.id, { ...whole.state, open: true });
+		}
 		if (options.focus === true && state.mode !== 'editing') card.el.focus();
 		// The boards' float buttons show whether a note stands here.
 		this.deps.bridge.hub.notify();
 	}
 
-	/** The author put the panel away: remembered as closed. */
+	/** The author put the panel away, or the note was set aside: remembered as closed. */
 	close(id: string): void {
 		const panel = this.panels.get(id);
 		if (panel === undefined) return;
@@ -191,6 +204,10 @@ export class StickyNoteFloatLayer {
 
 	has(id: string): boolean {
 		return this.panels.has(id);
+	}
+
+	hasAny(): boolean {
+		return this.panels.size > 0;
 	}
 
 	/** Brings a panel over the others. */
@@ -204,19 +221,24 @@ export class StickyNoteFloatLayer {
 	/**
 	 * The project the window speaks for moved: panels of another project
 	 * are put away without touching what the device remembers of them, and
-	 * the notes of this project the device remembers open come back.
+	 * the notes of this project the device remembers open come back -- in
+	 * the main window, whose layer keeps that memory; a popout restores
+	 * nothing, since its panels were never written down.
 	 */
-	reconcile(projectPath: string | null, notes: readonly StickyNoteRecord[]): void {
+	reconcile(
+		project: StickyNoteFloatProject | null,
+		notes: readonly StickyNoteRecord[],
+	): void {
 		if (this.destroyed) return;
 		for (const [id, panel] of [...this.panels]) {
-			if (panel.projectPath !== projectPath) this.suspend(id, panel);
+			if (panel.projectPath !== project?.path) this.suspend(id, panel);
 		}
-		if (projectPath === null) return;
+		if (project === null || !this.deps.remembers) return;
 		for (const note of notes) {
 			if (note.archived || this.panels.has(note.id)) continue;
 			const remembered = this.deps.bridge.hub.floatState(note.id);
 			if (remembered?.open === true) {
-				this.open(note, projectPath, { mode: remembered.mode });
+				this.open(note, project, { mode: remembered.mode });
 			}
 		}
 	}
@@ -237,10 +259,17 @@ export class StickyNoteFloatLayer {
 		this.deps.plugin.removeChild(this.component);
 	}
 
-	/** The notes changed somewhere: each panel takes its note as the file now says it. */
+	/**
+	 * The notes changed somewhere: each panel takes its note as the file now
+	 * says it. A note set aside is closed, as the author might have closed
+	 * it; a note that cannot be read -- deleted, or its frontmatter broken,
+	 * or its project no longer the window's -- is put away with its memory
+	 * kept, so it comes back once it can be read again.
+	 */
 	private async refresh(): Promise<void> {
 		for (const [id, panel] of [...this.panels]) {
-			if (this.destroyed || !this.panels.has(id)) return;
+			if (this.destroyed) return;
+			if (!this.panels.has(id)) continue;
 			const held = panel.card.note;
 			if (this.deps.bridge.stamp(held.path) === held.stamp) continue;
 			let fresh = await this.deps.bridge.readNote(held.path);
@@ -249,8 +278,13 @@ export class StickyNoteFloatLayer {
 				const reading = await this.deps.bridge.read();
 				fresh = reading?.notes.find((note) => note.id === id) ?? null;
 			}
+			if (this.destroyed) return;
 			if (!this.panels.has(id)) continue;
-			if (fresh === null || fresh.archived) {
+			if (fresh === null) {
+				this.suspend(id, panel);
+				continue;
+			}
+			if (fresh.archived) {
 				this.close(id);
 				continue;
 			}
@@ -274,6 +308,7 @@ export class StickyNoteFloatLayer {
 	}
 
 	private persist(id: string): void {
+		if (!this.deps.remembers) return;
 		const panel = this.panels.get(id);
 		if (panel === undefined) return;
 		if (panel.persistTimer !== null) this.root.win.clearTimeout(panel.persistTimer);
@@ -288,7 +323,7 @@ export class StickyNoteFloatLayer {
 			this.root.win.clearTimeout(panel.persistTimer);
 			panel.persistTimer = null;
 		}
-		this.deps.bridge.hub.patchFloatState(id, panel.state);
+		if (this.deps.remembers) this.deps.bridge.hub.patchFloatState(id, panel.state);
 	}
 
 	private apply(id: string, panel: FloatingPanel, geometry: FloatGeometry): void {

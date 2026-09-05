@@ -29,7 +29,7 @@ import {
 	type StickyNoteMode,
 } from '../domain';
 import type { StickyNoteRecord } from '../services';
-import { followAnchor, placePanel } from './anchored-panel';
+import { hangPanel, placePanel } from './anchored-panel';
 import { clickedWords, type ClickedWords } from './clicked-words';
 import type { Translate } from './modals';
 import type {
@@ -74,6 +74,8 @@ export interface StickyNoteFloatingChrome {
 export interface StickyNoteCardOptions {
 	surface: StickyNoteSurface;
 	initialMode?: StickyNoteMode;
+	/** With `initialMode` editing: whether the caret is put in the note at once. */
+	initialFocus?: boolean;
 	floating?: StickyNoteFloatingChrome;
 	/** A set-aside note: shown as it is, never edited or floated; its tools are open, restore and delete. */
 	archived?: boolean;
@@ -100,6 +102,9 @@ export interface StickyNoteCardHandle {
 	flush(): Promise<void>;
 	dispose(): Promise<void>;
 }
+
+/** Each card answers to the claims as itself, not as its surface: see the constructor. */
+let cardSerial = 0;
 
 function iconButton(
 	parent: HTMLElement,
@@ -182,8 +187,6 @@ class StickyNoteCard implements StickyNoteCardHandle {
 	private editor: SegmentEditorHandle | null = null;
 	private mountedPath: string | null = null;
 	private session: StickyNoteEditSession | null = null;
-	/** Set when the file went away under the editor: leaving then writes nothing. */
-	private gone = false;
 	private swap: Promise<void> = Promise.resolve();
 	/** The one panel hanging off a head button: the colours or the transparency. */
 	private panel: { el: HTMLElement; anchor: HTMLElement; release(): void } | null = null;
@@ -199,8 +202,13 @@ class StickyNoteCard implements StickyNoteCardHandle {
 	) {
 		const t = deps.t;
 		this.note = note;
+		// One owner per card, not per surface: a card built for a note while
+		// the card it replaces is still flushing must wait for that one to let
+		// go, or the two would share one claim and one editor path -- the old
+		// card's unmount taking the new card's editor down with it.
+		cardSerial += 1;
 		this.owner = {
-			id: deps.ownerId,
+			id: `${deps.ownerId}/${String(cardSerial)}`,
 			release: () => this.setMode('viewing'),
 		};
 		this.el = host.createDiv({
@@ -343,7 +351,9 @@ class StickyNoteCard implements StickyNoteCardHandle {
 
 		}
 
-		const body = this.el.createDiv({ cls: 'snowflake-method-sticky-body' });
+		const body = this.el.createDiv({
+			cls: 'snowflake-method-sticky-body snowflake-method-two-faces',
+		});
 		this.bodyEl = body;
 		this.rendered = body.createDiv({
 			cls: 'snowflake-method-sticky-rendered markdown-rendered',
@@ -376,6 +386,12 @@ class StickyNoteCard implements StickyNoteCardHandle {
 			if (this.mode !== 'editing' || this.editor === null || event.button !== 0) return;
 			const target = event.target as HTMLElement | null;
 			if (target === null || target.closest('.cm-editor') !== null) return;
+			// The body is the scroll container: a press on its own scrollbar
+			// lands here too, and is a scroll, not a click below the text.
+			const box = body.getBoundingClientRect();
+			const x = event.clientX - box.left - body.clientLeft;
+			const y = event.clientY - box.top - body.clientTop;
+			if (x < 0 || y < 0 || x >= body.clientWidth || y >= body.clientHeight) return;
 			event.preventDefault();
 			this.editor.focus();
 			this.editor.enter('end');
@@ -405,7 +421,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		this.paintFloatButton();
 		this.render();
 		if (options.initialMode === 'editing' && !this.archived) {
-			void this.setMode('editing', true);
+			void this.setMode('editing', options.initialFocus === true);
 		}
 	}
 
@@ -415,20 +431,28 @@ class StickyNoteCard implements StickyNoteCardHandle {
 
 	update(note: StickyNoteRecord): void {
 		if (this.disposed) return;
-		const previousColor = this.note.color;
+		const previous = this.note;
 		if (this.mode === 'editing' && this.session !== null) {
 			if (this.session.take(note) === 'adopted') {
 				this.note = note;
 				if (this.session.pending === null) this.editor?.write(note.body);
 			} else {
 				// The typing goes on; only what the head shows follows the file.
-				this.note = { ...this.note, color: note.color, path: note.path };
+				this.note = {
+					...this.note,
+					color: note.color,
+					path: note.path,
+					createdAt: note.createdAt,
+					readOnly: note.readOnly,
+				};
 			}
 		} else {
 			this.note = note;
 			if (note.revision !== this.renderedRevision) this.render();
 		}
-		if (note.color !== previousColor) this.paintColor();
+		if (note.color !== previous.color) this.paintColor();
+		if (note.createdAt !== previous.createdAt) this.paintCreated();
+		if (note.readOnly !== previous.readOnly) this.paintModeButton();
 		this.paintFloatButton();
 	}
 
@@ -513,13 +537,18 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		// note meanwhile, and only its holder may mount.
 		if (this.disposed || claims.owner(this.note.id) !== this.owner.id) return;
 		const fresh = await this.deps.bridge.readNote(this.note.path);
-		if (fresh === null || this.disposed) {
+		// A note this build may only read -- written by a newer one -- takes
+		// no editor: every save from it would be refused.
+		if (fresh === null || fresh.readOnly || this.disposed) {
 			claims.release(this.note.id, this.owner.id);
+			if (fresh !== null) {
+				this.note = fresh;
+				this.paintModeButton();
+			}
 			return;
 		}
 		this.note = fresh;
 		this.paintColor();
-		this.gone = false;
 		this.editorEl.empty();
 		const preferences = this.deps.bridge.editorPreferences();
 		const handle = await this.deps.backend.mount(
@@ -562,8 +591,9 @@ class StickyNoteCard implements StickyNoteCardHandle {
 				new Notice(this.deps.t('stickyNotes.changedElsewhere'));
 			},
 			onGone: () => {
-				this.gone = true;
-				void this.setMode('viewing');
+				// The file is not there to write. The text stays on show, the
+				// session holding it: a rename lands the note again under its
+				// new name a moment later, and a deletion takes the card down.
 			},
 			onError: (error) => {
 				this.showError(error);
@@ -606,7 +636,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 			const gone = handle.seek(
 				clicked.passage,
 				clicked.lead,
-				clicked.rowTop,
+				{ rowTop: clicked.rowTop, pointerY: clicked.screenY },
 				clicked.near,
 			);
 			if (gone !== null && gone !== 0) this.bodyEl.scrollTop += gone;
@@ -623,7 +653,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		const mounted = this.mountedPath;
 		this.mountedPath = null;
 		if (session !== null) {
-			if (this.gone) await session.flush().catch(() => undefined);
+			if (session.gone) session.discard();
 			else await session.dispose();
 		}
 		if (mounted !== null) await this.deps.backend.unmount(mounted);
@@ -665,7 +695,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 	private onCardClick(event: MouseEvent): void {
 		const target = event.target as HTMLElement | null;
 		if (target === null || this.mode === 'editing') return;
-		const editable = !this.deps.readOnly && !this.archived;
+		const editable = !this.deps.readOnly && !this.note.readOnly && !this.archived;
 		// The head's buttons and grips do their own work, and a head that was
 		// just dragged was held, not clicked.
 		if (
@@ -838,37 +868,15 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		build: (panel: HTMLElement) => void,
 	): void {
 		this.closePanel();
-		const win = anchor.win;
-		const panel = win.activeDocument.body.createDiv({
+		const hung = hangPanel(anchor, {
 			cls,
-			attr: { role: 'dialog', 'aria-label': label },
-		});
-		build(panel);
-		const unfollow = followAnchor(panel, anchor, win);
-		const dismiss = (event: MouseEvent): void => {
-			const target = event.target as Node | null;
-			if (target === null) return;
-			if (panel.contains(target) || anchor.contains(target)) return;
-			this.closePanel();
-		};
-		const onKey = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') return;
-			this.closePanel();
-			anchor.focus();
-		};
-		win.addEventListener('mousedown', dismiss, true);
-		win.addEventListener('keydown', onKey, true);
-		anchor.setAttribute('aria-expanded', 'true');
-		this.panel = {
-			el: panel,
-			anchor,
-			release: () => {
-				win.removeEventListener('mousedown', dismiss, true);
-				win.removeEventListener('keydown', onKey, true);
-				unfollow();
-				anchor.setAttribute('aria-expanded', 'false');
+			label,
+			build,
+			onClose: () => {
+				this.closePanel();
 			},
-		};
+		});
+		this.panel = { el: hung.el, anchor, release: hung.release };
 	}
 
 	private closePanel(): void {
@@ -899,7 +907,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		const label = this.deps.t(editing ? 'stickyNotes.view' : 'stickyNotes.edit');
 		this.modeButton.setAttribute('aria-label', label);
 		setTooltip(this.modeButton, label);
-		this.modeButton.disabled = this.deps.readOnly && !editing;
+		this.modeButton.disabled = (this.deps.readOnly || this.note.readOnly) && !editing;
 	}
 
 	private paintFloatButton(): void {

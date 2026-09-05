@@ -1,9 +1,11 @@
 import {
 	OCCURRENCE_ROLES,
+	isOccurrenceRole,
 	type Foreshadowing,
 	type ForeshadowingOccurrence,
 	type OccurrenceRole,
 } from '../domain';
+import { addEnumSelect } from './entity-form';
 import type { Translate } from './modals';
 import type { RailParts } from './rail-parts';
 
@@ -180,7 +182,7 @@ export function renderForeshadowingCard(
 	parts.actionButton(actions, t('manuscript.foreshadowing.open'), () => {
 		callbacks.onOpen(entry.item);
 	});
-	parts.actionButton(actions, t('manuscript.foreshadowing.edit'), options.beginEdit);
+	parts.actionButton(actions, t('actions.edit'), options.beginEdit);
 	parts.actionButton(
 		actions,
 		t('manuscript.foreshadowing.delete'),
@@ -277,17 +279,15 @@ export function renderForeshadowingForm(
 		'role-pick',
 		t('manuscript.foreshadowing.role'),
 	);
-	const select = roleField.createEl('select', {
+	const select = addEnumSelect(roleField, {
 		cls: 'dropdown snowflake-method-rail-select',
-		attr: { 'aria-label': t('manuscript.foreshadowing.role') },
+		ariaLabel: t('manuscript.foreshadowing.role'),
+		values: OCCURRENCE_ROLES,
+		label: (role) => t(`foreshadowing.role.${role}`),
+		initial: entry.occurrence.role,
+		is: isOccurrenceRole,
+		fallback: entry.occurrence.role,
 	});
-	for (const role of OCCURRENCE_ROLES) {
-		select.createEl('option', {
-			text: t(`foreshadowing.role.${role}`),
-			attr: { value: role },
-		});
-	}
-	select.value = entry.occurrence.role;
 	const noteInput = parts.inputBlock(
 		fields,
 		'note',
@@ -298,16 +298,14 @@ export function renderForeshadowingForm(
 		},
 	);
 	const actions = parts.actionRow(card, 'end');
-	parts.actionButton(actions, t('manuscript.foreshadowing.cancel'), () => {
+	parts.actionButton(actions, t('common.cancel'), () => {
 		options.onCancel();
 	});
 	parts.actionButton(
 		actions,
-		t('manuscript.foreshadowing.save'),
+		t('common.save'),
 		() => {
-			const role = (OCCURRENCE_ROLES as readonly string[]).includes(select.value)
-				? (select.value as OccurrenceRole)
-				: entry.occurrence.role;
+			const role = isOccurrenceRole(select.value) ? select.value : entry.occurrence.role;
 			options.onSave({ role, note: noteInput.value });
 		},
 		'primary',

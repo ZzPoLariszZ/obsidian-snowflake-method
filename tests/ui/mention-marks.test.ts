@@ -251,6 +251,20 @@ describe('banding the foreshadowing dress', () => {
 		expect(bands[1]?.map((span) => [span.mark.from, span.mark.to])).toEqual([[9, 14]]);
 	});
 
+	it('keeps a span out of every band up to the one holding its container', () => {
+		// A first span disjoint from the inner one would take it into its own
+		// band, ahead of the container that sorts between them; the container
+		// would then be applied in pieces around the inner span.
+		const bands = markBands(
+			spansOf([thread('a', [[0, 8]]), thread('b', [[4, 24]]), thread('c', [[10, 14]])]),
+		);
+		expect(bands.map((band) => band.map((span) => [span.mark.from, span.mark.to]))).toEqual([
+			[[0, 8]],
+			[[4, 24]],
+			[[10, 14]],
+		]);
+	});
+
 	it('gives three mutually overlapping occurrences three bands, each disjoint and ascending', () => {
 		const bands = markBands(
 			spansOf([thread('a', [[4, 20]]), thread('b', [[9, 28]]), thread('c', [[15, 36]])]),

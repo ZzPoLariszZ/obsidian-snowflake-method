@@ -163,11 +163,13 @@ export function applyForeshadowingMarks(
 /**
  * Spans split into layers, none of which overlaps within itself: the
  * interval partition, greedy first-fit over spans sorted by where they begin
- * with the longer of two at one place first, which puts a container in an
- * earlier band than anything it contains. Each band comes out ascending,
- * which the wrap's cursor walk requires, and every span keeps the index it
- * was given, so the cards' lookup is not disturbed. Pure, so the policy is
- * testable without a DOM.
+ * with the longer of two at one place first -- and a span never joins a
+ * band at or before the band of a span that contains it, so a container is
+ * always applied before anything inside it, even where a disjoint earlier
+ * span would have made room for the inner one first. Each band comes out
+ * ascending, which the wrap's cursor walk requires, and every span keeps the
+ * index it was given, so the cards' lookup is not disturbed. Pure, so the
+ * policy is testable without a DOM.
  */
 export function markBands(
 	spans: readonly RenderedMentionSpan[],
@@ -176,13 +178,26 @@ export function markBands(
 		(left, right) => left.from - right.from || right.to - left.to,
 	);
 	const bands: RenderedMentionSpan[][] = [];
+	const bandOf = new Map<RenderedMentionSpan, number>();
 	for (const span of sorted) {
-		const band = bands.find((candidate) => {
-			const last = candidate[candidate.length - 1];
-			return last === undefined || last.to <= span.from;
-		});
+		// Every container of this span sorted before it and is placed already.
+		let floor = 0;
+		for (const [placed, index] of bandOf) {
+			if (placed.from <= span.from && placed.to >= span.to && index >= floor) {
+				floor = index + 1;
+			}
+		}
+		let at = floor;
+		while (at < bands.length) {
+			const band = bands[at];
+			const last = band?.[band.length - 1];
+			if (last === undefined || last.to <= span.from) break;
+			at += 1;
+		}
+		const band = bands[at];
 		if (band === undefined) bands.push([span]);
 		else band.push(span);
+		bandOf.set(span, at);
 	}
 	return bands;
 }

@@ -62,7 +62,7 @@ export interface JsonRecordShape<T> {
 }
 
 /** What a reading of the file came to. */
-export type JsonRecordFileReading<T> =
+type JsonRecordFileReading<T> =
 	| {
 			state: "read";
 			records: T[];

@@ -13,6 +13,8 @@ import {
 } from 'obsidian';
 
 import {
+	DIALOGUE_PRESENTATIONS,
+	MENTION_HIGHLIGHT_MODES,
 	analyzeMentions,
 	anchorOccurrence,
 	anchorRevision,
@@ -21,26 +23,12 @@ import {
 	captureOccurrencePlacement,
 	captureRevision,
 	combineMentionMarks,
-	type CompiledHighlightRules,
-	countsCharacters,
-	DIALOGUE_PRESENTATIONS,
-	type DialoguePresentation,
-	dialogueRanges,
-	type DialogueStyle,
-	type EntityMatcher,
-	type EntityOccurrence,
-	MENTION_HIGHLIGHT_MODES,
-	type MentionCandidate,
-	type MentionIgnore,
-	type MentionMark,
-	milestonePositions,
 	compareOccurrencesAtOneSpot,
 	compareRevisionsAtOneSpot,
-	type Foreshadowing,
-	type ForeshadowingOccurrence,
-	type ForeshadowingPlan,
-	type OccurrencePlacement,
-	type OccurrenceRole,
+	countsCharacters,
+	dialogueRanges,
+	fileStem,
+	milestonePositions,
 	orderOccurrences,
 	orderRevisions,
 	overlapsLive,
@@ -54,12 +42,25 @@ import {
 	planSensitiveMarks,
 	presentationShape,
 	presentationStyle,
-	type Revision,
 	revisionKindFor,
-	type RevisionPlan,
-	type SensitiveMatcher,
 	sensitiveOccurrencesOf,
 	splitMentionIgnores,
+	type CompiledHighlightRules,
+	type DialoguePresentation,
+	type DialogueStyle,
+	type EntityMatcher,
+	type EntityOccurrence,
+	type MentionCandidate,
+	type MentionIgnore,
+	type MentionMark,
+	type Foreshadowing,
+	type ForeshadowingOccurrence,
+	type ForeshadowingPlan,
+	type OccurrencePlacement,
+	type OccurrenceRole,
+	type Revision,
+	type RevisionPlan,
+	type SensitiveMatcher,
 	type WritingCountHeadings,
 	type WritingCountMode,
 } from '../domain';
@@ -360,9 +361,14 @@ export class SnowflakeManuscriptView extends ItemView {
 	 */
 	private unresolvedSweep: {
 		feed: readonly Foreshadowing[];
+		/** The stamps of the chapters carrying occurrences when the sweep ran. */
+		stamps: string;
 		any: boolean;
 	} | null = null;
-	private unresolvedSweepPending: readonly Foreshadowing[] | null = null;
+	private unresolvedSweepPending: {
+		feed: readonly Foreshadowing[];
+		stamps: string;
+	} | null = null;
 	private occurrenceOrderMemo: {
 		foreshadowings: readonly Foreshadowing[];
 		segments: readonly unknown[];
@@ -1920,7 +1926,8 @@ export class SnowflakeManuscriptView extends ItemView {
 	/**
 	 * Where one occurrence's card belongs. An occurrence is always a range
 	 * with a mark of its own, so nothing is borrowed; a mark the wrap
-	 * declined to draw measures null and the card follows the one above it.
+	 * declined to draw measures null, and the card keeps the top it last
+	 * stood at, or joins the head of the rail when it never had one.
 	 */
 	private foreshadowingAnchorTop(
 		entry: MountedSegment,
@@ -2195,19 +2202,18 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (editing === null) return null;
 		const selection = editing.selection();
 		if (selection.from === selection.to) return null;
-		return captureOccurrencePlacement(
-			entry.path,
-			editing.read(),
-			selection.from,
-			selection.to,
-		);
+		const body = editing.read();
+		// Blank lines and spaces alone are no passage: the mark would have
+		// nothing to draw, and the card nothing to stand beside.
+		if (body.slice(selection.from, selection.to).trim().length === 0) return null;
+		return captureOccurrencePlacement(entry.path, body, selection.from, selection.to);
 	}
 
 	/** The chapter's name as the stream shows it, for a dialog's place line. */
 	private segmentTitle(path: string): string {
 		return (
 			this.model?.segments.find((segment) => segment.path === path)?.title ??
-			(path.split('/').pop() ?? path).replace(/\.md$/u, '')
+			fileStem(path)
 		);
 	}
 
@@ -2293,7 +2299,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		const passage = entry === undefined ? null : this.selectedPassage(entry);
 		if (passage === null) return;
 		const projectPath = this.model?.projectPath ?? this.projectPath;
-		const items = await this.host.manuscriptForeshadowings(projectPath);
+		// In the table's order, so the picker reads as the dashboard does.
+		const items = await this.host.orderedForeshadowings(projectPath);
 		if (items.length === 0) {
 			new Notice(this.t('manuscript.foreshadowing.pickEmpty'));
 			return;
@@ -2359,7 +2366,11 @@ export class SnowflakeManuscriptView extends ItemView {
 			titles,
 			{ title: this.segmentTitle(path), text: passage.originalText },
 			async ({ foreshadowingId, occurrenceId }) => {
-				await this.commitRelink(path, passage, foreshadowingId, occurrenceId);
+				const item = waiting.find((entry) => entry.item.id === foreshadowingId)?.item;
+				if (item === undefined) {
+					throw new Error(this.t('manuscript.foreshadowing.refused'));
+				}
+				await this.commitRelink(path, passage, item, occurrenceId);
 			},
 		);
 	}
@@ -2387,50 +2398,77 @@ export class SnowflakeManuscriptView extends ItemView {
 			return true;
 		}
 		const sweep = this.unresolvedSweep;
-		if (sweep !== null && sweep.feed === threads) return sweep.any;
+		const stamps = this.occurrenceStamps(threads);
+		if (sweep !== null && sweep.feed === threads && sweep.stamps === stamps) {
+			return sweep.any;
+		}
 		this.sweepUnresolved(this.model?.projectPath ?? this.projectPath, threads);
 		return false;
 	}
 
 	/**
-	 * Reads the chapters carrying occurrences once per feed, and only when
-	 * the feed holds any: a feed of empty threads has nothing to relink.
+	 * Reads the chapters carrying occurrences once per feed and per state of
+	 * those chapters -- a chapter written from anywhere, a Markdown tab or a
+	 * sync included, moves its stamp and asks for a fresh sweep -- and only
+	 * when the feed holds any: a feed of empty threads has nothing to relink.
 	 */
 	private sweepUnresolved(
 		projectPath: string | null,
 		feed: readonly Foreshadowing[],
 	): void {
-		if (this.unresolvedSweep?.feed === feed || this.unresolvedSweepPending === feed) {
-			return;
-		}
+		const stamps = this.occurrenceStamps(feed);
+		const same = (
+			kept: { feed: readonly Foreshadowing[]; stamps: string } | null,
+		): boolean => kept !== null && kept.feed === feed && kept.stamps === stamps;
+		if (same(this.unresolvedSweep) || same(this.unresolvedSweepPending)) return;
 		if (feed.every((item) => item.occurrences.length === 0)) {
-			this.unresolvedSweep = { feed, any: false };
+			this.unresolvedSweep = { feed, stamps, any: false };
 			return;
 		}
-		this.unresolvedSweepPending = feed;
+		const pending = { feed, stamps };
+		this.unresolvedSweepPending = pending;
 		void this.host
 			.unresolvedForeshadowingOccurrences(projectPath)
 			.then((waiting) => {
-				if (this.unresolvedSweepPending !== feed) return;
+				if (this.unresolvedSweepPending !== pending) return;
 				this.unresolvedSweepPending = null;
-				this.unresolvedSweep = { feed, any: waiting.length > 0 };
+				this.unresolvedSweep = { feed, stamps, any: waiting.length > 0 };
 			})
 			.catch(() => {
-				if (this.unresolvedSweepPending === feed) this.unresolvedSweepPending = null;
+				if (this.unresolvedSweepPending === pending) this.unresolvedSweepPending = null;
 			});
+	}
+
+	/** The chapters carrying occurrences, each with its stamp: what a sweep's answer holds for. */
+	private occurrenceStamps(feed: readonly Foreshadowing[]): string {
+		const paths = new Set<string>();
+		for (const item of feed) {
+			for (const occurrence of item.occurrences) paths.add(occurrence.path);
+		}
+		return [...paths]
+			.sort()
+			.map((path) => `${path}@${this.host.manuscriptSegmentStamp(path) ?? ''}`)
+			.join('\n');
 	}
 
 	/** The relink itself: the passage proved again, then written whole. */
 	private async commitRelink(
 		path: string,
 		passage: OccurrencePlacement,
-		foreshadowingId: string,
+		item: Foreshadowing,
 		occurrenceId: string,
 	): Promise<void> {
 		const { body, from, to } = this.provePassage(path, passage);
+		// The rule adding keeps: one thread marks one passage once.
+		const duplicate = item.occurrences.some((held) => {
+			if (held.id === occurrenceId || held.path !== path) return false;
+			const anchor = anchorOccurrence(body, held);
+			return anchor.state !== 'conflict' && anchor.from === from && anchor.to === to;
+		});
+		if (duplicate) throw new Error(this.t('manuscript.foreshadowing.duplicate'));
 		const took = await this.host.relinkForeshadowingOccurrence(
 			this.model?.projectPath ?? this.projectPath,
-			foreshadowingId,
+			item.id,
 			occurrenceId,
 			captureOccurrencePlacement(path, body, from, to),
 		);
@@ -2891,7 +2929,11 @@ export class SnowflakeManuscriptView extends ItemView {
 									...this.host.manuscriptDressFeeds(),
 								};
 					if (this.mentionFeed === fetched) this.mentionState = state;
-					if (state !== null) this.sweepUnresolved(shown, state.foreshadowings);
+					// Only the feed still current is swept: a superseded fetch
+					// landing late would file its answer under a stale array.
+					if (state !== null && this.mentionFeed === fetched) {
+						this.sweepUnresolved(shown, state.foreshadowings);
+					}
 					return state;
 				})
 				.catch(() => {
@@ -3389,7 +3431,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		const el = stream.createDiv({ cls: 'snowflake-method-segment' });
 		el.dataset.path = path;
 		this.renderSegmentHeader(el, segment);
-		const bodyEl = el.createDiv({ cls: 'snowflake-method-segment-body' });
+		const bodyEl = el.createDiv({
+			cls: 'snowflake-method-segment-body snowflake-method-two-faces',
+		});
 		const entry: MountedSegment = {
 			path,
 			el,
@@ -3935,13 +3979,17 @@ export class SnowflakeManuscriptView extends ItemView {
 		win.requestAnimationFrame(again);
 	}
 
-	/** Scrolls the words a click landed on back to where the pointer left them. */
+	/**
+	 * Scrolls the words a click landed on back to where they stood: the top
+	 * of their row, so the row lands where the rendered row was, not a glyph
+	 * lower at the pointer's own height.
+	 */
 	private putBack(entry: MountedSegment, clicked: ClickedWords): void {
 		const stream = this.streamEl;
 		const gone = entry.editor?.seek(
 			clicked.passage,
 			clicked.lead,
-			clicked.screenY,
+			{ rowTop: clicked.rowTop, pointerY: clicked.screenY },
 			clicked.near,
 		);
 		if (stream === null || gone === null || gone === undefined || gone === 0) {

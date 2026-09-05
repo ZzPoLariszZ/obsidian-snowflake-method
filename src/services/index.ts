@@ -2,6 +2,7 @@ export * from "./definition-files";
 export * from "./foreshadowing-service";
 export * from "./foreshadowing-store";
 export * from "./json-record-store";
+export * from "./margin-records";
 export * from "./manuscript-export";
 export * from "./manuscript-service";
 export * from "./manuscript-analysis";

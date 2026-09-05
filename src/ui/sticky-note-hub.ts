@@ -41,6 +41,11 @@ export class StickyNoteHub {
 		return this.state.notes[id]?.float ?? null;
 	}
 
+	/** Whether any note is remembered floating: all a restore has to go on. */
+	anyOpen(): boolean {
+		return Object.values(this.state.notes).some((note) => note.float.open);
+	}
+
 	patchFloatState(id: string, patch: Partial<StickyNoteFloatState>): void {
 		this.state = patchStickyNoteFloatState(this.state, id, patch);
 		this.deps.save(this.state);

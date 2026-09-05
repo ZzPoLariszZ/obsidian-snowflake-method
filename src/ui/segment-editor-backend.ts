@@ -575,7 +575,7 @@ export interface SegmentEditorHandle {
 	seek(
 		passage: string,
 		lead: number,
-		screenY: number,
+		anchor: { rowTop: number; pointerY: number },
 		near: number,
 	): number | null;
 	/**
@@ -857,7 +857,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			seek: (
 				passage: string,
 				lead: number,
-				screenY: number,
+				anchor: { rowTop: number; pointerY: number },
 				near: number,
 			) => {
 				const source = view.state.doc.toString();
@@ -871,7 +871,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 					found === null
 						? view.posAtCoords({
 								x: view.dom.getBoundingClientRect().left + 8,
-								y: screenY,
+								y: anchor.pointerY,
 							})
 						: found;
 				if (position === null) return null;
@@ -887,8 +887,11 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 					});
 				}
 				if (found === null) return null;
+				// Measured from the top of the row the click was on, so the
+				// caller lands the row where it stood rather than a glyph lower,
+				// at the pointer's own height.
 				const coords = view.coordsAtPos(position);
-				return coords === null ? null : coords.top - screenY;
+				return coords === null ? null : coords.top - anchor.rowTop;
 			},
 			place: (screenY: number) => {
 				const box = view.contentDOM.getBoundingClientRect();

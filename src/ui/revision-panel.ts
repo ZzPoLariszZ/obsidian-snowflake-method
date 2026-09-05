@@ -25,6 +25,7 @@ import {
 	type Revision,
 } from '../domain';
 import type { Translate } from './modals';
+import { renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { VirtualTable, buildTableFrame } from './virtual-table';
 
@@ -207,15 +208,7 @@ export function renderRevisionPanel(
 
 	// The tracking sections' own empty sentence, shown in the table's place: a
 	// grid with a header and no rows says less than one line saying so.
-	const emptyLine = root.createEl('p', {
-		cls: 'snowflake-method-character-empty',
-	});
-	const emptyIcon = emptyLine.createSpan({
-		cls: 'snowflake-method-character-empty-icon',
-		attr: { 'aria-hidden': 'true' },
-	});
-	setIcon(emptyIcon, 'triangle-alert');
-	emptyLine.createSpan({ text: t('revisionTable.empty') });
+	const { line: emptyLine } = renderEmptyLine(root, t('revisionTable.empty'));
 
 	const heights = new Map<string, number>();
 	/** Everything read, and the part of it the search leaves standing. */

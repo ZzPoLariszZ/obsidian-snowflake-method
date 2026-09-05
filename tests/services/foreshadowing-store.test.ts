@@ -309,10 +309,12 @@ describe("ForeshadowingService", () => {
 		expect((await threads.list(project)).map((item) => item.id)).toEqual(["fs-1", "fs-2"]);
 	});
 
-	it("edits a thread in one write, deleting what the form left out", async () => {
+	it("edits a thread in one write: what the form took out goes, what it never saw stays", async () => {
 		const kept = occurrence("kept", 4, 14);
 		const gone = occurrence("gone", 30, 38);
-		await threads.create(project, makeItem("fs-1", { occurrences: [kept, gone] }));
+		// Added from the stream while the form stood open: not the form's to drop.
+		const later = occurrence("later", 15, 20);
+		await threads.create(project, makeItem("fs-1", { occurrences: [kept, gone, later] }));
 		const writes = vi.spyOn(service.repository, "updatePlainFile");
 		clock = 200;
 		expect(
@@ -328,6 +330,7 @@ describe("ForeshadowingService", () => {
 					{ id: "kept", role: "payoff", note: "  found  " },
 					{ id: "never-there", role: "plant", note: "" },
 				],
+				removed: ["gone"],
 			}),
 		).toBe("written");
 		expect(writes).toHaveBeenCalledTimes(1);
@@ -340,7 +343,7 @@ describe("ForeshadowingService", () => {
 			updatedAt: 200,
 		});
 		expect(item?.related.map((ref) => ref.name)).toEqual(["Alice Grey", "Silver key"]);
-		expect(item?.occurrences).toEqual([{ ...kept, role: "payoff", note: "found" }]);
+		expect(item?.occurrences).toEqual([{ ...kept, role: "payoff", note: "found" }, later]);
 	});
 
 	it("an edit saying what already stands writes nothing and still answers written", async () => {
@@ -355,6 +358,7 @@ describe("ForeshadowingService", () => {
 				status: item.status,
 				related: item.related,
 				occurrences: item.occurrences.map(({ id, role, note }) => ({ id, role, note })),
+				removed: [],
 			}),
 		).toBe("written");
 		expect(fakeVault.contents.get(FILE)).toBe(written);
@@ -369,6 +373,7 @@ describe("ForeshadowingService", () => {
 			status: "planned" as const,
 			related: [],
 			occurrences: [],
+			removed: [],
 		};
 		expect(await threads.edit(project, "fs-9", edit)).toBe("absent");
 		expect(await threads.addOccurrence(project, "fs-9", occurrence("o", 4, 14))).toBe("absent");

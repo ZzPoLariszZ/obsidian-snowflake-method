@@ -107,9 +107,10 @@ export interface ForeshadowingRef {
 }
 
 /**
- * Everything the edit form saves at once: the thread's own limbs and the
- * role and note of every occurrence that survives. An occurrence left out
- * is deleted; the places are never touched from here.
+ * Everything the edit form saves at once: the thread's own limbs, the role
+ * and note of every occurrence the form showed, and the occurrences it took
+ * out. One the form never saw -- added from the stream while the form stood
+ * open -- is kept as it stands; the places are never touched from here.
  */
 export interface ForeshadowingEdit {
 	name: string;
@@ -117,6 +118,7 @@ export interface ForeshadowingEdit {
 	status: ForeshadowingStatus;
 	related: EntityRef[];
 	occurrences: { id: string; role: OccurrenceRole; note: string }[];
+	removed: string[];
 }
 
 // --- reading stored shapes -------------------------------------------------
@@ -220,6 +222,17 @@ export function readForeshadowing(value: unknown): Foreshadowing | null {
 }
 
 // --- capture and anchoring -------------------------------------------------
+
+/**
+ * Whether an occurrence's words are lost to its note: no body to read, or
+ * none the anchor finds. The one rule every surface reads standing by.
+ */
+export function occurrenceUnresolved(
+	body: string | null,
+	occurrence: ForeshadowingOccurrence,
+): boolean {
+	return body === null || anchorOccurrence(body, occurrence).state === 'conflict';
+}
 
 /** A place read off the body it was picked in, so every caller stores one truth. */
 export function captureOccurrencePlacement(

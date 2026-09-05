@@ -518,6 +518,10 @@ export interface ManuscriptHost {
 	manuscriptForeshadowings(
 		projectPath: string | null,
 	): Promise<readonly Foreshadowing[]>;
+	/** The same threads in the order the dashboard's table lists them, for a picker. */
+	orderedForeshadowings(
+		projectPath: string | null,
+	): Promise<readonly Foreshadowing[]>;
 	/**
 	 * Writes one thread, then re-dresses streams and dashboards. False when
 	 * the write did not happen -- no project answers for the path, the

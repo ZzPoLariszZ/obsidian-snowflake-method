@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   CUSTOM_KIND_PREFIXES,
+  DEFAULT_STICKY_NOTE_COLOR,
   SCENE_POV_MULTIPLE,
   SCENE_POV_OMNISCIENT,
   SCHEMA_VERSION,
@@ -337,6 +338,49 @@ describe("SnowflakeProjectService", () => {
       }),
     ]);
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
+  it("reports a sticky note whose frontmatter will not parse, beyond repair", async () => {
+    const project = await service.createProject({ name: "Older layout" });
+    const path = `${project.rootPath}/70_Tool/72_Task_Management/724_Sticky_Note/broken.md`;
+    // A hand-made slip in the block: every surface would lose the note
+    // quietly, so the report is the one place that can say so.
+    await fakeVault.create(path, "---\naliases: [draft\nsnowflake-document: sticky-note\n---\nWords.\n");
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter((issue) => issue.path === path);
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "invalid-artifact-metadata",
+        path,
+        stepIds: [],
+        repairable: false,
+        blocking: true,
+      }),
+    ]);
+  });
+
+  it("leaves a sticky note's off-palette colour, odd birth and worded flag to the lenient reader", async () => {
+    const project = await service.createProject({ name: "Older layout" });
+    const path = `${project.rootPath}/70_Tool/72_Task_Management/724_Sticky_Note/soft.md`;
+    await fakeVault.create(
+      path,
+      `---\n${JSON.stringify({
+        "snowflake-document": "sticky-note",
+        "snowflake-project-id": project.id,
+        "snowflake-sticky-note-id": "sticky-note-soft",
+        "snowflake-sticky-note-color": "neon",
+        "snowflake-created": "yesterday",
+        "snowflake-archived": "true",
+        "snowflake-schema": 3,
+      })}\n---\nWords.\n`,
+    );
+
+    const seen = await service.loadProject(project.projectFile);
+    expect(seen.structureIssues.filter((issue) => issue.path === path)).toEqual([]);
+    // What every surface makes of the same values.
+    const [note] = await service.stickyNotes.list(project);
+    expect(note).toMatchObject({ path, color: DEFAULT_STICKY_NOTE_COLOR, archived: true });
   });
 
   it("creates the on-demand folder when the report is asked to", async () => {
