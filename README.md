@@ -56,6 +56,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Writing sessions | Time each sitting, aim at a daily goal, and read back where the words and the hours went. |
 | Prose analysis | Read the draft back as reading time, sentences, dialogue share, and the words you lean on. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions where they stand. |
+| Task board | Put everything waiting on a Kanban of your own tasks and the ones the plugin derives from your writing. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript, and change the chapter only when the proposal is accepted. |
 | Revision awareness | Receive non-blocking reminders when upstream material changes. |
 | Foreshadowing | Follow a thread from its plant to its payoff, marked at every passage that carries it and listed with all of them. |
@@ -173,7 +174,11 @@ In the manuscript stream, click any chapter and it becomes an editing view, and 
 
 ### Task management
 
-The work around the writing has a pane of its own. The dashboard's **Task management** pane keeps four tabs, each holding a different kind of note to self. **Tasks** is still in the planning stage. The other three are below.
+The work around the writing has a pane of its own. The dashboard's **Task management** pane keeps four tabs, each holding a different kind of note to self.
+
+**Tasks** puts everything waiting on one board of six columns, from To do to Done. Your own tasks are cards you write, holding a title, a description, a priority, a due date and the entities the task is about, made by **Add task** on the tab or **New task** in the Command palette, dragged within a column to reorder and into another to change status, with edit, archive and delete on the card's own menu. The rest of the board the plugin fills itself, afresh on every read: the daily, weekly and monthly writing goals moving through the columns as the words land, the foreshadowing and revisions still standing and the ones whose words have changed underneath, the mentions no entity can claim, your sensitive words, and the sticky notes waiting to be read. Clicking one opens the tab it was counted from, narrowed to what it counted, and the Command palette sets them all aside. The band above searches every card and narrows the board by kind, priority and due date, and **Archived** folds underneath with a search of its own, where a card is restored or deleted.
+
+<p align="center"><a href="assets/screenshots/task_kanban_en.png"><img src="assets/screenshots/task_kanban_en.png" width="100%" alt="The Task management pane's Tasks tab as a Kanban: To do holding derived cards for open foreshadowings, pending revisions and sticky notes to review above an urgent task with its due date, In progress holding the daily, weekly and monthly writing goals with their word counts, Blocked holding a high-priority task and an overdue low-priority one, and a collapsed archive under the board" /></a></p>
 
 **Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread and choose **Create foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**, each marked as a plant, a reinforcement or the payoff, while the thread itself is planned, active, resolved or abandoned. Every occurrence is marked where it stands in the prose and keeps a card in the margin at the chapter's right, holding the role, the thread's status, its name and description, the words marked and a note of your own. An occurrence follows its words as you write above and around them, and words you rewrite directly leave it unresolved rather than lost, to be put back on the passage that replaced them. The tab gives every occurrence a row, searched by name and narrowed by status, by role, or to the unresolved alone.
 
@@ -275,6 +280,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Insert a manuscript note after this one | Add a note directly after the one being read. |
 | Insert a manuscript note before this one | Add a note directly before the one being read. |
 | New sticky note | Make a sticky note in the current project and open it floating. |
+| New task | Add a task to the current project's board. |
 | Open character base | Open the Bases view of the current project's characters. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
@@ -295,6 +301,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Stop the writing session | End the running session and file its record. |
 | Switch statistics scope | Read the statistics for the whole project, or the manuscript alone. |
 | Toggle custom highlights | Apply your own highlight rules to the manuscript, or set them aside. |
+| Toggle derived tasks on the task board | Show or hide the cards the plugin derives from your writing. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle managed boundary protection | Temporarily change protection for managed section markers. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
@@ -433,6 +440,8 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   │       ├── mention_ignores.json
     │   │       └── <device>_mention_index.json
     │   └── 72_Task_Management/
+    │       ├── 721_Task/
+    │       │   └── tasks.json
     │       ├── 722_Foreshadowing/
     │       │   └── foreshadowing.json
     │       ├── 723_Revision/
@@ -583,6 +592,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都去了哪里。 |
 | 正文分析 | 把草稿读成阅读时间、句数、对话占比，以及你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品贯穿正文的足迹，并在原处标出它们的提及。 |
+| 任务看板 | 把待办的事情摆上看板，既有你自己写下的任务，也有插件从你的写作中派生出来的任务。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只在接受时才改动正文。 |
 | 修订提醒 | 上游材料变化时给出不打断写作的复核提示。 |
 | 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们一并列出。 |
@@ -700,9 +710,13 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 任务管理
 
-写作之外的事务，自有一块面板。工作台的**任务管理**面板共有四个标签页，每个承载一类给自己的记录。其中**任务**仍处于规划阶段，其余三个如下。
+写作之外的事务，自有一块面板。工作台的**任务管理**面板共有四个标签页，每个承载一类给自己的记录。
 
-**伏笔**顺着一条线索，从埋设一路走到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**，此后的段落用**加入已有伏笔**并入同一条线索，每一处标为埋设、强化或回收，线索本身则处于计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片，写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作时也不会走失，若你直接改写了那段文字，它只是变为未解决，而不会丢失，可以再接到替换后的段落上。标签页中每一处落点各占一行，可按名称搜索，也可按状态、环节或仅未解决筛选。
+**任务**把所有待办的事情摆在一块看板上，共有六列，从待处理一直到已完成。你自己的任务是一张张卡片，写着标题、描述、优先级、截止日期，以及所关联的实体，由标签页上的**添加任务**或命令面板中的**新建任务**新建，可以在同一列中拖动排序，也可以拖到另一列来改变状态，编辑、归档与删除都在卡片自己的菜单里。看板的另一半由插件自己填上，每次读取都重新算出：每日、每周与每月的写作目标，随着字数落下在列间前进，仍然立着的伏笔与修订，以及文字已在其下改动过的那些，无法归到某一个实体名下的提及，你列出的敏感词，还有等着查看的便签。点击其中一张，便会打开它所计的那个标签页，并按它所计的内容收窄，命令面板也可以把它们整个收起。看板上方的搜索会搜遍每一张卡片，也可以按类型、优先级与截止日期收窄，**已归档**折叠在看板下方，有自己的搜索，可在其中恢复或删除。
+
+<p align="center"><a href="assets/screenshots/task_kanban_cn.png"><img src="assets/screenshots/task_kanban_cn.png" width="100%" alt="任务管理面板的任务标签页，是一块看板：待处理列中先是待回收的伏笔、待处理的修订与待查看的便签三张派生卡片，其后是一条带截止日期的紧急任务，进行中列里是每日、每周与每月写作目标及各自的字数，阻塞中列里是一条高优先级任务与一条已经过期的低优先级任务，看板下方是折叠起来的归档" /></a></p>
+
+**伏笔**顺着一条线索，从埋设一路走到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**，此后的段落用**加入已有伏笔**并入同一条线索，每一处标为埋设、强化或回收，线索本身则处于计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片，写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作时也不会走失，若你直接改写了那段文字，它只是锚点失效，而不会丢失，可以再接到替换后的段落上。标签页中每一处落点各占一行，可按名称搜索，也可按状态、环节或仅锚点失效筛选。
 
 <p align="center"><a href="assets/screenshots/foreshadowing_cn.png"><img src="assets/screenshots/foreshadowing_cn.png" width="100%" alt="正文流中一章里标出的两处伏笔落点，右侧页边各有一张卡片，写着环节与状态、伏笔的名称与描述、所标的文字、备注，以及打开、编辑与删除" /></a></p>
 
@@ -811,6 +825,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 暂停或继续写作时段 | 冻结正在进行的时段的计时，或让它继续走。 |
 | 停止写作时段 | 结束正在进行的时段，并写下它的记录。 |
 | 打开写作统计 | 在独立的侧栏中打开当天的写作读数。 |
+| 新建任务 | 在当前项目的看板上添加一条任务。 |
 | 新建便签 | 在当前项目中新建一张便签，并以悬浮面板打开。 |
 | 打开便签 | 在独立的侧栏中打开当前项目的便签。 |
 | 切换数据统计范围 | 在整个项目与仅正文稿之间切换统计范围。 |
@@ -826,6 +841,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 切换从字段新建笔记时是否打开表单 | 选择从字段新建的笔记是先打开表单还是直接创建。 |
 | 切换表格中的进度状态 | 显示或隐藏进度状态列。 |
 | 切换表格中的操作列 | 显示或隐藏每行的操作列。 |
+| 切换任务看板中的派生任务 | 显示或隐藏插件从你的写作中派生出来的卡片。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
 | 切换自由模式 | 隐藏十个步骤与进度，或者把它们找回来。 |
 
@@ -948,6 +964,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   │       ├── mention_ignores.json
     │   │       └── <设备>_mention_index.json
     │   └── 72_任务管理/
+    │       ├── 721_任务/
+    │       │   └── tasks.json
     │       ├── 722_伏笔/
     │       │   └── foreshadowing.json
     │       ├── 723_修订/
