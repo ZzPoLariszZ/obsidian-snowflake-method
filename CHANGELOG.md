@@ -8,6 +8,26 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0]
+
+### Added
+
+- **Foreshadowing**, one thread followed from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread and choose **Create foreshadowing** from the right-click menu, where the selection becomes the thread's first occurrence. Later passages join the same thread through **Add to existing foreshadowing**, each marked as a plant, a reinforcement or the payoff, while the thread itself is planned, active, resolved or abandoned. A thread carries a name no other thread answers to, a description, and the characters, scenes and worldbuilding notes it is about, each followed by its identity rather than its title, so renaming a note never loses the link. Every occurrence is marked where it stands in the prose and keeps a card in the margin the revisions already use, holding its role, the thread's status, name and description, the words marked and a note of your own, with **Open**, **Edit** and **Delete** at the foot and arrows that walk from one occurrence to the next through the whole manuscript. An occurrence follows its words as you write above and around them and when a chapter is split or merged, and words you rewrite directly leave it unresolved rather than lost, to be put back on the passage that replaced them through **Relink to unresolved foreshadowing**. The **Foreshadowing** tab of Task management gives every occurrence a row, searched by name and narrowed by status, by role, or to the unresolved alone, and its position column jumps to where the words stand. The threads live in one shared file under the project's task management folder, beside the revisions and read by the same rules. **Add foreshadowing** opens the form from the command palette.
+- **Sticky notes**, a short Markdown file for what does not belong in a record: an idea, a reminder, or a question to come back to. **New sticky note** in the command palette, the sticker in the ribbon and **Add sticky note** on the dashboard each make one and open it ready to write in. A note has two faces, its prose clicked to write in with the plugin's own editor and Escape to read it back as rendered Markdown, and one file is shown three ways at once: a card in the **Sticky notes** tab of Task management, a compact card in a sidebar of its own, and a floating panel over the workspace. Only one of them writes at a time, and asking to write in another hands the note over with what was typed already saved. A floating panel drags by its head, resizes from any edge, pins in place and thins to let the page show through, and where it stands, how large, whether pinned, how transparent and which face it wears are remembered on that device rather than written into the note. Focus mode never fades a panel, solo included, and moving to another project puts the old project's panels away and brings the new one's back. Eight colors tell the notes apart, and every board searches their words, filters by color and orders them by age. **Archive** sets a note aside into a fold under the dashboard's board, closing every panel of it, where it can be read, restored or deleted, with a way to empty the whole fold at once behind a confirmation. Each note is its own file under the project's task management folder, and the health check reads it as it reads every other managed note. **Open sticky notes** opens the sidebar from the command palette.
+
+### Changed
+
+- The **Foreshadowing** and **Sticky notes** tabs of Task management now hold what 0.15.0 named them for, which leaves **Tasks** as the one still in the planning stage.
+
+### Fixed
+
+- A revision card with its form open keeps what was typed in it through every refresh of the margin, stands on for its record even once the chapter stops answering for its words, and shows the new text the moment a save lands rather than the old text until the next read. Its two faces are placed afresh when it swaps between them, so the cards below are no longer covered by the taller one.
+- Splitting a chapter carries the revisions that travel to the new note before it levels the ones that stay. Levelling first could re-anchor a revision in the tail onto the head's copy of the same words, wherever one phrase stands in both halves.
+- One entity's name written inside another's is marked in the right order, the containing name applied first. An unrelated mention earlier in the same line could take the place the containing name needed, and the name inside it was then drawn over the top.
+- Clicking into a chapter to write in it puts the line you clicked back where it stood, measured from the top of that row rather than from the height of the pointer within it.
+- The dashboard no longer takes the caret out of what is being typed in it when it refreshes, whether a writing record landing or the health verdict moving asked for the refresh. Whatever held the focus and is still on the page is given it back.
+- A card jumped to from a table keeps its highlight while the pointer rests on it. A conflicting revision's own frame was the more specific rule and took the color back.
+
 ## [0.16.0]
 
 ### Added
@@ -376,6 +396,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.17.0]
+
+### 新增
+
+- **伏笔**，顺着一条线索从埋设一路走到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**，所选文字即成为这条线索的第一处落点。此后的段落用**加入已有伏笔**并入同一条线索，每一处标为埋设、强化或回收，线索本身则处于计划中、进行中、已回收或已放弃。一条线索有一个不与其他线索重名的名称、一段描述，以及它写到的角色、场景与世界观笔记，各按自身的身份而非标题认人，因此重命名笔记不会丢掉关联。每一处落点都会在正文原处标出，并在修订已在使用的那片页边留下一张卡片，写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注，卡片底部是**打开**、**编辑**与**删除**，卡片上的箭头可以在整部正文的落点之间逐一跳转。落点会跟着它所指的文字走，你在它前后继续写作、乃至拆分或合并章节时都不会走失，若你直接改写了那段文字，它只是变为未解决，而不会丢失，可以用**重新锚定未解决的落点**接到替换后的段落上。任务管理的**伏笔**标签页中每一处落点各占一行，可按名称搜索，也可按状态、环节或仅未解决筛选，定位一栏可以跳到文字所在之处。所有线索存放在项目任务管理文件夹下的一个共享文件里，与修订并列，读写规则相同。命令面板中的**添加伏笔**可以直接打开表单。
+- **便签**，一篇短短的 Markdown 文件，用来放不必进记录的东西：一个想法、一句提醒，或者一个稍后再回来的问题。命令面板中的**新建便签**、侧边栏的便签图标，以及工作台上的**添加便签**，都会新建一张并立刻打开，可以直接写。每张便签都有两面，点击正文即可用插件自带的编辑器书写，按 Escape 则读回渲染后的 Markdown，而同一个文件会同时以三种样子出现：任务管理**便签**标签页中的卡片、独立侧栏中的紧凑卡片，以及浮于工作区之上的面板。同一时刻只有一处在写，在别处开始书写会先保存已写的内容，再把它交接过去。悬浮面板可以拖动标题栏移动、从任意边缘缩放、固定位置，也可以调淡让底下的页面透出来，而它停在哪里、多大、是否固定、多透明、显示哪一面，都按设备记住，不写进笔记。专注模式从不淡化悬浮面板，仅正文一档同样如此，切换到另一个项目会收起原项目的面板，并取回新项目的面板。八种颜色便于一眼分辨，每块面板都可以搜索便签的文字、按颜色筛选、按新旧排序。**归档**会把便签收进工作台面板下方的折叠区，同时关闭它的所有悬浮面板，在那里可以阅读、恢复或删除，也可以在一次确认之后清空整个折叠区。每张便签自成一个文件，存放在项目的任务管理文件夹下，健康检查会像检查其他受管理的笔记一样检查它。命令面板中的**打开便签**可以打开侧栏。
+
+### 变更
+
+- 任务管理的**伏笔**与**便签**标签页，如今装上了 0.15.0 为它们预留的内容，只剩**任务**仍处于规划阶段。
+
+### 修复
+
+- 打开了表单的修订卡片，会在页边每次刷新时保留已经输入的内容，即使章节已不再对应它所指的文字也仍为该修订留在原处，并在保存落地的那一刻就显示新的文字，而不是等到下一次读取。卡片在两面之间切换时也会重新排布，下方的卡片不会再被变高的那一张盖住。
+- 拆分章节时，会先把要迁往新笔记的修订带走，再校准留下的那些。先校准会让尾部的修订错误地锚定到头部同样的文字上，只要同一段话在两半中都出现过。
+- 一个实体的名称写在另一个名称之内时，标记顺序不再出错，外层的名称先行标出。此前同一行中较早的一处无关提及可能占去外层名称所需的位置，里面的名称便被画到了它的上面。
+- 点进一章开始书写时，你点击的那一行会回到原处，位置按该行顶端计算，而不是按指针在行内的高度。
+- 工作台刷新时不再把光标从正在输入的地方带走，无论刷新是因为写作记录落地，还是健康结论发生变化。原先持有焦点、且仍在页面上的元素会重新获得焦点。
+- 从表格跳转到的卡片，在指针停在它上面时仍保持高亮。此前处于冲突状态的修订，其自身的样式更为具体，会把颜色抢回去。
 
 ## [0.16.0]
 
