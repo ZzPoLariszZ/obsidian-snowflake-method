@@ -15,7 +15,7 @@ export function isStatisticsTab(value: unknown): value is StatisticsTab {
 	return (STATISTICS_TABS as readonly unknown[]).includes(value);
 }
 
-/** The faces of the Task management pane; revision is the one built. */
+/** The faces of the Task management pane, the board first. */
 export const TASKS_TABS = [
 	'tasks',
 	'foreshadowing',

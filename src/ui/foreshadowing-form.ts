@@ -14,19 +14,15 @@ import {
 import {
 	addEnumSelect,
 	addForeshadowingStatusControl,
-	entityGroupLabel,
-	renderRecordLine,
-	renderRecordPickFrame,
 } from './entity-form';
 import {
 	ConfirmModal,
-	promptForEntityReference,
 	SnowflakeFormModal,
 	UniqueNameField,
-	type EntityReferenceSource,
 	type SubmitHandler,
 	type Translate,
 } from './modals';
+import { RelatedEntitiesField } from './related-entities-field';
 import { truncateEnd } from './mention-rows';
 import { buildOptionField, type OptionPicker } from './option-picker';
 
@@ -210,16 +206,12 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 	private readonly uniqueName: UniqueNameField;
 	private description: string;
 	private status: ForeshadowingStatus;
-	/** The picked entities, by id. */
-	private related: string[];
+	/** The entities the thread touches, held and drawn by the field the task form shares. */
+	private readonly relatedField: RelatedEntitiesField;
 	private readonly occurrences: ForeshadowingOccurrenceDraft[];
 	/** The ids the trash took out, staged until Save like the rest. */
 	private readonly removed: string[] = [];
 	private seed: { role: OccurrenceRole; note: string } | null;
-	/** Everything an id may stand for: the roster, and the stored refs it lacks. */
-	private readonly refs = new Map<string, EntityRef>();
-	/** The group each roster entry lists under; an id absent here is missing. */
-	private readonly groupOf = new Map<string, string>();
 
 	constructor(
 		app: App,
@@ -242,7 +234,18 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 		);
 		this.description = initial?.description ?? '';
 		this.status = initial?.status ?? 'planned';
-		this.related = (initial?.related ?? []).map((ref) => ref.id);
+		this.relatedField = new RelatedEntitiesField(
+			app,
+			t,
+			options.roster,
+			initial?.related ?? [],
+			{
+				placeholder: t('modal.foreshadowing.relatedPlaceholder'),
+				empty: t('modal.foreshadowing.relatedEmpty'),
+				missingTitle: (name) => t('modal.foreshadowing.relatedMissing', { name }),
+				removeLabel: (name) => t('modal.foreshadowing.relatedRemove', { name }),
+			},
+		);
 		this.occurrences = (initial?.occurrences ?? []).map((occurrence) => ({
 			...occurrence,
 		}));
@@ -250,14 +253,6 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			options.seedOccurrence === undefined
 				? null
 				: { role: options.seedOccurrence.role, note: '' };
-		for (const entry of options.roster) {
-			this.refs.set(entry.id, { kind: entry.kind, id: entry.id, name: entry.name });
-			this.groupOf.set(entry.id, entry.group);
-		}
-		for (const ref of initial?.related ?? []) {
-			if (this.refs.has(ref.id)) continue;
-			this.refs.set(ref.id, { kind: ref.kind, id: ref.id, name: ref.name });
-		}
 	}
 
 	protected buildForm(): void {
@@ -316,7 +311,10 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			'snowflake-method-character-setting',
 			'snowflake-method-foreshadowing-wide',
 		);
-		this.buildRelated(relatedSetting.controlEl);
+		this.relatedField.render(
+			relatedSetting.controlEl,
+			'snowflake-method-foreshadowing-related',
+		);
 		if (this.options.seedOccurrence !== undefined && this.seed !== null) {
 			this.buildSeed(this.options.seedOccurrence, this.seed);
 		}
@@ -343,89 +341,6 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 					);
 				});
 		});
-	}
-
-	/**
-	 * The entities the thread touches: one line each with a way off, and
-	 * under them the chooser a relationship's target wears -- the kind asked
-	 * first, then the note -- standing after every pick, since a thread
-	 * touches as many as it touches. A stored ref whose note has gone keeps
-	 * its line, marked, rather than being dropped on save.
-	 */
-	private buildRelated(host: HTMLElement): void {
-		const t = this.t;
-		const block = host.createDiv({ cls: 'snowflake-method-foreshadowing-related' });
-		const lines = block.createDiv({ cls: 'snowflake-method-record-lines' });
-		const draw = (): void => {
-			lines.empty();
-			for (const id of this.related) {
-				const ref = this.refs.get(id);
-				if (ref === undefined) continue;
-				const group = this.groupOf.get(id);
-				renderRecordLine(
-					lines,
-					{
-						label: entityGroupLabel(t, group ?? ref.kind),
-						text: ref.name,
-						missing: group === undefined,
-						missingTitle: t('modal.foreshadowing.relatedMissing', {
-							name: ref.name,
-						}),
-						removeLabel: t('modal.foreshadowing.relatedRemove', {
-							name: ref.name,
-						}),
-					},
-					() => {
-						this.related = this.related.filter((candidate) => candidate !== id);
-						draw();
-					},
-				);
-			}
-		};
-		draw();
-		const offered = this.options.roster.length > 0;
-		renderRecordPickFrame(
-			block,
-			t(
-				offered
-					? 'modal.foreshadowing.relatedPlaceholder'
-					: 'modal.foreshadowing.relatedEmpty',
-			),
-			() => {
-				if (!offered) return;
-				void promptForEntityReference(this.app, t, this.referenceSource()).then(
-					(picked) => {
-						if (picked === null || this.related.includes(picked.option.value)) {
-							return;
-						}
-						this.related.push(picked.option.value);
-						draw();
-					},
-				);
-			},
-		);
-	}
-
-	/**
-	 * The roster as the reference dialog reads it: the kinds in the order
-	 * the roster lists them, and under each the notes not yet picked. No
-	 * creating from here: a thread points at what the project has.
-	 */
-	private referenceSource(): EntityReferenceSource {
-		const t = this.t;
-		const groups: string[] = [];
-		for (const entry of this.options.roster) {
-			if (!groups.includes(entry.group)) groups.push(entry.group);
-		}
-		return {
-			groups: () => groups.map((id) => ({ id, label: entityGroupLabel(t, id) })),
-			entitiesIn: (group) =>
-				this.options.roster
-					.filter(
-						(entry) => entry.group === group && !this.related.includes(entry.id),
-					)
-					.map((entry) => ({ value: entry.id, label: entry.name })),
-		};
 	}
 
 	/** The selection that opened the form, becoming the thread's first occurrence. */
@@ -680,12 +595,7 @@ class ForeshadowingModal extends SnowflakeFormModal<ForeshadowingFormResult> {
 			name,
 			description: this.description.trim(),
 			status: this.status,
-			// Missing ones included: dropping them would erase what the author
-			// wrote.
-			related: this.related.flatMap((id) => {
-				const ref = this.refs.get(id);
-				return ref === undefined ? [] : [{ ...ref }];
-			}),
+			related: this.relatedField.value(),
 			occurrences: this.occurrences.map(({ id, role, note }) => ({
 				id,
 				role,

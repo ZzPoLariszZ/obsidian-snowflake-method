@@ -19,6 +19,7 @@ import {
 	daysBetween,
 	daysInMonth,
 	formatClock,
+	goalNetSince,
 	monthLabels,
 	readingValue,
 	sessionPace,
@@ -49,6 +50,7 @@ import type {
 	WritingDayTotals,
 	WritingSpread,
 } from '../services';
+import { grouped } from './pane-parts';
 
 /**
  * Which project a session panel is for, and how it should speak. Both are
@@ -543,13 +545,10 @@ function renderSpanGoalWidget(
 				span === 'week'
 					? startOfWeek(today, bridge.weekStart())
 					: startOfMonth(today);
-			// The history ends today, so the days still to come in this week or
-			// this month are simply not in it to be counted.
-			let net = 0;
-			for (const day of history) {
-				if (day.day >= from) net += day.goalNet;
-			}
-			show(net, bridge.dailyWordGoal() * (span === 'week' ? 7 : daysInMonth(today)));
+			show(
+				goalNetSince(history, from),
+				bridge.dailyWordGoal() * (span === 'week' ? 7 : daysInMonth(today)),
+			);
 		},
 	};
 }
@@ -1008,7 +1007,6 @@ function createDetail(frame: HTMLElement): {
 		},
 	};
 }
-
 
 
 /**
@@ -1938,14 +1936,6 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
 		element.setAttribute(key, `${value}`);
 	}
 	return element;
-}
-
-/**
- * A count as a reader groups it. Both languages this plugin speaks group by
- * threes with a comma, so one grouping serves them both.
- */
-function grouped(value: number): string {
-	return value.toLocaleString('en-US');
 }
 
 /** The clock a session would start on, which is what a stopped widget shows. */

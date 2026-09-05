@@ -150,6 +150,12 @@ describe('settings', () => {
 		).toBe(true);
 	});
 
+	it('shows the derived tasks until asked not to', () => {
+		expect(DEFAULT_SETTINGS.showDerivedTasks).toBe(true);
+		expect(sanitizeSettings({ showDerivedTasks: false }).showDerivedTasks).toBe(false);
+		expect(sanitizeSettings({ showDerivedTasks: 'no' }).showDerivedTasks).toBe(true);
+	});
+
 	it('keeps the tables quiet about progress until it is asked for', () => {
 		expect(DEFAULT_SETTINGS.showTableProgressStatus).toBe(false);
 		expect(

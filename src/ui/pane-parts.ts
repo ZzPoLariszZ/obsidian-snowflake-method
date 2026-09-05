@@ -77,3 +77,11 @@ export function renderSplitButton(
 	});
 	return { wrap, primary };
 }
+
+/**
+ * A count as a reader groups it. Both languages this plugin speaks group by
+ * threes with a comma, so one grouping serves them both.
+ */
+export function grouped(value: number): string {
+	return value.toLocaleString('en-US');
+}

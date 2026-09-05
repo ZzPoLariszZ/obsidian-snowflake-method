@@ -164,6 +164,7 @@ import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
+import { TaskService } from "./task-service";
 import { StickyNoteService } from "./sticky-note-service";
 import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
@@ -388,6 +389,8 @@ export class SnowflakeProjectService {
   readonly revisions: RevisionService;
   /** Foreshadowing threads and their occurrences: user data beside the revisions. */
   readonly foreshadowing: ForeshadowingService;
+  /** The author's tasks, in the board's order: user data beside the foreshadowing. */
+  readonly tasks: TaskService;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
   readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
@@ -429,6 +432,9 @@ export class SnowflakeProjectService {
       /** The same two, for the foreshadowing file: its own file, its own notices. */
       onForeshadowingCorrupt?: (path: string) => void;
       onForeshadowingForeign?: (path: string, version: number) => void;
+      /** And for the task file. */
+      onTasksCorrupt?: (path: string) => void;
+      onTasksForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -479,6 +485,15 @@ export class SnowflakeProjectService {
         : { onForeign: analysis.onForeshadowingForeign }),
     });
     this.marginRecords = [this.revisions, this.foreshadowing];
+    this.tasks = new TaskService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      ...(analysis.onTasksCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onTasksCorrupt }),
+      ...(analysis.onTasksForeign === undefined
+        ? {}
+        : { onForeign: analysis.onTasksForeign }),
+    });
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
     });
@@ -1159,6 +1174,7 @@ export class SnowflakeProjectService {
       writingSessions: new Set(),
       manuscriptAnalysis: new Set(),
       mentionIndex: new Set(),
+      tasks: new Set(),
       foreshadowing: new Set(),
       revisions: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
@@ -6900,6 +6916,7 @@ export class SnowflakeProjectService {
       writingSessions: [],
       manuscriptAnalysis: [],
       mentionIndex: [],
+      tasks: [],
       foreshadowing: [],
       revisions: [],
       stickyNotes: [],

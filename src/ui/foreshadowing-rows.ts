@@ -119,9 +119,10 @@ export function foreshadowingTableItems(
 }
 
 export interface ForeshadowingFilters {
+	/** None means the question is not being asked; several are any of them. */
+	status: readonly ForeshadowingStatus[];
+	role: readonly OccurrenceRole[];
 	/** '' means the question is not being asked. */
-	status: ForeshadowingStatus | '';
-	role: OccurrenceRole | '';
 	standing: 'unresolved' | '';
 }
 
@@ -158,9 +159,9 @@ export function filterForeshadowingItems(
 ): ForeshadowingMatch {
 	const needle = query.trim().toLowerCase();
 	const holds = (text: string): boolean => text.toLowerCase().includes(needle);
-	const rowLevel = filters.role !== '' || filters.standing !== '';
+	const rowLevel = filters.role.length > 0 || filters.standing !== '';
 	const passes = (occurrence: ForeshadowingOccurrenceRow): boolean =>
-		(filters.role === '' || occurrence.role === filters.role) &&
+		(filters.role.length === 0 || filters.role.includes(occurrence.role)) &&
 		(filters.standing === '' || occurrence.standing === filters.standing);
 	const hits = (occurrence: ForeshadowingOccurrenceRow): boolean =>
 		holds(
@@ -174,7 +175,9 @@ export function filterForeshadowingItems(
 		);
 	const matched = new Set<string>();
 	const kept = items.filter((item) => {
-		if (filters.status !== '' && item.status !== filters.status) return false;
+		if (filters.status.length > 0 && !filters.status.includes(item.status)) {
+			return false;
+		}
 		const candidates = rowLevel ? item.occurrences.filter(passes) : item.occurrences;
 		if (rowLevel && candidates.length === 0) return false;
 		if (needle.length === 0) {

@@ -35,6 +35,7 @@ import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
 import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
 import type { StickyNoteBridge } from './sticky-note-bridge';
+import type { TaskBoardBridge } from './task-bridge';
 import type { RevisionPanelBridge } from './revision-panel';
 import type {
 	SessionPanelBridge,
@@ -663,6 +664,8 @@ export interface DashboardHost {
 	foreshadowingTable(context: SessionPanelContext): ForeshadowingPanelBridge;
 	/** The bridge the task management pane and the sidebar render the sticky notes through. */
 	stickyNotes(context: SessionPanelContext): StickyNoteBridge;
+	/** The bridge the task management pane renders the task board through. */
+	taskBoard(context: SessionPanelContext): TaskBoardBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,

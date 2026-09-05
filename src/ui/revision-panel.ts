@@ -24,6 +24,7 @@ import {
 	revealSpan,
 	type Revision,
 } from '../domain';
+import type { FilterRow, LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
 import { renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
@@ -111,19 +112,24 @@ export function revisionTableRows(
 }
 
 /**
- * The one filter over the table, matched the way the tracking pane's is:
- * every word a row shows is searched, the kind it wears included, so what is
- * typed finds what is read. `kindOf` names a row's kind in the reader's own
- * language, which is the only part of a row the table draws rather than holds.
+ * The search and the funnel over the table. The search is matched the way
+ * the tracking pane's is: every word a row shows is searched, the kind it
+ * wears included, so what is typed finds what is read. `kindOf` names a
+ * row's kind in the reader's own language, which is the only part of a row
+ * the table draws rather than holds. The funnel asks one thing: whether to
+ * keep only the rows the chapter no longer answers for.
  */
 export function filterRevisionRows(
 	rows: readonly RevisionRow[],
 	query: string,
 	kindOf: (kind: Revision['kind']) => string,
+	standing: 'conflict' | '' = '',
 ): RevisionRow[] {
+	const held =
+		standing === '' ? rows : rows.filter((row) => row.status === 'conflict');
 	const needle = query.trim().toLowerCase();
-	if (needle.length === 0) return [...rows];
-	return rows.filter((row) =>
+	if (needle.length === 0) return [...held];
+	return held.filter((row) =>
 		[row.original, row.proposed, row.comment, row.title, kindOf(row.kind)].some(
 			(text) => text.toLowerCase().includes(needle),
 		),
@@ -143,6 +149,17 @@ export interface RevisionPanelBridge {
 	discard(id: string): Promise<boolean>;
 }
 
+/** The filter, owned by the dashboard so it outlives the panel. */
+export interface RevisionFilterMemory {
+	/** 'conflict' narrows to the rows the chapter no longer answers for; '' asks nothing. */
+	standing: string;
+}
+
+/** What the dashboard lends the panel: its funnel popover and its memory. */
+export interface RevisionPanelControls extends LentFilterPopover {
+	filters: RevisionFilterMemory;
+}
+
 export interface RevisionPanelHandle {
 	refresh(): void;
 	dispose(): void;
@@ -159,17 +176,19 @@ const REVISION_COLUMNS = [
 export function renderRevisionPanel(
 	container: HTMLElement,
 	bridge: RevisionPanelBridge,
+	controls: RevisionPanelControls,
 ): RevisionPanelHandle {
 	const t = bridge.t;
+	const filters = controls.filters;
 	// The tracking panel's own root: the same relative box whose controls band
 	// rides the gap under the tab strip, so this face is inset exactly as that
 	// one is and the table starts where its folds do.
 	const root = container.createDiv({
 		cls: 'snowflake-method-prose-panel snowflake-method-revision-panel',
 	});
-	const controls = root.createDiv({ cls: 'snowflake-method-prose-controls' });
+	const band = root.createDiv({ cls: 'snowflake-method-prose-controls' });
 	let query = '';
-	const search = new SearchComponent(controls);
+	const search = new SearchComponent(band);
 	search.setPlaceholder(t('revisionTable.searchPlaceholder'));
 	search.onChange((next) => {
 		query = next;
@@ -179,16 +198,59 @@ export function renderRevisionPanel(
 	// away: a project with no revisions has nothing to search, and a field
 	// that can only ever come back empty is one more thing in the way of the
 	// sentence saying so.
-	const searchBox = controls.querySelector('.search-input-container');
-	const stateText = controls.createSpan({
+	const searchBox = band.querySelector('.search-input-container');
+	const filterButton = band.createEl('button', {
+		cls: 'clickable-icon snowflake-method-filter-button',
+		attr: {
+			type: 'button',
+			'aria-haspopup': 'dialog',
+			'aria-label': t('table.filter'),
+		},
+	});
+	setIcon(filterButton, 'funnel');
+	setTooltip(filterButton, t('table.filter'));
+	const stateText = band.createSpan({
 		cls: 'snowflake-method-prose-state',
 	});
-	const refreshButton = controls.createEl('button', {
+	const refreshButton = band.createEl('button', {
 		cls: 'clickable-icon snowflake-method-prose-refresh',
 		attr: { type: 'button', 'aria-label': t('revisionTable.refresh') },
 	});
 	setIcon(refreshButton, 'refresh-cw');
 	setTooltip(refreshButton, t('revisionTable.refresh'));
+
+	// The one question the funnel asks, in the dashboard's own popover.
+	const standingOf = (): 'conflict' | '' =>
+		filters.standing === 'conflict' ? 'conflict' : '';
+	const filterRows = (): FilterRow[] => [
+		{
+			kind: 'one',
+			label: t('revisionTable.standing'),
+			placeholder: t('revisionTable.filterAllStandings'),
+			empty: '',
+			options: () => [
+				{ value: 'conflict', label: t('revisionTable.conflictOnly') },
+			],
+			value: filters.standing,
+			apply: (value) => {
+				filters.standing = value;
+			},
+		},
+	];
+	const markFilterButton = (): void => {
+		filterButton.toggleClass('is-active', standingOf() !== '');
+	};
+	filterButton.addEventListener('click', () => {
+		if (controls.filterOpen()) {
+			controls.closeFilter();
+			return;
+		}
+		controls.openFilter(filterButton, filterRows(), () => {
+			markFilterButton();
+			paint();
+		});
+	});
+	markFilterButton();
 
 	const {
 		wrap: tableWrap,
@@ -322,6 +384,7 @@ export function renderRevisionPanel(
 		// filter left empty keeps its field, so it can be cleared, but a
 		// project holding no revisions at all shows the refresh alone.
 		searchBox?.toggleClass('is-hidden', (reading?.length ?? 0) === 0);
+		filterButton.toggleClass('is-hidden', (reading?.length ?? 0) === 0);
 		if (reading === null) {
 			// Null has three faces: still reading, a read that failed, and a
 			// vault with no project. Only the last may claim so.
@@ -338,8 +401,12 @@ export function renderRevisionPanel(
 			);
 			return;
 		}
-		stateText.setText('');
-		shown = filterRevisionRows(reading, query, kindOf);
+		shown = filterRevisionRows(reading, query, kindOf, standingOf());
+		stateText.setText(
+			shown.length === reading.length
+				? ''
+				: t('table.filteredCount', { shown: shown.length, total: reading.length }),
+		);
 		tableWrap.toggleClass('is-hidden', shown.length === 0);
 		emptyLine.toggleClass('is-hidden', shown.length > 0);
 		virtual.setTotal(shown.length);
@@ -376,6 +443,7 @@ export function renderRevisionPanel(
 		dispose: (): void => {
 			loop.dispose();
 			virtual.destroy();
+			controls.closeFilter();
 			root.remove();
 		},
 	};

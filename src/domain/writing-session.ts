@@ -655,6 +655,23 @@ export function sessionMonthKey(
 }
 
 /** The stretches of days a recent-trend reading offers, shortest first. */
+/**
+ * The net words written towards the goal from `from` on. The days before it
+ * in the history are not counted, and the days still to come are simply not
+ * in it to be counted. The week and month gauges, and the goal cards the
+ * task board derives, add a stretch up this one way.
+ */
+export function goalNetSince(
+	history: readonly { day: string; goalNet: number }[],
+	from: string,
+): number {
+	let net = 0;
+	for (const day of history) {
+		if (day.day >= from) net += day.goalNet;
+	}
+	return net;
+}
+
 export const TREND_RANGES = [7, 15, 30, 90, 180] as const;
 
 /**

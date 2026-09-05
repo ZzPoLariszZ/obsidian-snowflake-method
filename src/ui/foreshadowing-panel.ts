@@ -8,6 +8,7 @@ import {
 	type ForeshadowingStatus,
 	type OccurrenceRole,
 } from '../domain';
+import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
 	filterForeshadowingItems,
 	flattenForeshadowingRows,
@@ -15,7 +16,6 @@ import {
 	type ForeshadowingTableItem,
 } from './foreshadowing-rows';
 import type { Translate } from './modals';
-import type { PickerOption } from './option-picker';
 import { renderEmptyLine, renderSplitButton } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { VirtualTable, buildTableFrame } from './virtual-table';
@@ -59,34 +59,16 @@ export interface ForeshadowingPanelBridge {
 	deleteOccurrence(id: string, occurrenceId: string): Promise<boolean>;
 }
 
-/** The filters, owned by the dashboard so they outlive the panel. */
+/** The filters, owned by the dashboard so they outlive the panel; status and role take several. */
 export interface ForeshadowingFilterMemory {
-	status: string;
-	role: string;
+	status: string[];
+	role: string[];
 	standing: string;
 }
 
-/** One question the funnel asks: the dashboard's own row shape. */
-export interface ForeshadowingFilterRow {
-	label: string;
-	placeholder: string;
-	empty: string;
-	options: () => PickerOption[];
-	value: string;
-	apply: (value: string) => void;
-}
-
 /** What the dashboard lends the panel: its funnel popover and its memory. */
-export interface ForeshadowingPanelControls {
+export interface ForeshadowingPanelControls extends LentFilterPopover {
 	filters: ForeshadowingFilterMemory;
-	/** Whether the lent popover is open, so the funnel can close it instead. */
-	filterOpen(): boolean;
-	openFilter(
-		anchor: HTMLElement,
-		rows: readonly ForeshadowingFilterRow[],
-		changed: () => void,
-	): void;
-	closeFilter(): void;
 }
 
 export interface ForeshadowingPanelHandle {
@@ -159,8 +141,12 @@ export function renderForeshadowingPanel(
 		role: (role: OccurrenceRole): string => t(`foreshadowing.role.${role}`),
 		unresolved: t('manuscript.foreshadowing.unresolved'),
 	};
-	const filterRows = (): ForeshadowingFilterRow[] => [
+	// Status and role take several answers: a thread standing in any of the
+	// statuses picked, an occurrence in any of the roles.
+	const removeLabel = (label: string): string => t('table.filterRemove', { label });
+	const filterRows = (): FilterRow[] => [
 		{
+			kind: 'many',
 			label: t('status.label'),
 			placeholder: t('foreshadowingTable.filterAllStatuses'),
 			empty: '',
@@ -169,23 +155,27 @@ export function renderForeshadowingPanel(
 					value: status,
 					label: labels.status(status),
 				})),
-			value: filters.status,
-			apply: (value) => {
-				filters.status = value;
+			values: filters.status,
+			apply: (values) => {
+				filters.status = values;
 			},
+			removeLabel,
 		},
 		{
+			kind: 'many',
 			label: t('foreshadowingTable.role'),
 			placeholder: t('foreshadowingTable.filterAllRoles'),
 			empty: '',
 			options: () =>
 				OCCURRENCE_ROLES.map((role) => ({ value: role, label: labels.role(role) })),
-			value: filters.role,
-			apply: (value) => {
-				filters.role = value;
+			values: filters.role,
+			apply: (values) => {
+				filters.role = values;
 			},
+			removeLabel,
 		},
 		{
+			kind: 'one',
 			label: t('foreshadowingTable.standing'),
 			placeholder: t('foreshadowingTable.filterAllStandings'),
 			empty: '',
@@ -201,7 +191,9 @@ export function renderForeshadowingPanel(
 	const markFilterButton = (): void => {
 		filterButton.toggleClass(
 			'is-active',
-			filters.status !== '' || filters.role !== '' || filters.standing !== '',
+			filters.status.length > 0 ||
+				filters.role.length > 0 ||
+				filters.standing !== '',
 		);
 	};
 	filterButton.addEventListener('click', () => {
@@ -559,8 +551,8 @@ export function renderForeshadowingPanel(
 			reading.items,
 			query,
 			{
-				status: isForeshadowingStatus(filters.status) ? filters.status : '',
-				role: isOccurrenceRole(filters.role) ? filters.role : '',
+				status: filters.status.filter(isForeshadowingStatus),
+				role: filters.role.filter(isOccurrenceRole),
 				standing: filters.standing === 'unresolved' ? 'unresolved' : '',
 			},
 			labels,

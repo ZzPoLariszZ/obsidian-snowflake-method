@@ -75,6 +75,13 @@ import {
 	sanitizeTint,
 	sessionPace,
 	splitMentionIgnores,
+	addDays,
+	daysInMonth,
+	deriveTasks,
+	goalNetSince,
+	partitionStickyNotes,
+	startOfMonth,
+	startOfWeek,
 	stickyNotePreview,
 	type DocumentType,
 	type WritingSessionTiming,
@@ -98,7 +105,11 @@ import {
 	type MentionIgnore,
 	type SensitiveMatcher,
 	type Revision,
+	type DerivedTaskSources,
 	type EntityRosterEntry,
+	type Task,
+	type TaskEdit,
+	type TaskStatus,
 	type Foreshadowing,
 	type ForeshadowingEdit,
 	type ForeshadowingOccurrence,
@@ -180,6 +191,7 @@ import {
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isStickyNotePath,
+	isTaskFilePath,
 	type StickyNoteRecord,
 	toWikiLink,
 	WritingSessionService,
@@ -226,7 +238,10 @@ import {
 	promptForForeshadowing,
 	promptForForeshadowingOccurrence,
 } from './ui/foreshadowing-form';
-import type { ForeshadowingPanelBridge } from './ui/foreshadowing-panel';
+import type {
+	ForeshadowingPanelBridge,
+	ForeshadowingReading,
+} from './ui/foreshadowing-panel';
 import {
 	foreshadowingTableItems,
 	type ForeshadowingNoteReading,
@@ -238,6 +253,9 @@ import type {
 } from './ui/sticky-note-bridge';
 import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
+import type { TaskBoardBridge } from './ui/task-bridge';
+import { confirmTaskArchiveEmptying, confirmTaskDeletion } from './ui/task-dialogs';
+import { promptForTask } from './ui/task-form';
 import { StickyNoteGone, StickyNoteSaveConflict } from './ui/sticky-note-editing';
 import { StickyNoteFloatLayer } from './ui/sticky-note-float';
 import { StickyNoteHub } from './ui/sticky-note-hub';
@@ -249,6 +267,7 @@ import type { WikilinkTarget } from './ui/segment-editor-backend';
 import {
 	revisionTableRows,
 	type RevisionNoteReading,
+	type RevisionRow,
 	type RevisionPanelBridge,
 } from './ui/revision-panel';
 import {
@@ -472,6 +491,10 @@ export default class SnowflakeMethodPlugin
 	private refreshProjectLocales = false;
 	/** The sticky-note surfaces' own bell, rung once a burst of vault events has settled. */
 	private stickyNoteNotifyTimer: number | null = null;
+	/** The task board's own bell, rung the same way. */
+	private taskNotifyTimer: number | null = null;
+	/** Who wants to hear that the tasks, or a source a derived card is computed from, changed. */
+	private readonly taskListeners = new Set<() => void>();
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
@@ -751,6 +774,13 @@ export default class SnowflakeMethodPlugin
 				onForeshadowingForeign: () => {
 					new Notice(this.projectT('manuscript.foreshadowing.newerSchema'));
 				},
+				// The task file, told apart the same two ways.
+				onTasksCorrupt: (path) => {
+					new Notice(this.projectT('tasks.corruptPreserved', { path }));
+				},
+				onTasksForeign: () => {
+					new Notice(this.projectT('tasks.newerSchema'));
+				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
 				timers: {
@@ -1021,6 +1051,10 @@ export default class SnowflakeMethodPlugin
 		if (this.stickyNoteNotifyTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.stickyNoteNotifyTimer);
 			this.stickyNoteNotifyTimer = null;
+		}
+		if (this.taskNotifyTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(this.taskNotifyTimer);
+			this.taskNotifyTimer = null;
 		}
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
@@ -3716,32 +3750,7 @@ export default class SnowflakeMethodPlugin
 			rows: async () => {
 				const project = await this.resolveProject(panelProject());
 				if (project === null) return null;
-				const revisions = await this.projects.revisions.list(project);
-				if (revisions.length === 0) return [];
-				const segments = await this.projects.manuscript.listSegments(
-					project,
-				);
-				// Filled in manuscript order and read back in it: the map's own
-				// key order is what the rows are sorted by.
-				const notes = new Map<string, RevisionNoteReading>();
-				for (const segment of segments) {
-					notes.set(segment.path, { title: segment.title, body: null });
-				}
-				// Only chapters that carry revisions are read, one read each and
-				// all at once: standing is derived against the body, never
-				// trusted stored. A chapter that cannot be read leaves its body
-				// null, and every revision on it shows as a conflict.
-				const paths = [...new Set(revisions.map((revision) => revision.path))];
-				for (const [path, body] of await this.readSegmentBodies(paths)) {
-					if (body === null) continue;
-					const kept = notes.get(path);
-					if (kept === undefined) {
-						notes.set(path, { title: fileStem(path), body });
-					} else {
-						kept.body = body;
-					}
-				}
-				return revisionTableRows(revisions, notes);
+				return this.readRevisionRows(project);
 			},
 			open: (occurrence) =>
 				this.openManuscriptMention(panelProject(), occurrence),
@@ -3767,37 +3776,7 @@ export default class SnowflakeMethodPlugin
 			read: async () => {
 				const project = await this.resolveProject(panelProject());
 				if (project === null) return null;
-				const items = await this.projects.foreshadowing.list(project);
-				if (items.length === 0) return { items: [], readOnly: project.readOnly };
-				const [segments, roster] = await Promise.all([
-					this.projects.manuscript.listSegments(project),
-					this.foreshadowingEntityRoster(project.projectFile),
-				]);
-				const notes = new Map<string, ForeshadowingNoteReading>();
-				for (const segment of segments) {
-					notes.set(segment.path, { title: segment.title, body: null });
-				}
-				// Only chapters carrying occurrences are read, one read each and
-				// all at once; a chapter that cannot be read leaves its body
-				// null, and every occurrence on it reads as unresolved.
-				// A chapter the manuscript no longer lists is not read: nothing
-				// can show its passage, so its rows wait to be relinked, as the
-				// stream and the sweep say too.
-				const paths = [
-					...new Set(
-						items.flatMap((item) =>
-							item.occurrences.map((occurrence) => occurrence.path),
-						),
-					),
-				].filter((path) => notes.has(path));
-				for (const [path, body] of await this.readSegmentBodies(paths)) {
-					const kept = notes.get(path);
-					if (body !== null && kept !== undefined) kept.body = body;
-				}
-				return {
-					items: foreshadowingTableItems(items, notes, roster),
-					readOnly: project.readOnly,
-				};
+				return this.readForeshadowingTable(project);
 			},
 			open: (occurrence) =>
 				this.openManuscriptMention(panelProject(), occurrence),
@@ -3961,6 +3940,402 @@ export default class SnowflakeMethodPlugin
 			float: (id, win, options) => this.floatStickyNote(id, win, options),
 			isFloating: (id, win) => this.isStickyNoteFloating(id, win),
 		};
+	}
+
+	/**
+	 * The revision table's rows, freshly anchored against the chapters that
+	 * carry revisions. The table and the task board's derived cards read
+	 * through this one, so the two never count differently.
+	 */
+	private async readRevisionRows(project: ProjectSnapshot): Promise<RevisionRow[]> {
+		const revisions = await this.projects.revisions.list(project);
+		if (revisions.length === 0) return [];
+		const segments = await this.projects.manuscript.listSegments(
+			project,
+		);
+		// Filled in manuscript order and read back in it: the map's own
+		// key order is what the rows are sorted by.
+		const notes = new Map<string, RevisionNoteReading>();
+		for (const segment of segments) {
+			notes.set(segment.path, { title: segment.title, body: null });
+		}
+		// Only chapters that carry revisions are read, one read each and
+		// all at once: standing is derived against the body, never
+		// trusted stored. A chapter that cannot be read leaves its body
+		// null, and every revision on it shows as a conflict.
+		const paths = [...new Set(revisions.map((revision) => revision.path))];
+		for (const [path, body] of await this.readSegmentBodies(paths)) {
+			if (body === null) continue;
+			const kept = notes.get(path);
+			if (kept === undefined) {
+				notes.set(path, { title: fileStem(path), body });
+			} else {
+				kept.body = body;
+			}
+		}
+		return revisionTableRows(revisions, notes);
+	}
+
+	/**
+	 * The foreshadowing table's reading: every thread, its occurrences
+	 * anchored against the chapters that carry them. Read by the table and
+	 * by the task board's derived cards alike.
+	 */
+	private async readForeshadowingTable(
+		project: ProjectSnapshot,
+	): Promise<ForeshadowingReading> {
+		const items = await this.projects.foreshadowing.list(project);
+		if (items.length === 0) return { items: [], readOnly: project.readOnly };
+		const [segments, roster] = await Promise.all([
+			this.projects.manuscript.listSegments(project),
+			this.foreshadowingEntityRoster(project.projectFile),
+		]);
+		const notes = new Map<string, ForeshadowingNoteReading>();
+		for (const segment of segments) {
+			notes.set(segment.path, { title: segment.title, body: null });
+		}
+		// Only chapters carrying occurrences are read, one read each and
+		// all at once; a chapter that cannot be read leaves its body
+		// null, and every occurrence on it reads as unresolved.
+		// A chapter the manuscript no longer lists is not read: nothing
+		// can show its passage, so its rows wait to be relinked, as the
+		// stream and the sweep say too.
+		const paths = [
+			...new Set(
+				items.flatMap((item) =>
+					item.occurrences.map((occurrence) => occurrence.path),
+				),
+			),
+		].filter((path) => notes.has(path));
+		for (const [path, body] of await this.readSegmentBodies(paths)) {
+			const kept = notes.get(path);
+			if (body !== null && kept !== undefined) kept.body = body;
+		}
+		return {
+			items: foreshadowingTableItems(items, notes, roster),
+			readOnly: project.readOnly,
+		};
+	}
+
+	/**
+	 * What the derived cards are computed from, each number the source
+	 * tab's own. Read through the same caches the tabs read through -- never
+	 * through the tracking pane's whole reading, which runs the prose
+	 * statistics -- and each on its own footing: a source that cannot be
+	 * read costs its own cards and nothing else, so the author's tasks stay
+	 * in hand while a cache is having a bad day.
+	 */
+	private async deriveTaskSources(
+		project: ProjectSnapshot,
+	): Promise<{ sources: DerivedTaskSources; failed: boolean }> {
+		const goal = this.dailyWordGoal();
+		const today = this.sessions.today();
+		const weekFrom = startOfWeek(today, this.settings.sessionWeekStart);
+		const monthFrom = startOfMonth(today);
+		const settled = await Promise.allSettled([
+			goal > 0
+				? this.sessions.totalsBetween(
+						project,
+						weekFrom < monthFrom ? weekFrom : monthFrom,
+						today,
+					)
+				: Promise.resolve([]),
+			this.manuscriptMentionAggregate(project.projectFile),
+			this.sensitiveMentionAggregate(project.projectFile),
+			this.readForeshadowingTable(project),
+			this.readRevisionRows(project),
+			this.projects.stickyNotes.list(project),
+		]);
+		let failed = false;
+		const settle = <T>(outcome: PromiseSettledResult<T>, fallback: T): T => {
+			if (outcome.status === 'fulfilled') return outcome.value;
+			failed = true;
+			console.error('Snowflake: a task board source could not be read', outcome.reason);
+			return fallback;
+		};
+		const [history, mentions, sensitive, threads, revisions, stickies] = settled;
+		const days = settle(history, []);
+		const items = settle(threads, { items: [], readOnly: true }).items;
+		const rows = settle(revisions, []);
+		return {
+			sources: {
+				dailyGoal: goal,
+				goalNet: {
+					day: goalNetSince(days, today),
+					week: goalNetSince(days, weekFrom),
+					month: goalNetSince(days, monthFrom),
+				},
+				daysInMonth: daysInMonth(today),
+				unresolvedMentions: settle(mentions, null)?.unresolved.length ?? 0,
+				sensitiveWords: (settle(sensitive, null) ?? []).filter((term) => term.total > 0)
+					.length,
+				openForeshadowings: items.filter(
+					(item) => item.status === 'planned' || item.status === 'active',
+				).length,
+				unresolvedForeshadowings: items
+					.flatMap((item) => item.occurrences)
+					.filter((occurrence) => occurrence.standing === 'unresolved').length,
+				pendingRevisions: rows.length,
+				unresolvedRevisions: rows.filter((row) => row.status === 'conflict').length,
+				stickyNotes: partitionStickyNotes(settle(stickies, [])).active.length,
+			},
+			failed,
+		};
+	}
+
+	/**
+	 * The bridge the task board reads and writes through, shaped like the
+	 * sticky notes': every mutation announces to the boards alone, since a
+	 * task touches no manuscript text, and every dialog is opened here.
+	 */
+	taskBoard(context: SessionPanelContext = {}): TaskBoardBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		return {
+			t,
+			read: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				const today = this.sessions.today();
+				const weekFrom = startOfWeek(today, this.settings.sessionWeekStart);
+				const [tasks, derived, roster] = await Promise.all([
+					this.projects.tasks.list(project),
+					this.settings.showDerivedTasks
+						? this.deriveTaskSources(project)
+						: Promise.resolve(null),
+					this.foreshadowingEntityRoster(project.projectFile),
+				]);
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					readOnly: project.readOnly,
+					today,
+					week: { from: weekFrom, to: addDays(weekFrom, 6) },
+					dateFormat: this.settings.sessionDateFormat,
+					tasks,
+					derived: derived === null ? [] : deriveTasks(derived.sources),
+					derivedFailed: derived !== null && derived.failed,
+					roster,
+				};
+			},
+			// Every channel a derived card's source speaks on, plus the board's
+			// own: the sessions (a goal edit reaches only the settings
+			// listeners, never a dashboard refresh), the sticky hub (a sticky
+			// write never reaches one either), and the task bell.
+			subscribe: (listener) => {
+				const fromService = this.sessions.subscribe((event) => {
+					if (event.kind === 'changed' && event.counted !== true) return;
+					listener();
+				});
+				this.sessionSettingsListeners.add(listener);
+				const fromHub = this.stickyNoteHub.subscribe(listener);
+				this.taskListeners.add(listener);
+				return () => {
+					fromService();
+					this.sessionSettingsListeners.delete(listener);
+					fromHub();
+					this.taskListeners.delete(listener);
+				};
+			},
+			today: () => this.sessions.today(),
+			add: (status) => this.openCreateTaskModal(panelProject(), status),
+			edit: (id) => this.openTaskEditor(panelProject(), id),
+			move: (id, status, beforeId) =>
+				this.mutateTasks(
+					panelProject(),
+					async (project) => {
+						const wrote = await this.projects.tasks.move(project, id, status, beforeId);
+						return { result: wrote !== 'refused', changed: wrote === 'written' };
+					},
+					false,
+				),
+			archive: (id) => this.setTaskArchived(panelProject(), id, true),
+			restore: (id) => this.setTaskArchived(panelProject(), id, false),
+			deleteTask: async (id) => {
+				const project = await this.writableProject(panelProject());
+				if (project === null) return false;
+				const task = (await this.projects.tasks.list(project)).find(
+					(candidate) => candidate.id === id,
+				);
+				// Gone already is what was asked; declining is not a refusal.
+				if (task === undefined) return true;
+				const confirmed = await confirmTaskDeletion(this.app, t, task.title);
+				if (!confirmed) return true;
+				return this.removeTasks(panelProject(), [id]);
+			},
+			emptyArchive: async (ids) => {
+				const project = await this.writableProject(panelProject());
+				if (project === null) return false;
+				// Only what is still set aside goes: a task restored or gone
+				// since the board read is left where it stands.
+				const standing = (await this.projects.tasks.list(project))
+					.filter((task) => task.archived && ids.includes(task.id))
+					.map((task) => task.id);
+				if (standing.length === 0) return true;
+				const confirmed = await confirmTaskArchiveEmptying(this.app, t, standing.length);
+				if (!confirmed) return true;
+				return this.removeTasks(panelProject(), standing);
+			},
+		};
+	}
+
+	/**
+	 * One change to a project's tasks: refused where the project cannot be
+	 * written, and announced to the boards when the file moved.
+	 */
+	private async mutateTasks<T>(
+		projectPath: string | null,
+		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
+		refused: T,
+	): Promise<T> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return refused;
+		const { result, changed } = await work(project);
+		if (changed) this.tasksChanged();
+		return result;
+	}
+
+	private createTask(projectPath: string | null, task: Task): Promise<boolean> {
+		return this.mutateTasks(
+			projectPath,
+			async (project) => {
+				const took = await this.projects.tasks.create(project, task);
+				return { result: took, changed: took };
+			},
+			false,
+		);
+	}
+
+	private editTask(projectPath: string | null, id: string, next: TaskEdit): Promise<boolean> {
+		return this.mutateTasks(
+			projectPath,
+			async (project) => {
+				const wrote = await this.projects.tasks.edit(project, id, next);
+				return { result: wrote !== 'refused', changed: wrote === 'written' };
+			},
+			false,
+		);
+	}
+
+	private setTaskArchived(
+		projectPath: string | null,
+		id: string,
+		archived: boolean,
+	): Promise<boolean> {
+		return this.mutateTasks(
+			projectPath,
+			async (project) => {
+				const wrote = await this.projects.tasks.setArchived(project, id, archived);
+				return { result: wrote !== 'refused', changed: wrote === 'written' };
+			},
+			false,
+		);
+	}
+
+	private removeTasks(projectPath: string | null, ids: readonly string[]): Promise<boolean> {
+		return this.mutateTasks(
+			projectPath,
+			async (project) => {
+				const outcome = await this.projects.tasks.remove(project, ids);
+				return { result: outcome !== 'refused', changed: outcome === 'deleted' };
+			},
+			false,
+		);
+	}
+
+	/**
+	 * A new task, from the board's Add or the palette: the form empty but
+	 * for the column it was asked in, and one write when it is saved.
+	 */
+	async openCreateTaskModal(projectPath: string | null, status?: TaskStatus): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		// Refused at the door rather than at Save, where the board's own Add
+		// is already greyed: a form filled in for nothing is worse than a word.
+		if (project.readOnly) {
+			new Notice(this.translateForProject(project.locale, 'errors.readOnly'));
+			return;
+		}
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(project.locale, key, vars);
+		// The roster for the picker, and the standing tasks for the titles
+		// the new one may not take.
+		const [roster, tasks] = await Promise.all([
+			this.foreshadowingEntityRoster(project.projectFile),
+			this.projects.tasks.list(project),
+		]);
+		await promptForTask(
+			this.app,
+			t,
+			{
+				title: t('modal.task.title'),
+				submitLabelKey: 'common.create',
+				roster,
+				takenNames: tasks.map((task) => task.title),
+				...(status === undefined ? {} : { initialStatus: status }),
+			},
+			async (result) => {
+				const now = Date.now();
+				const took = await this.createTask(project.projectFile, {
+					id: createStableId('task'),
+					...result,
+					archived: false,
+					createdAt: now,
+					updatedAt: now,
+				});
+				if (!took) throw new Error(t('taskBoard.refused'));
+			},
+		);
+	}
+
+	/** A task's form over what it holds, saved in one write. */
+	async openTaskEditor(projectPath: string | null, id: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		if (project.readOnly) {
+			new Notice(this.translateForProject(project.locale, 'errors.readOnly'));
+			return;
+		}
+		const tasks = await this.projects.tasks.list(project);
+		const task = tasks.find((candidate) => candidate.id === id);
+		if (task === undefined) return;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(project.locale, key, vars);
+		const roster = await this.foreshadowingEntityRoster(project.projectFile);
+		await promptForTask(
+			this.app,
+			t,
+			{
+				title: t('modal.task.editTitle'),
+				submitLabelKey: 'common.save',
+				roster,
+				// Every title but its own: keeping a title is not taking one.
+				takenNames: tasks
+					.filter((other) => other.id !== id)
+					.map((other) => other.title),
+				initial: {
+					title: task.title,
+					description: task.description,
+					status: task.status,
+					priority: task.priority,
+					dueDate: task.dueDate,
+					related: task.related,
+				},
+			},
+			async (result) => {
+				const wrote = await this.editTask(project.projectFile, id, result);
+				if (!wrote) throw new Error(t('taskBoard.refused'));
+			},
+		);
 	}
 
 	proseStatistics(context: SessionPanelContext = {}): ProsePanelBridge {
@@ -4975,6 +5350,20 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	/**
+	 * The derived cards come and go from the palette; the boards repaint on
+	 * their own channel, since nothing but the board reads the setting.
+	 */
+	private async toggleDerivedTasks(): Promise<void> {
+		const shown = !this.settings.showDerivedTasks;
+		this.settings.showDerivedTasks = shown;
+		await this.saveSettings();
+		this.tasksChanged();
+		new Notice(
+			this.globalT(shown ? 'commands.derivedTasksShown' : 'commands.derivedTasksHidden'),
+		);
+	}
+
 	private async toggleTableActionsColumn(): Promise<void> {
 		const shown = !this.settings.showTableActionsColumn;
 		this.settings.showTableActionsColumn = shown;
@@ -5807,6 +6196,35 @@ export default class SnowflakeMethodPlugin
 				this.showError(error);
 			});
 		}, REFRESH_DELAY_MS);
+	}
+
+	/**
+	 * The task file changed in the vault: the board reads again once the
+	 * burst has settled, on the main window's clock like the sticky bell.
+	 * The folder appears with the first task, so the health verdict is
+	 * re-read as well.
+	 */
+	private scheduleTaskNotify(): void {
+		const workspaceWindow = this.app.workspace.containerEl.win;
+		if (this.taskNotifyTimer !== null) {
+			workspaceWindow.clearTimeout(this.taskNotifyTimer);
+		}
+		this.taskNotifyTimer = workspaceWindow.setTimeout(() => {
+			this.taskNotifyTimer = null;
+			this.tasksChanged();
+			this.reconcileDashboardHealth();
+		}, REFRESH_DELAY_MS);
+	}
+
+	/** The tasks changed somewhere; every board reads again. A listener's failure is its own. */
+	private tasksChanged(): void {
+		for (const listener of [...this.taskListeners]) {
+			try {
+				listener();
+			} catch (error) {
+				console.error('Snowflake: a task board failed to refresh', error);
+			}
+		}
 	}
 
 	/**
@@ -7348,6 +7766,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-derived-tasks',
+			name: this.globalT('commands.toggleDerivedTasks'),
+			callback: () => {
+				void this.toggleDerivedTasks().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'toggle-table-actions-column',
 			name: this.globalT('commands.toggleTableActionsColumn'),
 			callback: () => {
@@ -7505,6 +7932,17 @@ export default class SnowflakeMethodPlugin
 				void this.openStickyNotesView().catch((error: unknown) => {
 					this.showError(error);
 				});
+			},
+		});
+		this.addCommand({
+			id: 'new-task',
+			name: this.globalT('commands.newTask'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openCreateTaskModal(this.settings.recentProjectPath);
+				}
+				return available;
 			},
 		});
 		this.addCommand({
@@ -7909,6 +8347,14 @@ export default class SnowflakeMethodPlugin
 			this.scheduleWritingCountRefresh(1000);
 			return;
 		}
+		// The task file is told to the board the same way: its own bell, and
+		// the dashboards keep their frames -- a drop would otherwise cost a
+		// model reload and a frame rebuild a moment after landing.
+		if (file instanceof TFile && isTaskFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleTaskNotify();
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -8037,6 +8483,7 @@ export default class SnowflakeMethodPlugin
 		// project folder takes its memo with it, and a deleted note simply
 		// stops anchoring, which the derived standing already says.
 		for (const store of this.projects.marginRecords) store.evict(file.path);
+		this.projects.tasks.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -8044,6 +8491,11 @@ export default class SnowflakeMethodPlugin
 		if (file instanceof TFile && isStickyNotePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
 			this.scheduleStickyNoteNotify();
+			return;
+		}
+		if (file instanceof TFile && isTaskFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleTaskNotify();
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
@@ -8207,6 +8659,15 @@ export default class SnowflakeMethodPlugin
 				// dragged in, a note dragged out -- is one the manuscript and
 				// the dashboards must hear of as well, below.
 				if (wasSticky && isSticky) return;
+			}
+			// The task file moved in or out of its folder: the board reads
+			// again, and the move is a project change like any other below.
+			const wasTasks = isTaskFilePath(oldPath) && this.touchesProject(oldPath);
+			const isTasks = isTaskFilePath(file.path) && this.touchesProject(file.path);
+			if (wasTasks || isTasks) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleTaskNotify();
 			}
 		}
 		// A project folder moving takes its notes' surfaces with it.

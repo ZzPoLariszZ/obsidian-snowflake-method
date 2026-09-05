@@ -91,6 +91,7 @@ import {
 } from './dashboard-state';
 import {
 	buildOptionField,
+	buildOptionPicker,
 	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
@@ -111,6 +112,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
+import type { FilterRow, LentFilterPopover, OneFilterRow } from './filter-rows';
 import {
 	renderForeshadowingPanel,
 	type ForeshadowingFilterMemory,
@@ -118,6 +120,7 @@ import {
 } from './foreshadowing-panel';
 import {
 	renderRevisionPanel,
+	type RevisionFilterMemory,
 	type RevisionPanelHandle,
 } from './revision-panel';
 import { renderSessionPanel } from './session-panel';
@@ -131,6 +134,9 @@ import {
 	type StickyNoteBoardHandle,
 	type StickyNoteBoardMemory,
 } from './sticky-note-board';
+import { renderTaskBoard, type TaskBoardHandle } from './task-board';
+import { taskBoardMemory, type TaskBoardMemory } from './task-board-rows';
+import type { TaskNavigationTarget } from './task-bridge';
 import { buildTableFrame, VirtualTable } from './virtual-table';
 import type {
 	CharacterViewModel,
@@ -159,18 +165,8 @@ const ENTITY_DRAG_TYPE = 'application/x-snowflake-entity';
 
 /** How the filter panel sits: under its button, and off the window's edge. */
 
-/** One question the funnel asks: a labelled picker over one vocabulary. */
-interface MemberFilterRow {
-	label: string;
-	/** What the field reads as when the question is not being asked. */
-	placeholder: string;
-	/** The value that means exactly that, and what the reset returns to. */
-	empty: string;
-	options: () => PickerOption[];
-	/** What the table is filtered by now, which the panel opens on. */
-	value: string;
-	apply: (value: string) => void;
-}
+/** One question a member table's funnel asks: a picker taking one answer. */
+type MemberFilterRow = OneFilterRow;
 
 /**
  * Both member tables are laid by the same four columns, so stepping between
@@ -356,18 +352,45 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly entitiesPanel = new KeptPanel<EntitiesPanelHandle>();
 	/** The foreshadowing table's filters outlive it, as the prose filters do. */
 	private readonly foreshadowingFilters: ForeshadowingFilterMemory = {
-		status: '',
-		role: '',
+		status: [],
+		role: [],
 		standing: '',
 	};
+	/** The revision table's one filter, kept the same way. */
+	private readonly revisionFilters: RevisionFilterMemory = { standing: '' };
 	/**
-	 * The task tabs' panels -- the revision table, the foreshadowing table
-	 * and the sticky board -- each kept across rebuilds the way the session
-	 * panel is, under the key it was built for, and disposed, switched and
-	 * drawn by one rule over this table rather than by three lists kept by
-	 * hand.
+	 * The task tabs' panels -- the board, the revision table, the
+	 * foreshadowing table and the sticky board -- each kept across rebuilds
+	 * the way the session panel is, under the key it was built for, and
+	 * disposed, switched and drawn by one rule over this table rather than
+	 * by four lists kept by hand.
 	 */
-	private readonly taskPanels: Record<Exclude<TasksTab, 'tasks'>, KeptTaskPanel> = {
+	private readonly taskPanels: Record<TasksTab, KeptTaskPanel> = {
+		tasks: this.keptTaskPanel<TaskBoardHandle>({
+			key: () => this.panelKey(),
+			hostCls: 'snowflake-method-task-board-host',
+			build: (host) =>
+				renderTaskBoard(
+					host,
+					this.host.taskBoard({
+						projectPath: this.projectPath,
+						locale: this.projectLocale,
+					}),
+					{
+						memory: this.taskFilters,
+						popover: this.lentFilterPopover(),
+						// A derived card opens its source tab, which is this view's
+						// to switch.
+						navigate: (target) => {
+							this.navigateFromTask(target);
+						},
+					},
+				),
+			// The board keeps its lanes and its cards; a handback only re-reads.
+			handback: (kept) => {
+				kept.refresh();
+			},
+		}),
 		revision: this.keptTaskPanel<RevisionPanelHandle>({
 			key: () => this.panelKey(),
 			// Named, because the panel inside it is one table filling the
@@ -382,6 +405,7 @@ export class SnowflakeDashboardView extends ItemView {
 						projectPath: this.projectPath,
 						locale: this.projectLocale,
 					}),
+					{ filters: this.revisionFilters, ...this.lentFilterPopover() },
 				),
 			// The mounted panel keeps its reading, and the handback refresh
 			// re-anchors against fresh stamps.
@@ -401,15 +425,7 @@ export class SnowflakeDashboardView extends ItemView {
 					}),
 					{
 						filters: this.foreshadowingFilters,
-						// The dashboard's own funnel popover, lent: it owns the
-						// pickers' lifetime and the outside-click rules.
-						filterOpen: () => this.filterPanel !== null,
-						openFilter: (anchor, rows, changed) => {
-							this.openFilterPanel(anchor, rows, changed);
-						},
-						closeFilter: () => {
-							this.closeFilterPanel();
-						},
+						...this.lentFilterPopover(),
 					},
 				),
 			handback: (kept) => {
@@ -447,6 +463,8 @@ export class SnowflakeDashboardView extends ItemView {
 	};
 	/** Its search, colour, sort and fold outlive it, as the other filters do. */
 	private readonly stickyNoteFilters: StickyNoteBoardMemory = stickyBoardMemory();
+	/** The board's search, funnel and fold, kept the same way. */
+	private readonly taskFilters: TaskBoardMemory = taskBoardMemory();
 	/** Which tracking folds stand OPEN -- everything else rests closed --
 	 *  outliving the panel like the filters do: a tab switch hands the
 	 *  folds back as they were left. */
@@ -467,7 +485,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private customFieldsQuery = '';
 	/** Which face of the statistics pane is on show. */
 	private statisticsTab: StatisticsTab = 'sessions';
-	private tasksTab: TasksTab = 'revision';
+	private tasksTab: TasksTab = 'tasks';
 	/** The entry the inspector is showing, one per vocabulary. */
 	private readonly definitionSelection = new Map<
 		DefinitionFileChoice,
@@ -883,8 +901,8 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/**
 	 * The task management pane: the statistics pane's shape over its own
-	 * strip. The revision table is the face that exists; the other three name
-	 * what the strip is being built for.
+	 * strip -- the board, the foreshadowing table, the revision table and
+	 * the sticky board.
 	 */
 	private renderTasksPane(layout: HTMLElement): void {
 		this.renderTabbedPane(layout, {
@@ -899,7 +917,7 @@ export class SnowflakeDashboardView extends ItemView {
 			body: (body, tab) => {
 				this.renderTasksBody(body, tab);
 			},
-			selfScrolling: (tab) => tab === 'stickyNotes',
+			selfScrolling: (tab) => tab === 'stickyNotes' || tab === 'tasks',
 		});
 	}
 
@@ -920,22 +938,58 @@ export class SnowflakeDashboardView extends ItemView {
 
 	/** What one face of the task management pane puts inside the frame. */
 	private renderTasksBody(body: HTMLElement, tab: TasksTab): void {
-		if (tab !== 'tasks') {
-			this.taskPanels[tab].render(body);
-			return;
-		}
-		body.createEl('p', {
-			cls: 'snowflake-method-tab-planned',
-			text: this.t('statistics.tab.planned'),
-		});
+		this.taskPanels[tab].render(body);
 	}
 
 	/** Every task tab's panel let go, but the one named. */
 	private disposeTaskPanels(except: TasksTab | null = null): void {
 		for (const tab of TASKS_TABS) {
-			if (tab === 'tasks' || tab === except) continue;
+			if (tab === except) continue;
 			this.taskPanels[tab].dispose();
 		}
+	}
+
+	/**
+	 * A derived card opens its source: the pane and the tab it counts on,
+	 * narrowed to what it counted. The memory is preset before the panel is
+	 * built, and the panel it replaces is let go first, so the fresh one
+	 * reads the preset rather than keeping the old funnel; then what a rail
+	 * row does to change the pane.
+	 */
+	private navigateFromTask(target: TaskNavigationTarget): void {
+		switch (target.kind) {
+			case 'sessions':
+				this.selectedPane = { kind: 'statistics' };
+				this.statisticsTab = 'sessions';
+				break;
+			case 'tracking':
+				this.selectedPane = { kind: 'statistics' };
+				this.statisticsTab = 'entities';
+				this.trackingOpen.add(target.section);
+				this.entitiesPanel.dispose();
+				break;
+			case 'foreshadowing':
+				this.selectedPane = { kind: 'tasks' };
+				this.tasksTab = 'foreshadowing';
+				this.foreshadowingFilters.status = [...target.status];
+				this.foreshadowingFilters.role = [];
+				this.foreshadowingFilters.standing = target.standing;
+				this.taskPanels.foreshadowing.dispose();
+				break;
+			case 'revision':
+				this.selectedPane = { kind: 'tasks' };
+				this.tasksTab = 'revision';
+				this.revisionFilters.standing = target.standing;
+				this.taskPanels.revision.dispose();
+				break;
+			case 'stickyNotes':
+				this.selectedPane = { kind: 'tasks' };
+				this.tasksTab = 'stickyNotes';
+				break;
+		}
+		this.stepChosen = true;
+		this.app.workspace.requestSaveLayout();
+		void this.refresh();
 	}
 
 	/** Every statistics tab's panel let go, but the one named. */
@@ -5783,6 +5837,7 @@ export class SnowflakeDashboardView extends ItemView {
 		apply: (next: 'all' | ProgressStatus) => void,
 	): MemberFilterRow {
 		return {
+			kind: 'one',
 			label: this.t('table.progressStatus'),
 			placeholder: this.t('table.filterAllStatuses'),
 			empty: 'all',
@@ -5805,6 +5860,7 @@ export class SnowflakeDashboardView extends ItemView {
 		apply: (next: string) => void,
 	): MemberFilterRow {
 		return {
+			kind: 'one',
 			label: this.t('table.category'),
 			placeholder: this.t('table.filterAllCategories'),
 			empty: '',
@@ -5855,6 +5911,7 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			),
 			{
+				kind: 'one',
 				label: this.t('table.scenePov'),
 				placeholder: this.t('table.filterAllPov'),
 				empty: '',
@@ -5878,6 +5935,7 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
+				kind: 'one',
 				label: this.t('table.sceneTime'),
 				placeholder: this.t('table.filterAllTimes'),
 				empty: '',
@@ -5888,6 +5946,7 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
+				kind: 'one',
 				label: this.t('table.sceneLocation'),
 				placeholder: this.t('table.filterAllLocations'),
 				empty: '',
@@ -5898,6 +5957,7 @@ export class SnowflakeDashboardView extends ItemView {
 				},
 			},
 			{
+				kind: 'one',
 				label: this.t('table.sceneCharacters'),
 				placeholder: this.t('table.filterAllCast'),
 				empty: '',
@@ -5919,9 +5979,26 @@ export class SnowflakeDashboardView extends ItemView {
 	 * its own, so they can all be asked at once, and each offers its whole
 	 * vocabulary rather than only the answers this project happens to hold.
 	 */
+	/**
+	 * The dashboard's own funnel popover, lent to a panel: it owns the
+	 * pickers' lifetime and the outside-click rules, so every panel asks its
+	 * questions in the same box.
+	 */
+	private lentFilterPopover(): LentFilterPopover {
+		return {
+			filterOpen: () => this.filterPanel !== null,
+			openFilter: (anchor, rows, changed) => {
+				this.openFilterPanel(anchor, rows, changed);
+			},
+			closeFilter: () => {
+				this.closeFilterPanel();
+			},
+		};
+	}
+
 	private openFilterPanel(
 		anchor: HTMLElement,
-		rows: readonly MemberFilterRow[],
+		rows: readonly FilterRow[],
 		changed: () => void,
 	): void {
 		this.closeFilterPanel();
@@ -5937,7 +6014,13 @@ export class SnowflakeDashboardView extends ItemView {
 		// What the panel is being set to, until it is confirmed. The table keeps
 		// showing what it was showing while the fields are being worked out, and
 		// a panel dismissed without confirming changes nothing.
-		const draft = rows.map((entry) => entry.value);
+		const draft: (string | string[])[] = rows.map((entry) =>
+			entry.kind === 'many' ? [...entry.values] : entry.value,
+		);
+		const heldOf = (index: number): string[] => {
+			const value = draft[index];
+			return Array.isArray(value) ? value : [];
+		};
 		// Rebuilt rather than reassigned: a picker shows the value it was built
 		// with, so the reset below has to build the fields again to show them
 		// back at rest.
@@ -5950,13 +6033,37 @@ export class SnowflakeDashboardView extends ItemView {
 					cls: 'snowflake-method-filter-label',
 					text: entry.label,
 				});
+				// A question taking several answers is a tag field; one taking
+				// one is a picker with the placeholder standing as the unset row.
+				if (entry.kind === 'many') {
+					this.memberFilterPickers.push(
+						buildOptionPicker(this.app, field, {
+							options: () => entry.options(),
+							picked: () => heldOf(index),
+							pick: (value) => {
+								draft[index] = [...heldOf(index), value];
+							},
+							unpick: (value) => {
+								draft[index] = heldOf(index).filter((held) => held !== value);
+							},
+							removeLabel: entry.removeLabel,
+							label: entry.label,
+							placeholder: entry.placeholder,
+							emptyPlaceholder: entry.placeholder,
+						}),
+					);
+					return;
+				}
 				this.memberFilterPickers.push(
 					buildOptionField(this.app, field, {
 						options: () => [
 							{ value: entry.empty, label: entry.placeholder },
 							...entry.options(),
 						],
-						value: () => draft[index] ?? entry.empty,
+						value: () => {
+							const value = draft[index];
+							return typeof value === 'string' ? value : entry.empty;
+						},
 						choose: (value) => {
 							draft[index] = value;
 						},
@@ -5980,7 +6087,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// and this is not it.
 		reset.addEventListener('click', () => {
 			rows.forEach((entry, index) => {
-				draft[index] = entry.empty;
+				draft[index] = entry.kind === 'many' ? [] : entry.empty;
 			});
 			fill();
 		});
@@ -5991,7 +6098,12 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		confirm.addEventListener('click', () => {
 			rows.forEach((entry, index) => {
-				entry.apply(draft[index] ?? entry.empty);
+				if (entry.kind === 'many') {
+					entry.apply(heldOf(index));
+					return;
+				}
+				const value = draft[index];
+				entry.apply(typeof value === 'string' ? value : entry.empty);
 			});
 			this.closeFilterPanel();
 			changed();

@@ -24,6 +24,7 @@ export * from './sensitive-words';
 export * from './sentences';
 export * from './steps';
 export * from './sticky-note';
+export * from './task';
 export * from './text-length';
 export * from './types';
 export * from './word-frequency';

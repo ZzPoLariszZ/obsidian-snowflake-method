@@ -165,6 +165,8 @@ export interface SnowflakeSettings {
 	 * the note's own form is where it is set and read.
 	 */
 	showTableProgressStatus: boolean;
+	/** Whether the task board shows the cards it derives from the other modules. */
+	showDerivedTasks: boolean;
 	/**
 	 * Whether a table gives its rows' actions a column of buttons. Off, they sit
 	 * behind one menu at the end of the row, which hands the widest column back
@@ -339,6 +341,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	protectManagedBoundaries: true,
 	reduceMotion: false,
 	showTableProgressStatus: false,
+	showDerivedTasks: true,
 	showTableActionsColumn: true,
 	createFromField: 'form',
 	manuscriptWindow: 5,
@@ -429,6 +432,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'protectManagedBoundaries',
 	'reduceMotion',
 	'showTableProgressStatus',
+	'showDerivedTasks',
 	'showTableActionsColumn',
 	'createFromField',
 	'manuscriptWindow',
@@ -628,6 +632,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.showTableProgressStatus === 'boolean'
 				? raw.showTableProgressStatus
 				: DEFAULT_SETTINGS.showTableProgressStatus,
+		showDerivedTasks:
+			typeof raw.showDerivedTasks === 'boolean'
+				? raw.showDerivedTasks
+				: DEFAULT_SETTINGS.showDerivedTasks,
 		showTableActionsColumn:
 			typeof raw.showTableActionsColumn === 'boolean'
 				? raw.showTableActionsColumn

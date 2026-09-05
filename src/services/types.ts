@@ -61,6 +61,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "writingSessions",
   "manuscriptAnalysis",
   "mentionIndex",
+  "tasks",
   "foreshadowing",
   "revisions",
   "stickyNotes",
@@ -98,8 +99,9 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       manuscriptAnalysis: "70_Tool/71_Data_Statistics/712_Prose_Analysis",
       mentionIndex: "70_Tool/71_Data_Statistics/713_Entity_Tracking",
       // The task-management chain, one entry per tenant like the statistics
-      // chain above: the foreshadowing file, the revision file and the sticky
-      // notes, each in its own folder, the Tasks slot still to be built.
+      // chain above: the task file, the foreshadowing file, the revision
+      // file and the sticky notes, each in its own folder.
+      tasks: "70_Tool/72_Task_Management/721_Task",
       foreshadowing: "70_Tool/72_Task_Management/722_Foreshadowing",
       revisions: "70_Tool/72_Task_Management/723_Revision",
       stickyNotes: "70_Tool/72_Task_Management/724_Sticky_Note",
@@ -126,6 +128,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       writingSessions: "70_工具/71_数据统计/711_写作时段",
       manuscriptAnalysis: "70_工具/71_数据统计/712_正文分析",
       mentionIndex: "70_工具/71_数据统计/713_实体追踪",
+      tasks: "70_工具/72_任务管理/721_任务",
       foreshadowing: "70_工具/72_任务管理/722_伏笔",
       revisions: "70_工具/72_任务管理/723_修订",
       stickyNotes: "70_工具/72_任务管理/724_便签",
@@ -337,13 +340,19 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * The 711-713 folders are not these: they are part of the shape a project is
  * built with, and a project missing one is a project to put right. A revisions
  * folder is only ever wanted once the author has proposed a change, a
- * foreshadowing folder once a thread has been set up, and a sticky-notes
- * folder once the first note is written; each writer ensures its chain on the
- * way to the first write -- so demanding one up front would mark every project
- * made before the feature as damaged over a folder nothing is waiting for.
+ * foreshadowing folder once a thread has been set up, a sticky-notes folder
+ * once the first note is written, and a task folder once the first task is
+ * saved; each writer ensures its chain on the way to the first write -- so
+ * demanding one up front would mark every project made before the feature
+ * as damaged over a folder nothing is waiting for.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
-  new Set<ProjectDirectoryKey>(["foreshadowing", "revisions", "stickyNotes"]);
+  new Set<ProjectDirectoryKey>([
+    "tasks",
+    "foreshadowing",
+    "revisions",
+    "stickyNotes",
+  ]);
 
 /** A project-level contract problem that exists before marker inspection. */
 export interface ProjectStructureIssue {

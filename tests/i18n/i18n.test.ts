@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	BAND_SPANS,
+	DERIVED_TASK_KEYS,
 	FORESHADOWING_STATUSES,
 	HEATMAP_MEASURES,
 	OCCURRENCE_ROLES,
 	READING_MEASURES,
 	WRITING_MODES,
 	STICKY_NOTE_COLORS,
+	TASK_PRIORITIES,
+	TASK_STATUSES,
 } from '../../src/domain';
 import { TASKS_TABS } from '../../src/ui/dashboard-state';
 import {
@@ -1338,5 +1341,115 @@ describe('sticky note copy', () => {
 		expect(zhCN['stickyNotes.color.macaron-8']).toBe('香芋');
 		expect(zhCN['stickyNotes.archive']).toBe('归档');
 		expect(zhCN['stickyNotes.float']).toBe('悬浮');
+	});
+});
+
+/**
+ * The task copy reaches the screen through built keys -- a column named by
+ * its status, a badge by its priority, a derived card by its key -- that
+ * the type checker never sees go missing. The sweep does.
+ */
+describe('task copy', () => {
+	it('names every column, priority and derived card in both languages', () => {
+		for (const status of TASK_STATUSES) {
+			expect(Object.keys(en), status).toContain(`tasks.status.${status}`);
+			expect(Object.keys(zhCN), status).toContain(`tasks.status.${status}`);
+		}
+		for (const priority of TASK_PRIORITIES) {
+			expect(Object.keys(en), priority).toContain(`tasks.priority.${priority}`);
+			expect(Object.keys(zhCN), priority).toContain(`tasks.priority.${priority}`);
+		}
+		for (const key of DERIVED_TASK_KEYS) {
+			expect(Object.keys(en), key).toContain(`tasks.derived.${key}`);
+			expect(Object.keys(zhCN), key).toContain(`tasks.derived.${key}`);
+		}
+		expect(en['tasks.tab.tasks']).toBe('Tasks');
+		expect(zhCN['tasks.tab.tasks']).toBe('任务');
+		expect(zhCN['tasks.status.todo']).toBe('待处理');
+		expect(zhCN['tasks.status.in-review']).toBe('待检查');
+		expect(zhCN['tasks.priority.urgent']).toBe('紧急');
+		expect(zhCN['tasks.derived.stickyNotes']).toBe('待查看的便签');
+	});
+
+	it('labels the board, the funnel, the dialogs and the command in both languages', () => {
+		const keys = [
+			'commands.newTask',
+			'taskBoard.empty',
+			'taskBoard.noMatch',
+			'taskBoard.noProject',
+			'taskBoard.loading',
+			'taskBoard.loadFailed',
+			'taskBoard.derivedFailed',
+			'taskBoard.refresh',
+			'taskBoard.searchPlaceholder',
+			'taskBoard.add',
+			'taskBoard.refused',
+			'taskBoard.edit',
+			'taskBoard.more',
+			'taskBoard.moveTo',
+			'taskBoard.archive',
+			'taskBoard.restore',
+			'taskBoard.archiveTitle',
+			'taskBoard.archiveEmpty',
+			'taskBoard.archiveNoMatch',
+			'taskBoard.emptyArchive',
+			'taskBoard.emptyArchiveTitle',
+			'taskBoard.emptyArchiveDescription',
+			'taskBoard.deleteTitle',
+			'taskBoard.deleteDescription',
+			'taskBoard.due',
+			'taskBoard.overdue',
+			'taskBoard.filterOrigin',
+			'taskBoard.filterAllOrigins',
+			'taskBoard.origin.manual',
+			'taskBoard.origin.derived',
+			'taskBoard.priority',
+			'taskBoard.filterAllPriorities',
+			'taskBoard.filterAllStatuses',
+			'taskBoard.filterDue',
+			'taskBoard.filterAllDue',
+			'taskBoard.due.overdue',
+			'taskBoard.due.today',
+			'taskBoard.due.week',
+			'taskBoard.due.none',
+			'tasks.derived.progress',
+			'tasks.derived.tooltip',
+			'tasks.newerSchema',
+			'tasks.corruptPreserved',
+			'modal.task.title',
+			'modal.task.editTitle',
+			'modal.task.name',
+			'modal.task.nameRequired',
+			'modal.task.nameTaken',
+			'modal.task.description',
+			'modal.task.status',
+			'modal.task.priority',
+			'modal.task.dueDate',
+			'modal.task.dueInvalid',
+			'modal.task.related',
+			'modal.task.relatedPlaceholder',
+			'modal.task.relatedEmpty',
+			'modal.task.relatedRemove',
+			'modal.task.relatedMissing',
+			'revisionTable.standing',
+			'revisionTable.filterAllStandings',
+			'revisionTable.conflictOnly',
+			'table.filterRemove',
+		];
+		for (const key of keys) {
+			expect(Object.keys(en), key).toContain(key);
+			expect(Object.keys(zhCN), key).toContain(key);
+		}
+		for (const locale of [en, zhCN]) {
+			expect(locale['taskBoard.moveTo']).toContain('{status}');
+			expect(locale['taskBoard.due']).toContain('{date}');
+			expect(locale['taskBoard.emptyArchiveDescription']).toContain('{count}');
+			expect(locale['tasks.corruptPreserved']).toContain('{path}');
+			expect(locale['tasks.derived.progress']).toContain('{net}');
+			expect(locale['tasks.derived.progress']).toContain('{goal}');
+			expect(locale['modal.task.relatedRemove']).toContain('{name}');
+			expect(locale['modal.task.relatedMissing']).toContain('{name}');
+			expect(locale['table.filterRemove']).toContain('{label}');
+		}
 	});
 });

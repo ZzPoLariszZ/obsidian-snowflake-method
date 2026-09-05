@@ -6024,6 +6024,48 @@ body {
 	white-space: pre-line;
 }
 
+/* The task's own dialog: the title, the day it is due and how pressing it
+   is share the first row, the last two in columns as wide as the status
+   above them, so the weight ends under the status; the description and the
+   entities each take a row. */
+.snowflake-method-task-form {
+	grid-template-columns:
+		minmax(0, 1fr) var(--snowflake-form-aside)
+		var(--snowflake-form-aside);
+}
+
+.snowflake-method-task-form > .snowflake-method-character-setting {
+	grid-column: 1 / -1;
+}
+
+.snowflake-method-task-form > .snowflake-method-character-name-setting {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.snowflake-method-task-form > .snowflake-method-task-due-setting {
+	align-self: start;
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.snowflake-method-task-form > .snowflake-method-task-priority-setting {
+	align-self: start;
+	grid-column: 3;
+	grid-row: 1;
+}
+
+/* The weight fills its column as the time note's type fills its own, so it
+   ends where the status ends rather than where its longest word does. */
+.modal.snowflake-method-character-modal
+	.modal-content.snowflake-method-task-form
+	> .snowflake-method-task-priority-setting
+	select.dropdown {
+	width: 100%;
+	min-width: 0;
+	height: var(--input-height);
+}
+
 /* The thread's own dialog: the member form's grid, with the description, the
    entities it touches, the first occurrence and the occurrence list each
    taking a row of their own. */
@@ -6830,6 +6872,9 @@ col.snowflake-method-prose-column-dialogue {
 	.snowflake-method-prose-controls
 	.search-input-container,
 .snowflake-method-sticky-board
+	.snowflake-method-prose-controls
+	.search-input-container,
+.snowflake-method-task-board
 	.snowflake-method-prose-controls
 	.search-input-container {
 	flex: 0 1 16rem;
@@ -11271,6 +11316,10 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-sticky-board .snowflake-method-sticky-add:not(.clickable-icon),
 .snowflake-method-sticky-board .snowflake-method-sticky-empty-archive {
 	min-width: var(--snowflake-method-sticky-action-width, 0);
+	/* Off the icon buttons by one icon button's inset, as the thread
+	   table's add stands, so the glyphs and the button read as evenly
+	   spaced. */
+	margin-inline-start: var(--size-2-3);
 }
 
 .snowflake-method-sticky-board .snowflake-method-sticky-measure {
@@ -11588,4 +11637,457 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		0px,
 		calc(var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-3))
 	);
+}
+
+/* --- The task board ------------------------------------------------------- */
+
+/* The board fills the face as the sticky board does: the band rides the
+   gap under the tab strip, the lanes take the height, and the archive folds
+   under them. */
+.snowflake-method-task-board-host,
+.snowflake-method-task-board {
+	height: 100%;
+}
+
+.snowflake-method-task-board .snowflake-method-filter-button.is-hidden,
+.snowflake-method-task-board .search-input-container.is-hidden,
+.snowflake-method-task-board .snowflake-method-character-empty.is-hidden,
+.snowflake-method-task-frame.is-hidden,
+.snowflake-method-task-archive.is-hidden,
+.snowflake-method-task-archive-grid.is-hidden {
+	display: none;
+}
+
+.snowflake-method-task-board .snowflake-method-character-empty {
+	flex: 0 0 auto;
+}
+
+/* The text button at a band's end stands off the icon buttons by one icon
+   button's inset, as the thread table's add does, so the glyphs and the
+   button read as evenly spaced. */
+.snowflake-method-task-add,
+.snowflake-method-task-empty-archive {
+	flex: 0 0 auto;
+	margin-inline-start: var(--size-2-3);
+	white-space: nowrap;
+}
+
+.snowflake-method-task-frame {
+	position: relative;
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+
+/* The lanes scroll sideways as one strip; each lane's body scrolls down on
+   its own, so a head stays put without being pinned. The gap between two
+   lanes is where a body's scrollbar lives (below), so it is never narrower
+   than a bar and a finger of room beside it. */
+.snowflake-method-task-lanes {
+	--snowflake-method-task-lane-gap: max(
+		var(--size-4-6),
+		calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-2))
+	);
+	display: flex;
+	flex: 1 1 auto;
+	align-items: stretch;
+	gap: var(--snowflake-method-task-lane-gap);
+	min-height: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: thin;
+}
+
+/* A lane wears its status on its top edge the way the selected tab wears
+   the accent: the tint rides the border itself, so it curves with the
+   corners, and the head is coloured to match rather than ruled off. The
+   edge is the hue let down toward the lane's own ground, a macaron rather
+   than a flag, and the title the hue softened toward the muted text, so
+   six columns side by side still read as one board. A set-aside card
+   wears the same edge for the column it left, so the hues are worn by
+   whatever in the board names a status. */
+.snowflake-method-task-lane,
+.snowflake-method-task-card.is-archived {
+	--snowflake-method-task-status-hue: var(--text-muted);
+	--snowflake-method-task-status-tint: color-mix(
+		in srgb,
+		var(--snowflake-method-task-status-hue) 60%,
+		var(--text-muted)
+	);
+	--snowflake-method-task-status-edge: color-mix(
+		in srgb,
+		var(--snowflake-method-task-status-hue) 40%,
+		var(--background-secondary)
+	);
+}
+
+.snowflake-method-task-lane {
+	display: flex;
+	flex: 0 0 20rem;
+	flex-direction: column;
+	width: 20rem;
+	min-width: 0;
+	min-height: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-top: 3px solid var(--snowflake-method-task-status-edge);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+}
+
+.snowflake-method-task-board [data-status='in-progress'] {
+	--snowflake-method-task-status-hue: var(--color-purple);
+}
+
+.snowflake-method-task-board [data-status='blocked'] {
+	--snowflake-method-task-status-hue: var(--color-red);
+}
+
+.snowflake-method-task-board [data-status='in-review'] {
+	--snowflake-method-task-status-hue: var(--color-yellow);
+}
+
+.snowflake-method-task-board [data-status='done'] {
+	--snowflake-method-task-status-hue: var(--color-green);
+}
+
+.snowflake-method-task-board [data-status='cancelled'] {
+	--snowflake-method-task-status-hue: var(--text-faint);
+}
+
+/* The head is set as a table's header row is: small and semibold, here in
+   the lane's own tint. */
+.snowflake-method-task-lane-head {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-2-2);
+	padding: var(--size-4-3) var(--size-4-4) var(--size-4-2);
+}
+
+.snowflake-method-task-lane-title {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--snowflake-method-task-status-tint);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* The body reaches out of the lane, past its border, by the width a
+   classic scrollbar takes, and pads the reach back less that width, the
+   way a table body reaches out of its frame: the cards end inside the lane
+   while the bar stands against its edge in the gap beyond. Scroll rather
+   than auto on the vertical axis, so the bar's width is spoken for whether
+   or not the column is long enough to need one, and the cards never shift
+   when it first is. */
+.snowflake-method-task-lane-body {
+	--snowflake-method-task-lane-reach: calc(
+		1px + var(--snowflake-method-scrollbar-width, 0px)
+	);
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	min-height: 0;
+	margin-inline-end: calc(-1 * var(--snowflake-method-task-lane-reach));
+	padding: var(--size-2-2) var(--size-4-3) var(--size-4-3);
+	padding-inline-end: calc(
+		var(--size-4-3) + var(--snowflake-method-task-lane-reach) -
+			var(--snowflake-method-scrollbar-width, 0px)
+	);
+	overflow-y: scroll;
+	scrollbar-gutter: stable;
+	overscroll-behavior-y: contain;
+}
+
+/* The landing at a column's end, and the drop area of an empty column. */
+.snowflake-method-task-lane-tail {
+	flex: 0 0 auto;
+	min-height: var(--size-4-8);
+	border-radius: var(--radius-s);
+}
+
+.snowflake-method-task-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-3) var(--size-4-4);
+	background-color: var(--background-primary);
+	cursor: pointer;
+}
+
+.snowflake-method-task-card:hover {
+	border-color: var(--background-modifier-border-hover);
+}
+
+.snowflake-method-task-card:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: 2px;
+}
+
+.snowflake-method-task-card[draggable='true'] {
+	cursor: grab;
+}
+
+.snowflake-method-task-card.is-dragging {
+	opacity: 0.55;
+}
+
+/* The landing mark: a line over the card the drop lands before, or over the
+   tail for the column's end. */
+.snowflake-method-task-card.is-drop-before,
+.snowflake-method-task-lane-tail.is-drop-before {
+	box-shadow: 0 -2px 0 0 var(--interactive-accent);
+}
+
+/* A derived card is read, never written: dashed, so it reads as the
+   plugin's rather than the author's. */
+.snowflake-method-task-card[data-origin='derived'] {
+	border-style: dashed;
+}
+
+/* An author's card stands taller than a derived one, which is a single
+   line: its name and its number. */
+.snowflake-method-task-card[data-origin='manual'] {
+	padding-block: var(--size-4-4);
+}
+
+.snowflake-method-task-card[data-origin='derived'] .snowflake-method-task-card-head {
+	align-items: center;
+}
+
+/* Each priority has a hue; the card carries it, so the mark, the word and
+   the urgent stripe agree. The mark wears the hue softened as the lanes'
+   titles are, the word a deeper shade of the same. */
+.snowflake-method-task-card {
+	--snowflake-method-task-priority-hue: var(--text-muted);
+	--snowflake-method-task-priority-tint: color-mix(
+		in srgb,
+		var(--snowflake-method-task-priority-hue) 70%,
+		var(--text-muted)
+	);
+}
+
+.snowflake-method-task-card[data-priority='low'] {
+	--snowflake-method-task-priority-hue: var(--color-green);
+}
+
+.snowflake-method-task-card[data-priority='high'] {
+	--snowflake-method-task-priority-hue: var(--color-yellow);
+}
+
+.snowflake-method-task-card[data-priority='urgent'] {
+	--snowflake-method-task-priority-hue: var(--color-red);
+}
+
+/* An urgent card is edged on the board; on the shelf it rests. */
+.snowflake-method-task-lane-body .snowflake-method-task-card[data-priority='urgent'] {
+	border-inline-start: 3px solid var(--snowflake-method-task-priority-tint);
+}
+
+.snowflake-method-task-card.is-archived {
+	border-top: 3px solid var(--snowflake-method-task-status-edge);
+	cursor: default;
+}
+
+.snowflake-method-task-card-head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-2-2);
+}
+
+/* One line, trimmed: every author's card stands the same height, and the
+   whole title waits in the tooltip. */
+.snowflake-method-task-card-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	line-height: var(--line-height-tight);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* The menu button reaches out by its own inset, so its glyph ends where a
+   derived card's count ring ends, on the card's padding edge. */
+.snowflake-method-task-card .snowflake-method-task-more {
+	flex: 0 0 auto;
+	margin-block: calc(-1 * var(--size-2-1));
+	margin-inline-end: calc(-1 * var(--size-2-3));
+}
+
+.snowflake-method-task-card-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2) var(--size-4-3);
+	margin-block-start: var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-task-priority {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	color: color-mix(
+		in srgb,
+		var(--snowflake-method-task-priority-hue) 45%,
+		var(--text-normal)
+	);
+}
+
+.snowflake-method-task-priority svg {
+	width: 1em;
+	height: 1em;
+	color: var(--snowflake-method-task-priority-tint);
+}
+
+/* A mark's box is the mark itself, not a line of text around it, so it
+   centres on the word beside it. */
+.snowflake-method-task-glyph {
+	display: inline-flex;
+	align-items: center;
+}
+
+.snowflake-method-task-glyph svg {
+	display: block;
+}
+
+/* The date stands at the row's end, under the card's own menu. */
+.snowflake-method-task-due {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-1);
+	margin-inline-start: auto;
+}
+
+.snowflake-method-task-due svg {
+	width: 0.9em;
+	height: 0.9em;
+}
+
+.snowflake-method-task-due.is-overdue {
+	color: var(--text-error);
+}
+
+.snowflake-method-task-count,
+.snowflake-method-task-progress {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
+.snowflake-method-task-progress {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The shelf's tools ride the title row as a board card's menu does, the
+   delete in the theme's own ink for what cannot be undone. */
+.snowflake-method-task-card-actions {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--size-2-1);
+	margin-block: calc(-1 * var(--size-2-1));
+	margin-inline-end: calc(-1 * var(--size-2-3));
+}
+
+.snowflake-method-task-card .snowflake-method-task-delete:not(:disabled) {
+	color: var(--text-error);
+}
+
+/* The archive, folded under the lanes as the sticky board folds its own. */
+.snowflake-method-task-archive {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	max-height: 40%;
+	min-height: 0;
+	margin-block-start: auto;
+	padding-block-start: var(--size-2-2);
+	border-block-start: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-task-board button.snowflake-method-task-archive-toggle {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	width: 100%;
+	height: auto;
+	padding: var(--size-4-2) var(--size-4-2);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	text-align: start;
+	cursor: pointer;
+	appearance: none;
+}
+
+.snowflake-method-task-board button.snowflake-method-task-archive-toggle:hover {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-task-board button.snowflake-method-task-archive-toggle:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: 2px;
+}
+
+.snowflake-method-task-archive-count {
+	display: inline-grid;
+	flex: 0 0 auto;
+	place-items: center;
+	margin-inline-start: auto;
+}
+
+.snowflake-method-task-archive-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	padding-block-start: var(--size-2-2);
+}
+
+.snowflake-method-task-archive-body.is-collapsed {
+	display: none;
+}
+
+/* The archive's own row of controls, laid as the band above is: the
+   search at the left end at the shared width, the funnel beside it, the
+   way out for every task at the row's end. */
+.snowflake-method-task-archive-actions {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-2-2);
+	padding-block-end: var(--size-2-2);
+}
+
+.snowflake-method-task-archive-actions .search-input-container {
+	flex: 0 1 16rem;
+	min-width: 0;
+	margin-inline-end: auto;
+}
+
+.snowflake-method-task-archive-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+}
+
+.snowflake-method-task-archive-grid {
+	display: grid;
+	/* A shelf card is a lane's width, laid at the lanes' spacing. */
+	grid-template-columns: repeat(auto-fill, 20rem);
+	gap: var(--size-4-3) var(--size-4-6);
+	align-items: start;
 }

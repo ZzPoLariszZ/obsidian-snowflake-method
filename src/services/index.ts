@@ -13,6 +13,8 @@ export * from "./project-service";
 export * from "./revision-store";
 export * from "./revision-service";
 export * from "./sticky-note-service";
+export * from "./task-service";
+export * from "./task-store";
 export * from "./types";
 export * from "./writing-count";
 export * from "./writing-session";
