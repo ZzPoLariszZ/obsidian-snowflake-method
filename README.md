@@ -40,7 +40,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 
 | Feature | What it provides |
 |---|---|
-| Guided dashboard | Navigate all ten steps and control progress without blocking validation rules. |
+| Guided dashboard | Navigate all ten steps and control progress without blocking validation rules, with the rail beside them folded to its marks whenever you want the room. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
 | Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
@@ -188,7 +188,7 @@ The work around the writing has a pane of its own. The dashboard's **Task manage
 
 <p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three revisions beside a chapter in the manuscript stream: a replacement and a deletion struck through in the prose, an insertion marked by a bar, and a card for each with the original text, the proposed text, a comment, and Accept, Reject and Edit" /></a></p>
 
-**Sticky notes** hold what does not belong in a record: an idea, a reminder, or a question to come back to. **New sticky note** in the Command palette, the sticker in the ribbon and **Add sticky note** on the tab each make one and open it ready to write in. A note has two faces, its prose clicked to write in with the plugin's own editor and Escape to read it back as rendered Markdown, and one file is shown three ways at once: a card on the dashboard, a compact card in a sidebar of its own, and a floating panel over the workspace that drags by its head, resizes from any edge, pins in place and thins to let the page show through. Where a panel stands is remembered on that device, and focus mode never fades it, solo included. Eight colors tell the notes apart at a glance, and **Archive** sets one aside into a fold under the board, closing every panel of it, to be read, restored, or deleted there.
+**Sticky notes** hold what does not belong in a record: an idea, a reminder, or a question to come back to. **New sticky note** in the Command palette, the sticker in the ribbon and **Add sticky note** on the tab each make one and open it ready to write in. A note has two faces, its prose clicked to write in with the plugin's own editor and Escape to read it back as rendered Markdown, and one file is shown three ways at once: a card on the dashboard, a compact card in a sidebar of its own, and a floating panel over the workspace that drags by its head, resizes from any edge, pins in place and thins to let the page show through, put up and taken down again from the same button on the card. Where a panel stands is remembered on that device, and focus mode never fades it, solo included. Eight colors tell the notes apart at a glance, and **Archive** sets one aside into a fold under the board, closing every panel of it, to be read, restored, or deleted there.
 
 <p align="center"><a href="assets/screenshots/sticky_note_en.png"><img src="assets/screenshots/sticky_note_en.png" width="100%" alt="The dashboard's Sticky notes tab with two colored cards and a collapsed archive, the same two notes as compact cards in the sidebar, and both floating as resizable panels over the workspace" /></a></p>
 
@@ -311,6 +311,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Toggle progress status in tables | Show or hide the progress status column. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
 | Toggle the actions column in tables | Show or hide each row's actions column. |
+| Toggle the dashboard rail | Fold the rail beside the dashboard to its marks, or open it out again. |
 | Toggle typewriter scrolling | Hold the line being written at the middle of the page. |
 | Toggle writing count outside sessions | Start or stop recording the words written while no session is running. |
 | Update notes in older format | Update every note an older release wrote. |
@@ -576,7 +577,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 | 功能 | 说明 |
 |---|---|
-| 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验。 |
+| 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验，需要地方时可以把旁边的导航栏收成一列图标。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
 | 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
 | 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
@@ -724,7 +725,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 <p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流中一章旁的三处修订：替换与删除在正文中划去，插入以一道竖线标出，每一处各有一张卡片，写着原文、建议文本与备注，以及接受、拒绝与编辑" /></a></p>
 
-**便签**用来放不必进记录的东西：一个想法、一句提醒，或者一个稍后再回来的问题。命令面板中的**新建便签**、侧边栏的便签图标，以及标签页上的**添加便签**，都会新建一张并立刻打开，可以直接写。每张便签都有两面，点击正文即可用插件自带的编辑器书写，按 Escape 则读回渲染后的 Markdown，而同一个文件会同时以三种样子出现：工作台上的卡片、独立侧栏中的紧凑卡片，以及浮于工作区之上的面板，可以拖动标题栏移动、从任意边缘缩放、固定位置，也可以调淡让底下的页面透出来。面板停在哪里会按设备记住，专注模式也从不淡化它，仅正文一档同样如此。八种颜色便于一眼分辨，**归档**会把便签收进面板下方的折叠区，同时关闭它的所有悬浮面板，在那里可以阅读、恢复或删除。
+**便签**用来放不必进记录的东西：一个想法、一句提醒，或者一个稍后再回来的问题。命令面板中的**新建便签**、侧边栏的便签图标，以及标签页上的**添加便签**，都会新建一张并立刻打开，可以直接写。每张便签都有两面，点击正文即可用插件自带的编辑器书写，按 Escape 则读回渲染后的 Markdown，而同一个文件会同时以三种样子出现：工作台上的卡片、独立侧栏中的紧凑卡片，以及浮于工作区之上的面板，可以拖动标题栏移动、从任意边缘缩放、固定位置，也可以调淡让底下的页面透出来，卡片上的同一个按钮既让它浮起，也把它收起。面板停在哪里会按设备记住，专注模式也从不淡化它，仅正文一档同样如此。八种颜色便于一眼分辨，**归档**会把便签收进面板下方的折叠区，同时关闭它的所有悬浮面板，在那里可以阅读、恢复或删除。
 
 <p align="center"><a href="assets/screenshots/sticky_note_cn.png"><img src="assets/screenshots/sticky_note_cn.png" width="100%" alt="工作台的便签标签页中两张彩色卡片与折叠起来的归档，侧栏中同样的两张紧凑卡片，以及悬浮于工作区之上、可缩放的两个面板" /></a></p>
 
@@ -838,6 +839,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记所存的位置。 |
 | 切换托管区段边界保护 | 临时调整同步标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 选择固定分栏或普通标签页。 |
+| 切换工作台导航栏 | 把工作台旁边的导航栏收成一列图标，或者重新展开。 |
 | 切换从字段新建笔记时是否打开表单 | 选择从字段新建的笔记是先打开表单还是直接创建。 |
 | 切换表格中的进度状态 | 显示或隐藏进度状态列。 |
 | 切换表格中的操作列 | 显示或隐藏每行的操作列。 |
