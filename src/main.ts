@@ -3942,6 +3942,9 @@ export default class SnowflakeMethodPlugin
 			openNote: (path) => this.openManagedFile(path),
 			float: (id, win, options) => this.floatStickyNote(id, win, options),
 			isFloating: (id, win) => this.isStickyNoteFloating(id, win),
+			unfloat: (id, win) => {
+				this.stickyLayers.get(win.document)?.close(id);
+			},
 		};
 	}
 

@@ -66,4 +66,6 @@ export interface StickyNoteBridge {
 	/** Shows the note as a floating panel in `win`, or raises the one already there. */
 	float(id: string, win: Window, options?: StickyNoteFloatOptions): Promise<void>;
 	isFloating(id: string, win: Window): boolean;
+	/** Takes the note's panel down in `win`, if one stands there; the surfaces hear of it through the hub. */
+	unfloat(id: string, win: Window): void;
 }

@@ -984,7 +984,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'stickyNotes.edit': '编辑',
 	'stickyNotes.view': '查看',
 	'stickyNotes.float': '悬浮',
-	'stickyNotes.floating': '已在本窗口悬浮',
+	'stickyNotes.unfloat': '关闭悬浮面板',
 	'stickyNotes.pin': '固定位置',
 	'stickyNotes.unpin': '取消固定',
 	'stickyNotes.transparency': '透明度',

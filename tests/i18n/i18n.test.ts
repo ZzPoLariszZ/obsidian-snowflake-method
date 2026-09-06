@@ -1345,6 +1345,7 @@ describe('sticky note copy', () => {
 		expect(zhCN['stickyNotes.color.macaron-8']).toBe('香芋');
 		expect(zhCN['stickyNotes.archive']).toBe('归档');
 		expect(zhCN['stickyNotes.float']).toBe('悬浮');
+		expect(zhCN['stickyNotes.unfloat']).toBe('关闭悬浮面板');
 	});
 });
 

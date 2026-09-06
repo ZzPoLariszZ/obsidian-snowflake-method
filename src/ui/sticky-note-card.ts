@@ -295,6 +295,13 @@ class StickyNoteCard implements StickyNoteCardHandle {
 					t('stickyNotes.float'),
 				);
 				this.floatButton.addEventListener('click', () => {
+					// One button both ways: a note standing in this window's
+					// layer is put away, any other is floated.
+					if (deps.bridge.isFloating(this.note.id, this.el.win)) {
+						deps.bridge.unfloat(this.note.id, this.el.win);
+						this.paintFloatButton();
+						return;
+					}
 					void deps.bridge
 						.float(this.note.id, this.el.win)
 						.then(() => {
@@ -914,7 +921,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		if (this.floatButton === null) return;
 		const floating = this.deps.bridge.isFloating(this.note.id, this.el.win);
 		this.floatButton.toggleClass('is-active', floating);
-		const label = this.deps.t(floating ? 'stickyNotes.floating' : 'stickyNotes.float');
+		const label = this.deps.t(floating ? 'stickyNotes.unfloat' : 'stickyNotes.float');
 		this.floatButton.setAttribute('aria-label', label);
 		setTooltip(this.floatButton, label);
 	}

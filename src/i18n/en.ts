@@ -1073,7 +1073,7 @@ export const en = {
 	'stickyNotes.edit': 'Edit',
 	'stickyNotes.view': 'View',
 	'stickyNotes.float': 'Float',
-	'stickyNotes.floating': 'Floating in this window',
+	'stickyNotes.unfloat': 'Close the floating panel',
 	'stickyNotes.pin': 'Pin in place',
 	'stickyNotes.unpin': 'Unpin',
 	'stickyNotes.transparency': 'Transparency',
