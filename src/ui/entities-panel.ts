@@ -27,6 +27,7 @@ import {
 } from './entities-rows';
 import { mentionNoteTitle, truncateEnd } from './mention-rows';
 import type { Translate } from './modals';
+import { paintCount } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { buildTableFrame } from './virtual-table';
 
@@ -448,12 +449,14 @@ export function renderEntitiesPanel(
 			text: label,
 			attr: { role: 'heading', 'aria-level': '3' },
 		});
-		toggle.createSpan({
-			cls:
-				'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
-				'snowflake-method-definition-count',
-			text: String(count),
-		});
+		paintCount(
+			toggle.createSpan({
+				cls:
+					'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
+					'snowflake-method-definition-count',
+			}),
+			count,
+		);
 		const body = section.createDiv({
 			cls: 'snowflake-method-definition-section-body',
 		});

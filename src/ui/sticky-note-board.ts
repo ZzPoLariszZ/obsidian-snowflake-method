@@ -21,7 +21,7 @@ import {
 import type { StickyNoteRecord } from '../services';
 import { hangPanel } from './anchored-panel';
 import type { Translate } from './modals';
-import { renderEmptyLine } from './pane-parts';
+import { paintCount, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { PublicCodeMirrorBackend } from './segment-editor-backend';
 import type { StickyNoteBridge, StickyNoteReading } from './sticky-note-bridge';
@@ -593,7 +593,7 @@ export function renderStickyNoteBoard(
 		if (archive === null || shelf === null) return;
 		archivedNotes = archived;
 		show(archive.section, true);
-		archive.count.setText(String(archived.length));
+		paintCount(archive.count, archived.length);
 		const shown = through(memory.archive, archived);
 		show(archive.controls.searchBox, archived.length > 0);
 		show(archive.controls.filterButton, archived.length > 0);

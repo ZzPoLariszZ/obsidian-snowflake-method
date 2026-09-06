@@ -126,7 +126,7 @@ import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
-import { renderSplitButton } from './pane-parts';
+import { paintCount, renderSplitButton } from './pane-parts';
 import {
 	renderStickyNoteBoard,
 	stickyBoardMemory,
@@ -1746,7 +1746,7 @@ export class SnowflakeDashboardView extends ItemView {
 				indicator.addClass('has-managed-section-issue');
 				setIcon(indicator, 'triangle-alert');
 			} else if (spec !== undefined && 'count' in spec) {
-				this.setCount(indicator, spec.count);
+				paintCount(indicator, spec.count);
 			} else if (spec !== undefined) {
 				indicator.setText(this.statusGlyph(spec.status));
 			}
@@ -2745,7 +2745,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// How many entries this kind keeps, worn the way the rail wears its
 		// counts: the same circle, in the same place at the end of the line.
 		const standing = tree.nodes.filter((node) => !node.missing).length;
-		this.setCount(
+		paintCount(
 			toggle.createSpan({
 				cls:
 					'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
@@ -3074,7 +3074,7 @@ export class SnowflakeDashboardView extends ItemView {
 			text: this.definitionKindLabel(kind),
 			attr: { role: 'heading', 'aria-level': '3' },
 		});
-		this.setCount(
+		paintCount(
 			toggle.createSpan({
 				cls:
 					'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
@@ -3517,7 +3517,7 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			line.createSpan({ text: label });
 			if (count !== undefined) {
-				this.setCount(
+				paintCount(
 					line.createSpan({
 						cls:
 							'snowflake-method-step-indicator snowflake-method-worldbuilding-count ' +
@@ -3756,17 +3756,6 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		setIcon(icon, 'triangle-alert');
 		empty.createSpan({ text });
-	}
-
-	/**
-	 * A count in one of the rail's circles. The circle keeps its size, so the
-	 * figures give way instead: three of them still read, which is as many as
-	 * a vocabulary or a kind is ever counted in.
-	 */
-	private setCount(element: HTMLElement, value: number): void {
-		const text = String(value);
-		element.setText(text);
-		element.dataset.digits = String(Math.min(text.length, 4));
 	}
 
 	/** The heading one kind's tree stands under. */

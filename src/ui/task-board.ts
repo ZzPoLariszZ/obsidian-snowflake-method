@@ -12,7 +12,7 @@ import {
 	type TaskStatus,
 } from '../domain';
 import type { FilterRow } from './filter-rows';
-import { grouped, renderEmptyLine } from './pane-parts';
+import { grouped, paintCount, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
@@ -611,7 +611,7 @@ export function renderTaskBoard(
 				);
 			} else if (derived.count !== null) {
 				badge.className = 'snowflake-method-step-indicator snowflake-method-task-count';
-				badge.setText(String(derived.count));
+				paintCount(badge, derived.count);
 			} else {
 				badge.className = 'is-hidden';
 				badge.setText('');
@@ -779,7 +779,7 @@ export function renderTaskBoard(
 			if (el === undefined) continue;
 			lane.body.insertBefore(el, lane.cards.get(move.before)?.el ?? lane.tail);
 		}
-		lane.count.setText(String(cards.length));
+		paintCount(lane.count, cards.length);
 	};
 
 	const repaintShelf = (archived: readonly Task[], current: TaskBoardReading): void => {
@@ -943,7 +943,7 @@ export function renderTaskBoard(
 		const archived = reading.tasks.filter((task) => task.archived);
 		const shelved = filterArchivedTasks(archived, memory.archive.query, memory.archive, context);
 		show(archiveSection, true);
-		archiveCount.setText(String(archived.length));
+		paintCount(archiveCount, archived.length);
 		emptyButton.disabled = readOnly || archived.length === 0;
 		repaintShelf(shelved, reading);
 		archiveState.setText(

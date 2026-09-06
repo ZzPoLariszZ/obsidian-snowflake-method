@@ -1113,6 +1113,22 @@
 	line-height: 1;
 }
 
+/* A count of three or four figures keeps the circle, and the figures give
+   way instead, in two steps sized so that four still stand inside the ring:
+   it leaves 18px within, and figures of the interface font run 0.65em wide
+   at this weight, so three fit at seven tenths and four at a little over
+   half, drawn closer. Four is where the steps end; nothing is counted past
+   that here. `data-digits` is set wherever a count is painted. */
+.snowflake-method-step-indicator[data-digits='3'] {
+	font-size: calc(var(--font-ui-smaller) * 0.7);
+	letter-spacing: -0.03em;
+}
+
+.snowflake-method-step-indicator[data-digits='4'] {
+	font-size: calc(var(--font-ui-smaller) * 0.55);
+	letter-spacing: -0.04em;
+}
+
 .snowflake-method-step-indicator[data-status='not-started']::after {
 	width: 0.25rem;
 	height: 0.25rem;
@@ -9168,15 +9184,6 @@ button.snowflake-method-kind-options {
 	.snowflake-method-template-table
 	button.snowflake-method-table-more {
 	inset-inline-end: var(--size-4-2);
-}
-
-/* A vocabulary or a kind can run to three figures, and the circle is not
-   growing for them: the figures give way instead. Three is as many as either
-   is ever counted in, so nothing narrower is worth carrying. */
-.snowflake-method-worldbuilding-count[data-digits='3'],
-.snowflake-method-worldbuilding-count[data-digits='4'] {
-	font-size: calc(var(--font-ui-smaller) * 0.78);
-	letter-spacing: -0.02em;
 }
 
 .snowflake-method-definition-section-body.is-collapsed {

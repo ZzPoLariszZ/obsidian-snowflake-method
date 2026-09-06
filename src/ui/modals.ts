@@ -86,6 +86,7 @@ import {
 	type OptionPicker,
 	type PickerOption,
 } from './option-picker';
+import { paintCount } from './pane-parts';
 import {
 	buildProjectRootField,
 	type ProjectRootField,
@@ -1068,14 +1069,14 @@ export class ManageProjectsModal extends Modal {
 			toggle.createSpan({
 				text: this.t('modal.projectManager.archivedProjects'),
 			});
-			toggle
-				.createSpan({
-					cls: 'snowflake-method-project-manager-archived-count',
-				})
-				.createSpan({
-					cls: 'snowflake-method-step-indicator',
-					text: String(this.archived.length),
-				});
+			paintCount(
+				toggle
+					.createSpan({
+						cls: 'snowflake-method-project-manager-archived-count',
+					})
+					.createSpan({ cls: 'snowflake-method-step-indicator' }),
+				this.archived.length,
+			);
 			const archivedList = archivedSection.createDiv({
 				cls: `snowflake-method-project-manager-archived-list${
 					this.archivedExpanded ? '' : ' is-collapsed'
