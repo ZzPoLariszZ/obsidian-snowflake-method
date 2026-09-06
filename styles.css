@@ -930,6 +930,30 @@
 	flex: 1 1 auto;
 }
 
+/* The rail's own fold stands at its head, above what scrolls, and gives the
+   marks their words back in a pane wide enough to hold them. Too narrow for
+   the words, the rail is folded by the width alone and the head has nothing
+   to offer, so it goes. */
+.snowflake-method-step-nav-head {
+	display: flex;
+	justify-content: flex-end;
+	flex: 0 0 auto;
+	/* The toggle stands on the column the rows keep their counts in. The rows
+	   sit inside the scroller, which is narrower than the head by whatever
+	   of the scrollbar's gutter it does not hand back into the padding, and
+	   a count's centre is 0.375rem nearer the wall than a toolbar button's
+	   would be at the scroller's own edge. */
+	padding-inline-end: calc(
+		var(--snowflake-method-scrollbar-width, 0px) -
+			min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2)) +
+			0.375rem
+	);
+}
+
+.snowflake-method-dashboard.is-rail-narrow .snowflake-method-step-nav-head {
+	display: none;
+}
+
 /* A group's name reads as the heading it is, a step above the rows it heads —
    the same two steps the inspector's headings and content keep. */
 .snowflake-method-step-nav-header {
@@ -4117,126 +4141,152 @@
 	}
 }
 
-@container snowflake-dashboard (max-width: 52rem) {
-	.snowflake-method-layout {
-		grid-template-columns: 6rem minmax(0, 1fr);
-		grid-template-rows: minmax(0, 1fr);
-	}
+/* The rail folded to its marks. Two hands ask for it: a pane narrower than
+   52rem, where the words would not fit beside them, and the author's own
+   toggle at the rail's head. A container query could answer only the first,
+   so the view measures the pane against the same 52rem and sets one class
+   for both, `is-rail-compact`, with `is-rail-narrow` beside it for what the
+   width alone decides. The rules keep the weight they had inside the query,
+   through :where(), so what each wins or loses against the rest of the sheet
+   is what it won or lost before. */
+:where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout {
+	grid-template-columns: 6rem minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+}
 
-	.snowflake-method-step-nav {
-		padding: var(--size-4-1) var(--size-4-1) 0;
-		padding-inline-start: max(
-			var(--size-4-1),
-			var(--snowflake-method-scrollbar-width, 0px)
-		);
-	}
+:where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-nav {
+	padding: var(--size-4-1) var(--size-4-1) 0;
+	padding-inline-start: max(
+		var(--size-4-1),
+		var(--snowflake-method-scrollbar-width, 0px)
+	);
+}
 
-	/* Narrow or wide, a rail taller than the window scrolls rather than losing
-	   what will not fit — but the rail keeps less padding at this width, so
-	   there is less of it to hand the scrollbar back into. */
+/* Narrow or wide, a rail taller than the window scrolls rather than losing
+   what will not fit — but the rail keeps less padding at this width, so
+   there is less of it to hand the scrollbar back into. */
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-step-nav-scroll {
-		margin-inline-end: calc(
-			-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-1))
-		);
-	}
+	margin-inline-end: calc(
+		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-1))
+	);
+}
 
-	/* No room for a word in a column this narrow, but the fold is worth
-	   keeping: the chevron stands alone, centred over the marks it heads, and
-	   the word stays for anything reading the page aloud. */
-	.snowflake-method-dashboard button.snowflake-method-rail-group-header {
-		grid-template-columns: minmax(0, 1fr);
-		justify-items: center;
-		min-height: 2rem;
-		padding: var(--size-4-1);
-	}
+/* On the counts here too. A folded row centres its mark and count between
+   the rail's even margins, so the count's far edge stands the same 17px in
+   from the padding whatever the scrollbar costs, and the toggle, 5px wider
+   each side than a circle, ends 12px in. */
+:where(.snowflake-method-dashboard.is-rail-compact)
+	.snowflake-method-step-nav-head {
+	justify-content: flex-end;
+	padding-inline-end: 0.75rem;
+}
 
+/* No room for a word in a column this narrow, but the fold is worth
+   keeping: the chevron stands alone, centred over the marks it heads, and
+   the word stays for anything reading the page aloud. */
+.snowflake-method-dashboard:where(.is-rail-compact)
+	button.snowflake-method-rail-group-header {
+	grid-template-columns: minmax(0, 1fr);
+	justify-items: center;
+	min-height: 2rem;
+	padding: var(--size-4-1);
+}
+
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-rail-group-header
-		> span:not(.snowflake-method-rail-group-chevron) {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		margin: -1px;
-		padding: 0;
-		border: 0;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
-	}
+	> span:not(.snowflake-method-rail-group-chevron) {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
 
-	.snowflake-method-step-item {
-		width: 100%;
-		min-width: 0;
-		flex: 0 0 auto;
-	}
+:where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-item {
+	width: 100%;
+	min-width: 0;
+	flex: 0 0 auto;
+}
 
-	/* A rail this narrow would rather close up the space between a step's number
-	   and its mark than lose the even margin, so that space gives way by whatever
-	   the scrollbar took, down to a floor. It gives way by nothing at all where a
-	   scrollbar costs nothing. */
-	.snowflake-method-dashboard button.snowflake-method-step-button {
-		grid-template-columns: 1.75rem 1.25rem;
-		justify-content: center;
-		gap: max(
-			var(--size-4-1),
-			calc(var(--size-4-3) - var(--snowflake-method-scrollbar-width, 0px))
-		);
-		min-height: 2.875rem;
-		padding: var(--size-4-1);
-	}
+/* A rail this narrow would rather close up the space between a step's number
+   and its mark than lose the even margin, so that space gives way by whatever
+   the scrollbar took, down to a floor. It gives way by nothing at all where a
+   scrollbar costs nothing. */
+.snowflake-method-dashboard:where(.is-rail-compact)
+	button.snowflake-method-step-button {
+	grid-template-columns: 1.75rem 1.25rem;
+	justify-content: center;
+	gap: max(
+		var(--size-4-1),
+		calc(var(--size-4-3) - var(--snowflake-method-scrollbar-width, 0px))
+	);
+	min-height: 2.875rem;
+	padding: var(--size-4-1);
+}
 
-	.snowflake-method-step-label {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		margin: -1px;
-		padding: 0;
-		border: 0;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
-		white-space: nowrap;
-	}
+:where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-footer {
-		justify-content: center;
-		flex-direction: row;
-		gap: 0;
-		margin: auto calc(var(--size-4-1) * -1) 0;
-		margin-inline-start: calc(
-			-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
-		);
-		padding: var(--size-4-2) 0;
-	}
+	justify-content: center;
+	flex-direction: row;
+	gap: 0;
+	margin: auto calc(var(--size-4-1) * -1) 0;
+	margin-inline-start: calc(
+		-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
+	);
+	padding: var(--size-4-2) 0;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-control {
-		position: relative;
-		justify-content: center;
-		width: 1.875rem;
-		height: 1.625rem;
-		min-width: 1.875rem;
-		padding: 0;
-		flex: 0 0 auto;
-	}
+	position: relative;
+	justify-content: center;
+	width: 1.875rem;
+	height: 1.625rem;
+	min-width: 1.875rem;
+	padding: 0;
+	flex: 0 0 auto;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-control:focus-visible,
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-control[aria-expanded='true'] {
-		background: var(--background-modifier-hover);
-		outline: none;
-	}
+	background: var(--background-modifier-hover);
+	outline: none;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-switcher-icon {
-		pointer-events: none;
-	}
+	pointer-events: none;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-switcher-label {
-		display: none;
-	}
+	display: none;
+}
 
+:where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-project-actions {
-		flex-direction: row;
-		justify-content: center;
-		gap: 0;
-	}
-
+	flex-direction: row;
+	justify-content: center;
+	gap: 0;
 }
 
 @container snowflake-dashboard (max-width: 42rem) {

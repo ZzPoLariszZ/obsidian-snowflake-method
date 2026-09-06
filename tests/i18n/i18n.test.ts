@@ -68,6 +68,10 @@ describe('translation resources', () => {
 		expect(zhCN['commands.toggleNotesBesideDashboard']).toBe(
 			'切换在工作台旁打开笔记',
 		);
+		expect(en['commands.toggleDashboardRail']).toBe(
+			'Toggle the dashboard rail',
+		);
+		expect(zhCN['commands.toggleDashboardRail']).toBe('切换工作台导航栏');
 	});
 
 	it('uses concise copy for opening notes beside the dashboard', () => {

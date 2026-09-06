@@ -74,6 +74,7 @@ export const en = {
 	'commands.notesBesideDashboardEnabled':
 		'Notes will open beside the dashboard.',
 	'commands.notesBesideDashboardDisabled': 'Notes will open in tabs.',
+	'commands.toggleDashboardRail': 'Toggle the dashboard rail',
 	'commands.toggleTableProgressStatus': 'Toggle progress status in tables',
 	'commands.tableProgressStatusShown': 'Tables show progress status.',
 	'commands.tableProgressStatusHidden': 'Tables no longer show progress status.',
@@ -410,6 +411,8 @@ export const en = {
 		'This project uses an unsupported newer schema and is open read-only.',
 	'dashboard.readOnlyTitle': 'Newer project format',
 	'dashboard.steps': 'Steps',
+	'dashboard.collapseRail': 'Collapse the rail',
+	'dashboard.expandRail': 'Expand the rail',
 	'dashboard.emptyTitle': 'No projects',
 	'dashboard.emptyDesc':
 		'Open the project manager to create your first project',

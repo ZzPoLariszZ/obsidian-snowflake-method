@@ -7804,6 +7804,21 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-dashboard-rail',
+			name: this.globalT('commands.toggleDashboardRail'),
+			// The dashboard in front, else the recent project's: the rail's
+			// fold is the view's own, so the command offers itself only where
+			// a view can answer it.
+			checkCallback: (checking) => {
+				const dashboard =
+					this.app.workspace.getActiveViewOfType(SnowflakeDashboardView) ??
+					this.dashboardViewForRecentProject();
+				if (dashboard === null || !dashboard.canToggleRail()) return false;
+				if (!checking) dashboard.toggleRail();
+				return true;
+			},
+		});
+		this.addCommand({
 			id: 'toggle-table-progress-status',
 			name: this.globalT('commands.toggleTableProgressStatus'),
 			callback: () => {

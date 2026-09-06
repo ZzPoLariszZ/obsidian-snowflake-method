@@ -186,6 +186,12 @@ const DEFINITION_USAGE_PREVIEW = 4;
 
 /** The rail's scroller: both groups together, not either list on its own. */
 const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
+/**
+ * The pane width, in rem, at and under which the rail folds to its marks on
+ * its own: the stylesheet's breakpoint, measured here because the fold is
+ * also the author's to ask for (see `measureRail`).
+ */
+const RAIL_COMPACT_MAX_REM = 52;
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
 
 // The statistics tab strip's faces live in dashboard-state, because which
@@ -331,6 +337,15 @@ export class SnowflakeDashboardView extends ItemView {
 		worldbuilding: false,
 		creationTools: false,
 	};
+	/**
+	 * The rail folded to its marks by the author's own hand, kept with the
+	 * view: the look a narrow pane gives it anyway, asked for in a wide one.
+	 */
+	private railCompact = false;
+	/** Whether the pane is under the breakpoint where the rail folds on its own. */
+	private railNarrow = false;
+	private railObserver: ResizeObserver | null = null;
+	private railToggle: HTMLButtonElement | null = null;
 	/**
 	 * The session panel, kept across refreshes: it keeps itself current
 	 * through its own subscription, so a dashboard refresh rebuilds the frame
@@ -629,6 +644,7 @@ export class SnowflakeDashboardView extends ItemView {
 			selectedStep: this.selectedStep,
 			selectedPane: this.selectedPane,
 			railCollapsed: this.railCollapsed,
+			railCompact: this.railCompact,
 			statisticsTab: this.statisticsTab,
 			tasksTab: this.tasksTab,
 		};
@@ -644,6 +660,7 @@ export class SnowflakeDashboardView extends ItemView {
 				selectedStep: this.selectedStep,
 				selectedPane: this.selectedPane,
 				railCollapsed: this.railCollapsed,
+				railCompact: this.railCompact,
 				statisticsTab: this.statisticsTab,
 				tasksTab: this.tasksTab,
 			},
@@ -654,6 +671,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.selectedStep = update.state.selectedStep;
 		this.selectedPane = update.state.selectedPane;
 		this.railCollapsed = update.state.railCollapsed;
+		this.railCompact = update.state.railCompact;
 		this.statisticsTab = update.state.statisticsTab;
 		this.tasksTab = update.state.tasksTab;
 		// During workspace restoration Obsidian may open an ItemView before it
@@ -713,6 +731,17 @@ export class SnowflakeDashboardView extends ItemView {
 		this.registerDomEvent(this.contentEl, 'focusin', () => {
 			this.activateProjectContext();
 		});
+		// The pane's width is read here rather than by the stylesheet alone, so
+		// the rail's fold answers the width and the author's toggle through one
+		// class; see measureRail.
+		const view = this.contentEl.ownerDocument.defaultView;
+		if (view !== null) {
+			this.railObserver = new view.ResizeObserver((entries) => {
+				const width = entries[entries.length - 1]?.contentRect.width;
+				if (width !== undefined) this.measureRail(width);
+			});
+			this.railObserver.observe(this.contentEl);
+		}
 		this.decorateViewTitle();
 		// Restored views can open while Obsidian is still building the layout.
 		// Scanning here would put Vault I/O back on the startup critical path;
@@ -723,6 +752,9 @@ export class SnowflakeDashboardView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.opened = false;
+		this.railObserver?.disconnect();
+		this.railObserver = null;
+		this.railToggle = null;
 		this.clearCertificateCelebration();
 		this.releaseMemberControls();
 		this.disposeStatisticsPanels();
@@ -1058,6 +1090,56 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
+	 * The rail folds to its marks at two asks: a pane narrower than the
+	 * stylesheet's breakpoint, where the words would not fit beside them,
+	 * and the author's own toggle at its head. A container query could
+	 * answer only the first, so the width is measured here against the same
+	 * breakpoint and both asks meet in one class on the root, with a second
+	 * for what the width alone decides: the head hides there, having
+	 * nothing to open.
+	 */
+	private measureRail(width: number): void {
+		const root = this.contentEl;
+		const rem = Number.parseFloat(
+			root.win.getComputedStyle(root.doc.documentElement).fontSize,
+		);
+		const remPx = Number.isFinite(rem) && rem > 0 ? rem : 16;
+		this.railNarrow = width <= RAIL_COMPACT_MAX_REM * remPx;
+		this.paintRail();
+	}
+
+	private paintRail(): void {
+		const compact = this.railNarrow || this.railCompact;
+		this.contentEl.toggleClass('is-rail-narrow', this.railNarrow);
+		this.contentEl.toggleClass('is-rail-compact', compact);
+		const toggle = this.railToggle;
+		if (toggle === null) return;
+		setIcon(toggle, compact ? 'panel-left-open' : 'panel-left-close');
+		toggle.setAttribute(
+			'aria-label',
+			this.t(compact ? 'dashboard.expandRail' : 'dashboard.collapseRail'),
+		);
+		toggle.setAttribute('aria-expanded', compact ? 'false' : 'true');
+	}
+
+	/**
+	 * Whether the rail's fold answers the author now: the palette offers the
+	 * command only then. A pane too narrow for the words has nothing to open,
+	 * and a choice made there would only surprise a wider day.
+	 */
+	canToggleRail(): boolean {
+		return this.rendered && !this.railNarrow;
+	}
+
+	/** Folds the rail to its marks, or opens it out again, and keeps the choice with the view. */
+	toggleRail(): void {
+		if (!this.canToggleRail()) return;
+		this.railCompact = !this.railCompact;
+		this.paintRail();
+		this.app.workspace.requestSaveLayout();
+	}
+
+	/**
 	 * Reads the project again and draws it. With `onlyIf`, the frame is
 	 * redrawn only when the model just read passes it -- the health verdict's
 	 * re-read asks that -- and a request that arrives meanwhile is drawn in
@@ -1380,6 +1462,17 @@ export class SnowflakeDashboardView extends ItemView {
 				),
 			},
 		});
+		// The rail's own fold stands at its head, where the app keeps the
+		// sidebars' too: above what scrolls, and no part of the groups it folds.
+		const head = nav.createDiv({ cls: 'snowflake-method-step-nav-head' });
+		this.railToggle = head.createEl('button', {
+			cls: 'snowflake-method-toolbar-button snowflake-method-step-nav-toggle',
+			attr: { type: 'button' },
+		});
+		this.railToggle.addEventListener('click', () => {
+			this.toggleRail();
+		});
+		this.paintRail();
 		// Both groups scroll together, inside the rail rather than as the rail:
 		// the project switcher stands on the floor below, where no scrollbar
 		// reaches it and its rule still meets both walls.

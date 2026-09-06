@@ -112,6 +112,8 @@ export interface DashboardViewStateSnapshot {
 	selectedStep: StepId;
 	selectedPane: DashboardPane;
 	railCollapsed: DashboardRailCollapse;
+	/** The rail folded to its marks by the author's hand, not by the pane's width. */
+	railCompact: boolean;
 	/** Which face of the statistics pane a reload lands back on. */
 	statisticsTab: StatisticsTab;
 	/** Which face of the task management pane a reload lands back on. */
@@ -170,6 +172,10 @@ export function mergeDashboardViewState(
 				? collapseCandidate.creationTools
 				: current.railCollapsed.creationTools,
 	};
+	const railCompact =
+		typeof candidate.railCompact === 'boolean'
+			? candidate.railCompact
+			: current.railCompact;
 	const statisticsTab = isStatisticsTab(candidate.statisticsTab)
 		? candidate.statisticsTab
 		: current.statisticsTab;
@@ -182,6 +188,7 @@ export function mergeDashboardViewState(
 		selectedStep,
 		selectedPane,
 		railCollapsed,
+		railCompact,
 		statisticsTab,
 		tasksTab,
 	};
@@ -198,6 +205,7 @@ export function mergeDashboardViewState(
 				current.railCollapsed.worldbuilding ||
 			state.railCollapsed.creationTools !==
 				current.railCollapsed.creationTools ||
+			state.railCompact !== current.railCompact ||
 			state.statisticsTab !== current.statisticsTab ||
 			state.tasksTab !== current.tasksTab,
 	};

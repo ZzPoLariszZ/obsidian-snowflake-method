@@ -11,6 +11,7 @@ import {
 	mergeDashboardViewState,
 	shouldShowGlobalStructureIssue,
 	type DashboardPane,
+	type DashboardViewStateSnapshot,
 } from '../../src/ui/dashboard-state';
 import type { StepId } from '../../src/domain';
 
@@ -26,6 +27,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -46,6 +48,7 @@ describe('dashboard restored state', () => {
 				// is a pane all the same.
 				selectedPane: { kind: 'step', step: 4 },
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -61,6 +64,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -90,6 +94,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -105,6 +110,27 @@ describe('dashboard restored state', () => {
 		expect(dashboardPaneKey(update.state.selectedPane)).toBe('statistics');
 	});
 
+	it('restores the rail folded by hand, and only a yes or a no', () => {
+		const current: DashboardViewStateSnapshot = {
+			projectPath: null,
+			projectTitle: null,
+			selectedStep: 1,
+			selectedPane: DEFAULT_PANE,
+			railCollapsed: OPEN_RAIL,
+			railCompact: false,
+			statisticsTab: 'sessions',
+			tasksTab: 'revision',
+		};
+
+		const folded = mergeDashboardViewState(current, { railCompact: true });
+		expect(folded.state.railCompact).toBe(true);
+		expect(folded.changed).toBe(true);
+
+		const unread = mergeDashboardViewState(current, { railCompact: 'yes' });
+		expect(unread.state.railCompact).toBe(false);
+		expect(unread.changed).toBe(false);
+	});
+
 	it('restores a definition pane and keys it apart from the others', () => {
 		const update = mergeDashboardViewState(
 			{
@@ -113,6 +139,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -143,6 +170,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 1,
 				selectedPane: DEFAULT_PANE,
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -162,6 +190,7 @@ describe('dashboard restored state', () => {
 				selectedStep: 3,
 				selectedPane: { kind: 'step', step: 3 },
 				railCollapsed: OPEN_RAIL,
+				railCompact: false,
 				statisticsTab: 'sessions',
 				tasksTab: 'revision',
 			},
@@ -174,6 +203,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 1,
 			selectedPane: { kind: 'step', step: 1 },
 			railCollapsed: OPEN_RAIL,
+			railCompact: false,
 			statisticsTab: 'sessions',
 			tasksTab: 'revision',
 		});
@@ -187,6 +217,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 3 as const,
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
+			railCompact: false,
 			statisticsTab: 'sessions' as const,
 			tasksTab: 'revision' as const,
 		};
@@ -210,6 +241,7 @@ describe('dashboard restored state', () => {
 			selectedStep: 3 as const,
 			selectedPane: { kind: 'step', step: 3 } as const,
 			railCollapsed: OPEN_RAIL,
+			railCompact: false,
 			statisticsTab: 'sessions' as const,
 			tasksTab: 'revision' as const,
 		};
@@ -451,6 +483,7 @@ describe('the statistics tab in view state', () => {
 		selectedStep: 1 as const,
 		selectedPane: DEFAULT_PANE,
 		railCollapsed: OPEN_RAIL,
+		railCompact: false,
 		statisticsTab: 'sessions' as const,
 			tasksTab: 'revision' as const,
 	};
@@ -480,6 +513,7 @@ describe('the task management pane state', () => {
 			selectedStep: 1 as StepId,
 			selectedPane: DEFAULT_PANE,
 			railCollapsed: OPEN_RAIL,
+			railCompact: false,
 			statisticsTab: 'sessions' as const,
 			tasksTab: 'revision' as const,
 		};
