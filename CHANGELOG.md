@@ -8,6 +8,18 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1]
+
+### Added
+
+- The dashboard's rail folds to its marks from a button at its head, wide as the pane may be. A pane too narrow to hold the step names already folded the rail on its own, and now the fold is yours to ask for at any width: the words give way, the marks and their counts stay, and the same button opens the rail out again. Each dashboard remembers its own answer across restarts, and **Toggle the dashboard rail** does the same from the command palette, offering itself only where there is room for the words to come back.
+- A sticky note's float button now puts a standing panel away as well as raising one. Clicking it on the dashboard's card or on the sidebar's compact card, while the note is already floating in that window, closes that panel, and every card showing the note follows.
+
+### Fixed
+
+- A count of four figures stands inside its circle rather than spilling past it, wherever a circle is painted: the rail's kinds and vocabularies, the entity tracking folds, the task board's columns, its derived cards and its archive, the sticky notes' archive, and the project manager's. Only the rail's own counts gave way at all before, and at a size three figures had already outgrown.
+- The reading at the middle of the writing stages ring stays inside the hole the ring leaves. A focus time of a hundred hours or more, nine characters or ten, now gives way by just enough to stand clear of it.
+
 ## [0.18.0]
 
 ### Added
@@ -407,6 +419,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.18.1]
+
+### 新增
+
+- 工作台的导航栏可以从栏首的按钮收起，分栏多宽都可以。分栏窄到放不下步骤名称时，导航栏本来就会自行收成一列图标，如今任何宽度下都可以主动这样要求：文字让位，图标与数目留下，再点一次按钮即可重新展开。每个工作台各自记住自己的选择，重启之后依旧，命令面板中的**切换工作台导航栏**也做同样的事，只在文字还有地方回来时才出现。
+- 便签的悬浮按钮如今既让面板浮起，也把它收起。便签已经在本窗口悬浮时，点击工作台卡片或侧栏紧凑卡片上的这个按钮就会关掉那个面板，显示这张便签的每一张卡片都会随之更新。
+
+### 修复
+
+- 四位数的计数如今稳稳落在圆圈之内，不再溢出，而且每一处圆圈都是如此：导航栏中的种类与词表、实体追踪的折叠区、任务看板的列、派生卡片与归档、便签的归档，以及项目管理器中的归档。此前只有导航栏中的计数会缩小，而那个尺寸连三位数都已经装不下。
+- 写作阶段圆环正中的读数如今始终留在圆环围出的空当之内。专注时长累计到一百小时以上，也就是读数长到九个甚至十个字符时，字号会恰好让出一点，不再压到圆环上。
 
 ## [0.18.0]
 
