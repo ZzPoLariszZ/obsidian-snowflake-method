@@ -1864,7 +1864,10 @@ function renderModesWidget(
 		}
 		const chosen = totals.find((mode) => mode.mode === picked);
 		name.setText(chosen === undefined ? '' : t(`session.mode.${chosen.mode}`));
-		value.setText(whole === 0 ? '—' : formatClock(chosen?.focusMs ?? whole));
+		const clock = whole === 0 ? '—' : formatClock(chosen?.focusMs ?? whole);
+		value.setText(clock);
+		// The stylesheet fits the figure to the hole by how long it is.
+		value.style.setProperty('--snowflake-method-clock-chars', `${clock.length}`);
 		note.setText(
 			chosen === undefined || whole === 0
 				? t('sessionWidget.modes.focus')

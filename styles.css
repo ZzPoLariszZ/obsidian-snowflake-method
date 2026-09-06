@@ -10965,6 +10965,10 @@ button.snowflake-method-kind-options {
 	justify-content: center;
 	width: 56%;
 	transform: translate(-50%, -50%);
+	/* A container, so the figure inside can be sized by the hole: this box is
+	   as wide as the hole is across, near enough, and its width is given, so
+	   containing it costs it nothing. */
+	container-type: inline-size;
 }
 
 .snowflake-method-modes-name,
@@ -10983,7 +10987,14 @@ button.snowflake-method-kind-options {
 .snowflake-method-modes-value {
 	color: var(--text-normal);
 	font-family: var(--font-monospace);
-	font-size: 1.45em;
+	/* The clock is monospaced, so its width is its count of characters, which
+	   the panel writes beside it, times six tenths of an em. The size gives
+	   way once that would run past the hole, a little of which is kept clear
+	   on either side; under that it is the widget's own. */
+	font-size: min(
+		1.45em,
+		calc(92cqw / (var(--snowflake-method-clock-chars, 8) * 0.6))
+	);
 	font-variant-numeric: tabular-nums;
 	font-weight: var(--font-bold);
 	line-height: 1.2;
