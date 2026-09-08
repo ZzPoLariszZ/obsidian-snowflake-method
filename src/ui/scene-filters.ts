@@ -1,7 +1,7 @@
 /**
  * How a scene table or board narrows its scenes: the funnel's questions and
  * the search, asked of a scene's view model. Written once here and read by
- * the dashboard's scene table and the ordered corkboard alike, so the two
+ * the dashboard's scene table and the corkboard alike, so the two
  * answer the same query the same way.
  */
 

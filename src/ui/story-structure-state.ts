@@ -85,7 +85,7 @@ export function isCorkboardGroupField(
 	return (CORKBOARD_GROUP_FIELDS as readonly unknown[]).includes(value);
 }
 
-/** How the ordered corkboard is set: what a card shows, what the cards are gathered by, which way they run. */
+/** How the corkboard is set: what a card shows, what the cards are gathered by, which way they run. */
 export interface CorkboardSettings {
 	mode: CorkboardMode;
 	group: CorkboardGroupField | '';
@@ -127,7 +127,7 @@ export interface StoryStructureViewStateUpdate {
 /**
  * A restored state over the current one. A visualization this build knows
  * wins, a state naming none keeps the current, and one naming something
- * unknown lands on the ordered corkboard, the family's first face. The
+ * unknown lands on the corkboard, the family's first face. The
  * corkboard's settings are taken one by one, each only when it is one of
  * its own values.
  */

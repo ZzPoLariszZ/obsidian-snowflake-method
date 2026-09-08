@@ -39,7 +39,7 @@ describe('story structure restored state', () => {
 		});
 	});
 
-	it('falls back to the ordered corkboard for a visualization it does not know', () => {
+	it('falls back to the corkboard for a visualization it does not know', () => {
 		const update = mergeStoryStructureViewState(current, {
 			visualization: 'mind-map',
 		});

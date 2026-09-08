@@ -1,6 +1,6 @@
 /**
  * The order items a row's menu carries, for every list the plugin keeps in
- * an order of its own: the member tables, and the ordered corkboard. Move up
+ * an order of its own: the member tables, and the corkboard. Move up
  * and down go where the caller says, so a board that shows its sequence
  * backwards can send them by the eye; the position and the follow dialogs
  * speak the list's own order, whichever way it is shown.

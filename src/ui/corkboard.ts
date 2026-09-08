@@ -1,5 +1,5 @@
 /**
- * The ordered corkboard: the scenes as cards in narrative order, on one
+ * The corkboard: the scenes as cards in narrative order, on one
  * scrolling canvas of fixed-size cards, edited in place, dragged into a new
  * order, gathered by a field or run backwards. What the board computes is in
  * `corkboard-layout.ts`; this is the drawing, and the rules of the drawing:

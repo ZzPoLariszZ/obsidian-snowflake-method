@@ -1512,8 +1512,8 @@ describe('story structure copy', () => {
 		expect(zhCN['storyStructure.loadFailed']).toBeTruthy();
 		expect(en['commands.openStoryStructure']).toBe('Open visualization workspace');
 		expect(zhCN['commands.openStoryStructure']).toBe('打开可视化工作区');
-		expect(en['commands.openOrderedCorkboard']).toBe('Open ordered corkboard');
-		expect(zhCN['commands.openOrderedCorkboard']).toBe('打开有序软木板');
+		expect(en['commands.openCorkboard']).toBe('Open corkboard workspace');
+		expect(zhCN['commands.openCorkboard']).toBe('打开场景看板工作区');
 	});
 
 	it('names every card mode, grouping field and none group of the corkboard', () => {

@@ -12365,7 +12365,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	align-items: start;
 }
 
-/* == Ordered corkboard ==================================================== */
+/* == Corkboard ============================================================ */
 
 /* The board fills the field the tab opens onto; its own scroller is the
    only thing that scrolls, the band standing in the strip's row above. */

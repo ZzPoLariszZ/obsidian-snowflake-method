@@ -26,7 +26,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.openSceneBase': '打开场景数据库',
 	'commands.openHealthChecker': '打开健康检查器',
 	'commands.openStoryStructure': '打开可视化工作区',
-	'commands.openOrderedCorkboard': '打开有序软木板',
+	'commands.openCorkboard': '打开场景看板工作区',
 	'commands.openManuscriptStream': '打开正文流',
 	'commands.migrateMemberNotes': '更新旧格式的笔记',
 	'commands.splitManuscriptSegment': '在光标处拆分正文笔记',
@@ -394,7 +394,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'actions.addMoreScenes': '添加更多场景…',
 	'actions.openBase': '打开数据库',
 	'actions.openWorkspace': '打开工作区',
-	'actions.openVisualization': '打开{view}',
+	'actions.openVisualization': '打开{view}工作区',
 	'actions.restoreBase': '重置数据库',
 	'modal.restoreBase.title': '重置此数据库？',
 	'modal.restoreBase.description':

@@ -8184,8 +8184,9 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			// Keep the ID stable for existing hotkeys; the display name follows the workspace tab.
 			id: 'open-ordered-corkboard',
-			name: this.globalT('commands.openOrderedCorkboard'),
+			name: this.globalT('commands.openCorkboard'),
 			checkCallback: (checking) => {
 				const available = this.settings.recentProjectPath !== null;
 				if (!checking && available) {

@@ -5023,7 +5023,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * The scene form, opened for another surface: the ordered corkboard,
+	 * The scene form, opened for another surface: the corkboard,
 	 * which has no form context of its own. Resolves once the modal has
 	 * closed, with the scene a create made, so the caller can show it.
 	 */

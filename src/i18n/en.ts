@@ -24,7 +24,7 @@ export const en = {
 	'commands.openSceneBase': 'Open scene base',
 	'commands.openHealthChecker': 'Open health checker',
 	'commands.openStoryStructure': 'Open visualization workspace',
-	'commands.openOrderedCorkboard': 'Open ordered corkboard',
+	'commands.openCorkboard': 'Open corkboard workspace',
 	'commands.openManuscriptStream': 'Open manuscript stream',
 	'commands.migrateMemberNotes': 'Update notes in older format',
 	'commands.splitManuscriptSegment': 'Split manuscript note at the cursor',
@@ -435,7 +435,7 @@ export const en = {
 	'actions.addMoreScenes': 'Add more scenes…',
 	'actions.openBase': 'Open base',
 	'actions.openWorkspace': 'Open workspace',
-	'actions.openVisualization': 'Open {view}',
+	'actions.openVisualization': 'Open {view} workspace',
 	'actions.restoreBase': 'Restore base',
 	'modal.restoreBase.title': 'Restore this base?',
 	'modal.restoreBase.description':

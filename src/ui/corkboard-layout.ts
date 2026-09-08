@@ -1,5 +1,5 @@
 /**
- * The ordered corkboard's arithmetic, with no board to draw on: how the
+ * The corkboard's arithmetic, with no board to draw on: how the
  * shown scenes are gathered and ordered for display, where each card and
  * group head stands on a canvas of fixed-size cards, which of them a window
  * shows, where a drop lands, and what a move or an insertion means in the

@@ -1,5 +1,5 @@
 /**
- * What the ordered corkboard is handed by the view that mounts it, and what
+ * What the corkboard is handed by the view that mounts it, and what
  * it hands back. The board asks the plugin for nothing but the host's own
  * methods; the model it draws from is the view's, read through `model()`,
  * and a write of the board's own is followed by `refresh()`, which resolves

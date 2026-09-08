@@ -1,7 +1,7 @@
 /**
  * The Story Structure view: the family of visualizations a story's scenes
  * can be looked at through, each in a tab of the strip at the top, the
- * ordered corkboard built and the rest holding their places. A main-area
+ * corkboard built and the rest holding their places. A main-area
  * leaf that keeps its own project across dashboard switches and reloads.
  * Several projects may stand open at once: a modifier
  * click on a tab opens that visualization in a leaf of its own.
