@@ -964,6 +964,11 @@ export default class SnowflakeMethodPlugin
 				void this.openCurrentManuscript();
 			},
 		);
+		this.addRibbonIcon('orbit', this.globalT('commands.openStoryStructure'), () => {
+			void this.openStoryStructure().catch((error: unknown) => {
+				this.showError(error);
+			});
+		});
 		this.addRibbonIcon('sticker', this.globalT('commands.newStickyNote'), () => {
 			void this.createStickyNoteAndFloat().catch((error: unknown) => {
 				this.showError(error);

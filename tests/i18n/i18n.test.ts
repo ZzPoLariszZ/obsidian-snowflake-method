@@ -1363,8 +1363,8 @@ describe('sticky note copy', () => {
 	it('names the commands, the sidebar and every macaron colour in both languages', () => {
 		expect(en['commands.newStickyNote']).toBe('New sticky note');
 		expect(zhCN['commands.newStickyNote']).toBe('新建便签');
-		expect(en['commands.openStickyNotes']).toBe('Open sticky notes');
-		expect(zhCN['commands.openStickyNotes']).toBe('打开便签');
+		expect(en['commands.openStickyNotes']).toBe('Open sticky note sidebar');
+		expect(zhCN['commands.openStickyNotes']).toBe('打开便签侧边栏');
 		expect(zhCN['stickyNotes.viewTitle']).toBe('便签');
 		for (const color of STICKY_NOTE_COLORS) {
 			expect(Object.keys(en), color).toContain(`stickyNotes.color.${color}`);

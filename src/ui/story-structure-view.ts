@@ -103,7 +103,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	getIcon(): string {
-		return 'layout-grid';
+		return 'orbit';
 	}
 
 	getState(): Record<string, unknown> {

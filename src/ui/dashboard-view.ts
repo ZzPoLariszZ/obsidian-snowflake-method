@@ -1886,7 +1886,7 @@ export class SnowflakeDashboardView extends ItemView {
 		// a link and its mark says the row leads away.
 		const workspace = this.renderRailRow(list, {
 			kind: 'link',
-			leading: { icon: 'layout-grid' },
+			leading: { icon: 'orbit' },
 			label: this.t('dashboard.visualizationWorkspace'),
 			active: false,
 			current: 'true',
