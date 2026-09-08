@@ -9617,20 +9617,22 @@ export default class SnowflakeMethodPlugin
 		let view = this.dashboardViewForRecentProject();
 		let background = false;
 		if (view === null) {
-			// The form is the dashboard's, so a dashboard there has to be: one
-			// opened behind the surface that asked, and that surface brought
-			// straight back in front, since a new tab takes the front as it is
-			// made.
+			// A restored tab may still hold a deferred view. Find it by its
+			// saved project path before deciding a new dashboard is needed.
 			const from = this.app.workspace.getMostRecentLeaf(
 				this.app.workspace.rootSplit,
 			);
-			const leaf = this.app.workspace.getLeaf('tab');
-			await leaf.setViewState({
-				type: DASHBOARD_VIEW_TYPE,
-				active: false,
-				state: { projectPath: recent, selectedStep: this.getRecentStep() },
-			});
+			let leaf = this.findOpenProjectLeaf(recent);
+			if (leaf === undefined) {
+				leaf = this.app.workspace.getLeaf('tab');
+				await leaf.setViewState({
+					type: DASHBOARD_VIEW_TYPE,
+					active: false,
+					state: { projectPath: recent, selectedStep: this.getRecentStep() },
+				});
+			}
 			await leaf.loadIfDeferred();
+			// Creating a tab can take the front; keep the requesting surface active.
 			if (from !== null && from !== leaf) {
 				await this.app.workspace.revealLeaf(from);
 				this.app.workspace.setActiveLeaf(from, { focus: true });
