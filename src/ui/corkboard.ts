@@ -27,6 +27,7 @@ import {
 	adjacencyAllowed,
 	buildLayout,
 	cardPosition,
+	columnsFor,
 	corkboardMetrics,
 	displayOrder,
 	dropTargetAt,
@@ -42,6 +43,7 @@ import {
 	visualNeighbours,
 	type CardSelectOption,
 	type CorkboardLayout,
+	type CorkboardMetrics,
 	type DisplayOrder,
 	type ShownScene,
 } from './corkboard-layout';
@@ -94,6 +96,7 @@ interface CardEntry {
 	display: number;
 	x: number;
 	y: number;
+	width: number;
 	number: HTMLElement;
 	title: HTMLButtonElement;
 	titleText: string;
@@ -125,6 +128,13 @@ type FocusPart =
 	| 'insert-after'
 	| 'more-links'
 	| 'link';
+
+interface ViewportMeasure {
+	top: number;
+	height: number;
+	/** Apply a resize anchor after all card geometry has been written. */
+	scrollTo?: number;
+}
 
 interface FocusHold {
 	key: string;
@@ -283,10 +293,13 @@ export function renderCorkboard(
 	/** Where a drop would land: a display index, the count meaning after the last card. */
 	let mark: number | null = null;
 	let frame: number | null = null;
+	let measureOwed = false;
+	let windowOwed = false;
 	let colorPanel: { entry: CardEntry; hung: HungPanel } | null = null;
 	/** True while a press on a card's control is held, when a card must not drag. */
 	let pressed = false;
 	let lastWidth = -1;
+	let lastViewportHeight = -1;
 	let queue: Promise<void> = Promise.resolve();
 	let disposed = false;
 
@@ -371,6 +384,39 @@ export function renderCorkboard(
 
 	// -- Painting ------------------------------------------------------------
 
+	/** Geometry changes do not change the scenes admitted by the filter or their order. */
+	const arrange = (metrics: CorkboardMetrics, reuseRows = false): boolean => {
+		const previous = layout;
+		const sameRows = reuseRows && previous !== null &&
+			previous.columns === columnsFor(metrics.width, metrics.minCardWidth, metrics.gap) &&
+			previous.gap === metrics.gap && previous.cardHeight === metrics.cardHeight &&
+			previous.headHeight === metrics.headHeight;
+		if (sameRows) {
+			layout = {
+				...previous,
+				cardWidth: (metrics.width - (previous.columns - 1) * metrics.gap) / previous.columns,
+			};
+		} else {
+			layout = buildLayout(order, metrics);
+			headLines = new Map();
+			layout.lines.forEach((line, at) => {
+				if (line.kind === 'head') headLines.set(line.key, at);
+			});
+		}
+		lastWidth = metrics.width;
+		const properties: Record<string, string> = {};
+		if (previous?.gap !== layout.gap) properties['--snowflake-method-corkboard-gap'] = px(layout.gap);
+		if (previous?.cardHeight !== layout.cardHeight) {
+			properties['--snowflake-method-corkboard-card-height'] = px(layout.cardHeight);
+		}
+		if (previous?.headHeight !== layout.headHeight) {
+			properties['--snowflake-method-corkboard-head-height'] = px(layout.headHeight);
+		}
+		if (Object.keys(properties).length > 0) root.setCssProps(properties);
+		if (previous?.height !== layout.height) canvas.setCssStyles({ height: px(layout.height) });
+		return !sameRows;
+	};
+
 	/**
 	 * Lays the board out again from the model the view holds: the funnel and
 	 * the search, the grouping and the direction, the measures, the chrome,
@@ -427,28 +473,16 @@ export function renderCorkboard(
 		});
 		root.dataset.mode = memory.mode;
 		const rem = remPx();
-		lastWidth = canvas.clientWidth;
 		// The scroller extends past the frame for its scrollbar; the canvas
 		// keeps the same content edges as the toolbar above it.
-		const metrics = corkboardMetrics(lastWidth, memory.mode, rem, compactHeight());
-		layout = buildLayout(order, metrics);
+		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight());
+		arrange(metrics);
 		displayKeys = [];
-		headLines = new Map();
 		for (const group of order.groups) {
 			for (const item of group.items) {
 				displayKeys.push(keyOf(group.key, orderIds[item.sceneIndex] ?? ''));
 			}
 		}
-		layout.lines.forEach((line, at) => {
-			if (line.kind === 'head') headLines.set(line.key, at);
-		});
-		root.setCssProps({
-			'--snowflake-method-corkboard-gap': px(metrics.gap),
-			'--snowflake-method-corkboard-card-width': px(layout.cardWidth),
-			'--snowflake-method-corkboard-card-height': px(metrics.cardHeight),
-			'--snowflake-method-corkboard-head-height': px(metrics.headHeight),
-		});
-		canvas.setCssStyles({ height: px(layout.height) });
 		const narrowed =
 			memory.query.trim().length > 0 || sceneFiltered(memory.filters);
 		stateText.setText(
@@ -472,12 +506,12 @@ export function renderCorkboard(
 			scroller.scrollTop = 0;
 		} else if (keepId !== null) {
 			const display = displayOfScene(keepId);
-			if (display !== -1) scroller.scrollTop = cardPosition(layout, display).y;
+			if (display !== -1 && layout !== null) scroller.scrollTop = cardPosition(layout, display).y;
 		} else if (scroller.scrollTop !== memory.scrollTop) {
 			scroller.scrollTop = memory.scrollTop;
 		}
 		memory.scrollTop = scroller.scrollTop;
-		paintWindow();
+		paintWindow(true);
 		// The first render supplies the themed header/footer measurements.
 		const measuredHeight = compactHeight();
 		if (measuredHeight !== undefined && Math.abs(measuredHeight - metrics.cardHeight) > 0.5) {
@@ -510,14 +544,16 @@ export function renderCorkboard(
 	};
 
 	/** Brings the mounted cards level with the window: the ones in it, and the pinned ones wherever they are. */
-	const paintWindow = (): void => {
+	const paintWindow = (refreshContent = false, viewport?: ViewportMeasure): void => {
 		if (disposed || layout === null || model === null) return;
 		const lay = layout;
 		const current = model;
+		const measured = viewport ?? { top: scroller.scrollTop, height: scroller.clientHeight };
+		lastViewportHeight = measured.height;
 		const lines = visibleLines(
 			lay,
-			scroller.scrollTop,
-			scroller.clientHeight,
+			measured.top,
+			lastViewportHeight,
 			OVERSCAN_LINES,
 		);
 		const wanted = new Map<string, number>();
@@ -537,7 +573,8 @@ export function renderCorkboard(
 			const entry = cards.get(key);
 			const display = wanted.get(key);
 			if (entry === undefined || display === undefined) continue;
-			dressAt(entry, display, current);
+			if (refreshContent) dressAt(entry, display, current);
+			else placeCard(entry, display);
 		}
 		for (const key of plan.add) {
 			const display = wanted.get(key);
@@ -604,6 +641,12 @@ export function renderCorkboard(
 
 	const placeCard = (entry: CardEntry, display: number): void => {
 		if (layout === null) return;
+		// Width belongs only to the card. An inherited custom property on the
+		// board makes every descendant recompute its style throughout a resize.
+		if (entry.width !== layout.cardWidth) {
+			entry.width = layout.cardWidth;
+			entry.el.setCssStyles({ width: px(entry.width) });
+		}
 		entry.insertBefore.toggleClass('is-row-start', layout.places[display]?.column === 0);
 		entry.insertAfter.toggleClass(
 			'is-row-end',
@@ -728,6 +771,7 @@ export function renderCorkboard(
 			display: -1,
 			x: Number.NaN,
 			y: Number.NaN,
+			width: Number.NaN,
 			number,
 			title,
 			titleText: '',
@@ -1442,13 +1486,32 @@ export function renderCorkboard(
 
 	// -- Scrolling, resizing, revealing --------------------------------------
 
-	scroller.addEventListener('scroll', () => {
-		memory.scrollTop = scroller.scrollTop;
-		if (frame !== null) return;
+	/** Obsidian and ResizeObserver can report the same sidebar animation step. */
+	const scheduleFrame = (): void => {
+		if (disposed || frame !== null) return;
 		frame = root.win.requestAnimationFrame(() => {
 			frame = null;
-			paintWindow();
+			const repaint = windowOwed;
+			windowOwed = false;
+			let viewport: ViewportMeasure | null = null;
+			if (measureOwed) {
+				measureOwed = false;
+				viewport = reflow(repaint);
+			} else if (repaint) {
+				viewport = { top: scroller.scrollTop, height: scroller.clientHeight };
+			}
+			if (viewport === null) return;
+			paintWindow(false, viewport);
+			// Reading or setting scrollTop after changing card width forces layout. Do
+			// it only for a new row arrangement, after every card has its final geometry.
+			if (viewport.scrollTo !== undefined) scroller.scrollTop = viewport.scrollTo;
 		});
+	};
+
+	scroller.addEventListener('scroll', () => {
+		memory.scrollTop = scroller.scrollTop;
+		windowOwed = true;
+		scheduleFrame();
 	});
 
 	const reveal = (id: string): void => {
@@ -1463,15 +1526,52 @@ export function renderCorkboard(
 		entry?.el.focus({ preventScroll: true });
 	};
 
+	/** Reuse the ordered scenes and card contents while only the available space changes. */
+	const reflow = (repaint: boolean): ViewportMeasure | null => {
+		if (disposed || layout === null) return null;
+		const width = canvas.clientWidth;
+		// Hidden workspace tabs have no useful geometry; their next reveal measures again.
+		if (width <= 0) return null;
+		const viewport: ViewportMeasure = { top: scroller.scrollTop, height: scroller.clientHeight };
+		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight());
+		if (Math.abs(metrics.cardHeight - layout.cardHeight) <= 0.5) {
+			metrics.cardHeight = layout.cardHeight;
+		}
+		const unchanged = width === lastWidth && metrics.cardHeight === layout.cardHeight &&
+			metrics.gap === layout.gap && metrics.headHeight === layout.headHeight;
+		if (unchanged) return repaint || viewport.height !== lastViewportHeight ? viewport : null;
+		if (drag !== null) {
+			paintOwed = true;
+			return repaint ? viewport : null;
+		}
+		const previous = layout;
+		const first = firstCardInView(previous, viewport.top);
+		const key = first === null ? undefined : displayKeys[first];
+		const offset = first === null ? 0 : viewport.top - cardPosition(previous, first).y;
+		// Capture the scroller's padding before the CSS writes so clamping the new
+		// anchor does not need a scrollHeight read in the middle of card placement.
+		const scrollInset = scroller.scrollHeight - previous.height;
+		const changedRows = arrange(metrics, true);
+		if (changedRows && key !== undefined && layout !== null) {
+			const display = displayOf(key);
+			if (display !== -1) {
+				const maximum = Math.max(0, layout.height + scrollInset - viewport.height);
+				const top = Math.max(0, Math.min(cardPosition(layout, display).y + offset, maximum));
+				if (top !== viewport.top) viewport.scrollTo = top;
+				viewport.top = top;
+			}
+		}
+		memory.scrollTop = viewport.top;
+		// A theme may wrap compact controls at the new width. Measure their settled
+		// height next frame instead of forcing another layout after these writes.
+		if (memory.mode === 'compact') remeasure();
+		return viewport;
+	};
+
 	const remeasure = (): void => {
 		if (disposed || layout === null) return;
-		const measuredHeight = compactHeight();
-		const sameHeight = measuredHeight === undefined || Math.abs(measuredHeight - layout.cardHeight) <= 0.5;
-		if (canvas.clientWidth === lastWidth && sameHeight) {
-			paintWindow();
-			return;
-		}
-		paintAll({ keepFirst: true });
+		measureOwed = true;
+		scheduleFrame();
 	};
 	const frameWindow = root.ownerDocument.defaultView;
 	const observer =

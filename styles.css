@@ -12374,8 +12374,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	height: 100%;
 }
 
-/* The four measures the board writes in px from its layout; these are the
-   rest state a card is drawn at before the first paint. */
+/* Fallback measures before the board's first paint. Shared measures live
+   here; each card receives its width directly to avoid inherited resize work. */
 .snowflake-method-corkboard {
 	--snowflake-method-corkboard-gap: 2.5rem;
 	--snowflake-method-corkboard-insert-size: 1.5rem;
