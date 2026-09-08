@@ -5572,6 +5572,10 @@ export default class SnowflakeMethodPlugin
 			});
 		}
 		await leaf.loadIfDeferred();
+		// The jump measures the stream's layout, so show a reused tab before
+		// scrolling: a hidden tab reports zero offsets and loses the move.
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
+		await this.app.workspace.revealLeaf(leaf);
 		// A stream already on screen is never handed a new view state, so the note
 		// that was asked for has to be given to it directly. Without this, opening
 		// the manuscript at a note only ever worked the first time.
@@ -5582,8 +5586,6 @@ export default class SnowflakeMethodPlugin
 		) {
 			await leaf.view.revealSegment(anchor);
 		}
-		this.app.workspace.setActiveLeaf(leaf, { focus: true });
-		await this.app.workspace.revealLeaf(leaf);
 	}
 
 	async openStoryStructure(
