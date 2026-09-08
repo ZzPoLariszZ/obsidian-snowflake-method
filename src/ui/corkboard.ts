@@ -207,7 +207,7 @@ export function renderCorkboard(
 	paintDirection();
 	directionButton.addEventListener('click', () => {
 		memory.reversed = !memory.reversed;
-		controls.remember();
+		controls.remember({ reversed: memory.reversed });
 		paintDirection();
 		paintAll({ resetScroll: true });
 	});
@@ -1431,7 +1431,7 @@ export function renderCorkboard(
 			displayButton,
 			displayRows(),
 			() => {
-				controls.remember();
+				controls.remember(memory.mode !== before.mode ? { mode: memory.mode } : undefined);
 				paintAll(
 					memory.group === before.group ? { keepFirst: true } : { resetScroll: true },
 				);

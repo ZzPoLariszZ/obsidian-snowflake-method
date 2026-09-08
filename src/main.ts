@@ -294,6 +294,8 @@ import {
 } from './ui/story-structure-view';
 import {
 	DEFAULT_STORY_STRUCTURE_VISUALIZATION,
+	readCorkboardPreferences,
+	type CorkboardPreferences,
 	type StoryStructureVisualization,
 } from './ui/story-structure-state';
 import { renderCorkboard } from './ui/corkboard';
@@ -382,6 +384,7 @@ const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
 const SESSION_RECOVERY_KEY = 'snowflake-method-session-recovery';
 const SESSION_DEVICE_KEY = 'snowflake-method-device-id';
 const UNTIMED_RECOVERY_KEY = 'snowflake-method-untimed-recovery';
+const CORKBOARD_PREFERENCES_KEY = 'snowflake-method-corkboard-preferences';
 
 /**
  * The pomodoro's tomato, drawn here because lucide has none: a round body,
@@ -918,6 +921,8 @@ export default class SnowflakeMethodPlugin
 					host: this,
 					fingerprint: () => `${this.settings.uiLocale}|${moment.locale()}`,
 					recentProjectPath: () => this.settings.recentProjectPath,
+					corkboardPreferences: (projectId) => this.corkboardPreferences(projectId),
+					rememberCorkboardPreferences: (projectId, changes) => this.rememberCorkboardPreferences(projectId, changes),
 					corkboard: renderCorkboard,
 				}),
 		);
@@ -5586,6 +5591,24 @@ export default class SnowflakeMethodPlugin
 		) {
 			await leaf.view.revealSegment(anchor);
 		}
+	}
+
+	private corkboardPreferences(projectId: string): Partial<CorkboardPreferences> {
+		return readCorkboardPreferences(
+			this.app.loadLocalStorage(`${CORKBOARD_PREFERENCES_KEY}:${projectId}`) as unknown,
+		);
+	}
+
+	private rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>): void {
+		const saved = this.corkboardPreferences(projectId);
+		const next: CorkboardPreferences = {
+			mode: 'standard',
+			reversed: false,
+			...saved,
+			...readCorkboardPreferences(changes),
+		};
+		if (next.mode === saved.mode && next.reversed === saved.reversed) return;
+		this.app.saveLocalStorage(`${CORKBOARD_PREFERENCES_KEY}:${projectId}`, next);
 	}
 
 	async openStoryStructure(

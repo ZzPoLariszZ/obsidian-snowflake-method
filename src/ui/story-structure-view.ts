@@ -29,8 +29,10 @@ import {
 	defaultStoryStructureState,
 	familyVisualization,
 	mergeStoryStructureViewState,
+	readCorkboardPreferences,
 	visualizationFamily,
 	type CorkboardMemory,
+	type CorkboardPreferences,
 	type StoryStructureViewStateSnapshot,
 	type StoryStructureVisualization,
 } from './story-structure-state';
@@ -45,6 +47,8 @@ export interface StoryStructureViewDeps {
 	 */
 	fingerprint(): string;
 	recentProjectPath(): string | null;
+	corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
+	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>): void;
 	corkboard: RenderCorkboard;
 }
 
@@ -58,6 +62,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private shownFingerprint: string | null = null;
 	private opened = false;
 	private stateDelivered = false;
+	private preferencesProjectId: string | null = null;
+	private restoredPreferences: Partial<CorkboardPreferences> = {};
 	private refreshing = false;
 	private refreshPending = false;
 	private refreshRun: Promise<void> = Promise.resolve();
@@ -115,6 +121,14 @@ export class SnowflakeStoryStructureView extends ItemView {
 		const legacy = !this.stateDelivered &&
 			typeof candidate.projectPath !== 'string' && candidate.projectPath !== null;
 		if (legacy) update.state.projectPath = this.deps.recentProjectPath();
+		if (!this.stateDelivered || update.state.projectPath !== this.state.projectPath) {
+			this.preferencesProjectId = null;
+			this.restoredPreferences = {};
+		}
+		this.restoredPreferences = {
+			...this.restoredPreferences,
+			...readCorkboardPreferences(candidate.corkboard),
+		};
 		this.state = update.state;
 		this.stateDelivered = true;
 		this.memory.mode = update.state.corkboard.mode;
@@ -242,6 +256,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 						continue;
 					}
 					this.model = model;
+					if (model !== null) this.restoreCorkboardPreferences(model.projectId);
 					this.shownFingerprint = fingerprint;
 					if (this.frameKey() !== this.shownFrame || this.board === null) {
 						this.renderFrame();
@@ -257,6 +272,29 @@ export class SnowflakeStoryStructureView extends ItemView {
 			settle();
 		}
 		this.updateHeader();
+	}
+
+	private restoreCorkboardPreferences(projectId: string): void {
+		if (this.preferencesProjectId === projectId) return;
+		const saved = this.deps.corkboardPreferences(projectId);
+		const preferences = {
+			mode: 'standard' as const,
+			reversed: false,
+			...saved,
+			...this.restoredPreferences,
+		};
+		this.memory.mode = preferences.mode;
+		this.memory.reversed = preferences.reversed;
+		this.preferencesProjectId = projectId;
+		// Existing tabs may predate project preferences. Seed only missing
+		// defaults; restoring an older tab must not overwrite a newer choice.
+		const missing = {
+			...(saved.mode === undefined ? { mode: preferences.mode } : {}),
+			...(saved.reversed === undefined ? { reversed: preferences.reversed } : {}),
+		};
+		if (Object.keys(missing).length > 0) {
+			this.deps.rememberCorkboardPreferences(projectId, missing);
+		}
 	}
 
 	private frameKey(): string {
@@ -326,8 +364,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 			refresh: () => this.refresh(),
 			popover: this.filterPanel.lend(),
 			memory: this.memory,
-			remember: () => {
+			remember: (changes) => {
 				this.app.workspace.requestSaveLayout();
+				if (changes !== undefined && this.model !== null) {
+					this.deps.rememberCorkboardPreferences(this.model.projectId, changes);
+				}
 			},
 		};
 	}

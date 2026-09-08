@@ -10,7 +10,7 @@ import type { App } from 'obsidian';
 
 import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
-import type { CorkboardMemory } from './story-structure-state';
+import type { CorkboardMemory, CorkboardPreferences } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
 
 /** The host's own methods the board calls, and no others. */
@@ -40,8 +40,8 @@ export interface CorkboardControls {
 	refresh(): Promise<void>;
 	popover: LentFilterPopover;
 	memory: CorkboardMemory;
-	/** Call after changing the settings the view persists, so it saves the layout. */
-	remember(): void;
+	/** Save the tab layout and, when provided, the individual project preferences changed. */
+	remember(changes?: Partial<CorkboardPreferences>): void;
 }
 
 export interface CorkboardHandle {

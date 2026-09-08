@@ -50,6 +50,8 @@ function workspaceView() {
 			getRecentStep: () => 8 } as unknown as DashboardHost,
 		fingerprint: () => `en|${recent ?? ''}`,
 		recentProjectPath: () => recent,
+		corkboardPreferences: () => ({}),
+		rememberCorkboardPreferences: vi.fn(),
 		corkboard: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	const renderFrame = vi.fn();

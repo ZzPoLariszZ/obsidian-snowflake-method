@@ -92,6 +92,19 @@ export interface CorkboardSettings {
 	reversed: boolean;
 }
 
+/** Project defaults for newly opened tabs; grouping and filters stay in the tab. */
+export type CorkboardPreferences = Pick<CorkboardSettings, 'mode' | 'reversed'>;
+
+/** Read only the preferences we persist, ignoring malformed or transient fields. */
+export function readCorkboardPreferences(value: unknown): Partial<CorkboardPreferences> {
+	if (typeof value !== 'object' || value === null) return {};
+	const candidate = value as Record<string, unknown>;
+	return {
+		...(isCorkboardMode(candidate.mode) ? { mode: candidate.mode } : {}),
+		...(typeof candidate.reversed === 'boolean' ? { reversed: candidate.reversed } : {}),
+	};
+}
+
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
