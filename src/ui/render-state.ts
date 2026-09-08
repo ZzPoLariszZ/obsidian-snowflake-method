@@ -83,8 +83,13 @@ export class RenderStateKeeper {
 		}
 	}
 
-	/** Scrolls one item just into view, and records the offset that resulted. */
-	reveal(root: HTMLElement, selector: string, itemSelector: string): void {
+	/** Scrolls one item below any sticky heading, and records the resulting offset. */
+	reveal(
+		root: HTMLElement,
+		selector: string,
+		itemSelector: string,
+		topInset = 0,
+	): void {
 		const scroller = this.resolveScroller(root, selector);
 		const item = scroller?.querySelector<HTMLElement>(itemSelector) ?? null;
 		if (scroller === null || item === null) return;
@@ -92,7 +97,7 @@ export class RenderStateKeeper {
 		const bounds = item.getBoundingClientRect();
 		scroller.scrollTop = scrollOffsetRevealing({
 			scrollTop: scroller.scrollTop,
-			viewportStart: viewport.top,
+			viewportStart: viewport.top + topInset,
 			viewportEnd: viewport.bottom,
 			itemStart: bounds.top,
 			itemEnd: bounds.bottom,

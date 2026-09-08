@@ -1,6 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
-import { scrollOffsetRevealing } from '../../src/ui/render-state';
+import { RenderStateKeeper, scrollOffsetRevealing } from '../../src/ui/render-state';
+
+describe('revealing an item below a sticky heading', () => {
+	it.each([
+		{ itemTop: 120, expected: 56 },
+		{ itemTop: 150, expected: 80 },
+	])('reveals a row at $itemTop without unnecessary scrolling', ({ itemTop, expected }) => {
+		const item = { getBoundingClientRect: () => ({ top: itemTop, bottom: itemTop + 46 }) };
+		const scroller = {
+			scrollTop: 80,
+			querySelector: () => item,
+			getBoundingClientRect: () => ({ top: 100, bottom: 300 }),
+		};
+		const root = {
+			matches: () => false,
+			querySelector: () => scroller,
+		} as unknown as HTMLElement;
+		const keeper = new RenderStateKeeper(['.rail']);
+
+		keeper.reveal(root, '.rail', '.active', 44);
+
+		expect(scroller.scrollTop).toBe(expected);
+		scroller.scrollTop = 0;
+		keeper.restore(root);
+		expect(scroller.scrollTop).toBe(expected);
+	});
+});
 
 describe('scroll offset revealing an item', () => {
 	const viewport = { viewportStart: 100, viewportEnd: 300 };

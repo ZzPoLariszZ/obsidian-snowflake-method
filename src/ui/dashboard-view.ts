@@ -3,6 +3,7 @@ import {
 	Menu,
 	Notice,
 	SearchComponent,
+	getIcon,
 	setIcon,
 	setTooltip,
 	type Modal,
@@ -1105,7 +1106,9 @@ export class SnowflakeDashboardView extends ItemView {
 		this.contentEl.toggleClass('is-rail-compact', compact);
 		const toggle = this.railToggle;
 		if (toggle === null) return;
-		setIcon(toggle, compact ? 'panel-left-open' : 'panel-left-close');
+		setIcon(toggle, getIcon('sidebar-toggle-button-icon') !== null
+			? 'sidebar-toggle-button-icon'
+			: 'panel-left');
 		toggle.setAttribute(
 			'aria-label',
 			this.t(compact ? 'dashboard.expandRail' : 'dashboard.collapseRail'),
@@ -1386,7 +1389,12 @@ export class SnowflakeDashboardView extends ItemView {
 		// height is not settled until the panel beside it exists.
 		this.renderState.restore(root);
 		if (continuity.revealActiveStep) {
-			this.renderState.reveal(root, RAIL_SCROLL_SELECTOR, ACTIVE_STEP_SELECTOR);
+			const headerHeight = root.querySelector<HTMLElement>(
+				'.snowflake-method-rail-group-header',
+			)?.getBoundingClientRect().height ?? 0;
+			this.renderState.reveal(
+				root, RAIL_SCROLL_SELECTOR, ACTIVE_STEP_SELECTOR, headerHeight,
+			);
 		}
 	}
 
@@ -1468,7 +1476,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.toggleRail();
 		});
 		this.paintRail();
-		// Both groups scroll together, inside the rail rather than as the rail:
+		// The groups scroll together, inside the rail rather than as the rail:
 		// the project switcher stands on the floor below, where no scrollbar
 		// reaches it and its rule still meets both walls.
 		const groups = nav.createDiv({ cls: 'snowflake-method-step-nav-scroll' });
@@ -1898,8 +1906,35 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-workspace-sparkles',
 			attr: { 'aria-hidden': 'true' },
 		});
-		for (let index = 0; index < 6; index++) {
-			setIcon(sparkles.createSpan({ cls: 'snowflake-method-workspace-sparkle' }), 'sparkle');
+		for (let index = 0; index < 8; index++) {
+			const sparkle = sparkles.createSpan({ cls: 'snowflake-method-workspace-sparkle' });
+			const scatter = (): void => {
+				const size = 0.42 + Math.random() * 0.26;
+				const gap = Math.random() * 0.08;
+				sparkle.setCssProps({
+					'--snowflake-method-sparkle-x': `${Math.random() * 92}%`,
+					'--snowflake-method-sparkle-y': Math.random() < 0.5
+						? `${-(size + gap)}rem`
+						: `calc(100% + ${gap}rem)`,
+					'--snowflake-method-sparkle-size': `${size}rem`,
+					'--snowflake-method-sparkle-angle': `${Math.random() * 60 - 30}deg`,
+					'--snowflake-method-sparkle-drift': `${Math.random() * 2 - 1}px`,
+				});
+			};
+			const duration = 2.8 + Math.random() * 2.9;
+			sparkle.setCssProps({
+				'--snowflake-method-sparkle-duration': `${duration}s`,
+				'--snowflake-method-sparkle-delay': `${-Math.random() * duration}s`,
+			});
+			scatter();
+			// The cycle ends fully faded out. Move before the next twinkle;
+			// changing its duration here would jump the animation's current phase.
+			sparkle.addEventListener('animationiteration', (event) => {
+				if (event.target === sparkle && event.animationName === 'snowflake-method-workspace-sparkle') {
+					scatter();
+				}
+			});
+			setIcon(sparkle, 'sparkle');
 		}
 	}
 

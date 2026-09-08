@@ -892,6 +892,10 @@
    the near side is opened to match rather than leaving the rail lopsided. Where a
    scrollbar costs nothing the rail keeps the padding it always had. */
 .snowflake-method-step-nav {
+	--snowflake-method-rail-header-height: max(
+		2.75rem,
+		calc((var(--font-ui-medium) + 2px) * 1.25 + var(--size-4-2) * 2)
+	);
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
@@ -910,7 +914,7 @@
 }
 
 /* Taller than the window leaves room for, the groups scroll rather than losing
-   what will not fit — one scroll for both of them, since either can be open and
+   what will not fit — one scroll for all of them, since any can be open and
    neither has a height of its own to scroll inside. It is the groups that
    scroll and not the rail, so the bar stops above the project switcher instead
    of running down beside it. The bar runs in the rail's own end padding, which
@@ -924,6 +928,7 @@
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-gutter: stable;
+	scroll-padding-block-start: var(--snowflake-method-rail-header-height);
 	margin-inline-end: calc(
 		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2))
 	);
@@ -952,6 +957,16 @@
 
 .snowflake-method-dashboard.is-rail-narrow .snowflake-method-step-nav-head {
 	display: none;
+}
+
+/* Use Obsidian's sidebar symbol, with its fill driven by this rail's state. */
+.snowflake-method-step-nav-toggle .sidebar-toggle-icon-inner {
+	width: var(--sidebar-left-toggle-inner-width, 8.33%);
+	stroke: none;
+}
+
+.snowflake-method-step-nav-toggle[aria-expanded='true'] .sidebar-toggle-icon-inner {
+	width: var(--sidebar-left-toggle-inner-width-open, 24%);
 }
 
 /* A group's name reads as the heading it is, a step above the rows it heads —
@@ -1205,6 +1220,11 @@
 }
 
 /* The shimmer fills the letters; sparkles float just above and below them. */
+.snowflake-method-dashboard:not(.is-rail-compact) button.snowflake-method-workspace-entry {
+	/* Keep the largest sparkles inside the row, including a two-line label. */
+	padding-block: 0.9rem;
+}
+
 .snowflake-method-dashboard:not(.is-rail-compact) .snowflake-method-workspace-label {
 	display: block;
 	overflow: visible;
@@ -1233,43 +1253,17 @@
 
 .snowflake-method-workspace-sparkle {
 	position: absolute;
-	inset-block-start: -0.55rem;
-	inset-inline-start: 8%;
+	inset-block-start: var(--snowflake-method-sparkle-y, -0.6rem);
+	inset-inline-start: var(--snowflake-method-sparkle-x, 8%);
+	rotate: var(--snowflake-method-sparkle-angle, 0deg);
+	opacity: 0;
 	color: var(--text-accent);
 }
 
 .snowflake-method-workspace-sparkle svg {
 	display: block;
-	width: 0.4rem;
-	height: 0.4rem;
-}
-
-.snowflake-method-workspace-sparkle:nth-child(2) {
-	--snowflake-method-sparkle-delay: -1.2s;
-	inset-inline-start: 47%;
-}
-
-.snowflake-method-workspace-sparkle:nth-child(3) {
-	--snowflake-method-sparkle-delay: -2.4s;
-	inset-inline-start: 89%;
-}
-
-.snowflake-method-workspace-sparkle:nth-child(4) {
-	--snowflake-method-sparkle-delay: -0.6s;
-	inset-block-start: calc(100% + 0.05rem);
-	inset-inline-start: 16%;
-}
-
-.snowflake-method-workspace-sparkle:nth-child(5) {
-	--snowflake-method-sparkle-delay: -1.8s;
-	inset-block-start: calc(100% + 0.05rem);
-	inset-inline-start: 60%;
-}
-
-.snowflake-method-workspace-sparkle:nth-child(6) {
-	--snowflake-method-sparkle-delay: -3s;
-	inset-block-start: calc(100% + 0.05rem);
-	inset-inline-start: 94%;
+	width: var(--snowflake-method-sparkle-size, 0.55rem);
+	height: var(--snowflake-method-sparkle-size, 0.55rem);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1292,7 +1286,8 @@
 	}
 
 	.snowflake-method-workspace-sparkle {
-		animation: snowflake-method-workspace-sparkle 3.6s ease-in-out infinite;
+		animation: snowflake-method-workspace-sparkle
+			var(--snowflake-method-sparkle-duration, 3.6s) ease-in-out infinite;
 		animation-delay: var(--snowflake-method-sparkle-delay, 0s);
 	}
 }
@@ -1303,11 +1298,19 @@
 }
 
 @keyframes snowflake-method-workspace-sparkle {
-	0%, 100% { transform: translateY(2px) scale(0.6); opacity: 0.15; }
-	50% { transform: translateY(-2px) scale(1.1) rotate(25deg); opacity: 0.85; }
+	0%, 18%, 76%, 100% { transform: scale(0.4); opacity: 0; }
+	38% {
+		transform: translateX(var(--snowflake-method-sparkle-drift, 0px)) scale(1);
+		opacity: 0.85;
+	}
+	55% {
+		transform: translateX(var(--snowflake-method-sparkle-drift, 0px)) scale(0.7) rotate(12deg);
+		opacity: 0.3;
+	}
 }
 
-.snowflake-method-reduce-motion .snowflake-method-workspace-sparkles {
+.snowflake-method-reduce-motion .snowflake-method-workspace-sparkles,
+.snowflake-method-dashboard.is-rail-compact .snowflake-method-workspace-sparkles {
 	display: none;
 }
 
@@ -4351,6 +4354,10 @@
 }
 
 :where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-nav {
+	--snowflake-method-rail-header-height: max(
+		2rem,
+		calc((var(--font-ui-medium) + 2px) * 1.25 + var(--size-4-1) * 2)
+	);
 	padding: var(--size-4-1) var(--size-4-1) 0;
 	padding-inline-start: max(
 		var(--size-4-1),
@@ -8061,7 +8068,7 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 /* == Worldbuilding ======================================================== */
 
-/* The rail folds into two groups: Steps and Worldbuilding. The header is the
+/* The rail folds into Steps, Worldbuilding, and Creation tools. The header is the
    same line the step list always opened with, now clickable, with a chevron
    that says which way it will fold — and it is a heading before it is a
    button, so it gives up the slab Obsidian dresses a button in. That takes
@@ -8069,6 +8076,11 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    looks like, which is also what was holding the line to 32px and eating the
    room it was given. */
 .snowflake-method-dashboard button.snowflake-method-rail-group-header {
+	/* Keep the current section's heading above its scrolling rows. The group
+	   bounds it so the next section can take its place. */
+	position: sticky;
+	top: 0;
+	z-index: 2;
 	/* Laid out on the rows' own grid: the chevron takes the column their
 	   circles and icons stand in, so the word starts where their names do. */
 	display: grid;
@@ -8082,8 +8094,8 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 	padding: var(--size-4-2) var(--size-4-2) var(--size-4-2)
 		calc(var(--size-4-2) + 1px);
 	border: 0;
-	border-radius: var(--radius-s);
-	background: transparent;
+	border-radius: 0;
+	background: var(--background-secondary);
 	box-shadow: none;
 	cursor: pointer;
 	text-align: start;
@@ -8091,7 +8103,7 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 .snowflake-method-dashboard
 	button.snowflake-method-rail-group-header:hover {
-	background: transparent;
+	background: var(--background-secondary);
 	box-shadow: none;
 	color: var(--text-normal);
 }
@@ -8110,6 +8122,10 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 
 .snowflake-method-rail-group-body.is-collapsed {
 	display: none;
+}
+
+.snowflake-method-rail-group {
+	flex: 0 0 auto;
 }
 
 /* One group's name stands clear of the last row of the one above it. */
