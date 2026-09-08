@@ -201,6 +201,7 @@ import {
   type ProjectSnapshot,
   type ProjectStructureIssue,
   type RepairResult,
+  type RankRevisionChange,
   type SceneInput,
   type ScenePatch,
   type SceneRecord,
@@ -5093,11 +5094,12 @@ export class SnowflakeProjectService {
     projectLocator: ProjectLocator,
     sceneId: string,
     targetIndex: number,
+    onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<SceneRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = project.scenes;
-    await this.persistReorderedRanks(current, moveRanked(current, sceneId, targetIndex));
+    await this.persistReorderedRanks(current, moveRanked(current, sceneId, targetIndex), onRankWritten);
     return this.listScenes(project);
   }
 
@@ -6259,6 +6261,7 @@ export class SnowflakeProjectService {
   private async persistReorderedRanks(
     before: readonly { id: string; path: string; rank: number; hasStoredRank: boolean }[],
     after: readonly { id: string; path: string; rank: number }[],
+    onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<void> {
     const previous = new Map(
       before.map((item) => [item.id, item] as const),
@@ -6266,9 +6269,14 @@ export class SnowflakeProjectService {
     for (const item of after) {
       const stored = previous.get(item.id);
       if (stored?.hasStoredRank === true && stored.rank === item.rank) continue;
-      await this.repository.updateFrontmatter(item.path, {
-        [FRONTMATTER_KEYS.rank]: item.rank,
-      });
+      const patch = { [FRONTMATTER_KEYS.rank]: item.rank };
+      if (onRankWritten === undefined) {
+        await this.repository.updateFrontmatter(item.path, patch);
+      } else {
+        const change = await this.repository.updateFrontmatterWithRevision(item.path, patch);
+        // Report each write before the next can fail during rank rebalancing.
+        onRankWritten({ id: item.id, ...change });
+      }
     }
   }
 

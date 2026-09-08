@@ -7,6 +7,7 @@ import {
   SCENE_POV_OMNISCIENT,
   SCHEMA_VERSION,
   STEP_ONE_SECTION_IDS,
+  fingerprint,
 } from "../../src/domain";
 import {
   ConcurrentChangeError,
@@ -23,6 +24,7 @@ import {
   ProjectCreationInterruptedError,
   SnowflakeProjectService,
   type ProjectSnapshot,
+  type RankRevisionChange,
 } from "../../src/services";
 import {
   getSystemTemplates,
@@ -1746,6 +1748,81 @@ describe("SnowflakeProjectService", () => {
     expect((await service.listScenes(project)).map((scene) => scene.title)).toEqual(
       reordered.map((scene) => scene.title),
     );
+  });
+
+  it.each(["rankless", "rebalance"] as const)("reports every successful scene rank revision during %s reordering", async (kind) => {
+    const project = await service.createProject({ name: "Tracked scene order" });
+    const scenes = [
+      await service.createScene(project, "First"),
+      await service.createScene(project, "Second"),
+      await service.createScene(project, "Third"),
+    ];
+    for (const [index, scene] of scenes.entries()) {
+      await fakeFileManager.processFrontMatter(fakeVault.getFileByPath(scene.path)!, (frontmatter) => {
+        if (kind === "rankless") delete frontmatter[FRONTMATTER_KEYS.rank];
+        else frontmatter[FRONTMATTER_KEYS.rank] = index + 1;
+      });
+    }
+    const before = new Map(scenes.map((scene) => [scene.sceneId, fakeVault.contents.get(scene.path)!]));
+    const paths = new Map(scenes.map((scene) => [scene.sceneId, scene.path]));
+    const changes: RankRevisionChange[] = [];
+    fakeVault.processCalls.length = 0;
+    fakeFileManager.frontmatterCalls.length = 0;
+
+    const reordered = await service.reorderScene(project, scenes[2]!.sceneId, 1, (change) => {
+      changes.push(change);
+      // Each successful write must be published before the next one starts.
+      expect(fakeVault.processCalls).toEqual(changes.map((entry) => paths.get(entry.id)));
+      expect(change).toEqual({
+        id: change.id,
+        before: fingerprint(before.get(change.id)),
+        after: fingerprint(fakeVault.contents.get(paths.get(change.id)!)),
+      });
+    });
+
+    expect(reordered.map((scene) => scene.title)).toEqual(["First", "Third", "Second"]);
+    expect(changes.map((change) => change.id)).toEqual(reordered.map((scene) => scene.sceneId));
+    for (const scene of reordered) {
+      expect(scene.hasStoredRank).toBe(true);
+      expect(scene.revision).toBe(changes.find((change) => change.id === scene.sceneId)?.after);
+      expect(parseMarkdownFrontmatter(fakeVault.contents.get(scene.path)!).body).toBe(
+        parseMarkdownFrontmatter(before.get(scene.sceneId)!).body,
+      );
+    }
+    expect(fakeFileManager.frontmatterCalls).toEqual([]);
+  });
+
+  it("retains successful rank revision notifications when a later scene write fails", async () => {
+    const project = await service.createProject({ name: "Partial scene order" });
+    const scenes = [
+      await service.createScene(project, "First"),
+      await service.createScene(project, "Second"),
+      await service.createScene(project, "Third"),
+    ];
+    for (const scene of scenes) {
+      await fakeFileManager.processFrontMatter(fakeVault.getFileByPath(scene.path)!, (frontmatter) => {
+        delete frontmatter[FRONTMATTER_KEYS.rank];
+      });
+    }
+    const [first, second, third] = scenes;
+    const before = new Map(scenes.map((scene) => [scene.path, fakeVault.contents.get(scene.path)!]));
+    const changes: RankRevisionChange[] = [];
+    fakeVault.processCalls.length = 0;
+    fakeVault.failNextProcessPath = first!.path;
+
+    await expect(service.reorderScene(project, third!.sceneId, 0, (change) => {
+      changes.push(change);
+    })).rejects.toThrow("Simulated process failure");
+
+    expect(changes).toEqual([{
+      id: third!.sceneId,
+      before: fingerprint(before.get(third!.path)),
+      after: fingerprint(fakeVault.contents.get(third!.path)),
+    }]);
+    expect(changes[0]!.after).not.toBe(changes[0]!.before);
+    expect(fakeVault.processCalls).toEqual([third!.path]);
+    expect(fakeVault.contents.get(first!.path)).toBe(before.get(first!.path));
+    expect(fakeVault.contents.get(second!.path)).toBe(before.get(second!.path));
   });
 
   it("stores and updates the complete Step 8 scene form", async () => {

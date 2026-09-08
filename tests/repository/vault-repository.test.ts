@@ -8,6 +8,7 @@ import {
   PathConflictError,
   UnsupportedSchemaError,
   VaultRepository,
+  parseMarkdownFrontmatter,
 } from "../../src/repository";
 import { renderMarkedSection } from "../../src/templates";
 import { createFakeEnvironment, type FakeFileManager, type FakeVault } from "../helpers/fake-vault";
@@ -180,6 +181,56 @@ describe("VaultRepository", () => {
       repository.updateFrontmatter(created.path, { "snowflake-schema": SCHEMA_VERSION + 1 }),
     ).rejects.toBeInstanceOf(UnsupportedSchemaError);
     expect((await repository.readManaged(created.path)).schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("reports only the revisions inside an atomic frontmatter write across external edits", async () => {
+    const body = "\n# Scene\n\nUser prose with trailing spaces.  \n\n";
+    const file = await fakeVault.seedFile(
+      "Ranked scene.md",
+      `---\nsnowflake-schema: ${SCHEMA_VERSION}\nsnowflake-rank: 1024\ncustom: keep\n---\n${body}`,
+    );
+    const initial = fakeVault.contents.get(file.path)!;
+    const externalBefore = `${initial}External edit before the rank write.\n`;
+    const originalProcess = fakeVault.process.bind(fakeVault);
+    let processed = "";
+    fakeVault.process = async (target, callback) => {
+      fakeVault.contents.set(target.path, externalBefore);
+      processed = await originalProcess(target, callback);
+      fakeVault.contents.set(target.path, `${processed}External edit after the rank write.\n`);
+      return processed;
+    };
+
+    const revisions = await repository.updateFrontmatterWithRevision(file.path, {
+      "snowflake-rank": 2048,
+    });
+
+    expect(revisions).toEqual({
+      before: fingerprint(externalBefore),
+      after: fingerprint(processed),
+    });
+    expect(revisions.before).not.toBe(fingerprint(initial));
+    expect(revisions.after).not.toBe(fingerprint(fakeVault.contents.get(file.path)));
+    expect(parseMarkdownFrontmatter(processed)).toMatchObject({
+      frontmatter: { "snowflake-rank": 2048, custom: "keep" },
+      body: `${body}External edit before the rank write.\n`,
+    });
+    expect(fakeVault.processCalls).toEqual([file.path]);
+    expect(fakeFileManager.frontmatterCalls).toEqual([]);
+  });
+
+  it.each([
+    { schema: SCHEMA_VERSION + 1, patch: { "snowflake-rank": 2048 }, error: UnsupportedSchemaError },
+    { schema: "invalid", patch: { "snowflake-rank": 2048 }, error: InvalidManagedDocumentError },
+    { schema: SCHEMA_VERSION, patch: { "snowflake-schema": SCHEMA_VERSION + 1 }, error: UnsupportedSchemaError },
+  ])("rejects unsafe schemas in revision-tracked frontmatter writes: $schema / $patch", async ({ schema, patch, error }) => {
+    const original = `---\n${JSON.stringify({ "snowflake-schema": schema, "snowflake-rank": 1024 })}\n---\nKeep this body.\n`;
+    const file = await fakeVault.seedFile("Protected rank.md", original);
+
+    await expect(repository.updateFrontmatterWithRevision(file.path, patch)).rejects.toBeInstanceOf(error);
+
+    expect(fakeVault.contents.get(file.path)).toBe(original);
+    expect(fakeVault.processCalls).toEqual([]);
+    expect(fakeFileManager.frontmatterCalls).toEqual([]);
   });
 
   it("reports missing sections without changing the original note", async () => {

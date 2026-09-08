@@ -49,6 +49,7 @@ import type {
 	KindMutationResult,
 	MemberUsage,
 	ProjectStructureIssueCode,
+	RankRevisionChange,
 	SaveCustomFieldTemplateResult,
 	ScenePatch,
 } from '../services';
@@ -844,7 +845,12 @@ export interface DashboardHost {
 		fields: StepFields,
 		expectedRevision: string,
 	): Promise<void>;
-	reorderScene(sceneId: string, targetIndex: number, projectPath?: string): Promise<void>;
+	reorderScene(
+		sceneId: string,
+		targetIndex: number,
+		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
+	): Promise<void>;
 	reorderCharacter(characterId: string, targetIndex: number): Promise<void>;
 	openManagedFile(
 		path: string,

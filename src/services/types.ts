@@ -593,6 +593,13 @@ export interface SceneInput {
   linkedManuscript?: string[];
 }
 
+/** The exact content revisions on either side of one successful rank write. */
+export interface RankRevisionChange {
+  id: string;
+  before: string;
+  after: string;
+}
+
 export interface ScenePatch {
   /** Revision shown to the editor before the user began changing fields. */
   expectedRevision: string;

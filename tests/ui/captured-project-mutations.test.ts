@@ -79,11 +79,16 @@ describe('captured project mutation ownership', () => {
 		await plugin.updateScene(created.id, sceneRequest('Opening', {
 			expectedRevision: initial.revision, conflict: 'The gate is locked.',
 		}), owner.projectFile);
-		await plugin.reorderScene(created.id, 1, owner.projectFile);
+		const beforeMove = (await service.loadProject(owner)).scenes.find((scene) => scene.id === created.id)!;
+		const onRankWritten = vi.fn();
+		await plugin.reorderScene(created.id, 1, owner.projectFile, onRankWritten);
 		const scenes = (await service.loadProject(owner)).scenes;
 		expect(created.path.startsWith(`${owner.rootPath}/`)).toBe(true);
 		expect(scenes.map((scene) => scene.title)).toEqual(['Later', 'Opening']);
 		expect(scenes[1]?.conflict).toBe('The gate is locked.');
+		expect(onRankWritten).toHaveBeenCalledExactlyOnceWith({
+			id: created.id, before: beforeMove.revision, after: scenes[1]?.revision,
+		});
 		fixture.assertOwnership(before);
 	});
 

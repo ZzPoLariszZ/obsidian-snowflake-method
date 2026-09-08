@@ -134,14 +134,14 @@ describe('corkboard adjacency with a scene range', () => {
 		expect(middle.get('actions.moveUp')!.disabled).toBe(false);
 		expect(middle.get('actions.moveDown')!.disabled).toBe(false);
 		middle.get('actions.moveUp')!.click();
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', reversed ? 3 : 1, 'Project/Project.md'));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', reversed ? 3 : 1, 'Project/Project.md', expect.any(Function)));
 		fixture.handle.dispose();
 	});
 
 	it.each([false, true])('drops after the visible tail without crossing the range (reversed: %s)', async (reversed) => {
 		const fixture = board({ reversed });
 		dropAtEnd(fixture, fixture.cards[0]!);
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', reversed ? 1 : 3, 'Project/Project.md'));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', reversed ? 1 : 3, 'Project/Project.md', expect.any(Function)));
 		fixture.host.reorderScene.mockClear();
 		dropAtEnd(fixture, fixture.cards[2]!);
 		await Promise.resolve();

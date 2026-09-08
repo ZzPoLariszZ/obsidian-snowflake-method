@@ -306,6 +306,8 @@ export function renderCorkboard(
 	const pendingTitles = new Map<string, PendingText>();
 	const pendingConflicts = new Map<string, PendingText>();
 	const revisions = new Map<string, Map<string, Set<EditRevision>>>();
+	/** Own writes the displayed model has not yet caught up with, including unmounted cards. */
+	const revisionTransitions = new Map<string, Map<string, string>>();
 	const queuedRevisions = new Set<{ base: EditRevision }>();
 	const heads = new Map<string, HTMLElement>();
 	/** The card in flight, while one is; every paint asked meanwhile waits. */
@@ -347,7 +349,7 @@ export function renderCorkboard(
 				if (options.reportError === false) throw error;
 				notice(error);
 			}
-			if (!disposed) await controls.refresh().catch((error: unknown) => {
+			if (!disposed) await controls.refresh().then(() => revisionTransitions.clear()).catch((error: unknown) => {
 				if (options.reportError === false) throw error;
 				notice(error);
 			});
@@ -375,20 +377,29 @@ export function renderCorkboard(
 	};
 
 	const editRevision = (scene: SceneViewModel): EditRevision => {
+		const revision = revisionTransitions.get(scene.id)?.get(scene.revision) ?? scene.revision;
 		let byRevision = revisions.get(scene.id);
 		if (byRevision === undefined) {
 			byRevision = new Map();
 			revisions.set(scene.id, byRevision);
 		}
-		const standing = byRevision.get(scene.revision)?.values().next().value;
+		const standing = byRevision.get(revision)?.values().next().value;
 		if (standing !== undefined) return standing;
-		const base = { revision: scene.revision };
-		byRevision.set(scene.revision, new Set([base]));
+		const base = { revision };
+		byRevision.set(revision, new Set([base]));
 		return base;
 	};
 
 	const advanceRevision = (id: string, before: string, after: string): void => {
 		if (before === after) return;
+		// A card can remount from the old model before the write's refresh
+		// finishes. Resolve its revision even if its former editor was pruned.
+		const transitions = revisionTransitions.get(id) ?? new Map<string, string>();
+		for (const [origin, revision] of transitions) {
+			if (revision === before) transitions.set(origin, after);
+		}
+		transitions.set(before, after);
+		revisionTransitions.set(id, transitions);
 		const byRevision = revisions.get(id);
 		const bases = byRevision?.get(before);
 		if (byRevision === undefined || bases === undefined) return;
@@ -400,6 +411,17 @@ export function renderCorkboard(
 		}
 		byRevision.set(after, next);
 	};
+
+	/** Carry queued edits through our rank writes without adopting external revisions. */
+	const reorderScene = (id: string, target: number, owningProject: string): Promise<void> =>
+		host.reorderScene(id, target, owningProject, (change) => {
+			advanceRevision(change.id, change.before, change.after);
+			for (const card of cards.values()) {
+				if (card.id === change.id && card.scene.revision === change.before) {
+					card.scene = { ...card.scene, revision: change.after };
+				}
+			}
+		});
 
 	/** One field of one scene, under the revision the card holds now, which the write then moves on. */
 	const patch = (
@@ -1321,7 +1343,7 @@ export function renderCorkboard(
 							label: `${String(at + 1)}. ${candidate.title}`,
 						}))
 						.filter((candidate) => candidate.id !== entry.id),
-				move: (toIndex) => host.reorderScene(entry.id, toIndex, current.path),
+				move: (toIndex) => reorderScene(entry.id, toIndex, current.path),
 				reveal: () => {
 					reveal(entry.id);
 				},
@@ -1596,7 +1618,7 @@ export function renderCorkboard(
 		);
 		if (target === null) return;
 		const owningProject = projectPath;
-		if (owningProject !== null) void enqueue(() => host.reorderScene(dragged, target, owningProject), { persist: true });
+		if (owningProject !== null) void enqueue(() => reorderScene(dragged, target, owningProject), { persist: true });
 	});
 
 	// -- Focus custody -------------------------------------------------------

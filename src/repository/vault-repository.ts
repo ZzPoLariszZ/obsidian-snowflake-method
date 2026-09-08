@@ -107,8 +107,9 @@ export type FrontmatterUpdater = (
 ) => ManagedFrontmatter;
 
 /**
- * Thin, mobile-safe persistence layer. All content mutations are performed with
- * Vault.process and all frontmatter mutations with FileManager.processFrontMatter.
+ * Thin, mobile-safe persistence layer. Content mutations use Vault.process;
+ * frontmatter uses FileManager.processFrontMatter unless a caller needs the
+ * exact content revisions from an atomic write.
  */
 export class VaultRepository {
   /**
@@ -557,6 +558,32 @@ export class VaultRepository {
     order?: readonly string[],
   ): Promise<void> {
     await this.updateFrontmatterAtomic(path, () => patch, order);
+  }
+
+  /** Reports only this write's revision transition, even if another editor writes nearby. */
+  async updateFrontmatterWithRevision(
+    path: string,
+    patch: ManagedFrontmatter,
+  ): Promise<{ before: string; after: string }> {
+    const normalized = this.normalize(path);
+    const file = this.getFile(normalized);
+    if (!file) throw new ManagedFileNotFoundError(normalized);
+
+    let before = "";
+    const written = await this.withWriteMark(normalized, () =>
+      this.vault.process(file, (current) => {
+        const { frontmatter, body } = parseMarkdownFrontmatter(current);
+        assertWritableSchema(normalized, frontmatter);
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === undefined) delete frontmatter[key];
+          else frontmatter[key] = value;
+        }
+        assertWritableSchema(normalized, frontmatter);
+        before = fingerprint(current);
+        return `---\n${stringifyYaml(frontmatter).trimEnd()}\n---\n${body}`;
+      }),
+    );
+    return { before, after: fingerprint(written) };
   }
 
   async updateFrontmatterAtomic(

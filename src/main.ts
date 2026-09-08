@@ -156,6 +156,7 @@ import {
 } from './repository';
 import {
 	createStableId,
+	type RankRevisionChange,
 	type ScenePatch,
 	sessionClockMs,
 	SnowflakeProjectService,
@@ -2496,9 +2497,14 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async reorderScene(sceneId: string, targetIndex: number, projectPath?: string): Promise<void> {
+	async reorderScene(
+		sceneId: string,
+		targetIndex: number,
+		projectPath?: string,
+		onRankWritten?: (change: RankRevisionChange) => void,
+	): Promise<void> {
 		const project = await this.requireProject(projectPath);
-		await this.projects.reorderScene(project, sceneId, targetIndex);
+		await this.projects.reorderScene(project, sceneId, targetIndex, onRankWritten);
 	}
 
 	async reorderCharacter(characterId: string, targetIndex: number): Promise<void> {
