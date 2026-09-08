@@ -506,7 +506,9 @@ export function renderCorkboard(
 			return;
 		}
 		const current = model;
-		projectPath ??= current.path;
+		// A project rename refreshes this board in place. New edits follow its
+		// current path; patch() keeps the owner already captured by queued saves.
+		projectPath = current.path;
 		readOnly = current.readOnly;
 		const characterNames = new Map(
 			current.characters.map((character) => [character.path, character.name]),
@@ -605,6 +607,36 @@ export function renderCorkboard(
 		return pinned;
 	};
 
+	/** Move an editor with its scene when a refresh gives its group a different key. */
+	const rekeyPinnedCards = (pinned: Set<string>, hold: FocusHold | null): void => {
+		for (const key of [...pinned]) {
+			if (displayOf(key) !== -1) continue;
+			const entry = cards.get(key);
+			if (entry === undefined) continue;
+			const destinations = displayKeys.filter((_, display) => sceneAt(display)?.id === entry.id);
+			const nextKey = destinations.find((candidate) => !cards.has(candidate)) ??
+				destinations.find((candidate) => {
+					const standing = cards.get(candidate);
+					return standing !== undefined && !pinned.has(candidate) &&
+						!standing.editingTitle && !standing.conflictDirty;
+				});
+			if (nextKey === undefined) continue;
+			// A clean group copy can give its place to the actual editor, preserving
+			// the draft, its revision, the selection and the control's event handlers.
+			unmountCard(nextKey);
+			cards.delete(key);
+			entry.key = nextKey;
+			entry.el.setAttribute('data-key', nextKey);
+			cards.set(nextKey, entry);
+			pinned.delete(key);
+			pinned.add(nextKey);
+			if (hold?.key === key) hold.key = nextKey;
+			for (const pending of [pendingTitles.get(entry.id), pendingConflicts.get(entry.id)]) {
+				if (pending?.key === key) pending.key = nextKey;
+			}
+		}
+	};
+
 	/** Brings the mounted cards level with the window: the ones in it, and the pinned ones wherever they are. */
 	const paintWindow = (refreshContent = false, viewport?: ViewportMeasure): void => {
 		if (disposed || layout === null || model === null) return;
@@ -618,23 +650,36 @@ export function renderCorkboard(
 			lastViewportHeight,
 			OVERSCAN_LINES,
 		);
+		const hold = holdFocus();
+		const pinned = new Set(pinnedKeys());
+		rekeyPinnedCards(pinned, hold);
 		const wanted = new Map<string, number>();
 		for (const display of visibleCards(lay, lines)) {
 			const key = displayKeys[display];
 			if (key !== undefined) wanted.set(key, display);
 		}
-		for (const key of pinnedKeys()) {
+		for (const key of pinned) {
 			if (wanted.has(key)) continue;
 			const display = displayOf(key);
 			if (display !== -1) wanted.set(key, display);
 		}
-		const hold = holdFocus();
-		const plan = planCardRepaint([...cards.keys()], [...wanted.keys()], []);
+		const retained = [...pinned].filter((key) =>
+			!wanted.has(key) && current.scenes.some((scene) => scene.id === cards.get(key)?.id),
+		);
+		const plan = planCardRepaint([...cards.keys()], [...wanted.keys()], retained);
 		for (const key of plan.remove) unmountCard(key);
 		for (const key of plan.keep) {
 			const entry = cards.get(key);
 			const display = wanted.get(key);
-			if (entry === undefined || display === undefined) continue;
+			if (entry === undefined) continue;
+			if (display === undefined) {
+				// A filter, or two distinct drafts collapsing into one group, may
+				// leave no place for this editor. Keep it for remounting or disposal.
+				entry.display = -1;
+				entry.el.remove();
+				continue;
+			}
+			if (!entry.el.isConnected) canvas.insertBefore(entry.el, null);
 			if (refreshContent) dressAt(entry, display, current);
 			else placeCard(entry, display);
 		}
@@ -1528,9 +1573,9 @@ export function renderCorkboard(
 		if (active !== null && active !== doc.body && root.contains(active)) return;
 		const entry = cards.get(hold.key);
 		let target: Element | null = root.contains(hold.el) ? hold.el : null;
-		if (target === null && entry !== undefined) target = partOf(entry, hold.part);
+		if (target === null && entry?.el.isConnected === true) target = partOf(entry, hold.part);
 		if (target === null) {
-			const mounted = [...cards.values()];
+			const mounted = [...cards.values()].filter((card) => card.el.isConnected);
 			const standing =
 				mounted.find((candidate) => candidate.display === hold.display) ??
 				mounted[mounted.length - 1] ??

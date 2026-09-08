@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ViewState, WorkspaceLeaf } from 'obsidian';
+import { CorkboardDom } from '../helpers/corkboard-dom';
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
@@ -18,15 +19,20 @@ vi.mock('obsidian', async (importOriginal) => {
 		Keymap: { isModEvent: (event: MouseEvent) => event.metaKey ? 'tab' : false },
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
+		SearchComponent: class extends runtime.SearchComponent {
+			setValue(): this { return this; }
+		},
 	};
 });
 
 import SnowflakeMethodPlugin from '../../src/main';
+import { renderCorkboard } from '../../src/ui/corkboard';
+import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
 import {
 	STORY_STRUCTURE_VIEW_TYPE,
 	SnowflakeStoryStructureView,
 } from '../../src/ui/story-structure-view';
-import type { DashboardHost, ProjectDashboardModel } from '../../src/ui/view-model';
+import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 const firstProject = 'First/First.md';
 const secondProject = 'Second/Second.md';
@@ -164,6 +170,64 @@ describe('workspace project ownership', () => {
 		expect(loadDashboardModel.mock.calls).toEqual([[firstProject], [secondProject]]);
 		expect(renderFrame).toHaveBeenCalledOnce();
 		expect(view).toMatchObject({ model: { path: secondProject } });
+	});
+
+	it('saves to the renamed project without replacing the open corkboard', async () => {
+		const { view, loadDashboardModel, renderFrame } = workspaceView();
+		const dom = new CorkboardDom();
+		const originalPath = 'First/00_System/001_Project_Metadata.md';
+		const renamedPath = 'Renamed/00_System/001_Project_Metadata.md';
+		let scene: SceneViewModel = {
+			id: 'scene', path: 'First/40_Scene/Opening.md', title: 'Opening', rank: 0,
+			progressStatus: 'in-progress', aliases: [], categoryPaths: [],
+			povPath: '', povName: '', povMissing: false,
+			times: [], locations: [], characterPaths: [], conflict: 'An obstacle', color: null,
+			linkedManuscript: [], worldStatus: [], relationships: [], events: '',
+			customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+		};
+		loadDashboardModel.mockImplementation((path) => Promise.resolve({
+			path, projectId: 'stable-project', title: 'Novel', locale: 'en',
+			scenes: [scene], characters: [], manuscriptPaths: [], readOnly: false,
+		} as unknown as ProjectDashboardModel));
+		const patchScene = vi.fn<DashboardHost['patchScene']>(async (_id, patch, path) => {
+			if (path !== renamedPath) throw new Error('The original project path no longer exists.');
+			scene = { ...scene, progressStatus: patch.progressStatus ?? null, revision: 'saved' };
+			return scene.revision;
+		});
+		const internals = view as unknown as {
+			controls(): CorkboardControls;
+			frameKey(): string;
+			board: CorkboardHandle | null;
+			shownFrame: string | null;
+		};
+		const controls = internals.controls();
+		Object.assign(controls.app, { metadataCache: { getFirstLinkpathDest: () => null } });
+		Object.assign(controls.host, { patchScene, translateForProject: (_locale: unknown, key: string) => key });
+		renderFrame.mockImplementation(() => {
+			internals.board?.dispose();
+			dom.container.empty();
+			internals.board = renderCorkboard(dom.container as unknown as HTMLElement, controls);
+			internals.shownFrame = internals.frameKey();
+		});
+		await view.onOpen();
+		await view.setState({ projectPath: originalPath }, { history: false });
+		const card = dom.container.querySelector('.snowflake-method-corkboard-card')!;
+
+		scene = { ...scene, path: 'Renamed/40_Scene/Opening.md' };
+		await view.setState({ projectPath: renamedPath }, { history: false });
+		expect(renderFrame).toHaveBeenCalledOnce();
+		expect(dom.container.querySelector('.snowflake-method-corkboard-card')).toBe(card);
+		const status = card.querySelector('.snowflake-method-corkboard-status-select')!;
+		status.value = 'complete';
+		status.dispatch('change');
+
+		await vi.waitFor(() => {
+			expect(patchScene).toHaveBeenCalledExactlyOnceWith('scene', {
+				progressStatus: 'complete', expectedRevision: 'initial',
+			}, renamedPath);
+			expect(scene.progressStatus).toBe('complete');
+		});
+		internals.board?.dispose();
 	});
 });
 

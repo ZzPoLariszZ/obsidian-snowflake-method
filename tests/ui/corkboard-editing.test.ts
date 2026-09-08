@@ -22,7 +22,7 @@ vi.mock('obsidian', async (importOriginal) => {
 import type { ScenePatch } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
-import { corkboardMemory } from '../../src/ui/story-structure-state';
+import { corkboardMemory, type CorkboardMemory } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 const PROJECT = 'First/Project.md';
@@ -47,7 +47,7 @@ function escape(element: CorkboardElement): void {
 	}
 }
 
-function board() {
+function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewModel> = {}) {
 	const dom = new CorkboardDom();
 	let stored: SceneViewModel = {
 		id: 'scene', path: 'First/Scenes/Opening.md', title: 'Opening', rank: 0,
@@ -56,6 +56,7 @@ function board() {
 		times: [], locations: [], characterPaths: [], conflict: 'An obstacle', color: null,
 		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
 		customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+		...scene,
 	};
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes: [stored],
@@ -96,7 +97,7 @@ function board() {
 		app: { metadataCache: { getFirstLinkpathDest: () => null } },
 		host, t: (key: string) => key, model: () => model,
 		activateProject, refresh,
-		popover: { closeFilter: vi.fn() }, memory: corkboardMemory(), remember: vi.fn(),
+		popover: { closeFilter: vi.fn() }, memory: { ...corkboardMemory(), group }, remember: vi.fn(),
 	} as unknown as CorkboardControls;
 	handle = renderCorkboard(dom.container as unknown as HTMLElement, controls);
 	const card = dom.container.querySelector('.snowflake-method-corkboard-card')!;
@@ -105,7 +106,7 @@ function board() {
 	const titleInput = card.querySelector('.snowflake-method-corkboard-title-input')!;
 	const status = card.querySelector('.snowflake-method-corkboard-status-select')!;
 	return {
-		card, conflict, title, titleInput, status, host, controls, handle, activateProject, refresh,
+		dom, card, conflict, title, titleInput, status, host, controls, handle, activateProject, refresh,
 		stored: () => stored,
 		external: (changes: Partial<SceneViewModel>) => {
 			stored = { ...stored, ...changes };
@@ -127,6 +128,121 @@ function board() {
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
+
+describe('corkboard drafts across regrouping', () => {
+	it.each(['conflict', 'title'] as const)('keeps a focused %s draft through its earlier status save', async (field) => {
+		const fixture = board('status');
+		const gate = fixture.holdWrite();
+		fixture.setStatus('complete');
+		await settle();
+		const editor = field === 'conflict' ? fixture.conflict : fixture.titleInput;
+		if (field === 'title') fixture.title.dispatch('click');
+		editor.focus();
+		editor.value = 'Unsaved local draft';
+		editor.dispatch('input');
+		gate.resolve();
+		await settle();
+		expect(fixture.card.getAttribute('data-key')).toBe('status:complete|scene');
+		expect(fixture.dom.container.contains(editor)).toBe(true);
+		expect(fixture.dom.doc.activeElement).toBe(editor);
+		expect(editor.value).toBe('Unsaved local draft');
+		editor.dispatch('blur');
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
+			[field]: 'Unsaved local draft', expectedRevision: 'saved-1',
+		}, PROJECT);
+		expect(fixture.stored()[field]).toBe('Unsaved local draft');
+		expect(notices).not.toHaveBeenCalled();
+		fixture.handle.dispose();
+	});
+
+	it.each(['conflict', 'title'] as const)('keeps a regrouped %s draft on its original external revision', async (field) => {
+		const fixture = board('status');
+		const editor = field === 'conflict' ? fixture.conflict : fixture.titleInput;
+		if (field === 'title') fixture.title.dispatch('click');
+		editor.focus();
+		editor.value = 'Unsaved local draft';
+		editor.dispatch('input');
+		fixture.external({ progressStatus: 'complete', [field]: 'External edit', revision: 'external' });
+		expect(fixture.dom.doc.activeElement).toBe(editor);
+		expect(fixture.dom.container.contains(editor)).toBe(true);
+		expect(editor.value).toBe('Unsaved local draft');
+		editor.dispatch('blur');
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenLastCalledWith('scene', {
+			[field]: 'Unsaved local draft', expectedRevision: 'initial',
+		}, PROJECT);
+		expect(fixture.stored()[field]).toBe('External edit');
+		expect(notices).toHaveBeenCalledWith('Revision conflict');
+		expect(editor.value).toBe('Unsaved local draft');
+		escape(editor);
+		fixture.handle.dispose();
+	});
+
+	it('lets a focused editor replace a clean copy in the surviving group', () => {
+		const fixture = board('category', { categoryPaths: ['A', 'B'] });
+		const copies = fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-card');
+		expect(copies).toHaveLength(2);
+		fixture.conflict.focus();
+		fixture.typeConflict('Draft from A');
+		fixture.external({ categoryPaths: ['B'], revision: 'external' });
+		expect(fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-card')).toEqual([fixture.card]);
+		expect(fixture.card.getAttribute('data-key')).toBe('category:B|scene');
+		expect(fixture.dom.doc.activeElement).toBe(fixture.conflict);
+		expect(fixture.conflict.value).toBe('Draft from A');
+		escape(fixture.conflict);
+		fixture.handle.dispose();
+	});
+
+	it('retains distinct drafts when their group copies collapse and restores them when they return', () => {
+		const fixture = board('category', { categoryPaths: ['A', 'B'] });
+		const other = fixture.dom.container.querySelectorAll('.snowflake-method-corkboard-conflict')[1]!;
+		fixture.typeConflict('Draft from A');
+		other.value = 'Draft from B';
+		other.dispatch('input');
+		other.focus();
+		fixture.external({ categoryPaths: ['C'], revision: 'external' });
+		expect(fixture.dom.container.contains(other)).toBe(true);
+		expect(fixture.dom.doc.activeElement).toBe(other);
+		expect(other.value).toBe('Draft from B');
+		fixture.external({ categoryPaths: ['A', 'B'], revision: 'external-2' });
+		expect(fixture.dom.container.contains(fixture.conflict)).toBe(true);
+		expect(fixture.dom.container.contains(other)).toBe(true);
+		expect(fixture.conflict.value).toBe('Draft from A');
+		expect(other.value).toBe('Draft from B');
+		expect(fixture.dom.doc.activeElement).toBe(other);
+		escape(fixture.conflict);
+		escape(other);
+		fixture.handle.dispose();
+	});
+
+	it('restores a filtered-out dirty editor without dropping its draft', () => {
+		const fixture = board();
+		fixture.typeConflict('Hidden draft');
+		fixture.controls.memory.query = 'no matching scene';
+		fixture.handle.refresh();
+		expect(fixture.dom.container.contains(fixture.conflict)).toBe(false);
+		fixture.controls.memory.query = '';
+		fixture.handle.refresh();
+		expect(fixture.dom.container.contains(fixture.conflict)).toBe(true);
+		expect(fixture.conflict.value).toBe('Hidden draft');
+		escape(fixture.conflict);
+		fixture.handle.dispose();
+	});
+
+	it('saves a retained hidden draft when the board closes', async () => {
+		const fixture = board();
+		fixture.typeConflict('Hidden draft');
+		fixture.controls.memory.query = 'no matching scene';
+		fixture.handle.refresh();
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledWith('scene', {
+			conflict: 'Hidden draft', expectedRevision: 'initial',
+		}, PROJECT);
+		expect(fixture.stored().conflict).toBe('Hidden draft');
+	});
+});
 
 describe('corkboard text revisions', () => {
 	it('refreshes an untouched focused conflict without writing its old contents on blur', async () => {
