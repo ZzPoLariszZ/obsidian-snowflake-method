@@ -1,6 +1,7 @@
 import type {
   CharacterType,
   EntityKindId,
+  MacaronColor,
   ProgressStatus,
   ProjectLanguage,
   ProjectWorldbuildingKind,
@@ -586,6 +587,10 @@ export interface SceneInput {
   events?: string;
   planning?: string;
   customFields?: string;
+  /** The board tint, null to take it off. Absent leaves the note as it is. */
+  color?: MacaronColor | null;
+  /** Manuscript links as raw wikilinks, kept exactly as given. */
+  linkedManuscript?: string[];
 }
 
 export interface ScenePatch {
@@ -605,6 +610,10 @@ export interface ScenePatch {
   events?: string;
   planning?: string;
   customFields?: string;
+  /** The board tint, null to take it off. Absent leaves the note as it is. */
+  color?: MacaronColor | null;
+  /** Manuscript links as raw wikilinks, kept exactly as given. */
+  linkedManuscript?: string[];
 }
 
 export interface SceneRecord {
@@ -628,6 +637,10 @@ export interface SceneRecord {
   locations: string[];
   characters: string[];
   conflict: string;
+  /** Null while the note wears no colour, or names one this build does not know. */
+  color: MacaronColor | null;
+  /** Manuscript links exactly as stored, subpaths and aliases kept. */
+  linkedManuscript: string[];
   worldStatus: RecordLine[];
   relationships: RecordLine[];
   worldStatusUnrecognized: string[];

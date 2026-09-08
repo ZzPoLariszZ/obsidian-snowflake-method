@@ -5167,6 +5167,81 @@ describe("SnowflakeProjectService", () => {
       "aliases",
       ...expected.slice(5),
     ]);
+
+    // The board's two keys close the list, the links before the colour.
+    const dusk = await service.createScene(project, {
+      title: "Dusk",
+      progressStatus: "complete",
+      linkedManuscript: ["[[Manuscript/Chapter 08#Scene 12]]"],
+      color: "macaron-2",
+    });
+    expect(orderOf(dusk.path)).toEqual([
+      ...expected,
+      FRONTMATTER_KEYS.linkedManuscript,
+      FRONTMATTER_KEYS.sceneColor,
+    ]);
+  });
+
+  it("stores a scene's colour and linked manuscript raw, and drops both when cleared", async () => {
+    const project = await service.createProject({ name: "Scene board fields" });
+    const links = [
+      "[[Manuscript/Chapter 09|Nine]]",
+      "[[Manuscript/Chapter 08#Scene 12]]",
+      "[[Manuscript/Chapter 10#^scene-12]]",
+    ];
+    const scene = await service.createScene(project, {
+      title: "Dawn",
+      color: "macaron-5",
+      linkedManuscript: [...links, "   "],
+    });
+    expect(scene.color).toBe("macaron-5");
+    expect(scene.linkedManuscript).toEqual(links);
+    const stored = (path: string): Record<string, unknown> =>
+      parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter;
+    expect(stored(scene.path)[FRONTMATTER_KEYS.linkedManuscript]).toEqual(links);
+    expect(stored(scene.path)[FRONTMATTER_KEYS.sceneColor]).toBe("macaron-5");
+
+    // A patch that names neither leaves both as they were.
+    const retitled = await service.updateScene(project.projectFile, scene.sceneId, {
+      conflict: "The tide turns first.",
+      expectedRevision: scene.revision,
+    });
+    expect(retitled.color).toBe("macaron-5");
+    expect(retitled.linkedManuscript).toEqual(links);
+
+    const cleared = await service.updateScene(project.projectFile, scene.sceneId, {
+      color: null,
+      linkedManuscript: [],
+      expectedRevision: retitled.revision,
+    });
+    expect(cleared.color).toBeNull();
+    expect(cleared.linkedManuscript).toEqual([]);
+    expect(stored(scene.path)[FRONTMATTER_KEYS.linkedManuscript]).toBeUndefined();
+    expect(stored(scene.path)[FRONTMATTER_KEYS.sceneColor]).toBeUndefined();
+
+    // A scene made without them carries neither key at all.
+    const plain = await service.createScene(project, { title: "Noon" });
+    expect(plain.color).toBeNull();
+    expect(plain.linkedManuscript).toEqual([]);
+    expect(FRONTMATTER_KEYS.linkedManuscript in stored(plain.path)).toBe(false);
+    expect(FRONTMATTER_KEYS.sceneColor in stored(plain.path)).toBe(false);
+  });
+
+  it("reads an unknown colour as none and a lone link as a list of one", async () => {
+    const project = await service.createProject({ name: "Scene board hand edits" });
+    const scene = await service.createScene(project, { title: "Dawn" });
+    await fakeFileManager.processFrontMatter(
+      fakeVault.getFileByPath(scene.path)!,
+      (frontmatter) => {
+        frontmatter[FRONTMATTER_KEYS.sceneColor] = "lime";
+        frontmatter[FRONTMATTER_KEYS.linkedManuscript] = "[[Manuscript/Chapter 09]]";
+      },
+    );
+    const read = (await service.listScenes(project)).find(
+      (candidate) => candidate.sceneId === scene.sceneId,
+    );
+    expect(read?.color).toBeNull();
+    expect(read?.linkedManuscript).toEqual(["[[Manuscript/Chapter 09]]"]);
   });
 
   it("brings a character note written in an older order into today's", async () => {

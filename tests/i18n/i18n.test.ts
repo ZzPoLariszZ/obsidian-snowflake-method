@@ -14,6 +14,12 @@ import {
 } from '../../src/domain';
 import { TASKS_TABS } from '../../src/ui/dashboard-state';
 import {
+	CORKBOARD_GROUP_FIELDS,
+	CORKBOARD_MODES,
+	STORY_STRUCTURE_FAMILIES,
+	STORY_STRUCTURE_VISUALIZATIONS,
+} from '../../src/ui/story-structure-state';
+import {
 	SUPPORTED_LOCALES,
 	en,
 	isSupportedLocale,
@@ -522,6 +528,24 @@ describe('translation resources', () => {
 		expect(zhCN['modal.scene.conflict']).toBe('冲突');
 		expect(zhCN['modal.scene.pov']).toBe('视点人物');
 		expect(zhCN['modal.scene.events']).toBe('具体事件');
+		expect(en['modal.scene.linkedManuscript']).toBe('Linked manuscript');
+		expect(en['modal.scene.linkedManuscriptPlaceholder']).toBe(
+			'Add a manuscript note…',
+		);
+		expect(en['modal.scene.linkedManuscriptEmpty']).toBe(
+			'No manuscript notes yet.',
+		);
+		expect(en['modal.scene.removeLinked']).toContain('{name}');
+		expect(en['modal.scene.color']).toBe('Color');
+		expect(en['modal.scene.colorNone']).toBe('No color');
+		expect(zhCN['modal.scene.linkedManuscript']).toBe('关联正文');
+		expect(zhCN['modal.scene.linkedManuscriptPlaceholder']).toBe(
+			'添加正文笔记…',
+		);
+		expect(zhCN['modal.scene.linkedManuscriptEmpty']).toBe('尚无正文笔记。');
+		expect(zhCN['modal.scene.removeLinked']).toContain('{name}');
+		expect(zhCN['modal.scene.color']).toBe('颜色');
+		expect(zhCN['modal.scene.colorNone']).toBe('无颜色');
 		expect(en['scenes.empty']).toBe('No scenes');
 		expect(zhCN['scenes.empty']).toBe('尚未添加场景');
 		expect(en['steps.8.title']).toBe('Scene list');
@@ -596,6 +620,10 @@ describe('translation resources', () => {
 	it('names the data statistics pane and every tab on it', () => {
 		expect(en['dashboard.statistics']).toBe('Data statistics');
 		expect(zhCN['dashboard.statistics']).toBe('数据统计');
+		expect(en['dashboard.visualizationWorkspace']).toBe(
+			'Visualization workspace',
+		);
+		expect(zhCN['dashboard.visualizationWorkspace']).toBe('可视化工作区');
 		expect(Object.keys(en)).toContain('dashboard.statistics.description');
 		expect(en['statistics.tab.sessions']).toBe('Writing sessions');
 		expect(zhCN['statistics.tab.sessions']).toBe('写作时段');
@@ -1456,5 +1484,66 @@ describe('task copy', () => {
 			expect(locale['modal.task.relatedRemove']).toContain('{name}');
 			expect(locale['modal.task.relatedMissing']).toContain('{name}');
 		}
+	});
+});
+
+describe('story structure copy', () => {
+	it('names every peer tab and visualization in both locales', () => {
+		for (const family of STORY_STRUCTURE_FAMILIES) {
+			expect(en[`storyStructure.family.${family}`]).toBeTruthy();
+			expect(zhCN[`storyStructure.family.${family}`]).toBeTruthy();
+		}
+		for (const key of STORY_STRUCTURE_VISUALIZATIONS) {
+			expect(en[`storyStructure.titleFor.${key}`]).toContain('{project}');
+			expect(zhCN[`storyStructure.titleFor.${key}`]).toContain('{project}');
+		}
+		expect(en['storyStructure.family.corkboard']).toBe('Corkboard');
+		expect(en['storyStructure.family.freeform']).toBe('Freeform');
+		expect(zhCN['storyStructure.family.corkboard']).toBe('场景看板');
+		expect(zhCN['storyStructure.family.freeform']).toBe('自由画布');
+		expect(zhCN['storyStructure.titleFor.corkboard-ordered']).toBe(
+			'{project} · 场景看板',
+		);
+		expect(en['storyStructure.title']).toBe('Visualization workspace');
+		expect(zhCN['storyStructure.title']).toBe('可视化工作区');
+		expect(en['storyStructure.noProject']).toBeTruthy();
+		expect(zhCN['storyStructure.noProject']).toBeTruthy();
+		expect(en['storyStructure.loadFailed']).toBeTruthy();
+		expect(zhCN['storyStructure.loadFailed']).toBeTruthy();
+		expect(en['commands.openStoryStructure']).toBe('Open visualization workspace');
+		expect(zhCN['commands.openStoryStructure']).toBe('打开可视化工作区');
+		expect(en['commands.openOrderedCorkboard']).toBe('Open ordered corkboard');
+		expect(zhCN['commands.openOrderedCorkboard']).toBe('打开有序软木板');
+	});
+
+	it('names every card mode, grouping field and none group of the corkboard', () => {
+		for (const mode of CORKBOARD_MODES) {
+			expect(en[`corkboard.cards.${mode}`]).toBeTruthy();
+			expect(zhCN[`corkboard.cards.${mode}`]).toBeTruthy();
+		}
+		for (const field of CORKBOARD_GROUP_FIELDS) {
+			expect(en[`corkboard.none.${field}`]).toBeTruthy();
+			expect(zhCN[`corkboard.none.${field}`]).toBeTruthy();
+		}
+		for (const key of [
+			'corkboard.display',
+			'corkboard.cards',
+			'corkboard.groupBy',
+			'corkboard.order.normal',
+			'corkboard.order.reversed',
+			'corkboard.refresh',
+			'corkboard.editName',
+		] as const) {
+			expect(en[key]).toBeTruthy();
+			expect(zhCN[key]).toBeTruthy();
+		}
+		expect(en['corkboard.position']).toContain('{number}');
+		expect(zhCN['corkboard.position']).toContain('{number}');
+		expect(en['table.sceneColor']).toBe('Color');
+		expect(en['table.sceneLinked']).toBe('Linked manuscript');
+		expect(zhCN['table.sceneColor']).toBe('颜色');
+		expect(zhCN['table.sceneLinked']).toBe('关联正文');
+		expect(en['table.filterAllColors']).toBe('All colors');
+		expect(zhCN['table.filterAllLinked']).toBe('全部正文笔记');
 	});
 });

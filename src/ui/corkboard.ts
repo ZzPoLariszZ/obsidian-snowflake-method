@@ -1,0 +1,1516 @@
+/**
+ * The ordered corkboard: the scenes as cards in narrative order, on one
+ * scrolling canvas of fixed-size cards, edited in place, dragged into a new
+ * order, gathered by a field or run backwards. What the board computes is in
+ * `corkboard-layout.ts`; this is the drawing, and the rules of the drawing:
+ *
+ * - The canvas is windowed. Only the cards the scroller shows stand in the
+ *   DOM, each placed by a transform, keyed by scene so a paint dresses a
+ *   standing card rather than remaking it. A card that is being dragged,
+ *   edited or focused is pinned: it stays mounted wherever the window is.
+ * - Every write goes through one queue, one after another, each followed by
+ *   a read of the project. A quick edit reads its scene's revision when its
+ *   turn comes, and adopts the fresh one the write answers with, so two
+ *   edits in quick succession never carry the revision a card was drawn
+ *   under. A change from elsewhere still refuses the write, as a notice.
+ * - A paint asked for while a drag is in flight waits for the drag to end.
+ */
+
+import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
+
+import { PROGRESS_STATUSES, isProgressStatus, type ProgressStatus } from '../domain';
+import type { ScenePatch } from '../services';
+import { hangPanel, type HungPanel } from './anchored-panel';
+import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
+import {
+	SCENE_DRAG_TYPE,
+	adjacencyAllowed,
+	buildLayout,
+	cardPosition,
+	corkboardMetrics,
+	displayOrder,
+	dropTargetAt,
+	firstCardInView,
+	insertBesideIndex,
+	moveTargetIndex,
+	revealScrollTop,
+	statusOptions,
+	titleTaken,
+	visibleCards,
+	visibleHeads,
+	visibleLines,
+	visualNeighbours,
+	type CardSelectOption,
+	type CorkboardLayout,
+	type DisplayOrder,
+	type ShownScene,
+} from './corkboard-layout';
+import type { FilterRow } from './filter-rows';
+import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
+import { addOrderMenuItems } from './order-menu';
+import { paintCount, renderEmptyLine } from './pane-parts';
+import { filterScenes, sceneFilterRows, sceneFiltered } from './scene-filters';
+import { renderStickySwatches } from './sticky-note-card';
+import { planCardMoves, planCardRepaint } from './sticky-note-layout';
+import {
+	CORKBOARD_GROUP_FIELDS,
+	CORKBOARD_MODES,
+	isCorkboardGroupField,
+	isCorkboardMode,
+} from './story-structure-state';
+import type { ProjectDashboardModel, SceneViewModel } from './view-model';
+
+const CARD_SELECTOR = '.snowflake-method-corkboard-card';
+/** What a press on begins a text selection or a choice, never a drag. */
+const CONTROL_SELECTOR = 'input, textarea, select, button, a';
+const SEARCH_DEBOUNCE_MS = 150;
+const OVERSCAN_LINES = 2;
+
+const GROUP_LABEL_KEYS = {
+	pov: 'table.scenePov',
+	status: 'table.progressStatus',
+	category: 'table.category',
+	time: 'table.sceneTime',
+	location: 'table.sceneLocation',
+	character: 'table.sceneCharacters',
+	color: 'stickyNotes.color',
+	linked: 'table.sceneLinked',
+} as const;
+
+/**
+ * A card's element and the parts a dressing rewrites rather than remakes,
+ * so a control holding the focus is still there, and still focused, after
+ * a read redresses the card around it.
+ */
+interface CardEntry {
+	/** The scene's id, or the group key and the id where a scene stands in several groups. */
+	key: string;
+	id: string;
+	el: HTMLElement;
+	scene: SceneViewModel;
+	/** The scene's place in the narrative order. */
+	index: number;
+	/** The card's place on the canvas, or -1 while pinned off the window. */
+	display: number;
+	x: number;
+	y: number;
+	number: HTMLElement;
+	title: HTMLButtonElement;
+	titleText: string;
+	titleInput: HTMLInputElement;
+	editingTitle: boolean;
+	color: HTMLButtonElement;
+	more: HTMLButtonElement;
+	pov: HTMLButtonElement;
+	status: HTMLSelectElement;
+	statusSignature: string;
+	conflict: HTMLTextAreaElement;
+	conflictDirty: boolean;
+	chips: HTMLElement;
+	moreLinks: HTMLButtonElement;
+	linksSignature: string | null;
+	insertBefore: HTMLButtonElement;
+	insertAfter: HTMLButtonElement;
+}
+
+type FocusPart =
+	| 'card'
+	| 'title'
+	| 'pov'
+	| 'status'
+	| 'color'
+	| 'more'
+	| 'conflict'
+	| 'insert-before'
+	| 'insert-after'
+	| 'more-links'
+	| 'link';
+
+interface FocusHold {
+	key: string;
+	part: FocusPart;
+	el: Element;
+	display: number;
+}
+
+const PART_CLASSES: readonly [FocusPart, string][] = [
+	['title', 'snowflake-method-corkboard-title'],
+	['title', 'snowflake-method-corkboard-title-input'],
+	['pov', 'snowflake-method-corkboard-pov'],
+	['status', 'snowflake-method-corkboard-status-select'],
+	['color', 'snowflake-method-corkboard-color'],
+	['more', 'snowflake-method-corkboard-more'],
+	['conflict', 'snowflake-method-corkboard-conflict'],
+	['insert-before', 'snowflake-method-corkboard-insert-before'],
+	['insert-after', 'snowflake-method-corkboard-insert-after'],
+	['more-links', 'snowflake-method-corkboard-more-links'],
+	['link', 'snowflake-method-corkboard-link'],
+];
+
+const px = (value: number): string => `${String(Math.round(value * 100) / 100)}px`;
+
+export function renderCorkboard(
+	container: HTMLElement,
+	controls: CorkboardControls,
+): CorkboardHandle {
+	const { app, host, t, memory } = controls;
+	const root = container.createDiv({
+		cls: 'snowflake-method-prose-panel snowflake-method-corkboard',
+	});
+	root.dataset.mode = memory.mode;
+
+	// -- The band ------------------------------------------------------------
+
+	const band = root.createDiv({ cls: 'snowflake-method-prose-controls' });
+	const search = new SearchComponent(band);
+	search.setPlaceholder(t('table.searchScenes'));
+	search.setValue(memory.query);
+	let searchTimer: number | null = null;
+	search.onChange((next) => {
+		memory.query = next;
+		if (searchTimer !== null) root.win.clearTimeout(searchTimer);
+		searchTimer = root.win.setTimeout(() => {
+			searchTimer = null;
+			paintAll({ resetScroll: true });
+		}, SEARCH_DEBOUNCE_MS);
+	});
+	const searchBox = band.querySelector('.search-input-container');
+	const displayButton = band.createEl('button', {
+		cls: 'clickable-icon snowflake-method-corkboard-display',
+		attr: {
+			type: 'button',
+			'aria-haspopup': 'dialog',
+			'aria-expanded': 'false',
+			'aria-label': t('corkboard.display'),
+		},
+	});
+	setIcon(displayButton, 'sliders-horizontal');
+	setTooltip(displayButton, t('corkboard.display'));
+	displayButton.addEventListener('click', () => {
+		openDisplay();
+	});
+	const directionButton = band.createEl('button', {
+		cls: 'clickable-icon snowflake-method-corkboard-direction',
+		attr: { type: 'button' },
+	});
+	const paintDirection = (): void => {
+		setIcon(
+			directionButton,
+			memory.reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide',
+		);
+		const label = t(
+			memory.reversed ? 'corkboard.order.reversed' : 'corkboard.order.normal',
+		);
+		directionButton.setAttribute('aria-label', label);
+		setTooltip(directionButton, label);
+	};
+	paintDirection();
+	directionButton.addEventListener('click', () => {
+		memory.reversed = !memory.reversed;
+		controls.remember();
+		paintDirection();
+		paintAll({ resetScroll: true });
+	});
+	const filterButton = band.createEl('button', {
+		cls: 'clickable-icon snowflake-method-filter-button',
+		attr: {
+			type: 'button',
+			'aria-haspopup': 'dialog',
+			'aria-expanded': 'false',
+			'aria-label': t('table.filter'),
+		},
+	});
+	setIcon(filterButton, 'funnel');
+	setTooltip(filterButton, t('table.filter'));
+	const markFilterButton = (): void => {
+		filterButton.toggleClass('is-active', sceneFiltered(memory.filters));
+	};
+	filterButton.addEventListener('click', () => {
+		void openFunnel();
+	});
+	const stateText = band.createSpan({ cls: 'snowflake-method-prose-state' });
+	const refreshButton = band.createEl('button', {
+		cls: 'clickable-icon snowflake-method-prose-refresh',
+		attr: { type: 'button', 'aria-label': t('corkboard.refresh') },
+	});
+	setIcon(refreshButton, 'refresh-cw');
+	setTooltip(refreshButton, t('corkboard.refresh'));
+	refreshButton.addEventListener('click', () => {
+		void controls.refresh().catch(notice);
+	});
+	const addButton = band.createEl('button', {
+		cls: 'mod-cta snowflake-method-corkboard-add',
+		text: t('actions.addScene'),
+		attr: { type: 'button' },
+	});
+	addButton.disabled = true;
+	addButton.addEventListener('click', () => {
+		insertAt(null);
+	});
+
+	const empty = renderEmptyLine(root, t('scenes.empty'));
+	empty.line.addClass('is-hidden');
+	const scroller = root.createDiv({
+		cls: 'snowflake-method-corkboard-scroll',
+		attr: { tabindex: '-1' },
+	});
+	const canvas = scroller.createDiv({
+		cls: 'snowflake-method-corkboard-canvas',
+		attr: { role: 'list' },
+	});
+
+	// -- State ---------------------------------------------------------------
+
+	let model: ProjectDashboardModel | null = null;
+	let manuscriptPositions = new Map<string, number>();
+	let orderedManuscriptLinks = new WeakMap<SceneViewModel, SceneViewModel['linkedManuscript']>();
+	let order: DisplayOrder = { groups: [], shown: 0 };
+	let layout: CorkboardLayout | null = null;
+	/** Every scene's id in narrative order. */
+	let orderIds: string[] = [];
+	/** Each card's key by display index, and each head's line by key. */
+	let displayKeys: string[] = [];
+	let headLines = new Map<string, number>();
+	let adjacency = false;
+	let readOnly = true;
+	const cards = new Map<string, CardEntry>();
+	// Shared across group copies and remounts while a scene's save is pending.
+	const pendingStatuses = new Map<string, { value: ProgressStatus }>();
+	const heads = new Map<string, HTMLElement>();
+	/** The card in flight, while one is; every paint asked meanwhile waits. */
+	let drag: { key: string; id: string } | null = null;
+	let paintOwed = false;
+	/** Where a drop would land: a display index, the count meaning after the last card. */
+	let mark: number | null = null;
+	let frame: number | null = null;
+	let colorPanel: { entry: CardEntry; hung: HungPanel } | null = null;
+	/** True while a press on a card's control is held, when a card must not drag. */
+	let pressed = false;
+	let lastWidth = -1;
+	let queue: Promise<void> = Promise.resolve();
+	let disposed = false;
+
+	const notice = (error: unknown): void => {
+		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+	};
+
+	/**
+	 * Every change the board makes, one after another, each followed by a
+	 * read of the project before the next runs: what makes a quick edit
+	 * carry a fresh revision whatever came before it.
+	 */
+	const enqueue = (action: () => Promise<void>): Promise<void> => {
+		const run = queue.then(async () => {
+			if (disposed) return;
+			try {
+				await action();
+			} catch (error) {
+				notice(error);
+			}
+			if (!disposed) await controls.refresh().catch(notice);
+		});
+		queue = run;
+		return run;
+	};
+
+	/** One field of one scene, under the revision the card holds now, which the write then moves on. */
+	const patch = (
+		entry: CardEntry,
+		fields: Omit<ScenePatch, 'expectedRevision'>,
+	): Promise<void> =>
+		enqueue(async () => {
+			const revision = await host.patchScene(entry.id, {
+				...fields,
+				expectedRevision: entry.scene.revision,
+			});
+			entry.scene = { ...entry.scene, revision };
+		});
+
+	// -- Measures ------------------------------------------------------------
+
+	const remPx = (): number => {
+		const size = Number.parseFloat(
+			root.win.getComputedStyle(root.doc.documentElement).fontSize,
+		);
+		return Number.isFinite(size) && size > 0 ? size : 16;
+	};
+
+	const compactHeight = (): number | undefined => {
+		if (memory.mode !== 'compact') return undefined;
+		for (const { el } of cards.values()) {
+			if (!el.isConnected) continue;
+			const head = el.querySelector<HTMLElement>('.snowflake-method-corkboard-head');
+			const footer = el.querySelector<HTMLElement>('.snowflake-method-corkboard-footer');
+			if (head === null || footer === null) continue;
+			const headHeight = head.getBoundingClientRect().height;
+			const footerHeight = footer.getBoundingClientRect().height;
+			if (headHeight === 0 || footerHeight === 0) continue;
+			const style = root.win.getComputedStyle(el);
+			return headHeight + footerHeight +
+				(Number.parseFloat(style.borderTopWidth) || 0) +
+				(Number.parseFloat(style.borderBottomWidth) || 0);
+		}
+		return undefined;
+	};
+
+	const keyOf = (groupKey: string, sceneId: string): string =>
+		groupKey === '' ? sceneId : `${groupKey}|${sceneId}`;
+
+	const displayOf = (key: string): number => displayKeys.indexOf(key);
+
+	const displayOfScene = (id: string): number =>
+		displayKeys.findIndex((key) => key === id || key.endsWith(`|${id}`));
+
+	const sceneAt = (display: number): SceneViewModel | null => {
+		const item = layout?.items[display];
+		return item === undefined ? null : (model?.scenes[item.sceneIndex] ?? null);
+	};
+
+	// -- Painting ------------------------------------------------------------
+
+	/**
+	 * Lays the board out again from the model the view holds: the funnel and
+	 * the search, the grouping and the direction, the measures, the chrome,
+	 * then the window. Deferred while a drag is in flight.
+	 */
+	const paintAll = (
+		options: { resetScroll?: boolean; keepFirst?: boolean } = {},
+	): void => {
+		if (disposed) return;
+		if (drag !== null) {
+			paintOwed = true;
+			return;
+		}
+		const keepId =
+			options.keepFirst === true && layout !== null
+				? (sceneAt(firstCardInView(layout, scroller.scrollTop) ?? -1)?.id ?? null)
+				: null;
+		const nextModel = controls.model();
+		if (nextModel !== model) {
+			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
+			orderedManuscriptLinks = new WeakMap();
+		}
+		model = nextModel;
+		if (model === null) {
+			clearCanvas();
+			stateText.setText('');
+			empty.line.addClass('is-hidden');
+			addButton.disabled = true;
+			return;
+		}
+		const current = model;
+		readOnly = current.readOnly;
+		const characterNames = new Map(
+			current.characters.map((character) => [character.path, character.name]),
+		);
+		const shown: ShownScene[] = filterScenes(
+			current.scenes,
+			memory.query,
+			memory.filters,
+			{ t, characterNames },
+		);
+		order = displayOrder(shown, memory.reversed, memory.group, {
+			t,
+			characters: current.characters,
+			locale: current.locale,
+		});
+		orderIds = current.scenes.map((scene) => scene.id);
+		adjacency = adjacencyAllowed({
+			filtered: sceneFiltered(memory.filters),
+			query: memory.query,
+			group: memory.group,
+			readOnly,
+			anySceneReadOnly: current.scenes.some((scene) => scene.readOnly),
+		});
+		root.dataset.mode = memory.mode;
+		const rem = remPx();
+		lastWidth = canvas.clientWidth;
+		// The scroller extends past the frame for its scrollbar; the canvas
+		// keeps the same content edges as the toolbar above it.
+		const metrics = corkboardMetrics(lastWidth, memory.mode, rem, compactHeight());
+		layout = buildLayout(order, metrics);
+		displayKeys = [];
+		headLines = new Map();
+		for (const group of order.groups) {
+			for (const item of group.items) {
+				displayKeys.push(keyOf(group.key, orderIds[item.sceneIndex] ?? ''));
+			}
+		}
+		layout.lines.forEach((line, at) => {
+			if (line.kind === 'head') headLines.set(line.key, at);
+		});
+		root.setCssProps({
+			'--snowflake-method-corkboard-gap': px(metrics.gap),
+			'--snowflake-method-corkboard-card-width': px(layout.cardWidth),
+			'--snowflake-method-corkboard-card-height': px(metrics.cardHeight),
+			'--snowflake-method-corkboard-head-height': px(metrics.headHeight),
+		});
+		canvas.setCssStyles({ height: px(layout.height) });
+		const narrowed =
+			memory.query.trim().length > 0 || sceneFiltered(memory.filters);
+		stateText.setText(
+			narrowed
+				? t('table.filteredCount', {
+						shown: order.shown,
+						total: current.scenes.length,
+					})
+				: '',
+		);
+		markFilterButton();
+		const none = current.scenes.length === 0;
+		empty.line.toggleClass('is-hidden', !none);
+		scroller.toggleClass('is-hidden', none);
+		searchBox?.toggleClass('is-hidden', none);
+		filterButton.toggleClass('is-hidden', none);
+		displayButton.toggleClass('is-hidden', none);
+		directionButton.toggleClass('is-hidden', none);
+		addButton.disabled = readOnly;
+		if (options.resetScroll === true) {
+			scroller.scrollTop = 0;
+		} else if (keepId !== null) {
+			const display = displayOfScene(keepId);
+			if (display !== -1) scroller.scrollTop = cardPosition(layout, display).y;
+		} else if (scroller.scrollTop !== memory.scrollTop) {
+			scroller.scrollTop = memory.scrollTop;
+		}
+		memory.scrollTop = scroller.scrollTop;
+		paintWindow();
+		// The first render supplies the themed header/footer measurements.
+		const measuredHeight = compactHeight();
+		if (measuredHeight !== undefined && Math.abs(measuredHeight - metrics.cardHeight) > 0.5) {
+			paintAll({ keepFirst: true });
+		}
+	};
+
+	const clearCanvas = (): void => {
+		for (const entry of cards.values()) entry.el.remove();
+		cards.clear();
+		for (const head of heads.values()) head.remove();
+		heads.clear();
+		layout = null;
+		displayKeys = [];
+		canvas.setCssStyles({ height: '0px' });
+	};
+
+	/** The cards that must stay mounted wherever the window is. */
+	const pinnedKeys = (): string[] => {
+		const pinned: string[] = [];
+		if (drag !== null) pinned.push(drag.key);
+		const active = root.doc.activeElement;
+		const focused = active === null ? null : active.closest(CARD_SELECTOR);
+		const focusedKey = focused?.getAttribute('data-key');
+		if (focusedKey != null) pinned.push(focusedKey);
+		for (const entry of cards.values()) {
+			if (entry.editingTitle || entry.conflictDirty) pinned.push(entry.key);
+		}
+		return pinned;
+	};
+
+	/** Brings the mounted cards level with the window: the ones in it, and the pinned ones wherever they are. */
+	const paintWindow = (): void => {
+		if (disposed || layout === null || model === null) return;
+		const lay = layout;
+		const current = model;
+		const lines = visibleLines(
+			lay,
+			scroller.scrollTop,
+			scroller.clientHeight,
+			OVERSCAN_LINES,
+		);
+		const wanted = new Map<string, number>();
+		for (const display of visibleCards(lay, lines)) {
+			const key = displayKeys[display];
+			if (key !== undefined) wanted.set(key, display);
+		}
+		for (const key of pinnedKeys()) {
+			if (wanted.has(key)) continue;
+			const display = displayOf(key);
+			if (display !== -1) wanted.set(key, display);
+		}
+		const hold = holdFocus();
+		const plan = planCardRepaint([...cards.keys()], [...wanted.keys()], []);
+		for (const key of plan.remove) unmountCard(key);
+		for (const key of plan.keep) {
+			const entry = cards.get(key);
+			const display = wanted.get(key);
+			if (entry === undefined || display === undefined) continue;
+			dressAt(entry, display, current);
+		}
+		for (const key of plan.add) {
+			const display = wanted.get(key);
+			if (display === undefined) continue;
+			const entry = mountCard(key, display, current);
+			if (entry !== null) dressAt(entry, display, current);
+		}
+		// Only the cards out of place move: a card moved in the DOM drops
+		// the document's focus with no blur to say so. Heads stand between
+		// them carrying keys of their own, which the plan steps over.
+		const ordered = [...wanted.entries()]
+			.sort((a, b) => a[1] - b[1])
+			.map(([key]) => key);
+		const present = Array.from(canvas.children).map(
+			(child) => child.getAttribute('data-key') ?? '',
+		);
+		for (const move of planCardMoves(present, ordered)) {
+			const el = cards.get(move.id)?.el;
+			if (el === undefined) continue;
+			canvas.insertBefore(el, cards.get(move.before)?.el ?? null);
+		}
+		const wantedHeads = new Set(visibleHeads(lay, lines));
+		for (const [key, head] of heads) {
+			if (wantedHeads.has(key)) continue;
+			head.remove();
+			heads.delete(key);
+		}
+		for (const key of wantedHeads) {
+			const line = headLines.get(key);
+			const found = lay.lines[line ?? -1];
+			if (line === undefined || found === undefined || found.kind !== 'head') continue;
+			let head = heads.get(key);
+			if (head === undefined) {
+				head = canvas.createDiv({
+					cls: 'snowflake-method-corkboard-group',
+					attr: { 'data-key': `head:${key}` },
+				});
+				head.createSpan({
+					cls: 'snowflake-method-corkboard-group-label',
+					text: found.label,
+				});
+				head.createSpan({ cls: 'snowflake-method-corkboard-group-rule' });
+				heads.set(key, head);
+			}
+			head.setCssStyles({
+				transform: `translate(0px, ${px(lay.offsets[line] ?? 0)})`,
+			});
+		}
+		applyMark();
+		giveFocusBack(hold);
+	};
+
+	const dressAt = (
+		entry: CardEntry,
+		display: number,
+		current: ProjectDashboardModel,
+	): void => {
+		const item = layout?.items[display];
+		const scene = item === undefined ? undefined : current.scenes[item.sceneIndex];
+		if (item === undefined || scene === undefined) return;
+		dressCard(entry, scene, item.sceneIndex, display);
+		placeCard(entry, display);
+	};
+
+	const placeCard = (entry: CardEntry, display: number): void => {
+		if (layout === null) return;
+		entry.insertBefore.toggleClass('is-row-start', layout.places[display]?.column === 0);
+		entry.insertAfter.toggleClass(
+			'is-row-end',
+			layout.places[display]?.column === layout.columns - 1,
+		);
+		const { x, y } = cardPosition(layout, display);
+		if (x === entry.x && y === entry.y) return;
+		entry.x = x;
+		entry.y = y;
+		entry.el.setCssStyles({ transform: `translate(${px(x)}, ${px(y)})` });
+	};
+
+	const unmountCard = (key: string): void => {
+		const entry = cards.get(key);
+		if (entry === undefined) return;
+		if (colorPanel?.entry === entry) closeColorPanel();
+		entry.el.remove();
+		cards.delete(key);
+	};
+
+	const mountCard = (
+		key: string,
+		display: number,
+		current: ProjectDashboardModel,
+	): CardEntry | null => {
+		const item = layout?.items[display];
+		const scene = item === undefined ? undefined : current.scenes[item.sceneIndex];
+		if (item === undefined || scene === undefined) return null;
+		const el = canvas.createDiv({
+			cls: 'snowflake-method-corkboard-card snowflake-method-sticky-tint',
+			attr: { role: 'listitem', tabindex: '0', 'data-key': key, 'data-id': scene.id },
+		});
+		const entry = buildCard(el, key, scene, item.sceneIndex);
+		cards.set(key, entry);
+		wireCard(entry);
+		return entry;
+	};
+
+	// -- A card --------------------------------------------------------------
+
+	/** Builds a card's element once: the parts a dressing rewrites rather than remakes. */
+	const buildCard = (
+		el: HTMLElement,
+		key: string,
+		scene: SceneViewModel,
+		index: number,
+	): CardEntry => {
+		const head = el.createDiv({ cls: 'snowflake-method-corkboard-head' });
+		const number = head.createSpan({
+			cls: 'snowflake-method-step-indicator snowflake-method-corkboard-number',
+		});
+		const title = head.createEl('button', {
+			cls: 'snowflake-method-corkboard-title',
+			attr: { type: 'button' },
+		});
+		const titleInput = head.createEl('input', {
+			cls: 'snowflake-method-corkboard-title-input is-hidden',
+			attr: { type: 'text', 'aria-label': t('corkboard.editName') },
+		});
+		const status = head.createEl('select', {
+			cls: 'dropdown snowflake-method-entity-status snowflake-method-corkboard-status-select',
+			attr: { 'aria-label': t('table.progressStatus') },
+		});
+		const body = el.createDiv({ cls: 'snowflake-method-corkboard-body' });
+		const conflict = body.createEl('textarea', {
+			cls: 'snowflake-method-corkboard-conflict',
+			attr: {
+				'aria-label': t('table.conflict'),
+				placeholder: t('modal.scene.conflictPlaceholder'),
+				rows: '3',
+			},
+		});
+		const links = el.createDiv({
+			cls: 'snowflake-method-corkboard-links',
+			attr: { role: 'group', 'aria-label': t('table.sceneLinked') },
+		});
+		const chips = links.createDiv({ cls: 'snowflake-method-corkboard-chips' });
+		const moreLinks = links.createEl('button', {
+			cls: 'snowflake-method-corkboard-more-links is-hidden',
+			attr: { type: 'button', 'aria-haspopup': 'dialog' },
+		});
+		const footer = el.createDiv({ cls: 'snowflake-method-corkboard-footer' });
+		const footerRow = footer.createDiv({ cls: 'snowflake-method-corkboard-footer-row' });
+		const pov = footerRow.createEl('button', {
+			cls: 'snowflake-method-corkboard-pov',
+			attr: { type: 'button', 'aria-haspopup': 'dialog' },
+		});
+		const actions = footerRow.createDiv({ cls: 'snowflake-method-corkboard-actions' });
+		const color = actions.createEl('button', {
+			cls: 'clickable-icon snowflake-method-corkboard-color',
+			attr: { type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
+		});
+		setIcon(color, 'palette');
+		const more = actions.createEl('button', {
+			cls: 'clickable-icon snowflake-method-corkboard-more',
+			attr: {
+				type: 'button',
+				'aria-label': t('table.actions'),
+				'aria-haspopup': 'menu',
+			},
+		});
+		setIcon(more, 'ellipsis');
+		setTooltip(more, t('table.actions'));
+		const insertBefore = el.createEl('button', {
+			cls: 'clickable-icon snowflake-method-corkboard-insert snowflake-method-corkboard-insert-before is-hidden',
+			attr: { type: 'button', 'aria-label': t('table.insertSceneBefore') },
+		});
+		setIcon(insertBefore, 'plus');
+		setTooltip(insertBefore, t('table.insertSceneBefore'));
+		const insertAfter = el.createEl('button', {
+			cls: 'clickable-icon snowflake-method-corkboard-insert snowflake-method-corkboard-insert-after is-hidden',
+			attr: { type: 'button', 'aria-label': t('table.insertSceneAfter') },
+		});
+		setIcon(insertAfter, 'plus');
+		setTooltip(insertAfter, t('table.insertSceneAfter'));
+		return {
+			key,
+			id: scene.id,
+			el,
+			scene,
+			index,
+			display: -1,
+			x: Number.NaN,
+			y: Number.NaN,
+			number,
+			title,
+			titleText: '',
+			titleInput,
+			editingTitle: false,
+			color,
+			more,
+			pov,
+			status,
+			statusSignature: '',
+			conflict,
+			conflictDirty: false,
+			chips,
+			moreLinks,
+			linksSignature: null,
+			insertBefore,
+			insertAfter,
+		};
+	};
+
+	const fillSelect = (
+		select: HTMLSelectElement,
+		options: readonly CardSelectOption[],
+	): void => {
+		select.empty();
+		for (const option of options) {
+			const el = select.createEl('option', {
+				text: option.label,
+				attr: { value: option.value },
+			});
+			if (option.disabled) el.disabled = true;
+		}
+	};
+
+	const editable = (entry: CardEntry): boolean =>
+		!readOnly && !entry.scene.readOnly;
+
+	/** Text and color always represent the same selection, even during a save. */
+	const paintStatus = (entry: CardEntry, value: ProgressStatus | null): void => {
+		entry.status.value = value ?? '';
+		for (const status of PROGRESS_STATUSES) {
+			entry.status.toggleClass(`is-${status}`, value === status);
+		}
+	};
+
+	/** Dresses the card from the model while preserving unfinished and pending edits. */
+	const dressCard = (
+		entry: CardEntry,
+		scene: SceneViewModel,
+		index: number,
+		display: number,
+	): void => {
+		entry.scene = scene;
+		entry.index = index;
+		entry.display = display;
+		const { el } = entry;
+		const focused = root.doc.activeElement;
+		const writable = editable(entry);
+		el.setAttribute('data-id', scene.id);
+		if (scene.color === null) el.removeAttribute('data-color');
+		else el.setAttribute('data-color', scene.color);
+		el.toggleClass('is-read-only', !writable);
+		el.toggleClass('has-managed-section-issue', scene.healthIssues.length > 0);
+		el.setAttribute('draggable', adjacency && writable && !pressed ? 'true' : 'false');
+		paintCount(entry.number, index + 1);
+		entry.number.setAttribute(
+			'aria-label',
+			t('corkboard.position', { number: index + 1 }),
+		);
+		if (!entry.editingTitle && entry.titleText !== scene.title) {
+			entry.titleText = scene.title;
+			entry.title.setText(scene.title);
+			setTooltip(entry.title, scene.title);
+		}
+		entry.title.disabled = !writable;
+		const colorLabel =
+			scene.color === null
+				? t('modal.scene.colorNone')
+				: t(`stickyNotes.color.${scene.color}`);
+		entry.color.setAttribute('aria-label', `${t('stickyNotes.color')}: ${colorLabel}`);
+		setTooltip(entry.color, colorLabel);
+		entry.color.disabled = !writable;
+		const povLabel = t('corkboard.povLabel', { name: scene.povName || '—' });
+		if (entry.pov.textContent !== povLabel) entry.pov.setText(povLabel);
+		setTooltip(
+			entry.pov,
+			scene.povMissing
+				? t('table.referenceMissing', { name: scene.povName })
+				: povLabel,
+		);
+		entry.pov.toggleClass('is-missing', scene.povMissing);
+		const character = model?.characters.find((candidate) => candidate.path === scene.povPath);
+		entry.pov.disabled =
+			readOnly || character === undefined || character.readOnly;
+		const shownStatus = pendingStatuses.get(scene.id)?.value ?? scene.progressStatus;
+		const statuses = statusOptions(shownStatus, t);
+		const statusSignature = statuses.map((option) => option.value).join('\n');
+		if (statusSignature !== entry.statusSignature) {
+			entry.statusSignature = statusSignature;
+			fillSelect(entry.status, statuses);
+		}
+		paintStatus(entry, shownStatus);
+		entry.status.disabled = !writable;
+		if (focused !== entry.conflict && !entry.conflictDirty) {
+			if (entry.conflict.value !== scene.conflict) entry.conflict.value = scene.conflict;
+		}
+		entry.conflict.readOnly = !writable;
+		let links = orderedManuscriptLinks.get(scene);
+		if (links === undefined) {
+			links = orderManuscriptReferences(scene.linkedManuscript, manuscriptPositions, (link) =>
+				app.metadataCache.getFirstLinkpathDest(link.target, scene.path)?.path ?? null,
+			);
+			orderedManuscriptLinks.set(scene, links);
+		}
+		const linksSignature = links.map((link) => link.raw).join('\n');
+		if (linksSignature !== entry.linksSignature) {
+			entry.linksSignature = linksSignature;
+			dressLinks(entry, scene, links);
+		}
+		entry.moreLinks.disabled = !writable;
+		const canInsert = adjacency && writable && orderIds.includes(scene.id);
+		entry.insertBefore.toggleClass('is-hidden', !canInsert);
+		entry.insertAfter.toggleClass('is-hidden', !canInsert);
+	};
+
+	const dressLinks = (
+		entry: CardEntry,
+		scene: SceneViewModel,
+		orderedLinks: SceneViewModel['linkedManuscript'],
+	): void => {
+		entry.chips.empty();
+		const { shown, remaining } = linkedManuscriptPreview(orderedLinks);
+		entry.el.toggleClass('has-more-links', remaining > 0);
+		entry.moreLinks.toggleClass('is-hidden', remaining === 0);
+		entry.moreLinks.setText(`+${String(remaining)}`);
+		const moreLabel = t('corkboard.moreLinked', { count: remaining });
+		entry.moreLinks.setAttribute('aria-label', moreLabel);
+		setTooltip(entry.moreLinks, moreLabel);
+		if (scene.linkedManuscript.length === 0) {
+			renderEmptyLine(entry.chips, t('corkboard.none.linked'));
+		}
+		for (const link of shown) {
+			const missing =
+				app.metadataCache.getFirstLinkpathDest(link.target, scene.path) === null;
+			const chip = entry.chips.createEl('button', {
+				cls: `snowflake-method-corkboard-link${missing ? ' is-missing' : ''}`,
+				attr: { type: 'button' },
+			});
+			if (missing) {
+				const icon = chip.createSpan({
+					cls: 'snowflake-method-corkboard-link-icon',
+					attr: { 'aria-hidden': 'true' },
+				});
+				setIcon(icon, 'triangle-alert');
+				setTooltip(chip, t('table.referenceMissing', { name: link.label }));
+			} else {
+				setTooltip(chip, link.linktext);
+			}
+			chip.createSpan({ cls: 'snowflake-method-corkboard-link-prefix', text: t('corkboard.linkedPrefix') });
+			chip.createSpan({ cls: 'snowflake-method-corkboard-link-label', text: link.label });
+			chip.addEventListener('click', (event) => {
+				event.stopPropagation();
+				const file = app.metadataCache.getFirstLinkpathDest(link.target, entry.scene.path);
+				if (file === null) {
+					new Notice(t('table.referenceMissing', { name: link.label }));
+					return;
+				}
+				if (model !== null) void host.openManuscriptStream(model.path, file.path).catch(notice);
+			});
+		}
+	};
+
+	// -- Editing in place ----------------------------------------------------
+
+	const beginTitleEdit = (entry: CardEntry): void => {
+		if (!editable(entry) || entry.editingTitle) return;
+		entry.editingTitle = true;
+		entry.title.addClass('is-hidden');
+		entry.titleInput.removeClass('is-hidden');
+		entry.titleInput.value = entry.scene.title;
+		entry.titleInput.focus();
+		entry.titleInput.select();
+	};
+
+	const endTitleEdit = (entry: CardEntry, refocus: boolean): void => {
+		entry.editingTitle = false;
+		entry.titleInput.addClass('is-hidden');
+		entry.title.removeClass('is-hidden');
+		if (refocus) entry.title.focus({ preventScroll: true });
+	};
+
+	/** The typed name, refused as the form refuses one: empty, or another scene's. */
+	const commitTitle = (entry: CardEntry, refocus: boolean): void => {
+		if (!entry.editingTitle) return;
+		const typed = entry.titleInput.value.trim();
+		if (typed.length === 0) {
+			new Notice(t('modal.scene.nameRequired'));
+			return;
+		}
+		if (
+			typed !== entry.scene.title &&
+			model !== null &&
+			titleTaken(typed, entry.id, model.scenes)
+		) {
+			new Notice(t('modal.scene.nameTaken'));
+			return;
+		}
+		endTitleEdit(entry, refocus);
+		if (typed === entry.scene.title) return;
+		entry.titleText = typed;
+		entry.title.setText(typed);
+		setTooltip(entry.title, typed);
+		void patch(entry, { title: typed });
+	};
+
+	const commitConflict = (entry: CardEntry): void => {
+		const value = entry.conflict.value;
+		entry.conflictDirty = false;
+		if (value === entry.scene.conflict) return;
+		void patch(entry, { conflict: value });
+	};
+
+	const closeColorPanel = (): void => {
+		const open = colorPanel;
+		if (open === null) return;
+		colorPanel = null;
+		open.hung.release();
+		open.hung.el.remove();
+	};
+
+	const toggleColorPanel = (entry: CardEntry): void => {
+		if (colorPanel?.entry === entry) {
+			closeColorPanel();
+			return;
+		}
+		closeColorPanel();
+		if (!editable(entry)) return;
+		const hung = hangPanel(entry.color, {
+			cls: 'snowflake-method-corkboard-color-panel',
+			label: t('stickyNotes.color'),
+			build: (panel) => {
+				renderStickySwatches(panel, {
+					value: entry.scene.color ?? '',
+					t,
+					onPick: (value) => {
+						closeColorPanel();
+						void patch(entry, { color: value });
+					},
+					none: {
+						label: t('modal.scene.colorNone'),
+						onPick: () => {
+							closeColorPanel();
+							void patch(entry, { color: null });
+						},
+					},
+				});
+			},
+			onClose: () => {
+				closeColorPanel();
+			},
+		});
+		colorPanel = { entry, hung };
+	};
+
+	// -- The menu, and the ways in and out of the sequence --------------------
+
+	const openMenu = (entry: CardEntry, event: MouseEvent): void => {
+		const current = model;
+		if (current === null) return;
+		const scene = entry.scene;
+		const total = current.scenes.length;
+		const writable = editable(entry);
+		const reorderLocked =
+			readOnly || current.scenes.some((candidate) => candidate.readOnly);
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.edit'))
+				.setIcon('pencil')
+				.setDisabled(!writable)
+				.onClick(() => {
+					void enqueue(() =>
+						host.openSceneForm({ mode: 'edit', id: entry.id }).then(() => undefined),
+					);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('common.open'))
+				.setIcon('file-text')
+				.onClick(() => {
+					void host.openManagedFile(scene.path).catch(notice);
+				});
+		});
+		addOrderMenuItems(
+			menu,
+			{ app, t, run: (action) => enqueue(action), refresh: () => controls.refresh() },
+			{
+				index: entry.index,
+				total,
+				locked: reorderLocked,
+				readOnly,
+				insertTitle: t('table.insertSceneAfter'),
+				...(adjacency
+					? visualNeighbours(entry.index, total, memory.reversed)
+					: { up: null, down: null }),
+				options: () =>
+					current.scenes
+						.map((candidate, at) => ({
+							id: candidate.id,
+							index: at,
+							label: `${String(at + 1)}. ${candidate.title}`,
+						}))
+						.filter((candidate) => candidate.id !== entry.id),
+				move: (toIndex) => host.reorderScene(entry.id, toIndex),
+				reveal: () => {
+					reveal(entry.id);
+				},
+				insert: () => {
+					insertAt(entry.index);
+				},
+			},
+		);
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.delete'))
+				.setIcon('trash-2')
+				.setWarning(true)
+				.setDisabled(!writable)
+				.onClick(() => {
+					void enqueue(() => host.deleteScene(entry.id, entry.scene.revision));
+				});
+		});
+		menu.showAtMouseEvent(event);
+	};
+
+	/** A scene made after a narrative index (-1 starts the list), or at the end for null, then shown. */
+	const insertAt = (afterIndex: number | null): void => {
+		if (readOnly) return;
+		let created: string | null = null;
+		void enqueue(async () => {
+			created = await host.openSceneForm({ mode: 'create', afterIndex });
+		}).then(() => {
+			if (created !== null) reveal(created);
+		});
+	};
+
+	// -- Wiring --------------------------------------------------------------
+
+	const isControl = (target: EventTarget | null): boolean => {
+		if (target === null || !(target as Node).instanceOf(Element)) return false;
+		return (target as Element).closest(CONTROL_SELECTOR) !== null;
+	};
+
+	const wireCard = (entry: CardEntry): void => {
+		const { el } = entry;
+		entry.title.addEventListener('click', () => {
+			beginTitleEdit(entry);
+		});
+		entry.titleInput.addEventListener('keydown', (event) => {
+			if (event.isComposing) return;
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				commitTitle(entry, true);
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				endTitleEdit(entry, true);
+			}
+		});
+		entry.titleInput.addEventListener('blur', () => {
+			commitTitle(entry, false);
+		});
+		entry.pov.addEventListener('click', (event) => {
+			event.stopPropagation();
+			const character = model?.characters.find(
+				(candidate) => candidate.path === entry.scene.povPath,
+			);
+			if (readOnly || character === undefined || character.readOnly) return;
+			void enqueue(() => host.openCharacterForm(character.id));
+		});
+		entry.status.addEventListener('change', () => {
+			const value = entry.status.value;
+			if (!isProgressStatus(value) || !editable(entry)) return;
+			const previous = pendingStatuses.get(entry.id)?.value ?? entry.scene.progressStatus;
+			if (value === previous) return;
+			const pending = { value };
+			pendingStatuses.set(entry.id, pending);
+			for (const card of cards.values()) {
+				if (card.id === entry.id) paintStatus(card, value);
+			}
+			void enqueue(async () => {
+				const revision = await host.patchScene(entry.id, {
+					progressStatus: value,
+					expectedRevision: entry.scene.revision,
+				});
+				entry.scene = { ...entry.scene, progressStatus: value, revision };
+			}).then(() => {
+				// Keep the selection through the refresh as well as the write.
+				if (pendingStatuses.get(entry.id) === pending) pendingStatuses.delete(entry.id);
+				if (!disposed) {
+					for (const card of cards.values()) {
+						if (card.id === entry.id) {
+							paintStatus(card, pendingStatuses.get(card.id)?.value ?? card.scene.progressStatus);
+						}
+					}
+				}
+			});
+		});
+		entry.moreLinks.addEventListener('click', (event) => {
+			event.stopPropagation();
+			if (!editable(entry)) return;
+			void enqueue(() => host.openSceneForm({
+				mode: 'edit',
+				id: entry.id,
+				section: 'linked-manuscript',
+			}).then(() => undefined));
+		});
+		entry.conflict.addEventListener('input', () => {
+			entry.conflictDirty = entry.conflict.value !== entry.scene.conflict;
+		});
+		entry.conflict.addEventListener('blur', () => {
+			commitConflict(entry);
+		});
+		entry.conflict.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
+				event.preventDefault();
+				commitConflict(entry);
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				entry.conflict.value = entry.scene.conflict;
+				entry.conflictDirty = false;
+				el.focus({ preventScroll: true });
+			}
+		});
+		entry.color.addEventListener('click', (event) => {
+			event.stopPropagation();
+			toggleColorPanel(entry);
+		});
+		entry.more.addEventListener('click', (event) => {
+			event.stopPropagation();
+			openMenu(entry, event);
+		});
+		const wireInsert = (button: HTMLButtonElement, side: 'before' | 'after'): void => {
+			button.addEventListener('click', (event) => {
+				event.stopPropagation();
+				if (!adjacency || !editable(entry)) return;
+				const after = insertBesideIndex(orderIds, entry.id, side, memory.reversed);
+				if (after !== null) insertAt(after);
+			});
+		};
+		wireInsert(entry.insertBefore, 'before');
+		wireInsert(entry.insertAfter, 'after');
+		el.addEventListener('contextmenu', (event) => {
+			if (isControl(event.target) && event.target !== entry.more) return;
+			event.preventDefault();
+			openMenu(entry, event);
+		});
+		// Only the card's own key: a control inside it answers its own.
+		el.addEventListener('keydown', (event) => {
+			if (event.target !== el) return;
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			event.preventDefault();
+			void host.openManagedFile(entry.scene.path).catch(notice);
+		});
+		// A press on a control is a selection or a choice beginning, and a
+		// card that drags under it would swallow both.
+		el.addEventListener('mousedown', (event) => {
+			if (!isControl(event.target)) return;
+			pressed = true;
+			el.setAttribute('draggable', 'false');
+		});
+		el.addEventListener('dragstart', (event) => {
+			if (
+				!adjacency ||
+				!editable(entry) ||
+				event.dataTransfer === null ||
+				isControl(event.target)
+			) {
+				event.preventDefault();
+				return;
+			}
+			drag = { key: entry.key, id: entry.id };
+			el.addClass('is-dragging');
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData(SCENE_DRAG_TYPE, entry.id);
+		});
+		// Fires on the source however the drag ends: dropped, dropped nowhere,
+		// or cancelled. Everything the drag marked clears here.
+		el.addEventListener('dragend', () => {
+			el.removeClass('is-dragging');
+			clearMark();
+			drag = null;
+			if (paintOwed) {
+				paintOwed = false;
+				paintAll();
+			}
+		});
+	};
+
+	const releasePress = (): void => {
+		if (!pressed) return;
+		pressed = false;
+		for (const entry of cards.values()) {
+			entry.el.setAttribute(
+				'draggable',
+				adjacency && editable(entry) ? 'true' : 'false',
+			);
+		}
+	};
+	root.win.addEventListener('mouseup', releasePress, true);
+
+	// -- Drag and drop on the canvas -----------------------------------------
+
+	const applyMark = (): void => {
+		const count = layout?.items.length ?? 0;
+		for (const entry of cards.values()) {
+			entry.el.toggleClass('is-drop-before', mark !== null && entry.display === mark);
+			entry.el.toggleClass(
+				'is-drop-after',
+				mark !== null && mark === count && entry.display === count - 1,
+			);
+		}
+	};
+	const setMark = (before: number | null): void => {
+		if (mark === before) return;
+		mark = before;
+		applyMark();
+	};
+	const clearMark = (): void => {
+		setMark(null);
+	};
+	// The mark moves from dragover alone: Chromium fires dragleave at every
+	// child boundary, and a mark cleared there flickers with every card.
+	canvas.addEventListener('dragover', (event) => {
+		if (
+			drag === null ||
+			layout === null ||
+			event.dataTransfer?.types.includes(SCENE_DRAG_TYPE) !== true
+		) {
+			return;
+		}
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+		const rect = canvas.getBoundingClientRect();
+		const landing = dropTargetAt(layout, {
+			x: event.clientX - rect.left,
+			y: event.clientY - rect.top,
+		});
+		setMark(landing?.before ?? null);
+	});
+	canvas.addEventListener('drop', (event) => {
+		const dragged = event.dataTransfer?.getData(SCENE_DRAG_TYPE) ?? '';
+		if (dragged.length === 0 || drag?.id !== dragged || layout === null) return;
+		event.preventDefault();
+		const before = mark;
+		clearMark();
+		if (before === null) return;
+		const beforeId =
+			before >= layout.items.length ? null : (sceneAt(before)?.id ?? null);
+		const target = moveTargetIndex(orderIds, dragged, beforeId, memory.reversed);
+		if (target === null) return;
+		void enqueue(() => host.reorderScene(dragged, target));
+	});
+
+	// -- Focus custody -------------------------------------------------------
+
+	const holdFocus = (): FocusHold | null => {
+		const active = root.doc.activeElement;
+		if (active === null || !root.contains(active)) return null;
+		const card = active.closest(CARD_SELECTOR);
+		if (card === null) return null;
+		const key = card.getAttribute('data-key') ?? '';
+		const part =
+			PART_CLASSES.find(([, cls]) => active.classList.contains(cls))?.[0] ?? 'card';
+		return { key, part, el: active, display: cards.get(key)?.display ?? -1 };
+	};
+
+	const partOf = (entry: CardEntry, part: FocusPart): Element => {
+		switch (part) {
+			case 'title':
+				return entry.editingTitle ? entry.titleInput : entry.title;
+			case 'pov':
+				return entry.pov;
+			case 'status':
+				return entry.status;
+			case 'color':
+				return entry.color;
+			case 'more':
+				return entry.more;
+			case 'conflict':
+				return entry.conflict;
+			case 'insert-before':
+				return entry.insertBefore;
+			case 'insert-after':
+				return entry.insertAfter;
+			case 'more-links':
+				return entry.moreLinks;
+			case 'link':
+				return entry.chips.querySelector('button') ?? entry.el;
+			case 'card':
+				return entry.el;
+		}
+	};
+
+	/**
+	 * Gives the focus back after a paint that took it: to the control where
+	 * it still stands, to the same part of the same card where the card was
+	 * remade, else to the card now standing where it stood, else to the
+	 * scroller. Never scrolls: the author did not ask to go anywhere.
+	 */
+	const giveFocusBack = (hold: FocusHold | null): void => {
+		if (hold === null) return;
+		const doc = root.doc;
+		const active = doc.activeElement;
+		if (active !== null && active !== doc.body && root.contains(active)) return;
+		const entry = cards.get(hold.key);
+		let target: Element | null = root.contains(hold.el) ? hold.el : null;
+		if (target === null && entry !== undefined) target = partOf(entry, hold.part);
+		if (target === null) {
+			const mounted = [...cards.values()];
+			const standing =
+				mounted.find((candidate) => candidate.display === hold.display) ??
+				mounted[mounted.length - 1] ??
+				null;
+			target = standing?.el ?? scroller;
+		}
+		(target as HTMLElement).focus({ preventScroll: true });
+	};
+
+	// -- The popovers --------------------------------------------------------
+
+	const openFunnel = async (): Promise<void> => {
+		if (controls.popover.filterOpen()) {
+			controls.popover.closeFilter();
+			return;
+		}
+		const current = model;
+		if (current === null) return;
+		let manuscriptNotes: { path: string; title: string }[] = [];
+		try {
+			manuscriptNotes = await host.listManuscriptNotes();
+		} catch {
+			manuscriptNotes = [];
+		}
+		if (disposed) return;
+		const categoryPaths = [
+			...new Set(current.scenes.flatMap((scene) => scene.categoryPaths)),
+		].sort((a, b) => a.localeCompare(b, current.locale));
+		controls.popover.openFilter(
+			filterButton,
+			sceneFilterRows(t, current, memory.filters, { categoryPaths, manuscriptNotes }),
+			() => {
+				markFilterButton();
+				paintAll({ resetScroll: true });
+			},
+		);
+	};
+
+	const displayRows = (): FilterRow[] => [
+		{
+			label: t('corkboard.cards'),
+			placeholder: t('corkboard.cards.standard'),
+			empty: 'standard',
+			options: () =>
+				CORKBOARD_MODES.filter((mode) => mode !== 'standard').map((mode) => ({
+					value: mode,
+					label: t(`corkboard.cards.${mode}`),
+				})),
+			value: memory.mode,
+			apply: (value) => {
+				memory.mode = isCorkboardMode(value) ? value : 'standard';
+			},
+		},
+		{
+			label: t('corkboard.groupBy'),
+			placeholder: t('common.none'),
+			empty: '',
+			options: () =>
+				CORKBOARD_GROUP_FIELDS.map((field) => ({
+					value: field,
+					label: t(GROUP_LABEL_KEYS[field]),
+				})),
+			value: memory.group,
+			apply: (value) => {
+				memory.group = isCorkboardGroupField(value) ? value : '';
+			},
+		},
+	];
+
+	const openDisplay = (): void => {
+		if (controls.popover.filterOpen()) {
+			controls.popover.closeFilter();
+			return;
+		}
+		const before = { mode: memory.mode, group: memory.group };
+		controls.popover.openFilter(
+			displayButton,
+			displayRows(),
+			() => {
+				controls.remember();
+				paintAll(
+					memory.group === before.group ? { keepFirst: true } : { resetScroll: true },
+				);
+			},
+			t('corkboard.display'),
+		);
+	};
+
+	// -- Scrolling, resizing, revealing --------------------------------------
+
+	scroller.addEventListener('scroll', () => {
+		memory.scrollTop = scroller.scrollTop;
+		if (frame !== null) return;
+		frame = root.win.requestAnimationFrame(() => {
+			frame = null;
+			paintWindow();
+		});
+	});
+
+	const reveal = (id: string): void => {
+		if (layout === null) return;
+		const display = displayOfScene(id);
+		if (display === -1) return;
+		scroller.scrollTop = revealScrollTop(layout, display, scroller.clientHeight);
+		memory.scrollTop = scroller.scrollTop;
+		paintWindow();
+		const key = displayKeys[display];
+		const entry = key === undefined ? undefined : cards.get(key);
+		entry?.el.focus({ preventScroll: true });
+	};
+
+	const remeasure = (): void => {
+		if (disposed || layout === null) return;
+		const measuredHeight = compactHeight();
+		const sameHeight = measuredHeight === undefined || Math.abs(measuredHeight - layout.cardHeight) <= 0.5;
+		if (canvas.clientWidth === lastWidth && sameHeight) {
+			paintWindow();
+			return;
+		}
+		paintAll({ keepFirst: true });
+	};
+	const frameWindow = root.ownerDocument.defaultView;
+	const observer =
+		frameWindow === null ? null : new frameWindow.ResizeObserver(() => remeasure());
+	observer?.observe(scroller);
+
+	paintAll();
+
+	return {
+		refresh: () => {
+			paintAll();
+		},
+		reveal,
+		remeasure,
+		saveFocusedConflict: () => {
+			const active = root.doc.activeElement;
+			for (const entry of cards.values()) {
+				if (entry.conflict !== active) continue;
+				commitConflict(entry);
+				return true;
+			}
+			return false;
+		},
+		dispose: () => {
+			disposed = true;
+			controls.popover.closeFilter();
+			closeColorPanel();
+			if (searchTimer !== null) root.win.clearTimeout(searchTimer);
+			if (frame !== null) root.win.cancelAnimationFrame(frame);
+			observer?.disconnect();
+			root.win.removeEventListener('mouseup', releasePress, true);
+			// A conflict typed and not yet left is not thrown away with the board.
+			for (const entry of cards.values()) {
+				if (entry.conflictDirty && entry.conflict.value !== entry.scene.conflict) {
+					void host
+						.patchScene(entry.id, {
+							conflict: entry.conflict.value,
+							expectedRevision: entry.scene.revision,
+						})
+						.catch(notice);
+				}
+			}
+			root.remove();
+		},
+	};
+}

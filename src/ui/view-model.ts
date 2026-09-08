@@ -12,6 +12,7 @@ import type {
 	ForeshadowingEdit,
 	ForeshadowingOccurrence,
 	ForeshadowingRef,
+	MacaronColor,
 	ManuscriptPresentation,
 	MentionHighlightMode,
 	MilestoneCountOptions,
@@ -36,6 +37,7 @@ import type { ProsePanelBridge } from './prose-panel';
 import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
 import type { StickyNoteBridge } from './sticky-note-bridge';
 import type { TaskBoardBridge } from './task-bridge';
+import type { StoryStructureVisualization } from './story-structure-state';
 import type { RevisionPanelBridge } from './revision-panel';
 import type {
 	SessionPanelBridge,
@@ -48,6 +50,7 @@ import type {
 	MemberUsage,
 	ProjectStructureIssueCode,
 	SaveCustomFieldTemplateResult,
+	ScenePatch,
 } from '../services';
 
 import type {
@@ -180,6 +183,15 @@ export interface SceneViewModel {
 	locations: string[];
 	characterPaths: string[];
 	conflict: string;
+	/** The board tint, or null while the scene wears none. */
+	color: MacaronColor | null;
+	/** Manuscript links as stored, each with what the board shows and opens. */
+	linkedManuscript: {
+		raw: string;
+		linktext: string;
+		target: string;
+		label: string;
+	}[];
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	events: string;
@@ -231,6 +243,8 @@ export interface ProjectDashboardModel {
 	stepRevisions: Partial<Record<StepId, string>>;
 	characters: CharacterViewModel[];
 	scenes: SceneViewModel[];
+	/** Manuscript note paths in the stream's reading order for linked scene previews. */
+	manuscriptPaths: readonly string[];
 	/** Every kind the project has, in rail order, customs included. */
 	worldbuildingKinds: ProjectWorldbuildingKind[];
 	worldbuilding: Record<WorldbuildingKindId, WorldbuildingEntityViewModel[]>;
@@ -650,6 +664,11 @@ export interface ManuscriptHost {
 	manuscriptSegmentEdited(path: string, body: string): void;
 }
 
+/** What another surface asks the dashboard's scene form to do. */
+export type SceneFormIntent =
+	| { mode: 'create'; afterIndex: number | null }
+	| { mode: 'edit'; id: string; section?: 'linked-manuscript' };
+
 export interface DashboardHost {
 	t: Translate;
 	/** The bridge the statistics pane renders the session panel through. */
@@ -797,6 +816,22 @@ export interface DashboardHost {
 		description: string,
 	): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
+	/**
+	 * One field at a time, under the revision the card was drawn from, the
+	 * way a board edits in place. Answers the note's fresh revision, so the
+	 * next edit can carry it rather than the one drawn a moment ago.
+	 */
+	patchScene(id: string, patch: ScenePatch): Promise<string>;
+	/** The manuscript's notes in reading order, for pickers and funnels; empty with no project. */
+	listManuscriptNotes(): Promise<{ path: string; title: string }[]>;
+	/**
+	 * Opens the scene form on the dashboard of the current project, opening a
+	 * dashboard behind the asker when none is; resolves when the modal closes,
+	 * with the scene a create made.
+	 */
+	openSceneForm(intent: SceneFormIntent): Promise<string | null>;
+	/** Opens an existing character's edit form without switching away from the caller. */
+	openCharacterForm(id: string): Promise<void>;
 	deleteScene(id: string, expectedRevision: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(
@@ -815,6 +850,14 @@ export interface DashboardHost {
 	openManuscriptStream(
 		projectPath: string,
 		anchorPath?: string | null,
+	): Promise<void>;
+	/**
+	 * Brings the story structure view forward, on the visualization asked
+	 * for when one is; a new leaf when asked, or when none stands open.
+	 */
+	openStoryStructure(
+		visualization?: StoryStructureVisualization,
+		options?: { newTab?: boolean },
 	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
 	repairMissingStructureItem(path: string, field?: string): Promise<void>;

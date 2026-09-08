@@ -14,6 +14,7 @@ import {
   STICKY_NOTE_DOCUMENT,
   STICKY_NOTE_FRONTMATTER_ORDER,
   formatStickyNoteCreated,
+  isMacaronColor,
   isStickyNoteColor,
   isWritableSchemaVersion,
   managedSectionsForDocument,
@@ -267,6 +268,8 @@ const SCENE_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.sceneCharacters,
   FRONTMATTER_KEYS.conflict,
   FRONTMATTER_KEYS.progressStatus,
+  FRONTMATTER_KEYS.linkedManuscript,
+  FRONTMATTER_KEYS.sceneColor,
 ];
 
 const CHARACTER_FRONTMATTER_ORDER: readonly string[] = [
@@ -2946,6 +2949,7 @@ export class SnowflakeProjectService {
       input.worldStatus,
       input.relationships,
     ]);
+    const linkedManuscript = readStringList(input.linkedManuscript ?? []);
     const created = await this.repository.createManagedFile({
       path: requested,
       uniqueOnConflict: true,
@@ -2991,6 +2995,10 @@ export class SnowflakeProjectService {
         ...(input.progressStatus
           ? { [FRONTMATTER_KEYS.progressStatus]: input.progressStatus }
           : {}),
+        ...(linkedManuscript.length > 0
+          ? { [FRONTMATTER_KEYS.linkedManuscript]: linkedManuscript }
+          : {}),
+        ...(input.color ? { [FRONTMATTER_KEYS.sceneColor]: input.color } : {}),
       },
     });
     const createdRecords = entityRecordSectionValues(
@@ -3241,6 +3249,16 @@ export class SnowflakeProjectService {
     if (patch.progressStatus !== undefined) {
       frontmatterPatch[FRONTMATTER_KEYS.progressStatus] =
         patch.progressStatus ?? undefined;
+    }
+    // Both optional keys go the way aliases go: absent when there is nothing
+    // to say, so a note that never had them is not given an empty line.
+    if (patch.linkedManuscript !== undefined) {
+      const links = readStringList(patch.linkedManuscript);
+      frontmatterPatch[FRONTMATTER_KEYS.linkedManuscript] =
+        links.length > 0 ? links : undefined;
+    }
+    if (patch.color !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
     }
     const nextFields = {
       progressStatus: nextProgressStatus,
@@ -7806,6 +7824,7 @@ export class SnowflakeProjectService {
       asOptionalString(record.frontmatter[FRONTMATTER_KEYS.pov]),
     );
     const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
+    const storedColor = record.frontmatter[FRONTMATTER_KEYS.sceneColor];
     return {
       id: sceneId,
       sceneId,
@@ -7831,6 +7850,12 @@ export class SnowflakeProjectService {
         record.frontmatter[FRONTMATTER_KEYS.sceneCharacters],
       ).map(
         (target) => this.projectLinkedPath(target, record.path, root) ?? target,
+      ),
+      color: isMacaronColor(storedColor) ? storedColor : null,
+      // Kept as written, links and all: a heading or an alias in one of them
+      // is the author's, and the board opens the link as Obsidian would.
+      linkedManuscript: readStringList(
+        record.frontmatter[FRONTMATTER_KEYS.linkedManuscript],
       ),
       ...this.sceneReading(record, locale),
       readOnly: record.readOnly,

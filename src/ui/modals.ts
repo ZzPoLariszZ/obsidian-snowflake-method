@@ -15,10 +15,12 @@ import {
 import {
 	CHAPTER_RULE_KINDS,
 	chapterRuleProblem,
+	type MacaronColor,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	SESSION_LIMITS,
 	TIME_KINDS,
+	wikiLinkLabel,
 	WRITING_MODES,
 	WRITING_SESSION_SCOPES,
 	WRITING_SESSION_TYPES,
@@ -64,6 +66,8 @@ import {
 	NoteListField,
 	RecordCardsEditor,
 	addProgressStatusControl,
+	renderRecordLine,
+	renderRecordPickFrame,
 	type CustomFieldTemplateSource,
 	type DefinitionPathSource,
 	type EntityGroupId,
@@ -170,6 +174,10 @@ export interface CreateSceneRequest {
 	povPath: string;
 	events: string;
 	customFields: string;
+	/** The board tint, or null while the scene wears none. */
+	color: MacaronColor | null;
+	/** Manuscript links as raw wikilinks, kept exactly as typed. */
+	linkedManuscript: string[];
 	expectedRevision?: string;
 }
 
@@ -225,6 +233,12 @@ export interface MemberFormContext {
 	groupOf: (path: string) => EntityGroupId | null;
 	members: () => readonly PickerOption[];
 	times: () => readonly PickerOption[];
+	/** The manuscript's notes as raw links, in reading order, for a scene's linked manuscript. */
+	manuscriptNotes: () => readonly PickerOption[];
+	/** Orders displayed links by their resolved manuscript notes, preserving the raw links. */
+	orderLinkedManuscript: (links: readonly string[]) => readonly string[];
+	/** Resolves a stored scene link and reveals its note in the manuscript stream. */
+	openLinkedManuscript: (raw: string) => Promise<void>;
 	categories: DefinitionPathSource;
 	worldStatusLabels: DefinitionPathSource;
 	relationshipLabels: DefinitionPathSource;
@@ -2527,6 +2541,32 @@ export function promptForEntityReference(
 	});
 }
 
+/** The manuscript-only chooser under a scene's linked-note rows. */
+class SceneManuscriptReferenceModal extends FuzzySuggestModal<PickerOption> {
+	constructor(
+		app: App,
+		placeholder: string,
+		private readonly notes: PickerOption[],
+		private readonly pick: (option: PickerOption) => void,
+	) {
+		super(app);
+		this.setPlaceholder(placeholder);
+		this.limit = 50;
+	}
+
+	getItems(): PickerOption[] {
+		return this.notes;
+	}
+
+	getItemText(option: PickerOption): string {
+		return option.label;
+	}
+
+	onChooseItem(option: PickerOption): void {
+		this.pick(option);
+	}
+}
+
 export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private readonly characters: CharacterOption[];
 	private title = '';
@@ -2543,6 +2583,10 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	private progressStatus: ProgressStatus = 'not-started';
 	private worldStatus: RecordLine[] = [];
 	private relationships: RecordLine[] = [];
+	private color: MacaronColor | null = null;
+	private linkedManuscript: string[] = [];
+	private linkedManuscriptSection: HTMLElement | null = null;
+	private linkedManuscriptRevealFrame: number | null = null;
 	private expectedRevision: string | undefined;
 	private readonly pickers: OptionPicker[] = [];
 	private readonly name: UniqueNameField;
@@ -2621,6 +2665,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			this.progressStatus = initial.progressStatus;
 			this.worldStatus = [...initial.worldStatus];
 			this.relationships = [...initial.relationships];
+			this.color = initial.color;
+			this.linkedManuscript = [...initial.linkedManuscript];
 			this.expectedRevision = initial.expectedRevision;
 		}
 		this.isCreateForm = initial === undefined;
@@ -2728,6 +2774,101 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			'snowflake-method-scene-events-setting',
 		);
 		this.buildRecordEditors();
+		this.buildLinkedManuscript();
+	}
+
+	/** Opens the manuscript section requested by the card's overflow control. */
+	revealLinkedManuscript(): void {
+		const modalWindow = this.modalEl.win;
+		if (this.linkedManuscriptRevealFrame !== null) {
+			modalWindow.cancelAnimationFrame(this.linkedManuscriptRevealFrame);
+		}
+		// Let the form finish its initial layout and focus cleanup before moving
+		// to the section, so opening the modal cannot scroll back to its title.
+		this.linkedManuscriptRevealFrame = modalWindow.requestAnimationFrame(() => {
+			this.linkedManuscriptRevealFrame = modalWindow.requestAnimationFrame(() => {
+				this.linkedManuscriptRevealFrame = null;
+				const section = this.linkedManuscriptSection;
+				if (section === null || !section.isConnected) return;
+				section.focus({ preventScroll: true });
+				section.scrollIntoView({ block: 'start', behavior: 'auto' });
+			});
+		});
+	}
+
+	/**
+	 * The manuscript notes the scene is written into, offered from the
+	 * project's manuscript and kept as raw links: one typed by hand with a
+	 * heading or an alias keeps its row and stored spelling when the form saves.
+	 */
+	private buildLinkedManuscript(): void {
+		const context = this.formContext;
+		if (context === undefined) return;
+		const setting = new Setting(this.contentEl).setName(
+			this.t('modal.scene.linkedManuscript'),
+		);
+		setting.settingEl.addClass(
+			'snowflake-method-scene-setting',
+			'snowflake-method-scene-linked-setting',
+		);
+		setting.settingEl.tabIndex = -1;
+		this.linkedManuscriptSection = setting.settingEl;
+		const block = setting.controlEl.createDiv({
+			cls: 'snowflake-method-scene-linked-manuscript',
+		});
+		const lines = block.createDiv({ cls: 'snowflake-method-record-lines' });
+		const draw = (): void => {
+			lines.empty();
+			const offered = new Map(
+				context.manuscriptNotes().map((option) => [option.value, option.label]),
+			);
+			for (const raw of context.orderLinkedManuscript(this.linkedManuscript)) {
+				const label = offered.get(raw) ?? wikiLinkLabel(raw);
+				renderRecordLine(lines, {
+					label: this.t('manuscript.title'),
+					text: label,
+					missing: false,
+					missingTitle: this.t('table.referenceMissing', { name: label }),
+					removeLabel: this.t('modal.scene.removeLinked', { name: label }),
+					link: {
+						href: raw,
+						open: () => {
+							void context.openLinkedManuscript(raw)
+								.then(() => this.close())
+								.catch((error: unknown) => {
+									context.notice(error instanceof Error ? error.message : this.t('errors.unknown'));
+								});
+						},
+					},
+				}, () => {
+					this.linkedManuscript = this.linkedManuscript.filter((candidate) => candidate !== raw);
+					draw();
+				});
+			}
+		};
+		draw();
+		renderRecordPickFrame(
+			block,
+			this.t(context.manuscriptNotes().length === 0
+				? 'modal.scene.linkedManuscriptEmpty'
+				: 'modal.scene.linkedManuscriptPlaceholder'),
+			() => {
+				const offered = context.manuscriptNotes().filter(
+					(option) => !this.linkedManuscript.includes(option.value),
+				);
+				if (offered.length === 0) return;
+				new SceneManuscriptReferenceModal(
+					this.app,
+					this.t('modal.scene.linkedManuscriptPlaceholder'),
+					offered,
+					(option) => {
+						if (this.linkedManuscript.includes(option.value)) return;
+						this.linkedManuscript = [...this.linkedManuscript, option.value];
+						draw();
+					},
+				).open();
+			},
+		);
 	}
 
 	private buildUniversalRows(): void {
@@ -2815,6 +2956,11 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 	}
 
 	onClose(): void {
+		if (this.linkedManuscriptRevealFrame !== null) {
+			this.modalEl.win.cancelAnimationFrame(this.linkedManuscriptRevealFrame);
+			this.linkedManuscriptRevealFrame = null;
+		}
+		this.linkedManuscriptSection = null;
 		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.onClose();
 	}
@@ -2995,6 +3141,8 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			povPath: this.povPath,
 			events: this.events.trim(),
 			customFields,
+			color: this.color,
+			linkedManuscript: [...this.linkedManuscript],
 			expectedRevision: this.expectedRevision,
 		};
 	}

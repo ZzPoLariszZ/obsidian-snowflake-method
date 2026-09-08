@@ -21,14 +21,13 @@ import {
 	countsCharacters,
 	createDefaultStepStatuses,
 	getFirstIncompleteStep,
-	isProgressStatus,
 	managedSectionHighlightsForStep,
 	primaryManagedSectionForStep,
-	PROGRESS_STATUSES,
 	entityKindIds,
 	foldName,
 	isWorldbuildingKind,
 	nextCustomKindPrefix,
+	parseWikiLink,
 	safeFileName,
 	type EntityKindId,
 	type ProjectWorldbuildingKind,
@@ -38,6 +37,8 @@ import {
 	type StepId,
 	type StepStatus,
 	type StepStatusMap,
+	wikiLinkText,
+	wikiLinkLabel,
 	type WorldbuildingKindId,
 } from '../domain';
 import {
@@ -56,8 +57,6 @@ import {
 	CreateProjectModal,
 	CreateSceneModal,
 	EntityFormModal,
-	MoveAfterModal,
-	MoveToPositionModal,
 	RepairReportModal,
 	promptForCustomFieldTemplate,
 	promptForDefinitionEdit,
@@ -70,7 +69,6 @@ import {
 	promptForTemplateDeletion,
 	type CharacterOption,
 	type MemberFormContext,
-	type MoveAfterEntry,
 	type Translate,
 } from './modals';
 import {
@@ -90,17 +88,20 @@ import {
 	type TasksTab,
 } from './dashboard-state';
 import {
-	buildOptionField,
-	type OptionPicker,
+	addOrderMenuItems,
+	listNeighbours,
+	type OrderMenuDeps,
+} from './order-menu';
+import {
 	type PickerOption,
 } from './option-picker';
+import { orderLinkedManuscript } from './linked-manuscript';
 import {
 	entityGroupLabel,
 	entityGroupsOf,
 	type DefinitionPathSource,
 	type EntityGroupId,
 } from './entity-form';
-import { followAnchor } from './anchored-panel';
 import { RenderStateKeeper } from './render-state';
 import {
 	renderEntitiesPanel,
@@ -111,6 +112,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
+import { FilterPanel } from './filter-panel';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
 	renderForeshadowingPanel,
@@ -122,11 +124,27 @@ import {
 	type RevisionFilterMemory,
 	type RevisionPanelHandle,
 } from './revision-panel';
+import {
+	categoryFilterRow,
+	categoryWithin,
+	clearSceneFilters,
+	filterScenes,
+	progressFilterRow,
+	sceneFilterRows,
+	sceneFiltered,
+	sceneFilters,
+	termName,
+} from './scene-filters';
 import { renderSessionPanel } from './session-panel';
 import { renderSnowflakeEvolution } from './snowflake-evolution';
+import {
+	STORY_STRUCTURE_FAMILIES,
+	familyVisualization,
+	type StoryStructureFamily,
+} from './story-structure-state';
 import { kindEntities } from './view-model';
 import { KeptPanel } from './kept-panel';
-import { paintCount, renderSplitButton } from './pane-parts';
+import { paintCount, renderSplitButton, renderTabStrip } from './pane-parts';
 import {
 	renderStickyNoteBoard,
 	stickyBoardMemory,
@@ -143,6 +161,7 @@ import type {
 	DashboardHost,
 	DefinitionFileChoice,
 	ManagedSectionIssueViewModel,
+	SceneFormIntent,
 	StepFields,
 	ProjectDashboardModel,
 	SceneViewModel,
@@ -252,8 +271,10 @@ interface RailRowSpec {
 	/** Steps are steps to a screen reader; everything else is just current. */
 	current: 'step' | 'true';
 	damaged: boolean;
-	/** Absent on a row with nothing to count and nothing to report. */
-	indicator?: { count: number } | { status: StepStatus };
+	/** A row that opens somewhere else rather than a pane here, read as a link. */
+	kind?: 'link';
+	/** Absent on a row with nothing to count and nothing to report; an icon says the row leads away. */
+	indicator?: { count: number } | { status: StepStatus } | { icon: string };
 	onClick: () => void;
 }
 
@@ -278,17 +299,6 @@ interface DefinitionPaneContext {
 	markSelected: () => void;
 }
 
-/**
- * Whether a category path sits at or below the one a filter names, so
- * filtering by `Race` keeps the characters filed under `Race/Elf`. A level
- * nobody is filed under directly is still a real thing to ask about, which is
- * why the whole tree is on offer.
- */
-function categoryWithin(path: string, filter: string): boolean {
-	return path === filter || path.startsWith(`${filter}/`);
-}
-
-/** What a stored term reads as: a link's display name, or the text itself. */
 /** One line of a member's own facts, beneath its name. */
 interface MemberFact {
 	text: string;
@@ -298,16 +308,6 @@ interface MemberFact {
 
 /** What a row shows where the note a field names is no longer there. */
 const MISSING_REFERENCE_TEXT = '???';
-
-function termName(raw: string): string {
-	const trimmed = raw.trim();
-	const match = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/u.exec(trimmed);
-	if (match === null) return trimmed;
-	const alias = (match[2] ?? '').trim();
-	if (alias.length > 0) return alias;
-	const path = (match[1] ?? '').trim();
-	return path.split('/').pop() ?? path;
-}
 
 /** The model's steps as the status map the domain rules are written against. */
 function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
@@ -546,15 +546,13 @@ export class SnowflakeDashboardView extends ItemView {
 	private characterCategories: { projectId: string; paths: string[] } | null =
 		null;
 	private sceneCategories: { projectId: string; paths: string[] } | null = null;
-	/** A character path, a point-of-view mode, or '' for every scene. */
-	private scenePovFilter = '';
-	private sceneCategoryFilter = '';
-	private sceneStatusFilter: 'all' | ProgressStatus = 'all';
-	/** A time or location by the name it is shown under, or '' for all. */
-	private sceneTimeFilter = '';
-	private sceneLocationFilter = '';
-	/** A character path the scene must have in its cast, or '' for all. */
-	private sceneCharacterFilter = '';
+	/** The scene funnel's answers, kept for the session as the table's are. */
+	private readonly sceneFilters = sceneFilters();
+	/** The manuscript's notes the linked-manuscript row offers, by project. */
+	private manuscriptNotes: {
+		projectId: string;
+		notes: { path: string; title: string }[];
+	} | null = null;
 	/** The average measured row height, carried across renders as a seed. */
 	private characterRowHeight = 48;
 	private sceneRowHeight = 48;
@@ -563,10 +561,8 @@ export class SnowflakeDashboardView extends ItemView {
 	private readonly sceneHeights = new Map<string, number>();
 	private characterTable: VirtualTable | null = null;
 	private sceneTable: VirtualTable | null = null;
-	/** The filter pickers the member panel on show is using, for release. */
-	private memberFilterPickers: OptionPicker[] = [];
-	/** The filter panel while it is open, with what it has to let go of. */
-	private filterPanel: { el: HTMLElement; release: () => void } | null = null;
+	/** The funnel popover, lent to every panel that asks questions. */
+	private readonly filterPanel: FilterPanel;
 	/** What the last render drew, so a reveal can find a row's place now. */
 	private lastRender: {
 		projects: Awaited<ReturnType<DashboardHost['listProjects']>>;
@@ -621,6 +617,7 @@ export class SnowflakeDashboardView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, host: DashboardHost) {
 		super(leaf);
 		this.host = host;
+		this.filterPanel = new FilterPanel(this.app, this.t);
 		this.selectedStep = host.getRecentStep();
 		this.selectedPane = { kind: 'step', step: this.selectedStep };
 	}
@@ -817,9 +814,12 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-step-description',
 			text: this.t(`dashboard.${pane.kind}.description`),
 		});
-		const strip = panel.createDiv({
-			cls: 'snowflake-method-tabs',
-			attr: { role: 'tablist' },
+		const tabs = renderTabStrip(panel, {
+			tabs: pane.tabs,
+			tabLabel: pane.label,
+			choose: (tab) => {
+				show(tab);
+			},
 		});
 		const field = panel.createDiv({
 			cls: 'snowflake-method-tab-panel',
@@ -829,29 +829,13 @@ export class SnowflakeDashboardView extends ItemView {
 		// bar can stand in the room between this frame and the pane's edge
 		// rather than on top of the reading.
 		const body = field.createDiv({ cls: 'snowflake-method-tab-scroll' });
-		const buttons = new Map<T, HTMLElement>();
 		const show = (chosen: T): void => {
 			pane.choose(chosen);
-			for (const [tab, button] of buttons) {
-				const active = tab === chosen;
-				button.toggleClass('is-active', active);
-				button.setAttribute('aria-selected', active ? 'true' : 'false');
-			}
+			tabs.mark(chosen);
 			body.empty();
 			body.toggleClass('is-self-scrolling', pane.selfScrolling?.(chosen) ?? false);
 			pane.body(body, chosen);
 		};
-		for (const tab of pane.tabs) {
-			const button = strip.createEl('button', {
-				cls: 'snowflake-method-tab',
-				text: pane.label(tab),
-				attr: { type: 'button', role: 'tab' },
-			});
-			button.addEventListener('click', () => {
-				show(tab);
-			});
-			buttons.set(tab, button);
-		}
 		show(pane.current());
 		this.renderedPaneKey = dashboardPaneKey({ kind: pane.kind });
 	}
@@ -1066,8 +1050,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private releaseMemberControls(): void {
 		// The panel lives outside the view's own element, so a render that
 		// throws its toolbar away would otherwise leave it hanging there.
-		this.closeFilterPanel();
-		this.releaseFilterPickers();
+		this.filterPanel.close();
 		this.characterTable?.destroy();
 		this.characterTable = null;
 		this.sceneTable?.destroy();
@@ -1664,7 +1647,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const model = this.lastRender.model;
 		if (model === null) return;
 		if (kind === 'character') this.openCreateCharacter(model);
-		else if (kind === 'scene') this.openCreateScene(model);
+		else if (kind === 'scene') void this.openCreateScene(model);
 		else this.openCreateEntity(model, kind);
 	}
 
@@ -1693,12 +1676,12 @@ export class SnowflakeDashboardView extends ItemView {
 	 * A row with something to report wears the warning in place of its circle,
 	 * because that one of them needs looking at matters more than how many.
 	 */
-	private renderRailRow(list: HTMLElement, row: RailRowSpec): void {
+	private renderRailRow(list: HTMLElement, row: RailRowSpec): HTMLButtonElement {
 		const item = list.createEl('li', { cls: 'snowflake-method-step-item' });
 		const button = item.createEl('button', {
 			cls: `snowflake-method-step-button${row.active ? ' is-active' : ''}${
 				row.damaged ? ' has-managed-section-issue' : ''
-			}`,
+			}${row.kind === 'link' ? ' snowflake-method-step-link' : ''}`,
 			attr: {
 				type: 'button',
 				'aria-label': row.label,
@@ -1734,7 +1717,7 @@ export class SnowflakeDashboardView extends ItemView {
 						? this.t('projectStructure.damagedTitle')
 						: spec !== undefined && 'count' in spec
 							? String(spec.count)
-							: spec !== undefined
+							: spec !== undefined && 'status' in spec
 								? this.t(`status.${spec.status}`)
 								: '',
 				},
@@ -1747,11 +1730,16 @@ export class SnowflakeDashboardView extends ItemView {
 				setIcon(indicator, 'triangle-alert');
 			} else if (spec !== undefined && 'count' in spec) {
 				paintCount(indicator, spec.count);
-			} else if (spec !== undefined) {
+			} else if (spec !== undefined && 'status' in spec) {
 				indicator.setText(this.statusGlyph(spec.status));
+			} else if (spec !== undefined) {
+				indicator.addClass('snowflake-method-step-link-mark');
+				indicator.setAttribute('aria-hidden', 'true');
+				setIcon(indicator, spec.icon);
 			}
 		}
 		button.addEventListener('click', row.onClick);
+		return button;
 	}
 
 	private renderStepsGroup(
@@ -1870,6 +1858,37 @@ export class SnowflakeDashboardView extends ItemView {
 				void this.refresh();
 			},
 		});
+		// Not a pane of this view but a view of its own, so the row reads as
+		// a link and its mark says the row leads away.
+		const workspace = this.renderRailRow(list, {
+			kind: 'link',
+			leading: { icon: 'layout-grid' },
+			label: this.t('dashboard.visualizationWorkspace'),
+			active: false,
+			current: 'true',
+			damaged: false,
+			indicator: { icon: 'square-arrow-out-up-right' },
+			onClick: () => {
+				void this.host.openStoryStructure();
+			},
+		});
+		workspace.addClass('snowflake-method-workspace-entry');
+		const label = workspace.querySelector<HTMLElement>('.snowflake-method-step-label');
+		if (label === null) return;
+		label.addClass('snowflake-method-workspace-label');
+		label.empty();
+		const lettering = label.createSpan({ cls: 'snowflake-method-workspace-lettering' });
+		lettering.createSpan({
+			cls: 'snowflake-method-workspace-text',
+			text: this.t('dashboard.visualizationWorkspace'),
+		});
+		const sparkles = lettering.createSpan({
+			cls: 'snowflake-method-workspace-sparkles',
+			attr: { 'aria-hidden': 'true' },
+		});
+		for (let index = 0; index < 6; index++) {
+			setIcon(sparkles.createSpan({ cls: 'snowflake-method-workspace-sparkle' }), 'sparkle');
+		}
 	}
 
 	/**
@@ -2252,11 +2271,11 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		markFilterButton();
 		filterButton.addEventListener('click', () => {
-			if (this.filterPanel !== null) {
-				this.closeFilterPanel();
+			if (this.filterPanel.isOpen()) {
+				this.filterPanel.close();
 				return;
 			}
-			this.openFilterPanel(
+			this.filterPanel.open(
 				filterButton,
 				this.entityFilterRows(model, kind),
 				() => {
@@ -2321,13 +2340,15 @@ export class SnowflakeDashboardView extends ItemView {
 		kind: WorldbuildingKindId,
 	): MemberFilterRow[] {
 		return [
-			this.progressFilterRow(
+			progressFilterRow(
+				this.t,
 				this.entityStatusFilters.get(kind) ?? 'all',
 				(next) => {
 					this.entityStatusFilters.set(kind, next);
 				},
 			),
-			this.categoryFilterRow(
+			categoryFilterRow(
+				this.t,
 				this.entityCategories.get(kind)?.projectId === model.projectId
 					? (this.entityCategories.get(kind)?.paths ?? [])
 					: [],
@@ -2445,9 +2466,10 @@ export class SnowflakeDashboardView extends ItemView {
 						.setIcon('file-text')
 						.onClick(openEntity),
 				);
-				this.addOrderMenuItems(menu, {
+				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: entities.length,
+					...listNeighbours(index, entities.length),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.kindText('worldbuilding.insertAfter', kind),
@@ -3979,14 +4001,21 @@ export class SnowflakeDashboardView extends ItemView {
 	private async memberFormContext(
 		model: ProjectDashboardModel,
 		kind: EntityKindId,
+		sourcePath = model.path,
 	): Promise<MemberFormContext> {
-		const [categoryPaths, worldStatusPaths, relationshipPaths, filePaths] =
-			await Promise.all([
-				this.host.listDefinitionPaths(kind, 'category'),
-				this.host.listDefinitionPaths(kind, 'world-status'),
-				this.host.listDefinitionPaths(kind, 'relationship'),
-				this.host.definitionFilePaths(kind),
-			]);
+		const [
+			categoryPaths,
+			worldStatusPaths,
+			relationshipPaths,
+			filePaths,
+			manuscriptNotes,
+		] = await Promise.all([
+			this.host.listDefinitionPaths(kind, 'category'),
+			this.host.listDefinitionPaths(kind, 'world-status'),
+			this.host.listDefinitionPaths(kind, 'relationship'),
+			this.host.definitionFilePaths(kind),
+			this.host.listManuscriptNotes(),
+		]);
 		const sourceFor = (
 			id: DefinitionFileChoice,
 			initial: string[],
@@ -4114,6 +4143,26 @@ export class SnowflakeDashboardView extends ItemView {
 				groupByPath.get(noteKey(path)) ?? madeHere.get(noteKey(path)) ?? null,
 			members: () => members,
 			times: () => times,
+			// Written the way Obsidian writes a link, without an alias: the
+			// note's own name is the label, and a rename keeps the link's shape.
+			manuscriptNotes: () =>
+				manuscriptNotes.map((note) => ({
+					value: wikiLinkText(note.path),
+					label: note.title,
+				})),
+			orderLinkedManuscript: (links) => orderLinkedManuscript(
+				links,
+				manuscriptNotes.map((note) => note.path),
+				(target) => this.app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null,
+			),
+			openLinkedManuscript: async (raw) => {
+				const link = parseWikiLink(raw);
+				const file = link === null ? null : this.app.metadataCache.getFirstLinkpathDest(link.target, sourcePath);
+				if (file === null) {
+					throw new Error(this.t('table.referenceMissing', { name: wikiLinkLabel(raw) }));
+				}
+				await this.host.openManuscriptStream(model.path, file.path);
+			},
 			categories: sourceFor('category', categoryPaths),
 			worldStatusLabels: sourceFor('world-status', worldStatusPaths),
 			relationshipLabels: sourceFor('relationship', relationshipPaths),
@@ -4160,6 +4209,8 @@ export class SnowflakeDashboardView extends ItemView {
 					relationships: [],
 					events: '',
 					customFields: '',
+					color: null,
+					linkedManuscript: [],
 				});
 				await this.refresh();
 				return find(created.path);
@@ -4950,16 +5001,56 @@ export class SnowflakeDashboardView extends ItemView {
 						? await this.openEntityEditor(model, entity)
 						: null;
 		if (form === null) return;
-		// Whoever opened the form is still on screen behind it and wants to know
-		// when it is done. A modal announces that by closing, and nothing else,
-		// so its own closing is what the wait is on.
-		await new Promise<void>((resolve) => {
-			const closed = form.onClose.bind(form);
-			form.onClose = (): void => {
-				closed();
-				resolve();
-			};
-		});
+		await whenClosed(form);
+	}
+
+	/** The character form shared with surfaces that display a character link. */
+	async openCharacterForm(id: string): Promise<void> {
+		// Refresh before reading so an already-open dashboard cannot supply an
+		// old revision or miss a character created from another surface.
+		await this.refresh();
+		const model = this.lastRender?.model ?? null;
+		if (model === null || model.readOnly) return;
+		const character = model.characters.find((candidate) => candidate.id === id);
+		if (
+			character === undefined ||
+			character.readOnly ||
+			character.healthIssues.some((issue) => issue.blocking)
+		) return;
+		const form = await this.openCharacterEditor(model, character);
+		await whenClosed(form);
+	}
+
+	/**
+	 * The scene form, opened for another surface: the ordered corkboard,
+	 * which has no form context of its own. Resolves once the modal has
+	 * closed, with the scene a create made, so the caller can show it.
+	 */
+	async openSceneForm(intent: SceneFormIntent): Promise<string | null> {
+		// Drawn here rather than given up on, for the reason startEntityCreation
+		// gives: a dashboard opened a moment ago has not drawn yet.
+		if (this.lastRender?.model == null) await this.refresh();
+		const model = this.lastRender?.model ?? null;
+		if (model === null) return null;
+		const made = { id: null as string | null };
+		const remember = (id: string): void => {
+			made.id = id;
+		};
+		let form: Modal | null;
+		if (intent.mode === 'edit') {
+			const scene = model.scenes.find(
+				(candidate) => candidate.id === intent.id,
+			);
+			form =
+				scene === undefined ? null : await this.openSceneEditor(model, scene, intent.section);
+		} else if (intent.afterIndex === null) {
+			form = await this.openCreateScene(model, remember);
+		} else {
+			form = await this.insertSceneAfter(model, intent.afterIndex, remember);
+		}
+		if (form === null) return null;
+		await whenClosed(form);
+		return made.id;
 	}
 
 	/**
@@ -5616,27 +5707,65 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * Opens the generated Bases view for this collection. Deliberately left
-	 * enabled on a read-only project: an existing base still opens, and only
-	 * writing a missing one is refused.
+	 * Scenes open the visualization workspace, with their base in a separate
+	 * menu group. Other collections open their base directly. Existing views
+	 * remain available on read-only projects; only writing a base is refused.
 	 */
 	private renderOpenBase(
 		actions: HTMLElement,
 		id: ProjectBaseChoice,
 		model: ProjectDashboardModel,
 	): void {
+		const scenes = id === 'scenes';
 		const openBase = (): void => {
 			void this.runAndRefresh(() => this.host.openProjectBase(id));
+		};
+		const addOpenBase = (menu: Menu): void => {
+			menu.addItem((item) =>
+				item
+					.setTitle(this.t('actions.openBase'))
+					.setIcon('layout-grid')
+					.onClick(openBase),
+			);
 		};
 		renderSplitButton(actions, {
 			cls: 'snowflake-method-base-split-button',
 			primary: {
 				cls: 'snowflake-method-open-base',
-				label: this.t('actions.openBase'),
-				run: openBase,
+				label: this.t(scenes ? 'actions.openWorkspace' : 'actions.openBase'),
+				run: scenes
+					? () => {
+							void this.runAndRefresh(() => this.host.openStoryStructure());
+						}
+					: openBase,
 			},
 			menuLabel: this.t('table.actions'),
 			items: (menu) => {
+				if (scenes) {
+					const icons: Record<StoryStructureFamily, string> = {
+						corkboard: 'layout-dashboard',
+						freeform: 'layout-template',
+						'beat-sheet': 'list-ordered',
+						timeline: 'gantt-chart',
+						plotline: 'git-branch',
+					};
+					for (const family of STORY_STRUCTURE_FAMILIES) {
+						menu.addItem((item) =>
+							item
+								.setTitle(this.t('actions.openVisualization', {
+									view: this.t(`storyStructure.family.${family}`),
+								}))
+								.setIcon(icons[family])
+								.onClick(() => {
+									void this.runAndRefresh(() =>
+										this.host.openStoryStructure(familyVisualization(family)),
+									);
+								}),
+						);
+					}
+					menu.addSeparator();
+					addOpenBase(menu);
+				}
 				menu.addItem((item) =>
 					item
 						.setTitle(this.t('actions.restoreBase'))
@@ -5651,12 +5780,7 @@ export class SnowflakeDashboardView extends ItemView {
 							}).open();
 						}),
 				);
-				menu.addItem((item) =>
-					item
-						.setTitle(this.t('actions.openBase'))
-						.setIcon('layout-grid')
-						.onClick(openBase),
-				);
+				if (!scenes) addOpenBase(menu);
 			},
 		});
 	}
@@ -5899,11 +6023,11 @@ export class SnowflakeDashboardView extends ItemView {
 		};
 		markFilterButton();
 		filterButton.addEventListener('click', () => {
-			if (this.filterPanel !== null) {
-				this.closeFilterPanel();
+			if (this.filterPanel.isOpen()) {
+				this.filterPanel.close();
 				return;
 			}
-			this.openFilterPanel(filterButton, this.characterFilterRows(model), () => {
+			this.filterPanel.open(filterButton, this.characterFilterRows(model), () => {
 				markFilterButton();
 				feed(true);
 			});
@@ -5913,51 +6037,15 @@ export class SnowflakeDashboardView extends ItemView {
 		virtual.refresh();
 	}
 
-	/** The progress row every member table's funnel opens with. */
-	private progressFilterRow(
-		value: 'all' | ProgressStatus,
-		apply: (next: 'all' | ProgressStatus) => void,
-	): MemberFilterRow {
-		return {
-			label: this.t('table.progressStatus'),
-			placeholder: this.t('table.filterAllStatuses'),
-			empty: 'all',
-			options: () =>
-				PROGRESS_STATUSES.map((status) => ({
-					value: status,
-					label: this.t(`status.${status}`),
-				})),
-			value,
-			apply: (next) => {
-				apply(isProgressStatus(next) ? next : 'all');
-			},
-		};
-	}
-
-	/** The category row, over one kind's whole tree. */
-	private categoryFilterRow(
-		paths: readonly string[],
-		value: string,
-		apply: (next: string) => void,
-	): MemberFilterRow {
-		return {
-			label: this.t('table.category'),
-			placeholder: this.t('table.filterAllCategories'),
-			empty: '',
-			options: () => paths.map((path) => ({ value: path, label: path })),
-			value,
-			apply,
-		};
-	}
-
 	private characterFilterRows(
 		model: ProjectDashboardModel,
 	): MemberFilterRow[] {
 		return [
-			this.progressFilterRow(this.characterStatusFilter, (next) => {
+			progressFilterRow(this.t, this.characterStatusFilter, (next) => {
 				this.characterStatusFilter = next;
 			}),
-			this.categoryFilterRow(
+			categoryFilterRow(
+				this.t,
 				this.characterCategoryPaths(model),
 				this.characterCategoryFilter,
 				(next) => {
@@ -5968,245 +6056,14 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
-	 * Everything a scene can be narrowed by. The notes it names are offered
-	 * whole, not only the ones some scene already points at: a filter is asked
-	 * before the answer is known.
-	 */
-	private sceneFilterRows(model: ProjectDashboardModel): MemberFilterRow[] {
-		const named = (
-			entities: readonly { name: string }[],
-		): PickerOption[] =>
-			entities
-				.map((entity) => ({ value: entity.name, label: entity.name }))
-				.filter((option) => option.value.length > 0);
-		return [
-			this.progressFilterRow(this.sceneStatusFilter, (next) => {
-				this.sceneStatusFilter = next;
-			}),
-			this.categoryFilterRow(
-				this.sceneCategoryPaths(model),
-				this.sceneCategoryFilter,
-				(next) => {
-					this.sceneCategoryFilter = next;
-				},
-			),
-			{
-				label: this.t('table.scenePov'),
-				placeholder: this.t('table.filterAllPov'),
-				empty: '',
-				options: () => [
-					{
-						value: SCENE_POV_OMNISCIENT,
-						label: this.t('modal.scene.povOmniscient'),
-					},
-					{
-						value: SCENE_POV_MULTIPLE,
-						label: this.t('modal.scene.povMultiple'),
-					},
-					...model.characters.map((character) => ({
-						value: character.path,
-						label: character.name,
-					})),
-				],
-				value: this.scenePovFilter,
-				apply: (next) => {
-					this.scenePovFilter = next;
-				},
-			},
-			{
-				label: this.t('table.sceneTime'),
-				placeholder: this.t('table.filterAllTimes'),
-				empty: '',
-				options: () => named(kindEntities(model, 'time')),
-				value: this.sceneTimeFilter,
-				apply: (next) => {
-					this.sceneTimeFilter = next;
-				},
-			},
-			{
-				label: this.t('table.sceneLocation'),
-				placeholder: this.t('table.filterAllLocations'),
-				empty: '',
-				options: () => named(kindEntities(model, 'location')),
-				value: this.sceneLocationFilter,
-				apply: (next) => {
-					this.sceneLocationFilter = next;
-				},
-			},
-			{
-				label: this.t('table.sceneCharacters'),
-				placeholder: this.t('table.filterAllCast'),
-				empty: '',
-				options: () =>
-					model.characters.map((character) => ({
-						value: character.path,
-						label: character.name,
-					})),
-				value: this.sceneCharacterFilter,
-				apply: (next) => {
-					this.sceneCharacterFilter = next;
-				},
-			},
-		];
-	}
-
-	/**
-	 * The questions the funnel asks, in a panel under it. Each is a picker of
-	 * its own, so they can all be asked at once, and each offers its whole
-	 * vocabulary rather than only the answers this project happens to hold.
-	 */
-	/**
 	 * The dashboard's own funnel popover, lent to a panel: it owns the
 	 * pickers' lifetime and the outside-click rules, so every panel asks its
 	 * questions in the same box.
 	 */
 	private lentFilterPopover(): LentFilterPopover {
-		return {
-			filterOpen: () => this.filterPanel !== null,
-			openFilter: (anchor, rows, changed) => {
-				this.openFilterPanel(anchor, rows, changed);
-			},
-			closeFilter: () => {
-				this.closeFilterPanel();
-			},
-		};
+		return this.filterPanel.lend();
 	}
 
-	private openFilterPanel(
-		anchor: HTMLElement,
-		rows: readonly FilterRow[],
-		changed: () => void,
-	): void {
-		this.closeFilterPanel();
-		const panel = anchor.win.activeDocument.body.createDiv({
-			cls: 'snowflake-method-filter-panel',
-			attr: { role: 'dialog', 'aria-label': this.t('table.filter') },
-		});
-		panel.createDiv({
-			cls: 'snowflake-method-filter-panel-title',
-			text: this.t('table.filter'),
-		});
-		const body = panel.createDiv({ cls: 'snowflake-method-filter-panel-body' });
-		// What the panel is being set to, until it is confirmed. The table keeps
-		// showing what it was showing while the fields are being worked out, and
-		// a panel dismissed without confirming changes nothing.
-		const draft = rows.map((entry) => entry.value);
-		// Rebuilt rather than reassigned: a picker shows the value it was built
-		// with, so the reset below has to build the fields again to show them
-		// back at rest.
-		const fill = (): void => {
-			body.empty();
-			this.releaseFilterPickers();
-			rows.forEach((entry, index) => {
-				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
-				field.createDiv({
-					cls: 'snowflake-method-filter-label',
-					text: entry.label,
-				});
-				this.memberFilterPickers.push(
-					buildOptionField(this.app, field, {
-						options: () => [
-							{ value: entry.empty, label: entry.placeholder },
-							...entry.options(),
-						],
-						value: () => draft[index] ?? entry.empty,
-						choose: (value) => {
-							draft[index] = value;
-						},
-						label: entry.label,
-						placeholder: entry.placeholder,
-						emptyPlaceholder: entry.placeholder,
-					}),
-				);
-			});
-		};
-		fill();
-		const actions = panel.createDiv({
-			cls: 'snowflake-method-filter-panel-actions',
-		});
-		const reset = actions.createEl('button', {
-			cls: 'snowflake-method-filter-reset',
-			text: this.t('table.filterReset'),
-			attr: { type: 'button' },
-		});
-		// Clears the fields rather than the table: the panel has one way out,
-		// and this is not it.
-		reset.addEventListener('click', () => {
-			rows.forEach((entry, index) => {
-				draft[index] = entry.empty;
-			});
-			fill();
-		});
-		const confirm = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: this.t('table.filterConfirm'),
-			attr: { type: 'button' },
-		});
-		confirm.addEventListener('click', () => {
-			rows.forEach((entry, index) => {
-				entry.apply(draft[index] ?? entry.empty);
-			});
-			this.closeFilterPanel();
-			changed();
-		});
-
-		// Under the funnel and lined up with its end, in the layer above
-		// everything: the panel covers a table that scrolls, and a panel inside
-		// it would be clipped by it. Where exactly, and keeping it there, is the
-		// shared panel helper's -- the manuscript's typography popover hangs the
-		// same way, and this one gains from that: it now stays inside the window
-		// and follows the funnel when a sidebar folds under it.
-		const view = anchor.win;
-		const unfollow = followAnchor(panel, anchor, view);
-		anchor.setAttribute('aria-expanded', 'true');
-
-		// A click inside the panel is the author using it, and one inside a
-		// suggestion list is them using a field of it: the list is put in the
-		// same layer, outside the panel's own element.
-		const dismiss = (event: MouseEvent): void => {
-			const target = event.target as Node | null;
-			if (target === null) return;
-			if (panel.contains(target) || anchor.contains(target)) return;
-			const el = target.instanceOf(Element) ? target : target.parentElement;
-			if (el?.closest('.suggestion-container') != null) return;
-			this.closeFilterPanel();
-		};
-		const onKey = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') return;
-			// The field's own list answers Escape first, and closing the panel
-			// under it would take the field away mid-correction.
-			if (view.activeDocument.querySelector('.suggestion-container') !== null) {
-				return;
-			}
-			this.closeFilterPanel();
-			anchor.focus();
-		};
-		view.addEventListener('mousedown', dismiss, true);
-		view.addEventListener('keydown', onKey, true);
-		this.filterPanel = {
-			el: panel,
-			release: () => {
-				view.removeEventListener('mousedown', dismiss, true);
-				view.removeEventListener('keydown', onKey, true);
-				unfollow();
-				anchor.setAttribute('aria-expanded', 'false');
-			},
-		};
-	}
-
-	private closeFilterPanel(): void {
-		const open = this.filterPanel;
-		if (open === null) return;
-		this.filterPanel = null;
-		open.release();
-		this.releaseFilterPickers();
-		open.el.remove();
-	}
-
-	private releaseFilterPickers(): void {
-		for (const picker of this.memberFilterPickers) picker.destroy();
-		this.memberFilterPickers = [];
-	}
 
 	/**
 	 * The frame both member tables share: a header strip and a scrolling body,
@@ -6336,9 +6193,10 @@ export class SnowflakeDashboardView extends ItemView {
 					addEditItem();
 					addOpenItem();
 				}
-				this.addOrderMenuItems(menu, {
+				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: model.characters.length,
+					...listNeighbours(index, model.characters.length),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.t('table.insertCharacterAfter'),
@@ -6394,7 +6252,9 @@ export class SnowflakeDashboardView extends ItemView {
 			attr: { type: 'button' },
 		});
 		add.disabled = model.readOnly;
-		add.addEventListener('click', () => this.openCreateScene(model));
+		add.addEventListener('click', () => {
+			void this.openCreateScene(model);
+		});
 
 		// Same as the character lists: freeform mode keeps the table and
 		// leaves the method's coaching out.
@@ -6436,23 +6296,24 @@ export class SnowflakeDashboardView extends ItemView {
 		search.setPlaceholder(this.t('table.searchScenes'));
 		search.setValue(this.sceneQuery);
 		void this.loadMemberCategories(model, 'scene');
+		void this.loadManuscriptNotes(model);
 		// A held filter can name a character since deleted, which would filter
 		// every scene out while the field reads as if nothing were set.
 		const knownCharacter = (path: string): boolean =>
 			model.characters.some((character) => character.path === path);
 		if (
-			this.scenePovFilter !== '' &&
-			this.scenePovFilter !== SCENE_POV_OMNISCIENT &&
-			this.scenePovFilter !== SCENE_POV_MULTIPLE &&
-			!knownCharacter(this.scenePovFilter)
+			this.sceneFilters.pov !== '' &&
+			this.sceneFilters.pov !== SCENE_POV_OMNISCIENT &&
+			this.sceneFilters.pov !== SCENE_POV_MULTIPLE &&
+			!knownCharacter(this.sceneFilters.pov)
 		) {
-			this.scenePovFilter = '';
+			this.sceneFilters.pov = '';
 		}
 		if (
-			this.sceneCharacterFilter !== '' &&
-			!knownCharacter(this.sceneCharacterFilter)
+			this.sceneFilters.character !== '' &&
+			!knownCharacter(this.sceneFilters.character)
 		) {
-			this.sceneCharacterFilter = '';
+			this.sceneFilters.character = '';
 		}
 		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
 		const filterSlot = toolbar.createDiv({
@@ -6508,7 +6369,9 @@ export class SnowflakeDashboardView extends ItemView {
 					this.tableColumnClasses().length,
 					this.t('actions.addMoreScenes'),
 					model.readOnly,
-					() => this.openCreateScene(model),
+					() => {
+						void this.openCreateScene(model);
+					},
 				);
 			},
 			onScroll: (top) => {
@@ -6542,18 +6405,25 @@ export class SnowflakeDashboardView extends ItemView {
 			feed(true);
 		});
 		const markFilterButton = (): void => {
-			filterButton.toggleClass('is-active', this.sceneFiltered());
+			filterButton.toggleClass('is-active', sceneFiltered(this.sceneFilters));
 		};
 		markFilterButton();
 		filterButton.addEventListener('click', () => {
-			if (this.filterPanel !== null) {
-				this.closeFilterPanel();
+			if (this.filterPanel.isOpen()) {
+				this.filterPanel.close();
 				return;
 			}
-			this.openFilterPanel(filterButton, this.sceneFilterRows(model), () => {
-				markFilterButton();
-				feed(true);
-			});
+			this.filterPanel.open(
+				filterButton,
+				sceneFilterRows(this.t, model, this.sceneFilters, {
+					categoryPaths: this.sceneCategoryPaths(model),
+					manuscriptNotes: this.manuscriptNotesFor(model),
+				}),
+				() => {
+					markFilterButton();
+					feed(true);
+				},
+			);
 		});
 		feed(false);
 		bodyWrap.scrollTop = this.sceneScroll;
@@ -6654,9 +6524,10 @@ export class SnowflakeDashboardView extends ItemView {
 					addEditItem();
 					addOpenItem();
 				}
-				this.addOrderMenuItems(menu, {
+				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: model.scenes.length,
+					...listNeighbours(index, model.scenes.length),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.t('table.insertSceneAfter'),
@@ -6673,7 +6544,7 @@ export class SnowflakeDashboardView extends ItemView {
 						this.revealScene(scene.id);
 					},
 					insert: () => {
-						this.insertSceneAfter(model, index);
+						void this.insertSceneAfter(model, index);
 					},
 				});
 			},
@@ -6722,30 +6593,35 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
-	private openCreateScene(model: ProjectDashboardModel): void {
-		void this.memberFormContext(model, 'scene').then((context) => {
-			new CreateSceneModal(
-				this.app,
-				this.t,
-				model.characters.map((character) => ({
-					id: character.id,
-					path: character.path,
-					name: character.name,
-				})),
-				model.scenes.map((scene) => scene.title),
-				async (request) => {
-					await this.host.createScene(request);
-					// To the end, filters let go, for the same reason as above.
-					this.sceneQuery = '';
-					this.clearSceneFilters();
-					this.sceneScroll = Number.MAX_SAFE_INTEGER;
-					await this.refresh();
-				},
-				undefined,
-				this.creatingCharacter(model),
-				context,
-			).open();
-		});
+	private async openCreateScene(
+		model: ProjectDashboardModel,
+		onCreated?: (id: string) => void,
+	): Promise<Modal> {
+		const context = await this.memberFormContext(model, 'scene');
+		const form = new CreateSceneModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => ({
+				id: character.id,
+				path: character.path,
+				name: character.name,
+			})),
+			model.scenes.map((scene) => scene.title),
+			async (request) => {
+				const created = await this.host.createScene(request);
+				onCreated?.(created.id);
+				// To the end, filters let go, for the same reason as above.
+				this.sceneQuery = '';
+				clearSceneFilters(this.sceneFilters);
+				this.sceneScroll = Number.MAX_SAFE_INTEGER;
+				await this.refresh();
+			},
+			undefined,
+			this.creatingCharacter(model),
+			context,
+		);
+		form.open();
+		return form;
 	}
 
 	/** Creates a character and walks it back from the end to `index + 1`. */
@@ -6772,28 +6648,34 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/** Creates a scene and walks it back from the end to `index + 1`. */
-	private insertSceneAfter(model: ProjectDashboardModel, index: number): void {
-		void this.memberFormContext(model, 'scene').then((context) => {
-			new CreateSceneModal(
-				this.app,
-				this.t,
-				model.characters.map((character) => ({
-					id: character.id,
-					path: character.path,
-					name: character.name,
-				})),
-				model.scenes.map((scene) => scene.title),
-				async (request) => {
-					const created = await this.host.createScene(request);
-					await this.host.reorderScene(created.id, index + 1);
-					await this.refresh();
-					this.revealScene(created.id);
-				},
-				undefined,
-				this.creatingCharacter(model),
-				context,
-			).open();
-		});
+	private async insertSceneAfter(
+		model: ProjectDashboardModel,
+		index: number,
+		onCreated?: (id: string) => void,
+	): Promise<Modal> {
+		const context = await this.memberFormContext(model, 'scene');
+		const form = new CreateSceneModal(
+			this.app,
+			this.t,
+			model.characters.map((character) => ({
+				id: character.id,
+				path: character.path,
+				name: character.name,
+			})),
+			model.scenes.map((scene) => scene.title),
+			async (request) => {
+				const created = await this.host.createScene(request);
+				await this.host.reorderScene(created.id, index + 1);
+				onCreated?.(created.id);
+				await this.refresh();
+				this.revealScene(created.id);
+			},
+			undefined,
+			this.creatingCharacter(model),
+			context,
+		);
+		form.open();
+		return form;
 	}
 
 	/** The categories the filter offers, once they have been read. */
@@ -6827,6 +6709,24 @@ export class SnowflakeDashboardView extends ItemView {
 		const loaded = { projectId: model.projectId, paths };
 		if (kind === 'character') this.characterCategories = loaded;
 		else this.sceneCategories = loaded;
+	}
+
+	private manuscriptNotesFor(
+		model: ProjectDashboardModel,
+	): { path: string; title: string }[] {
+		const loaded = this.manuscriptNotes;
+		return loaded?.projectId === model.projectId ? loaded.notes : [];
+	}
+
+	/** The manuscript's notes for the linked-manuscript row, read as the categories are. */
+	private async loadManuscriptNotes(model: ProjectDashboardModel): Promise<void> {
+		let notes: { path: string; title: string }[] = [];
+		try {
+			notes = await this.host.listManuscriptNotes();
+		} catch {
+			notes = [];
+		}
+		this.manuscriptNotes = { projectId: model.projectId, notes };
 	}
 
 	/** The rows the character table shows, each with its place in the list. */
@@ -6871,75 +6771,18 @@ export class SnowflakeDashboardView extends ItemView {
 	private sceneEntries(
 		model: ProjectDashboardModel,
 	): { scene: SceneViewModel; index: number }[] {
-		const names = new Map(
-			model.characters.map((character) => [character.path, character.name]),
-		);
-		// The stored value is a link or the words themselves; either way the
-		// name is what the table shows and what the filter names.
-		const holds = (values: readonly string[], wanted: string): boolean =>
-			values.some((value) => termName(value) === wanted);
-		return model.scenes
-			.map((scene, index) => ({ scene, index }))
-			.filter(
-				({ scene }) =>
-					(this.scenePovFilter === '' ||
-						scene.povPath === this.scenePovFilter) &&
-					(this.sceneStatusFilter === 'all' ||
-						scene.progressStatus === this.sceneStatusFilter) &&
-					(this.sceneCategoryFilter === '' ||
-						scene.categoryPaths.some((path) =>
-							categoryWithin(path, this.sceneCategoryFilter),
-						)) &&
-					(this.sceneTimeFilter === '' ||
-						holds(scene.times, this.sceneTimeFilter)) &&
-					(this.sceneLocationFilter === '' ||
-						holds(scene.locations, this.sceneLocationFilter)) &&
-					(this.sceneCharacterFilter === '' ||
-						scene.characterPaths.includes(this.sceneCharacterFilter)) &&
-					memberMatches(
-						[
-							scene.title,
-							...scene.aliases,
-							...scene.categoryPaths,
-							scene.povName,
-							...scene.times.map(termName),
-							...scene.locations.map(termName),
-							scene.conflict,
-							...(scene.progressStatus === null
-								? []
-								: [this.t(`status.${scene.progressStatus}`)]),
-							...scene.characterPaths.map(
-								(path) => names.get(path) ?? '',
-							),
-						],
-						this.sceneQuery,
-					),
-			);
-	}
-
-	private clearSceneFilters(): void {
-		this.scenePovFilter = '';
-		this.sceneStatusFilter = 'all';
-		this.sceneCategoryFilter = '';
-		this.sceneTimeFilter = '';
-		this.sceneLocationFilter = '';
-		this.sceneCharacterFilter = '';
-	}
-
-	/** True when any of the funnel's six questions is being asked. */
-	private sceneFiltered(): boolean {
-		return (
-			this.scenePovFilter !== '' ||
-			this.sceneStatusFilter !== 'all' ||
-			this.sceneCategoryFilter !== '' ||
-			this.sceneTimeFilter !== '' ||
-			this.sceneLocationFilter !== '' ||
-			this.sceneCharacterFilter !== ''
-		);
+		return filterScenes(model.scenes, this.sceneQuery, this.sceneFilters, {
+			t: this.t,
+			characterNames: new Map(
+				model.characters.map((character) => [character.path, character.name]),
+			),
+		});
 	}
 
 	private sceneListFiltered(): boolean {
-		return this.sceneQuery.trim().length > 0 || this.sceneFiltered();
+		return (
+			this.sceneQuery.trim().length > 0 || sceneFiltered(this.sceneFilters)
+		);
 	}
 
 	/** Scrolls the character table to a row, wherever the filters put it. */
@@ -6970,106 +6813,6 @@ export class SnowflakeDashboardView extends ItemView {
 	 * by number, which is what a list of three thousand actually needs, and
 	 * they keep working while a filter hides the rows in between.
 	 */
-	private addOrderMenuItems(
-		menu: Menu,
-		config: {
-			/** The row's place in the full list, not the filtered one. */
-			index: number;
-			total: number;
-			/** True when any member is read-only, the rule the drag follows. */
-			locked: boolean;
-			/** True when the project cannot take a new member at all. */
-			readOnly: boolean;
-			insertTitle: string;
-			/** Everything the row could be moved after, so all but itself. */
-			options: () => MoveAfterEntry[];
-			move: (toIndex: number) => Promise<void>;
-			/** Scrolls to the row once the move has been drawn. */
-			reveal: () => void;
-			insert: () => void;
-		},
-	): void {
-		const { index, total } = config;
-		const moveTo = (toIndex: number): void => {
-			void this.runAndRefresh(() =>
-				config.move(Math.max(0, Math.min(toIndex, total - 1))),
-			).then(() => {
-				config.reveal();
-			});
-		};
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item
-				.setTitle(this.t('actions.moveUp'))
-				.setIcon('arrow-up')
-				.setDisabled(config.locked || index === 0)
-				.onClick(() => {
-					moveTo(index - 1);
-				}),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle(this.t('actions.moveDown'))
-				.setIcon('arrow-down')
-				.setDisabled(config.locked || index === total - 1)
-				.onClick(() => {
-					moveTo(index + 1);
-				}),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle(this.t('table.moveToPosition'))
-				.setIcon('hash')
-				.setDisabled(config.locked)
-				.onClick(() => {
-					new MoveToPositionModal(
-						this.app,
-						this.t,
-						total,
-						index + 1,
-						async (toIndex) => {
-							await config.move(toIndex);
-							await this.refresh();
-							config.reveal();
-						},
-					).open();
-				}),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle(this.t('table.moveAfter'))
-				.setIcon('corner-down-right')
-				.setDisabled(config.locked)
-				.onClick(() => {
-					new MoveAfterModal(
-						this.app,
-						this.t,
-						config.options(),
-						(picked) => {
-							// The mover leaves its place before it lands: a
-							// target below it slides up by one, so following it
-							// means taking its old index, while a target above
-							// keeps its index and following it means the slot
-							// after.
-							moveTo(
-								index < picked.index
-									? picked.index
-									: picked.index + 1,
-							);
-						},
-					).open();
-				}),
-		);
-		menu.addSeparator();
-		menu.addItem((item) =>
-			item
-				.setTitle(config.insertTitle)
-				.setIcon('plus')
-				.setDisabled(config.readOnly)
-				.onClick(config.insert),
-		);
-	}
-
 	/**
 	 * A last row whose only job is to add another. The button above the table is
 	 * out of sight once a list is long enough to scroll, and the end of the list
@@ -7140,8 +6883,9 @@ export class SnowflakeDashboardView extends ItemView {
 	private openSceneEditor(
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
+		section?: 'linked-manuscript',
 	): Promise<Modal> {
-		return this.memberFormContext(model, 'scene').then((context) => {
+		return this.memberFormContext(model, 'scene', scene.path).then((context) => {
 			const form = new CreateSceneModal(
 				this.app,
 				this.t,
@@ -7171,12 +6915,15 @@ export class SnowflakeDashboardView extends ItemView {
 					relationships: scene.relationships,
 					events: scene.events,
 					customFields: scene.customFields,
+					color: scene.color,
+					linkedManuscript: scene.linkedManuscript.map((link) => link.raw),
 					expectedRevision: scene.revision,
 				},
 				this.creatingCharacter(model),
 				context,
 			);
 			form.open();
+			if (section === 'linked-manuscript') form.revealLinkedManuscript();
 			return form;
 		});
 	}
@@ -7547,6 +7294,16 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 	}
 
+	/** What the order items need of the view: its app, its words, its redraw. */
+	private orderMenuDeps(): OrderMenuDeps {
+		return {
+			app: this.app,
+			t: this.t,
+			run: (action) => this.runAndRefresh(action),
+			refresh: () => this.refresh(),
+		};
+	}
+
 	private async runAndRefresh(action: () => Promise<void>): Promise<void> {
 		try {
 			await action();
@@ -7557,4 +7314,19 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 		}
 	}
+}
+
+/**
+ * Whoever opened a form is still on screen behind it and wants to know when
+ * it is done. A modal announces that by closing, and nothing else, so its
+ * own closing is what the wait is on.
+ */
+function whenClosed(form: Modal): Promise<void> {
+	return new Promise<void>((resolve) => {
+		const closed = form.onClose.bind(form);
+		form.onClose = (): void => {
+			closed();
+			resolve();
+		};
+	});
 }

@@ -702,6 +702,8 @@ export function renderRecordLine(
 		/** Said over the value when the note it names is gone. */
 		missingTitle: string;
 		removeLabel: string;
+		/** A navigable reference, while the surrounding line remains editable. */
+		link?: { href: string; open: () => void };
 	},
 	remove: () => void,
 ): void {
@@ -710,10 +712,21 @@ export function renderRecordLine(
 		cls: 'snowflake-method-record-line-label',
 		text: line.label,
 	});
-	const value = el.createDiv({
-		cls: 'snowflake-method-record-line-value',
-		text: line.text,
-	});
+	const value = line.link === undefined
+		? el.createDiv({ cls: 'snowflake-method-record-line-value', text: line.text })
+		: el.createEl('a', {
+			cls: 'snowflake-method-record-line-value snowflake-method-record-line-link',
+			text: line.text,
+			attr: { href: line.link.href },
+		});
+	const link = line.link;
+	if (link !== undefined) {
+		value.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			link.open();
+		});
+	}
 	if (line.missing) {
 		value.addClass('snowflake-method-option-picker-missing');
 		setTooltip(value, line.missingTitle);
@@ -1544,4 +1557,3 @@ function termText(term: RecordTerm): string {
 function linkPath(term: RecordTerm): string | null {
 	return term.kind === 'link' ? term.path : null;
 }
-

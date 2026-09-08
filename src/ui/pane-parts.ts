@@ -96,3 +96,56 @@ export function paintCount(element: HTMLElement, value: number): void {
 	element.setText(text);
 	element.dataset.digits = String(Math.min(text.length, 4));
 }
+
+export interface TabStrip<T extends string> {
+	strip: HTMLElement;
+	/** Lights the chosen tab and puts the others out. */
+	mark(chosen: T): void;
+}
+
+/**
+ * The strip of tabs a pane opens its faces from: the dashboard's statistics
+ * and task management panes, and the story structure view's families. One
+ * builder, so the strips look alike wherever they stand; what a chosen tab
+ * shows is the caller's.
+ */
+export function renderTabStrip<T extends string>(
+	host: HTMLElement,
+	spec: {
+		cls?: string;
+		label?: string;
+		tabs: readonly T[];
+		tabLabel(tab: T): string;
+		choose(tab: T, event: MouseEvent): void;
+	},
+): TabStrip<T> {
+	const strip = host.createDiv({
+		cls: `snowflake-method-tabs${spec.cls === undefined ? '' : ` ${spec.cls}`}`,
+		attr: {
+			role: 'tablist',
+			...(spec.label === undefined ? {} : { 'aria-label': spec.label }),
+		},
+	});
+	const buttons = new Map<T, HTMLElement>();
+	for (const tab of spec.tabs) {
+		const button = strip.createEl('button', {
+			cls: 'snowflake-method-tab',
+			text: spec.tabLabel(tab),
+			attr: { type: 'button', role: 'tab' },
+		});
+		button.addEventListener('click', (event) => {
+			spec.choose(tab, event);
+		});
+		buttons.set(tab, button);
+	}
+	return {
+		strip,
+		mark: (chosen) => {
+			for (const [tab, button] of buttons) {
+				const active = tab === chosen;
+				button.toggleClass('is-active', active);
+				button.setAttribute('aria-selected', active ? 'true' : 'false');
+			}
+		},
+	};
+}

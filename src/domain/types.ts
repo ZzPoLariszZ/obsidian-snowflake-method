@@ -139,6 +139,11 @@ export const FRONTMATTER_KEYS = {
 	// "progress" so the key can never be mistaken for the body-stored World
 	// Status records, which describe the entity inside the story.
 	progressStatus: 'snowflake-progress-status',
+	// A scene's own two: the macaron it is tinted with on a board, absent
+	// while it wears none, and the manuscript notes it is written into, a
+	// list of wikilinks kept exactly as typed, headings and aliases included.
+	sceneColor: 'snowflake-color',
+	linkedManuscript: 'snowflake-linked-manuscript',
 	category: 'snowflake-category',
 	worldbuildingKind: 'snowflake-worldbuilding-kind',
 	timeKind: 'snowflake-time-kind',

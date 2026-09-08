@@ -124,7 +124,9 @@ function iconButton(
 /**
  * The strip of the eight colour swatches, one or none of them chosen. The
  * strip's look is the manuscript tint strip's; each swatch carries its colour
- * through the shared tint class rather than a hex.
+ * through the shared tint class rather than a hex. A surface whose colour
+ * can be taken off altogether, a scene's, asks for a ninth swatch ahead of
+ * the eight, drawn with the slash the theme swatch wears.
  */
 export function renderStickySwatches(
 	host: HTMLElement,
@@ -132,13 +134,26 @@ export function renderStickySwatches(
 		value: StickyNoteColor | '';
 		t: Translate;
 		onPick(value: StickyNoteColor): void;
+		none?: { label: string; onPick(): void };
 	},
 ): { sync(value: StickyNoteColor | ''): void } {
 	const strip = host.createDiv({
 		cls: 'snowflake-method-tint-swatches snowflake-method-sticky-swatches',
 		attr: { role: 'radiogroup', 'aria-label': spec.t('stickyNotes.color') },
 	});
-	const swatches: { value: StickyNoteColor; el: HTMLButtonElement }[] = [];
+	const swatches: { value: StickyNoteColor | ''; el: HTMLButtonElement }[] = [];
+	const none = spec.none;
+	if (none !== undefined) {
+		const el = strip.createEl('button', {
+			cls: 'snowflake-method-tint-swatch snowflake-method-sticky-swatch snowflake-method-sticky-tint is-theme is-none',
+			attr: { type: 'button', role: 'radio', 'aria-label': none.label },
+		});
+		setTooltip(el, none.label);
+		el.addEventListener('click', () => {
+			none.onPick();
+		});
+		swatches.push({ value: '', el });
+	}
 	for (const value of STICKY_NOTE_COLORS) {
 		const label = spec.t(`stickyNotes.color.${value}`);
 		const el = strip.createEl('button', {

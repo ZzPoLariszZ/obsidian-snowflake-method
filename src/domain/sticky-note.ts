@@ -15,27 +15,17 @@
  * nothing on another.
  */
 
+import { MACARON_COLORS, isMacaronColor, type MacaronColor } from './macaron';
 import { FRONTMATTER_KEYS, SCHEMA_VERSION } from './types';
 
 export const STICKY_NOTE_DOCUMENT = 'sticky-note' as const;
 
-/** The eight macaron colours a note can wear; the hues live in the stylesheet. */
-export const STICKY_NOTE_COLORS = [
-	'macaron-1',
-	'macaron-2',
-	'macaron-3',
-	'macaron-4',
-	'macaron-5',
-	'macaron-6',
-	'macaron-7',
-	'macaron-8',
-] as const;
-export type StickyNoteColor = (typeof STICKY_NOTE_COLORS)[number];
+/** The eight macaron colours a note can wear: the palette scenes share. */
+export const STICKY_NOTE_COLORS = MACARON_COLORS;
+export type StickyNoteColor = MacaronColor;
 export const DEFAULT_STICKY_NOTE_COLOR: StickyNoteColor = 'macaron-3';
 
-export function isStickyNoteColor(value: unknown): value is StickyNoteColor {
-	return (STICKY_NOTE_COLORS as readonly unknown[]).includes(value);
-}
+export const isStickyNoteColor = isMacaronColor;
 
 /** The two faces of a note: rendered Markdown, or the Markdown itself. */
 export const STICKY_NOTE_MODES = ['viewing', 'editing'] as const;

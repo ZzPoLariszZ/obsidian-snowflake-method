@@ -1172,6 +1172,155 @@
 	stroke-width: 2.25;
 }
 
+/* A rail row that leads to a view of its own reads as a link: the label in
+   the link ink, underlined under the pointer, and a small arrow out where
+   a step keeps its count. Its mark stays in the mark column, level with
+   the numbered circles above it. */
+.snowflake-method-dashboard
+	button.snowflake-method-step-button.snowflake-method-step-link
+	.snowflake-method-step-label {
+	color: var(--link-color);
+}
+
+.snowflake-method-dashboard
+	button.snowflake-method-step-button.snowflake-method-step-link:hover
+	.snowflake-method-step-label {
+	color: var(--link-color-hover, var(--link-color));
+	text-decoration: underline;
+}
+
+.snowflake-method-step-indicator.snowflake-method-step-link-mark {
+	border-color: transparent;
+	background: transparent;
+	color: var(--text-faint);
+}
+
+.snowflake-method-step-indicator.snowflake-method-step-link-mark::after {
+	display: none;
+}
+
+.snowflake-method-step-indicator.snowflake-method-step-link-mark svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+/* The shimmer fills the letters; sparkles float just above and below them. */
+.snowflake-method-dashboard:not(.is-rail-compact) .snowflake-method-workspace-label {
+	display: block;
+	overflow: visible;
+}
+
+.snowflake-method-workspace-lettering {
+	position: relative;
+	display: inline-block;
+	max-width: 100%;
+	vertical-align: top;
+}
+
+.snowflake-method-workspace-text {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.snowflake-method-workspace-sparkles {
+	display: none;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.snowflake-method-workspace-sparkle {
+	position: absolute;
+	inset-block-start: -0.55rem;
+	inset-inline-start: 8%;
+	color: var(--text-accent);
+}
+
+.snowflake-method-workspace-sparkle svg {
+	display: block;
+	width: 0.4rem;
+	height: 0.4rem;
+}
+
+.snowflake-method-workspace-sparkle:nth-child(2) {
+	--snowflake-method-sparkle-delay: -1.2s;
+	inset-inline-start: 47%;
+}
+
+.snowflake-method-workspace-sparkle:nth-child(3) {
+	--snowflake-method-sparkle-delay: -2.4s;
+	inset-inline-start: 89%;
+}
+
+.snowflake-method-workspace-sparkle:nth-child(4) {
+	--snowflake-method-sparkle-delay: -0.6s;
+	inset-block-start: calc(100% + 0.05rem);
+	inset-inline-start: 16%;
+}
+
+.snowflake-method-workspace-sparkle:nth-child(5) {
+	--snowflake-method-sparkle-delay: -1.8s;
+	inset-block-start: calc(100% + 0.05rem);
+	inset-inline-start: 60%;
+}
+
+.snowflake-method-workspace-sparkle:nth-child(6) {
+	--snowflake-method-sparkle-delay: -3s;
+	inset-block-start: calc(100% + 0.05rem);
+	inset-inline-start: 94%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.snowflake-method-workspace-text {
+		background-image: linear-gradient(105deg,
+			currentColor 40%,
+			var(--text-accent) 45%,
+			color-mix(in srgb, var(--text-accent) 30%, var(--text-normal)) 50%,
+			var(--text-accent) 55%,
+			currentColor 60%);
+		background-size: 250% 100%;
+		background-clip: text;
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		animation: snowflake-method-workspace-shimmer 3.8s ease-in-out infinite;
+	}
+
+	.snowflake-method-workspace-sparkles {
+		display: block;
+	}
+
+	.snowflake-method-workspace-sparkle {
+		animation: snowflake-method-workspace-sparkle 3.6s ease-in-out infinite;
+		animation-delay: var(--snowflake-method-sparkle-delay, 0s);
+	}
+}
+
+@keyframes snowflake-method-workspace-shimmer {
+	0%, 8% { background-position: 150% 0; }
+	55%, 100% { background-position: -50% 0; }
+}
+
+@keyframes snowflake-method-workspace-sparkle {
+	0%, 100% { transform: translateY(2px) scale(0.6); opacity: 0.15; }
+	50% { transform: translateY(-2px) scale(1.1) rotate(25deg); opacity: 0.85; }
+}
+
+.snowflake-method-reduce-motion .snowflake-method-workspace-sparkles {
+	display: none;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-workspace-text {
+	background-image: none;
+	-webkit-text-fill-color: currentColor;
+	animation: none;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-workspace-sparkle {
+	animation: none;
+}
+
 .snowflake-method-panel {
 	/* One measure for a tab strip: the tabs stand this tall, the room kept at
 	   either end of the row is the same distance again, and so is the padding
@@ -1409,7 +1558,8 @@
 }
 
 .snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-scroll,
-.snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list {
+.snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-sticky-archive-list,
+.snowflake-method-tab-scroll.is-self-scrolling .snowflake-method-corkboard-scroll {
 	overflow-y: scroll;
 	margin-inline-end: calc(
 		-1 *
@@ -1428,6 +1578,23 @@
 	margin: 0;
 	color: var(--text-muted);
 	font-style: italic;
+}
+
+/* The visualization tabs and the field the chosen face opens onto,
+   filling the leaf. */
+.snowflake-method-story-structure {
+	--snowflake-method-tab-height: 2.75rem;
+	--snowflake-method-tab-width: 9.5rem;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	padding: var(--size-4-5);
+}
+
+.snowflake-method-story-structure .snowflake-method-tab-panel {
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 .snowflake-method-step-ten-description-row {
@@ -3883,8 +4050,21 @@
 }
 
 .snowflake-method-scene-conflict-setting,
-.snowflake-method-scene-events-setting {
+.snowflake-method-scene-events-setting,
+.snowflake-method-scene-linked-setting {
 	grid-column: 1 / -1;
+}
+
+.snowflake-method-scene-linked-manuscript {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	width: 100%;
+	text-align: start;
+}
+
+.snowflake-method-scene-linked-manuscript .snowflake-method-record-line-link {
+	color: var(--text-accent);
 }
 
 .snowflake-method-scene-form
@@ -6154,7 +6334,8 @@ body {
 /* The chooser's chevron stands its border, its margin and half its box in
    from the frame's edge; the remove button, half its own wider box from the
    line's. Two pixels of padding bring the two centres onto one vertical. */
-.snowflake-method-foreshadowing-related .snowflake-method-record-line {
+.snowflake-method-foreshadowing-related .snowflake-method-record-line,
+.snowflake-method-scene-linked-manuscript .snowflake-method-record-line {
 	padding-inline-end: var(--size-2-1);
 }
 
@@ -6950,6 +7131,9 @@ col.snowflake-method-prose-column-dialogue {
 	.snowflake-method-prose-controls
 	.search-input-container,
 .snowflake-method-task-board
+	.snowflake-method-prose-controls
+	.search-input-container,
+.snowflake-method-corkboard
 	.snowflake-method-prose-controls
 	.search-input-container {
 	flex: 0 1 16rem;
@@ -7966,20 +8150,21 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 /* A word, not a badge: the same four colours the step indicators in the rail
    carry, so how far along a member is reads the same wherever it is shown. */
 .snowflake-method-entity-status {
+	--snowflake-method-status-color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
-	color: var(--text-faint);
+	color: var(--snowflake-method-status-color);
 }
 
 .snowflake-method-entity-status.is-complete {
-	color: var(--color-green);
+	--snowflake-method-status-color: var(--color-green);
 }
 
 .snowflake-method-entity-status.is-in-progress {
-	color: var(--color-blue);
+	--snowflake-method-status-color: var(--color-blue);
 }
 
 .snowflake-method-entity-status.is-in-revision {
-	color: var(--color-yellow);
+	--snowflake-method-status-color: var(--color-yellow);
 }
 
 /* The four faces of a foreshadowing, in the progress words' own inks:
@@ -8312,6 +8497,16 @@ button.snowflake-method-kind-options {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	color: var(--text-normal);
+}
+
+.snowflake-method-record-line-link {
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.snowflake-method-record-line-link:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
 }
 
 .snowflake-method-record-line-remove.clickable-icon {
@@ -11374,10 +11569,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-width: 8rem;
 }
 
-/* The colour strip inside the filter panel wraps if the panel is narrower
-   than nine swatches. */
-.snowflake-method-sticky-filter-panel .snowflake-method-sticky-swatches {
+/* Every colour filter centres its strip, leaving equal space at both ends.
+   Narrow panels can wrap the swatches without losing that balance. */
+.snowflake-method-filter-panel .snowflake-method-sticky-swatches {
 	flex-wrap: wrap;
+	justify-content: center;
 }
 
 /* The two text buttons at a row's end, the add and the way out of the
@@ -12167,4 +12363,588 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	grid-template-columns: repeat(auto-fill, 20rem);
 	gap: var(--size-4-3) var(--size-4-6);
 	align-items: start;
+}
+
+/* == Ordered corkboard ==================================================== */
+
+/* The board fills the field the tab opens onto; its own scroller is the
+   only thing that scrolls, the band standing in the strip's row above. */
+.snowflake-method-corkboard-host,
+.snowflake-method-corkboard {
+	height: 100%;
+}
+
+/* The four measures the board writes in px from its layout; these are the
+   rest state a card is drawn at before the first paint. */
+.snowflake-method-corkboard {
+	--snowflake-method-corkboard-gap: 2.5rem;
+	--snowflake-method-corkboard-insert-size: 1.5rem;
+	--snowflake-method-corkboard-edge-gap: var(--snowflake-method-tab-height, 2.5rem);
+	--snowflake-method-corkboard-action-size: calc(var(--icon-s) + 2 * var(--size-2-2));
+	--snowflake-method-corkboard-link-height: 1.5rem;
+	--snowflake-method-corkboard-card-width: 16rem;
+	--snowflake-method-corkboard-card-height: 15rem;
+	--snowflake-method-corkboard-head-height: 2.25rem;
+}
+
+.snowflake-method-corkboard .search-input-container.is-hidden,
+.snowflake-method-corkboard .snowflake-method-filter-button.is-hidden,
+.snowflake-method-corkboard .snowflake-method-corkboard-display.is-hidden,
+.snowflake-method-corkboard .snowflake-method-corkboard-direction.is-hidden,
+.snowflake-method-corkboard .snowflake-method-character-empty.is-hidden,
+.snowflake-method-corkboard-scroll.is-hidden,
+.snowflake-method-corkboard-title.is-hidden,
+.snowflake-method-corkboard-title-input.is-hidden,
+.snowflake-method-corkboard-insert.is-hidden {
+	display: none;
+}
+
+.snowflake-method-corkboard .snowflake-method-character-empty {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-corkboard-add {
+	flex: 0 0 auto;
+	margin-inline-start: var(--size-2-3);
+	white-space: nowrap;
+}
+
+.snowflake-method-corkboard-display[aria-expanded='true'],
+.snowflake-method-corkboard-direction:hover {
+	color: var(--text-accent);
+}
+
+.snowflake-method-corkboard-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	/* Reach into the outer spacing for the left insertion button and shadows.
+	   Matching padding keeps the canvas aligned with the toolbar. */
+	margin-block: -8px;
+	padding-block: 8px;
+	margin-inline-start: calc(-1 * var(--snowflake-method-corkboard-edge-gap));
+	padding-inline-start: var(--snowflake-method-corkboard-edge-gap);
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior-y: contain;
+}
+
+/* The canvas keeps the toolbar's content width while insertion controls use
+   the gaps beside the cards, including the space inside the outer frame. */
+.snowflake-method-corkboard-canvas {
+	position: relative;
+}
+
+.snowflake-method-corkboard-group {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	height: var(--snowflake-method-corkboard-head-height);
+}
+
+.snowflake-method-corkboard-group-label {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-corkboard-group-rule {
+	flex: 1 1 auto;
+	height: 1px;
+	background-color: var(--background-modifier-border);
+}
+
+/* A card stands on the primary ground until a macaron tints it: later
+   than the tint carrier's own rest ground, so the untinted card is the
+   panel's white, and a data-color rule still outranks both. */
+.snowflake-method-corkboard-card {
+	--snowflake-method-sticky-ground: var(--background-primary);
+	--snowflake-method-corkboard-lift: 0px;
+	--snowflake-method-corkboard-shadow: 0 0 0 0 transparent;
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	display: flex;
+	flex-direction: column;
+	width: var(--snowflake-method-corkboard-card-width);
+	height: var(--snowflake-method-corkboard-card-height);
+	border: 1px solid var(--snowflake-method-sticky-edge);
+	border-radius: var(--radius-m);
+	background-color: var(--snowflake-method-sticky-ground);
+	box-shadow: var(--snowflake-method-corkboard-shadow);
+	color: var(--text-normal);
+	/* The layout owns transform; translate adds only the hover lift. */
+	translate: 0 var(--snowflake-method-corkboard-lift);
+	transition: translate 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.snowflake-method-corkboard-card:where(:hover, :focus-within):not(.is-dragging) {
+	--snowflake-method-corkboard-shadow:
+		0 0 0 2px color-mix(in srgb, var(--interactive-accent) 18%, transparent),
+		var(--shadow-l);
+	z-index: 1;
+	border-color: var(--interactive-accent);
+}
+
+/* Each half of the gap belongs to its nearest card, so entering the gap
+   directly also reveals the insertion controls. */
+.snowflake-method-corkboard-card::before {
+	content: '';
+	position: absolute;
+	z-index: -1;
+	inset-block: 0;
+	inset-inline: calc(-1 * var(--snowflake-method-corkboard-gap) / 2 - 1px);
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+	.snowflake-method-corkboard-card:hover {
+		--snowflake-method-corkboard-lift: -2px;
+	}
+}
+
+/* Keep the pointer inside the card when its bottom edge moves upward. */
+.snowflake-method-corkboard-card::after {
+	content: '';
+	position: absolute;
+	inset-block-start: calc(100% + 1px);
+	inset-inline: -1px;
+	height: calc(-1 * var(--snowflake-method-corkboard-lift));
+}
+
+.snowflake-method-corkboard-card[draggable='true'] {
+	cursor: grab;
+}
+
+.snowflake-method-corkboard-card.is-dragging {
+	opacity: 0.55;
+}
+
+.snowflake-method-corkboard-card.is-dragging,
+.snowflake-method-corkboard-card.is-drop-before,
+.snowflake-method-corkboard-card.is-drop-after,
+.snowflake-method-reduce-motion .snowflake-method-corkboard-card {
+	--snowflake-method-corkboard-lift: 0px;
+}
+
+.snowflake-method-corkboard-card:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+/* The landing mark rides inside the edge, so neither the scroller's clip
+   nor a neighbour's stacking can hide it. */
+.snowflake-method-corkboard-card.is-drop-before {
+	box-shadow: inset 3px 0 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
+}
+
+.snowflake-method-corkboard-card.is-drop-after {
+	box-shadow: inset -3px 0 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
+}
+
+.snowflake-method-corkboard-head {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-block-end: 1px solid
+		color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+}
+
+.snowflake-method-corkboard-number {
+	flex: 0 0 auto;
+}
+
+/* Both faces use the same line box and inset, so entering a title never
+   moves the header, its text baseline, or the neighbouring number. */
+.snowflake-method-corkboard button.snowflake-method-corkboard-title,
+.snowflake-method-corkboard input.snowflake-method-corkboard-title-input {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 0;
+	height: 1.5rem;
+	margin: 0;
+	padding: 0 var(--size-2-1);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	line-height: calc(1.5rem - 2px);
+	text-align: start;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: text;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-title:hover {
+	background: transparent;
+	box-shadow: none;
+}
+
+.snowflake-method-corkboard input.snowflake-method-corkboard-title-input:focus {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary);
+	box-shadow: none;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-title.is-hidden,
+.snowflake-method-corkboard input.snowflake-method-corkboard-title-input.is-hidden {
+	display: none;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-title:disabled {
+	cursor: default;
+}
+
+.snowflake-method-corkboard-card.has-managed-section-issue
+	.snowflake-method-corkboard-title {
+	color: var(--color-orange, var(--text-warning));
+}
+
+.snowflake-method-corkboard select.snowflake-method-corkboard-status-select {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 45%;
+	height: 1.5rem;
+	padding: 0 var(--size-2-1);
+	border: 1px solid transparent;
+	background: transparent;
+	box-shadow: none;
+	color: var(--snowflake-method-status-color);
+	font-size: var(--font-ui-smaller);
+	text-align: end;
+	text-overflow: ellipsis;
+	cursor: pointer;
+	transition: none;
+}
+
+.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:hover,
+.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:focus-visible {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:focus-visible {
+	border-color: var(--interactive-accent);
+}
+
+.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:disabled {
+	cursor: default;
+}
+
+.snowflake-method-corkboard-card .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	padding: var(--size-2-1) var(--size-2-2);
+	color: var(--text-muted);
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-more {
+	width: var(--snowflake-method-corkboard-action-size);
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-color[aria-expanded='true'] {
+	color: var(--text-accent);
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-color:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.snowflake-method-corkboard-color-panel {
+	position: fixed;
+	z-index: var(--layer-menu);
+	padding: var(--size-2-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.snowflake-method-corkboard-footer {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	margin-block-start: auto;
+	padding: var(--size-2-3) var(--size-4-3);
+	border-block-start: 1px solid
+		color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+}
+
+.snowflake-method-corkboard-footer-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-corkboard-actions {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-1);
+	margin-inline-start: auto;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-pov {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	height: auto;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	overflow: hidden;
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+	text-align: start;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-pov:hover:not(:disabled) {
+	text-decoration: underline;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-pov:disabled {
+	opacity: 1;
+	cursor: default;
+}
+
+.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-body,
+.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-links,
+.snowflake-method-corkboard[data-mode='standard'] .snowflake-method-corkboard-links {
+	display: none;
+}
+
+.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-head {
+	border-block-end: 0;
+}
+
+.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-footer {
+	margin-block-start: 0;
+}
+
+/* The conflict is the entire space between the header and footer. */
+.snowflake-method-corkboard-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.snowflake-method-corkboard textarea.snowflake-method-corkboard-conflict {
+	flex: 1 1 auto;
+	width: 100%;
+	min-height: 0;
+	margin: 0;
+	padding: var(--size-4-2) var(--size-4-3);
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	overflow: auto;
+	resize: none;
+	font-family: var(--font-text);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-corkboard textarea.snowflake-method-corkboard-conflict:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.snowflake-method-corkboard-links {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: center;
+	flex: 0 0 auto;
+	/* The separate section uses the extended card's extra 4rem, leaving
+	   the conflict editor the same height as in a standard card. */
+	box-sizing: border-box;
+	height: 4rem;
+	padding: var(--size-2-2) var(--size-4-3);
+	border-block-start: 1px solid
+		color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+}
+
+.snowflake-method-corkboard-card.has-more-links .snowflake-method-corkboard-links {
+	grid-template-columns: minmax(0, 1fr) var(--snowflake-method-corkboard-action-size);
+	grid-template-rows: repeat(2, var(--snowflake-method-corkboard-link-height));
+	align-content: center;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-corkboard-chips {
+	display: flex;
+	grid-column: 1;
+	grid-row: 1;
+	flex-direction: column;
+	justify-content: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+	height: 100%;
+}
+
+.snowflake-method-corkboard-chips .snowflake-method-character-empty {
+	margin: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-corkboard-card.has-more-links .snowflake-method-corkboard-chips {
+	grid-row: 1 / span 2;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-link,
+.snowflake-method-corkboard button.snowflake-method-corkboard-more-links {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--size-2-1);
+	min-width: 0;
+	height: var(--snowflake-method-corkboard-link-height);
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	text-align: start;
+	cursor: pointer;
+}
+
+.snowflake-method-corkboard-link-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-corkboard-link-prefix {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-more-links {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	align-self: center;
+	justify-content: center;
+	width: var(--snowflake-method-corkboard-action-size);
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-more-links.is-hidden {
+	display: none;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-link:hover,
+.snowflake-method-corkboard button.snowflake-method-corkboard-more-links:hover:not(:disabled) {
+	text-decoration: underline;
+}
+
+.snowflake-method-corkboard button.snowflake-method-corkboard-link.is-missing {
+	color: var(--text-muted);
+}
+
+.snowflake-method-corkboard-link-icon {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-corkboard-link-icon svg {
+	width: 0.9em;
+	height: 0.9em;
+}
+
+/* Plain plus icons sit midway through the spacing on both sides of a card.
+   Edge cards use the frame's inset instead of the gap between cards. */
+.snowflake-method-corkboard .clickable-icon.snowflake-method-corkboard-insert {
+	--icon-size: var(--icon-s);
+	--snowflake-method-corkboard-insert-gap: var(--snowflake-method-corkboard-gap);
+	position: absolute;
+	inset-block-start: 50%;
+	display: inline-grid;
+	place-items: center;
+	width: var(--snowflake-method-corkboard-insert-size);
+	height: var(--snowflake-method-corkboard-insert-size);
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	opacity: 0;
+	pointer-events: auto;
+	transform: translateY(-50%);
+	/* The insertion point stays centred in the grid as its card lifts. */
+	translate: 0 calc(-1 * var(--snowflake-method-corkboard-lift));
+	transition: translate 180ms ease;
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-insert-before {
+	inset-inline-start: calc(
+		(-1 * var(--snowflake-method-corkboard-insert-gap) - var(--snowflake-method-corkboard-insert-size)) / 2 - 1px
+	);
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-insert-after {
+	inset-inline-end: calc(
+		(-1 * var(--snowflake-method-corkboard-insert-gap) - var(--snowflake-method-corkboard-insert-size)) / 2 - 1px
+	);
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-insert.is-row-start,
+.snowflake-method-corkboard .snowflake-method-corkboard-insert.is-row-end {
+	--snowflake-method-corkboard-insert-gap: var(--snowflake-method-corkboard-edge-gap);
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-insert:hover,
+.snowflake-method-corkboard .snowflake-method-corkboard-insert:focus-visible {
+	color: var(--text-accent);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+}
+
+/* The invisible hit area bridges the gap so the hovered card stays active
+   while the pointer moves to either plus icon. */
+.snowflake-method-corkboard-insert::before {
+	content: '';
+	position: absolute;
+	inset: calc(
+		(var(--snowflake-method-corkboard-insert-size) - var(--snowflake-method-corkboard-insert-gap)) / 2
+	);
+}
+
+.snowflake-method-corkboard-card:hover .snowflake-method-corkboard-insert,
+.snowflake-method-corkboard-card:focus-within .snowflake-method-corkboard-insert,
+.snowflake-method-corkboard .snowflake-method-corkboard-insert:focus-visible {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.snowflake-method-corkboard .snowflake-method-corkboard-insert.is-hidden {
+	display: none;
+}
+
+.snowflake-method-reduce-motion .snowflake-method-corkboard-card,
+.snowflake-method-reduce-motion .snowflake-method-corkboard .snowflake-method-corkboard-insert {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-corkboard-card,
+	.snowflake-method-corkboard .snowflake-method-corkboard-insert {
+		transition: none;
+	}
 }

@@ -23,6 +23,7 @@ import {
 	DEFAULT_STOPWORDS_ZH,
 	DEFINITION_FILE_IDS,
 	DIALOGUE_STYLE_TOKENS,
+	parseWikiLink,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
 	STEP_DEFINITIONS,
@@ -30,6 +31,7 @@ import {
 	STEP_TWO_SECTION_IDS,
 	STICKY_NOTE_LOCAL_STATE_KEY,
 	TEMPLATE_SECTION_IDS,
+	wikiLinkLabel,
 	WRITING_MODES,
 	WRITING_SESSION_TYPES,
 	analyzeMentions,
@@ -154,6 +156,7 @@ import {
 } from './repository';
 import {
 	createStableId,
+	type ScenePatch,
 	sessionClockMs,
 	SnowflakeProjectService,
 	ExportIntoManuscriptError,
@@ -285,6 +288,15 @@ import {
 	STATISTICS_VIEW_TYPE,
 	SnowflakeStatisticsView,
 } from './ui/statistics-view';
+import {
+	STORY_STRUCTURE_VIEW_TYPE,
+	SnowflakeStoryStructureView,
+} from './ui/story-structure-view';
+import {
+	DEFAULT_STORY_STRUCTURE_VISUALIZATION,
+	type StoryStructureVisualization,
+} from './ui/story-structure-state';
+import { renderCorkboard } from './ui/corkboard';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -337,6 +349,7 @@ import type {
 	ManuscriptModel,
 	ManuscriptSegmentText,
 	ManuscriptWindowSettings,
+	SceneFormIntent,
 	SegmentNamed,
 	StepFields,
 	KindMutationOutcome,
@@ -897,6 +910,16 @@ export default class SnowflakeMethodPlugin
 				new SnowflakeStatisticsView(leaf, this.writingSessions(), () =>
 					this.statisticsFingerprint(),
 				),
+		);
+		this.registerView(
+			STORY_STRUCTURE_VIEW_TYPE,
+			(leaf) =>
+				new SnowflakeStoryStructureView(leaf, {
+					host: this,
+					fingerprint: () => this.statisticsFingerprint(),
+					recentProjectPath: () => this.settings.recentProjectPath,
+					corkboard: renderCorkboard,
+				}),
 		);
 		this.registerView(
 			STICKY_NOTES_VIEW_TYPE,
@@ -1681,13 +1704,14 @@ export default class SnowflakeMethodPlugin
 		}
 		// Read off the snapshot in hand, so the three vocabularies cost the
 		// walk of their folders and nothing of the members again — and side
-		// by side, since none of the four listings needs another.
-		const [category, worldStatus, relationship, customFieldTemplates] =
+		// by side, including the manuscript's indexed reading order.
+		const [category, worldStatus, relationship, customFieldTemplates, manuscript] =
 			await Promise.all([
 				this.projects.listDefinitionForest(project, 'category'),
 				this.projects.listDefinitionForest(project, 'world-status'),
 				this.projects.listDefinitionForest(project, 'relationship'),
 				this.projects.listCustomFieldTemplates(project),
+				this.projects.manuscript.listSegments(project),
 			]);
 		const definitions = {
 			category,
@@ -1731,6 +1755,7 @@ export default class SnowflakeMethodPlugin
 				},
 			characters: characterModels,
 			scenes: sceneModels,
+			manuscriptPaths: manuscript.map((segment) => segment.path),
 			definitions,
 			customFieldTemplates,
 			worldbuildingKinds: project.worldbuildingKinds,
@@ -2033,6 +2058,8 @@ export default class SnowflakeMethodPlugin
 				relationships: request.relationships,
 				customFields: request.customFields,
 				events: request.events,
+				color: request.color,
+				linkedManuscript: request.linkedManuscript,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -2385,10 +2412,32 @@ export default class SnowflakeMethodPlugin
 				relationships: request.relationships,
 				customFields: request.customFields,
 				events: request.events,
+				color: request.color,
+				linkedManuscript: request.linkedManuscript,
 			});
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
+	}
+
+	async patchScene(id: string, patch: ScenePatch): Promise<string> {
+		const project = await this.requireCurrentProject();
+		try {
+			const written = await this.projects.updateScene(project, id, patch);
+			return written.revision;
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async listManuscriptNotes(): Promise<{ path: string; title: string }[]> {
+		const project = await this.resolveProject(null);
+		if (project === null) return [];
+		const segments = await this.projects.manuscript.listSegments(project);
+		return segments.map((segment) => ({
+			path: segment.path,
+			title: segment.title,
+		}));
 	}
 
 	async deleteScene(id: string, expectedRevision: string): Promise<void> {
@@ -5537,6 +5586,38 @@ export default class SnowflakeMethodPlugin
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
+	async openStoryStructure(
+		visualization?: StoryStructureVisualization,
+		options: { newTab?: boolean } = {},
+	): Promise<void> {
+		const existing =
+			options.newTab === true
+				? undefined
+				: this.app.workspace
+						.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)
+						.find((leaf) => leaf.getRoot() === this.app.workspace.rootSplit);
+		const leaf = existing ?? this.app.workspace.getLeaf('tab');
+		if (existing === undefined) {
+			await leaf.setViewState({
+				type: STORY_STRUCTURE_VIEW_TYPE,
+				active: true,
+				state: {
+					visualization: visualization ?? DEFAULT_STORY_STRUCTURE_VISUALIZATION,
+				},
+			});
+		}
+		await leaf.loadIfDeferred();
+		if (
+			existing !== undefined &&
+			visualization !== undefined &&
+			leaf.view instanceof SnowflakeStoryStructureView
+		) {
+			leaf.view.showVisualization(visualization);
+		}
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
 	/** The note this project was last written in, when it is still there. */
 	private rememberedManuscriptNote(projectPath: string): string | null {
 		const projectId = this.projectIdOfPath(projectPath);
@@ -8054,6 +8135,34 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'open-story-structure',
+			name: this.globalT('commands.openStoryStructure'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openStoryStructure().catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-ordered-corkboard',
+			name: this.globalT('commands.openOrderedCorkboard'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openStoryStructure('corkboard-ordered').catch(
+						(error: unknown) => {
+							this.showError(error);
+						},
+					);
+				}
+				return available;
+			},
+		});
+		this.addCommand({
 			id: 'migrate-member-notes',
 			name: this.globalT('commands.migrateMemberNotes'),
 			checkCallback: (checking) => {
@@ -8604,6 +8713,17 @@ export default class SnowflakeMethodPlugin
 				leaf.detach();
 			}
 		}
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			STORY_STRUCTURE_VIEW_TYPE,
+		)) {
+			const projectPath =
+				leaf.view instanceof SnowflakeStoryStructureView
+					? leaf.view.projectPath()
+					: null;
+			if (projectPath !== null && isPathAtOrBelow(projectPath, path)) {
+				leaf.detach();
+			}
+		}
 	}
 
 	/**
@@ -8900,6 +9020,18 @@ export default class SnowflakeMethodPlugin
 					await leaf.view.refresh();
 				}),
 		);
+		await Promise.all(
+			this.app.workspace
+				.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)
+				.map(async (leaf) => {
+					if (!(leaf.view instanceof SnowflakeStoryStructureView)) return;
+					if (!leaf.view.containerEl.isShown()) {
+						leaf.view.queueRefreshWhenShown();
+						return;
+					}
+					await leaf.view.refresh();
+				}),
+		);
 		this.rerenderStatisticsViews();
 		if (options.streams !== false) await this.refreshManuscriptStreams();
 		this.refreshManagedEditors();
@@ -8979,6 +9111,11 @@ export default class SnowflakeMethodPlugin
 			STICKY_NOTES_VIEW_TYPE,
 		)) {
 			if (leaf.view instanceof SnowflakeStickyNotesView) leaf.view.rerender();
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			STORY_STRUCTURE_VIEW_TYPE,
+		)) {
+			if (leaf.view instanceof SnowflakeStoryStructureView) leaf.view.rerender();
 		}
 		if (this.stickyFloatsProject !== this.settings.recentProjectPath) {
 			void this.reconcileStickyFloats().catch((error: unknown) => {
@@ -9145,6 +9282,16 @@ export default class SnowflakeMethodPlugin
 			locations: scene.locations,
 			characterPaths: scene.characters,
 			conflict: scene.conflict,
+			color: scene.color,
+			linkedManuscript: scene.linkedManuscript.map((raw) => {
+				const link = parseWikiLink(raw);
+				return {
+					raw,
+					linktext: link?.linktext ?? raw,
+					target: link?.target ?? raw,
+					label: wikiLinkLabel(raw),
+				};
+			}),
 			progressStatus: scene.progressStatus,
 			aliases: scene.aliases,
 			categoryPaths: scene.categories.map((raw) =>
@@ -9450,6 +9597,54 @@ export default class SnowflakeMethodPlugin
 						return this.checkCurrentProject();
 					},
 		).open();
+	}
+
+	async openSceneForm(intent: SceneFormIntent): Promise<string | null> {
+		return this.withDashboardForm((view) => view.openSceneForm(intent), null);
+	}
+
+	async openCharacterForm(id: string): Promise<void> {
+		await this.withDashboardForm((view) => view.openCharacterForm(id), undefined);
+	}
+
+	/** Opens a dashboard-owned form while keeping the requesting surface active. */
+	private async withDashboardForm<T>(
+		open: (view: SnowflakeDashboardView) => Promise<T>,
+		fallback: T,
+	): Promise<T> {
+		const recent = this.settings.recentProjectPath;
+		if (recent === null) return fallback;
+		let view = this.dashboardViewForRecentProject();
+		let background = false;
+		if (view === null) {
+			// The form is the dashboard's, so a dashboard there has to be: one
+			// opened behind the surface that asked, and that surface brought
+			// straight back in front, since a new tab takes the front as it is
+			// made.
+			const from = this.app.workspace.getMostRecentLeaf(
+				this.app.workspace.rootSplit,
+			);
+			const leaf = this.app.workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: DASHBOARD_VIEW_TYPE,
+				active: false,
+				state: { projectPath: recent, selectedStep: this.getRecentStep() },
+			});
+			await leaf.loadIfDeferred();
+			if (from !== null && from !== leaf) {
+				await this.app.workspace.revealLeaf(from);
+				this.app.workspace.setActiveLeaf(from, { focus: true });
+			}
+			view = leaf.view instanceof SnowflakeDashboardView ? leaf.view : null;
+			background = true;
+		}
+		if (view === null) return fallback;
+		try {
+			return await open(view);
+		} finally {
+			// A frame drawn while hidden draws again at its first reveal.
+			if (background) view.queueRefreshWhenShown();
+		}
 	}
 
 	/** The open dashboard showing the project the report is about, if any. */
