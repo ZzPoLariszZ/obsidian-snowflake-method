@@ -54,7 +54,7 @@ import { SnowflakeProjectService } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls } from '../../src/ui/corkboard-bridge';
 import { orderLinkedManuscript } from '../../src/ui/linked-manuscript';
-import { CreateSceneModal, type MemberFormContext } from '../../src/ui/modals';
+import { CreateSceneModal, type CreateSceneRequest, type MemberFormContext } from '../../src/ui/modals';
 import type { PickerOption } from '../../src/ui/option-picker';
 import { addOrderMenuItems } from '../../src/ui/order-menu';
 import { filterScenes, sceneFilters } from '../../src/ui/scene-filters';
@@ -108,6 +108,71 @@ function form(
 	};
 }
 
+/** Real scene collection and submit lifecycle, with only the unrelated field drawing omitted. */
+function navigableForm(options: {
+	create?: boolean;
+	missing?: boolean;
+	save?: (request: CreateSceneRequest) => Promise<void>;
+	open?: (raw: string) => Promise<void>;
+} = {}) {
+	const dom = new CorkboardDom();
+	const content = dom.container.createDiv();
+	const raw = '[[Novel/Manuscript/Chapter 1]]';
+	const added = '[[Novel/Manuscript/Chapter 2]]';
+	const sequence: string[] = [];
+	const submitHandler = vi.fn(async (request: CreateSceneRequest) => {
+		sequence.push('save');
+		await options.save?.(request);
+	});
+	const openLinkedManuscript = vi.fn(async (link: string) => {
+		sequence.push('open');
+		await options.open?.(link);
+	});
+	const notice = vi.fn();
+	const context = {
+		manuscriptNotes: () => [raw, added].map((value) => ({ value, label: wikiLinkLabel(value) })),
+		orderLinkedManuscript: (values: readonly string[]) => [...values],
+		linkedManuscriptMissing: () => options.missing === true,
+		openLinkedManuscript,
+		notice,
+	} as unknown as MemberFormContext;
+	const initial: CreateSceneRequest = {
+		title: 'Arrival', aliases: [], categoryPaths: [], progressStatus: 'not-started',
+		times: [], locations: [], characterPaths: [], conflict: 'The gate is locked.',
+		worldStatus: [], relationships: [], povPath: 'omniscient', events: 'The original event.',
+		customFields: 'Original custom field text', color: null, linkedManuscript: [raw],
+		expectedRevision: 'original-revision',
+	};
+	const instance = new CreateSceneModal(
+		{} as App,
+		(key, vars) => vars?.name === undefined ? key : `${key}: ${String(vars.name)}`,
+		[], [], submitHandler, options.create ? undefined : initial, null, context,
+	);
+	const internals = instance as unknown as FormInternals & { renderForm(): void };
+	Object.assign(instance, {
+		modalEl: dom.container,
+		contentEl: content,
+		buildForm: () => { internals.buildLinkedManuscript(); },
+		...(options.create ? { ...initial, expectedRevision: undefined } : {}),
+	});
+	const close = vi.spyOn(instance, 'close').mockImplementation(() => {
+		sequence.push('close');
+		instance.onClose();
+	});
+	internals.renderForm();
+	return {
+		instance, internals, dom, content, raw, added, sequence,
+		submitHandler, openLinkedManuscript, notice, close,
+		link: () => content.querySelector('.snowflake-method-record-line-link')!,
+		saveButton: () => dom.container.querySelector('.mod-cta')!,
+		addLink: () => {
+			content.querySelector('.snowflake-method-record-pick')!.dispatch('click');
+			const picker = opened[opened.length - 1] as Picker;
+			picker.onChooseItem(picker.getItems().find((option) => option.value === added)!);
+		},
+	};
+}
+
 function board(fields: Partial<SceneViewModel> = {}, readOnly = false) {
 	const dom = new CorkboardDom();
 	let current = scene(fields);
@@ -138,6 +203,98 @@ function board(fields: Partial<SceneViewModel> = {}, readOnly = false) {
 
 beforeEach(() => { opened.length = 0; menuClicks.clear(); });
 afterEach(() => vi.restoreAllMocks());
+
+describe('saving scene drafts before manuscript navigation', () => {
+	it.each([false, true])('saves the edited fields and newly added link before navigating (create=%s)', async (create) => {
+		const fixture = navigableForm({ create });
+		Object.assign(fixture.instance, {
+			title: 'Changed title', events: 'Changed events', conflict: 'Changed conflict',
+		});
+		fixture.addLink();
+		expect(fixture.link().getAttribute('aria-label')).toBe(
+			`${create ? 'modal.scene.createAndOpenLinked' : 'modal.scene.saveAndOpenLinked'}: Chapter 1`,
+		);
+		fixture.link().dispatch('click');
+		await vi.waitFor(() => expect(fixture.openLinkedManuscript).toHaveBeenCalledOnce());
+		expect(fixture.submitHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+			title: 'Changed title', events: 'Changed events', conflict: 'Changed conflict',
+			customFields: create ? '' : 'Original custom field text', linkedManuscript: [fixture.raw, fixture.added],
+			expectedRevision: create ? undefined : 'original-revision',
+		}));
+		expect(fixture.openLinkedManuscript).toHaveBeenCalledWith(fixture.raw);
+		expect(fixture.close).toHaveBeenCalledOnce();
+		expect(fixture.sequence).toEqual(['save', 'close', 'open']);
+	});
+
+	it.each(['title', 'povPath'])('keeps the draft open when the required %s is empty', async (field) => {
+		const fixture = navigableForm();
+		Object.assign(fixture.instance, { [field]: '', events: 'Keep these unsaved events.' });
+		fixture.addLink();
+		fixture.link().dispatch('click');
+		await Promise.resolve();
+		expect(fixture.submitHandler).not.toHaveBeenCalled();
+		expect(fixture.openLinkedManuscript).not.toHaveBeenCalled();
+		expect(fixture.close).not.toHaveBeenCalled();
+		expect(fixture.instance).toMatchObject({ events: 'Keep these unsaved events.', linkedManuscript: [fixture.raw, fixture.added] });
+		expect(fixture.content.querySelectorAll('.snowflake-method-record-line')).toHaveLength(2);
+	});
+
+	it('retains a rejected draft and permits a successful retry', async () => {
+		let refused = true;
+		const fixture = navigableForm({ save: async () => {
+			if (refused) throw new Error('The scene changed before it could be saved.');
+		} });
+		Object.assign(fixture.instance, { events: 'Keep these unsaved events.' });
+		fixture.addLink();
+		fixture.link().dispatch('click');
+		await vi.waitFor(() => expect(fixture.saveButton().disabled).toBe(false));
+		expect(fixture.submitHandler).toHaveBeenCalledOnce();
+		expect(fixture.openLinkedManuscript).not.toHaveBeenCalled();
+		expect(fixture.close).not.toHaveBeenCalled();
+		expect(fixture.instance).toMatchObject({ events: 'Keep these unsaved events.', linkedManuscript: [fixture.raw, fixture.added] });
+		refused = false;
+		fixture.link().dispatch('click');
+		await vi.waitFor(() => expect(fixture.openLinkedManuscript).toHaveBeenCalledOnce());
+		expect(fixture.submitHandler).toHaveBeenCalledTimes(2);
+		expect(fixture.close).toHaveBeenCalledOnce();
+	});
+
+	it('submits only once when a link and Save are clicked repeatedly during a pending save', async () => {
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => { release = resolve; });
+		const fixture = navigableForm({ save: () => pending });
+		fixture.link().dispatch('click');
+		fixture.link().dispatch('click');
+		fixture.saveButton().dispatch('click');
+		expect(fixture.submitHandler).toHaveBeenCalledOnce();
+		expect(fixture.openLinkedManuscript).not.toHaveBeenCalled();
+		expect(fixture.close).not.toHaveBeenCalled();
+		release();
+		await vi.waitFor(() => expect(fixture.openLinkedManuscript).toHaveBeenCalledOnce());
+		expect(fixture.submitHandler).toHaveBeenCalledOnce();
+		expect(fixture.close).toHaveBeenCalledOnce();
+	});
+
+	it('rejects a missing destination without saving or discarding the draft', async () => {
+		const fixture = navigableForm({ missing: true });
+		fixture.link().dispatch('click');
+		await Promise.resolve();
+		expect(fixture.notice).toHaveBeenCalledExactlyOnceWith('table.referenceMissing: Chapter 1');
+		expect(fixture.submitHandler).not.toHaveBeenCalled();
+		expect(fixture.openLinkedManuscript).not.toHaveBeenCalled();
+		expect(fixture.close).not.toHaveBeenCalled();
+	});
+
+	it('reports navigation failure after saving and closing exactly once', async () => {
+		const fixture = navigableForm({ open: async () => { throw new Error('The manuscript could not be opened.'); } });
+		fixture.link().dispatch('click');
+		await vi.waitFor(() => expect(fixture.notice).toHaveBeenCalledExactlyOnceWith('The manuscript could not be opened.'));
+		expect(fixture.submitHandler).toHaveBeenCalledOnce();
+		expect(fixture.openLinkedManuscript).toHaveBeenCalledOnce();
+		expect(fixture.close).toHaveBeenCalledOnce();
+		expect(fixture.sequence).toEqual(['save', 'close', 'open']);
+	});
+});
 
 describe('linked manuscript correctness regressions', () => {
 	it('filters a bare link only under the note the vault resolver chooses', () => {

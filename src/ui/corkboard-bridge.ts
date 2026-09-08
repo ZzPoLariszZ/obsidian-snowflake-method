@@ -23,6 +23,7 @@ export type CorkboardHost = Pick<
 	| 'patchScene'
 	| 'reorderScene'
 	| 'deleteScene'
+	| 'listDefinitionPaths'
 	| 'listManuscriptNotes'
 	| 'isReduceMotionEnabled'
 >;

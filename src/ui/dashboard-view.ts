@@ -131,6 +131,7 @@ import {
 	clearSceneFilters,
 	filterScenes,
 	progressFilterRow,
+	reconcileSceneManuscriptFilter,
 	sceneFilterRows,
 	sceneFiltered,
 	sceneFilters,
@@ -6305,6 +6306,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		step: 8 | 9,
 	): void {
+		reconcileSceneManuscriptFilter(this.sceneFilters, model.manuscriptPaths);
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions snowflake-method-list-actions',
 		});

@@ -6,6 +6,7 @@ import {
 	filterScenes,
 	linkNamesNote,
 	parseSceneBound,
+	reconcileSceneManuscriptFilter,
 	sceneFilterRows,
 	sceneFiltered,
 	sceneFilters,
@@ -137,6 +138,25 @@ describe('the scene funnel', () => {
 		});
 		clearSceneFilters(filters);
 		expect(filters).toEqual(sceneFilters());
+	});
+
+	it.each([
+		{ linked: 'Manuscript/Chapter', paths: ['Manuscript/Chapter.md'] },
+		{ linked: 'Manuscript/Chapter.md', paths: ['Manuscript/Chapter.md'] },
+	])('preserves a manuscript selection present in the current model: $linked', ({ linked, paths }) => {
+		const filters = asked({ linked, status: 'complete' });
+		reconcileSceneManuscriptFilter(filters, paths);
+		expect(filters).toMatchObject({ linked, status: 'complete' });
+	});
+
+	it.each([
+		{ paths: [] },
+		{ paths: ['Manuscript/Opening.md'] },
+		{ paths: ['Other/Chapter.md'] },
+	])('clears an absent manuscript selection without changing other filters: %j', ({ paths }) => {
+		const filters = asked({ linked: 'Manuscript/Chapter', status: 'complete', sceneMin: 2 });
+		reconcileSceneManuscriptFilter(filters, paths);
+		expect(filters).toMatchObject({ linked: '', status: 'complete', sceneMin: 2 });
 	});
 
 	it.each([

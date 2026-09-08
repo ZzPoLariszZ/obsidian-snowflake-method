@@ -50,7 +50,7 @@ import type { FilterRow } from './filter-rows';
 import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
 import { addOrderMenuItems } from './order-menu';
 import { paintCount, renderEmptyLine } from './pane-parts';
-import { clearSceneFilters, filterScenes, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
+import { clearSceneFilters, filterScenes, reconcileSceneManuscriptFilter, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
 import { renderStickySwatches } from './sticky-note-card';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
@@ -554,6 +554,7 @@ export function renderCorkboard(
 		if (memory.filters.character !== '' && !characterNames.has(memory.filters.character)) memory.filters.character = '';
 		if (memory.filters.pov !== '' && memory.filters.pov !== SCENE_POV_OMNISCIENT &&
 			memory.filters.pov !== SCENE_POV_MULTIPLE && !characterNames.has(memory.filters.pov)) memory.filters.pov = '';
+		reconcileSceneManuscriptFilter(memory.filters, current.manuscriptPaths);
 		const shown: ShownScene[] = filterScenes(
 			current.scenes,
 			memory.query,
@@ -1676,17 +1677,19 @@ export function renderCorkboard(
 		if (owningProject === undefined) return;
 		controls.popover.closeFilter();
 		popoverKind = 'funnel';
-		let manuscriptNotes: { path: string; title: string }[] = [];
-		try {
-			manuscriptNotes = await host.listManuscriptNotes(owningProject);
-		} catch {
-			manuscriptNotes = [];
-		}
+		const [categories, manuscripts] = await Promise.allSettled([
+			host.listDefinitionPaths('scene', 'category', owningProject),
+			host.listManuscriptNotes(owningProject),
+		]);
 		if (disposed || request !== popoverRequest || !filterButton.isConnected || model?.path !== owningProject) return;
 		const current = model;
-		const categoryPaths = [
+		// Parent definitions remain useful filters even when scenes are filed
+		// only under their descendants. Keep the known assignments if the tree
+		// cannot be read, without losing the other filter options.
+		const categoryPaths = categories.status === 'fulfilled' ? categories.value : [
 			...new Set(current.scenes.flatMap((scene) => scene.categoryPaths)),
 		].sort((a, b) => a.localeCompare(b, current.locale));
+		const manuscriptNotes = manuscripts.status === 'fulfilled' ? manuscripts.value : [];
 		controls.popover.openFilter(
 			filterButton,
 			sceneFilterRows(t, current, memory.filters, { categoryPaths, manuscriptNotes }),

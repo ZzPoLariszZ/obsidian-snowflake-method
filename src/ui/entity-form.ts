@@ -716,7 +716,7 @@ export function renderRecordLine(
 		missingTitle: string;
 		removeLabel: string;
 		/** A navigable reference, while the surrounding line remains editable. */
-		link?: { href: string; open: () => void };
+		link?: { href: string; label?: string; open: () => void };
 	},
 	remove: () => void,
 ): void {
@@ -734,6 +734,10 @@ export function renderRecordLine(
 		});
 	const link = line.link;
 	if (link !== undefined) {
+		if (link.label !== undefined) {
+			value.setAttribute('aria-label', link.label);
+			setTooltip(value, link.label);
+		}
 		value.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();

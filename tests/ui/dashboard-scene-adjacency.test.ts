@@ -94,7 +94,8 @@ function dashboard(options: {
 	const dom = new CorkboardDom();
 	const reorderScene = vi.fn((_id: string, _index: number) => Promise.resolve());
 	const view = new SnowflakeDashboardView({ app: {
-		metadataCache: { getFirstLinkpathDest: (target: string) => ({ path: `${target}.md` }) },
+		metadataCache: { getFirstLinkpathDest: (target: string) =>
+			model.manuscriptPaths.includes(`${target}.md`) ? { path: `${target}.md` } : null },
 	} } as unknown as WorkspaceLeaf, {
 		getRecentStep: () => 8,
 		isFreeformModeEnabled: () => true,
@@ -116,14 +117,19 @@ function dashboard(options: {
 		path: 'Novel/Project.md',
 		readOnly: options.readOnly ?? false,
 		structureIssues: [],
+		manuscriptPaths: ['Chapter.md'],
 		characters: [{ path: 'Characters/Ada.md', name: 'Ada' }],
 		scenes: ['A', 'B', 'C', 'D', 'E'].map((id, index) => ({
 			...scene(id, index), readOnly: options.readOnlyScene === id,
 		})),
 	} as unknown as ProjectDashboardModel;
-	(view as unknown as {
-		renderScenes(panel: HTMLElement, model: ProjectDashboardModel, step: 8): void;
-	}).renderScenes(dom.container as unknown as HTMLElement, model, 8);
+	const draw = (): void => {
+		dom.container.empty();
+		(view as unknown as {
+			renderScenes(panel: HTMLElement, model: ProjectDashboardModel, step: 8): void;
+		}).renderScenes(dom.container as unknown as HTMLElement, model, 8);
+	};
+	draw();
 	const rows = dom.container.querySelectorAll('tr').filter((row) => row.dataset.sceneId !== undefined);
 	const row = (id: string): CorkboardElement => {
 		const found = rows.find((candidate) => candidate.dataset.sceneId === id);
@@ -136,7 +142,16 @@ function dashboard(options: {
 		if (opened === undefined) throw new Error(`Missing scene menu: ${id}`);
 		return opened;
 	};
-	return { filters, rows, row, menu, reorderScene };
+	return {
+		filters, rows, row, menu, reorderScene,
+		redraw: (changes: Partial<ProjectDashboardModel>) => {
+			Object.assign(model, changes);
+			draw();
+			return dom.container.querySelectorAll('tr')
+				.filter((candidate) => candidate.dataset.sceneId !== undefined)
+				.map((candidate) => candidate.dataset.sceneId);
+		},
+	};
 }
 
 function action(menu: MenuAction[], title: string): MenuAction {
@@ -159,6 +174,33 @@ function drop(row: CorkboardElement, id: string): void {
 beforeEach(() => { ui.menus.length = 0; });
 
 describe('dashboard adjacency with a continuous scene range', () => {
+	it.each(['rename', 'deletion'])('clears a manuscript filter after note %s without dropping the scene range', (change) => {
+		const table = dashboard({ filters: { linked: 'Chapter' } });
+		expect(table.filters.linked).toBe('Chapter');
+		expect(table.rows.map((row) => row.dataset.sceneId)).toEqual(['B', 'C', 'D']);
+		const scenes = ['A', 'B', 'C', 'D', 'E'].map((id, index) => ({
+			...scene(id, index),
+			linkedManuscript: [{
+				raw: '[[Opening]]', linktext: 'Opening', target: 'Opening', label: 'Opening',
+			}],
+		}));
+
+		const shown = table.redraw({
+			manuscriptPaths: change === 'rename' ? ['Opening.md'] : [],
+			...(change === 'rename' ? { scenes } : {}),
+		});
+
+		expect(table.filters.linked).toBe('');
+		expect(shown).toEqual(['B', 'C', 'D']);
+	});
+
+	it('keeps a valid manuscript filter on redraw before asynchronous options arrive', () => {
+		const table = dashboard({ filters: { linked: 'Chapter' } });
+		expect(table.redraw({})).toEqual(['B', 'C', 'D']);
+		expect(table.filters.linked).toBe('Chapter');
+		expect(table.rows[0]?.getAttribute('draggable')).toBe('false');
+	});
+
 	it('enables dragging and moves only to neighbours inside the shown range', async () => {
 		const table = dashboard();
 		expect(table.rows.map((row) => row.dataset.sceneId)).toEqual(['B', 'C', 'D']);

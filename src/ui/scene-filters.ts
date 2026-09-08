@@ -89,6 +89,18 @@ export function clearSceneFilters(filters: SceneFilters): void {
 	Object.assign(filters, sceneFilters());
 }
 
+/** Clear a removed or renamed note using the model, independently of picker loading. */
+export function reconcileSceneManuscriptFilter(
+	filters: SceneFilters,
+	manuscriptPaths: readonly string[],
+): void {
+	if (filters.linked === '') return;
+	const selected = filters.linked.replace(/\.md$/u, '');
+	if (!manuscriptPaths.some((path) => path.replace(/\.md$/u, '') === selected)) {
+		filters.linked = '';
+	}
+}
+
 /** Blank or unreadable bounds are unrestricted; scene numbers start at one. */
 export function parseSceneBound(text: string): number | null {
 	const trimmed = text.trim();

@@ -593,6 +593,7 @@ export abstract class SnowflakeFormModal<T> extends Modal {
 	private readonly submitLabelKey: string;
 	private submitButton: HTMLButtonElement | null = null;
 	private actionsEl: HTMLElement | null = null;
+	private submitting = false;
 
 	protected constructor(
 		app: App,
@@ -705,21 +706,28 @@ export abstract class SnowflakeFormModal<T> extends Modal {
 		this.actionsEl = null;
 	}
 
-	private async submit(): Promise<void> {
+	/** Saves and closes once; navigation may proceed only after a successful save. */
+	protected async submit(): Promise<boolean> {
+		if (this.submitting || this.submitButton === null) return false;
 		const value = this.collectValue();
-		if (value === null || this.submitButton === null) return;
+		if (value === null) return false;
 
+		this.submitting = true;
 		this.submitButton.disabled = true;
 		this.submitButton.setText(this.t('common.working'));
 		try {
 			await this.submitHandler(value);
 			this.close();
+			return true;
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : this.t('errors.unknown');
 			new Notice(message);
 			this.submitButton.disabled = false;
 			this.submitButton.setText(this.t(this.submitLabelKey));
+			return false;
+		} finally {
+			this.submitting = false;
 		}
 	}
 }
@@ -2865,9 +2873,18 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 					removeLabel: this.t('modal.scene.removeLinked', { name: label }),
 					link: {
 						href: raw,
+						label: this.t(this.isCreateForm
+							? 'modal.scene.createAndOpenLinked'
+							: 'modal.scene.saveAndOpenLinked', { name: label }),
 						open: () => {
-							void context.openLinkedManuscript(raw)
-								.then(() => this.close())
+							if (context.linkedManuscriptMissing(raw)) {
+								context.notice(this.t('table.referenceMissing', { name: label }));
+								return;
+							}
+							void this.submit()
+								.then(async (saved) => {
+									if (saved) await context.openLinkedManuscript(raw);
+								})
 								.catch((error: unknown) => {
 									context.notice(error instanceof Error ? error.message : this.t('errors.unknown'));
 								});

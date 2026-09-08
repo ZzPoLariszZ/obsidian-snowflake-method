@@ -90,13 +90,14 @@ function board(scenes = [scene('A'), scene('B')], settings: Partial<CorkboardMem
 	let handle: CorkboardHandle;
 	let currentProject = PROJECT;
 	let panel: { title: string; rows: readonly FilterRow[] } | null = null;
-	let resolvedLink = false;
+	let resolvedLink: boolean | string = false;
 	const host = {
 		patchScene: vi.fn(async () => 'saved'),
 		reorderScene: vi.fn(async () => undefined),
 		deleteScene: vi.fn(async () => undefined),
 		openSceneForm: vi.fn(async () => null as string | null),
 		openCharacterForm: vi.fn(async (): Promise<void> => undefined),
+		listDefinitionPaths: vi.fn<CorkboardControls['host']['listDefinitionPaths']>(async () => []),
 		listManuscriptNotes: vi.fn(async () => [] as { path: string; title: string }[]),
 		openManuscriptStream: vi.fn(async () => undefined),
 	};
@@ -111,7 +112,9 @@ function board(scenes = [scene('A'), scene('B')], settings: Partial<CorkboardMem
 		}),
 	};
 	const controls = {
-		app: { metadataCache: { getFirstLinkpathDest: () => resolvedLink ? { path: 'First/Manuscript/Chapter.md' } : null } },
+		app: { metadataCache: { getFirstLinkpathDest: () => resolvedLink ? {
+			path: typeof resolvedLink === 'string' ? resolvedLink : 'First/Manuscript/Chapter.md',
+		} : null } },
 		host, t: (key: string) => key, model: () => model, activateProject, refresh,
 		popover, memory, remember: vi.fn(),
 	} as unknown as CorkboardControls;
@@ -124,7 +127,7 @@ function board(scenes = [scene('A'), scene('B')], settings: Partial<CorkboardMem
 		panel: () => panel,
 		currentProject: () => currentProject,
 		activateElsewhere: () => { currentProject = 'Second/Project.md'; },
-		resolveLink: (value: boolean) => { resolvedLink = value; },
+		resolveLink: (value: boolean | string) => { resolvedLink = value; },
 		button: (suffix: string) => container.querySelector(`.snowflake-method-${suffix}`)!,
 	};
 }
@@ -392,6 +395,43 @@ describe('corkboard correctness regressions', () => {
 		fixture.handle.dispose();
 	});
 
+	it.each(['rename', 'deletion'])('clears a held manuscript filter after note %s and shows scenes again', (change) => {
+		const original = 'First/Manuscript/Chapter';
+		const renamed = 'First/Manuscript/Opening';
+		const fixture = board([scene('A', { linkedManuscript: [link(original)] }), scene('B')]);
+		fixture.external({ manuscriptPaths: [`${original}.md`] });
+		fixture.resolveLink(`${original}.md`);
+		fixture.memory.filters.linked = original;
+		fixture.handle.refresh();
+		expect(fixture.cards().map((card) => card.dataset.id)).toEqual(['A']);
+
+		fixture.resolveLink(change === 'rename' ? `${renamed}.md` : false);
+		fixture.external({
+			manuscriptPaths: change === 'rename' ? [`${renamed}.md`] : [],
+			scenes: [scene('A', { linkedManuscript: [link(change === 'rename' ? renamed : original)] }), scene('B')],
+		});
+
+		expect(fixture.memory.filters.linked).toBe('');
+		expect(fixture.cards().map((card) => card.dataset.id)).toEqual(['A', 'B']);
+		fixture.handle.dispose();
+	});
+
+	it('preserves a valid manuscript filter while picker options are unavailable', async () => {
+		const target = 'First/Manuscript/Chapter';
+		const fixture = board([scene('A', { linkedManuscript: [link(target)] }), scene('B')]);
+		fixture.external({ manuscriptPaths: [`${target}.md`] });
+		fixture.resolveLink(`${target}.md`);
+		fixture.memory.filters.linked = target;
+		fixture.host.listManuscriptNotes.mockRejectedValueOnce(new Error('Picker read failed'));
+		fixture.button('filter-button').dispatch('click');
+		await settle();
+		fixture.handle.refresh();
+
+		expect(fixture.memory.filters.linked).toBe(target);
+		expect(fixture.cards().map((card) => card.dataset.id)).toEqual(['A']);
+		fixture.handle.dispose();
+	});
+
 	it('#13 deleting a character clears a held cast filter', async () => {
 		const environment = createFakeEnvironment();
 		const service = new SnowflakeProjectService(environment.vault, environment.fileManager, environment.metadataCache);
@@ -508,6 +548,75 @@ describe('corkboard correctness regressions', () => {
 		expect(fixture.panel()!.title).toBe('corkboard.display');
 		fixture.button('filter-button').dispatch('click'); await settle();
 		expect(fixture.panel()!.title).toBe('table.filter');
+		fixture.handle.dispose();
+	});
+});
+
+describe('corkboard category filters', () => {
+	const paths = ['Act I', 'Act I/Setup', 'Act I/Incident', 'Act II'];
+	const scenes = () => [
+		scene('A', { categoryPaths: ['Act I/Setup'] }),
+		scene('B', { categoryPaths: ['Act I/Incident'] }),
+		scene('C', { categoryPaths: ['Act II'] }),
+	];
+	const categoryRow = (fixture: ReturnType<typeof board>) =>
+		fixture.panel()!.rows.find((row) => row.label === 'table.category') as FilterOptionRow;
+
+	it('offers an unassigned parent and filters all of its descendants', async () => {
+		const fixture = board(scenes());
+		fixture.host.listDefinitionPaths.mockResolvedValueOnce(paths);
+		fixture.button('filter-button').dispatch('click');
+		await settle();
+		const row = categoryRow(fixture);
+		expect(row.options().map((option) => option.value)).toEqual(paths);
+		row.apply('Act I');
+		const openedFilters = fixture.popover.openFilter.mock.calls;
+		openedFilters[openedFilters.length - 1]![2]();
+		expect(fixture.cards().map((card) => card.dataset.id)).toEqual(['A', 'B']);
+		fixture.handle.dispose();
+	});
+
+	it('reads the board project category tree while another project is active', async () => {
+		const fixture = board(scenes());
+		fixture.activateElsewhere();
+		fixture.host.listDefinitionPaths.mockImplementation(async (_kind, _id, path) =>
+			path === PROJECT ? paths : ['Other project category'],
+		);
+		fixture.button('filter-button').dispatch('click');
+		await settle();
+		expect(fixture.host.listDefinitionPaths).toHaveBeenCalledExactlyOnceWith('scene', 'category', PROJECT);
+		expect(fixture.host.listManuscriptNotes).toHaveBeenCalledExactlyOnceWith(PROJECT);
+		expect(categoryRow(fixture).options().map((option) => option.value)).toEqual(paths);
+		expect(fixture.currentProject()).toBe('Second/Project.md');
+		fixture.handle.dispose();
+	});
+
+	it('discards a category tree that arrives after the board changes projects', async () => {
+		const fixture = board(scenes());
+		const gate = deferred();
+		fixture.host.listDefinitionPaths.mockImplementationOnce(async () => {
+			await gate.promise;
+			return paths;
+		});
+		fixture.button('filter-button').dispatch('click');
+		fixture.external({ path: 'Second/Project.md', projectId: 'second' });
+		gate.resolve();
+		await settle();
+		expect(fixture.popover.openFilter).not.toHaveBeenCalled();
+		fixture.handle.dispose();
+	});
+
+	it('keeps known categories and manuscript options when the category read fails', async () => {
+		const fixture = board(scenes());
+		fixture.host.listDefinitionPaths.mockRejectedValueOnce(new Error('Tree unavailable'));
+		fixture.host.listManuscriptNotes.mockResolvedValueOnce([{ path: 'First/Chapter.md', title: 'Chapter' }]);
+		fixture.button('filter-button').dispatch('click');
+		await settle();
+		expect(categoryRow(fixture).options().map((option) => option.value)).toEqual([
+			'Act I/Incident', 'Act I/Setup', 'Act II',
+		]);
+		const linked = fixture.panel()!.rows.find((row) => row.label === 'table.sceneLinked') as FilterOptionRow;
+		expect(linked.options()).toEqual([{ value: 'First/Chapter', label: 'Chapter' }]);
 		fixture.handle.dispose();
 	});
 });

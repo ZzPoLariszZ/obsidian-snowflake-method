@@ -1366,6 +1366,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.scene.linkedManuscriptEmpty': '尚无正文笔记。',
 	'modal.scene.linkedManuscriptAllLinked': '已关联所有正文笔记。',
 	'modal.scene.removeLinked': '移除{name}',
+	'modal.scene.saveAndOpenLinked': '保存场景并打开{name}',
+	'modal.scene.createAndOpenLinked': '创建场景并打开{name}',
 	'modal.scene.color': '颜色',
 	'modal.scene.colorNone': '无颜色',
 	'steps.titleFormat': '{number}、{title}',
