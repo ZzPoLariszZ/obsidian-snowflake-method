@@ -201,10 +201,17 @@ export class SnowflakeStoryStructureView extends ItemView {
 		return this.state.projectPath;
 	}
 
-	private activateProjectContext(): void {
+	/** The loaded owner, for command routing when its workspace tab becomes active. */
+	workspaceProjectContext(): Pick<ProjectDashboardModel, 'path' | 'locale'> | null {
 		const model = this.model;
-		if (model === null) return;
-		this.deps.host.activateProject(model.path, model.locale, this.deps.host.getRecentStep());
+		if (model === null || model.path !== this.state.projectPath) return null;
+		return { path: model.path, locale: model.locale };
+	}
+
+	private activateProjectContext(): void {
+		const context = this.workspaceProjectContext();
+		if (context === null) return;
+		this.deps.host.activateProject(context.path, context.locale, this.deps.host.getRecentStep());
 	}
 
 	/** Reads again when the language settings have moved. */

@@ -587,6 +587,8 @@ export default class SnowflakeMethodPlugin
 	private unloading = false;
 	/** What is selected in the focused native Markdown editor, or null. */
 	private editorFocus: EditorFocusReport | null = null;
+	/** Reject an earlier tab activation when its deferred load finishes late. */
+	private projectLeafActivation = 0;
 	/** Which sidebars solo folded away, so leaving it unfolds only those. */
 	private soloCollapsed: { left: boolean; right: boolean } | null = null;
 	/** Whether solo took the window full screen, so leaving it lets go. */
@@ -1020,7 +1022,7 @@ export default class SnowflakeMethodPlugin
 					// in for whatever is in front now.
 					this.editorFocus = null;
 					this.scheduleWritingCountRefresh(0);
-					void this.activateDashboardLeaf(leaf).catch((error: unknown) => {
+					void this.activateProjectLeaf(leaf).catch((error: unknown) => {
 						this.showError(error);
 					});
 				}),
@@ -2426,18 +2428,17 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async patchScene(id: string, patch: ScenePatch): Promise<string> {
-		const project = await this.requireCurrentProject();
+	async patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string> {
 		try {
-			const written = await this.projects.updateScene(project, id, patch);
+			const written = await this.projects.updateScene(projectPath, id, patch);
 			return written.revision;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
 		}
 	}
 
-	async listManuscriptNotes(): Promise<{ path: string; title: string }[]> {
-		const project = await this.resolveProject(null);
+	async listManuscriptNotes(projectPath: string): Promise<{ path: string; title: string }[]> {
+		const project = await this.resolveProject(projectPath);
 		if (project === null) return [];
 		const segments = await this.projects.manuscript.listSegments(project);
 		return segments.map((segment) => ({
@@ -7738,20 +7739,48 @@ export default class SnowflakeMethodPlugin
 		return leaf.view instanceof SnowflakeDashboardView ? leaf.view : null;
 	}
 
-	private async activateDashboardLeaf(
+	private async activateProjectLeaf(
 		leaf: WorkspaceLeaf | null,
 	): Promise<void> {
 		if (
 			leaf === null ||
-			leaf.getRoot() !== this.app.workspace.rootSplit ||
-			leaf.getViewState().type !== DASHBOARD_VIEW_TYPE
+			![DASHBOARD_VIEW_TYPE, STORY_STRUCTURE_VIEW_TYPE, MANUSCRIPT_VIEW_TYPE]
+				.includes(leaf.getViewState().type) ||
+			this.app.workspace.getMostRecentLeaf() !== leaf
 		) {
 			return;
 		}
+		// The unscoped lookup includes popouts and excludes sidebars. Focusing
+		// a sidebar must not cancel the owning tab's pending startup activation.
+		const activation = ++this.projectLeafActivation;
+		const stillCurrent = (): boolean =>
+			activation === this.projectLeafActivation &&
+			this.app.workspace.getMostRecentLeaf() === leaf;
+		const step = (): StepId => leaf.view instanceof SnowflakeDashboardView
+			? leaf.view.getSelectedStep()
+			: this.getRecentStep();
+		const activateLoaded = (): boolean => {
+			const view = leaf.view;
+			if (!(view instanceof SnowflakeDashboardView) &&
+				!(view instanceof SnowflakeStoryStructureView) &&
+				!(view instanceof SnowflakeManuscriptView)) return false;
+			const context = view.workspaceProjectContext();
+			if (context === null) return false;
+			this.activateProject(context.path, context.locale, step());
+			return true;
+		};
+		// Loaded tabs switch context immediately, without waiting for a render or
+		// an input inside the view. Background reads never activate a project.
+		if (!stillCurrent() || activateLoaded()) return;
 		await leaf.loadIfDeferred();
-		if (leaf.view instanceof SnowflakeDashboardView) {
-			await leaf.view.activateFromWorkspace();
-		}
+		if (!stillCurrent() || activateLoaded()) return;
+		// Startup can leave a view's model loading after its saved state arrives.
+		// Resolve only that saved owner, and check again after the asynchronous read.
+		const path = leaf.getViewState().state?.projectPath;
+		if (typeof path !== 'string') return;
+		const project = await this.projects.loadProject(path);
+		if (!stillCurrent() || leaf.getViewState().state?.projectPath !== path) return;
+		this.activateProject(project.projectFile, project.locale, step());
 	}
 
 	private async refreshVisibleDashboardsAfterLayout(): Promise<void> {
@@ -7771,9 +7800,9 @@ export default class SnowflakeMethodPlugin
 		);
 
 		// Refreshing visible panes must not make every pane the current project.
-		// Restore context only from the most recently active main-workspace leaf.
-		await this.activateDashboardLeaf(
-			this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit),
+		// Restore context only from the most recent tab, including a popout.
+		await this.activateProjectLeaf(
+			this.app.workspace.getMostRecentLeaf(),
 		);
 	}
 

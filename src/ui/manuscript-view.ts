@@ -496,6 +496,14 @@ export class SnowflakeManuscriptView extends ItemView {
 		return { projectPath: this.projectPath, anchorPath: this.anchorPath };
 	}
 
+	/** The loaded owner, for command routing when its workspace tab becomes active. */
+	workspaceProjectContext(): { path: string; locale: ManuscriptModel['locale'] } | null {
+		const model = this.model;
+		if (model === null ||
+			(this.projectPath !== null && model.projectPath !== this.projectPath)) return null;
+		return { path: model.projectPath, locale: model.locale };
+	}
+
 	/** Read back by the host whenever this stream's writing may have moved. */
 	writingContext(): ManuscriptWritingContext {
 		const entry =

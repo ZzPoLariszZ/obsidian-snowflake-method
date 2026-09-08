@@ -819,11 +819,12 @@ export interface DashboardHost {
 	/**
 	 * One field at a time, under the revision the card was drawn from, the
 	 * way a board edits in place. Answers the note's fresh revision, so the
-	 * next edit can carry it rather than the one drawn a moment ago.
+	 * next edit can carry it rather than the one drawn a moment ago. The
+	 * project stays explicit so queued saves remain bound after a tab closes.
 	 */
-	patchScene(id: string, patch: ScenePatch): Promise<string>;
-	/** The manuscript's notes in reading order, for pickers and funnels; empty with no project. */
-	listManuscriptNotes(): Promise<{ path: string; title: string }[]>;
+	patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string>;
+	/** The named project's manuscript notes in reading order, for pickers and filters. */
+	listManuscriptNotes(projectPath: string): Promise<{ path: string; title: string }[]>;
 	/**
 	 * Opens the scene form on the dashboard of the current project, opening a
 	 * dashboard behind the asker when none is; resolves when the modal closes,

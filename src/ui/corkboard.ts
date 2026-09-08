@@ -101,6 +101,8 @@ interface CardEntry {
 	titleText: string;
 	titleInput: HTMLInputElement;
 	editingTitle: boolean;
+	titleOriginal: string;
+	titleRevision: EditRevision;
 	color: HTMLButtonElement;
 	more: HTMLButtonElement;
 	pov: HTMLButtonElement;
@@ -108,11 +110,25 @@ interface CardEntry {
 	statusSignature: string;
 	conflict: HTMLTextAreaElement;
 	conflictDirty: boolean;
+	conflictOriginal: string;
+	conflictRevision: EditRevision;
 	chips: HTMLElement;
 	moreLinks: HTMLButtonElement;
 	linksSignature: string | null;
 	insertBefore: HTMLButtonElement;
 	insertAfter: HTMLButtonElement;
+}
+
+/** A draft's revision advances only when this board successfully writes it. */
+interface EditRevision {
+	revision: string;
+}
+
+interface PendingText {
+	value: string;
+	base: EditRevision;
+	original: string;
+	key: string;
 }
 
 type FocusPart =
@@ -271,6 +287,7 @@ export function renderCorkboard(
 	// -- State ---------------------------------------------------------------
 
 	let model: ProjectDashboardModel | null = null;
+	let projectPath: string | null = null;
 	let manuscriptPositions = new Map<string, number>();
 	let orderedManuscriptLinks = new WeakMap<SceneViewModel, SceneViewModel['linkedManuscript']>();
 	let order: DisplayOrder = { groups: [], shown: 0 };
@@ -285,6 +302,9 @@ export function renderCorkboard(
 	const cards = new Map<string, CardEntry>();
 	// Shared across group copies and remounts while a scene's save is pending.
 	const pendingStatuses = new Map<string, { value: ProgressStatus }>();
+	const pendingTitles = new Map<string, PendingText>();
+	const pendingConflicts = new Map<string, PendingText>();
+	const revisions = new Map<string, Map<string, Set<EditRevision>>>();
 	const heads = new Map<string, HTMLElement>();
 	/** The card in flight, while one is; every paint asked meanwhile waits. */
 	let drag: { key: string; id: string } | null = null;
@@ -311,13 +331,13 @@ export function renderCorkboard(
 	 * read of the project before the next runs: what makes a quick edit
 	 * carry a fresh revision whatever came before it.
 	 */
-	const enqueue = (action: () => Promise<void>): Promise<void> => {
+	const enqueue = (action: () => Promise<void>, save = false): Promise<void> => {
 		const run = queue.then(async () => {
-			if (disposed) return;
+			if (disposed && !save) return;
 			try {
 				// Focus can move to another project's dashboard while this
 				// action waits for an earlier card edit to finish.
-				controls.activateProject();
+				if (!save) controls.activateProject();
 				await action();
 			} catch (error) {
 				notice(error);
@@ -328,18 +348,57 @@ export function renderCorkboard(
 		return run;
 	};
 
+	const editRevision = (scene: SceneViewModel): EditRevision => {
+		let byRevision = revisions.get(scene.id);
+		if (byRevision === undefined) {
+			byRevision = new Map();
+			revisions.set(scene.id, byRevision);
+		}
+		const standing = byRevision.get(scene.revision)?.values().next().value;
+		if (standing !== undefined) return standing;
+		const base = { revision: scene.revision };
+		byRevision.set(scene.revision, new Set([base]));
+		return base;
+	};
+
+	const advanceRevision = (id: string, before: string, after: string): void => {
+		if (before === after) return;
+		const byRevision = revisions.get(id);
+		const bases = byRevision?.get(before);
+		if (byRevision === undefined || bases === undefined) return;
+		byRevision.delete(before);
+		const next = byRevision.get(after) ?? new Set<EditRevision>();
+		for (const base of bases) {
+			base.revision = after;
+			next.add(base);
+		}
+		byRevision.set(after, next);
+	};
+
 	/** One field of one scene, under the revision the card holds now, which the write then moves on. */
 	const patch = (
 		entry: CardEntry,
-		fields: Omit<ScenePatch, 'expectedRevision'>,
-	): Promise<void> =>
-		enqueue(async () => {
+		fields: Pick<ScenePatch, 'title' | 'conflict' | 'color' | 'progressStatus'>,
+		base = editRevision(entry.scene),
+	): Promise<boolean> => {
+		const owningProject = projectPath;
+		let saved = false;
+		return enqueue(async () => {
+			if (owningProject === null) return;
+			const expectedRevision = base.revision;
 			const revision = await host.patchScene(entry.id, {
 				...fields,
-				expectedRevision: entry.scene.revision,
-			});
-			entry.scene = { ...entry.scene, revision };
-		});
+				expectedRevision,
+			}, owningProject);
+			advanceRevision(entry.id, expectedRevision, revision);
+			for (const card of new Set([entry, ...cards.values()])) {
+				if (card.id === entry.id && card.scene.revision === expectedRevision) {
+					card.scene = { ...card.scene, ...fields, revision };
+				}
+			}
+			saved = true;
+		}, true).then(() => saved);
+	};
 
 	// -- Measures ------------------------------------------------------------
 
@@ -447,6 +506,7 @@ export function renderCorkboard(
 			return;
 		}
 		const current = model;
+		projectPath ??= current.path;
 		readOnly = current.readOnly;
 		const characterNames = new Map(
 			current.characters.map((character) => [character.path, character.name]),
@@ -538,6 +598,9 @@ export function renderCorkboard(
 		if (focusedKey != null) pinned.push(focusedKey);
 		for (const entry of cards.values()) {
 			if (entry.editingTitle || entry.conflictDirty) pinned.push(entry.key);
+		}
+		for (const pending of [...pendingTitles.values(), ...pendingConflicts.values()]) {
+			pinned.push(pending.key);
 		}
 		return pinned;
 	};
@@ -776,6 +839,8 @@ export function renderCorkboard(
 			titleText: '',
 			titleInput,
 			editingTitle: false,
+			titleOriginal: scene.title,
+			titleRevision: editRevision(scene),
 			color,
 			more,
 			pov,
@@ -783,6 +848,8 @@ export function renderCorkboard(
 			statusSignature: '',
 			conflict,
 			conflictDirty: false,
+			conflictOriginal: scene.conflict,
+			conflictRevision: editRevision(scene),
 			chips,
 			moreLinks,
 			linksSignature: null,
@@ -816,6 +883,24 @@ export function renderCorkboard(
 		}
 	};
 
+	const paintTitle = (entry: CardEntry): void => {
+		if (entry.editingTitle) return;
+		const title = pendingTitles.get(entry.id)?.value ?? entry.scene.title;
+		if (entry.titleText === title) return;
+		entry.titleText = title;
+		entry.title.setText(title);
+		setTooltip(entry.title, title);
+	};
+
+	const paintConflict = (entry: CardEntry): void => {
+		if (entry.conflictDirty) return;
+		const pending = pendingConflicts.get(entry.id);
+		const value = pending?.value ?? entry.scene.conflict;
+		if (entry.conflict.value !== value) entry.conflict.value = value;
+		entry.conflictOriginal = value;
+		entry.conflictRevision = pending?.base ?? editRevision(entry.scene);
+	};
+
 	/** Dresses the card from the model while preserving unfinished and pending edits. */
 	const dressCard = (
 		entry: CardEntry,
@@ -827,7 +912,6 @@ export function renderCorkboard(
 		entry.index = index;
 		entry.display = display;
 		const { el } = entry;
-		const focused = root.doc.activeElement;
 		const writable = editable(entry);
 		el.setAttribute('data-id', scene.id);
 		if (scene.color === null) el.removeAttribute('data-color');
@@ -840,11 +924,7 @@ export function renderCorkboard(
 			'aria-label',
 			t('corkboard.position', { number: index + 1 }),
 		);
-		if (!entry.editingTitle && entry.titleText !== scene.title) {
-			entry.titleText = scene.title;
-			entry.title.setText(scene.title);
-			setTooltip(entry.title, scene.title);
-		}
+		paintTitle(entry);
 		entry.title.disabled = !writable;
 		const colorLabel =
 			scene.color === null
@@ -874,9 +954,7 @@ export function renderCorkboard(
 		}
 		paintStatus(entry, shownStatus);
 		entry.status.disabled = !writable;
-		if (focused !== entry.conflict && !entry.conflictDirty) {
-			if (entry.conflict.value !== scene.conflict) entry.conflict.value = scene.conflict;
-		}
+		paintConflict(entry);
 		entry.conflict.readOnly = !writable;
 		let links = orderedManuscriptLinks.get(scene);
 		if (links === undefined) {
@@ -947,10 +1025,13 @@ export function renderCorkboard(
 
 	const beginTitleEdit = (entry: CardEntry): void => {
 		if (!editable(entry) || entry.editingTitle) return;
+		const pending = pendingTitles.get(entry.id);
 		entry.editingTitle = true;
+		entry.titleOriginal = pending?.value ?? entry.scene.title;
+		entry.titleRevision = pending?.base ?? editRevision(entry.scene);
 		entry.title.addClass('is-hidden');
 		entry.titleInput.removeClass('is-hidden');
-		entry.titleInput.value = entry.scene.title;
+		entry.titleInput.value = entry.titleOriginal;
 		entry.titleInput.focus();
 		entry.titleInput.select();
 	};
@@ -959,13 +1040,58 @@ export function renderCorkboard(
 		entry.editingTitle = false;
 		entry.titleInput.addClass('is-hidden');
 		entry.title.removeClass('is-hidden');
+		paintTitle(entry);
 		if (refocus) entry.title.focus({ preventScroll: true });
+	};
+
+	const saveText = (
+		entry: CardEntry,
+		field: 'title' | 'conflict',
+		pending: PendingText,
+	): void => {
+		const values = field === 'title' ? pendingTitles : pendingConflicts;
+		const paint = field === 'title' ? paintTitle : paintConflict;
+		values.set(entry.id, pending);
+		for (const card of cards.values()) {
+			if (card.id === entry.id) paint(card);
+		}
+		void patch(entry, { [field]: pending.value }, pending.base).then((saved) => {
+			if (values.get(entry.id) !== pending) return;
+			values.delete(entry.id);
+			if (disposed) return;
+			if (!saved) {
+				// A rejected revision leaves the local draft available to fix
+				// or cancel with Escape; the refreshed model remains its own.
+				const draft = cards.get(entry.key) ??
+					[...cards.values()].find((card) => card.id === entry.id) ?? entry;
+				if (field === 'conflict' && !draft.conflictDirty) {
+					draft.conflict.value = pending.value;
+					draft.conflictOriginal = pending.original;
+					draft.conflictRevision = pending.base;
+					draft.conflictDirty = true;
+				} else if (field === 'title' && !draft.editingTitle) {
+					draft.editingTitle = true;
+					draft.titleOriginal = pending.original;
+					draft.titleRevision = pending.base;
+					draft.titleInput.value = pending.value;
+					draft.title.addClass('is-hidden');
+					draft.titleInput.removeClass('is-hidden');
+				}
+			}
+			for (const card of cards.values()) {
+				if (card.id === entry.id) paint(card);
+			}
+		});
 	};
 
 	/** The typed name, refused as the form refuses one: empty, or another scene's. */
 	const commitTitle = (entry: CardEntry, refocus: boolean): void => {
 		if (!entry.editingTitle) return;
 		const typed = entry.titleInput.value.trim();
+		if (typed === entry.titleOriginal) {
+			endTitleEdit(entry, refocus);
+			return;
+		}
 		if (typed.length === 0) {
 			new Notice(t('modal.scene.nameRequired'));
 			return;
@@ -979,18 +1105,26 @@ export function renderCorkboard(
 			return;
 		}
 		endTitleEdit(entry, refocus);
-		if (typed === entry.scene.title) return;
-		entry.titleText = typed;
-		entry.title.setText(typed);
-		setTooltip(entry.title, typed);
-		void patch(entry, { title: typed });
+		if (typed === entry.scene.title && !pendingTitles.has(entry.id)) return;
+		saveText(entry, 'title', {
+			value: typed, base: entry.titleRevision, original: entry.titleOriginal, key: entry.key,
+		});
 	};
 
 	const commitConflict = (entry: CardEntry): void => {
+		if (!entry.conflictDirty) {
+			paintConflict(entry);
+			return;
+		}
 		const value = entry.conflict.value;
 		entry.conflictDirty = false;
-		if (value === entry.scene.conflict) return;
-		void patch(entry, { conflict: value });
+		if (value === entry.scene.conflict && !pendingConflicts.has(entry.id)) {
+			paintConflict(entry);
+			return;
+		}
+		saveText(entry, 'conflict', {
+			value, base: entry.conflictRevision, original: entry.conflictOriginal, key: entry.key,
+		});
 	};
 
 	const closeColorPanel = (): void => {
@@ -1166,13 +1300,7 @@ export function renderCorkboard(
 			for (const card of cards.values()) {
 				if (card.id === entry.id) paintStatus(card, value);
 			}
-			void enqueue(async () => {
-				const revision = await host.patchScene(entry.id, {
-					progressStatus: value,
-					expectedRevision: entry.scene.revision,
-				});
-				entry.scene = { ...entry.scene, progressStatus: value, revision };
-			}).then(() => {
+			void patch(entry, { progressStatus: value }).then(() => {
 				// Keep the selection through the refresh as well as the write.
 				if (pendingStatuses.get(entry.id) === pending) pendingStatuses.delete(entry.id);
 				if (!disposed) {
@@ -1194,7 +1322,7 @@ export function renderCorkboard(
 			}).then(() => undefined));
 		});
 		entry.conflict.addEventListener('input', () => {
-			entry.conflictDirty = entry.conflict.value !== entry.scene.conflict;
+			entry.conflictDirty = entry.conflict.value !== entry.conflictOriginal;
 		});
 		entry.conflict.addEventListener('blur', () => {
 			commitConflict(entry);
@@ -1206,8 +1334,8 @@ export function renderCorkboard(
 			} else if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopPropagation();
-				entry.conflict.value = entry.scene.conflict;
 				entry.conflictDirty = false;
+				paintConflict(entry);
 				el.focus({ preventScroll: true });
 			}
 		});
@@ -1424,7 +1552,7 @@ export function renderCorkboard(
 		let manuscriptNotes: { path: string; title: string }[] = [];
 		try {
 			controls.activateProject();
-			manuscriptNotes = await host.listManuscriptNotes();
+			manuscriptNotes = await host.listManuscriptNotes(current.path);
 		} catch {
 			manuscriptNotes = [];
 		}
@@ -1523,7 +1651,7 @@ export function renderCorkboard(
 	});
 
 	const reveal = (id: string): void => {
-		if (layout === null) return;
+		if (disposed || layout === null) return;
 		const display = displayOfScene(id);
 		if (display === -1) return;
 		scroller.scrollTop = revealScrollTop(layout, display, scroller.clientHeight);
@@ -1604,6 +1732,7 @@ export function renderCorkboard(
 			return false;
 		},
 		dispose: () => {
+			if (disposed) return;
 			disposed = true;
 			controls.popover.closeFilter();
 			closeColorPanel();
@@ -1611,16 +1740,11 @@ export function renderCorkboard(
 			if (frame !== null) root.win.cancelAnimationFrame(frame);
 			observer?.disconnect();
 			root.win.removeEventListener('mouseup', releasePress, true);
-			// A conflict typed and not yet left is not thrown away with the board.
+			// Final drafts join accepted saves in the same order. They retain
+			// this board's project and revisions after its view has gone away.
 			for (const entry of cards.values()) {
-				if (entry.conflictDirty && entry.conflict.value !== entry.scene.conflict) {
-					void host
-						.patchScene(entry.id, {
-							conflict: entry.conflict.value,
-							expectedRevision: entry.scene.revision,
-						})
-						.catch(notice);
-				}
+				commitTitle(entry, false);
+				commitConflict(entry);
 			}
 			root.remove();
 		},

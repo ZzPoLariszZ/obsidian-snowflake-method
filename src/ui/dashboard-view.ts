@@ -698,6 +698,16 @@ export class SnowflakeDashboardView extends ItemView {
 		return this.projectPath;
 	}
 
+	/** The loaded project available for immediate workspace activation. */
+	workspaceProjectContext(): { path: string; locale: 'en' | 'zh-CN' } | null {
+		if (
+			this.projectPath === null ||
+			this.projectLocale === null ||
+			this.lastRender?.model?.path !== this.projectPath
+		) return null;
+		return { path: this.projectPath, locale: this.projectLocale };
+	}
+
 	getSelectedStep(): StepId {
 		return this.selectedStep;
 	}
@@ -4047,7 +4057,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.host.listDefinitionPaths(kind, 'world-status'),
 			this.host.listDefinitionPaths(kind, 'relationship'),
 			this.host.definitionFilePaths(kind),
-			this.host.listManuscriptNotes(),
+			this.host.listManuscriptNotes(model.path),
 		]);
 		const sourceFor = (
 			id: DefinitionFileChoice,
@@ -4176,8 +4186,8 @@ export class SnowflakeDashboardView extends ItemView {
 				groupByPath.get(noteKey(path)) ?? madeHere.get(noteKey(path)) ?? null,
 			members: () => members,
 			times: () => times,
-			// Written the way Obsidian writes a link, without an alias: the
-			// note's own name is the label, and a rename keeps the link's shape.
+			// Keep the full vault path so notes sharing a title remain distinct;
+			// the picker shows the note's title while storing its unaliased link.
 			manuscriptNotes: () =>
 				manuscriptNotes.map((note) => ({
 					value: wikiLinkText(note.path),
@@ -6771,7 +6781,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private async loadManuscriptNotes(model: ProjectDashboardModel): Promise<void> {
 		let notes: { path: string; title: string }[] = [];
 		try {
-			notes = await this.host.listManuscriptNotes();
+			notes = await this.host.listManuscriptNotes(model.path);
 		} catch {
 			notes = [];
 		}
