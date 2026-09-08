@@ -243,6 +243,7 @@ class MentionListModal extends Modal {
 		if (button === null) return;
 		const opened = this.allExpanded();
 		setIcon(button, opened ? 'chevrons-down-up' : 'chevrons-up-down');
+		button.setAttribute('aria-expanded', String(opened));
 		setTooltip(
 			button,
 			this.options.t(opened ? 'tracking.collapseAll' : 'tracking.expandAll'),
@@ -284,23 +285,27 @@ class MentionListModal extends Modal {
 		}
 		const hidden = group.occurrences.length - 1;
 		if (hidden <= 0) return;
-		const more = host.createDiv({
+		const more = host.createEl('button', {
 			cls: 'snowflake-method-tracking-modal-more',
+			attr: { type: 'button', 'aria-expanded': String(open) },
 		});
 		more.createSpan({
 			text: open
 				? this.options.t('tracking.showLess')
 				: this.options.t('tracking.moreResults', { count: hidden }),
 		});
-		const chevron = more.createSpan({
-			cls: 'snowflake-method-tracking-modal-more-icon',
+		more.createSpan({
+			cls: 'snowflake-method-tracking-modal-more-icon snowflake-method-disclosure-icon snowflake-method-disclosure-icon-more',
 			attr: { 'aria-hidden': 'true' },
 		});
-		setIcon(chevron, open ? 'chevron-up' : 'chevron-down');
 		more.addEventListener('click', () => {
+			const focused = more.ownerDocument.activeElement === more;
 			if (open) this.expanded.delete(group.path);
 			else this.expanded.add(group.path);
 			this.renderGroup(host, group);
+			if (focused) {
+				host.querySelector<HTMLButtonElement>('.snowflake-method-tracking-modal-more')?.focus();
+			}
 			this.paintExpand();
 		});
 	}
@@ -440,8 +445,8 @@ export function renderEntitiesPanel(
 			cls: 'snowflake-method-definition-section-toggle',
 			attr: { type: 'button' },
 		});
-		const chevron = toggle.createSpan({
-			cls: 'snowflake-method-definition-section-chevron',
+		toggle.createSpan({
+			cls: 'snowflake-method-definition-section-chevron snowflake-method-disclosure-icon',
 			attr: { 'aria-hidden': 'true' },
 		});
 		toggle.createSpan({
@@ -469,7 +474,6 @@ export function renderEntitiesPanel(
 			}
 			body.toggleClass('is-collapsed', !shown);
 			toggle.setAttribute('aria-expanded', String(shown));
-			setIcon(chevron, shown ? 'chevron-down' : 'chevron-right');
 		};
 		toggle.addEventListener('click', () => {
 			if (open.has(key)) open.delete(key);

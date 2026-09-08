@@ -279,6 +279,10 @@ export function renderTaskBoard(
 		cls: 'snowflake-method-task-archive-toggle',
 		attr: { type: 'button', 'aria-expanded': String(memory.archiveOpen) },
 	});
+	archiveToggle.createSpan({
+		cls: 'snowflake-method-disclosure-icon',
+		attr: { 'aria-hidden': 'true' },
+	});
 	archiveToggle.createSpan({ text: t('taskBoard.archiveTitle') });
 	const archiveCount = archiveToggle
 		.createSpan({ cls: 'snowflake-method-task-archive-count' })

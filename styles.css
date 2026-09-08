@@ -1772,22 +1772,58 @@
 	content: '';
 }
 
+/* Section and tree folds use the writing hints' small chevron, whether the
+   control is a native summary or a button with an explicit expanded state. */
+.snowflake-method-disclosure-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+}
+
+/* The visible strokes are centered in the square at every rotation. Using
+   the label's em also scales the stroke, from small preview links to headings. */
+.snowflake-method-disclosure-icon::before,
 .snowflake-method-guided-details > summary::before,
-.snowflake-method-optional-section > summary::before {
-	width: 0.45rem;
-	height: 0.45rem;
-	border: solid currentColor;
-	border-width: 0 1.5px 1.5px 0;
+.snowflake-method-optional-section > summary::before,
+.snowflake-method-writing-hints > summary::after {
+	display: block;
+	width: 1em;
+	height: 1em;
+	background-color: var(--text-muted);
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6L8 10L12 6' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
 	content: '';
 	flex: 0 0 auto;
-	transform: rotate(-45deg);
+	transform: rotate(-90deg);
 	transition: transform 120ms ease;
 }
 
+[aria-expanded='true'] > .snowflake-method-disclosure-icon::before,
 .snowflake-method-guided-details[open] > summary::before,
-.snowflake-method-optional-section[open] > summary::before {
-	border-color: var(--interactive-accent);
-	transform: rotate(45deg);
+.snowflake-method-optional-section[open] > summary::before,
+.snowflake-method-writing-hints[open] > summary::after {
+	background-color: var(--interactive-accent);
+	transform: rotate(0deg);
+}
+
+/* Preview controls point down to show more and up to show fewer. */
+.snowflake-method-disclosure-icon-more::before {
+	transform: rotate(0deg);
+}
+
+[aria-expanded='true'] > .snowflake-method-disclosure-icon-more::before {
+	transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-disclosure-icon::before,
+	.snowflake-method-guided-details > summary::before,
+	.snowflake-method-optional-section > summary::before,
+	.snowflake-method-writing-hints > summary::after {
+		transition: none;
+	}
 }
 
 .snowflake-method-guided-details > summary:focus-visible,
@@ -2052,19 +2088,7 @@
 }
 
 .snowflake-method-writing-hints > summary::after {
-	width: 0.45rem;
-	height: 0.45rem;
 	margin-inline-start: auto;
-	border: solid var(--text-muted);
-	border-width: 0 1.5px 1.5px 0;
-	content: '';
-	transform: rotate(-45deg);
-	transition: transform 120ms ease;
-}
-
-.snowflake-method-writing-hints[open] > summary::after {
-	border-color: var(--interactive-accent);
-	transform: rotate(45deg);
 }
 
 .snowflake-method-writing-hints-icon {
@@ -3194,9 +3218,8 @@
 	border-block-start: 1px solid var(--background-modifier-border);
 }
 
-/* The label starts at the same inset as the project titles, and the count
-	takes the more-button's own column, so the section reads as one of the rows
-	above it rather than as a caption. */
+/* The disclosure starts at the project titles' inset, and the count keeps
+	the more-button's column, so the archive stays aligned with the rows above. */
 .snowflake-method-project-manager-modal
 	button.snowflake-method-project-manager-archived-toggle {
 	display: flex;
@@ -3223,6 +3246,12 @@
 .snowflake-method-project-manager-modal
 	button.snowflake-method-project-manager-archived-toggle:hover {
 	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-project-manager-modal
+	button.snowflake-method-project-manager-archived-toggle:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: 2px;
 }
 
 /* The same box as an option button, holding the rail's own number-in-a-circle
@@ -5108,6 +5137,7 @@
 	);
 }
 
+.snowflake-method-reduce-motion .snowflake-method-disclosure-icon::before,
 .snowflake-method-reduce-motion
 	.snowflake-method-guided-details
 	> summary::before,
@@ -7365,31 +7395,38 @@ td.snowflake-method-tracking-numeric {
 	color: var(--text-faint);
 }
 
-.snowflake-method-tracking-modal-more {
+.snowflake-method-tracking-modal button.snowflake-method-tracking-modal-more {
 	display: flex;
 	gap: var(--size-2-1);
 	align-items: center;
+	justify-content: flex-start;
+	width: 100%;
+	height: auto;
 	padding: var(--size-2-2);
+	border: 0;
 	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-muted);
+	font-family: inherit;
 	font-size: var(--font-ui-smaller);
+	font-weight: inherit;
+	line-height: inherit;
+	text-align: start;
+	white-space: normal;
 	cursor: pointer;
+	appearance: none;
 }
 
-.snowflake-method-tracking-modal-more:hover {
+.snowflake-method-tracking-modal button.snowflake-method-tracking-modal-more:hover {
 	background-color: var(--background-modifier-hover);
+	box-shadow: none;
 	color: var(--text-normal);
 }
 
-.snowflake-method-tracking-modal-more-icon {
-	display: inline-flex;
-	align-items: center;
-	flex: 0 0 auto;
-}
-
-.snowflake-method-tracking-modal-more-icon svg {
-	width: 0.85rem;
-	height: 0.85rem;
+.snowflake-method-tracking-modal button.snowflake-method-tracking-modal-more:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus, var(--interactive-accent));
+	outline-offset: -2px;
 }
 
 /* Rows the tracking modal and panel still share from the old pane's cloth:
@@ -8109,15 +8146,7 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 }
 
 .snowflake-method-rail-group-chevron {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	color: var(--text-faint);
-}
-
-.snowflake-method-rail-group-chevron svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
+	justify-self: center;
 }
 
 .snowflake-method-rail-group-body.is-collapsed {
@@ -9115,6 +9144,8 @@ button.snowflake-method-kind-options {
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-normal);
+	/* The heading and its chevron share one text size. */
+	font-size: calc(var(--font-ui-medium) + 2px);
 	font-weight: inherit;
 	text-align: start;
 	cursor: pointer;
@@ -9142,13 +9173,6 @@ button.snowflake-method-kind-options {
 	box-shadow: none;
 	outline: 2px solid var(--background-modifier-border-focus);
 	outline-offset: -2px;
-}
-
-.snowflake-method-definition-section-chevron {
-	display: flex;
-	flex: 0 0 auto;
-	align-items: center;
-	color: var(--text-muted);
 }
 
 /* The settings page folded the dashboard's way: every section is one card,
@@ -9366,7 +9390,7 @@ button.snowflake-method-kind-options {
    by reading. */
 .snowflake-method-definition-section-title {
 	overflow: hidden;
-	font-size: calc(var(--font-ui-medium) + 2px);
+	font-size: inherit;
 	font-weight: var(--font-semibold);
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -9618,14 +9642,6 @@ button.snowflake-method-kind-options {
 .snowflake-method-definition-toggle-spacer {
 	flex: 0 0 auto;
 	width: 1.75rem;
-}
-
-/* The arrow says which way the row is folded and takes no click of its own. */
-.snowflake-method-definition-toggle {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	color: var(--text-muted);
 }
 
 /* The row itself is what chooses an entry, so it is a button the whole way
@@ -10007,12 +10023,6 @@ button.snowflake-method-kind-options {
 	background: transparent;
 	box-shadow: none;
 	text-decoration: underline;
-}
-
-.snowflake-method-definition-inspector-viewall-icon {
-	display: inline-flex;
-	flex: 0 0 auto;
-	color: var(--text-faint);
 }
 
 /* The writing count in the status bar: a snowflake and a number, sharing the

@@ -1812,14 +1812,11 @@ export class SnowflakeDashboardView extends ItemView {
 				'aria-expanded': this.railCollapsed[key] ? 'false' : 'true',
 			},
 		});
-		// The chevron leads, as every other fold in the plugin does, and stands
-		// in the column the rows below keep their marks in — which puts the
-		// word itself in the column those rows keep their names in.
-		const chevron = header.createSpan({
-			cls: 'snowflake-method-rail-group-chevron',
+		// Align the chevron with the row icons and the heading with their names.
+		header.createSpan({
+			cls: 'snowflake-method-disclosure-icon snowflake-method-rail-group-chevron',
 			attr: { 'aria-hidden': 'true' },
 		});
-		setIcon(chevron, this.railCollapsed[key] ? 'chevron-right' : 'chevron-down');
 		header.createSpan({ text: title });
 		const body = group.createDiv({ cls: 'snowflake-method-rail-group-body' });
 		if (this.railCollapsed[key]) body.addClass('is-collapsed');
@@ -1832,10 +1829,6 @@ export class SnowflakeDashboardView extends ItemView {
 			header.setAttribute(
 				'aria-expanded',
 				this.railCollapsed[key] ? 'false' : 'true',
-			);
-			setIcon(
-				chevron,
-				this.railCollapsed[key] ? 'chevron-right' : 'chevron-down',
 			);
 			this.app.workspace.requestSaveLayout();
 		});
@@ -2801,11 +2794,10 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-definition-section-toggle',
 			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
 		});
-		const chevron = toggle.createSpan({
-			cls: 'snowflake-method-definition-section-chevron',
+		toggle.createSpan({
+			cls: 'snowflake-method-disclosure-icon snowflake-method-definition-section-chevron',
 			attr: { 'aria-hidden': 'true' },
 		});
-		setIcon(chevron, collapsed() ? 'chevron-right' : 'chevron-down');
 		toggle.createSpan({
 			cls: 'snowflake-method-definition-section-title',
 			text: this.definitionKindLabel(kind),
@@ -2859,7 +2851,6 @@ export class SnowflakeDashboardView extends ItemView {
 			const open = searching || !collapsed();
 			body.toggleClass('is-collapsed', !open);
 			toggle.setAttribute('aria-expanded', String(open));
-			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
 			if (rows === null) {
 				section.toggleClass('is-hidden', searching);
 				return 0;
@@ -3011,11 +3002,10 @@ export class SnowflakeDashboardView extends ItemView {
 		if (shape.hasChildren) {
 			// Which way it points is all it does: the row opens itself, the way
 			// a section heading opens its own section.
-			const toggle = row.createSpan({
-				cls: 'snowflake-method-definition-toggle',
+			row.createSpan({
+				cls: 'snowflake-method-disclosure-icon snowflake-method-definition-toggle',
 				attr: { 'aria-hidden': 'true' },
 			});
-			setIcon(toggle, shape.folded ? 'chevron-right' : 'chevron-down');
 		} else {
 			row.createSpan({
 				cls: 'snowflake-method-definition-toggle-spacer',
@@ -3133,11 +3123,10 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-definition-section-toggle',
 			attr: { type: 'button', 'aria-expanded': String(!collapsed()) },
 		});
-		const chevron = toggle.createSpan({
-			cls: 'snowflake-method-definition-section-chevron',
+		toggle.createSpan({
+			cls: 'snowflake-method-disclosure-icon snowflake-method-definition-section-chevron',
 			attr: { 'aria-hidden': 'true' },
 		});
-		setIcon(chevron, collapsed() ? 'chevron-right' : 'chevron-down');
 		toggle.createSpan({
 			cls: 'snowflake-method-definition-section-title',
 			text: this.definitionKindLabel(kind),
@@ -3189,7 +3178,6 @@ export class SnowflakeDashboardView extends ItemView {
 			if (open) fill();
 			body.toggleClass('is-collapsed', !open);
 			toggle.setAttribute('aria-expanded', String(open));
-			setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
 			let found = 0;
 			for (const { template, row } of rows) {
 				const matches =
@@ -3791,20 +3779,17 @@ export class SnowflakeDashboardView extends ItemView {
 		if (names.length <= DEFINITION_USAGE_PREVIEW) return;
 		const toggle = block.createEl('button', {
 			cls: 'snowflake-method-definition-inspector-viewall',
-			attr: { type: 'button' },
+			attr: { type: 'button', 'aria-expanded': String(all) },
 		});
 		toggle.createSpan({
 			text: all
 				? this.t('definition.inspector.showFewer')
 				: this.t('definition.inspector.viewAll', { count: names.length }),
 		});
-		setIcon(
-			toggle.createSpan({
-				cls: 'snowflake-method-definition-inspector-viewall-icon',
-				attr: { 'aria-hidden': 'true' },
-			}),
-			all ? 'chevron-up' : 'chevron-right',
-		);
+		toggle.createSpan({
+			cls: 'snowflake-method-disclosure-icon snowflake-method-disclosure-icon-more snowflake-method-definition-inspector-viewall-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
 		toggle.addEventListener('click', () => {
 			this.definitionUsageOpen = all ? null : key;
 			this.renderDefinitionInspector(panel, model, context);

@@ -10,7 +10,7 @@ export const en = {
 	'common.working': 'Working…',
 	'common.none': 'None',
 	'common.optional': 'Optional',
-	'common.recommended': 'Recommend',
+	'common.recommended': 'Recommended',
 	'commands.createProject': 'Create project',
 	'commands.openDashboard': 'Open dashboard',
 	'commands.openProjectManager': 'Open project manager',

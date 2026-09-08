@@ -272,7 +272,7 @@ describe('translation resources', () => {
 
 	it('keeps the Step 1 title and non-blocking length guidance exact', () => {
 		expect(en['steps.1.title']).toBe('One-sentence summary');
-		expect(en['common.recommended']).toBe('Recommend');
+		expect(en['common.recommended']).toBe('Recommended');
 		expect(zhCN['common.recommended']).toBe('推荐');
 		expect(Object.values(en)).not.toContain(
 			'As a novelist, your job is to delight your target readers.',

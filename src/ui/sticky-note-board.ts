@@ -315,6 +315,10 @@ export function renderStickyNoteBoard(
 			cls: 'snowflake-method-sticky-archive-toggle',
 			attr: { type: 'button', 'aria-expanded': String(memory.archiveOpen) },
 		});
+		toggle.createSpan({
+			cls: 'snowflake-method-disclosure-icon',
+			attr: { 'aria-hidden': 'true' },
+		});
 		toggle.createSpan({ text: t('stickyNotes.archiveTitle') });
 		const count = toggle
 			.createSpan({ cls: 'snowflake-method-sticky-archive-count' })

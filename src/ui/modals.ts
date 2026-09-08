@@ -1081,6 +1081,10 @@ export class ManageProjectsModal extends Modal {
 				},
 			});
 			toggle.createSpan({
+				cls: 'snowflake-method-disclosure-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			toggle.createSpan({
 				text: this.t('modal.projectManager.archivedProjects'),
 			});
 			paintCount(

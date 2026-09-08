@@ -1200,12 +1200,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					const open = this.openSections.has(key);
 					card.toggleClass('is-collapsed', !open);
 					heading.setAttribute('aria-expanded', String(open));
-					const chevron = heading.querySelector(
-						'.snowflake-method-definition-section-chevron',
-					);
-					if (chevron instanceof HTMLElement) {
-						setIcon(chevron, open ? 'chevron-down' : 'chevron-right');
-					}
 				};
 				if (!heading.hasClass('snowflake-method-settings-fold')) {
 					heading.addClass('snowflake-method-settings-fold');
@@ -1213,7 +1207,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					heading.setAttribute('tabindex', '0');
 					heading.prepend(
 						createSpan({
-							cls: 'snowflake-method-definition-section-chevron',
+							cls: 'snowflake-method-definition-section-chevron snowflake-method-disclosure-icon',
 							attr: { 'aria-hidden': 'true' },
 						}),
 					);
