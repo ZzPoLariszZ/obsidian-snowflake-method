@@ -1463,18 +1463,7 @@ export default class SnowflakeMethodPlugin
 			await this.saveSettings();
 		}
 
-		await Promise.all(
-			this.app.workspace
-				.getLeavesOfType(DASHBOARD_VIEW_TYPE)
-				.map(async (leaf) => {
-					if (
-						leaf.view instanceof SnowflakeDashboardView &&
-						leaf.view.getProjectPath() === oldPath
-					) {
-						await leaf.view.showRenamedProject(renamed);
-					}
-				}),
-		);
+		await this.renameProjectViews(option.rootPath, project.rootPath, renamed);
 		new Notice(this.t('messages.projectRenamed', { name: project.title }));
 		return this.listProjects();
 	}
@@ -1937,8 +1926,9 @@ export default class SnowflakeMethodPlugin
 
 	async createCharacter(
 		request: CreateCharacterRequest,
+		projectPath?: string,
 	): Promise<CharacterOption> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		let character;
 		try {
 			character = await this.projects.createCharacter(project, request);
@@ -1952,8 +1942,9 @@ export default class SnowflakeMethodPlugin
 	async updateCharacter(
 		id: string,
 		request: CreateCharacterRequest,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		const expectedRevision = this.requireExpectedRevision(
 			request.expectedRevision,
 		);
@@ -2053,8 +2044,9 @@ export default class SnowflakeMethodPlugin
 
 	async createScene(
 		request: CreateSceneRequest,
+		projectPath?: string,
 	): Promise<{ id: string; path: string }> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		let scene;
 		try {
 			scene = await this.projects.createScene(project, {
@@ -2103,8 +2095,9 @@ export default class SnowflakeMethodPlugin
 
 	async createEntity(
 		request: EntityFormRequest,
+		projectPath?: string,
 	): Promise<{ id: string; path: string }> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		let entity;
 		try {
 			entity = await this.projects.createEntity(project, {
@@ -2246,16 +2239,17 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async kindTemplatePath(kind: EntityKindId): Promise<string | null> {
-		const project = await this.requireCurrentProject();
+	async kindTemplatePath(kind: EntityKindId, projectPath?: string): Promise<string | null> {
+		const project = await this.requireProject(projectPath);
 		return this.projects.kindTemplatePath(project, kind);
 	}
 
 	async setKindTemplate(
 		kind: EntityKindId,
 		path: string | null,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			await this.projects.setKindTemplate(project, kind, path);
 		} catch (error) {
@@ -2263,8 +2257,8 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async kindTemplateFields(kind: EntityKindId): Promise<CustomField[]> {
-		const project = await this.requireCurrentProject();
+	async kindTemplateFields(kind: EntityKindId, projectPath?: string): Promise<CustomField[]> {
+		const project = await this.requireProject(projectPath);
 		return this.projects.kindTemplateFields(project, kind);
 	}
 
@@ -2280,8 +2274,9 @@ export default class SnowflakeMethodPlugin
 		kind: EntityKindId,
 		input: { name: string; description: string; fields: CustomField[] },
 		options?: { previousName?: string; overwrite?: boolean },
+		projectPath?: string,
 	): Promise<SaveCustomFieldTemplateResult> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			return await this.projects.saveCustomFieldTemplate(
 				project,
@@ -2309,8 +2304,9 @@ export default class SnowflakeMethodPlugin
 	async listDefinitionPaths(
 		kind: EntityKindId,
 		id: DefinitionFileChoice,
+		projectPath?: string,
 	): Promise<string[]> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		return this.projects.listDefinitionPaths(project, kind, id);
 	}
 
@@ -2319,8 +2315,9 @@ export default class SnowflakeMethodPlugin
 		id: DefinitionFileChoice,
 		path: string,
 		description = '',
+		projectPath?: string,
 	): Promise<AddDefinitionPathResult> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		const result = await this.projects.addDefinitionPath(
 			project,
 			kind,
@@ -2393,8 +2390,9 @@ export default class SnowflakeMethodPlugin
 
 	async definitionFilePaths(
 		kind: EntityKindId,
+		projectPath?: string,
 	): Promise<Record<DefinitionFileChoice, string>> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		const pathFor = (id: DefinitionFileChoice): string =>
 			definitionRootPathFor(project, kind, id);
 		return {
@@ -2404,8 +2402,8 @@ export default class SnowflakeMethodPlugin
 		};
 	}
 
-	async updateScene(id: string, request: CreateSceneRequest): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async updateScene(id: string, request: CreateSceneRequest, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		const expectedRevision = this.requireExpectedRevision(
 			request.expectedRevision,
 		);
@@ -2452,8 +2450,8 @@ export default class SnowflakeMethodPlugin
 		}));
 	}
 
-	async deleteScene(id: string, expectedRevision: string): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		const scene = project.scenes.find((candidate) => candidate.sceneId === id);
 		if (scene === undefined) {
 			throw new ManagedFileNotFoundError(`scene:${id}`);
@@ -2498,8 +2496,8 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async reorderScene(sceneId: string, targetIndex: number): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async reorderScene(sceneId: string, targetIndex: number, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		await this.projects.reorderScene(project, sceneId, targetIndex);
 	}
 
@@ -7783,7 +7781,15 @@ export default class SnowflakeMethodPlugin
 		// Resolve only that saved owner, and check again after the asynchronous read.
 		const path = leaf.getViewState().state?.projectPath;
 		if (typeof path !== 'string') return;
-		const project = await this.projects.loadProject(path);
+		let project: ProjectSnapshot;
+		try {
+			project = await this.projects.loadProject(path);
+		} catch (error) {
+			// Restored workspaces can name a project removed while the app
+			// was closed. Its view owns the empty state; activation stays quiet.
+			if (error instanceof ManagedFileNotFoundError) return;
+			throw error;
+		}
 		if (!stillCurrent() || leaf.getViewState().state?.projectPath !== path) return;
 		this.activateProject(project.projectFile, project.locale, step());
 	}
@@ -8862,16 +8868,35 @@ export default class SnowflakeMethodPlugin
 	private renameCarry: Promise<void> = Promise.resolve();
 
 	/** Keep each workspace's saved project attached when its folder or note moves. */
-	private async renameStoryStructureProjects(oldPath: string, newPath: string): Promise<void> {
-		await Promise.all(this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE).map(async (leaf) => {
+	private async renameProjectViews(
+		oldPath: string,
+		newPath: string,
+		project?: CreatedProject,
+	): Promise<void> {
+		const leaves = [DASHBOARD_VIEW_TYPE, STORY_STRUCTURE_VIEW_TYPE, MANUSCRIPT_VIEW_TYPE]
+			.flatMap((type) => this.app.workspace.getLeavesOfType(type));
+		await Promise.all(leaves.map(async (leaf) => {
 			const saved = leaf.getViewState();
 			const path = saved.state?.projectPath;
 			if (typeof path !== 'string') return;
-			const projectPath = movedWithRename(path, oldPath, newPath);
+			// Vault events may already have moved this leaf by the time the
+			// rename command returns with its new title.
+			const projectPath = movedWithRename(path, oldPath, newPath) ??
+				(project !== undefined && path === project.path ? path : null);
 			if (projectPath === null) return;
+			const anchor = saved.state?.anchorPath;
+			const anchorPath = typeof anchor === 'string'
+				? movedWithRename(anchor, oldPath, newPath) ?? anchor
+				: anchor;
 			await leaf.setViewState({
 				...saved,
-				state: { ...saved.state, projectPath },
+				state: {
+					...saved.state,
+					projectPath,
+					...(saved.type === MANUSCRIPT_VIEW_TYPE ? { anchorPath } : {}),
+					...(saved.type === DASHBOARD_VIEW_TYPE && project !== undefined
+						? { projectTitle: project.title } : {}),
+				},
 			});
 		}));
 	}
@@ -9002,7 +9027,7 @@ export default class SnowflakeMethodPlugin
 			// stream left in a background tab never notices on its own.
 			this.detachProjectViews(oldPath);
 		} else {
-			await this.renameStoryStructureProjects(oldPath, file.path);
+			await this.renameProjectViews(oldPath, file.path);
 		}
 
 		const recent = this.settings.recentProjectPath;
@@ -9264,6 +9289,13 @@ export default class SnowflakeMethodPlugin
 		const project = await this.getCurrentProject();
 		if (project === null) throw new Error(this.t('messages.noCurrentProject'));
 		return project;
+	}
+
+	/** A captured form or queued action never changes the selected project. */
+	private requireProject(projectPath?: string): Promise<ProjectSnapshot> {
+		return projectPath === undefined
+			? this.requireCurrentProject()
+			: this.projects.loadProject(projectPath);
 	}
 
 	private async resolveStepArtifactPath(
@@ -9693,22 +9725,24 @@ export default class SnowflakeMethodPlugin
 		).open();
 	}
 
-	async openSceneForm(intent: SceneFormIntent): Promise<string | null> {
-		return this.withDashboardForm((view) => view.openSceneForm(intent), null);
+	async openSceneForm(intent: SceneFormIntent, projectPath?: string): Promise<string | null> {
+		return this.withDashboardForm((view) => view.openSceneForm(intent), null, projectPath);
 	}
 
-	async openCharacterForm(id: string): Promise<void> {
-		await this.withDashboardForm((view) => view.openCharacterForm(id), undefined);
+	async openCharacterForm(id: string, projectPath?: string): Promise<void> {
+		await this.withDashboardForm((view) => view.openCharacterForm(id), undefined, projectPath);
 	}
 
 	/** Opens a dashboard-owned form while keeping the requesting surface active. */
 	private async withDashboardForm<T>(
 		open: (view: SnowflakeDashboardView) => Promise<T>,
 		fallback: T,
+		projectPath = this.settings.recentProjectPath,
 	): Promise<T> {
-		const recent = this.settings.recentProjectPath;
+		const recent = projectPath;
 		if (recent === null) return fallback;
-		let view = this.dashboardViewForRecentProject();
+		const existing = this.findOpenProjectLeaf(recent);
+		let view = existing?.view instanceof SnowflakeDashboardView ? existing.view : null;
 		let background = false;
 		if (view === null) {
 			// A restored tab may still hold a deferred view. Find it by its
@@ -9727,14 +9761,17 @@ export default class SnowflakeMethodPlugin
 			}
 			await leaf.loadIfDeferred();
 			// Creating a tab can take the front; keep the requesting surface active.
-			if (from !== null && from !== leaf) {
+			if (
+				from !== null && from !== leaf &&
+				this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit) === leaf
+			) {
 				await this.app.workspace.revealLeaf(from);
 				this.app.workspace.setActiveLeaf(from, { focus: true });
 			}
 			view = leaf.view instanceof SnowflakeDashboardView ? leaf.view : null;
 			background = true;
 		}
-		if (view === null) return fallback;
+		if (view === null || view.getProjectPath() !== recent) return fallback;
 		try {
 			return await open(view);
 		} finally {

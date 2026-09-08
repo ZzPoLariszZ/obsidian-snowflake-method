@@ -219,7 +219,9 @@ export function renderTaskBoard(
 		);
 	};
 	filterButton.addEventListener('click', () => {
-		if (controls.popover.filterOpen()) {
+		// Keyboard activation has no preceding outside mousedown to dismiss
+		// the archive's panel. Only this anchor's own panel toggles closed.
+		if (controls.popover.filterOpen() && filterButton.getAttribute('aria-expanded') === 'true') {
 			controls.popover.closeFilter();
 			return;
 		}
@@ -367,7 +369,7 @@ export function renderTaskBoard(
 		);
 	};
 	archiveFilterButton.addEventListener('click', () => {
-		if (controls.popover.filterOpen()) {
+		if (controls.popover.filterOpen() && archiveFilterButton.getAttribute('aria-expanded') === 'true') {
 			controls.popover.closeFilter();
 			return;
 		}

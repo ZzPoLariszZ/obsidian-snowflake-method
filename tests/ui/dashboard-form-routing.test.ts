@@ -172,3 +172,34 @@ describe.each(forms)('$name forms requested from another surface', ({ open, call
 		},
 	);
 });
+
+describe('captured project ownership during form setup', () => {
+	it('opens the requested project while preserving a different current project', async () => {
+		const first = dashboardLeaf();
+		const second = dashboardLeaf('Other/Other.md');
+		const { plugin, workspace } = pluginWith([first.leaf, second.leaf]);
+		Object.assign(plugin, { settings: { recentProjectPath: 'Other/Other.md', recentStep: 8 } });
+		workspace.setActiveLeaf(second.leaf, { focus: true });
+		await plugin.openSceneForm(sceneIntent, projectPath);
+		expect(first.openSceneForm).toHaveBeenCalledWith(sceneIntent);
+		expect(second.openSceneForm).not.toHaveBeenCalled();
+		expect(plugin.settings.recentProjectPath).toBe('Other/Other.md');
+		expect(workspace.getLeaf).not.toHaveBeenCalled();
+	});
+
+	it('does not undo a user tab switch while a deferred dashboard loads', async () => {
+		let ready!: () => void;
+		const loading = new Promise<void>((resolve) => { ready = resolve; });
+		const first = dashboardLeaf(projectPath, true, loading);
+		const second = dashboardLeaf('Other/Other.md');
+		const { plugin, workspace, activeLeaf } = pluginWith([first.leaf, second.leaf]);
+		const opening = plugin.openCharacterForm('hero', projectPath);
+		expect(first.leaf.loadIfDeferred).toHaveBeenCalledOnce();
+		workspace.setActiveLeaf(second.leaf, { focus: true });
+		ready();
+		await opening;
+		expect(first.openCharacterForm).toHaveBeenCalledWith('hero');
+		expect(activeLeaf()).toBe(second.leaf);
+		expect(workspace.revealLeaf).not.toHaveBeenCalled();
+	});
+});

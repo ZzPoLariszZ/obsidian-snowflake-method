@@ -722,12 +722,12 @@ export interface DashboardHost {
 	selectWorldbuildingKind(kind: WorldbuildingKindId): Promise<void>;
 	createProject(request: CreateProjectRequest): Promise<CreatedProject>;
 	/** Reports the character back so a field that asked for it can select it. */
-	createCharacter(request: CreateCharacterRequest): Promise<CharacterOption>;
-	updateCharacter(id: string, request: CreateCharacterRequest): Promise<void>;
+	createCharacter(request: CreateCharacterRequest, projectPath?: string): Promise<CharacterOption>;
+	updateCharacter(id: string, request: CreateCharacterRequest, projectPath?: string): Promise<void>;
 	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
 	/** Reports the scene's id back, so inserting can place what it created. */
-	createScene(request: CreateSceneRequest): Promise<{ id: string; path: string }>;
-	createEntity(request: EntityFormRequest): Promise<{ id: string; path: string }>;
+	createScene(request: CreateSceneRequest, projectPath?: string): Promise<{ id: string; path: string }>;
+	createEntity(request: EntityFormRequest, projectPath?: string): Promise<{ id: string; path: string }>;
 	updateEntity(id: string, request: EntityFormRequest): Promise<void>;
 	deleteEntity(id: string, expectedRevision: string): Promise<void>;
 	/** Registers a new custom kind, or reports why the name cannot be it. */
@@ -752,11 +752,11 @@ export interface DashboardHost {
 	/** Trashes the kind whole: folder, notes, vocabularies, base, registry. */
 	deleteWorldbuildingKind(kind: WorldbuildingKindId): Promise<void>;
 	/** The note seeding one kind's default custom fields, when one is chosen. */
-	kindTemplatePath(kind: EntityKindId): Promise<string | null>;
+	kindTemplatePath(kind: EntityKindId, projectPath?: string): Promise<string | null>;
 	/** Records that choice; null clears it. */
-	setKindTemplate(kind: EntityKindId, path: string | null): Promise<void>;
+	setKindTemplate(kind: EntityKindId, path: string | null, projectPath?: string): Promise<void>;
 	/** The default fields the chosen template note defines right now. */
-	kindTemplateFields(kind: EntityKindId): Promise<CustomField[]>;
+	kindTemplateFields(kind: EntityKindId, projectPath?: string): Promise<CustomField[]>;
 	/** The fields one named template stores, for the dialog that edits them. */
 	customFieldTemplateFields(
 		kind: EntityKindId,
@@ -767,6 +767,7 @@ export interface DashboardHost {
 		kind: EntityKindId,
 		input: { name: string; description: string; fields: CustomField[] },
 		options?: { previousName?: string; overwrite?: boolean },
+		projectPath?: string,
 	): Promise<SaveCustomFieldTemplateResult>;
 	/** Trashes one template and clears every choice that named it. */
 	deleteCustomFieldTemplate(kind: EntityKindId, name: string): Promise<void>;
@@ -783,10 +784,12 @@ export interface DashboardHost {
 	listDefinitionPaths(
 		kind: EntityKindId,
 		id: DefinitionFileChoice,
+		projectPath?: string,
 	): Promise<string[]>;
 	/** Vault paths of one kind's definition files, for the links records store. */
 	definitionFilePaths(
 		kind: EntityKindId,
+		projectPath?: string,
 	): Promise<Record<DefinitionFileChoice, string>>;
 	/** Appends a new path, reporting a refusal instead of throwing it. */
 	addDefinitionPath(
@@ -794,6 +797,7 @@ export interface DashboardHost {
 		id: DefinitionFileChoice,
 		path: string,
 		description?: string,
+		projectPath?: string,
 	): Promise<AddDefinitionPathResult>;
 	/** Renames one node and rewrites every member link into its subtree. */
 	renameDefinitionNode(
@@ -815,7 +819,7 @@ export interface DashboardHost {
 		taxonomyPath: string,
 		description: string,
 	): Promise<void>;
-	updateScene(id: string, request: CreateSceneRequest): Promise<void>;
+	updateScene(id: string, request: CreateSceneRequest, projectPath?: string): Promise<void>;
 	/**
 	 * One field at a time, under the revision the card was drawn from, the
 	 * way a board edits in place. Answers the note's fresh revision, so the
@@ -826,21 +830,21 @@ export interface DashboardHost {
 	/** The named project's manuscript notes in reading order, for pickers and filters. */
 	listManuscriptNotes(projectPath: string): Promise<{ path: string; title: string }[]>;
 	/**
-	 * Opens the scene form on the dashboard of the current project, opening a
+	 * Opens the scene form on the dashboard of the requested project, opening a
 	 * dashboard behind the asker when none is; resolves when the modal closes,
 	 * with the scene a create made.
 	 */
-	openSceneForm(intent: SceneFormIntent): Promise<string | null>;
+	openSceneForm(intent: SceneFormIntent, projectPath?: string): Promise<string | null>;
 	/** Opens an existing character's edit form without switching away from the caller. */
-	openCharacterForm(id: string): Promise<void>;
-	deleteScene(id: string, expectedRevision: string): Promise<void>;
+	openCharacterForm(id: string, projectPath?: string): Promise<void>;
+	deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(
 		step: 1 | 2,
 		fields: StepFields,
 		expectedRevision: string,
 	): Promise<void>;
-	reorderScene(sceneId: string, targetIndex: number): Promise<void>;
+	reorderScene(sceneId: string, targetIndex: number, projectPath?: string): Promise<void>;
 	reorderCharacter(characterId: string, targetIndex: number): Promise<void>;
 	openManagedFile(
 		path: string,

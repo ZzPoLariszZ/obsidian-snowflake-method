@@ -10,6 +10,7 @@
 import {
 	ItemView,
 	Keymap,
+	Notice,
 	Scope,
 	type ViewStateResult,
 	type WorkspaceLeaf,
@@ -23,6 +24,7 @@ import type {
 import { FilterPanel } from './filter-panel';
 import type { Translate } from './modals';
 import { renderTabStrip } from './pane-parts';
+import { clearSceneFilters } from './scene-filters';
 import {
 	STORY_STRUCTURE_FAMILIES,
 	corkboardMemory,
@@ -121,6 +123,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 		const legacy = !this.stateDelivered &&
 			typeof candidate.projectPath !== 'string' && candidate.projectPath !== null;
 		if (legacy) update.state.projectPath = this.deps.recentProjectPath();
+		if (update.state.projectPath !== this.state.projectPath) {
+			this.memory.query = '';
+			clearSceneFilters(this.memory.filters);
+			this.memory.scrollTop = 0;
+		}
 		if (!this.stateDelivered || update.state.projectPath !== this.state.projectPath) {
 			this.preferencesProjectId = null;
 			this.restoredPreferences = {};
@@ -218,6 +225,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 	rerender(): void {
 		if (!this.opened) return;
 		if (this.deps.fingerprint() === this.shownFingerprint) return;
+		if (!this.containerEl.isShown()) {
+			this.queueRefreshWhenShown();
+			return;
+		}
 		void this.refresh();
 	}
 
@@ -265,10 +276,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 					this.model = model;
 					if (model !== null) this.restoreCorkboardPreferences(model.projectId);
 					this.shownFingerprint = fingerprint;
-					if (this.frameKey() !== this.shownFrame || this.board === null) {
+					if (this.frameKey() !== this.shownFrame) {
 						this.renderFrame();
 					} else {
-						this.board.refresh();
+						this.board?.refresh();
 					}
 				} catch (error) {
 					this.renderError(error);
@@ -355,6 +366,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 			void this.deps.host.openStoryStructure(key, {
 				newTab: true,
 				projectPath: this.state.projectPath,
+			}).catch((error: unknown) => {
+				new Notice(error instanceof Error ? error.message : this.t('errors.unknown'));
 			});
 			return;
 		}
@@ -387,6 +400,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	private renderError(error: unknown): void {
 		this.disposeBoard();
+		this.filterPanel.close();
 		this.shownFrame = null;
 		const root = this.contentEl;
 		root.empty();

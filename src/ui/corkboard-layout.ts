@@ -200,7 +200,12 @@ export function displayOrder(
 		const values = groupValues(entry.scene, group, ctx);
 		const item = { sceneIndex: entry.index };
 		if (values.length === 0) place(none, item);
-		for (const value of values) place(value, item);
+		const placed = new Set<string>();
+		for (const value of values) {
+			if (placed.has(value.key)) continue;
+			placed.add(value.key);
+			place(value, item);
+		}
 	}
 	const ordered = [...gathered.values()].sort(
 		(a, b) =>

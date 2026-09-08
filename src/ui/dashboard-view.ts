@@ -1893,7 +1893,8 @@ export class SnowflakeDashboardView extends ItemView {
 			damaged: false,
 			indicator: { icon: 'square-arrow-out-up-right' },
 			onClick: () => {
-				void this.host.openStoryStructure(undefined, { projectPath: this.projectPath });
+				void this.host.openStoryStructure(undefined, { projectPath: this.projectPath })
+					.catch((error: unknown) => new Notice(error instanceof Error ? error.message : this.t('errors.unknown')));
 			},
 		});
 		workspace.addClass('snowflake-method-workspace-entry');
@@ -2417,7 +2418,7 @@ export class SnowflakeDashboardView extends ItemView {
 	): Promise<void> {
 		let paths: string[] = [];
 		try {
-			paths = await this.host.listDefinitionPaths(kind, 'category');
+			paths = await this.host.listDefinitionPaths(kind, 'category', model.path);
 		} catch {
 			paths = [];
 		}
@@ -2520,7 +2521,7 @@ export class SnowflakeDashboardView extends ItemView {
 				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: entities.length,
-					...listNeighbours(index, entities.length),
+					...(dragLocked ? { up: null, down: null } : listNeighbours(index, entities.length)),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.kindText('worldbuilding.insertAfter', kind),
@@ -2587,7 +2588,7 @@ export class SnowflakeDashboardView extends ItemView {
 				kindEntities(model, kind).map((entity) => entity.name),
 				context,
 				async (request) => {
-					const created = await this.host.createEntity(request);
+					const created = await this.host.createEntity(request, model.path);
 					await this.host.reorderEntity(kind, created.id, index + 1);
 					await this.refresh();
 					this.revealEntity(model, kind, created.id);
@@ -4053,10 +4054,10 @@ export class SnowflakeDashboardView extends ItemView {
 			filePaths,
 			manuscriptNotes,
 		] = await Promise.all([
-			this.host.listDefinitionPaths(kind, 'category'),
-			this.host.listDefinitionPaths(kind, 'world-status'),
-			this.host.listDefinitionPaths(kind, 'relationship'),
-			this.host.definitionFilePaths(kind),
+			this.host.listDefinitionPaths(kind, 'category', model.path),
+			this.host.listDefinitionPaths(kind, 'world-status', model.path),
+			this.host.listDefinitionPaths(kind, 'relationship', model.path),
+			this.host.definitionFilePaths(kind, model.path),
 			this.host.listManuscriptNotes(model.path),
 		]);
 		const sourceFor = (
@@ -4072,6 +4073,7 @@ export class SnowflakeDashboardView extends ItemView {
 						id,
 						path,
 						description,
+						model.path,
 					);
 					if (!result.ok) {
 						return result.code === 'too-deep'
@@ -4080,7 +4082,7 @@ export class SnowflakeDashboardView extends ItemView {
 								})
 							: this.t('form.definition.invalid', { name: result.segment });
 					}
-					paths = await this.host.listDefinitionPaths(kind, id);
+					paths = await this.host.listDefinitionPaths(kind, id, model.path);
 					return null;
 				},
 			};
@@ -4147,7 +4149,8 @@ export class SnowflakeDashboardView extends ItemView {
 		// Read off the freshest render, so a template exported while this very
 		// form stands open joins the offer once the refresh behind it lands.
 		const templateOptions = (): PickerOption[] => {
-			const fresh = this.renderedModel ?? model;
+			const shown = this.renderedModel;
+			const fresh = shown?.path === model.path ? shown : model;
 			return (fresh.customFieldTemplates[kind] ?? []).map((template) => ({
 				value: noteKey(template.path),
 				label: template.name,
@@ -4159,14 +4162,15 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			kindTemplates: {
 				options: templateOptions,
-				current: () => this.host.kindTemplatePath(kind),
-				set: (path) => this.host.setKindTemplate(kind, path),
-				fields: () => this.host.kindTemplateFields(kind),
+				current: () => this.host.kindTemplatePath(kind, model.path),
+				set: (path) => this.host.setKindTemplate(kind, path, model.path),
+				fields: () => this.host.kindTemplateFields(kind, model.path),
 				export: async (input) => {
 					const outcome = await this.host.saveCustomFieldTemplate(
 						kind,
 						input,
 						{ overwrite: true },
+						model.path,
 					);
 					// The pane and the picker read the model, so a fresh export
 					// joins them on the next refresh, behind the open form.
@@ -4198,6 +4202,10 @@ export class SnowflakeDashboardView extends ItemView {
 				manuscriptNotes.map((note) => note.path),
 				(target) => this.app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null,
 			),
+			linkedManuscriptMissing: (raw) => {
+				const link = parseWikiLink(raw);
+				return link === null || this.app.metadataCache.getFirstLinkpathDest(link.target, sourcePath) === null;
+			},
 			openLinkedManuscript: async (raw) => {
 				const link = parseWikiLink(raw);
 				const file = link === null ? null : this.app.metadataCache.getFirstLinkpathDest(link.target, sourcePath);
@@ -4234,7 +4242,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const find = (path: string): PickerOption => ({ value: path, label: name });
 		try {
 			if (group === 'character') {
-				const created = await this.quickCreateCharacter(name);
+				const created = await this.quickCreateCharacter(name, model.path);
 				return created === null ? null : find(created.path);
 			}
 			if (group === 'scene') {
@@ -4254,7 +4262,7 @@ export class SnowflakeDashboardView extends ItemView {
 					customFields: '',
 					color: null,
 					linkedManuscript: [],
-				});
+				}, model.path);
 				await this.refresh();
 				return find(created.path);
 			}
@@ -4278,7 +4286,7 @@ export class SnowflakeDashboardView extends ItemView {
 				worldStatus: [],
 				relationships: [],
 				customFields: '',
-			});
+			}, model.path);
 			await this.refresh();
 			return find(created.path);
 		} catch (error) {
@@ -4292,6 +4300,7 @@ export class SnowflakeDashboardView extends ItemView {
 	/** A character from its name alone, with every other field left unset. */
 	private async quickCreateCharacter(
 		name: string,
+		projectPath: string,
 	): Promise<CharacterOption | null> {
 		try {
 			const created = await this.host.createCharacter({
@@ -4308,7 +4317,7 @@ export class SnowflakeDashboardView extends ItemView {
 				worldStatus: [],
 				relationships: [],
 				customFields: '',
-			});
+			}, projectPath);
 			await this.refresh();
 			return created;
 		} catch (error) {
@@ -4341,7 +4350,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t,
 				model.characters.map((character) => character.name),
 				name,
-				(request) => this.host.createCharacter(request),
+				(request) => this.host.createCharacter(request, model.path),
 				context,
 			);
 			if (created === null) return null;
@@ -4361,7 +4370,7 @@ export class SnowflakeDashboardView extends ItemView {
 				model.scenes.map((scene) => scene.title),
 				name,
 				async (request) => {
-					const scene = await this.host.createScene(request);
+					const scene = await this.host.createScene(request, model.path);
 					return report(scene.path, request.title);
 				},
 				context,
@@ -4392,7 +4401,7 @@ export class SnowflakeDashboardView extends ItemView {
 				lockTimeKind: options?.onlyGroup === true,
 			},
 			async (request) => {
-				const entity = await this.host.createEntity(request);
+				const entity = await this.host.createEntity(request, model.path);
 				return report(entity.path, request.name);
 			},
 		);
@@ -4573,7 +4582,7 @@ export class SnowflakeDashboardView extends ItemView {
 				kindEntities(model, kind).map((entity) => entity.name),
 				context,
 				async (request) => {
-					await this.host.createEntity(request);
+					await this.host.createEntity(request, model.path);
 					this.entityQueries.set(kind, '');
 					await this.refresh();
 				},
@@ -4597,7 +4606,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.filter((candidate) => candidate.id !== character.id)
 					.map((candidate) => candidate.name),
 				async (request) => {
-					await this.host.updateCharacter(character.id, request);
+					await this.host.updateCharacter(character.id, request, model.path);
 					await this.refresh();
 				},
 				{
@@ -5051,10 +5060,11 @@ export class SnowflakeDashboardView extends ItemView {
 	async openCharacterForm(id: string): Promise<void> {
 		// Refresh before reading so an already-open dashboard cannot supply an
 		// old revision or miss a character created from another surface.
+		const requestedProject = this.projectPath;
 		await this.refresh();
+		if (this.projectPath !== requestedProject) return;
 		const model = this.lastRender?.model ?? null;
 		if (model === null || model.readOnly) return;
-		this.activateProjectContext();
 		const character = model.characters.find((candidate) => candidate.id === id);
 		if (
 			character === undefined ||
@@ -5075,10 +5085,11 @@ export class SnowflakeDashboardView extends ItemView {
 		// hidden dashboard keeps its old snapshot until shown. Read again so
 		// the form receives the saved fields and revision even when opened
 		// from an already-loaded dashboard.
+		const requestedProject = this.projectPath;
 		await this.refresh();
+		if (this.projectPath !== requestedProject) return null;
 		const model = this.lastRender?.model ?? null;
-		if (model === null) return null;
-		this.activateProjectContext();
+		if (model === null || model.readOnly) return null;
 		const made = { id: null as string | null };
 		const remember = (id: string): void => {
 			made.id = id;
@@ -5089,11 +5100,12 @@ export class SnowflakeDashboardView extends ItemView {
 				(candidate) => candidate.id === intent.id,
 			);
 			form =
-				scene === undefined ? null : await this.openSceneEditor(model, scene, intent.section);
+				scene === undefined || scene.readOnly || scene.healthIssues.some((issue) => issue.blocking)
+					? null : await this.openSceneEditor(model, scene, intent.section);
 		} else if (intent.afterIndex === null) {
-			form = await this.openCreateScene(model, remember);
+			form = await this.openCreateScene(model, remember, false);
 		} else {
-			form = await this.insertSceneAfter(model, intent.afterIndex, remember);
+			form = await this.insertSceneAfter(model, intent.afterIndex, remember, false);
 		}
 		if (form === null) return null;
 		await whenClosed(form);
@@ -6247,7 +6259,7 @@ export class SnowflakeDashboardView extends ItemView {
 				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: model.characters.length,
-					...listNeighbours(index, model.characters.length),
+					...(dragLocked ? { up: null, down: null } : listNeighbours(index, model.characters.length)),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.t('table.insertCharacterAfter'),
@@ -6597,7 +6609,7 @@ export class SnowflakeDashboardView extends ItemView {
 								label: `${String(at + 1)}. ${candidate.title}`,
 							}))
 							.filter((candidate) => candidate.id !== scene.id),
-					move: (toIndex) => this.host.reorderScene(scene.id, toIndex),
+					move: (toIndex) => this.host.reorderScene(scene.id, toIndex, model.path),
 					reveal: () => {
 						this.revealScene(scene.id);
 					},
@@ -6608,7 +6620,7 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			remove: () => {
 				void this.runAndRefresh(() =>
-					this.host.deleteScene(scene.id, scene.revision),
+					this.host.deleteScene(scene.id, scene.revision, model.path),
 				);
 			},
 			removeDisabled: model.readOnly || scene.readOnly,
@@ -6622,7 +6634,7 @@ export class SnowflakeDashboardView extends ItemView {
 				index,
 				(candidate) =>
 					this.sceneEntries(model).some((entry) => entry.scene.id === candidate),
-				(id, target) => this.host.reorderScene(id, target),
+				(id, target) => this.host.reorderScene(id, target, model.path),
 			);
 		}
 	}
@@ -6634,7 +6646,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t,
 				model.characters.map((character) => character.name),
 				async (request) => {
-					await this.host.createCharacter(request);
+					await this.host.createCharacter(request, model.path);
 					// The new character joins the end of the list, so the search
 					// and filter are let go and the table scrolls to the end.
 					// What was just made must be on screen, not hidden behind an
@@ -6655,6 +6667,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private async openCreateScene(
 		model: ProjectDashboardModel,
 		onCreated?: (id: string) => void,
+		revealInDashboard = true,
 	): Promise<Modal> {
 		const context = await this.memberFormContext(model, 'scene');
 		const form = new CreateSceneModal(
@@ -6667,12 +6680,13 @@ export class SnowflakeDashboardView extends ItemView {
 			})),
 			model.scenes.map((scene) => scene.title),
 			async (request) => {
-				const created = await this.host.createScene(request);
+				const created = await this.host.createScene(request, model.path);
 				onCreated?.(created.id);
-				// To the end, filters let go, for the same reason as above.
-				this.sceneQuery = '';
-				clearSceneFilters(this.sceneFilters);
-				this.sceneScroll = Number.MAX_SAFE_INTEGER;
+				if (revealInDashboard) {
+					this.sceneQuery = '';
+					clearSceneFilters(this.sceneFilters);
+					this.sceneScroll = Number.MAX_SAFE_INTEGER;
+				}
 				await this.refresh();
 			},
 			undefined,
@@ -6694,7 +6708,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t,
 				model.characters.map((character) => character.name),
 				async (request) => {
-					const created = await this.host.createCharacter(request);
+					const created = await this.host.createCharacter(request, model.path);
 					await this.host.reorderCharacter(created.id, index + 1);
 					await this.refresh();
 					this.revealCharacter(created.id);
@@ -6711,6 +6725,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		index: number,
 		onCreated?: (id: string) => void,
+		revealInDashboard = true,
 	): Promise<Modal> {
 		const context = await this.memberFormContext(model, 'scene');
 		const form = new CreateSceneModal(
@@ -6723,11 +6738,11 @@ export class SnowflakeDashboardView extends ItemView {
 			})),
 			model.scenes.map((scene) => scene.title),
 			async (request) => {
-				const created = await this.host.createScene(request);
-				await this.host.reorderScene(created.id, index + 1);
+				const created = await this.host.createScene(request, model.path);
+				await this.host.reorderScene(created.id, index + 1, model.path);
 				onCreated?.(created.id);
 				await this.refresh();
-				this.revealScene(created.id);
+				if (revealInDashboard) this.revealScene(created.id);
 			},
 			undefined,
 			this.creatingCharacter(model),
@@ -6759,7 +6774,7 @@ export class SnowflakeDashboardView extends ItemView {
 	): Promise<void> {
 		let paths: string[] = [];
 		try {
-			paths = await this.host.listDefinitionPaths(kind, 'category');
+			paths = await this.host.listDefinitionPaths(kind, 'category', model.path);
 		} catch {
 			// A tree that cannot be read leaves the filter offering the rest,
 			// which is a smaller panel rather than a broken one.
@@ -6832,6 +6847,8 @@ export class SnowflakeDashboardView extends ItemView {
 	): { scene: SceneViewModel; index: number }[] {
 		return filterScenes(model.scenes, this.sceneQuery, this.sceneFilters, {
 			t: this.t,
+			resolveLink: (target, sourcePath) =>
+				this.app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null,
 			characterNames: new Map(
 				model.characters.map((character) => [character.path, character.name]),
 			),
@@ -6920,7 +6937,7 @@ export class SnowflakeDashboardView extends ItemView {
 		return async (name, takenNames) => {
 			// Made from its name alone, with everything else left for later.
 			if (!this.host.opensFormWhenCreatingFromField()) {
-				return this.quickCreateCharacter(name);
+				return this.quickCreateCharacter(name, model.path);
 			}
 			const context = await this.memberFormContext(model, 'character');
 			const created = await promptForNewCharacter(
@@ -6928,7 +6945,7 @@ export class SnowflakeDashboardView extends ItemView {
 				this.t,
 				takenNames,
 				name,
-				(request) => this.host.createCharacter(request),
+				(request) => this.host.createCharacter(request, model.path),
 				context,
 			);
 			if (created === null) return null;
@@ -6957,7 +6974,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.filter((candidate) => candidate.id !== scene.id)
 					.map((candidate) => candidate.title),
 				async (request) => {
-					await this.host.updateScene(scene.id, request);
+					await this.host.updateScene(scene.id, request, model.path);
 					await this.refresh();
 				},
 				{

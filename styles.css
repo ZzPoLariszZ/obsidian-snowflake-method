@@ -8475,6 +8475,10 @@ button.snowflake-method-kind-options {
 	cursor: pointer;
 }
 
+.snowflake-method-record-pick[aria-disabled="true"] .snowflake-method-option-picker-field {
+	cursor: default;
+}
+
 .snowflake-method-record-pick-placeholder {
 	flex: 1 1 auto;
 	padding: var(--size-4-1) 0;

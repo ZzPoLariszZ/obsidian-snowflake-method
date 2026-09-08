@@ -60,7 +60,7 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 	};
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes: [stored],
-		characters: [{ id: 'hero', path: stored.povPath, name: 'Hero', readOnly: false }],
+		characters: [{ id: 'hero', path: stored.povPath, name: 'Hero', readOnly: false, healthIssues: [] }],
 		manuscriptPaths: [], readOnly: false,
 	} as unknown as ProjectDashboardModel;
 	let serial = 0;

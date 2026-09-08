@@ -237,6 +237,8 @@ export interface MemberFormContext {
 	manuscriptNotes: () => readonly PickerOption[];
 	/** Orders displayed links by their resolved manuscript notes, preserving the raw links. */
 	orderLinkedManuscript: (links: readonly string[]) => readonly string[];
+	/** Whether a stored link has no destination in the vault, resolved from the scene. */
+	linkedManuscriptMissing: (raw: string) => boolean;
 	/** Resolves a stored scene link and reveals its note in the manuscript stream. */
 	openLinkedManuscript: (raw: string) => Promise<void>;
 	categories: DefinitionPathSource;
@@ -2821,17 +2823,44 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			cls: 'snowflake-method-scene-linked-manuscript',
 		});
 		const lines = block.createDiv({ cls: 'snowflake-method-record-lines' });
+		const availableNotes = (): readonly PickerOption[] => context.manuscriptNotes().filter(
+			(option) => !this.linkedManuscript.includes(option.value),
+		);
+		const picker = renderRecordPickFrame(block, '', () => {
+			const offered = availableNotes();
+			if (offered.length === 0) return;
+			new SceneManuscriptReferenceModal(
+				this.app,
+				this.t('modal.scene.linkedManuscriptPlaceholder'),
+				[...offered],
+				(option) => {
+					if (this.linkedManuscript.includes(option.value)) return;
+					this.linkedManuscript = [...this.linkedManuscript, option.value];
+					draw();
+				},
+			).open();
+		});
 		const draw = (): void => {
 			lines.empty();
 			const offered = new Map(
 				context.manuscriptNotes().map((option) => [option.value, option.label]),
 			);
+			// Display order can differ from stored order, and identical raw links
+			// can appear more than once. Each remove button keeps its own occurrence.
+			const sourceIndices = new Map<string, number[]>();
+			this.linkedManuscript.forEach((raw, index) => {
+				const indices = sourceIndices.get(raw) ?? [];
+				indices.push(index);
+				sourceIndices.set(raw, indices);
+			});
 			for (const raw of context.orderLinkedManuscript(this.linkedManuscript)) {
+				const sourceIndex = sourceIndices.get(raw)?.shift();
+				if (sourceIndex === undefined) continue;
 				const label = offered.get(raw) ?? wikiLinkLabel(raw);
 				renderRecordLine(lines, {
 					label: this.t('manuscript.title'),
 					text: label,
-					missing: false,
+					missing: context.linkedManuscriptMissing(raw),
 					missingTitle: this.t('table.referenceMissing', { name: label }),
 					removeLabel: this.t('modal.scene.removeLinked', { name: label }),
 					link: {
@@ -2845,34 +2874,19 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 						},
 					},
 				}, () => {
-					this.linkedManuscript = this.linkedManuscript.filter((candidate) => candidate !== raw);
+					this.linkedManuscript = this.linkedManuscript.filter((_, index) => index !== sourceIndex);
 					draw();
 				});
 			}
+			const exhausted = availableNotes().length === 0;
+			picker.setPlaceholder(this.t(offered.size === 0
+				? 'modal.scene.linkedManuscriptEmpty'
+				: exhausted
+					? 'modal.scene.linkedManuscriptAllLinked'
+					: 'modal.scene.linkedManuscriptPlaceholder'));
+			picker.setDisabled(exhausted);
 		};
 		draw();
-		renderRecordPickFrame(
-			block,
-			this.t(context.manuscriptNotes().length === 0
-				? 'modal.scene.linkedManuscriptEmpty'
-				: 'modal.scene.linkedManuscriptPlaceholder'),
-			() => {
-				const offered = context.manuscriptNotes().filter(
-					(option) => !this.linkedManuscript.includes(option.value),
-				);
-				if (offered.length === 0) return;
-				new SceneManuscriptReferenceModal(
-					this.app,
-					this.t('modal.scene.linkedManuscriptPlaceholder'),
-					offered,
-					(option) => {
-						if (this.linkedManuscript.includes(option.value)) return;
-						this.linkedManuscript = [...this.linkedManuscript, option.value];
-						draw();
-					},
-				).open();
-			},
-		);
 	}
 
 	private buildUniversalRows(): void {

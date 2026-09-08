@@ -133,7 +133,12 @@ export function filterScenes(
 	scenes: readonly SceneViewModel[],
 	query: string,
 	filters: SceneFilters,
-	context: { t: Translate; characterNames: ReadonlyMap<string, string> },
+	context: {
+		t: Translate;
+		characterNames: ReadonlyMap<string, string>;
+		/** Resolve in the scene note's context, as its clickable link does. */
+		resolveLink?: (target: string, sourcePath: string) => string | null;
+	},
 ): { scene: SceneViewModel; index: number }[] {
 	// The stored value is a link or the words themselves; either way the
 	// name is what the table shows and what the filter names.
@@ -160,7 +165,10 @@ export function filterScenes(
 				(filters.color === '' || scene.color === filters.color) &&
 				(filters.linked === '' ||
 					scene.linkedManuscript.some((link) =>
-						linkNamesNote(link.target, filters.linked),
+						context.resolveLink === undefined
+							? linkNamesNote(link.target, filters.linked)
+							: context.resolveLink(link.target, scene.path)?.replace(/\.md$/u, '') ===
+								filters.linked.replace(/\.md$/u, ''),
 					)) &&
 				memberMatches(
 					[

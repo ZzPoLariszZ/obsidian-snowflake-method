@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { SceneViewModel } from '../../src/ui/view-model';
+import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 // Keep Obsidian's window and modal drawing outside this test, while running
 // the dashboard's form routing and the scene modal's real initialization.
@@ -20,6 +20,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
+import { sceneFilters } from '../../src/ui/scene-filters';
 import { CreateSceneModal } from '../../src/ui/modals';
 
 const scene = (fields: Partial<SceneViewModel> = {}): SceneViewModel => ({
@@ -101,7 +102,7 @@ describe('scene forms opened from another surface', () => {
 				expectedRevision: saved.revision,
 			});
 			expect(refresh).toHaveBeenCalledOnce();
-			expect(activateProject).toHaveBeenCalledExactlyOnceWith('Novel/Novel.md', 'en', 8);
+			expect(activateProject).not.toHaveBeenCalled();
 		} finally {
 			form?.onClose();
 			await closing;
@@ -137,5 +138,50 @@ describe('scene forms opened from another surface', () => {
 		opened[0]?.onClose();
 		expect(await closing).toBeNull();
 		expect(opened).toHaveLength(0);
+	});
+});
+
+
+describe('scene form protection and requesting-surface state', () => {
+	it.each(['scene-readonly', 'project-readonly', 'damaged'] as const)('does not open a form for %s', async (state) => {
+		const record = scene({
+			readOnly: state === 'scene-readonly',
+			healthIssues: state === 'damaged' ? [{ blocking: true }] as SceneViewModel['healthIssues'] : [],
+		});
+		const { view, opened } = dashboard(() => Promise.resolve([record]));
+		if (state === 'project-readonly') Object.assign(view, { refresh: async () => {
+			Object.assign(view, { lastRender: { model: { scenes: [record], characters: [], readOnly: true } } });
+		} });
+		expect(await view.openSceneForm({ mode: 'edit', id: record.id })).toBeNull();
+		expect(opened).toHaveLength(0);
+	});
+
+	it.each([null, 0])('external creation preserves dashboard filters and scroll (afterIndex %s)', async (afterIndex) => {
+		const { view, opened } = dashboard(() => Promise.resolve([scene()]));
+		const savedModel = { path: 'Novel/Novel.md', scenes: [scene()], characters: [] } as unknown as ProjectDashboardModel;
+		const createScene = vi.fn(() => Promise.resolve({ id: 'new', path: 'Novel/Scenes/New.md' }));
+		const reorderScene = vi.fn(() => Promise.resolve());
+		const revealScene = vi.fn();
+		const filters = { ...sceneFilters(), status: 'complete' as const };
+		Object.assign(view, {
+			host: { createScene, reorderScene }, sceneQuery: 'gate', sceneFilters: filters, sceneScroll: 123,
+			revealScene,
+			refresh: async () => { Object.assign(view, { lastRender: { model: savedModel } }); },
+		});
+		const closing = view.openSceneForm({ mode: 'create', afterIndex });
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		const form = opened[0]!;
+		try {
+			const submit = (form as unknown as { submitHandler: (request: unknown) => Promise<void> }).submitHandler;
+			await submit({ title: 'New' });
+			expect(createScene).toHaveBeenCalledWith({ title: 'New' }, 'Novel/Novel.md');
+			expect(view).toMatchObject({ sceneQuery: 'gate', sceneScroll: 123 });
+			expect(filters.status).toBe('complete');
+			expect(revealScene).not.toHaveBeenCalled();
+			if (afterIndex !== null) expect(reorderScene).toHaveBeenCalledWith('new', 1, 'Novel/Novel.md');
+		} finally {
+			form.onClose();
+			await closing;
+		}
 	});
 });

@@ -257,7 +257,7 @@ function pluginWithProjects(deferred = false) {
 	const created = structureLeaf(secondProject, root, true);
 	const workspace = {
 		rootSplit: root,
-		getLeavesOfType: vi.fn(() => [first.leaf, second.leaf]),
+		getLeavesOfType: vi.fn((type: string) => type === STORY_STRUCTURE_VIEW_TYPE ? [first.leaf, second.leaf] : []),
 		getLeaf: vi.fn(() => created.leaf),
 		setActiveLeaf: vi.fn(),
 		revealLeaf: vi.fn(() => Promise.resolve()),
@@ -377,10 +377,10 @@ describe('opening a project workspace', () => {
 	it.each([false, true])('preserves workspace settings when its project folder is renamed (deferred: %s)', async (deferred) => {
 		const { plugin, first, second } = pluginWithProjects(deferred);
 		const renaming = plugin as unknown as {
-			renameStoryStructureProjects(oldPath: string, newPath: string): Promise<void>;
+			renameProjectViews(oldPath: string, newPath: string): Promise<void>;
 		};
 
-		await renaming.renameStoryStructureProjects('Second', 'Renamed');
+		await renaming.renameProjectViews('Second', 'Renamed');
 
 		expect(first.leaf.setViewState).not.toHaveBeenCalled();
 		expect(second.leaf.setViewState).toHaveBeenCalledExactlyOnceWith({

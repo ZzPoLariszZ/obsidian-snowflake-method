@@ -3191,6 +3191,15 @@ export class SnowflakeProjectService {
     if (!scene) throw new ManagedFileNotFoundError(`scene:${sceneId}`);
     if (scene.readOnly) throw new UnsupportedSchemaError(scene.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     assertExpectedRevision(scene.path, patch.expectedRevision, scene.revision);
+    // Missing required sections must be repaired deliberately. Upserting an
+    // empty replacement here would leave the author's unmarked prose outside
+    // the section. Optional legacy sections are already excluded from health.
+    const damaged = scene.sectionHealth.issues.find(
+      (issue) => issue.code !== "unknown-section" && issue.code !== "unrecognized-record",
+    );
+    if (damaged) {
+      throw new UnsafeSectionError(scene.path, damaged.sectionId ?? "scene", damaged.reason);
+    }
     // Before the write, and skipped for a title the scene already has, for the
     // two reasons the character form gives.
     const nextTitle = patch.title?.trim();

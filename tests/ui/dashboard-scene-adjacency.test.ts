@@ -93,7 +93,9 @@ function dashboard(options: {
 } = {}) {
 	const dom = new CorkboardDom();
 	const reorderScene = vi.fn((_id: string, _index: number) => Promise.resolve());
-	const view = new SnowflakeDashboardView({ app: {} } as unknown as WorkspaceLeaf, {
+	const view = new SnowflakeDashboardView({ app: {
+		metadataCache: { getFirstLinkpathDest: (target: string) => ({ path: `${target}.md` }) },
+	} } as unknown as WorkspaceLeaf, {
 		getRecentStep: () => 8,
 		isFreeformModeEnabled: () => true,
 		showsTableActionsColumn: () => false,
@@ -111,6 +113,7 @@ function dashboard(options: {
 		refresh: vi.fn(() => Promise.resolve()),
 	});
 	const model = {
+		path: 'Novel/Project.md',
 		readOnly: options.readOnly ?? false,
 		structureIssues: [],
 		characters: [{ path: 'Characters/Ada.md', name: 'Ada' }],
@@ -175,7 +178,7 @@ describe('dashboard adjacency with a continuous scene range', () => {
 			const item = action(menu, direction);
 			expect(item.disabled).toBe(false);
 			item.run();
-			expect(table.reorderScene).toHaveBeenLastCalledWith(id, target);
+			expect(table.reorderScene).toHaveBeenLastCalledWith(id, target, 'Novel/Project.md');
 		}
 		await Promise.resolve();
 	});
@@ -183,7 +186,7 @@ describe('dashboard adjacency with a continuous scene range', () => {
 	it('accepts a visible scene drop and rejects a scene outside the current range', () => {
 		const table = dashboard();
 		drop(table.row('D'), 'B');
-		expect(table.reorderScene).toHaveBeenCalledExactlyOnceWith('B', 3);
+		expect(table.reorderScene).toHaveBeenCalledExactlyOnceWith('B', 3, 'Novel/Project.md');
 		table.reorderScene.mockClear();
 		for (const id of ['A', 'E', 'unknown']) drop(table.row('D'), id);
 		expect(table.reorderScene).not.toHaveBeenCalled();

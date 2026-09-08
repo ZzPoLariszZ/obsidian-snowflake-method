@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ViewState, WorkspaceLeaf } from 'obsidian';
 import type { ProjectSnapshot } from '../../src/services';
+import { ManagedFileNotFoundError } from '../../src/repository';
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
@@ -102,6 +103,23 @@ describe.each(kinds)('active project routing: %s', (type) => {
 		await activate(leaf);
 		expect(loadProject).toHaveBeenCalledExactlyOnceWith(firstPath);
 		expect(plugin.settings.recentProjectPath).toBe(firstPath);
+	});
+
+	it('keeps a missing saved project quiet and can activate it after it is restored', async () => {
+		const { leaf } = projectLeaf(type, firstPath, { unloaded: true });
+		const { plugin, activate, loadProject } = pluginRouting();
+		loadProject.mockRejectedValueOnce(new ManagedFileNotFoundError(firstPath));
+		await expect(activate(leaf)).resolves.toBeUndefined();
+		expect(plugin.settings.recentProjectPath).toBe(secondPath);
+		await activate(leaf);
+		expect(plugin.settings.recentProjectPath).toBe(firstPath);
+	});
+
+	it('still reports an unexpected project read failure', async () => {
+		const { leaf } = projectLeaf(type, firstPath, { unloaded: true });
+		const { activate, loadProject } = pluginRouting();
+		loadProject.mockRejectedValueOnce(new Error('Vault read failed'));
+		await expect(activate(leaf)).rejects.toThrow('Vault read failed');
 	});
 
 	it('never activates a background tab', async () => {

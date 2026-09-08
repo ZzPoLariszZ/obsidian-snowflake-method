@@ -668,7 +668,8 @@ export function renderRecordPickFrame(
 	container: HTMLElement,
 	placeholder: string,
 	open: () => void,
-): void {
+): { setPlaceholder(value: string): void; setDisabled(value: boolean): void } {
+	let disabled = false;
 	const picker = container.createDiv({
 		cls: 'snowflake-method-option-picker is-single snowflake-method-record-pick',
 	});
@@ -678,7 +679,7 @@ export function renderRecordPickFrame(
 	const values = field.createDiv({
 		cls: 'snowflake-method-option-picker-values',
 	});
-	values.createSpan({
+	const placeholderEl = values.createSpan({
 		cls: 'snowflake-method-record-pick-placeholder',
 		text: placeholder,
 	});
@@ -688,8 +689,20 @@ export function renderRecordPickFrame(
 	});
 	setIcon(selector, 'chevrons-up-down');
 	picker.addEventListener('click', () => {
-		open();
+		if (!disabled) open();
 	});
+	return {
+		setPlaceholder: (value) => {
+			placeholderEl.setText(value);
+			selector.setAttribute('aria-label', value);
+		},
+		setDisabled: (value) => {
+			disabled = value;
+			selector.disabled = value;
+			picker.toggleClass('is-disabled', value);
+			picker.setAttribute('aria-disabled', String(value));
+		},
+	};
 }
 
 /** One reference: what it is, what it points at, and a way to drop it. */

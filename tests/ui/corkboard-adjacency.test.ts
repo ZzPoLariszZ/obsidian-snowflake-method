@@ -134,14 +134,14 @@ describe('corkboard adjacency with a scene range', () => {
 		expect(middle.get('actions.moveUp')!.disabled).toBe(false);
 		expect(middle.get('actions.moveDown')!.disabled).toBe(false);
 		middle.get('actions.moveUp')!.click();
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', reversed ? 3 : 1));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', reversed ? 3 : 1, 'Project/Project.md'));
 		fixture.handle.dispose();
 	});
 
 	it.each([false, true])('drops after the visible tail without crossing the range (reversed: %s)', async (reversed) => {
 		const fixture = board({ reversed });
 		dropAtEnd(fixture, fixture.cards[0]!);
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', reversed ? 1 : 3));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', reversed ? 1 : 3, 'Project/Project.md'));
 		fixture.host.reorderScene.mockClear();
 		dropAtEnd(fixture, fixture.cards[2]!);
 		await Promise.resolve();
@@ -152,7 +152,7 @@ describe('corkboard adjacency with a scene range', () => {
 	it.each([false, true])('inserts beside the actual scene in either display direction (reversed: %s)', async (reversed) => {
 		const fixture = board({ reversed });
 		fixture.cards[1]!.querySelector('.snowflake-method-corkboard-insert-after')!.dispatch('click');
-		await vi.waitFor(() => expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }));
+		await vi.waitFor(() => expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, 'Project/Project.md'));
 		fixture.handle.dispose();
 	});
 

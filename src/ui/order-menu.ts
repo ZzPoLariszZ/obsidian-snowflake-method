@@ -20,6 +20,8 @@ export interface OrderMenuDeps {
 	t: Translate;
 	/** Runs a change, redraws, and turns a failure into a notice. */
 	run(action: () => Promise<void>): Promise<void>;
+	/** Queues a mutation and its redraw, leaving rejection for the dialog to report. */
+	mutate?(action: () => Promise<void>): Promise<void>;
 	/** Redraws alone, for a dialog that reports its own failures. */
 	refresh(): Promise<void>;
 }
@@ -99,8 +101,11 @@ export function addOrderMenuItems(
 					total,
 					index + 1,
 					async (toIndex) => {
-						await config.move(toIndex);
-						await deps.refresh();
+						if (deps.mutate !== undefined) await deps.mutate(() => config.move(toIndex));
+						else {
+							await config.move(toIndex);
+							await deps.refresh();
+						}
 						config.reveal();
 					},
 				).open();

@@ -18,7 +18,7 @@
 
 import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import { PROGRESS_STATUSES, isProgressStatus, type ProgressStatus } from '../domain';
+import { PROGRESS_STATUSES, SCENE_POV_MULTIPLE, SCENE_POV_OMNISCIENT, isProgressStatus, type ProgressStatus } from '../domain';
 import type { ScenePatch } from '../services';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
@@ -50,7 +50,7 @@ import type { FilterRow } from './filter-rows';
 import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
 import { addOrderMenuItems } from './order-menu';
 import { paintCount, renderEmptyLine } from './pane-parts';
-import { filterScenes, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
+import { clearSceneFilters, filterScenes, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
 import { renderStickySwatches } from './sticky-note-card';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
@@ -288,6 +288,7 @@ export function renderCorkboard(
 
 	let model: ProjectDashboardModel | null = null;
 	let projectPath: string | null = null;
+	let projectId: string | null = null;
 	let manuscriptPositions = new Map<string, number>();
 	let orderedManuscriptLinks = new WeakMap<SceneViewModel, SceneViewModel['linkedManuscript']>();
 	let order: DisplayOrder = { groups: [], shown: 0 };
@@ -305,6 +306,7 @@ export function renderCorkboard(
 	const pendingTitles = new Map<string, PendingText>();
 	const pendingConflicts = new Map<string, PendingText>();
 	const revisions = new Map<string, Map<string, Set<EditRevision>>>();
+	const queuedRevisions = new Set<{ base: EditRevision }>();
 	const heads = new Map<string, HTMLElement>();
 	/** The card in flight, while one is; every paint asked meanwhile waits. */
 	let drag: { key: string; id: string } | null = null;
@@ -321,6 +323,8 @@ export function renderCorkboard(
 	let lastViewportHeight = -1;
 	let queue: Promise<void> = Promise.resolve();
 	let disposed = false;
+	let popoverRequest = 0;
+	let popoverKind: 'funnel' | 'display' | null = null;
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -331,21 +335,43 @@ export function renderCorkboard(
 	 * read of the project before the next runs: what makes a quick edit
 	 * carry a fresh revision whatever came before it.
 	 */
-	const enqueue = (action: () => Promise<void>, save = false): Promise<void> => {
+	const enqueue = (action: () => Promise<void>, options: {
+		persist?: boolean;
+		reportError?: boolean;
+	} = {}): Promise<void> => {
 		const run = queue.then(async () => {
-			if (disposed && !save) return;
+			if (disposed && options.persist !== true) return;
 			try {
-				// Focus can move to another project's dashboard while this
-				// action waits for an earlier card edit to finish.
-				if (!save) controls.activateProject();
 				await action();
 			} catch (error) {
+				if (options.reportError === false) throw error;
 				notice(error);
 			}
-			if (!disposed) await controls.refresh().catch(notice);
+			if (!disposed) await controls.refresh().catch((error: unknown) => {
+				if (options.reportError === false) throw error;
+				notice(error);
+			});
 		});
-		queue = run;
+		// A modal receives its own rejection, without poisoning later writes.
+		queue = run.catch(() => undefined);
 		return run;
+	};
+
+	/** Only mounted editors and accepted saves still need revision aliases. */
+	const pruneRevisions = (): void => {
+		const held = new Set([...queuedRevisions].map((pending) => pending.base));
+		for (const card of cards.values()) {
+			held.add(card.titleRevision);
+			held.add(card.conflictRevision);
+		}
+		for (const pending of [...pendingTitles.values(), ...pendingConflicts.values()]) held.add(pending.base);
+		for (const [id, byRevision] of revisions) {
+			for (const [revision, bases] of byRevision) {
+				for (const base of bases) if (!held.has(base)) bases.delete(base);
+				if (bases.size === 0) byRevision.delete(revision);
+			}
+			if (byRevision.size === 0) revisions.delete(id);
+		}
 	};
 
 	const editRevision = (scene: SceneViewModel): EditRevision => {
@@ -383,6 +409,8 @@ export function renderCorkboard(
 	): Promise<boolean> => {
 		const owningProject = projectPath;
 		let saved = false;
+		const queued = { base };
+		queuedRevisions.add(queued);
 		return enqueue(async () => {
 			if (owningProject === null) return;
 			const expectedRevision = base.revision;
@@ -397,7 +425,10 @@ export function renderCorkboard(
 				}
 			}
 			saved = true;
-		}, true).then(() => saved);
+		}, { persist: true }).then(() => saved).finally(() => {
+			queuedRevisions.delete(queued);
+			pruneRevisions();
+		});
 	};
 
 	// -- Measures ------------------------------------------------------------
@@ -506,6 +537,13 @@ export function renderCorkboard(
 			return;
 		}
 		const current = model;
+		if (projectId !== null && projectId !== current.projectId) {
+			memory.query = '';
+			search.setValue('');
+			clearSceneFilters(memory.filters);
+			memory.scrollTop = 0;
+		}
+		projectId = current.projectId;
 		// A project rename refreshes this board in place. New edits follow its
 		// current path; patch() keeps the owner already captured by queued saves.
 		projectPath = current.path;
@@ -513,11 +551,14 @@ export function renderCorkboard(
 		const characterNames = new Map(
 			current.characters.map((character) => [character.path, character.name]),
 		);
+		if (memory.filters.character !== '' && !characterNames.has(memory.filters.character)) memory.filters.character = '';
+		if (memory.filters.pov !== '' && memory.filters.pov !== SCENE_POV_OMNISCIENT &&
+			memory.filters.pov !== SCENE_POV_MULTIPLE && !characterNames.has(memory.filters.pov)) memory.filters.pov = '';
 		const shown: ShownScene[] = filterScenes(
 			current.scenes,
 			memory.query,
 			memory.filters,
-			{ t, characterNames },
+			{ t, characterNames, resolveLink: (target, sourcePath) => app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null },
 		);
 		order = displayOrder(shown, memory.reversed, memory.group, {
 			t,
@@ -588,6 +629,7 @@ export function renderCorkboard(
 		layout = null;
 		displayKeys = [];
 		canvas.setCssStyles({ height: '0px' });
+		pruneRevisions();
 	};
 
 	/** The cards that must stay mounted wherever the window is. */
@@ -595,7 +637,7 @@ export function renderCorkboard(
 		const pinned: string[] = [];
 		if (drag !== null) pinned.push(drag.key);
 		const active = root.doc.activeElement;
-		const focused = active === null ? null : active.closest(CARD_SELECTOR);
+		const focused = active === null || !root.contains(active) ? null : active.closest(CARD_SELECTOR);
 		const focusedKey = focused?.getAttribute('data-key');
 		if (focusedKey != null) pinned.push(focusedKey);
 		for (const entry of cards.values()) {
@@ -726,12 +768,15 @@ export function renderCorkboard(
 				head.createSpan({ cls: 'snowflake-method-corkboard-group-rule' });
 				heads.set(key, head);
 			}
+			const label = head.querySelector<HTMLElement>('.snowflake-method-corkboard-group-label');
+			if (label !== null && label.textContent !== found.label) label.setText(found.label);
 			head.setCssStyles({
 				transform: `translate(0px, ${px(lay.offsets[line] ?? 0)})`,
 			});
 		}
 		applyMark();
 		giveFocusBack(hold);
+		pruneRevisions();
 	};
 
 	const dressAt = (
@@ -918,7 +963,7 @@ export function renderCorkboard(
 	};
 
 	const editable = (entry: CardEntry): boolean =>
-		!readOnly && !entry.scene.readOnly;
+		!readOnly && !entry.scene.readOnly && !entry.scene.healthIssues.some((issue) => issue.blocking);
 
 	/** Text and color always represent the same selection, even during a save. */
 	const paintStatus = (entry: CardEntry, value: ProgressStatus | null): void => {
@@ -958,11 +1003,12 @@ export function renderCorkboard(
 		entry.display = display;
 		const { el } = entry;
 		const writable = editable(entry);
+		if (!writable && colorPanel?.entry === entry) closeColorPanel();
 		el.setAttribute('data-id', scene.id);
 		if (scene.color === null) el.removeAttribute('data-color');
 		else el.setAttribute('data-color', scene.color);
 		el.toggleClass('is-read-only', !writable);
-		el.toggleClass('has-managed-section-issue', scene.healthIssues.length > 0);
+		el.toggleClass('has-managed-section-issue', scene.healthIssues.some((issue) => issue.blocking));
 		el.setAttribute('draggable', adjacency && writable && !pressed ? 'true' : 'false');
 		paintCount(entry.number, index + 1);
 		entry.number.setAttribute(
@@ -989,7 +1035,7 @@ export function renderCorkboard(
 		entry.pov.toggleClass('is-missing', scene.povMissing);
 		const character = model?.characters.find((candidate) => candidate.path === scene.povPath);
 		entry.pov.disabled =
-			readOnly || character === undefined || character.readOnly;
+			readOnly || character === undefined || character.readOnly || character.healthIssues.some((issue) => issue.blocking);
 		const shownStatus = pendingStatuses.get(scene.id)?.value ?? scene.progressStatus;
 		const statuses = statusOptions(shownStatus, t);
 		const statusSignature = statuses.map((option) => option.value).join('\n');
@@ -1008,12 +1054,13 @@ export function renderCorkboard(
 			);
 			orderedManuscriptLinks.set(scene, links);
 		}
-		const linksSignature = links.map((link) => link.raw).join('\n');
+		const linksSignature = JSON.stringify(links.map((link) => [link.raw,
+			app.metadataCache.getFirstLinkpathDest(link.target, scene.path)?.path ?? null]));
 		if (linksSignature !== entry.linksSignature) {
 			entry.linksSignature = linksSignature;
 			dressLinks(entry, scene, links);
 		}
-		entry.moreLinks.disabled = !writable;
+		entry.moreLinks.disabled = false;
 		const canInsert = adjacency && writable && orderIds.includes(scene.id);
 		entry.insertBefore.toggleClass('is-hidden', !canInsert);
 		entry.insertAfter.toggleClass('is-hidden', !canInsert);
@@ -1131,7 +1178,7 @@ export function renderCorkboard(
 
 	/** The typed name, refused as the form refuses one: empty, or another scene's. */
 	const commitTitle = (entry: CardEntry, refocus: boolean): void => {
-		if (!entry.editingTitle) return;
+		if (!entry.editingTitle || !editable(entry)) return;
 		const typed = entry.titleInput.value.trim();
 		if (typed === entry.titleOriginal) {
 			endTitleEdit(entry, refocus);
@@ -1157,6 +1204,7 @@ export function renderCorkboard(
 	};
 
 	const commitConflict = (entry: CardEntry): void => {
+		if (!editable(entry)) return;
 		if (!entry.conflictDirty) {
 			paintConflict(entry);
 			return;
@@ -1196,13 +1244,13 @@ export function renderCorkboard(
 					t,
 					onPick: (value) => {
 						closeColorPanel();
-						void patch(entry, { color: value });
+						if (editable(entry)) void patch(entry, { color: value });
 					},
 					none: {
 						label: t('modal.scene.colorNone'),
 						onPick: () => {
 							closeColorPanel();
-							void patch(entry, { color: null });
+							if (editable(entry)) void patch(entry, { color: null });
 						},
 					},
 				});
@@ -1232,7 +1280,7 @@ export function renderCorkboard(
 				.setDisabled(!writable)
 				.onClick(() => {
 					void enqueue(() =>
-						host.openSceneForm({ mode: 'edit', id: entry.id }).then(() => undefined),
+						host.openSceneForm({ mode: 'edit', id: entry.id }, current.path).then(() => undefined),
 					);
 				});
 		});
@@ -1246,7 +1294,12 @@ export function renderCorkboard(
 		});
 		addOrderMenuItems(
 			menu,
-			{ app, t, run: (action) => enqueue(action), refresh: () => controls.refresh() },
+			{
+				app, t,
+				run: (action) => enqueue(action, { persist: true }),
+				mutate: (action) => enqueue(action, { persist: true, reportError: false }),
+				refresh: () => controls.refresh(),
+			},
 			{
 				index: entry.index,
 				total,
@@ -1267,12 +1320,13 @@ export function renderCorkboard(
 							label: `${String(at + 1)}. ${candidate.title}`,
 						}))
 						.filter((candidate) => candidate.id !== entry.id),
-				move: (toIndex) => host.reorderScene(entry.id, toIndex),
+				move: (toIndex) => host.reorderScene(entry.id, toIndex, current.path),
 				reveal: () => {
 					reveal(entry.id);
 				},
 				insert: () => {
-					insertAt(entry.index);
+					const after = insertBesideIndex(orderIds, entry.id, 'after', memory.reversed);
+					if (after !== null) insertAt(after);
 				},
 			},
 		);
@@ -1284,7 +1338,7 @@ export function renderCorkboard(
 				.setWarning(true)
 				.setDisabled(!writable)
 				.onClick(() => {
-					void enqueue(() => host.deleteScene(entry.id, entry.scene.revision));
+					void enqueue(() => host.deleteScene(entry.id, entry.scene.revision, current.path), { persist: true });
 				});
 		});
 		menu.showAtMouseEvent(event);
@@ -1292,12 +1346,20 @@ export function renderCorkboard(
 
 	/** A scene made after a narrative index (-1 starts the list), or at the end for null, then shown. */
 	const insertAt = (afterIndex: number | null): void => {
-		if (readOnly) return;
+		const owningProject = projectPath;
+		if (readOnly || owningProject === null) return;
 		let created: string | null = null;
 		void enqueue(async () => {
-			created = await host.openSceneForm({ mode: 'create', afterIndex });
+			created = await host.openSceneForm({ mode: 'create', afterIndex }, owningProject);
 		}).then(() => {
-			if (created !== null) reveal(created);
+			if (created === null || disposed || projectPath !== owningProject) return;
+			if (displayOfScene(created) === -1) {
+				memory.query = '';
+				search.setValue('');
+				clearSceneFilters(memory.filters);
+				paintAll();
+			}
+			reveal(created);
 		});
 	};
 
@@ -1329,11 +1391,13 @@ export function renderCorkboard(
 		});
 		entry.pov.addEventListener('click', (event) => {
 			event.stopPropagation();
+			const owningProject = projectPath;
 			const character = model?.characters.find(
 				(candidate) => candidate.path === entry.scene.povPath,
 			);
-			if (readOnly || character === undefined || character.readOnly) return;
-			void enqueue(() => host.openCharacterForm(character.id));
+			if (readOnly || owningProject === null || character === undefined || character.readOnly ||
+				character.healthIssues.some((issue) => issue.blocking)) return;
+			void enqueue(() => host.openCharacterForm(character.id, owningProject));
 		});
 		entry.status.addEventListener('change', () => {
 			const value = entry.status.value;
@@ -1359,12 +1423,25 @@ export function renderCorkboard(
 		});
 		entry.moreLinks.addEventListener('click', (event) => {
 			event.stopPropagation();
-			if (!editable(entry)) return;
+			const owningProject = projectPath;
+			if (owningProject === null) return;
+			if (!editable(entry)) {
+				const menu = new Menu();
+				for (const link of entry.scene.linkedManuscript) {
+					menu.addItem((item) => item.setTitle(link.label).setIcon('file-text').onClick(() => {
+						const file = app.metadataCache.getFirstLinkpathDest(link.target, entry.scene.path);
+						if (file === null) new Notice(t('table.referenceMissing', { name: link.label }));
+						else void host.openManuscriptStream(owningProject, file.path).catch(notice);
+					}));
+				}
+				menu.showAtMouseEvent(event);
+				return;
+			}
 			void enqueue(() => host.openSceneForm({
 				mode: 'edit',
 				id: entry.id,
 				section: 'linked-manuscript',
-			}).then(() => undefined));
+			}, owningProject).then(() => undefined));
 		});
 		entry.conflict.addEventListener('input', () => {
 			entry.conflictDirty = entry.conflict.value !== entry.conflictOriginal;
@@ -1517,7 +1594,8 @@ export function renderCorkboard(
 			sceneAt(layout.items.length - 1)?.id ?? null,
 		);
 		if (target === null) return;
-		void enqueue(() => host.reorderScene(dragged, target));
+		const owningProject = projectPath;
+		if (owningProject !== null) void enqueue(() => host.reorderScene(dragged, target, owningProject), { persist: true });
 	});
 
 	// -- Focus custody -------------------------------------------------------
@@ -1588,20 +1666,24 @@ export function renderCorkboard(
 	// -- The popovers --------------------------------------------------------
 
 	const openFunnel = async (): Promise<void> => {
-		if (controls.popover.filterOpen()) {
+		const request = ++popoverRequest;
+		if (controls.popover.filterOpen() && popoverKind === 'funnel') {
 			controls.popover.closeFilter();
+			popoverKind = null;
 			return;
 		}
-		const current = model;
-		if (current === null) return;
+		const owningProject = model?.path;
+		if (owningProject === undefined) return;
+		controls.popover.closeFilter();
+		popoverKind = 'funnel';
 		let manuscriptNotes: { path: string; title: string }[] = [];
 		try {
-			controls.activateProject();
-			manuscriptNotes = await host.listManuscriptNotes(current.path);
+			manuscriptNotes = await host.listManuscriptNotes(owningProject);
 		} catch {
 			manuscriptNotes = [];
 		}
-		if (disposed) return;
+		if (disposed || request !== popoverRequest || !filterButton.isConnected || model?.path !== owningProject) return;
+		const current = model;
 		const categoryPaths = [
 			...new Set(current.scenes.flatMap((scene) => scene.categoryPaths)),
 		].sort((a, b) => a.localeCompare(b, current.locale));
@@ -1647,10 +1729,13 @@ export function renderCorkboard(
 	];
 
 	const openDisplay = (): void => {
-		if (controls.popover.filterOpen()) {
+		popoverRequest++;
+		if (controls.popover.filterOpen() && popoverKind === 'display') {
 			controls.popover.closeFilter();
+			popoverKind = null;
 			return;
 		}
+		popoverKind = 'display';
 		const before = { mode: memory.mode, group: memory.group };
 		controls.popover.openFilter(
 			displayButton,
@@ -1779,6 +1864,7 @@ export function renderCorkboard(
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;
+			popoverRequest++;
 			controls.popover.closeFilter();
 			closeColorPanel();
 			if (searchTimer !== null) root.win.clearTimeout(searchTimer);

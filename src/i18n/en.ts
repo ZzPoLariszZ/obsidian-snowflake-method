@@ -1474,6 +1474,7 @@ export const en = {
 	'modal.scene.linkedManuscript': 'Linked manuscript',
 	'modal.scene.linkedManuscriptPlaceholder': 'Add a manuscript note…',
 	'modal.scene.linkedManuscriptEmpty': 'No manuscript notes yet.',
+	'modal.scene.linkedManuscriptAllLinked': 'All manuscript notes are linked.',
 	'modal.scene.removeLinked': 'Remove {name}',
 	'modal.scene.color': 'Color',
 	'modal.scene.colorNone': 'No color',
