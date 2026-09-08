@@ -17,6 +17,7 @@ import {
 } from '../../src/ui/story-structure-state';
 
 const current: StoryStructureViewStateSnapshot = {
+	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
 };
@@ -30,6 +31,7 @@ describe('story structure restored state', () => {
 			}),
 		).toEqual({
 			state: {
+				projectPath: null,
 				visualization: 'beat-sheet',
 				corkboard: { mode: 'extended', group: 'color', reversed: true },
 			},
@@ -51,10 +53,35 @@ describe('story structure restored state', () => {
 			corkboard: { group: '' },
 		});
 		expect(update.state).toEqual({
+			projectPath: current.projectPath,
 			visualization: 'timeline',
 			corkboard: { mode: 'compact', group: '', reversed: true },
 		});
 		expect(update.changed).toBe(true);
+	});
+
+	it('restores project ownership independently of visualization settings', () => {
+		const update = mergeStoryStructureViewState(current, {
+			projectPath: 'Second/Second.md',
+		});
+		expect(update).toEqual({
+			state: { ...current, projectPath: 'Second/Second.md' },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { projectPath: null })).toEqual({
+			state: { ...current, projectPath: null },
+			changed: true,
+		});
+	});
+
+	it('preserves project ownership for legacy or invalid saved project fields', () => {
+		for (const value of [{}, { projectPath: undefined }, { projectPath: 7 }, { projectPath: {} }]) {
+			expect(mergeStoryStructureViewState(current, value)).toEqual({
+				state: current,
+				changed: false,
+			});
+		}
+		expect(mergeStoryStructureViewState(current, { projectPath: current.projectPath }).changed).toBe(false);
 	});
 
 	it('ignores invalid corkboard values without requesting a refresh', () => {

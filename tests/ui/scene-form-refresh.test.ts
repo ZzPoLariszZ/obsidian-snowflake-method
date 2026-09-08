@@ -53,12 +53,17 @@ function dashboard(read: () => Promise<SceneViewModel[]>) {
 	// A hidden dashboard already has a model, but the active corkboard has
 	// saved a newer reading of the same scene. Only refresh replaces it.
 	const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+	const activateProject = vi.fn();
 	const refresh = vi.fn(async () => {
 		const scenes = await read();
 		Object.assign(view, { lastRender: { model: { scenes, characters: [] } } });
 	});
 	Object.assign(view, {
 		app: {},
+		host: { activateProject },
+		projectPath: 'Novel/Novel.md',
+		projectLocale: 'en',
+		selectedStep: 8,
 		t: (key: string) => key,
 		lastRender: { model: { scenes: [scene()], characters: [] } },
 		refresh,
@@ -70,7 +75,7 @@ function dashboard(read: () => Promise<SceneViewModel[]>) {
 		opened.push(this);
 	});
 	vi.spyOn(CreateSceneModal.prototype, 'onClose').mockImplementation(() => undefined);
-	return { view, refresh, opened };
+	return { view, refresh, opened, activateProject };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -83,7 +88,7 @@ describe('scene forms opened from another surface', () => {
 			conflict: 'The guards demand the missing permit.',
 			revision: 'after-card-edits',
 		});
-		const { view, refresh, opened } = dashboard(() => Promise.resolve([saved]));
+		const { view, refresh, opened, activateProject } = dashboard(() => Promise.resolve([saved]));
 		const closing = view.openSceneForm({ mode: 'edit', id: saved.id });
 		await vi.waitFor(() => expect(opened).toHaveLength(1));
 		const form = opened[0];
@@ -96,6 +101,7 @@ describe('scene forms opened from another surface', () => {
 				expectedRevision: saved.revision,
 			});
 			expect(refresh).toHaveBeenCalledOnce();
+			expect(activateProject).toHaveBeenCalledExactlyOnceWith('Novel/Novel.md', 'en', 8);
 		} finally {
 			form?.onClose();
 			await closing;

@@ -916,7 +916,7 @@ export default class SnowflakeMethodPlugin
 			(leaf) =>
 				new SnowflakeStoryStructureView(leaf, {
 					host: this,
-					fingerprint: () => this.statisticsFingerprint(),
+					fingerprint: () => `${this.settings.uiLocale}|${moment.locale()}`,
 					recentProjectPath: () => this.settings.recentProjectPath,
 					corkboard: renderCorkboard,
 				}),
@@ -5590,21 +5590,32 @@ export default class SnowflakeMethodPlugin
 
 	async openStoryStructure(
 		visualization?: StoryStructureVisualization,
-		options: { newTab?: boolean } = {},
+		options: { newTab?: boolean; projectPath?: string | null } = {},
 	): Promise<void> {
-		const existing =
+		const projectPath = options.projectPath === undefined
+			? this.settings.recentProjectPath
+			: options.projectPath;
+		const candidates =
 			options.newTab === true
-				? undefined
+				? []
 				: this.app.workspace
 						.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)
-						.find((leaf) => leaf.getRoot() === this.app.workspace.rootSplit);
+						.filter((leaf) => leaf.getRoot() === this.app.workspace.rootSplit);
+		// A pre-project-state workspace may still be deferred on upgrade. Give
+		// it an owner before loading it, preserving its visualization settings.
+		const existing = candidates.find((leaf) => leaf.getViewState().state?.projectPath === projectPath) ??
+			candidates.find((leaf) => leaf.getViewState().state?.projectPath === undefined);
 		const leaf = existing ?? this.app.workspace.getLeaf('tab');
-		if (existing === undefined) {
+		const saved = existing?.getViewState();
+		if (saved === undefined || saved.state?.projectPath === undefined) {
 			await leaf.setViewState({
+				...saved,
 				type: STORY_STRUCTURE_VIEW_TYPE,
 				active: true,
 				state: {
-					visualization: visualization ?? DEFAULT_STORY_STRUCTURE_VISUALIZATION,
+					...saved?.state,
+					projectPath,
+					visualization: visualization ?? saved?.state?.visualization ?? DEFAULT_STORY_STRUCTURE_VISUALIZATION,
 				},
 			});
 		}
@@ -8718,10 +8729,11 @@ export default class SnowflakeMethodPlugin
 		for (const leaf of this.app.workspace.getLeavesOfType(
 			STORY_STRUCTURE_VIEW_TYPE,
 		)) {
+			const statePath = leaf.getViewState().state?.projectPath;
 			const projectPath =
 				leaf.view instanceof SnowflakeStoryStructureView
 					? leaf.view.projectPath()
-					: null;
+					: typeof statePath === 'string' ? statePath : null;
 			if (projectPath !== null && isPathAtOrBelow(projectPath, path)) {
 				leaf.detach();
 			}
@@ -8785,6 +8797,21 @@ export default class SnowflakeMethodPlugin
 
 	/** The revision carries of the renames so far, each waiting on the one before. */
 	private renameCarry: Promise<void> = Promise.resolve();
+
+	/** Keep each workspace's saved project attached when its folder or note moves. */
+	private async renameStoryStructureProjects(oldPath: string, newPath: string): Promise<void> {
+		await Promise.all(this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE).map(async (leaf) => {
+			const saved = leaf.getViewState();
+			const path = saved.state?.projectPath;
+			if (typeof path !== 'string') return;
+			const projectPath = movedWithRename(path, oldPath, newPath);
+			if (projectPath === null) return;
+			await leaf.setViewState({
+				...saved,
+				state: { ...saved.state, projectPath },
+			});
+		}));
+	}
 
 	private async handleVaultRename(
 		file: TAbstractFile,
@@ -8911,6 +8938,8 @@ export default class SnowflakeMethodPlugin
 			// Views cannot follow a project out of the scan's reach, and a
 			// stream left in a background tab never notices on its own.
 			this.detachProjectViews(oldPath);
+		} else {
+			await this.renameStoryStructureProjects(oldPath, file.path);
 		}
 
 		const recent = this.settings.recentProjectPath;

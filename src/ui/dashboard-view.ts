@@ -1869,7 +1869,7 @@ export class SnowflakeDashboardView extends ItemView {
 			damaged: false,
 			indicator: { icon: 'square-arrow-out-up-right' },
 			onClick: () => {
-				void this.host.openStoryStructure();
+				void this.host.openStoryStructure(undefined, { projectPath: this.projectPath });
 			},
 		});
 		workspace.addClass('snowflake-method-workspace-entry');
@@ -5011,6 +5011,7 @@ export class SnowflakeDashboardView extends ItemView {
 		await this.refresh();
 		const model = this.lastRender?.model ?? null;
 		if (model === null || model.readOnly) return;
+		this.activateProjectContext();
 		const character = model.characters.find((candidate) => candidate.id === id);
 		if (
 			character === undefined ||
@@ -5034,6 +5035,7 @@ export class SnowflakeDashboardView extends ItemView {
 		await this.refresh();
 		const model = this.lastRender?.model ?? null;
 		if (model === null) return null;
+		this.activateProjectContext();
 		const made = { id: null as string | null };
 		const remember = (id: string): void => {
 			made.id = id;
@@ -5737,7 +5739,9 @@ export class SnowflakeDashboardView extends ItemView {
 				label: this.t(scenes ? 'actions.openWorkspace' : 'actions.openBase'),
 				run: scenes
 					? () => {
-							void this.runAndRefresh(() => this.host.openStoryStructure());
+							void this.runAndRefresh(() =>
+								this.host.openStoryStructure(undefined, { projectPath: this.projectPath }),
+							);
 						}
 					: openBase,
 			},
@@ -5760,7 +5764,9 @@ export class SnowflakeDashboardView extends ItemView {
 								.setIcon(icons[family])
 								.onClick(() => {
 									void this.runAndRefresh(() =>
-										this.host.openStoryStructure(familyVisualization(family)),
+										this.host.openStoryStructure(familyVisualization(family), {
+											projectPath: this.projectPath,
+										}),
 									);
 								}),
 						);

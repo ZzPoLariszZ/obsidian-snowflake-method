@@ -857,7 +857,7 @@ export interface DashboardHost {
 	 */
 	openStoryStructure(
 		visualization?: StoryStructureVisualization,
-		options?: { newTab?: boolean },
+		options?: { newTab?: boolean; projectPath?: string | null },
 	): Promise<void>;
 	checkCurrentProject(): Promise<RepairReportViewModel>;
 	repairMissingStructureItem(path: string, field?: string): Promise<void>;

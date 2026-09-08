@@ -2,9 +2,8 @@
  * The Story Structure view: the family of visualizations a story's scenes
  * can be looked at through, each in a tab of the strip at the top, the
  * ordered corkboard built and the rest holding their places. A main-area
- * leaf that follows the current project, as the statistics sidebar does,
- * so every write the board makes is the current project's, and a project
- * switch rebuilds the frame. Several may stand open at once: a modifier
+ * leaf that keeps its own project across dashboard switches and reloads.
+ * Several projects may stand open at once: a modifier
  * click on a tab opens that visualization in a leaf of its own.
  */
 
@@ -42,8 +41,7 @@ export const STORY_STRUCTURE_VIEW_TYPE = 'snowflake-method-story-structure';
 export interface StoryStructureViewDeps {
 	host: DashboardHost;
 	/**
-	 * What the mounted frame was built under -- the language and the
-	 * project -- so a rerender that finds it unchanged redraws nothing.
+	 * Global language settings, independent of the active dashboard.
 	 */
 	fingerprint(): string;
 	recentProjectPath(): string | null;
@@ -59,6 +57,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
 	private opened = false;
+	private stateDelivered = false;
 	private refreshing = false;
 	private refreshPending = false;
 	private refreshRun: Promise<void> = Promise.resolve();
@@ -106,12 +105,23 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
-		await super.setState(state, result);
 		const update = mergeStoryStructureViewState(this.snapshot(), state);
+		const candidate =
+			typeof state === 'object' && state !== null
+				? (state as Record<string, unknown>)
+				: {};
+		// Older layouts did not store a project. Adopt their current project
+		// once, after restored state arrives, and persist that ownership.
+		const legacy = !this.stateDelivered &&
+			typeof candidate.projectPath !== 'string' && candidate.projectPath !== null;
+		if (legacy) update.state.projectPath = this.deps.recentProjectPath();
 		this.state = update.state;
+		this.stateDelivered = true;
 		this.memory.mode = update.state.corkboard.mode;
 		this.memory.group = update.state.corkboard.group;
 		this.memory.reversed = update.state.corkboard.reversed;
+		await super.setState(state, result);
+		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
 		// state is drawn whether or not it moved anything.
 		if (
@@ -125,6 +135,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	private snapshot(): StoryStructureViewStateSnapshot {
 		return {
+			projectPath: this.state.projectPath,
 			visualization: this.state.visualization,
 			corkboard: {
 				mode: this.memory.mode,
@@ -137,7 +148,15 @@ export class SnowflakeStoryStructureView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.opened = true;
 		this.contentEl.addClass('snowflake-method-story-structure');
-		if (this.app.workspace.layoutReady) await this.refresh();
+		this.registerDomEvent(this.contentEl, 'pointerdown', () => this.activateProjectContext());
+		this.registerDomEvent(this.contentEl, 'focusin', () => this.activateProjectContext());
+		if (this.app.workspace.layoutReady) {
+			if (this.stateDelivered) await this.refresh();
+		} else {
+			this.app.workspace.onLayoutReady(() => {
+				if (this.opened && this.stateDelivered) void this.refresh();
+			});
+		}
 	}
 
 	onClose(): Promise<void> {
@@ -165,10 +184,16 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	/** The project the frame on show speaks for, when one is. */
 	projectPath(): string | null {
-		return this.model?.path ?? null;
+		return this.state.projectPath;
 	}
 
-	/** Reads again when the language or the current project has moved. */
+	private activateProjectContext(): void {
+		const model = this.model;
+		if (model === null) return;
+		this.deps.host.activateProject(model.path, model.locale, this.deps.host.getRecentStep());
+	}
+
+	/** Reads again when the language settings have moved. */
 	rerender(): void {
 		if (!this.opened) return;
 		if (this.deps.fingerprint() === this.shownFingerprint) return;
@@ -184,13 +209,14 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	/**
-	 * Reads the current project and draws it: the whole frame when the
+	 * Reads this tab's project and draws it: the whole frame when the
 	 * language, the project or the visualization has moved, else only the
 	 * board's own paint. A request made while a run is in flight is drawn
 	 * by that run before it settles, so awaiting it is awaiting a read that
 	 * began after the request: what the board's queue of writes counts on.
 	 */
 	async refresh(): Promise<void> {
+		if (!this.stateDelivered) return;
 		this.refreshQueuedWhileHidden = false;
 		if (this.refreshing) {
 			this.refreshPending = true;
@@ -207,10 +233,14 @@ export class SnowflakeStoryStructureView extends ItemView {
 				this.refreshPending = false;
 				try {
 					const fingerprint = this.deps.fingerprint();
-					const path = this.deps.recentProjectPath();
+					const path = this.state.projectPath;
 					const model =
 						path === null ? null : await this.deps.host.loadDashboardModel(path);
 					if (!this.opened) return;
+					if (path !== this.state.projectPath) {
+						this.refreshPending = true;
+						continue;
+					}
 					this.model = model;
 					this.shownFingerprint = fingerprint;
 					if (this.frameKey() !== this.shownFrame || this.board === null) {
@@ -230,7 +260,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	}
 
 	private frameKey(): string {
-		return `${this.shownFingerprint ?? ''}|${this.model?.projectId ?? ''}|${this.state.visualization}`;
+		return `${this.shownFingerprint ?? ''}|${this.model?.projectId ?? ''}|${this.model?.locale ?? ''}|${this.state.visualization}`;
 	}
 
 	/** The peer tabs and the face the chosen visualization shows. */
@@ -277,7 +307,10 @@ export class SnowflakeStoryStructureView extends ItemView {
 	/** A plain click shows the visualization here; a modifier click opens it in a leaf of its own. */
 	private choose(key: StoryStructureVisualization, event: MouseEvent): void {
 		if (Keymap.isModEvent(event) !== false) {
-			void this.deps.host.openStoryStructure(key, { newTab: true });
+			void this.deps.host.openStoryStructure(key, {
+				newTab: true,
+				projectPath: this.state.projectPath,
+			});
 			return;
 		}
 		this.showVisualization(key);
@@ -289,6 +322,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			host: this.deps.host,
 			t: this.t,
 			model: () => this.model,
+			activateProject: () => this.activateProjectContext(),
 			refresh: () => this.refresh(),
 			popover: this.filterPanel.lend(),
 			memory: this.memory,

@@ -34,6 +34,8 @@ export interface CorkboardControls {
 	t: Translate;
 	/** The model the view last loaded; null before the first load or with no project. */
 	model(): ProjectDashboardModel | null;
+	/** Makes the board's project current before a host action reads or writes it. */
+	activateProject(): void;
 	/** Re-reads the project; resolves after `handle.refresh()` has been called with the new model. */
 	refresh(): Promise<void>;
 	popover: LentFilterPopover;

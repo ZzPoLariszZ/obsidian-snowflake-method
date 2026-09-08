@@ -93,12 +93,14 @@ export interface CorkboardSettings {
 }
 
 export interface StoryStructureViewStateSnapshot {
+	projectPath: string | null;
 	visualization: StoryStructureVisualization;
 	corkboard: CorkboardSettings;
 }
 
 export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 	return {
+		projectPath: null,
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
 		corkboard: { mode: 'standard', group: '', reversed: false },
 	};
@@ -124,6 +126,10 @@ export function mergeStoryStructureViewState(
 		return { state: current, changed: false };
 	}
 	const candidate = value as Record<string, unknown>;
+	const projectPath =
+		typeof candidate.projectPath === 'string' || candidate.projectPath === null
+			? candidate.projectPath
+			: current.projectPath;
 	const visualization = isStoryStructureVisualization(candidate.visualization)
 		? candidate.visualization
 		: candidate.visualization === undefined
@@ -144,10 +150,11 @@ export function mergeStoryStructureViewState(
 				? board.reversed
 				: current.corkboard.reversed,
 	};
-	const state = { visualization, corkboard };
+	const state = { projectPath, visualization, corkboard };
 	return {
 		state,
 		changed:
+			state.projectPath !== current.projectPath ||
 			state.visualization !== current.visualization ||
 			state.corkboard.mode !== current.corkboard.mode ||
 			state.corkboard.group !== current.corkboard.group ||

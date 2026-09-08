@@ -303,6 +303,9 @@ export function renderCorkboard(
 		const run = queue.then(async () => {
 			if (disposed) return;
 			try {
+				// Focus can move to another project's dashboard while this
+				// action waits for an earlier card edit to finish.
+				controls.activateProject();
 				await action();
 			} catch (error) {
 				notice(error);
@@ -1368,6 +1371,7 @@ export function renderCorkboard(
 		if (current === null) return;
 		let manuscriptNotes: { path: string; title: string }[] = [];
 		try {
+			controls.activateProject();
 			manuscriptNotes = await host.listManuscriptNotes();
 		} catch {
 			manuscriptNotes = [];
