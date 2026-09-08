@@ -5027,9 +5027,11 @@ export class SnowflakeDashboardView extends ItemView {
 	 * closed, with the scene a create made, so the caller can show it.
 	 */
 	async openSceneForm(intent: SceneFormIntent): Promise<string | null> {
-		// Drawn here rather than given up on, for the reason startEntityCreation
-		// gives: a dashboard opened a moment ago has not drawn yet.
-		if (this.lastRender?.model == null) await this.refresh();
+		// The corkboard refreshes its own model after a card edit, while a
+		// hidden dashboard keeps its old snapshot until shown. Read again so
+		// the form receives the saved fields and revision even when opened
+		// from an already-loaded dashboard.
+		await this.refresh();
 		const model = this.lastRender?.model ?? null;
 		if (model === null) return null;
 		const made = { id: null as string | null };
