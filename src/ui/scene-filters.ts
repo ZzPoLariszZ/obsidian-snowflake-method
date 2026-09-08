@@ -15,13 +15,16 @@ import {
 	type ProgressStatus,
 } from '../domain';
 import { memberMatches } from './dashboard-state';
-import type { FilterRow } from './filter-rows';
+import type { FilterOptionRow, FilterRow } from './filter-rows';
 import type { Translate } from './modals';
 import type { PickerOption } from './option-picker';
 import type { SceneViewModel } from './view-model';
 
-/** The funnel's answers. '' and 'all' mean the question is not being asked. */
+/** The funnel's answers. Empty values mean the question is not being asked. */
 export interface SceneFilters {
+	/** Inclusive scene numbers in project order; null leaves an end unbounded. */
+	sceneMin: number | null;
+	sceneMax: number | null;
 	status: 'all' | ProgressStatus;
 	/** A category path, whose subtree counts as filed under it. */
 	category: string;
@@ -45,6 +48,8 @@ export interface SceneFilterModel {
 
 export function sceneFilters(): SceneFilters {
 	return {
+		sceneMin: null,
+		sceneMax: null,
 		status: 'all',
 		category: '',
 		pov: '',
@@ -58,6 +63,15 @@ export function sceneFilters(): SceneFilters {
 
 /** True when any of the funnel's questions is being asked. */
 export function sceneFiltered(filters: SceneFilters): boolean {
+	return (
+		filters.sceneMin !== null ||
+		filters.sceneMax !== null ||
+		sceneHasNonRangeFilters(filters)
+	);
+}
+
+/** A range preserves adjacent scenes; these filters can leave gaps between them. */
+export function sceneHasNonRangeFilters(filters: SceneFilters): boolean {
 	return (
 		filters.status !== 'all' ||
 		filters.category !== '' ||
@@ -73,6 +87,14 @@ export function sceneFiltered(filters: SceneFilters): boolean {
 /** Every question back to unasked, in place, as the table keeps them. */
 export function clearSceneFilters(filters: SceneFilters): void {
 	Object.assign(filters, sceneFilters());
+}
+
+/** Blank or unreadable bounds are unrestricted; scene numbers start at one. */
+export function parseSceneBound(text: string): number | null {
+	const trimmed = text.trim();
+	if (!/^\d+$/u.test(trimmed)) return null;
+	const value = Number(trimmed);
+	return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 /**
@@ -120,7 +142,9 @@ export function filterScenes(
 	return scenes
 		.map((scene, index) => ({ scene, index }))
 		.filter(
-			({ scene }) =>
+			({ scene, index }) =>
+				(filters.sceneMin === null || index + 1 >= filters.sceneMin) &&
+				(filters.sceneMax === null || index + 1 <= filters.sceneMax) &&
 				(filters.pov === '' || scene.povPath === filters.pov) &&
 				(filters.status === 'all' ||
 					scene.progressStatus === filters.status) &&
@@ -165,7 +189,7 @@ export function progressFilterRow(
 	t: Translate,
 	value: 'all' | ProgressStatus,
 	apply: (next: 'all' | ProgressStatus) => void,
-): FilterRow {
+): FilterOptionRow {
 	return {
 		label: t('table.progressStatus'),
 		placeholder: t('table.filterAllStatuses'),
@@ -188,7 +212,7 @@ export function categoryFilterRow(
 	paths: readonly string[],
 	value: string,
 	apply: (next: string) => void,
-): FilterRow {
+): FilterOptionRow {
 	return {
 		label: t('table.category'),
 		placeholder: t('table.filterAllCategories'),
@@ -220,6 +244,24 @@ export function sceneFilterRows(
 	const ofKind = (kind: 'time' | 'location'): readonly { name: string }[] =>
 		model.worldbuilding[kind] ?? [];
 	return [
+		{
+			presentation: 'number-range',
+			label: t('table.filterSceneRange'),
+			min: {
+				label: t('table.filterSceneMin'),
+				placeholder: t('table.filterMin'),
+				value: filters.sceneMin === null ? '' : String(filters.sceneMin),
+			},
+			max: {
+				label: t('table.filterSceneMax'),
+				placeholder: t('table.filterMax'),
+				value: filters.sceneMax === null ? '' : String(filters.sceneMax),
+			},
+			apply: (min, max) => {
+				filters.sceneMin = parseSceneBound(min);
+				filters.sceneMax = parseSceneBound(max);
+			},
+		},
 		progressFilterRow(t, filters.status, (next) => {
 			filters.status = next;
 		}),

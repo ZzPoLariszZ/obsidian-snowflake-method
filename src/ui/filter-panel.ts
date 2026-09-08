@@ -1,6 +1,6 @@
 /**
  * The funnel popover every table and board asks its questions in: a panel
- * under the funnel button, one picker per question, confirmed as a whole or
+ * under the funnel button, with pickers and range fields confirmed as a whole or
  * dismissed as nothing. A view hangs one of these and lends it to every panel
  * it holds through `lend()`, so the pickers' lifetime and the outside-click
  * rules are written once and every surface asks its questions in the same
@@ -70,29 +70,67 @@ export class FilterPanel {
 		// What the panel is being set to, until it is confirmed. The table keeps
 		// showing what it was showing while the fields are being worked out, and
 		// a panel dismissed without confirming changes nothing.
-		const draft = rows.map((entry) => entry.value);
+		const draft = rows.map((entry) =>
+			entry.presentation === 'number-range'
+				? { ...entry, min: { ...entry.min }, max: { ...entry.max } }
+				: { ...entry },
+		);
+		const apply = (): void => {
+			for (const entry of draft) {
+				if (entry.presentation === 'number-range') {
+					entry.apply(entry.min.value, entry.max.value);
+				} else {
+					entry.apply(entry.value);
+				}
+			}
+			this.close();
+			changed();
+		};
 		// Rebuilt rather than reassigned: a picker shows the value it was built
 		// with, so the reset below has to build the fields again to show them
 		// back at rest.
 		const fill = (): void => {
 			body.empty();
 			this.releasePickers();
-			rows.forEach((entry, index) => {
+			draft.forEach((entry) => {
 				const field = body.createDiv({ cls: 'snowflake-method-filter-row' });
 				field.createDiv({
 					cls: 'snowflake-method-filter-label',
 					text: entry.label,
 				});
+				if (entry.presentation === 'number-range') {
+					const range = field.createDiv({ cls: 'snowflake-method-filter-range' });
+					for (const bound of [entry.min, entry.max]) {
+						const input = range.createEl('input', {
+							attr: {
+								type: 'text',
+								inputmode: 'numeric',
+								placeholder: bound.placeholder,
+								'aria-label': bound.label,
+							},
+						});
+						input.value = bound.value;
+						input.addEventListener('input', () => {
+							bound.value = input.value;
+						});
+						input.addEventListener('keydown', (event) => {
+							if (event.key !== 'Enter' || event.isComposing) return;
+							event.preventDefault();
+							apply();
+						});
+					}
+					return;
+				}
 				if (entry.presentation === 'color-swatches') {
-					const value = draft[index];
+					const value = entry.value;
 					const strip = renderStickySwatches(field, {
 						value: isMacaronColor(value) ? value : '',
 						t: this.t,
 						onPick: (next) => {
 							// Picking the chosen colour again clears this question,
 							// just as it does on the dashboard's sticky-note tab.
-							const chosen = draft[index] === next ? '' : next;
-							draft[index] = chosen;
+							const chosen = entry.value === next ? '' : next;
+							entry.value = chosen;
 							strip.sync(chosen);
 						},
 					});
@@ -104,9 +142,9 @@ export class FilterPanel {
 							{ value: entry.empty, label: entry.placeholder },
 							...entry.options(),
 						],
-						value: () => draft[index] ?? entry.empty,
+						value: () => entry.value,
 						choose: (value) => {
-							draft[index] = value;
+							entry.value = value;
 						},
 						label: entry.label,
 						placeholder: entry.placeholder,
@@ -127,8 +165,13 @@ export class FilterPanel {
 		// Clears the fields rather than the table: the panel has one way out,
 		// and this is not it.
 		reset.addEventListener('click', () => {
-			rows.forEach((entry, index) => {
-				draft[index] = entry.empty;
+			draft.forEach((entry) => {
+				if (entry.presentation === 'number-range') {
+					entry.min.value = '';
+					entry.max.value = '';
+				} else {
+					entry.value = entry.empty;
+				}
 			});
 			fill();
 		});
@@ -137,13 +180,7 @@ export class FilterPanel {
 			text: this.t('table.filterConfirm'),
 			attr: { type: 'button' },
 		});
-		confirm.addEventListener('click', () => {
-			rows.forEach((entry, index) => {
-				entry.apply(draft[index] ?? entry.empty);
-			});
-			this.close();
-			changed();
-		});
+		confirm.addEventListener('click', apply);
 
 		// Under the anchor and lined up with its end, in the layer above
 		// everything: the panel covers a table that scrolls, and a panel inside

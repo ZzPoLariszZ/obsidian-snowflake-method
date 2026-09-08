@@ -163,6 +163,8 @@ describe('story structure restored state', () => {
 			reversed: false,
 			query: '',
 			filters: {
+				sceneMin: null,
+				sceneMax: null,
 				status: 'all',
 				category: '',
 				pov: '',

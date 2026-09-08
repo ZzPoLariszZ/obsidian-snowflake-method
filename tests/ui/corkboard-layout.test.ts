@@ -410,6 +410,21 @@ describe('the narrative target of a move', () => {
 		expect(moveTargetIndex(ids, 'a', 'b', true)).toBe(1);
 	});
 
+	it.each([
+		{ reversed: false, dragged: 'b', last: 'd', target: 3 },
+		{ reversed: false, dragged: 'c', last: 'd', target: 3 },
+		{ reversed: true, dragged: 'd', last: 'b', target: 1 },
+		{ reversed: true, dragged: 'c', last: 'b', target: 1 },
+	])('keeps an end drop inside the shown range: $dragged after $last, reversed $reversed', ({ reversed, dragged, last, target }) => {
+		expect(moveTargetIndex(['a', 'b', 'c', 'd', 'e'], dragged, null, reversed, last)).toBe(target);
+	});
+
+	it.each([false, true])('does not move the last shown card beyond the range (reversed: %s)', (reversed) => {
+		const last = reversed ? 'b' : 'd';
+		expect(moveTargetIndex(['a', 'b', 'c', 'd', 'e'], last, null, reversed, last)).toBeNull();
+		expect(moveTargetIndex(['a', 'b', 'c', 'd', 'e'], 'c', null, reversed, 'unknown')).toBeNull();
+	});
+
 	it('answers null when nothing would change or the card is unknown', () => {
 		expect(moveTargetIndex(ids, 'b', 'c', false)).toBeNull();
 		expect(moveTargetIndex(ids, 'd', null, false)).toBeNull();

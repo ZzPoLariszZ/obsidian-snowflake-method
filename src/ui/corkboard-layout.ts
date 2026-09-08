@@ -453,8 +453,10 @@ export function dropTargetAt(
 /**
  * The narrative index a dragged scene should take, the way `moveRanked`
  * counts it: its place in the list once it has left it. Before a card means
- * right before it; landing on nothing means the end. A reversed board reads
- * backwards: before a card is right after it, and the end is the start.
+ * right before it; landing on nothing means after the last displayed card.
+ * A reversed board reads backwards: before a card is right after it, and
+ * after the last displayed card is right before it in narrative order.
+ * Without a displayed end, the full list supplies that boundary.
  * Null when nothing would change, or the ids are not the board's.
  */
 export function moveTargetIndex(
@@ -462,13 +464,21 @@ export function moveTargetIndex(
 	draggedId: string,
 	beforeId: string | null,
 	reversed: boolean,
+	lastShownId: string | null = null,
 ): number | null {
 	const from = orderIds.indexOf(draggedId);
 	if (from === -1 || beforeId === draggedId) return null;
 	const rest = orderIds.filter((id) => id !== draggedId);
 	let target: number;
 	if (beforeId === null) {
-		target = reversed ? 0 : rest.length;
+		if (lastShownId === draggedId) return null;
+		if (lastShownId === null) {
+			target = reversed ? 0 : rest.length;
+		} else {
+			const at = rest.indexOf(lastShownId);
+			if (at === -1) return null;
+			target = reversed ? at : at + 1;
+		}
 	} else {
 		const at = rest.indexOf(beforeId);
 		if (at === -1) return null;
@@ -510,9 +520,10 @@ export function visualNeighbours(
 /**
  * Whether the actions that read the cards' neighbours are on: dragging,
  * moving up and down, and the "+" between two cards. Only while the board
- * shows every scene once in its plain order, and nothing is read-only.
+ * shows a continuous range once in its plain order, and nothing is read-only.
  */
 export function adjacencyAllowed(state: {
+	/** A filter besides the continuous scene-number range is active. */
 	filtered: boolean;
 	query: string;
 	group: CorkboardGroupField | '';

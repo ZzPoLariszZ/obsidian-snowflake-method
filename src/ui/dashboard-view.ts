@@ -134,6 +134,7 @@ import {
 	sceneFilterRows,
 	sceneFiltered,
 	sceneFilters,
+	sceneHasNonRangeFilters,
 	termName,
 } from './scene-filters';
 import { renderSessionPanel } from './session-panel';
@@ -6400,7 +6401,13 @@ export class SnowflakeDashboardView extends ItemView {
 					model,
 					step,
 					reorderReadOnly,
-					reorderReadOnly || this.sceneListFiltered(),
+					reorderReadOnly ||
+						this.sceneQuery.trim().length > 0 ||
+						sceneHasNonRangeFilters(this.sceneFilters),
+					{
+						up: entries[offset - 1]?.index ?? null,
+						down: entries[offset + 1]?.index ?? null,
+					},
 				);
 			},
 			renderTail: (rows) => {
@@ -6478,6 +6485,7 @@ export class SnowflakeDashboardView extends ItemView {
 		step: 8 | 9,
 		reorderReadOnly: boolean,
 		dragLocked: boolean,
+		neighbours: { up: number | null; down: number | null },
 	): void {
 		const sceneDamaged = scene.healthIssues.some((issue) => issue.blocking);
 		const row = body.createEl('tr', {
@@ -6567,7 +6575,7 @@ export class SnowflakeDashboardView extends ItemView {
 				addOrderMenuItems(menu, this.orderMenuDeps(), {
 					index,
 					total: model.scenes.length,
-					...listNeighbours(index, model.scenes.length),
+					...(dragLocked ? { up: null, down: null } : neighbours),
 					locked: reorderReadOnly,
 					readOnly: model.readOnly,
 					insertTitle: this.t('table.insertSceneAfter'),
@@ -6602,7 +6610,8 @@ export class SnowflakeDashboardView extends ItemView {
 				SCENE_DRAG_TYPE,
 				scene.id,
 				index,
-				(candidate) => model.scenes.some((entry) => entry.id === candidate),
+				(candidate) =>
+					this.sceneEntries(model).some((entry) => entry.scene.id === candidate),
 				(id, target) => this.host.reorderScene(id, target),
 			);
 		}

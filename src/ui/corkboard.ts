@@ -40,7 +40,6 @@ import {
 	visibleCards,
 	visibleHeads,
 	visibleLines,
-	visualNeighbours,
 	type CardSelectOption,
 	type CorkboardLayout,
 	type CorkboardMetrics,
@@ -51,7 +50,7 @@ import type { FilterRow } from './filter-rows';
 import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
 import { addOrderMenuItems } from './order-menu';
 import { paintCount, renderEmptyLine } from './pane-parts';
-import { filterScenes, sceneFilterRows, sceneFiltered } from './scene-filters';
+import { filterScenes, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
 import { renderStickySwatches } from './sticky-note-card';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
@@ -465,7 +464,7 @@ export function renderCorkboard(
 		});
 		orderIds = current.scenes.map((scene) => scene.id);
 		adjacency = adjacencyAllowed({
-			filtered: sceneFiltered(memory.filters),
+			filtered: sceneHasNonRangeFilters(memory.filters),
 			query: memory.query,
 			group: memory.group,
 			readOnly,
@@ -1076,7 +1075,10 @@ export function renderCorkboard(
 				readOnly,
 				insertTitle: t('table.insertSceneAfter'),
 				...(adjacency
-					? visualNeighbours(entry.index, total, memory.reversed)
+					? {
+						up: layout?.items[entry.display - 1]?.sceneIndex ?? null,
+						down: layout?.items[entry.display + 1]?.sceneIndex ?? null,
+					}
 					: { up: null, down: null }),
 				options: () =>
 					current.scenes
@@ -1334,7 +1336,13 @@ export function renderCorkboard(
 		if (before === null) return;
 		const beforeId =
 			before >= layout.items.length ? null : (sceneAt(before)?.id ?? null);
-		const target = moveTargetIndex(orderIds, dragged, beforeId, memory.reversed);
+		const target = moveTargetIndex(
+			orderIds,
+			dragged,
+			beforeId,
+			memory.reversed,
+			sceneAt(layout.items.length - 1)?.id ?? null,
+		);
 		if (target === null) return;
 		void enqueue(() => host.reorderScene(dragged, target));
 	});

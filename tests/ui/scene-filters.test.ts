@@ -5,9 +5,11 @@ import {
 	clearSceneFilters,
 	filterScenes,
 	linkNamesNote,
+	parseSceneBound,
 	sceneFilterRows,
 	sceneFiltered,
 	sceneFilters,
+	sceneHasNonRangeFilters,
 	termName,
 	type SceneFilters,
 } from '../../src/ui/scene-filters';
@@ -102,6 +104,8 @@ const asked = (overrides: Partial<SceneFilters>): SceneFilters => ({
 describe('the scene funnel', () => {
 	it('starts with every question unasked', () => {
 		expect(sceneFilters()).toEqual({
+			sceneMin: null,
+			sceneMax: null,
 			status: 'all',
 			category: '',
 			pov: '',
@@ -117,16 +121,45 @@ describe('the scene funnel', () => {
 	it('reports when any question is asked', () => {
 		for (const key of Object.keys(sceneFilters()) as (keyof SceneFilters)[]) {
 			const filters = sceneFilters();
-			(filters as unknown as Record<string, string>)[key] =
-				key === 'status' ? 'complete' : key === 'color' ? 'macaron-1' : 'x';
+			if (key === 'sceneMin' || key === 'sceneMax') {
+				filters[key] = 2;
+			} else {
+				(filters as unknown as Record<string, string>)[key] =
+					key === 'status' ? 'complete' : key === 'color' ? 'macaron-1' : 'x';
+			}
 			expect(sceneFiltered(filters)).toBe(true);
 		}
 	});
 
 	it('clears every question in place', () => {
-		const filters = asked({ status: 'complete', pov: 'omniscient', linked: 'a' });
+		const filters = asked({
+			sceneMin: 2, sceneMax: 3, status: 'complete', pov: 'omniscient', linked: 'a',
+		});
 		clearSceneFilters(filters);
 		expect(filters).toEqual(sceneFilters());
+	});
+
+	it.each([
+		{},
+		{ sceneMin: 2 },
+		{ sceneMax: 4 },
+		{ sceneMin: 2, sceneMax: 4 },
+	])('preserves adjacency with only range bounds %j', (bounds) => {
+		expect(sceneHasNonRangeFilters(asked(bounds))).toBe(false);
+	});
+
+	it.each<Partial<SceneFilters>>([
+		{ status: 'complete' },
+		{ category: 'Arc' },
+		{ pov: 'omniscient' },
+		{ time: 'Spring' },
+		{ location: 'Harbour' },
+		{ character: 'Characters/Ada.md' },
+		{ color: 'macaron-2' },
+		{ linked: 'Manuscript/Chapter 08' },
+	])('blocks adjacency for a non-range filter %j with or without a range', (filter) => {
+		expect(sceneHasNonRangeFilters(asked(filter))).toBe(true);
+		expect(sceneHasNonRangeFilters(asked({ ...filter, sceneMin: 2, sceneMax: 4 }))).toBe(true);
 	});
 
 	it('keeps every scene while nothing is asked', () => {
@@ -140,6 +173,47 @@ describe('the scene funnel', () => {
 				(entry) => entry.index,
 			),
 		).toEqual([0, 1, 2]);
+	});
+
+	it.each([
+		{ bounds: { sceneMin: 2, sceneMax: 3 }, expected: ['Noon', 'Dusk'] },
+		{ bounds: { sceneMin: 1, sceneMax: 2 }, expected: ['Dawn', 'Noon'] },
+		{ bounds: { sceneMin: 2 }, expected: ['Noon', 'Dusk'] },
+		{ bounds: { sceneMax: 2 }, expected: ['Dawn', 'Noon'] },
+		{ bounds: { sceneMin: 2, sceneMax: 2 }, expected: ['Noon'] },
+		{ bounds: { sceneMin: 1, sceneMax: 20 }, expected: ['Dawn', 'Noon', 'Dusk'] },
+		{ bounds: { sceneMin: 4 }, expected: [] },
+		{ bounds: { sceneMin: 3, sceneMax: 2 }, expected: [] },
+	])('filters the inclusive scene range $bounds', ({ bounds, expected }) => {
+		expect(ids(filterScenes(scenes, '', asked(bounds), context))).toEqual(expected);
+	});
+
+	it('uses scene positions before the search and other filters narrow the list', () => {
+		const shown = filterScenes(
+			scenes,
+			'ada',
+			asked({ sceneMin: 2, sceneMax: 3, character: 'Characters/Ada.md' }),
+			context,
+		);
+		expect(ids(shown)).toEqual(['Dusk']);
+		expect(shown.map((entry) => entry.index)).toEqual([2]);
+		expect(
+			ids(filterScenes(scenes, 'midday', asked({ sceneMin: 2, sceneMax: 2 }), context)),
+		).toEqual(['Noon']);
+		expect(
+			ids(filterScenes(scenes, 'midday', asked({ sceneMin: 3 }), context)),
+		).toEqual([]);
+		expect(
+			ids(filterScenes(scenes, '', asked({ sceneMin: 2, status: 'complete' }), context)),
+		).toEqual([]);
+	});
+
+	it('keeps original positions and follows the current scene order regardless of rank', () => {
+		const reordered = [scenes[2]!, scenes[0]!, scenes[1]!];
+		const shown = filterScenes(reordered, '', asked({ sceneMin: 2, sceneMax: 3 }), context);
+		expect(ids(shown)).toEqual(['Dawn', 'Noon']);
+		expect(shown.map((entry) => entry.index)).toEqual([1, 2]);
+		expect(filterScenes([], '', asked({ sceneMin: 1 }), context)).toEqual([]);
 	});
 
 	it('keeps the scenes a colour names', () => {
@@ -210,7 +284,7 @@ describe('the scene funnel', () => {
 		expect(run('nothing here')).toEqual([]);
 	});
 
-	it("lists the funnel rows in the table's order with colour and linked manuscript last", () => {
+	it("lists the range first, followed by the table's existing filter order", () => {
 		const filters = asked({ color: 'macaron-2' });
 		const rows = sceneFilterRows(
 			t,
@@ -228,6 +302,7 @@ describe('the scene funnel', () => {
 			},
 		);
 		expect(rows.map((row) => row.label)).toEqual([
+			'table.filterSceneRange',
 			'table.progressStatus',
 			'table.category',
 			'table.scenePov',
@@ -237,29 +312,76 @@ describe('the scene funnel', () => {
 			'table.sceneColor',
 			'table.sceneLinked',
 		]);
-		expect(rows.map((row) => row.empty)).toEqual(['all', '', '', '', '', '', '', '']);
-		expect(rows[2]?.options().map((option) => option.value)).toEqual([
+		const optionRows = rows.filter((row) => row.presentation !== 'number-range');
+		expect(optionRows.map((row) => row.empty)).toEqual(['all', '', '', '', '', '', '', '']);
+		expect(optionRows[2]?.options().map((option) => option.value)).toEqual([
 			'omniscient',
 			'multiple',
 			'Characters/Ada.md',
 		]);
-		expect(rows[4]?.options().map((option) => option.value)).toEqual(['Harbour']);
-		expect(rows[6]?.value).toBe('macaron-2');
-		expect(rows[6]?.options()).toHaveLength(8);
-		expect(rows[7]?.options()).toEqual([
+		expect(optionRows[4]?.options().map((option) => option.value)).toEqual(['Harbour']);
+		expect(optionRows[6]?.value).toBe('macaron-2');
+		expect(optionRows[6]?.options()).toHaveLength(8);
+		expect(optionRows[7]?.options()).toEqual([
 			{ value: 'Manuscript/Chapter 08', label: 'Chapter 08' },
 		]);
-		rows[7]?.apply('Manuscript/Chapter 08');
-		rows[6]?.apply('not a colour');
-		rows[0]?.apply('nonsense');
+		optionRows[7]?.apply('Manuscript/Chapter 08');
+		optionRows[6]?.apply('not a colour');
+		optionRows[0]?.apply('nonsense');
 		expect(filters.linked).toBe('Manuscript/Chapter 08');
 		expect(filters.color).toBe('');
 		expect(filters.status).toBe('all');
 	});
 
+	it('opens range fields on the current bounds and applies or clears each bound independently', () => {
+		const filters = asked({ sceneMin: 2, sceneMax: 3 });
+		const range = (): ReturnType<typeof sceneFilterRows>[number] | undefined =>
+			sceneFilterRows(
+				t,
+				{ characters: [], worldbuilding: {} },
+				filters,
+				{ categoryPaths: [], manuscriptNotes: [] },
+			)[0];
+		const row = range();
+		if (row?.presentation !== 'number-range') throw new Error('Missing scene range row');
+		expect(row.min.value).toBe('2');
+		expect(row.max.value).toBe('3');
+		row.apply(' 1 ', '002');
+		expect(filters).toMatchObject({ sceneMin: 1, sceneMax: 2 });
+		row.apply('', '3');
+		expect(filters).toMatchObject({ sceneMin: null, sceneMax: 3 });
+		row.apply('2', 'not a number');
+		expect(filters).toMatchObject({ sceneMin: 2, sceneMax: null });
+		row.apply('0', '1.5');
+		expect(filters).toMatchObject({ sceneMin: null, sceneMax: null });
+		expect(sceneFiltered(filters)).toBe(false);
+		const cleared = range();
+		if (cleared?.presentation !== 'number-range') throw new Error('Missing scene range row');
+		expect(cleared.min.value).toBe('');
+		expect(cleared.max.value).toBe('');
+	});
+
 	it('leaves the scenes alone', () => {
 		const before = JSON.stringify(scenes);
-		filterScenes(scenes, 'ada', asked({ color: 'macaron-2' }), context);
+		filterScenes(scenes, 'ada', asked({ sceneMin: 1, sceneMax: 3, color: 'macaron-2' }), context);
 		expect(JSON.stringify(scenes)).toBe(before);
+	});
+});
+
+describe('scene range input', () => {
+	it.each([
+		{ value: '1', expected: 1 },
+		{ value: ' 42 ', expected: 42 },
+		{ value: '0002', expected: 2 },
+		{ value: String(Number.MAX_SAFE_INTEGER), expected: Number.MAX_SAFE_INTEGER },
+	])('reads a positive whole scene number from $value', ({ value, expected }) => {
+		expect(parseSceneBound(value)).toBe(expected);
+	});
+
+	it.each([
+		'', '   ', '0', '-1', '1.5', '2.0', '3scenes', 'one',
+		'Infinity', 'NaN', '1e3', '0x10', '+2', String(Number.MAX_SAFE_INTEGER + 1),
+	])('leaves invalid or empty input %j unrestricted', (value) => {
+		expect(parseSceneBound(value)).toBeNull();
 	});
 });
