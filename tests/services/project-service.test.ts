@@ -5431,6 +5431,29 @@ describe("SnowflakeProjectService", () => {
       expect(again).toBe(after);
     });
 
+    it("keeps the snapshot through analysis flushes but still sees source and cache layout changes", async () => {
+      const project = await service.createProject({ name: "Cache Flush" });
+      const cache = service.mentionStore.analysisPath(project);
+      const index = service.mentionStore.indexPath(project);
+      await fakeVault.create(cache, "{}");
+      await fakeVault.create(index, "{}");
+      const first = await service.loadProject(project.projectFile);
+      fakeVault.contents.set(cache, '{"notes":{"chapter":{}}}');
+      fakeVault.contents.set(index, '{"notes":{"chapter":{"hits":[]}}}');
+      expect(await service.loadProject(project.projectFile)).toBe(first);
+
+      const ignores = service.mentionStore.ignoresPath(project);
+      await fakeVault.create(ignores, '{"ignores":[]}');
+      const withIgnores = await service.loadProject(project.projectFile);
+      expect(withIgnores).not.toBe(first);
+      fakeVault.contents.set(ignores, '{"ignores":[{"matchedText":"Ada"}]}');
+      const editedIgnores = await service.loadProject(project.projectFile);
+      expect(editedIgnores).not.toBe(withIgnores);
+
+      fakeVault.delete(cache);
+      expect(await service.loadProject(project.projectFile)).not.toBe(editedIgnores);
+    });
+
     it("rebuilds when a folder appears, even an empty one", async () => {
       const project = await service.createProject({ name: "Cache Folder" });
       const first = await service.loadProject(project.projectFile);

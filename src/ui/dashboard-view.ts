@@ -212,6 +212,14 @@ const RAIL_SCROLL_SELECTOR = '.snowflake-method-step-nav-scroll';
  */
 const RAIL_COMPACT_MAX_REM = 52;
 const MAIN_PANEL_SELECTOR = '.snowflake-method-main';
+// Kept panels are detached while the frame is rebuilt. Their nested tables
+// and lists can lose scroll offsets too, even though their nodes are reused.
+const PANEL_SCROLL_SELECTORS = [
+	MAIN_PANEL_SELECTOR,
+	'.snowflake-method-tab-scroll',
+	'.snowflake-method-tab-scroll .snowflake-method-table-body',
+	'.snowflake-method-prose-frequency-list',
+];
 
 // The statistics tab strip's faces live in dashboard-state, because which
 // face is on show is view state a reload restores.
@@ -601,7 +609,7 @@ export class SnowflakeDashboardView extends ItemView {
 	// hand has to be carried across the rebuild rather than left to the DOM.
 	private readonly renderState = new RenderStateKeeper([
 		RAIL_SCROLL_SELECTOR,
-		MAIN_PANEL_SELECTOR,
+		...PANEL_SCROLL_SELECTORS,
 	]);
 	private celebrationEl: HTMLElement | null = null;
 	private celebrationDelayTimer: number | null = null;
@@ -1279,7 +1287,11 @@ export class SnowflakeDashboardView extends ItemView {
 			this.characterHeights.clear();
 			this.sceneHeights.clear();
 		}
-		if (!continuity.samePanel) this.renderState.resetScroll(MAIN_PANEL_SELECTOR);
+		if (!continuity.samePanel) {
+			for (const selector of PANEL_SCROLL_SELECTORS) {
+				this.renderState.resetScroll(selector);
+			}
+		}
 		this.rendered = true;
 		if (model === null && projects.length === 0) {
 			this.projectPath = null;

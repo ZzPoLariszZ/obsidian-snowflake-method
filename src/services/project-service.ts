@@ -163,7 +163,7 @@ import {
 } from "./mirror-sync";
 import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
-import { MentionStore } from "./mention-store";
+import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { TaskService } from "./task-service";
 import { StickyNoteService } from "./sticky-note-service";
@@ -559,7 +559,8 @@ export class SnowflakeProjectService {
    * three thousand scenes a load spends a third of a second mapping and
    * inspecting notes that have not moved since the last one. The digest is
    * the subtree as the vault already holds it in memory — every folder path,
-   * and every file path with its modification time and size — so a write,
+   * and every file path, with modification time and size for authored data
+   * but only the path for generated manuscript caches — so a source write,
    * rename, deletion or new folder from anyone, the plugin included, reads
    * as a different project and rebuilds; until then the same snapshot
    * answers. Snapshots are shared, never edited, like the records they carry.
@@ -600,7 +601,13 @@ export class SnowflakeProjectService {
     };
     walkFolders(rootPath);
     for (const file of this.repository.listFilesBelow(rootPath)) {
-      eat(`${file.path}|${file.stat.mtime}|${file.stat.size}`);
+      // Cache contents are computed from the notes this snapshot describes.
+      // Their periodic flushes must not force another full project read.
+      // Keep their paths in the digest: creation, deletion and migration can
+      // still change the structure report, including a formerly filed cache.
+      eat(isManuscriptCachePath(file.path)
+        ? file.path
+        : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }
     return `${count}:${sum}:${xor}`;
   }

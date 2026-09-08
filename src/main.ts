@@ -196,6 +196,7 @@ import {
 	type WritingCountScope,
 	isStickyNotePath,
 	isTaskFilePath,
+	isManuscriptCachePath,
 	type StickyNoteRecord,
 	toWikiLink,
 	WritingSessionService,
@@ -8547,6 +8548,10 @@ export default class SnowflakeMethodPlugin
 
 	private handleVaultEvent(file: TAbstractFile): void {
 		if (!this.touchesProject(file.path)) return;
+		// Analysis reads flush their derived caches, sometimes partway through
+		// a large manuscript. Those writes are results of a read, not edits:
+		// refreshing their readers here feeds the scan back into itself.
+		if (file instanceof TFile && isManuscriptCachePath(file.path)) return;
 		// A sticky note is told to the surfaces showing it directly, and the
 		// dashboards keep their frames, which a refresh would rebuild around
 		// the tab's live editor at every save. The health report reads sticky

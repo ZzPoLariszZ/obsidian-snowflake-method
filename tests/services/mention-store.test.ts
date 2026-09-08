@@ -6,6 +6,7 @@ import {
 	MENTION_STORE_SCHEMA_VERSION,
 	MentionStore,
 	SnowflakeProjectService,
+	isManuscriptCachePath,
 	type AnalysisFile,
 	type ProjectSnapshot,
 } from "../../src/services";
@@ -29,6 +30,40 @@ const noteRule: MentionIgnore = {
 	memberPath: "Snowflake Projects/Novel/20_Character/Alice.md",
 	matchedText: "Alice",
 };
+
+describe("isManuscriptCachePath", () => {
+	it.each([
+		INDEX,
+		ANALYSIS,
+		FORMER_ANALYSIS,
+		"Novel/70_工具/71_数据统计/712_正文分析/device-b_analysis_stats.json",
+		"Novel/70_工具/71_数据统计/713_实体追踪/device-b_mention_index.json",
+		"Novel/70_工具/71_数据统计/713_实体追踪/device-b_analysis_stats.json",
+	])("recognizes generated cache %s", (path) => {
+		expect(isManuscriptCachePath(path)).toBe(true);
+	});
+
+	it.each([
+		IGNORES,
+		FORMER_IGNORES,
+		"Novel/70_工具/71_数据统计/713_实体追踪/mention_ignores.json",
+		"Novel/70_Tool/72_Task_Management/721_Task/tasks.json",
+		"Novel/70_Tool/71_Data_Statistics/711_Writing_Session/device-a_sessions.json",
+		"Novel/50_Manuscript/dev-a_analysis_stats.json",
+		"Novel/713_Entity_Tracking/dev-a_mention_index.json",
+		"Novel/70_Tool/71_Data_Statistics/712_Prose_Analysis/dev-a_mention_index.json",
+		INDEX.replace("dev-a_", ""),
+		ANALYSIS.replace("dev-a_", ""),
+		INDEX.replace("dev-a_", "_"),
+		ANALYSIS.replace("dev-a_", "_"),
+		`${INDEX}.md`,
+		INDEX.replace(".json", ".corrupted-1234.json"),
+		INDEX.replace("/dev-a_", "/subfolder/dev-a_"),
+		"dev-a_mention_index.json",
+	])("keeps authored files and unrelated paths observable: %s", (path) => {
+		expect(isManuscriptCachePath(path)).toBe(false);
+	});
+});
 
 describe("MentionStore", () => {
 	let fakeVault: FakeVault;

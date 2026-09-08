@@ -11,7 +11,11 @@ import {
 	parseJsonObject,
 	quarantineJsonFile,
 } from "./json-store";
-import { getProjectPathLayout, type ProjectRef } from "./types";
+import {
+	PROJECT_PATH_LAYOUTS,
+	getProjectPathLayout,
+	type ProjectRef,
+} from "./types";
 
 /**
  * The two files the mention analysis keeps in a project, written the way the
@@ -53,6 +57,39 @@ export interface MentionIndexFile {
  * must never fire on a cache-format change -- so this one moves alone.
  */
 export const ANALYSIS_FILE_SCHEMA_VERSION = 1;
+
+const INDEX_CACHE_SUFFIX = "_mention_index.json";
+const ANALYSIS_CACHE_SUFFIX = "_analysis_stats.json";
+const CACHE_FOLDER_TAILS = Object.values(PROJECT_PATH_LAYOUTS).map(
+	(layout) => ({
+		analysis: `/${layout.directories.manuscriptAnalysis}`,
+		index: `/${layout.directories.mentionIndex}`,
+	}),
+);
+
+/**
+ * Generated analysis files carry no authored changes. Their writes must not
+ * ask the panels that computed them to read again. Match the full folder
+ * chain and a device-prefixed cache name, including the analysis cache's
+ * former home; ignore rules and other project records are not caches.
+ * The caller checks project ownership before using this path-only test.
+ */
+export function isManuscriptCachePath(path: string): boolean {
+	const slash = path.lastIndexOf("/");
+	if (slash <= 0) return false;
+	const name = path.slice(slash + 1);
+	const folder = path.slice(0, slash);
+	const isIndex =
+		name.length > INDEX_CACHE_SUFFIX.length && name.endsWith(INDEX_CACHE_SUFFIX);
+	const isAnalysis =
+		name.length > ANALYSIS_CACHE_SUFFIX.length && name.endsWith(ANALYSIS_CACHE_SUFFIX);
+	if (!isIndex && !isAnalysis) return false;
+	return CACHE_FOLDER_TAILS.some(
+		(tail) =>
+			folder.endsWith(tail.index) ||
+			(isAnalysis && folder.endsWith(tail.analysis)),
+	);
+}
 
 /**
  * What the statistics keep per note: small numbers, cheap to hold.
@@ -168,7 +205,7 @@ export class MentionStore {
 
 	indexPath(project: ProjectRef): string {
 		const layout = getProjectPathLayout(project.locale);
-		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}_mention_index.json`;
+		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}${INDEX_CACHE_SUFFIX}`;
 	}
 
 	/**
@@ -267,13 +304,13 @@ export class MentionStore {
 	 */
 	analysisPath(project: ProjectRef): string {
 		const layout = getProjectPathLayout(project.locale);
-		return `${project.rootPath}/${layout.directories.manuscriptAnalysis}/${this.deps.deviceId()}_analysis_stats.json`;
+		return `${project.rootPath}/${layout.directories.manuscriptAnalysis}/${this.deps.deviceId()}${ANALYSIS_CACHE_SUFFIX}`;
 	}
 
 	/** Where an older build left this device's cache: entity tracking. */
 	private formerAnalysisPath(project: ProjectRef): string {
 		const layout = getProjectPathLayout(project.locale);
-		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}_analysis_stats.json`;
+		return `${project.rootPath}/${layout.directories.mentionIndex}/${this.deps.deviceId()}${ANALYSIS_CACHE_SUFFIX}`;
 	}
 
 	/**
