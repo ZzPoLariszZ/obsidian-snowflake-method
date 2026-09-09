@@ -40,12 +40,13 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 
 | Feature | What it provides |
 |---|---|
-| Guided dashboard | Navigate all ten steps and control progress without blocking validation rules, with the rail beside them folded to its marks whenever you want the room. |
 | Obsidian-native projects | Store summaries, characters, scenes, and drafts as ordinary local notes. |
+| Guided dashboard | Navigate all ten steps and control progress without blocking validation rules, with the rail beside them folded to its marks whenever you want the room. |
+| Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
 | Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
-| Freeform mode | Set the ten steps aside and work straight from characters, scenes, and worldbuilding. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
+| Story structure | See every scene as a card in narrative order, reorder it by dragging, and edit its name, point of view, status, color and conflict on the card itself. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
@@ -149,6 +150,14 @@ Time, location, and item are only the kinds every project begins with. You can a
 The words those record lines use come from three vocabularies for every kind: categories, world statuses, and relationships. Each vocabulary grows as a folder tree whose entries are notes, so links to them resolve like any other link and the graph shows each entry under its own name. Three rail panes browse, rename, and prune the trees, and every reference is kept true along the way.
 
 Beyond the fields every member shares, a note can carry **custom fields** of your own. Each is a title and whatever you write under it, edited from the member's form and stored in its own block in the note. Save a set of them as a template and it becomes a note in that kind's template folder, ready to seed the next character, scene, or faction you create. The custom field pane in the rail manages those templates, and the export button on any form turns the fields you just typed into one.
+
+### Story structure
+
+Scenes are easier to judge when you can see them all at once. The **Visualization workspace** opens as a tab of its own, from the link row at the foot of the dashboard's Creation tools or from the Command palette, and gathers a family of views over the scenes you planned in steps 8 and 9. **Corkboard** is the first of them, with Freeform, Beat sheet, Timeline and Plotline beside it in the strip, each reading **Planning stage…** until its turn comes.
+
+<p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab, with Freeform, Beat sheet, Timeline and Plotline beside it: five scene cards in narrative order, each numbered and carrying its progress status, its conflict, the manuscript chapters it links to and its point of view, one card focused, a + standing between neighbours to insert a scene, and search, display, order, filter, refresh and Add scene in the band above" /></a></p>
+
+The corkboard lays every scene out as a numbered card in narrative order, and the card is where the work happens: the name is edited in place, the point of view and the progress status are dropdowns, the conflict is a text box, a swatch tints the card in one of eight colors, and the manuscript chapters the scene links to open from it. While the board stands in plain order, dragging a card moves the scene, a **+** between two cards inserts one at exactly that point, and **Add scene** puts one at the end. The search box and the funnel narrow the board, **Display** sizes the cards and groups them by any of eight fields, and the direction button reads the whole board back in reverse.
 
 ### Manuscript stream
 
@@ -282,14 +291,16 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | New sticky note | Make a sticky note in the current project and open it floating. |
 | New task | Add a task to the current project's board. |
 | Open character base | Open the Bases view of the current project's characters. |
+| Open corkboard workspace | Open the visualization workspace on its corkboard, with the scenes as cards in narrative order. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
 | Open manuscript stream | Open the manuscript, at the note last written in. |
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
-| Open sticky notes | Open the current project's sticky notes in a sidebar of their own. |
+| Open sticky note sidebar | Open the current project's sticky notes in a sidebar of their own. |
+| Open visualization workspace | Open the current project's story structure in a workspace of its own. |
 | Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
-| Open writing statistics | Open the day's writing readings in a sidebar of their own. |
+| Open writing session sidebar | Open the day's writing readings in a sidebar of their own. |
 | Pause or resume the writing session | Freeze the running session's clock, or set it going again. |
 | Set focus mode to off / on / deep / solo | Set how far focus mode reaches, one command per level. |
 | Split manuscript note at the cursor | Divide the note being written in, at the caret. |
@@ -476,9 +487,42 @@ These HTML comments are structural markers rather than story content. Boundary p
 
 ## Roadmap
 
-- Obtain written permission from Randy Ingermanson or Advanced Fiction Writing before adding the writing example from Chapter 20 of *How to Write a Novel Using the Snowflake Method*.
-- Use Obsidian's native Canvas to build timelines and scene boards.
-- ...
+- [ ] Obtain written permission from Randy Ingermanson or Advanced Fiction Writing to use the Snowflake Method name for this plugin (emailed and waiting for a response)
+- [ ] Add the writing example from Chapter 20 of *How to Write a Novel Using the Snowflake Method* (a later conversation, once the naming is settled)
+- [x] Guided dashboard (0.1.0)
+- [x] Obsidian-native projects (0.1.0)
+- [x] Bilingual workspace (0.1.0)
+- [x] Revision awareness (0.1.0)
+- [x] Safe repair tools (0.1.0)
+- [x] Bases views (0.2.0)
+- [x] Manuscript stream (0.4.0)
+- [x] Typewriter scrolling (0.5.0)
+- [x] Focus mode (0.5.0)
+- [x] Fields in the note body (0.7.0)
+- [x] Worldbuilding (0.8.0)
+- [x] Custom fields (0.9.0)
+- [x] Project archive (0.10.0)
+- [x] Freeform mode (0.10.0)
+- [x] Writing sessions (0.11.0)
+- [x] Data statistics (0.11.0)
+- [x] Custom typography (0.13.0)
+- [x] Entity tracking (0.14.0)
+- [x] Prose analysis (0.14.0)
+- [x] Revision (0.15.0)
+- [x] Task management pane (0.15.0)
+- [x] Word milestones (0.16.0)
+- [x] Automatic chapter numbers (0.16.0)
+- [x] Plain-text export (0.16.0)
+- [x] Foreshadowing (0.17.0)
+- [x] Sticky notes (0.17.0)
+- [x] Task board (0.18.0)
+- [x] Visualization workspace
+- [x] Corkboard
+- [ ] Freeform
+- [ ] Beat sheet
+- [ ] Timeline
+- [ ] Plotline
+- [ ] Export visualization workspace as Obsidian Canvas
 
 <a id="development"></a>
 
@@ -577,12 +621,13 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 | 功能 | 说明 |
 |---|---|
-| 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验，需要地方时可以把旁边的导航栏收成一列图标。 |
 | Obsidian 原生项目 | 概述、角色、场景与初稿均保存为普通本地笔记。 |
+| 十步引导工作台 | 浏览完整流程并自主控制进度，不使用阻塞式校验，需要地方时可以把旁边的导航栏收成一列图标。 |
+| 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
 | 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
 | 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
-| 自由模式 | 把十个步骤放到一边，直接从角色、场景与世界观入手。 |
 | 项目归档 | 把暂时写完的项目收起来，想要时再取回。 |
+| 故事结构 | 把每个场景看作一张按叙事顺序排列的卡片，拖动即可调整次序，名称、视点人物、进度、颜色与冲突都在卡片上编辑。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -686,6 +731,14 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 记录行使用的词来自每类成员的三份词表：类别、状态与关系。每份词表都以文件夹树生长，每个词条都是一篇笔记，因此指向词条的链接与其他链接一样解析，关系图中的词条也以自己的名字出现。侧栏的三个词表面板可以浏览、重命名与修剪这些树，所有引用都会随之保持有效。
 
 除了每类成员共有的字段，笔记还可以带上你自己的**自定义字段**。每个字段由一个标题和你在其下写的内容组成，在成员表单中编辑，并存放在笔记自己的区段里。把一组字段保存为模板，它就成为该种类模板文件夹中的一篇笔记，可用于预填下一个角色、场景或门派。侧栏的自定义字段面板管理这些模板，任意表单上的导出按钮则可以把刚刚填好的字段直接存成模板。
+
+### 故事结构
+
+场景一并摊开在眼前，次序才好判断。**可视化工作区**在自己的标签页中打开，入口是仪表盘创作工具一组末尾的链接行，或者命令面板，其中收着同一批场景的一族视图，也就是第八步与第九步里规划的那些场景。**场景看板**是其中第一个做好的，自由画布、节拍表、时间线与情节线并列在标签条上，轮到它们之前都写着**规划阶段…**。
+
+<p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页，旁边并列着自由画布、节拍表、时间线与情节线：五张按叙事顺序排列的场景卡片，各自带有编号、进度、冲突、关联正文与视点人物，其中一张处于聚焦状态，相邻卡片之间有插入场景的加号，上方一栏是搜索、显示、排序、筛选、刷新与添加场景" /></a></p>
+
+看板把每个场景摆成一张按叙事顺序编号的卡片，而卡片本身就是干活的地方：名称就地编辑，视点人物与进度是下拉框，冲突是一块文本框，色板为卡片着上八种颜色之一，该场景关联的正文章节也从卡片上打开。板子处于普通顺序时，拖动卡片即可移动场景，两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则加在末尾。搜索框与漏斗筛选看板，**显示**调整卡片大小并按八项中的任意一项分组，方向按钮则把整块板子读作倒序。
 
 ### 正文流
 
@@ -807,6 +860,8 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 打开角色数据库 | 打开当前项目角色的 Bases 视图。 |
 | 打开场景数据库 | 打开当前项目场景的 Bases 视图。 |
 | 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
+| 打开可视化工作区 | 在独立的工作区中打开当前项目的故事结构。 |
+| 打开场景看板工作区 | 打开可视化工作区的场景看板，场景按叙事顺序排成卡片。 |
 | 打开正文流 | 打开正文，并定位到上次写作的笔记。 |
 | 关闭正文流 | 关闭当前分栏中的正文流。 |
 | 前往上一篇正文笔记 | 在正文中向前移动一篇。 |
@@ -825,10 +880,10 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 开始番茄钟写作时段 | 开始一个工作与休息交替进行的时段。 |
 | 暂停或继续写作时段 | 冻结正在进行的时段的计时，或让它继续走。 |
 | 停止写作时段 | 结束正在进行的时段，并写下它的记录。 |
-| 打开写作统计 | 在独立的侧栏中打开当天的写作读数。 |
+| 打开写作时段侧边栏 | 在独立的侧栏中打开当天的写作读数。 |
 | 新建任务 | 在当前项目的看板上添加一条任务。 |
 | 新建便签 | 在当前项目中新建一张便签，并以悬浮面板打开。 |
-| 打开便签 | 在独立的侧栏中打开当前项目的便签。 |
+| 打开便签侧边栏 | 在独立的侧栏中打开当前项目的便签。 |
 | 切换数据统计范围 | 在整个项目与仅正文稿之间切换统计范围。 |
 | 切换写作时段外的字数记录 | 开启或关闭对写作时段之外字数的记录。 |
 | 统计项目字数 | 报告当前项目的字数，整个项目与仅正文稿各一份。 |
@@ -999,9 +1054,42 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 
 ## 路线图
 
-- 取得 Randy Ingermanson 或 Advanced Fiction Writing 的书面授权后，加入《How to Write a Novel Using the Snowflake Method》第 20 章中的创作示例。
-- 使用 Obsidian 原生 Canvas 构建时间线与场景看板。
-- ……
+- [ ] 取得 Randy Ingermanson 或 Advanced Fiction Writing 的书面授权，以便本插件使用雪花写作法这一名称（已发送邮件，等待回复）
+- [ ] 加入《How to Write a Novel Using the Snowflake Method》第 20 章中的创作示例（待名称一事有结果后再行沟通）
+- [x] 十步引导工作台 (0.1.0)
+- [x] Obsidian 原生项目 (0.1.0)
+- [x] 中英双语 (0.1.0)
+- [x] 修订提醒 (0.1.0)
+- [x] 安全修复 (0.1.0)
+- [x] Bases 视图 (0.2.0)
+- [x] 正文流 (0.4.0)
+- [x] 打字机滚动 (0.5.0)
+- [x] 专注模式 (0.5.0)
+- [x] 笔记正文中的字段 (0.7.0)
+- [x] 世界观 (0.8.0)
+- [x] 自定义字段 (0.9.0)
+- [x] 项目归档 (0.10.0)
+- [x] 自由模式 (0.10.0)
+- [x] 写作时段 (0.11.0)
+- [x] 数据统计 (0.11.0)
+- [x] 自定义排版 (0.13.0)
+- [x] 实体追踪 (0.14.0)
+- [x] 正文分析 (0.14.0)
+- [x] 修订 (0.15.0)
+- [x] 任务管理面板 (0.15.0)
+- [x] 字数里程碑 (0.16.0)
+- [x] 自动章节编号 (0.16.0)
+- [x] 纯文本导出 (0.16.0)
+- [x] 伏笔 (0.17.0)
+- [x] 便签 (0.17.0)
+- [x] 任务看板 (0.18.0)
+- [x] 可视化工作区
+- [x] 场景看板
+- [ ] 自由画布
+- [ ] 节拍表
+- [ ] 时间线
+- [ ] 情节线
+- [ ] 将可视化工作区导出为 Obsidian Canvas
 
 ## 开发
 
