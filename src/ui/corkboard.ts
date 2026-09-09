@@ -1348,8 +1348,7 @@ export function renderCorkboard(
 					reveal(entry.id);
 				},
 				insert: () => {
-					const after = insertBesideIndex(orderIds, entry.id, 'after', memory.reversed);
-					if (after !== null) insertAt(after);
+					insertAt({ id: entry.id, side: 'after' });
 				},
 			},
 		);
@@ -1367,12 +1366,21 @@ export function renderCorkboard(
 		menu.showAtMouseEvent(event);
 	};
 
-	/** A scene made after a narrative index (-1 starts the list), or at the end for null, then shown. */
-	const insertAt = (afterIndex: number | null): void => {
+	/** A scene made beside the clicked card, or at the narrative end for null, then shown. */
+	const insertAt = (anchor: { id: string; side: 'before' | 'after' } | null): void => {
 		const owningProject = projectPath;
 		if (readOnly || owningProject === null) return;
+		const reversed = memory.reversed;
 		let created: string | null = null;
 		void enqueue(async () => {
+			const current = controls.model();
+			if (current === null || current.path !== owningProject || current.readOnly) return;
+			// Earlier queued reorders may have moved the anchor. Resolve its
+			// position now, keeping the direction the author clicked in.
+			const afterIndex = anchor === null ? null : insertBesideIndex(
+				current.scenes.map((scene) => scene.id), anchor.id, anchor.side, reversed,
+			);
+			if (anchor !== null && afterIndex === null) return;
 			created = await host.openSceneForm({ mode: 'create', afterIndex }, owningProject);
 		}).then(() => {
 			if (created === null || disposed || projectPath !== owningProject) return;
@@ -1496,8 +1504,7 @@ export function renderCorkboard(
 			button.addEventListener('click', (event) => {
 				event.stopPropagation();
 				if (!adjacency || !editable(entry)) return;
-				const after = insertBesideIndex(orderIds, entry.id, side, memory.reversed);
-				if (after !== null) insertAt(after);
+				insertAt({ id: entry.id, side });
 			});
 		};
 		wireInsert(entry.insertBefore, 'before');

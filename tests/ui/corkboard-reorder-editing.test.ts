@@ -121,6 +121,13 @@ async function board(ranks?: readonly number[]) {
 			});
 			await afterRanks?.promise;
 		}),
+		openSceneForm: vi.fn<CorkboardHost['openSceneForm']>(async (intent, path) => {
+			expect(path).toBe(project.projectFile);
+			if (intent.mode !== 'create') throw new Error('Expected a scene insertion');
+			const created = await service.createScene(project, 'Inserted');
+			if (intent.afterIndex !== null) await service.reorderScene(project, created.sceneId, intent.afterIndex + 1);
+			return created.sceneId;
+		}),
 	};
 	let handle: CorkboardHandle;
 	const refresh = vi.fn(async () => {
@@ -195,6 +202,57 @@ beforeEach(() => { vi.clearAllMocks(); menuEntries.length = 0; });
 afterEach(() => {
 	for (const handle of handles.splice(0)) handle.dispose();
 	vi.restoreAllMocks();
+});
+
+describe('corkboard insertions queued behind rank writes', () => {
+	it.each([
+		{ route: 'before', reversed: false, expected: ['Inserted', 'B', 'C', 'D', 'A'] },
+		{ route: 'after', reversed: false, expected: ['B', 'Inserted', 'C', 'D', 'A'] },
+		{ route: 'menu', reversed: false, expected: ['B', 'Inserted', 'C', 'D', 'A'] },
+		{ route: 'before', reversed: true, expected: ['D', 'A', 'B', 'Inserted', 'C'] },
+		{ route: 'after', reversed: true, expected: ['D', 'A', 'Inserted', 'B', 'C'] },
+		{ route: 'menu', reversed: true, expected: ['D', 'A', 'Inserted', 'B', 'C'] },
+	])('keeps the clicked anchor for $route insertion (reversed: $reversed)', async ({ route, reversed, expected }) => {
+		const fixture = await board([0, 1, 2, 3]);
+		fixture.memory.reversed = reversed;
+		fixture.handle.refresh();
+		// Moving A to the narrative end, or D to the start, changes B's index.
+		dropAtEnd(fixture, fixture.card(fixture.original[reversed ? 3 : 0]!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		const anchor = fixture.card(fixture.original[1]!.sceneId);
+		if (route === 'menu') {
+			anchor.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
+			const item = menuEntries.find((candidate) => candidate.title === 'table.insertSceneAfter')!;
+			expect(item.disabled).toBe(false);
+			item.click();
+		} else {
+			const button = anchor.querySelector(`.snowflake-method-corkboard-insert-${route}`)!;
+			expect(button.classes.has('is-hidden')).toBe(false);
+			button.dispatch('click');
+		}
+		expect(fixture.host.openSceneForm).not.toHaveBeenCalled();
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(expected);
+		});
+		expect(fixture.host.openSceneForm).toHaveBeenCalledOnce();
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('keeps the insertion direction chosen before the queued action starts', async () => {
+		const fixture = await board([0, 1, 2, 3]);
+		dropAtEnd(fixture, fixture.card(fixture.original[0]!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		fixture.card(fixture.original[1]!.sceneId)
+			.querySelector('.snowflake-method-corkboard-insert-after')!.dispatch('click');
+		fixture.dom.container.querySelector('.snowflake-method-corkboard-direction')!.dispatch('click');
+		expect(fixture.memory.reversed).toBe(true);
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(['B', 'Inserted', 'C', 'D', 'A']);
+		});
+		expect(notices).not.toHaveBeenCalled();
+	});
 });
 
 describe('corkboard edits queued behind rank writes', () => {
