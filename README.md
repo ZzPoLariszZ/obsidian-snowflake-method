@@ -516,8 +516,8 @@ These HTML comments are structural markers rather than story content. Boundary p
 - [x] Foreshadowing (0.17.0)
 - [x] Sticky notes (0.17.0)
 - [x] Task board (0.18.0)
-- [x] Visualization workspace
-- [x] Corkboard
+- [x] Visualization workspace (0.19.0)
+- [x] Corkboard (0.19.0)
 - [ ] Freeform
 - [ ] Beat sheet
 - [ ] Timeline
@@ -1083,8 +1083,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 - [x] 伏笔 (0.17.0)
 - [x] 便签 (0.17.0)
 - [x] 任务看板 (0.18.0)
-- [x] 可视化工作区
-- [x] 场景看板
+- [x] 可视化工作区 (0.19.0)
+- [x] 场景看板 (0.19.0)
 - [ ] 自由画布
 - [ ] 节拍表
 - [ ] 时间线
