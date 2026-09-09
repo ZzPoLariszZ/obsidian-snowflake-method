@@ -41,6 +41,8 @@ export interface OrderMenuConfig {
 	/** Everything the row could be moved after, so all but itself. */
 	options: () => MoveAfterEntry[];
 	move: (toIndex: number) => Promise<void>;
+	/** Resolves a relative move by identity when a queued writer can outlive this menu's order. */
+	moveBeside?: (id: string, side: 'before' | 'after') => Promise<void>;
 	/** Scrolls to the row once the move has been drawn. */
 	reveal: () => void;
 	insert: () => void;
@@ -63,12 +65,24 @@ export function addOrderMenuItems(
 	config: OrderMenuConfig,
 ): void {
 	const { index, total } = config;
+	const runMove = (action: () => Promise<void>): void => {
+		void deps.run(action).then(() => {
+			config.reveal();
+		});
+	};
 	const moveTo = (toIndex: number): void => {
-		void deps
-			.run(() => config.move(Math.max(0, Math.min(toIndex, total - 1))))
-			.then(() => {
-				config.reveal();
-			});
+		runMove(() => config.move(Math.max(0, Math.min(toIndex, total - 1))));
+	};
+	const moveNeighbour = (toIndex: number): void => {
+		const moveBeside = config.moveBeside;
+		if (moveBeside === undefined) {
+			moveTo(toIndex);
+			return;
+		}
+		const neighbour = config.options().find((candidate) => candidate.index === toIndex);
+		if (neighbour === undefined) return;
+		const side = toIndex < index ? 'before' : 'after';
+		runMove(() => moveBeside(neighbour.id, side));
 	};
 	menu.addSeparator();
 	menu.addItem((item) =>
@@ -77,7 +91,7 @@ export function addOrderMenuItems(
 			.setIcon('arrow-up')
 			.setDisabled(config.locked || config.up === null)
 			.onClick(() => {
-				if (config.up !== null) moveTo(config.up);
+				if (config.up !== null) moveNeighbour(config.up);
 			}),
 	);
 	menu.addItem((item) =>
@@ -86,7 +100,7 @@ export function addOrderMenuItems(
 			.setIcon('arrow-down')
 			.setDisabled(config.locked || config.down === null)
 			.onClick(() => {
-				if (config.down !== null) moveTo(config.down);
+				if (config.down !== null) moveNeighbour(config.down);
 			}),
 	);
 	menu.addItem((item) =>
@@ -118,6 +132,11 @@ export function addOrderMenuItems(
 			.setDisabled(config.locked)
 			.onClick(() => {
 				new MoveAfterModal(deps.app, deps.t, config.options(), (picked) => {
+					const moveBeside = config.moveBeside;
+					if (moveBeside !== undefined) {
+						runMove(() => moveBeside(picked.id, 'after'));
+						return;
+					}
 					// The mover leaves its place before it lands: a target below
 					// it slides up by one, so following it means taking its old
 					// index, while a target above keeps its index and following

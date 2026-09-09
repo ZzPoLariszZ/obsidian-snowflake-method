@@ -204,6 +204,7 @@ import {
   type RankRevisionChange,
   type SceneInput,
   type ScenePatch,
+  type SceneMoveTarget,
   type SceneRecord,
   type EntityInput,
   type EntityPatch,
@@ -5093,12 +5094,17 @@ export class SnowflakeProjectService {
   async reorderScene(
     projectLocator: ProjectLocator,
     sceneId: string,
-    targetIndex: number,
+    target: SceneMoveTarget,
     onRankWritten?: (change: RankRevisionChange) => void,
   ): Promise<SceneRecord[]> {
     const project = await this.loadProject(projectLocator);
     this.assertProjectWritable(project);
     const current = project.scenes;
+    // Relative destinations are resolved from persisted order, including
+    // queued moves whose originating board has already closed.
+    const targetIndex = typeof target === "number"
+      ? target : target(current.map((scene) => scene.sceneId));
+    if (targetIndex === null) return current;
     await this.persistReorderedRanks(current, moveRanked(current, sceneId, targetIndex), onRankWritten);
     return this.listScenes(project);
   }

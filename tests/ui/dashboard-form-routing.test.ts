@@ -62,27 +62,35 @@ function dashboardLeaf(
 	return { leaf, openSceneForm, openCharacterForm, queueRefreshWhenShown };
 }
 
-function pluginWith(leaves: ReturnType<typeof dashboardLeaf>['leaf'][]) {
-	const from = {};
-	let activeLeaf: object = from;
-	const created = dashboardLeaf(projectPath, true);
+function pluginWith(
+	leaves: ReturnType<typeof dashboardLeaf>['leaf'][],
+	options: { fromRoot?: object; createdLoading?: Promise<void> } = {},
+) {
+	const from = { getRoot: () => options.fromRoot ?? rootSplit };
+	let activeLeaf = from;
+	let rootLeaf = from.getRoot() === rootSplit ? from : { getRoot: () => rootSplit };
+	const created = dashboardLeaf(projectPath, true, options.createdLoading);
+	const activate = (leaf: typeof from): void => {
+		activeLeaf = leaf;
+		if (leaf.getRoot() === rootSplit) rootLeaf = leaf;
+	};
 	const workspace = {
 		rootSplit,
 		getLeavesOfType: vi.fn((_type: string) => leaves),
-		getMostRecentLeaf: vi.fn((_root: object) => activeLeaf),
+		getMostRecentLeaf: vi.fn((root?: object) => root === rootSplit ? rootLeaf : activeLeaf),
 		getLeaf: vi.fn((_kind: string) => {
 			// Obsidian puts a newly made tab in front even when its subsequent
 			// view state asks to remain inactive.
-			activeLeaf = created.leaf;
+			activate(created.leaf);
 			leaves.push(created.leaf);
 			return created.leaf;
 		}),
-		revealLeaf: vi.fn((leaf: object) => {
-			activeLeaf = leaf;
+		revealLeaf: vi.fn((leaf: typeof from) => {
+			activate(leaf);
 			return Promise.resolve();
 		}),
-		setActiveLeaf: vi.fn((leaf: object, _options: { focus: boolean }) => {
-			activeLeaf = leaf;
+		setActiveLeaf: vi.fn((leaf: typeof from, _options: { focus: boolean }) => {
+			activate(leaf);
 		}),
 	};
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as SnowflakeMethodPlugin;
@@ -141,6 +149,36 @@ describe.each(forms)('$name forms requested from another surface', ({ open, call
 		expect(workspace.getLeaf).not.toHaveBeenCalled();
 		expect(loaded.leaf.setViewState).not.toHaveBeenCalled();
 		expect(activeLeaf()).toBe(from);
+	});
+
+	it('restores the requesting popout after creating a main-window dashboard', async () => {
+		const { plugin, workspace, from, created, activeLeaf } = pluginWith([], { fromRoot: {} });
+		await open(plugin);
+		called(created);
+		expect(workspace.revealLeaf).toHaveBeenCalledExactlyOnceWith(from);
+		expect(workspace.setActiveLeaf).toHaveBeenCalledExactlyOnceWith(from, { focus: true });
+		expect(activeLeaf()).toBe(from);
+		expect(workspace.getMostRecentLeaf(rootSplit)).toBe(created.leaf);
+	});
+
+	it('keeps a later popout selection while the new dashboard loads', async () => {
+		let finishLoading!: () => void;
+		const createdLoading = new Promise<void>((resolve) => { finishLoading = resolve; });
+		const { plugin, workspace, created, activeLeaf } = pluginWith([], { fromRoot: {}, createdLoading });
+		const laterPopout = { getRoot: () => ({}) };
+		const opening = open(plugin);
+		try {
+			await vi.waitFor(() => expect(created.leaf.loadIfDeferred).toHaveBeenCalledOnce());
+			workspace.setActiveLeaf(laterPopout, { focus: true });
+			expect(workspace.getMostRecentLeaf(rootSplit)).toBe(created.leaf);
+		} finally {
+			finishLoading();
+			await opening;
+		}
+		called(created);
+		expect(activeLeaf()).toBe(laterPopout);
+		expect(workspace.revealLeaf).not.toHaveBeenCalled();
+		expect(workspace.setActiveLeaf).toHaveBeenCalledOnce();
 	});
 
 	it.each(['absent', 'another project', 'another root'] as const)(

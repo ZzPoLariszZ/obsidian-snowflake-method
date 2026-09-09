@@ -593,6 +593,9 @@ export interface SceneInput {
   linkedManuscript?: string[];
 }
 
+/** A position, or a relative destination resolved against the latest persisted order. */
+export type SceneMoveTarget = number | ((orderIds: readonly string[]) => number | null);
+
 /** The exact content revisions on either side of one successful rank write. */
 export interface RankRevisionChange {
   id: string;

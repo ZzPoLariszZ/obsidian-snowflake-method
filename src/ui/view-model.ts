@@ -52,6 +52,7 @@ import type {
 	RankRevisionChange,
 	SaveCustomFieldTemplateResult,
 	ScenePatch,
+	SceneMoveTarget,
 } from '../services';
 
 import type {
@@ -847,7 +848,7 @@ export interface DashboardHost {
 	): Promise<void>;
 	reorderScene(
 		sceneId: string,
-		targetIndex: number,
+		targetIndex: SceneMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;

@@ -158,6 +158,7 @@ import {
 	createStableId,
 	type RankRevisionChange,
 	type ScenePatch,
+	type SceneMoveTarget,
 	sessionClockMs,
 	SnowflakeProjectService,
 	ExportIntoManuscriptError,
@@ -2499,7 +2500,7 @@ export default class SnowflakeMethodPlugin
 
 	async reorderScene(
 		sceneId: string,
-		targetIndex: number,
+		targetIndex: SceneMoveTarget,
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void> {
@@ -9751,11 +9752,11 @@ export default class SnowflakeMethodPlugin
 		let view = existing?.view instanceof SnowflakeDashboardView ? existing.view : null;
 		let background = false;
 		if (view === null) {
+			// Capture across windows before loading or creating a dashboard,
+			// so the form returns to the surface that requested it.
+			const from = this.app.workspace.getMostRecentLeaf();
 			// A restored tab may still hold a deferred view. Find it by its
 			// saved project path before deciding a new dashboard is needed.
-			const from = this.app.workspace.getMostRecentLeaf(
-				this.app.workspace.rootSplit,
-			);
 			let leaf = this.findOpenProjectLeaf(recent);
 			if (leaf === undefined) {
 				leaf = this.app.workspace.getLeaf('tab');
@@ -9769,7 +9770,7 @@ export default class SnowflakeMethodPlugin
 			// Creating a tab can take the front; keep the requesting surface active.
 			if (
 				from !== null && from !== leaf &&
-				this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit) === leaf
+				this.app.workspace.getMostRecentLeaf() === leaf
 			) {
 				await this.app.workspace.revealLeaf(from);
 				this.app.workspace.setActiveLeaf(from, { focus: true });

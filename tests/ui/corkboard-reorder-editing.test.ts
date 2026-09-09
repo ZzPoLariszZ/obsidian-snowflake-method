@@ -4,12 +4,17 @@ import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 import { createFakeEnvironment } from '../helpers/fake-vault';
 
 interface MenuEntry { title: string; disabled: boolean; click(): void }
-const { notices, menuEntries } = vi.hoisted(() => ({
-	notices: vi.fn(), menuEntries: [] as MenuEntry[],
+const { notices, menuEntries, opened } = vi.hoisted(() => ({
+	notices: vi.fn(), menuEntries: [] as MenuEntry[], opened: [] as unknown[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	class Modal extends runtime.Modal {
+		modalEl = { addClass: (): void => undefined };
+		setTitle(): void {}
+		override open(): void { opened.push(this); }
+	}
 	class Item implements MenuEntry {
 		title = '';
 		disabled = false;
@@ -22,9 +27,10 @@ vi.mock('obsidian', async (importOriginal) => {
 	}
 	return {
 		...runtime,
+		Modal,
 		// Keep atomic rank writes readable by the fake FileManager's JSON dialect.
 		stringifyYaml: (value: unknown) => JSON.stringify(value, null, 2),
-		FuzzySuggestModal: class extends runtime.Modal {},
+		FuzzySuggestModal: class extends Modal { setPlaceholder(): void {} },
 		SuggestModal: class extends runtime.Modal {},
 		SearchComponent: class extends runtime.SearchComponent { setValue(): this { return this; } },
 		Notice: class { constructor(message: string) { notices(message); } },
@@ -156,12 +162,16 @@ async function board(ranks?: readonly number[]) {
 	};
 }
 
-function moveDown(card: CorkboardElement): void {
+function chooseMenu(card: CorkboardElement, action: string): void {
 	menuEntries.length = 0;
 	card.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
-	const item = menuEntries.find((candidate) => candidate.title === 'actions.moveDown')!;
+	const item = menuEntries.find((candidate) => candidate.title === action)!;
 	expect(item.disabled).toBe(false);
 	item.click();
+}
+
+function moveDown(card: CorkboardElement): void {
+	chooseMenu(card, 'actions.moveDown');
 }
 
 function event(element: CorkboardElement, type: string, properties: Record<string, unknown>): void {
@@ -170,7 +180,7 @@ function event(element: CorkboardElement, type: string, properties: Record<strin
 	}
 }
 
-function dropAtEnd(fixture: Awaited<ReturnType<typeof board>>, card: CorkboardElement): void {
+function dropAtEnd(fixture: Awaited<ReturnType<typeof board>>, card: CorkboardElement, before?: CorkboardElement): void {
 	const canvas = fixture.dom.container.querySelector('.snowflake-method-corkboard-canvas')!;
 	const data = new Map<string, string>();
 	const dataTransfer = {
@@ -180,7 +190,13 @@ function dropAtEnd(fixture: Awaited<ReturnType<typeof board>>, card: CorkboardEl
 	};
 	event(card, 'dragstart', { target: null, dataTransfer });
 	vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ height: 600, ...{ left: 0, top: 0 } });
-	event(canvas, 'dragover', { clientX: 0, clientY: 10_000, dataTransfer });
+	const position = before?.styles.transform?.match(/translate\(([\d.]+)px, ([\d.]+)px\)/u);
+	if (before !== undefined) expect(position).not.toBeNull();
+	event(canvas, 'dragover', {
+		clientX: position ? Number(position[1]) + 1 : 0,
+		clientY: position ? Number(position[2]) + 1 : 10_000,
+		dataTransfer,
+	});
 	event(canvas, 'drop', { dataTransfer });
 	card.dispatch('dragend');
 }
@@ -198,10 +214,120 @@ function edit(card: CorkboardElement, field: 'progressStatus' | 'color'): void {
 	swatch.dispatch('click');
 }
 
-beforeEach(() => { vi.clearAllMocks(); menuEntries.length = 0; });
+beforeEach(() => { vi.clearAllMocks(); menuEntries.length = 0; opened.length = 0; });
 afterEach(() => {
 	for (const handle of handles.splice(0)) handle.dispose();
 	vi.restoreAllMocks();
+});
+
+describe('corkboard drags queued behind rank writes', () => {
+	it.each([false, true])('keeps the destination scene after an earlier move (disposed: %s)', async (disposed) => {
+		const fixture = await board([0, 1, 2, 3]);
+		const [a, b, , d] = fixture.original;
+		dropAtEnd(fixture, fixture.card(a!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		dropAtEnd(fixture, fixture.card(b!.sceneId), fixture.card(d!.sceneId));
+		if (disposed) fixture.handle.dispose();
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(['C', 'B', 'D', 'A']);
+		});
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('keeps the direction selected when the second card was dropped', async () => {
+		const fixture = await board([0, 1, 2, 3]);
+		fixture.memory.reversed = true;
+		fixture.handle.refresh();
+		const [a, , c, d] = fixture.original;
+		dropAtEnd(fixture, fixture.card(d!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		dropAtEnd(fixture, fixture.card(c!.sceneId), fixture.card(a!.sceneId));
+		fixture.dom.container.querySelector('.snowflake-method-corkboard-direction')!.dispatch('click');
+		expect(fixture.memory.reversed).toBe(false);
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(['D', 'A', 'C', 'B']);
+		});
+		expect(notices).not.toHaveBeenCalled();
+	});
+});
+
+describe('corkboard relative menu moves queued behind rank writes', () => {
+	it.each([
+		{ reversed: false, action: 'actions.moveDown', first: 0, before: null, moving: 1, expected: ['C', 'B', 'D', 'A'] },
+		{ reversed: false, action: 'actions.moveUp', first: 3, before: 0, moving: 2, expected: ['D', 'A', 'C', 'B'] },
+		{ reversed: true, action: 'actions.moveDown', first: 3, before: null, moving: 2, expected: ['D', 'A', 'C', 'B'] },
+		{ reversed: true, action: 'actions.moveUp', first: 0, before: 3, moving: 1, expected: ['C', 'B', 'D', 'A'] },
+	].flatMap((scenario) => [false, true].map((disposed) => ({ ...scenario, disposed }))))(
+		'keeps the displayed neighbor for $action (reversed: $reversed, disposed: $disposed)',
+		async ({ reversed, action, first, before, moving, expected, disposed }) => {
+			const fixture = await board([0, 1, 2, 3]);
+			fixture.memory.reversed = reversed;
+			fixture.handle.refresh();
+			dropAtEnd(fixture, fixture.card(fixture.original[first]!.sceneId),
+				before === null ? undefined : fixture.card(fixture.original[before]!.sceneId));
+			await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+			chooseMenu(fixture.card(fixture.original[moving]!.sceneId), action);
+			if (disposed) fixture.handle.dispose();
+			fixture.gate.resolve();
+			await vi.waitFor(async () => {
+				expect((await fixture.read()).map((scene) => scene.title)).toEqual(expected);
+			});
+			expect(notices).not.toHaveBeenCalled();
+		},
+	);
+
+	it('keeps the neighbor within the displayed scene range', async () => {
+		const fixture = await board([0, 1, 2, 3, 4]);
+		fixture.memory.filters.sceneMin = 2;
+		fixture.memory.filters.sceneMax = 4;
+		fixture.handle.refresh();
+		dropAtEnd(fixture, fixture.card(fixture.original[1]!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		moveDown(fixture.card(fixture.original[2]!.sceneId));
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(['A', 'D', 'C', 'B', 'E']);
+		});
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])('follows the scene chosen in Move after (reversed: %s)', async (reversed) => {
+		const fixture = await board([0, 1, 2, 3]);
+		dropAtEnd(fixture, fixture.card(fixture.original[0]!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		fixture.memory.reversed = reversed;
+		fixture.handle.refresh();
+		chooseMenu(fixture.card(fixture.original[1]!.sceneId), 'table.moveAfter');
+		const modal = opened[0] as {
+			getItems(): { id: string; index: number; label: string }[];
+			onChooseItem(item: { id: string; index: number; label: string }): void;
+		};
+		modal.onChooseItem(modal.getItems().find((item) => item.id === fixture.original[2]!.sceneId)!);
+		fixture.handle.dispose();
+		fixture.gate.resolve();
+		await vi.waitFor(async () => {
+			expect((await fixture.read()).map((scene) => scene.title)).toEqual(['C', 'B', 'D', 'A']);
+		});
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('keeps Move to position absolute after an earlier move', async () => {
+		const fixture = await board([0, 1, 2, 3]);
+		dropAtEnd(fixture, fixture.card(fixture.original[0]!.sceneId));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledOnce());
+		chooseMenu(fixture.card(fixture.original[1]!.sceneId), 'table.moveToPosition');
+		const modal = opened[0] as { submitHandler(position: number): Promise<void> };
+		const moving = modal.submitHandler(2);
+		fixture.gate.resolve();
+		await moving;
+		expect((await fixture.read()).map((scene) => scene.title)).toEqual(['C', 'D', 'B', 'A']);
+		expect(fixture.host.reorderScene).toHaveBeenLastCalledWith(
+			fixture.original[1]!.sceneId, 2, fixture.project.projectFile, expect.any(Function),
+		);
+		expect(notices).not.toHaveBeenCalled();
+	});
 });
 
 describe('corkboard insertions queued behind rank writes', () => {

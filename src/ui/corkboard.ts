@@ -19,7 +19,7 @@
 import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import { PROGRESS_STATUSES, SCENE_POV_MULTIPLE, SCENE_POV_OMNISCIENT, isProgressStatus, type ProgressStatus } from '../domain';
-import type { ScenePatch } from '../services';
+import type { SceneMoveTarget, ScenePatch } from '../services';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
 import {
@@ -413,7 +413,7 @@ export function renderCorkboard(
 	};
 
 	/** Carry queued edits through our rank writes without adopting external revisions. */
-	const reorderScene = (id: string, target: number, owningProject: string): Promise<void> =>
+	const reorderScene = (id: string, target: SceneMoveTarget, owningProject: string): Promise<void> =>
 		host.reorderScene(id, target, owningProject, (change) => {
 			advanceRevision(change.id, change.before, change.after);
 			for (const card of cards.values()) {
@@ -1344,6 +1344,11 @@ export function renderCorkboard(
 						}))
 						.filter((candidate) => candidate.id !== entry.id),
 				move: (toIndex) => reorderScene(entry.id, toIndex, current.path),
+				moveBeside: (id, side) => reorderScene(
+					entry.id,
+					(ids) => moveTargetIndex(ids, entry.id, id, side === 'after'),
+					current.path,
+				),
 				reveal: () => {
 					reveal(entry.id);
 				},
@@ -1616,14 +1621,14 @@ export function renderCorkboard(
 		if (before === null) return;
 		const beforeId =
 			before >= layout.items.length ? null : (sceneAt(before)?.id ?? null);
-		const target = moveTargetIndex(
-			orderIds,
-			dragged,
-			beforeId,
-			memory.reversed,
-			sceneAt(layout.items.length - 1)?.id ?? null,
-		);
-		if (target === null) return;
+		const lastShownId = sceneAt(layout.items.length - 1)?.id ?? null;
+		if (beforeId === dragged || (beforeId === null && lastShownId === dragged)) return;
+		const reversed = memory.reversed;
+		// Keep the scene the author dropped beside, not its old position.
+		// The service resolves it after earlier queued writes have landed,
+		// even when this board has closed and can no longer refresh.
+		const target = (ids: readonly string[]): number | null =>
+			moveTargetIndex(ids, dragged, beforeId, reversed, lastShownId);
 		const owningProject = projectPath;
 		if (owningProject !== null) void enqueue(() => reorderScene(dragged, target, owningProject), { persist: true });
 	});

@@ -187,7 +187,7 @@ describe('corkboard correctness regressions', () => {
 		fixture.handle.dispose();
 		gate.resolve(); await settle();
 		if (action === 'actions.delete') expect(fixture.host.deleteScene).toHaveBeenCalledWith('A', 'saved', PROJECT);
-		else expect(fixture.host.reorderScene).toHaveBeenCalledWith('A', 1, PROJECT, expect.any(Function));
+		else expect(fixture.host.reorderScene).toHaveBeenCalledWith('A', expect.any(Function), PROJECT, expect.any(Function));
 		expect(fixture.host.patchScene).toHaveBeenCalledOnce();
 		expect(notices).not.toHaveBeenCalled();
 	});
@@ -291,7 +291,7 @@ describe('corkboard correctness regressions', () => {
 		expect(fixture.activateProject).not.toHaveBeenCalled();
 		expect(fixture.currentProject()).toBe('Second/Project.md');
 		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('hero', PROJECT);
-		expect(fixture.host.reorderScene).toHaveBeenCalledWith('A', 1, PROJECT, expect.any(Function));
+		expect(fixture.host.reorderScene).toHaveBeenCalledWith('A', expect.any(Function), PROJECT, expect.any(Function));
 		fixture.handle.dispose();
 	});
 

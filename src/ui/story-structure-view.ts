@@ -123,10 +123,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 		const legacy = !this.stateDelivered &&
 			typeof candidate.projectPath !== 'string' && candidate.projectPath !== null;
 		if (legacy) update.state.projectPath = this.deps.recentProjectPath();
-		if (update.state.projectPath !== this.state.projectPath) {
-			this.memory.query = '';
-			clearSceneFilters(this.memory.filters);
-			this.memory.scrollTop = 0;
+		if (
+			update.state.projectPath !== this.state.projectPath &&
+			(update.state.projectPath === null || this.model === null)
+		) {
+			this.clearCorkboardSession();
 		}
 		if (!this.stateDelivered || update.state.projectPath !== this.state.projectPath) {
 			this.preferencesProjectId = null;
@@ -164,6 +165,12 @@ export class SnowflakeStoryStructureView extends ItemView {
 				reversed: this.memory.reversed,
 			},
 		};
+	}
+
+	private clearCorkboardSession(): void {
+		this.memory.query = '';
+		clearSceneFilters(this.memory.filters);
+		this.memory.scrollTop = 0;
 	}
 
 	async onOpen(): Promise<void> {
@@ -272,6 +279,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 					if (path !== this.state.projectPath) {
 						this.refreshPending = true;
 						continue;
+					}
+					// A path change may only rename this project. Keep its search,
+					// filters and scroll until the loaded identity tells us it changed.
+					if (this.model?.projectId !== model?.projectId) {
+						this.clearCorkboardSession();
 					}
 					this.model = model;
 					if (model !== null) this.restoreCorkboardPreferences(model.projectId);

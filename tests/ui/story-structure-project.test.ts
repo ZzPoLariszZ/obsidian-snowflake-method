@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ViewState, WorkspaceLeaf } from 'obsidian';
-import { CorkboardDom } from '../helpers/corkboard-dom';
+import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
@@ -20,7 +20,16 @@ vi.mock('obsidian', async (importOriginal) => {
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
 		SearchComponent: class extends runtime.SearchComponent {
-			setValue(): this { return this; }
+			private readonly input: CorkboardElement;
+			constructor(container: CorkboardElement) {
+				super();
+				this.input = container.createDiv({ cls: 'search-input-container' }).createEl('input');
+			}
+			setValue(value: string): this { this.input.value = value; return this; }
+			onChange(handler: (value: string) => void): this {
+				this.input.addEventListener('input', () => handler(this.input.value));
+				return this;
+			}
 		},
 	};
 });
@@ -229,6 +238,85 @@ describe('workspace project ownership', () => {
 		});
 		internals.board?.dispose();
 	});
+
+	it.each(['rename', 'switch', 'clear'] as const)(
+		'keeps the displayed search and filters consistent when project ownership changes: %s',
+		async (change) => {
+			const { view, loadDashboardModel, renderFrame } = workspaceView();
+			const dom = new CorkboardDom();
+			dom.height = 100;
+			const originalPath = 'First/00_System/001_Project_Metadata.md';
+			const nextPath = change === 'clear' ? null : 'Renamed/00_System/001_Project_Metadata.md';
+			const scene = (id: string, title: string, status: SceneViewModel['progressStatus']): SceneViewModel => ({
+				id, path: `First/40_Scene/${id}.md`, title, rank: 0,
+				progressStatus: status, aliases: [], categoryPaths: [], povPath: '', povName: '', povMissing: false,
+				times: [], locations: [], characterPaths: [], conflict: '', color: null, linkedManuscript: [],
+				worldStatus: [], relationships: [], events: '', customFields: '', revision: 'initial',
+				healthIssues: [], readOnly: false,
+			});
+			loadDashboardModel.mockImplementation((path) => Promise.resolve({
+				path,
+				projectId: path !== originalPath && change === 'switch' ? 'other-project' : 'stable-project',
+				title: 'Novel', locale: 'en',
+				scenes: [scene('match', 'Opening', 'in-progress'), scene('other', 'Finale', 'in-progress'),
+					scene('complete', 'Opening again', 'complete')],
+				characters: [], manuscriptPaths: [], readOnly: false,
+			} as unknown as ProjectDashboardModel));
+			const internals = view as unknown as {
+				controls(): CorkboardControls;
+				frameKey(): string;
+				board: CorkboardHandle | null;
+				shownFrame: string | null;
+			};
+			const controls = internals.controls();
+			Object.assign(controls.app, { metadataCache: { getFirstLinkpathDest: () => null } });
+			Object.assign(controls.host, {
+				translateForProject: (_locale: unknown, key: string, vars?: Record<string, unknown>) =>
+					key === 'table.filteredCount' ? `${String(vars?.shown)}/${String(vars?.total)}` : key,
+			});
+			renderFrame.mockImplementation(() => {
+				internals.board?.dispose();
+				dom.container.empty();
+				internals.board = controls.model() === null ? null : renderCorkboard(dom.container as unknown as HTMLElement, controls);
+				internals.shownFrame = internals.frameKey();
+			});
+			await view.onOpen();
+			await view.setState({ projectPath: originalPath }, { history: false });
+			const input = dom.container.querySelector('input')!;
+			input.value = 'Opening';
+			input.dispatch('input');
+			dom.flushFrame();
+			controls.memory.filters.status = 'in-progress';
+			internals.board!.refresh();
+			const card = dom.container.querySelector('.snowflake-method-corkboard-card')!;
+			const scroller = dom.container.querySelector('.snowflake-method-corkboard-scroll')!;
+			scroller.scrollTop = 24;
+			scroller.dispatch('scroll');
+			expect(dom.container.querySelector('.snowflake-method-prose-state')?.textContent).toBe('1/3');
+
+			await view.setState({ projectPath: nextPath }, { history: false });
+
+			if (change === 'rename') {
+				expect(renderFrame).toHaveBeenCalledOnce();
+				expect(dom.container.querySelector('input')).toBe(input);
+				expect(input.value).toBe('Opening');
+				expect(controls.memory).toMatchObject({ query: 'Opening', filters: { status: 'in-progress' }, scrollTop: 24 });
+				expect(dom.container.querySelectorAll('.snowflake-method-corkboard-card')).toEqual([card]);
+				expect(dom.container.querySelector('.snowflake-method-prose-state')?.textContent).toBe('1/3');
+			} else {
+				expect(controls.memory).toMatchObject({ query: '', filters: { status: 'all' }, scrollTop: 0 });
+				expect(renderFrame).toHaveBeenCalledTimes(2);
+				expect(input.isConnected).toBe(false);
+				if (change === 'switch') {
+					expect(dom.container.querySelector('input')?.value).toBe('');
+					expect(dom.container.querySelector('.snowflake-method-prose-state')?.textContent).toBe('');
+				} else {
+					expect(internals.board).toBeNull();
+				}
+			}
+			internals.board?.dispose();
+		},
+	);
 });
 
 function structureLeaf(projectPath: string, root: object, deferred = false) {

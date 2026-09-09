@@ -43,7 +43,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { renderCorkboard } from '../../src/ui/corkboard';
-import type { CorkboardControls } from '../../src/ui/corkboard-bridge';
+import type { CorkboardControls, CorkboardHost } from '../../src/ui/corkboard-bridge';
 import { SCENE_DRAG_TYPE } from '../../src/ui/corkboard-layout';
 import { sceneFilters } from '../../src/ui/scene-filters';
 import { corkboardMemory, type CorkboardMemory } from '../../src/ui/story-structure-state';
@@ -68,7 +68,7 @@ function board(settings: Partial<CorkboardMemory> = {}, locks: { project?: boole
 		scenes, characters: [], manuscriptPaths: [], readOnly: locks.project === true,
 	} as unknown as ProjectDashboardModel;
 	const host = {
-		reorderScene: vi.fn(() => Promise.resolve()),
+		reorderScene: vi.fn<CorkboardHost['reorderScene']>(() => Promise.resolve()),
 		openSceneForm: vi.fn(() => Promise.resolve(null)),
 	};
 	const controls = {
@@ -134,14 +134,20 @@ describe('corkboard adjacency with a scene range', () => {
 		expect(middle.get('actions.moveUp')!.disabled).toBe(false);
 		expect(middle.get('actions.moveDown')!.disabled).toBe(false);
 		middle.get('actions.moveUp')!.click();
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', reversed ? 3 : 1, 'Project/Project.md', expect.any(Function)));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith('c', expect.any(Function), 'Project/Project.md', expect.any(Function)));
+		const target = fixture.host.reorderScene.mock.calls[0]![1];
+		if (typeof target !== 'function') throw new Error('Expected a relative destination');
+		expect(target(['a', 'b', 'c', 'd', 'e'])).toBe(reversed ? 3 : 1);
 		fixture.handle.dispose();
 	});
 
 	it.each([false, true])('drops after the visible tail without crossing the range (reversed: %s)', async (reversed) => {
 		const fixture = board({ reversed });
 		dropAtEnd(fixture, fixture.cards[0]!);
-		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', reversed ? 1 : 3, 'Project/Project.md', expect.any(Function)));
+		await vi.waitFor(() => expect(fixture.host.reorderScene).toHaveBeenCalledWith(reversed ? 'd' : 'b', expect.any(Function), 'Project/Project.md', expect.any(Function)));
+		const target = fixture.host.reorderScene.mock.calls[0]![1];
+		if (typeof target !== 'function') throw new Error('Expected a relative destination');
+		expect(target(['a', 'b', 'c', 'd', 'e'])).toBe(reversed ? 1 : 3);
 		fixture.host.reorderScene.mockClear();
 		dropAtEnd(fixture, fixture.cards[2]!);
 		await Promise.resolve();
