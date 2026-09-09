@@ -1,5 +1,15 @@
 import { parseWikiLink } from '../domain/wikilink';
 
+/** Identity for an ordinary whole-note link; explicit aliases and subpaths remain distinct. */
+export function wholeManuscriptDestination(
+	raw: string,
+	resolveTarget: (target: string) => string | null,
+): string | null {
+	const link = parseWikiLink(raw);
+	if (link === null || link.alias !== null || link.linktext.includes('#')) return null;
+	return resolveTarget(link.target);
+}
+
 /** Sorts a scene's links for display without changing their stored spelling or order. */
 export function orderLinkedManuscript(
 	links: readonly string[],

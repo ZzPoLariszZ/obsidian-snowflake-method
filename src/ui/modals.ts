@@ -91,6 +91,7 @@ import {
 	type PickerOption,
 } from './option-picker';
 import { paintCount } from './pane-parts';
+import { wholeManuscriptDestination } from './linked-manuscript';
 import {
 	buildProjectRootField,
 	type ProjectRootField,
@@ -235,6 +236,8 @@ export interface MemberFormContext {
 	times: () => readonly PickerOption[];
 	/** The manuscript's notes as raw links, in reading order, for a scene's linked manuscript. */
 	manuscriptNotes: () => readonly PickerOption[];
+	/** Resolve a manuscript target in this form's source-note context. */
+	resolveManuscriptTarget?: (target: string) => string | null;
 	/** Orders displayed links by their resolved manuscript notes, preserving the raw links. */
 	orderLinkedManuscript: (links: readonly string[]) => readonly string[];
 	/** Whether a stored link has no destination in the vault, resolved from the scene. */
@@ -2831,9 +2834,19 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 			cls: 'snowflake-method-scene-linked-manuscript',
 		});
 		const lines = block.createDiv({ cls: 'snowflake-method-record-lines' });
-		const availableNotes = (): readonly PickerOption[] => context.manuscriptNotes().filter(
-			(option) => !this.linkedManuscript.includes(option.value),
-		);
+		const availableNotes = (): readonly PickerOption[] => {
+			const stored = new Set(this.linkedManuscript);
+			const resolve = context.resolveManuscriptTarget;
+			const destinations = new Set(resolve === undefined ? [] : this.linkedManuscript.flatMap((raw) => {
+				const destination = wholeManuscriptDestination(raw, resolve);
+				return destination === null ? [] : [destination];
+			}));
+			return context.manuscriptNotes().filter((option) => {
+				if (stored.has(option.value)) return false;
+				const destination = resolve === undefined ? null : wholeManuscriptDestination(option.value, resolve);
+				return destination === null || !destinations.has(destination);
+			});
+		};
 		const picker = renderRecordPickFrame(block, '', () => {
 			const offered = availableNotes();
 			if (offered.length === 0) return;
@@ -2842,7 +2855,7 @@ export class CreateSceneModal extends SnowflakeFormModal<CreateSceneRequest> {
 				this.t('modal.scene.linkedManuscriptPlaceholder'),
 				[...offered],
 				(option) => {
-					if (this.linkedManuscript.includes(option.value)) return;
+					if (!availableNotes().some((available) => available.value === option.value)) return;
 					this.linkedManuscript = [...this.linkedManuscript, option.value];
 					draw();
 				},
@@ -3898,7 +3911,7 @@ export class RepairReportModal extends Modal {
 		// judgment these issues need — another point of view, another moment,
 		// another sentence — is a field in that form rather than something to
 		// hand-edit in frontmatter.
-		if (entry.canOpen && editMember !== null && memberId !== null) {
+		if (entry.canOpen && entry.canEdit !== false && editMember !== null && memberId !== null) {
 			actions.push({
 				label: this.t('actions.edit'),
 				icon: 'pencil',

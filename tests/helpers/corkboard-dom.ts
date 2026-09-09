@@ -14,6 +14,7 @@ export class CorkboardDom {
 	}[] = [];
 	private sequence = 0;
 	readonly frames = new Map<number, () => void>();
+	readonly windowListeners = new Map<string, { listener: unknown; capture: boolean }[]>();
 	readonly observers: { notify(): void; disconnected: boolean }[] = [];
 	readonly doc: {
 		activeElement: CorkboardElement | null;
@@ -44,8 +45,14 @@ export class CorkboardDom {
 				return id;
 			},
 			clearTimeout: (id: number): void => { this.frames.delete(id); },
-			addEventListener: (): void => undefined,
-			removeEventListener: (): void => undefined,
+			addEventListener: (type: string, listener: unknown, capture = false): void => {
+				this.windowListeners.set(type, [...this.windowListeners.get(type) ?? [], { listener, capture }]);
+			},
+			removeEventListener: (type: string, listener: unknown, capture = false): void => {
+				this.windowListeners.set(type, (this.windowListeners.get(type) ?? []).filter(
+					(entry) => entry.listener !== listener || entry.capture !== capture,
+				));
+			},
 			ResizeObserver: class {
 				disconnected = false;
 				constructor(private callback: () => void) { observers.push(this); }
@@ -64,6 +71,14 @@ export class CorkboardDom {
 		const callbacks = [...this.frames.values()];
 		this.frames.clear();
 		for (const callback of callbacks) callback();
+	}
+
+	dispatchWindow(type: string): void {
+		for (const { listener } of this.windowListeners.get(type) ?? []) {
+			if (typeof listener === 'function') {
+				(listener as (event: { type: string }) => void)({ type });
+			}
+		}
 	}
 
 	resize(width: number, height = this.height): void {
@@ -102,11 +117,31 @@ export class CorkboardElement {
 	textWrites = 0;
 	attributeWrites = 0;
 	styleWrites = 0;
+	readonly windowMigrationListeners = new Set<(win: CorkboardDom['win']) => unknown>();
 
-	constructor(readonly dom: CorkboardDom, readonly tag: string) {}
+	constructor(private currentDom: CorkboardDom, readonly tag: string) {}
+	get dom(): CorkboardDom { return this.currentDom; }
 	get doc(): CorkboardDom['doc'] { return this.dom.doc; }
 	get ownerDocument(): CorkboardDom['doc'] { return this.doc; }
 	get win(): CorkboardDom['win'] { return this.dom.win; }
+	onWindowMigrated(listener: (win: CorkboardDom['win']) => unknown): () => void {
+		this.windowMigrationListeners.add(listener);
+		return () => { this.windowMigrationListeners.delete(listener); };
+	}
+	/** Models Obsidian adopting a view's existing DOM into a pop-out window. */
+	migrateTo(destination: CorkboardDom): void {
+		destination.container.insertBefore(this, null);
+		const adopted: CorkboardElement[] = [];
+		const adopt = (element: CorkboardElement): void => {
+			element.currentDom = destination;
+			adopted.push(element);
+			for (const child of element.children) adopt(child);
+		};
+		adopt(this);
+		for (const element of adopted) {
+			for (const listener of element.windowMigrationListeners) listener(destination.win);
+		}
+	}
 	private readGeometry(property: string): void {
 		this.dom.geometryReads++;
 		this.dom.operations.push({ kind: 'read', target: this, property });

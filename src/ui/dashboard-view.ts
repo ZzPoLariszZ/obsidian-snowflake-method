@@ -13,8 +13,6 @@ import {
 
 import {
 	DEFINITION_FILE_IDS,
-	SCENE_POV_MULTIPLE,
-	SCENE_POV_OMNISCIENT,
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
 	areStepPrerequisitesComplete,
@@ -131,6 +129,7 @@ import {
 	clearSceneFilters,
 	filterScenes,
 	progressFilterRow,
+	reconcileSceneFilters,
 	reconcileSceneManuscriptFilter,
 	sceneFilterRows,
 	sceneFiltered,
@@ -604,6 +603,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private rendered = false;
 	private renderedProjectId: string | null = null;
 	private renderedProjectPath: string | null = null;
+	private loadFailed = false;
 	private renderedProjectComplete = false;
 	private renderedStep: StepId | null = null;
 	private renderedPaneKey: string | null = null;
@@ -702,6 +702,7 @@ export class SnowflakeDashboardView extends ItemView {
 	/** The loaded project available for immediate workspace activation. */
 	workspaceProjectContext(): { path: string; locale: 'en' | 'zh-CN' } | null {
 		if (
+			this.loadFailed ||
 			this.projectPath === null ||
 			this.projectLocale === null ||
 			this.lastRender?.model?.path !== this.projectPath
@@ -1308,6 +1309,7 @@ export class SnowflakeDashboardView extends ItemView {
 			}
 		}
 		this.rendered = true;
+		this.loadFailed = false;
 		if (model === null && projects.length === 0) {
 			this.projectPath = null;
 			this.projectTitle = null;
@@ -1696,9 +1698,14 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	async refreshFromWorkspace(): Promise<void> {
-		if (!this.rendered || this.renderedProjectPath !== this.projectPath) {
+		if (this.loadFailed || !this.rendered || this.renderedProjectPath !== this.projectPath) {
 			await this.refresh();
 		}
+	}
+
+	/** A failed first read can recover when its tab becomes active again. */
+	async retryFailedLoadFromWorkspace(): Promise<void> {
+		if (this.loadFailed) await this.refresh();
 	}
 
 	/**
@@ -2534,7 +2541,7 @@ export class SnowflakeDashboardView extends ItemView {
 								label: `${String(at + 1)}. ${candidate.name}`,
 							}))
 							.filter((candidate) => candidate.id !== entity.id),
-					move: (toIndex) => this.host.reorderEntity(kind, entity.id, toIndex),
+					move: (toIndex) => this.host.reorderEntity(kind, entity.id, toIndex, model.path),
 					reveal: () => {
 						this.revealEntity(model, kind, entity.id);
 					},
@@ -2545,7 +2552,7 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			remove: () => {
 				void this.runAndRefresh(() =>
-					this.host.deleteEntity(entity.id, entity.revision),
+					this.host.deleteEntity(entity.id, entity.revision, model.path),
 				);
 			},
 			removeDisabled: model.readOnly || entity.readOnly,
@@ -2557,7 +2564,7 @@ export class SnowflakeDashboardView extends ItemView {
 				entity.id,
 				index,
 				(candidate) => entities.some((entry) => entry.id === candidate),
-				(id, target) => this.host.reorderEntity(kind, id, target),
+				(id, target) => this.host.reorderEntity(kind, id, target, model.path),
 			);
 		}
 	}
@@ -2936,7 +2943,7 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 			more.disabled = model.readOnly;
 			more.addEventListener('click', () => {
-				void this.addDefinitionEntry(id, kind, '');
+				void this.addDefinitionEntry(id, kind, '', model.path);
 			});
 			context.markSelected();
 			return found;
@@ -3260,7 +3267,7 @@ export class SnowflakeDashboardView extends ItemView {
 					);
 				},
 				remove: () => {
-					void this.confirmTemplateDeletion(kind, template);
+					void this.confirmTemplateDeletion(kind, template, model.path);
 				},
 				removeDisabled: model.readOnly,
 			});
@@ -3307,7 +3314,7 @@ export class SnowflakeDashboardView extends ItemView {
 		});
 		if (result === null) return;
 		await this.runAndRefresh(async () => {
-			const outcome = await this.host.saveCustomFieldTemplate(kind, result);
+			const outcome = await this.host.saveCustomFieldTemplate(kind, result, undefined, model.path);
 			if (!outcome.ok) {
 				new Notice(this.templateRefusal(outcome.code, result.name));
 			}
@@ -3322,6 +3329,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const fields = await this.host.customFieldTemplateFields(
 			kind,
 			template.name,
+			model.path,
 		);
 		const result = await promptForCustomFieldTemplate(this.app, this.t, {
 			title: this.t('modal.customFieldTemplate.editTitle', {
@@ -3337,7 +3345,7 @@ export class SnowflakeDashboardView extends ItemView {
 		await this.runAndRefresh(async () => {
 			const outcome = await this.host.saveCustomFieldTemplate(kind, result, {
 				previousName: template.name,
-			});
+			}, model.path);
 			if (!outcome.ok) {
 				new Notice(this.templateRefusal(outcome.code, result.name));
 			}
@@ -3347,6 +3355,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private async confirmTemplateDeletion(
 		kind: EntityKindId,
 		template: CustomFieldTemplateInfo,
+		projectPath: string,
 	): Promise<void> {
 		const confirmed = await promptForTemplateDeletion(
 			this.app,
@@ -3355,7 +3364,7 @@ export class SnowflakeDashboardView extends ItemView {
 		);
 		if (!confirmed) return;
 		await this.runAndRefresh(() =>
-			this.host.deleteCustomFieldTemplate(kind, template.name),
+			this.host.deleteCustomFieldTemplate(kind, template.name, projectPath),
 		);
 	}
 
@@ -3417,7 +3426,7 @@ export class SnowflakeDashboardView extends ItemView {
 		return {
 			locked,
 			edit: () => {
-				if (!locked) void this.openDefinitionEditor(id, kind, node);
+				if (!locked) void this.openDefinitionEditor(id, kind, node, model.path);
 			},
 			open: () => {
 				void this.host.openManagedFile(node.selfPath, 'definition-fields', [
@@ -3425,7 +3434,7 @@ export class SnowflakeDashboardView extends ItemView {
 				]);
 			},
 			addChild: () => {
-				void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`);
+				void this.addDefinitionEntry(id, kind, `${node.taxonomyPath}/`, model.path);
 			},
 			create: () => {
 				void this.runAndRefresh(async () => {
@@ -3433,6 +3442,8 @@ export class SnowflakeDashboardView extends ItemView {
 						kind,
 						id,
 						node.taxonomyPath,
+						undefined,
+						model.path,
 					);
 					if (!result.ok) new Notice(this.definitionRefusal(result));
 				});
@@ -3894,7 +3905,7 @@ export class SnowflakeDashboardView extends ItemView {
 			})),
 		);
 		if (kind === null) return;
-		await this.addDefinitionEntry(id, kind, '');
+		await this.addDefinitionEntry(id, kind, '', model.path);
 	}
 
 	/** Asks for a new entry — at the root, or under the prefilled parent. */
@@ -3902,6 +3913,7 @@ export class SnowflakeDashboardView extends ItemView {
 		id: DefinitionFileChoice,
 		kind: EntityKindId,
 		prefill: string,
+		projectPath: string,
 	): Promise<void> {
 		const created = await promptForDefinitionPath(
 			this.app,
@@ -3916,6 +3928,7 @@ export class SnowflakeDashboardView extends ItemView {
 				id,
 				created.path,
 				created.description,
+				projectPath,
 			);
 			if (!result.ok) new Notice(this.definitionRefusal(result));
 		});
@@ -3930,6 +3943,7 @@ export class SnowflakeDashboardView extends ItemView {
 		id: DefinitionFileChoice,
 		kind: EntityKindId,
 		node: DefinitionNodeInfo,
+		projectPath: string,
 	): Promise<void> {
 		const settled = await promptForDefinitionEdit(
 			this.app,
@@ -3947,6 +3961,7 @@ export class SnowflakeDashboardView extends ItemView {
 					id,
 					node.taxonomyPath,
 					settled.name,
+					projectPath,
 				);
 				if (!renamed.ok) {
 					new Notice(this.definitionRefusal(renamed));
@@ -3980,6 +3995,7 @@ export class SnowflakeDashboardView extends ItemView {
 					id,
 					taxonomyPath,
 					settled.description,
+					projectPath,
 				);
 			}
 		});
@@ -4030,7 +4046,7 @@ export class SnowflakeDashboardView extends ItemView {
 					this.definitionSelection.delete(id);
 				}
 				void this.runAndRefresh(() =>
-					this.host.deleteDefinitionNode(kind, id, node.taxonomyPath),
+					this.host.deleteDefinitionNode(kind, id, node.taxonomyPath, model.path),
 				);
 			},
 		).open();
@@ -4047,6 +4063,7 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		kind: EntityKindId,
 		sourcePath = model.path,
+		afterMutation?: () => Promise<void>,
 	): Promise<MemberFormContext> {
 		const [
 			categoryPaths,
@@ -4084,6 +4101,7 @@ export class SnowflakeDashboardView extends ItemView {
 							: this.t('form.definition.invalid', { name: result.segment });
 					}
 					paths = await this.host.listDefinitionPaths(kind, id, model.path);
+					await afterMutation?.();
 					return null;
 				},
 			};
@@ -4144,15 +4162,25 @@ export class SnowflakeDashboardView extends ItemView {
 		// read before they existed, so without this a note made a moment ago is
 		// one the form cannot say anything about, and its line goes unnamed.
 		const madeHere = new Map<string, EntityGroupId>();
+		const exportedTemplates = new Map<string, CustomFieldTemplateInfo>();
+		let lastTemplateRender = this.renderedModel;
+		let templateModel = model;
 		// Only the kind's own template folder speaks here: a template is made
 		// in the dashboard or exported from a form, never picked at large. The
 		// picker names them by note name and holds them by extensionless path.
-		// Read off the freshest render, so a template exported while this very
-		// form stands open joins the offer once the refresh behind it lands.
+		// The supplied model can be newer than a hidden dashboard's render.
+		// Only a later render may replace it while the form remains open.
 		const templateOptions = (): PickerOption[] => {
 			const shown = this.renderedModel;
-			const fresh = shown?.path === model.path ? shown : model;
-			return (fresh.customFieldTemplates[kind] ?? []).map((template) => ({
+			if (shown !== lastTemplateRender && shown?.path === model.path) {
+				templateModel = shown;
+				exportedTemplates.clear();
+			}
+			lastTemplateRender = shown;
+			const templates = new Map((templateModel.customFieldTemplates[kind] ?? [])
+				.map((template) => [template.path, template]));
+			for (const [path, template] of exportedTemplates) templates.set(path, template);
+			return [...templates.values()].map((template) => ({
 				value: noteKey(template.path),
 				label: template.name,
 			}));
@@ -4164,7 +4192,10 @@ export class SnowflakeDashboardView extends ItemView {
 			kindTemplates: {
 				options: templateOptions,
 				current: () => this.host.kindTemplatePath(kind, model.path),
-				set: (path) => this.host.setKindTemplate(kind, path, model.path),
+				set: async (path) => {
+					await this.host.setKindTemplate(kind, path, model.path);
+					await afterMutation?.();
+				},
 				fields: () => this.host.kindTemplateFields(kind, model.path),
 				export: async (input) => {
 					const outcome = await this.host.saveCustomFieldTemplate(
@@ -4175,7 +4206,10 @@ export class SnowflakeDashboardView extends ItemView {
 					);
 					// The pane and the picker read the model, so a fresh export
 					// joins them on the next refresh, behind the open form.
-					if (outcome.ok) void this.refresh();
+					if (outcome.ok) {
+						exportedTemplates.set(outcome.path, { path: outcome.path, name: input.name, description: input.description });
+						await (afterMutation?.() ?? this.refresh());
+					}
 					return outcome;
 				},
 			},
@@ -4183,7 +4217,7 @@ export class SnowflakeDashboardView extends ItemView {
 				groupIds.map((id) => ({ id, label: entityGroupLabel(this.t, id) })),
 			entitiesIn: (group) => entitiesOfGroup(group),
 			createIn: async (group, name, options) => {
-				const created = await this.createInGroup(model, group, name, options);
+				const created = await this.createInGroup(model, group, name, options, afterMutation);
 				if (created !== null) madeHere.set(noteKey(created.value), group);
 				return created;
 			},
@@ -4203,6 +4237,8 @@ export class SnowflakeDashboardView extends ItemView {
 				manuscriptNotes.map((note) => note.path),
 				(target) => this.app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null,
 			),
+			resolveManuscriptTarget: (target) =>
+				this.app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null,
 			linkedManuscriptMissing: (raw) => {
 				const link = parseWikiLink(raw);
 				return link === null || this.app.metadataCache.getFirstLinkpathDest(link.target, sourcePath) === null;
@@ -4234,16 +4270,17 @@ export class SnowflakeDashboardView extends ItemView {
 		group: EntityGroupId,
 		rawName: string,
 		options?: { onlyGroup?: boolean },
+		afterMutation?: () => Promise<void>,
 	): Promise<PickerOption | null> {
 		const name = rawName.trim();
 		if (name.length === 0) return null;
 		if (this.host.opensFormWhenCreatingFromField()) {
-			return this.createInGroupThroughForm(model, group, name, options);
+			return this.createInGroupThroughForm(model, group, name, options, afterMutation);
 		}
 		const find = (path: string): PickerOption => ({ value: path, label: name });
 		try {
 			if (group === 'character') {
-				const created = await this.quickCreateCharacter(name, model.path);
+				const created = await this.quickCreateCharacter(name, model.path, afterMutation);
 				return created === null ? null : find(created.path);
 			}
 			if (group === 'scene') {
@@ -4264,7 +4301,7 @@ export class SnowflakeDashboardView extends ItemView {
 					color: null,
 					linkedManuscript: [],
 				}, model.path);
-				await this.refresh();
+				await (afterMutation?.() ?? this.refresh());
 				return find(created.path);
 			}
 			const kind: WorldbuildingKindId =
@@ -4288,7 +4325,7 @@ export class SnowflakeDashboardView extends ItemView {
 				relationships: [],
 				customFields: '',
 			}, model.path);
-			await this.refresh();
+			await (afterMutation?.() ?? this.refresh());
 			return find(created.path);
 		} catch (error) {
 			new Notice(
@@ -4302,6 +4339,7 @@ export class SnowflakeDashboardView extends ItemView {
 	private async quickCreateCharacter(
 		name: string,
 		projectPath: string,
+		afterMutation?: () => Promise<void>,
 	): Promise<CharacterOption | null> {
 		try {
 			const created = await this.host.createCharacter({
@@ -4319,7 +4357,7 @@ export class SnowflakeDashboardView extends ItemView {
 				relationships: [],
 				customFields: '',
 			}, projectPath);
-			await this.refresh();
+			await (afterMutation?.() ?? this.refresh());
 			return created;
 		} catch (error) {
 			new Notice(
@@ -4339,13 +4377,14 @@ export class SnowflakeDashboardView extends ItemView {
 		group: EntityGroupId,
 		name: string,
 		options?: { onlyGroup?: boolean },
+		afterMutation?: () => Promise<void>,
 	): Promise<PickerOption | null> {
 		const report = (path: string, label: string): PickerOption => ({
 			value: path,
 			label,
 		});
 		if (group === 'character') {
-			const context = await this.memberFormContext(model, 'character');
+			const context = await this.memberFormContext(model, 'character', model.path, afterMutation);
 			const created = await promptForNewCharacter(
 				this.app,
 				this.t,
@@ -4355,11 +4394,11 @@ export class SnowflakeDashboardView extends ItemView {
 				context,
 			);
 			if (created === null) return null;
-			await this.refresh();
+			await (afterMutation?.() ?? this.refresh());
 			return report(created.path, created.name);
 		}
 		if (group === 'scene') {
-			const context = await this.memberFormContext(model, 'scene');
+			const context = await this.memberFormContext(model, 'scene', model.path, afterMutation);
 			const created = await promptForNewScene(
 				this.app,
 				this.t,
@@ -4377,12 +4416,12 @@ export class SnowflakeDashboardView extends ItemView {
 				context,
 			);
 			if (created === null) return null;
-			await this.refresh();
+			await (afterMutation?.() ?? this.refresh());
 			return created;
 		}
 		const kind: WorldbuildingKindId =
 			group === 'time-point' || group === 'time-period' ? 'time' : group;
-		const context = await this.memberFormContext(model, kind);
+		const context = await this.memberFormContext(model, kind, model.path, afterMutation);
 		const created = await promptForNewEntity(
 			this.app,
 			this.t,
@@ -4407,7 +4446,7 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 		);
 		if (created === null) return null;
-		await this.refresh();
+		await (afterMutation?.() ?? this.refresh());
 		return created;
 	}
 
@@ -4598,8 +4637,9 @@ export class SnowflakeDashboardView extends ItemView {
 	private openCharacterEditor(
 		model: ProjectDashboardModel,
 		character: CharacterViewModel,
+		afterSave?: () => Promise<void>,
 	): Promise<Modal> {
-		return this.memberFormContext(model, 'character').then((context) => {
+		return this.memberFormContext(model, 'character', character.path, afterSave).then((context) => {
 			const form = new CreateCharacterModal(
 				this.app,
 				this.t,
@@ -4608,7 +4648,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.map((candidate) => candidate.name),
 				async (request) => {
 					await this.host.updateCharacter(character.id, request, model.path);
-					await this.refresh();
+					await (afterSave?.() ?? this.refresh());
 				},
 				{
 					name: character.name,
@@ -4648,7 +4688,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.map((candidate) => candidate.name),
 				context,
 				async (request) => {
-					await this.host.updateEntity(entity.id, request);
+					await this.host.updateEntity(entity.id, request, model.path);
 					await this.refresh();
 				},
 				{
@@ -5037,7 +5077,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	async editMemberById(memberId: string): Promise<void> {
 		const model = this.renderedModel;
-		if (model === undefined || model === null) return;
+		if (model === undefined || model === null || model.readOnly) return;
 		const scene = model.scenes.find((candidate) => candidate.id === memberId);
 		const character = model.characters.find(
 			(candidate) => candidate.id === memberId,
@@ -5045,6 +5085,8 @@ export class SnowflakeDashboardView extends ItemView {
 		const entity = model.worldbuildingKinds.flatMap((descriptor) =>
 			kindEntities(model, descriptor.id),
 		).find((candidate) => candidate.id === memberId);
+		const member = scene ?? character ?? entity;
+		if (member === undefined || member.readOnly || member.healthIssues.some((issue) => issue.blocking)) return;
 		const form =
 			scene !== undefined
 				? await this.openSceneEditor(model, scene)
@@ -5058,13 +5100,13 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/** The character form shared with surfaces that display a character link. */
-	async openCharacterForm(id: string): Promise<void> {
-		// Refresh before reading so an already-open dashboard cannot supply an
-		// old revision or miss a character created from another surface.
+	async openCharacterForm(id: string, onSaved?: () => void): Promise<void> {
+		// Forms need fresh fields and revisions, without rebuilding the dashboard
+		// behind the surface that requested them.
 		const requestedProject = this.projectPath;
-		await this.refresh();
+		if (requestedProject === null) return;
+		const model = await this.host.loadDashboardModel(requestedProject);
 		if (this.projectPath !== requestedProject) return;
-		const model = this.lastRender?.model ?? null;
 		if (model === null || model.readOnly) return;
 		const character = model.characters.find((candidate) => candidate.id === id);
 		if (
@@ -5072,7 +5114,10 @@ export class SnowflakeDashboardView extends ItemView {
 			character.readOnly ||
 			character.healthIssues.some((issue) => issue.blocking)
 		) return;
-		const form = await this.openCharacterEditor(model, character);
+		const form = await this.openCharacterEditor(model, character, async () => {
+			this.queueRefreshWhenShown();
+			onSaved?.();
+		});
 		await whenClosed(form);
 	}
 
@@ -5081,19 +5126,22 @@ export class SnowflakeDashboardView extends ItemView {
 	 * which has no form context of its own. Resolves once the modal has
 	 * closed, with the scene a create made, so the caller can show it.
 	 */
-	async openSceneForm(intent: SceneFormIntent): Promise<string | null> {
-		// The corkboard refreshes its own model after a card edit, while a
-		// hidden dashboard keeps its old snapshot until shown. Read again so
-		// the form receives the saved fields and revision even when opened
-		// from an already-loaded dashboard.
+	async openSceneForm(intent: SceneFormIntent, onSaved?: () => void): Promise<string | null> {
+		// Only form data is needed here. The requesting board refreshes itself
+		// after a write, and a hidden dashboard catches up when it is shown.
 		const requestedProject = this.projectPath;
-		await this.refresh();
+		if (requestedProject === null) return null;
+		const model = await this.host.loadDashboardModel(requestedProject);
 		if (this.projectPath !== requestedProject) return null;
-		const model = this.lastRender?.model ?? null;
 		if (model === null || model.readOnly) return null;
+		const saved = (): void => {
+			this.queueRefreshWhenShown();
+			onSaved?.();
+		};
 		const made = { id: null as string | null };
 		const remember = (id: string): void => {
 			made.id = id;
+			saved();
 		};
 		let form: Modal | null;
 		if (intent.mode === 'edit') {
@@ -5102,11 +5150,11 @@ export class SnowflakeDashboardView extends ItemView {
 			);
 			form =
 				scene === undefined || scene.readOnly || scene.healthIssues.some((issue) => issue.blocking)
-					? null : await this.openSceneEditor(model, scene, intent.section);
+					? null : await this.openSceneEditor(model, scene, intent.section, async () => { saved(); });
 		} else if (intent.afterIndex === null) {
-			form = await this.openCreateScene(model, remember, false);
+			form = await this.openCreateScene(model, remember, false, async () => { saved(); });
 		} else {
-			form = await this.insertSceneAfter(model, intent.afterIndex, remember, false);
+			form = await this.insertSceneAfter(model, intent.afterIndex, remember, false, async () => { saved(); });
 		}
 		if (form === null) return null;
 		await whenClosed(form);
@@ -6272,7 +6320,7 @@ export class SnowflakeDashboardView extends ItemView {
 								label: `${String(at + 1)}. ${candidate.name}`,
 							}))
 							.filter((candidate) => candidate.id !== character.id),
-					move: (toIndex) => this.host.reorderCharacter(character.id, toIndex),
+					move: (toIndex) => this.host.reorderCharacter(character.id, toIndex, model.path),
 					reveal: () => {
 						this.revealCharacter(character.id);
 					},
@@ -6283,7 +6331,7 @@ export class SnowflakeDashboardView extends ItemView {
 			},
 			remove: () => {
 				void this.runAndRefresh(() =>
-					this.host.deleteCharacter(character.id, character.revision),
+					this.host.deleteCharacter(character.id, character.revision, model.path),
 				);
 			},
 			removeDisabled: model.readOnly || character.readOnly,
@@ -6296,7 +6344,7 @@ export class SnowflakeDashboardView extends ItemView {
 				index,
 				(candidate) =>
 					model.characters.some((entry) => entry.id === candidate),
-				(id, target) => this.host.reorderCharacter(id, target),
+				(id, target) => this.host.reorderCharacter(id, target, model.path),
 			);
 		}
 	}
@@ -6362,24 +6410,7 @@ export class SnowflakeDashboardView extends ItemView {
 		search.setValue(this.sceneQuery);
 		void this.loadMemberCategories(model, 'scene');
 		void this.loadManuscriptNotes(model);
-		// A held filter can name a character since deleted, which would filter
-		// every scene out while the field reads as if nothing were set.
-		const knownCharacter = (path: string): boolean =>
-			model.characters.some((character) => character.path === path);
-		if (
-			this.sceneFilters.pov !== '' &&
-			this.sceneFilters.pov !== SCENE_POV_OMNISCIENT &&
-			this.sceneFilters.pov !== SCENE_POV_MULTIPLE &&
-			!knownCharacter(this.sceneFilters.pov)
-		) {
-			this.sceneFilters.pov = '';
-		}
-		if (
-			this.sceneFilters.character !== '' &&
-			!knownCharacter(this.sceneFilters.character)
-		) {
-			this.sceneFilters.character = '';
-		}
+		reconcileSceneFilters(this.sceneFilters, model);
 		const count = toolbar.createSpan({ cls: 'snowflake-method-table-count' });
 		const filterSlot = toolbar.createDiv({
 			cls: 'snowflake-method-table-filter',
@@ -6407,6 +6438,7 @@ export class SnowflakeDashboardView extends ItemView {
 			model.readOnly || model.scenes.some((candidate) => candidate.readOnly);
 
 		let entries: { scene: SceneViewModel; index: number }[] = [];
+		const shownPositions = new Map<string, number>();
 		const virtual = new VirtualTable({
 			scroller: bodyWrap,
 			body,
@@ -6432,6 +6464,7 @@ export class SnowflakeDashboardView extends ItemView {
 						up: entries[offset - 1]?.index ?? null,
 						down: entries[offset + 1]?.index ?? null,
 					},
+					shownPositions,
 				);
 			},
 			renderTail: (rows) => {
@@ -6461,6 +6494,9 @@ export class SnowflakeDashboardView extends ItemView {
 				bodyWrap.scrollTop = 0;
 			}
 			entries = this.sceneEntries(model);
+			// Retained virtual rows keep this map in their drop callbacks.
+			shownPositions.clear();
+			for (const entry of entries) shownPositions.set(entry.scene.id, entry.index);
 			count.setText(
 				this.sceneListFiltered()
 					? this.t('table.filteredCount', {
@@ -6510,6 +6546,7 @@ export class SnowflakeDashboardView extends ItemView {
 		reorderReadOnly: boolean,
 		dragLocked: boolean,
 		neighbours: { up: number | null; down: number | null },
+		shownPositions: ReadonlyMap<string, number>,
 	): void {
 		const sceneDamaged = scene.healthIssues.some((issue) => issue.blocking);
 		const row = body.createEl('tr', {
@@ -6634,8 +6671,15 @@ export class SnowflakeDashboardView extends ItemView {
 				SCENE_DRAG_TYPE,
 				scene.id,
 				index,
-				(candidate) =>
-					this.sceneEntries(model).some((entry) => entry.scene.id === candidate),
+				(candidate) => {
+					const position = shownPositions.get(candidate);
+					if (position === undefined || this.sceneQuery.trim().length > 0 || sceneHasNonRangeFilters(this.sceneFilters)) return false;
+					// A filter can change during a drag before its retained row is
+					// repainted. Check the two live bounds without filtering notes.
+					const { sceneMin, sceneMax } = this.sceneFilters;
+					return (sceneMin === null || Math.min(position, index) + 1 >= sceneMin) &&
+						(sceneMax === null || Math.max(position, index) + 1 <= sceneMax);
+				},
 				(id, target) => this.host.reorderScene(id, target, model.path),
 			);
 		}
@@ -6670,8 +6714,9 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		onCreated?: (id: string) => void,
 		revealInDashboard = true,
+		afterMutation?: () => Promise<void>,
 	): Promise<Modal> {
-		const context = await this.memberFormContext(model, 'scene');
+		const context = await this.memberFormContext(model, 'scene', model.path, afterMutation);
 		const form = new CreateSceneModal(
 			this.app,
 			this.t,
@@ -6688,11 +6733,13 @@ export class SnowflakeDashboardView extends ItemView {
 					this.sceneQuery = '';
 					clearSceneFilters(this.sceneFilters);
 					this.sceneScroll = Number.MAX_SAFE_INTEGER;
+					await this.refresh();
+				} else {
+					this.queueRefreshWhenShown();
 				}
-				await this.refresh();
 			},
 			undefined,
-			this.creatingCharacter(model),
+			this.creatingCharacter(model, afterMutation),
 			context,
 		);
 		form.open();
@@ -6728,8 +6775,9 @@ export class SnowflakeDashboardView extends ItemView {
 		index: number,
 		onCreated?: (id: string) => void,
 		revealInDashboard = true,
+		afterMutation?: () => Promise<void>,
 	): Promise<Modal> {
-		const context = await this.memberFormContext(model, 'scene');
+		const context = await this.memberFormContext(model, 'scene', model.path, afterMutation);
 		const form = new CreateSceneModal(
 			this.app,
 			this.t,
@@ -6741,13 +6789,16 @@ export class SnowflakeDashboardView extends ItemView {
 			model.scenes.map((scene) => scene.title),
 			async (request) => {
 				const created = await this.host.createScene(request, model.path);
-				await this.host.reorderScene(created.id, index + 1, model.path);
 				onCreated?.(created.id);
-				await this.refresh();
-				if (revealInDashboard) this.revealScene(created.id);
+				if (!revealInDashboard) this.queueRefreshWhenShown();
+				await this.host.reorderScene(created.id, index + 1, model.path);
+				if (revealInDashboard) {
+					await this.refresh();
+					this.revealScene(created.id);
+				}
 			},
 			undefined,
-			this.creatingCharacter(model),
+			this.creatingCharacter(model, afterMutation),
 			context,
 		);
 		form.open();
@@ -6927,6 +6978,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 */
 	private creatingCharacter(
 		model: ProjectDashboardModel,
+		afterMutation?: () => Promise<void>,
 	):
 		| ((
 				name: string,
@@ -6939,9 +6991,9 @@ export class SnowflakeDashboardView extends ItemView {
 		return async (name, takenNames) => {
 			// Made from its name alone, with everything else left for later.
 			if (!this.host.opensFormWhenCreatingFromField()) {
-				return this.quickCreateCharacter(name, model.path);
+				return this.quickCreateCharacter(name, model.path, afterMutation);
 			}
-			const context = await this.memberFormContext(model, 'character');
+			const context = await this.memberFormContext(model, 'character', model.path, afterMutation);
 			const created = await promptForNewCharacter(
 				this.app,
 				this.t,
@@ -6953,7 +7005,7 @@ export class SnowflakeDashboardView extends ItemView {
 			if (created === null) return null;
 			// The field behind the form is waiting on this, so the dashboard redraw
 			// is left to catch up on its own rather than kept in front of it.
-			void this.refresh();
+			void (afterMutation?.() ?? this.refresh());
 			return created;
 		};
 	}
@@ -6962,8 +7014,9 @@ export class SnowflakeDashboardView extends ItemView {
 		model: ProjectDashboardModel,
 		scene: SceneViewModel,
 		section?: 'linked-manuscript',
+		afterSave?: () => Promise<void>,
 	): Promise<Modal> {
-		return this.memberFormContext(model, 'scene', scene.path).then((context) => {
+		return this.memberFormContext(model, 'scene', scene.path, afterSave).then((context) => {
 			const form = new CreateSceneModal(
 				this.app,
 				this.t,
@@ -6977,7 +7030,7 @@ export class SnowflakeDashboardView extends ItemView {
 					.map((candidate) => candidate.title),
 				async (request) => {
 					await this.host.updateScene(scene.id, request, model.path);
-					await this.refresh();
+					await (afterSave?.() ?? this.refresh());
 				},
 				{
 					title: scene.title,
@@ -6997,7 +7050,7 @@ export class SnowflakeDashboardView extends ItemView {
 					linkedManuscript: scene.linkedManuscript.map((link) => link.raw),
 					expectedRevision: scene.revision,
 				},
-				this.creatingCharacter(model),
+				this.creatingCharacter(model, afterSave),
 				context,
 			);
 			form.open();
@@ -7289,6 +7342,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	private renderError(error: unknown): void {
+		this.loadFailed = true;
 		this.clearCertificateCelebration();
 		this.rendered = true;
 		this.renderedProjectId = null;

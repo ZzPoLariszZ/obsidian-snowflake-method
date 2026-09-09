@@ -42,14 +42,14 @@ function preferenceStore(initial: Record<string, unknown> = {}) {
 	};
 	const plugin = Object.create(SnowflakeMethodPlugin.prototype) as {
 		corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
-		rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>): void;
+		rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
 	};
 	Object.assign(plugin, { app });
 	return {
 		stored, app,
 		read: (projectId: string) => plugin.corkboardPreferences(projectId),
-		write: (projectId: string, changes: Partial<CorkboardPreferences>) =>
-			plugin.rememberCorkboardPreferences(projectId, changes),
+		write: (projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean) =>
+			plugin.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
 	};
 }
 
@@ -150,6 +150,18 @@ describe('corkboard preferences across closed tabs', () => {
 		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true });
 	});
 
+	it('does not overwrite an unknown saved mode while opening or changing order', async () => {
+		const key = preferenceKey(firstProjectId);
+		const store = preferenceStore({ [key]: { mode: 'future-mode', futureField: 'keep' } });
+		const opened = await openView(store);
+		expect(opened.controls.memory.mode).toBe('standard');
+		expect(store.stored.get(key)).toEqual({ mode: 'future-mode', futureField: 'keep', reversed: false });
+		opened.controls.remember({ reversed: true });
+		expect(store.stored.get(key)).toEqual({ mode: 'future-mode', futureField: 'keep', reversed: true });
+		opened.controls.remember({ mode: 'compact' });
+		expect(store.stored.get(key)).toEqual({ mode: 'compact', futureField: 'keep', reversed: true });
+	});
+
 	it('does not let a stale tab grouping change or close overwrite another tab preference change', async () => {
 		const store = preferenceStore();
 		const stale = await openView(store);
@@ -207,21 +219,32 @@ describe('stored corkboard preferences', () => {
 		expect(store.read(firstProjectId)).toEqual({ mode: 'compact', reversed: true });
 	});
 
-	it.each([null, 'compact', [], { mode: 'unknown', reversed: 'true' }])('ignores malformed storage: %j', (value) => {
+	it.each([null, 'compact', []])('ignores malformed storage: %j', (value) => {
 		const store = preferenceStore({ [preferenceKey(firstProjectId)]: value });
 
 		expect(store.read(firstProjectId)).toEqual({});
 		store.write(firstProjectId, { mode: 'compact' });
-		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'compact', reversed: false });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'compact' });
 	});
 
-	it('reads and writes only durable fields from old or unexpected stored objects', () => {
+	it('reads known durable fields while preserving other stored fields on writes', () => {
 		const store = preferenceStore({
 			[preferenceKey(firstProjectId)]: { mode: 'compact', reversed: true, group: 'pov', query: 'scene' },
 		});
 
 		expect(store.read(firstProjectId)).toEqual({ mode: 'compact', reversed: true });
 		store.write(firstProjectId, { mode: 'extended' });
-		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'extended', reversed: true, group: 'pov', query: 'scene' });
+	});
+
+	it('preserves a newer card mode until the author explicitly changes that field', () => {
+		const store = preferenceStore({
+			[preferenceKey(firstProjectId)]: { mode: 'future-mode', reversed: false, futureLayout: { columns: 4 } },
+		});
+		expect(store.read(firstProjectId)).toEqual({ reversed: false });
+		store.write(firstProjectId, { reversed: true });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'future-mode', reversed: true, futureLayout: { columns: 4 } });
+		store.write(firstProjectId, { mode: 'compact' });
+		expect(store.stored.get(preferenceKey(firstProjectId))).toEqual({ mode: 'compact', reversed: true, futureLayout: { columns: 4 } });
 	});
 });

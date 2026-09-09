@@ -21,7 +21,7 @@ vi.mock('obsidian', async (importOriginal) => {
 
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
 import { sceneFilters } from '../../src/ui/scene-filters';
-import { CreateSceneModal } from '../../src/ui/modals';
+import { CreateSceneModal, type MemberFormContext } from '../../src/ui/modals';
 
 const scene = (fields: Partial<SceneViewModel> = {}): SceneViewModel => ({
 	id: 'scene-1',
@@ -50,18 +50,18 @@ const scene = (fields: Partial<SceneViewModel> = {}): SceneViewModel => ({
 	...fields,
 });
 
-function dashboard(read: () => Promise<SceneViewModel[]>) {
+function dashboard(read: () => Promise<SceneViewModel[]>, readOnly = false) {
 	// A hidden dashboard already has a model, but the active corkboard has
-	// saved a newer reading of the same scene. Only refresh replaces it.
+	// saved a newer reading of the same scene. Read form data without rendering.
 	const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
 	const activateProject = vi.fn();
-	const refresh = vi.fn(async () => {
-		const scenes = await read();
-		Object.assign(view, { lastRender: { model: { scenes, characters: [] } } });
-	});
+	const refresh = vi.fn(async () => undefined);
+	const loadDashboardModel = vi.fn(async () => ({
+		path: 'Novel/Novel.md', scenes: await read(), characters: [], readOnly,
+	}));
 	Object.assign(view, {
 		app: {},
-		host: { activateProject },
+		host: { activateProject, loadDashboardModel },
 		projectPath: 'Novel/Novel.md',
 		projectLocale: 'en',
 		selectedStep: 8,
@@ -76,12 +76,53 @@ function dashboard(read: () => Promise<SceneViewModel[]>) {
 		opened.push(this);
 	});
 	vi.spyOn(CreateSceneModal.prototype, 'onClose').mockImplementation(() => undefined);
-	return { view, refresh, opened, activateProject };
+	return { view, refresh, opened, activateProject, loadDashboardModel };
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('scene forms opened from another surface', () => {
+	it('reports a successful edit without reloading or rendering the hidden dashboard', async () => {
+		const { view, opened, refresh, loadDashboardModel } = dashboard(() => Promise.resolve([scene()]));
+		const updateScene = vi.fn(async () => undefined);
+		Object.assign(view, { host: { loadDashboardModel, updateScene } });
+		const onSaved = vi.fn();
+		const closing = view.openSceneForm({ mode: 'edit', id: 'scene-1' }, onSaved);
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		const form = opened[0]!;
+		try {
+			await (form as unknown as { submitHandler(request: unknown): Promise<void> }).submitHandler({ title: 'Edited' });
+			expect(updateScene).toHaveBeenCalledExactlyOnceWith('scene-1', { title: 'Edited' }, 'Novel/Novel.md');
+			expect(onSaved).toHaveBeenCalledOnce();
+			expect(loadDashboardModel).toHaveBeenCalledOnce();
+			expect(refresh).not.toHaveBeenCalled();
+			expect(view).toMatchObject({ refreshQueuedWhileHidden: true });
+		} finally {
+			form.onClose();
+			await closing;
+		}
+	});
+
+	it('uses fresh form templates instead of the older hidden-dashboard render', async () => {
+		const { view } = dashboard(() => Promise.resolve([]));
+		const model = { path: 'Novel/Novel.md', scenes: [], characters: [], worldbuilding: {}, worldbuildingKinds: [],
+			customFieldTemplates: { scene: [{ name: 'Fresh', path: 'Fresh.md', description: '' }] },
+		} as unknown as ProjectDashboardModel;
+		const old = { ...model, customFieldTemplates: { scene: [{ name: 'Old', path: 'Old.md', description: '' }] } };
+		Object.assign(view, { renderedModel: old, host: {
+			listDefinitionPaths: async () => [], definitionFilePaths: async () => ({}), listManuscriptNotes: async () => [],
+			saveCustomFieldTemplate: async () => ({ ok: true, path: 'Export.md' }),
+		} });
+		const context = await (SnowflakeDashboardView.prototype as unknown as {
+			memberFormContext(model: ProjectDashboardModel, kind: 'scene'): Promise<MemberFormContext>;
+		}).memberFormContext.call(view, model, 'scene');
+		expect(context.kindTemplates?.options()).toEqual([{ value: 'Fresh', label: 'Fresh' }]);
+		await context.kindTemplates?.export({ name: 'Export', description: '', fields: [] });
+		expect(context.kindTemplates?.options()).toEqual([{ value: 'Fresh', label: 'Fresh' }, { value: 'Export', label: 'Export' }]);
+		Object.assign(view, { renderedModel: { ...model, customFieldTemplates: { scene: [{ name: 'Later', path: 'Later.md', description: '' }] } } });
+		expect(context.kindTemplates?.options()).toEqual([{ value: 'Later', label: 'Later' }]);
+	});
+
 	it('initializes the modal from saved card edits even when the dashboard already has a model', async () => {
 		const saved = scene({
 			title: 'The breached gate',
@@ -89,8 +130,9 @@ describe('scene forms opened from another surface', () => {
 			conflict: 'The guards demand the missing permit.',
 			revision: 'after-card-edits',
 		});
-		const { view, refresh, opened, activateProject } = dashboard(() => Promise.resolve([saved]));
-		const closing = view.openSceneForm({ mode: 'edit', id: saved.id });
+		const { view, refresh, opened, activateProject, loadDashboardModel } = dashboard(() => Promise.resolve([saved]));
+		const onSaved = vi.fn();
+		const closing = view.openSceneForm({ mode: 'edit', id: saved.id }, onSaved);
 		await vi.waitFor(() => expect(opened).toHaveLength(1));
 		const form = opened[0];
 		expect(form).toBeDefined();
@@ -101,12 +143,14 @@ describe('scene forms opened from another surface', () => {
 				conflict: saved.conflict,
 				expectedRevision: saved.revision,
 			});
-			expect(refresh).toHaveBeenCalledOnce();
+			expect(loadDashboardModel).toHaveBeenCalledExactlyOnceWith('Novel/Novel.md');
+			expect(refresh).not.toHaveBeenCalled();
 			expect(activateProject).not.toHaveBeenCalled();
 		} finally {
 			form?.onClose();
 			await closing;
 		}
+		expect(onSaved).not.toHaveBeenCalled();
 	});
 
 	it('waits for the refreshed scene before constructing its modal', async () => {
@@ -143,32 +187,51 @@ describe('scene forms opened from another surface', () => {
 
 
 describe('scene form protection and requesting-surface state', () => {
+	it('reports a created scene even if the following insertion reorder fails', async () => {
+		const { view, opened, refresh, loadDashboardModel } = dashboard(() => Promise.resolve([scene()]));
+		Object.assign(view, { host: { loadDashboardModel,
+			createScene: async () => ({ id: 'new', path: 'Novel/Scenes/New.md' }),
+			reorderScene: async () => { throw new Error('Rank write failed'); },
+		} });
+		const onSaved = vi.fn();
+		const closing = view.openSceneForm({ mode: 'create', afterIndex: 0 }, onSaved);
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		const form = opened[0]!;
+		try {
+			await expect((form as unknown as { submitHandler(request: unknown): Promise<void> }).submitHandler({ title: 'New' }))
+				.rejects.toThrow('Rank write failed');
+			expect(onSaved).toHaveBeenCalledOnce();
+			expect(refresh).not.toHaveBeenCalled();
+			expect(view).toMatchObject({ refreshQueuedWhileHidden: true });
+		} finally {
+			form.onClose();
+			expect(await closing).toBe('new');
+		}
+	});
+
 	it.each(['scene-readonly', 'project-readonly', 'damaged'] as const)('does not open a form for %s', async (state) => {
 		const record = scene({
 			readOnly: state === 'scene-readonly',
 			healthIssues: state === 'damaged' ? [{ blocking: true }] as SceneViewModel['healthIssues'] : [],
 		});
-		const { view, opened } = dashboard(() => Promise.resolve([record]));
-		if (state === 'project-readonly') Object.assign(view, { refresh: async () => {
-			Object.assign(view, { lastRender: { model: { scenes: [record], characters: [], readOnly: true } } });
-		} });
+		const { view, opened } = dashboard(() => Promise.resolve([record]), state === 'project-readonly');
 		expect(await view.openSceneForm({ mode: 'edit', id: record.id })).toBeNull();
 		expect(opened).toHaveLength(0);
 	});
 
 	it.each([null, 0])('external creation preserves dashboard filters and scroll (afterIndex %s)', async (afterIndex) => {
-		const { view, opened } = dashboard(() => Promise.resolve([scene()]));
+		const { view, opened, refresh } = dashboard(() => Promise.resolve([scene()]));
 		const savedModel = { path: 'Novel/Novel.md', scenes: [scene()], characters: [] } as unknown as ProjectDashboardModel;
 		const createScene = vi.fn(() => Promise.resolve({ id: 'new', path: 'Novel/Scenes/New.md' }));
 		const reorderScene = vi.fn(() => Promise.resolve());
 		const revealScene = vi.fn();
 		const filters = { ...sceneFilters(), status: 'complete' as const };
 		Object.assign(view, {
-			host: { createScene, reorderScene }, sceneQuery: 'gate', sceneFilters: filters, sceneScroll: 123,
+			host: { createScene, reorderScene, loadDashboardModel: async () => savedModel }, sceneQuery: 'gate', sceneFilters: filters, sceneScroll: 123,
 			revealScene,
-			refresh: async () => { Object.assign(view, { lastRender: { model: savedModel } }); },
 		});
-		const closing = view.openSceneForm({ mode: 'create', afterIndex });
+		const onSaved = vi.fn();
+		const closing = view.openSceneForm({ mode: 'create', afterIndex }, onSaved);
 		await vi.waitFor(() => expect(opened).toHaveLength(1));
 		const form = opened[0]!;
 		try {
@@ -178,6 +241,9 @@ describe('scene form protection and requesting-surface state', () => {
 			expect(view).toMatchObject({ sceneQuery: 'gate', sceneScroll: 123 });
 			expect(filters.status).toBe('complete');
 			expect(revealScene).not.toHaveBeenCalled();
+			expect(refresh).not.toHaveBeenCalled();
+			expect(onSaved).toHaveBeenCalledOnce();
+			expect(view).toMatchObject({ refreshQueuedWhileHidden: true });
 			if (afterIndex !== null) expect(reorderScene).toHaveBeenCalledWith('new', 1, 'Novel/Novel.md');
 		} finally {
 			form.onClose();

@@ -38,6 +38,7 @@ import {
   isReadOnlySchema,
   orderFrontmatterKeys,
   parseMarkdownFrontmatter,
+  replaceMarkdownFrontmatter,
   projectIdOf,
   schemaVersionOf,
   type ManagedFrontmatter,
@@ -572,7 +573,7 @@ export class VaultRepository {
     let before = "";
     const written = await this.withWriteMark(normalized, () =>
       this.vault.process(file, (current) => {
-        const { frontmatter, body } = parseMarkdownFrontmatter(current);
+        const { frontmatter } = parseMarkdownFrontmatter(current);
         assertWritableSchema(normalized, frontmatter);
         for (const [key, value] of Object.entries(patch)) {
           if (value === undefined) delete frontmatter[key];
@@ -580,7 +581,7 @@ export class VaultRepository {
         }
         assertWritableSchema(normalized, frontmatter);
         before = fingerprint(current);
-        return `---\n${stringifyYaml(frontmatter).trimEnd()}\n---\n${body}`;
+        return replaceMarkdownFrontmatter(current, frontmatter);
       }),
     );
     return { before, after: fingerprint(written) };

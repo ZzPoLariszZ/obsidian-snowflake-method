@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
@@ -21,6 +21,7 @@ vi.mock('obsidian', async (importOriginal) => {
 
 import type { ScenePatch } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
+import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
 import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
 import { corkboardMemory, type CorkboardMemory } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
@@ -83,7 +84,7 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 			};
 			return stored.revision;
 		}),
-		openCharacterForm: vi.fn(() => Promise.resolve()),
+		openCharacterForm: vi.fn<(id: string, path?: string, onSaved?: () => void) => Promise<void>>(() => Promise.resolve()),
 	};
 	const activateProject = vi.fn();
 	const refresh = vi.fn(async () => {
@@ -128,6 +129,112 @@ function board(group: CorkboardMemory['group'] = '', scene: Partial<SceneViewMod
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('corkboard refused draft recovery', () => {
+	it.each(['title', 'conflict'] as const)('keeps blocked %s text in a recovery dialog after closing the board', async (field) => {
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		const fixture = board();
+		const input = field === 'title' ? fixture.titleInput : fixture.conflict;
+		if (field === 'title') fixture.title.dispatch('click');
+		input.focus(); input.value = 'Keep this unsaved text'; input.dispatch('input');
+		fixture.external({ readOnly: true, revision: 'external-readonly' });
+		input.dispatch('blur');
+		fixture.handle.refresh();
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+		expect(opened).toHaveLength(1);
+		const recoveryDom = new CorkboardDom();
+		Object.assign(opened[0]!, { contentEl: recoveryDom.container, setTitle: vi.fn() });
+		opened[0]!.onOpen();
+		const recovered = recoveryDom.container.querySelector('textarea')!;
+		expect(recovered.value).toBe('Keep this unsaved text');
+		expect(recovered.readOnly).toBe(true);
+		expect(recovered.isConnected).toBe(true);
+		expect(fixture.conflict.value).toBe('An obstacle');
+		expect(fixture.titleInput.classes.has('is-hidden')).toBe(true);
+	});
+
+	it('recovers a hidden conflict when its required markers become damaged', async () => {
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open');
+		const fixture = board();
+		fixture.typeConflict('Hidden unsaved text');
+		fixture.controls.memory.query = 'no matching scene';
+		fixture.handle.refresh();
+		fixture.external({ healthIssues: [{ blocking: true }] as SceneViewModel['healthIssues'] });
+		fixture.handle.dispose(); await settle();
+		expect(open).toHaveBeenCalledOnce();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+	});
+
+	it('does not report a lost draft when an untouched focused card becomes read-only', async () => {
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open');
+		const fixture = board();
+		fixture.title.dispatch('click');
+		fixture.external({ readOnly: true });
+		fixture.handle.dispose(); await settle();
+		expect(open).not.toHaveBeenCalled();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+	});
+
+	it('recovers a title refused by validation when the board closes', async () => {
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		const fixture = board();
+		fixture.title.dispatch('click'); fixture.titleInput.value = '   ';
+		fixture.handle.dispose(); await settle();
+		expect(notices).toHaveBeenCalledWith('modal.scene.nameRequired');
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+		expect(opened).toHaveLength(1);
+		const dom = new CorkboardDom();
+		Object.assign(opened[0]!, { contentEl: dom.container, setTitle: vi.fn() });
+		opened[0]!.onOpen();
+		expect(dom.container.querySelector('textarea')!.value).toBe('   ');
+	});
+
+	it('keeps a refused pending save after the board has already closed', async () => {
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open');
+		const fixture = board(); const gate = fixture.holdWrite();
+		fixture.typeConflict('Pending unsaved text'); fixture.conflict.dispatch('blur');
+		await settle();
+		fixture.external({ readOnly: true, revision: 'external' });
+		fixture.handle.dispose(); gate.resolve(); await settle();
+		expect(notices).toHaveBeenCalledWith('Revision conflict');
+		expect(open).toHaveBeenCalledOnce();
+		expect(fixture.stored().conflict).toBe('An obstacle');
+	});
+
+	it('recovers a refused pending save when the project disappears', async () => {
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open');
+		const fixture = board(); const gate = fixture.holdWrite();
+		fixture.typeConflict('Pending unsaved text'); fixture.conflict.dispatch('blur');
+		await settle();
+		fixture.controls.model = () => null;
+		fixture.external({ revision: 'external' });
+		gate.resolve(); await settle();
+		expect(notices).toHaveBeenCalledWith('Revision conflict');
+		expect(open).toHaveBeenCalledOnce();
+		expect(fixture.stored().conflict).toBe('An obstacle');
+		fixture.handle.dispose();
+	});
+});
+
+describe('corkboard form refresh decisions', () => {
+	it.each([false, true])('refreshes only if the character form saved (saved: %s)', async (saved) => {
+		const fixture = board();
+		fixture.host.openCharacterForm.mockImplementation((_id, _path, onSaved) => {
+			if (saved) onSaved?.();
+			return Promise.resolve();
+		});
+		fixture.card.querySelector('.snowflake-method-corkboard-pov')!.dispatch('click');
+		await settle();
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('hero', PROJECT, expect.any(Function));
+		expect(fixture.refresh).toHaveBeenCalledTimes(saved ? 1 : 0);
+		fixture.handle.dispose();
+	});
+});
 
 describe('corkboard drafts across regrouping', () => {
 	it.each(['conflict', 'title'] as const)('keeps a focused %s draft through its earlier status save', async (field) => {

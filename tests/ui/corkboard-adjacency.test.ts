@@ -158,7 +158,7 @@ describe('corkboard adjacency with a scene range', () => {
 	it.each([false, true])('inserts beside the actual scene in either display direction (reversed: %s)', async (reversed) => {
 		const fixture = board({ reversed });
 		fixture.cards[1]!.querySelector('.snowflake-method-corkboard-insert-after')!.dispatch('click');
-		await vi.waitFor(() => expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, 'Project/Project.md'));
+		await vi.waitFor(() => expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, 'Project/Project.md', expect.any(Function)));
 		fixture.handle.dispose();
 	});
 

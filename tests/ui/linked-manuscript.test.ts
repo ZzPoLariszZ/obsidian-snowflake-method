@@ -4,6 +4,7 @@ import {
 	linkedManuscriptPreview,
 	orderLinkedManuscript,
 	orderManuscriptReferences,
+	wholeManuscriptDestination,
 } from '../../src/ui/linked-manuscript';
 
 // Stream order is chosen by the author and need not match the titles or paths.
@@ -17,6 +18,15 @@ const resolveTarget = (target: string): string | null => {
 	const decoded = decodeURIComponent(target).replace(/\.md$/u, '');
 	return manuscript.find((path) => path.replace(/\.md$/u, '').endsWith(decoded)) ?? null;
 };
+
+describe('whole-note manuscript identity', () => {
+	it.each(['[[Arrival]]', '[[Novel/Manuscript/Arrival]]'])('resolves an ordinary whole-note link: %s', (raw) => {
+		expect(wholeManuscriptDestination(raw, resolveTarget)).toBe('Novel/Manuscript/Arrival.md');
+	});
+	it.each(['[[Arrival|Ending]]', '[[Arrival|]]', '[[Arrival#Opening]]', '[[Arrival#^line]]', '[[Arrival#]]', 'plain text'])('preserves explicit alias/subpath or invalid spelling: %s', (raw) => {
+		expect(wholeManuscriptDestination(raw, () => { throw new Error('Must not resolve an explicit variant.'); })).toBeNull();
+	});
+});
 
 describe('linked manuscript display order', () => {
 	it('follows manuscript order while preserving the stored array', () => {

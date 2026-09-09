@@ -11,8 +11,10 @@ vi.mock('obsidian', async (importOriginal) => {
 		...runtime,
 		Modal: class extends runtime.Modal {
 			modalEl = { addClass: (): void => undefined };
+			contentEl = { empty: (): void => undefined };
 			setTitle(): void {}
 			override open(): void { openedForms.push(this); }
+			override close(): void { (this as unknown as { onClose(): void }).onClose(); }
 		},
 		Plugin: class {},
 		ItemView: class {},
@@ -24,6 +26,7 @@ vi.mock('obsidian', async (importOriginal) => {
 import SnowflakeMethodPlugin from '../../src/main';
 import { ManagedFileNotFoundError } from '../../src/repository';
 import { SnowflakeProjectService } from '../../src/services';
+import type { DefinitionNodeInfo } from '../../src/services';
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
 import type { CreateCharacterRequest, CreateSceneRequest, EntityFormRequest } from '../../src/ui/modals';
 import type { ProjectDashboardModel } from '../../src/ui/view-model';
@@ -224,6 +227,107 @@ describe('captured project mutation ownership', () => {
 		const before = fixture.activeContents();
 		await expect(fixture.plugin.createScene(sceneRequest('Should not be created'), 'Missing/Project.md'))
 			.rejects.toBeInstanceOf(ManagedFileNotFoundError);
+		fixture.assertOwnership(before);
+	});
+
+	it('keeps entity updates and character/entity deletions in the captured project', async () => {
+		const fixture = await setup();
+		const { plugin, service, owner, env } = fixture;
+		const before = fixture.activeContents();
+		const entity = await plugin.createEntity(entityRequest('Tavern'), owner.projectFile);
+		const character = await plugin.createCharacter(characterRequest(), owner.projectFile);
+		const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+		Object.assign(view, { app: plugin.app, host: plugin, t: (key: string) => key,
+			memberFormContext: async () => ({}), refresh: async () => undefined });
+		const record = (await service.loadProject(owner)).worldbuilding.location![0]!;
+		const model = { ...await service.loadProject(owner), path: owner.projectFile } as unknown as ProjectDashboardModel;
+		await (view as unknown as { openEntityEditor(model: ProjectDashboardModel, entity: unknown): Promise<unknown> })
+			.openEntityEditor(model, { ...record, id: record.entityId });
+		await (openedForms[0] as { submitHandler(request: EntityFormRequest): Promise<void> }).submitHandler({
+			...entityRequest('Tavern'), description: 'Owner description', expectedRevision: record.revision,
+		});
+		const updated = (await service.loadProject(owner)).worldbuilding.location![0]!;
+		expect(updated.description).toBe('Owner description');
+		Object.setPrototypeOf(env.fakeVault.getFileByPath(entity.path), TFile.prototype);
+		await plugin.deleteEntity(entity.id, updated.revision, owner.projectFile);
+		const loadedCharacter = (await service.loadProject(owner)).characters[0]!;
+		Object.setPrototypeOf(env.fakeVault.getFileByPath(character.path), TFile.prototype);
+		await plugin.deleteCharacter(character.id, loadedCharacter.revision, owner.projectFile);
+		expect((await service.loadProject(owner)).worldbuilding.location).toHaveLength(0);
+		expect((await service.loadProject(owner)).characters).toHaveLength(0);
+		fixture.assertOwnership(before);
+	});
+
+	it.each(['add', 'edit', 'create-template', 'edit-template'] as const)(
+		'keeps %s prompt results in their owner while another project is selected', async (action) => {
+			const fixture = await setup();
+			const { plugin, service, owner } = fixture;
+			const before = fixture.activeContents();
+			const template = await service.saveCustomFieldTemplate(owner, 'character', {
+				name: 'Original', description: '', fields: [{ title: 'Owner field', content: 'Keep me' }],
+			});
+			if (!template.ok) throw new Error('Failed to seed owner template');
+			const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+			Object.assign(view, { app: plugin.app, host: plugin, t: (key: string) => key,
+				definitionCollapse: new Set(), definitionSelection: new Map(),
+				definitionKindLabel: () => 'Character', refresh: async () => undefined });
+			const controls = view as unknown as {
+				addDefinitionEntry(id: 'category', kind: 'character', prefill: string, path: string): Promise<void>;
+				openDefinitionEditor(id: 'category', kind: 'character', node: DefinitionNodeInfo, path: string): Promise<void>;
+				openCreateTemplate(model: ProjectDashboardModel, kind: 'character'): Promise<void>;
+				openEditTemplate(model: ProjectDashboardModel, kind: 'character', template: unknown): Promise<void>;
+			};
+			const model = { path: owner.projectFile, customFieldTemplates: {} } as ProjectDashboardModel;
+			const node = (await service.listDefinitionForest(owner, 'category')).character!.nodes.find((entry) => entry.taxonomyPath === 'Major')!;
+			const opening = action === 'add' ? controls.addDefinitionEntry('category', 'character', '', owner.projectFile)
+				: action === 'edit' ? controls.openDefinitionEditor('category', 'character', node, owner.projectFile)
+					: action === 'create-template' ? controls.openCreateTemplate(model, 'character')
+						: controls.openEditTemplate(model, 'character', { name: 'Original', description: '', path: template.path });
+			await vi.waitFor(() => expect(openedForms).toHaveLength(1));
+			const modal = openedForms[0] as { close(): void };
+			if (action === 'add' || action === 'edit') {
+				Object.assign(modal, { decided: true, pathEl: { value: 'Leads' }, nameEl: { value: 'Leads' }, descriptionEl: { value: 'Owner description' } });
+			} else {
+				Object.assign(modal, { answered: { name: 'Leads', description: 'Owner description', fields: [{ title: 'Owner field', content: 'Keep me' }] } });
+			}
+			modal.close();
+			await opening;
+			if (action === 'add' || action === 'edit') {
+				const tree = await service.listDefinitionForest(owner, 'category');
+				expect(tree.character!.nodes.find((entry) => entry.taxonomyPath === 'Leads')?.description).toBe('Owner description');
+			} else {
+				expect(await plugin.customFieldTemplateFields('character', 'Leads', owner.projectFile)).toEqual([{ title: 'Owner field', content: 'Keep me' }]);
+			}
+			fixture.assertOwnership(before);
+		},
+	);
+
+	it('scopes definition and template confirmation deletes to the originating dashboard', async () => {
+		const fixture = await setup();
+		const { owner, plugin, service } = fixture;
+		const before = fixture.activeContents();
+		const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+		const refresh = vi.fn(async () => undefined);
+		Object.assign(view, { app: plugin.app, host: plugin, t: (key: string) => key,
+			definitionSelection: new Map(), refresh });
+		const tree = await service.listDefinitionForest(owner, 'category');
+		const node = tree.character!.nodes.find((entry) => entry.taxonomyPath === 'Major')!;
+		const controls = view as unknown as {
+			confirmDefinitionDeletion(model: ProjectDashboardModel, id: 'category', kind: 'character', node: DefinitionNodeInfo): void;
+			confirmTemplateDeletion(kind: 'character', template: unknown, path: string): Promise<void>;
+		};
+		controls.confirmDefinitionDeletion({ path: owner.projectFile, definitions: { category: tree } } as ProjectDashboardModel, 'category', 'character', node);
+		Object.assign(openedForms[0]!, { confirmed: true });
+		(openedForms[0] as { close(): void }).close();
+		await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+		expect(await service.listDefinitionPaths(owner, 'character', 'category')).not.toContain('Major');
+		const template = await service.saveCustomFieldTemplate(owner, 'character', { name: 'Original', description: '', fields: [] });
+		if (!template.ok) throw new Error('Failed to seed owner template');
+		const deleting = controls.confirmTemplateDeletion('character', { path: template.path, name: 'Original', description: '' }, owner.projectFile);
+		Object.assign(openedForms[1]!, { confirmed: true });
+		(openedForms[1] as { close(): void }).close();
+		await deleting;
+		expect(fixture.env.fakeVault.getFileByPath(template.path)).toBeNull();
 		fixture.assertOwnership(before);
 	});
 });

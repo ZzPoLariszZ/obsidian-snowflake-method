@@ -50,7 +50,7 @@ export interface StoryStructureViewDeps {
 	fingerprint(): string;
 	recentProjectPath(): string | null;
 	corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
-	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>): void;
+	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
 	corkboard: RenderCorkboard;
 }
 
@@ -323,7 +323,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			...(saved.reversed === undefined ? { reversed: preferences.reversed } : {}),
 		};
 		if (Object.keys(missing).length > 0) {
-			this.deps.rememberCorkboardPreferences(projectId, missing);
+			this.deps.rememberCorkboardPreferences(projectId, missing, true);
 		}
 	}
 
@@ -418,10 +418,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 		root.empty();
 		root.createEl('p', {
 			cls: 'snowflake-method-tab-planned',
-			text: `${this.t('storyStructure.loadFailed')} ${
-				error instanceof Error ? error.message : ''
-			}`.trim(),
+			text: this.t('storyStructure.loadFailed'),
 		});
+		console.error('Snowflake: story structure could not be loaded', error);
 	}
 
 	private updateHeader(): void {

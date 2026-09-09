@@ -101,6 +101,31 @@ export function reconcileSceneManuscriptFilter(
 	}
 }
 
+/** Drop answers whose vocabulary changed, using the same snapshot as the scene rows. */
+export function reconcileSceneFilters(
+	filters: SceneFilters,
+	model: SceneFilterModel & {
+		manuscriptPaths?: readonly string[];
+		definitions?: { category?: { scene?: { nodes: readonly { taxonomyPath: string }[] } } };
+	},
+): void {
+	const knownCharacter = (path: string): boolean =>
+		model.characters.some((character) => character.path === path);
+	if (filters.character !== '' && !knownCharacter(filters.character)) filters.character = '';
+	if (filters.pov !== '' && filters.pov !== SCENE_POV_OMNISCIENT &&
+		filters.pov !== SCENE_POV_MULTIPLE && !knownCharacter(filters.pov)) filters.pov = '';
+	for (const field of ['time', 'location'] as const) {
+		if (filters[field] !== '' && !model.worldbuilding?.[field]?.some((entity) => entity.name === filters[field])) {
+			filters[field] = '';
+		}
+	}
+	if (filters.category !== '' && model.definitions !== undefined &&
+		!model.definitions.category?.scene?.nodes.some((node) => node.taxonomyPath === filters.category)) {
+		filters.category = '';
+	}
+	if (model.manuscriptPaths !== undefined) reconcileSceneManuscriptFilter(filters, model.manuscriptPaths);
+}
+
 /** Blank or unreadable bounds are unrestricted; scene numbers start at one. */
 export function parseSceneBound(text: string): number | null {
 	const trimmed = text.trim();
@@ -152,6 +177,7 @@ export function filterScenes(
 		resolveLink?: (target: string, sourcePath: string) => string | null;
 	},
 ): { scene: SceneViewModel; index: number }[] {
+	const searching = query.trim().length > 0;
 	// The stored value is a link or the words themselves; either way the
 	// name is what the table shows and what the filter names.
 	const holds = (values: readonly string[], wanted: string): boolean =>
@@ -182,7 +208,7 @@ export function filterScenes(
 							: context.resolveLink(link.target, scene.path)?.replace(/\.md$/u, '') ===
 								filters.linked.replace(/\.md$/u, ''),
 					)) &&
-				memberMatches(
+				(!searching || memberMatches(
 					[
 						scene.title,
 						...scene.aliases,
@@ -200,7 +226,7 @@ export function filterScenes(
 						...scene.linkedManuscript.map((link) => link.label),
 					],
 					query,
-				),
+				)),
 		);
 }
 

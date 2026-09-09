@@ -290,7 +290,7 @@ describe('corkboard correctness regressions', () => {
 		gate.resolve(); await settle();
 		expect(fixture.activateProject).not.toHaveBeenCalled();
 		expect(fixture.currentProject()).toBe('Second/Project.md');
-		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('hero', PROJECT);
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('hero', PROJECT, expect.any(Function));
 		expect(fixture.host.reorderScene).toHaveBeenCalledWith('A', expect.any(Function), PROJECT, expect.any(Function));
 		fixture.handle.dispose();
 	});
@@ -389,9 +389,9 @@ describe('corkboard correctness regressions', () => {
 		const fixture = board(['A', 'B', 'C', 'D'].map((id) => scene(id)), { reversed });
 		const card = fixture.cards().find((value) => value.dataset.id === 'C')!;
 		card.querySelector('.snowflake-method-corkboard-insert-after')!.dispatch('click'); await settle();
-		expect(fixture.host.openSceneForm).toHaveBeenLastCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, PROJECT);
+		expect(fixture.host.openSceneForm).toHaveBeenLastCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, PROJECT, expect.any(Function));
 		menu(card).get('table.insertSceneAfter')!.click(); await settle();
-		expect(fixture.host.openSceneForm).toHaveBeenLastCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, PROJECT);
+		expect(fixture.host.openSceneForm).toHaveBeenLastCalledWith({ mode: 'create', afterIndex: reversed ? 1 : 2 }, PROJECT, expect.any(Function));
 		fixture.handle.dispose();
 	});
 

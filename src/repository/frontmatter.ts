@@ -1,4 +1,4 @@
-import { parseYaml } from "obsidian";
+import { parseYaml, stringifyYaml } from "obsidian";
 
 import { SCHEMA_VERSION, isWritableSchemaVersion } from "../domain";
 import { InvalidManagedDocumentError, UnsupportedSchemaError } from "./errors";
@@ -12,7 +12,7 @@ export interface ParsedMarkdown {
   hasFrontmatter: boolean;
 }
 
-const FRONTMATTER_PATTERN = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+const FRONTMATTER_PATTERN = /^(\uFEFF?---[ \t]*\r?\n)([\s\S]*?)(\r?\n---[ \t]*(?:\r?\n|$))/;
 
 export function parseMarkdownFrontmatter(content: string): ParsedMarkdown {
   const match = FRONTMATTER_PATTERN.exec(content);
@@ -22,7 +22,7 @@ export function parseMarkdownFrontmatter(content: string): ParsedMarkdown {
 
   let parsed: unknown;
   try {
-    parsed = parseYaml(match[1] ?? "");
+    parsed = parseYaml(match[2] ?? "");
   } catch (error) {
     throw new InvalidManagedDocumentError(
       `Invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
@@ -39,6 +39,18 @@ export function parseMarkdownFrontmatter(content: string): ParsedMarkdown {
     body: content.slice(match[0].length),
     hasFrontmatter: true,
   };
+}
+
+/** Replaces YAML while retaining the original fences, BOM and body bytes. */
+export function replaceMarkdownFrontmatter(
+  content: string,
+  frontmatter: ManagedFrontmatter,
+): string {
+  const match = FRONTMATTER_PATTERN.exec(content);
+  const newline = /\r?\n/u.exec(match?.[1] ?? content)?.[0] ?? "\n";
+  const yaml = stringifyYaml(frontmatter).trimEnd().replace(/\r?\n/gu, newline);
+  if (match === null) return `---${newline}${yaml}${newline}---${newline}${content}`;
+  return `${match[1]}${yaml}${match[3]}${content.slice(match[0].length)}`;
 }
 
 /**

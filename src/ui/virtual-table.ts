@@ -35,7 +35,7 @@ export function rowOffsets(heights: readonly number[]): number[] {
 }
 
 /** The greatest row index whose offset is at or before `value`. */
-function rowAtOrBefore(offsets: readonly number[], value: number): number {
+export function rowAtOrBefore(offsets: readonly number[], value: number): number {
 	let low = 0;
 	let high = offsets.length - 2;
 	while (low < high) {

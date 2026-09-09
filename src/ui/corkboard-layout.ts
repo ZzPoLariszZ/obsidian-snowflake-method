@@ -17,9 +17,10 @@ import {
 	type ProgressStatus,
 } from '../domain';
 import type { Translate } from './modals';
+import { wholeManuscriptDestination } from './linked-manuscript';
 import { termName } from './scene-filters';
 import type { CorkboardGroupField, CorkboardMode } from './story-structure-state';
-import { rowOffsets, virtualWindow } from './virtual-table';
+import { rowAtOrBefore, rowOffsets, virtualWindow } from './virtual-table';
 
 /** The dashboard's scene drag type, spelled the same so the two never mix. */
 export const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
@@ -27,6 +28,7 @@ export const SCENE_DRAG_TYPE = 'application/x-snowflake-scene';
 /** The slice of a scene's view model the board's arithmetic reads. */
 export interface CorkboardScene {
 	id: string;
+	path?: string;
 	title: string;
 	povPath: string;
 	povName: string;
@@ -68,6 +70,8 @@ export interface GroupContext {
 	/** The cast in project order: the point-of-view and character groups follow it. */
 	characters: readonly { path: string; name: string }[];
 	locale: string;
+	/** Resolve in the source scene's context; callers may share their snapshot link cache. */
+	resolveLink?: (target: string, sourcePath: string) => string | null;
 }
 
 interface GroupValue {
@@ -143,11 +147,16 @@ function groupValues(
 				rank: 0,
 			}));
 		case 'linked':
-			return scene.linkedManuscript.map((link) => ({
-				key: link.linktext,
-				label: link.label,
-				rank: 0,
-			}));
+			return scene.linkedManuscript.map((link) => {
+				const destination = ctx.resolveLink === undefined ? null : wholeManuscriptDestination(
+					link.raw, (target) => ctx.resolveLink?.(target, scene.path ?? '') ?? null,
+				);
+				return {
+					key: destination?.replace(/\.md$/u, '') ?? link.linktext,
+					label: link.label,
+					rank: 0,
+				};
+			});
 	}
 }
 
@@ -438,10 +447,7 @@ export function dropTargetAt(
 	if (layout.items.length === 0) return null;
 	if (point.y < 0) return { before: 0 };
 	if (point.y >= layout.height) return { before: layout.items.length };
-	let at = 0;
-	while (at < layout.lines.length && (layout.offsets[at + 1] ?? 0) <= point.y) {
-		at += 1;
-	}
+	let at = rowAtOrBefore(layout.offsets, point.y);
 	while (at < layout.lines.length && layout.lines[at]?.kind !== 'row') at += 1;
 	const line = layout.lines[at];
 	if (line === undefined || line.kind !== 'row') {

@@ -2245,6 +2245,7 @@ export class SnowflakeProjectService {
     if (!character) throw new ManagedFileNotFoundError(`character:${characterId}`);
     if (character.readOnly) throw new UnsupportedSchemaError(character.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     assertExpectedRevision(character.path, patch.expectedRevision, character.revision);
+    assertMemberSectionsIntact(character);
     // Before the write rather than beside the rename below: the rename is the
     // last thing this does, so a name refused there would already have saved
     // every other field of a form the author was told had failed.
@@ -3193,15 +3194,7 @@ export class SnowflakeProjectService {
     if (!scene) throw new ManagedFileNotFoundError(`scene:${sceneId}`);
     if (scene.readOnly) throw new UnsupportedSchemaError(scene.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     assertExpectedRevision(scene.path, patch.expectedRevision, scene.revision);
-    // Missing required sections must be repaired deliberately. Upserting an
-    // empty replacement here would leave the author's unmarked prose outside
-    // the section. Optional legacy sections are already excluded from health.
-    const damaged = scene.sectionHealth.issues.find(
-      (issue) => issue.code !== "unknown-section" && issue.code !== "unrecognized-record",
-    );
-    if (damaged) {
-      throw new UnsafeSectionError(scene.path, damaged.sectionId ?? "scene", damaged.reason);
-    }
+    assertMemberSectionsIntact(scene);
     // Before the write, and skipped for a title the scene already has, for the
     // two reasons the character form gives.
     const nextTitle = patch.title?.trim();
@@ -5241,6 +5234,8 @@ export class SnowflakeProjectService {
     if (entity.readOnly) {
       throw new UnsupportedSchemaError(entity.path, SCHEMA_VERSION + 1, SCHEMA_VERSION);
     }
+    assertExpectedRevision(entity.path, patch.expectedRevision, entity.revision);
+    assertMemberSectionsIntact(entity);
     const kind = entity.kind;
     const nextName = patch.name?.trim();
     if (
@@ -8798,6 +8793,22 @@ function assertExpectedRevision(
 ): void {
   if (expectedRevision !== actualRevision) {
     throw new ConcurrentChangeError(path, expectedRevision, actualRevision);
+  }
+}
+
+/** Required sections cannot be recreated around prose whose markers were lost. */
+function assertMemberSectionsIntact(member: {
+  path: string;
+  sectionHealth: ManagedSectionsInspection;
+}): void {
+  // Member health already excludes absent optional and legacy sections. The
+  // repository checks the same expected revision inside its eventual write,
+  // so damage arriving after this inspection cannot bypass the refusal.
+  const damaged = member.sectionHealth.issues.find(
+    (issue) => issue.code !== "unknown-section" && issue.code !== "unrecognized-record",
+  );
+  if (damaged) {
+    throw new UnsafeSectionError(member.path, damaged.sectionId ?? "member", damaged.reason);
   }
 }
 

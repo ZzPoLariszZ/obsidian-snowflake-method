@@ -18,10 +18,11 @@
 
 import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
-import { PROGRESS_STATUSES, SCENE_POV_MULTIPLE, SCENE_POV_OMNISCIENT, isProgressStatus, type ProgressStatus } from '../domain';
+import { PROGRESS_STATUSES, isProgressStatus, type ProgressStatus } from '../domain';
 import type { SceneMoveTarget, ScenePatch } from '../services';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
+import { CorkboardDraftModal, type RecoveredCorkboardDraft } from './corkboard-draft-modal';
 import {
 	SCENE_DRAG_TYPE,
 	adjacencyAllowed,
@@ -50,7 +51,7 @@ import type { FilterRow } from './filter-rows';
 import { linkedManuscriptPreview, orderManuscriptReferences } from './linked-manuscript';
 import { addOrderMenuItems } from './order-menu';
 import { paintCount, renderEmptyLine } from './pane-parts';
-import { clearSceneFilters, filterScenes, reconcileSceneManuscriptFilter, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
+import { clearSceneFilters, filterScenes, reconcileSceneFilters, sceneFilterRows, sceneFiltered, sceneHasNonRangeFilters } from './scene-filters';
 import { renderStickySwatches } from './sticky-note-card';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import {
@@ -191,10 +192,12 @@ export function renderCorkboard(
 	search.setPlaceholder(t('table.searchScenes'));
 	search.setValue(memory.query);
 	let searchTimer: number | null = null;
+	let searchWindow = root.win;
 	search.onChange((next) => {
 		memory.query = next;
-		if (searchTimer !== null) root.win.clearTimeout(searchTimer);
-		searchTimer = root.win.setTimeout(() => {
+		if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
+		searchWindow = root.win;
+		searchTimer = searchWindow.setTimeout(() => {
 			searchTimer = null;
 			paintAll({ resetScroll: true });
 		}, SEARCH_DEBOUNCE_MS);
@@ -291,6 +294,9 @@ export function renderCorkboard(
 	let projectId: string | null = null;
 	let manuscriptPositions = new Map<string, number>();
 	let orderedManuscriptLinks = new WeakMap<SceneViewModel, SceneViewModel['linkedManuscript']>();
+	let resolvedManuscriptPaths = new Map<string, Map<string, string | null>>();
+	let charactersByPath = new Map<string, ProjectDashboardModel['characters'][number]>();
+	let scenesById = new Map<string, SceneViewModel>();
 	let order: DisplayOrder = { groups: [], shown: 0 };
 	let layout: CorkboardLayout | null = null;
 	/** Every scene's id in narrative order. */
@@ -316,6 +322,8 @@ export function renderCorkboard(
 	/** Where a drop would land: a display index, the count meaning after the last card. */
 	let mark: number | null = null;
 	let frame: number | null = null;
+	let animationWindow = root.win;
+	let dragRect: DOMRect | null = null;
 	let measureOwed = false;
 	let windowOwed = false;
 	let colorPanel: { entry: CardEntry; hung: HungPanel } | null = null;
@@ -327,6 +335,42 @@ export function renderCorkboard(
 	let disposed = false;
 	let popoverRequest = 0;
 	let popoverKind: 'funnel' | 'display' | null = null;
+	let recoveryDrafts: RecoveredCorkboardDraft[] = [];
+	const recoveredTexts = new Set<string>();
+
+	const recoverText = (scene: SceneViewModel, fields: Pick<RecoveredCorkboardDraft, 'title' | 'conflict'>): void => {
+		const draft: RecoveredCorkboardDraft = { scene: scene.title };
+		for (const field of ['title', 'conflict'] as const) {
+			const value = fields[field];
+			if (value === undefined) continue;
+			const key = JSON.stringify([scene.path, field, value]);
+			if (recoveredTexts.has(key)) continue;
+			recoveredTexts.add(key);
+			draft[field] = value;
+		}
+		if (draft.title === undefined && draft.conflict === undefined) return;
+		if (recoveryDrafts.length === 0) {
+			// Wait until the current paint has restored focus before opening.
+			void Promise.resolve().then(() => {
+				const drafts = recoveryDrafts;
+				recoveryDrafts = [];
+				recoveredTexts.clear();
+				new CorkboardDraftModal(app, t, drafts).open();
+			});
+		}
+		recoveryDrafts.push(draft);
+	};
+
+	/** One resolution per target/source during a full paint, also shared with grouping. */
+	const resolveManuscriptPath = (target: string, sourcePath: string): string | null => {
+		let paths = resolvedManuscriptPaths.get(sourcePath);
+		if (paths === undefined) {
+			paths = new Map();
+			resolvedManuscriptPaths.set(sourcePath, paths);
+		}
+		if (!paths.has(target)) paths.set(target, app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null);
+		return paths.get(target) ?? null;
+	};
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -340,6 +384,7 @@ export function renderCorkboard(
 	const enqueue = (action: () => Promise<void>, options: {
 		persist?: boolean;
 		reportError?: boolean;
+		shouldRefresh?: () => boolean;
 	} = {}): Promise<void> => {
 		const run = queue.then(async () => {
 			if (disposed && options.persist !== true) return;
@@ -349,7 +394,7 @@ export function renderCorkboard(
 				if (options.reportError === false) throw error;
 				notice(error);
 			}
-			if (!disposed) await controls.refresh().then(() => revisionTransitions.clear()).catch((error: unknown) => {
+			if (!disposed && (options.shouldRefresh?.() ?? true)) await controls.refresh().then(() => revisionTransitions.clear()).catch((error: unknown) => {
 				if (options.reportError === false) throw error;
 				notice(error);
 			});
@@ -357,6 +402,11 @@ export function renderCorkboard(
 		// A modal receives its own rejection, without poisoning later writes.
 		queue = run.catch(() => undefined);
 		return run;
+	};
+
+	const openForm = (open: (onSaved: () => void) => Promise<unknown>): void => {
+		let saved = false;
+		void enqueue(async () => { await open(() => { saved = true; }); }, { shouldRefresh: () => saved });
 	};
 
 	/** Only mounted editors and accepted saves still need revision aliases. */
@@ -541,6 +591,10 @@ export function renderCorkboard(
 			paintOwed = true;
 			return;
 		}
+		dragRect = null;
+		// A refresh can follow metadata resolution even with the same model object.
+		resolvedManuscriptPaths = new Map();
+		orderedManuscriptLinks = new WeakMap();
 		const keepId =
 			options.keepFirst === true && layout !== null
 				? (sceneAt(firstCardInView(layout, scroller.scrollTop) ?? -1)?.id ?? null)
@@ -548,10 +602,11 @@ export function renderCorkboard(
 		const nextModel = controls.model();
 		if (nextModel !== model) {
 			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
-			orderedManuscriptLinks = new WeakMap();
 		}
 		model = nextModel;
 		if (model === null) {
+			charactersByPath.clear();
+			scenesById.clear();
 			clearCanvas();
 			stateText.setText('');
 			empty.line.addClass('is-hidden');
@@ -570,23 +625,23 @@ export function renderCorkboard(
 		// current path; patch() keeps the owner already captured by queued saves.
 		projectPath = current.path;
 		readOnly = current.readOnly;
+		charactersByPath = new Map(current.characters.map((character) => [character.path, character]));
+		scenesById = new Map(current.scenes.map((scene) => [scene.id, scene]));
 		const characterNames = new Map(
 			current.characters.map((character) => [character.path, character.name]),
 		);
-		if (memory.filters.character !== '' && !characterNames.has(memory.filters.character)) memory.filters.character = '';
-		if (memory.filters.pov !== '' && memory.filters.pov !== SCENE_POV_OMNISCIENT &&
-			memory.filters.pov !== SCENE_POV_MULTIPLE && !characterNames.has(memory.filters.pov)) memory.filters.pov = '';
-		reconcileSceneManuscriptFilter(memory.filters, current.manuscriptPaths);
+		reconcileSceneFilters(memory.filters, current);
 		const shown: ShownScene[] = filterScenes(
 			current.scenes,
 			memory.query,
 			memory.filters,
-			{ t, characterNames, resolveLink: (target, sourcePath) => app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null },
+			{ t, characterNames, resolveLink: resolveManuscriptPath },
 		);
 		order = displayOrder(shown, memory.reversed, memory.group, {
 			t,
 			characters: current.characters,
 			locale: current.locale,
+			resolveLink: resolveManuscriptPath,
 		});
 		orderIds = current.scenes.map((scene) => scene.id);
 		adjacency = adjacencyAllowed({
@@ -645,7 +700,11 @@ export function renderCorkboard(
 	};
 
 	const clearCanvas = (): void => {
-		for (const entry of cards.values()) entry.el.remove();
+		for (const entry of cards.values()) {
+			recoverBlockedDraft(entry);
+			entry.el.remove();
+		}
+		closeColorPanel();
 		cards.clear();
 		for (const head of heads.values()) head.remove();
 		heads.clear();
@@ -741,6 +800,10 @@ export function renderCorkboard(
 				// A filter, or two distinct drafts collapsing into one group, may
 				// leave no place for this editor. Keep it for remounting or disposal.
 				entry.display = -1;
+				const latest = scenesById.get(entry.id);
+				if (latest !== undefined) entry.scene = latest;
+				if (!editable(entry)) recoverBlockedDraft(entry);
+				if (colorPanel?.entry === entry) closeColorPanel();
 				entry.el.remove();
 				continue;
 			}
@@ -787,6 +850,7 @@ export function renderCorkboard(
 				head.createSpan({
 					cls: 'snowflake-method-corkboard-group-label',
 					text: found.label,
+					attr: { role: 'heading', 'aria-level': '3' },
 				});
 				head.createSpan({ cls: 'snowflake-method-corkboard-group-rule' });
 				heads.set(key, head);
@@ -838,6 +902,8 @@ export function renderCorkboard(
 		const entry = cards.get(key);
 		if (entry === undefined) return;
 		if (colorPanel?.entry === entry) closeColorPanel();
+		// A deleted scene cannot accept the editor that was pinned to it.
+		if (!scenesById.has(entry.id)) recoverBlockedDraft(entry);
 		entry.el.remove();
 		cards.delete(key);
 	};
@@ -988,6 +1054,16 @@ export function renderCorkboard(
 	const editable = (entry: CardEntry): boolean =>
 		!readOnly && !entry.scene.readOnly && !entry.scene.healthIssues.some((issue) => issue.blocking);
 
+	const recoverBlockedDraft = (entry: CardEntry): void => {
+		const fields: Pick<RecoveredCorkboardDraft, 'title' | 'conflict'> = {};
+		if (entry.editingTitle && entry.titleInput.value !== entry.titleOriginal) fields.title = entry.titleInput.value;
+		if (entry.conflictDirty && entry.conflict.value !== entry.conflictOriginal) fields.conflict = entry.conflict.value;
+		entry.conflictDirty = false;
+		if (entry.editingTitle) endTitleEdit(entry, false);
+		paintConflict(entry);
+		recoverText(entry.scene, fields);
+	};
+
 	/** Text and color always represent the same selection, even during a save. */
 	const paintStatus = (entry: CardEntry, value: ProgressStatus | null): void => {
 		entry.status.value = value ?? '';
@@ -1026,8 +1102,11 @@ export function renderCorkboard(
 		entry.display = display;
 		const { el } = entry;
 		const writable = editable(entry);
+		if (!writable) recoverBlockedDraft(entry);
 		if (!writable && colorPanel?.entry === entry) closeColorPanel();
 		el.setAttribute('data-id', scene.id);
+		el.setAttribute('aria-setsize', String(layout?.items.length ?? order.shown));
+		el.setAttribute('aria-posinset', String(display + 1));
 		if (scene.color === null) el.removeAttribute('data-color');
 		else el.setAttribute('data-color', scene.color);
 		el.toggleClass('is-read-only', !writable);
@@ -1044,7 +1123,7 @@ export function renderCorkboard(
 			scene.color === null
 				? t('modal.scene.colorNone')
 				: t(`stickyNotes.color.${scene.color}`);
-		entry.color.setAttribute('aria-label', `${t('stickyNotes.color')}: ${colorLabel}`);
+		entry.color.setAttribute('aria-label', t('corkboard.colorLabel', { color: colorLabel }));
 		setTooltip(entry.color, colorLabel);
 		entry.color.disabled = !writable;
 		const povLabel = t('corkboard.povLabel', { name: scene.povName || '—' });
@@ -1056,7 +1135,7 @@ export function renderCorkboard(
 				: povLabel,
 		);
 		entry.pov.toggleClass('is-missing', scene.povMissing);
-		const character = model?.characters.find((candidate) => candidate.path === scene.povPath);
+		const character = charactersByPath.get(scene.povPath);
 		entry.pov.disabled =
 			readOnly || character === undefined || character.readOnly || character.healthIssues.some((issue) => issue.blocking);
 		const shownStatus = pendingStatuses.get(scene.id)?.value ?? scene.progressStatus;
@@ -1073,18 +1152,18 @@ export function renderCorkboard(
 		let links = orderedManuscriptLinks.get(scene);
 		if (links === undefined) {
 			links = orderManuscriptReferences(scene.linkedManuscript, manuscriptPositions, (link) =>
-				app.metadataCache.getFirstLinkpathDest(link.target, scene.path)?.path ?? null,
+				resolveManuscriptPath(link.target, scene.path),
 			);
 			orderedManuscriptLinks.set(scene, links);
 		}
 		const linksSignature = JSON.stringify(links.map((link) => [link.raw,
-			app.metadataCache.getFirstLinkpathDest(link.target, scene.path)?.path ?? null]));
+			resolveManuscriptPath(link.target, scene.path)]));
 		if (linksSignature !== entry.linksSignature) {
 			entry.linksSignature = linksSignature;
 			dressLinks(entry, scene, links);
 		}
 		entry.moreLinks.disabled = false;
-		const canInsert = adjacency && writable && orderIds.includes(scene.id);
+		const canInsert = adjacency && writable;
 		entry.insertBefore.toggleClass('is-hidden', !canInsert);
 		entry.insertAfter.toggleClass('is-hidden', !canInsert);
 	};
@@ -1099,7 +1178,7 @@ export function renderCorkboard(
 		entry.el.toggleClass('has-more-links', remaining > 0);
 		entry.moreLinks.toggleClass('is-hidden', remaining === 0);
 		entry.moreLinks.setText(`+${String(remaining)}`);
-		const moreLabel = t('corkboard.moreLinked', { count: remaining });
+		const moreLabel = t(remaining === 1 ? 'corkboard.moreLinkedOne' : 'corkboard.moreLinked', { count: remaining });
 		entry.moreLinks.setAttribute('aria-label', moreLabel);
 		setTooltip(entry.moreLinks, moreLabel);
 		if (scene.linkedManuscript.length === 0) {
@@ -1107,7 +1186,7 @@ export function renderCorkboard(
 		}
 		for (const link of shown) {
 			const missing =
-				app.metadataCache.getFirstLinkpathDest(link.target, scene.path) === null;
+				resolveManuscriptPath(link.target, scene.path) === null;
 			const chip = entry.chips.createEl('button', {
 				cls: `snowflake-method-corkboard-link${missing ? ' is-missing' : ''}`,
 				attr: { type: 'button' },
@@ -1173,13 +1252,18 @@ export function renderCorkboard(
 		void patch(entry, { [field]: pending.value }, pending.base).then((saved) => {
 			if (values.get(entry.id) !== pending) return;
 			values.delete(entry.id);
-			if (disposed) return;
+			if (disposed) {
+				if (!saved) recoverText(entry.scene, { [field]: pending.value });
+				return;
+			}
 			if (!saved) {
 				// A rejected revision leaves the local draft available to fix
 				// or cancel with Escape; the refreshed model remains its own.
 				const draft = cards.get(entry.key) ??
 					[...cards.values()].find((card) => card.id === entry.id) ?? entry;
-				if (field === 'conflict' && !draft.conflictDirty) {
+				if (!editable(draft) || !scenesById.has(entry.id)) {
+					recoverText(entry.scene, { [field]: pending.value });
+				} else if (field === 'conflict' && !draft.conflictDirty) {
 					draft.conflict.value = pending.value;
 					draft.conflictOriginal = pending.original;
 					draft.conflictRevision = pending.base;
@@ -1201,7 +1285,11 @@ export function renderCorkboard(
 
 	/** The typed name, refused as the form refuses one: empty, or another scene's. */
 	const commitTitle = (entry: CardEntry, refocus: boolean): void => {
-		if (!entry.editingTitle || !editable(entry)) return;
+		if (!entry.editingTitle) return;
+		if (!editable(entry)) {
+			recoverBlockedDraft(entry);
+			return;
+		}
 		const typed = entry.titleInput.value.trim();
 		if (typed === entry.titleOriginal) {
 			endTitleEdit(entry, refocus);
@@ -1227,7 +1315,10 @@ export function renderCorkboard(
 	};
 
 	const commitConflict = (entry: CardEntry): void => {
-		if (!editable(entry)) return;
+		if (!editable(entry)) {
+			recoverBlockedDraft(entry);
+			return;
+		}
 		if (!entry.conflictDirty) {
 			paintConflict(entry);
 			return;
@@ -1302,9 +1393,7 @@ export function renderCorkboard(
 				.setIcon('pencil')
 				.setDisabled(!writable)
 				.onClick(() => {
-					void enqueue(() =>
-						host.openSceneForm({ mode: 'edit', id: entry.id }, current.path).then(() => undefined),
-					);
+					openForm((onSaved) => host.openSceneForm({ mode: 'edit', id: entry.id }, current.path, onSaved));
 				});
 		});
 		menu.addItem((item) => {
@@ -1363,7 +1452,7 @@ export function renderCorkboard(
 				.setTitle(t('actions.delete'))
 				.setIcon('trash-2')
 				.setWarning(true)
-				.setDisabled(!writable)
+				.setDisabled(readOnly || scene.readOnly)
 				.onClick(() => {
 					void enqueue(() => host.deleteScene(entry.id, entry.scene.revision, current.path), { persist: true });
 				});
@@ -1377,6 +1466,7 @@ export function renderCorkboard(
 		if (readOnly || owningProject === null) return;
 		const reversed = memory.reversed;
 		let created: string | null = null;
+		let saved = false;
 		void enqueue(async () => {
 			const current = controls.model();
 			if (current === null || current.path !== owningProject || current.readOnly) return;
@@ -1386,8 +1476,8 @@ export function renderCorkboard(
 				current.scenes.map((scene) => scene.id), anchor.id, anchor.side, reversed,
 			);
 			if (anchor !== null && afterIndex === null) return;
-			created = await host.openSceneForm({ mode: 'create', afterIndex }, owningProject);
-		}).then(() => {
+			created = await host.openSceneForm({ mode: 'create', afterIndex }, owningProject, () => { saved = true; });
+		}, { shouldRefresh: () => saved || created !== null }).then(() => {
 			if (created === null || disposed || projectPath !== owningProject) return;
 			if (displayOfScene(created) === -1) {
 				memory.query = '';
@@ -1428,12 +1518,10 @@ export function renderCorkboard(
 		entry.pov.addEventListener('click', (event) => {
 			event.stopPropagation();
 			const owningProject = projectPath;
-			const character = model?.characters.find(
-				(candidate) => candidate.path === entry.scene.povPath,
-			);
+			const character = charactersByPath.get(entry.scene.povPath);
 			if (readOnly || owningProject === null || character === undefined || character.readOnly ||
 				character.healthIssues.some((issue) => issue.blocking)) return;
-			void enqueue(() => host.openCharacterForm(character.id, owningProject));
+			openForm((onSaved) => host.openCharacterForm(character.id, owningProject, onSaved));
 		});
 		entry.status.addEventListener('change', () => {
 			const value = entry.status.value;
@@ -1473,11 +1561,11 @@ export function renderCorkboard(
 				menu.showAtMouseEvent(event);
 				return;
 			}
-			void enqueue(() => host.openSceneForm({
+			openForm((onSaved) => host.openSceneForm({
 				mode: 'edit',
 				id: entry.id,
 				section: 'linked-manuscript',
-			}, owningProject).then(() => undefined));
+			}, owningProject, onSaved));
 		});
 		entry.conflict.addEventListener('input', () => {
 			entry.conflictDirty = entry.conflict.value !== entry.conflictOriginal;
@@ -1544,6 +1632,7 @@ export function renderCorkboard(
 				return;
 			}
 			drag = { key: entry.key, id: entry.id };
+			dragRect = null;
 			el.addClass('is-dragging');
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData(SCENE_DRAG_TYPE, entry.id);
@@ -1554,6 +1643,7 @@ export function renderCorkboard(
 			el.removeClass('is-dragging');
 			clearMark();
 			drag = null;
+			dragRect = null;
 			if (paintOwed) {
 				paintOwed = false;
 				paintAll();
@@ -1571,7 +1661,19 @@ export function renderCorkboard(
 			);
 		}
 	};
-	root.win.addEventListener('mouseup', releasePress, true);
+	let eventWindow = root.win;
+	const invalidateDragRect = (): void => { dragRect = null; };
+	const bindWindow = (win: Window): void => {
+		win.addEventListener('mouseup', releasePress, true);
+		win.addEventListener('scroll', invalidateDragRect, true);
+		win.addEventListener('resize', invalidateDragRect);
+	};
+	const unbindWindow = (win: Window): void => {
+		win.removeEventListener('mouseup', releasePress, true);
+		win.removeEventListener('scroll', invalidateDragRect, true);
+		win.removeEventListener('resize', invalidateDragRect);
+	};
+	bindWindow(eventWindow);
 
 	// -- Drag and drop on the canvas -----------------------------------------
 
@@ -1605,7 +1707,7 @@ export function renderCorkboard(
 		}
 		event.preventDefault();
 		event.dataTransfer.dropEffect = 'move';
-		const rect = canvas.getBoundingClientRect();
+		const rect = dragRect ??= canvas.getBoundingClientRect();
 		const landing = dropTargetAt(layout, {
 			x: event.clientX - rect.left,
 			y: event.clientY - rect.top,
@@ -1792,7 +1894,8 @@ export function renderCorkboard(
 	/** Obsidian and ResizeObserver can report the same sidebar animation step. */
 	const scheduleFrame = (): void => {
 		if (disposed || frame !== null) return;
-		frame = root.win.requestAnimationFrame(() => {
+		animationWindow = root.win;
+		frame = animationWindow.requestAnimationFrame(() => {
 			frame = null;
 			const repaint = windowOwed;
 			windowOwed = false;
@@ -1812,6 +1915,7 @@ export function renderCorkboard(
 	};
 
 	scroller.addEventListener('scroll', () => {
+		dragRect = null;
 		memory.scrollTop = scroller.scrollTop;
 		windowOwed = true;
 		scheduleFrame();
@@ -1873,6 +1977,7 @@ export function renderCorkboard(
 
 	const remeasure = (): void => {
 		if (disposed || layout === null) return;
+		dragRect = null;
 		measureOwed = true;
 		scheduleFrame();
 	};
@@ -1880,6 +1985,24 @@ export function renderCorkboard(
 	const observer =
 		frameWindow === null ? null : new frameWindow.ResizeObserver(() => remeasure());
 	observer?.observe(scroller);
+	const stopMigration = root.onWindowMigrated?.((win) => {
+		unbindWindow(eventWindow);
+		eventWindow = win;
+		bindWindow(eventWindow);
+		closeColorPanel();
+		releasePress();
+		dragRect = null;
+		if (frame !== null) {
+			animationWindow.cancelAnimationFrame(frame);
+			frame = null;
+		}
+		if (searchTimer !== null) {
+			searchWindow.clearTimeout(searchTimer);
+			searchTimer = null;
+			paintAll({ resetScroll: true });
+		}
+		remeasure();
+	});
 
 	paintAll();
 
@@ -1904,15 +2027,17 @@ export function renderCorkboard(
 			popoverRequest++;
 			controls.popover.closeFilter();
 			closeColorPanel();
-			if (searchTimer !== null) root.win.clearTimeout(searchTimer);
-			if (frame !== null) root.win.cancelAnimationFrame(frame);
+			if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
+			if (frame !== null) animationWindow.cancelAnimationFrame(frame);
 			observer?.disconnect();
-			root.win.removeEventListener('mouseup', releasePress, true);
+			stopMigration?.();
+			unbindWindow(eventWindow);
 			// Final drafts join accepted saves in the same order. They retain
 			// this board's project and revisions after its view has gone away.
 			for (const entry of cards.values()) {
 				commitTitle(entry, false);
 				commitConflict(entry);
+				if (entry.editingTitle) recoverBlockedDraft(entry);
 			}
 			root.remove();
 		},

@@ -54,12 +54,12 @@ import { SnowflakeProjectService } from '../../src/services';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls } from '../../src/ui/corkboard-bridge';
 import { orderLinkedManuscript } from '../../src/ui/linked-manuscript';
-import { CreateSceneModal, type CreateSceneRequest, type MemberFormContext } from '../../src/ui/modals';
+import { CreateSceneModal, RepairReportModal, type CreateSceneRequest, type MemberFormContext } from '../../src/ui/modals';
 import type { PickerOption } from '../../src/ui/option-picker';
 import { addOrderMenuItems } from '../../src/ui/order-menu';
 import { filterScenes, sceneFilters } from '../../src/ui/scene-filters';
 import { corkboardMemory } from '../../src/ui/story-structure-state';
-import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
+import type { ProjectDashboardModel, RepairReportEntryViewModel, SceneViewModel } from '../../src/ui/view-model';
 
 type Picker = { getItems(): PickerOption[]; onChooseItem(option: PickerOption): void };
 type FormInternals = {
@@ -85,7 +85,7 @@ function scene(fields: Partial<SceneViewModel> = {}): SceneViewModel {
 function form(
 	raw: string[],
 	paths = ['Novel/Manuscript/Chapter 1.md'],
-	context: Partial<Pick<MemberFormContext, 'linkedManuscriptMissing' | 'orderLinkedManuscript'>> = {},
+	context: Partial<Pick<MemberFormContext, 'linkedManuscriptMissing' | 'orderLinkedManuscript' | 'resolveManuscriptTarget'>> = {},
 ) {
 	const dom = new CorkboardDom();
 	const instance = Object.create(CreateSceneModal.prototype) as FormInternals;
@@ -204,6 +204,35 @@ function board(fields: Partial<SceneViewModel> = {}, readOnly = false) {
 beforeEach(() => { opened.length = 0; menuClicks.clear(); });
 afterEach(() => vi.restoreAllMocks());
 
+describe('repair report actions for unsafe member forms', () => {
+	it.each([false, true, undefined])('offers Open first only when editing is explicitly unavailable (canEdit=%s)', async (canEdit) => {
+		const dom = new CorkboardDom();
+		const entry: RepairReportEntryViewModel = {
+			path: 'Novel/Scenes/Damaged.md', sectionId: 'scene-events', sectionLabel: 'Events',
+			status: 'conflict', message: 'Missing marker', names: [], action: null,
+			canOpen: true, repairable: false, repairField: null, memberId: 'scene-1', canEdit,
+		};
+		const openFile = vi.fn(async () => undefined);
+		const editMember = vi.fn(async () => ({ summary: '', entries: [] }));
+		const close = vi.fn();
+		const modal = Object.create(RepairReportModal.prototype) as {
+			renderEntryActions(item: HTMLElement, entry: RepairReportEntryViewModel): void;
+		};
+		Object.assign(modal, { t: (key: string) => key, openFile, editMember, close });
+		modal.renderEntryActions(dom.container as unknown as HTMLElement, entry);
+		const primary = dom.container.querySelector('.snowflake-method-character-edit')!;
+		expect(primary.textContent).toBe(canEdit === false ? 'editor.managedSection.openNote' : 'actions.edit');
+		expect(dom.container.querySelector('.snowflake-method-character-action-menu-trigger')!.disabled)
+			.toBe(canEdit === false);
+		if (canEdit === false) {
+			primary.dispatch('click');
+			await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+			expect(openFile).toHaveBeenCalledWith(entry.path, entry.sectionId);
+			expect(editMember).not.toHaveBeenCalled();
+		}
+	});
+});
+
 describe('saving scene drafts before manuscript navigation', () => {
 	it.each([false, true])('saves the edited fields and newly added link before navigating (create=%s)', async (create) => {
 		const fixture = navigableForm({ create });
@@ -297,6 +326,34 @@ describe('saving scene drafts before manuscript navigation', () => {
 });
 
 describe('linked manuscript correctness regressions', () => {
+	it.each(['[[Chapter 1]]', '[[../Manuscript/Chapter 1]]'])('excludes an already-linked whole note stored as %s', (raw) => {
+		const fixture = form([raw], undefined, { resolveManuscriptTarget: () => 'Novel/Manuscript/Chapter 1.md' });
+		expect(fixture.pickFrame().getAttribute('aria-disabled')).toBe('true');
+		expect(fixture.dom.container.querySelector('.snowflake-method-record-pick-placeholder')!.textContent)
+			.toBe('modal.scene.linkedManuscriptAllLinked');
+		fixture.pickFrame().dispatch('click');
+		expect(opened).toHaveLength(0);
+		fixture.remove(0);
+		fixture.pickFrame().dispatch('click');
+		expect((opened[0] as Picker).getItems()).toHaveLength(1);
+	});
+
+	it.each(['[[Chapter 1|The chapter]]', '[[Chapter 1#Opening]]'])('still offers a whole note when only an explicit variant is linked: %s', (raw) => {
+		const fixture = form([raw], undefined, { resolveManuscriptTarget: () => 'Novel/Manuscript/Chapter 1.md' });
+		fixture.pickFrame().dispatch('click');
+		const picker = opened[0] as Picker;
+		expect(picker.getItems()).toHaveLength(1);
+		picker.onChooseItem(picker.getItems()[0]!);
+		expect(fixture.instance.linkedManuscript).toEqual([raw, '[[Novel/Manuscript/Chapter 1]]']);
+	});
+
+	it('does not equate unresolved or same-named links to a different resolved note', () => {
+		const fixture = form(['[[Chapter 1]]'], undefined, {
+			resolveManuscriptTarget: (target) => target === 'Chapter 1' ? 'Other/Chapter 1.md' : 'Novel/Manuscript/Chapter 1.md',
+		});
+		fixture.pickFrame().dispatch('click');
+		expect((opened[0] as Picker).getItems()).toHaveLength(1);
+	});
 	it('filters a bare link only under the note the vault resolver chooses', () => {
 		const stored = scene({ linkedManuscript: [linked('[[Chapter 08]]')] });
 		const resolveLink = vi.fn(() => 'Novel/Manuscript/Part One/Chapter 08.md');
@@ -394,7 +451,7 @@ describe('linked manuscript correctness regressions', () => {
 			await Promise.resolve();
 			expect(fixture.host.openSceneForm).toHaveBeenCalledWith({
 				mode: 'edit', id: 'scene', section: 'linked-manuscript',
-			}, 'Novel/Project.md');
+			}, 'Novel/Project.md', expect.any(Function));
 		}
 		fixture.handle.dispose();
 	});

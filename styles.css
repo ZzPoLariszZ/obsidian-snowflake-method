@@ -1592,7 +1592,16 @@
 	flex-direction: column;
 	height: 100%;
 	min-height: 0;
-	padding: var(--size-4-5);
+}
+
+/* Obsidian's two-class view rule otherwise replaces this inset with 12px.
+   The tab scroller reaches into it by the scrollbar gutter (15px on the
+   desktop), so that smaller inset makes the whole leaf scroll sideways.
+   Keep enough room for the gutter; only the tabs and panel contents scroll. */
+.workspace-leaf-content .view-content.snowflake-method-story-structure {
+	padding: var(--size-4-5)
+		max(var(--size-4-5), var(--size-4-3), var(--snowflake-method-scrollbar-width, 0px));
+	overflow: hidden;
 }
 
 .snowflake-method-story-structure .snowflake-method-tab-panel {
@@ -12985,4 +12994,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	.snowflake-method-corkboard .snowflake-method-corkboard-insert {
 		transition: none;
 	}
+}
+.snowflake-method-corkboard-recovered-text {
+	width: 100%;
+	resize: vertical;
 }

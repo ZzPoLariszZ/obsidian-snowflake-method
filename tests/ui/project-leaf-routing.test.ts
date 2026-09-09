@@ -140,6 +140,33 @@ describe.each(kinds)('active project routing: %s', (type) => {
 });
 
 describe('activation while switching tabs', () => {
+	it('retries an error frame on activation and uses the recovered dashboard context', async () => {
+		const first = projectLeaf(DASHBOARD_VIEW_TYPE, firstPath);
+		const refresh = vi.fn(async () => { Object.assign(first.view, { loadFailed: false }); });
+		Object.assign(first.view, { loadFailed: true, refresh });
+		const { plugin, activate, loadProject } = pluginRouting();
+		await activate(first.leaf);
+		expect(refresh).toHaveBeenCalledOnce();
+		expect(loadProject).not.toHaveBeenCalled();
+		expect(plugin.settings.recentProjectPath).toBe(firstPath);
+	});
+
+	it('does not reactivate an error frame if another project becomes active during its retry', async () => {
+		const first = projectLeaf(DASHBOARD_VIEW_TYPE, firstPath);
+		const second = projectLeaf(DASHBOARD_VIEW_TYPE, secondPath);
+		let finish!: () => void;
+		const refresh = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+		Object.assign(first.view, { loadFailed: true, refresh });
+		const { plugin, activate } = pluginRouting();
+		const pending = activate(first.leaf);
+		await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+		await activate(second.leaf);
+		Object.assign(first.view, { loadFailed: false });
+		finish();
+		await pending;
+		expect(plugin.settings.recentProjectPath).toBe(secondPath);
+	});
+
 	it('finishes startup activation when focus moves to a sidebar', async () => {
 		const first = projectLeaf(MANUSCRIPT_VIEW_TYPE, firstPath, { unloaded: true });
 		const { plugin, activate, loadProject, route } = pluginRouting();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
 	categoryWithin,
@@ -7,6 +7,7 @@ import {
 	linkNamesNote,
 	parseSceneBound,
 	reconcileSceneManuscriptFilter,
+	reconcileSceneFilters,
 	sceneFilterRows,
 	sceneFiltered,
 	sceneFilters,
@@ -103,6 +104,48 @@ const asked = (overrides: Partial<SceneFilters>): SceneFilters => ({
 });
 
 describe('the scene funnel', () => {
+	it('clears renamed and removed vocabulary selections from the current model', () => {
+		const filters = asked({ category: 'Dawn', time: 'Dawn', location: 'Dawn',
+			character: 'Gone.md', pov: 'Gone.md', linked: 'Old chapter', status: 'complete', sceneMin: 2 });
+		reconcileSceneFilters(filters, {
+			characters: [{ path: 'Present.md', name: 'Present' }],
+			worldbuilding: { time: [{ name: 'Sunrise' }], location: [{ name: 'Harbour' }] },
+			manuscriptPaths: ['New chapter.md'],
+			definitions: { category: { scene: { nodes: [{ taxonomyPath: 'Sunrise' }] } } },
+		});
+		expect(filters).toEqual(asked({ status: 'complete', sceneMin: 2 }));
+	});
+
+	it.each(['omniscient', 'multiple', 'Present.md'])('keeps current selections including parent categories and POV %s', (pov) => {
+		const filters = asked({ category: 'Arc', time: 'Dawn', location: 'Harbour',
+			character: 'Present.md', pov, linked: 'Chapter' });
+		const before = { ...filters };
+		reconcileSceneFilters(filters, {
+			characters: [{ path: 'Present.md', name: 'Present' }],
+			worldbuilding: { time: [{ name: 'Dawn' }], location: [{ name: 'Harbour' }] },
+			manuscriptPaths: ['Chapter.md'],
+			definitions: { category: { scene: { nodes: [{ taxonomyPath: 'Arc' }, { taxonomyPath: 'Arc/Rise' }] } } },
+		});
+		expect(filters).toEqual(before);
+	});
+
+	it('does not treat an unavailable vocabulary as an empty category or manuscript list', () => {
+		const filters = asked({ category: 'Arc', linked: 'Chapter' });
+		reconcileSceneFilters(filters, { characters: [], worldbuilding: {} });
+		expect(filters).toMatchObject({ category: 'Arc', linked: 'Chapter' });
+	});
+
+	it('does not translate search-only status labels for empty or whitespace searches', () => {
+		const translate = vi.fn((key: string) => key);
+		for (const query of ['', ' \n\t ']) {
+			expect(ids(filterScenes(scenes, query, sceneFilters(), { ...context, t: translate })))
+				.toEqual(['Dawn', 'Noon', 'Dusk']);
+		}
+		expect(translate).not.toHaveBeenCalled();
+		expect(ids(filterScenes(scenes, 'status.complete', sceneFilters(), { ...context, t: translate })))
+			.toEqual(['Dawn']);
+		expect(translate).toHaveBeenCalled();
+	});
 	it('starts with every question unasked', () => {
 		expect(sceneFilters()).toEqual({
 			sceneMin: null,

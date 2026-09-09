@@ -70,6 +70,7 @@ vi.mock('../../src/ui/virtual-table', async (importOriginal) => {
 import { SCENE_DRAG_TYPE } from '../../src/ui/corkboard-layout';
 import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
 import { sceneFilters, type SceneFilters } from '../../src/ui/scene-filters';
+import * as sceneFilterModule from '../../src/ui/scene-filters';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
@@ -119,6 +120,9 @@ function dashboard(options: {
 		structureIssues: [],
 		manuscriptPaths: ['Chapter.md'],
 		characters: [{ path: 'Characters/Ada.md', name: 'Ada' }],
+		worldbuildingKinds: [{ id: 'time' }, { id: 'location' }],
+		worldbuilding: { time: [{ name: 'Morning' }], location: [{ name: 'Harbour' }] },
+		definitions: { category: { scene: { nodes: [{ taxonomyPath: 'Act' }, { taxonomyPath: 'Act/One' }] } } },
 		scenes: ['A', 'B', 'C', 'D', 'E'].map((id, index) => ({
 			...scene(id, index), readOnly: options.readOnlyScene === id,
 		})),
@@ -237,6 +241,18 @@ describe('dashboard adjacency with a continuous scene range', () => {
 		table.filters.sceneMin = 3;
 		drop(table.row('D'), 'B');
 		expect(table.reorderScene).not.toHaveBeenCalled();
+	});
+
+	it('validates an allowed drop without running scene filtering again', () => {
+		const table = dashboard();
+		const filter = vi.spyOn(sceneFilterModule, 'filterScenes');
+		try {
+			drop(table.row('D'), 'B');
+			expect(table.reorderScene).toHaveBeenCalledExactlyOnceWith('B', 3, 'Novel/Project.md');
+			expect(filter).not.toHaveBeenCalled();
+		} finally {
+			filter.mockRestore();
+		}
 	});
 
 	it.each([

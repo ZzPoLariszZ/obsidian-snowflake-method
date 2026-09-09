@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
 	SCENE_DRAG_TYPE,
@@ -96,6 +96,35 @@ const labelsOf = (order: DisplayOrder): string[] =>
 	order.groups.map((group) => group.label);
 
 describe('the display order', () => {
+	it('groups equivalent whole-note spellings once, resolving each in its source scene', () => {
+		const references = ['[[Chapter]]', '[[Novel/Chapter]]'];
+		const grouped = references.map((raw, index) => ({
+			scene: sceneOf(String(index), { path: `Novel/Scenes/${String(index)}.md`,
+				linkedManuscript: [{ raw, linktext: raw.slice(2, -2), label: 'Chapter' }] }), index,
+		}));
+		grouped[0]!.scene.linkedManuscript = [...grouped[0]!.scene.linkedManuscript, ...grouped[1]!.scene.linkedManuscript];
+		const resolveLink = vi.fn(() => 'Novel/Chapter.md');
+		const order = displayOrder(grouped, false, 'linked', { ...ctx, resolveLink });
+		expect(order.groups).toHaveLength(1);
+		expect(order.groups[0]?.key).toBe('linked:Novel/Chapter');
+		expect(itemsOf(order)).toEqual([[0, 1]]);
+		expect(resolveLink).toHaveBeenCalledWith('Chapter', 'Novel/Scenes/0.md');
+	});
+
+	it('keeps same-named destinations distinct and retains explicit alias and heading groups', () => {
+		const rawLinks = ['[[Chapter]]', '[[Chapter]]', '[[Chapter|Prologue]]', '[[Chapter#Opening]]'];
+		const grouped = rawLinks.map((raw, index) => ({
+			scene: sceneOf(String(index), { path: `Part ${String(index)}/Scene.md`, linkedManuscript: [{
+				raw, linktext: raw.slice(2, -2).split('|')[0]!, label: ['Chapter', 'Chapter', 'Prologue', 'Chapter › Opening'][index]!,
+			}] }), index,
+		}));
+		const resolveLink = vi.fn((_target: string, source: string) => `${source.split('/')[0]}/Chapter.md`);
+		const order = displayOrder(grouped, false, 'linked', { ...ctx, resolveLink });
+		expect(new Set(order.groups.map((group) => group.key))).toEqual(new Set([
+			'linked:Part 0/Chapter', 'linked:Part 1/Chapter', 'linked:Chapter', 'linked:Chapter#Opening',
+		]));
+		expect(resolveLink).toHaveBeenCalledTimes(2);
+	});
 	it('lays the shown scenes under one unlabeled group in narrative order when nothing groups them', () => {
 		const order = displayOrder(shown, false, '', ctx);
 		expect(order.groups).toHaveLength(1);
@@ -365,6 +394,18 @@ describe('the layout', () => {
 });
 
 describe('where a drop lands', () => {
+	it('finds a row near the end of a large board with logarithmic offset reads', () => {
+		const large = buildLayout({ groups: [{ key: '', label: '', items: Array.from({ length: 10000 }, (_, sceneIndex) => ({ sceneIndex })) }], shown: 10000 }, metrics);
+		const lastLine = large.lines.length - 1;
+		const y = large.offsets[lastLine]!;
+		let reads = 0;
+		const offsets = new Proxy(large.offsets, { get: (target, key, receiver): unknown => {
+			if (typeof key === 'string' && /^\d+$/u.test(key)) reads++;
+			return Reflect.get(target, key, receiver) as unknown;
+		} });
+		expect(dropTargetAt({ ...large, offsets }, { x: 0, y })).toEqual({ before: 9999 });
+		expect(reads).toBeLessThan(20);
+	});
 	it('is before the first card in the row whose middle is right of the pointer', () => {
 		expect(dropTargetAt(layout, { x: 100, y: 100 })).toEqual({ before: 0 });
 		expect(dropTargetAt(layout, { x: 300, y: 100 })).toEqual({ before: 1 });

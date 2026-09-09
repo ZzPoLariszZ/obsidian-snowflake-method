@@ -927,7 +927,7 @@ export default class SnowflakeMethodPlugin
 					fingerprint: () => `${this.settings.uiLocale}|${moment.locale()}`,
 					recentProjectPath: () => this.settings.recentProjectPath,
 					corkboardPreferences: (projectId) => this.corkboardPreferences(projectId),
-					rememberCorkboardPreferences: (projectId, changes) => this.rememberCorkboardPreferences(projectId, changes),
+					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
 					corkboard: renderCorkboard,
 				}),
 		);
@@ -1407,6 +1407,8 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private projectHasMarkerIssues(project: ProjectSnapshot): boolean {
+		const blocking = (issue: { code: string }): boolean =>
+			issue.code !== 'unknown-section' && issue.code !== 'unrecognized-record';
 		for (const step of [1, 2, 4, 6] as const) {
 			const artifact = project.artifacts[step];
 			const documentType = DOCUMENT_BY_MANAGED_STEP[step];
@@ -1419,20 +1421,21 @@ export default class SnowflakeMethodPlugin
 					artifact.content,
 					expected,
 					artifact.path,
-				).issues.some((issue) => issue.code !== 'unknown-section')
+				).issues.some(blocking)
 			) {
 				return true;
 			}
 		}
 		return (
 			project.characters.some((character) =>
-				character.sectionHealth.issues.some(
-					(issue) => issue.code !== 'unknown-section',
-				),
+				character.sectionHealth.issues.some(blocking),
 			) ||
 			project.scenes.some((scene) =>
-				scene.sectionHealth.issues.some(
-					(issue) => issue.code !== 'unknown-section',
+				scene.sectionHealth.issues.some(blocking),
+			) ||
+			project.worldbuildingKinds.some((kind) =>
+				(project.worldbuilding[kind.id] ?? []).some((entity) =>
+					entity.sectionHealth.issues.some(blocking),
 				),
 			)
 		);
@@ -1972,8 +1975,8 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async deleteCharacter(id: string, expectedRevision: string): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async deleteCharacter(id: string, expectedRevision: string, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		const character = project.characters.find(
 			(candidate) => candidate.characterId === id,
 		);
@@ -2123,8 +2126,8 @@ export default class SnowflakeMethodPlugin
 		return { id: entity.entityId, path: entity.path };
 	}
 
-	async updateEntity(id: string, request: EntityFormRequest): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async updateEntity(id: string, request: EntityFormRequest, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		const expectedRevision = this.requireExpectedRevision(
 			request.expectedRevision,
 		);
@@ -2148,8 +2151,8 @@ export default class SnowflakeMethodPlugin
 		}
 	}
 
-	async deleteEntity(id: string, expectedRevision: string): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async deleteEntity(id: string, expectedRevision: string, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		const entity = project.worldbuildingKinds.flatMap((kind) =>
 			entitiesOf(project, kind.id),
 		).find((candidate) => candidate.entityId === id);
@@ -2268,8 +2271,9 @@ export default class SnowflakeMethodPlugin
 	async customFieldTemplateFields(
 		kind: EntityKindId,
 		name: string,
+		projectPath?: string,
 	): Promise<CustomField[]> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		return this.projects.customFieldTemplateFields(project, kind, name);
 	}
 
@@ -2295,8 +2299,9 @@ export default class SnowflakeMethodPlugin
 	async deleteCustomFieldTemplate(
 		kind: EntityKindId,
 		name: string,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			await this.projects.deleteCustomFieldTemplate(project, kind, name);
 		} catch (error) {
@@ -2338,8 +2343,9 @@ export default class SnowflakeMethodPlugin
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		newName: string,
+		projectPath?: string,
 	): Promise<RenameDefinitionPathResult> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		let result: RenameDefinitionPathResult;
 		try {
 			result = await this.projects.renameDefinitionNode(
@@ -2361,8 +2367,9 @@ export default class SnowflakeMethodPlugin
 		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			await this.projects.deleteDefinitionNode(project, kind, id, taxonomyPath);
 		} catch (error) {
@@ -2376,8 +2383,9 @@ export default class SnowflakeMethodPlugin
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		description: string,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			await this.projects.updateDefinitionDescription(
 				project,
@@ -2776,29 +2784,30 @@ export default class SnowflakeMethodPlugin
 					]),
 				).values(),
 			];
+			const members = new Map([
+				...model.characters,
+				...model.scenes,
+				...model.worldbuildingKinds.flatMap((kind) => kindEntities(model, kind.id)),
+			].map((member) => [member.path, member]));
 			const entries: RepairReportViewModel['entries'] = uniqueIssues.map(
-				(issue) => ({
-					path: issue.path,
-					sectionId: issue.sectionId,
-					sectionLabel: issue.sectionLabel,
-					status: 'conflict',
-					message: issue.message,
-					names: issue.names,
-					action: issue.action,
-					canOpen: issue.canOpen,
-					repairable: issue.repairable,
-					repairField: issue.repairField,
-					// Whichever member the issue is about, so the report can offer the
-					// form rather than the raw note it would otherwise open.
-					memberId:
-						[
-							...model.characters,
-							...model.scenes,
-							...model.worldbuildingKinds.flatMap((kind) =>
-								kindEntities(model, kind.id),
-							),
-						].find((member) => member.path === issue.path)?.id ?? null,
-				}),
+				(issue) => {
+					const member = members.get(issue.path);
+					return {
+						path: issue.path,
+						sectionId: issue.sectionId,
+						sectionLabel: issue.sectionLabel,
+						status: 'conflict',
+						message: issue.message,
+						names: issue.names,
+						action: issue.action,
+						canOpen: issue.canOpen,
+						repairable: issue.repairable,
+						repairField: issue.repairField,
+						memberId: member?.id ?? null,
+						canEdit: member !== undefined && !model.readOnly && !member.readOnly &&
+							!member.healthIssues.some((health) => health.blocking),
+					};
+				},
 			);
 			return {
 				summary:
@@ -5612,16 +5621,17 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
-	private rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>): void {
-		const saved = this.corkboardPreferences(projectId);
-		const next: CorkboardPreferences = {
-			mode: 'standard',
-			reversed: false,
-			...saved,
-			...readCorkboardPreferences(changes),
-		};
-		if (next.mode === saved.mode && next.reversed === saved.reversed) return;
-		this.app.saveLocalStorage(`${CORKBOARD_PREFERENCES_KEY}:${projectId}`, next);
+	private rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing = false): void {
+		const key = `${CORKBOARD_PREFERENCES_KEY}:${projectId}`;
+		const raw: unknown = this.app.loadLocalStorage(key);
+		const saved = typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+			? raw as Record<string, unknown> : {};
+		const patch = Object.fromEntries(Object.entries(readCorkboardPreferences(changes))
+			.filter(([name]) => !onlyIfMissing || !Object.prototype.hasOwnProperty.call(saved, name)));
+		if (Object.entries(patch).every(([name, value]) => saved[name] === value)) return;
+		// Only the changed supported fields belong to this version. Preserve
+		// values another version understands until the author changes that field.
+		this.app.saveLocalStorage(key, { ...saved, ...patch });
 	}
 
 	async openStoryStructure(
@@ -7785,6 +7795,10 @@ export default class SnowflakeMethodPlugin
 		if (!stillCurrent() || activateLoaded()) return;
 		await leaf.loadIfDeferred();
 		if (!stillCurrent() || activateLoaded()) return;
+		if (leaf.view instanceof SnowflakeDashboardView) {
+			await leaf.view.retryFailedLoadFromWorkspace();
+			if (!stillCurrent() || activateLoaded()) return;
+		}
 		// Startup can leave a view's model loading after its saved state arrives.
 		// Resolve only that saved owner, and check again after the asynchronous read.
 		const path = leaf.getViewState().state?.projectPath;
@@ -9657,6 +9671,7 @@ export default class SnowflakeMethodPlugin
 			id,
 			created.path,
 			created.description,
+			project.projectFile,
 		);
 		if (!result.ok) {
 			new Notice(
@@ -9733,12 +9748,14 @@ export default class SnowflakeMethodPlugin
 		).open();
 	}
 
-	async openSceneForm(intent: SceneFormIntent, projectPath?: string): Promise<string | null> {
-		return this.withDashboardForm((view) => view.openSceneForm(intent), null, projectPath);
+	async openSceneForm(intent: SceneFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null> {
+		return this.withDashboardForm((view) => onSaved === undefined
+			? view.openSceneForm(intent) : view.openSceneForm(intent, onSaved), null, projectPath);
 	}
 
-	async openCharacterForm(id: string, projectPath?: string): Promise<void> {
-		await this.withDashboardForm((view) => view.openCharacterForm(id), undefined, projectPath);
+	async openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void> {
+		await this.withDashboardForm((view) => onSaved === undefined
+			? view.openCharacterForm(id) : view.openCharacterForm(id, onSaved), undefined, projectPath);
 	}
 
 	/** Opens a dashboard-owned form while keeping the requesting surface active. */

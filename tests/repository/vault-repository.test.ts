@@ -219,6 +219,26 @@ describe("VaultRepository", () => {
   });
 
   it.each([
+    { bom: "", newline: "\n", closingNewline: "\n", body: "\n# Scene\n\nProse.  \n" },
+    { bom: "\uFEFF", newline: "\r\n", closingNewline: "\r\n", body: "\r\n# Scene\r\n\r\nProse.  \r\n" },
+    { bom: "\uFEFF", newline: "\r\n", closingNewline: "\n", body: "\n# Mixed endings\r\nKeep these bytes.\n" },
+    { bom: "\uFEFF", newline: "\r\n", closingNewline: "", body: "" },
+  ])("preserves frontmatter fences and body bytes in a revision-tracked rank write: $newline / $closingNewline", async ({ bom, newline, closingNewline, body }) => {
+    const opening = `${bom}--- \t${newline}`;
+    const closing = `${newline}---\t ${closingNewline}`;
+    const yaml = `snowflake-schema: ${SCHEMA_VERSION}${newline}snowflake-rank: 1024${newline}custom: keep`;
+    const original = `${opening}${yaml}${closing}${body}`;
+    const file = await fakeVault.seedFile("Preserved rank.md", original);
+
+    const revisions = await repository.updateFrontmatterWithRevision(file.path, { "snowflake-rank": 2048 });
+
+    const expected = `${opening}${yaml.replace("1024", "2048")}${closing}${body}`;
+    expect(fakeVault.contents.get(file.path)).toBe(expected);
+    expect(parseMarkdownFrontmatter(expected).body).toBe(body);
+    expect(revisions).toEqual({ before: fingerprint(original), after: fingerprint(expected) });
+  });
+
+  it.each([
     { schema: SCHEMA_VERSION + 1, patch: { "snowflake-rank": 2048 }, error: UnsupportedSchemaError },
     { schema: "invalid", patch: { "snowflake-rank": 2048 }, error: InvalidManagedDocumentError },
     { schema: SCHEMA_VERSION, patch: { "snowflake-schema": SCHEMA_VERSION + 1 }, error: UnsupportedSchemaError },

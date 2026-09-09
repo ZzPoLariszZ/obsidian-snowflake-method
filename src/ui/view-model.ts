@@ -275,6 +275,8 @@ export interface RepairReportEntryViewModel {
 	repairField: string | null;
 	/** Set when the entry is a member note, so the report can offer its form. */
 	memberId: string | null;
+	/** False when that member's form cannot safely save the current note. */
+	canEdit?: boolean;
 }
 
 export interface RepairReportViewModel {
@@ -726,12 +728,12 @@ export interface DashboardHost {
 	/** Reports the character back so a field that asked for it can select it. */
 	createCharacter(request: CreateCharacterRequest, projectPath?: string): Promise<CharacterOption>;
 	updateCharacter(id: string, request: CreateCharacterRequest, projectPath?: string): Promise<void>;
-	deleteCharacter(id: string, expectedRevision: string): Promise<void>;
+	deleteCharacter(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	/** Reports the scene's id back, so inserting can place what it created. */
 	createScene(request: CreateSceneRequest, projectPath?: string): Promise<{ id: string; path: string }>;
 	createEntity(request: EntityFormRequest, projectPath?: string): Promise<{ id: string; path: string }>;
-	updateEntity(id: string, request: EntityFormRequest): Promise<void>;
-	deleteEntity(id: string, expectedRevision: string): Promise<void>;
+	updateEntity(id: string, request: EntityFormRequest, projectPath?: string): Promise<void>;
+	deleteEntity(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	/** Registers a new custom kind, or reports why the name cannot be it. */
 	createWorldbuildingKind(
 		name: string,
@@ -763,6 +765,7 @@ export interface DashboardHost {
 	customFieldTemplateFields(
 		kind: EntityKindId,
 		name: string,
+		projectPath?: string,
 	): Promise<CustomField[]>;
 	/** Writes one template: add, edit, or an export allowed to overwrite. */
 	saveCustomFieldTemplate(
@@ -772,7 +775,7 @@ export interface DashboardHost {
 		projectPath?: string,
 	): Promise<SaveCustomFieldTemplateResult>;
 	/** Trashes one template and clears every choice that named it. */
-	deleteCustomFieldTemplate(kind: EntityKindId, name: string): Promise<void>;
+	deleteCustomFieldTemplate(kind: EntityKindId, name: string, projectPath?: string): Promise<void>;
 	reorderEntity(
 		kind: WorldbuildingKindId,
 		entityId: string,
@@ -808,12 +811,14 @@ export interface DashboardHost {
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		newName: string,
+		projectPath?: string,
 	): Promise<RenameDefinitionPathResult>;
 	/** Trashes one node's subtree and drops it from members' category lists. */
 	deleteDefinitionNode(
 		kind: EntityKindId,
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
+		projectPath?: string,
 	): Promise<void>;
 	/** Writes what one node means, on its note and its generated block. */
 	updateDefinitionDescription(
@@ -821,6 +826,7 @@ export interface DashboardHost {
 		id: DefinitionFileChoice,
 		taxonomyPath: string,
 		description: string,
+		projectPath?: string,
 	): Promise<void>;
 	updateScene(id: string, request: CreateSceneRequest, projectPath?: string): Promise<void>;
 	/**
@@ -837,9 +843,9 @@ export interface DashboardHost {
 	 * dashboard behind the asker when none is; resolves when the modal closes,
 	 * with the scene a create made.
 	 */
-	openSceneForm(intent: SceneFormIntent, projectPath?: string): Promise<string | null>;
+	openSceneForm(intent: SceneFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null>;
 	/** Opens an existing character's edit form without switching away from the caller. */
-	openCharacterForm(id: string, projectPath?: string): Promise<void>;
+	openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void>;
 	deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(
