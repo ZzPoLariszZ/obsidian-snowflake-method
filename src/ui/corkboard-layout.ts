@@ -376,8 +376,8 @@ export function visibleLines(
 	viewportHeight: number,
 	overscan: number,
 ): { first: number; count: number } {
-	const window = virtualWindow(scrollTop, viewportHeight, layout.offsets, overscan);
-	return { first: window.first, count: window.count };
+	const span = virtualWindow(scrollTop, viewportHeight, layout.offsets, overscan);
+	return { first: span.first, count: span.count };
 }
 
 /** The display indexes of the cards on the lines in the window. */
