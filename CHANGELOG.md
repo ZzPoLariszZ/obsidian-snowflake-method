@@ -8,6 +8,26 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0]
+
+### Added
+
+- **The visualization workspace**, a tab of its own holding one family of views over the scenes that steps 8 and 9 plan. **Corkboard** is the first of them, with **Freeform**, **Beat sheet**, **Timeline** and **Plotline** beside it in the strip, each reading Planning stage… until its turn comes. It opens from the link row at the foot of the dashboard's Creation tools, from the orbit in the ribbon, and from **Open visualization workspace** and **Open corkboard workspace** in the command palette. It follows the current project the way the statistics and sticky-note surfaces do, and a strip tab opened with Cmd or Ctrl held stands beside the others rather than replacing them.
+- **The corkboard** lays every scene out as a card in narrative order, numbered from one, and the card is where the work happens rather than somewhere to click through on the way to a form. The name is edited in place, refusing an empty name and one another scene already answers to. The point of view and the progress status are dropdowns, a point of view whose note has gone kept as a choice of its own rather than quietly dropped. The conflict is a text box saved when you leave it or on Mod+Enter. A swatch tints the card in one of the eight macarons the sticky notes wear, or in none of them. Every write goes through one queue, so two edits made in the same breath both land, and a card takes the revision each write answers with rather than the one its frame was drawn from.
+- **Order is what the board is for.** While it stands in plain order, dragging a card moves the scene and only the ranks around it are rewritten. A **+** between two cards inserts a scene at exactly that point, **Add scene** puts one at the end, and the card's menu carries Move up, Move down, **Move to position** and **Move after** for the same work without a mouse. The direction button reads the whole board back in **Reversed order**, where moving up moves a scene later in the story. Searching, filtering or grouping puts the neighbourly actions away and leaves the ones that name their target.
+- **The board answers questions as readily as it holds them.** The search box narrows to a name, and the funnel narrows by progress, category, point of view, time, location, cast, colour or linked manuscript. **Display** sets the cards to Compact, Standard or Extended and groups them by any of those same eight fields, drawing a heading over each group while every card keeps its narrative number. The card size, the grouping and the direction are remembered for each project across restarts, and only the cards in view are mounted, so a board of three thousand scenes scrolls as one of five does.
+- **Two fields for every scene**: a **colour**, stored as `snowflake-color`, and the **manuscript notes it is linked to**, stored as `snowflake-linked-manuscript` exactly as you spell them, subpaths and aliases kept. Both join the scene form after Events, both narrow the scene table and the board from the funnel, and a card lists the chapters its scene belongs to, each opening the chapter it names. Where a link would take you somewhere worth going, the form's button offers **Save scene and open {name}**.
+- **A scene range in the funnel**, a smallest and a largest scene number, narrowing the table and the board to one stretch of the story while leaving the neighbourly actions where they are. **Insert scene before** joins the insert that already followed a row.
+- **Unsaved scene text is kept** where a card's write is refused, gathered into a dialog you can copy from rather than dropped when the board goes.
+- Two sidebar commands now say which sidebar they open: **Open sticky note sidebar** and **Open writing session sidebar**.
+
+### Fixed
+
+- A member edit lands in the project whose dashboard opened it, whatever became current while its dialog stood open. Renaming or deleting a category, adding a category path, saving a custom field template, editing a character, a scene or a worldbuilding note, and the dialogs behind Move to position and Move after each carry the project they were opened from now. Before this, clicking into another project while one of them stood open sent the write to that project instead, silently wherever that project held a note of the same name.
+- A note whose managed section markers are damaged is refused rather than written over, for characters, scenes and worldbuilding notes alike. Saving one used to write a fresh heading and markers below the old ones, leaving the author's prose orphaned outside any managed section and taking the health issue with it, so the checker then reported the project healthy. The health report no longer offers **Edit** for such a note either, and offers **Open** in its place.
+- The scene table's filters for time, location and category are cleared when the note behind the answer is renamed or deleted, as the point of view and cast filters already were. A stale answer used to leave an empty table under a funnel row that read as though nothing had been asked.
+- The project switcher's damage mark and the health checker agree. A record line the checker calls informational no longer raises the mark, and a damaged worldbuilding note, which the mark overlooked entirely, now raises it.
+
 ## [0.18.1]
 
 ### Added
@@ -419,6 +439,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.19.0]
+
+### 新增
+
+- **可视化工作区**，在自己的标签页中打开，收着同一批场景的一族视图，也就是第八步与第九步规划的那些场景。**场景看板**是其中第一个做好的，**自由画布**、**节拍表**、**时间线**与**情节线**并列在标签条上，轮到它们之前都写着「规划阶段…」。入口有三处：仪表盘创作工具一组末尾的链接行、功能区中的行星图标，以及命令面板中的**打开可视化工作区**与**打开场景看板工作区**。它像数据统计与便签那样跟随当前项目，按住 Cmd 或 Ctrl 点击标签条则在旁边另开一个，而不是替换当前这个。
+- **场景看板**把每个场景摆成一张卡片，按叙事顺序编号。卡片本身就是干活的地方，不必再点进表单：名称就地编辑，空名与已被其他场景占用的名字都会被拒绝。视点人物与进度是下拉框，笔记已不在的视点人物会作为一个单独的选项保留，而不是悄悄消失。冲突是一块文本框，移开焦点或按 Mod+Enter 即保存。色板为卡片着上便签所用的八种马卡龙颜色之一，也可以不着色。所有写入都走同一条队列，因此一口气做的两次修改都会落盘，卡片随即采用每次写入返回的版本号，而不是绘制这一帧时的那个。
+- **次序正是这块板子的用处。** 板子处于普通顺序时，拖动卡片即可移动场景，只重写它周围的排序值。两张卡片之间的 **+** 会恰好在那个位置插入场景，**添加场景**则加在末尾，卡片自己的菜单里还有上移、下移、**移动到位置**与**移动到某项之后**，不用鼠标也能做同样的事。方向按钮把整块板子读作**倒序**，此时上移会让场景在故事中更靠后。一旦搜索、筛选或分组，依赖相邻关系的操作便收起，只留下明确指定目标的那些。
+- **看板既能收纳，也能回答问题。** 搜索框按名称筛选，漏斗按进度、类别、视点人物、时间、地点、人物、颜色或关联正文筛选。**显示**把卡片设为紧凑、标准或扩展，也可以按上述八项中的任意一项分组，每组之上画出标题，而每张卡片仍保留自己的叙事编号。卡片大小、分组与方向按项目分别记住，重启后依旧。只有视野之内的卡片会被挂载，因此三千个场景的板子与五个场景的板子一样顺滑。
+- **每个场景新增两个字段**：**颜色**，存为 `snowflake-color`，以及**关联的正文笔记**，存为 `snowflake-linked-manuscript`，你怎么写就怎么存，子路径与别名一律保留。两者都排在场景表单的事件之后，都可以从漏斗中筛选场景表格与看板，卡片也会列出该场景所属的章节，点击即可打开对应的那一章。当链接指向值得一去的地方时，表单的按钮会提供**保存场景并打开{name}**。
+- **漏斗中新增场景范围**，可填最小与最大场景序号，把表格与看板收窄到故事的某一段，同时不影响依赖相邻关系的操作。**在其前插入场景**与原有的向后插入并列。
+- **未保存的场景文字会被保留**：卡片的写入被拒绝时，这些文字会汇总到一个可供复制的窗口中，而不是随看板一同消失。
+- 两条侧边栏命令现在会说明打开的是哪个侧边栏：**打开便签侧边栏**与**打开写作时段侧边栏**。
+
+### 修复
+
+- 成员编辑会落在打开它的那个工作台所属的项目上，无论对话框敞着时哪个项目成了当前项目。重命名或删除类别、添加类别路径、保存自定义字段模板、编辑角色、场景或世界观笔记，以及移动到位置与移动到某项之后背后的对话框，如今都带着打开它们时的项目。在此之前，对话框敞着时点进另一个项目，写入就会落到那个项目上，若那里恰好有同名笔记，还会毫无声息。
+- 托管区段标记受损的笔记会被拒绝写入而不是被覆盖，角色、场景与世界观笔记一视同仁。此前保存这类笔记会在旧标记下方另写一份标题与标记，把作者的正文遗留在所有托管区段之外，并连带抹去那条健康问题，于是检查器随后报告项目一切正常。健康报告也不再为这类笔记提供**编辑**，取而代之的是**打开**。
+- 当筛选答案背后的笔记被重命名或删除时，场景表格的时间、地点与类别筛选会被清除，与视点人物和人物筛选一样。此前留下的失效答案会让表格空无一物，而那一行漏斗看上去却像什么都没问。
+- 项目切换器上的受损标记与健康检查器达成一致：检查器视为提示性的记录行不再点亮该标记，而此前被该标记完全忽略的受损世界观笔记，如今会点亮它。
 
 ## [0.18.1]
 
