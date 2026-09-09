@@ -426,5 +426,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private updateHeader(): void {
 		const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void };
 		leaf.updateHeader?.();
+		// Obsidian initializes the view title before our project is loaded;
+		// updateHeader refreshes the tab label, but leaves that title unchanged.
+		this.containerEl.querySelector<HTMLElement>('.view-header-title')
+			?.setText(this.getDisplayText());
 	}
 }

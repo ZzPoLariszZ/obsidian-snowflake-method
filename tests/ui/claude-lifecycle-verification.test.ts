@@ -73,7 +73,8 @@ function workspaceView() {
 		rememberCorkboardPreferences: vi.fn(),
 		corkboard: () => board,
 	});
-	Object.assign(view, { contentEl: content, containerEl: { isShown: () => shown } });
+	Object.assign(dom.container, { isShown: () => shown });
+	Object.assign(view, { contentEl: content, containerEl: dom.container });
 	const internals = view as unknown as { filterPanel: FilterPanel; shownFingerprint: string | null; memory: CorkboardMemory };
 	return { view, internals, loadDashboardModel, host, content, dom, board, removedListener,
 		setShown: (value: boolean) => { shown = value; },

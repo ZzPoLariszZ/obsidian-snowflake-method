@@ -35,6 +35,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import SnowflakeMethodPlugin from '../../src/main';
+import { t as translate } from '../../src/i18n';
 import { renderCorkboard } from '../../src/ui/corkboard';
 import type { CorkboardControls, CorkboardHandle } from '../../src/ui/corkboard-bridge';
 import {
@@ -80,6 +81,47 @@ function workspaceView() {
 	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame,
 		setRecent: (path: string | null) => { recent = path; } };
 }
+
+describe('workspace header localization', () => {
+	it.each(['en', 'zh-CN'] as const)('updates the visible header after the %s project loads', async (locale) => {
+		const { view, loadDashboardModel } = workspaceView();
+		const dom = new CorkboardDom();
+		const header = dom.container.createDiv({ cls: 'view-header-title', text: 'Visualization workspace' });
+		const tab = dom.container.createDiv({ cls: 'workspace-tab-header-inner-title' });
+		Object.assign(view, { containerEl: dom.container });
+		// Obsidian updates the tab label here, but initializes the visible
+		// view title only once, before the asynchronous project read finishes.
+		Object.assign(view.leaf, { updateHeader: () => tab.setText(view.getDisplayText()) });
+		delete (view as unknown as { updateHeader?: () => void }).updateHeader;
+		const { host } = (view as unknown as { controls(): CorkboardControls }).controls();
+		const translateForProject: DashboardHost['translateForProject'] = (projectLocale, key, vars) =>
+			translate(projectLocale ?? 'en', key, vars);
+		Object.assign(host, { translateForProject });
+		let finishRead!: (model: ProjectDashboardModel) => void;
+		loadDashboardModel.mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve; }));
+		await view.setState({ projectPath: firstProject }, { history: false });
+		const opening = view.onOpen();
+		expect(header.textContent).toBe('Visualization workspace');
+
+		const title = locale === 'zh-CN' ? '中文小说' : 'Novel';
+		const model = { path: firstProject, projectId: 'first', title, locale } as ProjectDashboardModel;
+		finishRead(model);
+		await opening;
+		const expected = locale === 'zh-CN' ? '中文小说 · 场景看板' : 'Novel · corkboard';
+		expect(header.textContent).toBe(expected);
+		expect(tab.textContent).toBe(expected);
+
+		view.showVisualization('timeline');
+		const timeline = locale === 'zh-CN' ? '中文小说 · 时间线' : 'Novel · timeline';
+		expect(header.textContent).toBe(timeline);
+		expect(tab.textContent).toBe(timeline);
+
+		loadDashboardModel.mockResolvedValueOnce({ ...model, title: 'Renamed' });
+		await view.refresh();
+		expect(header.textContent).toBe(locale === 'zh-CN' ? 'Renamed · 时间线' : 'Renamed · timeline');
+		expect(tab.textContent).toBe(header.textContent);
+	});
+});
 
 describe('workspace project ownership', () => {
 	it('keeps a restored project through dashboard switches and repeated refreshes', async () => {
