@@ -1763,13 +1763,16 @@ describe("SnowflakeProjectService", () => {
         else frontmatter[FRONTMATTER_KEYS.rank] = index + 1;
       });
     }
+    // Rankless ties are ordered by generated id, so choose a real move from
+    // the current order rather than assuming the notes kept creation order.
+    const [first, second, third] = await service.listScenes(project);
     const before = new Map(scenes.map((scene) => [scene.sceneId, fakeVault.contents.get(scene.path)!]));
     const paths = new Map(scenes.map((scene) => [scene.sceneId, scene.path]));
     const changes: RankRevisionChange[] = [];
     fakeVault.processCalls.length = 0;
     fakeFileManager.frontmatterCalls.length = 0;
 
-    const reordered = await service.reorderScene(project, scenes[2]!.sceneId, 1, (change) => {
+    const reordered = await service.reorderScene(project, third!.sceneId, 1, (change) => {
       changes.push(change);
       // Each successful write must be published before the next one starts.
       expect(fakeVault.processCalls).toEqual(changes.map((entry) => paths.get(entry.id)));
@@ -1780,7 +1783,9 @@ describe("SnowflakeProjectService", () => {
       });
     });
 
-    expect(reordered.map((scene) => scene.title)).toEqual(["First", "Third", "Second"]);
+    expect(reordered.map((scene) => scene.sceneId)).toEqual([
+      first!.sceneId, third!.sceneId, second!.sceneId,
+    ]);
     expect(changes.map((change) => change.id)).toEqual(reordered.map((scene) => scene.sceneId));
     for (const scene of reordered) {
       expect(scene.hasStoredRank).toBe(true);
@@ -1804,7 +1809,7 @@ describe("SnowflakeProjectService", () => {
         delete frontmatter[FRONTMATTER_KEYS.rank];
       });
     }
-    const [first, second, third] = scenes;
+    const [first, second, third] = await service.listScenes(project);
     const before = new Map(scenes.map((scene) => [scene.path, fakeVault.contents.get(scene.path)!]));
     const changes: RankRevisionChange[] = [];
     fakeVault.processCalls.length = 0;

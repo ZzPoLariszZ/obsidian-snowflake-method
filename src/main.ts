@@ -4957,7 +4957,7 @@ export default class SnowflakeMethodPlugin
 		const owner = markedOwnerOf(field);
 		if (owner === null) return false;
 		if (owner.closest('.modal') !== null) return true;
-		for (const type of [DASHBOARD_VIEW_TYPE, MANUSCRIPT_VIEW_TYPE]) {
+		for (const type of [DASHBOARD_VIEW_TYPE, MANUSCRIPT_VIEW_TYPE, STORY_STRUCTURE_VIEW_TYPE]) {
 			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
 				if (leaf.view.containerEl.contains(owner)) return true;
 			}
