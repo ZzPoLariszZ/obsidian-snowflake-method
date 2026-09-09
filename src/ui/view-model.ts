@@ -777,6 +777,7 @@ export interface DashboardHost {
 		kind: WorldbuildingKindId,
 		entityId: string,
 		targetIndex: number,
+		projectPath?: string,
 	): Promise<void>;
 	createSceneCanvas(): Promise<void>;
 	openProjectBase(id: ProjectBaseChoice): Promise<void>;
@@ -852,7 +853,7 @@ export interface DashboardHost {
 		projectPath?: string,
 		onRankWritten?: (change: RankRevisionChange) => void,
 	): Promise<void>;
-	reorderCharacter(characterId: string, targetIndex: number): Promise<void>;
+	reorderCharacter(characterId: string, targetIndex: number, projectPath?: string): Promise<void>;
 	openManagedFile(
 		path: string,
 		sectionId?: string,

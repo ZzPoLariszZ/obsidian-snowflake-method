@@ -2168,8 +2168,9 @@ export default class SnowflakeMethodPlugin
 		kind: WorldbuildingKindId,
 		entityId: string,
 		targetIndex: number,
+		projectPath?: string,
 	): Promise<void> {
-		const project = await this.requireCurrentProject();
+		const project = await this.requireProject(projectPath);
 		try {
 			await this.projects.reorderEntity(project, kind, entityId, targetIndex);
 		} catch (error) {
@@ -2508,8 +2509,8 @@ export default class SnowflakeMethodPlugin
 		await this.projects.reorderScene(project, sceneId, targetIndex, onRankWritten);
 	}
 
-	async reorderCharacter(characterId: string, targetIndex: number): Promise<void> {
-		const project = await this.requireCurrentProject();
+	async reorderCharacter(characterId: string, targetIndex: number, projectPath?: string): Promise<void> {
+		const project = await this.requireProject(projectPath);
 		await this.projects.reorderCharacter(project, characterId, targetIndex);
 	}
 

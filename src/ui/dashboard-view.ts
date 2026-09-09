@@ -2590,7 +2590,7 @@ export class SnowflakeDashboardView extends ItemView {
 				context,
 				async (request) => {
 					const created = await this.host.createEntity(request, model.path);
-					await this.host.reorderEntity(kind, created.id, index + 1);
+					await this.host.reorderEntity(kind, created.id, index + 1, model.path);
 					await this.refresh();
 					this.revealEntity(model, kind, created.id);
 				},
@@ -6711,7 +6711,7 @@ export class SnowflakeDashboardView extends ItemView {
 				model.characters.map((character) => character.name),
 				async (request) => {
 					const created = await this.host.createCharacter(request, model.path);
-					await this.host.reorderCharacter(created.id, index + 1);
+					await this.host.reorderCharacter(created.id, index + 1, model.path);
 					await this.refresh();
 					this.revealCharacter(created.id);
 				},

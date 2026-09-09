@@ -1,12 +1,19 @@
 import { TFile } from 'obsidian';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFakeEnvironment } from '../helpers/fake-vault';
+
+const openedForms = vi.hoisted(() => [] as unknown[]);
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	return {
 		...runtime,
+		Modal: class extends runtime.Modal {
+			modalEl = { addClass: (): void => undefined };
+			setTitle(): void {}
+			override open(): void { openedForms.push(this); }
+		},
 		Plugin: class {},
 		ItemView: class {},
 		FuzzySuggestModal: class extends runtime.Modal {},
@@ -17,7 +24,9 @@ vi.mock('obsidian', async (importOriginal) => {
 import SnowflakeMethodPlugin from '../../src/main';
 import { ManagedFileNotFoundError } from '../../src/repository';
 import { SnowflakeProjectService } from '../../src/services';
+import { SnowflakeDashboardView } from '../../src/ui/dashboard-view';
 import type { CreateCharacterRequest, CreateSceneRequest, EntityFormRequest } from '../../src/ui/modals';
+import type { ProjectDashboardModel } from '../../src/ui/view-model';
 
 const sceneRequest = (title: string, fields: Partial<CreateSceneRequest> = {}): CreateSceneRequest => ({
 	title, aliases: [], categoryPaths: [], progressStatus: 'not-started', times: [], locations: [],
@@ -30,6 +39,14 @@ const characterRequest = (fields: Partial<CreateCharacterRequest> = {}): CreateC
 	oneSentenceStoryline: '', oneParagraphStoryline: '', motivation: '', goal: '', conflict: '', growth: '',
 	worldStatus: [], relationships: [], customFields: '', ...fields,
 });
+
+const entityRequest = (name: string): EntityFormRequest => ({
+	kind: 'location', name, aliases: [], categoryPaths: [], progressStatus: 'not-started',
+	description: '', timeKind: null, timeStart: '', timeEnd: '',
+	worldStatus: [], relationships: [], customFields: '',
+});
+
+beforeEach(() => { openedForms.length = 0; });
 
 async function setup() {
 	const env = createFakeEnvironment();
@@ -69,6 +86,49 @@ async function setup() {
 }
 
 describe('captured project mutation ownership', () => {
+	it.each(['character', 'location'] as const)(
+		'inserts a %s at the requested position in the form owner while another project stays selected',
+		async (kind) => {
+			const fixture = await setup();
+			const { plugin, service, owner } = fixture;
+			const create = async (name: string, projectPath: string): Promise<unknown> => kind === 'character'
+				? plugin.createCharacter(characterRequest({ name }), projectPath)
+				: plugin.createEntity(entityRequest(name), projectPath);
+			await create('First', owner.projectFile);
+			await create('Last', owner.projectFile);
+			await create('Keep this member', fixture.active.projectFile);
+			const before = fixture.activeContents();
+			const model = {
+				...await service.loadProject(owner), path: owner.projectFile,
+			} as unknown as ProjectDashboardModel;
+			const view = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
+			const refresh = vi.fn(async () => undefined);
+			Object.assign(view, {
+				app: plugin.app, host: plugin, t: (key: string) => key,
+				memberFormContext: async () => ({}), refresh,
+				revealCharacter: vi.fn(), revealEntity: vi.fn(),
+			});
+			const insert = view as unknown as {
+				insertCharacterAfter(model: ProjectDashboardModel, index: number): void;
+				insertEntityAfter(model: ProjectDashboardModel, kind: 'location', index: number): void;
+			};
+			if (kind === 'character') insert.insertCharacterAfter(model, 0);
+			else insert.insertEntityAfter(model, kind, 0);
+			await vi.waitFor(() => expect(openedForms).toHaveLength(1));
+			// Submit the real form's callback without drawing Obsidian's modal UI.
+			const form = openedForms[0] as {
+				submitHandler(request: CreateCharacterRequest | EntityFormRequest): Promise<void>;
+			};
+			await form.submitHandler(kind === 'character'
+				? characterRequest({ name: 'Inserted' }) : entityRequest('Inserted'));
+			const project = await service.loadProject(owner);
+			const members = kind === 'character' ? project.characters : project.worldbuilding.location;
+			expect(members?.map((member) => member.name)).toEqual(['First', 'Inserted', 'Last']);
+			expect(refresh).toHaveBeenCalledOnce();
+			fixture.assertOwnership(before);
+		},
+	);
+
 	it('creates, updates and reorders scenes in the form owner while another project stays selected', async () => {
 		const fixture = await setup();
 		const before = fixture.activeContents();
