@@ -304,7 +304,11 @@ describe("TimelineService", () => {
 		expect(await timelines.moveRow(project, a, second, "time-2", null)).toBe("written");
 		expect(await timelines.removeScene(project, a, "scene-2")).toBe("written");
 		expect(await timelines.editRow(project, a, first, "once")).toBe("written");
-		expect(await timelines.editRow(project, a, "timeline-row-9", "x")).toBe("written");
+		// A row that has gone is absent for what names it: the file would not say the words asked.
+		expect(await timelines.editRow(project, a, "timeline-row-9", "x")).toBe("absent");
+		expect(await timelines.moveRow(project, a, "timeline-row-9", "time-2", null)).toBe("absent");
+		expect(await timelines.placeScene(project, a, "scene-4", "timeline-row-9", null)).toBe("absent");
+		expect(await timelines.deleteRow(project, a, "timeline-row-9")).toBe("written");
 		expect(await timelines.moveTimelineInView(project, viewId, b, a)).toBe("written");
 		expect(await timelines.setTimeOrder(project, viewId, ["time-2", "time-1"])).toBe("written");
 		expect(await timelines.setViewPresentation(project, viewId, "flat")).toBe("written");

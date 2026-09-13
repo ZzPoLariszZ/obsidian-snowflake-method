@@ -80,6 +80,8 @@ function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene)) {
 	return {
 		dom, host, handle,
 		cards,
+		root: dom.container.querySelector('.snowflake-method-corkboard')!,
+		display: dom.container.querySelector('.snowflake-method-corkboard-display')!,
 		scroller: dom.container.querySelector('.snowflake-method-corkboard-scroll')!,
 		canvas: dom.container.querySelector('.snowflake-method-corkboard-canvas')!,
 		add: dom.container.querySelector('.snowflake-method-corkboard-add')!,
@@ -127,6 +129,15 @@ describe('the corkboard as a pool', () => {
 		const spans = fixture.empty.querySelectorAll('span');
 		expect(spans[spans.length - 1]?.textContent).toBe('Every scene is placed');
 		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
+		expect(fixture.display.classes.has('is-hidden')).toBe(true);
+	});
+
+	it('keeps the display control on an empty board whose card style dresses another surface', () => {
+		const fixture = pool({ include: () => false, emptyText: 'Every scene is placed', modeShared: true });
+		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
+		expect(fixture.display.classes.has('is-hidden')).toBe(false);
+		expect(fixture.dom.container.querySelector('.snowflake-method-filter-button')!.classes.has('is-hidden')).toBe(true);
+		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard-direction')!.classes.has('is-hidden')).toBe(true);
 	});
 
 	it('lets a card leave under the given type, and holds a paint until the drag has ended', () => {
@@ -157,15 +168,39 @@ describe('the corkboard as a pool', () => {
 			dropIn: { accepts: (types) => types.includes('application/x-test-lane'), onDrop },
 		});
 		const dataTransfer = transfer(['application/x-test-lane']);
-		event(fixture.canvas, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
-		expect(fixture.scroller.classes.has('is-drop-target')).toBe(true);
+		event(fixture.root, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(true);
 		expect(dataTransfer.dropEffect).toBe('move');
-		event(fixture.canvas, 'drop', { dataTransfer });
+		event(fixture.root, 'drop', { dataTransfer });
 		expect(onDrop).toHaveBeenCalledWith(dataTransfer);
-		expect(fixture.scroller.classes.has('is-drop-target')).toBe(false);
+		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
 		expect(fixture.host.reorderScene).not.toHaveBeenCalled();
 		const foreign = transfer(['text/plain']);
-		event(fixture.canvas, 'dragover', { clientX: 10, clientY: 10, dataTransfer: foreign });
-		expect(fixture.scroller.classes.has('is-drop-target')).toBe(false);
+		event(fixture.root, 'dragover', { clientX: 10, clientY: 10, dataTransfer: foreign });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
+		// The board's own reorder never takes such a drop, and a drop on the canvas is left to bubble.
+		event(fixture.canvas, 'drop', { dataTransfer });
+		expect(onDrop).toHaveBeenCalledOnce();
+	});
+
+	it('takes the drop on an empty pool too, where the scroller is hidden and only the empty line shows', () => {
+		const onDrop = vi.fn();
+		const fixture = pool({
+			include: () => false,
+			emptyText: 'Every scene is placed',
+			dragOut: { type: POOL_TYPE, onStart: vi.fn(), onEnd: vi.fn() },
+			dropIn: { accepts: (types) => types.includes('application/x-test-lane'), onDrop },
+		});
+		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
+		expect(fixture.empty.classes.has('is-hidden')).toBe(false);
+		const dataTransfer = transfer(['application/x-test-lane']);
+		event(fixture.root, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(true);
+		event(fixture.root, 'dragleave', { relatedTarget: null });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
+		event(fixture.root, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
+		event(fixture.root, 'drop', { dataTransfer });
+		expect(onDrop).toHaveBeenCalledWith(dataTransfer);
+		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
 	});
 });

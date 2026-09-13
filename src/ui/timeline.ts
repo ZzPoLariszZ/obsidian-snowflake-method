@@ -58,9 +58,11 @@ import {
 } from './timeline-bridge';
 import {
 	AddTimelineModal,
+	TimelineDraftModal,
 	TimelineViewFormModal,
 	confirmTimelineAction,
 	renameTimelineForm,
+	type RecoveredTimelineDraft,
 } from './timeline-forms';
 import {
 	assignedSceneIds,
@@ -125,6 +127,12 @@ interface SubrowEntry {
 	editing: boolean;
 	/** The words the edit began from, to revert to on Escape. */
 	original: string;
+	/** The words the input held as the edit opened: kept, on their way, or the file's own. */
+	opened: string;
+	/** Whether the input opened on the file's own words, which are nobody's to write again. */
+	openedFromFile: boolean;
+	/** The generation of the write the opened words were on their way in, when they were; null otherwise. */
+	openedGeneration: number | null;
 	scenes: HTMLElement;
 	/** Stand-ins for scenes the project no longer has, by scene id. */
 	missing: Map<string, HTMLElement>;
@@ -784,7 +792,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
 		}
 		model = nextModel;
-		readOnly = (model?.readOnly ?? true) || (reading?.readOnly ?? true);
+		// The model's word alone: it is renewed with every project refresh,
+		// while what the document read reported is as old as that read, and
+		// a project written again would stay shut here until the next one.
+		readOnly = model?.readOnly ?? true;
 		root.toggleClass('is-read-only', readOnly);
 		roster = model === null ? [] : rosterOf(model);
 		scenesById = new Map(model?.scenes.map((scene) => [scene.id, scene]) ?? []);
@@ -1152,6 +1163,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const clearRows = (): void => {
 		for (const timeId of [...timeRows.keys()]) unmountRow(timeId);
 		timesEmpty.toggleClass('is-hidden', true);
+		sweepParked();
+		sweepCards();
 	};
 
 	/** Brings the rows level with the times the view shows, in its order, kept where they stand. */
@@ -1181,6 +1194,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			if (el === undefined) continue;
 			table.insertBefore(el, timeRows.get(move.before)?.el ?? timesEmpty);
 		}
+		sweepParked();
+		sweepCards();
 	};
 
 	// -- The cells of a row --------------------------------------------------
@@ -1396,7 +1411,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			cls: 'snowflake-method-timeline-scenes',
 			attr: { role: 'list' },
 		});
-		const entry: SubrowEntry = { rowId, el, handle, label, input, more, editing: false, original: '', scenes, missing: new Map(), stack: null };
+		const entry: SubrowEntry = { rowId, el, handle, label, input, more, editing: false, original: '', opened: '', openedFromFile: true, openedGeneration: null, scenes, missing: new Map(), stack: null };
 		handle.addEventListener('dragstart', (event) => {
 			const time = timeOfRow(cell, entry.rowId);
 			if (readOnly || event.dataTransfer === null || time === null) {
@@ -1428,6 +1443,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			} else if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopPropagation();
+				// Escape lets the words go, kept ones from a write that failed as well.
+				rowDrafts.delete(entry.rowId);
 				endRowEdit(entry, true);
 			}
 		});
@@ -1457,6 +1474,35 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	/** The empty row at the foot of a cell: typing there and pressing Enter makes a row and keeps the focus for the next. */
+	/**
+	 * The words at each cell's foot that are not yet a row, by lane and
+	 * time. The input shows them; this keeps them, through any rebuild of
+	 * the cell, until they are written or cleared. Showing them again does
+	 * not spend them.
+	 */
+	const footWords = new Map<string, string>();
+	const footKey = (timelineId: string, timeId: string): string => `${timelineId}|${timeId}`;
+	const keepFoot = (key: string, value: string): void => {
+		if (value.length === 0) footWords.delete(key);
+		else footWords.set(key, value);
+	};
+
+	/**
+	 * Words given back to a cell's foot, ahead of whatever was typed there
+	 * since: on the input when the cell is shown, and in the keeping either way.
+	 */
+	const giveBack = (timelineId: string, timeId: string, words: string): void => {
+		const key = footKey(timelineId, timeId);
+		const foot = timeRows.get(timeId)?.cells.get(timelineId)?.trailing?.input;
+		const shown = foot !== undefined && foot.isConnected ? foot : null;
+		const since = shown?.value ?? footWords.get(key) ?? '';
+		const value = since.trim().length === 0 ? words : `${words}\n${since}`;
+		keepFoot(key, value);
+		if (shown === null) return;
+		shown.value = value;
+		fitWords(shown);
+	};
+
 	const buildTrailing = (cell: CellEntry, timeId: string): TrailingRow => {
 		const rows = cell.rows;
 		if (rows === null) throw new Error('A trailing row needs the rows of a present cell.');
@@ -1472,6 +1518,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			},
 		});
 		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'presentation' } });
+		const key = footKey(cell.timelineId, timeId);
+		const held = footWords.get(key);
+		if (held !== undefined) {
+			input.value = held;
+			fitWords(input);
+		}
 		input.addEventListener('keydown', (event) => {
 			if (event.isComposing) return;
 			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
@@ -1481,11 +1533,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				event.preventDefault();
 				event.stopPropagation();
 				input.value = '';
+				keepFoot(key, '');
 				fitWords(input);
 				input.blur();
 			}
 		});
 		input.addEventListener('input', () => {
+			keepFoot(key, input.value);
 			fitWords(input);
 		});
 		input.addEventListener('blur', () => {
@@ -1498,12 +1552,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * The words typed at the foot of a cell become a row: shown at once as a
 	 * pending row, written through the queue, and taken down once the
 	 * document has been read back with the row in it. The input is emptied
-	 * and keeps the focus, which is the next row already begun.
+	 * and keeps the focus, which is the next row already begun. A write
+	 * refused or failed gives the words back to the cell's foot, ahead of
+	 * whatever was typed there since, where they are kept until written.
 	 */
 	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLTextAreaElement): void => {
 		const words = input.value.trim();
 		if (words.length === 0 || readOnly) return;
 		input.value = '';
+		keepFoot(footKey(cell.timelineId, timeId), '');
 		fitWords(input);
 		const rows = cell.rows;
 		if (rows === null) return;
@@ -1520,23 +1577,83 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const pending: PendingRow = { el };
 		cell.pending.push(pending);
 		const timelineId = cell.timelineId;
+		let written = false;
 		void enqueue(async () => {
-			await controls.bridge().addRow(timelineId, timeId, words, null);
+			const id = await controls.bridge().addRow(timelineId, timeId, words, null);
+			if (id === null) throw new Error(t('timeline.subrow.refused'));
+			written = true;
 		}).then(() => {
 			pending.el.remove();
 			cell.pending = cell.pending.filter((candidate) => candidate !== pending);
+			if (written) return;
+			if (disposed) {
+				recoverWords(placeName(timelineId, timeId), words);
+				return;
+			}
+			giveBack(timelineId, timeId, words);
 		});
+	};
+
+	/**
+	 * The words of an edit whose write did not land, by row: the editor
+	 * opens on them next, for another try, until they are written or let
+	 * go with Escape. The label keeps showing what the document holds.
+	 * Each edit of a row is a generation; a write that fails keeps its
+	 * words only while no later edit of the row has followed it.
+	 */
+	const rowDrafts = new Map<string, { timelineId: string; words: string }>();
+	const rowEdits = new Map<string, number>();
+	/** The words last sent to be written for a row, until that write has settled: what an edit opened meanwhile starts from. */
+	const rowPending = new Map<string, { generation: number; words: string }>();
+	/** The latest generation of each row's writes known to have landed: words from one at or before it are the file's. */
+	const rowWritten = new Map<string, number>();
+
+	/**
+	 * Words whose write failed after the workspace had gone have no field
+	 * left to go back to: they go to a dialog that outlives it, gathered
+	 * over a tick so failures landing together open one.
+	 */
+	let recoveryDrafts: RecoveredTimelineDraft[] = [];
+	const recoverWords = (place: string, words: string): void => {
+		if (recoveryDrafts.length === 0) {
+			void Promise.resolve().then(() => {
+				const drafts = recoveryDrafts;
+				recoveryDrafts = [];
+				new TimelineDraftModal(app, t, drafts).open();
+			});
+		}
+		recoveryDrafts.push({ place, words });
+	};
+	/** Where words were meant to stand, as a writer would name it: the lane and the time. */
+	const placeName = (timelineId: string, timeId: string | null): string => {
+		const lane = reading?.held.timelines.find((candidate) => candidate.id === timelineId)?.name ?? timelineId;
+		const time = model === null || timeId === null
+			? null
+			: kindEntities(model, 'time').find((candidate) => candidate.id === timeId)?.name ?? null;
+		return time === null ? lane : `${lane} · ${time}`;
+	};
+	const placeOfRow = (timelineId: string, rowId: string): string => {
+		const lane = reading?.held.timelines.find((candidate) => candidate.id === timelineId);
+		const time = lane?.times.find((candidate) => candidate.rows.some((row) => row.id === rowId));
+		return placeName(timelineId, time?.timeId ?? null);
 	};
 
 	const beginRowEdit = (cell: CellEntry, entry: SubrowEntry): void => {
 		if (readOnly || entry.editing) return;
 		const row = rowOfEntry(cell, entry);
 		entry.editing = true;
-		entry.original = row?.text ?? '';
+		// What the row says as far as this workspace has asked: words on their
+		// way to the file count, so a second edit is measured against them.
+		const pending = rowPending.get(entry.rowId);
+		const kept = rowDrafts.get(entry.rowId)?.words;
+		entry.original = pending?.words ?? row?.text ?? '';
+		entry.opened = kept ?? entry.original;
+		entry.openedFromFile = kept === undefined && pending === undefined;
+		entry.openedGeneration = kept === undefined && pending !== undefined ? pending.generation : null;
 		entry.el.addClass('is-editing');
 		entry.label.addClass('is-hidden');
 		entry.input.removeClass('is-hidden');
-		entry.input.value = entry.original;
+		entry.input.value = entry.opened;
 		fitWords(entry.input);
 		entry.input.focus();
 		entry.input.select();
@@ -1550,21 +1667,77 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (refocus) entry.label.focus({ preventScroll: true });
 	};
 
-	/** The words typed for an existing row, written only when they moved. */
+	/**
+	 * A row's words written through the queue. A write refused or failed
+	 * keeps them for the row's next edit, once the read that follows has put
+	 * the document's own words back on the label. A row that has gone has
+	 * no next edit: its words go to the dialog at once.
+	 */
+	const writeRowWords = (timelineId: string, rowId: string, words: string): void => {
+		// Kept or sent, these words are the row's latest edit: an earlier
+		// write of the row that fails after this keeps nothing over them.
+		const generation = (rowEdits.get(rowId) ?? 0) + 1;
+		rowEdits.set(rowId, generation);
+		if (readOnly) {
+			// Nothing is asked of a project that cannot be written: the words
+			// wait for the row's next edit, once it can be, or go to the
+			// dialog when the workspace has gone.
+			if (disposed) recoverWords(placeOfRow(timelineId, rowId), words);
+			else rowDrafts.set(rowId, { timelineId, words });
+			return;
+		}
+		rowPending.set(rowId, { generation, words });
+		let outcome: 'written' | 'gone' | 'failed' = 'failed';
+		void enqueue(async () => {
+			const result = await controls.bridge().editRow(timelineId, rowId, words);
+			if (result === 'absent') {
+				outcome = 'gone';
+				throw new Error(t('timeline.subrow.editGone'));
+			}
+			if (result !== 'written') throw new Error(t('timeline.subrow.editRefused'));
+			outcome = 'written';
+		}).then(() => {
+			if (rowPending.get(rowId)?.generation === generation) rowPending.delete(rowId);
+			if (outcome === 'written') rowWritten.set(rowId, Math.max(rowWritten.get(rowId) ?? 0, generation));
+			if (rowEdits.get(rowId) !== generation || outcome === 'written') return;
+			if (disposed || outcome === 'gone') {
+				recoverWords(placeOfRow(timelineId, rowId), words);
+				return;
+			}
+			rowDrafts.set(rowId, { timelineId, words });
+		});
+	};
+
+	/**
+	 * The words typed for an existing row, written only when they are the
+	 * writer's own and not yet the file's. An editor opened on the file's
+	 * words, or on words whose write has landed since, and left as it was
+	 * has nothing to write, whatever the file has come to say meanwhile;
+	 * one opened on kept words, or on words sent and then refused, has,
+	 * even left as it was. Words already on their way, or already in the
+	 * file, are not sent again.
+	 */
 	const commitRowEdit = (cell: CellEntry, entry: SubrowEntry, refocus: boolean): void => {
 		if (!entry.editing) return;
 		const words = entry.input.value;
 		endRowEdit(entry, refocus);
-		if (words === entry.original || readOnly) return;
-		const timelineId = cell.timelineId;
-		const rowId = entry.rowId;
+		rowDrafts.delete(entry.rowId);
+		// The label wears what the file has come to say while the edit was open, when nothing is written.
+		const current = rowOfEntry(cell, entry)?.text ?? '';
+		const openedLanded = entry.openedFromFile ||
+			(entry.openedGeneration !== null && (rowWritten.get(entry.rowId) ?? 0) >= entry.openedGeneration);
+		if (words === entry.opened && openedLanded) {
+			dressLabel(entry, current);
+			return;
+		}
+		const settled = rowPending.get(entry.rowId)?.words ?? current;
+		if (words === settled) {
+			dressLabel(entry, settled);
+			return;
+		}
 		// The label wears the new words at once; the read that follows agrees.
-		const shown = words.trim().length > 0 ? words : t('timeline.subrow.empty');
-		entry.label.setText(shown);
-		entry.label.toggleClass('is-empty', words.trim().length === 0);
-		void enqueue(async () => {
-			await controls.bridge().editRow(timelineId, rowId, words);
-		});
+		dressLabel(entry, readOnly ? current : words);
+		writeRowWords(cell.timelineId, entry.rowId, words);
 	};
 
 	/** The time a row stands under on its lane, as the lane is now. */
@@ -1647,24 +1820,98 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 	};
 
+	/**
+	 * The keys of a row's cards standing inside an element. A card is keyed
+	 * by its row and scene alone, wherever the row is; one standing elsewhere
+	 * is another paint's to take over, and is left to it.
+	 */
+	const cardsWithin = (rowId: string, el: HTMLElement): string[] =>
+		[...deck.cards].filter(([key, card]) => key.startsWith(`${rowId}|`) && el.contains(card.el)).map(([key]) => key);
+
+	/**
+	 * Sub-rows a cell has taken down in this paint, by lane and row. A row
+	 * moved to another time on its lane is wanted there in the same paint,
+	 * and takes its sub-row over as it stands: its cards, an open edit and
+	 * the caret in it. What no cell takes is swept once the rows are painted.
+	 */
+	const parkedSubrows = new Map<string, { cell: CellEntry; entry: SubrowEntry }>();
+	const parkKey = (timelineId: string, rowId: string): string => `${timelineId}|${rowId}`;
+
 	const unmountSubrow = (cell: CellEntry, rowId: string): void => {
 		const entry = cell.subrows.get(rowId);
 		if (entry === undefined) return;
-		for (const key of [...deck.cards.keys()]) {
-			if (key.startsWith(`${rowId}|`)) deck.unmount(key);
-		}
 		entry.el.remove();
 		cell.subrows.delete(rowId);
+		parkedSubrows.set(parkKey(cell.timelineId, rowId), { cell, entry });
+	};
+
+	/**
+	 * The sub-row another cell of the lane holds for this row, or has just
+	 * taken down, moved into this cell: the one it left is painted either
+	 * before this one, and parked the sub-row, or after, and still holds it.
+	 */
+	const adoptSubrow = (cell: CellEntry, rowId: string): SubrowEntry | null => {
+		const rows = cell.rows;
+		if (rows === null) return null;
+		const key = parkKey(cell.timelineId, rowId);
+		let entry = parkedSubrows.get(key)?.entry ?? null;
+		if (entry !== null) {
+			parkedSubrows.delete(key);
+		} else {
+			for (const timeRow of timeRows.values()) {
+				const holder = timeRow.cells.get(cell.timelineId);
+				const held = holder?.subrows.get(rowId);
+				if (holder === undefined || holder === cell || held === undefined) continue;
+				holder.subrows.delete(rowId);
+				entry = held;
+				break;
+			}
+		}
+		if (entry === null) return null;
+		rows.insertBefore(entry.el, cell.trailing?.el ?? null);
+		return entry;
+	};
+
+	/** The sub-rows no cell took over: an open edit on one is written, as a leave would write it. */
+	const sweepParked = (): void => {
+		for (const { cell, entry } of [...parkedSubrows.values()]) {
+			if (entry.editing) commitRowEdit(cell, entry, false);
+		}
+		parkedSubrows.clear();
+	};
+
+	/**
+	 * A card comes down with its draft saved first, as at disposal, so words
+	 * typed on it are not lost with its placement: whether the placement
+	 * went, the row came down, or the row's cards are dealt again.
+	 */
+	const takeDown = (key: string): void => {
+		const card = deck.cards.get(key);
+		if (card === undefined) return;
+		deck.commitTitle(card, false);
+		deck.commitConflict(card);
+		if (card.editingTitle) deck.recoverBlockedDraft(card);
+		deck.unmount(key);
+	};
+
+	/** The cards no sub-row holds after a paint. */
+	const sweepCards = (): void => {
+		for (const [key, card] of [...deck.cards]) {
+			if (!table.contains(card.el)) takeDown(key);
+		}
+	};
+
+	/** The label's words: the text given, or a stand-in for none. */
+	const dressLabel = (entry: SubrowEntry, text: string): void => {
+		const words = text.trim();
+		const shown = words.length > 0 ? text : t('timeline.subrow.empty');
+		if (entry.label.textContent !== shown) entry.label.setText(shown);
+		entry.label.toggleClass('is-empty', words.length === 0);
 	};
 
 	const dressSubrow = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
 		// An edit in flight keeps its input and its words; the paint dresses around it.
-		if (!entry.editing) {
-			const words = row.text.trim();
-			const shown = words.length > 0 ? row.text : t('timeline.subrow.empty');
-			if (entry.label.textContent !== shown) entry.label.setText(shown);
-			entry.label.toggleClass('is-empty', words.length === 0);
-		}
+		if (!entry.editing) dressLabel(entry, row.text);
 		entry.label.disabled = readOnly;
 		entry.input.readOnly = readOnly;
 		entry.more.disabled = readOnly;
@@ -1682,7 +1929,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		for (const row of time.rows) {
 			let entry = cell.subrows.get(row.id);
 			if (entry === undefined) {
-				entry = buildSubrow(cell, row.id);
+				entry = adoptSubrow(cell, row.id) ?? buildSubrow(cell, row.id);
 				cell.subrows.set(row.id, entry);
 			}
 			dressSubrow(cell, entry, row, lane);
@@ -1735,7 +1982,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			.filter((sceneId) => scenesById.has(sceneId))
 			.map((sceneId) => cardKey(row.id, sceneId));
 		const plan = planCardRepaint(standing, wantedCards, []);
-		for (const key of plan.remove) deck.unmount(key);
+		for (const key of plan.remove) takeDown(key);
 		for (const [sceneId, el] of entry.missing) {
 			if (!row.scenes.includes(sceneId) || scenesById.has(sceneId)) {
 				el.remove();
@@ -1754,6 +2001,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			if (card === undefined) {
 				card = deck.mount(entry.scenes, key, scene, index);
 				wireCardDrag(card, row.id);
+			} else if (!entry.scenes.contains(card.el)) {
+				// The row came from another time: its card comes over as it stands, editor and all.
+				entry.scenes.insertBefore(card.el, null);
 			}
 			deck.dress(card, scene, index, { position: at + 1, size: row.scenes.length });
 		});
@@ -1820,9 +2070,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	/** The stack comes down and the row lies flat again: its one card and any stand-in go with it. */
 	const takeDownStack = (entry: SubrowEntry, rowId: string): void => {
-		for (const key of [...deck.cards.keys()]) {
-			if (key.startsWith(`${rowId}|`)) deck.unmount(key);
-		}
+		for (const key of cardsWithin(rowId, entry.el)) takeDown(key);
 		for (const el of entry.missing.values()) el.remove();
 		entry.missing.clear();
 		entry.stack?.el.remove();
@@ -1838,9 +2086,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		let stack = entry.stack;
 		if (stack === null) {
 			// The cards dealt flat come down; the stack deals one of them again.
-			for (const key of [...deck.cards.keys()]) {
-				if (key.startsWith(`${row.id}|`)) deck.unmount(key);
-			}
+			for (const key of cardsWithin(row.id, entry.el)) takeDown(key);
 			for (const el of entry.missing.values()) el.remove();
 			entry.missing.clear();
 			stack = buildStack(cell, entry);
@@ -1855,7 +2101,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const shownId = row.scenes[at];
 		const wantedKey = shownId === undefined ? null : cardKey(row.id, shownId);
 		for (const standing of [...deck.cards.keys()]) {
-			if (standing.startsWith(`${row.id}|`) && standing !== wantedKey) deck.unmount(standing);
+			if (standing.startsWith(`${row.id}|`) && standing !== wantedKey) takeDown(standing);
 		}
 		for (const [sceneId, el] of entry.missing) {
 			if (sceneId !== shownId || scenesById.has(sceneId)) {
@@ -1873,6 +2119,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				if (card === undefined) {
 					card = deck.mount(stack.face, wantedKey, scene, index);
 					wireCardDrag(card, row.id);
+				} else if (!stack.face.contains(card.el)) {
+					// The row came from another time: its card in front comes over as it stands.
+					stack.face.insertBefore(card.el, null);
 				}
 				deck.dress(card, scene, index, { position: at + 1, size: total });
 			}
@@ -2250,7 +2499,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * cell. A seam's time goes before the row under it, and the view's order
 	 * is written with it in that place.
 	 */
-	const addTimeHere = async (beforeTimeId: string | null, timelineId: string | null = null): Promise<void> => {
+	const addTimeHere = async (
+		beforeTimeId: string | null,
+		timelineId: string | null = null,
+		/** Whether the foot is the place asked for, rather than a place among the rest by rank. */
+		atFoot = false,
+	): Promise<void> => {
 		const current = model;
 		const view = currentView();
 		const lane = lanes.find((candidate) => candidate.id === (timelineId ?? activeId));
@@ -2261,10 +2515,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		await enqueue(async () => {
 			await controls.bridge().addTime(lane.id, timeId);
 			if (beforeTimeId === timeId) return;
-			// After the rest in a view that runs first to last, the time takes
-			// its place among the rest by rank and the order is left alone;
-			// in one turned about, the foot is the first place, and is written.
-			if (beforeTimeId === null && !view.timesReversed) return;
+			// Added from the frame's corner to a view that runs first to last,
+			// the time takes its place among the rest by rank and the order is
+			// left alone. Put in after the last row, or added to a view turned
+			// about, the foot is the place meant, and is written.
+			if (beforeTimeId === null && !atFoot && !view.timesReversed) return;
 			const order = rowOrder.filter((id) => id !== timeId);
 			const at = beforeTimeId === null ? -1 : order.indexOf(beforeTimeId);
 			await controls.bridge().setTimeOrder(
@@ -2501,14 +2756,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					moveTime(entry.timeId, rowOrder[at + 2] ?? null);
 				});
 		});
-		// A time put in after this one, on the active lane: before the row below, or after the rest.
+		// A time put in after this one, on the active lane: before the row below, or at the foot.
 		menu.addItem((item) => {
 			item
 				.setTitle(t('timeline.time.insertAfter'))
 				.setIcon('calendar-plus')
 				.setDisabled(readOnly || lane === null)
 				.onClick(() => {
-					void addTimeHere(rowOrder[at + 1] ?? null);
+					void addTimeHere(rowOrder[at + 1] ?? null, null, true);
 				});
 		});
 		menu.addSeparator();
@@ -2731,6 +2986,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		emptyText: t('timeline.pool.empty'),
 		// A pool card leaves under the workspace's type and locks the active
 		// lane; a lane's card dropped back on the pool gives up its place.
+		modeShared: true,
 		dragOut: {
 			type: TIMELINE_SCENE_DRAG_TYPE,
 			onStart: (sceneId) => {
@@ -2786,6 +3042,39 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			unbindWindow(eventWindow);
 			poolHandle?.dispose();
 			poolHandle = null;
+			// Words still being written go the way a leave sends them, without
+			// waiting on a blur the host may not send: an open edit of a row,
+			// the words kept from a row's write that failed, tried once more,
+			// and whatever stands at a cell's foot, shown or kept.
+			for (const timeRow of timeRows.values()) {
+				for (const cell of timeRow.cells.values()) {
+					for (const entry of cell.subrows.values()) {
+						if (entry.editing) commitRowEdit(cell, entry, false);
+					}
+				}
+			}
+			for (const [rowId, draft] of [...rowDrafts]) {
+				rowDrafts.delete(rowId);
+				writeRowWords(draft.timelineId, rowId, draft.words);
+			}
+			for (const [key, words] of [...footWords]) {
+				footWords.delete(key);
+				const [timelineId, timeId] = key.split('|') as [string, string];
+				const trimmed = words.trim();
+				if (trimmed.length === 0) continue;
+				if (readOnly) {
+					recoverWords(placeName(timelineId, timeId), trimmed);
+					continue;
+				}
+				let written = false;
+				void enqueue(async () => {
+					const id = await controls.bridge().addRow(timelineId, timeId, trimmed, null);
+					if (id === null) throw new Error(t('timeline.subrow.refused'));
+					written = true;
+				}).then(() => {
+					if (!written) recoverWords(placeName(timelineId, timeId), trimmed);
+				});
+			}
 			deck.dispose();
 			sizeObserver?.disconnect();
 			viewField?.destroy();

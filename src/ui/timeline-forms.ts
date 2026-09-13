@@ -5,7 +5,7 @@
  * through. Each is a labelled form, as every form the plugin opens is.
  */
 
-import { FuzzySuggestModal, Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
+import { FuzzySuggestModal, Modal, Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
 
 import type { EntityRef, EntityRosterEntry, Timeline } from '../domain';
 import { entityGroupLabel, renderRecordPickFrame, wireCardDrag } from './entity-form';
@@ -492,4 +492,39 @@ export function confirmTimelineAction(
 	return new Promise((resolve) => {
 		new TimelineConfirmModal(app, t, spec, resolve).open();
 	});
+}
+
+/** A sub-description's words that could not be written, and where they were meant to stand. */
+export interface RecoveredTimelineDraft {
+	place: string;
+	words: string;
+}
+
+/** Keeps refused sub-description text outside the workspace that has already gone. */
+export class TimelineDraftModal extends Modal {
+	constructor(app: App, private readonly t: Translate, private readonly drafts: readonly RecoveredTimelineDraft[]) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.setTitle(this.t('timeline.draftRecovery.title'));
+		const root = this.contentEl;
+		root.empty();
+		root.createEl('p', { text: this.t('timeline.draftRecovery.description') });
+		for (const draft of this.drafts) {
+			root.createEl('h3', { text: draft.place });
+			const input = root.createEl('textarea', {
+				cls: 'snowflake-method-corkboard-recovered-text',
+				attr: { 'aria-label': this.t('timeline.subrow.label'), rows: '4' },
+			});
+			input.readOnly = true;
+			input.value = draft.words;
+		}
+		root.createEl('button', { text: this.t('common.close'), attr: { type: 'button' } })
+			.addEventListener('click', () => this.close());
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
 }

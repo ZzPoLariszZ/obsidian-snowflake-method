@@ -4248,7 +4248,6 @@ export default class SnowflakeMethodPlugin
 				return {
 					projectPath: project.projectFile,
 					locale: project.locale,
-					readOnly: project.readOnly,
 					held: await timelines.read(project),
 				};
 			},

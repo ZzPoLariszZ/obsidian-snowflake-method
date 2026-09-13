@@ -84,6 +84,11 @@ export interface CorkboardVariant {
 	/** Said when the board has no scene to offer, instead of the corkboard's own line. */
 	emptyText?: string;
 	/**
+	 * The card style chosen on this board dresses cards on another surface
+	 * as well, so the display control stays while the board shows nothing.
+	 */
+	modeShared?: boolean;
+	/**
 	 * Cards leave the board under this type, whatever the adjacency; the
 	 * board's own reorder drag is off. The type must not be the corkboard's
 	 * own, or a card would land on a corkboard in another leaf.

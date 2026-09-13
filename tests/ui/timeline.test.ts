@@ -116,7 +116,8 @@ import {
 	type TimelineBridge,
 	type TimelineControls,
 } from '../../src/ui/timeline-bridge';
-import { AddTimelineModal, TimelineViewFormModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
+import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
+import { AddTimelineModal, TimelineDraftModal, TimelineViewFormModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
 import type { ProjectDashboardModel, SceneViewModel, WorldbuildingEntityViewModel } from '../../src/ui/view-model';
 
 const t = (key: string): string => key;
@@ -192,7 +193,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	};
 	const bridge = {
 		t,
-		read: vi.fn(async () => ({ projectPath: 'P', locale: 'en' as const, readOnly, held })),
+		read: vi.fn(async () => ({ projectPath: 'P', locale: 'en' as const, held })),
 		subscribe: vi.fn((listener: () => void) => {
 			listeners.add(listener);
 			return () => { listeners.delete(listener); };
@@ -229,7 +230,12 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 			return id;
 		}),
 		removeScene: vi.fn(async (timelineId: string, sceneId: string) => apply(removeTimelineScene(held, timelineId, sceneId, 2))),
-		editRow: vi.fn(async (timelineId: string, rowId: string, text: string) => apply(editTimelineRow(held, timelineId, rowId, text, 2))),
+		editRow: vi.fn(async (timelineId: string, rowId: string, text: string) => {
+			// As the service answers: a row that has gone is absent, not a write of nothing.
+			const lane = held.timelines.find((candidate) => candidate.id === timelineId);
+			if (lane === undefined || !lane.times.some((time) => time.rows.some((entry) => entry.id === rowId))) return 'absent';
+			return apply(editTimelineRow(held, timelineId, rowId, text, 2));
+		}),
 		moveRow: vi.fn(async (timelineId: string, rowId: string, toTimeId: string, beforeRowId: string | null) =>
 			apply(moveTimelineRow(held, timelineId, rowId, toTimeId, beforeRowId, 2))),
 		deleteRow: vi.fn(async (timelineId: string, rowId: string) => apply(deleteTimelineRow(held, timelineId, rowId, 2))),
@@ -238,7 +244,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	} as unknown as TimelineBridge;
 	const times = [time('time-1', 'Dawn', 'First light'), time('time-2', 'Dusk')];
 	const model = {
-		path: 'P', projectId: 'p', locale: 'en', readOnly: false,
+		path: 'P', projectId: 'p', locale: 'en', readOnly,
 		scenes: [scene('scene-1', 'Arrival'), scene('scene-2', 'Departure'), scene('scene-3', 'Return')],
 		manuscriptPaths: [],
 		characters: [{ id: 'character-alice', name: 'Alice', path: 'Cast/Alice.md', readOnly: false, healthIssues: [] }],
@@ -281,6 +287,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	const root = dom.container.querySelector('.snowflake-method-timeline')!;
 	return {
 		dom, root, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember, translate,
+		model: model as { readOnly: boolean },
 		held: () => held,
 		notify: () => { for (const listener of listeners) listener(); },
 		listeners,
@@ -526,7 +533,7 @@ describe('the timeline workspace', () => {
 		// its way when the queue asks for its own: the form must wait for it.
 		let release: () => void = () => undefined;
 		vi.mocked(fixture.bridge.read).mockImplementationOnce(() => new Promise((resolve) => {
-			release = () => { resolve({ projectPath: 'P', locale: 'en', readOnly: false, held: fixture.held() }); };
+			release = () => { resolve({ projectPath: 'P', locale: 'en', held: fixture.held() }); };
 		}));
 		const made = vi.mocked(fixture.bridge.createTimeline).getMockImplementation()!;
 		vi.mocked(fixture.bridge.createTimeline).mockImplementation(async (name, binding) => {
@@ -1205,12 +1212,14 @@ describe('the scene pool', () => {
 		await settle();
 		const pool = fixture.root.querySelector('.snowflake-method-timeline-pool')!;
 		expect(fixture.corkboard).toHaveBeenCalledOnce();
-		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; gap: number; emptyText: string }];
+		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; gap: number; emptyText: string; modeShared: boolean }];
 		expect(host).toBe(pool.querySelector('.snowflake-method-corkboard-host'));
 		expect(variant.addButton).toBe('icon');
 		expect(variant.columns).toBe(1);
 		expect(variant.gap).toBe(0.75);
 		expect(variant.emptyText).toBe('timeline.pool.empty');
+		// The style it chooses dresses the lanes, so the control outlives an emptied pool.
+		expect(variant.modeShared).toBe(true);
 		expect(variant.include({ id: 'scene-1' })).toBe(false);
 		expect(variant.include({ id: 'scene-2' })).toBe(true);
 		// Its head names it and counts what it holds, which follows the active lane.
@@ -1625,5 +1634,953 @@ describe('stacking scenes', () => {
 		control(stack, 'next').dispatch('click');
 		expect(shownIn(stack)).toBe('scene-2');
 		expect(fixture.cards()[0]!.getAttribute('draggable')).toBe('false');
+	});
+});
+
+describe('a row moved to a time painted earlier', () => {
+	const laid = (presentation: 'flat' | 'stack') => workspace({
+		timelines: [timeline('a', { times: [
+			{ timeId: 'time-1', rows: [] },
+			{ timeId: 'time-2', rows: [row('r1', 'Arrives', ['scene-1'])] },
+		] })],
+		views: [view('v', ['a'], { presentation })],
+	});
+	const cardsIn = (el: CorkboardElement): CorkboardElement[] => el.querySelectorAll('.snowflake-method-corkboard-card');
+	const labelsIn = (el: CorkboardElement): (string | null)[] =>
+		el.querySelectorAll('.snowflake-method-timeline-subrow-label').map((label) => label.textContent);
+
+	it.each(['flat', 'stack'] as const)('%s: a change read from the file stands the same card under the destination at once', async (presentation) => {
+		const fixture = laid(presentation);
+		await settle();
+		const card = cardsIn(fixture.cell('time-2', 'a'))[0]!;
+		await fixture.bridge.moveRow('a', 'r1', 'time-1', null);
+		fixture.notify();
+		await settle();
+		expect(cardsIn(fixture.cell('time-1', 'a'))).toHaveLength(1);
+		expect(cardsIn(fixture.cell('time-1', 'a'))[0]).toBe(card);
+		expect(labelsIn(fixture.cell('time-1', 'a'))).toEqual(['Arrives']);
+		expect(labelsIn(fixture.cell('time-2', 'a'))).toEqual([]);
+		expect(fixture.cards()).toHaveLength(1);
+	});
+
+	it('flat: a drag to the time above keeps the card through the write and the read that follows', async () => {
+		const fixture = laid('flat');
+		await settle();
+		const source = fixture.cell('time-2', 'a');
+		const card = cardsIn(source)[0]!;
+		const handle = source.querySelector('.snowflake-method-timeline-subrow-handle')!;
+		const target = fixture.cell('time-1', 'a');
+		const dataTransfer = transfer([TIMELINE_ROW_DRAG_TYPE]);
+		fire(handle, 'dragstart', { dataTransfer });
+		fire(target, 'dragover', { clientY: 10, dataTransfer });
+		fire(target, 'drop', { dataTransfer });
+		fire(handle, 'dragend', {});
+		await settle();
+		expect(fixture.bridge.moveRow).toHaveBeenCalledWith('a', 'r1', 'time-1', null);
+		expect(cardsIn(fixture.cell('time-1', 'a'))[0]).toBe(card);
+		expect(fixture.cards()).toHaveLength(1);
+		fixture.notify();
+		await settle();
+		expect(cardsIn(fixture.cell('time-1', 'a'))[0]).toBe(card);
+		expect(fixture.cards()).toHaveLength(1);
+	});
+});
+
+describe('a time put in after the last row', () => {
+	it('stands after it in a fresh view, whatever its rank, and the order is written', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-2']);
+		vi.mocked(promptForEntityReference).mockResolvedValueOnce({ option: { value: 'time-1' } } as never);
+		menus.length = 0;
+		fixture.rowOf('time-2').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
+		menus[0]!.find((item) => item.title === 'timeline.time.insertAfter')!.click();
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('a', 'time-1');
+		expect(fixture.bridge.setTimeOrder).toHaveBeenCalledWith('v', ['time-2', 'time-1']);
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-2', 'time-1']);
+	});
+
+	it('leaves a time added from the corner of the frame to its rank, as before', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		vi.mocked(promptForEntityReference).mockResolvedValueOnce({ option: { value: 'time-1' } } as never);
+		fixture.button('snowflake-method-timeline-time-add').dispatch('click');
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('a', 'time-1');
+		expect(fixture.bridge.setTimeOrder).not.toHaveBeenCalled();
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-1', 'time-2']);
+	});
+});
+
+describe('a project written again', () => {
+	it('opens the controls on the next refresh, before the document is read again', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] }, true);
+		await settle();
+		expect(fixture.root.classes.has('is-read-only')).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-add-timeline').disabled).toBe(true);
+		fixture.model.readOnly = false;
+		fixture.handle.refresh();
+		expect(fixture.bridge.read).toHaveBeenCalledOnce();
+		expect(fixture.root.classes.has('is-read-only')).toBe(false);
+		expect(fixture.button('snowflake-method-timeline-add-timeline').disabled).toBe(false);
+		expect(fixture.button('snowflake-method-timeline-view-add').disabled).toBe(false);
+		fixture.model.readOnly = true;
+		fixture.handle.refresh();
+		expect(fixture.root.classes.has('is-read-only')).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-add-timeline').disabled).toBe(true);
+	});
+});
+
+describe('a row moved while a conflict is being written on one of its cards', () => {
+	const laid = (presentation: 'flat' | 'stack', order: 'down' | 'up') => workspace({
+		timelines: [timeline('a', { times: order === 'down'
+			? [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1'])] }, { timeId: 'time-2', rows: [] }]
+			: [{ timeId: 'time-1', rows: [] }, { timeId: 'time-2', rows: [row('r1', 'Arrives', ['scene-1'])] }],
+		})],
+		views: [view('v', ['a'], { presentation })],
+	});
+	const cardsIn = (el: CorkboardElement): CorkboardElement[] => el.querySelectorAll('.snowflake-method-corkboard-card');
+	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-conflict')!;
+
+	it.each([
+		['flat', 'down'], ['stack', 'down'], ['flat', 'up'], ['stack', 'up'],
+	] as const)('%s, moved %s: the draft, its card and the focus go over to the destination unsaved', async (presentation, order) => {
+		const fixture = laid(presentation, order);
+		await settle();
+		const [from, to] = order === 'down' ? ['time-1', 'time-2'] : ['time-2', 'time-1'];
+		const card = cardsIn(fixture.cell(from, 'a'))[0]!;
+		conflictOf(card).focus();
+		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).dispatch('input');
+		await fixture.bridge.moveRow('a', 'r1', to, null);
+		fixture.notify();
+		await settle();
+		expect(cardsIn(fixture.cell(to, 'a'))[0]).toBe(card);
+		expect(fixture.cards()).toHaveLength(1);
+		expect(conflictOf(card).value).toBe('Unsaved draft');
+		expect(fixture.dom.doc.activeElement).toBe(conflictOf(card));
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+	});
+
+	it('saves the draft when the placement itself goes from under it', async () => {
+		const fixture = laid('flat', 'down');
+		await settle();
+		const card = cardsIn(fixture.cell('time-1', 'a'))[0]!;
+		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).dispatch('input');
+		await fixture.bridge.deleteRow('a', 'r1');
+		fixture.notify();
+		await settle();
+		expect(fixture.cards()).toHaveLength(0);
+		expect(fixture.host.patchScene).toHaveBeenCalledOnce();
+		const patch = vi.mocked(fixture.host.patchScene).mock.calls[0]!.find((arg) => typeof arg === 'object' && arg !== null && 'conflict' in arg);
+		expect(patch).toMatchObject({ conflict: 'Unsaved draft' });
+	});
+});
+
+describe('a placement taken away while a conflict is being written on its card', () => {
+	const laid = (presentation: 'flat' | 'stack') => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1', 'scene-2'])] }] })],
+		views: [view('v', ['a'], { presentation })],
+	});
+	const conflictOf = (card: CorkboardElement): CorkboardElement => card.querySelector('.snowflake-method-corkboard-conflict')!;
+	const savedConflict = (fixture: ReturnType<typeof workspace>): unknown =>
+		vi.mocked(fixture.host.patchScene).mock.calls[0]!.find((arg) => typeof arg === 'object' && arg !== null && 'conflict' in arg);
+
+	it.each(['flat', 'stack'] as const)('%s: the draft is saved before the card comes down', async (presentation) => {
+		const fixture = laid(presentation);
+		await settle();
+		const card = fixture.cards().find((candidate) => candidate.getAttribute('data-id') === 'scene-1')!;
+		conflictOf(card).focus();
+		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).dispatch('input');
+		await fixture.bridge.removeScene('a', 'scene-1');
+		fixture.notify();
+		await settle();
+		expect(fixture.cards().map((candidate) => candidate.getAttribute('data-id'))).toEqual(['scene-2']);
+		expect(fixture.host.patchScene).toHaveBeenCalledOnce();
+		expect(savedConflict(fixture)).toMatchObject({ conflict: 'Unsaved draft' });
+	});
+
+	it('stack: walking on from a card with a draft saves it as the card comes down', async () => {
+		const fixture = laid('stack');
+		await settle();
+		const card = fixture.cards()[0]!;
+		expect(card.getAttribute('data-id')).toBe('scene-1');
+		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).dispatch('input');
+		fixture.root.querySelector('.snowflake-method-timeline-stack-next')!.dispatch('click');
+		expect(fixture.cards().map((candidate) => candidate.getAttribute('data-id'))).toEqual(['scene-2']);
+		await settle();
+		expect(fixture.host.patchScene).toHaveBeenCalledOnce();
+		expect(savedConflict(fixture)).toMatchObject({ conflict: 'Unsaved draft' });
+	});
+});
+
+describe('words typed at the foot of a cell whose write does not land', () => {
+	const laid = () => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives')] }] })],
+		views: [view('v', ['a'])],
+	});
+	const subrows = (cell: CorkboardElement): CorkboardElement[] =>
+		cell.querySelector('.snowflake-method-timeline-rows')!.children;
+	const trailingInput = (cell: CorkboardElement): CorkboardElement =>
+		cell.querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+
+	it.each([
+		['refused', (fixture: ReturnType<typeof workspace>) => { vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null); }],
+		['failed', (fixture: ReturnType<typeof workspace>) => { vi.mocked(fixture.bridge.addRow).mockRejectedValueOnce(new Error('The vault could not be written')); }],
+	] as const)('%s: the pending row comes down and the words go back to the input', async (_case, arrange) => {
+		const fixture = laid();
+		await settle();
+		const cell = fixture.cell('time-1', 'a');
+		const input = trailingInput(cell);
+		arrange(fixture);
+		input.focus();
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		expect(input.value).toBe('');
+		expect(cell.querySelector('.snowflake-method-timeline-subrow.is-pending')).not.toBeNull();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Leaves', null);
+		expect(cell.querySelector('.snowflake-method-timeline-subrow.is-pending')).toBeNull();
+		expect(subrows(cell).map((child) => child.getAttribute('data-row-id') ?? child.classes.has('is-trailing'))).toEqual(['r1', true]);
+		expect(input.value).toBe('Leaves');
+		expect(fixture.dom.doc.activeElement).toBe(input);
+		expect(fixture.held().timelines[0]!.times[0]!.rows.map((entry) => entry.text)).toEqual(['Arrives']);
+	});
+
+	it('puts the words back ahead of what was typed since', async () => {
+		const fixture = laid();
+		await settle();
+		const cell = fixture.cell('time-1', 'a');
+		const input = trailingInput(cell);
+		vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		input.value = 'Returns';
+		await settle();
+		expect(input.value).toBe('Leaves\nReturns');
+	});
+
+	it('takes the pending row down only once a written row has been read back', async () => {
+		const fixture = laid();
+		await settle();
+		const cell = fixture.cell('time-1', 'a');
+		const input = trailingInput(cell);
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(input.value).toBe('');
+		expect(subrows(cell).map((child) => child.getAttribute('data-row-id') ?? child.classes.has('is-trailing'))).toEqual(['r1', 'timeline-row-1', true]);
+	});
+});
+
+describe('a draft whose save fails once its card has come down', () => {
+	const laid = (presentation: 'flat' | 'stack') => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1'])] }] })],
+		views: [view('v', ['a'], { presentation })],
+	});
+
+	it.each(['flat', 'stack'] as const)('%s: goes to the recovery dialog rather than into the card nobody can reach', async (presentation) => {
+		const opened: CorkboardDraftModal[] = [];
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		try {
+			const fixture = laid(presentation);
+			await settle();
+			const card = fixture.cards()[0]!;
+			const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+			conflict.focus();
+			conflict.value = 'Unsaved draft';
+			conflict.dispatch('input');
+			vi.mocked(fixture.host.patchScene).mockRejectedValueOnce(new Error('Revision conflict'));
+			await fixture.bridge.removeScene('a', 'scene-1');
+			fixture.notify();
+			await settle();
+			expect(fixture.cards()).toHaveLength(0);
+			expect(fixture.host.patchScene).toHaveBeenCalledOnce();
+			expect(opened).toHaveLength(1);
+			const recoveryDom = new CorkboardDom();
+			Object.assign(opened[0]!, { contentEl: recoveryDom.container, setTitle: vi.fn() });
+			opened[0]!.onOpen();
+			expect(recoveryDom.container.querySelector('textarea')!.value).toBe('Unsaved draft');
+		} finally {
+			open.mockRestore();
+		}
+	});
+});
+
+describe('words typed at a cell\'s foot whose write fails after the view has changed', () => {
+	it('come back to the foot of that cell whenever its view is shown, until written or cleared', async () => {
+		const fixture = workspace({
+			timelines: [
+				timeline('a', { times: [{ timeId: 'time-1', rows: [] }] }),
+				timeline('b', { times: [{ timeId: 'time-1', rows: [] }] }),
+			],
+			views: [view('va', ['a']), view('vb', ['b'])],
+			lastViewId: 'va',
+		});
+		await settle();
+		const trailingOf = (timelineId: string): CorkboardElement =>
+			fixture.cell('time-1', timelineId).querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+		let refuse!: (value: null) => void;
+		vi.mocked(fixture.bridge.addRow).mockImplementationOnce(() => new Promise<null>((resolve) => { refuse = resolve; }));
+		const first = trailingOf('a');
+		first.value = 'Leaves before sunrise';
+		first.dispatch('blur');
+		await settle();
+		expect(fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-pending')).not.toBeNull();
+		fixture.viewField().choose('vb');
+		await settle();
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['b']);
+		refuse(null);
+		await settle();
+		expect(trailingOf('b').value).toBe('');
+		fixture.viewField().choose('va');
+		await settle();
+		const again = trailingOf('a');
+		expect(again).not.toBe(first);
+		expect(again.value).toBe('Leaves before sunrise');
+		expect(fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-pending')).toBeNull();
+		expect(fixture.bridge.addRow).toHaveBeenCalledOnce();
+		// Shown again is not spent: another round trip, untouched, still shows the words.
+		fixture.viewField().choose('vb');
+		await settle();
+		fixture.viewField().choose('va');
+		await settle();
+		expect(trailingOf('a').value).toBe('Leaves before sunrise');
+		// Words typed since go with them, and Escape clears them for good.
+		const edited = trailingOf('a');
+		edited.value = 'Leaves before sunrise, alone';
+		edited.dispatch('input');
+		fixture.viewField().choose('vb');
+		await settle();
+		fixture.viewField().choose('va');
+		await settle();
+		expect(trailingOf('a').value).toBe('Leaves before sunrise, alone');
+		press(trailingOf('a'), 'Escape');
+		fixture.viewField().choose('vb');
+		await settle();
+		fixture.viewField().choose('va');
+		await settle();
+		expect(trailingOf('a').value).toBe('');
+		// Written, the words are a row and the foot stays empty across a rebuild.
+		const last = trailingOf('a');
+		last.value = 'Returns at dusk';
+		last.dispatch('input');
+		last.dispatch('blur');
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledTimes(2);
+		fixture.viewField().choose('vb');
+		await settle();
+		fixture.viewField().choose('va');
+		await settle();
+		expect(trailingOf('a').value).toBe('');
+		expect(fixture.held().timelines[0]!.times[0]!.rows.map((entry) => entry.text)).toEqual(['Returns at dusk']);
+	});
+});
+
+describe('an edit of an existing sub-description whose write does not land', () => {
+	const laid = () => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives')] }] })],
+		views: [view('v', ['a'])],
+	});
+	const rowEl = (fixture: ReturnType<typeof workspace>): CorkboardElement =>
+		fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+	const labelOf = (fixture: ReturnType<typeof workspace>): CorkboardElement => rowEl(fixture).querySelector('.snowflake-method-timeline-subrow-label')!;
+	const inputOf = (fixture: ReturnType<typeof workspace>): CorkboardElement => rowEl(fixture).querySelector('.snowflake-method-timeline-subrow-input')!;
+
+	it.each([
+		['refused', (fixture: ReturnType<typeof workspace>) => { vi.mocked(fixture.bridge.editRow).mockResolvedValueOnce('refused'); }],
+		['failed', (fixture: ReturnType<typeof workspace>) => { vi.mocked(fixture.bridge.editRow).mockRejectedValueOnce(new Error('The vault could not be written')); }],
+	] as const)('%s: the label shows the stored words, the next edit opens on the typed ones, and they write on the next try', async (_case, arrange) => {
+		const fixture = laid();
+		await settle();
+		arrange(fixture);
+		labelOf(fixture).dispatch('click');
+		inputOf(fixture).value = 'Author new paragraphs';
+		press(inputOf(fixture), 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Author new paragraphs');
+		expect(labelOf(fixture).textContent).toBe('Arrives');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Arrives');
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Author new paragraphs');
+		press(inputOf(fixture), 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Author new paragraphs');
+		expect(labelOf(fixture).textContent).toBe('Author new paragraphs');
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Author new paragraphs');
+	});
+
+	it('lets the kept words go on Escape, and on a commit back to the stored words', async () => {
+		const fixture = laid();
+		await settle();
+		vi.mocked(fixture.bridge.editRow).mockResolvedValueOnce('refused');
+		labelOf(fixture).dispatch('click');
+		inputOf(fixture).value = 'Author new paragraphs';
+		press(inputOf(fixture), 'Enter', { mod: true });
+		await settle();
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Author new paragraphs');
+		press(inputOf(fixture), 'Escape');
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Arrives');
+		press(inputOf(fixture), 'Escape');
+		vi.mocked(fixture.bridge.editRow).mockResolvedValueOnce('refused');
+		labelOf(fixture).dispatch('click');
+		inputOf(fixture).value = 'Once more';
+		press(inputOf(fixture), 'Enter', { mod: true });
+		await settle();
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Once more');
+		inputOf(fixture).value = 'Arrives';
+		press(inputOf(fixture), 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		labelOf(fixture).dispatch('click');
+		expect(inputOf(fixture).value).toBe('Arrives');
+	});
+});
+
+describe('words still being written when the workspace goes', () => {
+	const laid = () => workspace({
+		timelines: [
+			timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives')] }] }),
+			timeline('b', { times: [{ timeId: 'time-1', rows: [] }] }),
+		],
+		views: [view('va', ['a']), view('vb', ['b'])],
+		lastViewId: 'va',
+	});
+	const trailingOf = (fixture: ReturnType<typeof workspace>, timelineId: string): CorkboardElement =>
+		fixture.cell('time-1', timelineId).querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+
+	it('writes an open edit of a row without a blur', async () => {
+		const fixture = laid();
+		await settle();
+		const first = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		first.querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
+		const input = first.querySelector('.snowflake-method-timeline-subrow-input')!;
+		input.value = 'Author new paragraphs';
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Author new paragraphs');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Author new paragraphs');
+	});
+
+	it('writes the words at a shown foot and those kept for a foot not shown', async () => {
+		const fixture = laid();
+		await settle();
+		const foot = trailingOf(fixture, 'a');
+		foot.value = 'Leaves before sunrise';
+		foot.dispatch('input');
+		fixture.viewField().choose('vb');
+		await settle();
+		const other = trailingOf(fixture, 'b');
+		other.value = 'Waits';
+		other.dispatch('input');
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledTimes(2);
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Leaves before sunrise', null);
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('b', 'time-1', 'Waits', null);
+		expect(fixture.held().timelines[0]!.times[0]!.rows.map((entry) => entry.text)).toEqual(['Arrives', 'Leaves before sunrise']);
+		expect(fixture.held().timelines[1]!.times[0]!.rows.map((entry) => entry.text)).toEqual(['Waits']);
+	});
+
+	it('writes nothing when nothing was being written', async () => {
+		const fixture = laid();
+		await settle();
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+	});
+});
+
+describe('an older edit of a row failing after a newer one', () => {
+	it('keeps nothing: the newer words stand in the document and open the editor', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		let finishA!: (result: 'refused') => void;
+		vi.mocked(fixture.bridge.editRow).mockImplementationOnce(() => new Promise((resolve) => { finishA = resolve; }));
+		label.dispatch('click');
+		input.value = 'Earlier edit A';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		label.dispatch('click');
+		input.value = 'Later edit B';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		finishA('refused');
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Later edit B');
+		expect(label.textContent).toBe('Later edit B');
+		label.dispatch('click');
+		expect(input.value).toBe('Later edit B');
+	});
+});
+
+describe('words kept from a row\'s failed write when the workspace goes', () => {
+	it('are written once more at disposal, with the editor closed', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		vi.mocked(fixture.bridge.editRow).mockResolvedValueOnce('refused');
+		label.dispatch('click');
+		input.value = 'Unwritten row draft';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(rowEl.classes.has('is-editing')).toBe(false);
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Arrives');
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		expect(fixture.bridge.editRow).toHaveBeenLastCalledWith('a', 'r1', 'Unwritten row draft');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Unwritten row draft');
+	});
+});
+
+describe('a final write that fails once the workspace has gone', () => {
+	const laid = () => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives')] }] })],
+		views: [view('v', ['a'])],
+	});
+	const watching = () => {
+		const opened: TimelineDraftModal[] = [];
+		const open = vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(function (this: TimelineDraftModal) { opened.push(this); });
+		const shown = (): { place: string; words: string }[] => {
+			const dom = new CorkboardDom();
+			Object.assign(opened[0]!, { contentEl: dom.container, setTitle: vi.fn() });
+			opened[0]!.onOpen();
+			const places = dom.container.querySelectorAll('h3').map((heading) => heading.textContent ?? '');
+			const words = dom.container.querySelectorAll('textarea').map((area) => area.value);
+			return places.map((place, at) => ({ place, words: words[at]! }));
+		};
+		return { opened, shown, done: () => open.mockRestore() };
+	};
+
+	it('sends the words at a foot to a dialog that outlives it', async () => {
+		const watch = watching();
+		try {
+			const fixture = laid();
+			await settle();
+			const foot = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+			foot.value = 'Refused footer at disposal';
+			foot.dispatch('input');
+			vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Refused footer at disposal', null);
+			expect(watch.opened).toHaveLength(1);
+			expect(watch.shown()).toEqual([{ place: 'Timeline a · Dawn', words: 'Refused footer at disposal' }]);
+		} finally {
+			watch.done();
+		}
+	});
+
+	it('sends an open row edit, and words kept from an earlier failure, to the dialog together', async () => {
+		const watch = watching();
+		try {
+			const fixture = laid();
+			await settle();
+			const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+			const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+			const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+			vi.mocked(fixture.bridge.editRow).mockResolvedValue('refused');
+			label.dispatch('click');
+			input.value = 'Kept from before';
+			press(input, 'Enter', { mod: true });
+			await settle();
+			expect(watch.opened).toHaveLength(0);
+			label.dispatch('click');
+			expect(input.value).toBe('Kept from before');
+			input.value = 'Open at the end';
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+			expect(fixture.bridge.editRow).toHaveBeenLastCalledWith('a', 'r1', 'Open at the end');
+			expect(watch.opened).toHaveLength(1);
+			expect(watch.shown()).toEqual([{ place: 'Timeline a · Dawn', words: 'Open at the end' }]);
+		} finally {
+			watch.done();
+		}
+	});
+
+	it('opens nothing when the final writes land', async () => {
+		const watch = watching();
+		try {
+			const fixture = laid();
+			await settle();
+			const foot = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+			foot.value = 'Lands';
+			foot.dispatch('input');
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.held().timelines[0]!.times[0]!.rows.map((entry) => entry.text)).toEqual(['Arrives', 'Lands']);
+			expect(watch.opened).toHaveLength(0);
+		} finally {
+			watch.done();
+		}
+	});
+});
+
+describe('a sub-description being edited when its row moves to another time', () => {
+	const laid = (order: 'down' | 'up') => workspace({
+		timelines: [timeline('a', { times: order === 'down'
+			? [{ timeId: 'time-1', rows: [row('r1', 'Stored', ['scene-1'])] }, { timeId: 'time-2', rows: [] }]
+			: [{ timeId: 'time-1', rows: [] }, { timeId: 'time-2', rows: [row('r1', 'Stored', ['scene-1'])] }],
+		})],
+		views: [view('v', ['a'])],
+	});
+	const rowIn = (fixture: ReturnType<typeof workspace>, timeId: string): CorkboardElement | undefined =>
+		fixture.cell(timeId, 'a').querySelector('.snowflake-method-timeline-rows')!.children.find((child) => child.getAttribute('data-row-id') === 'r1');
+
+	it.each(['down', 'up'] as const)('moved %s: the editor, its words, its caret and its cards go with the row', async (order) => {
+		const fixture = laid(order);
+		await settle();
+		const [from, to] = order === 'down' ? ['time-1', 'time-2'] : ['time-2', 'time-1'];
+		const rowEl = rowIn(fixture, from)!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		const card = rowEl.querySelector('.snowflake-method-corkboard-card')!;
+		label.dispatch('click');
+		input.value = 'Unsaved author draft';
+		input.dispatch('input');
+		await fixture.bridge.moveRow('a', 'r1', to, null);
+		fixture.notify();
+		await settle();
+		expect(rowIn(fixture, from)).toBeUndefined();
+		expect(rowIn(fixture, to)).toBe(rowEl);
+		expect(rowEl.classes.has('is-editing')).toBe(true);
+		expect(input.value).toBe('Unsaved author draft');
+		expect(fixture.dom.doc.activeElement).toBe(input);
+		expect(rowEl.querySelector('.snowflake-method-corkboard-card')).toBe(card);
+		expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Unsaved author draft');
+		expect(fixture.held().timelines[0]!.times.find((time) => time.timeId === to)!.rows[0]!.text).toBe('Unsaved author draft');
+	});
+
+	it('shows the words for keeping when the row goes from under the editor instead', async () => {
+		const opened: TimelineDraftModal[] = [];
+		const open = vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(function (this: TimelineDraftModal) { opened.push(this); });
+		try {
+			const fixture = laid('down');
+			await settle();
+			const rowEl = rowIn(fixture, 'time-1')!;
+			rowEl.querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
+			const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+			input.value = 'Unsaved author draft';
+			input.dispatch('input');
+			await fixture.bridge.deleteRow('a', 'r1');
+			fixture.notify();
+			await settle();
+			expect(rowIn(fixture, 'time-1')).toBeUndefined();
+			// The write is tried, comes back absent, and the words go to the dialog at once: there is no next edit of a row that has gone.
+			expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Unsaved author draft');
+			expect(fixture.held().timelines[0]!.times[0]!.rows).toEqual([]);
+			expect(opened).toHaveLength(1);
+			const dom = new CorkboardDom();
+			Object.assign(opened[0]!, { contentEl: dom.container, setTitle: vi.fn() });
+			opened[0]!.onOpen();
+			expect(dom.container.querySelectorAll('h3').map((heading) => heading.textContent)).toEqual(['Timeline a']);
+			expect(dom.container.querySelectorAll('textarea').map((area) => area.value)).toEqual(['Unsaved author draft']);
+			// Nothing waits for a next edit, and closing the workspace writes nothing more.
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.editRow).toHaveBeenCalledOnce();
+			expect(opened).toHaveLength(1);
+		} finally {
+			open.mockRestore();
+		}
+	});
+});
+
+describe('words being written when the project turns read-only', () => {
+	const laid = () => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+		views: [view('v', ['a'])],
+	});
+	const watching = () => {
+		const opened: TimelineDraftModal[] = [];
+		const open = vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(function (this: TimelineDraftModal) { opened.push(this); });
+		const shown = (): { place: string; words: string }[] => {
+			const dom = new CorkboardDom();
+			Object.assign(opened[0]!, { contentEl: dom.container, setTitle: vi.fn() });
+			opened[0]!.onOpen();
+			const places = dom.container.querySelectorAll('h3').map((heading) => heading.textContent ?? '');
+			const words = dom.container.querySelectorAll('textarea').map((area) => area.value);
+			return places.map((place, at) => ({ place, words: words[at]! }));
+		};
+		return { opened, shown, done: () => open.mockRestore() };
+	};
+
+	it('keeps an open edit for the next edit, and shows it for keeping when the workspace goes', async () => {
+		const watch = watching();
+		try {
+			const fixture = laid();
+			await settle();
+			const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+			const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+			const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+			label.dispatch('click');
+			input.value = 'Author new draft';
+			input.dispatch('input');
+			fixture.model.readOnly = true;
+			fixture.handle.refresh();
+			expect(fixture.root.classes.has('is-read-only')).toBe(true);
+			press(input, 'Enter', { mod: true });
+			await settle();
+			expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+			expect(label.textContent).toBe('Original');
+			expect(watch.opened).toHaveLength(0);
+			// Writable again, the next edit opens on the kept words.
+			fixture.model.readOnly = false;
+			fixture.handle.refresh();
+			label.dispatch('click');
+			expect(input.value).toBe('Author new draft');
+			press(input, 'Escape');
+			// Read-only once more, an edit still open at the end goes to the dialog, and nothing is written.
+			label.dispatch('click');
+			input.value = 'Author new draft';
+			input.dispatch('input');
+			fixture.model.readOnly = true;
+			fixture.handle.refresh();
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+			expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Original');
+			expect(watch.shown()).toEqual([{ place: 'Timeline a · Dawn', words: 'Author new draft' }]);
+		} finally {
+			watch.done();
+		}
+	});
+
+	it('shows the words at a foot for keeping when the workspace goes, and writes nothing', async () => {
+		const watch = watching();
+		try {
+			const fixture = laid();
+			await settle();
+			const foot = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+			foot.value = 'Leaves';
+			foot.dispatch('input');
+			fixture.model.readOnly = true;
+			fixture.handle.refresh();
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+			expect(watch.shown()).toEqual([{ place: 'Timeline a · Dawn', words: 'Leaves' }]);
+		} finally {
+			watch.done();
+		}
+	});
+});
+
+describe('a row edited again while its first write is on its way', () => {
+	it('opens on the words on their way, and writes a return to the stored words', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		let release!: (result: 'written') => void;
+		vi.mocked(fixture.bridge.editRow).mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+		label.dispatch('click');
+		input.value = 'New words';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		label.dispatch('click');
+		expect(input.value).toBe('New words');
+		input.value = 'Original';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		release('written');
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		expect(fixture.bridge.editRow).toHaveBeenLastCalledWith('a', 'r1', 'Original');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Original');
+		label.dispatch('click');
+		expect(input.value).toBe('Original');
+	});
+});
+
+describe('words sent, refused, and saved again unchanged', () => {
+	it('are written once more, not taken for already written', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		let refuse!: (result: 'refused') => void;
+		vi.mocked(fixture.bridge.editRow).mockImplementationOnce(() => new Promise((resolve) => { refuse = resolve; }));
+		label.dispatch('click');
+		input.value = 'B';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		label.dispatch('click');
+		expect(input.value).toBe('B');
+		refuse('refused');
+		await settle();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Original');
+		// Saved again as it stands, B is still not in the file: it is sent again.
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(2);
+		expect(fixture.bridge.editRow).toHaveBeenLastCalledWith('a', 'r1', 'B');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('B');
+		label.dispatch('click');
+		expect(input.value).toBe('B');
+	});
+});
+
+describe('an older write failing after newer words were kept in read-only', () => {
+	it('keeps nothing over them', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		let refuse!: (result: 'refused') => void;
+		vi.mocked(fixture.bridge.editRow).mockImplementationOnce(() => new Promise((resolve) => { refuse = resolve; }));
+		label.dispatch('click');
+		input.value = 'Older draft A';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		label.dispatch('click');
+		input.value = 'Newer draft B';
+		input.dispatch('input');
+		fixture.model.readOnly = true;
+		fixture.handle.refresh();
+		press(input, 'Enter', { mod: true });
+		await settle();
+		refuse('refused');
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledOnce();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Original');
+		fixture.model.readOnly = false;
+		fixture.handle.refresh();
+		label.dispatch('click');
+		expect(input.value).toBe('Newer draft B');
+	});
+});
+
+describe('an editor opened on the file\'s words and left as it was', () => {
+	const laid = () => workspace({
+		timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+		views: [view('v', ['a'])],
+	});
+	const parts = (fixture: ReturnType<typeof workspace>) => {
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		return { label: rowEl.querySelector('.snowflake-method-timeline-subrow-label')!, input: rowEl.querySelector('.snowflake-method-timeline-subrow-input')! };
+	};
+
+	it('writes nothing over words another writer put in the file meanwhile', async () => {
+		const fixture = laid();
+		await settle();
+		const { label, input } = parts(fixture);
+		label.dispatch('click');
+		expect(input.value).toBe('Original');
+		await fixture.bridge.editRow('a', 'r1', 'External update');
+		vi.mocked(fixture.bridge.editRow).mockClear();
+		fixture.notify();
+		await settle();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('External update');
+		expect(input.value).toBe('Original');
+		input.dispatch('blur');
+		await settle();
+		expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('External update');
+		expect(label.textContent).toBe('External update');
+	});
+
+	it('still writes words the writer changed, and nothing for words the file already says', async () => {
+		const fixture = laid();
+		await settle();
+		const { label, input } = parts(fixture);
+		label.dispatch('click');
+		await fixture.bridge.editRow('a', 'r1', 'External update');
+		vi.mocked(fixture.bridge.editRow).mockClear();
+		fixture.notify();
+		await settle();
+		input.value = 'Mine';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Mine');
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Mine');
+		label.dispatch('click');
+		input.value = 'Mine';
+		input.dispatch('blur');
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledOnce();
+	});
+});
+
+describe('an editor opened on words on their way, which then land', () => {
+	it('writes nothing over words another writer put in the file after that', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Original')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const rowEl = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+		const label = rowEl.querySelector('.snowflake-method-timeline-subrow-label')!;
+		const input = rowEl.querySelector('.snowflake-method-timeline-subrow-input')!;
+		const write = vi.mocked(fixture.bridge.editRow).getMockImplementation()!;
+		let release!: () => void;
+		vi.mocked(fixture.bridge.editRow).mockImplementationOnce((timelineId, rowId, text) => new Promise((resolve) => {
+			release = () => { void write(timelineId, rowId, text).then(() => resolve('written')); };
+		}));
+		label.dispatch('click');
+		input.value = 'B';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		label.dispatch('click');
+		expect(input.value).toBe('B');
+		release();
+		await settle();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('B');
+		await fixture.bridge.editRow('a', 'r1', 'C');
+		vi.mocked(fixture.bridge.editRow).mockClear();
+		fixture.notify();
+		await settle();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('C');
+		expect(input.value).toBe('B');
+		input.dispatch('blur');
+		await settle();
+		expect(fixture.bridge.editRow).not.toHaveBeenCalled();
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('C');
+		expect(label.textContent).toBe('C');
 	});
 });

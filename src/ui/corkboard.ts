@@ -507,7 +507,8 @@ export function renderCorkboard(
 		scroller.toggleClass('is-hidden', none);
 		searchBox?.toggleClass('is-hidden', none);
 		filterButton.toggleClass('is-hidden', none);
-		displayButton.toggleClass('is-hidden', none);
+		// A style shared with another surface is still someone's to choose.
+		displayButton.toggleClass('is-hidden', none && variant.modeShared !== true);
 		directionButton.toggleClass('is-hidden', none);
 		addButton.disabled = readOnly;
 		if (options.resetScroll === true) {
@@ -950,17 +951,26 @@ export function renderCorkboard(
 	/** Whether a drag over the board is one the variant takes as a whole. */
 	const takenIn = (transfer: DataTransfer | null): boolean =>
 		variant.dropIn !== undefined && transfer !== null && variant.dropIn.accepts(Array.from(transfer.types));
-	scroller.addEventListener('dragleave', (event) => {
+	// The board as a whole takes such a drop, its empty line included: the
+	// scroller is hidden while it shows nothing, and a scene sent back to a
+	// pool that stands empty must still have somewhere to land.
+	root.addEventListener('dragleave', (event) => {
 		const next = event.relatedTarget;
-		if (next === null || !scroller.contains(next as Node)) scroller.removeClass('is-drop-target');
+		if (next === null || !root.contains(next as Node)) root.removeClass('is-drop-target');
+	});
+	root.addEventListener('dragover', (event) => {
+		if (!takenIn(event.dataTransfer)) return;
+		event.preventDefault();
+		if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
+		root.addClass('is-drop-target');
+	});
+	root.addEventListener('drop', (event) => {
+		if (!takenIn(event.dataTransfer) || event.dataTransfer === null) return;
+		event.preventDefault();
+		root.removeClass('is-drop-target');
+		variant.dropIn?.onDrop(event.dataTransfer);
 	});
 	canvas.addEventListener('dragover', (event) => {
-		if (takenIn(event.dataTransfer)) {
-			event.preventDefault();
-			if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
-			scroller.addClass('is-drop-target');
-			return;
-		}
 		if (
 			variant.dragOut !== undefined ||
 			drag === null ||
@@ -979,12 +989,6 @@ export function renderCorkboard(
 		setMark(landing?.before ?? null);
 	});
 	canvas.addEventListener('drop', (event) => {
-		if (takenIn(event.dataTransfer) && event.dataTransfer !== null) {
-			event.preventDefault();
-			scroller.removeClass('is-drop-target');
-			variant.dropIn?.onDrop(event.dataTransfer);
-			return;
-		}
 		if (variant.dragOut !== undefined) return;
 		const dragged = event.dataTransfer?.getData(SCENE_DRAG_TYPE) ?? '';
 		if (dragged.length === 0 || drag?.id !== dragged || layout === null) return;

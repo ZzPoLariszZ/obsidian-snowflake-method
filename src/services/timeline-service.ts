@@ -294,13 +294,14 @@ export class TimelineService {
 		return wrote === "written" ? id : null;
 	}
 
+	/** Words for a row that must be there: absent where the row has gone, since the file would not then say them. */
 	editRow(
 		project: ProjectRef,
 		timelineId: string,
 		rowId: string,
 		text: string,
 	): Promise<TimelineWrite> {
-		return this.reviseTimeline(project, timelineId, (held) =>
+		return this.reviseRow(project, timelineId, rowId, (held) =>
 			editTimelineRow(held, timelineId, rowId, text, this.now()),
 		);
 	}
@@ -312,7 +313,7 @@ export class TimelineService {
 		toTimeId: string,
 		beforeRowId: string | null,
 	): Promise<TimelineWrite> {
-		return this.reviseTimeline(project, timelineId, (held) =>
+		return this.reviseRow(project, timelineId, rowId, (held) =>
 			moveTimelineRow(held, timelineId, rowId, toTimeId, beforeRowId, this.now()),
 		);
 	}
@@ -330,7 +331,7 @@ export class TimelineService {
 		rowId: string,
 		beforeSceneId: string | null,
 	): Promise<TimelineWrite> {
-		return this.reviseTimeline(project, timelineId, (held) =>
+		return this.reviseRow(project, timelineId, rowId, (held) =>
 			placeTimelineScene(held, timelineId, sceneId, rowId, beforeSceneId, this.now()),
 		);
 	}
@@ -364,6 +365,20 @@ export class TimelineService {
 		change: (held: TimelineDocument) => TimelineDocument | null,
 	): Promise<TimelineWrite> {
 		return this.revise(project, (held) => findTimeline(held, timelineId) !== undefined, change);
+	}
+
+	/** For what names a row of a timeline: a row that has gone is absent, and the change is not a no-op. */
+	private reviseRow(
+		project: ProjectRef,
+		timelineId: string,
+		rowId: string,
+		change: (held: TimelineDocument) => TimelineDocument | null,
+	): Promise<TimelineWrite> {
+		return this.revise(
+			project,
+			(held) => findTimeline(held, timelineId)?.times.some((time) => time.rows.some((row) => row.id === rowId)) === true,
+			change,
+		);
 	}
 
 	private reviseView(

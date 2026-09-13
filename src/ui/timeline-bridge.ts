@@ -21,11 +21,14 @@ import type { Translate } from './modals';
 import type { TimelineMemory } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
 
+/**
+ * A document as read. Whether the project can be written is not said
+ * here: the model says so, and is renewed with every project refresh,
+ * where a word given at the read would stand until the next read.
+ */
 export interface TimelineReading {
 	projectPath: string;
 	locale: 'en' | 'zh-CN';
-	/** The project cannot be written to, so every change is off. */
-	readOnly: boolean;
 	/** The document held, shared with the store's memo: treated as immutable by everyone who reads it. */
 	held: TimelineDocument;
 }

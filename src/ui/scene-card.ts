@@ -219,6 +219,8 @@ export interface SceneCardDeck<Card extends SceneCard> {
 	beginTitleEdit: (card: Card) => void;
 	commitTitle: (card: Card, refocus: boolean) => void;
 	commitConflict: (card: Card) => void;
+	/** Keeps a draft the card can no longer carry in the recovery dialog, for the writer to place again. */
+	recoverBlockedDraft: (card: Card) => void;
 	/** Lets the controls drag again once a press on one has ended. */
 	releasePress: () => void;
 	closeColorPanel: () => void;
@@ -690,9 +692,11 @@ export function createSceneCardDeck<Card extends SceneCard>(
 			if (!saved) {
 				// A rejected revision leaves the local draft available to fix
 				// or cancel with Escape; the refreshed model remains its own.
+				// A card taken down since is nobody's to reach, whether or not
+				// the scene stands: its draft goes to the recovery dialog.
 				const draft = cards.get(card.key) ??
-					[...cards.values()].find((standing) => standing.id === card.id) ?? card;
-				if (!editable(draft) || !deps.scenesById().has(card.id)) {
+					[...cards.values()].find((standing) => standing.id === card.id) ?? null;
+				if (draft === null || !editable(draft) || !deps.scenesById().has(card.id)) {
 					recoverText(card.scene, { [field]: pending.value });
 				} else if (field === 'conflict' && !draft.conflictDirty) {
 					draft.conflict.value = pending.value;
@@ -1043,6 +1047,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		beginTitleEdit,
 		commitTitle,
 		commitConflict,
+		recoverBlockedDraft,
 		releasePress,
 		closeColorPanel,
 		dispose: () => {
