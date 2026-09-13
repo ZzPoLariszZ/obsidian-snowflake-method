@@ -46,7 +46,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
-| Story structure | See every scene as a card in narrative order, reorder it by dragging, and edit its name, point of view, status, color and conflict on the card itself. |
+| Story structure | See every scene as a card in narrative order, reorder and edit it on the card itself, and place the same scenes on timelines to see when they happen. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
@@ -153,11 +153,15 @@ Beyond the fields every member shares, a note can carry **custom fields** of you
 
 ### Story structure
 
-Scenes are easier to judge when you can see them all at once. The **Visualization workspace** opens as a tab of its own, from the link row at the foot of the dashboard's Creation tools or from the Command palette, and gathers a family of views over the scenes you planned in steps 8 and 9. **Corkboard** is the first of them, with Freeform, Beat sheet, Timeline and Plotline beside it in the strip, each reading **Planning stage…** until its turn comes.
+Scenes are easier to judge when you can see them all at once. The **Visualization workspace** opens as a tab of its own, from the link row at the foot of the dashboard's Creation tools or from the Command palette, and gathers a family of views over the scenes you planned in steps 8 and 9. **Corkboard** and **Timeline** are the two that are ready, with Freeform and Beat sheet beside them in the strip, each reading **Planning stage…** until its turn comes.
 
-<p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab, with Freeform, Beat sheet, Timeline and Plotline beside it: five scene cards in narrative order, each numbered and carrying its progress status, its conflict, the manuscript chapters it links to and its point of view, one card focused, a + standing between neighbours to insert a scene, and search, display, order, filter, refresh and Add scene in the band above" /></a></p>
+<p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab: five scene cards in narrative order, each numbered and carrying its progress status, its conflict, the manuscript chapters it links to and its point of view, one card focused and showing the grip it is dragged by, a + standing between neighbours to insert a scene, and search, display, order, filter, refresh and Add scene in the band above" /></a></p>
 
 The corkboard lays every scene out as a numbered card in narrative order, and the card is where the work happens: the name is edited in place, the point of view and the progress status are dropdowns, the conflict is a text box, a swatch tints the card in one of eight colors, and the manuscript chapters the scene links to open from it. While the board stands in plain order, dragging a card moves the scene, a **+** between two cards inserts one at exactly that point, and **Add scene** puts one at the end. The search box and the funnel narrow the board, **Display** sizes the cards and groups them by any of eight fields, and the direction button reads the whole board back in reverse.
+
+<p align="center"><a href="assets/screenshots/workspace_timeline_en.png"><img src="assets/screenshots/workspace_timeline_en.png" width="100%" alt="The Visualization workspace on its Timeline tab: a shared Time column on the left holding three times with their main descriptions, three timelines beside it, one of them pinned and one bound to the character Alice and active with a tint, sub-descriptions written in each cell against an axis with a node at every time it reaches, scene cards placed on those rows with one stack reading 1 / 3, and the scene pool on the right holding the two scenes this timeline has not placed" /></a></p>
+
+**Timeline** asks the other question: not what order the scenes are read in, but when they happen. Each timeline is a column of its own, bound to a character or a worldbuilding note when it follows one, and they all cross the shared time column on the left, whose rows are your Time notes. Inside a cell you write **sub-descriptions** for what that timeline does at that time, and the scenes come from the **scene pool** on the right, which holds whatever the active timeline has not placed yet. Drag a card onto a sub-description and it leaves the pool, drag it back and it returns, and every move is a menu item as well, so nothing here needs a mouse. A **view** sets which timelines stand side by side, and the toolbar hides the sub-descriptions, stacks the scenes behind one card, reads the times latest first, and folds the time column and the pool away.
 
 ### Manuscript stream
 
@@ -298,6 +302,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Open project manager | Create, rename, open, archive, or trash projects. |
 | Open scene base | Open the Bases view of the current project's scenes. |
 | Open sticky note sidebar | Open the current project's sticky notes in a sidebar of their own. |
+| Open timeline workspace | Open the visualization workspace on its timeline, with the scenes placed against the times they happen at. |
 | Open visualization workspace | Open the current project's story structure in a workspace of its own. |
 | Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
 | Open writing session sidebar | Open the day's writing readings in a sidebar of their own. |
@@ -521,10 +526,9 @@ These HTML comments are structural markers rather than story content. Boundary p
 - [x] Task board (0.18.0)
 - [x] Visualization workspace (0.19.0)
 - [x] Corkboard (0.19.0)
+- [x] Timeline (0.20.0)
 - [ ] Freeform
 - [ ] Beat sheet
-- [ ] Timeline
-- [ ] Plotline
 - [ ] Export visualization workspace as Obsidian Canvas
 
 <a id="development"></a>
@@ -630,7 +634,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
 | 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
 | 项目归档 | 把暂时写完的项目收起来，想要时再取回。 |
-| 故事结构 | 把每个场景看作一张按叙事顺序排列的卡片，拖动即可调整次序，名称、视点人物、进度、颜色与冲突都在卡片上编辑。 |
+| 故事结构 | 把每个场景看作一张按叙事顺序排列的卡片，拖动调整次序，就地编辑，也可以把同一批场景放到时间线上，看清它们何时发生。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -737,11 +741,15 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 故事结构
 
-场景一并摊开在眼前，次序才好判断。**可视化工作区**在自己的标签页中打开，入口是仪表盘创作工具一组末尾的链接行，或者命令面板，其中收着同一批场景的一族视图，也就是第八步与第九步里规划的那些场景。**场景看板**是其中第一个做好的，自由画布、节拍表、时间线与情节线并列在标签条上，轮到它们之前都写着**规划阶段…**。
+场景一并摊开在眼前，次序才好判断。**可视化工作区**在自己的标签页中打开，入口是仪表盘创作工具一组末尾的链接行，或者命令面板，其中收着同一批场景的一族视图，也就是第八步与第九步里规划的那些场景。**场景看板**与**时间线**是其中已经做好的两个，自由画布与节拍表并列在标签条上，轮到它们之前都写着**规划阶段…**。
 
-<p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页，旁边并列着自由画布、节拍表、时间线与情节线：五张按叙事顺序排列的场景卡片，各自带有编号、进度、冲突、关联正文与视点人物，其中一张处于聚焦状态，相邻卡片之间有插入场景的加号，上方一栏是搜索、显示、排序、筛选、刷新与添加场景" /></a></p>
+<p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页：五张按叙事顺序排列的场景卡片，各自带有编号、进度、冲突、关联正文与视点人物，其中一张处于聚焦状态并露出用于拖动的握柄，相邻卡片之间有插入场景的加号，上方一栏是搜索、显示、排序、筛选、刷新与添加场景" /></a></p>
 
 看板把每个场景摆成一张按叙事顺序编号的卡片，而卡片本身就是干活的地方：名称就地编辑，视点人物与进度是下拉框，冲突是一块文本框，色板为卡片着上八种颜色之一，该场景关联的正文章节也从卡片上打开。板子处于普通顺序时，拖动卡片即可移动场景，两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则加在末尾。搜索框与漏斗筛选看板，**显示**调整卡片大小并按八项中的任意一项分组，方向按钮则把整块板子读作倒序。
+
+<p align="center"><a href="assets/screenshots/workspace_timeline_cn.png"><img src="assets/screenshots/workspace_timeline_cn.png" width="100%" alt="可视化工作区的时间线标签页：左侧共用的时间列中是三个时间及各自的主描述，旁边并列着三条时间线，其中一条已置顶，一条绑定角色萧薰儿并作为当前时间线带有底色，各单元格中写着子描述，旁边的轴线在每个到达的时间上点出一个节点，场景卡片落在这些行上，其中一处堆叠显示 1 / 3，右侧的场景池中是这条时间线尚未放置的两个场景" /></a></p>
+
+**时间线**问的是另一个问题：不是场景按什么顺序读，而是它们在什么时候发生。每条时间线自成一列，跟随某个角色或世界观笔记时便绑定到它，各条时间线都横穿左侧共用的时间列，那一列的行就是你写好的时间笔记。单元格里写下**子描述**，记下这条时间线在那个时间做了什么，场景则来自右侧的**场景池**，池中是当前时间线尚未放置的那些。把卡片拖到某条子描述上，它就离开池子，拖回去便回到池中，而每一次移动同时也是一个菜单项，这里没有一件事非用鼠标不可。**视图**决定哪些时间线并肩排列，工具栏则可以隐藏子描述、把场景堆叠成一张卡片、让最晚的时间排在前面，并把时间列与场景池收进角落。
 
 ### 正文流
 
@@ -865,6 +873,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
 | 打开可视化工作区 | 在独立的工作区中打开当前项目的故事结构。 |
 | 打开场景看板工作区 | 打开可视化工作区的场景看板，场景按叙事顺序排成卡片。 |
+| 打开时间线工作区 | 打开可视化工作区的时间线，场景按发生的时间摆放。 |
 | 打开正文流 | 打开正文，并定位到上次写作的笔记。 |
 | 关闭正文流 | 关闭当前分栏中的正文流。 |
 | 前往上一篇正文笔记 | 在正文中向前移动一篇。 |
@@ -1091,10 +1100,9 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 - [x] 任务看板 (0.18.0)
 - [x] 可视化工作区 (0.19.0)
 - [x] 场景看板 (0.19.0)
+- [x] 时间线 (0.20.0)
 - [ ] 自由画布
 - [ ] 节拍表
-- [ ] 时间线
-- [ ] 情节线
 - [ ] 将可视化工作区导出为 Obsidian Canvas
 
 ## 开发
