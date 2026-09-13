@@ -105,10 +105,21 @@ export function readCorkboardPreferences(value: unknown): Partial<CorkboardPrefe
 	};
 }
 
+/** How the timeline's scene pool is set: the same three the corkboard keeps. */
+export interface TimelineSettings {
+	pool: CorkboardSettings;
+}
+
+/** A one-column pool reads best compact; the tab keeps what the author chose after. */
+export function defaultTimelineSettings(): TimelineSettings {
+	return { pool: { mode: 'compact', group: '', reversed: false } };
+}
+
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
 	corkboard: CorkboardSettings;
+	timeline: TimelineSettings;
 }
 
 export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
@@ -116,6 +127,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 		projectPath: null,
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
 		corkboard: { mode: 'standard', group: '', reversed: false },
+		timeline: defaultTimelineSettings(),
 	};
 }
 
@@ -163,7 +175,28 @@ export function mergeStoryStructureViewState(
 				? board.reversed
 				: current.corkboard.reversed,
 	};
-	const state = { projectPath, visualization, corkboard };
+	const timelineCandidate =
+		typeof candidate.timeline === 'object' && candidate.timeline !== null
+			? (candidate.timeline as Record<string, unknown>)
+			: {};
+	const pool =
+		typeof timelineCandidate.pool === 'object' && timelineCandidate.pool !== null
+			? (timelineCandidate.pool as Record<string, unknown>)
+			: {};
+	const timeline: TimelineSettings = {
+		pool: {
+			mode: isCorkboardMode(pool.mode) ? pool.mode : current.timeline.pool.mode,
+			group:
+				pool.group === '' || isCorkboardGroupField(pool.group)
+					? pool.group
+					: current.timeline.pool.group,
+			reversed:
+				typeof pool.reversed === 'boolean'
+					? pool.reversed
+					: current.timeline.pool.reversed,
+		},
+	};
+	const state = { projectPath, visualization, corkboard, timeline };
 	return {
 		state,
 		changed:
@@ -171,7 +204,10 @@ export function mergeStoryStructureViewState(
 			state.visualization !== current.visualization ||
 			state.corkboard.mode !== current.corkboard.mode ||
 			state.corkboard.group !== current.corkboard.group ||
-			state.corkboard.reversed !== current.corkboard.reversed,
+			state.corkboard.reversed !== current.corkboard.reversed ||
+			state.timeline.pool.mode !== current.timeline.pool.mode ||
+			state.timeline.pool.group !== current.timeline.pool.group ||
+			state.timeline.pool.reversed !== current.timeline.pool.reversed,
 	};
 }
 
@@ -191,5 +227,29 @@ export function corkboardMemory(settings?: CorkboardSettings): CorkboardMemory {
 		query: '',
 		filters: sceneFilters(),
 		scrollTop: 0,
+	};
+}
+
+/**
+ * What outlives a mount of the timeline: the pool's settings the view
+ * persists, and what lasts the session -- the timeline chosen by a click in
+ * each view, where each stack was browsed to, the pool's search, funnel and
+ * scroll, and the workspace's own scroll.
+ */
+export interface TimelineMemory {
+	/** The timeline made active by a click, by view id. */
+	activeTimeline: Map<string, string>;
+	/** Where each stack was browsed to, by view, timeline and row. */
+	stackPositions: Map<string, number>;
+	pool: CorkboardMemory;
+	scroll: { left: number; top: number };
+}
+
+export function timelineMemory(settings?: TimelineSettings): TimelineMemory {
+	return {
+		activeTimeline: new Map(),
+		stackPositions: new Map(),
+		pool: corkboardMemory((settings ?? defaultTimelineSettings()).pool),
+		scroll: { left: 0, top: 0 },
 	};
 }

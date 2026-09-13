@@ -1,0 +1,2310 @@
+/**
+ * The timeline workspace: the story laid along its times, one lane per
+ * timeline, under one view of the several the author may keep. The document
+ * the lanes are drawn from is the bridge's; the names on the lanes, the
+ * times and the cards are the project model's; every change the workspace
+ * makes goes through one queue, each followed by a read of the document
+ * before the next runs. What the workspace computes is in
+ * `timeline-layout.ts`; this is the drawing, and the rules of the drawing:
+ *
+ * - Every level is keyed and kept: a head per timeline, a row per time, a
+ *   cell per lane in a row, a sub-row per sub-description, a card per scene
+ *   placed. A paint dresses what stands and moves only what is out of
+ *   place, so a control holding the focus is still there afterwards.
+ * - The cards are the corkboard's, dealt from the same deck, standing in
+ *   the flow of their row rather than on a canvas.
+ */
+
+import { Menu, Notice, setIcon, setTooltip } from 'obsidian';
+
+import {
+	SCENE_PRESENTATIONS,
+	derivedPresentation,
+	findTimelineView,
+	resolveEntityRefs,
+	type EntityRef,
+	type EntityRosterEntry,
+	type ScenePresentation,
+	type Timeline,
+	type TimelineDocument,
+	type TimelineRow,
+	type TimelineTime,
+	type TimelineView,
+} from '../domain';
+import { entityGroupLabel } from './entity-form';
+import { promptForEntityReference, type EntityReferenceSource } from './modals';
+import type { PickerOption } from './option-picker';
+import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
+import { paintCount, renderEmptyLine } from './pane-parts';
+import {
+	SCENE_CARD_PART_CLASSES,
+	SCENE_CARD_SELECTOR,
+	controlWithin,
+	createSceneCardDeck,
+	type SceneCard,
+	type SceneCardDeck,
+	type SceneCardPart,
+} from './scene-card';
+import { planCardMoves, planCardRepaint } from './sticky-note-layout';
+import { dropIndexAt } from './task-board-rows';
+import {
+	TIMELINE_ROW_DRAG_TYPE,
+	TIMELINE_SCENE_DRAG_TYPE,
+	TIMELINE_TIME_DRAG_TYPE,
+	type RenderTimeline,
+	type TimelineBridge,
+	type TimelineHandle,
+	type TimelineReading,
+} from './timeline-bridge';
+import {
+	AddTimelineModal,
+	TimelineViewFormModal,
+	confirmTimelineAction,
+	renameTimelineForm,
+} from './timeline-forms';
+import {
+	assignedSceneIds,
+	cellDragState,
+	clampStackPosition,
+	laneCardMode,
+	laneCell,
+	laneOrder,
+	layoutKind,
+	placementIndexAt,
+	reorderIds,
+	resolveActiveTimeline,
+	rowAcceptsScene,
+	stackKey,
+	unionRows,
+	type TimeRowModel,
+	type TimelineDrag,
+} from './timeline-layout';
+import {
+	kindEntities,
+	type ProjectDashboardModel,
+	type SceneViewModel,
+	type WorldbuildingEntityViewModel,
+} from './view-model';
+
+/** What follows a queued change: a read of the document, a read of the model, or a paint alone. */
+type After = 'document' | 'model' | 'none';
+
+/** A lane's header: the element and the parts a dressing rewrites. */
+interface LaneHead {
+	id: string;
+	el: HTMLElement;
+	pin: HTMLElement;
+	name: HTMLButtonElement;
+	entity: HTMLButtonElement;
+	entityPath: string | null;
+	more: HTMLButtonElement;
+	timeline: Timeline;
+}
+
+/** A row's scenes as a stack: one card in front, the rest counted behind it, and the controls that walk them. */
+interface StackEntry {
+	el: HTMLElement;
+	/** Where the one card in front stands; the rear layers are drawn behind it. */
+	face: HTMLElement;
+	controls: HTMLElement;
+	previous: HTMLButtonElement;
+	next: HTMLButtonElement;
+	reset: HTMLButtonElement;
+	position: HTMLElement;
+}
+
+/** One sub-description on one lane at one time: its words and the scenes on it. */
+interface SubrowEntry {
+	rowId: string;
+	el: HTMLElement;
+	handle: HTMLButtonElement;
+	label: HTMLButtonElement;
+	input: HTMLInputElement;
+	more: HTMLButtonElement;
+	/** True while the words are being edited in place; a paint leaves the input alone. */
+	editing: boolean;
+	/** The words the edit began from, to revert to on Escape. */
+	original: string;
+	scenes: HTMLElement;
+	/** Stand-ins for scenes the project no longer has, by scene id. */
+	missing: Map<string, HTMLElement>;
+	/** The stack the scenes stand in while the view shows them stacked; null while they lie flat. */
+	stack: StackEntry | null;
+}
+
+/** A row typed and not yet read back: shown at once, taken down once the document holds it. */
+interface PendingRow {
+	el: HTMLElement;
+}
+
+/** The empty row at a cell's foot, where the next sub-description is typed. */
+interface TrailingRow {
+	el: HTMLElement;
+	input: HTMLInputElement;
+}
+
+/** One lane's cell in a time row: the axis, and the rows when the lane holds the time. */
+interface CellEntry {
+	timelineId: string;
+	el: HTMLElement;
+	axis: HTMLElement;
+	present: boolean;
+	rows: HTMLElement | null;
+	trailing: TrailingRow | null;
+	pending: PendingRow[];
+	add: HTMLButtonElement | null;
+	subrows: Map<string, SubrowEntry>;
+}
+
+/** One shared time row: the time's own cell, and a cell per lane. */
+interface RowEntry {
+	timeId: string;
+	el: HTMLElement;
+	handle: HTMLButtonElement;
+	label: HTMLButtonElement;
+	description: HTMLButtonElement;
+	more: HTMLButtonElement;
+	time: WorldbuildingEntityViewModel | null;
+	cells: Map<string, CellEntry>;
+}
+
+/** Where the focus stood before a paint: on a card's part, or on any other control. */
+type FocusHold =
+	| { kind: 'card'; key: string; part: SceneCardPart }
+	| { kind: 'element'; el: Element };
+
+const cardKey = (rowId: string, sceneId: string): string => `${rowId}|${sceneId}`;
+const sceneOfKey = (key: string): string => key.slice(key.indexOf('|') + 1);
+const rowOfKey = (key: string): string => key.slice(0, key.indexOf('|'));
+
+export const renderTimeline: RenderTimeline = (container, controls) => {
+	const { app, host, t, memory } = controls;
+	const root = container.createDiv({
+		cls: 'snowflake-method-prose-panel snowflake-method-timeline snowflake-method-scene-cards',
+	});
+
+	const notice = (error: unknown): void => {
+		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+	};
+
+	// -- The toolbar ---------------------------------------------------------
+
+	const toolbar = root.createDiv({
+		cls: 'snowflake-method-timeline-toolbar',
+		attr: { role: 'toolbar', 'aria-label': t('timeline.toolbar') },
+	});
+	const viewSelect = toolbar.createEl('select', {
+		cls: 'dropdown snowflake-method-timeline-view-select',
+		attr: { 'aria-label': t('timeline.view') },
+	});
+	viewSelect.addEventListener('change', () => {
+		const chosen = viewSelect.value;
+		if (chosen.length === 0 || chosen === viewId) return;
+		viewId = chosen;
+		paintAll();
+		void enqueue(async () => {
+			await controls.bridge().setLastView(chosen);
+		}, 'none');
+	});
+	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement => {
+		const button = toolbar.createEl('button', {
+			cls: `clickable-icon ${cls}`,
+			attr: { type: 'button', 'aria-label': label },
+		});
+		setIcon(button, icon);
+		setTooltip(button, label);
+		return button;
+	};
+	const addViewButton = iconButton('snowflake-method-timeline-view-add', 'plus', t('timeline.view.add'));
+	addViewButton.addEventListener('click', () => {
+		openAddView();
+	});
+	const manageViewButton = iconButton('snowflake-method-timeline-view-manage', 'settings-2', t('timeline.view.manage'));
+	manageViewButton.addEventListener('click', () => {
+		openManageView();
+	});
+	// Flat lays a row's scenes side by side; Stack shows one with the rest
+	// behind it. The choice is the view's, so it is written to the document.
+	const presentationGroup = toolbar.createDiv({
+		cls: 'snowflake-method-timeline-presentation',
+		attr: { role: 'radiogroup', 'aria-label': t('timeline.presentation') },
+	});
+	const presentationRadios = new Map<ScenePresentation, HTMLButtonElement>();
+	for (const value of SCENE_PRESENTATIONS) {
+		const radio = presentationGroup.createEl('button', {
+			cls: 'snowflake-method-timeline-presentation-option',
+			text: t(`timeline.presentation.${value}`),
+			attr: { type: 'button', role: 'radio', 'aria-checked': 'false', 'data-value': value },
+		});
+		radio.addEventListener('click', () => {
+			choosePresentation(value);
+		});
+		radio.addEventListener('keydown', (event) => {
+			if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+			event.preventDefault();
+			const other: ScenePresentation = value === 'flat' ? 'stack' : 'flat';
+			presentationRadios.get(other)?.focus();
+			choosePresentation(other);
+		});
+		presentationRadios.set(value, radio);
+	}
+	const choosePresentation = (value: ScenePresentation): void => {
+		const view = currentView();
+		if (readOnly || view === null || value === presentation) return;
+		void enqueue(async () => {
+			await controls.bridge().setViewPresentation(view.id, value);
+		});
+	};
+	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
+	const refreshButton = iconButton('snowflake-method-timeline-refresh', 'refresh-cw', t('corkboard.refresh'));
+	refreshButton.addEventListener('click', () => {
+		void controls.refresh().then(() => reload()).catch(notice);
+	});
+	const addTimelineButton = toolbar.createEl('button', {
+		cls: 'mod-cta snowflake-method-timeline-add-timeline',
+		text: t('timeline.addTimeline'),
+		attr: { type: 'button' },
+	});
+	addTimelineButton.addEventListener('click', () => {
+		void addTimeline(true);
+	});
+
+	// -- The empty states, and the body --------------------------------------
+
+	const empty = renderEmptyLine(root, '');
+	const emptyAction = empty.line.createEl('button', {
+		cls: 'mod-cta snowflake-method-timeline-empty-action is-hidden',
+		attr: { type: 'button' },
+	});
+	let emptyRun: (() => void) | null = null;
+	emptyAction.addEventListener('click', () => {
+		emptyRun?.();
+	});
+	const body = root.createDiv({ cls: 'snowflake-method-timeline-body is-hidden' });
+	const scroller = body.createDiv({
+		cls: 'snowflake-method-timeline-scroll',
+		attr: { tabindex: '-1' },
+	});
+	const table = scroller.createDiv({ cls: 'snowflake-method-timeline-table' });
+	const head = table.createDiv({ cls: 'snowflake-method-timeline-head' });
+	head.createDiv({ cls: 'snowflake-method-timeline-corner', text: t('table.sceneTime') });
+	const timesEmpty = table.createDiv({
+		cls: 'snowflake-method-timeline-times-empty',
+		text: t('timeline.empty.times'),
+	});
+	/** Where a time dropped past the last row lands, and wears the line. */
+	const tail = table.createDiv({ cls: 'snowflake-method-timeline-tail' });
+
+	// -- The scene pool ------------------------------------------------------
+
+	const pool = body.createEl('aside', {
+		cls: 'snowflake-method-timeline-pool',
+		attr: { 'aria-label': t('timeline.pool') },
+	});
+	const poolTitle = pool.createDiv({ cls: 'snowflake-method-timeline-pool-title' });
+	poolTitle.createSpan({ cls: 'snowflake-method-timeline-pool-name', text: t('timeline.pool'), attr: { role: 'heading', 'aria-level': '3' } });
+	const poolCount = poolTitle.createSpan({
+		cls: 'snowflake-method-step-indicator snowflake-method-timeline-pool-count',
+	});
+	const poolHost = pool.createDiv({ cls: 'snowflake-method-corkboard-host' });
+	/** The scenes the active timeline has placed, which the pool leaves out. */
+	let assigned = new Set<string>();
+
+	// -- State ---------------------------------------------------------------
+
+	let reading: TimelineReading | null = null;
+	let loadFailed = false;
+	let model: ProjectDashboardModel | null = null;
+	let viewId: string | null = null;
+	let lanes: Timeline[] = [];
+	let activeId: string | null = null;
+	/** How the rows deal their scenes, from the view or from how many lanes it shows. */
+	let presentation: ScenePresentation = 'flat';
+	let readOnly = true;
+	let roster: EntityRosterEntry[] = [];
+	let optionsSignature = '';
+	let scenesById = new Map<string, SceneViewModel>();
+	/** Each scene's place in the narrative order, which its card's circle shows. */
+	let sceneIndex = new Map<string, number>();
+	let charactersByPath = new Map<string, ProjectDashboardModel['characters'][number]>();
+	let manuscriptPositions = new Map<string, number>();
+	let resolvedManuscriptPaths = new Map<string, Map<string, string | null>>();
+	const laneHeads = new Map<string, LaneHead>();
+	const timeRows = new Map<string, RowEntry>();
+	let boundBridge: TimelineBridge | null = null;
+	let unsubscribe: (() => void) | null = null;
+	let reloading = false;
+	let reloadPending = false;
+	let queue: Promise<void> = Promise.resolve();
+	let disposed = false;
+	let poolHandle: CorkboardHandle | null = null;
+	/** The times' ids in the order the rows stand, from the last paint. */
+	let rowOrder: string[] = [];
+	/** The drag in flight, while one is; every paint asked meanwhile waits. */
+	let drag: TimelineDrag | null = null;
+	let paintOwed = false;
+	/** Where a drop would land, as the class on the element that wears the line. */
+	let mark: { el: HTMLElement; cls: string } | null = null;
+	/** What the last dragover worked out, which the drop then uses: the time or the row a drop lands before. */
+	let timeLanding: { timeId: string | null } | null = null;
+	let rowLanding: { cell: CellEntry; rowId: string | null } | null = null;
+	/** Where a scene would land: a row and the scene it goes before, or the trailing row for a row of its own. */
+	let sceneLanding: { cell: CellEntry; rowId: string | null; beforeSceneId: string | null } | null = null;
+	/** Measured once per drag, dropped on scroll, resize, paint and drag end. */
+	let rects: {
+		rows: DOMRect[] | null;
+		subrows: Map<HTMLElement, { rowId: string; middle: number }[]>;
+		cards: Map<HTMLElement, { sceneId: string; el: HTMLElement; rect: DOMRect }[]>;
+	} = { rows: null, subrows: new Map(), cards: new Map() };
+	const invalidateRects = (): void => {
+		rects = { rows: null, subrows: new Map(), cards: new Map() };
+	};
+
+	/** One resolution per target/source during a full paint. */
+	const resolveManuscriptPath = (target: string, sourcePath: string): string | null => {
+		let paths = resolvedManuscriptPaths.get(sourcePath);
+		if (paths === undefined) {
+			paths = new Map();
+			resolvedManuscriptPaths.set(sourcePath, paths);
+		}
+		if (!paths.has(target)) paths.set(target, app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null);
+		return paths.get(target) ?? null;
+	};
+
+	const deck: SceneCardDeck<SceneCard> = createSceneCardDeck<SceneCard>({
+		app,
+		host,
+		t,
+		notice,
+		refresh: () => controls.refresh(),
+		model: () => model,
+		projectPath: () => controls.projectPath(),
+		readOnly: () => readOnly,
+		charactersByPath: () => charactersByPath,
+		scenesById: () => scenesById,
+		manuscriptPositions: () => manuscriptPositions,
+		resolveManuscriptPath,
+		// A card drags from the active lane alone; in a single lane that is every card.
+		dragAllowed: (card) => !readOnly && laneOfRow(rowOfKey(card.key))?.id === activeId,
+		menu: (card, event) => {
+			openCardMenu(card, event);
+		},
+		extend: (card) => card,
+	});
+
+	// -- Reading and writing -------------------------------------------------
+
+	/** Hears the bridge standing now; a project rename hands the workspace a new one. */
+	const bind = (bridge: TimelineBridge): void => {
+		if (bridge === boundBridge) return;
+		unsubscribe?.();
+		boundBridge = bridge;
+		unsubscribe = bridge.subscribe(() => {
+			void reload();
+		});
+	};
+
+	/** Reads the document again and paints; a read asked mid-read is made once this one lands. */
+	const reload = async (): Promise<void> => {
+		if (disposed) return;
+		if (reloading) {
+			reloadPending = true;
+			return;
+		}
+		reloading = true;
+		try {
+			do {
+				reloadPending = false;
+				const bridge = controls.bridge();
+				bind(bridge);
+				try {
+					reading = await bridge.read();
+					loadFailed = false;
+				} catch (error) {
+					reading = null;
+					loadFailed = true;
+					console.error('Snowflake: the timeline could not be read', error);
+				}
+				if (disposed) return;
+			} while (reloadPending);
+		} finally {
+			reloading = false;
+		}
+		paintAll();
+	};
+
+	/**
+	 * Every change the workspace makes, one after another, each followed by
+	 * what it asked for: a read of the document, a read of the model, or a
+	 * paint alone -- asked as a value, or as a question answered once the
+	 * change is done, for a form that may or may not have saved. A change
+	 * queued before the workspace went still lands.
+	 */
+	const enqueue = (action: () => Promise<void>, after: After | (() => After) = 'document'): Promise<void> => {
+		const run = queue.then(async () => {
+			try {
+				await action();
+			} catch (error) {
+				if (!disposed) notice(error);
+			}
+			if (disposed) return;
+			const then = typeof after === 'function' ? after() : after;
+			if (then === 'document') await reload();
+			else if (then === 'model') await controls.refresh();
+			else paintAll();
+		});
+		queue = run.catch(() => undefined);
+		return run;
+	};
+
+	const currentView = (): TimelineView | null => {
+		if (reading === null || viewId === null) return null;
+		return findTimelineView(reading.held, viewId) ?? null;
+	};
+
+	const laneOfRow = (rowId: string): Timeline | null =>
+		lanes.find((lane) => lane.times.some((time) => time.rows.some((row) => row.id === rowId))) ?? null;
+
+	// -- Painting ------------------------------------------------------------
+
+	const showEmpty = (text: string | null, action: { label: string; run: () => void } | null): void => {
+		empty.line.toggleClass('is-hidden', text === null);
+		body.toggleClass('is-hidden', text !== null);
+		if (text !== null) empty.text.setText(text);
+		emptyAction.toggleClass('is-hidden', action === null);
+		if (action !== null) emptyAction.setText(action.label);
+		emptyAction.disabled = readOnly;
+		emptyRun = action?.run ?? null;
+	};
+
+	/** The view switcher's options, remade only when the views moved. */
+	const paintOptions = (views: readonly TimelineView[]): void => {
+		const signature = views.map((view) => `${view.id} ${view.name}`).join('|');
+		if (signature !== optionsSignature) {
+			optionsSignature = signature;
+			viewSelect.empty();
+			for (const view of views) {
+				viewSelect.createEl('option', { text: view.name, attr: { value: view.id } });
+			}
+		}
+		viewSelect.disabled = views.length === 0;
+		if (viewId !== null && viewSelect.value !== viewId) viewSelect.value = viewId;
+	};
+
+	/** Who a binding may point at now, from the model: the cast and every kind but time. */
+	const rosterOf = (current: ProjectDashboardModel): EntityRosterEntry[] => [
+		...current.characters.map((character) => ({
+			kind: 'character',
+			id: character.id,
+			name: character.name,
+			path: character.path,
+			group: 'character',
+		})),
+		...current.worldbuildingKinds
+			.filter((kind) => kind.id !== 'time')
+			.flatMap((kind) =>
+				kindEntities(current, kind.id).map((entity) => ({
+					kind: kind.id,
+					id: entity.id,
+					name: entity.name,
+					path: entity.path,
+					group: kind.id,
+				})),
+			),
+	];
+
+	/**
+	 * Lays the workspace out again from the document and the model: the
+	 * view, its lanes and which of them is active, the chrome, then the
+	 * heads and the rows of times under them.
+	 */
+	const paintAll = (): void => {
+		if (disposed) return;
+		if (drag !== null) {
+			paintOwed = true;
+			return;
+		}
+		invalidateRects();
+		const nextModel = controls.model();
+		if (nextModel !== model) {
+			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
+		}
+		model = nextModel;
+		readOnly = (model?.readOnly ?? true) || (reading?.readOnly ?? true);
+		root.toggleClass('is-read-only', readOnly);
+		roster = model === null ? [] : rosterOf(model);
+		scenesById = new Map(model?.scenes.map((scene) => [scene.id, scene]) ?? []);
+		sceneIndex = new Map(model?.scenes.map((scene, index) => [scene.id, index]) ?? []);
+		charactersByPath = new Map(model?.characters.map((character) => [character.path, character]) ?? []);
+		// A refresh can follow metadata resolution even with the same model object.
+		resolvedManuscriptPaths = new Map();
+		deck.beginPaint();
+		addTimelineButton.disabled = readOnly || reading === null;
+		addViewButton.disabled = readOnly || reading === null;
+		if (reading === null) {
+			manageViewButton.disabled = true;
+			paintPresentation(null);
+			paintOptions([]);
+			showEmpty(t(loadFailed ? 'timeline.loadFailed' : 'timeline.loading'), null);
+			return;
+		}
+		const held = reading.held;
+		if (viewId === null || findTimelineView(held, viewId) === undefined) {
+			viewId =
+				held.lastViewId !== null && findTimelineView(held, held.lastViewId) !== undefined
+					? held.lastViewId
+					: (held.views[0]?.id ?? null);
+		}
+		paintOptions(held.views);
+		const view = currentView();
+		manageViewButton.disabled = readOnly || view === null;
+		paintPresentation(view);
+		if (view === null) {
+			lanes = [];
+			clearRows();
+			showEmpty(t('timeline.empty.views'), { label: t('timeline.view.add'), run: openAddView });
+			return;
+		}
+		lanes = laneOrder(view, held);
+		if (lanes.length === 0) {
+			clearRows();
+			showEmpty(t('timeline.empty.timelines'), {
+				label: t('timeline.addTimeline'),
+				run: () => {
+					void addTimeline(true);
+				},
+			});
+			return;
+		}
+		showEmpty(null, null);
+		activeId = resolveActiveTimeline(lanes, held.pinnedTimelineId, memory.activeTimeline.get(view.id));
+		const kind = layoutKind(lanes);
+		root.dataset.layout = kind;
+		root.dataset.mode = laneCardMode(kind, view.cardStyle);
+		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
+		const hold = holdFocus();
+		paintHeads(held);
+		paintRows(view);
+		paintPool();
+		giveFocusBack(hold);
+		deck.prune();
+		stateText.setText('');
+	};
+
+	/** The radios say how the view deals its scenes; the checked one is the group's tab stop. */
+	const paintPresentation = (view: TimelineView | null): void => {
+		presentation = view === null ? 'flat' : derivedPresentation(view);
+		root.dataset.presentation = presentation;
+		for (const [value, radio] of presentationRadios) {
+			const checked = value === presentation;
+			radio.setAttribute('aria-checked', checked ? 'true' : 'false');
+			radio.tabIndex = checked ? 0 : -1;
+			radio.disabled = readOnly || view === null;
+		}
+	};
+
+	/** The pool follows the active lane: what that lane has placed leaves it, and the count says what is left. */
+	const paintPool = (): void => {
+		const active = lanes.find((lane) => lane.id === activeId);
+		assigned = active === undefined ? new Set() : assignedSceneIds(active);
+		const left = model === null ? 0 : model.scenes.filter((scene) => !assigned.has(scene.id)).length;
+		paintCount(poolCount, left);
+		poolHandle?.refresh();
+	};
+
+	const buildHead = (lane: Timeline): LaneHead => {
+		const el = head.createDiv({
+			cls: 'snowflake-method-timeline-lane-head',
+			attr: { 'data-timeline-id': lane.id },
+		});
+		const pin = el.createSpan({
+			cls: 'snowflake-method-timeline-lane-pin is-hidden',
+			attr: { 'aria-label': t('timeline.timeline.pinned') },
+		});
+		setIcon(pin, 'pin');
+		setTooltip(pin, t('timeline.timeline.pinned'));
+		const name = el.createEl('button', {
+			cls: 'snowflake-method-timeline-lane-name',
+			attr: { type: 'button', 'aria-pressed': 'false' },
+		});
+		const entity = el.createEl('button', {
+			cls: 'snowflake-method-timeline-lane-entity is-hidden',
+			attr: { type: 'button' },
+		});
+		const more = el.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-lane-more',
+			attr: { type: 'button', 'aria-label': t('table.actions'), 'aria-haspopup': 'menu' },
+		});
+		setIcon(more, 'ellipsis');
+		setTooltip(more, t('table.actions'));
+		const entry: LaneHead = { id: lane.id, el, pin, name, entity, entityPath: null, more, timeline: lane };
+		name.addEventListener('click', () => {
+			activate(entry.id);
+		});
+		entity.addEventListener('click', (event) => {
+			event.stopPropagation();
+			if (entry.entityPath !== null) void host.openManagedFile(entry.entityPath).catch(notice);
+		});
+		more.addEventListener('click', (event) => {
+			event.stopPropagation();
+			openLaneMenu(entry, event);
+		});
+		el.addEventListener('contextmenu', (event) => {
+			event.preventDefault();
+			openLaneMenu(entry, event);
+		});
+		return entry;
+	};
+
+	const dressHead = (entry: LaneHead, lane: Timeline, held: TimelineDocument): void => {
+		entry.timeline = lane;
+		if (entry.name.textContent !== lane.name) entry.name.setText(lane.name);
+		const active = lane.id === activeId;
+		entry.el.toggleClass('is-active', active);
+		entry.name.setAttribute('aria-pressed', active ? 'true' : 'false');
+		setTooltip(entry.name, t('timeline.timeline.activate', { name: lane.name }));
+		const pinned = held.pinnedTimelineId === lane.id;
+		entry.el.toggleClass('is-pinned', pinned);
+		entry.pin.toggleClass('is-hidden', !pinned);
+		const binding = lane.binding === null ? null : (resolveEntityRefs([lane.binding], roster)[0] ?? null);
+		entry.entity.toggleClass('is-hidden', binding === null);
+		if (binding === null) {
+			entry.entityPath = null;
+			return;
+		}
+		if (entry.entity.textContent !== binding.name) entry.entity.setText(binding.name);
+		entry.entity.toggleClass('is-missing', binding.missing);
+		setTooltip(
+			entry.entity,
+			binding.missing ? t('table.referenceMissing', { name: binding.name }) : binding.name,
+		);
+		entry.entityPath = binding.missing ? null : binding.path;
+	};
+
+	/** Brings the heads level with the lanes: one per timeline, in the view's order, kept where they stand. */
+	const paintHeads = (held: TimelineDocument): void => {
+		const wanted = lanes.map((lane) => lane.id);
+		const plan = planCardRepaint([...laneHeads.keys()], wanted, []);
+		for (const id of plan.remove) {
+			laneHeads.get(id)?.el.remove();
+			laneHeads.delete(id);
+		}
+		for (const lane of lanes) {
+			let entry = laneHeads.get(lane.id);
+			if (entry === undefined) {
+				entry = buildHead(lane);
+				laneHeads.set(lane.id, entry);
+			}
+			dressHead(entry, lane, held);
+		}
+		const present = Array.from(head.children).map(
+			(child) => child.getAttribute('data-timeline-id') ?? '',
+		);
+		for (const move of planCardMoves(present, wanted)) {
+			const el = laneHeads.get(move.id)?.el;
+			if (el === undefined) continue;
+			head.insertBefore(el, laneHeads.get(move.before)?.el ?? null);
+		}
+	};
+
+	// -- The rows of times ---------------------------------------------------
+
+	const buildRow = (timeId: string): RowEntry => {
+		const el = table.createDiv({
+			cls: 'snowflake-method-timeline-row',
+			attr: { 'data-time-id': timeId },
+		});
+		const time = el.createDiv({ cls: 'snowflake-method-timeline-time' });
+		const handle = time.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-time-handle',
+			attr: { type: 'button', 'aria-label': t('timeline.time.drag'), draggable: 'true' },
+		});
+		setIcon(handle, 'grip-vertical');
+		setTooltip(handle, t('timeline.time.drag'));
+		const text = time.createDiv({ cls: 'snowflake-method-timeline-time-text' });
+		const label = text.createEl('button', {
+			cls: 'snowflake-method-timeline-time-label',
+			attr: { type: 'button' },
+		});
+		const description = text.createEl('button', {
+			cls: 'snowflake-method-timeline-time-description',
+			attr: { type: 'button' },
+		});
+		const more = time.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-time-more',
+			attr: { type: 'button', 'aria-label': t('table.actions'), 'aria-haspopup': 'menu' },
+		});
+		setIcon(more, 'ellipsis');
+		setTooltip(more, t('table.actions'));
+		const entry: RowEntry = { timeId, el, handle, label, description, more, time: null, cells: new Map() };
+		handle.addEventListener('dragstart', (event) => {
+			if (readOnly || event.dataTransfer === null) {
+				event.preventDefault();
+				return;
+			}
+			drag = { kind: 'time', timeId: entry.timeId };
+			invalidateRects();
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData(TIMELINE_TIME_DRAG_TYPE, entry.timeId);
+			if (typeof event.dataTransfer.setDragImage === 'function') event.dataTransfer.setDragImage(entry.el, 8, 8);
+			root.addClass('is-time-drag');
+			entry.el.addClass('is-dragging');
+		});
+		handle.addEventListener('dragend', () => {
+			entry.el.removeClass('is-dragging');
+			endDrag();
+		});
+		label.addEventListener('click', () => {
+			const path = entry.time?.path;
+			if (path !== undefined) void host.openManagedFile(path).catch(notice);
+		});
+		description.addEventListener('click', () => {
+			editTime(entry);
+		});
+		more.addEventListener('click', (event) => {
+			event.stopPropagation();
+			openTimeMenu(entry, event);
+		});
+		time.addEventListener('contextmenu', (event) => {
+			event.preventDefault();
+			openTimeMenu(entry, event);
+		});
+		return entry;
+	};
+
+	const dressRow = (entry: RowEntry, row: TimeRowModel): void => {
+		entry.time = row.time;
+		const missing = row.time === null;
+		entry.el.toggleClass('is-missing', missing);
+		const name = row.time?.name ?? t('timeline.time.missing');
+		if (entry.label.textContent !== name) entry.label.setText(name);
+		entry.label.disabled = missing;
+		entry.handle.setAttribute('draggable', readOnly ? 'false' : 'true');
+		entry.handle.disabled = readOnly;
+		const description = row.time?.description.trim() ?? '';
+		const shown = description.length > 0 ? description : t('timeline.time.noDescription');
+		if (entry.description.textContent !== shown) entry.description.setText(shown);
+		entry.description.toggleClass('is-empty', description.length === 0);
+		entry.description.toggleClass('is-hidden', missing);
+		entry.description.disabled = readOnly || missing;
+		setTooltip(entry.description, t('timeline.time.editDescription'));
+		const wanted = lanes.map((lane) => lane.id);
+		const plan = planCardRepaint([...entry.cells.keys()], wanted, []);
+		for (const id of plan.remove) unmountCell(entry, id);
+		for (const lane of lanes) {
+			let cell = entry.cells.get(lane.id);
+			if (cell === undefined) {
+				cell = buildCell(entry, lane.id);
+				entry.cells.set(lane.id, cell);
+			}
+			dressCell(entry, cell, lane);
+		}
+		const present = Array.from(entry.el.children).map(
+			(child) => child.getAttribute('data-timeline-id') ?? '',
+		);
+		for (const move of planCardMoves(present, wanted)) {
+			const el = entry.cells.get(move.id)?.el;
+			if (el === undefined) continue;
+			entry.el.insertBefore(el, entry.cells.get(move.before)?.el ?? null);
+		}
+	};
+
+	const unmountRow = (timeId: string): void => {
+		const entry = timeRows.get(timeId);
+		if (entry === undefined) return;
+		for (const id of [...entry.cells.keys()]) unmountCell(entry, id);
+		entry.el.remove();
+		timeRows.delete(timeId);
+	};
+
+	const clearRows = (): void => {
+		for (const timeId of [...timeRows.keys()]) unmountRow(timeId);
+		timesEmpty.toggleClass('is-hidden', true);
+	};
+
+	/** Brings the rows level with the times the view shows, in its order, kept where they stand. */
+	const paintRows = (view: TimelineView): void => {
+		const times = model === null ? [] : kindEntities(model, 'time');
+		const rows = unionRows(view, lanes, times);
+		timesEmpty.toggleClass('is-hidden', rows.length > 0);
+		const wanted = rows.map((row) => row.timeId);
+		rowOrder = wanted;
+		const plan = planCardRepaint([...timeRows.keys()], wanted, []);
+		for (const timeId of plan.remove) unmountRow(timeId);
+		for (const row of rows) {
+			let entry = timeRows.get(row.timeId);
+			if (entry === undefined) {
+				entry = buildRow(row.timeId);
+				timeRows.set(row.timeId, entry);
+				table.insertBefore(entry.el, timesEmpty);
+			}
+			dressRow(entry, row);
+		}
+		const present = Array.from(table.children).map(
+			(child) => child.getAttribute('data-time-id') ?? '',
+		);
+		for (const move of planCardMoves(present, wanted)) {
+			const el = timeRows.get(move.id)?.el;
+			if (el === undefined) continue;
+			table.insertBefore(el, timeRows.get(move.before)?.el ?? timesEmpty);
+		}
+	};
+
+	// -- The cells of a row --------------------------------------------------
+
+	const buildCell = (row: RowEntry, timelineId: string): CellEntry => {
+		const el = row.el.createDiv({
+			cls: 'snowflake-method-timeline-cell',
+			attr: { 'data-timeline-id': timelineId, 'data-time-id': row.timeId },
+		});
+		const axis = el.createDiv({
+			cls: 'snowflake-method-timeline-axis',
+			attr: { 'aria-hidden': 'true' },
+		});
+		const cell: CellEntry = { timelineId, el, axis, present: false, rows: null, trailing: null, pending: [], add: null, subrows: new Map() };
+		// A row lands in a cell of its own lane, before the sub-row under the
+		// pointer or at the foot; another lane's cell says no, as a cursor.
+		// The mark moves from dragover alone: Chromium fires dragleave at
+		// every child boundary, and a mark cleared there flickers.
+		el.addEventListener('dragover', (event) => {
+			if (drag?.kind === 'scene') {
+				sceneDragOver(cell, event);
+				return;
+			}
+			if (drag?.kind !== 'row' || event.dataTransfer?.types.includes(TIMELINE_ROW_DRAG_TYPE) !== true) return;
+			event.preventDefault();
+			if (drag.timelineId !== cell.timelineId) {
+				event.dataTransfer.dropEffect = 'none';
+				return;
+			}
+			event.dataTransfer.dropEffect = 'move';
+			const landing = subrowLanding(cell, drag.rowId, event.clientY);
+			rowLanding = { cell, rowId: landing?.rowId ?? null };
+			if (landing === null) setMark(cell.el, 'is-drop-target');
+			else setMark(landing.el, 'is-drop-before');
+		});
+		el.addEventListener('drop', (event) => {
+			if (drag?.kind === 'scene') {
+				sceneDrop(cell, row.timeId, event);
+				return;
+			}
+			const dragged = event.dataTransfer?.getData(TIMELINE_ROW_DRAG_TYPE) ?? '';
+			if (drag?.kind !== 'row' || drag.rowId !== dragged || drag.timelineId !== cell.timelineId) return;
+			event.preventDefault();
+			// The landing the last dragover worked out, for the drop it was shown for.
+			const beforeRowId = rowLanding?.cell === cell
+				? rowLanding.rowId
+				: (subrowLanding(cell, drag.rowId, event.clientY)?.rowId ?? null);
+			clearMark();
+			const { timelineId, rowId } = drag;
+			void enqueue(async () => {
+				await controls.bridge().moveRow(timelineId, rowId, row.timeId, beforeRowId);
+			});
+		});
+		return cell;
+	};
+
+	/**
+	 * Where a dragged row would land in a cell: the sub-row whose middle is
+	 * below the pointer, the trailing row for the foot, or nothing where the
+	 * cell has no rows to land among.
+	 */
+	const subrowLanding = (
+		cell: CellEntry,
+		draggedRowId: string,
+		clientY: number,
+	): { el: HTMLElement; rowId: string | null } | null => {
+		const rows = cell.rows;
+		if (rows === null) return null;
+		let measured = rects.subrows.get(rows);
+		if (measured === undefined) {
+			measured = [...cell.subrows.values()]
+				.filter((entry) => entry.rowId !== draggedRowId && entry.el.isConnected)
+				.map((entry) => {
+					const box = entry.el.getBoundingClientRect();
+					return { rowId: entry.rowId, middle: box.top + box.height / 2 };
+				})
+				.sort((a, b) => a.middle - b.middle);
+			rects.subrows.set(rows, measured);
+		}
+		const at = dropIndexAt(measured.map((entry) => entry.middle), clientY);
+		const landing = measured[at];
+		if (landing !== undefined) {
+			const entry = cell.subrows.get(landing.rowId);
+			if (entry !== undefined) return { el: entry.el, rowId: landing.rowId };
+		}
+		return cell.trailing === null ? null : { el: cell.trailing.el, rowId: null };
+	};
+
+	/** Takes a cell's inner parts down: the rows and their cards, or the plus. */
+	const clearCell = (cell: CellEntry): void => {
+		for (const rowId of [...cell.subrows.keys()]) unmountSubrow(cell, rowId);
+		for (const pending of cell.pending) pending.el.remove();
+		cell.pending = [];
+		cell.trailing?.el.remove();
+		cell.trailing = null;
+		cell.rows?.remove();
+		cell.rows = null;
+		cell.add?.remove();
+		cell.add = null;
+	};
+
+	const unmountCell = (row: RowEntry, timelineId: string): void => {
+		const cell = row.cells.get(timelineId);
+		if (cell === undefined) return;
+		clearCell(cell);
+		cell.el.remove();
+		row.cells.delete(timelineId);
+	};
+
+	const dressCell = (row: RowEntry, cell: CellEntry, lane: Timeline): void => {
+		const time = laneCell(lane, row.timeId);
+		const present = time !== null;
+		if (present !== cell.present || (present ? cell.rows === null : cell.add === null)) {
+			clearCell(cell);
+			cell.present = present;
+			if (present) {
+				cell.rows = cell.el.createDiv({ cls: 'snowflake-method-timeline-rows' });
+				cell.trailing = buildTrailing(cell, row.timeId);
+			} else {
+				const add = cell.el.createEl('button', {
+					cls: 'clickable-icon snowflake-method-timeline-cell-add',
+					attr: { type: 'button' },
+				});
+				setIcon(add, 'plus');
+				add.addEventListener('click', () => {
+					void enqueue(async () => {
+						await controls.bridge().addTime(cell.timelineId, row.timeId);
+					});
+				});
+				cell.add = add;
+			}
+		}
+		cell.el.toggleClass('is-present', present);
+		cell.el.toggleClass('is-absent', !present);
+		cell.el.toggleClass('is-active-lane', lane.id === activeId);
+		if (cell.trailing !== null) {
+			cell.trailing.el.toggleClass('is-hidden', readOnly);
+			cell.trailing.input.disabled = readOnly;
+		}
+		if (cell.add !== null) {
+			const label = t('timeline.cell.addTime', { timeline: lane.name });
+			cell.add.setAttribute('aria-label', label);
+			setTooltip(cell.add, label);
+			cell.add.disabled = readOnly;
+		}
+		if (time !== null) paintSubrows(cell, time, lane);
+	};
+
+	// -- The sub-rows of a cell ----------------------------------------------
+
+	const buildSubrow = (cell: CellEntry, rowId: string): SubrowEntry => {
+		const rows = cell.rows;
+		if (rows === null) throw new Error('A sub-row needs the rows of a present cell.');
+		const el = rows.createDiv({
+			cls: 'snowflake-method-timeline-subrow',
+			attr: { 'data-row-id': rowId },
+		});
+		// New rows stand before the trailing one, which keeps the foot of the cell.
+		rows.insertBefore(el, cell.trailing?.el ?? null);
+		const handle = el.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-subrow-handle',
+			attr: { type: 'button', 'aria-label': t('timeline.subrow.drag'), draggable: 'true' },
+		});
+		setIcon(handle, 'grip-vertical');
+		setTooltip(handle, t('timeline.subrow.drag'));
+		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
+		const label = text.createEl('button', {
+			cls: 'snowflake-method-timeline-subrow-label',
+			attr: { type: 'button' },
+		});
+		const input = text.createEl('input', {
+			cls: 'snowflake-method-timeline-subrow-input is-hidden',
+			attr: { type: 'text', 'aria-label': t('timeline.subrow.label') },
+		});
+		const more = text.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-subrow-more',
+			attr: { type: 'button', 'aria-label': t('table.actions'), 'aria-haspopup': 'menu' },
+		});
+		setIcon(more, 'ellipsis');
+		setTooltip(more, t('table.actions'));
+		const scenes = el.createDiv({
+			cls: 'snowflake-method-timeline-scenes',
+			attr: { role: 'list' },
+		});
+		const entry: SubrowEntry = { rowId, el, handle, label, input, more, editing: false, original: '', scenes, missing: new Map(), stack: null };
+		handle.addEventListener('dragstart', (event) => {
+			const time = timeOfRow(cell, entry.rowId);
+			if (readOnly || event.dataTransfer === null || time === null) {
+				event.preventDefault();
+				return;
+			}
+			drag = { kind: 'row', timelineId: cell.timelineId, timeId: time.timeId, rowId: entry.rowId };
+			invalidateRects();
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData(TIMELINE_ROW_DRAG_TYPE, entry.rowId);
+			if (typeof event.dataTransfer.setDragImage === 'function') event.dataTransfer.setDragImage(entry.el, 8, 8);
+			root.addClass('is-row-drag');
+			entry.el.addClass('is-dragging');
+			paintDragPhase();
+		});
+		handle.addEventListener('dragend', () => {
+			entry.el.removeClass('is-dragging');
+			endDrag();
+		});
+		label.addEventListener('click', () => {
+			beginRowEdit(cell, entry);
+		});
+		input.addEventListener('keydown', (event) => {
+			if (event.isComposing) return;
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				commitRowEdit(cell, entry, true);
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				endRowEdit(entry, true);
+			}
+		});
+		input.addEventListener('blur', () => {
+			commitRowEdit(cell, entry, false);
+		});
+		more.addEventListener('click', (event) => {
+			event.stopPropagation();
+			openSubrowMenu(cell, entry, event);
+		});
+		el.addEventListener('contextmenu', (event) => {
+			if (controlWithinRow(event.target, entry)) return;
+			event.preventDefault();
+			openSubrowMenu(cell, entry, event);
+		});
+		return entry;
+	};
+
+	/** Whether a right click landed on a card or a control of the row, which answer for themselves. */
+	const controlWithinRow = (target: EventTarget | null, entry: SubrowEntry): boolean => {
+		if (target === null || !(target as Node).instanceOf(Element)) return false;
+		const el = target as Element;
+		return el.closest(SCENE_CARD_SELECTOR) !== null || (el !== entry.el && el !== entry.label && el.closest('button, input') !== null);
+	};
+
+	/** The empty row at the foot of a cell: typing there and pressing Enter makes a row and keeps the focus for the next. */
+	const buildTrailing = (cell: CellEntry, timeId: string): TrailingRow => {
+		const rows = cell.rows;
+		if (rows === null) throw new Error('A trailing row needs the rows of a present cell.');
+		const el = rows.createDiv({ cls: 'snowflake-method-timeline-subrow is-trailing' });
+		el.createSpan({ cls: 'snowflake-method-timeline-subrow-handle-space' });
+		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
+		const input = text.createEl('input', {
+			cls: 'snowflake-method-timeline-subrow-input',
+			attr: {
+				type: 'text',
+				'aria-label': t('timeline.subrow.label'),
+				placeholder: t('timeline.subrow.placeholder'),
+			},
+		});
+		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'presentation' } });
+		input.addEventListener('keydown', (event) => {
+			if (event.isComposing) return;
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				commitTrailing(cell, timeId, input);
+			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				input.value = '';
+				input.blur();
+			}
+		});
+		input.addEventListener('blur', () => {
+			commitTrailing(cell, timeId, input);
+		});
+		return { el, input };
+	};
+
+	/**
+	 * The words typed at the foot of a cell become a row: shown at once as a
+	 * pending row, written through the queue, and taken down once the
+	 * document has been read back with the row in it. The input is emptied
+	 * and keeps the focus, which is the next row already begun.
+	 */
+	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLInputElement): void => {
+		const words = input.value.trim();
+		if (words.length === 0 || readOnly) return;
+		input.value = '';
+		const rows = cell.rows;
+		if (rows === null) return;
+		const el = rows.createDiv({ cls: 'snowflake-method-timeline-subrow is-pending' });
+		rows.insertBefore(el, cell.trailing?.el ?? null);
+		el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' }).createEl('button', {
+			cls: 'snowflake-method-timeline-subrow-label',
+			text: words,
+			attr: { type: 'button', disabled: 'true' },
+		});
+		el.createDiv({ cls: 'snowflake-method-timeline-scenes', attr: { role: 'presentation' } });
+		const pending: PendingRow = { el };
+		cell.pending.push(pending);
+		const timelineId = cell.timelineId;
+		void enqueue(async () => {
+			await controls.bridge().addRow(timelineId, timeId, words, null);
+		}).then(() => {
+			pending.el.remove();
+			cell.pending = cell.pending.filter((candidate) => candidate !== pending);
+		});
+	};
+
+	const beginRowEdit = (cell: CellEntry, entry: SubrowEntry): void => {
+		if (readOnly || entry.editing) return;
+		const row = rowOfEntry(cell, entry);
+		entry.editing = true;
+		entry.original = row?.text ?? '';
+		entry.el.addClass('is-editing');
+		entry.label.addClass('is-hidden');
+		entry.input.removeClass('is-hidden');
+		entry.input.value = entry.original;
+		entry.input.focus();
+		entry.input.select();
+	};
+
+	const endRowEdit = (entry: SubrowEntry, refocus: boolean): void => {
+		entry.editing = false;
+		entry.el.removeClass('is-editing');
+		entry.input.addClass('is-hidden');
+		entry.label.removeClass('is-hidden');
+		if (refocus) entry.label.focus({ preventScroll: true });
+	};
+
+	/** The words typed for an existing row, written only when they moved. */
+	const commitRowEdit = (cell: CellEntry, entry: SubrowEntry, refocus: boolean): void => {
+		if (!entry.editing) return;
+		const words = entry.input.value;
+		endRowEdit(entry, refocus);
+		if (words === entry.original || readOnly) return;
+		const timelineId = cell.timelineId;
+		const rowId = entry.rowId;
+		// The label wears the new words at once; the read that follows agrees.
+		const shown = words.trim().length > 0 ? words : t('timeline.subrow.empty');
+		entry.label.setText(shown);
+		entry.label.toggleClass('is-empty', words.trim().length === 0);
+		void enqueue(async () => {
+			await controls.bridge().editRow(timelineId, rowId, words);
+		});
+	};
+
+	/** The time a row stands under on its lane, as the lane is now. */
+	const timeOfRow = (cell: CellEntry, rowId: string): TimelineTime | null => {
+		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
+		return lane?.times.find((time) => time.rows.some((row) => row.id === rowId)) ?? null;
+	};
+
+	/** The stored row an entry stands for, from the lane as it is now. */
+	const rowOfEntry = (cell: CellEntry, entry: SubrowEntry): TimelineRow | null => {
+		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
+		for (const time of lane?.times ?? []) {
+			const row = time.rows.find((candidate) => candidate.id === entry.rowId);
+			if (row !== undefined) return row;
+		}
+		return null;
+	};
+
+	const openSubrowMenu = (cell: CellEntry, entry: SubrowEntry, event: MouseEvent): void => {
+		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
+		const time = lane?.times.find((candidate) => candidate.rows.some((row) => row.id === entry.rowId));
+		if (lane === undefined || time === undefined) return;
+		const at = time.rows.findIndex((row) => row.id === entry.rowId);
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveUp'))
+				.setIcon('arrow-up')
+				.setDisabled(readOnly || at <= 0)
+				.onClick(() => {
+					moveRowBy(lane, time, at, -1);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveDown'))
+				.setIcon('arrow-down')
+				.setDisabled(readOnly || at === -1 || at >= time.rows.length - 1)
+				.onClick(() => {
+					moveRowBy(lane, time, at, 1);
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.subrow.remove'))
+				.setIcon('x')
+				.setWarning(true)
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void removeRow(lane, time, entry.rowId);
+				});
+		});
+		menu.showAtMouseEvent(event);
+	};
+
+	/** A row one step up or down among its time's rows, before the neighbour that then follows it. */
+	const moveRowBy = (lane: Timeline, time: TimelineTime, at: number, step: -1 | 1): void => {
+		const row = time.rows[at];
+		if (row === undefined) return;
+		const beforeId = step === -1 ? (time.rows[at - 1]?.id ?? null) : (time.rows[at + 2]?.id ?? null);
+		void enqueue(async () => {
+			await controls.bridge().moveRow(lane.id, row.id, time.timeId, beforeId);
+		});
+	};
+
+	const removeRow = async (lane: Timeline, time: TimelineTime, rowId: string): Promise<void> => {
+		const row = time.rows.find((candidate) => candidate.id === rowId);
+		if (row === undefined) return;
+		if (row.scenes.length > 0) {
+			const confirmed = await confirmTimelineAction(app, t, {
+				title: t('timeline.subrow.removeTitle'),
+				lines: [t('timeline.subrow.removeDescription', { count: row.scenes.length })],
+				label: t('common.remove'),
+			});
+			if (!confirmed || disposed) return;
+		}
+		await enqueue(async () => {
+			await controls.bridge().deleteRow(lane.id, rowId);
+		});
+	};
+
+	const unmountSubrow = (cell: CellEntry, rowId: string): void => {
+		const entry = cell.subrows.get(rowId);
+		if (entry === undefined) return;
+		for (const key of [...deck.cards.keys()]) {
+			if (key.startsWith(`${rowId}|`)) deck.unmount(key);
+		}
+		entry.el.remove();
+		cell.subrows.delete(rowId);
+	};
+
+	const dressSubrow = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+		// An edit in flight keeps its input and its words; the paint dresses around it.
+		if (!entry.editing) {
+			const words = row.text.trim();
+			const shown = words.length > 0 ? row.text : t('timeline.subrow.empty');
+			if (entry.label.textContent !== shown) entry.label.setText(shown);
+			entry.label.toggleClass('is-empty', words.length === 0);
+		}
+		entry.label.disabled = readOnly;
+		entry.input.readOnly = readOnly;
+		entry.more.disabled = readOnly;
+		entry.handle.setAttribute('draggable', readOnly ? 'false' : 'true');
+		entry.handle.disabled = readOnly;
+		paintPlacements(cell, entry, row, lane);
+	};
+
+	const paintSubrows = (cell: CellEntry, time: TimelineTime, lane: Timeline): void => {
+		const rows = cell.rows;
+		if (rows === null) return;
+		const wanted = time.rows.map((row) => row.id);
+		const plan = planCardRepaint([...cell.subrows.keys()], wanted, []);
+		for (const rowId of plan.remove) unmountSubrow(cell, rowId);
+		for (const row of time.rows) {
+			let entry = cell.subrows.get(row.id);
+			if (entry === undefined) {
+				entry = buildSubrow(cell, row.id);
+				cell.subrows.set(row.id, entry);
+			}
+			dressSubrow(cell, entry, row, lane);
+		}
+		const present = Array.from(rows.children).map(
+			(child) => child.getAttribute('data-row-id') ?? '',
+		);
+		for (const move of planCardMoves(present, wanted)) {
+			const el = cell.subrows.get(move.id)?.el;
+			if (el === undefined) continue;
+			rows.insertBefore(el, cell.subrows.get(move.before)?.el ?? null);
+		}
+	};
+
+	// -- The scenes placed on a sub-row --------------------------------------
+
+	const buildMissing = (entry: SubrowEntry, lane: Timeline, sceneId: string, parent: HTMLElement = entry.scenes): HTMLElement => {
+		const el = parent.createDiv({
+			cls: 'snowflake-method-timeline-scene-missing',
+			attr: { 'data-key': cardKey(entry.rowId, sceneId), role: 'listitem' },
+		});
+		el.createSpan({ text: t('timeline.scene.missing') });
+		const remove = el.createEl('button', {
+			cls: 'clickable-icon',
+			attr: { type: 'button', 'aria-label': t('timeline.scene.remove') },
+		});
+		setIcon(remove, 'x');
+		setTooltip(remove, t('timeline.scene.remove'));
+		remove.addEventListener('click', () => {
+			void enqueue(async () => {
+				await controls.bridge().removeScene(lane.id, sceneId);
+			});
+		});
+		return el;
+	};
+
+	/** The element standing for a key on a sub-row: a card of the deck, or a missing stand-in. */
+	const placementEl = (entry: SubrowEntry, key: string): HTMLElement | undefined =>
+		deck.cards.get(key)?.el ?? entry.missing.get(sceneOfKey(key));
+
+	const paintPlacements = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+		if (presentation === 'stack') {
+			paintStack(cell, entry, row, lane);
+			return;
+		}
+		if (entry.stack !== null) takeDownStack(entry, row.id);
+		const keys = row.scenes.map((sceneId) => cardKey(row.id, sceneId));
+		const standing = [...deck.cards.keys()].filter((key) => key.startsWith(`${row.id}|`));
+		const wantedCards = row.scenes
+			.filter((sceneId) => scenesById.has(sceneId))
+			.map((sceneId) => cardKey(row.id, sceneId));
+		const plan = planCardRepaint(standing, wantedCards, []);
+		for (const key of plan.remove) deck.unmount(key);
+		for (const [sceneId, el] of entry.missing) {
+			if (!row.scenes.includes(sceneId) || scenesById.has(sceneId)) {
+				el.remove();
+				entry.missing.delete(sceneId);
+			}
+		}
+		row.scenes.forEach((sceneId, at) => {
+			const key = cardKey(row.id, sceneId);
+			const scene = scenesById.get(sceneId);
+			if (scene === undefined) {
+				if (!entry.missing.has(sceneId)) entry.missing.set(sceneId, buildMissing(entry, lane, sceneId));
+				return;
+			}
+			const index = sceneIndex.get(sceneId) ?? 0;
+			let card = deck.cards.get(key);
+			if (card === undefined) {
+				card = deck.mount(entry.scenes, key, scene, index);
+				wireCardDrag(card, row.id);
+			}
+			deck.dress(card, scene, index, { position: at + 1, size: row.scenes.length });
+		});
+		const present = Array.from(entry.scenes.children).map(
+			(child) => child.getAttribute('data-key') ?? '',
+		);
+		for (const move of planCardMoves(present, keys)) {
+			const el = placementEl(entry, move.id);
+			if (el === undefined) continue;
+			entry.scenes.insertBefore(el, placementEl(entry, move.before) ?? null);
+		}
+	};
+
+	// -- The scenes of a sub-row as a stack ------------------------------------
+
+	const buildStack = (cell: CellEntry, entry: SubrowEntry): StackEntry => {
+		const el = entry.scenes.createDiv({
+			cls: 'snowflake-method-timeline-stack',
+			attr: { 'data-total': '0' },
+		});
+		const face = el.createDiv({ cls: 'snowflake-method-timeline-stack-face' });
+		const stackControls = el.createDiv({ cls: 'snowflake-method-timeline-stack-controls' });
+		const button = (cls: string, icon: string, label: string): HTMLButtonElement => {
+			const control = stackControls.createEl('button', {
+				cls: `clickable-icon ${cls}`,
+				attr: { type: 'button', 'aria-label': label },
+			});
+			setIcon(control, icon);
+			setTooltip(control, label);
+			return control;
+		};
+		const previous = button('snowflake-method-timeline-stack-previous', 'chevron-left', t('timeline.stack.previous'));
+		const position = stackControls.createSpan({
+			cls: 'snowflake-method-timeline-stack-position',
+			attr: { 'aria-live': 'polite' },
+		});
+		const next = button('snowflake-method-timeline-stack-next', 'chevron-right', t('timeline.stack.next'));
+		const reset = button('snowflake-method-timeline-stack-reset', 'rotate-ccw', t('timeline.stack.reset'));
+		// Walking the stack is looking, not writing: the place is the session's.
+		const walk = (step: (at: number) => number): void => {
+			const row = rowOfEntry(cell, entry);
+			const lane = laneOfRow(entry.rowId);
+			const view = currentView();
+			if (row === null || lane === null || view === null) return;
+			const key = stackKey(view.id, lane.id, row.id);
+			const at = clampStackPosition(memory.stackPositions.get(key), row.scenes.length);
+			memory.stackPositions.set(key, clampStackPosition(step(at), row.scenes.length));
+			paintStack(cell, entry, row, lane);
+		};
+		previous.addEventListener('click', () => {
+			walk((at) => at - 1);
+		});
+		next.addEventListener('click', () => {
+			walk((at) => at + 1);
+		});
+		reset.addEventListener('click', () => {
+			walk(() => 0);
+		});
+		return { el, face, controls: stackControls, previous, next, reset, position };
+	};
+
+	/** The stack comes down and the row lies flat again: its one card and any stand-in go with it. */
+	const takeDownStack = (entry: SubrowEntry, rowId: string): void => {
+		for (const key of [...deck.cards.keys()]) {
+			if (key.startsWith(`${rowId}|`)) deck.unmount(key);
+		}
+		for (const el of entry.missing.values()) el.remove();
+		entry.missing.clear();
+		entry.stack?.el.remove();
+		entry.stack = null;
+	};
+
+	/**
+	 * One card of the row in front, at the place the session remembers,
+	 * kept within the cards the row has; the rest are the count behind it.
+	 * Only the card in front is mounted, so only it can be dragged.
+	 */
+	const paintStack = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+		let stack = entry.stack;
+		if (stack === null) {
+			// The cards dealt flat come down; the stack deals one of them again.
+			for (const key of [...deck.cards.keys()]) {
+				if (key.startsWith(`${row.id}|`)) deck.unmount(key);
+			}
+			for (const el of entry.missing.values()) el.remove();
+			entry.missing.clear();
+			stack = buildStack(cell, entry);
+			entry.stack = stack;
+		}
+		const view = currentView();
+		const total = row.scenes.length;
+		const key = view === null ? null : stackKey(view.id, lane.id, row.id);
+		const remembered = key === null ? undefined : memory.stackPositions.get(key);
+		const at = clampStackPosition(remembered, total);
+		if (key !== null && remembered !== at) memory.stackPositions.set(key, at);
+		const shownId = row.scenes[at];
+		const wantedKey = shownId === undefined ? null : cardKey(row.id, shownId);
+		for (const standing of [...deck.cards.keys()]) {
+			if (standing.startsWith(`${row.id}|`) && standing !== wantedKey) deck.unmount(standing);
+		}
+		for (const [sceneId, el] of entry.missing) {
+			if (sceneId !== shownId || scenesById.has(sceneId)) {
+				el.remove();
+				entry.missing.delete(sceneId);
+			}
+		}
+		if (shownId !== undefined && wantedKey !== null) {
+			const scene = scenesById.get(shownId);
+			if (scene === undefined) {
+				if (!entry.missing.has(shownId)) entry.missing.set(shownId, buildMissing(entry, lane, shownId, stack.face));
+			} else {
+				const index = sceneIndex.get(shownId) ?? 0;
+				let card = deck.cards.get(wantedKey);
+				if (card === undefined) {
+					card = deck.mount(stack.face, wantedKey, scene, index);
+					wireCardDrag(card, row.id);
+				}
+				deck.dress(card, scene, index, { position: at + 1, size: total });
+			}
+		}
+		stack.el.dataset.total = String(total);
+		stack.controls.toggleClass('is-hidden', total <= 1);
+		stack.previous.disabled = at === 0;
+		stack.reset.disabled = at === 0;
+		stack.next.disabled = at >= total - 1;
+		const shown = t('timeline.stack.position', { position: total === 0 ? 0 : at + 1, total });
+		if (stack.position.textContent !== shown) stack.position.setText(shown);
+	};
+
+	// -- Dragging the times and the rows ---------------------------------------
+
+	const setMark = (el: HTMLElement, cls: string): void => {
+		if (mark?.el === el && mark.cls === cls) return;
+		clearMark();
+		mark = { el, cls };
+		el.addClass(cls);
+	};
+
+	const clearMark = (): void => {
+		if (mark === null) return;
+		mark.el.removeClass(mark.cls);
+		mark = null;
+	};
+
+	/** The lanes told apart while a row or a scene is dragged: the one dragged over, and the ones locked out. */
+	const paintDragPhase = (): void => {
+		for (const entry of timeRows.values()) {
+			for (const cell of entry.cells.values()) {
+				const state = cellDragState(drag, cell.timelineId);
+				cell.el.toggleClass('is-drag-lane', state === 'lane');
+				cell.el.toggleClass('is-locked-out', state === 'locked');
+			}
+		}
+		for (const entry of laneHeads.values()) {
+			const state = cellDragState(drag, entry.id);
+			entry.el.toggleClass('is-drag-lane', state === 'lane');
+			entry.el.toggleClass('is-locked-out', state === 'locked');
+		}
+	};
+
+	/** Fires on the source however the drag ends: dropped, dropped nowhere, or cancelled. */
+	const endDrag = (): void => {
+		clearMark();
+		drag = null;
+		timeLanding = null;
+		rowLanding = null;
+		sceneLanding = null;
+		invalidateRects();
+		root.removeClass('is-time-drag');
+		root.removeClass('is-row-drag');
+		root.removeClass('is-scene-drag');
+		paintDragPhase();
+		if (paintOwed) {
+			paintOwed = false;
+			paintAll();
+		}
+	};
+
+	/** The time's id before which a time drag would land, null for the foot. */
+	const timeLandingAt = (clientY: number): { el: HTMLElement; timeId: string | null } => {
+		if (rects.rows === null) {
+			rects.rows = rowOrder.map((timeId) => timeRows.get(timeId)?.el.getBoundingClientRect() ?? new DOMRect());
+		}
+		const candidates = rowOrder
+			.map((timeId, index) => ({ timeId, box: rects.rows?.[index] }))
+			.filter((entry) => entry.timeId !== (drag?.kind === 'time' ? drag.timeId : ''));
+		const at = dropIndexAt(candidates.map((entry) => (entry.box?.top ?? 0) + (entry.box?.height ?? 0) / 2), clientY);
+		const landing = candidates[at];
+		const el = landing === undefined ? tail : (timeRows.get(landing.timeId)?.el ?? tail);
+		return { el, timeId: landing?.timeId ?? null };
+	};
+
+	table.addEventListener('dragover', (event) => {
+		if (drag?.kind !== 'time' || event.dataTransfer?.types.includes(TIMELINE_TIME_DRAG_TYPE) !== true) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'move';
+		const landing = timeLandingAt(event.clientY);
+		timeLanding = { timeId: landing.timeId };
+		setMark(landing.el, 'is-drop-before');
+	});
+	table.addEventListener('drop', (event) => {
+		const dragged = event.dataTransfer?.getData(TIMELINE_TIME_DRAG_TYPE) ?? '';
+		if (drag?.kind !== 'time' || drag.timeId !== dragged) return;
+		event.preventDefault();
+		const beforeTimeId = timeLanding === null ? timeLandingAt(event.clientY).timeId : timeLanding.timeId;
+		clearMark();
+		moveTime(dragged, beforeTimeId);
+	});
+
+	/** The view's time order with one time moved before another, or to the foot; nothing written for no move. */
+	const moveTime = (timeId: string, beforeTimeId: string | null): void => {
+		const view = currentView();
+		const next = reorderIds(rowOrder, timeId, beforeTimeId);
+		if (view === null || next === null) return;
+		void enqueue(async () => {
+			await controls.bridge().setTimeOrder(view.id, next);
+		});
+	};
+
+	// -- Dragging the scenes ---------------------------------------------------
+
+	/** A scene begins to move: the active lane is locked for the drag, and every other lane stands back. */
+	const beginSceneDrag = (sceneId: string, source: { timelineId: string; rowId: string } | { pool: true }): void => {
+		if (readOnly || activeId === null) return;
+		drag = { kind: 'scene', sceneId, lockedTimelineId: activeId, source };
+		invalidateRects();
+		root.addClass('is-scene-drag');
+		paintDragPhase();
+	};
+
+	/** A lane's card leaves under the workspace's own type, to another row, another time or the pool. */
+	const wireCardDrag = (card: SceneCard, rowId: string): void => {
+		card.el.addEventListener('dragstart', (event) => {
+			const lane = laneOfRow(rowId);
+			if (
+				readOnly || lane === null || lane.id !== activeId ||
+				event.dataTransfer === null || controlWithin(event.target)
+			) {
+				event.preventDefault();
+				return;
+			}
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData(TIMELINE_SCENE_DRAG_TYPE, card.id);
+			card.el.addClass('is-dragging');
+			beginSceneDrag(card.id, { timelineId: lane.id, rowId });
+		});
+		card.el.addEventListener('dragend', () => {
+			card.el.removeClass('is-dragging');
+			endDrag();
+		});
+	};
+
+	/** The sub-row under the pointer, from the event's own target: a stored row, the trailing one, or none. */
+	const subrowUnder = (
+		cell: CellEntry,
+		target: EventTarget | null,
+	): { kind: 'row'; entry: SubrowEntry } | { kind: 'trailing' } | null => {
+		if (target === null || !(target as Node).instanceOf(Element)) return null;
+		const el = (target as Element).closest('.snowflake-method-timeline-subrow');
+		if (el === null) return null;
+		if (el === cell.trailing?.el) return { kind: 'trailing' };
+		const rowId = el.getAttribute('data-row-id');
+		const entry = rowId === null ? undefined : cell.subrows.get(rowId);
+		return entry === undefined ? null : { kind: 'row', entry };
+	};
+
+	/** The cards a scene may land among on a row: every placement but the one being moved, measured once per drag. */
+	const cardRects = (entry: SubrowEntry, sceneId: string): { sceneId: string; el: HTMLElement; rect: DOMRect }[] => {
+		let measured = rects.cards.get(entry.scenes);
+		if (measured === undefined) {
+			measured = Array.from(entry.scenes.children)
+				.map((child) => ({ key: child.getAttribute('data-key') ?? '', el: child as HTMLElement }))
+				.filter((child) => child.key.length > 0 && sceneOfKey(child.key) !== sceneId)
+				.map((child) => ({ sceneId: sceneOfKey(child.key), el: child.el, rect: child.el.getBoundingClientRect() }));
+			rects.cards.set(entry.scenes, measured);
+		}
+		return measured;
+	};
+
+	const sceneDragOver = (cell: CellEntry, event: DragEvent): void => {
+		if (drag?.kind !== 'scene' || event.dataTransfer?.types.includes(TIMELINE_SCENE_DRAG_TYPE) !== true) return;
+		event.preventDefault();
+		if (drag.lockedTimelineId !== cell.timelineId || !cell.present) {
+			event.dataTransfer.dropEffect = 'none';
+			return;
+		}
+		const under = subrowUnder(cell, event.target);
+		if (under === null) {
+			event.dataTransfer.dropEffect = 'none';
+			clearMark();
+			sceneLanding = null;
+			return;
+		}
+		event.dataTransfer.dropEffect = 'move';
+		if (under.kind === 'trailing') {
+			const box = cell.trailing?.el.querySelector<HTMLElement>('.snowflake-method-timeline-scenes');
+			if (box !== null && box !== undefined) setMark(box, 'is-drop-target');
+			sceneLanding = { cell, rowId: null, beforeSceneId: null };
+			return;
+		}
+		// A stack takes the scene at its back, and none from its own front.
+		if (presentation === 'stack') {
+			if (!rowAcceptsScene(drag, under.entry.rowId, presentation)) {
+				event.dataTransfer.dropEffect = 'none';
+				clearMark();
+				sceneLanding = null;
+				return;
+			}
+			setMark(under.entry.scenes, 'is-drop-target');
+			sceneLanding = { cell, rowId: under.entry.rowId, beforeSceneId: null };
+			return;
+		}
+		const candidates = cardRects(under.entry, drag.sceneId);
+		const at = placementIndexAt(candidates.map((candidate) => candidate.rect), { x: event.clientX, y: event.clientY });
+		const before = candidates[at];
+		const last = candidates[candidates.length - 1];
+		if (before !== undefined) setMark(before.el, 'is-drop-before');
+		else if (last !== undefined) setMark(last.el, 'is-drop-after');
+		else setMark(under.entry.scenes, 'is-drop-target');
+		sceneLanding = { cell, rowId: under.entry.rowId, beforeSceneId: before?.sceneId ?? null };
+	};
+
+	const sceneDrop = (cell: CellEntry, timeId: string, event: DragEvent): void => {
+		const dragged = event.dataTransfer?.getData(TIMELINE_SCENE_DRAG_TYPE) ?? '';
+		if (drag?.kind !== 'scene' || drag.sceneId !== dragged || drag.lockedTimelineId !== cell.timelineId) return;
+		event.preventDefault();
+		const landing = sceneLanding?.cell === cell ? sceneLanding : null;
+		clearMark();
+		if (landing === null) return;
+		const timelineId = drag.lockedTimelineId;
+		const sceneId = drag.sceneId;
+		void enqueue(async () => {
+			const bridge = controls.bridge();
+			if (landing.rowId === null) await bridge.addRow(timelineId, timeId, '', null, [sceneId]);
+			else await bridge.placeScene(timelineId, sceneId, landing.rowId, landing.beforeSceneId);
+		});
+	};
+
+	let eventWindow = root.win;
+	const bindWindow = (win: Window): void => {
+		win.addEventListener('scroll', invalidateRects, true);
+		win.addEventListener('resize', invalidateRects);
+	};
+	const unbindWindow = (win: Window): void => {
+		win.removeEventListener('scroll', invalidateRects, true);
+		win.removeEventListener('resize', invalidateRects);
+	};
+	bindWindow(eventWindow);
+	const stopMigration = root.onWindowMigrated?.((win) => {
+		unbindWindow(eventWindow);
+		eventWindow = win;
+		bindWindow(eventWindow);
+		invalidateRects();
+	});
+
+	// -- Focus custody -------------------------------------------------------
+
+	const holdFocus = (): FocusHold | null => {
+		const active = root.doc.activeElement;
+		if (active === null || !root.contains(active)) return null;
+		const card = active.closest(SCENE_CARD_SELECTOR);
+		if (card === null) return { kind: 'element', el: active };
+		const part = SCENE_CARD_PART_CLASSES.find(([, cls]) => active.classList.contains(cls))?.[0] ?? 'card';
+		return { kind: 'card', key: card.getAttribute('data-key') ?? '', part };
+	};
+
+	/** Gives the focus back where it stood, to the same part of the same card, or to the scroller. */
+	const giveFocusBack = (hold: FocusHold | null): void => {
+		if (hold === null) return;
+		const doc = root.doc;
+		const active = doc.activeElement;
+		if (active !== null && active !== doc.body && root.contains(active)) return;
+		let target: Element | null = null;
+		if (hold.kind === 'card') {
+			const card = deck.cards.get(hold.key);
+			if (card?.el.isConnected === true) target = deck.partOf(card, hold.part);
+		} else if (root.contains(hold.el)) {
+			target = hold.el;
+		}
+		((target ?? scroller) as HTMLElement).focus({ preventScroll: true });
+	};
+
+	// -- The lanes' actions --------------------------------------------------
+
+	const activate = (id: string): void => {
+		const view = currentView();
+		if (view === null || id === activeId) return;
+		memory.activeTimeline.set(view.id, id);
+		paintAll();
+	};
+
+	/** What a binding may point at: the cast and every kind but time, by id. */
+	const bindingSource = (current: ProjectDashboardModel): EntityReferenceSource => {
+		const groups = [
+			'character',
+			...current.worldbuildingKinds.filter((kind) => kind.id !== 'time').map((kind) => kind.id),
+		];
+		return {
+			groups: () => groups.map((id) => ({ id, label: entityGroupLabel(t, id) })),
+			entitiesIn: (group) =>
+				group === 'character'
+					? current.characters.map((character) => ({ value: character.id, label: character.name }))
+					: kindEntities(current, group).map((entity) => ({ value: entity.id, label: entity.name })),
+		};
+	};
+
+	const pickBinding = async (): Promise<EntityRef | null> => {
+		const current = model;
+		if (current === null) return null;
+		const picked = await promptForEntityReference(app, t, bindingSource(current));
+		if (picked === null) return null;
+		return { kind: picked.group, id: picked.option.value, name: picked.option.label };
+	};
+
+	/**
+	 * What a lane may take a time from: the project's time notes the lane
+	 * does not hold yet, a point or a period, and one made on the spot from
+	 * the name typed, through the form or straight to the note as the
+	 * author's setting says.
+	 */
+	const timeSource = (current: ProjectDashboardModel, lane: Timeline): EntityReferenceSource => {
+		const held = new Set(lane.times.map((time) => time.timeId));
+		const ofKind = (kind: 'point' | 'period'): PickerOption[] =>
+			kindEntities(current, 'time')
+				.filter((entity) =>
+					!held.has(entity.id) &&
+					(kind === 'point' ? entity.timeKind === 'point' || entity.timeKind === null : entity.timeKind === 'period'))
+				.map((entity) => ({ value: entity.id, label: entity.name }));
+		return {
+			groups: () => ['time-point', 'time-period'].map((id) => ({ id, label: entityGroupLabel(t, id) })),
+			entitiesIn: (group) => (group === 'time-period' ? ofKind('period') : ofKind('point')),
+			createIn: (group, name) => createTime(group === 'time-period' ? 'period' : 'point', name),
+		};
+	};
+
+	const createTime = async (timeKind: 'point' | 'period', rawName: string): Promise<PickerOption | null> => {
+		const name = rawName.trim();
+		const path = controls.projectPath();
+		if (name.length === 0 || path === null) return null;
+		try {
+			let id: string | null;
+			if (host.opensFormWhenCreatingFromField()) {
+				id = await host.openEntityForm(
+					{ mode: 'create', kind: 'time', preset: { name, timeKind, lockTimeKind: true } },
+					path,
+				);
+			} else {
+				id = (await host.createEntity({
+					kind: 'time',
+					name,
+					aliases: [],
+					categoryPaths: [],
+					progressStatus: 'not-started',
+					description: '',
+					timeKind,
+					timeStart: '',
+					timeEnd: '',
+					worldStatus: [],
+					relationships: [],
+					customFields: '',
+				}, path)).id;
+			}
+			if (id === null) return null;
+			// The lane names the time by its id; the model must hold it first.
+			await controls.refresh();
+			return { value: id, label: name };
+		} catch (error) {
+			notice(error);
+			return null;
+		}
+	};
+
+	const addTimeTo = async (lane: Timeline): Promise<void> => {
+		const current = model;
+		if (current === null || readOnly) return;
+		const picked = await promptForEntityReference(app, t, timeSource(current, lane));
+		if (picked === null || disposed) return;
+		await enqueue(async () => {
+			await controls.bridge().addTime(lane.id, picked.option.value);
+		});
+	};
+
+	const openLaneMenu = (entry: LaneHead, event: MouseEvent): void => {
+		const held = reading?.held;
+		const view = currentView();
+		if (held === undefined || view === null) return;
+		const lane = entry.timeline;
+		const pinned = held.pinnedTimelineId === lane.id;
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.rename'))
+				.setIcon('pencil')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					renameLane(lane);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t(lane.binding === null ? 'timeline.timeline.bind' : 'timeline.timeline.unbind'))
+				.setIcon(lane.binding === null ? 'link' : 'unlink')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void bindLane(lane);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t(pinned ? 'timeline.timeline.unpin' : 'timeline.timeline.pin'))
+				.setIcon('pin')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void enqueue(async () => {
+						await controls.bridge().pinTimeline(pinned ? null : lane.id);
+					});
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.addTime'))
+				.setIcon('calendar-plus')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void addTimeTo(lane);
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.removeFromView'))
+				.setIcon('eye-off')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void enqueue(async () => {
+						await controls.bridge().setViewTimelines(
+							view.id,
+							view.timelines.filter((id) => id !== lane.id),
+						);
+					});
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.delete'))
+				.setIcon('trash-2')
+				.setWarning(true)
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void deleteLane(lane);
+				});
+		});
+		menu.showAtMouseEvent(event);
+	};
+
+	const renameLane = (lane: Timeline): void => {
+		const held = reading?.held;
+		if (held === undefined) return;
+		renameTimelineForm(
+			app,
+			t,
+			lane.name,
+			held.timelines.filter((candidate) => candidate.id !== lane.id).map((candidate) => candidate.name),
+			async (name) => {
+				await enqueue(async () => {
+					await controls.bridge().renameTimeline(lane.id, name);
+				});
+			},
+		).open();
+	};
+
+	const bindLane = async (lane: Timeline): Promise<void> => {
+		if (lane.binding !== null) {
+			await enqueue(async () => {
+				await controls.bridge().bindTimeline(lane.id, null);
+			});
+			return;
+		}
+		const picked = await pickBinding();
+		if (picked === null || disposed) return;
+		await enqueue(async () => {
+			await controls.bridge().bindTimeline(lane.id, picked);
+		});
+	};
+
+	const deleteLane = async (lane: Timeline): Promise<void> => {
+		const rows = lane.times.reduce((count, time) => count + time.rows.length, 0);
+		if (lane.times.length > 0 || rows > 0) {
+			const confirmed = await confirmTimelineAction(app, t, {
+				title: t('timeline.timeline.deleteTitle', { name: lane.name }),
+				lines: [t('timeline.timeline.deleteDescription', { times: lane.times.length, rows })],
+				label: t('actions.delete'),
+			});
+			if (!confirmed || disposed) return;
+		}
+		await enqueue(async () => {
+			await controls.bridge().deleteTimeline(lane.id);
+		});
+	};
+
+	// -- The times' actions --------------------------------------------------
+
+	/** The time note's form, opened on its description; the model reads again only if it saved. */
+	const editTime = (entry: RowEntry): void => {
+		const time = entry.time;
+		const path = controls.projectPath();
+		if (time === null || path === null || readOnly) return;
+		let saved = false;
+		void enqueue(async () => {
+			await host.openEntityForm({ mode: 'edit', id: time.id, section: 'description' }, path, () => {
+				saved = true;
+			});
+		}, () => (saved ? 'model' : 'none'));
+	};
+
+	const openTimeMenu = (entry: RowEntry, event: MouseEvent): void => {
+		const lane = lanes.find((candidate) => candidate.id === activeId) ?? null;
+		const time = entry.time;
+		const menu = new Menu();
+		if (time !== null) {
+			menu.addItem((item) => {
+				item
+					.setTitle(t('actions.openNote'))
+					.setIcon('file-text')
+					.onClick(() => {
+						void host.openManagedFile(time.path).catch(notice);
+					});
+			});
+			menu.addItem((item) => {
+				item
+					.setTitle(t('actions.edit'))
+					.setIcon('pencil')
+					.setDisabled(readOnly)
+					.onClick(() => {
+						editTime(entry);
+					});
+			});
+			menu.addSeparator();
+		}
+		const at = rowOrder.indexOf(entry.timeId);
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveUp'))
+				.setIcon('arrow-up')
+				.setDisabled(readOnly || at <= 0)
+				.onClick(() => {
+					moveTime(entry.timeId, rowOrder[at - 1] ?? null);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveDown'))
+				.setIcon('arrow-down')
+				.setDisabled(readOnly || at === -1 || at >= rowOrder.length - 1)
+				.onClick(() => {
+					moveTime(entry.timeId, rowOrder[at + 2] ?? null);
+				});
+		});
+		menu.addSeparator();
+		const held = lane !== null && laneCell(lane, entry.timeId) !== null;
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.time.remove', { timeline: lane?.name ?? '' }))
+				.setIcon('x')
+				.setWarning(true)
+				.setDisabled(readOnly || !held)
+				.onClick(() => {
+					if (lane !== null) void removeTimeFrom(lane, entry);
+				});
+		});
+		menu.showAtMouseEvent(event);
+	};
+
+	const removeTimeFrom = async (lane: Timeline, entry: RowEntry): Promise<void> => {
+		const cell = laneCell(lane, entry.timeId);
+		if (cell === null) return;
+		if (cell.rows.length > 0) {
+			const confirmed = await confirmTimelineAction(app, t, {
+				title: t('timeline.time.removeTitle', {
+					name: entry.time?.name ?? t('timeline.time.missing'),
+					timeline: lane.name,
+				}),
+				lines: [t('timeline.time.removeDescription', { rows: cell.rows.length })],
+				label: t('common.remove'),
+			});
+			if (!confirmed || disposed) return;
+		}
+		await enqueue(async () => {
+			await controls.bridge().removeTime(lane.id, entry.timeId);
+		});
+	};
+
+	// -- The cards' menu -----------------------------------------------------
+
+	const openCardMenu = (card: SceneCard, event: MouseEvent): void => {
+		const path = controls.projectPath();
+		const lane = laneOfRow(card.key.slice(0, card.key.indexOf('|')));
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.edit'))
+				.setIcon('pencil')
+				.setDisabled(!deck.editable(card) || path === null)
+				.onClick(() => {
+					if (path === null) return;
+					deck.openForm((onSaved) => host.openSceneForm({ mode: 'edit', id: card.id }, path, onSaved));
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('common.open'))
+				.setIcon('file-text')
+				.onClick(() => {
+					void host.openManagedFile(card.scene.path).catch(notice);
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.scene.remove'))
+				.setIcon('x')
+				.setDisabled(readOnly || lane === null)
+				.onClick(() => {
+					if (lane === null) return;
+					void enqueue(async () => {
+						await controls.bridge().removeScene(lane.id, card.id);
+					});
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.delete'))
+				.setIcon('trash-2')
+				.setWarning(true)
+				.setDisabled(readOnly || card.scene.readOnly || path === null)
+				.onClick(() => {
+					if (path === null) return;
+					void deck.enqueue(() => host.deleteScene(card.id, card.scene.revision, path), { persist: true });
+				});
+		});
+		menu.showAtMouseEvent(event);
+	};
+
+	// -- The views' and timelines' forms -------------------------------------
+
+	/** The Add timeline form; resolves with the id made once the form is gone, or null. */
+	const addTimeline = (offerView: boolean): Promise<string | null> =>
+		new Promise((resolve) => {
+			const held = reading?.held;
+			if (held === undefined || readOnly) {
+				resolve(null);
+				return;
+			}
+			let made: string | null = null;
+			const modal = new AddTimelineModal(
+				app,
+				t,
+				{
+					takenNames: held.timelines.map((timeline) => timeline.name),
+					pickBinding,
+					offerView: offerView && currentView() !== null,
+				},
+				async (draft) => {
+					await enqueue(async () => {
+						const bridge = controls.bridge();
+						const id = await bridge.createTimeline(draft.name, draft.binding);
+						made = id;
+						const view = currentView();
+						if (id !== null && draft.addToView && view !== null) {
+							await bridge.setViewTimelines(view.id, [...view.timelines, id]);
+							if (view.timelines.length === 0) memory.activeTimeline.set(view.id, id);
+						}
+					});
+				},
+			);
+			const closed = modal.onClose.bind(modal);
+			modal.onClose = (): void => {
+				closed();
+				resolve(made);
+			};
+			modal.open();
+		});
+
+	const openAddView = (): void => {
+		const held = reading?.held;
+		if (held === undefined || readOnly) return;
+		new TimelineViewFormModal(
+			app,
+			t,
+			{
+				mode: 'add',
+				takenNames: held.views.map((view) => view.name),
+				initial: {
+					name: '',
+					timelines: held.timelines.length === 1 ? [held.timelines[0]!.id] : [],
+				},
+				timelines: () => reading?.held.timelines ?? [],
+				addTimeline: () => addTimeline(false),
+			},
+			async (draft) => {
+				await enqueue(async () => {
+					const bridge = controls.bridge();
+					const id = await bridge.createView(draft.name, draft.timelines);
+					if (id === null) return;
+					viewId = id;
+					await bridge.setLastView(id);
+				});
+			},
+		).open();
+	};
+
+	const openManageView = (): void => {
+		const held = reading?.held;
+		const view = currentView();
+		if (held === undefined || view === null || readOnly) return;
+		new TimelineViewFormModal(
+			app,
+			t,
+			{
+				mode: 'manage',
+				takenNames: held.views.filter((candidate) => candidate.id !== view.id).map((candidate) => candidate.name),
+				initial: { name: view.name, timelines: [...view.timelines] },
+				timelines: () => reading?.held.timelines ?? [],
+				addTimeline: () => addTimeline(false),
+				deleteView: async () => {
+					const confirmed = await confirmTimelineAction(app, t, {
+						title: t('timeline.view.deleteTitle', { name: view.name }),
+						lines: [t('timeline.view.deleteDescription')],
+						label: t('actions.delete'),
+					});
+					if (!confirmed || disposed) return false;
+					await enqueue(async () => {
+						await controls.bridge().deleteView(view.id);
+					});
+					return true;
+				},
+			},
+			async (draft) => {
+				await enqueue(async () => {
+					const bridge = controls.bridge();
+					if (draft.name !== view.name) await bridge.renameView(view.id, draft.name);
+					await bridge.setViewTimelines(view.id, draft.timelines);
+				});
+			},
+		).open();
+	};
+
+	// The pool is the corkboard in one column, showing what the active lane
+	// has not placed; its search, funnel, grouping and order are its own.
+	const poolControls: CorkboardControls = {
+		app,
+		host,
+		t,
+		model: () => model,
+		activateProject: () => {
+			controls.activateProject();
+		},
+		refresh: () => controls.refresh(),
+		popover: controls.popover,
+		memory: memory.pool,
+		remember: () => {
+			controls.remember();
+		},
+	};
+	poolHandle = controls.corkboard(poolHost, poolControls, {
+		include: (scene) => !assigned.has(scene.id),
+		addButton: 'icon',
+		columns: 1,
+		emptyText: t('timeline.pool.empty'),
+		// A pool card leaves under the workspace's type and locks the active
+		// lane; a lane's card dropped back on the pool gives up its place.
+		dragOut: {
+			type: TIMELINE_SCENE_DRAG_TYPE,
+			onStart: (sceneId) => {
+				beginSceneDrag(sceneId, { pool: true });
+			},
+			onEnd: endDrag,
+		},
+		dropIn: {
+			accepts: (types) =>
+				types.includes(TIMELINE_SCENE_DRAG_TYPE) && drag?.kind === 'scene' && !('pool' in drag.source),
+			onDrop: () => {
+				if (drag?.kind !== 'scene' || 'pool' in drag.source) return;
+				const { lockedTimelineId, sceneId } = drag;
+				void enqueue(async () => {
+					await controls.bridge().removeScene(lockedTimelineId, sceneId);
+				});
+			},
+		},
+	});
+
+	paintAll();
+	void reload();
+
+	const handle: TimelineHandle = {
+		refresh: () => {
+			paintAll();
+		},
+		reveal: (id) => {
+			poolHandle?.reveal(id);
+		},
+		remeasure: () => {
+			invalidateRects();
+			poolHandle?.remeasure();
+		},
+		saveFocusedConflict: () => {
+			const active = root.doc.activeElement;
+			for (const card of deck.cards.values()) {
+				if (card.conflict !== active) continue;
+				deck.commitConflict(card);
+				return true;
+			}
+			return poolHandle?.saveFocusedConflict() ?? false;
+		},
+		dispose: () => {
+			if (disposed) return;
+			disposed = true;
+			unsubscribe?.();
+			unsubscribe = null;
+			stopMigration?.();
+			unbindWindow(eventWindow);
+			poolHandle?.dispose();
+			poolHandle = null;
+			deck.dispose();
+			root.remove();
+		},
+	};
+	return handle;
+};

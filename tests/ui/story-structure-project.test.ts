@@ -42,6 +42,7 @@ import {
 	STORY_STRUCTURE_VIEW_TYPE,
 	SnowflakeStoryStructureView,
 } from '../../src/ui/story-structure-view';
+import type { TimelineControls } from '../../src/ui/timeline-bridge';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 const firstProject = 'First/First.md';
@@ -59,16 +60,19 @@ function workspaceView() {
 	} as ProjectDashboardModel));
 	const openStoryStructure = vi.fn(() => Promise.resolve());
 	const activateProject = vi.fn();
+	const timelineBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
+	const timeline = vi.fn(() => timelineBridge);
 	const view = new SnowflakeStoryStructureView({
 		app: { scope: {}, workspace },
 	} as unknown as WorkspaceLeaf, {
-		host: { loadDashboardModel, openStoryStructure, activateProject,
+		host: { loadDashboardModel, openStoryStructure, activateProject, timeline,
 			getRecentStep: () => 8 } as unknown as DashboardHost,
 		fingerprint: () => `en|${recent ?? ''}`,
 		recentProjectPath: () => recent,
 		corkboardPreferences: () => ({}),
 		rememberCorkboardPreferences: vi.fn(),
 		corkboard: () => { throw new Error('The frame is stubbed in this test.'); },
+		timeline: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	const renderFrame = vi.fn();
 	// Preserve the real state lifecycle and project reads; rendering the
@@ -78,7 +82,7 @@ function workspaceView() {
 		updateHeader: vi.fn(),
 		renderError: (error: unknown) => { throw error; },
 	});
-	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame,
+	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame, timelineBridge,
 		setRecent: (path: string | null) => { recent = path; } };
 }
 
@@ -518,5 +522,37 @@ describe('opening a project workspace', () => {
 			state: { projectPath: 'Renamed/Second.md', visualization: 'timeline' },
 		});
 		expect(second.leaf.loadIfDeferred).not.toHaveBeenCalled();
+	});
+});
+
+describe('the timeline tab', () => {
+	it('mounts the timeline workspace in its own host, refreshes it in place and disposes it on a switch', async () => {
+		const { view, timelineBridge } = workspaceView();
+		const dom = new CorkboardDom();
+		const handle = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+		};
+		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
+		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		Object.assign(deps, { timeline });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		delete (view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(view, { contentEl: dom.container });
+		await view.setState({ projectPath: firstProject, visualization: 'timeline' }, { history: false });
+		await view.onOpen();
+		expect(timeline).toHaveBeenCalledOnce();
+		const host = dom.container.querySelector('.snowflake-method-timeline-host')!;
+		expect(host.parent?.classes.has('is-self-scrolling')).toBe(true);
+		const controls = timeline.mock.calls[0]![1];
+		expect(controls.bridge()).toBe(timelineBridge);
+		expect(controls.bridge()).toBe(timelineBridge);
+		expect(controls.projectPath()).toBe(firstProject);
+		await view.refresh();
+		expect(handle.refresh).toHaveBeenCalledOnce();
+		expect(handle.dispose).not.toHaveBeenCalled();
+		view.showVisualization('plotline');
+		expect(handle.dispose).toHaveBeenCalledOnce();
+		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
+		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false } } });
 	});
 });

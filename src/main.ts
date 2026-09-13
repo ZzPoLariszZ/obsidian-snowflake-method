@@ -306,6 +306,7 @@ import {
 	type StoryStructureVisualization,
 } from './ui/story-structure-state';
 import { renderCorkboard } from './ui/corkboard';
+import { renderTimeline } from './ui/timeline';
 import type {
 	SessionPanelBridge,
 	SessionPanelContext,
@@ -945,6 +946,7 @@ export default class SnowflakeMethodPlugin
 					corkboardPreferences: (projectId) => this.corkboardPreferences(projectId),
 					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
 					corkboard: renderCorkboard,
+					timeline: renderTimeline,
 				}),
 		);
 		this.registerView(
@@ -8436,6 +8438,19 @@ export default class SnowflakeMethodPlugin
 							this.showError(error);
 						},
 					);
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-timeline',
+			name: this.globalT('commands.openTimeline'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openStoryStructure('timeline').catch((error: unknown) => {
+						this.showError(error);
+					});
 				}
 				return available;
 			},

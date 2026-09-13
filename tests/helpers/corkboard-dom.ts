@@ -112,6 +112,7 @@ export class CorkboardElement {
 	textContent = '';
 	value = '';
 	disabled = false;
+	tabIndex = -1;
 	readOnly = false;
 	private top = 0;
 	textWrites = 0;
@@ -192,10 +193,11 @@ export class CorkboardElement {
 	setCssProps(styles: Record<string, string>): void { this.setCssStyles(styles); }
 	getBoundingClientRect(): { height: number } { this.readGeometry('getBoundingClientRect'); return { height: 37 }; }
 	matches(selector: string): boolean {
-		// A class, a tag, or a comma-separated list of either, as the control check asks.
+		// A class or several joined, a tag, or a comma-separated list of either, as the boards ask.
 		return selector.split(',').some((part) => {
 			const one = part.trim();
-			return one.startsWith('.') ? this.classes.has(one.slice(1)) : this.tag === one;
+			if (!one.startsWith('.')) return this.tag === one;
+			return one.slice(1).split('.').every((cls) => this.classes.has(cls));
 		});
 	}
 	querySelector(selector: string): CorkboardElement | null { return this.querySelectorAll(selector)[0] ?? null; }
@@ -218,6 +220,7 @@ export class CorkboardElement {
 		}
 	}
 	focus(): void { this.doc.activeElement = this; }
+	blur(): void { if (this.doc.activeElement === this) this.doc.activeElement = this.doc.body; }
 	select(): void {}
 	remove(): void {
 		if (this.parent === null) return;

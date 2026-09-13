@@ -7,6 +7,7 @@ import {
 	STORY_STRUCTURE_VISUALIZATIONS,
 	corkboardMemory,
 	defaultStoryStructureState,
+	defaultTimelineSettings,
 	familyVisualization,
 	isCorkboardGroupField,
 	isCorkboardMode,
@@ -20,6 +21,7 @@ const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
+	timeline: { pool: { mode: 'extended', group: 'time', reversed: false } },
 };
 
 describe('story structure restored state', () => {
@@ -34,6 +36,7 @@ describe('story structure restored state', () => {
 				projectPath: null,
 				visualization: 'beat-sheet',
 				corkboard: { mode: 'extended', group: 'color', reversed: true },
+				timeline: defaultTimelineSettings(),
 			},
 			changed: true,
 		});
@@ -56,6 +59,7 @@ describe('story structure restored state', () => {
 			projectPath: current.projectPath,
 			visualization: 'timeline',
 			corkboard: { mode: 'compact', group: '', reversed: true },
+			timeline: current.timeline,
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -103,6 +107,20 @@ describe('story structure restored state', () => {
 			state: current,
 			changed: false,
 		});
+	});
+
+	it("restores the timeline pool's settings one by one, ignoring what is not one of its own", () => {
+		expect(
+			mergeStoryStructureViewState(current, {
+				timeline: { pool: { mode: 'compact', group: 'mood', reversed: true } },
+			}),
+		).toEqual({
+			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true } } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { timeline: 7 })).toEqual({ state: current, changed: false });
+		expect(mergeStoryStructureViewState(current, { timeline: { pool: null } })).toEqual({ state: current, changed: false });
+		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false } });
 	});
 
 	it('reports a change only when something moved', () => {

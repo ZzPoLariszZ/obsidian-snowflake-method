@@ -13020,3 +13020,735 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	width: 100%;
 	resize: vertical;
 }
+
+/* == Timeline ============================================================= */
+
+/* The workspace fills the field the tab opens onto: a toolbar of its own in
+   the flow, then the lanes and the pool sharing the rest. */
+.snowflake-method-timeline-host,
+.snowflake-method-timeline {
+	height: 100%;
+}
+
+.snowflake-method-timeline {
+	--snowflake-method-timeline-time-width: 14rem;
+	--snowflake-method-timeline-axis-width: 1.5rem;
+	--snowflake-method-timeline-sub-width: 12rem;
+	--snowflake-method-timeline-scene-width: 16rem;
+	--snowflake-method-timeline-lane-gap: var(--size-4-3);
+	--snowflake-method-timeline-node-size: 0.75rem;
+	--snowflake-method-timeline-node-offset: 0.9rem;
+	--snowflake-method-timeline-pool-width: 22rem;
+	--snowflake-method-timeline-lanes: 1;
+	--snowflake-method-timeline-lane-width: calc(
+		var(--snowflake-method-timeline-axis-width) + var(--snowflake-method-timeline-sub-width) +
+			var(--snowflake-method-timeline-scene-width) + 2 * var(--size-4-2)
+	);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-timeline[data-layout='single'] {
+	--snowflake-method-timeline-sub-width: 18rem;
+}
+
+.snowflake-method-timeline-toolbar {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-2);
+	flex-wrap: wrap;
+}
+
+.snowflake-method-timeline-toolbar select.snowflake-method-timeline-view-select {
+	max-width: 16rem;
+}
+
+/* Flat or Stack: two radios in one box, the checked one filled. */
+.snowflake-method-timeline-presentation {
+	display: inline-flex;
+	flex: 0 0 auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-presentation-option {
+	height: calc(var(--input-height) - 2px);
+	padding: 0 var(--size-4-2);
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	background-color: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-presentation-option:hover:not(:disabled) {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-presentation-option[aria-checked='true'] {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-presentation-option:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.snowflake-method-timeline-toolbar .snowflake-method-prose-state {
+	flex: 1 1 auto;
+	text-align: end;
+}
+
+.snowflake-method-timeline-add-timeline {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+.snowflake-method-timeline .snowflake-method-character-empty {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-timeline-empty-action {
+	margin-inline-start: var(--size-4-3);
+}
+
+.snowflake-method-timeline-body {
+	display: flex;
+	flex: 1 1 auto;
+	gap: var(--size-4-3);
+	min-height: 0;
+}
+
+.snowflake-method-timeline-scroll {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+
+.snowflake-method-timeline-table {
+	display: flex;
+	flex-direction: column;
+	width: max-content;
+	min-width: 100%;
+}
+
+/* Every row shares one template, so the shared time column and the lanes
+   line up across the head and the times. */
+.snowflake-method-timeline-head,
+.snowflake-method-timeline-row {
+	position: relative;
+	display: grid;
+	grid-template-columns:
+		var(--snowflake-method-timeline-time-width)
+		repeat(var(--snowflake-method-timeline-lanes), var(--snowflake-method-timeline-lane-width));
+	column-gap: var(--snowflake-method-timeline-lane-gap);
+}
+
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-head,
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-row {
+	grid-template-columns: var(--snowflake-method-timeline-time-width) minmax(0, 1fr);
+}
+
+.snowflake-method-timeline-head {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 3;
+	background-color: var(--background-primary);
+	border-block-end: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-timeline-corner {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: 4;
+	padding: var(--size-4-2) var(--size-4-3);
+	background-color: var(--background-primary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-timeline-lane-head {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+	padding: var(--size-4-2) var(--size-4-2);
+	border-block-end: 3px solid transparent;
+}
+
+.snowflake-method-timeline-lane-head.is-active {
+	border-block-end-color: var(--interactive-accent);
+}
+
+.snowflake-method-timeline-lane-pin {
+	flex: 0 0 auto;
+	color: var(--text-accent);
+}
+
+.snowflake-method-timeline-lane-pin svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-timeline-lane-pin.is-hidden,
+.snowflake-method-timeline-lane-entity.is-hidden,
+.snowflake-method-timeline-empty-action.is-hidden,
+.snowflake-method-timeline .snowflake-method-character-empty.is-hidden,
+.snowflake-method-timeline-body.is-hidden,
+.snowflake-method-timeline-times-empty.is-hidden {
+	display: none;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-lane-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	height: auto;
+	padding: var(--size-2-1) var(--size-2-2);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-lane-name[aria-pressed='true'] {
+	color: var(--text-normal);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-lane-entity {
+	flex: 0 1 auto;
+	min-width: 0;
+	height: auto;
+	padding: 0 var(--size-2-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: var(--font-ui-smaller);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-lane-entity.is-missing {
+	color: var(--text-muted);
+}
+
+.snowflake-method-timeline-lane-head .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
+.snowflake-method-timeline-times-empty {
+	padding: var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+/* The shared time column stands sticky at the left of every row; the lanes
+   follow. Rows carry no block gap, so the axis lines meet across them. */
+.snowflake-method-timeline-time {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: 2;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-2-1);
+	min-width: 0;
+	padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3);
+	border-inline-end: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+}
+
+.snowflake-method-timeline-time-text {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-label,
+.snowflake-method-timeline button.snowflake-method-timeline-time-description {
+	display: block;
+	width: 100%;
+	height: auto;
+	padding: var(--size-2-1) var(--size-2-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	text-align: start;
+	white-space: normal;
+	cursor: pointer;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-label {
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-description {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-description.is-empty {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-description.is-hidden {
+	display: none;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-label:hover:not(:disabled),
+.snowflake-method-timeline button.snowflake-method-timeline-time-description:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-time-label:disabled,
+.snowflake-method-timeline button.snowflake-method-timeline-time-description:disabled {
+	cursor: default;
+}
+
+.snowflake-method-timeline-row.is-missing .snowflake-method-timeline-time-label {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.snowflake-method-timeline-time .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+}
+
+/* A lane cell: the axis, then the rows the timeline writes under the time. */
+.snowflake-method-timeline-cell {
+	display: grid;
+	grid-template-columns: var(--snowflake-method-timeline-axis-width) minmax(0, 1fr);
+	min-height: 3rem;
+	padding-inline: var(--size-4-2);
+}
+
+.snowflake-method-timeline-cell.is-active-lane {
+	background-color: color-mix(in srgb, var(--interactive-accent) 4%, transparent);
+}
+
+.snowflake-method-timeline-axis {
+	position: relative;
+}
+
+.snowflake-method-timeline-axis::before {
+	content: '';
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: calc(50% - 1px);
+	width: 2px;
+	background-color: var(--background-modifier-border-hover);
+}
+
+.snowflake-method-timeline-row:first-of-type .snowflake-method-timeline-axis::before {
+	inset-block-start: var(--snowflake-method-timeline-node-offset);
+}
+
+.snowflake-method-timeline-row:last-of-type .snowflake-method-timeline-axis::before {
+	inset-block-end: calc(100% - var(--snowflake-method-timeline-node-offset));
+}
+
+.snowflake-method-timeline-cell.is-present > .snowflake-method-timeline-axis::after {
+	content: '';
+	position: absolute;
+	inset-block-start: calc(var(--snowflake-method-timeline-node-offset) - var(--snowflake-method-timeline-node-size) / 2);
+	inset-inline-start: calc(50% - var(--snowflake-method-timeline-node-size) / 2);
+	width: var(--snowflake-method-timeline-node-size);
+	height: var(--snowflake-method-timeline-node-size);
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-primary);
+}
+
+.snowflake-method-timeline-cell.is-active-lane > .snowflake-method-timeline-axis::before {
+	background-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+}
+
+.snowflake-method-timeline-rows {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding-block: var(--size-2-2);
+}
+
+/* The plus of an empty cell shows on hover and to the keyboard alone. */
+.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-cell-add {
+	--icon-size: var(--icon-s);
+	align-self: start;
+	justify-self: start;
+	margin-block-start: var(--size-2-2);
+	opacity: 0;
+}
+
+.snowflake-method-timeline-cell.is-absent:hover .snowflake-method-timeline-cell-add,
+.snowflake-method-timeline .snowflake-method-timeline-cell-add:focus-visible {
+	opacity: 1;
+}
+
+/* A sub-description row: its words, and the scenes placed on it. */
+.snowflake-method-timeline-subrow {
+	position: relative;
+	display: grid;
+	grid-template-columns: var(--snowflake-method-timeline-sub-width) minmax(0, 1fr);
+	align-items: start;
+	gap: var(--size-2-2);
+	padding-block: var(--size-2-2);
+}
+
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-subrow {
+	grid-template-columns: minmax(0, var(--snowflake-method-timeline-sub-width)) var(--snowflake-method-timeline-scene-width);
+}
+
+.snowflake-method-timeline-subrow-text {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-subrow-label {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 1.75rem;
+	padding: 0 var(--size-2-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	line-height: calc(1.75rem - 2px);
+	text-align: start;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: text;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-subrow-label:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+}
+
+.snowflake-method-timeline-scenes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	min-height: 1.75rem;
+	min-width: 0;
+	border-radius: var(--radius-m);
+}
+
+/* The same card as the corkboard's, standing in the flow of its row. */
+.snowflake-method-timeline .snowflake-method-corkboard-card {
+	position: relative;
+	width: var(--snowflake-method-timeline-scene-width);
+	height: var(--snowflake-method-corkboard-card-height);
+}
+
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-corkboard-card {
+	width: var(--snowflake-method-corkboard-card-width);
+}
+
+.snowflake-method-timeline[data-mode='compact'] .snowflake-method-corkboard-card {
+	height: auto;
+}
+
+.snowflake-method-timeline-scene-missing {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-timeline-scene-missing .clickable-icon {
+	--icon-size: var(--icon-s);
+	margin-inline-start: auto;
+}
+
+/* Stacked, a row shows one card with the rest drawn as layers behind it:
+   one layer for a second card, two for more, none for a stack of one. */
+.snowflake-method-timeline-stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	max-width: 100%;
+}
+
+.snowflake-method-timeline-stack-face {
+	position: relative;
+	width: max-content;
+	max-width: 100%;
+	padding-inline-end: 0.5rem;
+	padding-block-end: 0.5rem;
+}
+
+.snowflake-method-timeline-stack-face::before,
+.snowflake-method-timeline-stack-face::after {
+	content: '';
+	position: absolute;
+	inset: 0 0.5rem 0.5rem 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+	translate: 0.25rem 0.25rem;
+}
+
+.snowflake-method-timeline-stack-face::after {
+	translate: 0.5rem 0.5rem;
+	opacity: 0.6;
+}
+
+.snowflake-method-timeline-stack[data-total='0'] .snowflake-method-timeline-stack-face::before,
+.snowflake-method-timeline-stack[data-total='0'] .snowflake-method-timeline-stack-face::after,
+.snowflake-method-timeline-stack[data-total='1'] .snowflake-method-timeline-stack-face::before,
+.snowflake-method-timeline-stack[data-total='1'] .snowflake-method-timeline-stack-face::after,
+.snowflake-method-timeline-stack[data-total='2'] .snowflake-method-timeline-stack-face::after {
+	display: none;
+}
+
+.snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card,
+.snowflake-method-timeline-stack-face > .snowflake-method-timeline-scene-missing {
+	position: relative;
+	z-index: 1;
+}
+
+.snowflake-method-timeline-stack-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.snowflake-method-timeline-stack-controls.is-hidden {
+	display: none;
+}
+
+.snowflake-method-timeline-stack-controls .clickable-icon {
+	--icon-size: var(--icon-s);
+}
+
+.snowflake-method-timeline-stack-position {
+	min-width: 3.5ch;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+/* The words of a row: one box for both faces, so entering the words moves
+   nothing, as the corkboard's title does. */
+.snowflake-method-timeline input.snowflake-method-timeline-subrow-input {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 0;
+	height: 1.75rem;
+	margin: 0;
+	padding: 0 var(--size-2-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-small);
+	line-height: calc(1.75rem - 2px);
+}
+
+.snowflake-method-timeline input.snowflake-method-timeline-subrow-input:focus {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary);
+	box-shadow: none;
+}
+
+.snowflake-method-timeline-subrow.is-trailing input.snowflake-method-timeline-subrow-input {
+	color: var(--text-muted);
+}
+
+.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-hidden,
+.snowflake-method-timeline input.snowflake-method-timeline-subrow-input.is-hidden,
+.snowflake-method-timeline-subrow.is-trailing.is-hidden {
+	display: none;
+}
+
+.snowflake-method-timeline-subrow.is-pending {
+	opacity: 0.6;
+}
+
+.snowflake-method-timeline-subrow-text .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	opacity: 0;
+}
+
+.snowflake-method-timeline-subrow:hover .snowflake-method-timeline-subrow-more,
+.snowflake-method-timeline-subrow:focus-within .snowflake-method-timeline-subrow-more,
+.snowflake-method-timeline-subrow-more:focus-visible {
+	opacity: 1;
+}
+
+/* Drag handles: the time's beside its label, the row's before its words,
+   shown on hover and to the keyboard. The axis is never a handle. */
+.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-handle,
+.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-subrow-handle {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	align-self: start;
+	opacity: 0;
+	cursor: grab;
+}
+
+.snowflake-method-timeline-row:hover .snowflake-method-timeline-time-handle,
+.snowflake-method-timeline-subrow:hover .snowflake-method-timeline-subrow-handle,
+.snowflake-method-timeline .snowflake-method-timeline-time-handle:focus-visible,
+.snowflake-method-timeline .snowflake-method-timeline-subrow-handle:focus-visible {
+	opacity: 1;
+}
+
+.snowflake-method-timeline .snowflake-method-timeline-time-handle:disabled,
+.snowflake-method-timeline .snowflake-method-timeline-subrow-handle:disabled {
+	display: none;
+}
+
+.snowflake-method-timeline-subrow {
+	grid-template-columns: auto var(--snowflake-method-timeline-sub-width) minmax(0, 1fr);
+}
+
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-subrow {
+	grid-template-columns: auto minmax(0, var(--snowflake-method-timeline-sub-width)) var(--snowflake-method-timeline-scene-width);
+}
+
+.snowflake-method-timeline-subrow-handle-space {
+	width: var(--snowflake-method-corkboard-action-size);
+}
+
+.snowflake-method-timeline-row.is-dragging,
+.snowflake-method-timeline-subrow.is-dragging {
+	opacity: 0.55;
+}
+
+/* The landing line: across the whole workspace for a time, across the lane
+   for a row, drawn as a pseudo-element so no sticky cell can cover it. */
+.snowflake-method-timeline-row.is-drop-before::before,
+.snowflake-method-timeline-tail.is-drop-before::before,
+.snowflake-method-timeline-subrow.is-drop-before::before {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: -1px;
+	z-index: 5;
+	height: 2px;
+	background-color: var(--interactive-accent);
+	pointer-events: none;
+}
+
+.snowflake-method-timeline-tail {
+	position: relative;
+	height: 1px;
+}
+
+.snowflake-method-timeline-cell.is-drop-target {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+/* While a row or a scene is dragged, the lanes that will not take it stand
+   back, and the cursor says so. */
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-cell.is-locked-out,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-lane-head.is-locked-out,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-locked-out,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-lane-head.is-locked-out {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.snowflake-method-timeline-cell,
+	.snowflake-method-timeline-lane-head {
+		transition: opacity 150ms ease;
+	}
+}
+
+/* The scene pool: the corkboard in one column beside the lanes, its band
+   riding the title row the way the corkboard's rides the tab strip. */
+.snowflake-method-timeline-pool {
+	position: relative;
+	display: flex;
+	flex: 0 0 var(--snowflake-method-timeline-pool-width);
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	padding-inline-start: var(--size-4-3);
+	border-inline-start: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-timeline-pool-title {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-2);
+	height: var(--snowflake-method-tab-height, 2.75rem);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-timeline-pool .snowflake-method-corkboard-host {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* While a scene is dragged, the active lane's empty scene areas show where
+   it may land; the box lights up under the pointer, and a card wears the
+   line on the side the scene goes. */
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-drag-lane .snowflake-method-timeline-scenes {
+	min-height: 2.5rem;
+	outline: 1px dashed var(--background-modifier-border-hover);
+	outline-offset: -1px;
+}
+
+.snowflake-method-timeline-scenes.is-drop-target {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-before {
+	box-shadow: 0 -3px 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
+}
+
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-after {
+	box-shadow: 0 3px 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
+}

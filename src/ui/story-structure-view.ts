@@ -32,12 +32,20 @@ import {
 	familyVisualization,
 	mergeStoryStructureViewState,
 	readCorkboardPreferences,
+	timelineMemory,
 	visualizationFamily,
 	type CorkboardMemory,
 	type CorkboardPreferences,
 	type StoryStructureViewStateSnapshot,
 	type StoryStructureVisualization,
+	type TimelineMemory,
 } from './story-structure-state';
+import type {
+	RenderTimeline,
+	TimelineBridge,
+	TimelineControls,
+	TimelineHandle,
+} from './timeline-bridge';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
 
 export const STORY_STRUCTURE_VIEW_TYPE = 'snowflake-method-story-structure';
@@ -52,13 +60,17 @@ export interface StoryStructureViewDeps {
 	corkboardPreferences(projectId: string): Partial<CorkboardPreferences>;
 	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
 	corkboard: RenderCorkboard;
+	timeline: RenderTimeline;
 }
 
 export class SnowflakeStoryStructureView extends ItemView {
 	private state: StoryStructureViewStateSnapshot = defaultStoryStructureState();
 	private readonly memory: CorkboardMemory = corkboardMemory();
 	private model: ProjectDashboardModel | null = null;
-	private board: CorkboardHandle | null = null;
+	private board: CorkboardHandle | TimelineHandle | null = null;
+	private readonly timelineMemory: TimelineMemory = timelineMemory();
+	/** The timeline bridge for the project's path, remade when a rename moves it. */
+	private timelineBridge: { path: string; bridge: TimelineBridge } | null = null;
 	/** What the frame on show was built for; null while nothing is drawn. */
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
@@ -142,6 +154,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.memory.mode = update.state.corkboard.mode;
 		this.memory.group = update.state.corkboard.group;
 		this.memory.reversed = update.state.corkboard.reversed;
+		this.timelineMemory.pool.mode = update.state.timeline.pool.mode;
+		this.timelineMemory.pool.group = update.state.timeline.pool.group;
+		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -164,6 +179,13 @@ export class SnowflakeStoryStructureView extends ItemView {
 				group: this.memory.group,
 				reversed: this.memory.reversed,
 			},
+			timeline: {
+				pool: {
+					mode: this.timelineMemory.pool.mode,
+					group: this.timelineMemory.pool.group,
+					reversed: this.timelineMemory.pool.reversed,
+				},
+			},
 		};
 	}
 
@@ -171,6 +193,12 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.memory.query = '';
 		clearSceneFilters(this.memory.filters);
 		this.memory.scrollTop = 0;
+		this.timelineMemory.pool.query = '';
+		clearSceneFilters(this.timelineMemory.pool.filters);
+		this.timelineMemory.pool.scrollTop = 0;
+		this.timelineMemory.activeTimeline.clear();
+		this.timelineMemory.stackPositions.clear();
+		this.timelineMemory.scroll = { left: 0, top: 0 };
 	}
 
 	async onOpen(): Promise<void> {
@@ -360,16 +388,22 @@ export class SnowflakeStoryStructureView extends ItemView {
 			});
 			return;
 		}
-		if (this.state.visualization !== 'corkboard-ordered') {
-			body.createEl('p', {
-				cls: 'snowflake-method-tab-planned',
-				text: this.t('statistics.tab.planned'),
-			});
+		if (this.state.visualization === 'corkboard-ordered') {
+			body.addClass('is-self-scrolling');
+			const host = body.createDiv({ cls: 'snowflake-method-corkboard-host' });
+			this.board = this.deps.corkboard(host, this.controls());
 			return;
 		}
-		body.addClass('is-self-scrolling');
-		const host = body.createDiv({ cls: 'snowflake-method-corkboard-host' });
-		this.board = this.deps.corkboard(host, this.controls());
+		if (this.state.visualization === 'timeline') {
+			body.addClass('is-self-scrolling');
+			const host = body.createDiv({ cls: 'snowflake-method-timeline-host' });
+			this.board = this.deps.timeline(host, this.timelineControls());
+			return;
+		}
+		body.createEl('p', {
+			cls: 'snowflake-method-tab-planned',
+			text: this.t('statistics.tab.planned'),
+		});
 	}
 
 	/** A plain click shows the visualization here; a modifier click opens it in a leaf of its own. */
@@ -403,6 +437,37 @@ export class SnowflakeStoryStructureView extends ItemView {
 				}
 			},
 		};
+	}
+
+	private timelineControls(): TimelineControls {
+		return {
+			app: this.app,
+			host: this.deps.host,
+			t: this.t,
+			model: () => this.model,
+			projectPath: () => this.state.projectPath,
+			activateProject: () => this.activateProjectContext(),
+			refresh: () => this.refresh(),
+			popover: this.filterPanel.lend(),
+			bridge: () => this.timelineBridgeFor(),
+			memory: this.timelineMemory,
+			remember: () => {
+				this.app.workspace.requestSaveLayout();
+			},
+			corkboard: this.deps.corkboard,
+		};
+	}
+
+	/** The bridge for the project's path as it stands now; a rename hands the workspace a new one. */
+	private timelineBridgeFor(): TimelineBridge {
+		const path = this.model?.path ?? this.state.projectPath ?? '';
+		if (this.timelineBridge === null || this.timelineBridge.path !== path) {
+			this.timelineBridge = {
+				path,
+				bridge: this.deps.host.timeline({ projectPath: path, locale: this.model?.locale ?? null }),
+			};
+		}
+		return this.timelineBridge.bridge;
 	}
 
 	private disposeBoard(): void {

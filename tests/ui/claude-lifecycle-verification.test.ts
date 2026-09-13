@@ -72,6 +72,7 @@ function workspaceView() {
 		corkboardPreferences: () => ({ mode: 'standard', reversed: false }),
 		rememberCorkboardPreferences: vi.fn(),
 		corkboard: () => board,
+		timeline: () => board,
 	});
 	Object.assign(dom.container, { isShown: () => shown });
 	Object.assign(view, { contentEl: content, containerEl: dom.container });
