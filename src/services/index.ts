@@ -1,6 +1,7 @@
 export * from "./definition-files";
 export * from "./foreshadowing-service";
 export * from "./foreshadowing-store";
+export * from "./json-document-store";
 export * from "./json-record-store";
 export * from "./margin-records";
 export * from "./manuscript-export";
@@ -15,6 +16,8 @@ export * from "./revision-service";
 export * from "./sticky-note-service";
 export * from "./task-service";
 export * from "./task-store";
+export * from "./timeline-service";
+export * from "./timeline-store";
 export * from "./types";
 export * from "./writing-count";
 export * from "./writing-session";

@@ -365,6 +365,29 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("treats the timeline folder as made on demand as well", async () => {
+    // The folder is built by the first timeline laid out, so a project from
+    // before timelines existed is offered the folder, not marked.
+    const project = await service.createProject({ name: "Older layout" });
+    const timeline = `${project.rootPath}/70_Tool/73_Visualization/733_Timeline`;
+    fakeVault.delete(timeline);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === timeline,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: timeline,
+        stepIds: [],
+        repairable: true,
+        blocking: false,
+      }),
+    ]);
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
   it("reports a sticky note whose frontmatter will not parse, beyond repair", async () => {
     const project = await service.createProject({ name: "Older layout" });
     const path = `${project.rootPath}/70_Tool/72_Task_Management/724_Sticky_Note/broken.md`;

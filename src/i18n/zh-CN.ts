@@ -1016,6 +1016,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'corkboard.refresh': '刷新',
 	'corkboard.editName': '编辑名称',
 	'corkboard.position': '第 {number} 位',
+	'timeline.newerSchema': '时间线文件由更新版本的插件写入，已保持原样。',
+	'timeline.corruptPreserved': '时间线文件无法读取，已另存为 {path}。',
 	'stickyNotes.viewTitle': '便签',
 	'stickyNotes.add': '添加便签',
 	'stickyNotes.empty': '暂无便签',

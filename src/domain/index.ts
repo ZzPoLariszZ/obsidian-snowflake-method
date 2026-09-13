@@ -26,6 +26,7 @@ export * from './sentences';
 export * from './steps';
 export * from './sticky-note';
 export * from './task';
+export * from './timeline';
 export * from './text-length';
 export * from './types';
 export * from './wikilink';

@@ -194,10 +194,13 @@ import {
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type TaskWrite,
+	type TimelineDeletion,
+	type TimelineWrite,
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isStickyNotePath,
 	isTaskFilePath,
+	isTimelineFilePath,
 	isManuscriptCachePath,
 	type StickyNoteRecord,
 	toWikiLink,
@@ -261,6 +264,7 @@ import type {
 import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
 import type { TaskBoardBridge } from './ui/task-bridge';
+import type { TimelineBridge } from './ui/timeline-bridge';
 import { confirmTaskArchiveEmptying, confirmTaskDeletion } from './ui/task-dialogs';
 import { promptForTask } from './ui/task-form';
 import { StickyNoteGone, StickyNoteSaveConflict } from './ui/sticky-note-editing';
@@ -515,6 +519,10 @@ export default class SnowflakeMethodPlugin
 	private taskNotifyTimer: number | null = null;
 	/** Who wants to hear that the tasks, or a source a derived card is computed from, changed. */
 	private readonly taskListeners = new Set<() => void>();
+	/** The timeline workspace's own bell, rung the same way. */
+	private timelineNotifyTimer: number | null = null;
+	/** Who wants to hear that a project's timeline file changed. */
+	private readonly timelineListeners = new Set<() => void>();
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
@@ -802,6 +810,13 @@ export default class SnowflakeMethodPlugin
 				},
 				onTasksForeign: () => {
 					new Notice(this.projectT('tasks.newerSchema'));
+				},
+				// The timeline file, told apart the same two ways.
+				onTimelineCorrupt: (path) => {
+					new Notice(this.projectT('timeline.corruptPreserved', { path }));
+				},
+				onTimelineForeign: () => {
+					new Notice(this.projectT('timeline.newerSchema'));
 				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
@@ -1094,6 +1109,10 @@ export default class SnowflakeMethodPlugin
 		if (this.taskNotifyTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.taskNotifyTimer);
 			this.taskNotifyTimer = null;
+		}
+		if (this.timelineNotifyTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(this.timelineNotifyTimer);
+			this.timelineNotifyTimer = null;
 		}
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
@@ -4168,6 +4187,119 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * The bridge the timeline workspace reads and writes its project's
+	 * timelines through: the document as the file holds it, a bell rung when
+	 * that file moves, and one mutation per thing the workspace can do to it.
+	 * Every write goes through the gate, and only a write that landed is
+	 * announced; the names the workspace shows are its own model's.
+	 */
+	timeline(context: SessionPanelContext = {}): TimelineBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const timelines = this.projects.timeline;
+		const write = (
+			work: (project: ProjectSnapshot) => Promise<TimelineWrite>,
+		): Promise<TimelineWrite> =>
+			this.mutateTimeline(
+				panelProject(),
+				async (project) => {
+					const wrote = await work(project);
+					return { result: wrote, changed: wrote === 'written' };
+				},
+				'refused',
+			);
+		const create = (
+			work: (project: ProjectSnapshot) => Promise<string | null>,
+		): Promise<string | null> =>
+			this.mutateTimeline(
+				panelProject(),
+				async (project) => {
+					const id = await work(project);
+					return { result: id, changed: id !== null };
+				},
+				null,
+			);
+		const remove = (
+			work: (project: ProjectSnapshot) => Promise<TimelineDeletion>,
+		): Promise<boolean> =>
+			this.mutateTimeline(
+				panelProject(),
+				async (project) => {
+					const gone = await work(project);
+					return { result: gone !== 'refused', changed: gone === 'deleted' };
+				},
+				false,
+			);
+		return {
+			t,
+			read: async () => {
+				// resolveProject rather than the writable gate: a read-only
+				// project's timelines are still there to look at.
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					readOnly: project.readOnly,
+					held: await timelines.read(project),
+				};
+			},
+			subscribe: (listener) => {
+				this.timelineListeners.add(listener);
+				return () => {
+					this.timelineListeners.delete(listener);
+				};
+			},
+			createTimeline: (name, binding) =>
+				create((project) => timelines.createTimeline(project, { name, binding })),
+			renameTimeline: (id, name) => write((project) => timelines.renameTimeline(project, id, name)),
+			bindTimeline: (id, binding) => write((project) => timelines.bindTimeline(project, id, binding)),
+			deleteTimeline: (id) => remove((project) => timelines.deleteTimeline(project, id)),
+			pinTimeline: (id) => write((project) => timelines.pinTimeline(project, id)),
+			createView: (name, timelineIds) =>
+				create((project) => timelines.createView(project, { name, timelines: timelineIds })),
+			renameView: (id, name) => write((project) => timelines.renameView(project, id, name)),
+			deleteView: (id) => remove((project) => timelines.deleteView(project, id)),
+			setLastView: (id) => write((project) => timelines.setLastView(project, id)),
+			setViewTimelines: (viewId, timelineIds) =>
+				write((project) => timelines.setViewTimelines(project, viewId, timelineIds)),
+			moveTimelineInView: (viewId, timelineId, beforeTimelineId) =>
+				write((project) =>
+					timelines.moveTimelineInView(project, viewId, timelineId, beforeTimelineId)),
+			setTimeOrder: (viewId, timeIds) =>
+				write((project) => timelines.setTimeOrder(project, viewId, timeIds)),
+			setViewPresentation: (viewId, presentation) =>
+				write((project) => timelines.setViewPresentation(project, viewId, presentation)),
+			setViewCardStyle: (viewId, cardStyle) =>
+				write((project) => timelines.setViewCardStyle(project, viewId, cardStyle)),
+			addTime: (timelineId, timeId) =>
+				write((project) => timelines.addTime(project, timelineId, timeId)),
+			removeTime: (timelineId, timeId) =>
+				write((project) => timelines.removeTime(project, timelineId, timeId)),
+			addRow: (timelineId, timeId, text, beforeRowId, scenes) =>
+				create((project) =>
+					timelines.addRow(project, timelineId, timeId, text, beforeRowId, scenes)),
+			editRow: (timelineId, rowId, text) =>
+				write((project) => timelines.editRow(project, timelineId, rowId, text)),
+			moveRow: (timelineId, rowId, toTimeId, beforeRowId) =>
+				write((project) => timelines.moveRow(project, timelineId, rowId, toTimeId, beforeRowId)),
+			deleteRow: (timelineId, rowId) =>
+				write((project) => timelines.deleteRow(project, timelineId, rowId)),
+			placeScene: (timelineId, sceneId, rowId, beforeSceneId) =>
+				write((project) =>
+					timelines.placeScene(project, timelineId, sceneId, rowId, beforeSceneId)),
+			removeScene: (timelineId, sceneId) =>
+				write((project) => timelines.removeScene(project, timelineId, sceneId)),
+			pruneMissing: (known) => write((project) => timelines.pruneMissing(project, known)),
+		};
+	}
+
+	/**
 	 * The bridge the task board reads and writes through, shaped like the
 	 * sticky notes': every mutation announces to the boards alone, since a
 	 * task touches no manuscript text, and every dialog is opened here.
@@ -4268,6 +4400,22 @@ export default class SnowflakeMethodPlugin
 				return this.removeTasks(panelProject(), standing, { archivedOnly: true });
 			},
 		};
+	}
+
+	/**
+	 * One change to a project's timelines: refused where the project cannot
+	 * be written, and announced to the workspaces when the file moved.
+	 */
+	private async mutateTimeline<T>(
+		projectPath: string | null,
+		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
+		refused: T,
+	): Promise<T> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return refused;
+		const { result, changed } = await work(project);
+		if (changed) this.timelineChanged();
+		return result;
 	}
 
 	/**
@@ -6385,6 +6533,35 @@ export default class SnowflakeMethodPlugin
 				listener();
 			} catch (error) {
 				console.error('Snowflake: a task board failed to refresh', error);
+			}
+		}
+	}
+
+	/**
+	 * The timeline file changed in the vault: the workspaces read again once
+	 * the burst has settled, on the main window's clock like the task bell.
+	 * The folder appears with the first timeline, so the health verdict is
+	 * re-read as well.
+	 */
+	private scheduleTimelineNotify(): void {
+		const workspaceWindow = this.app.workspace.containerEl.win;
+		if (this.timelineNotifyTimer !== null) {
+			workspaceWindow.clearTimeout(this.timelineNotifyTimer);
+		}
+		this.timelineNotifyTimer = workspaceWindow.setTimeout(() => {
+			this.timelineNotifyTimer = null;
+			this.timelineChanged();
+			this.reconcileDashboardHealth();
+		}, REFRESH_DELAY_MS);
+	}
+
+	/** The timelines changed somewhere; every workspace reads again. A listener's failure is its own. */
+	private timelineChanged(): void {
+		for (const listener of [...this.timelineListeners]) {
+			try {
+				listener();
+			} catch (error) {
+				console.error('Snowflake: a timeline workspace failed to refresh', error);
 			}
 		}
 	}
@@ -8633,6 +8810,12 @@ export default class SnowflakeMethodPlugin
 			this.scheduleTaskNotify();
 			return;
 		}
+		// And the timeline file, to the workspaces alone.
+		if (file instanceof TFile && isTimelineFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleTimelineNotify();
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -8762,6 +8945,7 @@ export default class SnowflakeMethodPlugin
 		// stops anchoring, which the derived standing already says.
 		for (const store of this.projects.marginRecords) store.evict(file.path);
 		this.projects.tasks.evict(file.path);
+		this.projects.timeline.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -8774,6 +8958,11 @@ export default class SnowflakeMethodPlugin
 		if (file instanceof TFile && isTaskFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
 			this.scheduleTaskNotify();
+			return;
+		}
+		if (file instanceof TFile && isTimelineFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleTimelineNotify();
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
@@ -8944,6 +9133,7 @@ export default class SnowflakeMethodPlugin
 			children: file instanceof TFolder,
 		});
 		for (const store of this.projects.marginRecords) store.evict(oldPath);
+		this.projects.timeline.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering
@@ -8992,6 +9182,14 @@ export default class SnowflakeMethodPlugin
 				this.invalidateProjectHealth(oldPath);
 				this.invalidateProjectHealth(file.path);
 				this.scheduleTaskNotify();
+			}
+			// The timeline file moved in or out of its folder, likewise.
+			const wasTimeline = isTimelineFilePath(oldPath) && this.touchesProject(oldPath);
+			const isTimeline = isTimelineFilePath(file.path) && this.touchesProject(file.path);
+			if (wasTimeline || isTimeline) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleTimelineNotify();
 			}
 		}
 		// A project folder moving takes its notes' surfaces with it.

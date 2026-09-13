@@ -166,6 +166,7 @@ import { MentionIndexService } from "./mention-index";
 import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { TaskService } from "./task-service";
+import { TimelineService } from "./timeline-service";
 import { StickyNoteService } from "./sticky-note-service";
 import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
@@ -396,6 +397,8 @@ export class SnowflakeProjectService {
   readonly foreshadowing: ForeshadowingService;
   /** The author's tasks, in the board's order: user data beside the foreshadowing. */
   readonly tasks: TaskService;
+  /** Timelines and the views over them: user data beside the tasks. */
+  readonly timeline: TimelineService;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
   readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
@@ -440,6 +443,9 @@ export class SnowflakeProjectService {
       /** And for the task file. */
       onTasksCorrupt?: (path: string) => void;
       onTasksForeign?: (path: string, version: number) => void;
+      /** And for the timeline file. */
+      onTimelineCorrupt?: (path: string) => void;
+      onTimelineForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -498,6 +504,16 @@ export class SnowflakeProjectService {
       ...(analysis.onTasksForeign === undefined
         ? {}
         : { onForeign: analysis.onTasksForeign }),
+    });
+    this.timeline = new TimelineService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      mintId: (prefix) => createStableId(prefix),
+      ...(analysis.onTimelineCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onTimelineCorrupt }),
+      ...(analysis.onTimelineForeign === undefined
+        ? {}
+        : { onForeign: analysis.onTimelineForeign }),
     });
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
@@ -1189,6 +1205,7 @@ export class SnowflakeProjectService {
       tasks: new Set(),
       foreshadowing: new Set(),
       revisions: new Set(),
+      timeline: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
       // like members.
       stickyNotes: new Set(["sticky-note"]),
@@ -6963,6 +6980,7 @@ export class SnowflakeProjectService {
       foreshadowing: [],
       revisions: [],
       stickyNotes: [],
+      timeline: [],
       materials: [],
       archive: [],
     };

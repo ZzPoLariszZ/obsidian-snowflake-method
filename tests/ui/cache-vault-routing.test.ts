@@ -25,6 +25,7 @@ function vaultRouting() {
 	const scheduleFieldsBlockReconcile = vi.fn();
 	const scheduleWritingCountRefresh = vi.fn();
 	const scheduleTaskNotify = vi.fn();
+	const scheduleTimelineNotify = vi.fn();
 	const scheduleStickyNoteNotify = vi.fn();
 	Object.assign(plugin, {
 		settings: { projectRoot: '' },
@@ -35,6 +36,7 @@ function vaultRouting() {
 		scheduleFieldsBlockReconcile,
 		scheduleWritingCountRefresh,
 		scheduleTaskNotify,
+		scheduleTimelineNotify,
 		scheduleStickyNoteNotify,
 	});
 	const route = plugin as unknown as { handleVaultEvent(file: TFile): void };
@@ -45,6 +47,7 @@ function vaultRouting() {
 		scheduleFieldsBlockReconcile,
 		scheduleWritingCountRefresh,
 		scheduleTaskNotify,
+		scheduleTimelineNotify,
 		scheduleStickyNoteNotify,
 	};
 }
@@ -96,6 +99,18 @@ describe.each(Object.entries(PROJECT_PATH_LAYOUTS))('manuscript cache vault rout
 		routing.changed(path);
 
 		expect(routing.scheduleTaskNotify).toHaveBeenCalledOnce();
+		expect(routing.invalidateProjectHealth).toHaveBeenCalledExactlyOnceWith(path);
+		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
+	});
+
+	it('routes a timeline edit to the timeline workspaces without rebuilding the dashboard', () => {
+		const routing = vaultRouting();
+		const path = `${projectRoot}/${layout.directories.timeline}/timeline.json`;
+
+		routing.changed(path);
+
+		expect(routing.scheduleTimelineNotify).toHaveBeenCalledOnce();
+		expect(routing.scheduleTaskNotify).not.toHaveBeenCalled();
 		expect(routing.invalidateProjectHealth).toHaveBeenCalledExactlyOnceWith(path);
 		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
 	});

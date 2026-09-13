@@ -451,15 +451,18 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   │   └── 713_Entity_Tracking/
     │   │       ├── mention_ignores.json
     │   │       └── <device>_mention_index.json
-    │   └── 72_Task_Management/
-    │       ├── 721_Task/
-    │       │   └── tasks.json
-    │       ├── 722_Foreshadowing/
-    │       │   └── foreshadowing.json
-    │       ├── 723_Revision/
-    │       │   └── revisions.json
-    │       └── 724_Sticky_Note/
-    │           └── 20260904T223121.847+0800.md
+    │   ├── 72_Task_Management/
+    │   │   ├── 721_Task/
+    │   │   │   └── tasks.json
+    │   │   ├── 722_Foreshadowing/
+    │   │   │   └── foreshadowing.json
+    │   │   ├── 723_Revision/
+    │   │   │   └── revisions.json
+    │   │   └── 724_Sticky_Note/
+    │   │       └── 20260904T223121.847+0800.md
+    │   └── 73_Visualization/
+    │       └── 733_Timeline/
+    │           └── timeline.json
     └── ...
 ```
 
@@ -1020,15 +1023,18 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   │   └── 713_实体追踪/
     │   │       ├── mention_ignores.json
     │   │       └── <设备>_mention_index.json
-    │   └── 72_任务管理/
-    │       ├── 721_任务/
-    │       │   └── tasks.json
-    │       ├── 722_伏笔/
-    │       │   └── foreshadowing.json
-    │       ├── 723_修订/
-    │       │   └── revisions.json
-    │       └── 724_便签/
-    │           └── 20260904T223121.847+0800.md
+    │   ├── 72_任务管理/
+    │   │   ├── 721_任务/
+    │   │   │   └── tasks.json
+    │   │   ├── 722_伏笔/
+    │   │   │   └── foreshadowing.json
+    │   │   ├── 723_修订/
+    │   │   │   └── revisions.json
+    │   │   └── 724_便签/
+    │   │       └── 20260904T223121.847+0800.md
+    │   └── 73_可视化/
+    │       └── 733_时间线/
+    │           └── timeline.json
     └── ...
 ```
 

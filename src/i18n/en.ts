@@ -1106,6 +1106,10 @@ export const en = {
 	'corkboard.refresh': 'Refresh',
 	'corkboard.editName': 'Edit name',
 	'corkboard.position': 'Position {number}',
+	'timeline.newerSchema':
+		'The timeline file was written by a newer version of the plugin and has been left as it is.',
+	'timeline.corruptPreserved':
+		'The timeline file could not be read and has been set aside as {path}.',
 	'stickyNotes.viewTitle': 'Sticky notes',
 	'stickyNotes.add': 'Add sticky note',
 	'stickyNotes.empty': 'No sticky notes',
