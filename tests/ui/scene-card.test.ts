@@ -185,7 +185,7 @@ describe('a scene card dealt from the deck', () => {
 		expect(root.getAttribute('aria-posinset')).toBe('1');
 		expect(root.getAttribute('aria-setsize')).toBe('2');
 		expect(root.getAttribute('draggable')).toBe('true');
-		for (const part of ['head', 'title', 'title-input', 'status-select', 'body', 'conflict', 'links', 'chips', 'footer', 'pov', 'color', 'more']) {
+		for (const part of ['grip', 'head', 'title', 'title-input', 'status-select', 'body', 'conflict', 'links', 'chips', 'footer', 'pov', 'color', 'more']) {
 			expect(root.querySelector(`.snowflake-method-corkboard-${part}`), part).not.toBeNull();
 		}
 		expect(el(card.number).textContent).toBe('1');

@@ -405,13 +405,13 @@ describe('opening a project workspace', () => {
 	it.each([false, true])('reuses only the requested project workspace (deferred: %s)', async (deferred) => {
 		const { plugin, workspace, first, second } = pluginWithProjects(deferred);
 
-		await plugin.openStoryStructure('plotline');
+		await plugin.openStoryStructure('beat-sheet');
 
 		expect(workspace.getLeaf).not.toHaveBeenCalled();
 		expect(first.leaf.loadIfDeferred).not.toHaveBeenCalled();
 		expect(first.showVisualization).not.toHaveBeenCalled();
 		expect(second.leaf.loadIfDeferred).toHaveBeenCalledOnce();
-		expect(second.showVisualization).toHaveBeenCalledExactlyOnceWith('plotline');
+		expect(second.showVisualization).toHaveBeenCalledExactlyOnceWith('beat-sheet');
 		expect(workspace.setActiveLeaf).toHaveBeenCalledWith(second.leaf, { focus: true });
 	});
 
@@ -550,9 +550,9 @@ describe('the timeline tab', () => {
 		await view.refresh();
 		expect(handle.refresh).toHaveBeenCalledOnce();
 		expect(handle.dispose).not.toHaveBeenCalled();
-		view.showVisualization('plotline');
+		view.showVisualization('beat-sheet');
 		expect(handle.dispose).toHaveBeenCalledOnce();
 		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
-		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false } } });
+		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false } });
 	});
 });

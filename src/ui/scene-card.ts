@@ -24,6 +24,8 @@ import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from './vie
 export const SCENE_CARD_SELECTOR = '.snowflake-method-corkboard-card';
 /** What a press on begins a text selection or a choice, never a drag. */
 const CONTROL_SELECTOR = 'input, textarea, select, button, a';
+/** Where a press begins something of its own: the words being written, and the lists. */
+const PRESS_SELECTOR = 'input, textarea, select';
 
 /** The host's own methods a card calls, and no others. */
 export type SceneCardHost = Pick<
@@ -98,6 +100,17 @@ export interface SceneCard {
 export function controlWithin(target: EventTarget | null): boolean {
 	if (target === null || !(target as Node).instanceOf(Element)) return false;
 	return (target as Element).closest(CONTROL_SELECTOR) !== null;
+}
+
+/**
+ * Whether a press on the target begins something of its own: a selection in
+ * a field, a choice from a list. A press on a button or a link is a click
+ * that has not happened yet, and a move before it lets the card drag; on a
+ * card in the fullest style there is little else to take hold of.
+ */
+export function pressWithin(target: EventTarget | null): boolean {
+	if (target === null || !(target as Node).instanceOf(Element)) return false;
+	return (target as Element).closest(PRESS_SELECTOR) !== null;
 }
 
 /** A select's options remade from the list, the disabled ones disabled. */
@@ -388,6 +401,9 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		scene: SceneViewModel,
 		index: number,
 	): SceneCard => {
+		// A grip at the top centre, to take hold of the card by where nothing else answers a press.
+		const grip = el.createSpan({ cls: 'snowflake-method-corkboard-grip', attr: { 'aria-hidden': 'true' } });
+		setIcon(grip, 'grip-horizontal');
 		const head = el.createDiv({ cls: 'snowflake-method-corkboard-head' });
 		const number = head.createSpan({
 			cls: 'snowflake-method-step-indicator snowflake-method-corkboard-number',
@@ -903,10 +919,11 @@ export function createSceneCardDeck<Card extends SceneCard>(
 			event.preventDefault();
 			void host.openManagedFile(card.scene.path).catch(notice);
 		});
-		// A press on a control is a selection or a choice beginning, and a
-		// card that drags under it would swallow both.
+		// A press in a field or on a list is a selection or a choice beginning,
+		// and a card that drags under it would swallow both. A press on a
+		// button is a click still to come: a move before it drags the card.
 		el.addEventListener('mousedown', (event) => {
-			if (!controlWithin(event.target)) return;
+			if (!pressWithin(event.target)) return;
 			pressed = true;
 			el.setAttribute('draggable', 'false');
 		});

@@ -15,10 +15,9 @@
  *   the flow of their row rather than on a canvas.
  */
 
-import { Menu, Notice, setIcon, setTooltip } from 'obsidian';
+import { Keymap, Menu, Notice, getIcon, setIcon, setTooltip } from 'obsidian';
 
 import {
-	SCENE_PRESENTATIONS,
 	derivedPresentation,
 	findTimelineView,
 	resolveEntityRefs,
@@ -33,13 +32,14 @@ import {
 } from '../domain';
 import { entityGroupLabel } from './entity-form';
 import { promptForEntityReference, type EntityReferenceSource } from './modals';
-import type { PickerOption } from './option-picker';
+import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
 import { paintCount, renderEmptyLine } from './pane-parts';
 import {
 	SCENE_CARD_PART_CLASSES,
 	SCENE_CARD_SELECTOR,
 	controlWithin,
+	pressWithin,
 	createSceneCardDeck,
 	type SceneCard,
 	type SceneCardDeck,
@@ -66,7 +66,6 @@ import {
 	assignedSceneIds,
 	cellDragState,
 	clampStackPosition,
-	laneCardMode,
 	laneCell,
 	laneOrder,
 	layoutKind,
@@ -96,7 +95,8 @@ interface LaneHead {
 	pin: HTMLElement;
 	name: HTMLButtonElement;
 	entity: HTMLButtonElement;
-	entityPath: string | null;
+	/** The bound note, while the project still has it; a click opens its form. */
+	entityRef: EntityRef | null;
 	more: HTMLButtonElement;
 	timeline: Timeline;
 }
@@ -119,7 +119,7 @@ interface SubrowEntry {
 	el: HTMLElement;
 	handle: HTMLButtonElement;
 	label: HTMLButtonElement;
-	input: HTMLInputElement;
+	input: HTMLTextAreaElement;
 	more: HTMLButtonElement;
 	/** True while the words are being edited in place; a paint leaves the input alone. */
 	editing: boolean;
@@ -140,7 +140,7 @@ interface PendingRow {
 /** The empty row at a cell's foot, where the next sub-description is typed. */
 interface TrailingRow {
 	el: HTMLElement;
-	input: HTMLInputElement;
+	input: HTMLTextAreaElement;
 }
 
 /** One lane's cell in a time row: the axis, and the rows when the lane holds the time. */
@@ -153,6 +153,8 @@ interface CellEntry {
 	trailing: TrailingRow | null;
 	pending: PendingRow[];
 	add: HTMLButtonElement | null;
+	/** The plus on the rule above the cell, which puts a time on this lane before the row. */
+	seamAdd: HTMLButtonElement;
 	subrows: Map<string, SubrowEntry>;
 }
 
@@ -164,6 +166,8 @@ interface RowEntry {
 	label: HTMLButtonElement;
 	description: HTMLButtonElement;
 	more: HTMLButtonElement;
+	/** The plus on the rule above the row, which puts a time in before it. */
+	seamAdd: HTMLButtonElement;
 	time: WorldbuildingEntityViewModel | null;
 	cells: Map<string, CellEntry>;
 }
@@ -173,9 +177,32 @@ type FocusHold =
 	| { kind: 'card'; key: string; part: SceneCardPart }
 	| { kind: 'element'; el: Element };
 
+/** The least room, in px, the bar across must have past the frozen columns to be shown at all: a thumb's worth, and a little to spare. */
+const SCROLL_ROOM_MIN = 48;
+
+/** The workspace's two folds: the time column to its names, and the pool away. */
+type Fold = 'time' | 'pool';
+const FOLDS: readonly Fold[] = ['time', 'pool'];
+
+/**
+ * The width, in rem, under which the workspace is narrow and folds both by
+ * itself: below it the time column, one whole lane and the pool no longer
+ * stand side by side.
+ */
+const NARROW_MAX_REM = 84;
+
 const cardKey = (rowId: string, sceneId: string): string => `${rowId}|${sceneId}`;
 const sceneOfKey = (key: string): string => key.slice(key.indexOf('|') + 1);
 const rowOfKey = (key: string): string => key.slice(0, key.indexOf('|'));
+
+/** Grows the words' box to what it holds, so a long sub-description is edited whole, as it is shown. */
+const fitWords = (area: HTMLTextAreaElement): void => {
+	area.setCssStyles({ height: '' });
+	const inner = area.scrollHeight;
+	if (!Number.isFinite(inner) || inner <= 0) return;
+	const frame = area.offsetHeight - area.clientHeight;
+	area.setCssStyles({ height: `${inner + (Number.isFinite(frame) && frame > 0 ? frame : 0)}px` });
+};
 
 export const renderTimeline: RenderTimeline = (container, controls) => {
 	const { app, host, t, memory } = controls;
@@ -189,23 +216,26 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- The toolbar ---------------------------------------------------------
 
+	// The toolbar rides the strip's row above the lanes, as the corkboard's
+	// band does: the view where the time column stands, the tools at the
+	// field's end, and the pool's own band beyond them.
 	const toolbar = root.createDiv({
 		cls: 'snowflake-method-timeline-toolbar',
 		attr: { role: 'toolbar', 'aria-label': t('timeline.toolbar') },
 	});
-	const viewSelect = toolbar.createEl('select', {
-		cls: 'dropdown snowflake-method-timeline-view-select',
-		attr: { 'aria-label': t('timeline.view') },
-	});
-	viewSelect.addEventListener('change', () => {
-		const chosen = viewSelect.value;
+	// The view is typed into, searched and picked from, as a form's category
+	// is. The field is built once the views are read, since one built with
+	// nothing to offer stays a dead end.
+	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-timeline-view-select' });
+	const chooseView = (chosen: string): void => {
 		if (chosen.length === 0 || chosen === viewId) return;
 		viewId = chosen;
 		paintAll();
 		void enqueue(async () => {
 			await controls.bridge().setLastView(chosen);
 		}, 'none');
-	});
+	};
+	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
 	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement => {
 		const button = toolbar.createEl('button', {
 			cls: `clickable-icon ${cls}`,
@@ -215,39 +245,29 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		setTooltip(button, label);
 		return button;
 	};
-	const addViewButton = iconButton('snowflake-method-timeline-view-add', 'plus', t('timeline.view.add'));
-	addViewButton.addEventListener('click', () => {
-		openAddView();
+	const editViewButton = iconButton('snowflake-method-timeline-view-edit', 'pencil', t('timeline.view.edit'));
+	editViewButton.addEventListener('click', () => {
+		openEditView();
 	});
-	const manageViewButton = iconButton('snowflake-method-timeline-view-manage', 'settings-2', t('timeline.view.manage'));
-	manageViewButton.addEventListener('click', () => {
-		openManageView();
+	// The sub-descriptions and the presentation switch from one symbol each:
+	// the symbol shows what stands now, the tooltip says what a press does.
+	// An eye for the words shown and an eye struck out for them hidden; the
+	// scenes side by side, or in layers with one in front. Both choices are
+	// the view's, so they are written to the document.
+	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
+	wordsButton.setAttribute('aria-pressed', 'true');
+	wordsButton.addEventListener('click', () => {
+		const view = currentView();
+		if (readOnly || view === null) return;
+		const shown = !view.showSubDescriptions;
+		void enqueue(async () => {
+			await controls.bridge().setViewSubDescriptions(view.id, shown);
+		});
 	});
-	// Flat lays a row's scenes side by side; Stack shows one with the rest
-	// behind it. The choice is the view's, so it is written to the document.
-	const presentationGroup = toolbar.createDiv({
-		cls: 'snowflake-method-timeline-presentation',
-		attr: { role: 'radiogroup', 'aria-label': t('timeline.presentation') },
+	const presentationButton = iconButton('snowflake-method-timeline-presentation', 'gallery-horizontal', t('timeline.presentation.toStack'));
+	presentationButton.addEventListener('click', () => {
+		choosePresentation(presentation === 'flat' ? 'stack' : 'flat');
 	});
-	const presentationRadios = new Map<ScenePresentation, HTMLButtonElement>();
-	for (const value of SCENE_PRESENTATIONS) {
-		const radio = presentationGroup.createEl('button', {
-			cls: 'snowflake-method-timeline-presentation-option',
-			text: t(`timeline.presentation.${value}`),
-			attr: { type: 'button', role: 'radio', 'aria-checked': 'false', 'data-value': value },
-		});
-		radio.addEventListener('click', () => {
-			choosePresentation(value);
-		});
-		radio.addEventListener('keydown', (event) => {
-			if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-			event.preventDefault();
-			const other: ScenePresentation = value === 'flat' ? 'stack' : 'flat';
-			presentationRadios.get(other)?.focus();
-			choosePresentation(other);
-		});
-		presentationRadios.set(value, radio);
-	}
 	const choosePresentation = (value: ScenePresentation): void => {
 		const view = currentView();
 		if (readOnly || view === null || value === presentation) return;
@@ -255,7 +275,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			await controls.bridge().setViewPresentation(view.id, value);
 		});
 	};
-	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
+	// The times run down the view first to last; the order symbol turns them
+	// about, the latest first, and leaves what stands under each as it is.
+	// The choice is the view's too, written with the rest.
+	const orderButton = iconButton('snowflake-method-timeline-order', 'arrow-down-narrow-wide', t('timeline.order.reverse'));
+	orderButton.setAttribute('aria-pressed', 'false');
+	orderButton.addEventListener('click', () => {
+		const view = currentView();
+		if (readOnly || view === null) return;
+		const reversed = !view.timesReversed;
+		void enqueue(async () => {
+			await controls.bridge().setViewTimesReversed(view.id, reversed);
+		});
+	});
 	const refreshButton = iconButton('snowflake-method-timeline-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
@@ -268,32 +300,95 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	addTimelineButton.addEventListener('click', () => {
 		void addTimeline(true);
 	});
+	const addViewButton = toolbar.createEl('button', {
+		cls: 'mod-cta snowflake-method-timeline-view-add',
+		text: t('timeline.view.add'),
+		attr: { type: 'button' },
+	});
+	addViewButton.addEventListener('click', () => {
+		openAddView();
+	});
+	// The folds stand in the frame's corners on the strip's row, as the
+	// app's sidebar toggles stand at the window's: the time column's at the
+	// left, folding the column to its names; the pool's at the right, where
+	// the pool folds away and the lanes take its room. The tab remembers
+	// which way each stands.
+	const foldBox = (side: 'start' | 'end', cls: string, icon: string): HTMLButtonElement => {
+		const box = root.createDiv({ cls: `snowflake-method-timeline-fold is-${side}` });
+		const button = box.createEl('button', {
+			cls: `clickable-icon ${cls}`,
+			attr: { type: 'button' },
+		});
+		setIcon(button, getIcon('sidebar-toggle-button-icon') !== null ? 'sidebar-toggle-button-icon' : icon);
+		return button;
+	};
+	const foldToggles: Record<Fold, HTMLButtonElement> = {
+		time: foldBox('start', 'snowflake-method-timeline-time-toggle', 'panel-left'),
+		pool: foldBox('end', 'snowflake-method-timeline-pool-toggle', 'panel-right'),
+	};
+	for (const part of FOLDS) {
+		foldToggles[part].addEventListener('click', () => {
+			fold(part, !folded(part));
+		});
+	}
 
 	// -- The empty states, and the body --------------------------------------
 
 	const empty = renderEmptyLine(root, '');
-	const emptyAction = empty.line.createEl('button', {
-		cls: 'mod-cta snowflake-method-timeline-empty-action is-hidden',
-		attr: { type: 'button' },
-	});
-	let emptyRun: (() => void) | null = null;
-	emptyAction.addEventListener('click', () => {
-		emptyRun?.();
-	});
 	const body = root.createDiv({ cls: 'snowflake-method-timeline-body is-hidden' });
-	const scroller = body.createDiv({
+	const field = body.createDiv({ cls: 'snowflake-method-timeline-field' });
+	const scroller = field.createDiv({
 		cls: 'snowflake-method-timeline-scroll',
 		attr: { tabindex: '-1' },
 	});
 	const table = scroller.createDiv({ cls: 'snowflake-method-timeline-table' });
 	const head = table.createDiv({ cls: 'snowflake-method-timeline-head' });
-	head.createDiv({ cls: 'snowflake-method-timeline-corner', text: t('table.sceneTime') });
-	const timesEmpty = table.createDiv({
-		cls: 'snowflake-method-timeline-times-empty',
-		text: t('timeline.empty.times'),
+	const corner = head.createDiv({ cls: 'snowflake-method-timeline-corner' });
+	corner.createSpan({ text: t('table.sceneTime') });
+	// The plus at the corner's end puts a time on the active lane, after the rest.
+	const cornerAdd = corner.createEl('button', {
+		cls: 'clickable-icon snowflake-method-timeline-time-add',
+		attr: { type: 'button', 'aria-label': t('timeline.timeline.addTime') },
 	});
+	setIcon(cornerAdd, 'plus');
+	setTooltip(cornerAdd, t('timeline.timeline.addTime'));
+	cornerAdd.addEventListener('click', () => {
+		void addTimeHere(null);
+	});
+	const timesEmpty = table.createDiv({ cls: 'snowflake-method-timeline-times-empty' });
+	renderEmptyLine(timesEmpty, t('timeline.empty.times'));
 	/** Where a time dropped past the last row lands, and wears the line. */
 	const tail = table.createDiv({ cls: 'snowflake-method-timeline-tail' });
+
+	// The scroller's own bars are hidden; these two stand in for them, one
+	// across under the lanes alone and one down beside the times alone, so
+	// neither runs along the head, the time column or the pinned lane. Each
+	// holds a spacer as long as the scroller's overflow past the part it skips.
+	const bars = {
+		across: field.createDiv({ cls: 'snowflake-method-timeline-scrollbar is-across is-hidden', attr: { 'aria-hidden': 'true' } }),
+		down: field.createDiv({ cls: 'snowflake-method-timeline-scrollbar is-down is-hidden', attr: { 'aria-hidden': 'true' } }),
+	};
+	const barSpace = {
+		across: bars.across.createDiv({ cls: 'snowflake-method-timeline-scrollbar-space' }),
+		down: bars.down.createDiv({ cls: 'snowflake-method-timeline-scrollbar-space' }),
+	};
+	scroller.addEventListener('scroll', () => {
+		if (bars.across.scrollLeft !== scroller.scrollLeft) bars.across.scrollLeft = scroller.scrollLeft;
+		if (bars.down.scrollTop !== scroller.scrollTop) bars.down.scrollTop = scroller.scrollTop;
+	});
+	bars.across.addEventListener('scroll', () => {
+		if (scroller.scrollLeft !== bars.across.scrollLeft) scroller.scrollLeft = bars.across.scrollLeft;
+	});
+	bars.down.addEventListener('scroll', () => {
+		if (scroller.scrollTop !== bars.down.scrollTop) scroller.scrollTop = bars.down.scrollTop;
+	});
+	// A wheel over a bar moves the whole scroller, both ways, as over the lanes.
+	const wheelThrough = (event: WheelEvent): void => {
+		event.preventDefault();
+		scroller.scrollBy({ left: event.deltaX, top: event.deltaY });
+	};
+	bars.across.addEventListener('wheel', wheelThrough, { passive: false });
+	bars.down.addEventListener('wheel', wheelThrough, { passive: false });
 
 	// -- The scene pool ------------------------------------------------------
 
@@ -301,14 +396,62 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cls: 'snowflake-method-timeline-pool',
 		attr: { 'aria-label': t('timeline.pool') },
 	});
-	const poolTitle = pool.createDiv({ cls: 'snowflake-method-timeline-pool-title' });
-	poolTitle.createSpan({ cls: 'snowflake-method-timeline-pool-name', text: t('timeline.pool'), attr: { role: 'heading', 'aria-level': '3' } });
-	const poolCount = poolTitle.createSpan({
+	// Its head stands level with the lane heads: the name, and how many scenes it holds.
+	const poolHead = pool.createDiv({ cls: 'snowflake-method-timeline-pool-head' });
+	poolHead.createSpan({
+		cls: 'snowflake-method-timeline-pool-name',
+		text: t('timeline.pool'),
+		attr: { role: 'heading', 'aria-level': '3' },
+	});
+	const poolCount = poolHead.createSpan({
 		cls: 'snowflake-method-step-indicator snowflake-method-timeline-pool-count',
 	});
 	const poolHost = pool.createDiv({ cls: 'snowflake-method-corkboard-host' });
 	/** The scenes the active timeline has placed, which the pool leaves out. */
 	let assigned = new Set<string>();
+
+	/** Whether the workspace is too narrow for both parts to stand, measured from its own width. */
+	let narrow = false;
+	/** The parts brought back by hand while narrow, which stand until the workspace is wide again. */
+	const openedNarrow = new Set<Fold>();
+
+	/** Whether a part stands folded now: as the tab remembers it, or by the width alone. */
+	const folded = (part: Fold): boolean =>
+		(part === 'time' ? memory.timeCollapsed : memory.poolCollapsed) || (narrow && !openedNarrow.has(part));
+
+	/**
+	 * The folds as they stand: the time column to its names, the pool away
+	 * with the lanes taking its room; each toggle says which way it goes next.
+	 */
+	const paintFolds = (): void => {
+		for (const part of FOLDS) {
+			const collapsed = folded(part);
+			const toggle = foldToggles[part];
+			const label = t(collapsed ? `timeline.${part}.expand` : `timeline.${part}.collapse`);
+			if (toggle.getAttribute('aria-label') !== label) {
+				toggle.setAttribute('aria-label', label);
+				setTooltip(toggle, label);
+			}
+			toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+		}
+		root.toggleClass('is-time-collapsed', folded('time'));
+		root.toggleClass('is-pool-collapsed', folded('pool'));
+		pool.toggleClass('is-hidden', folded('pool'));
+	};
+
+	/** Folds a part or brings it back, remembers which, and measures again for the room that moved. */
+	const fold = (part: Fold, collapsed: boolean): void => {
+		if (folded(part) === collapsed) return;
+		if (part === 'time') memory.timeCollapsed = collapsed;
+		else memory.poolCollapsed = collapsed;
+		if (collapsed) openedNarrow.delete(part);
+		else if (narrow) openedNarrow.add(part);
+		paintFolds();
+		controls.remember();
+		invalidateRects();
+		if (part === 'pool') poolHandle?.remeasure();
+		else fitScrollbars();
+	};
 
 	// -- State ---------------------------------------------------------------
 
@@ -320,9 +463,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let activeId: string | null = null;
 	/** How the rows deal their scenes, from the view or from how many lanes it shows. */
 	let presentation: ScenePresentation = 'flat';
+	/** The symbols the two switches wear now, so a paint redraws neither for nothing. */
+	let presentationIcon = 'gallery-horizontal';
+	let wordsIcon = 'eye';
+	let orderIcon = 'arrow-down-narrow-wide';
 	let readOnly = true;
 	let roster: EntityRosterEntry[] = [];
 	let optionsSignature = '';
+	let viewField: OptionPicker | null = null;
 	let scenesById = new Map<string, SceneViewModel>();
 	/** Each scene's place in the narrative order, which its card's circle shows. */
 	let sceneIndex = new Map<string, number>();
@@ -333,7 +481,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const timeRows = new Map<string, RowEntry>();
 	let boundBridge: TimelineBridge | null = null;
 	let unsubscribe: (() => void) | null = null;
-	let reloading = false;
+	/** The read in flight, which a second request joins rather than starting another. */
+	let reloadRun: Promise<void> | null = null;
 	let reloadPending = false;
 	let queue: Promise<void> = Promise.resolve();
 	let disposed = false;
@@ -405,32 +554,40 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	/** Reads the document again and paints; a read asked mid-read is made once this one lands. */
-	const reload = async (): Promise<void> => {
-		if (disposed) return;
-		if (reloading) {
+	/**
+	 * Reads the document again and paints. A request made while a read is in
+	 * flight joins it and is answered by one more pass after it, so a change
+	 * that awaits its read gets the document as it stands after the write,
+	 * even when the plugin's bell had already set a read going.
+	 */
+	const reload = (): Promise<void> => {
+		if (disposed) return Promise.resolve();
+		if (reloadRun !== null) {
 			reloadPending = true;
-			return;
+			return reloadRun;
 		}
-		reloading = true;
-		try {
-			do {
-				reloadPending = false;
-				const bridge = controls.bridge();
-				bind(bridge);
-				try {
-					reading = await bridge.read();
-					loadFailed = false;
-				} catch (error) {
-					reading = null;
-					loadFailed = true;
-					console.error('Snowflake: the timeline could not be read', error);
-				}
-				if (disposed) return;
-			} while (reloadPending);
-		} finally {
-			reloading = false;
-		}
-		paintAll();
+		reloadRun = (async () => {
+			try {
+				do {
+					reloadPending = false;
+					const bridge = controls.bridge();
+					bind(bridge);
+					try {
+						reading = await bridge.read();
+						loadFailed = false;
+					} catch (error) {
+						reading = null;
+						loadFailed = true;
+						console.error('Snowflake: the timeline could not be read', error);
+					}
+					if (disposed) return;
+				} while (reloadPending);
+			} finally {
+				reloadRun = null;
+			}
+			paintAll();
+		})();
+		return reloadRun;
 	};
 
 	/**
@@ -467,28 +624,124 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- Painting ------------------------------------------------------------
 
-	const showEmpty = (text: string | null, action: { label: string; run: () => void } | null): void => {
-		empty.line.toggleClass('is-hidden', text === null);
-		body.toggleClass('is-hidden', text !== null);
-		if (text !== null) empty.text.setText(text);
-		emptyAction.toggleClass('is-hidden', action === null);
-		if (action !== null) emptyAction.setText(action.label);
-		emptyAction.disabled = readOnly;
-		emptyRun = action?.run ?? null;
+	const frameWindow = root.ownerDocument.defaultView;
+
+	/**
+	 * Where the columns that keep their place end: the time column, and the
+	 * pinned lane when the view holds one. Summed from the head's own boxes
+	 * and its gap, never read off an offset: a sticky element's offset counts
+	 * the shift the scroll gave it, so a fit made while the lanes stood
+	 * scrolled would read the pin as far right as the scroll, let it go for
+	 * want of room, and start the bar past where it stands.
+	 */
+	const frozenWidth = (): number => {
+		const pinnedId = reading?.held.pinnedTimelineId ?? null;
+		const last = (pinnedId === null ? undefined : laneHeads.get(pinnedId))?.el ?? corner;
+		const gap = Number.parseFloat(frameWindow?.getComputedStyle(head).columnGap ?? '');
+		let end = 0;
+		for (const child of Array.from(head.children)) {
+			if (child !== corner) end += gap;
+			end += (child as HTMLElement).offsetWidth;
+			if (child === last) return end;
+		}
+		return Number.NaN;
 	};
 
-	/** The view switcher's options, remade only when the views moved. */
+	/**
+	 * Sizes the stand-in bars to the scroller's overflow: the one across starts
+	 * past the frozen columns and never runs under them, the one down under
+	 * the head. A pinned lane keeps its place as long as the field shows it
+	 * whole; only a field too narrow for it lets it go for the while, since a
+	 * lane held still past the field's edge could never be scrolled into view.
+	 * A field that leaves the bar across too little room past the frozen
+	 * columns to take hold of goes without it: the wheel still scrolls.
+	 */
+	const fitScrollbars = (): void => {
+		const timeWidth = corner.offsetWidth;
+		const pinnedEnd = frozenWidth();
+		const loose = Number.isFinite(pinnedEnd) && pinnedEnd > timeWidth && scroller.clientWidth < pinnedEnd;
+		root.toggleClass('is-pin-loose', loose);
+		const start = loose || !Number.isFinite(pinnedEnd) ? timeWidth : pinnedEnd;
+		const headHeight = head.offsetHeight;
+		const across = scroller.scrollWidth - scroller.clientWidth;
+		const down = scroller.scrollHeight - scroller.clientHeight;
+		const wide = Number.isFinite(across) && across > 0 && scroller.clientWidth - start >= SCROLL_ROOM_MIN;
+		const tall = Number.isFinite(down) && down > 0 && scroller.clientHeight > headHeight;
+		bars.across.toggleClass('is-hidden', !wide);
+		bars.down.toggleClass('is-hidden', !tall);
+		// Shown together, each stops short of the other at the corner; a bar's
+		// spacer then reaches the scroller's overflow past the bar's own length.
+		bars.across.toggleClass('is-short', wide && tall);
+		bars.down.toggleClass('is-short', wide && tall);
+		if (wide) {
+			bars.across.setCssStyles({ insetInlineStart: `${start}px` });
+			barSpace.across.setCssStyles({ width: `${across + bars.across.clientWidth}px` });
+			bars.across.scrollLeft = scroller.scrollLeft;
+		}
+		if (tall) {
+			bars.down.setCssStyles({ insetBlockStart: `${headHeight}px` });
+			barSpace.down.setCssStyles({ height: `${down + bars.down.clientHeight}px` });
+			bars.down.scrollTop = scroller.scrollTop;
+		}
+	};
+	/**
+	 * Narrow, the workspace folds both parts by its width alone, and brings
+	 * them back as it widens; what the tab remembers is not touched, and a
+	 * part brought back by hand meanwhile stands until the next widening.
+	 */
+	const measureNarrow = (): void => {
+		const width = root.clientWidth;
+		if (!(width > 0)) return;
+		const rem = Number.parseFloat(frameWindow?.getComputedStyle(root.doc.documentElement).fontSize ?? '');
+		const next = width < NARROW_MAX_REM * (Number.isFinite(rem) && rem > 0 ? rem : 16);
+		if (next === narrow) return;
+		narrow = next;
+		if (!narrow) openedNarrow.clear();
+		paintFolds();
+		invalidateRects();
+		poolHandle?.remeasure();
+	};
+	const sizeObserver = frameWindow === null ? null : new frameWindow.ResizeObserver(() => {
+		measureNarrow();
+		fitScrollbars();
+	});
+	sizeObserver?.observe(root);
+	sizeObserver?.observe(scroller);
+	sizeObserver?.observe(table);
+
+	/** The lanes' cards wear the style the pool's display control chose; the CSS reads it off the root. */
+	const paintCardMode = (): void => {
+		if (root.dataset.mode === memory.pool.mode) return;
+		root.dataset.mode = memory.pool.mode;
+		invalidateRects();
+	};
+
+	/** A word in the body's place, with nothing to press: the ways in stand in the toolbar. */
+	const showEmpty = (text: string | null): void => {
+		empty.line.toggleClass('is-hidden', text === null);
+		body.toggleClass('is-hidden', text !== null);
+		root.toggleClass('is-empty', text !== null);
+		if (text !== null) empty.text.setText(text);
+	};
+
+	/** The view field, remade only when the views moved; otherwise told the view held now. */
 	const paintOptions = (views: readonly TimelineView[]): void => {
 		const signature = views.map((view) => `${view.id} ${view.name}`).join('|');
-		if (signature !== optionsSignature) {
+		if (viewField === null || signature !== optionsSignature) {
 			optionsSignature = signature;
-			viewSelect.empty();
-			for (const view of views) {
-				viewSelect.createEl('option', { text: view.name, attr: { value: view.id } });
-			}
+			viewField?.destroy();
+			viewHost.empty();
+			viewField = buildOptionField(app, viewHost, {
+				options: () => views.map((view) => ({ value: view.id, label: view.name })),
+				label: t('timeline.view'),
+				placeholder: t('timeline.view.placeholder'),
+				emptyPlaceholder: t('timeline.view.placeholder'),
+				value: () => viewId ?? '',
+				choose: chooseView,
+			});
+			return;
 		}
-		viewSelect.disabled = views.length === 0;
-		if (viewId !== null && viewSelect.value !== viewId) viewSelect.value = viewId;
+		viewField.refresh();
 	};
 
 	/** Who a binding may point at now, from the model: the cast and every kind but time. */
@@ -525,6 +778,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			return;
 		}
 		invalidateRects();
+		paintFolds();
 		const nextModel = controls.model();
 		if (nextModel !== model) {
 			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
@@ -542,10 +796,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		addTimelineButton.disabled = readOnly || reading === null;
 		addViewButton.disabled = readOnly || reading === null;
 		if (reading === null) {
-			manageViewButton.disabled = true;
+			editViewButton.disabled = true;
 			paintPresentation(null);
+			paintWords(null);
+			paintOrder(null);
 			paintOptions([]);
-			showEmpty(t(loadFailed ? 'timeline.loadFailed' : 'timeline.loading'), null);
+			showEmpty(t(loadFailed ? 'timeline.loadFailed' : 'timeline.loading'));
 			return;
 		}
 		const held = reading.held;
@@ -557,30 +813,28 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		}
 		paintOptions(held.views);
 		const view = currentView();
-		manageViewButton.disabled = readOnly || view === null;
+		editViewButton.disabled = readOnly || view === null;
 		paintPresentation(view);
+		paintWords(view);
+		paintOrder(view);
 		if (view === null) {
 			lanes = [];
 			clearRows();
-			showEmpty(t('timeline.empty.views'), { label: t('timeline.view.add'), run: openAddView });
+			showEmpty(t('timeline.empty.views'));
 			return;
 		}
 		lanes = laneOrder(view, held);
 		if (lanes.length === 0) {
 			clearRows();
-			showEmpty(t('timeline.empty.timelines'), {
-				label: t('timeline.addTimeline'),
-				run: () => {
-					void addTimeline(true);
-				},
-			});
+			showEmpty(t('timeline.empty.timelines'));
 			return;
 		}
-		showEmpty(null, null);
+		showEmpty(null);
 		activeId = resolveActiveTimeline(lanes, held.pinnedTimelineId, memory.activeTimeline.get(view.id));
+		cornerAdd.disabled = readOnly || activeId === null;
 		const kind = layoutKind(lanes);
 		root.dataset.layout = kind;
-		root.dataset.mode = laneCardMode(kind, view.cardStyle);
+		paintCardMode();
 		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
 		const hold = holdFocus();
 		paintHeads(held);
@@ -589,26 +843,71 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		giveFocusBack(hold);
 		deck.prune();
 		stateText.setText('');
+		fitScrollbars();
 	};
 
-	/** The radios say how the view deals its scenes; the checked one is the group's tab stop. */
+	/** The symbol shows how the view deals its scenes; a press deals them the other way. */
 	const paintPresentation = (view: TimelineView | null): void => {
 		presentation = view === null ? 'flat' : derivedPresentation(view);
 		root.dataset.presentation = presentation;
-		for (const [value, radio] of presentationRadios) {
-			const checked = value === presentation;
-			radio.setAttribute('aria-checked', checked ? 'true' : 'false');
-			radio.tabIndex = checked ? 0 : -1;
-			radio.disabled = readOnly || view === null;
+		const stacked = presentation === 'stack';
+		const icon = stacked ? 'layers-3' : 'gallery-horizontal';
+		if (icon !== presentationIcon) {
+			presentationIcon = icon;
+			setIcon(presentationButton, icon);
 		}
+		const label = t(stacked ? 'timeline.presentation.toFlat' : 'timeline.presentation.toStack');
+		if (presentationButton.getAttribute('aria-label') !== label) {
+			presentationButton.setAttribute('aria-label', label);
+			setTooltip(presentationButton, label);
+		}
+		presentationButton.disabled = readOnly || view === null;
 	};
+
+	/** The symbol shows whether the lanes show their rows' words; a press shows or hides them. */
+	const paintWords = (view: TimelineView | null): void => {
+		const shown = view === null || view.showSubDescriptions;
+		// A view that keeps its sub-descriptions away shows the scenes alone.
+		root.toggleClass('is-words-hidden', !shown);
+		const icon = shown ? 'eye' : 'eye-off';
+		if (icon !== wordsIcon) {
+			wordsIcon = icon;
+			setIcon(wordsButton, icon);
+		}
+		const label = t(shown ? 'timeline.view.subDescriptionsHide' : 'timeline.view.subDescriptions');
+		if (wordsButton.getAttribute('aria-label') !== label) {
+			wordsButton.setAttribute('aria-label', label);
+			setTooltip(wordsButton, label);
+		}
+		wordsButton.setAttribute('aria-pressed', shown ? 'true' : 'false');
+		wordsButton.disabled = readOnly || view === null;
+	};
+
+	const paintOrder = (view: TimelineView | null): void => {
+		const reversed = view !== null && view.timesReversed;
+		const icon = reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide';
+		if (icon !== orderIcon) {
+			orderIcon = icon;
+			setIcon(orderButton, icon);
+		}
+		const label = t(reversed ? 'timeline.order.restore' : 'timeline.order.reverse');
+		if (orderButton.getAttribute('aria-label') !== label) {
+			orderButton.setAttribute('aria-label', label);
+			setTooltip(orderButton, label);
+		}
+		orderButton.setAttribute('aria-pressed', reversed ? 'true' : 'false');
+		orderButton.disabled = readOnly || view === null;
+	};
+
+	/** The order as the view keeps it: the rows run the other way when the view shows the latest first. */
+	const storedOrder = (view: TimelineView, displayed: readonly string[]): string[] =>
+		view.timesReversed ? [...displayed].reverse() : [...displayed];
 
 	/** The pool follows the active lane: what that lane has placed leaves it, and the count says what is left. */
 	const paintPool = (): void => {
 		const active = lanes.find((lane) => lane.id === activeId);
 		assigned = active === undefined ? new Set() : assignedSceneIds(active);
-		const left = model === null ? 0 : model.scenes.filter((scene) => !assigned.has(scene.id)).length;
-		paintCount(poolCount, left);
+		paintCount(poolCount, model === null ? 0 : model.scenes.filter((scene) => !assigned.has(scene.id)).length);
 		poolHandle?.refresh();
 	};
 
@@ -617,17 +916,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			cls: 'snowflake-method-timeline-lane-head',
 			attr: { 'data-timeline-id': lane.id },
 		});
-		const pin = el.createSpan({
+		// The pin, the name and the bound note ride in one box that holds at
+		// the frozen edge while the lane scrolls under, as its axis does; the
+		// box moves within the lead, which ends where the menu begins.
+		const lead = el.createDiv({ cls: 'snowflake-method-timeline-lane-lead' });
+		const title = lead.createDiv({ cls: 'snowflake-method-timeline-lane-title' });
+		const pin = title.createSpan({
 			cls: 'snowflake-method-timeline-lane-pin is-hidden',
 			attr: { 'aria-label': t('timeline.timeline.pinned') },
 		});
 		setIcon(pin, 'pin');
 		setTooltip(pin, t('timeline.timeline.pinned'));
-		const name = el.createEl('button', {
+		const name = title.createEl('button', {
 			cls: 'snowflake-method-timeline-lane-name',
 			attr: { type: 'button', 'aria-pressed': 'false' },
 		});
-		const entity = el.createEl('button', {
+		const entity = title.createEl('button', {
 			cls: 'snowflake-method-timeline-lane-entity is-hidden',
 			attr: { type: 'button' },
 		});
@@ -637,13 +941,24 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		setIcon(more, 'ellipsis');
 		setTooltip(more, t('table.actions'));
-		const entry: LaneHead = { id: lane.id, el, pin, name, entity, entityPath: null, more, timeline: lane };
+		const entry: LaneHead = { id: lane.id, el, pin, name, entity, entityRef: null, more, timeline: lane };
 		name.addEventListener('click', () => {
+			activate(entry.id);
+		});
+		// The whole head is the lane's name to a click; its own controls answer for themselves.
+		el.addEventListener('click', (event) => {
+			if (controlWithin(event.target)) return;
 			activate(entry.id);
 		});
 		entity.addEventListener('click', (event) => {
 			event.stopPropagation();
-			if (entry.entityPath !== null) void host.openManagedFile(entry.entityPath).catch(notice);
+			const ref = entry.entityRef;
+			if (ref === null) return;
+			const path = controls.projectPath() ?? undefined;
+			const opened = ref.kind === 'character'
+				? host.openCharacterForm(ref.id, path)
+				: host.openEntityForm({ mode: 'edit', id: ref.id }, path);
+			void opened.catch(notice);
 		});
 		more.addEventListener('click', (event) => {
 			event.stopPropagation();
@@ -669,7 +984,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const binding = lane.binding === null ? null : (resolveEntityRefs([lane.binding], roster)[0] ?? null);
 		entry.entity.toggleClass('is-hidden', binding === null);
 		if (binding === null) {
-			entry.entityPath = null;
+			entry.entityRef = null;
 			return;
 		}
 		if (entry.entity.textContent !== binding.name) entry.entity.setText(binding.name);
@@ -678,7 +993,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			entry.entity,
 			binding.missing ? t('table.referenceMissing', { name: binding.name }) : binding.name,
 		);
-		entry.entityPath = binding.missing ? null : binding.path;
+		entry.entityRef = binding.missing ? null : lane.binding;
 	};
 
 	/** Brings the heads level with the lanes: one per timeline, in the view's order, kept where they stand. */
@@ -736,7 +1051,18 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		setIcon(more, 'ellipsis');
 		setTooltip(more, t('table.actions'));
-		const entry: RowEntry = { timeId, el, handle, label, description, more, time: null, cells: new Map() };
+		// The rule between this time and the one above carries a plus; the stylesheet shows it from the second row on.
+		const seam = time.createDiv({ cls: 'snowflake-method-timeline-seam' });
+		const seamAdd = seam.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-seam-add',
+			attr: { type: 'button' },
+		});
+		setIcon(seamAdd, 'plus');
+		const entry: RowEntry = { timeId, el, handle, label, description, more, seamAdd, time: null, cells: new Map() };
+		seamAdd.addEventListener('click', (event) => {
+			event.stopPropagation();
+			void addTimeHere(entry.timeId);
+		});
 		handle.addEventListener('dragstart', (event) => {
 			if (readOnly || event.dataTransfer === null) {
 				event.preventDefault();
@@ -779,6 +1105,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const name = row.time?.name ?? t('timeline.time.missing');
 		if (entry.label.textContent !== name) entry.label.setText(name);
 		entry.label.disabled = missing;
+		const insert = t('timeline.time.insert', { name });
+		if (entry.seamAdd.getAttribute('aria-label') !== insert) {
+			entry.seamAdd.setAttribute('aria-label', insert);
+			setTooltip(entry.seamAdd, insert);
+		}
+		entry.seamAdd.disabled = readOnly || activeId === null;
 		entry.handle.setAttribute('draggable', readOnly ? 'false' : 'true');
 		entry.handle.disabled = readOnly;
 		const description = row.time?.description.trim() ?? '';
@@ -825,7 +1157,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	/** Brings the rows level with the times the view shows, in its order, kept where they stand. */
 	const paintRows = (view: TimelineView): void => {
 		const times = model === null ? [] : kindEntities(model, 'time');
-		const rows = unionRows(view, lanes, times);
+		// The view's order, turned about when the view shows the latest time first.
+		const rows = view.timesReversed ? unionRows(view, lanes, times).reverse() : unionRows(view, lanes, times);
 		timesEmpty.toggleClass('is-hidden', rows.length > 0);
 		const wanted = rows.map((row) => row.timeId);
 		rowOrder = wanted;
@@ -861,7 +1194,24 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			cls: 'snowflake-method-timeline-axis',
 			attr: { 'aria-hidden': 'true' },
 		});
-		const cell: CellEntry = { timelineId, el, axis, present: false, rows: null, trailing: null, pending: [], add: null, subrows: new Map() };
+		// The rule above the cell carries a plus of its own, for a time on this lane before the row.
+		const seam = el.createDiv({ cls: 'snowflake-method-timeline-seam' });
+		const seamAdd = seam.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-seam-add',
+			attr: { type: 'button' },
+		});
+		setIcon(seamAdd, 'plus');
+		seamAdd.addEventListener('click', (event) => {
+			event.stopPropagation();
+			void addTimeHere(row.timeId, timelineId);
+		});
+		// A click anywhere on the lane makes it the active one, as a click on
+		// its head does: on a card, a row's words or the empty ground alike.
+		// A lane already active is left as it stands.
+		el.addEventListener('click', () => {
+			activate(timelineId);
+		});
+		const cell: CellEntry = { timelineId, el, axis, seamAdd, present: false, rows: null, trailing: null, pending: [], add: null, subrows: new Map() };
 		// A row lands in a cell of its own lane, before the sub-row under the
 		// pointer or at the foot; another lane's cell says no, as a cursor.
 		// The mark moves from dragover alone: Chromium fires dragleave at
@@ -983,9 +1333,21 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cell.el.toggleClass('is-present', present);
 		cell.el.toggleClass('is-absent', !present);
 		cell.el.toggleClass('is-active-lane', lane.id === activeId);
+		cell.el.toggleClass('is-pinned', lane.id === (reading?.held.pinnedTimelineId ?? null));
+		const insert = t('timeline.time.insertOn', { timeline: lane.name, name: row.time?.name ?? t('timeline.time.missing') });
+		if (cell.seamAdd.getAttribute('aria-label') !== insert) {
+			cell.seamAdd.setAttribute('aria-label', insert);
+			setTooltip(cell.seamAdd, insert);
+		}
+		cell.seamAdd.disabled = readOnly;
 		if (cell.trailing !== null) {
 			cell.trailing.el.toggleClass('is-hidden', readOnly);
 			cell.trailing.input.disabled = readOnly;
+			// The foot invites the first sub-description, then more of them; under
+			// rows it keeps out of the way until the row is hovered or a drag wants it.
+			const more = time !== null && time.rows.length + cell.pending.length > 0;
+			cell.trailing.el.toggleClass('is-more', more);
+			cell.trailing.input.setAttribute('placeholder', t(more ? 'timeline.subrow.placeholderMore' : 'timeline.subrow.placeholder'));
 		}
 		if (cell.add !== null) {
 			const label = t('timeline.cell.addTime', { timeline: lane.name });
@@ -1007,20 +1369,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		// New rows stand before the trailing one, which keeps the foot of the cell.
 		rows.insertBefore(el, cell.trailing?.el ?? null);
-		const handle = el.createEl('button', {
+		// The handle leads the words' box, which holds at the frozen edge with
+		// the axis while the lane scrolls under, so the row keeps its name in view.
+		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
+		const handle = text.createEl('button', {
 			cls: 'clickable-icon snowflake-method-timeline-subrow-handle',
 			attr: { type: 'button', 'aria-label': t('timeline.subrow.drag'), draggable: 'true' },
 		});
 		setIcon(handle, 'grip-vertical');
 		setTooltip(handle, t('timeline.subrow.drag'));
-		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
 		const label = text.createEl('button', {
 			cls: 'snowflake-method-timeline-subrow-label',
 			attr: { type: 'button' },
 		});
-		const input = text.createEl('input', {
+		const input = text.createEl('textarea', {
 			cls: 'snowflake-method-timeline-subrow-input is-hidden',
-			attr: { type: 'text', 'aria-label': t('timeline.subrow.label') },
+			attr: { rows: '1', 'aria-label': t('timeline.subrow.label') },
 		});
 		const more = text.createEl('button', {
 			cls: 'clickable-icon snowflake-method-timeline-subrow-more',
@@ -1057,7 +1421,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		input.addEventListener('keydown', (event) => {
 			if (event.isComposing) return;
-			if (event.key === 'Enter') {
+			// Enter breaks a paragraph; the words are written on Mod+Enter, as a card's conflict is.
+			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
 				event.preventDefault();
 				commitRowEdit(cell, entry, true);
 			} else if (event.key === 'Escape') {
@@ -1065,6 +1430,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				event.stopPropagation();
 				endRowEdit(entry, true);
 			}
+		});
+		input.addEventListener('input', () => {
+			fitWords(input);
 		});
 		input.addEventListener('blur', () => {
 			commitRowEdit(cell, entry, false);
@@ -1093,12 +1461,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const rows = cell.rows;
 		if (rows === null) throw new Error('A trailing row needs the rows of a present cell.');
 		const el = rows.createDiv({ cls: 'snowflake-method-timeline-subrow is-trailing' });
-		el.createSpan({ cls: 'snowflake-method-timeline-subrow-handle-space' });
 		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
-		const input = text.createEl('input', {
+		text.createSpan({ cls: 'snowflake-method-timeline-subrow-handle-space' });
+		const input = text.createEl('textarea', {
 			cls: 'snowflake-method-timeline-subrow-input',
 			attr: {
-				type: 'text',
+				rows: '1',
 				'aria-label': t('timeline.subrow.label'),
 				placeholder: t('timeline.subrow.placeholder'),
 			},
@@ -1106,15 +1474,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'presentation' } });
 		input.addEventListener('keydown', (event) => {
 			if (event.isComposing) return;
-			if (event.key === 'Enter') {
+			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
 				event.preventDefault();
 				commitTrailing(cell, timeId, input);
 			} else if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopPropagation();
 				input.value = '';
+				fitWords(input);
 				input.blur();
 			}
+		});
+		input.addEventListener('input', () => {
+			fitWords(input);
 		});
 		input.addEventListener('blur', () => {
 			commitTrailing(cell, timeId, input);
@@ -1128,15 +1500,18 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * document has been read back with the row in it. The input is emptied
 	 * and keeps the focus, which is the next row already begun.
 	 */
-	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLInputElement): void => {
+	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLTextAreaElement): void => {
 		const words = input.value.trim();
 		if (words.length === 0 || readOnly) return;
 		input.value = '';
+		fitWords(input);
 		const rows = cell.rows;
 		if (rows === null) return;
 		const el = rows.createDiv({ cls: 'snowflake-method-timeline-subrow is-pending' });
 		rows.insertBefore(el, cell.trailing?.el ?? null);
-		el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' }).createEl('button', {
+		const text = el.createDiv({ cls: 'snowflake-method-timeline-subrow-text' });
+		text.createSpan({ cls: 'snowflake-method-timeline-subrow-handle-space' });
+		text.createEl('button', {
 			cls: 'snowflake-method-timeline-subrow-label',
 			text: words,
 			attr: { type: 'button', disabled: 'true' },
@@ -1162,6 +1537,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		entry.label.addClass('is-hidden');
 		entry.input.removeClass('is-hidden');
 		entry.input.value = entry.original;
+		fitWords(entry.input);
 		entry.input.focus();
 		entry.input.select();
 	};
@@ -1400,8 +1776,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		const face = el.createDiv({ cls: 'snowflake-method-timeline-stack-face' });
 		const stackControls = el.createDiv({ cls: 'snowflake-method-timeline-stack-controls' });
-		const button = (cls: string, icon: string, label: string): HTMLButtonElement => {
-			const control = stackControls.createEl('button', {
+		// The walk stands centred under the card in front; the way back to the first stands aside.
+		const walkGroup = stackControls.createDiv({ cls: 'snowflake-method-timeline-stack-walk' });
+		const button = (parent: HTMLElement, cls: string, icon: string, label: string): HTMLButtonElement => {
+			const control = parent.createEl('button', {
 				cls: `clickable-icon ${cls}`,
 				attr: { type: 'button', 'aria-label': label },
 			});
@@ -1409,29 +1787,30 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			setTooltip(control, label);
 			return control;
 		};
-		const previous = button('snowflake-method-timeline-stack-previous', 'chevron-left', t('timeline.stack.previous'));
-		const position = stackControls.createSpan({
+		const previous = button(walkGroup, 'snowflake-method-timeline-stack-previous', 'chevron-left', t('timeline.stack.previous'));
+		const position = walkGroup.createSpan({
 			cls: 'snowflake-method-timeline-stack-position',
 			attr: { 'aria-live': 'polite' },
 		});
-		const next = button('snowflake-method-timeline-stack-next', 'chevron-right', t('timeline.stack.next'));
-		const reset = button('snowflake-method-timeline-stack-reset', 'rotate-ccw', t('timeline.stack.reset'));
-		// Walking the stack is looking, not writing: the place is the session's.
-		const walk = (step: (at: number) => number): void => {
+		const next = button(walkGroup, 'snowflake-method-timeline-stack-next', 'chevron-right', t('timeline.stack.next'));
+		const reset = button(stackControls, 'snowflake-method-timeline-stack-reset', 'rotate-ccw', t('timeline.stack.reset'));
+		// Walking the stack is looking, not writing: the place is the session's,
+		// and past either end the walk comes round.
+		const walk = (step: (at: number, total: number) => number): void => {
 			const row = rowOfEntry(cell, entry);
 			const lane = laneOfRow(entry.rowId);
 			const view = currentView();
 			if (row === null || lane === null || view === null) return;
 			const key = stackKey(view.id, lane.id, row.id);
 			const at = clampStackPosition(memory.stackPositions.get(key), row.scenes.length);
-			memory.stackPositions.set(key, clampStackPosition(step(at), row.scenes.length));
+			memory.stackPositions.set(key, clampStackPosition(step(at, row.scenes.length), row.scenes.length));
 			paintStack(cell, entry, row, lane);
 		};
 		previous.addEventListener('click', () => {
-			walk((at) => at - 1);
+			walk((at, total) => (at + total - 1) % total);
 		});
 		next.addEventListener('click', () => {
-			walk((at) => at + 1);
+			walk((at, total) => (at + 1) % total);
 		});
 		reset.addEventListener('click', () => {
 			walk(() => 0);
@@ -1499,10 +1878,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			}
 		}
 		stack.el.dataset.total = String(total);
-		stack.controls.toggleClass('is-hidden', total <= 1);
-		stack.previous.disabled = at === 0;
+		// A stack of one has nowhere to walk; its controls fall silent but keep their room, so the rows stand level across the lanes.
+		stack.controls.toggleClass('is-alone', total <= 1);
+		// The walk comes round at either end; only the way back to the first is closed while standing there.
 		stack.reset.disabled = at === 0;
-		stack.next.disabled = at >= total - 1;
 		const shown = t('timeline.stack.position', { position: total === 0 ? 0 : at + 1, total });
 		if (stack.position.textContent !== shown) stack.position.setText(shown);
 	};
@@ -1593,7 +1972,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const next = reorderIds(rowOrder, timeId, beforeTimeId);
 		if (view === null || next === null) return;
 		void enqueue(async () => {
-			await controls.bridge().setTimeOrder(view.id, next);
+			await controls.bridge().setTimeOrder(view.id, storedOrder(view, next));
 		});
 	};
 
@@ -1614,7 +1993,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			const lane = laneOfRow(rowId);
 			if (
 				readOnly || lane === null || lane.id !== activeId ||
-				event.dataTransfer === null || controlWithin(event.target)
+				event.dataTransfer === null || pressWithin(event.target)
 			) {
 				event.preventDefault();
 				return;
@@ -1717,19 +2096,24 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	let eventWindow = root.win;
+	// The deck holds a card still while one of its controls is pressed; the
+	// release lands anywhere, so the window hears it, as under the corkboard.
 	const bindWindow = (win: Window): void => {
 		win.addEventListener('scroll', invalidateRects, true);
 		win.addEventListener('resize', invalidateRects);
+		win.addEventListener('mouseup', deck.releasePress, true);
 	};
 	const unbindWindow = (win: Window): void => {
 		win.removeEventListener('scroll', invalidateRects, true);
 		win.removeEventListener('resize', invalidateRects);
+		win.removeEventListener('mouseup', deck.releasePress, true);
 	};
 	bindWindow(eventWindow);
 	const stopMigration = root.onWindowMigrated?.((win) => {
 		unbindWindow(eventWindow);
 		eventWindow = win;
 		bindWindow(eventWindow);
+		deck.releasePress();
 		invalidateRects();
 	});
 
@@ -1860,6 +2244,36 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 	};
 
+	/**
+	 * Puts a time on a lane: the active one from the corner's plus, after the
+	 * rest, or from the time column's seam; a lane's own from the seam in its
+	 * cell. A seam's time goes before the row under it, and the view's order
+	 * is written with it in that place.
+	 */
+	const addTimeHere = async (beforeTimeId: string | null, timelineId: string | null = null): Promise<void> => {
+		const current = model;
+		const view = currentView();
+		const lane = lanes.find((candidate) => candidate.id === (timelineId ?? activeId));
+		if (current === null || readOnly || view === null || lane === undefined) return;
+		const picked = await promptForEntityReference(app, t, timeSource(current, lane));
+		if (picked === null || disposed) return;
+		const timeId = picked.option.value;
+		await enqueue(async () => {
+			await controls.bridge().addTime(lane.id, timeId);
+			if (beforeTimeId === timeId) return;
+			// After the rest in a view that runs first to last, the time takes
+			// its place among the rest by rank and the order is left alone;
+			// in one turned about, the foot is the first place, and is written.
+			if (beforeTimeId === null && !view.timesReversed) return;
+			const order = rowOrder.filter((id) => id !== timeId);
+			const at = beforeTimeId === null ? -1 : order.indexOf(beforeTimeId);
+			await controls.bridge().setTimeOrder(
+				view.id,
+				storedOrder(view, at === -1 ? [...order, timeId] : [...order.slice(0, at), timeId, ...order.slice(at)]),
+			);
+		});
+	};
+
 	const openLaneMenu = (entry: LaneHead, event: MouseEvent): void => {
 		const held = reading?.held;
 		const view = currentView();
@@ -1894,6 +2308,42 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					void enqueue(async () => {
 						await controls.bridge().pinTimeline(pinned ? null : lane.id);
 					});
+				});
+		});
+		menu.addSeparator();
+		// The moves and the insertions, then the removals, in the order a card's menu keeps.
+		// The pinned lane stands first whatever the view's order says; the others move among themselves.
+		const others = view.timelines.filter((id) => id !== held.pinnedTimelineId);
+		const at = pinned ? -1 : others.indexOf(lane.id);
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.moveLeft'))
+				.setIcon('arrow-left')
+				.setDisabled(readOnly || at <= 0)
+				.onClick(() => {
+					void enqueue(async () => {
+						await controls.bridge().moveTimelineInView(view.id, lane.id, others[at - 1] ?? null);
+					});
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.moveRight'))
+				.setIcon('arrow-right')
+				.setDisabled(readOnly || at === -1 || at >= others.length - 1)
+				.onClick(() => {
+					void enqueue(async () => {
+						await controls.bridge().moveTimelineInView(view.id, lane.id, others[at + 2] ?? null);
+					});
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.timeline.insertAfter'))
+				.setIcon('list-plus')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					void insertLaneAfter(lane);
 				});
 		});
 		menu.addItem((item) => {
@@ -1931,6 +2381,21 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				});
 		});
 		menu.showAtMouseEvent(event);
+	};
+
+	/** Adds a timeline through the form and stands it after this lane, when the form put it in the view. */
+	const insertLaneAfter = async (lane: Timeline): Promise<void> => {
+		const view = currentView();
+		if (view === null) return;
+		const others = view.timelines.filter((id) => id !== (reading?.held.pinnedTimelineId ?? null));
+		const next = others[others.indexOf(lane.id) + 1] ?? null;
+		const id = await addTimeline(true);
+		if (id === null || disposed) return;
+		await enqueue(async () => {
+			const now = currentView();
+			if (now === null || !now.timelines.includes(id)) return;
+			await controls.bridge().moveTimelineInView(now.id, id, next);
+		});
 	};
 
 	const renameLane = (lane: Timeline): void => {
@@ -2000,19 +2465,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (time !== null) {
 			menu.addItem((item) => {
 				item
-					.setTitle(t('actions.openNote'))
-					.setIcon('file-text')
-					.onClick(() => {
-						void host.openManagedFile(time.path).catch(notice);
-					});
-			});
-			menu.addItem((item) => {
-				item
 					.setTitle(t('actions.edit'))
 					.setIcon('pencil')
 					.setDisabled(readOnly)
 					.onClick(() => {
 						editTime(entry);
+					});
+			});
+			menu.addItem((item) => {
+				item
+					.setTitle(t('common.open'))
+					.setIcon('file-text')
+					.onClick(() => {
+						void host.openManagedFile(time.path).catch(notice);
 					});
 			});
 			menu.addSeparator();
@@ -2034,6 +2499,16 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				.setDisabled(readOnly || at === -1 || at >= rowOrder.length - 1)
 				.onClick(() => {
 					moveTime(entry.timeId, rowOrder[at + 2] ?? null);
+				});
+		});
+		// A time put in after this one, on the active lane: before the row below, or after the rest.
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.time.insertAfter'))
+				.setIcon('calendar-plus')
+				.setDisabled(readOnly || lane === null)
+				.onClick(() => {
+					void addTimeHere(rowOrder[at + 1] ?? null);
 				});
 		});
 		menu.addSeparator();
@@ -2138,7 +2613,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				t,
 				{
 					takenNames: held.timelines.map((timeline) => timeline.name),
-					pickBinding,
+					roster: () => roster,
 					offerView: offerView && currentView() !== null,
 				},
 				async (draft) => {
@@ -2190,7 +2665,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		).open();
 	};
 
-	const openManageView = (): void => {
+	const openEditView = (): void => {
 		const held = reading?.held;
 		const view = currentView();
 		if (held === undefined || view === null || readOnly) return;
@@ -2198,7 +2673,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			app,
 			t,
 			{
-				mode: 'manage',
+				mode: 'edit',
 				takenNames: held.views.filter((candidate) => candidate.id !== view.id).map((candidate) => candidate.name),
 				initial: { name: view.name, timelines: [...view.timelines] },
 				timelines: () => reading?.held.timelines ?? [],
@@ -2219,7 +2694,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			async (draft) => {
 				await enqueue(async () => {
 					const bridge = controls.bridge();
-					if (draft.name !== view.name) await bridge.renameView(view.id, draft.name);
+					// Against the view as it stands now, so a name already so is not written again.
+					const standing = (reading === null ? undefined : findTimelineView(reading.held, view.id)) ?? view;
+					if (draft.name !== standing.name) await bridge.renameView(view.id, draft.name);
 					await bridge.setViewTimelines(view.id, draft.timelines);
 				});
 			},
@@ -2227,7 +2704,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	// The pool is the corkboard in one column, showing what the active lane
-	// has not placed; its search, funnel, grouping and order are its own.
+	// has not placed; its search, funnel, grouping and order are its own,
+	// and the card style it chooses dresses the lanes' cards as well.
 	const poolControls: CorkboardControls = {
 		app,
 		host,
@@ -2241,12 +2719,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		memory: memory.pool,
 		remember: () => {
 			controls.remember();
+			paintCardMode();
 		},
 	};
 	poolHandle = controls.corkboard(poolHost, poolControls, {
 		include: (scene) => !assigned.has(scene.id),
 		addButton: 'icon',
 		columns: 1,
+		// One column has no insertion buttons to leave room for between cards.
+		gap: 0.75,
 		emptyText: t('timeline.pool.empty'),
 		// A pool card leaves under the workspace's type and locks the active
 		// lane; a lane's card dropped back on the pool gives up its place.
@@ -2278,10 +2759,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			paintAll();
 		},
 		reveal: (id) => {
+			// A card can only be shown in a pool that stands.
+			fold('pool', false);
 			poolHandle?.reveal(id);
 		},
 		remeasure: () => {
 			invalidateRects();
+			fitScrollbars();
 			poolHandle?.remeasure();
 		},
 		saveFocusedConflict: () => {
@@ -2303,6 +2787,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			poolHandle?.dispose();
 			poolHandle = null;
 			deck.dispose();
+			sizeObserver?.disconnect();
+			viewField?.destroy();
 			root.remove();
 		},
 	};

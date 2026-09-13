@@ -79,6 +79,8 @@ export interface CorkboardVariant {
 	addButton?: 'label' | 'icon';
 	/** A fixed column count, whatever the width. */
 	columns?: number;
+	/** The gap between cards in rem; the board's own leaves room for its insertion buttons. */
+	gap?: number;
 	/** Said when the board has no scene to offer, instead of the corkboard's own line. */
 	emptyText?: string;
 	/**

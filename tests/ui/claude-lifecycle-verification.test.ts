@@ -228,7 +228,7 @@ describe('Claude lifecycle findings: production errors and real user paths', () 
 		expect(internals.memory).toMatchObject({ query: '', scrollTop: 0, filters: { character: '', status: 'all' } });
 	});
 
-	it.each(['timeline', 'plotline', 'beat-sheet', 'corkboard-freeform'])('#14 preserves the %s frame and focused tab on a refresh', async (visualization) => {
+	it.each(['timeline', 'beat-sheet', 'corkboard-freeform'])('#14 preserves the %s frame and focused tab on a refresh', async (visualization) => {
 		const { view, content, dom } = workspaceView();
 		await view.setState({ projectPath, visualization }, { history: false });
 		await view.onOpen();

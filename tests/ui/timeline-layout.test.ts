@@ -5,7 +5,6 @@ import {
 	cellDragState,
 	clampStackPosition,
 	laneAcceptsDrag,
-	laneCardMode,
 	laneCell,
 	laneOrder,
 	layoutKind,
@@ -24,7 +23,7 @@ const timeline = (id: string): Timeline => ({
 	id, name: `Timeline ${id}`, binding: null, times: [], createdAt: 1, updatedAt: 1,
 });
 const view = (timelines: string[]): TimelineView => ({
-	id: 'v', name: 'View', timelines, timeOrder: [], presentation: null, cardStyle: null, createdAt: 1, updatedAt: 1,
+	id: 'v', name: 'View', timelines, timeOrder: [], presentation: null, cardStyle: null, showSubDescriptions: true, timesReversed: false, createdAt: 1, updatedAt: 1,
 });
 
 describe('the lanes a view shows', () => {
@@ -37,13 +36,10 @@ describe('the lanes a view shows', () => {
 		expect(laneOrder(view([]), { timelines, pinnedTimelineId: 'a' })).toEqual([]);
 	});
 
-	it('stands one lane alone and several side by side, dressing the cards for each', () => {
+	it('stands one lane alone and several side by side', () => {
 		expect(layoutKind([])).toBe('single');
 		expect(layoutKind([1])).toBe('single');
 		expect(layoutKind([1, 2])).toBe('multi');
-		expect(laneCardMode('single', null)).toBe('standard');
-		expect(laneCardMode('multi', null)).toBe('compact');
-		expect(laneCardMode('multi', 'extended')).toBe('extended');
 	});
 
 	it('makes active the lane a click chose, else the pinned one, else the first', () => {

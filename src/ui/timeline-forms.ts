@@ -1,13 +1,14 @@
 /**
  * The dialogs the timeline workspace opens: a name for a timeline or a view,
- * a new timeline with the entity it follows, a view made or managed over
+ * a new timeline with the entity it follows, a view made or edited over
  * the timelines it shows, and the one confirmation every removal here asks
  * through. Each is a labelled form, as every form the plugin opens is.
  */
 
-import { Notice, Setting, type App } from 'obsidian';
+import { FuzzySuggestModal, Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
 
-import type { EntityRef, Timeline } from '../domain';
+import type { EntityRef, EntityRosterEntry, Timeline } from '../domain';
+import { entityGroupLabel, renderRecordPickFrame, wireCardDrag } from './entity-form';
 import {
 	ConfirmModal,
 	SnowflakeFormModal,
@@ -15,6 +16,7 @@ import {
 	type SubmitHandler,
 	type Translate,
 } from './modals';
+import { buildOptionField, type OptionPicker } from './option-picker';
 
 interface NameFormSpec {
 	title: string;
@@ -48,6 +50,9 @@ class NameFormModal extends SnowflakeFormModal<string> {
 	}
 
 	protected buildForm(): void {
+		// The same form the project dialogs use, so naming a timeline or a view
+		// looks like naming anything else rather than like a settings page.
+		this.contentEl.addClass('snowflake-method-project-form');
 		let inputEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
 			.setName(this.spec.label)
@@ -123,15 +128,15 @@ export interface TimelineDraft {
 export class AddTimelineModal extends SnowflakeFormModal<TimelineDraft> {
 	private readonly value: TimelineDraft;
 	private readonly name: UniqueNameField;
-	private bindingName: HTMLElement | null = null;
+	private picker: OptionPicker | null = null;
 
 	constructor(
 		app: App,
 		t: Translate,
 		private readonly options: {
 			takenNames: readonly string[];
-			/** Asks for the entity the timeline follows; null when the author closes the picker. */
-			pickBinding: () => Promise<EntityRef | null>;
+			/** Who the timeline may follow: the cast and every kind but time, as the project stands. */
+			roster: () => readonly EntityRosterEntry[];
 			/** Whether a view stands open for the timeline to join. */
 			offerView: boolean;
 		},
@@ -146,6 +151,7 @@ export class AddTimelineModal extends SnowflakeFormModal<TimelineDraft> {
 	}
 
 	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
 		let inputEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
 			.setName(this.t('timeline.timeline.name'))
@@ -157,43 +163,58 @@ export class AddTimelineModal extends SnowflakeFormModal<TimelineDraft> {
 				});
 			});
 		this.name.attach(name.settingEl, inputEl, this.value.name);
+		// The binding is typed into, searched and picked from, as a form's
+		// category is, the cast and each kind under a heading of its own. A
+		// field of this kind changes only by a pick, so None stands first
+		// among the rows for a timeline that follows nobody.
 		const binding = new Setting(this.contentEl)
 			.setName(this.t('timeline.timeline.entity'))
 			.setDesc(this.t('timeline.timeline.entityHint'));
-		this.bindingName = binding.controlEl.createSpan({
-			cls: 'snowflake-method-timeline-binding-name',
-		});
-		binding
-			.addButton((button) => {
-				button.setButtonText(this.t('timeline.timeline.entityChoose')).onClick(async () => {
-					const picked = await this.options.pickBinding();
-					if (picked === null) return;
-					this.value.binding = picked;
-					this.paintBinding();
-				});
-			})
-			.addExtraButton((button) => {
-				button.setIcon('x').setTooltip(this.t('common.remove')).onClick(() => {
-					this.value.binding = null;
-					this.paintBinding();
-				});
-			});
-		this.paintBinding();
+		this.picker?.destroy();
+		this.picker = buildOptionField(
+			this.app,
+			binding.controlEl.createDiv({ cls: 'snowflake-method-timeline-picker' }),
+			{
+				options: () => [
+					{ value: '', label: this.t('timeline.timeline.entityNone') },
+					...this.options.roster().map((entry) => ({
+						value: entry.id,
+						label: entry.name,
+						section: entityGroupLabel(this.t, entry.group),
+					})),
+				],
+				label: this.t('timeline.timeline.entity'),
+				placeholder: this.t('timeline.timeline.entityNone'),
+				emptyPlaceholder: this.t('timeline.timeline.entityNone'),
+				value: () => this.value.binding?.id ?? '',
+				choose: (value) => {
+					const entry = this.options.roster().find((candidate) => candidate.id === value);
+					this.value.binding =
+						entry === undefined ? null : { kind: entry.kind, id: entry.id, name: entry.name };
+				},
+				dress: (el, option) => {
+					el.toggleClass('is-none', option === null || option.value === '');
+				},
+			},
+		);
 		if (this.options.offerView) {
-			new Setting(this.contentEl)
+			// A field like the ones above it in name, on one line with its
+			// switch at the end: a switch is not a box the width of the form.
+			const join = new Setting(this.contentEl)
 				.setName(this.t('timeline.timeline.addToView'))
 				.addToggle((toggle) => {
 					toggle.setValue(this.value.addToView).onChange((value) => {
 						this.value.addToView = value;
 					});
 				});
+			join.settingEl.addClass('snowflake-method-timeline-switch-setting');
 		}
 	}
 
-	private paintBinding(): void {
-		const binding = this.value.binding;
-		this.bindingName?.setText(binding === null ? this.t('timeline.timeline.entityNone') : binding.name);
-		this.bindingName?.toggleClass('is-empty', binding === null);
+	onClose(): void {
+		this.picker?.destroy();
+		this.picker = null;
+		super.onClose();
 	}
 
 	protected collectValue(): TimelineDraft | null {
@@ -217,25 +238,53 @@ export interface TimelineViewDraft {
 	timelines: string[];
 }
 
+/** The timelines the project has that a view does not show yet, picked by name. */
+class TimelinePickModal extends FuzzySuggestModal<Timeline> {
+	constructor(
+		app: App,
+		placeholder: string,
+		private readonly timelines: readonly Timeline[],
+		private readonly pick: (timeline: Timeline) => void,
+	) {
+		super(app);
+		this.setPlaceholder(placeholder);
+	}
+
+	getItems(): Timeline[] {
+		return [...this.timelines];
+	}
+
+	getItemText(timeline: Timeline): string {
+		return timeline.name;
+	}
+
+	onChooseItem(timeline: Timeline): void {
+		this.pick(timeline);
+	}
+}
+
 /**
- * A view made, or one managed: the name, and a checklist of every timeline
- * the project has, in the order the view shows them, with a way to make a
- * timeline on the spot. Managing adds Move up and Move down to the ones
- * checked, and puts Delete view at the foot with the other buttons.
+ * A view made, or one edited: the name, and the timelines it shows as
+ * lines under the field, as a scene's manuscript notes stand under theirs:
+ * each with a handle to drag it into its place among them, its name, and
+ * a way to take it off. Under the lines, a frame adds a timeline the
+ * project already has; by the field's name, a plus makes one on the spot,
+ * and it joins the lines. Editing puts Delete at the start of the foot.
  */
 export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft> {
 	private nameValue: string;
 	private readonly name: UniqueNameField;
-	/** Every timeline in the order the list shows: the view's own first, the rest after. */
-	private order: string[];
-	private readonly checked: Set<string>;
-	private list: HTMLElement | null = null;
+	/** The timelines the view shows, in its order. */
+	private timelines: string[];
+	private lines: HTMLElement | null = null;
+	private frame: ReturnType<typeof renderRecordPickFrame> | null = null;
+	private readonly dragState: { dragging: string | null } = { dragging: null };
 
 	constructor(
 		app: App,
 		t: Translate,
 		private readonly options: {
-			mode: 'add' | 'manage';
+			mode: 'add' | 'edit';
 			takenNames: readonly string[];
 			initial: TimelineViewDraft;
 			/** The project's timelines as they stand now, re-read after one is made. */
@@ -250,22 +299,22 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 		super(
 			app,
 			t,
-			t(options.mode === 'add' ? 'timeline.view.add' : 'timeline.view.manage'),
+			t(options.mode === 'add' ? 'timeline.view.add' : 'timeline.view.edit'),
 			onSubmit,
 			options.mode === 'add' ? 'common.create' : 'common.save',
 		);
 		this.nameValue = options.initial.name;
 		this.name = new UniqueNameField(
 			options.takenNames,
-			options.mode === 'manage' ? options.initial.name : null,
+			options.mode === 'edit' ? options.initial.name : null,
 			() => this.t('timeline.view.nameTaken'),
 		);
-		this.checked = new Set(options.initial.timelines);
-		this.order = [...options.initial.timelines];
+		this.timelines = [...options.initial.timelines];
 		this.modalEl.addClass('snowflake-method-compact-form-modal');
 	}
 
 	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
 		let inputEl: HTMLInputElement | null = null;
 		const name = new Setting(this.contentEl)
 			.setName(this.t('timeline.view.name'))
@@ -277,89 +326,122 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 				});
 			});
 		this.name.attach(name.settingEl, inputEl, this.nameValue);
-		new Setting(this.contentEl)
-			.setName(this.t('timeline.view.timelines'))
-			.setDesc(this.t('timeline.view.timelinesHint'))
-			.setHeading();
-		this.list = this.contentEl.createDiv({ cls: 'snowflake-method-timeline-view-list' });
-		this.paintList();
-		new Setting(this.contentEl).addButton((button) => {
-			button.setButtonText(this.t('timeline.addTimeline')).onClick(async () => {
-				const id = await this.options.addTimeline();
+		const timelines = new Setting(this.contentEl).setName(this.t('timeline.view.timelines'));
+		timelines.settingEl.addClass('snowflake-method-timeline-view-setting');
+		// The plus by the field's name makes a timeline on the spot, and it joins the lines.
+		const make = timelines.infoEl.createEl('button', {
+			cls: 'clickable-icon snowflake-method-timeline-view-make',
+			attr: { type: 'button', 'aria-label': this.t('timeline.addTimeline') },
+		});
+		setIcon(make, 'plus');
+		setTooltip(make, this.t('timeline.addTimeline'));
+		make.addEventListener('click', () => {
+			void this.options.addTimeline().then((id) => {
 				if (id === null) return;
-				this.checked.add(id);
-				if (!this.order.includes(id)) this.order.push(id);
-				this.paintList();
+				if (!this.timelines.includes(id)) this.timelines.push(id);
+				this.paintLines();
 			});
 		});
+		const block = timelines.controlEl.createDiv({ cls: 'snowflake-method-timeline-view-timelines' });
+		this.lines = block.createDiv({ cls: 'snowflake-method-record-lines' });
+		// The frame under the lines adds a timeline the project has and the view does not show.
+		this.frame = renderRecordPickFrame(block, '', () => {
+			const offered = this.available();
+			if (offered.length === 0) return;
+			new TimelinePickModal(this.app, this.t('timeline.view.addExisting'), offered, (timeline) => {
+				if (this.timelines.includes(timeline.id)) return;
+				this.timelines.push(timeline.id);
+				this.paintLines();
+			}).open();
+		});
+		this.paintLines();
 	}
 
-	/** The rows, one per timeline, remade whole: the list is short and the order moves. */
-	private paintList(): void {
-		const list = this.list;
-		if (list === null) return;
-		list.empty();
-		const timelines = this.options.timelines();
-		const known = new Set(timelines.map((timeline) => timeline.id));
-		// The view's own order first; a timeline the view lacks joins at the end.
-		this.order = [
-			...this.order.filter((id) => known.has(id)),
-			...timelines.map((timeline) => timeline.id).filter((id) => !this.order.includes(id)),
-		];
-		if (this.order.length === 0) {
-			list.createEl('p', {
-				cls: 'snowflake-method-timeline-view-list-empty',
-				text: this.t('timeline.view.noTimelines'),
-			});
-			return;
-		}
-		const shown = this.order.filter((id) => this.checked.has(id));
-		for (const id of this.order) {
-			const timeline = timelines.find((candidate) => candidate.id === id);
+	/** The project's timelines the view does not show yet. */
+	private available(): Timeline[] {
+		return this.options.timelines().filter((timeline) => !this.timelines.includes(timeline.id));
+	}
+
+	/** The lines, one per timeline shown, remade whole: the list is short and the order moves. */
+	private paintLines(): void {
+		const lines = this.lines;
+		if (lines === null) return;
+		lines.empty();
+		const known = this.options.timelines();
+		// A timeline the project no longer has leaves the view with the save.
+		this.timelines = this.timelines.filter((id) => known.some((timeline) => timeline.id === id));
+		for (const id of this.timelines) {
+			const timeline = known.find((candidate) => candidate.id === id);
 			if (timeline === undefined) continue;
-			const row = new Setting(list).setName(timeline.name);
-			const checked = this.checked.has(id);
-			if (this.options.mode === 'manage' && checked) {
-				const at = shown.indexOf(id);
-				row.addExtraButton((button) => {
-					button.setIcon('arrow-up').setTooltip(this.t('actions.moveUp')).setDisabled(at <= 0)
-						.onClick(() => { this.move(id, -1); });
-				});
-				row.addExtraButton((button) => {
-					button.setIcon('arrow-down').setTooltip(this.t('actions.moveDown'))
-						.setDisabled(at === -1 || at >= shown.length - 1)
-						.onClick(() => { this.move(id, 1); });
-				});
-			}
-			row.addToggle((toggle) => {
-				toggle.setValue(checked).onChange((value) => {
-					if (value) this.checked.add(id);
-					else this.checked.delete(id);
-					if (this.options.mode === 'manage') this.paintList();
-				});
+			const el = lines.createDiv({ cls: 'snowflake-method-record-line snowflake-method-timeline-view-line' });
+			const handle = el.createEl('button', {
+				cls: 'clickable-icon snowflake-method-timeline-view-handle',
+				attr: { type: 'button', 'aria-label': this.t('form.record.reorder') },
+			});
+			setIcon(handle, 'grip-vertical');
+			el.createDiv({ cls: 'snowflake-method-record-line-value', text: timeline.name });
+			const remove = el.createEl('button', {
+				cls: 'snowflake-method-record-line-remove clickable-icon',
+				attr: { type: 'button', 'aria-label': this.t('timeline.view.remove', { name: timeline.name }) },
+			});
+			setIcon(remove, 'circle-minus');
+			remove.addEventListener('click', () => {
+				this.timelines = this.timelines.filter((candidate) => candidate !== id);
+				this.paintLines();
+			});
+			// A drop puts the dragged line in this one's place; from the
+			// keyboard, the handle walks its line one step at a time.
+			wireCardDrag(el, handle, this.dragState, id, (dragged) => {
+				this.moveLine(dragged, id);
+			});
+			handle.addEventListener('keydown', (event) => {
+				const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+				if (step === 0) return;
+				event.preventDefault();
+				const other = this.timelines[this.timelines.indexOf(id) + step];
+				if (other === undefined) return;
+				this.moveLine(id, other);
+				this.focusHandle(id);
 			});
 		}
+		const offered = this.available();
+		this.frame?.setPlaceholder(this.t(
+			known.length === 0
+				? 'timeline.view.noTimelines'
+				: offered.length === 0
+					? 'timeline.view.allShown'
+					: 'timeline.view.addExisting',
+		));
+		this.frame?.setDisabled(offered.length === 0);
 	}
 
-	/** Swaps a checked timeline with its checked neighbour, one step up or down. */
-	private move(id: string, step: -1 | 1): void {
-		const shown = this.order.filter((candidate) => this.checked.has(candidate));
-		const at = shown.indexOf(id);
-		const other = shown[at + step];
-		if (at === -1 || other === undefined) return;
-		const from = this.order.indexOf(id);
-		const to = this.order.indexOf(other);
-		this.order[from] = other;
-		this.order[to] = id;
-		this.paintList();
+	/**
+	 * Puts a line in another's place: after it when brought down, before it
+	 * when brought up, as a record card goes among its rows.
+	 */
+	private moveLine(id: string, target: string): void {
+		const from = this.timelines.indexOf(id);
+		const to = this.timelines.indexOf(target);
+		if (from === -1 || to === -1 || from === to) return;
+		const next = [...this.timelines];
+		next.splice(from, 1);
+		next.splice(to, 0, id);
+		this.timelines = next;
+		this.paintLines();
 	}
 
+	private focusHandle(id: string): void {
+		const line = this.lines?.children[this.timelines.indexOf(id)];
+		line?.querySelector<HTMLElement>('.snowflake-method-timeline-view-handle')?.focus();
+	}
+
+	/** Delete, at the start of the foot across from Save, when the view stands to be taken away. */
 	protected leadingActions(actions: HTMLElement): void {
 		const deleteView = this.options.deleteView;
 		if (deleteView === undefined) return;
 		const button = actions.createEl('button', {
-			cls: 'mod-warning',
-			text: this.t('timeline.view.delete'),
+			cls: 'mod-warning snowflake-method-modal-leading-action',
+			text: this.t('actions.delete'),
 			attr: { type: 'button' },
 		});
 		button.addEventListener('click', () => {
@@ -380,7 +462,7 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 			new Notice(objection);
 			return null;
 		}
-		return { name, timelines: this.order.filter((id) => this.checked.has(id)) };
+		return { name, timelines: [...this.timelines] };
 	}
 }
 

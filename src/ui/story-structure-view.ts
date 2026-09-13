@@ -157,6 +157,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.timelineMemory.pool.mode = update.state.timeline.pool.mode;
 		this.timelineMemory.pool.group = update.state.timeline.pool.group;
 		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
+		this.timelineMemory.poolCollapsed = update.state.timeline.poolCollapsed;
+		this.timelineMemory.timeCollapsed = update.state.timeline.timeCollapsed;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -185,6 +187,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 					group: this.timelineMemory.pool.group,
 					reversed: this.timelineMemory.pool.reversed,
 				},
+				poolCollapsed: this.timelineMemory.poolCollapsed,
+				timeCollapsed: this.timelineMemory.timeCollapsed,
 			},
 		};
 	}

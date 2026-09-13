@@ -3047,10 +3047,10 @@
 	width: 100%;
 }
 
-/* The renumber question, asked the same way by the naming form and the merge
-   dialog: what it decides on the left, the toggle at the right edge, on one
-   line and with nothing under it. The words take a click as a checkbox's
-   label does. */
+/* A yes or no a compact form asks, the same way in the naming form and
+   the merge dialog: what it decides on the left, the toggle at the right
+   edge, on one line and with nothing under it. The words take a click as a
+   checkbox's label does. */
 .snowflake-method-renumber-row {
 	display: flex;
 	align-items: center;
@@ -12466,6 +12466,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	white-space: nowrap;
 }
 
+/* As a plus alone it stands one gap from its neighbours, as the other icons do. */
+.clickable-icon.snowflake-method-corkboard-add {
+	margin-inline-start: 0;
+}
+
 .snowflake-method-corkboard-display[aria-expanded='true'],
 .snowflake-method-corkboard-direction:hover {
 	color: var(--text-accent);
@@ -12620,6 +12625,38 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	padding: var(--size-4-2) var(--size-4-3);
 	border-block-end: 1px solid
 		color-mix(in srgb, var(--snowflake-method-sticky-edge) 50%, transparent);
+}
+
+/* A grip at the top centre of every card, over the head's padding, to take
+   hold of the card by where nothing else answers a press: shown to the
+   pointer over the card, and not at all on a card that cannot drag. */
+.snowflake-method-corkboard-grip {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--snowflake-method-corkboard-action-size);
+	height: var(--size-4-3);
+	color: var(--text-faint);
+	opacity: 0;
+	translate: -50% 0;
+	cursor: grab;
+}
+
+.snowflake-method-corkboard-grip svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.snowflake-method-corkboard-card:hover .snowflake-method-corkboard-grip,
+.snowflake-method-corkboard-card.is-dragging .snowflake-method-corkboard-grip {
+	opacity: 1;
+}
+
+.snowflake-method-corkboard-card[draggable='false'] .snowflake-method-corkboard-grip {
+	display: none;
 }
 
 .snowflake-method-corkboard-number {
@@ -13031,90 +13068,245 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 .snowflake-method-timeline {
-	--snowflake-method-timeline-time-width: 14rem;
+	/* A time's words, a sub-description's words and a card on a lane are all
+	   one card wide; the columns add their handle, their menu, the gaps and
+	   the padding around the words. */
+	--snowflake-method-timeline-time-width: calc(
+		var(--size-4-3) + var(--size-4-2) + 2 * var(--snowflake-method-corkboard-action-size) +
+			2 * var(--size-2-1) + var(--snowflake-method-corkboard-card-width)
+	);
 	--snowflake-method-timeline-axis-width: 1.5rem;
-	--snowflake-method-timeline-sub-width: 12rem;
-	--snowflake-method-timeline-scene-width: 16rem;
+	--snowflake-method-timeline-sub-width: calc(
+		var(--snowflake-method-corkboard-card-width) + var(--snowflake-method-corkboard-action-size)
+	);
+	--snowflake-method-timeline-scene-width: var(--snowflake-method-corkboard-card-width);
+	/* How far the layers behind a stacked card show, to its right and below. */
+	--snowflake-method-timeline-stack-depth: 0.5rem;
 	--snowflake-method-timeline-lane-gap: var(--size-4-3);
 	--snowflake-method-timeline-node-size: 0.75rem;
-	--snowflake-method-timeline-node-offset: 0.9rem;
+	/* The node sits on the first line of the words beside it: the rows' padding
+	   and the first row's, the words' own padding, then half a line. The time
+	   cell pads its words by the same, so its first line is level too. */
+	--snowflake-method-timeline-node-offset: calc(
+		var(--size-4-2) + var(--size-2-1) + var(--line-height-normal) * var(--font-ui-small) / 2
+	);
+	--snowflake-method-timeline-scrollbar-size: var(--snowflake-method-timeline-lane-gap);
+	/* The head row's height: a lane head's icon with its padding and its
+	   underline, and the row's rule. */
+	--snowflake-method-timeline-head-height: calc(
+		var(--snowflake-method-corkboard-action-size) + 2 * var(--size-4-2) + 3px + 1px
+	);
 	--snowflake-method-timeline-pool-width: 22rem;
+	/* What the pool takes of the body's width, with the gap before it. */
+	--snowflake-method-timeline-pool-span: calc(
+		var(--snowflake-method-timeline-pool-width) + var(--snowflake-method-timeline-lane-gap)
+	);
 	--snowflake-method-timeline-lanes: 1;
+	/* A lane: the cell's padding, the axis, then a sub-row's handle, words and
+	   cards with the two gaps between them and room for a stack's layers. */
 	--snowflake-method-timeline-lane-width: calc(
-		var(--snowflake-method-timeline-axis-width) + var(--snowflake-method-timeline-sub-width) +
-			var(--snowflake-method-timeline-scene-width) + 2 * var(--size-4-2)
+		2 * var(--size-4-2) + var(--snowflake-method-timeline-axis-width) +
+			var(--snowflake-method-corkboard-action-size) + var(--snowflake-method-timeline-sub-width) +
+			var(--snowflake-method-timeline-scene-width) + var(--snowflake-method-timeline-stack-depth) +
+			2 * var(--size-2-2)
 	);
 	display: flex;
 	flex-direction: column;
 	gap: var(--size-4-2);
 }
 
-.snowflake-method-timeline[data-layout='single'] {
-	--snowflake-method-timeline-sub-width: 18rem;
-}
-
+/* The toolbar rides the strip's row above the lanes, as the corkboard's
+   band does, and spans the lanes' field alone: the view stands where the
+   time column does, the tools at the field's end, and beyond them the
+   pool's own band. With the pool away, the toolbar takes the whole row. */
 .snowflake-method-timeline-toolbar {
+	position: absolute;
+	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+	inset-inline-start: 0;
+	inset-inline-end: var(--snowflake-method-timeline-pool-span);
+	height: var(--snowflake-method-tab-height, 2.75rem);
 	display: flex;
-	flex: 0 0 auto;
 	align-items: center;
 	gap: var(--size-2-2);
-	flex-wrap: wrap;
 }
 
-.snowflake-method-timeline-toolbar select.snowflake-method-timeline-view-select {
-	max-width: 16rem;
+.snowflake-method-timeline.is-empty .snowflake-method-timeline-toolbar {
+	inset-inline-end: 0;
 }
 
-/* Flat or Stack: two radios in one box, the checked one filled. */
-.snowflake-method-timeline-presentation {
-	display: inline-flex;
+/* The timeline's forms: the binding picked from a field of its own, the
+   None it holds read as the empty field it is; the timelines a view shows
+   as lines under the field, as a scene's manuscript notes stand under
+   theirs, each with a handle to drag it into its place, its name and the
+   way to take it off; under the lines the frame that adds one the project
+   has, and by the field's name the plus that makes one. */
+.setting-item-control > .snowflake-method-timeline-picker {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.snowflake-method-timeline-picker input.is-none {
+	color: var(--text-faint);
+}
+
+/* A yes or no the form asks as a field: the name at the start of the line
+   and the switch at its end, on one line with nothing under it, as the
+   timer's dialog asks whether its breaks come round again. */
+.modal.snowflake-method-compact-form-modal
+	.modal-content.snowflake-method-project-form
+	> .setting-item.snowflake-method-timeline-switch-setting {
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.snowflake-method-project-form > .snowflake-method-timeline-switch-setting > .setting-item-control {
 	flex: 0 0 auto;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	overflow: hidden;
+	width: auto;
 }
 
-.snowflake-method-timeline button.snowflake-method-timeline-presentation-option {
-	height: calc(var(--input-height) - 2px);
-	padding: 0 var(--size-4-2);
-	border: 0;
-	border-radius: 0;
-	box-shadow: none;
-	background-color: transparent;
+/* The field's name shares its line with the plus that makes a timeline.
+   The plus takes the box a line's remove has, set in from the end by the
+   same two pixels, so the two stand on one vertical with the frame's
+   chevron below them. */
+.snowflake-method-project-form > .snowflake-method-timeline-view-setting > .setting-item-info {
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-timeline-view-setting .clickable-icon.snowflake-method-timeline-view-make {
+	--icon-size: var(--icon-s);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 var(--input-height);
+	width: var(--input-height);
+	margin-inline-end: var(--size-2-1);
+	padding-inline: 0;
+}
+
+.setting-item-control > .snowflake-method-timeline-view-timelines {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-width: 0;
+	/* A control's words stand at its end; the lines in it read from the start. */
+	text-align: start;
+}
+
+/* The handle leads a line where a manuscript line's label would, and the
+   remove ends it where the frame's chevron does. A line lifted stands
+   faint; the one it would take the place of shows its ground. */
+.snowflake-method-timeline-view-line {
+	padding-inline: 0 var(--size-2-1);
+}
+
+.snowflake-method-timeline-view-line .clickable-icon.snowflake-method-timeline-view-handle {
+	--icon-size: var(--icon-s);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 var(--input-height);
+	width: var(--input-height);
+	height: var(--input-height);
+	padding: 0;
+	color: var(--text-faint);
+	cursor: grab;
+}
+
+.snowflake-method-timeline-view-line .clickable-icon.snowflake-method-timeline-view-handle:hover {
 	color: var(--text-muted);
-	font-size: var(--font-ui-small);
 }
 
-.snowflake-method-timeline button.snowflake-method-timeline-presentation-option:hover:not(:disabled) {
+.snowflake-method-timeline-view-line.is-dragging {
+	opacity: 0.5;
+}
+
+.snowflake-method-timeline-view-line.is-dragging .snowflake-method-timeline-view-handle {
+	cursor: grabbing;
+}
+
+.snowflake-method-timeline-view-line.is-drop-target {
+	border-radius: var(--radius-s);
 	background-color: var(--background-modifier-hover);
-	color: var(--text-normal);
 }
 
-.snowflake-method-timeline button.snowflake-method-timeline-presentation-option[aria-checked='true'] {
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
+/* The view field is typed into and picked from, as a form's category field
+   is, and stands as wide as the time column under it. */
+.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-select {
+	flex: 0 0 auto;
+	width: var(--snowflake-method-timeline-time-width);
 }
 
-.snowflake-method-timeline button.snowflake-method-timeline-presentation-option:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-edit {
+	margin-inline-start: auto;
 }
 
 .snowflake-method-timeline-toolbar .snowflake-method-prose-state {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	text-align: end;
 }
 
-.snowflake-method-timeline-add-timeline {
+.snowflake-method-timeline-add-timeline,
+.snowflake-method-timeline-view-add {
 	flex: 0 0 auto;
 	white-space: nowrap;
 }
 
-.snowflake-method-timeline .snowflake-method-character-empty {
-	flex: 0 0 auto;
+/* The folds stand in the frame's corners on the strip's row, as the app's
+   sidebar toggles stand at the window's: each a square the strip's height,
+   flush with the frame's border, its toggle at the centre. Both wear the
+   app's own sidebar symbol, the pool's at the right mirrored as the right
+   sidebar's is, the inner bar filled while the part stands. */
+.snowflake-method-timeline-fold {
+	position: absolute;
+	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--snowflake-method-tab-height, 2.75rem);
+	height: var(--snowflake-method-tab-height, 2.75rem);
 }
 
-.snowflake-method-timeline-empty-action {
-	margin-inline-start: var(--size-4-3);
+.snowflake-method-timeline-fold.is-start {
+	inset-inline-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+}
+
+.snowflake-method-timeline-fold.is-end {
+	inset-inline-end: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+}
+
+.snowflake-method-timeline-time-toggle .sidebar-toggle-icon-inner {
+	width: var(--sidebar-left-toggle-inner-width, 8.33%);
+	stroke: none;
+}
+
+.snowflake-method-timeline-time-toggle[aria-expanded='true'] .sidebar-toggle-icon-inner {
+	width: var(--sidebar-left-toggle-inner-width-open, 24%);
+}
+
+.snowflake-method-timeline-pool-toggle .sidebar-toggle-button-icon {
+	transform: scale(-1, 1);
+}
+
+.snowflake-method-timeline-pool-toggle .sidebar-toggle-icon-inner {
+	width: var(--sidebar-right-toggle-inner-width, 8.33%);
+	stroke: none;
+}
+
+.snowflake-method-timeline-pool-toggle[aria-expanded='true'] .sidebar-toggle-icon-inner {
+	width: var(--sidebar-right-toggle-inner-width-open, 24%);
+}
+
+.snowflake-method-timeline.is-pool-collapsed .snowflake-method-timeline-toolbar {
+	inset-inline-end: 0;
+}
+
+.snowflake-method-timeline .snowflake-method-character-empty {
+	flex: 0 0 auto;
 }
 
 .snowflake-method-timeline-body {
@@ -13124,11 +13316,66 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 0;
 }
 
+/* The field holds the scroller and the two bars that stand in for its own,
+   which are hidden: one across under the field, past the frozen columns,
+   in the frame's padding below; one down beside the field, under the head,
+   in the gap before the pool. Neither covers the lanes. */
+.snowflake-method-timeline-field {
+	position: relative;
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+}
+
 .snowflake-method-timeline-scroll {
 	flex: 1 1 auto;
 	min-width: 0;
 	overflow: auto;
 	overscroll-behavior: contain;
+	scrollbar-width: none;
+}
+
+.snowflake-method-timeline-scrollbar {
+	position: absolute;
+	z-index: 6;
+	overscroll-behavior: contain;
+}
+
+.snowflake-method-timeline-scrollbar.is-across {
+	inset-block-start: 100%;
+	inset-inline-end: 0;
+	height: var(--snowflake-method-timeline-scrollbar-size);
+	overflow-x: scroll;
+	overflow-y: hidden;
+}
+
+.snowflake-method-timeline-scrollbar.is-down {
+	inset-inline-start: 100%;
+	inset-block-end: 0;
+	width: var(--snowflake-method-timeline-scrollbar-size);
+	overflow-x: hidden;
+	overflow-y: scroll;
+}
+
+.snowflake-method-timeline-scrollbar.is-across.is-short {
+	inset-inline-end: var(--snowflake-method-timeline-scrollbar-size);
+}
+
+.snowflake-method-timeline-scrollbar.is-down.is-short {
+	inset-block-end: var(--snowflake-method-timeline-scrollbar-size);
+}
+
+.snowflake-method-timeline-scrollbar.is-hidden {
+	display: none;
+}
+
+.snowflake-method-timeline-scrollbar.is-across > .snowflake-method-timeline-scrollbar-space {
+	height: 1px;
+}
+
+.snowflake-method-timeline-scrollbar.is-down > .snowflake-method-timeline-scrollbar-space {
+	width: 1px;
 }
 
 .snowflake-method-timeline-table {
@@ -13137,6 +13384,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	width: max-content;
 	min-width: 100%;
 }
+
+/* The stacking order down the workspace: the bars over the head, the head
+   over the time column and the pinned lane, those over a lane's seam, and
+   the seam over the lane's cards; the landing lines stand over the frozen
+   columns. Within a lane nothing holds its place: the axis, the rows'
+   words and the head's title scroll with the lane. */
 
 /* Every row shares one template, so the shared time column and the lanes
    line up across the head and the times. */
@@ -13150,28 +13403,56 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	column-gap: var(--snowflake-method-timeline-lane-gap);
 }
 
+/* Alone, a lane takes the field's width rather than its content's, and its
+   rows' scenes wrap within it, so the view needs no bar across. The lane
+   never narrows past what a lane beside others is given, a row's words and
+   one card: the same floor for every row and for the head whatever each
+   holds, so the rows stay level and a long name trims as it would beside
+   other lanes. A field too narrow even for that scrolls as the lanes side
+   by side do. */
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-table {
+	width: 100%;
+}
+
 .snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-head,
 .snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-row {
-	grid-template-columns: var(--snowflake-method-timeline-time-width) minmax(0, 1fr);
+	grid-template-columns:
+		var(--snowflake-method-timeline-time-width)
+		minmax(var(--snowflake-method-timeline-lane-width), 1fr);
 }
 
 .snowflake-method-timeline-head {
 	position: sticky;
 	inset-block-start: 0;
-	z-index: 3;
+	z-index: 5;
 	background-color: var(--background-primary);
 	border-block-end: 1px solid var(--background-modifier-border);
 }
 
+/* The corner wears the lane heads' own box, so its word stands level with their names. */
 .snowflake-method-timeline-corner {
 	position: sticky;
 	inset-inline-start: 0;
 	z-index: 4;
-	padding: var(--size-4-2) var(--size-4-3);
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	/* Padded as the time cells are, so the plus stands over their menus. */
+	padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3);
+	border-block-end: 3px solid transparent;
 	background-color: var(--background-primary);
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
+}
+
+/* The plus at the corner's end, as wide as a seam's, so the two stand in one column. */
+.snowflake-method-timeline-corner .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	width: var(--snowflake-method-corkboard-action-size);
+	margin-inline-start: auto;
+	padding-inline: 0;
 }
 
 .snowflake-method-timeline-lane-head {
@@ -13181,6 +13462,27 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-width: 0;
 	padding: var(--size-4-2) var(--size-4-2);
 	border-block-end: 3px solid transparent;
+	cursor: pointer;
+}
+
+.snowflake-method-timeline-lane-head:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+/* The lead takes the head up to the menu; the title stands within it and
+   scrolls with the lane. */
+.snowflake-method-timeline-lane-lead {
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.snowflake-method-timeline-lane-title {
+	display: flex;
+	flex: 0 1 auto;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
 }
 
 .snowflake-method-timeline-lane-head.is-active {
@@ -13188,25 +13490,35 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 .snowflake-method-timeline-lane-pin {
+	display: inline-flex;
 	flex: 0 0 auto;
+	align-items: center;
 	color: var(--text-accent);
 }
 
 .snowflake-method-timeline-lane-pin svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
+	display: block;
+	width: var(--icon-xs);
+	height: var(--icon-xs);
 }
 
 .snowflake-method-timeline-lane-pin.is-hidden,
 .snowflake-method-timeline-lane-entity.is-hidden,
-.snowflake-method-timeline-empty-action.is-hidden,
 .snowflake-method-timeline .snowflake-method-character-empty.is-hidden,
 .snowflake-method-timeline-body.is-hidden,
+.snowflake-method-timeline-pool.is-hidden,
 .snowflake-method-timeline-times-empty.is-hidden {
 	display: none;
 }
 
+/* The name gives way first and trims at its tail. The app lays a button
+   out as a flex box that centres its words, so a line too long for the box
+   is cut at both ends and no ellipsis can form, which only a block box
+   draws: both are blocks here, their words starting at the start. The
+   entity keeps its own width, up to a cap, so a long name never squeezes
+   it. */
 .snowflake-method-timeline button.snowflake-method-timeline-lane-name {
+	display: block;
 	flex: 0 1 auto;
 	min-width: 0;
 	height: auto;
@@ -13217,6 +13529,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
+	text-align: start;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -13227,17 +13540,20 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-normal);
 }
 
+/* The entity reads as a word in the accent colour beside the name, in the
+   name's own box, with no frame or ground of its own. */
 .snowflake-method-timeline button.snowflake-method-timeline-lane-entity {
-	flex: 0 1 auto;
-	min-width: 0;
+	display: block;
+	flex: 0 0 auto;
+	max-width: 12rem;
 	height: auto;
-	padding: 0 var(--size-2-2);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
+	padding: var(--size-2-1) var(--size-2-2);
+	border: 0;
+	background: transparent;
 	box-shadow: none;
 	color: var(--text-accent);
-	font-size: var(--font-ui-smaller);
+	font-size: var(--font-ui-small);
+	text-align: start;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -13248,16 +13564,28 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-muted);
 }
 
+/* A lane that follows nobody shows no entity; said at the block rule's own weight. */
+.snowflake-method-timeline button.snowflake-method-timeline-lane-entity.is-hidden {
+	display: none;
+}
+
 .snowflake-method-timeline-lane-head .clickable-icon {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
 	margin-inline-start: auto;
 }
 
+/* With no times under the head, the word stands at the left, in view whatever the scroll. */
 .snowflake-method-timeline-times-empty {
+	position: sticky;
+	inset-inline-start: 0;
+	align-self: flex-start;
 	padding: var(--size-4-3);
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
+}
+
+.snowflake-method-timeline-times-empty .snowflake-method-character-empty {
+	justify-content: flex-start;
+	margin: 0;
 }
 
 /* The shared time column stands sticky at the left of every row; the lanes
@@ -13265,13 +13593,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-timeline-time {
 	position: sticky;
 	inset-inline-start: 0;
-	z-index: 2;
+	z-index: 4;
 	display: flex;
 	align-items: flex-start;
 	gap: var(--size-2-1);
 	min-width: 0;
 	padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3);
-	border-inline-end: 1px solid var(--background-modifier-border);
 	background-color: var(--background-primary);
 }
 
@@ -13295,8 +13622,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: none;
 	color: var(--text-normal);
 	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
 	text-align: start;
-	white-space: normal;
+	white-space: pre-wrap;
+	/* A name with no space in it breaks where the column ends rather than crossing into the lanes. */
+	overflow-wrap: anywhere;
 	cursor: pointer;
 }
 
@@ -13304,9 +13634,10 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	font-weight: var(--font-semibold);
 }
 
+/* A description reads in the face a card's conflict wears. */
 .snowflake-method-timeline button.snowflake-method-timeline-time-description {
 	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
+	font-family: var(--font-text);
 }
 
 .snowflake-method-timeline button.snowflake-method-timeline-time-description.is-empty {
@@ -13336,12 +13667,77 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-timeline-time .clickable-icon {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
+	width: var(--snowflake-method-corkboard-action-size);
+	padding-inline: 0;
 }
 
-/* A lane cell: the axis, then the rows the timeline writes under the time. */
+/* Between two times, a dashed rule across the row, astride the boundary
+   with a little room either side to hover on. Each column carries a piece
+   of it, the time column's in its sticky cell and a lane's in its own cell,
+   so a lane scrolling under the frozen columns takes its piece with it. A
+   lane's piece reaches back over the gap before it, so every gap is drawn
+   once, by the cell that scrolls over it: the pinned lane's over the gap it
+   keeps beside the time column, an unpinned lane's until it slides under
+   the frozen columns. The plus at a piece's centre shows to the pointer and
+   the keyboard, on the ground its cell has, and puts a time in before the
+   row below: on the active lane from the time column's, on the lane from a
+   lane's. The first row has no time above it. */
+.snowflake-method-timeline-row {
+	--snowflake-method-timeline-ground: var(--background-primary);
+}
+
+.snowflake-method-timeline-cell.is-active-lane {
+	--snowflake-method-timeline-ground: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+}
+
+.snowflake-method-timeline-seam {
+	display: none;
+	position: absolute;
+	inset-block-start: calc(-1 * var(--size-4-2));
+	inset-inline: 0;
+	z-index: 3;
+	height: calc(2 * var(--size-4-2));
+}
+
+.snowflake-method-timeline-row + .snowflake-method-timeline-row .snowflake-method-timeline-seam {
+	display: block;
+}
+
+.snowflake-method-timeline-seam::before {
+	content: '';
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline: 0;
+	border-block-start: 1px dashed var(--background-modifier-border);
+}
+
+.snowflake-method-timeline-cell .snowflake-method-timeline-seam::before {
+	inset-inline-start: calc(-1 * var(--snowflake-method-timeline-lane-gap));
+}
+
+.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-seam-add {
+	--icon-size: var(--icon-xs);
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	width: var(--snowflake-method-corkboard-action-size);
+	height: calc(2 * var(--size-4-2));
+	padding: 0;
+	background-color: var(--snowflake-method-timeline-ground);
+	opacity: 0;
+	translate: -50% -50%;
+}
+
+.snowflake-method-timeline-seam:hover .snowflake-method-timeline-seam-add,
+.snowflake-method-timeline .snowflake-method-timeline-seam-add:focus-visible {
+	opacity: 1;
+}
+
+/* A lane cell: the axis, then the rows the timeline writes under the time;
+   placed, so its seam is laid from its own box. */
 .snowflake-method-timeline-cell {
-	display: grid;
-	grid-template-columns: var(--snowflake-method-timeline-axis-width) minmax(0, 1fr);
+	position: relative;
+	display: flex;
 	min-height: 3rem;
 	padding-inline: var(--size-4-2);
 }
@@ -13350,8 +13746,57 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	background-color: color-mix(in srgb, var(--interactive-accent) 4%, transparent);
 }
 
+/* The pinned lane stands first and keeps its place beside the time column
+   while the other lanes scroll under it; the shadow covers the gap between,
+   and its ground is solid so nothing shows through. */
+.snowflake-method-timeline-lane-head.is-pinned,
+.snowflake-method-timeline-cell.is-pinned {
+	position: sticky;
+	inset-inline-start: calc(
+		var(--snowflake-method-timeline-time-width) + var(--snowflake-method-timeline-lane-gap)
+	);
+	background-color: var(--background-primary);
+	box-shadow: calc(-1 * var(--snowflake-method-timeline-lane-gap)) 0 0 0 var(--background-primary);
+}
+
+/* The pinned head stands over the heads beside it within the head's own
+   order; the pinned cell stands with the time column, over the seams of
+   the lanes scrolling under it. */
+.snowflake-method-timeline-lane-head.is-pinned {
+	z-index: 2;
+}
+
+.snowflake-method-timeline-cell.is-pinned {
+	z-index: 4;
+}
+
+.snowflake-method-timeline-cell.is-pinned.is-active-lane {
+	background-color: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+}
+
+/* A pin the field is too narrow to show whole lets go for the while: the
+   lane stands first still, and scrolls with the rest under the bar across,
+   which starts after the time column. It shows no pin meanwhile, since at
+   that width the pin does not hold. A grid item's place in the stacking
+   order holds whether or not it is positioned, so the lane gives up the
+   pinned one's too, or it would paint over the time column it scrolls
+   under. */
+.snowflake-method-timeline.is-pin-loose .snowflake-method-timeline-lane-head.is-pinned,
+.snowflake-method-timeline.is-pin-loose .snowflake-method-timeline-cell.is-pinned {
+	position: static;
+	z-index: auto;
+	box-shadow: none;
+}
+
+.snowflake-method-timeline.is-pin-loose .snowflake-method-timeline-lane-pin {
+	display: none;
+}
+
+/* The axis: a line down the cell, and a node on it where the lane holds
+   the time, placed so the line and the node are laid from its own box. */
 .snowflake-method-timeline-axis {
 	position: relative;
+	flex: 0 0 var(--snowflake-method-timeline-axis-width);
 }
 
 .snowflake-method-timeline-axis::before {
@@ -13389,6 +13834,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-timeline-rows {
 	display: flex;
+	flex: 1 1 auto;
 	flex-direction: column;
 	min-width: 0;
 	padding-block: var(--size-2-2);
@@ -13397,8 +13843,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The plus of an empty cell shows on hover and to the keyboard alone. */
 .snowflake-method-timeline .clickable-icon.snowflake-method-timeline-cell-add {
 	--icon-size: var(--icon-s);
-	align-self: start;
-	justify-self: start;
+	align-self: flex-start;
 	margin-block-start: var(--size-2-2);
 	opacity: 0;
 }
@@ -13411,40 +13856,44 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* A sub-description row: its words, and the scenes placed on it. */
 .snowflake-method-timeline-subrow {
 	position: relative;
-	display: grid;
-	grid-template-columns: var(--snowflake-method-timeline-sub-width) minmax(0, 1fr);
-	align-items: start;
+	display: flex;
+	align-items: flex-start;
 	gap: var(--size-2-2);
 	padding-block: var(--size-2-2);
 }
 
-.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-subrow {
-	grid-template-columns: minmax(0, var(--snowflake-method-timeline-sub-width)) var(--snowflake-method-timeline-scene-width);
-}
-
+/* The words' box: the handle, the words and their menu, a fixed width
+   before the scenes. */
 .snowflake-method-timeline-subrow-text {
 	display: flex;
-	align-items: center;
+	flex: 0 0 calc(
+		var(--snowflake-method-corkboard-action-size) + var(--size-2-2) +
+			var(--snowflake-method-timeline-sub-width)
+	);
+	align-items: start;
 	min-width: 0;
 }
 
+/* The words of a row show whole, wrapping as the time's description does;
+   a single line stands in the input's box, so entering it moves nothing. */
 .snowflake-method-timeline button.snowflake-method-timeline-subrow-label {
 	display: block;
 	flex: 1 1 auto;
 	min-width: 0;
-	height: 1.75rem;
-	padding: 0 var(--size-2-2);
+	min-height: 1.75rem;
+	height: auto;
+	padding: var(--size-2-1) var(--size-2-2);
 	border: 1px solid transparent;
 	border-radius: var(--radius-s);
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-normal);
+	font-family: var(--font-text);
 	font-size: var(--font-ui-small);
-	line-height: calc(1.75rem - 2px);
+	line-height: var(--line-height-normal);
 	text-align: start;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 	cursor: text;
 }
 
@@ -13459,6 +13908,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-timeline-scenes {
 	display: flex;
+	flex: 1 1 auto;
 	flex-wrap: wrap;
 	gap: var(--size-4-2);
 	min-height: 1.75rem;
@@ -13466,18 +13916,22 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	border-radius: var(--radius-m);
 }
 
-/* The same card as the corkboard's, standing in the flow of its row. */
-.snowflake-method-timeline .snowflake-method-corkboard-card {
+/* The same card as the corkboard's, standing in the flow of its row. Only
+   the lanes' cards: the pool's stand where its canvas puts them. */
+.snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
+.snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
 	position: relative;
 	width: var(--snowflake-method-timeline-scene-width);
 	height: var(--snowflake-method-corkboard-card-height);
 }
 
-.snowflake-method-timeline[data-layout='single'] .snowflake-method-corkboard-card {
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
+.snowflake-method-timeline[data-layout='single'] .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
 	width: var(--snowflake-method-corkboard-card-width);
 }
 
-.snowflake-method-timeline[data-mode='compact'] .snowflake-method-corkboard-card {
+.snowflake-method-timeline[data-mode='compact'] .snowflake-method-timeline-scenes > .snowflake-method-corkboard-card,
+.snowflake-method-timeline[data-mode='compact'] .snowflake-method-timeline-stack-face > .snowflake-method-corkboard-card {
 	height: auto;
 }
 
@@ -13510,23 +13964,23 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	position: relative;
 	width: max-content;
 	max-width: 100%;
-	padding-inline-end: 0.5rem;
-	padding-block-end: 0.5rem;
+	padding-inline-end: var(--snowflake-method-timeline-stack-depth);
+	padding-block-end: var(--snowflake-method-timeline-stack-depth);
 }
 
 .snowflake-method-timeline-stack-face::before,
 .snowflake-method-timeline-stack-face::after {
 	content: '';
 	position: absolute;
-	inset: 0 0.5rem 0.5rem 0;
+	inset: 0 var(--snowflake-method-timeline-stack-depth) var(--snowflake-method-timeline-stack-depth) 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m);
 	background-color: var(--background-secondary);
-	translate: 0.25rem 0.25rem;
+	translate: calc(var(--snowflake-method-timeline-stack-depth) / 2) calc(var(--snowflake-method-timeline-stack-depth) / 2);
 }
 
 .snowflake-method-timeline-stack-face::after {
-	translate: 0.5rem 0.5rem;
+	translate: var(--snowflake-method-timeline-stack-depth) var(--snowflake-method-timeline-stack-depth);
 	opacity: 0.6;
 }
 
@@ -13544,16 +13998,35 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	z-index: 1;
 }
 
+/* The walk sits centred under the card in front, not under its layers, in
+   the middle of three equal-sided columns so the way back at the side never
+   shifts it, however many digits the count has. */
 .snowflake-method-timeline-stack-controls {
-	display: flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	align-items: center;
-	gap: var(--size-2-1);
+	padding-inline-end: var(--snowflake-method-timeline-stack-depth);
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
 
-.snowflake-method-timeline-stack-controls.is-hidden {
-	display: none;
+.snowflake-method-timeline-stack-walk {
+	grid-column: 2;
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+}
+
+.snowflake-method-timeline-stack-controls .clickable-icon.snowflake-method-timeline-stack-reset {
+	--icon-size: var(--icon-xs);
+	grid-column: 3;
+	justify-self: start;
+	margin-inline-start: var(--size-4-2);
+}
+
+/* A stack of one has nowhere to walk: its controls fall silent, and keep their room. */
+.snowflake-method-timeline-stack-controls.is-alone {
+	visibility: hidden;
 }
 
 .snowflake-method-timeline-stack-controls .clickable-icon {
@@ -13566,38 +14039,64 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	font-variant-numeric: tabular-nums;
 }
 
-/* The words of a row: one box for both faces, so entering the words moves
-   nothing, as the corkboard's title does. */
-.snowflake-method-timeline input.snowflake-method-timeline-subrow-input {
+/* The words of a row: one box for both faces, wrapping alike and grown by
+   the workspace to what it holds, so entering the words moves nothing. */
+.snowflake-method-timeline textarea.snowflake-method-timeline-subrow-input {
 	display: block;
 	flex: 1 1 auto;
 	min-width: 0;
 	width: 0;
-	height: 1.75rem;
+	min-height: calc(2 * var(--line-height-normal) * var(--font-ui-small) + 2 * var(--size-2-1) + 2px);
 	margin: 0;
-	padding: 0 var(--size-2-2);
+	padding: var(--size-2-1) var(--size-2-2);
 	border: 1px solid transparent;
 	border-radius: var(--radius-s);
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-normal);
-	font-family: var(--font-interface);
+	font-family: var(--font-text);
 	font-size: var(--font-ui-small);
-	line-height: calc(1.75rem - 2px);
+	line-height: var(--line-height-normal);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	overflow: hidden;
+	resize: none;
 }
 
-.snowflake-method-timeline input.snowflake-method-timeline-subrow-input:focus {
+.snowflake-method-timeline textarea.snowflake-method-timeline-subrow-input:focus {
 	border-color: var(--interactive-accent);
 	background: var(--background-primary);
 	box-shadow: none;
 }
 
-.snowflake-method-timeline-subrow.is-trailing input.snowflake-method-timeline-subrow-input {
+.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input {
 	color: var(--text-muted);
 }
 
+/* A cell's foot and an untitled row's words keep quiet until the pointer or
+   the keyboard is in their own cell, or a drag needs the foot to land on.
+   Their room stays, so nothing moves when they show, and the lanes beside
+   are none the wiser. */
+.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty {
+	opacity: 0;
+}
+
+.snowflake-method-timeline-cell:hover .snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline-cell:focus-within .snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline.is-time-drag .snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+.snowflake-method-timeline-cell:hover .snowflake-method-timeline-subrow-label.is-empty,
+.snowflake-method-timeline-cell:focus-within .snowflake-method-timeline-subrow-label.is-empty,
+.snowflake-method-timeline.is-time-drag .snowflake-method-timeline-subrow-label.is-empty,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-subrow-label.is-empty,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-subrow-label.is-empty {
+	opacity: 1;
+}
+
 .snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-hidden,
-.snowflake-method-timeline input.snowflake-method-timeline-subrow-input.is-hidden,
+.snowflake-method-timeline textarea.snowflake-method-timeline-subrow-input.is-hidden,
 .snowflake-method-timeline-subrow.is-trailing.is-hidden {
 	display: none;
 }
@@ -13609,6 +14108,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-timeline-subrow-text .clickable-icon {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
+	width: var(--snowflake-method-corkboard-action-size);
+	padding-inline: 0;
 	opacity: 0;
 }
 
@@ -13619,20 +14120,41 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* Drag handles: the time's beside its label, the row's before its words,
-   shown on hover and to the keyboard. The axis is never a handle. */
+   shown on hover and to the keyboard. The axis is never a handle. A handle
+   is an action wide, the width a lane counts for it. */
 .snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-handle,
 .snowflake-method-timeline .clickable-icon.snowflake-method-timeline-subrow-handle {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
 	align-self: start;
+	width: var(--snowflake-method-corkboard-action-size);
+	padding-inline: 0;
 	opacity: 0;
 	cursor: grab;
 }
 
 .snowflake-method-timeline-row:hover .snowflake-method-timeline-time-handle,
+.snowflake-method-timeline-time:focus-within .snowflake-method-timeline-time-handle,
 .snowflake-method-timeline-subrow:hover .snowflake-method-timeline-subrow-handle,
+.snowflake-method-timeline-subrow:focus-within .snowflake-method-timeline-subrow-handle,
 .snowflake-method-timeline .snowflake-method-timeline-time-handle:focus-visible,
 .snowflake-method-timeline .snowflake-method-timeline-subrow-handle:focus-visible {
+	opacity: 1;
+}
+
+/* The row's handle leads its words' box, a gap before them. */
+.snowflake-method-timeline-subrow-text .snowflake-method-timeline-subrow-handle {
+	margin-inline-end: var(--size-2-2);
+}
+
+/* A time's menu comes and goes with its handle: on hover, and to the keyboard. */
+.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-more {
+	opacity: 0;
+}
+
+.snowflake-method-timeline-row:hover .snowflake-method-timeline-time-more,
+.snowflake-method-timeline-time:focus-within .snowflake-method-timeline-time-more,
+.snowflake-method-timeline .snowflake-method-timeline-time-more:focus-visible {
 	opacity: 1;
 }
 
@@ -13641,16 +14163,33 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
-.snowflake-method-timeline-subrow {
-	grid-template-columns: auto var(--snowflake-method-timeline-sub-width) minmax(0, 1fr);
+/* A view that keeps its sub-descriptions away shows the scenes alone: the
+   words' boxes go, and a lane is its axis and its rows' scenes. */
+.snowflake-method-timeline.is-words-hidden {
+	--snowflake-method-timeline-lane-width: calc(
+		2 * var(--size-4-2) + var(--snowflake-method-timeline-axis-width) +
+			var(--snowflake-method-timeline-scene-width) + var(--snowflake-method-timeline-stack-depth)
+	);
 }
 
-.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-subrow {
-	grid-template-columns: auto minmax(0, var(--snowflake-method-timeline-sub-width)) var(--snowflake-method-timeline-scene-width);
+.snowflake-method-timeline.is-words-hidden .snowflake-method-timeline-subrow-text {
+	display: none;
+}
+
+/* Side by side, a lane's scenes take a card's width and a stack's depth,
+   and the words give way first; alone, the scenes take what is left. */
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-subrow-text {
+	flex-shrink: 1;
+}
+
+.snowflake-method-timeline[data-layout='multi'] .snowflake-method-timeline-scenes {
+	flex: 0 0 calc(var(--snowflake-method-timeline-scene-width) + var(--snowflake-method-timeline-stack-depth));
 }
 
 .snowflake-method-timeline-subrow-handle-space {
+	flex: 0 0 auto;
 	width: var(--snowflake-method-corkboard-action-size);
+	margin-inline-end: var(--size-2-2);
 }
 
 .snowflake-method-timeline-row.is-dragging,
@@ -13679,26 +14218,64 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 .snowflake-method-timeline-cell.is-drop-target {
+	--snowflake-method-timeline-ground: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
 	outline: 2px dashed var(--interactive-accent);
 	outline-offset: -2px;
 	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 }
 
 /* While a row or a scene is dragged, the lanes that will not take it stand
-   back, and the cursor says so. */
+   back, and the cursor says so. What fades is what a lane holds, not the
+   lane's own ground: a pinned lane keeps its cover over the lanes scrolling
+   under it, which a lane made see-through would show. */
 .snowflake-method-timeline.is-row-drag .snowflake-method-timeline-cell.is-locked-out,
 .snowflake-method-timeline.is-row-drag .snowflake-method-timeline-lane-head.is-locked-out,
 .snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-locked-out,
 .snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-lane-head.is-locked-out {
-	opacity: 0.4;
 	cursor: not-allowed;
 }
 
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-axis,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-seam,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-rows,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-lane-head.is-locked-out > .snowflake-method-timeline-lane-lead,
+.snowflake-method-timeline.is-row-drag .snowflake-method-timeline-lane-head.is-locked-out > .clickable-icon,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-axis,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-seam,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-cell.is-locked-out > .snowflake-method-timeline-rows,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-lane-head.is-locked-out > .snowflake-method-timeline-lane-lead,
+.snowflake-method-timeline.is-scene-drag .snowflake-method-timeline-lane-head.is-locked-out > .clickable-icon {
+	opacity: 0.4;
+}
+
 @media (prefers-reduced-motion: no-preference) {
-	.snowflake-method-timeline-cell,
-	.snowflake-method-timeline-lane-head {
+	.snowflake-method-timeline-cell > .snowflake-method-timeline-axis,
+	.snowflake-method-timeline-cell > .snowflake-method-timeline-seam,
+	.snowflake-method-timeline-cell > .snowflake-method-timeline-rows,
+	.snowflake-method-timeline-lane-head > .snowflake-method-timeline-lane-lead,
+	.snowflake-method-timeline-lane-head > .clickable-icon {
 		transition: opacity 150ms ease;
 	}
+}
+
+/* Folded, the time column keeps its names alone, each on one line and
+   trimmed to the column: the descriptions, the handles and the menus go
+   (the menu still answers a right click), and the view field above narrows
+   with the column. The seam's plus and the corner's stay. */
+.snowflake-method-timeline.is-time-collapsed {
+	--snowflake-method-timeline-time-width: 10rem;
+}
+
+.snowflake-method-timeline.is-time-collapsed .snowflake-method-timeline-time-handle,
+.snowflake-method-timeline.is-time-collapsed .snowflake-method-timeline-time-more,
+.snowflake-method-timeline.is-time-collapsed .snowflake-method-timeline-time-description {
+	display: none;
+}
+
+.snowflake-method-timeline.is-time-collapsed button.snowflake-method-timeline-time-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* The scene pool: the corkboard in one column beside the lanes, its band
@@ -13710,24 +14287,58 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	flex-direction: column;
 	min-width: 0;
 	min-height: 0;
-	padding-inline-start: var(--size-4-3);
+	/* As far from its rule as the frame's edge is from its far side. */
+	padding-inline-start: var(--snowflake-method-tab-height, var(--size-4-3));
 	border-inline-start: 1px solid var(--background-modifier-border);
 }
 
-.snowflake-method-timeline-pool-title {
+/* The pool's head stands level with the lane heads: their row's height,
+   the name in the corner's type, and the count at the far end. */
+.snowflake-method-timeline-pool-head {
 	display: flex;
 	flex: 0 0 auto;
 	align-items: center;
 	gap: var(--size-2-2);
-	height: var(--snowflake-method-tab-height, 2.75rem);
+	box-sizing: border-box;
+	height: var(--snowflake-method-timeline-head-height);
+	padding-block-end: 3px;
+	border-block-end: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
 }
 
+.snowflake-method-timeline-pool-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-timeline-pool-count {
+	margin-inline-start: auto;
+}
+
 .snowflake-method-timeline-pool .snowflake-method-corkboard-host {
 	flex: 1 1 auto;
 	min-height: 0;
+}
+
+/* The corkboard places its band a strip's height above its own top, which
+   in the pool is under the head: from there the band climbs the head's
+   height further to ride the strip's row beside the timeline's toolbar. */
+.snowflake-method-timeline-pool .snowflake-method-prose-controls {
+	inset-block-start: calc(
+		-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--snowflake-method-timeline-head-height))
+	);
+}
+
+/* The corkboard draws its scroller out over its own padding at both ends,
+   to meet the band above and the frame below; in the pool the padding
+   stays, so the first card stands as far below the head as the lanes' first
+   cards stand below theirs, and the cards stop where the lanes stop. */
+.snowflake-method-timeline-pool .snowflake-method-corkboard-scroll {
+	margin-block: 0;
 }
 
 /* While a scene is dragged, the active lane's empty scene areas show where

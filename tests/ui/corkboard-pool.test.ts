@@ -103,6 +103,12 @@ describe('the corkboard as a pool', () => {
 		}
 	});
 
+	it('stands its cards as close as it is told, having no insertion buttons to make room for', () => {
+		const fixture = pool({ include: () => true, columns: 1, gap: 0.75 });
+		expect(fixture.cards().slice(0, 2).map((card) => card.styles.transform)).toEqual(['translate(0px, 0px)', 'translate(0px, 252px)']);
+		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard')!.styles['--snowflake-method-corkboard-gap']).toBe('12px');
+	});
+
 	it('offers the add button as a plus alone, still making a scene at the end', async () => {
 		const fixture = pool({ include: () => true, addButton: 'icon' });
 		expect(fixture.add.classes.has('clickable-icon')).toBe(true);

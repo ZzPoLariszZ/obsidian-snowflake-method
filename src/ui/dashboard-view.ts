@@ -5908,9 +5908,8 @@ export class SnowflakeDashboardView extends ItemView {
 					const icons: Record<StoryStructureFamily, string> = {
 						corkboard: 'layout-dashboard',
 						freeform: 'layout-template',
-						'beat-sheet': 'list-ordered',
 						timeline: 'gantt-chart',
-						plotline: 'git-branch',
+						'beat-sheet': 'list-ordered',
 					};
 					for (const family of STORY_STRUCTURE_FAMILIES) {
 						menu.addItem((item) =>

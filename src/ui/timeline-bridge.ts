@@ -60,6 +60,8 @@ export interface TimelineBridge {
 		presentation: ScenePresentation | null,
 	) => Promise<TimelineWrite>;
 	setViewCardStyle: (viewId: string, cardStyle: TimelineCardStyle | null) => Promise<TimelineWrite>;
+	setViewSubDescriptions: (viewId: string, shown: boolean) => Promise<TimelineWrite>;
+	setViewTimesReversed: (viewId: string, reversed: boolean) => Promise<TimelineWrite>;
 	addTime: (timelineId: string, timeId: string) => Promise<TimelineWrite>;
 	removeTime: (timelineId: string, timeId: string) => Promise<TimelineWrite>;
 	/** A new row under a time, before a neighbour or at the end; its id, or null on a refusal. */

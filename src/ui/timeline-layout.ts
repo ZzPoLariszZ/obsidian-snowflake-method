@@ -1,8 +1,8 @@
 /**
  * The timeline workspace's arithmetic, with no workspace to draw on: which
  * timelines a view shows and in what order, what layout that many make,
- * which of them the scene pool works on, and how the cards on the lanes are
- * dressed. Pure, so the tests read it without a DOM.
+ * which of them the scene pool works on, and where a drag may land. Pure,
+ * so the tests read it without a DOM.
  */
 
 import {
@@ -10,12 +10,10 @@ import {
 	scenePlacements,
 	type ScenePresentation,
 	type Timeline,
-	type TimelineCardStyle,
 	type TimelineDocument,
 	type TimelineTime,
 	type TimelineView,
 } from '../domain';
-import type { CorkboardMode } from './story-structure-state';
 import type { WorldbuildingEntityViewModel } from './view-model';
 
 /** One timeline stands alone in a wide lane; two or more stand side by side. */
@@ -42,14 +40,6 @@ export function laneOrder(
 
 export function layoutKind(lanes: readonly unknown[]): TimelineLayoutKind {
 	return lanes.length > 1 ? 'multi' : 'single';
-}
-
-/** What a lane's cards show: the view's choice, else standard alone and compact side by side. */
-export function laneCardMode(
-	kind: TimelineLayoutKind,
-	cardStyle: TimelineCardStyle | null,
-): CorkboardMode {
-	return cardStyle ?? (kind === 'single' ? 'standard' : 'compact');
 }
 
 /**

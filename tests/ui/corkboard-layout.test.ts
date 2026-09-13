@@ -267,6 +267,8 @@ describe('the layout', () => {
 		expect(layoutColumns({ width: 1000, gap: 20, minCardWidth: 256, cardHeight: 100, headHeight: 20 })).toBe(3);
 		expect(layoutColumns({ width: 1000, gap: 20, minCardWidth: 256, cardHeight: 100, headHeight: 20, columns: 1 })).toBe(1);
 		expect(corkboardMetrics(1000, 'standard', 16, undefined, 1.7).columns).toBe(1);
+		expect(corkboardMetrics(1000, 'standard', 16).gap).toBe(40);
+		expect(corkboardMetrics(1000, 'standard', 16, undefined, 1, 0.75).gap).toBe(12);
 		expect(buildLayout(twoGroups, { ...metrics, columns: 1 }).columns).toBe(1);
 		expect(layout.columns).toBe(3);
 		expect(layout.cardWidth).toBeCloseTo(920 / 3);

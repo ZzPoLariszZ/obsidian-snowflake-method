@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { Timeline, TimelineView } from "../../src/domain";
+import { MAIN_TIMELINE_VIEW_ID, type Timeline, type TimelineView } from "../../src/domain";
 import {
 	SnowflakeProjectService,
 	TIMELINE_STORE_SCHEMA_VERSION,
@@ -31,10 +31,16 @@ const makeView = (id: string, overrides: Partial<TimelineView> = {}): TimelineVi
 	timeOrder: [],
 	presentation: null,
 	cardStyle: null,
+	showSubDescriptions: true,
+	timesReversed: false,
 	createdAt: 7,
 	updatedAt: 7,
 	...overrides,
 });
+
+/** The view a test made, by id: the project's own Main view stands first. */
+const viewOf = (held: { views: readonly TimelineView[] }, id: string): TimelineView | undefined =>
+	held.views.find((view) => view.id === id);
 
 const fileOf = (fakeVault: FakeVault): Record<string, unknown> =>
 	JSON.parse(fakeVault.contents.get(FILE) ?? "{}") as Record<string, unknown>;
@@ -82,14 +88,15 @@ describe("TimelineStore", () => {
 		});
 	});
 
-	it("reads an empty document where no file stands, and creates one on the first write", async () => {
+	it("reads a fresh document where no file stands, one view named in the project's language, and creates the file on the first write", async () => {
 		expect(await store.readDocument(project)).toEqual({
 			timelines: [],
-			views: [],
+			views: [expect.objectContaining({ id: MAIN_TIMELINE_VIEW_ID, name: "Main", timelines: [] })],
 			pinnedTimelineId: null,
 			lastViewId: null,
 			strays: { timelines: [], views: [] },
 		});
+		expect((await store.readDocument({ ...project, locale: "zh-CN" })).views[0]?.name).toBe("主视图");
 		const timeline = makeTimeline("tl-1");
 		expect(
 			await store.updateDocument(project, (held) => ({
@@ -101,7 +108,7 @@ describe("TimelineStore", () => {
 		const written = fakeVault.contents.get(FILE) ?? "";
 		expect(written).toContain('"schemaVersion": 1');
 		expect(written).toContain('"timelines": [');
-		expect(written).toContain('"views": []');
+		expect(written).toContain('"name": "Main"');
 		expect(written).toContain('"pinnedTimelineId": "tl-1"');
 		expect(written).toContain('"lastViewId": null');
 		expect(await store.readDocument(project)).toMatchObject({
@@ -231,7 +238,7 @@ describe("TimelineService", () => {
 			createdAt: 100,
 			updatedAt: 100,
 		});
-		expect(held.views[0]).toMatchObject({ id: "timeline-view-2", timelines: ["timeline-1"] });
+		expect(viewOf(held, "timeline-view-2")).toMatchObject({ id: "timeline-view-2", timelines: ["timeline-1"] });
 	});
 
 	it("answers written, absent or refused, and writes once per change", async () => {
@@ -277,11 +284,11 @@ describe("TimelineService", () => {
 		expect(await timelines.deleteTimeline(project, a)).toBe("absent");
 		let held = await timelines.read(project);
 		expect(held.timelines.map((timeline) => timeline.id)).toEqual([b]);
-		expect(held.views[0]?.timelines).toEqual([b]);
+		expect(viewOf(held, viewId)?.timelines).toEqual([b]);
 		expect(held.pinnedTimelineId).toBeNull();
 		expect(await timelines.deleteView(project, viewId)).toBe("deleted");
 		held = await timelines.read(project);
-		expect(held.views).toEqual([]);
+		expect(held.views.map((view) => view.id)).toEqual([MAIN_TIMELINE_VIEW_ID]);
 		expect(held.lastViewId).toBeNull();
 		expect(held.timelines).toHaveLength(1);
 	});
@@ -302,17 +309,19 @@ describe("TimelineService", () => {
 		expect(await timelines.setTimeOrder(project, viewId, ["time-2", "time-1"])).toBe("written");
 		expect(await timelines.setViewPresentation(project, viewId, "flat")).toBe("written");
 		expect(await timelines.setViewCardStyle(project, viewId, "extended")).toBe("written");
+		expect(await timelines.setViewSubDescriptions(project, viewId, false)).toBe("written");
 		expect(await timelines.setViewTimelines(project, "timeline-view-9", [a])).toBe("absent");
 		const held = await timelines.read(project);
 		expect(held.timelines[0]?.times).toEqual([
 			{ timeId: "time-1", rows: [{ id: first, text: "once", scenes: ["scene-1", "scene-3"] }] },
 			{ timeId: "time-2", rows: [{ id: second, text: "two", scenes: [] }] },
 		]);
-		expect(held.views[0]).toMatchObject({
+		expect(viewOf(held, viewId)).toMatchObject({
 			timelines: [b, a],
 			timeOrder: ["time-2", "time-1"],
 			presentation: "flat",
 			cardStyle: "extended",
+			showSubDescriptions: false,
 		});
 		expect(await timelines.removeTime(project, a, "time-2")).toBe("written");
 		expect(await timelines.addTime(project, a, "time-3")).toBe("written");
@@ -322,6 +331,6 @@ describe("TimelineService", () => {
 			{ timeId: "time-3", rows: [] },
 		]);
 		expect(await timelines.pruneMissing(project, { timeIds: new Set(["time-1"]) })).toBe("written");
-		expect((await timelines.read(project)).views[0]?.timeOrder).toEqual(["time-1"]);
+		expect(viewOf(await timelines.read(project), viewId)?.timeOrder).toEqual(["time-1"]);
 	});
 });

@@ -56,9 +56,10 @@ export interface JsonDocumentShape<D> {
 	/**
 	 * What a missing file, a foreign one and a freshly quarantined one read
 	 * as, and what the first write mutates from. Called for a fresh value
-	 * each time, so a caller may keep what it is handed.
+	 * each time, so a caller may keep what it is handed; told the project,
+	 * for a document that starts differently per project.
 	 */
-	empty: () => D;
+	empty: (project: ProjectRef) => D;
 	/**
 	 * The parsed object read into a document, the schema line already
 	 * checked. Null means the object is not this document at all -- damage,
@@ -114,7 +115,7 @@ export class JsonDocumentStore<D> {
 		const file = this.deps.repository.getFile(path);
 		if (file === null) {
 			this.memo.delete(project.rootPath);
-			return this.shape.empty();
+			return this.shape.empty(project);
 		}
 		const stamp = fileStamp(file);
 		const kept = this.memo.get(project.rootPath);
@@ -125,7 +126,7 @@ export class JsonDocumentStore<D> {
 			const content = await this.deps.repository.readPlainFile(path);
 			const read = this.parse(content);
 			if (read.state === "foreign") {
-				const held = this.shape.empty();
+				const held = this.shape.empty(project);
 				this.memo.set(project.rootPath, { stamp, held });
 				this.deps.onForeign?.(path, read.version);
 				return held;
@@ -133,7 +134,7 @@ export class JsonDocumentStore<D> {
 			if (read.state === "unreadable") {
 				await this.quarantine(path);
 				this.memo.delete(project.rootPath);
-				return this.shape.empty();
+				return this.shape.empty(project);
 			}
 			this.memo.set(project.rootPath, { stamp, held: read.held });
 			return read.held;
@@ -167,7 +168,7 @@ export class JsonDocumentStore<D> {
 				"\t",
 			)}\n`;
 		if (this.deps.repository.getFile(path) === null) {
-			const next = mutate(this.shape.empty());
+			const next = mutate(this.shape.empty(project));
 			if (next === null) return false;
 			await createOrUpdatePlainFile(
 				this.deps.repository,
@@ -213,7 +214,7 @@ export class JsonDocumentStore<D> {
 		if (!corrupt) return changed;
 		await this.quarantine(path);
 		this.memo.delete(project.rootPath);
-		const next = mutate(this.shape.empty());
+		const next = mutate(this.shape.empty(project));
 		if (next === null) return false;
 		await this.deps.repository.createPlainFile(path, serialize(next));
 		return true;

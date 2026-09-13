@@ -23,8 +23,10 @@ import {
 	setLastTimelineView,
 	setViewCardStyle,
 	setViewPresentation,
+	setViewSubDescriptions,
 	setViewTimeOrder,
 	setViewTimelines,
+	setViewTimesReversed,
 	type EntityRef,
 	type ScenePresentation,
 	type TimelineCardStyle,
@@ -162,6 +164,8 @@ export class TimelineService {
 				timeOrder: [],
 				presentation: null,
 				cardStyle: null,
+				showSubDescriptions: true,
+				timesReversed: false,
 				createdAt: now,
 				updatedAt: now,
 			}),
@@ -235,6 +239,26 @@ export class TimelineService {
 	): Promise<TimelineWrite> {
 		return this.reviseView(project, viewId, (held) =>
 			setViewCardStyle(held, viewId, cardStyle, this.now()),
+		);
+	}
+
+	setViewSubDescriptions(
+		project: ProjectRef,
+		viewId: string,
+		shown: boolean,
+	): Promise<TimelineWrite> {
+		return this.reviseView(project, viewId, (held) =>
+			setViewSubDescriptions(held, viewId, shown, this.now()),
+		);
+	}
+
+	setViewTimesReversed(
+		project: ProjectRef,
+		viewId: string,
+		reversed: boolean,
+	): Promise<TimelineWrite> {
+		return this.reviseView(project, viewId, (held) =>
+			setViewTimesReversed(held, viewId, reversed, this.now()),
 		);
 	}
 

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
+import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { menus } = vi.hoisted(() => ({
+const { menus, viewFields } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
+	viewFields: [] as OptionFieldConfig[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -42,10 +44,24 @@ vi.mock('obsidian', async (importOriginal) => {
 	}
 	return {
 		...runtime,
+		Keymap: { isModifier: (event: { mod?: boolean }) => event.mod === true },
+		getIcon: () => null,
 		Modal,
 		Menu,
 		FuzzySuggestModal: class extends Modal {},
 		SuggestModal: class extends Modal {},
+	};
+});
+
+// The view field is the real one; what the workspace hands it is kept, so a test can pick as the list would.
+vi.mock('../../src/ui/option-picker', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../src/ui/option-picker')>();
+	return {
+		...actual,
+		buildOptionField: vi.fn((...args: Parameters<typeof actual.buildOptionField>) => {
+			viewFields.push(args[2]);
+			return actual.buildOptionField(...args);
+		}),
 	};
 });
 
@@ -67,6 +83,7 @@ import {
 	editTimelineRow,
 	moveTimelineRow,
 	createTimeline,
+	moveTimelineInView,
 	createTimelineView,
 	deleteTimeline,
 	deleteTimelineView,
@@ -79,8 +96,10 @@ import {
 	renameTimelineView,
 	setLastTimelineView,
 	setViewPresentation,
+	setViewSubDescriptions,
 	setViewTimeOrder,
 	setViewTimelines,
+	setViewTimesReversed,
 	type Timeline,
 	type TimelineDocument,
 	type TimelineRow,
@@ -135,9 +154,9 @@ function standAt(element: CorkboardElement, top: number, height = 40): void {
 }
 
 /** Calls an element's own key listeners, the way the fake's dispatch cannot. */
-function press(element: CorkboardElement, key: string): void {
+function press(element: CorkboardElement, key: string, extra: Record<string, unknown> = {}): void {
 	for (const listener of element.listeners.get('keydown') ?? []) {
-		listener({ target: element, ...{ key }, preventDefault: () => undefined, stopPropagation: () => undefined });
+		listener({ target: element, ...{ key, ...extra }, preventDefault: () => undefined, stopPropagation: () => undefined });
 	}
 }
 
@@ -145,7 +164,7 @@ const timeline = (id: string, extra: Partial<Timeline> = {}): Timeline => ({
 	id, name: `Timeline ${id}`, binding: null, times: [], createdAt: 1, updatedAt: 1, ...extra,
 });
 const view = (id: string, timelines: string[], extra: Partial<TimelineView> = {}): TimelineView => ({
-	id, name: `View ${id}`, timelines, timeOrder: [], presentation: null, cardStyle: null, createdAt: 1, updatedAt: 1, ...extra,
+	id, name: `View ${id}`, timelines, timeOrder: [], presentation: null, cardStyle: null, showSubDescriptions: true, timesReversed: false, createdAt: 1, updatedAt: 1, ...extra,
 });
 
 const submit = (form: unknown, value: unknown): Promise<void> =>
@@ -196,8 +215,12 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		deleteView: vi.fn(async (id: string) => { apply(deleteTimelineView(held, id)); return true; }),
 		setLastView: vi.fn(async (id: string | null) => apply(setLastTimelineView(held, id))),
 		setViewTimelines: vi.fn(async (id: string, timelines: readonly string[]) => apply(setViewTimelines(held, id, timelines, 2))),
+		moveTimelineInView: vi.fn(async (id: string, timelineId: string, beforeId: string | null) =>
+			apply(moveTimelineInView(held, id, timelineId, beforeId, 2))),
 		setTimeOrder: vi.fn(async (id: string, timeIds: readonly string[]) => apply(setViewTimeOrder(held, id, timeIds, 2))),
 		setViewPresentation: vi.fn(async (id: string, presentation: 'flat' | 'stack' | null) => apply(setViewPresentation(held, id, presentation, 2))),
+		setViewSubDescriptions: vi.fn(async (id: string, shown: boolean) => apply(setViewSubDescriptions(held, id, shown, 2))),
+		setViewTimesReversed: vi.fn(async (id: string, reversed: boolean) => apply(setViewTimesReversed(held, id, reversed, 2))),
 		addTime: vi.fn(async (timelineId: string, timeId: string) => apply(addTimelineTime(held, timelineId, timeId, 2))),
 		removeTime: vi.fn(async (timelineId: string, timeId: string) => apply(removeTimelineTime(held, timelineId, timeId, 2))),
 		addRow: vi.fn(async (timelineId: string, timeId: string, text: string, beforeRowId: string | null, scenes: string[] = []) => {
@@ -225,6 +248,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	const memory = timelineMemory();
 	const host = {
 		openManagedFile: vi.fn(() => Promise.resolve()),
+		openCharacterForm: vi.fn(() => Promise.resolve()),
 		openEntityForm: vi.fn(() => Promise.resolve('time-8')),
 		openSceneForm: vi.fn(() => Promise.resolve(null)),
 		deleteScene: vi.fn(() => Promise.resolve()),
@@ -260,7 +284,9 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		held: () => held,
 		notify: () => { for (const listener of listeners) listener(); },
 		listeners,
-		select: (): CorkboardElement => root.querySelector('.snowflake-method-timeline-view-select')!,
+		select: (): CorkboardElement =>
+			root.querySelector('.snowflake-method-timeline-view-select')!.querySelector('.snowflake-method-option-picker-input')!,
+		viewField: (): OptionFieldConfig => viewFields[viewFields.length - 1]!,
 		heads: (): CorkboardElement[] => root.querySelectorAll('.snowflake-method-timeline-lane-head'),
 		rows: (): CorkboardElement[] => root.querySelectorAll('.snowflake-method-timeline-row'),
 		rowOf: (timeId: string): CorkboardElement =>
@@ -285,15 +311,34 @@ describe('the timeline workspace', () => {
 			lastViewId: 'v2',
 		});
 		expect(fixture.emptyLine().classes.has('is-hidden')).toBe(false);
+		expect(fixture.root.classes.has('is-empty')).toBe(true);
 		await settle();
-		expect(fixture.select().querySelectorAll('option').map((option) => option.getAttribute('value'))).toEqual(['v1', 'v2']);
-		expect(fixture.select().value).toBe('v2');
+		expect(fixture.root.classes.has('is-empty')).toBe(false);
+		expect(fixture.viewField().options().map((option) => option.value)).toEqual(['v1', 'v2']);
+		expect(fixture.viewField().value()).toBe('v2');
+		expect(fixture.select().value).toBe('View v2');
 		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a', 'b']);
 		expect(fixture.root.dataset.layout).toBe('multi');
 		expect(fixture.root.dataset.presentation).toBe('stack');
 		expect(fixture.root.dataset.mode).toBe('compact');
 		expect(fixture.body().classes.has('is-hidden')).toBe(false);
 		expect(fixture.emptyLine().classes.has('is-hidden')).toBe(true);
+	});
+
+	it('lays the toolbar out as the view, then at the end: edit, the words, the presentation, the order, refresh, add timeline, add view', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const order = [
+			'snowflake-method-timeline-view-select', 'snowflake-method-prose-state', 'snowflake-method-timeline-view-edit',
+			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
+			'snowflake-method-timeline-refresh', 'snowflake-method-timeline-add-timeline', 'snowflake-method-timeline-view-add',
+		];
+		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
+		expect(toolbar.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
+		expect(toolbar.children).toHaveLength(order.length);
+		const addView = fixture.button('snowflake-method-timeline-view-add');
+		expect(addView.classes.has('mod-cta')).toBe(true);
+		expect(addView.textContent).toBe('timeline.view.add');
 	});
 
 	it('puts the pinned lane first and makes it active, until a click chooses another', async () => {
@@ -307,7 +352,8 @@ describe('the timeline workspace', () => {
 		expect(fixture.head('b').classes.has('is-active')).toBe(true);
 		expect(fixture.head('b').classes.has('is-pinned')).toBe(true);
 		expect(fixture.head('b').querySelector('.snowflake-method-timeline-lane-name')!.getAttribute('aria-pressed')).toBe('true');
-		fixture.head('a').querySelector('.snowflake-method-timeline-lane-name')!.dispatch('click');
+		// A click anywhere on the head is the lane's name: this one lands beside it.
+		fixture.head('a').dispatch('click');
 		expect(fixture.head('a').classes.has('is-active')).toBe(true);
 		expect(fixture.head('b').classes.has('is-active')).toBe(false);
 		expect(fixture.memory.activeTimeline.get('v')).toBe('a');
@@ -320,29 +366,35 @@ describe('the timeline workspace', () => {
 			lastViewId: 'v2',
 		});
 		await settle();
-		fixture.select().value = 'v1';
-		fixture.select().dispatch('change');
+		fixture.viewField().choose('v1');
 		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a']);
 		expect(fixture.root.dataset.layout).toBe('single');
 		expect(fixture.root.dataset.presentation).toBe('flat');
-		expect(fixture.root.dataset.mode).toBe('standard');
+		expect(fixture.root.dataset.mode).toBe('compact');
 		await settle();
 		expect(fixture.bridge.setLastView).toHaveBeenCalledWith('v1');
 		expect(fixture.held().lastViewId).toBe('v1');
 	});
 
-	it('shows the way in while there is nothing yet', async () => {
+	it('says what is missing while there is nothing yet, and leaves the ways in to the toolbar', async () => {
 		const none = workspace();
 		await settle();
 		expect(none.emptyLine().classes.has('is-hidden')).toBe(false);
 		expect(none.emptyLine().querySelectorAll('span').map((span) => span.textContent)).toContain('timeline.empty.views');
-		expect(none.button('snowflake-method-timeline-empty-action').textContent).toBe('timeline.view.add');
+		expect(none.emptyLine().querySelector('button')).toBeNull();
 		expect(none.body().classes.has('is-hidden')).toBe(true);
 		expect(none.select().disabled).toBe(true);
 		const bare = workspace({ timelines: [timeline('a')], views: [view('v', [])] });
 		await settle();
 		expect(bare.emptyLine().querySelectorAll('span').map((span) => span.textContent)).toContain('timeline.empty.timelines');
-		expect(bare.button('snowflake-method-timeline-empty-action').textContent).toBe('timeline.addTimeline');
+		expect(bare.emptyLine().querySelector('button')).toBeNull();
+		// Lanes without a time say so under the head in the same voice; the corner's plus is the way in.
+		const timeless = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const line = timeless.root.querySelector('.snowflake-method-timeline-times-empty')!;
+		expect(line.classes.has('is-hidden')).toBe(false);
+		expect(line.querySelectorAll('span').map((span) => span.textContent)).toContain('timeline.empty.times');
+		expect(timeless.button('snowflake-method-timeline-time-add').disabled).toBe(false);
 	});
 
 	it('reads again when the bridge rings, and no more once disposed', async () => {
@@ -371,12 +423,13 @@ describe('the timeline workspace', () => {
 		expect(alice.classes.has('is-hidden')).toBe(false);
 		expect(alice.textContent).toBe('Alice');
 		alice.dispatch('click');
-		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Cast/Alice.md');
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('character-alice', 'P');
 		const gone = fixture.head('b').querySelector('.snowflake-method-timeline-lane-entity')!;
 		expect(gone.textContent).toBe('Atlantis');
 		expect(gone.classes.has('is-missing')).toBe(true);
 		gone.dispatch('click');
-		expect(fixture.host.openManagedFile).toHaveBeenCalledTimes(1);
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledTimes(1);
+		expect(fixture.host.openEntityForm).not.toHaveBeenCalled();
 	});
 
 	it("offers the lane's menu: pin, remove from the view, delete", async () => {
@@ -389,11 +442,26 @@ describe('the timeline workspace', () => {
 			'timeline.timeline.rename',
 			'timeline.timeline.bind',
 			'timeline.timeline.pin',
+			'timeline.timeline.moveLeft',
+			'timeline.timeline.moveRight',
+			'timeline.timeline.insertAfter',
 			'timeline.timeline.addTime',
 			'timeline.timeline.removeFromView',
 			'timeline.timeline.delete',
 		]);
-		expect(menu.every((item) => !item.disabled)).toBe(true);
+		// First, there is no left to move to.
+		expect(menu.filter((item) => item.disabled).map((item) => item.title)).toEqual(['timeline.timeline.moveLeft']);
+		menu[4]!.click();
+		await settle();
+		expect(fixture.bridge.moveTimelineInView).toHaveBeenCalledWith('v', 'a', null);
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['b', 'a']);
+		menus.length = 0;
+		fixture.head('a').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
+		expect(menus[0]!.filter((item) => item.disabled).map((item) => item.title)).toEqual(['timeline.timeline.moveRight']);
+		menus[0]![3]!.click();
+		await settle();
+		expect(fixture.bridge.moveTimelineInView).toHaveBeenLastCalledWith('v', 'a', 'b');
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a', 'b']);
 		menu[2]!.click();
 		await settle();
 		expect(fixture.bridge.pinTimeline).toHaveBeenCalledWith('a');
@@ -401,13 +469,13 @@ describe('the timeline workspace', () => {
 		menus.length = 0;
 		fixture.head('b').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
 		expect(menus[0]![2]!.title).toBe('timeline.timeline.pin');
-		menus[0]![4]!.click();
+		menus[0]![7]!.click();
 		await settle();
 		expect(fixture.bridge.setViewTimelines).toHaveBeenCalledWith('v', ['a']);
 		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a']);
 		menus.length = 0;
 		fixture.head('a').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
-		menus[0]![5]!.click();
+		menus[0]![8]!.click();
 		await settle();
 		expect(fixture.bridge.deleteTimeline).toHaveBeenCalledWith('a');
 		expect(fixture.held().timelines).toEqual([expect.objectContaining({ id: 'b' })]);
@@ -423,8 +491,71 @@ describe('the timeline workspace', () => {
 		await submit(opened[0], { name: 'Everything', timelines: ['a'] });
 		expect(fixture.bridge.createView).toHaveBeenCalledWith('Everything', ['a']);
 		expect(fixture.bridge.setLastView).toHaveBeenCalledWith('timeline-view-1');
-		expect(fixture.select().value).toBe('timeline-view-1');
-		expect(fixture.select().querySelectorAll('option')).toHaveLength(2);
+		expect(fixture.viewField().value()).toBe('timeline-view-1');
+		expect(fixture.viewField().options()).toHaveLength(2);
+		vi.restoreAllMocks();
+	});
+
+	it('keeps the sub-descriptions away when the view says so, and switches them from the toolbar', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r-1', 'one')] }] })],
+			views: [view('v', ['a'], { showSubDescriptions: false })],
+		});
+		await settle();
+		const eye = fixture.button('snowflake-method-timeline-words');
+		expect(fixture.root.classes.has('is-words-hidden')).toBe(true);
+		expect(eye.getAttribute('aria-pressed')).toBe('false');
+		expect(eye.getAttribute('aria-label')).toBe('timeline.view.subDescriptions');
+		eye.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewSubDescriptions).toHaveBeenCalledWith('v', true);
+		expect(fixture.root.classes.has('is-words-hidden')).toBe(false);
+		expect(eye.getAttribute('aria-pressed')).toBe('true');
+		expect(eye.getAttribute('aria-label')).toBe('timeline.view.subDescriptionsHide');
+		eye.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewSubDescriptions).toHaveBeenLastCalledWith('v', false);
+		expect(fixture.root.classes.has('is-words-hidden')).toBe(true);
+		vi.restoreAllMocks();
+	});
+
+	it('hands the view form a timeline made inside it only once the document holds it, with the bell already ringing', async () => {
+		const fixture = workspace({ timelines: [], views: [] });
+		await settle();
+		// The plugin rings the bell as the write lands, and that read is still on
+		// its way when the queue asks for its own: the form must wait for it.
+		let release: () => void = () => undefined;
+		vi.mocked(fixture.bridge.read).mockImplementationOnce(() => new Promise((resolve) => {
+			release = () => { resolve({ projectPath: 'P', locale: 'en', readOnly: false, held: fixture.held() }); };
+		}));
+		const made = vi.mocked(fixture.bridge.createTimeline).getMockImplementation()!;
+		vi.mocked(fixture.bridge.createTimeline).mockImplementation(async (name, binding) => {
+			const id = await made(name, binding);
+			fixture.notify();
+			return id;
+		});
+		const views: TimelineViewFormModal[] = [];
+		const timelines: AddTimelineModal[] = [];
+		vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) { views.push(this); });
+		vi.spyOn(AddTimelineModal.prototype, 'open').mockImplementation(function (this: AddTimelineModal) { timelines.push(this); });
+		fixture.button('snowflake-method-timeline-view-add').dispatch('click');
+		const form = views[0] as unknown as { options: { addTimeline: () => Promise<string | null>; timelines: () => readonly Timeline[] } };
+		const pending = form.options.addTimeline();
+		// What the view form sees at the moment the id is handed back.
+		const seen = pending.then(() => form.options.timelines().map((candidate) => candidate.id));
+		await settle();
+		expect(timelines).toHaveLength(1);
+		const submitting = submit(timelines[0], { name: 'Alice', binding: null, addToView: false });
+		// The real form closes after its handler; the stub's close() runs no lifecycle.
+		void submitting.then(() => {
+			(timelines[0] as unknown as { contentEl: { empty: () => void } }).contentEl = { empty: () => undefined };
+			timelines[0]!.onClose();
+		});
+		await settle();
+		release();
+		await submitting;
+		await expect(pending).resolves.toBe('timeline-1');
+		await expect(seen).resolves.toEqual(['timeline-1']);
 		vi.restoreAllMocks();
 	});
 
@@ -449,7 +580,7 @@ describe('the timeline workspace', () => {
 		expect(fixture.root.classes.has('is-read-only')).toBe(true);
 		expect(fixture.button('snowflake-method-timeline-add-timeline').disabled).toBe(true);
 		expect(fixture.button('snowflake-method-timeline-view-add').disabled).toBe(true);
-		expect(fixture.button('snowflake-method-timeline-view-manage').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-view-edit').disabled).toBe(true);
 		menus.length = 0;
 		fixture.head('a').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
 		expect(menus[0]!.every((item) => item.disabled)).toBe(true);
@@ -463,6 +594,131 @@ describe('the times and the lanes', () => {
 			timeline('b', { times: [{ timeId: 'time-1', rows: [] }, { timeId: 'time-lost', rows: [row('r3', 'Waits')] }] }),
 		],
 		views: [view('v', ['a', 'b'], { timeOrder: ['time-2'], presentation: 'flat' })],
+	});
+
+	it('invites the first sub-description at an empty foot, and more of them under rows', async () => {
+		const fixture = laid();
+		await settle();
+		const foot = (timeId: string, timelineId: string): string | null =>
+			fixture.cell(timeId, timelineId).querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!.getAttribute('placeholder');
+		expect(foot('time-2', 'a')).toBe('timeline.subrow.placeholderMore');
+		expect(foot('time-1', 'b')).toBe('timeline.subrow.placeholder');
+		// A foot under rows is marked so the stylesheet can keep it out of the way; the first foot stays.
+		expect(fixture.cell('time-2', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(true);
+		expect(fixture.cell('time-1', 'b').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(false);
+	});
+
+	it('stands in for the scroller\'s own bars with two of its own, kept in step both ways', async () => {
+		const fixture = laid();
+		await settle();
+		const scroller = fixture.body().querySelector('.snowflake-method-timeline-scroll')!;
+		const across = fixture.body().querySelector('.snowflake-method-timeline-scrollbar.is-across')!;
+		const down = fixture.body().querySelector('.snowflake-method-timeline-scrollbar.is-down')!;
+		expect(across.getAttribute('aria-hidden')).toBe('true');
+		scroller.scrollLeft = 120;
+		scroller.scrollTop = 40;
+		scroller.dispatch('scroll');
+		expect(across.scrollLeft).toBe(120);
+		expect(down.scrollTop).toBe(40);
+		across.scrollLeft = 60;
+		across.dispatch('scroll');
+		expect(scroller.scrollLeft).toBe(60);
+		down.scrollTop = 10;
+		down.dispatch('scroll');
+		expect(scroller.scrollTop).toBe(10);
+	});
+
+	it('measures the frozen columns from their boxes, so a fit made while scrolled keeps the pin and starts the bar past it', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [] }] }), timeline('b', { times: [{ timeId: 'time-1', rows: [] }] })],
+			views: [view('v', ['a', 'b'])],
+			pinnedTimelineId: 'b',
+		});
+		await settle();
+		fixture.root.querySelector('.snowflake-method-timeline-corner')!.offsetWidth = 328;
+		for (const head of fixture.heads()) head.offsetWidth = 616;
+		const scroller = fixture.body().querySelector('.snowflake-method-timeline-scroll')!;
+		const across = fixture.body().querySelector('.snowflake-method-timeline-scrollbar.is-across')!;
+		fixture.dom.scrollWidth = 1584;
+		scroller.scrollLeft = 200;
+		scroller.dispatch('scroll');
+		fixture.dom.resize(1300);
+		expect(fixture.root.classes.has('is-pin-loose')).toBe(false);
+		expect(across.classes.has('is-hidden')).toBe(false);
+		expect(across.styles.insetInlineStart).toBe('956px');
+		expect(across.scrollLeft).toBe(200);
+		// Less room past the pin, and the bar is shorter: it never runs under a lane that stands still.
+		fixture.dom.resize(1100);
+		expect(fixture.root.classes.has('is-pin-loose')).toBe(false);
+		expect(across.classes.has('is-hidden')).toBe(false);
+		expect(across.styles.insetInlineStart).toBe('956px');
+		// Too little room for a bar to take hold of, and the field goes without one; the pin holds.
+		fixture.dom.resize(980);
+		expect(fixture.root.classes.has('is-pin-loose')).toBe(false);
+		expect(across.classes.has('is-hidden')).toBe(true);
+		// A field too narrow to show the pinned lane whole lets the pin go, for the while, and the bar starts after the time column.
+		fixture.dom.resize(900);
+		expect(fixture.root.classes.has('is-pin-loose')).toBe(true);
+		expect(across.classes.has('is-hidden')).toBe(false);
+		expect(across.styles.insetInlineStart).toBe('328px');
+		fixture.dom.resize(1300);
+		expect(fixture.root.classes.has('is-pin-loose')).toBe(false);
+		expect(across.styles.insetInlineStart).toBe('956px');
+	});
+
+	it("marks the pinned lane's head and cells, which keep their place beside the time column", async () => {
+		const fixture = workspace({
+			timelines: [
+				timeline('a', { times: [{ timeId: 'time-2', rows: [] }] }),
+				timeline('b', { times: [{ timeId: 'time-2', rows: [] }] }),
+			],
+			views: [view('v', ['a', 'b'])],
+			pinnedTimelineId: 'b',
+		});
+		await settle();
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['b', 'a']);
+		expect(fixture.head('b').classes.has('is-pinned')).toBe(true);
+		expect(fixture.cell('time-2', 'b').classes.has('is-pinned')).toBe(true);
+		expect(fixture.cell('time-2', 'a').classes.has('is-pinned')).toBe(false);
+		await fixture.bridge.pinTimeline(null);
+		fixture.notify();
+		await settle();
+		expect(fixture.head('b').classes.has('is-pinned')).toBe(false);
+		expect(fixture.cell('time-2', 'b').classes.has('is-pinned')).toBe(false);
+	});
+
+	it("keeps a lane's pin, name and bound note in one box, which holds at the frozen edge as the axis does", async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { binding: { kind: 'character', id: 'character-alice', name: 'Alice' } })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const head = fixture.head('a');
+		const lead = head.children[0]!;
+		expect(lead.classes.has('snowflake-method-timeline-lane-lead')).toBe(true);
+		const title = lead.children[0]!;
+		expect(title.classes.has('snowflake-method-timeline-lane-title')).toBe(true);
+		expect(title.children.map((child) => [...child.classes].find((cls) => cls.startsWith('snowflake-method-timeline-lane-')))).toEqual([
+			'snowflake-method-timeline-lane-pin', 'snowflake-method-timeline-lane-name', 'snowflake-method-timeline-lane-entity',
+		]);
+		expect(head.children[1]!.classes.has('snowflake-method-timeline-lane-more')).toBe(true);
+		expect(head.children).toHaveLength(2);
+	});
+
+	it("keeps a row's handle in its words' box, which holds at the frozen edge with the axis", async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r-1', 'one')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const cell = fixture.cell('time-1', 'a');
+		const subrow = cell.querySelector('.snowflake-method-timeline-subrow')!;
+		const text = subrow.querySelector('.snowflake-method-timeline-subrow-text')!;
+		expect(subrow.children[0]).toBe(text);
+		expect(text.children[0]!.classes.has('snowflake-method-timeline-subrow-handle')).toBe(true);
+		const trailing = cell.querySelector('.snowflake-method-timeline-subrow.is-trailing')!;
+		expect(trailing.children[0]!.classes.has('snowflake-method-timeline-subrow-text')).toBe(true);
+		expect(trailing.children[0]!.children[0]!.classes.has('snowflake-method-timeline-subrow-handle-space')).toBe(true);
 	});
 
 	it('lays the union of the lanes\' times as rows in the view\'s order, empty where a lane lacks the time', async () => {
@@ -525,6 +781,29 @@ describe('the times and the lanes', () => {
 		expect(fixture.cell('time-2', 'b').classes.has('is-present')).toBe(true);
 	});
 
+	it('puts a time on the active lane from the corner, after the rest, and from a seam, before the row under it', async () => {
+		const fixture = laid();
+		await settle();
+		const prompt = vi.mocked(promptForEntityReference);
+		prompt.mockImplementationOnce(async () => ({ group: 'time-point', option: { value: 'time-1', label: 'Dawn' } }));
+		fixture.button('snowflake-method-timeline-time-add').dispatch('click');
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('a', 'time-1');
+		expect(fixture.bridge.setTimeOrder).not.toHaveBeenCalled();
+		prompt.mockImplementationOnce(async () => ({ group: 'time-point', option: { value: 'time-7', label: 'Night' } }));
+		fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-seam-add')!.dispatch('click');
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('a', 'time-7');
+		expect(fixture.bridge.setTimeOrder).toHaveBeenCalledWith('v', ['time-2', 'time-7', 'time-1', 'time-lost']);
+		expect(fixture.rows().map((row) => row.getAttribute('data-time-id'))).toEqual(['time-2', 'time-7', 'time-1', 'time-lost']);
+		// A lane's own seam puts the time on that lane, before the row as well.
+		prompt.mockImplementationOnce(async () => ({ group: 'time-point', option: { value: 'time-8', label: 'Dusk' } }));
+		fixture.cell('time-1', 'b').querySelector('.snowflake-method-timeline-seam-add')!.dispatch('click');
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('b', 'time-8');
+		expect(fixture.bridge.setTimeOrder).toHaveBeenLastCalledWith('v', ['time-2', 'time-7', 'time-8', 'time-1', 'time-lost']);
+	});
+
 	it('makes a time from the name typed, through the note or the form as the setting says', async () => {
 		const fixture = laid();
 		await settle();
@@ -562,20 +841,20 @@ describe('the times and the lanes', () => {
 		menus.length = 0;
 		fixture.rowOf('time-2').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
 		expect(menus[0]!.map((item) => item.title)).toEqual([
-			'actions.openNote', 'actions.edit', 'actions.moveUp', 'actions.moveDown', 'timeline.time.remove',
+			'actions.edit', 'common.open', 'actions.moveUp', 'actions.moveDown', 'timeline.time.insertAfter', 'timeline.time.remove',
 		]);
-		menus[0]![4]!.click();
+		menus[0]![5]!.click();
 		await settle();
 		expect(confirmTimelineAction).toHaveBeenCalledOnce();
 		expect(fixture.bridge.removeTime).toHaveBeenCalledWith('a', 'time-2');
 		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-1', 'time-lost']);
 		menus.length = 0;
 		fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
-		expect(menus[0]![4]!.disabled).toBe(true);
+		expect(menus[0]![5]!.disabled).toBe(true);
 		fixture.head('b').querySelector('.snowflake-method-timeline-lane-name')!.dispatch('click');
 		menus.length = 0;
 		fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
-		menus[0]![4]!.click();
+		menus[0]![5]!.click();
 		await settle();
 		expect(confirmTimelineAction).toHaveBeenCalledOnce();
 		expect(fixture.bridge.removeTime).toHaveBeenCalledWith('b', 'time-1');
@@ -616,7 +895,7 @@ describe('writing sub-descriptions', () => {
 	const subrows = (cell: CorkboardElement): CorkboardElement[] =>
 		cell.querySelector('.snowflake-method-timeline-rows')!.children;
 	const trailingInput = (cell: CorkboardElement): CorkboardElement =>
-		cell.querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('input')!;
+		cell.querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
 
 	it('makes a row from the words typed at the foot, shows it at once, and keeps the focus for the next', async () => {
 		const fixture = laid();
@@ -626,7 +905,11 @@ describe('writing sub-descriptions', () => {
 		expect(subrows(cell).map((child) => child.getAttribute('data-row-id') ?? child.classes.has('is-trailing'))).toEqual(['r1', 'r2', true]);
 		input.focus();
 		input.value = '  Leaves  ';
+		// Enter alone breaks a paragraph; the words are written on Mod+Enter.
 		press(input, 'Enter');
+		expect(input.value).toBe('  Leaves  ');
+		expect(subrows(cell)).toHaveLength(3);
+		press(input, 'Enter', { mod: true });
 		expect(input.value).toBe('');
 		expect(fixture.dom.doc.activeElement).toBe(input);
 		const pending = subrows(cell)[2]!;
@@ -658,7 +941,7 @@ describe('writing sub-descriptions', () => {
 		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-2', 'Whole', null);
 	});
 
-	it('edits a row in place: Enter writes the words, Escape reverts, leaving the box commits', async () => {
+	it('edits a row in place: Mod+Enter writes the words, Escape reverts, leaving the box commits', async () => {
 		const fixture = laid();
 		await settle();
 		const cell = fixture.cell('time-2', 'a');
@@ -671,17 +954,19 @@ describe('writing sub-descriptions', () => {
 		expect(input.classes.has('is-hidden')).toBe(false);
 		expect(input.value).toBe('Arrives');
 		expect(fixture.dom.doc.activeElement).toBe(input);
-		input.value = 'Arrives late';
+		input.value = 'Arrives\nlate';
 		press(input, 'Enter');
+		expect(first.classes.has('is-editing')).toBe(true);
+		press(input, 'Enter', { mod: true });
 		expect(first.classes.has('is-editing')).toBe(false);
-		expect(label.textContent).toBe('Arrives late');
+		expect(label.textContent).toBe('Arrives\nlate');
 		expect(fixture.dom.doc.activeElement).toBe(label);
 		await settle();
-		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Arrives late');
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('a', 'r1', 'Arrives\nlate');
 		label.dispatch('click');
 		input.value = 'Nope';
 		press(input, 'Escape');
-		expect(label.textContent).toBe('Arrives late');
+		expect(label.textContent).toBe('Arrives\nlate');
 		expect(fixture.bridge.editRow).toHaveBeenCalledTimes(1);
 		label.dispatch('click');
 		input.value = 'Arrives early';
@@ -754,6 +1039,21 @@ describe('dragging times and rows', () => {
 		fixture.cell(timeId, timelineId).querySelectorAll('.snowflake-method-timeline-subrow')
 			.find((candidate) => candidate.getAttribute('data-row-id') === rowId)!;
 
+	it('makes a lane active from a click anywhere on it, not only from its head', async () => {
+		const fixture = laid();
+		await settle();
+		expect(fixture.head('a').classes.has('is-active')).toBe(true);
+		fixture.cell('time-1', 'b').dispatch('click');
+		expect(fixture.head('b').classes.has('is-active')).toBe(true);
+		expect(fixture.head('a').classes.has('is-active')).toBe(false);
+		expect(fixture.cell('time-1', 'b').classes.has('is-active-lane')).toBe(true);
+		expect(fixture.cell('time-2', 'a').classes.has('is-active-lane')).toBe(false);
+		// An absent cell of the lane counts as much as one with rows.
+		fixture.cell('time-1', 'a').dispatch('click');
+		expect(fixture.head('a').classes.has('is-active')).toBe(true);
+		expect(fixture.cell('time-2', 'a').classes.has('is-active-lane')).toBe(true);
+	});
+
 	it('drags a time row to a new place in the view, the line across the workspace, and writes the order', async () => {
 		const fixture = laid();
 		await settle();
@@ -782,6 +1082,48 @@ describe('dragging times and rows', () => {
 		await settle();
 		expect(fixture.bridge.setTimeOrder).toHaveBeenCalledWith('v', ['time-lost', 'time-2', 'time-1']);
 		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-lost', 'time-2', 'time-1']);
+	});
+
+	it('runs the times latest first when the view says so, and writes every move in the order the view keeps', async () => {
+		const fixture = workspace({
+			timelines: [
+				timeline('a', { times: [{ timeId: 'time-2', rows: [row('r1', 'Arrives')] }] }),
+				timeline('b', { times: [{ timeId: 'time-1', rows: [] }, { timeId: 'time-lost', rows: [] }] }),
+			],
+			views: [view('v', ['a', 'b'], { timeOrder: ['time-2'], timesReversed: true })],
+		});
+		await settle();
+		const order = fixture.button('snowflake-method-timeline-order');
+		expect(order.getAttribute('aria-pressed')).toBe('true');
+		expect(order.getAttribute('aria-label')).toBe('timeline.order.restore');
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-lost', 'time-1', 'time-2']);
+		// The rows under a time keep their order: the reversal is the times' alone.
+		expect(fixture.cell('time-2', 'a').querySelectorAll('.snowflake-method-timeline-subrow-label').map((label) => label.textContent)).toEqual(['Arrives']);
+		// Up on the screen is later in the order the view keeps.
+		menus.length = 0;
+		fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
+		menus[0]!.find((item) => item.title === 'actions.moveUp')!.click();
+		await settle();
+		expect(fixture.bridge.setTimeOrder).toHaveBeenLastCalledWith('v', ['time-2', 'time-lost', 'time-1']);
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-1', 'time-lost', 'time-2']);
+		// A drop past the foot puts the time first in the order the view keeps.
+		fixture.rows().forEach((entry, index) => standAt(entry, index * 40));
+		const table = fixture.root.querySelector('.snowflake-method-timeline-table')!;
+		const handle = fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-time-handle')!;
+		const dataTransfer = transfer([TIMELINE_TIME_DRAG_TYPE]);
+		fire(handle, 'dragstart', { dataTransfer });
+		fire(table, 'dragover', { clientY: 500, dataTransfer });
+		fire(table, 'drop', { dataTransfer });
+		fire(handle, 'dragend', {});
+		await settle();
+		expect(fixture.bridge.setTimeOrder).toHaveBeenLastCalledWith('v', ['time-1', 'time-2', 'time-lost']);
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-lost', 'time-2', 'time-1']);
+		order.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewTimesReversed).toHaveBeenCalledWith('v', false);
+		expect(order.getAttribute('aria-pressed')).toBe('false');
+		expect(order.getAttribute('aria-label')).toBe('timeline.order.reverse');
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-1', 'time-2', 'time-lost']);
 	});
 
 	it('moves a time up or down from its menu, and past the foot with a drop on the tail', async () => {
@@ -862,20 +1204,31 @@ describe('the scene pool', () => {
 		const fixture = laid();
 		await settle();
 		const pool = fixture.root.querySelector('.snowflake-method-timeline-pool')!;
-		expect(pool.querySelector('.snowflake-method-timeline-pool-name')!.textContent).toBe('timeline.pool');
-		expect(pool.querySelector('.snowflake-method-timeline-pool-count')!.textContent).toBe('2');
 		expect(fixture.corkboard).toHaveBeenCalledOnce();
-		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; emptyText: string }];
+		const [host, poolControls, variant] = fixture.corkboard.mock.calls[0]! as unknown as [CorkboardElement, TimelineControls & { memory: unknown; remember: () => void }, { include: (scene: { id: string }) => boolean; addButton: string; columns: number; gap: number; emptyText: string }];
 		expect(host).toBe(pool.querySelector('.snowflake-method-corkboard-host'));
 		expect(variant.addButton).toBe('icon');
 		expect(variant.columns).toBe(1);
+		expect(variant.gap).toBe(0.75);
 		expect(variant.emptyText).toBe('timeline.pool.empty');
 		expect(variant.include({ id: 'scene-1' })).toBe(false);
 		expect(variant.include({ id: 'scene-2' })).toBe(true);
+		// Its head names it and counts what it holds, which follows the active lane.
+		const poolHead = pool.querySelector('.snowflake-method-timeline-pool-head')!;
+		expect(pool.children[0]).toBe(poolHead);
+		expect(poolHead.querySelector('.snowflake-method-timeline-pool-name')!.textContent).toBe('timeline.pool');
+		expect(poolHead.querySelector('.snowflake-method-timeline-pool-count')!.textContent).toBe('2');
+		fixture.head('b').dispatch('click');
+		expect(poolHead.querySelector('.snowflake-method-timeline-pool-count')!.textContent).toBe('3');
 		expect(poolControls.memory).toBe(fixture.memory.pool);
 		poolControls.remember();
 		expect(fixture.remember).toHaveBeenCalledOnce();
 		expect(fixture.poolHandle.refresh).toHaveBeenCalled();
+		// The card style the pool's control chooses dresses the lanes as well.
+		expect(fixture.root.dataset.mode).toBe('compact');
+		fixture.memory.pool.mode = 'extended';
+		poolControls.remember();
+		expect(fixture.root.dataset.mode).toBe('extended');
 	});
 
 	it('follows the active lane, and hands the pool its reveals, measures and disposal', async () => {
@@ -885,7 +1238,6 @@ describe('the scene pool', () => {
 		const paints = fixture.poolHandle.refresh.mock.calls.length;
 		fixture.head('b').querySelector('.snowflake-method-timeline-lane-name')!.dispatch('click');
 		expect(variant.include({ id: 'scene-1' })).toBe(true);
-		expect(fixture.root.querySelector('.snowflake-method-timeline-pool-count')!.textContent).toBe('3');
 		expect(fixture.poolHandle.refresh.mock.calls.length).toBe(paints + 1);
 		fixture.handle.reveal('scene-2');
 		expect(fixture.poolHandle.reveal).toHaveBeenCalledWith('scene-2');
@@ -895,6 +1247,95 @@ describe('the scene pool', () => {
 		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledOnce();
 		fixture.handle.dispose();
 		expect(fixture.poolHandle.dispose).toHaveBeenCalledOnce();
+	});
+
+	it('folds the pool away from the toolbar, remembers it, and brings it back for a reveal', async () => {
+		const fixture = laid();
+		await settle();
+		const toggle = fixture.button('snowflake-method-timeline-pool-toggle');
+		const pool = fixture.root.querySelector('.snowflake-method-timeline-pool')!;
+		// The toggle stands in the frame's right corner, outside the toolbar.
+		expect(toggle.parent!.classes.has('snowflake-method-timeline-fold')).toBe(true);
+		expect(toggle.parent!.classes.has('is-end')).toBe(true);
+		expect(toggle.parent!.parent).toBe(fixture.root);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		expect(toggle.getAttribute('aria-label')).toBe('timeline.pool.collapse');
+		toggle.dispatch('click');
+		expect(fixture.memory.poolCollapsed).toBe(true);
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
+		expect(pool.classes.has('is-hidden')).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		expect(toggle.getAttribute('aria-label')).toBe('timeline.pool.expand');
+		expect(fixture.remember).toHaveBeenCalledOnce();
+		expect(fixture.poolHandle.remeasure).toHaveBeenCalledOnce();
+		// A card can only be shown in a pool that stands.
+		fixture.handle.reveal('scene-2');
+		expect(fixture.memory.poolCollapsed).toBe(false);
+		expect(pool.classes.has('is-hidden')).toBe(false);
+		expect(fixture.poolHandle.reveal).toHaveBeenCalledWith('scene-2');
+		expect(fixture.remember).toHaveBeenCalledTimes(2);
+		// A restored state hands the fold to the memory; the next paint wears it.
+		fixture.memory.poolCollapsed = true;
+		fixture.handle.refresh();
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
+		expect(pool.classes.has('is-hidden')).toBe(true);
+	});
+
+	it("folds the time column to its names from the frame's left corner, and remembers it", async () => {
+		const fixture = laid();
+		await settle();
+		const toggle = fixture.button('snowflake-method-timeline-time-toggle');
+		expect(toggle.parent!.classes.has('snowflake-method-timeline-fold')).toBe(true);
+		expect(toggle.parent!.classes.has('is-start')).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		expect(toggle.getAttribute('aria-label')).toBe('timeline.time.collapse');
+		toggle.dispatch('click');
+		expect(fixture.memory.timeCollapsed).toBe(true);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		expect(toggle.getAttribute('aria-label')).toBe('timeline.time.expand');
+		expect(fixture.remember).toHaveBeenCalledOnce();
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(false);
+		toggle.dispatch('click');
+		expect(fixture.memory.timeCollapsed).toBe(false);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(false);
+		fixture.memory.timeCollapsed = true;
+		fixture.handle.refresh();
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
+	});
+
+	it('folds both by width alone when the workspace is narrow, and brings them back as it widens', async () => {
+		const fixture = laid();
+		await settle();
+		const timeToggle = fixture.button('snowflake-method-timeline-time-toggle');
+		const poolToggle = fixture.button('snowflake-method-timeline-pool-toggle');
+		fixture.dom.resize(1200);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
+		expect(timeToggle.getAttribute('aria-expanded')).toBe('false');
+		expect(poolToggle.getAttribute('aria-expanded')).toBe('false');
+		// Nothing was chosen: the tab's memory is untouched and nothing is saved.
+		expect(fixture.memory.timeCollapsed).toBe(false);
+		expect(fixture.memory.poolCollapsed).toBe(false);
+		expect(fixture.remember).not.toHaveBeenCalled();
+		// A part brought back by hand while narrow stands, until the workspace widens and narrows again.
+		poolToggle.dispatch('click');
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(false);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
+		expect(fixture.memory.poolCollapsed).toBe(false);
+		fixture.dom.resize(1600);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(false);
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(false);
+		fixture.dom.resize(1200);
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(true);
+		// A part folded by choice stays folded whatever the width.
+		fixture.dom.resize(1600);
+		timeToggle.dispatch('click');
+		expect(fixture.memory.timeCollapsed).toBe(true);
+		fixture.dom.resize(1200);
+		fixture.dom.resize(1600);
+		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
+		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(false);
 	});
 });
 
@@ -982,6 +1423,21 @@ describe('dragging scenes', () => {
 		expect(rows[1]!.querySelector('.snowflake-method-corkboard-card')!.getAttribute('data-id')).toBe('scene-2');
 	});
 
+	it('holds a card still while a control on it is pressed, and lets it drag again once the press is released', async () => {
+		const fixture = laid();
+		await settle();
+		const card = cardOf(fixture, 'scene-1');
+		expect(card.getAttribute('draggable')).toBe('true');
+		// A press on the title is a click still to come, and the card stays draggable under it.
+		fire(card, 'mousedown', { target: card.querySelector('.snowflake-method-corkboard-title')! });
+		expect(card.getAttribute('draggable')).toBe('true');
+		fire(card, 'mousedown', { target: card.querySelector('select')! });
+		expect(card.getAttribute('draggable')).toBe('false');
+		expect(fixture.dom.windowListeners.get('mouseup')!.map((entry) => entry.capture)).toEqual([true]);
+		fixture.dom.dispatchWindow('mouseup');
+		expect(card.getAttribute('draggable')).toBe('true');
+	});
+
 	it("moves a lane's card to another row of the same lane, and back to the pool", async () => {
 		const fixture = laid();
 		await settle();
@@ -1049,7 +1505,7 @@ describe('stacking scenes', () => {
 	const control = (stack: CorkboardElement, name: string): CorkboardElement =>
 		stack.querySelector(`.snowflake-method-timeline-stack-${name}`)!;
 
-	it('shows one card of the row with the rest counted behind it, and walks them without a write', async () => {
+	it('shows one card of the row with the rest counted behind it, and walks them round without a write', async () => {
 		const fixture = laid();
 		await settle();
 		expect(fixture.root.dataset.presentation).toBe('stack');
@@ -1058,16 +1514,21 @@ describe('stacking scenes', () => {
 		expect(fixture.cards()).toHaveLength(1);
 		expect(shownIn(stack)).toBe('scene-1');
 		expect(fixture.translate).toHaveBeenCalledWith('timeline.stack.position', { position: 1, total: 3 });
-		expect(control(stack, 'previous').disabled).toBe(true);
 		expect(control(stack, 'reset').disabled).toBe(true);
+		expect(control(stack, 'previous').disabled).toBe(false);
 		expect(control(stack, 'next').disabled).toBe(false);
+		// The walk comes round: back from the first is the last, on from the last is the first.
+		control(stack, 'previous').dispatch('click');
+		expect(shownIn(stack)).toBe('scene-3');
+		control(stack, 'next').dispatch('click');
+		expect(shownIn(stack)).toBe('scene-1');
 		control(stack, 'next').dispatch('click');
 		expect(shownIn(stack)).toBe('scene-2');
 		expect(fixture.cards()).toHaveLength(1);
-		expect(control(stack, 'previous').disabled).toBe(false);
+		expect(control(stack, 'reset').disabled).toBe(false);
 		control(stack, 'next').dispatch('click');
 		expect(shownIn(stack)).toBe('scene-3');
-		expect(control(stack, 'next').disabled).toBe(true);
+		expect(control(stack, 'next').disabled).toBe(false);
 		expect(fixture.translate).toHaveBeenCalledWith('timeline.stack.position', { position: 3, total: 3 });
 		expect(fixture.memory.stackPositions.get('v|a|r1')).toBe(2);
 		fixture.notify();
@@ -1089,7 +1550,7 @@ describe('stacking scenes', () => {
 		control(stack, 'next').dispatch('click');
 		control(stack, 'next').dispatch('click');
 		expect(shownIn(stack)).toBe('scene-3');
-		expect(control(stack, 'controls').classes.has('is-hidden')).toBe(false);
+		expect(control(stack, 'controls').classes.has('is-alone')).toBe(false);
 		await fixture.bridge.removeScene('a', 'scene-3');
 		fixture.notify();
 		await settle();
@@ -1101,28 +1562,25 @@ describe('stacking scenes', () => {
 		await settle();
 		expect(stack.dataset.total).toBe('1');
 		expect(shownIn(stack)).toBe('scene-1');
-		expect(control(stack, 'controls').classes.has('is-hidden')).toBe(true);
+		expect(control(stack, 'controls').classes.has('is-alone')).toBe(true);
 	});
 
-	it('writes the presentation from the control, laying the cards flat and stacking them again', async () => {
+	it('switches the presentation from its symbol, laying the cards flat and stacking them again', async () => {
 		const fixture = laid();
 		await settle();
-		const radios = fixture.root.querySelectorAll('.snowflake-method-timeline-presentation-option');
-		expect(radios.map((radio) => radio.getAttribute('data-value'))).toEqual(['flat', 'stack']);
-		expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual(['false', 'true']);
-		expect(radios.map((radio) => radio.tabIndex)).toEqual([-1, 0]);
-		radios[1]!.dispatch('click');
-		expect(fixture.bridge.setViewPresentation).not.toHaveBeenCalled();
-		radios[0]!.dispatch('click');
+		const button = fixture.button('snowflake-method-timeline-presentation');
+		// Stacked, the symbol says so and a press lays the cards flat.
+		expect(button.getAttribute('aria-label')).toBe('timeline.presentation.toFlat');
+		button.dispatch('click');
 		await settle();
 		expect(fixture.bridge.setViewPresentation).toHaveBeenCalledWith('v', 'flat');
 		expect(fixture.root.dataset.presentation).toBe('flat');
-		expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+		expect(button.getAttribute('aria-label')).toBe('timeline.presentation.toStack');
 		const box = boxOf(fixture, 'time-1', 'r1');
 		expect(box.querySelector('.snowflake-method-timeline-stack')).toBeNull();
 		expect(fixture.cards()).toHaveLength(3);
 		expect(box.children.map((child) => child.getAttribute('data-id'))).toEqual(['scene-1', 'scene-2', 'scene-3']);
-		press(radios[0]!, 'ArrowRight');
+		button.dispatch('click');
 		await settle();
 		expect(fixture.bridge.setViewPresentation).toHaveBeenLastCalledWith('v', 'stack');
 		expect(fixture.root.dataset.presentation).toBe('stack');
@@ -1161,8 +1619,8 @@ describe('stacking scenes', () => {
 	it('still walks a stack on a project that cannot be written, and changes nothing else', async () => {
 		const fixture = laid(true);
 		await settle();
-		const radios = fixture.root.querySelectorAll('.snowflake-method-timeline-presentation-option');
-		expect(radios.every((radio) => radio.disabled)).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-presentation').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-words').disabled).toBe(true);
 		const stack = stackOf(fixture, 'time-1', 'r1');
 		control(stack, 'next').dispatch('click');
 		expect(shownIn(stack)).toBe('scene-2');

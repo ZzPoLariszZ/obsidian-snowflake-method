@@ -4280,6 +4280,10 @@ export default class SnowflakeMethodPlugin
 				write((project) => timelines.setViewPresentation(project, viewId, presentation)),
 			setViewCardStyle: (viewId, cardStyle) =>
 				write((project) => timelines.setViewCardStyle(project, viewId, cardStyle)),
+			setViewSubDescriptions: (viewId, shown) =>
+				write((project) => timelines.setViewSubDescriptions(project, viewId, shown)),
+			setViewTimesReversed: (viewId, reversed) =>
+				write((project) => timelines.setViewTimesReversed(project, viewId, reversed)),
 			addTime: (timelineId, timeId) =>
 				write((project) => timelines.addTime(project, timelineId, timeId)),
 			removeTime: (timelineId, timeId) =>

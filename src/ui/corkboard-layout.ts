@@ -255,6 +255,8 @@ export function corkboardMetrics(
 	compactHeightPx?: number,
 	/** A column count fixed by the board, whatever the width holds. */
 	columns?: number,
+	/** The gap between cards in rem, where the board's own, sized for its insertion buttons, is more than wanted. */
+	gapRem?: number,
 ): CorkboardMetrics {
 	const measuredCompactHeight =
 		mode === 'compact' &&
@@ -265,7 +267,7 @@ export function corkboardMetrics(
 			: null;
 	return {
 		width,
-		gap: CORKBOARD_REM.gap * remPx,
+		gap: (gapRem ?? CORKBOARD_REM.gap) * remPx,
 		minCardWidth: CORKBOARD_REM.minCardWidth * remPx,
 		cardHeight: measuredCompactHeight ?? CORKBOARD_REM.cardHeight[mode] * remPx,
 		headHeight: CORKBOARD_REM.headHeight * remPx,

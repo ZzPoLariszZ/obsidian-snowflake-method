@@ -6,6 +6,8 @@
 export class CorkboardDom {
 	width = 1_000;
 	height = 600;
+	/** How wide a scroller's content runs; no wider than the window unless a test says. */
+	scrollWidth = 0;
 	geometryReads = 0;
 	readonly operations: {
 		kind: 'read' | 'style' | 'scroll';
@@ -37,7 +39,7 @@ export class CorkboardDom {
 			getComputedStyle: (element: CorkboardElement) => {
 				this.geometryReads++;
 				this.operations.push({ kind: 'read', target: element, property: 'computedStyle' });
-				return { fontSize: '16px', borderTopWidth: '1px', borderBottomWidth: '1px' };
+				return { fontSize: '16px', borderTopWidth: '1px', borderBottomWidth: '1px', columnGap: '12px' };
 			},
 			setTimeout: (callback: () => void): number => {
 				const id = ++this.sequence;
@@ -114,6 +116,10 @@ export class CorkboardElement {
 	disabled = false;
 	tabIndex = -1;
 	readOnly = false;
+	scrollLeft = 0;
+	/** A box's own size, for the few places that sum boxes; a test sets what it needs. */
+	offsetWidth = 0;
+	offsetHeight = 0;
 	private top = 0;
 	textWrites = 0;
 	attributeWrites = 0;
@@ -154,6 +160,7 @@ export class CorkboardElement {
 		this.dom.operations.push({ kind: 'scroll', target: this, property: 'scrollTop' });
 		this.top = top;
 	}
+	get scrollWidth(): number { this.readGeometry('scrollWidth'); return Math.max(this.dom.width, this.dom.scrollWidth); }
 	get scrollHeight(): number {
 		this.readGeometry('scrollHeight');
 		const content = Math.max(0, ...this.children.map((child) => Number.parseFloat(child.styles.height ?? '0')));

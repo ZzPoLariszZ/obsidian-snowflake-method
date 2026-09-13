@@ -1,5 +1,5 @@
 import {
-	emptyTimelineDocument,
+	freshTimelineDocument,
 	readTimelineDocument,
 	serializeTimelineDocument,
 	type TimelineDocument,
@@ -61,7 +61,7 @@ export class TimelineStore {
 					return `${project.rootPath}/${layout.directories.timeline}/${TIMELINE_FILE_NAME}`;
 				},
 				schemaVersion: TIMELINE_STORE_SCHEMA_VERSION,
-				empty: emptyTimelineDocument,
+				empty: (project) => freshTimelineDocument(project.locale),
 				readDocument: readTimelineDocument,
 				writeDocument: serializeTimelineDocument,
 			},

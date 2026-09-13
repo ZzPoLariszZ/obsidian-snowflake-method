@@ -48,8 +48,8 @@ import { clearSceneFilters, filterScenes, reconcileSceneFilters, sceneFilterRows
 import {
 	SCENE_CARD_PART_CLASSES,
 	SCENE_CARD_SELECTOR,
-	controlWithin,
 	createSceneCardDeck,
+	pressWithin,
 	type SceneCard,
 	type SceneCardDeck,
 	type SceneCardPart,
@@ -483,7 +483,7 @@ export function renderCorkboard(
 		const rem = remPx();
 		// The scroller extends past the frame for its scrollbar; the canvas
 		// keeps the same content edges as the toolbar above it.
-		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns);
+		const metrics = corkboardMetrics(canvas.clientWidth, memory.mode, rem, compactHeight(), variant.columns, variant.gap);
 		arrange(metrics);
 		displayKeys = [];
 		for (const group of order.groups) {
@@ -864,7 +864,6 @@ export function renderCorkboard(
 
 	// -- Wiring --------------------------------------------------------------
 
-	const isControl = controlWithin;
 
 	const wireInsert = (entry: CardEntry, button: HTMLButtonElement, side: 'before' | 'after'): void => {
 		button.addEventListener('click', (event) => {
@@ -881,7 +880,7 @@ export function renderCorkboard(
 			if (
 				(out === undefined && (!adjacency || !editable(entry))) ||
 				event.dataTransfer === null ||
-				isControl(event.target)
+				pressWithin(event.target)
 			) {
 				event.preventDefault();
 				return;
@@ -1196,7 +1195,7 @@ export function renderCorkboard(
 		// Hidden workspace tabs have no useful geometry; their next reveal measures again.
 		if (width <= 0) return null;
 		const viewport: ViewportMeasure = { top: scroller.scrollTop, height: scroller.clientHeight };
-		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns);
+		const metrics = corkboardMetrics(width, memory.mode, remPx(), compactHeight(), variant.columns, variant.gap);
 		if (Math.abs(metrics.cardHeight - layout.cardHeight) <= 0.5) {
 			metrics.cardHeight = layout.cardHeight;
 		}

@@ -13,6 +13,8 @@ import {
 	derivedPresentation,
 	editTimelineRow,
 	emptyTimelineDocument,
+	freshTimelineDocument,
+	MAIN_TIMELINE_VIEW_ID,
 	isTimelineBindingKind,
 	moveTimelineInView,
 	moveTimelineRow,
@@ -32,8 +34,10 @@ import {
 	setLastTimelineView,
 	setViewCardStyle,
 	setViewPresentation,
+	setViewSubDescriptions,
 	setViewTimeOrder,
 	setViewTimelines,
+	setViewTimesReversed,
 	unassignedScenes,
 	type Timeline,
 	type TimelineDocument,
@@ -48,7 +52,7 @@ const timeline = (id: string, times: readonly TimelineTime[] = [], extra: Partia
 	id, name: `Timeline ${id}`, binding: null, times, createdAt: 1, updatedAt: 1, ...extra,
 });
 const view = (id: string, timelines: readonly string[] = [], extra: Partial<TimelineView> = {}): TimelineView => ({
-	id, name: `View ${id}`, timelines, timeOrder: [], presentation: null, cardStyle: null, createdAt: 1, updatedAt: 1, ...extra,
+	id, name: `View ${id}`, timelines, timeOrder: [], presentation: null, cardStyle: null, showSubDescriptions: true, timesReversed: false, createdAt: 1, updatedAt: 1, ...extra,
 });
 const doc = (
 	timelines: readonly Timeline[] = [],
@@ -63,6 +67,13 @@ const timeIdsOf = (held: TimelineDocument, timelineId: string): string[] =>
 	held.timelines.find((t) => t.id === timelineId)?.times.map((c) => c.timeId) ?? [];
 
 describe('reading a stored timeline', () => {
+	it('starts a project on one view named in its language, under a fixed id', () => {
+		expect(freshTimelineDocument('en').views).toEqual([expect.objectContaining({ id: MAIN_TIMELINE_VIEW_ID, name: 'Main', timelines: [], timeOrder: [] })]);
+		expect(freshTimelineDocument('zh-CN').views[0]?.name).toBe('主视图');
+		expect(freshTimelineDocument('en').timelines).toEqual([]);
+		expect(emptyTimelineDocument().views).toEqual([]);
+	});
+
 	it('needs an id and a name, and reads the rest as far as it goes', () => {
 		expect(readTimeline(null)).toBeNull();
 		expect(readTimeline({ name: 'x' })).toBeNull();
@@ -105,11 +116,17 @@ describe('reading a stored timeline', () => {
 			presentation: 'stack', cardStyle: 'wide', createdAt: 5, updatedAt: 6,
 		})).toEqual({
 			id: 'v-1', name: 'Main', timelines: ['a', 'b'], timeOrder: ['t-2', 't-1'],
-			presentation: 'stack', cardStyle: null, createdAt: 5, updatedAt: 6,
+			presentation: 'stack', cardStyle: null, showSubDescriptions: true, timesReversed: false, createdAt: 5, updatedAt: 6,
 		});
 		expect(readTimelineView({ id: 'v-1', name: 'x', presentation: 'grid', cardStyle: 'compact' })).toMatchObject({
 			presentation: null, cardStyle: 'compact',
 		});
+		// Only a false written keeps the words away; a file from before the choice shows them.
+		expect(readTimelineView({ id: 'v-1', name: 'x', showSubDescriptions: false })?.showSubDescriptions).toBe(false);
+		expect(readTimelineView({ id: 'v-1', name: 'x', showSubDescriptions: 'no' })?.showSubDescriptions).toBe(true);
+		// Only a true written turns the times about; anything else runs them first to last.
+		expect(readTimelineView({ id: 'v-1', name: 'x', timesReversed: true })?.timesReversed).toBe(true);
+		expect(readTimelineView({ id: 'v-1', name: 'x', timesReversed: 'yes' })?.timesReversed).toBe(false);
 	});
 
 	it('reads a document, keeping what it cannot read or place as strays', () => {
@@ -216,6 +233,10 @@ describe('views', () => {
 		expect(setViewPresentation(held, 'v-1', null, 9)).toBeNull();
 		expect(setViewCardStyle(held, 'v-1', 'compact', 9)?.views[0]?.cardStyle).toBe('compact');
 		expect(setViewCardStyle(held, 'v-1', null, 9)).toBeNull();
+		expect(setViewSubDescriptions(held, 'v-1', false, 9)?.views[0]).toMatchObject({ showSubDescriptions: false, updatedAt: 9 });
+		expect(setViewSubDescriptions(held, 'v-1', true, 9)).toBeNull();
+		expect(setViewTimesReversed(held, 'v-1', true, 9)?.views[0]).toMatchObject({ timesReversed: true, updatedAt: 9 });
+		expect(setViewTimesReversed(held, 'v-1', false, 9)).toBeNull();
 		expect(setViewTimelines(held, 'v-9', [], 9)).toBeNull();
 	});
 });

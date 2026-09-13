@@ -11,18 +11,16 @@ import { sceneFilters, type SceneFilters } from './scene-filters';
 export const STORY_STRUCTURE_FAMILIES = [
 	'corkboard',
 	'freeform',
-	'beat-sheet',
 	'timeline',
-	'plotline',
+	'beat-sheet',
 ] as const;
 export type StoryStructureFamily = (typeof STORY_STRUCTURE_FAMILIES)[number];
 
 export const STORY_STRUCTURE_VISUALIZATIONS = [
 	'corkboard-ordered',
 	'corkboard-freeform',
-	'beat-sheet',
 	'timeline',
-	'plotline',
+	'beat-sheet',
 ] as const;
 export type StoryStructureVisualization =
 	(typeof STORY_STRUCTURE_VISUALIZATIONS)[number];
@@ -44,9 +42,8 @@ export function visualizationFamily(
 			return 'corkboard';
 		case 'corkboard-freeform':
 			return 'freeform';
-		case 'beat-sheet':
 		case 'timeline':
-		case 'plotline':
+		case 'beat-sheet':
 			return key;
 	}
 }
@@ -105,14 +102,18 @@ export function readCorkboardPreferences(value: unknown): Partial<CorkboardPrefe
 	};
 }
 
-/** How the timeline's scene pool is set: the same three the corkboard keeps. */
+/** How the timeline is set: the pool's three the corkboard keeps, its card style dressing the lanes too, and the two folds. */
 export interface TimelineSettings {
 	pool: CorkboardSettings;
+	/** The pool folded out of sight, the lanes taking its room. */
+	poolCollapsed: boolean;
+	/** The time column folded to its names alone. */
+	timeCollapsed: boolean;
 }
 
-/** A one-column pool reads best compact; the tab keeps what the author chose after. */
+/** A one-column pool reads best compact, and the lanes follow it; the tab keeps what the author chose after. */
 export function defaultTimelineSettings(): TimelineSettings {
-	return { pool: { mode: 'compact', group: '', reversed: false } };
+	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false };
 }
 
 export interface StoryStructureViewStateSnapshot {
@@ -195,6 +196,14 @@ export function mergeStoryStructureViewState(
 					? pool.reversed
 					: current.timeline.pool.reversed,
 		},
+		poolCollapsed:
+			typeof timelineCandidate.poolCollapsed === 'boolean'
+				? timelineCandidate.poolCollapsed
+				: current.timeline.poolCollapsed,
+		timeCollapsed:
+			typeof timelineCandidate.timeCollapsed === 'boolean'
+				? timelineCandidate.timeCollapsed
+				: current.timeline.timeCollapsed,
 	};
 	const state = { projectPath, visualization, corkboard, timeline };
 	return {
@@ -207,7 +216,9 @@ export function mergeStoryStructureViewState(
 			state.corkboard.reversed !== current.corkboard.reversed ||
 			state.timeline.pool.mode !== current.timeline.pool.mode ||
 			state.timeline.pool.group !== current.timeline.pool.group ||
-			state.timeline.pool.reversed !== current.timeline.pool.reversed,
+			state.timeline.pool.reversed !== current.timeline.pool.reversed ||
+			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
+			state.timeline.timeCollapsed !== current.timeline.timeCollapsed,
 	};
 }
 
@@ -242,14 +253,21 @@ export interface TimelineMemory {
 	/** Where each stack was browsed to, by view, timeline and row. */
 	stackPositions: Map<string, number>;
 	pool: CorkboardMemory;
+	/** The pool folded away, which the view persists with the pool's settings. */
+	poolCollapsed: boolean;
+	/** The time column folded to its names, persisted the same way. */
+	timeCollapsed: boolean;
 	scroll: { left: number; top: number };
 }
 
 export function timelineMemory(settings?: TimelineSettings): TimelineMemory {
+	const held = settings ?? defaultTimelineSettings();
 	return {
 		activeTimeline: new Map(),
 		stackPositions: new Map(),
-		pool: corkboardMemory((settings ?? defaultTimelineSettings()).pool),
+		pool: corkboardMemory(held.pool),
+		poolCollapsed: held.poolCollapsed,
+		timeCollapsed: held.timeCollapsed,
 		scroll: { left: 0, top: 0 },
 	};
 }

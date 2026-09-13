@@ -897,7 +897,7 @@ class SegmentTitleModal extends SnowflakeFormModal<SegmentTitleChoice> {
 				}, 0);
 			});
 		if (numbering !== null && numbering.followers > 0) {
-			renumberRow(
+			toggleRow(
 				this.contentEl,
 				this.t('manuscript.renumberFollowers', { count: numbering.followers }),
 				this.renumber,
@@ -4616,7 +4616,7 @@ export class ConfirmKindDeletionModal extends ConfirmModal {
  * this is drawn as its own row rather than as a settings row, to read the
  * same in each.
  */
-function renumberRow(
+export function toggleRow(
 	container: HTMLElement,
 	text: string,
 	value: boolean,
@@ -4709,7 +4709,7 @@ class ConfirmSegmentMergeModal extends Modal {
 		// a gap in the count, and the notes after it can close it. Shown only
 		// when there are such notes, so the plain merge stays the plain dialog.
 		if (this.prompt.followers > 0) {
-			renumberRow(
+			toggleRow(
 				this.contentEl,
 				this.t('manuscript.renumberFollowersDown', {
 					count: this.prompt.followers,

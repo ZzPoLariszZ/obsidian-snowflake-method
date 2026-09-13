@@ -72,8 +72,12 @@ export interface TimelineView {
 	readonly timeOrder: readonly string[];
 	/** How the scenes are shown; null means the layout's own default. */
 	readonly presentation: ScenePresentation | null;
-	/** What a card shows on the lanes; null means the layout's own default. */
+	/** Reserved for a card style of the view's own; null while the pool's display control dresses the lanes. */
 	readonly cardStyle: TimelineCardStyle | null;
+	/** Whether the lanes show their rows' words; a view that keeps them away shows the scenes alone. */
+	readonly showSubDescriptions: boolean;
+	/** Whether the times run latest first; the rows under each keep their own order either way. */
+	readonly timesReversed: boolean;
 	readonly createdAt: number;
 	readonly updatedAt: number;
 }
@@ -99,6 +103,32 @@ export function emptyTimelineDocument(): TimelineDocument {
 		pinnedTimelineId: null,
 		lastViewId: null,
 		strays: { timelines: [], views: [] },
+	};
+}
+
+/** The id of the view a project starts with, fixed so every read of a file not yet written finds the same view. */
+export const MAIN_TIMELINE_VIEW_ID = 'timeline-view-main';
+
+/**
+ * What a project reads before its timeline file is written: one view, named
+ * in the project's language, so the workspace opens onto a view rather than
+ * a hint. The first change writes it with the rest.
+ */
+export function freshTimelineDocument(locale: 'en' | 'zh-CN'): TimelineDocument {
+	return {
+		...emptyTimelineDocument(),
+		views: [{
+			id: MAIN_TIMELINE_VIEW_ID,
+			name: locale === 'zh-CN' ? '主视图' : 'Main',
+			timelines: [],
+			timeOrder: [],
+			presentation: null,
+			cardStyle: null,
+			showSubDescriptions: true,
+			timesReversed: false,
+			createdAt: 0,
+			updatedAt: 0,
+		}],
 	};
 }
 
@@ -240,6 +270,10 @@ export function readTimelineView(value: unknown): TimelineView | null {
 		timeOrder: uniqueIds(entry.timeOrder),
 		presentation: isScenePresentation(entry.presentation) ? entry.presentation : null,
 		cardStyle: isTimelineCardStyle(entry.cardStyle) ? entry.cardStyle : null,
+		// Absent from the views 0.20.0 wrote, which showed the words.
+		showSubDescriptions: entry.showSubDescriptions !== false,
+		// Absent from the views before the choice, which ran first to last.
+		timesReversed: entry.timesReversed === true,
 		createdAt: finiteOrZero(entry.createdAt),
 		updatedAt: finiteOrZero(entry.updatedAt),
 	};
@@ -610,6 +644,28 @@ export function setViewCardStyle(
 ): TimelineDocument | null {
 	return replaceView(held, viewId, (view) =>
 		view.cardStyle === cardStyle ? null : { ...view, cardStyle }, now);
+}
+
+/** Shows the rows' words on the view's lanes, or keeps them away. */
+export function setViewSubDescriptions(
+	held: TimelineDocument,
+	viewId: string,
+	shown: boolean,
+	now: number,
+): TimelineDocument | null {
+	return replaceView(held, viewId, (view) =>
+		view.showSubDescriptions === shown ? null : { ...view, showSubDescriptions: shown }, now);
+}
+
+/** Runs the view's times latest first, or first to last again; the rows under each are untouched. */
+export function setViewTimesReversed(
+	held: TimelineDocument,
+	viewId: string,
+	reversed: boolean,
+	now: number,
+): TimelineDocument | null {
+	return replaceView(held, viewId, (view) =>
+		view.timesReversed === reversed ? null : { ...view, timesReversed: reversed }, now);
 }
 
 /** A time joins the timeline with no rows yet; null when it already stands there. */

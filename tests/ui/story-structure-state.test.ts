@@ -21,7 +21,7 @@ const current: StoryStructureViewStateSnapshot = {
 	projectPath: 'Novel/Novel.md',
 	visualization: 'timeline',
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
-	timeline: { pool: { mode: 'extended', group: 'time', reversed: false } },
+	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 };
 
 describe('story structure restored state', () => {
@@ -42,10 +42,8 @@ describe('story structure restored state', () => {
 		});
 	});
 
-	it('falls back to the corkboard for a visualization it does not know', () => {
-		const update = mergeStoryStructureViewState(current, {
-			visualization: 'mind-map',
-		});
+	it.each(['mind-map', 'plotline'])('falls back to the corkboard for a visualization it does not know (%s)', (visualization) => {
+		const update = mergeStoryStructureViewState(current, { visualization });
 		expect(update.state.visualization).toBe('corkboard-ordered');
 		expect(update.state.corkboard).toEqual(current.corkboard);
 		expect(update.changed).toBe(true);
@@ -115,12 +113,23 @@ describe('story structure restored state', () => {
 				timeline: { pool: { mode: 'compact', group: 'mood', reversed: true } },
 			}),
 		).toEqual({
-			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true } } },
+			state: { ...current, timeline: { pool: { mode: 'compact', group: 'time', reversed: true }, poolCollapsed: true, timeCollapsed: false } },
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: 7 })).toEqual({ state: current, changed: false });
 		expect(mergeStoryStructureViewState(current, { timeline: { pool: null } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false } });
+		// The pool's fold is a yes or a no; anything else keeps the current one.
+		expect(mergeStoryStructureViewState(current, { timeline: { poolCollapsed: false } })).toEqual({
+			state: { ...current, timeline: { ...current.timeline, poolCollapsed: false } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { timeline: { poolCollapsed: 'yes' } })).toEqual({ state: current, changed: false });
+		expect(mergeStoryStructureViewState(current, { timeline: { timeCollapsed: true } })).toEqual({
+			state: { ...current, timeline: { ...current.timeline, timeCollapsed: true } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { timeline: { timeCollapsed: 1 } })).toEqual({ state: current, changed: false });
+		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false });
 	});
 
 	it('reports a change only when something moved', () => {
@@ -140,7 +149,7 @@ describe('story structure restored state', () => {
 	it('leaves its input alone', () => {
 		const before = JSON.stringify(current);
 		mergeStoryStructureViewState(current, {
-			visualization: 'plotline',
+			visualization: 'beat-sheet',
 			corkboard: { mode: 'standard', group: '', reversed: false },
 		});
 		expect(JSON.stringify(current)).toBe(before);
@@ -150,21 +159,20 @@ describe('story structure restored state', () => {
 		expect(STORY_STRUCTURE_VISUALIZATIONS.map(visualizationFamily)).toEqual([
 			'corkboard',
 			'freeform',
-			'beat-sheet',
 			'timeline',
-			'plotline',
+			'beat-sheet',
 		]);
 		expect(STORY_STRUCTURE_FAMILIES.map((family) => familyVisualization(family))).toEqual([
 			'corkboard-ordered',
 			'corkboard-freeform',
-			'beat-sheet',
 			'timeline',
-			'plotline',
+			'beat-sheet',
 		]);
 		expect(STORY_STRUCTURE_FAMILIES.map(familyVisualization).map(visualizationFamily)).toEqual(
 			STORY_STRUCTURE_FAMILIES,
 		);
-		expect(isStoryStructureVisualization('plotline')).toBe(true);
+		expect(isStoryStructureVisualization('beat-sheet')).toBe(true);
+		expect(isStoryStructureVisualization('plotline')).toBe(false);
 		expect(isStoryStructureVisualization('corkboard')).toBe(false);
 		expect([...CORKBOARD_MODES]).toEqual(['compact', 'standard', 'extended']);
 		expect(isCorkboardMode('standard')).toBe(true);

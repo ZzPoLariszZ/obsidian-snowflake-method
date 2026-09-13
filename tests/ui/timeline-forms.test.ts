@@ -68,7 +68,7 @@ describe('the timeline forms', () => {
 	it('hands back a new timeline with its binding, joining the view by default', () => {
 		const form = new AddTimelineModal(app, t, {
 			takenNames: ['Main'],
-			pickBinding: () => Promise.resolve(null),
+			roster: () => [],
 			offerView: true,
 		}, () => Promise.resolve());
 		expect(collect(form)).toBeNull();
@@ -81,17 +81,17 @@ describe('the timeline forms', () => {
 		});
 		const alone = new AddTimelineModal(app, t, {
 			takenNames: [],
-			pickBinding: () => Promise.resolve(null),
+			roster: () => [],
 			offerView: false,
 		}, () => Promise.resolve());
 		set(alone, { value: { name: 'Bob', binding: null, addToView: false } });
 		expect(collect(alone)).toEqual({ name: 'Bob', binding: null, addToView: false });
 	});
 
-	it('hands back a view over the timelines checked, in the list\'s order', () => {
+	it('hands back a view over the timelines shown, in the lines\' order', () => {
 		const timelines = [timeline('a'), timeline('b'), timeline('c')];
 		const form = new TimelineViewFormModal(app, t, {
-			mode: 'manage',
+			mode: 'edit',
 			takenNames: ['World'],
 			initial: { name: 'Main', timelines: ['c', 'a'] },
 			timelines: () => timelines,
@@ -101,7 +101,7 @@ describe('the timeline forms', () => {
 		set(form, { nameValue: 'World' });
 		expect(collect(form)).toBeNull();
 		expect(notices).toHaveBeenLastCalledWith('timeline.view.nameTaken');
-		set(form, { nameValue: 'Main', order: ['b', 'c', 'a'], checked: new Set(['a', 'b']) });
+		set(form, { nameValue: 'Main', timelines: ['b', 'a'] });
 		expect(collect(form)).toEqual({ name: 'Main', timelines: ['b', 'a'] });
 		const fresh = new TimelineViewFormModal(app, t, {
 			mode: 'add',
@@ -114,5 +114,27 @@ describe('the timeline forms', () => {
 		expect(notices).toHaveBeenLastCalledWith('timeline.view.nameRequired');
 		set(fresh, { nameValue: 'All' });
 		expect(collect(fresh)).toEqual({ name: 'All', timelines: ['a'] });
+	});
+
+	it('puts a dragged line in the place of the one it lands on', () => {
+		const timelines = [timeline('a'), timeline('b'), timeline('c')];
+		const form = new TimelineViewFormModal(app, t, {
+			mode: 'edit',
+			takenNames: [],
+			initial: { name: 'Main', timelines: ['a', 'b', 'c'] },
+			timelines: () => timelines,
+			addTimeline: () => Promise.resolve(null),
+		}, () => Promise.resolve());
+		const move = (id: string, target: string): void => {
+			(form as unknown as { moveLine(id: string, target: string): void }).moveLine(id, target);
+		};
+		move('a', 'c');
+		expect(collect(form)).toEqual({ name: 'Main', timelines: ['b', 'c', 'a'] });
+		move('a', 'b');
+		expect(collect(form)).toEqual({ name: 'Main', timelines: ['a', 'b', 'c'] });
+		move('c', 'c');
+		expect(collect(form)).toEqual({ name: 'Main', timelines: ['a', 'b', 'c'] });
+		move('c', 'gone');
+		expect(collect(form)).toEqual({ name: 'Main', timelines: ['a', 'b', 'c'] });
 	});
 });
