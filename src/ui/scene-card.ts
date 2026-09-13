@@ -159,6 +159,8 @@ export interface SceneCardDeps<Card extends SceneCard> {
 	projectPath: () => string | null;
 	/** True while the project cannot be written to. */
 	readOnly: () => boolean;
+	/** True while the plugin is unloading, when a dialog opened now would outlive its owner. */
+	unloading?: () => boolean;
 	charactersByPath: () => ReadonlyMap<string, ProjectDashboardModel['characters'][number]>;
 	scenesById: () => ReadonlyMap<string, SceneViewModel>;
 	/** Manuscript note paths by reading order, for the linked chips. */
@@ -270,6 +272,16 @@ export function createSceneCardDeck<Card extends SceneCard>(
 				const drafts = recoveryDrafts;
 				recoveryDrafts = [];
 				recoveredTexts.clear();
+				// Checked at delivery, as the timeline's own recovery is: unload
+				// can start between a refused write and this microtask. The words
+				// stay recoverable without a dialog belonging to a plugin that
+				// has gone.
+				if (deps.unloading?.() === true) {
+					for (const draft of drafts) {
+						console.error('Snowflake: a scene card’s words could not be written', draft);
+					}
+					return;
+				}
 				new CorkboardDraftModal(app, t, drafts).open();
 			});
 		}

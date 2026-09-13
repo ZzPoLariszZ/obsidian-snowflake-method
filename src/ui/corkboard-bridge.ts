@@ -6,7 +6,7 @@
  * only once a read begun after the write has landed.
  */
 
-import type { App } from 'obsidian';
+import type { App, Menu } from 'obsidian';
 
 import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
@@ -39,6 +39,8 @@ export interface CorkboardControls {
 	activateProject(): void;
 	/** Re-reads the project; resolves after `handle.refresh()` has been called with the new model. */
 	refresh(): Promise<void>;
+	/** True while the plugin is unloading, when a dialog opened now would outlive its owner. */
+	unloading?(): boolean;
 	popover: LentFilterPopover;
 	memory: CorkboardMemory;
 	/** Save the tab layout and, when provided, the individual project preferences changed. */
@@ -88,6 +90,8 @@ export interface CorkboardVariant {
 	 * as well, so the display control stays while the board shows nothing.
 	 */
 	modeShared?: boolean;
+	/** Items the hosting surface adds to a card's menu beside its own drag actions. */
+	menuItems?: (sceneId: string, menu: Menu) => void;
 	/**
 	 * Cards leave the board under this type, whatever the adjacency; the
 	 * board's own reorder drag is off. The type must not be the corkboard's

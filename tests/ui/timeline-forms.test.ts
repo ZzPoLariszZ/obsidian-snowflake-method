@@ -1,17 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
+
 const { notices } = vi.hoisted(() => ({ notices: vi.fn() }));
 
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	class Modal extends runtime.Modal {
 		modalEl = { addClass: (): void => undefined };
+		contentEl = new CorkboardDom().container;
 		setTitle(): void {}
+		onClose(): void {}
+		close(): void { this.onClose(); }
+	}
+	class Setting extends runtime.Setting {
+		settingEl: CorkboardElement;
+		infoEl: CorkboardElement;
+		controlEl: CorkboardElement;
+		constructor(container: CorkboardElement) {
+			super();
+			this.settingEl = container.createDiv();
+			this.infoEl = this.settingEl.createDiv();
+			this.controlEl = this.settingEl.createDiv();
+		}
+		addText(build: (text: { inputEl: CorkboardElement; setValue(value: string): { onChange(handler: (value: string) => void): void } }) => void): this {
+			const inputEl = this.controlEl.createEl('input');
+			build({ inputEl, setValue: (value) => {
+				inputEl.value = value;
+				return { onChange: (handler) => { inputEl.addEventListener('input', () => handler(inputEl.value)); } };
+			} });
+			return this;
+		}
 	}
 	return {
 		...runtime,
 		Modal,
-		FuzzySuggestModal: class extends Modal {},
+		Setting,
+		FuzzySuggestModal: class extends Modal { setPlaceholder(): void {} },
 		SuggestModal: class extends Modal {},
 		Notice: class {
 			constructor(message: string) { notices(message); }
@@ -19,12 +44,13 @@ vi.mock('obsidian', async (importOriginal) => {
 	};
 });
 
-import type { App } from 'obsidian';
+import { FuzzySuggestModal, type App, type Modal } from 'obsidian';
 
 import type { Timeline } from '../../src/domain';
 import {
 	AddTimelineModal,
 	TimelineViewFormModal,
+	confirmTimelineAction,
 	renameTimelineForm,
 	renameTimelineViewForm,
 } from '../../src/ui/timeline-forms';
@@ -41,6 +67,48 @@ const set = (form: unknown, fields: Record<string, unknown>): void => {
 };
 
 describe('the timeline forms', () => {
+	it('settles a kept confirmation as false when its owner closes it', async () => {
+		const kept: Modal[] = [];
+		const pending = confirmTimelineAction(app, t, { title: 'Delete', lines: [], label: 'Delete' }, (modal) => {
+			kept.push(modal);
+			return modal;
+		});
+		expect(kept).toHaveLength(1);
+		kept[0]!.close();
+		await expect(pending).resolves.toBe(false);
+	});
+
+	it('closes the existing-timeline picker with its form and ignores a creation that finishes later', async () => {
+		let finish!: (id: string | null) => void;
+		const made = new Promise<string | null>((resolve) => { finish = resolve; });
+		const form = new TimelineViewFormModal(app, t, {
+			mode: 'add', takenNames: [], initial: { name: 'Main', timelines: [] },
+			timelines: () => [timeline('a'), timeline('new')], addTimeline: () => made,
+		}, () => Promise.resolve());
+		const pickers: FuzzySuggestModal<Timeline>[] = [];
+		const open = vi.spyOn(FuzzySuggestModal.prototype, 'open').mockImplementation(function (this: FuzzySuggestModal<Timeline>) {
+			pickers.push(this);
+		});
+		try {
+			(form as unknown as { buildForm(): void }).buildForm();
+			const content = form.contentEl as unknown as CorkboardElement;
+			content.querySelector('.snowflake-method-timeline-view-make')!.dispatch('click');
+			content.querySelector('.snowflake-method-record-pick')!.dispatch('click');
+			expect(pickers).toHaveLength(1);
+			const picker = pickers[0]!;
+			const close = vi.spyOn(picker, 'close');
+			form.close();
+			expect(close).toHaveBeenCalledOnce();
+			picker.onChooseItem(timeline('a'), {} as MouseEvent);
+			finish('new');
+			await made;
+			await Promise.resolve();
+			expect(collect(form)).toEqual({ name: 'Main', timelines: [] });
+		} finally {
+			open.mockRestore();
+		}
+	});
+
 	it('refuses an empty timeline name and one another timeline answers to', () => {
 		const form = renameTimelineForm(app, t, 'Alice', ['Bob'], () => Promise.resolve());
 		set(form, { value: '   ' });

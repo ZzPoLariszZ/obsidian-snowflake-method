@@ -127,6 +127,46 @@ describe('workspace header localization', () => {
 	});
 });
 
+describe('workspace unload', () => {
+	it('marks the timeline before disposing it and settles it only once', () => {
+		const { view } = workspaceView();
+		const controls = (view as unknown as { timelineControls(): TimelineControls }).timelineControls();
+		const dispose = vi.fn(() => { expect(controls.unloading?.()).toBe(true); });
+		Object.assign(view, { board: { dispose } });
+		expect(controls.unloading?.()).toBe(false);
+		view.settleForUnload();
+		view.settleForUnload();
+		expect(dispose).toHaveBeenCalledOnce();
+	});
+
+	it('keeps the unload signal current for a timeline whose leaf already closed', async () => {
+		const { view } = workspaceView();
+		let unloading = false;
+		const deps = (view as unknown as { deps: { unloading?: () => boolean } }).deps;
+		deps.unloading = () => unloading;
+		const controls = (view as unknown as { timelineControls(): TimelineControls }).timelineControls();
+		Object.assign(view, { contentEl: { empty: vi.fn() } });
+		await view.onClose();
+		expect(controls.unloading?.()).toBe(false);
+		unloading = true;
+		expect(controls.unloading?.()).toBe(true);
+	});
+
+	it('does not recreate a board when an outstanding read finishes after unload', async () => {
+		const { view, loadDashboardModel, renderFrame } = workspaceView();
+		let finish!: (model: ProjectDashboardModel) => void;
+		loadDashboardModel.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+		await view.setState({ projectPath: firstProject }, { history: false });
+		const opening = view.onOpen();
+		view.settleForUnload();
+		finish({ path: firstProject, projectId: firstProject, locale: 'en' } as ProjectDashboardModel);
+		await opening;
+		await view.refresh();
+		expect(renderFrame).not.toHaveBeenCalled();
+		expect(loadDashboardModel).toHaveBeenCalledOnce();
+	});
+});
+
 describe('workspace project ownership', () => {
 	it('keeps a restored project through dashboard switches and repeated refreshes', async () => {
 		const { view, loadDashboardModel, setRecent } = workspaceView();

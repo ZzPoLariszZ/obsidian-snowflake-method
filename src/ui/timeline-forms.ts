@@ -16,7 +16,7 @@ import {
 	type SubmitHandler,
 	type Translate,
 } from './modals';
-import { buildOptionField, type OptionPicker } from './option-picker';
+import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 
 interface NameFormSpec {
 	title: string;
@@ -238,6 +238,31 @@ export interface TimelineViewDraft {
 	timelines: string[];
 }
 
+/** The times offered when a sub-description moves within its timeline. */
+export class TimelineTimePickModal extends FuzzySuggestModal<PickerOption> {
+	constructor(
+		app: App,
+		placeholder: string,
+		private readonly times: readonly PickerOption[],
+		private readonly pick: (time: PickerOption) => void,
+	) {
+		super(app);
+		this.setPlaceholder(placeholder);
+	}
+
+	getItems(): PickerOption[] {
+		return [...this.times];
+	}
+
+	getItemText(time: PickerOption): string {
+		return time.label;
+	}
+
+	onChooseItem(time: PickerOption): void {
+		this.pick(time);
+	}
+}
+
 /** The timelines the project has that a view does not show yet, picked by name. */
 class TimelinePickModal extends FuzzySuggestModal<Timeline> {
 	constructor(
@@ -278,6 +303,8 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 	private timelines: string[];
 	private lines: HTMLElement | null = null;
 	private frame: ReturnType<typeof renderRecordPickFrame> | null = null;
+	private picker: TimelinePickModal | null = null;
+	private closed = false;
 	private readonly dragState: { dragging: string | null } = { dragging: null };
 
 	constructor(
@@ -336,8 +363,9 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 		setIcon(make, 'plus');
 		setTooltip(make, this.t('timeline.addTimeline'));
 		make.addEventListener('click', () => {
+			if (this.closed) return;
 			void this.options.addTimeline().then((id) => {
-				if (id === null) return;
+				if (id === null || this.closed) return;
 				if (!this.timelines.includes(id)) this.timelines.push(id);
 				this.paintLines();
 			});
@@ -347,12 +375,20 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 		// The frame under the lines adds a timeline the project has and the view does not show.
 		this.frame = renderRecordPickFrame(block, '', () => {
 			const offered = this.available();
-			if (offered.length === 0) return;
-			new TimelinePickModal(this.app, this.t('timeline.view.addExisting'), offered, (timeline) => {
-				if (this.timelines.includes(timeline.id)) return;
+			if (offered.length === 0 || this.closed) return;
+			this.picker?.close();
+			const picker = new TimelinePickModal(this.app, this.t('timeline.view.addExisting'), offered, (timeline) => {
+				if (this.closed || this.timelines.includes(timeline.id)) return;
 				this.timelines.push(timeline.id);
 				this.paintLines();
-			}).open();
+			});
+			const closed = picker.onClose.bind(picker);
+			picker.onClose = (): void => {
+				if (this.picker === picker) this.picker = null;
+				closed();
+			};
+			this.picker = picker;
+			picker.open();
 		});
 		this.paintLines();
 	}
@@ -445,8 +481,9 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 			attr: { type: 'button' },
 		});
 		button.addEventListener('click', () => {
+			if (this.closed) return;
 			void deleteView().then((gone) => {
-				if (gone) this.close();
+				if (gone && !this.closed) this.close();
 			});
 		});
 	}
@@ -463,6 +500,15 @@ export class TimelineViewFormModal extends SnowflakeFormModal<TimelineViewDraft>
 			return null;
 		}
 		return { name, timelines: [...this.timelines] };
+	}
+
+	onClose(): void {
+		this.closed = true;
+		this.picker?.close();
+		this.picker = null;
+		this.lines = null;
+		this.frame = null;
+		super.onClose();
 	}
 }
 
@@ -488,9 +534,10 @@ export function confirmTimelineAction(
 	app: App,
 	t: Translate,
 	spec: { title: string; lines: readonly string[]; label: string },
+	keep: <T extends Modal>(modal: T) => T = (modal) => modal,
 ): Promise<boolean> {
 	return new Promise((resolve) => {
-		new TimelineConfirmModal(app, t, spec, resolve).open();
+		keep(new TimelineConfirmModal(app, t, spec, resolve)).open();
 	});
 }
 

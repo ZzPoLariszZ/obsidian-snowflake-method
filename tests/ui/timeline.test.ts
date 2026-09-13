@@ -48,7 +48,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		getIcon: () => null,
 		Modal,
 		Menu,
-		FuzzySuggestModal: class extends Modal {},
+		FuzzySuggestModal: class extends Modal { setPlaceholder(): void {} },
 		SuggestModal: class extends Modal {},
 	};
 });
@@ -105,7 +105,8 @@ import {
 	type TimelineRow,
 	type TimelineView,
 } from '../../src/domain';
-import { promptForEntityReference, type EntityReferenceSource } from '../../src/ui/modals';
+import { Menu } from 'obsidian';
+import { MoveAfterModal, promptForEntityReference, type EntityReferenceSource } from '../../src/ui/modals';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { timelineMemory } from '../../src/ui/story-structure-state';
 import { renderTimeline } from '../../src/ui/timeline';
@@ -117,7 +118,7 @@ import {
 	type TimelineControls,
 } from '../../src/ui/timeline-bridge';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
-import { AddTimelineModal, TimelineDraftModal, TimelineViewFormModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
+import { AddTimelineModal, TimelineDraftModal, TimelineTimePickModal, TimelineViewFormModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
 import type { ProjectDashboardModel, SceneViewModel, WorldbuildingEntityViewModel } from '../../src/ui/view-model';
 
 const t = (key: string): string => key;
@@ -940,11 +941,17 @@ describe('the times and the lanes', () => {
 		expect(fixture.head('b').classes.has('is-pinned')).toBe(true);
 		expect(fixture.cell('time-2', 'b').classes.has('is-pinned')).toBe(true);
 		expect(fixture.cell('time-2', 'a').classes.has('is-pinned')).toBe(false);
+		const pin = fixture.head('b').querySelector('.snowflake-method-timeline-lane-pin')!;
+		expect(pin.getAttribute('role')).toBe('img');
+		expect(pin.getAttribute('aria-label')).toBe('timeline.timeline.pinned');
+		expect(pin.classes.has('is-hidden')).toBe(false);
+		expect(fixture.head('a').querySelector('.snowflake-method-timeline-lane-pin')!.classes.has('is-hidden')).toBe(true);
 		await fixture.bridge.pinTimeline(null);
 		fixture.notify();
 		await settle();
 		expect(fixture.head('b').classes.has('is-pinned')).toBe(false);
 		expect(fixture.cell('time-2', 'b').classes.has('is-pinned')).toBe(false);
+		expect(pin.classes.has('is-hidden')).toBe(true);
 	});
 
 	it("keeps a lane's pin, name and bound note in one box, which holds at the frozen edge as the axis does", async () => {
@@ -1137,8 +1144,11 @@ describe('the times and the lanes', () => {
 		expect(scenes.querySelector('.snowflake-method-timeline-scene-missing')).toBeNull();
 		menus.length = 0;
 		card.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
-		expect(menus[0]!.map((item) => item.title)).toEqual(['actions.edit', 'common.open', 'timeline.scene.remove', 'actions.delete']);
-		menus[0]![2]!.click();
+		expect(menus[0]!.map((item) => item.title)).toEqual([
+			'actions.edit', 'common.open', 'actions.moveUp', 'actions.moveDown',
+			'timeline.scene.moveTo', 'timeline.scene.remove', 'actions.delete',
+		]);
+		menus[0]!.find((item) => item.title === 'timeline.scene.remove')!.click();
 		await settle();
 		expect(fixture.bridge.removeScene).toHaveBeenCalledWith('a', 'scene-1');
 		expect(fixture.cards()).toHaveLength(0);
@@ -1269,7 +1279,7 @@ describe('writing sub-descriptions', () => {
 		menus.length = 0;
 		subrows(cell)[0]!.querySelector('.snowflake-method-timeline-subrow-more')!.dispatch('click');
 		expect(menus[0]!.map((item) => [item.title, item.disabled])).toEqual([
-			['actions.moveUp', true], ['actions.moveDown', false], ['timeline.subrow.remove', false],
+			['actions.moveUp', true], ['actions.moveDown', false], ['timeline.subrow.moveToTime', true], ['timeline.subrow.remove', false],
 		]);
 		menus[0]![1]!.click();
 		await settle();
@@ -1283,13 +1293,13 @@ describe('writing sub-descriptions', () => {
 		expect(subrows(cell).slice(0, 2).map((child) => child.getAttribute('data-row-id'))).toEqual(['r1', 'r2']);
 		menus.length = 0;
 		subrows(cell)[1]!.querySelector('.snowflake-method-timeline-subrow-more')!.dispatch('click');
-		menus[0]![2]!.click();
+		menus[0]!.find((item) => item.title === 'timeline.subrow.remove')!.click();
 		await settle();
 		expect(confirmTimelineAction).not.toHaveBeenCalled();
 		expect(fixture.bridge.deleteRow).toHaveBeenCalledWith('a', 'r2');
 		menus.length = 0;
 		subrows(cell)[0]!.querySelector('.snowflake-method-timeline-subrow-more')!.dispatch('click');
-		menus[0]![2]!.click();
+		menus[0]!.find((item) => item.title === 'timeline.subrow.remove')!.click();
 		await settle();
 		expect(confirmTimelineAction).toHaveBeenCalledOnce();
 		expect(fixture.bridge.deleteRow).toHaveBeenCalledWith('a', 'r1');
@@ -1307,6 +1317,112 @@ describe('writing sub-descriptions', () => {
 		first.querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
 		expect(first.classes.has('is-editing')).toBe(false);
 	});
+});
+
+describe('moving sub-descriptions to another time from the menu', () => {
+	const laid = (readOnly = false) => workspace({
+		timelines: [
+			timeline('a', { times: [
+				{ timeId: 'time-1', rows: [row('first', 'Already here')] },
+				{ timeId: 'time-2', rows: [row('moving', 'Arrives', ['scene-1', 'scene-2'])] },
+				{ timeId: 'time-lost', rows: [] },
+			] }),
+			timeline('b', { times: [{ timeId: 'time-other-lane', rows: [] }] }),
+		],
+		views: [view('v', ['a', 'b'], { timeOrder: ['time-lost', 'time-2', 'time-1'], presentation: 'flat' })],
+	}, readOnly);
+	const menuForRow = (fixture: ReturnType<typeof laid>) => {
+		menus.length = 0;
+		fixture.cell('time-2', 'a').querySelector('.snowflake-method-timeline-subrow-more')!.dispatch('click');
+		return menus[0]!.find((item) => item.title === 'timeline.subrow.moveToTime')!;
+	};
+	const openPicker = (fixture: ReturnType<typeof laid>): TimelineTimePickModal => {
+		const opened: TimelineTimePickModal[] = [];
+		const spy = vi.spyOn(TimelineTimePickModal.prototype, 'open').mockImplementation(function (this: TimelineTimePickModal) {
+			opened.push(this);
+		});
+		try {
+			menuForRow(fixture).click();
+			expect(opened).toHaveLength(1);
+			return opened[0]!;
+		} finally {
+			spy.mockRestore();
+		}
+	};
+
+	it('offers only other times on the same lane in displayed order and moves the row with its scenes and open edit', async () => {
+		const fixture = laid();
+		await settle();
+		const entry = fixture.cell('time-2', 'a').querySelector('.snowflake-method-timeline-subrow')!;
+		entry.querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
+		const input = entry.querySelector('.snowflake-method-timeline-subrow-input')!;
+		input.value = 'Still writing';
+		const picker = openPicker(fixture);
+		expect(picker.getItems()).toEqual([
+			{ value: 'time-lost', label: 'timeline.time.missing' },
+			{ value: 'time-1', label: 'Dawn' },
+		]);
+		expect(picker.getItemText(picker.getItems()[1]!)).toBe('Dawn');
+		picker.onChooseItem(picker.getItems()[1]!);
+		await settle();
+		expect(fixture.bridge.moveRow).toHaveBeenCalledWith('a', 'moving', 'time-1', null);
+		expect(fixture.held().timelines[0]!.times[0]!.rows).toEqual([
+			row('first', 'Already here'), row('moving', 'Arrives', ['scene-1', 'scene-2']),
+		]);
+		const moved = fixture.cell('time-1', 'a').querySelectorAll('.snowflake-method-timeline-subrow')
+			.find((candidate) => candidate.getAttribute('data-row-id') === 'moving')!;
+		expect(moved).toBe(entry);
+		expect(moved.querySelector('.snowflake-method-timeline-subrow-input')!.value).toBe('Still writing');
+		expect(fixture.bridge.deleteRow).not.toHaveBeenCalled();
+		expect(fixture.bridge.placeScene).not.toHaveBeenCalled();
+	});
+
+	it('disables the move when read-only or when the lane has no other time', async () => {
+		const fixture = laid(true);
+		await settle();
+		const open = vi.spyOn(TimelineTimePickModal.prototype, 'open').mockImplementation(() => undefined);
+		try {
+			expect(menuForRow(fixture).disabled).toBe(true);
+			menuForRow(fixture).click();
+			expect(open).not.toHaveBeenCalled();
+			const alone = workspace({
+				timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [row('moving', '')] }] })],
+				views: [view('v', ['a'])],
+			});
+			await settle();
+			expect(menuForRow(alone).disabled).toBe(true);
+			menuForRow(alone).click();
+			expect(open).not.toHaveBeenCalled();
+		} finally {
+			open.mockRestore();
+		}
+	});
+
+	it.each(['destination removed', 'row removed', 'row moved', 'lane removed from view', 'read-only', 'project switched', 'view switched', 'disposed'])(
+		'ignores a stale selection after %s', async (change) => {
+			const fixture = laid();
+			await settle();
+			const picker = openPicker(fixture);
+			if (change === 'destination removed') await fixture.bridge.removeTime('a', 'time-1');
+			if (change === 'row removed') await fixture.bridge.deleteRow('a', 'moving');
+			if (change === 'row moved') await fixture.bridge.moveRow('a', 'moving', 'time-lost', null);
+			if (change === 'lane removed from view') await fixture.bridge.setViewTimelines('v', ['b']);
+			if (change === 'read-only') { fixture.model.readOnly = true; fixture.handle.refresh(); }
+			if (change === 'project switched') fixture.controls.projectPath = () => 'Q';
+			if (change === 'view switched') {
+				const other = await fixture.bridge.createView('Other', ['a']);
+				fixture.notify();
+				await settle();
+				fixture.viewField().choose(other!);
+				await settle();
+			}
+			if (change === 'disposed') fixture.handle.dispose();
+			vi.mocked(fixture.bridge.moveRow).mockClear();
+			picker.onChooseItem(picker.getItems()[1]!);
+			await settle();
+			expect(fixture.bridge.moveRow).not.toHaveBeenCalled();
+		},
+	);
 });
 
 describe('dragging times and rows', () => {
@@ -1647,6 +1763,225 @@ describe('the scene pool', () => {
 		fixture.dom.resize(1600);
 		expect(fixture.root.classes.has('is-time-collapsed')).toBe(true);
 		expect(fixture.root.classes.has('is-pool-collapsed')).toBe(false);
+	});
+});
+
+describe('placing and moving scenes without a drag', () => {
+	const laid = (readOnly = false) => workspace({
+		timelines: [
+			timeline('a', { times: [
+				{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1', 'scene-2'])] },
+				{ timeId: 'time-2', rows: [row('r2', 'Argues')] },
+			] }),
+			timeline('b', { times: [{ timeId: 'time-1', rows: [row('r3', 'Waits', ['scene-3'])] }] }),
+		],
+		views: [view('v', ['a', 'b'], { presentation: 'flat' }), view('other', ['a'])],
+	}, readOnly);
+	const menuOf = (fixture: ReturnType<typeof workspace>, sceneId: string) => {
+		menus.length = 0;
+		fixture.cards().find((card) => card.getAttribute('data-id') === sceneId)!
+			.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
+		return menus[0]!;
+	};
+	const poolMenu = (fixture: ReturnType<typeof workspace>, sceneId: string) => {
+		menus.length = 0;
+		const menu = new Menu();
+		fixture.corkboard.mock.calls[0]![2]!.menuItems!(sceneId, menu);
+		menu.showAtMouseEvent({} as MouseEvent);
+		return menus[0]!;
+	};
+	const capturePicker = () => {
+		const opened: MoveAfterModal[] = [];
+		vi.spyOn(MoveAfterModal.prototype, 'open').mockImplementation(function (this: MoveAfterModal) { opened.push(this); });
+		return opened;
+	};
+	const choose = (modal: MoveAfterModal, id: string) => {
+		modal.onChooseItem(modal.getItems().find((entry) => entry.id === id)!);
+	};
+	const scenesAt = (fixture: ReturnType<typeof workspace>, rowId: string): readonly string[] =>
+		fixture.held().timelines.flatMap((lane) => lane.times).flatMap((time) => time.rows)
+			.find((candidate) => candidate.id === rowId)!.scenes;
+
+	it('offers one menu for moving placed scenes, with the row boundaries disabled', async () => {
+		const fixture = laid();
+		await settle();
+		expect(menuOf(fixture, 'scene-1').map((item) => [item.title, item.disabled])).toEqual([
+			['actions.edit', false], ['common.open', false], ['actions.moveUp', true], ['actions.moveDown', false],
+			['timeline.scene.moveTo', false], ['timeline.scene.remove', false], ['actions.delete', false],
+		]);
+		menuOf(fixture, 'scene-2').find((item) => item.title === 'actions.moveUp')!.click();
+		await settle();
+		expect(fixture.bridge.placeScene).toHaveBeenLastCalledWith('a', 'scene-2', 'r1', 'scene-1');
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-2', 'scene-1']);
+		const menu = menuOf(fixture, 'scene-2');
+		expect(menu.find((item) => item.title === 'actions.moveUp')!.disabled).toBe(true);
+		menu.find((item) => item.title === 'actions.moveDown')!.click();
+		await settle();
+		expect(fixture.bridge.placeScene).toHaveBeenLastCalledWith('a', 'scene-2', 'r1', null);
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-1', 'scene-2']);
+		expect(menuOf(fixture, 'scene-2').find((item) => item.title === 'actions.moveDown')!.disabled).toBe(true);
+	});
+
+	it('moves a placed scene to an existing row and places a pool scene in a new row', async () => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		menuOf(fixture, 'scene-1').find((item) => item.title === 'timeline.scene.moveTo')!.click();
+		expect(opened[0]!.getItems().map((entry) => [entry.id, entry.label])).toEqual([
+			['row:r1', 'Timeline a · Dawn / Arrives'], ['time:time-1', 'Timeline a · Dawn / timeline.scene.placeNewRow'],
+			['row:r2', 'Timeline a · Dusk / Argues'], ['time:time-2', 'Timeline a · Dusk / timeline.scene.placeNewRow'],
+		]);
+		choose(opened[0]!, 'row:r2');
+		await settle();
+		expect(fixture.bridge.placeScene).toHaveBeenCalledWith('a', 'scene-1', 'r2', null);
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-2']);
+		expect(scenesAt(fixture, 'r2')).toEqual(['scene-1']);
+		const pool = poolMenu(fixture, 'scene-3');
+		expect(pool.map((item) => [item.title, item.disabled])).toEqual([['timeline.scene.moveTo', false]]);
+		pool[0]!.click();
+		choose(opened[1]!, 'time:time-2');
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-2', '', null, ['scene-3']);
+		const time = fixture.held().timelines[0]!.times[1]!;
+		expect(time.rows.map((row) => row.scenes)).toEqual([['scene-1'], ['scene-3']]);
+		expect(scenesAt(fixture, 'r3')).toEqual(['scene-3']);
+	});
+
+	it('places a pool scene in an existing row, then moves it to a new row without duplicating it', async () => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		poolMenu(fixture, 'scene-3')[0]!.click();
+		choose(opened[0]!, 'row:r1');
+		await settle();
+		expect(fixture.bridge.placeScene).toHaveBeenCalledWith('a', 'scene-3', 'r1', null);
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-1', 'scene-2', 'scene-3']);
+		menuOf(fixture, 'scene-3').find((item) => item.title === 'timeline.scene.moveTo')!.click();
+		choose(opened[1]!, 'time:time-2');
+		await settle();
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-1', 'scene-2']);
+		expect(fixture.held().timelines[0]!.times.flatMap((time) => time.rows).flatMap((row) => row.scenes))
+			.toEqual(['scene-1', 'scene-2', 'scene-3']);
+	});
+
+	it('resolves repeated queued moves from the current row order', async () => {
+		const fixture = laid();
+		await settle();
+		await fixture.bridge.placeScene('a', 'scene-3', 'r1', null);
+		fixture.notify();
+		await settle();
+		vi.mocked(fixture.bridge.placeScene).mockClear();
+		const up = menuOf(fixture, 'scene-3').find((item) => item.title === 'actions.moveUp')!;
+		up.click();
+		up.click();
+		await settle();
+		expect(vi.mocked(fixture.bridge.placeScene).mock.calls).toEqual([
+			['a', 'scene-3', 'r1', 'scene-2'], ['a', 'scene-3', 'r1', 'scene-1'],
+		]);
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-3', 'scene-1', 'scene-2']);
+	});
+
+	it('keeps inactive-lane and read-only scene actions disabled even if their callbacks are invoked', async () => {
+		const opened = capturePicker();
+		for (const readOnly of [false, true]) {
+			const fixture = laid(readOnly);
+			await settle();
+			const actions = menuOf(fixture, readOnly ? 'scene-1' : 'scene-3')
+				.filter((item) => ['actions.moveUp', 'actions.moveDown', 'timeline.scene.moveTo'].includes(item.title));
+			expect(actions.map((item) => item.disabled)).toEqual([true, true, true]);
+			for (const action of actions) action.click();
+			if (readOnly) {
+				const pool = poolMenu(fixture, 'scene-3')[0]!;
+				expect(pool.disabled).toBe(true);
+				pool.click();
+			}
+			await settle();
+			expect(fixture.bridge.placeScene).not.toHaveBeenCalled();
+			expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+		}
+		expect(opened).toHaveLength(0);
+	});
+
+	it('disables pool placement when there is no active lane or the lane has no times', async () => {
+		for (const fixture of [workspace(), workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] })]) {
+			await settle();
+			expect(poolMenu(fixture, 'scene-1')[0]!.disabled).toBe(true);
+		}
+	});
+
+	it('can move a scene whose note is read-only because placement writes the timeline', async () => {
+		const fixture = laid();
+		fixture.remodel({ scenes: [{ ...scene('scene-1', 'Arrival'), readOnly: true }, scene('scene-2', 'Departure')] });
+		fixture.handle.refresh();
+		await settle();
+		const menu = menuOf(fixture, 'scene-1');
+		expect(menu.find((item) => item.title === 'actions.edit')!.disabled).toBe(true);
+		const down = menu.find((item) => item.title === 'actions.moveDown')!;
+		expect(down.disabled).toBe(false);
+		down.click();
+		await settle();
+		expect(fixture.bridge.placeScene).toHaveBeenCalledWith('a', 'scene-1', 'r1', null);
+	});
+
+	it.each([
+		['active lane', async (fixture: ReturnType<typeof laid>) => { fixture.head('b').dispatch('click'); }],
+		['view', async (fixture: ReturnType<typeof laid>) => { fixture.viewField().choose('other'); }],
+		['project', async (fixture: ReturnType<typeof laid>) => { fixture.controls.projectPath = () => 'Other'; }],
+		['read-only project', async (fixture: ReturnType<typeof laid>) => { fixture.remodel({ readOnly: true }); }],
+		['source row', async (fixture: ReturnType<typeof laid>) => { await fixture.bridge.removeScene('a', 'scene-1'); fixture.notify(); }],
+		['target row', async (fixture: ReturnType<typeof laid>) => { await fixture.bridge.deleteRow('a', 'r2'); fixture.notify(); }],
+		['target time', async (fixture: ReturnType<typeof laid>) => { await fixture.bridge.removeTime('a', 'time-2'); fixture.notify(); }],
+		['deleted scene', async (fixture: ReturnType<typeof laid>) => { fixture.remodel({ scenes: [scene('scene-2', 'Departure')] }); }],
+		['disposed workspace', async (fixture: ReturnType<typeof laid>) => { fixture.handle.dispose(); }],
+	] as const)('rejects a picker choice after its %s changes', async (_name, change) => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		menuOf(fixture, 'scene-1').find((item) => item.title === 'timeline.scene.moveTo')!.click();
+		const close = vi.spyOn(opened[0]!, 'close');
+		await change(fixture);
+		await settle();
+		if (_name === 'disposed workspace') expect(close).toHaveBeenCalledOnce();
+		choose(opened[0]!, 'row:r2');
+		await settle();
+		expect(fixture.bridge.placeScene).not.toHaveBeenCalled();
+		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+	});
+
+	it('rechecks the lane after a picker choice waits in the write queue', async () => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		poolMenu(fixture, 'scene-3')[0]!.click();
+		choose(opened[0]!, 'time:time-2');
+		fixture.head('b').dispatch('click');
+		await settle();
+		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+	});
+
+	it('does not recreate a time removed while the picker was open, before its notification arrives', async () => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		poolMenu(fixture, 'scene-3')[0]!.click();
+		await fixture.bridge.removeTime('a', 'time-2');
+		choose(opened[0]!, 'time:time-2');
+		await settle();
+		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+		expect(fixture.held().timelines[0]!.times.map((time) => time.timeId)).toEqual(['time-1']);
+	});
+
+	it('leaves a pool scene alone if it was placed while its picker was open, before the notification arrives', async () => {
+		const opened = capturePicker();
+		const fixture = laid();
+		await settle();
+		poolMenu(fixture, 'scene-3')[0]!.click();
+		await fixture.bridge.placeScene('a', 'scene-3', 'r1', null);
+		vi.mocked(fixture.bridge.placeScene).mockClear();
+		choose(opened[0]!, 'row:r2');
+		await settle();
+		expect(fixture.bridge.placeScene).not.toHaveBeenCalled();
+		expect(scenesAt(fixture, 'r1')).toEqual(['scene-1', 'scene-2', 'scene-3']);
 	});
 });
 
@@ -2624,6 +2959,143 @@ describe('an edit of an existing sub-description whose write does not land', () 
 	});
 });
 
+describe('the timeline workspace owns its dialogs', () => {
+	it('closes nested forms, settles the creation promise, and refuses their stale submissions', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const views: TimelineViewFormModal[] = [];
+		const timelines: AddTimelineModal[] = [];
+		const viewOpen = vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) {
+			Object.assign(this, { contentEl: { empty: vi.fn() } });
+			views.push(this);
+		});
+		const timelineOpen = vi.spyOn(AddTimelineModal.prototype, 'open').mockImplementation(function (this: AddTimelineModal) {
+			Object.assign(this, { contentEl: { empty: vi.fn() } });
+			timelines.push(this);
+		});
+		try {
+			fixture.button('snowflake-method-timeline-view-add').dispatch('click');
+			const form = views[0]!;
+			const options = (form as unknown as { options: { addTimeline: () => Promise<string | null> } }).options;
+			const pending = options.addTimeline();
+			const nested = timelines[0]!;
+			const closeView = vi.spyOn(form, 'close').mockImplementation(() => { form.onClose(); });
+			const closeTimeline = vi.spyOn(nested, 'close').mockImplementation(() => { nested.onClose(); });
+			fixture.handle.dispose();
+			fixture.handle.dispose();
+			await expect(pending).resolves.toBeNull();
+			expect(closeView).toHaveBeenCalledOnce();
+			expect(closeTimeline).toHaveBeenCalledOnce();
+			await submit(form, { name: 'Too late', timelines: ['a'] });
+			await submit(nested, { name: 'Too late', binding: null, addToView: true });
+			await expect(options.addTimeline()).resolves.toBeNull();
+			expect(fixture.bridge.createView).not.toHaveBeenCalled();
+			expect(fixture.bridge.createTimeline).not.toHaveBeenCalled();
+			expect(fixture.bridge.setLastView).not.toHaveBeenCalled();
+			expect(timelines).toHaveLength(1);
+		} finally {
+			viewOpen.mockRestore();
+			timelineOpen.mockRestore();
+		}
+	});
+
+	it('writes the words at a foot even when a standing dialog throws on the way out', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		const opened: TimelineViewFormModal[] = [];
+		const open = vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) {
+			Object.assign(this, { contentEl: { empty: vi.fn() } });
+			opened.push(this);
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		try {
+			fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+			const form = opened[0]!;
+			vi.spyOn(form, 'close').mockImplementation(() => { throw new Error('The dialog would not close'); });
+			const foot = fixture.cell('time-1', 'a')
+				.querySelector('.snowflake-method-timeline-subrow.is-trailing')!
+				.querySelector('textarea')!;
+			foot.value = 'Words behind a stuck dialog';
+			foot.dispatch('input');
+			// The dialog throws as the workspace goes, and the words are settled
+			// after it in dispose. They are the author's, with no second chance,
+			// so a dialog that will not close must not carry them off.
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Words behind a stuck dialog', null);
+			expect(logged).toHaveBeenCalledWith('Snowflake: a timeline dialog could not be closed', expect.any(Error));
+		} finally {
+			open.mockRestore();
+			logged.mockRestore();
+		}
+	});
+
+	it('closes the form still standing, and lets a dismissed one lie', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const opened: TimelineViewFormModal[] = [];
+		const open = vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) {
+			Object.assign(this, { contentEl: { empty: vi.fn() } });
+			opened.push(this);
+		});
+		try {
+			fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+			const dismissed = opened[0]!;
+			const closeDismissed = vi.spyOn(dismissed, 'close').mockImplementation(() => { dismissed.onClose(); });
+			dismissed.close();
+			// A second form is still open when the workspace goes: that one is
+			// closed, and the one already dismissed is not closed a second time.
+			fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+			const still = opened[1]!;
+			const closeStill = vi.spyOn(still, 'close').mockImplementation(() => { still.onClose(); });
+			fixture.handle.dispose();
+			expect(closeStill).toHaveBeenCalledOnce();
+			expect(closeDismissed).toHaveBeenCalledOnce();
+		} finally {
+			open.mockRestore();
+		}
+	});
+
+	it('closes a standing confirmation as a decline', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const actual = await vi.importActual<typeof import('../../src/ui/timeline-forms')>('../../src/ui/timeline-forms');
+		const confirmations: import('obsidian').Modal[] = [];
+		const closes: ReturnType<typeof vi.spyOn>[] = [];
+		vi.mocked(confirmTimelineAction).mockImplementationOnce((app, translate, spec, keep) =>
+			actual.confirmTimelineAction(app, translate, spec, (modal) => {
+				Object.assign(modal, { contentEl: { empty: vi.fn() } });
+				const owned: import('obsidian').Modal = modal;
+				vi.spyOn(owned, 'open').mockImplementation(() => undefined);
+				closes.push(vi.spyOn(owned, 'close').mockImplementation(() => { owned.onClose(); }));
+				confirmations.push(modal);
+				return keep!(modal);
+			}));
+		const forms: TimelineViewFormModal[] = [];
+		const open = vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) {
+			Object.assign(this, { contentEl: { empty: vi.fn() } });
+			vi.spyOn(this, 'close').mockImplementation(() => { this.onClose(); });
+			forms.push(this);
+		});
+		try {
+			fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+			const options = (forms[0] as unknown as { options: { deleteView: () => Promise<boolean> } }).options;
+			const pending = options.deleteView();
+			expect(confirmations).toHaveLength(1);
+			fixture.handle.dispose();
+			await expect(pending).resolves.toBe(false);
+			expect(closes[0]).toHaveBeenCalledOnce();
+			expect(fixture.bridge.deleteView).not.toHaveBeenCalled();
+		} finally {
+			open.mockRestore();
+			vi.mocked(confirmTimelineAction).mockClear();
+		}
+	});
+});
+
 describe('words still being written when the workspace goes', () => {
 	const laid = () => workspace({
 		timelines: [
@@ -2815,6 +3287,71 @@ describe('a final write that fails once the workspace has gone', () => {
 		} finally {
 			watch.done();
 		}
+	});
+});
+
+describe('timeline words during plugin unload', () => {
+	it.each(['refused foot', 'refused row', 'read-only foot', 'unload before recovery'] as const)(
+		'keeps %s recoverable in the console without a dialog', async (scenario) => {
+			const fixture = workspace({
+				timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Stored')] }] })],
+				views: [view('v', ['a'])],
+			});
+			await settle();
+			let unloading = scenario !== 'unload before recovery';
+			fixture.controls.unloading = () => unloading;
+			const open = vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(() => undefined);
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+			try {
+				const cell = fixture.cell('time-1', 'a');
+				if (scenario === 'refused row') {
+					const rowEl = cell.querySelector('.snowflake-method-timeline-rows')!.children[0]!;
+					rowEl.querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
+					rowEl.querySelector('.snowflake-method-timeline-subrow-input')!.value = 'Words kept at unload';
+					vi.mocked(fixture.bridge.editRow).mockResolvedValueOnce('refused');
+				} else {
+					const foot = cell.querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+					foot.value = 'Words kept at unload';
+					foot.dispatch('input');
+					if (scenario === 'refused foot') vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
+					else {
+						fixture.model.readOnly = true;
+						fixture.handle.refresh();
+						await settle();
+					}
+				}
+				fixture.handle.dispose();
+				unloading = true;
+				await settle();
+				expect(open).not.toHaveBeenCalled();
+				expect(logged).toHaveBeenCalledExactlyOnceWith(
+					'Snowflake: sub-description words could not be written',
+					{ place: 'Timeline a · Dawn', words: 'Words kept at unload' },
+				);
+				if (scenario === 'read-only foot' || scenario === 'unload before recovery') {
+					expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+				}
+			} finally {
+				open.mockRestore();
+				logged.mockRestore();
+			}
+		},
+	);
+
+	it('still writes accepted typed words while unloading', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		fixture.controls.unloading = () => true;
+		const foot = fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!;
+		foot.value = 'Settled at unload';
+		foot.dispatch('input');
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a', 'time-1', 'Settled at unload', null);
+		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('Settled at unload');
 	});
 });
 

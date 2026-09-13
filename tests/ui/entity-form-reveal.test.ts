@@ -133,3 +133,94 @@ describe('worldbuilding forms opened from another surface', () => {
 		expect(opened).toHaveLength(0);
 	});
 });
+
+describe('the description reveal lifetime', () => {
+	function frameWindow() {
+		const pending = new Map<number, () => void>();
+		let next = 0;
+		return {
+			pending,
+			requestAnimationFrame(callback: () => void): number {
+				const id = ++next;
+				pending.set(id, callback);
+				return id;
+			},
+			cancelAnimationFrame(id: number): void {
+				pending.delete(id);
+			},
+			advance(): void {
+				for (const [id, callback] of [...pending]) {
+					pending.delete(id);
+					callback();
+				}
+			},
+		};
+	}
+
+	function form(win?: ReturnType<typeof frameWindow>) {
+		const modal = Object.create(EntityFormModal.prototype) as EntityFormModal;
+		const focus = vi.fn();
+		const scrollIntoView = vi.fn();
+		const settingEl = { isConnected: true, scrollIntoView };
+		Object.assign(modal, {
+			modalEl: win === undefined ? {} : { win },
+			contentEl: { empty: (): void => { settingEl.isConnected = false; } },
+			actionsEl: null,
+			pickers: [],
+			descriptionRevealFrame: null,
+			descriptionSetting: {
+				settingEl,
+				controlEl: { querySelector: () => ({ focus }) },
+			},
+		});
+		return { modal, focus, scrollIntoView, settingEl };
+	}
+
+	it.each([0, 1])('cancels the pending reveal when closed after %i frames', (elapsed) => {
+		const win = frameWindow();
+		const { modal, focus, scrollIntoView } = form(win);
+		modal.revealDescription();
+		for (let i = 0; i < elapsed; i++) win.advance();
+		expect(win.pending.size).toBe(1);
+		modal.onClose();
+		expect(win.pending.size).toBe(0);
+		expect(modal).toMatchObject({ descriptionRevealFrame: null, descriptionSetting: null });
+		win.advance();
+		expect(focus).not.toHaveBeenCalled();
+		expect(scrollIntoView).not.toHaveBeenCalled();
+	});
+
+	it('closes without accessing a window when no reveal was requested', () => {
+		const { modal } = form();
+		expect(() => modal.onClose()).not.toThrow();
+		expect(modal).toMatchObject({ descriptionRevealFrame: null, descriptionSetting: null });
+	});
+
+	it('replaces an earlier reveal and focuses the description after two frames', () => {
+		const win = frameWindow();
+		const { modal, focus, scrollIntoView } = form(win);
+		modal.revealDescription();
+		win.advance();
+		modal.revealDescription();
+		expect(win.pending.size).toBe(1);
+		win.advance();
+		expect(focus).not.toHaveBeenCalled();
+		win.advance();
+		expect(win.pending.size).toBe(0);
+		expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+		expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'start', behavior: 'auto' });
+		expect(modal).toMatchObject({ descriptionRevealFrame: null });
+	});
+
+	it('does not focus or scroll a description row detached before its reveal', () => {
+		const win = frameWindow();
+		const { modal, focus, scrollIntoView, settingEl } = form(win);
+		modal.revealDescription();
+		win.advance();
+		settingEl.isConnected = false;
+		win.advance();
+		expect(focus).not.toHaveBeenCalled();
+		expect(scrollIntoView).not.toHaveBeenCalled();
+		expect(win.pending.size).toBe(0);
+	});
+});

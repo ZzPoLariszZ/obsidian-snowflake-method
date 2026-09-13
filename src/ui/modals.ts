@@ -3524,6 +3524,11 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	}
 
 	onClose(): void {
+		if (this.descriptionRevealFrame !== null) {
+			this.modalEl.win.cancelAnimationFrame(this.descriptionRevealFrame);
+			this.descriptionRevealFrame = null;
+		}
+		this.descriptionSetting = null;
 		for (const picker of this.pickers.splice(0)) picker.destroy();
 		super.onClose();
 	}

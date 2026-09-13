@@ -296,6 +296,7 @@ export function renderCorkboard(
 		model: () => model,
 		projectPath: () => projectPath,
 		readOnly: () => readOnly,
+		unloading: () => controls.unloading?.() === true,
 		charactersByPath: () => charactersByPath,
 		scenesById: () => scenesById,
 		manuscriptPositions: () => manuscriptPositions,
@@ -830,6 +831,7 @@ export function renderCorkboard(
 				},
 			},
 		);
+		variant.menuItems?.(entry.id, menu);
 		menu.addSeparator();
 		menu.addItem((item) => {
 			item

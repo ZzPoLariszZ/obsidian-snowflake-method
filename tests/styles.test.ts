@@ -49,6 +49,26 @@ describe('styles.css', () => {
 		expect(dimmed.filter((selector) => !selector.includes('.is-more'))).toEqual([]);
 	});
 
+	/** The selectors must also beat the hiding rules; a media query adds no specificity. */
+	it('shows the timeline menus and add controls without hover on a coarse pointer', () => {
+		const timeline = styles.slice(styles.indexOf('/* == Timeline '));
+		const coarse = [...timeline.matchAll(/@media \(pointer: coarse\) \{([\s\S]*?)\n\}/g)];
+		expect(coarse).toHaveLength(1);
+		const shown = (coarse[0]?.[1] ?? '')
+			.split('}')
+			.filter((rule) => /opacity:\s*1\s*;/.test(rule))
+			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
+			.map((selector) => selector.trim());
+		expect(shown).toEqual([
+			'.snowflake-method-timeline-subrow-text .clickable-icon.snowflake-method-timeline-subrow-more',
+			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-more',
+			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-seam-add',
+			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-cell-add',
+			'.snowflake-method-timeline-subrow.is-trailing.is-more textarea.snowflake-method-timeline-subrow-input',
+			'.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty',
+		]);
+	});
+
 	/**
 	 * A hyphenated name in element position is a custom element, and naming
 	 * one ties the stylesheet to whatever library happens to draw it: the

@@ -14365,3 +14365,20 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-timeline[data-layout='multi'] .snowflake-method-corkboard-card.is-drop-after {
 	box-shadow: 0 3px 0 0 var(--interactive-accent), var(--snowflake-method-corkboard-shadow);
 }
+
+/* Touch needs the menus and add controls in sight without a hover. Match
+   each hiding rule's specificity: the media query adds none of its own.
+   Drag handles and card grips have no touch action to advertise. */
+@media (pointer: coarse) {
+	.snowflake-method-timeline-subrow-text .clickable-icon.snowflake-method-timeline-subrow-more,
+	.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-more,
+	.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-seam-add,
+	.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-cell-add {
+		opacity: 1;
+	}
+
+	.snowflake-method-timeline-subrow.is-trailing.is-more textarea.snowflake-method-timeline-subrow-input,
+	.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty {
+		opacity: 1;
+	}
+}

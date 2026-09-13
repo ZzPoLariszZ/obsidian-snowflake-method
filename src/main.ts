@@ -947,6 +947,7 @@ export default class SnowflakeMethodPlugin
 					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
 					corkboard: renderCorkboard,
 					timeline: renderTimeline,
+					unloading: () => this.unloading,
 				}),
 		);
 		this.registerView(
@@ -1100,6 +1101,12 @@ export default class SnowflakeMethodPlugin
 		// the per-device store before anything else happens, so the next load
 		// can close the session out instead of losing it.
 		this.sessions.markShutdown();
+		this.unloading = true;
+		// Ask for final workspace drafts now, before the plugin's services go,
+		// and mark refusals as recovery text rather than dialogs after unload.
+		for (const leaf of this.app.workspace.getLeavesOfType(STORY_STRUCTURE_VIEW_TYPE)) {
+			if (leaf.view instanceof SnowflakeStoryStructureView) leaf.view.settleForUnload();
+		}
 		// Typed sticky-note text still waiting on its quiet timer lands now, and
 		// every editor lets its note go.
 		void this.stickyNoteHub.claims.releaseAll();

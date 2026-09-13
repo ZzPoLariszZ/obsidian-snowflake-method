@@ -15,7 +15,7 @@
  *   the flow of their row rather than on a canvas.
  */
 
-import { Keymap, Menu, Notice, getIcon, setIcon, setTooltip } from 'obsidian';
+import { Keymap, Menu, Notice, getIcon, setIcon, setTooltip, type Modal } from 'obsidian';
 
 import {
 	derivedPresentation,
@@ -32,7 +32,7 @@ import {
 	type TimelineView,
 } from '../domain';
 import { entityGroupLabel } from './entity-form';
-import { promptForEntityReference, type EntityReferenceSource } from './modals';
+import { MoveAfterModal, promptForEntityReference, type EntityReferenceSource, type MoveAfterEntry } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
 import { paintCount, renderEmptyLine } from './pane-parts';
@@ -60,6 +60,7 @@ import {
 import {
 	AddTimelineModal,
 	TimelineDraftModal,
+	TimelineTimePickModal,
 	TimelineViewFormModal,
 	confirmTimelineAction,
 	renameTimelineForm,
@@ -543,6 +544,17 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let reloadPending = false;
 	let queue: Promise<void> = Promise.resolve();
 	let disposed = false;
+	/** Forms and pickers belong to this workspace; recovered words deliberately outlive it. */
+	const standing = new Set<Modal>();
+	const keep = <T extends Modal>(modal: T): T => {
+		standing.add(modal);
+		const closed = modal.onClose.bind(modal);
+		modal.onClose = (): void => {
+			standing.delete(modal);
+			closed();
+		};
+		return modal;
+	};
 	let poolHandle: CorkboardHandle | null = null;
 	/** The times' ids in the order the rows stand, from the last paint. */
 	let rowOrder: string[] = [];
@@ -1042,7 +1054,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const title = lead.createDiv({ cls: 'snowflake-method-timeline-lane-title' });
 		const pin = title.createSpan({
 			cls: 'snowflake-method-timeline-lane-pin is-hidden',
-			attr: { 'aria-label': t('timeline.timeline.pinned') },
+			attr: { role: 'img', 'aria-label': t('timeline.timeline.pinned') },
 		});
 		setIcon(pin, 'pin');
 		setTooltip(pin, t('timeline.timeline.pinned'));
@@ -1833,6 +1845,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			void Promise.resolve().then(() => {
 				const drafts = recoveryDrafts;
 				recoveryDrafts = [];
+				// Check at delivery: unload can start between a refusal and
+				// this microtask. The words remain recoverable without a dialog
+				// belonging to a plugin that has gone.
+				if (controls.unloading?.() === true) {
+					for (const draft of drafts) {
+						console.error('Snowflake: sub-description words could not be written', draft);
+					}
+					return;
+				}
 				new TimelineDraftModal(app, t, drafts).open();
 			});
 		}
@@ -1970,6 +1991,44 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		return null;
 	};
 
+	/** Other times held by this lane, in the order the view displays them. */
+	const otherRowTimes = (lane: Timeline, fromTimeId: string): PickerOption[] => {
+		if (model === null) return [];
+		const names = new Map(kindEntities(model, 'time').map((entity) => [entity.id, entity.name]));
+		const held = new Set(lane.times.map((time) => time.timeId));
+		return rowOrder
+			.filter((timeId) => timeId !== fromTimeId && held.has(timeId))
+			.map((timeId) => ({ value: timeId, label: names.get(timeId) ?? t('timeline.time.missing') }));
+	};
+
+	const moveRowToTime = (lane: Timeline, time: TimelineTime, rowId: string): void => {
+		const path = controls.projectPath();
+		const openedView = viewId;
+		const elsewhere = otherRowTimes(lane, time.timeId);
+		if (disposed || readOnly || path === null || elsewhere.length === 0) return;
+		const currentContext = (): boolean => {
+			const current = controls.model();
+			return !disposed && !readOnly && current !== null && !current.readOnly
+				&& current.path === path && controls.projectPath() === path && viewId === openedView
+				&& currentView()?.timelines.includes(lane.id) === true;
+		};
+		keep(new TimelineTimePickModal(app, t('timeline.subrow.moveToTimePlaceholder'), elsewhere, (picked) => {
+			if (!currentContext() || !elsewhere.some((option) => option.value === picked.value)) return;
+			void enqueue(async () => {
+				if (!currentContext()) return;
+				const bridge = controls.bridge();
+				const latest = await bridge.read();
+				if (!currentContext() || latest?.projectPath !== path) return;
+				if (!latest.held.views.some((view) => view.id === openedView && view.timelines.includes(lane.id))) return;
+				const currentLane = latest.held.timelines.find((candidate) => candidate.id === lane.id);
+				const source = currentLane?.times.find((candidate) => candidate.timeId === time.timeId);
+				if (!source?.rows.some((row) => row.id === rowId)
+					|| !currentLane?.times.some((candidate) => candidate.timeId === picked.value)) return;
+				await bridge.moveRow(lane.id, rowId, picked.value, null);
+			});
+		})).open();
+	};
+
 	const openSubrowMenu = (cell: CellEntry, entry: SubrowEntry, event: MouseEvent): void => {
 		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
 		const time = lane?.times.find((candidate) => candidate.rows.some((row) => row.id === entry.rowId));
@@ -1993,6 +2052,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				.onClick(() => {
 					moveRowBy(lane, time, at, 1);
 				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.subrow.moveToTime'))
+				.setIcon('corner-down-right')
+				.setDisabled(readOnly || otherRowTimes(lane, time.timeId).length === 0)
+				.onClick(() => { moveRowToTime(lane, time, entry.rowId); });
 		});
 		menu.addSeparator();
 		menu.addItem((item) => {
@@ -2019,6 +2085,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	const removeRow = async (lane: Timeline, time: TimelineTime, rowId: string): Promise<void> => {
+		if (disposed) return;
 		const row = time.rows.find((candidate) => candidate.id === rowId);
 		if (row === undefined) return;
 		if (row.scenes.length > 0) {
@@ -2026,7 +2093,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				title: t('timeline.subrow.removeTitle'),
 				lines: [t('timeline.subrow.removeDescription', { count: row.scenes.length })],
 				label: t('common.remove'),
-			});
+			}, keep);
 			if (!confirmed || disposed) return;
 		}
 		await enqueue(async () => {
@@ -2909,18 +2976,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	const renameLane = (lane: Timeline): void => {
 		const held = reading?.held;
-		if (held === undefined) return;
-		renameTimelineForm(
+		if (held === undefined || disposed) return;
+		keep(renameTimelineForm(
 			app,
 			t,
 			lane.name,
 			held.timelines.filter((candidate) => candidate.id !== lane.id).map((candidate) => candidate.name),
 			async (name) => {
+				if (disposed) return;
 				await enqueue(async () => {
 					await controls.bridge().renameTimeline(lane.id, name);
 				});
 			},
-		).open();
+		)).open();
 	};
 
 	const bindLane = async (lane: Timeline): Promise<void> => {
@@ -2938,13 +3006,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	const deleteLane = async (lane: Timeline): Promise<void> => {
+		if (disposed) return;
 		const rows = lane.times.reduce((count, time) => count + time.rows.length, 0);
 		if (lane.times.length > 0 || rows > 0) {
 			const confirmed = await confirmTimelineAction(app, t, {
 				title: t('timeline.timeline.deleteTitle', { name: lane.name }),
 				lines: [t('timeline.timeline.deleteDescription', { times: lane.times.length, rows })],
 				label: t('actions.delete'),
-			});
+			}, keep);
 			if (!confirmed || disposed) return;
 		}
 		await enqueue(async () => {
@@ -3036,6 +3105,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	const removeTimeFrom = async (lane: Timeline, entry: RowEntry): Promise<void> => {
+		if (disposed) return;
 		const cell = laneCell(lane, entry.timeId);
 		if (cell === null) return;
 		if (cell.rows.length > 0) {
@@ -3046,7 +3116,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				}),
 				lines: [t('timeline.time.removeDescription', { rows: cell.rows.length })],
 				label: t('common.remove'),
-			});
+			}, keep);
 			if (!confirmed || disposed) return;
 		}
 		await enqueue(async () => {
@@ -3056,9 +3126,118 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- The cards' menu -----------------------------------------------------
 
+	interface SceneMenuContext {
+		path: string;
+		viewId: string;
+		timelineId: string;
+		sceneId: string;
+		/** Null when the scene came from the pool. */
+		rowId: string | null;
+	}
+	interface ScenePlacementTarget extends MoveAfterEntry {
+		timeId: string;
+		rowId: string | null;
+	}
+
+	/** A menu keeps the project, view, lane and source it opened on through its picker and queue. */
+	const sceneMenuLane = (context: SceneMenuContext, read = reading): Timeline | null => {
+		const current = controls.model();
+		if (
+			disposed || current === null || current.readOnly || readOnly ||
+			controls.projectPath() !== context.path || current.path !== context.path ||
+			read?.projectPath !== context.path || viewId !== context.viewId || activeId !== context.timelineId ||
+			!findTimelineView(read.held, context.viewId)?.timelines.includes(context.timelineId) ||
+			!current.scenes.some((scene) => scene.id === context.sceneId)
+		) return null;
+		const lane = read.held.timelines.find((candidate) => candidate.id === context.timelineId);
+		if (lane === undefined) return null;
+		const source = lane.times.flatMap((time) => time.rows).find((row) => row.scenes.includes(context.sceneId));
+		return (source?.id ?? null) === context.rowId ? lane : null;
+	};
+
+	const sceneMenuContext = (sceneId: string, rowId: string | null): SceneMenuContext | null => {
+		const path = controls.projectPath();
+		if (path === null || viewId === null || activeId === null) return null;
+		const context = { path, viewId, timelineId: activeId, sceneId, rowId };
+		return sceneMenuLane(context) === null ? null : context;
+	};
+
+	/** Each stored row, and a new row of its own at every time, as a drop offers. */
+	const placementTargets = (lane: Timeline): ScenePlacementTarget[] => {
+		const entries: ScenePlacementTarget[] = [];
+		for (const time of lane.times) {
+			for (const row of time.rows) {
+				entries.push({
+					id: `row:${row.id}`, index: entries.length, timeId: time.timeId, rowId: row.id,
+					label: `${placeName(lane.id, time.timeId)} / ${row.text.trim() || t('timeline.subrow.empty')}`,
+				});
+			}
+			entries.push({
+				id: `time:${time.timeId}`, index: entries.length, timeId: time.timeId, rowId: null,
+				label: `${placeName(lane.id, time.timeId)} / ${t('timeline.scene.placeNewRow')}`,
+			});
+		}
+		return entries;
+	};
+
+	const placeSceneByMenu = (context: SceneMenuContext): void => {
+		const lane = sceneMenuLane(context);
+		if (lane === null || lane.times.length === 0) return;
+		const targets = placementTargets(lane);
+		const modal = keep(new MoveAfterModal(app, t, targets, (picked) => {
+			const target = targets.find((candidate) => candidate.id === picked.id);
+			if (target === undefined || sceneMenuLane(context) === null) return;
+			void enqueue(async () => {
+				if (sceneMenuLane(context) === null) return;
+				const bridge = controls.bridge();
+				const current = sceneMenuLane(context, await bridge.read());
+				const time = current?.times.find((candidate) => candidate.timeId === target.timeId);
+				if (time === undefined || (target.rowId !== null && !time.rows.some((row) => row.id === target.rowId))) return;
+				if (target.rowId === null) await bridge.addRow(context.timelineId, target.timeId, '', null, [context.sceneId]);
+				else await bridge.placeScene(context.timelineId, context.sceneId, target.rowId, null);
+			});
+		}));
+		modal.setPlaceholder(t('timeline.scene.moveTo'));
+		modal.open();
+	};
+
+	/** Resolve neighbours when the queued action runs, after any earlier move has landed. */
+	const moveSceneByMenu = (context: SceneMenuContext, direction: -1 | 1): void => {
+		if (sceneMenuLane(context) === null) return;
+		void enqueue(async () => {
+			if (sceneMenuLane(context) === null) return;
+			const bridge = controls.bridge();
+			const lane = sceneMenuLane(context, await bridge.read());
+			const row = lane?.times.flatMap((time) => time.rows).find((candidate) => candidate.id === context.rowId);
+			const at = row?.scenes.indexOf(context.sceneId) ?? -1;
+			if (row === undefined || at < 0 || at + direction < 0 || at + direction >= row.scenes.length) return;
+			const beforeSceneId = row.scenes[direction === -1 ? at - 1 : at + 2] ?? null;
+			await bridge.placeScene(context.timelineId, context.sceneId, row.id, beforeSceneId);
+		});
+	};
+
+	/** The pool and lane cards share one placement picker and one pair of bridge writes. */
+	const addScenePlacementMenuItem = (sceneId: string, rowId: string | null, menu: Menu): void => {
+		const context = sceneMenuContext(sceneId, rowId);
+		const lane = context === null ? null : sceneMenuLane(context);
+		menu.addItem((item) => {
+			item
+				.setTitle(t('timeline.scene.moveTo'))
+				.setIcon('corner-down-right')
+				.setDisabled(lane === null || lane.times.length === 0)
+				.onClick(() => {
+					if (context !== null) placeSceneByMenu(context);
+				});
+		});
+	};
+
 	const openCardMenu = (card: SceneCard, event: MouseEvent): void => {
 		const path = controls.projectPath();
-		const lane = laneOfRow(rowOfKey(card.key));
+		const rowId = rowOfKey(card.key);
+		const lane = laneOfRow(rowId);
+		const row = lane?.times.flatMap((time) => time.rows).find((candidate) => candidate.id === rowId);
+		const at = row?.scenes.indexOf(card.id) ?? -1;
+		const context = sceneMenuContext(card.id, rowId);
 		const menu = new Menu();
 		menu.addItem((item) => {
 			item
@@ -3078,6 +3257,26 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					void host.openManagedFile(card.scene.path).catch(notice);
 				});
 		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveUp'))
+				.setIcon('arrow-up')
+				.setDisabled(context === null || at <= 0)
+				.onClick(() => {
+					if (context !== null) moveSceneByMenu(context, -1);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.moveDown'))
+				.setIcon('arrow-down')
+				.setDisabled(context === null || row === undefined || at < 0 || at >= row.scenes.length - 1)
+				.onClick(() => {
+					if (context !== null) moveSceneByMenu(context, 1);
+				});
+		});
+		addScenePlacementMenuItem(card.id, rowId, menu);
 		menu.addSeparator();
 		menu.addItem((item) => {
 			item
@@ -3112,12 +3311,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const addTimeline = (offerView: boolean): Promise<string | null> =>
 		new Promise((resolve) => {
 			const held = reading?.held;
-			if (held === undefined || readOnly) {
+			if (held === undefined || readOnly || disposed) {
 				resolve(null);
 				return;
 			}
 			let made: string | null = null;
-			const modal = new AddTimelineModal(
+			const modal = keep(new AddTimelineModal(
 				app,
 				t,
 				{
@@ -3126,6 +3325,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					offerView: offerView && currentView() !== null,
 				},
 				async (draft) => {
+					if (disposed) return;
 					await enqueue(async () => {
 						const bridge = controls.bridge();
 						const id = await bridge.createTimeline(draft.name, draft.binding);
@@ -3137,7 +3337,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 						}
 					});
 				},
-			);
+			));
 			const closed = modal.onClose.bind(modal);
 			modal.onClose = (): void => {
 				closed();
@@ -3148,8 +3348,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	const openAddView = (): void => {
 		const held = reading?.held;
-		if (held === undefined || readOnly) return;
-		new TimelineViewFormModal(
+		if (held === undefined || readOnly || disposed) return;
+		keep(new TimelineViewFormModal(
 			app,
 			t,
 			{
@@ -3166,6 +3366,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				addTimeline: () => addTimeline(false),
 			},
 			async (draft) => {
+				if (disposed) return;
 				await enqueue(async () => {
 					const bridge = controls.bridge();
 					const id = await bridge.createView(draft.name, draft.timelines);
@@ -3174,14 +3375,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					await bridge.setLastView(id);
 				});
 			},
-		).open();
+		)).open();
 	};
 
 	const openEditView = (): void => {
 		const held = reading?.held;
 		const view = currentView();
-		if (held === undefined || view === null || readOnly) return;
-		new TimelineViewFormModal(
+		if (held === undefined || view === null || readOnly || disposed) return;
+		keep(new TimelineViewFormModal(
 			app,
 			t,
 			{
@@ -3198,11 +3399,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				timelines: () => reading?.held.timelines ?? lastHeld?.timelines ?? held.timelines,
 				addTimeline: () => addTimeline(false),
 				deleteView: async () => {
+					if (disposed) return false;
 					const confirmed = await confirmTimelineAction(app, t, {
 						title: t('timeline.view.deleteTitle', { name: view.name }),
 						lines: [t('timeline.view.deleteDescription')],
 						label: t('actions.delete'),
-					});
+					}, keep);
 					if (!confirmed || disposed) return false;
 					// The form closes on this answer, so it is the file's answer
 					// and not the asking: a view the project would not let go
@@ -3216,6 +3418,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				},
 			},
 			async (draft) => {
+				if (disposed) return;
 				await enqueue(async () => {
 					const bridge = controls.bridge();
 					// Against the view as it stands now, so a name already so is not written again.
@@ -3224,7 +3427,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					await bridge.setViewTimelines(view.id, draft.timelines);
 				});
 			},
-		).open();
+		)).open();
 	};
 
 	// The pool is the corkboard in one column, showing what the active lane
@@ -3239,6 +3442,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			controls.activateProject();
 		},
 		refresh: () => controls.refresh(),
+		unloading: () => controls.unloading?.() === true,
 		popover: controls.popover,
 		memory: memory.pool,
 		remember: () => {
@@ -3256,6 +3460,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		// A pool card leaves under the workspace's type and locks the active
 		// lane; a lane's card dropped back on the pool gives up its place.
 		modeShared: true,
+		menuItems: (sceneId, menu) => { addScenePlacementMenuItem(sceneId, null, menu); },
 		dragOut: {
 			type: TIMELINE_SCENE_DRAG_TYPE,
 			onStart: (sceneId) => {
@@ -3316,6 +3521,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			unbindWindow(eventWindow);
 			poolHandle?.dispose();
 			poolHandle = null;
+			// Closing resolves addTimeline and declines standing confirmations.
+			// The recovery dialog opens separately after this disposal returns.
+			// Each is closed on its own: a dialog that throws on the way out
+			// would otherwise take the words below with it, and those are the
+			// author's, with no second chance once the workspace has gone.
+			for (const modal of [...standing]) {
+				try {
+					modal.close();
+				} catch (error) {
+					console.error('Snowflake: a timeline dialog could not be closed', error);
+				}
+			}
+			standing.clear();
 			// Words still being written go the way a leave sends them, without
 			// waiting on a blur the host may not send: an open edit of a row,
 			// the words kept from a row's write that failed, tried once more,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Menu } from 'obsidian';
 
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
@@ -69,10 +70,12 @@ function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene), re
 		reorderScene: vi.fn(() => Promise.resolve()),
 		patchScene: vi.fn(() => Promise.resolve('next')),
 	};
+	let unloading = false;
 	const controls = {
 		app: { metadataCache: { getFirstLinkpathDest: () => null } },
 		host, t: (key: string) => key, model: () => model,
 		activateProject: vi.fn(), refresh: vi.fn(async () => { handle.refresh(); }),
+		unloading: () => unloading,
 		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter: vi.fn() },
 		memory: corkboardMemory(), remember: vi.fn(),
 	} as unknown as CorkboardControls;
@@ -90,10 +93,20 @@ function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene), re
 		rename: (id: string, title: string) => {
 			model = { ...model, scenes: model.scenes.map((candidate) => (candidate.id === id ? { ...candidate, title } : candidate)) };
 		},
+		setUnloading: (value: boolean) => { unloading = value; },
 	};
 }
 
 describe('the corkboard as a pool', () => {
+	it('lets the hosting surface add actions to the menu opened by a pool card button', () => {
+		const menuItems = vi.fn<NonNullable<CorkboardVariant['menuItems']>>();
+		const fixture = pool({ include: () => true, menuItems });
+		fixture.cards()[1]!.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
+		expect(menuItems).toHaveBeenCalledOnce();
+		expect(menuItems.mock.calls[0]![0]).toBe('scene-b');
+		expect(menuItems.mock.calls[0]![1]).toBeInstanceOf(Menu);
+	});
+
 	it('shows the scenes included, numbered by their narrative place, in one column', () => {
 		const fixture = pool({ include: (candidate) => candidate.id === 'scene-b' || candidate.id === 'scene-d', columns: 1 });
 		const numbers = fixture.cards().map((card) => card.querySelector('.snowflake-method-corkboard-number')!.textContent);
@@ -260,6 +273,33 @@ describe('the corkboard as a pool', () => {
 		await settle();
 		expect(fixture.cards().map((candidate) => candidate.getAttribute('data-id'))).not.toContain('scene-a');
 		expect(opened).toHaveLength(1);
+		vi.restoreAllMocks();
+	});
+
+	it('keeps a refused draft in the console rather than a dialog while the plugin unloads', async () => {
+		let placed = false;
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const fixture = pool({ include: (candidate) => !(placed && candidate.id === 'scene-a') });
+		fixture.host.patchScene.mockRejectedValueOnce(new Error('The scene has moved on'));
+		const card = fixture.cards()[0]!;
+		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+		conflict.value = 'Unsaved draft';
+		conflict.dispatch('input');
+		conflict.dispatch('blur');
+		// The refusal of the case above, with the plugin on its way out: a
+		// dialog opened now would outlive the plugin that owns it, so the words
+		// go where they can still be read instead.
+		placed = true;
+		fixture.setUnloading(true);
+		fixture.handle.refresh();
+		await settle();
+		expect(opened).toEqual([]);
+		expect(logged).toHaveBeenCalledWith(
+			'Snowflake: a scene card’s words could not be written',
+			{ scene: 'Scene A', conflict: 'Unsaved draft' },
+		);
 		vi.restoreAllMocks();
 	});
 

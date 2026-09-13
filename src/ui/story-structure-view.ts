@@ -61,6 +61,8 @@ export interface StoryStructureViewDeps {
 	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
 	corkboard: RenderCorkboard;
 	timeline: RenderTimeline;
+	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
+	unloading?(): boolean;
 }
 
 export class SnowflakeStoryStructureView extends ItemView {
@@ -75,6 +77,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
 	private opened = false;
+	private unloading = false;
 	private stateDelivered = false;
 	private preferencesProjectId: string | null = null;
 	private restoredPreferences: Partial<CorkboardPreferences> = {};
@@ -287,7 +290,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 	 * began after the request: what the board's queue of writes counts on.
 	 */
 	async refresh(): Promise<void> {
-		if (!this.stateDelivered) return;
+		if (!this.stateDelivered || this.unloading) return;
 		this.refreshQueuedWhileHidden = false;
 		if (this.refreshing) {
 			this.refreshPending = true;
@@ -307,7 +310,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 					const path = this.state.projectPath;
 					const model =
 						path === null ? null : await this.deps.host.loadDashboardModel(path);
-					if (!this.opened) return;
+					if (!this.opened || this.unloading) return;
 					if (path !== this.state.projectPath) {
 						this.refreshPending = true;
 						continue;
@@ -432,6 +435,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 			model: () => this.model,
 			activateProject: () => this.activateProjectContext(),
 			refresh: () => this.refresh(),
+			unloading: () => this.unloading || this.deps.unloading?.() === true,
 			popover: this.filterPanel.lend(),
 			memory: this.memory,
 			remember: (changes) => {
@@ -459,6 +463,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 				this.app.workspace.requestSaveLayout();
 			},
 			corkboard: this.deps.corkboard,
+			unloading: () => this.unloading || this.deps.unloading?.() === true,
 		};
 	}
 
@@ -472,6 +477,13 @@ export class SnowflakeStoryStructureView extends ItemView {
 			};
 		}
 		return this.timelineBridge.bridge;
+	}
+
+	/** Settle typed words before plugin teardown; any later refusal must remain outside a dialog. */
+	settleForUnload(): void {
+		this.unloading = true;
+		this.disposeBoard();
+		this.filterPanel.close();
 	}
 
 	private disposeBoard(): void {

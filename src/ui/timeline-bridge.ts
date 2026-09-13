@@ -124,6 +124,8 @@ export interface TimelineControls {
 	memory: TimelineMemory;
 	/** Saves the tab layout, where the pool's settings live. */
 	remember(): void;
+	/** Unload still settles typed words, but a refusal cannot open another dialog. */
+	unloading?(): boolean;
 	/** What deals the scene pool: the corkboard, in its one-column variant. */
 	corkboard: RenderCorkboard;
 }
