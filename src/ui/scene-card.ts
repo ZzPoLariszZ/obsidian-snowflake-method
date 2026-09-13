@@ -208,6 +208,11 @@ export interface SceneCardDeck<Card extends SceneCard> {
 	unmount: (key: string) => void;
 	/** Takes a card off the surface but keeps its editor: for a draft the filter left no place for. */
 	park: (card: Card) => void;
+	/**
+	 * Settles a card's open words and takes it down: written where the scene
+	 * still stands, kept for the writer where it has gone.
+	 */
+	retire: (key: string) => void;
 	/** Moves a card, its editor and its pending texts under another key. */
 	rekey: (card: Card, nextKey: string) => void;
 	/** Takes every card down, keeping the drafts a refused write would lose. */
@@ -219,8 +224,6 @@ export interface SceneCardDeck<Card extends SceneCard> {
 	beginTitleEdit: (card: Card) => void;
 	commitTitle: (card: Card, refocus: boolean) => void;
 	commitConflict: (card: Card) => void;
-	/** Keeps a draft the card can no longer carry in the recovery dialog, for the writer to place again. */
-	recoverBlockedDraft: (card: Card) => void;
 	/** Lets the controls drag again once a press on one has ended. */
 	releasePress: () => void;
 	closeColorPanel: () => void;
@@ -694,9 +697,18 @@ export function createSceneCardDeck<Card extends SceneCard>(
 				// or cancel with Escape; the refreshed model remains its own.
 				// A card taken down since is nobody's to reach, whether or not
 				// the scene stands: its draft goes to the recovery dialog.
+				// A card parked is off the page though still in the registry: the
+				// board's window or its filter left it no place. Words put back
+				// into it would be held out of sight until the board went away,
+				// so it counts as out of reach along with one taken down.
 				const draft = cards.get(card.key) ??
 					[...cards.values()].find((standing) => standing.id === card.id) ?? null;
-				if (draft === null || !editable(draft) || !deps.scenesById().has(card.id)) {
+				if (
+					draft === null ||
+					!draft.el.isConnected ||
+					!editable(draft) ||
+					!deps.scenesById().has(card.id)
+				) {
 					recoverText(card.scene, { [field]: pending.value });
 				} else if (field === 'conflict' && !draft.conflictDirty) {
 					draft.conflict.value = pending.value;
@@ -972,6 +984,30 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		card.el.remove();
 	};
 
+	/**
+	 * A card's open words settled before it goes: written where the scene is
+	 * still there to take them, and kept for the writer where it is not. A
+	 * write against a note that has gone can only fail, and would say so with
+	 * an error before handing the words back anyway.
+	 */
+	const settle = (card: Card): void => {
+		if (!deps.scenesById().has(card.id)) {
+			recoverBlockedDraft(card);
+			return;
+		}
+		commitTitle(card, false);
+		commitConflict(card);
+		if (card.editingTitle) recoverBlockedDraft(card);
+	};
+
+	/** Settles a card's words and takes it down: what a surface asks when a placement goes. */
+	const retire = (key: string): void => {
+		const card = cards.get(key);
+		if (card === undefined) return;
+		settle(card);
+		unmount(key);
+	};
+
 	const rekey = (card: Card, nextKey: string): void => {
 		const key = card.key;
 		cards.delete(key);
@@ -1039,6 +1075,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		dress,
 		unmount,
 		park,
+		retire,
 		rekey,
 		clear,
 		editable,
@@ -1047,7 +1084,6 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		beginTitleEdit,
 		commitTitle,
 		commitConflict,
-		recoverBlockedDraft,
 		releasePress,
 		closeColorPanel,
 		dispose: () => {
@@ -1055,11 +1091,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 			closeColorPanel();
 			// Final drafts join accepted saves in the same order. They retain
 			// the board's project and revisions after its view has gone away.
-			for (const card of cards.values()) {
-				commitTitle(card, false);
-				commitConflict(card);
-				if (card.editingTitle) recoverBlockedDraft(card);
-			}
+			for (const card of cards.values()) settle(card);
 		},
 	};
 }

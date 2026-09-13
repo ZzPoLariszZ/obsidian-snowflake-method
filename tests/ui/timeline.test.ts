@@ -243,7 +243,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 			apply(placeTimelineScene(held, timelineId, sceneId, rowId, beforeSceneId, 2))),
 	} as unknown as TimelineBridge;
 	const times = [time('time-1', 'Dawn', 'First light'), time('time-2', 'Dusk')];
-	const model = {
+	let model = {
 		path: 'P', projectId: 'p', locale: 'en', readOnly,
 		scenes: [scene('scene-1', 'Arrival'), scene('scene-2', 'Departure'), scene('scene-3', 'Return')],
 		manuscriptPaths: [],
@@ -287,7 +287,9 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	const root = dom.container.querySelector('.snowflake-method-timeline')!;
 	return {
 		dom, root, handle, bridge, memory, host, controls, refresh, corkboard, poolHandle, remember, translate,
-		model: model as { readOnly: boolean },
+		get model(): { readOnly: boolean } { return model; },
+		/** Another model object, as a project refresh hands the workspace one. */
+		remodel: (change: Partial<ProjectDashboardModel>) => { model = { ...model, ...change }; },
 		held: () => held,
 		notify: () => { for (const listener of listeners) listener(); },
 		listeners,
@@ -526,6 +528,130 @@ describe('the timeline workspace', () => {
 		vi.restoreAllMocks();
 	});
 
+	it('answers each press of a symbol with the one before it, however fast the presses come', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r-1', 'one')] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		// Two presses in a breath: the second takes what the first wrote, not what
+		// stood when it was pressed, so the pair answer each other and the view is
+		// left where it started.
+		const eye = fixture.button('snowflake-method-timeline-words');
+		eye.dispatch('click');
+		eye.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewSubDescriptions).toHaveBeenNthCalledWith(1, 'v', false);
+		expect(fixture.bridge.setViewSubDescriptions).toHaveBeenNthCalledWith(2, 'v', true);
+		expect(fixture.held().views[0]!.showSubDescriptions).toBe(true);
+		expect(fixture.root.classes.has('is-words-hidden')).toBe(false);
+		const order = fixture.button('snowflake-method-timeline-order');
+		order.dispatch('click');
+		order.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewTimesReversed).toHaveBeenNthCalledWith(1, 'v', true);
+		expect(fixture.bridge.setViewTimesReversed).toHaveBeenNthCalledWith(2, 'v', false);
+		expect(fixture.held().views[0]!.timesReversed).toBe(false);
+		expect(order.getAttribute('aria-pressed')).toBe('false');
+		const shape = fixture.button('snowflake-method-timeline-presentation');
+		shape.dispatch('click');
+		shape.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setViewPresentation).toHaveBeenNthCalledWith(1, 'v', 'stack');
+		expect(fixture.bridge.setViewPresentation).toHaveBeenNthCalledWith(2, 'v', 'flat');
+		expect(fixture.root.dataset.presentation).toBe('flat');
+	});
+
+	it('paints nothing when a read brings back the document already on screen', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const painted = (): number => fixture.poolHandle.refresh.mock.calls.length;
+		const before = painted();
+		// The plugin rings its bell a moment after every write the workspace
+		// makes itself, and the read that follows brings back what is shown.
+		fixture.notify();
+		await settle();
+		expect(painted()).toBe(before);
+		// A document that has moved is painted as ever.
+		await fixture.bridge.renameTimeline('a', 'Renamed');
+		fixture.notify();
+		await settle();
+		expect(painted()).toBe(before + 1);
+		expect(fixture.heads()[0]!.querySelector('.snowflake-method-timeline-lane-name')!.textContent).toBe('Renamed');
+	});
+
+	it('paints once when the view is switched, since only the view opened last is written', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a'), timeline('b')],
+			views: [view('v1', ['a']), view('v2', ['b'])],
+			lastViewId: 'v1',
+		});
+		await settle();
+		const before = fixture.poolHandle.refresh.mock.calls.length;
+		fixture.viewField().choose('v2');
+		await settle();
+		expect(fixture.bridge.setLastView).toHaveBeenCalledWith('v2');
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['b']);
+		expect(fixture.poolHandle.refresh.mock.calls.length).toBe(before + 1);
+	});
+
+	it('reads the document again when the model lands on a project it could not read', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		expect(fixture.root.classes.has('is-empty')).toBe(false);
+		// A rename takes the project out from under the read: nothing stands.
+		vi.mocked(fixture.bridge.read).mockResolvedValueOnce(null);
+		fixture.notify();
+		await settle();
+		expect(fixture.root.classes.has('is-empty')).toBe(true);
+		expect(fixture.bridge.read).toHaveBeenCalledTimes(2);
+		// The model landing is the word that the project may be there again, so
+		// the refresh asks for the document rather than painting what it has.
+		fixture.handle.refresh();
+		await settle();
+		expect(fixture.bridge.read).toHaveBeenCalledTimes(3);
+		expect(fixture.root.classes.has('is-empty')).toBe(false);
+		expect(fixture.heads().map((head) => head.getAttribute('data-timeline-id'))).toEqual(['a']);
+	});
+
+	it('keeps the view form open when the view could not be deleted, and answers true once it goes', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const opened: TimelineViewFormModal[] = [];
+		vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) { opened.push(this); });
+		fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+		expect(opened).toHaveLength(1);
+		const form = opened[0] as unknown as { options: { deleteView?: () => Promise<boolean> } };
+		// Refused, the answer is the file's and not the asking, so the form stays
+		// open on the view that is still there.
+		vi.mocked(fixture.bridge.deleteView).mockResolvedValueOnce(false);
+		await expect(form.options.deleteView!()).resolves.toBe(false);
+		expect(fixture.held().views.map((candidate) => candidate.id)).toEqual(['v']);
+		await expect(form.options.deleteView!()).resolves.toBe(true);
+		expect(fixture.held().views).toHaveLength(0);
+		// The confirmation is a module mock, and the tests that follow count its
+		// calls: this one leaves the count where it found it.
+		vi.mocked(confirmTimelineAction).mockClear();
+		vi.restoreAllMocks();
+	});
+
+	it('goes on naming the view\'s lanes while the document cannot be read, so a save does not empty it', async () => {
+		const fixture = workspace({ timelines: [timeline('a'), timeline('b')], views: [view('v', ['a', 'b'])] });
+		await settle();
+		const opened: TimelineViewFormModal[] = [];
+		vi.spyOn(TimelineViewFormModal.prototype, 'open').mockImplementation(function (this: TimelineViewFormModal) { opened.push(this); });
+		fixture.button('snowflake-method-timeline-view-edit').dispatch('click');
+		const form = opened[0] as unknown as { options: { timelines: () => readonly Timeline[] } };
+		expect(form.options.timelines().map((lane) => lane.id)).toEqual(['a', 'b']);
+		// A read that found nothing is not a project without lanes. Answered so,
+		// the form drops every line it shows and its save writes the view empty.
+		vi.mocked(fixture.bridge.read).mockResolvedValueOnce(null);
+		fixture.notify();
+		await settle();
+		expect(form.options.timelines().map((lane) => lane.id)).toEqual(['a', 'b']);
+		vi.restoreAllMocks();
+	});
+
 	it('hands the view form a timeline made inside it only once the document holds it, with the bell already ringing', async () => {
 		const fixture = workspace({ timelines: [], views: [] });
 		await settle();
@@ -592,6 +718,23 @@ describe('the timeline workspace', () => {
 		fixture.head('a').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
 		expect(menus[0]!.every((item) => item.disabled)).toBe(true);
 	});
+
+	it('closes the way out of a missing scene on a project that cannot be written', async () => {
+		const held = {
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-gone'])] }] })],
+			views: [view('v', ['a'])],
+		};
+		const removeIn = (fixture: ReturnType<typeof workspace>): CorkboardElement =>
+			fixture.cell('time-1', 'a')
+				.querySelector('.snowflake-method-timeline-scene-missing')!
+				.querySelector('.snowflake-method-timeline-scene-missing-remove')!;
+		const open = workspace(held);
+		await settle();
+		expect(removeIn(open).disabled).toBe(false);
+		const shut = workspace(held, true);
+		await settle();
+		expect(removeIn(shut).disabled).toBe(true);
+	});
 });
 
 describe('the times and the lanes', () => {
@@ -613,6 +756,17 @@ describe('the times and the lanes', () => {
 		// A foot under rows is marked so the stylesheet can keep it out of the way; the first foot stays.
 		expect(fixture.cell('time-2', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(true);
 		expect(fixture.cell('time-1', 'b').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(false);
+	});
+
+	it('keeps where the lanes stand, so a turn away and back finds them there', async () => {
+		const fixture = laid();
+		await settle();
+		const scroller = fixture.body().querySelector('.snowflake-method-timeline-scroll')!;
+		expect(fixture.memory.scroll).toEqual({ left: 0, top: 0 });
+		scroller.scrollLeft = 220;
+		scroller.scrollTop = 90;
+		scroller.dispatch('scroll');
+		expect(fixture.memory.scroll).toEqual({ left: 220, top: 90 });
 	});
 
 	it('stands in for the scroller\'s own bars with two of its own, kept in step both ways', async () => {
@@ -1196,6 +1350,30 @@ describe('dragging times and rows', () => {
 		expect(fixture.cell('time-1', 'a').querySelectorAll('.snowflake-method-timeline-subrow')
 			.map((candidate) => candidate.getAttribute('data-row-id')).filter((id) => id !== null)).toEqual(['r3', 'r1']);
 	});
+
+	it('takes the line with it when the pointer moves on to a lane that will not have the row', async () => {
+		const fixture = laid();
+		await settle();
+		const handle = subrow(fixture, 'time-2', 'a', 'r3').querySelector('.snowflake-method-timeline-subrow-handle')!;
+		const dataTransfer = transfer([TIMELINE_ROW_DRAG_TYPE]);
+		fire(handle, 'dragstart', { dataTransfer });
+		standAt(subrow(fixture, 'time-1', 'a', 'r1'), 0);
+		fire(fixture.cell('time-1', 'a'), 'dragover', { clientY: 10, dataTransfer });
+		expect(subrow(fixture, 'time-1', 'a', 'r1').classes.has('is-drop-before')).toBe(true);
+		// The line was drawn on the lane the pointer came from; a lane that
+		// refuses the row takes it away rather than leaving it standing.
+		const foreign = transfer([TIMELINE_ROW_DRAG_TYPE]);
+		fire(fixture.cell('time-1', 'b'), 'dragover', { clientY: 10, dataTransfer: foreign });
+		expect(foreign.dropEffect).toBe('none');
+		expect(subrow(fixture, 'time-1', 'a', 'r1').classes.has('is-drop-before')).toBe(false);
+		// Back on its own lane the row lands as it did before.
+		fire(fixture.cell('time-1', 'a'), 'dragover', { clientY: 10, dataTransfer });
+		expect(subrow(fixture, 'time-1', 'a', 'r1').classes.has('is-drop-before')).toBe(true);
+		fire(fixture.cell('time-1', 'a'), 'drop', { dataTransfer });
+		fire(handle, 'dragend', {});
+		await settle();
+		expect(fixture.bridge.moveRow).toHaveBeenCalledWith('a', 'r3', 'time-1', 'r1');
+	});
 });
 
 describe('the scene pool', () => {
@@ -1376,6 +1554,27 @@ describe('dragging scenes', () => {
 		dataTransfer.setData(TIMELINE_SCENE_DRAG_TYPE, sceneId);
 		return dataTransfer;
 	};
+
+	it('takes the mark with it when the pointer moves on to a lane locked out of the drag', async () => {
+		const fixture = laid();
+		await settle();
+		const variant = variantOf(fixture);
+		const dataTransfer = dragging('scene-2');
+		variant.dragOut.onStart('scene-2', dataTransfer);
+		const card = cardOf(fixture, 'scene-1');
+		standAt(card, 0);
+		const box = scenesOf(fixture, 'time-1', 'a', 'r1');
+		fire(fixture.cell('time-1', 'a'), 'dragover', { target: box, clientX: 50, clientY: 10, dataTransfer });
+		expect(card.classes.has('is-drop-before')).toBe(true);
+		// A lane locked out of the drag takes the mark away with its refusal, as
+		// a row with no place under the pointer already does.
+		const foreign = dragging('scene-2');
+		const foreignBox = scenesOf(fixture, 'time-1', 'b', 'r3');
+		fire(fixture.cell('time-1', 'b'), 'dragover', { target: foreignBox, clientX: 10, clientY: 10, dataTransfer: foreign });
+		expect(foreign.dropEffect).toBe('none');
+		expect(card.classes.has('is-drop-before')).toBe(false);
+		variant.dragOut.onEnd();
+	});
 
 	it('takes a pool card onto the active lane alone, before or after the card under the pointer', async () => {
 		const fixture = laid();
@@ -1704,6 +1903,35 @@ describe('a time put in after the last row', () => {
 		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-2', 'time-1']);
 	});
 
+	it('writes the order the view keeps as the picker closes, not the one it kept when it opened', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		// The picker stands open, as it may for as long as the author takes.
+		let release: (picked: unknown) => void = () => undefined;
+		vi.mocked(promptForEntityReference).mockReturnValueOnce(
+			new Promise<unknown>((resolve) => { release = resolve; }) as never,
+		);
+		menus.length = 0;
+		fixture.rowOf('time-2').querySelector('.snowflake-method-timeline-time-more')!.dispatch('click');
+		menus[0]!.find((item) => item.title === 'timeline.time.insertAfter')!.click();
+		await settle();
+		// While it stands open the times are turned about, so the rows on screen
+		// are no longer the rows the order was read from.
+		fixture.button('snowflake-method-timeline-order').dispatch('click');
+		await settle();
+		expect(fixture.held().views[0]!.timesReversed).toBe(true);
+		release({ option: { value: 'time-1' } });
+		await settle();
+		expect(fixture.bridge.addTime).toHaveBeenCalledWith('a', 'time-1');
+		// Turned about, the foot is the place meant, and the order is written the
+		// way the view keeps it now: the time picked last, the rest where they were.
+		expect(fixture.bridge.setTimeOrder).toHaveBeenLastCalledWith('v', ['time-1', 'time-2']);
+		expect(fixture.rows().map((entry) => entry.getAttribute('data-time-id'))).toEqual(['time-2', 'time-1']);
+	});
+
 	it('leaves a time added from the corner of the frame to its rank, as before', async () => {
 		const fixture = workspace({
 			timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [] }] })],
@@ -1822,6 +2050,30 @@ describe('a placement taken away while a conflict is being written on its card',
 		expect(fixture.host.patchScene).toHaveBeenCalledOnce();
 		expect(savedConflict(fixture)).toMatchObject({ conflict: 'Unsaved draft' });
 	});
+
+	it('keeps the draft for the writer when the scene itself has gone, without a write that can only fail', async () => {
+		const fixture = laid('flat');
+		await settle();
+		const card = fixture.cards().find((candidate) => candidate.getAttribute('data-id') === 'scene-1')!;
+		conflictOf(card).focus();
+		conflictOf(card).value = 'Unsaved draft';
+		conflictOf(card).dispatch('input');
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		// The note goes, not the placement alone: the model no longer holds it,
+		// so a write of the draft could only come back as an error.
+		// A project refresh hands the workspace another model, as it does in the
+		// app: the scenes this one holds are not the scenes the last one held.
+		const scenes = (fixture.model as unknown as ProjectDashboardModel).scenes
+			.filter((scene) => scene.id !== 'scene-1');
+		fixture.remodel({ scenes });
+		fixture.handle.refresh();
+		await settle();
+		expect(fixture.host.patchScene).not.toHaveBeenCalled();
+		expect(opened).toHaveLength(1);
+		expect(fixture.cell('time-1', 'a').querySelector('.snowflake-method-timeline-scene-missing')).not.toBeNull();
+		vi.restoreAllMocks();
+	});
 });
 
 describe('words typed at the foot of a cell whose write does not land', () => {
@@ -1880,6 +2132,77 @@ describe('words typed at the foot of a cell whose write does not land', () => {
 		await settle();
 		expect(input.value).toBe('');
 		expect(subrows(cell).map((child) => child.getAttribute('data-row-id') ?? child.classes.has('is-trailing'))).toEqual(['r1', 'timeline-row-1', true]);
+	});
+
+	it('shows the words for keeping when the lane they were typed on has gone', async () => {
+		const fixture = laid();
+		await settle();
+		const input = trailingInput(fixture.cell('time-1', 'a'));
+		const opened: TimelineDraftModal[] = [];
+		vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(function (this: TimelineDraftModal) { opened.push(this); });
+		// The lane goes while the write is on its way, so there is no foot for
+		// the words to come back to, at this paint or at any after it.
+		vi.mocked(fixture.bridge.addRow).mockImplementationOnce(async () => {
+			await fixture.bridge.deleteTimeline('a');
+			return null;
+		});
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(fixture.held().timelines).toHaveLength(0);
+		expect(opened).toHaveLength(1);
+		vi.restoreAllMocks();
+	});
+
+	it('takes the pending row down even when the paint after the write throws', async () => {
+		const fixture = laid();
+		await settle();
+		const cell = fixture.cell('time-1', 'a');
+		const input = trailingInput(cell);
+		fixture.poolHandle.refresh.mockImplementationOnce(() => { throw new Error('The pool could not be painted'); });
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		await settle();
+		// The write landed and the paint after it did not. The row that stood in
+		// for the write must still come down, or it stands beside the real one.
+		expect(fixture.bridge.addRow).toHaveBeenCalledOnce();
+		expect(cell.querySelector('.snowflake-method-timeline-subrow.is-pending')).toBeNull();
+	});
+
+	it('leaves words being composed in the foot alone, and puts the refused ones in once it ends', async () => {
+		const fixture = laid();
+		await settle();
+		const input = trailingInput(fixture.cell('time-1', 'a'));
+		vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
+		input.value = 'Leaves';
+		press(input, 'Enter', { mod: true });
+		// The next words are being composed when the refusal comes back.
+		input.dispatch('compositionstart');
+		input.value = 'ni';
+		await settle();
+		expect(input.value).toBe('ni');
+		input.dispatch('compositionend');
+		expect(input.value).toBe('Leaves\nni');
+	});
+
+	it('writes the words to the lane they were typed on, where a lane\'s id carries the mark keys are joined on', async () => {
+		const fixture = workspace({
+			timelines: [
+				timeline('a', { times: [{ timeId: 'time-1', rows: [] }] }),
+				timeline('a|b', { times: [{ timeId: 'time-1', rows: [] }] }),
+			],
+			views: [view('v', ['a', 'a|b'])],
+		});
+		await settle();
+		const input = fixture.cell('time-1', 'a|b')
+			.querySelector('.snowflake-method-timeline-subrow.is-trailing')!
+			.querySelector('textarea')!;
+		input.value = 'Belongs to the second lane';
+		input.dispatch('input');
+		fixture.handle.dispose();
+		await settle();
+		expect(fixture.bridge.addRow).toHaveBeenCalledWith('a|b', 'time-1', 'Belongs to the second lane', null);
+		expect(fixture.bridge.addRow).not.toHaveBeenCalledWith('a', 'b|time-1', 'Belongs to the second lane', null);
 	});
 });
 

@@ -150,6 +150,18 @@ const finiteOrZero = (value: unknown): number =>
 const nonEmptyString = (value: unknown): value is string =>
 	typeof value === 'string' && value.length > 0;
 
+/**
+ * The id a stray carries, where it carries one at all. A stray set aside for
+ * wearing an id another entry already took is shadowed by that entry, so it
+ * has to go when the entry does: left behind, it would be the one served on
+ * the next read and the deletion would undo itself.
+ */
+const strayId = (entry: unknown): string | null => {
+	if (typeof entry !== 'object' || entry === null) return null;
+	const id: unknown = (entry as { id?: unknown }).id;
+	return nonEmptyString(id) ? id : null;
+};
+
 /** The limbs of a ref alone, whatever else rode in on the object. */
 const refOf = (ref: EntityRef): EntityRef => ({
 	kind: ref.kind,
@@ -531,6 +543,10 @@ export function deleteTimeline(held: TimelineDocument, id: string): TimelineDocu
 				: view,
 		),
 		pinnedTimelineId: held.pinnedTimelineId === id ? null : held.pinnedTimelineId,
+		strays: {
+			...held.strays,
+			timelines: held.strays.timelines.filter((entry) => strayId(entry) !== id),
+		},
 	};
 }
 
@@ -572,6 +588,10 @@ export function deleteTimelineView(held: TimelineDocument, id: string): Timeline
 		...held,
 		views: held.views.filter((view) => view.id !== id),
 		lastViewId: held.lastViewId === id ? null : held.lastViewId,
+		strays: {
+			...held.strays,
+			views: held.strays.views.filter((entry) => strayId(entry) !== id),
+		},
 	};
 }
 

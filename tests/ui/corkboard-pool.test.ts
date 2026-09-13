@@ -15,6 +15,7 @@ vi.mock('obsidian', async (importOriginal) => {
 });
 
 import { renderCorkboard } from '../../src/ui/corkboard';
+import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { corkboardMemory } from '../../src/ui/story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
@@ -56,12 +57,12 @@ function scene(index: number): SceneViewModel {
 	};
 }
 
-function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene)) {
+function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene), readOnly = false) {
 	const dom = new CorkboardDom();
 	let model = {
 		path: PROJECT, projectId: 'first', locale: 'en', scenes,
 		characters: [{ id: 'hero', path: 'First/Cast/Hero.md', name: 'Hero', readOnly: false, healthIssues: [] }],
-		manuscriptPaths: [], readOnly: false,
+		manuscriptPaths: [], readOnly,
 	} as unknown as ProjectDashboardModel;
 	const host = {
 		openSceneForm: vi.fn(() => Promise.resolve(null)),
@@ -140,6 +141,22 @@ describe('the corkboard as a pool', () => {
 		expect(fixture.dom.container.querySelector('.snowflake-method-corkboard-direction')!.classes.has('is-hidden')).toBe(true);
 	});
 
+	it('keeps its cards still on a project that cannot be written, for all that it offers a way out', () => {
+		const onStart = vi.fn();
+		const fixture = pool(
+			{ include: () => true, dragOut: { type: POOL_TYPE, onStart, onEnd: vi.fn() } },
+			[0, 1, 2].map(scene),
+			true,
+		);
+		const card = fixture.cards()[0]!;
+		expect(card.getAttribute('draggable')).toBe('false');
+		const dataTransfer = transfer([]);
+		event(card, 'dragstart', { target: null, dataTransfer });
+		expect(onStart).not.toHaveBeenCalled();
+		expect(dataTransfer.data.get(POOL_TYPE)).toBeUndefined();
+		expect(card.classes.has('is-dragging')).toBe(false);
+	});
+
 	it('lets a card leave under the given type, and holds a paint until the drag has ended', () => {
 		const onStart = vi.fn();
 		const onEnd = vi.fn();
@@ -202,5 +219,47 @@ describe('the corkboard as a pool', () => {
 		event(fixture.root, 'drop', { dataTransfer });
 		expect(onDrop).toHaveBeenCalledWith(dataTransfer);
 		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
+	});
+
+	it('keeps a refused draft for the writer when the card it belongs to has been parked', async () => {
+		let placed = false;
+		const opened: CorkboardDraftModal[] = [];
+		vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(function (this: CorkboardDraftModal) { opened.push(this); });
+		const fixture = pool({ include: (candidate) => !(placed && candidate.id === 'scene-a') });
+		fixture.host.patchScene.mockRejectedValueOnce(new Error('The scene has moved on'));
+		const card = fixture.cards()[0]!;
+		expect(card.getAttribute('data-id')).toBe('scene-a');
+		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')!;
+		conflict.value = 'Unsaved draft';
+		conflict.dispatch('input');
+		conflict.dispatch('blur');
+		// The scene leaves the pool while its write is on its way, so its card is
+		// parked off the page with nowhere to show the words that come back.
+		placed = true;
+		fixture.handle.refresh();
+		await settle();
+		expect(fixture.cards().map((candidate) => candidate.getAttribute('data-id'))).not.toContain('scene-a');
+		expect(opened).toHaveLength(1);
+		vi.restoreAllMocks();
+	});
+
+	it('leaves a drop on its band alone, where a card let go is a slip and not a placement', () => {
+		const onDrop = vi.fn();
+		const fixture = pool({
+			include: () => true,
+			dragOut: { type: POOL_TYPE, onStart: vi.fn(), onEnd: vi.fn() },
+			dropIn: { accepts: (types) => types.includes('application/x-test-lane'), onDrop },
+		});
+		const dataTransfer = transfer(['application/x-test-lane']);
+		event(fixture.root, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(true);
+		// Over the band the board is no target, and the mark goes with it.
+		event(fixture.root, 'dragover', { target: fixture.display, clientX: 10, clientY: 10, dataTransfer });
+		expect(fixture.root.classes.has('is-drop-target')).toBe(false);
+		event(fixture.root, 'drop', { target: fixture.display, dataTransfer });
+		expect(onDrop).not.toHaveBeenCalled();
+		// On the field below, the drop lands as it did before.
+		event(fixture.root, 'drop', { dataTransfer });
+		expect(onDrop).toHaveBeenCalledWith(dataTransfer);
 	});
 });

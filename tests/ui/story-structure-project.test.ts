@@ -555,4 +555,45 @@ describe('the timeline tab', () => {
 		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
 		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false } });
 	});
+
+	it('names the project by the path it was handed, so a write lands while the rename is still reading', async () => {
+		const { view, loadDashboardModel } = workspaceView();
+		const dom = new CorkboardDom();
+		const handle = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+		};
+		const timeline = vi.fn((_host: HTMLElement, _controls: TimelineControls) => handle);
+		const deps = (view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		Object.assign(deps, { timeline });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		// The path each bridge is built for, in the order the workspace asks.
+		const asked: string[] = [];
+		const built = deps.host.timeline as (context: { projectPath: string }) => unknown;
+		Object.assign(deps.host, {
+			timeline: (context: { projectPath: string }) => { asked.push(context.projectPath); return built(context); },
+		});
+		delete (view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(view, { contentEl: dom.container });
+		// The project keeps its id across the rename, so the frame is not rebuilt
+		// and the board that stands goes on asking for its bridge.
+		const renamed = 'Renamed/First.md';
+		let release!: (model: ProjectDashboardModel) => void;
+		loadDashboardModel.mockImplementation((path: string) => path === renamed
+			? new Promise<ProjectDashboardModel>((resolve) => { release = resolve; })
+			: Promise.resolve({ path, projectId: 'first', title: path, locale: 'en' } as ProjectDashboardModel));
+		await view.setState({ projectPath: firstProject, visualization: 'timeline' }, { history: false });
+		await view.onOpen();
+		const controls = timeline.mock.calls[0]![1];
+		controls.bridge();
+		expect(asked).toEqual([firstProject]);
+		// The rename hands the view the new path while the model for it is still
+		// on its way: a write made in that breath must go to the path handed in.
+		const renaming = view.setState({ projectPath: renamed, visualization: 'timeline' }, { history: false });
+		await Promise.resolve();
+		expect(controls.projectPath()).toBe(renamed);
+		controls.bridge();
+		expect(asked[asked.length - 1]).toBe(renamed);
+		release({ path: renamed, projectId: 'first', title: renamed, locale: 'en' } as ProjectDashboardModel);
+		await renaming;
+	});
 });

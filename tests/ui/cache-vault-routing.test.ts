@@ -56,6 +56,17 @@ describe.each(Object.entries(PROJECT_PATH_LAYOUTS))('manuscript cache vault rout
 	const prose = `${projectRoot}/${layout.directories.manuscriptAnalysis}`;
 	const entities = `${projectRoot}/${layout.directories.mentionIndex}`;
 
+	it('rings the timeline bell for a write to its file, without asking the dashboards to reconcile', () => {
+		const routing = vaultRouting();
+		routing.changed(`${projectRoot}/${layout.directories.timeline}/timeline.json`);
+		expect(routing.scheduleTimelineNotify).toHaveBeenCalledOnce();
+		// A write to the file cannot move the health verdict, which turns on the
+		// folder standing, so the dashboards that are shown are left as they are
+		// rather than each building its whole model again a moment later.
+		expect(routing.scheduleTimelineNotify).toHaveBeenCalledWith();
+		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		`${prose}/dev-a_analysis_stats.json`,
 		`${entities}/dev-a_mention_index.json`,

@@ -1129,6 +1129,7 @@ export const en = {
 	'timeline.view.remove': 'Remove {name} from this view',
 	'timeline.view.deleteTitle': 'Delete view "{name}"?',
 	'timeline.view.deleteDescription': 'The view is removed. Its timelines are kept.',
+	'timeline.view.deleteRefused': 'The view could not be deleted.',
 	'timeline.addTimeline': 'Add timeline',
 	'timeline.timeline.name': 'Name',
 	'timeline.timeline.nameRequired': 'Enter a timeline name.',

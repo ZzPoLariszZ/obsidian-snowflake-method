@@ -1037,6 +1037,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'timeline.view.remove': '将「{name}」移出此视图',
 	'timeline.view.deleteTitle': '删除视图「{name}」？',
 	'timeline.view.deleteDescription': '只删除视图，其中的时间线会保留。',
+	'timeline.view.deleteRefused': '视图无法删除。',
 	'timeline.addTimeline': '添加时间线',
 	'timeline.timeline.name': '名称',
 	'timeline.timeline.nameRequired': '请输入时间线名称。',

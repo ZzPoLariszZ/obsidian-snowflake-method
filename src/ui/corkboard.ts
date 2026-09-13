@@ -300,7 +300,10 @@ export function renderCorkboard(
 		scenesById: () => scenesById,
 		manuscriptPositions: () => manuscriptPositions,
 		resolveManuscriptPath,
-		dragAllowed: (card) => variant.dragOut !== undefined || (adjacency && deck.editable(card)),
+		// A pool's card leaves the board rather than moving within it, so it drags
+		// where adjacency alone would not let it; a card the project will not let
+		// be written stays put on either board.
+		dragAllowed: (card) => (variant.dragOut !== undefined || adjacency) && deck.editable(card),
 		menu: (card, event) => {
 			openMenu(card, event);
 		},
@@ -879,7 +882,8 @@ export function renderCorkboard(
 		const out = variant.dragOut;
 		el.addEventListener('dragstart', (event) => {
 			if (
-				(out === undefined && (!adjacency || !editable(entry))) ||
+				!editable(entry) ||
+				(out === undefined && !adjacency) ||
 				event.dataTransfer === null ||
 				pressWithin(event.target)
 			) {
@@ -953,19 +957,28 @@ export function renderCorkboard(
 		variant.dropIn !== undefined && transfer !== null && variant.dropIn.accepts(Array.from(transfer.types));
 	// The board as a whole takes such a drop, its empty line included: the
 	// scroller is hidden while it shows nothing, and a scene sent back to a
-	// pool that stands empty must still have somewhere to land.
+	// pool that stands empty must still have somewhere to land. The band is
+	// no part of that field: a card let go over the search box or a control
+	// is a slip, and a slip must not place or unplace a scene.
+	/** Whether the pointer stands on the band rather than the field below it. */
+	const overBand = (target: EventTarget | null): boolean =>
+		target !== null && (target === band || band.contains(target as Node));
 	root.addEventListener('dragleave', (event) => {
 		const next = event.relatedTarget;
 		if (next === null || !root.contains(next as Node)) root.removeClass('is-drop-target');
 	});
 	root.addEventListener('dragover', (event) => {
 		if (!takenIn(event.dataTransfer)) return;
+		if (overBand(event.target)) {
+			root.removeClass('is-drop-target');
+			return;
+		}
 		event.preventDefault();
 		if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
 		root.addClass('is-drop-target');
 	});
 	root.addEventListener('drop', (event) => {
-		if (!takenIn(event.dataTransfer) || event.dataTransfer === null) return;
+		if (!takenIn(event.dataTransfer) || event.dataTransfer === null || overBand(event.target)) return;
 		event.preventDefault();
 		root.removeClass('is-drop-target');
 		variant.dropIn?.onDrop(event.dataTransfer);

@@ -152,6 +152,28 @@ describe('reading a stored timeline', () => {
 			timelines: [timeline('tl-1'), { x: 1 }], views: [view('v-1'), { y: 2 }], pinnedTimelineId: 'tl-1', lastViewId: 'v-1',
 		});
 	});
+
+	it('takes a stray out with the entry that shadowed it, so a deletion does not undo itself', () => {
+		const read = readTimelineDocument({
+			timelines: [{ id: 'tl-1', name: 'a' }, { id: 'tl-1', name: 'twin' }],
+			views: [{ id: 'v-1', name: 'v' }, { id: 'v-1', name: 'twin view' }],
+		})!;
+		expect(read.strays.timelines).toHaveLength(1);
+		expect(read.strays.views).toHaveLength(1);
+		// Written back and read again, the twin must not stand in the deleted one's place.
+		const gone = deleteTimeline(read, 'tl-1')!;
+		expect(gone.strays.timelines).toEqual([]);
+		expect(readTimelineDocument(serializeTimelineDocument(gone))?.timelines).toEqual([]);
+		const viewGone = deleteTimelineView(read, 'v-1')!;
+		expect(viewGone.strays.views).toEqual([]);
+		expect(readTimelineDocument(serializeTimelineDocument(viewGone))?.views).toEqual([]);
+		// A stray that shadowed nothing stays where it was.
+		const other = deleteTimeline(readTimelineDocument({
+			timelines: [{ id: 'tl-1', name: 'a' }, { id: 'tl-2', name: 'b' }, { name: 'nameless' }],
+			views: [],
+		})!, 'tl-1')!;
+		expect(other.strays.timelines).toEqual([{ name: 'nameless' }]);
+	});
 });
 
 describe('timelines', () => {

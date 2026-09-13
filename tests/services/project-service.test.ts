@@ -365,6 +365,31 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("keeps its snapshot when a timeline is written, and drops it when that file comes or goes", async () => {
+    // Nothing in a snapshot is read from the timeline document, only whether
+    // its folder stands, so a row edited on a timeline must not send the whole
+    // project to be read again before the workspace can paint. The file coming
+    // and going still must, since that is what the structure report answers.
+    const project = await service.createProject({ name: "Timeline digest" });
+    const timelineFile = `${project.rootPath}/70_Tool/73_Visualization/733_Timeline/timeline.json`;
+    await fakeVault.seedFile(timelineFile, '{"schemaVersion":1,"timelines":[],"views":[]}');
+    const first = await service.loadProject(project.projectFile);
+
+    fakeVault.write(
+      timelineFile,
+      '{"schemaVersion":1,"timelines":[],"views":[],"lastViewId":"v-1"}',
+    );
+    expect(await service.loadProject(project.projectFile)).toBe(first);
+
+    // An ordinary note is another matter: the snapshot is read from its words.
+    fakeVault.write(`${project.rootPath}/${STEP_ONE_RELATIVE_PATH}`, "# Changed\n");
+    const second = await service.loadProject(project.projectFile);
+    expect(second).not.toBe(first);
+
+    fakeVault.delete(timelineFile);
+    expect(await service.loadProject(project.projectFile)).not.toBe(second);
+  });
+
   it("treats the timeline folder as made on demand as well", async () => {
     // The folder is built by the first timeline laid out, so a project from
     // before timelines existed is offered the folder, not marked.

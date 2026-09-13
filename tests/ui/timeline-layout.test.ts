@@ -4,6 +4,8 @@ import type { Timeline, TimelineView } from '../../src/domain';
 import {
 	cellDragState,
 	clampStackPosition,
+	joinKey,
+	keyPrefix,
 	laneAcceptsDrag,
 	laneCell,
 	laneOrder,
@@ -12,6 +14,7 @@ import {
 	reorderIds,
 	resolveActiveTimeline,
 	rowAcceptsScene,
+	splitKey,
 	stackKey,
 	unionRows,
 	assignedSceneIds,
@@ -117,6 +120,21 @@ describe('where a scene lands among the cards of a row', () => {
 		expect(placementIndexAt(wrapped, { x: 400, y: 60 })).toBe(5);
 		expect(placementIndexAt(wrapped, { x: 10, y: 45 })).toBe(3);
 	});
+
+	it('reads a lone card across when the row runs that way, and down when it does not', () => {
+		const alone = [box(0, 0)];
+		// Running down, the card's middle top to bottom decides.
+		expect(placementIndexAt(alone, { x: 400, y: 10 })).toBe(0);
+		expect(placementIndexAt(alone, { x: 400, y: 30 })).toBe(1);
+		// Running across, the side of the card the pointer is on decides, at any height.
+		expect(placementIndexAt(alone, { x: 10, y: 10 }, 'across')).toBe(0);
+		expect(placementIndexAt(alone, { x: 400, y: 10 }, 'across')).toBe(1);
+		expect(placementIndexAt(alone, { x: 400, y: 30 }, 'across')).toBe(1);
+		// A last line holding one card reads the way the lines above it do.
+		const wrapped = [box(0, 0), box(0, 120), box(50, 0)];
+		expect(placementIndexAt(wrapped, { x: 400, y: 60 }, 'across')).toBe(3);
+		expect(placementIndexAt(wrapped, { x: 10, y: 60 }, 'across')).toBe(2);
+	});
 });
 
 describe('the stack a row shows its scenes as', () => {
@@ -145,5 +163,28 @@ describe('the stack a row shows its scenes as', () => {
 		expect(rowAcceptsScene(fromPool, 'r1', 'stack')).toBe(true);
 		expect(rowAcceptsScene({ kind: 'time', timeId: 't' }, 'r1', 'stack')).toBe(false);
 		expect(rowAcceptsScene(null, 'r1', 'flat')).toBe(false);
+	});
+});
+
+describe('the keys a workspace joins its ids into', () => {
+	it('gives every part back as it went in, whatever it holds', () => {
+		// An id the plugin mints is untouched, so the keys keep the shape they had.
+		expect(joinKey('r1', 'scene-1')).toBe('r1|scene-1');
+		expect(splitKey(joinKey('r1', 'scene-1'))).toEqual(['r1', 'scene-1']);
+		expect(splitKey(joinKey('a|b', 'time-1'))).toEqual(['a|b', 'time-1']);
+		expect(splitKey(joinKey('a', 'b|time-1'))).toEqual(['a', 'b|time-1']);
+		expect(splitKey(joinKey('back\\slash', 'p|pe'))).toEqual(['back\\slash', 'p|pe']);
+		expect(splitKey(stackKey('v', 'a|b', 'r1'))).toEqual(['v', 'a|b', 'r1']);
+	});
+
+	it('tells apart two pairs that once came out as one key', () => {
+		expect(joinKey('a|b', 'time-1')).not.toBe(joinKey('a', 'b|time-1'));
+		expect(stackKey('v', 'a|b', 'r1')).not.toBe(stackKey('v', 'a', 'b|r1'));
+	});
+
+	it('marks out the keys of one first part alone', () => {
+		const keys = [joinKey('a', 's'), joinKey('a|b', 's'), joinKey('ab', 's')];
+		expect(keys.filter((key) => key.startsWith(keyPrefix('a')))).toEqual([joinKey('a', 's')]);
+		expect(keys.filter((key) => key.startsWith(keyPrefix('a|b')))).toEqual([joinKey('a|b', 's')]);
 	});
 });

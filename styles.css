@@ -14073,11 +14073,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-muted);
 }
 
-/* A cell's foot and an untitled row's words keep quiet until the pointer or
-   the keyboard is in their own cell, or a drag needs the foot to land on.
-   Their room stays, so nothing moves when they show, and the lanes beside
-   are none the wiser. */
-.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input,
+/* A foot under rows and an untitled row's words keep quiet until the pointer
+   or the keyboard is in their own cell, or a drag needs the foot to land on.
+   A cell's first foot stays: nothing else in an empty cell asks for the first
+   words, and a cell showing its axis alone reads as one that takes none.
+   Their room stays either way, so nothing moves when they show, and the lanes
+   beside are none the wiser. */
+.snowflake-method-timeline-subrow.is-trailing.is-more textarea.snowflake-method-timeline-subrow-input,
 .snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty {
 	opacity: 0;
 }

@@ -31,6 +31,25 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The workspace marks a cell's foot `is-more` only where rows already stand
+	 * above it, so that the first foot of an empty cell keeps its place in
+	 * sight and asks for the first words. A rule that dims every foot says the
+	 * opposite and leaves an empty cell showing nothing but its axis, which is
+	 * what shipped until the class was read here.
+	 */
+	it('keeps the first foot of a cell in sight, dimming only the feet under rows', () => {
+		const dimmed = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.filter((rule) => /opacity:\s*0\s*;/.test(rule))
+			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
+			.map((selector) => selector.trim())
+			.filter((selector) => selector.includes('snowflake-method-timeline-subrow-input'));
+		expect(dimmed.length).toBeGreaterThan(0);
+		expect(dimmed.filter((selector) => !selector.includes('.is-more'))).toEqual([]);
+	});
+
+	/**
 	 * A hyphenated name in element position is a custom element, and naming
 	 * one ties the stylesheet to whatever library happens to draw it: the
 	 * wikilink popup's group heading was `completion-section` in one

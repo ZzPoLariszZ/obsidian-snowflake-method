@@ -6549,7 +6549,15 @@ export default class SnowflakeMethodPlugin
 	 * The folder appears with the first timeline, so the health verdict is
 	 * re-read as well.
 	 */
-	private scheduleTimelineNotify(): void {
+	/**
+	 * The timelines changed somewhere; the workspaces read again in a moment.
+	 * Whether the dashboards reconcile their health with them is the caller's
+	 * to say, and only a caller that saw the file itself come or go says yes:
+	 * the verdict turns on the timeline folder standing, which no write to a
+	 * file already in it can move, while reconciling asks every dashboard that
+	 * is shown to build its whole model again.
+	 */
+	private scheduleTimelineNotify(reconcile = false): void {
 		const workspaceWindow = this.app.workspace.containerEl.win;
 		if (this.timelineNotifyTimer !== null) {
 			workspaceWindow.clearTimeout(this.timelineNotifyTimer);
@@ -6557,7 +6565,7 @@ export default class SnowflakeMethodPlugin
 		this.timelineNotifyTimer = workspaceWindow.setTimeout(() => {
 			this.timelineNotifyTimer = null;
 			this.timelineChanged();
-			this.reconcileDashboardHealth();
+			if (reconcile) this.reconcileDashboardHealth();
 		}, REFRESH_DELAY_MS);
 	}
 
@@ -8981,7 +8989,8 @@ export default class SnowflakeMethodPlugin
 		}
 		if (file instanceof TFile && isTimelineFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
-			this.scheduleTimelineNotify();
+			// The file itself has gone, which the dashboards' verdict can turn on.
+			this.scheduleTimelineNotify(true);
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
@@ -9208,7 +9217,8 @@ export default class SnowflakeMethodPlugin
 			if (wasTimeline || isTimeline) {
 				this.invalidateProjectHealth(oldPath);
 				this.invalidateProjectHealth(file.path);
-				this.scheduleTimelineNotify();
+				// Moved in or out of its folder, so the verdict can turn on it.
+				this.scheduleTimelineNotify(true);
 			}
 		}
 		// A project folder moving takes its notes' surfaces with it.

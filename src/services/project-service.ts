@@ -167,6 +167,7 @@ import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
+import { isTimelineFilePath } from "./timeline-store";
 import { StickyNoteService } from "./sticky-note-service";
 import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
@@ -620,10 +621,14 @@ export class SnowflakeProjectService {
     walkFolders(rootPath);
     for (const file of this.repository.listFilesBelow(rootPath)) {
       // Cache contents are computed from the notes this snapshot describes.
-      // Their periodic flushes must not force another full project read.
+      // Their periodic flushes must not force another full project read. The
+      // timeline document is the same case seen from the other side: nothing
+      // in this snapshot is read from its contents, only whether its folder
+      // stands, so a row edited on a timeline would else send the whole
+      // project to be read again before the workspace could paint.
       // Keep their paths in the digest: creation, deletion and migration can
       // still change the structure report, including a formerly filed cache.
-      eat(isManuscriptCachePath(file.path)
+      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path)
         ? file.path
         : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }

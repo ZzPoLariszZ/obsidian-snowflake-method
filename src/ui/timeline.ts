@@ -70,11 +70,14 @@ import {
 	clampStackPosition,
 	laneCell,
 	laneOrder,
+	joinKey,
+	keyPrefix,
 	layoutKind,
 	placementIndexAt,
 	reorderIds,
 	resolveActiveTimeline,
 	rowAcceptsScene,
+	splitKey,
 	stackKey,
 	unionRows,
 	type TimeRowModel,
@@ -88,7 +91,12 @@ import {
 } from './view-model';
 
 /** What follows a queued change: a read of the document, a read of the model, or a paint alone. */
-type After = 'document' | 'model' | 'none';
+/**
+ * What a change asks for once it is done: the document read again, the model
+ * read again, a paint alone, or nothing at all, for a change that moves only
+ * what the tab remembers and has already been shown.
+ */
+type After = 'document' | 'model' | 'none' | 'nothing';
 
 /** A lane's header: the element and the parts a dressing rewrites. */
 interface LaneHead {
@@ -199,9 +207,9 @@ const FOLDS: readonly Fold[] = ['time', 'pool'];
  */
 const NARROW_MAX_REM = 84;
 
-const cardKey = (rowId: string, sceneId: string): string => `${rowId}|${sceneId}`;
-const sceneOfKey = (key: string): string => key.slice(key.indexOf('|') + 1);
-const rowOfKey = (key: string): string => key.slice(0, key.indexOf('|'));
+const cardKey = (rowId: string, sceneId: string): string => joinKey(rowId, sceneId);
+const sceneOfKey = (key: string): string => splitKey(key)[1] ?? '';
+const rowOfKey = (key: string): string => splitKey(key)[0] ?? '';
 
 /** Grows the words' box to what it holds, so a long sub-description is edited whole, as it is shown. */
 const fitWords = (area: HTMLTextAreaElement): void => {
@@ -239,9 +247,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (chosen.length === 0 || chosen === viewId) return;
 		viewId = chosen;
 		paintAll();
+		// The view is shown already; this only writes down which one was opened
+		// last, which nothing on screen is drawn from, so no paint follows it.
 		void enqueue(async () => {
 			await controls.bridge().setLastView(chosen);
-		}, 'none');
+		}, 'nothing');
 	};
 	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
 	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement => {
@@ -261,26 +271,31 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// the symbol shows what stands now, the tooltip says what a press does.
 	// An eye for the words shown and an eye struck out for them hidden; the
 	// scenes side by side, or in layers with one in front. Both choices are
-	// the view's, so they are written to the document.
+	// the view's, so they are written to the document. Each press takes what
+	// the document holds as its write lands, never what it held when the
+	// press came: two presses in a breath answer each other, rather than
+	// writing one value twice and leaving the view where the first put it.
 	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
 	wordsButton.setAttribute('aria-pressed', 'true');
 	wordsButton.addEventListener('click', () => {
-		const view = currentView();
-		if (readOnly || view === null) return;
-		const shown = !view.showSubDescriptions;
+		if (readOnly || currentView() === null) return;
 		void enqueue(async () => {
-			await controls.bridge().setViewSubDescriptions(view.id, shown);
+			const now = currentView();
+			if (now === null) return;
+			await controls.bridge().setViewSubDescriptions(now.id, !now.showSubDescriptions);
 		});
 	});
 	const presentationButton = iconButton('snowflake-method-timeline-presentation', 'gallery-horizontal', t('timeline.presentation.toStack'));
 	presentationButton.addEventListener('click', () => {
-		choosePresentation(presentation === 'flat' ? 'stack' : 'flat');
+		choosePresentation();
 	});
-	const choosePresentation = (value: ScenePresentation): void => {
-		const view = currentView();
-		if (readOnly || view === null || value === presentation) return;
+	const choosePresentation = (): void => {
+		if (readOnly || currentView() === null) return;
 		void enqueue(async () => {
-			await controls.bridge().setViewPresentation(view.id, value);
+			const now = currentView();
+			if (now === null) return;
+			const value: ScenePresentation = derivedPresentation(now) === 'flat' ? 'stack' : 'flat';
+			await controls.bridge().setViewPresentation(now.id, value);
 		});
 	};
 	// The times run down the view first to last; the order symbol turns them
@@ -289,11 +304,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const orderButton = iconButton('snowflake-method-timeline-order', 'arrow-down-narrow-wide', t('timeline.order.reverse'));
 	orderButton.setAttribute('aria-pressed', 'false');
 	orderButton.addEventListener('click', () => {
-		const view = currentView();
-		if (readOnly || view === null) return;
-		const reversed = !view.timesReversed;
+		if (readOnly || currentView() === null) return;
 		void enqueue(async () => {
-			await controls.bridge().setViewTimesReversed(view.id, reversed);
+			const now = currentView();
+			if (now === null) return;
+			await controls.bridge().setViewTimesReversed(now.id, !now.timesReversed);
 		});
 	});
 	const refreshButton = iconButton('snowflake-method-timeline-refresh', 'refresh-cw', t('corkboard.refresh'));
@@ -383,6 +398,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	scroller.addEventListener('scroll', () => {
 		if (bars.across.scrollLeft !== scroller.scrollLeft) bars.across.scrollLeft = scroller.scrollLeft;
 		if (bars.down.scrollTop !== scroller.scrollTop) bars.down.scrollTop = scroller.scrollTop;
+		// The tab keeps where the lanes stand, so a turn to another workspace
+		// and back finds them where they were left.
+		memory.scroll = { left: scroller.scrollLeft, top: scroller.scrollTop };
 	});
 	bars.across.addEventListener('scroll', () => {
 		if (scroller.scrollLeft !== bars.across.scrollLeft) scroller.scrollLeft = bars.across.scrollLeft;
@@ -471,6 +489,17 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let activeId: string | null = null;
 	/** How the rows deal their scenes, from the view or from how many lanes it shows. */
 	let presentation: ScenePresentation = 'flat';
+	// Which way a row's cards run, which is the lanes' to say: several lanes
+	// narrow a row to one card and the cards stand in a column, while a lone
+	// lane lets them wrap across the field.
+	let laneAxis: 'across' | 'down' = 'across';
+	/** Whether the scroll the tab remembers has been given back, which is done once. */
+	let scrollGivenBack = false;
+	/** The document and the model the last paint was made from. */
+	let paintedHeld: TimelineDocument | null = null;
+	let paintedModel: ProjectDashboardModel | null = null;
+	/** Whether the paint after the read in flight was asked for by the workspace itself. */
+	let paintDemanded = false;
 	/** The symbols the two switches wear now, so a paint redraws neither for nothing. */
 	let presentationIcon = 'gallery-horizontal';
 	let wordsIcon = 'eye';
@@ -557,7 +586,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		unsubscribe?.();
 		boundBridge = bridge;
 		unsubscribe = bridge.subscribe(() => {
-			void reload();
+			void reload(true);
 		});
 	};
 
@@ -568,8 +597,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * that awaits its read gets the document as it stands after the write,
 	 * even when the plugin's bell had already set a read going.
 	 */
-	const reload = (): Promise<void> => {
+	const reload = (maySkipPaint = false): Promise<void> => {
 		if (disposed) return Promise.resolve();
+		// A read the workspace asked for paints whatever comes back: what moved
+		// may be the workspace's own, a draft kept or a label dressed again from
+		// the file, which neither the document nor the model knows anything of.
+		// Only the bell, which rings for every write including this workspace's,
+		// may go quiet when the read brings back what is already shown.
+		if (!maySkipPaint) paintDemanded = true;
 		if (reloadRun !== null) {
 			reloadPending = true;
 			return reloadRun;
@@ -593,7 +628,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			} finally {
 				reloadRun = null;
 			}
-			paintAll();
+			// A bell bringing back the very document and model the last paint was
+			// made from has nothing to show. It rings a quarter second after
+			// every write the workspace makes itself, so without this the whole
+			// workspace, the pool with it, is painted twice for one change.
+			const moved = (reading?.held ?? null) !== paintedHeld || controls.model() !== paintedModel;
+			if (paintDemanded || moved) {
+				paintDemanded = false;
+				paintAll();
+			}
 		})();
 		return reloadRun;
 	};
@@ -613,10 +656,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				if (!disposed) notice(error);
 			}
 			if (disposed) return;
-			const then = typeof after === 'function' ? after() : after;
-			if (then === 'document') await reload();
-			else if (then === 'model') await controls.refresh();
-			else paintAll();
+			// What follows the change is guarded as the change is. A paint that
+			// throws would else reject this promise, and the callers waiting on
+			// it would never do their own tidying: an optimistic row would stand
+			// for good, and words on their way would be counted as sent and
+			// never written again.
+			try {
+				const then = typeof after === 'function' ? after() : after;
+				if (then === 'document') await reload();
+				else if (then === 'model') await controls.refresh();
+				else if (then === 'none') paintAll();
+			} catch (error) {
+				if (!disposed) notice(error);
+			}
 		});
 		queue = run.catch(() => undefined);
 		return run;
@@ -789,18 +841,27 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		paintFolds();
 		const nextModel = controls.model();
 		if (nextModel !== model) {
+			// Every one of these is the model's own and says the same thing for
+			// as long as the model does, so they are made again only when it is
+			// another model. A paint over the model that stands would else build
+			// some thousands of entries afresh to say what they already said.
 			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
+			roster = nextModel === null ? [] : rosterOf(nextModel);
+			scenesById = new Map(nextModel?.scenes.map((scene) => [scene.id, scene]) ?? []);
+			sceneIndex = new Map(nextModel?.scenes.map((scene, index) => [scene.id, index]) ?? []);
+			charactersByPath = new Map(nextModel?.characters.map((character) => [character.path, character]) ?? []);
 		}
 		model = nextModel;
+		// What this paint is made from, marked before any of it is drawn: the
+		// empty states leave by their own way out, and a read that comes back
+		// with this same pair must find it marked whichever way the paint went.
+		paintedHeld = reading?.held ?? null;
+		paintedModel = nextModel;
 		// The model's word alone: it is renewed with every project refresh,
 		// while what the document read reported is as old as that read, and
 		// a project written again would stay shut here until the next one.
 		readOnly = model?.readOnly ?? true;
 		root.toggleClass('is-read-only', readOnly);
-		roster = model === null ? [] : rosterOf(model);
-		scenesById = new Map(model?.scenes.map((scene) => [scene.id, scene]) ?? []);
-		sceneIndex = new Map(model?.scenes.map((scene, index) => [scene.id, index]) ?? []);
-		charactersByPath = new Map(model?.characters.map((character) => [character.path, character]) ?? []);
 		// A refresh can follow metadata resolution even with the same model object.
 		resolvedManuscriptPaths = new Map();
 		deck.beginPaint();
@@ -845,12 +906,21 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cornerAdd.disabled = readOnly || activeId === null;
 		const kind = layoutKind(lanes);
 		root.dataset.layout = kind;
+		laneAxis = kind === 'multi' ? 'down' : 'across';
 		paintCardMode();
 		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
 		const hold = holdFocus();
 		paintHeads(held);
 		paintRows(view);
 		paintPool();
+		// The scroll the tab remembers, given back once the lanes are long
+		// enough to take it. Only once: a later paint must not pull the author
+		// away from wherever they have scrolled since.
+		if (!scrollGivenBack) {
+			scrollGivenBack = true;
+			if (memory.scroll.left !== 0) scroller.scrollLeft = memory.scroll.left;
+			if (memory.scroll.top !== 0) scroller.scrollTop = memory.scroll.top;
+		}
 		giveFocusBack(hold);
 		deck.prune();
 		stateText.setText('');
@@ -1239,7 +1309,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			if (drag?.kind !== 'row' || event.dataTransfer?.types.includes(TIMELINE_ROW_DRAG_TYPE) !== true) return;
 			event.preventDefault();
 			if (drag.timelineId !== cell.timelineId) {
+				// Refused here, so the line drawn on the lane the pointer came from
+				// goes with it: a mark left standing shows a landing while the
+				// cursor says there is none.
 				event.dataTransfer.dropEffect = 'none';
+				clearMark();
+				rowLanding = null;
 				return;
 			}
 			event.dataTransfer.dropEffect = 'move';
@@ -1481,7 +1556,16 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * not spend them.
 	 */
 	const footWords = new Map<string, string>();
-	const footKey = (timelineId: string, timeId: string): string => `${timelineId}|${timeId}`;
+	const footKey = (timelineId: string, timeId: string): string => joinKey(timelineId, timeId);
+	/**
+	 * The feet an input method is composing in, and the words held back from
+	 * them while it is. Writing a value into an input mid-composition takes the
+	 * text the method is still working on out from under it, and what was typed
+	 * so far is left behind as bare letters.
+	 */
+	const composingFeet = new WeakSet<HTMLTextAreaElement>();
+	const withheldFeet = new WeakMap<HTMLTextAreaElement, string>();
+
 	const keepFoot = (key: string, value: string): void => {
 		if (value.length === 0) footWords.delete(key);
 		else footWords.set(key, value);
@@ -1495,6 +1579,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const key = footKey(timelineId, timeId);
 		const foot = timeRows.get(timeId)?.cells.get(timelineId)?.trailing?.input;
 		const shown = foot !== undefined && foot.isConnected ? foot : null;
+		// A lane the document no longer holds has no foot for the words to come
+		// back to, at this paint or any after it. Put by under its key they
+		// would be out of sight until the workspace closed, so they are shown
+		// for keeping at once, as an edit of a row that has gone is.
+		if (shown === null && reading?.held.timelines.some((lane) => lane.id === timelineId) !== true) {
+			footWords.delete(key);
+			recoverWords(placeName(timelineId, timeId), words);
+			return;
+		}
+		// A foot being composed in is left as it stands: the words wait aside
+		// and go in when the composition ends, ahead of whatever it left there.
+		if (shown !== null && composingFeet.has(shown)) {
+			const already = withheldFeet.get(shown);
+			withheldFeet.set(shown, already === undefined ? words : `${already}\n${words}`);
+			return;
+		}
 		const since = shown?.value ?? footWords.get(key) ?? '';
 		const value = since.trim().length === 0 ? words : `${words}\n${since}`;
 		keepFoot(key, value);
@@ -1539,6 +1639,18 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			}
 		});
 		input.addEventListener('input', () => {
+			keepFoot(key, input.value);
+			fitWords(input);
+		});
+		input.addEventListener('compositionstart', () => {
+			composingFeet.add(input);
+		});
+		input.addEventListener('compositionend', () => {
+			composingFeet.delete(input);
+			const kept = withheldFeet.get(input);
+			withheldFeet.delete(input);
+			if (kept === undefined) return;
+			input.value = input.value.trim().length === 0 ? kept : `${kept}\n${input.value}`;
 			keepFoot(key, input.value);
 			fitWords(input);
 		});
@@ -1826,7 +1938,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * is another paint's to take over, and is left to it.
 	 */
 	const cardsWithin = (rowId: string, el: HTMLElement): string[] =>
-		[...deck.cards].filter(([key, card]) => key.startsWith(`${rowId}|`) && el.contains(card.el)).map(([key]) => key);
+		[...deck.cards].filter(([key, card]) => key.startsWith(keyPrefix(rowId)) && el.contains(card.el)).map(([key]) => key);
 
 	/**
 	 * Sub-rows a cell has taken down in this paint, by lane and row. A row
@@ -1835,7 +1947,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * the caret in it. What no cell takes is swept once the rows are painted.
 	 */
 	const parkedSubrows = new Map<string, { cell: CellEntry; entry: SubrowEntry }>();
-	const parkKey = (timelineId: string, rowId: string): string => `${timelineId}|${rowId}`;
+	const parkKey = (timelineId: string, rowId: string): string => joinKey(timelineId, rowId);
 
 	const unmountSubrow = (cell: CellEntry, rowId: string): void => {
 		const entry = cell.subrows.get(rowId);
@@ -1885,13 +1997,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * typed on it are not lost with its placement: whether the placement
 	 * went, the row came down, or the row's cards are dealt again.
 	 */
+	/**
+	 * A placement's card off its lane, its open words settled by the deck that
+	 * holds them. The going is the deck's to order, the same one it gives its
+	 * cards when a board closes, rather than a second telling of it here.
+	 */
 	const takeDown = (key: string): void => {
-		const card = deck.cards.get(key);
-		if (card === undefined) return;
-		deck.commitTitle(card, false);
-		deck.commitConflict(card);
-		if (card.editingTitle) deck.recoverBlockedDraft(card);
-		deck.unmount(key);
+		deck.retire(key);
 	};
 
 	/** The cards no sub-row holds after a paint. */
@@ -1953,7 +2065,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		el.createSpan({ text: t('timeline.scene.missing') });
 		const remove = el.createEl('button', {
-			cls: 'clickable-icon',
+			cls: 'clickable-icon snowflake-method-timeline-scene-missing-remove',
 			attr: { type: 'button', 'aria-label': t('timeline.scene.remove') },
 		});
 		setIcon(remove, 'x');
@@ -1963,7 +2075,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				await controls.bridge().removeScene(lane.id, sceneId);
 			});
 		});
+		dressMissing(el);
 		return el;
+	};
+
+	/**
+	 * A stand-in is built once and stands through the paints that follow, so its
+	 * control is dressed as the rest of a row's are: on a project that cannot be
+	 * written the way out is closed, rather than asking for a write the project
+	 * will refuse without a word.
+	 */
+	const dressMissing = (el: HTMLElement): void => {
+		const remove = el.querySelector<HTMLButtonElement>('.snowflake-method-timeline-scene-missing-remove');
+		if (remove !== null) remove.disabled = readOnly;
 	};
 
 	/** The element standing for a key on a sub-row: a card of the deck, or a missing stand-in. */
@@ -1977,7 +2101,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		}
 		if (entry.stack !== null) takeDownStack(entry, row.id);
 		const keys = row.scenes.map((sceneId) => cardKey(row.id, sceneId));
-		const standing = [...deck.cards.keys()].filter((key) => key.startsWith(`${row.id}|`));
+		const standing = [...deck.cards.keys()].filter((key) => key.startsWith(keyPrefix(row.id)));
 		const wantedCards = row.scenes
 			.filter((sceneId) => scenesById.has(sceneId))
 			.map((sceneId) => cardKey(row.id, sceneId));
@@ -1993,7 +2117,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			const key = cardKey(row.id, sceneId);
 			const scene = scenesById.get(sceneId);
 			if (scene === undefined) {
-				if (!entry.missing.has(sceneId)) entry.missing.set(sceneId, buildMissing(entry, lane, sceneId));
+				const standing = entry.missing.get(sceneId);
+				if (standing === undefined) entry.missing.set(sceneId, buildMissing(entry, lane, sceneId));
+				else dressMissing(standing);
 				return;
 			}
 			const index = sceneIndex.get(sceneId) ?? 0;
@@ -2101,7 +2227,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const shownId = row.scenes[at];
 		const wantedKey = shownId === undefined ? null : cardKey(row.id, shownId);
 		for (const standing of [...deck.cards.keys()]) {
-			if (standing.startsWith(`${row.id}|`) && standing !== wantedKey) takeDown(standing);
+			if (standing.startsWith(keyPrefix(row.id)) && standing !== wantedKey) takeDown(standing);
 		}
 		for (const [sceneId, el] of entry.missing) {
 			if (sceneId !== shownId || scenesById.has(sceneId)) {
@@ -2112,7 +2238,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (shownId !== undefined && wantedKey !== null) {
 			const scene = scenesById.get(shownId);
 			if (scene === undefined) {
-				if (!entry.missing.has(shownId)) entry.missing.set(shownId, buildMissing(entry, lane, shownId, stack.face));
+				const standing = entry.missing.get(shownId);
+				if (standing === undefined) entry.missing.set(shownId, buildMissing(entry, lane, shownId, stack.face));
+				else dressMissing(standing);
 			} else {
 				const index = sceneIndex.get(shownId) ?? 0;
 				let card = deck.cards.get(wantedKey);
@@ -2289,7 +2417,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (drag?.kind !== 'scene' || event.dataTransfer?.types.includes(TIMELINE_SCENE_DRAG_TYPE) !== true) return;
 		event.preventDefault();
 		if (drag.lockedTimelineId !== cell.timelineId || !cell.present) {
+			// As the refusals below do: the mark goes with the refusal, so no
+			// line stands on a lane that will not take the scene.
 			event.dataTransfer.dropEffect = 'none';
+			clearMark();
+			sceneLanding = null;
 			return;
 		}
 		const under = subrowUnder(cell, event.target);
@@ -2319,7 +2451,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			return;
 		}
 		const candidates = cardRects(under.entry, drag.sceneId);
-		const at = placementIndexAt(candidates.map((candidate) => candidate.rect), { x: event.clientX, y: event.clientY });
+		const at = placementIndexAt(
+			candidates.map((candidate) => candidate.rect),
+			{ x: event.clientX, y: event.clientY },
+			laneAxis,
+		);
 		const before = candidates[at];
 		const last = candidates[candidates.length - 1];
 		if (before !== undefined) setMark(before.el, 'is-drop-before');
@@ -2362,6 +2498,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		unbindWindow(eventWindow);
 		eventWindow = win;
 		bindWindow(eventWindow);
+		// A colour panel hangs in the body of the window it was opened in, with
+		// the presses that dismiss it bound there too. It goes before the card
+		// leaves that window, as the corkboard's does, or it is left behind
+		// over whatever the old window shows next.
+		deck.closeColorPanel();
 		deck.releasePress();
 		invalidateRects();
 	});
@@ -2515,16 +2656,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		await enqueue(async () => {
 			await controls.bridge().addTime(lane.id, timeId);
 			if (beforeTimeId === timeId) return;
+			// The view as it stands now, not as it stood before the picker: the
+			// rows are read from the paint the write lands on, so an order
+			// turned about while the picker was open would else be written back
+			// the way it was read, putting every other time out of its place.
+			const now = currentView();
+			if (now === null) return;
 			// Added from the frame's corner to a view that runs first to last,
 			// the time takes its place among the rest by rank and the order is
 			// left alone. Put in after the last row, or added to a view turned
 			// about, the foot is the place meant, and is written.
-			if (beforeTimeId === null && !atFoot && !view.timesReversed) return;
+			if (beforeTimeId === null && !atFoot && !now.timesReversed) return;
 			const order = rowOrder.filter((id) => id !== timeId);
 			const at = beforeTimeId === null ? -1 : order.indexOf(beforeTimeId);
 			await controls.bridge().setTimeOrder(
-				view.id,
-				storedOrder(view, at === -1 ? [...order, timeId] : [...order.slice(0, at), timeId, ...order.slice(at)]),
+				now.id,
+				storedOrder(now, at === -1 ? [...order, timeId] : [...order.slice(0, at), timeId, ...order.slice(at)]),
 			);
 		});
 	};
@@ -2931,7 +3078,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				mode: 'edit',
 				takenNames: held.views.filter((candidate) => candidate.id !== view.id).map((candidate) => candidate.name),
 				initial: { name: view.name, timelines: [...view.timelines] },
-				timelines: () => reading?.held.timelines ?? [],
+				// The lanes as the document last said them. A read that found
+				// nothing is not a project without lanes: answered so, the form
+				// would drop every line it shows and a save would write the view
+				// empty, taking lanes away that were never touched.
+				timelines: () => reading?.held.timelines ?? held.timelines,
 				addTimeline: () => addTimeline(false),
 				deleteView: async () => {
 					const confirmed = await confirmTimelineAction(app, t, {
@@ -2940,10 +3091,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 						label: t('actions.delete'),
 					});
 					if (!confirmed || disposed) return false;
+					// The form closes on this answer, so it is the file's answer
+					// and not the asking: a view the project would not let go
+					// stands, and its form stands open with it, saying so.
+					let gone = false;
 					await enqueue(async () => {
-						await controls.bridge().deleteView(view.id);
+						gone = await controls.bridge().deleteView(view.id);
 					});
-					return true;
+					if (!gone && !disposed) new Notice(t('timeline.view.deleteRefused'));
+					return gone;
 				},
 			},
 			async (draft) => {
@@ -3012,7 +3168,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	const handle: TimelineHandle = {
 		refresh: () => {
-			paintAll();
+			// Nothing read means the project was not there to be read when the
+			// last read went out, as it is not for as long as a rename is in
+			// flight. The model landing is the word that it may be there now, so
+			// the document is asked for again rather than painted as it was.
+			if (reading === null) void reload();
+			else paintAll();
 		},
 		reveal: (id) => {
 			// A card can only be shown in a pool that stands.
@@ -3059,7 +3220,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			}
 			for (const [key, words] of [...footWords]) {
 				footWords.delete(key);
-				const [timelineId, timeId] = key.split('|') as [string, string];
+				const [timelineId, timeId] = splitKey(key) as [string, string];
 				const trimmed = words.trim();
 				if (trimmed.length === 0) continue;
 				if (readOnly) {

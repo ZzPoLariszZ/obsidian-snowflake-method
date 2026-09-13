@@ -136,8 +136,39 @@ export function rowAcceptsScene(
 }
 
 /** Under which name a row's stack remembers the card it shows, for the session. */
+/**
+ * The mark composite keys are joined on, and the escape that keeps it a mark
+ * of its own. An id is the author's to choose or another build's to write, and
+ * read leniently it may hold anything at all, this mark included. Escaped,
+ * every mark left in a finished key is a boundary and nothing else: a key can
+ * be taken apart again exactly, and two different pairs can never come out as
+ * one string, which is what a lane called `a` and a lane called `a|b` did.
+ */
+const KEY_MARK = '|';
+
+const encodePart = (part: string): string => part.replace(/\\/g, '\\\\').replace(/\|/g, '\\p');
+
+const decodePart = (part: string): string =>
+	part.replace(/\\([\\p])/g, (_match, mark: string) => (mark === 'p' ? '|' : '\\'));
+
+/** One key from the parts named, in order; splitKey gives them back as they went in. */
+export function joinKey(...parts: readonly string[]): string {
+	return parts.map(encodePart).join(KEY_MARK);
+}
+
+/** The parts a key was made from, in order. */
+export function splitKey(key: string): string[] {
+	return key.split(KEY_MARK).map(decodePart);
+}
+
+/** What every key made with this first part begins with, for picking them out of the rest. */
+export function keyPrefix(first: string): string {
+	return `${encodePart(first)}${KEY_MARK}`;
+}
+
+/** Where a stack's place is remembered: under the view, the lane and the row. */
 export function stackKey(viewId: string, timelineId: string, rowId: string): string {
-	return `${viewId}|${timelineId}|${rowId}`;
+	return joinKey(viewId, timelineId, rowId);
 }
 
 /** The card a stack shows, kept within the cards it has; an empty stack shows its first, which is none. */
@@ -173,12 +204,18 @@ export interface PlacementRect {
  * Where a dragged scene lands among the cards of a row laid out as a wrapped
  * flex: the line the pointer is on (or the first below it), then the first
  * card of that line whose middle is right of the pointer, else after the
- * line's last. A line of one card reads its middle top to bottom instead,
- * since the cards then stand in a column. Past every line is the end.
+ * line's last. Past every line is the end.
+ *
+ * A row a single card wide stands its cards in a column, and a line of one
+ * card is then read by its middle top to bottom rather than left to right.
+ * Which way a row runs is the lanes' to say, since it is their number that
+ * narrows the box, so the axis is asked for rather than guessed at: a row
+ * running across reads every line the same way, one card or many.
  */
 export function placementIndexAt(
 	rects: readonly PlacementRect[],
 	point: { x: number; y: number },
+	axis: 'across' | 'down' = 'down',
 ): number {
 	if (rects.length === 0) return 0;
 	const lines: { top: number; bottom: number; first: number; last: number }[] = [];
@@ -194,7 +231,7 @@ export function placementIndexAt(
 	});
 	const line = lines.find((candidate) => point.y < candidate.bottom);
 	if (line === undefined) return rects.length;
-	if (line.first === line.last) {
+	if (axis === 'down' && line.first === line.last) {
 		const rect = rects[line.first]!;
 		return point.y < (rect.top + rect.bottom) / 2 ? line.first : line.first + 1;
 	}

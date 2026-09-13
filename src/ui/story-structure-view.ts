@@ -464,7 +464,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 
 	/** The bridge for the project's path as it stands now; a rename hands the workspace a new one. */
 	private timelineBridgeFor(): TimelineBridge {
-		const path = this.model?.path ?? this.state.projectPath ?? '';
+		const path = this.state.projectPath ?? this.model?.path ?? '';
 		if (this.timelineBridge === null || this.timelineBridge.path !== path) {
 			this.timelineBridge = {
 				path,
