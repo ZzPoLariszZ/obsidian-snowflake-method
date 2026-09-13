@@ -8,6 +8,27 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0]
+
+### Added
+
+- **The timeline**, the second of the visualization workspace's views, and the one that asks when a scene happens rather than what order it is read in. A **timeline** is a column of its own, named, and bound to a character or a worldbuilding note where it follows one, so a story can carry one timeline for the world and one for each person moving through it. A **view** decides which timelines stand side by side and in what order, and a project keeps as many views as it has ways of reading the story. **Add timeline** and **Add view** make both from the toolbar, a view's own form renames it, orders its timelines by their handles, adds and removes them and deletes the view itself, and **Open timeline workspace** opens the tab from the command palette.
+- **One shared time column** down the left, drawn from the Time notes the project already holds, each carrying the main description written on the note rather than copied into the timeline. Every timeline crossing it meets those times on the same row, so two timelines are read against each other at a glance, and a node on the axis marks each time a timeline actually reaches. A time joins a timeline from its header or from the plus in an empty cell, is inserted before or after another, is ordered by dragging or from its menu, and is removed with the rows it holds. Clicking a description opens the Time note's own form at that field, and a time whose note has gone stands as Missing time note, offering removal alone.
+- **Sub-descriptions**, written a line at a time inside a cell, for what one timeline does at one time. The trailing input adds a line and keeps the focus there for the next, an existing line is edited in place, and its menu moves it up, moves it down, moves it to another time, or removes it behind a confirmation where it holds scenes. Words a refused write would have lost are kept at the foot of the cell, held for the next edit where the row still stands, and shown for you to copy where it does not.
+- **The scene pool** beside the lanes, the corkboard itself in a single column, holding every scene the active timeline has not placed yet and keeping its own search, funnel, display and order. A card is dragged from the pool onto a sub-description to place it and dragged back to return it, and one scene stands in one place on a timeline, so placing it again moves it rather than copying it. Every drag has a twin that is not a drag, **Move to sub-description**, **Move to time**, **Move to position** and their neighbours, so a time, a row or a scene can be sent where it belongs from a menu alone.
+- **Flat or stacked scenes**, set for each view, flat laying every card out along the row and stacked keeping one card in front with a counter and arrows to walk through the rest. A view opens flat with one timeline and stacked with several until it is told otherwise. The toolbar also hides the sub-descriptions to leave the cards alone, reads the times latest first, and folds the time column and the pool away into their corners, and a window too narrow to hold both folds them for you.
+- **The timelines live in one file** under the project's visualization folder, holding identities alone: the ids of the scenes and the entities, never their names or their descriptions, which stay on the notes they belong to. It is read the way the task, foreshadowing and revision files are, an entry it cannot read set aside rather than dropped, a file from a newer version of the plugin left as it is, and a damaged one preserved beside a fresh start.
+
+### Changed
+
+- The workspace's strip now reads **Corkboard**, **Freeform**, **Timeline** and **Beat sheet**. Timeline has moved ahead of Beat sheet now that it is built, and **Plotline** has left the strip.
+- Every scene card carries a **grip** at its top centre, shown while the pointer is on the card or while the card is being dragged, and absent where the card cannot be dragged at all. The corkboard's cards wear it too, since the card is now one piece shared by the corkboard, the timeline's lanes and the pool.
+
+### Fixed
+
+- A scene whose write is refused while the plugin is unloading has its words written to the console rather than gathered into a dialog that would outlive the workspace it belongs to. Where the workspace is merely closed, the dialog stands as it did.
+- Draft recovery no longer writes into a card that has gone. A card unmounted while its write was in flight, or one whose scene has since been deleted, is passed over rather than taken as a stand-in for the card that was actually edited.
+
 ## [0.19.0]
 
 ### Added
@@ -439,6 +460,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.20.0]
+
+### 新增
+
+- **时间线**，可视化工作区中做好的第二个视图，问的不是场景按什么顺序读，而是它们在什么时候发生。每条**时间线**自成一列，有自己的名称，跟随某个角色或世界观笔记时便绑定到它，于是一个故事既能有一条属于世界的时间线，也能为每个穿行其中的人各留一条。**视图**决定哪些时间线并肩排列、以什么次序排列，一个项目可以保留与阅读故事的方式一样多的视图。工具栏上的**添加时间线**与**添加视图**分别新建两者，视图自己的表单可以重命名视图、用手柄调整其中时间线的次序、添加与移除时间线，也可以删除视图本身，命令面板中的**打开时间线工作区**则直接打开这个标签页。
+- **左侧一列共用的时间**，取自项目已有的时间笔记，主描述写在笔记上，而不是抄进时间线。横穿而过的每条时间线都在同一行与这些时间相遇，因此两条时间线一眼就能相互对读，轴线上的节点标出每条时间线真正到达的时间。时间可以从时间线的表头或空单元格中的加号加入，可以插入到另一个时间之前或之后，可以拖动或从菜单调整次序，移除时连同其中的行一并移除。点击描述会打开该时间笔记自己的表单并定位到这一字段，笔记已不在的时间显示为「时间笔记已缺失」，只提供移除。
+- **子描述**，在单元格里逐行写下，记录某条时间线在某个时间做了什么。末尾的输入框添加一行并把焦点留在那里以便继续写下一行，已有的行就地编辑，菜单可以上移、下移、移动到另一个时间，其中有场景时则经确认后移除。写入被拒绝本会丢失的文字保留在单元格底部，行还在时保留到下次编辑，行已不在时则显示出来供你复制。
+- **场景池**立在各列之侧，就是单列形态的场景看板，其中是当前时间线尚未放置的全部场景，并保留自己的搜索、漏斗、显示与排序。把卡片从池中拖到某条子描述上即可放置，拖回去即可收回，一个场景在一条时间线上只占一个位置，因此再次放置是移动而不是复制。每一个拖动都有不必拖动的另一条路，**移动到子描述**、**移动到时间**、**移动到位置**及其近邻，时间、行与场景都可以只从菜单送到该去的地方。
+- **平铺或堆叠**，按视图分别设置，平铺把每张卡片摊在行里，堆叠只留一张在前，配上计数与左右箭头逐张翻看。视图只有一条时间线时默认平铺，有多条时默认堆叠，另行设置则从其设置。工具栏还可以隐藏子描述只看卡片，把最晚的时间排在前面，以及把时间列与场景池收进角落，窗口窄到放不下两者时会替你收起。
+- **时间线保存在一个文件里**，位于项目的可视化文件夹下，只存标识：场景与实体的 id，不存它们的名称与描述，那些仍归属各自的笔记。该文件的读取规则与任务、伏笔、修订的文件一致，读不出的条目会被搁置而不是丢弃，更新版本的插件写入的文件会原样保留，损坏的文件则另存保留并重新开始。
+
+### 变更
+
+- 工作区的标签条现在是**场景看板**、**自由画布**、**时间线**与**节拍表**。时间线做好之后移到了节拍表之前，**情节线**已从标签条上撤下。
+- 每张场景卡片的顶部中央都有一个**握柄**，指针停在卡片上或卡片正被拖动时显示，卡片根本不能拖动时则不显示。场景看板的卡片同样如此，因为这张卡片如今是场景看板、时间线的列与场景池共用的同一块部件。
+
+### 修复
+
+- 插件正在卸载时被拒绝写入的场景，其文字会写入控制台，而不是收进一个会比所属工作区活得更久的对话框。仅仅关闭工作区时，对话框一如既往。
+- 草稿恢复不再写进已经不在的卡片。写入途中被卸下的卡片，或其场景此后已被删除的卡片，会被跳过，而不是拿来充当真正被编辑的那张卡片。
 
 ## [0.19.0]
 
