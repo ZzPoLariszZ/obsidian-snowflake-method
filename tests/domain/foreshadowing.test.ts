@@ -17,6 +17,8 @@ import {
 	planForeshadowingMarks,
 	readForeshadowing,
 	refreshOccurrenceAnchors,
+	entityRosterById,
+	resolveEntityRef,
 	resolveEntityRefs,
 	type Foreshadowing,
 	type ForeshadowingOccurrence,
@@ -427,6 +429,24 @@ describe('entity refs against the roster', () => {
 			kind: 'location',
 			name: 'The door',
 			missing: false,
+		});
+	});
+
+	it('reads one ref at a time against a roster keyed once', () => {
+		const byId = entityRosterById(roster);
+		expect(resolveEntityRef({ kind: 'character', id: 'character-alice', name: 'Alice' }, byId)).toEqual({
+			kind: 'character',
+			id: 'character-alice',
+			name: 'Alice Grey',
+			path: '30/Alice Grey.md',
+			missing: false,
+		});
+		expect(resolveEntityRef({ kind: 'scene', id: 'scene-gone', name: 'The heist' }, byId)).toEqual({
+			kind: 'scene',
+			id: 'scene-gone',
+			name: 'The heist',
+			path: '',
+			missing: true,
 		});
 	});
 });

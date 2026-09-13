@@ -512,26 +512,44 @@ export interface ResolvedEntityRef extends EntityRef {
 }
 
 /**
- * Stored refs read against the roster as it is now. Matched on the id alone:
+ * The roster keyed by the id refs are matched on. Made once where many refs
+ * are read against the same roster, or where the same roster is read against
+ * over and over: the map is the whole cost of resolving, and building it afresh
+ * for one ref spends the entire roster to answer for a single entity.
+ */
+export function entityRosterById(
+	roster: readonly EntityRosterEntry[],
+): Map<string, EntityRosterEntry> {
+	return new Map(roster.map((entry) => [entry.id, entry] as const));
+}
+
+/**
+ * One stored ref read against a roster already keyed. Matched on the id alone:
  * ids are prefix-namespaced and unique across kinds, and a note carried from
  * one worldbuilding kind to another is still the same entity -- so the
  * roster's kind and name win, and the stored ones stand in only when it is
  * gone.
  */
+export function resolveEntityRef(
+	ref: EntityRef,
+	byId: ReadonlyMap<string, EntityRosterEntry>,
+): ResolvedEntityRef {
+	const hit = byId.get(ref.id);
+	if (hit === undefined) return { ...ref, path: '', missing: true };
+	return {
+		kind: hit.kind,
+		id: hit.id,
+		name: hit.name,
+		path: hit.path,
+		missing: false,
+	};
+}
+
+/** Stored refs read against the roster as it stands now, keyed once for the lot. */
 export function resolveEntityRefs(
 	refs: readonly EntityRef[],
 	roster: readonly EntityRosterEntry[],
 ): ResolvedEntityRef[] {
-	const byId = new Map(roster.map((entry) => [entry.id, entry] as const));
-	return refs.map((ref) => {
-		const hit = byId.get(ref.id);
-		if (hit === undefined) return { ...ref, path: '', missing: true };
-		return {
-			kind: hit.kind,
-			id: hit.id,
-			name: hit.name,
-			path: hit.path,
-			missing: false,
-		};
-	});
+	const byId = entityRosterById(roster);
+	return refs.map((ref) => resolveEntityRef(ref, byId));
 }

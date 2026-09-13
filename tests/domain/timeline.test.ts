@@ -174,6 +174,24 @@ describe('reading a stored timeline', () => {
 		})!, 'tl-1')!;
 		expect(other.strays.timelines).toEqual([{ name: 'nameless' }]);
 	});
+
+	it('keeps a stray no reader can place, whatever id it carries', () => {
+		// A record written in a shape this build cannot read can never stand in
+		// the deleted entry's place, however its id reads, so deleting that
+		// entry must not carry it off as a shadowing twin.
+		const read = readTimelineDocument({
+			timelines: [{ id: 'tl-1', name: 'a' }, { id: 'tl-1', name: { future: 'name shape' }, payload: 'Preserve these words' }],
+			views: [{ id: 'v-1', name: 'v' }, { id: 'v-1', name: 7, payload: 'Preserve these too' }],
+		})!;
+		expect(read.strays.timelines).toHaveLength(1);
+		expect(read.strays.views).toHaveLength(1);
+		expect(deleteTimeline(read, 'tl-1')?.strays.timelines).toEqual([
+			{ id: 'tl-1', name: { future: 'name shape' }, payload: 'Preserve these words' },
+		]);
+		expect(deleteTimelineView(read, 'v-1')?.strays.views).toEqual([
+			{ id: 'v-1', name: 7, payload: 'Preserve these too' },
+		]);
+	});
 });
 
 describe('timelines', () => {

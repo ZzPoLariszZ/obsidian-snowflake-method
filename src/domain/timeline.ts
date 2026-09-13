@@ -150,18 +150,6 @@ const finiteOrZero = (value: unknown): number =>
 const nonEmptyString = (value: unknown): value is string =>
 	typeof value === 'string' && value.length > 0;
 
-/**
- * The id a stray carries, where it carries one at all. A stray set aside for
- * wearing an id another entry already took is shadowed by that entry, so it
- * has to go when the entry does: left behind, it would be the one served on
- * the next read and the deletion would undo itself.
- */
-const strayId = (entry: unknown): string | null => {
-	if (typeof entry !== 'object' || entry === null) return null;
-	const id: unknown = (entry as { id?: unknown }).id;
-	return nonEmptyString(id) ? id : null;
-};
-
 /** The limbs of a ref alone, whatever else rode in on the object. */
 const refOf = (ref: EntityRef): EntityRef => ({
 	kind: ref.kind,
@@ -544,8 +532,11 @@ export function deleteTimeline(held: TimelineDocument, id: string): TimelineDocu
 		),
 		pinnedTimelineId: held.pinnedTimelineId === id ? null : held.pinnedTimelineId,
 		strays: {
+			// Only a stray a reader can make sense of could stand in the deleted
+			// one's place on the next read, so only such a twin goes with it.
+			// One no reader can place keeps its place, whatever id it carries.
 			...held.strays,
-			timelines: held.strays.timelines.filter((entry) => strayId(entry) !== id),
+			timelines: held.strays.timelines.filter((entry) => readTimeline(entry)?.id !== id),
 		},
 	};
 }
@@ -589,8 +580,10 @@ export function deleteTimelineView(held: TimelineDocument, id: string): Timeline
 		views: held.views.filter((view) => view.id !== id),
 		lastViewId: held.lastViewId === id ? null : held.lastViewId,
 		strays: {
+			// As with a timeline: the twin that would come back is taken out,
+			// and a record no reader can place is left alone.
 			...held.strays,
-			views: held.strays.views.filter((entry) => strayId(entry) !== id),
+			views: held.strays.views.filter((entry) => readTimelineView(entry)?.id !== id),
 		},
 	};
 }

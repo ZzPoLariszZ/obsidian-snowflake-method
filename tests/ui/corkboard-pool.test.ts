@@ -18,7 +18,7 @@ import { renderCorkboard } from '../../src/ui/corkboard';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { corkboardMemory } from '../../src/ui/story-structure-state';
-import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
+import type { ManagedSectionIssueViewModel, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
 const PROJECT = 'First/Project.md';
 const POOL_TYPE = 'application/x-test-pool';
@@ -155,6 +155,26 @@ describe('the corkboard as a pool', () => {
 		expect(onStart).not.toHaveBeenCalled();
 		expect(dataTransfer.data.get(POOL_TYPE)).toBeUndefined();
 		expect(card.classes.has('is-dragging')).toBe(false);
+	});
+
+	it('lets a scene whose note is damaged leave a project that can be written', () => {
+		const damaged: ManagedSectionIssueViewModel = {
+			path: 'First/Scenes/a.md', sectionId: null, sectionLabel: 'Scene', code: 'missing',
+			message: 'The managed section is missing.', names: [], action: null,
+			blocking: true, kind: 'section', stepIds: [], canOpen: true, repairable: false, repairField: null,
+		};
+		const scenes = [0, 1, 2, 3, 4].map(scene);
+		scenes[0] = { ...scenes[0]!, healthIssues: [damaged] };
+		const onStart = vi.fn();
+		const fixture = pool({ include: () => true, dragOut: { type: POOL_TYPE, onStart, onEnd: vi.fn() } }, scenes);
+		const card = fixture.cards()[0]!;
+		// The card goes where it is placed by writing the timeline's own file,
+		// never this note, so the note's damage is no reason to hold it still.
+		expect(card.getAttribute('draggable')).toBe('true');
+		const dataTransfer = transfer([]);
+		event(card, 'dragstart', { target: null, dataTransfer });
+		expect(dataTransfer.data.get(POOL_TYPE)).toBe('scene-a');
+		expect(onStart).toHaveBeenCalledWith('scene-a', dataTransfer);
 	});
 
 	it('lets a card leave under the given type, and holds a paint until the drag has ended', () => {

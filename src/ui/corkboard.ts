@@ -300,10 +300,7 @@ export function renderCorkboard(
 		scenesById: () => scenesById,
 		manuscriptPositions: () => manuscriptPositions,
 		resolveManuscriptPath,
-		// A pool's card leaves the board rather than moving within it, so it drags
-		// where adjacency alone would not let it; a card the project will not let
-		// be written stays put on either board.
-		dragAllowed: (card) => (variant.dragOut !== undefined || adjacency) && deck.editable(card),
+		dragAllowed: (card) => mayDrag(card),
 		menu: (card, event) => {
 			openMenu(card, event);
 		},
@@ -321,6 +318,16 @@ export function renderCorkboard(
 	const enqueue = deck.enqueue;
 	const openForm = deck.openForm;
 	const editable = deck.editable;
+	/**
+	 * Whether a card may be taken hold of at all. A pool's card leaves the board
+	 * rather than moving within it, so it drags where adjacency alone would not
+	 * let it -- and what that drag changes is the timeline's own file, not the
+	 * scene's note, so the project's word is the whole of the question. A card
+	 * moved within a board writes the note itself, and asks the note's leave
+	 * as well as the project's.
+	 */
+	const mayDrag = (card: CardEntry): boolean =>
+		variant.dragOut !== undefined ? !readOnly : adjacency && editable(card);
 	const pruneRevisions = deck.prune;
 
 	/** Carry queued edits through our rank writes without adopting external revisions. */
@@ -881,12 +888,7 @@ export function renderCorkboard(
 		const { el } = entry;
 		const out = variant.dragOut;
 		el.addEventListener('dragstart', (event) => {
-			if (
-				!editable(entry) ||
-				(out === undefined && !adjacency) ||
-				event.dataTransfer === null ||
-				pressWithin(event.target)
-			) {
+			if (!mayDrag(entry) || event.dataTransfer === null || pressWithin(event.target)) {
 				event.preventDefault();
 				return;
 			}

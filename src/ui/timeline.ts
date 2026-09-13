@@ -19,8 +19,9 @@ import { Keymap, Menu, Notice, getIcon, setIcon, setTooltip } from 'obsidian';
 
 import {
 	derivedPresentation,
+	entityRosterById,
 	findTimelineView,
-	resolveEntityRefs,
+	resolveEntityRef,
 	type EntityRef,
 	type EntityRosterEntry,
 	type ScenePresentation,
@@ -271,16 +272,19 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// the symbol shows what stands now, the tooltip says what a press does.
 	// An eye for the words shown and an eye struck out for them hidden; the
 	// scenes side by side, or in layers with one in front. Both choices are
-	// the view's, so they are written to the document. Each press takes what
-	// the document holds as its write lands, never what it held when the
-	// press came: two presses in a breath answer each other, rather than
-	// writing one value twice and leaving the view where the first put it.
+	// the view's, so they are written to the document. Each press takes the
+	// value the document holds as its write lands, never the one it held when
+	// the press came: two presses in a breath answer each other, rather than
+	// writing one value twice and leaving the view where the first put it. The
+	// view, though, is the one the press was made on: another opened while the
+	// press waits its turn in the queue is not the one it was aimed at.
 	const wordsButton = iconButton('snowflake-method-timeline-words', 'eye', t('timeline.view.subDescriptionsHide'));
 	wordsButton.setAttribute('aria-pressed', 'true');
 	wordsButton.addEventListener('click', () => {
-		if (readOnly || currentView() === null) return;
+		const aimed = currentView();
+		if (readOnly || aimed === null) return;
 		void enqueue(async () => {
-			const now = currentView();
+			const now = viewAsStands(aimed.id);
 			if (now === null) return;
 			await controls.bridge().setViewSubDescriptions(now.id, !now.showSubDescriptions);
 		});
@@ -290,9 +294,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		choosePresentation();
 	});
 	const choosePresentation = (): void => {
-		if (readOnly || currentView() === null) return;
+		const aimed = currentView();
+		if (readOnly || aimed === null) return;
 		void enqueue(async () => {
-			const now = currentView();
+			const now = viewAsStands(aimed.id);
 			if (now === null) return;
 			const value: ScenePresentation = derivedPresentation(now) === 'flat' ? 'stack' : 'flat';
 			await controls.bridge().setViewPresentation(now.id, value);
@@ -304,9 +309,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const orderButton = iconButton('snowflake-method-timeline-order', 'arrow-down-narrow-wide', t('timeline.order.reverse'));
 	orderButton.setAttribute('aria-pressed', 'false');
 	orderButton.addEventListener('click', () => {
-		if (readOnly || currentView() === null) return;
+		const aimed = currentView();
+		if (readOnly || aimed === null) return;
 		void enqueue(async () => {
-			const now = currentView();
+			const now = viewAsStands(aimed.id);
 			if (now === null) return;
 			await controls.bridge().setViewTimesReversed(now.id, !now.timesReversed);
 		});
@@ -482,6 +488,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// -- State ---------------------------------------------------------------
 
 	let reading: TimelineReading | null = null;
+	/**
+	 * The document as the last read that came back had it. A read that fails
+	 * leaves nothing read, but not nothing known: a form standing open must
+	 * still be able to name the project's lanes.
+	 */
+	let lastHeld: TimelineDocument | null = null;
 	let loadFailed = false;
 	let model: ProjectDashboardModel | null = null;
 	let viewId: string | null = null;
@@ -498,6 +510,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	/** The document and the model the last paint was made from. */
 	let paintedHeld: TimelineDocument | null = null;
 	let paintedModel: ProjectDashboardModel | null = null;
+	/**
+	 * Whether that paint ran to its end. One that threw partway is owed another
+	 * whatever the document and the model say, since what stands on screen is
+	 * half made and the pair it was made from cannot say so.
+	 */
+	let paintFinished = false;
 	/** Whether the paint after the read in flight was asked for by the workspace itself. */
 	let paintDemanded = false;
 	/** The symbols the two switches wear now, so a paint redraws neither for nothing. */
@@ -506,6 +524,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let orderIcon = 'arrow-down-narrow-wide';
 	let readOnly = true;
 	let roster: EntityRosterEntry[] = [];
+	/** The same roster keyed by id: a lane's binding is read against it without keying it again. */
+	let rosterById = new Map<string, EntityRosterEntry>();
 	let optionsSignature = '';
 	let viewField: OptionPicker | null = null;
 	let scenesById = new Map<string, SceneViewModel>();
@@ -617,6 +637,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					bind(bridge);
 					try {
 						reading = await bridge.read();
+						if (reading !== null) lastHeld = reading.held;
 						loadFailed = false;
 					} catch (error) {
 						reading = null;
@@ -631,8 +652,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			// A bell bringing back the very document and model the last paint was
 			// made from has nothing to show. It rings a quarter second after
 			// every write the workspace makes itself, so without this the whole
-			// workspace, the pool with it, is painted twice for one change.
-			const moved = (reading?.held ?? null) !== paintedHeld || controls.model() !== paintedModel;
+			// workspace, the pool with it, is painted twice for one change. A
+			// paint that never finished is owed another all the same: the pair
+			// it was made from says nothing about how far it got.
+			const moved = !paintFinished
+				|| (reading?.held ?? null) !== paintedHeld
+				|| controls.model() !== paintedModel;
 			if (paintDemanded || moved) {
 				paintDemanded = false;
 				paintAll();
@@ -674,10 +699,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		return run;
 	};
 
-	const currentView = (): TimelineView | null => {
-		if (reading === null || viewId === null) return null;
-		return findTimelineView(reading.held, viewId) ?? null;
-	};
+	/** A view by id, as the document has it now: the one a press named, when its change comes to be made. */
+	const viewAsStands = (id: string): TimelineView | null =>
+		reading === null ? null : (findTimelineView(reading.held, id) ?? null);
+
+	const currentView = (): TimelineView | null => (viewId === null ? null : viewAsStands(viewId));
 
 	const laneOfRow = (rowId: string): Timeline | null =>
 		lanes.find((lane) => lane.times.some((time) => time.rows.some((row) => row.id === rowId))) ?? null;
@@ -837,9 +863,24 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			paintOwed = true;
 			return;
 		}
+		const nextHeld = reading?.held ?? null;
+		const nextModel = controls.model();
+		paintFinished = false;
+		draw(nextModel);
+		// What this paint was made from, marked once it is made. The empty
+		// states leave by their own way out and are made all the same; a paint
+		// that threw partway marks nothing, so the bell after it lays the
+		// workspace out again rather than taking the failed paint for what
+		// stands on screen.
+		paintedHeld = nextHeld;
+		paintedModel = nextModel;
+		paintFinished = true;
+	};
+
+	/** The laying out itself, from the model handed to it and the document last read. */
+	const draw = (nextModel: ProjectDashboardModel | null): void => {
 		invalidateRects();
 		paintFolds();
-		const nextModel = controls.model();
 		if (nextModel !== model) {
 			// Every one of these is the model's own and says the same thing for
 			// as long as the model does, so they are made again only when it is
@@ -847,16 +888,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			// some thousands of entries afresh to say what they already said.
 			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
 			roster = nextModel === null ? [] : rosterOf(nextModel);
+			rosterById = entityRosterById(roster);
 			scenesById = new Map(nextModel?.scenes.map((scene) => [scene.id, scene]) ?? []);
 			sceneIndex = new Map(nextModel?.scenes.map((scene, index) => [scene.id, index]) ?? []);
 			charactersByPath = new Map(nextModel?.characters.map((character) => [character.path, character]) ?? []);
 		}
 		model = nextModel;
-		// What this paint is made from, marked before any of it is drawn: the
-		// empty states leave by their own way out, and a read that comes back
-		// with this same pair must find it marked whichever way the paint went.
-		paintedHeld = reading?.held ?? null;
-		paintedModel = nextModel;
 		// The model's word alone: it is renewed with every project refresh,
 		// while what the document read reported is as old as that read, and
 		// a project written again would stay shut here until the next one.
@@ -877,6 +914,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			return;
 		}
 		const held = reading.held;
+		recoverHomelessFeet(held);
 		if (viewId === null || findTimelineView(held, viewId) === undefined) {
 			viewId =
 				held.lastViewId !== null && findTimelineView(held, held.lastViewId) !== undefined
@@ -1062,7 +1100,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const pinned = held.pinnedTimelineId === lane.id;
 		entry.el.toggleClass('is-pinned', pinned);
 		entry.pin.toggleClass('is-hidden', !pinned);
-		const binding = lane.binding === null ? null : (resolveEntityRefs([lane.binding], roster)[0] ?? null);
+		const binding = lane.binding === null ? null : resolveEntityRef(lane.binding, rosterById);
 		entry.entity.toggleClass('is-hidden', binding === null);
 		if (binding === null) {
 			entry.entityRef = null;
@@ -1561,10 +1599,25 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * The feet an input method is composing in, and the words held back from
 	 * them while it is. Writing a value into an input mid-composition takes the
 	 * text the method is still working on out from under it, and what was typed
-	 * so far is left behind as bare letters.
+	 * so far is left behind as bare letters. The composing is the input's own
+	 * and goes down with it; the words held back are the cell's, kept under its
+	 * key, so a cell built again or a workspace closed mid-composition still
+	 * has them.
 	 */
 	const composingFeet = new WeakSet<HTMLTextAreaElement>();
-	const withheldFeet = new WeakMap<HTMLTextAreaElement, string>();
+	const withheldFeet = new Map<string, string>();
+	/** How many writes are on their way from each foot: their words are the write's to give back. */
+	const footWrites = new Map<string, number>();
+
+	/** Words joined in the order they were written, with the empty ones left out. */
+	const mergeWords = (...parts: readonly string[]): string =>
+		parts.filter((part) => part.trim().length > 0).join('\n');
+
+	const holdFootWrite = (key: string, by: 1 | -1): void => {
+		const now = (footWrites.get(key) ?? 0) + by;
+		if (now <= 0) footWrites.delete(key);
+		else footWrites.set(key, now);
+	};
 
 	const keepFoot = (key: string, value: string): void => {
 		if (value.length === 0) footWords.delete(key);
@@ -1582,25 +1635,54 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		// A lane the document no longer holds has no foot for the words to come
 		// back to, at this paint or any after it. Put by under its key they
 		// would be out of sight until the workspace closed, so they are shown
-		// for keeping at once, as an edit of a row that has gone is.
+		// for keeping at once, as an edit of a row that has gone is -- and with
+		// them all the cell was holding besides: words a composition held back,
+		// and words typed into the emptied foot while this write was away.
 		if (shown === null && reading?.held.timelines.some((lane) => lane.id === timelineId) !== true) {
-			footWords.delete(key);
-			recoverWords(placeName(timelineId, timeId), words);
+			recoverFoot(timelineId, timeId, words);
 			return;
 		}
 		// A foot being composed in is left as it stands: the words wait aside
 		// and go in when the composition ends, ahead of whatever it left there.
 		if (shown !== null && composingFeet.has(shown)) {
-			const already = withheldFeet.get(shown);
-			withheldFeet.set(shown, already === undefined ? words : `${already}\n${words}`);
+			withheldFeet.set(key, mergeWords(withheldFeet.get(key) ?? '', words));
 			return;
 		}
 		const since = shown?.value ?? footWords.get(key) ?? '';
-		const value = since.trim().length === 0 ? words : `${words}\n${since}`;
+		const value = mergeWords(withheldFeet.get(key) ?? '', words, since);
+		withheldFeet.delete(key);
 		keepFoot(key, value);
 		if (shown === null) return;
 		shown.value = value;
 		fitWords(shown);
+	};
+
+	/**
+	 * All a cell's foot was holding, shown for keeping: the words handed back,
+	 * those a composition held back, and those typed since. Nothing stays under
+	 * the key, which has no foot left to give it back to.
+	 */
+	const recoverFoot = (timelineId: string, timeId: string, words = ''): void => {
+		const key = footKey(timelineId, timeId);
+		const all = mergeWords(withheldFeet.get(key) ?? '', words, footWords.get(key) ?? '');
+		footWords.delete(key);
+		withheldFeet.delete(key);
+		if (all.length > 0) recoverWords(placeName(timelineId, timeId), all);
+	};
+
+	/**
+	 * Words left at the foot of a cell whose lane the document no longer holds.
+	 * They are shown for keeping as soon as the paint says the lane has gone,
+	 * rather than held out of sight until the workspace closes -- except while
+	 * a write of theirs is away, which gives them back itself.
+	 */
+	const recoverHomelessFeet = (held: TimelineDocument): void => {
+		for (const key of new Set([...footWords.keys(), ...withheldFeet.keys()])) {
+			if (footWrites.has(key)) continue;
+			const [timelineId, timeId] = splitKey(key) as [string, string];
+			if (held.timelines.some((lane) => lane.id === timelineId)) continue;
+			recoverFoot(timelineId, timeId);
+		}
 	};
 
 	const buildTrailing = (cell: CellEntry, timeId: string): TrailingRow => {
@@ -1619,6 +1701,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'presentation' } });
 		const key = footKey(cell.timelineId, timeId);
+		// The composition these waited on went down with the input it was in,
+		// so they wait no longer: they go into the new one, ahead of whatever
+		// was typed after they were refused.
+		const withheld = withheldFeet.get(key);
+		if (withheld !== undefined) {
+			withheldFeet.delete(key);
+			keepFoot(key, mergeWords(withheld, footWords.get(key) ?? ''));
+		}
 		const held = footWords.get(key);
 		if (held !== undefined) {
 			input.value = held;
@@ -1647,10 +1737,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		input.addEventListener('compositionend', () => {
 			composingFeet.delete(input);
-			const kept = withheldFeet.get(input);
-			withheldFeet.delete(input);
+			const kept = withheldFeet.get(key);
+			withheldFeet.delete(key);
 			if (kept === undefined) return;
-			input.value = input.value.trim().length === 0 ? kept : `${kept}\n${input.value}`;
+			input.value = mergeWords(kept, input.value);
 			keepFoot(key, input.value);
 			fitWords(input);
 		});
@@ -1671,8 +1761,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLTextAreaElement): void => {
 		const words = input.value.trim();
 		if (words.length === 0 || readOnly) return;
+		const key = footKey(cell.timelineId, timeId);
 		input.value = '';
-		keepFoot(footKey(cell.timelineId, timeId), '');
+		keepFoot(key, '');
 		fitWords(input);
 		const rows = cell.rows;
 		if (rows === null) return;
@@ -1690,14 +1781,25 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cell.pending.push(pending);
 		const timelineId = cell.timelineId;
 		let written = false;
+		holdFootWrite(key, 1);
 		void enqueue(async () => {
 			const id = await controls.bridge().addRow(timelineId, timeId, words, null);
 			if (id === null) throw new Error(t('timeline.subrow.refused'));
 			written = true;
 		}).then(() => {
+			holdFootWrite(key, -1);
 			pending.el.remove();
 			cell.pending = cell.pending.filter((candidate) => candidate !== pending);
-			if (written) return;
+			if (written) {
+				// Every paint since this write went out has left the cell's foot
+				// alone, the write being the one to give its words back. It has
+				// none to give back, but the foot may have been written in again
+				// while it was away, and the lane may have gone under those
+				// words meanwhile: they are looked at now, once and by nobody
+				// else.
+				if (!disposed && reading !== null) recoverHomelessFeet(reading.held);
+				return;
+			}
 			if (disposed) {
 				recoverWords(placeName(timelineId, timeId), words);
 				return;
@@ -2225,7 +2327,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const at = clampStackPosition(remembered, total);
 		if (key !== null && remembered !== at) memory.stackPositions.set(key, at);
 		const shownId = row.scenes[at];
-		const wantedKey = shownId === undefined ? null : cardKey(row.id, shownId);
+		const shownScene = shownId === undefined ? undefined : scenesById.get(shownId);
+		// The card in front is wanted only while its scene stands. One whose
+		// scene the project no longer has comes down with the rest, its words
+		// settled or shown for keeping, and the stand-in takes its place rather
+		// than standing beside it.
+		const wantedKey = shownScene === undefined || shownId === undefined ? null : cardKey(row.id, shownId);
 		for (const standing of [...deck.cards.keys()]) {
 			if (standing.startsWith(keyPrefix(row.id)) && standing !== wantedKey) takeDown(standing);
 		}
@@ -2235,23 +2342,23 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				entry.missing.delete(sceneId);
 			}
 		}
-		if (shownId !== undefined && wantedKey !== null) {
-			const scene = scenesById.get(shownId);
-			if (scene === undefined) {
+		if (shownId !== undefined) {
+			if (shownScene === undefined) {
 				const standing = entry.missing.get(shownId);
 				if (standing === undefined) entry.missing.set(shownId, buildMissing(entry, lane, shownId, stack.face));
 				else dressMissing(standing);
 			} else {
+				const wanted = cardKey(row.id, shownId);
 				const index = sceneIndex.get(shownId) ?? 0;
-				let card = deck.cards.get(wantedKey);
+				let card = deck.cards.get(wanted);
 				if (card === undefined) {
-					card = deck.mount(stack.face, wantedKey, scene, index);
+					card = deck.mount(stack.face, wanted, shownScene, index);
 					wireCardDrag(card, row.id);
 				} else if (!stack.face.contains(card.el)) {
 					// The row came from another time: its card in front comes over as it stands.
 					stack.face.insertBefore(card.el, null);
 				}
-				deck.dress(card, scene, index, { position: at + 1, size: total });
+				deck.dress(card, shownScene, index, { position: at + 1, size: total });
 			}
 		}
 		stack.el.dataset.total = String(total);
@@ -2951,7 +3058,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	const openCardMenu = (card: SceneCard, event: MouseEvent): void => {
 		const path = controls.projectPath();
-		const lane = laneOfRow(card.key.slice(0, card.key.indexOf('|')));
+		const lane = laneOfRow(rowOfKey(card.key));
 		const menu = new Menu();
 		menu.addItem((item) => {
 			item
@@ -3052,7 +3159,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					name: '',
 					timelines: held.timelines.length === 1 ? [held.timelines[0]!.id] : [],
 				},
-				timelines: () => reading?.held.timelines ?? [],
+				// The lanes as the last read that came back had them. A read
+				// that found nothing is not a project without lanes: answered
+				// so, the form would save the new view with none of them.
+				timelines: () => reading?.held.timelines ?? lastHeld?.timelines ?? [],
 				addTimeline: () => addTimeline(false),
 			},
 			async (draft) => {
@@ -3078,11 +3188,14 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				mode: 'edit',
 				takenNames: held.views.filter((candidate) => candidate.id !== view.id).map((candidate) => candidate.name),
 				initial: { name: view.name, timelines: [...view.timelines] },
-				// The lanes as the document last said them. A read that found
-				// nothing is not a project without lanes: answered so, the form
-				// would drop every line it shows and a save would write the view
-				// empty, taking lanes away that were never touched.
-				timelines: () => reading?.held.timelines ?? held.timelines,
+				// The lanes as the last read that came back had them, which is
+				// not always what this form opened on: a lane added while it
+				// stands open is one of the project's. A read that found
+				// nothing is not a project without lanes either: answered so,
+				// the form would drop every line it shows and a save would
+				// write the view empty, taking lanes away that were never
+				// touched.
+				timelines: () => reading?.held.timelines ?? lastHeld?.timelines ?? held.timelines,
 				addTimeline: () => addTimeline(false),
 				deleteView: async () => {
 					const confirmed = await confirmTimelineAction(app, t, {
@@ -3217,6 +3330,12 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			for (const [rowId, draft] of [...rowDrafts]) {
 				rowDrafts.delete(rowId);
 				writeRowWords(draft.timelineId, rowId, draft.words);
+			}
+			// Words a composition held back are the cell's as much as those in
+			// its input, and go the same way, ahead of them.
+			for (const [key, kept] of [...withheldFeet]) {
+				withheldFeet.delete(key);
+				keepFoot(key, mergeWords(kept, footWords.get(key) ?? ''));
 			}
 			for (const [key, words] of [...footWords]) {
 				footWords.delete(key);
