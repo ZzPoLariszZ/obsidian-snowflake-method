@@ -11,7 +11,7 @@ import type { App } from 'obsidian';
 import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
 import type { CorkboardMemory, CorkboardPreferences } from './story-structure-state';
-import type { DashboardHost, ProjectDashboardModel } from './view-model';
+import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from './view-model';
 
 /** The host's own methods the board calls, and no others. */
 export type CorkboardHost = Pick<
@@ -61,7 +61,45 @@ export interface CorkboardHandle {
 	dispose(): void;
 }
 
+/**
+ * How a board may stand apart from the plain corkboard: as a pool of some
+ * scenes rather than all, dealt in one column, its cards leaving under
+ * another surface's drag type and that surface's cards landing on it. With
+ * nothing set the board is the corkboard.
+ */
+export interface CorkboardVariant {
+	/**
+	 * The scenes the board may show at all, applied after the search and the
+	 * funnel so a card keeps its narrative number. A board showing a subset
+	 * never offers the neighbourly actions, since its neighbours are not the
+	 * order's.
+	 */
+	include?: (scene: SceneViewModel) => boolean;
+	/** The band's add button: the labelled call to action, or a plus icon alone. */
+	addButton?: 'label' | 'icon';
+	/** A fixed column count, whatever the width. */
+	columns?: number;
+	/** Said when the board has no scene to offer, instead of the corkboard's own line. */
+	emptyText?: string;
+	/**
+	 * Cards leave the board under this type, whatever the adjacency; the
+	 * board's own reorder drag is off. The type must not be the corkboard's
+	 * own, or a card would land on a corkboard in another leaf.
+	 */
+	dragOut?: {
+		type: string;
+		onStart: (sceneId: string, transfer: DataTransfer) => void;
+		onEnd: () => void;
+	};
+	/** Drops of another surface's type land on the board as a whole. */
+	dropIn?: {
+		accepts: (types: readonly string[]) => boolean;
+		onDrop: (transfer: DataTransfer) => void;
+	};
+}
+
 export type RenderCorkboard = (
 	host: HTMLElement,
 	controls: CorkboardControls,
+	variant?: CorkboardVariant,
 ) => CorkboardHandle;

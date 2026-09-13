@@ -192,7 +192,11 @@ export class CorkboardElement {
 	setCssProps(styles: Record<string, string>): void { this.setCssStyles(styles); }
 	getBoundingClientRect(): { height: number } { this.readGeometry('getBoundingClientRect'); return { height: 37 }; }
 	matches(selector: string): boolean {
-		return selector.startsWith('.') ? this.classes.has(selector.slice(1)) : this.tag === selector;
+		// A class, a tag, or a comma-separated list of either, as the control check asks.
+		return selector.split(',').some((part) => {
+			const one = part.trim();
+			return one.startsWith('.') ? this.classes.has(one.slice(1)) : this.tag === one;
+		});
 	}
 	querySelector(selector: string): CorkboardElement | null { return this.querySelectorAll(selector)[0] ?? null; }
 	querySelectorAll(selector: string): CorkboardElement[] {

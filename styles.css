@@ -12421,16 +12421,26 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	height: 100%;
 }
 
-/* Fallback measures before the board's first paint. Shared measures live
-   here; each card receives its width directly to avoid inherited resize work. */
-.snowflake-method-corkboard {
-	--snowflake-method-corkboard-gap: 2.5rem;
-	--snowflake-method-corkboard-insert-size: 1.5rem;
-	--snowflake-method-corkboard-edge-gap: var(--snowflake-method-tab-height, 2.5rem);
+/* What a scene card needs from the surface it stands on, worn by the
+   corkboard root and by any other root that deals the same cards. Fallback
+   measures before a board's first paint; a board writes its own over them. */
+.snowflake-method-scene-cards {
 	--snowflake-method-corkboard-action-size: calc(var(--icon-s) + 2 * var(--size-2-2));
 	--snowflake-method-corkboard-link-height: 1.5rem;
 	--snowflake-method-corkboard-card-width: 16rem;
 	--snowflake-method-corkboard-card-height: 15rem;
+}
+
+.snowflake-method-scene-cards[data-mode='extended'] {
+	--snowflake-method-corkboard-card-height: 19rem;
+}
+
+/* The board's own measures; each card receives its width directly to avoid
+   inherited resize work. */
+.snowflake-method-corkboard {
+	--snowflake-method-corkboard-gap: 2.5rem;
+	--snowflake-method-corkboard-insert-size: 1.5rem;
+	--snowflake-method-corkboard-edge-gap: var(--snowflake-method-tab-height, 2.5rem);
 	--snowflake-method-corkboard-head-height: 2.25rem;
 }
 
@@ -12459,6 +12469,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-corkboard-display[aria-expanded='true'],
 .snowflake-method-corkboard-direction:hover {
 	color: var(--text-accent);
+}
+
+/* A board taking another surface's drop as a whole says so along its edge. */
+.snowflake-method-corkboard-scroll.is-drop-target {
+	box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
 .snowflake-method-corkboard-scroll {
@@ -12511,9 +12526,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-sticky-ground: var(--background-primary);
 	--snowflake-method-corkboard-lift: 0px;
 	--snowflake-method-corkboard-shadow: 0 0 0 0 transparent;
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline-start: 0;
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	width: var(--snowflake-method-corkboard-card-width);
@@ -12528,6 +12541,14 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	transition: translate 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
+/* On the canvas a card stands where the layout puts it; elsewhere it stands
+   in the flow of the surface that deals it. */
+.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+}
+
 .snowflake-method-corkboard-card:where(:hover, :focus-within):not(.is-dragging) {
 	--snowflake-method-corkboard-shadow:
 		0 0 0 2px color-mix(in srgb, var(--interactive-accent) 18%, transparent),
@@ -12538,7 +12559,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 /* Each half of the gap belongs to its nearest card, so entering the gap
    directly also reveals the insertion controls. */
-.snowflake-method-corkboard-card::before {
+.snowflake-method-corkboard-canvas > .snowflake-method-corkboard-card::before {
 	content: '';
 	position: absolute;
 	z-index: -1;
@@ -12607,8 +12628,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 /* Both faces use the same line box and inset, so entering a title never
    moves the header, its text baseline, or the neighbouring number. */
-.snowflake-method-corkboard button.snowflake-method-corkboard-title,
-.snowflake-method-corkboard input.snowflake-method-corkboard-title-input {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-title,
+.snowflake-method-scene-cards input.snowflake-method-corkboard-title-input {
 	display: block;
 	flex: 1 1 auto;
 	min-width: 0;
@@ -12632,23 +12653,23 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: text;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-title:hover {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-title:hover {
 	background: transparent;
 	box-shadow: none;
 }
 
-.snowflake-method-corkboard input.snowflake-method-corkboard-title-input:focus {
+.snowflake-method-scene-cards input.snowflake-method-corkboard-title-input:focus {
 	border-color: var(--interactive-accent);
 	background: var(--background-primary);
 	box-shadow: none;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-title.is-hidden,
-.snowflake-method-corkboard input.snowflake-method-corkboard-title-input.is-hidden {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-title.is-hidden,
+.snowflake-method-scene-cards input.snowflake-method-corkboard-title-input.is-hidden {
 	display: none;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-title:disabled {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-title:disabled {
 	cursor: default;
 }
 
@@ -12657,7 +12678,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--color-orange, var(--text-warning));
 }
 
-.snowflake-method-corkboard select.snowflake-method-corkboard-status-select {
+.snowflake-method-scene-cards select.snowflake-method-corkboard-status-select {
 	flex: 0 1 auto;
 	min-width: 0;
 	max-width: 45%;
@@ -12674,16 +12695,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	transition: none;
 }
 
-.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:hover,
-.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:focus-visible {
+.snowflake-method-scene-cards select.snowflake-method-corkboard-status-select:hover,
+.snowflake-method-scene-cards select.snowflake-method-corkboard-status-select:focus-visible {
 	background: var(--background-modifier-hover);
 }
 
-.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:focus-visible {
+.snowflake-method-scene-cards select.snowflake-method-corkboard-status-select:focus-visible {
 	border-color: var(--interactive-accent);
 }
 
-.snowflake-method-corkboard select.snowflake-method-corkboard-status-select:disabled {
+.snowflake-method-scene-cards select.snowflake-method-corkboard-status-select:disabled {
 	cursor: default;
 }
 
@@ -12694,15 +12715,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-muted);
 }
 
-.snowflake-method-corkboard .snowflake-method-corkboard-more {
+.snowflake-method-scene-cards .snowflake-method-corkboard-more {
 	width: var(--snowflake-method-corkboard-action-size);
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-color[aria-expanded='true'] {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-color[aria-expanded='true'] {
 	color: var(--text-accent);
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-color:disabled {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-color:disabled {
 	cursor: default;
 	opacity: 0.6;
 }
@@ -12741,7 +12762,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	margin-inline-start: auto;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-pov {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-pov {
 	display: block;
 	flex: 1 1 auto;
 	min-width: 0;
@@ -12759,26 +12780,26 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: pointer;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-pov:hover:not(:disabled) {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-pov:hover:not(:disabled) {
 	text-decoration: underline;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-pov:disabled {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-pov:disabled {
 	opacity: 1;
 	cursor: default;
 }
 
-.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-body,
-.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-links,
-.snowflake-method-corkboard[data-mode='standard'] .snowflake-method-corkboard-links {
+.snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-body,
+.snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-links,
+.snowflake-method-scene-cards[data-mode='standard'] .snowflake-method-corkboard-links {
 	display: none;
 }
 
-.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-head {
+.snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-head {
 	border-block-end: 0;
 }
 
-.snowflake-method-corkboard[data-mode='compact'] .snowflake-method-corkboard-footer {
+.snowflake-method-scene-cards[data-mode='compact'] .snowflake-method-corkboard-footer {
 	margin-block-start: 0;
 }
 
@@ -12790,7 +12811,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 0;
 }
 
-.snowflake-method-corkboard textarea.snowflake-method-corkboard-conflict {
+.snowflake-method-scene-cards textarea.snowflake-method-corkboard-conflict {
 	flex: 1 1 auto;
 	width: 100%;
 	min-height: 0;
@@ -12807,7 +12828,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	line-height: var(--line-height-normal);
 }
 
-.snowflake-method-corkboard textarea.snowflake-method-corkboard-conflict:focus {
+.snowflake-method-scene-cards textarea.snowflake-method-corkboard-conflict:focus {
 	outline: none;
 	box-shadow: none;
 }
@@ -12853,8 +12874,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	grid-row: 1 / span 2;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-link,
-.snowflake-method-corkboard button.snowflake-method-corkboard-more-links {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-link,
+.snowflake-method-scene-cards button.snowflake-method-corkboard-more-links {
 	display: flex;
 	flex: 0 0 auto;
 	align-items: center;
@@ -12884,7 +12905,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	flex: 0 0 auto;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-more-links {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-more-links {
 	grid-column: 2;
 	grid-row: 1 / span 2;
 	align-self: center;
@@ -12892,16 +12913,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	width: var(--snowflake-method-corkboard-action-size);
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-more-links.is-hidden {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-more-links.is-hidden {
 	display: none;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-link:hover,
-.snowflake-method-corkboard button.snowflake-method-corkboard-more-links:hover:not(:disabled) {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-link:hover,
+.snowflake-method-scene-cards button.snowflake-method-corkboard-more-links:hover:not(:disabled) {
 	text-decoration: underline;
 }
 
-.snowflake-method-corkboard button.snowflake-method-corkboard-link.is-missing {
+.snowflake-method-scene-cards button.snowflake-method-corkboard-link.is-missing {
 	color: var(--text-muted);
 }
 

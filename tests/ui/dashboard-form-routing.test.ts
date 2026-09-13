@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ViewState } from 'obsidian';
-import type { SceneFormIntent } from '../../src/ui/view-model';
+import type { EntityFormIntent, SceneFormIntent } from '../../src/ui/view-model';
 
 // The real plugin routes the request; only Obsidian's workspace and view
 // drawing are replaced, including the placeholder view restored after reload.
@@ -25,6 +25,7 @@ import {
 const projectPath = 'Novel/Novel.md';
 const rootSplit = {};
 const sceneIntent: SceneFormIntent = { mode: 'edit', id: 'scene-1' };
+const entityIntent: EntityFormIntent = { mode: 'edit', id: 'entity-1', section: 'description' };
 
 function dashboardLeaf(
 	path = projectPath,
@@ -35,11 +36,13 @@ function dashboardLeaf(
 	const dashboard = Object.create(SnowflakeDashboardView.prototype) as SnowflakeDashboardView;
 	const openSceneForm = vi.fn((_intent: SceneFormIntent) => Promise.resolve('saved-scene'));
 	const openCharacterForm = vi.fn((_id: string) => Promise.resolve());
+	const openEntityForm = vi.fn((_intent: EntityFormIntent) => Promise.resolve(null));
 	const queueRefreshWhenShown = vi.fn();
 	Object.assign(dashboard, {
 		getProjectPath: () => path,
 		openSceneForm,
 		openCharacterForm,
+		openEntityForm,
 		queueRefreshWhenShown,
 	});
 	let state: ViewState = {
@@ -59,7 +62,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openEntityForm, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -114,6 +117,13 @@ const forms = [
 		open: (plugin: SnowflakeMethodPlugin) => plugin.openCharacterForm('character-1'),
 		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
 			expect(dashboard.openCharacterForm).toHaveBeenCalledExactlyOnceWith('character-1');
+		},
+	},
+	{
+		name: 'entity',
+		open: (plugin: SnowflakeMethodPlugin) => plugin.openEntityForm(entityIntent),
+		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
+			expect(dashboard.openEntityForm).toHaveBeenCalledExactlyOnceWith(entityIntent);
 		},
 	},
 ];

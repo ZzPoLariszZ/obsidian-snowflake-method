@@ -243,6 +243,8 @@ export interface CorkboardMetrics {
 	minCardWidth: number;
 	cardHeight: number;
 	headHeight: number;
+	/** A column count fixed by the board, whatever the width holds. */
+	columns?: number;
 }
 
 export function corkboardMetrics(
@@ -251,6 +253,8 @@ export function corkboardMetrics(
 	remPx: number,
 	/** The rendered header, footer and card borders, measured in the current theme. */
 	compactHeightPx?: number,
+	/** A column count fixed by the board, whatever the width holds. */
+	columns?: number,
 ): CorkboardMetrics {
 	const measuredCompactHeight =
 		mode === 'compact' &&
@@ -265,7 +269,13 @@ export function corkboardMetrics(
 		minCardWidth: CORKBOARD_REM.minCardWidth * remPx,
 		cardHeight: measuredCompactHeight ?? CORKBOARD_REM.cardHeight[mode] * remPx,
 		headHeight: CORKBOARD_REM.headHeight * remPx,
+		...(columns === undefined ? {} : { columns: Math.max(1, Math.floor(columns)) }),
 	};
+}
+
+/** The columns a layout takes: the board's own count when fixed, else as many as the width holds. */
+export function layoutColumns(metrics: CorkboardMetrics): number {
+	return metrics.columns ?? columnsFor(metrics.width, metrics.minCardWidth, metrics.gap);
 }
 
 /** As many columns as the width holds at the least card width, never fewer than one. */
@@ -312,7 +322,7 @@ export function buildLayout(
 	order: DisplayOrder,
 	metrics: CorkboardMetrics,
 ): CorkboardLayout {
-	const columns = columnsFor(metrics.width, metrics.minCardWidth, metrics.gap);
+	const columns = layoutColumns(metrics);
 	const cardWidth =
 		metrics.width > 0
 			? (metrics.width - (columns - 1) * metrics.gap) / columns

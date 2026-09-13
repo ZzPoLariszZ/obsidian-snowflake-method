@@ -358,6 +358,7 @@ import type {
 	ManuscriptModel,
 	ManuscriptSegmentText,
 	ManuscriptWindowSettings,
+	EntityFormIntent,
 	SceneFormIntent,
 	SegmentNamed,
 	StepFields,
@@ -9954,6 +9955,11 @@ export default class SnowflakeMethodPlugin
 	async openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void> {
 		await this.withDashboardForm((view) => onSaved === undefined
 			? view.openCharacterForm(id) : view.openCharacterForm(id, onSaved), undefined, projectPath);
+	}
+
+	async openEntityForm(intent: EntityFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null> {
+		return this.withDashboardForm((view) => onSaved === undefined
+			? view.openEntityForm(intent) : view.openEntityForm(intent, onSaved), null, projectPath);
 	}
 
 	/** Opens a dashboard-owned form while keeping the requesting surface active. */

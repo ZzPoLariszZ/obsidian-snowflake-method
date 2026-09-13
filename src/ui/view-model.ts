@@ -674,6 +674,19 @@ export type SceneFormIntent =
 	| { mode: 'create'; afterIndex: number | null }
 	| { mode: 'edit'; id: string; section?: 'linked-manuscript' };
 
+/**
+ * What another surface asks the dashboard's worldbuilding form to do: edit
+ * one note, opened on its description when asked, or make one of a kind
+ * with what the asker already knows about it.
+ */
+export type EntityFormIntent =
+	| { mode: 'edit'; id: string; section?: 'description' }
+	| {
+			mode: 'create';
+			kind: WorldbuildingKindId;
+			preset?: { name?: string; timeKind?: TimeKind; lockTimeKind?: boolean };
+	  };
+
 export interface DashboardHost {
 	t: Translate;
 	/** The bridge the statistics pane renders the session panel through. */
@@ -849,6 +862,12 @@ export interface DashboardHost {
 	openSceneForm(intent: SceneFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null>;
 	/** Opens an existing character's edit form without switching away from the caller. */
 	openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void>;
+	/**
+	 * Opens the worldbuilding form on the dashboard of the requested project,
+	 * as `openSceneForm` does; resolves when the modal closes, with the id of
+	 * the note a create made.
+	 */
+	openEntityForm(intent: EntityFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null>;
 	deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(

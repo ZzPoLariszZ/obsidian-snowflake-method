@@ -163,6 +163,7 @@ import type {
 	DashboardHost,
 	DefinitionFileChoice,
 	ManagedSectionIssueViewModel,
+	EntityFormIntent,
 	SceneFormIntent,
 	StepFields,
 	ProjectDashboardModel,
@@ -4677,8 +4678,9 @@ export class SnowflakeDashboardView extends ItemView {
 	private openEntityEditor(
 		model: ProjectDashboardModel,
 		entity: WorldbuildingEntityViewModel,
-	): Promise<Modal> {
-		return this.memberFormContext(model, entity.kind).then((context) => {
+		afterSave?: () => Promise<void>,
+	): Promise<EntityFormModal> {
+		return this.memberFormContext(model, entity.kind, model.path, afterSave).then((context) => {
 			const form = new EntityFormModal(
 				this.app,
 				this.t,
@@ -4689,7 +4691,7 @@ export class SnowflakeDashboardView extends ItemView {
 				context,
 				async (request) => {
 					await this.host.updateEntity(entity.id, request, model.path);
-					await this.refresh();
+					await (afterSave?.() ?? this.refresh());
 				},
 				{
 					kind: entity.kind,
@@ -5158,6 +5160,57 @@ export class SnowflakeDashboardView extends ItemView {
 		}
 		if (form === null) return null;
 		await whenClosed(form);
+		return made.id;
+	}
+
+	/**
+	 * The worldbuilding form for another surface, as `openSceneForm` is: one
+	 * note's editor, opened on its description when asked, or the create form
+	 * of a kind with what the asker knows preset. Resolves when the modal is
+	 * done with, with the id a create made.
+	 */
+	async openEntityForm(intent: EntityFormIntent, onSaved?: () => void): Promise<string | null> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return null;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return null;
+		if (model === null || model.readOnly) return null;
+		const saved = (): void => {
+			this.queueRefreshWhenShown();
+			onSaved?.();
+		};
+		if (intent.mode === 'edit') {
+			const entity = Object.values(model.worldbuilding)
+				.flat()
+				.find((candidate) => candidate.id === intent.id);
+			if (
+				entity === undefined || entity.readOnly ||
+				entity.healthIssues.some((issue) => issue.blocking)
+			) {
+				return null;
+			}
+			const form = await this.openEntityEditor(model, entity, async () => { saved(); });
+			if (intent.section === 'description') form.revealDescription();
+			await whenClosed(form);
+			return null;
+		}
+		const kind = intent.kind;
+		const context = await this.memberFormContext(model, kind, model.path, async () => { saved(); });
+		const made = { id: null as string | null };
+		await promptForNewEntity(
+			this.app,
+			this.t,
+			kind,
+			kindEntities(model, kind).map((entity) => entity.name),
+			context,
+			intent.preset ?? {},
+			async (request) => {
+				const entity = await this.host.createEntity(request, model.path);
+				made.id = entity.id;
+				saved();
+				return { value: entity.path, label: request.name };
+			},
+		);
 		return made.id;
 	}
 

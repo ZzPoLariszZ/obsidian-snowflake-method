@@ -3220,6 +3220,9 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 	// these carry what was typed across it.
 	private worldStatusDrafts: RecordDraft[] = [];
 	private relationshipDrafts: RecordDraft[] = [];
+	/** The description row, for a surface that shows it read-only and asks to change it here. */
+	private descriptionSetting: Setting | null = null;
+	private descriptionRevealFrame: number | null = null;
 
 	constructor(
 		app: App,
@@ -3359,8 +3362,28 @@ export class EntityFormModal extends SnowflakeFormModal<EntityFormRequest> {
 					}),
 			);
 		description.settingEl.addClass('snowflake-method-character-setting');
+		this.descriptionSetting = description;
 
 		this.buildRecordEditors();
+	}
+
+	/** Opens on the description, the way the scene form opens on its linked manuscript. */
+	revealDescription(): void {
+		const modalWindow = this.modalEl.win;
+		if (this.descriptionRevealFrame !== null) {
+			modalWindow.cancelAnimationFrame(this.descriptionRevealFrame);
+		}
+		// Let the form finish its initial layout and focus cleanup before moving
+		// to the row, so opening the modal cannot scroll back to its title.
+		this.descriptionRevealFrame = modalWindow.requestAnimationFrame(() => {
+			this.descriptionRevealFrame = modalWindow.requestAnimationFrame(() => {
+				this.descriptionRevealFrame = null;
+				const setting = this.descriptionSetting;
+				if (setting === null || !setting.settingEl.isConnected) return;
+				setting.controlEl.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+				setting.settingEl.scrollIntoView({ block: 'start', behavior: 'auto' });
+			});
+		});
 	}
 
 	/**

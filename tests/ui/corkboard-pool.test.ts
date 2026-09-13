@@ -1,0 +1,165 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
+
+vi.mock('obsidian', async (importOriginal) => {
+	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	return {
+		...runtime,
+		FuzzySuggestModal: class extends runtime.Modal {},
+		SuggestModal: class extends runtime.Modal {},
+		SearchComponent: class extends runtime.SearchComponent {
+			setValue(): this { return this; }
+		},
+	};
+});
+
+import { renderCorkboard } from '../../src/ui/corkboard';
+import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
+import { corkboardMemory } from '../../src/ui/story-structure-state';
+import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
+
+const PROJECT = 'First/Project.md';
+const POOL_TYPE = 'application/x-test-pool';
+
+async function settle(): Promise<void> {
+	for (let at = 0; at < 40; at++) await Promise.resolve();
+}
+
+function event(element: CorkboardElement, type: string, properties: Record<string, unknown>): void {
+	for (const listener of element.listeners.get(type) ?? []) {
+		listener({ target: element, preventDefault: () => undefined, stopPropagation: () => undefined, ...properties });
+	}
+}
+
+function transfer(types: string[]) {
+	const data = new Map<string, string>();
+	return {
+		types,
+		effectAllowed: '',
+		dropEffect: '',
+		setData: (type: string, value: string) => { data.set(type, value); },
+		getData: (type: string) => data.get(type) ?? '',
+		data,
+	};
+}
+
+function scene(index: number): SceneViewModel {
+	const letter = 'abcde'[index]!;
+	return {
+		id: `scene-${letter}`, path: `First/Scenes/${letter}.md`, title: `Scene ${letter.toUpperCase()}`, rank: index,
+		progressStatus: 'in-progress', aliases: [], categoryPaths: [],
+		povPath: 'First/Cast/Hero.md', povName: 'Hero', povMissing: false,
+		times: [], locations: [], characterPaths: [], conflict: '', color: null,
+		linkedManuscript: [], worldStatus: [], relationships: [], events: '',
+		customFields: '', revision: 'initial', healthIssues: [], readOnly: false,
+	};
+}
+
+function pool(variant: CorkboardVariant, scenes = [0, 1, 2, 3, 4].map(scene)) {
+	const dom = new CorkboardDom();
+	let model = {
+		path: PROJECT, projectId: 'first', locale: 'en', scenes,
+		characters: [{ id: 'hero', path: 'First/Cast/Hero.md', name: 'Hero', readOnly: false, healthIssues: [] }],
+		manuscriptPaths: [], readOnly: false,
+	} as unknown as ProjectDashboardModel;
+	const host = {
+		openSceneForm: vi.fn(() => Promise.resolve(null)),
+		reorderScene: vi.fn(() => Promise.resolve()),
+		patchScene: vi.fn(() => Promise.resolve('next')),
+	};
+	const controls = {
+		app: { metadataCache: { getFirstLinkpathDest: () => null } },
+		host, t: (key: string) => key, model: () => model,
+		activateProject: vi.fn(), refresh: vi.fn(async () => { handle.refresh(); }),
+		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter: vi.fn() },
+		memory: corkboardMemory(), remember: vi.fn(),
+	} as unknown as CorkboardControls;
+	const handle = renderCorkboard(dom.container as unknown as HTMLElement, controls, variant);
+	const cards = (): CorkboardElement[] => dom.container.querySelectorAll('.snowflake-method-corkboard-card');
+	return {
+		dom, host, handle,
+		cards,
+		scroller: dom.container.querySelector('.snowflake-method-corkboard-scroll')!,
+		canvas: dom.container.querySelector('.snowflake-method-corkboard-canvas')!,
+		add: dom.container.querySelector('.snowflake-method-corkboard-add')!,
+		empty: dom.container.querySelector('.snowflake-method-character-empty')!,
+		rename: (id: string, title: string) => {
+			model = { ...model, scenes: model.scenes.map((candidate) => (candidate.id === id ? { ...candidate, title } : candidate)) };
+		},
+	};
+}
+
+describe('the corkboard as a pool', () => {
+	it('shows the scenes included, numbered by their narrative place, in one column', () => {
+		const fixture = pool({ include: (candidate) => candidate.id === 'scene-b' || candidate.id === 'scene-d', columns: 1 });
+		const numbers = fixture.cards().map((card) => card.querySelector('.snowflake-method-corkboard-number')!.textContent);
+		expect(numbers).toEqual(['2', '4']);
+		expect(fixture.cards().map((card) => card.styles.transform?.startsWith('translate(0px'))).toEqual([true, true]);
+		for (const card of fixture.cards()) {
+			for (const insert of card.querySelectorAll('.snowflake-method-corkboard-insert')) {
+				expect(insert.classes.has('is-hidden')).toBe(true);
+			}
+		}
+	});
+
+	it('offers the add button as a plus alone, still making a scene at the end', async () => {
+		const fixture = pool({ include: () => true, addButton: 'icon' });
+		expect(fixture.add.classes.has('clickable-icon')).toBe(true);
+		expect(fixture.add.classes.has('mod-cta')).toBe(false);
+		expect(fixture.add.textContent).toBe('');
+		expect(fixture.add.getAttribute('aria-label')).toBe('actions.addScene');
+		fixture.add.dispatch('click');
+		await settle();
+		expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: null }, PROJECT, expect.any(Function));
+	});
+
+	it('says its own line when nothing is included', () => {
+		const fixture = pool({ include: () => false, emptyText: 'Every scene is placed' });
+		expect(fixture.cards()).toHaveLength(0);
+		expect(fixture.empty.classes.has('is-hidden')).toBe(false);
+		const spans = fixture.empty.querySelectorAll('span');
+		expect(spans[spans.length - 1]?.textContent).toBe('Every scene is placed');
+		expect(fixture.scroller.classes.has('is-hidden')).toBe(true);
+	});
+
+	it('lets a card leave under the given type, and holds a paint until the drag has ended', () => {
+		const onStart = vi.fn();
+		const onEnd = vi.fn();
+		const fixture = pool({ include: () => true, dragOut: { type: POOL_TYPE, onStart, onEnd } });
+		const card = fixture.cards()[0]!;
+		expect(card.getAttribute('draggable')).toBe('true');
+		const dataTransfer = transfer([]);
+		event(card, 'dragstart', { target: null, dataTransfer });
+		expect(dataTransfer.data.get(POOL_TYPE)).toBe('scene-a');
+		expect(onStart).toHaveBeenCalledWith('scene-a', dataTransfer);
+		expect(card.classes.has('is-dragging')).toBe(true);
+		fixture.rename('scene-a', 'Renamed');
+		fixture.handle.refresh();
+		expect(card.querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Scene A');
+		event(card, 'dragend', {});
+		expect(onEnd).toHaveBeenCalledOnce();
+		expect(card.classes.has('is-dragging')).toBe(false);
+		expect(fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Renamed');
+	});
+
+	it('takes another surface\'s drop as a whole, and never reorders for it', () => {
+		const onDrop = vi.fn();
+		const fixture = pool({
+			include: () => true,
+			dragOut: { type: POOL_TYPE, onStart: vi.fn(), onEnd: vi.fn() },
+			dropIn: { accepts: (types) => types.includes('application/x-test-lane'), onDrop },
+		});
+		const dataTransfer = transfer(['application/x-test-lane']);
+		event(fixture.canvas, 'dragover', { clientX: 10, clientY: 10, dataTransfer });
+		expect(fixture.scroller.classes.has('is-drop-target')).toBe(true);
+		expect(dataTransfer.dropEffect).toBe('move');
+		event(fixture.canvas, 'drop', { dataTransfer });
+		expect(onDrop).toHaveBeenCalledWith(dataTransfer);
+		expect(fixture.scroller.classes.has('is-drop-target')).toBe(false);
+		expect(fixture.host.reorderScene).not.toHaveBeenCalled();
+		const foreign = transfer(['text/plain']);
+		event(fixture.canvas, 'dragover', { clientX: 10, clientY: 10, dataTransfer: foreign });
+		expect(fixture.scroller.classes.has('is-drop-target')).toBe(false);
+	});
+});
