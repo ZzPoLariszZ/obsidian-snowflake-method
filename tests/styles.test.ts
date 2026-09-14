@@ -139,6 +139,12 @@ describe('styles.css', () => {
 		expect(board).toContain(`padding-inline: max(`);
 		expect(board).toContain(inset);
 		expect(board).toContain('(100% - var(--snowflake-method-timeline-scene-width)) / 2');
+		// The pool is one scene card wide with that room on either side of it, so
+		// the padding above has nothing to share out and a card stands its lane
+		// width. Sizing the pool by its band instead cost it a further rem.
+		const poolWidth = /--snowflake-method-timeline-pool-width:([^;]*);/.exec(styles)?.[1] ?? '';
+		expect(poolWidth).toContain('var(--snowflake-method-timeline-scene-width)');
+		expect(poolWidth).toContain(`2 * ${inset}`);
 		for (const spanning of [
 			'.snowflake-method-timeline-pool-head',
 			'.snowflake-method-timeline-pool .snowflake-method-prose-controls',

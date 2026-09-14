@@ -79,6 +79,13 @@ export interface CorkboardVariant {
 	include?: (scene: SceneViewModel) => boolean;
 	/** The band's add button: the labelled call to action, or a plus icon alone. */
 	addButton?: 'label' | 'icon';
+	/**
+	 * Where the search field says what it searches: written in the field, or
+	 * kept quiet, for a band with no room to spare for the words. Quiet leaves
+	 * the name on the field for a screen reader and under the pointer, so only
+	 * the sighted reader glancing past it gives anything up.
+	 */
+	searchLabel?: 'placeholder' | 'quiet';
 	/** A fixed column count, whatever the width. */
 	columns?: number;
 	/** The gap between cards in rem; the board's own leaves room for its insertion buttons. */

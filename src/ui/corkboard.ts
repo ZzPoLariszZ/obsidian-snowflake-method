@@ -129,7 +129,18 @@ export function renderCorkboard(
 
 	const band = root.createDiv({ cls: 'snowflake-method-prose-controls' });
 	const search = new SearchComponent(band);
-	search.setPlaceholder(t('table.searchScenes'));
+	if (variant.searchLabel === 'quiet') {
+		// A placeholder that says nothing rather than none at all: Obsidian hides
+		// the field's clear button with `:placeholder-shown`, which matches nothing
+		// where there is no placeholder to show, and the button would then stand on
+		// an empty field. The name the field no longer writes goes where a screen
+		// reader reads it and where the pointer rests.
+		search.setPlaceholder(' ');
+		search.inputEl.setAttribute('aria-label', t('table.searchScenes'));
+		setTooltip(search.inputEl, t('table.searchScenes'));
+	} else {
+		search.setPlaceholder(t('table.searchScenes'));
+	}
 	search.setValue(memory.query);
 	let searchTimer: number | null = null;
 	let searchWindow = root.win;

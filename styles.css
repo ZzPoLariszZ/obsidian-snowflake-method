@@ -13109,9 +13109,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	   its edges, and a card is laid out to the canvas, which reaches them, so
 	   without this the mark would be drawn under every card. */
 	--snowflake-method-timeline-pool-inset: 0.5rem;
-	/* What the pool takes, with a scene card standing centred in what its own
-	   band leaves over. */
-	--snowflake-method-timeline-pool-width: 22rem;
+	/* One scene card, the room the mark draws in on either side of it, and the
+	   rule and the gap that set the pool apart from the lanes. A card is the
+	   width here that it is in a lane, so a scene neither grows nor shrinks as
+	   it is dragged between them. The band gives up the words in its search
+	   field to hold the pool to this. */
+	--snowflake-method-timeline-pool-width: calc(
+		var(--snowflake-method-timeline-scene-width) + 2 * var(--snowflake-method-timeline-pool-inset) +
+			var(--snowflake-method-tab-height, var(--size-4-3)) + 1px
+	);
 	/* What the pool takes of the body's width, with the gap before it. */
 	--snowflake-method-timeline-pool-span: calc(
 		var(--snowflake-method-timeline-pool-width) + var(--snowflake-method-timeline-lane-gap)

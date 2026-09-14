@@ -9,8 +9,14 @@ vi.mock('obsidian', async (importOriginal) => {
 		...runtime,
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
-		SearchComponent: class extends runtime.SearchComponent {
+		SearchComponent: class {
+			readonly inputEl: CorkboardElement;
+			constructor(container: CorkboardElement) {
+				this.inputEl = container.createDiv({ cls: 'search-input-container' }).createEl('input');
+			}
+			setPlaceholder(text: string): this { this.inputEl.setAttribute('placeholder', text); return this; }
 			setValue(): this { return this; }
+			onChange(): this { return this; }
 		},
 	};
 });
@@ -134,6 +140,25 @@ describe('the corkboard as a pool', () => {
 		fixture.add.dispatch('click');
 		await settle();
 		expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'create', afterIndex: null }, PROJECT, expect.any(Function));
+	});
+
+	/**
+	 * A band one card wide has no room for the words in its search field beside
+	 * the controls that follow them, and a placeholder cut off mid-word says
+	 * less than none at all. The name stays where a screen reader reads it and
+	 * where the pointer rests, so only the glancing eye gives anything up. The
+	 * field keeps a placeholder that says nothing rather than none at all, since
+	 * Obsidian hides its clear button with `:placeholder-shown` and that matches
+	 * nothing where there is no placeholder, leaving the button on an empty field.
+	 */
+	it('writes the name in the search field, or keeps it for the reader who cannot see the field', () => {
+		const quiet = pool({ include: () => true, searchLabel: 'quiet' });
+		const hushed = quiet.dom.container.querySelector('input')!;
+		expect(hushed.getAttribute('placeholder')).toBe(' ');
+		expect(hushed.getAttribute('aria-label')).toBe('table.searchScenes');
+		const spoken = pool({ include: () => true }).dom.container.querySelector('input')!;
+		expect(spoken.getAttribute('placeholder')).toBe('table.searchScenes');
+		expect(spoken.getAttribute('aria-label')).toBe(null);
 	});
 
 	it('says its own line when nothing is included', () => {

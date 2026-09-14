@@ -3453,6 +3453,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	poolHandle = controls.corkboard(poolHost, poolControls, {
 		include: (scene) => !assigned.has(scene.id),
 		addButton: 'icon',
+		// The pool is one card wide, which leaves the band no room for the words
+		// in its search field beside the five controls that follow them.
+		searchLabel: 'quiet',
 		columns: 1,
 		// One column has no insertion buttons to leave room for between cards.
 		gap: 0.75,
