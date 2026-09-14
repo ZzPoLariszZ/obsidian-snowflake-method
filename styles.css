@@ -13104,16 +13104,14 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-timeline-head-height: calc(
 		var(--snowflake-method-corkboard-action-size) + 2 * var(--size-4-2) + 3px + 1px
 	);
-	/* The room the pool's board keeps inside its own edges. A card is laid out
-	   to the canvas, and the canvas reaches the board's edge, so a mark drawn
-	   there for a drop stands under the cards rather than beside them. This is
-	   the room it draws in. */
+	/* The room the board keeps inside its own edges, and the only room any
+	   part of the pool keeps: the mark the board takes for a drop is drawn on
+	   its edges, and a card is laid out to the canvas, which reaches them, so
+	   without this the mark would be drawn under every card. */
 	--snowflake-method-timeline-pool-inset: 0.5rem;
-	/* The cards' own room, with the inset standing on either side of it, so a
-	   card is as wide as it was before the inset was made for the mark. */
-	--snowflake-method-timeline-pool-width: calc(
-		22rem + 2 * var(--snowflake-method-timeline-pool-inset)
-	);
+	/* What the pool takes, with a scene card standing centred in what its own
+	   band leaves over. */
+	--snowflake-method-timeline-pool-width: 22rem;
 	/* What the pool takes of the body's width, with the gap before it. */
 	--snowflake-method-timeline-pool-span: calc(
 		var(--snowflake-method-timeline-pool-width) + var(--snowflake-method-timeline-lane-gap)
@@ -14317,7 +14315,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* The pool's head stands level with the lane heads: their row's height,
-   the name in the corner's type, and the count at the far end. */
+   the name in the corner's type, and the count at the far end. It spans the
+   pool's whole width, which is the box the board's mark is drawn on, so the
+   rule under the name and the mark below it run to the same two ends. */
 .snowflake-method-timeline-pool-head {
 	display: flex;
 	flex: 0 0 auto;
@@ -14339,17 +14339,33 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	white-space: nowrap;
 }
 
+/* The circle is smaller than the icon button that stands above it at the same
+   end, so it comes in by half the difference and their middles line up: what
+   the eye pairs is the count with the plus, not the ring's edge with the
+   button's. A band button is the icon with Obsidian's own padding at either
+   side, which is wider than this plugin's action size, so that token will not
+   stand in for it. */
 .snowflake-method-timeline-pool-count {
 	margin-inline-start: auto;
+	margin-inline-end: calc((var(--icon-s) + 2 * var(--size-2-3) - 1.25rem) / 2);
 }
 
-/* The board stands in from the pool's own edges, so the mark it takes for a
-   drop has somewhere to draw that no card reaches. The canvas comes in with
-   the padding and the cards are laid out to it, which is what keeps the frame
-   clear of them: an outline alone is not enough, since a card is positioned
-   and paints over one drawn on the edge it stands on. */
+/* The board spans the pool's whole width, so the mark it takes for a drop is
+   drawn level with the rule above it, and the room that mark needs is taken
+   from the cards alone. In one column a card is given the canvas's whole
+   width, so this padding sets the card's width as much as the mark's room:
+   it brings the canvas down to a lane's scene width and shares what is left
+   between the two sides, so a card stands centred and a scene neither grows
+   nor shrinks as it is dragged between the pool and a lane. An outline is not
+   enough by itself, since a card is positioned and paints over one drawn on
+   the edge it stands on, which is why both of the mark's long sides were
+   buried and not just one. The inset is the floor, so the mark keeps its room
+   even where a card would have to give some up. */
 .snowflake-method-timeline-pool .snowflake-method-corkboard {
-	padding-inline: var(--snowflake-method-timeline-pool-inset);
+	padding-inline: max(
+		var(--snowflake-method-timeline-pool-inset),
+		calc((100% - var(--snowflake-method-timeline-scene-width)) / 2)
+	);
 }
 
 .snowflake-method-timeline-pool .snowflake-method-corkboard-host {
@@ -14360,15 +14376,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The corkboard places its band a strip's height above its own top, which
    in the pool is under the head: from there the band climbs the head's
    height further to ride the strip's row beside the timeline's toolbar.
-   The band stands in by the same inset as the board, since it is placed
-   against the padding box, which the board's own padding does not narrow:
-   without this the cards come in for the drop mark and the band above them
-   does not, and the two no longer line up. */
+   It spans the pool's whole width, as the head and the board do: the board's
+   padding narrows the cards under it and not the padding box the band is
+   placed against, so the band needs to say nothing about the inset. */
 .snowflake-method-timeline-pool .snowflake-method-prose-controls {
 	inset-block-start: calc(
 		-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--snowflake-method-timeline-head-height))
 	);
-	inset-inline: var(--snowflake-method-timeline-pool-inset);
 }
 
 /* The corkboard draws its scroller out over its own padding at both ends,

@@ -90,10 +90,11 @@ describe('styles.css', () => {
 	 * A board that takes another surface's drop lights its whole field. The mark
 	 * must add no box: the cards stand flush with both of the board's edges, so
 	 * a border would move every one of them, and an inset shadow is painted
-	 * under them and shows only in the gaps between. An outline turned inward is
-	 * the one mark that lands on top while taking no room, and it rounds with
-	 * the radius. This shipped as an inset shadow, square and buried, until the
-	 * rule was read here.
+	 * under them and shows only in the gaps between. An outline turned inward
+	 * takes no room and rounds with the radius, but it is painted with the
+	 * board and not after it, so the room it draws in has to be made for it.
+	 * This shipped as an inset shadow, square and buried, until the rule was
+	 * read here.
 	 */
 	it('marks a board taking a whole drop without moving what stands on it', () => {
 		const rule = styles
@@ -108,34 +109,51 @@ describe('styles.css', () => {
 		expect(body).toContain('color-mix(in srgb, var(--interactive-accent) 8%, transparent)');
 		expect(body).not.toContain('border:');
 		expect(body).not.toContain('box-shadow');
-		// The mark also needs room of its own. A card is positioned and paints over
-		// an outline drawn on the edge it stands on, so the board stands in from the
-		// pool's edges and the cards come in with it.
-		const board = styles
-			.replace(/\/\*[\s\S]*?\*\//g, ' ')
-			.split('}')
-			.find((entry) =>
-				(entry.split('{')[0] ?? '')
-					.split(',')
-					.map((selector) => selector.trim())
-					.includes('.snowflake-method-timeline-pool .snowflake-method-corkboard'),
-			);
-		expect(board).toBeDefined();
-		expect((board ?? '').split('{')[1] ?? '').toContain('padding-inline:');
-		// The band is placed against the padding box, which that padding does not
-		// narrow, so it must be brought in by the same inset or it stops lining up
-		// with the cards it sits over.
-		const band = styles
-			.replace(/\/\*[\s\S]*?\*\//g, ' ')
-			.split('}')
-			.find((entry) =>
-				(entry.split('{')[0] ?? '')
-					.split(',')
-					.map((selector) => selector.trim())
-					.includes('.snowflake-method-timeline-pool .snowflake-method-prose-controls'),
-			);
-		expect(band).toBeDefined();
-		expect((band ?? '').split('{')[1] ?? '').toContain('inset-inline: var(--snowflake-method-timeline-pool-inset)');
+		// The mark needs room of its own, and in one column a card is given the
+		// canvas's whole width, so it is drawn under every card unless the board
+		// comes in. The board's padding is the only inset the pool keeps: the head,
+		// the band and the board each span the pool's whole width, so the rule under
+		// the name and the mark below it run to the same two ends, and the cards
+		// alone give up the room. Insetting the head and the band as well shipped,
+		// and left the rule an inset short of the mark at either end.
+		const declarations = (selector: string): string => {
+			const found = styles
+				.replace(/\/\*[\s\S]*?\*\//g, ' ')
+				.split('}')
+				.find((entry) =>
+					(entry.split('{')[0] ?? '')
+						.split(',')
+						.map((one) => one.trim())
+						.includes(selector),
+				);
+			expect(found, selector).toBeDefined();
+			return (found ?? '').split('{')[1] ?? '';
+		};
+		const inset = 'var(--snowflake-method-timeline-pool-inset)';
+		// The padding sets the card's width as much as the mark's room: a card in
+		// one column is given the canvas's whole width, so bringing the canvas down
+		// to a lane's scene width is what makes a scene the same size in the pool as
+		// in a lane, and sharing the rest between the sides is what centres it. The
+		// inset is the floor, so the mark keeps room where a card would not fit.
+		const board = declarations('.snowflake-method-timeline-pool .snowflake-method-corkboard');
+		expect(board).toContain(`padding-inline: max(`);
+		expect(board).toContain(inset);
+		expect(board).toContain('(100% - var(--snowflake-method-timeline-scene-width)) / 2');
+		for (const spanning of [
+			'.snowflake-method-timeline-pool-head',
+			'.snowflake-method-timeline-pool .snowflake-method-prose-controls',
+		]) {
+			expect(declarations(spanning), spanning).not.toMatch(/(?:margin|padding|inset)-inline(?:-(?:start|end))?:/);
+		}
+		// The count circle is smaller than the icon button standing above it at the
+		// same end, so it comes in by half the difference: what the eye pairs is the
+		// count with the plus, not the ring's edge with the button's. The button is
+		// the icon with Obsidian's own padding at either side, which is wider than
+		// this plugin's action size: measuring it from that token left the two
+		// middles two pixels apart.
+		expect(declarations('.snowflake-method-timeline-pool-count')).toContain(
+			'margin-inline-end: calc((var(--icon-s) + 2 * var(--size-2-3) - 1.25rem) / 2)',
+		);
 	});
 
 	it('names no element a browser would not know', () => {
