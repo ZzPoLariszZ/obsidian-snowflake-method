@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.2]
+
+### Fixed
+
+- The scene pool is one scene card wide, so a card there is the width it is on a timeline and a scene neither grows nor shrinks as it is dragged between them. Its search field, its name and its count, and the frame it lights for a scene coming back all run to the same two ends. The pool was widened in 0.20.1 to give that frame its room, which left the band standing out of line with the name below it, and the workspace folds the time column and the pool at the window width it did before that.
+- The pool's search field no longer writes what it searches inside itself, there being no room for the words beside its controls. Resting the pointer on it still says so, and a screen reader still reads it out.
+
 ## [0.20.1]
 
 ### Fixed
@@ -468,6 +475,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.20.2]
+
+### 修复
+
+- 场景池收窄到一张场景卡片的宽度，池中的卡片与时间线上的场景卡片一样宽，拖动时大小不再变化。搜索框、标题「场景池」和右侧的计数，以及拖回场景时出现的高亮框，左右两端如今都对齐。0.20.1 为了给高亮框留出空隙而加宽了场景池，结果搜索框与下方的标题错开了。工作区自动收起时间列与场景池的窗口宽度，也恢复为 0.20.1 之前的数值。
+- 场景池的搜索框内不再显示提示文字，因为一张卡片宽的工具栏已放不下这几个字。把指针停在搜索框上仍会说明它的用途，屏幕阅读器也仍会读出。
 
 ## [0.20.1]
 
