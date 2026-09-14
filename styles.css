@@ -12476,9 +12476,17 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-accent);
 }
 
-/* A board taking another surface's drop as a whole says so along its edge, empty or not. */
+/* A board taking another surface's drop as a whole says so along its edge,
+   empty or not, in the dashed accent the lanes and their cells already wear.
+   An outline rather than an inset shadow: the cards stand flush with both of
+   the board's edges by design, so a shadow is painted under them and shows
+   only in the gaps between, while an outline is drawn after them and follows
+   the radius into rounded corners. */
 .snowflake-method-corkboard.is-drop-target {
-	box-shadow: inset 0 0 0 2px var(--interactive-accent);
+	border-radius: var(--radius-m);
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 }
 
 .snowflake-method-corkboard-scroll {
@@ -13096,7 +13104,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-timeline-head-height: calc(
 		var(--snowflake-method-corkboard-action-size) + 2 * var(--size-4-2) + 3px + 1px
 	);
-	--snowflake-method-timeline-pool-width: 22rem;
+	/* The room the pool's board keeps inside its own edges. A card is laid out
+	   to the canvas, and the canvas reaches the board's edge, so a mark drawn
+	   there for a drop stands under the cards rather than beside them. This is
+	   the room it draws in. */
+	--snowflake-method-timeline-pool-inset: 0.5rem;
+	/* The cards' own room, with the inset standing on either side of it, so a
+	   card is as wide as it was before the inset was made for the mark. */
+	--snowflake-method-timeline-pool-width: calc(
+		22rem + 2 * var(--snowflake-method-timeline-pool-inset)
+	);
 	/* What the pool takes of the body's width, with the gap before it. */
 	--snowflake-method-timeline-pool-span: calc(
 		var(--snowflake-method-timeline-pool-width) + var(--snowflake-method-timeline-lane-gap)
@@ -14320,6 +14337,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-timeline-pool-count {
 	margin-inline-start: auto;
+}
+
+/* The board stands in from the pool's own edges, so the mark it takes for a
+   drop has somewhere to draw that no card reaches. The canvas comes in with
+   the padding and the cards are laid out to it, which is what keeps the frame
+   clear of them: an outline alone is not enough, since a card is positioned
+   and paints over one drawn on the edge it stands on. */
+.snowflake-method-timeline-pool .snowflake-method-corkboard {
+	padding-inline: var(--snowflake-method-timeline-pool-inset);
 }
 
 .snowflake-method-timeline-pool .snowflake-method-corkboard-host {

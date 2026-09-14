@@ -205,9 +205,10 @@ const FOLDS: readonly Fold[] = ['time', 'pool'];
 /**
  * The width, in rem, under which the workspace is narrow and folds both by
  * itself: below it the time column, one whole lane and the pool no longer
- * stand side by side.
+ * stand side by side. It follows the pool's own width, which carries the
+ * inset its drop mark draws in on either side of the cards.
  */
-const NARROW_MAX_REM = 84;
+const NARROW_MAX_REM = 85;
 
 const cardKey = (rowId: string, sceneId: string): string => joinKey(rowId, sceneId);
 const sceneOfKey = (key: string): string => splitKey(key)[1] ?? '';

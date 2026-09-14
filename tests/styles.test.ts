@@ -86,6 +86,44 @@ describe('styles.css', () => {
 	 * both and would have had to name the next. The plugin draws that heading
 	 * itself now, and every element the file names is one the browser knows.
 	 */
+	/**
+	 * A board that takes another surface's drop lights its whole field. The mark
+	 * must add no box: the cards stand flush with both of the board's edges, so
+	 * a border would move every one of them, and an inset shadow is painted
+	 * under them and shows only in the gaps between. An outline turned inward is
+	 * the one mark that lands on top while taking no room, and it rounds with
+	 * the radius. This shipped as an inset shadow, square and buried, until the
+	 * rule was read here.
+	 */
+	it('marks a board taking a whole drop without moving what stands on it', () => {
+		const rule = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.find((entry) => (entry.split('{')[0] ?? '').includes('.snowflake-method-corkboard.is-drop-target'));
+		expect(rule).toBeDefined();
+		const body = (rule ?? '').split('{')[1] ?? '';
+		expect(body).toContain('outline: 2px dashed var(--interactive-accent)');
+		expect(body).toContain('outline-offset: -2px');
+		expect(body).toContain('border-radius:');
+		expect(body).toContain('color-mix(in srgb, var(--interactive-accent) 8%, transparent)');
+		expect(body).not.toContain('border:');
+		expect(body).not.toContain('box-shadow');
+		// The mark also needs room of its own. A card is positioned and paints over
+		// an outline drawn on the edge it stands on, so the board stands in from the
+		// pool's edges and the cards come in with it.
+		const board = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.find((entry) =>
+				(entry.split('{')[0] ?? '')
+					.split(',')
+					.map((selector) => selector.trim())
+					.includes('.snowflake-method-timeline-pool .snowflake-method-corkboard'),
+			);
+		expect(board).toBeDefined();
+		expect((board ?? '').split('{')[1] ?? '').toContain('padding-inline:');
+	});
+
 	it('names no element a browser would not know', () => {
 		const bare = /(^|[\s>+~(,])([a-z][a-z\d]*(?:-[a-z\d]+)+)(?![-\w])/g;
 		const offenders = [
