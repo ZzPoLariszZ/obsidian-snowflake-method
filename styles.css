@@ -13409,7 +13409,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    words and the head's title scroll with the lane. */
 
 /* Every row shares one template, so the shared time column and the lanes
-   line up across the head and the times. */
+   line up across the head and the times. The gap is written as the shorthand
+   with no row gap, rather than naming the inline axis on its own: that
+   property reads as multicolumn to the plugin review, which calls the feature
+   only partly supported, and this is a grid's own gap. The row gap must stay
+   zero, or the axis would break between the times. */
 .snowflake-method-timeline-head,
 .snowflake-method-timeline-row {
 	position: relative;
@@ -13417,7 +13421,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	grid-template-columns:
 		var(--snowflake-method-timeline-time-width)
 		repeat(var(--snowflake-method-timeline-lanes), var(--snowflake-method-timeline-lane-width));
-	column-gap: var(--snowflake-method-timeline-lane-gap);
+	gap: 0 var(--snowflake-method-timeline-lane-gap);
 }
 
 /* Alone, a lane takes the field's width rather than its content's, and its

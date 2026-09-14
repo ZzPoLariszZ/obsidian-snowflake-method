@@ -142,6 +142,23 @@ describe('styles.css', () => {
 	 * with a blank inline-block standing before the first line instead, the
 	 * way the other writing plugins do, so the property never appears.
 	 */
+	/**
+	 * A `column-*` property reads as CSS multicolumn to the plugin review, which
+	 * calls that feature only partly supported, even where the property is a
+	 * grid's own gap and nothing multicolumn is meant. The `gap` shorthand says
+	 * the same thing without the word. Flagged against the timeline's shared row
+	 * template, where the gap between lanes had been written as `column-gap`.
+	 */
+	it('sets a grid gap without naming a multicolumn property', () => {
+		const named = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split(/[{}]/)
+			.flatMap((block) => block.split(';'))
+			.map((entry) => entry.trim())
+			.filter((entry) => /^(columns|column-gap|column-count|column-width|column-rule|column-span|column-fill)\s*:/.test(entry));
+		expect(named).toEqual([]);
+	});
+
 	it('indents a first line without naming the flagged property', () => {
 		const declarations = styles.replace(/\/\*[\s\S]*?\*\//g, ' ');
 		expect(declarations.includes('text-indent')).toBe(false);
