@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.3]
+
+### Fixed
+
+- The scene pool's band no longer says how many scenes a search or a filter leaves standing. The two numbers had no room beside the field and the controls, so they stacked one above the other and pushed the band out of line with the toolbar beside it. The count above the cards still says how many scenes the pool holds.
+- A group's name is trimmed to the width of the board it heads, and resting the pointer on a trimmed name shows the whole of it. A linked chapter's name is wider than the scene pool, so it ran out over the cards and past the pool's edge.
+
 ## [0.20.2]
 
 ### Fixed
@@ -475,6 +482,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.20.3]
+
+### 修复
+
+- 场景池的工具栏不再显示筛选结果的数量。一张卡片宽的工具栏放不下「1 / 5」这样的两个数字，它们会上下堆叠，把工具栏撑高，与旁边的工具栏错开。场景池标题右侧的计数仍会显示池中未放入时间线的场景数量。
+- 分组标题过长时会截断，并以省略号结尾，把指针停在标题上可以看到完整内容。此前标题不会截断，按关联稿件分组时，章节名比场景池还宽，会盖住卡片并超出场景池的边界。
 
 ## [0.20.2]
 
