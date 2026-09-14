@@ -14391,6 +14391,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	);
 }
 
+/* The band here is a field and five controls in one card's width, which leaves
+   nothing for the count of what a search or a filter has left standing: given
+   it, the two numbers stack one above the other and push the band taller than
+   the row it rides. The head says how many scenes the pool holds, and the
+   cards under it are the rest of the answer. */
+.snowflake-method-timeline-pool .snowflake-method-prose-state {
+	display: none;
+}
+
 /* The corkboard draws its scroller out over its own padding at both ends,
    to meet the band above and the frame below; in the pool the padding
    stays, so the first card stands as far below the head as the lanes' first

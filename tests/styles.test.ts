@@ -7,6 +7,21 @@ import styles from '../styles.css?raw';
  * rules the plugin review holds this file to are kept by these tests.
  */
 describe('styles.css', () => {
+	/** What one rule says, found by the whole selector it is written under. */
+	const declarations = (selector: string): string => {
+		const found = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.find((entry) =>
+				(entry.split('{')[0] ?? '')
+					.split(',')
+					.map((one) => one.trim())
+					.includes(selector),
+			);
+		expect(found, selector).toBeDefined();
+		return (found ?? '').split('{')[1] ?? '';
+	};
+
 	/**
 	 * `:has()` asks what an element contains, which the browser re-checks
 	 * broadly as the page changes. It was taken out once in 0.5.1 and grew
@@ -116,19 +131,6 @@ describe('styles.css', () => {
 		// the name and the mark below it run to the same two ends, and the cards
 		// alone give up the room. Insetting the head and the band as well shipped,
 		// and left the rule an inset short of the mark at either end.
-		const declarations = (selector: string): string => {
-			const found = styles
-				.replace(/\/\*[\s\S]*?\*\//g, ' ')
-				.split('}')
-				.find((entry) =>
-					(entry.split('{')[0] ?? '')
-						.split(',')
-						.map((one) => one.trim())
-						.includes(selector),
-				);
-			expect(found, selector).toBeDefined();
-			return (found ?? '').split('{')[1] ?? '';
-		};
 		const inset = 'var(--snowflake-method-timeline-pool-inset)';
 		// The padding sets the card's width as much as the mark's room: a card in
 		// one column is given the canvas's whole width, so bringing the canvas down
@@ -159,6 +161,18 @@ describe('styles.css', () => {
 		// middles two pixels apart.
 		expect(declarations('.snowflake-method-timeline-pool-count')).toContain(
 			'margin-inline-end: calc((var(--icon-s) + 2 * var(--size-2-3) - 1.25rem) / 2)',
+		);
+	});
+
+	/**
+	 * The pool's band holds a field and five controls in one card's width. The
+	 * count of what a search leaves standing has no room there: given it, the two
+	 * numbers stack one above the other and push the band taller than the row it
+	 * rides beside the workspace's own toolbar.
+	 */
+	it('leaves the pool band no count to stack', () => {
+		expect(declarations('.snowflake-method-timeline-pool .snowflake-method-prose-state')).toContain(
+			'display: none',
 		);
 	});
 
