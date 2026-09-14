@@ -678,16 +678,22 @@ export function renderCorkboard(
 					cls: 'snowflake-method-corkboard-group',
 					attr: { 'data-key': `head:${key}` },
 				});
-				head.createSpan({
+				const name = head.createSpan({
 					cls: 'snowflake-method-corkboard-group-label',
 					text: found.label,
 					attr: { role: 'heading', 'aria-level': '3' },
 				});
+				// A name wider than the board is trimmed to it, so the whole of one
+				// waits under the pointer, as a card's title does.
+				setTooltip(name, found.label);
 				head.createSpan({ cls: 'snowflake-method-corkboard-group-rule' });
 				heads.set(key, head);
 			}
 			const label = head.querySelector<HTMLElement>('.snowflake-method-corkboard-group-label');
-			if (label !== null && label.textContent !== found.label) label.setText(found.label);
+			if (label !== null && label.textContent !== found.label) {
+				label.setText(found.label);
+				setTooltip(label, found.label);
+			}
 			head.setCssStyles({
 				transform: `translate(0px, ${px(lay.offsets[line] ?? 0)})`,
 			});

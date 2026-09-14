@@ -165,6 +165,24 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A group head is its name and a rule across whatever the name leaves. The
+	 * name stood at its full width however narrow the board, so in the pool,
+	 * which is one card wide, a linked chapter's name ran out over the cards and
+	 * past the frame and pushed the rule off the end entirely.
+	 */
+	it('trims a group name to the board it heads', () => {
+		const label = declarations('.snowflake-method-corkboard-group-label');
+		expect(label).not.toContain('flex: 0 0');
+		expect(label).toContain('min-width: 0');
+		expect(label).toContain('white-space: nowrap');
+		expect(label).toContain('overflow: hidden');
+		expect(label).toContain('text-overflow: ellipsis');
+		// A stub of rule is kept, so a head trimmed to the last letter still reads
+		// as a head and not as a line of text that happens to stand above the cards.
+		expect(declarations('.snowflake-method-corkboard-group-rule')).toMatch(/min-width:\s*var\(/);
+	});
+
+	/**
 	 * The pool's band holds a field and five controls in one card's width. The
 	 * count of what a search leaves standing has no room there: given it, the two
 	 * numbers stack one above the other and push the band taller than the row it

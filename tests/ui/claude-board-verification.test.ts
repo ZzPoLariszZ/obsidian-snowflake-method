@@ -25,6 +25,9 @@ vi.mock('obsidian', async (importOriginal) => {
 	return {
 		...runtime,
 		Modal,
+		setTooltip: (element: { setAttribute(key: string, value: string): void }, text: string): void => {
+			element.setAttribute('data-tooltip', text);
+		},
 		ItemView: class {},
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
@@ -382,6 +385,20 @@ describe('corkboard correctness regressions', () => {
 		expect(fixture.button('corkboard-group-label').textContent).toBe('Hero');
 		fixture.external({ characters: [{ ...fixture.model().characters[0]!, name: 'New name' }] });
 		expect(fixture.button('corkboard-group-label').textContent).toBe('New name');
+		fixture.handle.dispose();
+	});
+
+	/**
+	 * A head's name is trimmed to the board's width, which in the scene pool is
+	 * one card, so the whole of it waits under the pointer as a card's title
+	 * does. A head outlives the name it was built with, so the tooltip has to
+	 * follow the name and not only the building.
+	 */
+	it('keeps the whole of a trimmed group name under the pointer', () => {
+		const fixture = board([scene('A', { characterPaths: [CHARACTER] })], { group: 'character' });
+		expect(fixture.button('corkboard-group-label').getAttribute('data-tooltip')).toBe('Hero');
+		fixture.external({ characters: [{ ...fixture.model().characters[0]!, name: 'New name' }] });
+		expect(fixture.button('corkboard-group-label').getAttribute('data-tooltip')).toBe('New name');
 		fixture.handle.dispose();
 	});
 

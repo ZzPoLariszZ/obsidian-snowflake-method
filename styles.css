@@ -12519,15 +12519,24 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	height: var(--snowflake-method-corkboard-head-height);
 }
 
+/* A name wider than the board is trimmed rather than run out over the cards
+   and past the frame, which is what a chapter's name did in the pool, where
+   the board is one card wide. The rule keeps a stub of itself either way, so
+   a trimmed head still reads as a head, and the pointer holds the whole name. */
 .snowflake-method-corkboard-group-label {
-	flex: 0 0 auto;
+	flex: 0 1 auto;
+	min-width: 0;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .snowflake-method-corkboard-group-rule {
 	flex: 1 1 auto;
+	min-width: var(--size-4-4);
 	height: 1px;
 	background-color: var(--background-modifier-border);
 }
