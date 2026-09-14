@@ -13,7 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - A cell's foot waits to be asked for. It used to stand in sight wherever no row was above it, which is one invitation beside a lone timeline and the same invitation repeated through every empty cell once timelines stand side by side. Every foot now keeps to itself until the pointer or the keyboard is in its own cell, or a drag needs it to land on, as a foot under rows already did, and the wording still follows the rows standing above it.
-- The scene pool's mark for a scene coming back is a rounded dashed frame with room of its own, in the accent the lanes and their cells already wear. It was an inset shadow, square at the corners and painted under the cards, and the cards stand against the board's edges, so the frame showed only in the gaps between them. The pool is wider by the room the frame draws in, so a card is as wide as it was.
+- The scene pool's mark for a scene coming back is a rounded dashed frame with room of its own, in the accent the lanes and their cells already wear. It was an inset shadow, square at the corners and painted under the cards, and the cards stand against the board's edges, so the frame showed only in the gaps between them. The pool is wider by the room the frame draws in, so a card is as wide as it was, and the workspace folds the time column and the pool by itself at a window one rem wider than before.
 - The gap between lanes is written with the gap shorthand rather than with the property that names the inline axis on its own, which the community review's browser-support check reports as multicolumn. The two set the same gap, and the rows keep none of their own, so nothing moves.
 
 ## [0.20.0]
@@ -474,7 +474,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### 修复
 
 - 单元格底部用于添加子描述的输入框，如今只在指针或键盘进入该单元格时才显示，拖动需要它作为落点时也会显示。此前只要单元格里还没有子描述，这个输入框就一直显示着。只有一条时间线时，这是一处恰当的提示，但多条时间线并排时，每个空单元格都同时显示同一句提示，反而成了干扰。如今不论上方有没有子描述，显示规则都一样，输入框中的提示文字仍按上方是否已有子描述而变化。
-- 把场景拖回场景池时的高亮框，如今是带圆角的虚线框，样式与时间线各列和单元格的一致，四周也留出了空隙。此前它是直角的内阴影，而且被卡片遮住，因为卡片正好紧贴面板两侧，所以只能从卡片之间的缝隙中看到它。场景池相应加宽，加宽的幅度正是让出的这部分空隙，因此卡片宽度不变。
+- 把场景拖回场景池时的高亮框，如今是带圆角的虚线框，样式与时间线各列和单元格的一致，四周也留出了空隙。此前它是直角的内阴影，而且被卡片遮住，因为卡片正好紧贴面板两侧，所以只能从卡片之间的缝隙中看到它。场景池相应加宽，加宽的幅度正是让出的这部分空隙，因此卡片宽度不变。场景池变宽之后，工作区自动收起时间列与场景池的窗口宽度也相应提高了 1rem。
 - 时间线各列之间的间距改用 gap 简写书写，不再使用单独指定列间距的那个属性，后者会被社区审核的浏览器兼容性检查判定为多栏布局。两种写法设定的间距完全相同，行与行之间原本也没有间距，因此显示效果没有任何变化。
 
 ## [0.20.0]
