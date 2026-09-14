@@ -14359,11 +14359,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 /* The corkboard places its band a strip's height above its own top, which
    in the pool is under the head: from there the band climbs the head's
-   height further to ride the strip's row beside the timeline's toolbar. */
+   height further to ride the strip's row beside the timeline's toolbar.
+   The band stands in by the same inset as the board, since it is placed
+   against the padding box, which the board's own padding does not narrow:
+   without this the cards come in for the drop mark and the band above them
+   does not, and the two no longer line up. */
 .snowflake-method-timeline-pool .snowflake-method-prose-controls {
 	inset-block-start: calc(
 		-1 * (var(--snowflake-method-tab-height, 2.75rem) + var(--snowflake-method-timeline-head-height))
 	);
+	inset-inline: var(--snowflake-method-timeline-pool-inset);
 }
 
 /* The corkboard draws its scroller out over its own padding at both ends,

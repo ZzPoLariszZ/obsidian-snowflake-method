@@ -122,6 +122,20 @@ describe('styles.css', () => {
 			);
 		expect(board).toBeDefined();
 		expect((board ?? '').split('{')[1] ?? '').toContain('padding-inline:');
+		// The band is placed against the padding box, which that padding does not
+		// narrow, so it must be brought in by the same inset or it stops lining up
+		// with the cards it sits over.
+		const band = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.find((entry) =>
+				(entry.split('{')[0] ?? '')
+					.split(',')
+					.map((selector) => selector.trim())
+					.includes('.snowflake-method-timeline-pool .snowflake-method-prose-controls'),
+			);
+		expect(band).toBeDefined();
+		expect((band ?? '').split('{')[1] ?? '').toContain('inset-inline: var(--snowflake-method-timeline-pool-inset)');
 	});
 
 	it('names no element a browser would not know', () => {
