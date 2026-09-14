@@ -853,9 +853,8 @@ describe('the times and the lanes', () => {
 			fixture.cell(timeId, timelineId).querySelector('.snowflake-method-timeline-subrow.is-trailing')!.querySelector('textarea')!.getAttribute('placeholder');
 		expect(foot('time-2', 'a')).toBe('timeline.subrow.placeholderMore');
 		expect(foot('time-1', 'b')).toBe('timeline.subrow.placeholder');
-		// A foot under rows is marked so the stylesheet can keep it out of the way; the first foot stays.
-		expect(fixture.cell('time-2', 'a').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(true);
-		expect(fixture.cell('time-1', 'b').querySelector('.snowflake-method-timeline-subrow.is-trailing')!.classes.has('is-more')).toBe(false);
+		// Only the wording follows the rows. The foot itself carries no mark: the
+		// stylesheet keeps every one of them out of the way alike.
 	});
 
 	it('keeps where the lanes stand, so a turn away and back finds them there', async () => {

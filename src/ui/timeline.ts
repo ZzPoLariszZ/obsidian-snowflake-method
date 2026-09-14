@@ -1483,10 +1483,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (cell.trailing !== null) {
 			cell.trailing.el.toggleClass('is-hidden', readOnly);
 			cell.trailing.input.disabled = readOnly;
-			// The foot invites the first sub-description, then more of them; under
-			// rows it keeps out of the way until the row is hovered or a drag wants it.
+			// The foot invites the first sub-description, then more of them. Keeping it
+			// out of the way until its own cell is asked for is the stylesheet's work,
+			// and it does that for every foot alike, so nothing is marked here.
 			const more = time !== null && time.rows.length + cell.pending.length > 0;
-			cell.trailing.el.toggleClass('is-more', more);
 			cell.trailing.input.setAttribute('placeholder', t(more ? 'timeline.subrow.placeholderMore' : 'timeline.subrow.placeholder'));
 		}
 		if (cell.add !== null) {

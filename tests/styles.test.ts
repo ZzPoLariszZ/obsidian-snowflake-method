@@ -31,22 +31,31 @@ describe('styles.css', () => {
 	});
 
 	/**
-	 * The workspace marks a cell's foot `is-more` only where rows already stand
-	 * above it, so that the first foot of an empty cell keeps its place in
-	 * sight and asks for the first words. A rule that dims every foot says the
-	 * opposite and leaves an empty cell showing nothing but its axis, which is
-	 * what shipped until the class was read here.
+	 * A cell's foot keeps to itself until its own cell is asked for. It used to
+	 * stay in sight wherever no row stood above it, which is one invitation
+	 * beside a lone lane but the same invitation repeated through every empty
+	 * cell once lanes stand side by side, so every foot now waits alike. Each
+	 * way of asking must bring it back, or the foot a row drag lands on and the
+	 * foot a scene is dropped onto would both be invisible while wanted.
 	 */
-	it('keeps the first foot of a cell in sight, dimming only the feet under rows', () => {
-		const dimmed = styles
-			.replace(/\/\*[\s\S]*?\*\//g, ' ')
-			.split('}')
-			.filter((rule) => /opacity:\s*0\s*;/.test(rule))
-			.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
-			.map((selector) => selector.trim())
-			.filter((selector) => selector.includes('snowflake-method-timeline-subrow-input'));
-		expect(dimmed.length).toBeGreaterThan(0);
-		expect(dimmed.filter((selector) => !selector.includes('.is-more'))).toEqual([]);
+	it('keeps every foot quiet until its own cell is asked for, and brings it back', () => {
+		const timeline = styles.slice(styles.indexOf('/* == Timeline '));
+		const feet = (opacity: string): string[] =>
+			timeline
+				.replace(/\/\*[\s\S]*?\*\//g, ' ')
+				.split('}')
+				.filter((rule) => new RegExp(`opacity:\\s*${opacity}\\s*;`).test(rule))
+				.flatMap((rule) => (rule.split('{')[0] ?? '').split(','))
+				.map((selector) => selector.trim())
+				.filter((selector) => selector.includes('snowflake-method-timeline-subrow-input'));
+		// Nothing narrows the dimming to some feet and not others.
+		expect(feet('0')).toEqual([
+			'.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input',
+		]);
+		const shown = feet('1').join(' ');
+		for (const asking of [':hover', ':focus-within', '.is-time-drag', '.is-row-drag', '.is-scene-drag']) {
+			expect(shown).toContain(asking);
+		}
 	});
 
 	/** The selectors must also beat the hiding rules; a media query adds no specificity. */
@@ -64,7 +73,7 @@ describe('styles.css', () => {
 			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-time-more',
 			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-seam-add',
 			'.snowflake-method-timeline .clickable-icon.snowflake-method-timeline-cell-add',
-			'.snowflake-method-timeline-subrow.is-trailing.is-more textarea.snowflake-method-timeline-subrow-input',
+			'.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input',
 			'.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty',
 		]);
 	});
