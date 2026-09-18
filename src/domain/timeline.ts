@@ -16,13 +16,17 @@
  */
 
 import { isEntityRef, type EntityRef } from './foreshadowing';
-
-export const SCENE_PRESENTATIONS = ['flat', 'stack'] as const;
-export type ScenePresentation = (typeof SCENE_PRESENTATIONS)[number];
-
-export function isScenePresentation(value: unknown): value is ScenePresentation {
-	return (SCENE_PRESENTATIONS as readonly unknown[]).includes(value);
-}
+import {
+	insertedBefore,
+	isScenePresentation,
+	movedBefore,
+	readSceneRow,
+	sameIds,
+	scenesWith,
+	uniqueIds,
+	type ScenePresentation,
+	type SceneRow,
+} from './scene-rows';
 
 export const TIMELINE_CARD_STYLES = ['compact', 'standard', 'extended'] as const;
 export type TimelineCardStyle = (typeof TIMELINE_CARD_STYLES)[number];
@@ -36,14 +40,12 @@ export function isTimelineBindingKind(kind: string): boolean {
 	return kind !== 'scene' && kind !== 'time';
 }
 
-/** One sub-description of a time on one timeline, with the scenes placed on it. */
-export interface TimelineRow {
-	readonly id: string;
-	/** What happens, changes or holds at that time; may be empty. */
-	readonly text: string;
-	/** Scene ids in the row's own order; a scene stands once in a whole timeline. */
-	readonly scenes: readonly string[];
-}
+/**
+ * One sub-description of a time on one timeline, with the scenes placed on
+ * it: what happens, changes or holds at that time, and scene ids in the row's
+ * own order, a scene standing once in a whole timeline.
+ */
+export type TimelineRow = SceneRow;
 
 /** One time note on one timeline: the rows the timeline writes under it. */
 export interface TimelineTime {
@@ -165,51 +167,6 @@ const sameRef = (left: EntityRef | null, right: EntityRef | null): boolean =>
 		left.id === right.id &&
 		left.name === right.name);
 
-/** The non-empty strings of a list, each once, in the order first met. */
-function uniqueIds(values: unknown): string[] {
-	if (!Array.isArray(values)) return [];
-	const seen = new Set<string>();
-	const kept: string[] = [];
-	for (const value of values) {
-		if (!nonEmptyString(value) || seen.has(value)) continue;
-		seen.add(value);
-		kept.push(value);
-	}
-	return kept;
-}
-
-const sameList = (left: readonly string[], right: readonly string[]): boolean =>
-	left.length === right.length && left.every((value, index) => value === right[index]);
-
-/**
- * One row read leniently: it needs an id the timeline has not used, its text
- * reads as empty where it is not a string, and a scene placed earlier in the
- * timeline keeps its first place.
- */
-function readRow(
-	value: unknown,
-	rowIds: Set<string>,
-	placed: Set<string>,
-): TimelineRow | null {
-	if (typeof value !== 'object' || value === null) return null;
-	const entry = value as Record<string, unknown>;
-	if (!nonEmptyString(entry.id) || rowIds.has(entry.id)) return null;
-	rowIds.add(entry.id);
-	const scenes: string[] = [];
-	if (Array.isArray(entry.scenes)) {
-		for (const scene of entry.scenes) {
-			if (!nonEmptyString(scene) || placed.has(scene)) continue;
-			placed.add(scene);
-			scenes.push(scene);
-		}
-	}
-	return {
-		id: entry.id,
-		text: typeof entry.text === 'string' ? entry.text : '',
-		scenes,
-	};
-}
-
 /**
  * One timeline read leniently: the id and the name must hold, and the rest
  * is read as far as it goes. A binding of a kind a timeline may not follow
@@ -243,7 +200,7 @@ export function readTimeline(value: unknown): Timeline | null {
 			}
 			if (!Array.isArray(time.rows)) continue;
 			for (const raw of time.rows) {
-				const row = readRow(raw, rowIds, placed);
+				const row = readSceneRow(raw, rowIds, placed);
 				if (row !== null) rows.push(row);
 			}
 		}
@@ -415,24 +372,6 @@ export function resolvedTimeOrder(
 }
 
 // --- mutations -------------------------------------------------------------
-
-/**
- * A list with one entry moved in front of another, or to the end when no
- * anchor is named or the one named has gone since the surface was painted.
- * Null where the entry is not in the list, or already stands there.
- */
-function movedBefore(
-	list: readonly string[],
-	id: string,
-	beforeId: string | null,
-): string[] | null {
-	if (!list.includes(id) || beforeId === id) return null;
-	const rest = list.filter((candidate) => candidate !== id);
-	const at = beforeId === null ? -1 : rest.indexOf(beforeId);
-	const next =
-		at === -1 ? [...rest, id] : [...rest.slice(0, at), id, ...rest.slice(at)];
-	return sameList(next, list) ? null : next;
-}
 
 function replaceTimeline(
 	held: TimelineDocument,
@@ -610,7 +549,7 @@ export function setViewTimelines(
 ): TimelineDocument | null {
 	const next = uniqueIds(timelineIds);
 	return replaceView(held, viewId, (view) =>
-		sameList(view.timelines, next) ? null : { ...view, timelines: next }, now);
+		sameIds(view.timelines, next) ? null : { ...view, timelines: next }, now);
 }
 
 /** One of a view's timelines moved in front of another, or to the end. */
@@ -636,7 +575,7 @@ export function setViewTimeOrder(
 ): TimelineDocument | null {
 	const next = uniqueIds(timeIds);
 	return replaceView(held, viewId, (view) =>
-		sameList(view.timeOrder, next) ? null : { ...view, timeOrder: next }, now);
+		sameIds(view.timeOrder, next) ? null : { ...view, timeOrder: next }, now);
 }
 
 export function setViewPresentation(
@@ -752,16 +691,6 @@ function rowPlace(
 	return null;
 }
 
-/** Rows with one put before the anchor, or at the end when the anchor is not among them. */
-function rowsWith(
-	rows: readonly TimelineRow[],
-	row: TimelineRow,
-	beforeRowId: string | null,
-): TimelineRow[] {
-	const at = beforeRowId === null ? -1 : rows.findIndex((candidate) => candidate.id === beforeRowId);
-	return at === -1 ? [...rows, row] : [...rows.slice(0, at), row, ...rows.slice(at)];
-}
-
 /**
  * A new row under a time, before a neighbour or at the end, the time joining
  * the timeline on the way when it was absent: a view's grid is every time
@@ -782,7 +711,7 @@ export function addTimelineRow(
 		const scenes = uniqueIds(row.scenes ?? []);
 		const cleared = withoutScenes(timeline, new Set(scenes));
 		const time = cleared.times.find((candidate) => candidate.timeId === timeId);
-		const rows = rowsWith(time?.rows ?? [], { id: row.id, text: row.text, scenes }, beforeRowId);
+		const rows = insertedBefore(time?.rows ?? [], { id: row.id, text: row.text, scenes }, beforeRowId);
 		return withRows(cleared, timeId, rows);
 	}, now);
 }
@@ -821,7 +750,7 @@ export function moveTimelineRow(
 		const sourceRows = place.time.rows.filter((row) => row !== place.row);
 		const taken = withRows(timeline, place.time.timeId, sourceRows);
 		const target = taken.times.find((candidate) => candidate.timeId === toTimeId);
-		const rows = rowsWith(target?.rows ?? [], place.row, beforeRowId);
+		const rows = insertedBefore(target?.rows ?? [], place.row, beforeRowId);
 		if (
 			place.time.timeId === toTimeId &&
 			rows.length === place.time.rows.length &&
@@ -870,14 +799,9 @@ export function placeTimelineScene(
 		const cleared = withoutScenes(timeline, new Set([sceneId]));
 		const place = rowPlace(cleared, rowId);
 		if (place === null) return null;
-		const anchor = beforeSceneId === sceneId ? null : beforeSceneId;
-		const at = anchor === null ? -1 : place.row.scenes.indexOf(anchor);
-		const scenes =
-			at === -1
-				? [...place.row.scenes, sceneId]
-				: [...place.row.scenes.slice(0, at), sceneId, ...place.row.scenes.slice(at)];
+		const scenes = scenesWith(place.row.scenes, sceneId, beforeSceneId);
 		const before = rowPlace(timeline, rowId);
-		if (before !== null && sameList(before.row.scenes, scenes)) return null;
+		if (before !== null && sameIds(before.row.scenes, scenes)) return null;
 		const rows = place.time.rows.map((row) => (row === place.row ? { ...row, scenes } : row));
 		return withRows(cleared, place.time.timeId, rows);
 	}, now);

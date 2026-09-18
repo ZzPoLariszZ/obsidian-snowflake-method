@@ -21,6 +21,7 @@ export * from './plot-fields';
 export * from './rank';
 export * from './revisions';
 export * from './scene';
+export * from './scene-rows';
 export * from './sensitive-words';
 export * from './sentences';
 export * from './steps';
