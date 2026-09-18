@@ -153,19 +153,32 @@ interface TrailingRow {
 	input: HTMLTextAreaElement;
 }
 
-/** One lane's cell in a time row: the axis, and the rows when the lane holds the time. */
+/**
+ * What stands in a lane's cell: the rows when the lane holds the time, the
+ * foot where the next is typed, and the rows typed and not yet read back.
+ * The box itself, its axis and its pluses are the workspace's.
+ */
+interface LaneCell {
+	timelineId: string;
+	timeId: string;
+	el: HTMLElement;
+	/** The rows' box, while the lane holds the time; null while it does not. */
+	rows: HTMLElement | null;
+	trailing: TrailingRow | null;
+	pending: PendingRow[];
+	subrows: Map<string, SubrowEntry>;
+}
+
+/** One lane's cell in a time row: the axis, the pluses, and what stands in it. */
 interface CellEntry {
 	timelineId: string;
 	el: HTMLElement;
 	axis: HTMLElement;
-	present: boolean;
-	rows: HTMLElement | null;
-	trailing: TrailingRow | null;
-	pending: PendingRow[];
+	/** The plus that puts the time on the lane, while the lane lacks it. */
 	add: HTMLButtonElement | null;
 	/** The plus on the rule above the cell, which puts a time on this lane before the row. */
 	seamAdd: HTMLButtonElement;
-	subrows: Map<string, SubrowEntry>;
+	body: LaneCell;
 }
 
 /** One shared time row: the time's own cell, and a cell per lane. */
@@ -539,9 +552,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let mark: { el: HTMLElement; cls: string } | null = null;
 	/** What the last dragover worked out, which the drop then uses: the time or the row a drop lands before. */
 	let timeLanding: { timeId: string | null } | null = null;
-	let rowLanding: { cell: CellEntry; rowId: string | null } | null = null;
+	let rowLanding: { cell: LaneCell; rowId: string | null } | null = null;
 	/** Where a scene would land: a row and the scene it goes before, or the trailing row for a row of its own. */
-	let sceneLanding: { cell: CellEntry; rowId: string | null; beforeSceneId: string | null } | null = null;
+	let sceneLanding: { cell: LaneCell; rowId: string | null; beforeSceneId: string | null } | null = null;
 	/** Measured once per drag, dropped on scroll, resize, paint and drag end. */
 	let rects: {
 		rows: DOMRect[] | null;
@@ -1234,7 +1247,16 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		el.addEventListener('click', () => {
 			activate(timelineId);
 		});
-		const cell: CellEntry = { timelineId, el, axis, seamAdd, present: false, rows: null, trailing: null, pending: [], add: null, subrows: new Map() };
+		return { timelineId, el, axis, seamAdd, add: null, body: mountCell(el, timelineId, row.timeId) };
+	};
+
+	/** Every cell's body by lane and time, so words given back find their foot without walking the rows of times. */
+	const laneCells = new Map<string, LaneCell>();
+
+	/** What stands in a cell, mounted on the box the workspace made for it, where a dragged row or scene lands. */
+	const mountCell = (el: HTMLElement, timelineId: string, timeId: string): LaneCell => {
+		const cell: LaneCell = { timelineId, timeId, el, rows: null, trailing: null, pending: [], subrows: new Map() };
+		laneCells.set(footKey(timelineId, timeId), cell);
 		// A row lands in a cell of its own lane, before the sub-row under the
 		// pointer or at the foot; another lane's cell says no, as a cursor.
 		// The mark moves from dragover alone: Chromium fires dragleave at
@@ -1263,7 +1285,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		});
 		el.addEventListener('drop', (event) => {
 			if (drag?.kind === 'scene') {
-				sceneDrop(cell, row.timeId, event);
+				sceneDrop(cell, event);
 				return;
 			}
 			const dragged = event.dataTransfer?.getData(TIMELINE_ROW_DRAG_TYPE) ?? '';
@@ -1274,9 +1296,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				? rowLanding.rowId
 				: (subrowLanding(cell, drag.rowId, event.clientY)?.rowId ?? null);
 			clearMark();
-			const { timelineId, rowId } = drag;
+			const { timelineId: draggedLane, rowId } = drag;
 			void enqueue(async () => {
-				await controls.bridge().moveRow(timelineId, rowId, row.timeId, beforeRowId);
+				await controls.bridge().moveRow(draggedLane, rowId, cell.timeId, beforeRowId);
 			});
 		});
 		return cell;
@@ -1288,7 +1310,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * cell has no rows to land among.
 	 */
 	const subrowLanding = (
-		cell: CellEntry,
+		cell: LaneCell,
 		draggedRowId: string,
 		clientY: number,
 	): { el: HTMLElement; rowId: string | null } | null => {
@@ -1314,8 +1336,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		return cell.trailing === null ? null : { el: cell.trailing.el, rowId: null };
 	};
 
-	/** Takes a cell's inner parts down: the rows and their cards, or the plus. */
-	const clearCell = (cell: CellEntry): void => {
+	/** Takes down what stands in a cell: the rows, their cards, and the foot. */
+	const clearCell = (cell: LaneCell): void => {
 		for (const rowId of [...cell.subrows.keys()]) unmountSubrow(cell, rowId);
 		for (const pending of cell.pending) pending.el.remove();
 		cell.pending = [];
@@ -1323,28 +1345,56 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cell.trailing = null;
 		cell.rows?.remove();
 		cell.rows = null;
-		cell.add?.remove();
-		cell.add = null;
+	};
+
+	/** A cell's body gone with its box: what stood in it comes down, and the lanes forget it. */
+	const unmountLaneCell = (cell: LaneCell): void => {
+		clearCell(cell);
+		laneCells.delete(footKey(cell.timelineId, cell.timeId));
 	};
 
 	const unmountCell = (row: RowEntry, timelineId: string): void => {
 		const cell = row.cells.get(timelineId);
 		if (cell === undefined) return;
-		clearCell(cell);
+		unmountLaneCell(cell.body);
+		cell.add?.remove();
+		cell.add = null;
 		cell.el.remove();
 		row.cells.delete(timelineId);
+	};
+
+	/**
+	 * What stands in a cell brought level with the lane: the rows' box and the
+	 * foot while the lane holds the time, and nothing while it does not.
+	 */
+	const dressLaneCell = (cell: LaneCell, time: TimelineTime | null, lane: Timeline): void => {
+		if (time === null) {
+			if (cell.rows !== null) clearCell(cell);
+			return;
+		}
+		if (cell.rows === null) {
+			cell.rows = cell.el.createDiv({ cls: 'snowflake-method-timeline-rows' });
+			cell.trailing = buildTrailing(cell);
+		}
+		if (cell.trailing !== null) {
+			cell.trailing.el.toggleClass('is-hidden', readOnly);
+			cell.trailing.input.disabled = readOnly;
+			// The foot invites the first sub-description, then more of them. Keeping it
+			// out of the way until its own cell is asked for is the stylesheet's work,
+			// and it does that for every foot alike, so nothing is marked here.
+			const more = time.rows.length + cell.pending.length > 0;
+			cell.trailing.input.setAttribute('placeholder', t(more ? 'timeline.subrow.placeholderMore' : 'timeline.subrow.placeholder'));
+		}
+		paintSubrows(cell, time, lane);
 	};
 
 	const dressCell = (row: RowEntry, cell: CellEntry, lane: Timeline): void => {
 		const time = laneCell(lane, row.timeId);
 		const present = time !== null;
-		if (present !== cell.present || (present ? cell.rows === null : cell.add === null)) {
-			clearCell(cell);
-			cell.present = present;
-			if (present) {
-				cell.rows = cell.el.createDiv({ cls: 'snowflake-method-timeline-rows' });
-				cell.trailing = buildTrailing(cell, row.timeId);
-			} else {
+		if (!present) {
+			// What stood in the cell comes down before the plus takes its place.
+			dressLaneCell(cell.body, null, lane);
+			if (cell.add === null) {
 				const add = cell.el.createEl('button', {
 					cls: 'clickable-icon snowflake-method-timeline-cell-add',
 					attr: { type: 'button' },
@@ -1357,6 +1407,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 				});
 				cell.add = add;
 			}
+		} else if (cell.add !== null) {
+			cell.add.remove();
+			cell.add = null;
 		}
 		cell.el.toggleClass('is-present', present);
 		cell.el.toggleClass('is-absent', !present);
@@ -1368,27 +1421,18 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			setTooltip(cell.seamAdd, insert);
 		}
 		cell.seamAdd.disabled = readOnly;
-		if (cell.trailing !== null) {
-			cell.trailing.el.toggleClass('is-hidden', readOnly);
-			cell.trailing.input.disabled = readOnly;
-			// The foot invites the first sub-description, then more of them. Keeping it
-			// out of the way until its own cell is asked for is the stylesheet's work,
-			// and it does that for every foot alike, so nothing is marked here.
-			const more = time !== null && time.rows.length + cell.pending.length > 0;
-			cell.trailing.input.setAttribute('placeholder', t(more ? 'timeline.subrow.placeholderMore' : 'timeline.subrow.placeholder'));
-		}
 		if (cell.add !== null) {
 			const label = t('timeline.cell.addTime', { timeline: lane.name });
 			cell.add.setAttribute('aria-label', label);
 			setTooltip(cell.add, label);
 			cell.add.disabled = readOnly;
 		}
-		if (time !== null) paintSubrows(cell, time, lane);
+		if (time !== null) dressLaneCell(cell.body, time, lane);
 	};
 
 	// -- The sub-rows of a cell ----------------------------------------------
 
-	const buildSubrow = (cell: CellEntry, rowId: string): SubrowEntry => {
+	const buildSubrow = (cell: LaneCell, rowId: string): SubrowEntry => {
 		const rows = cell.rows;
 		if (rows === null) throw new Error('A sub-row needs the rows of a present cell.');
 		const el = rows.createDiv({
@@ -1530,7 +1574,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 */
 	const giveBack = (timelineId: string, timeId: string, words: string): void => {
 		const key = footKey(timelineId, timeId);
-		const foot = timeRows.get(timeId)?.cells.get(timelineId)?.trailing?.input;
+		const foot = laneCells.get(footKey(timelineId, timeId))?.trailing?.input;
 		const shown = foot !== undefined && foot.isConnected ? foot : null;
 		// A lane the document no longer holds has no foot for the words to come
 		// back to, at this paint or any after it. Put by under its key they
@@ -1585,7 +1629,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		}
 	};
 
-	const buildTrailing = (cell: CellEntry, timeId: string): TrailingRow => {
+	const buildTrailing = (cell: LaneCell): TrailingRow => {
+		const timeId = cell.timeId;
 		const rows = cell.rows;
 		if (rows === null) throw new Error('A trailing row needs the rows of a present cell.');
 		const el = rows.createDiv({ cls: 'snowflake-method-timeline-subrow is-trailing' });
@@ -1618,7 +1663,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			if (event.isComposing) return;
 			if (event.key === 'Enter' && Keymap.isModifier(event, 'Mod')) {
 				event.preventDefault();
-				commitTrailing(cell, timeId, input);
+				commitTrailing(cell, input);
 			} else if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopPropagation();
@@ -1645,7 +1690,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			fitWords(input);
 		});
 		input.addEventListener('blur', () => {
-			commitTrailing(cell, timeId, input);
+			commitTrailing(cell, input);
 		});
 		return { el, input };
 	};
@@ -1658,7 +1703,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * refused or failed gives the words back to the cell's foot, ahead of
 	 * whatever was typed there since, where they are kept until written.
 	 */
-	const commitTrailing = (cell: CellEntry, timeId: string, input: HTMLTextAreaElement): void => {
+	const commitTrailing = (cell: LaneCell, input: HTMLTextAreaElement): void => {
+		const timeId = cell.timeId;
 		const words = input.value.trim();
 		if (words.length === 0 || readOnly) return;
 		const key = footKey(cell.timelineId, timeId);
@@ -1761,7 +1807,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		return placeName(timelineId, time?.timeId ?? null);
 	};
 
-	const beginRowEdit = (cell: CellEntry, entry: SubrowEntry): void => {
+	const beginRowEdit = (cell: LaneCell, entry: SubrowEntry): void => {
 		if (readOnly || entry.editing) return;
 		const row = rowOfEntry(cell, entry);
 		entry.editing = true;
@@ -1840,7 +1886,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * even left as it was. Words already on their way, or already in the
 	 * file, are not sent again.
 	 */
-	const commitRowEdit = (cell: CellEntry, entry: SubrowEntry, refocus: boolean): void => {
+	const commitRowEdit = (cell: LaneCell, entry: SubrowEntry, refocus: boolean): void => {
 		if (!entry.editing) return;
 		const words = entry.input.value;
 		endRowEdit(entry, refocus);
@@ -1864,13 +1910,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	};
 
 	/** The time a row stands under on its lane, as the lane is now. */
-	const timeOfRow = (cell: CellEntry, rowId: string): TimelineTime | null => {
+	const timeOfRow = (cell: LaneCell, rowId: string): TimelineTime | null => {
 		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
 		return lane?.times.find((time) => time.rows.some((row) => row.id === rowId)) ?? null;
 	};
 
 	/** The stored row an entry stands for, from the lane as it is now. */
-	const rowOfEntry = (cell: CellEntry, entry: SubrowEntry): TimelineRow | null => {
+	const rowOfEntry = (cell: LaneCell, entry: SubrowEntry): TimelineRow | null => {
 		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
 		for (const time of lane?.times ?? []) {
 			const row = time.rows.find((candidate) => candidate.id === entry.rowId);
@@ -1917,7 +1963,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		})).open();
 	};
 
-	const openSubrowMenu = (cell: CellEntry, entry: SubrowEntry, event: MouseEvent): void => {
+	const openSubrowMenu = (cell: LaneCell, entry: SubrowEntry, event: MouseEvent): void => {
 		const lane = lanes.find((candidate) => candidate.id === cell.timelineId);
 		const time = lane?.times.find((candidate) => candidate.rows.some((row) => row.id === entry.rowId));
 		if (lane === undefined || time === undefined) return;
@@ -2003,10 +2049,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * and takes its sub-row over as it stands: its cards, an open edit and
 	 * the caret in it. What no cell takes is swept once the rows are painted.
 	 */
-	const parkedSubrows = new Map<string, { cell: CellEntry; entry: SubrowEntry }>();
+	const parkedSubrows = new Map<string, { cell: LaneCell; entry: SubrowEntry }>();
 	const parkKey = (timelineId: string, rowId: string): string => joinKey(timelineId, rowId);
 
-	const unmountSubrow = (cell: CellEntry, rowId: string): void => {
+	const unmountSubrow = (cell: LaneCell, rowId: string): void => {
 		const entry = cell.subrows.get(rowId);
 		if (entry === undefined) return;
 		entry.el.remove();
@@ -2019,7 +2065,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * taken down, moved into this cell: the one it left is painted either
 	 * before this one, and parked the sub-row, or after, and still holds it.
 	 */
-	const adoptSubrow = (cell: CellEntry, rowId: string): SubrowEntry | null => {
+	const adoptSubrow = (cell: LaneCell, rowId: string): SubrowEntry | null => {
 		const rows = cell.rows;
 		if (rows === null) return null;
 		const key = parkKey(cell.timelineId, rowId);
@@ -2027,10 +2073,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		if (entry !== null) {
 			parkedSubrows.delete(key);
 		} else {
-			for (const timeRow of timeRows.values()) {
-				const holder = timeRow.cells.get(cell.timelineId);
-				const held = holder?.subrows.get(rowId);
-				if (holder === undefined || holder === cell || held === undefined) continue;
+			for (const holder of laneCells.values()) {
+				if (holder.timelineId !== cell.timelineId || holder === cell) continue;
+				const held = holder.subrows.get(rowId);
+				if (held === undefined) continue;
 				holder.subrows.delete(rowId);
 				entry = held;
 				break;
@@ -2078,7 +2124,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		entry.label.toggleClass('is-empty', words.length === 0);
 	};
 
-	const dressSubrow = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+	const dressSubrow = (cell: LaneCell, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
 		// An edit in flight keeps its input and its words; the paint dresses around it.
 		if (!entry.editing) dressLabel(entry, row.text);
 		entry.label.disabled = readOnly;
@@ -2089,7 +2135,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		paintPlacements(cell, entry, row, lane);
 	};
 
-	const paintSubrows = (cell: CellEntry, time: TimelineTime, lane: Timeline): void => {
+	const paintSubrows = (cell: LaneCell, time: TimelineTime, lane: Timeline): void => {
 		const rows = cell.rows;
 		if (rows === null) return;
 		const wanted = time.rows.map((row) => row.id);
@@ -2151,7 +2197,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const placementEl = (entry: SubrowEntry, key: string): HTMLElement | undefined =>
 		deck.cards.get(key)?.el ?? entry.missing.get(sceneOfKey(key));
 
-	const paintPlacements = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+	const paintPlacements = (cell: LaneCell, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
 		if (presentation === 'stack') {
 			paintStack(cell, entry, row, lane);
 			return;
@@ -2202,7 +2248,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- The scenes of a sub-row as a stack ------------------------------------
 
-	const buildStack = (cell: CellEntry, entry: SubrowEntry): StackEntry => {
+	const buildStack = (cell: LaneCell, entry: SubrowEntry): StackEntry => {
 		const el = entry.scenes.createDiv({
 			cls: 'snowflake-method-timeline-stack',
 			attr: { 'data-total': '0' },
@@ -2265,7 +2311,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * kept within the cards the row has; the rest are the count behind it.
 	 * Only the card in front is mounted, so only it can be dragged.
 	 */
-	const paintStack = (cell: CellEntry, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
+	const paintStack = (cell: LaneCell, entry: SubrowEntry, row: TimelineRow, lane: Timeline): void => {
 		let stack = entry.stack;
 		if (stack === null) {
 			// The cards dealt flat come down; the stack deals one of them again.
@@ -2342,12 +2388,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	/** The lanes told apart while a row or a scene is dragged: the one dragged over, and the ones locked out. */
 	const paintDragPhase = (): void => {
-		for (const entry of timeRows.values()) {
-			for (const cell of entry.cells.values()) {
-				const state = cellDragState(drag, cell.timelineId);
-				cell.el.toggleClass('is-drag-lane', state === 'lane');
-				cell.el.toggleClass('is-locked-out', state === 'locked');
-			}
+		for (const cell of laneCells.values()) {
+			const state = cellDragState(drag, cell.timelineId);
+			cell.el.toggleClass('is-drag-lane', state === 'lane');
+			cell.el.toggleClass('is-locked-out', state === 'locked');
 		}
 		for (const entry of laneHeads.values()) {
 			const state = cellDragState(drag, entry.id);
@@ -2447,7 +2491,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	/** The sub-row under the pointer, from the event's own target: a stored row, the trailing one, or none. */
 	const subrowUnder = (
-		cell: CellEntry,
+		cell: LaneCell,
 		target: EventTarget | null,
 	): { kind: 'row'; entry: SubrowEntry } | { kind: 'trailing' } | null => {
 		if (target === null || !(target as Node).instanceOf(Element)) return null;
@@ -2472,10 +2516,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		return measured;
 	};
 
-	const sceneDragOver = (cell: CellEntry, event: DragEvent): void => {
+	const sceneDragOver = (cell: LaneCell, event: DragEvent): void => {
 		if (drag?.kind !== 'scene' || event.dataTransfer?.types.includes(TIMELINE_SCENE_DRAG_TYPE) !== true) return;
 		event.preventDefault();
-		if (drag.lockedTimelineId !== cell.timelineId || !cell.present) {
+		if (drag.lockedTimelineId !== cell.timelineId || cell.rows === null) {
 			// As the refusals below do: the mark goes with the refusal, so no
 			// line stands on a lane that will not take the scene.
 			event.dataTransfer.dropEffect = 'none';
@@ -2523,7 +2567,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		sceneLanding = { cell, rowId: under.entry.rowId, beforeSceneId: before?.sceneId ?? null };
 	};
 
-	const sceneDrop = (cell: CellEntry, timeId: string, event: DragEvent): void => {
+	const sceneDrop = (cell: LaneCell, event: DragEvent): void => {
+		const timeId = cell.timeId;
 		const dragged = event.dataTransfer?.getData(TIMELINE_SCENE_DRAG_TYPE) ?? '';
 		if (drag?.kind !== 'scene' || drag.sceneId !== dragged || drag.lockedTimelineId !== cell.timelineId) return;
 		event.preventDefault();
@@ -3425,11 +3470,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			// waiting on a blur the host may not send: an open edit of a row,
 			// the words kept from a row's write that failed, tried once more,
 			// and whatever stands at a cell's foot, shown or kept.
-			for (const timeRow of timeRows.values()) {
-				for (const cell of timeRow.cells.values()) {
-					for (const entry of cell.subrows.values()) {
-						if (entry.editing) commitRowEdit(cell, entry, false);
-					}
+			for (const cell of laneCells.values()) {
+				for (const entry of cell.subrows.values()) {
+					if (entry.editing) commitRowEdit(cell, entry, false);
 				}
 			}
 			for (const [rowId, draft] of [...rowDrafts]) {
