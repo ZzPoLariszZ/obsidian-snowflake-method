@@ -35,6 +35,7 @@ import { entityGroupLabel } from './entity-form';
 import { MoveAfterModal, promptForEntityReference, type EntityReferenceSource, type MoveAfterEntry } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
+import { createDocumentLoop } from './document-loop';
 import { paintCount, renderEmptyLine } from './pane-parts';
 import {
 	SCENE_CARD_PART_CLASSES,
@@ -53,7 +54,6 @@ import {
 	TIMELINE_SCENE_DRAG_TYPE,
 	TIMELINE_TIME_DRAG_TYPE,
 	type RenderTimeline,
-	type TimelineBridge,
 	type TimelineHandle,
 	type TimelineReading,
 } from './timeline-bridge';
@@ -91,14 +91,6 @@ import {
 	type SceneViewModel,
 	type WorldbuildingEntityViewModel,
 } from './view-model';
-
-/** What follows a queued change: a read of the document, a read of the model, or a paint alone. */
-/**
- * What a change asks for once it is done: the document read again, the model
- * read again, a paint alone, or nothing at all, for a change that moves only
- * what the tab remembers and has already been shown.
- */
-type After = 'document' | 'model' | 'none' | 'nothing';
 
 /** A lane's header: the element and the parts a dressing rewrites. */
 interface LaneHead {
@@ -508,17 +500,6 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let laneAxis: 'across' | 'down' = 'across';
 	/** Whether the scroll the tab remembers has been given back, which is done once. */
 	let scrollGivenBack = false;
-	/** The document and the model the last paint was made from. */
-	let paintedHeld: TimelineDocument | null = null;
-	let paintedModel: ProjectDashboardModel | null = null;
-	/**
-	 * Whether that paint ran to its end. One that threw partway is owed another
-	 * whatever the document and the model say, since what stands on screen is
-	 * half made and the pair it was made from cannot say so.
-	 */
-	let paintFinished = false;
-	/** Whether the paint after the read in flight was asked for by the workspace itself. */
-	let paintDemanded = false;
 	/** The symbols the two switches wear now, so a paint redraws neither for nothing. */
 	let presentationIcon = 'gallery-horizontal';
 	let wordsIcon = 'eye';
@@ -537,12 +518,6 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let resolvedManuscriptPaths = new Map<string, Map<string, string | null>>();
 	const laneHeads = new Map<string, LaneHead>();
 	const timeRows = new Map<string, RowEntry>();
-	let boundBridge: TimelineBridge | null = null;
-	let unsubscribe: (() => void) | null = null;
-	/** The read in flight, which a second request joins rather than starting another. */
-	let reloadRun: Promise<void> | null = null;
-	let reloadPending = false;
-	let queue: Promise<void> = Promise.resolve();
 	let disposed = false;
 	/** Forms and pickers belong to this workspace; recovered words deliberately outlive it. */
 	const standing = new Set<Modal>();
@@ -560,7 +535,6 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	let rowOrder: string[] = [];
 	/** The drag in flight, while one is; every paint asked meanwhile waits. */
 	let drag: TimelineDrag | null = null;
-	let paintOwed = false;
 	/** Where a drop would land, as the class on the element that wears the line. */
 	let mark: { el: HTMLElement; cls: string } | null = null;
 	/** What the last dragover worked out, which the drop then uses: the time or the row a drop lands before. */
@@ -615,104 +589,30 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- Reading and writing -------------------------------------------------
 
-	/** Hears the bridge standing now; a project rename hands the workspace a new one. */
-	const bind = (bridge: TimelineBridge): void => {
-		if (bridge === boundBridge) return;
-		unsubscribe?.();
-		boundBridge = bridge;
-		unsubscribe = bridge.subscribe(() => {
-			void reload(true);
-		});
-	};
-
-	/** Reads the document again and paints; a read asked mid-read is made once this one lands. */
-	/**
-	 * Reads the document again and paints. A request made while a read is in
-	 * flight joins it and is answered by one more pass after it, so a change
-	 * that awaits its read gets the document as it stands after the write,
-	 * even when the plugin's bell had already set a read going.
-	 */
-	const reload = (maySkipPaint = false): Promise<void> => {
-		if (disposed) return Promise.resolve();
-		// A read the workspace asked for paints whatever comes back: what moved
-		// may be the workspace's own, a draft kept or a label dressed again from
-		// the file, which neither the document nor the model knows anything of.
-		// Only the bell, which rings for every write including this workspace's,
-		// may go quiet when the read brings back what is already shown.
-		if (!maySkipPaint) paintDemanded = true;
-		if (reloadRun !== null) {
-			reloadPending = true;
-			return reloadRun;
-		}
-		reloadRun = (async () => {
-			try {
-				do {
-					reloadPending = false;
-					const bridge = controls.bridge();
-					bind(bridge);
-					try {
-						reading = await bridge.read();
-						if (reading !== null) lastHeld = reading.held;
-						loadFailed = false;
-					} catch (error) {
-						reading = null;
-						loadFailed = true;
-						console.error('Snowflake: the timeline could not be read', error);
-					}
-					if (disposed) return;
-				} while (reloadPending);
-			} finally {
-				reloadRun = null;
-			}
-			// A bell bringing back the very document and model the last paint was
-			// made from has nothing to show. It rings a quarter second after
-			// every write the workspace makes itself, so without this the whole
-			// workspace, the pool with it, is painted twice for one change. A
-			// paint that never finished is owed another all the same: the pair
-			// it was made from says nothing about how far it got.
-			const moved = !paintFinished
-				|| (reading?.held ?? null) !== paintedHeld
-				|| controls.model() !== paintedModel;
-			if (paintDemanded || moved) {
-				paintDemanded = false;
-				paintAll();
-			}
-		})();
-		return reloadRun;
-	};
-
-	/**
-	 * Every change the workspace makes, one after another, each followed by
-	 * what it asked for: a read of the document, a read of the model, or a
-	 * paint alone -- asked as a value, or as a question answered once the
-	 * change is done, for a form that may or may not have saved. A change
-	 * queued before the workspace went still lands.
-	 */
-	const enqueue = (action: () => Promise<void>, after: After | (() => After) = 'document'): Promise<void> => {
-		const run = queue.then(async () => {
-			try {
-				await action();
-			} catch (error) {
-				if (!disposed) notice(error);
-			}
-			if (disposed) return;
-			// What follows the change is guarded as the change is. A paint that
-			// throws would else reject this promise, and the callers waiting on
-			// it would never do their own tidying: an optimistic row would stand
-			// for good, and words on their way would be counted as sent and
-			// never written again.
-			try {
-				const then = typeof after === 'function' ? after() : after;
-				if (then === 'document') await reload();
-				else if (then === 'model') await controls.refresh();
-				else if (then === 'none') paintAll();
-			} catch (error) {
-				if (!disposed) notice(error);
-			}
-		});
-		queue = run.catch(() => undefined);
-		return run;
-	};
+	// The read, the queue and the paint's gate are the loop's, stated once for
+	// every workspace kept in a file; what was read stays here, where every
+	// part of the workspace reads it.
+	const loop = createDocumentLoop<TimelineReading, ProjectDashboardModel>({
+		source: () => controls.bridge(),
+		taken: (next, failed) => {
+			reading = next;
+			if (next !== null) lastHeld = next.held;
+			loadFailed = failed;
+		},
+		readFailed: (error) => {
+			console.error('Snowflake: the timeline could not be read', error);
+		},
+		held: () => reading?.held ?? null,
+		model: () => controls.model(),
+		refreshModel: () => controls.refresh(),
+		draw: (nextModel) => {
+			draw(nextModel);
+		},
+		dragging: () => drag !== null,
+		disposed: () => disposed,
+		notice,
+	});
+	const { reload, enqueue } = loop;
 
 	/** A view by id, as the document has it now: the one a press named, when its change comes to be made. */
 	const viewAsStands = (id: string): TimelineView | null =>
@@ -870,26 +770,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	/**
 	 * Lays the workspace out again from the document and the model: the
 	 * view, its lanes and which of them is active, the chrome, then the
-	 * heads and the rows of times under them.
+	 * heads and the rows of times under them. A paint asked for while a drag
+	 * is in flight waits for its end.
 	 */
 	const paintAll = (): void => {
-		if (disposed) return;
-		if (drag !== null) {
-			paintOwed = true;
-			return;
-		}
-		const nextHeld = reading?.held ?? null;
-		const nextModel = controls.model();
-		paintFinished = false;
-		draw(nextModel);
-		// What this paint was made from, marked once it is made. The empty
-		// states leave by their own way out and are made all the same; a paint
-		// that threw partway marks nothing, so the bell after it lays the
-		// workspace out again rather than taking the failed paint for what
-		// stands on screen.
-		paintedHeld = nextHeld;
-		paintedModel = nextModel;
-		paintFinished = true;
+		loop.paint();
 	};
 
 	/** The laying out itself, from the model handed to it and the document last read. */
@@ -2483,10 +2368,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		root.removeClass('is-row-drag');
 		root.removeClass('is-scene-drag');
 		paintDragPhase();
-		if (paintOwed) {
-			paintOwed = false;
-			paintAll();
-		}
+		loop.paintOwed();
 	};
 
 	/** The time's id before which a time drag would land, null for the foot. */
@@ -3521,8 +3403,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;
-			unsubscribe?.();
-			unsubscribe = null;
+			loop.release();
 			stopMigration?.();
 			unbindWindow(eventWindow);
 			poolHandle?.dispose();
