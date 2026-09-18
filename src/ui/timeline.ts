@@ -598,6 +598,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		model: () => model,
 		projectPath: () => controls.projectPath(),
 		readOnly: () => readOnly,
+		// The lanes' deck is told as the pool's is: a draft refused as the plugin
+		// goes has no dialog left to open that the plugin could own.
+		unloading: () => controls.unloading?.() === true,
 		charactersByPath: () => charactersByPath,
 		scenesById: () => scenesById,
 		manuscriptPositions: () => manuscriptPositions,

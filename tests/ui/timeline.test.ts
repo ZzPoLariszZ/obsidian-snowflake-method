@@ -3337,6 +3337,37 @@ describe('timeline words during plugin unload', () => {
 		},
 	);
 
+	it('keeps a lane card\'s refused draft recoverable in the console without a dialog', async () => {
+		// The lanes deal their cards from a deck of their own, beside the pool's:
+		// a draft it cannot write as the plugin goes has no dialog to go to either.
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1'])] }] })],
+			views: [view('v', ['a'])],
+		});
+		await settle();
+		fixture.controls.unloading = () => true;
+		const open = vi.spyOn(CorkboardDraftModal.prototype, 'open').mockImplementation(() => undefined);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		try {
+			const conflict = fixture.cards()[0]!.querySelector('.snowflake-method-corkboard-conflict')!;
+			conflict.focus();
+			conflict.value = 'Unsaved draft';
+			conflict.dispatch('input');
+			vi.mocked(fixture.host.patchScene).mockRejectedValueOnce(new Error('Revision conflict'));
+			fixture.handle.dispose();
+			await settle();
+			expect(fixture.host.patchScene).toHaveBeenCalledOnce();
+			expect(open).not.toHaveBeenCalled();
+			expect(logged).toHaveBeenCalledWith(
+				'Snowflake: a scene card’s words could not be written',
+				expect.objectContaining({ conflict: 'Unsaved draft' }),
+			);
+		} finally {
+			open.mockRestore();
+			logged.mockRestore();
+		}
+	});
+
 	it('still writes accepted typed words while unloading', async () => {
 		const fixture = workspace({
 			timelines: [timeline('a', { times: [{ timeId: 'time-1', rows: [] }] })],
