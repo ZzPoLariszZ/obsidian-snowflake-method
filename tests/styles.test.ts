@@ -105,6 +105,21 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The way to delete a template stands beside the field that picks one. Awake
+	 * it is red, in the theme's own token for an error and never a colour written
+	 * into the file, so a theme that changes its red changes this one; asleep,
+	 * for a preset that cannot go, it keeps the quiet of a control asleep.
+	 */
+	it('inks the template delete in the theme\u2019s own red, and only while it can be pressed', () => {
+		const selector = '.snowflake-method-beat-sheet-template-line > .clickable-icon.snowflake-method-beat-sheet-template-delete';
+		const awake = declarations(`${selector}:not(:disabled)`);
+		expect(awake).toContain('color: var(--text-error)');
+		expect(awake).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+		// The rule for the control in every state says nothing of its ink.
+		expect(declarations(selector)).not.toMatch(/(?:^|;|\s)color:/);
+	});
+
+	/**
 	 * The beat sheet wears the timeline's classes, so the timeline's rules dress
 	 * it and its own section says only what an act adds. Three things hold that
 	 * up. Nothing in it hides a control until hover, so it needs no block for a

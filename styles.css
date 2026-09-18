@@ -14535,10 +14535,16 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 1px;
 }
 
+/* The word starts under the act's own words: past the header's padding, the
+   room its handle takes, the gap after it and the padding of the words. */
 .snowflake-method-beat-sheet-act-foot .snowflake-method-character-empty {
 	justify-content: flex-start;
 	margin: 0;
-	padding: var(--size-2-2) var(--size-4-3) var(--size-4-2);
+	padding-block: var(--size-2-2) var(--size-4-2);
+	padding-inline: calc(
+			var(--size-4-3) + var(--snowflake-method-corkboard-action-size) + var(--size-2-1) + var(--size-2-2)
+		)
+		var(--size-4-3);
 }
 
 /* The landing line for a beat at an act's end and for an act among the
@@ -14585,6 +14591,23 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-beat-sheet-template-line > .snowflake-method-timeline-picker {
 	flex: 1 1 auto;
 	min-width: 0;
+}
+
+/* Beside the template field, the way to take one of the project's own
+   templates out: a square as tall as the field it stands by. */
+.snowflake-method-beat-sheet-template-line > .clickable-icon.snowflake-method-beat-sheet-template-delete {
+	--icon-size: var(--icon-s);
+	flex: 0 0 var(--input-height);
+	width: var(--input-height);
+	height: var(--input-height);
+	padding: 0;
+}
+
+/* Awake, it takes a template away for good, so it wears the ink the tables
+   give their delete, which is the theme's own word for an error and no colour
+   written here. Asleep, it is as quiet as any control asleep. */
+.snowflake-method-beat-sheet-template-line > .clickable-icon.snowflake-method-beat-sheet-template-delete:not(:disabled) {
+	color: var(--text-error);
 }
 
 .snowflake-method-beat-sheet-template-summary {

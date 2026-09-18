@@ -20,14 +20,17 @@
 import { Menu, Notice, getIcon, setIcon, setTooltip, type Modal } from 'obsidian';
 
 import {
+	BUILT_IN_BEAT_SHEET_TEMPLATE_IDS,
 	beatScenePlacements,
 	beatSheetActStep,
+	beatSheetTemplateNamesake,
 	beatStep,
 	builtInBeatSheetTemplates,
 	derivedBeatSheetPresentation,
 	findBeat,
 	findBeatSheet,
 	findBeatSheetAct,
+	findBeatSheetTemplate,
 	shownBeatSheetId,
 	type BeatSheet,
 	type BeatSheetDocument,
@@ -48,6 +51,7 @@ import {
 	AddBeatSheetModal,
 	BeatFormModal,
 	EditBeatSheetModal,
+	type AddBeatSheetFormHandle,
 } from './beat-sheet-forms';
 import {
 	actLandingAt,
@@ -67,6 +71,7 @@ import {
 import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import { createLaneCells, type Lane, type LaneCell, type LaneCells, type SceneScope } from './lane-cells';
+import { promptForCustomFieldTemplate } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { paintCount, renderEmptyLine } from './pane-parts';
 import {
@@ -175,6 +180,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	const editSheetButton = iconButton('snowflake-method-timeline-view-edit snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));
 	editSheetButton.addEventListener('click', () => {
 		openEditSheet();
+	});
+	// A sheet's acts and beats kept as one of the project's templates, the way
+	// an entity's custom fields are kept as one from its form.
+	const exportButton = iconButton('snowflake-method-beat-sheet-export', 'file-output', t('modal.customFieldTemplate.exportTitle'));
+	exportButton.addEventListener('click', () => {
+		openExport();
 	});
 	// The two switches are the sheet's own choices, written to the document.
 	// Each press takes the value the document holds as its write lands, never
@@ -597,6 +608,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		addSheetButton.disabled = readOnly || reading === null;
 		if (reading === null) {
 			editSheetButton.disabled = true;
+			exportButton.disabled = true;
 			addActButton.disabled = true;
 			paintPresentation(null);
 			paintWords(null);
@@ -610,6 +622,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		paintOptions(held.sheets);
 		const sheet = currentSheet();
 		editSheetButton.disabled = readOnly || sheet === null;
+		exportButton.disabled = readOnly || sheet === null;
 		addActButton.disabled = readOnly || sheet === null;
 		paintPresentation(sheet);
 		paintWords(sheet);
@@ -1576,6 +1589,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					builtIn: () => builtInBeatSheetTemplates(read.locale),
 					project: () => reading?.held.templates ?? lastHeld?.templates ?? read.held.templates,
 				},
+				templateActions,
 			},
 			async (draft) => {
 				if (disposed) return;
@@ -1630,6 +1644,94 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				});
 			},
 		)).open();
+	};
+
+	// -- The project's own templates -------------------------------------------
+
+	/**
+	 * The sheet on show kept as a template under a name: its acts' labels and
+	 * its beats' names and descriptions, and nothing written under them. The
+	 * press names the sheet it was made on, which is the one kept whatever is
+	 * on show by the time the name has been typed, as it stands in the file
+	 * when its turn comes. A namesake is replaced, and the dialog says so
+	 * before it is.
+	 */
+	const openExport = (): void => {
+		const aimed = currentSheet();
+		const path = controls.projectPath();
+		if (aimed === null || path === null || readOnly || disposed) return;
+		void promptForCustomFieldTemplate(app, t, {
+			title: t('modal.customFieldTemplate.exportTitle'),
+			submitLabel: t('common.save'),
+			initial: { name: aimed.name, description: '' },
+			rows: null,
+			objection: () => null,
+			advisory: (name) => {
+				const held = reading?.held ?? lastHeld;
+				const match = held === null ? undefined : beatSheetTemplateNamesake(held, name);
+				return match === undefined ? null : t('modal.customFieldTemplate.replaceNotice', { name: match.name });
+			},
+		}, keep).then((result) => {
+			if (result === null || disposed) return;
+			void enqueue(async () => {
+				const current = controls.model();
+				// The same project, still one that can be written; the sheet on show may be another by now.
+				if (disposed || current === null || current.readOnly || current.path !== path || controls.projectPath() !== path) return;
+				const wrote = await controls.bridge().saveTemplate(aimed.id, { name: result.name, description: result.description });
+				new Notice(t(wrote === 'written' ? 'notice.templateExported' : 'beatSheet.template.exportRefused', { name: result.name }));
+			});
+		});
+	};
+
+	/**
+	 * What stands beside the template field of the Add beat sheet form: the
+	 * way to take one of the project's own templates out. A preset cannot go,
+	 * so the control wakes only for a pick of the project's.
+	 */
+	const templateActions = (line: HTMLElement, form: AddBeatSheetFormHandle): void => {
+		const button = line.createEl('button', {
+			cls: 'clickable-icon snowflake-method-beat-sheet-template-delete',
+			attr: { type: 'button', 'aria-label': t('beatSheet.template.delete') },
+		});
+		setIcon(button, 'trash-2');
+		setTooltip(button, t('beatSheet.template.delete'));
+		const paint = (): void => {
+			button.disabled = readOnly || form.choice().kind !== 'project';
+		};
+		form.onChoice(paint);
+		paint();
+		button.addEventListener('click', () => {
+			void deleteTemplate(form);
+		});
+	};
+
+	const deleteTemplate = async (form: AddBeatSheetFormHandle): Promise<void> => {
+		const choice = form.choice();
+		const held = reading?.held ?? lastHeld;
+		const template = held === null || choice.kind !== 'project' ? undefined : findBeatSheetTemplate(held, choice.id);
+		if (template === undefined || readOnly || disposed || form.closed()) return;
+		const confirmed = await confirmTimelineAction(app, t, {
+			title: t('beatSheet.template.deleteTitle', { name: template.name }),
+			lines: [t('beatSheet.template.deleteDescription')],
+			label: t('actions.delete'),
+		}, keep);
+		if (!confirmed || disposed) return;
+		const came = { gone: false };
+		await enqueue(async () => {
+			came.gone = await controls.bridge().deleteTemplate(template.id);
+		});
+		if (disposed) return;
+		if (!came.gone) {
+			new Notice(t('beatSheet.template.deleteRefused'));
+			return;
+		}
+		// The form is left holding nothing that has gone: a pick still on the
+		// template falls back to the barest start. A form closed meanwhile, or
+		// moved on to another pick, is left as it is.
+		const now = form.choice();
+		if (!form.closed() && now.kind === 'project' && now.id === template.id) {
+			form.choose({ kind: 'built-in', id: BUILT_IN_BEAT_SHEET_TEMPLATE_IDS[0] });
+		}
 	};
 
 	// The pool is the corkboard in one column, showing what the sheet has not

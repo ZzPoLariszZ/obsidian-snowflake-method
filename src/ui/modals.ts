@@ -4364,9 +4364,16 @@ export function promptForCustomFieldTemplate(
 		/** A consequence worth saying that blocks nothing, replacing included. */
 		advisory?: (name: string) => string | null;
 	},
+	/**
+	 * For a caller that owns its dialogs and closes them as it goes: the
+	 * dialog is handed over before it opens, and one closed from outside
+	 * answers as a cancelled one does.
+	 */
+	keep?: <T extends Modal>(modal: T) => T,
 ): Promise<CustomFieldTemplateFormResult | null> {
 	return new Promise((resolve) => {
-		new CustomFieldTemplateModal(app, t, options, resolve).open();
+		const modal = new CustomFieldTemplateModal(app, t, options, resolve);
+		(keep === undefined ? modal : keep(modal)).open();
 	});
 }
 

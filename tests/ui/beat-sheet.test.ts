@@ -69,6 +69,11 @@ vi.mock('../../src/ui/option-picker', async (importOriginal) => {
 	};
 });
 
+vi.mock('../../src/ui/modals', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../src/ui/modals')>();
+	return { ...actual, promptForCustomFieldTemplate: vi.fn(() => Promise.resolve(null)) };
+});
+
 vi.mock('../../src/ui/timeline-forms', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../src/ui/timeline-forms')>();
 	return { ...actual, confirmTimelineAction: vi.fn(() => Promise.resolve(true)) };
@@ -110,7 +115,7 @@ import {
 	type BeatSheetTemplate,
 } from '../../src/domain';
 import { Menu, type Modal } from 'obsidian';
-import { MoveAfterModal } from '../../src/ui/modals';
+import { MoveAfterModal, promptForCustomFieldTemplate } from '../../src/ui/modals';
 import { renderBeatSheet } from '../../src/ui/beat-sheet';
 import {
 	BEAT_SHEET_ACT_DRAG_TYPE,
@@ -121,7 +126,7 @@ import {
 	type BeatSheetControls,
 	type BeatSheetTemplateChoice,
 } from '../../src/ui/beat-sheet-bridge';
-import { ActFormModal, AddBeatSheetModal, BeatFormModal, EditBeatSheetModal } from '../../src/ui/beat-sheet-forms';
+import { ActFormModal, AddBeatSheetModal, BeatFormModal, EditBeatSheetModal, type AddBeatSheetFormHandle } from '../../src/ui/beat-sheet-forms';
 import { beatStackKey } from '../../src/ui/beat-sheet-layout';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
@@ -387,6 +392,8 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	vi.mocked(confirmTimelineAction).mockReset();
 	vi.mocked(confirmTimelineAction).mockImplementation(() => Promise.resolve(true));
+	vi.mocked(promptForCustomFieldTemplate).mockReset();
+	vi.mocked(promptForCustomFieldTemplate).mockImplementation(() => Promise.resolve(null));
 	notices.mockClear();
 	menus.length = 0;
 });
@@ -416,12 +423,12 @@ describe('the beat sheet workspace', () => {
 		expect(fixture.root.querySelector('.snowflake-method-timeline-head')).toBeNull();
 	});
 
-	it('lays the toolbar out as the sheet, then at the end: edit, the words, the presentation, refresh, add act, add beat sheet', async () => {
+	it('lays the toolbar out as the sheet, then at the end: edit, export, the words, the presentation, refresh, add act, add beat sheet', async () => {
 		const fixture = laid();
 		await settle();
 		const order = [
 			'snowflake-method-beat-sheet-select', 'snowflake-method-prose-state', 'snowflake-method-beat-sheet-edit',
-			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-refresh',
+			'snowflake-method-beat-sheet-export', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-refresh',
 			'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
 		];
 		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
@@ -445,7 +452,10 @@ describe('the beat sheet workspace', () => {
 		expect(none.body().classes.has('is-hidden')).toBe(true);
 		expect(none.select().disabled).toBe(true);
 		expect(none.button('snowflake-method-beat-sheet-add').disabled).toBe(false);
-		for (const cls of ['snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-add-act', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation']) {
+		for (const cls of [
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
+			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+		]) {
 			expect(none.button(cls).disabled, cls).toBe(true);
 		}
 		// A sheet made from Blank holds no act, and says so under the toolbar in the same voice.
@@ -614,8 +624,8 @@ describe('the beat sheet workspace', () => {
 		await settle();
 		expect(fixture.root.classes.has('is-read-only')).toBe(true);
 		for (const cls of [
-			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
-			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
+			'snowflake-method-beat-sheet-add', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
 		]) {
 			expect(fixture.button(cls).disabled, cls).toBe(true);
 		}
@@ -1519,6 +1529,204 @@ describe('the beat sheets\' own forms', () => {
 		await settle();
 		expect(fixture.held().sheets.map((entry) => entry.id)).toEqual(['other']);
 		expect(fixture.sheetField().value()).toBe('other');
+	});
+});
+
+describe('the project\'s own templates', () => {
+	type Asked = Parameters<typeof promptForCustomFieldTemplate>;
+	/** Answers the template dialog by hand: what it was asked, and the way to answer it. */
+	const dialog = () => {
+		const asked: { options: Asked[2]; keep: Asked[3]; answer: (result: { name: string; description: string } | null) => void }[] = [];
+		vi.mocked(promptForCustomFieldTemplate).mockImplementation((_app, _t, options, keep) =>
+			new Promise((resolve) => {
+				asked.push({ options, keep, answer: (result) => { resolve(result === null ? null : { ...result, fields: [] }); } });
+			}));
+		return asked;
+	};
+
+	it('exports the sheet on show from the toolbar as an entity\'s custom fields are exported: a name, a sentence, and nothing of what is written under the beats', async () => {
+		const asked = dialog();
+		const fixture = laid();
+		await settle();
+		const symbol = fixture.button('snowflake-method-beat-sheet-export');
+		expect(symbol.getAttribute('aria-label')).toBe('modal.customFieldTemplate.exportTitle');
+		symbol.dispatch('click');
+		expect(asked).toHaveLength(1);
+		expect(asked[0]!.options).toMatchObject({
+			title: 'modal.customFieldTemplate.exportTitle', submitLabel: 'common.save', rows: null,
+			initial: { name: 'Sheet s', description: '' },
+		});
+		expect(asked[0]!.options.objection('Anything')).toBeNull();
+		expect(asked[0]!.options.advisory?.('Sheet s')).toBeNull();
+		asked[0]!.answer({ name: 'My shape', description: 'Three acts, one hollow.' });
+		await settle();
+		expect(fixture.bridge.saveTemplate).toHaveBeenCalledExactlyOnceWith('s', { name: 'My shape', description: 'Three acts, one hollow.' });
+		expect(notices).toHaveBeenLastCalledWith('notice.templateExported(name=My shape)');
+		expect(fixture.held().templates.map((entry) => [entry.name, entry.description, entry.acts.map((one) => `${one.label}:${String(one.beats.length)}`)])).toEqual([
+			['My shape', 'Three acts, one hollow.', ['Setup:2', ':0', 'Resolution:1']],
+		]);
+		// A beat's main description goes with it; the rows under it and their scenes do not.
+		expect(fixture.held().templates[0]!.acts[0]!.beats[0]).toEqual({ name: 'Opening Image', description: 'The ordinary world.' });
+	});
+
+	it('says before it happens that a namesake will be replaced, however the name is cased', async () => {
+		const asked = dialog();
+		const fixture = laid({}, { templates: [template('tpl-1', 'My Shape')] });
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-export').dispatch('click');
+		expect(asked[0]!.options.advisory?.('my shape')).toBe('modal.customFieldTemplate.replaceNotice(name=My Shape)');
+		expect(asked[0]!.options.advisory?.('Another')).toBeNull();
+		asked[0]!.answer({ name: 'my shape', description: '' });
+		await settle();
+		// Replaced where it stands, under the id it had, in the name as typed.
+		expect(fixture.held().templates.map((entry) => [entry.id, entry.name, entry.acts.length])).toEqual([['tpl-1', 'my shape', 3]]);
+	});
+
+	it('keeps the sheet the press was made on, whatever is on show by the time the name is typed', async () => {
+		const asked = dialog();
+		const fixture = laid({}, { sheets: [threeActs(), sheet('other', [act('o1', 'Only')])], lastSheetId: 's' });
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-export').dispatch('click');
+		fixture.sheetField().choose('other');
+		await settle();
+		asked[0]!.answer({ name: 'Kept', description: '' });
+		await settle();
+		expect(fixture.bridge.saveTemplate).toHaveBeenCalledExactlyOnceWith('s', { name: 'Kept', description: '' });
+		expect(fixture.held().templates[0]!.acts).toHaveLength(3);
+	});
+
+	it('says so when the template could not be saved, and saves nothing for a dialog dismissed or a project no longer its own', async () => {
+		const asked = dialog();
+		const fixture = laid();
+		await settle();
+		const symbol = fixture.button('snowflake-method-beat-sheet-export');
+		symbol.dispatch('click');
+		asked[0]!.answer(null);
+		await settle();
+		expect(fixture.bridge.saveTemplate).not.toHaveBeenCalled();
+		symbol.dispatch('click');
+		vi.mocked(fixture.bridge.saveTemplate).mockResolvedValueOnce('refused');
+		asked[1]!.answer({ name: 'Refused', description: '' });
+		await settle();
+		expect(notices).toHaveBeenLastCalledWith('beatSheet.template.exportRefused(name=Refused)');
+		symbol.dispatch('click');
+		fixture.moveProject('Elsewhere');
+		asked[2]!.answer({ name: 'Late', description: '' });
+		await settle();
+		expect(fixture.bridge.saveTemplate).toHaveBeenCalledTimes(1);
+	});
+
+	it('owns the template dialog as it owns its forms: closed as the workspace goes, and answered by nothing after', async () => {
+		const asked = dialog();
+		const fixture = laid();
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-export').dispatch('click');
+		const standing = { close: vi.fn(), onClose: (): void => undefined };
+		expect(asked[0]!.keep?.(standing as unknown as Modal)).toBe(standing);
+		fixture.handle.dispose();
+		expect(standing.close).toHaveBeenCalledTimes(1);
+		asked[0]!.answer({ name: 'Late', description: '' });
+		await settle();
+		expect(fixture.bridge.saveTemplate).not.toHaveBeenCalled();
+	});
+
+	/** The Add beat sheet form as the workspace opens it, with what stands beside its template field built on a line of the test's own. */
+	const besideTheField = async (fixture: Fixture, opened: AddBeatSheetModal[]) => {
+		fixture.button('snowflake-method-beat-sheet-add').dispatch('click');
+		const options = (opened[opened.length - 1] as unknown as { options: { templateActions: (line: HTMLElement, form: AddBeatSheetFormHandle) => void } }).options;
+		let choice: BeatSheetTemplateChoice = { kind: 'built-in', id: 'blank' };
+		let closed = false;
+		const listeners: (() => void)[] = [];
+		const form = {
+			choice: () => choice,
+			closed: () => closed,
+			choose: vi.fn((next: BeatSheetTemplateChoice) => { choice = next; for (const listener of listeners) listener(); }),
+			onChoice: (listener: () => void) => { listeners.push(listener); },
+		};
+		const line = new CorkboardDom().container;
+		options.templateActions(line as unknown as HTMLElement, form);
+		return {
+			form,
+			button: line.querySelector('.snowflake-method-beat-sheet-template-delete')!,
+			pick: (next: BeatSheetTemplateChoice) => { choice = next; for (const listener of listeners) listener(); },
+			close: () => { closed = true; },
+		};
+	};
+
+	it('wakes the way to delete a template only for a pick of the project\'s own', async () => {
+		const opened = watch(AddBeatSheetModal);
+		const fixture = laid({}, { templates: [template('tpl-1', 'My shape')] });
+		await settle();
+		const beside = await besideTheField(fixture, opened);
+		expect(beside.button.getAttribute('aria-label')).toBe('beatSheet.template.delete');
+		expect(beside.button.disabled).toBe(true);
+		beside.pick({ kind: 'project', id: 'tpl-1' });
+		expect(beside.button.disabled).toBe(false);
+		beside.pick({ kind: 'built-in', id: 'save-the-cat' });
+		expect(beside.button.disabled).toBe(true);
+		// Pressed all the same, a preset goes nowhere.
+		beside.button.dispatch('click');
+		await settle();
+		expect(confirmTimelineAction).not.toHaveBeenCalled();
+		expect(fixture.bridge.deleteTemplate).not.toHaveBeenCalled();
+	});
+
+	it('deletes the template picked after asking, and leaves the form on the barest start', async () => {
+		const opened = watch(AddBeatSheetModal);
+		const fixture = laid({}, { templates: [template('tpl-1', 'My shape'), template('tpl-2', 'Another')] });
+		await settle();
+		const beside = await besideTheField(fixture, opened);
+		beside.pick({ kind: 'project', id: 'tpl-1' });
+		vi.mocked(confirmTimelineAction).mockResolvedValueOnce(false);
+		beside.button.dispatch('click');
+		await settle();
+		expect(vi.mocked(confirmTimelineAction).mock.calls[0]![2]).toEqual({
+			title: 'beatSheet.template.deleteTitle(name=My shape)',
+			lines: ['beatSheet.template.deleteDescription'],
+			label: 'actions.delete',
+		});
+		expect(fixture.bridge.deleteTemplate).not.toHaveBeenCalled();
+		beside.button.dispatch('click');
+		await settle();
+		expect(fixture.bridge.deleteTemplate).toHaveBeenCalledExactlyOnceWith('tpl-1');
+		expect(fixture.held().templates.map((entry) => entry.id)).toEqual(['tpl-2']);
+		expect(beside.form.choose).toHaveBeenCalledExactlyOnceWith({ kind: 'built-in', id: 'blank' });
+		expect(beside.button.disabled).toBe(true);
+		// The shelf the form reads is the file's, so the template is off it at once.
+		const shelf = (opened[0] as unknown as { options: { shelf: { project: () => readonly BeatSheetTemplate[] } } }).options.shelf;
+		expect(shelf.project().map((entry) => entry.id)).toEqual(['tpl-2']);
+	});
+
+	it('says so when the template would not go, and leaves a form alone that closed or moved on meanwhile', async () => {
+		const opened = watch(AddBeatSheetModal);
+		const fixture = laid({}, { templates: [template('tpl-1', 'My shape'), template('tpl-2', 'Another')] });
+		await settle();
+		const beside = await besideTheField(fixture, opened);
+		beside.pick({ kind: 'project', id: 'tpl-1' });
+		vi.mocked(fixture.bridge.deleteTemplate).mockResolvedValueOnce(false);
+		beside.button.dispatch('click');
+		await settle();
+		expect(notices).toHaveBeenLastCalledWith('beatSheet.template.deleteRefused');
+		expect(beside.form.choose).not.toHaveBeenCalled();
+		// The pick moves on while the question stands: the template goes, the form keeps its new pick.
+		let confirm!: (answer: boolean) => void;
+		vi.mocked(confirmTimelineAction).mockImplementationOnce(() => new Promise<boolean>((resolve) => { confirm = resolve; }));
+		beside.button.dispatch('click');
+		await settle();
+		beside.pick({ kind: 'project', id: 'tpl-2' });
+		confirm(true);
+		await settle();
+		expect(fixture.held().templates.map((entry) => entry.id)).toEqual(['tpl-2']);
+		expect(beside.form.choose).not.toHaveBeenCalled();
+		// A form that closed while the question stood is not told to pick anything.
+		vi.mocked(confirmTimelineAction).mockImplementationOnce(() => new Promise<boolean>((resolve) => { confirm = resolve; }));
+		beside.button.dispatch('click');
+		await settle();
+		beside.close();
+		confirm(true);
+		await settle();
+		expect(fixture.held().templates).toEqual([]);
+		expect(beside.form.choose).not.toHaveBeenCalled();
 	});
 });
 
