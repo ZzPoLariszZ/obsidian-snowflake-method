@@ -309,6 +309,21 @@ describe('what stands in a cell', () => {
 		expect(cell.trailing).toBeNull();
 	});
 
+	it('calls the box under a row still on its way, and under the foot, a presentation, and a stored row\'s a list', () => {
+		// Those two boxes hold no card and say nothing of their own. The word is
+		// a role and not what the rows are dealt as: the move to shared cells
+		// once rewrote it as the call that asks for the latter.
+		const fixture = standing(oneLane());
+		const foot = fixture.foot('a', 'time-1');
+		foot.value = 'Leaves';
+		press(foot, 'Enter', { mod: true });
+		const rows = fixture.cellEl('a', 'time-1').querySelector('.snowflake-method-timeline-rows')!.children;
+		expect(rows.map((entry) => [
+			entry.classes.has('is-pending') ? 'pending' : entry.classes.has('is-trailing') ? 'foot' : 'row',
+			entry.querySelector('.snowflake-method-timeline-scenes')!.getAttribute('role'),
+		])).toEqual([['row', 'list'], ['pending', 'presentation'], ['foot', 'presentation']]);
+	});
+
 	it('invites the first sub-description, then more of them, and hides the foot from a project that cannot be written', () => {
 		const fixture = standing(oneLane());
 		expect(fixture.foot('a', 'time-2').getAttribute('placeholder')).toBe('timeline.subrow.placeholder');

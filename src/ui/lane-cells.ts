@@ -573,7 +573,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 				placeholder: t('timeline.subrow.placeholder'),
 			},
 		});
-		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'deps.presentation()' } });
+		el.createDiv({ cls: 'snowflake-method-timeline-scenes is-trailing', attr: { role: 'presentation' } });
 		const key = footKey(cell.timelineId, timeId);
 		// The composition these waited on went down with the input it was in,
 		// so they wait no longer: they go into the new one, ahead of whatever
@@ -651,7 +651,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 			text: words,
 			attr: { type: 'button', disabled: 'true' },
 		});
-		el.createDiv({ cls: 'snowflake-method-timeline-scenes', attr: { role: 'deps.presentation()' } });
+		el.createDiv({ cls: 'snowflake-method-timeline-scenes', attr: { role: 'presentation' } });
 		const pending: PendingRow = { el };
 		cell.pending.push(pending);
 		const timelineId = cell.timelineId;
@@ -1239,7 +1239,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 			}
 		}
 		stack.el.dataset.total = String(total);
-		// A stack of one has nowhere to walk; its controls fall silent but keep their room, so the rows stand level across the deps.lanes().
+		// A stack of one has nowhere to walk; its controls fall silent but keep their room, so the rows stand level across the lanes.
 		stack.controls.toggleClass('is-alone', total <= 1);
 		// The walk comes round at either end; only the way back to the first is closed while standing there.
 		stack.reset.disabled = at === 0;
