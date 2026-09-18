@@ -30,6 +30,7 @@ import {
 	STEP_ONE_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
 	STICKY_NOTE_LOCAL_STATE_KEY,
+	builtInBeatSheetTemplate,
 	TEMPLATE_SECTION_IDS,
 	wikiLinkLabel,
 	WRITING_MODES,
@@ -189,6 +190,8 @@ import {
 	type MentionAggregate,
 	type NoteCountOptions,
 	type SensitiveTermAggregate,
+	type BeatSheetDeletion,
+	type BeatSheetWrite,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SaveCustomFieldTemplateResult,
@@ -198,6 +201,7 @@ import {
 	type TimelineWrite,
 	type WorldbuildingRecord,
 	type WritingCountScope,
+	isBeatSheetFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
 	isTimelineFilePath,
@@ -264,6 +268,7 @@ import type {
 import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
 import type { TaskBoardBridge } from './ui/task-bridge';
+import type { BeatSheetBridge } from './ui/beat-sheet-bridge';
 import type { TimelineBridge } from './ui/timeline-bridge';
 import { confirmTaskArchiveEmptying, confirmTaskDeletion } from './ui/task-dialogs';
 import { promptForTask } from './ui/task-form';
@@ -525,6 +530,10 @@ export default class SnowflakeMethodPlugin
 	private timelineNotifyTimer: number | null = null;
 	/** Who wants to hear that a project's timeline file changed. */
 	private readonly timelineListeners = new Set<() => void>();
+	/** The beat sheet workspace's own bell, rung the same way. */
+	private beatSheetNotifyTimer: number | null = null;
+	/** Who wants to hear that a project's beat sheet file changed. */
+	private readonly beatSheetListeners = new Set<() => void>();
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
@@ -819,6 +828,13 @@ export default class SnowflakeMethodPlugin
 				},
 				onTimelineForeign: () => {
 					new Notice(this.projectT('timeline.newerSchema'));
+				},
+				// The beat sheet file, told apart the same two ways.
+				onBeatSheetCorrupt: (path) => {
+					new Notice(this.projectT('beatSheet.corruptPreserved', { path }));
+				},
+				onBeatSheetForeign: () => {
+					new Notice(this.projectT('beatSheet.newerSchema'));
 				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
@@ -1123,6 +1139,10 @@ export default class SnowflakeMethodPlugin
 		if (this.timelineNotifyTimer !== null) {
 			this.app.workspace.containerEl.win.clearTimeout(this.timelineNotifyTimer);
 			this.timelineNotifyTimer = null;
+		}
+		if (this.beatSheetNotifyTimer !== null) {
+			this.app.workspace.containerEl.win.clearTimeout(this.beatSheetNotifyTimer);
+			this.beatSheetNotifyTimer = null;
 		}
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
@@ -4313,6 +4333,121 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * The bridge the beat sheet workspace reads and writes its project's sheets
+	 * through, shaped as the timeline's is: the document as the file holds it,
+	 * a bell rung when that file moves, and one mutation per thing the
+	 * workspace can do to it. Every write goes through the gate, and only a
+	 * write that landed is announced.
+	 */
+	beatSheet(context: SessionPanelContext = {}): BeatSheetBridge {
+		const projectLocale = context.locale ?? null;
+		const t = (
+			key: string,
+			vars?: Record<string, string | number>,
+		): string => this.translateForProject(projectLocale, key, vars);
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const sheets = this.projects.beatSheet;
+		const write = (
+			work: (project: ProjectSnapshot) => Promise<BeatSheetWrite>,
+		): Promise<BeatSheetWrite> =>
+			this.mutateBeatSheet(
+				panelProject(),
+				async (project) => {
+					const wrote = await work(project);
+					return { result: wrote, changed: wrote === 'written' };
+				},
+				'refused',
+			);
+		const create = (
+			work: (project: ProjectSnapshot) => Promise<string | null>,
+		): Promise<string | null> =>
+			this.mutateBeatSheet(
+				panelProject(),
+				async (project) => {
+					const id = await work(project);
+					return { result: id, changed: id !== null };
+				},
+				null,
+			);
+		const remove = (
+			work: (project: ProjectSnapshot) => Promise<BeatSheetDeletion>,
+		): Promise<boolean> =>
+			this.mutateBeatSheet(
+				panelProject(),
+				async (project) => {
+					const gone = await work(project);
+					return { result: gone !== 'refused', changed: gone === 'deleted' };
+				},
+				false,
+			);
+		return {
+			t,
+			read: async () => {
+				// resolveProject rather than the writable gate: a read-only
+				// project's sheets are still there to look at.
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					held: await sheets.read(project),
+				};
+			},
+			subscribe: (listener) => {
+				this.beatSheetListeners.add(listener);
+				return () => {
+					this.beatSheetListeners.delete(listener);
+				};
+			},
+			// A preset is written in the project's own language, whatever the
+			// interface speaks: its words become the author's, among the rest of
+			// the project's. One of the project's templates is read by the
+			// service from the file as it stands when the write runs.
+			createSheet: (name, template) =>
+				create((project) => sheets.createSheet(project, {
+					name,
+					source: template.kind === 'built-in'
+						? { structure: builtInBeatSheetTemplate(project.locale, template.id).structure }
+						: { templateId: template.id },
+				})),
+			renameSheet: (id, name) => write((project) => sheets.renameSheet(project, id, name)),
+			deleteSheet: (id) => remove((project) => sheets.deleteSheet(project, id)),
+			setLastSheet: (id) => write((project) => sheets.setLastSheet(project, id)),
+			setPresentation: (sheetId, presentation) =>
+				write((project) => sheets.setPresentation(project, sheetId, presentation)),
+			setSubDescriptions: (sheetId, shown) =>
+				write((project) => sheets.setSubDescriptions(project, sheetId, shown)),
+			addAct: (sheetId, label, beforeActId) =>
+				create((project) => sheets.addAct(project, sheetId, label, beforeActId)),
+			relabelAct: (sheetId, actId, label) =>
+				write((project) => sheets.relabelAct(project, sheetId, actId, label)),
+			moveAct: (sheetId, actId, beforeActId) =>
+				write((project) => sheets.moveAct(project, sheetId, actId, beforeActId)),
+			deleteAct: (sheetId, actId) => write((project) => sheets.deleteAct(project, sheetId, actId)),
+			addBeat: (sheetId, actId, draft, beforeBeatId) =>
+				create((project) => sheets.addBeat(project, sheetId, actId, draft, beforeBeatId)),
+			editBeat: (sheetId, beatId, change) =>
+				write((project) => sheets.editBeat(project, sheetId, beatId, change)),
+			moveBeat: (sheetId, beatId, toActId, beforeBeatId) =>
+				write((project) => sheets.moveBeat(project, sheetId, beatId, toActId, beforeBeatId)),
+			deleteBeat: (sheetId, beatId) => write((project) => sheets.deleteBeat(project, sheetId, beatId)),
+			addRow: (sheetId, beatId, text, beforeRowId, scenes) =>
+				create((project) => sheets.addRow(project, sheetId, beatId, text, beforeRowId, scenes)),
+			editRow: (sheetId, rowId, text) => write((project) => sheets.editRow(project, sheetId, rowId, text)),
+			moveRow: (sheetId, rowId, toBeatId, beforeRowId) =>
+				write((project) => sheets.moveRow(project, sheetId, rowId, toBeatId, beforeRowId)),
+			deleteRow: (sheetId, rowId) => write((project) => sheets.deleteRow(project, sheetId, rowId)),
+			placeScene: (sheetId, sceneId, rowId, beforeSceneId) =>
+				write((project) => sheets.placeScene(project, sheetId, sceneId, rowId, beforeSceneId)),
+			removeScene: (sheetId, sceneId) => write((project) => sheets.removeScene(project, sheetId, sceneId)),
+			saveTemplate: (sheetId, draft) => write((project) => sheets.saveTemplate(project, sheetId, draft)),
+			deleteTemplate: (templateId) => remove((project) => sheets.deleteTemplate(project, templateId)),
+			pruneMissing: (known) => write((project) => sheets.pruneMissing(project, known)),
+		};
+	}
+
+	/**
 	 * The bridge the task board reads and writes through, shaped like the
 	 * sticky notes': every mutation announces to the boards alone, since a
 	 * task touches no manuscript text, and every dialog is opened here.
@@ -4428,6 +4563,22 @@ export default class SnowflakeMethodPlugin
 		if (project === null) return refused;
 		const { result, changed } = await work(project);
 		if (changed) this.timelineChanged();
+		return result;
+	}
+
+	/**
+	 * One change to a project's beat sheets: refused where the project cannot
+	 * be written, and announced to the workspaces when the file moved.
+	 */
+	private async mutateBeatSheet<T>(
+		projectPath: string | null,
+		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
+		refused: T,
+	): Promise<T> {
+		const project = await this.writableProject(projectPath);
+		if (project === null) return refused;
+		const { result, changed } = await work(project);
+		if (changed) this.beatSheetChanged();
 		return result;
 	}
 
@@ -6583,6 +6734,36 @@ export default class SnowflakeMethodPlugin
 				listener();
 			} catch (error) {
 				console.error('Snowflake: a timeline workspace failed to refresh', error);
+			}
+		}
+	}
+
+	/**
+	 * The beat sheets changed somewhere; the workspaces read again in a moment,
+	 * on the main window's clock like the timeline's bell. Whether the
+	 * dashboards reconcile their health with them is the caller's to say, and
+	 * only a caller that saw the file itself come or go says yes, for the
+	 * timeline's reason: the verdict turns on the folder standing.
+	 */
+	private scheduleBeatSheetNotify(reconcile = false): void {
+		const workspaceWindow = this.app.workspace.containerEl.win;
+		if (this.beatSheetNotifyTimer !== null) {
+			workspaceWindow.clearTimeout(this.beatSheetNotifyTimer);
+		}
+		this.beatSheetNotifyTimer = workspaceWindow.setTimeout(() => {
+			this.beatSheetNotifyTimer = null;
+			this.beatSheetChanged();
+			if (reconcile) this.reconcileDashboardHealth();
+		}, REFRESH_DELAY_MS);
+	}
+
+	/** The beat sheets changed somewhere; every workspace reads again. A listener's failure is its own. */
+	private beatSheetChanged(): void {
+		for (const listener of [...this.beatSheetListeners]) {
+			try {
+				listener();
+			} catch (error) {
+				console.error('Snowflake: a beat sheet workspace failed to refresh', error);
 			}
 		}
 	}
@@ -8850,6 +9031,12 @@ export default class SnowflakeMethodPlugin
 			this.scheduleTimelineNotify();
 			return;
 		}
+		// The beat sheet file likewise.
+		if (file instanceof TFile && isBeatSheetFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleBeatSheetNotify();
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -8980,6 +9167,7 @@ export default class SnowflakeMethodPlugin
 		for (const store of this.projects.marginRecords) store.evict(file.path);
 		this.projects.tasks.evict(file.path);
 		this.projects.timeline.evict(file.path);
+		this.projects.beatSheet.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -8998,6 +9186,11 @@ export default class SnowflakeMethodPlugin
 			this.invalidateProjectHealth(file.path);
 			// The file itself has gone, which the dashboards' verdict can turn on.
 			this.scheduleTimelineNotify(true);
+			return;
+		}
+		if (file instanceof TFile && isBeatSheetFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleBeatSheetNotify(true);
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
@@ -9169,6 +9362,7 @@ export default class SnowflakeMethodPlugin
 		});
 		for (const store of this.projects.marginRecords) store.evict(oldPath);
 		this.projects.timeline.evict(oldPath);
+		this.projects.beatSheet.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering
@@ -9226,6 +9420,14 @@ export default class SnowflakeMethodPlugin
 				this.invalidateProjectHealth(file.path);
 				// Moved in or out of its folder, so the verdict can turn on it.
 				this.scheduleTimelineNotify(true);
+			}
+			// The beat sheet file, likewise.
+			const wasBeatSheet = isBeatSheetFilePath(oldPath) && this.touchesProject(oldPath);
+			const isBeatSheet = isBeatSheetFilePath(file.path) && this.touchesProject(file.path);
+			if (wasBeatSheet || isBeatSheet) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleBeatSheetNotify(true);
 			}
 		}
 		// A project folder moving takes its notes' surfaces with it.

@@ -1203,6 +1203,10 @@ export const en = {
 	'timeline.pool.empty': 'Every scene is placed on this timeline',
 	'timeline.pool.collapse': 'Collapse scene pool',
 	'timeline.pool.expand': 'Expand scene pool',
+	'beatSheet.newerSchema':
+		'The beat sheet file was written by a newer version of the plugin and has been left as it is.',
+	'beatSheet.corruptPreserved':
+		'The beat sheet file could not be read and has been set aside as {path}.',
 	'stickyNotes.viewTitle': 'Sticky notes',
 	'stickyNotes.add': 'Add sticky note',
 	'stickyNotes.empty': 'No sticky notes',

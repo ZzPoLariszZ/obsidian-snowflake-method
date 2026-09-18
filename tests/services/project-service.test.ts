@@ -413,6 +413,48 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("keeps its snapshot when a beat sheet is written, and drops it when that file comes or goes", async () => {
+    // As with the timeline: nothing in a snapshot is read from the beat sheet
+    // document, only whether its folder stands, so a beat edited on a sheet
+    // must not send the whole project to be read again.
+    const project = await service.createProject({ name: "Beat sheet digest" });
+    const beatSheetFile = `${project.rootPath}/70_Tool/73_Visualization/734_Beat_Sheet/beat-sheet.json`;
+    await fakeVault.seedFile(beatSheetFile, '{"schemaVersion":1,"sheets":[],"templates":[]}');
+    const first = await service.loadProject(project.projectFile);
+
+    fakeVault.write(
+      beatSheetFile,
+      '{"schemaVersion":1,"sheets":[],"templates":[],"lastSheetId":"s-1"}',
+    );
+    expect(await service.loadProject(project.projectFile)).toBe(first);
+
+    fakeVault.delete(beatSheetFile);
+    expect(await service.loadProject(project.projectFile)).not.toBe(first);
+  });
+
+  it("treats the beat sheet folder as made on demand as well", async () => {
+    // The folder is built by the first sheet made, so a project from before
+    // beat sheets existed is offered the folder, not marked.
+    const project = await service.createProject({ name: "Older layout" });
+    const beatSheet = `${project.rootPath}/70_Tool/73_Visualization/734_Beat_Sheet`;
+    fakeVault.delete(beatSheet);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === beatSheet,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: beatSheet,
+        stepIds: [],
+        repairable: true,
+        blocking: false,
+      }),
+    ]);
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
   it("reports a sticky note whose frontmatter will not parse, beyond repair", async () => {
     const project = await service.createProject({ name: "Older layout" });
     const path = `${project.rootPath}/70_Tool/72_Task_Management/724_Sticky_Note/broken.md`;

@@ -1109,6 +1109,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'timeline.pool.empty': '所有场景都已放入此时间线',
 	'timeline.pool.collapse': '收起场景池',
 	'timeline.pool.expand': '展开场景池',
+	'beatSheet.newerSchema': '节拍表文件由更新版本的插件写入，已保持原样。',
+	'beatSheet.corruptPreserved': '节拍表文件无法读取，已另存为 {path}。',
 	'stickyNotes.viewTitle': '便签',
 	'stickyNotes.add': '添加便签',
 	'stickyNotes.empty': '暂无便签',

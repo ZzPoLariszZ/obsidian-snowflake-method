@@ -1,5 +1,7 @@
 export * from './aho-corasick';
 export * from './analyzable-prose';
+export * from './beat-sheet';
+export * from './beat-sheet-templates';
 export * from './calendar';
 export * from './chapter-numbering';
 export * from './countable-prose';

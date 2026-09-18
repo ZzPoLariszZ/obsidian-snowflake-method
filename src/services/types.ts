@@ -67,6 +67,7 @@ export const PROJECT_DIRECTORY_KEYS = [
   "revisions",
   "stickyNotes",
   "timeline",
+  "beatSheet",
   "materials",
   "archive",
 ] as const;
@@ -108,8 +109,10 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       revisions: "70_Tool/72_Task_Management/723_Revision",
       stickyNotes: "70_Tool/72_Task_Management/724_Sticky_Note",
       // The visualization chain, one entry per tenant like the two above:
-      // the timeline file, in a folder of its own.
+      // the timeline file and the beat sheet file, each in a folder of its
+      // own, numbered by their places in the workspace's strip.
       timeline: "70_Tool/73_Visualization/733_Timeline",
+      beatSheet: "70_Tool/73_Visualization/734_Beat_Sheet",
       materials: "80_Material",
       archive: "90_Archive",
     },
@@ -138,6 +141,7 @@ export const PROJECT_PATH_LAYOUTS: Readonly<Record<ProjectLanguage, ProjectPathL
       revisions: "70_工具/72_任务管理/723_修订",
       stickyNotes: "70_工具/72_任务管理/724_便签",
       timeline: "70_工具/73_可视化/733_时间线",
+      beatSheet: "70_工具/73_可视化/734_节拍表",
       materials: "80_素材",
       archive: "90_存档",
     },
@@ -348,10 +352,11 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
  * folder is only ever wanted once the author has proposed a change, a
  * foreshadowing folder once a thread has been set up, a sticky-notes folder
  * once the first note is written, a task folder once the first task is
- * saved, and a timeline folder once the first timeline is laid out; each
- * writer ensures its chain on the way to the first write -- so
- * demanding one up front would mark every project made before the feature
- * as damaged over a folder nothing is waiting for.
+ * saved, a timeline folder once the first timeline is laid out, and a beat
+ * sheet folder once the first sheet is made; each writer ensures its chain
+ * on the way to the first write -- so demanding one up front would mark
+ * every project made before the feature as damaged over a folder nothing is
+ * waiting for.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
   new Set<ProjectDirectoryKey>([
@@ -360,6 +365,7 @@ export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
     "revisions",
     "stickyNotes",
     "timeline",
+    "beatSheet",
   ]);
 
 /** A project-level contract problem that exists before marker inspection. */

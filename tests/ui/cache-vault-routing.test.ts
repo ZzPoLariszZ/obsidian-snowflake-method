@@ -26,6 +26,7 @@ function vaultRouting() {
 	const scheduleWritingCountRefresh = vi.fn();
 	const scheduleTaskNotify = vi.fn();
 	const scheduleTimelineNotify = vi.fn();
+	const scheduleBeatSheetNotify = vi.fn();
 	const scheduleStickyNoteNotify = vi.fn();
 	Object.assign(plugin, {
 		settings: { projectRoot: '' },
@@ -37,6 +38,7 @@ function vaultRouting() {
 		scheduleWritingCountRefresh,
 		scheduleTaskNotify,
 		scheduleTimelineNotify,
+		scheduleBeatSheetNotify,
 		scheduleStickyNoteNotify,
 	});
 	const route = plugin as unknown as { handleVaultEvent(file: TFile): void };
@@ -48,6 +50,7 @@ function vaultRouting() {
 		scheduleWritingCountRefresh,
 		scheduleTaskNotify,
 		scheduleTimelineNotify,
+		scheduleBeatSheetNotify,
 		scheduleStickyNoteNotify,
 	};
 }
@@ -64,6 +67,17 @@ describe.each(Object.entries(PROJECT_PATH_LAYOUTS))('manuscript cache vault rout
 		// folder standing, so the dashboards that are shown are left as they are
 		// rather than each building its whole model again a moment later.
 		expect(routing.scheduleTimelineNotify).toHaveBeenCalledWith();
+		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
+	});
+
+	it('rings the beat sheet bell for a write to its file, and neither the timeline\'s nor the dashboards\'', () => {
+		const routing = vaultRouting();
+		routing.changed(`${projectRoot}/${layout.directories.beatSheet}/beat-sheet.json`);
+		expect(routing.scheduleBeatSheetNotify).toHaveBeenCalledOnce();
+		// As with the timeline: a write to the file cannot move the health
+		// verdict, so no dashboard is asked to build its model again.
+		expect(routing.scheduleBeatSheetNotify).toHaveBeenCalledWith();
+		expect(routing.scheduleTimelineNotify).not.toHaveBeenCalled();
 		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
 	});
 

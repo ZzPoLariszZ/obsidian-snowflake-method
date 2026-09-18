@@ -168,6 +168,8 @@ import { ForeshadowingService } from "./foreshadowing-service";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
 import { isTimelineFilePath } from "./timeline-store";
+import { BeatSheetService } from "./beat-sheet-service";
+import { isBeatSheetFilePath } from "./beat-sheet-store";
 import { StickyNoteService } from "./sticky-note-service";
 import type { MarginRecordService } from "./margin-records";
 import { RevisionService } from "./revision-service";
@@ -400,6 +402,8 @@ export class SnowflakeProjectService {
   readonly tasks: TaskService;
   /** Timelines and the views over them: user data beside the tasks. */
   readonly timeline: TimelineService;
+  /** Beat sheets and the templates saved from them: user data beside the timelines. */
+  readonly beatSheet: BeatSheetService;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
   readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
@@ -447,6 +451,9 @@ export class SnowflakeProjectService {
       /** And for the timeline file. */
       onTimelineCorrupt?: (path: string) => void;
       onTimelineForeign?: (path: string, version: number) => void;
+      /** And for the beat sheet file. */
+      onBeatSheetCorrupt?: (path: string) => void;
+      onBeatSheetForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -515,6 +522,16 @@ export class SnowflakeProjectService {
       ...(analysis.onTimelineForeign === undefined
         ? {}
         : { onForeign: analysis.onTimelineForeign }),
+    });
+    this.beatSheet = new BeatSheetService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      mintId: (prefix) => createStableId(prefix),
+      ...(analysis.onBeatSheetCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onBeatSheetCorrupt }),
+      ...(analysis.onBeatSheetForeign === undefined
+        ? {}
+        : { onForeign: analysis.onBeatSheetForeign }),
     });
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
@@ -622,13 +639,14 @@ export class SnowflakeProjectService {
     for (const file of this.repository.listFilesBelow(rootPath)) {
       // Cache contents are computed from the notes this snapshot describes.
       // Their periodic flushes must not force another full project read. The
-      // timeline document is the same case seen from the other side: nothing
-      // in this snapshot is read from its contents, only whether its folder
-      // stands, so a row edited on a timeline would else send the whole
-      // project to be read again before the workspace could paint.
+      // timeline document and the beat sheet's are the same case seen from
+      // the other side: nothing in this snapshot is read from their contents,
+      // only whether their folders stand, so a row edited on either would
+      // else send the whole project to be read again before the workspace
+      // could paint.
       // Keep their paths in the digest: creation, deletion and migration can
       // still change the structure report, including a formerly filed cache.
-      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path)
+      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path)
         ? file.path
         : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }
@@ -1211,6 +1229,7 @@ export class SnowflakeProjectService {
       foreshadowing: new Set(),
       revisions: new Set(),
       timeline: new Set(),
+      beatSheet: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
       // like members.
       stickyNotes: new Set(["sticky-note"]),
@@ -6986,6 +7005,7 @@ export class SnowflakeProjectService {
       revisions: [],
       stickyNotes: [],
       timeline: [],
+      beatSheet: [],
       materials: [],
       archive: [],
     };
