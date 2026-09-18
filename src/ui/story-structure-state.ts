@@ -116,11 +116,26 @@ export function defaultTimelineSettings(): TimelineSettings {
 	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false };
 }
 
+/** How the beat sheet is set: the pool's three as the timeline keeps them, and the two folds. */
+export interface BeatSheetSettings {
+	pool: CorkboardSettings;
+	/** The pool folded out of sight, the sheet taking its room. */
+	poolCollapsed: boolean;
+	/** The beat column folded to its names alone. */
+	beatsCollapsed: boolean;
+}
+
+/** A one-column pool reads best compact here too, and the sheet's cards follow it. */
+export function defaultBeatSheetSettings(): BeatSheetSettings {
+	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false };
+}
+
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
 	corkboard: CorkboardSettings;
 	timeline: TimelineSettings;
+	beatSheet: BeatSheetSettings;
 }
 
 export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
@@ -129,6 +144,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 		visualization: DEFAULT_STORY_STRUCTURE_VISUALIZATION,
 		corkboard: { mode: 'standard', group: '', reversed: false },
 		timeline: defaultTimelineSettings(),
+		beatSheet: defaultBeatSheetSettings(),
 	};
 }
 
@@ -136,6 +152,20 @@ export interface StoryStructureViewStateUpdate {
 	state: StoryStructureViewStateSnapshot;
 	changed: boolean;
 }
+
+/** A board's three settings taken one by one over the current ones, each only when it is one of its own values. */
+function mergeCorkboardSettings(current: CorkboardSettings, value: unknown): CorkboardSettings {
+	const board =
+		typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+	return {
+		mode: isCorkboardMode(board.mode) ? board.mode : current.mode,
+		group: board.group === '' || isCorkboardGroupField(board.group) ? board.group : current.group,
+		reversed: typeof board.reversed === 'boolean' ? board.reversed : current.reversed,
+	};
+}
+
+const sameCorkboardSettings = (left: CorkboardSettings, right: CorkboardSettings): boolean =>
+	left.mode === right.mode && left.group === right.group && left.reversed === right.reversed;
 
 /**
  * A restored state over the current one. A visualization this build knows
@@ -161,41 +191,13 @@ export function mergeStoryStructureViewState(
 		: candidate.visualization === undefined
 			? current.visualization
 			: DEFAULT_STORY_STRUCTURE_VISUALIZATION;
-	const board =
-		typeof candidate.corkboard === 'object' && candidate.corkboard !== null
-			? (candidate.corkboard as Record<string, unknown>)
-			: {};
-	const corkboard: CorkboardSettings = {
-		mode: isCorkboardMode(board.mode) ? board.mode : current.corkboard.mode,
-		group:
-			board.group === '' || isCorkboardGroupField(board.group)
-				? board.group
-				: current.corkboard.group,
-		reversed:
-			typeof board.reversed === 'boolean'
-				? board.reversed
-				: current.corkboard.reversed,
-	};
+	const corkboard = mergeCorkboardSettings(current.corkboard, candidate.corkboard);
 	const timelineCandidate =
 		typeof candidate.timeline === 'object' && candidate.timeline !== null
 			? (candidate.timeline as Record<string, unknown>)
 			: {};
-	const pool =
-		typeof timelineCandidate.pool === 'object' && timelineCandidate.pool !== null
-			? (timelineCandidate.pool as Record<string, unknown>)
-			: {};
 	const timeline: TimelineSettings = {
-		pool: {
-			mode: isCorkboardMode(pool.mode) ? pool.mode : current.timeline.pool.mode,
-			group:
-				pool.group === '' || isCorkboardGroupField(pool.group)
-					? pool.group
-					: current.timeline.pool.group,
-			reversed:
-				typeof pool.reversed === 'boolean'
-					? pool.reversed
-					: current.timeline.pool.reversed,
-		},
+		pool: mergeCorkboardSettings(current.timeline.pool, timelineCandidate.pool),
 		poolCollapsed:
 			typeof timelineCandidate.poolCollapsed === 'boolean'
 				? timelineCandidate.poolCollapsed
@@ -205,20 +207,34 @@ export function mergeStoryStructureViewState(
 				? timelineCandidate.timeCollapsed
 				: current.timeline.timeCollapsed,
 	};
-	const state = { projectPath, visualization, corkboard, timeline };
+	const beatSheetCandidate =
+		typeof candidate.beatSheet === 'object' && candidate.beatSheet !== null
+			? (candidate.beatSheet as Record<string, unknown>)
+			: {};
+	const beatSheet: BeatSheetSettings = {
+		pool: mergeCorkboardSettings(current.beatSheet.pool, beatSheetCandidate.pool),
+		poolCollapsed:
+			typeof beatSheetCandidate.poolCollapsed === 'boolean'
+				? beatSheetCandidate.poolCollapsed
+				: current.beatSheet.poolCollapsed,
+		beatsCollapsed:
+			typeof beatSheetCandidate.beatsCollapsed === 'boolean'
+				? beatSheetCandidate.beatsCollapsed
+				: current.beatSheet.beatsCollapsed,
+	};
+	const state = { projectPath, visualization, corkboard, timeline, beatSheet };
 	return {
 		state,
 		changed:
 			state.projectPath !== current.projectPath ||
 			state.visualization !== current.visualization ||
-			state.corkboard.mode !== current.corkboard.mode ||
-			state.corkboard.group !== current.corkboard.group ||
-			state.corkboard.reversed !== current.corkboard.reversed ||
-			state.timeline.pool.mode !== current.timeline.pool.mode ||
-			state.timeline.pool.group !== current.timeline.pool.group ||
-			state.timeline.pool.reversed !== current.timeline.pool.reversed ||
+			!sameCorkboardSettings(state.corkboard, current.corkboard) ||
+			!sameCorkboardSettings(state.timeline.pool, current.timeline.pool) ||
 			state.timeline.poolCollapsed !== current.timeline.poolCollapsed ||
-			state.timeline.timeCollapsed !== current.timeline.timeCollapsed,
+			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
+			!sameCorkboardSettings(state.beatSheet.pool, current.beatSheet.pool) ||
+			state.beatSheet.poolCollapsed !== current.beatSheet.poolCollapsed ||
+			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed,
 	};
 }
 
@@ -268,6 +284,32 @@ export function timelineMemory(settings?: TimelineSettings): TimelineMemory {
 		pool: corkboardMemory(held.pool),
 		poolCollapsed: held.poolCollapsed,
 		timeCollapsed: held.timeCollapsed,
+		scroll: { left: 0, top: 0 },
+	};
+}
+
+/**
+ * What outlives a mount of the beat sheet: the pool's settings and the two
+ * folds the view persists, and what lasts the session -- where each stack was
+ * browsed to, the pool's search, funnel and scroll, and the workspace's own
+ * scroll. Which sheet is shown is the file's to remember.
+ */
+export interface BeatSheetMemory {
+	/** Where each stack was browsed to, by sheet and row. */
+	stackPositions: Map<string, number>;
+	pool: CorkboardMemory;
+	poolCollapsed: boolean;
+	beatsCollapsed: boolean;
+	scroll: { left: number; top: number };
+}
+
+export function beatSheetMemory(settings?: BeatSheetSettings): BeatSheetMemory {
+	const held = settings ?? defaultBeatSheetSettings();
+	return {
+		stackPositions: new Map(),
+		pool: corkboardMemory(held.pool),
+		poolCollapsed: held.poolCollapsed,
+		beatsCollapsed: held.beatsCollapsed,
 		scroll: { left: 0, top: 0 },
 	};
 }

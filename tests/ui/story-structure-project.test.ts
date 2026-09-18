@@ -42,6 +42,7 @@ import {
 	STORY_STRUCTURE_VIEW_TYPE,
 	SnowflakeStoryStructureView,
 } from '../../src/ui/story-structure-view';
+import type { BeatSheetControls } from '../../src/ui/beat-sheet-bridge';
 import type { TimelineControls } from '../../src/ui/timeline-bridge';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
@@ -62,10 +63,12 @@ function workspaceView() {
 	const activateProject = vi.fn();
 	const timelineBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
 	const timeline = vi.fn(() => timelineBridge);
+	const beatSheetBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
+	const beatSheet = vi.fn(() => beatSheetBridge);
 	const view = new SnowflakeStoryStructureView({
 		app: { scope: {}, workspace },
 	} as unknown as WorkspaceLeaf, {
-		host: { loadDashboardModel, openStoryStructure, activateProject, timeline,
+		host: { loadDashboardModel, openStoryStructure, activateProject, timeline, beatSheet,
 			getRecentStep: () => 8 } as unknown as DashboardHost,
 		fingerprint: () => `en|${recent ?? ''}`,
 		recentProjectPath: () => recent,
@@ -73,6 +76,7 @@ function workspaceView() {
 		rememberCorkboardPreferences: vi.fn(),
 		corkboard: () => { throw new Error('The frame is stubbed in this test.'); },
 		timeline: () => { throw new Error('The frame is stubbed in this test.'); },
+		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
 	});
 	const renderFrame = vi.fn();
 	// Preserve the real state lifecycle and project reads; rendering the
@@ -82,7 +86,7 @@ function workspaceView() {
 		updateHeader: vi.fn(),
 		renderError: (error: unknown) => { throw error; },
 	});
-	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame, timelineBridge,
+	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame, timelineBridge, beatSheetBridge,
 		setRecent: (path: string | null) => { recent = path; } };
 }
 
@@ -590,7 +594,7 @@ describe('the timeline tab', () => {
 		await view.refresh();
 		expect(handle.refresh).toHaveBeenCalledOnce();
 		expect(handle.dispose).not.toHaveBeenCalled();
-		view.showVisualization('beat-sheet');
+		view.showVisualization('corkboard-freeform');
 		expect(handle.dispose).toHaveBeenCalledOnce();
 		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
 		expect(view.getState()).toMatchObject({ timeline: { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false } });
@@ -635,5 +639,85 @@ describe('the timeline tab', () => {
 		expect(asked[asked.length - 1]).toBe(renamed);
 		release({ path: renamed, projectId: 'first', title: renamed, locale: 'en' } as ProjectDashboardModel);
 		await renaming;
+	});
+});
+
+describe('the beat sheet tab', () => {
+	const mounted = () => {
+		const fixture = workspaceView();
+		const dom = new CorkboardDom();
+		const handle = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+		};
+		const beatSheet = vi.fn((_host: HTMLElement, _controls: BeatSheetControls) => handle);
+		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		Object.assign(deps, { beatSheet });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		delete (fixture.view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(fixture.view, { contentEl: dom.container });
+		return { ...fixture, dom, handle, beatSheet, deps };
+	};
+
+	it('mounts the beat sheet workspace in a host of its own, refreshes it in place and disposes it on a switch', async () => {
+		const { view, dom, handle, beatSheet, beatSheetBridge } = mounted();
+		await view.setState({ projectPath: firstProject, visualization: 'beat-sheet' }, { history: false });
+		await view.onOpen();
+		expect(beatSheet).toHaveBeenCalledOnce();
+		// A host of its own: the timeline's would dress it as the timeline's frame.
+		const host = dom.container.querySelector('.snowflake-method-beat-sheet-host')!;
+		expect(host.parent?.classes.has('is-self-scrolling')).toBe(true);
+		expect(dom.container.querySelector('.snowflake-method-timeline-host')).toBeNull();
+		const controls = beatSheet.mock.calls[0]![1];
+		expect(controls.bridge()).toBe(beatSheetBridge);
+		expect(controls.bridge()).toBe(beatSheetBridge);
+		expect(controls.projectPath()).toBe(firstProject);
+		await view.refresh();
+		expect(handle.refresh).toHaveBeenCalledOnce();
+		expect(handle.dispose).not.toHaveBeenCalled();
+		view.showVisualization('corkboard-freeform');
+		expect(handle.dispose).toHaveBeenCalledOnce();
+		expect(dom.container.querySelector('.snowflake-method-beat-sheet-host')).toBeNull();
+		expect(view.getState()).toMatchObject({
+			beatSheet: { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false },
+		});
+	});
+
+	it('keeps the folds and the pool\'s settings with the tab, apart from the timeline\'s', async () => {
+		const { view, beatSheet } = mounted();
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'beat-sheet',
+			beatSheet: { pool: { mode: 'extended', group: 'pov', reversed: true }, poolCollapsed: true, beatsCollapsed: true },
+		}, { history: false });
+		await view.onOpen();
+		const memory = beatSheet.mock.calls[0]![1].memory;
+		expect(memory).toMatchObject({ poolCollapsed: true, beatsCollapsed: true, pool: { mode: 'extended', group: 'pov', reversed: true } });
+		// What the workspace changes in its memory is what the tab saves.
+		memory.beatsCollapsed = false;
+		expect(view.getState()).toMatchObject({
+			beatSheet: { poolCollapsed: true, beatsCollapsed: false },
+			timeline: { poolCollapsed: false, timeCollapsed: false },
+		});
+	});
+
+	it('hands the workspace a bridge for the path it was handed, remade when a rename moves it', async () => {
+		const { view, beatSheet, deps, loadDashboardModel } = mounted();
+		const asked: string[] = [];
+		const built = deps.host.beatSheet as (context: { projectPath: string }) => unknown;
+		Object.assign(deps.host, {
+			beatSheet: (context: { projectPath: string }) => { asked.push(context.projectPath); return built(context); },
+		});
+		const renamed = 'Renamed/First.md';
+		loadDashboardModel.mockImplementation((path: string) =>
+			Promise.resolve({ path, projectId: 'first', title: path, locale: 'en' } as ProjectDashboardModel));
+		await view.setState({ projectPath: firstProject, visualization: 'beat-sheet' }, { history: false });
+		await view.onOpen();
+		const controls = beatSheet.mock.calls[0]![1];
+		controls.bridge();
+		controls.bridge();
+		expect(asked).toEqual([firstProject]);
+		await view.setState({ projectPath: renamed, visualization: 'beat-sheet' }, { history: false });
+		controls.bridge();
+		expect(asked).toEqual([firstProject, renamed]);
 	});
 });

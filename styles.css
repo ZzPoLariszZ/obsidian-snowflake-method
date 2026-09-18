@@ -14456,3 +14456,149 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		opacity: 1;
 	}
 }
+
+/* == Beat sheet =========================================================== */
+
+/* The beat sheet wears the timeline's own classes, one lane wide: its
+   toolbar, its folds, its table, a beat's row and its cell, the rows of
+   words and the scenes on them, the pool and every landing mark are dressed
+   by the rules above and none of them is told again, so a restyle of the
+   timeline reaches both. What follows is what a sheet has and a timeline
+   has not: the acts. */
+.snowflake-method-beat-sheet-host {
+	height: 100%;
+}
+
+/* An act's header runs across the table over its beats, headed as a group of
+   scenes is on the corkboard: what it is called, then a rule to the table's
+   end. It is as tall as the head a timeline's lanes stand under, so the
+   first act's rule runs level with the pool's, and padded as a beat's own
+   cell is, so its handle stands over the beats'. It is never narrower than a
+   beat's row, which keeps its rule as long as the rows when the field is
+   too narrow for them and the table scrolls. */
+.snowflake-method-beat-sheet-act {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	min-width: calc(
+		var(--snowflake-method-timeline-time-width) + var(--snowflake-method-timeline-lane-gap) +
+			var(--snowflake-method-timeline-lane-width)
+	);
+	min-height: var(--snowflake-method-timeline-head-height);
+	padding-inline: var(--size-4-3) var(--size-4-2);
+}
+
+/* Each act after the first stands a little apart from the one above it. The
+   foot is what stands before it, whatever the act above holds. */
+.snowflake-method-beat-sheet-act-foot + .snowflake-method-beat-sheet-act {
+	margin-block-start: var(--size-4-2);
+}
+
+/* The act's words are the way to its form, so they are a button that reads
+   as a heading's words: the lane name's dress, with nothing pressed to show. */
+.snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title {
+	max-width: 100%;
+}
+
+.snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title:disabled {
+	cursor: default;
+	opacity: 1;
+}
+
+/* An act's handle, its plus and its menu stand in sight: a sheet has few
+   acts, and a control that is always there needs no hover to be found, on a
+   touch screen least of all. Each is an action wide, as a beat's are. */
+.snowflake-method-beat-sheet-act .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+	width: var(--snowflake-method-corkboard-action-size);
+	padding-inline: 0;
+}
+
+.snowflake-method-beat-sheet-act .clickable-icon.snowflake-method-beat-sheet-act-handle {
+	cursor: grab;
+}
+
+.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled {
+	display: none;
+}
+
+.snowflake-method-beat-sheet-act.is-dragging {
+	opacity: 0.55;
+}
+
+/* The line under an act's beats: a word when the act holds none, and in
+   either case where a beat dropped at the act's end lands. */
+.snowflake-method-beat-sheet-act-foot {
+	position: relative;
+	min-height: 1px;
+}
+
+.snowflake-method-beat-sheet-act-foot .snowflake-method-character-empty {
+	justify-content: flex-start;
+	margin: 0;
+	padding: var(--size-2-2) var(--size-4-3) var(--size-4-2);
+}
+
+/* The landing line for a beat at an act's end and for an act among the
+   acts, drawn as the timeline draws a time's. */
+.snowflake-method-beat-sheet-act.is-drop-before::before,
+.snowflake-method-beat-sheet-act-foot.is-drop-before::before {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: -1px;
+	z-index: 5;
+	height: 2px;
+	background-color: var(--interactive-accent);
+	pointer-events: none;
+}
+
+/* Each act's axis runs from its first beat's node to its last. Which beats
+   those are is the painter's to say, in classes of its own: the stylesheet
+   never asks what an element holds or what stands beside it. */
+.snowflake-method-beat-sheet-beat.is-act-first .snowflake-method-timeline-axis::before {
+	inset-block-start: var(--snowflake-method-timeline-node-offset);
+}
+
+.snowflake-method-beat-sheet-beat.is-act-last .snowflake-method-timeline-axis::before {
+	inset-block-end: calc(100% - var(--snowflake-method-timeline-node-offset));
+}
+
+/* The template field of the Add beat sheet form: the field and what stands
+   beside it on one line, and under them a quiet line saying how much the
+   pick holds. A form's control lays what it holds out across, so this one is
+   told to stack. */
+.snowflake-method-project-form > .snowflake-method-beat-sheet-template-setting > .setting-item-control {
+	flex-direction: column;
+	gap: var(--size-2-3);
+}
+
+.snowflake-method-beat-sheet-template-line {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	width: 100%;
+}
+
+.snowflake-method-beat-sheet-template-line > .snowflake-method-timeline-picker {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.snowflake-method-beat-sheet-template-summary {
+	width: 100%;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-align: start;
+}
+
+/* A beat's main description is a sentence or a few, so its box opens with
+   more lines than a form's word list does. */
+.modal.snowflake-method-compact-form-modal
+	.modal-content.snowflake-method-project-form
+	.snowflake-method-beat-sheet-description-setting
+	textarea {
+	min-height: calc(5 * 1.4em + var(--size-4-1) * 2);
+}

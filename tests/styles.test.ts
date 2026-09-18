@@ -23,6 +23,17 @@ describe('styles.css', () => {
 	};
 
 	/**
+	 * One workspace's own rules: from its banner to the next, or to the file's
+	 * end. A workspace added under another must not be read as part of it.
+	 */
+	const section = (name: string): string => {
+		const from = styles.indexOf(`/* == ${name} `);
+		expect(from, name).toBeGreaterThan(-1);
+		const next = styles.indexOf('/* == ', from + 1);
+		return next === -1 ? styles.slice(from) : styles.slice(from, next);
+	};
+
+	/**
 	 * `:has()` asks what an element contains, which the browser re-checks
 	 * broadly as the page changes. It was taken out once in 0.5.1 and grew
 	 * back by 0.8.1, because nothing was watching. A class the plugin puts on
@@ -54,7 +65,7 @@ describe('styles.css', () => {
 	 * foot a scene is dropped onto would both be invisible while wanted.
 	 */
 	it('keeps every foot quiet until its own cell is asked for, and brings it back', () => {
-		const timeline = styles.slice(styles.indexOf('/* == Timeline '));
+		const timeline = section('Timeline');
 		const feet = (opacity: string): string[] =>
 			timeline
 				.replace(/\/\*[\s\S]*?\*\//g, ' ')
@@ -75,7 +86,7 @@ describe('styles.css', () => {
 
 	/** The selectors must also beat the hiding rules; a media query adds no specificity. */
 	it('shows the timeline menus and add controls without hover on a coarse pointer', () => {
-		const timeline = styles.slice(styles.indexOf('/* == Timeline '));
+		const timeline = section('Timeline');
 		const coarse = [...timeline.matchAll(/@media \(pointer: coarse\) \{([\s\S]*?)\n\}/g)];
 		expect(coarse).toHaveLength(1);
 		const shown = (coarse[0]?.[1] ?? '')
@@ -91,6 +102,64 @@ describe('styles.css', () => {
 			'.snowflake-method-timeline-subrow.is-trailing textarea.snowflake-method-timeline-subrow-input',
 			'.snowflake-method-timeline button.snowflake-method-timeline-subrow-label.is-empty',
 		]);
+	});
+
+	/**
+	 * The beat sheet wears the timeline's classes, so the timeline's rules dress
+	 * it and its own section says only what an act adds. Three things hold that
+	 * up. Nothing in it hides a control until hover, so it needs no block for a
+	 * coarse pointer and none can be forgotten. Nothing in it is sticky, since
+	 * the parts that stuck inside a lane were taken out of the timeline for
+	 * good. And an act's landing line is the timeline's own line, drawn again
+	 * for the two elements the timeline has no name for.
+	 */
+	it('adds the acts to the timeline look and hides nothing a touch would need', () => {
+		const sheet = section('Beat sheet').replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(sheet).not.toContain('@media');
+		expect(sheet).not.toMatch(/opacity:\s*0\s*;/);
+		expect(sheet).not.toMatch(/visibility:\s*hidden/);
+		expect(sheet).not.toContain('position: sticky');
+		const line = (selector: string): string[] =>
+			declarations(selector)
+				.split(';')
+				.map((entry) => entry.trim())
+				.filter((entry) => entry.length > 0);
+		const timelineLine = line('.snowflake-method-timeline-row.is-drop-before::before');
+		expect(timelineLine.length).toBeGreaterThan(0);
+		expect(line('.snowflake-method-beat-sheet-act.is-drop-before::before')).toEqual(timelineLine);
+		expect(line('.snowflake-method-beat-sheet-act-foot.is-drop-before::before')).toEqual(timelineLine);
+		// The line is drawn from the element's own box, so both must be one.
+		expect(declarations('.snowflake-method-beat-sheet-act')).toContain('position: relative');
+		expect(declarations('.snowflake-method-beat-sheet-act-foot')).toContain('position: relative');
+	});
+
+	/**
+	 * An act's header is as wide as a beat's row at the least, or its rule would
+	 * stop short of the rows once the field is too narrow and the table scrolls;
+	 * and as tall as the head a timeline's lanes stand under, so the first act's
+	 * rule runs level with the pool's. Each act's axis runs from its first node
+	 * to its last by classes the painter sets: the stylesheet may not ask which
+	 * beat is first, since an act's header and foot stand between the rows.
+	 */
+	it('sizes an act from the timeline\u2019s own measures and ends each axis by the painter\u2019s word', () => {
+		const act = declarations('.snowflake-method-beat-sheet-act');
+		for (const measure of [
+			'var(--snowflake-method-timeline-time-width)',
+			'var(--snowflake-method-timeline-lane-gap)',
+			'var(--snowflake-method-timeline-lane-width)',
+		]) {
+			expect(act, measure).toContain(measure);
+		}
+		expect(act).toContain('min-height: var(--snowflake-method-timeline-head-height)');
+		const offset = 'var(--snowflake-method-timeline-node-offset)';
+		expect(
+			declarations('.snowflake-method-beat-sheet-beat.is-act-first .snowflake-method-timeline-axis::before'),
+		).toContain(`inset-block-start: ${offset}`);
+		expect(
+			declarations('.snowflake-method-beat-sheet-beat.is-act-last .snowflake-method-timeline-axis::before'),
+		).toContain(`inset-block-end: calc(100% - ${offset})`);
+		const sheet = section('Beat sheet').replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(sheet).not.toMatch(/:(?:first|last|nth)-(?:of-type|child)/);
 	});
 
 	/**

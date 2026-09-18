@@ -1,7 +1,8 @@
 /**
  * The Story Structure view: the family of visualizations a story's scenes
  * can be looked at through, each in a tab of the strip at the top, the
- * corkboard built and the rest holding their places. A main-area
+ * corkboard, the timeline and the beat sheet built and the freeform board
+ * holding its place. A main-area
  * leaf that keeps its own project across dashboard switches and reloads.
  * Several projects may stand open at once: a modifier
  * click on a tab opens that visualization in a leaf of its own.
@@ -17,6 +18,12 @@ import {
 } from 'obsidian';
 
 import type {
+	BeatSheetBridge,
+	BeatSheetControls,
+	BeatSheetHandle,
+	RenderBeatSheet,
+} from './beat-sheet-bridge';
+import type {
 	CorkboardControls,
 	CorkboardHandle,
 	RenderCorkboard,
@@ -27,6 +34,7 @@ import { renderTabStrip } from './pane-parts';
 import { clearSceneFilters } from './scene-filters';
 import {
 	STORY_STRUCTURE_FAMILIES,
+	beatSheetMemory,
 	corkboardMemory,
 	defaultStoryStructureState,
 	familyVisualization,
@@ -34,6 +42,7 @@ import {
 	readCorkboardPreferences,
 	timelineMemory,
 	visualizationFamily,
+	type BeatSheetMemory,
 	type CorkboardMemory,
 	type CorkboardPreferences,
 	type StoryStructureViewStateSnapshot,
@@ -61,6 +70,7 @@ export interface StoryStructureViewDeps {
 	rememberCorkboardPreferences(projectId: string, changes: Partial<CorkboardPreferences>, onlyIfMissing?: boolean): void;
 	corkboard: RenderCorkboard;
 	timeline: RenderTimeline;
+	beatSheet: RenderBeatSheet;
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
 }
@@ -69,10 +79,13 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private state: StoryStructureViewStateSnapshot = defaultStoryStructureState();
 	private readonly memory: CorkboardMemory = corkboardMemory();
 	private model: ProjectDashboardModel | null = null;
-	private board: CorkboardHandle | TimelineHandle | null = null;
+	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | null = null;
 	private readonly timelineMemory: TimelineMemory = timelineMemory();
+	private readonly beatSheetMemory: BeatSheetMemory = beatSheetMemory();
 	/** The timeline bridge for the project's path, remade when a rename moves it. */
 	private timelineBridge: { path: string; bridge: TimelineBridge } | null = null;
+	/** The beat sheet's, kept the same way. */
+	private beatSheetBridge: { path: string; bridge: BeatSheetBridge } | null = null;
 	/** What the frame on show was built for; null while nothing is drawn. */
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
@@ -162,6 +175,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.timelineMemory.pool.reversed = update.state.timeline.pool.reversed;
 		this.timelineMemory.poolCollapsed = update.state.timeline.poolCollapsed;
 		this.timelineMemory.timeCollapsed = update.state.timeline.timeCollapsed;
+		this.beatSheetMemory.pool.mode = update.state.beatSheet.pool.mode;
+		this.beatSheetMemory.pool.group = update.state.beatSheet.pool.group;
+		this.beatSheetMemory.pool.reversed = update.state.beatSheet.pool.reversed;
+		this.beatSheetMemory.poolCollapsed = update.state.beatSheet.poolCollapsed;
+		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -193,6 +211,15 @@ export class SnowflakeStoryStructureView extends ItemView {
 				poolCollapsed: this.timelineMemory.poolCollapsed,
 				timeCollapsed: this.timelineMemory.timeCollapsed,
 			},
+			beatSheet: {
+				pool: {
+					mode: this.beatSheetMemory.pool.mode,
+					group: this.beatSheetMemory.pool.group,
+					reversed: this.beatSheetMemory.pool.reversed,
+				},
+				poolCollapsed: this.beatSheetMemory.poolCollapsed,
+				beatsCollapsed: this.beatSheetMemory.beatsCollapsed,
+			},
 		};
 	}
 
@@ -206,6 +233,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.timelineMemory.activeTimeline.clear();
 		this.timelineMemory.stackPositions.clear();
 		this.timelineMemory.scroll = { left: 0, top: 0 };
+		this.beatSheetMemory.pool.query = '';
+		clearSceneFilters(this.beatSheetMemory.pool.filters);
+		this.beatSheetMemory.pool.scrollTop = 0;
+		this.beatSheetMemory.stackPositions.clear();
+		this.beatSheetMemory.scroll = { left: 0, top: 0 };
 	}
 
 	async onOpen(): Promise<void> {
@@ -407,6 +439,12 @@ export class SnowflakeStoryStructureView extends ItemView {
 			this.board = this.deps.timeline(host, this.timelineControls());
 			return;
 		}
+		if (this.state.visualization === 'beat-sheet') {
+			body.addClass('is-self-scrolling');
+			const host = body.createDiv({ cls: 'snowflake-method-beat-sheet-host' });
+			this.board = this.deps.beatSheet(host, this.beatSheetControls());
+			return;
+		}
 		body.createEl('p', {
 			cls: 'snowflake-method-tab-planned',
 			text: this.t('statistics.tab.planned'),
@@ -465,6 +503,38 @@ export class SnowflakeStoryStructureView extends ItemView {
 			corkboard: this.deps.corkboard,
 			unloading: () => this.unloading || this.deps.unloading?.() === true,
 		};
+	}
+
+	private beatSheetControls(): BeatSheetControls {
+		return {
+			app: this.app,
+			host: this.deps.host,
+			t: this.t,
+			model: () => this.model,
+			projectPath: () => this.state.projectPath,
+			activateProject: () => this.activateProjectContext(),
+			refresh: () => this.refresh(),
+			popover: this.filterPanel.lend(),
+			bridge: () => this.beatSheetBridgeFor(),
+			memory: this.beatSheetMemory,
+			remember: () => {
+				this.app.workspace.requestSaveLayout();
+			},
+			corkboard: this.deps.corkboard,
+			unloading: () => this.unloading || this.deps.unloading?.() === true,
+		};
+	}
+
+	/** The beat sheet's bridge for the project's path as it stands now, remade when a rename moves it. */
+	private beatSheetBridgeFor(): BeatSheetBridge {
+		const path = this.state.projectPath ?? this.model?.path ?? '';
+		if (this.beatSheetBridge === null || this.beatSheetBridge.path !== path) {
+			this.beatSheetBridge = {
+				path,
+				bridge: this.deps.host.beatSheet({ projectPath: path, locale: this.model?.locale ?? null }),
+			};
+		}
+		return this.beatSheetBridge.bridge;
 	}
 
 	/** The bridge for the project's path as it stands now; a rename hands the workspace a new one. */

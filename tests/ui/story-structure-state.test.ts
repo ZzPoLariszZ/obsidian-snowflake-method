@@ -5,7 +5,9 @@ import {
 	CORKBOARD_MODES,
 	STORY_STRUCTURE_FAMILIES,
 	STORY_STRUCTURE_VISUALIZATIONS,
+	beatSheetMemory,
 	corkboardMemory,
+	defaultBeatSheetSettings,
 	defaultStoryStructureState,
 	defaultTimelineSettings,
 	familyVisualization,
@@ -22,6 +24,7 @@ const current: StoryStructureViewStateSnapshot = {
 	visualization: 'timeline',
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
+	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
 };
 
 describe('story structure restored state', () => {
@@ -37,6 +40,7 @@ describe('story structure restored state', () => {
 				visualization: 'beat-sheet',
 				corkboard: { mode: 'extended', group: 'color', reversed: true },
 				timeline: defaultTimelineSettings(),
+				beatSheet: defaultBeatSheetSettings(),
 			},
 			changed: true,
 		});
@@ -58,6 +62,7 @@ describe('story structure restored state', () => {
 			visualization: 'timeline',
 			corkboard: { mode: 'compact', group: '', reversed: true },
 			timeline: current.timeline,
+			beatSheet: current.beatSheet,
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -130,6 +135,39 @@ describe('story structure restored state', () => {
 		});
 		expect(mergeStoryStructureViewState(current, { timeline: { timeCollapsed: 1 } })).toEqual({ state: current, changed: false });
 		expect(defaultStoryStructureState().timeline).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, timeCollapsed: false });
+	});
+
+	it("restores the beat sheet pool's settings and its two folds one by one, apart from the timeline's", () => {
+		expect(
+			mergeStoryStructureViewState(current, {
+				beatSheet: { pool: { mode: 'compact', group: 'mood', reversed: true } },
+			}),
+		).toEqual({
+			state: { ...current, beatSheet: { pool: { mode: 'compact', group: 'status', reversed: true }, poolCollapsed: false, beatsCollapsed: true } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { beatSheet: 7 })).toEqual({ state: current, changed: false });
+		expect(mergeStoryStructureViewState(current, { beatSheet: { pool: null } })).toEqual({ state: current, changed: false });
+		expect(mergeStoryStructureViewState(current, { beatSheet: { poolCollapsed: true } })).toEqual({
+			state: { ...current, beatSheet: { ...current.beatSheet, poolCollapsed: true } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { beatSheet: { beatsCollapsed: false } })).toEqual({
+			state: { ...current, beatSheet: { ...current.beatSheet, beatsCollapsed: false } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { beatSheet: { beatsCollapsed: 0 } })).toEqual({ state: current, changed: false });
+		// The timeline's fold is the timeline's: naming it under the beat sheet moves nothing.
+		expect(mergeStoryStructureViewState(current, { beatSheet: { timeCollapsed: true } })).toEqual({ state: current, changed: false });
+		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false });
+	});
+
+	it('starts a mount of the beat sheet from what the tab kept, with nothing of the session in it', () => {
+		const memory = beatSheetMemory(current.beatSheet);
+		expect(memory).toMatchObject({ poolCollapsed: false, beatsCollapsed: true, scroll: { left: 0, top: 0 } });
+		expect(memory.pool).toMatchObject({ mode: 'standard', group: 'status', reversed: false, query: '', scrollTop: 0 });
+		expect(memory.stackPositions.size).toBe(0);
+		expect(beatSheetMemory().pool.mode).toBe('compact');
 	});
 
 	it('reports a change only when something moved', () => {

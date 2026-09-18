@@ -12,8 +12,14 @@ import type {
 	ScenePresentation,
 } from '../domain';
 
+import type { App } from 'obsidian';
+
 import type { BeatSheetWrite } from '../services';
+import type { CorkboardHost, RenderCorkboard } from './corkboard-bridge';
+import type { LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
+import type { BeatSheetMemory } from './story-structure-state';
+import type { ProjectDashboardModel } from './view-model';
 
 /**
  * A document as read. Whether the project can be written is not said here:
@@ -105,3 +111,44 @@ export const BEAT_SHEET_ACT_DRAG_TYPE = 'application/x-snowflake-beat-sheet-act'
 export const BEAT_SHEET_BEAT_DRAG_TYPE = 'application/x-snowflake-beat-sheet-beat';
 export const BEAT_SHEET_ROW_DRAG_TYPE = 'application/x-snowflake-beat-sheet-row';
 export const BEAT_SHEET_SCENE_DRAG_TYPE = 'application/x-snowflake-beat-sheet-scene';
+
+/** The host's own methods the workspace calls: the card's, and no others, since an act and a beat are not notes. */
+export type BeatSheetHost = CorkboardHost;
+
+export interface BeatSheetControls {
+	app: App;
+	host: BeatSheetHost;
+	/** Speaks the loaded project's language; rebuilt with the workspace when it changes. */
+	t: Translate;
+	/** The model the view last loaded; null before the first load or with no project. */
+	model: () => ProjectDashboardModel | null;
+	projectPath: () => string | null;
+	/** Makes the workspace's project current before a host action reads or writes it. */
+	activateProject: () => void;
+	/** Re-reads the project model; resolves after `handle.refresh()` has been called with it. */
+	refresh: () => Promise<void>;
+	popover: LentFilterPopover;
+	/** The bridge for the project standing now; asked for afresh, since a rename moves the path. */
+	bridge: () => BeatSheetBridge;
+	memory: BeatSheetMemory;
+	/** Saves the tab layout, where the pool's settings and the folds live. */
+	remember: () => void;
+	/** Unload still settles typed words, but a refusal cannot open another dialog. */
+	unloading?: () => boolean;
+	/** What deals the scene pool: the corkboard, in its one-column variant. */
+	corkboard: RenderCorkboard;
+}
+
+/** The same shape as the corkboard's handle and the timeline's, so the view holds any of them alike. */
+export interface BeatSheetHandle {
+	/** Redraws from `controls.model()`; the view calls it on every refresh that is not a rebuild. */
+	refresh: () => void;
+	/** Scrolls a scene's pool card into view and gives it the focus. */
+	reveal: (id: string) => void;
+	remeasure: () => void;
+	/** Saves the conflict box holding the focus, for the view's own key scope. */
+	saveFocusedConflict: () => boolean;
+	dispose: () => void;
+}
+
+export type RenderBeatSheet = (host: HTMLElement, controls: BeatSheetControls) => BeatSheetHandle;

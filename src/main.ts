@@ -311,6 +311,7 @@ import {
 	type StoryStructureVisualization,
 } from './ui/story-structure-state';
 import { renderCorkboard } from './ui/corkboard';
+import { renderBeatSheet } from './ui/beat-sheet';
 import { renderTimeline } from './ui/timeline';
 import type {
 	SessionPanelBridge,
@@ -963,6 +964,7 @@ export default class SnowflakeMethodPlugin
 					rememberCorkboardPreferences: (projectId, changes, onlyIfMissing) => this.rememberCorkboardPreferences(projectId, changes, onlyIfMissing),
 					corkboard: renderCorkboard,
 					timeline: renderTimeline,
+					beatSheet: renderBeatSheet,
 					unloading: () => this.unloading,
 				}),
 		);
@@ -8648,6 +8650,19 @@ export default class SnowflakeMethodPlugin
 				const available = this.settings.recentProjectPath !== null;
 				if (!checking && available) {
 					void this.openStoryStructure('timeline').catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-beat-sheet',
+			name: this.globalT('commands.openBeatSheet'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					void this.openStoryStructure('beat-sheet').catch((error: unknown) => {
 						this.showError(error);
 					});
 				}
