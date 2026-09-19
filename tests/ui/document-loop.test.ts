@@ -159,6 +159,44 @@ describe('the paint a read is owed', () => {
 		expect(fixture.draw).toHaveBeenCalledTimes(2);
 	});
 
+	it('lets a bell pass whose document is another object that lays out the same, where the workspace can tell, and measures the next against it', async () => {
+		const alike = vi.fn((painted: unknown, held: unknown): boolean =>
+			(painted as { version: number } | null)?.version === (held as { version: number } | null)?.version);
+		const fixture = harness({ alike });
+		await fixture.loop.reload();
+		expect(fixture.draw).toHaveBeenCalledOnce();
+		// The file parsed again: the same version under another identity.
+		fixture.write(1);
+		fixture.ring();
+		await settle();
+		expect(alike).toHaveBeenCalledOnce();
+		expect(fixture.draw).toHaveBeenCalledOnce();
+		// The object let pass is the painted one now, so the same read again asks nothing.
+		fixture.ring();
+		await settle();
+		expect(alike).toHaveBeenCalledOnce();
+		// One that lays out another way is painted, and a read the workspace asked for paints whatever is alike.
+		fixture.write(2);
+		fixture.ring();
+		await settle();
+		expect(fixture.draw).toHaveBeenCalledTimes(2);
+		fixture.write(2);
+		await fixture.loop.reload();
+		expect(fixture.draw).toHaveBeenCalledTimes(3);
+	});
+
+	it('asks nothing of how documents lay out after a paint that threw partway, which is owed another whatever they say', async () => {
+		const alike = vi.fn(() => true);
+		const fixture = harness({ alike });
+		fixture.draw.mockImplementationOnce(() => { throw new Error('half made'); });
+		await fixture.loop.reload().catch(() => undefined);
+		fixture.write(1);
+		fixture.ring();
+		await settle();
+		expect(alike).not.toHaveBeenCalled();
+		expect(fixture.draw).toHaveBeenCalledTimes(2);
+	});
+
 	it('paints for the bell when only the model is another', async () => {
 		const fixture = harness();
 		const same = { held: { version: 1 } };

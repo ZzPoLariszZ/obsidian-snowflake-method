@@ -34,6 +34,15 @@ export interface DocumentLoopDeps<Reading, Model> {
 	readFailed: (error: unknown) => void;
 	/** The document last taken, by identity alone: what a paint is measured against. */
 	held: () => unknown;
+	/**
+	 * Whether two documents lay out the same, for a workspace that can tell
+	 * where identity cannot. A file written is a file parsed again, so every
+	 * write brings back another object whatever it changed, and a change to
+	 * what no paint is made from would lay the whole workspace out again for
+	 * nothing. Asked only of a bell's read, and only once identity has said
+	 * the document moved.
+	 */
+	alike?: (painted: unknown, held: unknown) => boolean;
 	/** The model the view last loaded. */
 	model: () => Model | null;
 	/** Re-reads the project model; resolves once the workspace has been handed it. */
@@ -157,9 +166,15 @@ export function createDocumentLoop<Reading, Model>(
 			// workspace, the pool with it, is painted twice for one change. A
 			// paint that never finished is owed another all the same: the pair
 			// it was made from says nothing about how far it got.
-			const moved = !paintFinished
-				|| deps.held() !== paintedHeld
-				|| deps.model() !== paintedModel;
+			const held = deps.held();
+			let documentMoved = held !== paintedHeld;
+			if (documentMoved && paintFinished && deps.alike?.(paintedHeld, held) === true) {
+				// Another object that lays out as the painted one does is the
+				// painted one from here on, and the next bell is measured against it.
+				paintedHeld = held;
+				documentMoved = false;
+			}
+			const moved = !paintFinished || documentMoved || deps.model() !== paintedModel;
 			if (paintDemanded || moved) {
 				paintDemanded = false;
 				paint();

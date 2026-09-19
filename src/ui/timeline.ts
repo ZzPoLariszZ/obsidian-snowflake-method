@@ -140,6 +140,27 @@ const FOLDS: readonly Fold[] = ['time', 'pool'];
  */
 const NARROW_MAX_REM = 84;
 
+/**
+ * All of a document that the workspace lays out, as one string: its
+ * timelines, its views and the pin. Which view was opened last is read only
+ * when the one picked has gone, and then the views differ too.
+ */
+const drawnSignatures = new WeakMap<TimelineDocument, string>();
+const drawnSignature = (held: TimelineDocument): string => {
+	let signature = drawnSignatures.get(held);
+	if (signature === undefined) {
+		signature = JSON.stringify([held.timelines, held.views, held.pinnedTimelineId]);
+		drawnSignatures.set(held, signature);
+	}
+	return signature;
+};
+
+/** Whether two documents lay the workspace out the same, whatever else in them differs. */
+function drawnAlike(painted: unknown, held: unknown): boolean {
+	if (typeof painted !== 'object' || painted === null || typeof held !== 'object' || held === null) return false;
+	return drawnSignature(painted as TimelineDocument) === drawnSignature(held as TimelineDocument);
+}
+
 export const renderTimeline: RenderTimeline = (container, controls) => {
 	const { app, host, t, memory } = controls;
 	const root = container.createDiv({
@@ -168,7 +189,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		viewId = chosen;
 		paintAll();
 		// The view is shown already; this only writes down which one was opened
-		// last, which nothing on screen is drawn from, so no paint follows it.
+		// last, which nothing on screen is drawn from. No paint is asked for after
+		// it, and the bell its write rings brings back a document that lays out as
+		// the one shown does, which the loop is told, so none follows it either.
 		void enqueue(async () => {
 			await controls.bridge().setLastView(chosen);
 		}, 'nothing');
@@ -523,6 +546,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			console.error('Snowflake: the timeline could not be read', error);
 		},
 		held: () => reading?.held ?? null,
+		alike: (painted, held) => drawnAlike(painted, held),
 		model: () => controls.model(),
 		refreshModel: () => controls.refresh(),
 		draw: (nextModel) => {

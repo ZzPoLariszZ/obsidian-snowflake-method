@@ -328,6 +328,8 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 		held: () => held,
 		sheetHeld: (id: string): BeatSheet => held.sheets.find((candidate) => candidate.id === id)!,
 		notify: () => { for (const listener of listeners) listener(); },
+		/** The file read and parsed again, as every read after a write is: the same document under another identity. */
+		reparse: () => { held = JSON.parse(JSON.stringify(held)) as BeatSheetDocument; },
 		listeners,
 		sheetField: (): OptionFieldConfig => sheetFields[sheetFields.length - 1]!,
 		select: (): CorkboardElement =>
@@ -545,6 +547,31 @@ describe('the beat sheet workspace', () => {
 		fixture.sheetField().choose('other');
 		await settle();
 		expect(fixture.bridge.setLastSheet).toHaveBeenCalledTimes(1);
+	});
+
+	it('paints once for a sheet switched to even as the plugin answers it: a bell after the write, and the file parsed again', async () => {
+		const fixture = workspace({ sheets: [threeActs(), sheet('other', [act('o1', 'Only', [beat('ob1', 'Alone')])])], lastSheetId: 's' });
+		await settle();
+		const remember = vi.mocked(fixture.bridge.setLastSheet).getMockImplementation()!;
+		vi.mocked(fixture.bridge.setLastSheet).mockImplementation(async (id) => {
+			const wrote = await remember(id);
+			fixture.reparse();
+			fixture.notify();
+			return wrote;
+		});
+		const painted = (): number => fixture.poolHandle.refresh.mock.calls.length;
+		const before = painted();
+		fixture.sheetField().choose('other');
+		await settle();
+		expect(fixture.held().lastSheetId).toBe('other');
+		expect(painted()).toBe(before + 1);
+		// A bell that brings back sheets that differ is painted as ever, measured against the document that was let pass.
+		await fixture.bridge.renameSheet('other', 'Renamed');
+		fixture.reparse();
+		fixture.notify();
+		await settle();
+		expect(painted()).toBe(before + 2);
+		expect(fixture.select().value).toBe('Renamed');
 	});
 
 	it('writes the two switches for the sheet, each press taking the value the document holds as it lands', async () => {
@@ -896,6 +923,22 @@ describe('the acts of a sheet', () => {
 		await submit(opened[1], 'Opening');
 		await settle();
 		expect(fixture.titles()[0]).toBe('beatSheet.act.titleLabelled(number=1,label=Opening)');
+	});
+
+	it('writes nothing for an act dropped where it stands', async () => {
+		const fixture = laid();
+		await settle();
+		fixture.standTable();
+		const handle = fixture.act('a2').querySelector('.snowflake-method-beat-sheet-act-handle')!;
+		const dataTransfer = transfer([BEAT_SHEET_ACT_DRAG_TYPE]);
+		fire(handle, 'dragstart', { dataTransfer });
+		// Over the head of the act that follows it: before a3, which is where a2 stands already.
+		const under = fixture.order().indexOf('act:a3') * 40 + 1;
+		fire(fixture.table, 'dragover', { clientY: under, dataTransfer });
+		fire(fixture.table, 'drop', { clientY: under, dataTransfer });
+		fire(handle, 'dragend', {});
+		await settle();
+		expect(fixture.bridge.moveAct).not.toHaveBeenCalled();
 	});
 
 	it('calls an act and a beat by their own words, which no tooltip takes the place of', async () => {

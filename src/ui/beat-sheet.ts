@@ -31,6 +31,7 @@ import {
 	findBeatSheet,
 	findBeatSheetAct,
 	findBeatSheetTemplate,
+	moveBeatSheetAct,
 	shownBeatSheetId,
 	type Beat,
 	type BeatSheet,
@@ -144,6 +145,27 @@ const NARROW_MAX_REM = 84;
 /** How many documents back a place that has gone is still looked for by name. */
 const EARLIER_HELD_MAX = 4;
 
+/**
+ * All of a document that the workspace lays out, as one string: its sheets.
+ * Which sheet was opened last is read only when the one picked has gone, and
+ * then the sheets differ too; the templates are read by the forms as they open.
+ */
+const drawnSignatures = new WeakMap<BeatSheetDocument, string>();
+const drawnSignature = (held: BeatSheetDocument): string => {
+	let signature = drawnSignatures.get(held);
+	if (signature === undefined) {
+		signature = JSON.stringify(held.sheets);
+		drawnSignatures.set(held, signature);
+	}
+	return signature;
+};
+
+/** Whether two documents lay the workspace out the same, whatever else in them differs. */
+function drawnAlike(painted: unknown, held: unknown): boolean {
+	if (typeof painted !== 'object' || painted === null || typeof held !== 'object' || held === null) return false;
+	return drawnSignature(painted as BeatSheetDocument) === drawnSignature(held as BeatSheetDocument);
+}
+
 export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	const { app, host, t, memory } = controls;
 	// The timeline's own class dresses the workspace, one lane wide: a sheet
@@ -170,7 +192,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		sheetId = chosen;
 		paintAll();
 		// The sheet is shown already; this only writes down which one was opened
-		// last, which nothing on screen is drawn from, so no paint follows it.
+		// last, which nothing on screen is drawn from. No paint is asked for after
+		// it, and the bell its write rings brings back sheets that lay out as the
+		// ones shown do, which the loop is told, so none follows it either.
 		void enqueue(async () => {
 			await controls.bridge().setLastSheet(chosen);
 		}, 'nothing');
@@ -521,6 +545,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			console.error('Snowflake: the beat sheets could not be read', error);
 		},
 		held: () => reading?.held ?? null,
+		alike: (painted, held) => drawnAlike(painted, held),
 		model: () => controls.model(),
 		refreshModel: () => controls.refresh(),
 		draw: (nextModel) => {
@@ -1274,8 +1299,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		});
 	};
 
+	/** An act moved before another, or to the end; nothing written for no move, which the document's own move is asked about. */
 	const moveActTo = (openedSheet: string, actId: string, beforeActId: string | null): void => {
-		if (readOnly) return;
+		if (readOnly || reading === null || moveBeatSheetAct(reading.held, openedSheet, actId, beforeActId, 0) === null) return;
 		void enqueue(async () => {
 			await controls.bridge().moveAct(openedSheet, actId, beforeActId);
 		});
