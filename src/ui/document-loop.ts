@@ -143,13 +143,20 @@ export function createDocumentLoop<Reading, Model>(
 			reloadPending = true;
 			return reloadRun;
 		}
-		reloadRun = (async () => {
+		// A run that ends before its first wait has been and gone by the time
+		// the line that starts it is done, its own tidying with it. Kept all
+		// the same, it would be the read in flight for good, and every later
+		// request would join a read that is over and never read again.
+		let over = false;
+		const run = (async () => {
 			try {
 				do {
 					reloadPending = false;
-					const source = deps.source();
-					bind(source);
 					try {
+						// The bridge is asked for and heard inside the guard: one that
+						// cannot be had is a read that failed, said as one is.
+						const source = deps.source();
+						bind(source);
 						deps.taken(await source.read(), false);
 					} catch (error) {
 						deps.taken(null, true);
@@ -158,6 +165,7 @@ export function createDocumentLoop<Reading, Model>(
 					if (deps.disposed()) return;
 				} while (reloadPending);
 			} finally {
+				over = true;
 				reloadRun = null;
 			}
 			// A bell bringing back the very document and model the last paint was
@@ -180,7 +188,8 @@ export function createDocumentLoop<Reading, Model>(
 				paint();
 			}
 		})();
-		return reloadRun;
+		if (!over) reloadRun = run;
+		return run;
 	};
 
 	const enqueue = (action: () => Promise<void>, after: After | (() => After) = 'document'): Promise<void> => {

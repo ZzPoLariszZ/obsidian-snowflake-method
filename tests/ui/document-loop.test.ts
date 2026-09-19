@@ -112,6 +112,37 @@ describe('reading the document', () => {
 		expect(fixture.draw).toHaveBeenCalledTimes(2);
 	});
 
+	it('takes a bridge that cannot be had for a read that failed, and reads again the next time it is asked', async () => {
+		const fixture = harness();
+		const standing = fixture.source;
+		const broken = new Error('no project stands');
+		fixture.stand(new Proxy(standing, { get: () => { throw broken; } }));
+		await fixture.loop.reload();
+		expect(fixture.failed()).toBe(true);
+		expect(fixture.readFailed).toHaveBeenCalledWith(broken);
+		expect(fixture.draw).toHaveBeenCalledOnce();
+		// The run that failed is over: the next request starts a read of its own and is answered by it.
+		fixture.stand(standing);
+		await fixture.loop.reload();
+		expect(fixture.failed()).toBe(false);
+		expect(fixture.reading()).toEqual({ held: { version: 1 } });
+		expect(standing.read).toHaveBeenCalledOnce();
+	});
+
+	it('is not left holding a run that ended before its first wait, whatever ended it', async () => {
+		// The workspace's own taking throws at once, when it is told of the read that failed.
+		let calls = 0;
+		const taken = vi.fn(() => { calls += 1; if (calls <= 1) throw new Error('taken broke'); });
+		const broken = harness({ taken });
+		broken.stand(new Proxy(broken.source, { get: () => { throw new Error('no bridge'); } }));
+		await expect(broken.loop.reload()).rejects.toThrow('taken broke');
+		// Nothing of that run is kept: the next one reads.
+		broken.stand(broken.source);
+		await broken.loop.reload();
+		expect(broken.source.read).toHaveBeenCalledOnce();
+		expect(broken.draw).toHaveBeenCalledOnce();
+	});
+
 	it('hears a new bridge in place of the old one when a rename hands the workspace another', async () => {
 		const fixture = harness();
 		await fixture.loop.reload();
