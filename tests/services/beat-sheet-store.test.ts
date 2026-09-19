@@ -316,11 +316,4 @@ describe("BeatSheetService", () => {
 		expect((await sheets.read(project)).sheets.map((sheet) => sheet.name)).toEqual(["Draft", "From mine"]);
 	});
 
-	it("takes out what points at scenes the project no longer has, only when asked", async () => {
-		const id = (await sheets.createSheet(project, { name: "Draft", source: threeAct() }))!;
-		const opening = (await sheets.read(project)).sheets[0]!.acts[0]!.beats[0]!.id;
-		await sheets.addRow(project, id, opening, "Arrives", null, ["scene-1", "scene-gone"]);
-		expect(await sheets.pruneMissing(project, { sceneIds: new Set(["scene-1"]) })).toBe("written");
-		expect(findBeat((await sheets.read(project)).sheets[0]!, opening)!.beat.rows[0]!.scenes).toEqual(["scene-1"]);
-	});
 });

@@ -39,7 +39,6 @@ export type BeatSheetTemplateChoice =
 	| { kind: 'project'; id: string };
 
 export interface BeatSheetBridge {
-	t: Translate;
 	/** The document as the file holds it now; null while no project stands. */
 	read: () => Promise<BeatSheetReading | null>;
 	/** Fires when the beat sheet file changed: the workspace's own writes and the vault's events alike. */
@@ -104,8 +103,6 @@ export interface BeatSheetBridge {
 	/** A sheet's acts and beats kept under a name as one of the project's templates; a namesake is replaced. */
 	saveTemplate: (sheetId: string, draft: { name: string; description: string }) => Promise<BeatSheetWrite>;
 	deleteTemplate: (templateId: string) => Promise<boolean>;
-	/** Takes out what points at scenes the project no longer has. */
-	pruneMissing: (known: { sceneIds?: ReadonlySet<string> }) => Promise<BeatSheetWrite>;
 }
 
 /** The drag types of the workspace's four levels, each its own so nothing lands where it should not, a timeline in another leaf included. */

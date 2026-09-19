@@ -897,27 +897,3 @@ export function deleteBeatSheetTemplate(held: BeatSheetDocument, id: string): Be
 	};
 }
 
-/**
- * Placements of scenes the project no longer has, taken out wherever they
- * stand. Never called on a reading's behalf: a note missing today may be back
- * tomorrow from sync, and the surfaces show a missing reference as missing
- * until the author says.
- */
-export function pruneMissingFromBeatSheets(
-	held: BeatSheetDocument,
-	known: { sceneIds?: ReadonlySet<string> },
-	now: number,
-): BeatSheetDocument | null {
-	const sceneIds = known.sceneIds;
-	if (sceneIds === undefined) return null;
-	let changed = false;
-	const sheets = held.sheets.map((sheet) => {
-		const unknown = new Set<string>();
-		for (const sceneId of beatScenePlacements(sheet).keys()) if (!sceneIds.has(sceneId)) unknown.add(sceneId);
-		const next = withoutScenes(sheet, unknown);
-		if (next === sheet) return sheet;
-		changed = true;
-		return { ...next, updatedAt: now };
-	});
-	return changed ? { ...held, sheets } : null;
-}

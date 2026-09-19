@@ -4342,11 +4342,6 @@ export default class SnowflakeMethodPlugin
 	 * write that landed is announced.
 	 */
 	beatSheet(context: SessionPanelContext = {}): BeatSheetBridge {
-		const projectLocale = context.locale ?? null;
-		const t = (
-			key: string,
-			vars?: Record<string, string | number>,
-		): string => this.translateForProject(projectLocale, key, vars);
 		const panelProject = (): string | null =>
 			context.projectPath ?? this.settings.recentProjectPath;
 		const sheets = this.projects.beatSheet;
@@ -4384,7 +4379,6 @@ export default class SnowflakeMethodPlugin
 				false,
 			);
 		return {
-			t,
 			read: async () => {
 				// resolveProject rather than the writable gate: a read-only
 				// project's sheets are still there to look at.
@@ -4446,7 +4440,6 @@ export default class SnowflakeMethodPlugin
 			removeScene: (sheetId, sceneId) => write((project) => sheets.removeScene(project, sheetId, sceneId)),
 			saveTemplate: (sheetId, draft) => write((project) => sheets.saveTemplate(project, sheetId, draft)),
 			deleteTemplate: (templateId) => remove((project) => sheets.deleteTemplate(project, templateId)),
-			pruneMissing: (known) => write((project) => sheets.pruneMissing(project, known)),
 		};
 	}
 

@@ -211,7 +211,6 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 		return 'written';
 	};
 	const bridge = {
-		t: (key: string): string => key,
 		read: vi.fn(async () => ({ projectPath: 'P', locale, held })),
 		subscribe: vi.fn((listener: () => void) => {
 			listeners.add(listener);
@@ -277,7 +276,6 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 			return apply(saveBeatSheetTemplate(held, { id, ...draft, structure: beatSheetStructureOf(from) }, 2));
 		}),
 		deleteTemplate: vi.fn(async (id: string) => { apply(deleteBeatSheetTemplate(held, id)); return true; }),
-		pruneMissing: vi.fn(async () => 'written' as const),
 	} as unknown as BeatSheetBridge;
 	let model = {
 		path: 'P', projectId: 'p', locale, readOnly: options.readOnly === true,

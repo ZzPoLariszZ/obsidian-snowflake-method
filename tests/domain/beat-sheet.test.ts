@@ -26,7 +26,6 @@ import {
 	moveBeatRow,
 	moveBeatSheetAct,
 	placeBeatScene,
-	pruneMissingFromBeatSheets,
 	readBeatSheet,
 	readBeatSheetDocument,
 	readBeatSheetTemplate,
@@ -437,14 +436,9 @@ describe('scene placements', () => {
 		expect(placeBeatScene(held(), 's', 'scene-1', 'gone', null, 9)).toBeNull();
 	});
 
-	it('removes a placement, and prunes only the scenes the project no longer has', () => {
+	it('removes a placement, and nothing for a scene that stands nowhere on the sheet', () => {
 		expect(rowsOf(removeBeatScene(held(), 's', 'scene-1', 9), 'b1')[0]?.scenes).toEqual(['scene-2']);
 		expect(removeBeatScene(held(), 's', 'scene-9', 9)).toBeNull();
-		const pruned = pruneMissingFromBeatSheets(held(), { sceneIds: new Set(['scene-2']) }, 9);
-		expect(rowsOf(pruned, 'b1')[0]?.scenes).toEqual(['scene-2']);
-		expect(pruned?.sheets[0]?.updatedAt).toBe(9);
-		expect(pruneMissingFromBeatSheets(held(), { sceneIds: new Set(['scene-1', 'scene-2']) }, 9)).toBeNull();
-		expect(pruneMissingFromBeatSheets(held(), {}, 9)).toBeNull();
 	});
 });
 

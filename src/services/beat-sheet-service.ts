@@ -21,7 +21,6 @@ import {
 	moveBeatRow,
 	moveBeatSheetAct,
 	placeBeatScene,
-	pruneMissingFromBeatSheets,
 	relabelBeatSheetAct,
 	removeBeatScene,
 	renameBeatSheet,
@@ -314,18 +313,6 @@ export class BeatSheetService {
 	removeScene(project: ProjectRef, sheetId: string, sceneId: string): Promise<BeatSheetWrite> {
 		return this.reviseSheet(project, sheetId, (held) =>
 			removeBeatScene(held, sheetId, sceneId, this.now()),
-		);
-	}
-
-	/** Takes out what points at scenes the project no longer has; never absent. */
-	pruneMissing(
-		project: ProjectRef,
-		known: { sceneIds?: ReadonlySet<string> },
-	): Promise<BeatSheetWrite> {
-		return this.revise(
-			project,
-			() => true,
-			(held) => pruneMissingFromBeatSheets(held, known, this.now()),
 		);
 	}
 

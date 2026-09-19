@@ -531,7 +531,7 @@ export class SnowflakeStoryStructureView extends ItemView {
 		if (this.beatSheetBridge === null || this.beatSheetBridge.path !== path) {
 			this.beatSheetBridge = {
 				path,
-				bridge: this.deps.host.beatSheet({ projectPath: path, locale: this.model?.locale ?? null }),
+				bridge: this.deps.host.beatSheet({ projectPath: path }),
 			};
 		}
 		return this.beatSheetBridge.bridge;
