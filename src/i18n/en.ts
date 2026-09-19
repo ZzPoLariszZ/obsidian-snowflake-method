@@ -1204,7 +1204,7 @@ export const en = {
 	'timeline.stack.reset': 'Back to the first scene',
 	'timeline.stack.position': '{position} / {total}',
 	'timeline.pool': 'Scene pool',
-	'timeline.pool.empty': 'Every scene is placed on this timeline',
+	'timeline.pool.empty': 'Every scene is placed',
 	'timeline.pool.collapse': 'Collapse scene pool',
 	'timeline.pool.expand': 'Expand scene pool',
 	'beatSheet.newerSchema':
@@ -1279,7 +1279,7 @@ export const en = {
 	'beatSheet.subrow.editGone': 'The sub-description is no longer on the beat sheet. Its words are shown for you to keep.',
 	'beatSheet.subrow.addGone': 'The beat these words were for is no longer on the beat sheet. They are shown for you to keep.',
 	'beatSheet.scene.remove': 'Remove from this beat sheet',
-	'beatSheet.pool.empty': 'Every scene is placed on this beat sheet',
+	'beatSheet.pool.empty': 'Every scene is placed',
 	'stickyNotes.viewTitle': 'Sticky notes',
 	'stickyNotes.add': 'Add sticky note',
 	'stickyNotes.empty': 'No sticky notes',
