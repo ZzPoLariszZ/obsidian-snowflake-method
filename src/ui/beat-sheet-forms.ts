@@ -59,7 +59,9 @@ export interface BeatSheetTemplateShelf {
  * A sheet made: its name, and the template it starts from, typed into,
  * searched and picked from as a form's category is, the presets under one
  * heading and the project's own under another. A line under the field says
- * how much the pick holds, since a template is only a start.
+ * how much the pick holds, since a template is only a start, and under that
+ * stands what the template's author wrote of it, set off as a quotation: the
+ * words are theirs and not the form's.
  */
 export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 	private nameValue = '';
@@ -67,6 +69,7 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 	private choice: BeatSheetTemplateChoice = { kind: 'built-in', id: BUILT_IN_BEAT_SHEET_TEMPLATE_IDS[0] };
 	private picker: OptionPicker | null = null;
 	private summaryEl: HTMLElement | null = null;
+	private descriptionEl: HTMLElement | null = null;
 	private closed = false;
 
 	constructor(
@@ -122,6 +125,9 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 		);
 		this.options.templateActions?.(line, this.handle());
 		this.summaryEl = template.controlEl.createDiv({ cls: 'snowflake-method-beat-sheet-template-summary' });
+		this.descriptionEl = template.controlEl.createEl('blockquote', {
+			cls: 'snowflake-method-beat-sheet-template-description is-hidden',
+		});
 		this.paintSummary();
 	}
 
@@ -154,18 +160,17 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 
 	private paintSummary(): void {
 		const el = this.summaryEl;
-		if (el === null) return;
+		const quote = this.descriptionEl;
+		if (el === null || quote === null) return;
 		const picked = this.pickedStructure();
-		if (picked === null) {
-			el.setText('');
-			return;
-		}
-		const counts = this.t('beatSheet.sheet.templateSummary', {
+		el.setText(picked === null ? '' : this.t('beatSheet.sheet.templateSummary', {
 			acts: picked.structure.acts.length,
 			beats: countBeats(picked.structure),
-		});
-		const description = picked.description.trim();
-		el.setText(description.length === 0 ? counts : `${description} ${counts}`);
+		}));
+		// A preset says nothing of itself, and neither does a template exported without a word: no quotation stands empty.
+		const description = picked?.description.trim() ?? '';
+		quote.setText(description);
+		quote.toggleClass('is-hidden', description.length === 0);
 	}
 
 	/** Who beside the field wants to hear the pick move. */
@@ -198,6 +203,7 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 		this.picker?.destroy();
 		this.picker = null;
 		this.summaryEl = null;
+		this.descriptionEl = null;
 		this.choiceListeners.clear();
 		super.onClose();
 	}

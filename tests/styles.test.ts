@@ -150,6 +150,14 @@ describe('styles.css', () => {
 		// pencil; on a sheet the export comes first, and was left beside the field until it took the margin.
 		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-edit')).toContain('margin-inline-start: auto');
 		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-beat-sheet-export')).toContain('margin-inline-start: auto');
+		// The template field's description is two sentences the copy breaks onto two lines.
+		expect(declarations('.snowflake-method-beat-sheet-template-setting .setting-item-description')).toContain('white-space: pre-line');
+		// What a template's author wrote of it is set off as a quotation, by the app's own measures for one, and goes when there is none.
+		const quote = declarations('.snowflake-method-beat-sheet-template-description');
+		expect(quote).toContain('border-inline-start: var(--blockquote-border-thickness, 2px) solid');
+		expect(quote).toContain('margin: 0');
+		expect(quote).toContain('white-space: pre-wrap');
+		expect(declarations('.snowflake-method-beat-sheet-template-description.is-hidden')).toContain('display: none');
 	});
 
 	/**

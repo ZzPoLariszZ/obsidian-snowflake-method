@@ -1219,9 +1219,10 @@ export const en = {
 	'beatSheet.sheet.nameRequired': 'Enter a beat sheet name.',
 	'beatSheet.sheet.nameTaken': 'Another beat sheet already answers to that name.',
 	'beatSheet.sheet.template': 'Template',
-	'beatSheet.sheet.templateHint': 'The acts and beats the sheet starts with. Everything can be changed afterwards.',
+	'beatSheet.sheet.templateHint':
+		'Apply a template to pre-populate your story structure.\nEverything can still be modified afterwards.',
 	'beatSheet.sheet.templatePlaceholder': 'Choose a template…',
-	'beatSheet.sheet.templateSummary': '{acts} acts, {beats} beats.',
+	'beatSheet.sheet.templateSummary': '{acts} acts · {beats} beats',
 	'beatSheet.sheet.templateGone': 'That template is no longer there. Choose another.',
 	'beatSheet.sheet.createRefused': 'The beat sheet could not be made.',
 	'beatSheet.sheet.deleteTitle': 'Delete beat sheet "{name}"?',

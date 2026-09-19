@@ -154,18 +154,30 @@ describe('the beat sheet forms', () => {
 			expect(new Set(options.map((option) => option.value)).size).toBe(options.length);
 		});
 
-		it('says under the field how much the pick holds, a template\'s own description first', () => {
-			const form = addForm({ project: () => [template('tpl-1', 'My shape', { description: ' Two turns. ' })] });
+		it('says under the field how much the pick holds, and under that what its author wrote of it, as a quotation', () => {
+			const form = addForm({ project: () => [template('tpl-1', 'My shape', { description: ' Two turns.\nOne hollow. ' }), template('tpl-2', 'Wordless')] });
 			build(form);
 			const summary = content(form).querySelector('.snowflake-method-beat-sheet-template-summary')!;
+			const quote = content(form).querySelector('.snowflake-method-beat-sheet-template-description')!;
+			expect(quote.tag).toBe('blockquote');
+			// A preset says nothing of itself, so no quotation stands empty under its count.
 			expect(summary.textContent).toBe('beatSheet.sheet.templateSummary(acts=0,beats=0)');
+			expect(quote.classes.has('is-hidden')).toBe(true);
 			fields[0]!.config.choose(templateOptionValue({ kind: 'built-in', id: 'save-the-cat' }));
 			expect(summary.textContent).toBe('beatSheet.sheet.templateSummary(acts=3,beats=15)');
+			expect(quote.classes.has('is-hidden')).toBe(true);
+			// The count stays the count alone; the author's words stand under it, in the lines they were written in.
 			fields[0]!.config.choose(templateOptionValue({ kind: 'project', id: 'tpl-1' }));
-			expect(summary.textContent).toBe('Two turns. beatSheet.sheet.templateSummary(acts=1,beats=2)');
+			expect(summary.textContent).toBe('beatSheet.sheet.templateSummary(acts=1,beats=2)');
+			expect(quote.textContent).toBe('Two turns.\nOne hollow.');
+			expect(quote.classes.has('is-hidden')).toBe(false);
 			// A value the list never offered moves nothing.
 			fields[0]!.config.choose('nonsense');
-			expect(summary.textContent).toBe('Two turns. beatSheet.sheet.templateSummary(acts=1,beats=2)');
+			expect(quote.textContent).toBe('Two turns.\nOne hollow.');
+			// A template exported without a word takes the quotation away again.
+			fields[0]!.config.choose(templateOptionValue({ kind: 'project', id: 'tpl-2' }));
+			expect(quote.textContent).toBe('');
+			expect(quote.classes.has('is-hidden')).toBe(true);
 		});
 
 		it('lays the field and the line under it in the template setting\'s own control', () => {
@@ -177,6 +189,7 @@ describe('the beat sheet forms', () => {
 			expect(line.parent!.children.map((child) => [...child.classes][0])).toEqual([
 				'snowflake-method-beat-sheet-template-line',
 				'snowflake-method-beat-sheet-template-summary',
+				'snowflake-method-beat-sheet-template-description',
 			]);
 		});
 

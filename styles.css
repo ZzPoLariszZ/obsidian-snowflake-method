@@ -14582,10 +14582,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	inset-block-end: calc(100% - var(--snowflake-method-timeline-node-offset));
 }
 
-/* The template field of the Add beat sheet form: the field and what stands
-   beside it on one line, and under them a quiet line saying how much the
-   pick holds. A form's control lays what it holds out across, so this one is
-   told to stack. */
+/* The template field of the Add beat sheet form. Its description is two
+   sentences on two lines, as the copy breaks them. */
+.snowflake-method-beat-sheet-template-setting .setting-item-description {
+	white-space: pre-line;
+}
+
+/* The field and what stands beside it on one line, and under them a quiet
+   line saying how much the pick holds. A form's control lays what it holds
+   out across, so this one is told to stack. */
 .snowflake-method-project-form > .snowflake-method-beat-sheet-template-setting > .setting-item-control {
 	flex-direction: column;
 	gap: var(--size-2-3);
@@ -14625,6 +14630,29 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	text-align: start;
+}
+
+/* What a template's author wrote of it stands under the count, set off as
+   a quotation is in a note, by the app's own measures for one: the words are
+   theirs and not the form's. It keeps the lines it was written in. */
+.snowflake-method-beat-sheet-template-description {
+	width: 100%;
+	margin: 0;
+	padding-block: var(--size-2-1);
+	padding-inline: var(--size-4-3) 0;
+	border-inline-start: var(--blockquote-border-thickness, 2px) solid
+		var(--blockquote-border-color, var(--interactive-accent));
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-style: var(--blockquote-font-style, normal);
+	line-height: var(--line-height-tight);
+	text-align: start;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-beat-sheet-template-description.is-hidden {
+	display: none;
 }
 
 /* A beat's main description is a sentence or a few, so its box opens with

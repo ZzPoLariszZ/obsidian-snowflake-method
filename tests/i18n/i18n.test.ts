@@ -1546,4 +1546,19 @@ describe('story structure copy', () => {
 		expect(en['table.filterAllColors']).toBe('All colors');
 		expect(zhCN['table.filterAllLinked']).toBe('全部正文笔记');
 	});
+
+	/**
+	 * The template field of the Add beat sheet form says what a template is
+	 * for in two sentences on two lines, which the stylesheet breaks where the
+	 * copy does, and counts what the pick holds with a dot between the two.
+	 */
+	it('keeps the Add beat sheet template copy exact', () => {
+		expect(en['beatSheet.sheet.templateHint']).toBe(
+			'Apply a template to pre-populate your story structure.\nEverything can still be modified afterwards.',
+		);
+		expect(zhCN['beatSheet.sheet.templateHint'].split('\n')).toHaveLength(2);
+		expect(zhCN['beatSheet.sheet.templateHint'].split('\n')[0]).toBe('用模板预先搭建你的故事结构。');
+		expect(t('en', 'beatSheet.sheet.templateSummary', { acts: 3, beats: 10 })).toBe('3 acts · 10 beats');
+		expect(t('zh-CN', 'beatSheet.sheet.templateSummary', { acts: 3, beats: 10 })).toBe('3 幕 · 10 个节拍');
+	});
 });
