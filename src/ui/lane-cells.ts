@@ -27,7 +27,6 @@ import {
 	cellDragState,
 	clampStackPosition,
 	joinKey,
-	keyPrefix,
 	placementIndexAt,
 	rowAcceptsScene,
 	splitKey,
@@ -226,8 +225,28 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 		rects = { subrows: new Map(), cards: new Map() };
 	};
 
-	const laneOfRow = (rowId: string): Lane | null =>
-		deps.lanes().find((lane) => lane.times.some((time) => time.rows.some((row) => row.id === rowId))) ?? null;
+	/**
+	 * The lane each row stands in, made once for the lanes as they were last
+	 * painted: the deck asks of every card at every dress whether it may drag,
+	 * and a walk of every row for every card was cards times rows a paint. A
+	 * host hands over another list of lanes whenever what they hold has moved,
+	 * so the list's own identity says when this is made again.
+	 */
+	let rowLanes: { lanes: readonly Lane[]; byRow: Map<string, Lane> } | null = null;
+	const laneOfRow = (rowId: string): Lane | null => {
+		const lanes = deps.lanes();
+		if (rowLanes?.lanes !== lanes) {
+			const byRow = new Map<string, Lane>();
+			for (const lane of lanes) {
+				for (const time of lane.times) {
+					// A row stands once; where a document says otherwise, the first lane holding it is the one, as a walk found it.
+					for (const row of time.rows) if (!byRow.has(row.id)) byRow.set(row.id, lane);
+				}
+			}
+			rowLanes = { lanes, byRow };
+		}
+		return rowLanes.byRow.get(rowId) ?? null;
+	};
 
 	// -- The cells ---------------------------------------------------------------
 
@@ -926,7 +945,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 	 * is another paint's to take over, and is left to it.
 	 */
 	const cardsWithin = (rowId: string, el: HTMLElement): string[] =>
-		[...deck.cards].filter(([key, card]) => key.startsWith(keyPrefix(rowId)) && el.contains(card.el)).map(([key]) => key);
+		rowKeys(rowId).filter((key) => { const card = deck.cards.get(key); return card !== undefined && el.contains(card.el); });
 
 	/**
 	 * Sub-rows a cell has taken down in this paint, by lane and row. A row
@@ -992,6 +1011,49 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 	 */
 	const takeDown = (key: string): void => {
 		deck.retire(key);
+		if (!deck.cards.has(key)) forgetKey(key);
+	};
+
+	/**
+	 * The deck's keys by the row they stand under, so a row's paint reads its
+	 * own cards and not the whole deck's: every key asked of every row was
+	 * rows times cards for a paint that changed nothing. It is kept level with
+	 * the deck by the mounts and the takings down made here. The deck changes
+	 * from outside as well, when the workspace prunes or clears it, which its
+	 * size tells; and it is let go at a paint's two ends, so nothing that kept
+	 * the size the same outlives a paint.
+	 */
+	let keysByRow: Map<string, Set<string>> | null = null;
+	let keysCounted = -1;
+	const rowKeys = (rowId: string): string[] => {
+		if (keysByRow === null || keysCounted !== deck.cards.size) {
+			keysByRow = new Map();
+			for (const key of deck.cards.keys()) {
+				const row = rowOfKey(key);
+				const held = keysByRow.get(row);
+				if (held === undefined) keysByRow.set(row, new Set([key]));
+				else held.add(key);
+			}
+			keysCounted = deck.cards.size;
+		}
+		// A list of its own: the takings down it is read for change the keeping under it.
+		return [...(keysByRow.get(rowId) ?? [])];
+	};
+	const rememberKey = (key: string): void => {
+		if (keysByRow === null) return;
+		const row = rowOfKey(key);
+		const held = keysByRow.get(row);
+		if (held === undefined) keysByRow.set(row, new Set([key]));
+		else held.add(key);
+		keysCounted = deck.cards.size;
+	};
+	const forgetKey = (key: string): void => {
+		if (keysByRow === null) return;
+		keysByRow.get(rowOfKey(key))?.delete(key);
+		keysCounted = deck.cards.size;
+	};
+	const forgetKeys = (): void => {
+		keysByRow = null;
 	};
 
 	/** The cards no sub-row holds after a paint. */
@@ -1089,7 +1151,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 		}
 		if (entry.stack !== null) takeDownStack(entry, row.id);
 		const keys = row.scenes.map((sceneId) => cardKey(row.id, sceneId));
-		const standing = [...deck.cards.keys()].filter((key) => key.startsWith(keyPrefix(row.id)));
+		const standing = rowKeys(row.id);
 		const wantedCards = row.scenes
 			.filter((sceneId) => deps.scenesById().has(sceneId))
 			.map((sceneId) => cardKey(row.id, sceneId));
@@ -1114,6 +1176,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 			let card = deck.cards.get(key);
 			if (card === undefined) {
 				card = deck.mount(entry.scenes, key, scene, index);
+				rememberKey(key);
 				wireCardDrag(card, row.id);
 			} else if (!entry.scenes.contains(card.el)) {
 				// The row came from another time: its card comes over as it stands, editor and all.
@@ -1218,8 +1281,8 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 		// settled or shown for keeping, and the stand-in takes its place rather
 		// than standing beside it.
 		const wantedKey = shownScene === undefined || shownId === undefined ? null : cardKey(row.id, shownId);
-		for (const standing of [...deck.cards.keys()]) {
-			if (standing.startsWith(keyPrefix(row.id)) && standing !== wantedKey) takeDown(standing);
+		for (const standing of rowKeys(row.id)) {
+			if (standing !== wantedKey) takeDown(standing);
 		}
 		for (const [sceneId, el] of entry.missing) {
 			if (sceneId !== shownId || deps.scenesById().has(sceneId)) {
@@ -1238,6 +1301,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 				let card = deck.cards.get(wanted);
 				if (card === undefined) {
 					card = deck.mount(stack.face, wanted, shownScene, index);
+					rememberKey(wanted);
 					wireCardDrag(card, row.id);
 				} else if (!stack.face.contains(card.el)) {
 					// The row came from another time: its card in front comes over as it stands.
@@ -1573,10 +1637,15 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 		mountCell,
 		dressCell: dressLaneCell,
 		unmountCell: unmountLaneCell,
-		recoverHomelessFeet,
+		recoverHomelessFeet: () => {
+			// The head of a paint: what is known of the deck's keys is read afresh for it.
+			forgetKeys();
+			recoverHomelessFeet();
+		},
 		sweep: () => {
 			sweepParked();
 			sweepCards();
+			forgetKeys();
 		},
 		dragging: () => drag !== null,
 		setMark,

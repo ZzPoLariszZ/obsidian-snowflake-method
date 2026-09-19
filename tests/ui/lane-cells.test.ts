@@ -277,6 +277,8 @@ function standing(lanes: Timeline[], overrides: Partial<LaneCellsDeps<Reading>> 
 		dom, root, ground, cells, deck, bridge, notice, kept, dragPhase, endDrag, stackPositions, paint, boxes,
 		held: () => held,
 		lose: (laneId: string) => { held = { ...held, timelines: held.timelines.filter((entry) => entry.id !== laneId) }; },
+		/** Another document's lanes in place of the ones held, as a read after a write brings. */
+		stand: (timelines: typeof held.timelines) => { held = { ...held, timelines }; },
 		readOnly: (value: boolean) => { readOnly = value; },
 		dispose: () => { disposed = true; },
 		unload: () => { unloading = true; },
@@ -512,6 +514,46 @@ describe('a row moved to another cell of its lane', () => {
 });
 
 describe('scenes on a row', () => {
+	it('reads a row\'s cards off the deck as it stands, whoever changed it and whenever', () => {
+		const fixture = standing([lane('a', [
+			{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1', 'scene-2']), row('r2', 'Argues', ['scene-3'])] },
+		])]);
+		expect(fixture.cards()).toHaveLength(3);
+		// The workspace clears the deck from outside, between two paints: every card is dealt again, once.
+		fixture.deck.clear();
+		expect(fixture.deck.cards.size).toBe(0);
+		fixture.paint();
+		expect([...fixture.deck.cards.keys()].sort()).toEqual([joinKey('r1', 'scene-1'), joinKey('r1', 'scene-2'), joinKey('r2', 'scene-3')]);
+		expect(fixture.cards()).toHaveLength(3);
+		// A card retired from outside in the middle of what a paint knows is missed by no later row, and none is dealt twice.
+		fixture.deck.retire(joinKey('r2', 'scene-3'));
+		fixture.paint();
+		fixture.paint();
+		expect(fixture.deck.cards.size).toBe(3);
+		expect(fixture.cards()).toHaveLength(3);
+		// A row's own cards alone come down with it, whatever its id begins another's with.
+		fixture.stand([lane('a', [{ timeId: 'time-1', rows: [row('r2', 'Argues', ['scene-3'])] }])]);
+		fixture.paint();
+		expect([...fixture.deck.cards.keys()]).toEqual([joinKey('r2', 'scene-3')]);
+	});
+
+	it('lets a card drag by the lane its row stands in as last painted, made again when the lanes are another list', () => {
+		const fixture = standing([
+			lane('a', [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1'])] }]),
+			lane('b', [{ timeId: 'time-1', rows: [row('r9', 'Elsewhere', ['scene-2'])] }]),
+		]);
+		const card = (key: string) => fixture.deck.cards.get(key)!;
+		expect(fixture.cells.dragAllowed(card(joinKey('r1', 'scene-1')))).toBe(true);
+		expect(fixture.cells.dragAllowed(card(joinKey('r9', 'scene-2')))).toBe(false);
+		// The row moves to the other lane: another list of lanes, so the answer is read from it.
+		fixture.stand([
+			lane('a', [{ timeId: 'time-1', rows: [] }]),
+			lane('b', [{ timeId: 'time-1', rows: [row('r9', 'Elsewhere', ['scene-2']), row('r1', 'Arrives', ['scene-1'])] }]),
+		]);
+		fixture.paint();
+		expect(fixture.cells.dragAllowed(card(joinKey('r1', 'scene-1')))).toBe(false);
+	});
+
 	it('deals a card per scene placed, and one card in front once the rows are stacked, and lays them flat again', () => {
 		const fixture = standing([lane('a', [{ timeId: 'time-1', rows: [row('r1', 'Arrives', ['scene-1', 'scene-2'])] }])]);
 		expect(fixture.cards()).toHaveLength(2);
