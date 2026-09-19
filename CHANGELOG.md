@@ -8,6 +8,28 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0]
+
+### Added
+
+- **The beat sheet**, the third of the visualization workspace's views, and the one that asks what a scene is for in the shape of the story. A sheet is made of **acts**, each numbered by its place and carrying a label where you give it one, and of **beats** under them, each with a name and a description kept in the sheet itself, since no note stands behind a beat. A project keeps as many sheets as it likes and shows one at a time, chosen in the field at the head of the toolbar. **Add beat sheet** and **Add act** make both from the toolbar, the pencil renames or deletes the sheet on show, and **Open beat sheet workspace** opens the tab from the command palette.
+- **Templates** to start a sheet from. **Blank**, **Three Act**, **Kishōtenketsu**, **Story Circle**, **Save the Cat**, **Hero's Journey** and **Romancing the Beat** are built in, each with its acts, its beats and a line on what every beat is there to do, written in the project's own language. The form says how many acts and beats a pick holds before you make it. **Export as template** in the toolbar saves the sheet on show as a template of your own, keeping its acts, its beats and their descriptions and leaving out the sub-descriptions and the scenes, and a template saved under a name already taken replaces the older one. A template of your own is deleted from the same form.
+- **Sub-descriptions and scenes under every beat**, exactly as under a time on a timeline: a line at a time at the foot of a beat, edited in place, with the **scene pool** beside the sheet holding every scene the sheet has not placed yet. One scene stands in one place on a sheet. Flat or stacked scenes, the eye that hides the sub-descriptions, and the two corner folds are the timeline's own, and a switch of the sheet's own turns it to show the last act first without renumbering anything.
+- **Every drag has a twin that is not a drag.** An act moves by its handle or by Move up, Move down and **Insert act after**. A beat moves by its handle to any place in any act, an empty one included, or by Move up and Move down, which cross an act's edge, **Move to act** and **Insert beat after**. A sub-description moves within its beat or to another with **Move to beat**, and a scene moves with **Move to sub-description** or goes back to the pool with **Remove from this beat sheet**. Anything that would lose words or placements asks first and says what goes with it.
+- **The beat sheets live in one file** under the project's visualization folder, `734_Beat_Sheet/beat-sheet.json`, with the project's own templates beside them. It holds the ids of the scenes and never their names, and it is read the way the timeline file is: an entry it cannot read set aside rather than dropped, a file from a newer version of the plugin left as it is, and a damaged one preserved beside a fresh start.
+
+### Changed
+
+- The workspace's strip has **Beat sheet** ready beside Corkboard and Timeline. Freeform alone still reads Planning stage….
+- An empty scene pool reads **Every scene is placed**, on a timeline and a beat sheet alike, where it used to name the timeline.
+- The health check treats every folder under `70_Tool` the same way. The three statistics folders were reported as damage when absent, which put a project made before them in the red and stopped its steps being reconciled, while the six folders beside them were only offered. All nine are built with a new project and put back by whatever writes into them, so all nine are now an offer with a Repair button and none of them marks the project. The entry reads **This project folder does not exist**, which holds for a folder that was removed as for one that never was, where it used to say the folder had not been created yet.
+
+### Fixed
+
+- Words typed at the foot of a time that has since left the timeline are no longer refused with a message about the project. The message says the time has gone, and the words are kept for you to copy.
+- A scene card on a timeline whose write is refused while the plugin is unloading has its words written to the console, as a card on the corkboard already did, rather than opening a dialog nothing owns.
+- A timeline whose file could not be reached at the first read no longer stays empty until the tab is reopened. The failed read is forgotten, and the next one is made afresh.
+
 ## [0.20.3]
 
 ### Fixed
@@ -482,6 +504,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.21.0]
+
+### 新增
+
+- **节拍表**是可视化工作区中做好的第三个视图，关注的是每个场景在故事结构中起什么作用。一张节拍表由**幕**组成，幕按次序自动编号，也可以再加一个标签，幕下是**节拍**，节拍的名称与描述保存在节拍表里，因为它背后没有笔记。一个项目可以保存任意多张节拍表，每次显示一张，在工具栏开头的选择框中切换。工具栏上的**添加节拍表**与**添加幕**用来创建它们，铅笔按钮可以重命名或删除当前的节拍表，命令面板中的**打开节拍表工作区**可以直接打开这个标签页。
+- 新建节拍表时可以选择**模板**。内置的有**空白**、**三幕式**、**起承转合**、**故事圈**、**救猫咪**、**英雄之旅**和**言情节拍**，各自带着幕、节拍，以及每个节拍用来做什么的一句说明，并以项目自身的语言写入。表单会在你选定之前显示所选模板包含多少幕、多少节拍。工具栏上的**导出为模板**会把当前节拍表保存为你自己的模板，保留幕、节拍及其描述，不包含子描述和场景，与已有模板同名时会替换旧的。自定义模板可以在同一个表单中删除。
+- **每个节拍之下都可以写子描述、放入场景**，与时间线上某个时间之下完全一样：在节拍末尾逐行添加，就地编辑，旁边的**场景池**里是这张节拍表尚未放入的场景。同一个场景在一张节拍表中只占一个位置。平铺或堆叠场景、隐藏子描述的眼睛按钮以及两个角落的折叠按钮都与时间线相同，节拍表还有自己的一个开关，可以让最后一幕排在前面，而不改变任何编号。
+- **每一种拖动都有对应的菜单操作。**幕可以用手柄拖动，也可以用上移、下移和**在后面插入幕**。节拍可以拖到任意一幕的任意位置，包括空的幕，也可以用上移、下移（可以跨过幕的边界）、**移动到幕**和**在后面插入节拍**。子描述可以在节拍内移动，也可以用**移动到节拍**移到别处，场景可以用**移动到子描述**移动，或用**从此节拍表移除**放回场景池。凡是会丢失文字或场景位置的操作都会先询问，并说明会一并移除什么。
+- **节拍表保存在一个文件里**，位于项目的可视化文件夹下：`734_节拍表/beat-sheet.json`，项目自己的模板也在其中。文件只保存场景的 ID，不保存名称，读取方式与时间线文件相同：无法读取的条目会被单独保留而不是丢弃，由更新版本插件写下的文件保持原样，损坏的文件会另存一份后重新开始。
+
+### 变更
+
+- 工作区的标签条上，**节拍表**已经与场景看板、时间线一样可用，只剩自由画布仍写着「规划阶段…」。
+- 场景池为空时显示**所有场景都已放入**，时间线与节拍表相同，不再提到时间线。
+- 健康检查对 `70_工具` 下的所有文件夹一视同仁。此前三个数据统计文件夹缺失时会被报告为损坏，早于它们创建的项目因此显示为需要修复，步骤状态也不再同步，而旁边的六个文件夹缺失时只是提示。这九个文件夹都会随新项目一起创建，也都会在写入时自动重建，因此现在全部只作为提示，并附带修复按钮，不再把项目标记为损坏。条目的文字改为**该项目文件夹不存在**，无论文件夹是被删除还是从未创建都成立，此前的说法是文件夹尚未创建。
+
+### 修复
+
+- 在时间线中某个时间末尾输入文字时，如果这个时间已经被移出时间线，不再提示项目拒绝写入，而是说明该时间已不在时间线中，输入的文字会保留下来供你复制。
+- 插件卸载过程中，时间线上的场景卡片写入被拒绝时，文字会写到控制台，与场景看板上的卡片一致，不再弹出一个无人管理的对话框。
+- 时间线文件在第一次读取时无法访问的话，不再一直显示为空直到重新打开标签页。失败的读取会被丢弃，下一次会重新读取。
 
 ## [0.20.3]
 
