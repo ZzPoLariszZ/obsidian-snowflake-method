@@ -946,11 +946,11 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		entry.description.toggleClass('is-empty', description.length === 0);
 		entry.description.disabled = readOnly;
 		setTooltip(entry.description, t('timeline.time.editDescription'));
-		// Each act's axis runs from its first beat's node to its last, which
-		// only the painter can say: nothing in the stylesheet may ask what an
-		// element holds or what stands beside it.
+		// Each act's axis starts at its first beat's node and runs on down to
+		// the foot of its last beat's cell, as a timeline's does. Which beat is
+		// the first only the painter can say: nothing in the stylesheet may ask
+		// what an element holds or what stands beside it.
 		entry.el.toggleClass('is-act-first', item.first);
-		entry.el.toggleClass('is-act-last', item.last);
 		const lane = laneOf(sheet);
 		cells.dressCell(entry.body, lane.times.find((time) => time.timeId === entry.beatId) ?? null, lane);
 	};

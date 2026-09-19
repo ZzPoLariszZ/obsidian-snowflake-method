@@ -82,14 +82,14 @@ export function tableKey(kind: TableEntryKind, id: string): string {
  */
 export type TableEntry =
 	| { kind: 'act'; key: string; act: BeatSheetAct; number: number }
-	| { kind: 'beat'; key: string; act: BeatSheetAct; beat: Beat; first: boolean; last: boolean }
+	| { kind: 'beat'; key: string; act: BeatSheetAct; beat: Beat; first: boolean }
 	| { kind: 'foot'; key: string; act: BeatSheetAct };
 
 /**
  * The table as the sheet is shown: act by act, each header over its beats
  * and its foot. A sheet shown from its end runs its acts and each act's
  * beats the other way; an act's number is still its place in the story, and
- * the first and the last are the ends of the axis as it is drawn.
+ * an act's first beat is the one its axis is drawn from.
  */
 export function tableOrder(sheet: Pick<BeatSheet, 'acts' | 'reversed'>): TableEntry[] {
 	const entries: TableEntry[] = [];
@@ -103,7 +103,6 @@ export function tableOrder(sheet: Pick<BeatSheet, 'acts' | 'reversed'>): TableEn
 				act,
 				beat,
 				first: at === 0,
-				last: at === beats.length - 1,
 			});
 		});
 		entries.push({ kind: 'foot', key: tableKey('foot', act.id), act });

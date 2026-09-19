@@ -60,7 +60,7 @@ describe('the beat sheet layout', () => {
 		expect(splitKey(tableKey('beat', 'b1'))).toEqual(['beat', 'b1']);
 	});
 
-	it('reads the table act by act: a header, its beats with the first and the last marked, and a foot', () => {
+	it('reads the table act by act: a header, its beats with the first marked, and a foot', () => {
 		const entries = tableOrder(sheet([
 			act('a1', [beat('b1'), beat('b2'), beat('b3')]),
 			act('a2', []),
@@ -72,14 +72,9 @@ describe('the beat sheet layout', () => {
 			'act:a3', 'beat:b4', 'foot:a3',
 		]);
 		expect(entries.filter((entry) => entry.kind === 'act').map((entry) => entry.kind === 'act' && entry.number)).toEqual([1, 2, 3]);
-		const marks = entries.flatMap((entry) => (entry.kind === 'beat' ? [[entry.beat.id, entry.first, entry.last]] : []));
-		expect(marks).toEqual([
-			['b1', true, false],
-			['b2', false, false],
-			['b3', false, true],
-			// A lone beat is both ends of its act's axis.
-			['b4', true, true],
-		]);
+		// An act's axis is drawn from its first beat; where it ends is the foot of the last one's cell, which needs no mark.
+		const marks = entries.flatMap((entry) => (entry.kind === 'beat' ? [[entry.beat.id, entry.first]] : []));
+		expect(marks).toEqual([['b1', true], ['b2', false], ['b3', false], ['b4', true]]);
 		expect(new Set(entries.map((entry) => entry.key)).size).toBe(entries.length);
 		expect(tableOrder(sheet([]))).toEqual([]);
 	});
@@ -103,9 +98,9 @@ describe('the beat sheet layout', () => {
 				'act:a1', 'beat:b3', 'beat:b2', 'beat:b1', 'foot:a1',
 			]);
 			expect(entries.flatMap((entry) => (entry.kind === 'act' ? [[entry.act.id, entry.number]] : []))).toEqual([['a3', 3], ['a2', 2], ['a1', 1]]);
-			// The ends of the axis are the ends as it is drawn.
-			expect(entries.flatMap((entry) => (entry.kind === 'beat' ? [[entry.beat.id, entry.first, entry.last]] : []))).toEqual([
-				['b4', true, true], ['b3', true, false], ['b2', false, false], ['b1', false, true],
+			// The axis is drawn from the first beat as the screen has them.
+			expect(entries.flatMap((entry) => (entry.kind === 'beat' ? [[entry.beat.id, entry.first]] : []))).toEqual([
+				['b4', true], ['b3', true], ['b2', false], ['b1', false],
 			]);
 			// Nothing is turned about in what the sheet keeps, and a sheet shown from its beginning is handed over as it is kept.
 			expect(turned.acts.map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);

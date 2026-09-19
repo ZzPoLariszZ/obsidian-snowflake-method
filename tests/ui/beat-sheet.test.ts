@@ -912,19 +912,18 @@ describe('the beats of an act', () => {
 		expect(fixture.beat('b1').querySelector('.snowflake-method-timeline-time-label')!.textContent).toBe('beatSheet.beat.unnamed');
 	});
 
-	it('ends each act\'s axis at its first beat and its last, which only the painter can say', async () => {
+	it('starts each act\'s axis at its first beat, which only the painter can say, and lets it run on through the last', async () => {
 		const fixture = laid();
 		await settle();
-		const ends = (id: string): [boolean, boolean] => [fixture.beat(id).classes.has('is-act-first'), fixture.beat(id).classes.has('is-act-last')];
-		expect(ends('b1')).toEqual([true, false]);
-		expect(ends('b2')).toEqual([false, true]);
-		expect(ends('b3')).toEqual([true, true]);
+		const first = (id: string): boolean => fixture.beat(id).classes.has('is-act-first');
+		expect([first('b1'), first('b2'), first('b3')]).toEqual([true, false, true]);
 		// A beat that comes to stand before the first takes the mark from it.
 		await fixture.bridge.moveBeat('s', 'b2', 'a1', 'b1');
 		fixture.notify();
 		await settle();
-		expect(ends('b2')).toEqual([true, false]);
-		expect(ends('b1')).toEqual([false, true]);
+		expect([first('b2'), first('b1')]).toEqual([true, false]);
+		// Nothing marks an act's last beat: its axis runs to the foot of its cell, as a timeline's last time's does.
+		expect(fixture.beats().some((row) => row.classes.has('is-act-last'))).toBe(false);
 	});
 
 	it('adds a beat at an act\'s end from the act\'s plus, and before a beat from the plus on the rule above it', async () => {
@@ -1428,9 +1427,8 @@ describe('a sheet shown from its end', () => {
 		// The rows under a beat are not turned about, and the beat's own row is the one that stood before.
 		expect(fixture.beat('b1')).toBe(row);
 		expect(subrows(fixture.cell('b1')).map((entry) => entry.getAttribute('data-row-id')).filter((id) => id !== null)).toEqual(['r1', 'r2']);
-		// The axis ends where it is drawn to end.
-		expect([fixture.beat('b2').classes.has('is-act-first'), fixture.beat('b2').classes.has('is-act-last')]).toEqual([true, false]);
-		expect([fixture.beat('b1').classes.has('is-act-first'), fixture.beat('b1').classes.has('is-act-last')]).toEqual([false, true]);
+		// The axis starts where the screen has the act's first beat.
+		expect([fixture.beat('b2').classes.has('is-act-first'), fixture.beat('b1').classes.has('is-act-first')]).toEqual([true, false]);
 		// Only the showing turned: the story stands in the file as it stood.
 		expect(fixture.sheetHeld('s').acts.map((entry) => [entry.id, entry.beats.map((one) => one.id)])).toEqual([['a1', ['b1', 'b2']], ['a2', []], ['a3', ['b3']]]);
 		order.dispatch('click');

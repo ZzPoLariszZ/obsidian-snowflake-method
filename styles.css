@@ -14571,15 +14571,14 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	pointer-events: none;
 }
 
-/* Each act's axis runs from its first beat's node to its last. Which beats
-   those are is the painter's to say, in classes of its own: the stylesheet
-   never asks what an element holds or what stands beside it. */
+/* Each act's axis starts at its first beat's node, under the act's header,
+   and runs on down through its last beat to the foot of that beat's cell, as
+   a timeline's runs to the foot of its last time: a line that stopped at the
+   last node left the last beat's cell looking cut off from the rest. Which
+   beat is an act's first is the painter's to say, in a class of its own: the
+   stylesheet never asks what an element holds or what stands beside it. */
 .snowflake-method-beat-sheet-beat.is-act-first .snowflake-method-timeline-axis::before {
 	inset-block-start: var(--snowflake-method-timeline-node-offset);
-}
-
-.snowflake-method-beat-sheet-beat.is-act-last .snowflake-method-timeline-axis::before {
-	inset-block-end: calc(100% - var(--snowflake-method-timeline-node-offset));
 }
 
 /* The template field of the Add beat sheet form. Its description is two

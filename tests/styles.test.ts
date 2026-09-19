@@ -164,11 +164,13 @@ describe('styles.css', () => {
 	 * An act's header is as wide as a beat's row at the least, or its rule would
 	 * stop short of the rows once the field is too narrow and the table scrolls;
 	 * and as tall as the head a timeline's lanes stand under, so the first act's
-	 * rule runs level with the pool's. Each act's axis runs from its first node
-	 * to its last by classes the painter sets: the stylesheet may not ask which
-	 * beat is first, since an act's header and foot stand between the rows.
+	 * rule runs level with the pool's. Each act's axis starts at its first node
+	 * by a class the painter sets: the stylesheet may not ask which beat is
+	 * first, since an act's header and foot stand between the rows. It runs on
+	 * to the foot of the last beat's cell, as a timeline's does: stopped at the
+	 * last node, the last beat's cell looked cut off from the rest.
 	 */
-	it('sizes an act from the timeline\u2019s own measures and ends each axis by the painter\u2019s word', () => {
+	it('sizes an act from the timeline\u2019s own measures and starts each axis by the painter\u2019s word', () => {
 		const act = declarations('.snowflake-method-beat-sheet-act');
 		for (const measure of [
 			'var(--snowflake-method-timeline-time-width)',
@@ -182,10 +184,10 @@ describe('styles.css', () => {
 		expect(
 			declarations('.snowflake-method-beat-sheet-beat.is-act-first .snowflake-method-timeline-axis::before'),
 		).toContain(`inset-block-start: ${offset}`);
-		expect(
-			declarations('.snowflake-method-beat-sheet-beat.is-act-last .snowflake-method-timeline-axis::before'),
-		).toContain(`inset-block-end: calc(100% - ${offset})`);
 		const sheet = section('Beat sheet').replace(/\/\*[\s\S]*?\*\//g, ' ');
+		// Nothing shortens the axis at its foot.
+		expect(sheet).not.toContain('is-act-last');
+		expect(sheet).not.toMatch(/axis::before\s*\{[^}]*inset-block-end/);
 		expect(sheet).not.toMatch(/:(?:first|last|nth)-(?:of-type|child)/);
 	});
 
