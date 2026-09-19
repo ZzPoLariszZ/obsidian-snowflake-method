@@ -720,9 +720,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 		'在此修复会写入可读取的值。',
 	'projectStructure.issue.missing-directory': '缺少该项目文件夹。',
 	'projectStructure.action.missing-directory': '在此修复会创建它。',
-	'projectStructure.issue.missing-on-demand-directory': '该项目文件夹尚未创建。',
+	'projectStructure.issue.missing-on-demand-directory': '该项目文件夹不存在。',
 	'projectStructure.action.missing-on-demand-directory':
-		'在此修复会立即创建。插件首次需要存放内容时也会自行创建。',
+		'在此修复会立即创建。插件需要存放内容时也会自行创建。',
 	'projectStructure.issue.misfiled-statistics-file':
 		'该文件仍在旧版本存放它的文件夹里。',
 	'projectStructure.action.misfiled-statistics-file':

@@ -792,10 +792,12 @@ export const en = {
 		'Repairing here writes a value it can read.',
 	'projectStructure.issue.missing-directory': 'This project folder is missing.',
 	'projectStructure.action.missing-directory': 'Repairing here creates it.',
+	// True of a folder that never was and of one that was removed alike: the
+	// report cannot tell them apart, and a new project is built with them all.
 	'projectStructure.issue.missing-on-demand-directory':
-		'This project folder has not been created yet.',
+		'This project folder does not exist.',
 	'projectStructure.action.missing-on-demand-directory':
-		'Repairing here creates it now. The plugin creates it by itself when it first has something to put there.',
+		'Repairing here creates it now. The plugin creates it by itself when it has something to put there.',
 	'projectStructure.issue.misfiled-statistics-file':
 		'This file is in the folder an older version kept it in.',
 	'projectStructure.action.misfiled-statistics-file':

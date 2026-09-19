@@ -21,6 +21,9 @@ import {
   ArchiveFolderIsProjectError,
   DuplicateNameError,
   FRONTMATTER_KEYS,
+  ON_DEMAND_DIRECTORY_KEYS,
+  PROJECT_DIRECTORY_KEYS,
+  PROJECT_PATH_LAYOUTS,
   ProjectCreationInterruptedError,
   SnowflakeProjectService,
   type ProjectSnapshot,
@@ -453,6 +456,74 @@ describe("SnowflakeProjectService", () => {
       }),
     ]);
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+  });
+
+  it("treats the three statistics folders as made on demand as well", async () => {
+    // Built with the project like the six above, and built again by the
+    // session writer and the two caches on the way to a write. Told as damage,
+    // a folder the README says costs nothing to lose would red the project.
+    const project = await service.createProject({ name: "Older layout" });
+    const statistics = `${project.rootPath}/70_Tool/71_Data_Statistics`;
+    for (const folder of [
+      `${statistics}/711_Writing_Session`,
+      `${statistics}/712_Prose_Analysis`,
+      `${statistics}/713_Entity_Tracking`,
+    ]) {
+      fakeVault.delete(folder);
+
+      const seen = await service.loadProject(project.projectFile);
+      const raised = seen.structureIssues.filter(
+        (issue) => issue.path === folder,
+      );
+      expect(raised).toEqual([
+        expect.objectContaining({
+          code: "missing-on-demand-directory",
+          path: folder,
+          stepIds: [],
+          repairable: true,
+          blocking: false,
+        }),
+      ]);
+    }
+  });
+
+  it("calls nothing damage in a project from before the tool chain", async () => {
+    // 0.7.0 wrote no 70_Tool at all, and every writer under it builds its own
+    // chain. Such a project must open clean of damage, its steps still
+    // reconciled, with each folder offered and none demanded.
+    const project = await service.createProject({ name: "Baseline layout" });
+    fakeVault.delete(`${project.rootPath}/70_Tool`);
+
+    const seen = await service.loadProject(project.projectFile);
+    expect(seen.structureIssues.map((issue) => issue.code)).toEqual(
+      Array.from({ length: 9 }, () => "missing-on-demand-directory"),
+    );
+    expect(seen.structureIssues.some((issue) => issue.blocking)).toBe(false);
+    expect(seen.structureIssues.every((issue) => issue.repairable)).toBe(true);
+
+    // One repair builds the whole chain above the folder it was asked for.
+    const timeline = `${project.rootPath}/70_Tool/73_Visualization/733_Timeline`;
+    const repaired = await service.repairMissingStructureItem(
+      project.projectFile,
+      timeline,
+    );
+    expect(fakeVault.nodes.has(timeline)).toBe(true);
+    expect(repaired.structureIssues).toHaveLength(8);
+  });
+
+  it("offers every folder of the tool chain, and demands every other", () => {
+    // The set is written out by hand, so this is what keeps the next folder
+    // filed under 70_Tool from being told differently from its neighbours.
+    for (const locale of ["en", "zh-CN"] as const) {
+      const directories = PROJECT_PATH_LAYOUTS[locale].directories;
+      const toolChain = `${directories.writingSessions.split("/")[0]!}/`;
+      for (const key of PROJECT_DIRECTORY_KEYS) {
+        expect([key, ON_DEMAND_DIRECTORY_KEYS.has(key)]).toEqual([
+          key,
+          directories[key].startsWith(toolChain),
+        ]);
+      }
+    }
   });
 
   it("reports a sticky note whose frontmatter will not parse, beyond repair", async () => {

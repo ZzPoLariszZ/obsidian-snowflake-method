@@ -344,22 +344,31 @@ export const ADVISORY_STRUCTURE_ISSUE_CODES: ReadonlySet<ProjectStructureIssueCo
   ]);
 
 /**
- * The directories the plugin makes for itself the first time it has something
- * to write there, rather than at creation.
+ * The directories a project can stand without: every folder of the tool
+ * chain, and nothing else.
  *
- * The 711-713 folders are not these: they are part of the shape a project is
- * built with, and a project missing one is a project to put right. A revisions
- * folder is only ever wanted once the author has proposed a change, a
- * foreshadowing folder once a thread has been set up, a sticky-notes folder
- * once the first note is written, a task folder once the first task is
- * saved, a timeline folder once the first timeline is laid out, and a beat
- * sheet folder once the first sheet is made; each writer ensures its chain
- * on the way to the first write -- so demanding one up front would mark
- * every project made before the feature as damaged over a folder nothing is
- * waiting for.
+ * This is not a list of what creation leaves out. A new project is built with
+ * all of them, as it is with every other folder of the layout. It is a list
+ * of the folders whose absence costs nothing: each holds only what its own
+ * writer puts there -- the sessions and the two statistics caches, the task,
+ * foreshadowing and revision files, the sticky notes, the timeline and the
+ * beat sheet -- and each of those writers ensures its chain on the way to a
+ * write, so an absent folder is back the moment there is something to keep
+ * in it. No step reads one, and no note is filed by one.
+ *
+ * Demanding any of them would mark as damaged every project made before its
+ * feature. A project from 0.7.0 has no tool chain at all, and would open in
+ * the red, its steps no longer reconciled, over folders nothing is waiting
+ * for. The 711-713 folders were once told as damage on the ground that they
+ * are part of the shape a project is built with; so are the rest, and all
+ * nine are made, written and put back the same way, so all nine are told the
+ * same way.
  */
 export const ON_DEMAND_DIRECTORY_KEYS: ReadonlySet<ProjectDirectoryKey> =
   new Set<ProjectDirectoryKey>([
+    "writingSessions",
+    "manuscriptAnalysis",
+    "mentionIndex",
     "tasks",
     "foreshadowing",
     "revisions",
