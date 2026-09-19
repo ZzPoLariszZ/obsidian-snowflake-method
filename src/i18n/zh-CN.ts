@@ -1131,6 +1131,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'beatSheet.sheet.deleteTitle': '删除节拍表「{name}」？',
 	'beatSheet.sheet.deleteDescription': '其中的 {acts} 幕、{beats} 个节拍和 {rows} 条子描述会被移除，场景本身保留。',
 	'beatSheet.sheet.deleteRefused': '节拍表无法删除。',
+	'beatSheet.order.reverse': '最后一幕在前',
+	'beatSheet.order.restore': '第一幕在前',
 	'beatSheet.template.section.builtIn': '内置',
 	'beatSheet.template.section.custom': '自定义',
 	'beatSheet.template.delete': '删除模板',

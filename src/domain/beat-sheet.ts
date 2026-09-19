@@ -57,6 +57,13 @@ export interface BeatSheet {
 	readonly presentation: ScenePresentation | null;
 	/** Whether the beats show their rows' words; a sheet that keeps them away shows the scenes alone. */
 	readonly showSubDescriptions: boolean;
+	/**
+	 * Whether the sheet is shown from its end: the last act first, and each
+	 * act's last beat first. Only the showing turns about. The acts and the
+	 * beats are kept in the story's own order, which an act's number is read
+	 * off, and what stands under a beat is shown as it is kept.
+	 */
+	readonly reversed: boolean;
 	readonly createdAt: number;
 	readonly updatedAt: number;
 }
@@ -191,6 +198,7 @@ export function readBeatSheet(value: unknown): BeatSheet | null {
 		acts,
 		presentation: isScenePresentation(entry.presentation) ? entry.presentation : null,
 		showSubDescriptions: entry.showSubDescriptions !== false,
+		reversed: entry.reversed === true,
 		createdAt: finiteOrZero(entry.createdAt),
 		updatedAt: finiteOrZero(entry.updatedAt),
 	};
@@ -415,6 +423,7 @@ export function beatSheetFromStructure(
 		})),
 		presentation: null,
 		showSubDescriptions: true,
+		reversed: false,
 		createdAt: draft.now,
 		updatedAt: draft.now,
 	};
@@ -559,6 +568,17 @@ export function setBeatSheetSubDescriptions(
 ): BeatSheetDocument | null {
 	return replaceSheet(held, sheetId, (sheet) =>
 		sheet.showSubDescriptions === shown ? null : { ...sheet, showSubDescriptions: shown }, now);
+}
+
+/** Shows the sheet from its end, or from its beginning again; the order the sheet keeps is left as it is. */
+export function setBeatSheetReversed(
+	held: BeatSheetDocument,
+	sheetId: string,
+	reversed: boolean,
+	now: number,
+): BeatSheetDocument | null {
+	return replaceSheet(held, sheetId, (sheet) =>
+		sheet.reversed === reversed ? null : { ...sheet, reversed }, now);
 }
 
 /** A new act with no beats yet, before another or at the end; null when its id already stands in the sheet. */

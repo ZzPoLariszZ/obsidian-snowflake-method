@@ -52,6 +52,8 @@ export interface BeatSheetBridge {
 	setLastSheet: (id: string | null) => Promise<BeatSheetWrite>;
 	setPresentation: (sheetId: string, presentation: ScenePresentation | null) => Promise<BeatSheetWrite>;
 	setSubDescriptions: (sheetId: string, shown: boolean) => Promise<BeatSheetWrite>;
+	/** Shows the sheet from its end, the last act first and each act's last beat first, or from its beginning again. */
+	setReversed: (sheetId: string, reversed: boolean) => Promise<BeatSheetWrite>;
 	/** A new act before another or at the end; its id, or null on a refusal. */
 	addAct: (sheetId: string, label: string, beforeActId: string | null) => Promise<string | null>;
 	relabelAct: (sheetId: string, actId: string, label: string) => Promise<BeatSheetWrite>;

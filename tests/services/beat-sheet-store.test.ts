@@ -20,6 +20,7 @@ const makeSheet = (id: string, overrides: Partial<BeatSheet> = {}): BeatSheet =>
 	acts: [],
 	presentation: null,
 	showSubDescriptions: true,
+	reversed: false,
 	createdAt: 7,
 	updatedAt: 7,
 	...overrides,
@@ -248,6 +249,7 @@ describe("BeatSheetService", () => {
 		expect(await sheets.moveRow(project, id, "gone", beatId, null)).toBe("absent");
 		expect(await sheets.placeScene(project, id, "scene-1", "gone", null)).toBe("absent");
 		expect(await sheets.setLastSheet(project, "gone")).toBe("absent");
+		expect(await sheets.setReversed(project, "gone", true)).toBe("absent");
 		// A thing already gone is what a removal asked for.
 		expect(await sheets.deleteAct(project, id, "gone")).toBe("written");
 		expect(await sheets.deleteBeat(project, id, "gone")).toBe("written");

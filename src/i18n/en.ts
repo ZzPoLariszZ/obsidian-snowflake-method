@@ -1227,6 +1227,8 @@ export const en = {
 	'beatSheet.sheet.deleteTitle': 'Delete beat sheet "{name}"?',
 	'beatSheet.sheet.deleteDescription': 'Its {acts} acts, {beats} beats and {rows} sub-descriptions are removed. The scenes themselves are kept.',
 	'beatSheet.sheet.deleteRefused': 'The beat sheet could not be deleted.',
+	'beatSheet.order.reverse': 'Show the last act first',
+	'beatSheet.order.restore': 'Show the first act first',
 	'beatSheet.template.section.builtIn': 'Built-in',
 	'beatSheet.template.section.custom': 'Custom',
 	'beatSheet.template.delete': 'Delete template',

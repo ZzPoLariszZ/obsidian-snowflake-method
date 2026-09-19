@@ -14469,6 +14469,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	height: 100%;
 }
 
+/* The toolbar's symbols stand at its end from the first of them, which on a
+   sheet is the export: the margin the timeline gives its pencil is given here. */
+.snowflake-method-timeline-toolbar .snowflake-method-beat-sheet-export {
+	margin-inline-start: auto;
+}
+
 /* An act's header runs across the table over its beats, headed as a group of
    scenes is on the corkboard: what it is called, then a rule to the table's
    end. It is as tall as the head a timeline's lanes stand under, so the

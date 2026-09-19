@@ -36,6 +36,7 @@ import {
 	saveBeatSheetTemplate,
 	serializeBeatSheetDocument,
 	setBeatSheetPresentation,
+	setBeatSheetReversed,
 	setBeatSheetSubDescriptions,
 	setLastBeatSheet,
 	shownBeatSheetId,
@@ -53,7 +54,7 @@ const beat = (id: string, rows: readonly BeatRow[] = [], extra: Partial<Beat> = 
 });
 const act = (id: string, beats: readonly Beat[] = [], label = ''): BeatSheetAct => ({ id, label, beats });
 const sheet = (id: string, acts: readonly BeatSheetAct[] = [], extra: Partial<BeatSheet> = {}): BeatSheet => ({
-	id, name: `Sheet ${id}`, acts, presentation: null, showSubDescriptions: true, createdAt: 1, updatedAt: 1, ...extra,
+	id, name: `Sheet ${id}`, acts, presentation: null, showSubDescriptions: true, reversed: false, createdAt: 1, updatedAt: 1, ...extra,
 });
 const template = (id: string, name: string, extra: Partial<BeatSheetTemplate> = {}): BeatSheetTemplate => ({
 	id, name, description: '', acts: [], createdAt: 1, updatedAt: 1, ...extra,
@@ -94,6 +95,10 @@ describe('reading a stored beat sheet', () => {
 		const read = readBeatSheet({ id: 's', name: 'S', acts: 'none', presentation: 'pile', showSubDescriptions: false, createdAt: 5, updatedAt: 'late' });
 		expect(read).toMatchObject({ acts: [], presentation: null, showSubDescriptions: false, createdAt: 5, updatedAt: 0 });
 		expect(readBeatSheet({ id: 's', name: 'S', presentation: 'stack' })?.presentation).toBe('stack');
+		// A sheet is shown from its beginning unless the file says plainly that it is turned about.
+		expect(readBeatSheet({ id: 's', name: 'S' })?.reversed).toBe(false);
+		expect(readBeatSheet({ id: 's', name: 'S', reversed: 'yes' })?.reversed).toBe(false);
+		expect(readBeatSheet({ id: 's', name: 'S', reversed: true })?.reversed).toBe(true);
 	});
 
 	it('never reads an act\'s number from the file, and reads a label or words that are not a string as none', () => {
@@ -199,6 +204,21 @@ describe('sheets', () => {
 		expect(setBeatSheetPresentation(held, 's', 'stack', 9)?.sheets[0]).toMatchObject({ presentation: 'stack', updatedAt: 9 });
 		expect(setBeatSheetSubDescriptions(held, 's', true, 9)).toBeNull();
 		expect(setBeatSheetSubDescriptions(held, 's', false, 9)?.sheets[0]?.showSubDescriptions).toBe(false);
+	});
+
+	it('turns the showing of a sheet about and leaves the order it keeps alone', () => {
+		const held = doc([sheet('s', [
+			act('a1', [beat('b1', [row('r1', 'First'), row('r2', 'Second')]), beat('b2')], 'Setup'),
+			act('a2', [beat('b3')]),
+		])]);
+		expect(setBeatSheetReversed(held, 's', false, 9)).toBeNull();
+		expect(setBeatSheetReversed(held, 'gone', true, 9)).toBeNull();
+		const turned = setBeatSheetReversed(held, 's', true, 9)!;
+		expect(turned.sheets[0]).toMatchObject({ reversed: true, updatedAt: 9 });
+		// The acts, the beats and the rows under them stand as they stood: the story has not moved.
+		expect(turned.sheets[0]!.acts).toBe(held.sheets[0]!.acts);
+		expect(readBeatSheetDocument(JSON.parse(JSON.stringify(serializeBeatSheetDocument(turned))) as Record<string, unknown>)?.sheets[0]?.reversed).toBe(true);
+		expect(setBeatSheetReversed(turned, 's', false, 10)?.sheets[0]).toMatchObject({ reversed: false, updatedAt: 10 });
 	});
 
 	it('deletes a sheet and the memory of it as the last one opened', () => {

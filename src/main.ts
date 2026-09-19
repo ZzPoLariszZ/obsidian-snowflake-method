@@ -4420,6 +4420,7 @@ export default class SnowflakeMethodPlugin
 				write((project) => sheets.setPresentation(project, sheetId, presentation)),
 			setSubDescriptions: (sheetId, shown) =>
 				write((project) => sheets.setSubDescriptions(project, sheetId, shown)),
+			setReversed: (sheetId, reversed) => write((project) => sheets.setReversed(project, sheetId, reversed)),
 			addAct: (sheetId, label, beforeActId) =>
 				create((project) => sheets.addAct(project, sheetId, label, beforeActId)),
 			relabelAct: (sheetId, actId, label) =>

@@ -146,6 +146,10 @@ describe('styles.css', () => {
 		// The line is drawn from the element's own box, so both must be one.
 		expect(declarations('.snowflake-method-beat-sheet-act')).toContain('position: relative');
 		expect(declarations('.snowflake-method-beat-sheet-act-foot')).toContain('position: relative');
+		// The symbols stand at the toolbar's end from the first of them. On the timeline that is the
+		// pencil; on a sheet the export comes first, and was left beside the field until it took the margin.
+		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-edit')).toContain('margin-inline-start: auto');
+		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-beat-sheet-export')).toContain('margin-inline-start: auto');
 	});
 
 	/**

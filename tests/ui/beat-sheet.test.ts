@@ -105,6 +105,7 @@ import {
 	renameBeatSheet,
 	saveBeatSheetTemplate,
 	setBeatSheetPresentation,
+	setBeatSheetReversed,
 	setBeatSheetSubDescriptions,
 	setLastBeatSheet,
 	type Beat,
@@ -177,7 +178,7 @@ const row = (id: string, text: string, scenes: string[] = []): BeatRow => ({ id,
 const beat = (id: string, name: string, extra: Partial<Beat> = {}): Beat => ({ id, name, description: '', rows: [], ...extra });
 const act = (id: string, label: string, beats: Beat[] = []): BeatSheetAct => ({ id, label, beats });
 const sheet = (id: string, acts: readonly BeatSheetAct[] = [], extra: Partial<BeatSheet> = {}): BeatSheet => ({
-	id, name: `Sheet ${id}`, acts: [...acts], presentation: null, showSubDescriptions: true, createdAt: 1, updatedAt: 1, ...extra,
+	id, name: `Sheet ${id}`, acts: [...acts], presentation: null, showSubDescriptions: true, reversed: false, createdAt: 1, updatedAt: 1, ...extra,
 });
 const template = (id: string, name: string): BeatSheetTemplate => ({
 	id, name, description: '', createdAt: 1, updatedAt: 1,
@@ -230,6 +231,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 		setLastSheet: vi.fn(async (id: string | null) => apply(setLastBeatSheet(held, id))),
 		setPresentation: vi.fn(async (id: string, presentation: 'flat' | 'stack' | null) => apply(setBeatSheetPresentation(held, id, presentation, 2))),
 		setSubDescriptions: vi.fn(async (id: string, shown: boolean) => apply(setBeatSheetSubDescriptions(held, id, shown, 2))),
+		setReversed: vi.fn(async (id: string, reversed: boolean) => apply(setBeatSheetReversed(held, id, reversed, 2))),
 		addAct: vi.fn(async (sheetId: string, label: string, beforeActId: string | null) => {
 			const id = `act-${String(++serial)}`;
 			apply(addBeatSheetAct(held, sheetId, { id, label }, beforeActId, 2));
@@ -423,24 +425,26 @@ describe('the beat sheet workspace', () => {
 		expect(fixture.root.querySelector('.snowflake-method-timeline-head')).toBeNull();
 	});
 
-	it('lays the toolbar out as the sheet, then at the end: edit, export, the words, the presentation, refresh, add act, add beat sheet', async () => {
+	it('lays the toolbar out as the sheet, then at the end: export, edit, the words, the presentation, the order, refresh, add act, add beat sheet', async () => {
 		const fixture = laid();
 		await settle();
 		const order = [
-			'snowflake-method-beat-sheet-select', 'snowflake-method-prose-state', 'snowflake-method-beat-sheet-edit',
-			'snowflake-method-beat-sheet-export', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-refresh',
+			'snowflake-method-beat-sheet-select', 'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export',
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+			'snowflake-method-timeline-order', 'snowflake-method-timeline-refresh',
 			'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
 		];
 		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
 		expect(toolbar.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
 		expect(toolbar.children).toHaveLength(order.length);
 		expect(toolbar.getAttribute('aria-label')).toBe('beatSheet.toolbar');
+		// The timeline's pencil carries the margin that sends the symbols to the toolbar's end. Here the
+		// export is the first of them, so the pencil must not wear that class, or the export is left behind.
+		expect(fixture.button('snowflake-method-beat-sheet-edit').classes.has('snowflake-method-timeline-view-edit')).toBe(false);
 		for (const [cls, words] of [['snowflake-method-beat-sheet-add-act', 'beatSheet.act.add'], ['snowflake-method-beat-sheet-add', 'beatSheet.sheet.add']] as const) {
 			expect(fixture.button(cls).classes.has('mod-cta')).toBe(true);
 			expect(fixture.button(cls).textContent).toBe(words);
 		}
-		// The timeline's "latest first" has no place here: an act's number is read off the order.
-		expect(fixture.root.querySelector('.snowflake-method-timeline-order')).toBeNull();
 	});
 
 	it('says what is missing while there is nothing yet, and leaves the ways in to the toolbar', async () => {
@@ -454,7 +458,7 @@ describe('the beat sheet workspace', () => {
 		expect(none.button('snowflake-method-beat-sheet-add').disabled).toBe(false);
 		for (const cls of [
 			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
-			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
 		]) {
 			expect(none.button(cls).disabled, cls).toBe(true);
 		}
@@ -626,6 +630,7 @@ describe('the beat sheet workspace', () => {
 		for (const cls of [
 			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
 			'snowflake-method-beat-sheet-add', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
+			'snowflake-method-timeline-order',
 		]) {
 			expect(fixture.button(cls).disabled, cls).toBe(true);
 		}
@@ -1391,6 +1396,261 @@ describe('sub-descriptions and scenes on a beat, through the cells a timeline sh
 		// The beat has gone, so the place is named as far as it can still be.
 		expect(drafts[0]!.place).toBe('Sheet s');
 		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+	});
+});
+
+describe('a sheet shown from its end', () => {
+	/** The three acts, turned about: Act 3 over its beat, Act 2 with none, Act 1 over Catalyst and then Opening Image. */
+	const turned = (extra: Partial<BeatSheetDocument> = {}): Fixture =>
+		workspace({ sheets: [sheet('s', threeActs().acts, { reversed: true, presentation: 'flat' })], ...extra });
+	const SHOWN = ['act:a3', 'beat:b3', 'foot:a3', 'act:a2', 'foot:a2', 'act:a1', 'beat:b2', 'beat:b1', 'foot:a1'];
+	const beatMenu = (fixture: Fixture, id: string) => fixture.menuOf(fixture.beat(id), 'snowflake-method-timeline-time-more');
+	const actMenu = (fixture: Fixture, id: string) => fixture.menuOf(fixture.act(id), 'snowflake-method-beat-sheet-act-more');
+
+	it('turns the sheet about from the toolbar: the last act first and each act\'s last beat first, every act under its own number, and what stands under a beat as it was', async () => {
+		const fixture = laid();
+		await settle();
+		const order = fixture.button('snowflake-method-timeline-order');
+		expect(order.getAttribute('aria-pressed')).toBe('false');
+		expect(order.getAttribute('aria-label')).toBe('beatSheet.order.reverse');
+		const row = fixture.beat('b1');
+		order.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setReversed).toHaveBeenCalledExactlyOnceWith('s', true);
+		expect(order.getAttribute('aria-pressed')).toBe('true');
+		expect(order.getAttribute('aria-label')).toBe('beatSheet.order.restore');
+		expect(fixture.order()).toEqual(SHOWN);
+		expect(fixture.titles()).toEqual([
+			'beatSheet.act.titleLabelled(number=3,label=Resolution)',
+			'beatSheet.act.title(number=2)',
+			'beatSheet.act.titleLabelled(number=1,label=Setup)',
+		]);
+		// The rows under a beat are not turned about, and the beat's own row is the one that stood before.
+		expect(fixture.beat('b1')).toBe(row);
+		expect(subrows(fixture.cell('b1')).map((entry) => entry.getAttribute('data-row-id')).filter((id) => id !== null)).toEqual(['r1', 'r2']);
+		// The axis ends where it is drawn to end.
+		expect([fixture.beat('b2').classes.has('is-act-first'), fixture.beat('b2').classes.has('is-act-last')]).toEqual([true, false]);
+		expect([fixture.beat('b1').classes.has('is-act-first'), fixture.beat('b1').classes.has('is-act-last')]).toEqual([false, true]);
+		// Only the showing turned: the story stands in the file as it stood.
+		expect(fixture.sheetHeld('s').acts.map((entry) => [entry.id, entry.beats.map((one) => one.id)])).toEqual([['a1', ['b1', 'b2']], ['a2', []], ['a3', ['b3']]]);
+		order.dispatch('click');
+		await settle();
+		expect(fixture.bridge.setReversed).toHaveBeenLastCalledWith('s', false);
+		expect(fixture.order()).toEqual(['act:a1', 'beat:b1', 'beat:b2', 'foot:a1', 'act:a2', 'foot:a2', 'act:a3', 'beat:b3', 'foot:a3']);
+	});
+
+	it('turns the sheet the press was made on, whatever is on show when its turn comes', async () => {
+		const fixture = workspace({ sheets: [sheet('s1'), sheet('s2')], lastSheetId: 's1' });
+		await settle();
+		let release: () => void = () => undefined;
+		const waiting = new Promise<void>((resolve) => { release = resolve; });
+		const write = vi.mocked(fixture.bridge.setSubDescriptions);
+		const real = write.getMockImplementation()!;
+		write.mockImplementationOnce(async (...args) => {
+			await waiting;
+			return real(...args);
+		});
+		fixture.button('snowflake-method-timeline-words').dispatch('click');
+		await settle();
+		fixture.button('snowflake-method-timeline-order').dispatch('click');
+		fixture.sheetField().choose('s2');
+		await settle();
+		release();
+		await settle();
+		expect(fixture.bridge.setReversed).toHaveBeenCalledExactlyOnceWith('s1', true);
+		expect([fixture.sheetHeld('s1').reversed, fixture.sheetHeld('s2').reversed]).toEqual([true, false]);
+	});
+
+	it('moves a beat up and down as the screen has it, across an act\'s edge, with the screen\'s two ends disabled', async () => {
+		const fixture = turned();
+		await settle();
+		expect(fixture.order()).toEqual(SHOWN);
+		const top = beatMenu(fixture, 'b3');
+		expect([top.find((item) => item.title === 'actions.moveUp')!.disabled, top.find((item) => item.title === 'actions.moveDown')!.disabled]).toEqual([true, false]);
+		const bottom = beatMenu(fixture, 'b1');
+		expect([bottom.find((item) => item.title === 'actions.moveUp')!.disabled, bottom.find((item) => item.title === 'actions.moveDown')!.disabled]).toEqual([false, true]);
+		// Up the screen is later in the story: Opening Image goes over Catalyst.
+		bottom.find((item) => item.title === 'actions.moveUp')!.click();
+		await settle();
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b1', 'a1', null);
+		expect(fixture.order().slice(5)).toEqual(['act:a1', 'beat:b1', 'beat:b2', 'foot:a1']);
+		// Down the screen from the only beat of the act on top: into the act shown below, at its head on the screen.
+		beatMenu(fixture, 'b3').find((item) => item.title === 'actions.moveDown')!.click();
+		await settle();
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b3', 'a2', null);
+		expect(fixture.order()).toEqual(['act:a3', 'foot:a3', 'act:a2', 'beat:b3', 'foot:a2', 'act:a1', 'beat:b1', 'beat:b2', 'foot:a1']);
+	});
+
+	it('moves an act up and down as the screen has it', async () => {
+		const fixture = turned();
+		await settle();
+		const top = actMenu(fixture, 'a3');
+		expect([top.find((item) => item.title === 'actions.moveUp')!.disabled, top.find((item) => item.title === 'actions.moveDown')!.disabled]).toEqual([true, false]);
+		const bottom = actMenu(fixture, 'a1');
+		expect([bottom.find((item) => item.title === 'actions.moveUp')!.disabled, bottom.find((item) => item.title === 'actions.moveDown')!.disabled]).toEqual([false, true]);
+		bottom.find((item) => item.title === 'actions.moveUp')!.click();
+		await settle();
+		// One place later in the story, which is one place up the screen.
+		expect(fixture.bridge.moveAct).toHaveBeenLastCalledWith('s', 'a1', 'a3');
+		expect(fixture.order().filter((entry) => entry.startsWith('act:'))).toEqual(['act:a3', 'act:a1', 'act:a2']);
+		expect(fixture.titles()).toEqual([
+			'beatSheet.act.titleLabelled(number=3,label=Resolution)',
+			'beatSheet.act.titleLabelled(number=2,label=Setup)',
+			'beatSheet.act.title(number=1)',
+		]);
+	});
+
+	it('takes the way a step goes from the screen its menu opened on, and where it lands from the sheet as it stands', async () => {
+		const fixture = turned();
+		await settle();
+		const up = beatMenu(fixture, 'b1').find((item) => item.title === 'actions.moveUp')!;
+		// The sheet is turned back before the press is made good: what was pressed was "later in the story".
+		await fixture.bridge.setReversed('s', false);
+		fixture.notify();
+		await settle();
+		up.click();
+		await settle();
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b1', 'a1', null);
+	});
+
+	it('puts a beat in where the screen shows the place: on the rule above a beat, after a beat, and at an act\'s foot', async () => {
+		const opened = watch(BeatFormModal);
+		const fixture = turned();
+		await settle();
+		// The rule above Opening Image stands between it and Catalyst, which is after it in the story.
+		fixture.beat('b1').querySelector('.snowflake-method-timeline-seam-add')!.dispatch('click');
+		await submit(opened[0], { name: 'Between', description: '' });
+		await settle();
+		expect(fixture.bridge.addBeat).toHaveBeenLastCalledWith('s', 'a1', { name: 'Between', description: '' }, 'b2');
+		expect(fixture.order().slice(5)).toEqual(['act:a1', 'beat:b2', 'beat:beat-1', 'beat:b1', 'foot:a1']);
+		// After the beat at the foot of its act on the screen: the act's beginning.
+		beatMenu(fixture, 'b1').find((item) => item.title === 'beatSheet.beat.insertAfter')!.click();
+		await submit(opened[1], { name: 'Under', description: '' });
+		await settle();
+		expect(fixture.bridge.addBeat).toHaveBeenLastCalledWith('s', 'a1', { name: 'Under', description: '' }, 'b1');
+		expect(fixture.order().slice(5)).toEqual(['act:a1', 'beat:b2', 'beat:beat-1', 'beat:b1', 'beat:beat-2', 'foot:a1']);
+		// After the beat at the head: under it, over the next one shown.
+		beatMenu(fixture, 'b2').find((item) => item.title === 'beatSheet.beat.insertAfter')!.click();
+		await submit(opened[2], { name: 'Second', description: '' });
+		await settle();
+		expect(fixture.bridge.addBeat).toHaveBeenLastCalledWith('s', 'a1', { name: 'Second', description: '' }, 'b2');
+		// The act's plus adds at the act's foot as the screen has it, an empty act's included.
+		fixture.act('a3').querySelector('.snowflake-method-beat-sheet-act-add')!.dispatch('click');
+		await submit(opened[3], { name: 'Foot', description: '' });
+		fixture.act('a2').querySelector('.snowflake-method-beat-sheet-act-add')!.dispatch('click');
+		await submit(opened[4], { name: 'Alone', description: '' });
+		await settle();
+		expect(fixture.bridge.addBeat).toHaveBeenNthCalledWith(4, 's', 'a3', { name: 'Foot', description: '' }, 'b3');
+		expect(fixture.bridge.addBeat).toHaveBeenNthCalledWith(5, 's', 'a2', { name: 'Alone', description: '' }, null);
+		expect(fixture.order().slice(0, 4)).toEqual(['act:a3', 'beat:b3', 'beat:beat-4', 'foot:a3']);
+	});
+
+	it('puts an act in where the screen shows the place: at the foot from the toolbar, and under the act whose menu asked', async () => {
+		const opened = watch(ActFormModal);
+		const fixture = turned();
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-add-act').dispatch('click');
+		await submit(opened[0], 'Before it all');
+		await settle();
+		// The foot of a sheet shown from its end is the story's beginning, so every act after it counts one more.
+		expect(fixture.bridge.addAct).toHaveBeenLastCalledWith('s', 'Before it all', 'a1');
+		expect(fixture.titles()).toEqual([
+			'beatSheet.act.titleLabelled(number=4,label=Resolution)',
+			'beatSheet.act.title(number=3)',
+			'beatSheet.act.titleLabelled(number=2,label=Setup)',
+			'beatSheet.act.titleLabelled(number=1,label=Before it all)',
+		]);
+		actMenu(fixture, 'a3').find((item) => item.title === 'beatSheet.act.insertAfter')!.click();
+		await submit(opened[1], 'Under the last');
+		await settle();
+		expect(fixture.bridge.addAct).toHaveBeenLastCalledWith('s', 'Under the last', 'a3');
+		expect(fixture.order().filter((entry) => entry.startsWith('act:')).slice(0, 3)).toEqual(['act:a3', 'act:act-2', 'act:a2']);
+	});
+
+	it('sends a beat to the foot of another act as the screen has it, offering the acts in the order shown', async () => {
+		const opened = watch(TimelineTimePickModal);
+		const fixture = turned();
+		await settle();
+		beatMenu(fixture, 'b1').find((item) => item.title === 'beatSheet.beat.moveToAct')!.click();
+		const picker = opened[0]!;
+		expect(picker.getItems().map((item) => [item.value, item.label])).toEqual([
+			['a3', 'beatSheet.act.titleLabelled(number=3,label=Resolution)'],
+			['a2', 'beatSheet.act.title(number=2)'],
+		]);
+		picker.onChooseItem(picker.getItems()[0]!);
+		await settle();
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b1', 'a3', 'b3');
+		expect(fixture.order().slice(0, 4)).toEqual(['act:a3', 'beat:b3', 'beat:b1', 'foot:a3']);
+	});
+
+	it('lands a dragged beat where the line is drawn: before the beat under the pointer, and at an act\'s foot', async () => {
+		const fixture = turned();
+		await settle();
+		// act a3 0, b3 40, foot a3 80, act a2 120, foot a2 160, act a1 200, b2 240, b1 280, foot a1 320.
+		fixture.standTable();
+		const drag = async (id: string, clientY: number, marked: CorkboardElement): Promise<void> => {
+			const handle = fixture.beat(id).querySelector('.snowflake-method-timeline-time-handle')!;
+			const dataTransfer = transfer([BEAT_SHEET_BEAT_DRAG_TYPE]);
+			fire(handle, 'dragstart', { dataTransfer });
+			fire(fixture.table, 'dragover', { clientY, dataTransfer });
+			expect(marked.classes.has('is-drop-before')).toBe(true);
+			fire(fixture.table, 'drop', { dataTransfer });
+			fire(handle, 'dragend', {});
+			await settle();
+		};
+		// Over Catalyst, the first beat shown under Act 1: later in the story than every beat the act holds.
+		await drag('b3', 250, fixture.beat('b2'));
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b3', 'a1', null);
+		expect(fixture.order()).toEqual(['act:a3', 'foot:a3', 'act:a2', 'foot:a2', 'act:a1', 'beat:b3', 'beat:b2', 'beat:b1', 'foot:a1']);
+		// On the act's foot, under Opening Image: the act's beginning.
+		fixture.standTable();
+		await drag('b3', 335, fixture.foot('a1'));
+		expect(fixture.bridge.moveBeat).toHaveBeenLastCalledWith('s', 'b3', 'a1', 'b1');
+		expect(fixture.order().slice(4)).toEqual(['act:a1', 'beat:b2', 'beat:b1', 'beat:b3', 'foot:a1']);
+		// Dropped where it already stands, a beat writes nothing.
+		fixture.standTable();
+		const writes = vi.mocked(fixture.bridge.moveBeat).mock.calls.length;
+		await drag('b2', 250, fixture.beat('b1'));
+		expect(fixture.bridge.moveBeat).toHaveBeenCalledTimes(writes);
+	});
+
+	it('lands a dragged act where the line is drawn: before the act under the pointer, and past the last at the foot', async () => {
+		const fixture = turned();
+		await settle();
+		fixture.standTable();
+		const drag = async (id: string, clientY: number): Promise<void> => {
+			const handle = fixture.act(id).querySelector('.snowflake-method-beat-sheet-act-handle')!;
+			const dataTransfer = transfer([BEAT_SHEET_ACT_DRAG_TYPE]);
+			fire(handle, 'dragstart', { dataTransfer });
+			fire(fixture.table, 'dragover', { clientY, dataTransfer });
+			fire(fixture.table, 'drop', { dataTransfer });
+			fire(handle, 'dragend', {});
+			await settle();
+		};
+		// Act 1 from the foot of the screen to its head: the story's end.
+		await drag('a1', 10);
+		expect(fixture.bridge.moveAct).toHaveBeenLastCalledWith('s', 'a1', null);
+		expect(fixture.order().filter((entry) => entry.startsWith('act:'))).toEqual(['act:a1', 'act:a3', 'act:a2']);
+		// Past the last act shown: the story's beginning.
+		fixture.standTable();
+		await drag('a1', 900);
+		expect(fixture.bridge.moveAct).toHaveBeenLastCalledWith('s', 'a1', 'a2');
+		expect(fixture.order().filter((entry) => entry.startsWith('act:'))).toEqual(['act:a3', 'act:a2', 'act:a1']);
+	});
+
+	it('offers a row its other beats, and a scene its places, in the order the screen shows them', async () => {
+		const beats = watch(TimelineTimePickModal);
+		const places = watch(MoveAfterModal);
+		const fixture = turned();
+		await settle();
+		fixture.menuOf(subrow(fixture.cell('b1'), 'r2'), 'snowflake-method-timeline-subrow-more')
+			.find((item) => item.title === 'beatSheet.subrow.moveToBeat')!.click();
+		expect(beats[0]!.getItems().map((item) => item.value)).toEqual(['b3', 'b2']);
+		menus.length = 0;
+		fixture.cards().find((card) => card.getAttribute('data-id') === 'scene-1')!
+			.querySelector('.snowflake-method-corkboard-more')!.dispatch('click');
+		menus[0]!.find((item) => item.title === 'timeline.scene.moveTo')!.click();
+		expect(places[0]!.getItems().map((entry) => entry.id)).toEqual(['time:b3', 'time:b2', 'row:r1', 'row:r2', 'time:b1']);
 	});
 });
 

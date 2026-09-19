@@ -27,6 +27,7 @@ import {
 	renameBeatSheet,
 	saveBeatSheetTemplate,
 	setBeatSheetPresentation,
+	setBeatSheetReversed,
 	setBeatSheetSubDescriptions,
 	setLastBeatSheet,
 	type BeatSheet,
@@ -156,6 +157,13 @@ export class BeatSheetService {
 	setSubDescriptions(project: ProjectRef, sheetId: string, shown: boolean): Promise<BeatSheetWrite> {
 		return this.reviseSheet(project, sheetId, (held) =>
 			setBeatSheetSubDescriptions(held, sheetId, shown, this.now()),
+		);
+	}
+
+	/** Shows a sheet from its end or from its beginning; the order it keeps its acts and beats in is not touched. */
+	setReversed(project: ProjectRef, sheetId: string, reversed: boolean): Promise<BeatSheetWrite> {
+		return this.reviseSheet(project, sheetId, (held) =>
+			setBeatSheetReversed(held, sheetId, reversed, this.now()),
 		);
 	}
 

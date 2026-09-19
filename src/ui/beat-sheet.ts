@@ -62,6 +62,10 @@ import {
 	beatPlaceName,
 	beatStackKey,
 	sheetAsLane,
+	shownActs,
+	shownBeats,
+	storedAnchor,
+	storedDirection,
 	tableKey,
 	tableOrder,
 	type BeatLandingCandidate,
@@ -177,17 +181,19 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		setTooltip(button, label);
 		return button;
 	};
-	const editSheetButton = iconButton('snowflake-method-timeline-view-edit snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));
-	editSheetButton.addEventListener('click', () => {
-		openEditSheet();
-	});
 	// A sheet's acts and beats kept as one of the project's templates, the way
 	// an entity's custom fields are kept as one from its form.
 	const exportButton = iconButton('snowflake-method-beat-sheet-export', 'file-output', t('modal.customFieldTemplate.exportTitle'));
 	exportButton.addEventListener('click', () => {
 		openExport();
 	});
-	// The two switches are the sheet's own choices, written to the document.
+	// The pencil wears no class of the timeline's: there the pencil is the first symbol and carries the margin
+	// that sends the symbols to the toolbar's end, which here is the export's to carry.
+	const editSheetButton = iconButton('snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));
+	editSheetButton.addEventListener('click', () => {
+		openEditSheet();
+	});
+	// The three switches are the sheet's own choices, written to the document.
 	// Each press takes the value the document holds as its write lands, never
 	// the one it held when the press came, and is answered for the sheet it
 	// was made on: another opened while the press waits its turn in the queue
@@ -214,6 +220,22 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			await controls.bridge().setPresentation(now.id, value);
 		});
 	});
+	// The sheet runs down the page from its first act to its last; the order
+	// symbol turns it about, the last act first and each act's last beat
+	// first, as the timeline's turns its times. Only the showing turns: the
+	// story's order is kept, an act keeps its number, and what stands under a
+	// beat is shown as it is kept.
+	const orderButton = iconButton('snowflake-method-timeline-order', 'arrow-down-narrow-wide', t('beatSheet.order.reverse'));
+	orderButton.setAttribute('aria-pressed', 'false');
+	orderButton.addEventListener('click', () => {
+		const aimed = currentSheet();
+		if (readOnly || aimed === null) return;
+		void enqueue(async () => {
+			const now = sheetAsStands(aimed.id);
+			if (now === null) return;
+			await controls.bridge().setReversed(now.id, !now.reversed);
+		});
+	});
 	const refreshButton = iconButton('snowflake-method-timeline-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
@@ -224,7 +246,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		attr: { type: 'button' },
 	});
 	addActButton.addEventListener('click', () => {
-		addAct(null);
+		// At the foot of the screen, as the timeline adds a time: the story's end, or its beginning on a sheet shown from its end.
+		const sheet = currentSheet();
+		if (sheet !== null) addAct(actAnchor(sheet, null));
 	});
 	const addSheetButton = toolbar.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-view-add snowflake-method-beat-sheet-add',
@@ -377,6 +401,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	let scrollGivenBack = false;
 	let presentationIcon = 'gallery-horizontal';
 	let wordsIcon = 'eye';
+	let orderIcon = 'arrow-down-narrow-wide';
 	let readOnly = true;
 	let optionsSignature = '';
 	let sheetField: OptionPicker | null = null;
@@ -612,6 +637,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			addActButton.disabled = true;
 			paintPresentation(null);
 			paintWords(null);
+			paintOrder(null);
 			paintOptions([]);
 			showEmpty(t(loadFailed ? 'beatSheet.loadFailed' : 'beatSheet.loading'));
 			return;
@@ -626,6 +652,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		addActButton.disabled = readOnly || sheet === null;
 		paintPresentation(sheet);
 		paintWords(sheet);
+		paintOrder(sheet);
 		if (sheet === null) {
 			clearTable();
 			showEmpty(t('beatSheet.empty.sheets'));
@@ -683,6 +710,23 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		}
 		wordsButton.setAttribute('aria-pressed', shown ? 'true' : 'false');
 		wordsButton.disabled = readOnly || sheet === null;
+	};
+
+	/** The symbol shows which way the sheet runs; a press turns it about. */
+	const paintOrder = (sheet: BeatSheet | null): void => {
+		const reversed = sheet !== null && sheet.reversed;
+		const icon = reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide';
+		if (icon !== orderIcon) {
+			orderIcon = icon;
+			setIcon(orderButton, icon);
+		}
+		const label = t(reversed ? 'beatSheet.order.restore' : 'beatSheet.order.reverse');
+		if (orderButton.getAttribute('aria-label') !== label) {
+			orderButton.setAttribute('aria-label', label);
+			setTooltip(orderButton, label);
+		}
+		orderButton.setAttribute('aria-pressed', reversed ? 'true' : 'false');
+		orderButton.disabled = readOnly || sheet === null;
 	};
 
 	/** The pool follows the sheet on show: what it has placed leaves the pool, and the count says what is left. */
@@ -752,7 +796,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		});
 		add.addEventListener('click', (event) => {
 			event.stopPropagation();
-			addBeat(entry.actId, null);
+			addBeatAtFoot(entry.actId);
 		});
 		more.addEventListener('click', (event) => {
 			event.stopPropagation();
@@ -845,7 +889,8 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			event.stopPropagation();
 			const current = currentSheet();
 			const place = current === null ? null : findBeat(current, entry.beatId);
-			if (place !== null) addBeat(place.act.id, entry.beatId);
+			// The plus stands on the rule above the row, so the new beat goes before this one as the screen has them.
+			if (current !== null && place !== null) addBeat(place.act.id, beatAnchor(current, place.act.id, entry.beatId));
 		});
 		handle.addEventListener('dragstart', (event) => {
 			if (readOnly || event.dataTransfer === null) {
@@ -999,11 +1044,27 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		return place === null ? sheet.name : `${sheet.name} · ${place}`;
 	};
 
-	/** The sheet's other beats, in the order it is read, for a row sent to one of them. */
+	/** The sheet's other beats, in the order it shows them, for a row sent to one of them. */
 	const otherBeats = (sheet: BeatSheet, fromBeatId: string): PickerOption[] =>
-		sheet.acts.flatMap((act) => act.beats)
+		shownActs(sheet).flatMap((act) => shownBeats(sheet, act))
 			.filter((beat) => beat.id !== fromBeatId)
 			.map((beat) => ({ value: beat.id, label: beatPlaceName(t, sheet, beat.id) ?? beat.name }));
+
+	/**
+	 * A place among an act's beats named as the screen has it, "before this
+	 * beat, or at the act's foot", said as the document keeps it. `moving` is
+	 * the beat being moved, which is no anchor for itself.
+	 */
+	const beatAnchor = (sheet: BeatSheet, actId: string, beforeOnScreen: string | null, moving: string | null = null): string | null => {
+		const act = findBeatSheetAct(sheet, actId);
+		if (act === undefined) return null;
+		const shown = shownBeats(sheet, act).map((beat) => beat.id).filter((id) => id !== moving);
+		return storedAnchor(shown, beforeOnScreen, sheet.reversed);
+	};
+
+	/** The same for a place among the acts. */
+	const actAnchor = (sheet: BeatSheet, beforeOnScreen: string | null, moving: string | null = null): string | null =>
+		storedAnchor(shownActs(sheet).map((act) => act.id).filter((id) => id !== moving), beforeOnScreen, sheet.reversed);
 
 	const moveRowToBeat = (fromBeatId: string, rowId: string): void => {
 		const path = controls.projectPath();
@@ -1100,7 +1161,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	/** Where a dragged act would land: before another act, judged by each act's whole group, or past the last. */
 	const actLandingUnder = (sheet: BeatSheet, draggedActId: string, clientY: number): { el: HTMLElement; beforeActId: string | null } => {
 		const boxes = measured();
-		const candidates = sheet.acts
+		const candidates = shownActs(sheet)
 			.filter((act) => act.id !== draggedActId)
 			.map((act) => ({
 				actId: act.id,
@@ -1146,7 +1207,8 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			event.preventDefault();
 			const landing = beatLanding ?? beatLandingUnder(sheet, dragged, event.clientY);
 			cells.clearMark();
-			if (landing !== null) moveBeatTo(sheet.id, dragged, landing.actId, landing.beforeBeatId);
+			// The landing is a place on the screen; the document is told where that is in the order it keeps.
+			if (landing !== null) moveBeatTo(sheet.id, dragged, landing.actId, beatAnchor(sheet, landing.actId, landing.beforeBeatId, dragged));
 			return;
 		}
 		const dragged = event.dataTransfer.getData(BEAT_SHEET_ACT_DRAG_TYPE);
@@ -1154,7 +1216,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		event.preventDefault();
 		const landing = actLanding ?? actLandingUnder(sheet, dragged, event.clientY);
 		cells.clearMark();
-		moveActTo(sheet.id, dragged, landing.beforeActId);
+		moveActTo(sheet.id, dragged, actAnchor(sheet, landing.beforeActId, dragged));
 	});
 
 	/** A beat moved into an act before another of its beats, or to its end; nothing written for no move. */
@@ -1256,7 +1318,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		})).open();
 	};
 
-	/** An act one step up or down, read off the sheet as it stands when the move comes to be made. */
+	/**
+	 * An act one step along the story. Which way a step up the screen goes is
+	 * settled by the screen its menu opened on, so an item does what it said
+	 * when it was offered; where the step lands is read off the sheet as it
+	 * stands when the move comes to be made.
+	 */
 	const moveActBy = (actId: string, direction: 'up' | 'down'): void => {
 		const openedSheet = sheetId;
 		if (openedSheet === null || readOnly) return;
@@ -1303,22 +1370,25 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		});
 		menu.addSeparator();
 		// The moves and the insertions, then the removal, in the order a card's menu keeps.
+		// Up and down are the screen's: on a sheet shown from its end, up is later in the story.
+		const up = storedDirection('up', sheet.reversed);
+		const down = storedDirection('down', sheet.reversed);
 		menu.addItem((item) => {
 			item
 				.setTitle(t('actions.moveUp'))
 				.setIcon('arrow-up')
-				.setDisabled(readOnly || beatSheetActStep(sheet, actId, 'up') === null)
+				.setDisabled(readOnly || beatSheetActStep(sheet, actId, up) === null)
 				.onClick(() => {
-					moveActBy(actId, 'up');
+					moveActBy(actId, up);
 				});
 		});
 		menu.addItem((item) => {
 			item
 				.setTitle(t('actions.moveDown'))
 				.setIcon('arrow-down')
-				.setDisabled(readOnly || beatSheetActStep(sheet, actId, 'down') === null)
+				.setDisabled(readOnly || beatSheetActStep(sheet, actId, down) === null)
 				.onClick(() => {
-					moveActBy(actId, 'down');
+					moveActBy(actId, down);
 				});
 		});
 		menu.addItem((item) => {
@@ -1327,9 +1397,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				.setIcon('list-plus')
 				.setDisabled(readOnly)
 				.onClick(() => {
+					// After, as the screen has them: before the act shown below this one, or at the screen's foot.
 					const now = currentSheet();
-					const at = now?.acts.findIndex((act) => act.id === actId) ?? -1;
-					addAct(now?.acts[at + 1]?.id ?? null);
+					if (now === null) return;
+					const shown = shownActs(now);
+					const at = shown.findIndex((act) => act.id === actId);
+					if (at !== -1) addAct(actAnchor(now, shown[at + 1]?.id ?? null));
 				});
 		});
 		menu.addItem((item) => {
@@ -1338,7 +1411,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				.setIcon('plus')
 				.setDisabled(readOnly)
 				.onClick(() => {
-					addBeat(actId, null);
+					addBeatAtFoot(actId);
 				});
 		});
 		menu.addSeparator();
@@ -1376,6 +1449,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		})).open();
 	};
 
+	/** A beat made at the foot of an act as the screen has it, which is where a beat dropped on the act's foot lands. */
+	const addBeatAtFoot = (actId: string): void => {
+		const sheet = currentSheet();
+		if (sheet !== null) addBeat(actId, beatAnchor(sheet, actId, null));
+	};
+
 	const editBeat = (beatId: string, reveal?: 'description'): void => {
 		const path = controls.projectPath();
 		const openedSheet = sheetId;
@@ -1396,7 +1475,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		})).open();
 	};
 
-	/** A beat one step up or down the sheet as it is read, across an act's edge where its act ends. */
+	/** A beat one step along the story, across an act's edge where its act ends; settled and read as an act's step is. */
 	const moveBeatBy = (beatId: string, direction: 'up' | 'down'): void => {
 		const openedSheet = sheetId;
 		if (openedSheet === null || readOnly) return;
@@ -1414,15 +1493,18 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const sheet = currentSheet();
 		const place = sheet === null ? null : findBeat(sheet, beatId);
 		if (path === null || openedSheet === null || sheet === null || place === null || readOnly || disposed) return;
-		const elsewhere: PickerOption[] = sheet.acts
-			.map((act, index) => ({ value: act.id, label: actTitle(t, index + 1, act.label) }))
+		const elsewhere: PickerOption[] = shownActs(sheet)
+			.map((act) => ({ value: act.id, label: actTitle(t, sheet.acts.indexOf(act) + 1, act.label) }))
 			.filter((option) => option.value !== place.act.id);
 		if (elsewhere.length === 0) return;
 		keep(new TimelineTimePickModal(app, t('beatSheet.beat.moveToActPlaceholder'), elsewhere, (picked) => {
 			if (!stillOn(path, openedSheet) || !elsewhere.some((option) => option.value === picked.value)) return;
 			void enqueue(async () => {
 				if (!stillOn(path, openedSheet)) return;
-				await controls.bridge().moveBeat(openedSheet, beatId, picked.value, null);
+				// To the foot of that act as the screen has it, where a drop on its foot would land.
+				const now = sheetAsStands(openedSheet);
+				if (now === null) return;
+				await controls.bridge().moveBeat(openedSheet, beatId, picked.value, beatAnchor(now, picked.value, null, beatId));
 			});
 		})).open();
 	};
@@ -1460,22 +1542,25 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				});
 		});
 		menu.addSeparator();
+		// Up and down are the screen's, as an act's are.
+		const up = storedDirection('up', sheet.reversed);
+		const down = storedDirection('down', sheet.reversed);
 		menu.addItem((item) => {
 			item
 				.setTitle(t('actions.moveUp'))
 				.setIcon('arrow-up')
-				.setDisabled(readOnly || beatStep(sheet, beatId, 'up') === null)
+				.setDisabled(readOnly || beatStep(sheet, beatId, up) === null)
 				.onClick(() => {
-					moveBeatBy(beatId, 'up');
+					moveBeatBy(beatId, up);
 				});
 		});
 		menu.addItem((item) => {
 			item
 				.setTitle(t('actions.moveDown'))
 				.setIcon('arrow-down')
-				.setDisabled(readOnly || beatStep(sheet, beatId, 'down') === null)
+				.setDisabled(readOnly || beatStep(sheet, beatId, down) === null)
 				.onClick(() => {
-					moveBeatBy(beatId, 'down');
+					moveBeatBy(beatId, down);
 				});
 		});
 		menu.addItem((item) => {
@@ -1493,9 +1578,13 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				.setIcon('list-plus')
 				.setDisabled(readOnly)
 				.onClick(() => {
+					// After, as the screen has them: before the beat shown below this one in its act, or at the act's foot.
 					const now = currentSheet();
-					const at = now === null ? null : findBeat(now, beatId);
-					if (at !== null) addBeat(at.act.id, at.act.beats[at.index + 1]?.id ?? null);
+					const place = now === null ? null : findBeat(now, beatId);
+					if (now === null || place === null) return;
+					const shown = shownBeats(now, place.act);
+					const at = shown.findIndex((beat) => beat.id === beatId);
+					addBeat(place.act.id, beatAnchor(now, place.act.id, shown[at + 1]?.id ?? null));
 				});
 		});
 		menu.addSeparator();

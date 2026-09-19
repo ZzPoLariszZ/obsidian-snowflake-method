@@ -11,16 +11,50 @@ import type { Translate } from './modals';
 import { dropIndexAt } from './task-board-rows';
 import { joinKey } from './timeline-layout';
 
+/** The acts as the sheet shows them: as it keeps them, or from the last when it is shown from its end. */
+export function shownActs(sheet: Pick<BeatSheet, 'acts' | 'reversed'>): BeatSheetAct[] {
+	return sheet.reversed ? [...sheet.acts].reverse() : [...sheet.acts];
+}
+
+/** An act's beats as the sheet shows them. What stands under a beat is never turned about. */
+export function shownBeats(sheet: Pick<BeatSheet, 'reversed'>, act: Pick<BeatSheetAct, 'beats'>): Beat[] {
+	return sheet.reversed ? [...act.beats].reverse() : [...act.beats];
+}
+
+/**
+ * The anchor the document is told, "before this one, or at the end" in the
+ * order it keeps, for a place named the same way on the screen. A list shown
+ * as it is kept hands the anchor over as it stands. One shown from its end
+ * stands each entry above the one it follows, so the place before an entry on
+ * the screen is the place after it in the order kept: before the entry shown
+ * above it, or at the end where none is; and the foot of the screen is the
+ * head of the order kept. `shown` is the list as the screen has it, without
+ * the entry being moved.
+ */
+export function storedAnchor(shown: readonly string[], beforeOnScreen: string | null, reversed: boolean): string | null {
+	if (!reversed) return beforeOnScreen;
+	const at = beforeOnScreen === null ? -1 : shown.indexOf(beforeOnScreen);
+	if (at === -1) return shown[shown.length - 1] ?? null;
+	return at === 0 ? null : shown[at - 1]!;
+}
+
+/** Up or down on the screen, as a step along the order the sheet keeps. */
+export function storedDirection(onScreen: 'up' | 'down', reversed: boolean): 'up' | 'down' {
+	if (!reversed) return onScreen;
+	return onScreen === 'up' ? 'down' : 'up';
+}
+
 /**
  * A sheet as the lanes' cells know a lane: its beats the slots its rows
- * stand under, in the order the sheet is read. The acts are the table's to
- * draw; to the cells a sheet is one lane of beats.
+ * stand under, in the order the sheet shows them, which is the order a
+ * picker of places reads in. The acts are the table's to draw; to the cells
+ * a sheet is one lane of beats.
  */
-export function sheetAsLane(sheet: Pick<BeatSheet, 'id' | 'name' | 'acts'>): Lane {
+export function sheetAsLane(sheet: Pick<BeatSheet, 'id' | 'name' | 'acts' | 'reversed'>): Lane {
 	return {
 		id: sheet.id,
 		name: sheet.name,
-		times: sheet.acts.flatMap((act) => act.beats.map((beat) => ({ timeId: beat.id, rows: beat.rows }))),
+		times: shownActs(sheet).flatMap((act) => shownBeats(sheet, act).map((beat) => ({ timeId: beat.id, rows: beat.rows }))),
 	};
 }
 
@@ -51,23 +85,29 @@ export type TableEntry =
 	| { kind: 'beat'; key: string; act: BeatSheetAct; beat: Beat; first: boolean; last: boolean }
 	| { kind: 'foot'; key: string; act: BeatSheetAct };
 
-/** The table as the sheet is read: act by act, each header over its beats and its foot. */
-export function tableOrder(sheet: Pick<BeatSheet, 'acts'>): TableEntry[] {
+/**
+ * The table as the sheet is shown: act by act, each header over its beats
+ * and its foot. A sheet shown from its end runs its acts and each act's
+ * beats the other way; an act's number is still its place in the story, and
+ * the first and the last are the ends of the axis as it is drawn.
+ */
+export function tableOrder(sheet: Pick<BeatSheet, 'acts' | 'reversed'>): TableEntry[] {
 	const entries: TableEntry[] = [];
-	sheet.acts.forEach((act, index) => {
-		entries.push({ kind: 'act', key: tableKey('act', act.id), act, number: index + 1 });
-		act.beats.forEach((beat, at) => {
+	for (const act of shownActs(sheet)) {
+		entries.push({ kind: 'act', key: tableKey('act', act.id), act, number: sheet.acts.indexOf(act) + 1 });
+		const beats = shownBeats(sheet, act);
+		beats.forEach((beat, at) => {
 			entries.push({
 				kind: 'beat',
 				key: tableKey('beat', beat.id),
 				act,
 				beat,
 				first: at === 0,
-				last: at === act.beats.length - 1,
+				last: at === beats.length - 1,
 			});
 		});
 		entries.push({ kind: 'foot', key: tableKey('foot', act.id), act });
-	});
+	}
 	return entries;
 }
 

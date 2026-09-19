@@ -10,6 +10,10 @@ import {
 	beatPlaceName,
 	beatStackKey,
 	sheetAsLane,
+	shownActs,
+	shownBeats,
+	storedAnchor,
+	storedDirection,
 	tableKey,
 	tableOrder,
 	type BeatLandingCandidate,
@@ -21,8 +25,8 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 
 const beat = (id: string, extra: Partial<Beat> = {}): Beat => ({ id, name: `Beat ${id}`, description: '', rows: [], ...extra });
 const act = (id: string, beats: Beat[], label = ''): BeatSheetAct => ({ id, label, beats });
-const sheet = (acts: BeatSheetAct[]): BeatSheet => ({
-	id: 's', name: 'Sheet', acts, presentation: null, showSubDescriptions: true, createdAt: 1, updatedAt: 1,
+const sheet = (acts: BeatSheetAct[], reversed = false): BeatSheet => ({
+	id: 's', name: 'Sheet', acts, presentation: null, showSubDescriptions: true, reversed, createdAt: 1, updatedAt: 1,
 });
 
 describe('the beat sheet layout', () => {
@@ -78,6 +82,62 @@ describe('the beat sheet layout', () => {
 		]);
 		expect(new Set(entries.map((entry) => entry.key)).size).toBe(entries.length);
 		expect(tableOrder(sheet([]))).toEqual([]);
+	});
+
+	describe('a sheet shown from its end', () => {
+		const rows = [{ id: 'r1', text: 'First', scenes: [] }, { id: 'r2', text: 'Second', scenes: [] }];
+		const acts = (): BeatSheetAct[] => [
+			act('a1', [beat('b1', { rows }), beat('b2'), beat('b3')]),
+			act('a2', []),
+			act('a3', [beat('b4')]),
+		];
+
+		it('runs its acts and each act\'s beats the other way, and keeps each act the number the story gives it', () => {
+			const turned = sheet(acts(), true);
+			expect(shownActs(turned).map((entry) => entry.id)).toEqual(['a3', 'a2', 'a1']);
+			expect(shownBeats(turned, turned.acts[0]!).map((entry) => entry.id)).toEqual(['b3', 'b2', 'b1']);
+			const entries = tableOrder(turned);
+			expect(entries.map((entry) => `${entry.kind}:${entry.kind === 'beat' ? entry.beat.id : entry.act.id}`)).toEqual([
+				'act:a3', 'beat:b4', 'foot:a3',
+				'act:a2', 'foot:a2',
+				'act:a1', 'beat:b3', 'beat:b2', 'beat:b1', 'foot:a1',
+			]);
+			expect(entries.flatMap((entry) => (entry.kind === 'act' ? [[entry.act.id, entry.number]] : []))).toEqual([['a3', 3], ['a2', 2], ['a1', 1]]);
+			// The ends of the axis are the ends as it is drawn.
+			expect(entries.flatMap((entry) => (entry.kind === 'beat' ? [[entry.beat.id, entry.first, entry.last]] : []))).toEqual([
+				['b4', true, true], ['b3', true, false], ['b2', false, false], ['b1', false, true],
+			]);
+			// Nothing is turned about in what the sheet keeps, and a sheet shown from its beginning is handed over as it is kept.
+			expect(turned.acts.map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
+			expect(shownActs(sheet(acts())).map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
+		});
+
+		it('leaves what stands under a beat as it is kept, and hands the cells the beats as the screen has them', () => {
+			const lane = sheetAsLane(sheet(acts(), true));
+			expect(lane.times.map((time) => time.timeId)).toEqual(['b4', 'b3', 'b2', 'b1']);
+			expect(lane.times[3]!.rows).toBe(rows);
+			expect(lane.times[3]!.rows.map((row) => row.id)).toEqual(['r1', 'r2']);
+		});
+
+		it('says a place named on the screen as the document keeps it', () => {
+			// Shown as kept, the anchor is handed over as it stands.
+			expect(storedAnchor(['b1', 'b2', 'b3'], 'b2', false)).toBe('b2');
+			expect(storedAnchor(['b1', 'b2', 'b3'], null, false)).toBeNull();
+			// Shown from its end, b3 over b2 over b1. Before b2 on the screen is after it in the story: before b3.
+			expect(storedAnchor(['b3', 'b2', 'b1'], 'b2', true)).toBe('b3');
+			// Before the one at the head of the screen is the story's end.
+			expect(storedAnchor(['b3', 'b2', 'b1'], 'b3', true)).toBeNull();
+			// The foot of the screen is the story's beginning: before the one shown last.
+			expect(storedAnchor(['b3', 'b2', 'b1'], null, true)).toBe('b1');
+			// An anchor the list does not hold reads as the foot, and an empty list has one place.
+			expect(storedAnchor(['b3', 'b2', 'b1'], 'gone', true)).toBe('b1');
+			expect(storedAnchor([], null, true)).toBeNull();
+		});
+
+		it('takes a step up the screen as a step down the story, and the other way about', () => {
+			expect([storedDirection('up', false), storedDirection('down', false)]).toEqual(['up', 'down']);
+			expect([storedDirection('up', true), storedDirection('down', true)]).toEqual(['down', 'up']);
+		});
 	});
 
 	it('calls an act by its number, and by its label too where it has one', () => {
