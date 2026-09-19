@@ -190,15 +190,11 @@ import {
 	type MentionAggregate,
 	type NoteCountOptions,
 	type SensitiveTermAggregate,
-	type BeatSheetDeletion,
-	type BeatSheetWrite,
 	type ProjectRef,
 	type ProjectSnapshot,
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type TaskWrite,
-	type TimelineDeletion,
-	type TimelineWrite,
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isBeatSheetFilePath,
@@ -269,6 +265,7 @@ import { STICKY_NOTE_HOVER_SOURCE } from './ui/sticky-note-card';
 import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/sticky-note-dialogs';
 import type { TaskBoardBridge } from './ui/task-bridge';
 import type { BeatSheetBridge } from './ui/beat-sheet-bridge';
+import { DocumentBell } from './ui/document-bell';
 import type { TimelineBridge } from './ui/timeline-bridge';
 import { confirmTaskArchiveEmptying, confirmTaskDeletion } from './ui/task-dialogs';
 import { promptForTask } from './ui/task-form';
@@ -523,18 +520,12 @@ export default class SnowflakeMethodPlugin
 	private refreshProjectLocales = false;
 	/** The sticky-note surfaces' own bell, rung once a burst of vault events has settled. */
 	private stickyNoteNotifyTimer: number | null = null;
-	/** The task board's own bell, rung the same way. */
-	private taskNotifyTimer: number | null = null;
-	/** Who wants to hear that the tasks, or a source a derived card is computed from, changed. */
-	private readonly taskListeners = new Set<() => void>();
-	/** The timeline workspace's own bell, rung the same way. */
-	private timelineNotifyTimer: number | null = null;
-	/** Who wants to hear that a project's timeline file changed. */
-	private readonly timelineListeners = new Set<() => void>();
-	/** The beat sheet workspace's own bell, rung the same way. */
-	private beatSheetNotifyTimer: number | null = null;
-	/** Who wants to hear that a project's beat sheet file changed. */
-	private readonly beatSheetListeners = new Set<() => void>();
+	/** The task board's own bell, rung the same way: for the tasks, or a source a derived card is computed from. */
+	private readonly taskBell = this.documentBell('a task board');
+	/** The timeline workspaces' bell, for a project's timeline file. */
+	private readonly timelineBell = this.documentBell('a timeline workspace');
+	/** The beat sheet workspaces' bell, for a project's beat sheet file. */
+	private readonly beatSheetBell = this.documentBell('a beat sheet workspace');
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
@@ -1134,18 +1125,9 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.containerEl.win.clearTimeout(this.stickyNoteNotifyTimer);
 			this.stickyNoteNotifyTimer = null;
 		}
-		if (this.taskNotifyTimer !== null) {
-			this.app.workspace.containerEl.win.clearTimeout(this.taskNotifyTimer);
-			this.taskNotifyTimer = null;
-		}
-		if (this.timelineNotifyTimer !== null) {
-			this.app.workspace.containerEl.win.clearTimeout(this.timelineNotifyTimer);
-			this.timelineNotifyTimer = null;
-		}
-		if (this.beatSheetNotifyTimer !== null) {
-			this.app.workspace.containerEl.win.clearTimeout(this.beatSheetNotifyTimer);
-			this.beatSheetNotifyTimer = null;
-		}
+		this.taskBell.dispose();
+		this.timelineBell.dispose();
+		this.beatSheetBell.dispose();
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
 		this.projects.mentions.dispose();
@@ -4234,39 +4216,7 @@ export default class SnowflakeMethodPlugin
 		const panelProject = (): string | null =>
 			context.projectPath ?? this.settings.recentProjectPath;
 		const timelines = this.projects.timeline;
-		const write = (
-			work: (project: ProjectSnapshot) => Promise<TimelineWrite>,
-		): Promise<TimelineWrite> =>
-			this.mutateTimeline(
-				panelProject(),
-				async (project) => {
-					const wrote = await work(project);
-					return { result: wrote, changed: wrote === 'written' };
-				},
-				'refused',
-			);
-		const create = (
-			work: (project: ProjectSnapshot) => Promise<string | null>,
-		): Promise<string | null> =>
-			this.mutateTimeline(
-				panelProject(),
-				async (project) => {
-					const id = await work(project);
-					return { result: id, changed: id !== null };
-				},
-				null,
-			);
-		const remove = (
-			work: (project: ProjectSnapshot) => Promise<TimelineDeletion>,
-		): Promise<boolean> =>
-			this.mutateTimeline(
-				panelProject(),
-				async (project) => {
-					const gone = await work(project);
-					return { result: gone !== 'refused', changed: gone === 'deleted' };
-				},
-				false,
-			);
+		const { write, create, remove } = this.documentGates(this.timelineBell, panelProject);
 		return {
 			t,
 			read: async () => {
@@ -4280,12 +4230,7 @@ export default class SnowflakeMethodPlugin
 					held: await timelines.read(project),
 				};
 			},
-			subscribe: (listener) => {
-				this.timelineListeners.add(listener);
-				return () => {
-					this.timelineListeners.delete(listener);
-				};
-			},
+			subscribe: (listener) => this.timelineBell.subscribe(listener),
 			createTimeline: (name, binding) =>
 				create((project) => timelines.createTimeline(project, { name, binding })),
 			renameTimeline: (id, name) => write((project) => timelines.renameTimeline(project, id, name)),
@@ -4345,39 +4290,7 @@ export default class SnowflakeMethodPlugin
 		const panelProject = (): string | null =>
 			context.projectPath ?? this.settings.recentProjectPath;
 		const sheets = this.projects.beatSheet;
-		const write = (
-			work: (project: ProjectSnapshot) => Promise<BeatSheetWrite>,
-		): Promise<BeatSheetWrite> =>
-			this.mutateBeatSheet(
-				panelProject(),
-				async (project) => {
-					const wrote = await work(project);
-					return { result: wrote, changed: wrote === 'written' };
-				},
-				'refused',
-			);
-		const create = (
-			work: (project: ProjectSnapshot) => Promise<string | null>,
-		): Promise<string | null> =>
-			this.mutateBeatSheet(
-				panelProject(),
-				async (project) => {
-					const id = await work(project);
-					return { result: id, changed: id !== null };
-				},
-				null,
-			);
-		const remove = (
-			work: (project: ProjectSnapshot) => Promise<BeatSheetDeletion>,
-		): Promise<boolean> =>
-			this.mutateBeatSheet(
-				panelProject(),
-				async (project) => {
-					const gone = await work(project);
-					return { result: gone !== 'refused', changed: gone === 'deleted' };
-				},
-				false,
-			);
+		const { write, create, remove } = this.documentGates(this.beatSheetBell, panelProject);
 		return {
 			read: async () => {
 				// resolveProject rather than the writable gate: a read-only
@@ -4390,12 +4303,7 @@ export default class SnowflakeMethodPlugin
 					held: await sheets.read(project),
 				};
 			},
-			subscribe: (listener) => {
-				this.beatSheetListeners.add(listener);
-				return () => {
-					this.beatSheetListeners.delete(listener);
-				};
-			},
+			subscribe: (listener) => this.beatSheetBell.subscribe(listener),
 			// A preset is written in the project's own language, whatever the
 			// interface speaks: its words become the author's, among the rest of
 			// the project's. One of the project's templates is read by the
@@ -4494,19 +4402,19 @@ export default class SnowflakeMethodPlugin
 				});
 				this.sessionSettingsListeners.add(listener);
 				const fromHub = this.stickyNoteHub.subscribe(listener);
-				this.taskListeners.add(listener);
+				const fromBell = this.taskBell.subscribe(listener);
 				return () => {
 					fromService();
 					this.sessionSettingsListeners.delete(listener);
 					fromHub();
-					this.taskListeners.delete(listener);
+					fromBell();
 				};
 			},
 			today: () => this.sessions.today(),
 			add: (status) => this.openCreateTaskModal(panelProject(), status),
 			edit: (id) => this.openTaskEditor(panelProject(), id),
 			move: (id, status, beforeId) =>
-				this.mutateTasks(
+				this.mutateDocument(this.taskBell, 
 					panelProject(),
 					async (project) => {
 						const wrote = await this.projects.tasks.move(project, id, status, beforeId);
@@ -4547,10 +4455,12 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * One change to a project's timelines: refused where the project cannot
-	 * be written, and announced to the workspaces when the file moved.
+	 * One change to a project document: refused where the project cannot be
+	 * written, and announced on the document's bell when the file moved. The
+	 * tasks, the timelines and the beat sheets all change through it.
 	 */
-	private async mutateTimeline<T>(
+	private async mutateDocument<T>(
+		bell: DocumentBell,
 		projectPath: string | null,
 		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
 		refused: T,
@@ -4558,44 +4468,56 @@ export default class SnowflakeMethodPlugin
 		const project = await this.writableProject(projectPath);
 		if (project === null) return refused;
 		const { result, changed } = await work(project);
-		if (changed) this.timelineChanged();
+		if (changed) bell.ring();
 		return result;
 	}
 
 	/**
-	 * One change to a project's beat sheets: refused where the project cannot
-	 * be written, and announced to the workspaces when the file moved.
+	 * The three ways a workspace's bridge changes its document, each through
+	 * the gate and each saying for itself whether the file moved: a write that
+	 * answers written, absent or refused, a making that answers the id made,
+	 * and a removal that answers whether the thing is gone.
 	 */
-	private async mutateBeatSheet<T>(
-		projectPath: string | null,
-		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
-		refused: T,
-	): Promise<T> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return refused;
-		const { result, changed } = await work(project);
-		if (changed) this.beatSheetChanged();
-		return result;
+	private documentGates(bell: DocumentBell, panelProject: () => string | null): {
+		write: <W extends 'written' | 'absent' | 'refused'>(work: (project: ProjectSnapshot) => Promise<W>) => Promise<W | 'refused'>;
+		create: (work: (project: ProjectSnapshot) => Promise<string | null>) => Promise<string | null>;
+		remove: (work: (project: ProjectSnapshot) => Promise<'deleted' | 'absent' | 'refused'>) => Promise<boolean>;
+	} {
+		return {
+			write: <W extends 'written' | 'absent' | 'refused'>(work: (project: ProjectSnapshot) => Promise<W>) =>
+				this.mutateDocument<W | 'refused'>(bell, panelProject(), async (project) => {
+					const wrote = await work(project);
+					return { result: wrote, changed: wrote === 'written' };
+				}, 'refused'),
+			create: (work) =>
+				this.mutateDocument<string | null>(bell, panelProject(), async (project) => {
+					const id = await work(project);
+					return { result: id, changed: id !== null };
+				}, null),
+			remove: (work) =>
+				this.mutateDocument(bell, panelProject(), async (project) => {
+					const gone = await work(project);
+					return { result: gone !== 'refused', changed: gone === 'deleted' };
+				}, false),
+		};
 	}
 
-	/**
-	 * One change to a project's tasks: refused where the project cannot be
-	 * written, and announced to the boards when the file moved.
-	 */
-	private async mutateTasks<T>(
-		projectPath: string | null,
-		work: (project: ProjectSnapshot) => Promise<{ result: T; changed: boolean }>,
-		refused: T,
-	): Promise<T> {
-		const project = await this.writableProject(projectPath);
-		if (project === null) return refused;
-		const { result, changed } = await work(project);
-		if (changed) this.tasksChanged();
-		return result;
+	/** A document's bell, kept on the main window's clock; `who` names the listeners in the console when one of them throws. */
+	private documentBell(who: string): DocumentBell {
+		return new DocumentBell({
+			clock: () => this.app.workspace.containerEl.win,
+			delay: REFRESH_DELAY_MS,
+			failed: (error) => {
+				console.error(`Snowflake: ${who} failed to refresh`, error);
+			},
+			reconcile: () => {
+				this.reconcileDashboardHealth();
+			},
+		});
 	}
 
 	private createTask(projectPath: string | null, task: Task): Promise<boolean> {
-		return this.mutateTasks(
+		return this.mutateDocument(this.taskBell, 
 			projectPath,
 			async (project) => {
 				const took = await this.projects.tasks.create(project, task);
@@ -4611,7 +4533,7 @@ export default class SnowflakeMethodPlugin
 	 * or what was typed into it would close with the dialog and be lost.
 	 */
 	private editTask(projectPath: string | null, id: string, next: TaskEdit): Promise<TaskWrite> {
-		return this.mutateTasks<TaskWrite>(
+		return this.mutateDocument<TaskWrite>(this.taskBell, 
 			projectPath,
 			async (project) => {
 				const wrote = await this.projects.tasks.edit(project, id, next);
@@ -4626,7 +4548,7 @@ export default class SnowflakeMethodPlugin
 		id: string,
 		archived: boolean,
 	): Promise<boolean> {
-		return this.mutateTasks(
+		return this.mutateDocument(this.taskBell, 
 			projectPath,
 			async (project) => {
 				const wrote = await this.projects.tasks.setArchived(project, id, archived);
@@ -4641,7 +4563,7 @@ export default class SnowflakeMethodPlugin
 		ids: readonly string[],
 		options: { archivedOnly?: boolean } = {},
 	): Promise<boolean> {
-		return this.mutateTasks(
+		return this.mutateDocument(this.taskBell, 
 			projectPath,
 			async (project) => {
 				const outcome = await this.projects.tasks.remove(project, ids, options);
@@ -5764,7 +5686,7 @@ export default class SnowflakeMethodPlugin
 		const shown = !this.settings.showDerivedTasks;
 		this.settings.showDerivedTasks = shown;
 		await this.saveSettings();
-		this.tasksChanged();
+		this.taskBell.ring();
 		new Notice(
 			this.globalT(shown ? 'commands.derivedTasksShown' : 'commands.derivedTasksHidden'),
 		);
@@ -6670,98 +6592,25 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * The task file changed in the vault: the board reads again once the
-	 * burst has settled, on the main window's clock like the sticky bell.
-	 * The folder appears with the first task, so the health verdict is
-	 * re-read as well.
+	 * burst has settled. The folder appears with the first task, so the health
+	 * verdict is re-read every time.
 	 */
 	private scheduleTaskNotify(): void {
-		const workspaceWindow = this.app.workspace.containerEl.win;
-		if (this.taskNotifyTimer !== null) {
-			workspaceWindow.clearTimeout(this.taskNotifyTimer);
-		}
-		this.taskNotifyTimer = workspaceWindow.setTimeout(() => {
-			this.taskNotifyTimer = null;
-			this.tasksChanged();
-			this.reconcileDashboardHealth();
-		}, REFRESH_DELAY_MS);
+		this.taskBell.schedule(true);
 	}
 
-	/** The tasks changed somewhere; every board reads again. A listener's failure is its own. */
-	private tasksChanged(): void {
-		for (const listener of [...this.taskListeners]) {
-			try {
-				listener();
-			} catch (error) {
-				console.error('Snowflake: a task board failed to refresh', error);
-			}
-		}
-	}
-
-	/**
-	 * The timeline file changed in the vault: the workspaces read again once
-	 * the burst has settled, on the main window's clock like the task bell.
-	 * The folder appears with the first timeline, so the health verdict is
-	 * re-read as well.
-	 */
 	/**
 	 * The timelines changed somewhere; the workspaces read again in a moment.
 	 * Whether the dashboards reconcile their health with them is the caller's
-	 * to say, and only a caller that saw the file itself come or go says yes:
-	 * the verdict turns on the timeline folder standing, which no write to a
-	 * file already in it can move, while reconciling asks every dashboard that
-	 * is shown to build its whole model again.
+	 * to say, as the bell itself tells.
 	 */
 	private scheduleTimelineNotify(reconcile = false): void {
-		const workspaceWindow = this.app.workspace.containerEl.win;
-		if (this.timelineNotifyTimer !== null) {
-			workspaceWindow.clearTimeout(this.timelineNotifyTimer);
-		}
-		this.timelineNotifyTimer = workspaceWindow.setTimeout(() => {
-			this.timelineNotifyTimer = null;
-			this.timelineChanged();
-			if (reconcile) this.reconcileDashboardHealth();
-		}, REFRESH_DELAY_MS);
+		this.timelineBell.schedule(reconcile);
 	}
 
-	/** The timelines changed somewhere; every workspace reads again. A listener's failure is its own. */
-	private timelineChanged(): void {
-		for (const listener of [...this.timelineListeners]) {
-			try {
-				listener();
-			} catch (error) {
-				console.error('Snowflake: a timeline workspace failed to refresh', error);
-			}
-		}
-	}
-
-	/**
-	 * The beat sheets changed somewhere; the workspaces read again in a moment,
-	 * on the main window's clock like the timeline's bell. Whether the
-	 * dashboards reconcile their health with them is the caller's to say, and
-	 * only a caller that saw the file itself come or go says yes, for the
-	 * timeline's reason: the verdict turns on the folder standing.
-	 */
+	/** The beat sheets changed somewhere; the same, on their own bell. */
 	private scheduleBeatSheetNotify(reconcile = false): void {
-		const workspaceWindow = this.app.workspace.containerEl.win;
-		if (this.beatSheetNotifyTimer !== null) {
-			workspaceWindow.clearTimeout(this.beatSheetNotifyTimer);
-		}
-		this.beatSheetNotifyTimer = workspaceWindow.setTimeout(() => {
-			this.beatSheetNotifyTimer = null;
-			this.beatSheetChanged();
-			if (reconcile) this.reconcileDashboardHealth();
-		}, REFRESH_DELAY_MS);
-	}
-
-	/** The beat sheets changed somewhere; every workspace reads again. A listener's failure is its own. */
-	private beatSheetChanged(): void {
-		for (const listener of [...this.beatSheetListeners]) {
-			try {
-				listener();
-			} catch (error) {
-				console.error('Snowflake: a beat sheet workspace failed to refresh', error);
-			}
-		}
+		this.beatSheetBell.schedule(reconcile);
 	}
 
 	/**
