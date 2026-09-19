@@ -14482,17 +14482,38 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    cell is, so its handle stands over the beats'. It is never narrower than a
    beat's row, which keeps its rule as long as the rows when the field is
    too narrow for them and the table scrolls. */
+.snowflake-method-beat-sheet {
+	/* Where an act's words start, which the line under an empty act starts
+	   under: past the header's padding, the room its handle takes, the gap
+	   after it and the padding of the words. Said once, by the header's own
+	   measures, so the two cannot part. */
+	--snowflake-method-beat-sheet-act-padding-start: var(--size-4-3);
+	--snowflake-method-beat-sheet-act-gap: var(--size-2-1);
+	--snowflake-method-beat-sheet-act-words-start: calc(
+		var(--snowflake-method-beat-sheet-act-padding-start) + var(--snowflake-method-corkboard-action-size) +
+			var(--snowflake-method-beat-sheet-act-gap) + var(--size-2-2)
+	);
+}
+
+/* A project that cannot be written shows no handle, so the words start
+   where the handle would have stood, and the line under them follows. */
+.snowflake-method-beat-sheet.is-read-only {
+	--snowflake-method-beat-sheet-act-words-start: calc(
+		var(--snowflake-method-beat-sheet-act-padding-start) + var(--size-2-2)
+	);
+}
+
 .snowflake-method-beat-sheet-act {
 	position: relative;
 	display: flex;
 	align-items: center;
-	gap: var(--size-2-1);
+	gap: var(--snowflake-method-beat-sheet-act-gap);
 	min-width: calc(
 		var(--snowflake-method-timeline-time-width) + var(--snowflake-method-timeline-lane-gap) +
 			var(--snowflake-method-timeline-lane-width)
 	);
 	min-height: var(--snowflake-method-timeline-head-height);
-	padding-inline: var(--size-4-3) var(--size-4-2);
+	padding-inline: var(--snowflake-method-beat-sheet-act-padding-start) var(--size-4-2);
 }
 
 /* Each act after the first stands a little apart from the one above it. The
@@ -14504,8 +14525,10 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The act's words are the way to its form, so they are a button that reads
    as a heading's words: the lane name's dress, with nothing pressed to show,
    a size up from the beats' names it heads and in the accent colour, as the
-   word beside a lane's name is. */
-.snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title {
+   word beside a lane's name is. The sheet's own class is named as well, so
+   the colour and the size outweigh the lane name's they are set over, and do
+   not hold only for as long as this rule comes later in the file. */
+.snowflake-method-beat-sheet .snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title {
 	max-width: 100%;
 	color: var(--text-accent);
 	font-size: var(--font-ui-medium);
@@ -14545,16 +14568,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	min-height: 1px;
 }
 
-/* The word starts under the act's own words: past the header's padding, the
-   room its handle takes, the gap after it and the padding of the words. */
+/* The word starts under the act's own words, wherever the header says they start. */
 .snowflake-method-beat-sheet-act-foot .snowflake-method-character-empty {
 	justify-content: flex-start;
 	margin: 0;
 	padding-block: var(--size-2-2) var(--size-4-2);
-	padding-inline: calc(
-			var(--size-4-3) + var(--snowflake-method-corkboard-action-size) + var(--size-2-1) + var(--size-2-2)
-		)
-		var(--size-4-3);
+	padding-inline: var(--snowflake-method-beat-sheet-act-words-start) var(--size-4-3);
 }
 
 /* The landing line for a beat at an act's end and for an act among the

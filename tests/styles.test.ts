@@ -192,6 +192,37 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The line under an empty act starts under the act's words, and where those
+	 * start is said once, from the header's own measures: written out again at
+	 * the foot, it stayed put when a project that cannot be written hid the
+	 * handle and the words moved. The words' colour and size are set over the
+	 * lane name's the button also wears, so their rule outweighs that one
+	 * rather than merely following it in the file.
+	 */
+	it('starts the line under an act where the act\u2019s words start, handle or none, and sets the words over the lane name\u2019s by weight', () => {
+		const start = 'var(--snowflake-method-beat-sheet-act-words-start)';
+		expect(declarations('.snowflake-method-beat-sheet-act-foot .snowflake-method-character-empty')).toContain(`padding-inline: ${start}`);
+		const stated = declarations('.snowflake-method-beat-sheet');
+		expect(stated).toContain('--snowflake-method-beat-sheet-act-words-start:');
+		expect(stated).toContain('var(--snowflake-method-corkboard-action-size)');
+		const header = declarations('.snowflake-method-beat-sheet-act');
+		expect(header).toContain('padding-inline: var(--snowflake-method-beat-sheet-act-padding-start)');
+		expect(header).toContain('gap: var(--snowflake-method-beat-sheet-act-gap)');
+		// No handle, no room for one.
+		expect(declarations('.snowflake-method-beat-sheet-act .snowflake-method-beat-sheet-act-handle:disabled')).toContain('display: none');
+		const readOnly = declarations('.snowflake-method-beat-sheet.is-read-only');
+		expect(readOnly).toContain('--snowflake-method-beat-sheet-act-words-start:');
+		expect(readOnly).not.toContain('action-size');
+		const weight = (selector: string): number => (selector.match(/\./g) ?? []).length;
+		const title = '.snowflake-method-beat-sheet .snowflake-method-beat-sheet-act button.snowflake-method-beat-sheet-act-title';
+		const laneName = '.snowflake-method-timeline button.snowflake-method-timeline-lane-name';
+		expect(declarations(title)).toContain('color: var(--text-accent)');
+		expect(declarations(title)).toContain('font-size: var(--font-ui-medium)');
+		expect(declarations(laneName)).toContain('color: var(--text-muted)');
+		expect(weight(title)).toBeGreaterThan(weight(laneName));
+	});
+
+	/**
 	 * A hyphenated name in element position is a custom element, and naming
 	 * one ties the stylesheet to whatever library happens to draw it: the
 	 * wikilink popup's group heading was `completion-section` in one
