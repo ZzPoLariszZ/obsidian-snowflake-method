@@ -167,7 +167,7 @@ export interface LaneCellsDeps<Reading> {
 	/** What a row's menu offers between its moves and its removal. */
 	subrowMenuItems?: (menu: Menu, lane: Lane, time: TimelineTime, rowId: string) => void;
 	/** The words that name the surface the cells stand in, as translation keys. */
-	words: { editGone: string; sceneRemove: string };
+	words: { editGone: string; addGone: string; sceneRemove: string };
 	dragTypes: { row: string; scene: string };
 	/** The workspace's own parts dressed for the drag in flight, beside the cells. */
 	dragPhase: (stateOf: (laneId: string) => 'lane' | 'locked' | 'idle') => void;
@@ -655,16 +655,17 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 		const pending: PendingRow = { el };
 		cell.pending.push(pending);
 		const timelineId = cell.timelineId;
-		let written = false;
+		// A write that threw has had its say already, through the queue.
+		let outcome: 'written' | 'unwritten' | 'threw' = 'threw';
 		holdFootWrite(key, 1);
 		void enqueue(async () => {
 			const id = await deps.bridge().addRow(timelineId, timeId, words, null);
-			if (id === null) throw new Error(t('timeline.subrow.refused'));
-			written = true;
+			outcome = id === null ? 'unwritten' : 'written';
 		}).then(() => {
 			holdFootWrite(key, -1);
 			pending.el.remove();
 			cell.pending = cell.pending.filter((candidate) => candidate !== pending);
+			const written = outcome === 'written';
 			if (written) {
 				// Every paint since this write went out has left the cell's foot
 				// alone, the write being the one to give its words back. It has
@@ -678,6 +679,13 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 			if (deps.disposed()) {
 				recoverWords(deps.placeName(timelineId, timeId), words);
 				return;
+			}
+			// The write's answer is the same for a project that refused it and for
+			// a cell that has gone, and the words go a different way for each. The
+			// read that followed the write is what can tell them apart, so what is
+			// said waits for it, and says where the words really went.
+			if (outcome === 'unwritten') {
+				deps.notice(new Error(t(deps.cellStands(timelineId, timeId) ? 'timeline.subrow.refused' : deps.words.addGone)));
 			}
 			giveBack(timelineId, timeId, words);
 		});

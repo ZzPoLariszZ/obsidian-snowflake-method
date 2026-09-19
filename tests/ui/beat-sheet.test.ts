@@ -864,7 +864,7 @@ describe('the acts of a sheet', () => {
 		fire(handle, 'dragend', {});
 	});
 
-	it('writes nothing from an act\'s form once another sheet is on show', async () => {
+	it('writes nothing from an act\'s form once another sheet is on show, and keeps the form open with its words', async () => {
 		const opened = watch(ActFormModal);
 		const fixture = laid({}, { sheets: [threeActs(), sheet('other')] });
 		await settle();
@@ -872,11 +872,43 @@ describe('the acts of a sheet', () => {
 		fixture.act('a1').querySelector('.snowflake-method-beat-sheet-act-title')!.dispatch('click');
 		fixture.sheetField().choose('other');
 		await settle();
-		await submit(opened[0], 'Late');
-		await submit(opened[1], 'Late');
+		// An act is no note: nowhere but the form holds its label, so the form says why and stays.
+		await expect(submit(opened[0], 'Late')).rejects.toThrow('beatSheet.act.refused');
+		await expect(submit(opened[1], 'Late')).rejects.toThrow('beatSheet.act.refused');
 		await settle();
 		expect(fixture.bridge.addAct).not.toHaveBeenCalled();
 		expect(fixture.bridge.relabelAct).not.toHaveBeenCalled();
+	});
+
+	it('keeps an act\'s form open over a write the project refused or an act that has gone', async () => {
+		const opened = watch(ActFormModal);
+		const fixture = laid();
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-add-act').dispatch('click');
+		fixture.act('a1').querySelector('.snowflake-method-beat-sheet-act-title')!.dispatch('click');
+		vi.mocked(fixture.bridge.addAct).mockResolvedValueOnce(null);
+		await expect(submit(opened[0], 'Coda')).rejects.toThrow('beatSheet.act.refused');
+		vi.mocked(fixture.bridge.relabelAct).mockResolvedValueOnce('refused');
+		await expect(submit(opened[1], 'Opening')).rejects.toThrow('beatSheet.act.refused');
+		vi.mocked(fixture.bridge.relabelAct).mockResolvedValueOnce('absent');
+		await expect(submit(opened[1], 'Opening')).rejects.toThrow('beatSheet.act.refused');
+		// The same words go through once the project takes them.
+		await submit(opened[1], 'Opening');
+		await settle();
+		expect(fixture.titles()[0]).toBe('beatSheet.act.titleLabelled(number=1,label=Opening)');
+	});
+
+	it('calls an act and a beat by their own words, which no tooltip takes the place of', async () => {
+		const tips: [CorkboardElement, string][] = [];
+		const obsidian = await import('obsidian');
+		vi.spyOn(obsidian, 'setTooltip').mockImplementation((el, words) => { tips.push([el as unknown as CorkboardElement, words]); });
+		const fixture = laid();
+		await settle();
+		const title = fixture.act('a1').querySelector('.snowflake-method-beat-sheet-act-title')!;
+		const name = fixture.beat('b1').querySelector('.snowflake-method-timeline-time-label')!;
+		// Obsidian's tooltip is the element's aria-label, so what it says is what the button is called.
+		expect(tips.filter(([el]) => el === title).map(([, words]) => words)).toEqual(['beatSheet.act.titleLabelled(number=1,label=Setup)']);
+		expect(tips.filter(([el]) => el === name)).toEqual([]);
 	});
 });
 
@@ -1077,6 +1109,34 @@ describe('the beats of an act', () => {
 		expect(fixture.bridge.addBeat).toHaveBeenLastCalledWith('s', 'a3', { name: 'After', description: '' }, null);
 	});
 
+	it('asks before deleting a beat that says something of itself, whose words are nowhere but in the sheet', async () => {
+		const fixture = workspace({ sheets: [sheet('s', [act('a1', '', [
+			beat('told', 'Midpoint', { description: 'Everything turns here.' }),
+			beat('blank', '   ', { rows: [row('r1', 'Arrives')] }),
+		])])] });
+		await settle();
+		const remove = (id: string): void => {
+			fixture.menuOf(fixture.beat(id), 'snowflake-method-timeline-time-more').find((item) => item.title === 'beatSheet.beat.delete')!.click();
+		};
+		vi.mocked(confirmTimelineAction).mockResolvedValueOnce(false);
+		remove('told');
+		await settle();
+		expect(vi.mocked(confirmTimelineAction).mock.calls[0]![2]).toEqual({
+			title: 'beatSheet.beat.deleteTitle(name=Midpoint)',
+			lines: ['beatSheet.beat.deleteDescribed'],
+			label: 'actions.delete',
+		});
+		expect(fixture.bridge.deleteBeat).not.toHaveBeenCalled();
+		// A beat with no name is asked about by what the table calls it.
+		vi.mocked(confirmTimelineAction).mockResolvedValueOnce(false);
+		remove('blank');
+		await settle();
+		expect(vi.mocked(confirmTimelineAction).mock.calls[1]![2]).toMatchObject({
+			title: 'beatSheet.beat.deleteTitle(name=beatSheet.beat.unnamed)',
+			lines: ['beatSheet.beat.deleteDescription(rows=1)'],
+		});
+	});
+
 	it('deletes a bare beat at once, and asks first for one that holds sub-descriptions', async () => {
 		const fixture = laid();
 		await settle();
@@ -1092,7 +1152,7 @@ describe('the beats of an act', () => {
 		await settle();
 		expect(vi.mocked(confirmTimelineAction).mock.calls[0]![2]).toEqual({
 			title: 'beatSheet.beat.deleteTitle(name=Opening Image)',
-			lines: ['beatSheet.beat.deleteDescription(rows=2)'],
+			lines: ['beatSheet.beat.deleteDescribed', 'beatSheet.beat.deleteDescription(rows=2)'],
 			label: 'actions.delete',
 		});
 		expect(fixture.bridge.deleteBeat).toHaveBeenCalledTimes(1);
@@ -1392,9 +1452,50 @@ describe('sub-descriptions and scenes on a beat, through the cells a timeline sh
 		expect(opened).toHaveLength(1);
 		const drafts = (opened[0] as unknown as { drafts: { place: string; words: string }[] }).drafts;
 		expect(drafts.map((draft) => draft.words)).toEqual(['Never sent anywhere']);
-		// The beat has gone, so the place is named as far as it can still be.
-		expect(drafts[0]!.place).toBe('Sheet s');
+		// The beat has gone from the document, which was all that named it: the one read before still says what it was.
+		expect(drafts[0]!.place).toBe('Sheet s · beatSheet.act.titleLabelled(number=1,label=Setup) · Catalyst');
 		expect(fixture.bridge.addRow).not.toHaveBeenCalled();
+	});
+
+	it('says that the beat has gone, and not that the words wait at its foot, when a foot\'s write finds no beat', async () => {
+		const opened = watch(TimelineDraftModal);
+		const fixture = laid();
+		await settle();
+		const input = trailingInput(fixture.cell('b2'));
+		input.value = 'A letter comes';
+		input.dispatch('input');
+		// Deleted from another leaf, and the bell not yet heard here.
+		await fixture.bridge.deleteBeat('s', 'b2');
+		press(input, 'Enter', { mod: true });
+		await settle();
+		expect(notices.mock.calls.map((call) => String(call[0]))).toEqual(['beatSheet.subrow.addGone']);
+		expect(opened).toHaveLength(1);
+		// A project that refuses the write, the beat standing, keeps the words at the foot and says so.
+		notices.mockClear();
+		const other = trailingInput(fixture.cell('b1'));
+		other.value = 'Held back';
+		other.dispatch('input');
+		vi.mocked(fixture.bridge.addRow).mockResolvedValueOnce(null);
+		press(other, 'Enter', { mod: true });
+		await settle();
+		expect(notices.mock.calls.map((call) => String(call[0]))).toEqual(['timeline.subrow.refused']);
+		expect(trailingInput(fixture.cell('b1')).value).toBe('Held back');
+		expect(opened).toHaveLength(1);
+	});
+
+	it('writes a row cleared to nothing even when the read before it came back empty, from the row the screen still shows', async () => {
+		const fixture = laid();
+		await settle();
+		subrow(fixture.cell('b1'), 'r2').querySelector('.snowflake-method-timeline-subrow-label')!.dispatch('click');
+		const editor = subrow(fixture.cell('b1'), 'r2').querySelector('textarea')!;
+		editor.value = '';
+		editor.dispatch('input');
+		vi.mocked(fixture.bridge.read).mockResolvedValueOnce(null);
+		fixture.notify();
+		await settle();
+		editor.dispatch('blur');
+		await settle();
+		expect(fixture.bridge.editRow).toHaveBeenCalledWith('s', 'r2', '');
 	});
 });
 
@@ -1541,6 +1642,41 @@ describe('a sheet shown from its end', () => {
 		expect(fixture.bridge.addBeat).toHaveBeenNthCalledWith(4, 's', 'a3', { name: 'Foot', description: '' }, 'b3');
 		expect(fixture.bridge.addBeat).toHaveBeenNthCalledWith(5, 's', 'a2', { name: 'Alone', description: '' }, null);
 		expect(fixture.order().slice(0, 4)).toEqual(['act:a3', 'beat:b3', 'beat:beat-4', 'foot:a3']);
+	});
+
+	it('says the place a form was opened for as the sheet stands when the form is sent, so the foot is the foot whatever has gone meanwhile', async () => {
+		const beats = watch(BeatFormModal);
+		const acts = watch(ActFormModal);
+		const fixture = turned();
+		await settle();
+		// The foot of Act 1 as the screen has it is before Opening Image, the act's first beat in the story.
+		fixture.act('a1').querySelector('.snowflake-method-beat-sheet-act-add')!.dispatch('click');
+		fixture.button('snowflake-method-beat-sheet-add-act').dispatch('click');
+		// Both go from another leaf while the forms stand open.
+		await fixture.bridge.deleteBeat('s', 'b1');
+		await fixture.bridge.deleteAct('s', 'a1');
+		await fixture.bridge.addBeat('s', 'a2', { name: 'Elsewhere', description: '' }, null);
+		fixture.notify();
+		await settle();
+		await submit(acts[0], 'Prologue');
+		await settle();
+		// Before the act the story now begins with, and so at the screen's foot.
+		expect(fixture.bridge.addAct).toHaveBeenLastCalledWith('s', 'Prologue', 'a2');
+		expect(fixture.order().slice(-2)).toEqual([`act:${fixture.sheetHeld('s').acts[0]!.id}`, `foot:${fixture.sheetHeld('s').acts[0]!.id}`]);
+		// The act the beat was for has gone with its beats, which the service answers with no id: the form stays open and says so.
+		vi.mocked(fixture.bridge.addBeat).mockResolvedValueOnce(null);
+		await expect(submit(beats[0], { name: 'Late', description: '' })).rejects.toThrow('beatSheet.beat.refused');
+		// A beat asked for at the foot of an act whose last-shown beat has gone lands at the foot all the same.
+		fixture.act('a3').querySelector('.snowflake-method-beat-sheet-act-add')!.dispatch('click');
+		await fixture.bridge.deleteBeat('s', 'b3');
+		await fixture.bridge.addBeat('s', 'a3', { name: 'Stands', description: '' }, null);
+		fixture.notify();
+		await settle();
+		await submit(beats[1], { name: 'Foot', description: '' });
+		await settle();
+		const third = fixture.sheetHeld('s').acts.find((entry) => entry.id === 'a3')!;
+		expect(third.beats.map((entry) => entry.name)).toEqual(['Foot', 'Stands']);
+		expect(fixture.order().slice(0, 4)).toEqual(['act:a3', `beat:${third.beats[1]!.id}`, `beat:${third.beats[0]!.id}`, 'foot:a3']);
 	});
 
 	it('puts an act in where the screen shows the place: at the foot from the toolbar, and under the act whose menu asked', async () => {
@@ -1747,6 +1883,47 @@ describe('the beat sheets\' own forms', () => {
 		expect(fixture.select().value).toBe('From mine');
 		expect(fixture.titles()).toEqual(['beatSheet.act.titleLabelled(number=1,label=Opening)']);
 		expect(fixture.beats().map((entry) => entry.querySelector('.snowflake-method-timeline-time-description')!.textContent)).toEqual(['The first line.']);
+	});
+
+	it('shows the sheet just made even when a paint comes between its write and the read that brings it back', async () => {
+		const opened = watch(AddBeatSheetModal);
+		const fixture = workspace({ sheets: [sheet('s1'), threeActs()], lastSheetId: 's' });
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-add').dispatch('click');
+		// The read that follows the write is held back, as a file read is for a moment.
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const made = vi.mocked(fixture.bridge.createSheet).getMockImplementation()!;
+		const read = vi.mocked(fixture.bridge.read).getMockImplementation()!;
+		vi.mocked(fixture.bridge.createSheet).mockImplementationOnce(async (name, choice) => {
+			const id = await made(name, choice);
+			vi.mocked(fixture.bridge.read).mockImplementationOnce(async () => { await gate; return read(); });
+			return id;
+		});
+		const sent = submit(opened[0], { name: 'Second draft', template: { kind: 'built-in', id: 'blank' } });
+		await settle();
+		// A project refresh paints meanwhile, from the document as it was: the new sheet is not in it yet.
+		fixture.handle.refresh();
+		expect(fixture.sheetField().value()).toBe('s');
+		release();
+		await sent;
+		await settle();
+		expect(fixture.sheetField().value()).toBe('beat-sheet-1');
+		expect(fixture.select().value).toBe('Second draft');
+	});
+
+	it('keeps the sheet\'s form open over a name the project would not take', async () => {
+		const opened = watch(EditBeatSheetModal);
+		const fixture = laid();
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-edit').dispatch('click');
+		vi.mocked(fixture.bridge.renameSheet).mockResolvedValueOnce('refused');
+		await expect(submit(opened[0], 'First draft')).rejects.toThrow('beatSheet.sheet.renameRefused');
+		vi.mocked(fixture.bridge.renameSheet).mockResolvedValueOnce('absent');
+		await expect(submit(opened[0], 'First draft')).rejects.toThrow('beatSheet.sheet.renameRefused');
+		await submit(opened[0], 'First draft');
+		await settle();
+		expect(fixture.select().value).toBe('First draft');
 	});
 
 	it('renames the sheet on show from its form, writing nothing for a name already so', async () => {

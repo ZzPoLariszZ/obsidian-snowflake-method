@@ -32,6 +32,7 @@ import {
 	findBeatSheetAct,
 	findBeatSheetTemplate,
 	shownBeatSheetId,
+	type Beat,
 	type BeatSheet,
 	type BeatSheetDocument,
 	type ScenePresentation,
@@ -140,6 +141,9 @@ const FOLD_LABELS: Readonly<Record<Fold, { collapse: string; expand: string }>> 
 /** The width, in rem, under which the workspace is narrow and folds both by itself, as the timeline does. */
 const NARROW_MAX_REM = 84;
 
+/** How many documents back a place that has gone is still looked for by name. */
+const EARLIER_HELD_MAX = 4;
+
 export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	const { app, host, t, memory } = controls;
 	// The timeline's own class dresses the workspace, one lane wide: a sheet
@@ -247,8 +251,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	});
 	addActButton.addEventListener('click', () => {
 		// At the foot of the screen, as the timeline adds a time: the story's end, or its beginning on a sheet shown from its end.
-		const sheet = currentSheet();
-		if (sheet !== null) addAct(actAnchor(sheet, null));
+		addAct(null);
 	});
 	const addSheetButton = toolbar.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-view-add snowflake-method-beat-sheet-add',
@@ -391,9 +394,25 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	let reading: BeatSheetReading | null = null;
 	/** The document as the last read that came back had it, for a form standing open when a read fails. */
 	let lastHeld: BeatSheetDocument | null = null;
+	/**
+	 * The documents read before that one, newest first and a few deep. A beat
+	 * is named nowhere but in the document, and words are handed back for
+	 * keeping only once their beat has gone from it: the document that last
+	 * held the beat is the one that can still say what it was called.
+	 */
+	const earlierHeld: BeatSheetDocument[] = [];
 	let loadFailed = false;
 	let model: ProjectDashboardModel | null = null;
 	let sheetId: string | null = null;
+	/**
+	 * A sheet this workspace has just made, until a read brings back the
+	 * document that holds it. A paint that comes in between is made from the
+	 * document as it was, and must not take the new sheet's absence there for a
+	 * pick that has gone, or the sheet made would never be the one shown.
+	 */
+	let awaitedSheetId: string | null = null;
+	/** The sheet as one lane, as last painted: what the cells answer from, whatever has been read since. */
+	let paintedLanes: readonly Lane[] = [];
 	/** The sheet the table was last painted from, by id: another sheet's rows are never dressed as this one's. */
 	let paintedSheetId: string | null = null;
 	let presentation: ScenePresentation = 'flat';
@@ -485,7 +504,17 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		source: () => controls.bridge(),
 		taken: (next, failed) => {
 			reading = next;
-			if (next !== null) lastHeld = next.held;
+			if (next !== null) {
+				if (lastHeld !== null && lastHeld !== next.held) {
+					earlierHeld.unshift(lastHeld);
+					earlierHeld.length = Math.min(earlierHeld.length, EARLIER_HELD_MAX);
+				}
+				lastHeld = next.held;
+				if (awaitedSheetId !== null && findBeatSheet(next.held, awaitedSheetId) !== undefined) {
+					sheetId = awaitedSheetId;
+					awaitedSheetId = null;
+				}
+			}
 			loadFailed = failed;
 		},
 		readFailed: (error) => {
@@ -654,10 +683,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		paintWords(sheet);
 		paintOrder(sheet);
 		if (sheet === null) {
+			paintedLanes = [];
 			clearTable();
 			showEmpty(t('beatSheet.empty.sheets'));
 			return;
 		}
+		paintedLanes = [laneOf(sheet)];
 		showEmpty(null);
 		paintCardMode();
 		const hold = holdFocus();
@@ -811,8 +842,13 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 
 	const dressAct = (entry: ActEntry, item: Extract<TableEntry, { kind: 'act' }>): void => {
 		const words = actTitle(t, item.number, item.act.label);
-		if (entry.title.textContent !== words) entry.title.setText(words);
-		setTooltip(entry.title, t('beatSheet.act.edit'));
+		// Words wider than the table are trimmed to it, so the whole of them wait
+		// under the pointer, as a group's do on the corkboard. They are what the
+		// button is called, and a tooltip of any other words would take their place.
+		if (entry.title.textContent !== words) {
+			entry.title.setText(words);
+			setTooltip(entry.title, words);
+		}
 		entry.title.disabled = readOnly;
 		entry.el.toggleClass('is-empty', item.act.beats.length === 0);
 		const label = t('beatSheet.act.addBeat', { act: words });
@@ -890,7 +926,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			const current = currentSheet();
 			const place = current === null ? null : findBeat(current, entry.beatId);
 			// The plus stands on the rule above the row, so the new beat goes before this one as the screen has them.
-			if (current !== null && place !== null) addBeat(place.act.id, beatAnchor(current, place.act.id, entry.beatId));
+			if (place !== null) addBeat(place.act.id, entry.beatId);
 		});
 		handle.addEventListener('dragstart', (event) => {
 			if (readOnly || event.dataTransfer === null) {
@@ -927,11 +963,15 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		return entry;
 	};
 
+	/** What a beat is called wherever it is named: its name, or the word for one that has none. */
+	const beatName = (beat: Beat): string => (beat.name.trim().length > 0 ? beat.name : t('beatSheet.beat.unnamed'));
+
 	const dressBeat = (entry: BeatEntry, item: Extract<TableEntry, { kind: 'beat' }>, sheet: BeatSheet): void => {
-		const name = item.beat.name.trim().length > 0 ? item.beat.name : t('beatSheet.beat.unnamed');
+		const name = beatName(item.beat);
+		// The name is the button's own words and is left to say itself, as a
+		// time's is: a tooltip would take its place as what the button is called.
 		if (entry.label.textContent !== name) entry.label.setText(name);
 		entry.label.disabled = readOnly;
-		setTooltip(entry.label, t('beatSheet.beat.edit'));
 		const insert = t('beatSheet.beat.insert', { name });
 		if (entry.seamAdd.getAttribute('aria-label') !== insert) {
 			entry.seamAdd.setAttribute('aria-label', insert);
@@ -1038,10 +1078,16 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 
 	/** Where words were meant to stand, as a writer would name it: the sheet, the act and the beat. */
 	const placeName = (placedSheetId: string, beatId: string | null): string => {
-		const sheet = reading === null ? undefined : findBeatSheet(reading.held, placedSheetId);
-		if (sheet === undefined) return placedSheetId;
-		const place = beatId === null ? null : beatPlaceName(t, sheet, beatId);
-		return place === null ? sheet.name : `${sheet.name} · ${place}`;
+		const documents = [...(reading === null ? [] : [reading.held]), ...earlierHeld];
+		const sheetNow = documents.map((held) => findBeatSheet(held, placedSheetId)).find((found) => found !== undefined);
+		if (sheetNow === undefined) return placedSheetId;
+		if (beatId === null) return sheetNow.name;
+		for (const held of documents) {
+			const sheet = findBeatSheet(held, placedSheetId);
+			const place = sheet === undefined ? null : beatPlaceName(t, sheet, beatId);
+			if (place !== null) return `${sheetNow.name} · ${place}`;
+		}
+		return sheetNow.name;
 	};
 
 	/** The sheet's other beats, in the order it shows them, for a row sent to one of them. */
@@ -1289,17 +1335,30 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 
 	// -- The acts' actions ---------------------------------------------------
 
-	/** An act made, before another or at the end, through its form. */
-	const addAct = (beforeActId: string | null): void => {
+	/**
+	 * An act made through its form, before another act as the screen has them
+	 * or at the screen's foot. The place is named as the screen named it when
+	 * the form opened, and said as the document keeps it only when the write
+	 * comes to be made: an anchor worked out at the press would be another
+	 * act's id on a sheet shown from its end, and that act may have gone by
+	 * then, which would land this one at the wrong end. The form stays open
+	 * over a write that did not land, as a beat's does.
+	 */
+	const addAct = (beforeOnScreen: string | null): void => {
 		const path = controls.projectPath();
 		const openedSheet = sheetId;
-		if (path === null || openedSheet === null || readOnly || disposed) return;
+		const opened = currentSheet();
+		if (path === null || openedSheet === null || opened === null || readOnly || disposed) return;
+		const reversed = opened.reversed;
 		keep(new ActFormModal(app, t, { mode: 'add', initial: '' }, async (label) => {
-			if (!stillOn(path, openedSheet)) return;
+			const came: { made: string | null } = { made: null };
 			await enqueue(async () => {
 				if (!stillOn(path, openedSheet)) return;
-				await controls.bridge().addAct(openedSheet, label, beforeActId);
+				const now = sheetAsStands(openedSheet);
+				if (now === null) return;
+				came.made = await controls.bridge().addAct(openedSheet, label, actAnchor({ ...now, reversed }, beforeOnScreen));
 			});
+			if (came.made === null && !disposed) throw new Error(t('beatSheet.act.refused'));
 		})).open();
 	};
 
@@ -1310,11 +1369,12 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const act = sheet === null ? undefined : findBeatSheetAct(sheet, actId);
 		if (path === null || openedSheet === null || act === undefined || readOnly || disposed) return;
 		keep(new ActFormModal(app, t, { mode: 'edit', initial: act.label }, async (label) => {
-			if (!stillOn(path, openedSheet)) return;
+			const came: { wrote: BeatSheetWrite } = { wrote: 'refused' };
 			await enqueue(async () => {
 				if (!stillOn(path, openedSheet)) return;
-				await controls.bridge().relabelAct(openedSheet, actId, label);
+				came.wrote = await controls.bridge().relabelAct(openedSheet, actId, label);
 			});
+			if (came.wrote !== 'written' && !disposed) throw new Error(t('beatSheet.act.refused'));
 		})).open();
 	};
 
@@ -1402,7 +1462,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					if (now === null) return;
 					const shown = shownActs(now);
 					const at = shown.findIndex((act) => act.id === actId);
-					if (at !== -1) addAct(actAnchor(now, shown[at + 1]?.id ?? null));
+					if (at !== -1) addAct(shown[at + 1]?.id ?? null);
 				});
 		});
 		menu.addItem((item) => {
@@ -1431,19 +1491,24 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	// -- The beats' actions --------------------------------------------------
 
 	/**
-	 * A beat made in an act, before another of its beats or at the end. The
-	 * form stays open over a write the project refused: a beat is no note, so
+	 * A beat made in an act, before another of its beats as the screen has them
+	 * or at the act's foot, the place named and said as an act's is. The form
+	 * stays open over a write the project refused: a beat is no note, so
 	 * nowhere but the form holds the words typed for it.
 	 */
-	const addBeat = (actId: string, beforeBeatId: string | null): void => {
+	const addBeat = (actId: string, beforeOnScreen: string | null): void => {
 		const path = controls.projectPath();
 		const openedSheet = sheetId;
-		if (path === null || openedSheet === null || readOnly || disposed) return;
+		const opened = currentSheet();
+		if (path === null || openedSheet === null || opened === null || readOnly || disposed) return;
+		const reversed = opened.reversed;
 		keep(new BeatFormModal(app, t, { mode: 'add', initial: { name: '', description: '' } }, async (draft) => {
 			const came: { made: string | null } = { made: null };
 			await enqueue(async () => {
 				if (!stillOn(path, openedSheet)) return;
-				came.made = await controls.bridge().addBeat(openedSheet, actId, draft, beforeBeatId);
+				const now = sheetAsStands(openedSheet);
+				if (now === null) return;
+				came.made = await controls.bridge().addBeat(openedSheet, actId, draft, beatAnchor({ ...now, reversed }, actId, beforeOnScreen));
 			});
 			if (came.made === null && !disposed) throw new Error(t('beatSheet.beat.refused'));
 		})).open();
@@ -1451,8 +1516,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 
 	/** A beat made at the foot of an act as the screen has it, which is where a beat dropped on the act's foot lands. */
 	const addBeatAtFoot = (actId: string): void => {
-		const sheet = currentSheet();
-		if (sheet !== null) addBeat(actId, beatAnchor(sheet, actId, null));
+		addBeat(actId, null);
 	};
 
 	const editBeat = (beatId: string, reveal?: 'description'): void => {
@@ -1514,10 +1578,16 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const sheet = currentSheet();
 		const place = sheet === null ? null : findBeat(sheet, beatId);
 		if (disposed || openedSheet === null || place === null || readOnly) return;
-		if (place.beat.rows.length > 0) {
+		// A time's words live on in its note; a beat's are nowhere but here, so
+		// what it says of itself is asked about as what stands under it is.
+		const described = place.beat.description.trim().length > 0;
+		if (place.beat.rows.length > 0 || described) {
+			const lines: string[] = [];
+			if (described) lines.push(t('beatSheet.beat.deleteDescribed'));
+			if (place.beat.rows.length > 0) lines.push(t('beatSheet.beat.deleteDescription', { rows: place.beat.rows.length }));
 			const confirmed = await confirmTimelineAction(app, t, {
-				title: t('beatSheet.beat.deleteTitle', { name: place.beat.name }),
-				lines: [t('beatSheet.beat.deleteDescription', { rows: place.beat.rows.length })],
+				title: t('beatSheet.beat.deleteTitle', { name: beatName(place.beat) }),
+				lines,
 				label: t('actions.delete'),
 			}, keep);
 			if (!confirmed || disposed) return;
@@ -1584,7 +1654,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					if (now === null || place === null) return;
 					const shown = shownBeats(now, place.act);
 					const at = shown.findIndex((beat) => beat.id === beatId);
-					addBeat(place.act.id, beatAnchor(now, place.act.id, shown[at + 1]?.id ?? null));
+					addBeat(place.act.id, shown[at + 1]?.id ?? null);
 				});
 		});
 		menu.addSeparator();
@@ -1618,10 +1688,10 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		root,
 		ground: table,
 		deck,
-		lanes: () => {
-			const sheet = currentSheet();
-			return sheet === null ? [] : [laneOf(sheet)];
-		},
+		// As last painted, and not as last read: a read that came back with
+		// nothing leaves the table standing, and a row open in it is still the
+		// row the screen shows, with the words the screen shows for it.
+		lanes: () => paintedLanes,
 		documentLanes: () => {
 			const held = reading?.held ?? null;
 			if (held === null) return null;
@@ -1654,7 +1724,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 					.onClick(() => { moveRowToBeat(time.timeId, rowId); });
 			});
 		},
-		words: { editGone: 'beatSheet.subrow.editGone', sceneRemove: 'beatSheet.scene.remove' },
+		words: { editGone: 'beatSheet.subrow.editGone', addGone: 'beatSheet.subrow.addGone', sceneRemove: 'beatSheet.scene.remove' },
 		dragTypes: { row: BEAT_SHEET_ROW_DRAG_TYPE, scene: BEAT_SHEET_SCENE_DRAG_TYPE },
 		// One lane has no neighbour to lock out, and no head to dress.
 		dragPhase: () => undefined,
@@ -1685,8 +1755,11 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				const came: { made: string | null } = { made: null };
 				await enqueue(async () => {
 					came.made = await controls.bridge().createSheet(draft.name, draft.template);
-					if (came.made !== null) sheetId = came.made;
+					// Shown once a read holds it, which the one that follows this write does.
+					if (came.made !== null) awaitedSheetId = came.made;
 				});
+				// That read has landed: a sheet it did not bring back is not waited on any longer.
+				if (awaitedSheetId === came.made) awaitedSheetId = null;
 				if (came.made === null && !disposed) throw new Error(t('beatSheet.sheet.createRefused'));
 			},
 		)).open();
@@ -1726,11 +1799,15 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			},
 			async (name) => {
 				if (disposed) return;
+				// The form stays open over a write that did not land, as a beat's
+				// does: a sheet's name is nowhere but in the form until it is written.
+				const came: { wrote: BeatSheetWrite } = { wrote: 'written' };
 				await enqueue(async () => {
 					// Against the sheet as it stands now, so a name already so is not written again.
 					const standingSheet = sheetAsStands(sheet.id) ?? sheet;
-					if (name !== standingSheet.name) await controls.bridge().renameSheet(sheet.id, name);
+					if (name !== standingSheet.name) came.wrote = await controls.bridge().renameSheet(sheet.id, name);
 				});
+				if (came.wrote !== 'written' && !disposed) throw new Error(t('beatSheet.sheet.renameRefused'));
 			},
 		)).open();
 	};

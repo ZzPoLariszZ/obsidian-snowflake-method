@@ -1867,7 +1867,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 					.onClick(() => { moveRowToTime(lane, time, rowId); });
 			});
 		},
-		words: { editGone: 'timeline.subrow.editGone', sceneRemove: 'timeline.scene.remove' },
+		words: { editGone: 'timeline.subrow.editGone', addGone: 'timeline.subrow.addGone', sceneRemove: 'timeline.scene.remove' },
 		dragTypes: { row: TIMELINE_ROW_DRAG_TYPE, scene: TIMELINE_SCENE_DRAG_TYPE },
 		// The lanes' heads wear the phase as their cells do.
 		dragPhase: (stateOf) => {

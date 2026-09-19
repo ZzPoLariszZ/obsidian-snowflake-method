@@ -265,7 +265,7 @@ function standing(lanes: Timeline[], overrides: Partial<LaneCellsDeps<Reading>> 
 			rowId,
 			lane: (read) => (read === undefined ? held : read?.held)?.timelines.find((entry) => entry.id === activeId) ?? null,
 		}),
-		words: { editGone: 'host.editGone', sceneRemove: 'host.sceneRemove' },
+		words: { editGone: 'host.editGone', addGone: 'host.addGone', sceneRemove: 'host.sceneRemove' },
 		dragTypes: { row: ROW_TYPE, scene: SCENE_TYPE },
 		dragPhase,
 		endDrag,
@@ -382,6 +382,26 @@ describe('words typed at a cell\'s foot', () => {
 		await settle();
 		expect(fixture.foot('a', 'time-2').value).toBe('Refused words\ntyped since');
 		expect(fixture.notice).toHaveBeenCalledOnce();
+		expect((fixture.notice.mock.calls[0]![0] as Error).message).toBe('timeline.subrow.refused');
+	});
+
+	it('says in the host\'s own words that the cell has gone, when that is why the write found nowhere to land', async () => {
+		const open = vi.spyOn(TimelineDraftModal.prototype, 'open').mockImplementation(() => undefined);
+		try {
+			let beatGone = false;
+			const fixture = standing(oneLane(), { cellStands: (_laneId, timeId) => !(beatGone && timeId === 'time-2') });
+			const foot = fixture.foot('a', 'time-2');
+			foot.value = 'Words for a cell on its way out';
+			foot.dispatch('input');
+			// The write's answer is the same as a refusal's; what the host knows by the time it is back is what tells them apart.
+			fixture.bridge.addRow.mockImplementationOnce(async () => { beatGone = true; return null; });
+			press(foot, 'Enter', { mod: true });
+			await settle();
+			expect(fixture.notice).toHaveBeenCalledOnce();
+			expect((fixture.notice.mock.calls[0]![0] as Error).message).toBe('host.addGone');
+		} finally {
+			open.mockRestore();
+		}
 	});
 
 	it('are shown for keeping at once when the host says their cell no longer stands', async () => {
