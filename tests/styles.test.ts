@@ -192,6 +192,21 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The timeline's own axis runs the whole of every cell. Two rules once
+	 * trimmed it at the first and the last row by asking which row that was,
+	 * and never matched one: a row stands among the table's head, its empty
+	 * line and its tail, all boxes of one kind, so it is neither the first of
+	 * its type nor the last. What they would have done had they matched is not
+	 * what is wanted, so they are gone, and no rule asks a row its place again.
+	 */
+	it('runs a timeline\u2019s axis the whole of every cell, and asks no row whether it is the first or the last', () => {
+		const timeline = section('Timeline').replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(declarations('.snowflake-method-timeline-axis::before')).toContain('inset-block: 0');
+		expect(timeline).not.toMatch(/timeline-row:(?:first|last|nth)-(?:of-type|child)/);
+		expect(timeline).not.toMatch(/timeline-axis::before\s*\{[^}]*inset-block-(?:start|end)/);
+	});
+
+	/**
 	 * The line under an empty act starts under the act's words, and where those
 	 * start is said once, from the header's own measures: written out again at
 	 * the foot, it stayed put when a project that cannot be written hid the

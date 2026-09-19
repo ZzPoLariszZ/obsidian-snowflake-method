@@ -13827,7 +13827,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* The axis: a line down the cell, and a node on it where the lane holds
-   the time, placed so the line and the node are laid from its own box. */
+   the time, placed so the line and the node are laid from its own box. The
+   line runs the whole of every cell, the first and the last included: down
+   from under the lane's head, and on through the last time to the foot of
+   its cell, where a line stopped at the last node left that cell looking cut
+   off from the rest. Nothing here trims it by asking which row is first or
+   last: the rows stand among the table's other boxes, where no such question
+   finds them, and two rules that asked it never matched a row. A beat sheet
+   starts each act's line at its first beat's node, since an act's own rule
+   stands right over it, and says which beat that is by a class of its own. */
 .snowflake-method-timeline-axis {
 	position: relative;
 	flex: 0 0 var(--snowflake-method-timeline-axis-width);
@@ -13840,14 +13848,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	inset-inline-start: calc(50% - 1px);
 	width: 2px;
 	background-color: var(--background-modifier-border-hover);
-}
-
-.snowflake-method-timeline-row:first-of-type .snowflake-method-timeline-axis::before {
-	inset-block-start: var(--snowflake-method-timeline-node-offset);
-}
-
-.snowflake-method-timeline-row:last-of-type .snowflake-method-timeline-axis::before {
-	inset-block-end: calc(100% - var(--snowflake-method-timeline-node-offset));
 }
 
 .snowflake-method-timeline-cell.is-present > .snowflake-method-timeline-axis::after {
