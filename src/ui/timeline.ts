@@ -13,9 +13,15 @@
  *   place, so a control holding the focus is still there afterwards.
  * - The cards are the corkboard's, dealt from the same deck, standing in
  *   the flow of their row rather than on a canvas.
+ *
+ * What stands in a cell is the lanes' cells' (`lane-cells.ts`), the read,
+ * the queue and the paint's gate are the loop's (`document-loop.ts`), and
+ * the frame around the table, its folds, stand-in bars, pool, deck, window,
+ * focus and dialogs, is the frame's (`workspace-frame.ts`). All three are
+ * shared with the beat sheet.
  */
 
-import { Menu, Notice, getIcon, setIcon, setTooltip, type Modal } from 'obsidian';
+import { Menu, Notice, setIcon, setTooltip } from 'obsidian';
 
 import {
 	derivedPresentation,
@@ -33,19 +39,10 @@ import {
 import { entityGroupLabel } from './entity-form';
 import { promptForEntityReference, type EntityReferenceSource } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
-import type { CorkboardControls, CorkboardHandle } from './corkboard-bridge';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import { createLaneCells, type Lane, type LaneCell, type LaneCells, type SceneScope } from './lane-cells';
-import { paintCount, renderEmptyLine } from './pane-parts';
-import {
-	SCENE_CARD_PART_CLASSES,
-	SCENE_CARD_SELECTOR,
-	controlWithin,
-	createSceneCardDeck,
-	type SceneCard,
-	type SceneCardDeck,
-	type SceneCardPart,
-} from './scene-card';
+import { renderEmptyLine } from './pane-parts';
+import { controlWithin } from './scene-card';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import { dropIndexAt } from './task-board-rows';
 import {
@@ -78,9 +75,21 @@ import {
 import {
 	kindEntities,
 	type ProjectDashboardModel,
-	type SceneViewModel,
 	type WorldbuildingEntityViewModel,
 } from './view-model';
+import {
+	bindFrameWindow,
+	createFocusCustody,
+	createFrame,
+	createLaneDeck,
+	createModalKeeper,
+	paintSymbol,
+	toolbarIconButton,
+	type Fold,
+	type FoldLabels,
+	type StandInScrollbars,
+	type SymbolMemo,
+} from './workspace-frame';
 
 /** A lane's header: the element and the parts a dressing rewrites. */
 interface LaneHead {
@@ -121,24 +130,11 @@ interface RowEntry {
 	cells: Map<string, CellEntry>;
 }
 
-/** Where the focus stood before a paint: on a card's part, or on any other control. */
-type FocusHold =
-	| { kind: 'card'; key: string; part: SceneCardPart }
-	| { kind: 'element'; el: Element };
-
-/** The least room, in px, the bar across must have past the frozen columns to be shown at all: a thumb's worth, and a little to spare. */
-const SCROLL_ROOM_MIN = 48;
-
-/** The workspace's two folds: the time column to its names, and the pool away. */
-type Fold = 'time' | 'pool';
-const FOLDS: readonly Fold[] = ['time', 'pool'];
-
-/**
- * The width, in rem, under which the workspace is narrow and folds both by
- * itself: below it the time column, one whole lane and the pool no longer
- * stand side by side.
- */
-const NARROW_MAX_REM = 84;
+/** What the two folds' toggles are called: the time column folded to its names, and the pool away. */
+const FOLD_LABELS: Readonly<Record<Fold, FoldLabels>> = {
+	column: { collapse: 'timeline.time.collapse', expand: 'timeline.time.expand' },
+	pool: { collapse: 'timeline.pool.collapse', expand: 'timeline.pool.expand' },
+};
 
 /**
  * All of a document that the workspace lays out, as one string: its
@@ -197,15 +193,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		}, 'nothing');
 	};
 	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
-	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement => {
-		const button = toolbar.createEl('button', {
-			cls: `clickable-icon ${cls}`,
-			attr: { type: 'button', 'aria-label': label },
-		});
-		setIcon(button, icon);
-		setTooltip(button, label);
-		return button;
-	};
+	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement =>
+		toolbarIconButton(toolbar, cls, icon, label);
 	const editViewButton = iconButton('snowflake-method-timeline-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
 		openEditView();
@@ -279,40 +268,32 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
-	// The folds stand in the frame's corners on the strip's row, as the
-	// app's sidebar toggles stand at the window's: the time column's at the
-	// left, folding the column to its names; the pool's at the right, where
-	// the pool folds away and the lanes take its room. The tab remembers
-	// which way each stands.
-	const foldBox = (side: 'start' | 'end', cls: string, icon: string): HTMLButtonElement => {
-		const box = root.createDiv({ cls: `snowflake-method-timeline-fold is-${side}` });
-		const button = box.createEl('button', {
-			cls: `clickable-icon ${cls}`,
-			attr: { type: 'button' },
-		});
-		setIcon(button, getIcon('sidebar-toggle-button-icon') !== null ? 'sidebar-toggle-button-icon' : icon);
-		return button;
-	};
-	const foldToggles: Record<Fold, HTMLButtonElement> = {
-		time: foldBox('start', 'snowflake-method-timeline-time-toggle', 'panel-left'),
-		pool: foldBox('end', 'snowflake-method-timeline-pool-toggle', 'panel-right'),
-	};
-	for (const part of FOLDS) {
-		foldToggles[part].addEventListener('click', () => {
-			fold(part, !folded(part));
-		});
-	}
 
-	// -- The empty states, and the body --------------------------------------
+	// -- The folds, the empty states, the body and the pool --------------------
 
-	const empty = renderEmptyLine(root, '');
-	const body = root.createDiv({ cls: 'snowflake-method-timeline-body is-hidden' });
-	const field = body.createDiv({ cls: 'snowflake-method-timeline-field' });
-	const scroller = field.createDiv({
-		cls: 'snowflake-method-timeline-scroll',
-		attr: { tabindex: '-1' },
+	// The frame stands under the toolbar: the folds in its corners, the time
+	// column's at the left and the pool's at the right, then the word said in
+	// the body's place, and the body. Its stand-in bars run one across under
+	// the lanes alone and one down beside the times alone, so neither runs
+	// along the head, the time column or the pinned lane, which is this
+	// table's to measure. Its pool shows what the active lane has not placed.
+	const frame = createFrame({
+		controls,
+		root,
+		foldLabels: FOLD_LABELS,
+		columnCollapsed: () => memory.timeCollapsed,
+		setColumnCollapsed: (collapsed) => {
+			memory.timeCollapsed = collapsed;
+		},
+		model: () => model,
+		invalidateRects: () => {
+			invalidateRects();
+		},
+		placeScrollbars: (fit) => {
+			placeScrollbars(fit);
+		},
 	});
-	const table = scroller.createDiv({ cls: 'snowflake-method-timeline-table' });
+	const { scroller, table, folds, pool, showEmpty } = frame;
 	const head = table.createDiv({ cls: 'snowflake-method-timeline-head' });
 	const corner = head.createDiv({ cls: 'snowflake-method-timeline-corner' });
 	corner.createSpan({ text: t('table.sceneTime') });
@@ -330,102 +311,6 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	renderEmptyLine(timesEmpty, t('timeline.empty.times'));
 	/** Where a time dropped past the last row lands, and wears the line. */
 	const tail = table.createDiv({ cls: 'snowflake-method-timeline-tail' });
-
-	// The scroller's own bars are hidden; these two stand in for them, one
-	// across under the lanes alone and one down beside the times alone, so
-	// neither runs along the head, the time column or the pinned lane. Each
-	// holds a spacer as long as the scroller's overflow past the part it skips.
-	const bars = {
-		across: field.createDiv({ cls: 'snowflake-method-timeline-scrollbar is-across is-hidden', attr: { 'aria-hidden': 'true' } }),
-		down: field.createDiv({ cls: 'snowflake-method-timeline-scrollbar is-down is-hidden', attr: { 'aria-hidden': 'true' } }),
-	};
-	const barSpace = {
-		across: bars.across.createDiv({ cls: 'snowflake-method-timeline-scrollbar-space' }),
-		down: bars.down.createDiv({ cls: 'snowflake-method-timeline-scrollbar-space' }),
-	};
-	scroller.addEventListener('scroll', () => {
-		if (bars.across.scrollLeft !== scroller.scrollLeft) bars.across.scrollLeft = scroller.scrollLeft;
-		if (bars.down.scrollTop !== scroller.scrollTop) bars.down.scrollTop = scroller.scrollTop;
-		// The tab keeps where the lanes stand, so a turn to another workspace
-		// and back finds them where they were left.
-		memory.scroll = { left: scroller.scrollLeft, top: scroller.scrollTop };
-	});
-	bars.across.addEventListener('scroll', () => {
-		if (scroller.scrollLeft !== bars.across.scrollLeft) scroller.scrollLeft = bars.across.scrollLeft;
-	});
-	bars.down.addEventListener('scroll', () => {
-		if (scroller.scrollTop !== bars.down.scrollTop) scroller.scrollTop = bars.down.scrollTop;
-	});
-	// A wheel over a bar moves the whole scroller, both ways, as over the lanes.
-	const wheelThrough = (event: WheelEvent): void => {
-		event.preventDefault();
-		scroller.scrollBy({ left: event.deltaX, top: event.deltaY });
-	};
-	bars.across.addEventListener('wheel', wheelThrough, { passive: false });
-	bars.down.addEventListener('wheel', wheelThrough, { passive: false });
-
-	// -- The scene pool ------------------------------------------------------
-
-	const pool = body.createEl('aside', {
-		cls: 'snowflake-method-timeline-pool',
-		attr: { 'aria-label': t('timeline.pool') },
-	});
-	// Its head stands level with the lane heads: the name, and how many scenes it holds.
-	const poolHead = pool.createDiv({ cls: 'snowflake-method-timeline-pool-head' });
-	poolHead.createSpan({
-		cls: 'snowflake-method-timeline-pool-name',
-		text: t('timeline.pool'),
-		attr: { role: 'heading', 'aria-level': '3' },
-	});
-	const poolCount = poolHead.createSpan({
-		cls: 'snowflake-method-step-indicator snowflake-method-timeline-pool-count',
-	});
-	const poolHost = pool.createDiv({ cls: 'snowflake-method-corkboard-host' });
-	/** The scenes the active timeline has placed, which the pool leaves out. */
-	let assigned = new Set<string>();
-
-	/** Whether the workspace is too narrow for both parts to stand, measured from its own width. */
-	let narrow = false;
-	/** The parts brought back by hand while narrow, which stand until the workspace is wide again. */
-	const openedNarrow = new Set<Fold>();
-
-	/** Whether a part stands folded now: as the tab remembers it, or by the width alone. */
-	const folded = (part: Fold): boolean =>
-		(part === 'time' ? memory.timeCollapsed : memory.poolCollapsed) || (narrow && !openedNarrow.has(part));
-
-	/**
-	 * The folds as they stand: the time column to its names, the pool away
-	 * with the lanes taking its room; each toggle says which way it goes next.
-	 */
-	const paintFolds = (): void => {
-		for (const part of FOLDS) {
-			const collapsed = folded(part);
-			const toggle = foldToggles[part];
-			const label = t(collapsed ? `timeline.${part}.expand` : `timeline.${part}.collapse`);
-			if (toggle.getAttribute('aria-label') !== label) {
-				toggle.setAttribute('aria-label', label);
-				setTooltip(toggle, label);
-			}
-			toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-		}
-		root.toggleClass('is-time-collapsed', folded('time'));
-		root.toggleClass('is-pool-collapsed', folded('pool'));
-		pool.toggleClass('is-hidden', folded('pool'));
-	};
-
-	/** Folds a part or brings it back, remembers which, and measures again for the room that moved. */
-	const fold = (part: Fold, collapsed: boolean): void => {
-		if (folded(part) === collapsed) return;
-		if (part === 'time') memory.timeCollapsed = collapsed;
-		else memory.poolCollapsed = collapsed;
-		if (collapsed) openedNarrow.delete(part);
-		else if (narrow) openedNarrow.add(part);
-		paintFolds();
-		controls.remember();
-		invalidateRects();
-		if (part === 'pool') poolHandle?.remeasure();
-		else fitScrollbars();
-	};
 
 	// -- State ---------------------------------------------------------------
 
@@ -447,39 +332,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// narrow a row to one card and the cards stand in a column, while a lone
 	// lane lets them wrap across the field.
 	let laneAxis: 'across' | 'down' = 'across';
-	/** Whether the scroll the tab remembers has been given back, which is done once. */
-	let scrollGivenBack = false;
-	/** The symbols the two switches wear now, so a paint redraws neither for nothing. */
-	let presentationIcon = 'gallery-horizontal';
-	let wordsIcon = 'eye';
-	let orderIcon = 'arrow-down-narrow-wide';
+	/** The symbols the three switches wear now, so a paint redraws none for nothing. */
+	const presentationSymbol: SymbolMemo = { icon: 'gallery-horizontal' };
+	const wordsSymbol: SymbolMemo = { icon: 'eye' };
+	const orderSymbol: SymbolMemo = { icon: 'arrow-down-narrow-wide' };
 	let readOnly = true;
 	let roster: EntityRosterEntry[] = [];
 	/** The same roster keyed by id: a lane's binding is read against it without keying it again. */
 	let rosterById = new Map<string, EntityRosterEntry>();
 	let optionsSignature = '';
 	let viewField: OptionPicker | null = null;
-	let scenesById = new Map<string, SceneViewModel>();
-	/** Each scene's place in the narrative order, which its card's circle shows. */
-	let sceneIndex = new Map<string, number>();
-	let charactersByPath = new Map<string, ProjectDashboardModel['characters'][number]>();
-	let manuscriptPositions = new Map<string, number>();
-	let resolvedManuscriptPaths = new Map<string, Map<string, string | null>>();
 	const laneHeads = new Map<string, LaneHead>();
 	const timeRows = new Map<string, RowEntry>();
 	let disposed = false;
 	/** Forms and pickers belong to this workspace; recovered words deliberately outlive it. */
-	const standing = new Set<Modal>();
-	const keep = <T extends Modal>(modal: T): T => {
-		standing.add(modal);
-		const closed = modal.onClose.bind(modal);
-		modal.onClose = (): void => {
-			standing.delete(modal);
-			closed();
-		};
-		return modal;
-	};
-	let poolHandle: CorkboardHandle | null = null;
+	const modals = createModalKeeper();
+	const { keep } = modals;
 	/** The times' ids in the order the rows stand, from the last paint. */
 	let rowOrder: string[] = [];
 	/**
@@ -496,39 +364,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		cells.invalidateRects();
 	};
 
-	/** One resolution per target/source during a full paint. */
-	const resolveManuscriptPath = (target: string, sourcePath: string): string | null => {
-		let paths = resolvedManuscriptPaths.get(sourcePath);
-		if (paths === undefined) {
-			paths = new Map();
-			resolvedManuscriptPaths.set(sourcePath, paths);
-		}
-		if (!paths.has(target)) paths.set(target, app.metadataCache.getFirstLinkpathDest(target, sourcePath)?.path ?? null);
-		return paths.get(target) ?? null;
-	};
-
-	const deck: SceneCardDeck<SceneCard> = createSceneCardDeck<SceneCard>({
-		app,
-		host,
-		t,
+	// The cards are the corkboard's, dealt from a deck of the same kind, with what they read off the model.
+	const laneDeck = createLaneDeck({
+		controls,
 		notice,
-		refresh: () => controls.refresh(),
 		model: () => model,
-		projectPath: () => controls.projectPath(),
 		readOnly: () => readOnly,
-		// The lanes' deck is told as the pool's is: a draft refused as the plugin
-		// goes has no dialog left to open that the plugin could own.
-		unloading: () => controls.unloading?.() === true,
-		charactersByPath: () => charactersByPath,
-		scenesById: () => scenesById,
-		manuscriptPositions: () => manuscriptPositions,
-		resolveManuscriptPath,
-		dragAllowed: (card) => cells.dragAllowed(card),
-		menu: (card, event) => {
-			cells.openCardMenu(card, event);
-		},
-		extend: (card) => card,
+		cells: () => cells,
 	});
+	const { deck } = laneDeck;
 
 	// -- Reading and writing -------------------------------------------------
 
@@ -598,72 +442,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	 * A field that leaves the bar across too little room past the frozen
 	 * columns to take hold of goes without it: the wheel still scrolls.
 	 */
-	const fitScrollbars = (): void => {
+	const placeScrollbars = (fit: StandInScrollbars['fit']): void => {
 		const timeWidth = corner.offsetWidth;
 		const pinnedEnd = frozenWidth();
 		const loose = Number.isFinite(pinnedEnd) && pinnedEnd > timeWidth && scroller.clientWidth < pinnedEnd;
 		root.toggleClass('is-pin-loose', loose);
 		const start = loose || !Number.isFinite(pinnedEnd) ? timeWidth : pinnedEnd;
-		const headHeight = head.offsetHeight;
-		const across = scroller.scrollWidth - scroller.clientWidth;
-		const down = scroller.scrollHeight - scroller.clientHeight;
-		const wide = Number.isFinite(across) && across > 0 && scroller.clientWidth - start >= SCROLL_ROOM_MIN;
-		const tall = Number.isFinite(down) && down > 0 && scroller.clientHeight > headHeight;
-		bars.across.toggleClass('is-hidden', !wide);
-		bars.down.toggleClass('is-hidden', !tall);
-		// Shown together, each stops short of the other at the corner; a bar's
-		// spacer then reaches the scroller's overflow past the bar's own length.
-		bars.across.toggleClass('is-short', wide && tall);
-		bars.down.toggleClass('is-short', wide && tall);
-		if (wide) {
-			bars.across.setCssStyles({ insetInlineStart: `${start}px` });
-			barSpace.across.setCssStyles({ width: `${across + bars.across.clientWidth}px` });
-			bars.across.scrollLeft = scroller.scrollLeft;
-		}
-		if (tall) {
-			bars.down.setCssStyles({ insetBlockStart: `${headHeight}px` });
-			barSpace.down.setCssStyles({ height: `${down + bars.down.clientHeight}px` });
-			bars.down.scrollTop = scroller.scrollTop;
-		}
-	};
-	/**
-	 * Narrow, the workspace folds both parts by its width alone, and brings
-	 * them back as it widens; what the tab remembers is not touched, and a
-	 * part brought back by hand meanwhile stands until the next widening.
-	 */
-	const measureNarrow = (): void => {
-		const width = root.clientWidth;
-		if (!(width > 0)) return;
-		const rem = Number.parseFloat(frameWindow?.getComputedStyle(root.doc.documentElement).fontSize ?? '');
-		const next = width < NARROW_MAX_REM * (Number.isFinite(rem) && rem > 0 ? rem : 16);
-		if (next === narrow) return;
-		narrow = next;
-		if (!narrow) openedNarrow.clear();
-		paintFolds();
-		invalidateRects();
-		poolHandle?.remeasure();
-	};
-	const sizeObserver = frameWindow === null ? null : new frameWindow.ResizeObserver(() => {
-		measureNarrow();
-		fitScrollbars();
-	});
-	sizeObserver?.observe(root);
-	sizeObserver?.observe(scroller);
-	sizeObserver?.observe(table);
-
-	/** The lanes' cards wear the style the pool's display control chose; the CSS reads it off the root. */
-	const paintCardMode = (): void => {
-		if (root.dataset.mode === memory.pool.mode) return;
-		root.dataset.mode = memory.pool.mode;
-		invalidateRects();
-	};
-
-	/** A word in the body's place, with nothing to press: the ways in stand in the toolbar. */
-	const showEmpty = (text: string | null): void => {
-		empty.line.toggleClass('is-hidden', text === null);
-		body.toggleClass('is-hidden', text !== null);
-		root.toggleClass('is-empty', text !== null);
-		if (text !== null) empty.text.setText(text);
+		fit(start, head.offsetHeight);
 	};
 
 	/** The view field, remade only when the views moved; otherwise told the view held now. */
@@ -721,18 +506,15 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	/** The laying out itself, from the model handed to it and the document last read. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
 		invalidateRects();
-		paintFolds();
+		folds.paint();
 		if (nextModel !== model) {
 			// Every one of these is the model's own and says the same thing for
 			// as long as the model does, so they are made again only when it is
 			// another model. A paint over the model that stands would else build
 			// some thousands of entries afresh to say what they already said.
-			manuscriptPositions = new Map(nextModel?.manuscriptPaths.map((path, index) => [path, index]));
+			laneDeck.index(nextModel);
 			roster = nextModel === null ? [] : rosterOf(nextModel);
 			rosterById = entityRosterById(roster);
-			scenesById = new Map(nextModel?.scenes.map((scene) => [scene.id, scene]) ?? []);
-			sceneIndex = new Map(nextModel?.scenes.map((scene, index) => [scene.id, index]) ?? []);
-			charactersByPath = new Map(nextModel?.characters.map((character) => [character.path, character]) ?? []);
 		}
 		model = nextModel;
 		// The model's word alone: it is renewed with every project refresh,
@@ -741,8 +523,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		readOnly = model?.readOnly ?? true;
 		root.toggleClass('is-read-only', readOnly);
 		// A refresh can follow metadata resolution even with the same model object.
-		resolvedManuscriptPaths = new Map();
-		deck.beginPaint();
+		laneDeck.beginPaint();
 		addTimelineButton.disabled = readOnly || reading === null;
 		addViewButton.disabled = readOnly || reading === null;
 		if (reading === null) {
@@ -786,24 +567,18 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const kind = layoutKind(lanes);
 		root.dataset.layout = kind;
 		laneAxis = kind === 'multi' ? 'down' : 'across';
-		paintCardMode();
+		pool.paintCardMode();
 		root.setCssProps({ '--snowflake-method-timeline-lanes': String(lanes.length) });
-		const hold = holdFocus();
+		const hold = focus.hold();
 		paintHeads(held);
 		paintRows(view);
 		paintPool();
-		// The scroll the tab remembers, given back once the lanes are long
-		// enough to take it. Only once: a later paint must not pull the author
-		// away from wherever they have scrolled since.
-		if (!scrollGivenBack) {
-			scrollGivenBack = true;
-			if (memory.scroll.left !== 0) scroller.scrollLeft = memory.scroll.left;
-			if (memory.scroll.top !== 0) scroller.scrollTop = memory.scroll.top;
-		}
-		giveFocusBack(hold);
+		// The scroll the tab remembers, given back once the lanes are long enough to take it.
+		frame.giveScrollBack();
+		focus.giveBack(hold);
 		deck.prune();
 		stateText.setText('');
-		fitScrollbars();
+		frame.fitScrollbars();
 	};
 
 	/** The symbol shows how the view deals its scenes; a press deals them the other way. */
@@ -811,17 +586,11 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		presentation = view === null ? 'flat' : derivedPresentation(view);
 		root.dataset.presentation = presentation;
 		const stacked = presentation === 'stack';
-		const icon = stacked ? 'layers-3' : 'gallery-horizontal';
-		if (icon !== presentationIcon) {
-			presentationIcon = icon;
-			setIcon(presentationButton, icon);
-		}
-		const label = t(stacked ? 'timeline.presentation.toFlat' : 'timeline.presentation.toStack');
-		if (presentationButton.getAttribute('aria-label') !== label) {
-			presentationButton.setAttribute('aria-label', label);
-			setTooltip(presentationButton, label);
-		}
-		presentationButton.disabled = readOnly || view === null;
+		paintSymbol(presentationButton, presentationSymbol, {
+			icon: stacked ? 'layers-3' : 'gallery-horizontal',
+			label: t(stacked ? 'timeline.presentation.toFlat' : 'timeline.presentation.toStack'),
+			disabled: readOnly || view === null,
+		});
 	};
 
 	/** The symbol shows whether the lanes show their rows' words; a press shows or hides them. */
@@ -829,34 +598,22 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		const shown = view === null || view.showSubDescriptions;
 		// A view that keeps its sub-descriptions away shows the scenes alone.
 		root.toggleClass('is-words-hidden', !shown);
-		const icon = shown ? 'eye' : 'eye-off';
-		if (icon !== wordsIcon) {
-			wordsIcon = icon;
-			setIcon(wordsButton, icon);
-		}
-		const label = t(shown ? 'timeline.view.subDescriptionsHide' : 'timeline.view.subDescriptions');
-		if (wordsButton.getAttribute('aria-label') !== label) {
-			wordsButton.setAttribute('aria-label', label);
-			setTooltip(wordsButton, label);
-		}
-		wordsButton.setAttribute('aria-pressed', shown ? 'true' : 'false');
-		wordsButton.disabled = readOnly || view === null;
+		paintSymbol(wordsButton, wordsSymbol, {
+			icon: shown ? 'eye' : 'eye-off',
+			label: t(shown ? 'timeline.view.subDescriptionsHide' : 'timeline.view.subDescriptions'),
+			pressed: shown,
+			disabled: readOnly || view === null,
+		});
 	};
 
 	const paintOrder = (view: TimelineView | null): void => {
 		const reversed = view !== null && view.timesReversed;
-		const icon = reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide';
-		if (icon !== orderIcon) {
-			orderIcon = icon;
-			setIcon(orderButton, icon);
-		}
-		const label = t(reversed ? 'timeline.order.restore' : 'timeline.order.reverse');
-		if (orderButton.getAttribute('aria-label') !== label) {
-			orderButton.setAttribute('aria-label', label);
-			setTooltip(orderButton, label);
-		}
-		orderButton.setAttribute('aria-pressed', reversed ? 'true' : 'false');
-		orderButton.disabled = readOnly || view === null;
+		paintSymbol(orderButton, orderSymbol, {
+			icon: reversed ? 'arrow-up-narrow-wide' : 'arrow-down-narrow-wide',
+			label: t(reversed ? 'timeline.order.restore' : 'timeline.order.reverse'),
+			pressed: reversed,
+			disabled: readOnly || view === null,
+		});
 	};
 
 	/** The order as the view keeps it: the rows run the other way when the view shows the latest first. */
@@ -866,9 +623,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	/** The pool follows the active lane: what that lane has placed leaves it, and the count says what is left. */
 	const paintPool = (): void => {
 		const active = lanes.find((lane) => lane.id === activeId);
-		assigned = active === undefined ? new Set() : assignedSceneIds(active);
-		paintCount(poolCount, model === null ? 0 : model.scenes.filter((scene) => !assigned.has(scene.id)).length);
-		poolHandle?.refresh();
+		pool.paint(active === undefined ? new Set() : assignedSceneIds(active));
 	};
 
 	const buildHead = (lane: Timeline): LaneHead => {
@@ -1333,59 +1088,13 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 
 	// -- Dragging the scenes ---------------------------------------------------
 
-	let eventWindow = root.win;
-	// The deck holds a card still while one of its controls is pressed; the
-	// release lands anywhere, so the window hears it, as under the corkboard.
-	const bindWindow = (win: Window): void => {
-		win.addEventListener('scroll', invalidateRects, true);
-		win.addEventListener('resize', invalidateRects);
-		win.addEventListener('mouseup', deck.releasePress, true);
-	};
-	const unbindWindow = (win: Window): void => {
-		win.removeEventListener('scroll', invalidateRects, true);
-		win.removeEventListener('resize', invalidateRects);
-		win.removeEventListener('mouseup', deck.releasePress, true);
-	};
-	bindWindow(eventWindow);
-	const stopMigration = root.onWindowMigrated?.((win) => {
-		unbindWindow(eventWindow);
-		eventWindow = win;
-		bindWindow(eventWindow);
-		// A colour panel hangs in the body of the window it was opened in, with
-		// the presses that dismiss it bound there too. It goes before the card
-		// leaves that window, as the corkboard's does, or it is left behind
-		// over whatever the old window shows next.
-		deck.closeColorPanel();
-		deck.releasePress();
-		invalidateRects();
-	});
+	// What was measured is dropped as the window moves, and the window hears
+	// the release of a press the deck holds a card still under.
+	const releaseWindow = bindFrameWindow({ root, deck, invalidateRects });
 
 	// -- Focus custody -------------------------------------------------------
 
-	const holdFocus = (): FocusHold | null => {
-		const active = root.doc.activeElement;
-		if (active === null || !root.contains(active)) return null;
-		const card = active.closest(SCENE_CARD_SELECTOR);
-		if (card === null) return { kind: 'element', el: active };
-		const part = SCENE_CARD_PART_CLASSES.find(([, cls]) => active.classList.contains(cls))?.[0] ?? 'card';
-		return { kind: 'card', key: card.getAttribute('data-key') ?? '', part };
-	};
-
-	/** Gives the focus back where it stood, to the same part of the same card, or to the scroller. */
-	const giveFocusBack = (hold: FocusHold | null): void => {
-		if (hold === null) return;
-		const doc = root.doc;
-		const active = doc.activeElement;
-		if (active !== null && active !== doc.body && root.contains(active)) return;
-		let target: Element | null = null;
-		if (hold.kind === 'card') {
-			const card = deck.cards.get(hold.key);
-			if (card?.el.isConnected === true) target = deck.partOf(card, hold.part);
-		} else if (root.contains(hold.el)) {
-			target = hold.el;
-		}
-		((target ?? scroller) as HTMLElement).focus({ preventScroll: true });
-	};
+	const focus = createFocusCustody(root, scroller, deck);
 
 	// -- The lanes' actions --------------------------------------------------
 
@@ -1873,8 +1582,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		activeId: () => activeId,
 		presentation: () => presentation,
 		laneAxis: () => laneAxis,
-		scenesById: () => scenesById,
-		sceneIndex: () => sceneIndex,
+		scenesById: laneDeck.scenesById,
+		sceneIndex: laneDeck.sceneIndex,
 		stackKey: (timelineId, rowId) => {
 			const view = currentView();
 			return view === null ? null : stackKey(view.id, timelineId, rowId);
@@ -2031,40 +1740,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		)).open();
 	};
 
-	// The pool is the corkboard in one column, showing what the active lane
-	// has not placed; its search, funnel, grouping and order are its own,
-	// and the card style it chooses dresses the lanes' cards as well.
-	const poolControls: CorkboardControls = {
-		app,
-		host,
-		t,
-		model: () => model,
-		activateProject: () => {
-			controls.activateProject();
-		},
-		refresh: () => controls.refresh(),
-		unloading: () => controls.unloading?.() === true,
-		popover: controls.popover,
-		memory: memory.pool,
-		remember: () => {
-			controls.remember();
-			paintCardMode();
-		},
-	};
-	poolHandle = controls.corkboard(poolHost, poolControls, {
-		include: (scene) => !assigned.has(scene.id),
-		addButton: 'icon',
-		// The pool is one card wide, which leaves the band no room for the words
-		// in its search field beside the five controls that follow them.
-		searchLabel: 'quiet',
-		columns: 1,
-		// One column has no insertion buttons to leave room for between cards.
-		gap: 0.75,
-		emptyText: t('timeline.pool.empty'),
-		modeShared: true,
-		// Its cards leave for the cells and come back to it, and its menu places a scene as a lane's does.
-		...cells.poolVariant(),
-	});
+	// The pool is dealt now that the cells stand: its cards leave for them and
+	// come back to it, and its menu places a scene as a lane's does.
+	pool.mount({ emptyText: t('timeline.pool.empty'), ...cells.poolVariant() });
 
 	paintAll();
 	void reload();
@@ -2078,50 +1756,26 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			if (reading === null) void reload();
 			else paintAll();
 		},
-		reveal: (id) => {
-			// A card can only be shown in a pool that stands.
-			fold('pool', false);
-			poolHandle?.reveal(id);
-		},
-		remeasure: () => {
-			invalidateRects();
-			fitScrollbars();
-			poolHandle?.remeasure();
-		},
-		saveFocusedConflict: () => {
-			const active = root.doc.activeElement;
-			for (const card of deck.cards.values()) {
-				if (card.conflict !== active) continue;
-				deck.commitConflict(card);
-				return true;
-			}
-			return poolHandle?.saveFocusedConflict() ?? false;
-		},
+		reveal: frame.reveal,
+		remeasure: frame.remeasure,
+		saveFocusedConflict: () => focus.saveConflict() || pool.saveFocusedConflict(),
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;
+			// The order is a rule: the bell, the window, the pool, the dialogs,
+			// and only then the words still being written and the deck.
 			loop.release();
-			stopMigration?.();
-			unbindWindow(eventWindow);
-			poolHandle?.dispose();
-			poolHandle = null;
+			releaseWindow();
+			pool.dispose();
 			// Closing resolves addTimeline and declines standing confirmations.
 			// The recovery dialog opens separately after this disposal returns.
-			// Each is closed on its own: a dialog that throws on the way out
-			// would otherwise take the words below with it, and those are the
-			// author's, with no second chance once the workspace has gone.
-			for (const modal of [...standing]) {
-				try {
-					modal.close();
-				} catch (error) {
-					console.error('Snowflake: a timeline dialog could not be closed', error);
-				}
-			}
-			standing.clear();
+			// Each is closed on its own, so one that throws on the way out does
+			// not take the words below with it.
+			modals.closeAll('Snowflake: a timeline dialog could not be closed');
 			// Words still being written go the way a leave sends them.
 			cells.settle();
 			deck.dispose();
-			sizeObserver?.disconnect();
+			frame.stopWatchingSize();
 			viewField?.destroy();
 			root.remove();
 		},
