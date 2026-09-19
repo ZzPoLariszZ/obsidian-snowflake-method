@@ -84,13 +84,18 @@ import {
 	EditBeatSheetModal,
 	readTemplateOption,
 	templateOptionValue,
-	type AddBeatSheetFormHandle,
+	type BeatSheetTemplateDelete,
 	type BeatSheetDraft,
 } from '../../src/ui/beat-sheet-forms';
+import type { BeatSheetTemplateChoice } from '../../src/ui/beat-sheet-bridge';
 
 const app = {} as App;
 const t = (key: string, vars?: Record<string, string | number>): string =>
 	vars === undefined ? key : `${key}(${Object.entries(vars).map(([name, value]) => `${name}=${String(value)}`).join(',')})`;
+async function settle(): Promise<void> {
+	for (let at = 0; at < 20; at++) await Promise.resolve();
+}
+
 const collect = <T>(form: unknown): T | null => (form as { collectValue(): T | null }).collectValue();
 const build = (form: unknown): void => { (form as { buildForm(): void }).buildForm(); };
 const content = (form: unknown): CorkboardElement => (form as { contentEl: CorkboardElement }).contentEl;
@@ -109,14 +114,14 @@ const addForm = (
 	options: {
 		takenNames?: string[];
 		project?: () => readonly BeatSheetTemplate[];
-		templateActions?: (host: HTMLElement, form: AddBeatSheetFormHandle) => void;
+		templateDelete?: BeatSheetTemplateDelete;
 	} = {},
 	onSubmit: (draft: BeatSheetDraft) => Promise<void> = () => Promise.resolve(),
 ): AddBeatSheetModal =>
 	new AddBeatSheetModal(app, t, {
 		takenNames: options.takenNames ?? [],
 		shelf: { builtIn: () => builtInBeatSheetTemplates('en'), project: options.project ?? (() => []) },
-		...(options.templateActions === undefined ? {} : { templateActions: options.templateActions }),
+		...(options.templateDelete === undefined ? {} : { templateDelete: options.templateDelete }),
 	}, onSubmit);
 
 afterEach(() => {
@@ -215,40 +220,99 @@ describe('the beat sheet forms', () => {
 			expect(notices).toHaveBeenLastCalledWith('beatSheet.sheet.templateGone');
 		});
 
-		it('lets what stands beside the field read the pick, move it, and hear it move, until the form closes', () => {
-			const handles: AddBeatSheetFormHandle[] = [];
-			const hosts: CorkboardElement[] = [];
-			const form = addForm({
-				project: () => [template('tpl-1', 'My shape')],
-				templateActions: (host, handle) => {
-					hosts.push(host as unknown as CorkboardElement);
-					handles.push(handle);
-				},
+		describe('the way to delete a template, beside the field', () => {
+			const standing = (remove: (id: string) => Promise<boolean>, allowed: () => boolean = () => true) => {
+				const form = addForm({
+					project: () => [template('tpl-1', 'My shape'), template('tpl-2', 'Another')],
+					templateDelete: { allowed, remove },
+				});
+				build(form);
+				const button = content(form).querySelector('.snowflake-method-beat-sheet-template-delete')!;
+				const pick = (choice: BeatSheetTemplateChoice): void => { fields[0]!.config.choose(templateOptionValue(choice)); };
+				return { form, button, pick };
+			};
+
+			it('stands on the field\'s own line, named, and wakes only for a pick of the project\'s own', async () => {
+				const remove = vi.fn(() => Promise.resolve(true));
+				const { button, pick } = standing(remove);
+				expect(button.parent!.classes.has('snowflake-method-beat-sheet-template-line')).toBe(true);
+				expect(button.getAttribute('aria-label')).toBe('beatSheet.template.delete');
+				expect(button.disabled).toBe(true);
+				pick({ kind: 'project', id: 'tpl-1' });
+				expect(button.disabled).toBe(false);
+				pick({ kind: 'built-in', id: 'save-the-cat' });
+				expect(button.disabled).toBe(true);
+				// Pressed all the same, a preset goes nowhere.
+				button.dispatch('click');
+				await settle();
+				expect(remove).not.toHaveBeenCalled();
 			});
-			build(form);
-			expect(hosts[0]!.classes.has('snowflake-method-beat-sheet-template-line')).toBe(true);
-			const handle = handles[0]!;
-			const heard = vi.fn();
-			handle.onChoice(heard);
-			expect(handle.choice()).toEqual({ kind: 'built-in', id: 'blank' });
-			expect(handle.closed()).toBe(false);
-			// The list picks: the one beside the field hears.
-			fields[0]!.config.choose(templateOptionValue({ kind: 'project', id: 'tpl-1' }));
-			expect(heard).toHaveBeenCalledTimes(1);
-			expect(handle.choice()).toEqual({ kind: 'project', id: 'tpl-1' });
-			// The one beside the field picks: the field shows it, the line says it, and the listeners hear that too.
-			handle.choose({ kind: 'built-in', id: 'three-act' });
-			expect(heard).toHaveBeenCalledTimes(2);
-			expect(fields[0]!.refresh).toHaveBeenCalledTimes(1);
-			expect(fields[0]!.config.value()).toBe(templateOptionValue({ kind: 'built-in', id: 'three-act' }));
-			expect(content(form).querySelector('.snowflake-method-beat-sheet-template-summary')!.textContent).toBe(
-				'beatSheet.sheet.templateSummary(acts=3,beats=10)',
-			);
-			form.close();
-			expect(handle.closed()).toBe(true);
-			expect(fields[0]!.destroy).toHaveBeenCalledTimes(1);
-			handle.choose({ kind: 'built-in', id: 'blank' });
-			expect(heard).toHaveBeenCalledTimes(2);
+
+			it('sleeps on a project that cannot be written, whatever is picked', async () => {
+				const remove = vi.fn(() => Promise.resolve(true));
+				const { button, pick } = standing(remove, () => false);
+				pick({ kind: 'project', id: 'tpl-1' });
+				expect(button.disabled).toBe(true);
+				button.dispatch('click');
+				await settle();
+				expect(remove).not.toHaveBeenCalled();
+			});
+
+			it('is absent from a form the workspace offers none to', () => {
+				const form = addForm();
+				build(form);
+				expect(content(form).querySelector('.snowflake-method-beat-sheet-template-delete')).toBeNull();
+			});
+
+			it('falls back to the barest start once the template picked has gone, and shows it in the field', async () => {
+				const remove = vi.fn(() => Promise.resolve(true));
+				const { form, button, pick } = standing(remove);
+				pick({ kind: 'project', id: 'tpl-1' });
+				button.dispatch('click');
+				await settle();
+				expect(remove).toHaveBeenCalledExactlyOnceWith('tpl-1');
+				expect(fields[0]!.config.value()).toBe(templateOptionValue({ kind: 'built-in', id: 'blank' }));
+				expect(fields[0]!.refresh).toHaveBeenCalledTimes(1);
+				expect(button.disabled).toBe(true);
+				expect(content(form).querySelector('.snowflake-method-beat-sheet-template-summary')!.textContent).toBe(
+					'beatSheet.sheet.templateSummary(acts=0,beats=0)',
+				);
+			});
+
+			it('keeps its pick over a template that would not go, and one it moved on to while the question stood', async () => {
+				let answer!: (gone: boolean) => void;
+				const remove = vi.fn(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+				const { button, pick } = standing(remove);
+				pick({ kind: 'project', id: 'tpl-1' });
+				button.dispatch('click');
+				answer(false);
+				await settle();
+				expect(fields[0]!.config.value()).toBe(templateOptionValue({ kind: 'project', id: 'tpl-1' }));
+				// The pick moves on while the question stands: the template goes, the form keeps its new pick.
+				button.dispatch('click');
+				pick({ kind: 'project', id: 'tpl-2' });
+				answer(true);
+				await settle();
+				expect(fields[0]!.config.value()).toBe(templateOptionValue({ kind: 'project', id: 'tpl-2' }));
+				expect(fields[0]!.refresh).not.toHaveBeenCalled();
+			});
+
+			it('picks nothing once it has closed, however the question is answered', async () => {
+				let answer!: (gone: boolean) => void;
+				const remove = vi.fn(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+				const { form, button, pick } = standing(remove);
+				pick({ kind: 'project', id: 'tpl-1' });
+				button.dispatch('click');
+				form.close();
+				answer(true);
+				await settle();
+				expect(fields[0]!.refresh).not.toHaveBeenCalled();
+				expect(fields[0]!.destroy).toHaveBeenCalledTimes(1);
+				// Nor does a closed form ask at all.
+				button.dispatch('click');
+				await settle();
+				expect(remove).toHaveBeenCalledTimes(1);
+			});
 		});
 	});
 

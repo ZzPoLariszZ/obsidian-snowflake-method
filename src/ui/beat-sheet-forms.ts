@@ -6,7 +6,7 @@
  * timeline's own, which say nothing of timelines.
  */
 
-import { Notice, Setting, type App } from 'obsidian';
+import { Notice, Setting, setIcon, setTooltip, type App } from 'obsidian';
 
 import {
 	BUILT_IN_BEAT_SHEET_TEMPLATE_IDS,
@@ -70,6 +70,7 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 	private picker: OptionPicker | null = null;
 	private summaryEl: HTMLElement | null = null;
 	private descriptionEl: HTMLElement | null = null;
+	private deleteEl: HTMLButtonElement | null = null;
 	private closed = false;
 
 	constructor(
@@ -78,8 +79,8 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 		private readonly options: {
 			takenNames: readonly string[];
 			shelf: BeatSheetTemplateShelf;
-			/** What stands beside the template field, for a template of the project's own that is picked. */
-			templateActions?: (host: HTMLElement, form: AddBeatSheetFormHandle) => void;
+			/** The way to take one of the project's own templates out, where the workspace offers one. */
+			templateDelete?: BeatSheetTemplateDelete;
 		},
 		onSubmit: SubmitHandler<BeatSheetDraft>,
 	) {
@@ -123,7 +124,8 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 				},
 			},
 		);
-		this.options.templateActions?.(line, this.handle());
+		this.deleteEl = this.options.templateDelete === undefined ? null : this.buildDelete(line, this.options.templateDelete);
+		this.paintDelete();
 		this.summaryEl = template.controlEl.createDiv({ cls: 'snowflake-method-beat-sheet-template-summary' });
 		this.descriptionEl = template.controlEl.createEl('blockquote', {
 			cls: 'snowflake-method-beat-sheet-template-description is-hidden',
@@ -173,29 +175,45 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 		quote.toggleClass('is-hidden', description.length === 0);
 	}
 
-	/** Who beside the field wants to hear the pick move. */
-	private readonly choiceListeners = new Set<() => void>();
-
-	/** The pick moved: the line under the field says what it holds now, and whoever stands beside it hears. */
+	/** The pick moved: the line under the field says what it holds now, and the way to delete wakes or sleeps with it. */
 	private pick(choice: BeatSheetTemplateChoice): void {
 		this.choice = choice;
 		this.paintSummary();
-		for (const listener of [...this.choiceListeners]) listener();
+		this.paintDelete();
 	}
 
-	/** What the workspace may ask of the form while it stands, for what it puts beside the template field. */
-	private handle(): AddBeatSheetFormHandle {
-		return {
-			choice: () => this.choice,
-			closed: () => this.closed,
-			choose: (choice) => {
-				this.pick(choice);
-				this.picker?.refresh();
-			},
-			onChoice: (listener) => {
-				this.choiceListeners.add(listener);
-			},
-		};
+	/** The way to take a template out stands beside the field. A preset cannot go, so it wakes only for a pick of the project's own. */
+	private buildDelete(line: HTMLElement, deleter: BeatSheetTemplateDelete): HTMLButtonElement {
+		const button = line.createEl('button', {
+			cls: 'clickable-icon snowflake-method-beat-sheet-template-delete',
+			attr: { type: 'button', 'aria-label': this.t('beatSheet.template.delete') },
+		});
+		setIcon(button, 'trash-2');
+		setTooltip(button, this.t('beatSheet.template.delete'));
+		button.addEventListener('click', () => {
+			void this.deleteTemplate(deleter);
+		});
+		return button;
+	}
+
+	private paintDelete(): void {
+		const deleter = this.options.templateDelete;
+		if (this.deleteEl === null || deleter === undefined) return;
+		this.deleteEl.disabled = !deleter.allowed() || this.choice.kind !== 'project';
+	}
+
+	private async deleteTemplate(deleter: BeatSheetTemplateDelete): Promise<void> {
+		const choice = this.choice;
+		if (choice.kind !== 'project' || this.closed || !deleter.allowed()) return;
+		const gone = await deleter.remove(choice.id);
+		if (!gone || this.closed) return;
+		// The form is left holding nothing that has gone: a pick still on the
+		// template falls back to the barest start. One moved on to another
+		// pick meanwhile is left as it is.
+		const now = this.choice;
+		if (now.kind !== 'project' || now.id !== choice.id) return;
+		this.pick({ kind: 'built-in', id: BUILT_IN_BEAT_SHEET_TEMPLATE_IDS[0] });
+		this.picker?.refresh();
 	}
 
 	onClose(): void {
@@ -204,7 +222,7 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 		this.picker = null;
 		this.summaryEl = null;
 		this.descriptionEl = null;
-		this.choiceListeners.clear();
+		this.deleteEl = null;
 		super.onClose();
 	}
 
@@ -227,12 +245,12 @@ export class AddBeatSheetModal extends SnowflakeFormModal<BeatSheetDraft> {
 	}
 }
 
-/** What stands beside the template field may read and move the form's pick. */
-export interface AddBeatSheetFormHandle {
-	choice: () => BeatSheetTemplateChoice;
-	closed: () => boolean;
-	choose: (choice: BeatSheetTemplateChoice) => void;
-	onChoice: (listener: () => void) => void;
+/** How one of the project's own templates is taken out from the form that offers it. */
+export interface BeatSheetTemplateDelete {
+	/** Whether a template may go now: from a project that can be written. */
+	allowed: () => boolean;
+	/** Asks, deletes, and says so where the template would not go; true once it has gone. */
+	remove: (templateId: string) => Promise<boolean>;
 }
 
 /** A sheet edited: its name, with Delete at the start of the foot across from Save. */

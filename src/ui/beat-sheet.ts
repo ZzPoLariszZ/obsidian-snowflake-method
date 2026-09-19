@@ -22,7 +22,6 @@
 import { Menu, Notice, setIcon, setTooltip } from 'obsidian';
 
 import {
-	BUILT_IN_BEAT_SHEET_TEMPLATE_IDS,
 	beatScenePlacements,
 	beatSheetActStep,
 	beatSheetTemplateNamesake,
@@ -33,6 +32,7 @@ import {
 	findBeatSheet,
 	findBeatSheetAct,
 	findBeatSheetTemplate,
+	moveBeat,
 	moveBeatSheetAct,
 	shownBeatSheetId,
 	type Beat,
@@ -55,14 +55,12 @@ import {
 	AddBeatSheetModal,
 	BeatFormModal,
 	EditBeatSheetModal,
-	type AddBeatSheetFormHandle,
 } from './beat-sheet-forms';
 import {
 	actLandingAt,
 	actTitle,
 	assignedSceneIds,
 	beatLandingAt,
-	beatMoveIsNoop,
 	beatPlaceName,
 	beatStackKey,
 	sheetAsLane,
@@ -99,34 +97,36 @@ import {
 
 /** An act's header across the table: its handle, what it is called, and its two controls. */
 interface ActEntry {
+	kind: 'act';
 	actId: string;
 	el: HTMLElement;
 	handle: HTMLButtonElement;
 	title: HTMLButtonElement;
 	add: HTMLButtonElement;
-	more: HTMLButtonElement;
 }
 
 /** The line under an act's beats: it says the act holds none, and takes a beat dropped at the act's end. */
 interface FootEntry {
-	actId: string;
+	kind: 'foot';
 	el: HTMLElement;
 	line: HTMLElement;
 }
 
 /** One beat's row: its own cell in the beat column, and the one lane's cell beside it. */
 interface BeatEntry {
+	kind: 'beat';
 	beatId: string;
 	el: HTMLElement;
 	handle: HTMLButtonElement;
 	label: HTMLButtonElement;
 	description: HTMLButtonElement;
-	more: HTMLButtonElement;
 	/** The plus on the rule above the row, which puts a beat in before it. */
 	seamAdd: HTMLButtonElement;
-	cell: HTMLElement;
 	body: LaneCell;
 }
+
+/** All that stands in the table, each under the key its kind and its id give it. */
+type TableEntryEl = ActEntry | BeatEntry | FootEntry;
 
 /** What the two folds' toggles are called: the beat column folded to its names, and the pool away. */
 const FOLD_LABELS: Readonly<Record<Fold, FoldLabels>> = {
@@ -338,9 +338,8 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	let readOnly = true;
 	let optionsSignature = '';
 	let sheetField: OptionPicker | null = null;
-	const actEntries = new Map<string, ActEntry>();
-	const footEntries = new Map<string, FootEntry>();
-	const beatEntries = new Map<string, BeatEntry>();
+	/** One keeping for the table's three kinds: a key says its kind, so no two of them can meet. */
+	const tableEntries = new Map<string, TableEntryEl>();
 	let disposed = false;
 	/** Forms and pickers belong to this workspace; recovered words deliberately outlive it. */
 	const modals = createModalKeeper();
@@ -431,8 +430,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 
 	/** Where the beat column ends, from its own box; nothing here holds its place, so nothing is summed. */
 	const beatColumnWidth = (): number => {
-		const first = beatEntries.values().next().value;
-		const width = first?.el.querySelector<HTMLElement>('.snowflake-method-timeline-time')?.offsetWidth ?? 0;
+		const width = table.querySelector<HTMLElement>('.snowflake-method-timeline-time')?.offsetWidth ?? 0;
 		return Number.isFinite(width) ? width : 0;
 	};
 
@@ -591,7 +589,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		});
 		setIcon(more, 'ellipsis');
 		setTooltip(more, t('table.actions'));
-		const entry: ActEntry = { actId, el, handle, title, add, more };
+		const entry: ActEntry = { kind: 'act', actId, el, handle, title, add };
 		handle.addEventListener('dragstart', (event) => {
 			if (readOnly || event.dataTransfer === null) {
 				event.preventDefault();
@@ -602,7 +600,6 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			event.dataTransfer.effectAllowed = 'move';
 			event.dataTransfer.setData(BEAT_SHEET_ACT_DRAG_TYPE, entry.actId);
 			if (typeof event.dataTransfer.setDragImage === 'function') event.dataTransfer.setDragImage(entry.el, 8, 8);
-			root.addClass('is-act-drag');
 			entry.el.addClass('is-dragging');
 		});
 		handle.addEventListener('dragend', () => {
@@ -637,7 +634,6 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			setTooltip(entry.title, words);
 		}
 		entry.title.disabled = readOnly;
-		entry.el.toggleClass('is-empty', item.act.beats.length === 0);
 		const label = t('beatSheet.act.addBeat', { act: words });
 		if (entry.add.getAttribute('aria-label') !== label) {
 			entry.add.setAttribute('aria-label', label);
@@ -655,7 +651,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		});
 		table.insertBefore(el, actsEmpty);
 		const { line } = renderEmptyLine(el, t('beatSheet.empty.beats'));
-		return { actId, el, line };
+		return { kind: 'foot', el, line };
 	};
 
 	// -- The beats -----------------------------------------------------------
@@ -705,7 +701,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		cell.createDiv({ cls: 'snowflake-method-timeline-axis', attr: { 'aria-hidden': 'true' } });
 		cell.createDiv({ cls: 'snowflake-method-timeline-seam' });
 		const entry: BeatEntry = {
-			beatId, el, handle, label, description, more, seamAdd, cell,
+			kind: 'beat', beatId, el, handle, label, description, seamAdd,
 			body: cells.mountCell(cell, sheet.id, beatId),
 		};
 		seamAdd.addEventListener('click', (event) => {
@@ -778,35 +774,23 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		// the first only the painter can say: nothing in the stylesheet may ask
 		// what an element holds or what stands beside it.
 		entry.el.toggleClass('is-act-first', item.first);
-		const lane = laneOf(sheet);
-		cells.dressCell(entry.body, lane.times.find((time) => time.timeId === entry.beatId) ?? null, lane);
+		// The beat's own rows, handed over and not copied: the cells compare them by identity.
+		cells.dressCell(entry.body, { timeId: item.beat.id, rows: item.beat.rows }, laneOf(sheet));
 	};
 
 	const unmountEntry = (key: string): void => {
-		const act = actEntries.get(key);
-		if (act !== undefined) {
-			act.el.remove();
-			actEntries.delete(key);
-			return;
-		}
-		const foot = footEntries.get(key);
-		if (foot !== undefined) {
-			foot.el.remove();
-			footEntries.delete(key);
-			return;
-		}
-		const beat = beatEntries.get(key);
-		if (beat === undefined) return;
-		cells.unmountCell(beat.body);
-		beat.el.remove();
-		beatEntries.delete(key);
+		const entry = tableEntries.get(key);
+		if (entry === undefined) return;
+		// A beat's row gives its cell back to the cells before it goes.
+		if (entry.kind === 'beat') cells.unmountCell(entry.body);
+		entry.el.remove();
+		tableEntries.delete(key);
 	};
 
-	const entryEl = (key: string): HTMLElement | undefined =>
-		actEntries.get(key)?.el ?? beatEntries.get(key)?.el ?? footEntries.get(key)?.el;
+	const entryEl = (key: string): HTMLElement | undefined => tableEntries.get(key)?.el;
 
 	const clearTable = (): void => {
-		for (const key of [...actEntries.keys(), ...beatEntries.keys(), ...footEntries.keys()]) unmountEntry(key);
+		for (const key of [...tableEntries.keys()]) unmountEntry(key);
 		actsEmpty.toggleClass('is-hidden', true);
 		paintedSheetId = null;
 		cells.sweep();
@@ -825,32 +809,19 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const entries = tableOrder(sheet);
 		actsEmpty.toggleClass('is-hidden', sheet.acts.length > 0);
 		const wanted = entries.map((entry) => entry.key);
-		const standingKeys = [...actEntries.keys(), ...beatEntries.keys(), ...footEntries.keys()];
-		for (const key of planCardRepaint(standingKeys, wanted, []).remove) unmountEntry(key);
+		for (const key of planCardRepaint([...tableEntries.keys()], wanted, []).remove) unmountEntry(key);
 		for (const item of entries) {
-			if (item.kind === 'act') {
-				let entry = actEntries.get(item.key);
-				if (entry === undefined) {
-					entry = buildAct(item.key, item.act.id);
-					actEntries.set(item.key, entry);
-				}
-				dressAct(entry, item);
-			} else if (item.kind === 'beat') {
-				let entry = beatEntries.get(item.key);
-				if (entry === undefined) {
-					entry = buildBeat(item.key, sheet, item.beat.id);
-					beatEntries.set(item.key, entry);
-				}
-				dressBeat(entry, item, sheet);
-			} else {
-				let entry = footEntries.get(item.key);
-				if (entry === undefined) {
-					entry = buildFoot(item.key, item.act.id);
-					footEntries.set(item.key, entry);
-				}
-				entry.line.toggleClass('is-hidden', item.act.beats.length > 0);
-				entry.el.toggleClass('is-empty', item.act.beats.length === 0);
+			let entry = tableEntries.get(item.key);
+			if (entry === undefined) {
+				entry = item.kind === 'act' ? buildAct(item.key, item.act.id)
+					: item.kind === 'beat' ? buildBeat(item.key, sheet, item.beat.id)
+						: buildFoot(item.key, item.act.id);
+				tableEntries.set(item.key, entry);
 			}
+			// The key carries the kind, so what stands under it is of the kind the table asks for.
+			if (item.kind === 'act' && entry.kind === 'act') dressAct(entry, item);
+			else if (item.kind === 'beat' && entry.kind === 'beat') dressBeat(entry, item, sheet);
+			else if (item.kind === 'foot' && entry.kind === 'foot') entry.line.toggleClass('is-hidden', item.act.beats.length > 0);
 		}
 		const present = Array.from(table.children).map((child) => child.getAttribute('data-entry-key') ?? '');
 		for (const move of planCardMoves(present, wanted)) {
@@ -952,7 +923,6 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		actLanding = null;
 		tableRects = null;
 		root.removeClass('is-time-drag');
-		root.removeClass('is-act-drag');
 		cells.paintDragPhase();
 		loop.paintOwed();
 	};
@@ -961,10 +931,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	const measured = (): Map<string, DOMRect> => {
 		if (tableRects === null) {
 			tableRects = new Map();
-			for (const key of [...actEntries.keys(), ...beatEntries.keys(), ...footEntries.keys()]) {
-				const el = entryEl(key);
-				if (el !== undefined) tableRects.set(key, el.getBoundingClientRect());
-			}
+			for (const [key, entry] of tableEntries) tableRects.set(key, entry.el.getBoundingClientRect());
 		}
 		return tableRects;
 	};
@@ -981,9 +948,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			if (item.kind === 'act') continue;
 			if (item.kind === 'beat') {
 				if (item.beat.id === draggedBeatId) continue;
-				candidates.push({ kind: 'beat', key: item.key, actId: item.act.id, beatId: item.beat.id, middle: middleOf(item.key) });
+				candidates.push({ key: item.key, actId: item.act.id, beatId: item.beat.id, middle: middleOf(item.key) });
 			} else {
-				candidates.push({ kind: 'foot', key: item.key, actId: item.act.id, beatId: null, middle: middleOf(item.key) });
+				candidates.push({ key: item.key, actId: item.act.id, beatId: null, middle: middleOf(item.key) });
 			}
 		}
 		const landing = beatLandingAt(candidates, clientY);
@@ -1002,7 +969,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				bottom: boxes.get(tableKey('foot', act.id))?.bottom ?? 0,
 			}));
 		const landing = actLandingAt(candidates, clientY);
-		const el = landing.beforeActId === null ? undefined : actEntries.get(tableKey('act', landing.beforeActId))?.el;
+		const el = landing.beforeActId === null ? undefined : entryEl(tableKey('act', landing.beforeActId));
 		return { el: el ?? tail, beforeActId: landing.beforeActId };
 	};
 
@@ -1052,10 +1019,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		moveActTo(sheet.id, dragged, actAnchor(sheet, landing.beforeActId, dragged));
 	});
 
-	/** A beat moved into an act before another of its beats, or to its end; nothing written for no move. */
+	/** A beat moved into an act before another of its beats, or to its end; nothing written for no move, which the document's own move is asked about. */
 	const moveBeatTo = (openedSheet: string, beatId: string, toActId: string, beforeBeatId: string | null): void => {
-		const sheet = sheetAsStands(openedSheet);
-		if (sheet === null || readOnly || beatMoveIsNoop(sheet, beatId, toActId, beforeBeatId)) return;
+		if (readOnly || reading === null || moveBeat(reading.held, openedSheet, beatId, toActId, beforeBeatId, 0) === null) return;
 		void enqueue(async () => {
 			await controls.bridge().moveBeat(openedSheet, beatId, toActId, beforeBeatId);
 		});
@@ -1490,9 +1456,9 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 				shelf: {
 					// The presets are offered in the words they will be written in: the project's.
 					builtIn: () => builtInBeatSheetTemplates(read.locale),
-					project: () => reading?.held.templates ?? lastHeld?.templates ?? read.held.templates,
+					project: () => lastHeld?.templates ?? read.held.templates,
 				},
-				templateActions,
+				templateDelete: { allowed: () => !readOnly, remove: removeTemplate },
 			},
 			async (draft) => {
 				if (disposed) return;
@@ -1577,7 +1543,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			rows: null,
 			objection: () => null,
 			advisory: (name) => {
-				const held = reading?.held ?? lastHeld;
+				const held = lastHeld;
 				const match = held === null ? undefined : beatSheetTemplateNamesake(held, name);
 				return match === undefined ? null : t('modal.customFieldTemplate.replaceNotice', { name: match.name });
 			},
@@ -1594,54 +1560,26 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	};
 
 	/**
-	 * What stands beside the template field of the Add beat sheet form: the
-	 * way to take one of the project's own templates out. A preset cannot go,
-	 * so the control wakes only for a pick of the project's.
+	 * One of the project's own templates taken out, from the Add beat sheet
+	 * form that offers it: asked about first, and said where it would not go.
+	 * True once it has gone, which is when the form lets its pick of it go.
 	 */
-	const templateActions = (line: HTMLElement, form: AddBeatSheetFormHandle): void => {
-		const button = line.createEl('button', {
-			cls: 'clickable-icon snowflake-method-beat-sheet-template-delete',
-			attr: { type: 'button', 'aria-label': t('beatSheet.template.delete') },
-		});
-		setIcon(button, 'trash-2');
-		setTooltip(button, t('beatSheet.template.delete'));
-		const paint = (): void => {
-			button.disabled = readOnly || form.choice().kind !== 'project';
-		};
-		form.onChoice(paint);
-		paint();
-		button.addEventListener('click', () => {
-			void deleteTemplate(form);
-		});
-	};
-
-	const deleteTemplate = async (form: AddBeatSheetFormHandle): Promise<void> => {
-		const choice = form.choice();
-		const held = reading?.held ?? lastHeld;
-		const template = held === null || choice.kind !== 'project' ? undefined : findBeatSheetTemplate(held, choice.id);
-		if (template === undefined || readOnly || disposed || form.closed()) return;
+	const removeTemplate = async (templateId: string): Promise<boolean> => {
+		const template = lastHeld === null ? undefined : findBeatSheetTemplate(lastHeld, templateId);
+		if (template === undefined || readOnly || disposed) return false;
 		const confirmed = await confirmTimelineAction(app, t, {
 			title: t('beatSheet.template.deleteTitle', { name: template.name }),
 			lines: [t('beatSheet.template.deleteDescription')],
 			label: t('actions.delete'),
 		}, keep);
-		if (!confirmed || disposed) return;
+		if (!confirmed || disposed) return false;
 		const came = { gone: false };
 		await enqueue(async () => {
 			came.gone = await controls.bridge().deleteTemplate(template.id);
 		});
-		if (disposed) return;
-		if (!came.gone) {
-			new Notice(t('beatSheet.template.deleteRefused'));
-			return;
-		}
-		// The form is left holding nothing that has gone: a pick still on the
-		// template falls back to the barest start. A form closed meanwhile, or
-		// moved on to another pick, is left as it is.
-		const now = form.choice();
-		if (!form.closed() && now.kind === 'project' && now.id === template.id) {
-			form.choose({ kind: 'built-in', id: BUILT_IN_BEAT_SHEET_TEMPLATE_IDS[0] });
-		}
+		if (disposed) return false;
+		if (!came.gone) new Notice(t('beatSheet.template.deleteRefused'));
+		return came.gone;
 	};
 
 	// The pool is dealt now that the cells stand: its cards leave for them and

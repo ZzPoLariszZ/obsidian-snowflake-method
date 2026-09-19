@@ -6,7 +6,6 @@ import {
 	actTitle,
 	assignedSceneIds,
 	beatLandingAt,
-	beatMoveIsNoop,
 	beatPlaceName,
 	beatStackKey,
 	sheetAsLane,
@@ -151,9 +150,9 @@ describe('the beat sheet layout', () => {
 	describe('where a dragged beat lands', () => {
 		// Two acts: a1 holds b1 and b2 (b2 being dragged, so left out), a2 is empty.
 		const candidates: BeatLandingCandidate[] = [
-			{ kind: 'beat', key: 'beat:b1', actId: 'a1', beatId: 'b1', middle: 60 },
-			{ kind: 'foot', key: 'foot:a1', actId: 'a1', beatId: null, middle: 140 },
-			{ kind: 'foot', key: 'foot:a2', actId: 'a2', beatId: null, middle: 200 },
+			{ key: 'beat:b1', actId: 'a1', beatId: 'b1', middle: 60 },
+			{ key: 'foot:a1', actId: 'a1', beatId: null, middle: 140 },
+			{ key: 'foot:a2', actId: 'a2', beatId: null, middle: 200 },
 		];
 
 		it('lands before the first beat whose middle is below the pointer', () => {
@@ -169,20 +168,6 @@ describe('the beat sheet layout', () => {
 			expect(beatLandingAt(candidates, 900)).toEqual({ key: 'foot:a2', actId: 'a2', beforeBeatId: null });
 			expect(beatLandingAt([], 10)).toBeNull();
 		});
-	});
-
-	it('knows a move that would change nothing: onto itself, before its own neighbour, or to the end it already closes', () => {
-		const held = sheet([act('a1', [beat('b1'), beat('b2'), beat('b3')]), act('a2', [beat('b4')])]);
-		expect(beatMoveIsNoop(held, 'b1', 'a1', 'b1')).toBe(true);
-		expect(beatMoveIsNoop(held, 'b1', 'a1', 'b2')).toBe(true);
-		expect(beatMoveIsNoop(held, 'b3', 'a1', null)).toBe(true);
-		// An anchor the act does not hold reads as the act's end, as the document's own move reads it.
-		expect(beatMoveIsNoop(held, 'b3', 'a1', 'b4')).toBe(true);
-		expect(beatMoveIsNoop(held, 'b1', 'a1', 'b3')).toBe(false);
-		expect(beatMoveIsNoop(held, 'b1', 'a1', null)).toBe(false);
-		// The same place in another act is a move.
-		expect(beatMoveIsNoop(held, 'b3', 'a2', null)).toBe(false);
-		expect(beatMoveIsNoop(held, 'gone', 'a1', null)).toBe(false);
 	});
 
 	it("lands a dragged act before the first act whose whole group's middle is below the pointer, or at the end", () => {

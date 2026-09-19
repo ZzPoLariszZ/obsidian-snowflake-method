@@ -134,7 +134,6 @@ export type BeatSheetDrag =
 
 /** What a dragged beat may land before: another beat, or an act's foot for the act's end. */
 export interface BeatLandingCandidate {
-	kind: 'beat' | 'foot';
 	key: string;
 	actId: string;
 	/** The beat's own id; null for a foot. */
@@ -162,21 +161,6 @@ export function beatLandingAt(
 		return { key: landing.key, actId: landing.actId, beforeBeatId: null };
 	}
 	return { key: landing.key, actId: landing.actId, beforeBeatId: landing.beatId };
-}
-
-/** Whether a beat already stands exactly where a move would put it. */
-export function beatMoveIsNoop(
-	sheet: Pick<BeatSheet, 'acts'>,
-	beatId: string,
-	toActId: string,
-	beforeBeatId: string | null,
-): boolean {
-	const place = findBeat(sheet, beatId);
-	if (place === null || place.act.id !== toActId) return false;
-	if (beforeBeatId === beatId) return true;
-	const next = place.act.beats[place.index + 1]?.id ?? null;
-	const anchor = beforeBeatId !== null && place.act.beats.some((beat) => beat.id === beforeBeatId) ? beforeBeatId : null;
-	return next === anchor;
 }
 
 /** An act's whole group on the page, header to foot, for a dragged act to land among. */

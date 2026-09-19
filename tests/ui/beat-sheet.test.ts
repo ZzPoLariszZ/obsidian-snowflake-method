@@ -127,7 +127,7 @@ import {
 	type BeatSheetControls,
 	type BeatSheetTemplateChoice,
 } from '../../src/ui/beat-sheet-bridge';
-import { ActFormModal, AddBeatSheetModal, BeatFormModal, EditBeatSheetModal, type AddBeatSheetFormHandle } from '../../src/ui/beat-sheet-forms';
+import { ActFormModal, AddBeatSheetModal, BeatFormModal, EditBeatSheetModal, type BeatSheetTemplateDelete } from '../../src/ui/beat-sheet-forms';
 import { beatStackKey } from '../../src/ui/beat-sheet-layout';
 import type { CorkboardControls, CorkboardVariant } from '../../src/ui/corkboard-bridge';
 import { CorkboardDraftModal } from '../../src/ui/corkboard-draft-modal';
@@ -734,10 +734,7 @@ describe('the acts of a sheet', () => {
 		const line = (id: string): CorkboardElement => fixture.foot(id).querySelector('.snowflake-method-character-empty')!;
 		expect(line('a2').classes.has('is-hidden')).toBe(false);
 		expect(line('a2').querySelectorAll('span').map((span) => span.textContent)).toContain('beatSheet.empty.beats');
-		expect(fixture.foot('a2').classes.has('is-empty')).toBe(true);
-		expect(fixture.act('a2').classes.has('is-empty')).toBe(true);
 		expect(line('a1').classes.has('is-hidden')).toBe(true);
-		expect(fixture.foot('a1').classes.has('is-empty')).toBe(false);
 		await fixture.bridge.addBeat('s', 'a2', { name: 'Midpoint', description: '' }, null);
 		fixture.notify();
 		await settle();
@@ -849,7 +846,6 @@ describe('the acts of a sheet', () => {
 		const dataTransfer = transfer([BEAT_SHEET_ACT_DRAG_TYPE]);
 		fire(handle, 'dragstart', { dataTransfer });
 		expect(dataTransfer.getData(BEAT_SHEET_ACT_DRAG_TYPE)).toBe('a3');
-		expect(fixture.root.classes.has('is-act-drag')).toBe(true);
 		expect(fixture.act('a3').classes.has('is-dragging')).toBe(true);
 		fire(fixture.table, 'dragover', { clientY: 10, dataTransfer });
 		expect(dataTransfer.dropEffect).toBe('move');
@@ -861,7 +857,6 @@ describe('the acts of a sheet', () => {
 		fire(fixture.table, 'drop', { dataTransfer });
 		expect(fixture.act('a2').classes.has('is-drop-before')).toBe(false);
 		fire(handle, 'dragend', {});
-		expect(fixture.root.classes.has('is-act-drag')).toBe(false);
 		expect(fixture.act('a3').classes.has('is-dragging')).toBe(false);
 		await settle();
 		expect(fixture.bridge.moveAct).toHaveBeenCalledWith('s', 'a3', 'a2');
@@ -2106,103 +2101,68 @@ describe('the project\'s own templates', () => {
 		expect(fixture.bridge.saveTemplate).not.toHaveBeenCalled();
 	});
 
-	/** The Add beat sheet form as the workspace opens it, with what stands beside its template field built on a line of the test's own. */
-	const besideTheField = async (fixture: Fixture, opened: AddBeatSheetModal[]) => {
+	/** What the workspace hands the Add beat sheet form for taking a template out. */
+	const deleterOf = (fixture: Fixture, opened: AddBeatSheetModal[]): BeatSheetTemplateDelete => {
 		fixture.button('snowflake-method-beat-sheet-add').dispatch('click');
-		const options = (opened[opened.length - 1] as unknown as { options: { templateActions: (line: HTMLElement, form: AddBeatSheetFormHandle) => void } }).options;
-		let choice: BeatSheetTemplateChoice = { kind: 'built-in', id: 'blank' };
-		let closed = false;
-		const listeners: (() => void)[] = [];
-		const form = {
-			choice: () => choice,
-			closed: () => closed,
-			choose: vi.fn((next: BeatSheetTemplateChoice) => { choice = next; for (const listener of listeners) listener(); }),
-			onChoice: (listener: () => void) => { listeners.push(listener); },
-		};
-		const line = new CorkboardDom().container;
-		options.templateActions(line as unknown as HTMLElement, form);
-		return {
-			form,
-			button: line.querySelector('.snowflake-method-beat-sheet-template-delete')!,
-			pick: (next: BeatSheetTemplateChoice) => { choice = next; for (const listener of listeners) listener(); },
-			close: () => { closed = true; },
-		};
+		return (opened[opened.length - 1] as unknown as { options: { templateDelete: BeatSheetTemplateDelete } }).options.templateDelete;
 	};
 
-	it('wakes the way to delete a template only for a pick of the project\'s own', async () => {
+	it('lets a template go only from a project that can be written', async () => {
 		const opened = watch(AddBeatSheetModal);
 		const fixture = laid({}, { templates: [template('tpl-1', 'My shape')] });
 		await settle();
-		const beside = await besideTheField(fixture, opened);
-		expect(beside.button.getAttribute('aria-label')).toBe('beatSheet.template.delete');
-		expect(beside.button.disabled).toBe(true);
-		beside.pick({ kind: 'project', id: 'tpl-1' });
-		expect(beside.button.disabled).toBe(false);
-		beside.pick({ kind: 'built-in', id: 'save-the-cat' });
-		expect(beside.button.disabled).toBe(true);
-		// Pressed all the same, a preset goes nowhere.
-		beside.button.dispatch('click');
-		await settle();
+		const deleter = deleterOf(fixture, opened);
+		expect(deleter.allowed()).toBe(true);
+		fixture.remodel({ readOnly: true });
+		fixture.handle.refresh();
+		expect(deleter.allowed()).toBe(false);
+		expect(await deleter.remove('tpl-1')).toBe(false);
 		expect(confirmTimelineAction).not.toHaveBeenCalled();
 		expect(fixture.bridge.deleteTemplate).not.toHaveBeenCalled();
 	});
 
-	it('deletes the template picked after asking, and leaves the form on the barest start', async () => {
+	it('deletes a template after asking, and answers with what the file said', async () => {
 		const opened = watch(AddBeatSheetModal);
 		const fixture = laid({}, { templates: [template('tpl-1', 'My shape'), template('tpl-2', 'Another')] });
 		await settle();
-		const beside = await besideTheField(fixture, opened);
-		beside.pick({ kind: 'project', id: 'tpl-1' });
+		const deleter = deleterOf(fixture, opened);
 		vi.mocked(confirmTimelineAction).mockResolvedValueOnce(false);
-		beside.button.dispatch('click');
-		await settle();
+		expect(await deleter.remove('tpl-1')).toBe(false);
 		expect(vi.mocked(confirmTimelineAction).mock.calls[0]![2]).toEqual({
 			title: 'beatSheet.template.deleteTitle(name=My shape)',
 			lines: ['beatSheet.template.deleteDescription'],
 			label: 'actions.delete',
 		});
 		expect(fixture.bridge.deleteTemplate).not.toHaveBeenCalled();
-		beside.button.dispatch('click');
-		await settle();
+		expect(await deleter.remove('tpl-1')).toBe(true);
 		expect(fixture.bridge.deleteTemplate).toHaveBeenCalledExactlyOnceWith('tpl-1');
 		expect(fixture.held().templates.map((entry) => entry.id)).toEqual(['tpl-2']);
-		expect(beside.form.choose).toHaveBeenCalledExactlyOnceWith({ kind: 'built-in', id: 'blank' });
-		expect(beside.button.disabled).toBe(true);
 		// The shelf the form reads is the file's, so the template is off it at once.
 		const shelf = (opened[0] as unknown as { options: { shelf: { project: () => readonly BeatSheetTemplate[] } } }).options.shelf;
 		expect(shelf.project().map((entry) => entry.id)).toEqual(['tpl-2']);
+		// One that is not there, or has gone since, is asked about by nobody.
+		expect(await deleter.remove('tpl-1')).toBe(false);
+		expect(confirmTimelineAction).toHaveBeenCalledTimes(2);
 	});
 
-	it('says so when the template would not go, and leaves a form alone that closed or moved on meanwhile', async () => {
+	it('says so when the template would not go, and nothing once the workspace has gone', async () => {
 		const opened = watch(AddBeatSheetModal);
-		const fixture = laid({}, { templates: [template('tpl-1', 'My shape'), template('tpl-2', 'Another')] });
+		const fixture = laid({}, { templates: [template('tpl-1', 'My shape')] });
 		await settle();
-		const beside = await besideTheField(fixture, opened);
-		beside.pick({ kind: 'project', id: 'tpl-1' });
+		const deleter = deleterOf(fixture, opened);
 		vi.mocked(fixture.bridge.deleteTemplate).mockResolvedValueOnce(false);
-		beside.button.dispatch('click');
-		await settle();
+		expect(await deleter.remove('tpl-1')).toBe(false);
 		expect(notices).toHaveBeenLastCalledWith('beatSheet.template.deleteRefused');
-		expect(beside.form.choose).not.toHaveBeenCalled();
-		// The pick moves on while the question stands: the template goes, the form keeps its new pick.
+		notices.mockClear();
 		let confirm!: (answer: boolean) => void;
 		vi.mocked(confirmTimelineAction).mockImplementationOnce(() => new Promise<boolean>((resolve) => { confirm = resolve; }));
-		beside.button.dispatch('click');
+		const asked = deleter.remove('tpl-1');
 		await settle();
-		beside.pick({ kind: 'project', id: 'tpl-2' });
+		fixture.handle.dispose();
 		confirm(true);
-		await settle();
-		expect(fixture.held().templates.map((entry) => entry.id)).toEqual(['tpl-2']);
-		expect(beside.form.choose).not.toHaveBeenCalled();
-		// A form that closed while the question stood is not told to pick anything.
-		vi.mocked(confirmTimelineAction).mockImplementationOnce(() => new Promise<boolean>((resolve) => { confirm = resolve; }));
-		beside.button.dispatch('click');
-		await settle();
-		beside.close();
-		confirm(true);
-		await settle();
-		expect(fixture.held().templates).toEqual([]);
-		expect(beside.form.choose).not.toHaveBeenCalled();
+		expect(await asked).toBe(false);
+		expect(fixture.bridge.deleteTemplate).toHaveBeenCalledTimes(1);
+		expect(notices).not.toHaveBeenCalled();
 	});
 });
 

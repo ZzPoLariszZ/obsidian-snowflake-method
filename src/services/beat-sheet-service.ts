@@ -181,8 +181,11 @@ export class BeatSheetService {
 	}
 
 	relabelAct(project: ProjectRef, sheetId: string, actId: string, label: string): Promise<BeatSheetWrite> {
-		return this.reviseAct(project, sheetId, actId, (held) =>
-			relabelBeatSheetAct(held, sheetId, actId, label, this.now()),
+		return this.reviseSheet(
+			project,
+			sheetId,
+			(held) => relabelBeatSheetAct(held, sheetId, actId, label, this.now()),
+			BeatSheetService.holdsAct(actId),
 		);
 	}
 
@@ -192,8 +195,11 @@ export class BeatSheetService {
 		actId: string,
 		beforeActId: string | null,
 	): Promise<BeatSheetWrite> {
-		return this.reviseAct(project, sheetId, actId, (held) =>
-			moveBeatSheetAct(held, sheetId, actId, beforeActId, this.now()),
+		return this.reviseSheet(
+			project,
+			sheetId,
+			(held) => moveBeatSheetAct(held, sheetId, actId, beforeActId, this.now()),
+			BeatSheetService.holdsAct(actId),
 		);
 	}
 
@@ -213,8 +219,11 @@ export class BeatSheetService {
 		beforeBeatId: string | null,
 	): Promise<string | null> {
 		const id = this.mintId("beat");
-		const wrote = await this.reviseAct(project, sheetId, actId, (held) =>
-			addBeat(held, sheetId, actId, { id, ...draft }, beforeBeatId, this.now()),
+		const wrote = await this.reviseSheet(
+			project,
+			sheetId,
+			(held) => addBeat(held, sheetId, actId, { id, ...draft }, beforeBeatId, this.now()),
+			BeatSheetService.holdsAct(actId),
 		);
 		return wrote === "written" ? id : null;
 	}
@@ -226,8 +235,11 @@ export class BeatSheetService {
 		beatId: string,
 		change: { name?: string; description?: string },
 	): Promise<BeatSheetWrite> {
-		return this.reviseBeat(project, sheetId, beatId, (held) =>
-			editBeat(held, sheetId, beatId, change, this.now()),
+		return this.reviseSheet(
+			project,
+			sheetId,
+			(held) => editBeat(held, sheetId, beatId, change, this.now()),
+			BeatSheetService.holdsBeat(beatId),
 		);
 	}
 
@@ -239,13 +251,11 @@ export class BeatSheetService {
 		toActId: string,
 		beforeBeatId: string | null,
 	): Promise<BeatSheetWrite> {
-		return this.revise(
+		return this.reviseSheet(
 			project,
-			(held) => {
-				const sheet = findBeatSheet(held, sheetId);
-				return sheet !== undefined && findBeat(sheet, beatId) !== null && findBeatSheetAct(sheet, toActId) !== undefined;
-			},
+			sheetId,
 			(held) => moveBeat(held, sheetId, beatId, toActId, beforeBeatId, this.now()),
+			(sheet) => BeatSheetService.holdsBeat(beatId)(sheet) && BeatSheetService.holdsAct(toActId)(sheet),
 		);
 	}
 
@@ -263,16 +273,22 @@ export class BeatSheetService {
 		scenes: readonly string[] = [],
 	): Promise<string | null> {
 		const id = this.mintId("beat-sheet-row");
-		const wrote = await this.reviseBeat(project, sheetId, beatId, (held) =>
-			addBeatRow(held, sheetId, beatId, { id, text, scenes }, beforeRowId, this.now()),
+		const wrote = await this.reviseSheet(
+			project,
+			sheetId,
+			(held) => addBeatRow(held, sheetId, beatId, { id, text, scenes }, beforeRowId, this.now()),
+			BeatSheetService.holdsBeat(beatId),
 		);
 		return wrote === "written" ? id : null;
 	}
 
 	/** Words for a row that must be there: absent where the row has gone, since the file would not then say them. */
 	editRow(project: ProjectRef, sheetId: string, rowId: string, text: string): Promise<BeatSheetWrite> {
-		return this.reviseRow(project, sheetId, rowId, (held) =>
-			editBeatRow(held, sheetId, rowId, text, this.now()),
+		return this.reviseSheet(
+			project,
+			sheetId,
+			(held) => editBeatRow(held, sheetId, rowId, text, this.now()),
+			BeatSheetService.holdsRow(rowId),
 		);
 	}
 
@@ -284,13 +300,11 @@ export class BeatSheetService {
 		toBeatId: string,
 		beforeRowId: string | null,
 	): Promise<BeatSheetWrite> {
-		return this.revise(
+		return this.reviseSheet(
 			project,
-			(held) => {
-				const sheet = findBeatSheet(held, sheetId);
-				return sheet !== undefined && findBeatRow(sheet, rowId) !== null && findBeat(sheet, toBeatId) !== null;
-			},
+			sheetId,
 			(held) => moveBeatRow(held, sheetId, rowId, toBeatId, beforeRowId, this.now()),
+			(sheet) => BeatSheetService.holdsRow(rowId)(sheet) && BeatSheetService.holdsBeat(toBeatId)(sheet),
 		);
 	}
 
@@ -305,8 +319,11 @@ export class BeatSheetService {
 		rowId: string,
 		beforeSceneId: string | null,
 	): Promise<BeatSheetWrite> {
-		return this.reviseRow(project, sheetId, rowId, (held) =>
-			placeBeatScene(held, sheetId, sceneId, rowId, beforeSceneId, this.now()),
+		return this.reviseSheet(
+			project,
+			sheetId,
+			(held) => placeBeatScene(held, sheetId, sceneId, rowId, beforeSceneId, this.now()),
+			BeatSheetService.holdsRow(rowId),
 		);
 	}
 
@@ -329,8 +346,7 @@ export class BeatSheetService {
 	): Promise<BeatSheetWrite> {
 		if (draft.name.trim().length === 0) return Promise.resolve("refused");
 		const id = this.mintId("beat-sheet-template");
-		return this.reviseSheet(project, sheetId, (held) => {
-			const sheet = findBeatSheet(held, sheetId) as BeatSheet;
+		return this.reviseSheet(project, sheetId, (held, sheet) => {
 			return saveBeatSheetTemplate(
 				held,
 				{ id, name: draft.name, description: draft.description, structure: beatSheetStructureOf(sheet) },
@@ -353,61 +369,38 @@ export class BeatSheetService {
 		this.store.evict(rootPath);
 	}
 
+	/**
+	 * A change to one sheet, which is handed over as the file has it. A sheet
+	 * that has gone is absent; so is one that no longer holds what the change
+	 * names, which `holds` says, since such a change is not a no-op.
+	 */
 	private reviseSheet(
 		project: ProjectRef,
 		sheetId: string,
-		change: (held: BeatSheetDocument) => BeatSheetDocument | null,
-	): Promise<BeatSheetWrite> {
-		return this.revise(project, (held) => findBeatSheet(held, sheetId) !== undefined, change);
-	}
-
-	/** For what names an act of a sheet: an act that has gone is absent, and the change is not a no-op. */
-	private reviseAct(
-		project: ProjectRef,
-		sheetId: string,
-		actId: string,
-		change: (held: BeatSheetDocument) => BeatSheetDocument | null,
+		change: (held: BeatSheetDocument, sheet: BeatSheet) => BeatSheetDocument | null,
+		holds: (sheet: BeatSheet) => boolean = () => true,
 	): Promise<BeatSheetWrite> {
 		return this.revise(
 			project,
 			(held) => {
 				const sheet = findBeatSheet(held, sheetId);
-				return sheet !== undefined && findBeatSheetAct(sheet, actId) !== undefined;
+				return sheet !== undefined && holds(sheet);
 			},
-			change,
+			(held) => change(held, findBeatSheet(held, sheetId) as BeatSheet),
 		);
 	}
 
-	private reviseBeat(
-		project: ProjectRef,
-		sheetId: string,
-		beatId: string,
-		change: (held: BeatSheetDocument) => BeatSheetDocument | null,
-	): Promise<BeatSheetWrite> {
-		return this.revise(
-			project,
-			(held) => {
-				const sheet = findBeatSheet(held, sheetId);
-				return sheet !== undefined && findBeat(sheet, beatId) !== null;
-			},
-			change,
-		);
+	/** What a change may name on its sheet, each said once: an act, a beat, a row. */
+	private static holdsAct(actId: string): (sheet: BeatSheet) => boolean {
+		return (sheet) => findBeatSheetAct(sheet, actId) !== undefined;
 	}
 
-	private reviseRow(
-		project: ProjectRef,
-		sheetId: string,
-		rowId: string,
-		change: (held: BeatSheetDocument) => BeatSheetDocument | null,
-	): Promise<BeatSheetWrite> {
-		return this.revise(
-			project,
-			(held) => {
-				const sheet = findBeatSheet(held, sheetId);
-				return sheet !== undefined && findBeatRow(sheet, rowId) !== null;
-			},
-			change,
-		);
+	private static holdsBeat(beatId: string): (sheet: BeatSheet) => boolean {
+		return (sheet) => findBeat(sheet, beatId) !== null;
+	}
+
+	private static holdsRow(rowId: string): (sheet: BeatSheet) => boolean {
+		return (sheet) => findBeatRow(sheet, rowId) !== null;
 	}
 
 	/**

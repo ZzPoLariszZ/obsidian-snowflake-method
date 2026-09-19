@@ -337,6 +337,8 @@ describe('beats', () => {
 		expect(moveBeat(held, 's', 'b1', 'a1', 'b2', 9)).toBeNull();
 		expect(moveBeat(held, 's', 'b2', 'a1', null, 9)).toBeNull();
 		expect(moveBeat(held, 's', 'b1', 'a1', 'b1', 9)).toBeNull();
+		// An anchor the act does not hold reads as the act's end, which the beat that closes it is at already.
+		expect(moveBeat(held, 's', 'b2', 'a1', 'b3', 9)).toBeNull();
 		expect(moveBeat(held, 's', 'gone', 'a1', null, 9)).toBeNull();
 		expect(moveBeat(held, 's', 'b1', 'gone', null, 9)).toBeNull();
 	});
