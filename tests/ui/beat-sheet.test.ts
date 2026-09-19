@@ -1459,7 +1459,7 @@ describe('the beat sheets\' own forms', () => {
 		const options = (opened[0] as unknown as { options: { takenNames: string[]; shelf: { builtIn: () => { name: string }[] } } }).options;
 		expect(options.takenNames).toEqual(['Sheet s']);
 		// The presets are offered in the words they will be written in: the project's, not the app's.
-		expect(options.shelf.builtIn().map((preset) => preset.name)).toEqual(['空白', '三幕式', '起承转合', '故事圈', '救猫咪', '英雄之旅', '言情节拍']);
+		expect(options.shelf.builtIn().map((preset) => preset.name)).toEqual(['空白', '三幕式', '起承转合', '故事循环', '救猫咪', '英雄之旅', '爱情故事']);
 		await submit(opened[0], { name: '第二稿', template: { kind: 'built-in', id: 'kishotenketsu' } });
 		await settle();
 		expect(fixture.bridge.createSheet).toHaveBeenCalledWith('第二稿', { kind: 'built-in', id: 'kishotenketsu' });
