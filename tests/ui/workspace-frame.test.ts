@@ -783,6 +783,24 @@ describe('the deck the lanes\' cards are dealt from', () => {
 		expect((deckDeps[deckDeps.length - 1] as SceneCardDeps<SceneCard>).unloading?.()).toBe(false);
 	});
 
+	it('deals from the six things it reads alone, for a surface with no pool and no folds to hand it', () => {
+		const handed = controlsOf();
+		const { app, host, t: translate, refresh, projectPath, unloading } = handed.controls;
+		const laneDeck = createLaneDeck({
+			controls: { app, host, t: translate, refresh, projectPath, unloading },
+			notice: vi.fn(),
+			model: () => null,
+			readOnly: () => false,
+			cells: () => ({ dragAllowed: () => false, openCardMenu: () => undefined }),
+		});
+		const deps = deckDeps[deckDeps.length - 1] as SceneCardDeps<SceneCard>;
+		expect(deps.host).toBe(host);
+		expect(deps.projectPath()).toBe('P');
+		expect(deps.dragAllowed({} as SceneCard)).toBe(false);
+		laneDeck.index(modelOf(['scene-1']));
+		expect([...deps.scenesById().keys()]).toEqual(['scene-1']);
+	});
+
 	it('asks the cells, made after it, whether a card may drag and for its menu', () => {
 		const fixture = laneDeckOf();
 		const card = {} as SceneCard;

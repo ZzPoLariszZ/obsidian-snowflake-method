@@ -33,6 +33,7 @@ import {
 	createSceneCardDeck,
 	type SceneCard,
 	type SceneCardDeck,
+	type SceneCardHost,
 	type SceneCardPart,
 } from './scene-card';
 import type { CorkboardMemory } from './story-structure-state';
@@ -511,8 +512,16 @@ export function createModalKeeper(): ModalKeeper {
 
 // -- The deck the lanes' cards are dealt from ------------------------------------
 
+/**
+ * What the deck reads of the controls a workspace was handed, and no more:
+ * a surface with no pool and no folds of its own deals the same cards.
+ */
+export type LaneDeckControls = Pick<FrameControls, 'app' | 't' | 'refresh' | 'projectPath' | 'unloading'> & {
+	host: SceneCardHost;
+};
+
 export interface LaneDeckDeps {
-	controls: FrameControls;
+	controls: LaneDeckControls;
 	notice: (error: unknown) => void;
 	/** The model the workspace last painted from. */
 	model: () => ProjectDashboardModel | null;
