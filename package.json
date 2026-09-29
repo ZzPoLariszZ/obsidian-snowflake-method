@@ -51,6 +51,7 @@
 		"esbuild": "0.25.5",
 		"eslint": "^9.39.4",
 		"eslint-plugin-obsidianmd": "^0.4.0",
+		"eslint-plugin-react-hooks": "5.2.0",
 		"globals": "^17.6.0",
 		"happy-dom": "^20.14.5",
 		"jiti": "^2.6.1",

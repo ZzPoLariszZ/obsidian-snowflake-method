@@ -15,7 +15,17 @@ vi.mock('obsidian', async (importOriginal) => {
 			setState(): Promise<void> { return Promise.resolve(); }
 			registerDomEvent(): void {}
 		},
-		Scope: class { register(): void {} },
+		Scope: class {
+			readonly heard: { modifiers: string[]; key: string }[] = [];
+			register(modifiers: string[], key: string): { modifiers: string[]; key: string } {
+				const handler = { modifiers, key };
+				this.heard.push(handler);
+				return handler;
+			}
+			unregister(handler: { modifiers: string[]; key: string }): void {
+				this.heard.splice(this.heard.indexOf(handler), 1);
+			}
+		},
 		Keymap: { isModEvent: (event: MouseEvent) => event.metaKey ? 'tab' : false },
 		FuzzySuggestModal: class extends runtime.Modal {},
 		SuggestModal: class extends runtime.Modal {},
@@ -43,6 +53,8 @@ import {
 	SnowflakeStoryStructureView,
 } from '../../src/ui/story-structure-view';
 import type { BeatSheetControls } from '../../src/ui/beat-sheet-bridge';
+import type { FreeformControls } from '../../src/ui/freeform-bridge';
+import type { MountFreeformCanvas } from '../../src/ui/freeform-canvas-port';
 import type { TimelineControls } from '../../src/ui/timeline-bridge';
 import type { DashboardHost, ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
 
@@ -65,10 +77,17 @@ function workspaceView() {
 	const timeline = vi.fn(() => timelineBridge);
 	const beatSheetBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
 	const beatSheet = vi.fn(() => beatSheetBridge);
+	const freeformBridge = { read: vi.fn(() => Promise.resolve(null)), subscribe: vi.fn(() => () => undefined) };
+	const freeform = vi.fn(() => freeformBridge);
+	const freeformHandle = {
+		refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: vi.fn(() => false), dispose: vi.fn(),
+	};
+	const freeformCanvas: MountFreeformCanvas = () => { throw new Error('The engine is stubbed in this test.'); };
+	const renderFreeform = vi.fn((_host: HTMLElement, _controls: FreeformControls) => freeformHandle);
 	const view = new SnowflakeStoryStructureView({
 		app: { scope: {}, workspace },
 	} as unknown as WorkspaceLeaf, {
-		host: { loadDashboardModel, openStoryStructure, activateProject, timeline, beatSheet,
+		host: { loadDashboardModel, openStoryStructure, activateProject, timeline, beatSheet, freeform,
 			getRecentStep: () => 8 } as unknown as DashboardHost,
 		fingerprint: () => `en|${recent ?? ''}`,
 		recentProjectPath: () => recent,
@@ -77,6 +96,8 @@ function workspaceView() {
 		corkboard: () => { throw new Error('The frame is stubbed in this test.'); },
 		timeline: () => { throw new Error('The frame is stubbed in this test.'); },
 		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
+		freeform: renderFreeform,
+		freeformCanvas,
 	});
 	const renderFrame = vi.fn();
 	// Preserve the real state lifecycle and project reads; rendering the
@@ -87,6 +108,7 @@ function workspaceView() {
 		renderError: (error: unknown) => { throw error; },
 	});
 	return { view, workspace, loadDashboardModel, openStoryStructure, activateProject, renderFrame, timelineBridge, beatSheetBridge,
+		freeformBridge, freeformHandle, freeformCanvas, renderFreeform,
 		setRecent: (path: string | null) => { recent = path; } };
 }
 
@@ -719,5 +741,126 @@ describe('the beat sheet tab', () => {
 		await view.setState({ projectPath: renamed, visualization: 'beat-sheet' }, { history: false });
 		controls.bridge();
 		expect(asked).toEqual([firstProject, renamed]);
+	});
+});
+
+describe('the freeform tab', () => {
+	const mounted = () => {
+		const fixture = workspaceView();
+		const dom = new CorkboardDom();
+		const deps = (fixture.view as unknown as { deps: { host: Record<string, unknown> } }).deps;
+		// The tab turned to after the canvas is one that stands, so the turn itself is what is read.
+		const other = {
+			refresh: vi.fn(), reveal: vi.fn(), remeasure: vi.fn(), saveFocusedConflict: () => false, dispose: vi.fn(),
+		};
+		Object.assign(deps, { timeline: vi.fn(() => other) });
+		Object.assign(deps.host, { translateForProject: (_locale: unknown, key: string) => key });
+		delete (fixture.view as unknown as { renderFrame?: unknown }).renderFrame;
+		Object.assign(fixture.view, { contentEl: dom.container });
+		return { ...fixture, dom, deps };
+	};
+
+	it('mounts the freeform workspace in a host of its own, refreshes it in place and disposes it on a switch', async () => {
+		const { view, dom, renderFreeform, freeformHandle, freeformBridge, freeformCanvas } = mounted();
+		await view.setState({ projectPath: firstProject, visualization: 'corkboard-freeform' }, { history: false });
+		await view.onOpen();
+		expect(renderFreeform).toHaveBeenCalledOnce();
+		const host = dom.container.querySelector('.snowflake-method-freeform-host')!;
+		// The canvas pans and is never scrolled, so the field stands still round it.
+		expect(host.parent?.classes.has('is-self-scrolling')).toBe(true);
+		expect(dom.container.querySelector('.snowflake-method-tab-planned')).toBeNull();
+		const controls = renderFreeform.mock.calls[0]![1];
+		expect(controls.bridge()).toBe(freeformBridge);
+		expect(controls.bridge()).toBe(freeformBridge);
+		expect(controls.projectPath()).toBe(firstProject);
+		expect(controls.mountCanvas).toBe(freeformCanvas);
+		expect(controls.component).toBe(view);
+		await view.refresh();
+		expect(freeformHandle.refresh).toHaveBeenCalledOnce();
+		expect(freeformHandle.dispose).not.toHaveBeenCalled();
+		view.showVisualization('timeline');
+		expect(freeformHandle.dispose).toHaveBeenCalledOnce();
+		expect(dom.container.querySelector('.snowflake-method-freeform-host')).toBeNull();
+	});
+
+	it('keeps the view on show and the two switches with the tab, and where each view was looked at from for the session', async () => {
+		const { view, renderFreeform, workspace } = mounted();
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'corkboard-freeform',
+			freeform: { viewId: 'freeform-view-a', minimap: true, snap: true },
+		}, { history: false });
+		await view.onOpen();
+		const { memory, remember } = renderFreeform.mock.calls[0]![1];
+		expect(memory).toMatchObject({ viewId: 'freeform-view-a', minimap: true, snap: true });
+		// What the workspace changes in its memory is what the tab saves.
+		memory.viewId = 'freeform-view-b';
+		memory.snap = false;
+		memory.viewports.set('freeform-view-b', { x: 10, y: 20, zoom: 0.5 });
+		remember();
+		expect(workspace.requestSaveLayout).toHaveBeenCalled();
+		expect(view.getState()).toMatchObject({ freeform: { viewId: 'freeform-view-b', minimap: true, snap: false } });
+		// Where a view was looked at from is the session's, and is kept out of the layout.
+		expect((view.getState().freeform as Record<string, unknown>).viewports).toBeUndefined();
+	});
+
+	it('keeps which view is shown across the first load, and forgets where views were looked at from with the project', async () => {
+		const { view, renderFreeform, loadDashboardModel } = mounted();
+		await view.setState({
+			projectPath: firstProject,
+			visualization: 'corkboard-freeform',
+			freeform: { viewId: 'freeform-view-a' },
+		}, { history: false });
+		await view.onOpen();
+		const { memory } = renderFreeform.mock.calls[0]![1];
+		// The first load is a project where there was none: it must not take the restored view with it.
+		expect(memory.viewId).toBe('freeform-view-a');
+		memory.viewports.set('freeform-view-a', { x: 1, y: 2, zoom: 1 });
+		loadDashboardModel.mockImplementation((path: string) =>
+			Promise.resolve({ path, projectId: 'another', title: path, locale: 'en' } as ProjectDashboardModel));
+		await view.setState({ projectPath: secondProject, visualization: 'corkboard-freeform' }, { history: false });
+		expect(memory.viewports.size).toBe(0);
+	});
+
+	it('lends the workspace its key scope, and takes a chord back when asked', async () => {
+		const { view, renderFreeform } = mounted();
+		await view.setState({ projectPath: firstProject, visualization: 'corkboard-freeform' }, { history: false });
+		await view.onOpen();
+		const { chord } = renderFreeform.mock.calls[0]![1];
+		const scope = (view as unknown as { scope: { heard: { modifiers: string[]; key: string }[] } }).scope;
+		const before = scope.heard.length;
+		const stop = chord(['Shift'], '1', () => false);
+		expect(scope.heard.slice(before)).toEqual([{ modifiers: ['Shift'], key: '1' }]);
+		stop();
+		expect(scope.heard).toHaveLength(before);
+	});
+
+	it('hands the workspace a bridge for the path it was handed, remade when a rename moves it', async () => {
+		const { view, renderFreeform, deps, loadDashboardModel } = mounted();
+		const asked: string[] = [];
+		const built = deps.host.freeform as (context: { projectPath: string }) => unknown;
+		Object.assign(deps.host, {
+			freeform: (context: { projectPath: string }) => { asked.push(context.projectPath); return built(context); },
+		});
+		const renamed = 'Renamed/First.md';
+		loadDashboardModel.mockImplementation((path: string) =>
+			Promise.resolve({ path, projectId: 'first', title: path, locale: 'en' } as ProjectDashboardModel));
+		await view.setState({ projectPath: firstProject, visualization: 'corkboard-freeform' }, { history: false });
+		await view.onOpen();
+		const controls = renderFreeform.mock.calls[0]![1];
+		controls.bridge();
+		controls.bridge();
+		expect(asked).toEqual([firstProject]);
+		await view.setState({ projectPath: renamed, visualization: 'corkboard-freeform' }, { history: false });
+		controls.bridge();
+		expect(asked).toEqual([firstProject, renamed]);
+	});
+
+	it('keeps the words of a text node on the chord the view hears ahead of the app', async () => {
+		const { view, freeformHandle } = mounted();
+		await view.setState({ projectPath: firstProject, visualization: 'corkboard-freeform' }, { history: false });
+		await view.onOpen();
+		const board = (view as unknown as { board: { saveFocusedConflict(): boolean } | null }).board;
+		expect(board).toBe(freeformHandle);
 	});
 });

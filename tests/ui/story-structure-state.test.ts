@@ -8,9 +8,11 @@ import {
 	beatSheetMemory,
 	corkboardMemory,
 	defaultBeatSheetSettings,
+	defaultFreeformSettings,
 	defaultStoryStructureState,
 	defaultTimelineSettings,
 	familyVisualization,
+	freeformMemory,
 	isCorkboardGroupField,
 	isCorkboardMode,
 	isStoryStructureVisualization,
@@ -25,6 +27,7 @@ const current: StoryStructureViewStateSnapshot = {
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
+	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false },
 };
 
 describe('story structure restored state', () => {
@@ -41,6 +44,7 @@ describe('story structure restored state', () => {
 				corkboard: { mode: 'extended', group: 'color', reversed: true },
 				timeline: defaultTimelineSettings(),
 				beatSheet: defaultBeatSheetSettings(),
+				freeform: defaultFreeformSettings(),
 			},
 			changed: true,
 		});
@@ -63,6 +67,7 @@ describe('story structure restored state', () => {
 			corkboard: { mode: 'compact', group: '', reversed: true },
 			timeline: current.timeline,
 			beatSheet: current.beatSheet,
+			freeform: current.freeform,
 		});
 		expect(update.changed).toBe(true);
 	});
@@ -160,6 +165,41 @@ describe('story structure restored state', () => {
 		// The timeline's fold is the timeline's: naming it under the beat sheet moves nothing.
 		expect(mergeStoryStructureViewState(current, { beatSheet: { timeCollapsed: true } })).toEqual({ state: current, changed: false });
 		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false });
+	});
+
+	it("restores the freeform canvas's view and its two switches one by one, ignoring what is not one of its own", () => {
+		expect(
+			mergeStoryStructureViewState(current, {
+				freeform: { viewId: 'freeform-view-b', minimap: 'yes', snap: true },
+			}),
+		).toEqual({
+			state: { ...current, freeform: { viewId: 'freeform-view-b', minimap: true, snap: true } },
+			changed: true,
+		});
+		// A tab may name no view, which is the word for the one changed last.
+		expect(mergeStoryStructureViewState(current, { freeform: { viewId: null } })).toEqual({
+			state: { ...current, freeform: { ...current.freeform, viewId: null } },
+			changed: true,
+		});
+		for (const viewId of ['', 7, {}, undefined]) {
+			expect(mergeStoryStructureViewState(current, { freeform: { viewId } })).toEqual({ state: current, changed: false });
+		}
+		expect(mergeStoryStructureViewState(current, { freeform: 7 })).toEqual({ state: current, changed: false });
+		expect(mergeStoryStructureViewState(current, { freeform: { minimap: false } })).toEqual({
+			state: { ...current, freeform: { ...current.freeform, minimap: false } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { freeform: { snap: 1 } })).toEqual({ state: current, changed: false });
+		expect(defaultStoryStructureState().freeform).toEqual({ viewId: null, minimap: false, snap: false });
+	});
+
+	it('starts a mount of the freeform canvas from what the tab kept, with nowhere looked at from yet', () => {
+		const memory = freeformMemory(current.freeform);
+		expect(memory).toMatchObject({ viewId: 'freeform-view-a', minimap: true, snap: false });
+		expect(memory.viewports.size).toBe(0);
+		expect(freeformMemory()).toMatchObject({ viewId: null, minimap: false, snap: false });
+		// Two mounts share nothing.
+		expect(freeformMemory().viewports).not.toBe(freeformMemory().viewports);
 	});
 
 	it('starts a mount of the beat sheet from what the tab kept, with nothing of the session in it', () => {

@@ -15201,3 +15201,527 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
   border-bottom-width: 1px;
   top: 100%;
 }
+
+/* == Freeform workspace =================================================== */
+
+/* The workspace fills the field the tab opens onto: its toolbar on the
+   strip's row, as its siblings' stand, and under it the canvas, which takes
+   all the room there is. */
+.snowflake-method-freeform-host,
+.snowflake-method-freeform {
+	height: 100%;
+}
+
+.snowflake-method-freeform {
+	gap: 0;
+}
+
+.snowflake-method-freeform-toolbar {
+	position: absolute;
+	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
+	inset-inline: 0;
+	height: var(--snowflake-method-tab-height, 2.75rem);
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	/* Too narrow for all of it, the toolbar is drawn along by the finger, as
+	   the strip of tabs above it is: nothing on it is ever out of reach. */
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.snowflake-method-freeform-toolbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* The app shows whatever an element is called as a tooltip under the
+   pointer, which is right for a button and wrong for a bar, a canvas or a
+   card: their names are for a reader that cannot see them, and a pointer
+   resting on the canvas would wear its name for as long as it rested. The
+   app's own word for an element that shows none is said on those, and
+   taken back on the controls that stand in them. */
+.snowflake-method-freeform-toolbar,
+.snowflake-method-freeform-controls,
+.snowflake-method-freeform-canvas .react-flow {
+	--no-tooltip: true;
+}
+
+.snowflake-method-freeform-toolbar > *,
+.snowflake-method-freeform-controls > *,
+.snowflake-method-freeform-face .clickable-icon {
+	--no-tooltip: false;
+}
+
+/* The view field is typed into and picked from, as the timeline's is, and
+   gives up its width before the buttons give up theirs. */
+.snowflake-method-freeform-toolbar .snowflake-method-freeform-view-select {
+	flex: 0 1 16rem;
+	min-width: 6rem;
+}
+
+/* The pencil edits the view named beside it, so it stands by the field; the
+   symbols that follow stand at the toolbar's end, from the first of them. */
+.snowflake-method-freeform-toolbar .snowflake-method-freeform-refresh {
+	margin-inline-start: auto;
+}
+
+.snowflake-method-freeform-view-add,
+.snowflake-method-freeform-node-add {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+.snowflake-method-freeform .snowflake-method-character-empty {
+	flex: 0 0 auto;
+}
+
+.snowflake-method-freeform .snowflake-method-character-empty.is-hidden,
+.snowflake-method-freeform-stage.is-hidden,
+.snowflake-method-freeform-hint.is-hidden {
+	display: none;
+}
+
+/* The stage: the canvas, the word said of one that holds nothing, and the
+   canvas's own controls laid over its corner. */
+.snowflake-method-freeform-stage {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--canvas-background, var(--background-primary));
+}
+
+.snowflake-method-freeform-ground,
+.snowflake-method-freeform-engine {
+	position: absolute;
+	inset: 0;
+}
+
+.snowflake-method-freeform-ground:focus {
+	outline: none;
+}
+
+.snowflake-method-freeform-flow {
+	width: 100%;
+	height: 100%;
+}
+
+/* The word stands over the canvas and takes no press from it: the ground
+   under it is still the ground, to be pressed, dragged and asked for its menu. */
+.snowflake-method-freeform-hint {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+}
+
+.snowflake-method-freeform-hint .snowflake-method-character-empty {
+	margin: 0;
+}
+
+/* The canvas's controls stand in its corner, where the app's own canvas
+   keeps its own, on a ground of their own so they read over whatever
+   passes under them. */
+.snowflake-method-freeform-controls {
+	position: absolute;
+	inset-block-start: var(--size-4-2);
+	inset-inline-end: var(--size-4-2);
+	z-index: 6;
+	display: flex;
+	/* On a canvas too narrow for one row of them, they take a second. */
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--size-2-1);
+	max-width: calc(100% - 2 * var(--size-4-2));
+	padding: var(--size-2-1);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.snowflake-method-freeform-controls .clickable-icon {
+	--icon-size: var(--icon-s);
+	flex: 0 0 auto;
+}
+
+.snowflake-method-freeform-controls .clickable-icon[aria-pressed='true'] {
+	background-color: var(--background-modifier-hover);
+	color: var(--interactive-accent);
+}
+
+/* How near the canvas is looked at, in figures that keep their width as
+   they change, so the buttons beside them never move under the pointer. */
+.snowflake-method-freeform-zoom-level {
+	flex: 0 0 auto;
+	min-width: 3.25em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+}
+
+/* Fit and Reset are words, dressed as the symbols beside them are. */
+.snowflake-method-freeform-controls button.snowflake-method-freeform-control {
+	flex: 0 0 auto;
+	height: auto;
+	padding: var(--size-2-2) var(--size-4-2);
+	border: 0;
+	border-radius: var(--clickable-icon-radius, var(--radius-s));
+	background-color: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.snowflake-method-freeform-controls button.snowflake-method-freeform-control:hover:not(:disabled) {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-freeform-controls button.snowflake-method-freeform-control:disabled {
+	opacity: 0.5;
+}
+
+/* What the engine draws is coloured from the theme: every name the
+   library's own sheet reads, said again in the theme's tokens. */
+.snowflake-method-freeform-canvas .react-flow {
+	--xy-background-color: transparent;
+	/* The ground's dots are the app's own canvas's, where the theme names them. */
+	--xy-background-pattern-color: var(--canvas-dot-pattern, var(--background-modifier-border-hover));
+	/* A line is what a diagram says, so it is inked between the theme's quiet
+	   ink and its faint one: the faint one alone stands too little off the
+	   ground, in the dark theme least of all. */
+	--xy-edge-stroke: color-mix(in srgb, var(--text-muted), var(--text-faint));
+	--xy-edge-stroke-width: 2;
+	--xy-edge-stroke-selected: var(--interactive-accent);
+	--xy-connectionline-stroke: var(--interactive-accent);
+	--xy-connectionline-stroke-width: 2;
+	--xy-node-color: var(--text-normal);
+	--xy-selection-background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	--xy-selection-border: 1px dashed var(--interactive-accent);
+	--xy-resize-background-color: var(--interactive-accent);
+	--xy-minimap-background-color: var(--background-secondary);
+	--xy-minimap-mask-background-color: color-mix(in srgb, var(--background-primary) 65%, transparent);
+	--xy-minimap-mask-stroke-color: var(--background-modifier-border);
+	--xy-minimap-node-background-color: var(--background-modifier-border-hover);
+	--xy-minimap-node-stroke-color: transparent;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
+}
+
+/* A node is its box, which the engine places and sizes. The box itself
+   wears no edge: a line's end is worked out from the box's own sides, and an
+   edge drawn on the box would stand every handle a pixel in from where the
+   engine was told it is. The edge is the face's, inside the box. */
+.snowflake-method-freeform-canvas .react-flow__node.snowflake-method-freeform-node {
+	border-radius: var(--radius-m);
+	cursor: grab;
+}
+
+.snowflake-method-freeform-canvas .react-flow__node.snowflake-method-freeform-node.dragging {
+	cursor: grabbing;
+}
+
+.snowflake-method-freeform-canvas .react-flow__node.snowflake-method-freeform-node:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.snowflake-method-freeform-node-body {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+}
+
+.snowflake-method-freeform-face {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: inherit;
+	background-color: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	line-height: var(--line-height-normal);
+}
+
+.snowflake-method-freeform-face.is-selected {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* The way to a node's menu stands in its corner and is always in sight: a
+   control that is always there needs no hover to be found, on a touch
+   screen least of all. It is set at the words' end so they run round it and
+   never under it. */
+.snowflake-method-freeform-face .clickable-icon.snowflake-method-freeform-node-more {
+	--icon-size: var(--icon-s);
+	float: inline-end;
+	width: var(--snowflake-method-corkboard-action-size, 1.5rem);
+	margin-block: calc(-1 * var(--size-2-2)) 0;
+	margin-inline: var(--size-2-2) calc(-1 * var(--size-2-2));
+	padding-inline: 0;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+
+.snowflake-method-freeform-face .clickable-icon.snowflake-method-freeform-node-more:hover {
+	color: var(--text-normal);
+}
+
+/* A text node: its words drawn as a note's are, cut at the box's foot. The
+   first and the last of them give up the room a note keeps above and below,
+   which here is the face's own to keep. */
+.snowflake-method-freeform-face.is-text {
+	padding: var(--size-4-3);
+}
+
+.snowflake-method-freeform-text {
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+
+.snowflake-method-freeform-words > :first-child {
+	margin-block-start: 0;
+}
+
+.snowflake-method-freeform-words > :last-child {
+	margin-block-end: 0;
+}
+
+/* A box ticked among drawn words would be a change nowhere written. */
+.snowflake-method-freeform-text input[type='checkbox'] {
+	pointer-events: none;
+}
+
+/* Its barest face is the first of its words on one line. */
+.snowflake-method-freeform-face.is-text[data-mode='compact'] .snowflake-method-freeform-words > * {
+	display: none;
+}
+
+.snowflake-method-freeform-face.is-text[data-mode='compact'] .snowflake-method-freeform-words > :first-child {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Typed into, the field lies over the whole face and keeps the face's own
+   measures, so the words stand where they will be drawn. */
+.snowflake-method-freeform-face.is-editing .snowflake-method-freeform-text,
+.snowflake-method-freeform-face.is-editing .snowflake-method-freeform-node-more {
+	visibility: hidden;
+}
+
+.snowflake-method-freeform-face textarea.snowflake-method-freeform-text-field {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: var(--size-4-3);
+	border: 0;
+	border-radius: inherit;
+	background-color: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-normal);
+	font: inherit;
+	line-height: inherit;
+	resize: none;
+	cursor: text;
+	user-select: text;
+}
+
+.snowflake-method-freeform-face textarea.snowflake-method-freeform-text-field:focus,
+.snowflake-method-freeform-face textarea.snowflake-method-freeform-text-field:focus-visible {
+	border: 0;
+	box-shadow: none;
+	outline: none;
+}
+
+/* A node of any kind that has no face of its own yet: its symbol, and what
+   it is called, on one line. */
+.snowflake-method-freeform-face.is-plain {
+	padding: var(--size-4-3);
+}
+
+.snowflake-method-freeform-face-icon {
+	display: inline-flex;
+	vertical-align: middle;
+	margin-inline-end: var(--size-4-2);
+	color: var(--text-muted);
+}
+
+.snowflake-method-freeform-face-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-freeform-face-name {
+	overflow-wrap: anywhere;
+	font-weight: var(--font-medium);
+}
+
+.snowflake-method-freeform-face.is-plain[data-type='missing'] .snowflake-method-freeform-face-icon {
+	color: var(--text-warning);
+}
+
+.snowflake-method-freeform-face.is-plain[data-type='missing'] .snowflake-method-freeform-face-name,
+.snowflake-method-freeform-face.is-plain[data-type='pending'] .snowflake-method-freeform-face-name {
+	color: var(--text-muted);
+}
+
+/* A frame is a ground, not a card: it is seen through, its edge is quiet,
+   and its title stands at its head. */
+.snowflake-method-freeform-canvas .react-flow__node.snowflake-method-freeform-node.is-frame {
+	border-radius: var(--radius-l);
+}
+
+.snowflake-method-freeform-face.is-frame {
+	--snowflake-method-freeform-tint: var(--text-faint);
+	border-color: color-mix(in srgb, var(--snowflake-method-freeform-tint) 45%, transparent);
+	background-color: color-mix(in srgb, var(--snowflake-method-freeform-tint) 8%, transparent);
+	box-shadow: none;
+}
+
+.snowflake-method-freeform-face.is-frame.is-selected {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.snowflake-method-freeform-frame-head {
+	padding: var(--size-4-2) var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.snowflake-method-freeform-frame-title {
+	overflow-wrap: anywhere;
+}
+
+.snowflake-method-freeform-frame-title.is-untitled {
+	color: var(--text-faint);
+	font-style: italic;
+	font-weight: var(--font-normal);
+}
+
+/* The four places a line leaves a node by. Each is a box one unit each way
+   standing just inside the middle of its side, where the engine was told it
+   stands, so a line ends on the side itself; what is seen and pressed is the
+   dot drawn round it, which can be any size without moving a line's end. */
+.snowflake-method-freeform-canvas .react-flow__handle.snowflake-method-freeform-handle {
+	width: 1px;
+	height: 1px;
+	min-width: 1px;
+	min-height: 1px;
+	border: 0;
+	border-radius: 0;
+	background-color: transparent;
+	transform: none;
+}
+
+.snowflake-method-freeform-canvas .react-flow__handle-top.snowflake-method-freeform-handle {
+	inset: 0 auto auto calc(50% - 0.5px);
+}
+
+.snowflake-method-freeform-canvas .react-flow__handle-right.snowflake-method-freeform-handle {
+	inset: calc(50% - 0.5px) auto auto calc(100% - 1px);
+}
+
+.snowflake-method-freeform-canvas .react-flow__handle-bottom.snowflake-method-freeform-handle {
+	inset: calc(100% - 1px) auto auto calc(50% - 0.5px);
+}
+
+.snowflake-method-freeform-canvas .react-flow__handle-left.snowflake-method-freeform-handle {
+	inset: calc(50% - 0.5px) auto auto 0;
+}
+
+.snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
+	content: '';
+	position: absolute;
+	inset: -5px;
+	border: 2px solid var(--background-primary);
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* A dot is shown where a line may start from it: on the node under the
+   pointer, and on the node chosen. */
+.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectable::before {
+	pointer-events: auto;
+}
+
+.snowflake-method-freeform-canvas .react-flow__node:hover .snowflake-method-freeform-handle.connectable::before,
+.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {
+	opacity: 1;
+}
+
+/* The corners and the sides a chosen node is sized by. */
+.snowflake-method-freeform-canvas .react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {
+	width: 9px;
+	height: 9px;
+	border: 1px solid var(--background-primary);
+	border-radius: 2px;
+}
+
+/* A line's words stand on the line, on a ground of their own. */
+.snowflake-method-freeform-edge-label {
+	position: absolute;
+	padding: 0 var(--size-2-3);
+	border-radius: var(--radius-s);
+	background-color: var(--background-primary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	pointer-events: all;
+}
+
+.snowflake-method-freeform-edge-label.is-selected {
+	color: var(--interactive-accent);
+}
+
+.snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dashed .react-flow__edge-path {
+	stroke-dasharray: 8 6;
+}
+
+.snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dotted .react-flow__edge-path {
+	stroke-dasharray: 1 6;
+	stroke-linecap: round;
+}
+
+.snowflake-method-freeform-canvas .react-flow__minimap.snowflake-method-freeform-minimap {
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+}
+
+/* A finger needs more to take hold of than a pointer does: the dots a line
+   starts from, the corners a node is sized by, and the controls. Nothing
+   here is brought into sight that a pointer would have had to find. */
+@media (pointer: coarse) {
+	.snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
+		inset: -9px;
+	}
+
+	.snowflake-method-freeform-canvas .react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {
+		width: 17px;
+		height: 17px;
+		border-radius: 4px;
+	}
+
+	.snowflake-method-freeform-controls {
+		gap: var(--size-2-3);
+	}
+}

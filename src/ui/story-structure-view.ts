@@ -1,11 +1,10 @@
 /**
  * The Story Structure view: the family of visualizations a story's scenes
- * can be looked at through, each in a tab of the strip at the top, the
- * corkboard, the timeline and the beat sheet built and the freeform board
- * holding its place. A main-area
- * leaf that keeps its own project across dashboard switches and reloads.
- * Several projects may stand open at once: a modifier
- * click on a tab opens that visualization in a leaf of its own.
+ * can be looked at through, each in a tab of the strip at the top: the
+ * corkboard, the freeform canvas, the timeline and the beat sheet. A
+ * main-area leaf that keeps its own project across dashboard switches and
+ * reloads. Several projects may stand open at once: a modifier click on a
+ * tab opens that visualization in a leaf of its own.
  */
 
 import {
@@ -29,6 +28,13 @@ import type {
 	RenderCorkboard,
 } from './corkboard-bridge';
 import { FilterPanel } from './filter-panel';
+import type {
+	FreeformBridge,
+	FreeformControls,
+	FreeformHandle,
+	RenderFreeform,
+} from './freeform-bridge';
+import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { Translate } from './modals';
 import { renderTabStrip } from './pane-parts';
 import { clearSceneFilters } from './scene-filters';
@@ -38,6 +44,7 @@ import {
 	corkboardMemory,
 	defaultStoryStructureState,
 	familyVisualization,
+	freeformMemory,
 	mergeStoryStructureViewState,
 	readCorkboardPreferences,
 	timelineMemory,
@@ -45,6 +52,7 @@ import {
 	type BeatSheetMemory,
 	type CorkboardMemory,
 	type CorkboardPreferences,
+	type FreeformMemory,
 	type StoryStructureViewStateSnapshot,
 	type StoryStructureVisualization,
 	type TimelineMemory,
@@ -71,6 +79,9 @@ export interface StoryStructureViewDeps {
 	corkboard: RenderCorkboard;
 	timeline: RenderTimeline;
 	beatSheet: RenderBeatSheet;
+	freeform: RenderFreeform;
+	/** Raises the freeform canvas's engine, whose code is not taken until a canvas is first shown. */
+	freeformCanvas: MountFreeformCanvas;
 	/** Remains truthful for drafts from leaves that closed before the plugin unloads. */
 	unloading?(): boolean;
 }
@@ -79,13 +90,16 @@ export class SnowflakeStoryStructureView extends ItemView {
 	private state: StoryStructureViewStateSnapshot = defaultStoryStructureState();
 	private readonly memory: CorkboardMemory = corkboardMemory();
 	private model: ProjectDashboardModel | null = null;
-	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | null = null;
+	private board: CorkboardHandle | TimelineHandle | BeatSheetHandle | FreeformHandle | null = null;
 	private readonly timelineMemory: TimelineMemory = timelineMemory();
 	private readonly beatSheetMemory: BeatSheetMemory = beatSheetMemory();
+	private readonly freeformMemory: FreeformMemory = freeformMemory();
 	/** The timeline bridge for the project's path, remade when a rename moves it. */
 	private timelineBridge: { path: string; bridge: TimelineBridge } | null = null;
 	/** The beat sheet's, kept the same way. */
 	private beatSheetBridge: { path: string; bridge: BeatSheetBridge } | null = null;
+	/** The freeform canvas's, kept the same way. */
+	private freeformBridge: { path: string; bridge: FreeformBridge } | null = null;
 	/** What the frame on show was built for; null while nothing is drawn. */
 	private shownFrame: string | null = null;
 	private shownFingerprint: string | null = null;
@@ -180,6 +194,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.beatSheetMemory.pool.reversed = update.state.beatSheet.pool.reversed;
 		this.beatSheetMemory.poolCollapsed = update.state.beatSheet.poolCollapsed;
 		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
+		this.freeformMemory.viewId = update.state.freeform.viewId;
+		this.freeformMemory.minimap = update.state.freeform.minimap;
+		this.freeformMemory.snap = update.state.freeform.snap;
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first
@@ -220,6 +237,11 @@ export class SnowflakeStoryStructureView extends ItemView {
 				poolCollapsed: this.beatSheetMemory.poolCollapsed,
 				beatsCollapsed: this.beatSheetMemory.beatsCollapsed,
 			},
+			freeform: {
+				viewId: this.freeformMemory.viewId,
+				minimap: this.freeformMemory.minimap,
+				snap: this.freeformMemory.snap,
+			},
 		};
 	}
 
@@ -238,6 +260,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.beatSheetMemory.pool.scrollTop = 0;
 		this.beatSheetMemory.stackPositions.clear();
 		this.beatSheetMemory.scroll = { left: 0, top: 0 };
+		// Which view is shown is kept: it is the saved layout's to say, and one
+		// that names no view of the project standing falls back by itself.
+		this.freeformMemory.viewports.clear();
 	}
 
 	async onOpen(): Promise<void> {
@@ -445,10 +470,9 @@ export class SnowflakeStoryStructureView extends ItemView {
 			this.board = this.deps.beatSheet(host, this.beatSheetControls());
 			return;
 		}
-		body.createEl('p', {
-			cls: 'snowflake-method-tab-planned',
-			text: this.t('statistics.tab.planned'),
-		});
+		body.addClass('is-self-scrolling');
+		const host = body.createDiv({ cls: 'snowflake-method-freeform-host' });
+		this.board = this.deps.freeform(host, this.freeformControls());
 	}
 
 	/** A plain click shows the visualization here; a modifier click opens it in a leaf of its own. */
@@ -523,6 +547,48 @@ export class SnowflakeStoryStructureView extends ItemView {
 			corkboard: this.deps.corkboard,
 			unloading: () => this.unloading || this.deps.unloading?.() === true,
 		};
+	}
+
+	private freeformControls(): FreeformControls {
+		return {
+			app: this.app,
+			host: this.deps.host,
+			t: this.t,
+			model: () => this.model,
+			projectPath: () => this.state.projectPath,
+			activateProject: () => this.activateProjectContext(),
+			refresh: () => this.refresh(),
+			bridge: () => this.freeformBridgeFor(),
+			memory: this.freeformMemory,
+			remember: () => {
+				this.app.workspace.requestSaveLayout();
+			},
+			unloading: () => this.unloading || this.deps.unloading?.() === true,
+			component: this,
+			chord: (modifiers, key, listener) => {
+				const scope = this.scope;
+				if (scope === null) return () => undefined;
+				const handler = scope.register(modifiers, key, listener);
+				return () => {
+					scope.unregister(handler);
+				};
+			},
+			mountCanvas: this.deps.freeformCanvas,
+			// The plugin's own window is the one its code was loaded in.
+			atHome: (element) => element.win === window,
+		};
+	}
+
+	/** The freeform canvas's bridge for the project's path as it stands now, remade when a rename moves it. */
+	private freeformBridgeFor(): FreeformBridge {
+		const path = this.state.projectPath ?? this.model?.path ?? '';
+		if (this.freeformBridge === null || this.freeformBridge.path !== path) {
+			this.freeformBridge = {
+				path,
+				bridge: this.deps.host.freeform({ projectPath: path, locale: this.model?.locale ?? null }),
+			};
+		}
+		return this.freeformBridge.bridge;
 	}
 
 	/** The beat sheet's bridge for the project's path as it stands now, remade when a rename moves it. */

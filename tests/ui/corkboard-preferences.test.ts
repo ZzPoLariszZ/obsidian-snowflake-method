@@ -69,6 +69,8 @@ function workspaceView(store: ReturnType<typeof preferenceStore>) {
 		corkboard: () => { throw new Error('The frame is stubbed in this test.'); },
 		timeline: () => { throw new Error('The frame is stubbed in this test.'); },
 		beatSheet: () => { throw new Error('The frame is stubbed in this test.'); },
+		freeform: () => { throw new Error('The frame is stubbed in this test.'); },
+		freeformCanvas: () => { throw new Error('The engine is stubbed in this test.'); },
 	});
 	// Keep the real view lifecycle, preference storage and board callbacks;
 	// scene rendering does not affect which settings survive closing a tab.

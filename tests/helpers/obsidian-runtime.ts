@@ -138,6 +138,10 @@ export class Menu {
 	showAtMouseEvent(): this {
 		return this;
 	}
+	showAtPosition(): this {
+		return this;
+	}
+	onHide(): void {}
 	hide(): this {
 		return this;
 	}

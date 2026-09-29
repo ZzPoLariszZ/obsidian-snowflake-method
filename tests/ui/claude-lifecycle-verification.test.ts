@@ -74,6 +74,8 @@ function workspaceView() {
 		corkboard: () => board,
 		timeline: () => board,
 		beatSheet: () => board,
+		freeform: () => board,
+		freeformCanvas: () => { throw new Error('The engine is stubbed in this test.'); },
 	});
 	Object.assign(dom.container, { isShown: () => shown });
 	Object.assign(view, { contentEl: content, containerEl: dom.container });

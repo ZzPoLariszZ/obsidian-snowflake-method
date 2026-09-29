@@ -20,7 +20,7 @@
  * plugin unloading says another thing than it did at the render.
  */
 
-import { getIcon, setIcon, setTooltip, type App, type Modal } from 'obsidian';
+import { getIcon, setIcon, setTooltip, type App, type Menu, type Modal } from 'obsidian';
 
 import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
 import type { LentFilterPopover } from './filter-rows';
@@ -508,6 +508,43 @@ export function createModalKeeper(): ModalKeeper {
 		standing.clear();
 	};
 	return { keep, closeAll };
+}
+
+export interface MenuKeeper {
+	/** Takes a menu into the workspace's keeping until it is hidden, and hands it back to be shown. */
+	keep: <T extends Menu>(menu: T) => T;
+	/** Hides every menu still standing, as the workspace goes; `failed` is what is logged for one that would not hide. */
+	hideAll: (failed: string) => void;
+}
+
+/**
+ * A menu hangs in the window's own body, outside the workspace that opened
+ * it, so a workspace that goes while one stands would leave it behind,
+ * offering to change what is no longer there. They are kept as the dialogs
+ * are, and go as the workspace goes.
+ */
+export function createMenuKeeper(): MenuKeeper {
+	const standing = new Set<Menu>();
+	const keep = <T extends Menu>(menu: T): T => {
+		standing.add(menu);
+		menu.onHide(() => {
+			standing.delete(menu);
+		});
+		return menu;
+	};
+	const hideAll = (failed: string): void => {
+		// Each on its own, as the dialogs are closed: one that throws on the way
+		// out must not leave the rest standing.
+		for (const menu of [...standing]) {
+			try {
+				menu.hide();
+			} catch (error) {
+				console.error(failed, error);
+			}
+		}
+		standing.clear();
+	};
+	return { keep, hideAll };
 }
 
 // -- The deck the lanes' cards are dealt from ------------------------------------

@@ -221,6 +221,9 @@ export class CorkboardElement {
 	addEventListener(type: string, callback: (event: DomEvent) => void): void {
 		this.listeners.set(type, [...this.listeners.get(type) ?? [], callback]);
 	}
+	removeEventListener(type: string, callback: (event: DomEvent) => void): void {
+		this.listeners.set(type, (this.listeners.get(type) ?? []).filter((listener) => listener !== callback));
+	}
 	dispatch(type: string): void {
 		for (const listener of this.listeners.get(type) ?? []) {
 			listener({ target: this, preventDefault: () => undefined, stopPropagation: () => undefined });
@@ -229,6 +232,7 @@ export class CorkboardElement {
 	focus(): void { this.doc.activeElement = this; }
 	blur(): void { if (this.doc.activeElement === this) this.doc.activeElement = this.doc.body; }
 	select(): void {}
+	setSelectionRange(): void {}
 	remove(): void {
 		if (this.parent === null) return;
 		this.parent.children.splice(this.parent.children.indexOf(this), 1);

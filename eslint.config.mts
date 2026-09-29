@@ -1,4 +1,5 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
@@ -44,6 +45,16 @@ export default defineConfig(
 		rules: {
 			'obsidianmd/prefer-active-doc': 'error',
 			'obsidianmd/prefer-instanceof': 'error',
+		},
+	},
+	{
+		// The canvas engine is the plugin's one React file, and the two rules
+		// that keep a hook honest are the ones no type check makes.
+		files: ['src/**/*.tsx', 'tests/**/*.tsx'],
+		plugins: { 'react-hooks': reactHooks },
+		rules: {
+			'react-hooks/rules-of-hooks': 'error',
+			'react-hooks/exhaustive-deps': 'error',
 		},
 	},
 	{
@@ -117,6 +128,16 @@ export default defineConfig(
 		files: ['tests/**/*.dom.test.tsx'],
 		rules: {
 			'obsidianmd/prefer-create-el': 'off',
+		},
+	},
+	{
+		// The helper that gives such a document those helpers is where they are
+		// made, out of what the document has: it cannot be written in terms of
+		// what it is there to supply.
+		files: ['tests/helpers/obsidian-dom.ts'],
+		rules: {
+			'obsidianmd/prefer-create-el': 'off',
+			'obsidianmd/prefer-instanceof': 'off',
 		},
 	},
 );

@@ -321,6 +321,8 @@ import {
 } from './ui/story-structure-state';
 import { renderCorkboard } from './ui/corkboard';
 import { renderBeatSheet } from './ui/beat-sheet';
+import { renderFreeform } from './ui/freeform';
+import { freeformCanvasMount } from './ui/freeform-canvas';
 import { renderTimeline } from './ui/timeline';
 import type {
 	SessionPanelBridge,
@@ -977,6 +979,10 @@ export default class SnowflakeMethodPlugin
 					corkboard: renderCorkboard,
 					timeline: renderTimeline,
 					beatSheet: renderBeatSheet,
+					freeform: renderFreeform,
+					// The engine is React's, and its code is asked for only here:
+					// a project that never opens the canvas never runs a line of it.
+					freeformCanvas: freeformCanvasMount(() => import('./ui/freeform-canvas-root')),
 					unloading: () => this.unloading,
 				}),
 		);
@@ -8631,6 +8637,20 @@ export default class SnowflakeMethodPlugin
 							this.showError(error);
 						},
 					);
+				}
+				return available;
+			},
+		});
+		this.addCommand({
+			id: 'open-freeform',
+			name: this.globalT('commands.openFreeform'),
+			checkCallback: (checking) => {
+				const available = this.settings.recentProjectPath !== null;
+				if (!checking && available) {
+					// The tab's saved key is the one it has always had, so layouts kept before the canvas was built still open.
+					void this.openStoryStructure('corkboard-freeform').catch((error: unknown) => {
+						this.showError(error);
+					});
 				}
 				return available;
 			},

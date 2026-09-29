@@ -130,12 +130,30 @@ export function defaultBeatSheetSettings(): BeatSheetSettings {
 	return { pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false };
 }
 
+/**
+ * How the freeform canvas is set: the view the tab shows, and the two
+ * switches. A project keeps each of its views in a file of its own and no
+ * file is the whole project's, so which one is on show is the tab's to
+ * remember; a tab that names none, or one that has gone, shows the view
+ * changed last.
+ */
+export interface FreeformSettings {
+	viewId: string | null;
+	minimap: boolean;
+	snap: boolean;
+}
+
+export function defaultFreeformSettings(): FreeformSettings {
+	return { viewId: null, minimap: false, snap: false };
+}
+
 export interface StoryStructureViewStateSnapshot {
 	projectPath: string | null;
 	visualization: StoryStructureVisualization;
 	corkboard: CorkboardSettings;
 	timeline: TimelineSettings;
 	beatSheet: BeatSheetSettings;
+	freeform: FreeformSettings;
 }
 
 export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
@@ -145,6 +163,7 @@ export function defaultStoryStructureState(): StoryStructureViewStateSnapshot {
 		corkboard: { mode: 'standard', group: '', reversed: false },
 		timeline: defaultTimelineSettings(),
 		beatSheet: defaultBeatSheetSettings(),
+		freeform: defaultFreeformSettings(),
 	};
 }
 
@@ -222,7 +241,26 @@ export function mergeStoryStructureViewState(
 				? beatSheetCandidate.beatsCollapsed
 				: current.beatSheet.beatsCollapsed,
 	};
-	const state = { projectPath, visualization, corkboard, timeline, beatSheet };
+	const freeformCandidate =
+		typeof candidate.freeform === 'object' && candidate.freeform !== null
+			? (candidate.freeform as Record<string, unknown>)
+			: {};
+	const freeform: FreeformSettings = {
+		viewId:
+			freeformCandidate.viewId === null ||
+			(typeof freeformCandidate.viewId === 'string' && freeformCandidate.viewId.length > 0)
+				? freeformCandidate.viewId
+				: current.freeform.viewId,
+		minimap:
+			typeof freeformCandidate.minimap === 'boolean'
+				? freeformCandidate.minimap
+				: current.freeform.minimap,
+		snap:
+			typeof freeformCandidate.snap === 'boolean'
+				? freeformCandidate.snap
+				: current.freeform.snap,
+	};
+	const state = { projectPath, visualization, corkboard, timeline, beatSheet, freeform };
 	return {
 		state,
 		changed:
@@ -234,7 +272,10 @@ export function mergeStoryStructureViewState(
 			state.timeline.timeCollapsed !== current.timeline.timeCollapsed ||
 			!sameCorkboardSettings(state.beatSheet.pool, current.beatSheet.pool) ||
 			state.beatSheet.poolCollapsed !== current.beatSheet.poolCollapsed ||
-			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed,
+			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed ||
+			state.freeform.viewId !== current.freeform.viewId ||
+			state.freeform.minimap !== current.freeform.minimap ||
+			state.freeform.snap !== current.freeform.snap,
 	};
 }
 
@@ -312,4 +353,19 @@ export function beatSheetMemory(settings?: BeatSheetSettings): BeatSheetMemory {
 		beatsCollapsed: held.beatsCollapsed,
 		scroll: { left: 0, top: 0 },
 	};
+}
+
+/**
+ * What outlives a mount of the freeform canvas: the three settings the view
+ * persists, and what lasts the session -- where each view was looked at from
+ * in this tab, which a view's file says only for a tab that has not looked
+ * at it yet.
+ */
+export interface FreeformMemory extends FreeformSettings {
+	/** Where each view stands in this tab, by view id. */
+	viewports: Map<string, { x: number; y: number; zoom: number }>;
+}
+
+export function freeformMemory(settings?: FreeformSettings): FreeformMemory {
+	return { ...(settings ?? defaultFreeformSettings()), viewports: new Map() };
 }

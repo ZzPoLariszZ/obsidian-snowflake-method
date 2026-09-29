@@ -7,7 +7,7 @@
  * on show places one of it.
  */
 
-import type { App } from 'obsidian';
+import type { App, Component, KeymapEventListener, Modifier } from 'obsidian';
 
 import type {
 	FreeformDocument,
@@ -17,9 +17,11 @@ import type {
 	FreeformViewport,
 } from '../domain';
 import type { FreeformTransacted, FreeformViewWrite } from '../services';
+import type { MountFreeformCanvas } from './freeform-canvas-port';
 import type { FreeformResourceRequest, FreeformResources } from './freeform-resources';
 import type { Translate } from './modals';
 import type { SessionPanelContext } from './session-panel';
+import type { FreeformMemory } from './story-structure-state';
 import type { DashboardHost, ProjectDashboardModel } from './view-model';
 
 /**
@@ -78,14 +80,6 @@ export type FreeformHost = Pick<
 	| 'isReduceMotionEnabled'
 >;
 
-/** What the tab remembers of the workspace between sessions, and what lasts the session alone. */
-export interface FreeformMemory {
-	/** The view this tab shows; the view changed last where it names none that stands. */
-	viewId: string | null;
-	minimap: boolean;
-	snap: boolean;
-}
-
 export interface FreeformControls {
 	app: App;
 	host: FreeformHost;
@@ -105,6 +99,18 @@ export interface FreeformControls {
 	remember: () => void;
 	/** Unload still settles typed words, but a refusal cannot open another dialog. */
 	unloading?: () => boolean;
+	/** What rendered Markdown lives under: the view that mounts the workspace. */
+	component: Component;
+	/**
+	 * A chord heard while the tab is the active one, ahead of the app's own
+	 * keys. Hands back the way to stop hearing it. A listener that did not
+	 * take the key answers true, and the key goes on to whoever is next.
+	 */
+	chord: (modifiers: Modifier[], key: string, listener: KeymapEventListener) => () => void;
+	/** Raises the canvas's engine on an element; handed in so a test can stand a plain one in its place. */
+	mountCanvas: MountFreeformCanvas;
+	/** Whether the plugin's own window is the one the element stands in, which a view moved out is not in. */
+	atHome: (element: HTMLElement) => boolean;
 }
 
 /** The same shape as the corkboard's handle, the timeline's and the beat sheet's, so the view holds any of them alike. */
