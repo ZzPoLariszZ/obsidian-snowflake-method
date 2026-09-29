@@ -3,6 +3,8 @@ export * from "./beat-sheet-store";
 export * from "./definition-files";
 export * from "./foreshadowing-service";
 export * from "./foreshadowing-store";
+export * from "./freeform-service";
+export * from "./freeform-store";
 export * from "./json-document-store";
 export * from "./json-record-store";
 export * from "./margin-records";

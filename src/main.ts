@@ -116,6 +116,7 @@ import {
 	type Foreshadowing,
 	type ForeshadowingEdit,
 	type ForeshadowingOccurrence,
+	type FreeformRecordType,
 	type ForeshadowingRef,
 	type OccurrencePlacement,
 	type OccurrenceRole,
@@ -192,12 +193,14 @@ import {
 	type SensitiveTermAggregate,
 	type ProjectRef,
 	type ProjectSnapshot,
+	type FreeformTransacted,
 	type SaveCustomFieldTemplateResult,
 	type SceneRecord,
 	type TaskWrite,
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isBeatSheetFilePath,
+	isFreeformViewFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
 	isTimelineFilePath,
@@ -266,6 +269,15 @@ import { confirmStickyNoteDeletion, confirmStickyNoteEmptying } from './ui/stick
 import type { TaskBoardBridge } from './ui/task-bridge';
 import type { BeatSheetBridge } from './ui/beat-sheet-bridge';
 import { DocumentBell } from './ui/document-bell';
+import type { FreeformBridge, FreeformContext } from './ui/freeform-bridge';
+import {
+	freeformFileExtension,
+	freeformFileKind,
+	freeformFileName,
+	type FreeformFileReading,
+	type FreeformResourceRequest,
+	type FreeformResources,
+} from './ui/freeform-resources';
 import type { TimelineBridge } from './ui/timeline-bridge';
 import { confirmTaskArchiveEmptying, confirmTaskDeletion } from './ui/task-dialogs';
 import { promptForTask } from './ui/task-form';
@@ -526,6 +538,8 @@ export default class SnowflakeMethodPlugin
 	private readonly timelineBell = this.documentBell('a timeline workspace');
 	/** The beat sheet workspaces' bell, for a project's beat sheet file. */
 	private readonly beatSheetBell = this.documentBell('a beat sheet workspace');
+	/** The freeform workspaces' bell, for any of a project's views. */
+	private readonly freeformBell = this.documentBell('a freeform workspace');
 	/** The writing count in the status bar, and the text span inside it. */
 	private writingCountItem: HTMLElement | null = null;
 	private writingCountText: HTMLElement | null = null;
@@ -828,6 +842,13 @@ export default class SnowflakeMethodPlugin
 				onBeatSheetForeign: () => {
 					new Notice(this.projectT('beatSheet.newerSchema'));
 				},
+				// A freeform view's file, told apart the same two ways.
+				onFreeformCorrupt: (path) => {
+					new Notice(this.projectT('freeformCanvas.corruptPreserved', { path }));
+				},
+				onFreeformForeign: () => {
+					new Notice(this.projectT('freeformCanvas.newerSchema'));
+				},
 				// The main window's clock, as the sessions take theirs: a
 				// popout closing never takes the flush timer with it.
 				timers: {
@@ -1128,6 +1149,7 @@ export default class SnowflakeMethodPlugin
 		this.taskBell.dispose();
 		this.timelineBell.dispose();
 		this.beatSheetBell.dispose();
+		this.freeformBell.dispose();
 		// The caches' quiet-flush timers die here, or a disabled plugin would
 		// still write index files into the vault seconds after unload.
 		this.projects.mentions.dispose();
@@ -4352,6 +4374,128 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * The bridge the freeform workspace reads and writes its project's views
+	 * through, shaped as the beat sheet's is: the views as their files hold
+	 * them, a bell rung when one of those files moves, and the changes the
+	 * workspace can make. A change to what stands on a view is a list of
+	 * steps and lands as one write whatever it holds, and only a write that
+	 * landed is announced. The records and files a view places are read here
+	 * too, each family on its own footing.
+	 */
+	freeform(context: FreeformContext = {}): FreeformBridge {
+		const panelProject = (): string | null =>
+			context.projectPath ?? this.settings.recentProjectPath;
+		const views = this.projects.freeform;
+		const { write, create, remove } = this.documentGates(this.freeformBell, panelProject);
+		return {
+			read: async () => {
+				// resolveProject rather than the writable gate: a read-only
+				// project's views are still there to look at.
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return {
+					projectPath: project.projectFile,
+					locale: project.locale,
+					held: await views.read(project),
+					limits: views.limits(),
+				};
+			},
+			subscribe: (listener) => this.freeformBell.subscribe(listener),
+			readResources: async (wanted) => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return null;
+				return this.readFreeformResources(project, wanted);
+			},
+			// The two families that ring for themselves. A thread and a
+			// revision are announced through the dashboards' refresh, which
+			// reaches the workspace as its view's own, and a file as any
+			// change to the project does.
+			subscribeResources: (listener) => {
+				const fromTasks = this.taskBell.subscribe(listener);
+				const fromHub = this.stickyNoteHub.subscribe(listener);
+				return () => {
+					fromTasks();
+					fromHub();
+				};
+			},
+			mintId: (kind) => views.mint(kind),
+			createView: (name) => create((project) => views.createView(project, { name })),
+			renameView: (id, name) => write((project) => views.renameView(project, id, name)),
+			deleteView: (id) => remove((project) => views.deleteView(project, id)),
+			leaveView: (id, left) => write((project) => views.leaveView(project, id, left)),
+			transact: (viewId, steps, viewport) =>
+				this.mutateDocument<FreeformTransacted>(
+					this.freeformBell,
+					panelProject(),
+					async (project) => {
+						const done = await views.transact(project, viewId, steps, viewport ?? null);
+						// What takes a change back is there exactly when the file moved.
+						return { result: done, changed: done.came === 'written' && done.inverse.length > 0 };
+					},
+					{ came: 'refused', inverse: [] },
+				),
+		};
+	}
+
+	/**
+	 * What a view places that is no entity, read for it: the tasks, the
+	 * threads and the revisions anchored as their own tables anchor them, the
+	 * sticky notes, and the files as the vault has them. Only the families
+	 * asked for are read, and one that cannot be read costs its own cards and
+	 * nothing else, as a derived card's source does.
+	 */
+	private async readFreeformResources(
+		project: ProjectSnapshot,
+		wanted: FreeformResourceRequest,
+	): Promise<FreeformResources> {
+		const failed = new Set<FreeformRecordType | 'file'>();
+		const read = async <T>(
+			family: FreeformRecordType,
+			work: () => Promise<T>,
+		): Promise<T | null> => {
+			if (!wanted.types.has(family)) return null;
+			try {
+				return await work();
+			} catch (error) {
+				failed.add(family);
+				console.error(`Snowflake: a freeform view's ${family} could not be read`, error);
+				return null;
+			}
+		};
+		const [tasks, foreshadowing, revisions, stickyNotes] = await Promise.all([
+			read('task', () => this.projects.tasks.list(project)),
+			read('foreshadowing', async () => (await this.readForeshadowingTable(project)).items),
+			read('revision', () => this.readRevisionRows(project)),
+			read('sticky-note', () => this.projects.stickyNotes.list(project)),
+		]);
+		let files: Map<string, FreeformFileReading> | null = null;
+		if (wanted.types.has('file')) {
+			files = new Map();
+			for (const relativePath of wanted.filePaths) {
+				const file = this.projects.repository.getFile(`${project.rootPath}/${relativePath}`);
+				if (file === null) continue;
+				files.set(relativePath, {
+					path: file.path,
+					relativePath,
+					name: freeformFileName(relativePath),
+					extension: freeformFileExtension(relativePath),
+					kind: freeformFileKind(relativePath),
+					stamp: `${String(file.stat.mtime)}:${String(file.stat.size)}`,
+				});
+			}
+		}
+		return {
+			projectPath: project.projectFile,
+			tasks,
+			foreshadowing,
+			revisions,
+			stickyNotes,
+			files,
+			failed,
+		};
+	}
+
+	/**
 	 * The bridge the task board reads and writes through, shaped like the
 	 * sticky notes': every mutation announces to the boards alone, since a
 	 * task touches no manuscript text, and every dialog is opened here.
@@ -6611,6 +6755,11 @@ export default class SnowflakeMethodPlugin
 	/** The beat sheets changed somewhere; the same, on their own bell. */
 	private scheduleBeatSheetNotify(reconcile = false): void {
 		this.beatSheetBell.schedule(reconcile);
+	}
+
+	/** A freeform view changed somewhere; the same, on the views' own bell. */
+	private scheduleFreeformNotify(reconcile = false): void {
+		this.freeformBell.schedule(reconcile);
 	}
 
 	/**
@@ -8895,6 +9044,12 @@ export default class SnowflakeMethodPlugin
 			this.scheduleBeatSheetNotify();
 			return;
 		}
+		// And a freeform view's file, of which a project may hold many.
+		if (file instanceof TFile && isFreeformViewFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			this.scheduleFreeformNotify();
+			return;
+		}
 		this.invalidateProjectHealth(file.path);
 		this.scheduleRefresh(this.isDirectProjectFile(file.path));
 		this.scheduleFieldsBlockReconcile(file.path);
@@ -9026,6 +9181,7 @@ export default class SnowflakeMethodPlugin
 		this.projects.tasks.evict(file.path);
 		this.projects.timeline.evict(file.path);
 		this.projects.beatSheet.evict(file.path);
+		this.projects.freeform.evict(file.path);
 		this.sessions.noteDeleted(file.path, {
 			children: file instanceof TFolder,
 		});
@@ -9049,6 +9205,12 @@ export default class SnowflakeMethodPlugin
 		if (file instanceof TFile && isBeatSheetFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
 			this.scheduleBeatSheetNotify(true);
+			return;
+		}
+		if (file instanceof TFile && isFreeformViewFilePath(file.path)) {
+			this.invalidateProjectHealth(file.path);
+			// A view has gone, which every workspace showing it must hear of.
+			this.scheduleFreeformNotify(true);
 			return;
 		}
 		// A project folder going takes its notes' surfaces with it.
@@ -9221,6 +9383,7 @@ export default class SnowflakeMethodPlugin
 		for (const store of this.projects.marginRecords) store.evict(oldPath);
 		this.projects.timeline.evict(oldPath);
 		this.projects.beatSheet.evict(oldPath);
+		this.projects.freeform.evict(oldPath);
 		// User data follows its note: a renamed chapter keeps its revisions,
 		// where the caches above simply recompute under the new name. Carried
 		// in the order the renames came, one after another: a renumbering
@@ -9230,6 +9393,7 @@ export default class SnowflakeMethodPlugin
 		this.renameCarry = this.renameCarry
 			.then(async () => {
 				let carried = false;
+				let placed = false;
 				for (const project of await this.projectsCrossedByRename(
 					oldPath,
 					file.path,
@@ -9239,8 +9403,14 @@ export default class SnowflakeMethodPlugin
 							carried = true;
 						}
 					}
+					// A file a freeform view places is named by its path too,
+					// and follows its note the same way.
+					if (await this.projects.freeform.renameFilePaths(project, oldPath, file.path)) {
+						placed = true;
+					}
 				}
 				if (carried) await this.announceMarginRecordsChanged();
+				if (placed) this.scheduleFreeformNotify();
 			})
 			.catch(() => undefined);
 		this.sessions.notePathRenamed(oldPath, file.path);
@@ -9286,6 +9456,15 @@ export default class SnowflakeMethodPlugin
 				this.invalidateProjectHealth(oldPath);
 				this.invalidateProjectHealth(file.path);
 				this.scheduleBeatSheetNotify(true);
+			}
+			// A freeform view's file, likewise: renamed within its folder it is
+			// another view by another id, and moved out it is no view at all.
+			const wasFreeform = isFreeformViewFilePath(oldPath) && this.touchesProject(oldPath);
+			const isFreeform = isFreeformViewFilePath(file.path) && this.touchesProject(file.path);
+			if (wasFreeform || isFreeform) {
+				this.invalidateProjectHealth(oldPath);
+				this.invalidateProjectHealth(file.path);
+				this.scheduleFreeformNotify(true);
 			}
 		}
 		// A project folder moving takes its notes' surfaces with it.

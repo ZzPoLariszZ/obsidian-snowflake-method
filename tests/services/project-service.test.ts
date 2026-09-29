@@ -458,6 +458,61 @@ describe("SnowflakeProjectService", () => {
     expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
   });
 
+  it("keeps its snapshot when a freeform view is written, and drops it when a view comes or goes", async () => {
+    // As with the timeline: nothing in a snapshot is read from a view, only
+    // whether the views' folder stands, so a node dragged on a canvas must
+    // not send the whole project to be read again.
+    const project = await service.createProject({ name: "Freeform digest" });
+    const viewFile = `${project.rootPath}/70_Tool/73_Visualization/732_Freeform/freeform-view-1.json`;
+    await fakeVault.seedFile(viewFile, '{"schemaVersion":1,"name":"Overview"}');
+    const first = await service.loadProject(project.projectFile);
+
+    fakeVault.write(
+      viewFile,
+      '{"schemaVersion":1,"name":"Overview","viewport":{"x":1,"y":2,"zoom":1}}',
+    );
+    expect(await service.loadProject(project.projectFile)).toBe(first);
+
+    // A second view made is a file come, which the structure report may turn on.
+    await fakeVault.seedFile(
+      viewFile.replace("freeform-view-1", "freeform-view-2"),
+      '{"schemaVersion":1,"name":"Another"}',
+    );
+    const second = await service.loadProject(project.projectFile);
+    expect(second).not.toBe(first);
+
+    fakeVault.delete(viewFile);
+    expect(await service.loadProject(project.projectFile)).not.toBe(second);
+  });
+
+  it("treats the freeform folder as made on demand as well", async () => {
+    // The folder is built by the first view made, so a project from before
+    // the canvas existed is offered the folder, not marked.
+    const project = await service.createProject({ name: "Older layout" });
+    const freeform = `${project.rootPath}/70_Tool/73_Visualization/732_Freeform`;
+    fakeVault.delete(freeform);
+
+    const seen = await service.loadProject(project.projectFile);
+    const raised = seen.structureIssues.filter(
+      (issue) => issue.path === freeform,
+    );
+    expect(raised).toEqual([
+      expect.objectContaining({
+        code: "missing-on-demand-directory",
+        path: freeform,
+        stepIds: [],
+        repairable: true,
+        blocking: false,
+      }),
+    ]);
+    expect(ADVISORY_STRUCTURE_ISSUE_CODES.has(raised[0]!.code)).toBe(true);
+
+    // The first view made puts the folder back, and the offer goes.
+    await service.freeform.createView(seen, { name: "Overview" });
+    const after = await service.loadProject(project.projectFile);
+    expect(after.structureIssues.filter((issue) => issue.path === freeform)).toEqual([]);
+  });
+
   it("treats the three statistics folders as made on demand as well", async () => {
     // Built with the project like the six above, and built again by the
     // session writer and the two caches on the way to a write. Told as damage,
@@ -496,7 +551,7 @@ describe("SnowflakeProjectService", () => {
 
     const seen = await service.loadProject(project.projectFile);
     expect(seen.structureIssues.map((issue) => issue.code)).toEqual(
-      Array.from({ length: 9 }, () => "missing-on-demand-directory"),
+      Array.from({ length: 10 }, () => "missing-on-demand-directory"),
     );
     expect(seen.structureIssues.some((issue) => issue.blocking)).toBe(false);
     expect(seen.structureIssues.every((issue) => issue.repairable)).toBe(true);
@@ -508,7 +563,7 @@ describe("SnowflakeProjectService", () => {
       timeline,
     );
     expect(fakeVault.nodes.has(timeline)).toBe(true);
-    expect(repaired.structureIssues).toHaveLength(8);
+    expect(repaired.structureIssues).toHaveLength(9);
   });
 
   it("offers every folder of the tool chain, and demands every other", () => {

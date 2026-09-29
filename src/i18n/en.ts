@@ -1280,6 +1280,10 @@ export const en = {
 	'beatSheet.subrow.addGone': 'The beat these words were for is no longer on the beat sheet. They are shown for you to keep.',
 	'beatSheet.scene.remove': 'Remove from this beat sheet',
 	'beatSheet.pool.empty': 'Every scene is placed',
+	'freeformCanvas.newerSchema':
+		'A freeform view was written by a newer version of the plugin and has been left as it is.',
+	'freeformCanvas.corruptPreserved':
+		'A freeform view could not be read and has been set aside as {path}.',
 	'stickyNotes.viewTitle': 'Sticky notes',
 	'stickyNotes.add': 'Add sticky note',
 	'stickyNotes.empty': 'No sticky notes',

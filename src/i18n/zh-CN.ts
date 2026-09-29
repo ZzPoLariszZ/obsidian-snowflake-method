@@ -1181,6 +1181,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'beatSheet.subrow.addGone': '这些文字所属的节拍已不在节拍表上，文字已显示以便保留。',
 	'beatSheet.scene.remove': '从此节拍表移除',
 	'beatSheet.pool.empty': '所有场景都已放入',
+	'freeformCanvas.newerSchema': '有自由画布视图由更新版本的插件写入，已保持原样。',
+	'freeformCanvas.corruptPreserved': '有自由画布视图无法读取，已另存为 {path}。',
 	'stickyNotes.viewTitle': '便签',
 	'stickyNotes.add': '添加便签',
 	'stickyNotes.empty': '暂无便签',

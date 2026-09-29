@@ -165,6 +165,8 @@ import { ManuscriptAnalysisService } from "./manuscript-analysis";
 import { MentionIndexService } from "./mention-index";
 import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
+import { FreeformService } from "./freeform-service";
+import { isFreeformViewFilePath } from "./freeform-store";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
 import { isTimelineFilePath } from "./timeline-store";
@@ -404,6 +406,8 @@ export class SnowflakeProjectService {
   readonly timeline: TimelineService;
   /** Beat sheets and the templates saved from them: user data beside the timelines. */
   readonly beatSheet: BeatSheetService;
+  /** Freeform views, each a file of its own: user data beside the beat sheets. */
+  readonly freeform: FreeformService;
   /** The stores of records kept beside the manuscript, told of a chapter's fate as one. */
   readonly marginRecords: readonly MarginRecordService[];
   /** Sticky notes: Markdown files under task management, listed and written here. */
@@ -454,6 +458,9 @@ export class SnowflakeProjectService {
       /** And for the beat sheet file. */
       onBeatSheetCorrupt?: (path: string) => void;
       onBeatSheetForeign?: (path: string, version: number) => void;
+      /** And for a freeform view's file. */
+      onFreeformCorrupt?: (path: string) => void;
+      onFreeformForeign?: (path: string, version: number) => void;
       /** The main window's clock, for the index's pacing and quiet flush. */
       timers?: {
         set: (handler: () => void, ms: number) => unknown;
@@ -532,6 +539,16 @@ export class SnowflakeProjectService {
       ...(analysis.onBeatSheetForeign === undefined
         ? {}
         : { onForeign: analysis.onBeatSheetForeign }),
+    });
+    this.freeform = new FreeformService(this.repository, {
+      now: analysis.now ?? ((): number => Date.now()),
+      mintId: (prefix) => createStableId(prefix),
+      ...(analysis.onFreeformCorrupt === undefined
+        ? {}
+        : { onCorrupt: analysis.onFreeformCorrupt }),
+      ...(analysis.onFreeformForeign === undefined
+        ? {}
+        : { onForeign: analysis.onFreeformForeign }),
     });
     this.stickyNotes = new StickyNoteService(this.repository, {
       mintId: () => createStableId("sticky-note"),
@@ -639,14 +656,15 @@ export class SnowflakeProjectService {
     for (const file of this.repository.listFilesBelow(rootPath)) {
       // Cache contents are computed from the notes this snapshot describes.
       // Their periodic flushes must not force another full project read. The
-      // timeline document and the beat sheet's are the same case seen from
-      // the other side: nothing in this snapshot is read from their contents,
-      // only whether their folders stand, so a row edited on either would
-      // else send the whole project to be read again before the workspace
-      // could paint.
+      // timeline document, the beat sheet's and a freeform view's are the
+      // same case seen from the other side: nothing in this snapshot is read
+      // from their contents, only whether their folders stand, so a row
+      // edited on either, or a node dragged on a view, would else send the
+      // whole project to be read again before the workspace could paint.
       // Keep their paths in the digest: creation, deletion and migration can
       // still change the structure report, including a formerly filed cache.
-      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path)
+      eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path) ||
+        isFreeformViewFilePath(file.path)
         ? file.path
         : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }
@@ -1228,6 +1246,7 @@ export class SnowflakeProjectService {
       tasks: new Set(),
       foreshadowing: new Set(),
       revisions: new Set(),
+      freeform: new Set(),
       timeline: new Set(),
       beatSheet: new Set(),
       // Sticky notes are managed notes of their own type, owned and repaired
@@ -7004,6 +7023,7 @@ export class SnowflakeProjectService {
       foreshadowing: [],
       revisions: [],
       stickyNotes: [],
+      freeform: [],
       timeline: [],
       beatSheet: [],
       materials: [],

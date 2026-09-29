@@ -27,6 +27,7 @@ function vaultRouting() {
 	const scheduleTaskNotify = vi.fn();
 	const scheduleTimelineNotify = vi.fn();
 	const scheduleBeatSheetNotify = vi.fn();
+	const scheduleFreeformNotify = vi.fn();
 	const scheduleStickyNoteNotify = vi.fn();
 	Object.assign(plugin, {
 		settings: { projectRoot: '' },
@@ -39,6 +40,7 @@ function vaultRouting() {
 		scheduleTaskNotify,
 		scheduleTimelineNotify,
 		scheduleBeatSheetNotify,
+		scheduleFreeformNotify,
 		scheduleStickyNoteNotify,
 	});
 	const route = plugin as unknown as { handleVaultEvent(file: TFile): void };
@@ -51,6 +53,7 @@ function vaultRouting() {
 		scheduleTaskNotify,
 		scheduleTimelineNotify,
 		scheduleBeatSheetNotify,
+		scheduleFreeformNotify,
 		scheduleStickyNoteNotify,
 	};
 }
@@ -79,6 +82,25 @@ describe.each(Object.entries(PROJECT_PATH_LAYOUTS))('manuscript cache vault rout
 		expect(routing.scheduleBeatSheetNotify).toHaveBeenCalledWith();
 		expect(routing.scheduleTimelineNotify).not.toHaveBeenCalled();
 		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
+	});
+
+	it('rings the freeform bell for a write to a view\'s file, and no other', () => {
+		const routing = vaultRouting();
+		routing.changed(`${projectRoot}/${layout.directories.freeform}/freeform-view-1a2b.json`);
+		expect(routing.scheduleFreeformNotify).toHaveBeenCalledOnce();
+		// A node dragged on a view cannot move the health verdict either.
+		expect(routing.scheduleFreeformNotify).toHaveBeenCalledWith();
+		expect(routing.scheduleBeatSheetNotify).not.toHaveBeenCalled();
+		expect(routing.scheduleTimelineNotify).not.toHaveBeenCalled();
+		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
+	});
+
+	it('takes a file in the views\' folder that is no view for a file the author keeps there', () => {
+		const routing = vaultRouting();
+		routing.changed(`${projectRoot}/${layout.directories.freeform}/notes.json`);
+		routing.changed(`${projectRoot}/${layout.directories.freeform}/freeform-view-1a2b.corrupted-1234.json`);
+		expect(routing.scheduleFreeformNotify).not.toHaveBeenCalled();
+		expect(routing.scheduleRefresh).toHaveBeenCalledTimes(2);
 	});
 
 	it.each([

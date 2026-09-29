@@ -38,6 +38,7 @@ import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
 import type { StickyNoteBridge } from './sticky-note-bridge';
 import type { TaskBoardBridge } from './task-bridge';
 import type { BeatSheetBridge } from './beat-sheet-bridge';
+import type { FreeformBridge, FreeformContext } from './freeform-bridge';
 import type { TimelineBridge } from './timeline-bridge';
 import type { StoryStructureVisualization } from './story-structure-state';
 import type { RevisionPanelBridge } from './revision-panel';
@@ -708,6 +709,8 @@ export interface DashboardHost {
 	timeline(context: SessionPanelContext): TimelineBridge;
 	/** The bridge the beat sheet workspace reads and writes its project's sheets through. */
 	beatSheet(context: SessionPanelContext): BeatSheetBridge;
+	/** The bridge the freeform workspace reads and writes its project's views through. */
+	freeform(context: FreeformContext): FreeformBridge;
 	translateForProject(
 		locale: 'en' | 'zh-CN' | null,
 		key: string,
