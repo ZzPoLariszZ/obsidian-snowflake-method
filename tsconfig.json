@@ -4,6 +4,7 @@
 		"inlineSources": true,
 		"module": "ESNext",
 		"target": "ES2021",
+		"jsx": "react-jsx",
 		"strict": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
@@ -16,5 +17,5 @@
 		"lib": ["ES2021", "DOM"],
 		"types": []
 	},
-	"include": ["src/**/*.ts", "tests/**/*.ts"]
+	"include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
 }

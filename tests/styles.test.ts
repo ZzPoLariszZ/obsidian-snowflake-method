@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import engine from '@xyflow/react/dist/base.css?raw';
+
 import styles from '../styles.css?raw';
+import { scopeCss } from './helpers/scope-css';
 
 /**
  * What the shipped stylesheet may not contain. Nothing lints CSS here, so the
@@ -336,6 +339,72 @@ describe('styles.css', () => {
 		expect(declarations('.snowflake-method-timeline-pool .snowflake-method-prose-state')).toContain(
 			'display: none',
 		);
+	});
+
+	/**
+	 * The canvas is React Flow's, and a plugin's one stylesheet is all the app
+	 * loads for it, so the library's own sheet is kept in this one. It is kept
+	 * as the version installed ships it, with nothing changed but where it
+	 * reaches: a library moved to another version without its sheet, or a rule
+	 * of it mended by hand, is found here rather than on a canvas that draws
+	 * its lines a little wrong.
+	 */
+	it('keeps the canvas engine\u2019s own stylesheet as the installed version ships it, and keeps it to the canvas', () => {
+		const kept = section('Freeform engine');
+		const scoped = scopeCss(engine, {
+			under: '.snowflake-method-freeform-canvas',
+			keyframes: 'snowflake-method-freeform-',
+		});
+		expect(scoped.length).toBeGreaterThan(engine.length);
+		expect(kept.includes(scoped)).toBe(true);
+		const selectors = [...kept.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{/g)]
+			.map((rule) => (rule[1] ?? '').trim())
+			.filter((prelude) => !prelude.startsWith('@') && !/^(?:from|to|\d+%)$/.test(prelude))
+			.flatMap((prelude) => prelude.split(',').map((selector) => selector.trim()));
+		expect(selectors.length).toBeGreaterThan(100);
+		expect(selectors.filter((selector) => !selector.startsWith('.snowflake-method-freeform-canvas '))).toEqual([]);
+		const animations = [...kept.matchAll(/@keyframes\s+([\w-]+)/g)].map((match) => match[1]);
+		expect(animations).toEqual(['snowflake-method-freeform-dashdraw']);
+		expect(kept).not.toMatch(/animation:\s*dashdraw/);
+	});
+
+	it('scopes a sheet without touching what its rules say', () => {
+		const scoped = scopeCss(
+			[
+				'/* a note */',
+				'.a, .b:hover,',
+				'  svg.c > path {',
+				'  color: red; /* kept */',
+				'}',
+				'@keyframes spin {',
+				'  from { rotate: 0deg; }',
+				'  50% { rotate: 180deg; }',
+				'}',
+				'.d { animation: spin 1s; animation-name: spinner; }',
+				'@media (pointer: coarse) {',
+				'  .e { width: 1px; }',
+				'}',
+				'',
+			].join('\n'),
+			{ under: '.scope', keyframes: 'mine-' },
+		);
+		expect(scoped).toBe([
+			'/* a note */',
+			'.scope .a,',
+			'.scope .b:hover,',
+			'.scope svg.c > path {',
+			'  color: red; /* kept */',
+			'}',
+			'@keyframes mine-spin {',
+			'  from { rotate: 0deg; }',
+			'  50% { rotate: 180deg; }',
+			'}',
+			'.scope .d { animation: mine-spin 1s; animation-name: spinner; }',
+			'@media (pointer: coarse) {',
+			'  .scope .e { width: 1px; }',
+			'}',
+			'',
+		].join('\n'));
 	});
 
 	it('names no element a browser would not know', () => {

@@ -33,6 +33,14 @@ const context = await esbuild.context({
 	],
 	format: 'cjs',
 	target: 'es2021',
+	jsx: 'automatic',
+	// React reads the first to choose its production build, and a library it
+	// stands on reads the second, which a CommonJS bundle has no `import.meta`
+	// to answer for. Both are said here, where the choice is made.
+	define: {
+		'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+		'import.meta.env': JSON.stringify({ MODE: production ? 'production' : 'development' }),
+	},
 	logLevel: 'info',
 	sourcemap: production ? false : 'inline',
 	treeShaking: true,

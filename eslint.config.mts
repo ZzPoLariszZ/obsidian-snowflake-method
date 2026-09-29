@@ -40,7 +40,7 @@ export default defineConfig(
 	},
 	...obsidianmd.configs.recommended,
 	{
-		files: ['src/**/*.ts'],
+		files: ['src/**/*.{ts,tsx}'],
 		rules: {
 			'obsidianmd/prefer-active-doc': 'error',
 			'obsidianmd/prefer-instanceof': 'error',
@@ -104,10 +104,19 @@ export default defineConfig(
 	{
 		// Tests run in Node, where there is no window to prefer: the popout
 		// rules protect plugin code, and the plugin itself stays under them.
-		files: ['tests/**/*.ts'],
+		files: ['tests/**/*.{ts,tsx}'],
 		rules: {
 			'obsidianmd/prefer-window-timers': 'off',
 			'obsidianmd/no-global-this': 'off',
+		},
+	},
+	{
+		// The few tests that run on a real document run on a plain one: the
+		// element helpers the app adds to every element are the app's, and are
+		// not there to prefer.
+		files: ['tests/**/*.dom.test.tsx'],
+		rules: {
+			'obsidianmd/prefer-create-el': 'off',
 		},
 	},
 );
