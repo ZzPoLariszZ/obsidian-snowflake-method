@@ -101,6 +101,7 @@ import {
 	type DefinitionPathSource,
 	type EntityGroupId,
 } from './entity-form';
+import { kindIcon } from './kind-icon';
 import { RenderStateKeeper } from './render-state';
 import {
 	renderEntitiesPanel,
@@ -227,16 +228,6 @@ const PANEL_SCROLL_SELECTORS = [
 // The statistics tab strip's faces live in dashboard-state, because which
 // face is on show is view state a reload restores.
 
-const WORLDBUILDING_KIND_ICONS: Record<'time' | 'location' | 'item', string> = {
-	time: 'clock',
-	location: 'map-pin',
-	item: 'gem',
-};
-
-/** The mark each kind of note goes by, the rail's own for the three it lists. */
-/** Every custom kind wears the one icon; the built-ins keep their own. */
-const CUSTOM_KIND_ICON = 'shapes';
-
 const EMPTY_TREE: DefinitionTreeInfo = { rootPath: '', nodes: [] };
 
 /** One kind's tree of a forest; empty for the same stale-pane reason. */
@@ -245,29 +236,6 @@ function forestTree(
 	kind: EntityKindId,
 ): DefinitionTreeInfo {
 	return forest[kind] ?? EMPTY_TREE;
-}
-
-const ENTITY_KIND_ICONS: Record<
-	'character' | 'scene' | 'time' | 'location' | 'item',
-	string
-> = {
-	character: 'user',
-	scene: 'clapperboard',
-	...WORLDBUILDING_KIND_ICONS,
-};
-
-/**
- * The face a kind wears wherever it appears: a built-in's own icon, an
- * authored kind's chosen one, and the generic shape only when nothing chose.
- */
-function kindIcon(model: ProjectDashboardModel, kind: string): string {
-	if (kind === 'character' || kind === 'scene' || isWorldbuildingKind(kind)) {
-		return ENTITY_KIND_ICONS[kind];
-	}
-	const descriptor = model.worldbuildingKinds.find(
-		(candidate) => candidate.id === kind,
-	);
-	return descriptor?.icon ?? CUSTOM_KIND_ICON;
 }
 
 /**
