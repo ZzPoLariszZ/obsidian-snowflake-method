@@ -529,6 +529,9 @@ describe('a frame’s face', () => {
 		const { face, painted } = mount(CANVAS_FRAME_KIND, 'f1', context({ selected: true }));
 		expect(face.classes.has('is-frame')).toBe(true);
 		expect(face.classes.has('is-selected')).toBe(true);
+		// Tinted from the sticky notes' own rules, by the same name.
+		expect(face.classes.has('snowflake-method-sticky-tint')).toBe(true);
+		expect(face.getAttribute('data-color')).toBe('macaron-2');
 		const title = face.querySelector('.snowflake-method-freeform-frame-title')!;
 		expect(title.textContent).toBe('Act one');
 		expect(title.classes.has('is-untitled')).toBe(false);
@@ -539,6 +542,7 @@ describe('a frame’s face', () => {
 		frames.set('f1', { id: 'f1', title: '  ', color: null, x: 0, y: 0, width: 400, height: 300, zIndex: 0 });
 		painted.dress(context());
 		expect(title.classes.has('is-untitled')).toBe(true);
+		expect(face.getAttribute('data-color')).toBeNull();
 		painted.settle();
 		painted.unmount();
 		expect(face.parent).toBeNull();

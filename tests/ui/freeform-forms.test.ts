@@ -83,6 +83,7 @@ import { FREEFORM_SIZE } from '../../src/domain';
 import {
 	FREEFORM_PICK_ROWS,
 	FreeformEdgeFormModal,
+	FreeformFrameFormModal,
 	FreeformGeometryModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
@@ -278,7 +279,7 @@ describe('the form nodes are added through', () => {
 		expect(titles).toEqual(['freeformCanvas.node.add']);
 		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.add');
 		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
-			'freeformCanvas.node.type', 'freeformCanvas.node.pick',
+			'freeformCanvas.node.type', 'freeformCanvas.node.pick', 'freeformCanvas.frame.title', 'stickyNotes.color',
 		]);
 		expect(typeField().label).toBe('freeformCanvas.node.type');
 		expect(typeField().required).toBe(true);
@@ -342,6 +343,29 @@ describe('the form nodes are added through', () => {
 		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.node.limitSome(left=2)');
 		nodesPicker().unpick('scene-1');
 		expect(collectDraft(form)?.type === 'entity' && collectDraft(form)).toMatchObject({ nodes: [{ id: 'scene-2' }, { id: 'scene-3' }] });
+	});
+
+	it('asks a frame its title and its tint, and hands them back trimmed', () => {
+		const form = nodeForm({ initialType: 'frame' });
+		build(form);
+		expect(pickRow(form).classes.has('is-hidden')).toBe(true);
+		const fields = content(form).querySelector('.snowflake-method-freeform-frame-fields')!;
+		expect(fields.classes.has('is-hidden')).toBe(false);
+		expect(collectDraft(form)).toEqual({ type: 'frame', frame: { title: '', color: null } });
+		const title = fields.querySelector('input')!;
+		expect(title.getAttribute('aria-label')).toBe('freeformCanvas.frame.title');
+		type(title, '  Act one ');
+		// The tint is picked from the sticky notes' own strip, with none at its head.
+		const swatches = fields.querySelectorAll('.snowflake-method-sticky-swatch');
+		expect(swatches[0]!.classes.has('is-none')).toBe(true);
+		expect(swatches).toHaveLength(9);
+		swatches.find((swatch) => swatch.getAttribute('data-color') === 'macaron-4')!.dispatch('click');
+		expect(collectDraft(form)).toEqual({ type: 'frame', frame: { title: 'Act one', color: 'macaron-4' } });
+		swatches[0]!.dispatch('click');
+		expect(collectDraft(form)).toEqual({ type: 'frame', frame: { title: 'Act one', color: null } });
+		// Another type hides the frame's fields.
+		typeField().choose('text');
+		expect(fields.classes.has('is-hidden')).toBe(true);
 	});
 
 	it('forgets what was picked when the type changes, and opens on the type it was given', () => {
@@ -451,5 +475,24 @@ describe('the form a line is edited through', () => {
 		type(content(form).querySelector('input')!, 'far too long');
 		expect(collectEdge(form)).toBeNull();
 		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.edge.refused');
+	});
+});
+
+describe('the form a frame is edited through', () => {
+	it('is titled Edit frame, shows the frame’s title and tint, and hands back what was changed', () => {
+		const form = new FreeformFrameFormModal(app, t, { title: 'Act one', color: 'macaron-2' }, () => Promise.resolve());
+		build(form);
+		expect(titles).toEqual(['freeformCanvas.frame.edit']);
+		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.save');
+		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
+			'freeformCanvas.frame.title', 'stickyNotes.color',
+		]);
+		const title = content(form).querySelector('input')!;
+		expect(title.value).toBe('Act one');
+		const collect = (): unknown => (form as unknown as { collectValue(): unknown }).collectValue();
+		expect(collect()).toEqual({ title: 'Act one', color: 'macaron-2' });
+		type(title, ' Act two ');
+		content(form).querySelectorAll('.snowflake-method-sticky-swatch').find((swatch) => swatch.getAttribute('data-color') === 'macaron-7')!.dispatch('click');
+		expect(collect()).toEqual({ title: 'Act two', color: 'macaron-7' });
 	});
 });

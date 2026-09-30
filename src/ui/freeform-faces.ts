@@ -520,10 +520,14 @@ function missingPainter(deps: FreeformFaceDeps): NodePainter {
 	};
 }
 
+/**
+ * A frame's face: its title at its head, and the tint it wears, which is
+ * one of the sticky notes' own macarons and painted from the same rules.
+ */
 function framePainter(deps: FreeformFaceDeps): NodePainter {
 	return {
 		mount: (body, id, context): PaintedNode => {
-			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-frame' });
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-frame snowflake-method-sticky-tint' });
 			const head = face.createDiv({ cls: 'snowflake-method-freeform-frame-head' });
 			moreButton(head, deps, id);
 			const title = head.createSpan({ cls: 'snowflake-method-freeform-frame-title' });
@@ -533,6 +537,8 @@ function framePainter(deps: FreeformFaceDeps): NodePainter {
 				const words = deps.frameLabel(frame);
 				if (title.textContent !== words) title.setText(words);
 				title.toggleClass('is-untitled', frame.title.trim().length === 0);
+				if (frame.color === null) face.removeAttribute('data-color');
+				else if (face.getAttribute('data-color') !== frame.color) face.setAttribute('data-color', frame.color);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);

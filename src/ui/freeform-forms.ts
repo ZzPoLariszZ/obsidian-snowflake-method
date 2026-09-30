@@ -15,8 +15,10 @@ import {
 	FREEFORM_SIZE,
 	isFreeformArrow,
 	isFreeformLine,
+	isMacaronColor,
 	type FreeformArrow,
 	type FreeformLine,
+	type MacaronColor,
 } from '../domain';
 import { addEnumSelect } from './entity-form';
 import {
@@ -26,6 +28,7 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, buildOptionPicker, type OptionPicker, type PickerOption } from './option-picker';
+import { renderStickySwatches } from './sticky-note-card';
 
 export interface FreeformViewFormOptions {
 	mode: 'add' | 'edit';
@@ -166,10 +169,49 @@ export class FreeformTextModal extends Modal {
 
 /** One kind of node the form can add: what the project holds of a type, or what is made on the canvas. */
 export interface FreeformNodeType {
-	/** `scene`, `character`, a worldbuilding kind's id, or `text`. */
+	/** `scene`, `character`, a worldbuilding kind's id, `text` or `frame`. */
 	value: string;
 	label: string;
 	section: 'entity' | 'canvas';
+}
+
+/** What a frame is called and what it wears. */
+export interface FreeformFrameDraft {
+	title: string;
+	color: MacaronColor | null;
+}
+
+/**
+ * The two fields a frame has, set into a form: its title, and the tint it
+ * wears from the sticky notes' own strip, with none at the strip's head.
+ */
+function buildFrameFields(t: Translate, draft: FreeformFrameDraft, container: HTMLElement): void {
+	new Setting(container)
+		.setName(t('freeformCanvas.frame.title'))
+		.setDesc(t('freeformCanvas.frame.titleHint'))
+		.addText((text) => {
+			text.inputEl.setAttribute('aria-label', t('freeformCanvas.frame.title'));
+			text.setValue(draft.title).onChange((value) => {
+				draft.title = value;
+			});
+		});
+	const color = new Setting(container).setName(t('stickyNotes.color'));
+	color.settingEl.addClass('snowflake-method-freeform-frame-color');
+	const swatches = renderStickySwatches(color.controlEl, {
+		value: draft.color ?? '',
+		t,
+		onPick: (value) => {
+			draft.color = value;
+			swatches.sync(value);
+		},
+		none: {
+			label: t('modal.scene.colorNone'),
+			onPick: () => {
+				draft.color = null;
+				swatches.sync('');
+			},
+		},
+	});
 }
 
 /** One node of a type as the form offers it: by the id the view will keep, and whether the view holds it already. */
@@ -189,9 +231,10 @@ export interface FreeformNodeFormOptions {
 	initialType?: string | null;
 }
 
-/** What the form asks for: nodes of a type by their ids, or one text node to be typed into. */
+/** What the form asks for: nodes of a type by their ids, one text node to be typed into, or a frame with its title and tint. */
 export type FreeformNodeDraft =
 	| { type: 'text' }
+	| { type: 'frame'; frame: FreeformFrameDraft }
 	| { type: 'entity'; kind: string; nodes: readonly { id: string; name: string }[] };
 
 /** How many rows the nodes list shows before it asks to be narrowed: a project may hold thousands of scenes. */
@@ -202,15 +245,18 @@ export const FREEFORM_PICK_ROWS = 200;
  * holds notes of, the notes themselves, searched and picked several at
  * once, those already on the view listed apart. A line under the field says
  * how many are chosen and how many more the view has room for. Text is
- * typed where it lands, so choosing it asks nothing more.
+ * typed where it lands, so choosing it asks nothing more; a frame asks its
+ * title and its tint.
  */
 export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft> {
 	private type: string | null;
 	private readonly picked: string[] = [];
+	private readonly frame: FreeformFrameDraft = { title: '', color: null };
 	private typeField: OptionPicker | null = null;
 	private nodesPicker: OptionPicker | null = null;
 	private nodesSetting: Setting | null = null;
 	private nodesHost: HTMLElement | null = null;
+	private frameHost: HTMLElement | null = null;
 	private summaryEl: HTMLElement | null = null;
 
 	constructor(
@@ -251,6 +297,8 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 			attr: { role: 'status' },
 		});
 		this.buildNodesPicker();
+		this.frameHost = this.contentEl.createDiv({ cls: 'snowflake-method-freeform-frame-fields' });
+		buildFrameFields(this.t, this.frame, this.frameHost);
 		this.paintNodes();
 	}
 
@@ -325,10 +373,11 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		this.paintNodes();
 	}
 
-	/** The nodes field stands only for a type the project holds notes of. */
+	/** The nodes field stands only for a type the project holds notes of, and a frame's fields for a frame. */
 	private paintNodes(): void {
-		const asks = this.type !== null && this.type !== 'text';
+		const asks = this.type !== null && this.type !== 'text' && this.type !== 'frame';
 		this.nodesSetting?.settingEl.toggleClass('is-hidden', !asks);
+		this.frameHost?.toggleClass('is-hidden', this.type !== 'frame');
 		this.paintSummary();
 	}
 
@@ -352,6 +401,7 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 			return null;
 		}
 		if (type === 'text') return { type: 'text' };
+		if (type === 'frame') return { type: 'frame', frame: { title: this.frame.title.trim(), color: this.frame.color } };
 		if (this.picked.length === 0) {
 			new Notice(this.t('freeformCanvas.node.required'));
 			return null;
@@ -376,8 +426,29 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		this.nodesPicker = null;
 		this.nodesSetting = null;
 		this.nodesHost = null;
+		this.frameHost = null;
 		this.summaryEl = null;
 		super.onClose();
+	}
+}
+
+/** A frame edited: its title and its tint, with Save at the foot. The form stands over a refusal, saying so. */
+export class FreeformFrameFormModal extends SnowflakeFormModal<FreeformFrameDraft> {
+	private readonly draft: FreeformFrameDraft;
+
+	constructor(app: App, t: Translate, initial: FreeformFrameDraft, onSubmit: SubmitHandler<FreeformFrameDraft>) {
+		super(app, t, t('freeformCanvas.frame.edit'), onSubmit, 'common.save');
+		this.draft = { title: initial.title, color: isMacaronColor(initial.color) ? initial.color : null };
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
+		buildFrameFields(this.t, this.draft, this.contentEl);
+	}
+
+	protected collectValue(): FreeformFrameDraft {
+		return { title: this.draft.title.trim(), color: this.draft.color };
 	}
 }
 

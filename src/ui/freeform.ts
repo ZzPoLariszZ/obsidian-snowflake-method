@@ -26,12 +26,16 @@ import { Keymap, Menu, Notice } from 'obsidian';
 
 import {
 	DEFAULT_FREEFORM_VIEWPORT,
+	FREEFORM_FRAME_HEAD,
+	FREEFORM_FRAME_PADDING,
 	FREEFORM_SIZE,
 	FREEFORM_ZOOM,
 	applyFreeformSteps,
 	findFreeformEdge,
+	findFreeformFrame,
 	findFreeformPlacement,
 	findFreeformView,
+	freeformBounds,
 	freeformRoom,
 	isWorldbuildingKind,
 	leaveFreeformView,
@@ -59,10 +63,12 @@ import {
 import { createFreeformFaces } from './freeform-faces';
 import {
 	FreeformEdgeFormModal,
+	FreeformFrameFormModal,
 	FreeformGeometryModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
+	type FreeformFrameDraft,
 	type FreeformNodeCandidate,
 	type FreeformNodeType,
 	type RecoveredFreeformText,
@@ -967,6 +973,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		{ value: 'character', label: kindWord('character'), section: 'entity' },
 		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: kind.id, label: kindWord(kind.id), section: 'entity' })),
 		{ value: 'text', label: t('freeformCanvas.type.text'), section: 'canvas' },
+		{ value: 'frame', label: t('freeformCanvas.type.frame'), section: 'canvas' },
 	];
 
 	/** The notes of a kind the project holds, each with whether the view on show places it already. */
@@ -990,7 +997,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	 * the middle of what is in sight, or from where the ground's menu was
 	 * opened. The form stands over a refusal, saying so.
 	 */
-	const openAddNode = (middle?: CanvasPoint): void => {
+	const openAddNode = (middle?: CanvasPoint, initialType: string | null = null): void => {
 		const id = shownViewId;
 		if (id === null || readOnly || disposed || model === null) return;
 		keep(new FreeformNodeFormModal(
@@ -1003,11 +1010,16 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					const view = shownView();
 					return view === null || reading === null ? 0 : freeformRoom(view, reading.limits).placements;
 				},
+				initialType,
 			},
 			async (draft) => {
 				if (disposed) return;
 				if (draft.type === 'text') {
 					addText(middle);
+					return;
+				}
+				if (draft.type === 'frame') {
+					await addFrame(draft.frame, middle);
 					return;
 				}
 				canvas.settle();
@@ -1064,6 +1076,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	 */
 	const openNode = (id: string): void => {
 		if (disposed || made === null) return;
+		if (made.frames.has(id)) {
+			openFrameForm(id);
+			return;
+		}
 		const node = made.nodes.get(id);
 		const path = controls.projectPath();
 		if (node === undefined || path === null) return;
@@ -1127,6 +1143,126 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				if (came !== 'written') throw new Error(t('freeformCanvas.geometry.refused'));
 			},
 		)).open();
+	};
+
+	// -- Frames ------------------------------------------------------------------
+
+	/** How large a frame is made where nothing tells its size: room for a few nodes. */
+	const FRAME_SIZE = { width: 480, height: 320 };
+
+	/** A frame made empty where it lands, to be dragged into; the form stands over a refusal, saying so. */
+	const addFrame = async (draft: FreeformFrameDraft, middle?: CanvasPoint): Promise<void> => {
+		canvas.settle();
+		const view = shownView();
+		if (view === null || readOnly || disposed) throw new Error(t('freeformCanvas.frame.refused'));
+		const at = landingAt(cornersOf(view), middle ?? canvas.centre(), FRAME_SIZE, memory.snap ? FREEFORM_GRID : null);
+		const id = controls.bridge().mintId('frame');
+		const came = await change([{
+			do: 'add-frames',
+			frames: [{ id, title: draft.title, color: draft.color, x: at.x, y: at.y, width: FRAME_SIZE.width, height: FRAME_SIZE.height }],
+		}], 'change', null);
+		if (came !== 'written') throw new Error(t('freeformCanvas.frame.refused'));
+		if (!disposed) canvas.select({ nodes: [id], edges: [] });
+	};
+
+	/** The nodes chosen gathered into a new frame drawn round them, untitled until its form names it. */
+	const groupIntoFrame = (ids: readonly string[]): void => {
+		const view = shownView();
+		if (view === null || readOnly || disposed) return;
+		const members = ids.filter((id) => findFreeformPlacement(view, id) !== undefined);
+		if (members.length === 0) return;
+		const id = controls.bridge().mintId('frame');
+		void change([{ do: 'group', frame: { id, title: '', color: null }, members }], 'change', t('freeformCanvas.frame.refused'))
+			.then((came) => {
+				if (came === 'written' && !disposed) canvas.select({ nodes: [id], edges: [] });
+			});
+	};
+
+	/** A frame's title and tint, edited through its form; the form stands over a refusal, saying so. */
+	const openFrameForm = (id: string): void => {
+		const view = shownView();
+		const frame = view === null ? undefined : findFreeformFrame(view, id);
+		if (frame === undefined || readOnly || disposed) return;
+		keep(new FreeformFrameFormModal(app, t, { title: frame.title, color: frame.color }, async (draft) => {
+			if (disposed) return;
+			const came = await change([{ do: 'edit-frame', id, title: draft.title, color: draft.color }], 'change', null);
+			if (came !== 'written') throw new Error(t('freeformCanvas.frame.refused'));
+		})).open();
+	};
+
+	/** The placements a frame holds. */
+	const membersOf = (view: FreeformView, frameId: string): string[] =>
+		view.placements.filter((placement) => placement.frameId === frameId).map((placement) => placement.id);
+
+	/** A frame's members chosen, and the frame let go. */
+	const selectContents = (id: string): void => {
+		const view = shownView();
+		if (view === null) return;
+		canvas.select({ nodes: membersOf(view, id), edges: [] });
+		canvas.focus();
+	};
+
+	/** A frame drawn afresh round what it holds, with the room a grouping leaves. */
+	const fitToContents = (id: string): void => {
+		const view = shownView();
+		if (view === null || readOnly) return;
+		const box = freeformBounds(view, membersOf(view, id));
+		if (box === null) return;
+		void change([{
+			do: 'place',
+			places: [{
+				id,
+				x: box.x - FREEFORM_FRAME_PADDING,
+				y: box.y - FREEFORM_FRAME_PADDING - FREEFORM_FRAME_HEAD,
+				width: box.width + 2 * FREEFORM_FRAME_PADDING,
+				height: box.height + 2 * FREEFORM_FRAME_PADDING + FREEFORM_FRAME_HEAD,
+			}],
+		}]);
+	};
+
+	/**
+	 * The keyboard's way of dropping nodes into a frame, or out of one: the
+	 * frame picked by name, or none. A node given to a frame it does not
+	 * stand in is moved into it, where its members stand.
+	 */
+	const openMoveToFrame = (ids: readonly string[]): void => {
+		const view = shownView();
+		if (view === null || readOnly || disposed) return;
+		const options: PickerOption[] = [
+			{ value: '', label: t('freeformCanvas.frame.none') },
+			...view.frames.map((frame) => ({ value: frame.id, label: frameLabelOf(frame) })),
+		];
+		keep(new TimelineTimePickModal(app, t('freeformCanvas.frame.moveToPlaceholder'), options, (picked) => {
+			const now = shownView();
+			if (now === null || disposed) return;
+			const frame = picked.value.length === 0 ? null : findFreeformFrame(now, picked.value) ?? null;
+			if (picked.value.length > 0 && frame === null) return;
+			const members = ids.filter((id) => findFreeformPlacement(now, id) !== undefined);
+			if (members.length === 0) return;
+			const places: FreeformPlace[] = [];
+			if (frame !== null) {
+				// Each member not standing in the frame is brought inside it, at its head, a step from the last.
+				const inside = (placement: FreeformPlacement): boolean =>
+					placement.x >= frame.x && placement.y >= frame.y &&
+					placement.x + placement.width <= frame.x + frame.width && placement.y + placement.height <= frame.y + frame.height;
+				const corners = cornersOf(now);
+				for (const id of members) {
+					const placement = findFreeformPlacement(now, id);
+					if (placement === undefined || inside(placement)) continue;
+					const landing = landingAt(
+						corners,
+						{ x: frame.x + FREEFORM_FRAME_PADDING + placement.width / 2, y: frame.y + FREEFORM_FRAME_HEAD + FREEFORM_FRAME_PADDING + placement.height / 2 },
+						{ width: placement.width, height: placement.height },
+						memory.snap ? FREEFORM_GRID : null,
+					);
+					corners.push(landing);
+					places.push({ id, x: landing.x, y: landing.y });
+				}
+			}
+			const steps: FreeformStep[] = [{ do: 'reframe', members: members.map((id) => ({ id, frameId: frame?.id ?? null })) }];
+			if (places.length > 0) steps.push({ do: 'place', places });
+			void change(steps, 'change', t('freeformCanvas.frame.refused'));
+		})).open();
 	};
 
 	// -- Lines from node to node --------------------------------------------------
@@ -1273,6 +1409,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					addText(at);
 				});
 		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.frame.add'))
+				.setIcon('frame')
+				.setDisabled(readOnly || shownViewId === null)
+				.onClick(() => {
+					openAddNode(at, 'frame');
+				});
+		});
 		menu.addSeparator();
 		menu.addItem((item) => {
 			item
@@ -1325,14 +1470,52 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return true;
 	};
 
+	/** What a frame's menu offers first: its form, its members chosen, and its box drawn afresh round them. */
+	const addFrameItems = (menu: Menu, id: string): void => {
+		const view = shownView();
+		const holds = view !== null && membersOf(view, id).length > 0;
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.frame.edit'))
+				.setIcon('pencil')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					openFrameForm(id);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.frame.selectContents'))
+				.setIcon('box-select')
+				.setDisabled(!holds)
+				.onClick(() => {
+					selectContents(id);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.frame.fitContents'))
+				.setIcon('shrink')
+				.setDisabled(readOnly || !holds)
+				.onClick(() => {
+					fitToContents(id);
+				});
+		});
+	};
+
 	const openNodeMenu = (id: string, event: MouseEvent): void => {
 		if (made === null || disposed) return;
 		const node = made.nodes.get(id);
-		if (node === undefined && !made.frames.has(id)) return;
+		const isFrame = made.frames.has(id);
+		if (node === undefined && !isFrame) return;
 		// A menu asked for on one of several chosen speaks for them all; on any other node, for that node alone.
 		const chosen = selection.nodes.includes(id) ? selection.nodes : [id];
 		const single = chosen.length === 1;
 		const menu = new Menu();
+		if (single && isFrame) {
+			addFrameItems(menu, id);
+			menu.addSeparator();
+		}
 		if (single && node !== undefined && addOpenItems(menu, id, node)) menu.addSeparator();
 		// The face a node shows, for every placement chosen: checked where all of them show it.
 		const placements = chosen.flatMap((one) => (made?.nodes.has(one) === true ? [one] : []));
@@ -1351,6 +1534,28 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 						});
 				});
 			}
+			menu.addSeparator();
+		}
+		// Placements chosen are gathered into a frame, or given to one by name.
+		if (placements.length > 0) {
+			menu.addItem((item) => {
+				item
+					.setTitle(t('freeformCanvas.frame.group'))
+					.setIcon('group')
+					.setDisabled(readOnly)
+					.onClick(() => {
+						groupIntoFrame(placements);
+					});
+			});
+			menu.addItem((item) => {
+				item
+					.setTitle(t('freeformCanvas.frame.moveTo'))
+					.setIcon('folder-input')
+					.setDisabled(readOnly || (made?.frames.size ?? 0) === 0)
+					.onClick(() => {
+						openMoveToFrame(placements);
+					});
+			});
 			menu.addSeparator();
 		}
 		if (single) {
@@ -1376,7 +1581,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}
 		menu.addItem((item) => {
 			item
-				.setTitle(t('timeline.timeline.removeFromView'))
+				// A frame taken off leaves what it held standing, and free.
+				.setTitle(t(single && isFrame ? 'freeformCanvas.frame.remove' : 'timeline.timeline.removeFromView'))
 				.setIcon('eye-off')
 				.setDisabled(readOnly)
 				.onClick(() => {

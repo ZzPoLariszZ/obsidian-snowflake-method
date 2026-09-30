@@ -140,6 +140,7 @@ import {
 } from '../../src/ui/freeform-canvas-port';
 import {
 	FreeformEdgeFormModal,
+	FreeformFrameFormModal,
 	FreeformGeometryModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
@@ -998,7 +999,7 @@ describe('text nodes', () => {
 		await settle();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 1_000, y: 2_000 } })!;
 		expect(menu.map((item) => item.title)).toEqual([
-			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
+			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
 		]);
 		menu[1]!.click();
 		const second = fixture.nodes()[1]!;
@@ -1738,6 +1739,7 @@ describe('nodes added by type', () => {
 			['location', 'worldbuilding.kind.location', 'entity'],
 			['Faction', 'Faction', 'entity'],
 			['text', 'freeformCanvas.type.text', 'canvas'],
+			['frame', 'freeformCanvas.type.frame', 'canvas'],
 		]);
 		expect(options.candidates('scene')).toEqual([
 			{ id: 'scene-1', name: 'Arrival', onView: true },
@@ -1876,9 +1878,9 @@ describe('what a node opens', () => {
 		await settle();
 		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('char-1', 'P', expect.any(Function));
 		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'loc-1' }, 'P', expect.any(Function));
-		// A note that has gone opens nothing, and its menu offers only its face, its lines, its measures and its removal.
+		// A note that has gone opens nothing, and its menu offers only its face, its frame, its lines, its measures and its removal.
 		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
 		menu[1]!.click();
@@ -1938,20 +1940,141 @@ describe('how a node is shown and where it stands', () => {
 	it('sets a node’s size and place by number through its form, refusing what the view will not take', async () => {
 		const fixture = await laid();
 		const forms = watch(FreeformGeometryModal);
-		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 2]!.click();
+		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + FRAME_ITEMS.length + 2]!.click();
 		expect(forms).toHaveLength(1);
 		await submit(forms[0], { x: 640, y: 80, width: 300, height: 200 });
 		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80, width: 300, height: 200 });
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 't2', x: 640, y: 80, width: 300, height: 200 }] }]);
 		// A frame is measured the same way.
-		fixture.menuAt({ kind: 'node', id: 'f1' })![1]!.click();
+		fixture.menuAt({ kind: 'node', id: 'f1' })!.find((item) => item.title === 'freeformCanvas.node.geometry')!.click();
 		await submit(forms[1], { x: 10, y: 20, width: 500, height: 400 });
 		await settle();
 		expect(fixture.viewHeld('a').frames[0]).toMatchObject({ x: 10, y: 20, width: 500, height: 400 });
 		fixture.refuse('refused');
-		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 2]!.click();
+		fixture.menuAt({ kind: 'node', id: 't2' })!.find((item) => item.title === 'freeformCanvas.node.geometry')!.click();
 		await expect(submit(forms[2], { x: 1, y: 1, width: 300, height: 200 })).rejects.toThrow('freeformCanvas.geometry.refused');
+	});
+});
+
+describe('frames', () => {
+	const framesHeld = (fixture: Fixture) => fixture.viewHeld('a').frames;
+	const placed = (fixture: Fixture, id: string) => fixture.viewHeld('a').placements.find((placement) => placement.id === id);
+	const pickFrom = (form: unknown) => form as { times: PickerOption[]; pick: (option: PickerOption) => void };
+
+	it('adds a frame through the form, titled and tinted, where the ground’s menu was opened, and chooses it', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((item) => item.title === 'freeformCanvas.frame.add')!.click();
+		expect((forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('frame');
+		await submit(forms[0], { type: 'frame', frame: { title: 'Act one', color: 'macaron-2' } });
+		const added = fixture.nodes().find((id) => id.startsWith('frame-'))!;
+		expect(fixture.node(added)).toMatchObject({ kind: 'frame', label: 'Act one', tone: 'is-tint-macaron-2', x: 2_000 - 240, y: 3_000 - 160, width: 480, height: 320 });
+		expect(fixture.canvas.selection).toEqual({ nodes: [added], edges: [] });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{
+			do: 'add-frames',
+			frames: [{ id: added, title: 'Act one', color: 'macaron-2', x: 1_760, y: 2_840, width: 480, height: 320 }],
+		}]);
+		expect(framesHeld(fixture)).toHaveLength(2);
+		// Frames stand first, under every other node.
+		expect(fixture.nodes().slice(0, 2)).toEqual(['f1', added]);
+		expect(fixture.face(added).getAttribute('data-color')).toBe('macaron-2');
+		expect(fixture.face(added).classes.has('snowflake-method-sticky-tint')).toBe(true);
+		// The form stands over a refusal.
+		fixture.refuse('full');
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await expect(submit(forms[1], { type: 'frame', frame: { title: '', color: null } })).rejects.toThrow('freeformCanvas.frame.refused');
+	});
+
+	it('gathers the nodes chosen into a frame drawn round them, untitled, and chooses the frame', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['t2', 's1'] });
+		fixture.menuAt({ kind: 'node', id: 't2' })!.find((item) => item.title === 'freeformCanvas.frame.group')!.click();
+		await settle();
+		const made = fixture.bridge.transact.mock.calls[0]![1][0] as { do: string; frame: { id: string; title: string; color: null }; members: string[] };
+		expect(made).toMatchObject({ do: 'group', frame: { title: '', color: null }, members: ['t2', 's1'] });
+		const frame = framesHeld(fixture).find((candidate) => candidate.id === made.frame.id)!;
+		// Round t2 at (400, 0) and s1 at (0, 300), each 200 by 100, with the room a grouping leaves and a head.
+		expect(frame).toMatchObject({ x: -24, y: -64, width: 648, height: 488 });
+		expect(placed(fixture, 't2')?.frameId).toBe(frame.id);
+		expect(placed(fixture, 's1')?.frameId).toBe(frame.id);
+		expect(fixture.canvas.selection).toEqual({ nodes: [frame.id], edges: [] });
+		expect(fixture.node(frame.id).label).toBe('freeformCanvas.frame.untitled');
+	});
+
+	it('gives the nodes chosen to a frame picked by name, bringing in those that stand outside it, and sets them free again', async () => {
+		const fixture = await laid();
+		const picks = watch(TimelineTimePickModal);
+		fixture.choose({ nodes: ['t2', 't1'] });
+		fixture.menuAt({ kind: 'node', id: 't2' })!.find((item) => item.title === 'freeformCanvas.frame.moveTo')!.click();
+		const pick = pickFrom(picks[0]);
+		expect(pick.times.map((option) => [option.value, option.label])).toEqual([['', 'freeformCanvas.frame.none'], ['f1', 'Opening']]);
+		pick.pick({ value: 'f1', label: 'Opening' });
+		await settle();
+		// t1 stands in the frame already and stays where it is; t2 is brought inside, at the frame's head.
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
+			{ do: 'reframe', members: [{ id: 't2', frameId: 'f1' }, { id: 't1', frameId: 'f1' }] },
+			{ do: 'place', places: [{ id: 't2', x: -40 + 24, y: -80 + 40 + 24 }] },
+		]);
+		expect(placed(fixture, 't2')).toMatchObject({ frameId: 'f1', x: -16, y: -16 });
+		fixture.choose({ nodes: ['t1'] });
+		fixture.menuAt({ kind: 'node', id: 't1' })!.find((item) => item.title === 'freeformCanvas.frame.moveTo')!.click();
+		pickFrom(picks[1]).pick({ value: '', label: '' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'reframe', members: [{ id: 't1', frameId: null }] }]);
+		expect(placed(fixture, 't1')?.frameId).toBeNull();
+	});
+
+	it('edits a frame’s title and tint through its form, on a press twice and from its menu, and stands over a refusal', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformFrameFormModal);
+		fixture.port().open({ kind: 'node', id: 'f1' }, {} as MouseEvent);
+		expect(forms).toHaveLength(1);
+		await submit(forms[0], { title: 'Act one', color: 'macaron-5' });
+		expect(fixture.node('f1')).toMatchObject({ label: 'Act one', tone: 'is-tint-macaron-5' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'edit-frame', id: 'f1', title: 'Act one', color: 'macaron-5' }]);
+		expect(framesHeld(fixture)[0]).toMatchObject({ title: 'Act one', color: 'macaron-5' });
+		expect(fixture.face('f1').querySelector('.snowflake-method-freeform-frame-title')!.textContent).toBe('Act one');
+		expect(fixture.face('f1').getAttribute('data-color')).toBe('macaron-5');
+		fixture.menuAt({ kind: 'node', id: 'f1' })![0]!.click();
+		expect(forms).toHaveLength(2);
+		fixture.refuse('refused');
+		await expect(submit(forms[1], { title: 'x', color: null })).rejects.toThrow('freeformCanvas.frame.refused');
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('chooses a frame’s contents, draws the frame afresh round them, and offers neither for a frame that holds nothing', async () => {
+		const fixture = await laid();
+		const menu = fixture.menuAt({ kind: 'node', id: 'f1' })!;
+		menu.find((item) => item.title === 'freeformCanvas.frame.selectContents')!.click();
+		expect(fixture.canvas.selection).toEqual({ nodes: ['t1'], edges: [] });
+		expect(fixture.canvas.focused).toBe(1);
+		menu.find((item) => item.title === 'freeformCanvas.frame.fitContents')!.click();
+		await settle();
+		// Round t1 at (0, 0), 200 by 100.
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 'f1', x: -24, y: -64, width: 248, height: 188 }] }]);
+		expect(framesHeld(fixture)[0]).toMatchObject({ x: -24, y: -64, width: 248, height: 188 });
+		const empty = workspace([view('a', { frames: [frame('f1')], placements: [text('t1', 'free')] })]);
+		await settle();
+		const bare = empty.menuAt({ kind: 'node', id: 'f1' })!;
+		expect(bare.find((item) => item.title === 'freeformCanvas.frame.selectContents')!.disabled).toBe(true);
+		expect(bare.find((item) => item.title === 'freeformCanvas.frame.fitContents')!.disabled).toBe(true);
+		// With no frame on the view, there is none to move a node to.
+		const frameless = workspace([view('a', { placements: [text('t1', 'free')] })]);
+		await settle();
+		expect(frameless.menuAt({ kind: 'node', id: 't1' })!.find((item) => item.title === 'freeformCanvas.frame.moveTo')!.disabled).toBe(true);
+	});
+
+	it('takes a frame off the view and leaves what it held standing, free, and a node dropped in it is carried by it', async () => {
+		const fixture = await laid();
+		fixture.menuAt({ kind: 'node', id: 'f1' })!.find((item) => item.title === 'freeformCanvas.frame.remove')!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'delete', nodes: ['f1'], edges: [] }]);
+		expect(fixture.nodes()).toEqual(['t1', 't2', 's1', 'l1']);
+		expect(placed(fixture, 't1')?.frameId).toBeNull();
+		expect(fixture.node('t1').frame).toBeNull();
 	});
 });
 
@@ -2086,6 +2209,10 @@ describe('lines from node to node', () => {
 const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
 /** What a menu offers one node alone. */
 const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
+/** What a menu offers the placements chosen, of frames. */
+const FRAME_ITEMS = ['freeformCanvas.frame.group', 'freeformCanvas.frame.moveTo'];
+/** What a frame's own menu offers first. */
+const OWN_FRAME_ITEMS = ['freeformCanvas.frame.edit', 'freeformCanvas.frame.selectContents', 'freeformCanvas.frame.fitContents'];
 const EDGE_ITEMS = [
 	'freeformCanvas.edge.edit', 'freeformCanvas.edge.reverse', 'freeformCanvas.edge.changeStart', 'freeformCanvas.edge.changeEnd',
 	'freeformCanvas.edge.goStart', 'freeformCanvas.edge.goEnd', 'freeformCanvas.edge.delete',
@@ -2095,21 +2222,21 @@ describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
-			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
-		// A link opens nothing yet, and a frame has no face to choose.
+		// A link opens nothing yet; a frame has no face to choose and is removed as a frame, its nodes kept.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
-			...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...OWN_FRAME_ITEMS, ...SINGLE_ITEMS, 'freeformCanvas.frame.remove',
 		]);
 		// The face the node shows is the one checked.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.checked)).toEqual([
-			null, true, false, false, false, null, null, null,
+			null, true, false, false, false, null, null, null, null, null,
 		]);
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.title)).toEqual(EDGE_ITEMS);
 		expect(fixture.menuAt({ kind: 'edge', id: 'gone' })).toBeUndefined();
@@ -2126,8 +2253,8 @@ describe('the menus', () => {
 		const fixture = await laid();
 		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
 		const onChosen = fixture.menuAt({ kind: 'node', id: 't2' })!;
-		// Several are chosen: there is no one text to edit and no one box to measure, and the face is every one's.
-		expect(onChosen.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, 'timeline.timeline.removeFromView']);
+		// Several are chosen: there is no one text to edit and no one box to measure, and the face and the frame are every one's.
+		expect(onChosen.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...FRAME_ITEMS, 'timeline.timeline.removeFromView']);
 		const elsewhere = fixture.menuAt({ kind: 'node', id: 'l1' })!;
 		elsewhere[elsewhere.length - 1]!.click();
 		await settle();
@@ -2139,25 +2266,25 @@ describe('the menus', () => {
 
 	it('offers a project that cannot be written nothing that would change it', async () => {
 		const fixture = await laid({ readOnly: true });
-		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true, true]);
+		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true, true, true, true]);
 		// A line's ends can be gone to all the same.
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false, true]);
 		// A note is opened all the same.
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
 		]);
-		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, false, false]);
+		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, true, false, false]);
 	});
 
 	it('looks about from the ground’s menu', async () => {
 		const fixture = await laid();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
-		menu[2]!.click();
 		menu[3]!.click();
+		menu[4]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
-		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, true, false]);
+		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, false, true, false]);
 	});
 
 	it('opens a node’s menu from the button every face carries, under the pointer or by the button', async () => {
@@ -2168,7 +2295,7 @@ describe('the menus', () => {
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });

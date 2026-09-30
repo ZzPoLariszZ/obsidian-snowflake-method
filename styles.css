@@ -15739,6 +15739,22 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: none;
 }
 
+/* Tinted, a frame wears one of the sticky notes' macarons, painted from the
+   same eight rules, seen through so the nodes it holds read on it. */
+.snowflake-method-freeform-face.is-frame[data-color] {
+	border-color: var(--snowflake-method-sticky-edge);
+	background-color: color-mix(in srgb, var(--snowflake-method-sticky-ground) 55%, transparent);
+}
+
+.snowflake-method-freeform-face.is-frame[data-color] .snowflake-method-freeform-frame-title {
+	color: var(--text-normal);
+}
+
+/* A frame's fields in the form that adds nodes stand only for a frame. */
+.snowflake-method-freeform-frame-fields.is-hidden {
+	display: none;
+}
+
 .snowflake-method-freeform-face.is-frame.is-selected {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 0 0 1px var(--interactive-accent);
