@@ -333,7 +333,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 	const bridge = {
 		read: vi.fn(async () => {
 			if (failing) throw new Error('unreadable');
-			return { projectPath: 'P', locale, held, limits };
+			// The path the workspace's project stands at now, as a read would name it.
+			return { projectPath: projectPath ?? 'P', locale, held, limits };
 		}),
 		subscribe: vi.fn((listener: () => void) => {
 			listeners.add(listener);
@@ -492,6 +493,9 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		},
 		press: (key: string, extra: Record<string, unknown> = {}): boolean =>
 			port().key({ key, ctrlKey: false, metaKey: false, altKey: false, ...extra } as unknown as KeyboardEvent),
+		/** The chord registered for a key pressed with these modifiers, as the view's scope would hear it. */
+		chord: (modifiers: string[], key: string) =>
+			chords.find((entry) => entry.key === key && entry.modifiers.join('+') === modifiers.join('+'))!,
 	};
 	return fixture;
 }
@@ -1393,6 +1397,299 @@ describe('moving, sizing and removing', () => {
 	});
 });
 
+describe('taking a change back', () => {
+	const undoButton = (fixture: Fixture): CorkboardElement => fixture.button('snowflake-method-freeform-undo');
+	const redoButton = (fixture: Fixture): CorkboardElement => fixture.button('snowflake-method-freeform-redo');
+	const placed = (fixture: Fixture, id: string): FreeformPlacement | undefined =>
+		fixture.viewHeld('a').placements.find((placement) => placement.id === id);
+	const written = (fixture: Fixture, at: number): readonly FreeformStep[] => fixture.bridge.transact.mock.calls[at]![1];
+
+	it('stands its two symbols ahead of the zoom step, asleep until there is a change to take back', async () => {
+		const fixture = await laid();
+		expect(undoButton(fixture).getAttribute('aria-label')).toBe('freeformCanvas.undo');
+		expect(redoButton(fixture).getAttribute('aria-label')).toBe('freeformCanvas.redo');
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(redoButton(fixture).disabled).toBe(true);
+		const panel = fixture.root.querySelector('.snowflake-method-freeform-controls')!;
+		expect(panel.children.map((child) => [...child.classes].find((cls) => cls.startsWith('snowflake-method-freeform-') && cls !== 'snowflake-method-freeform-control'))).toEqual([
+			'snowflake-method-freeform-select',
+			'snowflake-method-freeform-undo',
+			'snowflake-method-freeform-redo',
+			'snowflake-method-freeform-zoom-out',
+			'snowflake-method-freeform-zoom-level',
+			'snowflake-method-freeform-zoom-in',
+			'snowflake-method-freeform-fit',
+			'snowflake-method-freeform-reset',
+		]);
+	});
+
+	it('takes a move back, shown at once and written as one more change, and makes it again', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		// To be taken back from the moment it is shown, before its write has landed.
+		expect(undoButton(fixture).disabled).toBe(false);
+		expect(redoButton(fixture).disabled).toBe(true);
+		await settle();
+		fire(undoButton(fixture), 'click');
+		expect(fixture.node('t2')).toMatchObject({ x: 400, y: 0 });
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(redoButton(fixture).disabled).toBe(false);
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledTimes(2);
+		expect(written(fixture, 1)).toEqual([{ do: 'place', places: [{ id: 't2', x: 400, y: 0, width: 200, height: 100, frameId: null }] }]);
+		expect(placed(fixture, 't2')).toMatchObject({ x: 400, y: 0 });
+		fire(redoButton(fixture), 'click');
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		expect(undoButton(fixture).disabled).toBe(false);
+		expect(redoButton(fixture).disabled).toBe(true);
+		await settle();
+		expect(written(fixture, 2)).toEqual([{ do: 'place', places: [{ id: 't2', x: 640, y: 80, width: 200, height: 100, frameId: null }] }]);
+		expect(placed(fixture, 't2')).toMatchObject({ x: 640, y: 80 });
+		// And back once more, from the chords.
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(false);
+		expect(fixture.node('t2')).toMatchObject({ x: 400, y: 0 });
+		expect(fixture.chord(['Mod', 'Shift'], 'z').listener()).toBe(false);
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledTimes(5);
+	});
+
+	it('takes a chord for nothing when there is nothing to take back, and leaves it to a field or a project that cannot be written', async () => {
+		const fixture = await laid();
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+		expect(fixture.chord(['Mod', 'Shift'], 'z').listener()).toBe(true);
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		// In a field, the chord is the field's own.
+		fixture.port().open({ kind: 'node', id: 't1' }, {} as MouseEvent);
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		fixture.type('t1', 'First words\n\nand more', 'escape');
+		fixture.remodel({ readOnly: true });
+		fixture.handle.refresh();
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('puts back what was taken off the view as it was, and takes it off again', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['f1'], edges: ['e1'] });
+		fixture.press('Delete');
+		await settle();
+		expect(fixture.nodes()).toEqual(['t1', 't2', 's1', 'l1']);
+		expect(fixture.scene().edges).toEqual([]);
+		fire(undoButton(fixture), 'click');
+		expect(fixture.nodes()).toEqual(['f1', 't1', 't2', 's1', 'l1']);
+		expect(fixture.node('t1').frame).toBe('f1');
+		expect(fixture.scene().edges.map((one) => one.id)).toEqual(['e1']);
+		await settle();
+		expect(written(fixture, 1)).toEqual([
+			{
+				do: 'restore',
+				placements: [],
+				frames: [laidView().frames[0]],
+				edges: [laidView().edges[0]],
+			},
+			{ do: 'reframe', members: [{ id: 't1', frameId: 'f1' }] },
+		]);
+		expect(fixture.viewHeld('a').frames).toEqual(laidView().frames);
+		expect(placed(fixture, 't1')?.frameId).toBe('f1');
+		fire(redoButton(fixture), 'click');
+		expect(fixture.nodes()).toEqual(['t1', 't2', 's1', 'l1']);
+		await settle();
+		// What was done last is taken back first: the node set free of its frame, then the frame and the line taken off.
+		expect(written(fixture, 2)).toEqual([
+			{ do: 'reframe', members: [{ id: 't1', frameId: null }] },
+			{ do: 'delete', nodes: ['f1'], edges: ['e1'] },
+		]);
+		expect(fixture.viewHeld('a').frames).toEqual([]);
+		expect(placed(fixture, 't1')?.frameId).toBeNull();
+	});
+
+	it('takes back words typed into a node, and a node made by typing into it', async () => {
+		const fixture = await laid();
+		fixture.dom.height = 40;
+		fixture.port().open({ kind: 'node', id: 't2' }, {} as MouseEvent);
+		fixture.type('t2', 'Other words', 'chord');
+		await settle();
+		expect(fixture.shown('t2')).toBe('Other words');
+		fire(undoButton(fixture), 'click');
+		expect(fixture.shown('t2')).toBe('Second');
+		await settle();
+		expect(written(fixture, 1)).toEqual([{ do: 'text', id: 't2', text: 'Second' }]);
+		expect(placed(fixture, 't2')?.resource).toEqual({ type: 'text', text: 'Second' });
+		fire(redoButton(fixture), 'click');
+		expect(fixture.shown('t2')).toBe('Other words');
+		await settle();
+		// A node made by typing is taken off the view, and put back with its words.
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		const made = fixture.nodes()[fixture.nodes().length - 1]!;
+		fixture.type(made, 'A thought');
+		await settle();
+		expect(placed(fixture, made)).toBeDefined();
+		fire(undoButton(fixture), 'click');
+		expect(fixture.nodes()).not.toContain(made);
+		await settle();
+		expect(written(fixture, 4)).toEqual([{ do: 'delete', nodes: [made], edges: [] }]);
+		expect(placed(fixture, made)).toBeUndefined();
+		fire(redoButton(fixture), 'click');
+		expect(fixture.nodes()).toContain(made);
+		expect(fixture.shown(made)).toBe('A thought');
+		await settle();
+		expect(written(fixture, 5)).toEqual([{
+			do: 'restore',
+			placements: [expect.objectContaining({ id: made, resource: { type: 'text', text: 'A thought' }, zIndex: 4 })],
+			frames: [],
+			edges: [],
+		}]);
+		expect(placed(fixture, made)).toMatchObject({ zIndex: 4 });
+	});
+
+	it('keeps words still being typed before it takes anything back', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		fixture.dom.height = 40;
+		fixture.port().open({ kind: 'node', id: 't1' }, {} as MouseEvent);
+		fixture.field('t1')!.value = 'Typed, then undone';
+		fire(undoButton(fixture), 'click');
+		// The words are the last change, so they are what is taken back; the move stands.
+		expect(fixture.field('t1')).toBeNull();
+		expect(fixture.shown('t1')).toBe('First words\n\nand more');
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		await settle();
+		expect(written(fixture, 1)).toEqual([{ do: 'text', id: 't1', text: 'Typed, then undone' }]);
+		expect(written(fixture, 2)).toEqual([{ do: 'text', id: 't1', text: 'First words\n\nand more' }]);
+	});
+
+	it('forgets what could be made again once another change is made', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		fire(undoButton(fixture), 'click');
+		await settle();
+		expect(redoButton(fixture).disabled).toBe(false);
+		fixture.port().commit([{ kind: 'move', id: 'l1', x: 10, y: 10 }]);
+		expect(redoButton(fixture).disabled).toBe(true);
+		expect(undoButton(fixture).disabled).toBe(false);
+	});
+
+	it('keeps each view’s own changes, and takes back only the view on show’s', async () => {
+		const fixture = await laid({}, [view('b', { updatedAt: 1, placements: [text('b1', 'B', { x: 0, y: 0 })] })]);
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		fixture.viewField().choose('b');
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+		fixture.port().commit([{ kind: 'move', id: 'b1', x: 30, y: 30 }]);
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(false);
+		fixture.viewField().choose('a');
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(false);
+		fire(undoButton(fixture), 'click');
+		expect(fixture.node('t2')).toMatchObject({ x: 400, y: 0 });
+		await settle();
+		expect(fixture.viewHeld('b').placements[0]).toMatchObject({ x: 30, y: 30 });
+		fixture.viewField().choose('b');
+		await settle();
+		fire(undoButton(fixture), 'click');
+		expect(fixture.node('b1')).toMatchObject({ x: 0, y: 0 });
+	});
+
+	it('takes back what the file said it wrote, not what the canvas worked out, where the two differ', async () => {
+		const fixture = await laid();
+		const open = fixture.hold();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		// Another leaf moved the node while the write waited: the file's answer says where it stood as the write landed.
+		fixture.rewrite('a', (before) => ({
+			...before,
+			placements: before.placements.map((placement) => (placement.id === 't2' ? { ...placement, x: 50, y: 50 } : placement)),
+		}));
+		open();
+		await settle();
+		fire(undoButton(fixture), 'click');
+		await settle();
+		expect(written(fixture, 1)).toEqual([{ do: 'place', places: [{ id: 't2', x: 50, y: 50, width: 200, height: 100, frameId: null }] }]);
+		expect(placed(fixture, 't2')).toMatchObject({ x: 50, y: 50 });
+	});
+
+	it('forgets a change the file would not take', async () => {
+		const fixture = await laid();
+		fixture.refuse('refused');
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		expect(undoButton(fixture).disabled).toBe(false);
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('says a change can no longer be taken back when the view has changed from under it', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		// Another leaf took the node off the view since.
+		fixture.rewrite('a', (before) => ({ ...before, placements: before.placements.filter((placement) => placement.id !== 't2') }));
+		fixture.notify();
+		await settle();
+		fire(undoButton(fixture), 'click');
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.undo.gone');
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(redoButton(fixture).disabled).toBe(true);
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('says so too when the file would not take the change back, and shows the view as the file has it', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		fixture.refuse('refused');
+		fire(undoButton(fixture), 'click');
+		expect(fixture.node('t2')).toMatchObject({ x: 400, y: 0 });
+		expect(redoButton(fixture).disabled).toBe(false);
+		await settle();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.undo.gone');
+		expect(notices).not.toHaveBeenCalledWith('freeformCanvas.changeRefused');
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80 });
+		expect(redoButton(fixture).disabled).toBe(true);
+		// Made again after a refusal, it says so in the words for that.
+		fixture.refuse(null);
+		fixture.port().commit([{ kind: 'move', id: 'l1', x: 10, y: 10 }]);
+		await settle();
+		fire(undoButton(fixture), 'click');
+		await settle();
+		fixture.refuse('absent');
+		fire(redoButton(fixture), 'click');
+		await settle();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.redo.gone');
+	});
+
+	it('forgets every change as the project it was made in goes', async () => {
+		const fixture = await laid();
+		fixture.port().commit([{ kind: 'move', id: 't2', x: 640, y: 80 }]);
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(false);
+		fixture.moveProject('Elsewhere');
+		fixture.notify();
+		await settle();
+		expect(undoButton(fixture).disabled).toBe(true);
+	});
+
+	it('offers nothing to take back on a project that cannot be written', async () => {
+		const fixture = await laid({ readOnly: true });
+		expect(undoButton(fixture).disabled).toBe(true);
+		expect(redoButton(fixture).disabled).toBe(true);
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(true);
+	});
+});
+
 describe('the menus', () => {
 	it('offers a text node its words to edit and its removal, and any other node its removal alone', async () => {
 		const fixture = await laid();
@@ -1497,9 +1794,11 @@ describe('the canvas controls', () => {
 		expect([reset.textContent, reset.getAttribute('aria-label')]).toEqual(['freeformCanvas.reset', 'freeformCanvas.reset.viewport']);
 		fire(fit, 'click');
 		fire(reset, 'click');
-		expect(fixture.chords.map((chord) => [chord.modifiers, chord.key])).toEqual([[['Shift'], '1'], [['Shift'], '0']]);
-		expect(fixture.chords[0]!.listener()).toBe(false);
-		expect(fixture.chords[1]!.listener()).toBe(false);
+		expect(fixture.chords.map((chord) => [chord.modifiers, chord.key])).toEqual([
+			[['Mod'], 'z'], [['Mod', 'Shift'], 'z'], [['Shift'], '1'], [['Shift'], '0'],
+		]);
+		expect(fixture.chord(['Shift'], '1').listener()).toBe(false);
+		expect(fixture.chord(['Shift'], '0').listener()).toBe(false);
 		expect(fixture.canvas.moves.slice(1)).toEqual([
 			{ kind: 'fit', of: 'all' }, { kind: 'reset' }, { kind: 'fit', of: 'all' }, { kind: 'reset' },
 		]);
@@ -1509,22 +1808,22 @@ describe('the canvas controls', () => {
 		const fixture = await laid();
 		fixture.port().open({ kind: 'node', id: 't2' }, {} as MouseEvent);
 		expect(fixture.dom.doc.activeElement).toBe(fixture.field('t2'));
-		expect(fixture.chords[0]!.listener()).toBe(true);
-		expect(fixture.chords[1]!.listener()).toBe(true);
+		expect(fixture.chord(['Shift'], '1').listener()).toBe(true);
+		expect(fixture.chord(['Shift'], '0').listener()).toBe(true);
 		const outside = fixture.dom.container.createEl('button');
 		outside.focus();
-		expect(fixture.chords[0]!.listener()).toBe(true);
+		expect(fixture.chord(['Shift'], '1').listener()).toBe(true);
 		expect(fixture.canvas.moves).toHaveLength(1);
 		// On one of the workspace's own buttons the chord is the canvas's.
 		fixture.button('snowflake-method-freeform-fit').focus();
-		expect(fixture.chords[0]!.listener()).toBe(false);
+		expect(fixture.chord(['Shift'], '1').listener()).toBe(false);
 		expect(fixture.canvas.moves).toHaveLength(2);
 	});
 
 	it('leaves a chord alone while no canvas is shown', async () => {
 		const fixture = workspace([]);
 		await settle();
-		expect(fixture.chords[0]!.listener()).toBe(true);
+		expect(fixture.chord(['Shift'], '1').listener()).toBe(true);
 		expect(fixture.canvas.moves).toEqual([]);
 	});
 

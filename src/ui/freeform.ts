@@ -9,13 +9,16 @@
  * test stands a plain one in its place; what stands in a node's box is the
  * faces' (`freeform-faces.ts`); the read, the queue and the paint's gate are
  * the loop's (`document-loop.ts`), shared with the timeline and the beat
- * sheet. This is what is left: the toolbar, the canvas's controls, the
- * menus, the views' forms, and the one way every change goes to the file.
+ * sheet; what was done, kept to be taken back, is the history's
+ * (`freeform-history.ts`). This is what is left: the toolbar, the canvas's
+ * controls, the menus, the views' forms, and the one way every change goes
+ * to the file and into the history.
  *
  * A change is shown the moment it is made and written after: the view as
  * the canvas shows it is the view as its file has it with every change still
  * on its way made to it, so a node dropped stays where it was dropped while
  * its write is in flight, and goes back only if the file would not take it.
+ * Taking a change back is one more change, written the same way.
  */
 
 import { Keymap, Menu, Notice } from 'obsidian';
@@ -48,6 +51,15 @@ import {
 } from './freeform-canvas-port';
 import { createFreeformFaces } from './freeform-faces';
 import { FreeformTextModal, FreeformViewFormModal, type RecoveredFreeformText } from './freeform-forms';
+import {
+	EMPTY_FREEFORM_HISTORY,
+	answerFreeformChange,
+	recordFreeformChange,
+	takeFreeformRedo,
+	takeFreeformUndo,
+	type FreeformHistory,
+	type FreeformHistoryTurn,
+} from './freeform-history';
 import {
 	EMPTY_FREEFORM_SCENE,
 	FREEFORM_GRID,
@@ -159,6 +171,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		selectButton.setAttribute('aria-pressed', dragDraws ? 'true' : 'false');
 		canvas.setInteraction({ ground: dragDraws ? 'select' : 'pan' });
 	});
+	const undoButton = toolbarIconButton(panel, 'snowflake-method-freeform-undo', 'undo-2', t('freeformCanvas.undo'));
+	undoButton.addEventListener('click', () => {
+		undo();
+	});
+	const redoButton = toolbarIconButton(panel, 'snowflake-method-freeform-redo', 'redo-2', t('freeformCanvas.redo'));
+	redoButton.addEventListener('click', () => {
+		redo();
+	});
 	const zoomOutButton = toolbarIconButton(panel, 'snowflake-method-freeform-zoom-out', 'minus', t('freeformCanvas.zoom.out'));
 	zoomOutButton.addEventListener('click', () => {
 		canvas.moveViewport({ kind: 'step', direction: 'out' });
@@ -220,6 +240,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	/** Whether a drag on the ground draws a box rather than moves the plane. */
 	let dragDraws = false;
 	const pending: Pending[] = [];
+	/**
+	 * What was done to each view here, kept to be taken back: the tab's own,
+	 * and gone with it. A view deleted takes its own with it.
+	 */
+	const histories = new Map<string, FreeformHistory>();
 	/** The view last worked out for the canvas, kept while neither its file nor what is on its way moves. */
 	let standing: { id: string; file: FreeformView; turn: number; view: FreeformView } | null = null;
 	let turn = 0;
@@ -238,6 +263,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const loop: DocumentLoop = createDocumentLoop<FreeformReading, ProjectDashboardModel>({
 		source: () => controls.bridge(),
 		taken: (next, failed) => {
+			// What was done in one project is nothing to take back in another.
+			if (next !== null && reading !== null && next.projectPath !== reading.projectPath) {
+				histories.clear();
+				paintHistory();
+			}
 			reading = next;
 			if (next !== null && awaitedViewId !== null && findFreeformView(next.held, awaitedViewId) !== undefined) {
 				viewId = awaitedViewId;
@@ -396,11 +426,21 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		zoomOutButton.disabled = zoomStep(zoom, 'out', FREEFORM_ZOOM) === zoom;
 	};
 
+	const historyOf = (id: string): FreeformHistory => histories.get(id) ?? EMPTY_FREEFORM_HISTORY;
+
+	/** The two symbols awake only while there is a change of the view on show to take back or make again. */
+	const paintHistory = (): void => {
+		const history = shownViewId === null ? EMPTY_FREEFORM_HISTORY : historyOf(shownViewId);
+		undoButton.disabled = readOnly || shownViewId === null || history.undo.length === 0;
+		redoButton.disabled = readOnly || shownViewId === null || history.redo.length === 0;
+	};
+
 	/** The canvas told what stands on the view on show, as it stands now. */
 	const paintScene = (): void => {
 		if (disposed) return;
 		const id = shownViewId;
 		const view = id === null ? null : standingView(id);
+		paintHistory();
 		if (view === null || model === null) {
 			made = null;
 			canvas.setScene(EMPTY_FREEFORM_SCENE);
@@ -512,8 +552,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	// -- Writing -------------------------------------------------------------
 
-	const say = (came: FreeformCame): void => {
+	/** Says why a change did not land: in the words handed in, or in the view's own. */
+	const say = (came: FreeformCame, words?: string): void => {
 		if (came === 'written' || disposed) return;
+		if (words !== undefined) {
+			new Notice(words);
+			return;
+		}
 		new Notice(came === 'full'
 			? t('freeformCanvas.view.full', { limit: reading?.limits.placements ?? 0 })
 			: t('freeformCanvas.changeRefused'));
@@ -527,49 +572,92 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	};
 
 	/**
-	 * One gesture, one write. The change is made to the view as the canvas
-	 * shows it at once, and sent to the file in its turn; what the file would
-	 * not take is taken off the canvas again, and said.
+	 * One gesture, one write, one change to take back. The change is made to
+	 * the view as the canvas shows it at once, and sent to the file in its
+	 * turn; what the file would not take is taken off the canvas again, and
+	 * said. The steps that take it back are kept from the moment it is shown,
+	 * worked out here, and stand corrected by the file's own once it lands.
+	 * `gone` is what to say for a change taken back or made again that the
+	 * view can no longer take.
 	 */
-	const change = async (steps: readonly FreeformStep[]): Promise<FreeformCame> => {
+	const change = async (
+		steps: readonly FreeformStep[],
+		turnOf: FreeformHistoryTurn = 'change',
+		gone?: string,
+	): Promise<FreeformCame> => {
 		const id = shownViewId;
 		const path = controls.projectPath();
 		const view = id === null ? null : standingView(id);
 		if (id === null || view === null || reading === null || path === null || readOnly) {
-			say('refused');
+			say('refused', gone);
 			return 'refused';
 		}
 		const taken = applyFreeformSteps(view, steps, view.updatedAt, reading.limits);
 		if (taken.came !== 'written') {
-			say(taken.came);
+			say(taken.came, gone);
 			return taken.came;
 		}
 		if (!taken.changed) return 'written';
 		const entry: Pending = { viewId: id, steps, landedOn: undefined };
 		pending.push(entry);
 		turn += 1;
+		const recorded = recordFreeformChange(historyOf(id), taken.inverse, turnOf);
+		histories.set(id, recorded.history);
 		paintScene();
 		// Where the leaf stands looking rides along with the change.
 		const viewport = canvas.viewport();
-		const answer: { came: FreeformCame } = { came: 'refused' };
+		const answer: { came: FreeformCame; inverse: readonly FreeformStep[] } = { came: 'refused', inverse: [] };
 		await enqueue(async () => {
 			try {
 				// The project the change was made in, where it still stands to be written.
 				if (controls.projectPath() !== path) return;
 				const done = await controls.bridge().transact(id, steps, viewport);
 				answer.came = done.came;
+				answer.inverse = done.inverse;
 			} finally {
 				if (answer.came === 'written') entry.landedOn = fileView(id);
 				else drop(entry);
 			}
 		});
 		drop(entry);
+		if (recorded.entry !== null) {
+			histories.set(id, answerFreeformChange(historyOf(id), recorded.entry, answer.came === 'written' ? answer.inverse : null));
+		}
 		if (answer.came !== 'written') {
 			paintScene();
-			say(answer.came);
+			say(answer.came, gone);
+		} else {
+			paintHistory();
 		}
 		return answer.came;
 	};
+
+	// -- Taking back and making again --------------------------------------------
+
+	/**
+	 * The last change to the view on show taken back, or the last taken back
+	 * made again. False where there was none to take, so a key pressed for
+	 * nothing goes on to whoever is next.
+	 */
+	const turnBack = (way: 'undo' | 'redo'): boolean => {
+		const id = shownViewId;
+		if (id === null || readOnly || disposed) return false;
+		// Words still being typed are the view's before anything is taken back.
+		canvas.settle();
+		const took = way === 'undo' ? takeFreeformUndo(historyOf(id)) : takeFreeformRedo(historyOf(id));
+		if (took === null) return false;
+		histories.set(id, took.history);
+		paintHistory();
+		void change(took.entry.steps, way, t(way === 'undo' ? 'freeformCanvas.undo.gone' : 'freeformCanvas.redo.gone'))
+			.catch((error: unknown) => {
+				console.error('Snowflake: a freeform change could not be taken back', error);
+			});
+		return true;
+	};
+
+	const undo = (): boolean => turnBack('undo');
+
+	const redo = (): boolean => turnBack('redo');
 
 	/**
 	 * Words whose write failed have no field left to go back to: they go to a
@@ -971,8 +1059,12 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					await enqueue(async () => {
 						came.gone = await controls.bridge().deleteView(view.id);
 					});
-					if (came.gone) memory.viewports.delete(view.id);
-					else if (!disposed) new Notice(t('timeline.view.deleteRefused'));
+					if (came.gone) {
+						memory.viewports.delete(view.id);
+						histories.delete(view.id);
+					} else if (!disposed) {
+						new Notice(t('timeline.view.deleteRefused'));
+					}
 					return came.gone;
 				},
 			},
@@ -1001,6 +1093,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return root.contains(active) && active.closest(FIELD_SELECTOR) === null;
 	};
 	const chords = [
+		// A chord with nothing to take back is not taken, so it goes on to whoever is next.
+		controls.chord(['Mod'], 'z', () => !chordFree() || !undo()),
+		controls.chord(['Mod', 'Shift'], 'z', () => !chordFree() || !redo()),
 		controls.chord(['Shift'], '1', () => {
 			if (!chordFree()) return true;
 			fitAll();
