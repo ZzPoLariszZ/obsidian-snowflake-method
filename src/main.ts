@@ -4438,6 +4438,8 @@ export default class SnowflakeMethodPlugin
 					.map((relativePath) => ({ path: relativePath, name: freeformFileName(relativePath) }));
 			},
 			mintId: (kind) => views.mint(kind),
+			today: () => this.sessions.today(),
+			dateFormat: () => this.settings.sessionDateFormat,
 			createView: (name) => create((project) => views.createView(project, { name })),
 			renameView: (id, name) => write((project) => views.renameView(project, id, name)),
 			deleteView: (id) => remove((project) => views.deleteView(project, id)),

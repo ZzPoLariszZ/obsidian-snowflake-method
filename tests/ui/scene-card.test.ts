@@ -74,7 +74,7 @@ function fireOn(element: CorkboardElement, type: string, target: CorkboardElemen
 
 const el = (node: unknown): CorkboardElement => node as CorkboardElement;
 
-function deal(scene: Partial<SceneViewModel> = {}) {
+function deal(scene: Partial<SceneViewModel> = {}, options: { symbol?: string; conflictReadOnly?: boolean } = {}) {
 	const dom = new CorkboardDom();
 	let stored: SceneViewModel = {
 		id: 'scene', path: 'First/Scenes/Opening.md', title: 'Opening', rank: 0,
@@ -144,6 +144,7 @@ function deal(scene: Partial<SceneViewModel> = {}) {
 		dragAllowed: () => dragAllowed,
 		menu,
 		extend: (card) => card,
+		...options,
 	});
 	const mount = (key = stored.id): SceneCard => {
 		const card = deck.mount(dom.container as unknown as HTMLElement, key, stored, 0);
@@ -193,6 +194,24 @@ describe('a scene card dealt from the deck', () => {
 		expect(el(card.conflict).value).toBe('An obstacle');
 		expect(el(card.status).value).toBe('in-progress');
 		expect(deck.cards.get('scene')).toBe(card);
+	});
+
+	it('wears a symbol in place of its number, and keeps its conflict read-only, where the deck says so', () => {
+		const fixture = deal({}, { symbol: 'clapperboard', conflictReadOnly: true });
+		const card = fixture.mount();
+		expect(el(card.number).classes.has('snowflake-method-corkboard-symbol')).toBe(true);
+		expect(el(card.number).classes.has('snowflake-method-corkboard-number')).toBe(false);
+		expect(el(card.number).getAttribute('aria-hidden')).toBe('true');
+		expect(el(card.number).getAttribute('aria-label')).toBeNull();
+		// A conflict only read invites no writing: no placeholder, not reached by the Tab key, and read-only however writable the scene is.
+		expect(card.conflict.readOnly).toBe(true);
+		expect(el(card.conflict).getAttribute('placeholder')).toBeNull();
+		expect(el(card.conflict).getAttribute('tabindex')).toBe('-1');
+		expect(el(card.conflict).value).toBe('An obstacle');
+		// The rest of the card is still the writer's.
+		expect(card.status.disabled).toBe(false);
+		expect(card.title.disabled).toBe(false);
+		expect(el(card.el).classes.has('is-read-only')).toBe(false);
 	});
 
 	it('dresses again without rewriting what has not moved', () => {

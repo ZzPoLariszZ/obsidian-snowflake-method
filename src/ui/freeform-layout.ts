@@ -40,18 +40,28 @@ export const FREEFORM_FACE_MODES: readonly FreeformFaceMode[] = ['compact', 'sta
 
 /**
  * The kinds of face there are, by how much room each of their modes needs:
- * a scene's card, a record's rows, a text's words, and the one line every
- * other kind shows.
+ * a scene's card and the card a character or a worldbuilding note wears in
+ * its shape, a task's card as the board deals it, the card a thread or a
+ * revision wears in the manuscript's margin, a sticky note's own card, a
+ * file's or a link's rows, a text's words, and the one line every other
+ * kind shows.
  */
-export type FreeformFaceKind = 'scene' | 'record' | 'text' | 'plain';
+export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'rail' | 'sticky' | 'record' | 'text' | 'plain';
 
 /**
  * How tall a box must be for a face to show each of its modes whole. A
- * scene's measures are the corkboard's own card in each of its styles; a
- * record's are its rows.
+ * scene's measures are the corkboard's own card in each of its styles, and
+ * a card's the same shape without the links; a task's are the board's card
+ * with and without its second row; a margin card's are its head, its
+ * fields, and the passages under them; a sticky note's are its head with
+ * its first line and with its words; a record's are its rows.
  */
 export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
 	scene: { compact: 80, standard: 240, extended: 304 },
+	card: { compact: 80, standard: 176, extended: 176 },
+	task: { compact: 56, standard: 88, extended: 88 },
+	rail: { compact: 72, standard: 200, extended: 320 },
+	sticky: { compact: 64, standard: 160, extended: 160 },
 	record: { compact: 56, standard: 160, extended: 320 },
 	text: { compact: 56, standard: 56, extended: 56 },
 	plain: { compact: 48, standard: 48, extended: 48 },
@@ -64,10 +74,14 @@ export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
 			return 'scene';
 		case 'character':
 		case 'worldbuilding':
+			return 'card';
 		case 'task':
+			return 'task';
 		case 'foreshadowing':
 		case 'revision':
+			return 'rail';
 		case 'sticky-note':
+			return 'sticky';
 		case 'file':
 		case 'link':
 			return 'record';

@@ -132,6 +132,7 @@ import {
 	leaveFreeformView,
 	newFreeformView,
 	renameFreeformView,
+	type DateFormat,
 	type FreeformDocument,
 	type FreeformEdge,
 	type FreeformFrame,
@@ -399,6 +400,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			return () => { resourceListeners.delete(listener); };
 		}),
 		mintId: vi.fn((kind: string) => `${kind}-${String(++serial)}`),
+		today: vi.fn(() => '2026-09-30'),
+		dateFormat: vi.fn((): DateFormat => 'YYYY-MM-DD'),
 		createView: vi.fn(async (name: string) => {
 			if (refusal !== null) return null;
 			const id = `freeform-view-${String(++serial)}`;
@@ -754,12 +757,17 @@ describe('the freeform workspace', () => {
 		// A line is called by what it joins.
 		expect(fixture.scene().edges[0]).toMatchObject({ id: 'e1', name: 'freeformCanvas.edge.name(from=First words,to=Second)' });
 		expect(fixture.shown('t1')).toBe('First words\n\nand more');
-		// A scene stands as the corkboard's own card.
+		// A scene stands as the corkboard's own card, wearing the scene's symbol in place of its number, its conflict read and never typed into.
 		expect(fixture.root.classes.has('snowflake-method-scene-cards')).toBe(true);
 		const card = fixture.face('s1').querySelector('.snowflake-method-corkboard-card')!;
 		expect(card.getAttribute('data-key')).toBe('s1');
 		expect(card.getAttribute('draggable')).toBe('false');
 		expect(card.querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Arrival');
+		expect(card.querySelector('.snowflake-method-corkboard-number')).toBeNull();
+		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
+		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')! as unknown as HTMLTextAreaElement;
+		expect(conflict.readOnly).toBe(true);
+		expect(conflict.getAttribute('placeholder')).toBeNull();
 		expect(fixture.face('f1').querySelector('.snowflake-method-freeform-frame-title')!.textContent).toBe('Opening');
 	});
 
@@ -1835,15 +1843,15 @@ describe('nodes added by type', () => {
 		expect(fixture.node(added[0]!)).toMatchObject({
 			kind: 'character',
 			x: 500 - FREEFORM_SIZE.width / 2,
-			y: 300 - FREEFORM_SIZE.height / 2,
-			height: FREEFORM_FACE_HEIGHTS.record.standard,
+			y: 300 - FREEFORM_FACE_HEIGHTS.card.standard / 2,
+			height: FREEFORM_FACE_HEIGHTS.card.standard,
 			label: 'freeformCanvas.node.name(kind=form.group.character,name=Anna)',
 		});
 		// A note the project no longer holds is placed all the same, and shown as missing under the name it was given.
 		expect(fixture.node(added[1]!)).toMatchObject({
 			kind: 'missing',
 			x: 500 - FREEFORM_SIZE.width / 2 + FREEFORM_CASCADE,
-			y: 300 - FREEFORM_SIZE.height / 2 + FREEFORM_CASCADE,
+			y: 300 - FREEFORM_FACE_HEIGHTS.card.standard / 2 + FREEFORM_CASCADE,
 			label: 'Gone already',
 		});
 		expect(fixture.canvas.selection).toEqual({ nodes: added, edges: [] });
@@ -1856,9 +1864,9 @@ describe('nodes added by type', () => {
 			],
 		}]);
 		expect(fixture.viewHeld('a').placements).toHaveLength(6);
-		// A character's face shows its rows.
-		expect(fixture.face(added[0]!).classes.has('is-record')).toBe(true);
-		expect(fixture.face(added[0]!).querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('Anna');
+		// A character's face is a card in the scene card's shape.
+		expect(fixture.face(added[0]!).classes.has('is-card')).toBe(true);
+		expect(fixture.face(added[0]!).querySelector('.snowflake-method-freeform-card-title')!.textContent).toBe('Anna');
 		expect(fixture.face(added[1]!).classes.has('is-missing')).toBe(true);
 	});
 
@@ -1869,7 +1877,7 @@ describe('nodes added by type', () => {
 		await settle();
 		await submit(forms[0], { type: 'entity', kind: 'location', nodes: [{ id: 'loc-1', name: 'Harbour' }] });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
-		expect(fixture.node(added)).toMatchObject({ kind: 'worldbuilding', x: 2_000 - FREEFORM_SIZE.width / 2, y: 3_000 - FREEFORM_SIZE.height / 2 });
+		expect(fixture.node(added)).toMatchObject({ kind: 'worldbuilding', x: 2_000 - FREEFORM_SIZE.width / 2, y: 3_000 - FREEFORM_FACE_HEIGHTS.card.standard / 2 });
 		expect(fixture.node(added).label).toBe('freeformCanvas.node.name(kind=worldbuilding.kind.location,name=Harbour)');
 		// A scene lands with the room the board's standard card needs, so it stands as that card from the first.
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
@@ -1998,7 +2006,7 @@ describe('how a node is shown and where it stands', () => {
 	it('shows, on Auto, the fullest face the zoom allows that the box has room for', async () => {
 		const fixture = workspace([view('a', {
 			placements: [
-				{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, height: 200 },
+				{ ...text('c1', ''), resource: { type: 'entity', kind: 'scene', id: 'scene-1', name: 'Arrival' }, height: 250 },
 				{ ...text('c2', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 300, height: 400 },
 				{ ...text('c3', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 600, height: 40 },
 			],
@@ -2230,8 +2238,13 @@ describe('records on the canvas', () => {
 			['p5', 'missing', 'Old'],
 			['p6', 'foreshadowing', 'freeformCanvas.node.name(kind=freeformCanvas.type.foreshadowing,name=Silent)'],
 		]);
-		expect(fixture.face('p1').classes.has('is-record')).toBe(true);
+		expect(fixture.face('p1').classes.has('is-task')).toBe(true);
+		expect(fixture.face('p2').classes.has('is-foreshadowing')).toBe(true);
+		expect(fixture.face('p3').classes.has('is-revision')).toBe(true);
 		expect(fixture.face('p4').classes.has('is-sticky')).toBe(true);
+		// A task's due day is written as the author writes dates, and measured against the day the bridge says it is.
+		expect(fixture.bridge.today).toHaveBeenCalled();
+		expect(fixture.bridge.dateFormat).toHaveBeenCalled();
 		expect(fixture.face('p5').classes.has('is-missing')).toBe(true);
 	});
 
@@ -2346,7 +2359,7 @@ describe('records on the canvas', () => {
 		expect(options.candidates('sticky-note')).toEqual([{ id: 'note-1', name: 'Remember', onView: true }]);
 		await submit(forms[0], { type: 'entity', kind: 'revision', nodes: [{ id: 'rev-2', name: 'add this' }] });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
-		expect(fixture.node(added)).toMatchObject({ kind: 'revision', height: FREEFORM_FACE_HEIGHTS.record.standard });
+		expect(fixture.node(added)).toMatchObject({ kind: 'revision', height: FREEFORM_FACE_HEIGHTS.rail.standard });
 		await settle();
 		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === added)?.resource).toEqual({ type: 'revision', id: 'rev-2', name: 'add this' });
 	});
@@ -3188,7 +3201,7 @@ describe('the canvas controls', () => {
 			['toolbar', 'freeformCanvas.toolbar'],
 			['toolbar', 'freeformCanvas.controls'],
 		]);
-		expect(fixture.canvas.options?.labels).toEqual({ canvas: 'storyStructure.family.freeform', minimap: 'freeformCanvas.minimap', edgeMenu: 'table.actions' });
+		expect(fixture.canvas.options?.labels).toEqual({ canvas: 'storyStructure.family.freeform', minimap: 'freeformCanvas.minimap' });
 	});
 
 	it('shows no move where motion is to be spared, nor in a window the plugin was not loaded in', async () => {

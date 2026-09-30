@@ -565,6 +565,10 @@ export interface LaneDeckDeps {
 	readOnly: () => boolean;
 	/** The cells, asked for late since they are made after the deck: they say whether a card may drag, and open its menu. */
 	cells: () => Pick<LaneCells, 'dragAllowed' | 'openCardMenu'>;
+	/** The symbol every card wears in place of its number, on a surface where the cards stand in no order. */
+	symbol?: string;
+	/** The conflict is read on the card and never typed into there. */
+	conflictReadOnly?: boolean;
 }
 
 export interface LaneDeck {
@@ -628,6 +632,8 @@ export function createLaneDeck(deps: LaneDeckDeps): LaneDeck {
 			deps.cells().openCardMenu(card, event);
 		},
 		extend: (card) => card,
+		...(deps.symbol === undefined ? {} : { symbol: deps.symbol }),
+		...(deps.conflictReadOnly === undefined ? {} : { conflictReadOnly: deps.conflictReadOnly }),
 	});
 
 	return {

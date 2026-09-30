@@ -1052,9 +1052,12 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/**
 	 * A scene stands on the canvas as the corkboard's own card, dealt from a
-	 * deck of this workspace's: typed into, coloured and set in its status
-	 * where it stands, its writes queued and read back as the board's are.
-	 * A card is keyed by its placement, so a scene placed twice is two cards
+	 * deck of this workspace's: named, coloured and set in its status where
+	 * it stands, its writes queued and read back as the board's are. Its
+	 * conflict is read on the card and written in the scene's form, as every
+	 * card's body is on the canvas, and the card wears the scene's symbol in
+	 * place of its number, since the canvas stands its cards in no order. A
+	 * card is keyed by its placement, so a scene placed twice is two cards
 	 * that show the same words. The engine moves the card's node, so the
 	 * card itself never drags, and its menu is the node's.
 	 */
@@ -1076,6 +1079,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				openNodeMenu(card.key, event);
 			},
 		}),
+		symbol: kindIcon({ worldbuildingKinds: [] }, 'scene'),
+		conflictReadOnly: true,
 	});
 	const { deck } = laneDeck;
 	// A press on a card's control is let go wherever it ends, and a colour
@@ -1188,6 +1193,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		keepText,
 		leaveText,
 		openOccurrence,
+		today: () => controls.bridge().today(),
+		dateFormat: () => controls.bridge().dateFormat(),
+		locale: () => reading?.locale ?? 'en',
 		scenes: {
 			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
 			dress: (card, scene, index) => {
@@ -1392,10 +1400,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				if (view === null) throw new Error(t('freeformCanvas.node.refused'));
 				const kind = draft.kind;
 				const family = FORM_FAMILIES.find((candidate) => candidate === kind);
-				// A note lands with the room its standard face needs, so a scene stands as the board's card from the first.
+				// A note lands with the room its standard face needs, so it stands as its own card from the first.
+				const shape = faceKindOf(
+					family ?? (kind === 'file' ? 'file' : kind === 'scene' ? 'scene' : kind === 'character' ? 'character' : 'worldbuilding'),
+				);
 				const size = {
 					width: FREEFORM_SIZE.width,
-					height: Math.max(FREEFORM_SIZE.height, FREEFORM_FACE_HEIGHTS[kind === 'scene' ? 'scene' : 'record'].standard),
+					height: Math.max(FREEFORM_SIZE.height, FREEFORM_FACE_HEIGHTS[shape].standard),
 				};
 				const landings = landingsAt(
 					cornersOf(view),
@@ -2481,7 +2492,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			readOnly: true,
 		},
 		zoom: FREEFORM_ZOOM,
-		labels: { canvas: t('storyStructure.family.freeform'), minimap: t('freeformCanvas.minimap'), edgeMenu: t('table.actions') },
+		labels: { canvas: t('storyStructure.family.freeform'), minimap: t('freeformCanvas.minimap') },
 		// A move shown is timed by the window the plugin was loaded in, which may
 		// not be drawing while the canvas stands in a window of its own.
 		reduceMotion: () => host.isReduceMotionEnabled() || !controls.atHome(root),

@@ -197,12 +197,12 @@ export interface CanvasPort {
  * What the engine's own parts are called, for a reader that cannot see them.
  * The four dots a line is drawn from are named nowhere: they are the
  * pointer's way to a line, and the way that is everyone's is a node's menu.
+ * A line carries no control of its own either: pressed twice it is opened,
+ * and its menu is asked for on the line itself.
  */
 export interface CanvasLabels {
 	canvas: string;
 	minimap: string;
-	/** The way to a chosen line's menu, which stands on the line. */
-	edgeMenu: string;
 }
 
 export interface CanvasOptions {

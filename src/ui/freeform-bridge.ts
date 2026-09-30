@@ -10,6 +10,7 @@
 import type { App, Component, KeymapEventListener, Modifier } from 'obsidian';
 
 import type {
+	DateFormat,
 	FreeformDocument,
 	FreeformLabels,
 	FreeformLimits,
@@ -52,6 +53,10 @@ export interface FreeformBridge {
 	listFiles: () => Promise<{ path: string; name: string }[]>;
 	/** A fresh id for something about to be placed, so the canvas shows it under the id the file will keep. */
 	mintId: (kind: 'placement' | 'frame' | 'edge') => string;
+	/** The day the reading device is on, which a task's due date is measured against. */
+	today: () => string;
+	/** How a day is written, as the author chose. */
+	dateFormat: () => DateFormat;
 	/** A new view with nothing on it; its id, or null on a refusal. */
 	createView: (name: string) => Promise<string | null>;
 	renameView: (id: string, name: string) => Promise<FreeformViewWrite>;

@@ -12026,10 +12026,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    edge is the hue let down toward the lane's own ground, a macaron rather
    than a flag, and the title the hue softened toward the muted text, so
    six columns side by side still read as one board. A set-aside card
-   wears the same edge for the column it left, so the hues are worn by
-   whatever in the board names a status. */
+   wears the same edge for the column it left, and so does a card standing
+   on the freeform canvas, so the hues are worn by whatever names a status. */
 .snowflake-method-task-lane,
-.snowflake-method-task-card.is-archived {
+.snowflake-method-task-card.is-archived,
+.snowflake-method-freeform-face.is-task .snowflake-method-task-card {
 	--snowflake-method-task-status-hue: var(--text-muted);
 	--snowflake-method-task-status-tint: color-mix(
 		in srgb,
@@ -12056,23 +12057,23 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	background-color: var(--background-secondary);
 }
 
-.snowflake-method-task-board [data-status='in-progress'] {
+:is(.snowflake-method-task-board, .snowflake-method-freeform-face.is-task) [data-status='in-progress'] {
 	--snowflake-method-task-status-hue: var(--color-purple);
 }
 
-.snowflake-method-task-board [data-status='blocked'] {
+:is(.snowflake-method-task-board, .snowflake-method-freeform-face.is-task) [data-status='blocked'] {
 	--snowflake-method-task-status-hue: var(--color-red);
 }
 
-.snowflake-method-task-board [data-status='in-review'] {
+:is(.snowflake-method-task-board, .snowflake-method-freeform-face.is-task) [data-status='in-review'] {
 	--snowflake-method-task-status-hue: var(--color-yellow);
 }
 
-.snowflake-method-task-board [data-status='done'] {
+:is(.snowflake-method-task-board, .snowflake-method-freeform-face.is-task) [data-status='done'] {
 	--snowflake-method-task-status-hue: var(--color-green);
 }
 
-.snowflake-method-task-board [data-status='cancelled'] {
+:is(.snowflake-method-task-board, .snowflake-method-freeform-face.is-task) [data-status='cancelled'] {
 	--snowflake-method-task-status-hue: var(--text-faint);
 }
 
@@ -12678,6 +12679,23 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-corkboard-number {
 	flex: 0 0 auto;
+}
+
+/* A card dealt onto a surface where the cards stand in no order wears one
+   symbol at its head in place of its number, in the number's own footprint. */
+.snowflake-method-corkboard-symbol {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	color: var(--text-muted);
+}
+
+.snowflake-method-corkboard-symbol svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
 }
 
 /* Both faces use the same line box and inset, so entering a title never
@@ -15586,58 +15604,320 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
-/* A scene's face is the corkboard's card itself, filling the node's box and
-   cut at its foot, standing still under the pointer since the engine moves
-   the node. Which of its three styles it shows is the face's word, not the
-   root's: each node has its own. */
-.snowflake-method-freeform-face.is-scene {
+/* A scene's face is the corkboard's card itself, and a character's or a
+   worldbuilding note's the same card's shape; a task's is the board's card,
+   a thread's or a revision's the card the manuscript's margin pins, and a
+   sticky note's its own. Each fills the node's box, is cut at its foot, and
+   stands still under the pointer, since the engine moves the node. Which of
+   its styles a face shows is the face's word, not the root's: each node has
+   its own. */
+.snowflake-method-freeform-face:is(.is-scene, .is-card, .is-task, .is-foreshadowing, .is-revision, .is-sticky) {
 	padding: 0;
 	border: 0;
 	background-color: transparent;
 	box-shadow: none;
 }
 
-.snowflake-method-freeform-face.is-scene > .snowflake-method-corkboard-card {
+.snowflake-method-freeform-face:is(.is-scene, .is-card, .is-task, .is-foreshadowing, .is-revision, .is-sticky) > * {
+	position: relative;
+	inset: auto;
+	box-sizing: border-box;
 	width: 100%;
 	height: 100%;
+	overflow: hidden;
 	border-radius: inherit;
 	transition: none;
 }
 
-.snowflake-method-freeform-face.is-scene > .snowflake-method-corkboard-card:hover {
+/* On its own surface a card under the pointer lifts, lights up in the
+   accent and rises over its neighbours. Here the one highlight is the
+   chosen node's, the same on every face, and a card risen over the node's
+   edge would cover the dots a line starts from; so under the pointer a
+   card stands as it stands. */
+.snowflake-method-freeform-face > .snowflake-method-corkboard-card:where(:hover, :focus-within) {
+	--snowflake-method-corkboard-shadow: 0 0 0 0 transparent;
 	--snowflake-method-corkboard-lift: 0px;
+	z-index: auto;
+	border-color: var(--snowflake-method-sticky-edge);
 }
 
-/* The engine keeps the words of a node from being selected, so a drag
-   never selects them; the card's own fields are typed into, and select. */
-.snowflake-method-freeform-face.is-scene textarea,
-.snowflake-method-freeform-face.is-scene input {
-	user-select: text;
+.snowflake-method-freeform-face > .snowflake-method-task-card:hover {
+	border-color: var(--background-modifier-border);
 }
 
-.snowflake-method-freeform-face.is-scene.is-selected > .snowflake-method-corkboard-card {
+.snowflake-method-freeform-face > .snowflake-method-rail-card:hover {
+	border-color: var(--background-modifier-border);
+	box-shadow: var(--shadow-s);
+}
+
+.snowflake-method-freeform-face > .snowflake-method-foreshadowing-card:hover {
+	border-left-color: color-mix(in srgb, var(--color-purple) 55%, transparent);
+}
+
+.snowflake-method-freeform-face > .snowflake-method-revision-card:hover {
+	border-left-color: color-mix(in srgb, var(--color-yellow) 55%, transparent);
+}
+
+.snowflake-method-freeform-face > .snowflake-method-rail-card.is-conflict:hover {
+	border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+	border-left-color: var(--color-red);
+}
+
+.snowflake-method-freeform-face:is(.is-scene, .is-card).is-selected > .snowflake-method-corkboard-card,
+.snowflake-method-freeform-face.is-task.is-selected > .snowflake-method-task-card,
+.snowflake-method-freeform-face:is(.is-foreshadowing, .is-revision).is-selected > .snowflake-method-rail-card,
+.snowflake-method-freeform-face.is-sticky.is-selected > .snowflake-method-sticky-card {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-.snowflake-method-freeform-face.is-scene[data-mode='compact'] .snowflake-method-corkboard-body,
-.snowflake-method-freeform-face.is-scene[data-mode='compact'] .snowflake-method-corkboard-links,
-.snowflake-method-freeform-face.is-scene[data-mode='standard'] .snowflake-method-corkboard-links {
+/* The engine keeps the words of a node from being selected, so a drag
+   never selects them; a scene's name, typed into on the card, selects. */
+.snowflake-method-freeform-face.is-scene input {
+	user-select: text;
+}
+
+/* The conflict is read on the canvas and never typed into there: it takes
+   no press, so a press on it takes hold of the node, and a press twice on
+   it opens the scene, as one anywhere else on the card does. */
+.snowflake-method-freeform-face.is-scene textarea.snowflake-method-corkboard-conflict {
+	overflow: hidden;
+	pointer-events: none;
+	cursor: default;
+}
+
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-body,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-links,
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='standard'] .snowflake-method-corkboard-links {
 	display: none;
 }
 
-.snowflake-method-freeform-face.is-scene[data-mode='compact'] .snowflake-method-corkboard-head {
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-head {
 	border-block-end: 0;
 }
 
-.snowflake-method-freeform-face.is-scene[data-mode='compact'] .snowflake-method-corkboard-footer {
+.snowflake-method-freeform-face:is(.is-scene, .is-card)[data-mode='compact'] .snowflake-method-corkboard-footer {
 	margin-block-start: 0;
 }
 
-/* A character's or a worldbuilding note's face: its symbol, its name and
-   its status on one line, and under them as many of its rows as its face
-   has room for, each row its word and what it says. */
-.snowflake-method-freeform-face.is-record,
+/* A character's or a worldbuilding note's card: its name and its standing
+   stand where a scene's title and status do and in their measures, though
+   neither is typed into nor picked from here; its words stand as a scene's
+   conflict does; and what its foot says stands where a scene names its
+   point of view, with the way to its menu at the foot's end as a scene
+   keeps its own. */
+.snowflake-method-freeform-card-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 1.5rem;
+	padding: 0 var(--size-2-1);
+	border: 1px solid transparent;
+	overflow: hidden;
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	line-height: calc(1.5rem - 2px);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-freeform-card-status {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 45%;
+	overflow: hidden;
+	line-height: 1.5rem;
+	text-align: end;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-freeform-card-status.is-hidden {
+	display: none;
+}
+
+.snowflake-method-freeform-card-words {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: var(--size-4-2) var(--size-4-3);
+	overflow: hidden;
+	overflow-wrap: anywhere;
+	font-family: var(--font-text);
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+	white-space: pre-wrap;
+}
+
+.snowflake-method-freeform-card-extra {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-freeform-face .snowflake-method-corkboard-actions > .clickable-icon.snowflake-method-freeform-node-more {
+	float: none;
+	width: var(--snowflake-method-corkboard-action-size);
+	margin: 0;
+	padding: var(--size-2-1) var(--size-2-2);
+	color: var(--text-muted);
+}
+
+/* A task's card wears the task's symbol before its title and the way to
+   its menu after it, where the board keeps the card's own, and along its
+   top the hue of the column it stands in on the board, worn as a card set
+   aside wears it: off the board nothing else says which column that is.
+   The hues are the board's, said beside the lanes. */
+.snowflake-method-freeform-face.is-task .snowflake-method-task-card {
+	display: flex;
+	flex-direction: column;
+	border-top: 3px solid var(--snowflake-method-task-status-edge);
+	cursor: inherit;
+}
+
+.snowflake-method-freeform-face.is-task .snowflake-method-task-card-head > .snowflake-method-freeform-face-icon {
+	flex: 0 0 auto;
+	margin-inline-end: 0;
+}
+
+.snowflake-method-freeform-face.is-task .snowflake-method-task-card-head > .clickable-icon.snowflake-method-freeform-node-more {
+	float: none;
+	flex: 0 0 auto;
+	width: auto;
+	margin-block: calc(-1 * var(--size-2-1));
+	margin-inline: auto calc(-1 * var(--size-2-3));
+	padding: var(--size-2-1) var(--size-2-2);
+	color: var(--text-muted);
+}
+
+.snowflake-method-freeform-face.is-task[data-mode='compact'] .snowflake-method-task-card-meta {
+	display: none;
+}
+
+/* A thread's or a revision's card is the one the manuscript's margin pins,
+   standing in the node's box instead of beside a chapter: no compass, since
+   there is no rail to step along, and no row of buttons, since what the
+   card can do is its menu's. The corner the compass kept holds the card's
+   symbol and the way to its menu. */
+.snowflake-method-freeform-rail-tools {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: var(--size-2-1);
+	justify-self: end;
+}
+
+.snowflake-method-freeform-rail-tools > .snowflake-method-freeform-face-icon {
+	margin-inline-end: 0;
+}
+
+.snowflake-method-freeform-rail-tools > .clickable-icon.snowflake-method-freeform-node-more {
+	float: none;
+	width: auto;
+	margin: 0;
+	padding: var(--size-2-2);
+	color: var(--text-muted);
+}
+
+/* A thread's head is the rail's own two-by-two: the field's name with the
+   corner at its right, and under them the thread's name with its status
+   centred under the corner. The name stands in ink, as the rail's role
+   does, not on a slab. */
+.snowflake-method-freeform-face.is-foreshadowing .snowflake-method-rail-field.is-name {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--size-2-2) var(--size-4-2);
+	align-items: start;
+}
+
+.snowflake-method-freeform-face.is-foreshadowing .snowflake-method-rail-field.is-name .snowflake-method-rail-value {
+	padding: 0;
+	background-color: transparent;
+	font-weight: var(--font-semibold);
+}
+
+/* Each occurrence is a way into the manuscript where it stands: a button
+   dressed as the passage block the rail draws, the role in its ink, the
+   chapter after it, and on the fullest face the words it marks. */
+.snowflake-method-freeform-face button.snowflake-method-freeform-occurrence {
+	display: block;
+	width: 100%;
+	height: auto;
+	margin: 0;
+	border: 0;
+	background-color: color-mix(in srgb, var(--color-purple) 12%, transparent);
+	box-shadow: none;
+	font: inherit;
+	line-height: var(--line-height-tight);
+	text-align: start;
+	white-space: pre-wrap;
+	cursor: pointer;
+}
+
+.snowflake-method-freeform-face button.snowflake-method-freeform-occurrence:hover {
+	background-color: color-mix(in srgb, var(--color-purple) 20%, transparent);
+}
+
+.snowflake-method-freeform-occurrence-line,
+.snowflake-method-freeform-occurrence-passage {
+	display: block;
+}
+
+.snowflake-method-freeform-occurrence-line .snowflake-method-rail-badge {
+	margin-inline: var(--size-4-1) 0;
+}
+
+.snowflake-method-freeform-occurrence-passage {
+	margin-block-start: var(--size-2-1);
+	color: var(--text-muted);
+}
+
+/* The barest face is the head and what stands with it; the standard one
+   adds the fields that are the card's own, and only the fullest the rest. */
+.snowflake-method-freeform-face:is(.is-foreshadowing, .is-revision)[data-mode='compact'] .snowflake-method-rail-fields > .snowflake-method-rail-field:not([data-from='compact']),
+.snowflake-method-freeform-face:is(.is-foreshadowing, .is-revision)[data-mode='standard'] .snowflake-method-rail-fields > .snowflake-method-rail-field[data-from='extended'],
+.snowflake-method-freeform-face.is-foreshadowing:not([data-mode='extended']) .snowflake-method-freeform-occurrence-passage,
+.snowflake-method-freeform-face .snowflake-method-rail-badge.is-hidden {
+	display: none;
+}
+
+/* A sticky note's face is the note's own card: its head with the note's
+   symbol where the board keeps its palette, when it was made, and the way
+   to its menu where the board keeps the note's tools; its words under it,
+   and on the barest face their first line alone. */
+.snowflake-method-freeform-face.is-sticky .snowflake-method-sticky-head > .snowflake-method-freeform-face-icon {
+	flex: 0 0 auto;
+	margin-inline-end: 0;
+}
+
+.snowflake-method-freeform-face.is-sticky .snowflake-method-sticky-tools > .clickable-icon.snowflake-method-freeform-node-more {
+	float: none;
+	width: auto;
+	margin: 0;
+	padding: var(--size-2-1) var(--size-2-2);
+	color: var(--text-muted);
+}
+
+.snowflake-method-freeform-face.is-sticky .snowflake-method-sticky-body {
+	overflow: hidden;
+}
+
+.snowflake-method-freeform-sticky-first {
+	overflow: hidden;
+	font-weight: var(--font-medium);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-freeform-face.is-sticky[data-mode='compact'] .snowflake-method-freeform-text,
+.snowflake-method-freeform-face.is-sticky:not([data-mode='compact']) .snowflake-method-freeform-sticky-first {
+	display: none;
+}
+
+/* A missing node's face, a file's and a link's: the symbol, the name and
+   what stands beside them on one line. */
 .snowflake-method-freeform-face.is-missing {
 	padding: var(--size-4-3);
 }
@@ -15661,79 +15941,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.snowflake-method-freeform-face-status {
-	flex: 0 0 auto;
-	white-space: nowrap;
-}
-
-.snowflake-method-freeform-face-status.is-hidden {
-	display: none;
-}
-
-.snowflake-method-freeform-face-rows {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-2);
-	margin-block-start: var(--size-4-2);
-	font-size: var(--font-ui-small);
-}
-
-.snowflake-method-freeform-face-row {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-1);
-}
-
-.snowflake-method-freeform-face-row-label {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-}
-
-.snowflake-method-freeform-face-row-value {
-	overflow-wrap: anywhere;
-	white-space: pre-wrap;
-}
-
-/* A row that opens something, as an occurrence opens its chapter, is a
-   button dressed as the row's words. */
-.snowflake-method-freeform-face button.snowflake-method-freeform-face-row-open {
-	height: auto;
-	margin: 0;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-accent);
-	font: inherit;
-	text-align: start;
-	cursor: pointer;
-}
-
-.snowflake-method-freeform-face button.snowflake-method-freeform-face-row-open:hover {
-	text-decoration: underline;
-}
-
-/* A sticky note's face wears the note's own tint, its first line on the
-   barest face and its words drawn on the fuller ones. */
-.snowflake-method-freeform-face.is-sticky {
-	padding: var(--size-4-3);
-	border-color: var(--snowflake-method-sticky-edge);
-	background-color: var(--snowflake-method-sticky-ground);
-}
-
-.snowflake-method-freeform-sticky-first {
-	overflow: hidden;
-	font-weight: var(--font-medium);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.snowflake-method-freeform-face.is-sticky[data-mode='compact'] .snowflake-method-freeform-text,
-.snowflake-method-freeform-face.is-sticky[data-mode='standard'] .snowflake-method-freeform-sticky-first,
-.snowflake-method-freeform-face.is-sticky[data-mode='extended'] .snowflake-method-freeform-sticky-first {
-	display: none;
 }
 
 /* A file's face: its name and folder, and the file itself where it is a
@@ -15794,13 +16001,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-face.is-file[data-mode='compact'] .snowflake-method-freeform-file-folder,
 .snowflake-method-freeform-face.is-file[data-mode='compact'] .snowflake-method-freeform-file-media,
 .snowflake-method-freeform-face.is-link[data-mode='compact'] .snowflake-method-freeform-link-address {
-	display: none;
-}
-
-/* The barest face is the first line alone; the standard one shows the rows
-   that are its own, and only the fullest shows the rest. */
-.snowflake-method-freeform-face.is-record[data-mode='compact'] .snowflake-method-freeform-face-rows,
-.snowflake-method-freeform-face.is-record[data-mode='standard'] .snowflake-method-freeform-face-row[data-from='extended'] {
 	display: none;
 }
 
@@ -15941,9 +16141,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	border-radius: 2px;
 }
 
-/* A line's words stand on the line, on a ground of their own, and once the
-   line is chosen the way to its menu stands beside them: what a node
-   carries in its corner, a line carries at its middle. */
+/* A line's words stand on the line, on a ground of their own, and answer
+   for the line where they are pressed: twice to open it, or for its menu. */
 .snowflake-method-freeform-edge-label {
 	position: absolute;
 	display: inline-flex;
@@ -15959,31 +16158,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-edge-label.is-selected {
 	color: var(--interactive-accent);
-}
-
-/* A chosen line with no words carries the way to its menu alone. */
-.snowflake-method-freeform-edge-label.is-bare {
-	padding: 0;
-}
-
-.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more {
-	--icon-size: var(--icon-s);
-	--no-tooltip: false;
-	width: var(--snowflake-method-corkboard-action-size, 1.5rem);
-	height: var(--snowflake-method-corkboard-action-size, 1.5rem);
-	margin: 0;
-	padding: 0;
-	color: var(--text-muted);
-	cursor: pointer;
-}
-
-.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more svg {
-	width: var(--icon-s);
-	height: var(--icon-s);
-}
-
-.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more:hover {
-	color: var(--text-normal);
 }
 
 .snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dashed .react-flow__edge-path {

@@ -108,7 +108,7 @@ function canvas(size: { width: number; height: number } = { width: 800, height: 
 			viewport: { x: 0, y: 0, zoom: 1 },
 			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
-			labels: { canvas: 'Freeform', minimap: 'Minimap', edgeMenu: 'Actions' },
+			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,
 			additive: (event) => event.metaKey || event.shiftKey,
 			...options,
@@ -197,7 +197,7 @@ describe('the canvas engine on a document', () => {
 		expect(painted[0]!.dressed[0]).toEqual({ selected: false, readOnly: false, band: 'extended', width: 600, height: 400 });
 	});
 
-	it('names a line by what it joins, and gives a chosen line the way to its menu', async () => {
+	it('names a line by what it joins, and lets its words answer for it: pressed twice they open it, and they carry its menu', async () => {
 		const { handle, port, host, raised, tell } = canvas();
 		await raised();
 		tell(() => {
@@ -208,27 +208,35 @@ describe('the canvas engine on a document', () => {
 		});
 		const line = host.querySelector('.react-flow__edge')!;
 		expect(line.getAttribute('aria-label')).toBe('Node a to Node b');
-		// Unchosen, a line with no words carries nothing on it.
-		expect(host.querySelector('.snowflake-method-freeform-edge-more')).toBeNull();
+		// A line with no words carries nothing on it, chosen or not: no button, since what it can do is its menu's and a press twice.
+		expect(host.querySelector('.snowflake-method-freeform-edge-label')).toBeNull();
 		tell(() => {
 			handle.select({ nodes: [], edges: ['ab'] });
 		});
-		const more = host.querySelector<HTMLButtonElement>('.snowflake-method-freeform-edge-more');
-		expect(more).not.toBeNull();
-		expect(more?.getAttribute('aria-label')).toBe('Actions');
-		expect(more?.getAttribute('aria-haspopup')).toBe('menu');
-		more?.click();
-		expect(port.menu).toHaveBeenCalledWith({ kind: 'edge', id: 'ab' }, expect.anything());
-		// Its words stand beside the button, and stay when the line is let go.
+		expect(host.querySelector('.snowflake-method-freeform-edge-label')).toBeNull();
+		expect(host.querySelector('button.snowflake-method-freeform-edge-more')).toBeNull();
+		// Its words stand on it, lit while it is chosen, and stand for it under the pointer.
 		tell(() => {
 			handle.setScene({
 				nodes: [node('a'), node('b', { x: 400 })],
 				edges: [edge('ab', 'a', 'b', { name: 'Node a to Node b', label: 'then', revision: 'r2' })],
 			});
+		});
+		const words = host.querySelector<HTMLElement>('.snowflake-method-freeform-edge-label')!;
+		expect(words.classList.contains('is-selected')).toBe(true);
+		expect(words.querySelector('.snowflake-method-freeform-edge-words')?.textContent).toBe('then');
+		expect(words.querySelector('button')).toBeNull();
+		words.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+		expect(port.open).toHaveBeenCalledWith({ kind: 'edge', id: 'ab' }, expect.anything());
+		const asked = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+		words.dispatchEvent(asked);
+		expect(port.menu).toHaveBeenCalledWith({ kind: 'edge', id: 'ab' }, expect.anything());
+		expect(asked.defaultPrevented).toBe(true);
+		tell(() => {
 			handle.select(NO_CANVAS_SELECTION);
 		});
+		expect(host.querySelector('.snowflake-method-freeform-edge-label')?.classList.contains('is-selected')).toBe(false);
 		expect(host.querySelector('.snowflake-method-freeform-edge-words')?.textContent).toBe('then');
-		expect(host.querySelector('.snowflake-method-freeform-edge-more')).toBeNull();
 	});
 
 	it('draws a line from side to side by the measures it was told, measuring nothing', async () => {
@@ -684,7 +692,7 @@ describe('the canvas engine on a document', () => {
 			viewport: { x: 0, y: 0, zoom: 1 },
 			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
-			labels: { canvas: 'Freeform', minimap: 'Minimap', edgeMenu: 'Actions' },
+			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,
 			additive: () => false,
 		});

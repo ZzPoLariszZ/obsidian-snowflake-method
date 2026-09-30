@@ -173,6 +173,17 @@ export interface SceneCardDeps<Card extends SceneCard> {
 	menu: (card: Card, event: MouseEvent) => void;
 	/** Widens a freshly built card with the board's own fields, before it is registered and wired. */
 	extend: (card: SceneCard) => Card;
+	/**
+	 * The symbol every card wears at its head in place of its number: for a
+	 * surface where the cards stand in no order of their own. Left out, a
+	 * card wears its place in the narrative order, as on the board.
+	 */
+	symbol?: string;
+	/**
+	 * The conflict is read on the card and never typed into there: for a
+	 * surface that shows the scene and leaves its writing to the form.
+	 */
+	conflictReadOnly?: boolean;
 }
 
 /**
@@ -422,9 +433,13 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		const grip = el.createSpan({ cls: 'snowflake-method-corkboard-grip', attr: { 'aria-hidden': 'true' } });
 		setIcon(grip, 'grip-horizontal');
 		const head = el.createDiv({ cls: 'snowflake-method-corkboard-head' });
-		const number = head.createSpan({
-			cls: 'snowflake-method-step-indicator snowflake-method-corkboard-number',
-		});
+		// Its place in the order, or the one symbol every card of the surface wears.
+		const number = head.createSpan(
+			deps.symbol === undefined
+				? { cls: 'snowflake-method-step-indicator snowflake-method-corkboard-number' }
+				: { cls: 'snowflake-method-corkboard-symbol', attr: { 'aria-hidden': 'true' } },
+		);
+		if (deps.symbol !== undefined) setIcon(number, deps.symbol);
 		const title = head.createEl('button', {
 			cls: 'snowflake-method-corkboard-title',
 			attr: { type: 'button' },
@@ -438,12 +453,15 @@ export function createSceneCardDeck<Card extends SceneCard>(
 			attr: { 'aria-label': t('table.progressStatus') },
 		});
 		const body = el.createDiv({ cls: 'snowflake-method-corkboard-body' });
+		// A conflict only read invites no writing: it shows no placeholder, and is not reached by the Tab key.
 		const conflict = body.createEl('textarea', {
 			cls: 'snowflake-method-corkboard-conflict',
 			attr: {
 				'aria-label': t('table.conflict'),
-				placeholder: t('modal.scene.conflictPlaceholder'),
 				rows: '3',
+				...(deps.conflictReadOnly === true
+					? { readonly: 'readonly', tabindex: '-1' }
+					: { placeholder: t('modal.scene.conflictPlaceholder') }),
 			},
 		});
 		const links = el.createDiv({
@@ -562,11 +580,13 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		el.toggleClass('is-read-only', !writable);
 		el.toggleClass('has-managed-section-issue', scene.healthIssues.some((issue) => issue.blocking));
 		el.setAttribute('draggable', deps.dragAllowed(card) && !pressed ? 'true' : 'false');
-		paintCount(card.number, index + 1);
-		card.number.setAttribute(
-			'aria-label',
-			t('corkboard.position', { number: index + 1 }),
-		);
+		if (deps.symbol === undefined) {
+			paintCount(card.number, index + 1);
+			card.number.setAttribute(
+				'aria-label',
+				t('corkboard.position', { number: index + 1 }),
+			);
+		}
 		paintTitle(card);
 		card.title.disabled = !writable;
 		const colorLabel =
@@ -598,7 +618,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 		paintStatus(card, shownStatus);
 		card.status.disabled = !writable;
 		paintConflict(card);
-		card.conflict.readOnly = !writable;
+		card.conflict.readOnly = !writable || deps.conflictReadOnly === true;
 		let links = orderedManuscriptLinks.get(scene);
 		if (links === undefined) {
 			links = orderManuscriptReferences(scene.linkedManuscript, deps.manuscriptPositions(), (link) =>

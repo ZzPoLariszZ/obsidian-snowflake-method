@@ -7,24 +7,28 @@
  *
  * Each kind of node has a painter. A text node is typed into where it
  * stands; a scene is the corkboard's own card, dealt from the deck the
- * workspace holds; a character or a worldbuilding note shows its rows, as
- * many as its face has room for; a frame shows its title at its head; a
- * node whose resource has gone says so under the name it last went by; and
- * every other kind shows what it is called beside its symbol until the
- * stage that gives it a face of its own. Every face carries the way to its
- * menu, always in sight, so nothing a node can do is reached by the pointer
- * alone.
+ * workspace holds, and a character or a worldbuilding note wears that
+ * card's shape, read and never written; a task is the board's own card, a
+ * foreshadowing or a revision the card the manuscript's margin pins, and a
+ * sticky note its own card, each read here and written where it lives; a
+ * frame shows its title at its head; a node whose resource has gone says so
+ * under the name it last went by; and every other kind shows what it is
+ * called beside its symbol. Every face carries the way to its menu, always
+ * in sight, so nothing a node can do is reached by the pointer alone.
  */
 
 import { Component, Keymap, MarkdownRenderer, setIcon, setTooltip, type App } from 'obsidian';
 
-import { PROGRESS_STATUSES, type FreeformFrame } from '../domain';
+import { FORESHADOWING_STATUSES, PROGRESS_STATUSES, type DateFormat, type FreeformFrame, type ProgressStatus } from '../domain';
 import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
-import { faceKindOf, faceModeOf, type FreeformFaceMode } from './freeform-layout';
+import { faceKindOf, faceModeOf } from './freeform-layout';
 import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
 import type { Translate } from './modals';
+import { railParts, type RailParts } from './rail-parts';
 import type { SceneCard } from './scene-card';
+import { formatStickyCreated } from './sticky-note-layout';
+import { paintTaskMeta } from './task-card-parts';
 import type { SceneViewModel } from './view-model';
 
 export interface FreeformFaceDeps {
@@ -52,6 +56,12 @@ export interface FreeformFaceDeps {
 	leaveText: (id: string) => void;
 	/** Opens one occurrence of a foreshadowing in the manuscript, from a row of its fullest face. */
 	openOccurrence: (item: ForeshadowingTableItem, occurrence: ForeshadowingOccurrenceRow) => void;
+	/** The day the reading device is on, which a task's due date is measured against. */
+	today: () => string;
+	/** How a day is written, as the author chose. */
+	dateFormat: () => DateFormat;
+	/** The language a sticky note's birth is said in, under the pointer. */
+	locale: () => string;
 	/**
 	 * The deck the corkboard's cards are dealt from, for a scene's face: the
 	 * card is the deck's, wired and written by it, and the face only holds
@@ -361,171 +371,135 @@ function scenePainter(deps: FreeformFaceDeps): NodePainter {
 	};
 }
 
-/** One row of a record's face: what it says, under the word for it; a row that opens something is a button. */
-interface FaceRow {
-	label: string;
-	value: string;
-	/** The barest face that shows the row. */
-	from: Exclude<FreeformFaceMode, 'compact'>;
-	open?: () => void;
+// -- The cards the entities wear ----------------------------------------------------
+
+type CardNode = Extract<ResolvedNode, { type: 'character' | 'worldbuilding' }>;
+
+/** What a card's head says of the note's standing, and the class that inks it. */
+function standingOf(node: CardNode, t: Translate): { words: string; tone: ProgressStatus } | null {
+	const status = node.type === 'character' ? node.character.progressStatus : node.entity.progressStatus;
+	return status === null ? null : { words: t(`status.${status}`), tone: status };
 }
 
-/** What the first line of a record's face says of its standing, and the class that inks it. */
-function statusOf(node: ResolvedNode, t: Translate): { words: string; tone: string } | null {
-	switch (node.type) {
-		case 'character':
-			return node.character.progressStatus === null ? null : { words: t(`status.${node.character.progressStatus}`), tone: node.character.progressStatus };
-		case 'worldbuilding':
-			return node.entity.progressStatus === null ? null : { words: t(`status.${node.entity.progressStatus}`), tone: node.entity.progressStatus };
-		case 'task':
-			return { words: t(`tasks.status.${node.task.status}`), tone: node.task.status };
-		case 'foreshadowing':
-			return { words: t(`foreshadowing.status.${node.item.status}`), tone: node.item.status };
-		case 'revision':
-			return node.row.status === 'conflict' ? { words: t('manuscript.revision.conflict'), tone: 'conflict' } : null;
-		default:
-			return null;
-	}
+/** The words a card's body holds: a character's one-sentence storyline, a worldbuilding note's description. */
+const bodyWordsOf = (node: CardNode): string =>
+	node.type === 'character' ? node.character.oneSentenceStoryline : node.entity.description;
+
+/** What a card's foot says beside its actions: a time's kind, and nothing for the rest. */
+function footWordsOf(node: CardNode, t: Translate): string {
+	if (node.type !== 'worldbuilding' || node.entity.kind !== 'time') return '';
+	return node.entity.timeKind === 'period' ? t('form.timeKind.period') : t('form.timeKind.point');
 }
-
-/** Every class a status may ink the first line with, so a change of standing takes the old one off. */
-const STATUS_TONES = [
-	...PROGRESS_STATUSES,
-	'todo', 'in-progress', 'blocked', 'in-review', 'done', 'cancelled',
-	'planned', 'active', 'resolved', 'abandoned',
-	'conflict',
-] as const;
-
-/** The rows a record shows, fullest last; a row with nothing to say is left out. */
-function rowsOf(node: ResolvedNode, t: Translate, deps: FreeformFaceDeps): FaceRow[] {
-	const rows: FaceRow[] = [];
-	const row = (label: string, value: string, from: FaceRow['from'], open?: () => void): void => {
-		if (value.trim().length > 0) rows.push(open === undefined ? { label, value, from } : { label, value, from, open });
-	};
-	if (node.type === 'task') {
-		const { task } = node;
-		row(t('modal.task.priority'), t(`tasks.priority.${task.priority}`), 'standard');
-		row(t('modal.task.dueDate'), task.dueDate ?? '', 'standard');
-		row(t('modal.task.description'), task.description, 'extended');
-		row(t('modal.task.related'), task.related.map((ref) => ref.name).join(', '), 'extended');
-		return rows;
-	}
-	if (node.type === 'foreshadowing') {
-		const { item } = node;
-		row(t('modal.foreshadowing.description'), item.description, 'standard');
-		const count = item.occurrences.length;
-		// How many there are says enough on its own, so the row has no word over it.
-		row('', t(count === 1 ? 'freeformCanvas.face.occurrencesOne' : 'freeformCanvas.face.occurrences', { count }), 'standard');
-		// Each occurrence is a way into the manuscript, where it stands.
-		for (const occurrence of item.occurrences) {
-			row(t(`foreshadowing.role.${occurrence.role}`), occurrence.title, 'extended', () => {
-				deps.openOccurrence(item, occurrence);
-			});
-		}
-		return rows;
-	}
-	if (node.type === 'revision') {
-		const { row: revision } = node;
-		row(t('revisionTable.original'), revision.original, 'standard');
-		row(t('revisionTable.proposed'), revision.proposed, 'standard');
-		row(t('revisionTable.comment'), revision.comment, 'extended');
-		return rows;
-	}
-	if (node.type === 'character') {
-		const { character } = node;
-		row(t('form.aliases'), character.aliases.join(', '), 'standard');
-		row(t('modal.character.oneSentenceStoryline'), character.oneSentenceStoryline, 'standard');
-		row(t('modal.character.motivation'), character.motivation, 'extended');
-		row(t('modal.character.goal'), character.goal, 'extended');
-		row(t('modal.character.conflict'), character.conflict, 'extended');
-		row(t('modal.character.growth'), character.growth, 'extended');
-		row(t('form.category'), character.categoryPaths.join(', '), 'extended');
-		return rows;
-	}
-	if (node.type !== 'worldbuilding') return rows;
-	const { entity } = node;
-	if (entity.kind === 'time') {
-		row(t('form.timeKind'), entity.timeKind === 'period' ? t('form.timeKind.period') : t('form.timeKind.point'), 'standard');
-		row(t('form.timeStart'), entity.timeStart, 'standard');
-		row(t('form.timeEnd'), entity.timeEnd, 'standard');
-	}
-	row(t('form.description'), entity.description, 'standard');
-	row(t('form.aliases'), entity.aliases.join(', '), 'extended');
-	row(t('form.category'), entity.categoryPaths.join(', '), 'extended');
-	return rows;
-}
-
-/** The kinds of node the record painter dresses: read here, never written. */
-const RECORD_TYPES = new Set<ResolvedNode['type']>(['character', 'worldbuilding', 'task', 'foreshadowing', 'revision']);
 
 /**
- * A record's face, read and never written here: its symbol, its name and
- * its standing on the first line, and under them as many of its rows as
- * the face has room for. A character, a worldbuilding note, a task, a
- * foreshadowing and a revision are all records here; each opens from its
- * menu, and its own form or table is the way to change it.
+ * A character's or a worldbuilding note's face: the corkboard card's own
+ * shape, read and never written. Its symbol, its name and its standing on
+ * the head, as a scene carries its own; its one-sentence storyline or its
+ * description as the body, where a scene shows its conflict; and on the
+ * foot what else it says of itself, which for a time is its kind, with the
+ * way to its menu at the foot's end, where a scene keeps its own.
  */
-function recordPainter(deps: FreeformFaceDeps): NodePainter {
+function cardPainter(deps: FreeformFaceDeps): NodePainter {
 	const { t } = deps;
 	return {
 		mount: (body, id, context): PaintedNode => {
-			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-record' });
-			moreButton(face, deps, id);
-			const head = face.createDiv({ cls: 'snowflake-method-freeform-face-head' });
-			const symbol = head.createSpan({
-				cls: 'snowflake-method-freeform-face-icon',
-				attr: { 'aria-hidden': 'true' },
-			});
-			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
-			// The standing is the word every other surface shows, in its own ink.
-			const status = head.createSpan({ cls: 'snowflake-method-entity-status snowflake-method-freeform-face-status' });
-			const rows = face.createDiv({ cls: 'snowflake-method-freeform-face-rows' });
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-card' });
+			const card = face.createDiv({ cls: 'snowflake-method-corkboard-card snowflake-method-sticky-tint' });
+			const head = card.createDiv({ cls: 'snowflake-method-corkboard-head' });
+			const symbol = head.createSpan({ cls: 'snowflake-method-corkboard-symbol', attr: { 'aria-hidden': 'true' } });
+			const name = head.createSpan({ cls: 'snowflake-method-freeform-card-title' });
+			const status = head.createSpan({ cls: 'snowflake-method-entity-status snowflake-method-freeform-card-status' });
+			const words = card.createDiv({ cls: 'snowflake-method-corkboard-body' }).createDiv({ cls: 'snowflake-method-freeform-card-words' });
+			const foot = card.createDiv({ cls: 'snowflake-method-corkboard-footer' }).createDiv({ cls: 'snowflake-method-corkboard-footer-row' });
+			const extra = foot.createSpan({ cls: 'snowflake-method-freeform-card-extra' });
+			moreButton(foot.createDiv({ cls: 'snowflake-method-corkboard-actions' }), deps, id);
 			let worn = '';
-			let drawn = '';
 			const dress = (next: PaintContext): void => {
 				const node = deps.node(id);
-				if (node === undefined || !RECORD_TYPES.has(node.type)) return;
+				if (node?.type !== 'character' && node?.type !== 'worldbuilding') return;
 				const icon = deps.icon(node);
 				if (icon !== worn) {
 					worn = icon;
 					setIcon(symbol, icon);
 				}
-				const words = deps.label(node);
-				if (name.textContent !== words) {
-					name.setText(words);
-					setTooltip(name, words);
+				const called = deps.label(node);
+				if (name.textContent !== called) {
+					name.setText(called);
+					setTooltip(name, called);
 				}
-				const standing = statusOf(node, t);
+				const standing = standingOf(node, t);
 				const said = standing?.words ?? '';
 				if (status.textContent !== said) status.setText(said);
-				for (const tone of STATUS_TONES) status.toggleClass(`is-${tone}`, tone === standing?.tone);
+				for (const tone of PROGRESS_STATUSES) status.toggleClass(`is-${tone}`, tone === standing?.tone);
 				status.toggleClass('is-hidden', standing === null);
-				const lines = rowsOf(node, t, deps);
-				const signature = JSON.stringify(lines.map((line) => [line.label, line.value, line.from, line.open !== undefined]));
+				const held = bodyWordsOf(node);
+				if (words.textContent !== held) words.setText(held);
+				const under = footWordsOf(node, t);
+				if (extra.textContent !== under) extra.setText(under);
+				face.dataset.type = node.type;
+				face.dataset.kind = node.type === 'character' ? 'character' : node.entity.kind;
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'card', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+// -- The task management cards ------------------------------------------------------
+
+/**
+ * A task's face: the board's own card, read and never written. Its title on
+ * the first row, with the task's symbol before it and the way to its menu
+ * after it, where the board keeps the card's own; its priority and the day
+ * it is due on the second; and along its top edge the hue of the column it
+ * stands in on the board, worn as a card set aside wears it, since off the
+ * board nothing else says which column that is.
+ */
+function taskPainter(deps: FreeformFaceDeps): NodePainter {
+	const { t } = deps;
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-task' });
+			const card = face.createDiv({ cls: 'snowflake-method-task-card', attr: { 'data-origin': 'manual' } });
+			const head = card.createDiv({ cls: 'snowflake-method-task-card-head' });
+			const symbol = head.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
+			const title = head.createDiv({ cls: 'snowflake-method-task-card-title' });
+			moreButton(head, deps, id);
+			const meta = card.createDiv({ cls: 'snowflake-method-task-card-meta' });
+			let worn = '';
+			let drawn = '';
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'task') return;
+				const { task } = node;
+				const icon = deps.icon(node);
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				if (title.textContent !== task.title) {
+					title.setText(task.title);
+					setTooltip(title, task.title);
+				}
+				card.setAttribute('data-priority', task.priority);
+				card.setAttribute('data-status', task.status);
+				// The second row is drawn again when what it says moves: the
+				// priority, the day, how a day is written, or whether it has passed.
+				const when = { today: deps.today(), dateFormat: deps.dateFormat() };
+				const signature = [task.priority, task.dueDate ?? '', task.status, when.today, when.dateFormat].join('\n');
 				if (signature !== drawn) {
 					drawn = signature;
-					rows.empty();
-					for (const line of lines) {
-						const el = rows.createDiv({ cls: 'snowflake-method-freeform-face-row', attr: { 'data-from': line.from } });
-						if (line.label.length > 0) el.createSpan({ cls: 'snowflake-method-freeform-face-row-label', text: line.label });
-						const open = line.open;
-						if (open === undefined) {
-							el.createSpan({ cls: 'snowflake-method-freeform-face-row-value', text: line.value });
-							continue;
-						}
-						const button = el.createEl('button', {
-							cls: 'snowflake-method-freeform-face-row-value snowflake-method-freeform-face-row-open',
-							text: line.value,
-							attr: { type: 'button' },
-						});
-						button.addEventListener('click', (event) => {
-							event.stopPropagation();
-							open();
-						});
-					}
+					paintTaskMeta(meta, task, when, t);
 				}
-				face.dataset.type = node.type;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'task', height: next.height });
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -541,19 +515,208 @@ function recordPainter(deps: FreeformFaceDeps): NodePainter {
 }
 
 /**
- * A sticky note's face: the note's own tint, its first line, and on the
- * fuller faces its words drawn as a note's are. Read here and never
- * written: the note floats from its menu, and the float is where it is
- * typed into.
+ * The corner of a margin card where the rail keeps its compass. There is
+ * no rail here to step along, so the corner holds the card's symbol and
+ * the way to its menu instead.
  */
-function stickyPainter(deps: FreeformFaceDeps): NodePainter {
+function railTools(host: HTMLElement, deps: FreeformFaceDeps, id: string): HTMLElement {
+	const tools = host.createDiv({ cls: 'snowflake-method-freeform-rail-tools' });
+	const symbol = tools.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
+	moreButton(tools, deps, id);
+	return symbol;
+}
+
+/** One named block of a margin card, and the barest face that shows it. */
+function railValue(
+	parts: RailParts,
+	fields: HTMLElement,
+	part: string,
+	label: string,
+	text: string,
+	from: 'compact' | 'standard' | 'extended',
+): void {
+	const field = parts.fieldBlock(fields, part, label);
+	field.setAttribute('data-from', from);
+	field.createDiv({ cls: 'snowflake-method-rail-value', text });
+}
+
+/**
+ * A foreshadowing's face: the card the manuscript's margin pins beside
+ * each of its occurrences, read here for the thread whole and never
+ * written. Its head is the rail's own two-by-two: the thread's name under
+ * the word for it, its standing under the corner that holds its symbol
+ * and the way to its menu. Under the head its description, and its
+ * occurrences, each a way into the manuscript where it stands, with the
+ * words it marks under it on the fullest face. No compass, since there is
+ * no rail to step along, and no row of buttons, since what the card can do
+ * is its menu's.
+ */
+function threadPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
+	const { t } = deps;
 	return {
 		mount: (body, id, context): PaintedNode => {
-			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-sticky snowflake-method-sticky-tint' });
-			moreButton(face, deps, id);
-			const first = face.createDiv({ cls: 'snowflake-method-freeform-sticky-first' });
-			const shown = face.createDiv({ cls: 'snowflake-method-freeform-text' });
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-foreshadowing' });
+			const card = face.createDiv({ cls: 'snowflake-method-rail-card snowflake-method-foreshadowing-card' });
+			const field = parts.fieldBlock(parts.headBlock(card), 'name', t('manuscript.foreshadowing.name'));
+			const symbol = railTools(field, deps, id);
+			const name = field.createDiv({ cls: 'snowflake-method-rail-value' });
+			const status = field.createSpan({ cls: 'snowflake-method-entity-status snowflake-method-rail-status' });
+			const fields = parts.fieldsBlock(card);
+			let worn = '';
+			let drawn = '';
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'foreshadowing') return;
+				const { item } = node;
+				const icon = deps.icon(node);
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				if (name.textContent !== item.name) name.setText(item.name);
+				const standing = t(`foreshadowing.status.${item.status}`);
+				if (status.textContent !== standing) status.setText(standing);
+				for (const tone of FORESHADOWING_STATUSES) status.toggleClass(`is-${tone}`, tone === item.status);
+				const signature = JSON.stringify([
+					item.description,
+					item.occurrences.map((occurrence) => [occurrence.id, occurrence.role, occurrence.title, occurrence.standing, occurrence.originalText]),
+				]);
+				if (signature !== drawn) {
+					drawn = signature;
+					fields.empty();
+					if (item.description.length > 0) {
+						railValue(parts, fields, 'description', t('manuscript.foreshadowing.description'), item.description, 'standard');
+					}
+					const count = item.occurrences.length;
+					const block = parts.fieldBlock(
+						fields,
+						'occurrences',
+						t(count === 1 ? 'freeformCanvas.face.occurrencesOne' : 'freeformCanvas.face.occurrences', { count }),
+					);
+					block.setAttribute('data-from', 'standard');
+					for (const occurrence of item.occurrences) {
+						const unresolved = occurrence.standing === 'unresolved';
+						const button = block.createEl('button', {
+							cls: 'snowflake-method-rail-value snowflake-method-freeform-occurrence',
+							attr: { type: 'button' },
+						});
+						const line = button.createSpan({ cls: 'snowflake-method-freeform-occurrence-line' });
+						line.createSpan({
+							cls: 'snowflake-method-foreshadowing-role',
+							attr: { 'data-role': unresolved ? 'unresolved' : occurrence.role },
+							text: t(`foreshadowing.role.${occurrence.role}`),
+						});
+						line.createSpan({ text: ` · ${occurrence.title}` });
+						if (unresolved) line.createSpan({ cls: 'snowflake-method-rail-badge', text: t('manuscript.foreshadowing.unresolved') });
+						if (occurrence.originalText.length > 0) {
+							button.createSpan({ cls: 'snowflake-method-freeform-occurrence-passage', text: occurrence.originalText });
+						}
+						button.addEventListener('click', (event) => {
+							event.stopPropagation();
+							deps.openOccurrence(item, occurrence);
+						});
+					}
+				}
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'rail', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+/**
+ * A revision's face: the card the manuscript's margin pins beside it, read
+ * here and never written. What it would do at the head, in the ink of its
+ * kind, with the badge a conflict wears after it, and the corner that holds
+ * its symbol and the way to its menu; under the head the chapter it stands
+ * in, the words it would take and the words it would put, and the aside
+ * about them on the fullest face.
+ */
+function revisionPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
+	const { t } = deps;
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-revision' });
+			const card = face.createDiv({ cls: 'snowflake-method-rail-card snowflake-method-revision-card' });
+			const head = parts.headBlock(card);
+			const type = parts.fieldBlock(head, 'type', t('manuscript.revision.type')).createDiv({ cls: 'snowflake-method-rail-value' });
+			const kind = type.createSpan();
+			const badge = type.createSpan({ cls: 'snowflake-method-rail-badge is-hidden', text: t('manuscript.revision.conflict') });
+			const symbol = railTools(head, deps, id);
+			const fields = parts.fieldsBlock(card);
+			let worn = '';
+			let drawn = '';
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'revision') return;
+				const { row } = node;
+				const icon = deps.icon(node);
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				const conflict = row.status === 'conflict';
+				const does = t(`manuscript.revision.kind.${row.kind}`);
+				if (kind.textContent !== does) kind.setText(does);
+				type.setAttribute('data-kind', conflict ? 'conflict' : row.kind);
+				badge.toggleClass('is-hidden', !conflict);
+				card.toggleClass('is-conflict', conflict);
+				const signature = JSON.stringify([row.title, row.kind, row.original, row.proposed, row.comment]);
+				if (signature !== drawn) {
+					drawn = signature;
+					fields.empty();
+					railValue(parts, fields, 'place', t('revisionTable.place'), row.title, 'compact');
+					if (row.kind !== 'insert') railValue(parts, fields, 'original', t('manuscript.revision.original'), row.original, 'standard');
+					if (row.kind !== 'delete') railValue(parts, fields, 'proposed', t('manuscript.revision.proposed'), row.proposed, 'standard');
+					if (row.comment.length > 0) railValue(parts, fields, 'comment', t('manuscript.revision.comment'), row.comment, 'extended');
+				}
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'rail', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+/**
+ * A sticky note's face: the note's own card, read and never written, since
+ * the note floats from its menu and the float is where it is typed into.
+ * Its head holds the note's symbol where the board keeps its palette, when
+ * the note was made, and the way to its menu where the board keeps the
+ * note's tools; under it the note's words drawn as a note's are, and on
+ * the barest face their first line alone.
+ */
+function stickyPainter(deps: FreeformFaceDeps): NodePainter {
+	const { t } = deps;
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-sticky' });
+			const card = face.createDiv({ cls: 'snowflake-method-sticky-card snowflake-method-sticky-tint' });
+			const head = card.createDiv({ cls: 'snowflake-method-sticky-head' });
+			const symbol = head.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
+			const created = head.createSpan({ cls: 'snowflake-method-sticky-created' });
+			moreButton(head.createDiv({ cls: 'snowflake-method-sticky-tools' }), deps, id);
+			const words = card.createDiv({ cls: 'snowflake-method-sticky-body' });
+			const first = words.createDiv({ cls: 'snowflake-method-freeform-sticky-first' });
+			const shown = words.createDiv({ cls: 'snowflake-method-freeform-text' });
 			followLinks(shown, deps);
+			let worn = '';
+			let born = '';
 			let rendered: string | null = null;
 			let child: Component | null = null;
 			const letChildGo = (): void => {
@@ -565,7 +728,20 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 				const node = deps.node(id);
 				if (node?.type !== 'sticky-note') return;
 				const { note } = node;
-				if (face.getAttribute('data-color') !== note.color) face.setAttribute('data-color', note.color);
+				if (card.getAttribute('data-color') !== note.color) card.setAttribute('data-color', note.color);
+				const icon = deps.icon(node);
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				const when = formatStickyCreated(note.createdAt, deps.locale());
+				if (when.short !== born) {
+					born = when.short;
+					created.setText(when.short);
+					const full = t('stickyNotes.created', { when: when.full });
+					created.setAttribute('aria-label', full);
+					setTooltip(created, full);
+				}
 				const line = deps.label(node);
 				if (first.textContent !== line) first.setText(line);
 				if (note.body !== rendered) {
@@ -576,13 +752,13 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 						const drawing = new Component();
 						child = drawing;
 						deps.component.addChild(drawing);
-						const box = shown.createDiv({ cls: 'snowflake-method-freeform-words markdown-rendered' });
+						const box = shown.createDiv({ cls: 'snowflake-method-sticky-rendered markdown-rendered' });
 						void MarkdownRenderer.render(deps.app, note.body, box, deps.sourcePath(), drawing).catch((error: unknown) => {
 							console.error('Snowflake: a sticky note on the freeform canvas could not be drawn', error);
 						});
 					}
 				}
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'sticky', height: next.height });
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -891,9 +1067,14 @@ function plainPainter(deps: FreeformFaceDeps): NodePainter {
 
 export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const texts = new Map<string, TextFace>();
+	// The margin's own parts, so a thread's card and a revision's read as the rail's; nothing here grows under the hand, so nothing restacks.
+	const parts = railParts(() => undefined);
 	const text = textPainter(deps, texts);
 	const scene = scenePainter(deps);
-	const record = recordPainter(deps);
+	const card = cardPainter(deps);
+	const task = taskPainter(deps);
+	const thread = threadPainter(deps, parts);
+	const revision = revisionPainter(deps, parts);
 	const missing = missingPainter(deps);
 	const frame = framePainter(deps);
 	const plain = plainPainter(deps);
@@ -904,11 +1085,11 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const painters: Record<string, NodePainter> = {
 		text,
 		scene,
-		character: record,
-		worldbuilding: record,
-		task: record,
-		foreshadowing: record,
-		revision: record,
+		character: card,
+		worldbuilding: card,
+		task,
+		foreshadowing: thread,
+		revision,
 		'sticky-note': sticky,
 		file,
 		link,

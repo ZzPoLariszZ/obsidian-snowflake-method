@@ -3,11 +3,9 @@ import { Menu, SearchComponent, setIcon, setTooltip } from 'obsidian';
 import {
 	TASK_PRIORITIES,
 	TASK_STATUSES,
-	formatDay,
 	isTaskPriority,
 	isTaskStatus,
 	resolveEntityRefs,
-	taskOverdue,
 	type Task,
 	type TaskStatus,
 } from '../domain';
@@ -15,6 +13,7 @@ import type { FilterRow } from './filter-rows';
 import { grouped, paintCount, renderEmptyLine } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
+import { paintTaskMeta } from './task-card-parts';
 import {
 	TASK_DUE_FILTERS,
 	columnsOf,
@@ -115,14 +114,6 @@ interface Lane {
 
 const cardId = (card: TaskCard): string =>
 	card.origin === 'manual' ? card.task.id : `derived:${card.derived.key}`;
-
-/** The mark each priority wears: a rising chevron pair for the urgent, a level pair of lines for the middle. */
-const PRIORITY_ICONS: Record<Task['priority'], string> = {
-	low: 'chevron-down',
-	medium: 'equal',
-	high: 'chevron-up',
-	urgent: 'chevrons-up',
-};
 
 export function renderTaskBoard(
 	container: HTMLElement,
@@ -461,40 +452,6 @@ export function renderTaskBoard(
 		menu.showAtMouseEvent(event);
 	};
 
-	/** The date on a card, said as the author writes dates, red when the day has passed. */
-	/** The priority as its mark in colour and the word beside it. */
-	const prioritySpan = (host: HTMLElement, priority: Task['priority']): void => {
-		const span = host.createSpan({ cls: 'snowflake-method-task-priority' });
-		const icon = span.createSpan({
-			cls: 'snowflake-method-task-glyph',
-			attr: { 'aria-hidden': 'true' },
-		});
-		setIcon(icon, PRIORITY_ICONS[priority]);
-		span.createSpan({ text: t(`tasks.priority.${priority}`) });
-	};
-
-	const dueSpan = (
-		host: HTMLElement,
-		task: Task,
-		current: TaskBoardReading,
-	): void => {
-		if (task.dueDate === null) return;
-		const overdue = taskOverdue(task, current.today);
-		const due = host.createSpan({ cls: 'snowflake-method-task-due' });
-		due.toggleClass('is-overdue', overdue);
-		const icon = due.createSpan({
-			cls: 'snowflake-method-task-glyph',
-			attr: { 'aria-hidden': 'true' },
-		});
-		setIcon(icon, 'calendar');
-		const date = formatDay(task.dueDate, current.dateFormat);
-		due.createSpan({ text: date });
-		setTooltip(
-			due,
-			overdue ? `${t('taskBoard.overdue')} · ${t('taskBoard.due', { date })}` : t('taskBoard.due', { date }),
-		);
-	};
-
 	/**
 	 * Wires a card's element once, for the life of the card: what a click, a
 	 * key, the context menu and a drag do, each reading the card the entry
@@ -636,11 +593,7 @@ export function renderTaskBoard(
 		el.setAttribute('draggable', readOnly ? 'false' : 'true');
 		entry.title.setText(task.title);
 		setTooltip(entry.title, task.title);
-		if (entry.meta !== null) {
-			entry.meta.empty();
-			prioritySpan(entry.meta, task.priority);
-			dueSpan(entry.meta, task, current);
-		}
+		if (entry.meta !== null) paintTaskMeta(entry.meta, task, current, t);
 	};
 
 	/**
@@ -698,9 +651,7 @@ export function renderTaskBoard(
 		setTooltip(entry.title, task.title);
 		entry.restore.disabled = readOnly;
 		entry.remove.disabled = readOnly;
-		entry.meta.empty();
-		prioritySpan(entry.meta, task.priority);
-		dueSpan(entry.meta, task, current);
+		paintTaskMeta(entry.meta, task, current, t);
 	};
 
 	const clearMark = (): void => {

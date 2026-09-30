@@ -375,13 +375,14 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 // -- A line --------------------------------------------------------------------------
 
 /**
- * A line, with its words on it where it has any, and, once it is chosen,
- * the way to its menu standing on it too: what a node carries in its corner
- * a line carries at its middle, so nothing a line can do is reached by the
- * pointer alone.
+ * A line, with its words on it where it has any. It carries no control of
+ * its own: pressed twice it is opened, and its menu is asked for on the
+ * line itself, as on a node; the words stand for the line where they are
+ * pressed, since they are drawn over it and would else take the press
+ * for the ground's.
  */
 const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): ReactElement {
-	const { options, port } = useDeps();
+	const { port } = useDeps();
 	const [path, labelX, labelY] = getBezierPath({
 		sourceX: props.sourceX,
 		sourceY: props.sourceY,
@@ -393,7 +394,12 @@ const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): Rea
 	const label = props.data?.edge.label ?? '';
 	const selected = props.selected === true;
 	const id = props.id;
+	const openTwice = useCallback((event: ReactMouseEvent) => {
+		event.stopPropagation();
+		port.open({ kind: 'edge', id }, event.nativeEvent);
+	}, [id, port]);
 	const openMenu = useCallback((event: ReactMouseEvent) => {
+		event.preventDefault();
 		event.stopPropagation();
 		port.menu({ kind: 'edge', id }, event.nativeEvent);
 	}, [id, port]);
@@ -406,41 +412,21 @@ const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): Rea
 				{...(props.markerStart === undefined ? {} : { markerStart: props.markerStart })}
 				interactionWidth={24}
 			/>
-			{label.length === 0 && !selected ? null : (
+			{label.length === 0 ? null : (
 				<EdgeLabelRenderer>
 					<div
-						className={`snowflake-method-freeform-edge-label nodrag nopan${selected ? ' is-selected' : ''}${label.length === 0 ? ' is-bare' : ''}`}
+						className={`snowflake-method-freeform-edge-label nodrag nopan${selected ? ' is-selected' : ''}`}
 						style={{ transform: `translate(-50%, -50%) translate(${String(labelX)}px, ${String(labelY)}px)` }}
+						onDoubleClick={openTwice}
+						onContextMenu={openMenu}
 					>
-						{label.length === 0 ? null : <span className="snowflake-method-freeform-edge-words">{label}</span>}
-						{selected ? (
-							<button
-								type="button"
-								className="clickable-icon snowflake-method-freeform-edge-more"
-								aria-label={options.labels.edgeMenu}
-								aria-haspopup="menu"
-								onClick={openMenu}
-							>
-								<Ellipsis />
-							</button>
-						) : null}
+						<span className="snowflake-method-freeform-edge-words">{label}</span>
 					</div>
 				</EdgeLabelRenderer>
 			)}
 		</>
 	);
 });
-
-/** The three dots every menu button in the plugin wears, drawn here since the app's own icon helper is not at hand in this file. */
-function Ellipsis(): ReactElement {
-	return (
-		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="1" />
-			<circle cx="19" cy="12" r="1" />
-			<circle cx="5" cy="12" r="1" />
-		</svg>
-	);
-}
 
 const NODE_TYPES = { freeform: FreeformNode };
 const EDGE_TYPES = { freeform: FreeformEdge };

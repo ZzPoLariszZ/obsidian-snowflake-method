@@ -113,14 +113,28 @@ describe('the face a node shows', () => {
 		// A text's and a plain face's fuller faces need no more room than the barest.
 		expect(faceModeOf('auto', 'extended', { kind: 'text', height: 56 })).toBe('extended');
 		expect(faceModeOf('auto', 'extended', { kind: 'plain', height: 48 })).toBe('extended');
+		// A card's fullest face shows no more than its standard one, and needs no more room; a margin card's does.
+		const { card, task, rail, sticky } = FREEFORM_FACE_HEIGHTS;
+		expect(card.extended).toBe(card.standard);
+		expect(task.extended).toBe(task.standard);
+		expect(sticky.extended).toBe(sticky.standard);
+		expect(faceModeOf('auto', 'extended', { kind: 'card', height: card.standard })).toBe('extended');
+		expect(faceModeOf('auto', 'extended', { kind: 'card', height: card.standard - 1 })).toBe('compact');
+		expect(faceModeOf('auto', 'extended', { kind: 'rail', height: rail.extended - 1 })).toBe('standard');
+		expect(faceModeOf('auto', 'extended', { kind: 'rail', height: rail.standard - 1 })).toBe('compact');
 	});
 
 	it('knows which kind of face each kind of node shows', () => {
 		expect(faceKindOf('scene')).toBe('scene');
-		expect(faceKindOf('character')).toBe('record');
-		expect(faceKindOf('worldbuilding')).toBe('record');
+		// A character and a worldbuilding note wear the scene card's shape; each family of task management its own surface's card.
+		expect(faceKindOf('character')).toBe('card');
+		expect(faceKindOf('worldbuilding')).toBe('card');
+		expect(faceKindOf('task')).toBe('task');
+		expect(faceKindOf('foreshadowing')).toBe('rail');
+		expect(faceKindOf('revision')).toBe('rail');
+		expect(faceKindOf('sticky-note')).toBe('sticky');
 		expect(faceKindOf('text')).toBe('text');
-		for (const type of ['task', 'foreshadowing', 'revision', 'sticky-note', 'file', 'link'] as const) {
+		for (const type of ['file', 'link'] as const) {
 			expect(faceKindOf(type), type).toBe('record');
 		}
 		for (const type of ['pending', 'missing'] as const) {
