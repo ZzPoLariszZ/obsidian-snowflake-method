@@ -3,13 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig, PickerOption } from '../../src/ui/option-picker';
 
-const { menus, positions, hidden, viewFields, notices, rendered } = vi.hoisted(() => ({
+const { menus, positions, hidden, viewFields, notices, rendered, searches } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; checked: boolean | null; click: () => void }[][],
 	positions: [] as ({ x: number; y: number } | null)[],
 	hidden: [] as unknown[],
 	viewFields: [] as OptionFieldConfig[],
 	notices: vi.fn(),
 	rendered: [] as string[],
+	/** Every search field made, the workspace's own last. */
+	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -57,6 +59,23 @@ vi.mock('obsidian', async (importOriginal) => {
 			return this;
 		}
 	}
+	/** The app's search field, as far as the workspace reads it: a box with an input in it, and a hand on what is typed. */
+	class SearchComponent {
+		readonly containerEl: CorkboardElement;
+		readonly inputEl: CorkboardElement;
+		private handler: (value: string) => void = () => undefined;
+		constructor(parent: CorkboardElement) {
+			this.containerEl = parent.createDiv({ cls: 'search-input-container' });
+			this.inputEl = this.containerEl.createEl('input', { attr: { type: 'search' } });
+			searches.push(this);
+		}
+		setPlaceholder(text: string): this { this.inputEl.setAttribute('placeholder', text); return this; }
+		setValue(value: string): this { this.inputEl.value = value; return this; }
+		getValue(): string { return this.inputEl.value; }
+		onChange(handler: (value: string) => void): this { this.handler = handler; return this; }
+		/** Words typed, as the field would tell of them. */
+		type(value: string): void { this.inputEl.value = value; this.handler(value); }
+	}
 	return {
 		...runtime,
 		Keymap: {
@@ -64,8 +83,10 @@ vi.mock('obsidian', async (importOriginal) => {
 			isModEvent: () => false,
 		},
 		getIcon: () => null,
+		setIcon: () => undefined,
 		Modal,
 		Menu,
+		SearchComponent,
 		Component: class {
 			readonly children = new Set<unknown>();
 			addChild(child: unknown): void { this.children.add(child); }
@@ -555,6 +576,19 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		/** The chord registered for a key pressed with these modifiers, as the view's scope would hear it. */
 		chord: (modifiers: string[], key: string) =>
 			chords.find((entry) => entry.key === key && entry.modifiers.join('+') === modifiers.join('+'))!,
+		/** The toolbar's search field. */
+		search: () => searches[searches.length - 1] as { inputEl: CorkboardElement; type: (value: string) => void },
+		/** Words typed into the search, and the wait after them let pass. */
+		searchFor: (words: string): void => {
+			fixture.search().type(words);
+			dom.flushFrame();
+		},
+		searchCount: (): string => root.querySelector('.snowflake-method-freeform-search-count')!.textContent,
+		/** What a node wears while a search stands: hit, miss, or nothing. */
+		mark: (id: string): string | null => {
+			const tone = fixture.node(id).tone ?? '';
+			return tone.includes('is-search-hit') ? 'hit' : tone.includes('is-search-miss') ? 'miss' : null;
+		},
 	};
 	return fixture;
 }
@@ -2788,6 +2822,7 @@ const TAIL_ITEMS = ['freeformCanvas.node.select', 'timeline.timeline.removeFromV
 const GROUND_ITEMS = [
 	'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.link.add', 'freeformCanvas.node.paste',
 	'freeformCanvas.node.selectAll', 'freeformCanvas.fit.all', 'freeformCanvas.fit.selection', 'freeformCanvas.reset.viewport',
+	'freeformCanvas.snap', 'freeformCanvas.minimap.show',
 ];
 /** What a menu offers the placements chosen, of frames. */
 const FRAME_ITEMS = ['freeformCanvas.frame.group', 'freeformCanvas.frame.moveTo'];
@@ -2799,6 +2834,165 @@ const EDGE_ITEMS = [
 	'freeformCanvas.edge.edit', 'freeformCanvas.edge.reverse', 'freeformCanvas.edge.changeStart', 'freeformCanvas.edge.changeEnd',
 	'freeformCanvas.edge.goStart', 'freeformCanvas.edge.goEnd', 'freeformCanvas.edge.delete',
 ];
+
+describe('searching a view', () => {
+	it('marks what it finds and dims the rest, once the typing has paused, and says how many', async () => {
+		const fixture = await laid();
+		expect(fixture.search().inputEl.getAttribute('placeholder')).toBe('freeformCanvas.search');
+		fixture.search().type('second');
+		// Nothing until the wait after the typing has passed.
+		expect(fixture.mark('t2')).toBeNull();
+		fixture.dom.flushFrame();
+		expect(fixture.mark('t2')).toBe('hit');
+		expect(['f1', 't1', 's1', 'l1'].map((id) => fixture.mark(id))).toEqual(['miss', 'miss', 'miss', 'miss']);
+		expect(fixture.searchCount()).toBe('freeformCanvas.search.matchesOne(count=1)');
+		expect(fixture.root.classes.has('is-searching')).toBe(true);
+		// Every word of a text node counts, in any case and any order; a frame is found by its title, a link by its address.
+		fixture.searchFor('MORE first');
+		expect(fixture.mark('t1')).toBe('hit');
+		fixture.searchFor('opening');
+		expect(fixture.mark('f1')).toBe('hit');
+		expect(fixture.node('f1').tone).toBe('is-search-hit');
+		fixture.searchFor('example.com');
+		expect(fixture.mark('l1')).toBe('hit');
+		// A scene by what it is called.
+		fixture.searchFor('arrival');
+		expect(fixture.mark('s1')).toBe('hit');
+		fixture.searchFor('e');
+		expect(fixture.searchCount()).toBe('freeformCanvas.search.matches(count=5)');
+		// Let go, nothing is marked.
+		fixture.searchFor('');
+		expect(['f1', 't1', 't2', 's1', 'l1'].map((id) => fixture.mark(id))).toEqual([null, null, null, null, null]);
+		expect(fixture.searchCount()).toBe('');
+		expect(fixture.root.classes.has('is-searching')).toBe(false);
+	});
+
+	it('says over the canvas when nothing matches, and says the view is empty only when it is', async () => {
+		const fixture = await laid();
+		expect(fixture.hint().classes.has('is-hidden')).toBe(true);
+		fixture.searchFor('nothing of the kind');
+		expect(fixture.hint().classes.has('is-hidden')).toBe(false);
+		expect(fixture.hint().children[0]!.children[1]!.textContent).toBe('freeformCanvas.search.none');
+		expect(fixture.searchCount()).toBe('');
+		expect(fixture.mark('t1')).toBe('miss');
+		fixture.searchFor('');
+		expect(fixture.hint().classes.has('is-hidden')).toBe(true);
+		// An empty view says so whatever is searched for.
+		const bare = workspace([view('a')]);
+		await settle();
+		bare.searchFor('anything');
+		expect(bare.hint().classes.has('is-hidden')).toBe(false);
+		expect(bare.hint().children[0]!.children[1]!.textContent).toBe('freeformCanvas.empty.nodes');
+	});
+
+	it('brings the found into sight one by one on Enter, down the plane and across it, and round again', async () => {
+		const fixture = await laid();
+		// t1 (0, 0), t2 (400, 0), s1 (0, 300), l1 (400, 300): the frame stands at (-40, -80). Every one has an e in it.
+		fixture.searchFor('e');
+		const field = fixture.search().inputEl;
+		const enter = (shiftKey = false): void => { fire(field, 'keydown', { key: 'Enter', shiftKey }); };
+		enter();
+		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'reveal', id: 'f1' }]);
+		expect(fixture.canvas.selection).toEqual({ nodes: ['f1'], edges: [] });
+		expect(fixture.searchCount()).toBe('freeformCanvas.search.position(at=1,count=5)');
+		enter();
+		enter();
+		expect(fixture.canvas.moves.slice(2).map((move) => (move as { id: string }).id)).toEqual(['t1', 't2']);
+		expect(fixture.searchCount()).toBe('freeformCanvas.search.position(at=3,count=5)');
+		enter(true);
+		expect(fixture.canvas.selection.nodes).toEqual(['t1']);
+		// Round again at either end.
+		enter(true);
+		enter(true);
+		expect(fixture.canvas.selection.nodes).toEqual(['l1']);
+		enter();
+		expect(fixture.canvas.selection.nodes).toEqual(['f1']);
+		// Words typed and not yet marked are marked as Enter is pressed, so it lands on what was asked for.
+		fixture.search().type('second');
+		enter();
+		expect(fixture.canvas.selection.nodes).toEqual(['t2']);
+		expect(fixture.searchCount()).toBe('freeformCanvas.search.position(at=1,count=1)');
+		// The one in sight taken off the view: the count falls back to how many are found.
+		fixture.choose({ nodes: ['t2'] });
+		fixture.press('Delete');
+		expect(fixture.searchCount()).toBe('');
+		expect(fixture.hint().children[0]!.children[1]!.textContent).toBe('freeformCanvas.search.none');
+	});
+
+	it('lets the search go on Escape, and leaves the field for the canvas on a second', async () => {
+		const fixture = await laid();
+		fixture.searchFor('second');
+		const field = fixture.search().inputEl;
+		field.focus();
+		fire(field, 'keydown', { key: 'Escape' });
+		expect(field.value).toBe('');
+		expect(fixture.mark('t2')).toBeNull();
+		expect(fixture.dom.doc.activeElement).toBe(field);
+		fire(field, 'keydown', { key: 'Escape' });
+		expect(fixture.dom.doc.activeElement).not.toBe(field);
+		expect(fixture.canvas.focused).toBe(1);
+	});
+
+	it('takes the keys to the field on its chord, from the canvas and from the field itself, never from a node’s words', async () => {
+		const fixture = await laid();
+		const field = fixture.search().inputEl;
+		expect(fixture.chord(['Mod'], 'f').listener()).toBe(false);
+		expect(fixture.dom.doc.activeElement).toBe(field);
+		expect(fixture.chord(['Mod'], 'f').listener()).toBe(false);
+		// Typing in a node: the chord is the app's.
+		fixture.port().open({ kind: 'node', id: 't2' }, {} as MouseEvent);
+		fixture.field('t2')!.focus();
+		expect(fixture.chord(['Mod'], 'f').listener()).toBe(true);
+		expect(fixture.dom.doc.activeElement).toBe(fixture.field('t2'));
+		// No view on show: nothing to search.
+		const bare = workspace([]);
+		await settle();
+		expect(bare.chord(['Mod'], 'f').listener()).toBe(true);
+	});
+
+	it('snaps to the grid and shows the minimap from the ground’s menu, remembers both, and puts the minimap away by its button', async () => {
+		const fixture = await laid();
+		const item = (title: string) => fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.find((entry) => entry.title === title)!;
+		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.minimap.show').checked]).toEqual([false, false]);
+		const collapse = fixture.button('snowflake-method-freeform-minimap-collapse');
+		expect(collapse.getAttribute('aria-label')).toBe('freeformCanvas.minimap.collapse');
+		expect(collapse.classes.has('is-hidden')).toBe(true);
+		const remembered0 = fixture.remember.mock.calls.length;
+		item('freeformCanvas.snap').click();
+		expect(fixture.memory.snap).toBe(true);
+		expect(fixture.canvas.interaction?.snap).toBe(FREEFORM_GRID);
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 1);
+		item('freeformCanvas.minimap.show').click();
+		expect(fixture.memory.minimap).toBe(true);
+		expect(fixture.canvas.interaction?.minimap).toBe(true);
+		expect(collapse.classes.has('is-hidden')).toBe(false);
+		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.minimap.show').checked]).toEqual([true, true]);
+		fire(collapse, 'click');
+		expect(fixture.memory.minimap).toBe(false);
+		expect(fixture.canvas.interaction?.minimap).toBe(false);
+		expect(collapse.classes.has('is-hidden')).toBe(true);
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 3);
+		// Each turn of a switch is remembered once.
+		item('freeformCanvas.snap').click();
+		item('freeformCanvas.snap').click();
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 5);
+		// A tab that remembered them opens with them.
+		const remembered = workspace([laidView()], { snap: true });
+		remembered.memory.minimap = true;
+		await settle();
+		expect(remembered.canvas.interaction?.snap).toBe(FREEFORM_GRID);
+	});
+
+	it('names the toolbar’s two words for a reader, each with a symbol for the narrow toolbar', async () => {
+		const fixture = await laid();
+		for (const [cls, words] of [['snowflake-method-freeform-view-add', 'timeline.view.add'], ['snowflake-method-freeform-node-add', 'freeformCanvas.node.add']] as const) {
+			const button = fixture.button(cls);
+			expect(button.getAttribute('aria-label')).toBe(words);
+			expect(button.querySelector('.snowflake-method-freeform-word')?.textContent).toBe(words);
+			expect(button.querySelector('.snowflake-method-freeform-word-symbol')).not.toBeNull();
+		}
+	});
+});
 
 describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
@@ -2860,8 +3054,9 @@ describe('the menus', () => {
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
 		]);
+		// Looking about, and the two switches, change nothing in the project.
 		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
-			true, true, true, true, true, false, false, true, false,
+			true, true, true, true, true, false, false, true, false, false, false,
 		]);
 	});
 
@@ -2870,14 +3065,14 @@ describe('the menus', () => {
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
 		expect(menu.map((item) => item.title)).toEqual(GROUND_ITEMS);
 		// Nothing is chosen: there is nothing to bring into sight.
-		expect(menu.map((item) => item.disabled)).toEqual([false, false, false, false, false, false, false, true, false]);
+		expect(menu.map((item) => item.disabled)).toEqual([false, false, false, false, false, false, false, true, false, false, false]);
 		menu[6]!.click();
 		menu[8]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
 		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
-			false, false, false, false, false, true, true, true, false,
+			false, false, false, false, false, true, true, true, false, false, false,
 		]);
 	});
 
@@ -2938,7 +3133,7 @@ describe('the canvas controls', () => {
 		fire(fit, 'click');
 		fire(reset, 'click');
 		expect(fixture.chords.map((chord) => [chord.modifiers, chord.key])).toEqual([
-			[['Mod'], 'z'], [['Mod', 'Shift'], 'z'], [['Mod'], 'a'], [['Mod'], 'd'], [['Shift'], '1'], [['Shift'], '2'], [['Shift'], '0'],
+			[['Mod'], 'z'], [['Mod', 'Shift'], 'z'], [['Mod'], 'a'], [['Mod'], 'f'], [['Mod'], 'd'], [['Shift'], '1'], [['Shift'], '2'], [['Shift'], '0'],
 		]);
 		expect(fixture.chord(['Shift'], '1').listener()).toBe(false);
 		expect(fixture.chord(['Shift'], '0').listener()).toBe(false);

@@ -22,7 +22,7 @@
  * Taking a change back is one more change, written the same way.
  */
 
-import { Keymap, Menu, Notice } from 'obsidian';
+import { Keymap, Menu, Notice, SearchComponent, setIcon } from 'obsidian';
 
 import {
 	DEFAULT_FREEFORM_VIEWPORT,
@@ -109,6 +109,7 @@ import {
 	placeStepOf,
 	plainFirstLine,
 	sceneOf,
+	searchFreeformScene,
 	type FreeformSceneMade,
 	type FreeformSceneWords,
 } from './freeform-layout';
@@ -129,6 +130,9 @@ import { bindFrameWindow, createLaneDeck, createMenuKeeper, createModalKeeper, t
 
 /** How many of a text node's first words it is called by, for a reader that cannot see it. */
 const NAME_LENGTH = 80;
+
+/** How long the search waits after a keystroke before the view is marked for it, as the corkboard's does. */
+const SEARCH_DEBOUNCE_MS = 150;
 
 /** Where a press is the field's own: words being written, a choice from a list. */
 const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
@@ -169,23 +173,61 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	editViewButton.addEventListener('click', () => {
 		openEditView();
 	});
+	// The search marks what it finds and dims the rest; Enter brings the found
+	// into sight one by one, Escape lets the search go.
+	const searchHost = toolbar.createDiv({ cls: 'snowflake-method-freeform-search' });
+	const search = new SearchComponent(searchHost);
+	search.setPlaceholder(t('freeformCanvas.search'));
+	const searchCount = searchHost.createSpan({ cls: 'snowflake-method-freeform-search-count', attr: { 'aria-live': 'polite' } });
+	let searchTimer: number | null = null;
+	let searchWindow = root.win;
+	search.onChange((next) => {
+		if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
+		searchWindow = root.win;
+		searchTimer = searchWindow.setTimeout(() => {
+			searchTimer = null;
+			setQuery(next);
+		}, SEARCH_DEBOUNCE_MS);
+	});
+	search.inputEl.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			// Words typed and not yet marked are marked now, so the step lands on what was asked for.
+			if (searchTimer !== null) {
+				searchWindow.clearTimeout(searchTimer);
+				searchTimer = null;
+				setQuery(search.getValue());
+			}
+			stepSearch(event.shiftKey ? -1 : 1);
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			// A search standing is let go first; the field is left once it stands empty.
+			if (search.getValue().length > 0) {
+				search.setValue('');
+				setQuery('');
+			} else {
+				search.inputEl.blur();
+				canvas.focus();
+			}
+		}
+	});
 	const refreshButton = toolbarIconButton(toolbar, 'snowflake-method-freeform-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
-	const addViewButton = toolbar.createEl('button', {
-		cls: 'mod-cta snowflake-method-freeform-view-add',
-		text: t('timeline.view.add'),
-		attr: { type: 'button' },
-	});
+	// The two words carry a symbol each, which is all that shows of them where
+	// the toolbar is too narrow for the words; the words stay their names.
+	const wordWithSymbol = (cls: string, icon: string, words: string): HTMLButtonElement => {
+		const button = toolbar.createEl('button', { cls: `mod-cta ${cls}`, attr: { type: 'button', 'aria-label': words } });
+		setIcon(button.createSpan({ cls: 'snowflake-method-freeform-word-symbol' }), icon);
+		button.createSpan({ cls: 'snowflake-method-freeform-word', text: words });
+		return button;
+	};
+	const addViewButton = wordWithSymbol('snowflake-method-freeform-view-add', 'layout-dashboard', t('timeline.view.add'));
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
-	const addNodeButton = toolbar.createEl('button', {
-		cls: 'mod-cta snowflake-method-freeform-node-add',
-		text: t('freeformCanvas.node.add'),
-		attr: { type: 'button' },
-	});
+	const addNodeButton = wordWithSymbol('snowflake-method-freeform-node-add', 'plus', t('freeformCanvas.node.add'));
 	addNodeButton.addEventListener('click', () => {
 		openAddNode();
 	});
@@ -196,7 +238,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const stage = root.createDiv({ cls: 'snowflake-method-freeform-stage is-hidden' });
 	const ground = stage.createDiv({ cls: 'snowflake-method-freeform-ground' });
 	const hint = stage.createDiv({ cls: 'snowflake-method-freeform-hint is-hidden' });
-	renderEmptyLine(hint, t('freeformCanvas.empty.nodes'));
+	const hintLine = renderEmptyLine(hint, t('freeformCanvas.empty.nodes'));
 	const panel = stage.createDiv({
 		cls: 'snowflake-method-freeform-controls',
 		attr: { role: 'toolbar', 'aria-label': t('freeformCanvas.controls') },
@@ -243,6 +285,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	resetButton.addEventListener('click', () => {
 		resetViewport();
 	});
+	// The minimap stands in the canvas's far corner when asked for, and this button, laid over its corner, puts it away.
+	const minimapButton = toolbarIconButton(stage, 'snowflake-method-freeform-minimap-collapse', 'minimize-2', t('freeformCanvas.minimap.collapse'));
+	minimapButton.addEventListener('click', () => {
+		setMinimap(false);
+	});
+	const paintMinimap = (): void => {
+		minimapButton.toggleClass('is-hidden', !memory.minimap);
+	};
+	paintMinimap();
 
 	const showEmpty = (text: string | null): void => {
 		empty.line.toggleClass('is-hidden', text === null);
@@ -278,6 +329,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	let draft: { viewId: string; placement: FreeformPlacement } | null = null;
 	/** Whether a drag on the ground draws a box rather than moves the plane. */
 	let dragDraws = false;
+	/** The words searched for on the view on show; nothing marks nothing. */
+	let query = '';
+	/** The nodes the search found, in reading order, and the one of them last brought into sight. */
+	let hits: string[] = [];
+	let hitId: string | null = null;
 	const pending: Pending[] = [];
 	/**
 	 * What was done to each view here, kept to be taken back: the tab's own,
@@ -564,8 +620,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		paintHistory();
 		if (view === null || model === null) {
 			made = null;
+			hits = [];
 			canvas.setScene(EMPTY_FREEFORM_SCENE);
 			hint.toggleClass('is-hidden', true);
+			root.toggleClass('is-searching', false);
+			searchCount.setText('');
 			fitButton.disabled = true;
 			return;
 		}
@@ -573,7 +632,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			? { ...view, placements: [...view.placements, draft.placement] }
 			: view;
 		laneDeck.beginPaint();
-		made = sceneOf(shown, words);
+		const searched = searchFreeformScene(sceneOf(shown, words), query);
+		made = searched.made;
+		hits = searched.hits;
+		if (hitId !== null && !hits.includes(hitId)) hitId = null;
 		canvas.setInteraction({
 			readOnly,
 			ground: dragDraws ? 'select' : 'pan',
@@ -581,9 +643,75 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			minimap: memory.minimap,
 		});
 		canvas.setScene(made.scene);
-		hint.toggleClass('is-hidden', made.scene.nodes.length > 0);
+		paintSearch();
 		fitButton.disabled = made.scene.nodes.length === 0;
 		deck.prune();
+	};
+
+	// -- Searching -------------------------------------------------------------
+
+	/**
+	 * What the search says of itself: how many it found, which of them is in
+	 * sight, or that none matched, said over the canvas as an empty view's
+	 * word is. Nothing while nothing is searched for.
+	 */
+	const paintSearch = (): void => {
+		const nodes = made?.scene.nodes.length ?? 0;
+		const searching = query.trim().length > 0 && nodes > 0;
+		const none = searching && hits.length === 0;
+		hint.toggleClass('is-hidden', nodes > 0 && !none);
+		hintLine.text.setText(t(none ? 'freeformCanvas.search.none' : 'freeformCanvas.empty.nodes'));
+		root.toggleClass('is-searching', searching);
+		if (!searching || hits.length === 0) {
+			searchCount.setText('');
+			return;
+		}
+		const at = hitId === null ? -1 : hits.indexOf(hitId);
+		searchCount.setText(at === -1
+			? t(hits.length === 1 ? 'freeformCanvas.search.matchesOne' : 'freeformCanvas.search.matches', { count: hits.length })
+			: t('freeformCanvas.search.position', { at: at + 1, count: hits.length }));
+	};
+
+	const setQuery = (next: string): void => {
+		if (next === query) return;
+		query = next;
+		hitId = null;
+		paintScene();
+	};
+
+	/** The next node found brought into sight and chosen, or the one before; round again at either end. */
+	const stepSearch = (step: 1 | -1): void => {
+		if (hits.length === 0) return;
+		const at = hitId === null ? -1 : hits.indexOf(hitId);
+		const next = at === -1 ? (step === 1 ? 0 : hits.length - 1) : (at + step + hits.length) % hits.length;
+		hitId = hits[next] ?? null;
+		if (hitId === null) return;
+		canvas.moveViewport({ kind: 'reveal', id: hitId });
+		canvas.select({ nodes: [hitId], edges: [] });
+		paintSearch();
+	};
+
+	/** The search field given the keys, its words chosen so the next ones replace them. */
+	const focusSearch = (): void => {
+		search.inputEl.focus();
+		search.inputEl.select();
+	};
+
+	// -- The switches ------------------------------------------------------------
+
+	const setMinimap = (on: boolean): void => {
+		if (memory.minimap === on) return;
+		memory.minimap = on;
+		controls.remember();
+		canvas.setInteraction({ minimap: on });
+		paintMinimap();
+	};
+
+	const setSnap = (on: boolean): void => {
+		if (memory.snap === on) return;
+		memory.snap = on;
+		controls.remember();
+		canvas.setInteraction({ snap: on ? FREEFORM_GRID : null });
 	};
 
 	/**
@@ -1888,6 +2016,25 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				.setIcon('rotate-ccw')
 				.onClick(resetViewport);
 		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.snap'))
+				.setIcon('grid-2x2')
+				.setChecked(memory.snap)
+				.onClick(() => {
+					setSnap(!memory.snap);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.minimap.show'))
+				.setIcon('map')
+				.setChecked(memory.minimap)
+				.onClick(() => {
+					setMinimap(!memory.minimap);
+				});
+		});
 		show(menu, event);
 	};
 
@@ -2445,6 +2592,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		controls.chord(['Mod'], 'z', () => !chordFree() || !undo()),
 		controls.chord(['Mod', 'Shift'], 'z', () => !chordFree() || !redo()),
 		controls.chord(['Mod'], 'a', () => !chordFree() || !selectAll()),
+		// The search's own field is the one field the chord is taken in: pressed there, it chooses the words again.
+		controls.chord(['Mod'], 'f', () => {
+			if (disposed || stage.classList.contains('is-hidden')) return true;
+			if (!chordFree() && root.doc.activeElement !== search.inputEl) return true;
+			focusSearch();
+			return false;
+		}),
 		controls.chord(['Mod'], 'd', () => !chordFree() || !duplicate(selection.nodes)),
 		controls.chord(['Shift'], '1', () => {
 			if (!chordFree()) return true;

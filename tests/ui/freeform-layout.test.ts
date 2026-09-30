@@ -14,6 +14,8 @@ import {
 	FREEFORM_FACE_HEIGHTS,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
+	FREEFORM_SEARCH_HIT,
+	FREEFORM_SEARCH_MISS,
 	cornersOf,
 	faceKindOf,
 	faceModeOf,
@@ -25,8 +27,11 @@ import {
 	landingsAt,
 	ownWordsCount,
 	placeStepOf,
+	freeformSearchNeedles,
+	freeformSearchText,
 	plainFirstLine,
 	sceneOf,
+	searchFreeformScene,
 	viewSignature,
 	type FreeformSceneWords,
 } from '../../src/ui/freeform-layout';
@@ -229,6 +234,62 @@ describe('a view said to the canvas', () => {
 	it('says the same view the same way, so a canvas told it twice draws nothing twice', () => {
 		const held = view({ frames: [frame('f1')], placements: [text('p1', 'one', { frameId: 'f1' })], edges: [edge('e1', 'p1', 'f1')] });
 		expect(sceneOf(held, words()).scene).toEqual(sceneOf(JSON.parse(JSON.stringify(held)) as FreeformView, words()).scene);
+	});
+});
+
+describe('searching a view', () => {
+	const laid = () => sceneOf(view({
+		frames: [frame('f1', { title: 'Opening day', color: 'macaron-2', x: -40, y: -80 })],
+		placements: [
+			text('t1', 'First words\n\nand more below', { x: 0, y: 0 }),
+			text('t2', 'Second', { x: 400, y: 0 }),
+			link('l1', { x: 0, y: 300 }),
+			text('t3', 'Third card', { x: 400, y: 300 }),
+		],
+	}), words({ label: (node) => (node.type === 'text' ? node.text.split('\n')[0] ?? '' : 'Link to A') }));
+
+	it('reads the words asked for one by one, in any case', () => {
+		expect(freeformSearchNeedles('  Second   WORDS ')).toEqual(['second', 'words']);
+		expect(freeformSearchNeedles('')).toEqual([]);
+		expect(freeformSearchNeedles('   ')).toEqual([]);
+	});
+
+	it('finds a node by its name, a text node by every word of it, a link by its address, a frame by its title', () => {
+		const made = laid();
+		const hitsFor = (query: string) => searchFreeformScene(made, query).hits;
+		expect(hitsFor('second')).toEqual(['t2']);
+		// Beyond the first line, which is all the name says.
+		expect(hitsFor('below')).toEqual(['t1']);
+		expect(freeformSearchText(made.scene.nodes[1]!, made.nodes.get('t1'))).toBe('First words\nFirst words\n\nand more below');
+		expect(hitsFor('example.com/a')).toEqual(['l1']);
+		expect(freeformSearchText(made.scene.nodes[3]!, made.nodes.get('l1'))).toBe('Link to A\nhttps://example.com/a\nA');
+		expect(hitsFor('opening')).toEqual(['f1']);
+		// Every word must be found, in any order and any case; a word found nowhere finds nothing.
+		expect(hitsFor('MORE first')).toEqual(['t1']);
+		expect(hitsFor('first nowhere')).toEqual([]);
+	});
+
+	it('marks every node found and every other, keeps a frame’s tint, and lists the found in reading order', () => {
+		const made = laid();
+		const searched = searchFreeformScene(made, 'd');
+		// Every one has a d in it but the link: down the plane, then across.
+		expect(searched.hits).toEqual(['f1', 't1', 't2', 't3']);
+		const tones = new Map(searched.made.scene.nodes.map((node) => [node.id, node.tone]));
+		expect(tones.get('f1')).toBe(`is-tint-macaron-2 ${FREEFORM_SEARCH_HIT}`);
+		expect(tones.get('t1')).toBe(FREEFORM_SEARCH_HIT);
+		expect(tones.get('l1')).toBe(FREEFORM_SEARCH_MISS);
+		// What the scene stands for is handed on as it was; the lines too.
+		expect(searched.made.nodes).toBe(made.nodes);
+		expect(searched.made.frames).toBe(made.frames);
+		expect(searched.made.scene.edges).toBe(made.scene.edges);
+		// Nothing else about a node moves.
+		expect(searched.made.scene.nodes.map(({ tone: _tone, ...rest }) => rest)).toEqual(made.scene.nodes.map(({ tone: _tone, ...rest }) => rest));
+	});
+
+	it('marks nothing and finds nothing for an empty search, and hands the scene back as it came', () => {
+		const made = laid();
+		expect(searchFreeformScene(made, '')).toEqual({ made, hits: [] });
+		expect(searchFreeformScene(made, '   ').made).toBe(made);
 	});
 });
 

@@ -16020,3 +16020,114 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		gap: var(--size-2-3);
 	}
 }
+
+/* The search stands in the toolbar between the pencil and the symbols. It
+   gives up its width after the view field does, and what it says of itself
+   (how many it found, which is in sight) stands quietly at its end. */
+.snowflake-method-freeform-toolbar .snowflake-method-freeform-search {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	flex: 0 1 14rem;
+	min-width: 5rem;
+}
+
+.snowflake-method-freeform-search .search-input-container {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* A field too narrow for its whole name shows as much as fits, and says so. */
+.snowflake-method-freeform-search input::placeholder {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.snowflake-method-freeform-search-count {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-freeform-search-count:empty {
+	display: none;
+}
+
+/* While a search stands, what it found wears a ring of the app's yellow,
+   the colour a highlight is drawn in, and the rest fall back. A frame found
+   keeps its ground. The app names no highlight token of its own in 1.14, so
+   the ring is mixed from the yellow's channels. */
+.snowflake-method-freeform-canvas .snowflake-method-freeform-node.is-search-miss {
+	opacity: 0.35;
+}
+
+.snowflake-method-freeform-canvas .snowflake-method-freeform-node.is-search-hit > .snowflake-method-freeform-node-body {
+	border-radius: var(--radius-m);
+	box-shadow: 0 0 0 3px rgba(var(--color-yellow-rgb, 224, 172, 0), 0.6);
+}
+
+/* The minimap is put away by a button laid over its own corner. */
+.snowflake-method-freeform-minimap-collapse {
+	position: absolute;
+	/* The engine's panel keeps 15px of margin, and the map inside it is 200 by 150 with a hairline round it. */
+	inset-inline-end: calc(15px + var(--size-2-1));
+	inset-block-end: calc(15px + 152px - 24px - var(--size-2-1));
+	z-index: 6;
+	--icon-size: var(--icon-s);
+	background-color: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.snowflake-method-freeform-minimap-collapse.is-hidden {
+	display: none;
+}
+
+/* The two words of the toolbar carry a symbol each. Where the workspace is
+   too narrow for the words, the symbols stand for them, and the field the
+   search is typed into gives up more of its width, so the whole toolbar
+   still stands in the strip's row. */
+.snowflake-method-freeform {
+	container-type: inline-size;
+}
+
+.snowflake-method-freeform-view-add,
+.snowflake-method-freeform-node-add {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+}
+
+.snowflake-method-freeform-word-symbol {
+	display: none;
+	--icon-size: var(--icon-s);
+}
+
+.snowflake-method-freeform-word-symbol svg {
+	display: block;
+}
+
+@container (max-width: 34rem) {
+	.snowflake-method-freeform-word-symbol {
+		display: inline-flex;
+	}
+
+	.snowflake-method-freeform-word {
+		display: none;
+	}
+
+	.snowflake-method-freeform-view-add,
+	.snowflake-method-freeform-node-add {
+		padding-inline: var(--size-4-2);
+	}
+
+	.snowflake-method-freeform-toolbar .snowflake-method-freeform-search {
+		flex-basis: 8rem;
+		min-width: 4rem;
+	}
+
+	.snowflake-method-freeform-toolbar .snowflake-method-freeform-view-select {
+		flex-basis: 10rem;
+	}
+}

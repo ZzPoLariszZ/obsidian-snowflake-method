@@ -238,6 +238,58 @@ function edgeOf(
 
 export const EMPTY_FREEFORM_SCENE: CanvasScene = { nodes: [], edges: [] };
 
+// -- Searching a view ----------------------------------------------------------
+
+/** The classes a node wears while a search stands: found, or not. */
+export const FREEFORM_SEARCH_HIT = 'is-search-hit';
+export const FREEFORM_SEARCH_MISS = 'is-search-miss';
+
+/** The words asked for, each to be found on its own, in any order and any case. */
+export function freeformSearchNeedles(query: string): string[] {
+	return query.toLowerCase().split(/\s+/u).filter((word) => word.length > 0);
+}
+
+/**
+ * What a node can be found by: its name as a reader hears it, and beyond
+ * that every word of a text node, a link's address, and a frame's title.
+ */
+export function freeformSearchText(node: CanvasNode, resolved: ResolvedNode | undefined): string {
+	if (resolved?.type === 'text') return `${node.label}\n${resolved.text}`;
+	if (resolved?.type === 'link') return `${node.label}\n${resolved.url}\n${resolved.label}`;
+	return node.label;
+}
+
+export interface FreeformSearchMade {
+	made: FreeformSceneMade;
+	/** The nodes found, in reading order: down the plane, and across it. */
+	hits: string[];
+}
+
+/**
+ * A scene marked for a search: every node found wears the hit class, every
+ * other the miss class, so the found stand out and the rest fall back. An
+ * empty search marks nothing and finds nothing, and the scene is handed back
+ * as it came.
+ */
+export function searchFreeformScene(made: FreeformSceneMade, query: string): FreeformSearchMade {
+	const needles = freeformSearchNeedles(query);
+	if (needles.length === 0) return { made, hits: [] };
+	const found = new Set<string>();
+	for (const node of made.scene.nodes) {
+		const text = freeformSearchText(node, made.nodes.get(node.id)).toLowerCase();
+		if (needles.every((needle) => text.includes(needle))) found.add(node.id);
+	}
+	const nodes = made.scene.nodes.map((node) => ({
+		...node,
+		tone: [node.tone ?? '', found.has(node.id) ? FREEFORM_SEARCH_HIT : FREEFORM_SEARCH_MISS].filter((part) => part.length > 0).join(' '),
+	}));
+	const hits = made.scene.nodes
+		.filter((node) => found.has(node.id))
+		.sort((left, right) => left.y - right.y || left.x - right.x)
+		.map((node) => node.id);
+	return { made: { ...made, scene: { nodes, edges: made.scene.edges } }, hits };
+}
+
 // -- What a gesture that has ended asks of the view -------------------------------
 
 /**
