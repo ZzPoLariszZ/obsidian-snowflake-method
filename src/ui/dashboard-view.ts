@@ -297,9 +297,11 @@ function stepStatusesOf(model: ProjectDashboardModel): StepStatusMap {
 const ACTIVE_STEP_SELECTOR = '.snowflake-method-step-button.is-active';
 
 /** A task tab's kept panel: let go, or drawn into a tab body. */
-interface KeptTaskPanel {
+interface KeptTaskPanel<T = { dispose(): void }> {
 	dispose(): void;
 	render(body: HTMLElement): void;
+	/** The panel standing, for a caller that reaches into it once it is drawn; null with none. */
+	current(): T | null;
 }
 
 export class SnowflakeDashboardView extends ItemView {
@@ -358,7 +360,7 @@ export class SnowflakeDashboardView extends ItemView {
 	 * disposed, switched and drawn by one rule over this table rather than
 	 * by four lists kept by hand.
 	 */
-	private readonly taskPanels: Record<TasksTab, KeptTaskPanel> = {
+	private readonly taskPanels: Omit<Record<TasksTab, KeptTaskPanel>, 'tasks'> & { tasks: KeptTaskPanel<TaskBoardHandle> } = {
 		tasks: this.keptTaskPanel<TaskBoardHandle>({
 			key: () => this.panelKey(),
 			hostCls: 'snowflake-method-task-board-host',
@@ -1015,7 +1017,7 @@ export class SnowflakeDashboardView extends ItemView {
 		hostCls: string;
 		build: (host: HTMLElement) => T;
 		handback: (kept: T) => void;
-	}): KeptTaskPanel {
+	}): KeptTaskPanel<T> {
 		const panel = new KeptPanel<T>();
 		return {
 			dispose: () => {
@@ -1030,7 +1032,22 @@ export class SnowflakeDashboardView extends ItemView {
 				const host = body.createDiv({ cls: spec.hostCls });
 				panel.keep(host, spec.key(), spec.build(host));
 			},
+			current: () => panel.current(),
 		};
+	}
+
+	/**
+	 * Brings one task's card into sight on the task board: the task
+	 * management pane shown on its board tab, drawn, and the card found and
+	 * given the focus. False where the board does not show the task.
+	 */
+	async revealTask(id: string): Promise<boolean> {
+		this.selectedPane = { kind: 'tasks' };
+		this.tasksTab = 'tasks';
+		this.stepChosen = true;
+		this.app.workspace.requestSaveLayout();
+		await this.refresh();
+		return this.taskPanels.tasks.current()?.reveal(id) ?? false;
 	}
 
 	/**

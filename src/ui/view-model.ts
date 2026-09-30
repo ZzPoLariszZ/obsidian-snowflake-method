@@ -869,6 +869,12 @@ export interface DashboardHost {
 	/** Opens an existing character's edit form without switching away from the caller. */
 	openCharacterForm(id: string, projectPath?: string, onSaved?: () => void): Promise<void>;
 	/**
+	 * Brings one task's card into sight on the named project's task board,
+	 * opening the project's dashboard forward where none stands; false where
+	 * the board does not show the task, as with one archived or gone.
+	 */
+	revealTask(projectPath: string, taskId: string): Promise<boolean>;
+	/**
 	 * Opens the worldbuilding form on the dashboard of the requested project,
 	 * as `openSceneForm` does; resolves when the modal closes, with the id of
 	 * the note a create made.

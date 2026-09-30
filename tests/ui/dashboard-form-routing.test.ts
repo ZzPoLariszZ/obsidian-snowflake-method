@@ -37,12 +37,14 @@ function dashboardLeaf(
 	const openSceneForm = vi.fn((_intent: SceneFormIntent) => Promise.resolve('saved-scene'));
 	const openCharacterForm = vi.fn((_id: string) => Promise.resolve());
 	const openEntityForm = vi.fn((_intent: EntityFormIntent) => Promise.resolve(null));
+	const revealTask = vi.fn((_id: string) => Promise.resolve(true));
 	const queueRefreshWhenShown = vi.fn();
 	Object.assign(dashboard, {
 		getProjectPath: () => path,
 		openSceneForm,
 		openCharacterForm,
 		openEntityForm,
+		revealTask,
 		queueRefreshWhenShown,
 	});
 	let state: ViewState = {
@@ -62,7 +64,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, openEntityForm, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -249,5 +251,23 @@ describe('captured project ownership during form setup', () => {
 		expect(first.openCharacterForm).toHaveBeenCalledWith('hero');
 		expect(activeLeaf()).toBe(second.leaf);
 		expect(workspace.revealLeaf).not.toHaveBeenCalled();
+	});
+});
+
+describe('one task revealed on its project’s board', () => {
+	it('brings the project forward, then asks its dashboard to reveal the task', async () => {
+		const dashboard = dashboardLeaf();
+		const { plugin } = pluginWith([dashboard.leaf]);
+		const selectProject = vi.fn(() => Promise.resolve());
+		Object.assign(plugin, { selectProject });
+		await expect(plugin.revealTask(projectPath, 'task-1')).resolves.toBe(true);
+		expect(selectProject).toHaveBeenCalledExactlyOnceWith(projectPath);
+		expect(dashboard.revealTask).toHaveBeenCalledExactlyOnceWith('task-1');
+	});
+
+	it('answers false where no dashboard stands for the project once it was asked for', async () => {
+		const { plugin } = pluginWith([]);
+		Object.assign(plugin, { selectProject: vi.fn(() => Promise.resolve()) });
+		await expect(plugin.revealTask(projectPath, 'task-1')).resolves.toBe(false);
 	});
 });

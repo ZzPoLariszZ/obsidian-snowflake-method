@@ -10256,6 +10256,18 @@ export default class SnowflakeMethodPlugin
 			? view.openEntityForm(intent) : view.openEntityForm(intent, onSaved), null, projectPath);
 	}
 
+	/**
+	 * Brings one task's card into sight on its project's task board. Unlike a
+	 * form, the board is where the author is going, so the project's dashboard
+	 * comes forward: the one standing for the project, or a new tab.
+	 */
+	async revealTask(projectPath: string, taskId: string): Promise<boolean> {
+		await this.selectProject(projectPath);
+		const leaf = this.findOpenProjectLeaf(projectPath);
+		if (leaf === undefined || !(leaf.view instanceof SnowflakeDashboardView)) return false;
+		return leaf.view.revealTask(taskId);
+	}
+
 	/** Opens a dashboard-owned form while keeping the requesting surface active. */
 	private async withDashboardForm<T>(
 		open: (view: SnowflakeDashboardView) => Promise<T>,

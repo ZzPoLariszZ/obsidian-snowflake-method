@@ -23,6 +23,11 @@ export class KeptPanel<T extends { dispose(): void }> {
 		return this.handle;
 	}
 
+	/** The panel standing, whatever it was built for; null with none. */
+	current(): T | null {
+		return this.handle;
+	}
+
 	/** Keeps a panel just built in `host`, letting any earlier one go. */
 	keep(host: HTMLElement, key: string, handle: T): T {
 		this.dispose();

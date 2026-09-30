@@ -117,6 +117,12 @@ export class CorkboardElement {
 	value = '';
 	/** An option's standing in its list. */
 	selected = false;
+	/** The classes as one string, read and written as the app's own elements are. */
+	get className(): string { return [...this.classes].join(' '); }
+	set className(value: string) {
+		this.classes.clear();
+		for (const cls of value.split(' ').filter(Boolean)) this.classes.add(cls);
+	}
 	disabled = false;
 	tabIndex = -1;
 	readOnly = false;
@@ -235,6 +241,8 @@ export class CorkboardElement {
 		}
 	}
 	focus(): void { this.doc.activeElement = this; }
+	/** Recorded as a scroll of the element, for a test to see what was brought into sight. */
+	scrollIntoView(): void { this.dom.operations.push({ kind: 'scroll', target: this, property: 'scrollIntoView' }); }
 	blur(): void { if (this.doc.activeElement === this) this.doc.activeElement = this.doc.body; }
 	select(): void {}
 	setSelectionRange(): void {}

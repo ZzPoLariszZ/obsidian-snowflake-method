@@ -51,6 +51,12 @@ import type {
 
 export interface TaskBoardHandle {
 	refresh(): void;
+	/**
+	 * Brings one task's card into sight and gives it the focus, clearing the
+	 * search and the funnel where they hid it. False for a task the board
+	 * does not show: one archived, or one that has gone.
+	 */
+	reveal(id: string): boolean;
 	dispose(): void;
 }
 
@@ -998,10 +1004,39 @@ export function renderTaskBoard(
 	});
 	loop.refresh();
 
+	/** The card standing for a task, in whichever column holds it. */
+	const cardOf = (id: string): CardEntry | null => {
+		for (const lane of lanes.values()) {
+			const entry = lane.cards.get(id);
+			if (entry !== undefined) return entry;
+		}
+		return null;
+	};
+
 	return {
 		refresh: () => {
 			restoreScroll();
 			loop.refresh();
+		},
+		reveal: (id) => {
+			if (loop.disposed) return false;
+			let entry = cardOf(id);
+			if (entry === null) {
+				// Hidden by the search or the funnel, the card is shown by clearing them; gone or archived, it is nowhere to show.
+				if (reading === null || !reading.tasks.some((task) => task.id === id && !task.archived)) return false;
+				memory.query = '';
+				memory.origin = '';
+				memory.priority = '';
+				memory.due = '';
+				search.setValue('');
+				markFilterButton();
+				paint();
+				entry = cardOf(id);
+				if (entry === null) return false;
+			}
+			entry.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+			entry.el.focus({ preventScroll: true });
+			return true;
 		},
 		dispose: () => {
 			controls.popover.closeFilter();
