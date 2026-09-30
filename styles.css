@@ -15766,6 +15766,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    stands, so a line ends on the side itself; what is seen and pressed is the
    dot drawn round it, which can be any size without moving a line's end. */
 .snowflake-method-freeform-canvas .react-flow__handle.snowflake-method-freeform-handle {
+	/* Over the face, which is laid out after it and would else cover it. */
+	z-index: 1;
 	width: 1px;
 	height: 1px;
 	min-width: 1px;
@@ -15822,9 +15824,14 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	border-radius: 2px;
 }
 
-/* A line's words stand on the line, on a ground of their own. */
+/* A line's words stand on the line, on a ground of their own, and once the
+   line is chosen the way to its menu stands beside them: what a node
+   carries in its corner, a line carries at its middle. */
 .snowflake-method-freeform-edge-label {
 	position: absolute;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
 	padding: 0 var(--size-2-3);
 	border-radius: var(--radius-s);
 	background-color: var(--background-primary);
@@ -15835,6 +15842,31 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-edge-label.is-selected {
 	color: var(--interactive-accent);
+}
+
+/* A chosen line with no words carries the way to its menu alone. */
+.snowflake-method-freeform-edge-label.is-bare {
+	padding: 0;
+}
+
+.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more {
+	--icon-size: var(--icon-s);
+	--no-tooltip: false;
+	width: var(--snowflake-method-corkboard-action-size, 1.5rem);
+	height: var(--snowflake-method-corkboard-action-size, 1.5rem);
+	margin: 0;
+	padding: 0;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.snowflake-method-freeform-edge-label .clickable-icon.snowflake-method-freeform-edge-more:hover {
+	color: var(--text-normal);
 }
 
 .snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dashed .react-flow__edge-path {

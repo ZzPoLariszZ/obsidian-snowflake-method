@@ -1,7 +1,7 @@
 /**
  * The dialogs the freeform workspace opens: a view made or edited, nodes
- * added by type, a node's size and place set by number, and the words of a
- * text node the project would not take. Each is a labelled form, as every
+ * added by type, a node's size and place set by number, a line's words and
+ * look, and the words of a text node the project would not take. Each is a labelled form, as every
  * form the plugin opens is. A view is named as the timeline's views are, in
  * the timeline's own words; the confirmation a view's removal asks through
  * is the timeline's too, which says nothing of timelines.
@@ -9,7 +9,16 @@
 
 import { Modal, Notice, Setting, type App } from 'obsidian';
 
-import { FREEFORM_SIZE } from '../domain';
+import {
+	FREEFORM_ARROWS,
+	FREEFORM_LINES,
+	FREEFORM_SIZE,
+	isFreeformArrow,
+	isFreeformLine,
+	type FreeformArrow,
+	type FreeformLine,
+} from '../domain';
+import { addEnumSelect } from './entity-form';
 import {
 	SnowflakeFormModal,
 	UniqueNameField,
@@ -443,5 +452,84 @@ export class FreeformGeometryModal extends SnowflakeFormModal<FreeformGeometry> 
 			return null;
 		}
 		return geometry;
+	}
+}
+
+// -- A line's words and look -----------------------------------------------------------
+
+export interface FreeformEdgeDraft {
+	label: string;
+	arrow: FreeformArrow;
+	line: FreeformLine;
+}
+
+/**
+ * A line edited: the words on it, where its arrowheads stand, and how it is
+ * drawn. It says first that it is drawn on the canvas only, so no one takes
+ * a line for a link between the notes it joins.
+ */
+export class FreeformEdgeFormModal extends SnowflakeFormModal<FreeformEdgeDraft> {
+	private readonly draft: FreeformEdgeDraft;
+
+	constructor(
+		app: App,
+		t: Translate,
+		initial: FreeformEdgeDraft,
+		private readonly labelLimit: number,
+		onSubmit: SubmitHandler<FreeformEdgeDraft>,
+	) {
+		super(app, t, t('freeformCanvas.edge.edit'), onSubmit, 'common.save');
+		this.draft = { ...initial };
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
+		this.contentEl.createEl('p', { text: this.t('freeformCanvas.edge.hint') });
+		new Setting(this.contentEl)
+			.setName(this.t('freeformCanvas.edge.label'))
+			.setDesc(this.t('freeformCanvas.edge.labelHint'))
+			.addText((text) => {
+				text.inputEl.setAttribute('aria-label', this.t('freeformCanvas.edge.label'));
+				text.inputEl.setAttribute('maxlength', String(this.labelLimit));
+				text.setValue(this.draft.label).onChange((value) => {
+					this.draft.label = value;
+				});
+			});
+		const arrow = new Setting(this.contentEl).setName(this.t('freeformCanvas.edge.arrow'));
+		addEnumSelect(arrow.controlEl, {
+			cls: 'dropdown snowflake-method-freeform-edge-arrow',
+			ariaLabel: this.t('freeformCanvas.edge.arrow'),
+			values: FREEFORM_ARROWS,
+			label: (value) => this.t(`freeformCanvas.edge.arrow.${value}`),
+			initial: this.draft.arrow,
+			is: isFreeformArrow,
+			fallback: 'end',
+			onChange: (value) => {
+				this.draft.arrow = value;
+			},
+		});
+		const line = new Setting(this.contentEl).setName(this.t('freeformCanvas.edge.line'));
+		addEnumSelect(line.controlEl, {
+			cls: 'dropdown snowflake-method-freeform-edge-line',
+			ariaLabel: this.t('freeformCanvas.edge.line'),
+			values: FREEFORM_LINES,
+			label: (value) => this.t(`freeformCanvas.edge.line.${value}`),
+			initial: this.draft.line,
+			is: isFreeformLine,
+			fallback: 'solid',
+			onChange: (value) => {
+				this.draft.line = value;
+			},
+		});
+	}
+
+	protected collectValue(): FreeformEdgeDraft | null {
+		const label = this.draft.label.trim();
+		if (label.length > this.labelLimit) {
+			new Notice(this.t('freeformCanvas.edge.refused'));
+			return null;
+		}
+		return { label, arrow: this.draft.arrow, line: this.draft.line };
 	}
 }

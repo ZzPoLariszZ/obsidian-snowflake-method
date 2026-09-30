@@ -93,6 +93,8 @@ export class CorkboardDom {
 interface ElementSpec {
 	cls?: string;
 	text?: string;
+	/** What an option or a field holds, as the app's own helper takes it. */
+	value?: string;
 	attr?: Record<string, string>;
 }
 
@@ -113,6 +115,8 @@ export class CorkboardElement {
 	parent: CorkboardElement | null = null;
 	textContent = '';
 	value = '';
+	/** An option's standing in its list. */
+	selected = false;
 	disabled = false;
 	tabIndex = -1;
 	readOnly = false;
@@ -174,6 +178,7 @@ export class CorkboardElement {
 		for (const cls of (spec.cls ?? '').split(' ').filter(Boolean)) child.classes.add(cls);
 		for (const [key, value] of Object.entries(spec.attr ?? {})) child.setAttribute(key, value);
 		if (spec.text !== undefined) child.setText(spec.text);
+		if (spec.value !== undefined) child.value = spec.value;
 		child.parent = this;
 		this.children.push(child);
 		return child;

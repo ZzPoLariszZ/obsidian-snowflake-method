@@ -82,10 +82,12 @@ import type { App } from 'obsidian';
 import { FREEFORM_SIZE } from '../../src/domain';
 import {
 	FREEFORM_PICK_ROWS,
+	FreeformEdgeFormModal,
 	FreeformGeometryModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
+	type FreeformEdgeDraft,
 	type FreeformNodeDraft,
 	type FreeformNodeFormOptions,
 	type FreeformViewFormOptions,
@@ -402,5 +404,52 @@ describe('the form a node’s size and place are set through', () => {
 		type(height, String(FREEFORM_SIZE.max + 1));
 		expect(collectGeometry(form)).toBeNull();
 		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.geometry.invalid');
+	});
+});
+
+describe('the form a line is edited through', () => {
+	const edgeForm = (initial: FreeformEdgeDraft = { label: '', arrow: 'end', line: 'solid' }, limit = 200): FreeformEdgeFormModal =>
+		new FreeformEdgeFormModal(app, t, initial, limit, () => Promise.resolve());
+	const collectEdge = (form: unknown): FreeformEdgeDraft | null => (form as { collectValue(): FreeformEdgeDraft | null }).collectValue();
+
+	it('says first that a line joins nothing in the notes, then names its three fields', () => {
+		const form = edgeForm({ label: 'leads to', arrow: 'both', line: 'dashed' });
+		build(form);
+		expect(titles).toEqual(['freeformCanvas.edge.edit']);
+		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.save');
+		expect(content(form).querySelector('p')!.textContent).toBe('freeformCanvas.edge.hint');
+		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
+			'freeformCanvas.edge.label', 'freeformCanvas.edge.arrow', 'freeformCanvas.edge.line',
+		]);
+		const label = content(form).querySelector('input')!;
+		expect(label.value).toBe('leads to');
+		expect(label.getAttribute('aria-label')).toBe('freeformCanvas.edge.label');
+		expect(label.getAttribute('maxlength')).toBe('200');
+		const selects = content(form).querySelectorAll('select');
+		expect(selects.map((select) => select.getAttribute('aria-label'))).toEqual(['freeformCanvas.edge.arrow', 'freeformCanvas.edge.line']);
+		expect(selects[0]!.querySelectorAll('option').map((option) => [option.value, option.textContent, option.selected])).toEqual([
+			['none', 'freeformCanvas.edge.arrow.none', false],
+			['end', 'freeformCanvas.edge.arrow.end', false],
+			['both', 'freeformCanvas.edge.arrow.both', true],
+		]);
+		expect(selects[1]!.querySelectorAll('option').map((option) => [option.value, option.selected])).toEqual([
+			['solid', false], ['dashed', true], ['dotted', false],
+		]);
+		expect(collectEdge(form)).toEqual({ label: 'leads to', arrow: 'both', line: 'dashed' });
+	});
+
+	it('hands back what was chosen, the words trimmed, and refuses words past the limit', () => {
+		const form = edgeForm({ label: '', arrow: 'end', line: 'solid' }, 8);
+		build(form);
+		type(content(form).querySelector('input')!, '  then  ');
+		const [arrow, line] = content(form).querySelectorAll('select') as [CorkboardElement, CorkboardElement];
+		arrow.value = 'none';
+		arrow.dispatch('change');
+		line.value = 'dotted';
+		line.dispatch('change');
+		expect(collectEdge(form)).toEqual({ label: 'then', arrow: 'none', line: 'dotted' });
+		type(content(form).querySelector('input')!, 'far too long');
+		expect(collectEdge(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.edge.refused');
 	});
 });

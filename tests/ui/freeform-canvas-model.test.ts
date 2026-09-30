@@ -41,7 +41,7 @@ const node = (id: string, extra: Partial<CanvasNode> = {}): CanvasNode => ({
 const frame = (id: string, extra: Partial<CanvasNode> = {}): CanvasNode =>
 	node(id, { kind: 'frame', width: 400, height: 300, ...extra });
 const edge = (id: string, from: string, to: string, extra: Partial<CanvasEdge> = {}): CanvasEdge => ({
-	id, from, fromSide: 'right', to, toSide: 'left', label: '', arrow: 'end', line: 'solid', revision: 'r1', ...extra,
+	id, from, fromSide: 'right', to, toSide: 'left', label: '', name: `${from} to ${to}`, arrow: 'end', line: 'solid', revision: 'r1', ...extra,
 });
 const hold = (nodes: readonly CanvasNode[]): readonly CanvasHeldNode[] => reconcileNodes([], nodes);
 const bounds = { min: 0.1, max: 4 };

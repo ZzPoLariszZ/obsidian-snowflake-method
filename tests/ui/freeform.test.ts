@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
-import type { OptionFieldConfig } from '../../src/ui/option-picker';
+import type { OptionFieldConfig, PickerOption } from '../../src/ui/option-picker';
 
 const { menus, positions, hidden, viewFields, notices, rendered } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; checked: boolean | null; click: () => void }[][],
@@ -138,10 +138,16 @@ import {
 	type PaintContext,
 	type PaintedNode,
 } from '../../src/ui/freeform-canvas-port';
-import { FreeformGeometryModal, FreeformNodeFormModal, FreeformTextModal, FreeformViewFormModal } from '../../src/ui/freeform-forms';
+import {
+	FreeformEdgeFormModal,
+	FreeformGeometryModal,
+	FreeformNodeFormModal,
+	FreeformTextModal,
+	FreeformViewFormModal,
+} from '../../src/ui/freeform-forms';
 import { FREEFORM_CASCADE, FREEFORM_FACE_HEIGHTS, FREEFORM_GRID } from '../../src/ui/freeform-layout';
 import { freeformMemory } from '../../src/ui/story-structure-state';
-import { confirmTimelineAction } from '../../src/ui/timeline-forms';
+import { TimelineTimePickModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
 import type { CharacterViewModel, ProjectDashboardModel, SceneViewModel, WorldbuildingEntityViewModel } from '../../src/ui/view-model';
 
 // Obsidian's own DOM carries `instanceOf`, and a browser has `Element`; a menu
@@ -678,7 +684,9 @@ describe('the freeform workspace', () => {
 			['l1', 'link', 'example.com'],
 		]);
 		expect(fixture.node('t1').frame).toBe('f1');
-		expect(fixture.scene().nodes.every((node) => !node.connectable && !node.locked)).toBe(true);
+		expect(fixture.scene().nodes.every((node) => node.connectable && !node.locked)).toBe(true);
+		// A line is called by what it joins.
+		expect(fixture.scene().edges[0]).toMatchObject({ id: 'e1', name: 'freeformCanvas.edge.name(from=First words,to=Second)' });
 		expect(fixture.shown('t1')).toBe('First words\n\nand more');
 		// A scene stands as the corkboard's own card.
 		expect(fixture.root.classes.has('snowflake-method-scene-cards')).toBe(true);
@@ -1868,9 +1876,9 @@ describe('what a node opens', () => {
 		await settle();
 		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('char-1', 'P', expect.any(Function));
 		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'loc-1' }, 'P', expect.any(Function));
-		// A note that has gone opens nothing, and its menu offers only its face, its measures and its removal.
+		// A note that has gone opens nothing, and its menu offers only its face, its lines, its measures and its removal.
 		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+			...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
 		menu[1]!.click();
@@ -1930,47 +1938,181 @@ describe('how a node is shown and where it stands', () => {
 	it('sets a node’s size and place by number through its form, refusing what the view will not take', async () => {
 		const fixture = await laid();
 		const forms = watch(FreeformGeometryModal);
-		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 1]!.click();
+		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 2]!.click();
 		expect(forms).toHaveLength(1);
 		await submit(forms[0], { x: 640, y: 80, width: 300, height: 200 });
 		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80, width: 300, height: 200 });
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 't2', x: 640, y: 80, width: 300, height: 200 }] }]);
 		// A frame is measured the same way.
-		fixture.menuAt({ kind: 'node', id: 'f1' })![0]!.click();
+		fixture.menuAt({ kind: 'node', id: 'f1' })![1]!.click();
 		await submit(forms[1], { x: 10, y: 20, width: 500, height: 400 });
 		await settle();
 		expect(fixture.viewHeld('a').frames[0]).toMatchObject({ x: 10, y: 20, width: 500, height: 400 });
 		fixture.refuse('refused');
-		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 1]!.click();
+		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 2]!.click();
 		await expect(submit(forms[2], { x: 1, y: 1, width: 300, height: 200 })).rejects.toThrow('freeformCanvas.geometry.refused');
 	});
 });
 
+describe('lines from node to node', () => {
+	const edgesHeld = (fixture: Fixture) => fixture.viewHeld('a').edges;
+	const pickFrom = (form: unknown) => form as { times: PickerOption[]; pick: (option: PickerOption) => void };
+
+	it('draws a line where a drag ended, from the side it left by to the side it came to', async () => {
+		const fixture = await laid();
+		fixture.port().connect({ from: 's1', fromSide: 'bottom', to: 'l1', toSide: 'top' });
+		expect(fixture.scene().edges.map((one) => one.id)).toHaveLength(2);
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{
+			do: 'connect',
+			edges: [{ id: 'edge-1', source: 's1', target: 'l1', sourceSide: 'bottom', targetSide: 'top' }],
+		}]);
+		expect(edgesHeld(fixture)).toHaveLength(2);
+		expect(edgesHeld(fixture)[1]).toMatchObject({ source: 's1', target: 'l1', sourceSide: 'bottom', targetSide: 'top', arrow: 'end', line: 'solid' });
+		// A line from a node to itself joins nothing, and is never sent.
+		fixture.port().connect({ from: 's1', fromSide: 'bottom', to: 's1', toSide: 'top' });
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('draws a line to a node picked by name, leaving its sides to where the two stand', async () => {
+		const fixture = await laid();
+		const picks = watch(TimelineTimePickModal);
+		fixture.menuAt({ kind: 'node', id: 's1' })!.find((item) => item.title === 'freeformCanvas.node.connect')!.click();
+		expect(picks).toHaveLength(1);
+		const pick = pickFrom(picks[0]);
+		// Every other node of the view, by what it is called, the node itself left out.
+		expect(pick.times.map((option) => [option.value, option.label])).toEqual([
+			['f1', 'Opening'], ['t1', 'First words'], ['t2', 'Second'], ['l1', 'example.com'],
+		]);
+		pick.pick({ value: 'f1', label: 'Opening' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{
+			do: 'connect',
+			edges: [{ id: 'edge-1', source: 's1', target: 'f1', sourceSide: null, targetSide: null }],
+		}]);
+	});
+
+	it('moves an end of a line where a drag left it, and to a node picked by name', async () => {
+		const fixture = await laid();
+		fixture.port().reconnect('e1', { from: 't1', fromSide: 'right', to: 'l1', toSide: 'left' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
+			{ do: 'reconnect', id: 'e1', source: 't1', target: 'l1', sourceSide: 'right', targetSide: 'left' },
+		]);
+		expect(edgesHeld(fixture)[0]).toMatchObject({ source: 't1', target: 'l1', sourceSide: 'right', targetSide: 'left' });
+		const picks = watch(TimelineTimePickModal);
+		fixture.menuAt({ kind: 'edge', id: 'e1' })!.find((item) => item.title === 'freeformCanvas.edge.changeStart')!.click();
+		// The other end is left out of the choice, so no line is asked to join a node to itself.
+		expect(pickFrom(picks[0]).times.map((option) => option.value)).toEqual(['f1', 't1', 't2', 's1']);
+		pickFrom(picks[0]).pick({ value: 's1', label: '' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'reconnect', id: 'e1', source: 's1', sourceSide: null }]);
+		fixture.menuAt({ kind: 'edge', id: 'e1' })!.find((item) => item.title === 'freeformCanvas.edge.changeEnd')!.click();
+		expect(pickFrom(picks[1]).times.map((option) => option.value)).toEqual(['f1', 't1', 't2', 'l1']);
+		pickFrom(picks[1]).pick({ value: 't2', label: '' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[2]![1]).toEqual([{ do: 'reconnect', id: 'e1', target: 't2', targetSide: null }]);
+		expect(edgesHeld(fixture)[0]).toMatchObject({ source: 's1', target: 't2', sourceSide: null, targetSide: null });
+	});
+
+	it('turns a line about, its sides with it', async () => {
+		const fixture = await laid();
+		fixture.rewrite('a', (before) => ({ ...before, edges: [{ ...before.edges[0]!, sourceSide: 'bottom', targetSide: 'top' }] }));
+		fixture.notify();
+		await settle();
+		fixture.menuAt({ kind: 'edge', id: 'e1' })!.find((item) => item.title === 'freeformCanvas.edge.reverse')!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
+			{ do: 'reconnect', id: 'e1', source: 't2', target: 't1', sourceSide: 'top', targetSide: 'bottom' },
+		]);
+		expect(edgesHeld(fixture)[0]).toMatchObject({ source: 't2', target: 't1' });
+	});
+
+	it('edits a line’s words and look through its form, on a press twice and from its menu', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformEdgeFormModal);
+		fixture.port().open({ kind: 'edge', id: 'e1' }, {} as MouseEvent);
+		expect(forms).toHaveLength(1);
+		await submit(forms[0], { label: 'leads to', arrow: 'both', line: 'dashed' });
+		expect(fixture.scene().edges[0]).toMatchObject({ label: 'leads to', arrow: 'both', line: 'dashed' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'edit-edges', edits: [{ id: 'e1', label: 'leads to', arrow: 'both', line: 'dashed' }] }]);
+		expect(edgesHeld(fixture)[0]).toMatchObject({ label: 'leads to', arrow: 'both', line: 'dashed' });
+		fixture.menuAt({ kind: 'edge', id: 'e1' })![0]!.click();
+		expect(forms).toHaveLength(2);
+		// The form stands over a refusal, saying so.
+		fixture.refuse('refused');
+		await expect(submit(forms[1], { label: 'x', arrow: 'none', line: 'solid' })).rejects.toThrow('freeformCanvas.edge.refused');
+		expect(notices).not.toHaveBeenCalled();
+	});
+
+	it('goes to either end of a line, chosen and in sight, and takes a line off the view from its menu', async () => {
+		const fixture = await laid();
+		const menu = fixture.menuAt({ kind: 'edge', id: 'e1' })!;
+		menu.find((item) => item.title === 'freeformCanvas.edge.goStart')!.click();
+		expect(fixture.canvas.moves[fixture.canvas.moves.length - 1]).toEqual({ kind: 'reveal', id: 't1' });
+		expect(fixture.canvas.selection).toEqual({ nodes: ['t1'], edges: [] });
+		menu.find((item) => item.title === 'freeformCanvas.edge.goEnd')!.click();
+		expect(fixture.canvas.moves[fixture.canvas.moves.length - 1]).toEqual({ kind: 'reveal', id: 't2' });
+		expect(fixture.canvas.focused).toBe(2);
+		menu.find((item) => item.title === 'freeformCanvas.edge.delete')!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'delete', nodes: [], edges: ['e1'] }]);
+		expect(fixture.scene().edges).toEqual([]);
+	});
+
+	it('says so when a line the file would not take is drawn', async () => {
+		const fixture = await laid();
+		fixture.refuse('full');
+		fixture.port().connect({ from: 's1', fromSide: 'bottom', to: 'l1', toSide: 'top' });
+		await settle();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.edge.refused');
+		expect(fixture.scene().edges).toHaveLength(1);
+	});
+
+	it('draws no line on a project that cannot be written, whose nodes carry no dots', async () => {
+		const fixture = await laid({ readOnly: true });
+		expect(fixture.scene().nodes.every((node) => !node.connectable)).toBe(true);
+		fixture.port().connect({ from: 's1', fromSide: 'bottom', to: 'l1', toSide: 'top' });
+		fixture.port().reconnect('e1', { from: 't1', fromSide: 'right', to: 'l1', toSide: 'left' });
+		fixture.port().open({ kind: 'edge', id: 'e1' }, {} as MouseEvent);
+		await settle();
+		expect(fixture.bridge.transact).not.toHaveBeenCalled();
+	});
+});
+
 const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
+/** What a menu offers one node alone. */
+const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
+const EDGE_ITEMS = [
+	'freeformCanvas.edge.edit', 'freeformCanvas.edge.reverse', 'freeformCanvas.edge.changeStart', 'freeformCanvas.edge.changeEnd',
+	'freeformCanvas.edge.goStart', 'freeformCanvas.edge.goEnd', 'freeformCanvas.edge.delete',
+];
 
 describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
-			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		// A link opens nothing yet, and a frame has no face to choose.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+			...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+			...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		// The face the node shows is the one checked.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.checked)).toEqual([
-			null, true, false, false, false, null, null,
+			null, true, false, false, false, null, null, null,
 		]);
-		// A line has no menu until lines can be drawn.
-		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })).toBeUndefined();
+		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.title)).toEqual(EDGE_ITEMS);
+		expect(fixture.menuAt({ kind: 'edge', id: 'gone' })).toBeUndefined();
 		expect(fixture.menuAt({ kind: 'node', id: 'gone' })).toBeUndefined();
 	});
 
@@ -1997,7 +2139,9 @@ describe('the menus', () => {
 
 	it('offers a project that cannot be written nothing that would change it', async () => {
 		const fixture = await laid({ readOnly: true });
-		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true]);
+		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true, true]);
+		// A line's ends can be gone to all the same.
+		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false, true]);
 		// A note is opened all the same.
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
@@ -2024,7 +2168,7 @@ describe('the menus', () => {
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView']);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });
@@ -2128,7 +2272,7 @@ describe('the canvas controls', () => {
 			['toolbar', 'freeformCanvas.toolbar'],
 			['toolbar', 'freeformCanvas.controls'],
 		]);
-		expect(fixture.canvas.options?.labels).toEqual({ canvas: 'storyStructure.family.freeform', minimap: 'freeformCanvas.minimap' });
+		expect(fixture.canvas.options?.labels).toEqual({ canvas: 'storyStructure.family.freeform', minimap: 'freeformCanvas.minimap', edgeMenu: 'table.actions' });
 	});
 
 	it('shows no move where motion is to be spared, nor in a window the plugin was not loaded in', async () => {

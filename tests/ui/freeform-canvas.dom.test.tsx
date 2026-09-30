@@ -44,7 +44,7 @@ const node = (id: string, extra: Partial<CanvasNode> = {}): CanvasNode => ({
 });
 
 const edge = (id: string, from: string, to: string, extra: Partial<CanvasEdge> = {}): CanvasEdge => ({
-	id, from, fromSide: 'right', to, toSide: 'left', label: '', arrow: 'end', line: 'solid', revision: '', ...extra,
+	id, from, fromSide: 'right', to, toSide: 'left', label: '', name: `${from} to ${to}`, arrow: 'end', line: 'solid', revision: '', ...extra,
 });
 
 interface Painted {
@@ -108,7 +108,7 @@ function canvas(size: { width: number; height: number } = { width: 800, height: 
 			viewport: { x: 0, y: 0, zoom: 1 },
 			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
-			labels: { canvas: 'Freeform', minimap: 'Minimap' },
+			labels: { canvas: 'Freeform', minimap: 'Minimap', edgeMenu: 'Actions' },
 			reduceMotion: () => true,
 			additive: (event) => event.metaKey || event.shiftKey,
 			...options,
@@ -195,6 +195,40 @@ describe('the canvas engine on a document', () => {
 		expect(painted.map((entry) => entry.body.textContent).sort()).toEqual(['frame f', 'text a', 'text b']);
 		expect(painted.every((entry) => entry.body.classList.contains('nokey'))).toBe(true);
 		expect(painted[0]!.dressed[0]).toEqual({ selected: false, readOnly: false, band: 'extended', width: 600, height: 400 });
+	});
+
+	it('names a line by what it joins, and gives a chosen line the way to its menu', async () => {
+		const { handle, port, host, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({
+				nodes: [node('a'), node('b', { x: 400 })],
+				edges: [edge('ab', 'a', 'b', { name: 'Node a to Node b' })],
+			});
+		});
+		const line = host.querySelector('.react-flow__edge')!;
+		expect(line.getAttribute('aria-label')).toBe('Node a to Node b');
+		// Unchosen, a line with no words carries nothing on it.
+		expect(host.querySelector('.snowflake-method-freeform-edge-more')).toBeNull();
+		tell(() => {
+			handle.select({ nodes: [], edges: ['ab'] });
+		});
+		const more = host.querySelector<HTMLButtonElement>('.snowflake-method-freeform-edge-more');
+		expect(more).not.toBeNull();
+		expect(more?.getAttribute('aria-label')).toBe('Actions');
+		expect(more?.getAttribute('aria-haspopup')).toBe('menu');
+		more?.click();
+		expect(port.menu).toHaveBeenCalledWith({ kind: 'edge', id: 'ab' }, expect.anything());
+		// Its words stand beside the button, and stay when the line is let go.
+		tell(() => {
+			handle.setScene({
+				nodes: [node('a'), node('b', { x: 400 })],
+				edges: [edge('ab', 'a', 'b', { name: 'Node a to Node b', label: 'then', revision: 'r2' })],
+			});
+			handle.select(NO_CANVAS_SELECTION);
+		});
+		expect(host.querySelector('.snowflake-method-freeform-edge-words')?.textContent).toBe('then');
+		expect(host.querySelector('.snowflake-method-freeform-edge-more')).toBeNull();
 	});
 
 	it('draws a line from side to side by the measures it was told, measuring nothing', async () => {
@@ -617,7 +651,7 @@ describe('the canvas engine on a document', () => {
 			viewport: { x: 0, y: 0, zoom: 1 },
 			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
-			labels: { canvas: 'Freeform', minimap: 'Minimap' },
+			labels: { canvas: 'Freeform', minimap: 'Minimap', edgeMenu: 'Actions' },
 			reduceMotion: () => true,
 			additive: () => false,
 		});

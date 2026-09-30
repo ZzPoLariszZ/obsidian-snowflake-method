@@ -117,6 +117,8 @@ export interface FreeformSceneWords {
 	/** What a node is called, for a reader that cannot see it. */
 	label: (node: ResolvedNode) => string;
 	frameLabel: (frame: FreeformFrame) => string;
+	/** What a line is called, by what it joins. */
+	edgeName: (from: string, to: string) => string;
 	/** Moves when what the node's face would draw moves, and only then. */
 	revision: (node: ResolvedNode) => string;
 	/** The node being typed into, which is neither moved nor sized meanwhile. */
@@ -148,9 +150,12 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 	const resolved = new Map<string, ResolvedNode>();
 	const frames = new Map<string, FreeformFrame>();
 	const boxes = new Map<string, { x: number; y: number; width: number; height: number }>();
+	const names = new Map<string, string>();
 	for (const frame of freeformStacking(view.frames)) {
 		frames.set(frame.id, frame);
 		boxes.set(frame.id, frame);
+		const label = words.frameLabel(frame);
+		names.set(frame.id, label);
 		nodes.push({
 			id: frame.id,
 			kind: CANVAS_FRAME_KIND,
@@ -161,7 +166,7 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 			z: frame.zIndex,
 			frame: null,
 			revision: `${frame.color ?? ''}\n${frame.title}`,
-			label: words.frameLabel(frame),
+			label,
 			tone: frameTone(frame),
 			locked: words.locked(frame.id),
 			connectable: words.connectable,
@@ -173,6 +178,8 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 		const node = words.resolve(placement);
 		resolved.set(placement.id, node);
 		boxes.set(placement.id, placement);
+		const label = words.label(node);
+		names.set(placement.id, label);
 		nodes.push({
 			id: placement.id,
 			kind: node.type,
@@ -183,7 +190,7 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 			z: placement.zIndex,
 			frame: placement.frameId !== null && frames.has(placement.frameId) ? placement.frameId : null,
 			revision: words.revision(node),
-			label: words.label(node),
+			label,
 			tone: null,
 			locked: words.locked(placement.id),
 			connectable: words.connectable,
@@ -196,7 +203,7 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 		const from = boxes.get(edge.source);
 		const to = boxes.get(edge.target);
 		if (from === undefined || to === undefined) continue;
-		edges.push(edgeOf(edge, from, to));
+		edges.push(edgeOf(edge, from, to, words.edgeName(names.get(edge.source) ?? '', names.get(edge.target) ?? '')));
 	}
 	return { scene: { nodes, edges }, nodes: resolved, frames };
 }
@@ -205,6 +212,7 @@ function edgeOf(
 	edge: FreeformEdge,
 	from: { x: number; y: number; width: number; height: number },
 	to: { x: number; y: number; width: number; height: number },
+	name: string,
 ): CanvasEdge {
 	// A side the view left open is chosen here, by where the two stand now.
 	const open = edge.sourceSide === null || edge.targetSide === null ? autoSides(from, to) : null;
@@ -215,9 +223,10 @@ function edgeOf(
 		to: edge.target,
 		toSide: edge.targetSide ?? open?.toSide ?? 'left',
 		label: edge.label,
+		name,
 		arrow: edge.arrow,
 		line: edge.line,
-		revision: `${edge.arrow}|${edge.line}|${edge.label}`,
+		revision: `${edge.arrow}|${edge.line}|${edge.label}|${name}`,
 	};
 }
 

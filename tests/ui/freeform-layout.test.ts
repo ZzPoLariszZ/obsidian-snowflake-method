@@ -70,6 +70,7 @@ const words = (extra: Partial<FreeformSceneWords> = {}): FreeformSceneWords => (
 			? { type: 'text', placement, text: placement.resource.text }
 			: { type: 'link', placement, url: 'https://example.com/a', label: 'A', host: 'example.com' },
 	label: (node) => (node.type === 'text' ? node.text : 'A'),
+	edgeName: (from, to) => `${from} to ${to}`,
 	frameLabel: (one) => one.title,
 	revision: (node) => (node.type === 'text' ? node.text : 'link'),
 	locked: () => false,

@@ -29,6 +29,7 @@ import {
 	FREEFORM_SIZE,
 	FREEFORM_ZOOM,
 	applyFreeformSteps,
+	findFreeformEdge,
 	findFreeformPlacement,
 	findFreeformView,
 	freeformRoom,
@@ -41,6 +42,7 @@ import {
 	type FreeformPlace,
 	type FreeformPlacement,
 	type FreeformPlacementDraft,
+	type FreeformSide,
 	type FreeformStep,
 	type FreeformView,
 } from '../domain';
@@ -56,6 +58,7 @@ import {
 } from './freeform-canvas-port';
 import { createFreeformFaces } from './freeform-faces';
 import {
+	FreeformEdgeFormModal,
 	FreeformGeometryModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
@@ -100,9 +103,9 @@ import {
 	type ResolvedNode,
 } from './freeform-resources';
 import { kindIcon } from './kind-icon';
-import { buildOptionField, type OptionPicker } from './option-picker';
+import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { renderEmptyLine } from './pane-parts';
-import { confirmTimelineAction } from './timeline-forms';
+import { TimelineTimePickModal, confirmTimelineAction } from './timeline-forms';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
 import { bindFrameWindow, createLaneDeck, createMenuKeeper, createModalKeeper, toolbarIconButton } from './workspace-frame';
 
@@ -446,14 +449,17 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		},
 		label: labelOf,
 		frameLabel: frameLabelOf,
+		edgeName: (from, to) => t('freeformCanvas.edge.name', { from, to }),
 		revision: (node) => {
 			if (node.type === 'text') return `${node.placement.displayMode}\n${node.text}`;
 			const record = recordOf(node);
 			return `${node.type}\n${node.placement.displayMode}\n${iconOf(node)}\n${labelOf(node)}\n${record === null ? '' : signatureOf(record)}`;
 		},
 		locked: (id) => id === editingId,
-		// Lines are drawn from node to node in a later stage; one a file holds is shown all the same.
-		connectable: false,
+		// A line may be drawn from node to node wherever the project can be written.
+		get connectable(): boolean {
+			return !readOnly;
+		},
 	};
 
 	// -- Painting ------------------------------------------------------------
@@ -1123,6 +1129,86 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		)).open();
 	};
 
+	// -- Lines from node to node --------------------------------------------------
+
+	/** What a node is called on the canvas now, for the lists a line's ends are picked from. */
+	const nodeOptions = (except: readonly string[]): PickerOption[] => {
+		if (made === null) return [];
+		const left = new Set(except);
+		return made.scene.nodes
+			.filter((node) => !left.has(node.id))
+			.map((node) => ({ value: node.id, label: node.label }));
+	};
+
+	/** A line drawn from one node to another, by a drag between their sides or by a pick; the sides a pick leaves open are chosen by where the two stand. */
+	const connect = (from: string, to: string, sides: { fromSide: FreeformSide | null; toSide: FreeformSide | null }): void => {
+		if (readOnly || disposed || from === to) return;
+		void change([{
+			do: 'connect',
+			edges: [{
+				id: controls.bridge().mintId('edge'),
+				source: from,
+				target: to,
+				sourceSide: sides.fromSide,
+				targetSide: sides.toSide,
+			}],
+		}], 'change', t('freeformCanvas.edge.refused'));
+	};
+
+	/** The keyboard's way of drawing a line: the other end picked from the nodes of the view by name. */
+	const openConnectTo = (from: string): void => {
+		if (readOnly || disposed) return;
+		keep(new TimelineTimePickModal(app, t('freeformCanvas.node.connectPlaceholder'), nodeOptions([from]), (picked) => {
+			connect(from, picked.value, { fromSide: null, toSide: null });
+		})).open();
+	};
+
+	/** One end of a line moved to another node, or another side of the same. */
+	const reconnect = (id: string, ends: { source?: string; target?: string; sourceSide?: FreeformSide | null; targetSide?: FreeformSide | null }): void => {
+		if (readOnly || disposed) return;
+		void change([{ do: 'reconnect', id, ...ends }], 'change', t('freeformCanvas.edge.refused'));
+	};
+
+	/** One end of a line picked afresh from the nodes of the view by name; the side is left to where the two stand. */
+	const openChangeEnd = (id: string, end: 'source' | 'target'): void => {
+		const view = shownView();
+		const edge = view === null ? undefined : findFreeformEdge(view, id);
+		if (edge === undefined || readOnly || disposed) return;
+		const other = end === 'source' ? edge.target : edge.source;
+		keep(new TimelineTimePickModal(app, t('freeformCanvas.node.connectPlaceholder'), nodeOptions([other]), (picked) => {
+			reconnect(id, end === 'source' ? { source: picked.value, sourceSide: null } : { target: picked.value, targetSide: null });
+		})).open();
+	};
+
+	/** A line's words and look, edited through its form; the form stands over a refusal, saying so. */
+	const openEdgeForm = (id: string): void => {
+		const view = shownView();
+		const edge = view === null ? undefined : findFreeformEdge(view, id);
+		if (edge === undefined || readOnly || disposed) return;
+		keep(new FreeformEdgeFormModal(
+			app,
+			t,
+			{ label: edge.label, arrow: edge.arrow, line: edge.line },
+			reading?.limits.labelLength ?? 0,
+			async (draft) => {
+				if (disposed) return;
+				const came = await change([{ do: 'edit-edges', edits: [{ id, ...draft }] }], 'change', null);
+				if (came !== 'written') throw new Error(t('freeformCanvas.edge.refused'));
+			},
+		)).open();
+	};
+
+	/** One end of a line brought into sight and chosen. */
+	const goToEnd = (id: string, end: 'source' | 'target'): void => {
+		const view = shownView();
+		const edge = view === null ? undefined : findFreeformEdge(view, id);
+		if (edge === undefined) return;
+		const node = end === 'source' ? edge.source : edge.target;
+		canvas.moveViewport({ kind: 'reveal', id: node });
+		canvas.select({ nodes: [node], edges: [] });
+		canvas.focus();
+	};
+
 	// -- Removing ------------------------------------------------------------
 
 	/** Nodes and lines taken off the view. Nothing is asked: what they showed is kept where it lives. */
@@ -1270,6 +1356,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (single) {
 			menu.addItem((item) => {
 				item
+					.setTitle(t('freeformCanvas.node.connect'))
+					.setIcon('spline')
+					.setDisabled(readOnly || (made?.scene.nodes.length ?? 0) < 2)
+					.onClick(() => {
+						openConnectTo(id);
+					});
+			});
+			menu.addItem((item) => {
+				item
 					.setTitle(t('freeformCanvas.node.geometry'))
 					.setIcon('move')
 					.setDisabled(readOnly)
@@ -1291,10 +1386,83 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		show(menu, event);
 	};
 
+	const openEdgeMenu = (id: string, event: MouseEvent): void => {
+		const view = shownView();
+		const edge = view === null ? undefined : findFreeformEdge(view, id);
+		if (edge === undefined || disposed) return;
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.edit'))
+				.setIcon('pencil')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					openEdgeForm(id);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.reverse'))
+				.setIcon('arrow-left-right')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					reconnect(id, { source: edge.target, target: edge.source, sourceSide: edge.targetSide, targetSide: edge.sourceSide });
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.changeStart'))
+				.setIcon('log-out')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					openChangeEnd(id, 'source');
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.changeEnd'))
+				.setIcon('log-in')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					openChangeEnd(id, 'target');
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.goStart'))
+				.setIcon('locate')
+				.onClick(() => {
+					goToEnd(id, 'source');
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.goEnd'))
+				.setIcon('locate-fixed')
+				.onClick(() => {
+					goToEnd(id, 'target');
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.edge.delete'))
+				.setIcon('trash-2')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					// A menu asked for on one of several lines chosen speaks for them all.
+					remove([], selection.edges.includes(id) ? selection.edges : [id]);
+				});
+		});
+		show(menu, event);
+	};
+
 	const openMenu = (target: CanvasMenuTarget, event: MouseEvent): void => {
 		if (disposed) return;
 		if (target.kind === 'ground') openGroundMenu(target.at, event);
 		else if (target.kind === 'node') openNodeMenu(target.id, event);
+		else openEdgeMenu(target.id, event);
 	};
 
 	// -- What the canvas asks and tells ---------------------------------------
@@ -1305,8 +1473,12 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			const step = placeStepOf(changes);
 			if (step !== null) void change([step]);
 		},
-		connect: () => undefined,
-		reconnect: () => undefined,
+		connect: (link) => {
+			connect(link.from, link.to, { fromSide: link.fromSide, toSide: link.toSide });
+		},
+		reconnect: (id, link) => {
+			reconnect(id, { source: link.from, target: link.to, sourceSide: link.fromSide, targetSide: link.toSide });
+		},
 		selectionChanged: (next) => {
 			selection = next;
 		},
@@ -1321,6 +1493,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			if (disposed) return;
 			if (target.kind === 'ground') addText(target.at);
 			else if (target.kind === 'node') openNode(target.id);
+			else openEdgeForm(target.id);
 		},
 		key: (event) => {
 			if (event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -1359,7 +1532,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			readOnly: true,
 		},
 		zoom: FREEFORM_ZOOM,
-		labels: { canvas: t('storyStructure.family.freeform'), minimap: t('freeformCanvas.minimap') },
+		labels: { canvas: t('storyStructure.family.freeform'), minimap: t('freeformCanvas.minimap'), edgeMenu: t('table.actions') },
 		// A move shown is timed by the window the plugin was loaded in, which may
 		// not be drawing while the canvas stands in a window of its own.
 		reduceMotion: () => host.isReduceMotionEnabled() || !controls.atHome(root),

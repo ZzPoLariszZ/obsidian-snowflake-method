@@ -158,7 +158,7 @@ function flowEdge(held: CanvasHeldEdge, readOnly: boolean): FlowEdge {
 		zIndex: CANVAS_EDGE_Z,
 		reconnectable: !readOnly,
 		focusable: true,
-		ariaLabel: edge.label,
+		ariaLabel: edge.name,
 		className: `snowflake-method-freeform-edge is-${edge.line}`,
 		...(edge.arrow === 'none' ? {} : { markerEnd: { type: MarkerType.ArrowClosed } }),
 		...(edge.arrow === 'both' ? { markerStart: { type: MarkerType.ArrowClosed } } : {}),
@@ -363,7 +363,14 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 
 // -- A line --------------------------------------------------------------------------
 
+/**
+ * A line, with its words on it where it has any, and, once it is chosen,
+ * the way to its menu standing on it too: what a node carries in its corner
+ * a line carries at its middle, so nothing a line can do is reached by the
+ * pointer alone.
+ */
 const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): ReactElement {
+	const { options, port } = useDeps();
 	const [path, labelX, labelY] = getBezierPath({
 		sourceX: props.sourceX,
 		sourceY: props.sourceY,
@@ -373,6 +380,12 @@ const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): Rea
 		targetPosition: props.targetPosition,
 	});
 	const label = props.data?.edge.label ?? '';
+	const selected = props.selected === true;
+	const id = props.id;
+	const openMenu = useCallback((event: ReactMouseEvent) => {
+		event.stopPropagation();
+		port.menu({ kind: 'edge', id }, event.nativeEvent);
+	}, [id, port]);
 	return (
 		<>
 			<BaseEdge
@@ -382,19 +395,41 @@ const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): Rea
 				{...(props.markerStart === undefined ? {} : { markerStart: props.markerStart })}
 				interactionWidth={24}
 			/>
-			{label.length === 0 ? null : (
+			{label.length === 0 && !selected ? null : (
 				<EdgeLabelRenderer>
 					<div
-						className={`snowflake-method-freeform-edge-label nodrag nopan${props.selected === true ? ' is-selected' : ''}`}
+						className={`snowflake-method-freeform-edge-label nodrag nopan${selected ? ' is-selected' : ''}${label.length === 0 ? ' is-bare' : ''}`}
 						style={{ transform: `translate(-50%, -50%) translate(${String(labelX)}px, ${String(labelY)}px)` }}
 					>
-						{label}
+						{label.length === 0 ? null : <span className="snowflake-method-freeform-edge-words">{label}</span>}
+						{selected ? (
+							<button
+								type="button"
+								className="clickable-icon snowflake-method-freeform-edge-more"
+								aria-label={options.labels.edgeMenu}
+								aria-haspopup="menu"
+								onClick={openMenu}
+							>
+								<Ellipsis />
+							</button>
+						) : null}
 					</div>
 				</EdgeLabelRenderer>
 			)}
 		</>
 	);
 });
+
+/** The three dots every menu button in the plugin wears, drawn here since the app's own icon helper is not at hand in this file. */
+function Ellipsis(): ReactElement {
+	return (
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+			<circle cx="12" cy="12" r="1" />
+			<circle cx="19" cy="12" r="1" />
+			<circle cx="5" cy="12" r="1" />
+		</svg>
+	);
+}
 
 const NODE_TYPES = { freeform: FreeformNode };
 const EDGE_TYPES = { freeform: FreeformEdge };
@@ -476,6 +511,8 @@ function Flow(): ReactElement {
 		const link = linkOf(connection);
 		if (link !== null) port.connect(link);
 	}, [port]);
+	// A line from a node to itself joins nothing: the engine says so as it is drawn, and never asks for it.
+	const isValidConnection = useCallback((connection: Connection | FlowEdge) => connection.source !== connection.target, []);
 	const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
 		const link = linkOf(connection);
 		if (link !== null) port.reconnect(edge.id, link);
@@ -598,6 +635,7 @@ function Flow(): ReactElement {
 				onConnectEnd={release}
 				onReconnectStart={hold}
 				onReconnectEnd={release}
+				isValidConnection={isValidConnection}
 				onConnect={onConnect}
 				onReconnect={onReconnect}
 				onNodeContextMenu={onNodeContextMenu}

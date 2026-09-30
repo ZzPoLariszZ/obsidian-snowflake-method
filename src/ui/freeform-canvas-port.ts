@@ -75,7 +75,10 @@ export interface CanvasEdge {
 	fromSide: CanvasSide;
 	to: string;
 	toSide: CanvasSide;
+	/** The words drawn on the line; none where it carries none. */
 	label: string;
+	/** What the line is called, for a reader that cannot see it: what it joins. */
+	name: string;
 	arrow: CanvasArrow;
 	line: CanvasLine;
 	revision: string;
@@ -188,6 +191,8 @@ export interface CanvasPort {
 export interface CanvasLabels {
 	canvas: string;
 	minimap: string;
+	/** The way to a chosen line's menu, which stands on the line. */
+	edgeMenu: string;
 }
 
 export interface CanvasOptions {
