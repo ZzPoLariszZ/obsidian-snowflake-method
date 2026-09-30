@@ -64,6 +64,10 @@ export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
 			return 'scene';
 		case 'character':
 		case 'worldbuilding':
+		case 'task':
+		case 'foreshadowing':
+		case 'revision':
+		case 'sticky-note':
 			return 'record';
 		case 'text':
 			return 'text';

@@ -15696,6 +15696,46 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	white-space: pre-wrap;
 }
 
+/* A row that opens something, as an occurrence opens its chapter, is a
+   button dressed as the row's words. */
+.snowflake-method-freeform-face button.snowflake-method-freeform-face-row-open {
+	height: auto;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+.snowflake-method-freeform-face button.snowflake-method-freeform-face-row-open:hover {
+	text-decoration: underline;
+}
+
+/* A sticky note's face wears the note's own tint, its first line on the
+   barest face and its words drawn on the fuller ones. */
+.snowflake-method-freeform-face.is-sticky {
+	padding: var(--size-4-3);
+	border-color: var(--snowflake-method-sticky-edge);
+	background-color: var(--snowflake-method-sticky-ground);
+}
+
+.snowflake-method-freeform-sticky-first {
+	overflow: hidden;
+	font-weight: var(--font-medium);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-freeform-face.is-sticky[data-mode='compact'] .snowflake-method-freeform-text,
+.snowflake-method-freeform-face.is-sticky[data-mode='standard'] .snowflake-method-freeform-sticky-first,
+.snowflake-method-freeform-face.is-sticky[data-mode='extended'] .snowflake-method-freeform-sticky-first {
+	display: none;
+}
+
 /* The barest face is the first line alone; the standard one shows the rows
    that are its own, and only the fullest shows the rest. */
 .snowflake-method-freeform-face.is-record[data-mode='compact'] .snowflake-method-freeform-face-rows,

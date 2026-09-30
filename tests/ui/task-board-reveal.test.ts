@@ -62,7 +62,7 @@ describe('revealing one task on the board', () => {
 	it('brings the card into sight and gives it the focus', async () => {
 		const { dom, handle, card } = await board();
 		expect(card('a')).not.toBeNull();
-		expect(handle.reveal('a')).toBe(true);
+		await expect(handle.reveal('a')).resolves.toBe(true);
 		expect(dom.doc.activeElement).toBe(card('a'));
 		expect(dom.operations.some((op) => op.kind === 'scroll' && op.property === 'scrollIntoView' && op.target === card('a'))).toBe(true);
 	});
@@ -72,7 +72,7 @@ describe('revealing one task on the board', () => {
 		const { dom, handle, card } = await board(memory);
 		expect(card('a')).toBeNull();
 		expect(card('b')).not.toBeNull();
-		expect(handle.reveal('a')).toBe(true);
+		await expect(handle.reveal('a')).resolves.toBe(true);
 		expect(memory.query).toBe('');
 		expect(memory.priority).toBe('');
 		expect(card('a')).not.toBeNull();
@@ -83,11 +83,40 @@ describe('revealing one task on the board', () => {
 	it('reveals nothing for a task archived or gone, and touches no filter for it', async () => {
 		const memory = { ...taskBoardMemory(), query: 'prologue' };
 		const { handle, card } = await board(memory);
-		expect(handle.reveal('c')).toBe(false);
-		expect(handle.reveal('nowhere')).toBe(false);
+		await expect(handle.reveal('c')).resolves.toBe(false);
+		await expect(handle.reveal('nowhere')).resolves.toBe(false);
 		expect(memory.query).toBe('prologue');
 		expect(card('a')).toBeNull();
 		handle.dispose();
-		expect(handle.reveal('b')).toBe(false);
+		await expect(handle.reveal('b')).resolves.toBe(false);
+	});
+});
+
+describe('a reveal asked for before the board has read', () => {
+	it('waits for the board’s first reading, then reveals', async () => {
+		const dom = new CorkboardDom();
+		Object.assign(dom.win, { activeDocument: dom.doc, setInterval: () => 1, clearInterval: () => undefined });
+		const panel = new FilterPanel({} as App, (key) => key);
+		let land: (reading: Awaited<ReturnType<TaskBoardBridge['read']>>) => void = () => undefined;
+		const bridge: TaskBoardBridge = {
+			t: (key) => key,
+			read: () => new Promise((resolve) => { land = resolve; }),
+			subscribe: () => () => undefined,
+			today: () => '2026-09-08',
+			add: async () => undefined, edit: async () => undefined,
+			move: async () => true, archive: async () => true, restore: async () => true,
+			deleteTask: async () => true, emptyArchive: async () => true,
+		};
+		const handle = renderTaskBoard(dom.container as unknown as HTMLElement, bridge, {
+			memory: taskBoardMemory(), popover: panel.lend(), navigate: () => undefined,
+		});
+		const revealed = handle.reveal('a');
+		land({
+			projectPath: 'Novel/Project.md', locale: 'en', readOnly: false,
+			today: '2026-09-08', week: { from: '2026-09-07', to: '2026-09-13' }, dateFormat: 'YYYY-MM-DD',
+			tasks: [task('a', 'Finish the chapter')], derived: [], derivedFailed: false, roster: [],
+		});
+		await expect(revealed).resolves.toBe(true);
+		expect(dom.doc.activeElement?.getAttribute('data-id')).toBe('a');
 	});
 });

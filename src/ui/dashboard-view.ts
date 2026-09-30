@@ -1047,7 +1047,7 @@ export class SnowflakeDashboardView extends ItemView {
 		this.stepChosen = true;
 		this.app.workspace.requestSaveLayout();
 		await this.refresh();
-		return this.taskPanels.tasks.current()?.reveal(id) ?? false;
+		return (await this.taskPanels.tasks.current()?.reveal(id)) ?? false;
 	}
 
 	/**

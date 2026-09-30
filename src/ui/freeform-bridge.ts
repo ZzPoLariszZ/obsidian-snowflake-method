@@ -78,6 +78,10 @@ export type FreeformHost = Pick<
 	| 'openEntityForm'
 	| 'patchScene'
 	| 'isReduceMotionEnabled'
+	| 'revealTask'
+	| 'foreshadowingTable'
+	| 'revisionTable'
+	| 'stickyNotes'
 >;
 
 export interface FreeformControls {

@@ -52,11 +52,12 @@ import type {
 export interface TaskBoardHandle {
 	refresh(): void;
 	/**
-	 * Brings one task's card into sight and gives it the focus, clearing the
-	 * search and the funnel where they hid it. False for a task the board
-	 * does not show: one archived, or one that has gone.
+	 * Brings one task's card into sight and gives it the focus, once the
+	 * board's reading has landed, clearing the search and the funnel where
+	 * they hid it. False for a task the board does not show: one archived,
+	 * or one that has gone.
 	 */
-	reveal(id: string): boolean;
+	reveal(id: string): Promise<boolean>;
 	dispose(): void;
 }
 
@@ -974,6 +975,11 @@ export function renderTaskBoard(
 		restoreScroll();
 	};
 
+	/** Whoever waits on a read under way, woken as it lands or fails. */
+	const waiting: (() => void)[] = [];
+	const wake = (): void => {
+		for (const waiter of waiting.splice(0)) waiter();
+	};
 	const loop = refreshLoop<TaskBoardReading | null>({
 		read: () => bridge.read(),
 		onStart: () => {
@@ -982,12 +988,17 @@ export function renderTaskBoard(
 		onRead: (next) => {
 			reading = next;
 			paint();
+			wake();
 		},
 		onFail: () => {
 			reading = null;
 			paint();
+			wake();
 		},
 	});
+	/** Resolves once no read is under way: at once, or as the one in flight lands. */
+	const settled = (): Promise<void> =>
+		loop.loading ? new Promise<void>((resolve) => { waiting.push(resolve); }) : Promise.resolve();
 	const unsubscribe = bridge.subscribe(() => {
 		loop.refresh();
 	});
@@ -1018,7 +1029,9 @@ export function renderTaskBoard(
 			restoreScroll();
 			loop.refresh();
 		},
-		reveal: (id) => {
+		reveal: async (id) => {
+			// The board reads on its own footing, and a reveal asked for as it is built waits for its first read.
+			await settled();
 			if (loop.disposed) return false;
 			let entry = cardOf(id);
 			if (entry === null) {
@@ -1044,6 +1057,8 @@ export function renderTaskBoard(
 			loop.dispose();
 			unsubscribe();
 			root.remove();
+			// A reveal still waiting on a read is answered: the board it waited for has gone.
+			wake();
 		},
 	};
 }

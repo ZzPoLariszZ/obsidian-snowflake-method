@@ -120,8 +120,12 @@ import {
 	type FreeformStep,
 	type FreeformView,
 	type FreeformViewport,
+	type Task,
 } from '../../src/domain';
-import type { FreeformTransacted, FreeformViewWrite } from '../../src/services';
+import type { FreeformTransacted, FreeformViewWrite, StickyNoteRecord } from '../../src/services';
+import type { ForeshadowingTableItem } from '../../src/ui/foreshadowing-rows';
+import type { FreeformResourceRequest, FreeformResources } from '../../src/ui/freeform-resources';
+import type { RevisionRow } from '../../src/ui/revision-panel';
 import { renderFreeform } from '../../src/ui/freeform';
 import type { FreeformBridge, FreeformControls } from '../../src/ui/freeform-bridge';
 import {
@@ -340,6 +344,9 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 	const limits: FreeformLimits = { ...FREEFORM_LIMITS, ...options.limits };
 	let held: FreeformDocument = { views: [...initial] };
 	const listeners = new Set<() => void>();
+	/** The records the bridge reads for a view; nothing until a test lays some down. */
+	let resourcesHeld: FreeformResources | null = null;
+	const resourceListeners = new Set<() => void>();
 	let serial = 0;
 	let now = 10;
 	/** What the next write is answered with, in place of what the view would say. */
@@ -360,8 +367,11 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			listeners.add(listener);
 			return () => { listeners.delete(listener); };
 		}),
-		readResources: vi.fn(async () => null),
-		subscribeResources: vi.fn(() => () => undefined),
+		readResources: vi.fn(async (_wanted: FreeformResourceRequest): Promise<FreeformResources | null> => resourcesHeld),
+		subscribeResources: vi.fn((listener: () => void) => {
+			resourceListeners.add(listener);
+			return () => { resourceListeners.delete(listener); };
+		}),
 		mintId: vi.fn((kind: string) => `${kind}-${String(++serial)}`),
 		createView: vi.fn(async (name: string) => {
 			if (refusal !== null) return null;
@@ -412,6 +422,9 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		worldbuilding: { location: [place('loc-1', 'Harbour')], Faction: [] },
 	} as unknown as ProjectDashboardModel;
 	const memory = freeformMemory({ viewId: options.viewId ?? null, minimap: false, snap: options.snap === true });
+	const foreshadowingTable = { open: vi.fn(() => Promise.resolve()), openUnresolved: vi.fn(() => Promise.resolve()) };
+	const revisionTable = { open: vi.fn(() => Promise.resolve()), openUnresolved: vi.fn(() => Promise.resolve()) };
+	const stickyNotes = { float: vi.fn(() => Promise.resolve()) };
 	const host = {
 		openManagedFile: vi.fn((_path: string) => Promise.resolve()),
 		openManuscriptStream: vi.fn(() => Promise.resolve()),
@@ -420,6 +433,10 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		openEntityForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
 		patchScene: vi.fn(() => Promise.resolve('r2')),
 		isReduceMotionEnabled: vi.fn(() => false),
+		revealTask: vi.fn((_path: string, _id: string) => Promise.resolve(true)),
+		foreshadowingTable: vi.fn(() => foreshadowingTable),
+		revisionTable: vi.fn(() => revisionTable),
+		stickyNotes: vi.fn(() => stickyNotes),
 	};
 	const canvas = plainCanvas();
 	let handle: ReturnType<typeof renderFreeform>;
@@ -473,6 +490,10 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		/** The files read and parsed again, as every read after a write is: the same document under another identity. */
 		reparse: () => { held = JSON.parse(JSON.stringify(held)) as FreeformDocument; },
 		refuse: (came: FreeformTransacted['came'] | null) => { refusal = came; },
+		/** The records the bridge reads from now on; a ring says a family moved. */
+		resources: (read: FreeformResources | null) => { resourcesHeld = read; },
+		ring: () => { for (const listener of resourceListeners) listener(); },
+		foreshadowingTable, revisionTable, stickyNotes,
 		fail: (on: boolean) => { failing = on; },
 		/** Holds every write until the hand is opened. */
 		hold: (): (() => void) => {
@@ -925,6 +946,7 @@ describe('text nodes', () => {
 		// Through the form, as the toolbar's word opens it: a text node asks nothing more of it.
 		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		expect(forms).toHaveLength(1);
 		await submit(forms[0], { type: 'text' });
 		const id = fixture.nodes()[fixture.nodes().length - 1]!;
@@ -1732,12 +1754,17 @@ describe('nodes added by type', () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		const options = formOptions(forms[0]);
 		expect(options.types.map((type) => [type.value, type.label, type.section])).toEqual([
 			['scene', 'form.group.scene', 'entity'],
 			['character', 'form.group.character', 'entity'],
 			['location', 'worldbuilding.kind.location', 'entity'],
 			['Faction', 'Faction', 'entity'],
+			['task', 'freeformCanvas.type.task', 'task'],
+			['foreshadowing', 'freeformCanvas.type.foreshadowing', 'task'],
+			['revision', 'freeformCanvas.type.revision', 'task'],
+			['sticky-note', 'freeformCanvas.type.stickyNote', 'task'],
 			['text', 'freeformCanvas.type.text', 'canvas'],
 			['frame', 'freeformCanvas.type.frame', 'canvas'],
 		]);
@@ -1755,6 +1782,7 @@ describe('nodes added by type', () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		await submit(forms[0], {
 			type: 'entity',
 			kind: 'character',
@@ -1795,12 +1823,14 @@ describe('nodes added by type', () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await settle();
 		await submit(forms[0], { type: 'entity', kind: 'location', nodes: [{ id: 'loc-1', name: 'Harbour' }] });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(added)).toMatchObject({ kind: 'worldbuilding', x: 2_000 - FREEFORM_SIZE.width / 2, y: 3_000 - FREEFORM_SIZE.height / 2 });
 		expect(fixture.node(added).label).toBe('freeformCanvas.node.name(kind=worldbuilding.kind.location,name=Harbour)');
 		// A scene lands with the room the board's standard card needs, so it stands as that card from the first.
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await settle();
 		await submit(forms[1], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] });
 		const sceneAdded = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(sceneAdded)).toMatchObject({
@@ -1816,6 +1846,7 @@ describe('nodes added by type', () => {
 		fixture.refuse('refused');
 		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		await expect(submit(forms[0], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] }))
 			.rejects.toThrow('freeformCanvas.node.refused');
 		expect(notices).not.toHaveBeenCalled();
@@ -1826,6 +1857,7 @@ describe('nodes added by type', () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await settle();
 		await submit(forms[0], { type: 'text' });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(added)).toMatchObject({ kind: 'text', x: 2_000 - FREEFORM_SIZE.width / 2, locked: true });
@@ -1837,9 +1869,11 @@ describe('nodes added by type', () => {
 		const readOnly = await laid({ readOnly: true });
 		fire(readOnly.button('snowflake-method-freeform-node-add'), 'click');
 		readOnly.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })![0]!.click();
+		await settle();
 		const bare = workspace([]);
 		await settle();
 		fire(bare.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		expect(forms).toHaveLength(0);
 	});
 });
@@ -1966,6 +2000,7 @@ describe('frames', () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((item) => item.title === 'freeformCanvas.frame.add')!.click();
+		await settle();
 		expect((forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('frame');
 		await submit(forms[0], { type: 'frame', frame: { title: 'Act one', color: 'macaron-2' } });
 		const added = fixture.nodes().find((id) => id.startsWith('frame-'))!;
@@ -1984,6 +2019,7 @@ describe('frames', () => {
 		// The form stands over a refusal.
 		fixture.refuse('full');
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
 		await expect(submit(forms[1], { type: 'frame', frame: { title: '', color: null } })).rejects.toThrow('freeformCanvas.frame.refused');
 	});
 
@@ -2075,6 +2111,201 @@ describe('frames', () => {
 		expect(fixture.nodes()).toEqual(['t1', 't2', 's1', 'l1']);
 		expect(placed(fixture, 't1')?.frameId).toBeNull();
 		expect(fixture.node('t1').frame).toBeNull();
+	});
+});
+
+const taskRecord = (id: string, title: string, extra: Partial<Task> = {}): Task => ({
+	id, title, description: 'Do it', status: 'todo', priority: 'high', dueDate: '2026-10-01', related: [],
+	archived: false, createdAt: 1, updatedAt: 1, ...extra,
+});
+const thread = (id: string, name: string, occurrences: ForeshadowingTableItem['occurrences'] = []): ForeshadowingTableItem => ({
+	id, name, description: 'Seeded early', status: 'active', related: [], occurrences, span: Math.max(1, occurrences.length), createdAt: 1,
+});
+const occurrence = (id: string, itemId: string, title: string, standing: 'live' | 'unresolved' = 'live'): ForeshadowingTableItem['occurrences'][number] => ({
+	id, itemId, role: 'plant', note: '', path: `Manuscript/${title}.md`, title, standing, from: 10, to: 20,
+	reveal: standing === 'live' ? { from: 12, to: 18 } : null, originalText: 'words',
+});
+const revisionRecord = (id: string, extra: Partial<RevisionRow> = {}): RevisionRow => ({
+	id, path: 'Manuscript/Chapter 1.md', title: 'Chapter 1', kind: 'replace', original: 'was', proposed: 'is', comment: '',
+	status: 'live', from: 5, to: 8, reveal: { from: 5, to: 8 }, ...extra,
+});
+const sticky = (id: string, body: string, extra: Partial<StickyNoteRecord> = {}): StickyNoteRecord => ({
+	id, path: `Notes/${id}.md`, body, color: 'macaron-3', createdAt: 1, archived: false, revision: 'n1', stamp: '1:1', readOnly: false, ...extra,
+});
+const recordsRead = (extra: Partial<FreeformResources> = {}): FreeformResources => ({
+	projectPath: 'P',
+	tasks: [taskRecord('task-1', 'Finish the draft'), taskRecord('task-2', 'Old', { archived: true })],
+	foreshadowing: [thread('fs-1', 'The locket', [occurrence('oc-1', 'fs-1', 'Chapter 2'), occurrence('oc-2', 'fs-1', 'Chapter 9', 'unresolved')]), thread('fs-2', 'Silent')],
+	revisions: [revisionRecord('rev-1'), revisionRecord('rev-2', { status: 'conflict', reveal: null, original: '', proposed: 'add this' })],
+	stickyNotes: [sticky('note-1', '# Remember\nthe tide'), sticky('note-2', 'Gone', { archived: true })],
+	files: null,
+	failed: new Set(),
+	...extra,
+});
+const record = (id: string, type: 'task' | 'foreshadowing' | 'revision' | 'sticky-note', recordId: string, name: string, extra: Partial<FreeformPlacement> = {}): FreeformPlacement => ({
+	...text(id, ''),
+	resource: { type, id: recordId, name },
+	height: 320,
+	...extra,
+});
+
+describe('records on the canvas', () => {
+	const recordsView = (): FreeformView => view('a', {
+		placements: [
+			record('p1', 'task', 'task-1', 'Finish the draft'),
+			record('p2', 'foreshadowing', 'fs-1', 'The locket', { x: 300 }),
+			record('p3', 'revision', 'rev-1', 'was', { x: 600 }),
+			record('p4', 'sticky-note', 'note-1', 'Remember', { x: 900 }),
+			record('p5', 'task', 'task-2', 'Old', { x: 1_200 }),
+			record('p6', 'foreshadowing', 'fs-2', 'Silent', { x: 1_500 }),
+		],
+	});
+	const withRecords = async (read: FreeformResources | null = recordsRead()) => {
+		const fixture = workspace([recordsView()]);
+		fixture.resources(read);
+		await settle();
+		return fixture;
+	};
+
+	it('reads the families the view places, and shows each record once its reading lands', async () => {
+		const fixture = workspace([recordsView()]);
+		// Nothing is laid out before the first read lands.
+		expect(fixture.canvas.scenes).toEqual([]);
+		const read = recordsRead();
+		fixture.resources(read);
+		await settle();
+		expect(fixture.bridge.readResources).toHaveBeenCalledOnce();
+		const wanted = fixture.bridge.readResources.mock.calls[0]![0];
+		expect([...wanted.types].sort()).toEqual(['foreshadowing', 'revision', 'sticky-note', 'task']);
+		expect(wanted.filePaths).toEqual([]);
+		expect(fixture.scene().nodes.map((node) => [node.id, node.kind, node.label])).toEqual([
+			['p1', 'task', 'freeformCanvas.node.name(kind=freeformCanvas.type.task,name=Finish the draft)'],
+			['p2', 'foreshadowing', 'freeformCanvas.node.name(kind=freeformCanvas.type.foreshadowing,name=The locket)'],
+			['p3', 'revision', 'freeformCanvas.node.name(kind=freeformCanvas.type.revision,name=was)'],
+			['p4', 'sticky-note', 'freeformCanvas.node.name(kind=freeformCanvas.type.stickyNote,name=Remember)'],
+			// A task set aside is missing, under the name it was last called.
+			['p5', 'missing', 'Old'],
+			['p6', 'foreshadowing', 'freeformCanvas.node.name(kind=freeformCanvas.type.foreshadowing,name=Silent)'],
+		]);
+		expect(fixture.face('p1').classes.has('is-record')).toBe(true);
+		expect(fixture.face('p4').classes.has('is-sticky')).toBe(true);
+		expect(fixture.face('p5').classes.has('is-missing')).toBe(true);
+	});
+
+	it('shows a record as pending, never as lost, while its reading is on the way, and reads no family the view does not place', async () => {
+		const fixture = workspace([recordsView()]);
+		let land: (read: FreeformResources | null) => void = () => undefined;
+		fixture.bridge.readResources.mockImplementation(() => new Promise((resolve) => { land = resolve; }));
+		await settle();
+		expect(fixture.scene().nodes.every((node) => node.kind === 'pending')).toBe(true);
+		land(recordsRead());
+		await settle();
+		expect(fixture.node('p1').kind).toBe('task');
+		// A view of text alone asks for nothing.
+		const bare = await laid();
+		expect(bare.bridge.readResources).not.toHaveBeenCalled();
+	});
+
+	it('reads again when a family rings or the project is read again, and not for a bell that brings back what is shown', async () => {
+		const fixture = await withRecords();
+		expect(fixture.bridge.readResources).toHaveBeenCalledOnce();
+		fixture.notify();
+		await settle();
+		expect(fixture.bridge.readResources).toHaveBeenCalledOnce();
+		fixture.resources(recordsRead({ tasks: [taskRecord('task-1', 'Finish the draft, now')] }));
+		fixture.ring();
+		await settle();
+		expect(fixture.bridge.readResources).toHaveBeenCalledTimes(2);
+		expect(fixture.node('p1').label).toBe('freeformCanvas.node.name(kind=freeformCanvas.type.task,name=Finish the draft, now)');
+		fixture.remodel({});
+		fixture.handle.refresh();
+		await settle();
+		expect(fixture.bridge.readResources).toHaveBeenCalledTimes(3);
+		// Taken down, it hears no more rings.
+		fixture.handle.dispose();
+		fixture.ring();
+		await settle();
+		expect(fixture.bridge.readResources).toHaveBeenCalledTimes(3);
+	});
+
+	it('opens each record where it lives: the board, the manuscript, a float', async () => {
+		const fixture = await withRecords();
+		fixture.port().open({ kind: 'node', id: 'p1' }, {} as MouseEvent);
+		expect(fixture.host.revealTask).toHaveBeenCalledWith('P', 'task-1');
+		fixture.port().open({ kind: 'node', id: 'p2' }, {} as MouseEvent);
+		// The first occurrence in manuscript order, flashed where it stands.
+		expect(fixture.host.foreshadowingTable).toHaveBeenCalledWith({ projectPath: 'P', locale: 'en' });
+		expect(fixture.foreshadowingTable.open).toHaveBeenCalledWith({ path: 'Manuscript/Chapter 2.md', from: 12, to: 18 });
+		fixture.port().open({ kind: 'node', id: 'p3' }, {} as MouseEvent);
+		expect(fixture.revisionTable.open).toHaveBeenCalledWith({ path: 'Manuscript/Chapter 1.md', from: 5, to: 8 });
+		fixture.port().open({ kind: 'node', id: 'p4' }, {} as MouseEvent);
+		expect(fixture.controls.activateProject).toHaveBeenCalled();
+		expect(fixture.stickyNotes.float).toHaveBeenCalledWith('note-1', fixture.dom.win);
+		// A foreshadowing with no occurrence yet says so.
+		fixture.port().open({ kind: 'node', id: 'p6' }, {} as MouseEvent);
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.open.noOccurrence');
+		// A record set aside opens nothing.
+		fixture.port().open({ kind: 'node', id: 'p5' }, {} as MouseEvent);
+		expect(fixture.host.revealTask).toHaveBeenCalledOnce();
+	});
+
+	it('says so when the board no longer shows a task, and opens a revision in conflict at its chapter', async () => {
+		const fixture = await withRecords(recordsRead({
+			revisions: [revisionRecord('rev-1', { status: 'conflict', reveal: null })],
+		}));
+		fixture.host.revealTask.mockResolvedValue(false);
+		fixture.port().open({ kind: 'node', id: 'p1' }, {} as MouseEvent);
+		await settle();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.open.taskGone');
+		fixture.port().open({ kind: 'node', id: 'p3' }, {} as MouseEvent);
+		expect(fixture.revisionTable.openUnresolved).toHaveBeenCalledWith('Manuscript/Chapter 1.md', 'rev-1');
+		expect(fixture.revisionTable.open).not.toHaveBeenCalled();
+	});
+
+	it('offers each record its own way in from its menu, and picks one occurrence of a foreshadowing by name', async () => {
+		const fixture = await withRecords();
+		const first = (id: string) => fixture.menuAt({ kind: 'node', id })!.slice(0, 2).map((item) => [item.title, item.disabled]);
+		expect(first('p1')).toEqual([['freeformCanvas.open.task', false], ['freeformCanvas.display.auto', false]]);
+		expect(first('p2')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.open.occurrence', false]]);
+		expect(first('p6')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.open.occurrence', true]]);
+		expect(first('p3')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.display.auto', false]]);
+		expect(first('p4')).toEqual([['stickyNotes.float', false], ['actions.openNote', false]]);
+		fixture.menuAt({ kind: 'node', id: 'p4' })![1]!.click();
+		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Notes/note-1.md');
+		const picks = watch(TimelineTimePickModal);
+		fixture.menuAt({ kind: 'node', id: 'p2' })![1]!.click();
+		const pick = picks[0] as unknown as { times: PickerOption[]; pick: (option: PickerOption) => void };
+		expect(pick.times.map((option) => option.label)).toEqual(['Chapter 2 · foreshadowing.role.plant', 'Chapter 9 · foreshadowing.role.plant']);
+		pick.pick(pick.times[1]!);
+		// An occurrence that has come loose opens its chapter and lights the card there.
+		expect(fixture.foreshadowingTable.openUnresolved).toHaveBeenCalledWith('Manuscript/Chapter 9.md', 'oc-2');
+		// The read-only project keeps every way in.
+		const readOnly = await (async () => { const made = workspace([recordsView()], { readOnly: true }); made.resources(recordsRead()); await settle(); return made; })();
+		expect(readOnly.menuAt({ kind: 'node', id: 'p1' })![0]!.disabled).toBe(false);
+		readOnly.port().open({ kind: 'node', id: 'p1' }, {} as MouseEvent);
+		expect(readOnly.host.revealTask).toHaveBeenCalled();
+	});
+
+	it('offers the records of every family in the form, read whole for it, those set aside left out', async () => {
+		const fixture = await withRecords();
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
+		const asked = fixture.bridge.readResources.mock.calls[fixture.bridge.readResources.mock.calls.length - 1]![0];
+		expect([...asked.types].sort()).toEqual(['foreshadowing', 'revision', 'sticky-note', 'task']);
+		const options = (forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options;
+		expect(options.candidates('task')).toEqual([{ id: 'task-1', name: 'Finish the draft', onView: true }]);
+		expect(options.candidates('foreshadowing')).toEqual([
+			{ id: 'fs-1', name: 'The locket', onView: true }, { id: 'fs-2', name: 'Silent', onView: true },
+		]);
+		// A revision is called by its original words, or its proposed ones where it adds.
+		expect(options.candidates('revision')).toEqual([{ id: 'rev-1', name: 'was', onView: true }, { id: 'rev-2', name: 'add this', onView: false }]);
+		expect(options.candidates('sticky-note')).toEqual([{ id: 'note-1', name: 'Remember', onView: true }]);
+		await submit(forms[0], { type: 'entity', kind: 'revision', nodes: [{ id: 'rev-2', name: 'add this' }] });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added)).toMatchObject({ kind: 'revision', height: FREEFORM_FACE_HEIGHTS.record.standard });
+		await settle();
+		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === added)?.resource).toEqual({ type: 'revision', id: 'rev-2', name: 'add this' });
 	});
 });
 

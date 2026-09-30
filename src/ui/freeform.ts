@@ -36,6 +36,8 @@ import {
 	findFreeformPlacement,
 	findFreeformView,
 	freeformBounds,
+	freeformPlacedFilePaths,
+	freeformPlacedTypes,
 	freeformRoom,
 	isWorldbuildingKind,
 	leaveFreeformView,
@@ -46,12 +48,13 @@ import {
 	type FreeformPlace,
 	type FreeformPlacement,
 	type FreeformPlacementDraft,
+	type FreeformRecordType,
 	type FreeformSide,
 	type FreeformStep,
 	type FreeformView,
 } from '../domain';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
-import type { FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
+import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
 import { zoomPercent, zoomStep } from './freeform-canvas-model';
 import {
 	NO_CANVAS_SELECTION,
@@ -106,8 +109,10 @@ import {
 	freeformFileName,
 	freeformLabelOf,
 	resolvePlacement,
+	type FreeformResources,
 	type ResolvedNode,
 } from './freeform-resources';
+import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
 import { kindIcon } from './kind-icon';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { renderEmptyLine } from './pane-parts';
@@ -277,6 +282,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	let turn = 0;
 	/** What the canvas was last told stands on it. */
 	let made: FreeformSceneMade | null = null;
+	/**
+	 * The records and files the view on show places, read through the
+	 * bridge: each family only when a view places one of it, again when the
+	 * project is read again or a family rings, and once more where a view
+	 * comes to place a family not yet read.
+	 */
+	let resources: FreeformResources | null = null;
+	let resourcesKey = '';
+	let resourcesSerial = 0;
 	let optionsSignature = '';
 	let viewField: OptionPicker | null = null;
 	let disposed = false;
@@ -375,14 +389,28 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (node.type === 'file') return node.file.name;
 		if (node.type === 'missing') return node.name;
 		if (node.type === 'pending') return lastCalled(node.placement);
+		// A sticky note is called by its first words as they read, not as they are marked; a revision by the first line of the words it changes.
+		if (node.type === 'sticky-note') {
+			const first = plainFirstLine(node.note.body, NAME_LENGTH);
+			return first.length === 0 ? t('freeformCanvas.type.stickyNote') : first;
+		}
+		if (node.type === 'revision') {
+			const words = node.row.original.length > 0 ? node.row.original : node.row.proposed;
+			const first = plainFirstLine(words, NAME_LENGTH);
+			return first.length === 0 ? node.row.title : first;
+		}
 		return freeformLabelOf(node)?.name ?? lastCalled(node.placement);
 	};
 
-	/** What a node is called for a reader that cannot see it: a note with the kind of note it is. */
+	/** What a node is called for a reader that cannot see it: a note or a record with the kind of thing it is. */
 	const labelOf = (node: ResolvedNode): string => {
 		const name = nameOf(node);
 		if (node.type === 'scene' || node.type === 'character') return t('freeformCanvas.node.name', { kind: kindWord(node.type), name });
 		if (node.type === 'worldbuilding') return t('freeformCanvas.node.name', { kind: kindWord(node.entity.kind), name });
+		if (node.type === 'task') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.task'), name });
+		if (node.type === 'foreshadowing') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.foreshadowing'), name });
+		if (node.type === 'revision') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.revision'), name });
+		if (node.type === 'sticky-note') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.stickyNote'), name });
 		return name;
 	};
 
@@ -442,6 +470,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				return node.character;
 			case 'worldbuilding':
 				return node.entity;
+			case 'task':
+				return node.task;
+			case 'foreshadowing':
+				return node.item;
+			case 'revision':
+				return node.row;
+			case 'sticky-note':
+				return node.note;
 			default:
 				return null;
 		}
@@ -451,7 +487,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		resolve: (placement) => {
 			// A paint is made only once a model stands; the guard is the type's.
 			if (model === null) return { type: 'pending', placement, of: 'file' };
-			return resolvePlacement(placement, model, null);
+			return resolvePlacement(placement, model, resources);
 		},
 		label: labelOf,
 		frameLabel: frameLabelOf,
@@ -540,6 +576,40 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	};
 
 	/**
+	 * The records and files the view on show places, read afresh where what
+	 * is wanted changed, or where told to since the project or a family
+	 * moved. A read that lands after another was asked for is let go; one
+	 * that lands is painted at once, so a face that stood pending shows.
+	 */
+	const readResources = (force = false): void => {
+		listenToResources();
+		const view = shownView();
+		const path = controls.projectPath();
+		const types = view === null ? new Set<FreeformRecordType | 'file'>() : freeformPlacedTypes(view);
+		const filePaths = view === null ? [] : freeformPlacedFilePaths(view);
+		const key = JSON.stringify([path, [...types].sort(), [...filePaths].sort()]);
+		const same = key === resourcesKey;
+		resourcesKey = key;
+		if (types.size === 0 || path === null) {
+			if (resources !== null) {
+				resources = null;
+				paintScene();
+			}
+			return;
+		}
+		if (same && !force && resources !== null) return;
+		resourcesSerial += 1;
+		const serial = resourcesSerial;
+		void controls.bridge().readResources({ types, filePaths }).then((read) => {
+			if (disposed || serial !== resourcesSerial) return;
+			resources = read;
+			paintScene();
+		}).catch((error: unknown) => {
+			console.error('Snowflake: a freeform view’s records could not be read', error);
+		});
+	};
+
+	/**
 	 * What a leaf leaves behind as it goes from a view: where it stood
 	 * looking, and what the view's resources are called now, so one that goes
 	 * missing later is called what it was last called. Written only where it
@@ -588,7 +658,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/** The laying out itself, from the model handed to it and the document last read. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
-		if (nextModel !== model) laneDeck.index(nextModel);
+		const modelMoved = nextModel !== model;
+		if (modelMoved) laneDeck.index(nextModel);
 		model = nextModel;
 		// The model's word alone, renewed with every project refresh.
 		readOnly = model?.readOnly ?? true;
@@ -620,11 +691,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		turnTo(view);
 		if (view === null) {
 			paintScene();
+			readResources();
 			showEmpty(t('freeformCanvas.empty.views'));
 			return;
 		}
 		showEmpty(null);
 		paintScene();
+		// The threads, the revisions and the files arrive with the project's own refresh.
+		readResources(modelMoved);
 	};
 
 	// -- Writing -------------------------------------------------------------
@@ -886,6 +960,77 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return false;
 	};
 
+	// -- What a record opens -------------------------------------------------------
+
+	/** The project the records are read from, for the host's own tables and floats. */
+	const recordContext = (): { projectPath: string | null; locale: 'en' | 'zh-CN' | null } => ({
+		projectPath: controls.projectPath(),
+		locale: reading?.locale ?? null,
+	});
+
+	/** One occurrence of a foreshadowing shown in the manuscript: flashed where it stands, or its chapter opened where it has come loose. */
+	const openOccurrence = (item: ForeshadowingTableItem, occurrence: ForeshadowingOccurrenceRow): void => {
+		void item;
+		const table = host.foreshadowingTable(recordContext());
+		const spot = occurrence.reveal ?? { from: occurrence.from, to: occurrence.to };
+		const opening = occurrence.standing === 'live'
+			? table.open({ path: occurrence.path, from: spot.from, to: spot.to })
+			: table.openUnresolved(occurrence.path, occurrence.id);
+		void opening.catch(notice);
+	};
+
+	/** A foreshadowing shown in the manuscript at its first occurrence, in manuscript order; none, and it is said. */
+	const openForeshadowing = (item: ForeshadowingTableItem): void => {
+		const first = item.occurrences[0];
+		if (first === undefined) {
+			new Notice(t('freeformCanvas.open.noOccurrence'));
+			return;
+		}
+		openOccurrence(item, first);
+	};
+
+	/** One occurrence picked by its chapter and its role, for a foreshadowing with several. */
+	const openPickOccurrence = (item: ForeshadowingTableItem): void => {
+		if (disposed) return;
+		if (item.occurrences.length === 0) {
+			new Notice(t('freeformCanvas.open.noOccurrence'));
+			return;
+		}
+		const options: PickerOption[] = item.occurrences.map((occurrence) => ({
+			value: occurrence.id,
+			label: `${occurrence.title} · ${t(`foreshadowing.role.${occurrence.role}`)}`,
+		}));
+		keep(new TimelineTimePickModal(app, t('freeformCanvas.open.occurrencePlaceholder'), options, (picked) => {
+			const occurrence = item.occurrences.find((candidate) => candidate.id === picked.value);
+			if (occurrence !== undefined) openOccurrence(item, occurrence);
+		})).open();
+	};
+
+	/** A revision shown in the manuscript where it stands, or its chapter opened where it has come into conflict. */
+	const openRevision = (node: Extract<ResolvedNode, { type: 'revision' }>): void => {
+		const table = host.revisionTable(recordContext());
+		const spot = node.row.reveal ?? { from: node.row.from, to: node.row.to };
+		const opening = node.row.status === 'live'
+			? table.open({ path: node.row.path, from: spot.from, to: spot.to })
+			: table.openUnresolved(node.row.path, node.row.id);
+		void opening.catch(notice);
+	};
+
+	/** A task shown on its board; one the board no longer shows is said to have gone. */
+	const openTask = (node: Extract<ResolvedNode, { type: 'task' }>): void => {
+		const path = controls.projectPath();
+		if (path === null) return;
+		void host.revealTask(path, node.task.id).then((shown) => {
+			if (!shown && !disposed) new Notice(t('freeformCanvas.open.taskGone'));
+		}, notice);
+	};
+
+	/** A sticky note floated over this window, its project made current first, as the sticky board floats one. */
+	const floatSticky = (node: Extract<ResolvedNode, { type: 'sticky-note' }>): void => {
+		controls.activateProject();
+		void host.stickyNotes(recordContext()).float(node.note.id, root.win).catch(notice);
+	};
+
 	const faces = createFreeformFaces({
 		app,
 		t,
@@ -903,6 +1048,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		},
 		keepText,
 		leaveText,
+		openOccurrence,
 		scenes: {
 			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
 			dress: (card, scene, index) => {
@@ -965,6 +1111,23 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (!faces.edit(id)) canvas.moveViewport({ kind: 'reveal', id });
 	};
 
+	/**
+	 * The families that ring for themselves ring here; the rest arrive with
+	 * the project's refresh. The bridge is the one standing now, asked for
+	 * afresh on every ring, since a rename moves the path.
+	 */
+	let boundResourcesBridge: FreeformBridge | null = null;
+	let unsubscribeResources: (() => void) | null = null;
+	const listenToResources = (): void => {
+		const bridge = controls.bridge();
+		if (bridge === boundResourcesBridge) return;
+		unsubscribeResources?.();
+		boundResourcesBridge = bridge;
+		unsubscribeResources = bridge.subscribeResources(() => {
+			if (!disposed) readResources(true);
+		});
+	};
+
 	// -- Nodes added by type ----------------------------------------------------
 
 	/** The kinds of node the form offers: what the project holds notes of, and what is made on the canvas. */
@@ -972,23 +1135,54 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		{ value: 'scene', label: kindWord('scene'), section: 'entity' },
 		{ value: 'character', label: kindWord('character'), section: 'entity' },
 		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: kind.id, label: kindWord(kind.id), section: 'entity' })),
+		{ value: 'task', label: t('freeformCanvas.type.task'), section: 'task' },
+		{ value: 'foreshadowing', label: t('freeformCanvas.type.foreshadowing'), section: 'task' },
+		{ value: 'revision', label: t('freeformCanvas.type.revision'), section: 'task' },
+		{ value: 'sticky-note', label: t('freeformCanvas.type.stickyNote'), section: 'task' },
 		{ value: 'text', label: t('freeformCanvas.type.text'), section: 'canvas' },
 		{ value: 'frame', label: t('freeformCanvas.type.frame'), section: 'canvas' },
 	];
 
-	/** The notes of a kind the project holds, each with whether the view on show places it already. */
-	const nodeCandidates = (kind: string): FreeformNodeCandidate[] => {
+	/** The families the form offers whole, read for it before it opens. */
+	const FORM_FAMILIES: readonly FreeformRecordType[] = ['task', 'foreshadowing', 'revision', 'sticky-note'];
+
+	/** What a record of a family is called in the form's list. */
+	const recordName = (family: FreeformRecordType, record: { title?: string; name?: string; original?: string; proposed?: string; body?: string }): string => {
+		switch (family) {
+			case 'task':
+				return record.title ?? '';
+			case 'foreshadowing':
+				return record.name ?? '';
+			case 'revision':
+				return plainFirstLine((record.original ?? '').length > 0 ? record.original ?? '' : record.proposed ?? '', NAME_LENGTH);
+			case 'sticky-note':
+				return plainFirstLine(record.body ?? '', NAME_LENGTH);
+		}
+	};
+
+	/**
+	 * The notes of a kind the project holds, or the records of a family as
+	 * read for the form, each with whether the view on show places it
+	 * already. A record set aside is not offered: the canvas shows it as
+	 * missing, and offers nothing it would show so.
+	 */
+	const nodeCandidates = (kind: string, read: FreeformResources | null): FreeformNodeCandidate[] => {
 		if (model === null) return [];
 		const view = shownView();
 		const placed = new Set<string>();
 		for (const { resource } of view?.placements ?? []) {
-			if (resource.type === 'entity') placed.add(resource.id);
+			if (resource.type === 'entity') placed.add(`entity ${resource.id}`);
+			else if (resource.type !== 'text' && resource.type !== 'link' && resource.type !== 'file') placed.add(`${resource.type} ${resource.id}`);
 		}
-		const named = (entries: readonly { id: string; name: string }[]): FreeformNodeCandidate[] =>
-			entries.map((entry) => ({ id: entry.id, name: entry.name, onView: placed.has(entry.id) }));
-		if (kind === 'scene') return named(model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
-		if (kind === 'character') return named(model.characters);
-		return named(kindEntities(model, kind));
+		const named = (family: string, entries: readonly { id: string; name: string }[]): FreeformNodeCandidate[] =>
+			entries.map((entry) => ({ id: entry.id, name: entry.name, onView: placed.has(`${family} ${entry.id}`) }));
+		if (kind === 'scene') return named('entity', model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
+		if (kind === 'character') return named('entity', model.characters);
+		if (kind === 'task') return named('task', (read?.tasks ?? []).filter((task) => !task.archived).map((task) => ({ id: task.id, name: recordName('task', task) })));
+		if (kind === 'foreshadowing') return named('foreshadowing', (read?.foreshadowing ?? []).map((item) => ({ id: item.id, name: recordName('foreshadowing', item) })));
+		if (kind === 'revision') return named('revision', (read?.revisions ?? []).map((row) => ({ id: row.id, name: recordName('revision', row) })));
+		if (kind === 'sticky-note') return named('sticky-note', (read?.stickyNotes ?? []).filter((note) => !note.archived).map((note) => ({ id: note.id, name: recordName('sticky-note', note) })));
+		return named('entity', kindEntities(model, kind));
 	};
 
 	/**
@@ -1000,12 +1194,23 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const openAddNode = (middle?: CanvasPoint, initialType: string | null = null): void => {
 		const id = shownViewId;
 		if (id === null || readOnly || disposed || model === null) return;
+		// The records are read whole for the form's lists before it opens; a family that will not read offers nothing.
+		void controls.bridge().readResources({ types: new Set(FORM_FAMILIES), filePaths: [] }).then((read) => {
+			if (disposed || shownViewId !== id) return;
+			openNodeForm(middle, initialType, read);
+		}, (error: unknown) => {
+			console.error('Snowflake: the records could not be read for the freeform form', error);
+			if (!disposed && shownViewId === id) openNodeForm(middle, initialType, null);
+		});
+	};
+
+	const openNodeForm = (middle: CanvasPoint | undefined, initialType: string | null, read: FreeformResources | null): void => {
 		keep(new FreeformNodeFormModal(
 			app,
 			t,
 			{
 				types: nodeTypes(),
-				candidates: nodeCandidates,
+				candidates: (kind) => nodeCandidates(kind, read),
 				room: () => {
 					const view = shownView();
 					return view === null || reading === null ? 0 : freeformRoom(view, reading.limits).placements;
@@ -1024,8 +1229,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				}
 				canvas.settle();
 				const view = shownView();
-				if (view === null || shownViewId !== id) throw new Error(t('freeformCanvas.node.refused'));
+				if (view === null) throw new Error(t('freeformCanvas.node.refused'));
 				const kind = draft.kind;
+				const family = FORM_FAMILIES.find((candidate) => candidate === kind);
 				// A note lands with the room its standard face needs, so a scene stands as the board's card from the first.
 				const size = {
 					width: FREEFORM_SIZE.width,
@@ -1040,7 +1246,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				);
 				const placements: FreeformPlacementDraft[] = draft.nodes.map((node, at) => ({
 					id: controls.bridge().mintId('placement'),
-					resource: { type: 'entity', kind, id: node.id, name: node.name },
+					resource: family === undefined
+						? { type: 'entity', kind, id: node.id, name: node.name }
+						: { type: family, id: node.id, name: node.name },
 					x: landings[at]?.x ?? 0,
 					y: landings[at]?.y ?? 0,
 					width: size.width,
@@ -1087,7 +1295,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			editText(id);
 			return;
 		}
-		if (readOnly) {
+		// A project that cannot be written still shows its notes, its board and its manuscript; only the forms are kept shut.
+		if (readOnly && (node.type === 'scene' || node.type === 'character' || node.type === 'worldbuilding')) {
 			openNote(node);
 			return;
 		}
@@ -1097,6 +1306,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			deck.openForm((onSaved) => host.openCharacterForm(node.character.id, path, onSaved));
 		} else if (node.type === 'worldbuilding') {
 			deck.openForm((onSaved) => host.openEntityForm({ mode: 'edit', id: node.entity.id }, path, onSaved));
+		} else if (node.type === 'task') {
+			openTask(node);
+		} else if (node.type === 'foreshadowing') {
+			openForeshadowing(node.item);
+		} else if (node.type === 'revision') {
+			openRevision(node);
+		} else if (node.type === 'sticky-note') {
+			floatSticky(node);
 		}
 	};
 
@@ -1446,6 +1663,52 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					.onClick(() => {
 						editText(id);
 					});
+			});
+			return true;
+		}
+		if (node.type === 'task') {
+			menu.addItem((item) => {
+				item.setTitle(t('freeformCanvas.open.task')).setIcon('list-todo').onClick(() => {
+					openTask(node);
+				});
+			});
+			return true;
+		}
+		if (node.type === 'foreshadowing') {
+			menu.addItem((item) => {
+				item.setTitle(t('freeformCanvas.open.manuscript')).setIcon('book-open').onClick(() => {
+					openForeshadowing(node.item);
+				});
+			});
+			menu.addItem((item) => {
+				item
+					.setTitle(t('freeformCanvas.open.occurrence'))
+					.setIcon('waypoints')
+					.setDisabled(node.item.occurrences.length === 0)
+					.onClick(() => {
+						openPickOccurrence(node.item);
+					});
+			});
+			return true;
+		}
+		if (node.type === 'revision') {
+			menu.addItem((item) => {
+				item.setTitle(t('freeformCanvas.open.manuscript')).setIcon('book-open').onClick(() => {
+					openRevision(node);
+				});
+			});
+			return true;
+		}
+		if (node.type === 'sticky-note') {
+			menu.addItem((item) => {
+				item.setTitle(t('stickyNotes.float')).setIcon('sticker').onClick(() => {
+					floatSticky(node);
+				});
+			});
+			menu.addItem((item) => {
+				item.setTitle(t('actions.openNote')).setIcon('file-text').onClick(() => {
+					void host.openManagedFile(node.note.path).catch(notice);
+				});
 			});
 			return true;
 		}
@@ -1890,6 +2153,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			// written and where the nodes were left, which go to the file as a
 			// leave sends them.
 			loop.release();
+			unsubscribeResources?.();
+			unsubscribeResources = null;
 			for (const stop of chords) stop();
 			menus.hideAll('Snowflake: a freeform menu could not be closed');
 			modals.closeAll('Snowflake: a freeform dialog could not be closed');

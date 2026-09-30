@@ -167,12 +167,12 @@ export class FreeformTextModal extends Modal {
 
 // -- Nodes added by type ---------------------------------------------------------
 
-/** One kind of node the form can add: what the project holds of a type, or what is made on the canvas. */
+/** One kind of node the form can add: a note of a kind, a record of a family, or what is made on the canvas. */
 export interface FreeformNodeType {
-	/** `scene`, `character`, a worldbuilding kind's id, `text` or `frame`. */
+	/** `scene`, `character`, a worldbuilding kind's id, a record family, `text` or `frame`. */
 	value: string;
 	label: string;
-	section: 'entity' | 'canvas';
+	section: 'entity' | 'task' | 'canvas';
 }
 
 /** What a frame is called and what it wears. */
@@ -332,12 +332,12 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		});
 	}
 
-	/** The types in two groups: what the project holds notes of, and what is made on the canvas. */
+	/** The types in their groups: the notes the project holds, its task management, and what is made on the canvas. */
 	private typeOptions(): PickerOption[] {
 		return this.options.types.map((type) => ({
 			value: type.value,
 			label: type.label,
-			section: this.t(type.section === 'entity' ? 'freeformCanvas.node.section.entity' : 'freeformCanvas.node.section.canvas'),
+			section: this.t(`freeformCanvas.node.section.${type.section}`),
 		}));
 	}
 

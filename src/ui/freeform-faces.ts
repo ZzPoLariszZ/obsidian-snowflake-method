@@ -20,6 +20,7 @@ import { Component, Keymap, MarkdownRenderer, setIcon, setTooltip, type App } fr
 
 import { PROGRESS_STATUSES, type FreeformFrame } from '../domain';
 import { CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
+import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
 import { faceKindOf, faceModeOf, type FreeformFaceMode } from './freeform-layout';
 import type { ResolvedNode } from './freeform-resources';
 import type { Translate } from './modals';
@@ -49,6 +50,8 @@ export interface FreeformFaceDeps {
 	keepText: (id: string, words: string, needed: number) => void;
 	/** A text node left as it was. */
 	leaveText: (id: string) => void;
+	/** Opens one occurrence of a foreshadowing in the manuscript, from a row of its fullest face. */
+	openOccurrence: (item: ForeshadowingTableItem, occurrence: ForeshadowingOccurrenceRow) => void;
 	/**
 	 * The deck the corkboard's cards are dealt from, for a scene's face: the
 	 * card is the deck's, wired and written by it, and the face only holds
@@ -358,20 +361,76 @@ function scenePainter(deps: FreeformFaceDeps): NodePainter {
 	};
 }
 
-/** One row of a record's face: what it says, under the word for it. */
+/** One row of a record's face: what it says, under the word for it; a row that opens something is a button. */
 interface FaceRow {
 	label: string;
 	value: string;
 	/** The barest face that shows the row. */
 	from: Exclude<FreeformFaceMode, 'compact'>;
+	open?: () => void;
 }
 
-/** The rows a character or a worldbuilding note shows, fullest last; a row with nothing to say is left out. */
-function rowsOf(node: ResolvedNode, t: Translate): FaceRow[] {
+/** What the first line of a record's face says of its standing, and the class that inks it. */
+function statusOf(node: ResolvedNode, t: Translate): { words: string; tone: string } | null {
+	switch (node.type) {
+		case 'character':
+			return node.character.progressStatus === null ? null : { words: t(`status.${node.character.progressStatus}`), tone: node.character.progressStatus };
+		case 'worldbuilding':
+			return node.entity.progressStatus === null ? null : { words: t(`status.${node.entity.progressStatus}`), tone: node.entity.progressStatus };
+		case 'task':
+			return { words: t(`tasks.status.${node.task.status}`), tone: node.task.status };
+		case 'foreshadowing':
+			return { words: t(`foreshadowing.status.${node.item.status}`), tone: node.item.status };
+		case 'revision':
+			return node.row.status === 'conflict' ? { words: t('manuscript.revision.conflict'), tone: 'conflict' } : null;
+		default:
+			return null;
+	}
+}
+
+/** Every class a status may ink the first line with, so a change of standing takes the old one off. */
+const STATUS_TONES = [
+	...PROGRESS_STATUSES,
+	'todo', 'in-progress', 'blocked', 'in-review', 'done', 'cancelled',
+	'planned', 'active', 'resolved', 'abandoned',
+	'conflict',
+] as const;
+
+/** The rows a record shows, fullest last; a row with nothing to say is left out. */
+function rowsOf(node: ResolvedNode, t: Translate, deps: FreeformFaceDeps): FaceRow[] {
 	const rows: FaceRow[] = [];
-	const row = (label: string, value: string, from: FaceRow['from']): void => {
-		if (value.trim().length > 0) rows.push({ label, value, from });
+	const row = (label: string, value: string, from: FaceRow['from'], open?: () => void): void => {
+		if (value.trim().length > 0) rows.push(open === undefined ? { label, value, from } : { label, value, from, open });
 	};
+	if (node.type === 'task') {
+		const { task } = node;
+		row(t('modal.task.priority'), t(`tasks.priority.${task.priority}`), 'standard');
+		row(t('modal.task.dueDate'), task.dueDate ?? '', 'standard');
+		row(t('modal.task.description'), task.description, 'extended');
+		row(t('modal.task.related'), task.related.map((ref) => ref.name).join(', '), 'extended');
+		return rows;
+	}
+	if (node.type === 'foreshadowing') {
+		const { item } = node;
+		row(t('modal.foreshadowing.description'), item.description, 'standard');
+		const count = item.occurrences.length;
+		// How many there are says enough on its own, so the row has no word over it.
+		row('', t(count === 1 ? 'freeformCanvas.face.occurrencesOne' : 'freeformCanvas.face.occurrences', { count }), 'standard');
+		// Each occurrence is a way into the manuscript, where it stands.
+		for (const occurrence of item.occurrences) {
+			row(t(`foreshadowing.role.${occurrence.role}`), occurrence.title, 'extended', () => {
+				deps.openOccurrence(item, occurrence);
+			});
+		}
+		return rows;
+	}
+	if (node.type === 'revision') {
+		const { row: revision } = node;
+		row(t('revisionTable.original'), revision.original, 'standard');
+		row(t('revisionTable.proposed'), revision.proposed, 'standard');
+		row(t('revisionTable.comment'), revision.comment, 'extended');
+		return rows;
+	}
 	if (node.type === 'character') {
 		const { character } = node;
 		row(t('form.aliases'), character.aliases.join(', '), 'standard');
@@ -396,11 +455,15 @@ function rowsOf(node: ResolvedNode, t: Translate): FaceRow[] {
 	return rows;
 }
 
+/** The kinds of node the record painter dresses: read here, never written. */
+const RECORD_TYPES = new Set<ResolvedNode['type']>(['character', 'worldbuilding', 'task', 'foreshadowing', 'revision']);
+
 /**
- * A character's or a worldbuilding note's face, read and never written
- * here: its symbol, its name and its status on the first line, and under
- * them as many of its rows as the face has room for. Its note is opened
- * from its menu, and its form is the way to change it.
+ * A record's face, read and never written here: its symbol, its name and
+ * its standing on the first line, and under them as many of its rows as
+ * the face has room for. A character, a worldbuilding note, a task, a
+ * foreshadowing and a revision are all records here; each opens from its
+ * menu, and its own form or table is the way to change it.
  */
 function recordPainter(deps: FreeformFaceDeps): NodePainter {
 	const { t } = deps;
@@ -414,14 +477,14 @@ function recordPainter(deps: FreeformFaceDeps): NodePainter {
 				attr: { 'aria-hidden': 'true' },
 			});
 			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
-			// The status is the word every other surface shows, in its own ink.
+			// The standing is the word every other surface shows, in its own ink.
 			const status = head.createSpan({ cls: 'snowflake-method-entity-status snowflake-method-freeform-face-status' });
 			const rows = face.createDiv({ cls: 'snowflake-method-freeform-face-rows' });
 			let worn = '';
 			let drawn = '';
 			const dress = (next: PaintContext): void => {
 				const node = deps.node(id);
-				if (node?.type !== 'character' && node?.type !== 'worldbuilding') return;
+				if (node === undefined || !RECORD_TYPES.has(node.type)) return;
 				const icon = deps.icon(node);
 				if (icon !== worn) {
 					worn = icon;
@@ -432,20 +495,33 @@ function recordPainter(deps: FreeformFaceDeps): NodePainter {
 					name.setText(words);
 					setTooltip(name, words);
 				}
-				const progress = node.type === 'character' ? node.character.progressStatus : node.entity.progressStatus;
-				const said = progress === null ? '' : t(`status.${progress}`);
+				const standing = statusOf(node, t);
+				const said = standing?.words ?? '';
 				if (status.textContent !== said) status.setText(said);
-				for (const candidate of PROGRESS_STATUSES) status.toggleClass(`is-${candidate}`, candidate === progress);
-				status.toggleClass('is-hidden', progress === null);
-				const lines = rowsOf(node, t);
-				const signature = JSON.stringify(lines);
+				for (const tone of STATUS_TONES) status.toggleClass(`is-${tone}`, tone === standing?.tone);
+				status.toggleClass('is-hidden', standing === null);
+				const lines = rowsOf(node, t, deps);
+				const signature = JSON.stringify(lines.map((line) => [line.label, line.value, line.from, line.open !== undefined]));
 				if (signature !== drawn) {
 					drawn = signature;
 					rows.empty();
 					for (const line of lines) {
 						const el = rows.createDiv({ cls: 'snowflake-method-freeform-face-row', attr: { 'data-from': line.from } });
-						el.createSpan({ cls: 'snowflake-method-freeform-face-row-label', text: line.label });
-						el.createSpan({ cls: 'snowflake-method-freeform-face-row-value', text: line.value });
+						if (line.label.length > 0) el.createSpan({ cls: 'snowflake-method-freeform-face-row-label', text: line.label });
+						const open = line.open;
+						if (open === undefined) {
+							el.createSpan({ cls: 'snowflake-method-freeform-face-row-value', text: line.value });
+							continue;
+						}
+						const button = el.createEl('button', {
+							cls: 'snowflake-method-freeform-face-row-value snowflake-method-freeform-face-row-open',
+							text: line.value,
+							attr: { type: 'button' },
+						});
+						button.addEventListener('click', (event) => {
+							event.stopPropagation();
+							open();
+						});
 					}
 				}
 				face.dataset.type = node.type;
@@ -457,6 +533,64 @@ function recordPainter(deps: FreeformFaceDeps): NodePainter {
 				dress,
 				settle: () => undefined,
 				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+/**
+ * A sticky note's face: the note's own tint, its first line, and on the
+ * fuller faces its words drawn as a note's are. Read here and never
+ * written: the note floats from its menu, and the float is where it is
+ * typed into.
+ */
+function stickyPainter(deps: FreeformFaceDeps): NodePainter {
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-sticky snowflake-method-sticky-tint' });
+			moreButton(face, deps, id);
+			const first = face.createDiv({ cls: 'snowflake-method-freeform-sticky-first' });
+			const shown = face.createDiv({ cls: 'snowflake-method-freeform-text' });
+			followLinks(shown, deps);
+			let rendered: string | null = null;
+			let child: Component | null = null;
+			const letChildGo = (): void => {
+				if (child === null) return;
+				deps.component.removeChild(child);
+				child = null;
+			};
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'sticky-note') return;
+				const { note } = node;
+				if (face.getAttribute('data-color') !== note.color) face.setAttribute('data-color', note.color);
+				const line = deps.label(node);
+				if (first.textContent !== line) first.setText(line);
+				if (note.body !== rendered) {
+					rendered = note.body;
+					letChildGo();
+					shown.empty();
+					if (note.body.trim().length > 0) {
+						const drawing = new Component();
+						child = drawing;
+						deps.component.addChild(drawing);
+						const box = shown.createDiv({ cls: 'snowflake-method-freeform-words markdown-rendered' });
+						void MarkdownRenderer.render(deps.app, note.body, box, deps.sourcePath(), drawing).catch((error: unknown) => {
+							console.error('Snowflake: a sticky note on the freeform canvas could not be drawn', error);
+						});
+					}
+				}
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					letChildGo();
 					face.remove();
 				},
 			};
@@ -603,11 +737,16 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const missing = missingPainter(deps);
 	const frame = framePainter(deps);
 	const plain = plainPainter(deps);
+	const sticky = stickyPainter(deps);
 	const painters: Record<string, NodePainter> = {
 		text,
 		scene,
 		character: record,
 		worldbuilding: record,
+		task: record,
+		foreshadowing: record,
+		revision: record,
+		'sticky-note': sticky,
 		missing,
 		[CANVAS_FRAME_KIND]: frame,
 	};

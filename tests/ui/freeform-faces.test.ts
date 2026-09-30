@@ -44,6 +44,10 @@ import type { FreeformFrame, FreeformPlacement } from '../../src/domain';
 import { CANVAS_FRAME_KIND, type PaintContext } from '../../src/ui/freeform-canvas-port';
 import { createFreeformFaces, type FreeformFaceDeps } from '../../src/ui/freeform-faces';
 import type { ResolvedNode } from '../../src/ui/freeform-resources';
+import type { Task } from '../../src/domain';
+import type { StickyNoteRecord } from '../../src/services';
+import type { ForeshadowingTableItem } from '../../src/ui/foreshadowing-rows';
+import type { RevisionRow } from '../../src/ui/revision-panel';
 import type { SceneCard } from '../../src/ui/scene-card';
 import type { CharacterViewModel, SceneViewModel, WorldbuildingEntityViewModel } from '../../src/ui/view-model';
 
@@ -129,6 +133,7 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 		menu: vi.fn(),
 		keepText: vi.fn(),
 		leaveText: vi.fn(),
+		openOccurrence: vi.fn(),
 		scenes,
 		...extra,
 	} satisfies FreeformFaceDeps;
@@ -159,10 +164,13 @@ describe('the painters', () => {
 		const record = made.painter('character');
 		const missing = made.painter('missing');
 		const frame = made.painter(CANVAS_FRAME_KIND);
-		const plain = made.painter('task');
-		expect(new Set([text, scene, record, missing, frame, plain]).size).toBe(6);
-		expect(made.painter('worldbuilding')).toBe(record);
-		for (const kind of ['foreshadowing', 'revision', 'sticky-note', 'file', 'link', 'pending']) {
+		const sticky = made.painter('sticky-note');
+		const plain = made.painter('file');
+		expect(new Set([text, scene, record, sticky, missing, frame, plain]).size).toBe(7);
+		for (const kind of ['worldbuilding', 'task', 'foreshadowing', 'revision']) {
+			expect(made.painter(kind), kind).toBe(record);
+		}
+		for (const kind of ['link', 'pending']) {
 			expect(made.painter(kind), kind).toBe(plain);
 		}
 		// The same painter every time it is asked for, so the engine raises a face once.
@@ -579,7 +587,7 @@ describe('the face of a kind that has none of its own yet', () => {
 	it('leaves a face standing as it is when its node has gone from the view', () => {
 		const { nodes, mount } = faces();
 		nodes.set('s1', { type: 'pending', placement: placement('s1'), of: 'task' });
-		const { face, painted } = mount('task', 's1');
+		const { face, painted } = mount('pending', 's1');
 		nodes.delete('s1');
 		expect(() => { painted.dress(context()); }).not.toThrow();
 		expect(face.querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('called s1');
@@ -748,6 +756,105 @@ describe('a missing node’s face', () => {
 			// With no name kept, nothing is said of one.
 			expect(face.querySelector('.snowflake-method-freeform-face-seen')!.classes.has('is-hidden')).toBe(true);
 		}
+		painted.unmount();
+		expect(face.parent).toBeNull();
+	});
+});
+
+describe('the records’ faces', () => {
+	const rowsOf = (face: CorkboardElement): [string, string, string | null, boolean][] =>
+		face.querySelectorAll('.snowflake-method-freeform-face-row').map((row) => [
+			row.getAttribute('data-from') ?? '',
+			row.querySelector('.snowflake-method-freeform-face-row-label')?.textContent ?? '',
+			row.querySelector('.snowflake-method-freeform-face-row-value')!.textContent,
+			row.querySelector('button') !== null,
+		]);
+	const task: Task = {
+		id: 'task-1', title: 'Finish', description: 'All of it', status: 'in-progress', priority: 'urgent', dueDate: '2026-10-01',
+		related: [{ kind: 'character', id: 'c1', name: 'Anna' }, { kind: 'scene', id: 's1', name: 'Arrival' }], archived: false, createdAt: 1, updatedAt: 1,
+	};
+	const item: ForeshadowingTableItem = {
+		id: 'fs-1', name: 'The locket', description: 'Seen early', status: 'planned', related: [], span: 2, createdAt: 1,
+		occurrences: [
+			{ id: 'oc-1', itemId: 'fs-1', role: 'plant', note: '', path: 'M/Two.md', title: 'Two', standing: 'live', from: 1, to: 2, reveal: { from: 1, to: 2 }, originalText: '' },
+			{ id: 'oc-2', itemId: 'fs-1', role: 'payoff', note: '', path: 'M/Nine.md', title: 'Nine', standing: 'unresolved', from: 1, to: 2, reveal: null, originalText: '' },
+		],
+	};
+	const row: RevisionRow = {
+		id: 'rev-1', path: 'M/One.md', title: 'One', kind: 'replace', original: 'was', proposed: 'is', comment: 'Tighter',
+		status: 'conflict', from: 1, to: 2, reveal: null,
+	};
+	const note: StickyNoteRecord = {
+		id: 'note-1', path: 'N/note.md', body: '# Remember\nthe tide', color: 'macaron-5', createdAt: 1, archived: false, revision: 'n1', stamp: '1:1', readOnly: false,
+	};
+
+	it('shows a task’s standing and its rows', () => {
+		const { nodes, mount } = faces();
+		nodes.set('p1', { type: 'task', placement: placement('p1', { height: 400 }), task });
+		const { face } = mount('task', 'p1', context({ height: 400 }));
+		expect(face.classes.has('is-record')).toBe(true);
+		expect(face.dataset).toMatchObject({ type: 'task', mode: 'extended' });
+		const status = face.querySelector('.snowflake-method-freeform-face-status')!;
+		expect(status.textContent).toBe('tasks.status.in-progress');
+		expect(status.classes.has('is-in-progress')).toBe(true);
+		expect(rowsOf(face)).toEqual([
+			['standard', 'modal.task.priority', 'tasks.priority.urgent', false],
+			['standard', 'modal.task.dueDate', '2026-10-01', false],
+			['extended', 'modal.task.description', 'All of it', false],
+			['extended', 'modal.task.related', 'Anna, Arrival', false],
+		]);
+	});
+
+	it('shows a foreshadowing’s standing, how many occurrences it has, and each as a way into the manuscript', () => {
+		const { nodes, mount, deps } = faces();
+		nodes.set('p2', { type: 'foreshadowing', placement: placement('p2', { height: 400 }), item });
+		const { face } = mount('foreshadowing', 'p2', context({ height: 400 }));
+		expect(face.querySelector('.snowflake-method-freeform-face-status')!.textContent).toBe('foreshadowing.status.planned');
+		expect(rowsOf(face)).toEqual([
+			['standard', 'modal.foreshadowing.description', 'Seen early', false],
+			['standard', '', 'freeformCanvas.face.occurrences', false],
+			['extended', 'foreshadowing.role.plant', 'Two', true],
+			['extended', 'foreshadowing.role.payoff', 'Nine', true],
+		]);
+		const buttons = face.querySelectorAll('button').filter((button) => button.classes.has('snowflake-method-freeform-face-row-open'));
+		const told = fire(buttons[1]!, 'click');
+		expect(told.stopped).toBe(1);
+		expect(deps.openOccurrence).toHaveBeenCalledWith(item, item.occurrences[1]);
+		// One occurrence is said in the singular.
+		nodes.set('p2', { type: 'foreshadowing', placement: placement('p2', { height: 400 }), item: { ...item, occurrences: item.occurrences.slice(0, 1) } });
+		mount('foreshadowing', 'p2', context({ height: 400 }));
+	});
+
+	it('shows a revision’s conflict and its words, and a sticky note’s tint and words', () => {
+		const { nodes, mount } = faces();
+		nodes.set('p3', { type: 'revision', placement: placement('p3', { height: 400 }), row });
+		const revision = mount('revision', 'p3', context({ height: 400 }));
+		const status = revision.face.querySelector('.snowflake-method-freeform-face-status')!;
+		expect(status.textContent).toBe('manuscript.revision.conflict');
+		expect(status.classes.has('is-conflict')).toBe(true);
+		expect(rowsOf(revision.face)).toEqual([
+			['standard', 'revisionTable.original', 'was', false],
+			['standard', 'revisionTable.proposed', 'is', false],
+			['extended', 'revisionTable.comment', 'Tighter', false],
+		]);
+		nodes.set('p3', { type: 'revision', placement: placement('p3', { height: 400 }), row: { ...row, status: 'live' } });
+		revision.painted.dress(context({ height: 400 }));
+		expect(status.classes.has('is-hidden')).toBe(true);
+		expect(status.classes.has('is-conflict')).toBe(false);
+		nodes.set('p4', { type: 'sticky-note', placement: placement('p4', { height: 200 }), note });
+		const { face, painted } = mount('sticky-note', 'p4', context({ height: 200 }));
+		expect(face.classes.has('is-sticky')).toBe(true);
+		expect(face.classes.has('snowflake-method-sticky-tint')).toBe(true);
+		expect(face.getAttribute('data-color')).toBe('macaron-5');
+		expect(face.querySelector('.snowflake-method-freeform-sticky-first')!.textContent).toBe('called p4');
+		expect(renders.map((entry) => entry.words)).toEqual(['# Remember\nthe tide']);
+		// Dressed again over the same words, nothing is drawn again; over other words, they are.
+		painted.dress(context({ height: 200 }));
+		expect(renders).toHaveLength(1);
+		nodes.set('p4', { type: 'sticky-note', placement: placement('p4', { height: 200 }), note: { ...note, body: 'Other', color: 'macaron-1' } });
+		painted.dress(context({ height: 200 }));
+		expect(renders).toHaveLength(2);
+		expect(face.getAttribute('data-color')).toBe('macaron-1');
 		painted.unmount();
 		expect(face.parent).toBeNull();
 	});
