@@ -16068,6 +16068,45 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: 0 0 0 3px rgba(var(--color-yellow-rgb, 224, 172, 0), 0.6);
 }
 
+/* From far off a node shows its symbol and its name alone, drawn large
+   enough to be read at that distance and clipped to its box. */
+.snowflake-method-freeform-face.is-far {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-3);
+	font-size: calc(var(--font-ui-medium) * 2.2);
+	font-weight: var(--font-semibold);
+	line-height: 1.2;
+	color: var(--text-normal);
+}
+
+.snowflake-method-freeform-face.is-far .snowflake-method-freeform-face-icon {
+	flex: 0 0 auto;
+	margin-inline-end: 0;
+}
+
+.snowflake-method-freeform-face.is-far .snowflake-method-freeform-face-icon svg {
+	width: calc(var(--icon-m) * 2);
+	height: calc(var(--icon-m) * 2);
+}
+
+.snowflake-method-freeform-face.is-far .snowflake-method-freeform-face-name {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+/* The plane is moved by its transform alone, so it is given a layer of its
+   own: without one, every step of a pan repainted every node in sight
+   (14 ms of paint a frame with a thousand far faces, measured on Pressure),
+   and with one the compositor slides the layer and paints nothing. */
+.snowflake-method-freeform-canvas .react-flow__viewport {
+	will-change: transform;
+}
+
 /* The minimap is put away by a button laid over its own corner. */
 .snowflake-method-freeform-minimap-collapse {
 	position: absolute;

@@ -19,7 +19,7 @@
 import { Component, Keymap, MarkdownRenderer, setIcon, setTooltip, type App } from 'obsidian';
 
 import { PROGRESS_STATUSES, type FreeformFrame } from '../domain';
-import { CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
+import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
 import { faceKindOf, faceModeOf, type FreeformFaceMode } from './freeform-layout';
 import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
@@ -778,6 +778,43 @@ function missingPainter(deps: FreeformFaceDeps): NodePainter {
 }
 
 /**
+ * The face a node shows from far off: its symbol and its name, and nothing
+ * else, since nothing else could be read at that distance. It carries no
+ * button, since none could be pressed there either; the node's menu is still
+ * the pointer's and the keyboard's by way of the node itself.
+ */
+function farPainter(deps: FreeformFaceDeps): NodePainter {
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-far' });
+			const symbol = face.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
+			const name = face.createSpan({ cls: 'snowflake-method-freeform-face-name' });
+			let shown = '';
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node === undefined) return;
+				const icon = deps.icon(node);
+				if (icon !== shown) {
+					shown = icon;
+					setIcon(symbol, icon);
+				}
+				const words = deps.label(node);
+				if (name.textContent !== words) name.setText(words);
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+/**
  * A frame's face: its title at its head, and the tint it wears, which is
  * one of the sticky notes' own macarons and painted from the same rules.
  */
@@ -863,6 +900,7 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const sticky = stickyPainter(deps);
 	const file = filePainter(deps);
 	const link = linkPainter(deps);
+	const far = farPainter(deps);
 	const painters: Record<string, NodePainter> = {
 		text,
 		scene,
@@ -876,6 +914,7 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 		link,
 		missing,
 		[CANVAS_FRAME_KIND]: frame,
+		[CANVAS_FAR_KIND]: far,
 	};
 	return {
 		painter: (kind) => painters[kind] ?? plain,

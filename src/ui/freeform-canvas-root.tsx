@@ -57,6 +57,7 @@ import { createRoot } from 'react-dom/client';
 
 import { CANVAS_EDGE_Z, canvasDepth, handleBoxes } from './freeform-canvas-model';
 import {
+	CANVAS_FAR_KIND,
 	CANVAS_FRAME_KIND,
 	CANVAS_SIDES,
 	type CanvasEdge,
@@ -77,7 +78,14 @@ import {
 type FlowNode = EngineNode<{ node: CanvasNode }, 'freeform'>;
 type FlowEdge = EngineEdge<{ edge: CanvasEdge }, 'freeform'>;
 
-/** How many nodes or lines a canvas draws whole before it draws only what is in sight. */
+/**
+ * How many nodes or lines a canvas draws whole before it draws only what is
+ * in sight. Nearer than the far band a face costs enough to draw that only
+ * the ones in sight are, and a pan over 500 costs 3 ms a frame that way.
+ * From far off every face is its barest and nearly all are in sight, so all
+ * are drawn: dropping and raising them at the edges as the plane moved cost
+ * more than they do standing, measured at 500 and 1,000.
+ */
 const WHOLE_NODES = 200;
 const WHOLE_EDGES = 400;
 
@@ -278,6 +286,9 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 	const context: PaintContext = { selected: selected === true, readOnly, band, width, height };
 	const held = useRef(context);
 	held.current = context;
+	// From far off every node but a frame is dressed by the far painter: its
+	// face is taken down, and raised again as the canvas comes nearer.
+	const kind = band === 'far' && node.kind !== CANVAS_FRAME_KIND ? CANVAS_FAR_KIND : node.kind;
 
 	useLayoutEffect(() => {
 		const host = body.current;
@@ -302,7 +313,7 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 		};
 		let painted: PaintedNode;
 		try {
-			painted = deps.port.painter(node.kind).mount(host, id, held.current);
+			painted = deps.port.painter(kind).mount(host, id, held.current);
 		} catch (error) {
 			deps.port.failed(error);
 			return letGo;
@@ -319,9 +330,9 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 				painted.unmount();
 			}
 		};
-		// The painter is chosen by the node's kind alone; how the face is
-		// dressed follows in the effect below.
-	}, [deps, id, node.kind]);
+		// The painter is chosen by the node's kind and by how far off the
+		// canvas is looked at from; how the face is dressed follows in the effect below.
+	}, [deps, id, kind]);
 
 	useLayoutEffect(() => {
 		face.current?.dress(held.current);
@@ -599,7 +610,7 @@ function Flow(): ReactElement {
 				zIndexMode="manual"
 				elevateNodesOnSelect={false}
 				elevateEdgesOnSelect={false}
-				onlyRenderVisibleElements={nodes.length > WHOLE_NODES || edges.length > WHOLE_EDGES}
+				onlyRenderVisibleElements={snapshot.band !== 'far' && (nodes.length > WHOLE_NODES || edges.length > WHOLE_EDGES)}
 				nodesDraggable={!interaction.readOnly}
 				nodesConnectable={!interaction.readOnly}
 				edgesReconnectable={!interaction.readOnly}

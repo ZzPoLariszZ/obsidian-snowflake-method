@@ -37,6 +37,12 @@ export type ZoomBand = 'far' | 'compact' | 'standard' | 'extended';
 
 /** The kind every frame is drawn as; every other kind names a painter of the workspace's. */
 export const CANVAS_FRAME_KIND = 'frame';
+/**
+ * The painter every node but a frame is dressed by while the canvas is
+ * looked at from far off: its symbol and its name alone, in place of a face
+ * that could not be read at that distance and would cost as much to draw.
+ */
+export const CANVAS_FAR_KIND = 'far';
 
 export interface CanvasNode {
 	id: string;

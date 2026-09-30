@@ -41,7 +41,7 @@ vi.mock('obsidian', async (importOriginal) => {
 import { Component, type App } from 'obsidian';
 
 import type { FreeformFrame, FreeformPlacement } from '../../src/domain';
-import { CANVAS_FRAME_KIND, type PaintContext } from '../../src/ui/freeform-canvas-port';
+import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type PaintContext } from '../../src/ui/freeform-canvas-port';
 import { createFreeformFaces, type FreeformFaceDeps } from '../../src/ui/freeform-faces';
 import type { ResolvedNode } from '../../src/ui/freeform-resources';
 import type { Task } from '../../src/domain';
@@ -176,7 +176,8 @@ describe('the painters', () => {
 		const file = made.painter('file');
 		const link = made.painter('link');
 		const plain = made.painter('pending');
-		expect(new Set([text, scene, record, sticky, file, link, missing, frame, plain]).size).toBe(9);
+		const far = made.painter(CANVAS_FAR_KIND);
+		expect(new Set([text, scene, record, sticky, file, link, missing, frame, plain, far]).size).toBe(10);
 		for (const kind of ['worldbuilding', 'task', 'foreshadowing', 'revision']) {
 			expect(made.painter(kind), kind).toBe(record);
 		}
@@ -534,6 +535,36 @@ describe('the way to a node’s menu', () => {
 		nodes.set('s1', { type: 'pending', placement: placement('s1'), of: 'task' });
 		expect(mount('text', 't1').face.children[0]!.classes.has('snowflake-method-freeform-node-more')).toBe(true);
 		expect(mount('task', 's1').face.children[0]!.classes.has('snowflake-method-freeform-node-more')).toBe(true);
+	});
+});
+
+describe('a node’s face from far off', () => {
+	it('shows the node’s symbol and its name alone, with no button, and follows the node as it changes', () => {
+		const { nodes, deps, mount } = faces();
+		nodes.set('t1', textNode('t1', 'First words\n\nand more'));
+		const { face, painted } = mount(CANVAS_FAR_KIND, 't1', context({ band: 'far' }));
+		expect(face.classes.has('is-far')).toBe(true);
+		expect(face.querySelector('.snowflake-method-freeform-node-more')).toBeNull();
+		expect(face.querySelector('.snowflake-method-freeform-face-name')?.textContent).toBe('called t1');
+		expect(icons[icons.length - 1]).toMatchObject({ icon: 'icon-text' });
+		expect(deps.icon).toHaveBeenCalledTimes(1);
+		// Dressed again as the same, nothing is redrawn; as another, its symbol and its name follow.
+		painted.dress(context({ band: 'far', selected: true }));
+		expect(icons).toHaveLength(1);
+		expect(face.classes.has('is-selected')).toBe(true);
+		nodes.set('t1', { type: 'link', placement: textNode('t1', '').placement, url: 'https://a.example', label: 'A', host: 'a.example' });
+		vi.mocked(deps.label).mockImplementation(() => 'renamed');
+		painted.dress(context({ band: 'far' }));
+		expect(icons[icons.length - 1]).toMatchObject({ icon: 'icon-link' });
+		expect(face.querySelector('.snowflake-method-freeform-face-name')?.textContent).toBe('renamed');
+		expect(face.classes.has('is-selected')).toBe(false);
+		// A node that has gone leaves the face as it was; taken down, nothing is left.
+		nodes.delete('t1');
+		painted.dress(context({ band: 'far' }));
+		expect(face.querySelector('.snowflake-method-freeform-face-name')?.textContent).toBe('renamed');
+		painted.settle();
+		painted.unmount();
+		expect(face.parent).toBeNull();
 	});
 });
 

@@ -531,8 +531,8 @@ describe('the canvas engine on a document', () => {
 		expect(port.viewportChanged).toHaveBeenCalledTimes(moved);
 	});
 
-	it('changes every face together as the canvas is looked at from further off', async () => {
-		const { handle, raised, tell, faceOf } = canvas();
+	it('changes every face together as the canvas is looked at from further off, and from far off dresses each by the far painter', async () => {
+		const { handle, port, raised, tell, faceOf } = canvas();
 		await raised();
 		tell(() => {
 			handle.setScene({ nodes: [node('a'), node('b', { x: 300 })], edges: [] });
@@ -542,10 +542,22 @@ describe('the canvas engine on a document', () => {
 		});
 		expect(last(faceOf('a')[0]!.dressed)).toMatchObject({ band: 'compact' });
 		expect(last(faceOf('b')[0]!.dressed)).toMatchObject({ band: 'compact' });
+		// Further off still, the face is taken down, its words kept, and the far painter dresses the node.
 		tell(() => {
 			handle.moveViewport({ kind: 'exact', viewport: { x: 0, y: 0, zoom: 0.2 } });
 		});
-		expect(last(faceOf('a')[0]!.dressed)).toMatchObject({ band: 'far' });
+		expect(faceOf('a')[0]).toMatchObject({ kind: 'text', settled: 1, unmounted: 1 });
+		expect(faceOf('a')[1]).toMatchObject({ kind: 'far', unmounted: 0 });
+		expect(last(faceOf('a')[1]!.dressed)).toMatchObject({ band: 'far' });
+		expect(faceOf('b').map((face) => face.kind)).toEqual(['text', 'far']);
+		// Nearer again, the node's own painter is back.
+		tell(() => {
+			handle.moveViewport({ kind: 'exact', viewport: { x: 0, y: 0, zoom: 0.5 } });
+		});
+		expect(faceOf('a')[1]).toMatchObject({ kind: 'far', settled: 1, unmounted: 1 });
+		expect(faceOf('a')[2]).toMatchObject({ kind: 'text', unmounted: 0 });
+		expect(last(faceOf('a')[2]!.dressed)).toMatchObject({ band: 'standard' });
+		expect(port.painter).toHaveBeenCalledWith('far');
 	});
 
 	it('keeps where it is to look from until it has a size to look by, and raises no engine on a canvas that is not shown', async () => {
