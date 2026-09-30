@@ -68,6 +68,8 @@ export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
 		case 'foreshadowing':
 		case 'revision':
 		case 'sticky-note':
+		case 'file':
+		case 'link':
 			return 'record';
 		case 'text':
 			return 'text';

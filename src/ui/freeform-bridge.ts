@@ -48,6 +48,8 @@ export interface FreeformBridge {
 	readResources: (wanted: FreeformResourceRequest) => Promise<FreeformResources | null>;
 	/** Fires for the tasks and the sticky notes; threads, revisions and files arrive with the view's own refresh. */
 	subscribeResources: (listener: () => void) => () => void;
+	/** Every file under the project's root but the plugin's own, by its path from the root, for the form that places one. */
+	listFiles: () => Promise<{ path: string; name: string }[]>;
 	/** A fresh id for something about to be placed, so the canvas shows it under the id the file will keep. */
 	mintId: (kind: 'placement' | 'frame' | 'edge') => string;
 	/** A new view with nothing on it; its id, or null on a refusal. */
@@ -82,6 +84,8 @@ export type FreeformHost = Pick<
 	| 'foreshadowingTable'
 	| 'revisionTable'
 	| 'stickyNotes'
+	| 'openProjectFile'
+	| 'openExternalLink'
 >;
 
 export interface FreeformControls {

@@ -124,7 +124,7 @@ import {
 } from '../../src/domain';
 import type { FreeformTransacted, FreeformViewWrite, StickyNoteRecord } from '../../src/services';
 import type { ForeshadowingTableItem } from '../../src/ui/foreshadowing-rows';
-import type { FreeformResourceRequest, FreeformResources } from '../../src/ui/freeform-resources';
+import type { FreeformFileReading, FreeformResourceRequest, FreeformResources } from '../../src/ui/freeform-resources';
 import type { RevisionRow } from '../../src/ui/revision-panel';
 import { renderFreeform } from '../../src/ui/freeform';
 import type { FreeformBridge, FreeformControls } from '../../src/ui/freeform-bridge';
@@ -146,6 +146,7 @@ import {
 	FreeformEdgeFormModal,
 	FreeformFrameFormModal,
 	FreeformGeometryModal,
+	FreeformLinkFormModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
@@ -346,6 +347,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 	const listeners = new Set<() => void>();
 	/** The records the bridge reads for a view; nothing until a test lays some down. */
 	let resourcesHeld: FreeformResources | null = null;
+	/** The project's files, as the bridge lists them for the form. */
+	let filesHeld: { path: string; name: string }[] = [];
 	const resourceListeners = new Set<() => void>();
 	let serial = 0;
 	let now = 10;
@@ -368,6 +371,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			return () => { listeners.delete(listener); };
 		}),
 		readResources: vi.fn(async (_wanted: FreeformResourceRequest): Promise<FreeformResources | null> => resourcesHeld),
+		listFiles: vi.fn(async () => filesHeld),
 		subscribeResources: vi.fn((listener: () => void) => {
 			resourceListeners.add(listener);
 			return () => { resourceListeners.delete(listener); };
@@ -437,6 +441,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		foreshadowingTable: vi.fn(() => foreshadowingTable),
 		revisionTable: vi.fn(() => revisionTable),
 		stickyNotes: vi.fn(() => stickyNotes),
+		openProjectFile: vi.fn((_path: string) => Promise.resolve()),
+		openExternalLink: vi.fn((_url: string, _from: HTMLElement) => undefined),
 	};
 	const canvas = plainCanvas();
 	let handle: ReturnType<typeof renderFreeform>;
@@ -448,7 +454,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 	const chords: { modifiers: string[]; key: string; listener: () => boolean | undefined; heard: boolean }[] = [];
 	const component = new Component();
 	const controls = {
-		app: {},
+		// A file's face asks the vault for the file it draws; here the vault has none.
+		app: { vault: { getFileByPath: () => null, getResourcePath: () => '' } },
 		host,
 		t: (key: string, vars?: Record<string, string | number>): string =>
 			vars === undefined ? key : `${key}(${Object.entries(vars).map(([name, value]) => `${name}=${String(value)}`).join(',')})`,
@@ -492,6 +499,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		refuse: (came: FreeformTransacted['came'] | null) => { refusal = came; },
 		/** The records the bridge reads from now on; a ring says a family moved. */
 		resources: (read: FreeformResources | null) => { resourcesHeld = read; },
+		files: (files: { path: string; name: string }[]) => { filesHeld = files; },
 		ring: () => { for (const listener of resourceListeners) listener(); },
 		foreshadowingTable, revisionTable, stickyNotes,
 		fail: (on: boolean) => { failing = on; },
@@ -703,7 +711,8 @@ describe('the freeform workspace', () => {
 			['t2', 'text', 'Second'],
 			// A scene is called what the project calls it now, not what the view last kept, with the kind of note it is.
 			['s1', 'scene', 'freeformCanvas.node.name(kind=form.group.scene,name=Arrival)'],
-			['l1', 'link', 'example.com'],
+			// A link with no label is called by its host.
+			['l1', 'link', 'freeformCanvas.node.name(kind=freeformCanvas.type.link,name=example.com)'],
 		]);
 		expect(fixture.node('t1').frame).toBe('f1');
 		expect(fixture.scene().nodes.every((node) => node.connectable && !node.locked)).toBe(true);
@@ -1021,7 +1030,7 @@ describe('text nodes', () => {
 		await settle();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 1_000, y: 2_000 } })!;
 		expect(menu.map((item) => item.title)).toEqual([
-			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
+			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.link.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
 		]);
 		menu[1]!.click();
 		const second = fixture.nodes()[1]!;
@@ -1765,6 +1774,8 @@ describe('nodes added by type', () => {
 			['foreshadowing', 'freeformCanvas.type.foreshadowing', 'task'],
 			['revision', 'freeformCanvas.type.revision', 'task'],
 			['sticky-note', 'freeformCanvas.type.stickyNote', 'task'],
+			['file', 'freeformCanvas.type.file', 'file'],
+			['link', 'freeformCanvas.type.link', 'file'],
 			['text', 'freeformCanvas.type.text', 'canvas'],
 			['frame', 'freeformCanvas.type.frame', 'canvas'],
 		]);
@@ -2309,6 +2320,109 @@ describe('records on the canvas', () => {
 	});
 });
 
+describe('files and links', () => {
+	const fileReading = (relativePath: string, kind: FreeformFileReading['kind']): FreeformFileReading => ({
+		path: `Novel/${relativePath}`, relativePath, name: relativePath.slice(relativePath.lastIndexOf('/') + 1).replace(/\.[^.]+$/u, ''),
+		extension: relativePath.slice(relativePath.lastIndexOf('.') + 1), kind, stamp: '1:1',
+	});
+	const filesView = (): FreeformView => view('a', {
+		placements: [
+			{ ...text('f1', ''), resource: { type: 'file', path: 'Material/map.png' } },
+			{ ...text('f2', ''), resource: { type: 'file', path: 'Material/gone.pdf' }, x: 300 },
+			link('l1', { x: 600 }),
+			link('l2', { x: 900, resource: { type: 'link', url: 'https://example.org/read', label: 'Read this' } }),
+		],
+	});
+	const withFiles = async () => {
+		const fixture = workspace([filesView()]);
+		fixture.resources(recordsRead({ tasks: null, foreshadowing: null, revisions: null, stickyNotes: null, files: new Map([['Material/map.png', fileReading('Material/map.png', 'image')]]) }));
+		fixture.files([{ path: 'Material/map.png', name: 'map' }, { path: '50_Manuscript/Chapter 1.md', name: 'Chapter 1' }]);
+		await settle();
+		return fixture;
+	};
+
+	it('asks for the files the view places by their paths, and shows a file as the vault has it, or as missing', async () => {
+		const fixture = await withFiles();
+		const wanted = fixture.bridge.readResources.mock.calls[0]![0];
+		expect([...wanted.types]).toEqual(['file']);
+		expect(wanted.filePaths).toEqual(['Material/map.png', 'Material/gone.pdf']);
+		expect(fixture.scene().nodes.map((node) => [node.id, node.kind, node.label])).toEqual([
+			['f1', 'file', 'freeformCanvas.node.name(kind=freeformCanvas.type.file,name=map)'],
+			['f2', 'missing', 'gone.pdf'],
+			['l1', 'link', 'freeformCanvas.node.name(kind=freeformCanvas.type.link,name=example.com)'],
+			['l2', 'link', 'freeformCanvas.node.name(kind=freeformCanvas.type.link,name=Read this)'],
+		]);
+		expect(fixture.face('f1').classes.has('is-file')).toBe(true);
+		expect(fixture.face('l1').classes.has('is-link')).toBe(true);
+	});
+
+	it('opens a file where the app shows it, and a link through the app, on a press twice and from the menu', async () => {
+		const fixture = await withFiles();
+		fixture.port().open({ kind: 'node', id: 'f1' }, {} as MouseEvent);
+		expect(fixture.host.openProjectFile).toHaveBeenCalledWith('Novel/Material/map.png');
+		fixture.port().open({ kind: 'node', id: 'l2' }, {} as MouseEvent);
+		expect(fixture.host.openExternalLink).toHaveBeenCalledWith('https://example.org/read', fixture.root);
+		const fileMenu = fixture.menuAt({ kind: 'node', id: 'f1' })!;
+		expect(fileMenu[0]!.title).toBe('common.open');
+		fileMenu[0]!.click();
+		expect(fixture.host.openProjectFile).toHaveBeenCalledTimes(2);
+		// A refusal from the app is said.
+		fixture.host.openExternalLink.mockImplementation(() => { throw new Error('freeformCanvas.open.linkRefused'); });
+		fixture.menuAt({ kind: 'node', id: 'l1' })![0]!.click();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.open.linkRefused');
+		// A file that has gone opens nothing.
+		fixture.port().open({ kind: 'node', id: 'f2' }, {} as MouseEvent);
+		expect(fixture.host.openProjectFile).toHaveBeenCalledTimes(2);
+	});
+
+	it('copies a link’s address, and edits its address and label through its form', async () => {
+		const fixture = await withFiles();
+		const writeText = vi.fn(() => Promise.resolve());
+		Object.assign(fixture.dom.win, { navigator: { clipboard: { writeText } } });
+		fixture.menuAt({ kind: 'node', id: 'l2' })![1]!.click();
+		expect(writeText).toHaveBeenCalledWith('https://example.org/read');
+		const forms = watch(FreeformLinkFormModal);
+		fixture.menuAt({ kind: 'node', id: 'l2' })![2]!.click();
+		expect(forms).toHaveLength(1);
+		await submit(forms[0], { url: 'https://example.org/reread', label: 'Reread' });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'link', id: 'l2', url: 'https://example.org/reread', label: 'Reread' }]);
+		expect(fixture.node('l2').label).toBe('freeformCanvas.node.name(kind=freeformCanvas.type.link,name=Reread)');
+		fixture.refuse('refused');
+		fixture.menuAt({ kind: 'node', id: 'l2' })![2]!.click();
+		await expect(submit(forms[1], { url: 'https://example.org/x', label: '' })).rejects.toThrow('freeformCanvas.link.refused');
+	});
+
+	it('adds a link and a file through the form, the files listed by the bridge with whether the view holds them', async () => {
+		const fixture = await withFiles();
+		const forms = watch(FreeformNodeFormModal);
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((item) => item.title === 'freeformCanvas.link.add')!.click();
+		await settle();
+		const options = (forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options;
+		expect(options.initialType).toBe('link');
+		expect(options.labelLimit).toBe(FREEFORM_LIMITS.labelLength);
+		expect(options.candidates('file')).toEqual([
+			{ id: 'Material/map.png', name: 'Material/map.png', onView: true },
+			{ id: '50_Manuscript/Chapter 1.md', name: '50_Manuscript/Chapter 1.md', onView: false },
+		]);
+		await submit(forms[0], { type: 'link', link: { url: 'https://example.net/', label: '' } });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added)).toMatchObject({ kind: 'link', x: 2_000 - FREEFORM_SIZE.width / 2, label: 'freeformCanvas.node.name(kind=freeformCanvas.type.link,name=example.net)' });
+		expect(fixture.canvas.selection).toEqual({ nodes: [added], edges: [] });
+		await settle();
+		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === added)?.resource).toEqual({ type: 'link', url: 'https://example.net/', label: '' });
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
+		await submit(forms[1], { type: 'entity', kind: 'file', nodes: [{ id: '50_Manuscript/Chapter 1.md', name: '50_Manuscript/Chapter 1.md' }] });
+		await settle();
+		const chapter = fixture.viewHeld('a').placements[fixture.viewHeld('a').placements.length - 1]!;
+		expect(chapter.resource).toEqual({ type: 'file', path: '50_Manuscript/Chapter 1.md' });
+		// The view now places a file the last reading did not hold, so the files are read again for it.
+		const last = fixture.bridge.readResources.mock.calls[fixture.bridge.readResources.mock.calls.length - 1]![0];
+		expect(last.filePaths).toContain('50_Manuscript/Chapter 1.md');
+	});
+});
+
 describe('lines from node to node', () => {
 	const edgesHeld = (fixture: Fixture) => fixture.viewHeld('a').edges;
 	const pickFrom = (form: unknown) => form as { times: PickerOption[]; pick: (option: PickerOption) => void };
@@ -2338,7 +2452,7 @@ describe('lines from node to node', () => {
 		const pick = pickFrom(picks[0]);
 		// Every other node of the view, by what it is called, the node itself left out.
 		expect(pick.times.map((option) => [option.value, option.label])).toEqual([
-			['f1', 'Opening'], ['t1', 'First words'], ['t2', 'Second'], ['l1', 'example.com'],
+			['f1', 'Opening'], ['t1', 'First words'], ['t2', 'Second'], ['l1', 'freeformCanvas.node.name(kind=freeformCanvas.type.link,name=example.com)'],
 		]);
 		pick.pick({ value: 'f1', label: 'Opening' });
 		await settle();
@@ -2444,6 +2558,8 @@ const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geomet
 const FRAME_ITEMS = ['freeformCanvas.frame.group', 'freeformCanvas.frame.moveTo'];
 /** What a frame's own menu offers first. */
 const OWN_FRAME_ITEMS = ['freeformCanvas.frame.edit', 'freeformCanvas.frame.selectContents', 'freeformCanvas.frame.fitContents'];
+/** What a link's menu offers first. */
+const LINK_ITEMS = ['freeformCanvas.link.open', 'freeformCanvas.link.copy', 'freeformCanvas.link.edit'];
 const EDGE_ITEMS = [
 	'freeformCanvas.edge.edit', 'freeformCanvas.edge.reverse', 'freeformCanvas.edge.changeStart', 'freeformCanvas.edge.changeEnd',
 	'freeformCanvas.edge.goStart', 'freeformCanvas.edge.goEnd', 'freeformCanvas.edge.delete',
@@ -2458,9 +2574,9 @@ describe('the menus', () => {
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
 			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
-		// A link opens nothing yet; a frame has no face to choose and is removed as a frame, its nodes kept.
+		// A link opens, copies and edits; a frame has no face to choose and is removed as a frame, its nodes kept.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
 			...OWN_FRAME_ITEMS, ...SINGLE_ITEMS, 'freeformCanvas.frame.remove',
@@ -2504,18 +2620,18 @@ describe('the menus', () => {
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
 		]);
-		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, true, false, false]);
+		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false]);
 	});
 
 	it('looks about from the ground’s menu', async () => {
 		const fixture = await laid();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
-		menu[3]!.click();
 		menu[4]!.click();
+		menu[5]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
-		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, false, true, false]);
+		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, false, false, true, false]);
 	});
 
 	it('opens a node’s menu from the button every face carries, under the pointer or by the button', async () => {
@@ -2526,7 +2642,7 @@ describe('the menus', () => {
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });

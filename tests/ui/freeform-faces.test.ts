@@ -46,6 +46,7 @@ import { createFreeformFaces, type FreeformFaceDeps } from '../../src/ui/freefor
 import type { ResolvedNode } from '../../src/ui/freeform-resources';
 import type { Task } from '../../src/domain';
 import type { StickyNoteRecord } from '../../src/services';
+import type { FreeformFileReading } from '../../src/ui/freeform-resources';
 import type { ForeshadowingTableItem } from '../../src/ui/foreshadowing-rows';
 import type { RevisionRow } from '../../src/ui/revision-panel';
 import type { SceneCard } from '../../src/ui/scene-card';
@@ -119,7 +120,14 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 		}),
 	};
 	const deps = {
-		app: { workspace: { openLinkText: vi.fn(() => Promise.resolve()) } } as unknown as App,
+		app: {
+			workspace: { openLinkText: vi.fn(() => Promise.resolve()) },
+			// The vault holds the one picture, and serves it by its path.
+			vault: {
+				getFileByPath: (path: string) => (path === 'Novel/Material/map.png' ? { path } : null),
+				getResourcePath: (file: { path: string }) => `app://vault/${file.path}`,
+			},
+		} as unknown as App,
 		t: (key: string) => key,
 		component,
 		sourcePath: () => 'Novel',
@@ -165,13 +173,12 @@ describe('the painters', () => {
 		const missing = made.painter('missing');
 		const frame = made.painter(CANVAS_FRAME_KIND);
 		const sticky = made.painter('sticky-note');
-		const plain = made.painter('file');
-		expect(new Set([text, scene, record, sticky, missing, frame, plain]).size).toBe(7);
+		const file = made.painter('file');
+		const link = made.painter('link');
+		const plain = made.painter('pending');
+		expect(new Set([text, scene, record, sticky, file, link, missing, frame, plain]).size).toBe(9);
 		for (const kind of ['worldbuilding', 'task', 'foreshadowing', 'revision']) {
 			expect(made.painter(kind), kind).toBe(record);
-		}
-		for (const kind of ['link', 'pending']) {
-			expect(made.painter(kind), kind).toBe(plain);
 		}
 		// The same painter every time it is asked for, so the engine raises a face once.
 		expect(made.painter('text')).toBe(text);
@@ -857,5 +864,68 @@ describe('the records’ faces', () => {
 		expect(face.getAttribute('data-color')).toBe('macaron-1');
 		painted.unmount();
 		expect(face.parent).toBeNull();
+	});
+});
+
+describe('a file’s face and a link’s', () => {
+	const file = (relativePath: string, kind: FreeformFileReading['kind'], stamp = '1:1'): FreeformFileReading => ({
+		path: `Novel/${relativePath}`, relativePath, name: relativePath.slice(relativePath.lastIndexOf('/') + 1).replace(/\.[^.]+$/u, ''),
+		extension: relativePath.slice(relativePath.lastIndexOf('.') + 1), kind, stamp,
+	});
+
+	it('shows a file’s symbol, name and folder, and draws a picture from the vault once per file', () => {
+		const { nodes, mount } = faces();
+		nodes.set('f1', { type: 'file', placement: placement('f1', { height: 300 }), file: file('Material/map.png', 'image') });
+		const { face, painted } = mount('file', 'f1', context({ height: 300 }));
+		expect(face.classes.has('is-file')).toBe(true);
+		expect(face.dataset).toMatchObject({ kind: 'image', mode: 'standard' });
+		// The way to the menu stands at the head's end; the file's own symbol is drawn as the face is dressed.
+		expect(icons.map((entry) => entry.icon)).toEqual(['ellipsis', 'image']);
+		// The fake reads no descendant selector: the head holds the way to the menu.
+		expect(face.querySelector('.snowflake-method-freeform-face-head')!.querySelector('.snowflake-method-freeform-node-more')).not.toBeNull();
+		expect(face.querySelector('.snowflake-method-freeform-file-folder')!.textContent).toBe('Material');
+		const picture = face.querySelector('img')!;
+		expect(picture.getAttribute('src')).toBe('app://vault/Novel/Material/map.png');
+		expect(picture.getAttribute('alt')).toBe('map');
+		painted.dress(context({ height: 300 }));
+		expect(face.querySelectorAll('img')).toHaveLength(1);
+		// Seen anew by the vault, it is drawn anew; a file at the root stands in no folder.
+		nodes.set('f1', { type: 'file', placement: placement('f1', { height: 300 }), file: file('Material/map.png', 'image', '2:2') });
+		painted.dress(context({ height: 300 }));
+		expect(face.querySelectorAll('img')).toHaveLength(1);
+		nodes.set('f1', { type: 'file', placement: placement('f1', { height: 300 }), file: file('notes.zip', 'other') });
+		painted.dress(context({ height: 300 }));
+		expect(face.querySelector('.snowflake-method-freeform-file-folder')!.classes.has('is-hidden')).toBe(true);
+		expect(face.querySelector('img')).toBeNull();
+		expect(icons[icons.length - 1]!.icon).toBe('file');
+		painted.unmount();
+		expect(face.parent).toBeNull();
+	});
+
+	it('draws a sound and a video with their controls, and nothing for a file the vault no longer serves', () => {
+		const { nodes, mount } = faces();
+		nodes.set('f2', { type: 'file', placement: placement('f2'), file: file('Material/song.mp3', 'audio') });
+		const sound = mount('file', 'f2');
+		// The vault serves only the picture: a file it does not hold draws nothing, and says nothing wrong.
+		expect(sound.face.querySelector('audio')).toBeNull();
+		nodes.set('f3', { type: 'file', placement: placement('f3'), file: { ...file('Material/map.png', 'video'), kind: 'video' } });
+		const video = mount('file', 'f3');
+		expect(video.face.querySelector('video')?.getAttribute('controls')).toBe('');
+		expect(video.face.querySelector('video')?.getAttribute('src')).toBe('app://vault/Novel/Material/map.png');
+	});
+
+	it('shows a link by what it is called, and the address whole beneath', () => {
+		const { nodes, mount } = faces();
+		nodes.set('l1', { type: 'link', placement: placement('l1'), url: 'https://example.org/read', label: 'Read this', host: 'example.org' });
+		const { face, painted } = mount('link', 'l1');
+		expect(face.classes.has('is-link')).toBe(true);
+		// The symbol is drawn first, since the way to the menu stands at the head's end here.
+		expect(icons.map((entry) => entry.icon)).toEqual(['link', 'ellipsis']);
+		expect(face.querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('called l1');
+		expect(face.querySelector('.snowflake-method-freeform-link-address')!.textContent).toBe('https://example.org/read');
+		nodes.set('l1', { type: 'link', placement: placement('l1'), url: 'https://example.org/other', label: '', host: 'example.org' });
+		painted.dress(context({ selected: true }));
+		expect(face.querySelector('.snowflake-method-freeform-link-address')!.textContent).toBe('https://example.org/other');
+		expect(face.classes.has('is-selected')).toBe(true);
 	});
 });

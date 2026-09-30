@@ -22,7 +22,7 @@ import { PROGRESS_STATUSES, type FreeformFrame } from '../domain';
 import { CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
 import { faceKindOf, faceModeOf, type FreeformFaceMode } from './freeform-layout';
-import type { ResolvedNode } from './freeform-resources';
+import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
 import type { Translate } from './modals';
 import type { SceneCard } from './scene-card';
 import type { SceneViewModel } from './view-model';
@@ -598,6 +598,129 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 	};
 }
 
+/** The symbol a file wears, by how it is shown. */
+const FILE_ICONS: Readonly<Record<FreeformFileKind, string>> = {
+	markdown: 'file-text',
+	image: 'image',
+	video: 'film',
+	audio: 'music',
+	pdf: 'file-text',
+	other: 'file',
+};
+
+/**
+ * A file's face: its symbol and its name, the folder it stands in on the
+ * standard face, and, for a picture, a video or a sound, the file itself
+ * drawn from the vault. A note and anything else say only what they are
+ * called, and open where the app shows them.
+ */
+function filePainter(deps: FreeformFaceDeps): NodePainter {
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-file' });
+			// The face is a column, so the way to the menu stands in the head's row rather than floating over it.
+			const head = face.createDiv({ cls: 'snowflake-method-freeform-face-head' });
+			const symbol = head.createSpan({
+				cls: 'snowflake-method-freeform-face-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
+			moreButton(head, deps, id);
+			const folder = face.createDiv({ cls: 'snowflake-method-freeform-file-folder' });
+			const media = face.createDiv({ cls: 'snowflake-method-freeform-file-media' });
+			let worn = '';
+			/** The file the media was drawn from last: its path and how the vault saw it. */
+			let drawn = '';
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'file') return;
+				const { file } = node;
+				const icon = FILE_ICONS[file.kind];
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				const words = deps.label(node);
+				if (name.textContent !== words) {
+					name.setText(words);
+					setTooltip(name, words);
+				}
+				const at = file.relativePath.slice(0, Math.max(0, file.relativePath.lastIndexOf('/')));
+				if (folder.textContent !== at) folder.setText(at);
+				folder.toggleClass('is-hidden', at.length === 0);
+				const stamp = `${file.path}|${file.stamp}|${file.kind}`;
+				if (stamp !== drawn) {
+					drawn = stamp;
+					media.empty();
+					// The file as the vault serves it to the window; gone from the vault since it was read, there is nothing to draw.
+					const held = deps.app.vault.getFileByPath(file.path);
+					const source = held === null ? null : deps.app.vault.getResourcePath(held);
+					if (source !== null && file.kind === 'image') {
+						media.createEl('img', { attr: { src: source, alt: file.name, loading: 'lazy' } });
+					} else if (source !== null && file.kind === 'video') {
+						media.createEl('video', { attr: { src: source, controls: '', preload: 'metadata' } });
+					} else if (source !== null && file.kind === 'audio') {
+						media.createEl('audio', { attr: { src: source, controls: '', preload: 'metadata' } });
+					}
+				}
+				face.dataset.kind = file.kind;
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
+/**
+ * A link's face: what it is called, and on the fuller faces the address
+ * whole. Nothing is fetched: the face knows the address and no more, so
+ * the plugin asks nothing of the network.
+ */
+function linkPainter(deps: FreeformFaceDeps): NodePainter {
+	return {
+		mount: (body, id, context): PaintedNode => {
+			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-link' });
+			const head = face.createDiv({ cls: 'snowflake-method-freeform-face-head' });
+			const symbol = head.createSpan({
+				cls: 'snowflake-method-freeform-face-icon',
+				attr: { 'aria-hidden': 'true' },
+			});
+			setIcon(symbol, 'link');
+			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
+			moreButton(head, deps, id);
+			const address = face.createDiv({ cls: 'snowflake-method-freeform-link-address' });
+			const dress = (next: PaintContext): void => {
+				const node = deps.node(id);
+				if (node?.type !== 'link') return;
+				const words = deps.label(node);
+				if (name.textContent !== words) {
+					name.setText(words);
+					setTooltip(name, words);
+				}
+				if (address.textContent !== node.url) address.setText(node.url);
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.toggleClass('is-selected', next.selected);
+			};
+			dress(context);
+			return {
+				dress,
+				settle: () => undefined,
+				unmount: () => {
+					face.remove();
+				},
+			};
+		},
+	};
+}
+
 /** What a missing resource is called by the kind it was last seen as. */
 function missingWord(node: Extract<ResolvedNode, { type: 'missing' }>, t: Translate): string {
 	if (node.of === 'entity') {
@@ -738,6 +861,8 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const frame = framePainter(deps);
 	const plain = plainPainter(deps);
 	const sticky = stickyPainter(deps);
+	const file = filePainter(deps);
+	const link = linkPainter(deps);
 	const painters: Record<string, NodePainter> = {
 		text,
 		scene,
@@ -747,6 +872,8 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 		foreshadowing: record,
 		revision: record,
 		'sticky-note': sticky,
+		file,
+		link,
 		missing,
 		[CANVAS_FRAME_KIND]: frame,
 	};

@@ -68,10 +68,12 @@ import {
 	FreeformEdgeFormModal,
 	FreeformFrameFormModal,
 	FreeformGeometryModal,
+	FreeformLinkFormModal,
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
 	type FreeformFrameDraft,
+	type FreeformLinkDraft,
 	type FreeformNodeCandidate,
 	type FreeformNodeType,
 	type RecoveredFreeformText,
@@ -411,6 +413,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (node.type === 'foreshadowing') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.foreshadowing'), name });
 		if (node.type === 'revision') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.revision'), name });
 		if (node.type === 'sticky-note') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.stickyNote'), name });
+		if (node.type === 'file') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.file'), name });
+		if (node.type === 'link') return t('freeformCanvas.node.name', { kind: t('freeformCanvas.type.link'), name });
 		return name;
 	};
 
@@ -478,6 +482,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				return node.row;
 			case 'sticky-note':
 				return node.note;
+			case 'file':
+				return node.file;
 			default:
 				return null;
 		}
@@ -1139,6 +1145,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		{ value: 'foreshadowing', label: t('freeformCanvas.type.foreshadowing'), section: 'task' },
 		{ value: 'revision', label: t('freeformCanvas.type.revision'), section: 'task' },
 		{ value: 'sticky-note', label: t('freeformCanvas.type.stickyNote'), section: 'task' },
+		{ value: 'file', label: t('freeformCanvas.type.file'), section: 'file' },
+		{ value: 'link', label: t('freeformCanvas.type.link'), section: 'file' },
 		{ value: 'text', label: t('freeformCanvas.type.text'), section: 'canvas' },
 		{ value: 'frame', label: t('freeformCanvas.type.frame'), section: 'canvas' },
 	];
@@ -1166,14 +1174,16 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	 * already. A record set aside is not offered: the canvas shows it as
 	 * missing, and offers nothing it would show so.
 	 */
-	const nodeCandidates = (kind: string, read: FreeformResources | null): FreeformNodeCandidate[] => {
+	const nodeCandidates = (kind: string, read: FreeformResources | null, files: readonly { path: string; name: string }[]): FreeformNodeCandidate[] => {
 		if (model === null) return [];
 		const view = shownView();
 		const placed = new Set<string>();
 		for (const { resource } of view?.placements ?? []) {
 			if (resource.type === 'entity') placed.add(`entity ${resource.id}`);
-			else if (resource.type !== 'text' && resource.type !== 'link' && resource.type !== 'file') placed.add(`${resource.type} ${resource.id}`);
+			else if (resource.type === 'file') placed.add(`file ${resource.path}`);
+			else if (resource.type !== 'text' && resource.type !== 'link') placed.add(`${resource.type} ${resource.id}`);
 		}
+		if (kind === 'file') return files.map((file) => ({ id: file.path, name: file.path, onView: placed.has(`file ${file.path}`) }));
 		const named = (family: string, entries: readonly { id: string; name: string }[]): FreeformNodeCandidate[] =>
 			entries.map((entry) => ({ id: entry.id, name: entry.name, onView: placed.has(`${family} ${entry.id}`) }));
 		if (kind === 'scene') return named('entity', model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
@@ -1194,27 +1204,40 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const openAddNode = (middle?: CanvasPoint, initialType: string | null = null): void => {
 		const id = shownViewId;
 		if (id === null || readOnly || disposed || model === null) return;
-		// The records are read whole for the form's lists before it opens; a family that will not read offers nothing.
-		void controls.bridge().readResources({ types: new Set(FORM_FAMILIES), filePaths: [] }).then((read) => {
+		// The records and the files are read whole for the form's lists before it opens; a family that will not read offers nothing.
+		const bridge = controls.bridge();
+		void Promise.all([
+			bridge.readResources({ types: new Set(FORM_FAMILIES), filePaths: [] }).catch((error: unknown) => {
+				console.error('Snowflake: the records could not be read for the freeform form', error);
+				return null;
+			}),
+			bridge.listFiles().catch((error: unknown) => {
+				console.error('Snowflake: the project’s files could not be listed for the freeform form', error);
+				return [];
+			}),
+		]).then(([read, files]) => {
 			if (disposed || shownViewId !== id) return;
-			openNodeForm(middle, initialType, read);
-		}, (error: unknown) => {
-			console.error('Snowflake: the records could not be read for the freeform form', error);
-			if (!disposed && shownViewId === id) openNodeForm(middle, initialType, null);
+			openNodeForm(middle, initialType, read, files);
 		});
 	};
 
-	const openNodeForm = (middle: CanvasPoint | undefined, initialType: string | null, read: FreeformResources | null): void => {
+	const openNodeForm = (
+		middle: CanvasPoint | undefined,
+		initialType: string | null,
+		read: FreeformResources | null,
+		files: readonly { path: string; name: string }[],
+	): void => {
 		keep(new FreeformNodeFormModal(
 			app,
 			t,
 			{
 				types: nodeTypes(),
-				candidates: (kind) => nodeCandidates(kind, read),
+				candidates: (kind) => nodeCandidates(kind, read, files),
 				room: () => {
 					const view = shownView();
 					return view === null || reading === null ? 0 : freeformRoom(view, reading.limits).placements;
 				},
+				labelLimit: reading?.limits.labelLength ?? 0,
 				initialType,
 			},
 			async (draft) => {
@@ -1225,6 +1248,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				}
 				if (draft.type === 'frame') {
 					await addFrame(draft.frame, middle);
+					return;
+				}
+				if (draft.type === 'link') {
+					await addLink(draft.link, middle);
 					return;
 				}
 				canvas.settle();
@@ -1246,9 +1273,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				);
 				const placements: FreeformPlacementDraft[] = draft.nodes.map((node, at) => ({
 					id: controls.bridge().mintId('placement'),
-					resource: family === undefined
-						? { type: 'entity', kind, id: node.id, name: node.name }
-						: { type: family, id: node.id, name: node.name },
+					resource: kind === 'file'
+						? { type: 'file', path: node.id }
+						: family === undefined
+							? { type: 'entity', kind, id: node.id, name: node.name }
+							: { type: family, id: node.id, name: node.name },
 					x: landings[at]?.x ?? 0,
 					y: landings[at]?.y ?? 0,
 					width: size.width,
@@ -1260,6 +1289,48 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				canvas.select({ nodes: placements.map((placement) => placement.id), edges: [] });
 			},
 		)).open();
+	};
+
+	// -- Links -------------------------------------------------------------------
+
+	/** A link laid down where it lands; the form stands over a refusal, saying so. */
+	const addLink = async (draft: FreeformLinkDraft, middle?: CanvasPoint): Promise<void> => {
+		canvas.settle();
+		const view = shownView();
+		if (view === null || readOnly || disposed) throw new Error(t('freeformCanvas.link.refused'));
+		const at = landingAt(cornersOf(view), middle ?? canvas.centre(), FREEFORM_SIZE, memory.snap ? FREEFORM_GRID : null);
+		const id = controls.bridge().mintId('placement');
+		const came = await change([{
+			do: 'add',
+			placements: [{ id, resource: { type: 'link', url: draft.url, label: draft.label }, x: at.x, y: at.y }],
+		}], 'change', null);
+		if (came !== 'written') throw new Error(t('freeformCanvas.link.refused'));
+		if (!disposed) canvas.select({ nodes: [id], edges: [] });
+	};
+
+	/** A link's address and label, edited through its form; the form stands over a refusal, saying so. */
+	const openLinkForm = (id: string): void => {
+		const node = made?.nodes.get(id);
+		if (node?.type !== 'link' || readOnly || disposed) return;
+		keep(new FreeformLinkFormModal(app, t, { url: node.url, label: node.label }, reading?.limits.labelLength ?? 0, async (draft) => {
+			if (disposed) return;
+			const came = await change([{ do: 'link', id, url: draft.url, label: draft.label }], 'change', null);
+			if (came !== 'written') throw new Error(t('freeformCanvas.link.refused'));
+		})).open();
+	};
+
+	/** The address handed to the app, which opens it as the author has it set to. */
+	const openLink = (node: Extract<ResolvedNode, { type: 'link' }>): void => {
+		try {
+			host.openExternalLink(node.url, root);
+		} catch (error) {
+			notice(error);
+		}
+	};
+
+	/** The address put on the clipboard, for wherever it is wanted next. */
+	const copyLink = (node: Extract<ResolvedNode, { type: 'link' }>): void => {
+		void root.win.navigator.clipboard.writeText(node.url).catch(notice);
 	};
 
 	// -- What a node opens -----------------------------------------------------
@@ -1314,6 +1385,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			openRevision(node);
 		} else if (node.type === 'sticky-note') {
 			floatSticky(node);
+		} else if (node.type === 'file') {
+			void host.openProjectFile(node.file.path).catch(notice);
+		} else if (node.type === 'link') {
+			openLink(node);
 		}
 	};
 
@@ -1635,6 +1710,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					openAddNode(at, 'frame');
 				});
 		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.link.add'))
+				.setIcon('link')
+				.setDisabled(readOnly || shownViewId === null)
+				.onClick(() => {
+					openAddNode(at, 'link');
+				});
+		});
 		menu.addSeparator();
 		menu.addItem((item) => {
 			item
@@ -1709,6 +1793,36 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				item.setTitle(t('actions.openNote')).setIcon('file-text').onClick(() => {
 					void host.openManagedFile(node.note.path).catch(notice);
 				});
+			});
+			return true;
+		}
+		if (node.type === 'file') {
+			menu.addItem((item) => {
+				item.setTitle(t('common.open')).setIcon('file').onClick(() => {
+					void host.openProjectFile(node.file.path).catch(notice);
+				});
+			});
+			return true;
+		}
+		if (node.type === 'link') {
+			menu.addItem((item) => {
+				item.setTitle(t('freeformCanvas.link.open')).setIcon('external-link').onClick(() => {
+					openLink(node);
+				});
+			});
+			menu.addItem((item) => {
+				item.setTitle(t('freeformCanvas.link.copy')).setIcon('copy').onClick(() => {
+					copyLink(node);
+				});
+			});
+			menu.addItem((item) => {
+				item
+					.setTitle(t('freeformCanvas.link.edit'))
+					.setIcon('pencil')
+					.setDisabled(readOnly)
+					.onClick(() => {
+						openLinkForm(id);
+					});
 			});
 			return true;
 		}

@@ -280,6 +280,7 @@ describe('the form nodes are added through', () => {
 		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.add');
 		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
 			'freeformCanvas.node.type', 'freeformCanvas.node.pick', 'freeformCanvas.frame.title', 'stickyNotes.color',
+			'freeformCanvas.link.address', 'freeformCanvas.link.label',
 		]);
 		expect(typeField().label).toBe('freeformCanvas.node.type');
 		expect(typeField().required).toBe(true);

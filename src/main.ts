@@ -4424,6 +4424,19 @@ export default class SnowflakeMethodPlugin
 					fromHub();
 				};
 			},
+			listFiles: async () => {
+				const project = await this.resolveProject(panelProject());
+				if (project === null) return [];
+				// The tool folder holds the plugin's own files, which are nothing to place; it is the head of every tool chain.
+				const root = `${project.rootPath}/`;
+				const tools = `${root}${PROJECT_PATH_LAYOUTS[project.locale].directories.freeform.split('/')[0] ?? ''}/`;
+				return this.projects.repository
+					.listFilesBelow(project.rootPath)
+					.filter((file) => !file.path.startsWith(tools))
+					.map((file) => file.path.slice(root.length))
+					.sort((left, right) => left.localeCompare(right))
+					.map((relativePath) => ({ path: relativePath, name: freeformFileName(relativePath) }));
+			},
 			mintId: (kind) => views.mint(kind),
 			createView: (name) => create((project) => views.createView(project, { name })),
 			renameView: (id, name) => write((project) => views.renameView(project, id, name)),

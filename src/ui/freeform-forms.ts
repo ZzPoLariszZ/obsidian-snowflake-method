@@ -169,10 +169,66 @@ export class FreeformTextModal extends Modal {
 
 /** One kind of node the form can add: a note of a kind, a record of a family, or what is made on the canvas. */
 export interface FreeformNodeType {
-	/** `scene`, `character`, a worldbuilding kind's id, a record family, `text` or `frame`. */
+	/** `scene`, `character`, a worldbuilding kind's id, a record family, `file`, `link`, `text` or `frame`. */
 	value: string;
 	label: string;
-	section: 'entity' | 'task' | 'canvas';
+	section: 'entity' | 'task' | 'file' | 'canvas';
+}
+
+/** A link's address and the label shown in its place. */
+export interface FreeformLinkDraft {
+	url: string;
+	label: string;
+}
+
+/** Whether an address is one the canvas takes: a web address, and nothing that names a file or asks the app for more. */
+export function isFreeformLinkAddress(url: string): boolean {
+	return /^https?:\/\/\S+$/iu.test(url.trim());
+}
+
+/**
+ * The two fields a link has, set into a form: its address, which must be
+ * a web address, and the label shown in its place.
+ */
+function buildLinkFields(t: Translate, draft: FreeformLinkDraft, container: HTMLElement): void {
+	new Setting(container)
+		.setName(t('freeformCanvas.link.address'))
+		.setDesc(t('freeformCanvas.link.addressHint'))
+		.addText((text) => {
+			text.inputEl.setAttribute('aria-label', t('freeformCanvas.link.address'));
+			text.inputEl.setAttribute('inputmode', 'url');
+			text.setValue(draft.url).onChange((value) => {
+				draft.url = value;
+			});
+		});
+	new Setting(container)
+		.setName(t('freeformCanvas.link.label'))
+		.setDesc(t('freeformCanvas.link.labelHint'))
+		.addText((text) => {
+			text.inputEl.setAttribute('aria-label', t('freeformCanvas.link.label'));
+			text.setValue(draft.label).onChange((value) => {
+				draft.label = value;
+			});
+		});
+}
+
+/** The link as a form hands it back, or null with what is wrong with it said. */
+function collectLink(t: Translate, draft: FreeformLinkDraft, labelLimit: number): FreeformLinkDraft | null {
+	const url = draft.url.trim();
+	if (url.length === 0) {
+		new Notice(t('freeformCanvas.link.addressRequired'));
+		return null;
+	}
+	if (!isFreeformLinkAddress(url)) {
+		new Notice(t('freeformCanvas.link.addressInvalid'));
+		return null;
+	}
+	const label = draft.label.trim();
+	if (label.length > labelLimit) {
+		new Notice(t('freeformCanvas.link.refused'));
+		return null;
+	}
+	return { url, label };
 }
 
 /** What a frame is called and what it wears. */
@@ -223,18 +279,25 @@ export interface FreeformNodeCandidate {
 
 export interface FreeformNodeFormOptions {
 	types: readonly FreeformNodeType[];
-	/** The nodes of a type, asked for as the type is chosen. */
+	/** The nodes of a type, asked for as the type is chosen; a file's id is its path from the project's root. */
 	candidates: (type: string) => readonly FreeformNodeCandidate[];
 	/** How many more nodes the view has room for. */
 	room: () => number;
+	/** How long a link's label may run. */
+	labelLimit?: number;
 	/** The type the form opens on; none where left out. */
 	initialType?: string | null;
 }
 
-/** What the form asks for: nodes of a type by their ids, one text node to be typed into, or a frame with its title and tint. */
+/**
+ * What the form asks for: nodes of a type by their ids, one text node to
+ * be typed into, a frame with its title and tint, or a link with its
+ * address and label. A file is a node of the `file` type, by its path.
+ */
 export type FreeformNodeDraft =
 	| { type: 'text' }
 	| { type: 'frame'; frame: FreeformFrameDraft }
+	| { type: 'link'; link: FreeformLinkDraft }
 	| { type: 'entity'; kind: string; nodes: readonly { id: string; name: string }[] };
 
 /** How many rows the nodes list shows before it asks to be narrowed: a project may hold thousands of scenes. */
@@ -252,11 +315,13 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 	private type: string | null;
 	private readonly picked: string[] = [];
 	private readonly frame: FreeformFrameDraft = { title: '', color: null };
+	private readonly link: FreeformLinkDraft = { url: '', label: '' };
 	private typeField: OptionPicker | null = null;
 	private nodesPicker: OptionPicker | null = null;
 	private nodesSetting: Setting | null = null;
 	private nodesHost: HTMLElement | null = null;
 	private frameHost: HTMLElement | null = null;
+	private linkHost: HTMLElement | null = null;
 	private summaryEl: HTMLElement | null = null;
 
 	constructor(
@@ -299,6 +364,8 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		this.buildNodesPicker();
 		this.frameHost = this.contentEl.createDiv({ cls: 'snowflake-method-freeform-frame-fields' });
 		buildFrameFields(this.t, this.frame, this.frameHost);
+		this.linkHost = this.contentEl.createDiv({ cls: 'snowflake-method-freeform-frame-fields' });
+		buildLinkFields(this.t, this.link, this.linkHost);
 		this.paintNodes();
 	}
 
@@ -373,11 +440,12 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		this.paintNodes();
 	}
 
-	/** The nodes field stands only for a type the project holds notes of, and a frame's fields for a frame. */
+	/** The nodes field stands only for a type the project holds notes or files of; a frame's and a link's fields for theirs. */
 	private paintNodes(): void {
-		const asks = this.type !== null && this.type !== 'text' && this.type !== 'frame';
+		const asks = this.type !== null && this.type !== 'text' && this.type !== 'frame' && this.type !== 'link';
 		this.nodesSetting?.settingEl.toggleClass('is-hidden', !asks);
 		this.frameHost?.toggleClass('is-hidden', this.type !== 'frame');
+		this.linkHost?.toggleClass('is-hidden', this.type !== 'link');
 		this.paintSummary();
 	}
 
@@ -402,6 +470,10 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		}
 		if (type === 'text') return { type: 'text' };
 		if (type === 'frame') return { type: 'frame', frame: { title: this.frame.title.trim(), color: this.frame.color } };
+		if (type === 'link') {
+			const link = collectLink(this.t, this.link, this.options.labelLimit ?? Number.POSITIVE_INFINITY);
+			return link === null ? null : { type: 'link', link };
+		}
 		if (this.picked.length === 0) {
 			new Notice(this.t('freeformCanvas.node.required'));
 			return null;
@@ -427,8 +499,35 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		this.nodesSetting = null;
 		this.nodesHost = null;
 		this.frameHost = null;
+		this.linkHost = null;
 		this.summaryEl = null;
 		super.onClose();
+	}
+}
+
+/** A link edited: its address and its label, with Save at the foot. The form stands over a refusal, saying so. */
+export class FreeformLinkFormModal extends SnowflakeFormModal<FreeformLinkDraft> {
+	private readonly draft: FreeformLinkDraft;
+
+	constructor(
+		app: App,
+		t: Translate,
+		initial: FreeformLinkDraft,
+		private readonly labelLimit: number,
+		onSubmit: SubmitHandler<FreeformLinkDraft>,
+	) {
+		super(app, t, t('freeformCanvas.link.edit'), onSubmit, 'common.save');
+		this.draft = { ...initial };
+		this.modalEl.addClass('snowflake-method-compact-form-modal');
+	}
+
+	protected buildForm(): void {
+		this.contentEl.addClass('snowflake-method-project-form');
+		buildLinkFields(this.t, this.draft, this.contentEl);
+	}
+
+	protected collectValue(): FreeformLinkDraft | null {
+		return collectLink(this.t, this.draft, this.labelLimit);
 	}
 }
 

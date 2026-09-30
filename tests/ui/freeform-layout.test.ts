@@ -115,10 +115,10 @@ describe('the face a node shows', () => {
 		expect(faceKindOf('character')).toBe('record');
 		expect(faceKindOf('worldbuilding')).toBe('record');
 		expect(faceKindOf('text')).toBe('text');
-		for (const type of ['task', 'foreshadowing', 'revision', 'sticky-note'] as const) {
+		for (const type of ['task', 'foreshadowing', 'revision', 'sticky-note', 'file', 'link'] as const) {
 			expect(faceKindOf(type), type).toBe('record');
 		}
-		for (const type of ['file', 'link', 'pending', 'missing'] as const) {
+		for (const type of ['pending', 'missing'] as const) {
 			expect(faceKindOf(type), type).toBe('plain');
 		}
 	});

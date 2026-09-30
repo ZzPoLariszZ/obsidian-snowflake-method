@@ -15736,6 +15736,67 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
+/* A file's face: its name and folder, and the file itself where it is a
+   picture, a video or a sound; a link's: its name and the address whole. */
+.snowflake-method-freeform-face.is-file,
+.snowflake-method-freeform-face.is-link {
+	display: flex;
+	flex-direction: column;
+	padding: var(--size-4-3);
+}
+
+/* In a head that is a row, the way to the menu stands at the row's end and floats nowhere. */
+.snowflake-method-freeform-face-head > .clickable-icon.snowflake-method-freeform-node-more {
+	float: none;
+	flex: 0 0 auto;
+	align-self: center;
+	margin-block: 0;
+	margin-inline: auto 0;
+}
+
+.snowflake-method-freeform-file-folder,
+.snowflake-method-freeform-link-address {
+	overflow: hidden;
+	margin-block-start: var(--size-2-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.snowflake-method-freeform-file-folder.is-hidden {
+	display: none;
+}
+
+.snowflake-method-freeform-file-media {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	justify-content: center;
+	min-height: 0;
+	margin-block-start: var(--size-4-2);
+	overflow: hidden;
+}
+
+.snowflake-method-freeform-file-media img,
+.snowflake-method-freeform-file-media video {
+	max-width: 100%;
+	max-height: 100%;
+	border-radius: var(--radius-s);
+	object-fit: contain;
+}
+
+.snowflake-method-freeform-file-media audio {
+	width: 100%;
+}
+
+/* The barest face is the name alone. */
+.snowflake-method-freeform-face.is-file[data-mode='compact'] .snowflake-method-freeform-file-folder,
+.snowflake-method-freeform-face.is-file[data-mode='compact'] .snowflake-method-freeform-file-media,
+.snowflake-method-freeform-face.is-link[data-mode='compact'] .snowflake-method-freeform-link-address {
+	display: none;
+}
+
 /* The barest face is the first line alone; the standard one shows the rows
    that are its own, and only the fullest shows the rest. */
 .snowflake-method-freeform-face.is-record[data-mode='compact'] .snowflake-method-freeform-face-rows,
