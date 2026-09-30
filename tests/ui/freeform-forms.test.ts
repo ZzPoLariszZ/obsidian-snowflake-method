@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
-const { notices, titles } = vi.hoisted(() => ({
+const { notices, titles, fields, pickers } = vi.hoisted(() => ({
 	notices: vi.fn(),
 	titles: [] as string[],
+	fields: [] as unknown[],
+	pickers: [] as unknown[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -59,9 +61,36 @@ vi.mock('obsidian', async (importOriginal) => {
 	};
 });
 
+// The pickers are the real ones; what the form hands them is kept, so a test can pick as the list would.
+vi.mock('../../src/ui/option-picker', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../src/ui/option-picker')>();
+	return {
+		...actual,
+		buildOptionField: vi.fn((...args: Parameters<typeof actual.buildOptionField>) => {
+			fields.push(args[2]);
+			return actual.buildOptionField(...args);
+		}),
+		buildOptionPicker: vi.fn((...args: Parameters<typeof actual.buildOptionPicker>) => {
+			pickers.push(args[2]);
+			return actual.buildOptionPicker(...args);
+		}),
+	};
+});
+
 import type { App } from 'obsidian';
 
-import { FreeformTextModal, FreeformViewFormModal, type FreeformViewFormOptions } from '../../src/ui/freeform-forms';
+import { FREEFORM_SIZE } from '../../src/domain';
+import {
+	FREEFORM_PICK_ROWS,
+	FreeformGeometryModal,
+	FreeformNodeFormModal,
+	FreeformTextModal,
+	FreeformViewFormModal,
+	type FreeformNodeDraft,
+	type FreeformNodeFormOptions,
+	type FreeformViewFormOptions,
+} from '../../src/ui/freeform-forms';
+import type { OptionFieldConfig, OptionPickerConfig } from '../../src/ui/option-picker';
 
 const app = {} as App;
 const t = (key: string, vars?: Record<string, string | number>): string =>
@@ -86,6 +115,8 @@ const viewForm = (options: Partial<FreeformViewFormOptions> = {}): FreeformViewF
 afterEach(() => {
 	notices.mockClear();
 	titles.length = 0;
+	fields.length = 0;
+	pickers.length = 0;
 });
 
 describe('the freeform view form', () => {
@@ -208,5 +239,168 @@ describe('the dialog refused words are kept in', () => {
 		form.onOpen();
 		form.onOpen();
 		expect(content(form).querySelectorAll('textarea')).toHaveLength(1);
+	});
+});
+
+describe('the form nodes are added through', () => {
+	const candidates = {
+		scene: [
+			{ id: 'scene-1', name: 'Arrival', onView: true },
+			{ id: 'scene-2', name: 'Departure', onView: false },
+			{ id: 'scene-3', name: 'Return', onView: false },
+		],
+		character: [{ id: 'char-1', name: 'Anna', onView: false }],
+		location: [],
+	};
+	const nodeForm = (options: Partial<FreeformNodeFormOptions> = {}, room = 10): FreeformNodeFormModal =>
+		new FreeformNodeFormModal(app, t, {
+			types: [
+				{ value: 'scene', label: 'Scene', section: 'entity' },
+				{ value: 'character', label: 'Character', section: 'entity' },
+				{ value: 'location', label: 'Location', section: 'entity' },
+				{ value: 'text', label: 'Text', section: 'canvas' },
+			],
+			candidates: (type) => candidates[type as keyof typeof candidates] ?? [],
+			room: () => room,
+			...options,
+		}, () => Promise.resolve());
+	const typeField = (): OptionFieldConfig => fields[fields.length - 1] as OptionFieldConfig;
+	const nodesPicker = (): OptionPickerConfig => pickers[pickers.length - 1] as OptionPickerConfig;
+	const collectDraft = (form: unknown): FreeformNodeDraft | null => (form as { collectValue(): FreeformNodeDraft | null }).collectValue();
+	const summary = (form: unknown): CorkboardElement => content(form).querySelector('.snowflake-method-field-warning')!;
+	const pickRow = (form: unknown): CorkboardElement => content(form).querySelector('.snowflake-method-freeform-node-pick')!;
+
+	it('is titled Add node, names its two fields, and offers the types in their two groups', () => {
+		const form = nodeForm();
+		build(form);
+		expect(titles).toEqual(['freeformCanvas.node.add']);
+		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.add');
+		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
+			'freeformCanvas.node.type', 'freeformCanvas.node.pick',
+		]);
+		expect(typeField().label).toBe('freeformCanvas.node.type');
+		expect(typeField().required).toBe(true);
+		expect(typeField().options().map((option) => [option.value, option.section])).toEqual([
+			['scene', 'freeformCanvas.node.section.entity'],
+			['character', 'freeformCanvas.node.section.entity'],
+			['location', 'freeformCanvas.node.section.entity'],
+			['text', 'freeformCanvas.node.section.canvas'],
+		]);
+		// No type yet: the nodes field stands hidden, and nothing can be handed back.
+		expect(typeField().value()).toBe('');
+		expect(pickRow(form).classes.has('is-hidden')).toBe(true);
+		expect(collectDraft(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.node.typePlaceholder');
+	});
+
+	it('lists the notes of the type chosen, those not on the view first and apart from those on it, capped for a long list', () => {
+		const form = nodeForm();
+		build(form);
+		typeField().choose('scene');
+		expect(pickRow(form).classes.has('is-hidden')).toBe(false);
+		// Built afresh for the type, so it offers what the type holds: a field decides as it is built whether it has anything to offer.
+		expect(pickers).toHaveLength(2);
+		expect(content(form).querySelectorAll('.snowflake-method-option-picker-input')[1]!.disabled).toBe(false);
+		expect(nodesPicker().label).toBe('freeformCanvas.node.pick');
+		expect(nodesPicker().placeholder).toBe('freeformCanvas.node.pickPlaceholder');
+		expect(nodesPicker().emptyPlaceholder).toBe('freeformCanvas.node.pickEmpty');
+		expect(nodesPicker().cap?.rows).toBe(FREEFORM_PICK_ROWS);
+		expect(nodesPicker().cap?.more(7)).toBe('freeformCanvas.node.pickMore(count=7)');
+		expect(nodesPicker().options().map((option) => [option.value, option.section])).toEqual([
+			['scene-2', 'freeformCanvas.node.notOnView'],
+			['scene-3', 'freeformCanvas.node.notOnView'],
+			['scene-1', 'freeformCanvas.node.onView'],
+		]);
+		expect(nodesPicker().removeLabel('Arrival')).toBe('form.record.removeLine(name=Arrival)');
+		// With none on the view, the list needs no headings.
+		typeField().choose('character');
+		expect(nodesPicker().options()).toEqual([{ value: 'char-1', label: 'Anna' }]);
+		// Text asks nothing more.
+		typeField().choose('text');
+		expect(pickRow(form).classes.has('is-hidden')).toBe(true);
+		expect(collectDraft(form)).toEqual({ type: 'text' });
+	});
+
+	it('says how many are chosen and how many more the view has room for, and refuses none and too many', () => {
+		const form = nodeForm({}, 2);
+		build(form);
+		typeField().choose('scene');
+		expect(summary(form).textContent).toBe('freeformCanvas.node.summary(chosen=0,left=2)');
+		expect(summary(form).classes.has('is-notice')).toBe(true);
+		expect(collectDraft(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.node.required');
+		nodesPicker().pick('scene-2');
+		expect(summary(form).textContent).toBe('freeformCanvas.node.summary(chosen=1,left=1)');
+		expect(collectDraft(form)).toEqual({ type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] });
+		nodesPicker().pick('scene-3');
+		nodesPicker().pick('scene-1');
+		expect(summary(form).textContent).toBe('freeformCanvas.node.limitSome(left=2)');
+		expect(summary(form).classes.has('is-notice')).toBe(false);
+		expect(collectDraft(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.node.limitSome(left=2)');
+		nodesPicker().unpick('scene-1');
+		expect(collectDraft(form)?.type === 'entity' && collectDraft(form)).toMatchObject({ nodes: [{ id: 'scene-2' }, { id: 'scene-3' }] });
+	});
+
+	it('forgets what was picked when the type changes, and opens on the type it was given', () => {
+		const form = nodeForm({ initialType: 'scene' });
+		build(form);
+		expect(typeField().value()).toBe('scene');
+		nodesPicker().pick('scene-2');
+		expect(nodesPicker().picked()).toEqual(['scene-2']);
+		typeField().choose('character');
+		expect(nodesPicker().picked()).toEqual([]);
+		// The same type again changes nothing.
+		nodesPicker().pick('char-1');
+		typeField().choose('character');
+		expect(nodesPicker().picked()).toEqual(['char-1']);
+	});
+});
+
+describe('the form a node’s size and place are set through', () => {
+	const geometryForm = (initial = { x: 10, y: 20, width: 300, height: 200 }): FreeformGeometryModal =>
+		new FreeformGeometryModal(app, t, initial, { width: 96, height: 48 }, () => Promise.resolve());
+	const collectGeometry = (form: unknown) => (form as { collectValue(): unknown }).collectValue();
+	const inputs = (form: unknown): CorkboardElement[] => content(form).querySelectorAll('input');
+
+	it('names its four fields and shows what the node measures now', () => {
+		const form = geometryForm();
+		build(form);
+		expect(titles).toEqual(['freeformCanvas.geometry.title']);
+		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.save');
+		expect(content(form).querySelector('p')!.textContent).toBe('freeformCanvas.geometry.hint');
+		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
+			'freeformCanvas.geometry.x', 'freeformCanvas.geometry.y', 'freeformCanvas.geometry.width', 'freeformCanvas.geometry.height',
+		]);
+		expect(inputs(form).map((input) => input.value)).toEqual(['10', '20', '300', '200']);
+		expect(inputs(form).map((input) => input.getAttribute('aria-label'))).toEqual([
+			'freeformCanvas.geometry.x', 'freeformCanvas.geometry.y', 'freeformCanvas.geometry.width', 'freeformCanvas.geometry.height',
+		]);
+		expect(collectGeometry(form)).toEqual({ x: 10, y: 20, width: 300, height: 200 });
+	});
+
+	it('takes whole numbers alone, and no size under the least a node may be', () => {
+		const form = geometryForm();
+		build(form);
+		const [x, , width, height] = inputs(form) as [CorkboardElement, CorkboardElement, CorkboardElement, CorkboardElement];
+		type(x, ' -40 ');
+		expect(collectGeometry(form)).toEqual({ x: -40, y: 20, width: 300, height: 200 });
+		type(x, '1.5');
+		expect(collectGeometry(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.geometry.invalid');
+		type(x, '');
+		expect(collectGeometry(form)).toBeNull();
+		type(x, 'abc');
+		expect(collectGeometry(form)).toBeNull();
+		type(x, '0');
+		type(width, '95');
+		expect(collectGeometry(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.geometry.tooSmall(width=96,height=48)');
+		type(width, '96');
+		type(height, '48');
+		expect(collectGeometry(form)).toEqual({ x: 0, y: 20, width: 96, height: 48 });
+		type(height, String(FREEFORM_SIZE.max + 1));
+		expect(collectGeometry(form)).toBeNull();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.geometry.invalid');
 	});
 });

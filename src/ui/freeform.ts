@@ -7,12 +7,13 @@
  *
  * The plane itself is the engine's (`freeform-canvas.ts`), handed in so a
  * test stands a plain one in its place; what stands in a node's box is the
- * faces' (`freeform-faces.ts`); the read, the queue and the paint's gate are
- * the loop's (`document-loop.ts`), shared with the timeline and the beat
- * sheet; what was done, kept to be taken back, is the history's
- * (`freeform-history.ts`). This is what is left: the toolbar, the canvas's
- * controls, the menus, the views' forms, and the one way every change goes
- * to the file and into the history.
+ * faces' (`freeform-faces.ts`), and a scene's face is the corkboard's own
+ * card, dealt from a deck of the workspace's; the read, the queue and the
+ * paint's gate are the loop's (`document-loop.ts`), shared with the timeline
+ * and the beat sheet; what was done, kept to be taken back, is the
+ * history's (`freeform-history.ts`). This is what is left: the toolbar, the
+ * canvas's controls, the menus, the forms, what each kind of node opens,
+ * and the one way every change goes to the file and into the history.
  *
  * A change is shown the moment it is made and written after: the view as
  * the canvas shows it is the view as its file has it with every change still
@@ -31,11 +32,15 @@ import {
 	findFreeformPlacement,
 	findFreeformView,
 	freeformRoom,
+	isWorldbuildingKind,
 	leaveFreeformView,
 	shownFreeformViewId,
 	type FreeformCame,
+	type FreeformDisplayMode,
 	type FreeformFrame,
+	type FreeformPlace,
 	type FreeformPlacement,
+	type FreeformPlacementDraft,
 	type FreeformStep,
 	type FreeformView,
 } from '../domain';
@@ -50,7 +55,15 @@ import {
 	type CanvasSelection,
 } from './freeform-canvas-port';
 import { createFreeformFaces } from './freeform-faces';
-import { FreeformTextModal, FreeformViewFormModal, type RecoveredFreeformText } from './freeform-forms';
+import {
+	FreeformGeometryModal,
+	FreeformNodeFormModal,
+	FreeformTextModal,
+	FreeformViewFormModal,
+	type FreeformNodeCandidate,
+	type FreeformNodeType,
+	type RecoveredFreeformText,
+} from './freeform-forms';
 import {
 	EMPTY_FREEFORM_HISTORY,
 	answerFreeformChange,
@@ -62,11 +75,17 @@ import {
 } from './freeform-history';
 import {
 	EMPTY_FREEFORM_SCENE,
+	FREEFORM_FACE_HEIGHTS,
+	FREEFORM_FACE_MODES,
 	FREEFORM_GRID,
+	FREEFORM_NODE_MIN,
 	cornersOf,
+	faceKindOf,
+	grownForMode,
 	grownHeight,
 	laidOutAlike,
 	landingAt,
+	landingsAt,
 	ownWordsCount,
 	placeStepOf,
 	plainFirstLine,
@@ -84,8 +103,8 @@ import { kindIcon } from './kind-icon';
 import { buildOptionField, type OptionPicker } from './option-picker';
 import { renderEmptyLine } from './pane-parts';
 import { confirmTimelineAction } from './timeline-forms';
-import type { ProjectDashboardModel } from './view-model';
-import { createMenuKeeper, createModalKeeper, toolbarIconButton } from './workspace-frame';
+import { kindEntities, type ProjectDashboardModel } from './view-model';
+import { bindFrameWindow, createLaneDeck, createMenuKeeper, createModalKeeper, toolbarIconButton } from './workspace-frame';
 
 /** How many of a text node's first words it is called by, for a reader that cannot see it. */
 const NAME_LENGTH = 80;
@@ -110,7 +129,8 @@ let mounted = 0;
 
 export const renderFreeform: RenderFreeform = (container, controls) => {
 	const { app, host, t, memory } = controls;
-	const root = container.createDiv({ cls: 'snowflake-method-prose-panel snowflake-method-freeform' });
+	// The cards a scene stands as are the corkboard's, dressed by the same sheet.
+	const root = container.createDiv({ cls: 'snowflake-method-prose-panel snowflake-method-freeform snowflake-method-scene-cards' });
 
 	const notice = (error: unknown): void => {
 		new Notice(error instanceof Error ? error.message : t('errors.unknown'));
@@ -146,9 +166,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		attr: { type: 'button' },
 	});
 	addNodeButton.addEventListener('click', () => {
-		// Text is the one kind of node there is to add as yet, so the press
-		// adds one: at the middle of what is in sight, open to be typed into.
-		addText();
+		openAddNode();
 	});
 
 	// -- The stage: the canvas, the word said of an empty one, and its controls --
@@ -331,7 +349,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return resource.name;
 	};
 
-	const labelOf = (node: ResolvedNode): string => {
+	/** What a kind of note is called: the copy's word for a built-in, an authored kind its own name. */
+	const kindWord = (kind: string): string => {
+		if (kind === 'scene') return t('form.group.scene');
+		if (kind === 'character') return t('form.group.character');
+		return isWorldbuildingKind(kind) ? t(`worldbuilding.kind.${kind}`) : kind;
+	};
+
+	/** What a node is called, as its face shows it. */
+	const nameOf = (node: ResolvedNode): string => {
 		if (node.type === 'text') {
 			const first = plainFirstLine(node.text, NAME_LENGTH);
 			return first.length === 0 ? t('freeformCanvas.text.label') : first;
@@ -341,6 +367,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (node.type === 'missing') return node.name;
 		if (node.type === 'pending') return lastCalled(node.placement);
 		return freeformLabelOf(node)?.name ?? lastCalled(node.placement);
+	};
+
+	/** What a node is called for a reader that cannot see it: a note with the kind of note it is. */
+	const labelOf = (node: ResolvedNode): string => {
+		const name = nameOf(node);
+		if (node.type === 'scene' || node.type === 'character') return t('freeformCanvas.node.name', { kind: kindWord(node.type), name });
+		if (node.type === 'worldbuilding') return t('freeformCanvas.node.name', { kind: kindWord(node.entity.kind), name });
+		return name;
 	};
 
 	const frameLabelOf = (frame: FreeformFrame): string =>
@@ -377,6 +411,33 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}
 	};
 
+	/**
+	 * All a record's face shows of it, as one string, worked out once per
+	 * record the model holds: a face is dressed again when this moves, and
+	 * every paint asks for it.
+	 */
+	const signatures = new WeakMap<object, string>();
+	const signatureOf = (record: object): string => {
+		let signature = signatures.get(record);
+		if (signature === undefined) {
+			signature = JSON.stringify(record);
+			signatures.set(record, signature);
+		}
+		return signature;
+	};
+	const recordOf = (node: ResolvedNode): object | null => {
+		switch (node.type) {
+			case 'scene':
+				return node.scene;
+			case 'character':
+				return node.character;
+			case 'worldbuilding':
+				return node.entity;
+			default:
+				return null;
+		}
+	};
+
 	const words: FreeformSceneWords = {
 		resolve: (placement) => {
 			// A paint is made only once a model stands; the guard is the type's.
@@ -385,10 +446,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		},
 		label: labelOf,
 		frameLabel: frameLabelOf,
-		revision: (node) =>
-			node.type === 'text'
-				? `${node.placement.displayMode}\n${node.text}`
-				: `${node.type}\n${node.placement.displayMode}\n${iconOf(node)}\n${labelOf(node)}`,
+		revision: (node) => {
+			if (node.type === 'text') return `${node.placement.displayMode}\n${node.text}`;
+			const record = recordOf(node);
+			return `${node.type}\n${node.placement.displayMode}\n${iconOf(node)}\n${labelOf(node)}\n${record === null ? '' : signatureOf(record)}`;
+		},
 		locked: (id) => id === editingId,
 		// Lines are drawn from node to node in a later stage; one a file holds is shown all the same.
 		connectable: false,
@@ -451,6 +513,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const shown = draft !== null && draft.viewId === id
 			? { ...view, placements: [...view.placements, draft.placement] }
 			: view;
+		laneDeck.beginPaint();
 		made = sceneOf(shown, words);
 		canvas.setInteraction({
 			readOnly,
@@ -461,6 +524,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		canvas.setScene(made.scene);
 		hint.toggleClass('is-hidden', made.scene.nodes.length > 0);
 		fitButton.disabled = made.scene.nodes.length === 0;
+		deck.prune();
 	};
 
 	/**
@@ -512,6 +576,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/** The laying out itself, from the model handed to it and the document last read. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
+		if (nextModel !== model) laneDeck.index(nextModel);
 		model = nextModel;
 		// The model's word alone, renewed with every project refresh.
 		readOnly = model?.readOnly ?? true;
@@ -552,9 +617,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	// -- Writing -------------------------------------------------------------
 
-	/** Says why a change did not land: in the words handed in, or in the view's own. */
-	const say = (came: FreeformCame, words?: string): void => {
-		if (came === 'written' || disposed) return;
+	/**
+	 * Says why a change did not land: in the words handed in, or in the
+	 * view's own; nothing where the caller says its own word, as a form left
+	 * standing over a refusal does.
+	 */
+	const say = (came: FreeformCame, words?: string | null): void => {
+		if (came === 'written' || disposed || words === null) return;
 		if (words !== undefined) {
 			new Notice(words);
 			return;
@@ -577,13 +646,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	 * turn; what the file would not take is taken off the canvas again, and
 	 * said. The steps that take it back are kept from the moment it is shown,
 	 * worked out here, and stand corrected by the file's own once it lands.
-	 * `gone` is what to say for a change taken back or made again that the
-	 * view can no longer take.
+	 * `gone` is what to say for a change the view would not take: the words
+	 * for a change taken back or made again that it can no longer take, or
+	 * null for a caller that says its own word.
 	 */
 	const change = async (
 		steps: readonly FreeformStep[],
 		turnOf: FreeformHistoryTurn = 'change',
-		gone?: string,
+		gone?: string | null,
 	): Promise<FreeformCame> => {
 		const id = shownViewId;
 		const path = controls.projectPath();
@@ -753,6 +823,57 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		canvas.focus();
 	};
 
+	// -- The deck a scene's card is dealt from ---------------------------------
+
+	/**
+	 * A scene stands on the canvas as the corkboard's own card, dealt from a
+	 * deck of this workspace's: typed into, coloured and set in its status
+	 * where it stands, its writes queued and read back as the board's are.
+	 * A card is keyed by its placement, so a scene placed twice is two cards
+	 * that show the same words. The engine moves the card's node, so the
+	 * card itself never drags, and its menu is the node's.
+	 */
+	const laneDeck = createLaneDeck({
+		controls: {
+			app,
+			t,
+			host,
+			refresh: () => controls.refresh(),
+			projectPath: () => controls.projectPath(),
+			unloading: () => controls.unloading?.() === true,
+		},
+		notice,
+		model: () => model,
+		readOnly: () => readOnly,
+		cells: () => ({
+			dragAllowed: () => false,
+			openCardMenu: (card, event) => {
+				openNodeMenu(card.key, event);
+			},
+		}),
+	});
+	const { deck } = laneDeck;
+	// A press on a card's control is let go wherever it ends, and a colour
+	// panel goes with the window the card leaves, as under the corkboard.
+	const unbindDeckWindow = bindFrameWindow({ root, deck, invalidateRects: () => undefined });
+
+	/** Keeps the words of the card's field holding the focus; true when one did. */
+	const keepFocusedCard = (): boolean => {
+		const active = root.doc.activeElement;
+		if (active === null) return false;
+		for (const card of deck.cards.values()) {
+			if (active === card.conflict) {
+				deck.commitConflict(card);
+				return true;
+			}
+			if (active === card.titleInput) {
+				deck.commitTitle(card, false);
+				return true;
+			}
+		}
+		return false;
+	};
+
 	const faces = createFreeformFaces({
 		app,
 		t,
@@ -761,7 +882,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		node: (id) => made?.nodes.get(id),
 		frame: (id) => made?.frames.get(id),
 		icon: iconOf,
-		label: labelOf,
+		label: nameOf,
 		frameLabel: frameLabelOf,
 		editing: () => editingId,
 		textLimit: () => reading?.limits.textLength ?? 0,
@@ -770,6 +891,21 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		},
 		keepText,
 		leaveText,
+		scenes: {
+			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
+			dress: (card, scene, index) => {
+				deck.dress(card, scene, index, { position: index + 1, size: model?.scenes.length ?? 0 });
+			},
+			settle: (key) => {
+				const card = deck.cards.get(key);
+				if (card === undefined) return;
+				deck.commitTitle(card, false);
+				deck.commitConflict(card);
+			},
+			retire: (key) => {
+				deck.retire(key);
+			},
+		},
 	});
 
 	/** A text node made where it is to stand, open to be typed into, and written once it holds a word. */
@@ -815,6 +951,176 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		editingId = id;
 		paintScene();
 		if (!faces.edit(id)) canvas.moveViewport({ kind: 'reveal', id });
+	};
+
+	// -- Nodes added by type ----------------------------------------------------
+
+	/** The kinds of node the form offers: what the project holds notes of, and what is made on the canvas. */
+	const nodeTypes = (): FreeformNodeType[] => [
+		{ value: 'scene', label: kindWord('scene'), section: 'entity' },
+		{ value: 'character', label: kindWord('character'), section: 'entity' },
+		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: kind.id, label: kindWord(kind.id), section: 'entity' })),
+		{ value: 'text', label: t('freeformCanvas.type.text'), section: 'canvas' },
+	];
+
+	/** The notes of a kind the project holds, each with whether the view on show places it already. */
+	const nodeCandidates = (kind: string): FreeformNodeCandidate[] => {
+		if (model === null) return [];
+		const view = shownView();
+		const placed = new Set<string>();
+		for (const { resource } of view?.placements ?? []) {
+			if (resource.type === 'entity') placed.add(resource.id);
+		}
+		const named = (entries: readonly { id: string; name: string }[]): FreeformNodeCandidate[] =>
+			entries.map((entry) => ({ id: entry.id, name: entry.name, onView: placed.has(entry.id) }));
+		if (kind === 'scene') return named(model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
+		if (kind === 'character') return named(model.characters);
+		return named(kindEntities(model, kind));
+	};
+
+	/**
+	 * Nodes added through the form: a text node typed where it lands, or the
+	 * notes chosen, each landing a step from the last so they fan out from
+	 * the middle of what is in sight, or from where the ground's menu was
+	 * opened. The form stands over a refusal, saying so.
+	 */
+	const openAddNode = (middle?: CanvasPoint): void => {
+		const id = shownViewId;
+		if (id === null || readOnly || disposed || model === null) return;
+		keep(new FreeformNodeFormModal(
+			app,
+			t,
+			{
+				types: nodeTypes(),
+				candidates: nodeCandidates,
+				room: () => {
+					const view = shownView();
+					return view === null || reading === null ? 0 : freeformRoom(view, reading.limits).placements;
+				},
+			},
+			async (draft) => {
+				if (disposed) return;
+				if (draft.type === 'text') {
+					addText(middle);
+					return;
+				}
+				canvas.settle();
+				const view = shownView();
+				if (view === null || shownViewId !== id) throw new Error(t('freeformCanvas.node.refused'));
+				const kind = draft.kind;
+				// A note lands with the room its standard face needs, so a scene stands as the board's card from the first.
+				const size = {
+					width: FREEFORM_SIZE.width,
+					height: Math.max(FREEFORM_SIZE.height, FREEFORM_FACE_HEIGHTS[kind === 'scene' ? 'scene' : 'record'].standard),
+				};
+				const landings = landingsAt(
+					cornersOf(view),
+					middle ?? canvas.centre(),
+					draft.nodes.length,
+					size,
+					memory.snap ? FREEFORM_GRID : null,
+				);
+				const placements: FreeformPlacementDraft[] = draft.nodes.map((node, at) => ({
+					id: controls.bridge().mintId('placement'),
+					resource: { type: 'entity', kind, id: node.id, name: node.name },
+					x: landings[at]?.x ?? 0,
+					y: landings[at]?.y ?? 0,
+					width: size.width,
+					height: size.height,
+				}));
+				const came = await change([{ do: 'add', placements }], 'change', null);
+				if (came !== 'written') throw new Error(t('freeformCanvas.node.refused'));
+				if (disposed) return;
+				canvas.select({ nodes: placements.map((placement) => placement.id), edges: [] });
+			},
+		)).open();
+	};
+
+	// -- What a node opens -----------------------------------------------------
+
+	/** The note behind a node, opened in the app. */
+	const openNote = (node: ResolvedNode): void => {
+		const path = node.type === 'scene'
+			? node.scene.path
+			: node.type === 'character'
+				? node.character.path
+				: node.type === 'worldbuilding'
+					? node.entity.path
+					: null;
+		if (path === null) return;
+		void host.openManagedFile(path).catch(notice);
+	};
+
+	/**
+	 * What a node opens: its form, through the deck's queue so a save is read
+	 * back, or its words to be typed into. A node whose resource has gone
+	 * opens nothing.
+	 */
+	const openNode = (id: string): void => {
+		if (disposed || made === null) return;
+		const node = made.nodes.get(id);
+		const path = controls.projectPath();
+		if (node === undefined || path === null) return;
+		if (node.type === 'text') {
+			editText(id);
+			return;
+		}
+		if (readOnly) {
+			openNote(node);
+			return;
+		}
+		if (node.type === 'scene') {
+			deck.openForm((onSaved) => host.openSceneForm({ mode: 'edit', id: node.scene.id }, path, onSaved));
+		} else if (node.type === 'character') {
+			deck.openForm((onSaved) => host.openCharacterForm(node.character.id, path, onSaved));
+		} else if (node.type === 'worldbuilding') {
+			deck.openForm((onSaved) => host.openEntityForm({ mode: 'edit', id: node.entity.id }, path, onSaved));
+		}
+	};
+
+	// -- How a node is shown and where it stands ----------------------------------
+
+	/**
+	 * The face chosen for nodes: the one asked for, or Auto, which is the
+	 * fullest the view's zoom allows that the box has room for. A fuller
+	 * face chosen by hand grows the box to what it needs, and never shrinks it.
+	 */
+	const setDisplay = (ids: readonly string[], mode: FreeformDisplayMode): void => {
+		const view = shownView();
+		if (view === null || made === null || readOnly) return;
+		const modes: { id: string; mode: FreeformDisplayMode }[] = [];
+		const places: FreeformPlace[] = [];
+		for (const id of ids) {
+			const placement = findFreeformPlacement(view, id);
+			const node = made.nodes.get(id);
+			if (placement === undefined || node === undefined) continue;
+			modes.push({ id, mode });
+			const height = grownForMode(faceKindOf(node.type), mode, placement.height);
+			if (height !== placement.height) places.push({ id, x: placement.x, y: placement.y, height });
+		}
+		if (modes.length === 0) return;
+		const steps: FreeformStep[] = [{ do: 'display', modes }];
+		if (places.length > 0) steps.push({ do: 'place', places });
+		void change(steps);
+	};
+
+	/** A node's place and size set by number: the keyboard's way of moving and sizing one. */
+	const openGeometry = (id: string): void => {
+		const view = shownView();
+		if (view === null || readOnly || disposed) return;
+		const node = findFreeformPlacement(view, id) ?? view.frames.find((frame) => frame.id === id);
+		if (node === undefined) return;
+		keep(new FreeformGeometryModal(
+			app,
+			t,
+			{ x: node.x, y: node.y, width: node.width, height: node.height },
+			FREEFORM_NODE_MIN,
+			async (geometry) => {
+				if (disposed) return;
+				const came = await change([{ do: 'place', places: [{ id, ...geometry }] }], 'change', null);
+				if (came !== 'written') throw new Error(t('freeformCanvas.geometry.refused'));
+			},
+		)).open();
 	};
 
 	// -- Removing ------------------------------------------------------------
@@ -865,6 +1171,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const menu = new Menu();
 		menu.addItem((item) => {
 			item
+				.setTitle(t('freeformCanvas.node.add'))
+				.setIcon('plus')
+				.setDisabled(readOnly || shownViewId === null)
+				.onClick(() => {
+					openAddNode(at);
+				});
+		});
+		menu.addItem((item) => {
+			item
 				.setTitle(t('freeformCanvas.text.add'))
 				.setIcon('type')
 				.setDisabled(readOnly || shownViewId === null)
@@ -889,14 +1204,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		show(menu, event);
 	};
 
-	const openNodeMenu = (id: string, event: MouseEvent): void => {
-		if (made === null || disposed) return;
-		const node = made.nodes.get(id);
-		if (node === undefined && !made.frames.has(id)) return;
-		// A menu asked for on one of several chosen speaks for them all; on any other node, for that node alone.
-		const chosen = selection.nodes.includes(id) ? selection.nodes : [id];
-		const menu = new Menu();
-		if (node?.type === 'text' && chosen.length === 1) {
+	/** The way each kind of node opens, first in its menu; a note is opened second. */
+	const addOpenItems = (menu: Menu, id: string, node: ResolvedNode): boolean => {
+		if (node.type === 'text') {
 			menu.addItem((item) => {
 				item
 					.setTitle(t('freeformCanvas.text.edit'))
@@ -904,6 +1214,67 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					.setDisabled(readOnly)
 					.onClick(() => {
 						editText(id);
+					});
+			});
+			return true;
+		}
+		if (node.type !== 'scene' && node.type !== 'character' && node.type !== 'worldbuilding') return false;
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.edit'))
+				.setIcon('pencil')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					openNode(id);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('actions.openNote'))
+				.setIcon('file-text')
+				.onClick(() => {
+					openNote(node);
+				});
+		});
+		return true;
+	};
+
+	const openNodeMenu = (id: string, event: MouseEvent): void => {
+		if (made === null || disposed) return;
+		const node = made.nodes.get(id);
+		if (node === undefined && !made.frames.has(id)) return;
+		// A menu asked for on one of several chosen speaks for them all; on any other node, for that node alone.
+		const chosen = selection.nodes.includes(id) ? selection.nodes : [id];
+		const single = chosen.length === 1;
+		const menu = new Menu();
+		if (single && node !== undefined && addOpenItems(menu, id, node)) menu.addSeparator();
+		// The face a node shows, for every placement chosen: checked where all of them show it.
+		const placements = chosen.flatMap((one) => (made?.nodes.has(one) === true ? [one] : []));
+		if (placements.length > 0) {
+			const view = shownView();
+			const modes = new Set(placements.map((one) => (view === null ? undefined : findFreeformPlacement(view, one)?.displayMode)));
+			const shared = modes.size === 1 ? [...modes][0] ?? null : null;
+			for (const mode of ['auto', ...FREEFORM_FACE_MODES] as const) {
+				menu.addItem((item) => {
+					item
+						.setTitle(mode === 'auto' ? t('freeformCanvas.display.auto') : t(`corkboard.cards.${mode}`))
+						.setChecked(shared === mode)
+						.setDisabled(readOnly)
+						.onClick(() => {
+							setDisplay(placements, mode);
+						});
+				});
+			}
+			menu.addSeparator();
+		}
+		if (single) {
+			menu.addItem((item) => {
+				item
+					.setTitle(t('freeformCanvas.node.geometry'))
+					.setIcon('move')
+					.setDisabled(readOnly)
+					.onClick(() => {
+						openGeometry(id);
 					});
 			});
 			menu.addSeparator();
@@ -942,12 +1313,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		viewportChanged: (viewport) => {
 			if (shownViewId !== null) memory.viewports.set(shownViewId, viewport);
 			paintZoom(viewport.zoom);
+			// A colour panel hangs where its card's button stood; the card has moved from under it.
+			deck.closeColorPanel();
 		},
 		menu: openMenu,
 		open: (target) => {
 			if (disposed) return;
 			if (target.kind === 'ground') addText(target.at);
-			else if (target.kind === 'node') editText(target.id);
+			else if (target.kind === 'node') openNode(target.id);
 		},
 		key: (event) => {
 			if (event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -1130,7 +1503,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		remeasure: () => {
 			canvas.remeasure();
 		},
-		saveFocusedConflict: () => faces.keepFocused(),
+		saveFocusedConflict: () => faces.keepFocused() || keepFocusedCard(),
 		dispose: () => {
 			if (disposed) return;
 			// The order is a rule, as it is the timeline's: the bell, the keys,
@@ -1144,6 +1517,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			leaveShown();
 			disposed = true;
 			canvas.dispose();
+			// The cards' own words go last, through the deck's queue, which outlives the workspace.
+			unbindDeckWindow();
+			deck.dispose();
 			viewField?.destroy();
 			root.remove();
 		},

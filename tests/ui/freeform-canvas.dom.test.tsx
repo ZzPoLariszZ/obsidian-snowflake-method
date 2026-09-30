@@ -368,6 +368,60 @@ describe('the canvas engine on a document', () => {
 		field.remove();
 	});
 
+	it('lets a press on a button of a face become a drag, and keeps a press in a field for the field', async () => {
+		const { handle, painted, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({ nodes: [node('a')], edges: [] });
+		});
+		const body = painted[0]!.body;
+		// Pressed, moved past the engine's threshold, and let go: the moves and the release land on the window, as a real drag's do.
+		const drag = (target: Element): boolean => {
+			const at = (type: string, x: number, on: EventTarget = window): void => {
+				act(() => {
+					on.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window, clientX: x, clientY: 50 }));
+				});
+			};
+			at('mousedown', 10, target);
+			// The first move past the threshold starts the drag; the node moves with the next.
+			at('mousemove', 30);
+			at('mousemove', 40);
+			const dragging = handle.busy();
+			at('mouseup', 40);
+			return dragging;
+		};
+		const button = body.ownerDocument.createElement('button');
+		const field = body.ownerDocument.createElement('textarea');
+		body.append(button, field);
+		// A card is mostly buttons: a press on one may become a drag, and its click survives a press that hardly moved.
+		expect(drag(button)).toBe(true);
+		expect(drag(field)).toBe(false);
+		expect(drag(body.querySelector('.face')!)).toBe(true);
+		expect(handle.busy()).toBe(false);
+		button.remove();
+		field.remove();
+	});
+
+	it('opens a node pressed twice, and leaves a press twice on a control of its face to the face', async () => {
+		const { handle, port, painted, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({ nodes: [node('a')], edges: [] });
+		});
+		const body = painted[0]!.body;
+		const twice = (target: Element): void => {
+			target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+		};
+		twice(body.querySelector('.face')!);
+		expect(port.open).toHaveBeenCalledWith({ kind: 'node', id: 'a' }, expect.anything());
+		// A title pressed twice is being edited, not opened.
+		const control = body.ownerDocument.createElement('button');
+		body.appendChild(control);
+		twice(control);
+		expect(port.open).toHaveBeenCalledOnce();
+		control.remove();
+	});
+
 	it('hands a copy, a cut and a paste made on the canvas to the workspace, and leaves a field its own', async () => {
 		const { host, port, raised } = canvas();
 		await raised();

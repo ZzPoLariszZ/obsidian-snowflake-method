@@ -35,7 +35,12 @@ interface SectionHeading {
 	heading: string;
 }
 
-type Suggestion = PickerOption | CreateSuggestion | SectionHeading;
+/** The row that says how many options a capped list left out, standing under the last it shows. */
+interface MoreRow {
+	more: number;
+}
+
+type Suggestion = PickerOption | CreateSuggestion | SectionHeading | MoreRow;
 
 function isCreateSuggestion(suggestion: Suggestion): suggestion is CreateSuggestion {
 	return 'create' in suggestion;
@@ -43,6 +48,51 @@ function isCreateSuggestion(suggestion: Suggestion): suggestion is CreateSuggest
 
 function isSectionHeading(suggestion: Suggestion): suggestion is SectionHeading {
 	return 'heading' in suggestion;
+}
+
+function isMoreRow(suggestion: Suggestion): suggestion is MoreRow {
+	return 'more' in suggestion;
+}
+
+/** A row that names what is around it and holds nothing to choose: a heading, or the count of what was left out. */
+function isPassiveRow(suggestion: Suggestion): suggestion is SectionHeading | MoreRow {
+	return isSectionHeading(suggestion) || isMoreRow(suggestion);
+}
+
+/** How many rows a list shows at most, for one that may run to thousands. */
+export interface PickerCap {
+	rows: number;
+}
+
+/**
+ * The rows a list shows for what was typed: the options that match, each
+ * group's name above the first of its options that survived, and, for a
+ * list capped short of the matches, how many were left out under the last
+ * shown. A list that may run to thousands is narrowed by typing rather than
+ * read, so the cap counts options, not headings.
+ */
+export function suggestionRows(
+	options: readonly PickerOption[],
+	typed: string,
+	cap: PickerCap | null = null,
+): (PickerOption | SectionHeading | MoreRow)[] {
+	const rows: (PickerOption | SectionHeading | MoreRow)[] = [];
+	let group: string | null = null;
+	let shown = 0;
+	let left = 0;
+	for (const option of optionsMatching(options, typed)) {
+		if (cap !== null && shown >= cap.rows) {
+			left += 1;
+			continue;
+		}
+		const section = option.section ?? null;
+		if (section !== null && section !== group) rows.push({ heading: section });
+		group = section;
+		rows.push(option);
+		shown += 1;
+	}
+	if (left > 0) rows.push({ more: left });
+	return rows;
 }
 
 /**
@@ -144,6 +194,8 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		 * popping the list straight back open would only be noise.
 		 */
 		private readonly reopenAfterPick: boolean,
+		/** Null for a list shown whole, which every list is but one that may run to thousands. */
+		private readonly cap: { rows: number; more: (count: number) => string } | null = null,
 	) {
 		super(app, inputEl, fieldEl);
 	}
@@ -176,14 +228,7 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		// A list offered in parts puts the name of each group above the first of
 		// its options -- of whatever survives the search, which is why the
 		// headings are worked out here rather than fixed to particular options.
-		const matches: Suggestion[] = [];
-		let group: string | null = null;
-		for (const option of optionsMatching(this.listCandidates(), typed)) {
-			const section = option.section ?? null;
-			if (section !== null && section !== group) matches.push({ heading: section });
-			group = section;
-			matches.push(option);
-		}
+		const matches: Suggestion[] = suggestionRows(this.listCandidates(), typed, this.cap);
 		if (
 			this.creating !== null &&
 			(this.creating.offers?.(typed.trim()) ?? true) &&
@@ -200,6 +245,13 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 			// the pointer off it, and choosing it does nothing.
 			el.addClass('snowflake-method-option-picker-heading');
 			el.setText(suggestion.heading);
+			return;
+		}
+		if (isMoreRow(suggestion)) {
+			// Dressed as a heading is, since it too names what is around it.
+			el.addClass('snowflake-method-option-picker-heading');
+			el.addClass('snowflake-method-option-picker-more');
+			el.setText(this.cap?.more(suggestion.more) ?? String(suggestion.more));
 			return;
 		}
 		if (isCreateSuggestion(suggestion)) {
@@ -298,7 +350,7 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 			this.selectFromEnd(up);
 			return;
 		}
-		if (value !== null && value !== undefined && isSectionHeading(value)) {
+		if (value !== null && value !== undefined && isPassiveRow(value)) {
 			this.stepOverHeading(backward ? -1 : 1);
 		}
 	}
@@ -329,7 +381,7 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 		for (let i = 0; i < values.length; i += 1) {
 			next = (next + step + values.length) % values.length;
 			const row = values[next];
-			if (row === undefined || !isSectionHeading(row)) break;
+			if (row === undefined || !isPassiveRow(row)) break;
 		}
 		if (next !== at) set.call(selection, next, null);
 	}
@@ -347,8 +399,8 @@ class OptionSuggest extends FieldSuggest<Suggestion> {
 	}
 
 	selectSuggestion(suggestion: Suggestion): void {
-		// A heading names what follows and holds nothing to choose.
-		if (isSectionHeading(suggestion)) return;
+		// A heading names what follows and holds nothing to choose; nor does the count of what was left out.
+		if (isPassiveRow(suggestion)) return;
 		// Read before anything can tear the list down, so the refresh can put the
 		// author back where they were reading.
 		const scrollTop = this.popoverScrollTop();
@@ -498,6 +550,12 @@ interface OptionPickerBaseConfig {
 	 * options look like what they name. Told null when the field is unset.
 	 */
 	dress?: (el: HTMLElement, option: PickerOption | null) => void;
+	/**
+	 * How many rows a list shows at most, for the one field that may list
+	 * thousands, and what the row under the last says of the rest. Every
+	 * other list is shown whole.
+	 */
+	cap?: { rows: number; more: (count: number) => string };
 	/** Omitted when the field cannot create an option it does not have. */
 	create?: {
 		/** Names the create row, given exactly what was typed. */
@@ -697,6 +755,7 @@ export function buildOptionPicker(
 		pick,
 		creating.suggest,
 		true,
+		config.cap ?? null,
 	);
 	// Forwarded here as well as in the single-value field: `dress` is declared
 	// on the config both builders share, so a caller passing it to this one was
@@ -781,6 +840,7 @@ export function buildOptionField(
 		choose,
 		creating.suggest,
 		false,
+		config.cap ?? null,
 	);
 	suggest.dress = config.dress ?? null;
 	wireFrame(frame, suggest);

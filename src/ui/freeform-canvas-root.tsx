@@ -243,8 +243,17 @@ function linkOf(connection: Connection): CanvasLink | null {
 
 // -- A node --------------------------------------------------------------------------
 
-/** Where a press begins something of its own, and must not pick the node up. */
-const PRESS_SELECTOR = 'input, textarea, select, button, a, [contenteditable="true"], [contenteditable=""]';
+/**
+ * Where a press begins something of its own, which a drag would swallow: a
+ * selection in a field, a choice from a list. A press on a button or a link
+ * is a click still to come, and a move before it drags the node: a scene's
+ * card is mostly buttons, and a card that could be taken hold of nowhere
+ * would be a card that cannot be moved. The click survives a press that
+ * hardly moved, by the engine's own click distance.
+ */
+const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
+/** What a press twice belongs to: every control, since a title pressed twice is being edited, not opened. */
+const CONTROL_SELECTOR = `${FIELD_SELECTOR}, button, a`;
 
 function useBand(): ZoomBand {
 	const { store } = useDeps();
@@ -273,31 +282,35 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 	useLayoutEffect(() => {
 		const host = body.current;
 		if (host === null) return undefined;
-		// A press on a field or a button of the face is the face's: it is
-		// stopped here, under the node, so the engine never takes it for the
-		// start of a drag. The click that follows is untouched.
-		const keep = (event: Event): void => {
+		// A press in a field of the face is the field's: it is stopped here,
+		// under the node, so the engine never takes it for the start of a drag.
+		// A double click on any control of the face is the control's too.
+		const keep = (selector: string) => (event: Event): void => {
 			const target = event.target;
 			if (target === null || !(target as Node).instanceOf(Element)) return;
-			if ((target as Element).closest(PRESS_SELECTOR) !== null) event.stopPropagation();
+			if ((target as Element).closest(selector) !== null) event.stopPropagation();
 		};
-		host.addEventListener('mousedown', keep);
-		host.addEventListener('touchstart', keep, { passive: true });
+		const keepPress = keep(FIELD_SELECTOR);
+		const keepTwice = keep(CONTROL_SELECTOR);
+		host.addEventListener('mousedown', keepPress);
+		host.addEventListener('touchstart', keepPress, { passive: true });
+		host.addEventListener('dblclick', keepTwice);
+		const letGo = (): void => {
+			host.removeEventListener('mousedown', keepPress);
+			host.removeEventListener('touchstart', keepPress);
+			host.removeEventListener('dblclick', keepTwice);
+		};
 		let painted: PaintedNode;
 		try {
 			painted = deps.port.painter(node.kind).mount(host, id, held.current);
 		} catch (error) {
 			deps.port.failed(error);
-			return () => {
-				host.removeEventListener('mousedown', keep);
-				host.removeEventListener('touchstart', keep);
-			};
+			return letGo;
 		}
 		face.current = painted;
 		deps.faces.mounted(id, painted);
 		return () => {
-			host.removeEventListener('mousedown', keep);
-			host.removeEventListener('touchstart', keep);
+			letGo();
 			const owed = deps.faces.unmounted(id, painted);
 			face.current = null;
 			try {
@@ -565,7 +578,8 @@ function Flow(): ReactElement {
 				preventScrolling
 				snapToGrid={interaction.snap !== null}
 				snapGrid={snapGrid}
-				nodeDragThreshold={coarse ? 6 : 1}
+				nodeDragThreshold={coarse ? 8 : 4}
+				nodeClickDistance={coarse ? 8 : 4}
 				connectionRadius={coarse ? 40 : 20}
 				deleteKeyCode={null}
 				selectionKeyCode={null}

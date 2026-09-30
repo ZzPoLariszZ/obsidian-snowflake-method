@@ -11,14 +11,18 @@ import {
 import { CANVAS_FRAME_KIND } from '../../src/ui/freeform-canvas-port';
 import {
 	FREEFORM_CASCADE,
+	FREEFORM_FACE_HEIGHTS,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
 	cornersOf,
+	faceKindOf,
 	faceModeOf,
 	frameTone,
+	grownForMode,
 	grownHeight,
 	laidOutAlike,
 	landingAt,
+	landingsAt,
 	ownWordsCount,
 	placeStepOf,
 	plainFirstLine,
@@ -88,6 +92,40 @@ describe('the face a node shows', () => {
 		expect(faceModeOf('auto', 'compact')).toBe('compact');
 		// Far off a node shows its barest face, which is all that can be read there.
 		expect(faceModeOf('auto', 'far')).toBe('compact');
+	});
+
+	it('left to the canvas, shows no fuller a face than its box has room for, so looking nearer sizes nothing', () => {
+		const { scene, record } = FREEFORM_FACE_HEIGHTS;
+		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.extended })).toBe('extended');
+		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.extended - 1 })).toBe('standard');
+		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.standard - 1 })).toBe('compact');
+		expect(faceModeOf('auto', 'standard', { kind: 'record', height: record.standard })).toBe('standard');
+		expect(faceModeOf('auto', 'standard', { kind: 'record', height: 10 })).toBe('compact');
+		// The barest face is shown whatever the room, and a face chosen by hand is shown whatever the room.
+		expect(faceModeOf('auto', 'compact', { kind: 'record', height: 1 })).toBe('compact');
+		expect(faceModeOf('extended', 'extended', { kind: 'scene', height: 1 })).toBe('extended');
+		// A text's and a plain face's fuller faces need no more room than the barest.
+		expect(faceModeOf('auto', 'extended', { kind: 'text', height: 56 })).toBe('extended');
+		expect(faceModeOf('auto', 'extended', { kind: 'plain', height: 48 })).toBe('extended');
+	});
+
+	it('knows which kind of face each kind of node shows', () => {
+		expect(faceKindOf('scene')).toBe('scene');
+		expect(faceKindOf('character')).toBe('record');
+		expect(faceKindOf('worldbuilding')).toBe('record');
+		expect(faceKindOf('text')).toBe('text');
+		for (const type of ['task', 'foreshadowing', 'revision', 'sticky-note', 'file', 'link', 'pending', 'missing'] as const) {
+			expect(faceKindOf(type), type).toBe('plain');
+		}
+	});
+
+	it('grows a box to the face chosen for it by hand, and never shrinks it', () => {
+		const { scene } = FREEFORM_FACE_HEIGHTS;
+		expect(grownForMode('scene', 'extended', 100)).toBe(scene.extended);
+		expect(grownForMode('scene', 'standard', 1_000)).toBe(1_000);
+		expect(grownForMode('scene', 'compact', 100)).toBe(100);
+		expect(grownForMode('record', 'auto', 10)).toBe(10);
+		expect(grownForMode('text', 'extended', 10)).toBe(FREEFORM_FACE_HEIGHTS.text.extended);
 	});
 });
 
@@ -260,6 +298,21 @@ describe('where a new node lands', () => {
 		const landed = landingAt(taken, { x: FREEFORM_SIZE.width / 2, y: FREEFORM_SIZE.height / 2 });
 		expect(Number.isFinite(landed.x)).toBe(true);
 		expect(landed.x).toBe(40 * FREEFORM_CASCADE);
+	});
+
+	it('lands several at once, each a step from the last, stepping aside from what stands already', () => {
+		const first = landingAt([], { x: 500, y: 300 });
+		const landings = landingsAt([first], { x: 500, y: 300 }, 3);
+		expect(landings).toEqual([
+			{ x: first.x + FREEFORM_CASCADE, y: first.y + FREEFORM_CASCADE },
+			{ x: first.x + 2 * FREEFORM_CASCADE, y: first.y + 2 * FREEFORM_CASCADE },
+			{ x: first.x + 3 * FREEFORM_CASCADE, y: first.y + 3 * FREEFORM_CASCADE },
+		]);
+		expect(landingsAt([], { x: 500, y: 300 }, 0)).toEqual([]);
+		// On the grid, each lands on it.
+		const gridded = landingsAt([], { x: 507, y: 293 }, 2, FREEFORM_SIZE, FREEFORM_GRID);
+		expect(gridded.every((landing) => landing.x % FREEFORM_GRID === 0 && landing.y % FREEFORM_GRID === 0)).toBe(true);
+		expect(gridded[0]).not.toEqual(gridded[1]);
 	});
 
 	it('reads the corners of every node of a view, frames and all', () => {

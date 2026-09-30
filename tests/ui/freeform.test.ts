@@ -4,7 +4,7 @@ import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
 const { menus, positions, hidden, viewFields, notices, rendered } = vi.hoisted(() => ({
-	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
+	menus: [] as { title: string; disabled: boolean; checked: boolean | null; click: () => void }[][],
 	positions: [] as ({ x: number; y: number } | null)[],
 	hidden: [] as unknown[],
 	viewFields: [] as OptionFieldConfig[],
@@ -22,12 +22,14 @@ vi.mock('obsidian', async (importOriginal) => {
 	class MenuItem {
 		title = '';
 		disabled = false;
+		checked: boolean | null = null;
 		click: () => void = () => undefined;
 		setTitle(title: string): this { this.title = title; return this; }
 		setIcon(): this { return this; }
 		setWarning(): this { return this; }
 		setSection(): this { return this; }
 		setDisabled(value: boolean): this { this.disabled = value; return this; }
+		setChecked(value: boolean | null): this { this.checked = value; return this; }
 		onClick(handler: () => void): this { this.click = handler; return this; }
 	}
 	class Menu {
@@ -42,7 +44,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		addSeparator(): this { return this; }
 		setParentElement(): this { return this; }
 		private shown(at: { x: number; y: number } | null): this {
-			menus.push(this.items.map((item) => ({ title: item.title, disabled: item.disabled, click: item.click })));
+			menus.push(this.items.map((item) => ({ title: item.title, disabled: item.disabled, checked: item.checked, click: item.click })));
 			positions.push(at);
 			return this;
 		}
@@ -136,11 +138,11 @@ import {
 	type PaintContext,
 	type PaintedNode,
 } from '../../src/ui/freeform-canvas-port';
-import { FreeformTextModal, FreeformViewFormModal } from '../../src/ui/freeform-forms';
-import { FREEFORM_CASCADE, FREEFORM_GRID } from '../../src/ui/freeform-layout';
+import { FreeformGeometryModal, FreeformNodeFormModal, FreeformTextModal, FreeformViewFormModal } from '../../src/ui/freeform-forms';
+import { FREEFORM_CASCADE, FREEFORM_FACE_HEIGHTS, FREEFORM_GRID } from '../../src/ui/freeform-layout';
 import { freeformMemory } from '../../src/ui/story-structure-state';
 import { confirmTimelineAction } from '../../src/ui/timeline-forms';
-import type { ProjectDashboardModel, SceneViewModel } from '../../src/ui/view-model';
+import type { CharacterViewModel, ProjectDashboardModel, SceneViewModel, WorldbuildingEntityViewModel } from '../../src/ui/view-model';
 
 // Obsidian's own DOM carries `instanceOf`, and a browser has `Element`; a menu
 // asked for from the keyboard reads the one off the event target and names the other.
@@ -187,6 +189,17 @@ const scene = (id: string, title: string): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],
 	povPath: '', povName: '', povMissing: false, times: [], locations: [], characterPaths: [], conflict: '', color: null,
 	linkedManuscript: [], worldStatus: [], relationships: [], events: '', customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+});
+
+const character = (id: string, name: string): CharacterViewModel => ({
+	id, path: `Characters/${name}.md`, name, rank: 0, type: null, progressStatus: 'complete', aliases: ['Nan'], categoryPaths: [],
+	oneSentenceStoryline: 'Wants out', oneParagraphStoryline: '', motivation: 'Fear', goal: '', conflict: '', growth: '',
+	worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [],
+});
+const place = (id: string, name: string): WorldbuildingEntityViewModel => ({
+	id, path: `World/${name}.md`, name, kind: 'location', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
+	description: 'A harbour', timeKind: null, timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
+	worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [],
 });
 
 const submit = (form: unknown, value: unknown): Promise<void> =>
@@ -384,17 +397,20 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		path: 'P', projectId: 'p', locale, readOnly: options.readOnly === true,
 		scenes: [scene('scene-1', 'Arrival'), scene('scene-2', 'Departure')],
 		manuscriptPaths: [],
-		characters: [],
-		worldbuildingKinds: [],
-		worldbuilding: {},
+		characters: [character('char-1', 'Anna')],
+		worldbuildingKinds: [
+			{ id: 'location', folderName: '62_Location', custom: false, icon: null, description: null },
+			{ id: 'Faction', folderName: '64_Faction', custom: true, icon: 'flag', description: null },
+		],
+		worldbuilding: { location: [place('loc-1', 'Harbour')], Faction: [] },
 	} as unknown as ProjectDashboardModel;
 	const memory = freeformMemory({ viewId: options.viewId ?? null, minimap: false, snap: options.snap === true });
 	const host = {
-		openManagedFile: vi.fn(() => Promise.resolve()),
+		openManagedFile: vi.fn((_path: string) => Promise.resolve()),
 		openManuscriptStream: vi.fn(() => Promise.resolve()),
-		openSceneForm: vi.fn(() => Promise.resolve(null)),
-		openCharacterForm: vi.fn(() => Promise.resolve()),
-		openEntityForm: vi.fn(() => Promise.resolve()),
+		openSceneForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
+		openCharacterForm: vi.fn((_id: string, _path?: string, _onSaved?: () => void) => Promise.resolve()),
+		openEntityForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
 		patchScene: vi.fn(() => Promise.resolve('r2')),
 		isReduceMotionEnabled: vi.fn(() => false),
 	};
@@ -486,6 +502,12 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			positions.length = 0;
 			port().menu(target, event as unknown as MouseEvent);
 			return menus[0];
+		},
+		/** Adds a text node from the ground's menu, at the middle of what is in sight; hands back its id. */
+		addText: (): string => {
+			const before = new Set(fixture.nodes());
+			fixture.menuAt({ kind: 'ground', at: canvas.state.centre })!.find((item) => item.title === 'freeformCanvas.text.add')!.click();
+			return fixture.nodes().find((id) => !before.has(id)) ?? '';
 		},
 		choose: (selection: Partial<CanvasSelection>): void => {
 			canvas.state.selection = { nodes: [], edges: [], ...selection };
@@ -651,14 +673,19 @@ describe('the freeform workspace', () => {
 			['f1', 'frame', 'Opening'],
 			['t1', 'text', 'First words'],
 			['t2', 'text', 'Second'],
-			// A scene is called what the project calls it now, not what the view last kept.
-			['s1', 'scene', 'Arrival'],
+			// A scene is called what the project calls it now, not what the view last kept, with the kind of note it is.
+			['s1', 'scene', 'freeformCanvas.node.name(kind=form.group.scene,name=Arrival)'],
 			['l1', 'link', 'example.com'],
 		]);
 		expect(fixture.node('t1').frame).toBe('f1');
 		expect(fixture.scene().nodes.every((node) => !node.connectable && !node.locked)).toBe(true);
 		expect(fixture.shown('t1')).toBe('First words\n\nand more');
-		expect(fixture.face('s1').querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('Arrival');
+		// A scene stands as the corkboard's own card.
+		expect(fixture.root.classes.has('snowflake-method-scene-cards')).toBe(true);
+		const card = fixture.face('s1').querySelector('.snowflake-method-corkboard-card')!;
+		expect(card.getAttribute('data-key')).toBe('s1');
+		expect(card.getAttribute('draggable')).toBe('false');
+		expect(card.querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Arrival');
 		expect(fixture.face('f1').querySelector('.snowflake-method-freeform-frame-title')!.textContent).toBe('Opening');
 	});
 
@@ -886,7 +913,11 @@ describe('text nodes', () => {
 	it('adds one at the middle of what is in sight, open to be typed into, and writes it once it holds a word', async () => {
 		const fixture = await laid();
 		const open = fixture.hold();
+		// Through the form, as the toolbar's word opens it: a text node asks nothing more of it.
+		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		expect(forms).toHaveLength(1);
+		await submit(forms[0], { type: 'text' });
 		const id = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(id)).toMatchObject({
 			kind: 'text',
@@ -936,14 +967,12 @@ describe('text nodes', () => {
 
 	it('never writes a node left with no word in it', async () => {
 		const fixture = await laid();
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
-		const id = fixture.nodes()[fixture.nodes().length - 1]!;
+		const id = fixture.addText();
 		fixture.type(id, '   \n  ');
 		await settle();
 		expect(fixture.nodes()).toEqual(['f1', 't1', 't2', 's1', 'l1']);
 		expect(fixture.bridge.transact).not.toHaveBeenCalled();
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
-		const again = fixture.nodes()[fixture.nodes().length - 1]!;
+		const again = fixture.addText();
 		fixture.type(again, 'Typed and let go', 'escape');
 		await settle();
 		expect(fixture.nodes()).toEqual(['f1', 't1', 't2', 's1', 'l1']);
@@ -961,9 +990,9 @@ describe('text nodes', () => {
 		await settle();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 1_000, y: 2_000 } })!;
 		expect(menu.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
+			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
 		]);
-		menu[0]!.click();
+		menu[1]!.click();
 		const second = fixture.nodes()[1]!;
 		// The spot is taken, so the second steps aside.
 		expect(fixture.node(second)).toMatchObject({
@@ -985,10 +1014,9 @@ describe('text nodes', () => {
 	it('keeps the node being typed into before it makes another', async () => {
 		const fixture = workspace([view('a')]);
 		await settle();
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
-		const first = fixture.nodes()[0]!;
+		const first = fixture.addText();
 		fixture.type(first, 'Kept on the way', 'none');
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		fixture.addText();
 		await settle();
 		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
 		expect(fixture.viewHeld('a').placements.map((placement) => placement.resource)).toEqual([
@@ -999,7 +1027,7 @@ describe('text nodes', () => {
 
 	it('says a view is full, and makes no node it has no room for', async () => {
 		const fixture = await laid({ limits: { placements: 4 } });
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		fixture.addText();
 		expect(notices).toHaveBeenCalledWith('freeformCanvas.view.full(limit=4)');
 		expect(fixture.nodes()).toHaveLength(5);
 	});
@@ -1386,8 +1414,7 @@ describe('moving, sizing and removing', () => {
 
 	it('drops a node that was never written when it is taken off with the rest', async () => {
 		const fixture = await laid();
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
-		const made = fixture.nodes()[fixture.nodes().length - 1]!;
+		const made = fixture.addText();
 		fixture.choose({ nodes: [made, 't2'] });
 		expect(fixture.press('Delete')).toBe(true);
 		await settle();
@@ -1525,8 +1552,7 @@ describe('taking a change back', () => {
 		expect(fixture.shown('t2')).toBe('Other words');
 		await settle();
 		// A node made by typing is taken off the view, and put back with its words.
-		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
-		const made = fixture.nodes()[fixture.nodes().length - 1]!;
+		const made = fixture.addText();
 		fixture.type(made, 'A thought');
 		await settle();
 		expect(placed(fixture, made)).toBeDefined();
@@ -1690,15 +1716,259 @@ describe('taking a change back', () => {
 	});
 });
 
+describe('nodes added by type', () => {
+	const formOptions = (form: unknown) => (form as { options: FreeformNodeFormModal['options'] }).options;
+
+	it('offers every kind of note the project holds and what is made on the canvas, each note once with whether the view holds it', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		const options = formOptions(forms[0]);
+		expect(options.types.map((type) => [type.value, type.label, type.section])).toEqual([
+			['scene', 'form.group.scene', 'entity'],
+			['character', 'form.group.character', 'entity'],
+			['location', 'worldbuilding.kind.location', 'entity'],
+			['Faction', 'Faction', 'entity'],
+			['text', 'freeformCanvas.type.text', 'canvas'],
+		]);
+		expect(options.candidates('scene')).toEqual([
+			{ id: 'scene-1', name: 'Arrival', onView: true },
+			{ id: 'scene-2', name: 'Departure', onView: false },
+		]);
+		expect(options.candidates('character')).toEqual([{ id: 'char-1', name: 'Anna', onView: false }]);
+		expect(options.candidates('location')).toEqual([{ id: 'loc-1', name: 'Harbour', onView: false }]);
+		expect(options.candidates('Faction')).toEqual([]);
+		expect(options.room()).toBe(FREEFORM_LIMITS.placements - 4);
+	});
+
+	it('places the notes chosen at the middle of what is in sight, each a step from the last, and chooses them', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await submit(forms[0], {
+			type: 'entity',
+			kind: 'character',
+			nodes: [{ id: 'char-1', name: 'Anna' }, { id: 'char-2', name: 'Gone already' }],
+		});
+		const added = fixture.nodes().slice(-2);
+		expect(fixture.node(added[0]!)).toMatchObject({
+			kind: 'character',
+			x: 500 - FREEFORM_SIZE.width / 2,
+			y: 300 - FREEFORM_SIZE.height / 2,
+			height: FREEFORM_FACE_HEIGHTS.record.standard,
+			label: 'freeformCanvas.node.name(kind=form.group.character,name=Anna)',
+		});
+		// A note the project no longer holds is placed all the same, and shown as missing under the name it was given.
+		expect(fixture.node(added[1]!)).toMatchObject({
+			kind: 'missing',
+			x: 500 - FREEFORM_SIZE.width / 2 + FREEFORM_CASCADE,
+			y: 300 - FREEFORM_SIZE.height / 2 + FREEFORM_CASCADE,
+			label: 'Gone already',
+		});
+		expect(fixture.canvas.selection).toEqual({ nodes: added, edges: [] });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{
+			do: 'add',
+			placements: [
+				expect.objectContaining({ id: added[0], resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' } }),
+				expect.objectContaining({ id: added[1], resource: { type: 'entity', kind: 'character', id: 'char-2', name: 'Gone already' } }),
+			],
+		}]);
+		expect(fixture.viewHeld('a').placements).toHaveLength(6);
+		// A character's face shows its rows.
+		expect(fixture.face(added[0]!).classes.has('is-record')).toBe(true);
+		expect(fixture.face(added[0]!).querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('Anna');
+		expect(fixture.face(added[1]!).classes.has('is-missing')).toBe(true);
+	});
+
+	it('places notes where the ground’s menu was opened', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await submit(forms[0], { type: 'entity', kind: 'location', nodes: [{ id: 'loc-1', name: 'Harbour' }] });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added)).toMatchObject({ kind: 'worldbuilding', x: 2_000 - FREEFORM_SIZE.width / 2, y: 3_000 - FREEFORM_SIZE.height / 2 });
+		expect(fixture.node(added).label).toBe('freeformCanvas.node.name(kind=worldbuilding.kind.location,name=Harbour)');
+		// A scene lands with the room the board's standard card needs, so it stands as that card from the first.
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await submit(forms[1], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] });
+		const sceneAdded = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(sceneAdded)).toMatchObject({
+			kind: 'scene',
+			y: 3_000 - FREEFORM_FACE_HEIGHTS.scene.standard / 2,
+			height: FREEFORM_FACE_HEIGHTS.scene.standard,
+		});
+		expect(fixture.face(sceneAdded).dataset.mode).toBe('standard');
+	});
+
+	it('leaves the form standing over a refusal, saying so once', async () => {
+		const fixture = await laid();
+		fixture.refuse('refused');
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await expect(submit(forms[0], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] }))
+			.rejects.toThrow('freeformCanvas.node.refused');
+		expect(notices).not.toHaveBeenCalled();
+		expect(fixture.nodes()).toHaveLength(5);
+	});
+
+	it('adds a text node through the form, typed where it lands', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
+		await submit(forms[0], { type: 'text' });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added)).toMatchObject({ kind: 'text', x: 2_000 - FREEFORM_SIZE.width / 2, locked: true });
+		expect(fixture.field(added)).not.toBeNull();
+	});
+
+	it('opens no form on a project that cannot be written, nor with no view to add to', async () => {
+		const forms = watch(FreeformNodeFormModal);
+		const readOnly = await laid({ readOnly: true });
+		fire(readOnly.button('snowflake-method-freeform-node-add'), 'click');
+		readOnly.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })![0]!.click();
+		const bare = workspace([]);
+		await settle();
+		fire(bare.button('snowflake-method-freeform-node-add'), 'click');
+		expect(forms).toHaveLength(0);
+	});
+});
+
+describe('what a node opens', () => {
+	it('opens a scene’s form on a press twice and from its menu, and its note from its menu', async () => {
+		const fixture = await laid();
+		fixture.port().open({ kind: 'node', id: 's1' }, {} as MouseEvent);
+		await settle();
+		expect(fixture.host.openSceneForm).toHaveBeenCalledWith({ mode: 'edit', id: 'scene-1' }, 'P', expect.any(Function));
+		const menu = fixture.menuAt({ kind: 'node', id: 's1' })!;
+		menu[0]!.click();
+		await settle();
+		expect(fixture.host.openSceneForm).toHaveBeenCalledTimes(2);
+		menu[1]!.click();
+		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Scenes/Arrival.md');
+	});
+
+	it('opens a character’s and a worldbuilding note’s form, and their notes', async () => {
+		const fixture = workspace([view('a', {
+			placements: [
+				{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' } },
+				{ ...text('w1', ''), resource: { type: 'entity', kind: 'location', id: 'loc-1', name: 'Harbour' }, x: 300 },
+				{ ...text('m1', ''), resource: { type: 'entity', kind: 'location', id: 'loc-9', name: 'Lost' }, x: 600 },
+			],
+		})]);
+		await settle();
+		// The form says it saved before it closes, as the dashboard's does.
+		fixture.host.openEntityForm.mockImplementation((_intent: unknown, _path?: string, onSaved?: () => void) => {
+			onSaved?.();
+			return Promise.resolve(null);
+		});
+		fixture.port().open({ kind: 'node', id: 'c1' }, {} as MouseEvent);
+		fixture.port().open({ kind: 'node', id: 'w1' }, {} as MouseEvent);
+		fixture.port().open({ kind: 'node', id: 'm1' }, {} as MouseEvent);
+		await settle();
+		expect(fixture.host.openCharacterForm).toHaveBeenCalledWith('char-1', 'P', expect.any(Function));
+		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'loc-1' }, 'P', expect.any(Function));
+		// A note that has gone opens nothing, and its menu offers only its face, its measures and its removal.
+		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
+			...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+		]);
+		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
+		menu[1]!.click();
+		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('World/Harbour.md');
+		// The form's save was read back.
+		expect(fixture.refresh).toHaveBeenCalled();
+	});
+
+	it('opens the note alone on a project that cannot be written', async () => {
+		const fixture = await laid({ readOnly: true });
+		fixture.port().open({ kind: 'node', id: 's1' }, {} as MouseEvent);
+		await settle();
+		expect(fixture.host.openSceneForm).not.toHaveBeenCalled();
+		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Scenes/Arrival.md');
+	});
+});
+
+describe('how a node is shown and where it stands', () => {
+	it('sets the face chosen for every node chosen, and grows a box to the face it chose', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['t2', 's1'] });
+		fixture.menuAt({ kind: 'node', id: 's1' })![DISPLAY_ITEMS.indexOf('corkboard.cards.extended')]!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
+			{ do: 'display', modes: [{ id: 't2', mode: 'extended' }, { id: 's1', mode: 'extended' }] },
+			// A text's fullest face needs no more room than its box has; a scene's card does.
+			{ do: 'place', places: [{ id: 's1', x: 0, y: 300, height: FREEFORM_FACE_HEIGHTS.scene.extended }] },
+		]);
+		expect(fixture.node('s1').height).toBe(FREEFORM_FACE_HEIGHTS.scene.extended);
+		expect(fixture.face('s1').dataset.mode).toBe('extended');
+		// Back to Auto for the one node, which sizes nothing.
+		fixture.choose({ nodes: [] });
+		fixture.menuAt({ kind: 'node', id: 't2' })![1]!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'display', modes: [{ id: 't2', mode: 'auto' }] }]);
+	});
+
+	it('shows, on Auto, the fullest face the zoom allows that the box has room for', async () => {
+		const fixture = workspace([view('a', {
+			placements: [
+				{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, height: 200 },
+				{ ...text('c2', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 300, height: 400 },
+				{ ...text('c3', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 600, height: 40 },
+			],
+		})]);
+		await settle();
+		// The plain canvas dresses at the fullest band: a box too low for that face falls back to what fits.
+		expect(fixture.face('c1').dataset.mode).toBe('standard');
+		expect(fixture.face('c2').dataset.mode).toBe('extended');
+		expect(fixture.face('c3').dataset.mode).toBe('compact');
+		// Looked at from further off, every face is the barest, whatever its box has room for.
+		fixture.canvas.band = 'compact';
+		fixture.handle.refresh();
+		expect(fixture.face('c2').dataset.mode).toBe('compact');
+	});
+
+	it('sets a node’s size and place by number through its form, refusing what the view will not take', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformGeometryModal);
+		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 1]!.click();
+		expect(forms).toHaveLength(1);
+		await submit(forms[0], { x: 640, y: 80, width: 300, height: 200 });
+		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80, width: 300, height: 200 });
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 't2', x: 640, y: 80, width: 300, height: 200 }] }]);
+		// A frame is measured the same way.
+		fixture.menuAt({ kind: 'node', id: 'f1' })![0]!.click();
+		await submit(forms[1], { x: 10, y: 20, width: 500, height: 400 });
+		await settle();
+		expect(fixture.viewHeld('a').frames[0]).toMatchObject({ x: 10, y: 20, width: 500, height: 400 });
+		fixture.refuse('refused');
+		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + 1]!.click();
+		await expect(submit(forms[2], { x: 1, y: 1, width: 300, height: 200 })).rejects.toThrow('freeformCanvas.geometry.refused');
+	});
+});
+
+const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
+
 describe('the menus', () => {
-	it('offers a text node its words to edit and its removal, and any other node its removal alone', async () => {
+	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.edit', 'timeline.timeline.removeFromView',
+			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
 		]);
-		for (const id of ['s1', 'l1', 'f1']) {
-			expect(fixture.menuAt({ kind: 'node', id })!.map((item) => item.title), id).toEqual(['timeline.timeline.removeFromView']);
-		}
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
+			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+		]);
+		// A link opens nothing yet, and a frame has no face to choose.
+		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
+			...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+		]);
+		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
+			'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView',
+		]);
+		// The face the node shows is the one checked.
+		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.checked)).toEqual([
+			null, true, false, false, false, null, null,
+		]);
 		// A line has no menu until lines can be drawn.
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })).toBeUndefined();
 		expect(fixture.menuAt({ kind: 'node', id: 'gone' })).toBeUndefined();
@@ -1714,49 +1984,57 @@ describe('the menus', () => {
 		const fixture = await laid();
 		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
 		const onChosen = fixture.menuAt({ kind: 'node', id: 't2' })!;
-		// Several are chosen: there is no one text to edit.
-		expect(onChosen.map((item) => item.title)).toEqual(['timeline.timeline.removeFromView']);
+		// Several are chosen: there is no one text to edit and no one box to measure, and the face is every one's.
+		expect(onChosen.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, 'timeline.timeline.removeFromView']);
 		const elsewhere = fixture.menuAt({ kind: 'node', id: 'l1' })!;
-		elsewhere[0]!.click();
+		elsewhere[elsewhere.length - 1]!.click();
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'delete', nodes: ['l1'], edges: [] }]);
-		onChosen[0]!.click();
+		onChosen[onChosen.length - 1]!.click();
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'delete', nodes: ['t1', 't2'], edges: ['e1'] }]);
 	});
 
 	it('offers a project that cannot be written nothing that would change it', async () => {
 		const fixture = await laid({ readOnly: true });
-		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true]);
-		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, false, false]);
+		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true]);
+		// A note is opened all the same.
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
+			['actions.edit', true], ['actions.openNote', false],
+		]);
+		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, false, false]);
 	});
 
 	it('looks about from the ground’s menu', async () => {
 		const fixture = await laid();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
-		menu[1]!.click();
 		menu[2]!.click();
+		menu[3]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
-		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, true, false]);
+		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, true, false]);
 	});
 
 	it('opens a node’s menu from the button every face carries, under the pointer or by the button', async () => {
 		const fixture = await laid();
-		const more = fixture.more('s1');
+		const more = fixture.more('l1');
 		expect(more.getAttribute('aria-label')).toBe('table.actions');
 		expect(more.getAttribute('aria-haspopup')).toBe('menu');
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual(['timeline.timeline.removeFromView']);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, 'freeformCanvas.node.geometry', 'timeline.timeline.removeFromView']);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });
 		fire(more, 'click', { detail: 0 });
 		expect(positions[1]).toEqual({ x: 40, y: 90 });
-		for (const id of ['t1', 'f1', 'l1']) expect(fixture.more(id), id).toBeDefined();
+		for (const id of ['t1', 'f1']) expect(fixture.more(id), id).toBeDefined();
+		// A scene's card carries the corkboard's own button, which opens the node's menu all the same.
+		const card = fixture.face('s1').querySelector('.snowflake-method-corkboard-more')!;
+		fire(card, 'click', { detail: 1 });
+		expect(menus[2]!.map((item) => item.title)[0]).toBe('actions.edit');
 	});
 
 	it('takes the menus it opened with it as it goes', async () => {

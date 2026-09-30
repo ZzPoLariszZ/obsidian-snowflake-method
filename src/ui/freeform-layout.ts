@@ -36,14 +36,71 @@ import type { ResolvedNode } from './freeform-resources';
 /** The three faces a node has, which the stylesheet dresses by name. */
 export type FreeformFaceMode = 'compact' | 'standard' | 'extended';
 
+export const FREEFORM_FACE_MODES: readonly FreeformFaceMode[] = ['compact', 'standard', 'extended'];
+
+/**
+ * The kinds of face there are, by how much room each of their modes needs:
+ * a scene's card, a record's rows, a text's words, and the one line every
+ * other kind shows.
+ */
+export type FreeformFaceKind = 'scene' | 'record' | 'text' | 'plain';
+
+/**
+ * How tall a box must be for a face to show each of its modes whole. A
+ * scene's measures are the corkboard's own card in each of its styles; a
+ * record's are its rows.
+ */
+export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
+	scene: { compact: 80, standard: 240, extended: 304 },
+	record: { compact: 56, standard: 160, extended: 320 },
+	text: { compact: 56, standard: 56, extended: 56 },
+	plain: { compact: 48, standard: 48, extended: 48 },
+};
+
+/** The kind of face a resolved node shows. */
+export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
+	switch (type) {
+		case 'scene':
+			return 'scene';
+		case 'character':
+		case 'worldbuilding':
+			return 'record';
+		case 'text':
+			return 'text';
+		default:
+			return 'plain';
+	}
+}
+
 /**
  * The face a node shows: the one the author chose, or, left to the canvas,
- * the fullest the size it is looked at allows. Far off a node shows its
- * barest face, which is all that can be read there.
+ * the fullest the size it is looked at allows that its box has room for,
+ * so looking nearer never sizes a node. Far off a node shows its barest
+ * face, which is all that can be read there.
  */
-export function faceModeOf(mode: FreeformDisplayMode, band: ZoomBand): FreeformFaceMode {
+export function faceModeOf(
+	mode: FreeformDisplayMode,
+	band: ZoomBand,
+	fit?: { kind: FreeformFaceKind; height: number },
+): FreeformFaceMode {
 	if (mode !== 'auto') return mode;
-	return band === 'far' ? 'compact' : band;
+	let shown: FreeformFaceMode = band === 'far' ? 'compact' : band;
+	if (fit === undefined) return shown;
+	const heights = FREEFORM_FACE_HEIGHTS[fit.kind];
+	while (shown !== 'compact' && fit.height < heights[shown]) {
+		shown = shown === 'extended' ? 'standard' : 'compact';
+	}
+	return shown;
+}
+
+/**
+ * How tall a node stands once a fuller face is chosen for it: as tall as it
+ * was, or as tall as that face needs. Choosing a face is the keyboard's way
+ * of sizing a node, so a box is grown and never shrunk by it.
+ */
+export function grownForMode(kind: FreeformFaceKind, mode: FreeformDisplayMode, height: number): number {
+	if (mode === 'auto') return height;
+	return Math.min(FREEFORM_SIZE.max, Math.max(height, FREEFORM_FACE_HEIGHTS[kind][mode]));
 }
 
 // -- A view said to the canvas ---------------------------------------------------
@@ -236,6 +293,28 @@ export function cornersOf(view: Pick<FreeformView, 'placements' | 'frames'>): Ca
 		...view.frames.map((frame) => ({ x: frame.x, y: frame.y })),
 		...view.placements.map((placement) => ({ x: placement.x, y: placement.y })),
 	];
+}
+
+/**
+ * Where several new nodes land at once: the first where one would, and each
+ * that follows a step down and across from the last, so they fan out from
+ * the spot rather than hide one another.
+ */
+export function landingsAt(
+	standing: readonly CanvasPoint[],
+	middle: CanvasPoint,
+	count: number,
+	size: CanvasSize = FREEFORM_SIZE,
+	grid: number | null = null,
+): CanvasPoint[] {
+	const taken = [...standing];
+	const landings: CanvasPoint[] = [];
+	for (let at = 0; at < count; at += 1) {
+		const landing = landingAt(taken, middle, size, grid);
+		landings.push(landing);
+		taken.push(landing);
+	}
+	return landings;
 }
 
 /**

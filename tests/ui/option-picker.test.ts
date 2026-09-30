@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	offersCreating,
 	optionsMatching,
+	suggestionRows,
 	unpickedOptions,
 } from '../../src/ui/option-picker';
 
@@ -121,5 +122,39 @@ describe('offering to create what was typed', () => {
 		expect(
 			offersCreating(unpickedOptions(options, ['b.md']), 'Grace Hopper'),
 		).toBe(true);
+	});
+});
+
+describe('the rows a list shows', () => {
+	const grouped = [
+		{ value: 'a', label: 'Arrival', section: 'On this view' },
+		{ value: 'b', label: 'Battle', section: 'Not on this view' },
+		{ value: 'c', label: 'Chase', section: 'Not on this view' },
+		{ value: 'd', label: 'Dusk', section: 'Not on this view' },
+	];
+
+	it('names each group above the first of its options that survived the search', () => {
+		expect(suggestionRows(grouped, '')).toEqual([
+			{ heading: 'On this view' }, grouped[0],
+			{ heading: 'Not on this view' }, grouped[1], grouped[2], grouped[3],
+		]);
+		expect(suggestionRows(grouped, 'us')).toEqual([{ heading: 'Not on this view' }, grouped[3]]);
+		expect(suggestionRows(options, 'a')).toEqual([options[2], options[3]]);
+	});
+
+	it('shows a capped list up to its cap and says how many were left out, counting options and not headings', () => {
+		expect(suggestionRows(grouped, '', { rows: 2 })).toEqual([
+			{ heading: 'On this view' }, grouped[0],
+			{ heading: 'Not on this view' }, grouped[1],
+			{ more: 2 },
+		]);
+		// Narrowed by typing, the list fits under its cap and says nothing of the rest.
+		expect(suggestionRows(grouped, 'a', { rows: 2 })).toEqual([
+			{ heading: 'On this view' }, grouped[0],
+			{ heading: 'Not on this view' }, grouped[1],
+			{ more: 1 },
+		]);
+		expect(suggestionRows(grouped, 'dusk', { rows: 2 })).toEqual([{ heading: 'Not on this view' }, grouped[3]]);
+		expect(suggestionRows(grouped, '', { rows: 4 })).toHaveLength(6);
 	});
 });
