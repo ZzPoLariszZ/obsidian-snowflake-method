@@ -659,6 +659,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'errors.readOnly': '此项目为只读状态。',
 	'errors.invalidProject': '这不是有效的雪花写作项目。',
 	'errors.fileMissing': '找不到笔记“{path}”。',
+	'errors.projectFileMissing': '找不到文件“{path}”。',
 	'errors.projectExists': '名为“{name}”的项目已存在。',
 	'errors.archiveFolderIsProject':
 		'“Snowflake Archive”文件夹的位置上已有一个同名项目。请先重命名该项目。',
@@ -1281,6 +1282,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'freeformCanvas.open.occurrencePlaceholder': '输入以查找要显示的落点',
 	'freeformCanvas.open.noOccurrence': '此伏笔在正文中暂无落点。',
 	'freeformCanvas.open.taskGone': '该任务已不在项目中。',
+	'freeformCanvas.open.linkRefused': '无法打开链接。',
 	'freeformCanvas.face.occurrences': '{count} 处落点',
 	'freeformCanvas.face.occurrencesOne': '{count} 处落点',
 	'freeformCanvas.geometry.title': '大小与位置',

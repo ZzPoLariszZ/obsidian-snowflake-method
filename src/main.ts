@@ -10257,6 +10257,48 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * Any file of the vault opened: a note through the note pane, a file the
+	 * app has a view for in a tab of its own, and anything else with the
+	 * machine's own program for it, where the app can ask for one.
+	 */
+	async openProjectFile(path: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!(file instanceof TFile)) {
+			throw new Error(this.t('errors.projectFileMissing', { path }));
+		}
+		if (file.extension === 'md') {
+			await this.openManagedFile(path);
+			return;
+		}
+		// Neither is in the published API; each is read off the app as it stands, and left alone where it is not there.
+		const app = this.app as unknown as {
+			viewRegistry?: { getTypeByExtension?: (extension: string) => string | undefined };
+			openWithDefaultApp?: (path: string) => Promise<void>;
+		};
+		const viewType = app.viewRegistry?.getTypeByExtension?.(file.extension);
+		if (viewType === undefined && app.openWithDefaultApp !== undefined) {
+			await app.openWithDefaultApp.call(this.app, file.path);
+			return;
+		}
+		const leaf = this.app.workspace.getLeaf('tab');
+		await leaf.openFile(file, { active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/**
+	 * A web address handed to the app from the window it was asked in, which
+	 * opens it as the author has it set to. Only a web address is handed on:
+	 * a file path or any other scheme is refused, since the app would treat
+	 * it as more than a link.
+	 */
+	openExternalLink(url: string, from: HTMLElement): void {
+		if (!/^https?:\/\//iu.test(url)) {
+			throw new Error(this.t('freeformCanvas.open.linkRefused'));
+		}
+		from.win.open(url);
+	}
+
+	/**
 	 * Brings one task's card into sight on its project's task board. Unlike a
 	 * form, the board is where the author is going, so the project's dashboard
 	 * comes forward: the one standing for the project, or a new tab.

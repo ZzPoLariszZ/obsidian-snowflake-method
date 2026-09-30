@@ -875,6 +875,14 @@ export interface DashboardHost {
 	 */
 	revealTask(projectPath: string, taskId: string): Promise<boolean>;
 	/**
+	 * Opens any file of the vault by its path: a note through the note pane
+	 * as `openManagedFile` does, a file the app has a view for in a tab of
+	 * its own, and anything else with the machine's own program for it.
+	 */
+	openProjectFile(path: string): Promise<void>;
+	/** Hands a web address to the app, which opens it as the author has it set to: in the browser, or in its own viewer. */
+	openExternalLink(url: string, from: HTMLElement): void;
+	/**
 	 * Opens the worldbuilding form on the dashboard of the requested project,
 	 * as `openSceneForm` does; resolves when the modal closes, with the id of
 	 * the note a create made.

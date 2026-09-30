@@ -721,6 +721,7 @@ export const en = {
 	'errors.readOnly': 'This project is read-only.',
 	'errors.invalidProject': 'This is not a valid Snowflake project.',
 	'errors.fileMissing': 'The note “{path}” could not be found.',
+	'errors.projectFileMissing': 'The file “{path}” could not be found.',
 	'errors.projectExists': 'A project named “{name}” already exists.',
 	'errors.archiveFolderIsProject':
 		'A project is standing where the “Snowflake Archive” folder would go. Rename that project first.',
@@ -1384,6 +1385,7 @@ export const en = {
 	'freeformCanvas.open.occurrencePlaceholder': 'Type to find the occurrence to show',
 	'freeformCanvas.open.noOccurrence': 'This foreshadowing has no occurrence in the manuscript yet.',
 	'freeformCanvas.open.taskGone': 'The task is no longer in the project.',
+	'freeformCanvas.open.linkRefused': 'The link could not be opened.',
 	'freeformCanvas.face.occurrences': '{count} occurrences',
 	'freeformCanvas.face.occurrencesOne': '{count} occurrence',
 	'freeformCanvas.geometry.title': 'Size and position',
