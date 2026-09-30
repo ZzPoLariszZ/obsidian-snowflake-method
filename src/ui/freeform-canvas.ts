@@ -326,6 +326,19 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		}
 	};
 
+	/**
+	 * Whether a copy, a cut or a paste is the canvas's: asked for while the
+	 * focus stands on it, and not in a field of a face, whose words are the
+	 * field's, nor over words chosen on a face, which are the reader's to copy.
+	 */
+	const clipboardOurs = (event: ClipboardEvent): boolean => {
+		if (withinField(event.target)) return false;
+		const active = host.doc.activeElement;
+		if (active === null || !host.contains(active)) return false;
+		const chosen = host.win.getSelection();
+		return chosen === null || chosen.type !== 'Range' || chosen.anchorNode === null || !host.contains(chosen.anchorNode);
+	};
+
 	// Bound once the engine can be raised and lowered: the window is measured
 	// as it is bound, and a canvas that has a size is one to raise.
 	surroundings = bindCanvasWindow({
@@ -339,6 +352,13 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 			if (root === null) raise();
 			flow?.setSize(size);
 			takeWaiting();
+		},
+		clipboard: (event) => {
+			if (disposed || event.defaultPrevented || !clipboardOurs(event)) return;
+			if (event.type !== 'copy' && event.type !== 'cut' && event.type !== 'paste') return;
+			if (!port.clipboard(event.type, event)) return;
+			event.preventDefault();
+			event.stopPropagation();
 		},
 		migrated: () => {
 			// The engine's listeners and measures are the window's it was raised
@@ -356,16 +376,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		event.preventDefault();
 		event.stopPropagation();
 	};
-	const onClipboard = (event: ClipboardEvent): void => {
-		if (disposed || withinField(event.target)) return;
-		if (event.type === 'copy' || event.type === 'cut' || event.type === 'paste') {
-			port.clipboard(event.type, event);
-		}
-	};
 	host.addEventListener('keydown', onKey);
-	host.addEventListener('copy', onClipboard);
-	host.addEventListener('cut', onClipboard);
-	host.addEventListener('paste', onClipboard);
 
 	void loadRoot().then(
 		(loaded) => {
@@ -446,9 +457,6 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 			clearNudge();
 			surroundings?.release();
 			host.removeEventListener('keydown', onKey);
-			host.removeEventListener('copy', onClipboard);
-			host.removeEventListener('cut', onClipboard);
-			host.removeEventListener('paste', onClipboard);
 			lower(true);
 			listeners.clear();
 			host.removeClass(FREEFORM_CANVAS_CLASS);

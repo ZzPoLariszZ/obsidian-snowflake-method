@@ -278,6 +278,11 @@ const CASCADE_MAX = 40;
 const snapped = (value: number, grid: number | null): number =>
 	grid === null || !(grid > 0) ? Math.round(value) : Math.round(value / grid) * grid;
 
+/** How far a node steps down and across to stand clear of another: the cascade, or the grid's own step when it is coarser. */
+export function cascadeStep(grid: number | null): number {
+	return grid === null || !(grid > 0) ? FREEFORM_CASCADE : Math.max(grid, Math.ceil(FREEFORM_CASCADE / grid) * grid);
+}
+
 /**
  * Where a new node's corner goes so its middle stands at a place: the middle
  * of what is in sight, or where the ground's menu was opened. A node already
@@ -292,7 +297,7 @@ export function landingAt(
 	grid: number | null = null,
 ): CanvasPoint {
 	const taken = new Set(standing.map((corner) => `${String(corner.x)} ${String(corner.y)}`));
-	const step = grid === null ? FREEFORM_CASCADE : Math.max(grid, Math.ceil(FREEFORM_CASCADE / grid) * grid);
+	const step = cascadeStep(grid);
 	let x = snapped(middle.x - size.width / 2, grid);
 	let y = snapped(middle.y - size.height / 2, grid);
 	for (let tried = 0; tried < CASCADE_MAX && taken.has(`${String(x)} ${String(y)}`); tried += 1) {

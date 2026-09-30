@@ -96,7 +96,7 @@ function canvas(size: { width: number; height: number } = { width: 800, height: 
 		menu: vi.fn(),
 		open: vi.fn(),
 		key: vi.fn(() => false),
-		clipboard: vi.fn(),
+		clipboard: vi.fn((_kind: string, _event: ClipboardEvent) => false),
 		gestureEnded: vi.fn(),
 		failed: vi.fn(),
 	} satisfies CanvasPort;
@@ -456,18 +456,39 @@ describe('the canvas engine on a document', () => {
 		control.remove();
 	});
 
-	it('hands a copy, a cut and a paste made on the canvas to the workspace, and leaves a field its own', async () => {
+	it('hands a copy, a cut and a paste asked for while it holds the focus to the workspace, and leaves a field its own', async () => {
 		const { host, port, raised } = canvas();
 		await raised();
+		// The browser fires these at the body when nothing is chosen: the canvas hears them there while it holds the focus.
+		host.focus();
+		expect(document.activeElement).toBe(host);
 		for (const kind of ['copy', 'cut', 'paste'] as const) {
-			host.dispatchEvent(new Event(kind, { bubbles: true }));
-			expect(port.clipboard).toHaveBeenLastCalledWith(kind, expect.anything());
+			const event = new Event(kind, { bubbles: true, cancelable: true });
+			document.body.dispatchEvent(event);
+			expect(port.clipboard).toHaveBeenLastCalledWith(kind, event);
+			expect(event.defaultPrevented).toBe(false);
 		}
+		// One the workspace takes is the canvas's alone.
+		port.clipboard.mockReturnValueOnce(true);
+		const taken = new Event('copy', { bubbles: true, cancelable: true });
+		document.body.dispatchEvent(taken);
+		expect(taken.defaultPrevented).toBe(true);
+		expect(port.clipboard).toHaveBeenCalledTimes(4);
+		// In a field, the words are the field's.
 		const field = document.createElement('input');
 		host.appendChild(field);
+		field.focus();
 		field.dispatchEvent(new Event('copy', { bubbles: true }));
-		expect(port.clipboard).toHaveBeenCalledTimes(3);
+		expect(port.clipboard).toHaveBeenCalledTimes(4);
 		field.remove();
+		// With the focus elsewhere, the canvas hears nothing.
+		const other = document.createElement('button');
+		document.body.appendChild(other);
+		other.focus();
+		expect(document.activeElement).toBe(other);
+		document.body.dispatchEvent(new Event('paste', { bubbles: true }));
+		expect(port.clipboard).toHaveBeenCalledTimes(4);
+		other.remove();
 	});
 
 	it('looks from where it is told to, and says where it looks from', async () => {

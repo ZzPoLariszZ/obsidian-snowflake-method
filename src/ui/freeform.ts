@@ -31,11 +31,13 @@ import {
 	FREEFORM_SIZE,
 	FREEFORM_ZOOM,
 	applyFreeformSteps,
+	copyFreeformSelection,
 	findFreeformEdge,
 	findFreeformFrame,
 	findFreeformPlacement,
 	findFreeformView,
 	freeformBounds,
+	freeformClipSteps,
 	freeformPlacedFilePaths,
 	freeformPlacedTypes,
 	freeformRoom,
@@ -43,6 +45,7 @@ import {
 	leaveFreeformView,
 	shownFreeformViewId,
 	type FreeformCame,
+	type FreeformClip,
 	type FreeformDisplayMode,
 	type FreeformFrame,
 	type FreeformPlace,
@@ -63,6 +66,7 @@ import {
 	type CanvasPort,
 	type CanvasSelection,
 } from './freeform-canvas-port';
+import { freeformClipSize, readFreeformClip, writeFreeformClip } from './freeform-clipboard';
 import { createFreeformFaces } from './freeform-faces';
 import {
 	FreeformEdgeFormModal,
@@ -93,6 +97,7 @@ import {
 	FREEFORM_FACE_MODES,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
+	cascadeStep,
 	cornersOf,
 	faceKindOf,
 	grownForMode,
@@ -1656,10 +1661,132 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		void change([{ do: 'delete', nodes: standingNodes, edges }]);
 	};
 
-	// -- Looking about -------------------------------------------------------
+	// -- Copies, the clipboard, and the order nodes stand in --------------------
+
+	/** What a copy of the nodes named takes, as the view stands now; null where none of them stands. */
+	const clipOf = (ids: readonly string[]): FreeformClip | null => {
+		if (ids.length === 0 || shownView() === null) return null;
+		// Words still being typed are the view's before they are copied.
+		canvas.settle();
+		const view = shownView();
+		return view === null ? null : copyFreeformSelection(view, { nodes: ids });
+	};
+
+	/** Whether the view has room for a copy laid down on it; says what stands in the way where it has not. */
+	const roomFor = (view: FreeformView, clip: FreeformClip): boolean => {
+		if (reading === null) return false;
+		const room = freeformRoom(view, reading.limits);
+		if (clip.placements.length > room.placements) {
+			if (room.placements === 0) say('full');
+			else new Notice(t('freeformCanvas.node.limitSome', { left: room.placements }));
+			return false;
+		}
+		if (clip.frames.length > room.frames || clip.edges.length > room.edges) {
+			say('refused');
+			return false;
+		}
+		return true;
+	};
+
+	/** Where a copy's corner goes so its middle stands at a place, stepping aside from a corner already taken. */
+	const landingFor = (view: FreeformView, clip: FreeformClip, middle: CanvasPoint): CanvasPoint =>
+		landingAt(cornersOf(view), middle, freeformClipSize(clip), memory.snap ? FREEFORM_GRID : null);
+
+	/**
+	 * A copy laid down with its corner at a place, every node and line under
+	 * an id of its own, and the new nodes chosen in place of the old.
+	 */
+	const layDown = (clip: FreeformClip, corner: CanvasPoint): void => {
+		const view = shownView();
+		if (view === null || readOnly || disposed || !roomFor(view, clip)) return;
+		const { steps, nodes } = freeformClipSteps(clip, corner, (kind) => controls.bridge().mintId(kind));
+		if (steps.length === 0) return;
+		void change(steps);
+		canvas.select({ nodes, edges: [] });
+		canvas.focus();
+	};
+
+	/** The nodes named copied and laid down a step down and across from where they stand; false where none stands. */
+	const duplicate = (ids: readonly string[]): boolean => {
+		if (readOnly || disposed) return false;
+		const clip = clipOf(ids);
+		const view = shownView();
+		if (clip === null || view === null) return false;
+		const size = freeformClipSize(clip);
+		const step = cascadeStep(memory.snap ? FREEFORM_GRID : null);
+		layDown(clip, landingFor(view, clip, {
+			x: clip.origin.x + step + size.width / 2,
+			y: clip.origin.y + step + size.height / 2,
+		}));
+		return true;
+	};
+
+	/** A copy laid down about a place: where the ground's menu was opened, or the middle of what is in sight. */
+	const paste = (clip: FreeformClip, middle?: CanvasPoint): void => {
+		const view = shownView();
+		if (view === null || readOnly || disposed) return;
+		layDown(clip, landingFor(view, clip, middle ?? canvas.centre()));
+	};
+
+	/** The nodes named put on the clipboard by the menu, where no clipboard event brings the words. */
+	const copyToClipboard = (ids: readonly string[]): void => {
+		const clip = clipOf(ids);
+		if (clip === null) return;
+		void root.win.navigator.clipboard.writeText(writeFreeformClip(clip)).catch(notice);
+	};
+
+	/** What the clipboard holds laid down by the menu; says so where it holds no copy. */
+	const pasteFromClipboard = (middle: CanvasPoint): void => {
+		void root.win.navigator.clipboard.readText().then((words) => {
+			if (disposed) return;
+			const clip = readFreeformClip(words);
+			if (clip === null) new Notice(t('freeformCanvas.node.pasteEmpty'));
+			else paste(clip, middle);
+		}).catch(notice);
+	};
+
+	/** The nodes named a step up or down among their neighbours. */
+	const restack = (ids: readonly string[], to: 'forward' | 'backward'): void => {
+		if (readOnly || disposed || ids.length === 0) return;
+		void change([{ do: 'restack', ids, to }]);
+	};
+
+	// -- Choosing and looking about ----------------------------------------------
+
+	/** Every node chosen; false where there is none, so the key goes on to whoever is next. */
+	const selectAll = (): boolean => {
+		if (made === null || made.scene.nodes.length === 0) return false;
+		canvas.select({ nodes: made.scene.nodes.map((node) => node.id), edges: [] });
+		canvas.focus();
+		return true;
+	};
+
+	/** One node added to what is chosen, or taken out of it. */
+	const chooseAlso = (id: string, on: boolean): void => {
+		const nodes = on ? [...selection.nodes.filter((one) => one !== id), id] : selection.nodes.filter((one) => one !== id);
+		canvas.select({ nodes, edges: selection.edges });
+	};
 
 	const fitAll = (): void => {
 		canvas.moveViewport({ kind: 'fit', of: 'all' });
+	};
+
+	/** What is chosen brought into sight, a line by its two ends; false where nothing is. */
+	const fitSelection = (): boolean => {
+		if (selection.nodes.length > 0) {
+			canvas.moveViewport({ kind: 'fit', of: 'selection' });
+			return true;
+		}
+		const view = shownView();
+		const ends = view === null
+			? []
+			: selection.edges.flatMap((id) => {
+				const edge = findFreeformEdge(view, id);
+				return edge === undefined ? [] : [edge.source, edge.target];
+			});
+		if (ends.length === 0) return false;
+		canvas.moveViewport({ kind: 'fit', of: ends });
+		return true;
 	};
 
 	const resetViewport = (): void => {
@@ -1719,13 +1846,41 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					openAddNode(at, 'link');
 				});
 		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.node.paste'))
+				.setIcon('clipboard-paste')
+				.setDisabled(readOnly || shownViewId === null)
+				.onClick(() => {
+					pasteFromClipboard(at);
+				});
+		});
 		menu.addSeparator();
+		const standing = made !== null && made.scene.nodes.length > 0;
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.node.selectAll'))
+				.setIcon('box-select')
+				.setDisabled(!standing)
+				.onClick(() => {
+					selectAll();
+				});
+		});
 		menu.addItem((item) => {
 			item
 				.setTitle(t('freeformCanvas.fit.all'))
 				.setIcon('maximize')
-				.setDisabled(made === null || made.scene.nodes.length === 0)
+				.setDisabled(!standing)
 				.onClick(fitAll);
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.fit.selection'))
+				.setIcon('scan')
+				.setDisabled(selection.nodes.length === 0 && selection.edges.length === 0)
+				.onClick(() => {
+					fitSelection();
+				});
 		});
 		menu.addItem((item) => {
 			item
@@ -1958,6 +2113,53 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}
 		menu.addItem((item) => {
 			item
+				.setTitle(t('freeformCanvas.node.duplicate'))
+				.setIcon('copy-plus')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					duplicate(chosen);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.node.copy'))
+				.setIcon('copy')
+				.onClick(() => {
+					copyToClipboard(chosen);
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.node.forward'))
+				.setIcon('bring-to-front')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					restack(chosen, 'forward');
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.node.backward'))
+				.setIcon('send-to-back')
+				.setDisabled(readOnly)
+				.onClick(() => {
+					restack(chosen, 'backward');
+				});
+		});
+		menu.addSeparator();
+		// The way to choose several without a key to hold: this node joins what is chosen, or leaves it.
+		const among = selection.nodes.includes(id);
+		menu.addItem((item) => {
+			item
+				.setTitle(t(among ? 'freeformCanvas.node.deselect' : 'freeformCanvas.node.select'))
+				.setIcon(among ? 'square-minus' : 'square-plus')
+				.onClick(() => {
+					chooseAlso(id, !among);
+				});
+		});
+		menu.addItem((item) => {
+			item
 				// A frame taken off leaves what it held standing, and free.
 				.setTitle(t(single && isFrame ? 'freeformCanvas.frame.remove' : 'timeline.timeline.removeFromView'))
 				.setIcon('eye-off')
@@ -2092,7 +2294,24 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			}
 			return false;
 		},
-		clipboard: () => undefined,
+		clipboard: (kind, event) => {
+			if (disposed || shownViewId === null) return false;
+			const data = event.clipboardData;
+			if (data === null) return false;
+			if (kind === 'paste') {
+				if (readOnly) return false;
+				const clip = readFreeformClip(data.getData('text/plain'));
+				if (clip === null) return false;
+				paste(clip);
+				return true;
+			}
+			const clip = clipOf(selection.nodes);
+			if (clip === null) return false;
+			data.setData('text/plain', writeFreeformClip(clip));
+			// A cut in a project that cannot be written is a copy: nothing is taken off.
+			if (kind === 'cut' && !readOnly) remove(selection.nodes, selection.edges);
+			return true;
+		},
 		gestureEnded: () => {
 			loop.paintOwed();
 		},
@@ -2225,11 +2444,14 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		// A chord with nothing to take back is not taken, so it goes on to whoever is next.
 		controls.chord(['Mod'], 'z', () => !chordFree() || !undo()),
 		controls.chord(['Mod', 'Shift'], 'z', () => !chordFree() || !redo()),
+		controls.chord(['Mod'], 'a', () => !chordFree() || !selectAll()),
+		controls.chord(['Mod'], 'd', () => !chordFree() || !duplicate(selection.nodes)),
 		controls.chord(['Shift'], '1', () => {
 			if (!chordFree()) return true;
 			fitAll();
 			return false;
 		}),
+		controls.chord(['Shift'], '2', () => !chordFree() || !fitSelection()),
 		controls.chord(['Shift'], '0', () => {
 			if (!chordFree()) return true;
 			resetViewport();

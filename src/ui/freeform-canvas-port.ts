@@ -176,7 +176,11 @@ export interface CanvasPort {
 	open: (target: CanvasMenuTarget, event: MouseEvent) => void;
 	/** A key pressed on the canvas and not in a field of a face; true when it was taken. */
 	key: (event: KeyboardEvent) => boolean;
-	clipboard: (kind: 'copy' | 'cut' | 'paste', event: ClipboardEvent) => void;
+	/**
+	 * A copy, a cut or a paste asked for while the canvas holds the focus and
+	 * no words on it are chosen; true when the canvas took it as its own.
+	 */
+	clipboard: (kind: 'copy' | 'cut' | 'paste', event: ClipboardEvent) => boolean;
 	/** A gesture is over: a paint the workspace held back may now be made. */
 	gestureEnded: () => void;
 	/** The engine could not be started, or fell over while drawing. */

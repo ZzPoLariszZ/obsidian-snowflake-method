@@ -20,6 +20,12 @@ export interface CanvasWindowDeps {
 	boxing: (on: boolean) => void;
 	/** The canvas is another size. */
 	resized: (size: CanvasSize) => void;
+	/**
+	 * A copy, a cut or a paste was asked for in the canvas's window. Heard on
+	 * the window and not on the canvas, since the browser fires it at the
+	 * words chosen or at the body, and a canvas with a node chosen has neither.
+	 */
+	clipboard: (event: ClipboardEvent) => void;
 	/** The canvas stands in another window, after everything here was bound to it. */
 	migrated: () => void;
 }
@@ -30,6 +36,8 @@ export interface CanvasWindow {
 	measure: () => CanvasSize;
 	release: () => void;
 }
+
+const CLIPBOARD_EVENTS = ['copy', 'cut', 'paste'] as const;
 
 type MigratingElement = HTMLElement & {
 	onWindowMigrated?: (listener: (win: Window) => unknown) => () => void;
@@ -84,6 +92,9 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		over = false;
 		say(false);
 	};
+	const onClipboard = (event: ClipboardEvent): void => {
+		deps.clipboard(event);
+	};
 
 	const bind = (): void => {
 		const win = host.ownerDocument.defaultView as MeasuringWindow | null;
@@ -92,6 +103,7 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		win.addEventListener('keydown', onKey, true);
 		win.addEventListener('keyup', onKey, true);
 		win.addEventListener('blur', onBlur);
+		for (const kind of CLIPBOARD_EVENTS) win.addEventListener(kind, onClipboard);
 		if (win.ResizeObserver !== undefined) {
 			observer = new win.ResizeObserver(() => {
 				measure();
@@ -106,6 +118,7 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		bound.removeEventListener('keydown', onKey, true);
 		bound.removeEventListener('keyup', onKey, true);
 		bound.removeEventListener('blur', onBlur);
+		for (const kind of CLIPBOARD_EVENTS) bound.removeEventListener(kind, onClipboard);
 		bound = null;
 	};
 

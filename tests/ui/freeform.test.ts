@@ -151,6 +151,7 @@ import {
 	FreeformTextModal,
 	FreeformViewFormModal,
 } from '../../src/ui/freeform-forms';
+import { readFreeformClip } from '../../src/ui/freeform-clipboard';
 import { FREEFORM_CASCADE, FREEFORM_FACE_HEIGHTS, FREEFORM_GRID } from '../../src/ui/freeform-layout';
 import { freeformMemory } from '../../src/ui/story-structure-state';
 import { TimelineTimePickModal, confirmTimelineAction } from '../../src/ui/timeline-forms';
@@ -1029,10 +1030,7 @@ describe('text nodes', () => {
 		fixture.type(first, 'Here');
 		await settle();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 1_000, y: 2_000 } })!;
-		expect(menu.map((item) => item.title)).toEqual([
-			'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.link.add', 'freeformCanvas.fit.all', 'freeformCanvas.reset.viewport',
-		]);
-		menu[1]!.click();
+		menu.find((item) => item.title === 'freeformCanvas.text.add')!.click();
 		const second = fixture.nodes()[1]!;
 		// The spot is taken, so the second steps aside.
 		expect(fixture.node(second)).toMatchObject({
@@ -1925,7 +1923,7 @@ describe('what a node opens', () => {
 		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'loc-1' }, 'P', expect.any(Function));
 		// A note that has gone opens nothing, and its menu offers only its face, its frame, its lines, its measures and its removal.
 		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
 		menu[1]!.click();
@@ -2551,9 +2549,246 @@ describe('lines from node to node', () => {
 	});
 });
 
+describe('copies, the clipboard and the order nodes stand in', () => {
+	type Added = { do: 'add'; placements: FreeformPlacement[] };
+	type Framed = { do: 'add-frames'; frames: FreeformFrame[] };
+	type Joined = { do: 'connect'; edges: FreeformEdge[] };
+	const placedHeld = (fixture: Fixture) => fixture.viewHeld('a').placements;
+	/** A clipboard as an event carries it, holding one set of words. */
+	const board = (held = '') => ({ setData: vi.fn((_type: string, words: string) => { held = words; }), getData: vi.fn(() => held) });
+	const clipEvent = (data: ReturnType<typeof board> | null) => ({ clipboardData: data }) as unknown as ClipboardEvent;
+	const item = (fixture: Fixture, id: string, title: string) => fixture.menuAt({ kind: 'node', id })!.find((entry) => entry.title === title)!;
+
+	it('duplicates what is chosen a step down and across, lines among them included, and chooses the copies', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
+		item(fixture, 't2', 'freeformCanvas.node.duplicate').click();
+		await settle();
+		const steps = fixture.bridge.transact.mock.calls[0]![1] as [Added, Joined];
+		expect(steps.map((step) => step.do)).toEqual(['add', 'connect']);
+		const [first, second] = steps[0].placements;
+		// The corner of the two, at (0, 0), moved by the cascade; t1 leaves the frame that was not copied with it.
+		expect(first).toMatchObject({ resource: { type: 'text', text: 'First words\n\nand more' }, x: FREEFORM_CASCADE, y: FREEFORM_CASCADE, width: 200, height: 100, frameId: null });
+		expect(second).toMatchObject({ resource: { type: 'text', text: 'Second' }, x: 400 + FREEFORM_CASCADE, y: FREEFORM_CASCADE });
+		expect(first!.id).not.toBe('t1');
+		expect(steps[1].edges).toEqual([expect.objectContaining({ source: first!.id, target: second!.id, arrow: 'end', line: 'solid' })]);
+		expect(fixture.canvas.selection).toEqual({ nodes: [first!.id, second!.id], edges: [] });
+		expect(fixture.canvas.focused).toBe(1);
+		expect(placedHeld(fixture)).toHaveLength(6);
+		// Words still being typed are kept before they are copied.
+		expect(fixture.canvas.settled).toBeGreaterThan(0);
+	});
+
+	it('duplicates a frame with what it holds, the copies holding to the copied frame', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['f1'] });
+		item(fixture, 'f1', 'freeformCanvas.node.duplicate').click();
+		await settle();
+		const steps = fixture.bridge.transact.mock.calls[0]![1] as [Framed, Added];
+		expect(steps.map((step) => step.do)).toEqual(['add-frames', 'add']);
+		const copiedFrame = steps[0].frames[0]!;
+		expect(copiedFrame).toMatchObject({ title: 'Opening', x: -40 + FREEFORM_CASCADE, y: -80 + FREEFORM_CASCADE, width: 400, height: 300 });
+		expect(steps[1].placements).toEqual([expect.objectContaining({ x: FREEFORM_CASCADE, y: FREEFORM_CASCADE, frameId: copiedFrame.id })]);
+		// The line to a node outside the frame is not copied.
+		expect(fixture.viewHeld('a').edges).toHaveLength(1);
+		expect(fixture.canvas.selection.nodes).toEqual([copiedFrame.id, steps[1].placements[0]!.id]);
+	});
+
+	it('duplicates by its chord, which goes on when nothing is chosen or nothing can be written', async () => {
+		const fixture = await laid();
+		expect(fixture.chord(['Mod'], 'd').listener()).toBe(true);
+		fixture.choose({ nodes: ['s1'] });
+		expect(fixture.chord(['Mod'], 'd').listener()).toBe(false);
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+		const still = await laid({ readOnly: true });
+		still.choose({ nodes: ['s1'] });
+		expect(still.chord(['Mod'], 'd').listener()).toBe(true);
+		expect(item(still, 's1', 'freeformCanvas.node.duplicate').disabled).toBe(true);
+	});
+
+	it('lands a duplicate on the grid while the switch is on, and steps aside from a corner already taken', async () => {
+		const fixture = await laid({ snap: true });
+		fixture.choose({ nodes: ['t2'] });
+		item(fixture, 't2', 'freeformCanvas.node.duplicate').click();
+		await settle();
+		const first = (fixture.bridge.transact.mock.calls[0]![1][0] as Added).placements[0]!;
+		expect(first).toMatchObject({ x: 400 + 2 * FREEFORM_GRID, y: 2 * FREEFORM_GRID });
+		// The second copy of the same finds the first standing there.
+		fixture.choose({ nodes: ['t2'] });
+		item(fixture, 't2', 'freeformCanvas.node.duplicate').click();
+		await settle();
+		const second = (fixture.bridge.transact.mock.calls[1]![1][0] as Added).placements[0]!;
+		expect(second).toMatchObject({ x: 400 + 4 * FREEFORM_GRID, y: 4 * FREEFORM_GRID });
+	});
+
+	it('puts what is chosen on the clipboard for a copy, and takes it off the view too for a cut', async () => {
+		const fixture = await laid();
+		const data = board();
+		expect(fixture.port().clipboard('copy', clipEvent(data))).toBe(false);
+		expect(data.setData).not.toHaveBeenCalled();
+		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
+		expect(fixture.port().clipboard('copy', clipEvent(data))).toBe(true);
+		expect(data.setData).toHaveBeenCalledWith('text/plain', expect.any(String));
+		const clip = readFreeformClip(data.setData.mock.calls[0]![1])!;
+		expect(clip.placements.map((placement) => placement.id)).toEqual(['t1', 't2']);
+		expect(clip.edges.map((edge) => edge.id)).toEqual(['e1']);
+		expect(clip.origin).toEqual({ x: 0, y: 0 });
+		expect(fixture.bridge.transact).not.toHaveBeenCalled();
+		expect(fixture.port().clipboard('cut', clipEvent(data))).toBe(true);
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'delete', nodes: ['t1', 't2'], edges: ['e1'] }]);
+		expect(fixture.nodes()).toEqual(['f1', 's1', 'l1']);
+		// An event with no clipboard on it carries nothing.
+		expect(fixture.port().clipboard('copy', clipEvent(null))).toBe(false);
+	});
+
+	it('lets a project that cannot be written be copied from, a cut taking nothing off', async () => {
+		const fixture = await laid({ readOnly: true });
+		const data = board();
+		fixture.choose({ nodes: ['t2'] });
+		expect(fixture.port().clipboard('cut', clipEvent(data))).toBe(true);
+		expect(data.setData).toHaveBeenCalledOnce();
+		await settle();
+		expect(fixture.bridge.transact).not.toHaveBeenCalled();
+		expect(fixture.nodes()).toContain('t2');
+		expect(fixture.port().clipboard('paste', clipEvent(data))).toBe(false);
+	});
+
+	it('lays a copy pasted down at the middle of what is in sight, under ids of its own, and chooses it', async () => {
+		const fixture = await laid();
+		const copied = board();
+		fixture.choose({ nodes: ['t2'] });
+		fixture.port().clipboard('copy', clipEvent(copied));
+		expect(fixture.port().clipboard('paste', clipEvent(copied))).toBe(true);
+		await settle();
+		const added = (fixture.bridge.transact.mock.calls[0]![1][0] as Added).placements[0]!;
+		// A node 200 by 100 with its middle at the middle of what is in sight, (500, 300).
+		expect(added).toMatchObject({ resource: { type: 'text', text: 'Second' }, x: 400, y: 250, width: 200, height: 100 });
+		expect(added.id).not.toBe('t2');
+		expect(fixture.canvas.selection).toEqual({ nodes: [added.id], edges: [] });
+		expect(placedHeld(fixture)).toHaveLength(5);
+		// Words that are no copy are left to whoever is next, and so is an empty clipboard.
+		expect(fixture.port().clipboard('paste', clipEvent(board('Some words')))).toBe(false);
+		expect(fixture.port().clipboard('paste', clipEvent(board()))).toBe(false);
+		expect(fixture.port().clipboard('paste', clipEvent(null))).toBe(false);
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('says how much room the view has when a copy will not fit, and writes nothing', async () => {
+		const fixture = await laid({ limits: { placements: 5 } });
+		const copied = board();
+		fixture.choose({ nodes: ['t1', 't2'] });
+		fixture.port().clipboard('copy', clipEvent(copied));
+		expect(fixture.port().clipboard('paste', clipEvent(copied))).toBe(true);
+		await settle();
+		expect(notices).toHaveBeenCalledWith('freeformCanvas.node.limitSome(left=1)');
+		expect(fixture.bridge.transact).not.toHaveBeenCalled();
+		const full = await laid({ limits: { placements: 4 } });
+		full.choose({ nodes: ['t2'] });
+		expect(full.chord(['Mod'], 'd').listener()).toBe(false);
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.view.full(limit=4)');
+	});
+
+	it('copies and pastes from the menus too, through the clipboard the window holds', async () => {
+		const fixture = await laid();
+		let held = '';
+		const writeText = vi.fn((words: string) => { held = words; return Promise.resolve(); });
+		const readText = vi.fn(() => Promise.resolve(held));
+		Object.assign(fixture.dom.win, { navigator: { clipboard: { writeText, readText } } });
+		fixture.choose({ nodes: ['s1'] });
+		item(fixture, 's1', 'freeformCanvas.node.copy').click();
+		expect(writeText).toHaveBeenCalledOnce();
+		expect(readFreeformClip(held)?.placements.map((placement) => placement.id)).toEqual(['s1']);
+		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((entry) => entry.title === 'freeformCanvas.node.paste')!.click();
+		await settle();
+		expect(readText).toHaveBeenCalledOnce();
+		const added = (fixture.bridge.transact.mock.calls[0]![1][0] as Added).placements[0]!;
+		// Where the ground's menu was opened.
+		expect(added).toMatchObject({ resource: { type: 'entity', kind: 'scene', id: 'scene-1' }, x: 1_900, y: 2_950 });
+		// A clipboard holding no copy says so.
+		held = 'Some words';
+		fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.find((entry) => entry.title === 'freeformCanvas.node.paste')!.click();
+		await settle();
+		expect(notices).toHaveBeenLastCalledWith('freeformCanvas.node.pasteEmpty');
+		expect(fixture.bridge.transact).toHaveBeenCalledOnce();
+	});
+
+	it('brings nodes forward and sends them backward a step among the neighbours they overlap', async () => {
+		// Three cards each over the next, the first and the third not touching.
+		const fixture = workspace([view('a', {
+			placements: [text('a1', 'A', { x: 0, y: 0, zIndex: 0 }), text('a2', 'B', { x: 50, y: 50, zIndex: 1 }), text('a3', 'C', { x: 100, y: 100, zIndex: 2 })],
+		})]);
+		await settle();
+		const stacked = () => fixture.viewHeld('a').placements.map((placement) => [placement.id, placement.zIndex]);
+		fixture.choose({ nodes: ['a1'] });
+		item(fixture, 'a1', 'freeformCanvas.node.forward').click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'restack', ids: ['a1'], to: 'forward' }]);
+		expect(stacked()).toEqual([['a1', 1], ['a2', 0], ['a3', 2]]);
+		item(fixture, 'a3', 'freeformCanvas.node.backward').click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'restack', ids: ['a3'], to: 'backward' }]);
+		// Past the one it overlaps, under it, and no further.
+		expect(stacked()).toEqual([['a1', 2], ['a2', 1], ['a3', 0]]);
+		// Each is one change to take back.
+		expect(fixture.chord(['Mod'], 'z').listener()).toBe(false);
+		await settle();
+		expect(stacked()).toEqual([['a1', 1], ['a2', 0], ['a3', 2]]);
+		// A step that changes nothing writes nothing: a1 overlaps nothing above it now.
+		item(fixture, 'a1', 'freeformCanvas.node.forward').click();
+		await settle();
+		expect(fixture.bridge.transact).toHaveBeenCalledTimes(3);
+		expect(stacked()).toEqual([['a1', 1], ['a2', 0], ['a3', 2]]);
+	});
+
+	it('chooses every node from the ground’s menu and by its chord, which goes on when there is none', async () => {
+		const fixture = await laid();
+		fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.find((entry) => entry.title === 'freeformCanvas.node.selectAll')!.click();
+		expect(fixture.canvas.selection).toEqual({ nodes: ['f1', 't1', 't2', 's1', 'l1'], edges: [] });
+		expect(fixture.canvas.focused).toBe(1);
+		fixture.choose({ nodes: [] });
+		expect(fixture.chord(['Mod'], 'a').listener()).toBe(false);
+		expect(fixture.canvas.selection.nodes).toHaveLength(5);
+		const bare = workspace([view('a')]);
+		await settle();
+		expect(bare.chord(['Mod'], 'a').listener()).toBe(true);
+	});
+
+	it('adds one node to what is chosen from its menu, and takes it out again', async () => {
+		const fixture = await laid();
+		fixture.choose({ nodes: ['t1'], edges: ['e1'] });
+		item(fixture, 't2', 'freeformCanvas.node.select').click();
+		expect(fixture.canvas.selection).toEqual({ nodes: ['t1', 't2'], edges: ['e1'] });
+		item(fixture, 't2', 'freeformCanvas.node.deselect').click();
+		expect(fixture.canvas.selection).toEqual({ nodes: ['t1'], edges: ['e1'] });
+	});
+
+	it('brings what is chosen into sight by its chord and the ground’s menu, a line by its ends', async () => {
+		const fixture = await laid();
+		expect(fixture.chord(['Shift'], '2').listener()).toBe(true);
+		fixture.choose({ nodes: ['t2'] });
+		expect(fixture.chord(['Shift'], '2').listener()).toBe(false);
+		fixture.choose({ edges: ['e1'] });
+		expect(fixture.chord(['Shift'], '2').listener()).toBe(false);
+		fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.find((entry) => entry.title === 'freeformCanvas.fit.selection')!.click();
+		expect(fixture.canvas.moves.slice(1)).toEqual([
+			{ kind: 'fit', of: 'selection' }, { kind: 'fit', of: ['t1', 't2'] }, { kind: 'fit', of: ['t1', 't2'] },
+		]);
+	});
+});
+
 const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
 /** What a menu offers one node alone. */
 const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
+/** What a menu offers whatever is chosen: a copy of it, and its place among its neighbours. */
+const COPY_ITEMS = ['freeformCanvas.node.duplicate', 'freeformCanvas.node.copy', 'freeformCanvas.node.forward', 'freeformCanvas.node.backward'];
+/** The tail of every node's menu: the node joins what is chosen, or leaves it, and is taken off the view. */
+const TAIL_ITEMS = ['freeformCanvas.node.select', 'timeline.timeline.removeFromView'];
+const GROUND_ITEMS = [
+	'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.link.add', 'freeformCanvas.node.paste',
+	'freeformCanvas.node.selectAll', 'freeformCanvas.fit.all', 'freeformCanvas.fit.selection', 'freeformCanvas.reset.viewport',
+];
 /** What a menu offers the placements chosen, of frames. */
 const FRAME_ITEMS = ['freeformCanvas.frame.group', 'freeformCanvas.frame.moveTo'];
 /** What a frame's own menu offers first. */
@@ -2569,21 +2804,21 @@ describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
-			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		// A link opens, copies and edits; a frame has no face to choose and is removed as a frame, its nodes kept.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
-			...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView',
+			...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
-			...OWN_FRAME_ITEMS, ...SINGLE_ITEMS, 'freeformCanvas.frame.remove',
+			...OWN_FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.select', 'freeformCanvas.frame.remove',
 		]);
 		// The face the node shows is the one checked.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.checked)).toEqual([
-			null, true, false, false, false, null, null, null, null, null,
+			null, true, false, false, false, null, null, null, null, null, null, null, null, null, null,
 		]);
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.title)).toEqual(EDGE_ITEMS);
 		expect(fixture.menuAt({ kind: 'edge', id: 'gone' })).toBeUndefined();
@@ -2601,7 +2836,9 @@ describe('the menus', () => {
 		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
 		const onChosen = fixture.menuAt({ kind: 'node', id: 't2' })!;
 		// Several are chosen: there is no one text to edit and no one box to measure, and the face and the frame are every one's.
-		expect(onChosen.map((item) => item.title)).toEqual([...DISPLAY_ITEMS, ...FRAME_ITEMS, 'timeline.timeline.removeFromView']);
+		expect(onChosen.map((item) => item.title)).toEqual([
+			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.deselect', 'timeline.timeline.removeFromView',
+		]);
 		const elsewhere = fixture.menuAt({ kind: 'node', id: 'l1' })!;
 		elsewhere[elsewhere.length - 1]!.click();
 		await settle();
@@ -2613,25 +2850,35 @@ describe('the menus', () => {
 
 	it('offers a project that cannot be written nothing that would change it', async () => {
 		const fixture = await laid({ readOnly: true });
-		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([true, true, true, true, true, true, true, true, true, true]);
+		// A copy and a choice change nothing in the project.
+		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([
+			true, true, true, true, true, true, true, true, true, true, false, true, true, false, true,
+		]);
 		// A line's ends can be gone to all the same.
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false, true]);
 		// A note is opened all the same.
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
 		]);
-		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false]);
+		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
+			true, true, true, true, true, false, false, true, false,
+		]);
 	});
 
 	it('looks about from the ground’s menu', async () => {
 		const fixture = await laid();
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
-		menu[4]!.click();
-		menu[5]!.click();
+		expect(menu.map((item) => item.title)).toEqual(GROUND_ITEMS);
+		// Nothing is chosen: there is nothing to bring into sight.
+		expect(menu.map((item) => item.disabled)).toEqual([false, false, false, false, false, false, false, true, false]);
+		menu[6]!.click();
+		menu[8]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
-		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([false, false, false, false, true, false]);
+		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
+			false, false, false, false, false, true, true, true, false,
+		]);
 	});
 
 	it('opens a node’s menu from the button every face carries, under the pointer or by the button', async () => {
@@ -2642,7 +2889,7 @@ describe('the menus', () => {
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual([...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, 'timeline.timeline.removeFromView']);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS]);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });
@@ -2691,7 +2938,7 @@ describe('the canvas controls', () => {
 		fire(fit, 'click');
 		fire(reset, 'click');
 		expect(fixture.chords.map((chord) => [chord.modifiers, chord.key])).toEqual([
-			[['Mod'], 'z'], [['Mod', 'Shift'], 'z'], [['Shift'], '1'], [['Shift'], '0'],
+			[['Mod'], 'z'], [['Mod', 'Shift'], 'z'], [['Mod'], 'a'], [['Mod'], 'd'], [['Shift'], '1'], [['Shift'], '2'], [['Shift'], '0'],
 		]);
 		expect(fixture.chord(['Shift'], '1').listener()).toBe(false);
 		expect(fixture.chord(['Shift'], '0').listener()).toBe(false);

@@ -26,8 +26,9 @@ function bound() {
 	const boxing = vi.fn();
 	const resized = vi.fn();
 	const migrated = vi.fn();
-	const surroundings = bindCanvasWindow({ host: host as unknown as HTMLElement, boxing, resized, migrated });
-	return { dom, host, boxing, resized, migrated, surroundings };
+	const clipboard = vi.fn();
+	const surroundings = bindCanvasWindow({ host: host as unknown as HTMLElement, boxing, resized, clipboard, migrated });
+	return { dom, host, boxing, resized, clipboard, migrated, surroundings };
 }
 
 describe('the window a canvas stands in', () => {
@@ -59,7 +60,9 @@ describe('the window a canvas stands in', () => {
 		dom.height = 0;
 		const host = dom.container.createDiv();
 		const resized = vi.fn();
-		const surroundings = bindCanvasWindow({ host: host as unknown as HTMLElement, boxing: vi.fn(), resized, migrated: vi.fn() });
+		const surroundings = bindCanvasWindow({
+			host: host as unknown as HTMLElement, boxing: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(),
+		});
 		expect(surroundings.size()).toEqual({ width: 0, height: 0 });
 		// Nothing each way is what it started from, so there is nothing to say.
 		expect(resized).not.toHaveBeenCalled();
@@ -122,6 +125,16 @@ describe('the window a canvas stands in', () => {
 		expect(dom.windowListeners.get('blur')?.map((entry) => entry.capture)).toEqual([false]);
 	});
 
+	it('hands a copy, a cut and a paste asked for in the window to the canvas, as they come', () => {
+		const { dom, clipboard } = bound();
+		for (const kind of ['copy', 'cut', 'paste']) {
+			expect(dom.windowListeners.get(kind)?.map((entry) => entry.capture)).toEqual([false]);
+			tell(dom, kind, { clipboardData: kind });
+			expect(clipboard).toHaveBeenLastCalledWith(expect.objectContaining({ type: kind, clipboardData: kind }));
+		}
+		expect(clipboard).toHaveBeenCalledTimes(3);
+	});
+
 	it('follows the canvas to the window it is moved to, and lets the one it left go', () => {
 		const { dom, host, boxing, resized, migrated } = bound();
 		point(host, 'pointerenter', { shiftKey: true });
@@ -132,9 +145,9 @@ describe('the window a canvas stands in', () => {
 		const before = dom.observers.length;
 		host.migrateTo(destination);
 		// Nothing is heard in the window it left.
-		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0 });
+		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
 		expect(dom.observers.slice(0, before).every((observer) => observer.disconnected)).toBe(true);
-		expect(heard(destination)).toEqual({ keydown: 1, keyup: 1, blur: 1 });
+		expect(heard(destination)).toEqual({ keydown: 1, keyup: 1, blur: 1, copy: 1, cut: 1, paste: 1 });
 		// A key held as the canvas moved is let go: the window that would say it came up is behind.
 		expect(boxing).toHaveBeenLastCalledWith(false);
 		expect(resized).toHaveBeenLastCalledWith({ width: 720, height: 540 });
@@ -152,7 +165,7 @@ describe('the window a canvas stands in', () => {
 	it('lets everything go when it is released', () => {
 		const { dom, host, boxing, resized, migrated, surroundings } = bound();
 		surroundings.release();
-		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0 });
+		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
 		expect(dom.observers.every((observer) => observer.disconnected)).toBe(true);
 		expect(host.windowMigrationListeners.size).toBe(0);
 		dom.resize(10, 10);
@@ -172,7 +185,9 @@ describe('the window a canvas stands in', () => {
 			removeEventListener: (type: string) => { listeners.splice(listeners.indexOf(type), 1); },
 		};
 		const resized = vi.fn();
-		const surroundings = bindCanvasWindow({ host: host as unknown as HTMLElement, boxing: vi.fn(), resized, migrated: vi.fn() });
+		const surroundings = bindCanvasWindow({
+			host: host as unknown as HTMLElement, boxing: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(),
+		});
 		expect(resized).toHaveBeenCalledWith({ width: 320, height: 240 });
 		expect(listeners.sort()).toEqual(['pointerenter', 'pointerleave', 'pointermove']);
 		surroundings.release();
