@@ -12,6 +12,7 @@ import { CANVAS_FRAME_KIND } from '../../src/ui/freeform-canvas-port';
 import {
 	FREEFORM_CASCADE,
 	FREEFORM_FACE_HEIGHTS,
+	FREEFORM_FACE_MODES_OF,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
 	FREEFORM_SEARCH_HIT,
@@ -20,7 +21,8 @@ import {
 	faceKindOf,
 	faceModeOf,
 	frameTone,
-	grownForMode,
+	heightForMode,
+	landingHeightOf,
 	grownHeight,
 	laidOutAlike,
 	landingAt,
@@ -84,44 +86,54 @@ const words = (extra: Partial<FreeformSceneWords> = {}): FreeformSceneWords => (
 });
 
 describe('the face a node shows', () => {
-	it('shows the face the author chose, however near the canvas is looked at', () => {
+	it('gives a scene’s card three faces, every other card two, and a file, a link, a text and a stand-in one', () => {
+		expect(FREEFORM_FACE_MODES_OF.scene).toEqual(['compact', 'standard', 'extended']);
+		for (const kind of ['card', 'task', 'thread', 'revision', 'sticky'] as const) {
+			expect(FREEFORM_FACE_MODES_OF[kind], kind).toEqual(['compact', 'standard']);
+		}
+		for (const kind of ['record', 'text', 'plain'] as const) {
+			expect(FREEFORM_FACE_MODES_OF[kind], kind).toEqual(['compact']);
+		}
+	});
+
+	it('shows the face the author chose, however near the canvas is looked at, and no fuller a face than the kind has', () => {
 		for (const band of ['far', 'compact', 'standard', 'extended'] as const) {
-			expect(faceModeOf('compact', band)).toBe('compact');
-			expect(faceModeOf('standard', band)).toBe('standard');
-			expect(faceModeOf('extended', band)).toBe('extended');
+			expect(faceModeOf('compact', band, 'scene', 1)).toBe('compact');
+			expect(faceModeOf('standard', band, 'scene', 1)).toBe('standard');
+			expect(faceModeOf('extended', band, 'scene', 1)).toBe('extended');
+			// A face a kind does not have is its fullest.
+			expect(faceModeOf('extended', band, 'card', 1)).toBe('standard');
+			expect(faceModeOf('standard', band, 'text', 1)).toBe('compact');
 		}
 	});
 
 	it('left to the canvas, shows the fullest face the size it is looked at allows', () => {
-		expect(faceModeOf('auto', 'extended')).toBe('extended');
-		expect(faceModeOf('auto', 'standard')).toBe('standard');
-		expect(faceModeOf('auto', 'compact')).toBe('compact');
+		expect(faceModeOf('auto', 'extended', 'scene', 1_000)).toBe('extended');
+		expect(faceModeOf('auto', 'standard', 'scene', 1_000)).toBe('standard');
+		expect(faceModeOf('auto', 'compact', 'scene', 1_000)).toBe('compact');
 		// Far off a node shows its barest face, which is all that can be read there.
-		expect(faceModeOf('auto', 'far')).toBe('compact');
+		expect(faceModeOf('auto', 'far', 'scene', 1_000)).toBe('compact');
+		// A card has no fullest face to show at the nearest, and a text has one face wherever it is looked at from.
+		expect(faceModeOf('auto', 'extended', 'card', 1_000)).toBe('standard');
+		expect(faceModeOf('auto', 'extended', 'text', 1_000)).toBe('compact');
+		expect(faceModeOf('auto', 'standard', 'record', 1_000)).toBe('compact');
 	});
 
 	it('left to the canvas, shows no fuller a face than its box has room for, so looking nearer sizes nothing', () => {
-		const { scene, record } = FREEFORM_FACE_HEIGHTS;
-		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.extended })).toBe('extended');
-		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.extended - 1 })).toBe('standard');
-		expect(faceModeOf('auto', 'extended', { kind: 'scene', height: scene.standard - 1 })).toBe('compact');
-		expect(faceModeOf('auto', 'standard', { kind: 'record', height: record.standard })).toBe('standard');
-		expect(faceModeOf('auto', 'standard', { kind: 'record', height: 10 })).toBe('compact');
+		const { scene, card, thread, revision } = FREEFORM_FACE_HEIGHTS;
+		expect(faceModeOf('auto', 'extended', 'scene', scene.extended)).toBe('extended');
+		expect(faceModeOf('auto', 'extended', 'scene', scene.extended - 1)).toBe('standard');
+		expect(faceModeOf('auto', 'extended', 'scene', scene.standard - 1)).toBe('compact');
+		expect(faceModeOf('auto', 'extended', 'card', card.standard)).toBe('standard');
+		expect(faceModeOf('auto', 'extended', 'card', card.standard - 1)).toBe('compact');
+		expect(faceModeOf('auto', 'standard', 'thread', thread.standard)).toBe('standard');
+		expect(faceModeOf('auto', 'standard', 'thread', thread.standard - 1)).toBe('compact');
+		// A revision's barest face carries its chapter too, so it needs more room than a thread's.
+		expect(revision.compact).toBeGreaterThan(thread.compact);
+		expect(faceModeOf('auto', 'standard', 'revision', revision.standard - 1)).toBe('compact');
 		// The barest face is shown whatever the room, and a face chosen by hand is shown whatever the room.
-		expect(faceModeOf('auto', 'compact', { kind: 'record', height: 1 })).toBe('compact');
-		expect(faceModeOf('extended', 'extended', { kind: 'scene', height: 1 })).toBe('extended');
-		// A text's and a plain face's fuller faces need no more room than the barest.
-		expect(faceModeOf('auto', 'extended', { kind: 'text', height: 56 })).toBe('extended');
-		expect(faceModeOf('auto', 'extended', { kind: 'plain', height: 48 })).toBe('extended');
-		// A card's fullest face shows no more than its standard one, and needs no more room; a margin card's does.
-		const { card, task, rail, sticky } = FREEFORM_FACE_HEIGHTS;
-		expect(card.extended).toBe(card.standard);
-		expect(task.extended).toBe(task.standard);
-		expect(sticky.extended).toBe(sticky.standard);
-		expect(faceModeOf('auto', 'extended', { kind: 'card', height: card.standard })).toBe('extended');
-		expect(faceModeOf('auto', 'extended', { kind: 'card', height: card.standard - 1 })).toBe('compact');
-		expect(faceModeOf('auto', 'extended', { kind: 'rail', height: rail.extended - 1 })).toBe('standard');
-		expect(faceModeOf('auto', 'extended', { kind: 'rail', height: rail.standard - 1 })).toBe('compact');
+		expect(faceModeOf('auto', 'compact', 'thread', 1)).toBe('compact');
+		expect(faceModeOf('extended', 'extended', 'scene', 1)).toBe('extended');
 	});
 
 	it('knows which kind of face each kind of node shows', () => {
@@ -130,8 +142,8 @@ describe('the face a node shows', () => {
 		expect(faceKindOf('character')).toBe('card');
 		expect(faceKindOf('worldbuilding')).toBe('card');
 		expect(faceKindOf('task')).toBe('task');
-		expect(faceKindOf('foreshadowing')).toBe('rail');
-		expect(faceKindOf('revision')).toBe('rail');
+		expect(faceKindOf('foreshadowing')).toBe('thread');
+		expect(faceKindOf('revision')).toBe('revision');
 		expect(faceKindOf('sticky-note')).toBe('sticky');
 		expect(faceKindOf('text')).toBe('text');
 		for (const type of ['file', 'link'] as const) {
@@ -142,13 +154,28 @@ describe('the face a node shows', () => {
 		}
 	});
 
-	it('grows a box to the face chosen for it by hand, and never shrinks it', () => {
-		const { scene } = FREEFORM_FACE_HEIGHTS;
-		expect(grownForMode('scene', 'extended', 100)).toBe(scene.extended);
-		expect(grownForMode('scene', 'standard', 1_000)).toBe(1_000);
-		expect(grownForMode('scene', 'compact', 100)).toBe(100);
-		expect(grownForMode('record', 'auto', 10)).toBe(10);
-		expect(grownForMode('text', 'extended', 10)).toBe(FREEFORM_FACE_HEIGHTS.text.extended);
+	it('sizes a box to the face chosen for it by hand, taller or shorter, and leaves one left to the canvas as it is', () => {
+		const { scene, card, record } = FREEFORM_FACE_HEIGHTS;
+		expect(heightForMode('scene', 'extended', 100)).toBe(scene.extended);
+		expect(heightForMode('scene', 'standard', 1_000)).toBe(scene.standard);
+		expect(heightForMode('scene', 'compact', 100)).toBe(scene.compact);
+		expect(heightForMode('record', 'auto', 10)).toBe(10);
+		// A face the kind does not have sizes the box to its fullest.
+		expect(heightForMode('card', 'extended', 10)).toBe(card.standard);
+		expect(heightForMode('record', 'standard', 300)).toBe(record.compact);
+	});
+
+	it('lands a note with the room its standard face needs, and one with a single face with that face’s', () => {
+		const { scene, card, task, thread, revision, sticky, record, text, plain } = FREEFORM_FACE_HEIGHTS;
+		expect(landingHeightOf('scene')).toBe(scene.standard);
+		expect(landingHeightOf('card')).toBe(card.standard);
+		expect(landingHeightOf('task')).toBe(task.standard);
+		expect(landingHeightOf('thread')).toBe(thread.standard);
+		expect(landingHeightOf('revision')).toBe(revision.standard);
+		expect(landingHeightOf('sticky')).toBe(sticky.standard);
+		expect(landingHeightOf('record')).toBe(record.compact);
+		expect(landingHeightOf('text')).toBe(text.compact);
+		expect(landingHeightOf('plain')).toBe(plain.compact);
 	});
 });
 

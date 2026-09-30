@@ -93,14 +93,15 @@ import {
 } from './freeform-history';
 import {
 	EMPTY_FREEFORM_SCENE,
-	FREEFORM_FACE_HEIGHTS,
 	FREEFORM_FACE_MODES,
+	FREEFORM_FACE_MODES_OF,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
 	cascadeStep,
 	cornersOf,
 	faceKindOf,
-	grownForMode,
+	heightForMode,
+	landingHeightOf,
 	grownHeight,
 	laidOutAlike,
 	landingAt,
@@ -114,6 +115,7 @@ import {
 	type FreeformSceneWords,
 } from './freeform-layout';
 import {
+	freeformFileKind,
 	freeformFileName,
 	freeformLabelOf,
 	resolvePlacement,
@@ -497,7 +499,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			case 'foreshadowing':
 				return 'waypoints';
 			case 'revision':
-				return 'pencil-line';
+				return 'file-diff';
 			case 'sticky-note':
 				return 'sticker';
 			case 'file':
@@ -1400,14 +1402,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				if (view === null) throw new Error(t('freeformCanvas.node.refused'));
 				const kind = draft.kind;
 				const family = FORM_FAMILIES.find((candidate) => candidate === kind);
-				// A note lands with the room its standard face needs, so it stands as its own card from the first.
+				// A note lands with the room its standard face needs, so it stands as its own card from the first; a file or a
+				// link with its one row, and a picture, a video or a sound with room for the file itself.
 				const shape = faceKindOf(
 					family ?? (kind === 'file' ? 'file' : kind === 'scene' ? 'scene' : kind === 'character' ? 'character' : 'worldbuilding'),
 				);
-				const size = {
-					width: FREEFORM_SIZE.width,
-					height: Math.max(FREEFORM_SIZE.height, FREEFORM_FACE_HEIGHTS[shape].standard),
-				};
+				const heights = draft.nodes.map((node) =>
+					kind === 'file' && ['image', 'video', 'audio'].includes(freeformFileKind(node.id)) ? FREEFORM_SIZE.height : landingHeightOf(shape),
+				);
+				const size = { width: FREEFORM_SIZE.width, height: Math.max(...heights, 0) };
 				const landings = landingsAt(
 					cornersOf(view),
 					middle ?? canvas.centre(),
@@ -1425,7 +1428,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					x: landings[at]?.x ?? 0,
 					y: landings[at]?.y ?? 0,
 					width: size.width,
-					height: size.height,
+					height: heights[at] ?? size.height,
 				}));
 				const came = await change([{ do: 'add', placements }], 'change', null);
 				if (came !== 'written') throw new Error(t('freeformCanvas.node.refused'));
@@ -1442,11 +1445,13 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		canvas.settle();
 		const view = shownView();
 		if (view === null || readOnly || disposed) throw new Error(t('freeformCanvas.link.refused'));
-		const at = landingAt(cornersOf(view), middle ?? canvas.centre(), FREEFORM_SIZE, memory.snap ? FREEFORM_GRID : null);
+		// A link is one row, and lands with the room for one.
+		const size = { width: FREEFORM_SIZE.width, height: landingHeightOf('record') };
+		const at = landingAt(cornersOf(view), middle ?? canvas.centre(), size, memory.snap ? FREEFORM_GRID : null);
 		const id = controls.bridge().mintId('placement');
 		const came = await change([{
 			do: 'add',
-			placements: [{ id, resource: { type: 'link', url: draft.url, label: draft.label }, x: at.x, y: at.y }],
+			placements: [{ id, resource: { type: 'link', url: draft.url, label: draft.label }, x: at.x, y: at.y, width: size.width, height: size.height }],
 		}], 'change', null);
 		if (came !== 'written') throw new Error(t('freeformCanvas.link.refused'));
 		if (!disposed) canvas.select({ nodes: [id], edges: [] });
@@ -1540,8 +1545,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/**
 	 * The face chosen for nodes: the one asked for, or Auto, which is the
-	 * fullest the view's zoom allows that the box has room for. A fuller
-	 * face chosen by hand grows the box to what it needs, and never shrinks it.
+	 * fullest the view's zoom allows that the box has room for. A face chosen
+	 * by hand sizes the box to what that face needs, taller or shorter.
 	 */
 	const setDisplay = (ids: readonly string[], mode: FreeformDisplayMode): void => {
 		const view = shownView();
@@ -1553,7 +1558,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			const node = made.nodes.get(id);
 			if (placement === undefined || node === undefined) continue;
 			modes.push({ id, mode });
-			const height = grownForMode(faceKindOf(node.type), mode, placement.height);
+			const height = heightForMode(faceKindOf(node.type), mode, placement.height);
 			if (height !== placement.height) places.push({ id, x: placement.x, y: placement.y, height });
 		}
 		if (modes.length === 0) return;
@@ -2207,13 +2212,20 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			menu.addSeparator();
 		}
 		if (single && node !== undefined && addOpenItems(menu, id, node)) menu.addSeparator();
-		// The face a node shows, for every placement chosen: checked where all of them show it.
+		// The face a node shows, for every placement chosen: the faces every one
+		// of them has, checked where all of them show it. A kind with one face
+		// has nothing to choose.
 		const placements = chosen.flatMap((one) => (made?.nodes.has(one) === true ? [one] : []));
-		if (placements.length > 0) {
+		const kinds = placements.flatMap((one) => {
+			const node = made?.nodes.get(one);
+			return node === undefined ? [] : [faceKindOf(node.type)];
+		});
+		const faces = FREEFORM_FACE_MODES.filter((face) => kinds.every((kind) => FREEFORM_FACE_MODES_OF[kind].includes(face)));
+		if (placements.length > 0 && faces.length > 1) {
 			const view = shownView();
 			const modes = new Set(placements.map((one) => (view === null ? undefined : findFreeformPlacement(view, one)?.displayMode)));
 			const shared = modes.size === 1 ? [...modes][0] ?? null : null;
-			for (const mode of ['auto', ...FREEFORM_FACE_MODES] as const) {
+			for (const mode of ['auto', ...faces] as const) {
 				menu.addItem((item) => {
 					item
 						.setTitle(mode === 'auto' ? t('freeformCanvas.display.auto') : t(`corkboard.cards.${mode}`))

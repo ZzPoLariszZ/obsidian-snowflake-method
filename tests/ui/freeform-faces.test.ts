@@ -243,18 +243,26 @@ describe('a text node’s face', () => {
 		expect(shown.children).toEqual([renders[1]!.box]);
 	});
 
-	it('shows the face its author chose, or the fullest the canvas allows, and says when it is chosen', () => {
+	it('has one face, however near the canvas is looked at and whatever its author chose, and says when it is chosen', () => {
 		const { nodes, mount } = faces();
 		nodes.set('t1', textNode('t1', 'One'));
 		const { face, painted } = mount('text', 't1', context({ band: 'standard' }));
-		expect(face.dataset.mode).toBe('standard');
+		expect(face.dataset.mode).toBe('compact');
 		expect(face.classes.has('is-selected')).toBe(false);
 		painted.dress(context({ band: 'far', selected: true }));
 		expect(face.dataset.mode).toBe('compact');
 		expect(face.classes.has('is-selected')).toBe(true);
 		nodes.set('t1', textNode('t1', 'One', { displayMode: 'extended' }));
-		painted.dress(context({ band: 'far' }));
-		expect(face.dataset.mode).toBe('extended');
+		painted.dress(context({ band: 'extended' }));
+		expect(face.dataset.mode).toBe('compact');
+	});
+
+	it('stands its symbol at the first line’s start and the way to its menu at its end, with the words between them', () => {
+		const { nodes, mount } = faces();
+		nodes.set('t1', textNode('t1', 'One'));
+		const { face } = mount('text', 't1');
+		expect(partsOf(face, { 'snowflake-method-freeform-face-icon': 'symbol', 'snowflake-method-freeform-text': 'words', 'snowflake-method-freeform-node-more': 'more' })).toEqual(['symbol', 'words', 'more']);
+		expect(icons.map((entry) => entry.icon)).toEqual(['ellipsis', 'icon-text']);
 	});
 
 	it('opens for typing with its words in the field, the field named and holding the focus', () => {
@@ -545,9 +553,7 @@ describe('the way to a node’s menu', () => {
 
 	it('is made before what a one-line face says, so the words run round it and never under it', () => {
 		const { nodes, mount } = faces();
-		nodes.set('t1', textNode('t1', 'One'));
 		nodes.set('s1', { type: 'pending', placement: placement('s1'), of: 'task' });
-		expect(mount('text', 't1').face.children[0]!.classes.has('snowflake-method-freeform-node-more')).toBe(true);
 		expect(mount('pending', 's1').face.children[0]!.classes.has('snowflake-method-freeform-node-more')).toBe(true);
 	});
 });
@@ -739,7 +745,7 @@ describe('a card’s face', () => {
 		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel() });
 		const { face, painted } = mount('character', 'c1', context({ height: 400 }));
 		expect(face.classes.has('is-card')).toBe(true);
-		expect(face.dataset).toMatchObject({ type: 'character', kind: 'character', mode: 'extended' });
+		expect(face.dataset).toMatchObject({ type: 'character', kind: 'character', mode: 'standard' });
 		const card = face.children[0]!;
 		expect(card.classes.has('snowflake-method-corkboard-card')).toBe(true);
 		expect(partsOf(card, CARD_PARTS)).toEqual(['head', 'body', 'foot']);
@@ -792,8 +798,8 @@ describe('a card’s face', () => {
 		const { nodes, mount } = faces();
 		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 200 }), character: characterModel() });
 		const { face, painted } = mount('character', 'c1', context({ height: 200 }));
-		// A card's fullest face shows what its standard one shows, and needs no more room.
-		expect(face.dataset.mode).toBe('extended');
+		// A card's fullest face is its standard one, however near the canvas is looked at.
+		expect(face.dataset.mode).toBe('standard');
 		painted.dress(context({ height: 40 }));
 		expect(face.dataset.mode).toBe('compact');
 		painted.dress(context({ height: 400, band: 'compact' }));
@@ -834,19 +840,20 @@ describe('a missing node’s face', () => {
 });
 
 describe('the task management cards', () => {
-	it('shows a task as the board’s own card: its symbol and title on the first row, its priority and due day on the second, wearing the column it stands in', () => {
+	it('shows a task as the board’s own card: its title with its symbol and its menu on the first row, its priority and due day on the second, wearing the column it stands in', () => {
 		const { nodes, mount, setToday } = faces();
 		nodes.set('p1', { type: 'task', placement: placement('p1', { height: 400 }), task: taskModel });
 		const { face, painted } = mount('task', 'p1', context({ height: 400 }));
 		expect(face.classes.has('is-task')).toBe(true);
-		expect(face.dataset.mode).toBe('extended');
+		expect(face.dataset.mode).toBe('standard');
 		const card = face.children[0]!;
 		expect(card.classes.has('snowflake-method-task-card')).toBe(true);
 		expect(card.getAttribute('data-priority')).toBe('urgent');
 		expect(card.getAttribute('data-status')).toBe('in-progress');
 		expect(card.getAttribute('data-origin')).toBe('manual');
 		const head = card.querySelector('.snowflake-method-task-card-head')!;
-		expect(partsOf(head, { 'snowflake-method-freeform-face-icon': 'symbol', 'snowflake-method-task-card-title': 'title', 'snowflake-method-freeform-node-more': 'more' })).toEqual(['symbol', 'title', 'more']);
+		expect(partsOf(head, { 'snowflake-method-task-card-title': 'title', 'snowflake-method-freeform-rail-tools': 'tools' })).toEqual(['title', 'tools']);
+		expect(partsOf(head.querySelector('.snowflake-method-freeform-rail-tools')!, { 'snowflake-method-freeform-face-icon': 'symbol', 'snowflake-method-freeform-node-more': 'more' })).toEqual(['symbol', 'more']);
 		expect(head.querySelector('.snowflake-method-task-card-title')!.textContent).toBe('Finish');
 		expect(icons.map((entry) => entry.icon)).toEqual(['ellipsis', 'icon-task', 'chevrons-up', 'calendar']);
 		const meta = card.querySelector('.snowflake-method-task-card-meta')!;
@@ -919,7 +926,7 @@ describe('the task management cards', () => {
 		const told = fire(occurrences[1]!, 'click');
 		expect(told.stopped).toBe(1);
 		expect(deps.openOccurrence).toHaveBeenCalledWith(threadModel, threadModel.occurrences[1]);
-		// The words an occurrence marks stand under it, for the fullest face; one occurrence is said in the singular; a thread with no description shows none.
+		// The words an occurrence marks stand under it; one occurrence is said in the singular; a thread with no description shows none.
 		const one = { ...threadModel, description: '', occurrences: [{ ...threadModel.occurrences[0]!, originalText: 'the locket glinted' }] };
 		nodes.set('p2', { type: 'foreshadowing', placement: placement('p2', { height: 400 }), item: one });
 		painted.dress(context({ height: 400 }));
@@ -961,7 +968,7 @@ describe('the task management cards', () => {
 			['compact', 'revisionTable.place', 'One'],
 			['standard', 'manuscript.revision.original', 'was'],
 			['standard', 'manuscript.revision.proposed', 'is'],
-			['extended', 'manuscript.revision.comment', 'Tighter'],
+			['standard', 'manuscript.revision.comment', 'Tighter'],
 		]);
 		// Anchored again, the badge goes and the kind wears its own ink; an insertion takes nothing, so shows no original, and an aside of nothing is not shown.
 		nodes.set('p3', { type: 'revision', placement: placement('p3', { height: 400 }), row: { ...revisionModel, status: 'live', kind: 'insert', original: '', comment: '' } });
@@ -978,7 +985,7 @@ describe('the task management cards', () => {
 		expect(face.parent).toBeNull();
 	});
 
-	it('shows a sticky note as its own card: its symbol, when it was made and its menu at the head, and its words under it, the first line alone on the barest face', () => {
+	it('shows a sticky note as its own card: when it was made, with its symbol and its menu, at the head, and its words under it, the first line alone on the barest face', () => {
 		const { nodes, mount } = faces();
 		nodes.set('p4', { type: 'sticky-note', placement: placement('p4', { height: 200 }), note: noteModel });
 		const { face, painted } = mount('sticky-note', 'p4', context({ height: 200 }));
@@ -988,7 +995,8 @@ describe('the task management cards', () => {
 		expect(card.classes.has('snowflake-method-sticky-tint')).toBe(true);
 		expect(card.getAttribute('data-color')).toBe('macaron-5');
 		const head = card.querySelector('.snowflake-method-sticky-head')!;
-		expect(partsOf(head, { 'snowflake-method-freeform-face-icon': 'symbol', 'snowflake-method-sticky-created': 'created', 'snowflake-method-sticky-tools': 'tools' })).toEqual(['symbol', 'created', 'tools']);
+		expect(partsOf(head, { 'snowflake-method-sticky-created': 'created', 'snowflake-method-sticky-tools': 'tools' })).toEqual(['created', 'tools']);
+		expect(partsOf(head.querySelector('.snowflake-method-sticky-tools')!, { 'snowflake-method-freeform-face-icon': 'symbol', 'snowflake-method-freeform-node-more': 'more' })).toEqual(['symbol', 'more']);
 		expect(icons.map((entry) => entry.icon)).toEqual(['ellipsis', 'icon-sticky-note']);
 		const created = head.querySelector('.snowflake-method-sticky-created')!;
 		expect(created.textContent).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u);
@@ -997,7 +1005,7 @@ describe('the task management cards', () => {
 		expect(face.querySelector('.snowflake-method-freeform-sticky-first')!.textContent).toBe('called p4');
 		expect(renders.map((entry) => entry.words)).toEqual(['# Remember\nthe tide']);
 		expect((renders[0]!.box as CorkboardElement).classes.has('snowflake-method-sticky-rendered')).toBe(true);
-		expect(face.dataset.mode).toBe('extended');
+		expect(face.dataset.mode).toBe('standard');
 		// Dressed again over the same words, nothing is drawn again; over other words, they are.
 		painted.dress(context({ height: 200 }));
 		expect(renders).toHaveLength(1);
@@ -1005,7 +1013,7 @@ describe('the task management cards', () => {
 		painted.dress(context({ height: 200 }));
 		expect(renders).toHaveLength(2);
 		expect(card.getAttribute('data-color')).toBe('macaron-1');
-		painted.dress(context({ height: 60 }));
+		painted.dress(context({ height: 80 }));
 		expect(face.dataset.mode).toBe('compact');
 		painted.unmount();
 		expect(face.parent).toBeNull();
@@ -1018,17 +1026,18 @@ describe('a file’s face and a link’s', () => {
 		extension: relativePath.slice(relativePath.lastIndexOf('.') + 1), kind, stamp,
 	});
 
-	it('shows a file’s symbol, name and folder, and draws a picture from the vault once per file', () => {
+	it('shows a file’s symbol and name on one face, and draws a picture from the vault once per file', () => {
 		const { nodes, mount } = faces();
 		nodes.set('f1', { type: 'file', placement: placement('f1', { height: 300 }), file: file('Material/map.png', 'image') });
 		const { face, painted } = mount('file', 'f1', context({ height: 300 }));
 		expect(face.classes.has('is-file')).toBe(true);
-		expect(face.dataset).toMatchObject({ kind: 'image', mode: 'standard' });
+		expect(face.dataset).toMatchObject({ kind: 'image', mode: 'compact' });
 		// The way to the menu stands at the head's end; the file's own symbol is drawn as the face is dressed.
 		expect(icons.map((entry) => entry.icon)).toEqual(['ellipsis', 'image']);
 		// The fake reads no descendant selector: the head holds the way to the menu.
 		expect(face.querySelector('.snowflake-method-freeform-face-head')!.querySelector('.snowflake-method-freeform-node-more')).not.toBeNull();
-		expect(face.querySelector('.snowflake-method-freeform-file-folder')!.textContent).toBe('Material');
+		// The folder it stands in is not said: the face is its name and the file.
+		expect(face.querySelector('.snowflake-method-freeform-file-folder')).toBeNull();
 		const picture = face.querySelector('img')!;
 		expect(picture.getAttribute('src')).toBe('app://vault/Novel/Material/map.png');
 		expect(picture.getAttribute('alt')).toBe('map');
@@ -1040,7 +1049,6 @@ describe('a file’s face and a link’s', () => {
 		expect(face.querySelectorAll('img')).toHaveLength(1);
 		nodes.set('f1', { type: 'file', placement: placement('f1', { height: 300 }), file: file('notes.zip', 'other') });
 		painted.dress(context({ height: 300 }));
-		expect(face.querySelector('.snowflake-method-freeform-file-folder')!.classes.has('is-hidden')).toBe(true);
 		expect(face.querySelector('img')).toBeNull();
 		expect(icons[icons.length - 1]!.icon).toBe('file');
 		painted.unmount();
@@ -1059,18 +1067,19 @@ describe('a file’s face and a link’s', () => {
 		expect(video.face.querySelector('video')?.getAttribute('src')).toBe('app://vault/Novel/Material/map.png');
 	});
 
-	it('shows a link by what it is called, and the address whole beneath', () => {
+	it('shows a link by what it is called, on one face, and the address nowhere on it', () => {
 		const { nodes, mount } = faces();
 		nodes.set('l1', { type: 'link', placement: placement('l1'), url: 'https://example.org/read', label: 'Read this', host: 'example.org' });
 		const { face, painted } = mount('link', 'l1');
 		expect(face.classes.has('is-link')).toBe(true);
+		expect(face.dataset.mode).toBe('compact');
 		// The symbol is drawn first, since the way to the menu stands at the head's end here.
 		expect(icons.map((entry) => entry.icon)).toEqual(['link', 'ellipsis']);
 		expect(face.querySelector('.snowflake-method-freeform-face-name')!.textContent).toBe('called l1');
-		expect(face.querySelector('.snowflake-method-freeform-link-address')!.textContent).toBe('https://example.org/read');
-		nodes.set('l1', { type: 'link', placement: placement('l1'), url: 'https://example.org/other', label: '', host: 'example.org' });
+		expect(face.querySelector('.snowflake-method-freeform-link-address')).toBeNull();
+		nodes.set('l1', { type: 'link', placement: placement('l1', { displayMode: 'extended' }), url: 'https://example.org/other', label: '', host: 'example.org' });
 		painted.dress(context({ selected: true }));
-		expect(face.querySelector('.snowflake-method-freeform-link-address')!.textContent).toBe('https://example.org/other');
+		expect(face.dataset.mode).toBe('compact');
 		expect(face.classes.has('is-selected')).toBe(true);
 	});
 });

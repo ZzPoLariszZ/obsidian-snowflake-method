@@ -41,30 +41,66 @@ export const FREEFORM_FACE_MODES: readonly FreeformFaceMode[] = ['compact', 'sta
 /**
  * The kinds of face there are, by how much room each of their modes needs:
  * a scene's card and the card a character or a worldbuilding note wears in
- * its shape, a task's card as the board deals it, the card a thread or a
- * revision wears in the manuscript's margin, a sticky note's own card, a
- * file's or a link's rows, a text's words, and the one line every other
+ * its shape, a task's card as the board deals it, the cards a thread and a
+ * revision wear in the manuscript's margin, a sticky note's own card, a
+ * file's or a link's row, a text's words, and the one line every other
  * kind shows.
  */
-export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'rail' | 'sticky' | 'record' | 'text' | 'plain';
+export type FreeformFaceKind = 'scene' | 'card' | 'task' | 'thread' | 'revision' | 'sticky' | 'record' | 'text' | 'plain';
 
 /**
  * How tall a box must be for a face to show each of its modes whole. A
  * scene's measures are the corkboard's own card in each of its styles, and
  * a card's the same shape without the links; a task's are the board's card
- * with and without its second row; a margin card's are its head, its
- * fields, and the passages under them; a sticky note's are its head with
- * its first line and with its words; a record's are its rows.
+ * with and without its second row; a margin card's are its head, which for
+ * a revision carries the chapter too, and its head with its fields; a
+ * sticky note's are its head with its first line and with its words; a
+ * record's is its one row. Each barest measure was read off the card as
+ * drawn, with a few units to spare.
  */
 export const FREEFORM_FACE_HEIGHTS: Readonly<Record<FreeformFaceKind, Readonly<Record<FreeformFaceMode, number>>>> = {
 	scene: { compact: 80, standard: 240, extended: 304 },
 	card: { compact: 80, standard: 176, extended: 176 },
 	task: { compact: 56, standard: 88, extended: 88 },
-	rail: { compact: 72, standard: 200, extended: 320 },
-	sticky: { compact: 64, standard: 160, extended: 160 },
-	record: { compact: 56, standard: 160, extended: 320 },
+	thread: { compact: 72, standard: 200, extended: 200 },
+	revision: { compact: 108, standard: 220, extended: 220 },
+	sticky: { compact: 84, standard: 160, extended: 160 },
+	record: { compact: 56, standard: 56, extended: 56 },
 	text: { compact: 56, standard: 56, extended: 56 },
 	plain: { compact: 48, standard: 48, extended: 48 },
+};
+
+/**
+ * The faces each kind of node has, barest first. A scene's card has the
+ * board's three; every other card its head alone and its head with its
+ * body; a file, a link, a text and a stand-in one face, which is all they
+ * have to show. A fuller face has no more room in the table above than the
+ * fullest a kind has, so it is never asked for.
+ */
+export const FREEFORM_FACE_MODES_OF: Readonly<Record<FreeformFaceKind, readonly FreeformFaceMode[]>> = {
+	scene: ['compact', 'standard', 'extended'],
+	card: ['compact', 'standard'],
+	task: ['compact', 'standard'],
+	thread: ['compact', 'standard'],
+	revision: ['compact', 'standard'],
+	sticky: ['compact', 'standard'],
+	record: ['compact'],
+	text: ['compact'],
+	plain: ['compact'],
+};
+
+/** The fullest face a kind has. */
+const fullestOf = (kind: FreeformFaceKind): FreeformFaceMode => {
+	const faces = FREEFORM_FACE_MODES_OF[kind];
+	return faces[faces.length - 1] ?? 'compact';
+};
+
+const rankOf = (face: FreeformFaceMode): number => FREEFORM_FACE_MODES.indexOf(face);
+
+/** A face named for a kind that has it, or the fullest the kind has. */
+const ownFace = (kind: FreeformFaceKind, face: FreeformFaceMode): FreeformFaceMode => {
+	const fullest = fullestOf(kind);
+	return rankOf(face) > rankOf(fullest) ? fullest : face;
 };
 
 /** The kind of face a resolved node shows. */
@@ -78,8 +114,9 @@ export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
 		case 'task':
 			return 'task';
 		case 'foreshadowing':
+			return 'thread';
 		case 'revision':
-			return 'rail';
+			return 'revision';
 		case 'sticky-note':
 			return 'sticky';
 		case 'file':
@@ -96,31 +133,37 @@ export function faceKindOf(type: ResolvedNode['type']): FreeformFaceKind {
  * The face a node shows: the one the author chose, or, left to the canvas,
  * the fullest the size it is looked at allows that its box has room for,
  * so looking nearer never sizes a node. Far off a node shows its barest
- * face, which is all that can be read there.
+ * face, which is all that can be read there. A kind is never asked for a
+ * face it does not have: its fullest stands in for one.
  */
 export function faceModeOf(
 	mode: FreeformDisplayMode,
 	band: ZoomBand,
-	fit?: { kind: FreeformFaceKind; height: number },
+	kind: FreeformFaceKind,
+	height: number,
 ): FreeformFaceMode {
-	if (mode !== 'auto') return mode;
-	let shown: FreeformFaceMode = band === 'far' ? 'compact' : band;
-	if (fit === undefined) return shown;
-	const heights = FREEFORM_FACE_HEIGHTS[fit.kind];
-	while (shown !== 'compact' && fit.height < heights[shown]) {
+	if (mode !== 'auto') return ownFace(kind, mode);
+	let shown = ownFace(kind, band === 'far' ? 'compact' : band);
+	const heights = FREEFORM_FACE_HEIGHTS[kind];
+	while (shown !== 'compact' && height < heights[shown]) {
 		shown = shown === 'extended' ? 'standard' : 'compact';
 	}
 	return shown;
 }
 
 /**
- * How tall a node stands once a fuller face is chosen for it: as tall as it
- * was, or as tall as that face needs. Choosing a face is the keyboard's way
- * of sizing a node, so a box is grown and never shrunk by it.
+ * How tall a node stands once a face is chosen for it: as tall as that face
+ * needs, so a box neither runs on empty under a barer face nor cuts a
+ * fuller one short. Left to the canvas, a box keeps the height it has.
  */
-export function grownForMode(kind: FreeformFaceKind, mode: FreeformDisplayMode, height: number): number {
+export function heightForMode(kind: FreeformFaceKind, mode: FreeformDisplayMode, height: number): number {
 	if (mode === 'auto') return height;
-	return Math.min(FREEFORM_SIZE.max, Math.max(height, FREEFORM_FACE_HEIGHTS[kind][mode]));
+	return FREEFORM_FACE_HEIGHTS[kind][ownFace(kind, mode)];
+}
+
+/** The room a note lands with: its standard face's where it has one, else its one face's. */
+export function landingHeightOf(kind: FreeformFaceKind): number {
+	return FREEFORM_FACE_HEIGHTS[kind][FREEFORM_FACE_MODES_OF[kind].includes('standard') ? 'standard' : 'compact'];
 }
 
 // -- A view said to the canvas ---------------------------------------------------

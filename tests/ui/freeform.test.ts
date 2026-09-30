@@ -1965,7 +1965,11 @@ describe('what a node opens', () => {
 		expect(fixture.host.openEntityForm).toHaveBeenCalledWith({ mode: 'edit', id: 'loc-1' }, 'P', expect.any(Function));
 		// A note that has gone opens nothing, and its menu offers only its face, its frame, its lines, its measures and its removal.
 		expect(fixture.menuAt({ kind: 'node', id: 'm1' })!.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+			...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+		]);
+		// A note's card offers its two faces.
+		expect(fixture.menuAt({ kind: 'node', id: 'c1' })!.map((item) => item.title)).toEqual([
+			'actions.edit', 'actions.openNote', ...CARD_DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
 		menu[1]!.click();
@@ -1984,38 +1988,66 @@ describe('what a node opens', () => {
 });
 
 describe('how a node is shown and where it stands', () => {
-	it('sets the face chosen for every node chosen, and grows a box to the face it chose', async () => {
-		const fixture = await laid();
-		fixture.choose({ nodes: ['t2', 's1'] });
-		fixture.menuAt({ kind: 'node', id: 's1' })![DISPLAY_ITEMS.indexOf('corkboard.cards.extended')]!.click();
+	it('sets the face chosen for every node chosen, and sizes each box to the face it chose, taller or shorter', async () => {
+		const base = laidView();
+		const fixture = workspace([{ ...base, placements: [...base.placements, sceneNode('s2', 'scene-1', 'Arrival again', { x: 400, y: 600, zIndex: 4 })] }]);
+		await settle();
+		fixture.choose({ nodes: ['s1', 's2'] });
+		// Two are chosen, so the menu opens on the faces, with no one scene to open.
+		const shown = (): { title: string; click: () => void }[] => fixture.menuAt({ kind: 'node', id: 's1' })!;
+		shown()[DISPLAY_ITEMS.indexOf('corkboard.cards.extended')]!.click();
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
-			{ do: 'display', modes: [{ id: 't2', mode: 'extended' }, { id: 's1', mode: 'extended' }] },
-			// A text's fullest face needs no more room than its box has; a scene's card does.
-			{ do: 'place', places: [{ id: 's1', x: 0, y: 300, height: FREEFORM_FACE_HEIGHTS.scene.extended }] },
+			{ do: 'display', modes: [{ id: 's1', mode: 'extended' }, { id: 's2', mode: 'extended' }] },
+			{ do: 'place', places: [
+				{ id: 's1', x: 0, y: 300, height: FREEFORM_FACE_HEIGHTS.scene.extended },
+				{ id: 's2', x: 400, y: 600, height: FREEFORM_FACE_HEIGHTS.scene.extended },
+			] },
 		]);
 		expect(fixture.node('s1').height).toBe(FREEFORM_FACE_HEIGHTS.scene.extended);
 		expect(fixture.face('s1').dataset.mode).toBe('extended');
-		// Back to Auto for the one node, which sizes nothing.
-		fixture.choose({ nodes: [] });
-		fixture.menuAt({ kind: 'node', id: 't2' })![1]!.click();
+		// A barer face shrinks the box to what it needs, so no empty room stands under it.
+		shown()[DISPLAY_ITEMS.indexOf('corkboard.cards.compact')]!.click();
 		await settle();
-		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([{ do: 'display', modes: [{ id: 't2', mode: 'auto' }] }]);
+		expect(fixture.bridge.transact.mock.calls[1]![1]).toEqual([
+			{ do: 'display', modes: [{ id: 's1', mode: 'compact' }, { id: 's2', mode: 'compact' }] },
+			{ do: 'place', places: [
+				{ id: 's1', x: 0, y: 300, height: FREEFORM_FACE_HEIGHTS.scene.compact },
+				{ id: 's2', x: 400, y: 600, height: FREEFORM_FACE_HEIGHTS.scene.compact },
+			] },
+		]);
+		expect(fixture.face('s1').dataset.mode).toBe('compact');
+		// Back to Auto for the one node, which sizes nothing; alone, the scene's menu opens on what opens it.
+		fixture.choose({ nodes: [] });
+		shown()[2]!.click();
+		await settle();
+		expect(fixture.bridge.transact.mock.calls[2]![1]).toEqual([{ do: 'display', modes: [{ id: 's1', mode: 'auto' }] }]);
+	});
+
+	it('offers only the faces every node chosen has, and none where they share one alone', async () => {
+		const fixture = await laid();
+		// A text and a scene share one face, the barest, so there is nothing to choose between them.
+		fixture.choose({ nodes: ['t2', 's1'] });
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
+			...FRAME_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.deselect', 'timeline.timeline.removeFromView',
+		]);
 	});
 
 	it('shows, on Auto, the fullest face the zoom allows that the box has room for', async () => {
 		const fixture = workspace([view('a', {
 			placements: [
 				{ ...text('c1', ''), resource: { type: 'entity', kind: 'scene', id: 'scene-1', name: 'Arrival' }, height: 250 },
-				{ ...text('c2', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 300, height: 400 },
+				{ ...text('c2', ''), resource: { type: 'entity', kind: 'scene', id: 'scene-1', name: 'Arrival' }, x: 300, height: 400 },
 				{ ...text('c3', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 600, height: 40 },
+				{ ...text('c4', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' }, x: 900, height: 400 },
 			],
 		})]);
 		await settle();
-		// The plain canvas dresses at the fullest band: a box too low for that face falls back to what fits.
+		// The plain canvas dresses at the fullest band: a box too low for that face falls back to what fits, and a card has no fullest face.
 		expect(fixture.face('c1').dataset.mode).toBe('standard');
 		expect(fixture.face('c2').dataset.mode).toBe('extended');
 		expect(fixture.face('c3').dataset.mode).toBe('compact');
+		expect(fixture.face('c4').dataset.mode).toBe('standard');
 		// Looked at from further off, every face is the barest, whatever its box has room for.
 		fixture.canvas.band = 'compact';
 		fixture.handle.refresh();
@@ -2025,7 +2057,7 @@ describe('how a node is shown and where it stands', () => {
 	it('sets a node’s size and place by number through its form, refusing what the view will not take', async () => {
 		const fixture = await laid();
 		const forms = watch(FreeformGeometryModal);
-		fixture.menuAt({ kind: 'node', id: 't2' })![DISPLAY_ITEMS.length + FRAME_ITEMS.length + 2]!.click();
+		fixture.menuAt({ kind: 'node', id: 't2' })![FRAME_ITEMS.length + 2]!.click();
 		expect(forms).toHaveLength(1);
 		await submit(forms[0], { x: 640, y: 80, width: 300, height: 200 });
 		expect(fixture.node('t2')).toMatchObject({ x: 640, y: 80, width: 300, height: 200 });
@@ -2359,7 +2391,7 @@ describe('records on the canvas', () => {
 		expect(options.candidates('sticky-note')).toEqual([{ id: 'note-1', name: 'Remember', onView: true }]);
 		await submit(forms[0], { type: 'entity', kind: 'revision', nodes: [{ id: 'rev-2', name: 'add this' }] });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
-		expect(fixture.node(added)).toMatchObject({ kind: 'revision', height: FREEFORM_FACE_HEIGHTS.rail.standard });
+		expect(fixture.node(added)).toMatchObject({ kind: 'revision', height: FREEFORM_FACE_HEIGHTS.revision.standard });
 		await settle();
 		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === added)?.resource).toEqual({ type: 'revision', id: 'rev-2', name: 'add this' });
 	});
@@ -2825,7 +2857,9 @@ describe('copies, the clipboard and the order nodes stand in', () => {
 	});
 });
 
+/** The faces a scene's card offers; every other card offers two, and a text, a file, a link and a stand-in offer none to choose. */
 const DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard', 'corkboard.cards.extended'];
+const CARD_DISPLAY_ITEMS = ['freeformCanvas.display.auto', 'corkboard.cards.compact', 'corkboard.cards.standard'];
 /** What a menu offers one node alone. */
 const SINGLE_ITEMS = ['freeformCanvas.node.connect', 'freeformCanvas.node.geometry'];
 /** What a menu offers whatever is chosen: a copy of it, and its place among its neighbours. */
@@ -3010,22 +3044,23 @@ describe('searching a view', () => {
 describe('the menus', () => {
 	it('offers each kind of node what opens it, its face, its measures and its removal', async () => {
 		const fixture = await laid();
+		// A text has one face, so none to choose; a scene's card has three.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.title)).toEqual([
-			'freeformCanvas.text.edit', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+			'freeformCanvas.text.edit', ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
 			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
-		// A link opens, copies and edits; a frame has no face to choose and is removed as a frame, its nodes kept.
+		// A link opens, copies and edits, and has one face; a frame has no face to choose and is removed as a frame, its nodes kept.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
-			...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+			...LINK_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 'f1' })!.map((item) => item.title)).toEqual([
 			...OWN_FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.select', 'freeformCanvas.frame.remove',
 		]);
 		// The face the node shows is the one checked.
-		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.checked)).toEqual([
-			null, true, false, false, false, null, null, null, null, null, null, null, null, null, null,
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.checked)).toEqual([
+			null, null, true, false, false, false, null, null, null, null, null, null, null, null, null, null,
 		]);
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.title)).toEqual(EDGE_ITEMS);
 		expect(fixture.menuAt({ kind: 'edge', id: 'gone' })).toBeUndefined();
@@ -3042,9 +3077,9 @@ describe('the menus', () => {
 		const fixture = await laid();
 		fixture.choose({ nodes: ['t1', 't2'], edges: ['e1'] });
 		const onChosen = fixture.menuAt({ kind: 'node', id: 't2' })!;
-		// Several are chosen: there is no one text to edit and no one box to measure, and the face and the frame are every one's.
+		// Several are chosen: there is no one text to edit and no one box to measure, the frame is every one's, and two texts have no face to choose.
 		expect(onChosen.map((item) => item.title)).toEqual([
-			...DISPLAY_ITEMS, ...FRAME_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.deselect', 'timeline.timeline.removeFromView',
+			...FRAME_ITEMS, ...COPY_ITEMS, 'freeformCanvas.node.deselect', 'timeline.timeline.removeFromView',
 		]);
 		const elsewhere = fixture.menuAt({ kind: 'node', id: 'l1' })!;
 		elsewhere[elsewhere.length - 1]!.click();
@@ -3059,7 +3094,7 @@ describe('the menus', () => {
 		const fixture = await laid({ readOnly: true });
 		// A copy and a choice change nothing in the project.
 		expect(fixture.menuAt({ kind: 'node', id: 't2' })!.map((item) => item.disabled)).toEqual([
-			true, true, true, true, true, true, true, true, true, true, false, true, true, false, true,
+			true, true, true, true, true, true, false, true, true, false, true,
 		]);
 		// A line's ends can be gone to all the same.
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false, true]);
@@ -3097,7 +3132,7 @@ describe('the menus', () => {
 		menus.length = 0;
 		positions.length = 0;
 		fire(more, 'click', { detail: 1 });
-		expect(menus[0]!.map((item) => item.title)).toEqual([...LINK_ITEMS, ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS]);
+		expect(menus[0]!.map((item) => item.title)).toEqual([...LINK_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS]);
 		expect(positions[0]).toBeNull();
 		// Asked for from the keyboard, a press has no place of its own: the menu stands by the button.
 		Object.assign(more, { getBoundingClientRect: () => ({ left: 40, bottom: 90, top: 66, right: 64 }) });

@@ -138,9 +138,13 @@ function textPainter(deps: FreeformFaceDeps, texts: Map<string, TextFace>): Node
 	return {
 		mount: (body, id, context): PaintedNode => {
 			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-text' });
-			moreButton(face, deps, id);
+			// The symbol at the first line's start and the way to the menu at its end, the words between them: three columns, so
+			// the words never run under either, typed or drawn.
+			const symbol = face.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
 			const shown = face.createDiv({ cls: 'snowflake-method-freeform-text' });
+			moreButton(face, deps, id);
 			followLinks(shown, deps);
+			let worn = '';
 
 			let held: PaintContext = context;
 			let field: HTMLTextAreaElement | null = null;
@@ -211,8 +215,8 @@ function textPainter(deps: FreeformFaceDeps, texts: Map<string, TextFace>): Node
 				const open = field;
 				if (open === null) return;
 				const words = open.value;
-				// The field fills the face and pads its words as the face does.
-				const typed = open.scrollHeight + edge();
+				// The field stands in the words' own place, inside the room the face keeps about them.
+				const typed = open.scrollHeight + padding() + edge();
 				// Let go before the field is taken out, whose going is a blur of its own.
 				field = null;
 				face.removeClass('is-editing');
@@ -292,7 +296,12 @@ function textPainter(deps: FreeformFaceDeps, texts: Map<string, TextFace>): Node
 				held = next;
 				const node = deps.node(id);
 				if (node?.type !== 'text') return;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'text', height: next.height });
+				const icon = deps.icon(node);
+				if (icon !== worn) {
+					worn = icon;
+					setIcon(symbol, icon);
+				}
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'text', next.height);
 				face.toggleClass('is-selected', next.selected);
 				// A project that can no longer be written keeps what was typed and takes no more.
 				if (next.readOnly && field !== null) keep(true);
@@ -352,7 +361,7 @@ function scenePainter(deps: FreeformFaceDeps): NodePainter {
 				// Dealt bare, a card is dressed by the deck as it is shown and every time after.
 				if (card === null) card = deps.scenes.mount(face, id, node.scene, node.index);
 				deps.scenes.dress(card, node.scene, node.index);
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'scene', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'scene', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -438,7 +447,7 @@ function cardPainter(deps: FreeformFaceDeps): NodePainter {
 				if (extra.textContent !== under) extra.setText(under);
 				face.dataset.type = node.type;
 				face.dataset.kind = node.type === 'character' ? 'character' : node.entity.kind;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'card', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'card', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -457,8 +466,8 @@ function cardPainter(deps: FreeformFaceDeps): NodePainter {
 
 /**
  * A task's face: the board's own card, read and never written. Its title on
- * the first row, with the task's symbol before it and the way to its menu
- * after it, where the board keeps the card's own; its priority and the day
+ * the first row, with the task's symbol and the way to its menu at the row's
+ * end, where the board keeps the card's own menu; its priority and the day
  * it is due on the second; and along its top edge the hue of the column it
  * stands in on the board, worn as a card set aside wears it, since off the
  * board nothing else says which column that is.
@@ -470,9 +479,8 @@ function taskPainter(deps: FreeformFaceDeps): NodePainter {
 			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-task' });
 			const card = face.createDiv({ cls: 'snowflake-method-task-card', attr: { 'data-origin': 'manual' } });
 			const head = card.createDiv({ cls: 'snowflake-method-task-card-head' });
-			const symbol = head.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
 			const title = head.createDiv({ cls: 'snowflake-method-task-card-title' });
-			moreButton(head, deps, id);
+			const symbol = railTools(head, deps, id);
 			const meta = card.createDiv({ cls: 'snowflake-method-task-card-meta' });
 			let worn = '';
 			let drawn = '';
@@ -499,7 +507,7 @@ function taskPainter(deps: FreeformFaceDeps): NodePainter {
 					drawn = signature;
 					paintTaskMeta(meta, task, when, t);
 				}
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'task', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'task', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -533,7 +541,7 @@ function railValue(
 	part: string,
 	label: string,
 	text: string,
-	from: 'compact' | 'standard' | 'extended',
+	from: 'compact' | 'standard',
 ): void {
 	const field = parts.fieldBlock(fields, part, label);
 	field.setAttribute('data-from', from);
@@ -547,7 +555,7 @@ function railValue(
  * the word for it, its standing under the corner that holds its symbol
  * and the way to its menu. Under the head its description, and its
  * occurrences, each a way into the manuscript where it stands, with the
- * words it marks under it on the fullest face. No compass, since there is
+ * words it marks under it. No compass, since there is
  * no rail to step along, and no row of buttons, since what the card can do
  * is its menu's.
  */
@@ -617,7 +625,7 @@ function threadPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
 						});
 					}
 				}
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'rail', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'thread', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -638,7 +646,7 @@ function threadPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
  * kind, with the badge a conflict wears after it, and the corner that holds
  * its symbol and the way to its menu; under the head the chapter it stands
  * in, the words it would take and the words it would put, and the aside
- * about them on the fullest face.
+ * about them.
  */
 function revisionPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
 	const { t } = deps;
@@ -676,9 +684,9 @@ function revisionPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter 
 					railValue(parts, fields, 'place', t('revisionTable.place'), row.title, 'compact');
 					if (row.kind !== 'insert') railValue(parts, fields, 'original', t('manuscript.revision.original'), row.original, 'standard');
 					if (row.kind !== 'delete') railValue(parts, fields, 'proposed', t('manuscript.revision.proposed'), row.proposed, 'standard');
-					if (row.comment.length > 0) railValue(parts, fields, 'comment', t('manuscript.revision.comment'), row.comment, 'extended');
+					if (row.comment.length > 0) railValue(parts, fields, 'comment', t('manuscript.revision.comment'), row.comment, 'standard');
 				}
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'rail', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'revision', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -696,10 +704,10 @@ function revisionPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter 
 /**
  * A sticky note's face: the note's own card, read and never written, since
  * the note floats from its menu and the float is where it is typed into.
- * Its head holds the note's symbol where the board keeps its palette, when
- * the note was made, and the way to its menu where the board keeps the
- * note's tools; under it the note's words drawn as a note's are, and on
- * the barest face their first line alone.
+ * Its head says when the note was made, and holds the note's symbol and the
+ * way to its menu where the board keeps the note's tools; under it the
+ * note's words drawn as a note's are, and on the barest face their first
+ * line alone.
  */
 function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 	const { t } = deps;
@@ -708,9 +716,10 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-sticky' });
 			const card = face.createDiv({ cls: 'snowflake-method-sticky-card snowflake-method-sticky-tint' });
 			const head = card.createDiv({ cls: 'snowflake-method-sticky-head' });
-			const symbol = head.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
 			const created = head.createSpan({ cls: 'snowflake-method-sticky-created' });
-			moreButton(head.createDiv({ cls: 'snowflake-method-sticky-tools' }), deps, id);
+			const tools = head.createDiv({ cls: 'snowflake-method-sticky-tools' });
+			const symbol = tools.createSpan({ cls: 'snowflake-method-freeform-face-icon', attr: { 'aria-hidden': 'true' } });
+			moreButton(tools, deps, id);
 			const words = card.createDiv({ cls: 'snowflake-method-sticky-body' });
 			const first = words.createDiv({ cls: 'snowflake-method-freeform-sticky-first' });
 			const shown = words.createDiv({ cls: 'snowflake-method-freeform-text' });
@@ -758,7 +767,7 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 						});
 					}
 				}
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'sticky', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'sticky', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -785,9 +794,9 @@ const FILE_ICONS: Readonly<Record<FreeformFileKind, string>> = {
 };
 
 /**
- * A file's face: its symbol and its name, the folder it stands in on the
- * standard face, and, for a picture, a video or a sound, the file itself
- * drawn from the vault. A note and anything else say only what they are
+ * A file's face: its symbol and its name, and, for a picture, a video or a
+ * sound, the file itself drawn from the vault under them, as much of it as
+ * the box has room for. A note and anything else say only what they are
  * called, and open where the app shows them.
  */
 function filePainter(deps: FreeformFaceDeps): NodePainter {
@@ -802,7 +811,6 @@ function filePainter(deps: FreeformFaceDeps): NodePainter {
 			});
 			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
 			moreButton(head, deps, id);
-			const folder = face.createDiv({ cls: 'snowflake-method-freeform-file-folder' });
 			const media = face.createDiv({ cls: 'snowflake-method-freeform-file-media' });
 			let worn = '';
 			/** The file the media was drawn from last: its path and how the vault saw it. */
@@ -821,9 +829,6 @@ function filePainter(deps: FreeformFaceDeps): NodePainter {
 					name.setText(words);
 					setTooltip(name, words);
 				}
-				const at = file.relativePath.slice(0, Math.max(0, file.relativePath.lastIndexOf('/')));
-				if (folder.textContent !== at) folder.setText(at);
-				folder.toggleClass('is-hidden', at.length === 0);
 				const stamp = `${file.path}|${file.stamp}|${file.kind}`;
 				if (stamp !== drawn) {
 					drawn = stamp;
@@ -840,7 +845,7 @@ function filePainter(deps: FreeformFaceDeps): NodePainter {
 					}
 				}
 				face.dataset.kind = file.kind;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'record', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -856,9 +861,9 @@ function filePainter(deps: FreeformFaceDeps): NodePainter {
 }
 
 /**
- * A link's face: what it is called, and on the fuller faces the address
- * whole. Nothing is fetched: the face knows the address and no more, so
- * the plugin asks nothing of the network.
+ * A link's face: what it is called, on one line. Nothing is fetched: the
+ * face knows the address and no more, so the plugin asks nothing of the
+ * network, and the address itself is the menu's to open and to copy.
  */
 function linkPainter(deps: FreeformFaceDeps): NodePainter {
 	return {
@@ -872,7 +877,6 @@ function linkPainter(deps: FreeformFaceDeps): NodePainter {
 			setIcon(symbol, 'link');
 			const name = head.createSpan({ cls: 'snowflake-method-freeform-face-name' });
 			moreButton(head, deps, id);
-			const address = face.createDiv({ cls: 'snowflake-method-freeform-link-address' });
 			const dress = (next: PaintContext): void => {
 				const node = deps.node(id);
 				if (node?.type !== 'link') return;
@@ -881,8 +885,7 @@ function linkPainter(deps: FreeformFaceDeps): NodePainter {
 					name.setText(words);
 					setTooltip(name, words);
 				}
-				if (address.textContent !== node.url) address.setText(node.url);
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'record', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'record', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -938,7 +941,7 @@ function missingPainter(deps: FreeformFaceDeps): NodePainter {
 				const last = node.name.trim().length === 0 ? '' : t('freeformCanvas.missing.lastSeen', { name: node.name });
 				if (seen.textContent !== last) seen.setText(last);
 				seen.toggleClass('is-hidden', last.length === 0);
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: 'plain', height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, 'plain', next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -1050,7 +1053,7 @@ function plainPainter(deps: FreeformFaceDeps): NodePainter {
 				const words = deps.label(node);
 				if (name.textContent !== words) name.setText(words);
 				face.dataset.type = node.type;
-				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, { kind: faceKindOf(node.type), height: next.height });
+				face.dataset.mode = faceModeOf(node.placement.displayMode, next.band, faceKindOf(node.type), next.height);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
