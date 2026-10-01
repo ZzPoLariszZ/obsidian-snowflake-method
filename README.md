@@ -34,7 +34,7 @@ This plugin turns that iterative workflow into a focused, Markdown-native worksp
 
 Your writing stays local, linkable, portable, and editable without the plugin. The workflow provides structure without enforcing it: hints never block progress and every step can be revisited.
 
-**This is an independent, open-source community project. It is NOT affiliated with, authorized by, or endorsed by Randy Ingermanson or Advanced Fiction Writing.**
+**This is an independent, open-source community project. It is NOT affiliated with or endorsed by Randy Ingermanson or Advanced Fiction Writing. The Snowflake Method name is used with Randy Ingermanson's permission.**
 
 ## Features
 
@@ -46,7 +46,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Worldbuilding | Track time, location, and item beside characters and scenes, add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
-| Story structure | See every scene as a card in narrative order, reorder and edit it on the card itself, place the same scenes on timelines to see when they happen, and lay them under the acts and beats of a beat sheet. |
+| Story structure | See every scene as a card in narrative order, reorder and edit it on the card itself, place the same scenes on timelines to see when they happen, lay them under the acts and beats of a beat sheet, or spread them with anything else in the project across a freeform canvas. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation, with a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line being written at the middle of the page. |
@@ -153,11 +153,15 @@ Beyond the fields every member shares, a note can carry **custom fields** of you
 
 ### Story structure
 
-Scenes are easier to judge when you can see them all at once. The **Visualization workspace** opens as a tab of its own, from the link row at the foot of the dashboard's Creation tools or from the Command palette, and gathers a family of views over the scenes you planned in steps 8 and 9. **Corkboard**, **Timeline** and **Beat sheet** are the three that are ready, with Freeform beside them in the strip, reading **Planning stage…** until its turn comes.
+Scenes are easier to judge when you can see them all at once. The **Visualization workspace** opens as a tab of its own, from the link row at the foot of the dashboard's Creation tools or from the Command palette, and gathers a family of views over the scenes you planned in steps 8 and 9. **Corkboard**, **Freeform**, **Timeline** and **Beat sheet** stand side by side in the strip, each asking a different question about the same scenes.
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_en.png"><img src="assets/screenshots/workspace_corkboard_en.png" width="100%" alt="The Visualization workspace on its Corkboard tab: five scene cards in narrative order, each numbered and carrying its progress status, its conflict, the manuscript chapters it links to and its point of view, one card focused and showing the grip it is dragged by, a + standing between neighbours to insert a scene, and search, display, order, filter, refresh and Add scene in the band above" /></a></p>
 
 The corkboard lays every scene out as a numbered card in narrative order, and the card is where the work happens: the name is edited in place, the point of view and the progress status are dropdowns, the conflict is a text box, a swatch tints the card in one of eight colors, and the manuscript chapters the scene links to open from it. While the board stands in plain order, dragging a card moves the scene, a **+** between two cards inserts one at exactly that point, and **Add scene** puts one at the end. The search box and the funnel narrow the board, **Display** sizes the cards and groups them by any of eight fields, and the direction button reads the whole board back in reverse.
+
+<p align="center"><a href="assets/screenshots/workspace_freeform_en.png"><img src="assets/screenshots/workspace_freeform_en.png" width="100%" alt="The Visualization workspace on its Freeform tab: the view Main chosen in the field above, a search in the middle and Add node and Add view at the end, a frame titled Worldbuilding holding cards for the character Alice, Scene A, Time B, Location C and Item D, lines running from them to a second frame titled Task Management Cards that holds a task, a foreshadowing, a revision and a sticky note, one line labelled Both, a video file and an image file shown as a player and a picture, a text card, a canvas file card and a link card below them, a column of canvas controls on the right, a strip of quick adds along the foot and the minimap in the corner" /></a></p>
+
+**Freeform** gives up the grid altogether. A view is a blank canvas, and a project keeps as many as you like. Onto it go the project's own notes and records as cards, characters, scenes, times, places, items, tasks, foreshadowing, revisions and sticky notes, each drawn as its own workspace draws it, and beside them text you type in place, any file of the project, and web links. A line drawn from one card to another connects them, with an arrow at either end and a solid, dashed or dotted stroke, and a **frame** gathers whatever is dropped into it and carries it along when moved. Dragging moves and resizes, the wheel pans and the wheel with Ctrl or Cmd zooms, the strip at the foot adds a card of any kind, every gesture has a menu or key twin, and undo reaches every change. A double click opens the note, record or file behind a card, and the canvas keeps only where things stand, never their words.
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_en.png"><img src="assets/screenshots/workspace_timeline_en.png" width="100%" alt="The Visualization workspace on its Timeline tab: a shared Time column on the left holding three times with their main descriptions, three timelines beside it, one of them pinned and one bound to the character Alice and active with a tint, sub-descriptions written in each cell against an axis with a node at every time it reaches, scene cards placed on those rows with one stack reading 1 / 3, and the scene pool on the right holding the two scenes this timeline has not placed" /></a></p>
 
@@ -301,6 +305,7 @@ Updating the plugin never rewrites your notes by itself. The files the plugin ge
 | Open beat sheet workspace | Open the visualization workspace on its beat sheet, with the scenes laid under its acts and beats. |
 | Open character base | Open the Bases view of the current project's characters. |
 | Open corkboard workspace | Open the visualization workspace on its corkboard, with the scenes as cards in narrative order. |
+| Open freeform workspace | Open the visualization workspace on its freeform canvas, where notes, records, files and text stand as cards to connect and frame. |
 | Open dashboard | Open or reveal the current project dashboard. |
 | Open health checker | Inspect project structure and repair safe issues. |
 | Open manuscript stream | Open the manuscript, at the note last written in. |
@@ -411,7 +416,7 @@ Commands that act on the manuscript are offered only while a manuscript stream i
 Snowflake Method for Obsidian is local-first. Project files and plugin settings remain in your Vault, and the plugin does not transmit your writing or configuration.
 
 - No account, subscription, or external service is required.
-- The plugin makes no network requests and includes no AI service, telemetry, or analytics.
+- The plugin makes no network requests and includes no AI service, telemetry, or analytics. A web link placed on the freeform canvas shows its address and fetches nothing.
 - Projects use ordinary Obsidian-compatible files that remain readable and editable when the plugin is disabled.
 
 <a id="structure"></a>
@@ -471,6 +476,9 @@ Each project is stored as a direct child of the configured project root. Its fol
     │   │   └── 724_Sticky_Note/
     │   │       └── 20260904T223121.847+0800.md
     │   └── 73_Visualization/
+    │       ├── 732_Freeform/
+    │       │   ├── freeform-view-<id>.json
+    │       │   └── freeform.json
     │       ├── 733_Timeline/
     │       │   └── timeline.json
     │       └── 734_Beat_Sheet/
@@ -502,8 +510,8 @@ These HTML comments are structural markers rather than story content. Boundary p
 
 ## Roadmap
 
-- [ ] Obtain written permission from Randy Ingermanson or Advanced Fiction Writing to use the Snowflake Method name for this plugin (emailed and waiting for a response)
-- [ ] Add the writing example from Chapter 20 of *How to Write a Novel Using the Snowflake Method* (a later conversation, once the naming is settled)
+- [x] Obtain written permission from Randy Ingermanson or Advanced Fiction Writing to use the Snowflake Method name for this plugin (granted by email, September 2026)
+- [ ] Add the writing example from Chapter 20 of *How to Write a Novel Using the Snowflake Method* (a later conversation)
 - [x] Guided dashboard (0.1.0)
 - [x] Obsidian-native projects (0.1.0)
 - [x] Bilingual workspace (0.1.0)
@@ -535,7 +543,7 @@ These HTML comments are structural markers rather than story content. Boundary p
 - [x] Corkboard (0.19.0)
 - [x] Timeline (0.20.0)
 - [x] Beat sheet (0.21.0)
-- [ ] Freeform
+- [x] Freeform (0.22.0)
 - [ ] Export visualization workspace as Obsidian Canvas
 
 <a id="development"></a>
@@ -593,6 +601,8 @@ The distributable plugin consists of exactly `main.js`, `manifest.json`, and `st
 
 [MIT License](LICENSE). The Snowflake Method name and source material belong to their respective owners.
 
+The canvas of the Freeform tab is built on [React Flow](https://reactflow.dev) (MIT, webkid GmbH), [React](https://react.dev) (MIT, Meta) and the [d3](https://d3js.org) modules it stands on (ISC, Mike Bostock). The word cloud in Data statistics uses [d3-cloud](https://github.com/jasondavies/d3-cloud) (BSD-3-Clause, Jason Davies). Their notices travel with their packages.
+
 ---
 
 <a id="简体中文"></a>
@@ -629,7 +639,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 本插件把这种迭代流程整理为专注的 Markdown 原生工作区。梗概、角色资料和场景规划不必散落在不同文档与表格中：你既可以在统一工作台中逐步推进，也可以把每项内容作为普通 Obsidian 笔记单独打开。所有创作内容都保存在本地，可以链接、迁移，并且停用插件后仍可编辑。工作流只提供结构而不强制限制：提示不会阻止进度，任何步骤都能返回修改。
 
-**这是一个独立的开源社区项目，与 Randy Ingermanson 或 Advanced Fiction Writing *没有* 隶属、授权或背书关系。**
+**这是一个独立的开源社区项目，与 Randy Ingermanson 或 Advanced Fiction Writing *没有* 隶属或背书关系。“雪花写作法”这一名称已获 Randy Ingermanson 授权使用。**
 
 ## 功能
 
@@ -641,7 +651,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 世界观 | 在角色与场景旁管理时间、地点与物品，也可以自建种类，并为每类成员配置类别、状态与关系。 |
 | 自定义字段 | 为任意笔记添加故事需要的字段，并把常用的一组字段保存为该种类的模板。 |
 | 项目归档 | 把暂时写完的项目收起来，想要时再取回。 |
-| 故事结构 | 把每个场景看作一张按叙事顺序排列的卡片，拖动调整次序，就地编辑，也可以把同一批场景放到时间线上，看清它们何时发生，或者排到节拍表的幕与节拍之下。 |
+| 故事结构 | 把每个场景看作一张按叙事顺序排列的卡片，拖动调整次序，就地编辑，也可以把同一批场景放到时间线上，看清它们何时发生，排到节拍表的幕与节拍之下，或者和项目里的其他东西一起铺在自由画布上。 |
 | 正文流 | 把整部正文当作一页连续读写，而每一章仍是各自独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，另有背景底色与可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -748,11 +758,15 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 
 ### 故事结构
 
-场景一并摊开在眼前，次序才好判断。**可视化工作区**在自己的标签页中打开，入口是仪表盘创作工具一组末尾的链接行，或者命令面板，其中收着同一批场景的一族视图，也就是第八步与第九步里规划的那些场景。**场景看板**、**时间线**与**节拍表**是其中已经做好的三个，自由画布并列在标签条上，轮到它之前写着**规划阶段…**。
+场景一并摊开在眼前，次序才好判断。**可视化工作区**在自己的标签页中打开，入口是仪表盘创作工具一组末尾的链接行，或者命令面板，其中收着同一批场景的一族视图，也就是第八步与第九步里规划的那些场景。**场景看板**、**自由画布**、**时间线**与**节拍表**并列在标签条上，各自对同一批场景问一个不同的问题。
 
 <p align="center"><a href="assets/screenshots/workspace_corkboard_cn.png"><img src="assets/screenshots/workspace_corkboard_cn.png" width="100%" alt="可视化工作区的场景看板标签页：五张按叙事顺序排列的场景卡片，各自带有编号、进度、冲突、关联正文与视点人物，其中一张处于聚焦状态并露出用于拖动的握柄，相邻卡片之间有插入场景的加号，上方一栏是搜索、显示、排序、筛选、刷新与添加场景" /></a></p>
 
 看板把每个场景摆成一张按叙事顺序编号的卡片，而卡片本身就是干活的地方：名称就地编辑，视点人物与进度是下拉框，冲突是一块文本框，色板为卡片着上八种颜色之一，该场景关联的正文章节也从卡片上打开。板子处于普通顺序时，拖动卡片即可移动场景，两张卡片之间的 **+** 会恰好在那个位置插入新场景，**添加场景**则加在末尾。搜索框与漏斗筛选看板，**显示**调整卡片大小并按八项中的任意一项分组，方向按钮则把整块板子读作倒序。
+
+<p align="center"><a href="assets/screenshots/workspace_freeform_cn.png"><img src="assets/screenshots/workspace_freeform_cn.png" width="100%" alt="可视化工作区的自由画布标签页：上方的选择框里选着主视图，中间是搜索，末尾是添加节点与添加视图，名为世界观的分组里放着场景一、角色萧薰儿、时间一、地点云岚宗与物品戒指的卡片，几条连线从它们引向另一个名为任务管理的分组，其中放着一个任务、一个伏笔、一条修订和一张便签，有一条连线标着双向，右上方的视频文件与图片文件各自显示为播放器和图片，下方是一张文本卡片、一张画布文件卡片和一张链接卡片，右侧一列是画布控制，底部一条是快捷添加，右下角是小地图" /></a></p>
+
+**自由画布**则干脆放下网格。一个视图就是一块空白画布，一个项目想建几个都可以。项目里的笔记与记录都能摆上去当卡片：角色、场景、时间、地点、物品、任务、伏笔、修订与便签，各自照着本来的工作区绘出，旁边还能放就地输入的文本、项目里的任意文件，以及网页链接。从一张卡片拉到另一张便成一条连线，两端都可以带箭头，线型有实线、虚线与点线，**分组**则把放进去的卡片收在一起，移动时一并带走。拖动即可移动与缩放，滚轮平移，按住 Ctrl 或 Cmd 滚动则缩放，底部一条可以添加任何一种卡片，每个手势都有对应的菜单项或按键，撤销能回到每一步。双击打开卡片背后的笔记、记录或文件，画布只记下东西站在哪里，从不保存它们的文字。
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_cn.png"><img src="assets/screenshots/workspace_timeline_cn.png" width="100%" alt="可视化工作区的时间线标签页：左侧共用的时间列中是三个时间及各自的主描述，旁边并列着三条时间线，其中一条已置顶，一条绑定角色萧薰儿并作为当前时间线带有底色，各单元格中写着子描述，旁边的轴线在每个到达的时间上点出一个节点，场景卡片落在这些行上，其中一处堆叠显示 1 / 3，右侧的场景池中是这条时间线尚未放置的两个场景" /></a></p>
 
@@ -884,6 +898,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 | 打开世界观数据库 | 打开你选定的世界观种类的 Bases 视图。 |
 | 打开可视化工作区 | 在独立的工作区中打开当前项目的故事结构。 |
 | 打开场景看板工作区 | 打开可视化工作区的场景看板，场景按叙事顺序排成卡片。 |
+| 打开自由画布工作区 | 打开可视化工作区的自由画布，笔记、记录、文件与文本都以卡片摆放，可以连线与分组。 |
 | 打开时间线工作区 | 打开可视化工作区的时间线，场景按发生的时间摆放。 |
 | 打开节拍表工作区 | 打开可视化工作区的节拍表，场景排在幕与节拍之下。 |
 | 打开正文流 | 打开正文，并定位到上次写作的笔记。 |
@@ -996,7 +1011,7 @@ Randy Ingermanson 的雪花写作法得名于[科赫雪花](https://baike.baidu.
 Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置均保留在 Vault 中，插件不会传输你的创作内容或配置。
 
 - 无需注册账号、订阅或连接外部服务。
-- 插件不发起网络请求，也不包含 AI 服务、遥测或数据分析。
+- 插件不发起网络请求，也不包含 AI 服务、遥测或数据分析。自由画布上的网页链接只显示网址，不会抓取任何内容。
 - 项目使用 Obsidian 兼容文件；停用插件后，内容依然可以正常阅读和编辑。
 
 ## 结构
@@ -1054,6 +1069,9 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
     │   │   └── 724_便签/
     │   │       └── 20260904T223121.847+0800.md
     │   └── 73_可视化/
+    │       ├── 732_自由画布/
+    │       │   ├── freeform-view-<id>.json
+    │       │   └── freeform.json
     │       ├── 733_时间线/
     │       │   └── timeline.json
     │       └── 734_节拍表/
@@ -1083,8 +1101,8 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 
 ## 路线图
 
-- [ ] 取得 Randy Ingermanson 或 Advanced Fiction Writing 的书面授权，以便本插件使用雪花写作法这一名称（已发送邮件，等待回复）
-- [ ] 加入《How to Write a Novel Using the Snowflake Method》第 20 章中的创作示例（待名称一事有结果后再行沟通）
+- [x] 取得 Randy Ingermanson 或 Advanced Fiction Writing 的书面授权，以便本插件使用雪花写作法这一名称（已于 2026 年 9 月通过邮件获得授权）
+- [ ] 加入《How to Write a Novel Using the Snowflake Method》第 20 章中的创作示例（另行沟通）
 - [x] 十步引导工作台 (0.1.0)
 - [x] Obsidian 原生项目 (0.1.0)
 - [x] 中英双语 (0.1.0)
@@ -1116,7 +1134,7 @@ Obsidian 雪花写作法采用本地优先设计。项目文件和插件设置�
 - [x] 场景看板 (0.19.0)
 - [x] 时间线 (0.20.0)
 - [x] 节拍表 (0.21.0)
-- [ ] 自由画布
+- [x] 自由画布 (0.22.0)
 - [ ] 将可视化工作区导出为 Obsidian Canvas
 
 ## 开发
@@ -1171,3 +1189,5 @@ npm ci
 ## 许可证
 
 源代码采用 [MIT License](LICENSE)。“雪花写作法”名称及原始方法资料的相关权利归各自权利人所有。
+
+自由画布标签页的画布基于 [React Flow](https://reactflow.dev)（MIT，webkid GmbH）、[React](https://react.dev)（MIT，Meta）与它所依赖的 [d3](https://d3js.org) 模块（ISC，Mike Bostock）。数据统计中的词云使用 [d3-cloud](https://github.com/jasondavies/d3-cloud)（BSD-3-Clause，Jason Davies）。它们的许可声明随各自的软件包一同分发。
