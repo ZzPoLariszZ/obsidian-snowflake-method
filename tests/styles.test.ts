@@ -149,10 +149,11 @@ describe('styles.css', () => {
 		// The line is drawn from the element's own box, so both must be one.
 		expect(declarations('.snowflake-method-beat-sheet-act')).toContain('position: relative');
 		expect(declarations('.snowflake-method-beat-sheet-act-foot')).toContain('position: relative');
-		// The symbols stand at the toolbar's end from the first of them. On the timeline that is the
-		// pencil; on a sheet the export comes first, and was left beside the field until it took the margin.
-		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-edit')).toContain('margin-inline-start: auto');
-		expect(declarations('.snowflake-method-timeline-toolbar .snowflake-method-beat-sheet-export')).toContain('margin-inline-start: auto');
+		// The symbols and the words stand together at the toolbar's end, in the end group every balanced
+		// toolbar carries; no symbol of its own carries the margin that once sent the rest after it.
+		expect(declarations('.snowflake-method-balanced-toolbar > .snowflake-method-toolbar-end')).toContain('justify-self: end');
+		expect(styles).not.toContain('.snowflake-method-timeline-view-edit {');
+		expect(styles).not.toContain('.snowflake-method-beat-sheet-export {');
 		// The template field's description is two sentences the copy breaks onto two lines.
 		expect(declarations('.snowflake-method-beat-sheet-template-setting .setting-item-description')).toContain('white-space: pre-line');
 		// What a template's author wrote of it is set off as a quotation, by the app's own measures for one, and goes when there is none.
@@ -420,6 +421,26 @@ describe('styles.css', () => {
 		const coarse = styles.slice(styles.indexOf('@media (pointer: coarse)'));
 		expect(coarse).toContain('.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before');
 		expect(styles.slice(0, styles.indexOf('@media (pointer: coarse)'))).not.toContain('.react-flow__node.selected .snowflake-method-freeform-handle');
+	});
+
+	/**
+	 * Every workspace's toolbar is balanced about its search by one rule: two
+	 * sides of one least width, the search between them up to its full width,
+	 * and, told it is too narrow for that, each side its own width with the
+	 * search in the middle of what is left.
+	 */
+	it('balances every toolbar about its search, and gives the balance up before the search', () => {
+		const balanced = declarations('.snowflake-method-balanced-toolbar');
+		expect(balanced).toContain('display: grid');
+		expect(balanced).toContain('minmax(6rem, var(--snowflake-method-toolbar-search-width, 22rem))');
+		expect(balanced).toContain('max(var(--snowflake-method-toolbar-start, 0px), var(--snowflake-method-toolbar-end, 0px))');
+		expect(declarations('.snowflake-method-balanced-toolbar.is-cramped')).toContain('max-content minmax(6rem, 1fr) max-content');
+		expect(declarations('.snowflake-method-balanced-toolbar.is-cramped > .snowflake-method-toolbar-search')).toContain('justify-self: center');
+		for (const toolbar of ['.snowflake-method-timeline-toolbar', '.snowflake-method-freeform-toolbar']) {
+			expect(declarations(toolbar), toolbar).toContain('--snowflake-method-toolbar-start:');
+			expect(declarations(toolbar), toolbar).not.toContain('display:');
+		}
+		expect(declarations('.snowflake-method-corkboard-band.snowflake-method-balanced-toolbar')).toContain('--snowflake-method-toolbar-start: 0px');
 	});
 
 	it('scopes a sheet without touching what its rules say', () => {

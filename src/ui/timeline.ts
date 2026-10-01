@@ -77,13 +77,17 @@ import {
 	type ProjectDashboardModel,
 	type WorldbuildingEntityViewModel,
 } from './view-model';
+import { answersSearch, sceneSearchWords, searchNeedles } from './search-words';
 import {
+	balanceToolbar,
 	bindFrameWindow,
 	createFocusCustody,
 	createFrame,
 	createLaneDeck,
 	createModalKeeper,
+	createSearchField,
 	paintSymbol,
+	toolbarEnd,
 	toolbarIconButton,
 	type Fold,
 	type FoldLabels,
@@ -120,6 +124,8 @@ interface CellEntry {
 interface RowEntry {
 	timeId: string;
 	el: HTMLElement;
+	/** The time's own cell: its words, which a search reads and marks. */
+	timeEl: HTMLElement;
 	handle: HTMLButtonElement;
 	label: HTMLButtonElement;
 	description: HTMLButtonElement;
@@ -173,13 +179,27 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	// band does: the view where the time column stands, the tools at the
 	// field's end, and the pool's own band beyond them.
 	const toolbar = root.createDiv({
-		cls: 'snowflake-method-timeline-toolbar',
+		cls: 'snowflake-method-timeline-toolbar snowflake-method-balanced-toolbar',
 		attr: { role: 'toolbar', 'aria-label': t('timeline.toolbar') },
 	});
 	// The view is typed into, searched and picked from, as a form's category
 	// is. The field is built once the views are read, since one built with
-	// nothing to offer stays a dead end.
-	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-timeline-view-select' });
+	// nothing to offer stays a dead end. The search stands in the toolbar's
+	// middle, as the freeform's does: it marks what it finds on the lanes and
+	// dims the rest, Enter brings the found into sight one by one, Escape lets
+	// it go. The symbols and the words stand together at the end.
+	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-toolbar-start snowflake-method-timeline-view-select' });
+	const searchField = createSearchField(toolbar, {
+		placeholder: t('timeline.search'),
+		query: (words) => {
+			setQuery(words);
+		},
+		step: (step) => {
+			stepSearch(step);
+		},
+		leave: () => undefined,
+	});
+	const end = toolbarEnd(toolbar);
 	const chooseView = (chosen: string): void => {
 		if (chosen.length === 0 || chosen === viewId) return;
 		viewId = chosen;
@@ -192,9 +212,9 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			await controls.bridge().setLastView(chosen);
 		}, 'nothing');
 	};
-	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
+	const stateText = end.createSpan({ cls: 'snowflake-method-prose-state' });
 	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement =>
-		toolbarIconButton(toolbar, cls, icon, label);
+		toolbarIconButton(end, cls, icon, label);
 	const editViewButton = iconButton('snowflake-method-timeline-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
 		openEditView();
@@ -252,7 +272,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
-	const addTimelineButton = toolbar.createEl('button', {
+	const addTimelineButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-add-timeline',
 		text: t('timeline.addTimeline'),
 		attr: { type: 'button' },
@@ -260,7 +280,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	addTimelineButton.addEventListener('click', () => {
 		void addTimeline(true);
 	});
-	const addViewButton = toolbar.createEl('button', {
+	const addViewButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-view-add',
 		text: t('timeline.view.add'),
 		attr: { type: 'button' },
@@ -268,6 +288,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
+	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------
 
@@ -503,8 +524,119 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		loop.paint();
 	};
 
-	/** The laying out itself, from the model handed to it and the document last read. */
+	// -- Searching -------------------------------------------------------------
+
+	/** The words searched for on the view on show; nothing marks nothing. */
+	let query = '';
+	/** What the search found, in reading order down the rows, and which of them was last brought into sight. */
+	let hits: HTMLElement[] = [];
+	let hitAt = -1;
+	/** Everything the last search marked, so the marks come off before the next is laid. */
+	let marked: HTMLElement[] = [];
+
+	/**
+	 * What the search reads on a row, in the order a reader meets it: the
+	 * time's name and description, then along the lanes each row of words and
+	 * the cards under it, a card by its scene's title, aliases, conflict and
+	 * point of view. Read from what the row shows and the scenes it deals,
+	 * so what is found is what is seen.
+	 */
+	const searchable = (row: RowEntry): { el: HTMLElement; words: string }[] => {
+		const scenes = laneDeck.scenesById();
+		const timeWords = row.time === null ? t('timeline.time.missing') : `${row.time.name}\n${row.time.description}`;
+		const found: { el: HTMLElement; words: string }[] = [{ el: row.timeEl, words: timeWords }];
+		for (const sub of Array.from(row.el.querySelectorAll<HTMLElement>('.snowflake-method-timeline-subrow'))) {
+			if (sub.classList.contains('is-trailing') || sub.classList.contains('is-pending')) continue;
+			found.push({ el: sub, words: sub.querySelector('.snowflake-method-timeline-subrow-label')?.textContent ?? '' });
+			for (const card of Array.from(sub.querySelectorAll<HTMLElement>('.snowflake-method-corkboard-card'))) {
+				const scene = scenes.get(card.getAttribute('data-id') ?? '');
+				found.push({ el: card, words: scene === undefined ? '' : sceneSearchWords(scene) });
+			}
+		}
+		return found;
+	};
+
+	const unmark = (): void => {
+		for (const el of marked) {
+			el.removeClass('is-search-hit');
+			el.removeClass('is-search-miss');
+			el.removeClass('is-search-current');
+		}
+		marked = [];
+	};
+
+	/** What the search says of itself at the field's end: how many it found, which of them is in sight, or that none matched. */
+	const paintSearchCount = (searching: boolean): void => {
+		if (!searching) {
+			searchField.count.setText('');
+			return;
+		}
+		if (hits.length === 0) {
+			searchField.count.setText(t('timeline.search.none'));
+			return;
+		}
+		searchField.count.setText(hitAt === -1
+			? t(hits.length === 1 ? 'freeformCanvas.search.matchesOne' : 'freeformCanvas.search.matches', { count: hits.length })
+			: t('freeformCanvas.search.position', { at: hitAt + 1, count: hits.length }));
+	};
+
+	/**
+	 * The lanes marked for the search standing: what it found wears the hit
+	 * class, the rest fall back, and the one brought into sight keeps its
+	 * place through a paint. Nothing is marked while nothing is searched for,
+	 * or while there is nothing to search.
+	 */
+	const paintSearch = (): void => {
+		const current = hits[hitAt] ?? null;
+		unmark();
+		const needles = searchNeedles(query);
+		const rows = needles.length === 0 ? [] : Array.from(table.querySelectorAll<HTMLElement>('.snowflake-method-timeline-row'));
+		const candidates = rows.flatMap((el) => {
+			const entry = timeRows.get(el.getAttribute('data-time-id') ?? '');
+			return entry === undefined ? [] : searchable(entry);
+		});
+		const searching = candidates.length > 0;
+		root.toggleClass('is-searching', searching);
+		hits = [];
+		for (const { el, words } of candidates) {
+			const hit = answersSearch(words, needles);
+			el.toggleClass('is-search-hit', hit);
+			el.toggleClass('is-search-miss', !hit);
+			marked.push(el);
+			if (hit) hits.push(el);
+		}
+		hitAt = current === null ? -1 : hits.indexOf(current);
+		hits[hitAt]?.addClass('is-search-current');
+		paintSearchCount(searching);
+	};
+
+	const setQuery = (next: string): void => {
+		if (next === query) return;
+		query = next;
+		hits = [];
+		hitAt = -1;
+		paintSearch();
+	};
+
+	/** The next thing found brought into sight, or the one before; round again at either end. */
+	const stepSearch = (step: 1 | -1): void => {
+		if (hits.length === 0) return;
+		hits[hitAt]?.removeClass('is-search-current');
+		hitAt = hitAt === -1 ? (step === 1 ? 0 : hits.length - 1) : (hitAt + step + hits.length) % hits.length;
+		const found = hits[hitAt];
+		if (found === undefined) return;
+		found.addClass('is-search-current');
+		found.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		paintSearchCount(true);
+	};
+
+	/** The laying out itself, from the model handed to it and the document last read, and the search laid over it. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
+		drawLaid(nextModel);
+		paintSearch();
+	};
+
+	const drawLaid = (nextModel: ProjectDashboardModel | null): void => {
 		invalidateRects();
 		folds.paint();
 		if (nextModel !== model) {
@@ -773,7 +905,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			attr: { type: 'button' },
 		});
 		setIcon(seamAdd, 'plus');
-		const entry: RowEntry = { timeId, el, handle, label, description, more, seamAdd, time: null, cells: new Map() };
+		const entry: RowEntry = { timeId, el, timeEl: time, handle, label, description, more, seamAdd, time: null, cells: new Map() };
 		seamAdd.addEventListener('click', (event) => {
 			event.stopPropagation();
 			void addTimeHere(entry.timeId);
@@ -1765,6 +1897,8 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			// The order is a rule: the bell, the window, the pool, the dialogs,
 			// and only then the words still being written and the deck.
 			loop.release();
+			stopBalance();
+			searchField.dispose();
 			releaseWindow();
 			pool.dispose();
 			// Closing resolves addTimeline and declines standing confirmations.

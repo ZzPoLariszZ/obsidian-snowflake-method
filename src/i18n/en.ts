@@ -1115,6 +1115,8 @@ export const en = {
 	'timeline.corruptPreserved':
 		'The timeline file could not be read and has been set aside as {path}.',
 	'timeline.toolbar': 'Timeline toolbar',
+	'timeline.search': 'Search this view',
+	'timeline.search.none': 'Nothing matches',
 	'timeline.loading': 'Reading the timeline…',
 	'timeline.loadFailed': 'The timeline could not be read.',
 	'timeline.view': 'View',
@@ -1214,6 +1216,8 @@ export const en = {
 	'beatSheet.corruptPreserved':
 		'The beat sheet file could not be read and has been set aside as {path}.',
 	'beatSheet.toolbar': 'Beat sheet toolbar',
+	'beatSheet.search': 'Search this sheet',
+	'beatSheet.search.none': 'Nothing matches',
 	'beatSheet.loading': 'Reading the beat sheets…',
 	'beatSheet.loadFailed': 'The beat sheets could not be read.',
 	'beatSheet.sheet': 'Beat sheet',

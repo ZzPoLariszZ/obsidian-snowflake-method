@@ -62,6 +62,7 @@ import {
 	isCorkboardMode,
 } from './story-structure-state';
 import type { ProjectDashboardModel, SceneViewModel } from './view-model';
+import { balanceToolbar, toolbarEnd } from './workspace-frame';
 
 const SEARCH_DEBOUNCE_MS = 150;
 const OVERSCAN_LINES = 2;
@@ -127,8 +128,14 @@ export function renderCorkboard(
 
 	// -- The band ------------------------------------------------------------
 
-	const band = root.createDiv({ cls: 'snowflake-method-prose-controls' });
-	const search = new SearchComponent(band);
+	// On its own tab the band is balanced as the other workspaces' toolbars
+	// are: the search in the middle, the controls together at the end. In the
+	// pool, where the band is one card wide, the search keeps the left end and
+	// the controls follow it.
+	const standalone = variant.searchLabel !== 'quiet';
+	const band = root.createDiv({ cls: `snowflake-method-prose-controls snowflake-method-corkboard-band${standalone ? ' snowflake-method-balanced-toolbar' : ''}` });
+	const searchHost = band.createDiv({ cls: 'snowflake-method-toolbar-search' });
+	const search = new SearchComponent(searchHost);
 	if (variant.searchLabel === 'quiet') {
 		// A placeholder that says nothing rather than none at all: Obsidian hides
 		// the field's clear button with `:placeholder-shown`, which matches nothing
@@ -153,8 +160,8 @@ export function renderCorkboard(
 			paintAll({ resetScroll: true });
 		}, SEARCH_DEBOUNCE_MS);
 	});
-	const searchBox = band.querySelector('.search-input-container');
-	const displayButton = band.createEl('button', {
+	const end = toolbarEnd(band);
+	const displayButton = end.createEl('button', {
 		cls: 'clickable-icon snowflake-method-corkboard-display',
 		attr: {
 			type: 'button',
@@ -168,7 +175,7 @@ export function renderCorkboard(
 	displayButton.addEventListener('click', () => {
 		openDisplay();
 	});
-	const directionButton = band.createEl('button', {
+	const directionButton = end.createEl('button', {
 		cls: 'clickable-icon snowflake-method-corkboard-direction',
 		attr: { type: 'button' },
 	});
@@ -190,7 +197,7 @@ export function renderCorkboard(
 		paintDirection();
 		paintAll({ resetScroll: true });
 	});
-	const filterButton = band.createEl('button', {
+	const filterButton = end.createEl('button', {
 		cls: 'clickable-icon snowflake-method-filter-button',
 		attr: {
 			type: 'button',
@@ -207,8 +214,8 @@ export function renderCorkboard(
 	filterButton.addEventListener('click', () => {
 		void openFunnel();
 	});
-	const stateText = band.createSpan({ cls: 'snowflake-method-prose-state' });
-	const refreshButton = band.createEl('button', {
+	const stateText = end.createSpan({ cls: 'snowflake-method-prose-state' });
+	const refreshButton = end.createEl('button', {
 		cls: 'clickable-icon snowflake-method-prose-refresh',
 		attr: { type: 'button', 'aria-label': t('corkboard.refresh') },
 	});
@@ -218,15 +225,16 @@ export function renderCorkboard(
 		void controls.refresh().catch(notice);
 	});
 	const addButton = variant.addButton === 'icon'
-		? band.createEl('button', {
+		? end.createEl('button', {
 			cls: 'clickable-icon snowflake-method-corkboard-add',
 			attr: { type: 'button', 'aria-label': t('actions.addScene') },
 		})
-		: band.createEl('button', {
+		: end.createEl('button', {
 			cls: 'mod-cta snowflake-method-corkboard-add',
 			text: t('actions.addScene'),
 			attr: { type: 'button' },
 		});
+	const stopBalance = standalone ? balanceToolbar(band, { start: null, end }) : (): void => undefined;
 	if (variant.addButton === 'icon') {
 		setIcon(addButton, 'plus');
 		setTooltip(addButton, t('actions.addScene'));
@@ -527,7 +535,7 @@ export function renderCorkboard(
 		const none = pool.length === 0;
 		empty.line.toggleClass('is-hidden', !none);
 		scroller.toggleClass('is-hidden', none);
-		searchBox?.toggleClass('is-hidden', none);
+		searchHost.toggleClass('is-hidden', none);
 		filterButton.toggleClass('is-hidden', none);
 		// A style shared with another surface is still someone's to choose.
 		displayButton.toggleClass('is-hidden', none && variant.modeShared !== true);
@@ -1322,6 +1330,7 @@ export function renderCorkboard(
 			deck.closeColorPanel();
 			if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
 			if (frame !== null) animationWindow.cancelAnimationFrame(frame);
+			stopBalance();
 			observer?.disconnect();
 			stopMigration?.();
 			unbindWindow(eventWindow);

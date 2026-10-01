@@ -22,7 +22,7 @@
  * Taking a change back is one more change, written the same way.
  */
 
-import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
+import { Keymap, Menu, Notice, setIcon, setTooltip } from 'obsidian';
 
 import {
 	DEFAULT_FREEFORM_VIEWPORT,
@@ -129,7 +129,16 @@ import { buildOptionField, type OptionPicker, type PickerOption } from './option
 import { renderEmptyLine } from './pane-parts';
 import { TimelineTimePickModal, confirmTimelineAction } from './timeline-forms';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
-import { bindFrameWindow, createLaneDeck, createMenuKeeper, createModalKeeper, toolbarIconButton } from './workspace-frame';
+import {
+	balanceToolbar,
+	bindFrameWindow,
+	createLaneDeck,
+	createMenuKeeper,
+	createModalKeeper,
+	createSearchField,
+	toolbarEnd,
+	toolbarIconButton,
+} from './workspace-frame';
 
 /** How many of a text node's first words it is called by, for a reader that cannot see it. */
 const NAME_LENGTH = 80;
@@ -159,9 +168,6 @@ const QUICK_DRAG_PX = 4;
 
 /** An element that may take hold of a pointer, which the app's own elements do and a test's need not. */
 type PointerTaking = { setPointerCapture?: (pointerId: number) => void };
-
-/** How long the search waits after a keystroke before the view is marked for it, as the corkboard's does. */
-const SEARCH_DEBOUNCE_MS = 150;
 
 /** Where a press is the field's own: words being written, a choice from a list. */
 const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
@@ -193,73 +199,54 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	// -- The toolbar ---------------------------------------------------------
 
 	const toolbar = root.createDiv({
-		cls: 'snowflake-method-freeform-toolbar',
+		cls: 'snowflake-method-freeform-toolbar snowflake-method-balanced-toolbar',
 		attr: { role: 'toolbar', 'aria-label': t('freeformCanvas.toolbar') },
 	});
-	// The view is typed into, searched and picked from, as the timeline's is.
-	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-freeform-view-select' });
-	const editViewButton = toolbarIconButton(toolbar, 'snowflake-method-freeform-view-edit', 'pencil', t('timeline.view.edit'));
+	// The view is typed into, searched and picked from, as the timeline's is,
+	// in a field as wide as the timeline's. The search stands in the toolbar's
+	// middle: it marks what it finds and dims the rest, Enter brings the found
+	// into sight one by one, Escape lets the search go. At the end stand the
+	// pencil, the refresh and the two words, the node's before the view's, as
+	// the timeline's toolbar ends.
+	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-toolbar-start snowflake-method-freeform-view-select' });
+	const searchField = createSearchField(toolbar, {
+		placeholder: t('freeformCanvas.search'),
+		query: (words) => {
+			setQuery(words);
+		},
+		step: (step) => {
+			stepSearch(step);
+		},
+		leave: () => {
+			canvas.focus();
+		},
+	});
+	const end = toolbarEnd(toolbar);
+	const editViewButton = toolbarIconButton(end, 'snowflake-method-freeform-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
 		openEditView();
 	});
-	// The search marks what it finds and dims the rest; Enter brings the found
-	// into sight one by one, Escape lets the search go.
-	const searchHost = toolbar.createDiv({ cls: 'snowflake-method-freeform-search' });
-	const search = new SearchComponent(searchHost);
-	search.setPlaceholder(t('freeformCanvas.search'));
-	const searchCount = searchHost.createSpan({ cls: 'snowflake-method-freeform-search-count', attr: { 'aria-live': 'polite' } });
-	let searchTimer: number | null = null;
-	let searchWindow = root.win;
-	search.onChange((next) => {
-		if (searchTimer !== null) searchWindow.clearTimeout(searchTimer);
-		searchWindow = root.win;
-		searchTimer = searchWindow.setTimeout(() => {
-			searchTimer = null;
-			setQuery(next);
-		}, SEARCH_DEBOUNCE_MS);
-	});
-	search.inputEl.addEventListener('keydown', (event) => {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			// Words typed and not yet marked are marked now, so the step lands on what was asked for.
-			if (searchTimer !== null) {
-				searchWindow.clearTimeout(searchTimer);
-				searchTimer = null;
-				setQuery(search.getValue());
-			}
-			stepSearch(event.shiftKey ? -1 : 1);
-		} else if (event.key === 'Escape') {
-			event.preventDefault();
-			// A search standing is let go first; the field is left once it stands empty.
-			if (search.getValue().length > 0) {
-				search.setValue('');
-				setQuery('');
-			} else {
-				search.inputEl.blur();
-				canvas.focus();
-			}
-		}
-	});
-	const refreshButton = toolbarIconButton(toolbar, 'snowflake-method-freeform-refresh', 'refresh-cw', t('corkboard.refresh'));
+	const refreshButton = toolbarIconButton(end, 'snowflake-method-freeform-refresh', 'refresh-cw', t('corkboard.refresh'));
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
 	// The two words carry a symbol each, which is all that shows of them where
 	// the toolbar is too narrow for the words; the words stay their names.
 	const wordWithSymbol = (cls: string, icon: string, words: string): HTMLButtonElement => {
-		const button = toolbar.createEl('button', { cls: `mod-cta ${cls}`, attr: { type: 'button', 'aria-label': words } });
+		const button = end.createEl('button', { cls: `mod-cta ${cls}`, attr: { type: 'button', 'aria-label': words } });
 		setIcon(button.createSpan({ cls: 'snowflake-method-freeform-word-symbol' }), icon);
 		button.createSpan({ cls: 'snowflake-method-freeform-word', text: words });
 		return button;
 	};
-	const addViewButton = wordWithSymbol('snowflake-method-freeform-view-add', 'layout-dashboard', t('timeline.view.add'));
-	addViewButton.addEventListener('click', () => {
-		openAddView();
-	});
 	const addNodeButton = wordWithSymbol('snowflake-method-freeform-node-add', 'plus', t('freeformCanvas.node.add'));
 	addNodeButton.addEventListener('click', () => {
 		openAddNode();
 	});
+	const addViewButton = wordWithSymbol('snowflake-method-freeform-view-add', 'layout-dashboard', t('timeline.view.add'));
+	addViewButton.addEventListener('click', () => {
+		openAddView();
+	});
+	const stopBalance = balanceToolbar(toolbar, { start: viewHost, end });
 
 	// -- The stage: the canvas, the word said of an empty one, and its controls --
 
@@ -809,7 +796,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			canvas.setScene(EMPTY_FREEFORM_SCENE);
 			hint.toggleClass('is-hidden', true);
 			root.toggleClass('is-searching', false);
-			searchCount.setText('');
+			searchField.count.setText('');
 			fitButton.disabled = true;
 			return;
 		}
@@ -849,11 +836,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		hintLine.text.setText(t(none ? 'freeformCanvas.search.none' : 'freeformCanvas.empty.nodes'));
 		root.toggleClass('is-searching', searching);
 		if (!searching || hits.length === 0) {
-			searchCount.setText('');
+			searchField.count.setText('');
 			return;
 		}
 		const at = hitId === null ? -1 : hits.indexOf(hitId);
-		searchCount.setText(at === -1
+		searchField.count.setText(at === -1
 			? t(hits.length === 1 ? 'freeformCanvas.search.matchesOne' : 'freeformCanvas.search.matches', { count: hits.length })
 			: t('freeformCanvas.search.position', { at: at + 1, count: hits.length }));
 	};
@@ -879,8 +866,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/** The search field given the keys, its words chosen so the next ones replace them. */
 	const focusSearch = (): void => {
-		search.inputEl.focus();
-		search.inputEl.select();
+		searchField.focus();
 	};
 
 	// -- The switches ------------------------------------------------------------
@@ -2845,7 +2831,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		// The search's own field is the one field the chord is taken in: pressed there, it chooses the words again.
 		controls.chord(['Mod'], 'f', () => {
 			if (disposed || stage.classList.contains('is-hidden')) return true;
-			if (!chordFree() && root.doc.activeElement !== search.inputEl) return true;
+			if (!chordFree() && root.doc.activeElement !== searchField.input) return true;
 			focusSearch();
 			return false;
 		}),
@@ -2893,6 +2879,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			// written and where the nodes were left, which go to the file as a
 			// leave sends them.
 			loop.release();
+			stopBalance();
+			searchField.dispose();
 			unsubscribeResources?.();
 			unsubscribeResources = null;
 			for (const stop of chords) stop();

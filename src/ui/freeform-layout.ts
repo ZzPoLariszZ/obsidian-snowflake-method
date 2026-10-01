@@ -19,6 +19,7 @@ import {
 	type FreeformView,
 } from '../domain';
 import { autoSides } from './freeform-canvas-model';
+import { searchNeedles } from './search-words';
 import {
 	CANVAS_FRAME_KIND,
 	type CanvasEdge,
@@ -301,9 +302,9 @@ export const EMPTY_FREEFORM_SCENE: CanvasScene = { nodes: [], edges: [] };
 export const FREEFORM_SEARCH_HIT = 'is-search-hit';
 export const FREEFORM_SEARCH_MISS = 'is-search-miss';
 
-/** The words asked for, each to be found on its own, in any order and any case. */
+/** The words asked for, each to be found on its own, in any order and any case: the search's own reading, shared with the timeline's. */
 export function freeformSearchNeedles(query: string): string[] {
-	return query.toLowerCase().split(/\s+/u).filter((word) => word.length > 0);
+	return searchNeedles(query);
 }
 
 /**

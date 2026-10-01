@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { menus, sheetFields, notices } = vi.hoisted(() => ({
+const { menus, sheetFields, notices, searches } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
 	sheetFields: [] as OptionFieldConfig[],
 	notices: vi.fn(),
+	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -43,12 +44,30 @@ vi.mock('obsidian', async (importOriginal) => {
 		}
 		hide(): this { return this; }
 	}
+	/** The app's search field, as far as the workspace reads it: a box with an input in it, and a hand on what is typed. */
+	class SearchComponent {
+		readonly containerEl: CorkboardElement;
+		readonly inputEl: CorkboardElement;
+		private handler: (value: string) => void = () => undefined;
+		constructor(parent: CorkboardElement) {
+			this.containerEl = parent.createDiv({ cls: 'search-input-container' });
+			this.inputEl = this.containerEl.createEl('input', { attr: { type: 'search' } });
+			searches.push(this);
+		}
+		setPlaceholder(text: string): this { this.inputEl.setAttribute('placeholder', text); return this; }
+		setValue(value: string): this { this.inputEl.value = value; return this; }
+		getValue(): string { return this.inputEl.value; }
+		onChange(handler: (value: string) => void): this { this.handler = handler; return this; }
+		/** Words typed, as the field would tell of them. */
+		type(value: string): void { this.inputEl.value = value; this.handler(value); }
+	}
 	return {
 		...runtime,
 		Keymap: { isModifier: (event: { mod?: boolean }) => event.mod === true },
 		getIcon: () => null,
 		Modal,
 		Menu,
+		SearchComponent,
 		FuzzySuggestModal: class extends Modal { setPlaceholder(): void {} },
 		SuggestModal: class extends Modal {},
 		Notice: class {
@@ -425,26 +444,70 @@ describe('the beat sheet workspace', () => {
 		expect(fixture.root.querySelector('.snowflake-method-timeline-head')).toBeNull();
 	});
 
-	it('lays the toolbar out as the sheet, then at the end: export, edit, the words, the presentation, the order, refresh, add act, add beat sheet', async () => {
+	it('lays the toolbar out balanced: the sheet field at its start, the search in its middle, and at its end the state, export, edit, the words, the presentation, the order, refresh, add act, add beat sheet', async () => {
 		const fixture = laid();
 		await settle();
+		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
+		expect(toolbar.classes.has('snowflake-method-balanced-toolbar')).toBe(true);
+		const parts = ['snowflake-method-toolbar-start', 'snowflake-method-toolbar-search', 'snowflake-method-toolbar-end'];
+		expect(toolbar.children.map((child, index) => child.classes.has(parts[index]!))).toEqual([true, true, true]);
+		expect(toolbar.children).toHaveLength(parts.length);
+		expect(toolbar.children[0]!.classes.has('snowflake-method-beat-sheet-select')).toBe(true);
+		expect(toolbar.children[1]!.querySelector('input')!.getAttribute('placeholder')).toBe('beatSheet.search');
 		const order = [
-			'snowflake-method-beat-sheet-select', 'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export',
+			'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export',
 			'snowflake-method-beat-sheet-edit', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
 			'snowflake-method-timeline-order', 'snowflake-method-timeline-refresh',
 			'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
 		];
-		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
-		expect(toolbar.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
-		expect(toolbar.children).toHaveLength(order.length);
+		const end = toolbar.children[2]!;
+		expect(end.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
+		expect(end.children).toHaveLength(order.length);
 		expect(toolbar.getAttribute('aria-label')).toBe('beatSheet.toolbar');
-		// The timeline's pencil carries the margin that sends the symbols to the toolbar's end. Here the
-		// export is the first of them, so the pencil must not wear that class, or the export is left behind.
+		// The sheet's pencil is its own, not the timeline view's.
 		expect(fixture.button('snowflake-method-beat-sheet-edit').classes.has('snowflake-method-timeline-view-edit')).toBe(false);
 		for (const [cls, words] of [['snowflake-method-beat-sheet-add-act', 'beatSheet.act.add'], ['snowflake-method-beat-sheet-add', 'beatSheet.sheet.add']] as const) {
 			expect(fixture.button(cls).classes.has('mod-cta')).toBe(true);
 			expect(fixture.button(cls).textContent).toBe(words);
 		}
+	});
+
+	it('searches the sheet: marks the beats, the rows and the cards it finds and dims the rest, the acts among them, steps through them on Enter, and lets the search go on Escape', async () => {
+		const fixture = laid();
+		await settle();
+		const search = searches[searches.length - 1] as { inputEl: CorkboardElement; type: (value: string) => void };
+		const searchFor = (words: string): void => {
+			search.type(words);
+			fixture.dom.flushFrame();
+		};
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		const found = (): string[] => fixture.root.querySelectorAll('.is-search-hit')
+			.map((el) => el.getAttribute('data-row-id') ?? el.getAttribute('data-id') ?? el.closest('.snowflake-method-beat-sheet-beat')?.getAttribute('data-beat-id') ?? el.className);
+		const current = (): CorkboardElement | undefined => fixture.root.querySelectorAll('.is-search-current')[0];
+		// A row of words and a card under a beat, in reading order; the acts' titles and the beats' words fall back.
+		searchFor('arriv');
+		expect(fixture.root.classes.has('is-searching')).toBe(true);
+		expect(found()).toEqual(['r1', 'scene-1']);
+		expect(fixture.acts().filter((act) => act.querySelector('.is-search-miss') !== null)).toHaveLength(3);
+		expect(fixture.beats()[0]!.querySelector('.snowflake-method-timeline-time')!.classes.has('is-search-miss')).toBe(true);
+		expect(count()).toBe('freeformCanvas.search.matches(count=2)');
+		fire(search.inputEl, 'keydown', { key: 'Enter' });
+		expect(current()?.getAttribute('data-row-id')).toBe('r1');
+		const scrolled = fixture.dom.operations.filter((op) => op.kind === 'scroll' && op.property === 'scrollIntoView');
+		expect(scrolled[scrolled.length - 1]?.target).toBe(current());
+		expect(count()).toBe('freeformCanvas.search.position(at=1,count=2)');
+		// A beat is found by its own words: two of them wear the word, first to last down the sheet.
+		searchFor('image');
+		expect(found()).toEqual(['b1', 'b3']);
+		expect(count()).toBe('freeformCanvas.search.matches(count=2)');
+		searchFor('zzz');
+		expect(found()).toEqual([]);
+		expect(count()).toBe('beatSheet.search.none');
+		fire(search.inputEl, 'keydown', { key: 'Escape' });
+		expect(search.inputEl.value).toBe('');
+		expect(fixture.root.classes.has('is-searching')).toBe(false);
+		expect(fixture.root.querySelectorAll('.is-search-miss')).toHaveLength(0);
+		expect(count()).toBe('');
 	});
 
 	it('says what is missing while there is nothing yet, and leaves the ways in to the toolbar', async () => {

@@ -20,7 +20,7 @@
  * plugin unloading says another thing than it did at the render.
  */
 
-import { getIcon, setIcon, setTooltip, type App, type Menu, type Modal } from 'obsidian';
+import { SearchComponent, getIcon, setIcon, setTooltip, type App, type Menu, type Modal } from 'obsidian';
 
 import type { CorkboardControls, CorkboardHandle, CorkboardHost, CorkboardVariant, RenderCorkboard } from './corkboard-bridge';
 import type { LentFilterPopover } from './filter-rows';
@@ -84,6 +84,190 @@ export function toolbarIconButton(toolbar: HTMLElement, cls: string, icon: strin
 	setIcon(button, icon);
 	setTooltip(button, label);
 	return button;
+}
+
+/** The group at a toolbar's end: the symbols and the words, which stand together at the toolbar's far side. */
+export function toolbarEnd(toolbar: HTMLElement): HTMLElement {
+	return toolbar.createDiv({ cls: 'snowflake-method-toolbar-end' });
+}
+
+/** One measure the window reports of an element it was asked to watch: the element, and how wide its content stands. */
+interface Observed {
+	target: Element;
+	contentRect: { width: number };
+}
+
+/** A window with the measuring tool a toolbar keeps its balance by, which every window has and the types name on none. */
+type MeasuringWindow = Window & {
+	ResizeObserver?: new (callback: (entries: readonly Observed[] | undefined) => void) => { observe(target: Element): void; disconnect(): void };
+};
+
+type MigratingElement = HTMLElement & {
+	onWindowMigrated?: (listener: (win: Window) => unknown) => () => void;
+};
+
+/** The least width a search keeps in a balanced toolbar's middle before the toolbar gives up its balance, in pixels: twelve rem. */
+const SEARCH_LEAST_PX = 192;
+/** The gap a balanced toolbar lays between its three parts, in pixels: the stylesheet's --size-2-2. */
+const TOOLBAR_GAP_PX = 8;
+
+export interface ToolbarParts {
+	/** What stands at the toolbar's start, the view's field; nothing on a band that has none. */
+	start: HTMLElement | null;
+	/** The group at the toolbar's end. */
+	end: HTMLElement;
+}
+
+/**
+ * A balanced toolbar keeps what stands between its two sides in its very
+ * middle: the stylesheet gives both sides one least width, the wider of the
+ * field's and the end group's. The field's it knows; the end group's only
+ * the words in it know, so the window is asked to watch the three parts
+ * and what it reports is told to the stylesheet, as the words change, in
+ * the window the toolbar stands in and in the next when its view is moved
+ * to one of its own. Nothing is measured by hand: the window's report is
+ * read, which costs no layout. A toolbar too narrow to balance, where two
+ * equal sides would leave the search less than it needs to be read, is told
+ * so instead: each side is then its own width and the search stands in the
+ * middle of what is left between them.
+ */
+export function balanceToolbar(toolbar: HTMLElement, parts: ToolbarParts): () => void {
+	let observer: { disconnect(): void } | null = null;
+	let said = '';
+	const widths = { whole: 0, start: 0, end: 0 };
+	const settle = (): void => {
+		const end = Math.ceil(widths.end);
+		const cramped = widths.whole < 2 * Math.max(widths.start, widths.end) + SEARCH_LEAST_PX + 2 * TOOLBAR_GAP_PX;
+		const next = `${String(end)}|${String(cramped)}`;
+		if (next === said) return;
+		said = next;
+		toolbar.setCssProps({ '--snowflake-method-toolbar-end': `${String(end)}px` });
+		toolbar.toggleClass('is-cramped', cramped);
+	};
+	const watch = (): void => {
+		observer?.disconnect();
+		observer = null;
+		const win = toolbar.win as MeasuringWindow;
+		if (win.ResizeObserver === undefined) return;
+		const watching = new win.ResizeObserver((entries) => {
+			// Only a report of one of the three parts says anything here.
+			let told = false;
+			for (const entry of entries ?? []) {
+				if (entry.target === toolbar) widths.whole = entry.contentRect.width;
+				else if (entry.target === parts.end) widths.end = entry.contentRect.width;
+				else if (entry.target === parts.start) widths.start = entry.contentRect.width;
+				else continue;
+				told = true;
+			}
+			if (told) settle();
+		});
+		watching.observe(toolbar);
+		watching.observe(parts.end);
+		if (parts.start !== null) watching.observe(parts.start);
+		observer = watching;
+	};
+	watch();
+	const stopMigration = (toolbar as MigratingElement).onWindowMigrated?.(() => {
+		watch();
+	});
+	return () => {
+		stopMigration?.();
+		observer?.disconnect();
+		observer = null;
+	};
+}
+
+// -- The toolbar's search ---------------------------------------------------------
+
+/** How long a search waits after a keystroke before the surface is marked for it, in milliseconds. */
+export const SEARCH_DEBOUNCE_MS = 150;
+
+export interface SearchFieldDeps {
+	placeholder: string;
+	/** The words to mark the surface for, once the typing rests. */
+	query: (words: string) => void;
+	/** Enter: the next thing found brought into sight, or the one before on Shift+Enter. */
+	step: (step: 1 | -1) => void;
+	/** Escape on an empty field: the field let go, and the keys handed back to the surface. */
+	leave: () => void;
+}
+
+export interface SearchField {
+	host: HTMLElement;
+	input: HTMLInputElement;
+	/** What the search says of itself, at the field's end: how many it found, which of them is in sight, or that none matched. */
+	count: HTMLElement;
+	value: () => string;
+	/** The words let go, and the surface told so at once. */
+	clear: () => void;
+	/** The field given the keys, its words chosen so the next ones replace them. */
+	focus: () => void;
+	dispose: () => void;
+}
+
+/**
+ * The search field that stands in a toolbar's middle, the same on every
+ * surface: it marks what it finds and dims the rest once the typing rests,
+ * Enter brings the found into sight one by one and Shift+Enter goes back,
+ * Escape lets a search standing go and, pressed again, leaves the field.
+ */
+export function createSearchField(toolbar: HTMLElement, deps: SearchFieldDeps): SearchField {
+	const host = toolbar.createDiv({ cls: 'snowflake-method-toolbar-search' });
+	const search = new SearchComponent(host);
+	search.setPlaceholder(deps.placeholder);
+	const count = host.createSpan({ cls: 'snowflake-method-toolbar-count', attr: { 'aria-live': 'polite' } });
+	let timer: number | null = null;
+	let timerWindow = host.win;
+	const settle = (): void => {
+		if (timer === null) return;
+		timerWindow.clearTimeout(timer);
+		timer = null;
+	};
+	const tell = (): void => {
+		settle();
+		deps.query(search.getValue());
+	};
+	search.onChange(() => {
+		settle();
+		timerWindow = host.win;
+		timer = timerWindow.setTimeout(() => {
+			timer = null;
+			deps.query(search.getValue());
+		}, SEARCH_DEBOUNCE_MS);
+	});
+	search.inputEl.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			// Words typed and not yet marked are marked now, so the step lands on what was asked for.
+			if (timer !== null) tell();
+			deps.step(event.shiftKey ? -1 : 1);
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			// A search standing is let go first; the field is left once it stands empty.
+			if (search.getValue().length > 0) {
+				search.setValue('');
+				tell();
+			} else {
+				search.inputEl.blur();
+				deps.leave();
+			}
+		}
+	});
+	return {
+		host,
+		input: search.inputEl,
+		count,
+		value: () => search.getValue(),
+		clear: () => {
+			search.setValue('');
+			tell();
+		},
+		focus: () => {
+			search.inputEl.focus();
+			search.inputEl.select();
+		},
+		dispose: settle,
+	};
 }
 
 /** The icon a symbol wears now, so a paint draws it again only when it is another. */

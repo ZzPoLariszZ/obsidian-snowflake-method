@@ -82,13 +82,17 @@ import { renderEmptyLine } from './pane-parts';
 import { planCardMoves, planCardRepaint } from './sticky-note-layout';
 import { TimelineTimePickModal, confirmTimelineAction } from './timeline-forms';
 import type { ProjectDashboardModel } from './view-model';
+import { answersSearch, sceneSearchWords, searchNeedles } from './search-words';
 import {
+	balanceToolbar,
 	bindFrameWindow,
 	createFocusCustody,
 	createFrame,
 	createLaneDeck,
 	createModalKeeper,
+	createSearchField,
 	paintSymbol,
+	toolbarEnd,
 	toolbarIconButton,
 	type Fold,
 	type FoldLabels,
@@ -174,11 +178,25 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	// -- The toolbar ---------------------------------------------------------
 
 	const toolbar = root.createDiv({
-		cls: 'snowflake-method-timeline-toolbar',
+		cls: 'snowflake-method-timeline-toolbar snowflake-method-balanced-toolbar',
 		attr: { role: 'toolbar', 'aria-label': t('beatSheet.toolbar') },
 	});
-	// The sheet is typed into, searched and picked from, as the timeline's view is.
-	const sheetHost = toolbar.createDiv({ cls: 'snowflake-method-timeline-view-select snowflake-method-beat-sheet-select' });
+	// The sheet is typed into, searched and picked from, as the timeline's view
+	// is, and the search stands in the toolbar's middle as the timeline's does:
+	// it marks what it finds on the sheet and dims the rest, Enter brings the
+	// found into sight one by one, Escape lets it go.
+	const sheetHost = toolbar.createDiv({ cls: 'snowflake-method-toolbar-start snowflake-method-timeline-view-select snowflake-method-beat-sheet-select' });
+	const searchField = createSearchField(toolbar, {
+		placeholder: t('beatSheet.search'),
+		query: (words) => {
+			setQuery(words);
+		},
+		step: (step) => {
+			stepSearch(step);
+		},
+		leave: () => undefined,
+	});
+	const end = toolbarEnd(toolbar);
 	const chooseSheet = (chosen: string): void => {
 		if (chosen.length === 0 || chosen === sheetId) return;
 		sheetId = chosen;
@@ -191,17 +209,16 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			await controls.bridge().setLastSheet(chosen);
 		}, 'nothing');
 	};
-	const stateText = toolbar.createSpan({ cls: 'snowflake-method-prose-state' });
+	const stateText = end.createSpan({ cls: 'snowflake-method-prose-state' });
 	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement =>
-		toolbarIconButton(toolbar, cls, icon, label);
+		toolbarIconButton(end, cls, icon, label);
 	// A sheet's acts and beats kept as one of the project's templates, the way
 	// an entity's custom fields are kept as one from its form.
 	const exportButton = iconButton('snowflake-method-beat-sheet-export', 'file-output', t('modal.customFieldTemplate.exportTitle'));
 	exportButton.addEventListener('click', () => {
 		openExport();
 	});
-	// The pencil wears no class of the timeline's: there the pencil is the first symbol and carries the margin
-	// that sends the symbols to the toolbar's end, which here is the export's to carry.
+	// The pencil wears no class of the timeline's, since the timeline's pencil is the view's and this one the sheet's.
 	const editSheetButton = iconButton('snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));
 	editSheetButton.addEventListener('click', () => {
 		openEditSheet();
@@ -253,7 +270,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	refreshButton.addEventListener('click', () => {
 		void controls.refresh().then(() => reload()).catch(notice);
 	});
-	const addActButton = toolbar.createEl('button', {
+	const addActButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-add-timeline snowflake-method-beat-sheet-add-act',
 		text: t('beatSheet.act.add'),
 		attr: { type: 'button' },
@@ -262,7 +279,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		// At the foot of the screen, as the timeline adds a time: the story's end, or its beginning on a sheet shown from its end.
 		addAct(null);
 	});
-	const addSheetButton = toolbar.createEl('button', {
+	const addSheetButton = end.createEl('button', {
 		cls: 'mod-cta snowflake-method-timeline-view-add snowflake-method-beat-sheet-add',
 		text: t('beatSheet.sheet.add'),
 		attr: { type: 'button' },
@@ -270,6 +287,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	addSheetButton.addEventListener('click', () => {
 		openAddSheet();
 	});
+	const stopBalance = balanceToolbar(toolbar, { start: sheetHost, end });
 
 	// -- The folds, the empty states, the body and the pool --------------------
 
@@ -458,8 +476,125 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		loop.paint();
 	};
 
-	/** The laying out itself, from the model handed to it and the document last read. */
+	// -- Searching -------------------------------------------------------------
+
+	/** The words searched for on the sheet on show; nothing marks nothing. */
+	let query = '';
+	/** What the search found, in reading order down the sheet, and which of them was last brought into sight. */
+	let hits: HTMLElement[] = [];
+	let hitAt = -1;
+	/** Everything the last search marked, so the marks come off before the next is laid. */
+	let marked: HTMLElement[] = [];
+
+	/**
+	 * What the search reads on the sheet, in the order a reader meets it: an
+	 * act's title, a beat's name and description, then each row of words
+	 * under the beat and the cards under it, a card by its scene's title,
+	 * aliases, conflict and point of view. Read from what the table shows and
+	 * the scenes it deals, so what is found is what is seen.
+	 */
+	const searchable = (): { el: HTMLElement; words: string }[] => {
+		const scenes = laneDeck.scenesById();
+		const found: { el: HTMLElement; words: string }[] = [];
+		for (const el of Array.from(table.children) as HTMLElement[]) {
+			const entry = tableEntries.get(el.getAttribute('data-entry-key') ?? '');
+			if (entry === undefined || entry.kind === 'foot') continue;
+			if (entry.kind === 'act') {
+				found.push({ el: entry.title, words: entry.title.textContent ?? '' });
+				continue;
+			}
+			const time = el.querySelector<HTMLElement>('.snowflake-method-timeline-time');
+			const description = entry.description.classList.contains('is-empty') ? '' : entry.description.textContent ?? '';
+			if (time !== null) found.push({ el: time, words: `${entry.label.textContent ?? ''}\n${description}` });
+			for (const sub of Array.from(el.querySelectorAll<HTMLElement>('.snowflake-method-timeline-subrow'))) {
+				if (sub.classList.contains('is-trailing') || sub.classList.contains('is-pending')) continue;
+				found.push({ el: sub, words: sub.querySelector('.snowflake-method-timeline-subrow-label')?.textContent ?? '' });
+				for (const card of Array.from(sub.querySelectorAll<HTMLElement>('.snowflake-method-corkboard-card'))) {
+					const scene = scenes.get(card.getAttribute('data-id') ?? '');
+					found.push({ el: card, words: scene === undefined ? '' : sceneSearchWords(scene) });
+				}
+			}
+		}
+		return found;
+	};
+
+	const unmark = (): void => {
+		for (const el of marked) {
+			el.removeClass('is-search-hit');
+			el.removeClass('is-search-miss');
+			el.removeClass('is-search-current');
+		}
+		marked = [];
+	};
+
+	/** What the search says of itself at the field's end: how many it found, which of them is in sight, or that none matched. */
+	const paintSearchCount = (searching: boolean): void => {
+		if (!searching) {
+			searchField.count.setText('');
+			return;
+		}
+		if (hits.length === 0) {
+			searchField.count.setText(t('beatSheet.search.none'));
+			return;
+		}
+		searchField.count.setText(hitAt === -1
+			? t(hits.length === 1 ? 'freeformCanvas.search.matchesOne' : 'freeformCanvas.search.matches', { count: hits.length })
+			: t('freeformCanvas.search.position', { at: hitAt + 1, count: hits.length }));
+	};
+
+	/**
+	 * The sheet marked for the search standing: what it found wears the hit
+	 * class, the rest fall back, and the one brought into sight keeps its
+	 * place through a paint. Nothing is marked while nothing is searched for,
+	 * or while there is nothing to search.
+	 */
+	const paintSearch = (): void => {
+		const current = hits[hitAt] ?? null;
+		unmark();
+		const needles = searchNeedles(query);
+		const candidates = needles.length === 0 ? [] : searchable();
+		const searching = candidates.length > 0;
+		root.toggleClass('is-searching', searching);
+		hits = [];
+		for (const { el, words } of candidates) {
+			const hit = answersSearch(words, needles);
+			el.toggleClass('is-search-hit', hit);
+			el.toggleClass('is-search-miss', !hit);
+			marked.push(el);
+			if (hit) hits.push(el);
+		}
+		hitAt = current === null ? -1 : hits.indexOf(current);
+		hits[hitAt]?.addClass('is-search-current');
+		paintSearchCount(searching);
+	};
+
+	const setQuery = (next: string): void => {
+		if (next === query) return;
+		query = next;
+		hits = [];
+		hitAt = -1;
+		paintSearch();
+	};
+
+	/** The next thing found brought into sight, or the one before; round again at either end. */
+	const stepSearch = (step: 1 | -1): void => {
+		if (hits.length === 0) return;
+		hits[hitAt]?.removeClass('is-search-current');
+		hitAt = hitAt === -1 ? (step === 1 ? 0 : hits.length - 1) : (hitAt + step + hits.length) % hits.length;
+		const found = hits[hitAt];
+		if (found === undefined) return;
+		found.addClass('is-search-current');
+		found.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+		paintSearchCount(true);
+	};
+
+	/** The laying out itself, from the model handed to it and the document last read, and the search laid over it. */
 	const draw = (nextModel: ProjectDashboardModel | null): void => {
+		drawLaid(nextModel);
+		paintSearch();
+	};
+
+	const drawLaid = (nextModel: ProjectDashboardModel | null): void => {
 		invalidateRects();
 		folds.paint();
 		// The model's own, made again only when it is another model.
@@ -1607,6 +1742,8 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 			// the pool, the dialogs, and only then the words still being written
 			// and the deck.
 			loop.release();
+			stopBalance();
+			searchField.dispose();
 			releaseWindow();
 			pool.dispose();
 			// Each dialog is closed on its own, so one that throws on the way out

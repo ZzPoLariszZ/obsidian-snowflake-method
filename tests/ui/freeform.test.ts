@@ -609,7 +609,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			fixture.search().type(words);
 			dom.flushFrame();
 		},
-		searchCount: (): string => root.querySelector('.snowflake-method-freeform-search-count')!.textContent,
+		searchCount: (): string => root.querySelector('.snowflake-method-toolbar-count')!.textContent,
 		/** What a node wears while a search stands: hit, miss, or nothing. */
 		mark: (id: string): string | null => {
 			const tone = fixture.node(id).tone ?? '';
@@ -3095,6 +3095,21 @@ describe('searching a view', () => {
 			expect(button.querySelector('.snowflake-method-freeform-word')?.textContent).toBe(words);
 			expect(button.querySelector('.snowflake-method-freeform-word-symbol')).not.toBeNull();
 		}
+	});
+
+	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the pencil, the refresh, Add node and Add view', async () => {
+		const fixture = await laid();
+		const toolbar = fixture.root.querySelector('.snowflake-method-freeform-toolbar')!;
+		expect(toolbar.classes.has('snowflake-method-balanced-toolbar')).toBe(true);
+		expect(toolbar.children.map((child) => child.className.split(' ')[0])).toEqual([
+			'snowflake-method-toolbar-start', 'snowflake-method-toolbar-search', 'snowflake-method-toolbar-end',
+		]);
+		expect(toolbar.children[0]!.classes.has('snowflake-method-freeform-view-select')).toBe(true);
+		expect(toolbar.children[1]!.querySelector('.search-input-container')).not.toBeNull();
+		expect(toolbar.children[1]!.querySelector('.snowflake-method-toolbar-count')).not.toBeNull();
+		const end = ['snowflake-method-freeform-view-edit', 'snowflake-method-freeform-refresh', 'snowflake-method-freeform-node-add', 'snowflake-method-freeform-view-add'];
+		expect(toolbar.children[2]!.children.map((child, index) => child.classes.has(end[index]!))).toEqual(end.map(() => true));
+		expect(toolbar.children[2]!.children).toHaveLength(end.length);
 	});
 });
 

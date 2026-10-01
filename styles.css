@@ -6907,6 +6907,107 @@ col.snowflake-method-foreshadowing-column-actions {
 	display: none;
 }
 
+/* A workspace's toolbar is balanced: the field at its start, the search in
+   its very middle, and the symbols and the words together at its end. The
+   two sides are given one least width, the wider of the field's, which the
+   workspace names, and the end group's, which the workspace measures and
+   writes here; what is left between them is the search's, up to its full
+   width, and the search gives way first as the toolbar narrows. Too narrow
+   for all of it, the toolbar is drawn along by the finger, as the strip of
+   tabs above it is: nothing on it is ever out of reach. */
+.snowflake-method-balanced-toolbar {
+	--snowflake-method-toolbar-side: max(var(--snowflake-method-toolbar-start, 0px), var(--snowflake-method-toolbar-end, 0px));
+	display: grid;
+	grid-template-columns:
+		minmax(var(--snowflake-method-toolbar-side), 1fr)
+		minmax(6rem, var(--snowflake-method-toolbar-search-width, 22rem))
+		minmax(var(--snowflake-method-toolbar-side), 1fr);
+	align-items: center;
+	gap: var(--size-2-2);
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.snowflake-method-balanced-toolbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* Too narrow to balance, where two equal sides would leave the search less
+   than it can be read in, the toolbar is told so: each side is then its own
+   width, and the search stands in the middle of what is left between them,
+   as wide as that allows up to its full width. */
+.snowflake-method-balanced-toolbar.is-cramped {
+	grid-template-columns: max-content minmax(6rem, 1fr) max-content;
+}
+
+.snowflake-method-balanced-toolbar.is-cramped > .snowflake-method-toolbar-search {
+	justify-self: center;
+	width: min(100%, var(--snowflake-method-toolbar-search-width, 22rem));
+}
+
+.snowflake-method-balanced-toolbar > .snowflake-method-toolbar-start {
+	grid-column: 1;
+	justify-self: start;
+	/* As wide as the toolbar says its start is, and no fraction of a column:
+	   a fraction makes the column itself wider than the field in a cramped
+	   toolbar, and leaves a gap where the field ends. */
+	width: var(--snowflake-method-toolbar-start);
+	min-width: 0;
+}
+
+.snowflake-method-balanced-toolbar > .snowflake-method-toolbar-search {
+	grid-column: 2;
+	min-width: 0;
+}
+
+.snowflake-method-balanced-toolbar > .snowflake-method-toolbar-end {
+	grid-column: 3;
+	justify-self: end;
+}
+
+/* The end group and the search are rows of their own wherever they stand,
+   in a balanced toolbar or in the pool's narrow band. */
+.snowflake-method-toolbar-end {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+
+.snowflake-method-toolbar-search {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	min-width: 0;
+}
+
+.snowflake-method-toolbar-search .search-input-container {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* A field too narrow for its whole name shows as much as fits, and says so. */
+.snowflake-method-toolbar-search input::placeholder {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* What the search says of itself stands quietly at the field's end: how
+   many it found, which of them is in sight, or that none matched. */
+.snowflake-method-toolbar-count {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.snowflake-method-toolbar-count:empty {
+	display: none;
+}
+
 .snowflake-method-prose-summary {
 	display: flex;
 	flex-wrap: wrap;
@@ -7189,9 +7290,20 @@ col.snowflake-method-prose-column-dialogue {
 	.search-input-container,
 .snowflake-method-corkboard
 	.snowflake-method-prose-controls
-	.search-input-container {
+	.snowflake-method-toolbar-search {
 	flex: 0 1 16rem;
 	margin-inline-end: auto;
+}
+
+/* On its own tab the corkboard's band is balanced as the toolbars are, with
+   nothing at its start: the search in the band's middle, the controls at
+   its end. */
+.snowflake-method-corkboard-band.snowflake-method-balanced-toolbar {
+	--snowflake-method-toolbar-start: 0px;
+}
+
+.snowflake-method-corkboard .snowflake-method-balanced-toolbar > .snowflake-method-toolbar-search {
+	margin-inline-end: 0;
 }
 
 /* A row's cells read as one line however tall its tallest cell stands:
@@ -12430,6 +12542,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--snowflake-method-corkboard-link-height: 1.5rem;
 	--snowflake-method-corkboard-card-width: 16rem;
 	--snowflake-method-corkboard-card-height: 15rem;
+	/* A view field in a toolbar is as wide as a timeline's time column: a
+	   card, its handle, its menu, the gaps and the padding around the words,
+	   so the field stands the same on every workspace that has one. */
+	--snowflake-method-view-field-width: calc(
+		var(--size-4-3) + var(--size-4-2) + 2 * var(--snowflake-method-corkboard-action-size) +
+			2 * var(--size-2-1) + var(--snowflake-method-corkboard-card-width)
+	);
 }
 
 .snowflake-method-scene-cards[data-mode='extended'] {
@@ -13105,11 +13224,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-timeline {
 	/* A time's words, a sub-description's words and a card on a lane are all
 	   one card wide; the columns add their handle, their menu, the gaps and
-	   the padding around the words. */
-	--snowflake-method-timeline-time-width: calc(
-		var(--size-4-3) + var(--size-4-2) + 2 * var(--snowflake-method-corkboard-action-size) +
-			2 * var(--size-2-1) + var(--snowflake-method-corkboard-card-width)
-	);
+	   the padding around the words, which is the width a view field is given. */
+	--snowflake-method-timeline-time-width: var(--snowflake-method-view-field-width);
 	--snowflake-method-timeline-axis-width: 1.5rem;
 	--snowflake-method-timeline-sub-width: calc(
 		var(--snowflake-method-corkboard-card-width) + var(--snowflake-method-corkboard-action-size)
@@ -13165,17 +13281,17 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 /* The toolbar rides the strip's row above the lanes, as the corkboard's
    band does, and spans the lanes' field alone: the view stands where the
-   time column does, the tools at the field's end, and beyond them the
-   pool's own band. With the pool away, the toolbar takes the whole row. */
+   time column does, the search in the middle, the tools at the field's end,
+   and beyond them the pool's own band. With the pool away, the toolbar
+   takes the whole row. It is balanced about the search by the time column's
+   width, which the field is as wide as. */
 .snowflake-method-timeline-toolbar {
+	--snowflake-method-toolbar-start: var(--snowflake-method-timeline-time-width);
 	position: absolute;
 	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
 	inset-inline-start: 0;
 	inset-inline-end: var(--snowflake-method-timeline-pool-span);
 	height: var(--snowflake-method-tab-height, 2.75rem);
-	display: flex;
-	align-items: center;
-	gap: var(--size-2-2);
 }
 
 .snowflake-method-timeline.is-empty .snowflake-method-timeline-toolbar {
@@ -13283,19 +13399,30 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* The view field is typed into and picked from, as a form's category field
-   is, and stands as wide as the time column under it. */
-.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-select {
-	flex: 0 0 auto;
-	width: var(--snowflake-method-timeline-time-width);
-}
-
-.snowflake-method-timeline-toolbar .snowflake-method-timeline-view-edit {
-	margin-inline-start: auto;
-}
+   is, and stands as wide as the time column under it: the toolbar names that
+   width as its start, and the balanced toolbar's own rule sizes the field. */
 
 .snowflake-method-timeline-toolbar .snowflake-method-prose-state {
 	flex: 0 1 auto;
 	text-align: end;
+}
+
+/* While a search stands, what it found wears a ring of the app's yellow, as
+   a node found on the freeform canvas does, and the rest fall back: a time's
+   words, a row of words, a card, an act's title. The one brought into sight
+   wears the ring whole. The beat sheet is dressed as the timeline, so its
+   search is drawn by these rules too. */
+.snowflake-method-timeline.is-searching .is-search-miss {
+	opacity: 0.35;
+}
+
+.snowflake-method-timeline.is-searching .is-search-hit {
+	border-radius: var(--radius-s);
+	box-shadow: 0 0 0 3px rgba(var(--color-yellow-rgb, 224, 172, 0), 0.6);
+}
+
+.snowflake-method-timeline.is-searching .is-search-current {
+	box-shadow: 0 0 0 3px rgb(var(--color-yellow-rgb, 224, 172, 0));
 }
 
 .snowflake-method-timeline-add-timeline,
@@ -14487,12 +14614,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	height: 100%;
 }
 
-/* The toolbar's symbols stand at its end from the first of them, which on a
-   sheet is the export: the margin the timeline gives its pencil is given here. */
-.snowflake-method-timeline-toolbar .snowflake-method-beat-sheet-export {
-	margin-inline-start: auto;
-}
-
 /* An act's header runs across the table over its beats, headed as a group of
    scenes is on the corkboard: what it is called, then a rule to the table's
    end. It is as tall as the head a timeline's lanes stand under, so the
@@ -15235,22 +15356,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 .snowflake-method-freeform-toolbar {
+	--snowflake-method-toolbar-start: var(--snowflake-method-view-field-width);
 	position: absolute;
 	inset-block-start: calc(-1 * var(--snowflake-method-tab-height, 2.75rem));
 	inset-inline: 0;
 	height: var(--snowflake-method-tab-height, 2.75rem);
-	display: flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	/* Too narrow for all of it, the toolbar is drawn along by the finger, as
-	   the strip of tabs above it is: nothing on it is ever out of reach. */
-	overflow-x: auto;
-	overscroll-behavior-x: contain;
-	scrollbar-width: none;
-}
-
-.snowflake-method-freeform-toolbar::-webkit-scrollbar {
-	display: none;
 }
 
 /* The app shows whatever an element is called as a tooltip under the
@@ -15272,17 +15382,8 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* The view field is typed into and picked from, as the timeline's is, and
-   gives up its width before the buttons give up theirs. */
-.snowflake-method-freeform-toolbar .snowflake-method-freeform-view-select {
-	flex: 0 1 16rem;
-	min-width: 6rem;
-}
-
-/* The pencil edits the view named beside it, so it stands by the field; the
-   symbols that follow stand at the toolbar's end, from the first of them. */
-.snowflake-method-freeform-toolbar .snowflake-method-freeform-refresh {
-	margin-inline-start: auto;
-}
+   as wide as the timeline's: the toolbar names that width as its start, and
+   the balanced toolbar's own rule sizes the field. */
 
 .snowflake-method-freeform-view-add,
 .snowflake-method-freeform-node-add {
@@ -16487,40 +16588,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	}
 }
 
-/* The search stands in the toolbar between the pencil and the symbols. It
-   gives up its width after the view field does, and what it says of itself
-   (how many it found, which is in sight) stands quietly at its end. */
-.snowflake-method-freeform-toolbar .snowflake-method-freeform-search {
-	display: flex;
-	align-items: center;
-	gap: var(--size-2-2);
-	flex: 0 1 14rem;
-	min-width: 5rem;
-}
-
-.snowflake-method-freeform-search .search-input-container {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-/* A field too narrow for its whole name shows as much as fits, and says so. */
-.snowflake-method-freeform-search input::placeholder {
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.snowflake-method-freeform-search-count {
-	flex: 0 0 auto;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	white-space: nowrap;
-	font-variant-numeric: tabular-nums;
-}
-
-.snowflake-method-freeform-search-count:empty {
-	display: none;
-}
-
 /* While a search stands, what it found wears a ring of the app's yellow,
    the colour a highlight is drawn in, and the rest fall back. A frame found
    keeps its ground. The app names no highlight token of its own in 1.14, so
@@ -16590,9 +16657,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 }
 
 /* The two words of the toolbar carry a symbol each. Where the workspace is
-   too narrow for the words, the symbols stand for them, and the field the
-   search is typed into gives up more of its width, so the whole toolbar
-   still stands in the strip's row. */
+   too narrow for the words, the symbols stand for them, and the view field
+   gives up its width, so the whole toolbar still stands in the strip's row
+   and the search keeps the middle. */
 .snowflake-method-freeform {
 	container-type: inline-size;
 }
@@ -16627,12 +16694,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		padding-inline: var(--size-4-2);
 	}
 
-	.snowflake-method-freeform-toolbar .snowflake-method-freeform-search {
-		flex-basis: 8rem;
-		min-width: 4rem;
-	}
-
-	.snowflake-method-freeform-toolbar .snowflake-method-freeform-view-select {
-		flex-basis: 10rem;
+	.snowflake-method-freeform-toolbar {
+		--snowflake-method-toolbar-start: 8rem;
 	}
 }

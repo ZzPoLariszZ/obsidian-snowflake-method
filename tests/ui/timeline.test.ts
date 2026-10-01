@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { menus, viewFields } = vi.hoisted(() => ({
+const { menus, viewFields, searches } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
 	viewFields: [] as OptionFieldConfig[],
+	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -42,12 +43,30 @@ vi.mock('obsidian', async (importOriginal) => {
 		}
 		hide(): this { return this; }
 	}
+	/** The app's search field, as far as the workspace reads it: a box with an input in it, and a hand on what is typed. */
+	class SearchComponent {
+		readonly containerEl: CorkboardElement;
+		readonly inputEl: CorkboardElement;
+		private handler: (value: string) => void = () => undefined;
+		constructor(parent: CorkboardElement) {
+			this.containerEl = parent.createDiv({ cls: 'search-input-container' });
+			this.inputEl = this.containerEl.createEl('input', { attr: { type: 'search' } });
+			searches.push(this);
+		}
+		setPlaceholder(text: string): this { this.inputEl.setAttribute('placeholder', text); return this; }
+		setValue(value: string): this { this.inputEl.value = value; return this; }
+		getValue(): string { return this.inputEl.value; }
+		onChange(handler: (value: string) => void): this { this.handler = handler; return this; }
+		/** Words typed, as the field would tell of them. */
+		type(value: string): void { this.inputEl.value = value; this.handler(value); }
+	}
 	return {
 		...runtime,
 		Keymap: { isModifier: (event: { mod?: boolean }) => event.mod === true },
 		getIcon: () => null,
 		Modal,
 		Menu,
+		SearchComponent,
 		FuzzySuggestModal: class extends Modal { setPlaceholder(): void {} },
 		SuggestModal: class extends Modal {},
 	};
@@ -335,17 +354,25 @@ describe('the timeline workspace', () => {
 		expect(fixture.emptyLine().classes.has('is-hidden')).toBe(true);
 	});
 
-	it('lays the toolbar out as the view, then at the end: edit, the words, the presentation, the order, refresh, add timeline, add view', async () => {
+	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the state, edit, the words, the presentation, the order, refresh, add timeline, add view', async () => {
 		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
 		await settle();
+		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
+		expect(toolbar.classes.has('snowflake-method-balanced-toolbar')).toBe(true);
+		const parts = ['snowflake-method-toolbar-start', 'snowflake-method-toolbar-search', 'snowflake-method-toolbar-end'];
+		expect(toolbar.children.map((child, index) => child.classes.has(parts[index]!))).toEqual([true, true, true]);
+		expect(toolbar.children).toHaveLength(parts.length);
+		expect(toolbar.children[0]!.classes.has('snowflake-method-timeline-view-select')).toBe(true);
+		expect(toolbar.children[1]!.querySelector('input')!.getAttribute('placeholder')).toBe('timeline.search');
+		expect(toolbar.children[1]!.querySelector('.snowflake-method-toolbar-count')).not.toBeNull();
 		const order = [
-			'snowflake-method-timeline-view-select', 'snowflake-method-prose-state', 'snowflake-method-timeline-view-edit',
+			'snowflake-method-prose-state', 'snowflake-method-timeline-view-edit',
 			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
 			'snowflake-method-timeline-refresh', 'snowflake-method-timeline-add-timeline', 'snowflake-method-timeline-view-add',
 		];
-		const toolbar = fixture.root.querySelector('.snowflake-method-timeline-toolbar')!;
-		expect(toolbar.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
-		expect(toolbar.children).toHaveLength(order.length);
+		const end = toolbar.children[2]!;
+		expect(end.children.map((child, index) => child.classes.has(order[index]!))).toEqual(order.map(() => true));
+		expect(end.children).toHaveLength(order.length);
 		const addView = fixture.button('snowflake-method-timeline-view-add');
 		expect(addView.classes.has('mod-cta')).toBe(true);
 		expect(addView.textContent).toBe('timeline.view.add');
@@ -844,6 +871,55 @@ describe('the times and the lanes', () => {
 			timeline('b', { times: [{ timeId: 'time-1', rows: [] }, { timeId: 'time-lost', rows: [row('r3', 'Waits')] }] }),
 		],
 		views: [view('v', ['a', 'b'], { timeOrder: ['time-2'], presentation: 'flat' })],
+	});
+
+	it('searches the lanes: marks what it finds and dims the rest, counts them, brings them into sight one by one on Enter, and lets the search go on Escape', async () => {
+		const fixture = laid();
+		await settle();
+		const search = searches[searches.length - 1] as { inputEl: CorkboardElement; type: (value: string) => void };
+		const searchFor = (words: string): void => {
+			search.type(words);
+			fixture.dom.flushFrame();
+		};
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		const found = (): string[] => fixture.root.querySelectorAll('.is-search-hit')
+			.map((el) => el.getAttribute('data-row-id') ?? el.getAttribute('data-id') ?? el.className);
+		const current = (): CorkboardElement | undefined => fixture.root.querySelectorAll('.is-search-current')[0];
+		const scrolled = (): CorkboardElement[] => fixture.dom.operations
+			.filter((op) => op.kind === 'scroll' && op.property === 'scrollIntoView')
+			.map((op) => op.target);
+		expect(fixture.root.classes.has('is-searching')).toBe(false);
+		expect(count()).toBe('');
+		// The words are found on a row of words and on a card alike, in reading order; what did not answer falls back.
+		searchFor('arriv');
+		expect(fixture.root.classes.has('is-searching')).toBe(true);
+		expect(found()).toEqual(['r1', 'scene-1']);
+		expect(fixture.rowOf('time-2').querySelector('.snowflake-method-timeline-time')!.classes.has('is-search-miss')).toBe(true);
+		expect(count()).toBe('freeformCanvas.search.matches');
+		// Enter brings the first into sight, then the next; Shift+Enter goes back; the one in sight is said.
+		fire(search.inputEl, 'keydown', { key: 'Enter' });
+		expect(current()?.getAttribute('data-row-id')).toBe('r1');
+		expect(scrolled()[scrolled().length - 1]).toBe(current());
+		expect(count()).toBe('freeformCanvas.search.position');
+		fire(search.inputEl, 'keydown', { key: 'Enter' });
+		expect(current()?.getAttribute('data-id')).toBe('scene-1');
+		fire(search.inputEl, 'keydown', { key: 'Enter', shiftKey: true });
+		expect(current()?.getAttribute('data-row-id')).toBe('r1');
+		// A time is found by its own words, its description among them; the marks of the last search are gone.
+		searchFor('light');
+		expect(found()).toEqual([fixture.rowOf('time-1').querySelector('.snowflake-method-timeline-time')!.className]);
+		expect(fixture.root.querySelectorAll('.is-search-current')).toHaveLength(0);
+		// Words no one has: the search stands, and says that nothing matched.
+		searchFor('zzz');
+		expect(fixture.root.classes.has('is-searching')).toBe(true);
+		expect(found()).toEqual([]);
+		expect(count()).toBe('timeline.search.none');
+		// Escape lets the search go: nothing marked, nothing said.
+		fire(search.inputEl, 'keydown', { key: 'Escape' });
+		expect(search.inputEl.value).toBe('');
+		expect(fixture.root.classes.has('is-searching')).toBe(false);
+		expect(fixture.root.querySelectorAll('.is-search-miss')).toHaveLength(0);
+		expect(count()).toBe('');
 	});
 
 	it('invites the first sub-description at an empty foot, and more of them under rows', async () => {
