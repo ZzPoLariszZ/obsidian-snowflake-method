@@ -166,7 +166,7 @@ import { MentionIndexService } from "./mention-index";
 import { isManuscriptCachePath, MentionStore } from "./mention-store";
 import { ForeshadowingService } from "./foreshadowing-service";
 import { FreeformService } from "./freeform-service";
-import { isFreeformViewFilePath } from "./freeform-store";
+import { isFreeformFilePath } from "./freeform-store";
 import { TaskService } from "./task-service";
 import { TimelineService } from "./timeline-service";
 import { isTimelineFilePath } from "./timeline-store";
@@ -658,7 +658,7 @@ export class SnowflakeProjectService {
     for (const file of this.repository.listFilesBelow(rootPath)) {
       // Cache contents are computed from the notes this snapshot describes.
       // Their periodic flushes must not force another full project read. The
-      // timeline document, the beat sheet's and a freeform view's are the
+      // timeline document, the beat sheet's and the freeform's files are the
       // same case seen from the other side: nothing in this snapshot is read
       // from their contents, only whether their folders stand, so a row
       // edited on either, or a node dragged on a view, would else send the
@@ -666,7 +666,7 @@ export class SnowflakeProjectService {
       // Keep their paths in the digest: creation, deletion and migration can
       // still change the structure report, including a formerly filed cache.
       eat(isManuscriptCachePath(file.path) || isTimelineFilePath(file.path) || isBeatSheetFilePath(file.path) ||
-        isFreeformViewFilePath(file.path)
+        isFreeformFilePath(file.path)
         ? file.path
         : `${file.path}|${file.stat.mtime}|${file.stat.size}`);
     }

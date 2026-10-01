@@ -482,7 +482,17 @@ describe("SnowflakeProjectService", () => {
     expect(second).not.toBe(first);
 
     fakeVault.delete(viewFile);
-    expect(await service.loadProject(project.projectFile)).not.toBe(second);
+    const third = await service.loadProject(project.projectFile);
+    expect(third).not.toBe(second);
+
+    // The folder's own file, written when the last view is taken away, is a
+    // file come as well, and nothing in it is read either.
+    const folderFile = viewFile.replace("freeform-view-1.json", "freeform.json");
+    await fakeVault.seedFile(folderFile, '{"schemaVersion":1}');
+    const fourth = await service.loadProject(project.projectFile);
+    expect(fourth).not.toBe(third);
+    fakeVault.write(folderFile, '{"schemaVersion":1}\n');
+    expect(await service.loadProject(project.projectFile)).toBe(fourth);
   });
 
   it("treats the freeform folder as made on demand as well", async () => {

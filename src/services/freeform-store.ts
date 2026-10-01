@@ -7,7 +7,7 @@ import {
 	type FreeformView,
 } from "../domain";
 import type { VaultRepository } from "../repository";
-import { fileStamp } from "./json-store";
+import { createOrUpdatePlainFile, fileStamp } from "./json-store";
 import {
 	JsonDocumentStore,
 	type JsonDocumentStoreDeps,
@@ -34,10 +34,22 @@ import {
  * is set aside and one a newer build wrote is left where it stands. A view is
  * read leniently: what this build can read of it is served, and an entry it
  * cannot is carried through every write as it came.
+ *
+ * One more file stands in the folder once the author has taken every view
+ * away. A project with no view file reads as one fresh view, so a folder
+ * emptied by the author would read as one never written in, and the view
+ * they took away would stand again. The deletion that leaves the folder
+ * without a view writes `freeform.json` beside where the views were, and the
+ * project reads with no view from then on, as the timeline does once its
+ * file says so. It holds the schema line and nothing else: the one thing the
+ * view files cannot say is that there are none, and a list of views is still
+ * kept nowhere.
  */
 
 export const FREEFORM_STORE_SCHEMA_VERSION = 1;
 export const FREEFORM_VIEW_ID_PREFIX = "freeform-view";
+/** The folder's own file, written when a deletion leaves it without a view; see above. */
+export const FREEFORM_FOLDER_FILE_NAME = "freeform.json";
 
 /** The folder tails a view file's path ends in, one per project language. */
 const FREEFORM_FOLDER_TAILS = Object.values(PROJECT_PATH_LAYOUTS).map(
@@ -55,18 +67,34 @@ export function freeformViewIdOfFileName(name: string): string | null {
 	return VIEW_FILE_NAME.exec(name)?.[1] ?? null;
 }
 
+/** Whether a folder's path is some project's freeform folder: the whole visualization chain has to end it. */
+const isFreeformFolderPath = (folder: string): boolean =>
+	FREEFORM_FOLDER_TAILS.some((tail) => folder.endsWith(tail));
+
 /**
  * Whether a path is one of some project's freeform views: the whole
  * visualization chain has to end the folder and the name has to be a view's
- * own. Asked of every vault event, so it reads the path and nothing else;
- * the caller has already checked the path belongs to a project.
+ * own. It reads the path and nothing else; the caller has already checked
+ * the path belongs to a project.
  */
 export function isFreeformViewFilePath(path: string): boolean {
 	const slash = path.lastIndexOf("/");
 	if (slash <= 0) return false;
 	if (freeformViewIdOfFileName(path.slice(slash + 1)) === null) return false;
-	const folder = path.slice(0, slash);
-	return FREEFORM_FOLDER_TAILS.some((tail) => folder.endsWith(tail));
+	return isFreeformFolderPath(path.slice(0, slash));
+}
+
+/**
+ * Whether a path is one of some project's freeform files: a view's, or the
+ * folder's own. Asked of every vault event and by the project digest, since
+ * a change to either is the freeform's to hear of and no one else's.
+ */
+export function isFreeformFilePath(path: string): boolean {
+	const slash = path.lastIndexOf("/");
+	if (slash <= 0) return false;
+	const name = path.slice(slash + 1);
+	if (name !== FREEFORM_FOLDER_FILE_NAME && freeformViewIdOfFileName(name) === null) return false;
+	return isFreeformFolderPath(path.slice(0, slash));
 }
 
 /** What one file reads as: its view, or none for a file that is missing, set aside or a newer build's. */
@@ -103,6 +131,11 @@ export class FreeformStore {
 
 	viewPath(project: Pick<ProjectRef, "rootPath" | "locale">, viewId: string): string {
 		return `${this.folderPath(project)}/${viewId}.json`;
+	}
+
+	/** Where the folder's own file stands, written once the author has taken every view away. */
+	folderFilePath(project: Pick<ProjectRef, "rootPath" | "locale">): string {
+		return `${this.folderPath(project)}/${FREEFORM_FOLDER_FILE_NAME}`;
 	}
 
 	private storeOf(viewId: string): JsonDocumentStore<HeldView> {
@@ -153,9 +186,11 @@ export class FreeformStore {
 	 */
 	async readDocument(project: ProjectRef): Promise<FreeformDocument> {
 		const ids: string[] = [];
+		let emptied = false;
 		for (const file of this.repository.listDirectFiles(this.folderPath(project))) {
 			const id = freeformViewIdOfFileName(file.name);
 			if (id !== null) ids.push(id);
+			else if (file.name === FREEFORM_FOLDER_FILE_NAME) emptied = true;
 		}
 		this.reading += 1;
 		let views: FreeformView[];
@@ -177,8 +212,10 @@ export class FreeformStore {
 				left.createdAt - right.createdAt || left.id.localeCompare(right.id, "en"),
 		);
 		// No view of its own yet: the project reads as one fresh view, named in
-		// its language, which the first change to it writes.
-		if (views.length === 0) return this.freshDocument(project);
+		// its language, which the first change to it writes. Not so once the
+		// author has taken every view away: the folder's own file says so, and
+		// the project reads with none.
+		if (views.length === 0 && !emptied) return this.freshDocument(project);
 		const last = this.documents.get(project.rootPath);
 		if (
 			last !== undefined &&
@@ -229,23 +266,39 @@ export class FreeformStore {
 
 	/**
 	 * The fresh view a project starts with, as a change meant for it finds it:
-	 * handed out only while the folder holds no view file at all, as the read
-	 * decides it. Once any view is written, a Main that is not there has gone,
-	 * and a change meant for it finds nothing, as one meant for any other view does.
+	 * handed out only while the folder holds no view file and has not been
+	 * emptied, as the read decides it. Once any view is written, a Main that
+	 * is not there has gone, and a change meant for it finds nothing, as one
+	 * meant for any other view does; so too once the author has taken the
+	 * last view away.
 	 */
 	private freshView(project: ProjectRef): FreeformView | null {
-		for (const file of this.repository.listDirectFiles(this.folderPath(project))) {
-			if (freeformViewIdOfFileName(file.name) !== null) return null;
-		}
-		return this.freshDocument(project).views[0] ?? null;
+		return this.untouched(project) ? (this.freshDocument(project).views[0] ?? null) : null;
+	}
+
+	/** Whether the folder holds no view file and has not been emptied: a project that reads as fresh. */
+	private untouched(project: ProjectRef): boolean {
+		return !this.repository.listDirectFiles(this.folderPath(project)).some(
+			(file) => file.name === FREEFORM_FOLDER_FILE_NAME || freeformViewIdOfFileName(file.name) !== null,
+		);
+	}
+
+	/** Whether the folder holds a view's file other than the one named. */
+	private holdsViewBeside(project: ProjectRef, viewId: string): boolean {
+		return this.repository.listDirectFiles(this.folderPath(project)).some((file) => {
+			const id = freeformViewIdOfFileName(file.name);
+			return id !== null && id !== viewId;
+		});
 	}
 
 	/**
 	 * Takes a view's file to the trash, where the author can still find it. A
 	 * file this build cannot read is refused rather than thrown away unread:
 	 * it is a newer build's view, and this one does not know what it holds.
-	 * The view a project starts with is refused too while it is no file: there
-	 * is nothing to take, and the project would read it again all the same.
+	 * The view a project starts with has no file to take while it is fresh;
+	 * taking it away is a deletion all the same, written as the folder's own
+	 * file, or the project would read the view again. The last view taken
+	 * away writes the same, for the same reason.
 	 */
 	async trashView(
 		project: ProjectRef,
@@ -253,16 +306,32 @@ export class FreeformStore {
 	): Promise<"deleted" | "absent" | "refused"> {
 		const path = this.viewPath(project, viewId);
 		if (this.repository.getFile(path) === null) {
-			return viewId === MAIN_FREEFORM_VIEW_ID && this.freshView(project) !== null ? "refused" : "absent";
+			if (viewId !== MAIN_FREEFORM_VIEW_ID || !this.untouched(project)) return "absent";
+			await this.markEmptied(project);
+			return "deleted";
 		}
 		const view = await this.readView(project, viewId);
 		if (view === null) {
 			return this.repository.getFile(path) === null ? "absent" : "refused";
 		}
+		// Judged before the file goes, so nothing waits on the vault to notice it has.
+		const last = !this.holdsViewBeside(project, viewId);
 		await this.repository.trashFile(path);
 		// Its keeper goes with it: a view's id is never used again.
 		this.stores.delete(viewId);
+		if (last) await this.markEmptied(project);
 		return "deleted";
+	}
+
+	/** Writes the folder's own file, once: the folder stands emptied, and reads with no view from here on. */
+	private async markEmptied(project: ProjectRef): Promise<void> {
+		const path = this.folderFilePath(project);
+		if (this.repository.getFile(path) !== null) return;
+		await createOrUpdatePlainFile(
+			this.repository,
+			path,
+			`${JSON.stringify({ schemaVersion: FREEFORM_STORE_SCHEMA_VERSION }, null, "\t")}\n`,
+		);
 	}
 
 	/** How the vault last saw a view's file, without opening it; null when it is not there. */

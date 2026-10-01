@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { MAIN_FREEFORM_VIEW_ID, newFreeformView, type FreeformStep, type FreeformView } from "../../src/domain";
 import {
+	FREEFORM_FOLDER_FILE_NAME,
 	FREEFORM_STORE_SCHEMA_VERSION,
 	FreeformService,
 	FreeformStore,
 	SnowflakeProjectService,
 	freeformViewIdOfFileName,
+	isFreeformFilePath,
 	isFreeformViewFilePath,
 	type ProjectSnapshot,
 } from "../../src/services";
@@ -14,6 +16,8 @@ import { createFakeEnvironment, type FakeVault } from "../helpers/fake-vault";
 
 const FOLDER = "Snowflake Projects/Novel/70_Tool/73_Visualization/732_Freeform";
 const fileOf = (id: string): string => `${FOLDER}/${id}.json`;
+/** The folder's own file, which says the author took every view away. */
+const FOLDER_FILE = `${FOLDER}/${FREEFORM_FOLDER_FILE_NAME}`;
 
 const makeView = (id: string, overrides: Partial<FreeformView> = {}): FreeformView => ({
 	...newFreeformView({ id, name: `View ${id}`, now: 7 }),
@@ -33,6 +37,8 @@ describe("isFreeformViewFilePath", () => {
 		).toBe(true);
 		expect(isFreeformViewFilePath(`${FOLDER}/freeform-view-1a2b.corrupted-1234.json`)).toBe(false);
 		expect(isFreeformViewFilePath(`${FOLDER}/notes.json`)).toBe(false);
+		// The folder's own file is the freeform's, and no view.
+		expect(isFreeformViewFilePath(FOLDER_FILE)).toBe(false);
 		expect(isFreeformViewFilePath(`${FOLDER}/freeform-view-1a2b.md`)).toBe(false);
 		expect(isFreeformViewFilePath(`${FOLDER}/deeper/freeform-view-1a2b.json`)).toBe(false);
 		expect(isFreeformViewFilePath("Snowflake Projects/Novel/732_Freeform/freeform-view-1a2b.json")).toBe(false);
@@ -41,6 +47,17 @@ describe("isFreeformViewFilePath", () => {
 			isFreeformViewFilePath("Snowflake Projects/Novel/70_Tool/73_Visualization/733_Timeline/freeform-view-1a2b.json"),
 		).toBe(false);
 		expect(isFreeformViewFilePath("freeform-view-1a2b.json")).toBe(false);
+	});
+
+	it("knows the folder's own file as the freeform's beside its views, and nothing else in the folder", () => {
+		expect(isFreeformFilePath(FOLDER_FILE)).toBe(true);
+		expect(isFreeformFilePath("Snowflake Projects/Novel/70_工具/73_可视化/732_自由画布/freeform.json")).toBe(true);
+		expect(isFreeformFilePath(fileOf("freeform-view-1a2b"))).toBe(true);
+		expect(isFreeformFilePath(`${FOLDER}/notes.json`)).toBe(false);
+		expect(isFreeformFilePath(`${FOLDER}/freeform.corrupted-1234.json`)).toBe(false);
+		expect(isFreeformFilePath(`${FOLDER}/freeform-view-1a2b.corrupted-1234.json`)).toBe(false);
+		expect(isFreeformFilePath("Snowflake Projects/Novel/70_Tool/73_Visualization/733_Timeline/freeform.json")).toBe(false);
+		expect(isFreeformFilePath("freeform.json")).toBe(false);
 	});
 
 	it("reads a view's id off its file's name", () => {
@@ -114,18 +131,44 @@ describe("FreeformStore", () => {
 		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
 	});
 
-	it("neither writes the fresh view for a leave nor trashes it, while it is no file", async () => {
+	it("writes nothing for a leave of the fresh view, while it is no file", async () => {
 		expect(await store.updateView(project, MAIN_FREEFORM_VIEW_ID, (held) => (held === null ? null : { ...held, viewport: { x: 3, y: 4, zoom: 2 } }), false)).toBe(false);
 		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
-		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("refused");
+		expect(fakeVault.contents.has(FOLDER_FILE)).toBe(false);
 	});
 
-	it("reads the fresh view again once the project's own views are gone, and has nothing to trash for it", async () => {
+	it("takes the fresh view away though it is no file, by saying in the folder that its views are gone", async () => {
+		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("deleted");
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+		expect(JSON.parse(fakeVault.contents.get(FOLDER_FILE)!)).toEqual({ schemaVersion: FREEFORM_STORE_SCHEMA_VERSION });
+		// The project reads with no view from here on, the same object every time, and not as fresh again.
+		const none = await store.readDocument(project);
+		expect(none.views).toEqual([]);
+		expect(await store.readDocument(project)).toBe(none);
+		// A change meant for the fresh view finds nothing now, as one meant for any view that has gone does.
+		expect(await store.updateView(project, MAIN_FREEFORM_VIEW_ID, (held) => (held === null ? null : { ...held, name: "Back" }))).toBe(false);
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+		// Taken away once, there is nothing to take again.
+		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("absent");
+		// A view made after it stands beside the folder's file, which is no view.
 		await store.updateView(project, "freeform-view-1", () => makeView("freeform-view-1"));
 		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual(["freeform-view-1"]);
+	});
+
+	it("has nothing to trash for the fresh view beside a view of the project's own, and reads no view once the last of them is gone", async () => {
+		await store.updateView(project, "freeform-view-1", () => makeView("freeform-view-1"));
+		await store.updateView(project, "freeform-view-2", () => makeView("freeform-view-2"));
+		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual(["freeform-view-1", "freeform-view-2"]);
 		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("absent");
+		// One of two gone leaves the folder with a view, and nothing more is written.
 		expect(await store.trashView(project, "freeform-view-1")).toBe("deleted");
-		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
+		expect(fakeVault.contents.has(FOLDER_FILE)).toBe(false);
+		// The last gone would leave the folder as it stood before anything was
+		// written, and the fresh view would stand again; the folder says
+		// instead that its views are gone.
+		expect(await store.trashView(project, "freeform-view-2")).toBe("deleted");
+		expect(fakeVault.contents.has(FOLDER_FILE)).toBe(true);
+		expect((await store.readDocument(project)).views).toEqual([]);
 	});
 
 	it("stores under the visualization chain of the project's locale", () => {
@@ -249,8 +292,8 @@ describe("FreeformStore", () => {
 		expect(await store.trashView(project, "freeform-view-1")).toBe("deleted");
 		expect(fakeVault.contents.has(fileOf("freeform-view-1"))).toBe(false);
 		expect(await store.trashView(project, "freeform-view-1")).toBe("absent");
-		// With its own view gone, the project reads as the fresh view again.
-		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
+		// With its own view gone, the project reads with none, not as fresh again.
+		expect((await store.readDocument(project)).views).toEqual([]);
 	});
 
 	it("says how the vault last saw a view's file, without opening it", async () => {
@@ -326,7 +369,8 @@ describe("FreeformService", () => {
 		expect(fakeVault.contents.has(fileOf("freeform-view-9"))).toBe(false);
 		expect(await views.deleteView(project, id)).toBe("deleted");
 		expect(await views.deleteView(project, id)).toBe("absent");
-		expect((await views.read(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
+		// The last view gone, the project reads with none.
+		expect((await views.read(project)).views).toEqual([]);
 	});
 
 	it("takes a gesture as one write, and answers with what takes it back", async () => {
@@ -396,10 +440,13 @@ describe("FreeformService", () => {
 		expect(await views.leaveView(project, "freeform-view-9", { viewport: { x: 0, y: 0, zoom: 1 } })).toBe("absent");
 	});
 
-	it("writes no file for a leave of the fresh view, and refuses to delete it", async () => {
+	it("writes no file for a leave of the fresh view, and takes it away by the folder's own file", async () => {
 		expect(await views.leaveView(project, MAIN_FREEFORM_VIEW_ID, { viewport: { x: 3, y: 4, zoom: 2 } })).toBe("absent");
 		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
-		expect(await views.deleteView(project, MAIN_FREEFORM_VIEW_ID)).toBe("refused");
+		expect(await views.deleteView(project, MAIN_FREEFORM_VIEW_ID)).toBe("deleted");
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+		expect(fakeVault.contents.has(FOLDER_FILE)).toBe(true);
+		expect((await views.read(project)).views).toEqual([]);
 	});
 
 	it("carries a file along with a renamed note and a renamed folder, once", async () => {

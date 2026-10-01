@@ -202,7 +202,7 @@ import {
 	type WorldbuildingRecord,
 	type WritingCountScope,
 	isBeatSheetFilePath,
-	isFreeformViewFilePath,
+	isFreeformFilePath,
 	isStickyNotePath,
 	isTaskFilePath,
 	isTimelineFilePath,
@@ -9100,8 +9100,8 @@ export default class SnowflakeMethodPlugin
 			this.scheduleBeatSheetNotify();
 			return;
 		}
-		// And a freeform view's file, of which a project may hold many.
-		if (file instanceof TFile && isFreeformViewFilePath(file.path)) {
+		// And a freeform file: a view's, of which a project may hold many, or the folder's own.
+		if (file instanceof TFile && isFreeformFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
 			this.scheduleFreeformNotify();
 			return;
@@ -9263,9 +9263,10 @@ export default class SnowflakeMethodPlugin
 			this.scheduleBeatSheetNotify(true);
 			return;
 		}
-		if (file instanceof TFile && isFreeformViewFilePath(file.path)) {
+		if (file instanceof TFile && isFreeformFilePath(file.path)) {
 			this.invalidateProjectHealth(file.path);
-			// A view has gone, which every workspace showing it must hear of.
+			// A view has gone, which every workspace showing it must hear of; or
+			// the folder's own file, which said the views were gone.
 			this.scheduleFreeformNotify(true);
 			return;
 		}
@@ -9514,9 +9515,10 @@ export default class SnowflakeMethodPlugin
 				this.scheduleBeatSheetNotify(true);
 			}
 			// A freeform view's file, likewise: renamed within its folder it is
-			// another view by another id, and moved out it is no view at all.
-			const wasFreeform = isFreeformViewFilePath(oldPath) && this.touchesProject(oldPath);
-			const isFreeform = isFreeformViewFilePath(file.path) && this.touchesProject(file.path);
+			// another view by another id, and moved out it is no view at all. The
+			// folder's own file renamed is no longer that either.
+			const wasFreeform = isFreeformFilePath(oldPath) && this.touchesProject(oldPath);
+			const isFreeform = isFreeformFilePath(file.path) && this.touchesProject(file.path);
 			if (wasFreeform || isFreeform) {
 				this.invalidateProjectHealth(oldPath);
 				this.invalidateProjectHealth(file.path);

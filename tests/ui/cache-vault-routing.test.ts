@@ -84,12 +84,15 @@ describe.each(Object.entries(PROJECT_PATH_LAYOUTS))('manuscript cache vault rout
 		expect(routing.scheduleRefresh).not.toHaveBeenCalled();
 	});
 
-	it('rings the freeform bell for a write to a view\'s file, and no other', () => {
+	it('rings the freeform bell for a write to a view\'s file or the folder\'s own, and no other', () => {
 		const routing = vaultRouting();
 		routing.changed(`${projectRoot}/${layout.directories.freeform}/freeform-view-1a2b.json`);
 		expect(routing.scheduleFreeformNotify).toHaveBeenCalledOnce();
 		// A node dragged on a view cannot move the health verdict either.
 		expect(routing.scheduleFreeformNotify).toHaveBeenCalledWith();
+		// The folder's own file, which says the views are gone, is heard the same way.
+		routing.changed(`${projectRoot}/${layout.directories.freeform}/freeform.json`);
+		expect(routing.scheduleFreeformNotify).toHaveBeenCalledTimes(2);
 		expect(routing.scheduleBeatSheetNotify).not.toHaveBeenCalled();
 		expect(routing.scheduleTimelineNotify).not.toHaveBeenCalled();
 		expect(routing.scheduleRefresh).not.toHaveBeenCalled();

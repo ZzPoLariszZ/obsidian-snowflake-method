@@ -983,6 +983,21 @@ describe('the freeform views', () => {
 		expect(fixture.memory.viewports.has('a')).toBe(false);
 	});
 
+	it('lets the last view go as the timeline does, and then says there are no views and offers only to make one', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformViewFormModal);
+		fire(fixture.button('snowflake-method-freeform-view-edit'), 'click');
+		const form = forms[0] as unknown as { options: { deleteView(): Promise<boolean> } };
+		await expect(form.options.deleteView()).resolves.toBe(true);
+		await settle();
+		expect(fixture.bridge.deleteView).toHaveBeenCalledWith('a');
+		expect(fixture.emptyWords()).toBe('freeformCanvas.empty.views');
+		expect(fixture.button('snowflake-method-freeform-view-add').disabled).toBe(false);
+		expect(fixture.button('snowflake-method-freeform-view-edit').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-freeform-node-add').disabled).toBe(true);
+		expect(fixture.memory.viewId).toBeNull();
+	});
+
 	it('says nothing of words lost where a view holds none of its own, and keeps a view the author would not let go', async () => {
 		const fixture = workspace([view('a', { placements: [sceneNode('s1', 'scene-1', 'Arrival')] })]);
 		await settle();
