@@ -1721,6 +1721,10 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 			return view === null ? null : stackKey(view.id, timelineId, rowId);
 		},
 		stackPositions: () => memory.stackPositions,
+		// The card in front is another, which the search may or may not find.
+		walked: () => {
+			paintSearch();
+		},
 		placeName,
 		sceneScope,
 		subrowMenuItems: (menu, lane, time, rowId) => {

@@ -31,8 +31,12 @@ function bound() {
 	const resized = vi.fn();
 	const migrated = vi.fn();
 	const clipboard = vi.fn();
-	const surroundings = bindCanvasWindow({ host: host as unknown as HTMLElement, panning, resized, clipboard, migrated });
-	return { dom, host, panning, resized, clipboard, migrated, surroundings };
+	const dropped = vi.fn();
+	const gesture = { dragging: false };
+	const surroundings = bindCanvasWindow({
+		host: host as unknown as HTMLElement, panning, resized, clipboard, migrated, dragging: () => gesture.dragging, dropped,
+	});
+	return { dom, host, panning, resized, clipboard, migrated, dropped, gesture, surroundings };
 }
 
 describe('the window a canvas stands in', () => {
@@ -65,7 +69,7 @@ describe('the window a canvas stands in', () => {
 		const host = dom.container.createDiv();
 		const resized = vi.fn();
 		const surroundings = bindCanvasWindow({
-			host: host as unknown as HTMLElement, panning: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(),
+			host: host as unknown as HTMLElement, panning: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(), dragging: () => false, dropped: vi.fn(),
 		});
 		expect(surroundings.size()).toEqual({ width: 0, height: 0 });
 		// Nothing each way is what it started from, so there is nothing to say.
@@ -91,6 +95,51 @@ describe('the window a canvas stands in', () => {
 		tell(dom, 'keyup', space());
 		expect(panning).toHaveBeenLastCalledWith(false);
 		expect(panning).toHaveBeenCalledTimes(2);
+	});
+
+	it('hears the middle button as it goes down on the canvas, and lets go where it comes up or the press is lost; a finger has none', () => {
+		const { dom, host, panning } = bound();
+		point(host, 'pointerdown', { button: 1, pointerType: 'mouse' });
+		expect(panning).toHaveBeenLastCalledWith(true);
+		tell(dom, 'pointerup', { button: 1 });
+		expect(panning).toHaveBeenLastCalledWith(false);
+		expect(panning).toHaveBeenCalledTimes(2);
+		// Another button is not it, nor a finger's press, nor another button coming up while it is held.
+		point(host, 'pointerdown', { button: 0, pointerType: 'mouse' });
+		point(host, 'pointerdown', { button: 1, pointerType: 'touch' });
+		expect(panning).toHaveBeenCalledTimes(2);
+		point(host, 'pointerdown', { button: 1, pointerType: 'mouse' });
+		tell(dom, 'pointerup', { button: 0 });
+		expect(panning).toHaveBeenLastCalledWith(true);
+		// A press lost lets go too.
+		tell(dom, 'pointercancel', {});
+		expect(panning).toHaveBeenLastCalledWith(false);
+		// With Space held the plane moves on as the button comes up, and stops as the key does.
+		point(host, 'pointerenter');
+		tell(dom, 'keydown', space());
+		point(host, 'pointerdown', { button: 1, pointerType: 'mouse' });
+		tell(dom, 'pointerup', { button: 1 });
+		expect(panning).toHaveBeenLastCalledWith(true);
+		tell(dom, 'keyup', space());
+		expect(panning).toHaveBeenLastCalledWith(false);
+	});
+
+	it('takes a move with no button down, while a node is in hand, for the release the engine never heard', () => {
+		const { dom, dropped, gesture } = bound();
+		// Nothing in hand: the pointer moves as it likes.
+		tell(dom, 'pointermove', { buttons: 0 });
+		gesture.dragging = true;
+		// In hand and the button down: a drag going on.
+		tell(dom, 'pointermove', { buttons: 1 });
+		tell(dom, 'pointermove', { buttons: 5 });
+		expect(dropped).not.toHaveBeenCalled();
+		// In hand and no button down: the release was taken from the engine.
+		const drift = { buttons: 0, clientX: 40, clientY: 50 };
+		tell(dom, 'pointermove', drift);
+		expect(dropped).toHaveBeenCalledExactlyOnceWith(expect.objectContaining(drift));
+		// With the middle button alone the primary is up still.
+		tell(dom, 'pointermove', { buttons: 4 });
+		expect(dropped).toHaveBeenCalledTimes(2);
 	});
 
 	it('takes no other key for it', () => {
@@ -166,9 +215,9 @@ describe('the window a canvas stands in', () => {
 		const before = dom.observers.length;
 		host.migrateTo(destination);
 		// Nothing is heard in the window it left.
-		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
+		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, pointerup: 0, pointercancel: 0, pointermove: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
 		expect(dom.observers.slice(0, before).every((observer) => observer.disconnected)).toBe(true);
-		expect(heard(destination)).toEqual({ keydown: 1, keyup: 1, blur: 1, copy: 1, cut: 1, paste: 1 });
+		expect(heard(destination)).toEqual({ keydown: 1, keyup: 1, pointerup: 1, pointercancel: 1, pointermove: 1, blur: 1, copy: 1, cut: 1, paste: 1 });
 		// A key held as the canvas moved is let go: the window that would say it came up is behind.
 		expect(panning).toHaveBeenLastCalledWith(false);
 		expect(resized).toHaveBeenLastCalledWith({ width: 720, height: 540 });
@@ -186,7 +235,7 @@ describe('the window a canvas stands in', () => {
 	it('lets everything go when it is released', () => {
 		const { dom, host, panning, resized, migrated, surroundings } = bound();
 		surroundings.release();
-		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
+		expect(heard(dom)).toEqual({ keydown: 0, keyup: 0, pointerup: 0, pointercancel: 0, pointermove: 0, blur: 0, copy: 0, cut: 0, paste: 0 });
 		expect(dom.observers.every((observer) => observer.disconnected)).toBe(true);
 		expect(host.windowMigrationListeners.size).toBe(0);
 		dom.resize(10, 10);
@@ -207,10 +256,10 @@ describe('the window a canvas stands in', () => {
 		};
 		const resized = vi.fn();
 		const surroundings = bindCanvasWindow({
-			host: host as unknown as HTMLElement, panning: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(),
+			host: host as unknown as HTMLElement, panning: vi.fn(), resized, clipboard: vi.fn(), migrated: vi.fn(), dragging: () => false, dropped: vi.fn(),
 		});
 		expect(resized).toHaveBeenCalledWith({ width: 320, height: 240 });
-		expect(listeners.sort()).toEqual(['pointerenter', 'pointerleave', 'pointermove']);
+		expect(listeners.sort()).toEqual(['pointerdown', 'pointerenter', 'pointerleave', 'pointermove']);
 		surroundings.release();
 		expect(listeners).toEqual([]);
 	});

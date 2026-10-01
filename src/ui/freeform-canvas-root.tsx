@@ -61,6 +61,7 @@ import { createRoot } from 'react-dom/client';
 import { CANVAS_EDGE_Z, canvasDepth, handleBoxes, nearestSide, sideMiddle, wheelZoomFactor, zoomedAbout } from './freeform-canvas-model';
 import {
 	CANVAS_FAR_KIND,
+	CANVAS_FIELD_SELECTOR,
 	CANVAS_FRAME_KIND,
 	CANVAS_SIDES,
 	type CanvasEdge,
@@ -286,15 +287,15 @@ function boxOf(node: Pick<FlowNode, 'width' | 'height'> & { measured: { width?: 
 
 /**
  * Where a press begins something of its own, which a drag would swallow: a
- * selection in a field, a choice from a list. A press on a button or a link
- * is a click still to come, and a move before it drags the node: a scene's
- * card is mostly buttons, and a card that could be taken hold of nowhere
- * would be a card that cannot be moved. The click survives a press that
- * hardly moved, by the engine's own click distance.
+ * selection in a field, a choice from a list, the seek bar of a file's
+ * player. A press on a button or a link is a click still to come, and a move
+ * before it drags the node: a scene's card is mostly buttons, and a card that
+ * could be taken hold of nowhere would be a card that cannot be moved. The
+ * click survives a press that hardly moved, by the engine's own click distance.
  */
-const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
+const PRESS_SELECTOR = `${CANVAS_FIELD_SELECTOR}, video, audio`;
 /** What a press twice belongs to: every control, since a title pressed twice is being edited, not opened. */
-const CONTROL_SELECTOR = `${FIELD_SELECTOR}, button, a`;
+const CONTROL_SELECTOR = `${PRESS_SELECTOR}, button, a`;
 
 function useBand(): ZoomBand {
 	const { store } = useDeps();
@@ -334,7 +335,7 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 			if (target === null || !(target as Node).instanceOf(Element)) return;
 			if ((target as Element).closest(selector) !== null) event.stopPropagation();
 		};
-		const keepPress = keep(FIELD_SELECTOR);
+		const keepPress = keep(PRESS_SELECTOR);
 		const keepTwice = keep(CONTROL_SELECTOR);
 		host.addEventListener('mousedown', keepPress);
 		host.addEventListener('touchstart', keepPress, { passive: true });
@@ -780,8 +781,10 @@ function Flow(): ReactElement {
 	// is moved by the middle button, or by any button while Space is held. A
 	// finger has neither, so it moves the plane unless the controls' switch
 	// says it draws the box: the engine lets a finger pass where a button is
-	// named, and takes it for the box only where none is.
-	const pans = interaction.ground === 'select' ? false : panning ? true : [1];
+	// named, and takes it for the box only where none is. So while the switch
+	// is on no button is named, and the middle button is heard as Space is,
+	// by the window, which says the plane moves under whatever is pressed.
+	const pans = panning ? true : interaction.ground === 'select' ? false : [1];
 	return (
 		<div ref={wrapper} className={connecting ? 'snowflake-method-freeform-flow is-connecting' : 'snowflake-method-freeform-flow'}>
 			<ReactFlow<FlowNode, FlowEdge>

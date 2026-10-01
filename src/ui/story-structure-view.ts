@@ -194,9 +194,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 		this.beatSheetMemory.pool.reversed = update.state.beatSheet.pool.reversed;
 		this.beatSheetMemory.poolCollapsed = update.state.beatSheet.poolCollapsed;
 		this.beatSheetMemory.beatsCollapsed = update.state.beatSheet.beatsCollapsed;
-		this.freeformMemory.viewId = update.state.freeform.viewId;
-		this.freeformMemory.minimap = update.state.freeform.minimap;
-		this.freeformMemory.snap = update.state.freeform.snap;
+		// Every switch the layout keeps, as one, so none is left behind.
+		Object.assign(this.freeformMemory, update.state.freeform);
 		await super.setState(state, result);
 		if (legacy) this.app.workspace.requestSaveLayout();
 		// A restored leaf may open before its state arrives, so the first

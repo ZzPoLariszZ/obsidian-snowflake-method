@@ -160,6 +160,8 @@ export interface LaneCellsDeps<Reading> {
 	/** Under which name a row's stack remembers the card it shows; null while nothing is shown to remember it for. */
 	stackKey: (laneId: string, rowId: string) => string | null;
 	stackPositions: () => Map<string, number>;
+	/** A stack was walked, and the card in front is another: the workspace lays whatever it draws over the cards again. */
+	walked: () => void;
 	/** Where words were meant to stand, as a writer would name it. */
 	placeName: (laneId: string, timeId: string | null) => string;
 	sceneScope: (sceneId: string, rowId: string | null) => SceneScope<Reading> | null;
@@ -1232,6 +1234,7 @@ export function createLaneCells<Reading>(deps: LaneCellsDeps<Reading>): LaneCell
 			const at = clampStackPosition(deps.stackPositions().get(key), row.scenes.length);
 			deps.stackPositions().set(key, clampStackPosition(step(at, row.scenes.length), row.scenes.length));
 			paintStack(cell, entry, row, lane);
+			deps.walked();
 		};
 		previous.addEventListener('click', () => {
 			walk((at, total) => (at + total - 1) % total);

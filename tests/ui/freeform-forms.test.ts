@@ -89,7 +89,6 @@ import {
 	FreeformTextModal,
 	FreeformViewFormModal,
 	freeformLinkAddressOf,
-	isFreeformLinkAddress,
 	type FreeformEdgeDraft,
 	type FreeformNodeDraft,
 	type FreeformNodeFormOptions,
@@ -531,8 +530,5 @@ describe('the address a link keeps', () => {
 		expect(freeformLinkAddressOf('file:///Users/x')).toBeNull();
 		expect(freeformLinkAddressOf('obsidian://open?vault=x')).toBeNull();
 		expect(freeformLinkAddressOf('https://')).toBeNull();
-		// The strict reading the view keeps still wants the scheme written out.
-		expect(isFreeformLinkAddress('example.org')).toBe(false);
-		expect(isFreeformLinkAddress('https://example.org')).toBe(true);
 	});
 });

@@ -7,7 +7,6 @@
  */
 
 import {
-	isFreeformRecordType,
 	type FreeformPlacement,
 	type FreeformRecordType,
 	type FreeformResourceType,
@@ -15,6 +14,7 @@ import {
 } from '../domain';
 import type { StickyNoteRecord } from '../services';
 import type { ForeshadowingTableItem } from './foreshadowing-rows';
+import { plainFirstLine } from './freeform-layout';
 import type { RevisionRow } from './revision-panel';
 import type {
 	CharacterViewModel,
@@ -261,10 +261,17 @@ export function resolvePlacement(
 	}
 }
 
+/** How many of a record's first words a placement is called by, for one that goes missing later. */
+const NAME_LENGTH = 80;
+
+/** The first line of a text that says anything, as plain words trimmed to the name's length: what the canvas calls the record. */
+const firstWordsOf = (text: string): string => plainFirstLine(text, NAME_LENGTH);
+
 /**
  * What a placement's resource is called now, for the name a view keeps of
  * it: null for what keeps no name, and for what is missing, whose last name
- * must not be written over with none.
+ * must not be written over with none. A record whose words run long is
+ * called by the first line of them.
  */
 export function freeformLabelOf(node: ResolvedNode): { name: string; kind?: string } | null {
 	switch (node.type) {
@@ -279,17 +286,10 @@ export function freeformLabelOf(node: ResolvedNode): { name: string; kind?: stri
 		case 'foreshadowing':
 			return { name: node.item.name };
 		case 'revision':
-			return { name: node.row.original.length > 0 ? node.row.original : node.row.proposed };
-		case 'sticky-note': {
-			const first = node.note.body.split('\n').find((line) => line.trim().length > 0) ?? '';
-			return { name: first.trim().slice(0, 80) };
-		}
+			return { name: firstWordsOf(node.row.original.length > 0 ? node.row.original : node.row.proposed) };
+		case 'sticky-note':
+			return { name: firstWordsOf(node.note.body) };
 		default:
 			return null;
 	}
-}
-
-/** Whether a family is one a reading is asked for: every one but the entities, which the model holds. */
-export function isFreeformReadFamily(value: unknown): value is FreeformRecordType | 'file' {
-	return value === 'file' || isFreeformRecordType(value);
 }

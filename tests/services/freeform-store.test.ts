@@ -108,6 +108,16 @@ describe("FreeformStore", () => {
 		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID, "freeform-view-2"]);
 		// A change meant for a view that never was still makes nothing.
 		expect(await store.updateView(project, "freeform-view-9", (held) => (held === null ? null : held))).toBe(false);
+		// And one meant for the fresh view once it has gone, beside a view of the project's own, makes it again no more.
+		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("deleted");
+		expect(await store.updateView(project, MAIN_FREEFORM_VIEW_ID, (held) => (held === null ? null : { ...held, name: "Back" }))).toBe(false);
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+	});
+
+	it("neither writes the fresh view for a leave nor trashes it, while it is no file", async () => {
+		expect(await store.updateView(project, MAIN_FREEFORM_VIEW_ID, (held) => (held === null ? null : { ...held, viewport: { x: 3, y: 4, zoom: 2 } }), false)).toBe(false);
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("refused");
 	});
 
 	it("reads the fresh view again once the project's own views are gone, and has nothing to trash for it", async () => {
@@ -384,6 +394,12 @@ describe("FreeformService", () => {
 		// Looking about is no change to the view.
 		expect(left.updatedAt).toBe(100);
 		expect(await views.leaveView(project, "freeform-view-9", { viewport: { x: 0, y: 0, zoom: 1 } })).toBe("absent");
+	});
+
+	it("writes no file for a leave of the fresh view, and refuses to delete it", async () => {
+		expect(await views.leaveView(project, MAIN_FREEFORM_VIEW_ID, { viewport: { x: 3, y: 4, zoom: 2 } })).toBe("absent");
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
+		expect(await views.deleteView(project, MAIN_FREEFORM_VIEW_ID)).toBe("refused");
 	});
 
 	it("carries a file along with a renamed note and a renamed folder, once", async () => {

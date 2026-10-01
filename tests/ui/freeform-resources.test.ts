@@ -9,7 +9,6 @@ import {
 	freeformFileName,
 	freeformLabelOf,
 	freeformLinkHost,
-	isFreeformReadFamily,
 	resolvePlacement,
 	type FreeformFileReading,
 	type FreeformResources,
@@ -174,9 +173,23 @@ describe('what a resource is called', () => {
 		expect(name({ type: 'task', id: 'task-1', name: '' })).toEqual({ name: 'Task task-1' });
 		expect(name({ type: 'foreshadowing', id: 'foreshadowing-1', name: '' })).toEqual({ name: 'The letter' });
 		expect(name({ type: 'revision', id: 'revision-1', name: '' })).toEqual({ name: 'old words' });
+		// Words that run long name the revision by their first line, trimmed as a sticky note's are.
+		const row = read().revisions![0]!;
+		expect(freeformLabelOf({
+			type: 'revision',
+			placement: placed({ type: 'revision', id: 'revision-1', name: '' }),
+			row: { ...row, original: `${'a'.repeat(100)}\nsecond line` },
+		})).toEqual({ name: 'a'.repeat(80) });
 		// An insertion was made over no words, so it goes by what it puts in.
 		expect(name({ type: 'revision', id: 'revision-2', name: '' })).toEqual({ name: 'put in' });
 		expect(name({ type: 'sticky-note', id: 'sticky-note-1', name: '' })).toEqual({ name: 'First line' });
+		// The marks that draw the words are no part of the name, as the canvas has it.
+		const note = read().stickyNotes![0]!;
+		expect(freeformLabelOf({
+			type: 'sticky-note',
+			placement: placed({ type: 'sticky-note', id: note.id, name: '' }),
+			note: { ...note, body: '# Remember\nthe tide' },
+		})).toEqual({ name: 'Remember' });
 	});
 
 	it('names nothing that keeps no name, and never writes a missing one’s last name over', () => {
@@ -213,13 +226,5 @@ describe('files and links', () => {
 		expect(freeformLinkHost('https://en.wikipedia.org/wiki/Snowflake#History')).toBe('en.wikipedia.org');
 		expect(freeformLinkHost('http://localhost:8080')).toBe('localhost:8080');
 		expect(freeformLinkHost('not an address')).toBe('not an address');
-	});
-
-	it('knows the families a reading is asked for', () => {
-		for (const family of ['task', 'foreshadowing', 'revision', 'sticky-note', 'file']) {
-			expect(isFreeformReadFamily(family)).toBe(true);
-		}
-		expect(isFreeformReadFamily('entity')).toBe(false);
-		expect(isFreeformReadFamily('text')).toBe(false);
 	});
 });

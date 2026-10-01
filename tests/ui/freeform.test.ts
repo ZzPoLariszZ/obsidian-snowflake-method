@@ -1833,10 +1833,10 @@ describe('nodes added by type', () => {
 		await settle();
 		const options = formOptions(forms[0]);
 		expect(options.types.map((type) => [type.value, type.label, type.section])).toEqual([
-			['scene', 'form.group.scene', 'entity'],
-			['character', 'form.group.character', 'entity'],
-			['location', 'worldbuilding.kind.location', 'entity'],
-			['Faction', 'Faction', 'entity'],
+			['entity:scene', 'form.group.scene', 'entity'],
+			['entity:character', 'form.group.character', 'entity'],
+			['entity:location', 'worldbuilding.kind.location', 'entity'],
+			['entity:Faction', 'Faction', 'entity'],
 			['task', 'freeformCanvas.type.task', 'task'],
 			['foreshadowing', 'freeformCanvas.type.foreshadowing', 'task'],
 			['revision', 'freeformCanvas.type.revision', 'task'],
@@ -1846,14 +1846,59 @@ describe('nodes added by type', () => {
 			['text', 'freeformCanvas.type.text', 'canvas'],
 			['frame', 'freeformCanvas.type.frame', 'canvas'],
 		]);
-		expect(options.candidates('scene')).toEqual([
+		expect(options.candidates('entity:scene')).toEqual([
 			{ id: 'scene-1', name: 'Arrival', onView: true },
 			{ id: 'scene-2', name: 'Departure', onView: false },
 		]);
-		expect(options.candidates('character')).toEqual([{ id: 'char-1', name: 'Anna', onView: false }]);
-		expect(options.candidates('location')).toEqual([{ id: 'loc-1', name: 'Harbour', onView: false }]);
-		expect(options.candidates('Faction')).toEqual([]);
+		expect(options.candidates('entity:character')).toEqual([{ id: 'char-1', name: 'Anna', onView: false }]);
+		expect(options.candidates('entity:location')).toEqual([{ id: 'loc-1', name: 'Harbour', onView: false }]);
+		expect(options.candidates('entity:Faction')).toEqual([]);
 		expect(options.room()).toBe(FREEFORM_LIMITS.placements - 4);
+	});
+
+	it('keeps an authored kind called task or text apart from the task family and the canvas’s own text, in the form and at the foot', async () => {
+		const fixture = await laid();
+		fixture.remodel({
+			worldbuildingKinds: [
+				{ id: 'location', folderName: '62_Location', custom: false, icon: null, description: null },
+				{ id: 'task', folderName: '64_task', custom: true, icon: 'flag', description: null },
+				{ id: 'text', folderName: '65_text', custom: true, icon: 'pen', description: null },
+			],
+			worldbuilding: {
+				location: [place('loc-1', 'Harbour')],
+				task: [{ ...place('quest-1', 'Quest'), kind: 'task' }],
+				text: [{ ...place('ins-1', 'Inscription'), kind: 'text' }],
+			},
+		});
+		fixture.handle.refresh();
+		await settle();
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
+		const options = formOptions(forms[0]);
+		expect(options.types.filter((type) => type.value.endsWith('task')).map((type) => [type.value, type.section])).toEqual([
+			['entity:task', 'entity'], ['task', 'task'],
+		]);
+		expect(options.candidates('entity:task')).toEqual([{ id: 'quest-1', name: 'Quest', onView: false }]);
+		expect(options.candidates('task')).toEqual([]);
+		await submit(forms[0], { type: 'entity', kind: 'entity:task', nodes: [{ id: 'quest-1', name: 'Quest' }] });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added).kind).toBe('worldbuilding');
+		expect((fixture.bridge.transact.mock.calls[0]![1][0] as { placements: readonly FreeformPlacement[] }).placements[0]).toMatchObject({
+			resource: { type: 'entity', kind: 'task', id: 'quest-1', name: 'Quest' },
+		});
+		// At the foot, an authored kind's own button wears the authored class and opens the form on the kind, one called text no less; the family's and the canvas's stand beside them.
+		const quick = fixture.root.querySelector('.snowflake-method-freeform-quick')!;
+		const authored = quick.querySelectorAll('button').filter((button) => button.classes.has('snowflake-method-freeform-quick-custom'));
+		expect(authored.map((button) => button.dataset.kind)).toEqual(['task', 'text']);
+		const standing = fixture.nodes().length;
+		fire(authored[0]!, 'click');
+		fire(fixture.button('snowflake-method-freeform-quick-task'), 'click');
+		fire(authored[1]!, 'click');
+		await settle();
+		expect(fixture.nodes()).toHaveLength(standing);
+		expect(forms.slice(1).map((form) => (form as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType)).toEqual(['entity:task', 'task', 'entity:text']);
+		expect(formOptions(forms[3]).candidates('entity:text')).toEqual([{ id: 'ins-1', name: 'Inscription', onView: false }]);
 	});
 
 	it('places the notes chosen at the middle of what is in sight, each a step from the last, and chooses them', async () => {
@@ -1863,7 +1908,7 @@ describe('nodes added by type', () => {
 		await settle();
 		await submit(forms[0], {
 			type: 'entity',
-			kind: 'character',
+			kind: 'entity:character',
 			nodes: [{ id: 'char-1', name: 'Anna' }, { id: 'char-2', name: 'Gone already' }],
 		});
 		const added = fixture.nodes().slice(-2);
@@ -1902,14 +1947,14 @@ describe('nodes added by type', () => {
 		const forms = watch(FreeformNodeFormModal);
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
 		await settle();
-		await submit(forms[0], { type: 'entity', kind: 'location', nodes: [{ id: 'loc-1', name: 'Harbour' }] });
+		await submit(forms[0], { type: 'entity', kind: 'entity:location', nodes: [{ id: 'loc-1', name: 'Harbour' }] });
 		const added = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(added)).toMatchObject({ kind: 'worldbuilding', x: 2_000 - FREEFORM_SIZE.width / 2, y: 3_000 - FREEFORM_FACE_HEIGHTS.card.standard / 2 });
 		expect(fixture.node(added).label).toBe('freeformCanvas.node.name(kind=worldbuilding.kind.location,name=Harbour)');
 		// A scene lands with the room the board's standard card needs, so it stands as that card from the first.
 		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })![0]!.click();
 		await settle();
-		await submit(forms[1], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] });
+		await submit(forms[1], { type: 'entity', kind: 'entity:scene', nodes: [{ id: 'scene-2', name: 'Departure' }] });
 		const sceneAdded = fixture.nodes()[fixture.nodes().length - 1]!;
 		expect(fixture.node(sceneAdded)).toMatchObject({
 			kind: 'scene',
@@ -1925,7 +1970,7 @@ describe('nodes added by type', () => {
 		const forms = watch(FreeformNodeFormModal);
 		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
 		await settle();
-		await expect(submit(forms[0], { type: 'entity', kind: 'scene', nodes: [{ id: 'scene-2', name: 'Departure' }] }))
+		await expect(submit(forms[0], { type: 'entity', kind: 'entity:scene', nodes: [{ id: 'scene-2', name: 'Departure' }] }))
 			.rejects.toThrow('freeformCanvas.node.refused');
 		expect(notices).not.toHaveBeenCalled();
 		expect(fixture.nodes()).toHaveLength(5);
@@ -2236,8 +2281,9 @@ describe('frames', () => {
 		expect(fixture.canvas.focused).toBe(1);
 		menu.find((item) => item.title === 'freeformCanvas.frame.fitContents')!.click();
 		await settle();
-		// Round t1 at (0, 0), 200 by 100.
-		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 'f1', x: -24, y: -64, width: 248, height: 188 }] }]);
+		// Round t1 at (0, 0), 200 by 100, with t1 named beside it where it stands, so the frame carries nothing as it moves.
+		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([{ do: 'place', places: [{ id: 'f1', x: -24, y: -64, width: 248, height: 188 }, { id: 't1', x: 0, y: 0 }] }]);
+		expect(placed(fixture, 't1')).toMatchObject({ x: 0, y: 0 });
 		expect(framesHeld(fixture)[0]).toMatchObject({ x: -24, y: -64, width: 248, height: 188 });
 		const empty = workspace([view('a', { frames: [frame('f1')], placements: [text('t1', 'free')] })]);
 		await settle();
@@ -2313,6 +2359,23 @@ describe('records on the canvas', () => {
 		await settle();
 		return fixture;
 	};
+
+	it('leaves a view with every record called what it is called now, so one set aside later is called that', async () => {
+		// The task was renamed since it was placed.
+		const fixture = workspace([recordsView(), view('b', { updatedAt: 1 })]);
+		fixture.resources(recordsRead({ tasks: [taskRecord('task-1', 'Renamed task'), taskRecord('task-2', 'Old', { archived: true })] }));
+		await settle();
+		fixture.viewField().choose('b');
+		await settle();
+		expect(fixture.bridge.leaveView).toHaveBeenCalledOnce();
+		const behind = fixture.bridge.leaveView.mock.calls[0]![1];
+		expect(behind.labels?.get('p1')).toEqual({ name: 'Renamed task' });
+		expect(behind.labels?.get('p2')).toEqual({ name: 'The locket' });
+		expect(behind.labels?.get('p4')).toEqual({ name: 'Remember' });
+		// A record set aside has no name now, and keeps the one it was last called by.
+		expect(behind.labels?.has('p5')).toBe(false);
+		expect(fixture.viewHeld('a').placements.find((placement) => placement.id === 'p1')?.resource).toMatchObject({ name: 'Renamed task' });
+	});
 
 	it('reads the families the view places, and shows each record once its reading lands', async () => {
 		const fixture = workspace([recordsView()]);
@@ -3356,7 +3419,7 @@ describe('the canvas controls', () => {
 		fire(fixture.button('snowflake-method-freeform-quick-character'), 'click');
 		fire(custom, 'click');
 		await settle();
-		expect(forms.slice(3).map((form) => (form as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType)).toEqual(['character', 'Faction']);
+		expect(forms.slice(3).map((form) => (form as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType)).toEqual(['entity:character', 'entity:Faction']);
 		// The strip stands as it was while the project's kinds stand; it is built again when they change.
 		const standing = quick.children.length;
 		fixture.handle.refresh();

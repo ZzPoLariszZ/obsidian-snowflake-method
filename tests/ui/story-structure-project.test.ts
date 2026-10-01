@@ -194,6 +194,14 @@ describe('workspace unload', () => {
 });
 
 describe('workspace project ownership', () => {
+	it('restores every freeform switch the layout keeps, the lock and the drawing to other nodes with them', async () => {
+		const { view } = workspaceView();
+		await view.onOpen();
+		const freeform = { viewId: 'freeform-view-a', minimap: false, snap: true, snapObjects: true, readOnly: true };
+		await view.setState({ projectPath: firstProject, freeform }, { history: false });
+		expect(view.getState().freeform).toEqual(freeform);
+	});
+
 	it('keeps a restored project through dashboard switches and repeated refreshes', async () => {
 		const { view, loadDashboardModel, setRecent } = workspaceView();
 		await view.onOpen();

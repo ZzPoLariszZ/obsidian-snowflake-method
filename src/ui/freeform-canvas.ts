@@ -31,6 +31,7 @@ import {
 	zoomBandOf,
 } from './freeform-canvas-model';
 import {
+	CANVAS_FIELD_SELECTOR,
 	NO_CANVAS_SELECTION,
 	type CanvasFlow,
 	type CanvasHandle,
@@ -59,12 +60,12 @@ const MOVE_MS = 200;
 /** How near, on the screen, a node moved or sized by hand comes to another's side or middle before it is drawn level with it, in pixels. */
 const SNAP_OBJECTS_PX = 6;
 
-/** Where a press begins something of its own: words being written, a choice from a list. */
-const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
+/** A window with the event constructors every window has and the types name on none. */
+type EventMakingWindow = Window & { MouseEvent: typeof MouseEvent };
 
 function withinField(target: EventTarget | null): boolean {
 	if (target === null || !(target as Node).instanceOf(Element)) return false;
-	return (target as Element).closest(FIELD_SELECTOR) !== null;
+	return (target as Element).closest(CANVAS_FIELD_SELECTOR) !== null;
 }
 
 /**
@@ -118,7 +119,8 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 	/** The window the canvas stands in, as the canvas hears it; nothing until it is bound. */
 	let surroundings: CanvasWindow | null = null;
 
-	const busy = (): boolean => dragging || holding;
+	/** A nudge not yet handed over holds the canvas as a drag does: a scene drawn over it would take the keyboard's moves back. */
+	const busy = (): boolean => dragging || holding || nudge !== null;
 
 	/**
 	 * Every face asked to keep what it is still typing, each on its own: one
@@ -166,10 +168,12 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 	const hand = (): void => {
 		clearNudge();
 		const changes = gestureChanges(snapshot.nodes);
-		if (changes.length > 0) port.commit(changes);
+		// What waited is drawn first: the workspace draws what it is handed at
+		// once, so the scene that waited never shows over the places handed over.
 		const waited = owed;
 		owed = null;
 		if (waited !== null) draw(waited);
+		if (changes.length > 0) port.commit(changes);
 		port.gestureEnded();
 	};
 
@@ -368,6 +372,24 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		host,
 		panning: (on) => {
 			set({ panning: on });
+		},
+		dragging: () => dragging,
+		dropped: (event) => {
+			// The engine ends a drag only by the window's mouseup. A release taken
+			// from it, by a native menu opened under the drag or by the system,
+			// leaves the node following a pointer with no button down until the
+			// next click; so the release it missed is given to it here.
+			if (disposed) return;
+			const win = host.win as EventMakingWindow;
+			win.dispatchEvent(new win.MouseEvent('mouseup', {
+				view: win, bubbles: true, cancelable: true, button: 0, buttons: 0,
+				clientX: event.clientX, clientY: event.clientY, screenX: event.screenX, screenY: event.screenY,
+			}));
+			// An engine that had let go without a word is taken at its word now.
+			if (dragging) {
+				dragging = false;
+				hand();
+			}
 		},
 		resized: (size) => {
 			set({ size });

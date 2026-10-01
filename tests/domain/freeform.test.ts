@@ -13,7 +13,6 @@ import {
 	findFreeformPlacement,
 	freeformBounds,
 	freeformClipSteps,
-	freeformEdgesOf,
 	freeformFrameMembers,
 	freeformPlacedFilePaths,
 	freeformPlacedTypes,
@@ -363,9 +362,8 @@ describe('queries', () => {
 		edges: [edge('e1', 'p1', 'p2'), edge('e2', 'p3', 'f1'), edge('e3', 'p4', 'p5')],
 	});
 
-	it('finds a frame’s members, a node’s edges and the box that holds what is named', () => {
+	it('finds a frame’s members and the box that holds what is named', () => {
 		expect(freeformFrameMembers(standing, 'f1').map((entry) => entry.id)).toEqual(['p1', 'p3']);
-		expect(freeformEdgesOf(standing, new Set(['p1', 'f1'])).map((entry) => entry.id)).toEqual(['e1', 'e2']);
 		expect(freeformBounds(standing, ['p1', 'p2', 'gone'])).toEqual({ x: 10, y: 50, width: 590, height: 410 });
 		expect(freeformBounds(standing, ['gone'])).toBeNull();
 		expect(findFreeformPlacement(standing, 'f1')).toBeUndefined();
@@ -514,6 +512,29 @@ describe('placing', () => {
 	it('moves no member for a frame that was only resized', () => {
 		const after = undone(standing(), [{ do: 'place', places: [{ id: 'f1', x: 0, y: 0, width: 800, height: 600 }] }]);
 		expect(findFreeformPlacement(after, 'p1')).toMatchObject({ x: 10, y: 50 });
+	});
+
+	it('moves no member for a frame sized from its near corner, though its corner moved, and takes the sizing back alone', () => {
+		const sized = take(standing(), [{ do: 'place', places: [{ id: 'f1', x: -20, y: -10, width: 420, height: 310 }] }]);
+		expect(sized.came).toBe('written');
+		expect(findFreeformFrame(sized.view, 'f1')).toMatchObject({ x: -20, y: -10, width: 420, height: 310 });
+		expect(findFreeformPlacement(sized.view, 'p1')).toMatchObject({ x: 10, y: 50 });
+		expect(sized.inverse).toEqual([{ do: 'place', places: [{ id: 'f1', x: 0, y: 0, width: 400, height: 300 }] }]);
+		// Drawn afresh round what it holds at the size it had, as Fit to contents may draw it, the frame names its members beside it and so carries none.
+		const fitted = take(standing(), [{ do: 'place', places: [{ id: 'f1', x: 5, y: 40, width: 400, height: 300 }, { id: 'p1', x: 10, y: 50 }, { id: 'p2', x: 100, y: 60 }] }]);
+		expect(findFreeformFrame(fitted.view, 'f1')).toMatchObject({ x: 5, y: 40, width: 400, height: 300 });
+		expect(findFreeformPlacement(fitted.view, 'p1')).toMatchObject({ x: 10, y: 50 });
+		expect(findFreeformPlacement(fitted.view, 'p2')).toMatchObject({ x: 100, y: 60 });
+		// Taking it back names them beside the frame again, so the frame comes back alone and they stand where they stood.
+		expect(fitted.inverse).toEqual([{ do: 'place', places: [
+			{ id: 'f1', x: 0, y: 0, width: 400, height: 300 },
+			{ id: 'p1', x: 10, y: 50, width: 100, height: 60, frameId: 'f1' },
+			{ id: 'p2', x: 100, y: 60, width: 100, height: 60, frameId: 'f1' },
+		] }]);
+		const back = take(fitted.view, fitted.inverse);
+		expect(findFreeformFrame(back.view, 'f1')).toMatchObject({ x: 0, y: 0 });
+		expect(findFreeformPlacement(back.view, 'p1')).toMatchObject({ x: 10, y: 50 });
+		expect(findFreeformPlacement(back.view, 'p2')).toMatchObject({ x: 100, y: 60 });
 	});
 
 	it('takes a node into a frame, out of one and across in the write that moves it', () => {

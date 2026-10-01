@@ -38,6 +38,7 @@ import {
 	findFreeformView,
 	freeformBounds,
 	freeformClipSteps,
+	freeformFrameMembers,
 	freeformPlacedFilePaths,
 	freeformPlacedTypes,
 	freeformRoom,
@@ -62,6 +63,7 @@ import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
 import { zoomStep } from './freeform-canvas-model';
 import {
+	CANVAS_FIELD_SELECTOR,
 	NO_CANVAS_SELECTION,
 	type CanvasMenuTarget,
 	type CanvasPoint,
@@ -164,14 +166,21 @@ interface QuickAdd {
 const QUICK_FACE_TYPES: ReadonlySet<string> = new Set(['scene', 'character', 'task', 'foreshadowing', 'revision', 'sticky-note', 'file', 'link', 'text']);
 const isQuickFaceType = (kind: string): kind is ResolvedNode['type'] => QUICK_FACE_TYPES.has(kind);
 
+/**
+ * How the form tells a kind of note from a family of records or a node made
+ * on the canvas: an authored kind may be called `task` or `text`, so a kind
+ * of note is offered under a value of its own.
+ */
+const ENTITY_TYPE = 'entity:';
+const entityTypeOf = (kind: string): string => `${ENTITY_TYPE}${kind}`;
+/** The kind of note a form value names; null for a family of records or a node made on the canvas. */
+const entityKindOf = (type: string): string | null => (type.startsWith(ENTITY_TYPE) ? type.slice(ENTITY_TYPE.length) : null);
+
 /** How far a press on a quick add moves before it is a drag rather than a press, in pixels. */
 const QUICK_DRAG_PX = 4;
 
 /** An element that may take hold of a pointer, which the app's own elements do and a test's need not. */
 type PointerTaking = { setPointerCapture?: (pointerId: number) => void };
-
-/** Where a press is the field's own: words being written, a choice from a list. */
-const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
 
 /** A change on its way to the file, shown on the canvas meanwhile. */
 interface Pending {
@@ -326,16 +335,17 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return { width: FREEFORM_SIZE.width, height: landingHeightOf(faceKindOf(isQuickFaceType(kind) ? kind : 'worldbuilding')) };
 	};
 	/** Adds what a quick add adds, at a point of the plane or at the middle of what is in sight: a text at once, the rest through the form on their type. */
-	const quickAdd = (kind: string, at?: CanvasPoint): void => {
-		if (kind === 'text') addText(at);
-		else openAddNode(at, kind);
+	const quickAdd = (add: QuickAdd, at?: CanvasPoint): void => {
+		if (add.section === 'canvas' && add.kind === 'text') addText(at);
+		else openAddNode(at, add.section === 'entity' ? entityTypeOf(add.kind) : add.kind);
 	};
 	/**
 	 * A press on a quick add adds at the middle; a press that moves carries
 	 * a ghost of the node over the canvas and adds where it is let go, as
 	 * the app's own canvas has it. The click that follows a drag is let go.
 	 */
-	const bindQuickAdd = (button: HTMLButtonElement, kind: string): void => {
+	const bindQuickAdd = (button: HTMLButtonElement, add: QuickAdd): void => {
+		const { kind } = add;
 		let press: { id: number; x: number; y: number } | null = null;
 		let ghost: HTMLElement | null = null;
 		let dragged = false;
@@ -373,7 +383,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			dragged = true;
 			const box = stage.getBoundingClientRect();
 			const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
-			if (inside) quickAdd(kind, canvas.toPlane({ x: event.clientX, y: event.clientY }));
+			if (inside) quickAdd(add, canvas.toPlane({ x: event.clientX, y: event.clientY }));
 		});
 		button.addEventListener('pointercancel', endDrag);
 		button.addEventListener('click', () => {
@@ -381,7 +391,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				dragged = false;
 				return;
 			}
-			quickAdd(kind);
+			quickAdd(add);
 		});
 	};
 	// The quick adds stand at the foot of the canvas, as the app's canvas
@@ -436,11 +446,12 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		for (const add of adds) {
 			if (section !== null && add.section !== section) quick.createDiv({ cls: 'snowflake-method-freeform-quick-divider' });
 			section = add.section;
-			const own = QUICK_FACE_TYPES.has(add.kind) || isWorldbuildingKind(add.kind) || add.kind === 'frame';
+			// An authored kind is told by its section: one called `task` is not the task family's button.
+			const own = add.section !== 'entity' || add.kind === 'scene' || add.kind === 'character' || isWorldbuildingKind(add.kind);
 			const button = toolbarIconButton(quick, own ? `snowflake-method-freeform-quick-${add.kind}` : 'snowflake-method-freeform-quick-custom', add.icon, add.label);
 			button.dataset.kind = add.kind;
 			button.disabled = !addersAwake;
-			bindQuickAdd(button, add.kind);
+			bindQuickAdd(button, add);
 			quickButtons.push(button);
 		}
 		quick.setCssProps({ '--snowflake-method-quick-count': String(quickButtons.length) });
@@ -760,10 +771,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		label: labelOf,
 		frameLabel: frameLabelOf,
 		edgeName: (from, to) => t('freeformCanvas.edge.name', { from, to }),
-		revision: (node) => {
+		revision: (node, label) => {
 			if (node.type === 'text') return `${node.placement.displayMode}\n${node.text}`;
 			const record = recordOf(node);
-			return `${node.type}\n${node.placement.displayMode}\n${iconOf(node)}\n${labelOf(node)}\n${record === null ? '' : signatureOf(record)}`;
+			return `${node.type}\n${node.placement.displayMode}\n${iconOf(node)}\n${label}\n${record === null ? '' : signatureOf(record)}`;
 		},
 		locked: (id) => id === editingId,
 		// A line may be drawn from node to node wherever the project can be written.
@@ -1042,7 +1053,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const viewport = memory.viewports.get(id);
 		const labels = new Map<string, { name: string; kind?: string }>();
 		for (const placement of file.placements) {
-			const label = freeformLabelOf(resolvePlacement(placement, model, null));
+			const label = freeformLabelOf(resolvePlacement(placement, model, resources));
 			if (label !== null) labels.set(placement.id, label);
 		}
 		const left = { ...(viewport === undefined ? {} : { viewport }), labels };
@@ -1180,6 +1191,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		// Where the leaf stands looking rides along with the change.
 		const viewport = canvas.viewport();
 		const answer: { came: FreeformCame; inverse: readonly FreeformStep[] } = { came: 'refused', inverse: [] };
+		let threw = false;
 		await enqueue(async () => {
 			try {
 				// The project the change was made in, where it still stands to be written.
@@ -1187,6 +1199,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				const done = await controls.bridge().transact(id, steps, viewport);
 				answer.came = done.came;
 				answer.inverse = done.inverse;
+			} catch (error) {
+				// The queue says what was thrown; nothing is said of it twice.
+				threw = true;
+				throw error;
 			} finally {
 				if (answer.came === 'written') entry.landedOn = fileView(id);
 				else drop(entry);
@@ -1198,7 +1214,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}
 		if (answer.came !== 'written') {
 			paintScene();
-			say(answer.came, gone);
+			if (!threw) say(answer.came, gone);
 		} else {
 			paintHistory();
 		}
@@ -1393,8 +1409,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	});
 
 	/** One occurrence of a foreshadowing shown in the manuscript: flashed where it stands, or its chapter opened where it has come loose. */
-	const openOccurrence = (item: ForeshadowingTableItem, occurrence: ForeshadowingOccurrenceRow): void => {
-		void item;
+	const openOccurrence = (occurrence: ForeshadowingOccurrenceRow): void => {
 		const table = host.foreshadowingTable(recordContext());
 		const spot = occurrence.reveal ?? { from: occurrence.from, to: occurrence.to };
 		const opening = occurrence.standing === 'live'
@@ -1410,7 +1425,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			new Notice(t('freeformCanvas.open.noOccurrence'));
 			return;
 		}
-		openOccurrence(item, first);
+		openOccurrence(first);
 	};
 
 	/** One occurrence picked by its chapter and its role, for a foreshadowing with several. */
@@ -1426,7 +1441,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		}));
 		keep(new TimelineTimePickModal(app, t('freeformCanvas.open.occurrencePlaceholder'), options, (picked) => {
 			const occurrence = item.occurrences.find((candidate) => candidate.id === picked.value);
-			if (occurrence !== undefined) openOccurrence(item, occurrence);
+			if (occurrence !== undefined) openOccurrence(occurrence);
 		})).open();
 	};
 
@@ -1561,11 +1576,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	// -- Nodes added by type ----------------------------------------------------
 
-	/** The kinds of node the form offers: what the project holds notes of, and what is made on the canvas. */
+	/** The kinds of node the form offers: what the project holds notes of, each under a value of its own, and what is made on the canvas. */
 	const nodeTypes = (): FreeformNodeType[] => [
-		{ value: 'scene', label: kindWord('scene'), section: 'entity' },
-		{ value: 'character', label: kindWord('character'), section: 'entity' },
-		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: kind.id, label: kindWord(kind.id), section: 'entity' })),
+		{ value: entityTypeOf('scene'), label: kindWord('scene'), section: 'entity' },
+		{ value: entityTypeOf('character'), label: kindWord('character'), section: 'entity' },
+		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: entityTypeOf(kind.id), label: kindWord(kind.id), section: 'entity' })),
 		{ value: 'task', label: t('freeformCanvas.type.task'), section: 'task' },
 		{ value: 'foreshadowing', label: t('freeformCanvas.type.foreshadowing'), section: 'task' },
 		{ value: 'revision', label: t('freeformCanvas.type.revision'), section: 'task' },
@@ -1611,13 +1626,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (kind === 'file') return files.map((file) => ({ id: file.path, name: file.path, onView: placed.has(`file ${file.path}`) }));
 		const named = (family: string, entries: readonly { id: string; name: string }[]): FreeformNodeCandidate[] =>
 			entries.map((entry) => ({ id: entry.id, name: entry.name, onView: placed.has(`${family} ${entry.id}`) }));
-		if (kind === 'scene') return named('entity', model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
-		if (kind === 'character') return named('entity', model.characters);
+		const entity = entityKindOf(kind);
+		if (entity === 'scene') return named('entity', model.scenes.map((scene) => ({ id: scene.id, name: scene.title })));
+		if (entity === 'character') return named('entity', model.characters);
+		if (entity !== null) return named('entity', kindEntities(model, entity));
 		if (kind === 'task') return named('task', (read?.tasks ?? []).filter((task) => !task.archived).map((task) => ({ id: task.id, name: recordName('task', task) })));
 		if (kind === 'foreshadowing') return named('foreshadowing', (read?.foreshadowing ?? []).map((item) => ({ id: item.id, name: recordName('foreshadowing', item) })));
 		if (kind === 'revision') return named('revision', (read?.revisions ?? []).map((row) => ({ id: row.id, name: recordName('revision', row) })));
 		if (kind === 'sticky-note') return named('sticky-note', (read?.stickyNotes ?? []).filter((note) => !note.archived).map((note) => ({ id: note.id, name: recordName('sticky-note', note) })));
-		return named('entity', kindEntities(model, kind));
+		return [];
 	};
 
 	/**
@@ -1683,11 +1700,12 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				const view = shownView();
 				if (view === null) throw new Error(t('freeformCanvas.node.refused'));
 				const kind = draft.kind;
-				const family = FORM_FAMILIES.find((candidate) => candidate === kind);
+				const entity = entityKindOf(kind);
+				const family = entity === null ? FORM_FAMILIES.find((candidate) => candidate === kind) : undefined;
 				// A note lands with the room its standard face needs, so it stands as its own card from the first; a file or a
 				// link with its one row, and a picture, a video or a sound with room for the file itself.
 				const shape = faceKindOf(
-					family ?? (kind === 'file' ? 'file' : kind === 'scene' ? 'scene' : kind === 'character' ? 'character' : 'worldbuilding'),
+					family ?? (kind === 'file' ? 'file' : entity === 'scene' ? 'scene' : entity === 'character' ? 'character' : 'worldbuilding'),
 				);
 				const heights = draft.nodes.map((node) =>
 					kind === 'file' && ['image', 'video', 'audio'].includes(freeformFileKind(node.id)) ? FREEFORM_SIZE.height : landingHeightOf(shape),
@@ -1705,7 +1723,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 					resource: kind === 'file'
 						? { type: 'file', path: node.id }
 						: family === undefined
-							? { type: 'entity', kind, id: node.id, name: node.name }
+							? { type: 'entity', kind: entity ?? kind, id: node.id, name: node.name }
 							: { type: family, id: node.id, name: node.name },
 					x: landings[at]?.x ?? 0,
 					y: landings[at]?.y ?? 0,
@@ -1910,9 +1928,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		})).open();
 	};
 
-	/** The placements a frame holds. */
+	/** The placements a frame holds, by id. */
 	const membersOf = (view: FreeformView, frameId: string): string[] =>
-		view.placements.filter((placement) => placement.frameId === frameId).map((placement) => placement.id);
+		freeformFrameMembers(view, frameId).map((placement) => placement.id);
 
 	/** A frame's members chosen, and the frame let go. */
 	const selectContents = (id: string): void => {
@@ -1922,21 +1940,26 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		canvas.focus();
 	};
 
-	/** A frame drawn afresh round what it holds, with the room a grouping leaves. */
+	/** A frame drawn afresh round what it holds, with the room a grouping leaves, its members standing where they are. */
 	const fitToContents = (id: string): void => {
 		const view = shownView();
 		if (view === null || readOnly) return;
-		const box = freeformBounds(view, membersOf(view, id));
+		const members = freeformFrameMembers(view, id);
+		const box = freeformBounds(view, members.map((member) => member.id));
 		if (box === null) return;
 		void change([{
 			do: 'place',
-			places: [{
-				id,
-				x: box.x - FREEFORM_FRAME_PADDING,
-				y: box.y - FREEFORM_FRAME_PADDING - FREEFORM_FRAME_HEAD,
-				width: box.width + 2 * FREEFORM_FRAME_PADDING,
-				height: box.height + 2 * FREEFORM_FRAME_PADDING + FREEFORM_FRAME_HEAD,
-			}],
+			places: [
+				{
+					id,
+					x: box.x - FREEFORM_FRAME_PADDING,
+					y: box.y - FREEFORM_FRAME_PADDING - FREEFORM_FRAME_HEAD,
+					width: box.width + 2 * FREEFORM_FRAME_PADDING,
+					height: box.height + 2 * FREEFORM_FRAME_PADDING + FREEFORM_FRAME_HEAD,
+				},
+				// Its members named beside it, where they stand: the frame is drawn round them and carries none, whatever size it comes to.
+				...members.map((member) => ({ id: member.id, x: member.x, y: member.y })),
+			],
 		}]);
 	};
 
@@ -2849,7 +2872,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (disposed || stage.classList.contains('is-hidden')) return false;
 		const active = root.doc.activeElement;
 		if (active === null || active === root.doc.body) return true;
-		return root.contains(active) && active.closest(FIELD_SELECTOR) === null;
+		return root.contains(active) && active.closest(CANVAS_FIELD_SELECTOR) === null;
 	};
 	const chords = [
 		// A chord with nothing to take back is not taken, so it goes on to whoever is next.

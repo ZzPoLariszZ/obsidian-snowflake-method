@@ -201,16 +201,19 @@ export class FreeformStore {
 	 * Read-modify-write of one view's file. `mutate` is handed the view, or
 	 * null where the file is not there, and answers the view to write, or null
 	 * for nothing to write: a view that has gone is never made again by a
-	 * change that was meant for it.
+	 * change that was meant for it. `fresh` lets a change meant for the view a
+	 * project starts with find it before it is written; a leave, which is no
+	 * change, is given false and finds nothing.
 	 */
 	updateView(
 		project: ProjectRef,
 		viewId: string,
 		mutate: (held: FreeformView | null) => FreeformView | null,
+		fresh = true,
 	): Promise<boolean> {
 		return this.storeOf(viewId).update(project, (held) => {
 			// The fresh view a project starts with is handed to a change meant for it, and the change writes it.
-			const standing = held.view ?? (viewId === MAIN_FREEFORM_VIEW_ID ? this.freshView(project) : null);
+			const standing = held.view ?? (fresh && viewId === MAIN_FREEFORM_VIEW_ID ? this.freshView(project) : null);
 			const next = mutate(standing);
 			return next === null ? null : { view: next };
 		});
@@ -224,9 +227,16 @@ export class FreeformStore {
 		return held;
 	}
 
-	/** The fresh view a project starts with, as a change meant for it finds it: a file not yet written. */
+	/**
+	 * The fresh view a project starts with, as a change meant for it finds it:
+	 * handed out only while the folder holds no view file at all, as the read
+	 * decides it. Once any view is written, a Main that is not there has gone,
+	 * and a change meant for it finds nothing, as one meant for any other view does.
+	 */
 	private freshView(project: ProjectRef): FreeformView | null {
-		if (this.repository.getFile(this.viewPath(project, MAIN_FREEFORM_VIEW_ID)) !== null) return null;
+		for (const file of this.repository.listDirectFiles(this.folderPath(project))) {
+			if (freeformViewIdOfFileName(file.name) !== null) return null;
+		}
 		return this.freshDocument(project).views[0] ?? null;
 	}
 
@@ -234,19 +244,24 @@ export class FreeformStore {
 	 * Takes a view's file to the trash, where the author can still find it. A
 	 * file this build cannot read is refused rather than thrown away unread:
 	 * it is a newer build's view, and this one does not know what it holds.
+	 * The view a project starts with is refused too while it is no file: there
+	 * is nothing to take, and the project would read it again all the same.
 	 */
 	async trashView(
 		project: ProjectRef,
 		viewId: string,
 	): Promise<"deleted" | "absent" | "refused"> {
 		const path = this.viewPath(project, viewId);
-		if (this.repository.getFile(path) === null) return "absent";
+		if (this.repository.getFile(path) === null) {
+			return viewId === MAIN_FREEFORM_VIEW_ID && this.freshView(project) !== null ? "refused" : "absent";
+		}
 		const view = await this.readView(project, viewId);
 		if (view === null) {
 			return this.repository.getFile(path) === null ? "absent" : "refused";
 		}
 		await this.repository.trashFile(path);
-		this.storeOf(viewId).evict(project.rootPath);
+		// Its keeper goes with it: a view's id is never used again.
+		this.stores.delete(viewId);
 		return "deleted";
 	}
 

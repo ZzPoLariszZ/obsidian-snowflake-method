@@ -37,6 +37,8 @@ export type ZoomBand = 'far' | 'compact' | 'standard' | 'extended';
 
 /** The kind every frame is drawn as; every other kind names a painter of the workspace's. */
 export const CANVAS_FRAME_KIND = 'frame';
+/** Where a press or a key is a field's own and never the canvas's: words being written, a choice from a list. */
+export const CANVAS_FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
 /**
  * The painter every node but a frame is dressed by while the canvas is
  * looked at from far off: its symbol and its name alone, in place of a face

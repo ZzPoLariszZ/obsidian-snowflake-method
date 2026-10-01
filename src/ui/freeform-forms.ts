@@ -177,11 +177,6 @@ export interface FreeformLinkDraft {
 	label: string;
 }
 
-/** Whether an address is one the canvas takes: a web address, and nothing that names a file or asks the app for more. */
-export function isFreeformLinkAddress(url: string): boolean {
-	return /^https?:\/\/\S+$/iu.test(url.trim());
-}
-
 /**
  * The address a link keeps for what was typed, or null for words that are
  * no address. A web address is taken as it was typed; one typed without

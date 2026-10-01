@@ -258,6 +258,7 @@ function standing(lanes: Timeline[], overrides: Partial<LaneCellsDeps<Reading>> 
 		sceneIndex: () => sceneIndex,
 		stackKey: (laneId, rowId) => joinKey('view', laneId, rowId),
 		stackPositions: () => stackPositions,
+		walked: () => undefined,
 		placeName: (laneId, timeId) => (timeId === null ? laneId : `${laneId} · ${timeId}`),
 		sceneScope: (sceneId, rowId) => ({
 			laneId: activeId ?? '',

@@ -1557,6 +1557,10 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		sceneIndex: laneDeck.sceneIndex,
 		stackKey: (placedSheetId, rowId) => beatStackKey(placedSheetId, rowId),
 		stackPositions: () => memory.stackPositions,
+		// The card in front is another, which the search may or may not find.
+		walked: () => {
+			paintSearch();
+		},
 		placeName,
 		sceneScope,
 		subrowMenuItems: (menu, lane, time, rowId) => {

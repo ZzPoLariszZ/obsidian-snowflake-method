@@ -22,7 +22,7 @@ import { Component, Keymap, MarkdownRenderer, setIcon, setTooltip, type App } fr
 import { FORESHADOWING_STATUSES, PROGRESS_STATUSES, type DateFormat, type FreeformFrame, type MacaronColor, type ProgressStatus } from '../domain';
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
-import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
+import type { ForeshadowingOccurrenceRow } from './foreshadowing-rows';
 import { statusOptions } from './corkboard-layout';
 import { faceKindOf, faceModeOf } from './freeform-layout';
 import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
@@ -42,7 +42,7 @@ export interface FreeformFaceDeps {
 	t: Translate;
 	/** What rendered Markdown lives under: the view that mounts the workspace. */
 	component: Component;
-	/** Where a link in a text node's words is read from: the project's own folder. */
+	/** Where a link in a text node's words is read from: the project's own folder. A sticky note's are read from the note itself. */
 	sourcePath: () => string;
 	/** What a node stands for now; nothing for one that has gone from the view. */
 	node: (id: string) => ResolvedNode | undefined;
@@ -61,7 +61,7 @@ export interface FreeformFaceDeps {
 	/** A text node left as it was. */
 	leaveText: (id: string) => void;
 	/** Opens one occurrence of a foreshadowing in the manuscript, from a row of its fullest face. */
-	openOccurrence: (item: ForeshadowingTableItem, occurrence: ForeshadowingOccurrenceRow) => void;
+	openOccurrence: (occurrence: ForeshadowingOccurrenceRow) => void;
 	/** The day the reading device is on, which a task's due date is measured against. */
 	today: () => string;
 	/** How a day is written, as the author chose. */
@@ -132,8 +132,8 @@ function moreButton(face: HTMLElement, deps: FreeformFaceDeps, id: string): HTML
 	return more;
 }
 
-/** A link among rendered words is a link: one into the vault is the workspace's to open. */
-function followLinks(shown: HTMLElement, deps: FreeformFaceDeps): void {
+/** A link among rendered words is a link: one into the vault is the workspace's to open, read from where the words were. */
+function followLinks(shown: HTMLElement, deps: FreeformFaceDeps, source: () => string = () => deps.sourcePath()): void {
 	shown.addEventListener('click', (event) => {
 		const target = event.target as HTMLElement | null;
 		const anchor = target?.closest('a') ?? null;
@@ -142,7 +142,7 @@ function followLinks(shown: HTMLElement, deps: FreeformFaceDeps): void {
 		const linktext = anchor.getAttribute('data-href') ?? anchor.getAttribute('href') ?? '';
 		if (linktext.length === 0) return;
 		void deps.app.workspace
-			.openLinkText(linktext, deps.sourcePath(), Keymap.isModEvent(event))
+			.openLinkText(linktext, source(), Keymap.isModEvent(event))
 			.catch((error: unknown) => {
 				console.error('Snowflake: a link on the freeform canvas could not be opened', error);
 			});
@@ -760,7 +760,12 @@ function threadPainter(deps: FreeformFaceDeps, parts: RailParts): NodePainter {
 						}
 						button.addEventListener('click', (event) => {
 							event.stopPropagation();
-							deps.openOccurrence(item, occurrence);
+							// The occurrence as the thread has it now: its passage may have moved since the row was drawn, with nothing the row shows changing.
+							const thread = deps.node(id);
+							const current = thread?.type === 'foreshadowing'
+								? thread.item.occurrences.find((candidate) => candidate.id === occurrence.id)
+								: undefined;
+							deps.openOccurrence(current ?? occurrence);
 						});
 					}
 				}
@@ -862,7 +867,9 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 			const words = card.createDiv({ cls: 'snowflake-method-sticky-body' });
 			const first = words.createDiv({ cls: 'snowflake-method-freeform-sticky-first' });
 			const shown = words.createDiv({ cls: 'snowflake-method-freeform-text' });
-			followLinks(shown, deps);
+			// The note's words are read from the note, as the board reads them, so a link among them leads where it does there.
+			let source: string | null = null;
+			followLinks(shown, deps, () => source ?? deps.sourcePath());
 			let worn = '';
 			let born = '';
 			let rendered: string | null = null;
@@ -876,6 +883,7 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 				const node = deps.node(id);
 				if (node?.type !== 'sticky-note') return;
 				const { note } = node;
+				source = note.path;
 				if (card.getAttribute('data-color') !== note.color) card.setAttribute('data-color', note.color);
 				const icon = deps.icon(node);
 				if (icon !== worn) {
@@ -901,7 +909,7 @@ function stickyPainter(deps: FreeformFaceDeps): NodePainter {
 						child = drawing;
 						deps.component.addChild(drawing);
 						const box = shown.createDiv({ cls: 'snowflake-method-sticky-rendered markdown-rendered' });
-						void MarkdownRenderer.render(deps.app, note.body, box, deps.sourcePath(), drawing).catch((error: unknown) => {
+						void MarkdownRenderer.render(deps.app, note.body, box, note.path, drawing).catch((error: unknown) => {
 							console.error('Snowflake: a sticky note on the freeform canvas could not be drawn', error);
 						});
 					}
@@ -1138,10 +1146,6 @@ function farPainter(deps: FreeformFaceDeps): NodePainter {
 	};
 }
 
-/**
- * A frame's face: its title at its head, and the tint it wears, which is
- * one of the sticky notes' own macarons and painted from the same rules.
- */
 /**
  * A frame's face: its title on its head, and at the head's end the way to
  * its menu with its palette beside it, which hangs the swatches a card's

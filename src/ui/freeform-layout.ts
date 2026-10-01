@@ -183,8 +183,8 @@ export interface FreeformSceneWords {
 	frameLabel: (frame: FreeformFrame) => string;
 	/** What a line is called, by what it joins. */
 	edgeName: (from: string, to: string) => string;
-	/** Moves when what the node's face would draw moves, and only then. */
-	revision: (node: ResolvedNode) => string;
+	/** Moves when what the node's face would draw moves, and only then; handed the label already worked out. */
+	revision: (node: ResolvedNode, label: string) => string;
 	/** The node being typed into, which is neither moved nor sized meanwhile. */
 	locked: (id: string) => boolean;
 	/** Whether lines may be drawn from node to node. */
@@ -253,7 +253,7 @@ export function sceneOf(view: FreeformView, words: FreeformSceneWords): Freeform
 			height: placement.height,
 			z: placement.zIndex,
 			frame: placement.frameId !== null && frames.has(placement.frameId) ? placement.frameId : null,
-			revision: words.revision(node),
+			revision: words.revision(node, label),
 			label,
 			tone: null,
 			locked: words.locked(placement.id),

@@ -13,11 +13,11 @@
  * surface that answers those two questions.
  */
 
-import type { CanvasSize } from './freeform-canvas-port';
+import { CANVAS_FIELD_SELECTOR, type CanvasSize } from './freeform-canvas-port';
 
 export interface CanvasWindowDeps {
 	host: HTMLElement;
-	/** Space, which lets a drag on the ground move the plane, went down while the pointer stood over the canvas, or came up. */
+	/** Space went down while the pointer stood over the canvas, or the middle button went down on it, so a drag on the ground moves the plane; or both came up. */
 	panning: (on: boolean) => void;
 	/** The canvas is another size. */
 	resized: (size: CanvasSize) => void;
@@ -27,6 +27,14 @@ export interface CanvasWindowDeps {
 	 * words chosen or at the body, and a canvas with a node chosen has neither.
 	 */
 	clipboard: (event: ClipboardEvent) => void;
+	/** A node is being moved or sized, as the engine last said. */
+	dragging: () => boolean;
+	/**
+	 * The pointer moved with no button down while a node was being moved or
+	 * sized: the release was taken by something else, a native menu opened
+	 * under the drag or the system, and the engine never heard it.
+	 */
+	dropped: (event: PointerEvent) => void;
 	/** The canvas stands in another window, after everything here was bound to it. */
 	migrated: () => void;
 }
@@ -44,7 +52,7 @@ const CLIPBOARD_EVENTS = ['copy', 'cut', 'paste'] as const;
  * Where Space is a letter or a press of its own: a field's, a button's, a
  * link's, and whatever a face says the keys are not to be read over.
  */
-const SPOKEN_FOR = 'input, textarea, select, button, a, [contenteditable="true"], [contenteditable=""], .nokey';
+const SPOKEN_FOR = `${CANVAS_FIELD_SELECTOR}, button, a, .nokey`;
 
 const isPanKey = (event: KeyboardEvent): boolean => event.key === ' ' || event.code === 'Space';
 
@@ -67,15 +75,42 @@ type MeasuringWindow = Window & {
 export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 	const { host } = deps;
 	let over = false;
+	/** Space is held over the canvas; the middle button is down on it. Either moves the plane under a drag. */
+	let spaced = false;
+	let middled = false;
 	let held = false;
 	let size: CanvasSize = { width: 0, height: 0 };
 	let observer: { observe(target: Element): void; disconnect(): void } | null = null;
 	let bound: MeasuringWindow | null = null;
 
-	const say = (on: boolean): void => {
+	const tell = (): void => {
+		const on = spaced || middled;
 		if (on === held) return;
 		held = on;
 		deps.panning(on);
+	};
+	const say = (on: boolean): void => {
+		spaced = on;
+		tell();
+	};
+	// The middle button is heard as it goes down, ahead of the engine, which
+	// is told the plane moves before it hears the press; a finger has no
+	// middle button. Let go wherever it comes up, or where the press is lost.
+	const onPress = (event: PointerEvent): void => {
+		if (event.button !== 1 || event.pointerType === 'touch') return;
+		middled = true;
+		tell();
+	};
+	const onRelease = (event: PointerEvent): void => {
+		if (!middled || (event.type === 'pointerup' && event.button !== 1)) return;
+		middled = false;
+		tell();
+	};
+	// A drag goes on only while the button is down. A move without it, while
+	// the engine still has a node in hand, is a release it was never told of.
+	const onDrift = (event: PointerEvent): void => {
+		if ((event.buttons & 1) !== 0 || !deps.dragging()) return;
+		deps.dropped(event);
 	};
 
 	const measure = (): CanvasSize => {
@@ -101,6 +136,7 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		say(true);
 	};
 	const onBlur = (): void => {
+		middled = false;
 		say(false);
 	};
 	const onEnter = (): void => {
@@ -124,6 +160,9 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		if (win === null) return;
 		win.addEventListener('keydown', onKey, true);
 		win.addEventListener('keyup', onKey, true);
+		win.addEventListener('pointerup', onRelease, true);
+		win.addEventListener('pointercancel', onRelease, true);
+		win.addEventListener('pointermove', onDrift, true);
 		win.addEventListener('blur', onBlur);
 		for (const kind of CLIPBOARD_EVENTS) win.addEventListener(kind, onClipboard);
 		if (win.ResizeObserver !== undefined) {
@@ -139,6 +178,9 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		if (bound === null) return;
 		bound.removeEventListener('keydown', onKey, true);
 		bound.removeEventListener('keyup', onKey, true);
+		bound.removeEventListener('pointerup', onRelease, true);
+		bound.removeEventListener('pointercancel', onRelease, true);
+		bound.removeEventListener('pointermove', onDrift, true);
 		bound.removeEventListener('blur', onBlur);
 		for (const kind of CLIPBOARD_EVENTS) bound.removeEventListener(kind, onClipboard);
 		bound = null;
@@ -147,11 +189,13 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 	host.addEventListener('pointerenter', onEnter);
 	host.addEventListener('pointermove', onMove);
 	host.addEventListener('pointerleave', onLeave);
+	host.addEventListener('pointerdown', onPress, true);
 	bind();
 	measure();
 	const stopMigration = (host as MigratingElement).onWindowMigrated?.(() => {
 		unbind();
 		over = false;
+		middled = false;
 		say(false);
 		bind();
 		measure();
@@ -167,6 +211,7 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 			host.removeEventListener('pointerenter', onEnter);
 			host.removeEventListener('pointermove', onMove);
 			host.removeEventListener('pointerleave', onLeave);
+			host.removeEventListener('pointerdown', onPress, true);
 		},
 	};
 }

@@ -1040,7 +1040,14 @@ describe('the task management cards', () => {
 		expect(occurrences[1]!.querySelector('.snowflake-method-freeform-occurrence-passage')).toBeNull();
 		const told = fire(occurrences[1]!, 'click');
 		expect(told.stopped).toBe(1);
-		expect(deps.openOccurrence).toHaveBeenCalledWith(threadModel, threadModel.occurrences[1]);
+		expect(deps.openOccurrence).toHaveBeenCalledWith(threadModel.occurrences[1]);
+		// The passage moved on while the row reads the same: the row stands as drawn, and a click opens the occurrence as the thread has it now.
+		const moved = { ...threadModel, occurrences: [threadModel.occurrences[0]!, { ...threadModel.occurrences[1]!, from: 101, to: 102 }] };
+		nodes.set('p2', { type: 'foreshadowing', placement: placement('p2', { height: 400 }), item: moved });
+		painted.dress(context({ height: 400 }));
+		expect(fields.children[1]!.querySelectorAll('button')[1]).toBe(occurrences[1]);
+		fire(occurrences[1]!, 'click');
+		expect(deps.openOccurrence).toHaveBeenLastCalledWith(moved.occurrences[1]);
 		// The words an occurrence marks stand under it; one occurrence is said in the singular; a thread with no description shows none.
 		const one = { ...threadModel, description: '', occurrences: [{ ...threadModel.occurrences[0]!, originalText: 'the locket glinted' }] };
 		nodes.set('p2', { type: 'foreshadowing', placement: placement('p2', { height: 400 }), item: one });
@@ -1101,7 +1108,7 @@ describe('the task management cards', () => {
 	});
 
 	it('shows a sticky note as its own card: when it was made, with its symbol and its menu, at the head, and its words under it, the first line alone on the barest face', () => {
-		const { nodes, mount } = faces();
+		const { nodes, mount, deps } = faces();
 		nodes.set('p4', { type: 'sticky-note', placement: placement('p4', { height: 200 }), note: noteModel });
 		const { face, painted } = mount('sticky-note', 'p4', context({ height: 200 }));
 		expect(face.classes.has('is-sticky')).toBe(true);
@@ -1118,8 +1125,16 @@ describe('the task management cards', () => {
 		expect(created.getAttribute('aria-label')).toBe('stickyNotes.created');
 		expect(head.querySelector('.snowflake-method-sticky-tools')!.querySelector('.snowflake-method-freeform-node-more')).not.toBeNull();
 		expect(face.querySelector('.snowflake-method-freeform-sticky-first')!.textContent).toBe('called p4');
-		expect(renders.map((entry) => entry.words)).toEqual(['# Remember\nthe tide']);
+		// Drawn from the note itself, as the board draws it, and a link among its words read from there too.
+		expect(renders.map((entry) => [entry.words, entry.sourcePath])).toEqual([['# Remember\nthe tide', 'N/note.md']]);
 		expect((renders[0]!.box as CorkboardElement).classes.has('snowflake-method-sticky-rendered')).toBe(true);
+		const shown = face.querySelector('.snowflake-method-freeform-text')!;
+		const inner = shown.createEl('a', { cls: 'internal-link', attr: { 'data-href': 'Hero', href: 'Hero' } });
+		const open = vi.mocked((deps.app as unknown as { workspace: { openLinkText: () => Promise<void> } }).workspace.openLinkText);
+		for (const listener of shown.listeners.get('click') ?? []) {
+			listener({ target: inner, preventDefault: () => undefined, stopPropagation: () => undefined });
+		}
+		expect(open).toHaveBeenCalledExactlyOnceWith('Hero', 'N/note.md', false);
 		expect(face.dataset.mode).toBe('standard');
 		// Dressed again over the same words, nothing is drawn again; over other words, they are.
 		painted.dress(context({ height: 200 }));

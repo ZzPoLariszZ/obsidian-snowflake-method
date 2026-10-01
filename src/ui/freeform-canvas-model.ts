@@ -300,7 +300,8 @@ function nearest(
  * still, when within `reach` of one of their sides or middles, in the
  * plane's own units. Nodes moved go by one move, the box round them all
  * drawn by its sides and its middle; a node sized has only the sides the
- * hand moved drawn, each on its own. What stands still is every node
+ * hand moved drawn, each on its own, and never under its least size, where
+ * the engine held the hand. What stands still is every node
  * neither moving nor carried by a frame that is. What was drawn to comes
  * back as guides, one line each way at most; nothing where nothing was.
  */
@@ -337,30 +338,31 @@ export function snappedToObjects(
 		let { width, height } = size;
 		let guideX: number | null = null;
 		let guideY: number | null = null;
+		const least = { width: entry.node.minWidth, height: entry.node.minHeight };
 		if (x !== entry.x) {
 			const drawn = nearest([x], xs, reach);
-			if (drawn !== null) {
+			if (drawn !== null && width - drawn.delta >= least.width) {
 				x += drawn.delta;
 				width -= drawn.delta;
 				guideX = drawn.at;
 			}
 		} else if (x + width !== entry.x + entry.width) {
 			const drawn = nearest([x + width], xs, reach);
-			if (drawn !== null) {
+			if (drawn !== null && width + drawn.delta >= least.width) {
 				width += drawn.delta;
 				guideX = drawn.at;
 			}
 		}
 		if (y !== entry.y) {
 			const drawn = nearest([y], ys, reach);
-			if (drawn !== null) {
+			if (drawn !== null && height - drawn.delta >= least.height) {
 				y += drawn.delta;
 				height -= drawn.delta;
 				guideY = drawn.at;
 			}
 		} else if (y + height !== entry.y + entry.height) {
 			const drawn = nearest([y + height], ys, reach);
-			if (drawn !== null) {
+			if (drawn !== null && height + drawn.delta >= least.height) {
 				height += drawn.delta;
 				guideY = drawn.at;
 			}

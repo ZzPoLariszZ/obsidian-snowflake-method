@@ -130,7 +130,8 @@ export class FreeformService {
 		viewId: string,
 		left: { viewport?: FreeformViewport; labels?: FreeformLabels },
 	): Promise<FreeformViewWrite> {
-		return this.revise(project, viewId, (held) => leaveFreeformView(held, left));
+		// No change, so the view a project starts with is not written for it.
+		return this.revise(project, viewId, (held) => leaveFreeformView(held, left), false);
 	}
 
 	/**
@@ -213,6 +214,7 @@ export class FreeformService {
 		project: ProjectRef,
 		viewId: string,
 		change: (held: FreeformView) => FreeformView | null,
+		fresh = true,
 	): Promise<FreeformViewWrite> {
 		let asked = false;
 		let present = false;
@@ -222,7 +224,7 @@ export class FreeformService {
 			if (held === null) return null;
 			present = true;
 			return change(held);
-		});
+		}, fresh);
 		if (!asked) return "refused";
 		return present ? "written" : "absent";
 	}

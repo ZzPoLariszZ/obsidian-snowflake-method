@@ -22,6 +22,7 @@ import {
 	type CanvasNode,
 	type CanvasOptions,
 	type CanvasPort,
+	type CanvasRootDeps,
 	type PaintContext,
 } from '../../src/ui/freeform-canvas-port';
 import { installObsidianDom, migrate, migrationListeners } from '../helpers/obsidian-dom';
@@ -149,6 +150,80 @@ afterEach(() => {
 		host.remove();
 	}
 	vi.restoreAllMocks();
+});
+
+/**
+ * The facade over a bare root in the engine's place, so what the engine
+ * would report of the keyboard is the test's to say, and when.
+ */
+function bareCanvas() {
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	Object.defineProperties(host, {
+		clientWidth: { configurable: true, get: () => 800 },
+		clientHeight: { configurable: true, get: () => 600 },
+	});
+	let deps: CanvasRootDeps | null = null;
+	const port = {
+		painter: vi.fn(() => ({ mount: () => ({ dress: () => undefined, settle: () => undefined, unmount: () => undefined }) })),
+		commit: vi.fn(),
+		connect: vi.fn(),
+		reconnect: vi.fn(),
+		selectionChanged: vi.fn(),
+		viewportChanged: vi.fn(),
+		menu: vi.fn(),
+		open: vi.fn(),
+		key: vi.fn(() => false),
+		clipboard: vi.fn((_kind: string, _event: ClipboardEvent) => false),
+		gestureEnded: vi.fn(),
+		failed: vi.fn(),
+	} satisfies CanvasPort;
+	const mount = freeformCanvasMount(() => Promise.resolve({
+		mountRoot: (_container, given) => {
+			deps = given;
+			given.attach({ viewport: () => ({ x: 0, y: 0, zoom: 1 }), setViewport: () => undefined, toPlane: (point) => point, setSize: () => undefined, setAdditive: () => undefined });
+			return { unmount: () => undefined };
+		},
+	}));
+	const handle = mount(host, port, {
+		id: 'bare',
+		viewport: { x: 0, y: 0, zoom: 1 },
+		interaction: { ground: 'pan', snap: null, snapObjects: false, minimap: false, readOnly: false },
+		zoom: { min: 0.1, max: 4 },
+		labels: { canvas: 'Freeform', minimap: 'Minimap' },
+		reduceMotion: () => true,
+		additive: (event) => event.metaKey || event.shiftKey,
+		zoomKey: (event) => event.metaKey,
+	});
+	standing.push({ handle, host });
+	return {
+		handle, port,
+		raised: async () => {
+			await vi.waitFor(() => {
+				expect(deps).not.toBeNull();
+			});
+			return deps!;
+		},
+	};
+}
+
+describe('the keyboard’s moves against a repaint', () => {
+	it('keeps a nudge over a scene drawn during its rest, and hands it over when the rest ends', async () => {
+		const { handle, port, raised } = bareCanvas();
+		const engine = await raised();
+		handle.setScene({ nodes: [node('a')], edges: [] });
+		engine.nodesChanged([{ kind: 'position', id: 'a', x: 5, y: 0, dragging: false }]);
+		// The canvas is busy with the keyboard, so the workspace holds its paint as it would for a drag.
+		expect(handle.busy()).toBe(true);
+		// A scene from before the nudge, drawn again for other words: a repaint, not a move.
+		handle.setScene({ nodes: [node('a', { revision: 'other words' })], edges: [] });
+		expect(port.commit).not.toHaveBeenCalled();
+		await vi.waitFor(() => {
+			expect(port.commit).toHaveBeenCalledExactlyOnceWith([{ kind: 'move', id: 'a', x: 5, y: 0 }]);
+		}, { timeout: 2_000 });
+		expect(handle.busy()).toBe(false);
+		expect(port.gestureEnded).toHaveBeenCalledOnce();
+	});
 });
 
 describe('the canvas engine on a document', () => {
@@ -624,6 +699,95 @@ describe('the canvas engine on a document', () => {
 		document.body.dispatchEvent(new Event('paste', { bubbles: true }));
 		expect(port.clipboard).toHaveBeenCalledTimes(4);
 		other.remove();
+	});
+
+	it('ends a drag whose release it never heard as soon as the pointer moves with no button down, and keeps the node where it was', async () => {
+		const { host, handle, port, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({ nodes: [node('a'), node('b', { x: 400 })], edges: [] });
+		});
+		const el = host.querySelector<HTMLElement>('.react-flow__node[data-id="a"]')!;
+		const at = (type: string, x: number, y: number, on: EventTarget = window, buttons = 1): void => {
+			act(() => {
+				on.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons, view: window, clientX: x, clientY: y }));
+			});
+		};
+		at('mousedown', 50, 50, el);
+		at('mousemove', 60, 55);
+		at('mousemove', 90, 70);
+		expect(handle.busy()).toBe(true);
+		expect(port.commit).not.toHaveBeenCalled();
+		// No release: a native menu opened under the drag took it. The pointer then moves with no button down.
+		act(() => {
+			window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 0, pointerType: 'mouse', clientX: 300, clientY: 200 }));
+		});
+		// The first move is the engine's threshold and moves nothing; the node went as far as the second.
+		expect(port.commit).toHaveBeenCalledExactlyOnceWith([{ kind: 'move', id: 'a', x: 30, y: 15 }]);
+		expect(port.gestureEnded).toHaveBeenCalledOnce();
+		expect(handle.busy()).toBe(false);
+		// The engine has let go: the pointer moving on, button up or down, moves nothing.
+		const stood = el.style.transform;
+		at('mousemove', 300, 200, window, 0);
+		at('mousemove', 340, 240, window, 1);
+		expect(port.commit).toHaveBeenCalledOnce();
+		expect(el.style.transform).toBe(stood);
+	});
+
+	it('moves the plane by the middle button, and by any button while Space is held, while a drag on the ground draws the box', async () => {
+		const { host, handle, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setInteraction({ ground: 'select' });
+		});
+		const pane = host.querySelector<HTMLElement>('.react-flow__pane')!;
+		const at = (type: string, button: number, x: number, y: number, on: EventTarget = pane): void => {
+			on.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button, buttons: button === 1 ? 4 : 1, view: window, clientX: x, clientY: y }));
+		};
+		/** A press as a browser dispatches it: the pointer event first, the engine told between the two, then the mouse event. */
+		const press = async (button: number, x: number, y: number): Promise<void> => {
+			pane.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button, buttons: button === 1 ? 4 : 1, pointerType: 'mouse', isPrimary: true, clientX: x, clientY: y }));
+			await act(async () => {
+				await Promise.resolve();
+			});
+			at('mousedown', button, x, y);
+		};
+		const release = async (button: number, x: number, y: number): Promise<void> => {
+			at('mouseup', button, x, y, window);
+			window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button, pointerType: 'mouse', isPrimary: true, clientX: x, clientY: y }));
+			await act(async () => {
+				await Promise.resolve();
+			});
+		};
+		// The left button draws the box and moves nothing.
+		await press(0, 100, 100);
+		at('mousemove', 0, 140, 130, window);
+		await release(0, 140, 130);
+		expect(handle.viewport()).toEqual({ x: 0, y: 0, zoom: 1 });
+		// The middle button moves the plane as far as it went.
+		await press(1, 100, 100);
+		at('mousemove', 1, 140, 130, window);
+		await release(1, 140, 130);
+		expect(handle.viewport()).toEqual({ x: 40, y: 30, zoom: 1 });
+		// Space held over the canvas, the left button moves it too.
+		host.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 100, clientY: 100 }));
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true }));
+		await act(async () => {
+			await Promise.resolve();
+		});
+		await press(0, 100, 100);
+		at('mousemove', 0, 110, 100, window);
+		await release(0, 110, 100);
+		window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true, cancelable: true }));
+		await act(async () => {
+			await Promise.resolve();
+		});
+		expect(handle.viewport()).toEqual({ x: 50, y: 30, zoom: 1 });
+		// Space let go, the left button draws the box again.
+		await press(0, 100, 100);
+		at('mousemove', 0, 140, 130, window);
+		await release(0, 140, 130);
+		expect(handle.viewport()).toEqual({ x: 50, y: 30, zoom: 1 });
 	});
 
 	it('moves the plane by the wheel, and sizes it about the pointer while the platform’s key is held', async () => {

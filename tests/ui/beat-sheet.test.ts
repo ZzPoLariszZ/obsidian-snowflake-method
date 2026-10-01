@@ -1522,6 +1522,32 @@ describe('sub-descriptions and scenes on a beat, through the cells a timeline sh
 		expect([...fixture.memory.stackPositions.entries()]).toEqual([[beatStackKey('s', 'r1'), 1]]);
 	});
 
+	it('lays the search over the card a stack is walked to, and lets go of the one that came down', async () => {
+		const fixture = laid({}, { sheets: [sheet('s', [act('a1', '', [beat('b1', 'One', { rows: [row('r1', 'Both', ['scene-1', 'scene-2'])] })])], { presentation: 'stack' })] });
+		await settle();
+		const search = searches[searches.length - 1] as { inputEl: CorkboardElement; type: (value: string) => void };
+		search.type('arriv');
+		fixture.dom.flushFrame();
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		const found = (): string[] => fixture.root.querySelectorAll('.is-search-hit').map((el) => el.getAttribute('data-id') ?? el.className);
+		const scrolls = (): number => fixture.dom.operations.filter((op) => op.kind === 'scroll' && op.property === 'scrollIntoView').length;
+		expect(found()).toEqual(['scene-1']);
+		expect(count()).toBe('freeformCanvas.search.matchesOne(count=1)');
+		fixture.cell('b1').querySelector('.snowflake-method-timeline-stack-next')!.dispatch('click');
+		// The card in front is another, which the words do not answer: it falls back with the rest, the count says so, and Enter brings nothing into sight.
+		expect(fixture.cards().map((card) => card.getAttribute('data-id'))).toEqual(['scene-2']);
+		expect(found()).toEqual([]);
+		expect(fixture.cards()[0]!.classes.has('is-search-miss')).toBe(true);
+		expect(count()).toBe('beatSheet.search.none');
+		const before = scrolls();
+		fire(search.inputEl, 'keydown', { key: 'Enter' });
+		expect(scrolls()).toBe(before);
+		// Walked on round to the first, the card found stands in front again and is found again.
+		fixture.cell('b1').querySelector('.snowflake-method-timeline-stack-next')!.dispatch('click');
+		expect(found()).toEqual(['scene-1']);
+		expect(count()).toBe('freeformCanvas.search.matchesOne(count=1)');
+	});
+
 	it('keeps words typed at a foot for that sheet and that beat, across a turn to another sheet and back', async () => {
 		const fixture = laid({}, { sheets: [threeActs(), sheet('other', [act('o1', '', [beat('ob1', 'Alone')])])], lastSheetId: 's' });
 		await settle();

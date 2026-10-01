@@ -307,6 +307,26 @@ describe('taking a gesture’s changes in', () => {
 		expect(near.guides).toEqual({ x: -50, y: null });
 	});
 
+	it('leaves a side where the hand put it when drawing it level would take the node under its least size', () => {
+		const held = hold([
+			node('a', { x: 0, y: 0, width: 200, height: 100, minWidth: 96, minHeight: 48 }),
+			node('b', { x: 500, y: 0, width: 200, height: 200 }),
+		]);
+		// At a tenth of the size six pixels reach sixty units: the bottom brought up to 48 would land on b's top at 0, and is left at 48.
+		const low = [{ kind: 'size' as const, id: 'a', width: 200, height: 48, resizing: true }];
+		expect(snappedToObjects(held, low, 60)).toEqual({ changes: low, guides: null });
+		// The top brought down to 52 would land on b's middle at 100, under the bottom, and is left too.
+		const high = [
+			{ kind: 'position' as const, id: 'a', x: 0, y: 52, dragging: false },
+			{ kind: 'size' as const, id: 'a', width: 200, height: 48, resizing: true },
+		];
+		expect(snappedToObjects(held, high, 60)).toEqual({ changes: high, guides: null });
+		// With room left, the same side is drawn level as before.
+		const roomy = snappedToObjects(held, [{ kind: 'size', id: 'a', width: 200, height: 150, resizing: true }], 60);
+		expect(roomy.changes).toEqual([{ kind: 'size', id: 'a', width: 200, height: 100, resizing: true }]);
+		expect(roomy.guides).toEqual({ x: null, y: 100 });
+	});
+
 	it('says what is chosen, in the order held, and sets exactly what is named as chosen', () => {
 		const nodes = reduceNodeChanges(hold([node('a'), node('b'), node('c')]), [
 			{ kind: 'select', id: 'c', selected: true }, { kind: 'select', id: 'a', selected: true },

@@ -539,11 +539,6 @@ export function freeformFrameMembers(
 	return view.placements.filter((placement) => placement.frameId === frameId);
 }
 
-/** Every edge that starts or ends on one of the nodes named. */
-export function freeformEdgesOf(view: Pick<FreeformView, 'edges'>, nodeIds: ReadonlySet<string>): FreeformEdge[] {
-	return view.edges.filter((edge) => nodeIds.has(edge.source) || nodeIds.has(edge.target));
-}
-
 export interface FreeformBox {
 	x: number;
 	y: number;
@@ -986,8 +981,10 @@ function connectNodes(
  * target and never a distance, so a write made twice moves nothing twice. A
  * frame moved carries the placements it holds by as far as it went, as the
  * view has them when the step is taken; a member named beside its frame
- * takes the place it was itself given. A node that has gone is passed over,
- * and with none of those named still standing the step names nothing.
+ * takes the place it was itself given. A frame sized carries nothing, though
+ * sizing it from its near corner moves that corner. A node that has gone is
+ * passed over, and with none of those named still standing the step names
+ * nothing.
  */
 function placeNodes(view: FreeformView, places: readonly FreeformPlace[]): StepAnswer {
 	const asked = new Map<string, FreeformPlace>();
@@ -1008,7 +1005,9 @@ function placeNodes(view: FreeformView, places: readonly FreeformPlace[]): StepA
 		const width = to.width === undefined ? frame.width : sizeOf(to.width, frame.width);
 		const height = to.height === undefined ? frame.height : sizeOf(to.height, frame.height);
 		if (x === frame.x && y === frame.y && width === frame.width && height === frame.height) return frame;
-		if (x !== frame.x || y !== frame.y) carried.set(frame.id, { dx: x - frame.x, dy: y - frame.y });
+		if ((x !== frame.x || y !== frame.y) && width === frame.width && height === frame.height) {
+			carried.set(frame.id, { dx: x - frame.x, dy: y - frame.y });
+		}
 		before.push({ id: frame.id, x: frame.x, y: frame.y, width: frame.width, height: frame.height });
 		return { ...frame, x, y, width, height };
 	});
@@ -1040,6 +1039,8 @@ function placeNodes(view: FreeformView, places: readonly FreeformPlace[]): StepA
 			x === placement.x && y === placement.y && width === placement.width &&
 			height === placement.height && frameId === placement.frameId
 		) {
+			// Named beside a frame that moves, where it stands: taking the move back must name it so too, or carry it then.
+			if (placement.frameId !== null && carried.has(placement.frameId)) before.push(was);
 			return placement;
 		}
 		before.push(was);

@@ -922,6 +922,35 @@ describe('the times and the lanes', () => {
 		expect(count()).toBe('');
 	});
 
+	it('lays the search over the card a stack is walked to, and lets go of the one that came down', async () => {
+		const fixture = workspace({
+			timelines: [timeline('a', { times: [{ timeId: 'time-2', rows: [row('r1', 'Both', ['scene-1', 'scene-2'])] }] })],
+			views: [view('v', ['a'], { timeOrder: ['time-2'], presentation: 'stack' })],
+		});
+		await settle();
+		const search = searches[searches.length - 1] as { inputEl: CorkboardElement; type: (value: string) => void };
+		search.type('arriv');
+		fixture.dom.flushFrame();
+		const count = (): string => fixture.root.querySelector('.snowflake-method-toolbar-count')!.textContent;
+		const found = (): string[] => fixture.root.querySelectorAll('.is-search-hit').map((el) => el.getAttribute('data-id') ?? el.className);
+		const scrolls = (): number => fixture.dom.operations.filter((op) => op.kind === 'scroll' && op.property === 'scrollIntoView').length;
+		expect(found()).toEqual(['scene-1']);
+		expect(count()).toBe('freeformCanvas.search.matchesOne');
+		fixture.root.querySelector('.snowflake-method-timeline-stack-next')!.dispatch('click');
+		// The card in front is another, which the words do not answer: it falls back with the rest, the count says so, and Enter brings nothing into sight.
+		expect(fixture.cards().map((card) => card.getAttribute('data-id'))).toEqual(['scene-2']);
+		expect(found()).toEqual([]);
+		expect(fixture.cards()[0]!.classes.has('is-search-miss')).toBe(true);
+		expect(count()).toBe('timeline.search.none');
+		const before = scrolls();
+		fire(search.inputEl, 'keydown', { key: 'Enter' });
+		expect(scrolls()).toBe(before);
+		// Walked back, the card found stands in front again and is found again.
+		fixture.root.querySelector('.snowflake-method-timeline-stack-previous')!.dispatch('click');
+		expect(found()).toEqual(['scene-1']);
+		expect(count()).toBe('freeformCanvas.search.matchesOne');
+	});
+
 	it('invites the first sub-description at an empty foot, and more of them under rows', async () => {
 		const fixture = laid();
 		await settle();
