@@ -37,6 +37,7 @@ const entity = (fields: Partial<WorldbuildingEntityViewModel> = {}): Worldbuildi
 	timeEnd: '',
 	timeStartMissing: false,
 	timeEndMissing: false,
+	color: null,
 	worldStatus: [],
 	relationships: [],
 	customFields: '',

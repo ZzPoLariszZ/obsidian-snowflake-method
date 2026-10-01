@@ -5525,6 +5525,48 @@ describe("SnowflakeProjectService", () => {
     expect(FRONTMATTER_KEYS.sceneColor in stored(plain.path)).toBe(false);
   });
 
+  it("stores a character's and a worldbuilding note's tint under the key a scene's lives under, and drops it when cleared", async () => {
+    const project = await service.createProject({ name: "Tinted cards" });
+    const stored = (path: string): Record<string, unknown> =>
+      parseMarkdownFrontmatter(fakeVault.contents.get(path) ?? "").frontmatter;
+    const ada = await service.createCharacter(project, { name: "Ada" });
+    expect(ada.color).toBeNull();
+    expect(FRONTMATTER_KEYS.sceneColor in stored(ada.path)).toBe(false);
+    const tinted = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: ada.revision,
+      color: "macaron-2",
+    });
+    expect(tinted.color).toBe("macaron-2");
+    expect(stored(ada.path)[FRONTMATTER_KEYS.sceneColor]).toBe("macaron-2");
+    // A patch that names no tint leaves it as it was.
+    const kept = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: tinted.revision,
+      goal: "Out",
+    });
+    expect(kept.color).toBe("macaron-2");
+    const cleared = await service.updateCharacter(project, ada.characterId, {
+      expectedRevision: kept.revision,
+      color: null,
+    });
+    expect(cleared.color).toBeNull();
+    expect(FRONTMATTER_KEYS.sceneColor in stored(ada.path)).toBe(false);
+
+    const dawn = await service.createEntity(project, { kind: "time", name: "Dawn" });
+    expect(dawn.color).toBeNull();
+    const dawnTinted = await service.updateEntity(project, dawn.entityId, {
+      expectedRevision: dawn.revision,
+      color: "macaron-7",
+    });
+    expect(dawnTinted.color).toBe("macaron-7");
+    expect(stored(dawn.path)[FRONTMATTER_KEYS.sceneColor]).toBe("macaron-7");
+    const dawnCleared = await service.updateEntity(project, dawn.entityId, {
+      expectedRevision: dawnTinted.revision,
+      color: null,
+    });
+    expect(dawnCleared.color).toBeNull();
+    expect(FRONTMATTER_KEYS.sceneColor in stored(dawn.path)).toBe(false);
+  });
+
   it("reads an unknown colour as none and a lone link as a list of one", async () => {
     const project = await service.createProject({ name: "Scene board hand edits" });
     const scene = await service.createScene(project, { title: "Dawn" });

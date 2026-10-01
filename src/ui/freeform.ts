@@ -22,7 +22,7 @@
  * Taking a change back is one more change, written the same way.
  */
 
-import { Keymap, Menu, Notice, SearchComponent, setIcon } from 'obsidian';
+import { Keymap, Menu, Notice, SearchComponent, setIcon, setTooltip } from 'obsidian';
 
 import {
 	DEFAULT_FREEFORM_VIEWPORT,
@@ -55,10 +55,11 @@ import {
 	type FreeformSide,
 	type FreeformStep,
 	type FreeformView,
+	type MacaronColor,
 } from '../domain';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
-import { zoomPercent, zoomStep } from './freeform-canvas-model';
+import { zoomStep } from './freeform-canvas-model';
 import {
 	NO_CANVAS_SELECTION,
 	type CanvasMenuTarget,
@@ -67,7 +68,7 @@ import {
 	type CanvasSelection,
 } from './freeform-canvas-port';
 import { freeformClipSize, readFreeformClip, writeFreeformClip } from './freeform-clipboard';
-import { createFreeformFaces } from './freeform-faces';
+import { createFreeformFaces, type CardNode } from './freeform-faces';
 import {
 	FreeformEdgeFormModal,
 	FreeformFrameFormModal,
@@ -132,6 +133,32 @@ import { bindFrameWindow, createLaneDeck, createMenuKeeper, createModalKeeper, t
 
 /** How many of a text node's first words it is called by, for a reader that cannot see it. */
 const NAME_LENGTH = 80;
+
+/** How large a frame is made where nothing tells its size: room for a few nodes. */
+const FRAME_SIZE = { width: 480, height: 320 };
+
+/** The symbol each task management record wears, on its face and on its quick add. */
+const RECORD_ICONS = { task: 'list-todo', foreshadowing: 'waypoints', revision: 'file-diff', 'sticky-note': 'sticker' } as const;
+
+/** A quick add at the canvas's foot: one type the Add node form offers, or a text or a frame made on the canvas. */
+interface QuickAdd {
+	/** The form's own value for the type; an authored kind by its id. */
+	kind: string;
+	icon: string;
+	label: string;
+	/** The form's section, which the strip parts with a line. */
+	section: 'entity' | 'task' | 'file' | 'canvas';
+}
+
+/** The kinds a quick add names by a face kind of their own; every other kind is a worldbuilding note's. */
+const QUICK_FACE_TYPES: ReadonlySet<string> = new Set(['scene', 'character', 'task', 'foreshadowing', 'revision', 'sticky-note', 'file', 'link', 'text']);
+const isQuickFaceType = (kind: string): kind is ResolvedNode['type'] => QUICK_FACE_TYPES.has(kind);
+
+/** How far a press on a quick add moves before it is a drag rather than a press, in pixels. */
+const QUICK_DRAG_PX = 4;
+
+/** An element that may take hold of a pointer, which the app's own elements do and a test's need not. */
+type PointerTaking = { setPointerCapture?: (pointerId: number) => void };
 
 /** How long the search waits after a keystroke before the view is marked for it, as the corkboard's does. */
 const SEARCH_DEBOUNCE_MS = 150;
@@ -245,49 +272,55 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		cls: 'snowflake-method-freeform-controls',
 		attr: { role: 'toolbar', 'aria-label': t('freeformCanvas.controls') },
 	});
+	// The controls are the app's own canvas's, group by group: the settings
+	// and, where a finger may come, the switch that has its drag draw the
+	// box; then nearer, back to the plane's own size, everything in sight,
+	// and further; then the two that take a change back and make it again.
+	const controlGroup = (): HTMLDivElement => panel.createDiv({ cls: 'snowflake-method-freeform-control-group' });
+	const settingsGroup = controlGroup();
+	const settingsButton = toolbarIconButton(settingsGroup, 'snowflake-method-freeform-settings', 'settings', t('freeformCanvas.settings'));
+	settingsButton.setAttribute('aria-haspopup', 'menu');
+	settingsButton.addEventListener('click', (event) => {
+		// Locked, the button is the lock itself, and a press lets go of it.
+		if (memory.readOnly) setLocked(false);
+		else openSettingsMenu(event);
+	});
 	// A mouse draws a box by its own drag and moves the plane by its middle
 	// button or with Space held. A finger has neither, so it moves the plane
 	// until this switch tells it to draw the box; the stylesheet shows the
 	// switch only where a finger may come.
-	const selectButton = toolbarIconButton(panel, 'snowflake-method-freeform-select', 'box-select', t('freeformCanvas.select.box'));
+	const selectButton = toolbarIconButton(settingsGroup, 'snowflake-method-freeform-select', 'box-select', t('freeformCanvas.select.box'));
 	selectButton.setAttribute('aria-pressed', 'false');
 	selectButton.addEventListener('click', () => {
 		dragDraws = !dragDraws;
 		selectButton.setAttribute('aria-pressed', dragDraws ? 'true' : 'false');
 		canvas.setInteraction({ ground: dragDraws ? 'select' : 'pan' });
 	});
-	const undoButton = toolbarIconButton(panel, 'snowflake-method-freeform-undo', 'undo-2', t('freeformCanvas.undo'));
-	undoButton.addEventListener('click', () => {
-		undo();
-	});
-	const redoButton = toolbarIconButton(panel, 'snowflake-method-freeform-redo', 'redo-2', t('freeformCanvas.redo'));
-	redoButton.addEventListener('click', () => {
-		redo();
-	});
-	const zoomOutButton = toolbarIconButton(panel, 'snowflake-method-freeform-zoom-out', 'minus', t('freeformCanvas.zoom.out'));
-	zoomOutButton.addEventListener('click', () => {
-		canvas.moveViewport({ kind: 'step', direction: 'out' });
-	});
-	const zoomLevel = panel.createSpan({ cls: 'snowflake-method-freeform-zoom-level' });
-	const zoomInButton = toolbarIconButton(panel, 'snowflake-method-freeform-zoom-in', 'plus', t('freeformCanvas.zoom.in'));
+	const zoomGroup = controlGroup();
+	const zoomInButton = toolbarIconButton(zoomGroup, 'snowflake-method-freeform-zoom-in', 'plus', t('freeformCanvas.zoom.in'));
 	zoomInButton.addEventListener('click', () => {
 		canvas.moveViewport({ kind: 'step', direction: 'in' });
 	});
-	const wordButton = (cls: string, words: string, label: string): HTMLButtonElement => {
-		const button = panel.createEl('button', {
-			cls: `snowflake-method-freeform-control ${cls}`,
-			text: words,
-			attr: { type: 'button', 'aria-label': label },
-		});
-		return button;
-	};
-	const fitButton = wordButton('snowflake-method-freeform-fit', t('freeformCanvas.fit'), t('freeformCanvas.fit.all'));
+	const resetButton = toolbarIconButton(zoomGroup, 'snowflake-method-freeform-reset', 'rotate-cw', t('freeformCanvas.reset.viewport'));
+	resetButton.addEventListener('click', () => {
+		resetViewport();
+	});
+	const fitButton = toolbarIconButton(zoomGroup, 'snowflake-method-freeform-fit', 'maximize', t('freeformCanvas.fit.all'));
 	fitButton.addEventListener('click', () => {
 		fitAll();
 	});
-	const resetButton = wordButton('snowflake-method-freeform-reset', t('freeformCanvas.reset'), t('freeformCanvas.reset.viewport'));
-	resetButton.addEventListener('click', () => {
-		resetViewport();
+	const zoomOutButton = toolbarIconButton(zoomGroup, 'snowflake-method-freeform-zoom-out', 'minus', t('freeformCanvas.zoom.out'));
+	zoomOutButton.addEventListener('click', () => {
+		canvas.moveViewport({ kind: 'step', direction: 'out' });
+	});
+	const historyGroup = controlGroup();
+	const undoButton = toolbarIconButton(historyGroup, 'snowflake-method-freeform-undo', 'undo-2', t('freeformCanvas.undo'));
+	undoButton.addEventListener('click', () => {
+		undo();
+	});
+	const redoButton = toolbarIconButton(historyGroup, 'snowflake-method-freeform-redo', 'redo-2', t('freeformCanvas.redo'));
+	redoButton.addEventListener('click', () => {
+		redo();
 	});
 	// The minimap stands in the canvas's far corner when asked for, and this button, laid over its corner, puts it away.
 	const minimapButton = toolbarIconButton(stage, 'snowflake-method-freeform-minimap-collapse', 'minimize-2', t('freeformCanvas.minimap.collapse'));
@@ -298,6 +331,138 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		minimapButton.toggleClass('is-hidden', !memory.minimap);
 	};
 	paintMinimap();
+
+	/** How large a node a quick add makes, for the ghost a drag carries: the kind's own landing size. */
+	const quickSizeOf = (kind: string): { width: number; height: number } => {
+		if (kind === 'frame') return FRAME_SIZE;
+		return { width: FREEFORM_SIZE.width, height: landingHeightOf(faceKindOf(isQuickFaceType(kind) ? kind : 'worldbuilding')) };
+	};
+	/** Adds what a quick add adds, at a point of the plane or at the middle of what is in sight: a text at once, the rest through the form on their type. */
+	const quickAdd = (kind: string, at?: CanvasPoint): void => {
+		if (kind === 'text') addText(at);
+		else openAddNode(at, kind);
+	};
+	/**
+	 * A press on a quick add adds at the middle; a press that moves carries
+	 * a ghost of the node over the canvas and adds where it is let go, as
+	 * the app's own canvas has it. The click that follows a drag is let go.
+	 */
+	const bindQuickAdd = (button: HTMLButtonElement, kind: string): void => {
+		let press: { id: number; x: number; y: number } | null = null;
+		let ghost: HTMLElement | null = null;
+		let dragged = false;
+		const endDrag = (): void => {
+			ghost?.remove();
+			ghost = null;
+			press = null;
+		};
+		button.addEventListener('pointerdown', (event) => {
+			if (button.disabled || event.button !== 0) return;
+			press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+			(button as PointerTaking).setPointerCapture?.(event.pointerId);
+		});
+		button.addEventListener('pointermove', (event) => {
+			if (press === null || event.pointerId !== press.id) return;
+			if (ghost === null) {
+				if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < QUICK_DRAG_PX) return;
+				ghost = stage.createDiv({ cls: 'snowflake-method-freeform-quick-ghost' });
+			}
+			const { zoom } = canvas.viewport();
+			const size = quickSizeOf(kind);
+			const box = stage.getBoundingClientRect();
+			ghost.setCssStyles({
+				width: `${String(size.width * zoom)}px`,
+				height: `${String(size.height * zoom)}px`,
+				left: `${String(event.clientX - box.left - (size.width * zoom) / 2)}px`,
+				top: `${String(event.clientY - box.top - (size.height * zoom) / 2)}px`,
+			});
+		});
+		button.addEventListener('pointerup', (event) => {
+			if (press === null || event.pointerId !== press.id) return;
+			const carried = ghost !== null;
+			endDrag();
+			if (!carried) return;
+			dragged = true;
+			const box = stage.getBoundingClientRect();
+			const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+			if (inside) quickAdd(kind, canvas.toPlane({ x: event.clientX, y: event.clientY }));
+		});
+		button.addEventListener('pointercancel', endDrag);
+		button.addEventListener('click', () => {
+			if (dragged) {
+				dragged = false;
+				return;
+			}
+			quickAdd(kind);
+		});
+	};
+	// The quick adds stand at the foot of the canvas, as the app's canvas
+	// keeps its own: a press adds at the middle of what is in sight, a drag
+	// carries the new node to where it is let go.
+	const quick = stage.createDiv({
+		cls: 'snowflake-method-freeform-quick',
+		attr: { role: 'toolbar', 'aria-label': t('freeformCanvas.quick') },
+	});
+	/** The quick adds: what is made on the canvas first, then the entities, the task management records, and the files and links, each section in the form's own order. */
+	const quickAddsOf = (): QuickAdd[] => {
+		const kinds = model ?? { worldbuildingKinds: [] };
+		return [
+			{ kind: 'text', icon: 'type', label: t('freeformCanvas.text.add'), section: 'canvas' },
+			{ kind: 'frame', icon: 'frame', label: t('freeformCanvas.frame.add'), section: 'canvas' },
+			{ kind: 'scene', icon: kindIcon(kinds, 'scene'), label: t('freeformCanvas.quick.scene'), section: 'entity' },
+			{ kind: 'character', icon: kindIcon(kinds, 'character'), label: t('freeformCanvas.quick.character'), section: 'entity' },
+			...kinds.worldbuildingKinds.map((kind): QuickAdd => ({
+				kind: kind.id,
+				icon: kindIcon(kinds, kind.id),
+				label: isWorldbuildingKind(kind.id) ? t(`freeformCanvas.quick.${kind.id}`) : t('freeformCanvas.quick.custom', { kind: kind.id }),
+				section: 'entity',
+			})),
+			{ kind: 'task', icon: RECORD_ICONS.task, label: t('freeformCanvas.quick.task'), section: 'task' },
+			{ kind: 'foreshadowing', icon: RECORD_ICONS.foreshadowing, label: t('freeformCanvas.quick.foreshadowing'), section: 'task' },
+			{ kind: 'revision', icon: RECORD_ICONS.revision, label: t('freeformCanvas.quick.revision'), section: 'task' },
+			{ kind: 'sticky-note', icon: RECORD_ICONS['sticky-note'], label: t('freeformCanvas.quick.stickyNote'), section: 'task' },
+			{ kind: 'file', icon: 'file', label: t('freeformCanvas.file.add'), section: 'file' },
+			{ kind: 'link', icon: 'link', label: t('freeformCanvas.link.add'), section: 'file' },
+		];
+	};
+	let quickButtons: HTMLButtonElement[] = [];
+	/** What the strip was last built for, so it is built again only when the project's own kinds change. */
+	let quickBuilt = '';
+	let addersAwake = false;
+	/**
+	 * The strip, built afresh when the project's kinds change: every type the
+	 * form offers, what is made on the canvas first, section parted from
+	 * section by a line, each symbol the one its nodes wear. The strip is told how many it
+	 * holds, so the sheet sizes the symbols down where a project's kinds
+	 * crowd it. A built-in kind is named by its class; an authored kind, whose
+	 * id is its author's, by its data alone.
+	 */
+	const buildQuick = (): void => {
+		const adds = quickAddsOf();
+		const key = adds.map((add) => `${add.kind}|${add.icon}|${add.label}`).join('\n');
+		if (key === quickBuilt) return;
+		quickBuilt = key;
+		quick.empty();
+		quickButtons = [];
+		let section: QuickAdd['section'] | null = null;
+		for (const add of adds) {
+			if (section !== null && add.section !== section) quick.createDiv({ cls: 'snowflake-method-freeform-quick-divider' });
+			section = add.section;
+			const own = QUICK_FACE_TYPES.has(add.kind) || isWorldbuildingKind(add.kind) || add.kind === 'frame';
+			const button = toolbarIconButton(quick, own ? `snowflake-method-freeform-quick-${add.kind}` : 'snowflake-method-freeform-quick-custom', add.icon, add.label);
+			button.dataset.kind = add.kind;
+			button.disabled = !addersAwake;
+			bindQuickAdd(button, add.kind);
+			quickButtons.push(button);
+		}
+		quick.setCssProps({ '--snowflake-method-quick-count': String(quickButtons.length) });
+	};
+	/** The ways to add a node, awake only where one can be added to the view on show. */
+	const paintAdders = (on: boolean): void => {
+		addersAwake = on;
+		addNodeButton.disabled = !on;
+		for (const button of quickButtons) button.disabled = !on;
+	};
 
 	const showEmpty = (text: string | null): void => {
 		empty.line.toggleClass('is-hidden', text === null);
@@ -446,6 +611,30 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return isWorldbuildingKind(kind) ? t(`worldbuilding.kind.${kind}`) : kind;
 	};
 
+	/** What a card's foot calls its note's kind: a time by its point or period, the rest by their kind. */
+	const kindWordOf = (node: CardNode): string => {
+		if (node.type === 'character') return kindWord('character');
+		if (node.entity.kind === 'time') return t(node.entity.timeKind === 'period' ? 'form.timeKind.period' : 'form.timeKind.point');
+		return kindWord(node.entity.kind);
+	};
+
+	/** Gives a character's or a worldbuilding note's card its tint, written to its note as a scene's is to its own. */
+	const setCardColor = (node: CardNode, color: MacaronColor | null): void => {
+		const path = controls.projectPath();
+		if (path === null || readOnly || disposed) return;
+		const written = node.type === 'character'
+			? controls.host.patchCharacter(node.character.id, { expectedRevision: node.character.revision, color }, path)
+			: controls.host.patchEntity(node.entity.id, { expectedRevision: node.entity.revision, color }, path);
+		written.then(
+			() => {
+				void controls.refresh();
+			},
+			(error: unknown) => {
+				if (!disposed) new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+			},
+		);
+	};
+
 	/** What a node is called, as its face shows it. */
 	const nameOf = (node: ResolvedNode): string => {
 		if (node.type === 'text') {
@@ -497,13 +686,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			case 'worldbuilding':
 				return kindIcon(kinds, node.entity.kind);
 			case 'task':
-				return 'list-todo';
 			case 'foreshadowing':
-				return 'waypoints';
 			case 'revision':
-				return 'file-diff';
 			case 'sticky-note':
-				return 'sticker';
+				return RECORD_ICONS[node.type];
 			case 'file':
 				return 'file';
 			case 'link':
@@ -596,13 +782,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		viewField.refresh();
 	};
 
+	/** At either end of the ladder, the step that would go past it is asleep. */
 	const paintZoom = (zoom: number): void => {
-		const percent = String(zoomPercent(zoom));
-		const shown = `${percent}%`;
-		if (zoomLevel.textContent !== shown) {
-			zoomLevel.setText(shown);
-			zoomLevel.setAttribute('aria-label', t('freeformCanvas.zoom.level', { percent }));
-		}
 		zoomInButton.disabled = zoomStep(zoom, 'in', FREEFORM_ZOOM) === zoom;
 		zoomOutButton.disabled = zoomStep(zoom, 'out', FREEFORM_ZOOM) === zoom;
 	};
@@ -644,6 +825,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			readOnly,
 			ground: dragDraws ? 'select' : 'pan',
 			snap: memory.snap ? FREEFORM_GRID : null,
+			snapObjects: memory.snapObjects,
 			minimap: memory.minimap,
 		});
 		canvas.setScene(made.scene);
@@ -716,6 +898,86 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		memory.snap = on;
 		controls.remember();
 		canvas.setInteraction({ snap: on ? FREEFORM_GRID : null });
+	};
+
+	const setSnapObjects = (on: boolean): void => {
+		if (memory.snapObjects === on) return;
+		memory.snapObjects = on;
+		controls.remember();
+		canvas.setInteraction({ snapObjects: on });
+	};
+
+	/** The settings button is the lock while the tab is locked, and says so. */
+	let lockWorn = 'settings';
+	const paintLock = (): void => {
+		const icon = memory.readOnly ? 'lock' : 'settings';
+		if (icon !== lockWorn) {
+			lockWorn = icon;
+			setIcon(settingsButton, icon);
+		}
+		const label = t(memory.readOnly ? 'freeformCanvas.readOnly' : 'freeformCanvas.settings');
+		if (settingsButton.getAttribute('aria-label') !== label) {
+			settingsButton.setAttribute('aria-label', label);
+			setTooltip(settingsButton, label);
+		}
+		settingsButton.setAttribute('aria-pressed', memory.readOnly ? 'true' : 'false');
+	};
+
+	/** Locks the tab's canvas, or lets it go; words still being typed are kept first. */
+	const setLocked = (on: boolean): void => {
+		if (memory.readOnly === on) return;
+		if (on) canvas.settle();
+		memory.readOnly = on;
+		controls.remember();
+		paintAll();
+	};
+
+	/** The four switches, which the settings button offers and the ground's menu offers again. */
+	const addSwitchItems = (menu: Menu): void => {
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.minimap.show'))
+				.setIcon('map')
+				.setChecked(memory.minimap)
+				.onClick(() => {
+					setMinimap(!memory.minimap);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.snap'))
+				.setIcon('grid-2x2')
+				.setChecked(memory.snap)
+				.onClick(() => {
+					setSnap(!memory.snap);
+				});
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.snapObjects'))
+				.setIcon('magnet')
+				.setChecked(memory.snapObjects)
+				.onClick(() => {
+					setSnapObjects(!memory.snapObjects);
+				});
+		});
+		// A project that cannot be written is locked by its own word, which the tab's lock cannot lift.
+		menu.addItem((item) => {
+			item
+				.setTitle(t('freeformCanvas.readOnly'))
+				.setIcon('lock')
+				.setChecked(readOnly)
+				.setDisabled(model?.readOnly ?? true)
+				.onClick(() => {
+					setLocked(!memory.readOnly);
+				});
+		});
+	};
+
+	const openSettingsMenu = (event: MouseEvent): void => {
+		const menu = new Menu();
+		addSwitchItems(menu);
+		show(menu, event);
 	};
 
 	/**
@@ -804,13 +1066,15 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		const modelMoved = nextModel !== model;
 		if (modelMoved) laneDeck.index(nextModel);
 		model = nextModel;
-		// The model's word alone, renewed with every project refresh.
-		readOnly = model?.readOnly ?? true;
+		// The model's word, renewed with every project refresh, or the tab's own lock.
+		readOnly = (model?.readOnly ?? true) || memory.readOnly;
 		root.toggleClass('is-read-only', readOnly);
+		paintLock();
+		buildQuick();
 		addViewButton.disabled = readOnly || reading === null;
 		if (reading === null || model === null || engineFailed) {
 			editViewButton.disabled = true;
-			addNodeButton.disabled = true;
+			paintAdders(false);
 			paintOptions([]);
 			showEmpty(t(loadFailed || engineFailed ? 'freeformCanvas.loadFailed' : 'freeformCanvas.loading'));
 			return;
@@ -830,7 +1094,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		paintOptions(held.views);
 		const view = viewId === null ? null : fileView(viewId);
 		editViewButton.disabled = readOnly || view === null;
-		addNodeButton.disabled = readOnly || view === null;
+		paintAdders(!readOnly && view !== null);
 		turnTo(view);
 		if (view === null) {
 			paintScene();
@@ -1200,6 +1464,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		today: () => controls.bridge().today(),
 		dateFormat: () => controls.bridge().dateFormat(),
 		locale: () => reading?.locale ?? 'en',
+		kindWord: kindWordOf,
+		setColor: setCardColor,
 		scenes: {
 			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
 			dress: (card, scene, index) => {
@@ -1590,9 +1856,6 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	// -- Frames ------------------------------------------------------------------
 
-	/** How large a frame is made where nothing tells its size: room for a few nodes. */
-	const FRAME_SIZE = { width: 480, height: 320 };
-
 	/** A frame made empty where it lands, to be dragged into; the form stands over a refusal, saying so. */
 	const addFrame = async (draft: FreeformFrameDraft, middle?: CanvasPoint): Promise<void> => {
 		canvas.settle();
@@ -1970,33 +2233,6 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		});
 		menu.addItem((item) => {
 			item
-				.setTitle(t('freeformCanvas.text.add'))
-				.setIcon('type')
-				.setDisabled(readOnly || shownViewId === null)
-				.onClick(() => {
-					addText(at);
-				});
-		});
-		menu.addItem((item) => {
-			item
-				.setTitle(t('freeformCanvas.frame.add'))
-				.setIcon('frame')
-				.setDisabled(readOnly || shownViewId === null)
-				.onClick(() => {
-					openAddNode(at, 'frame');
-				});
-		});
-		menu.addItem((item) => {
-			item
-				.setTitle(t('freeformCanvas.link.add'))
-				.setIcon('link')
-				.setDisabled(readOnly || shownViewId === null)
-				.onClick(() => {
-					openAddNode(at, 'link');
-				});
-		});
-		menu.addItem((item) => {
-			item
 				.setTitle(t('freeformCanvas.node.paste'))
 				.setIcon('clipboard-paste')
 				.setDisabled(readOnly || shownViewId === null)
@@ -2038,24 +2274,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				.onClick(resetViewport);
 		});
 		menu.addSeparator();
-		menu.addItem((item) => {
-			item
-				.setTitle(t('freeformCanvas.snap'))
-				.setIcon('grid-2x2')
-				.setChecked(memory.snap)
-				.onClick(() => {
-					setSnap(!memory.snap);
-				});
-		});
-		menu.addItem((item) => {
-			item
-				.setTitle(t('freeformCanvas.minimap.show'))
-				.setIcon('map')
-				.setChecked(memory.minimap)
-				.onClick(() => {
-					setMinimap(!memory.minimap);
-				});
-		});
+		addSwitchItems(menu);
 		show(menu, event);
 	};
 
@@ -2447,6 +2666,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			paintZoom(viewport.zoom);
 			// A colour panel hangs where its card's button stood; the card has moved from under it.
 			deck.closeColorPanel();
+			faces.closeColorPanel();
 		},
 		menu: openMenu,
 		open: (target) => {
@@ -2505,6 +2725,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		interaction: {
 			ground: 'pan',
 			snap: memory.snap ? FREEFORM_GRID : null,
+			snapObjects: memory.snapObjects,
 			minimap: memory.minimap,
 			readOnly: true,
 		},
@@ -2679,6 +2900,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			modals.closeAll('Snowflake: a freeform dialog could not be closed');
 			leaveShown();
 			disposed = true;
+			faces.closeColorPanel();
 			canvas.dispose();
 			// The cards' own words go last, through the deck's queue, which outlives the workspace.
 			unbindDeckWindow();

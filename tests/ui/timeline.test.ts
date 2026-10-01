@@ -175,7 +175,7 @@ const row = (id: string, text: string, scenes: string[] = []): TimelineRow => ({
 const time = (id: string, name: string, description = ''): WorldbuildingEntityViewModel => ({
 	id, path: `World/${name}.md`, name, kind: 'time', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
 	description, timeKind: 'point', timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
-	worldStatus: [], relationships: [], customFields: '', revision: 'r', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'r', readOnly: false, healthIssues: [],
 });
 const scene = (id: string, title: string): SceneViewModel => ({
 	id, path: `Scenes/${title}.md`, title, rank: 0, progressStatus: 'in-progress', aliases: [], categoryPaths: [],

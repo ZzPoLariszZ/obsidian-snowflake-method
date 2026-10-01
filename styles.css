@@ -15342,35 +15342,64 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	margin: 0;
 }
 
-/* The canvas's controls stand in its corner, where the app's own canvas
-   keeps its own, on a ground of their own so they read over whatever
-   passes under them. */
+/* The canvas's controls stand in its corner as the app's own canvas keeps
+   its own: a column of raised groups, each a stack of square buttons parted
+   by hairlines, in the measures the app names for its canvas where it names
+   them. */
 .snowflake-method-freeform-controls {
 	position: absolute;
 	inset-block-start: var(--size-4-2);
 	inset-inline-end: var(--size-4-2);
 	z-index: 6;
 	display: flex;
-	/* On a canvas too narrow for one row of them, they take a second. */
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--size-2-1);
-	max-width: calc(100% - 2 * var(--size-4-2));
-	padding: var(--size-2-1);
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.snowflake-method-freeform-control-group {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
+	border-radius: var(--canvas-controls-radius, var(--radius-m));
 	background-color: var(--background-primary);
-	box-shadow: var(--shadow-s);
+	box-shadow: var(--input-shadow);
 }
 
-.snowflake-method-freeform-controls .clickable-icon {
-	--icon-size: var(--icon-s);
+.snowflake-method-freeform-control-group > .clickable-icon {
+	--icon-size: var(--canvas-controls-icon-size, var(--icon-m));
+	--icon-stroke: var(--canvas-controls-icon-stroke, var(--icon-m-stroke-width));
 	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: auto;
+	margin: 0;
+	padding: var(--size-4-2);
+	border: 0;
+	border-block-end: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background-color: var(--background-primary);
+	box-shadow: none;
+	color: var(--text-muted);
+	line-height: 1;
 }
 
-.snowflake-method-freeform-controls .clickable-icon[aria-pressed='true'] {
-	background-color: var(--background-modifier-hover);
+.snowflake-method-freeform-control-group > .clickable-icon:last-child {
+	border-block-end: 0;
+}
+
+.snowflake-method-freeform-control-group > .clickable-icon:hover:not(:disabled) {
+	background-color: var(--interactive-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-freeform-control-group > .clickable-icon:disabled {
+	color: var(--text-faint);
+	cursor: default;
+}
+
+.snowflake-method-freeform-control-group > .clickable-icon[aria-pressed='true'] {
 	color: var(--interactive-accent);
 }
 
@@ -15388,38 +15417,118 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	}
 }
 
-/* How near the canvas is looked at, in figures that keep their width as
-   they change, so the buttons beside them never move under the pointer. */
-.snowflake-method-freeform-zoom-level {
-	flex: 0 0 auto;
-	min-width: 3.25em;
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	font-variant-numeric: tabular-nums;
-	text-align: center;
+/* The quick adds stand at the foot of the canvas as the app's canvas keeps
+   its own: a raised strip of symbols, section parted from section by a
+   line, each lifting a little under the pointer, pressed to add at the
+   middle of what is in sight and dragged to add where it is let go. */
+.snowflake-method-freeform-quick {
+	position: absolute;
+	inset-block-end: var(--size-4-4);
+	/* Centred between both edges rather than hung from the middle: hung from
+	   the middle, a strip has only the far half of the canvas to lay out in,
+	   and wraps at half the width. */
+	inset-inline: 0;
+	z-index: 6;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	justify-content: center;
+	width: fit-content;
+	max-width: calc(100% - 2 * var(--size-4-4));
+	margin-inline: auto;
+	border-radius: var(--radius-s);
+	background-color: var(--background-primary);
+	box-shadow: var(--input-shadow);
 }
 
-/* Fit and Reset are words, dressed as the symbols beside them are. */
-.snowflake-method-freeform-controls button.snowflake-method-freeform-control {
+.theme-dark .snowflake-method-freeform-quick {
+	background-color: var(--background-secondary);
+}
+
+/* A line stands as far from the symbols on either side as the symbols stand
+   from each other: a symbol's own padding, and the line's margin for the
+   padding of the symbol it stands in for. */
+.snowflake-method-freeform-quick-divider {
 	flex: 0 0 auto;
+	width: 1px;
+	margin: var(--size-2-2) var(--size-4-2);
+	background-color: var(--background-modifier-border);
+}
+
+.snowflake-method-freeform-quick > .clickable-icon {
+	/* A symbol a step smaller than the app's own, and smaller yet where a
+	   project's kinds crowd the strip: the room across the canvas shared out
+	   among however many the strip holds, never under the smallest symbol,
+	   at which the strip takes a second row. */
+	--icon-size: clamp(
+		var(--icon-xs),
+		calc((100cqw - 4 * var(--size-4-4)) / var(--snowflake-method-quick-count, 12) - 2 * var(--size-4-2)),
+		var(--icon-l)
+	);
+	--icon-stroke: var(--icon-l-stroke-width);
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	height: auto;
-	padding: var(--size-2-2) var(--size-4-2);
-	border: 0;
-	border-radius: var(--clickable-icon-radius, var(--radius-s));
-	background-color: transparent;
-	box-shadow: none;
+	margin: 0;
+	padding: var(--size-4-2);
+	border-radius: 0;
 	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	white-space: nowrap;
+	cursor: grab;
 }
 
-.snowflake-method-freeform-controls button.snowflake-method-freeform-control:hover:not(:disabled) {
-	background-color: var(--background-modifier-hover);
-	color: var(--text-normal);
+.snowflake-method-freeform-quick > .clickable-icon:first-child {
+	border-start-start-radius: var(--radius-s);
+	border-end-start-radius: var(--radius-s);
 }
 
-.snowflake-method-freeform-controls button.snowflake-method-freeform-control:disabled {
-	opacity: 0.5;
+.snowflake-method-freeform-quick > .clickable-icon:last-child {
+	border-start-end-radius: var(--radius-s);
+	border-end-end-radius: var(--radius-s);
+}
+
+.snowflake-method-freeform-quick > .clickable-icon:active:not(:disabled) {
+	cursor: grabbing;
+}
+
+.snowflake-method-freeform-quick > .clickable-icon:disabled {
+	color: var(--text-faint);
+	cursor: default;
+}
+
+.snowflake-method-freeform-quick > .clickable-icon svg {
+	transition: transform 90ms ease-out;
+}
+
+@media (hover: hover) {
+	.snowflake-method-freeform-quick > .clickable-icon:hover:not(:disabled) {
+		background-color: transparent;
+		color: var(--interactive-accent);
+	}
+
+	.snowflake-method-freeform-quick > .clickable-icon:hover:not(:disabled) svg {
+		transform: translateY(-6px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.snowflake-method-freeform-quick > .clickable-icon svg {
+		transition: none;
+	}
+
+	.snowflake-method-freeform-quick > .clickable-icon:hover:not(:disabled) svg {
+		transform: none;
+	}
+}
+
+/* The node a quick add is carrying, drawn where it would land. */
+.snowflake-method-freeform-quick-ghost {
+	position: absolute;
+	z-index: 7;
+	border: 1px dashed var(--interactive-accent);
+	border-radius: var(--radius-m);
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	pointer-events: none;
 }
 
 /* What the engine draws is coloured from the theme: every name the
@@ -15991,7 +16100,27 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-face.is-link {
 	display: flex;
 	flex-direction: column;
+	justify-content: center;
 	padding: var(--size-4-3);
+}
+
+/* A file says its kind by its extension, as the app's own file list does. */
+.snowflake-method-freeform-file-ext {
+	flex: 0 0 auto;
+	padding: 0 var(--size-2-1);
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.05em;
+	line-height: 1.5;
+	text-transform: uppercase;
+}
+
+.snowflake-method-freeform-file-ext.is-hidden,
+.snowflake-method-freeform-file-media.is-hidden {
+	display: none;
 }
 
 /* In a head that is a row, the way to the menu stands at the row's end and floats nowhere. */
@@ -16190,6 +16319,30 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	stroke-linecap: round;
 }
 
+/* The lines a node being moved or sized is drawn level with, laid over
+   everything and under no pointer. */
+.snowflake-method-freeform-guides {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	pointer-events: none;
+}
+
+.snowflake-method-freeform-guide {
+	position: absolute;
+	background-color: var(--interactive-accent);
+}
+
+.snowflake-method-freeform-guide.is-upright {
+	inset-block: 0;
+	width: 1px;
+}
+
+.snowflake-method-freeform-guide.is-level {
+	inset-inline: 0;
+	height: 1px;
+}
+
 .snowflake-method-freeform-canvas .react-flow__minimap.snowflake-method-freeform-minimap {
 	overflow: hidden;
 	border: 1px solid var(--background-modifier-border);
@@ -16211,9 +16364,6 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		border-radius: 4px;
 	}
 
-	.snowflake-method-freeform-controls {
-		gap: var(--size-2-3);
-	}
 }
 
 /* The search stands in the toolbar between the pencil and the symbols. It

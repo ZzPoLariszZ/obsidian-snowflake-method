@@ -47,8 +47,10 @@ import type {
 	SessionPanelContext,
 } from './session-panel';
 import type {
+	CharacterPatch,
 	CustomFieldTemplateInfo,
 	DefinitionForest,
+	EntityPatch,
 	KindMutationResult,
 	MemberUsage,
 	ProjectStructureIssueCode,
@@ -160,6 +162,8 @@ export interface CharacterViewModel {
 	goal: string;
 	conflict: string;
 	growth: string;
+	/** The tint its card wears; null for none. */
+	color: MacaronColor | null;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	/** The custom-fields block as stored; empty while the note carries none. */
@@ -225,6 +229,8 @@ export interface WorldbuildingEntityViewModel {
 	/** The stored start or end names a note the Vault no longer has. */
 	timeStartMissing: boolean;
 	timeEndMissing: boolean;
+	/** The tint its card wears; null for none. */
+	color: MacaronColor | null;
 	worldStatus: RecordLine[];
 	relationships: RecordLine[];
 	/** The custom-fields block as stored; empty while the note carries none. */
@@ -858,6 +864,10 @@ export interface DashboardHost {
 	 * project stays explicit so queued saves remain bound after a tab closes.
 	 */
 	patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string>;
+	/** Writes part of a character's note, as a card does its tint; resolves to the note's new revision. */
+	patchCharacter(id: string, patch: CharacterPatch, projectPath: string): Promise<string>;
+	/** Writes part of a worldbuilding note, as a card does its tint; resolves to the note's new revision. */
+	patchEntity(id: string, patch: EntityPatch, projectPath: string): Promise<string>;
 	/** The named project's manuscript notes in reading order, for pickers and filters. */
 	listManuscriptNotes(projectPath: string): Promise<{ path: string; title: string }[]>;
 	/**

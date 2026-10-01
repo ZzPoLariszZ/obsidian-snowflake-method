@@ -241,6 +241,8 @@ export class SnowflakeStoryStructureView extends ItemView {
 				viewId: this.freeformMemory.viewId,
 				minimap: this.freeformMemory.minimap,
 				snap: this.freeformMemory.snap,
+				snapObjects: this.freeformMemory.snapObjects,
+				readOnly: this.freeformMemory.readOnly,
 			},
 		};
 	}

@@ -131,21 +131,25 @@ export function defaultBeatSheetSettings(): BeatSheetSettings {
 }
 
 /**
- * How the freeform canvas is set: the view the tab shows, and the two
- * switches, the minimap on until it is put away and the grid off until it
- * is asked for. A project keeps each of its views in a file of its own and
- * no file is the whole project's, so which one is on show is the tab's to
- * remember; a tab that names none, or one that has gone, shows the view
- * changed last.
+ * How the freeform canvas is set: the view the tab shows, and its four
+ * switches, the minimap on until it is put away, the grid, the drawing to
+ * other nodes and the lock off until asked for. A project keeps each of its
+ * views in a file of its own and no file is the whole project's, so which
+ * one is on show is the tab's to remember; a tab that names none, or one
+ * that has gone, shows the view changed last.
  */
 export interface FreeformSettings {
 	viewId: string | null;
 	minimap: boolean;
 	snap: boolean;
+	/** A node moved or sized by hand is drawn level with the nodes about it. */
+	snapObjects: boolean;
+	/** Nothing on the canvas is moved, sized, joined, added or removed until the lock is let go. */
+	readOnly: boolean;
 }
 
 export function defaultFreeformSettings(): FreeformSettings {
-	return { viewId: null, minimap: true, snap: false };
+	return { viewId: null, minimap: true, snap: false, snapObjects: false, readOnly: false };
 }
 
 export interface StoryStructureViewStateSnapshot {
@@ -260,6 +264,14 @@ export function mergeStoryStructureViewState(
 			typeof freeformCandidate.snap === 'boolean'
 				? freeformCandidate.snap
 				: current.freeform.snap,
+		snapObjects:
+			typeof freeformCandidate.snapObjects === 'boolean'
+				? freeformCandidate.snapObjects
+				: current.freeform.snapObjects,
+		readOnly:
+			typeof freeformCandidate.readOnly === 'boolean'
+				? freeformCandidate.readOnly
+				: current.freeform.readOnly,
 	};
 	const state = { projectPath, visualization, corkboard, timeline, beatSheet, freeform };
 	return {
@@ -276,7 +288,9 @@ export function mergeStoryStructureViewState(
 			state.beatSheet.beatsCollapsed !== current.beatSheet.beatsCollapsed ||
 			state.freeform.viewId !== current.freeform.viewId ||
 			state.freeform.minimap !== current.freeform.minimap ||
-			state.freeform.snap !== current.freeform.snap,
+			state.freeform.snap !== current.freeform.snap ||
+			state.freeform.snapObjects !== current.freeform.snapObjects ||
+			state.freeform.readOnly !== current.freeform.readOnly,
 	};
 }
 
@@ -357,7 +371,7 @@ export function beatSheetMemory(settings?: BeatSheetSettings): BeatSheetMemory {
 }
 
 /**
- * What outlives a mount of the freeform canvas: the three settings the view
+ * What outlives a mount of the freeform canvas: the settings the view
  * persists, and what lasts the session -- where each view was looked at from
  * in this tab, which a view's file says only for a tab that has not looked
  * at it yet.

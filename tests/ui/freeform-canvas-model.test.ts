@@ -21,6 +21,7 @@ import {
 	sameSelection,
 	selectionOf,
 	snapSized,
+	snappedToObjects,
 	steppedViewport,
 	wheelZoomFactor,
 	withSelection,
@@ -217,6 +218,64 @@ describe('taking a gesture’s changes in', () => {
 		expect(snapSized({ x: 100, y: 100, width: 10, height: 60 }, stood, 20, least)).toEqual({ x: 100, y: 100, width: 40, height: 60 });
 		const next = { x: 103, y: 100, width: 97, height: 60 };
 		expect(snapSized(next, stood, 0, least)).toBe(next);
+	});
+
+	it('draws what moves level with a node that stands, within reach, and says the lines it drew to', () => {
+		const held = hold([node('a', { x: 0, y: 0, width: 100, height: 60 }), node('b', { x: 300, y: 200, width: 100, height: 60 })]);
+		// Within reach of b's near side each way: drawn to both by the one move.
+		const near = snappedToObjects(held, [{ kind: 'position', id: 'a', x: 304, y: 197, dragging: true }], 6);
+		expect(near.changes).toEqual([{ kind: 'position', id: 'a', x: 300, y: 200, dragging: true }]);
+		expect(near.guides).toEqual({ x: 300, y: 200 });
+		// A far side comes level with a near one too; nothing across the other way.
+		const edge = snappedToObjects(held, [{ kind: 'position', id: 'a', x: 196, y: 500, dragging: true }], 6);
+		expect(edge.changes[0]).toMatchObject({ x: 200, y: 500 });
+		expect(edge.guides).toEqual({ x: 300, y: null });
+		// Out of reach, the report stands as it came, the very array; and no reach is no drawing.
+		const changes = [{ kind: 'position' as const, id: 'a', x: 150, y: 400, dragging: true }];
+		expect(snappedToObjects(held, changes, 6)).toEqual({ changes, guides: null });
+		expect(snappedToObjects(held, changes, 6).changes).toBe(changes);
+		expect(snappedToObjects(held, [{ kind: 'position', id: 'a', x: 304, y: 197, dragging: true }], 0).guides).toBeNull();
+	});
+
+	it('moves a whole drag by one move, round the box of everything that moves, and takes no line from what a moving frame carries', () => {
+		const held = hold([
+			frame('f', { x: 0, y: 0, width: 400, height: 300 }),
+			node('in', { x: 20, y: 20, frame: 'f' }),
+			node('b', { x: 1_000, y: 0, width: 100, height: 60 }),
+		]);
+		// The frame's far side comes 4 short of b's near one; its member rides along and is no line to draw to.
+		const drawn = snappedToObjects(held, [{ kind: 'position', id: 'f', x: 596, y: 0, dragging: true }], 6);
+		expect(drawn.changes).toEqual([{ kind: 'position', id: 'f', x: 600, y: 0, dragging: true }]);
+		expect(drawn.guides).toEqual({ x: 1_000, y: 0 });
+		// Two dragged together move by the one move, their box drawn as one: here its near side to the frame's far one.
+		const pair = snappedToObjects(held, [
+			{ kind: 'position', id: 'in', x: 404, y: 500, dragging: true },
+			{ kind: 'position', id: 'b', x: 1_004, y: 500, dragging: true },
+		], 6);
+		expect(pair.changes.map((change) => (change.kind === 'position' ? change.x : null))).toEqual([400, 1_000]);
+		expect(pair.guides).toEqual({ x: 400, y: null });
+	});
+
+	it('draws only the sides a hand moved, each on its own, when a node is sized', () => {
+		const held = hold([
+			node('a', { x: 0, y: 0, width: 100, height: 60 }),
+			node('b', { x: 300, y: 200, width: 100, height: 60 }),
+			node('c', { x: -150, y: 500, width: 100, height: 60 }),
+		]);
+		// The far side pulled to within reach of b's near one lands on it; the near side stood and stays.
+		const far = snappedToObjects(held, [{ kind: 'size', id: 'a', width: 297, height: 60, resizing: true }], 6);
+		expect(far.changes).toEqual([{ kind: 'size', id: 'a', width: 300, height: 60, resizing: true }]);
+		expect(far.guides).toEqual({ x: 300, y: null });
+		// The near side pulled lands on c's far one, and the far side keeps its place.
+		const near = snappedToObjects(held, [
+			{ kind: 'position', id: 'a', x: -53, y: 0, dragging: false },
+			{ kind: 'size', id: 'a', width: 153, height: 60, resizing: true },
+		], 6);
+		expect(near.changes).toEqual([
+			{ kind: 'position', id: 'a', x: -50, y: 0, dragging: false },
+			{ kind: 'size', id: 'a', width: 150, height: 60, resizing: true },
+		]);
+		expect(near.guides).toEqual({ x: -50, y: null });
 	});
 
 	it('says what is chosen, in the order held, and sets exactly what is named as chosen', () => {

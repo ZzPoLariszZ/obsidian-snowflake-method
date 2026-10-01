@@ -539,6 +539,8 @@ export interface CharacterInput {
 export interface CharacterPatch {
   /** Revision shown to the editor before the user began changing fields. */
   expectedRevision: string;
+  /** The card's tint, null to take it off. Absent leaves the note as it is. */
+  color?: MacaronColor | null;
   name?: string;
   type?: CharacterType;
   aliases?: string[];
@@ -582,6 +584,8 @@ export interface CharacterRecord {
   goal: string;
   conflict: string;
   growth: string;
+  /** Null while the note wears no colour, or names one this build does not know. */
+  color: MacaronColor | null;
   /** Record lines from the note's body sections. */
   worldStatus: RecordLine[];
   relationships: RecordLine[];
@@ -720,6 +724,8 @@ export interface WorldbuildingRecord {
   /** Raw stored term, a wikilink or plain text; empty when absent. */
   timeStart: string;
   timeEnd: string;
+  /** Null while the note wears no colour, or names one this build does not know. */
+  color: MacaronColor | null;
   worldStatus: RecordLine[];
   relationships: RecordLine[];
   /**
@@ -759,6 +765,8 @@ export interface EntityInput {
 export interface EntityPatch {
   /** Revision shown to the editor before the user began changing fields. */
   expectedRevision: string;
+  /** The card's tint, null to take it off. Absent leaves the note as it is. */
+  color?: MacaronColor | null;
   name?: string;
   aliases?: string[];
   categoryPaths?: string[];

@@ -258,6 +258,7 @@ const ENTITY_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.timeEnd,
   FRONTMATTER_KEYS.description,
   FRONTMATTER_KEYS.progressStatus,
+  FRONTMATTER_KEYS.sceneColor,
 ];
 
 /** The same sequence for a scene: what it is, then the story, then progress. */
@@ -295,6 +296,7 @@ const CHARACTER_FRONTMATTER_ORDER: readonly string[] = [
   FRONTMATTER_KEYS.conflict,
   FRONTMATTER_KEYS.growth,
   FRONTMATTER_KEYS.progressStatus,
+  FRONTMATTER_KEYS.sceneColor,
 ];
 
 export class ProjectCreationInterruptedError extends Error {
@@ -2396,6 +2398,10 @@ export class SnowflakeProjectService {
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.goal, patch.goal);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.conflict, patch.conflict);
     copyDefined(frontmatterPatch, FRONTMATTER_KEYS.growth, patch.growth);
+    // The tint lives under the one key every note's tint does, a scene's included.
+    if (patch.color !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
+    }
 
     const nextRecords = {
       worldStatus: patch.worldStatus ?? character.worldStatus,
@@ -5362,6 +5368,9 @@ export class SnowflakeProjectService {
       copyDefined(frontmatterPatch, FRONTMATTER_KEYS.timeStart, patch.timeStart?.trim());
       copyDefined(frontmatterPatch, FRONTMATTER_KEYS.timeEnd, patch.timeEnd?.trim());
     }
+    if (patch.color !== undefined) {
+      frontmatterPatch[FRONTMATTER_KEYS.sceneColor] = patch.color ?? undefined;
+    }
 
     const nextRecords = {
       worldStatus: patch.worldStatus ?? entity.worldStatus,
@@ -6287,6 +6296,7 @@ export class SnowflakeProjectService {
     }
     const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
     const timeKindValue = record.frontmatter[FRONTMATTER_KEYS.timeKind];
+    const storedColor = record.frontmatter[FRONTMATTER_KEYS.sceneColor];
     return {
       id: entityId,
       entityId,
@@ -6305,6 +6315,7 @@ export class SnowflakeProjectService {
       timeKind: isTimeKind(timeKindValue) ? timeKindValue : null,
       timeStart: asString(record.frontmatter[FRONTMATTER_KEYS.timeStart]),
       timeEnd: asString(record.frontmatter[FRONTMATTER_KEYS.timeEnd]),
+      color: isMacaronColor(storedColor) ? storedColor : null,
       ...reading,
       // Entities change nothing but the stamp between schemas, so the stamp
       // is the whole test of whether the migration has reached the note.
@@ -7862,6 +7873,7 @@ export class SnowflakeProjectService {
       this.characterReadings.set(record, reading);
     }
     const progressStatusValue = record.frontmatter[FRONTMATTER_KEYS.progressStatus];
+    const storedColor = record.frontmatter[FRONTMATTER_KEYS.sceneColor];
     return {
       id: characterId,
       characterId,
@@ -7885,6 +7897,7 @@ export class SnowflakeProjectService {
       goal: asString(record.frontmatter[FRONTMATTER_KEYS.goal]),
       conflict: asString(record.frontmatter[FRONTMATTER_KEYS.conflict]),
       growth: asString(record.frontmatter[FRONTMATTER_KEYS.growth]),
+      color: isMacaronColor(storedColor) ? storedColor : null,
       ...reading,
       readOnly: record.readOnly,
     };

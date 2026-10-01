@@ -14,6 +14,19 @@ const { menus, positions, hidden, viewFields, notices, rendered, searches } = vi
 	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
 }));
 
+// A panel hangs by the window's own measures, which the plain surface has none of: here it is simply laid in the surface.
+vi.mock('../../src/ui/anchored-panel', async (importOriginal) => {
+	const runtime = await importOriginal<typeof import('../../src/ui/anchored-panel')>();
+	return {
+		...runtime,
+		hangPanel: (anchor: HTMLElement, spec: Parameters<typeof runtime.hangPanel>[1]) => {
+			const el = (anchor as unknown as CorkboardElement).dom.container.createDiv({ cls: spec.cls, attr: { role: 'dialog' } });
+			spec.build(el as unknown as HTMLElement);
+			return { el, release: vi.fn() };
+		},
+	};
+});
+
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
 	class Modal extends runtime.Modal {
@@ -229,12 +242,12 @@ const scene = (id: string, title: string): SceneViewModel => ({
 const character = (id: string, name: string): CharacterViewModel => ({
 	id, path: `Characters/${name}.md`, name, rank: 0, type: null, progressStatus: 'complete', aliases: ['Nan'], categoryPaths: [],
 	oneSentenceStoryline: 'Wants out', oneParagraphStoryline: '', motivation: 'Fear', goal: '', conflict: '', growth: '',
-	worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'c1', readOnly: false, healthIssues: [],
 });
 const place = (id: string, name: string): WorldbuildingEntityViewModel => ({
 	id, path: `World/${name}.md`, name, kind: 'location', rank: 0, progressStatus: null, aliases: [], categoryPaths: [],
 	description: 'A harbour', timeKind: null, timeStart: '', timeEnd: '', timeStartMissing: false, timeEndMissing: false,
-	worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [],
+	color: null, worldStatus: [], relationships: [], customFields: '', revision: 'w1', readOnly: false, healthIssues: [],
 });
 
 const submit = (form: unknown, value: unknown): Promise<void> =>
@@ -450,7 +463,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		],
 		worldbuilding: { location: [place('loc-1', 'Harbour')], Faction: [] },
 	} as unknown as ProjectDashboardModel;
-	const memory = freeformMemory({ viewId: options.viewId ?? null, minimap: false, snap: options.snap === true });
+	const memory = freeformMemory({ viewId: options.viewId ?? null, minimap: false, snap: options.snap === true, snapObjects: false, readOnly: false });
 	const foreshadowingTable = { open: vi.fn(() => Promise.resolve()), openUnresolved: vi.fn(() => Promise.resolve()) };
 	const revisionTable = { open: vi.fn(() => Promise.resolve()), openUnresolved: vi.fn(() => Promise.resolve()) };
 	const stickyNotes = { float: vi.fn(() => Promise.resolve()) };
@@ -461,6 +474,8 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		openCharacterForm: vi.fn((_id: string, _path?: string, _onSaved?: () => void) => Promise.resolve()),
 		openEntityForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
 		patchScene: vi.fn(() => Promise.resolve('r2')),
+		patchCharacter: vi.fn(() => Promise.resolve('c2')),
+		patchEntity: vi.fn(() => Promise.resolve('w2')),
 		isReduceMotionEnabled: vi.fn(() => false),
 		revealTask: vi.fn((_path: string, _id: string) => Promise.resolve(true)),
 		foreshadowingTable: vi.fn(() => foreshadowingTable),
@@ -541,7 +556,6 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		emptyWords: (): string => fixture.emptyLine().children[1]!.textContent,
 		stage: (): CorkboardElement => root.querySelector('.snowflake-method-freeform-stage')!,
 		hint: (): CorkboardElement => root.querySelector('.snowflake-method-freeform-hint')!,
-		zoomLevel: (): CorkboardElement => root.querySelector('.snowflake-method-freeform-zoom-level')!,
 		/** What stands on the canvas now, as it was last told. */
 		scene: (): CanvasScene => canvas.state.scenes[canvas.state.scenes.length - 1]!,
 		nodes: (): string[] => fixture.scene().nodes.map((node) => node.id),
@@ -564,11 +578,20 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			port().menu(target, event as unknown as MouseEvent);
 			return menus[0];
 		},
-		/** Adds a text node from the ground's menu, at the middle of what is in sight; hands back its id. */
+		/** Adds a text node by the quick add at the canvas's foot, at the middle of what is in sight; hands back its id. */
 		addText: (): string => {
 			const before = new Set(fixture.nodes());
-			fixture.menuAt({ kind: 'ground', at: canvas.state.centre })!.find((item) => item.title === 'freeformCanvas.text.add')!.click();
+			fire(fixture.button('snowflake-method-freeform-quick-text'), 'click');
 			return fixture.nodes().find((id) => !before.has(id)) ?? '';
+		},
+		/** Carries a quick add from the canvas's foot and lets it go at a point, which the plain canvas takes for a point of the plane. */
+		quickDrag: (kind: string, to: { x: number; y: number }, pointerId = 7): void => {
+			const button = fixture.button(`snowflake-method-freeform-quick-${kind}`);
+			Object.assign(fixture.stage(), { getBoundingClientRect: () => ({ left: 0, top: 0, right: 10_000, bottom: 10_000 }) });
+			fire(button, 'pointerdown', { pointerId, button: 0, clientX: 10, clientY: 10 });
+			fire(button, 'pointermove', { pointerId, clientX: to.x, clientY: to.y });
+			fire(button, 'pointerup', { pointerId, clientX: to.x, clientY: to.y });
+			fire(button, 'click');
 		},
 		choose: (selection: Partial<CanvasSelection>): void => {
 			canvas.state.selection = { nodes: [], edges: [], ...selection };
@@ -670,8 +693,6 @@ describe('the freeform workspace', () => {
 	it('looks at a view from where its file says it was last looked at from', async () => {
 		const fixture = await laid();
 		expect(fixture.canvas.moves).toEqual([{ kind: 'exact', viewport: { x: 12, y: 34, zoom: 0.5 } }]);
-		expect(fixture.zoomLevel().textContent).toBe('50%');
-		expect(fixture.zoomLevel().getAttribute('aria-label')).toBe('freeformCanvas.zoom.level(percent=50)');
 	});
 
 	it('says there are no views, and offers only to make one', async () => {
@@ -848,7 +869,6 @@ describe('the freeform views', () => {
 		await settle();
 		expect(fixture.nodes()).toEqual(['b1']);
 		expect(fixture.canvas.moves[fixture.canvas.moves.length - 1]).toEqual({ kind: 'exact', viewport: { x: 7, y: 8, zoom: 2 } });
-		expect(fixture.zoomLevel().textContent).toBe('200%');
 		// What was chosen on the view left is chosen no more.
 		expect(fixture.canvas.selection).toEqual(NO_CANVAS_SELECTION);
 		expect(fixture.memory.viewId).toBe('b');
@@ -1063,7 +1083,7 @@ describe('text nodes', () => {
 		expect(fixture.canvas.focused).toBe(1);
 	});
 
-	it('adds one where the ground was pressed twice, and one from the ground’s menu where that was opened', async () => {
+	it('adds one where the ground was pressed twice, and one where the quick add was carried to and let go', async () => {
 		const fixture = workspace([view('a')]);
 		await settle();
 		fixture.port().open({ kind: 'ground', at: { x: 1_000, y: 2_000 } }, {} as MouseEvent);
@@ -1071,8 +1091,9 @@ describe('text nodes', () => {
 		expect(fixture.node(first)).toMatchObject({ x: 1_000 - FREEFORM_SIZE.width / 2, y: 2_000 - FREEFORM_SIZE.height / 2 });
 		fixture.type(first, 'Here');
 		await settle();
-		const menu = fixture.menuAt({ kind: 'ground', at: { x: 1_000, y: 2_000 } })!;
-		menu.find((item) => item.title === 'freeformCanvas.text.add')!.click();
+		fixture.quickDrag('text', { x: 1_000, y: 2_000 });
+		// The click that follows a drag adds nothing more.
+		expect(fixture.nodes()).toHaveLength(2);
 		const second = fixture.nodes()[1]!;
 		// The spot is taken, so the second steps aside.
 		expect(fixture.node(second)).toMatchObject({
@@ -1511,22 +1532,21 @@ describe('taking a change back', () => {
 		fixture.viewHeld('a').placements.find((placement) => placement.id === id);
 	const written = (fixture: Fixture, at: number): readonly FreeformStep[] => fixture.bridge.transact.mock.calls[at]![1];
 
-	it('stands its two symbols ahead of the zoom step, asleep until there is a change to take back', async () => {
+	it('stands its two symbols in the last group of the controls, asleep until there is a change to take back', async () => {
 		const fixture = await laid();
 		expect(undoButton(fixture).getAttribute('aria-label')).toBe('freeformCanvas.undo');
 		expect(redoButton(fixture).getAttribute('aria-label')).toBe('freeformCanvas.redo');
 		expect(undoButton(fixture).disabled).toBe(true);
 		expect(redoButton(fixture).disabled).toBe(true);
+		// The controls are the app's own canvas's, group by group.
 		const panel = fixture.root.querySelector('.snowflake-method-freeform-controls')!;
-		expect(panel.children.map((child) => [...child.classes].find((cls) => cls.startsWith('snowflake-method-freeform-') && cls !== 'snowflake-method-freeform-control'))).toEqual([
-			'snowflake-method-freeform-select',
-			'snowflake-method-freeform-undo',
-			'snowflake-method-freeform-redo',
-			'snowflake-method-freeform-zoom-out',
-			'snowflake-method-freeform-zoom-level',
-			'snowflake-method-freeform-zoom-in',
-			'snowflake-method-freeform-fit',
-			'snowflake-method-freeform-reset',
+		const named = (element: CorkboardElement): string | undefined =>
+			[...element.classes].find((cls) => cls.startsWith('snowflake-method-freeform-'));
+		expect(panel.children.map((group) => group.classes.has('snowflake-method-freeform-control-group'))).toEqual([true, true, true]);
+		expect(panel.children.map((group) => group.children.map(named))).toEqual([
+			['snowflake-method-freeform-settings', 'snowflake-method-freeform-select'],
+			['snowflake-method-freeform-zoom-in', 'snowflake-method-freeform-reset', 'snowflake-method-freeform-fit', 'snowflake-method-freeform-zoom-out'],
+			['snowflake-method-freeform-undo', 'snowflake-method-freeform-redo'],
 		]);
 	});
 
@@ -1943,6 +1963,34 @@ describe('what a node opens', () => {
 		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Scenes/Arrival.md');
 	});
 
+	it('says the kind on a card’s foot, and tints the card from its palette, written to its note through the host', async () => {
+		const fixture = workspace([view('a', {
+			placements: [
+				{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' } },
+				{ ...text('w1', ''), resource: { type: 'entity', kind: 'location', id: 'loc-1', name: 'Harbour' }, x: 300 },
+			],
+		})]);
+		await settle();
+		expect(fixture.face('c1').querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('form.group.character');
+		expect(fixture.face('w1').querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('worldbuilding.kind.location');
+		const swatchesOf = (): CorkboardElement[] =>
+			fixture.dom.container.querySelector('.snowflake-method-corkboard-color-panel')!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch');
+		fire(fixture.face('c1').querySelector('.snowflake-method-corkboard-color')!, 'click');
+		swatchesOf()[2]!.dispatch('click');
+		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('char-1', { expectedRevision: 'c1', color: 'macaron-2' }, 'P');
+		await settle();
+		expect(fixture.refresh).toHaveBeenCalled();
+		fire(fixture.face('w1').querySelector('.snowflake-method-corkboard-color')!, 'click');
+		swatchesOf()[0]!.dispatch('click');
+		expect(fixture.host.patchEntity).toHaveBeenCalledWith('loc-1', { expectedRevision: 'w1', color: null }, 'P');
+		// On a project that cannot be written the palette sleeps.
+		const held = workspace([view('a', {
+			placements: [{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' } }],
+		})], { readOnly: true });
+		await settle();
+		expect(held.face('c1').querySelector('.snowflake-method-corkboard-color')!.disabled).toBe(true);
+	});
+
 	it('opens a character’s and a worldbuilding note’s form, and their notes', async () => {
 		const fixture = workspace([view('a', {
 			placements: [
@@ -2079,10 +2127,10 @@ describe('frames', () => {
 	const placed = (fixture: Fixture, id: string) => fixture.viewHeld('a').placements.find((placement) => placement.id === id);
 	const pickFrom = (form: unknown) => form as { times: PickerOption[]; pick: (option: PickerOption) => void };
 
-	it('adds a frame through the form, titled and tinted, where the ground’s menu was opened, and chooses it', async () => {
+	it('adds a frame through the form, titled and tinted, where the quick add was let go, and chooses it', async () => {
 		const fixture = await laid();
 		const forms = watch(FreeformNodeFormModal);
-		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((item) => item.title === 'freeformCanvas.frame.add')!.click();
+		fixture.quickDrag('frame', { x: 2_000, y: 3_000 });
 		await settle();
 		expect((forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('frame');
 		await submit(forms[0], { type: 'frame', frame: { title: 'Act one', color: 'macaron-2' } });
@@ -2473,7 +2521,7 @@ describe('files and links', () => {
 	it('adds a link and a file through the form, the files listed by the bridge with whether the view holds them', async () => {
 		const fixture = await withFiles();
 		const forms = watch(FreeformNodeFormModal);
-		fixture.menuAt({ kind: 'ground', at: { x: 2_000, y: 3_000 } })!.find((item) => item.title === 'freeformCanvas.link.add')!.click();
+		fixture.quickDrag('link', { x: 2_000, y: 3_000 });
 		await settle();
 		const options = (forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options;
 		expect(options.initialType).toBe('link');
@@ -2867,9 +2915,9 @@ const COPY_ITEMS = ['freeformCanvas.node.duplicate', 'freeformCanvas.node.copy',
 /** The tail of every node's menu: the node joins what is chosen, or leaves it, and is taken off the view. */
 const TAIL_ITEMS = ['freeformCanvas.node.select', 'timeline.timeline.removeFromView'];
 const GROUND_ITEMS = [
-	'freeformCanvas.node.add', 'freeformCanvas.text.add', 'freeformCanvas.frame.add', 'freeformCanvas.link.add', 'freeformCanvas.node.paste',
+	'freeformCanvas.node.add', 'freeformCanvas.node.paste',
 	'freeformCanvas.node.selectAll', 'freeformCanvas.fit.all', 'freeformCanvas.fit.selection', 'freeformCanvas.reset.viewport',
-	'freeformCanvas.snap', 'freeformCanvas.minimap.show',
+	'freeformCanvas.minimap.show', 'freeformCanvas.snap', 'freeformCanvas.snapObjects', 'freeformCanvas.readOnly',
 ];
 /** What a menu offers the placements chosen, of frames. */
 const FRAME_ITEMS = ['freeformCanvas.frame.group', 'freeformCanvas.frame.moveTo'];
@@ -2997,10 +3045,15 @@ describe('searching a view', () => {
 		expect(bare.chord(['Mod'], 'f').listener()).toBe(true);
 	});
 
-	it('snaps to the grid and shows the minimap from the ground’s menu, remembers both, and puts the minimap away by its button', async () => {
+	it('snaps to the grid and to other nodes and shows the minimap from the settings menu, remembers each, and puts the minimap away by its button', async () => {
 		const fixture = await laid();
-		const item = (title: string) => fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.find((entry) => entry.title === title)!;
-		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.minimap.show').checked]).toEqual([false, false]);
+		const settings = fixture.button('snowflake-method-freeform-settings');
+		const item = (title: string) => {
+			menus.length = 0;
+			fire(settings, 'click', { detail: 1 });
+			return menus[0]!.find((entry) => entry.title === title)!;
+		};
+		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.snapObjects').checked, item('freeformCanvas.minimap.show').checked]).toEqual([false, false, false]);
 		const collapse = fixture.button('snowflake-method-freeform-minimap-collapse');
 		expect(collapse.getAttribute('aria-label')).toBe('freeformCanvas.minimap.collapse');
 		expect(collapse.classes.has('is-hidden')).toBe(true);
@@ -3009,25 +3062,29 @@ describe('searching a view', () => {
 		expect(fixture.memory.snap).toBe(true);
 		expect(fixture.canvas.interaction?.snap).toBe(FREEFORM_GRID);
 		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 1);
+		item('freeformCanvas.snapObjects').click();
+		expect(fixture.memory.snapObjects).toBe(true);
+		expect(fixture.canvas.interaction?.snapObjects).toBe(true);
 		item('freeformCanvas.minimap.show').click();
 		expect(fixture.memory.minimap).toBe(true);
 		expect(fixture.canvas.interaction?.minimap).toBe(true);
 		expect(collapse.classes.has('is-hidden')).toBe(false);
-		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.minimap.show').checked]).toEqual([true, true]);
+		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.snapObjects').checked, item('freeformCanvas.minimap.show').checked]).toEqual([true, true, true]);
 		fire(collapse, 'click');
 		expect(fixture.memory.minimap).toBe(false);
 		expect(fixture.canvas.interaction?.minimap).toBe(false);
 		expect(collapse.classes.has('is-hidden')).toBe(true);
-		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 3);
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 4);
 		// Each turn of a switch is remembered once.
 		item('freeformCanvas.snap').click();
 		item('freeformCanvas.snap').click();
-		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 5);
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 6);
 		// A tab that remembered them opens with them.
 		const remembered = workspace([laidView()], { snap: true });
 		remembered.memory.minimap = true;
+		remembered.memory.snapObjects = true;
 		await settle();
-		expect(remembered.canvas.interaction?.snap).toBe(FREEFORM_GRID);
+		expect(remembered.canvas.interaction).toMatchObject({ snap: FREEFORM_GRID, snapObjects: true, minimap: true });
 	});
 
 	it('names the toolbar’s two words for a reader, each with a symbol for the narrow toolbar', async () => {
@@ -3102,9 +3159,9 @@ describe('the menus', () => {
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
 			['actions.edit', true], ['actions.openNote', false],
 		]);
-		// Looking about, and the two switches, change nothing in the project.
+		// Looking about and the switches change nothing in the project; the lock is the project's own there.
 		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
-			true, true, true, true, true, false, false, true, false, false, false,
+			true, true, false, false, true, false, false, false, false, true,
 		]);
 	});
 
@@ -3113,14 +3170,14 @@ describe('the menus', () => {
 		const menu = fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!;
 		expect(menu.map((item) => item.title)).toEqual(GROUND_ITEMS);
 		// Nothing is chosen: there is nothing to bring into sight.
-		expect(menu.map((item) => item.disabled)).toEqual([false, false, false, false, false, false, false, true, false, false, false]);
-		menu[6]!.click();
-		menu[8]!.click();
+		expect(menu.map((item) => item.disabled)).toEqual([false, false, false, false, true, false, false, false, false, false]);
+		menu[3]!.click();
+		menu[5]!.click();
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'fit', of: 'all' }, { kind: 'reset' }]);
 		const bare = workspace([view('a')]);
 		await settle();
 		expect(bare.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([
-			false, false, false, false, false, true, true, true, false, false, false,
+			false, false, true, true, true, false, false, false, false, false,
 		]);
 	});
 
@@ -3163,13 +3220,12 @@ describe('the menus', () => {
 });
 
 describe('the canvas controls', () => {
-	it('steps nearer and further, and says how near the canvas is looked at', async () => {
+	it('steps nearer and further, and sleeps at either end of the ladder', async () => {
 		const fixture = await laid();
 		fire(fixture.button('snowflake-method-freeform-zoom-in'), 'click');
 		fire(fixture.button('snowflake-method-freeform-zoom-out'), 'click');
 		expect(fixture.canvas.moves.slice(1)).toEqual([{ kind: 'step', direction: 'in' }, { kind: 'step', direction: 'out' }]);
 		fixture.port().viewportChanged({ x: 0, y: 0, zoom: 1.2534 }, false);
-		expect(fixture.zoomLevel().textContent).toBe('125%');
 		expect(fixture.button('snowflake-method-freeform-zoom-in').disabled).toBe(false);
 		// At either end of the ladder, the step that would go past it is asleep.
 		fixture.port().viewportChanged({ x: 0, y: 0, zoom: 4 }, true);
@@ -3177,15 +3233,111 @@ describe('the canvas controls', () => {
 		expect(fixture.button('snowflake-method-freeform-zoom-out').disabled).toBe(false);
 		fixture.port().viewportChanged({ x: 0, y: 0, zoom: 0.1 }, true);
 		expect(fixture.button('snowflake-method-freeform-zoom-out').disabled).toBe(true);
-		expect(fixture.zoomLevel().textContent).toBe('10%');
 	});
 
-	it('fits everything and resets, by the words and by their chords', async () => {
+	it('locks the tab from the settings menu: the button becomes the lock, nothing is added or moved, and a press on the lock lets go', async () => {
+		const fixture = await laid();
+		const settings = fixture.button('snowflake-method-freeform-settings');
+		expect(settings.getAttribute('aria-label')).toBe('freeformCanvas.settings');
+		expect(settings.getAttribute('aria-haspopup')).toBe('menu');
+		menus.length = 0;
+		fire(settings, 'click', { detail: 1 });
+		expect(menus[0]!.map((entry) => entry.title)).toEqual([
+			'freeformCanvas.minimap.show', 'freeformCanvas.snap', 'freeformCanvas.snapObjects', 'freeformCanvas.readOnly',
+		]);
+		const lock = menus[0]!.find((entry) => entry.title === 'freeformCanvas.readOnly')!;
+		expect([lock.checked, lock.disabled]).toEqual([false, false]);
+		const remembered0 = fixture.remember.mock.calls.length;
+		lock.click();
+		expect(fixture.memory.readOnly).toBe(true);
+		expect(fixture.remember).toHaveBeenCalledTimes(remembered0 + 1);
+		expect(fixture.canvas.interaction?.readOnly).toBe(true);
+		expect(fixture.canvas.settled).toBeGreaterThan(0);
+		expect(settings.getAttribute('aria-label')).toBe('freeformCanvas.readOnly');
+		expect(settings.getAttribute('aria-pressed')).toBe('true');
+		expect(fixture.root.classes.has('is-read-only')).toBe(true);
+		expect(fixture.button('snowflake-method-freeform-node-add').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-freeform-quick-text').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-freeform-view-add').disabled).toBe(true);
+		// Locked, the button is the lock, and a press on it lets go; no menu opens.
+		menus.length = 0;
+		fire(settings, 'click', { detail: 1 });
+		expect(menus).toHaveLength(0);
+		expect(fixture.memory.readOnly).toBe(false);
+		expect(fixture.canvas.interaction?.readOnly).toBe(false);
+		expect(settings.getAttribute('aria-label')).toBe('freeformCanvas.settings');
+		expect(fixture.button('snowflake-method-freeform-node-add').disabled).toBe(false);
+		expect(fixture.button('snowflake-method-freeform-quick-text').disabled).toBe(false);
+		// A project that cannot be written is locked by its own word, which the tab's lock cannot lift.
+		const held = await laid({ readOnly: true });
+		menus.length = 0;
+		fire(held.button('snowflake-method-freeform-settings'), 'click', { detail: 1 });
+		const theirs = menus[0]!.find((entry) => entry.title === 'freeformCanvas.readOnly')!;
+		expect([theirs.checked, theirs.disabled]).toEqual([true, true]);
+		expect(held.button('snowflake-method-freeform-settings').getAttribute('aria-label')).toBe('freeformCanvas.settings');
+	});
+
+	it('adds from the quick adds at the canvas’s foot: a press at the middle, a drag where it is let go, nothing let go off the canvas', async () => {
+		const fixture = await laid();
+		const quick = fixture.root.querySelector('.snowflake-method-freeform-quick')!;
+		expect(quick.getAttribute('aria-label')).toBe('freeformCanvas.quick');
+		// Every type the form offers, what is made on the canvas first, the sections parted by a line; an authored kind wears its own symbol and is named by its data.
+		expect(quick.querySelectorAll('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+			'freeformCanvas.text.add', 'freeformCanvas.frame.add',
+			'freeformCanvas.quick.scene', 'freeformCanvas.quick.character', 'freeformCanvas.quick.location', 'freeformCanvas.quick.custom(kind=Faction)',
+			'freeformCanvas.quick.task', 'freeformCanvas.quick.foreshadowing', 'freeformCanvas.quick.revision', 'freeformCanvas.quick.stickyNote',
+			'freeformCanvas.file.add', 'freeformCanvas.link.add',
+		]);
+		expect(quick.children.filter((child) => child.classes.has('snowflake-method-freeform-quick-divider'))).toHaveLength(3);
+		expect(quick.styles['--snowflake-method-quick-count']).toBe('12');
+		const custom = fixture.button('snowflake-method-freeform-quick-custom');
+		expect(custom.dataset.kind).toBe('Faction');
+		const forms = watch(FreeformNodeFormModal);
+		// A press adds a text node at the middle of what is in sight, open for typing.
+		const before = fixture.nodes().length;
+		fire(fixture.button('snowflake-method-freeform-quick-text'), 'click');
+		expect(fixture.nodes()).toHaveLength(before + 1);
+		expect(fixture.field(fixture.nodes()[before]!)).not.toBeNull();
+		// A press on the file opens the form on files; a frame carried to a point opens the form on frames, for that point.
+		fire(fixture.button('snowflake-method-freeform-quick-file'), 'click');
+		await settle();
+		expect((forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('file');
+		fixture.quickDrag('frame', { x: 2_000, y: 3_000 });
+		await settle();
+		expect((forms[1] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('frame');
+		// Let go off the canvas, a drag adds nothing, and nor does the click that follows it.
+		const link = fixture.button('snowflake-method-freeform-quick-link');
+		fire(link, 'pointerdown', { pointerId: 9, button: 0, clientX: 10, clientY: 10 });
+		fire(link, 'pointermove', { pointerId: 9, clientX: 20_000, clientY: 20 });
+		fire(link, 'pointerup', { pointerId: 9, clientX: 20_000, clientY: 20 });
+		fire(link, 'click');
+		await settle();
+		expect(forms).toHaveLength(2);
+		// A press that hardly moved is a press.
+		fire(link, 'pointerdown', { pointerId: 11, button: 0, clientX: 10, clientY: 10 });
+		fire(link, 'pointermove', { pointerId: 11, clientX: 12, clientY: 11 });
+		fire(link, 'pointerup', { pointerId: 11, clientX: 12, clientY: 11 });
+		fire(link, 'click');
+		await settle();
+		expect(forms).toHaveLength(3);
+		expect((forms[2] as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType).toBe('link');
+		// An entity or a record opens the form on its own type, an authored kind by its id.
+		fire(fixture.button('snowflake-method-freeform-quick-character'), 'click');
+		fire(custom, 'click');
+		await settle();
+		expect(forms.slice(3).map((form) => (form as unknown as { options: FreeformNodeFormModal['options'] }).options.initialType)).toEqual(['character', 'Faction']);
+		// The strip stands as it was while the project's kinds stand; it is built again when they change.
+		const standing = quick.children.length;
+		fixture.handle.refresh();
+		expect(quick.children.length).toBe(standing);
+	});
+
+	it('fits everything and resets, by the symbols and by their chords', async () => {
 		const fixture = await laid();
 		const fit = fixture.button('snowflake-method-freeform-fit');
 		const reset = fixture.button('snowflake-method-freeform-reset');
-		expect([fit.textContent, fit.getAttribute('aria-label')]).toEqual(['freeformCanvas.fit', 'freeformCanvas.fit.all']);
-		expect([reset.textContent, reset.getAttribute('aria-label')]).toEqual(['freeformCanvas.reset', 'freeformCanvas.reset.viewport']);
+		expect(fit.getAttribute('aria-label')).toBe('freeformCanvas.fit.all');
+		expect(reset.getAttribute('aria-label')).toBe('freeformCanvas.reset.viewport');
 		fire(fit, 'click');
 		fire(reset, 'click');
 		expect(fixture.chords.map((chord) => [chord.modifiers, chord.key])).toEqual([

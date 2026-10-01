@@ -158,6 +158,8 @@ import {
 } from './repository';
 import {
 	createStableId,
+	type CharacterPatch,
+	type EntityPatch,
 	type RankRevisionChange,
 	type ScenePatch,
 	type SceneMoveTarget,
@@ -2506,6 +2508,24 @@ export default class SnowflakeMethodPlugin
 	async patchScene(id: string, patch: ScenePatch, projectPath: string): Promise<string> {
 		try {
 			const written = await this.projects.updateScene(projectPath, id, patch);
+			return written.revision;
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async patchCharacter(id: string, patch: CharacterPatch, projectPath: string): Promise<string> {
+		try {
+			const written = await this.projects.updateCharacter(projectPath, id, patch);
+			return written.revision;
+		} catch (error) {
+			this.rethrowLocalizedMutationError(error);
+		}
+	}
+
+	async patchEntity(id: string, patch: EntityPatch, projectPath: string): Promise<string> {
+		try {
+			const written = await this.projects.updateEntity(projectPath, id, patch);
 			return written.revision;
 		} catch (error) {
 			this.rethrowLocalizedMutationError(error);
@@ -9890,6 +9910,7 @@ export default class SnowflakeMethodPlugin
 			goal: character.goal,
 			conflict: character.conflict,
 			growth: character.growth,
+			color: character.color,
 			worldStatus: character.worldStatus,
 			customFields: character.customFields,
 			relationships: character.relationships,
@@ -9987,6 +10008,7 @@ export default class SnowflakeMethodPlugin
 			timeKind: entity.timeKind,
 			timeStart: entity.timeStart,
 			timeEnd: entity.timeEnd,
+			color: entity.color,
 			timeStartMissing: this.termMissing(entity.timeStart, entity.path),
 			timeEndMissing: this.termMissing(entity.timeEnd, entity.path),
 			worldStatus: entity.worldStatus,

@@ -27,7 +27,7 @@ const current: StoryStructureViewStateSnapshot = {
 	corkboard: { mode: 'compact', group: 'pov', reversed: true },
 	timeline: { pool: { mode: 'extended', group: 'time', reversed: false }, poolCollapsed: true, timeCollapsed: false },
 	beatSheet: { pool: { mode: 'standard', group: 'status', reversed: false }, poolCollapsed: false, beatsCollapsed: true },
-	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false },
+	freeform: { viewId: 'freeform-view-a', minimap: true, snap: false, snapObjects: false, readOnly: false },
 };
 
 describe('story structure restored state', () => {
@@ -167,15 +167,20 @@ describe('story structure restored state', () => {
 		expect(defaultStoryStructureState().beatSheet).toEqual({ pool: { mode: 'compact', group: '', reversed: false }, poolCollapsed: false, beatsCollapsed: false });
 	});
 
-	it("restores the freeform canvas's view and its two switches one by one, ignoring what is not one of its own", () => {
+	it("restores the freeform canvas's view and its switches one by one, ignoring what is not one of its own", () => {
 		expect(
 			mergeStoryStructureViewState(current, {
 				freeform: { viewId: 'freeform-view-b', minimap: 'yes', snap: true },
 			}),
 		).toEqual({
-			state: { ...current, freeform: { viewId: 'freeform-view-b', minimap: true, snap: true } },
+			state: { ...current, freeform: { viewId: 'freeform-view-b', minimap: true, snap: true, snapObjects: false, readOnly: false } },
 			changed: true,
 		});
+		expect(mergeStoryStructureViewState(current, { freeform: { snapObjects: true, readOnly: true } })).toEqual({
+			state: { ...current, freeform: { ...current.freeform, snapObjects: true, readOnly: true } },
+			changed: true,
+		});
+		expect(mergeStoryStructureViewState(current, { freeform: { snapObjects: 'yes', readOnly: 1 } })).toEqual({ state: current, changed: false });
 		// A tab may name no view, which is the word for the one changed last.
 		expect(mergeStoryStructureViewState(current, { freeform: { viewId: null } })).toEqual({
 			state: { ...current, freeform: { ...current.freeform, viewId: null } },
@@ -190,14 +195,14 @@ describe('story structure restored state', () => {
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { freeform: { snap: 1 } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().freeform).toEqual({ viewId: null, minimap: true, snap: false });
+		expect(defaultStoryStructureState().freeform).toEqual({ viewId: null, minimap: true, snap: false, snapObjects: false, readOnly: false });
 	});
 
 	it('starts a mount of the freeform canvas from what the tab kept, with nowhere looked at from yet', () => {
 		const memory = freeformMemory(current.freeform);
 		expect(memory).toMatchObject({ viewId: 'freeform-view-a', minimap: true, snap: false });
 		expect(memory.viewports.size).toBe(0);
-		expect(freeformMemory()).toMatchObject({ viewId: null, minimap: true, snap: false });
+		expect(freeformMemory()).toMatchObject({ viewId: null, minimap: true, snap: false, snapObjects: false, readOnly: false });
 		// Two mounts share nothing.
 		expect(freeformMemory().viewports).not.toBe(freeformMemory().viewports);
 	});

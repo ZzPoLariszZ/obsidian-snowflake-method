@@ -25,6 +25,7 @@ import {
 	sameSelection,
 	sameViewport,
 	selectionOf,
+	snappedToObjects,
 	steppedViewport,
 	withSelection,
 	zoomBandOf,
@@ -55,6 +56,9 @@ const NUDGE_REST_MS = 400;
 /** How long a move of the viewport takes where it is shown moving, in milliseconds. */
 const MOVE_MS = 200;
 
+/** How near, on the screen, a node moved or sized by hand comes to another's side or middle before it is drawn level with it, in pixels. */
+const SNAP_OBJECTS_PX = 6;
+
 /** Where a press begins something of its own: words being written, a choice from a list. */
 const FIELD_SELECTOR = 'input, textarea, select, [contenteditable="true"], [contenteditable=""]';
 
@@ -77,6 +81,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		edges: [],
 		interaction: options.interaction,
 		panning: false,
+		guides: null,
 		band: zoomBandOf(options.viewport.zoom, null),
 		size: { width: 0, height: 0 },
 	};
@@ -276,6 +281,9 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 				},
 				nodesChanged: (changes) => {
 					if (disposed || changes.length === 0) return;
+					// A gesture in flight before this report owns it still: its last
+					// report, the one that says it is over, is drawn as the rest were.
+					let gesture = dragging;
 					let nudged = false;
 					for (const change of changes) {
 						if (change.kind === 'position') {
@@ -285,7 +293,14 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 							dragging = true;
 						}
 					}
-					set({ nodes: reduceNodeChanges(snapshot.nodes, changes, snapshot.interaction.snap) });
+					gesture = gesture || dragging;
+					const drawn = gesture && snapshot.interaction.snapObjects
+						? snappedToObjects(snapshot.nodes, changes, SNAP_OBJECTS_PX / viewport.zoom)
+						: { changes, guides: null };
+					set({
+						nodes: reduceNodeChanges(snapshot.nodes, drawn.changes, snapshot.interaction.snap),
+						guides: gesture ? drawn.guides : null,
+					});
 					tellSelection();
 					if (!nudged || dragging) return;
 					// The keyboard moves a node a step at a time and says nothing of
@@ -304,6 +319,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 				gestureEnded: () => {
 					if (disposed) return;
 					dragging = false;
+					set({ guides: null });
 					if (!holding) hand();
 				},
 				holding: (on) => {
@@ -404,6 +420,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 			const held = snapshot.interaction;
 			if (
 				interaction.ground === held.ground && interaction.snap === held.snap &&
+				interaction.snapObjects === held.snapObjects &&
 				interaction.minimap === held.minimap && interaction.readOnly === held.readOnly
 			) {
 				return;

@@ -137,6 +137,8 @@ export interface CanvasInteraction {
 	ground: 'pan' | 'select';
 	/** Whether nodes land on the grid, and how wide it is; null for none. */
 	snap: number | null;
+	/** Whether a node moved or sized by hand is drawn level with the sides and middles of the nodes about it. */
+	snapObjects: boolean;
 	minimap: boolean;
 	/** Nothing is moved, sized, joined or removed. */
 	readOnly: boolean;
@@ -283,6 +285,12 @@ export interface CanvasHeldEdge {
 	selected: boolean;
 }
 
+/** The lines a node being moved or sized is drawn level with, in the plane's own units; null on an axis it was drawn to none on. */
+export interface CanvasGuides {
+	x: number | null;
+	y: number | null;
+}
+
 /** What the engine draws from, held outside it so a root taken down and put up again loses nothing. */
 export interface CanvasSnapshot {
 	nodes: readonly CanvasHeldNode[];
@@ -290,6 +298,8 @@ export interface CanvasSnapshot {
 	interaction: CanvasInteraction;
 	/** Whether Space, which lets a drag on the ground move the plane, is held over the canvas. */
 	panning: boolean;
+	/** The lines what is being moved or sized was last drawn level with; null between gestures. */
+	guides: CanvasGuides | null;
 	band: ZoomBand;
 	size: CanvasSize;
 }

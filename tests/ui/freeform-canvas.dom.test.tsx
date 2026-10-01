@@ -106,7 +106,7 @@ function canvas(size: { width: number; height: number } = { width: 800, height: 
 		handle = mount(host, port, {
 			id: `canvas-${String(standing.length + 1)}`,
 			viewport: { x: 0, y: 0, zoom: 1 },
-			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
+			interaction: { ground: 'pan', snap: null, snapObjects: false, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
 			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,
@@ -445,6 +445,33 @@ describe('the canvas engine on a document', () => {
 		field.remove();
 	});
 
+	it('draws a node dragged near another level with it while the switch is on, shows the lines it was drawn to, and commits where it was drawn', async () => {
+		const { host, handle, painted, port, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setInteraction({ snapObjects: true });
+			handle.setScene({
+				nodes: [node('a', { x: 0, y: 0, width: 100, height: 60 }), node('b', { x: 300, y: 200, width: 100, height: 60 })],
+				edges: [],
+			});
+		});
+		const body = painted.find((entry) => entry.id === 'a')!.body;
+		const at = (type: string, x: number, y: number, on: EventTarget = window): void => {
+			act(() => {
+				on.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window, clientX: x, clientY: y }));
+			});
+		};
+		at('mousedown', 10, 10, body);
+		// The first move past the threshold starts the drag, and the node is held by where the pointer stands then.
+		at('mousemove', 20, 20);
+		// Carried to four pixels short of b across and three down: a stands level with b, and the two lines show.
+		at('mousemove', 324, 217);
+		expect(host.querySelectorAll('.snowflake-method-freeform-guide')).toHaveLength(2);
+		at('mouseup', 324, 217);
+		expect(host.querySelector('.snowflake-method-freeform-guide')).toBeNull();
+		expect(port.commit).toHaveBeenLastCalledWith([{ kind: 'move', id: 'a', x: 300, y: 200 }]);
+	});
+
 	it('opens a node pressed twice, and leaves a press twice on a control of its face to the face', async () => {
 		const { handle, port, painted, raised, tell } = canvas();
 		await raised();
@@ -723,7 +750,7 @@ describe('the canvas engine on a document', () => {
 		const handle = mount(host, { failed } as unknown as CanvasPort, {
 			id: 'canvas-lost',
 			viewport: { x: 0, y: 0, zoom: 1 },
-			interaction: { ground: 'pan', snap: null, minimap: false, readOnly: false },
+			interaction: { ground: 'pan', snap: null, snapObjects: false, minimap: false, readOnly: false },
 			zoom: { min: 0.1, max: 4 },
 			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,

@@ -13,6 +13,7 @@ import {
 	type CanvasEdge,
 	type CanvasEdgeChange,
 	type CanvasGeometryChange,
+	type CanvasGuides,
 	type CanvasHeldEdge,
 	type CanvasHeldNode,
 	type CanvasNode,
@@ -231,6 +232,138 @@ export function snapSized(next: CanvasBox, stood: CanvasBox, grid: number, least
 		else bottom += grid;
 	}
 	return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// -- Drawing what moves level with what stands ----------------------------------
+
+/** The lines of a box across one axis: its near side, its middle and its far side. */
+const linesOf = (from: number, size: number): readonly number[] => [from, from + size / 2, from + size];
+
+/**
+ * The smallest move within reach that brings one of `mine` level with one
+ * of `theirs`, and the line it is brought to; null where none is in reach.
+ */
+function nearest(
+	mine: readonly number[],
+	theirs: readonly number[],
+	reach: number,
+): { delta: number; at: number } | null {
+	let best: { delta: number; at: number } | null = null;
+	for (const line of theirs) {
+		for (const own of mine) {
+			const delta = line - own;
+			if (Math.abs(delta) > reach || (best !== null && Math.abs(delta) >= Math.abs(best.delta))) continue;
+			best = { delta, at: line };
+		}
+	}
+	return best;
+}
+
+/**
+ * A gesture's changes with what moves drawn level with the nodes that stand
+ * still, when within `reach` of one of their sides or middles, in the
+ * plane's own units. Nodes moved go by one move, the box round them all
+ * drawn by its sides and its middle; a node sized has only the sides the
+ * hand moved drawn, each on its own. What stands still is every node
+ * neither moving nor carried by a frame that is. What was drawn to comes
+ * back as guides, one line each way at most; nothing where nothing was.
+ */
+export function snappedToObjects(
+	held: readonly CanvasHeldNode[],
+	changes: readonly CanvasNodeChange[],
+	reach: number,
+): { changes: readonly CanvasNodeChange[]; guides: CanvasGuides | null } {
+	const unmoved = { changes, guides: null };
+	if (!(reach > 0)) return unmoved;
+	const moving = new Set<string>();
+	const sized = new Set<string>();
+	for (const change of changes) {
+		if (change.kind === 'position') moving.add(change.id);
+		else if (change.kind === 'size') sized.add(change.id);
+	}
+	if (moving.size === 0 && sized.size === 0) return unmoved;
+	const byId = new Map(held.map((entry) => [entry.node.id, entry]));
+	const still = held.filter((entry) =>
+		!moving.has(entry.node.id) && !sized.has(entry.node.id) &&
+		(entry.node.frame === null || !moving.has(entry.node.frame)));
+	const xs = still.flatMap((entry) => linesOf(entry.x, entry.width));
+	const ys = still.flatMap((entry) => linesOf(entry.y, entry.height));
+
+	if (sized.size > 0) {
+		// A sizing is one node's: the sides the hand moved, each drawn on its own.
+		const id = [...sized][0] ?? '';
+		const entry = byId.get(id);
+		const size = changes.find((change): change is Extract<CanvasNodeChange, { kind: 'size' }> => change.kind === 'size' && change.id === id);
+		const place = changes.find((change): change is Extract<CanvasNodeChange, { kind: 'position' }> => change.kind === 'position' && change.id === id);
+		if (entry === undefined || size === undefined) return unmoved;
+		let x = place?.x ?? entry.x;
+		let y = place?.y ?? entry.y;
+		let { width, height } = size;
+		let guideX: number | null = null;
+		let guideY: number | null = null;
+		if (x !== entry.x) {
+			const drawn = nearest([x], xs, reach);
+			if (drawn !== null) {
+				x += drawn.delta;
+				width -= drawn.delta;
+				guideX = drawn.at;
+			}
+		} else if (x + width !== entry.x + entry.width) {
+			const drawn = nearest([x + width], xs, reach);
+			if (drawn !== null) {
+				width += drawn.delta;
+				guideX = drawn.at;
+			}
+		}
+		if (y !== entry.y) {
+			const drawn = nearest([y], ys, reach);
+			if (drawn !== null) {
+				y += drawn.delta;
+				height -= drawn.delta;
+				guideY = drawn.at;
+			}
+		} else if (y + height !== entry.y + entry.height) {
+			const drawn = nearest([y + height], ys, reach);
+			if (drawn !== null) {
+				height += drawn.delta;
+				guideY = drawn.at;
+			}
+		}
+		if (guideX === null && guideY === null) return unmoved;
+		return {
+			changes: changes.map((change) => {
+				if (change.id !== id) return change;
+				if (change.kind === 'size') return { ...change, width, height };
+				if (change.kind === 'position') return { ...change, x, y };
+				return change;
+			}),
+			guides: { x: guideX, y: guideY },
+		};
+	}
+
+	// The box round everything that moves, where this report puts it.
+	let left = Infinity;
+	let top = Infinity;
+	let right = -Infinity;
+	let bottom = -Infinity;
+	for (const change of changes) {
+		if (change.kind !== 'position') continue;
+		const entry = byId.get(change.id);
+		if (entry === undefined) continue;
+		left = Math.min(left, change.x);
+		top = Math.min(top, change.y);
+		right = Math.max(right, change.x + entry.width);
+		bottom = Math.max(bottom, change.y + entry.height);
+	}
+	if (!Number.isFinite(left) || !Number.isFinite(top)) return unmoved;
+	const dx = nearest(linesOf(left, right - left), xs, reach);
+	const dy = nearest(linesOf(top, bottom - top), ys, reach);
+	if (dx === null && dy === null) return unmoved;
+	return {
+		changes: changes.map((change) =>
+			change.kind === 'position' ? { ...change, x: change.x + (dx?.delta ?? 0), y: change.y + (dy?.delta ?? 0) } : change),
+		guides: { x: dx?.at ?? null, y: dy?.at ?? null },
+	};
 }
 
 export function reduceEdgeChanges(

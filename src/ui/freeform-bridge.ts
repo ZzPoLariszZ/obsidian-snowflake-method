@@ -84,6 +84,8 @@ export type FreeformHost = Pick<
 	| 'openCharacterForm'
 	| 'openEntityForm'
 	| 'patchScene'
+	| 'patchCharacter'
+	| 'patchEntity'
 	| 'isReduceMotionEnabled'
 	| 'revealTask'
 	| 'foreshadowingTable'

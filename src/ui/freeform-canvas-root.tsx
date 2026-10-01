@@ -27,6 +27,7 @@ import {
 	ReactFlowProvider,
 	getBezierPath,
 	useReactFlow,
+	useStore,
 	useStoreApi,
 	type Connection,
 	type Edge as EngineEdge,
@@ -473,6 +474,21 @@ function Reins(): null {
 	return null;
 }
 
+/** The lines a node being moved or sized is drawn level with, laid across the whole canvas in the screen's own pixels. */
+function Guides(): ReactElement | null {
+	const { store: canvas } = useDeps();
+	const { guides } = useSyncExternalStore(canvas.subscribe, canvas.get);
+	const transform = useStore((state) => state.transform);
+	if (guides === null) return null;
+	const [tx, ty, zoom] = transform;
+	return (
+		<div className="snowflake-method-freeform-guides" aria-hidden="true">
+			{guides.x === null ? null : <div className="snowflake-method-freeform-guide is-upright" style={{ left: guides.x * zoom + tx }} />}
+			{guides.y === null ? null : <div className="snowflake-method-freeform-guide is-level" style={{ top: guides.y * zoom + ty }} />}
+		</div>
+	);
+}
+
 function Flow(): ReactElement {
 	const deps = useDeps();
 	const { options, port, store: canvas } = deps;
@@ -687,6 +703,7 @@ function Flow(): ReactElement {
 				onError={onError}
 			>
 				<Background id={options.id} variant={BackgroundVariant.Dots} gap={GROUND_GAP} size={GROUND_DOT} offset={GROUND_OFFSET} />
+				<Guides />
 				{interaction.minimap ? (
 					<MiniMap
 						pannable
