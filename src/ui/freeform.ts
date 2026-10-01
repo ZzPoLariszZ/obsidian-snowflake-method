@@ -99,6 +99,7 @@ import {
 	EMPTY_FREEFORM_SCENE,
 	FREEFORM_FACE_MODES,
 	FREEFORM_FACE_MODES_OF,
+	type FreeformFaceMode,
 	FREEFORM_GRID,
 	FREEFORM_NODE_MIN,
 	cascadeStep,
@@ -173,6 +174,20 @@ const isQuickFaceType = (kind: string): kind is ResolvedNode['type'] => QUICK_FA
  * of note is offered under a value of its own.
  */
 const ENTITY_TYPE = 'entity:';
+
+/**
+ * The symbol a display mode wears on a node's menu: the app's DOM menu, which
+ * every platform but macOS draws, gives each item a symbol slot and puts a
+ * check at the far end, so an item with no symbol of its own reads as a gap.
+ * The three faces are drawn as a card of two, three and four rows, and Auto
+ * as the mark the app's own automatic choices wear.
+ */
+const DISPLAY_MODE_ICONS: Readonly<Record<'auto' | FreeformFaceMode, string>> = {
+	auto: 'sparkles',
+	compact: 'rows-2',
+	standard: 'rows-3',
+	extended: 'rows-4',
+};
 const entityTypeOf = (kind: string): string => `${ENTITY_TYPE}${kind}`;
 /** The kind of note a form value names; null for a family of records or a node made on the canvas. */
 const entityKindOf = (type: string): string | null => (type.startsWith(ENTITY_TYPE) ? type.slice(ENTITY_TYPE.length) : null);
@@ -963,7 +978,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		paintAll();
 	};
 
-	/** The four switches, which the settings button offers and the ground's menu offers again. */
+	/**
+	 * The four switches, which the settings button offers and the ground's menu
+	 * offers again. The two snaps wear the symbols the app's own canvas gives
+	 * the same two items in its settings menu: `grid` and its own `snap-to-object`.
+	 */
 	const addSwitchItems = (menu: Menu): void => {
 		menu.addItem((item) => {
 			item
@@ -977,7 +996,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		menu.addItem((item) => {
 			item
 				.setTitle(t('freeformCanvas.snap'))
-				.setIcon('grid-2x2')
+				.setIcon('grid')
 				.setChecked(memory.snap)
 				.onClick(() => {
 					setSnap(!memory.snap);
@@ -986,7 +1005,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		menu.addItem((item) => {
 			item
 				.setTitle(t('freeformCanvas.snapObjects'))
-				.setIcon('magnet')
+				.setIcon('snap-to-object')
 				.setChecked(memory.snapObjects)
 				.onClick(() => {
 					setSnapObjects(!memory.snapObjects);
@@ -2519,6 +2538,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				menu.addItem((item) => {
 					item
 						.setTitle(mode === 'auto' ? t('freeformCanvas.display.auto') : t(`corkboard.cards.${mode}`))
+						.setIcon(DISPLAY_MODE_ICONS[mode])
 						.setChecked(shared === mode)
 						.setDisabled(readOnly)
 						.onClick(() => {

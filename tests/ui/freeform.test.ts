@@ -4,7 +4,7 @@ import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig, PickerOption } from '../../src/ui/option-picker';
 
 const { menus, positions, hidden, viewFields, notices, rendered, searches } = vi.hoisted(() => ({
-	menus: [] as { title: string; disabled: boolean; checked: boolean | null; click: () => void }[][],
+	menus: [] as { title: string; icon: string | null; disabled: boolean; checked: boolean | null; click: () => void }[][],
 	positions: [] as ({ x: number; y: number } | null)[],
 	hidden: [] as unknown[],
 	viewFields: [] as OptionFieldConfig[],
@@ -38,9 +38,10 @@ vi.mock('obsidian', async (importOriginal) => {
 		title = '';
 		disabled = false;
 		checked: boolean | null = null;
+		icon: string | null = null;
 		click: () => void = () => undefined;
 		setTitle(title: string): this { this.title = title; return this; }
-		setIcon(): this { return this; }
+		setIcon(icon: string): this { this.icon = icon; return this; }
 		setWarning(): this { return this; }
 		setSection(): this { return this; }
 		setDisabled(value: boolean): this { this.disabled = value; return this; }
@@ -59,7 +60,7 @@ vi.mock('obsidian', async (importOriginal) => {
 		addSeparator(): this { return this; }
 		setParentElement(): this { return this; }
 		private shown(at: { x: number; y: number } | null): this {
-			menus.push(this.items.map((item) => ({ title: item.title, disabled: item.disabled, checked: item.checked, click: item.click })));
+			menus.push(this.items.map((item) => ({ title: item.title, icon: item.icon, disabled: item.disabled, checked: item.checked, click: item.click })));
 			positions.push(at);
 			return this;
 		}
@@ -2153,6 +2154,8 @@ describe('how a node is shown and where it stands', () => {
 		fixture.choose({ nodes: ['s1', 's2'] });
 		// Two are chosen, so the menu opens on the faces, with no one scene to open.
 		const shown = (): { title: string; click: () => void }[] => fixture.menuAt({ kind: 'node', id: 's1' })!;
+		// Each display mode wears its own symbol, so the DOM menu shows no gap before the word and no check standing alone.
+		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.slice(0, DISPLAY_ITEMS.length).map((item) => item.icon)).toEqual(['sparkles', 'rows-2', 'rows-3', 'rows-4']);
 		shown()[DISPLAY_ITEMS.indexOf('corkboard.cards.extended')]!.click();
 		await settle();
 		expect(fixture.bridge.transact.mock.calls[0]![1]).toEqual([
@@ -3203,6 +3206,8 @@ describe('searching a view', () => {
 			return menus[0]!.find((entry) => entry.title === title)!;
 		};
 		expect([item('freeformCanvas.snap').checked, item('freeformCanvas.snapObjects').checked, item('freeformCanvas.minimap.show').checked]).toEqual([false, false, false]);
+		// Every switch wears a symbol, the two snaps the ones the app's own canvas gives them, so the DOM menu shows no gap before a word.
+		expect(['freeformCanvas.minimap.show', 'freeformCanvas.snap', 'freeformCanvas.snapObjects', 'freeformCanvas.readOnly'].map((title) => item(title).icon)).toEqual(['map', 'grid', 'snap-to-object', 'lock']);
 		const collapse = fixture.button('snowflake-method-freeform-minimap-collapse');
 		expect(collapse.getAttribute('aria-label')).toBe('freeformCanvas.minimap.collapse');
 		expect(collapse.classes.has('is-hidden')).toBe(true);
