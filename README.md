@@ -34,7 +34,9 @@ This plugin turns that iterative workflow into a focused, Markdown-native worksp
 
 Your writing stays local, linkable, portable, and editable without the plugin. The workflow gives you structure without enforcing it. Hints never block your progress, and you can revisit every step.
 
-**This is an independent, open-source community project. It is NOT affiliated with or endorsed by Randy Ingermanson or Advanced Fiction Writing. The Snowflake Method name is used with Randy Ingermanson's permission.**
+**This is an independent, open-source community project. It is NOT affiliated with or endorsed by Randy Ingermanson or Advanced Fiction Writing.**
+
+<p align="center"><strong>🎉 Great news: Randy Ingermanson has kindly given his permission for this plugin to use the Snowflake Method name! 🎉</strong></p>
 
 ## Features
 
@@ -639,7 +641,9 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 
 本插件把这套迭代流程整理成一个专注的 Markdown 原生工作区。梗概、角色资料和场景规划不必再散落在各个文档与表格里。你可以在统一的工作台中一步步推进，也可以把每一项内容当作普通的 Obsidian 笔记单独打开。所有创作内容都保存在本地，可以链接、迁移，停用插件后也照样能编辑。工作流只提供结构，不强加限制：提示不会阻止你往下走，任何步骤都可以回头修改。
 
-**这是一个独立的开源社区项目，与 Randy Ingermanson 或 Advanced Fiction Writing *没有* 隶属或背书关系。“雪花写作法”这一名称已获 Randy Ingermanson 授权使用。**
+**这是一个独立的开源社区项目，与 Randy Ingermanson 或 Advanced Fiction Writing *没有* 隶属或背书关系。**
+
+<p align="center"><strong>🎉 好消息：Randy Ingermanson 已经授权本插件使用「雪花写作法」这一名称！🎉</strong></p>
 
 ## 功能
 
