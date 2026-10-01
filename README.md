@@ -36,7 +36,11 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 
 **This is an independent, open-source community project. It is NOT affiliated with or endorsed by Randy Ingermanson or Advanced Fiction Writing.**
 
-<p align="center"><strong>🎉 Great news: Randy Ingermanson has kindly given his permission for this plugin to use the Snowflake Method name! 🎉</strong></p>
+<br />
+
+<p align="center"><strong>🎉 Great news! Randy Ingermanson has kindly given his permission! 🎉<br />🎉 This plugin proudly carries the Snowflake Method name! 🎉</strong></p>
+
+<br />
 
 ## Features
 
@@ -643,7 +647,11 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 
 **这是一个独立的开源社区项目，与 Randy Ingermanson 或 Advanced Fiction Writing *没有* 隶属或背书关系。**
 
-<p align="center"><strong>🎉 好消息：Randy Ingermanson 已经授权本插件使用「雪花写作法」这一名称！🎉</strong></p>
+<br />
+
+<p align="center"><strong>🎉 好消息！Randy Ingermanson 已经点头授权！🎉<br />🎉 本插件可以名正言顺地使用「雪花写作法」这个名字啦！🎉</strong></p>
+
+<br />
 
 ## 功能
 
