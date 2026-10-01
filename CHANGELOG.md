@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1]
+
+### Fixed
+
+- Every item in the freeform menus now shows a symbol in menus that Obsidian draws itself, as on Windows and Linux. The node menu's **Auto**, **Compact**, **Standard** and **Extended** items had no symbol, so their words came after an empty gap. **Snap to grid**, in the settings menu and the right-click menu, named a symbol that Obsidian doesn't have, so it showed none. **Snap to grid** and **Snap to objects** now use the same symbols as Obsidian's own Canvas.
+- The progress status list on a card now shows each status in its own color. On Windows and Linux, the open list used to show every option in the color of the status already chosen. This applies to the cards in every tab of the visualization workspace, not only Freeform.
+
 ## [0.22.0]
 
 ### Added
@@ -522,6 +529,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.22.1]
+
+### 修复
+
+- 在 Obsidian 自己绘制的菜单里，例如 Windows 和 Linux 上，自由画布的每个菜单项现在都会显示图标。节点菜单中的**自动**、**紧凑**、**标准**与**扩展**原本没有图标，文字前面空着一块。设置菜单和右键菜单里的**对齐网格**，用的是 Obsidian 没有的图标，所以什么也不显示。现在**对齐网格**与**对齐对象**使用和 Obsidian 白板相同的图标。
+- 卡片上的进度下拉列表，现在每个状态都显示自己的颜色。在 Windows 和 Linux 上，展开的列表以前会把所有选项都显示成当前所选状态的颜色。可视化工作区所有标签页里的卡片都是如此，不只是自由画布。
 
 ## [0.22.0]
 
