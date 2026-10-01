@@ -2,10 +2,11 @@
  * The window a canvas stands in, heard by the canvas itself. The engine
  * listens for its keys on the window the plugin was loaded in and measures
  * with that window's tools, which is the wrong window for a canvas moved to
- * one of its own: there the key that draws a box would never be heard, and a
- * canvas resized might never be told. So the engine's own listening is turned
- * off, and what it needed to hear is heard here, on the window the canvas's
- * element stands in, and again on the next when the view is moved.
+ * one of its own: there the key that lets a drag move the plane would never
+ * be heard, and a canvas resized might never be told. So the engine's own
+ * listening is turned off, and what it needed to hear is heard here, on the
+ * window the canvas's element stands in, and again on the next when the view
+ * is moved.
  *
  * No part of this is the engine's or the app's: it asks the element for its
  * document and the document for its window, so the tests read it on any
@@ -16,8 +17,8 @@ import type { CanvasSize } from './freeform-canvas-port';
 
 export interface CanvasWindowDeps {
 	host: HTMLElement;
-	/** The key that draws a box went down or came up while the pointer stood over the canvas. */
-	boxing: (on: boolean) => void;
+	/** Space, which lets a drag on the ground move the plane, went down while the pointer stood over the canvas, or came up. */
+	panning: (on: boolean) => void;
 	/** The canvas is another size. */
 	resized: (size: CanvasSize) => void;
 	/**
@@ -39,6 +40,21 @@ export interface CanvasWindow {
 
 const CLIPBOARD_EVENTS = ['copy', 'cut', 'paste'] as const;
 
+/**
+ * Where Space is a letter or a press of its own: a field's, a button's, a
+ * link's, and whatever a face says the keys are not to be read over.
+ */
+const SPOKEN_FOR = 'input, textarea, select, button, a, [contenteditable="true"], [contenteditable=""], .nokey';
+
+const isPanKey = (event: KeyboardEvent): boolean => event.key === ' ' || event.code === 'Space';
+
+/** Whether the key fell on something that has a use for it of its own. */
+function spokenFor(target: EventTarget | null | undefined): boolean {
+	if (target === null || target === undefined) return false;
+	const element = target as Partial<Element>;
+	return typeof element.closest === 'function' && element.closest(SPOKEN_FOR) !== null;
+}
+
 type MigratingElement = HTMLElement & {
 	onWindowMigrated?: (listener: (win: Window) => unknown) => () => void;
 };
@@ -59,7 +75,7 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 	const say = (on: boolean): void => {
 		if (on === held) return;
 		held = on;
-		deps.boxing(on);
+		deps.panning(on);
 	};
 
 	const measure = (): CanvasSize => {
@@ -71,22 +87,28 @@ export function bindCanvasWindow(deps: CanvasWindowDeps): CanvasWindow {
 		return size;
 	};
 
+	// Taken only while the pointer stands over the canvas and the key fell on
+	// nothing that speaks for it; let go wherever it comes up. Held, it says
+	// nothing else, so the ground is not scrolled under it.
 	const onKey = (event: KeyboardEvent): void => {
-		if (event.key !== 'Shift') return;
-		say(over && event.type === 'keydown');
+		if (!isPanKey(event)) return;
+		if (event.type !== 'keydown') {
+			say(false);
+			return;
+		}
+		if (!over || spokenFor(event.target)) return;
+		event.preventDefault();
+		say(true);
 	};
 	const onBlur = (): void => {
 		say(false);
 	};
-	const onEnter = (event: PointerEvent): void => {
+	const onEnter = (): void => {
 		over = true;
-		say(event.shiftKey);
 	};
-	// The key may go down or come up while another window holds the keys: what
-	// the pointer says as it moves is the word that is never stale.
-	const onMove = (event: PointerEvent): void => {
+	// A canvas the pointer already stood over when it was bound hears no enter: the first move says so.
+	const onMove = (): void => {
 		over = true;
-		say(event.shiftKey);
 	};
 	const onLeave = (): void => {
 		over = false;

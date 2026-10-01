@@ -132,8 +132,9 @@ export function defaultBeatSheetSettings(): BeatSheetSettings {
 
 /**
  * How the freeform canvas is set: the view the tab shows, and the two
- * switches. A project keeps each of its views in a file of its own and no
- * file is the whole project's, so which one is on show is the tab's to
+ * switches, the minimap on until it is put away and the grid off until it
+ * is asked for. A project keeps each of its views in a file of its own and
+ * no file is the whole project's, so which one is on show is the tab's to
  * remember; a tab that names none, or one that has gone, shows the view
  * changed last.
  */
@@ -144,7 +145,7 @@ export interface FreeformSettings {
 }
 
 export function defaultFreeformSettings(): FreeformSettings {
-	return { viewId: null, minimap: false, snap: false };
+	return { viewId: null, minimap: true, snap: false };
 }
 
 export interface StoryStructureViewStateSnapshot {

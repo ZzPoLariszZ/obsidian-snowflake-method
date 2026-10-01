@@ -76,7 +76,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		nodes: [],
 		edges: [],
 		interaction: options.interaction,
-		boxing: false,
+		panning: false,
 		band: zoomBandOf(options.viewport.zoom, null),
 		size: { width: 0, height: 0 },
 	};
@@ -285,7 +285,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 							dragging = true;
 						}
 					}
-					set({ nodes: reduceNodeChanges(snapshot.nodes, changes) });
+					set({ nodes: reduceNodeChanges(snapshot.nodes, changes, snapshot.interaction.snap) });
 					tellSelection();
 					if (!nudged || dragging) return;
 					// The keyboard moves a node a step at a time and says nothing of
@@ -343,8 +343,8 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 	// as it is bound, and a canvas that has a size is one to raise.
 	surroundings = bindCanvasWindow({
 		host,
-		boxing: (on) => {
-			set({ boxing: on });
+		panning: (on) => {
+			set({ panning: on });
 		},
 		resized: (size) => {
 			set({ size });

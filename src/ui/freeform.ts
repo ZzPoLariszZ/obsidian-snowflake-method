@@ -245,8 +245,10 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		cls: 'snowflake-method-freeform-controls',
 		attr: { role: 'toolbar', 'aria-label': t('freeformCanvas.controls') },
 	});
-	// Touch has no key to hold, so a drag on the ground is told here to draw a
-	// box; with a mouse the switch is the same choice made without the key.
+	// A mouse draws a box by its own drag and moves the plane by its middle
+	// button or with Space held. A finger has neither, so it moves the plane
+	// until this switch tells it to draw the box; the stylesheet shows the
+	// switch only where a finger may come.
 	const selectButton = toolbarIconButton(panel, 'snowflake-method-freeform-select', 'box-select', t('freeformCanvas.select.box'));
 	selectButton.setAttribute('aria-pressed', 'false');
 	selectButton.addEventListener('click', () => {
@@ -1943,8 +1945,11 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	const show = (menu: Menu, event: MouseEvent): void => {
 		menus.keep(menu);
 		const target = event.target;
-		// A press of the keyboard comes with no place of its own.
-		if (event.detail === 0 && target !== null && (target as Node).instanceOf(Element)) {
+		// A press of the keyboard comes with no place of its own. A menu asked
+		// for with the right button says nothing in `detail` either, but has a
+		// place: the pointer's, or for one the keyboard asked for that way,
+		// the place the browser gives it by what holds the focus.
+		if (event.type !== 'contextmenu' && event.detail === 0 && target !== null && (target as Node).instanceOf(Element)) {
 			const box = (target as Element).getBoundingClientRect();
 			menu.showAtPosition({ x: box.left, y: box.bottom }, (target as Element).doc);
 			return;
@@ -2509,6 +2514,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		// not be drawing while the canvas stands in a window of its own.
 		reduceMotion: () => host.isReduceMotionEnabled() || !controls.atHome(root),
 		additive: (event) => Keymap.isModifier(event, 'Mod') || event.shiftKey,
+		zoomKey: (event) => Keymap.isModifier(event, 'Mod'),
 	});
 	paintZoom(DEFAULT_FREEFORM_VIEWPORT.zoom);
 

@@ -190,14 +190,14 @@ describe('story structure restored state', () => {
 			changed: true,
 		});
 		expect(mergeStoryStructureViewState(current, { freeform: { snap: 1 } })).toEqual({ state: current, changed: false });
-		expect(defaultStoryStructureState().freeform).toEqual({ viewId: null, minimap: false, snap: false });
+		expect(defaultStoryStructureState().freeform).toEqual({ viewId: null, minimap: true, snap: false });
 	});
 
 	it('starts a mount of the freeform canvas from what the tab kept, with nowhere looked at from yet', () => {
 		const memory = freeformMemory(current.freeform);
 		expect(memory).toMatchObject({ viewId: 'freeform-view-a', minimap: true, snap: false });
 		expect(memory.viewports.size).toBe(0);
-		expect(freeformMemory()).toMatchObject({ viewId: null, minimap: false, snap: false });
+		expect(freeformMemory()).toMatchObject({ viewId: null, minimap: true, snap: false });
 		// Two mounts share nothing.
 		expect(freeformMemory().viewports).not.toBe(freeformMemory().viewports);
 	});

@@ -128,7 +128,12 @@ export type CanvasViewportTarget =
 	| { kind: 'reveal'; id: string };
 
 export interface CanvasInteraction {
-	/** What a drag on the ground does: moves the plane, or draws a box round nodes. */
+	/**
+	 * What a finger's drag on the ground does: moves the plane, or draws a
+	 * box round nodes. A mouse draws the box by its own drag either way, as
+	 * the app's canvas has it, and moves the plane by its middle button or
+	 * by any button while Space is held.
+	 */
 	ground: 'pan' | 'select';
 	/** Whether nodes land on the grid, and how wide it is; null for none. */
 	snap: number | null;
@@ -215,6 +220,12 @@ export interface CanvasOptions {
 	reduceMotion: () => boolean;
 	/** Whether a press is one that adds to what is chosen: the platform's own modifier, read off the press itself. */
 	additive: (event: MouseEvent) => boolean;
+	/**
+	 * Whether a turn of the wheel sizes the plane rather than moving it: the
+	 * platform's own modifier, read off the turn itself. A pinch, which comes
+	 * as a turn with Control held, is the engine's own to take.
+	 */
+	zoomKey: (event: MouseEvent) => boolean;
 }
 
 export interface CanvasHandle {
@@ -277,8 +288,8 @@ export interface CanvasSnapshot {
 	nodes: readonly CanvasHeldNode[];
 	edges: readonly CanvasHeldEdge[];
 	interaction: CanvasInteraction;
-	/** Whether the key that draws a box is held over the canvas. */
-	boxing: boolean;
+	/** Whether Space, which lets a drag on the ground move the plane, is held over the canvas. */
+	panning: boolean;
 	band: ZoomBand;
 	size: CanvasSize;
 }

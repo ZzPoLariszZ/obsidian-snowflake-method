@@ -20,11 +20,14 @@ import {
 	reduceNodeChanges,
 	sameSelection,
 	selectionOf,
+	snapSized,
 	steppedViewport,
+	wheelZoomFactor,
 	withSelection,
 	zoomBandOf,
 	zoomPercent,
 	zoomStep,
+	zoomedAbout,
 } from '../../src/ui/freeform-canvas-model';
 import type {
 	CanvasEdge,
@@ -167,6 +170,53 @@ describe('taking a gesture’s changes in', () => {
 		const held = hold([frame('f'), node('in', { x: 20, y: 60, frame: 'f' })]);
 		const next = reduceNodeChanges(held, [{ kind: 'size', id: 'f', width: 800, height: 600, resizing: true }]);
 		expect(next[1]).toBe(held[1]);
+	});
+
+	it('moves no member for a frame sized from its near corner, though the corner moved', () => {
+		const held = hold([frame('f', { x: 100, y: 100 }), node('in', { x: 120, y: 160, frame: 'f' })]);
+		const next = reduceNodeChanges(held, [
+			{ kind: 'position', id: 'f', x: 80, y: 90, dragging: false },
+			{ kind: 'size', id: 'f', width: 420, height: 310, resizing: true },
+		]);
+		expect(next[0]).toMatchObject({ x: 80, y: 90, width: 420, height: 310 });
+		expect(next[1]).toBe(held[1]);
+	});
+
+	it('brings each side a hand moved to the grid while nodes land on it, and leaves the side that stood', () => {
+		const held = hold([node('b', { x: 100, y: 100, width: 100, height: 60 })]);
+		// The near side pulled out lands on the grid; the far side stood, and the size follows.
+		const near = reduceNodeChanges(held, [
+			{ kind: 'position', id: 'b', x: 87, y: 100, dragging: false },
+			{ kind: 'size', id: 'b', width: 113, height: 60, resizing: true },
+		], 20);
+		expect(near[0]).toMatchObject({ x: 80, y: 100, width: 120, height: 60 });
+		// The far sides alone.
+		const far = reduceNodeChanges(held, [{ kind: 'size', id: 'b', width: 113, height: 71, resizing: true }], 20);
+		expect(far[0]).toMatchObject({ x: 100, y: 100, width: 120, height: 80 });
+		// Without the grid, the hand's own figures stand.
+		const free = reduceNodeChanges(held, [{ kind: 'size', id: 'b', width: 113, height: 71, resizing: true }]);
+		expect(free[0]).toMatchObject({ width: 113, height: 71 });
+		// A side that would bring the box under its least size steps back out a line at a time.
+		const least = reduceNodeChanges(held, [
+			{ kind: 'position', id: 'b', x: 190, y: 100, dragging: false },
+			{ kind: 'size', id: 'b', width: 10, height: 60, resizing: true },
+		], 20);
+		expect(least[0]).toMatchObject({ x: 160, y: 100, width: 40, height: 60 });
+		// A report that leaves the box as it stands, once on the grid, hands back the very entry.
+		expect(reduceNodeChanges(near, [{ kind: 'size', id: 'b', width: 127, height: 60, resizing: true }], 20)).toBe(near);
+	});
+
+	it('snaps a box by its sides, and takes a grid of nothing for no grid', () => {
+		const stood = { x: 100, y: 100, width: 100, height: 60 };
+		const least = { width: 32, height: 32 };
+		// A side moved back near where it stood lands there again.
+		expect(snapSized({ x: 100, y: 93, width: 100, height: 67 }, stood, 20, least)).toEqual(stood);
+		// Two sides moved at once, from the far corner.
+		expect(snapSized({ x: 100, y: 100, width: 131, height: 89 }, stood, 20, least)).toEqual({ x: 100, y: 100, width: 140, height: 80 });
+		// The far side stepped out where the near one stood.
+		expect(snapSized({ x: 100, y: 100, width: 10, height: 60 }, stood, 20, least)).toEqual({ x: 100, y: 100, width: 40, height: 60 });
+		const next = { x: 103, y: 100, width: 97, height: 60 };
+		expect(snapSized(next, stood, 0, least)).toBe(next);
 	});
 
 	it('says what is chosen, in the order held, and sets exactly what is named as chosen', () => {
@@ -357,6 +407,30 @@ describe('where the canvas is looked at from', () => {
 		expect(isViewport({ x: NaN, y: 0, zoom: 1 })).toBe(false);
 		expect(isViewport({ x: 0, y: Infinity, zoom: 1 })).toBe(false);
 		expect(isViewport({ x: 0, y: 0, zoom: 0 })).toBe(false);
+	});
+});
+
+describe('sizing the plane by the wheel', () => {
+	it('sizes the plane about a point, which stays under the pointer, and keeps the size within the bounds', () => {
+		const viewport = { x: 100, y: 50, zoom: 1 };
+		const about = { x: 300, y: 250 };
+		const under = (at: { x: number; y: number; zoom: number }) => ({ x: (about.x - at.x) / at.zoom, y: (about.y - at.y) / at.zoom });
+		const doubled = zoomedAbout(viewport, about, 2, bounds);
+		expect(doubled).toEqual({ x: -100, y: -150, zoom: 2 });
+		expect(under(doubled)).toEqual(under(viewport));
+		const capped = zoomedAbout(viewport, about, 10, bounds);
+		expect(capped.zoom).toBe(4);
+		expect(under(capped)).toEqual(under(viewport));
+		// At a bound already, the plane is handed back as it is.
+		const atMost = { ...viewport, zoom: 4 };
+		expect(zoomedAbout(atMost, about, 2, bounds)).toBe(atMost);
+	});
+
+	it('measures a turn of the wheel as the engine does: a hundred pixels up is a fifth of a doubling', () => {
+		expect(wheelZoomFactor(-100, 0)).toBeCloseTo(2 ** 0.2, 12);
+		expect(wheelZoomFactor(100, 0) * wheelZoomFactor(-100, 0)).toBeCloseTo(1, 12);
+		expect(wheelZoomFactor(-1, 1)).toBeCloseTo(2 ** 0.05, 12);
+		expect(wheelZoomFactor(1, 2)).toBe(0.5);
 	});
 });
 

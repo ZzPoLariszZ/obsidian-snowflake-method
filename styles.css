@@ -15374,6 +15374,20 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	color: var(--interactive-accent);
 }
 
+/* The switch that has a finger's drag draw the box is for a finger: a mouse
+   draws the box by its own drag and moves the plane by its middle button or
+   with Space held, so where no finger can come the switch is not shown. Any
+   pointer, not the first: a screen that takes a finger beside a mouse shows it. */
+.snowflake-method-freeform-controls .snowflake-method-freeform-select {
+	display: none;
+}
+
+@media (any-pointer: coarse) {
+	.snowflake-method-freeform-controls .snowflake-method-freeform-select {
+		display: flex;
+	}
+}
+
 /* How near the canvas is looked at, in figures that keep their width as
    they change, so the buttons beside them never move under the pointer. */
 .snowflake-method-freeform-zoom-level {
@@ -15433,6 +15447,17 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	--xy-minimap-node-stroke-color: transparent;
 	color: var(--text-normal);
 	font-family: var(--font-interface);
+}
+
+/* A drag on the ground draws a box, so the ground wears no hand. It wears
+   one while Space holds it for moving, which the engine's own rules dress,
+   and a fist while the middle button moves it. */
+.snowflake-method-freeform-canvas .react-flow__pane.selection {
+	cursor: default;
+}
+
+.snowflake-method-freeform-canvas .react-flow__pane.selection.dragging {
+	cursor: grabbing;
 }
 
 /* A node is its box, which the engine places and sizes. The box itself

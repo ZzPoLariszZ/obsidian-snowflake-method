@@ -111,6 +111,7 @@ function canvas(size: { width: number; height: number } = { width: 800, height: 
 			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,
 			additive: (event) => event.metaKey || event.shiftKey,
+			zoomKey: (event) => event.metaKey,
 			...options,
 		});
 	});
@@ -499,6 +500,38 @@ describe('the canvas engine on a document', () => {
 		other.remove();
 	});
 
+	it('moves the plane by the wheel, and sizes it about the pointer while the platform’s key is held', async () => {
+		const { host, handle, raised, tell } = canvas();
+		await raised();
+		const pane = host.querySelector('.react-flow__pane')!;
+		const turn = (init: WheelEventInit): WheelEvent => {
+			const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaMode: 0, ...init });
+			// The document's own wheel event carries no place and no keys: they are given here as a browser's would be.
+			Object.defineProperties(event, {
+				clientX: { value: 400 },
+				clientY: { value: 300 },
+				metaKey: { value: init.metaKey === true },
+			});
+			tell(() => {
+				pane.dispatchEvent(event);
+			});
+			return event;
+		};
+		// A turn moves the plane as far as it turned, each way, and the engine takes the turn as its own.
+		expect(turn({ deltaY: 60 }).defaultPrevented).toBe(true);
+		turn({ deltaY: 40 });
+		expect(handle.viewport()).toEqual({ x: 0, y: -100, zoom: 1 });
+		turn({ deltaX: 40 });
+		expect(handle.viewport()).toEqual({ x: -40, y: -100, zoom: 1 });
+		// With the key, the turn sizes the plane about the pointer: what stood under it stands there still.
+		const under = handle.toPlane({ x: 400, y: 300 });
+		expect(turn({ deltaY: -100, metaKey: true }).defaultPrevented).toBe(true);
+		expect(handle.viewport().zoom).toBeCloseTo(2 ** 0.2, 9);
+		const after = handle.toPlane({ x: 400, y: 300 });
+		expect(after.x).toBeCloseTo(under.x, 9);
+		expect(after.y).toBeCloseTo(under.y, 9);
+	});
+
 	it('looks from where it is told to, and says where it looks from', async () => {
 		const { handle, port, raised, tell } = canvas();
 		await raised();
@@ -695,6 +728,7 @@ describe('the canvas engine on a document', () => {
 			labels: { canvas: 'Freeform', minimap: 'Minimap' },
 			reduceMotion: () => true,
 			additive: () => false,
+			zoomKey: () => false,
 		});
 		await vi.waitFor(() => {
 			expect(failed).toHaveBeenCalledOnce();

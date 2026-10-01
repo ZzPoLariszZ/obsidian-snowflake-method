@@ -149,10 +149,14 @@ export function reconcileEdges(
  * What the engine reports of its nodes, taken in. A frame that moves carries
  * the nodes it holds by as far as it went, unless the same report moves them
  * itself: a frame and a member chosen and dragged together each move once.
+ * A frame sized from its near corner is not moving, though its corner is,
+ * and carries nothing. While nodes land on a grid, a node sized by hand has
+ * each side the hand moved brought to the grid.
  */
 export function reduceNodeChanges(
 	held: readonly CanvasHeldNode[],
 	changes: readonly CanvasNodeChange[],
+	grid: number | null = null,
 ): readonly CanvasHeldNode[] {
 	if (changes.length === 0) return held;
 	const places = new Map<string, CanvasPoint>();
@@ -165,7 +169,7 @@ export function reduceNodeChanges(
 	}
 	const carried = new Map<string, CanvasPoint>();
 	for (const entry of held) {
-		if (entry.node.kind !== CANVAS_FRAME_KIND) continue;
+		if (entry.node.kind !== CANVAS_FRAME_KIND || sizes.has(entry.node.id)) continue;
 		const to = places.get(entry.node.id);
 		if (to === undefined || (to.x === entry.x && to.y === entry.y)) continue;
 		carried.set(entry.node.id, { x: to.x - entry.x, y: to.y - entry.y });
@@ -180,20 +184,53 @@ export function reduceNodeChanges(
 		}
 		const size = sizes.get(id);
 		const selected = chosen.get(id) ?? entry.selected;
-		const x = place?.x ?? entry.x;
-		const y = place?.y ?? entry.y;
-		const width = size?.width ?? entry.width;
-		const height = size?.height ?? entry.height;
+		let box: CanvasBox = {
+			x: place?.x ?? entry.x,
+			y: place?.y ?? entry.y,
+			width: size?.width ?? entry.width,
+			height: size?.height ?? entry.height,
+		};
+		if (size !== undefined && grid !== null) {
+			box = snapSized(box, entry, grid, { width: entry.node.minWidth, height: entry.node.minHeight });
+		}
 		if (
-			x === entry.x && y === entry.y && width === entry.width && height === entry.height &&
+			box.x === entry.x && box.y === entry.y && box.width === entry.width && box.height === entry.height &&
 			selected === entry.selected
 		) {
 			return entry;
 		}
 		moved = true;
-		return { ...entry, x, y, width, height, selected };
+		return { ...entry, ...box, selected };
 	});
 	return moved ? next : held;
+}
+
+/** A value brought to the nearest line of the grid. */
+const onGrid = (value: number, grid: number): number => grid * Math.round(value / grid);
+
+/**
+ * A box sized by hand while nodes land on the grid: each side the hand moved
+ * is brought to the grid's nearest line, and a side that stood where it was
+ * stays, so a corner the hand never took is not pulled about. A side that
+ * would bring the box under its least size is stepped back out, a line at a
+ * time, until it does not.
+ */
+export function snapSized(next: CanvasBox, stood: CanvasBox, grid: number, least: CanvasSize): CanvasBox {
+	if (!(grid > 0)) return next;
+	const side = (moved: number, was: number): number => (moved === was ? was : onGrid(moved, grid));
+	let left = side(next.x, stood.x);
+	let right = side(next.x + next.width, stood.x + stood.width);
+	let top = side(next.y, stood.y);
+	let bottom = side(next.y + next.height, stood.y + stood.height);
+	while (right - left < least.width) {
+		if (left !== stood.x) left -= grid;
+		else right += grid;
+	}
+	while (bottom - top < least.height) {
+		if (top !== stood.y) top -= grid;
+		else bottom += grid;
+	}
+	return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
 export function reduceEdgeChanges(
@@ -426,6 +463,32 @@ export function steppedViewport(
 ): CanvasViewport {
 	const zoom = zoomStep(viewport.zoom, direction, bounds);
 	return zoom === viewport.zoom ? viewport : centredOn(centreOf(viewport, size), size, zoom);
+}
+
+/**
+ * The plane sized by `factor` about a point of the canvas, so what stands
+ * under the pointer stays under it; the size is kept within the bounds, and
+ * at a bound the plane is handed back as it is.
+ */
+export function zoomedAbout(
+	viewport: CanvasViewport,
+	about: CanvasPoint,
+	factor: number,
+	bounds: { min: number; max: number },
+): CanvasViewport {
+	const zoom = clamp(viewport.zoom * factor, bounds.min, bounds.max);
+	if (zoom === viewport.zoom) return viewport;
+	const scale = zoom / viewport.zoom;
+	return { x: about.x - (about.x - viewport.x) * scale, y: about.y - (about.y - viewport.y) * scale, zoom };
+}
+
+/**
+ * How far one turn of the wheel sizes the plane, measured as the engine
+ * measures a turn of its own, so a key held changes what the wheel does and
+ * never how far it goes. `mode` is the turn's `deltaMode`: pixels, lines or pages.
+ */
+export function wheelZoomFactor(delta: number, mode: number): number {
+	return 2 ** (-delta * (mode === 1 ? 0.05 : mode === 0 ? 0.002 : 1));
 }
 
 /** Whether a place to look from is one a canvas can take: every part a number, the size above nothing. */

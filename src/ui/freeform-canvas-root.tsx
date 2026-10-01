@@ -55,7 +55,7 @@ import {
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-import { CANVAS_EDGE_Z, canvasDepth, handleBoxes } from './freeform-canvas-model';
+import { CANVAS_EDGE_Z, canvasDepth, handleBoxes, wheelZoomFactor, zoomedAbout } from './freeform-canvas-model';
 import {
 	CANVAS_FAR_KIND,
 	CANVAS_FRAME_KIND,
@@ -89,8 +89,16 @@ type FlowEdge = EngineEdge<{ edge: CanvasEdge }, 'freeform'>;
 const WHOLE_NODES = 200;
 const WHOLE_EDGES = 400;
 
-/** How wide the ground's pattern is laid, in the plane's own units. */
+/** How wide the ground's pattern is laid, in the plane's own units; the grid a node lands on is as wide. */
 const GROUND_GAP = 20;
+/** How wide a dot of the pattern is drawn, in the plane's own units. */
+const GROUND_DOT = 2;
+/**
+ * The engine lays each dot at the middle of a cell of its pattern, and a
+ * node landing on the grid lands at a corner. Moved by half a cell, and by
+ * half a dot more for the dot's own width, the dots stand on the corners.
+ */
+const GROUND_OFFSET = (GROUND_GAP + GROUND_DOT) / 2;
 
 const POSITIONS: Readonly<Record<CanvasSide, Position>> = {
 	top: Position.Top,
@@ -469,7 +477,7 @@ function Flow(): ReactElement {
 	const deps = useDeps();
 	const { options, port, store: canvas } = deps;
 	const snapshot = useSyncExternalStore(canvas.subscribe, canvas.get);
-	const { interaction, boxing, size } = snapshot;
+	const { interaction, panning, size } = snapshot;
 	const nodes = useFlowNodes(snapshot.nodes, interaction.readOnly);
 	const edges = useFlowEdges(snapshot.edges, interaction.readOnly);
 	const flow = useReactFlow<FlowNode, FlowEdge>();
@@ -493,6 +501,33 @@ function Flow(): ReactElement {
 			host.removeEventListener('pointerdown', onPress, true);
 		};
 	}, [options, store]);
+
+	// The platform's own key over the wheel sizes the plane about the pointer,
+	// as the app's canvas does; a turn without it moves the plane, which the
+	// engine does of itself. Read off the turn, which no stale key misleads,
+	// and taken ahead of the engine, which would move the plane by it.
+	useEffect(() => {
+		const host = wrapper.current;
+		if (host === null) return undefined;
+		const onWheel = (event: WheelEvent): void => {
+			if (!options.zoomKey(event)) return;
+			// The minimap sizes itself by its own wheel.
+			const panel = (event.target as Partial<Element> | null)?.closest?.('.react-flow__panel');
+			if (panel !== null && panel !== undefined) return;
+			event.preventDefault();
+			event.stopPropagation();
+			const box = (store.getState().domNode ?? host).getBoundingClientRect();
+			const about = { x: event.clientX - box.left, y: event.clientY - box.top };
+			void flow.setViewport(
+				zoomedAbout(flow.getViewport(), about, wheelZoomFactor(event.deltaY, event.deltaMode), options.zoom),
+				{ duration: 0 },
+			);
+		};
+		host.addEventListener('wheel', onWheel, { capture: true, passive: false });
+		return () => {
+			host.removeEventListener('wheel', onWheel, { capture: true });
+		};
+	}, [flow, options, store]);
 
 	// Asked at every drawing, which costs nothing and is never stale: a view
 	// moved to another screen is drawn again there.
@@ -575,8 +610,12 @@ function Flow(): ReactElement {
 		return [step, step];
 	}, [interaction.snap]);
 
-	const boxes = boxing || interaction.ground === 'select';
-	const pans = interaction.ground === 'select' ? false : boxing ? [1] : true;
+	// A drag on the ground draws a box, as the app's canvas has it; the plane
+	// is moved by the middle button, or by any button while Space is held. A
+	// finger has neither, so it moves the plane unless the controls' switch
+	// says it draws the box: the engine lets a finger pass where a button is
+	// named, and takes it for the box only where none is.
+	const pans = interaction.ground === 'select' ? false : panning ? true : [1];
 	return (
 		<div ref={wrapper} className="snowflake-method-freeform-flow">
 			<ReactFlow<FlowNode, FlowEdge>
@@ -603,10 +642,11 @@ function Flow(): ReactElement {
 				elementsSelectable
 				nodesFocusable
 				edgesFocusable
-				selectionOnDrag={boxes}
+				selectionOnDrag
 				panOnDrag={pans}
-				panOnScroll={false}
-				zoomOnScroll
+				panOnScroll
+				panOnScrollSpeed={1}
+				zoomOnScroll={false}
 				zoomOnPinch
 				zoomOnDoubleClick={false}
 				preventScrolling
@@ -646,7 +686,7 @@ function Flow(): ReactElement {
 				onMoveEnd={onMoveEnd}
 				onError={onError}
 			>
-				<Background id={options.id} variant={BackgroundVariant.Dots} gap={GROUND_GAP} size={1} />
+				<Background id={options.id} variant={BackgroundVariant.Dots} gap={GROUND_GAP} size={GROUND_DOT} offset={GROUND_OFFSET} />
 				{interaction.minimap ? (
 					<MiniMap
 						pannable

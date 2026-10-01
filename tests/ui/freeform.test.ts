@@ -3145,6 +3145,14 @@ describe('the menus', () => {
 		expect(menus[2]!.map((item) => item.title)[0]).toBe('actions.edit');
 	});
 
+	it('stands a menu asked for with the right button under the pointer, though such a press says nothing in detail', async () => {
+		const fixture = await laid();
+		fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } }, { type: 'contextmenu', detail: 0, target: fixture.stage() });
+		expect(positions[0]).toBeNull();
+		fixture.menuAt({ kind: 'node', id: 't2' }, { type: 'contextmenu', detail: 0, target: fixture.face('t2') });
+		expect(positions[0]).toBeNull();
+	});
+
 	it('takes the menus it opened with it as it goes', async () => {
 		const fixture = await laid();
 		fixture.menuAt({ kind: 'node', id: 't2' });
@@ -3256,6 +3264,14 @@ describe('the canvas controls', () => {
 		expect(additive({ metaKey: true, shiftKey: false } as MouseEvent)).toBe(true);
 		expect(additive({ metaKey: false, shiftKey: true } as MouseEvent)).toBe(true);
 		expect(additive({ metaKey: false, shiftKey: false } as MouseEvent)).toBe(false);
+	});
+
+	it('reads whether a turn of the wheel sizes the plane off the turn itself: the platform’s own key alone', async () => {
+		const fixture = await laid();
+		const zoomKey = fixture.canvas.options!.zoomKey;
+		expect(zoomKey({ metaKey: true, shiftKey: false } as MouseEvent)).toBe(true);
+		expect(zoomKey({ metaKey: false, shiftKey: true } as MouseEvent)).toBe(false);
+		expect(zoomKey({ metaKey: false, ctrlKey: true } as MouseEvent)).toBe(false);
 	});
 
 	it('names every canvas apart, so two in two leaves share no pattern and no marker', async () => {
