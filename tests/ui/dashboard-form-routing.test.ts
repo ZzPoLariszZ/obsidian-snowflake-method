@@ -38,6 +38,7 @@ function dashboardLeaf(
 	const openCharacterForm = vi.fn((_id: string) => Promise.resolve());
 	const openEntityForm = vi.fn((_intent: EntityFormIntent) => Promise.resolve(null));
 	const revealTask = vi.fn((_id: string) => Promise.resolve(true));
+	const createMemberFromField = vi.fn((_group: string, _name: string) => Promise.resolve<{ id: string; name: string } | null>({ id: 'made-1', name: 'Ferryman' }));
 	const queueRefreshWhenShown = vi.fn();
 	Object.assign(dashboard, {
 		getProjectPath: () => path,
@@ -45,6 +46,7 @@ function dashboardLeaf(
 		openCharacterForm,
 		openEntityForm,
 		revealTask,
+		createMemberFromField,
 		queueRefreshWhenShown,
 	});
 	let state: ViewState = {
@@ -64,7 +66,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, createMemberFromField, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -126,6 +128,13 @@ const forms = [
 		open: (plugin: SnowflakeMethodPlugin) => plugin.openEntityForm(entityIntent),
 		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
 			expect(dashboard.openEntityForm).toHaveBeenCalledExactlyOnceWith(entityIntent);
+		},
+	},
+	{
+		name: 'a note made from a field by its',
+		open: (plugin: SnowflakeMethodPlugin) => plugin.createMemberFromField('character', 'Ferryman'),
+		called: (dashboard: ReturnType<typeof dashboardLeaf>) => {
+			expect(dashboard.createMemberFromField).toHaveBeenCalledExactlyOnceWith('character', 'Ferryman');
 		},
 	},
 ];

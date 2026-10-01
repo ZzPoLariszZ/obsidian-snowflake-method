@@ -32,6 +32,7 @@ import type {
 } from '../domain';
 import type { CustomField, MarkerIssueCode, RecordLine } from '../templates';
 import type { WikilinkTarget } from './segment-editor-backend';
+import type { EntityGroupId } from './entity-form';
 import type { EntitiesPanelBridge } from './entities-panel';
 import type { ProsePanelBridge } from './prose-panel';
 import type { ForeshadowingPanelBridge } from './foreshadowing-panel';
@@ -898,6 +899,13 @@ export interface DashboardHost {
 	 * the note a create made.
 	 */
 	openEntityForm(intent: EntityFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null>;
+	/**
+	 * A note of a group made for a field of another surface that named it
+	 * and found it missing: from its name alone, or through its form with the
+	 * name filled in, as the author chose in the settings. Reported back by
+	 * its id and name; null where the author backed out or nothing was made.
+	 */
+	createMemberFromField(group: EntityGroupId, name: string, projectPath?: string): Promise<{ id: string; name: string } | null>;
 	deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(

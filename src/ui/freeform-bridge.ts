@@ -83,6 +83,7 @@ export type FreeformHost = Pick<
 	| 'openSceneForm'
 	| 'openCharacterForm'
 	| 'openEntityForm'
+	| 'createMemberFromField'
 	| 'patchScene'
 	| 'patchCharacter'
 	| 'patchEntity'

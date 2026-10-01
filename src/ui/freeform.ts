@@ -407,8 +407,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		return [
 			{ kind: 'text', icon: 'type', label: t('freeformCanvas.text.add'), section: 'canvas' },
 			{ kind: 'frame', icon: 'frame', label: t('freeformCanvas.frame.add'), section: 'canvas' },
-			{ kind: 'scene', icon: kindIcon(kinds, 'scene'), label: t('freeformCanvas.quick.scene'), section: 'entity' },
 			{ kind: 'character', icon: kindIcon(kinds, 'character'), label: t('freeformCanvas.quick.character'), section: 'entity' },
+			{ kind: 'scene', icon: kindIcon(kinds, 'scene'), label: t('freeformCanvas.quick.scene'), section: 'entity' },
 			...kinds.worldbuildingKinds.map((kind): QuickAdd => ({
 				kind: kind.id,
 				icon: kindIcon(kinds, kind.id),
@@ -1578,8 +1578,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 
 	/** The kinds of node the form offers: what the project holds notes of, each under a value of its own, and what is made on the canvas. */
 	const nodeTypes = (): FreeformNodeType[] => [
-		{ value: entityTypeOf('scene'), label: kindWord('scene'), section: 'entity' },
 		{ value: entityTypeOf('character'), label: kindWord('character'), section: 'entity' },
+		{ value: entityTypeOf('scene'), label: kindWord('scene'), section: 'entity' },
 		...(model?.worldbuildingKinds ?? []).map((kind): FreeformNodeType => ({ value: entityTypeOf(kind.id), label: kindWord(kind.id), section: 'entity' })),
 		{ value: 'task', label: t('freeformCanvas.type.task'), section: 'task' },
 		{ value: 'foreshadowing', label: t('freeformCanvas.type.foreshadowing'), section: 'task' },
@@ -1675,6 +1675,22 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			{
 				types: nodeTypes(),
 				candidates: (kind) => nodeCandidates(kind, read, files),
+				// A kind of note is made for a name typed that it lacks, as the author chose for fields; a family of records and a file are not.
+				create: (type) => {
+					const entity = entityKindOf(type);
+					if (entity === null || readOnly) return null;
+					// A time made from its name alone is a point, as an unnamed time is; the form, where the author opens one, asks.
+					const group = entity === 'time' ? 'time-point' : entity;
+					return async (name) => {
+						const path = controls.projectPath();
+						if (path === null) return null;
+						const note = await host.createMemberFromField(group, name, path);
+						if (note === null) return null;
+						// Read again before it is offered, so the canvas paints the note itself and not one gone missing.
+						await controls.refresh();
+						return { id: note.id, name: note.name, onView: false };
+					};
+				},
 				room: () => {
 					const view = shownView();
 					return view === null || reading === null ? 0 : freeformRoom(view, reading.limits).placements;

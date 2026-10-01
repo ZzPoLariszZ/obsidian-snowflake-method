@@ -85,6 +85,7 @@ import {
 	FreeformEdgeFormModal,
 	FreeformFrameFormModal,
 	FreeformGeometryModal,
+	type FreeformNodeCandidate,
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
@@ -328,6 +329,33 @@ describe('the form nodes are added through', () => {
 		typeField().choose('text');
 		expect(pickRow(form).classes.has('is-hidden')).toBe(true);
 		expect(collectDraft(form)).toEqual({ type: 'text' });
+	});
+
+	it('offers to make a note the type lacks from the name typed, where the shell can, and lists what it made with the type’s own', async () => {
+		const maker = vi.fn((name: string) => Promise.resolve<FreeformNodeCandidate | null>({ id: `new-${name}`, name, onView: false }));
+		const create = vi.fn((type: string) => (type === 'character' ? maker : null));
+		const form = nodeForm({ create });
+		build(form);
+		// A type the shell cannot make a note of offers no row.
+		typeField().choose('scene');
+		expect(nodesPicker().create).toBeUndefined();
+		typeField().choose('character');
+		const offered = nodesPicker().create;
+		expect(offered).toBeDefined();
+		expect(offered!.label('Ferryman')).toBe('form.record.createEntity(name=Ferryman)');
+		await expect(offered!.run('Ferryman')).resolves.toEqual({ value: 'new-Ferryman', label: 'Ferryman' });
+		expect(maker).toHaveBeenCalledExactlyOnceWith('Ferryman');
+		// Made, it stands among the type's own, is picked as the picker picks what it made, and goes into the draft by its id and name.
+		expect(nodesPicker().options().map((option) => option.value)).toEqual(['char-1', 'new-Ferryman']);
+		nodesPicker().pick('new-Ferryman');
+		expect(collectDraft(form)).toEqual({ type: 'entity', kind: 'character', nodes: [{ id: 'new-Ferryman', name: 'Ferryman' }] });
+		// Backed out of, nothing is listed.
+		maker.mockResolvedValueOnce(null);
+		await expect(offered!.run('Nobody')).resolves.toBeNull();
+		expect(nodesPicker().options().map((option) => option.value)).toEqual(['char-1', 'new-Ferryman']);
+		// Another type keeps what was made for this one apart.
+		typeField().choose('scene');
+		expect(nodesPicker().options().map((option) => option.value)).toEqual(['scene-2', 'scene-3', 'scene-1']);
 	});
 
 	it('says how many are chosen and how many more the view has room for, and refuses none and too many', () => {

@@ -390,6 +390,7 @@ import type {
 	SceneViewModel,
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
+import type { EntityGroupId } from './ui/entity-form';
 import { ManuscriptSaveConflict, kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
@@ -10291,6 +10292,10 @@ export default class SnowflakeMethodPlugin
 	async openEntityForm(intent: EntityFormIntent, projectPath?: string, onSaved?: () => void): Promise<string | null> {
 		return this.withDashboardForm((view) => onSaved === undefined
 			? view.openEntityForm(intent) : view.openEntityForm(intent, onSaved), null, projectPath);
+	}
+
+	async createMemberFromField(group: EntityGroupId, name: string, projectPath?: string): Promise<{ id: string; name: string } | null> {
+		return this.withDashboardForm((view) => view.createMemberFromField(group, name), null, projectPath);
 	}
 
 	/**

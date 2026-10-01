@@ -5149,6 +5149,35 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
+	 * A note made for another surface's field that named it and found it
+	 * missing, as a field of the forms here makes one: from the name alone,
+	 * or through its form with the name filled in, as the author chose.
+	 * Resolves with the note's id and name, or null where nothing was made.
+	 */
+	async createMemberFromField(group: EntityGroupId, name: string): Promise<{ id: string; name: string } | null> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return null;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return null;
+		if (model === null || model.readOnly) return null;
+		const made = await this.createInGroup(model, group, name, undefined, async () => {
+			this.queueRefreshWhenShown();
+		});
+		if (made === null) return null;
+		// The field names the note by its path; the asker places it by its id, read from the project as it stands now.
+		const fresh = await this.host.loadDashboardModel(requestedProject);
+		if (fresh === null) return null;
+		const noteKey = (path: string): string => path.replace(/\.md$/u, '');
+		const key = noteKey(made.value);
+		const note = [
+			...fresh.characters,
+			...fresh.scenes,
+			...Object.values(fresh.worldbuilding).flat(),
+		].find((candidate) => noteKey(candidate.path) === key);
+		return note === undefined ? null : { id: note.id, name: made.label };
+	}
+
+	/**
 	 * The worldbuilding form for another surface, as `openSceneForm` is: one
 	 * note's editor, opened on its description when asked, or the create form
 	 * of a kind with what the asker knows preset. Resolves when the modal is

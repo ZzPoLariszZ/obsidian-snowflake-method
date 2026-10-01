@@ -298,6 +298,12 @@ export interface FreeformNodeFormOptions {
 	room: () => number;
 	/** How long a link's label may run. */
 	labelLimit?: number;
+	/**
+	 * How a type makes a note it does not have, for a name typed that none
+	 * of its candidates bears; null for a type that cannot. The maker answers
+	 * the new note as a candidate, or null where the author backed out.
+	 */
+	create?: (type: string) => ((name: string) => Promise<FreeformNodeCandidate | null>) | null;
 	/** The type the form opens on; none where left out. */
 	initialType?: string | null;
 }
@@ -327,6 +333,8 @@ export const FREEFORM_PICK_ROWS = 200;
 export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft> {
 	private type: string | null;
 	private readonly picked: string[] = [];
+	/** The notes made from this form, by type: the project behind the form was read before they existed. */
+	private readonly made = new Map<string, FreeformNodeCandidate[]>();
 	private readonly frame: FreeformFrameDraft = { title: '', color: null };
 	private readonly link: FreeformLinkDraft = { url: '', label: '' };
 	private typeField: OptionPicker | null = null;
@@ -392,8 +400,21 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 		if (host === null) return;
 		this.nodesPicker?.destroy();
 		host.empty();
+		const chosen = this.type;
+		const maker = chosen === null ? null : (this.options.create?.(chosen) ?? null);
+		// A name typed that no candidate bears is offered as a note to make, where the type can make one.
+		const create = chosen === null || maker === null ? undefined : {
+			label: (typed: string) => this.t('form.record.createEntity', { name: typed }),
+			run: async (typed: string) => {
+				const note = await maker(typed);
+				if (note === null) return null;
+				this.made.set(chosen, [...(this.made.get(chosen) ?? []), note]);
+				return { value: note.id, label: note.name };
+			},
+		};
 		this.nodesPicker = buildOptionPicker(this.app, host, {
 			options: () => this.nodeOptions(),
+			...(create === undefined ? {} : { create }),
 			label: this.t('freeformCanvas.node.pick'),
 			placeholder: this.t('freeformCanvas.node.pickPlaceholder'),
 			emptyPlaceholder: this.t('freeformCanvas.node.pickEmpty'),
@@ -426,10 +447,17 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 	 * are set apart only where the view holds some: with none on it, a
 	 * heading over the whole list would say nothing.
 	 */
+	/** The type's candidates, with the notes made here that the project does not list yet after them. */
+	private candidatesOf(type: string): FreeformNodeCandidate[] {
+		const listed = this.options.candidates(type);
+		const known = new Set(listed.map((candidate) => candidate.id));
+		return [...listed, ...(this.made.get(type) ?? []).filter((candidate) => !known.has(candidate.id))];
+	}
+
 	private nodeOptions(): PickerOption[] {
 		const type = this.type;
 		if (type === null || type === 'text') return [];
-		const candidates = this.options.candidates(type);
+		const candidates = this.candidatesOf(type);
 		const apart = candidates.some((candidate) => candidate.onView);
 		const option = (candidate: FreeformNodeCandidate): PickerOption => ({
 			value: candidate.id,
@@ -496,7 +524,7 @@ export class FreeformNodeFormModal extends SnowflakeFormModal<FreeformNodeDraft>
 			new Notice(this.t('freeformCanvas.node.limitSome', { left: room }));
 			return null;
 		}
-		const names = new Map(this.options.candidates(type).map((candidate) => [candidate.id, candidate.name]));
+		const names = new Map(this.candidatesOf(type).map((candidate) => [candidate.id, candidate.name]));
 		return {
 			type: 'entity',
 			kind: type,

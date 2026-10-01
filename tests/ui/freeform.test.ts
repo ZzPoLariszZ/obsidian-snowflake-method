@@ -473,6 +473,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 		openSceneForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
 		openCharacterForm: vi.fn((_id: string, _path?: string, _onSaved?: () => void) => Promise.resolve()),
 		openEntityForm: vi.fn((_intent: unknown, _path?: string, _onSaved?: () => void) => Promise.resolve<string | null>(null)),
+		createMemberFromField: vi.fn((_group: string, _name: string, _path?: string) => Promise.resolve<{ id: string; name: string } | null>(null)),
 		patchScene: vi.fn(() => Promise.resolve('r2')),
 		patchCharacter: vi.fn(() => Promise.resolve('c2')),
 		patchEntity: vi.fn(() => Promise.resolve('w2')),
@@ -1833,8 +1834,8 @@ describe('nodes added by type', () => {
 		await settle();
 		const options = formOptions(forms[0]);
 		expect(options.types.map((type) => [type.value, type.label, type.section])).toEqual([
-			['entity:scene', 'form.group.scene', 'entity'],
 			['entity:character', 'form.group.character', 'entity'],
+			['entity:scene', 'form.group.scene', 'entity'],
 			['entity:location', 'worldbuilding.kind.location', 'entity'],
 			['entity:Faction', 'Faction', 'entity'],
 			['task', 'freeformCanvas.type.task', 'task'],
@@ -1854,6 +1855,38 @@ describe('nodes added by type', () => {
 		expect(options.candidates('entity:location')).toEqual([{ id: 'loc-1', name: 'Harbour', onView: false }]);
 		expect(options.candidates('entity:Faction')).toEqual([]);
 		expect(options.room()).toBe(FREEFORM_LIMITS.placements - 4);
+	});
+
+	it('makes a note a kind lacks from the name typed, through the host as the author chose, and reads the project again before offering it', async () => {
+		const fixture = await laid();
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
+		const options = formOptions(forms[0]);
+		// Only a kind of note is made here; a family of records and a file are not.
+		expect(options.create?.('task')).toBeNull();
+		expect(options.create?.('file')).toBeNull();
+		const make = options.create?.('entity:character');
+		expect(make).not.toBeNull();
+		fixture.host.createMemberFromField.mockResolvedValueOnce({ id: 'char-9', name: 'Ferryman' });
+		fixture.refresh.mockClear();
+		await expect(make!('Ferryman')).resolves.toEqual({ id: 'char-9', name: 'Ferryman', onView: false });
+		expect(fixture.host.createMemberFromField).toHaveBeenCalledExactlyOnceWith('character', 'Ferryman', 'P');
+		expect(fixture.refresh).toHaveBeenCalledOnce();
+		// A time made from its name alone is a point.
+		fixture.host.createMemberFromField.mockResolvedValueOnce({ id: 'time-9', name: 'Dawn' });
+		await options.create?.('entity:time')?.('Dawn');
+		expect(fixture.host.createMemberFromField).toHaveBeenLastCalledWith('time-point', 'Dawn', 'P');
+		// Backed out of, nothing is read again and nothing is offered.
+		fixture.host.createMemberFromField.mockResolvedValueOnce(null);
+		fixture.refresh.mockClear();
+		await expect(options.create?.('entity:scene')?.('Nobody')).resolves.toBeNull();
+		expect(fixture.refresh).not.toHaveBeenCalled();
+		// A project that cannot be written makes nothing.
+		fixture.remodel({ readOnly: true });
+		fixture.handle.refresh();
+		await settle();
+		expect(options.create?.('entity:character')).toBeNull();
 	});
 
 	it('keeps an authored kind called task or text apart from the task family and the canvas’s own text, in the form and at the foot', async () => {
@@ -3378,7 +3411,7 @@ describe('the canvas controls', () => {
 		// Every type the form offers, what is made on the canvas first, the sections parted by a line; an authored kind wears its own symbol and is named by its data.
 		expect(quick.querySelectorAll('button').map((button) => button.getAttribute('aria-label'))).toEqual([
 			'freeformCanvas.text.add', 'freeformCanvas.frame.add',
-			'freeformCanvas.quick.scene', 'freeformCanvas.quick.character', 'freeformCanvas.quick.location', 'freeformCanvas.quick.custom(kind=Faction)',
+			'freeformCanvas.quick.character', 'freeformCanvas.quick.scene', 'freeformCanvas.quick.location', 'freeformCanvas.quick.custom(kind=Faction)',
 			'freeformCanvas.quick.task', 'freeformCanvas.quick.foreshadowing', 'freeformCanvas.quick.revision', 'freeformCanvas.quick.stickyNote',
 			'freeformCanvas.file.add', 'freeformCanvas.link.add',
 		]);
