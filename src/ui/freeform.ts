@@ -130,6 +130,7 @@ import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './fores
 import { kindIcon } from './kind-icon';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
 import { renderEmptyLine } from './pane-parts';
+import { formatStickyCreated } from './sticky-note-layout';
 import { TimelineTimePickModal, confirmTimelineAction } from './timeline-forms';
 import { kindEntities, type ProjectDashboardModel } from './view-model';
 import {
@@ -657,6 +658,23 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		void change([{ do: 'edit-frame', id, color }], 'change', t('freeformCanvas.frame.refused'));
 	};
 
+	/**
+	 * A sticky note is called by its first words as they read, not as they
+	 * are marked. One with none is called empty, and by when it was made, so
+	 * two empty notes are told apart.
+	 */
+	const stickyName = (note: { body: string; createdAt: number }): string => {
+		const first = plainFirstLine(note.body, NAME_LENGTH);
+		if (first.length > 0) return first;
+		const when = formatStickyCreated(note.createdAt, reading?.locale ?? 'en').short;
+		return when.length === 0 ? t('freeformCanvas.type.stickyNote') : t('freeformCanvas.face.emptyNote', { when });
+	};
+	/** A revision is called by the first line of the words it changes, or puts in; with neither, by its chapter. */
+	const revisionName = (original: string, proposed: string, title: string): string => {
+		const first = plainFirstLine(original.length > 0 ? original : proposed, NAME_LENGTH);
+		return first.length === 0 ? title : first;
+	};
+
 	/** What a node is called, as its face shows it. */
 	const nameOf = (node: ResolvedNode): string => {
 		if (node.type === 'text') {
@@ -667,16 +685,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		if (node.type === 'file') return node.file.name;
 		if (node.type === 'missing') return node.name;
 		if (node.type === 'pending') return lastCalled(node.placement);
-		// A sticky note is called by its first words as they read, not as they are marked; a revision by the first line of the words it changes.
-		if (node.type === 'sticky-note') {
-			const first = plainFirstLine(node.note.body, NAME_LENGTH);
-			return first.length === 0 ? t('freeformCanvas.type.stickyNote') : first;
-		}
-		if (node.type === 'revision') {
-			const words = node.row.original.length > 0 ? node.row.original : node.row.proposed;
-			const first = plainFirstLine(words, NAME_LENGTH);
-			return first.length === 0 ? node.row.title : first;
-		}
+		if (node.type === 'sticky-note') return stickyName(node.note);
+		if (node.type === 'revision') return revisionName(node.row.original, node.row.proposed, node.row.title);
 		return freeformLabelOf(node)?.name ?? lastCalled(node.placement);
 	};
 
@@ -1594,17 +1604,20 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	/** The families the form offers whole, read for it before it opens. */
 	const FORM_FAMILIES: readonly FreeformRecordType[] = ['task', 'foreshadowing', 'revision', 'sticky-note'];
 
-	/** What a record of a family is called in the form's list. */
-	const recordName = (family: FreeformRecordType, record: { title?: string; name?: string; original?: string; proposed?: string; body?: string }): string => {
+	/** What a record of a family is called in the form's list: what its face calls it, so a note with no words is not a blank row. */
+	const recordName = (
+		family: FreeformRecordType,
+		record: { title?: string; name?: string; original?: string; proposed?: string; body?: string; createdAt?: number },
+	): string => {
 		switch (family) {
 			case 'task':
 				return record.title ?? '';
 			case 'foreshadowing':
 				return record.name ?? '';
 			case 'revision':
-				return plainFirstLine((record.original ?? '').length > 0 ? record.original ?? '' : record.proposed ?? '', NAME_LENGTH);
+				return revisionName(record.original ?? '', record.proposed ?? '', record.title ?? '');
 			case 'sticky-note':
-				return plainFirstLine(record.body ?? '', NAME_LENGTH);
+				return stickyName({ body: record.body ?? '', createdAt: record.createdAt ?? Number.NaN });
 		}
 	};
 

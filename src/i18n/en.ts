@@ -1370,6 +1370,7 @@ export const en = {
 	'freeformCanvas.link.addressInvalid': 'Only a web address can be added. A note or a file of the project is added as an entity or a file.',
 	'freeformCanvas.link.refused': 'The link could not be written. Its address is still in the form.',
 	'freeformCanvas.face.noPreview': 'This file cannot be shown here.',
+	'freeformCanvas.face.emptyNote': 'Empty note · {when}',
 	'freeformCanvas.node.type': 'Type',
 	'freeformCanvas.node.typePlaceholder': 'Choose a type…',
 	'freeformCanvas.node.section.entity': 'Entities',

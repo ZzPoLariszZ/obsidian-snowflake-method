@@ -160,6 +160,7 @@ import {
 import type { FreeformTransacted, FreeformViewWrite, StickyNoteRecord } from '../../src/services';
 import type { ForeshadowingTableItem } from '../../src/ui/foreshadowing-rows';
 import type { FreeformFileReading, FreeformResourceRequest, FreeformResources } from '../../src/ui/freeform-resources';
+import { formatStickyCreated } from '../../src/ui/sticky-note-layout';
 import type { RevisionRow } from '../../src/ui/revision-panel';
 import { renderFreeform } from '../../src/ui/freeform';
 import type { FreeformBridge, FreeformControls } from '../../src/ui/freeform-bridge';
@@ -2474,6 +2475,27 @@ describe('records on the canvas', () => {
 		fixture.ring();
 		await settle();
 		expect(fixture.bridge.readResources).toHaveBeenCalledTimes(3);
+	});
+
+	it('calls a sticky note with no words empty and by when it was made, in the form and on the canvas, so two of them are told apart', async () => {
+		const fixture = await withRecords(recordsRead({
+			stickyNotes: [sticky('note-1', '# Remember\nthe tide'), sticky('note-3', ' \n\n'), sticky('note-4', '', { createdAt: 60_000 })],
+		}));
+		const forms = watch(FreeformNodeFormModal);
+		fire(fixture.button('snowflake-method-freeform-node-add'), 'click');
+		await settle();
+		const emptyAt = (createdAt: number): string => `freeformCanvas.face.emptyNote(when=${formatStickyCreated(createdAt, 'en').short})`;
+		const options = (forms[0] as unknown as { options: FreeformNodeFormModal['options'] }).options;
+		expect(options.candidates('sticky-note')).toEqual([
+			{ id: 'note-1', name: 'Remember', onView: true },
+			{ id: 'note-3', name: emptyAt(1), onView: false },
+			{ id: 'note-4', name: emptyAt(60_000), onView: false },
+		]);
+		expect(emptyAt(1)).not.toBe(emptyAt(60_000));
+		await submit(forms[0], { type: 'entity', kind: 'sticky-note', nodes: [{ id: 'note-3', name: emptyAt(1) }] });
+		const added = fixture.nodes()[fixture.nodes().length - 1]!;
+		expect(fixture.node(added).label).toBe(`freeformCanvas.node.name(kind=freeformCanvas.type.stickyNote,name=${emptyAt(1)})`);
+		expect(fixture.face(added).querySelector('.snowflake-method-freeform-sticky-first')!.textContent).toBe(emptyAt(1));
 	});
 
 	it('opens each record where it lives: the board, the manuscript, a float', async () => {

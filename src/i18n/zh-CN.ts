@@ -1267,6 +1267,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'freeformCanvas.link.addressInvalid': '只能添加网址。项目中的笔记与文件请作为实体或文件添加。',
 	'freeformCanvas.link.refused': '链接无法写入，网址仍保留在表单中。',
 	'freeformCanvas.face.noPreview': '此文件无法在此显示。',
+	'freeformCanvas.face.emptyNote': '空白笔记 · {when}',
 	'freeformCanvas.node.type': '类型',
 	'freeformCanvas.node.typePlaceholder': '选择类型…',
 	'freeformCanvas.node.section.entity': '实体',
