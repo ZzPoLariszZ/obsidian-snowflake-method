@@ -13067,6 +13067,32 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: default;
 }
 
+/* The list the select drops down is drawn from the options' own styles on
+   Windows and Linux (macOS draws its own and reads none of this), and an
+   option inherits the select's ink, which is the standing chosen, so every
+   line of the list wore one colour. Each option wears the ink of the standing
+   it names, the four the words wear on the cards, over the app's field fill. */
+.snowflake-method-corkboard-status-select option {
+	color: var(--text-normal);
+	background: var(--background-primary);
+}
+
+.snowflake-method-corkboard-status-select option[value='not-started'] {
+	color: var(--text-faint);
+}
+
+.snowflake-method-corkboard-status-select option[value='in-progress'] {
+	color: var(--color-blue);
+}
+
+.snowflake-method-corkboard-status-select option[value='in-revision'] {
+	color: var(--color-yellow);
+}
+
+.snowflake-method-corkboard-status-select option[value='complete'] {
+	color: var(--color-green);
+}
+
 .snowflake-method-corkboard-card .clickable-icon {
 	--icon-size: var(--icon-s);
 	flex: 0 0 auto;
