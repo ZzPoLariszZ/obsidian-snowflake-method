@@ -8,6 +8,24 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0]
+
+### Added
+
+- **The freeform canvas**, the last of the visualization workspace's four views, and the one with no grid at all. A **view** is a blank canvas, and a project keeps as many as it likes, chosen in the field at the head of the toolbar, made by **Add view**, renamed or deleted by the pencil, and opened from the command palette with **Open freeform workspace**. A project starts with a view named **Main** that is written the first time something is placed on it.
+- **Anything in the project as a card.** Characters, scenes, times, places, items and custom kinds, tasks, foreshadowing, revisions and sticky notes each stand on the canvas as the card their own workspace draws, with their kind and tint at the foot, and a double click opens the note or record behind them. Beside them go **text** typed in place, **any file** of the project, pictures, video and sound shown as themselves, and **web links**, which show their address and fetch nothing. **Add node** picks them by kind and name, a strip of quick adds along the foot adds one of each kind, and a name typed into the form that no note bears is made on the spot.
+- **Connections and frames.** A line drawn from one card to another connects them, with an arrow at neither end, one or both, a solid, dashed, dotted or dash-dot stroke, and a label on the line. A **frame** gathers whatever is dropped into it, carries it along when moved, takes a tint and a title, and is drawn afresh round what it holds with **Fit to contents**.
+- **The app's own gestures.** Dragging moves and resizes, the wheel pans, the wheel with Ctrl or Cmd zooms, Space or the middle button pans, a drag on the ground draws a selection box, and nodes snap to a dot grid and to each other. The controls in the corner zoom, fit and reset the view and undo and redo every change, the minimap keeps the whole in sight, the search finds a card by its words, and copy, cut, paste and duplicate work on cards as on text. Every gesture has a twin that is not a gesture: arrow keys and **Size and position** for moving and resizing, **Connect to** and **Change start** or **Change end** for lines, **Move to frame** for frames, and menus for the rest.
+- **The views live in files of their own** under `732_Freeform`, one `freeform-view-<id>.json` a view, holding where things stand and never their words. Each is read as the timeline file is: an entry that cannot be read set aside rather than dropped, a file from a newer version of the plugin left as it is, and a damaged one preserved beside a fresh start. Deleting the last view leaves `freeform.json` beside where the views were, so the project opens with none rather than a fresh Main.
+- **Search on the timeline and the beat sheet**, in the middle of their toolbars, as on the corkboard: the matches are counted, Enter steps through them, and the rest fades.
+- **A tint on characters and worldbuilding notes**, kept in the note under the key a scene's tint already uses, and chosen from the card's palette on the canvas.
+
+### Changed
+
+- The workspace's strip is complete: **Freeform** stands between Corkboard and Timeline, where it read Planning stage… before.
+- Every workspace toolbar is laid out the same way, the view field at the start, the search in the middle and the tools at the end, and a toolbar too narrow for all of it scrolls rather than hiding anything.
+- A new project is built with a `732_Freeform` folder, and the health check offers to put it back as it does the other tool folders.
+
 ## [0.21.0]
 
 ### Added
@@ -504,6 +522,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.22.0]
+
+### 新增
+
+- **自由画布**，可视化工作区四个视图中的最后一个，也是唯一没有网格的那个。一个**视图**就是一块空白画布，一个项目想建几个都可以，在工具栏开头的选择框里切换，用**添加视图**创建，用铅笔重命名或删除，也可以在命令面板中用**打开自由画布工作区**打开。项目一开始带有一个名为**主视图**的视图，第一次往上面放东西时才会写入文件。
+- **项目里的任何东西都能摆成卡片。**角色、场景、时间、地点、物品与自定义种类，任务、伏笔、修订与便签，各自照着本来的工作区绘成卡片站在画布上，底部标着种类与颜色，双击即可打开背后的笔记或记录。旁边还能放就地输入的**文本**、项目里的**任意文件**，图片、视频与音频会以本来的样子显示，以及**网页链接**，只显示网址，不会抓取任何内容。**添加节点**按种类和名称挑选，底部一条快捷添加可以逐种添加，在表单里输入一个没有笔记的名称，就能当场建一个。
+- **连线与分组。**从一张卡片拉到另一张便成一条连线，箭头可以两端都没有、只有一端或两端都有，线型有实线、虚线、点线与点划线，线上还能写标签。**分组**把放进去的卡片收在一起，移动时一并带走，可以着色、加标题，**贴合内容**会重新围着其中的卡片画好。
+- **应用本身的手势。**拖动即可移动与缩放，滚轮平移，按住 Ctrl 或 Cmd 滚动则缩放，空格或中键平移，在空白处拖动画出框选，卡片会吸附到点阵和彼此。角落的控制按钮负责缩放、总览与重置，并能撤销与重做每一步，小地图把全局收在眼前，搜索按文字找到卡片，复制、剪切、粘贴与创建副本对卡片同样有效。每个手势都有一个不是手势的对应物：移动与缩放有方向键和**大小与位置**，连线有**连接到**与**更改起点**、**更改终点**，分组有**移入分组**，其余的都在菜单里。
+- **视图各自保存在自己的文件里**，位于 `732_自由画布` 之下，每个视图一个 `freeform-view-<id>.json`，只记录东西站在哪里，从不保存它们的文字。读取方式与时间线文件相同：读不懂的条目放在一旁而不是丢弃，更新版本插件写入的文件原样保留，损坏的文件另存一份并从头开始。删除最后一个视图后，`freeform.json` 会留在原处，这样项目打开时就不会再出现一个全新的主视图。
+- **时间线与节拍表上的搜索**，位于各自工具栏的中间，与场景看板一样：匹配项会计数，按 Enter 逐个跳转，其余的淡去。
+- **角色与世界观笔记的颜色**，保存在笔记里，用的是场景颜色已经在用的那个键，在画布上卡片的色板中选择。
+
+### 变更
+
+- 工作区的标签条已经完整：**自由画布**位于场景看板与时间线之间，此前那里写着「规划阶段…」。
+- 每个工作区的工具栏都采用同一种布局，视图选择框在开头，搜索在中间，工具在末尾，工具栏放不下时会横向滚动，而不是隐藏任何东西。
+- 新项目会建出 `732_自由画布` 文件夹，健康检查也会像对其他工具文件夹那样提议把它补回来。
 
 ## [0.21.0]
 
