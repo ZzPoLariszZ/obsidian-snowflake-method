@@ -184,6 +184,12 @@ export interface SceneCardDeps<Card extends SceneCard> {
 	 * surface that shows the scene and leaves its writing to the form.
 	 */
 	conflictReadOnly?: boolean;
+	/**
+	 * The title is read on the card and never typed into there: for a surface
+	 * where a card changes only its tint and its standing, and the rest is the
+	 * form's.
+	 */
+	titleReadOnly?: boolean;
 }
 
 /**
@@ -588,7 +594,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 			);
 		}
 		paintTitle(card);
-		card.title.disabled = !writable;
+		card.title.disabled = !writable || deps.titleReadOnly === true;
 		const colorLabel =
 			scene.color === null
 				? t('modal.scene.colorNone')
@@ -686,7 +692,7 @@ export function createSceneCardDeck<Card extends SceneCard>(
 	// -- Editing in place ----------------------------------------------------
 
 	const beginTitleEdit = (card: Card): void => {
-		if (!editable(card) || card.editingTitle) return;
+		if (deps.titleReadOnly === true || !editable(card) || card.editingTitle) return;
 		const pending = pendingTitles.get(card.id);
 		card.editingTitle = true;
 		card.titleOriginal = pending?.value ?? card.scene.title;

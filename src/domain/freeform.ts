@@ -644,6 +644,19 @@ export function newFreeformView(draft: { id: string; name: string; now: number }
 	};
 }
 
+/** The id of the view a project starts with, fixed so every read of a folder not yet written finds the same view. */
+export const MAIN_FREEFORM_VIEW_ID = 'freeform-view-main';
+
+/**
+ * What a project reads before any view of its own is written: one view,
+ * named in the project's language, so the workspace opens onto a view
+ * rather than a hint, as the timeline's does. The first change to it
+ * writes it; until then it is no file.
+ */
+export function freshFreeformDocument(locale: 'en' | 'zh-CN'): FreeformDocument {
+	return { views: [newFreeformView({ id: MAIN_FREEFORM_VIEW_ID, name: locale === 'zh-CN' ? '主视图' : 'Main', now: 0 })] };
+}
+
 export function renameFreeformView(held: FreeformView, name: string, now: number): FreeformView | null {
 	return held.name === name ? null : { ...held, name, updatedAt: now };
 }

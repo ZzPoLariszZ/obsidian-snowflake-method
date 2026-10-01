@@ -783,7 +783,14 @@ describe('the freeform workspace', () => {
 		const card = fixture.face('s1').querySelector('.snowflake-method-corkboard-card')!;
 		expect(card.getAttribute('data-key')).toBe('s1');
 		expect(card.getAttribute('draggable')).toBe('false');
-		expect(card.querySelector('.snowflake-method-corkboard-title')!.textContent).toBe('Arrival');
+		const title = card.querySelector('.snowflake-method-corkboard-title')!;
+		expect(title.textContent).toBe('Arrival');
+		// The title is read and never typed into on the canvas: a press on it opens no field; the card changes only its tint and its standing here.
+		expect(title.disabled).toBe(true);
+		fire(title, 'click');
+		expect(card.querySelector('.snowflake-method-corkboard-title-input')!.classes.has('is-hidden')).toBe(true);
+		expect(card.querySelector('.snowflake-method-corkboard-status-select')).not.toBeNull();
+		expect(card.querySelector('.snowflake-method-corkboard-color')).not.toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-number')).toBeNull();
 		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
 		const conflict = card.querySelector('.snowflake-method-corkboard-conflict')! as unknown as HTMLTextAreaElement;
@@ -1983,6 +1990,15 @@ describe('what a node opens', () => {
 		fire(fixture.face('w1').querySelector('.snowflake-method-corkboard-color')!, 'click');
 		swatchesOf()[0]!.dispatch('click');
 		expect(fixture.host.patchEntity).toHaveBeenCalledWith('loc-1', { expectedRevision: 'w1', color: null }, 'P');
+		// The standing is picked on the card as a scene's is, and written to the note the same way.
+		const standing = fixture.face('c1').querySelector('.snowflake-method-freeform-card-status')!;
+		standing.value = 'in-progress';
+		standing.dispatch('change');
+		expect(fixture.host.patchCharacter).toHaveBeenCalledWith('char-1', { expectedRevision: 'c1', progressStatus: 'in-progress' }, 'P');
+		const place = fixture.face('w1').querySelector('.snowflake-method-freeform-card-status')!;
+		place.value = 'complete';
+		place.dispatch('change');
+		expect(fixture.host.patchEntity).toHaveBeenCalledWith('loc-1', { expectedRevision: 'w1', progressStatus: 'complete' }, 'P');
 		// On a project that cannot be written the palette sleeps.
 		const held = workspace([view('a', {
 			placements: [{ ...text('c1', ''), resource: { type: 'entity', kind: 'character', id: 'char-1', name: 'Anna' } }],

@@ -3047,6 +3047,44 @@
 	width: 100%;
 }
 
+/* A field that stands on lines of its own wherever it is set, in a form's
+   first row or in a part of one: its name, what it is for under the name,
+   and the box typed into under both, as wide as the form. No rule stands
+   between it and the field before it. Named with the dialog and the form
+   it stands in, since the app's own rule for a dialog's settings is named
+   with four classes and would else outrank it on a field set in a part of
+   the form. */
+.modal .modal-content.snowflake-method-project-form .setting-item.snowflake-method-stacked-setting {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--size-2-2);
+	margin: 0;
+	padding: 0 0 var(--size-4-3);
+	border: 0;
+	border-radius: 0;
+}
+
+.modal .modal-content.snowflake-method-project-form .setting-item.snowflake-method-stacked-setting > .setting-item-info {
+	flex: 0 0 auto;
+	min-width: 0;
+	margin: 0;
+}
+
+.modal .modal-content.snowflake-method-project-form .setting-item.snowflake-method-stacked-setting > .setting-item-control {
+	flex: 0 0 auto;
+	justify-content: stretch;
+	min-width: 0;
+	width: 100%;
+	margin: 0;
+}
+
+.modal .modal-content.snowflake-method-project-form .setting-item.snowflake-method-stacked-setting > .setting-item-control > input {
+	flex: 1 1 auto;
+	width: 100%;
+	min-width: 0;
+}
+
 /* A yes or no a compact form asks, the same way in the naming form and
    the merge dialog: what it decides on the left, the toggle at the right
    edge, on one line and with nothing under it. The words take a click as a
@@ -15727,6 +15765,24 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	cursor: pointer;
 }
 
+/* A frame's palette stands before the way to its menu at the head's end,
+   set the same way: floated to the end after the menu's button, which puts
+   it on that button's near side. */
+.snowflake-method-freeform-face.is-frame .clickable-icon.snowflake-method-freeform-frame-color {
+	--icon-size: var(--icon-s);
+	float: inline-end;
+	width: var(--snowflake-method-corkboard-action-size, 1.5rem);
+	margin-block: calc(-1 * var(--size-2-2)) 0;
+	margin-inline: var(--size-2-2) 0;
+	padding-inline: 0;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+
+.snowflake-method-freeform-face.is-frame .clickable-icon.snowflake-method-freeform-frame-color:hover {
+	color: var(--text-normal);
+}
+
 .snowflake-method-freeform-face .clickable-icon.snowflake-method-freeform-node-more:hover {
 	color: var(--text-normal);
 }
@@ -15933,6 +15989,15 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
+/* A scene's title on the canvas is read and never typed into, and wears
+   nothing of a button that cannot be pressed: the card changes only its
+   tint and its standing here. */
+.snowflake-method-freeform-face.is-scene button.snowflake-method-corkboard-title:disabled {
+	opacity: 1;
+	color: var(--text-normal);
+	cursor: default;
+}
+
 /* The engine keeps the words of a node from being selected, so a drag
    never selects them; a scene's name, typed into on the card, selects. */
 .snowflake-method-freeform-face.is-scene input {
@@ -15982,19 +16047,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	text-overflow: ellipsis;
 }
 
+/* The standing on a character's or a worldbuilding note's card is picked
+   from the statuses as a scene's is, in the scene card's own select, which
+   gives way before the name does. */
 .snowflake-method-freeform-card-status {
 	flex: 0 1 auto;
 	min-width: 0;
 	max-width: 45%;
-	overflow: hidden;
-	line-height: 1.5rem;
-	text-align: end;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-.snowflake-method-freeform-card-status.is-hidden {
-	display: none;
 }
 
 .snowflake-method-freeform-card-words {

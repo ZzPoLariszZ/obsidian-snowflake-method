@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { newFreeformView, type FreeformStep, type FreeformView } from "../../src/domain";
+import { MAIN_FREEFORM_VIEW_ID, newFreeformView, type FreeformStep, type FreeformView } from "../../src/domain";
 import {
 	FREEFORM_STORE_SCHEMA_VERSION,
 	FreeformService,
@@ -78,9 +78,13 @@ describe("FreeformStore", () => {
 		});
 	});
 
-	it("reads no view where none was made, in either language, and makes a view's file on its first write", async () => {
-		expect(await store.readDocument(project)).toEqual({ views: [] });
-		expect(await store.readDocument({ ...project, locale: "zh-CN" })).toEqual({ views: [] });
+	it("reads one fresh view named in the project's language where none was made, the same object every time, and makes a view's file on its first write", async () => {
+		const fresh = await store.readDocument(project);
+		expect(fresh.views.map((view) => [view.id, view.name, view.placements.length, view.createdAt])).toEqual([[MAIN_FREEFORM_VIEW_ID, "Main", 0, 0]]);
+		expect(await store.readDocument(project)).toBe(fresh);
+		expect((await store.readDocument({ ...project, locale: "zh-CN" })).views.map((view) => view.name)).toEqual(["主视图"]);
+		// Nothing is written for the reading of it.
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(false);
 		const view = makeView("freeform-view-1");
 		expect(await store.updateView(project, view.id, (held) => (held === null ? view : null))).toBe(true);
 		const written = fakeVault.contents.get(fileOf(view.id)) ?? "";
@@ -90,6 +94,28 @@ describe("FreeformStore", () => {
 		// What the store could not read is carried in place, never under a key of its own.
 		expect(written).not.toContain("strays");
 		expect(await store.readDocument(project)).toEqual({ views: [view] });
+	});
+
+	it("writes the fresh view's file on the first change meant for it, and reads the file from then on", async () => {
+		const fresh = (await store.readDocument(project)).views[0]!;
+		expect(await store.updateView(project, MAIN_FREEFORM_VIEW_ID, (held) => (held === null ? null : { ...held, name: "Opening", updatedAt: 9 }))).toBe(true);
+		expect(fakeVault.contents.has(fileOf(MAIN_FREEFORM_VIEW_ID))).toBe(true);
+		const read = await store.readDocument(project);
+		expect(read.views.map((view) => [view.id, view.name])).toEqual([[MAIN_FREEFORM_VIEW_ID, "Opening"]]);
+		expect(read.views[0]).not.toBe(fresh);
+		// Beside a view of the project's own, the fresh one is no longer read.
+		await store.updateView(project, "freeform-view-2", () => makeView("freeform-view-2", { createdAt: 3 }));
+		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID, "freeform-view-2"]);
+		// A change meant for a view that never was still makes nothing.
+		expect(await store.updateView(project, "freeform-view-9", (held) => (held === null ? null : held))).toBe(false);
+	});
+
+	it("reads the fresh view again once the project's own views are gone, and has nothing to trash for it", async () => {
+		await store.updateView(project, "freeform-view-1", () => makeView("freeform-view-1"));
+		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual(["freeform-view-1"]);
+		expect(await store.trashView(project, MAIN_FREEFORM_VIEW_ID)).toBe("absent");
+		expect(await store.trashView(project, "freeform-view-1")).toBe("deleted");
+		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
 	});
 
 	it("stores under the visualization chain of the project's locale", () => {
@@ -213,7 +239,8 @@ describe("FreeformStore", () => {
 		expect(await store.trashView(project, "freeform-view-1")).toBe("deleted");
 		expect(fakeVault.contents.has(fileOf("freeform-view-1"))).toBe(false);
 		expect(await store.trashView(project, "freeform-view-1")).toBe("absent");
-		expect(await store.readDocument(project)).toEqual({ views: [] });
+		// With its own view gone, the project reads as the fresh view again.
+		expect((await store.readDocument(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
 	});
 
 	it("says how the vault last saw a view's file, without opening it", async () => {
@@ -289,7 +316,7 @@ describe("FreeformService", () => {
 		expect(fakeVault.contents.has(fileOf("freeform-view-9"))).toBe(false);
 		expect(await views.deleteView(project, id)).toBe("deleted");
 		expect(await views.deleteView(project, id)).toBe("absent");
-		expect((await views.read(project)).views).toEqual([]);
+		expect((await views.read(project)).views.map((view) => view.id)).toEqual([MAIN_FREEFORM_VIEW_ID]);
 	});
 
 	it("takes a gesture as one write, and answers with what takes it back", async () => {

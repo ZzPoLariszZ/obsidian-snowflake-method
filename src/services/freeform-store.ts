@@ -1,4 +1,6 @@
 import {
+	MAIN_FREEFORM_VIEW_ID,
+	freshFreeformDocument,
 	readFreeformView,
 	serializeFreeformView,
 	type FreeformDocument,
@@ -82,6 +84,8 @@ export class FreeformStore {
 	 * that nothing it draws has moved.
 	 */
 	private readonly documents = new Map<string, FreeformDocument>();
+	/** What a project reads while it has no view of its own, one per project, so every read hands back the same object. */
+	private readonly fresh = new Map<string, { locale: ProjectRef["locale"]; held: FreeformDocument }>();
 	/** The newer schema met during the reading under way, told once when it ends. */
 	private foreign: { version: number } | null = null;
 	private reading = 0;
@@ -172,6 +176,9 @@ export class FreeformStore {
 			(left, right) =>
 				left.createdAt - right.createdAt || left.id.localeCompare(right.id, "en"),
 		);
+		// No view of its own yet: the project reads as one fresh view, named in
+		// its language, which the first change to it writes.
+		if (views.length === 0) return this.freshDocument(project);
 		const last = this.documents.get(project.rootPath);
 		if (
 			last !== undefined &&
@@ -202,9 +209,25 @@ export class FreeformStore {
 		mutate: (held: FreeformView | null) => FreeformView | null,
 	): Promise<boolean> {
 		return this.storeOf(viewId).update(project, (held) => {
-			const next = mutate(held.view);
+			// The fresh view a project starts with is handed to a change meant for it, and the change writes it.
+			const standing = held.view ?? (viewId === MAIN_FREEFORM_VIEW_ID ? this.freshView(project) : null);
+			const next = mutate(standing);
 			return next === null ? null : { view: next };
 		});
+	}
+
+	private freshDocument(project: ProjectRef): FreeformDocument {
+		const kept = this.fresh.get(project.rootPath);
+		if (kept !== undefined && kept.locale === project.locale) return kept.held;
+		const held = freshFreeformDocument(project.locale);
+		this.fresh.set(project.rootPath, { locale: project.locale, held });
+		return held;
+	}
+
+	/** The fresh view a project starts with, as a change meant for it finds it: a file not yet written. */
+	private freshView(project: ProjectRef): FreeformView | null {
+		if (this.repository.getFile(this.viewPath(project, MAIN_FREEFORM_VIEW_ID)) !== null) return null;
+		return this.freshDocument(project).views[0] ?? null;
 	}
 
 	/**

@@ -88,6 +88,8 @@ import {
 	FreeformNodeFormModal,
 	FreeformTextModal,
 	FreeformViewFormModal,
+	freeformLinkAddressOf,
+	isFreeformLinkAddress,
 	type FreeformEdgeDraft,
 	type FreeformNodeDraft,
 	type FreeformNodeFormOptions,
@@ -279,9 +281,13 @@ describe('the form nodes are added through', () => {
 		expect(titles).toEqual(['freeformCanvas.node.add']);
 		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.add');
 		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
-			'freeformCanvas.node.type', 'freeformCanvas.node.pick', 'freeformCanvas.frame.title', 'stickyNotes.color',
+			'freeformCanvas.node.type', 'freeformCanvas.node.pick', 'freeformCanvas.frame.title',
 			'freeformCanvas.link.address', 'freeformCanvas.link.label',
 		]);
+		// A frame's title and a link's two fields each stand on lines of their own, the box under the words.
+		for (const row of content(form).querySelectorAll('.setting-item').slice(2)) {
+			expect(row.classes.has('snowflake-method-stacked-setting')).toBe(true);
+		}
 		expect(typeField().label).toBe('freeformCanvas.node.type');
 		expect(typeField().required).toBe(true);
 		expect(typeField().options().map((option) => [option.value, option.section])).toEqual([
@@ -356,13 +362,8 @@ describe('the form nodes are added through', () => {
 		const title = fields.querySelector('input')!;
 		expect(title.getAttribute('aria-label')).toBe('freeformCanvas.frame.title');
 		type(title, '  Act one ');
-		// The tint is picked from the sticky notes' own strip, with none at its head.
-		const swatches = fields.querySelectorAll('.snowflake-method-sticky-swatch');
-		expect(swatches[0]!.classes.has('is-none')).toBe(true);
-		expect(swatches).toHaveLength(9);
-		swatches.find((swatch) => swatch.getAttribute('data-color') === 'macaron-4')!.dispatch('click');
-		expect(collectDraft(form)).toEqual({ type: 'frame', frame: { title: 'Act one', color: 'macaron-4' } });
-		swatches[0]!.dispatch('click');
+		// The frame's tint is picked on the frame itself, not here: the form offers no swatches.
+		expect(fields.querySelectorAll('.snowflake-method-sticky-swatch')).toEqual([]);
 		expect(collectDraft(form)).toEqual({ type: 'frame', frame: { title: 'Act one', color: null } });
 		// Another type hides the frame's fields.
 		typeField().choose('text');
@@ -480,20 +481,42 @@ describe('the form a line is edited through', () => {
 });
 
 describe('the form a frame is edited through', () => {
-	it('is titled Edit frame, shows the frame’s title and tint, and hands back what was changed', () => {
+	it('is titled Edit frame, shows the frame’s title on lines of its own, and hands back the title changed with the tint as it was', () => {
 		const form = new FreeformFrameFormModal(app, t, { title: 'Act one', color: 'macaron-2' }, () => Promise.resolve());
 		build(form);
 		expect(titles).toEqual(['freeformCanvas.frame.edit']);
 		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.save');
-		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
-			'freeformCanvas.frame.title', 'stickyNotes.color',
-		]);
+		const rows = content(form).querySelectorAll('.setting-item');
+		expect(rows.map((row) => row.getAttribute('data-name'))).toEqual(['freeformCanvas.frame.title']);
+		expect(rows[0]!.classes.has('snowflake-method-stacked-setting')).toBe(true);
+		expect(content(form).querySelectorAll('.snowflake-method-sticky-swatch')).toEqual([]);
 		const title = content(form).querySelector('input')!;
 		expect(title.value).toBe('Act one');
 		const collect = (): unknown => (form as unknown as { collectValue(): unknown }).collectValue();
 		expect(collect()).toEqual({ title: 'Act one', color: 'macaron-2' });
 		type(title, ' Act two ');
-		content(form).querySelectorAll('.snowflake-method-sticky-swatch').find((swatch) => swatch.getAttribute('data-color') === 'macaron-7')!.dispatch('click');
-		expect(collect()).toEqual({ title: 'Act two', color: 'macaron-7' });
+		expect(collect()).toEqual({ title: 'Act two', color: 'macaron-2' });
+	});
+});
+
+describe('the address a link keeps', () => {
+	it('takes a web address as typed, understands one typed without its scheme as https, and refuses what is no address', () => {
+		expect(freeformLinkAddressOf('https://example.org/read?x=1#top')).toBe('https://example.org/read?x=1#top');
+		expect(freeformLinkAddressOf('  HTTP://Example.org/A ')).toBe('HTTP://Example.org/A');
+		expect(freeformLinkAddressOf('example.org')).toBe('https://example.org');
+		expect(freeformLinkAddressOf('www.example.org/path')).toBe('https://www.example.org/path');
+		expect(freeformLinkAddressOf('example.org:8080/x')).toBe('https://example.org:8080/x');
+		expect(freeformLinkAddressOf('localhost:3000')).toBe('https://localhost:3000');
+		// A bare word is no address, nor is anything with a gap, nor another kind of thing than a web page.
+		expect(freeformLinkAddressOf('hello')).toBeNull();
+		expect(freeformLinkAddressOf('')).toBeNull();
+		expect(freeformLinkAddressOf('two words.org')).toBeNull();
+		expect(freeformLinkAddressOf('mailto:a@b.org')).toBeNull();
+		expect(freeformLinkAddressOf('file:///Users/x')).toBeNull();
+		expect(freeformLinkAddressOf('obsidian://open?vault=x')).toBeNull();
+		expect(freeformLinkAddressOf('https://')).toBeNull();
+		// The strict reading the view keeps still wants the scheme written out.
+		expect(isFreeformLinkAddress('example.org')).toBe(false);
+		expect(isFreeformLinkAddress('https://example.org')).toBe(true);
 	});
 });

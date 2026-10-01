@@ -28,7 +28,6 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, buildOptionPicker, type OptionPicker, type PickerOption } from './option-picker';
-import { renderStickySwatches } from './sticky-note-card';
 
 export interface FreeformViewFormOptions {
 	mode: 'add' | 'edit';
@@ -187,39 +186,81 @@ export function isFreeformLinkAddress(url: string): boolean {
 }
 
 /**
+ * The address a link keeps for what was typed, or null for words that are
+ * no address. A web address is taken as it was typed; one typed without
+ * http or https, as an address is said aloud, is understood as https. A
+ * bare word is no address: without a scheme the host must have a dot in it
+ * or be localhost, so a label typed in the wrong field is not made a link
+ * to nowhere. Nothing with a gap in it, and nothing that asks for another
+ * kind of thing than a web page.
+ */
+export function freeformLinkAddressOf(typed: string): string | null {
+	const words = typed.trim();
+	if (words.length === 0 || /\s/u.test(words)) return null;
+	// A scheme is a name before a colon, unless what follows the colon is a port: localhost:3000 names no scheme.
+	const schemed = /^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))/iu.test(words);
+	const address = schemed ? words : `https://${words}`;
+	if (!/^https?:\/\//iu.test(address)) return null;
+	let parsed: URL;
+	try {
+		parsed = new URL(address);
+	} catch {
+		return null;
+	}
+	if (parsed.hostname.length === 0) return null;
+	if (!schemed && !parsed.hostname.includes('.') && parsed.hostname !== 'localhost') return null;
+	return address;
+}
+
+/**
+ * A field of a form that stands on lines of its own: its name, what it is
+ * for under the name, and the box typed into under both, as wide as the
+ * form. No rule stands between one field and the next.
+ */
+function stackedText(
+	container: HTMLElement,
+	words: { name: string; hint: string },
+	field: { value: string; onChange: (value: string) => void; attrs?: Record<string, string> },
+): void {
+	const setting = new Setting(container)
+		.setName(words.name)
+		.setDesc(words.hint)
+		.addText((text) => {
+			text.inputEl.setAttribute('aria-label', words.name);
+			for (const [name, value] of Object.entries(field.attrs ?? {})) text.inputEl.setAttribute(name, value);
+			text.setValue(field.value).onChange(field.onChange);
+		});
+	setting.settingEl.addClass('snowflake-method-stacked-setting');
+}
+
+/**
  * The two fields a link has, set into a form: its address, which must be
  * a web address, and the label shown in its place.
  */
 function buildLinkFields(t: Translate, draft: FreeformLinkDraft, container: HTMLElement): void {
-	new Setting(container)
-		.setName(t('freeformCanvas.link.address'))
-		.setDesc(t('freeformCanvas.link.addressHint'))
-		.addText((text) => {
-			text.inputEl.setAttribute('aria-label', t('freeformCanvas.link.address'));
-			text.inputEl.setAttribute('inputmode', 'url');
-			text.setValue(draft.url).onChange((value) => {
-				draft.url = value;
-			});
-		});
-	new Setting(container)
-		.setName(t('freeformCanvas.link.label'))
-		.setDesc(t('freeformCanvas.link.labelHint'))
-		.addText((text) => {
-			text.inputEl.setAttribute('aria-label', t('freeformCanvas.link.label'));
-			text.setValue(draft.label).onChange((value) => {
-				draft.label = value;
-			});
-		});
+	stackedText(container, { name: t('freeformCanvas.link.address'), hint: t('freeformCanvas.link.addressHint') }, {
+		value: draft.url,
+		onChange: (value) => {
+			draft.url = value;
+		},
+		attrs: { inputmode: 'url' },
+	});
+	stackedText(container, { name: t('freeformCanvas.link.label'), hint: t('freeformCanvas.link.labelHint') }, {
+		value: draft.label,
+		onChange: (value) => {
+			draft.label = value;
+		},
+	});
 }
 
 /** The link as a form hands it back, or null with what is wrong with it said. */
 function collectLink(t: Translate, draft: FreeformLinkDraft, labelLimit: number): FreeformLinkDraft | null {
-	const url = draft.url.trim();
-	if (url.length === 0) {
+	if (draft.url.trim().length === 0) {
 		new Notice(t('freeformCanvas.link.addressRequired'));
 		return null;
 	}
-	if (!isFreeformLinkAddress(url)) {
+	const url = freeformLinkAddressOf(draft.url);
+	if (url === null) {
 		new Notice(t('freeformCanvas.link.addressInvalid'));
 		return null;
 	}
@@ -238,34 +279,14 @@ export interface FreeformFrameDraft {
 }
 
 /**
- * The two fields a frame has, set into a form: its title, and the tint it
- * wears from the sticky notes' own strip, with none at the strip's head.
+ * The one field a frame's form has: its title. Its tint is picked on the
+ * frame itself, from the palette on its head, as a card's is.
  */
 function buildFrameFields(t: Translate, draft: FreeformFrameDraft, container: HTMLElement): void {
-	new Setting(container)
-		.setName(t('freeformCanvas.frame.title'))
-		.setDesc(t('freeformCanvas.frame.titleHint'))
-		.addText((text) => {
-			text.inputEl.setAttribute('aria-label', t('freeformCanvas.frame.title'));
-			text.setValue(draft.title).onChange((value) => {
-				draft.title = value;
-			});
-		});
-	const color = new Setting(container).setName(t('stickyNotes.color'));
-	color.settingEl.addClass('snowflake-method-freeform-frame-color');
-	const swatches = renderStickySwatches(color.controlEl, {
-		value: draft.color ?? '',
-		t,
-		onPick: (value) => {
-			draft.color = value;
-			swatches.sync(value);
-		},
-		none: {
-			label: t('modal.scene.colorNone'),
-			onPick: () => {
-				draft.color = null;
-				swatches.sync('');
-			},
+	stackedText(container, { name: t('freeformCanvas.frame.title'), hint: t('freeformCanvas.frame.titleHint') }, {
+		value: draft.title,
+		onChange: (value) => {
+			draft.title = value;
 		},
 	});
 }
@@ -531,7 +552,7 @@ export class FreeformLinkFormModal extends SnowflakeFormModal<FreeformLinkDraft>
 	}
 }
 
-/** A frame edited: its title and its tint, with Save at the foot. The form stands over a refusal, saying so. */
+/** A frame edited: its title, with Save at the foot; its tint stays as it is. The form stands over a refusal, saying so. */
 export class FreeformFrameFormModal extends SnowflakeFormModal<FreeformFrameDraft> {
 	private readonly draft: FreeformFrameDraft;
 

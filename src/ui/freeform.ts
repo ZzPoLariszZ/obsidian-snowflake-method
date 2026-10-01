@@ -56,6 +56,7 @@ import {
 	type FreeformStep,
 	type FreeformView,
 	type MacaronColor,
+	type ProgressStatus,
 } from '../domain';
 import { createDocumentLoop, type DocumentLoop } from './document-loop';
 import type { FreeformBridge, FreeformHandle, FreeformReading, RenderFreeform } from './freeform-bridge';
@@ -620,6 +621,29 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				if (!disposed) new Notice(error instanceof Error ? error.message : t('errors.unknown'));
 			},
 		);
+	};
+
+	/** A character's or a worldbuilding note's standing set from its card, written to the note. */
+	const setCardStatus = (node: CardNode, status: ProgressStatus): void => {
+		const path = controls.projectPath();
+		if (path === null || readOnly || disposed) return;
+		const written = node.type === 'character'
+			? controls.host.patchCharacter(node.character.id, { expectedRevision: node.character.revision, progressStatus: status }, path)
+			: controls.host.patchEntity(node.entity.id, { expectedRevision: node.entity.revision, progressStatus: status }, path);
+		written.then(
+			() => {
+				void controls.refresh();
+			},
+			(error: unknown) => {
+				if (!disposed) new Notice(error instanceof Error ? error.message : t('errors.unknown'));
+			},
+		);
+	};
+
+	/** A frame's tint set from its head, written to the view as its form once wrote it. */
+	const setFrameColor = (id: string, color: MacaronColor | null): void => {
+		if (readOnly || disposed) return;
+		void change([{ do: 'edit-frame', id, color }], 'change', t('freeformCanvas.frame.refused'));
 	};
 
 	/** What a node is called, as its face shows it. */
@@ -1334,7 +1358,9 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 			},
 		}),
 		symbol: kindIcon({ worldbuildingKinds: [] }, 'scene'),
+		// A card on the canvas changes only its tint and its standing; the rest is the form's.
 		conflictReadOnly: true,
+		titleReadOnly: true,
 	});
 	const { deck } = laneDeck;
 	// A press on a card's control is let go wherever it ends, and a colour
@@ -1452,6 +1478,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		locale: () => reading?.locale ?? 'en',
 		kindWord: kindWordOf,
 		setColor: setCardColor,
+		setStatus: setCardStatus,
+		setFrameColor,
 		scenes: {
 			mount: (parent, key, scene, index) => deck.mount(parent, key, scene, index),
 			dress: (card, scene, index) => {

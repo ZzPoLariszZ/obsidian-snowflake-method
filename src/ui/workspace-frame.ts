@@ -753,6 +753,8 @@ export interface LaneDeckDeps {
 	symbol?: string;
 	/** The conflict is read on the card and never typed into there. */
 	conflictReadOnly?: boolean;
+	/** The title is read on the card and never typed into there. */
+	titleReadOnly?: boolean;
 }
 
 export interface LaneDeck {
@@ -818,6 +820,7 @@ export function createLaneDeck(deps: LaneDeckDeps): LaneDeck {
 		extend: (card) => card,
 		...(deps.symbol === undefined ? {} : { symbol: deps.symbol }),
 		...(deps.conflictReadOnly === undefined ? {} : { conflictReadOnly: deps.conflictReadOnly }),
+		...(deps.titleReadOnly === undefined ? {} : { titleReadOnly: deps.titleReadOnly }),
 	});
 
 	return {

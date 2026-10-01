@@ -56,7 +56,8 @@ const text = (id: string) => ({ id, resource: { type: 'text' as const, text: id 
 describe('the freeform bridge', () => {
 	it('reads and writes the project it was made for, whichever project is current', async () => {
 		const { bridge, plugin, owner, active, files } = await setup();
-		expect(await bridge.read()).toMatchObject({ projectPath: owner.projectFile, locale: 'en', held: { views: [] } });
+		// A project with no view of its own reads as the fresh Main view, which no file holds yet.
+		expect(await bridge.read()).toMatchObject({ projectPath: owner.projectFile, locale: 'en', held: { views: [{ id: 'freeform-view-main', name: 'Main', placements: [] }] } });
 		const id = (await bridge.createView('Overview'))!;
 		expect(id).toMatch(/^freeform-view-/u);
 		expect(files(owner)).toHaveLength(1);

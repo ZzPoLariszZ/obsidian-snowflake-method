@@ -161,6 +161,8 @@ function faces(extra: Partial<FreeformFaceDeps> = {}) {
 		locale: () => 'en',
 		kindWord: vi.fn((node: CardNode) => `kind of ${node.placement.id}`),
 		setColor: vi.fn(),
+		setStatus: vi.fn(),
+		setFrameColor: vi.fn(),
 		scenes,
 		...extra,
 	} satisfies FreeformFaceDeps;
@@ -628,6 +630,38 @@ describe('a frame’s face', () => {
 		painted.unmount();
 		expect(face.parent).toBeNull();
 	});
+
+	it('carries a palette before the way to its menu, which hangs the swatches a card’s does and gives the tint to the workspace to write', () => {
+		const { frames, mount, deps, dom } = faces();
+		frames.set('f1', { id: 'f1', title: 'Act one', color: 'macaron-2', x: 0, y: 0, width: 400, height: 300, zIndex: 0 });
+		const { face, painted } = mount(CANVAS_FRAME_KIND, 'f1', context());
+		const head = face.querySelector('.snowflake-method-freeform-frame-head')!;
+		// Set after the menu's button, which stands at the end, so it takes the place before it.
+		expect(head.children.map((child) => (child.classes.has('snowflake-method-freeform-frame-color') ? 'palette' : child.classes.has('snowflake-method-freeform-node-more') ? 'more' : 'title'))).toEqual(['more', 'palette', 'title']);
+		const palette = face.querySelector('.snowflake-method-freeform-frame-color')!;
+		expect(palette.getAttribute('aria-label')).toBe('corkboard.colorLabel');
+		expect(palette.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(palette.disabled).toBe(false);
+		const panelOf = () => dom.container.querySelector('.snowflake-method-corkboard-color-panel');
+		expect(fire(palette, 'click').stopped).toBe(1);
+		const swatches = panelOf()!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch');
+		expect(swatches.find((swatch) => swatch.classes.has('is-selected'))?.getAttribute('data-color')).toBe('macaron-2');
+		swatches.find((swatch) => swatch.getAttribute('data-color') === 'macaron-6')!.dispatch('click');
+		expect(deps.setFrameColor).toHaveBeenLastCalledWith('f1', 'macaron-6');
+		expect(panelOf()).toBeNull();
+		fire(palette, 'click');
+		panelOf()!.querySelector('.snowflake-method-sticky-swatches')!.querySelectorAll('.snowflake-method-sticky-swatch')[0]!.dispatch('click');
+		expect(deps.setFrameColor).toHaveBeenLastCalledWith('f1', null);
+		// A press twice on the palette opens nothing of the frame's.
+		expect(fire(palette, 'dblclick').stopped).toBe(1);
+		// On a project that cannot be written the palette sleeps, and a panel hung from it goes.
+		fire(palette, 'click');
+		expect(panelOf()).not.toBeNull();
+		painted.dress(context({ readOnly: true }));
+		expect(palette.disabled).toBe(true);
+		expect(panelOf()).toBeNull();
+		painted.unmount();
+	});
 });
 
 describe('the face of a kind that has none of its own yet', () => {
@@ -771,36 +805,48 @@ describe('a card’s face', () => {
 		expect(actions.children.map((child) => (child.classes.has('snowflake-method-corkboard-color') ? 'palette' : 'more'))).toEqual(['palette', 'more']);
 		expect(card.querySelector('.snowflake-method-corkboard-symbol')).not.toBeNull();
 		expect(face.querySelector('.snowflake-method-freeform-card-title')!.textContent).toBe('called c1');
+		// The standing is the scene card's own select, which lists the statuses and is written to the note on a pick.
 		const status = face.querySelector('.snowflake-method-freeform-card-status')!;
-		expect(status.textContent).toBe('status.complete');
+		expect(status.value).toBe('complete');
 		expect(status.classes.has('is-complete')).toBe(true);
 		expect(status.classes.has('snowflake-method-entity-status')).toBe(true);
+		expect(status.classes.has('snowflake-method-corkboard-status-select')).toBe(true);
+		expect(status.getAttribute('aria-label')).toBe('table.progressStatus');
+		expect(status.children.map((option) => option.getAttribute('value'))).toEqual(['not-started', 'in-progress', 'in-revision', 'complete']);
+		expect(status.disabled).toBe(false);
+		status.value = 'in-progress';
+		status.dispatch('change');
+		expect(deps.setStatus).toHaveBeenLastCalledWith(nodes.get('c1'), 'in-progress');
 		expect(face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('Wants out');
 		expect(face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of c1');
-		// The way to the menu stands at the foot's end, where a scene keeps its own; nothing on the card is typed into or picked from.
+		// The way to the menu stands at the foot's end, where a scene keeps its own; nothing else on the card is typed into.
 		expect(face.querySelector('.snowflake-method-corkboard-actions')!.querySelector('.snowflake-method-freeform-node-more')).not.toBeNull();
 		expect(face.querySelectorAll('textarea')).toEqual([]);
 		expect(face.querySelectorAll('input')).toEqual([]);
-		expect(face.querySelectorAll('select')).toEqual([]);
+		expect(face.querySelectorAll('select')).toHaveLength(1);
 		painted.dress(context({ height: 400, selected: true }));
 		expect(face.classes.has('is-selected')).toBe(true);
+		// A note with no standing shows the blank the scene's shows, with the statuses still on offer; a project that cannot be written offers none.
 		nodes.set('c1', { type: 'character', placement: placement('c1', { height: 400 }), character: characterModel({ progressStatus: null, oneSentenceStoryline: 'Wants in' }) });
 		painted.dress(context({ height: 400 }));
 		expect(face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('Wants in');
-		expect(status.classes.has('is-hidden')).toBe(true);
+		expect(status.value).toBe('');
+		expect(status.children.map((option) => option.getAttribute('value'))).toEqual(['', 'not-started', 'in-progress', 'in-revision', 'complete']);
 		expect(status.classes.has('is-complete')).toBe(false);
+		painted.dress(context({ height: 400, readOnly: true }));
+		expect(status.disabled).toBe(true);
 		painted.unmount();
 		expect(face.parent).toBeNull();
 	});
 
 	it('shows a worldbuilding note’s description as the body, and its kind on the foot', () => {
-		const { nodes, mount } = faces();
+		const { nodes, mount, deps } = faces();
 		nodes.set('w1', { type: 'worldbuilding', placement: placement('w1', { height: 400 }), entity: entityModel() });
 		const harbour = mount('worldbuilding', 'w1', context({ height: 400 }));
 		expect(harbour.face.dataset).toMatchObject({ type: 'worldbuilding', kind: 'location' });
 		expect(harbour.face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('A harbour');
 		expect(harbour.face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of w1');
-		expect(harbour.face.querySelector('.snowflake-method-freeform-card-status')!.classes.has('is-hidden')).toBe(true);
+		expect(harbour.face.querySelector('.snowflake-method-freeform-card-status')!.value).toBe('');
 		nodes.set('w2', {
 			type: 'worldbuilding',
 			placement: placement('w2', { height: 400 }),
@@ -810,7 +856,10 @@ describe('a card’s face', () => {
 		expect(season.face.dataset.kind).toBe('time');
 		expect(season.face.querySelector('.snowflake-method-freeform-card-words')!.textContent).toBe('The season');
 		expect(season.face.querySelector('.snowflake-method-freeform-card-extra')!.textContent).toBe('kind of w2');
-		expect(season.face.querySelector('.snowflake-method-freeform-card-status')!.textContent).toBe('status.in-progress');
+		expect(season.face.querySelector('.snowflake-method-freeform-card-status')!.value).toBe('in-progress');
+		season.face.querySelector('.snowflake-method-freeform-card-status')!.value = 'complete';
+		season.face.querySelector('.snowflake-method-freeform-card-status')!.dispatch('change');
+		expect(deps.setStatus).toHaveBeenLastCalledWith(nodes.get('w2'), 'complete');
 	});
 
 	it('wears the tint its note has, and hangs the swatches from its palette, which give the tint to the workspace to write', () => {

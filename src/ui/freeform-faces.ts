@@ -23,11 +23,12 @@ import { FORESHADOWING_STATUSES, PROGRESS_STATUSES, type DateFormat, type Freefo
 import { hangPanel, type HungPanel } from './anchored-panel';
 import { CANVAS_FAR_KIND, CANVAS_FRAME_KIND, type NodePainter, type PaintContext, type PaintedNode } from './freeform-canvas-port';
 import type { ForeshadowingOccurrenceRow, ForeshadowingTableItem } from './foreshadowing-rows';
+import { statusOptions } from './corkboard-layout';
 import { faceKindOf, faceModeOf } from './freeform-layout';
 import type { FreeformFileKind, ResolvedNode } from './freeform-resources';
 import type { Translate } from './modals';
 import { railParts, type RailParts } from './rail-parts';
-import type { SceneCard } from './scene-card';
+import { fillSelect, type SceneCard } from './scene-card';
 import { renderStickySwatches } from './sticky-note-card';
 import { formatStickyCreated } from './sticky-note-layout';
 import { paintTaskMeta } from './task-card-parts';
@@ -71,6 +72,10 @@ export interface FreeformFaceDeps {
 	kindWord: (node: CardNode) => string;
 	/** Gives a character's or a worldbuilding note's card its tint, written to the note, or takes it off. */
 	setColor: (node: CardNode, color: MacaronColor | null) => void;
+	/** Sets a character's or a worldbuilding note's standing, written to the note, as a scene's card sets its own. */
+	setStatus: (node: CardNode, status: ProgressStatus) => void;
+	/** Gives a frame its tint, written to the view, or takes it off. */
+	setFrameColor: (id: string, color: MacaronColor | null) => void;
 	/**
 	 * The deck the corkboard's cards are dealt from, for a scene's face: the
 	 * card is the deck's, wired and written by it, and the face only holds
@@ -406,12 +411,25 @@ const bodyWordsOf = (node: CardNode): string =>
 /** The tint a card's note wears. */
 const tintOf = (node: CardNode): MacaronColor | null => (node.type === 'character' ? node.character.color : node.entity.color);
 
-/** What hangs under a card's palette: the one panel open over the canvas, as the corkboard keeps one over its deck. */
+/** What a palette hangs the swatches for: the tint worn now, read afresh as the panel is hung, and where a pick goes. */
+interface TintSubject {
+	/** The tint worn now; undefined for a subject that has gone, which hangs nothing. */
+	tint: () => MacaronColor | null | undefined;
+	pick: (color: MacaronColor | null) => void;
+}
+
+/** What hangs under a palette: the one panel open over the canvas, as the corkboard keeps one over its deck. */
 interface TintPanel {
-	toggle: (anchor: HTMLElement, id: string) => void;
+	toggle: (anchor: HTMLElement, subject: TintSubject) => void;
 	/** Puts the panel away if it hangs under this button. */
 	closeFor: (anchor: HTMLElement) => void;
 	close: () => void;
+}
+
+/** The character or worldbuilding note a card stands for, as it stands now, which may be a newer reading than the one a panel was hung from. */
+function cardNodeOf(deps: FreeformFaceDeps, id: string): CardNode | null {
+	const node = deps.node(id);
+	return node?.type === 'character' || node?.type === 'worldbuilding' ? node : null;
 }
 
 function createTintPanel(deps: FreeformFaceDeps): TintPanel {
@@ -424,37 +442,30 @@ function createTintPanel(deps: FreeformFaceDeps): TintPanel {
 		held.hung.release();
 		held.hung.el.remove();
 	};
-	/** The node as it stands when a swatch is picked, which may be a newer reading than the one the panel was hung from. */
-	const cardOf = (id: string): CardNode | null => {
-		const node = deps.node(id);
-		return node?.type === 'character' || node?.type === 'worldbuilding' ? node : null;
-	};
-	const toggle = (anchor: HTMLElement, id: string): void => {
+	const toggle = (anchor: HTMLElement, subject: TintSubject): void => {
 		if (open?.anchor === anchor) {
 			close();
 			return;
 		}
 		close();
-		const node = cardOf(id);
-		if (node === null) return;
+		const worn = subject.tint();
+		if (worn === undefined) return;
 		const hung = hangPanel(anchor, {
 			cls: 'snowflake-method-corkboard-color-panel',
 			label: t('stickyNotes.color'),
 			build: (panel) => {
 				renderStickySwatches(panel, {
-					value: tintOf(node) ?? '',
+					value: worn ?? '',
 					t,
 					onPick: (value) => {
 						close();
-						const now = cardOf(id);
-						if (now !== null) deps.setColor(now, value);
+						subject.pick(value);
 					},
 					none: {
 						label: t('modal.scene.colorNone'),
 						onPick: () => {
 							close();
-							const now = cardOf(id);
-							if (now !== null) deps.setColor(now, null);
+							subject.pick(null);
 						},
 					},
 				});
@@ -472,14 +483,26 @@ function createTintPanel(deps: FreeformFaceDeps): TintPanel {
 	};
 }
 
+/** What a palette is called and says under the pointer, for the tint worn. */
+function paintPalette(palette: HTMLButtonElement, tint: MacaronColor | null, readOnly: boolean, t: Translate): void {
+	const tintWord = tint === null ? t('modal.scene.colorNone') : t(`stickyNotes.color.${tint}`);
+	const tintLabel = t('corkboard.colorLabel', { color: tintWord });
+	if (palette.getAttribute('aria-label') !== tintLabel) {
+		palette.setAttribute('aria-label', tintLabel);
+		setTooltip(palette, tintWord);
+	}
+	palette.disabled = readOnly;
+}
+
 /**
  * A character's or a worldbuilding note's face: the corkboard card's own
- * shape, read and never written here but for its tint. Its symbol, its name
- * and its standing on the head, as a scene carries its own; its
- * one-sentence storyline or its description as the body, where a scene
- * shows its conflict; and on the foot what kind of note it is, with its
- * palette and the way to its menu at the foot's end, where a scene keeps
- * its own.
+ * shape, read and never written here but for its tint and its standing,
+ * which are the two things a card changes on any surface. Its symbol, its
+ * name and its standing on the head, as a scene carries its own, the
+ * standing a select as the scene's is; its one-sentence storyline or its
+ * description as the body, where a scene shows its conflict; and on the
+ * foot what kind of note it is, with its palette and the way to its menu at
+ * the foot's end, where a scene keeps its own.
  */
 function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 	const { t } = deps;
@@ -490,7 +513,17 @@ function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 			const head = card.createDiv({ cls: 'snowflake-method-corkboard-head' });
 			const symbol = head.createSpan({ cls: 'snowflake-method-corkboard-symbol', attr: { 'aria-hidden': 'true' } });
 			const name = head.createSpan({ cls: 'snowflake-method-freeform-card-title' });
-			const status = head.createSpan({ cls: 'snowflake-method-entity-status snowflake-method-freeform-card-status' });
+			const status = head.createEl('select', {
+				cls: 'dropdown snowflake-method-entity-status snowflake-method-corkboard-status-select snowflake-method-freeform-card-status',
+				attr: { 'aria-label': t('table.progressStatus') },
+			});
+			let statusSignature = '';
+			status.addEventListener('change', () => {
+				const node = cardNodeOf(deps, id);
+				const picked = status.value;
+				if (node === null || !(PROGRESS_STATUSES as readonly string[]).includes(picked)) return;
+				deps.setStatus(node, picked as ProgressStatus);
+			});
 			const words = card.createDiv({ cls: 'snowflake-method-corkboard-body' }).createDiv({ cls: 'snowflake-method-freeform-card-words' });
 			const foot = card.createDiv({ cls: 'snowflake-method-corkboard-footer' }).createDiv({ cls: 'snowflake-method-corkboard-footer-row' });
 			const extra = foot.createSpan({ cls: 'snowflake-method-freeform-card-extra' });
@@ -503,7 +536,16 @@ function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 			setIcon(palette, 'palette');
 			palette.addEventListener('click', (event) => {
 				event.stopPropagation();
-				tints.toggle(palette, id);
+				tints.toggle(palette, {
+					tint: () => {
+						const now = cardNodeOf(deps, id);
+						return now === null ? undefined : tintOf(now);
+					},
+					pick: (color) => {
+						const now = cardNodeOf(deps, id);
+						if (now !== null) deps.setColor(now, color);
+					},
+				});
 			});
 			moreButton(actions, deps, id);
 			let worn = '';
@@ -520,11 +562,18 @@ function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 					name.setText(called);
 					setTooltip(name, called);
 				}
+				// The standing is picked from the statuses as a scene's is; a note with none shows the blank the scene's shows.
 				const standing = standingOf(node, t);
-				const said = standing?.words ?? '';
-				if (status.textContent !== said) status.setText(said);
-				for (const tone of PROGRESS_STATUSES) status.toggleClass(`is-${tone}`, tone === standing?.tone);
-				status.toggleClass('is-hidden', standing === null);
+				const options = statusOptions(standing?.tone ?? null, t);
+				const signature = options.map((option) => option.value).join('\n');
+				if (signature !== statusSignature) {
+					statusSignature = signature;
+					fillSelect(status, options);
+				}
+				const tone = standing?.tone ?? '';
+				if (status.value !== tone) status.value = tone;
+				for (const each of PROGRESS_STATUSES) status.toggleClass(`is-${each}`, each === tone);
+				status.disabled = next.readOnly;
 				const held = bodyWordsOf(node);
 				if (words.textContent !== held) words.setText(held);
 				const under = deps.kindWord(node);
@@ -532,13 +581,7 @@ function cardPainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
 				const tint = tintOf(node);
 				if (tint === null) card.removeAttribute('data-color');
 				else if (card.getAttribute('data-color') !== tint) card.setAttribute('data-color', tint);
-				const tintWord = tint === null ? t('modal.scene.colorNone') : t(`stickyNotes.color.${tint}`);
-				const tintLabel = t('corkboard.colorLabel', { color: tintWord });
-				if (palette.getAttribute('aria-label') !== tintLabel) {
-					palette.setAttribute('aria-label', tintLabel);
-					setTooltip(palette, tintWord);
-				}
-				palette.disabled = next.readOnly;
+				paintPalette(palette, tint, next.readOnly, t);
 				if (next.readOnly) tints.closeFor(palette);
 				face.dataset.type = node.type;
 				face.dataset.kind = node.type === 'character' ? 'character' : node.entity.kind;
@@ -1099,12 +1142,36 @@ function farPainter(deps: FreeformFaceDeps): NodePainter {
  * A frame's face: its title at its head, and the tint it wears, which is
  * one of the sticky notes' own macarons and painted from the same rules.
  */
-function framePainter(deps: FreeformFaceDeps): NodePainter {
+/**
+ * A frame's face: its title on its head, and at the head's end the way to
+ * its menu with its palette beside it, which hangs the swatches a card's
+ * does and writes the tint to the view.
+ */
+function framePainter(deps: FreeformFaceDeps, tints: TintPanel): NodePainter {
+	const { t } = deps;
 	return {
 		mount: (body, id, context): PaintedNode => {
 			const face = body.createDiv({ cls: 'snowflake-method-freeform-face is-frame snowflake-method-sticky-tint' });
 			const head = face.createDiv({ cls: 'snowflake-method-freeform-frame-head' });
 			moreButton(head, deps, id);
+			// Set after the menu's button, which stands at the end: the palette takes the place before it.
+			const palette = head.createEl('button', {
+				cls: 'clickable-icon snowflake-method-corkboard-color snowflake-method-freeform-frame-color',
+				attr: { type: 'button', 'aria-haspopup': 'dialog' },
+			});
+			setIcon(palette, 'palette');
+			palette.addEventListener('click', (event) => {
+				event.stopPropagation();
+				tints.toggle(palette, {
+					tint: () => deps.frame(id)?.color,
+					pick: (color) => {
+						deps.setFrameColor(id, color);
+					},
+				});
+			});
+			palette.addEventListener('dblclick', (event) => {
+				event.stopPropagation();
+			});
 			const title = head.createSpan({ cls: 'snowflake-method-freeform-frame-title' });
 			const dress = (next: PaintContext): void => {
 				const frame = deps.frame(id);
@@ -1114,6 +1181,8 @@ function framePainter(deps: FreeformFaceDeps): NodePainter {
 				title.toggleClass('is-untitled', frame.title.trim().length === 0);
 				if (frame.color === null) face.removeAttribute('data-color');
 				else if (face.getAttribute('data-color') !== frame.color) face.setAttribute('data-color', frame.color);
+				paintPalette(palette, frame.color, next.readOnly, t);
+				if (next.readOnly) tints.closeFor(palette);
 				face.toggleClass('is-selected', next.selected);
 			};
 			dress(context);
@@ -1121,6 +1190,7 @@ function framePainter(deps: FreeformFaceDeps): NodePainter {
 				dress,
 				settle: () => undefined,
 				unmount: () => {
+					tints.closeFor(palette);
 					face.remove();
 				},
 			};
@@ -1182,7 +1252,7 @@ export function createFreeformFaces(deps: FreeformFaceDeps): FreeformFaces {
 	const thread = threadPainter(deps, parts);
 	const revision = revisionPainter(deps, parts);
 	const missing = missingPainter(deps);
-	const frame = framePainter(deps);
+	const frame = framePainter(deps, tints);
 	const plain = plainPainter(deps);
 	const sticky = stickyPainter(deps);
 	const file = filePainter(deps);
