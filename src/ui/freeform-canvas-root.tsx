@@ -30,6 +30,7 @@ import {
 	useStore,
 	useStoreApi,
 	type Connection,
+	type ConnectionLineComponentProps,
 	type Edge as EngineEdge,
 	type EdgeChange,
 	type EdgeProps,
@@ -47,6 +48,7 @@ import {
 	useLayoutEffect,
 	useMemo,
 	useRef,
+	useState,
 	useSyncExternalStore,
 	type ErrorInfo,
 	type MouseEvent as ReactMouseEvent,
@@ -56,7 +58,7 @@ import {
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-import { CANVAS_EDGE_Z, canvasDepth, handleBoxes, wheelZoomFactor, zoomedAbout } from './freeform-canvas-model';
+import { CANVAS_EDGE_Z, canvasDepth, handleBoxes, nearestSide, sideMiddle, wheelZoomFactor, zoomedAbout } from './freeform-canvas-model';
 import {
 	CANVAS_FAR_KIND,
 	CANVAS_FRAME_KIND,
@@ -68,6 +70,7 @@ import {
 	type CanvasLink,
 	type CanvasNode,
 	type CanvasNodeChange,
+	type CanvasPoint,
 	type CanvasRoot,
 	type CanvasRootDeps,
 	type CanvasSide,
@@ -111,6 +114,18 @@ const POSITIONS: Readonly<Record<CanvasSide, Position>> = {
 const isSide = (value: unknown): value is CanvasSide =>
 	typeof value === 'string' && (CANVAS_SIDES as readonly string[]).includes(value);
 
+/**
+ * The handle that is the whole of a node. A line may land on it anywhere, as
+ * on the app's own canvas, and never start from it: the side it then lands
+ * by is the one nearest where it was let go, worked out where the gesture
+ * ends. It is the engine's to find under the pointer, so it is told as a
+ * handle, and the stylesheet lets it be pressed only while a line is drawn.
+ */
+const BODY_HANDLE = 'body';
+
+/** The variable the stylesheet sizes the frame a node is held by and the dots a line starts from, so both keep their size on the screen as the plane is zoomed. */
+const UNZOOM_VAR = '--snowflake-method-freeform-unzoom';
+
 const Deps = createContext<CanvasRootDeps | null>(null);
 
 function useDeps(): CanvasRootDeps {
@@ -122,10 +137,13 @@ function useDeps(): CanvasRootDeps {
 // -- The facade's nodes said as React Flow's ----------------------------------------
 
 /**
- * One node as React Flow takes it. It is told its size and where its four
- * handles stand, so nothing on the canvas waits to be measured: a line is
- * drawn, a fit is worked out and a sizing starts from what the view says,
- * whether or not the window the canvas stands in ever reports a measure.
+ * One node as React Flow takes it. It is told its size and where its handles
+ * stand, so nothing on the canvas waits to be measured: a line is drawn, a
+ * fit is worked out and a sizing starts from what the view says, whether or
+ * not the window the canvas stands in ever reports a measure. The list names
+ * every handle the node has, the whole of it included: the engine takes this
+ * list for the node's handles again whenever the node is told afresh, and a
+ * handle left out of it is one a line could be let go on and never land on.
  */
 function flowNode(held: CanvasHeldNode, readOnly: boolean): FlowNode {
 	const { node } = held;
@@ -137,15 +155,18 @@ function flowNode(held: CanvasHeldNode, readOnly: boolean): FlowNode {
 		width: held.width,
 		height: held.height,
 		measured: { width: held.width, height: held.height },
-		handles: handleBoxes(held.width, held.height).map((box) => ({
-			id: box.side,
-			type: 'source' as const,
-			position: POSITIONS[box.side],
-			x: box.x,
-			y: box.y,
-			width: box.width,
-			height: box.height,
-		})),
+		handles: [
+			...handleBoxes(held.width, held.height).map((box) => ({
+				id: box.side,
+				type: 'source' as const,
+				position: POSITIONS[box.side],
+				x: box.x,
+				y: box.y,
+				width: box.width,
+				height: box.height,
+			})),
+			{ id: BODY_HANDLE, type: 'target' as const, position: Position.Top, x: 0, y: 0, width: held.width, height: held.height },
+		],
 		zIndex: canvasDepth(node),
 		selected: held.selected,
 		draggable: !still,
@@ -251,11 +272,14 @@ function edgeChanges(changes: readonly EdgeChange<FlowEdge>[]): CanvasEdgeChange
 	return said;
 }
 
-function linkOf(connection: Connection): CanvasLink | null {
-	const { source, target, sourceHandle, targetHandle } = connection;
-	if (source === target) return null;
-	if (!isSide(sourceHandle) || !isSide(targetHandle)) return null;
-	return { from: source, fromSide: sourceHandle, to: target, toSide: targetHandle };
+/** The box a node of the engine's stands in, in the plane's own units. */
+function boxOf(node: Pick<FlowNode, 'width' | 'height'> & { measured: { width?: number; height?: number }; internals: { positionAbsolute: CanvasPoint } }): { x: number; y: number; width: number; height: number } {
+	return {
+		x: node.internals.positionAbsolute.x,
+		y: node.internals.positionAbsolute.y,
+		width: node.measured.width ?? node.width ?? 0,
+		height: node.measured.height ?? node.height ?? 0,
+	};
 }
 
 // -- A node --------------------------------------------------------------------------
@@ -347,16 +371,57 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 		face.current?.dress(held.current);
 	}, [node.revision, selected, readOnly, band, width, height]);
 
+	// The frame a node is sized by stands only while the node is under the
+	// pointer or chosen: it is eight controls the engine listens on, which
+	// five hundred nodes need not all carry at once. A move over the node
+	// says so as well as the entering does, for a pointer whose entering
+	// was never heard: one that was pressed elsewhere as it came.
+	const [hovered, setHovered] = useState(false);
+	useLayoutEffect(() => {
+		const wrapper = body.current?.parentElement;
+		if (wrapper === null || wrapper === undefined) return undefined;
+		const over = (): void => {
+			setHovered(true);
+		};
+		const out = (): void => {
+			setHovered(false);
+		};
+		wrapper.addEventListener('pointerenter', over);
+		wrapper.addEventListener('pointermove', over);
+		wrapper.addEventListener('pointerleave', out);
+		return () => {
+			wrapper.removeEventListener('pointerenter', over);
+			wrapper.removeEventListener('pointermove', over);
+			wrapper.removeEventListener('pointerleave', out);
+		};
+	}, []);
+	// Taken hold of to be sized, a node is chosen as a press on it would choose it.
+	const onResizeStart = useCallback(() => {
+		if (!held.current.selected) deps.choose({ nodes: [id], edges: [] });
+	}, [deps, id]);
+
 	const still = readOnly || node.locked;
+	const connectable = !readOnly && node.connectable;
 	return (
 		<>
 			<NodeResizer
-				isVisible={selected === true && !still}
+				isVisible={(selected === true || hovered) && !still}
 				minWidth={node.minWidth}
 				minHeight={node.minHeight}
+				autoScale={false}
 				handleClassName="snowflake-method-freeform-resize-handle"
 				lineClassName="snowflake-method-freeform-resize-line"
+				onResizeStart={onResizeStart}
 				onResizeEnd={deps.gestureEnded}
+			/>
+			<Handle
+				id={BODY_HANDLE}
+				type="target"
+				position={Position.Top}
+				isConnectable={connectable}
+				isConnectableStart={false}
+				className="snowflake-method-freeform-handle-body"
+				aria-hidden="true"
 			/>
 			{CANVAS_SIDES.map((side) => (
 				<Handle
@@ -364,7 +429,7 @@ const FreeformNode = memo(function FreeformNode(props: NodeProps<FlowNode>): Rea
 					id={side}
 					type="source"
 					position={POSITIONS[side]}
-					isConnectable={!readOnly && node.connectable}
+					isConnectable={connectable}
 					className="snowflake-method-freeform-handle"
 					aria-hidden="true"
 				/>
@@ -437,6 +502,51 @@ const FreeformEdge = memo(function FreeformEdge(props: EdgeProps<FlowEdge>): Rea
 	);
 });
 
+/**
+ * The line drawn while a connection is: from the dot it started at to the
+ * pointer, or, over a node it may land on, to the side it will land by, so
+ * what is let go is what was seen. The engine says where the pointer stands
+ * in the screen's units of the canvas, and the plane's own are wanted.
+ */
+function FreeformConnectionLine(props: ConnectionLineComponentProps<FlowNode>): ReactElement {
+	const [tx, ty, zoom] = useStore((state) => state.transform);
+	let { toX, toY, toPosition } = props;
+	if (props.toNode !== null && props.toHandle?.id === BODY_HANDLE) {
+		const box = boxOf(props.toNode);
+		const side = nearestSide(box, { x: (props.pointer.x - tx) / zoom, y: (props.pointer.y - ty) / zoom });
+		const end = sideMiddle(box, side);
+		toX = end.x;
+		toY = end.y;
+		toPosition = POSITIONS[side];
+	}
+	const [path] = getBezierPath({
+		sourceX: props.fromX,
+		sourceY: props.fromY,
+		sourcePosition: props.fromPosition,
+		targetX: toX,
+		targetY: toY,
+		targetPosition: toPosition,
+	});
+	return (
+		<path
+			d={path}
+			fill="none"
+			className="react-flow__connection-path"
+			{...(props.connectionLineStyle === undefined ? {} : { style: props.connectionLineStyle })}
+		/>
+	);
+}
+
+/** Tells the stylesheet how far the plane is zoomed, so what is sized on the screen can be sized in the plane's units. */
+function Unzoom(): null {
+	const zoom = useStore((state) => state.transform[2]);
+	const domNode = useStore((state) => state.domNode);
+	useLayoutEffect(() => {
+		domNode?.style.setProperty(UNZOOM_VAR, String(1 / zoom));
+	}, [domNode, zoom]);
+	return null;
+}
+
 const NODE_TYPES = { freeform: FreeformNode };
 const EDGE_TYPES = { freeform: FreeformEdge };
 
@@ -499,6 +609,10 @@ function Flow(): ReactElement {
 	const flow = useReactFlow<FlowNode, FlowEdge>();
 	const store = useStoreApi<FlowNode, FlowEdge>();
 	const wrapper = useRef<HTMLDivElement | null>(null);
+	/** Where the pointer last stood over the canvas, in the window's units: where a line is let go is read off it. */
+	const pointer = useRef<CanvasPoint | null>(null);
+	/** A line is being drawn, which the stylesheet is told of: the frames nodes are sized by must not take its end. */
+	const [connecting, setConnecting] = useState(false);
 
 	// Whether a press adds to what is chosen is read off the press itself, as
 	// it goes down and before the engine sees it: a key held when the window
@@ -507,14 +621,20 @@ function Flow(): ReactElement {
 		const host = wrapper.current;
 		if (host === null) return undefined;
 		const onPress = (event: PointerEvent): void => {
+			pointer.current = { x: event.clientX, y: event.clientY };
 			const additive = options.additive(event);
 			if (store.getState().multiSelectionActive !== additive) {
 				store.setState({ multiSelectionActive: additive });
 			}
 		};
+		const onMove = (event: PointerEvent): void => {
+			pointer.current = { x: event.clientX, y: event.clientY };
+		};
 		host.addEventListener('pointerdown', onPress, true);
+		host.addEventListener('pointermove', onMove, true);
 		return () => {
 			host.removeEventListener('pointerdown', onPress, true);
+			host.removeEventListener('pointermove', onMove, true);
 		};
 	}, [options, store]);
 
@@ -555,20 +675,50 @@ function Flow(): ReactElement {
 	const onEdgesChange = useCallback((changes: EdgeChange<FlowEdge>[]) => {
 		deps.edgesChanged(edgeChanges(changes));
 	}, [deps]);
+	/**
+	 * What a connection the engine reports comes to: the node and side at
+	 * each end. An end let go on a dot is that dot's side; one let go on the
+	 * whole of a node lands by the side nearest where it was let go.
+	 */
+	const landed = useCallback((connection: Connection): CanvasLink | null => {
+		const { source, target, sourceHandle, targetHandle } = connection;
+		if (source === target) return null;
+		const at = pointer.current === null ? null : flow.screenToFlowPosition(pointer.current, { snapToGrid: false });
+		const sideOf = (id: string, handle: string | null): CanvasSide | null => {
+			if (isSide(handle)) return handle;
+			if (handle !== BODY_HANDLE || at === null) return null;
+			const held = canvas.get().nodes.find((entry) => entry.node.id === id);
+			return held === undefined ? null : nearestSide(held, at);
+		};
+		const fromSide = sideOf(source, sourceHandle);
+		const toSide = sideOf(target, targetHandle);
+		if (fromSide === null || toSide === null) return null;
+		return { from: source, fromSide, to: target, toSide };
+	}, [canvas, flow]);
 	const onConnect = useCallback((connection: Connection) => {
-		const link = linkOf(connection);
+		const link = landed(connection);
 		if (link !== null) port.connect(link);
-	}, [port]);
+	}, [landed, port]);
 	// A line from a node to itself joins nothing: the engine says so as it is drawn, and never asks for it.
 	const isValidConnection = useCallback((connection: Connection | FlowEdge) => connection.source !== connection.target, []);
 	const onReconnect = useCallback((edge: FlowEdge, connection: Connection) => {
-		const link = linkOf(connection);
+		const link = landed(connection);
 		if (link !== null) port.reconnect(edge.id, link);
-	}, [port]);
+	}, [landed, port]);
 	const hold = useCallback(() => {
 		deps.holding(true);
 	}, [deps]);
 	const release = useCallback(() => {
+		deps.holding(false);
+	}, [deps]);
+	// A line's drawing, begun or ended, is a hold on the canvas too; moving
+	// one end of a line that stands begins and ends it the same way.
+	const connectStart = useCallback(() => {
+		setConnecting(true);
+		deps.holding(true);
+	}, [deps]);
+	const connectEnd = useCallback(() => {
+		setConnecting(false);
 		deps.holding(false);
 	}, [deps]);
 	const onNodeContextMenu = useCallback((event: ReactMouseEvent, node: FlowNode) => {
@@ -633,7 +783,7 @@ function Flow(): ReactElement {
 	// named, and takes it for the box only where none is.
 	const pans = interaction.ground === 'select' ? false : panning ? true : [1];
 	return (
-		<div ref={wrapper} className="snowflake-method-freeform-flow">
+		<div ref={wrapper} className={connecting ? 'snowflake-method-freeform-flow is-connecting' : 'snowflake-method-freeform-flow'}>
 			<ReactFlow<FlowNode, FlowEdge>
 				id={options.id}
 				nodes={nodes}
@@ -684,10 +834,11 @@ function Flow(): ReactElement {
 				onSelectionDragStop={deps.gestureEnded}
 				onSelectionStart={hold}
 				onSelectionEnd={release}
-				onConnectStart={hold}
-				onConnectEnd={release}
+				onConnectStart={connectStart}
+				onConnectEnd={connectEnd}
 				onReconnectStart={hold}
 				onReconnectEnd={release}
+				connectionLineComponent={FreeformConnectionLine}
 				isValidConnection={isValidConnection}
 				onConnect={onConnect}
 				onReconnect={onReconnect}
@@ -704,6 +855,7 @@ function Flow(): ReactElement {
 			>
 				<Background id={options.id} variant={BackgroundVariant.Dots} gap={GROUND_GAP} size={GROUND_DOT} offset={GROUND_OFFSET} />
 				<Guides />
+				<Unzoom />
 				{interaction.minimap ? (
 					<MiniMap
 						pannable

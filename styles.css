@@ -15608,7 +15608,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-face.is-selected {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 1px var(--interactive-accent);
+	box-shadow: var(--shadow-s), 0 0 0 2px var(--interactive-accent);
 }
 
 /* The way to a node's menu stands in its corner and is always in sight: a
@@ -15823,7 +15823,13 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-face:is(.is-foreshadowing, .is-revision).is-selected > .snowflake-method-rail-card,
 .snowflake-method-freeform-face.is-sticky.is-selected > .snowflake-method-sticky-card {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* The ring stands on the face, as on every other face: the face cuts off
+   what its card shows past its edge, a ring round the card with the rest,
+   and a chosen card wore a thinner frame than a chosen text for it. */
+.snowflake-method-freeform-face:is(.is-scene, .is-card, .is-task, .is-foreshadowing, .is-revision, .is-sticky).is-selected {
+	box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
 /* The engine keeps the words of a node from being selected, so a drag
@@ -16208,7 +16214,7 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-face.is-frame.is-selected {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 1px var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
 .snowflake-method-freeform-frame-head {
@@ -16231,10 +16237,12 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 /* The four places a line leaves a node by. Each is a box one unit each way
    standing just inside the middle of its side, where the engine was told it
    stands, so a line ends on the side itself; what is seen and pressed is the
-   dot drawn round it, which can be any size without moving a line's end. */
+   dot drawn round it, which can be any size without moving a line's end.
+   The dot keeps its size on the screen as the plane is zoomed, by the
+   measure the engine writes of how far it is zoomed. */
 .snowflake-method-freeform-canvas .react-flow__handle.snowflake-method-freeform-handle {
-	/* Over the face, which is laid out after it and would else cover it. */
-	z-index: 1;
+	/* Over the face, which is laid out after it and would else cover it, and over the frame the node is sized by, which stands under the dot's middle. */
+	z-index: 3;
 	width: 1px;
 	height: 1px;
 	min-width: 1px;
@@ -16264,31 +16272,133 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 .snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
 	content: '';
 	position: absolute;
-	inset: -5px;
-	border: 2px solid var(--background-primary);
+	inset: calc(-7px * var(--snowflake-method-freeform-unzoom, 1));
+	border: calc(2px * var(--snowflake-method-freeform-unzoom, 1)) solid var(--background-primary);
 	border-radius: 50%;
 	background-color: var(--interactive-accent);
 	opacity: 0;
 	pointer-events: none;
 }
 
-/* A dot is shown where a line may start from it: on the node under the
-   pointer, and on the node chosen. */
+/* A dot is shown as the pointer comes to its side, as the app's own canvas
+   shows one: over the band that side is sized by, which stands before the
+   dot in the node, over the dot itself, and on the dot a line being drawn
+   starts from or would land on. Never on a node merely under the pointer
+   or chosen, whose four dots said nothing of where to go. */
 .snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectable::before {
 	pointer-events: auto;
 }
 
-.snowflake-method-freeform-canvas .react-flow__node:hover .snowflake-method-freeform-handle.connectable::before,
-.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.top:hover ~ .react-flow__handle-top.snowflake-method-freeform-handle.connectable::before,
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.right:hover ~ .react-flow__handle-right.snowflake-method-freeform-handle.connectable::before,
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.bottom:hover ~ .react-flow__handle-bottom.snowflake-method-freeform-handle.connectable::before,
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.left:hover ~ .react-flow__handle-left.snowflake-method-freeform-handle.connectable::before,
+.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectable:hover::before,
+.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectingfrom::before,
+.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectingto::before {
 	opacity: 1;
 }
 
-/* The corners and the sides a chosen node is sized by. */
+/* The whole of a node is a handle a line may land on, and never start from.
+   The engine lets it be pressed only while a line is being drawn, by its own
+   indicator class, so at every other time it is as if it were not there: a
+   press on the face is the face's. It stands over the face and under the
+   frame and the dots, which the line takes first where they are. */
+.snowflake-method-freeform-canvas .react-flow__handle.snowflake-method-freeform-handle-body {
+	z-index: 1;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	min-height: 0;
+	border: 0;
+	border-radius: inherit;
+	background-color: transparent;
+	transform: none;
+}
+
+/* The frame a node is sized by, as the app's own canvas has it: a band along
+   every side and a square on every corner, none of them seen, each wearing
+   the hand that says which way it sizes. A band reaches ten pixels out from
+   the node's edge and six in, so the edge itself is what is taken hold of
+   and the face keeps all but a sliver of its room; the measures are the
+   screen's, kept as the plane is zoomed. The frame stands only while the
+   node is under the pointer or chosen, which the engine arranges. */
+.snowflake-method-freeform-canvas .react-flow__resize-control.snowflake-method-freeform-resize-line,
+.snowflake-method-freeform-canvas .react-flow__resize-control.snowflake-method-freeform-resize-handle {
+	--snowflake-method-freeform-reach-out: calc(10px * var(--snowflake-method-freeform-unzoom, 1));
+	--snowflake-method-freeform-reach-in: calc(6px * var(--snowflake-method-freeform-unzoom, 1));
+	--snowflake-method-freeform-reach: calc(var(--snowflake-method-freeform-reach-out) + var(--snowflake-method-freeform-reach-in));
+	z-index: 2;
+	border: 0;
+	border-radius: 0;
+	background-color: transparent;
+	transform: none;
+	translate: none;
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.top.snowflake-method-freeform-resize-line,
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.bottom.snowflake-method-freeform-resize-line {
+	left: 0;
+	width: 100%;
+	height: var(--snowflake-method-freeform-reach);
+	/* Said again here, where the engine's own rule for a side's line stands as near as this one. */
+	transform: none;
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.top.snowflake-method-freeform-resize-line {
+	top: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.bottom.snowflake-method-freeform-resize-line {
+	top: auto;
+	bottom: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.left.snowflake-method-freeform-resize-line,
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.right.snowflake-method-freeform-resize-line {
+	top: 0;
+	width: var(--snowflake-method-freeform-reach);
+	height: 100%;
+	transform: none;
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.left.snowflake-method-freeform-resize-line {
+	left: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.line.right.snowflake-method-freeform-resize-line {
+	left: auto;
+	right: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
 .snowflake-method-freeform-canvas .react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {
-	width: 9px;
-	height: 9px;
-	border: 1px solid var(--background-primary);
-	border-radius: 2px;
+	width: var(--snowflake-method-freeform-reach);
+	height: var(--snowflake-method-freeform-reach);
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.handle.top.snowflake-method-freeform-resize-handle {
+	top: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.handle.bottom.snowflake-method-freeform-resize-handle {
+	top: auto;
+	bottom: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.handle.left.snowflake-method-freeform-resize-handle {
+	left: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+.snowflake-method-freeform-canvas .react-flow__resize-control.handle.right.snowflake-method-freeform-resize-handle {
+	left: auto;
+	right: calc(-1 * var(--snowflake-method-freeform-reach-out));
+}
+
+/* While a line is being drawn, the frames stand aside: a line let go on the
+   band inside a node's edge lands on the node, not on nothing. */
+.snowflake-method-freeform-canvas .snowflake-method-freeform-flow.is-connecting .react-flow__resize-control {
+	pointer-events: none;
 }
 
 /* A line's words stand on the line, on a ground of their own, and answer
@@ -16355,15 +16465,26 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
    here is brought into sight that a pointer would have had to find. */
 @media (pointer: coarse) {
 	.snowflake-method-freeform-canvas .snowflake-method-freeform-handle::before {
-		inset: -9px;
+		inset: calc(-9px * var(--snowflake-method-freeform-unzoom, 1));
+	}
+
+	/* A finger comes to no side; the chosen node shows its four dots, as the app's own does on a phone. */
+	.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before {
+		opacity: 1;
+	}
+
+	/* A finger feels no band along an edge, and would take it for the node;
+	   the corners show instead, as the app's own canvas shows them. */
+	.snowflake-method-freeform-canvas .react-flow__resize-control.snowflake-method-freeform-resize-line {
+		display: none;
 	}
 
 	.snowflake-method-freeform-canvas .react-flow__resize-control.handle.snowflake-method-freeform-resize-handle {
-		width: 17px;
-		height: 17px;
-		border-radius: 4px;
+		--snowflake-method-freeform-reach-in: calc(10px * var(--snowflake-method-freeform-unzoom, 1));
+		border: calc(2px * var(--snowflake-method-freeform-unzoom, 1)) solid var(--interactive-accent);
+		border-radius: 3px;
+		background-color: var(--background-primary);
 	}
-
 }
 
 /* The search stands in the toolbar between the pencil and the symbols. It

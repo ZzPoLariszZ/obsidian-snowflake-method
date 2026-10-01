@@ -262,6 +262,30 @@ describe('the canvas engine on a document', () => {
 		const handles = Array.from(host.querySelectorAll('.snowflake-method-freeform-handle'));
 		expect(handles).toHaveLength(8);
 		expect(handles.every((dot) => dot.getAttribute('aria-hidden') === 'true')).toBe(true);
+		// The whole of each node is a handle too, one a line may land on and never start from.
+		const bodies = Array.from(host.querySelectorAll('.snowflake-method-freeform-handle-body'));
+		expect(bodies).toHaveLength(2);
+		expect(bodies.every((body) => body.classList.contains('target') && !body.classList.contains('connectablestart'))).toBe(true);
+		expect(bodies.every((body) => body.getAttribute('aria-hidden') === 'true')).toBe(true);
+	});
+
+	it('lets a line land on the whole of a node that may be joined, and on none of one that may not', async () => {
+		const { host, handle, raised, tell } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({ nodes: [node('a', { connectable: true }), node('b', { x: 300 })], edges: [] });
+		});
+		const bodyOf = (id: string): Element | null =>
+			host.querySelector(`.react-flow__node[data-id="${id}"] .snowflake-method-freeform-handle-body`);
+		expect(bodyOf('a')?.classList.contains('connectable')).toBe(true);
+		expect(bodyOf('a')?.classList.contains('connectableend')).toBe(true);
+		expect(bodyOf('a')?.classList.contains('connectablestart')).toBe(false);
+		expect(bodyOf('b')?.classList.contains('connectable')).toBe(false);
+		// A canvas that cannot be written joins nothing.
+		tell(() => {
+			handle.setInteraction({ readOnly: true });
+		});
+		expect(bodyOf('a')?.classList.contains('connectable')).toBe(false);
 	});
 
 	it('draws a node again only when what stands of it moved, and dresses its face only when what it shows did', async () => {
@@ -369,6 +393,62 @@ describe('the canvas engine on a document', () => {
 		});
 		expect(held('b')).toBe(true);
 		expect(last(faceOf('b')[0]!.dressed)).toMatchObject({ readOnly: true });
+	});
+
+	it('raises the frame a node is sized by while the node is under the pointer or chosen, chooses a node taken hold of by it, and never frames one held still', async () => {
+		const { handle, port, raised, tell, nodes } = canvas();
+		await raised();
+		tell(() => {
+			handle.setScene({
+				nodes: [node('a', { width: 200, height: 100 }), node('b', { x: 300, locked: true }), node('c', { x: 600 })],
+				edges: [],
+			});
+		});
+		const wrapperOf = (id: string): HTMLElement => nodes().find((element) => element.getAttribute('data-id') === id)!;
+		const frame = (id: string): Element[] => Array.from(wrapperOf(id).querySelectorAll('.react-flow__resize-control'));
+		const over = (id: string, on: boolean): void => {
+			act(() => {
+				wrapperOf(id).dispatchEvent(new Event(on ? 'pointerenter' : 'pointerleave'));
+			});
+		};
+		expect(frame('a')).toHaveLength(0);
+		over('a', true);
+		// Four bands, one along each side, and four corners, none drawn as the engine's own.
+		expect(frame('a')).toHaveLength(8);
+		expect(frame('a').filter((control) => control.classList.contains('line') && control.classList.contains('snowflake-method-freeform-resize-line'))).toHaveLength(4);
+		expect(frame('a').filter((control) => control.classList.contains('handle') && control.classList.contains('snowflake-method-freeform-resize-handle'))).toHaveLength(4);
+		expect(frame('a').every((control) => (control as HTMLElement).style.scale === '')).toBe(true);
+		over('a', false);
+		expect(frame('a')).toHaveLength(0);
+		// A node held still is framed by nothing, under the pointer or not.
+		over('b', true);
+		expect(frame('b')).toHaveLength(0);
+		// Chosen, a node keeps its frame with the pointer elsewhere.
+		tell(() => {
+			handle.select({ nodes: ['c'], edges: [] });
+		});
+		expect(frame('c')).toHaveLength(8);
+		// Taken hold of by its frame, a node is chosen as a press on it would choose it: alone.
+		over('a', true);
+		const band = frame('a').find((control) => control.classList.contains('right') && control.classList.contains('line')) as HTMLElement;
+		const at = (type: string, x: number, y: number, on: EventTarget = window): void => {
+			act(() => {
+				on.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, view: window, clientX: x, clientY: y }));
+			});
+		};
+		at('mousedown', 200, 50, band);
+		at('mousemove', 210, 50);
+		expect(handle.selection()).toEqual({ nodes: ['a'], edges: [] });
+		expect(port.selectionChanged).toHaveBeenLastCalledWith({ nodes: ['a'], edges: [] });
+		at('mousemove', 260, 50);
+		at('mouseup', 260, 50);
+		expect(port.commit).toHaveBeenLastCalledWith([{ kind: 'resize', id: 'a', x: 0, y: 0, width: 260, height: 100 }]);
+		// A canvas that cannot be written frames nothing, chosen or not.
+		tell(() => {
+			handle.setInteraction({ readOnly: true });
+		});
+		expect(frame('a')).toHaveLength(0);
+		expect(frame('c')).toHaveLength(0);
 	});
 
 	it('lets none of the library’s own key listening reach the window or the document', async () => {
@@ -560,7 +640,7 @@ describe('the canvas engine on a document', () => {
 	});
 
 	it('looks from where it is told to, and says where it looks from', async () => {
-		const { handle, port, raised, tell } = canvas();
+		const { host, handle, port, raised, tell } = canvas();
 		await raised();
 		tell(() => {
 			handle.setScene({ nodes: [node('a', { x: 1_000, y: 1_000, width: 200, height: 100 })], edges: [] });
@@ -570,12 +650,16 @@ describe('the canvas engine on a document', () => {
 		});
 		expect(handle.viewport()).toEqual({ x: 30, y: 40, zoom: 0.5 });
 		expect(port.viewportChanged).toHaveBeenLastCalledWith({ x: 30, y: 40, zoom: 0.5 }, expect.any(Boolean));
+		// The stylesheet is told how far the plane is zoomed, so the frame and the dots keep their size on the screen.
+		const unzoom = (): string => host.querySelector<HTMLElement>('.react-flow')?.style.getPropertyValue('--snowflake-method-freeform-unzoom') ?? '';
+		expect(unzoom()).toBe('2');
 		// The middle of what is in sight, on the plane.
 		expect(handle.centre()).toEqual({ x: (400 - 30) / 0.5, y: (300 - 40) / 0.5 });
 		tell(() => {
 			handle.moveViewport({ kind: 'reset' });
 		});
 		expect(handle.viewport()).toEqual({ x: 0, y: 0, zoom: 1 });
+		expect(unzoom()).toBe('1');
 		tell(() => {
 			handle.moveViewport({ kind: 'reveal', id: 'a' });
 		});

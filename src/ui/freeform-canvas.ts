@@ -150,6 +150,12 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 		tellSelection();
 	};
 
+	const select = (selection: CanvasSelection): void => {
+		if (disposed) return;
+		set(withSelection(snapshot.nodes, snapshot.edges, selection));
+		tellSelection();
+	};
+
 	const clearNudge = (): void => {
 		if (nudge === null) return;
 		host.win.clearTimeout(nudge);
@@ -322,6 +328,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 					set({ guides: null });
 					if (!holding) hand();
 				},
+				choose: select,
 				holding: (on) => {
 					if (disposed || holding === on) return;
 					holding = on;
@@ -428,11 +435,7 @@ export const freeformCanvasMount = (loadRoot: LoadCanvasRoot): MountFreeformCanv
 			set({ interaction });
 		},
 		selection: () => selectionOf(snapshot.nodes, snapshot.edges),
-		select: (selection) => {
-			if (disposed) return;
-			set(withSelection(snapshot.nodes, snapshot.edges, selection));
-			tellSelection();
-		},
+		select,
 		viewport: () => viewport,
 		moveViewport,
 		toPlane: (client) => {

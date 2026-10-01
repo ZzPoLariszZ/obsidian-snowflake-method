@@ -368,6 +368,60 @@ describe('styles.css', () => {
 		expect(kept).not.toMatch(/animation:\s*dashdraw/);
 	});
 
+	/**
+	 * The frame a freeform node is sized by is the app's own canvas's: bands
+	 * along every side and squares on every corner, none of them drawn, each
+	 * sized on the screen by the measure the engine writes of the zoom. The
+	 * chosen node wears the app's ring, two pixels of the accent. The whole of
+	 * a node is a handle a line may land on, which the engine's own indicator
+	 * class lets be pressed only while a line is drawn, so no rule here says
+	 * when it may be.
+	 */
+	it('frames a freeform node as the app\u2019s canvas does, seen nowhere, and rings the chosen one by two pixels', () => {
+		const band = declarations('.snowflake-method-freeform-canvas .react-flow__resize-control.snowflake-method-freeform-resize-line');
+		expect(band).toContain('background-color: transparent');
+		expect(band).toContain('border: 0');
+		expect(band).toContain('var(--snowflake-method-freeform-unzoom, 1)');
+		const sides = declarations('.snowflake-method-freeform-canvas .react-flow__resize-control.line.right.snowflake-method-freeform-resize-line');
+		expect(sides).toContain('width: var(--snowflake-method-freeform-reach)');
+		expect(sides).toContain('transform: none');
+		expect(declarations('.snowflake-method-freeform-canvas .react-flow__resize-control.handle.right.snowflake-method-freeform-resize-handle'))
+			.toContain('right: calc(-1 * var(--snowflake-method-freeform-reach-out))');
+		expect(declarations('.snowflake-method-freeform-canvas .snowflake-method-freeform-flow.is-connecting .react-flow__resize-control'))
+			.toContain('pointer-events: none');
+		const whole = declarations('.snowflake-method-freeform-canvas .react-flow__handle.snowflake-method-freeform-handle-body');
+		expect(whole).toContain('inset: 0');
+		expect(whole).not.toContain('pointer-events');
+		for (const selector of ['.snowflake-method-freeform-face.is-selected', '.snowflake-method-freeform-face.is-frame.is-selected']) {
+			expect(declarations(selector), selector).toContain('0 0 0 2px var(--interactive-accent)');
+		}
+		// The card kinds' rule names them inside :is(), which the splitter above cannot read: found by its text.
+		const cards = '.snowflake-method-freeform-face:is(.is-scene, .is-card, .is-task, .is-foreshadowing, .is-revision, .is-sticky).is-selected {';
+		const from = styles.indexOf(cards);
+		expect(from).toBeGreaterThan(-1);
+		expect(styles.slice(from, styles.indexOf('}', from))).toContain('box-shadow: 0 0 0 2px var(--interactive-accent)');
+		// On the card inside a face the ring would be cut off at the face's edge, so the card wears the colour alone.
+		const card = declarations('.snowflake-method-freeform-face.is-sticky.is-selected > .snowflake-method-sticky-card');
+		expect(card).toContain('border-color: var(--interactive-accent)');
+		expect(card).not.toContain('box-shadow');
+	});
+
+	/**
+	 * A dot a line starts from is shown as the pointer comes to its side, as
+	 * the app's own canvas shows one, and not on a node merely under the
+	 * pointer or chosen. A finger comes to no side, so on a coarse pointer
+	 * the chosen node shows its four.
+	 */
+	it('shows a freeform dot only as the pointer comes to its side, or on a chosen node under a finger', () => {
+		expect(styles).not.toContain('.react-flow__node:hover .snowflake-method-freeform-handle');
+		const shown = declarations('.snowflake-method-freeform-canvas .react-flow__resize-control.line.right:hover ~ .react-flow__handle-right.snowflake-method-freeform-handle.connectable::before');
+		expect(shown).toContain('opacity: 1');
+		expect(declarations('.snowflake-method-freeform-canvas .snowflake-method-freeform-handle.connectingto::before')).toContain('opacity: 1');
+		const coarse = styles.slice(styles.indexOf('@media (pointer: coarse)'));
+		expect(coarse).toContain('.snowflake-method-freeform-canvas .react-flow__node.selected .snowflake-method-freeform-handle.connectable::before');
+		expect(styles.slice(0, styles.indexOf('@media (pointer: coarse)'))).not.toContain('.react-flow__node.selected .snowflake-method-freeform-handle');
+	});
+
 	it('scopes a sheet without touching what its rules say', () => {
 		const scoped = scopeCss(
 			[

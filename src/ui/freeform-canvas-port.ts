@@ -339,6 +339,8 @@ export interface CanvasRootDeps {
 	edgesChanged: (changes: readonly CanvasEdgeChange[]) => void;
 	/** A drag of nodes or a sizing has ended. */
 	gestureEnded: () => void;
+	/** The engine asks for a choosing of its own making: a node taken hold of to be sized is chosen, alone, as a press on it would choose it. */
+	choose: (selection: CanvasSelection) => void;
 	/** A gesture that holds the canvas busy without moving a node: a line or a box being drawn. */
 	holding: (on: boolean) => void;
 	moved: (viewport: CanvasViewport, settled: boolean) => void;

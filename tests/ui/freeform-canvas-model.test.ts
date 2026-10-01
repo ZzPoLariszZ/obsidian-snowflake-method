@@ -14,12 +14,14 @@ import {
 	handleBoxes,
 	hasUntold,
 	isViewport,
+	nearestSide,
 	reconcileEdges,
 	reconcileNodes,
 	reduceEdgeChanges,
 	reduceNodeChanges,
 	sameSelection,
 	selectionOf,
+	sideMiddle,
 	snapSized,
 	snappedToObjects,
 	steppedViewport,
@@ -80,6 +82,33 @@ describe('the sides a line leaves by', () => {
 		expect(autoSides(at(0, 0), at(100, 500))).toEqual({ fromSide: 'bottom', toSide: 'top' });
 		expect(autoSides(at(0, 500), at(100, 0))).toEqual({ fromSide: 'top', toSide: 'bottom' });
 		expect(autoSides(at(0, 0), at(0, 0))).toEqual({ fromSide: 'right', toSide: 'left' });
+	});
+
+	it('stands the middle of each side where the engine ends a line by it', () => {
+		const box = { x: 10, y: 20, width: 200, height: 80 };
+		expect(sideMiddle(box, 'top')).toEqual({ x: 110, y: 20 });
+		expect(sideMiddle(box, 'right')).toEqual({ x: 210, y: 60 });
+		expect(sideMiddle(box, 'bottom')).toEqual({ x: 110, y: 100 });
+		expect(sideMiddle(box, 'left')).toEqual({ x: 10, y: 60 });
+	});
+
+	it('lands a line let go on a node by the side whose middle stands nearest, the head and the right first where two stand as near', () => {
+		const wide = { x: 0, y: 0, width: 400, height: 100 };
+		expect(nearestSide(wide, { x: 390, y: 50 })).toBe('right');
+		expect(nearestSide(wide, { x: 10, y: 50 })).toBe('left');
+		expect(nearestSide(wide, { x: 200, y: 10 })).toBe('top');
+		expect(nearestSide(wide, { x: 200, y: 90 })).toBe('bottom');
+		// Towards the end of a wide box the end's own side is taken, though the drop stands at the head's edge.
+		expect(nearestSide(wide, { x: 350, y: 5 })).toBe('right');
+		expect(nearestSide(wide, { x: 250, y: 5 })).toBe('top');
+		// The very middle stands as near to the head as to the foot: the head.
+		expect(nearestSide(wide, { x: 200, y: 50 })).toBe('top');
+		// A tall box's middle stands as near to the right as to the left: the right.
+		expect(nearestSide({ x: 0, y: 0, width: 100, height: 400 }, { x: 50, y: 200 })).toBe('right');
+		// A point beyond the box is read the same way.
+		expect(nearestSide(wide, { x: 500, y: 50 })).toBe('right');
+		// Where the box stands matters as much as its size.
+		expect(nearestSide({ x: 1_000, y: 1_000, width: 400, height: 100 }, { x: 1_010, y: 1_050 })).toBe('left');
 	});
 });
 

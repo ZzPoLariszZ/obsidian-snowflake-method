@@ -9,6 +9,7 @@
 
 import {
 	CANVAS_FRAME_KIND,
+	CANVAS_SIDES,
 	type CanvasBox,
 	type CanvasEdge,
 	type CanvasEdgeChange,
@@ -73,6 +74,41 @@ export function autoSides(from: CanvasBox, to: CanvasBox): { fromSide: CanvasSid
 		return dx >= 0 ? { fromSide: 'right', toSide: 'left' } : { fromSide: 'left', toSide: 'right' };
 	}
 	return dy >= 0 ? { fromSide: 'bottom', toSide: 'top' } : { fromSide: 'top', toSide: 'bottom' };
+}
+
+/** The middle of one side of a box, where a line that leaves or lands by that side ends. */
+export function sideMiddle(box: CanvasBox, side: CanvasSide): CanvasPoint {
+	switch (side) {
+		case 'top':
+			return { x: box.x + box.width / 2, y: box.y };
+		case 'right':
+			return { x: box.x + box.width, y: box.y + box.height / 2 };
+		case 'bottom':
+			return { x: box.x + box.width / 2, y: box.y + box.height };
+		case 'left':
+			return { x: box.x, y: box.y + box.height / 2 };
+	}
+}
+
+/**
+ * The side of a box a line dropped at a point lands by: the one whose middle
+ * stands nearest the point, as the app's own canvas chooses it. Towards the
+ * end of a wide box that is the end's own side, and a drop in the very middle
+ * is read by the head before the foot and the right before the left, so a
+ * drop that could go either way goes the same way every time.
+ */
+export function nearestSide(box: CanvasBox, at: CanvasPoint): CanvasSide {
+	let chosen: CanvasSide = 'top';
+	let least = Number.POSITIVE_INFINITY;
+	for (const side of CANVAS_SIDES) {
+		const middle = sideMiddle(box, side);
+		const distance = (middle.x - at.x) ** 2 + (middle.y - at.y) ** 2;
+		if (distance < least) {
+			least = distance;
+			chosen = side;
+		}
+	}
+	return chosen;
 }
 
 // -- Bringing what is held level with what stands ----------------------------------
