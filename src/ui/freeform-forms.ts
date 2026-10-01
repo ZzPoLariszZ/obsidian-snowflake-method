@@ -7,20 +7,17 @@
  * is the timeline's too, which says nothing of timelines.
  */
 
-import { Modal, Notice, Setting, type App } from 'obsidian';
+import { Modal, Notice, Setting, setTooltip, type App } from 'obsidian';
 
 import {
 	FREEFORM_ARROWS,
 	FREEFORM_LINES,
 	FREEFORM_SIZE,
-	isFreeformArrow,
-	isFreeformLine,
 	isMacaronColor,
 	type FreeformArrow,
 	type FreeformLine,
 	type MacaronColor,
 } from '../domain';
-import { addEnumSelect } from './entity-form';
 import {
 	SnowflakeFormModal,
 	UniqueNameField,
@@ -655,9 +652,74 @@ export interface FreeformEdgeDraft {
 }
 
 /**
+ * One of a few looks, picked by sight: a row of equal cells, each drawing the
+ * look it stands for, the chosen one in the accent. The cells are the radios
+ * of one group, so the arrows walk them and the Tab key stops once; each is
+ * named by its words for a reader and a tooltip, since the drawing says it
+ * only to the eye.
+ */
+function addLookPicker<T extends string>(
+	container: HTMLElement,
+	spec: {
+		kind: string;
+		ariaLabel: string;
+		values: readonly T[];
+		label: (value: T) => string;
+		initial: T;
+		onChange: (value: T) => void;
+	},
+): HTMLElement {
+	const group = container.createDiv({
+		cls: `snowflake-method-look-picker snowflake-method-look-picker-${spec.kind}`,
+		attr: { role: 'radiogroup', 'aria-label': spec.ariaLabel },
+	});
+	const cells = new Map<T, HTMLButtonElement>();
+	let chosen = spec.initial;
+	const paint = (): void => {
+		for (const [value, cell] of cells) {
+			const on = value === chosen;
+			cell.toggleClass('is-chosen', on);
+			cell.setAttribute('aria-checked', on ? 'true' : 'false');
+			cell.setAttribute('tabindex', on ? '0' : '-1');
+		}
+	};
+	const choose = (value: T, focus: boolean): void => {
+		if (value !== chosen) {
+			chosen = value;
+			paint();
+			spec.onChange(value);
+		}
+		if (focus) cells.get(value)?.focus();
+	};
+	for (const value of spec.values) {
+		const words = spec.label(value);
+		const cell = group.createEl('button', {
+			cls: 'snowflake-method-look-choice',
+			attr: { type: 'button', role: 'radio', 'aria-label': words, 'data-value': value },
+		});
+		setTooltip(cell, words);
+		cell.createSpan({ cls: `snowflake-method-look-glyph is-${spec.kind}-${value}`, attr: { 'aria-hidden': 'true' } });
+		cell.addEventListener('click', () => {
+			choose(value, false);
+		});
+		cell.addEventListener('keydown', (event) => {
+			const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+			if (step === 0) return;
+			event.preventDefault();
+			const at = spec.values.indexOf(value);
+			const next = spec.values[(at + step + spec.values.length) % spec.values.length];
+			if (next !== undefined) choose(next, true);
+		});
+		cells.set(value, cell);
+	}
+	paint();
+	return group;
+}
+
+/**
  * A line edited: the words on it, where its arrowheads stand, and how it is
- * drawn. It says first that it is drawn on the canvas only, so no one takes
- * a line for a link between the notes it joins.
+ * drawn. The arrowheads and the line are picked by sight, each row its name
+ * at the start and the looks at the end, the two rows of looks one width.
  */
 export class FreeformEdgeFormModal extends SnowflakeFormModal<FreeformEdgeDraft> {
 	private readonly draft: FreeformEdgeDraft;
@@ -676,7 +738,6 @@ export class FreeformEdgeFormModal extends SnowflakeFormModal<FreeformEdgeDraft>
 
 	protected buildForm(): void {
 		this.contentEl.addClass('snowflake-method-project-form');
-		this.contentEl.createEl('p', { text: this.t('freeformCanvas.edge.hint') });
 		new Setting(this.contentEl)
 			.setName(this.t('freeformCanvas.edge.label'))
 			.setDesc(this.t('freeformCanvas.edge.labelHint'))
@@ -688,27 +749,25 @@ export class FreeformEdgeFormModal extends SnowflakeFormModal<FreeformEdgeDraft>
 				});
 			});
 		const arrow = new Setting(this.contentEl).setName(this.t('freeformCanvas.edge.arrow'));
-		addEnumSelect(arrow.controlEl, {
-			cls: 'dropdown snowflake-method-freeform-edge-arrow',
+		arrow.settingEl.addClass('snowflake-method-look-setting');
+		addLookPicker(arrow.controlEl, {
+			kind: 'arrow',
 			ariaLabel: this.t('freeformCanvas.edge.arrow'),
 			values: FREEFORM_ARROWS,
 			label: (value) => this.t(`freeformCanvas.edge.arrow.${value}`),
 			initial: this.draft.arrow,
-			is: isFreeformArrow,
-			fallback: 'end',
 			onChange: (value) => {
 				this.draft.arrow = value;
 			},
 		});
 		const line = new Setting(this.contentEl).setName(this.t('freeformCanvas.edge.line'));
-		addEnumSelect(line.controlEl, {
-			cls: 'dropdown snowflake-method-freeform-edge-line',
+		line.settingEl.addClass('snowflake-method-look-setting');
+		addLookPicker(line.controlEl, {
+			kind: 'line',
 			ariaLabel: this.t('freeformCanvas.edge.line'),
 			values: FREEFORM_LINES,
 			label: (value) => this.t(`freeformCanvas.edge.line.${value}`),
 			initial: this.draft.line,
-			is: isFreeformLine,
-			fallback: 'solid',
 			onChange: (value) => {
 				this.draft.line = value;
 			},

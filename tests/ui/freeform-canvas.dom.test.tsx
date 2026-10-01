@@ -269,6 +269,25 @@ describe('the canvas engine on a document', () => {
 		expect(bodies.every((body) => body.getAttribute('aria-hidden') === 'true')).toBe(true);
 	});
 
+	it('puts the arrowhead where the line asks for it: the start, the end, both ends or neither', async () => {
+		const { host, handle, raised, tell } = canvas();
+		await raised();
+		const heads = (arrow: CanvasEdge['arrow']): [boolean, boolean] => {
+			tell(() => {
+				handle.setScene({
+					nodes: [node('a'), node('b', { x: 300 })],
+					edges: [edge('a-b', 'a', 'b', { arrow, revision: arrow })],
+				});
+			});
+			const path = host.querySelector('.react-flow__edge-path');
+			return [path?.hasAttribute('marker-start') ?? false, path?.hasAttribute('marker-end') ?? false];
+		};
+		expect(heads('none')).toEqual([false, false]);
+		expect(heads('start')).toEqual([true, false]);
+		expect(heads('end')).toEqual([false, true]);
+		expect(heads('both')).toEqual([true, true]);
+	});
+
 	it('lets a line land on the whole of a node that may be joined, and on none of one that may not', async () => {
 		const { host, handle, raised, tell } = canvas();
 		await raised();

@@ -3085,6 +3085,136 @@
 	min-width: 0;
 }
 
+/* A look picked by sight, as the typography rows pick the manuscript's grid
+   lines: the field's name at the start of the line, the looks at its end, and
+   every such row's looks one width, so the arrow's four cells and the line's
+   three end on one column. Named with the dialog and the form, as the stacked
+   field is, since the form's own rule stands every row in a column. */
+.modal.snowflake-method-compact-form-modal
+	.modal-content.snowflake-method-project-form
+	> .setting-item.snowflake-method-look-setting {
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+}
+
+.snowflake-method-project-form > .snowflake-method-look-setting > .setting-item-control {
+	flex: 0 0 auto;
+	width: var(--snowflake-method-look-picker-width, 12rem);
+	max-width: 100%;
+}
+
+/* The cells of one look stand in one box, each as wide as the next, drawing
+   the look it stands for in the muted ink and the chosen one in the accent.
+   The box clips its cells' corners, so a cell's focus ring is drawn inside
+   its own edge where the clip cannot take it. */
+.snowflake-method-look-picker {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--interactive-normal);
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice {
+	display: flex;
+	flex: 1 1 0;
+	align-items: center;
+	justify-content: center;
+	min-width: 0;
+	height: var(--input-height);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: var(--cursor);
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice + button.snowflake-method-look-choice {
+	border-inline-start: 1px solid var(--background-modifier-border);
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice:hover {
+	background: var(--interactive-hover);
+	color: var(--text-normal);
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice:focus-visible {
+	outline: 2px solid var(--background-modifier-border-focus);
+	outline-offset: -2px;
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice.is-chosen {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.snowflake-method-look-picker > button.snowflake-method-look-choice.is-chosen:hover {
+	background: var(--interactive-accent-hover);
+}
+
+/* The drawing: a line in the cell's ink, whole, dashed, dotted or in dashes
+   and dots by turns, with a closed head at the ends the arrow names, as the
+   canvas draws the line. The line is a band two pixels tall painted by a
+   gradient rather than a border, so the four patterns are measured in the
+   same pixels and each ends as it began: four dashes, seven dots, and a dot
+   at either end of the dash-dot. */
+.snowflake-method-look-glyph {
+	position: relative;
+	display: block;
+	width: 32px;
+	height: 2px;
+	background: currentColor;
+}
+
+.snowflake-method-look-glyph.is-line-dashed {
+	background: repeating-linear-gradient(to right, currentColor 0 5px, transparent 5px 9px);
+}
+
+.snowflake-method-look-glyph.is-line-dotted {
+	background: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 5px);
+}
+
+.snowflake-method-look-glyph.is-line-dash-dot {
+	background: repeating-linear-gradient(
+		to right,
+		currentColor 0 2px,
+		transparent 2px 5px,
+		currentColor 5px 12px,
+		transparent 12px 15px
+	);
+}
+
+.snowflake-method-look-glyph.is-arrow-start::before,
+.snowflake-method-look-glyph.is-arrow-both::before,
+.snowflake-method-look-glyph.is-arrow-end::after,
+.snowflake-method-look-glyph.is-arrow-both::after {
+	content: '';
+	position: absolute;
+	top: -3px;
+	width: 0;
+	height: 0;
+	border-block: 4px solid transparent;
+}
+
+.snowflake-method-look-glyph.is-arrow-start::before,
+.snowflake-method-look-glyph.is-arrow-both::before {
+	inset-inline-start: -1px;
+	border-inline-end: 7px solid currentColor;
+}
+
+.snowflake-method-look-glyph.is-arrow-end::after,
+.snowflake-method-look-glyph.is-arrow-both::after {
+	inset-inline-end: -1px;
+	border-inline-start: 7px solid currentColor;
+}
+
 /* A yes or no a compact form asks, the same way in the naming form and
    the merge dialog: what it decides on the left, the toggle at the right
    edge, on one line and with nothing under it. The words take a click as a
@@ -16586,6 +16716,11 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 .snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dotted .react-flow__edge-path {
 	stroke-dasharray: 1 6;
+	stroke-linecap: round;
+}
+
+.snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dash-dot .react-flow__edge-path {
+	stroke-dasharray: 8 6 1 6;
 	stroke-linecap: round;
 }
 

@@ -198,8 +198,8 @@ function flowEdge(held: CanvasHeldEdge, readOnly: boolean): FlowEdge {
 		focusable: true,
 		ariaLabel: edge.name,
 		className: `snowflake-method-freeform-edge is-${edge.line}`,
-		...(edge.arrow === 'none' ? {} : { markerEnd: { type: MarkerType.ArrowClosed } }),
-		...(edge.arrow === 'both' ? { markerStart: { type: MarkerType.ArrowClosed } } : {}),
+		...(edge.arrow === 'end' || edge.arrow === 'both' ? { markerEnd: { type: MarkerType.ArrowClosed } } : {}),
+		...(edge.arrow === 'start' || edge.arrow === 'both' ? { markerStart: { type: MarkerType.ArrowClosed } } : {}),
 		data: { edge },
 	};
 }

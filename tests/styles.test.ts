@@ -18,7 +18,7 @@ describe('styles.css', () => {
 			.find((entry) =>
 				(entry.split('{')[0] ?? '')
 					.split(',')
-					.map((one) => one.trim())
+					.map((one) => one.trim().replace(/\s+/gu, ' '))
 					.includes(selector),
 			);
 		expect(found, selector).toBeDefined();
@@ -405,6 +405,24 @@ describe('styles.css', () => {
 		const card = declarations('.snowflake-method-freeform-face.is-sticky.is-selected > .snowflake-method-sticky-card');
 		expect(card).toContain('border-color: var(--interactive-accent)');
 		expect(card).not.toContain('box-shadow');
+	});
+
+	it('picks a line\u2019s look by sight on one line with its name, every such row\u2019s looks one width', () => {
+		const row = declarations('.modal.snowflake-method-compact-form-modal .modal-content.snowflake-method-project-form > .setting-item.snowflake-method-look-setting');
+		expect(row).toContain('flex-direction: row');
+		expect(row).toContain('align-items: center');
+		const control = declarations('.snowflake-method-project-form > .snowflake-method-look-setting > .setting-item-control');
+		expect(control).toContain('flex: 0 0 auto');
+		expect(control).toContain('width: var(--snowflake-method-look-picker-width, 12rem)');
+		expect(declarations('.snowflake-method-look-picker > button.snowflake-method-look-choice')).toContain('flex: 1 1 0');
+		expect(declarations('.snowflake-method-look-picker > button.snowflake-method-look-choice.is-chosen')).toContain('background: var(--interactive-accent)');
+		expect(declarations('.snowflake-method-look-glyph')).toContain('height: 2px');
+		expect(declarations('.snowflake-method-look-glyph.is-line-dotted')).toContain('repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 5px)');
+		expect(declarations('.snowflake-method-look-glyph.is-line-dash-dot')).toContain('currentColor 5px 12px');
+		expect(declarations('.snowflake-method-freeform-canvas .snowflake-method-freeform-edge.is-dash-dot .react-flow__edge-path')).toContain('stroke-dasharray: 8 6 1 6');
+		expect(declarations('.snowflake-method-look-glyph.is-arrow-start::before')).toContain('border-block: 4px solid transparent');
+		expect(styles).toContain('inset-inline-start: -1px;\n\tborder-inline-end: 7px solid currentColor;');
+		expect(styles).toContain('inset-inline-end: -1px;\n\tborder-inline-start: 7px solid currentColor;');
 	});
 
 	/**

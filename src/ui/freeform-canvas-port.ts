@@ -71,8 +71,8 @@ export interface CanvasNode {
 	minHeight: number;
 }
 
-export type CanvasArrow = 'none' | 'end' | 'both';
-export type CanvasLine = 'solid' | 'dashed' | 'dotted';
+export type CanvasArrow = 'none' | 'start' | 'end' | 'both';
+export type CanvasLine = 'solid' | 'dashed' | 'dotted' | 'dash-dot';
 
 export interface CanvasEdge {
 	id: string;

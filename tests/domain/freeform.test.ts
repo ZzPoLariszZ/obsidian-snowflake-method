@@ -224,7 +224,7 @@ describe('reading a view', () => {
 				{ id: 'p2', resource: { type: 'text', text: 'b' }, x: 0, y: 0 },
 			],
 			edges: [
-				{ id: 'e1', source: 'p1', target: 'p2', sourceSide: 'right', targetSide: 'inside', label: 3, arrow: 'start', line: 'wavy' },
+				{ id: 'e1', source: 'p1', target: 'p2', sourceSide: 'right', targetSide: 'inside', label: 3, arrow: 'middle', line: 'wavy' },
 				dangling, loop, twin,
 				{ id: 'e4', source: 'p1', target: 'f1', arrow: 'both', line: 'dotted', label: 'holds' },
 			],
@@ -726,7 +726,9 @@ describe('edges', () => {
 	it('restyles the edges named, each part only where it was named', () => {
 		const after = undone(standing(), [{ do: 'edit-edges', edits: [{ id: 'e1', label: 'hates', line: 'dotted' }] }]);
 		expect(after.edges[0]).toMatchObject({ label: 'hates', arrow: 'both', line: 'dotted' });
-		expect(take(standing(), [{ do: 'edit-edges', edits: [{ id: 'e1', arrow: 'start' as never }] }]).came).toBe('refused');
+		expect(take(standing(), [{ do: 'edit-edges', edits: [{ id: 'e1', arrow: 'middle' as never }] }]).came).toBe('refused');
+		expect(undone(standing(), [{ do: 'edit-edges', edits: [{ id: 'e1', arrow: 'start' }] }]).edges[0]).toMatchObject({ label: 'knows', arrow: 'start', line: 'dashed' });
+		expect(undone(standing(), [{ do: 'edit-edges', edits: [{ id: 'e1', line: 'dash-dot' }] }]).edges[0]).toMatchObject({ label: 'knows', arrow: 'both', line: 'dash-dot' });
 		expect(take(standing(), [{ do: 'edit-edges', edits: [{ id: 'gone', label: 'x' }] }]).came).toBe('absent');
 	});
 

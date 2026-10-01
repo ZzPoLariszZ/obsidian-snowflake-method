@@ -133,14 +133,16 @@ export function isFreeformSide(value: unknown): value is FreeformSide {
 	return (FREEFORM_SIDES as readonly unknown[]).includes(value);
 }
 
-export const FREEFORM_ARROWS = ['none', 'end', 'both'] as const;
+/** Where a line's arrowheads stand: at neither end, at the start, at the end, or at both. */
+export const FREEFORM_ARROWS = ['none', 'start', 'end', 'both'] as const;
 export type FreeformArrow = (typeof FREEFORM_ARROWS)[number];
 
 export function isFreeformArrow(value: unknown): value is FreeformArrow {
 	return (FREEFORM_ARROWS as readonly unknown[]).includes(value);
 }
 
-export const FREEFORM_LINES = ['solid', 'dashed', 'dotted'] as const;
+/** How a line is drawn: whole, in dashes, in dots, or in dashes and dots by turns. */
+export const FREEFORM_LINES = ['solid', 'dashed', 'dotted', 'dash-dot'] as const;
 export type FreeformLine = (typeof FREEFORM_LINES)[number];
 
 export function isFreeformLine(value: unknown): value is FreeformLine {

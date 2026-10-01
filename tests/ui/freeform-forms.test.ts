@@ -438,29 +438,43 @@ describe('the form a line is edited through', () => {
 		new FreeformEdgeFormModal(app, t, initial, limit, () => Promise.resolve());
 	const collectEdge = (form: unknown): FreeformEdgeDraft | null => (form as { collectValue(): FreeformEdgeDraft | null }).collectValue();
 
-	it('says first that a line joins nothing in the notes, then names its three fields', () => {
+	it('names its three fields, the label typed and the two looks picked by sight, the chosen cell marked', () => {
 		const form = edgeForm({ label: 'leads to', arrow: 'both', line: 'dashed' });
 		build(form);
 		expect(titles).toEqual(['freeformCanvas.edge.edit']);
 		expect((form as unknown as { submitLabelKey: string }).submitLabelKey).toBe('common.save');
-		expect(content(form).querySelector('p')!.textContent).toBe('freeformCanvas.edge.hint');
-		expect(content(form).querySelectorAll('.setting-item').map((row) => row.getAttribute('data-name'))).toEqual([
+		expect(content(form).querySelector('p')).toBeNull();
+		const rows = content(form).querySelectorAll('.setting-item');
+		expect(rows.map((row) => row.getAttribute('data-name'))).toEqual([
 			'freeformCanvas.edge.label', 'freeformCanvas.edge.arrow', 'freeformCanvas.edge.line',
 		]);
+		expect(rows.map((row) => row.classList.contains('snowflake-method-look-setting'))).toEqual([false, true, true]);
 		const label = content(form).querySelector('input')!;
 		expect(label.value).toBe('leads to');
 		expect(label.getAttribute('aria-label')).toBe('freeformCanvas.edge.label');
 		expect(label.getAttribute('maxlength')).toBe('200');
-		const selects = content(form).querySelectorAll('select');
-		expect(selects.map((select) => select.getAttribute('aria-label'))).toEqual(['freeformCanvas.edge.arrow', 'freeformCanvas.edge.line']);
-		expect(selects[0]!.querySelectorAll('option').map((option) => [option.value, option.textContent, option.selected])).toEqual([
-			['none', 'freeformCanvas.edge.arrow.none', false],
-			['end', 'freeformCanvas.edge.arrow.end', false],
-			['both', 'freeformCanvas.edge.arrow.both', true],
+		expect(content(form).querySelectorAll('select')).toHaveLength(0);
+		const pickers = content(form).querySelectorAll('.snowflake-method-look-picker');
+		expect(pickers.map((picker) => [picker.getAttribute('role'), picker.getAttribute('aria-label')])).toEqual([
+			['radiogroup', 'freeformCanvas.edge.arrow'], ['radiogroup', 'freeformCanvas.edge.line'],
 		]);
-		expect(selects[1]!.querySelectorAll('option').map((option) => [option.value, option.selected])).toEqual([
-			['solid', false], ['dashed', true], ['dotted', false],
+		const cells = (picker: CorkboardElement) => picker.querySelectorAll('.snowflake-method-look-choice').map((cell) => [
+			cell.getAttribute('data-value'), cell.getAttribute('aria-label'), cell.getAttribute('aria-checked'), cell.getAttribute('tabindex'),
+			cell.querySelector('.snowflake-method-look-glyph')!.className,
 		]);
+		expect(cells(pickers[0]!)).toEqual([
+			['none', 'freeformCanvas.edge.arrow.none', 'false', '-1', 'snowflake-method-look-glyph is-arrow-none'],
+			['start', 'freeformCanvas.edge.arrow.start', 'false', '-1', 'snowflake-method-look-glyph is-arrow-start'],
+			['end', 'freeformCanvas.edge.arrow.end', 'false', '-1', 'snowflake-method-look-glyph is-arrow-end'],
+			['both', 'freeformCanvas.edge.arrow.both', 'true', '0', 'snowflake-method-look-glyph is-arrow-both'],
+		]);
+		expect(cells(pickers[1]!)).toEqual([
+			['solid', 'freeformCanvas.edge.line.solid', 'false', '-1', 'snowflake-method-look-glyph is-line-solid'],
+			['dashed', 'freeformCanvas.edge.line.dashed', 'true', '0', 'snowflake-method-look-glyph is-line-dashed'],
+			['dotted', 'freeformCanvas.edge.line.dotted', 'false', '-1', 'snowflake-method-look-glyph is-line-dotted'],
+			['dash-dot', 'freeformCanvas.edge.line.dash-dot', 'false', '-1', 'snowflake-method-look-glyph is-line-dash-dot'],
+		]);
+		expect(pickers[0]!.querySelectorAll('.snowflake-method-look-choice').every((cell) => cell.getAttribute('type') === 'button' && cell.getAttribute('role') === 'radio')).toBe(true);
 		expect(collectEdge(form)).toEqual({ label: 'leads to', arrow: 'both', line: 'dashed' });
 	});
 
@@ -468,11 +482,13 @@ describe('the form a line is edited through', () => {
 		const form = edgeForm({ label: '', arrow: 'end', line: 'solid' }, 8);
 		build(form);
 		type(content(form).querySelector('input')!, '  then  ');
-		const [arrow, line] = content(form).querySelectorAll('select') as [CorkboardElement, CorkboardElement];
-		arrow.value = 'none';
-		arrow.dispatch('change');
-		line.value = 'dotted';
-		line.dispatch('change');
+		const [arrow, line] = content(form).querySelectorAll('.snowflake-method-look-picker') as [CorkboardElement, CorkboardElement];
+		const cell = (picker: CorkboardElement, value: string) => picker.querySelectorAll('.snowflake-method-look-choice').find((one) => one.getAttribute('data-value') === value)!;
+		cell(arrow, 'none').dispatch('click');
+		cell(line, 'dotted').dispatch('click');
+		expect(cell(arrow, 'none').getAttribute('aria-checked')).toBe('true');
+		expect(cell(arrow, 'end').getAttribute('aria-checked')).toBe('false');
+		expect(cell(line, 'dotted').classList.contains('is-chosen')).toBe(true);
 		expect(collectEdge(form)).toEqual({ label: 'then', arrow: 'none', line: 'dotted' });
 		type(content(form).querySelector('input')!, 'far too long');
 		expect(collectEdge(form)).toBeNull();
