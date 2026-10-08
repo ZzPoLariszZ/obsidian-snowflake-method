@@ -8,6 +8,20 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0]
+
+### Added
+
+- **Export as Obsidian Canvas.** The freeform canvas, the timeline and the beat sheet each have a new button at the end of their toolbar. It writes the view you're looking at as an Obsidian Canvas file next to the workspace's own file: `732_Freeform/<view name>.canvas`, `733_Timeline/<view name>.canvas` or `734_Beat_Sheet/<sheet name>.canvas`. Notes become file cards and keep their colors. Frames, timelines and acts become groups. Typed text, sub-descriptions and beats become text cards. The toolbar's display switches, which hide the words, stack the scenes or reverse the order, change only the screen. The canvas always writes the words, puts the scenes beside them and keeps the stored order. Tasks, foreshadowing and revisions are not notes, so each becomes a text card that names it, and every line between cards is kept with its arrows and label. The canvas opens as soon as it's written. If a file of that name is already there and differs, you're asked before it's replaced. If it says the same, nothing is written and the canvas just opens. The plugin never reads the file back, so you can rearrange it in Canvas or delete it without touching the workspace.
+
+### Changed
+
+- The freeform toolbar's **Add view** button now wears a grid symbol, so only the canvas export beside it wears Obsidian's canvas symbol.
+
+### Fixed
+
+- A name that begins with a dot now loses the dot when it becomes a file name. Obsidian never shows a file named that way, so a note or a canvas with such a name could be written and never found again.
+
 ## [0.22.1]
 
 ### Fixed
@@ -529,6 +543,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.23.0]
+
+### 新增
+
+- **导出为 Obsidian 白板。** 自由画布、时间线与节拍表的工具栏末尾各多了一个按钮，会把当前视图导出为 Obsidian 白板文件，放在工作区自己的文件旁边：`732_自由画布/<视图名称>.canvas`、`733_时间线/<视图名称>.canvas` 或 `734_节拍表/<节拍表名称>.canvas`。笔记会变成文件卡片，并保留各自的颜色。分组、时间线与幕会变成白板的分组。画布上输入的文字、子描述与节拍则变成文本卡片。工具栏上隐藏子描述、堆叠场景与倒序这几个开关只改变屏幕上的显示。白板里始终写出子描述，把场景放在它们旁边，并保持原本的顺序。任务、伏笔与修订不是笔记，所以各自变成一张写着名称的文本卡片，卡片之间的连线连同箭头与标签都会保留。写入后白板会立即打开。如果同名文件已经存在且内容不同，会先征求你的同意再替换。内容相同时不会重复写入，只会直接打开白板。插件不会读取这个文件，你可以在白板里随意编辑或删除它，工作区不受影响。
+
+### 变更
+
+- 自由画布工具栏的**添加视图**按钮改用网格图标，旁边的白板导出按钮则用 Obsidian 白板自己的图标。
+
+### 修复
+
+- 以点开头的名称在变成文件名时会去掉开头的点。Obsidian 不会显示这样命名的文件，之前这样的笔记或白板写入后就再也找不到了。
 
 ## [0.22.1]
 
