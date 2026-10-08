@@ -67,6 +67,22 @@ describe('styles.css', () => {
 		expect(explorer.includes(':has(')).toBe(false);
 		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('margin-inline-start: auto');
 		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('tabular-nums');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('align-self: center');
+		// Dressed as the app's own type tag, by the tag's variables.
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('color: var(--nav-tag-color)');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('font-weight: var(--nav-tag-weight)');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('background-color: var(--nav-tag-background)');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('border-radius: var(--nav-tag-radius)');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('font-size: 9px');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('letter-spacing: 0.05em');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).not.toContain('var(--font-monospace)');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('padding: 0 var(--size-4-1)');
+		expect(declarations('.snowflake-method-explorer-arranging .tree-item-self:not(.snowflake-method-explorer-row)')).toContain('pointer-events: none');
+		expect(declarations('.snowflake-method-explorer-drag .tree-item-self:not(.snowflake-method-explorer-sibling)')).toContain('pointer-events: none');
+		expect(declarations('.nav-files-container')).toContain('scrollbar-gutter: stable');
+		expect(declarations('.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered:not(.is-being-renamed) .tree-item-inner')).toContain('color: transparent');
+		expect(declarations('.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered .snowflake-method-explorer-count')).toContain('opacity: 0');
+		expect(explorer.includes('animation')).toBe(false);
 		expect(declarations('.nav-files-container .tree-item[data-snowflake-method-drop]::after')).toContain('var(--interactive-accent)');
 		expect(declarations('.nav-files-container .tree-item[data-snowflake-method-drop]::after')).toContain('pointer-events: none');
 	});

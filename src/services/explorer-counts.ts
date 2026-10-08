@@ -141,7 +141,16 @@ export class ExplorerCountService {
 		const stamp = stampOf(file);
 		const kept = this.notes.get(file.path);
 		if (kept !== undefined && kept.stamp === stamp) return kept.total;
-		const total = await this.deps.countNote(file.path);
+		let total: number | null;
+		try {
+			total = await this.deps.countNote(file.path);
+		} catch (error: unknown) {
+			// A note that will not read is remembered as unreadable, as one the
+			// counter declines is, so it is not read and refused again on every
+			// paint; a change to the file asks again.
+			console.error(`Snowflake: could not count ${file.path}`, error);
+			total = null;
+		}
 		// Remembered under the stat read before the count: a note written
 		// meanwhile stamps differently and is counted again when next asked.
 		if (generation === this.generation) this.notes.set(file.path, { stamp, total });

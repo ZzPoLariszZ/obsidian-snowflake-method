@@ -40,6 +40,27 @@ describe("ExplorerCountService", () => {
 		expect(countNote).toHaveBeenCalledTimes(2);
 	});
 
+	it("remembers a note the counter refused as unreadable, until the note changes", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		try {
+			const files = new FakeFiles();
+			const note = files.file({ path: "Novel/a.md", mtime: 1, size: 5 });
+			const { counts, countNote, landed, ask } = service(files, {});
+			countNote.mockRejectedValueOnce(new Error("locked"));
+			await ask(["Novel/a.md"]);
+			expect(landed).toEqual([["Novel/a.md", null]]);
+			expect(counts.noteTotal("Novel/a.md")).toBeNull();
+			await ask(["Novel/a.md"]);
+			expect(countNote).toHaveBeenCalledTimes(1);
+			expect(errors).toHaveBeenCalledTimes(1);
+			files.touch(note, 2);
+			await ask(["Novel/a.md"]);
+			expect(countNote).toHaveBeenCalledTimes(2);
+		} finally {
+			errors.mockRestore();
+		}
+	});
+
 	it("sums a folder from the notes beneath it, the plugin's own and unreadable ones left out", async () => {
 		const files = new FakeFiles();
 		files.file("Novel/a.md");

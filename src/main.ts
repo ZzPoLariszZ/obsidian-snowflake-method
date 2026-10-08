@@ -224,7 +224,12 @@ import {
 	projectRootContaining,
 	touchesAnyProject,
 } from './project-root';
-import { EXPLORER_MENU_SECTION, ExplorerEnhancer } from './ui/file-explorer';
+import {
+	EXPLORER_MENU_SECTION,
+	ExplorerEnhancer,
+	IMMERSIVE_ICON,
+	IMMERSIVE_ICON_SVG,
+} from './ui/file-explorer';
 import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
@@ -1956,6 +1961,7 @@ export default class SnowflakeMethodPlugin
 		this.currentProjectLocale = locale;
 		this.settings.recentStep = step;
 		this.rerenderStatisticsViews();
+		this.explorer?.followCurrentProject();
 	}
 
 	activateProject(
@@ -3058,6 +3064,8 @@ export default class SnowflakeMethodPlugin
 		// The numbering rule is read when a note is named, and the export
 		// settings when a file is written; nothing standing changes with them.
 		if (key.startsWith('manuscriptChapterNumber')) return;
+		// The export folder is one of the places the explorer tools reach.
+		if (key === 'exportFolder') this.explorer?.settingsChanged(key);
 		if (key.startsWith('export')) return;
 		// The word milestones are dress on the count the streams already take
 		// of the text they hold, so re-dressing the open streams is the whole
@@ -8584,6 +8592,11 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-explorer-immersive',
+			name: this.globalT('commands.toggleExplorerImmersive'),
+			callback: () => this.toggleExplorerImmersive(),
+		});
+		this.addCommand({
 			id: 'toggle-untimed-word-tracking',
 			name: this.globalT('commands.toggleUntimedTracking'),
 			callback: () => {
@@ -9124,6 +9137,7 @@ export default class SnowflakeMethodPlugin
 	 */
 	private startExplorer(): void {
 		if (this.explorer !== null) return;
+		addIcon(IMMERSIVE_ICON, IMMERSIVE_ICON_SVG);
 		const explorer = new ExplorerEnhancer({
 			app: this.app,
 			plugin: this,
@@ -9138,6 +9152,25 @@ export default class SnowflakeMethodPlugin
 				this.saveSettingsSoon();
 			},
 			projectRootOf: (path) => projectRootContaining(path, this.explorerRoots),
+			saveFolds: (paths) => {
+				this.settings.explorerImmersiveFolds = [...paths];
+				this.saveSettingsSoon();
+			},
+			// The project the sidebars show: the one a dashboard, a workspace or
+			// a manuscript tab last brought to the front, never the note under
+			// the cursor, so the cover and the sidebars always agree.
+			currentProjectRoot: () => {
+				const recent = this.settings.recentProjectPath;
+				return recent === null ? null : projectRootContaining(recent, this.explorerRoots);
+			},
+			pluginFolders: () => ({
+				root: this.settings.projectRoot.length === 0 ? '/' : this.settings.projectRoot,
+				archive: projectArchiveRoot(this.settings.projectRoot),
+				exports:
+					this.settings.exportFolder.length > 0
+						? this.settings.exportFolder
+						: projectExportRoot(this.settings.projectRoot),
+			}),
 			countNote: async (path) => {
 				const count = await this.projects.writingCount.countNote(
 					path,
@@ -9177,7 +9210,7 @@ export default class SnowflakeMethodPlugin
 		await this.saveSettings();
 		await this.handleSettingsChanged('explorerTidy');
 		new Notice(
-			this.projectT(
+			this.globalT(
 				this.settings.explorerTidy
 					? 'commands.explorerTidyEnabled'
 					: 'commands.explorerTidyDisabled',
@@ -9188,9 +9221,23 @@ export default class SnowflakeMethodPlugin
 	private toggleExplorerArrange(): void {
 		const explorer = this.explorer;
 		if (explorer === null) return;
+		const before = explorer.arranging;
 		const on = explorer.toggleArrange(undefined, { hint: false });
+		// Unchanged means the mode was blocked, and the explorer said by what.
+		if (on === before) return;
 		new Notice(
-			this.projectT(on ? 'commands.explorerArrangeEnabled' : 'commands.explorerArrangeDisabled'),
+			this.globalT(on ? 'commands.explorerArrangeEnabled' : 'commands.explorerArrangeDisabled'),
+		);
+	}
+
+	private toggleExplorerImmersive(): void {
+		const explorer = this.explorer;
+		if (explorer === null) return;
+		const before = this.settings.explorerImmersive;
+		const on = explorer.setImmersive(!before);
+		if (on === before) return;
+		new Notice(
+			this.globalT(on ? 'commands.explorerImmersiveEnabled' : 'commands.explorerImmersiveDisabled'),
 		);
 	}
 
@@ -9199,7 +9246,7 @@ export default class SnowflakeMethodPlugin
 		await this.saveSettings();
 		await this.handleSettingsChanged('explorerCounts');
 		new Notice(
-			this.projectT(
+			this.globalT(
 				this.settings.explorerCounts
 					? 'commands.explorerCountsEnabled'
 					: 'commands.explorerCountsDisabled',

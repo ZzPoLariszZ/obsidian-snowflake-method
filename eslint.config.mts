@@ -82,8 +82,10 @@ export default defineConfig(
 					],
 					acronyms: ['CJK', 'H1', 'ID', 'JSON', 'POV', '6Z'],
 					ignoreRegex: [
-						// The example names a folder as it is written on disk.
+						// The examples name folders as they are written on disk.
 						'50_Manuscript as Manuscript',
+						'80_Material',
+						'90_Archive',
 						// Units rather than sentences: each is interpolated into a
 						// "{count} {unit}" line and must stay lowercase there.
 						'^words?$',

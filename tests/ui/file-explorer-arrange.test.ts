@@ -21,7 +21,7 @@ function row(dom: CorkboardDom, container: CorkboardElement, path: string): Expl
 	};
 }
 
-function setup(options: { inScope?: (item: ExplorerItemShape) => boolean } = {}) {
+function setup(options: { reaches?: (item: ExplorerItemShape) => boolean } = {}) {
 	const dom = new CorkboardDom();
 	Object.assign(dom.doc, { querySelector: () => null });
 	const container = dom.container.createDiv({ cls: 'nav-files-container' });
@@ -50,7 +50,7 @@ function setup(options: { inScope?: (item: ExplorerItemShape) => boolean } = {})
 			return path === null ? null : (byPath.get(path) ?? null);
 		},
 		siblingsOf: () => rows,
-		inScope: options.inScope ?? (() => true),
+		reaches: options.reaches ?? (() => true),
 		rowBounds: (el) => {
 			const index = rows.findIndex((item) => item.el === el || item.selfEl === el);
 			return { top: 100 + index * 30, bottom: 130 + index * 30 };
@@ -88,6 +88,9 @@ describe('ArrangeController', () => {
 		expect(start.preventDefault).not.toHaveBeenCalled();
 		expect(start.dataTransfer.setData).toHaveBeenCalledWith(EXPLORER_DRAG_TYPE, 'Novel/c.md');
 		expect(third.selfEl.classList.contains('snowflake-method-explorer-dragging')).toBe(true);
+		// Every sibling is marked as a place the row may land beside, the held row among them.
+		expect(rows.every((item) => item.selfEl.classList.contains('snowflake-method-explorer-sibling'))).toBe(true);
+		expect(container.classes.has('snowflake-method-explorer-drag')).toBe(true);
 
 		const over = dragEvent(first, 105);
 		fire('dragover', over);
@@ -120,11 +123,32 @@ describe('ArrangeController', () => {
 		expect(drop.preventDefault).toHaveBeenCalled();
 		expect(commit).toHaveBeenCalledWith(third, rows, 0);
 		expect(third.selfEl.classList.contains('snowflake-method-explorer-dragging')).toBe(false);
+		expect(rows.some((item) => item.selfEl.classList.contains('snowflake-method-explorer-sibling'))).toBe(false);
+		expect(container.classes.has('snowflake-method-explorer-drag')).toBe(false);
 		expect(third.el.getAttribute(DROP_ATTRIBUTE)).toBeNull();
 	});
 
+	it('lands by the rows it reaches and leaves a placeholder between them in its place', () => {
+		const { rows, controller, commit, fire, dragEvent } = setup({ reaches: (item) => item.file.name !== 'b.md' });
+		controller.enter();
+		const [first, second, third] = rows;
+		if (!first || !second || !third) throw new Error('rows');
+		fire('dragstart', dragEvent(third));
+		expect(first.selfEl.classList.contains('snowflake-method-explorer-sibling')).toBe(true);
+		expect(second.selfEl.classList.contains('snowflake-method-explorer-sibling')).toBe(false);
+		expect(third.selfEl.classList.contains('snowflake-method-explorer-sibling')).toBe(true);
+		// Over the placeholder's own row, past the first row's middle: after the first row, which in the whole order is before the placeholder.
+		const over = dragEvent(second, 150);
+		fire('dragover', over);
+		expect(over.preventDefault).toHaveBeenCalled();
+		expect(first.el.getAttribute(DROP_ATTRIBUTE)).toBe('after');
+		expect(second.el.getAttribute(DROP_ATTRIBUTE)).toBeNull();
+		fire('drop', dragEvent(second, 150));
+		expect(commit).toHaveBeenCalledWith(third, rows, 1);
+	});
+
 	it('refuses a drag of a row the mode does not reach, and ignores drags that are not its own', () => {
-		const { rows, controller, refuse, commit, fire, dragEvent } = setup({ inScope: (item) => item.file.name !== 'b.md' });
+		const { rows, controller, refuse, commit, fire, dragEvent } = setup({ reaches: (item) => item.file.name !== 'b.md' });
 		controller.enter();
 		const second = rows[1];
 		if (!second) throw new Error('rows');
@@ -140,19 +164,26 @@ describe('ArrangeController', () => {
 		expect(commit).not.toHaveBeenCalled();
 	});
 
-	it('gives the rows grips that open the menu, and takes everything away on exit', () => {
-		const { container, rows, controller, openMenu } = setup({ inScope: (item) => item.file.name !== 'b.md' });
+	it('marks the rows it reaches, grips them in the chevron slot, opens the menu from the grip, and takes everything away on exit', () => {
+		const { container, rows, controller, openMenu } = setup({ reaches: (item) => item.file.name !== 'b.md' });
 		controller.enter();
 		const grips = container.querySelectorAll('.snowflake-method-explorer-grip');
 		expect(grips).toHaveLength(2);
-		const [first] = rows;
-		if (!first) throw new Error('rows');
-		const grip = (first.selfEl as unknown as CorkboardElement).querySelector('.snowflake-method-explorer-grip');
+		const [first, second] = rows;
+		if (!first || !second) throw new Error('rows');
+		expect(first.selfEl.classList.contains('snowflake-method-explorer-row')).toBe(true);
+		expect(second.selfEl.classList.contains('snowflake-method-explorer-row')).toBe(false);
+		const self = first.selfEl as unknown as CorkboardElement;
+		const grip = self.querySelector('.snowflake-method-explorer-grip');
+		expect(self.children[0]).toBe(grip);
+		expect(grip?.classes.has('tree-item-icon')).toBe(true);
+		expect(grip?.getAttribute('role')).toBe('button');
 		expect(grip?.getAttribute('aria-label')).toBe('Move…');
 		grip?.dispatch('click');
-		expect(openMenu).toHaveBeenCalledWith(first, expect.anything());
+		expect(openMenu).toHaveBeenCalledWith(first, grip);
 		controller.exit();
 		expect(container.querySelectorAll('.snowflake-method-explorer-grip')).toHaveLength(0);
+		expect(first.selfEl.classList.contains('snowflake-method-explorer-row')).toBe(false);
 		expect(container.classes.has('snowflake-method-explorer-arranging')).toBe(false);
 		expect([...container.listeners.values()].flat()).toHaveLength(0);
 	});

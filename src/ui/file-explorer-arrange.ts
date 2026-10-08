@@ -6,9 +6,18 @@
  * own, and are taken away the moment the mode ends, so outside the mode
  * the explorer drags exactly as it always did.
  *
- * Every drag has a twin that needs no drag: a grip on each row opens the
- * move menu, which is also the only way on a touch screen, where a drag
- * never fires. The grips come and go with the mode.
+ * The rows the mode reaches wear a grip in the slot a folder's chevron
+ * uses, which stands in the row's left gutter outside its flow, so no row
+ * grows and nothing on the row moves. The rows it does not reach, and
+ * while a row is held every row that is not a sibling it may land beside,
+ * step back into placeholders that keep their place and take no pointer,
+ * so there is no landing where a landing would mean nothing. A held row
+ * lands by the rows it may land beside, and the placeholders among its
+ * siblings keep their places in the order that is written.
+ *
+ * Every drag has a twin that needs no drag: the grip opens the move menu,
+ * which is also the only way on a touch screen, where a drag never fires.
+ * The grips come and go with the mode.
  */
 
 import { setIcon, setTooltip, type KeymapEventHandler, type Scope } from 'obsidian';
@@ -21,6 +30,10 @@ export const DROP_ATTRIBUTE = 'data-snowflake-method-drop';
 const ARRANGING_CLASS = 'snowflake-method-explorer-arranging';
 const DRAG_CLASS = 'snowflake-method-explorer-drag';
 const DRAGGING_CLASS = 'snowflake-method-explorer-dragging';
+/** A row the mode reaches: it floats, wears a grip and can be dragged. */
+const ROW_CLASS = 'snowflake-method-explorer-row';
+/** While a row is held, the rows it may land beside, itself among them. */
+const SIBLING_CLASS = 'snowflake-method-explorer-sibling';
 const GRIP_CLASS = 'snowflake-method-explorer-grip';
 const ROW_SELECTOR = '.tree-item-self';
 /** How far past the siblings' rows the pointer may stray and still land among them. */
@@ -49,12 +62,14 @@ export interface ArrangeDeps {
 	 */
 	scope: Scope;
 	itemAt(target: EventTarget | null): ExplorerItemShape | null;
-	/** Every entry the explorer lists beside the item, itself included, in the order shown. */
+	/** Every entry of the item's folder, itself and the tidy view's hidden ones included, in the order shown. */
 	siblingsOf(item: ExplorerItemShape): ExplorerItemShape[];
-	inScope(item: ExplorerItemShape): boolean;
+	/** Whether the mode reaches an entry: it can be dragged, and a held sibling can land beside it. */
+	reaches(item: ExplorerItemShape): boolean;
 	rowBounds(el: HTMLElement): RowBounds;
 	commit(item: ExplorerItemShape, siblings: ExplorerItemShape[], insertAt: number): void;
-	openMenu(item: ExplorerItemShape, event: MouseEvent): void;
+	/** Opens the move menu for a row, under the grip that asked for it. */
+	openMenu(item: ExplorerItemShape, anchor: HTMLElement): void;
 	/** Told when a drag began on an entry the mode does not reach. */
 	refuse(): void;
 	gripLabel: string;
@@ -63,7 +78,10 @@ export interface ArrangeDeps {
 
 interface Drag {
 	item: ExplorerItemShape;
+	/** Every entry of the folder, hidden ones too, in the order the landing is named in. */
 	siblings: ExplorerItemShape[];
+	/** The siblings the held row may land beside, itself among them. */
+	landable: ExplorerItemShape[];
 	rendered: ExplorerItemShape[] | null;
 	midpoints: number[] | null;
 	band: RowBounds | null;
@@ -115,13 +133,15 @@ export class ArrangeController {
 		this.deps.container.removeClass(ARRANGING_CLASS);
 	}
 
-	/** Gives every rendered row the mode reaches its grip, and takes it from the rest. */
+	/** Marks every rendered row the mode reaches and gives it its grip; the rest are left plain. */
 	decorate(): void {
 		if (!this.active) return;
 		for (const row of Array.from(this.deps.container.querySelectorAll<HTMLElement>(ROW_SELECTOR))) {
 			const item = this.deps.itemAt(row);
+			const reached = item !== null && this.deps.reaches(item);
+			row.toggleClass(ROW_CLASS, reached);
 			const existing = row.querySelector<HTMLElement>(`.${GRIP_CLASS}`);
-			if (item === null || !this.deps.inScope(item)) {
+			if (!reached) {
 				if (existing !== null) {
 					existing.remove();
 					this.grips.delete(existing);
@@ -129,17 +149,24 @@ export class ArrangeController {
 				continue;
 			}
 			if (existing !== null) continue;
-			const grip = row.createEl('button', {
-				cls: `clickable-icon ${GRIP_CLASS}`,
-				attr: { type: 'button', 'aria-label': this.deps.gripLabel },
+			// In the chevron's slot: a tree item icon stands in the gutter
+			// outside the row's flow, so the row keeps its height and its tag.
+			const grip = row.createDiv({
+				cls: `tree-item-icon ${GRIP_CLASS}`,
+				attr: { role: 'button', tabindex: '0', 'aria-label': this.deps.gripLabel },
 			});
+			row.insertBefore(grip, row.children[0] ?? null);
 			setIcon(grip, 'grip-vertical');
 			setTooltip(grip, this.deps.gripLabel);
-			grip.addEventListener('click', (event) => {
+			const open = (event: Event): void => {
 				event.preventDefault();
 				event.stopPropagation();
 				const target = this.deps.itemAt(row);
-				if (target !== null) this.deps.openMenu(target, event);
+				if (target !== null) this.deps.openMenu(target, grip);
+			};
+			grip.addEventListener('click', open);
+			grip.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' || event.key === ' ') open(event);
 			});
 			this.grips.add(grip);
 		}
@@ -148,6 +175,9 @@ export class ArrangeController {
 	private undecorate(): void {
 		for (const grip of this.grips) grip.remove();
 		this.grips.clear();
+		for (const row of Array.from(this.deps.container.querySelectorAll<HTMLElement>(ROW_SELECTOR))) {
+			row.removeClass(ROW_CLASS);
+		}
 	}
 
 	private listen(
@@ -162,7 +192,7 @@ export class ArrangeController {
 	private onDragStart(event: DragEvent): void {
 		const item = this.deps.itemAt(event.target);
 		if (item === null) return;
-		if (!this.deps.inScope(item)) {
+		if (!this.deps.reaches(item)) {
 			event.preventDefault();
 			this.deps.refuse();
 			return;
@@ -175,7 +205,10 @@ export class ArrangeController {
 			transfer.effectAllowed = 'move';
 			transfer.setData(EXPLORER_DRAG_TYPE, item.file.path);
 		}
-		this.drag = { item, siblings: this.deps.siblingsOf(item), rendered: null, midpoints: null, band: null };
+		const siblings = this.deps.siblingsOf(item);
+		const landable = siblings.filter((sibling) => this.deps.reaches(sibling));
+		this.drag = { item, siblings, landable, rendered: null, midpoints: null, band: null };
+		for (const sibling of landable) sibling.selfEl.addClass(SIBLING_CLASS);
 		item.selfEl.addClass(DRAGGING_CLASS);
 		this.deps.container.addClass(DRAG_CLASS);
 	}
@@ -216,16 +249,17 @@ export class ArrangeController {
 
 	/**
 	 * Where the pointer would set the entry down: among the rendered
-	 * siblings other than itself, by the middles of their title rows, so a
-	 * pointer over an opened folder's children lands below that folder.
-	 * Nowhere, when the pointer is above the first sibling or below the
-	 * last, the dragged one counted.
+	 * siblings it may land beside, other than itself, by the middles of
+	 * their title rows, so a pointer over an opened folder's children lands
+	 * below that folder. Nowhere, when the pointer is above the first of
+	 * them or below the last, the dragged one counted. The place is named
+	 * in the whole folder's order, so the placeholders between keep theirs.
 	 */
 	landingAt(y: number): ArrangeLanding | null {
 		const drag = this.drag;
 		if (drag === null) return null;
 		if (drag.rendered === null || drag.midpoints === null || drag.band === null) {
-			const shown = drag.siblings.filter((sibling) => sibling.el.isConnected);
+			const shown = drag.landable.filter((sibling) => sibling.el.isConnected);
 			const rendered = shown.filter((sibling) => sibling !== drag.item);
 			const first = shown[0];
 			const last = shown[shown.length - 1];
@@ -264,7 +298,10 @@ export class ArrangeController {
 
 	private clear(): void {
 		this.mark(null);
-		if (this.drag !== null) this.drag.item.selfEl.removeClass(DRAGGING_CLASS);
+		if (this.drag !== null) {
+			this.drag.item.selfEl.removeClass(DRAGGING_CLASS);
+			for (const sibling of this.drag.landable) sibling.selfEl.removeClass(SIBLING_CLASS);
+		}
 		this.drag = null;
 		this.deps.container.removeClass(DRAG_CLASS);
 	}

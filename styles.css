@@ -9577,6 +9577,19 @@ button.snowflake-method-kind-options {
 	min-height: var(--input-height);
 }
 
+/* A switch is shorter than the boxes that height was taken from, so a lone
+   name centred in it stood five pixels below the switch's middle. A toggle
+   row's info column fills the row instead, which the switch sets when
+   nothing stands under the name, and centres the name there. With a
+   description the column is the taller of the two and nothing moves. */
+.snowflake-method-settings
+	.setting-group
+	.setting-item.mod-toggle:not(.setting-item-heading)
+	> .setting-item-info {
+	align-self: stretch;
+	min-height: 0;
+}
+
 /* The word lists and the one-line boxes end on one column: numbers,
    textareas and the folder fields share a width by declaration rather than
    by coincidence, and a list stands at least three lines tall so it reads as
@@ -16921,56 +16934,142 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 
 /* == File explorer ======================================================== */
 
-/* The count at the end of a row: muted, small, and in figures of one width, so a column of them lines up. It never asks for room the title needs. */
+/* A word list on the settings page keeps room for a few lines and a handle to ask for more, like the lists in the forms. */
+.snowflake-method-settings .setting-item-control textarea {
+	min-width: 22em;
+	min-height: calc(3 * 1.4em + var(--size-4-1) * 2);
+	font-size: var(--font-ui-small);
+	resize: vertical;
+}
+
+/* The scroller keeps its scrollbar's room whether or not the tree needs one, so the counts and the tags at the rows' ends never jump when a fold lets the scrollbar go. */
+.nav-files-container {
+	scrollbar-gutter: stable;
+}
+
+/* The count at the end of a row, dressed as the app's own type tag (base,
+   canvas) is: the same face, size, weight, spacing, colour and pill, and the
+   same padding, so a count and a tag read as one family and end on the same
+   line. The tag's variables are the app's, so a theme that restyles its tags
+   restyles the counts with them. Centred in the row as the tag is, with a
+   box shorter than the row, so it never adds to the row's height. Digits
+   stay tabular so a column of counts lines up. */
 .nav-files-container .snowflake-method-explorer-count {
 	margin-inline-start: auto;
 	flex: 0 0 auto;
-	padding-inline-start: var(--size-4-2);
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
-	line-height: inherit;
+	align-self: center;
+	padding: 0 var(--size-4-1);
+	border-radius: var(--nav-tag-radius);
+	background-color: var(--nav-tag-background);
+	color: var(--nav-tag-color);
+	font-size: 9px;
+	font-weight: var(--nav-tag-weight);
+	letter-spacing: 0.05em;
+	line-height: var(--line-height-normal);
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
 }
 
-/* A row being renamed gives its whole width to the box, and a row under arrange mode gives the count's place to the grip. */
+@media (hover: hover) {
+	.nav-files-container .tree-item-self:hover .snowflake-method-explorer-count {
+		color: var(--nav-tag-color-hover);
+	}
+}
+
+/* A row being renamed gives its whole width to the box. */
 .tree-item-self.is-being-renamed .snowflake-method-explorer-count,
-.snowflake-method-explorer-counts-off .snowflake-method-explorer-count,
-.snowflake-method-explorer-arranging .snowflake-method-explorer-count {
+.snowflake-method-explorer-counts-off .snowflake-method-explorer-count {
 	display: none;
 }
 
-/* The three buttons show their state the way the explorer's own auto-reveal button does. */
+/* The buttons show their state the way the explorer's own auto-reveal button does. Arrange mode and immersive mode take turns, and whichever is off while the other is on steps back, still clickable: a press says which mode is in the way. */
 .nav-buttons-container .nav-action-button.snowflake-method-explorer-button.is-active {
 	color: var(--text-accent);
 }
 
-/* Arrange mode: the rows the mode reaches invite a drag, the rest step back while one is under way. */
-.snowflake-method-explorer-arranging .tree-item-self {
+.nav-buttons-container .nav-action-button.snowflake-method-explorer-button.is-blocked {
+	opacity: 0.4;
+}
+
+/* Arrange mode. The grip takes the chevron's slot in the row's left gutter, which Obsidian lays out outside the row's flow, so no row grows and no tag moves. */
+.snowflake-method-explorer-arranging .tree-item-self > .collapse-icon {
+	display: none;
+}
+
+.nav-files-container .tree-item-self .snowflake-method-explorer-grip {
+	opacity: 1;
+	color: var(--text-muted);
+	cursor: grab;
+	--icon-size: var(--icon-xs);
+	--icon-stroke: var(--icon-xs-stroke-width);
+}
+
+.nav-files-container .tree-item-self .snowflake-method-explorer-grip:hover,
+.nav-files-container .tree-item-self .snowflake-method-explorer-grip:focus-visible {
+	color: var(--text-normal);
+}
+
+/* The rows the mode reaches invite a drag. */
+.snowflake-method-explorer-arranging .tree-item-self.snowflake-method-explorer-row {
 	cursor: grab;
 }
 
-.snowflake-method-explorer-arranging .tree-item-self.snowflake-method-explorer-dragging {
+/* The rows the mode does not reach step back into placeholders: they keep their place and take no pointer. */
+.snowflake-method-explorer-arranging .tree-item-self:not(.snowflake-method-explorer-row) {
+	opacity: 0.32;
+	pointer-events: none;
+	cursor: default;
+}
+
+/* While a row is held, the rows it may land beside stand plain, and every other row steps back the same way. */
+.snowflake-method-explorer-drag .tree-item-self:not(.snowflake-method-explorer-sibling) {
+	opacity: 0.32;
+	pointer-events: none;
+	cursor: default;
+}
+
+.snowflake-method-explorer-drag .tree-item-self.snowflake-method-explorer-dragging {
 	cursor: grabbing;
-	background-color: var(--background-modifier-hover);
+	background-color: var(--background-modifier-active-hover);
 }
 
-.snowflake-method-explorer-drag .tree-item-self:not(.snowflake-method-explorer-dragging) {
-	opacity: 0.6;
+/* Only the current project: every other row is covered by a bar in the place of its name, fainter the further the row stands from the project, and its tag and count go with the name. The rows keep their shape and their chevrons, so the way back out stays in view. A row being renamed shows its name. */
+.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered:not(.is-being-renamed) .tree-item-inner {
+	position: relative;
+	color: transparent;
 }
 
-/* The grip is the drag's twin that needs no drag: a press opens the move menu. */
-.nav-files-container .snowflake-method-explorer-grip {
-	margin-inline-start: auto;
-	flex: 0 0 auto;
-	padding: 0 var(--size-2-1);
-	--icon-size: var(--icon-s);
-	--icon-stroke: var(--icon-s-stroke-width);
-	color: var(--text-muted);
+.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered:not(.is-being-renamed) .tree-item-inner::after {
+	content: '';
+	position: absolute;
+	inset-inline-start: 0;
+	top: 50%;
+	translate: 0 -50%;
+	height: 0.6em;
+	width: 68%;
+	max-width: 9em;
+	border-radius: 2px;
+	background-color: var(--background-modifier-border);
+	opacity: calc(1 - 0.8 * var(--snowflake-method-explorer-fade, 0));
 }
 
-.nav-files-container .snowflake-method-explorer-grip:hover {
-	color: var(--text-normal);
+/* Three widths, so a column of bars reads as a list rather than a barcode. */
+.snowflake-method-explorer-immersive .tree-item:nth-child(3n + 1) > .tree-item-self.snowflake-method-explorer-covered:not(.is-being-renamed) .tree-item-inner::after {
+	width: 54%;
+}
+
+.snowflake-method-explorer-immersive .tree-item:nth-child(3n + 2) > .tree-item-self.snowflake-method-explorer-covered:not(.is-being-renamed) .tree-item-inner::after {
+	width: 81%;
+}
+
+.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered .nav-file-tag,
+.snowflake-method-explorer-immersive .tree-item-self.snowflake-method-explorer-covered .snowflake-method-explorer-count {
+	opacity: 0;
+}
+
+/* Under the Immersive Folder plugin's own cover, the counts go the way that cover takes the tags. */
+.immersive-folder-on .nav-files-container .tree-item-self:not(.immersive-folder-reveal) .snowflake-method-explorer-count {
+	opacity: 0;
 }
 
 /* The line where the entry would land, drawn on the row's whole box so a landing after a folder falls below everything the folder holds. */
@@ -16995,10 +17094,9 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	bottom: -1px;
 }
 
-/* On a touch screen no drag ever fires, so the grip is the way, and it stays in sight. */
+/* On a touch screen no drag ever fires, so the grip is the way, and it stands out. */
 @media (pointer: coarse) {
-	.nav-files-container .snowflake-method-explorer-grip {
-		padding: 0 var(--size-4-1);
+	.nav-files-container .tree-item-self .snowflake-method-explorer-grip {
 		color: var(--text-normal);
 	}
 }

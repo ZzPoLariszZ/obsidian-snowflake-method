@@ -22,6 +22,10 @@ export interface ExplorerItemShape {
 	updateTitle(): void;
 	startRename?(): void;
 	stopRename?(): void;
+	/** A folder item folds; `collapsed` says how it stands and `setCollapsed` turns it. */
+	collapsible?: boolean;
+	collapsed?: boolean;
+	setCollapsed?(collapsed: boolean, animate?: boolean): unknown;
 }
 
 export interface ExplorerHeaderShape {

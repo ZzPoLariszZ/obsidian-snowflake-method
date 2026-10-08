@@ -111,6 +111,8 @@ export class FakeBaseItem {
 	readonly innerEl: CorkboardElement;
 	/** What the rename box selected when it opened: the text the row held then. */
 	selectedText: string | null = null;
+	/** Whether the row has been drawn once: the title is written then, and never again by a redraw. */
+	rendered = false;
 
 	constructor(readonly view: FakeExplorerView, readonly file: TFile | TFolder) {
 		this.el = new CorkboardElement(view.dom, 'div');
@@ -150,7 +152,14 @@ export class FakeFileItem extends FakeBaseItem {
 
 export class FakeFolderItem extends FakeBaseItem {
 	vChildren: { children: FakeBaseItem[] } = { children: [] };
+	readonly collapsible = true;
 	collapsed = false;
+
+	setCollapsed(collapsed: boolean): void {
+		if (this.collapsed === collapsed) return;
+		this.collapsed = collapsed;
+		this.view.requestSort();
+	}
 
 	sort(): void {
 		if (this.file instanceof TFolder) {
@@ -253,7 +262,12 @@ export class FakeExplorerView {
 		const place = (items: FakeBaseItem[]): void => {
 			for (const item of items) {
 				this.navFileContainerEl.insertBefore(item.el, null);
-				item.updateTitle();
+				// As Obsidian's onRender does: the title is written on the first
+				// render alone; a rename and a leave of the rename box write it again.
+				if (!item.rendered) {
+					item.rendered = true;
+					item.updateTitle();
+				}
 				if (item instanceof FakeFolderItem && !item.collapsed) place(item.vChildren.children);
 			}
 		};

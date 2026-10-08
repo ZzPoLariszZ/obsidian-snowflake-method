@@ -140,6 +140,7 @@ export class CorkboardElement {
 	get dom(): CorkboardDom { return this.currentDom; }
 	get doc(): CorkboardDom['doc'] { return this.dom.doc; }
 	get ownerDocument(): CorkboardDom['doc'] { return this.doc; }
+	get parentElement(): CorkboardElement | null { return this.parent; }
 	get win(): CorkboardDom['win'] { return this.dom.win; }
 	onWindowMigrated(listener: (win: CorkboardDom['win']) => unknown): () => void {
 		this.windowMigrationListeners.add(listener);

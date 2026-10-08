@@ -350,6 +350,10 @@ export interface SnowflakeSettings {
 	explorerTidy: boolean;
 	/** The word count button's state, kept the same way. */
 	explorerCounts: boolean;
+	/** Whether the explorer shows only the current project, kept the same way. */
+	explorerImmersive: boolean;
+	/** The folders that stood open when the cover went up, to open again when it comes down. */
+	explorerImmersiveFolds: string[];
 	/** The orders the author dragged folders' entries into, by folder path. */
 	explorerOrders: ExplorerOrders;
 }
@@ -453,6 +457,8 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	explorerFolderCounts: true,
 	explorerTidy: true,
 	explorerCounts: true,
+	explorerImmersive: true,
+	explorerImmersiveFolds: [],
 	explorerOrders: {},
 };
 
@@ -549,6 +555,8 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'explorerFolderCounts',
 	'explorerTidy',
 	'explorerCounts',
+	'explorerImmersive',
+	'explorerImmersiveFolds',
 	'explorerOrders',
 ]);
 
@@ -959,6 +967,11 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.explorerCounts === 'boolean'
 				? raw.explorerCounts
 				: DEFAULT_SETTINGS.explorerCounts,
+		explorerImmersive:
+			typeof raw.explorerImmersive === 'boolean'
+				? raw.explorerImmersive
+				: DEFAULT_SETTINGS.explorerImmersive,
+		explorerImmersiveFolds: folderPaths(raw.explorerImmersiveFolds),
 		explorerOrders: sanitizeExplorerOrders(raw.explorerOrders),
 	};
 }
@@ -982,6 +995,18 @@ function integerIn(value: unknown, limit: SessionLimit, fallback: number): numbe
 
 /** Free-text list fields held to a size a settings file stays comfortable at. */
 const TEXT_SETTING_LIMIT = 20000;
+
+/** A list of folder paths as a settings file may hold it: plain, non-empty, and no more than a vault has folders. */
+function folderPaths(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const paths: string[] = [];
+	for (const entry of value) {
+		if (typeof entry !== 'string' || entry.length === 0) continue;
+		paths.push(normalizePath(entry));
+		if (paths.length >= 100000) break;
+	}
+	return paths;
+}
 
 function boundedText(value: unknown): string {
 	return typeof value === 'string' ? value.slice(0, TEXT_SETTING_LIMIT) : '';
@@ -1441,6 +1466,106 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			// Under a heading of their own: three settings that mean nothing to an
 			// author who never opens the manuscript, and that would otherwise sit
 			// among the ones that govern the whole plugin.
+			{
+				type: 'group',
+				heading: this.t('settings.section.explorer'),
+				items: [
+					this.sectionDress('explorer'),
+					{
+						name: this.t('settings.explorerScope.name'),
+						desc: this.t('settings.explorerScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'explorerScope',
+							defaultValue: DEFAULT_SETTINGS.explorerScope,
+							options: {
+								projects: this.t('settings.explorerScope.projects'),
+								vault: this.t('settings.explorerScope.vault'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.explorerImmersive.name'),
+						desc: this.t('settings.explorerImmersive.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerImmersive',
+							defaultValue: DEFAULT_SETTINGS.explorerImmersive,
+						},
+					},
+					{
+						name: this.t('settings.explorerHidePrefix.name'),
+						desc: this.t('settings.explorerHidePrefix.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerHidePrefix',
+							defaultValue: DEFAULT_SETTINGS.explorerHidePrefix,
+						},
+					},
+					{
+						name: this.t('settings.explorerHideFiles.name'),
+						// The name is the whole of it, as with the folders below.
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'explorerHideFiles',
+							defaultValue: DEFAULT_SETTINGS.explorerHideFiles,
+						},
+					},
+					{
+						name: this.t('settings.explorerHiddenFiles.name'),
+						desc: this.lines('settings.explorerHiddenFiles.desc'),
+						// The list only means anything while files are being hidden.
+						visible: () => this.owner.settings.explorerHideFiles,
+						control: {
+							type: 'textarea',
+							key: 'explorerHiddenFiles',
+							defaultValue: DEFAULT_SETTINGS.explorerHiddenFiles,
+							placeholder: this.t('settings.explorerHiddenFiles.placeholder'),
+							rows: 3,
+						},
+					},
+					{
+						name: this.t('settings.explorerHideFolders.name'),
+						desc: '',
+						control: {
+							type: 'toggle',
+							key: 'explorerHideFolders',
+							defaultValue: DEFAULT_SETTINGS.explorerHideFolders,
+						},
+					},
+					{
+						name: this.t('settings.explorerHiddenFolders.name'),
+						desc: this.lines('settings.explorerHiddenFolders.desc'),
+						visible: () => this.owner.settings.explorerHideFolders,
+						control: {
+							type: 'textarea',
+							key: 'explorerHiddenFolders',
+							defaultValue: DEFAULT_SETTINGS.explorerHiddenFolders,
+							placeholder: this.t('settings.explorerHiddenFolders.placeholder'),
+							rows: 3,
+						},
+					},
+					{
+						name: this.t('settings.explorerNoteCounts.name'),
+						desc: this.t('settings.explorerNoteCounts.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerNoteCounts',
+							defaultValue: DEFAULT_SETTINGS.explorerNoteCounts,
+						},
+					},
+					{
+						name: this.t('settings.explorerFolderCounts.name'),
+						desc: this.t('settings.explorerFolderCounts.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerFolderCounts',
+							defaultValue: DEFAULT_SETTINGS.explorerFolderCounts,
+						},
+					},
+				],
+			},
 			{
 				type: 'group',
 				heading: this.t('settings.manuscript.heading'),
@@ -2128,92 +2253,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 								rule: this.t('settings.exportChapterSeparator.rule'),
 								asterisks: this.t('settings.exportChapterSeparator.asterisks'),
 							},
-						},
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: this.t('settings.section.explorer'),
-				items: [
-					this.sectionDress('explorer'),
-					{
-						name: this.t('settings.explorerScope.name'),
-						desc: this.t('settings.explorerScope.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'explorerScope',
-							defaultValue: DEFAULT_SETTINGS.explorerScope,
-							options: {
-								projects: this.t('settings.explorerScope.projects'),
-								vault: this.t('settings.explorerScope.vault'),
-							},
-						},
-					},
-					{
-						name: this.t('settings.explorerHidePrefix.name'),
-						desc: this.t('settings.explorerHidePrefix.desc'),
-						control: {
-							type: 'toggle',
-							key: 'explorerHidePrefix',
-							defaultValue: DEFAULT_SETTINGS.explorerHidePrefix,
-						},
-					},
-					{
-						name: this.t('settings.explorerHideFiles.name'),
-						desc: this.t('settings.explorerHideFiles.desc'),
-						control: {
-							type: 'toggle',
-							key: 'explorerHideFiles',
-							defaultValue: DEFAULT_SETTINGS.explorerHideFiles,
-						},
-					},
-					{
-						name: this.t('settings.explorerHiddenFiles.name'),
-						desc: this.lines('settings.explorerHiddenFiles.desc'),
-						// The list only means anything while files are being hidden.
-						visible: () => this.owner.settings.explorerHideFiles,
-						control: {
-							type: 'textarea',
-							key: 'explorerHiddenFiles',
-							defaultValue: DEFAULT_SETTINGS.explorerHiddenFiles,
-						},
-					},
-					{
-						name: this.t('settings.explorerHideFolders.name'),
-						desc: this.t('settings.explorerHideFolders.desc'),
-						control: {
-							type: 'toggle',
-							key: 'explorerHideFolders',
-							defaultValue: DEFAULT_SETTINGS.explorerHideFolders,
-						},
-					},
-					{
-						name: this.t('settings.explorerHiddenFolders.name'),
-						desc: this.lines('settings.explorerHiddenFolders.desc'),
-						visible: () => this.owner.settings.explorerHideFolders,
-						control: {
-							type: 'textarea',
-							key: 'explorerHiddenFolders',
-							defaultValue: DEFAULT_SETTINGS.explorerHiddenFolders,
-						},
-					},
-					{
-						name: this.t('settings.explorerNoteCounts.name'),
-						desc: this.t('settings.explorerNoteCounts.desc'),
-						control: {
-							type: 'toggle',
-							key: 'explorerNoteCounts',
-							defaultValue: DEFAULT_SETTINGS.explorerNoteCounts,
-						},
-					},
-					{
-						name: this.t('settings.explorerFolderCounts.name'),
-						desc: this.t('settings.explorerFolderCounts.desc'),
-						control: {
-							type: 'toggle',
-							key: 'explorerFolderCounts',
-							defaultValue: DEFAULT_SETTINGS.explorerFolderCounts,
 						},
 					},
 				],
@@ -3370,6 +3409,12 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				break;
 			case 'explorerCounts':
 				if (typeof value === 'boolean') this.owner.settings.explorerCounts = value;
+				break;
+			case 'explorerImmersive':
+				if (typeof value === 'boolean') this.owner.settings.explorerImmersive = value;
+				break;
+			case 'explorerImmersiveFolds':
+				this.owner.settings.explorerImmersiveFolds = folderPaths(value);
 				break;
 			case 'explorerOrders':
 				this.owner.settings.explorerOrders = sanitizeExplorerOrders(value);

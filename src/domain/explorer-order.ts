@@ -17,9 +17,13 @@ export type ExplorerOrders = Readonly<Record<string, readonly string[]>>;
 /** The Vault root as the record keys it. Obsidian's own '/' is never stored. */
 export const VAULT_ROOT_ORDER_KEY = '';
 
-/** Enough for any vault a settings file should carry; a record past this is damage. */
-const MAX_ORDER_KEYS = 5000;
-const MAX_ORDER_NAMES = 5000;
+/**
+ * Far past any vault: a manuscript folder may hold thousands of notes and a
+ * vault thousands of folders, and a settings file that names more than this
+ * is damage rather than a library.
+ */
+const MAX_ORDER_KEYS = 100000;
+const MAX_ORDER_NAMES = 100000;
 
 /** The record's key for a folder: its path with no slash at either end. */
 export function orderKeyOf(folderPath: string): string {

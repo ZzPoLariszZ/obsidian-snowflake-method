@@ -863,4 +863,10 @@ describe('export settings', () => {
 		expect(fallen.exportChapterSeparator).toBe('blank');
 		expect(fallen.exportIndent).toBe(true);
 	});
+
+	it('starts the explorer immersive until the plugin setting turns it off', () => {
+		expect(DEFAULT_SETTINGS.explorerImmersive).toBe(true);
+		expect(sanitizeSettings(undefined).explorerImmersive).toBe(true);
+		expect(sanitizeSettings({ explorerImmersive: false }).explorerImmersive).toBe(false);
+	});
 });
