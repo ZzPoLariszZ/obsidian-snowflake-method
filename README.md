@@ -52,7 +52,7 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Worldbuilding | Track times, locations, and items beside characters and scenes. Add kinds of your own, and grow a category, world-status, and relationship vocabulary for each. |
 | Custom fields | Give any note the fields your story needs, and keep reusable sets of them as templates for each kind. |
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
-| Story structure | See every scene as a card in narrative order, and reorder and edit it right on the card. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. |
+| Story structure | See every scene as a card in narrative order, and reorder and edit it right on the card. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
 | Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
@@ -167,15 +167,17 @@ The corkboard lays out every scene as a numbered card in narrative order, and yo
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_en.png"><img src="assets/screenshots/workspace_freeform_en.png" width="100%" alt="The Visualization workspace on its Freeform tab. The view Main is chosen in the field above, with a search in the middle and Add node and Add view at the end. A frame titled Worldbuilding holds cards for the character Alice, Scene A, Time B, Location C and Item D. Lines run from them to a second frame titled Task Management Cards, which holds a task, a foreshadowing, a revision and a sticky note, and one line is labeled Both. A video file and an image file show as a player and a picture, with a text card, a canvas file card and a link card below them. A column of canvas controls is on the right, a strip of quick adds runs along the bottom, and the minimap is in the corner." /></a></p>
 
-**Freeform** drops the grid altogether. Each view is a blank canvas, and a project can have as many as you like. The project's own notes and records go onto it as cards: characters, scenes, times, places, items, tasks, foreshadowing, revisions and sticky notes. Each card looks the way it does in its own workspace. Beside them you can add text you type right on the canvas, any file in the project, and web links. Draw a line from one card to another to connect them. A line can have an arrow at either end and a solid, dashed, dotted or dash-dot stroke. A **frame** gathers whatever you drop into it and takes it along when you move the frame. Drag to move and resize, use the wheel to pan, and hold Ctrl or Cmd with the wheel to zoom. The quick-add bar along the bottom adds a card of any kind. Every gesture also has a menu item or a key that does the same, and undo covers every change. Double-click a card to open the note, record or file behind it. The canvas saves where things are placed and the text you type on it, never the words of your notes.
+**Freeform** drops the grid altogether. Each view is a blank canvas, and a project can have as many as you like. The project's own notes and records go onto it as cards: characters, scenes, times, places, items, tasks, foreshadowing, revisions and sticky notes. Each card looks the way it does in its own workspace. Beside them you can add text you type right on the canvas, any file in the project, and web links. Draw a line from one card to another to connect them. A line can have an arrow at either end and a solid, dashed, dotted or dash-dot stroke. A **frame** gathers whatever you drop into it and takes it along when you move the frame. Drag to move and resize, use the wheel to pan, and hold Ctrl or Cmd with the wheel to zoom. The quick-add bar along the bottom adds a card of any kind. Every gesture also has a menu item or a key that does the same, and undo covers every change. Double-click a card to open the note, record or file behind it. The canvas saves where things are placed and the text you type on it, never the words of your notes. The canvas button at the end of the toolbar writes the view you're looking at as an Obsidian Canvas file.
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_en.png"><img src="assets/screenshots/workspace_timeline_en.png" width="100%" alt="The Visualization workspace on its Timeline tab. A shared Time column on the left holds three times with their main descriptions, and three timelines are beside it. One of them is pinned, and one is bound to the character Alice and tinted as the active one. Sub-descriptions are written in each cell against an axis, with a node at every time it reaches. Scene cards are placed on those rows, and one stack reads 1 / 3. The scene pool on the right holds the two scenes this timeline has not placed." /></a></p>
 
-**Timeline** asks the other question: not what order the scenes are read in, but when they happen. Each timeline is a column of its own. When it follows a character or a worldbuilding note, it's bound to that note. They all line up with the shared time column on the left, whose rows are your Time notes. Inside a cell you write **sub-descriptions** for what that timeline does at that time. The scenes come from the **scene pool** on the right, which holds whatever the active timeline hasn't placed yet. Drag a card onto a sub-description and it leaves the pool. Drag it back and it returns. Every move is also a menu item, so nothing here needs a mouse. A **view** sets which timelines appear side by side. The toolbar can hide the sub-descriptions and stack the scenes behind one card. It can also show the latest times first and fold the time column and the pool away.
+**Timeline** asks the other question: not what order the scenes are read in, but when they happen. Each timeline is a column of its own. When it follows a character or a worldbuilding note, it's bound to that note. They all line up with the shared time column on the left, whose rows are your Time notes. Inside a cell you write **sub-descriptions** for what that timeline does at that time. The scenes come from the **scene pool** on the right, which holds whatever the active timeline hasn't placed yet. Drag a card onto a sub-description and it leaves the pool. Drag it back and it returns. Every move is also a menu item, so nothing here needs a mouse. A **view** sets which timelines appear side by side. The toolbar can hide the sub-descriptions and stack the scenes behind one card. It can also show the latest times first and fold the time column and the pool away. The canvas button at the end of the toolbar writes the view as an Obsidian Canvas file.
 
 <p align="center"><a href="assets/screenshots/workspace_beat_sheet_en.png"><img src="assets/screenshots/workspace_beat_sheet_en.png" width="100%" alt="The Visualization workspace on its Beat sheet tab, with a sheet made from the Save the Cat template chosen in the field above. Act 1 and Act 2 each have a header with a handle, a + and a menu. The beats of each act run down the left with their names and descriptions, against an axis with a node at every beat. Three scene cards are placed under Opening Image and two under Break into Two. Add act and Add beat sheet are at the end of the toolbar, and the scene pool on the right is empty and reads Every scene is placed." /></a></p>
 
-**Beat sheet** asks a third question: what each scene is for in the shape of the story. You can have as many sheets in a project as you like, and you see one at a time. A new sheet starts blank or from a template. Three Act, Kishōtenketsu, Story Circle, Save the Cat, Hero's Journey and Romancing the Beat are built in. Each comes with its acts, its beats and a line on what every beat is there to do. Acts are numbered by their order, and you can give any of them a label. A beat has no note behind it, so its name and description are kept in the sheet itself. Under a beat you write sub-descriptions and place scenes from the pool, just as on a timeline. Acts, beats, rows and scenes all move by drag or by menu. The toolbar can hide the sub-descriptions, stack the scenes, and show the last act first. It can also save the sheet you're viewing as a template of your own.
+**Beat sheet** asks a third question: what each scene is for in the shape of the story. You can have as many sheets in a project as you like, and you see one at a time. A new sheet starts blank or from a template. Three Act, Kishōtenketsu, Story Circle, Save the Cat, Hero's Journey and Romancing the Beat are built in. Each comes with its acts, its beats and a line on what every beat is there to do. Acts are numbered by their order, and you can give any of them a label. A beat has no note behind it, so its name and description are kept in the sheet itself. Under a beat you write sub-descriptions and place scenes from the pool, just as on a timeline. Acts, beats, rows and scenes all move by drag or by menu. The toolbar can hide the sub-descriptions, stack the scenes, and show the last act first. It can also save the sheet you're viewing as a template of your own. The canvas button writes the sheet as an Obsidian Canvas file.
+
+**Export as Obsidian Canvas** writes the view you're looking at as a `.canvas` file that Obsidian's own Canvas opens. The file goes next to the workspace's own file: `732_Freeform/<view name>.canvas`, `733_Timeline/<view name>.canvas` or `734_Beat_Sheet/<sheet name>.canvas`. Notes become file cards and keep their colors. Frames, timelines and acts become groups. The text you typed, the sub-descriptions and the beats become text cards. The toolbar's display switches, which hide the words, stack the scenes or reverse the order, change only the screen. The canvas always writes the words, puts the scenes beside them and keeps the stored order. Tasks, foreshadowing and revisions are not notes, so each becomes a text card that names it, and every line between cards is kept with its arrows and label. The canvas opens as soon as it's written. If a file of that name is already there and differs, you're asked before it's replaced. If it says the same, nothing is written and the canvas just opens. The file is a copy that the plugin never reads back, so you can rearrange it in Canvas or delete it without changing the workspace.
 
 ### Manuscript stream
 
@@ -484,11 +486,14 @@ Each project is stored directly inside the project root you set. Its folders, fi
     │   └── 73_Visualization/
     │       ├── 732_Freeform/
     │       │   ├── freeform-view-<id>.json
-    │       │   └── freeform.json
+    │       │   ├── freeform.json
+    │       │   └── <view name>.canvas
     │       ├── 733_Timeline/
-    │       │   └── timeline.json
+    │       │   ├── timeline.json
+    │       │   └── <view name>.canvas
     │       └── 734_Beat_Sheet/
-    │           └── beat-sheet.json
+    │           ├── beat-sheet.json
+    │           └── <sheet name>.canvas
     └── ...
 ```
 
@@ -498,7 +503,7 @@ Writing sessions are recorded per device, so two machines never write to the sam
 
 Archiving a project moves its whole folder into `Snowflake Archive`. That folder is next to your projects, not inside any of them. Nothing in the notes changes. A project keeps every reference inside its own folder, so no link breaks while it is archived. The project manager lists what is in the archive and can restore any of it. If its old name has been taken in the meantime, the project comes back under a free name. Moving a folder in or out by hand works the same way, so the archive is a place, not a mechanism.
 
-Exporting writes plain-text files into `Snowflake Export`, a folder next to your projects like the archive. You can pick another folder in the settings, as long as it is outside the project. If a note has left the manuscript since an earlier export, its exported file is never deleted.
+Exporting writes plain-text files into `Snowflake Export`, a folder next to your projects like the archive. You can pick another folder in the settings, as long as it is outside the project. If a note has left the manuscript since an earlier export, its exported file is never deleted. A workspace exported as an Obsidian Canvas is the one exception. Its file goes next to the workspace's own file inside the project, as the layout above shows.
 
 A manuscript can be one note or many, in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming a note never changes where it is read. The manuscript stream shows the notes in that order as a single page.
 
@@ -550,7 +555,7 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Timeline (0.20.0)
 - [x] Beat sheet (0.21.0)
 - [x] Freeform (0.22.0)
-- [ ] Export visualization workspace as Obsidian Canvas
+- [x] Export visualization workspace as Obsidian Canvas (0.23.0)
 
 <a id="development"></a>
 
@@ -663,7 +668,7 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 | 世界观 | 在角色与场景之外，还能管理时间、地点与物品，也可以自建种类。每类成员都可以配置类别、状态与关系。 |
 | 自定义字段 | 给任意笔记加上故事需要的字段，常用的一组字段可以存为该种类的模板。 |
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
-| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。 |
+| 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
 | 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
@@ -778,15 +783,17 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 
 <p align="center"><a href="assets/screenshots/workspace_freeform_cn.png"><img src="assets/screenshots/workspace_freeform_cn.png" width="100%" alt="可视化工作区的自由画布标签页。上方的选择框里选着主视图，中间是搜索，末尾是添加节点与添加视图。名为世界观的分组里，放着场景一、角色萧薰儿、时间一、地点云岚宗与物品戒指的卡片。几条连线从它们引向另一个名为任务管理的分组，里面放着一个任务、一个伏笔、一条修订和一张便签。有一条连线标着双向。右上方的视频文件与图片文件，分别显示为播放器和图片。它们下方是一张文本卡片、一张画布文件卡片和一张链接卡片。右侧一列是画布控制，底部一条是快捷添加，右下角是小地图。" /></a></p>
 
-**自由画布**则不再把卡片排成网格。一个视图就是一块空白画布，一个项目可以建任意多个。项目里的笔记与记录都能作为卡片放上去：角色、场景、时间、地点、物品、任务、伏笔、修订与便签。每种卡片都按它在自己工作区里的样子绘制。旁边还可以放直接在画布上输入的文字、项目里的任意文件，以及网页链接。从一张卡片拖到另一张，就连成一条线。线的两端都可以带箭头，线型有实线、虚线、点线与点划线。**分组**会把放进去的卡片收在一起，移动分组时，里面的卡片会跟着一起移动。拖动即可移动和调整大小。滚轮用来平移，按住 Ctrl 或 Cmd 再滚动则是缩放。底部一栏可以添加任何一种卡片。每个手势都有对应的菜单项或按键，每一步改动都可以撤销。双击卡片，就能打开它背后的笔记、记录或文件。画布只记下每样东西摆在哪里，以及你在画布上输入的文字，从不保存笔记的内容。
+**自由画布**则不再把卡片排成网格。一个视图就是一块空白画布，一个项目可以建任意多个。项目里的笔记与记录都能作为卡片放上去：角色、场景、时间、地点、物品、任务、伏笔、修订与便签。每种卡片都按它在自己工作区里的样子绘制。旁边还可以放直接在画布上输入的文字、项目里的任意文件，以及网页链接。从一张卡片拖到另一张，就连成一条线。线的两端都可以带箭头，线型有实线、虚线、点线与点划线。**分组**会把放进去的卡片收在一起，移动分组时，里面的卡片会跟着一起移动。拖动即可移动和调整大小。滚轮用来平移，按住 Ctrl 或 Cmd 再滚动则是缩放。底部一栏可以添加任何一种卡片。每个手势都有对应的菜单项或按键，每一步改动都可以撤销。双击卡片，就能打开它背后的笔记、记录或文件。画布只记下每样东西摆在哪里，以及你在画布上输入的文字，从不保存笔记的内容。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
 
 <p align="center"><a href="assets/screenshots/workspace_timeline_cn.png"><img src="assets/screenshots/workspace_timeline_cn.png" width="100%" alt="可视化工作区的时间线标签页。左侧共用的时间列里是三个时间，以及各自的主描述。旁边并列着三条时间线，其中一条已置顶，一条绑定了角色萧薰儿，作为当前时间线带有底色。各单元格里写着子描述，旁边的轴线在它到达的每个时间上点出一个节点。场景卡片落在这些行上，其中一处堆叠显示 1 / 3。右侧的场景池里，是这条时间线尚未放置的两个场景。" /></a></p>
 
-**时间线**问的是另一个问题：不是场景按什么顺序读，而是它们在什么时候发生。每条时间线单独占一列。它跟随某个角色或世界观笔记时，就会绑定到那篇笔记上。左侧的时间列由所有时间线共用，它的每一行就是你写好的一篇时间笔记。在单元格里写下**子描述**，记下这条时间线在那个时间做了什么。场景则来自右侧的**场景池**，池里是当前时间线还没放置的场景。把卡片拖到某条子描述上，它就离开场景池，拖回去又会回到池中。每一次移动也都能用菜单完成，这里没有哪件事非用鼠标不可。**视图**决定哪些时间线并排显示。工具栏可以隐藏子描述、把场景堆叠成一张卡片、让最晚的时间排在最前，还能把时间列和场景池收进角落。
+**时间线**问的是另一个问题：不是场景按什么顺序读，而是它们在什么时候发生。每条时间线单独占一列。它跟随某个角色或世界观笔记时，就会绑定到那篇笔记上。左侧的时间列由所有时间线共用，它的每一行就是你写好的一篇时间笔记。在单元格里写下**子描述**，记下这条时间线在那个时间做了什么。场景则来自右侧的**场景池**，池里是当前时间线还没放置的场景。把卡片拖到某条子描述上，它就离开场景池，拖回去又会回到池中。每一次移动也都能用菜单完成，这里没有哪件事非用鼠标不可。**视图**决定哪些时间线并排显示。工具栏可以隐藏子描述、把场景堆叠成一张卡片、让最晚的时间排在最前，还能把时间列和场景池收进角落。工具栏末尾的白板按钮，会把当前视图导出为 Obsidian 白板文件。
 
 <p align="center"><a href="assets/screenshots/workspace_beat_sheet_cn.png"><img src="assets/screenshots/workspace_beat_sheet_cn.png" width="100%" alt="可视化工作区的节拍表标签页。上方的选择框里选着一张由救猫咪模板建成的节拍表。第 1 幕「建立」与第 2 幕「新世界」各有一行幕标题，带有拖动手柄、加号和菜单。左侧依次列出每一幕的节拍，以及它们的名称与描述。旁边的轴线在每个节拍处有一个节点。开场画面下放着三张场景卡片，进入第二幕下放着两张。工具栏末尾是添加幕与添加节拍表。右侧的场景池是空的，写着「所有场景都已放入」。" /></a></p>
 
-**节拍表**问的是第三个问题：每个场景在故事的整体结构里起什么作用。一个项目可以保存任意多张节拍表，每次显示一张。新的节拍表可以从空白开始，也可以从模板开始。内置的模板有三幕式、起承转合、故事圈、救猫咪、英雄之旅和言情节拍。每个模板都带着幕和节拍，还有一句话说明每个节拍是做什么用的。幕按次序自动编号，你愿意的话，还可以再给它一个标签。节拍背后没有笔记，所以它的名称与描述就保存在节拍表里。在节拍下面，同样可以写子描述，并从场景池里放入场景，和时间线上完全一样。幕、节拍、子描述和场景都可以拖动，也都可以用菜单移动。工具栏可以隐藏子描述、堆叠场景、让最后一幕排在最前，还能把当前的节拍表存为你自己的模板。
+**节拍表**问的是第三个问题：每个场景在故事的整体结构里起什么作用。一个项目可以保存任意多张节拍表，每次显示一张。新的节拍表可以从空白开始，也可以从模板开始。内置的模板有三幕式、起承转合、故事圈、救猫咪、英雄之旅和言情节拍。每个模板都带着幕和节拍，还有一句话说明每个节拍是做什么用的。幕按次序自动编号，你愿意的话，还可以再给它一个标签。节拍背后没有笔记，所以它的名称与描述就保存在节拍表里。在节拍下面，同样可以写子描述，并从场景池里放入场景，和时间线上完全一样。幕、节拍、子描述和场景都可以拖动，也都可以用菜单移动。工具栏可以隐藏子描述、堆叠场景、让最后一幕排在最前，还能把当前的节拍表存为你自己的模板。白板按钮会把当前节拍表导出为 Obsidian 白板文件。
+
+**导出为 Obsidian 白板**会把你正在看的视图写成一个 `.canvas` 文件，用 Obsidian 自带的白板打开。文件放在工作区自己的文件旁边：`732_自由画布/<视图名称>.canvas`、`733_时间线/<视图名称>.canvas` 或 `734_节拍表/<节拍表名称>.canvas`。笔记会变成文件卡片，并保留各自的颜色。分组、时间线与幕会变成白板的分组。画布上输入的文字、子描述与节拍则变成文本卡片。工具栏上隐藏子描述、堆叠场景与倒序这几个开关只改变屏幕上的显示。白板里始终写出子描述，把场景放在它们旁边，并保持原本的顺序。任务、伏笔与修订不是笔记，所以各自变成一张写着名称的文本卡片，卡片之间的连线连同箭头与标签都会保留。写入后白板会立即打开。如果同名文件已经存在且内容不同，会先征求你的同意再替换。内容相同时不会重复写入，只会直接打开白板。这个文件是一份副本，插件不会读取它。你可以在白板里随意调整或删除它，工作区不受影响。
 
 ### 正文流
 
@@ -1083,11 +1090,14 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
     │   └── 73_可视化/
     │       ├── 732_自由画布/
     │       │   ├── freeform-view-<id>.json
-    │       │   └── freeform.json
+    │       │   ├── freeform.json
+    │       │   └── <视图名称>.canvas
     │       ├── 733_时间线/
-    │       │   └── timeline.json
+    │       │   ├── timeline.json
+    │       │   └── <视图名称>.canvas
     │       └── 734_节拍表/
-    │           └── beat-sheet.json
+    │           ├── beat-sheet.json
+    │           └── <节拍表名称>.canvas
     └── ...
 ```
 
@@ -1097,7 +1107,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
-导出会把纯文本文件写进 `Snowflake Export`。它和归档文件夹一样，与各个项目放在同一层。如果你在设置里另指定了一个项目之外的文件夹，就会写到那里。以前导出过、后来又从正文中移走的笔记，它导出的文件不会被删除。
+导出会把纯文本文件写进 `Snowflake Export`。它和归档文件夹一样，与各个项目放在同一层。如果你在设置里另指定了一个项目之外的文件夹，就会写到那里。以前导出过、后来又从正文中移走的笔记，它导出的文件不会被删除。导出为 Obsidian 白板是唯一的例外，它的文件会放在项目内工作区自己的文件旁边，如上面的目录所示。
 
 正文可以只有一篇笔记，也可以有很多篇，文件夹怎么组织都行。每篇笔记都用 `snowflake-manuscript-sequence` 记下自己的位置，所以移动或重命名笔记，都不会改变它的阅读顺序。正文流会按这个顺序，把它们连成一整页来显示。
 
@@ -1147,7 +1157,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 时间线 (0.20.0)
 - [x] 节拍表 (0.21.0)
 - [x] 自由画布 (0.22.0)
-- [ ] 将可视化工作区导出为 Obsidian Canvas
+- [x] 将可视化工作区导出为 Obsidian Canvas (0.23.0)
 
 ## 开发
 
