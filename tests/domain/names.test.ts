@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldName, freeName, isNameTaken } from '../../src/domain/names';
+import { foldName, freeName, isNameTaken, safeFileName } from '../../src/domain/names';
 
 describe('folding a name for comparison', () => {
 	it('ignores surrounding space and casing', () => {
@@ -73,5 +73,22 @@ describe('finding a free name', () => {
 
 	it('fills a gap a departed holder left behind', () => {
 		expect(freeName('Ada', ['Ada', 'Ada 3'])).toBe('Ada 2');
+	});
+});
+
+describe('a safe file name', () => {
+	it('drops what a path cannot hold, folds the spaces, and takes the dots off either end', () => {
+		expect(safeFileName('A/B: C?')).toBe('A-B- C-');
+		expect(safeFileName('  Two   words.  ')).toBe('Two words');
+		// A name that begins with a dot would be a hidden file, one Obsidian never lists.
+		expect(safeFileName('.drafts')).toBe('drafts');
+		expect(safeFileName('..drafts..')).toBe('drafts');
+		expect(safeFileName('. drafts')).toBe('drafts');
+	});
+
+	it('throws where nothing safe is left', () => {
+		for (const name of ['', '   ', '.', '..', '...', '. .']) {
+			expect(() => safeFileName(name)).toThrow('safe file name');
+		}
 	});
 });

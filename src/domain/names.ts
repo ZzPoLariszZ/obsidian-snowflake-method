@@ -51,7 +51,10 @@ export function freeName(name: string, taken: readonly string[]): string {
 /**
  * A name a file or folder can actually be given. Lossy on purpose — what a
  * path cannot hold is dropped rather than escaped — so a file name can never
- * be read back as the name it came from.
+ * be read back as the name it came from. A dot at the start goes with the
+ * dots at the end: Obsidian neither shows nor indexes a file whose name
+ * begins with one, so a note or a canvas so named could be written and never
+ * found again.
  */
 export function safeFileName(value: string): string {
 	const normalized = value
@@ -59,6 +62,7 @@ export function safeFileName(value: string): string {
 		.replace(/[\\/:*?"<>|#[\]^]/gu, '-')
 		.replace(/\s+/gu, ' ')
 		.replace(/\.+$/gu, '')
+		.replace(/^\.+/u, '')
 		.trim();
 	if (!normalized || normalized === '.' || normalized === '..') {
 		throw new Error('The name does not contain a safe file name.');
