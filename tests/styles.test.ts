@@ -55,6 +55,15 @@ describe('styles.css', () => {
 	 * has never needed one, so a new one is a decision worth making on
 	 * purpose rather than in passing.
 	 */
+	/** The cover must win over an element's own width, as the task lanes' `thin`. */
+	it('hides every scrollbar under the body class, descendants included', () => {
+		const scrollbars = section('Scrollbars');
+		expect(scrollbars.includes('!important')).toBe(false);
+		expect(declarations('body.snowflake-method-hide-scrollbars')).toContain('--scrollbar-native-width: none');
+		expect(declarations('body.snowflake-method-hide-scrollbars *')).toContain('scrollbar-width: none');
+		expect(declarations('body.snowflake-method-hide-scrollbars ::-webkit-scrollbar')).toContain('display: none');
+	});
+
 	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and

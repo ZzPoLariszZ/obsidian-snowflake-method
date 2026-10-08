@@ -17100,3 +17100,25 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		color: var(--text-normal);
 	}
 }
+
+/* == Scrollbars =========================================================== */
+
+/* The author's choice to see no scrollbar, worn by every window's body. The
+   bar goes and the scrolling stays: wheel, trackpad and keys move the view
+   as before. The app draws a bar two ways, so both are told. Every element
+   takes its `scrollbar-width` from the app's own variable, set to none
+   here where the body's rule says auto; an element that names a width of
+   its own, as the task lanes do with `thin`, outranks the variable and is
+   told again by the rule on every descendant; and the styled bar is a
+   pseudo-element that is simply not displayed. */
+body.snowflake-method-hide-scrollbars {
+	--scrollbar-native-width: none;
+}
+
+body.snowflake-method-hide-scrollbars * {
+	scrollbar-width: none;
+}
+
+body.snowflake-method-hide-scrollbars ::-webkit-scrollbar {
+	display: none;
+}

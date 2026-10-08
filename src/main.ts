@@ -414,6 +414,7 @@ const REFRESH_DELAY_MS = 250;
 const SETTINGS_SAVE_DELAY_MS = 400;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
+const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
@@ -637,7 +638,8 @@ export default class SnowflakeMethodPlugin
 	private soloCollapsed: { left: boolean; right: boolean } | null = null;
 	/** Whether solo took the window full screen, so leaving it lets go. */
 	private soloFullscreen = false;
-	private readonly motionDocuments = new Set<Document>();
+	/** Every document wearing the plugin's body classes, popouts included. */
+	private readonly dressedDocuments = new Set<Document>();
 	private readonly scrollbarDocuments = new Set<Document>();
 
 	/**
@@ -738,7 +740,7 @@ export default class SnowflakeMethodPlugin
 		await this.loadSettings();
 		this.registerEvent(
 			this.app.workspace.on('window-open', (_workspaceWindow, targetWindow) => {
-				this.applyMotionPreferenceToDocument(targetWindow.document);
+				this.applyBodyPreferencesToDocument(targetWindow.document);
 				this.publishScrollbarWidthToDocument(targetWindow.document);
 				this.registerDomEvent(targetWindow, 'focus', () => {
 					this.publishScrollbarWidthToDocument(targetWindow.document);
@@ -750,8 +752,11 @@ export default class SnowflakeMethodPlugin
 		);
 		this.registerEvent(
 			this.app.workspace.on('window-close', (_workspaceWindow, targetWindow) => {
-				targetWindow.document.body.classList.remove(REDUCE_MOTION_CLASS);
-				this.motionDocuments.delete(targetWindow.document);
+				targetWindow.document.body.classList.remove(
+					REDUCE_MOTION_CLASS,
+					HIDE_SCROLLBARS_CLASS,
+				);
+				this.dressedDocuments.delete(targetWindow.document);
 				targetWindow.document.body.style.removeProperty(
 					SCROLLBAR_WIDTH_PROPERTY,
 				);
@@ -762,7 +767,7 @@ export default class SnowflakeMethodPlugin
 				this.stickyLayers.delete(targetWindow.document);
 			}),
 		);
-		this.applyMotionPreference();
+		this.applyBodyPreferences();
 		// A theme can restyle scrollbars, which changes how much room they take.
 		this.registerEvent(
 			this.app.workspace.on('css-change', () => this.publishScrollbarWidth()),
@@ -788,10 +793,13 @@ export default class SnowflakeMethodPlugin
 			this.publishScrollbarWidth();
 		});
 		this.register(() => {
-			for (const targetDocument of this.motionDocuments) {
-				targetDocument.body.classList.remove(REDUCE_MOTION_CLASS);
+			for (const targetDocument of this.dressedDocuments) {
+				targetDocument.body.classList.remove(
+					REDUCE_MOTION_CLASS,
+					HIDE_SCROLLBARS_CLASS,
+				);
 			}
-			this.motionDocuments.clear();
+			this.dressedDocuments.clear();
 			for (const targetDocument of this.scrollbarDocuments) {
 				targetDocument.body.style.removeProperty(SCROLLBAR_WIDTH_PROPERTY);
 			}
@@ -1218,7 +1226,7 @@ export default class SnowflakeMethodPlugin
 
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
-		this.applyMotionPreference();
+		this.applyBodyPreferences();
 		// Resynced silently: a level that arrived from outside is not the
 		// author turning focus mode on here, so it starts no session.
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
@@ -3030,7 +3038,7 @@ export default class SnowflakeMethodPlugin
 			// The settings page shows these same values, and in 1.13 it stands
 			// in a window of its own, so it can be open beside the popover that
 			// just wrote one. It declines while it is the page doing the writing.
-			this.settingTab?.refreshPresentationRows();
+			this.settingTab?.refreshRows();
 			return;
 		}
 		// The explorer tools read their own keys straight from the settings:
@@ -3083,7 +3091,21 @@ export default class SnowflakeMethodPlugin
 		if (key === 'sensitiveWords') {
 			this.applyManuscriptMentionMode();
 		}
-		if (key === 'reduceMotion') this.applyMotionPreference();
+		// Both body dresses have a command as well as a row, and a row left
+		// showing the old value is the next press undoing the command: the page
+		// is asked to show what was written, and declines when it wrote it.
+		if (key === 'reduceMotion') {
+			this.applyBodyPreferences();
+			this.settingTab?.refreshRows();
+		}
+		// Hidden scrollbars are a dress on every window, and the room a bar
+		// takes, which the panels and tables hand back, moves with them.
+		if (key === 'hideScrollbars') {
+			this.applyBodyPreferences();
+			this.publishScrollbarWidth();
+			this.settingTab?.refreshRows();
+			return;
+		}
 		if (key === 'manuscriptFocusLevel') {
 			this.applyManuscriptModePresence();
 			// The setting transition, deliberately not the effective focus: a
@@ -3124,10 +3146,10 @@ export default class SnowflakeMethodPlugin
 		await this.refreshDashboards();
 	}
 
-	private applyMotionPreference(): void {
-		this.applyMotionPreferenceToDocument(this.app.workspace.containerEl.doc);
+	private applyBodyPreferences(): void {
+		this.applyBodyPreferencesToDocument(this.app.workspace.containerEl.doc);
 		this.app.workspace.iterateAllLeaves((leaf) => {
-			this.applyMotionPreferenceToDocument(leaf.view.containerEl.doc);
+			this.applyBodyPreferencesToDocument(leaf.view.containerEl.doc);
 		});
 	}
 
@@ -3226,11 +3248,20 @@ export default class SnowflakeMethodPlugin
 		});
 	}
 
-	private applyMotionPreferenceToDocument(targetDocument: Document): void {
-		this.motionDocuments.add(targetDocument);
+	/**
+	 * The author's dress choices, worn by a window's body as classes: fewer
+	 * animations, and no scrollbars. The settings window shares the main
+	 * window's body classes, so it needs no telling of its own.
+	 */
+	private applyBodyPreferencesToDocument(targetDocument: Document): void {
+		this.dressedDocuments.add(targetDocument);
 		targetDocument.body.classList.toggle(
 			REDUCE_MOTION_CLASS,
 			this.settings.reduceMotion,
+		);
+		targetDocument.body.classList.toggle(
+			HIDE_SCROLLBARS_CLASS,
+			this.settings.hideScrollbars,
 		);
 	}
 
@@ -5894,6 +5925,16 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	private async toggleScrollbars(): Promise<void> {
+		const hidden = !this.settings.hideScrollbars;
+		this.settings.hideScrollbars = hidden;
+		await this.saveSettings();
+		await this.handleSettingsChanged('hideScrollbars');
+		new Notice(
+			this.globalT(hidden ? 'commands.scrollbarsHidden' : 'commands.scrollbarsShown'),
+		);
+	}
+
 	/**
 	 * The two dashboard settings an author changes while looking at what they
 	 * govern: whether a row says how far along its note is, and whether a name
@@ -8500,6 +8541,15 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-scrollbars',
+			name: this.globalT('commands.toggleScrollbars'),
+			callback: () => {
+				void this.toggleScrollbars().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'toggle-notes-beside-dashboard',
 			name: this.globalT('commands.toggleNotesBesideDashboard'),
 			callback: () => {
@@ -9150,6 +9200,9 @@ export default class SnowflakeMethodPlugin
 			saveToggle: (key, value) => {
 				this.settings[key] = value;
 				this.saveSettingsSoon();
+				// The immersive row stands on the settings page; a button press
+				// or the command must not leave it showing the old value.
+				this.settingTab?.refreshRows();
 			},
 			projectRootOf: (path) => projectRootContaining(path, this.explorerRoots),
 			saveFolds: (paths) => {

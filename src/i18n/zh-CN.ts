@@ -72,6 +72,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.toggleReducedAnimations': '切换减少动画模式',
 	'commands.reducedAnimationsEnabled': '已开启减少动画。',
 	'commands.reducedAnimationsDisabled': '已关闭减少动画。',
+	'commands.toggleScrollbars': '切换滚动条',
+	'commands.scrollbarsHidden': '滚动条已隐藏。',
+	'commands.scrollbarsShown': '滚动条已显示。',
 	'commands.toggleNotesBesideDashboard': '切换在工作台旁打开笔记',
 	'commands.notesBesideDashboardEnabled': '笔记将在工作台旁打开。',
 	'commands.notesBesideDashboardDisabled': '笔记将在标签页中打开。',
@@ -151,6 +154,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.createFromField.now': '直接创建',
 	'settings.reduceMotion.name': '减少动画',
 	'settings.reduceMotion.desc': '使用静态视觉效果替代动画。',
+	'settings.hideScrollbars.name': '隐藏滚动条',
+	'settings.hideScrollbars.desc': '隐藏所有垂直和水平滚动条。',
 	'settings.tableActionsColumn.name': '在表格中显示操作列',
 	'settings.tableActionsColumn.desc':
 		'为每行的操作单独设一列。\n关闭时，操作菜单在聚焦该行时显示于行尾。',

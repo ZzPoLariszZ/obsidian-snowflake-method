@@ -500,6 +500,13 @@ describe('settings', () => {
 		expect(sanitizeSettings({ reduceMotion: true }).reduceMotion).toBe(true);
 	});
 
+	it('hides the scrollbars until the plugin setting shows them', () => {
+		expect(DEFAULT_SETTINGS.hideScrollbars).toBe(true);
+		expect(sanitizeSettings(undefined).hideScrollbars).toBe(true);
+		expect(sanitizeSettings({ hideScrollbars: false }).hideScrollbars).toBe(false);
+		expect(sanitizeSettings({ hideScrollbars: 'no' }).hideScrollbars).toBe(true);
+	});
+
 	it('opens a note’s own form when a field asks for one', () => {
 		expect(DEFAULT_SETTINGS.createFromField).toBe('form');
 		expect(sanitizeSettings(undefined).createFromField).toBe('form');

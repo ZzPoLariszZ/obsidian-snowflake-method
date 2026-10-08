@@ -162,6 +162,8 @@ export interface SnowflakeSettings {
 	openLongTextInSplit: boolean;
 	protectManagedBoundaries: boolean;
 	reduceMotion: boolean;
+	/** Whether every window hides its scrollbars. Scrolling is untouched. */
+	hideScrollbars: boolean;
 	/**
 	 * How far along each member note is, written under its name in the tables.
 	 * Off unless it is asked for: it is a line on every row of every table, and
@@ -369,6 +371,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	openLongTextInSplit: true,
 	protectManagedBoundaries: true,
 	reduceMotion: false,
+	hideScrollbars: true,
 	showTableProgressStatus: false,
 	showDerivedTasks: true,
 	showTableActionsColumn: true,
@@ -473,6 +476,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'openLongTextInSplit',
 	'protectManagedBoundaries',
 	'reduceMotion',
+	'hideScrollbars',
 	'showTableProgressStatus',
 	'showDerivedTasks',
 	'showTableActionsColumn',
@@ -683,6 +687,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.reduceMotion === 'boolean'
 				? raw.reduceMotion
 				: DEFAULT_SETTINGS.reduceMotion,
+		hideScrollbars:
+			typeof raw.hideScrollbars === 'boolean'
+				? raw.hideScrollbars
+				: DEFAULT_SETTINGS.hideScrollbars,
 		showTableProgressStatus:
 			typeof raw.showTableProgressStatus === 'boolean'
 				? raw.showTableProgressStatus
@@ -1209,7 +1217,8 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 *
 	 * The popover over a manuscript writes the same settings this page does,
 	 * and in Obsidian 1.13 the settings open in a window of their own, so both
-	 * can be on screen at once. A row left showing the old value is not merely
+	 * can be on screen at once; so do the palette's toggle commands and the
+	 * explorer's buttons, whose rows stand here too. A row left showing the old value is not merely
 	 * stale: the next nudge of that slider writes the old value's neighbour,
 	 * quietly undoing what was chosen in the popover. The page is rebuilt from
 	 * the settings instead, which is the one thing that reaches the declared
@@ -1219,7 +1228,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	 * under the hand dragging it, and not once per stop of someone else's drag
 	 * either: the last change of a flurry is the one worth showing.
 	 */
-	refreshPresentationRows(): void {
+	refreshRows(): void {
 		if (this.writing) return;
 		const win = this.containerEl.win;
 		if (this.syncTimer !== null) win.clearTimeout(this.syncTimer);
@@ -1431,6 +1440,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						type: 'toggle',
 						key: 'reduceMotion',
 						defaultValue: DEFAULT_SETTINGS.reduceMotion,
+					},
+				},
+				{
+					name: this.t('settings.hideScrollbars.name'),
+					desc: this.t('settings.hideScrollbars.desc'),
+					control: {
+						type: 'toggle',
+						key: 'hideScrollbars',
+						defaultValue: DEFAULT_SETTINGS.hideScrollbars,
 					},
 				},
 					{
@@ -3030,6 +3048,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					this.owner.settings.reduceMotion = value;
 				}
 				break;
+			case 'hideScrollbars':
+				if (typeof value === 'boolean') {
+					this.owner.settings.hideScrollbars = value;
+				}
+				break;
 			case 'protectManagedBoundaries':
 				if (typeof value === 'boolean') {
 					this.owner.settings.protectManagedBoundaries = value;
@@ -3433,7 +3456,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			// catches up once the slider stops. Everything else is written before
 			// it is announced, since what hears of it may go on to read the file.
 			// Either way the announcement reaches this page again through
-			// refreshPresentationRows, which declines while this flag is up: the
+			// refreshRows, which declines while this flag is up: the
 			// row that started it is already showing what it wrote.
 			if (isManuscriptPresentationKey(key)) {
 				await this.owner.handleSettingsChanged(key);
