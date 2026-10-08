@@ -73,6 +73,8 @@ export interface FreeformBridge {
 		steps: readonly FreeformStep[],
 		viewport?: FreeformViewport | null,
 	) => Promise<FreeformTransacted>;
+	/** The view written as an Obsidian canvas beside its own file, asked about once where a different one stands, said where, and opened; every word of it is the host's. */
+	exportCanvas: (viewId: string) => Promise<void>;
 }
 
 /** The host's own methods the workspace calls, and no others. */

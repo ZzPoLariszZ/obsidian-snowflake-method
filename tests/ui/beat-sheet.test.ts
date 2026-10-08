@@ -295,6 +295,7 @@ function workspace(initial: Partial<BeatSheetDocument> = {}, options: { readOnly
 			return apply(saveBeatSheetTemplate(held, { id, ...draft, structure: beatSheetStructureOf(from) }, 2));
 		}),
 		deleteTemplate: vi.fn(async (id: string) => { apply(deleteBeatSheetTemplate(held, id)); return true; }),
+		exportCanvas: vi.fn(async (_sheetId: string): Promise<void> => undefined),
 	} as unknown as BeatSheetBridge;
 	let model = {
 		path: 'P', projectId: 'p', locale, readOnly: options.readOnly === true,
@@ -455,7 +456,7 @@ describe('the beat sheet workspace', () => {
 		expect(toolbar.children[0]!.classes.has('snowflake-method-beat-sheet-select')).toBe(true);
 		expect(toolbar.children[1]!.querySelector('input')!.getAttribute('placeholder')).toBe('beatSheet.search');
 		const order = [
-			'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export',
+			'snowflake-method-prose-state', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-export-canvas',
 			'snowflake-method-beat-sheet-edit', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
 			'snowflake-method-timeline-order', 'snowflake-method-timeline-refresh',
 			'snowflake-method-beat-sheet-add-act', 'snowflake-method-beat-sheet-add',
@@ -520,7 +521,8 @@ describe('the beat sheet workspace', () => {
 		expect(none.select().disabled).toBe(true);
 		expect(none.button('snowflake-method-beat-sheet-add').disabled).toBe(false);
 		for (const cls of [
-			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-export-canvas',
+			'snowflake-method-beat-sheet-add-act',
 			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
 		]) {
 			expect(none.button(cls).disabled, cls).toBe(true);
@@ -716,7 +718,8 @@ describe('the beat sheet workspace', () => {
 		await settle();
 		expect(fixture.root.classes.has('is-read-only')).toBe(true);
 		for (const cls of [
-			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-add-act',
+			'snowflake-method-beat-sheet-edit', 'snowflake-method-beat-sheet-export', 'snowflake-method-beat-sheet-export-canvas',
+			'snowflake-method-beat-sheet-add-act',
 			'snowflake-method-beat-sheet-add', 'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation',
 			'snowflake-method-timeline-order',
 		]) {
@@ -2341,5 +2344,33 @@ describe('the beat sheet workspace owns its dialogs and the words in it', () => 
 		conflict.focus();
 		expect(fixture.handle.saveFocusedConflict()).toBe(true);
 		expect(fixture.poolHandle.saveFocusedConflict).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('the canvas export', () => {
+	it('writes the sheet on show as an Obsidian canvas from its own symbol, apart from the template export, and says what the host refused', async () => {
+		const fixture = laid();
+		await settle();
+		const symbol = fixture.button('snowflake-method-beat-sheet-export-canvas');
+		expect(symbol.getAttribute('aria-label')).toBe('canvasExport.action');
+		expect(symbol.disabled).toBe(false);
+		symbol.dispatch('click');
+		await settle();
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('s');
+		expect(fixture.bridge.saveTemplate).not.toHaveBeenCalled();
+		expect(promptForCustomFieldTemplate).not.toHaveBeenCalled();
+		vi.mocked(fixture.bridge.exportCanvas).mockRejectedValueOnce(new Error('boom'));
+		symbol.dispatch('click');
+		await settle();
+		expect(notices).toHaveBeenCalledWith('boom');
+	});
+
+	it('draws nothing once the panel has moved to another project before the press reached its turn', async () => {
+		const fixture = laid();
+		await settle();
+		fixture.button('snowflake-method-beat-sheet-export-canvas').dispatch('click');
+		fixture.moveProject('Elsewhere');
+		await settle();
+		expect(fixture.bridge.exportCanvas).not.toHaveBeenCalled();
 	});
 });

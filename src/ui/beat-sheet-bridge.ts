@@ -103,6 +103,8 @@ export interface BeatSheetBridge {
 	/** A sheet's acts and beats kept under a name as one of the project's templates; a namesake is replaced. */
 	saveTemplate: (sheetId: string, draft: { name: string; description: string }) => Promise<BeatSheetWrite>;
 	deleteTemplate: (templateId: string) => Promise<boolean>;
+	/** The sheet written as an Obsidian canvas beside the beat sheet file, asked about once where a different one stands, said where, and opened; every word of it is the host's. */
+	exportCanvas: (sheetId: string) => Promise<void>;
 }
 
 /** The drag types of the workspace's four levels, each its own so nothing lands where it should not, a timeline in another leaf included. */

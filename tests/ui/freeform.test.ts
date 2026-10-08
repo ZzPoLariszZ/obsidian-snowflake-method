@@ -453,6 +453,7 @@ function workspace(initial: readonly FreeformView[] = [], options: WorkspaceOpti
 			if (made.changed) swap(before, viewport === null ? made.view : { ...made.view, viewport });
 			return { came: 'written', inverse: made.inverse };
 		}),
+		exportCanvas: vi.fn(async (_viewId: string): Promise<void> => undefined),
 	} satisfies FreeformBridge;
 	let model = {
 		path: 'P', projectId: 'p', locale, readOnly: options.readOnly === true,
@@ -744,7 +745,7 @@ describe('the freeform workspace', () => {
 		expect(fixture.root.classes.has('is-read-only')).toBe(true);
 		expect(fixture.canvas.interaction?.readOnly).toBe(true);
 		expect(fixture.nodes()).toEqual(['f1', 't1', 't2', 's1', 'l1']);
-		for (const cls of ['snowflake-method-freeform-view-add', 'snowflake-method-freeform-node-add', 'snowflake-method-freeform-view-edit']) {
+		for (const cls of ['snowflake-method-freeform-view-add', 'snowflake-method-freeform-node-add', 'snowflake-method-freeform-view-edit', 'snowflake-method-freeform-export-canvas']) {
 			expect(fixture.button(cls).disabled, cls).toBe(true);
 		}
 		// A double click opens nothing to type into, and no key takes anything off.
@@ -3251,7 +3252,7 @@ describe('searching a view', () => {
 		}
 	});
 
-	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the pencil, the refresh, Add node and Add view', async () => {
+	it('lays the toolbar out balanced: the view field at its start, the search in its middle, and at its end the canvas export, the pencil, the refresh, Add node and Add view', async () => {
 		const fixture = await laid();
 		const toolbar = fixture.root.querySelector('.snowflake-method-freeform-toolbar')!;
 		expect(toolbar.classes.has('snowflake-method-balanced-toolbar')).toBe(true);
@@ -3261,7 +3262,10 @@ describe('searching a view', () => {
 		expect(toolbar.children[0]!.classes.has('snowflake-method-freeform-view-select')).toBe(true);
 		expect(toolbar.children[1]!.querySelector('.search-input-container')).not.toBeNull();
 		expect(toolbar.children[1]!.querySelector('.snowflake-method-toolbar-count')).not.toBeNull();
-		const end = ['snowflake-method-freeform-view-edit', 'snowflake-method-freeform-refresh', 'snowflake-method-freeform-node-add', 'snowflake-method-freeform-view-add'];
+		const end = [
+			'snowflake-method-freeform-export-canvas', 'snowflake-method-freeform-view-edit', 'snowflake-method-freeform-refresh',
+			'snowflake-method-freeform-node-add', 'snowflake-method-freeform-view-add',
+		];
 		expect(toolbar.children[2]!.children.map((child, index) => child.classes.has(end[index]!))).toEqual(end.map(() => true));
 		expect(toolbar.children[2]!.children).toHaveLength(end.length);
 	});
@@ -3690,5 +3694,44 @@ describe('the workspace going', () => {
 		await settle();
 		expect(fixture.bridge.leaveView).not.toHaveBeenCalled();
 		expect(fixture.bridge.transact).not.toHaveBeenCalled();
+	});
+});
+
+describe('the canvas export', () => {
+	it('writes the view on show as an Obsidian canvas from the toolbar, naming the view it was made on', async () => {
+		const fixture = await laid();
+		const symbol = fixture.button('snowflake-method-freeform-export-canvas');
+		expect(symbol.getAttribute('aria-label')).toBe('canvasExport.action');
+		expect(symbol.disabled).toBe(false);
+		fire(symbol, 'click');
+		await settle();
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('a');
+	});
+
+	it('offers no canvas while there is no view to draw one from', async () => {
+		const fixture = workspace([]);
+		await settle();
+		expect(fixture.button('snowflake-method-freeform-export-canvas').disabled).toBe(true);
+	});
+
+	it('keeps the canvas on offer while the tab is locked, since it changes nothing, and says what the host refused', async () => {
+		const fixture = await laid();
+		fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })![GROUND_ITEMS.length - 1]!.click();
+		await settle();
+		expect(fixture.button('snowflake-method-freeform-view-edit').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-freeform-export-canvas').disabled).toBe(false);
+		vi.mocked(fixture.bridge.exportCanvas).mockRejectedValueOnce(new Error('boom'));
+		fire(fixture.button('snowflake-method-freeform-export-canvas'), 'click');
+		await settle();
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('a');
+		expect(notices).toHaveBeenCalledWith('boom');
+	});
+
+	it('draws nothing once the panel has moved to another project before the press reached its turn', async () => {
+		const fixture = await laid();
+		fire(fixture.button('snowflake-method-freeform-export-canvas'), 'click');
+		fixture.moveProject('Elsewhere');
+		await settle();
+		expect(fixture.bridge.exportCanvas).not.toHaveBeenCalled();
 	});
 });

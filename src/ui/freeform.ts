@@ -232,8 +232,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	// in a field as wide as the timeline's. The search stands in the toolbar's
 	// middle: it marks what it finds and dims the rest, Enter brings the found
 	// into sight one by one, Escape lets the search go. At the end stand the
-	// pencil, the refresh and the two words, the node's before the view's, as
-	// the timeline's toolbar ends.
+	// canvas export, the pencil, the refresh and the two words, the node's
+	// before the view's, as the timeline's toolbar ends.
 	const viewHost = toolbar.createDiv({ cls: 'snowflake-method-toolbar-start snowflake-method-freeform-view-select' });
 	const searchField = createSearchField(toolbar, {
 		placeholder: t('freeformCanvas.search'),
@@ -248,6 +248,25 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		},
 	});
 	const end = toolbarEnd(toolbar);
+	// The view on show written as an Obsidian canvas, beside the view's own
+	// file. Words still being typed are settled first, and the press waits its
+	// turn in the queue behind the changes still landing, so all of them are
+	// in the file the canvas is drawn from. A press whose turn comes after the
+	// panel has moved to another project draws nothing: the view's id, Main's
+	// above all, may name a view there too. The tab's lock does not close this,
+	// since it changes nothing on the view; only a project that cannot be
+	// written does.
+	const exportCanvasButton = toolbarIconButton(end, 'snowflake-method-freeform-export-canvas', 'layout-dashboard', t('canvasExport.action'));
+	exportCanvasButton.addEventListener('click', () => {
+		const id = viewId;
+		const path = controls.projectPath();
+		if (id === null || (model?.readOnly ?? true) || disposed) return;
+		canvas.settle();
+		void enqueue(async () => {
+			if (controls.projectPath() !== path) return;
+			await controls.bridge().exportCanvas(id);
+		}, 'nothing');
+	});
 	const editViewButton = toolbarIconButton(end, 'snowflake-method-freeform-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
 		openEditView();
@@ -268,7 +287,8 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 	addNodeButton.addEventListener('click', () => {
 		openAddNode();
 	});
-	const addViewButton = wordWithSymbol('snowflake-method-freeform-view-add', 'layout-dashboard', t('timeline.view.add'));
+	// The view's symbol is a grid, since the canvas export beside it wears the canvas's own.
+	const addViewButton = wordWithSymbol('snowflake-method-freeform-view-add', 'layout-grid', t('timeline.view.add'));
 	addViewButton.addEventListener('click', () => {
 		openAddView();
 	});
@@ -1124,6 +1144,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		addViewButton.disabled = readOnly || reading === null;
 		if (reading === null || model === null || engineFailed) {
 			editViewButton.disabled = true;
+			exportCanvasButton.disabled = true;
 			paintAdders(false);
 			paintOptions([]);
 			showEmpty(t(loadFailed || engineFailed ? 'freeformCanvas.loadFailed' : 'freeformCanvas.loading'));
@@ -1144,6 +1165,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		paintOptions(held.views);
 		const view = viewId === null ? null : fileView(viewId);
 		editViewButton.disabled = readOnly || view === null;
+		exportCanvasButton.disabled = (nextModel?.readOnly ?? true) || view === null;
 		paintAdders(!readOnly && view !== null);
 		turnTo(view);
 		if (view === null) {

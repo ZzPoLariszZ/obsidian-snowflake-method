@@ -126,6 +126,7 @@ import {
 	type ChapterNumberRule,
 	type ChapterNumberProposal,
 	type ChapterRemovalProposal,
+	type CanvasExportWords,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -168,6 +169,7 @@ import {
 	ExportIntoManuscriptError,
 	projectExportRoot,
 	type ManuscriptExportOptions,
+	type CanvasExportPlan,
 	type ManuscriptExportPlan,
 	type ManuscriptExportScope,
 	type SegmentRenameOutcome,
@@ -366,6 +368,8 @@ import {
 	type StartSessionRequest,
 	type Translate,
 } from './ui/modals';
+import { actTitle } from './ui/beat-sheet-layout';
+import { missingResourceWord } from './ui/freeform-faces';
 import type {
 	AddDefinitionPathResult,
 	CharacterViewModel,
@@ -4325,6 +4329,9 @@ export default class SnowflakeMethodPlugin
 			removeScene: (timelineId, sceneId) =>
 				write((project) => timelines.removeScene(project, timelineId, sceneId)),
 			pruneMissing: (known) => write((project) => timelines.pruneMissing(project, known)),
+			exportCanvas: (viewId) =>
+				this.runCanvasExport(panelProject(), (project, words) =>
+					this.projects.canvasExporter.planTimeline(project, viewId, words)),
 		};
 	}
 
@@ -4397,6 +4404,9 @@ export default class SnowflakeMethodPlugin
 			removeScene: (sheetId, sceneId) => write((project) => sheets.removeScene(project, sheetId, sceneId)),
 			saveTemplate: (sheetId, draft) => write((project) => sheets.saveTemplate(project, sheetId, draft)),
 			deleteTemplate: (templateId) => remove((project) => sheets.deleteTemplate(project, templateId)),
+			exportCanvas: (sheetId) =>
+				this.runCanvasExport(panelProject(), (project, words) =>
+					this.projects.canvasExporter.planBeatSheet(project, sheetId, words)),
 		};
 	}
 
@@ -4476,6 +4486,9 @@ export default class SnowflakeMethodPlugin
 					},
 					{ came: 'refused', inverse: [] },
 				),
+			exportCanvas: (viewId) =>
+				this.runCanvasExport(panelProject(), (project, words) =>
+					this.projects.canvasExporter.planFreeform(project, viewId, words)),
 		};
 	}
 
@@ -6524,6 +6537,62 @@ export default class SnowflakeMethodPlugin
 						folder: first.slice(0, Math.max(0, first.lastIndexOf('/'))),
 					}),
 		);
+	}
+
+	/**
+	 * One view of a workspace written as an Obsidian canvas beside the
+	 * workspace's own file: planned, asked about once where a different
+	 * canvas already stands at its path, written, said where, and opened. A
+	 * canvas that says the same already is left as it is, said to be so, and
+	 * opened all the same: the press means "take me to it".
+	 * A project that cannot be written is told so, and a view that has gone
+	 * is nothing to export. The three workspace bridges share it, as the
+	 * manuscript's export buttons share `runExport`.
+	 */
+	private async runCanvasExport(
+		projectPath: string | null,
+		plan: (project: ProjectSnapshot, words: CanvasExportWords) => Promise<CanvasExportPlan>,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) {
+			new Notice(t('errors.readOnly'));
+			return;
+		}
+		const planned = await plan(project, this.canvasExportWords(t));
+		if (planned.kind === 'absent') {
+			new Notice(t('messages.exportNothing'));
+			return;
+		}
+		if (planned.exists && planned.unchanged) {
+			new Notice(t('messages.canvasUpToDate', { path: planned.path }));
+			await this.openManagedFile(planned.path);
+			return;
+		}
+		if (planned.exists) {
+			const agreed = await confirmExportReplace(this.app, t, [planned.path]);
+			if (!agreed) return;
+		}
+		await this.projects.canvasExporter.write(planned);
+		new Notice(t('messages.exported', { path: planned.path }));
+		await this.openManagedFile(planned.path);
+	}
+
+	/** The words a canvas carries that no author wrote, said in the project's language as the workspaces say them. */
+	private canvasExportWords(
+		t: (key: string, vars?: Record<string, string | number>) => string,
+	): CanvasExportWords {
+		return {
+			missing: (of, kind) => missingResourceWord(of, kind, t),
+			lastSeen: (name) => t('freeformCanvas.missing.lastSeen', { name }),
+			recordKind: (type) => t(`freeformCanvas.type.${type}`),
+			missingScene: t('timeline.scene.missing'),
+			missingTime: t('timeline.time.missing'),
+			untitledBeat: t('beatSheet.beat.unnamed'),
+			actTitle: (number, label) => actTitle(t, number, label),
+		};
 	}
 
 	async manuscriptSegmentTotals(

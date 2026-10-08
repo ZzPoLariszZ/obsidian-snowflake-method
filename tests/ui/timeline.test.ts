@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { CorkboardDom, CorkboardElement } from '../helpers/corkboard-dom';
 import type { OptionFieldConfig } from '../../src/ui/option-picker';
 
-const { menus, viewFields, searches } = vi.hoisted(() => ({
+const { menus, viewFields, searches, notices } = vi.hoisted(() => ({
 	menus: [] as { title: string; disabled: boolean; click: () => void }[][],
 	viewFields: [] as OptionFieldConfig[],
 	searches: [] as { inputEl: unknown; type: (value: string) => void }[],
+	notices: vi.fn(),
 }));
 
 vi.mock('obsidian', async (importOriginal) => {
@@ -62,6 +63,7 @@ vi.mock('obsidian', async (importOriginal) => {
 	}
 	return {
 		...runtime,
+		Notice: class { constructor(message: string) { notices(message); } },
 		Keymap: { isModifier: (event: { mod?: boolean }) => event.mod === true },
 		getIcon: () => null,
 		Modal,
@@ -261,6 +263,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		deleteRow: vi.fn(async (timelineId: string, rowId: string) => apply(deleteTimelineRow(held, timelineId, rowId, 2))),
 		placeScene: vi.fn(async (timelineId: string, sceneId: string, rowId: string, beforeSceneId: string | null) =>
 			apply(placeTimelineScene(held, timelineId, sceneId, rowId, beforeSceneId, 2))),
+		exportCanvas: vi.fn(async (_viewId: string): Promise<void> => undefined),
 	} as unknown as TimelineBridge;
 	const times = [time('time-1', 'Dawn', 'First light'), time('time-2', 'Dusk')];
 	let model = {
@@ -291,10 +294,11 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 	const corkboard = vi.fn((_host: HTMLElement, _controls: CorkboardControls, _variant?: CorkboardVariant) => poolHandle);
 	const remember = vi.fn();
 	const translate = vi.fn((key: string, _vars?: Record<string, string | number>): string => key);
+	let projectPath: string | null = 'P';
 	const controls = {
 		app: {}, host, t: translate,
 		model: () => model,
-		projectPath: () => 'P',
+		projectPath: () => projectPath,
 		activateProject: vi.fn(),
 		refresh,
 		popover: { closeFilter: vi.fn(), filterOpen: () => false, openFilter: vi.fn() },
@@ -310,6 +314,7 @@ function workspace(initial: Partial<TimelineDocument> = {}, readOnly = false) {
 		get model(): { readOnly: boolean } { return model; },
 		/** Another model object, as a project refresh hands the workspace one. */
 		remodel: (change: Partial<ProjectDashboardModel>) => { model = { ...model, ...change }; },
+		moveProject: (path: string | null) => { projectPath = path; },
 		held: () => held,
 		notify: () => { for (const listener of listeners) listener(); },
 		listeners,
@@ -366,7 +371,7 @@ describe('the timeline workspace', () => {
 		expect(toolbar.children[1]!.querySelector('input')!.getAttribute('placeholder')).toBe('timeline.search');
 		expect(toolbar.children[1]!.querySelector('.snowflake-method-toolbar-count')).not.toBeNull();
 		const order = [
-			'snowflake-method-prose-state', 'snowflake-method-timeline-view-edit',
+			'snowflake-method-prose-state', 'snowflake-method-timeline-export-canvas', 'snowflake-method-timeline-view-edit',
 			'snowflake-method-timeline-words', 'snowflake-method-timeline-presentation', 'snowflake-method-timeline-order',
 			'snowflake-method-timeline-refresh', 'snowflake-method-timeline-add-timeline', 'snowflake-method-timeline-view-add',
 		];
@@ -421,6 +426,7 @@ describe('the timeline workspace', () => {
 		expect(none.emptyLine().querySelector('button')).toBeNull();
 		expect(none.body().classes.has('is-hidden')).toBe(true);
 		expect(none.select().disabled).toBe(true);
+		expect(none.button('snowflake-method-timeline-export-canvas').disabled).toBe(true);
 		const bare = workspace({ timelines: [timeline('a')], views: [view('v', [])] });
 		await settle();
 		expect(bare.emptyLine().querySelectorAll('span').map((span) => span.textContent)).toContain('timeline.empty.timelines');
@@ -841,6 +847,7 @@ describe('the timeline workspace', () => {
 		expect(fixture.button('snowflake-method-timeline-add-timeline').disabled).toBe(true);
 		expect(fixture.button('snowflake-method-timeline-view-add').disabled).toBe(true);
 		expect(fixture.button('snowflake-method-timeline-view-edit').disabled).toBe(true);
+		expect(fixture.button('snowflake-method-timeline-export-canvas').disabled).toBe(true);
 		menus.length = 0;
 		fixture.head('a').querySelector('.snowflake-method-timeline-lane-more')!.dispatch('click');
 		expect(menus[0]!.every((item) => item.disabled)).toBe(true);
@@ -3826,5 +3833,60 @@ describe('an editor opened on words on their way, which then land', () => {
 		expect(fixture.bridge.editRow).not.toHaveBeenCalled();
 		expect(fixture.held().timelines[0]!.times[0]!.rows[0]!.text).toBe('C');
 		expect(label.textContent).toBe('C');
+	});
+});
+
+describe('the canvas export', () => {
+	it('writes the view on show as an Obsidian canvas from the toolbar, after the writes queued before it', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const symbol = fixture.button('snowflake-method-timeline-export-canvas');
+		expect(symbol.getAttribute('aria-label')).toBe('canvasExport.action');
+		expect(symbol.disabled).toBe(false);
+		fixture.button('snowflake-method-timeline-words').dispatch('click');
+		symbol.dispatch('click');
+		await settle();
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('v');
+		const words = vi.mocked(fixture.bridge.setViewSubDescriptions).mock.invocationCallOrder[0]!;
+		const canvas = vi.mocked(fixture.bridge.exportCanvas).mock.invocationCallOrder[0]!;
+		expect(words).toBeLessThan(canvas);
+	});
+});
+
+describe('the canvas export', () => {
+	it('writes the view on show as an Obsidian canvas from the toolbar, naming the view it was made on, and says what the host refused', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		const symbol = fixture.button('snowflake-method-timeline-export-canvas');
+		expect(symbol.getAttribute('aria-label')).toBe('canvasExport.action');
+		expect(symbol.disabled).toBe(false);
+		symbol.dispatch('click');
+		await settle();
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('v');
+		vi.mocked(fixture.bridge.exportCanvas).mockRejectedValueOnce(new Error('boom'));
+		symbol.dispatch('click');
+		await settle();
+		expect(notices).toHaveBeenCalledWith('boom');
+	});
+
+	it('waits its turn behind a change pressed before it, so the canvas is drawn from the view as it then stands', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		fixture.button('snowflake-method-timeline-words').dispatch('click');
+		fixture.button('snowflake-method-timeline-export-canvas').dispatch('click');
+		await settle();
+		const write = vi.mocked(fixture.bridge.setViewSubDescriptions);
+		expect(write).toHaveBeenCalledExactlyOnceWith('v', false);
+		expect(fixture.bridge.exportCanvas).toHaveBeenCalledExactlyOnceWith('v');
+		expect(vi.mocked(fixture.bridge.exportCanvas).mock.invocationCallOrder[0]!).toBeGreaterThan(write.mock.invocationCallOrder[0]!);
+	});
+
+	it('draws nothing once the panel has moved to another project before the press reached its turn', async () => {
+		const fixture = workspace({ timelines: [timeline('a')], views: [view('v', ['a'])] });
+		await settle();
+		fixture.button('snowflake-method-timeline-export-canvas').dispatch('click');
+		fixture.moveProject('Elsewhere');
+		await settle();
+		expect(fixture.bridge.exportCanvas).not.toHaveBeenCalled();
 	});
 });

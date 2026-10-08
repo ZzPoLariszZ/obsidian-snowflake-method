@@ -1054,17 +1054,27 @@ function linkPainter(deps: FreeformFaceDeps): NodePainter {
 }
 
 /** What a missing resource is called by the kind it was last seen as. */
-function missingWord(node: Extract<ResolvedNode, { type: 'missing' }>, t: Translate): string {
-	if (node.of === 'entity') {
-		if (node.kind === 'scene') return t('timeline.scene.missing');
-		if (node.kind === 'time') return t('timeline.time.missing');
-		if (node.kind === 'character' || node.kind === 'location' || node.kind === 'item') {
-			return t(`freeformCanvas.missing.${node.kind}`);
+/**
+ * What a resource that has gone is called, by what it was: a scene and a
+ * time by the timeline's words, the three built-in kinds by their own, any
+ * other entity as a note, and the records each as themselves. The canvas
+ * export says the same of a missing node, so the words are stated once.
+ */
+export function missingResourceWord(of: string, kind: string, t: Translate): string {
+	if (of === 'entity') {
+		if (kind === 'scene') return t('timeline.scene.missing');
+		if (kind === 'time') return t('timeline.time.missing');
+		if (kind === 'character' || kind === 'location' || kind === 'item') {
+			return t(`freeformCanvas.missing.${kind}`);
 		}
 		return t('freeformCanvas.missing.entity');
 	}
-	if (node.of === 'sticky-note') return t('freeformCanvas.missing.stickyNote');
-	return t(`freeformCanvas.missing.${node.of}`);
+	if (of === 'sticky-note') return t('freeformCanvas.missing.stickyNote');
+	return t(`freeformCanvas.missing.${of}`);
+}
+
+function missingWord(node: Extract<ResolvedNode, { type: 'missing' }>, t: Translate): string {
+	return missingResourceWord(node.of, node.of === 'entity' ? (node.kind ?? '') : '', t);
 }
 
 /**

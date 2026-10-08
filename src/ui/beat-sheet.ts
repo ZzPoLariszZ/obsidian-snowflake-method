@@ -218,6 +218,21 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 	exportButton.addEventListener('click', () => {
 		openExport();
 	});
+	// The sheet on show written as an Obsidian canvas, beside the beat sheet
+	// file. The template export beside it keeps the sheet's shape; this keeps
+	// its picture. The press waits its turn in the queue, so every change made
+	// before it is in the file the canvas is drawn from; one whose turn comes
+	// after the panel has moved to another project draws nothing.
+	const exportCanvasButton = iconButton('snowflake-method-beat-sheet-export-canvas', 'layout-dashboard', t('canvasExport.action'));
+	exportCanvasButton.addEventListener('click', () => {
+		const aimed = currentSheet();
+		const path = controls.projectPath();
+		if (readOnly || aimed === null) return;
+		void enqueue(async () => {
+			if (controls.projectPath() !== path) return;
+			await controls.bridge().exportCanvas(aimed.id);
+		}, 'nothing');
+	});
 	// The pencil wears no class of the timeline's, since the timeline's pencil is the view's and this one the sheet's.
 	const editSheetButton = iconButton('snowflake-method-beat-sheet-edit', 'pencil', t('beatSheet.sheet.edit'));
 	editSheetButton.addEventListener('click', () => {
@@ -608,6 +623,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		if (reading === null) {
 			editSheetButton.disabled = true;
 			exportButton.disabled = true;
+			exportCanvasButton.disabled = true;
 			addActButton.disabled = true;
 			paintPresentation(null);
 			paintWords(null);
@@ -623,6 +639,7 @@ export const renderBeatSheet: RenderBeatSheet = (container, controls) => {
 		const sheet = currentSheet();
 		editSheetButton.disabled = readOnly || sheet === null;
 		exportButton.disabled = readOnly || sheet === null;
+		exportCanvasButton.disabled = readOnly || sheet === null;
 		addActButton.disabled = readOnly || sheet === null;
 		paintPresentation(sheet);
 		paintWords(sheet);

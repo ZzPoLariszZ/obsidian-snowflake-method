@@ -95,6 +95,8 @@ export interface TimelineBridge {
 		sceneIds?: ReadonlySet<string>;
 		timeIds?: ReadonlySet<string>;
 	}) => Promise<TimelineWrite>;
+	/** The view written as an Obsidian canvas beside the timeline file, asked about once where a different one stands, said where, and opened; every word of it is the host's. */
+	exportCanvas: (viewId: string) => Promise<void>;
 }
 
 /** The host's own methods the workspace calls: the card's, and the worldbuilding form's. */

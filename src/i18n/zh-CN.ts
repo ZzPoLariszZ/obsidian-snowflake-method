@@ -1953,6 +1953,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'messages.exported': '已导出到 {path}。',
 	'messages.exportedMany': '已将 {count} 个文件导出到 {folder}。',
 	'messages.exportNothing': '没有可导出的内容。',
+	'messages.canvasUpToDate': '白板文件 {path} 已是最新。',
+	'canvasExport.action': '导出为 Obsidian 白板',
 	'messages.copiedNote': '已将本篇笔记复制为纯文本。',
 	'errors.exportIntoManuscript': '导出文件夹 {path} 位于项目之内，请另选一个文件夹。',
 	'manuscript.copySelection': '复制',

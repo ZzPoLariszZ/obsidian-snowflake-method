@@ -2098,6 +2098,8 @@ export const en = {
 	'messages.exported': 'Exported to {path}.',
 	'messages.exportedMany': 'Exported {count} files to {folder}.',
 	'messages.exportNothing': 'There is nothing to export.',
+	'messages.canvasUpToDate': 'The canvas at {path} is already up to date.',
+	'canvasExport.action': 'Export as Obsidian Canvas',
 	'messages.copiedNote': 'Copied the note as plain text.',
 	'errors.exportIntoManuscript':
 		'The export folder {path} lies inside the project. Choose another folder.',

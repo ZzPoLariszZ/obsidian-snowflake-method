@@ -215,6 +215,21 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 	const stateText = end.createSpan({ cls: 'snowflake-method-prose-state' });
 	const iconButton = (cls: string, icon: string, label: string): HTMLButtonElement =>
 		toolbarIconButton(end, cls, icon, label);
+	// The view on show written as an Obsidian canvas, beside the timeline
+	// file. The press names the view it was made on and waits its turn in the
+	// queue, so every change made before it is in the file the canvas is drawn
+	// from; one whose turn comes after the panel has moved to another project
+	// draws nothing. The asking, the saying and the opening are the host's.
+	const exportCanvasButton = iconButton('snowflake-method-timeline-export-canvas', 'layout-dashboard', t('canvasExport.action'));
+	exportCanvasButton.addEventListener('click', () => {
+		const aimed = currentView();
+		const path = controls.projectPath();
+		if (readOnly || aimed === null) return;
+		void enqueue(async () => {
+			if (controls.projectPath() !== path) return;
+			await controls.bridge().exportCanvas(aimed.id);
+		}, 'nothing');
+	});
 	const editViewButton = iconButton('snowflake-method-timeline-view-edit', 'pencil', t('timeline.view.edit'));
 	editViewButton.addEventListener('click', () => {
 		openEditView();
@@ -660,6 +675,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		addViewButton.disabled = readOnly || reading === null;
 		if (reading === null) {
 			editViewButton.disabled = true;
+			exportCanvasButton.disabled = true;
 			paintPresentation(null);
 			paintWords(null);
 			paintOrder(null);
@@ -678,6 +694,7 @@ export const renderTimeline: RenderTimeline = (container, controls) => {
 		paintOptions(held.views);
 		const view = currentView();
 		editViewButton.disabled = readOnly || view === null;
+		exportCanvasButton.disabled = readOnly || view === null;
 		paintPresentation(view);
 		paintWords(view);
 		paintOrder(view);
