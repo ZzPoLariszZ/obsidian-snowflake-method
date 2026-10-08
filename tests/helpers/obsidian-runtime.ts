@@ -107,6 +107,12 @@ class MenuItemStub {
 	setTitle(): this {
 		return this;
 	}
+	setIsLabel(): this {
+		return this;
+	}
+	setChecked(): this {
+		return this;
+	}
 	setIcon(): this {
 		return this;
 	}

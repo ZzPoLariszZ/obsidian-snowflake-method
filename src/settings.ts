@@ -52,6 +52,7 @@ import {
 	newHighlightRuleId,
 	rememberFontFamily,
 	sanitizeCustomHighlightRules,
+	sanitizeExplorerOrders,
 	isWeekStartDay,
 	isWritingCountHeadings,
 	isWritingCountMode,
@@ -79,6 +80,7 @@ import {
 	type ExportFormat,
 	type ExportLayout,
 	type ExportSeparator,
+	type ExplorerOrders,
 	type MentionHighlightMode,
 	type MilestoneMode,
 	type ReadingMeasure,
@@ -101,6 +103,7 @@ import {
 	isValidProjectRoot,
 	normalizeProjectRoot,
 } from './project-root';
+import { isExplorerScope, type ExplorerScope } from './services';
 import { wireCardDrag } from './ui/entity-form';
 import {
 	addFontFamilyPicker,
@@ -327,6 +330,28 @@ export interface SnowflakeSettings {
 	certificateCelebrations: Record<string, true>;
 	/** The manuscript note last worked in, by project id. */
 	recentManuscriptNotes: Record<string, string>;
+	/** Where the file explorer tools reach: the projects alone, or the whole Vault. */
+	explorerScope: ExplorerScope;
+	/** Whether the tidy view takes the ordering prefixes off the names it shows. */
+	explorerHidePrefix: boolean;
+	/** Whether the tidy view leaves the plugin's own files out, and the author's listed ones. */
+	explorerHideFiles: boolean;
+	/** The author's own files to hide, one per line. */
+	explorerHiddenFiles: string;
+	/** Whether the tidy view leaves the plugin's own folders out, and the author's listed ones. */
+	explorerHideFolders: boolean;
+	/** The author's own folders to hide, one per line. */
+	explorerHiddenFolders: string;
+	/** Whether a note's row carries its word count. */
+	explorerNoteCounts: boolean;
+	/** Whether a folder's row carries the sum of the notes beneath it. */
+	explorerFolderCounts: boolean;
+	/** The tidy button's state, kept across restarts; no row shows it. */
+	explorerTidy: boolean;
+	/** The word count button's state, kept the same way. */
+	explorerCounts: boolean;
+	/** The orders the author dragged folders' entries into, by folder path. */
+	explorerOrders: ExplorerOrders;
 }
 
 export const DEFAULT_SETTINGS: SnowflakeSettings = {
@@ -418,6 +443,17 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	recentStep: 1,
 	certificateCelebrations: {},
 	recentManuscriptNotes: {},
+	explorerScope: 'projects',
+	explorerHidePrefix: true,
+	explorerHideFiles: true,
+	explorerHiddenFiles: '',
+	explorerHideFolders: true,
+	explorerHiddenFolders: '',
+	explorerNoteCounts: true,
+	explorerFolderCounts: true,
+	explorerTidy: true,
+	explorerCounts: true,
+	explorerOrders: {},
 };
 
 const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
@@ -503,6 +539,17 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'recentStep',
 	'certificateCelebrations',
 	'recentManuscriptNotes',
+	'explorerScope',
+	'explorerHidePrefix',
+	'explorerHideFiles',
+	'explorerHiddenFiles',
+	'explorerHideFolders',
+	'explorerHiddenFolders',
+	'explorerNoteCounts',
+	'explorerFolderCounts',
+	'explorerTidy',
+	'explorerCounts',
+	'explorerOrders',
 ]);
 
 /**
@@ -877,6 +924,42 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		recentStep,
 		certificateCelebrations,
 		recentManuscriptNotes,
+		explorerScope: isExplorerScope(raw.explorerScope)
+			? raw.explorerScope
+			: DEFAULT_SETTINGS.explorerScope,
+		explorerHidePrefix:
+			typeof raw.explorerHidePrefix === 'boolean'
+				? raw.explorerHidePrefix
+				: DEFAULT_SETTINGS.explorerHidePrefix,
+		explorerHideFiles:
+			typeof raw.explorerHideFiles === 'boolean'
+				? raw.explorerHideFiles
+				: DEFAULT_SETTINGS.explorerHideFiles,
+		explorerHiddenFiles: boundedText(raw.explorerHiddenFiles),
+		explorerHideFolders:
+			typeof raw.explorerHideFolders === 'boolean'
+				? raw.explorerHideFolders
+				: DEFAULT_SETTINGS.explorerHideFolders,
+		explorerHiddenFolders: boundedText(raw.explorerHiddenFolders),
+		explorerNoteCounts:
+			typeof raw.explorerNoteCounts === 'boolean'
+				? raw.explorerNoteCounts
+				: DEFAULT_SETTINGS.explorerNoteCounts,
+		explorerFolderCounts:
+			typeof raw.explorerFolderCounts === 'boolean'
+				? raw.explorerFolderCounts
+				: DEFAULT_SETTINGS.explorerFolderCounts,
+		// The two explorer buttons' states and the dragged orders: the
+		// explorer's own memory rather than anything the page offers a row for.
+		explorerTidy:
+			typeof raw.explorerTidy === 'boolean'
+				? raw.explorerTidy
+				: DEFAULT_SETTINGS.explorerTidy,
+		explorerCounts:
+			typeof raw.explorerCounts === 'boolean'
+				? raw.explorerCounts
+				: DEFAULT_SETTINGS.explorerCounts,
+		explorerOrders: sanitizeExplorerOrders(raw.explorerOrders),
 	};
 }
 
@@ -2049,6 +2132,92 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			{
+				type: 'group',
+				heading: this.t('settings.section.explorer'),
+				items: [
+					this.sectionDress('explorer'),
+					{
+						name: this.t('settings.explorerScope.name'),
+						desc: this.t('settings.explorerScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'explorerScope',
+							defaultValue: DEFAULT_SETTINGS.explorerScope,
+							options: {
+								projects: this.t('settings.explorerScope.projects'),
+								vault: this.t('settings.explorerScope.vault'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.explorerHidePrefix.name'),
+						desc: this.t('settings.explorerHidePrefix.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerHidePrefix',
+							defaultValue: DEFAULT_SETTINGS.explorerHidePrefix,
+						},
+					},
+					{
+						name: this.t('settings.explorerHideFiles.name'),
+						desc: this.t('settings.explorerHideFiles.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerHideFiles',
+							defaultValue: DEFAULT_SETTINGS.explorerHideFiles,
+						},
+					},
+					{
+						name: this.t('settings.explorerHiddenFiles.name'),
+						desc: this.lines('settings.explorerHiddenFiles.desc'),
+						// The list only means anything while files are being hidden.
+						visible: () => this.owner.settings.explorerHideFiles,
+						control: {
+							type: 'textarea',
+							key: 'explorerHiddenFiles',
+							defaultValue: DEFAULT_SETTINGS.explorerHiddenFiles,
+						},
+					},
+					{
+						name: this.t('settings.explorerHideFolders.name'),
+						desc: this.t('settings.explorerHideFolders.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerHideFolders',
+							defaultValue: DEFAULT_SETTINGS.explorerHideFolders,
+						},
+					},
+					{
+						name: this.t('settings.explorerHiddenFolders.name'),
+						desc: this.lines('settings.explorerHiddenFolders.desc'),
+						visible: () => this.owner.settings.explorerHideFolders,
+						control: {
+							type: 'textarea',
+							key: 'explorerHiddenFolders',
+							defaultValue: DEFAULT_SETTINGS.explorerHiddenFolders,
+						},
+					},
+					{
+						name: this.t('settings.explorerNoteCounts.name'),
+						desc: this.t('settings.explorerNoteCounts.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerNoteCounts',
+							defaultValue: DEFAULT_SETTINGS.explorerNoteCounts,
+						},
+					},
+					{
+						name: this.t('settings.explorerFolderCounts.name'),
+						desc: this.t('settings.explorerFolderCounts.desc'),
+						control: {
+							type: 'toggle',
+							key: 'explorerFolderCounts',
+							defaultValue: DEFAULT_SETTINGS.explorerFolderCounts,
+						},
+					},
+				],
+			},
 		];
 	}
 
@@ -3154,6 +3323,56 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 				if (isDateFormat(value)) {
 					this.owner.settings.sessionDateFormat = value;
 				}
+				break;
+			case 'explorerScope':
+				if (isExplorerScope(value)) this.owner.settings.explorerScope = value;
+				break;
+			case 'explorerHidePrefix':
+				if (typeof value === 'boolean') {
+					this.owner.settings.explorerHidePrefix = value;
+				}
+				break;
+			case 'explorerHideFiles':
+				if (typeof value === 'boolean') {
+					this.owner.settings.explorerHideFiles = value;
+					// The list's row stands only while files are being hidden.
+					this.update();
+				}
+				break;
+			case 'explorerHiddenFiles':
+				if (typeof value === 'string') {
+					this.owner.settings.explorerHiddenFiles = boundedText(value);
+				}
+				break;
+			case 'explorerHideFolders':
+				if (typeof value === 'boolean') {
+					this.owner.settings.explorerHideFolders = value;
+					this.update();
+				}
+				break;
+			case 'explorerHiddenFolders':
+				if (typeof value === 'string') {
+					this.owner.settings.explorerHiddenFolders = boundedText(value);
+				}
+				break;
+			case 'explorerNoteCounts':
+				if (typeof value === 'boolean') {
+					this.owner.settings.explorerNoteCounts = value;
+				}
+				break;
+			case 'explorerFolderCounts':
+				if (typeof value === 'boolean') {
+					this.owner.settings.explorerFolderCounts = value;
+				}
+				break;
+			case 'explorerTidy':
+				if (typeof value === 'boolean') this.owner.settings.explorerTidy = value;
+				break;
+			case 'explorerCounts':
+				if (typeof value === 'boolean') this.owner.settings.explorerCounts = value;
+				break;
+			case 'explorerOrders':
+				this.owner.settings.explorerOrders = sanitizeExplorerOrders(value);
 				break;
 			default:
 				// A key with no case above is saved and announced but never stored,

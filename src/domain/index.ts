@@ -9,6 +9,7 @@ export * from './countable-prose';
 export * from './custom-highlights';
 export * from './dialogue';
 export * from './entity-matcher';
+export * from './explorer-order';
 export * from './export-prose';
 export * from './fingerprint';
 export * from './foreshadowing';

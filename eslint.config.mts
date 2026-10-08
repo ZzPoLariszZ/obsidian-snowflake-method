@@ -80,8 +80,10 @@ export default defineConfig(
 						'Snowflake Export',
 						'Snowflake Method',
 					],
-					acronyms: ['CJK', 'H1', 'ID', 'POV', '6Z'],
+					acronyms: ['CJK', 'H1', 'ID', 'JSON', 'POV', '6Z'],
 					ignoreRegex: [
+						// The example names a folder as it is written on disk.
+						'50_Manuscript as Manuscript',
 						// Units rather than sentences: each is interpolated into a
 						// "{count} {unit}" line and must stay lowercase there.
 						'^words?$',

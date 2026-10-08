@@ -55,6 +55,22 @@ describe('styles.css', () => {
 	 * has never needed one, so a new one is a decision worth making on
 	 * purpose rather than in passing.
 	 */
+	/**
+	 * The explorer section dresses Obsidian's own rows, where a colour of
+	 * the plugin's own would clash with every theme: tokens alone, and
+	 * nothing the explorer's own rules say is overruled.
+	 */
+	it('dresses the file explorer in the theme’s own tokens', () => {
+		const explorer = section('File explorer');
+		expect(explorer).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/iu);
+		expect(explorer.includes('!important')).toBe(false);
+		expect(explorer.includes(':has(')).toBe(false);
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('margin-inline-start: auto');
+		expect(declarations('.nav-files-container .snowflake-method-explorer-count')).toContain('tabular-nums');
+		expect(declarations('.nav-files-container .tree-item[data-snowflake-method-drop]::after')).toContain('var(--interactive-accent)');
+		expect(declarations('.nav-files-container .tree-item[data-snowflake-method-drop]::after')).toContain('pointer-events: none');
+	});
+
 	it('leaves the theme its say', () => {
 		expect(styles.includes('!important')).toBe(false);
 	});

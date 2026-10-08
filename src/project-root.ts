@@ -61,6 +61,21 @@ export function touchesAnyProject(
 }
 
 /**
+ * The project folder holding `path`, or null when no root holds it. Roots
+ * never nest, so the first that contains the path is the only one. The
+ * Vault root is an empty path and is never a project, so it never answers.
+ */
+export function projectRootContaining(
+	path: string,
+	projectRoots: Iterable<string>,
+): string | null {
+	for (const rootPath of projectRoots) {
+		if (rootPath.length > 0 && isPathAtOrBelow(path, rootPath)) return rootPath;
+	}
+	return null;
+}
+
+/**
  * Where `subject` ends up when `oldPath` is renamed to `newPath`, or null when
  * the rename does not contain it. The Vault root is an empty path and can never
  * be renamed, so it never moves.

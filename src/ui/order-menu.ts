@@ -6,7 +6,7 @@
  * speak the list's own order, whichever way it is shown.
  */
 
-import type { App, Menu } from 'obsidian';
+import type { App, Menu, MenuItem } from 'obsidian';
 
 import {
 	MoveAfterModal,
@@ -24,6 +24,8 @@ export interface OrderMenuDeps {
 	mutate?(action: () => Promise<void>): Promise<void>;
 	/** Redraws alone, for a dialog that reports its own failures. */
 	refresh(): Promise<void>;
+	/** The menu section the items join, for a menu that keeps its items in sections. */
+	section?: string;
 }
 
 export interface OrderMenuConfig {
@@ -34,7 +36,8 @@ export interface OrderMenuConfig {
 	locked: boolean;
 	/** True when the project cannot take a new member at all. */
 	readOnly: boolean;
-	insertTitle: string;
+	/** The insert item at the foot, for a list a row can be added to; a list that only moves leaves both out. */
+	insertTitle?: string;
 	/** Where Move up takes the row, or null where there is nowhere to go. */
 	up: number | null;
 	down: number | null;
@@ -45,7 +48,7 @@ export interface OrderMenuConfig {
 	moveBeside?: (id: string, side: 'before' | 'after') => Promise<void>;
 	/** Scrolls to the row once the move has been drawn. */
 	reveal: () => void;
-	insert: () => void;
+	insert?: () => void;
 }
 
 /** The two neighbours of a place in a list shown in its own order. */
@@ -84,9 +87,11 @@ export function addOrderMenuItems(
 		const side = toIndex < index ? 'before' : 'after';
 		runMove(() => moveBeside(neighbour.id, side));
 	};
+	const sectioned = (item: MenuItem): MenuItem =>
+		deps.section === undefined ? item : item.setSection(deps.section);
 	menu.addSeparator();
 	menu.addItem((item) =>
-		item
+		sectioned(item)
 			.setTitle(deps.t('actions.moveUp'))
 			.setIcon('arrow-up')
 			.setDisabled(config.locked || config.up === null)
@@ -95,7 +100,7 @@ export function addOrderMenuItems(
 			}),
 	);
 	menu.addItem((item) =>
-		item
+		sectioned(item)
 			.setTitle(deps.t('actions.moveDown'))
 			.setIcon('arrow-down')
 			.setDisabled(config.locked || config.down === null)
@@ -104,7 +109,7 @@ export function addOrderMenuItems(
 			}),
 	);
 	menu.addItem((item) =>
-		item
+		sectioned(item)
 			.setTitle(deps.t('table.moveToPosition'))
 			.setIcon('hash')
 			.setDisabled(config.locked)
@@ -126,7 +131,7 @@ export function addOrderMenuItems(
 			}),
 	);
 	menu.addItem((item) =>
-		item
+		sectioned(item)
 			.setTitle(deps.t('table.moveAfter'))
 			.setIcon('corner-down-right')
 			.setDisabled(config.locked)
@@ -145,12 +150,14 @@ export function addOrderMenuItems(
 				}).open();
 			}),
 	);
+	const { insertTitle, insert } = config;
+	if (insertTitle === undefined || insert === undefined) return;
 	menu.addSeparator();
 	menu.addItem((item) =>
-		item
-			.setTitle(config.insertTitle)
+		sectioned(item)
+			.setTitle(insertTitle)
 			.setIcon('plus')
 			.setDisabled(config.readOnly)
-			.onClick(config.insert),
+			.onClick(insert),
 	);
 }

@@ -16918,3 +16918,87 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 		--snowflake-method-toolbar-start: 8rem;
 	}
 }
+
+/* == File explorer ======================================================== */
+
+/* The count at the end of a row: muted, small, and in figures of one width, so a column of them lines up. It never asks for room the title needs. */
+.nav-files-container .snowflake-method-explorer-count {
+	margin-inline-start: auto;
+	flex: 0 0 auto;
+	padding-inline-start: var(--size-4-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: inherit;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* A row being renamed gives its whole width to the box, and a row under arrange mode gives the count's place to the grip. */
+.tree-item-self.is-being-renamed .snowflake-method-explorer-count,
+.snowflake-method-explorer-counts-off .snowflake-method-explorer-count,
+.snowflake-method-explorer-arranging .snowflake-method-explorer-count {
+	display: none;
+}
+
+/* The three buttons show their state the way the explorer's own auto-reveal button does. */
+.nav-buttons-container .nav-action-button.snowflake-method-explorer-button.is-active {
+	color: var(--text-accent);
+}
+
+/* Arrange mode: the rows the mode reaches invite a drag, the rest step back while one is under way. */
+.snowflake-method-explorer-arranging .tree-item-self {
+	cursor: grab;
+}
+
+.snowflake-method-explorer-arranging .tree-item-self.snowflake-method-explorer-dragging {
+	cursor: grabbing;
+	background-color: var(--background-modifier-hover);
+}
+
+.snowflake-method-explorer-drag .tree-item-self:not(.snowflake-method-explorer-dragging) {
+	opacity: 0.6;
+}
+
+/* The grip is the drag's twin that needs no drag: a press opens the move menu. */
+.nav-files-container .snowflake-method-explorer-grip {
+	margin-inline-start: auto;
+	flex: 0 0 auto;
+	padding: 0 var(--size-2-1);
+	--icon-size: var(--icon-s);
+	--icon-stroke: var(--icon-s-stroke-width);
+	color: var(--text-muted);
+}
+
+.nav-files-container .snowflake-method-explorer-grip:hover {
+	color: var(--text-normal);
+}
+
+/* The line where the entry would land, drawn on the row's whole box so a landing after a folder falls below everything the folder holds. */
+.nav-files-container .tree-item[data-snowflake-method-drop] {
+	position: relative;
+}
+
+.nav-files-container .tree-item[data-snowflake-method-drop]::after {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	height: 2px;
+	background-color: var(--interactive-accent);
+	pointer-events: none;
+}
+
+.nav-files-container .tree-item[data-snowflake-method-drop='before']::after {
+	top: -1px;
+}
+
+.nav-files-container .tree-item[data-snowflake-method-drop='after']::after {
+	bottom: -1px;
+}
+
+/* On a touch screen no drag ever fires, so the grip is the way, and it stays in sight. */
+@media (pointer: coarse) {
+	.nav-files-container .snowflake-method-explorer-grip {
+		padding: 0 var(--size-4-1);
+		color: var(--text-normal);
+	}
+}

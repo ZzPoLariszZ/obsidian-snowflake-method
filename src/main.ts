@@ -215,13 +215,16 @@ import {
 	type LiveWritingSession,
 	type StartWritingSessionOptions,
 	type WritingSessionEvent,
+	projectArchiveRoot,
 } from './services';
 import {
 	isPathAtOrBelow,
 	movedWithRename,
 	normalizeProjectRoot,
+	projectRootContaining,
 	touchesAnyProject,
 } from './project-root';
+import { EXPLORER_MENU_SECTION, ExplorerEnhancer } from './ui/file-explorer';
 import {
 	DEFAULT_SETTINGS,
 	SnowflakeSettingTab,
@@ -655,6 +658,10 @@ export default class SnowflakeMethodPlugin
 	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
 	/** Root folders of the projects discovered under the configured root. */
 	private readonly knownProjectRoots = new Set<string>();
+	/** The folders the explorer tools reach: the known roots, and the archived projects beside them. */
+	private readonly explorerRoots = new Set<string>();
+	/** The plugin's hand in the file explorer, made once the layout is ready. */
+	private explorer: ExplorerEnhancer | null = null;
 	/**
 	 * The discovered projects by root folder, for resolving which project a
 	 * path belongs to without a read: the untimed tracking asks on every edit
@@ -1084,6 +1091,7 @@ export default class SnowflakeMethodPlugin
 			this.app.workspace.detachLeavesOfType('snowflake-method-mentions');
 			this.resolveProjectScanReady();
 			this.registerVaultListeners();
+			this.startExplorer();
 			this.registerEvent(
 				this.app.workspace.on('active-leaf-change', (leaf) => {
 					this.applyManuscriptModePresence();
@@ -1210,6 +1218,7 @@ export default class SnowflakeMethodPlugin
 		// author turning focus mode on here, so it starts no session.
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		await this.syncCurrentProjectLocale();
+		this.explorer?.settingsChanged('explorerOrders');
 		await this.refreshDashboards();
 	}
 
@@ -1420,6 +1429,16 @@ export default class SnowflakeMethodPlugin
 				this.externalDrafts.delete(rootPath);
 			}
 		}
+		// The explorer tools reach the archived projects too, which the scan
+		// leaves out on purpose: found by their marker, with no read.
+		this.explorerRoots.clear();
+		for (const rootPath of this.knownProjectRoots) this.explorerRoots.add(rootPath);
+		for (const folder of this.projects.repository.listDirectFolders(
+			projectArchiveRoot(this.settings.projectRoot),
+		)) {
+			if (this.holdsProjectMetadata(folder.path)) this.explorerRoots.add(folder.path);
+		}
+		this.explorer?.projectsChanged();
 		return projects;
 	}
 
@@ -3008,6 +3027,13 @@ export default class SnowflakeMethodPlugin
 			this.settingTab?.refreshPresentationRows();
 			return;
 		}
+		// The explorer tools read their own keys straight from the settings:
+		// a repaint of the open explorers is the whole change, and no count
+		// and no dashboard needs to hear of it.
+		if (key.startsWith('explorer')) {
+			this.explorer?.settingsChanged(key);
+			return;
+		}
 		// Which mentions the streams mark is likewise a dress on text they
 		// already hold: re-dressing the open streams is the whole change.
 		if (key === 'manuscriptMentionHighlight') {
@@ -3082,6 +3108,10 @@ export default class SnowflakeMethodPlugin
 		// Every session widget is showing a session setting somewhere, and the
 		// page they are set from is not one they can see change.
 		if (key.startsWith('session')) this.sessionSettingsChanged();
+		// The explorer's numbers follow the counting rule too.
+		if (key === 'writingCountMode' || key === 'writingCountHeadings') {
+			this.explorer?.settingsChanged(key);
+		}
 		this.scheduleWritingCountRefresh(0);
 		await this.refreshDashboards();
 	}
@@ -8531,6 +8561,29 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.addCommand({
+			id: 'toggle-explorer-tidy',
+			name: this.globalT('commands.toggleExplorerTidy'),
+			callback: () => {
+				void this.toggleExplorerTidy().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-explorer-arrange',
+			name: this.globalT('commands.toggleExplorerArrange'),
+			callback: () => this.toggleExplorerArrange(),
+		});
+		this.addCommand({
+			id: 'toggle-explorer-counts',
+			name: this.globalT('commands.toggleExplorerCounts'),
+			callback: () => {
+				void this.toggleExplorerCounts().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
 			id: 'toggle-untimed-word-tracking',
 			name: this.globalT('commands.toggleUntimedTracking'),
 			callback: () => {
@@ -8988,8 +9041,29 @@ export default class SnowflakeMethodPlugin
 				// Not our own menu: the stream adds these before it asks Obsidian
 				// for the rest, and would otherwise be answered by itself.
 				if (source === MANUSCRIPT_VIEW_TYPE) return;
-				if (!(file instanceof TFile) || !this.touchesProject(file.path)) return;
-				this.addProjectMenuSection(menu, file.path);
+				// While arrange mode is on, the explorer's menu carries the move
+				// items in the plugin's section, ahead of the standing entries.
+				const arrange =
+					source === 'file-explorer-context-menu'
+						? (this.explorer?.arrangeMenu(file) ?? null)
+						: null;
+				if (file instanceof TFile && this.touchesProject(file.path)) {
+					this.addProjectMenuSection(
+						menu,
+						file.path,
+						undefined,
+						arrange === null ? undefined : (lead) => arrange(lead, EXPLORER_MENU_SECTION),
+					);
+					return;
+				}
+				if (arrange === null) return;
+				menu.addItem((item) =>
+					item
+						.setSection(EXPLORER_MENU_SECTION)
+						.setIsLabel(true)
+						.setTitle(this.translateForProject(this.projectLocaleOfPath(file.path), 'plugin.name')),
+				);
+				arrange(menu, EXPLORER_MENU_SECTION);
 			}),
 		);
 	}
@@ -9039,6 +9113,97 @@ export default class SnowflakeMethodPlugin
 						this.showError(error);
 					});
 				}),
+		);
+	}
+
+	/**
+	 * The plugin's hand in the file explorer, started once the layout is
+	 * ready so the explorer's rows exist to be dressed. Everything it needs
+	 * of the plugin is handed over as closures, so the private members stay
+	 * private; its own cleanup rides the plugin's.
+	 */
+	private startExplorer(): void {
+		if (this.explorer !== null) return;
+		const explorer = new ExplorerEnhancer({
+			app: this.app,
+			plugin: this,
+			t: this.globalT,
+			settings: () => this.settings,
+			saveOrders: (next) => {
+				this.settings.explorerOrders = next;
+				this.saveSettingsSoon();
+			},
+			saveToggle: (key, value) => {
+				this.settings[key] = value;
+				this.saveSettingsSoon();
+			},
+			projectRootOf: (path) => projectRootContaining(path, this.explorerRoots),
+			countNote: async (path) => {
+				const count = await this.projects.writingCount.countNote(
+					path,
+					this.writingCountOptions(),
+				);
+				return count === null ? null : count.total;
+			},
+			noteCounted: (path) => {
+				// A note outside every project was read for its number alone;
+				// its text is let go, so a whole-vault count keeps no library.
+				if (projectRootContaining(path, this.explorerRoots) === null) {
+					this.projects.repository.forget(path);
+				}
+			},
+			breathe: () =>
+				new Promise((resolve) => {
+					this.app.workspace.containerEl.win.setTimeout(resolve, 0);
+				}),
+			locale: () =>
+				resolveGlobalLocale(this.settings.uiLocale, moment.locale()) === 'zh-CN'
+					? 'zh-CN'
+					: 'en-US',
+			notice: (text) => {
+				new Notice(text);
+			},
+		});
+		this.explorer = explorer;
+		this.register(() => {
+			explorer.dispose();
+			this.explorer = null;
+		});
+		explorer.start();
+	}
+
+	private async toggleExplorerTidy(): Promise<void> {
+		this.settings.explorerTidy = !this.settings.explorerTidy;
+		await this.saveSettings();
+		await this.handleSettingsChanged('explorerTidy');
+		new Notice(
+			this.projectT(
+				this.settings.explorerTidy
+					? 'commands.explorerTidyEnabled'
+					: 'commands.explorerTidyDisabled',
+			),
+		);
+	}
+
+	private toggleExplorerArrange(): void {
+		const explorer = this.explorer;
+		if (explorer === null) return;
+		const on = explorer.toggleArrange(undefined, { hint: false });
+		new Notice(
+			this.projectT(on ? 'commands.explorerArrangeEnabled' : 'commands.explorerArrangeDisabled'),
+		);
+	}
+
+	private async toggleExplorerCounts(): Promise<void> {
+		this.settings.explorerCounts = !this.settings.explorerCounts;
+		await this.saveSettings();
+		await this.handleSettingsChanged('explorerCounts');
+		new Notice(
+			this.projectT(
+				this.settings.explorerCounts
+					? 'commands.explorerCountsEnabled'
+					: 'commands.explorerCountsDisabled',
+			),
 		);
 	}
 
