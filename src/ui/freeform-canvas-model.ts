@@ -7,6 +7,7 @@
  * rule that could be wrong.
  */
 
+import { freeformAutoSides } from '../domain';
 import {
 	CANVAS_FRAME_KIND,
 	CANVAS_SIDES,
@@ -65,15 +66,11 @@ export function handleBoxes(width: number, height: number): CanvasHandleBox[] {
 
 /**
  * The sides a line leaves and lands by where the view left the choice open:
- * across when the two stand further apart across than down, else down.
+ * across when the two stand further apart across than down, else down. The
+ * rule is the domain's, so a view exported as a canvas shows the same sides.
  */
 export function autoSides(from: CanvasBox, to: CanvasBox): { fromSide: CanvasSide; toSide: CanvasSide } {
-	const dx = to.x + to.width / 2 - (from.x + from.width / 2);
-	const dy = to.y + to.height / 2 - (from.y + from.height / 2);
-	if (Math.abs(dx) >= Math.abs(dy)) {
-		return dx >= 0 ? { fromSide: 'right', toSide: 'left' } : { fromSide: 'left', toSide: 'right' };
-	}
-	return dy >= 0 ? { fromSide: 'bottom', toSide: 'top' } : { fromSide: 'top', toSide: 'bottom' };
+	return freeformAutoSides(from, to);
 }
 
 /** The middle of one side of a box, where a line that leaves or lands by that side ends. */

@@ -3,6 +3,7 @@ export * from './analyzable-prose';
 export * from './beat-sheet';
 export * from './beat-sheet-templates';
 export * from './calendar';
+export * from './canvas-export';
 export * from './chapter-numbering';
 export * from './countable-prose';
 export * from './custom-highlights';

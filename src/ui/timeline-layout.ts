@@ -8,6 +8,7 @@
 import {
 	resolvedTimeOrder,
 	scenePlacements,
+	shownTimelines,
 	type ScenePresentation,
 	type Timeline,
 	type TimelineDocument,
@@ -22,20 +23,14 @@ export type TimelineLayoutKind = 'single' | 'multi';
 /**
  * The timelines a view shows, in the order it shows them: the pinned one
  * first when the view holds it, then the view's own order. An id the
- * document no longer answers to is left out.
+ * document no longer answers to is left out. The rule is the domain's, so a
+ * view exported as a canvas stands its lanes as the workspace does.
  */
 export function laneOrder(
 	view: Pick<TimelineView, 'timelines'>,
 	held: Pick<TimelineDocument, 'timelines' | 'pinnedTimelineId'>,
 ): Timeline[] {
-	const lanes: Timeline[] = [];
-	for (const id of view.timelines) {
-		const timeline = held.timelines.find((candidate) => candidate.id === id);
-		if (timeline !== undefined) lanes.push(timeline);
-	}
-	const pinned = lanes.find((lane) => lane.id === held.pinnedTimelineId);
-	if (pinned === undefined) return lanes;
-	return [pinned, ...lanes.filter((lane) => lane !== pinned)];
+	return shownTimelines(view, held);
 }
 
 export function layoutKind(lanes: readonly unknown[]): TimelineLayoutKind {

@@ -155,6 +155,7 @@ import {
   type ManuscriptSegmentRecord,
   type SegmentRenameOutcome,
 } from "./manuscript-service";
+import { CanvasExportService } from "./canvas-export";
 import { ManuscriptExportService } from "./manuscript-export";
 import {
   isMemberDocumentType,
@@ -416,6 +417,8 @@ export class SnowflakeProjectService {
   readonly stickyNotes: StickyNoteService;
   /** The manuscript as plain text files, for the export buttons and the copy. */
   readonly exporter: ManuscriptExportService;
+  /** A workspace view as an Obsidian canvas, written beside the workspace's own file. */
+  readonly canvasExporter: CanvasExportService;
   /**
    * Definition node folders this service is raising right now. Making a
    * folder is what tells the vault watcher a node exists, so without this
@@ -556,6 +559,18 @@ export class SnowflakeProjectService {
       mintId: () => createStableId("sticky-note"),
     });
     this.exporter = new ManuscriptExportService(this.repository, this.manuscript);
+    this.canvasExporter = new CanvasExportService(this.repository, {
+      freeform: this.freeform,
+      timeline: this.timeline,
+      beatSheet: this.beatSheet,
+      stickyNotes: this.stickyNotes,
+      tasks: this.tasks,
+      foreshadowing: this.foreshadowing,
+      revisions: this.revisions,
+      assertWritable: (project) => {
+        this.assertProjectWritable(project);
+      },
+    });
   }
 
   async discoverProjects(rootPath = this.defaultRoot): Promise<ProjectRef[]> {

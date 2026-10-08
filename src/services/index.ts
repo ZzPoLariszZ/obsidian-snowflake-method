@@ -1,5 +1,6 @@
 export * from "./beat-sheet-service";
 export * from "./beat-sheet-store";
+export * from "./canvas-export";
 export * from "./definition-files";
 export * from "./foreshadowing-service";
 export * from "./foreshadowing-store";

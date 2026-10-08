@@ -495,28 +495,7 @@ export function laidOutAlike(painted: FreeformDocument, held: FreeformDocument, 
 
 // -- What a text node is called -------------------------------------------------------
 
-/**
- * The first of a text node's words as plain words, for what the node is
- * called: the marks that make a heading, a list, a quotation or an emphasis
- * of them are how they are drawn, and no part of what they say. A link is
- * called by what it shows. Empty where the node holds no word.
- */
-export function plainFirstLine(text: string, length: number): string {
-	for (const line of text.split('\n')) {
-		const plain = line
-			// A heading's marks, a quotation's, a list's and a task's box, at the line's start.
-			.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)+/u, '')
-			// A link shows its words, or what it leads to where it has none.
-			.replace(/!?\[\[([^\]|]*)\|([^\]]*)\]\]/gu, '$2')
-			.replace(/!?\[\[([^\]]*)\]\]/gu, '$1')
-			.replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
-			// What marks an emphasis, a strike, a highlight or a run of code.
-			.replace(/(\*\*|__|~~|==|\*|_|`)/gu, '')
-			.trim();
-		if (plain.length > 0) return plain.slice(0, length);
-	}
-	return '';
-}
+export { plainFirstLine } from '../domain';
 
 // -- What a view holds, counted ------------------------------------------------------
 
