@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { RANK_GAP, type ManuscriptSegment } from '../../src/domain';
 import {
 	activeSegmentAt,
+	isReadingPlace,
 	planWindow,
+	readingPlaceAt,
 } from '../../src/ui/manuscript-window';
 
 const segments: ManuscriptSegment[] = Array.from({ length: 11 }, (_, index) => ({
@@ -166,5 +168,46 @@ describe('activeSegmentAt', () => {
 
 	it('has no answer for an empty manuscript', () => {
 		expect(activeSegmentAt([], 0, 600)).toBeNull();
+	});
+});
+
+describe('readingPlaceAt', () => {
+	const boxes = [
+		{ path: at(1), top: -900, bottom: -100 },
+		{ path: at(2), top: -100, bottom: 700 },
+		{ path: at(3), top: 700, bottom: 1500 },
+	];
+
+	it('names the note the top edge stands in, and how far into it', () => {
+		expect(readingPlaceAt(boxes, 0)).toEqual({ path: at(2), offset: 100 });
+		expect(readingPlaceAt(boxes, 720)).toEqual({ path: at(3), offset: 20 });
+	});
+
+	it('names the note below the edge when the edge is in the gap above it', () => {
+		expect(readingPlaceAt([{ path: at(1), top: 40, bottom: 800 }], 0)).toEqual({
+			path: at(1),
+			offset: -40,
+		});
+	});
+
+	it('reads the notes in page order whatever order they are given in', () => {
+		expect(readingPlaceAt([...boxes].reverse(), 0)?.path).toBe(at(2));
+	});
+
+	it('has no place on a page scrolled past every note, or with none', () => {
+		expect(readingPlaceAt(boxes, 1500)).toBeNull();
+		expect(readingPlaceAt([], 0)).toBeNull();
+	});
+});
+
+describe('isReadingPlace', () => {
+	it('takes a note and a finite distance, and nothing else', () => {
+		expect(isReadingPlace({ path: at(2), offset: 100 })).toBe(true);
+		expect(isReadingPlace({ path: at(2), offset: -40.5 })).toBe(true);
+		expect(isReadingPlace({ path: at(2) })).toBe(false);
+		expect(isReadingPlace({ path: 3, offset: 1 })).toBe(false);
+		expect(isReadingPlace({ path: at(2), offset: Number.NaN })).toBe(false);
+		expect(isReadingPlace(null)).toBe(false);
+		expect(isReadingPlace('Chapter 2')).toBe(false);
 	});
 });

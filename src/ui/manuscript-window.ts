@@ -93,3 +93,48 @@ export function activeSegmentAt(
 	}
 	return active;
 }
+
+/**
+ * Where a reader is on the page: the note straddling the top edge of the
+ * stream and how far the edge stands into it, in pixels.
+ *
+ * Kept as a note and a distance rather than as the scroll offset, because the
+ * offset means nothing once the page has been rebuilt around a different set
+ * of notes -- and because the browser forgets it. A leaf dragged into another
+ * tab group, split off into a new pane or sent to its own window is taken out
+ * of the document and put back, and comes back scrolled to the top with no
+ * scroll event to say so. The place survives that where the offset cannot,
+ * and it is what one stream hands another when Obsidian builds a second leaf
+ * from the first.
+ */
+export interface ReadingPlace {
+	path: string;
+	/** Pixels from the note's top down to the stream's top edge; negative above it. */
+	offset: number;
+}
+
+/**
+ * The place a page stands at, from where its notes are: the first note whose
+ * bottom is below the edge is the one the edge stands in, or the one just
+ * below it when the edge is in the gap above the first note.
+ */
+export function readingPlaceAt(
+	boxes: readonly { path: string; top: number; bottom: number }[],
+	edge: number,
+): ReadingPlace | null {
+	const held = [...boxes]
+		.filter((box) => box.bottom > edge)
+		.sort((left, right) => left.top - right.top)[0];
+	return held === undefined ? null : { path: held.path, offset: edge - held.top };
+}
+
+/** A place as it comes back from a saved state, which may say anything. */
+export function isReadingPlace(value: unknown): value is ReadingPlace {
+	if (typeof value !== 'object' || value === null) return false;
+	const candidate = value as Record<string, unknown>;
+	return (
+		typeof candidate.path === 'string' &&
+		typeof candidate.offset === 'number' &&
+		Number.isFinite(candidate.offset)
+	);
+}

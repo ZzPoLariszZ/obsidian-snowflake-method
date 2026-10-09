@@ -64,7 +64,13 @@ import {
 	type WritingCountHeadings,
 	type WritingCountMode,
 } from '../domain';
-import { activeSegmentAt, planWindow } from './manuscript-window';
+import {
+	activeSegmentAt,
+	isReadingPlace,
+	planWindow,
+	readingPlaceAt,
+	type ReadingPlace,
+} from './manuscript-window';
 import { clickedWords, type ClickedWords } from './clicked-words';
 import {
 	applyDialogueMarks,
@@ -385,6 +391,12 @@ export class SnowflakeManuscriptView extends ItemView {
 	private revisionDraft: RevisionDraft | null = null;
 	/** The room settleTail last put below the last note, in pixels. */
 	private tail = 0;
+	/** Where the reader is: the note under the top edge and the distance into it. */
+	private place: ReadingPlace | null = null;
+	/** A place handed in from outside and not yet stood at. */
+	private placeOwed = false;
+	/** The scroll offset as it was last seen, moved by the reader or by this view. */
+	private lastScrollTop = 0;
 	/** The dress the page wears, so a refresh can tell a change from a repeat. */
 	private presentationShape = '';
 	/** The change of dress being held still, if one is; a newer one takes over. */
@@ -496,6 +508,33 @@ export class SnowflakeManuscriptView extends ItemView {
 		return { projectPath: this.projectPath, anchorPath: this.anchorPath };
 	}
 
+	/**
+	 * Where the reader is, for the leaf Obsidian builds from this one: a
+	 * split of the tab, a tab brought back from history, the view rebuilt
+	 * after a reload. The project and the anchor travel in the view state;
+	 * the place is ephemeral, as Obsidian's own scroll positions are, and
+	 * without it every one of those leaves opened at the top of the book.
+	 */
+	getEphemeralState(): Record<string, unknown> {
+		const place =
+			(this.streamEl?.isShown() === true ? this.measurePlace() : null) ??
+			this.place;
+		return place === null
+			? {}
+			: { scroll: { path: place.path, offset: place.offset } };
+	}
+
+	setEphemeralState(state: unknown): void {
+		const scroll =
+			typeof state === 'object' && state !== null
+				? (state as { scroll?: unknown }).scroll
+				: undefined;
+		if (!isReadingPlace(scroll)) return;
+		this.place = { path: scroll.path, offset: scroll.offset };
+		this.placeOwed = true;
+		this.recoverPlace();
+	}
+
 	/** The loaded owner, for command routing when its workspace tab becomes active. */
 	workspaceProjectContext(): { path: string; locale: ManuscriptModel['locale'] } | null {
 		const model = this.model;
@@ -551,6 +590,18 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on('css-change', () => {
 				this.closePresentationPanel();
+			}),
+		);
+		// The two moments at which the browser may have forgotten where the
+		// page stood: see `recoverPlace`.
+		this.registerEvent(
+			this.app.workspace.on('layout-change', () => {
+				this.recoverPlace();
+			}),
+		);
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', (leaf) => {
+				if (leaf === this.leaf) this.recoverPlace();
 			}),
 		);
 		// A leaf Obsidian restores gets its state after onOpen. Rendering before
@@ -941,6 +992,9 @@ export class SnowflakeManuscriptView extends ItemView {
 		this.toolbarButtons = [];
 		this.streamEl = null;
 		this.tail = 0;
+		this.lastScrollTop = 0;
+		// A place owed from outside outlives the page it was handed to.
+		if (!this.placeOwed) this.place = null;
 		const model = this.model;
 		this.renderedProject = model?.projectPath ?? null;
 		if (model === null || model.segments.length === 0) {
@@ -960,6 +1014,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		}
 		await this.applyWindow();
 		this.scrollToActive();
+		if (this.placeOwed) this.recoverPlace();
 	}
 
 	/**
@@ -1214,6 +1269,10 @@ export class SnowflakeManuscriptView extends ItemView {
 		try {
 			return await work();
 		} finally {
+			// Where the work left the page, taken down at once: the scroll event
+			// that says the same comes a frame later, and a check made in
+			// between would read the view's own move as one the browser lost.
+			this.noteScroll();
 			// Released only once the browser has delivered the scroll events the
 			// work caused, which it does after the current task rather than during.
 			this.contentEl.win.setTimeout(() => {
@@ -4672,10 +4731,12 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	private readonly onScroll = (): void => {
 		const stream = this.streamEl;
+		if (stream === null) return;
+		this.noteScroll();
 		// Only the reader moves the reading position. A page shrinking under the
 		// scroll as notes are let go of moves it too, and answering that is how
 		// the view ends up chasing itself.
-		if (stream === null || this.settling > 0) return;
+		if (this.settling > 0) return;
 		// Scrolling brings unmeasured editor prose toward the light: ask the
 		// active editor to measure again and the rail to re-align once the
 		// numbers land. Debounced behind the shared timer, cheap to repeat.
@@ -4795,6 +4856,93 @@ export class SnowflakeManuscriptView extends ItemView {
 				entry.el.getBoundingClientRect().top -
 				stream.getBoundingClientRect().top;
 		});
+	}
+
+	/**
+	 * Takes note of where the page stands, by whichever hand moved it: every
+	 * scroll event, and the end of every scroll of the view's own. A place
+	 * owed from outside is kept until it has been stood at.
+	 */
+	private noteScroll(): void {
+		const stream = this.streamEl;
+		if (stream === null || !stream.isShown()) return;
+		this.lastScrollTop = stream.scrollTop;
+		if (!this.placeOwed) this.place = this.measurePlace() ?? this.place;
+	}
+
+	private measurePlace(): ReadingPlace | null {
+		const stream = this.streamEl;
+		if (stream === null) return null;
+		const edge = stream.getBoundingClientRect().top;
+		return readingPlaceAt(
+			[...this.mounted.values()].map((entry) => {
+				const box = entry.el.getBoundingClientRect();
+				return { path: entry.path, top: box.top, bottom: box.bottom };
+			}),
+			edge,
+		);
+	}
+
+	/**
+	 * Puts the reader back where they were, when the browser has lost it.
+	 *
+	 * A leaf dragged into another tab group, split off into a new pane or
+	 * sent to its own window is taken out of the document and put back, and
+	 * its scroll offset comes back as zero -- silently, with no scroll event,
+	 * measured on all three. Obsidian announces each as a layout change once
+	 * the leaf is laid out again, and a tab shown later announces itself as
+	 * the active leaf, so both ask this. A tab merely hidden and shown again
+	 * keeps its offset and is found standing where it was. The page's own
+	 * movement is never taken for a loss: the offset is noted at the end of
+	 * every move the view makes, and nothing is judged while one is under way.
+	 */
+	private recoverPlace(): void {
+		const stream = this.streamEl;
+		if (stream === null || this.place === null || !stream.isShown()) return;
+		if (!this.placeOwed && Math.abs(stream.scrollTop - this.lastScrollTop) < 1) {
+			return;
+		}
+		if (this.settling > 0) {
+			// Mid-move the offset is meant to differ. Asked again once the move
+			// is over and the offset has been noted.
+			this.contentEl.win.setTimeout(() => {
+				this.recoverPlace();
+			}, 50);
+			return;
+		}
+		this.placeOwed = false;
+		void this.restorePlace(this.place).catch((error: unknown) => {
+			this.showError(error);
+		});
+	}
+
+	/**
+	 * Brings the page back to a place: the note mounted with its neighbours
+	 * if the window has moved off it, then the page scrolled until the edge
+	 * stands in the note where it stood. Through `scrollBy`, so a page that
+	 * cannot reach that far grows the room it needs.
+	 */
+	private async restorePlace(place: ReadingPlace): Promise<void> {
+		const model = this.model;
+		if (
+			model === null ||
+			!model.segments.some((segment) => segment.path === place.path)
+		) {
+			return;
+		}
+		if (!this.mounted.has(place.path)) {
+			this.activePath = place.path;
+			await this.applyWindow();
+		}
+		const stream = this.streamEl;
+		const entry = this.mounted.get(place.path);
+		if (stream === null || entry === undefined || !stream.isShown()) return;
+		const delta =
+			entry.el.getBoundingClientRect().top -
+			stream.getBoundingClientRect().top +
+			place.offset;
+		if (Math.abs(delta) >= 1) this.scrollBy(delta);
+		else this.noteScroll();
 	}
 
 	private scheduleSave(): void {
