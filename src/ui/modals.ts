@@ -50,6 +50,7 @@ import {
 } from '../domain';
 import type { MemberUsage } from '../services';
 import { FieldSuggest } from './field-suggest';
+import { submitOnModEnter } from './modal-keys';
 import { addColorChip } from './presentation-controls';
 import {
 	duplicateFieldTitle,
@@ -613,6 +614,9 @@ export abstract class SnowflakeFormModal<T> extends Modal {
 		// What every form the plugin opens has in common, for the few things
 		// that should be true of all of them at once.
 		this.modalEl.addClass('snowflake-method-form-modal');
+		submitOnModEnter(this, () => {
+			void this.submit();
+		});
 	}
 
 	protected abstract buildForm(): void;
@@ -2104,7 +2108,7 @@ class NewDefinitionModal extends Modal {
 			cls: 'mod-cta',
 			text: this.t('common.create'),
 		});
-		create.addEventListener('click', () => {
+		const submit = (): void => {
 			// An empty name is nothing to create, so the form stays open on it.
 			if ((this.pathEl?.value ?? '').trim().length === 0) {
 				this.pathEl?.focus();
@@ -2112,7 +2116,9 @@ class NewDefinitionModal extends Modal {
 			}
 			this.decided = true;
 			this.close();
-		});
+		};
+		create.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {
@@ -2275,7 +2281,7 @@ class EditDefinitionModal extends Modal {
 			cls: 'mod-cta',
 			text: this.t('common.save'),
 		});
-		save.addEventListener('click', () => {
+		const submit = (): void => {
 			// An empty name is nothing to rename to, so the form stays open on it.
 			if ((this.nameEl?.value ?? '').trim().length === 0) {
 				this.nameEl?.focus();
@@ -2283,7 +2289,9 @@ class EditDefinitionModal extends Modal {
 			}
 			this.decided = true;
 			this.close();
-		});
+		};
+		save.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {
@@ -4329,6 +4337,7 @@ class KindFormModal extends Modal {
 			attr: { type: 'button' },
 		});
 		confirm.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {
@@ -4511,6 +4520,7 @@ class CustomFieldTemplateModal extends Modal {
 			attr: { type: 'button' },
 		});
 		confirm.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {
@@ -5319,6 +5329,7 @@ class HighlightRuleModal extends Modal {
 			attr: { type: 'button' },
 		});
 		confirm.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {
@@ -5567,6 +5578,7 @@ class ChapterNumberRuleModal extends Modal {
 			attr: { type: 'button' },
 		});
 		confirm.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {

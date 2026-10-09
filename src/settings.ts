@@ -105,6 +105,7 @@ import {
 } from './project-root';
 import { isExplorerScope, type ExplorerScope } from './services';
 import { wireCardDrag } from './ui/entity-form';
+import { submitOnModEnter } from './ui/modal-keys';
 import {
 	addFontFamilyPicker,
 	addStopSlider,
@@ -1182,7 +1183,12 @@ class HighlightOptionsModal extends Modal {
 			text: t('common.save'),
 			attr: { type: 'button' },
 		});
-		save.addEventListener('click', () => {
+		// One write at a time: a second press while the first is still
+		// writing would land the same four values twice.
+		let saving = false;
+		const submit = (): void => {
+			if (saving) return;
+			saving = true;
 			void this.options
 				.save(draft)
 				.then(() => {
@@ -1192,8 +1198,13 @@ class HighlightOptionsModal extends Modal {
 					// The dialog stays for another try, and says why it is
 					// still here rather than swallowing the refusal.
 					new Notice(t('settings.mentionHighlight.saveFailed'));
+				})
+				.finally(() => {
+					saving = false;
 				});
-		});
+		};
+		save.addEventListener('click', submit);
+		submitOnModEnter(this, submit);
 	}
 
 	onClose(): void {

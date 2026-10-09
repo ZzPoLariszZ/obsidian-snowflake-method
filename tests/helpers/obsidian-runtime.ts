@@ -58,8 +58,38 @@ export function setTooltip(..._arguments: unknown[]): void {}
 export class Notice {
 	constructor(..._arguments: unknown[]) {}
 }
-/** Enough of a Modal for classes to extend; tests never open one. */
+/** One handler as a scope hands it back: enough to fire it, and to take it off again. */
+export interface KeymapEventHandler {
+	modifiers: readonly string[] | null;
+	key: string | null;
+	func: (event: KeyboardEvent, context: unknown) => boolean | void;
+}
+
+/**
+ * The keymap scope a dialog registers its chords on, as far as the code
+ * under test reaches it: the handlers are kept in the order they came, and
+ * a test fires one by its key.
+ */
+export class Scope {
+	readonly keys: KeymapEventHandler[] = [];
+	constructor(..._arguments: unknown[]) {}
+	register(
+		modifiers: readonly string[] | null,
+		key: string | null,
+		func: KeymapEventHandler['func'],
+	): KeymapEventHandler {
+		const handler: KeymapEventHandler = { modifiers, key, func };
+		this.keys.push(handler);
+		return handler;
+	}
+	unregister(handler: KeymapEventHandler): void {
+		const at = this.keys.indexOf(handler);
+		if (at >= 0) this.keys.splice(at, 1);
+	}
+}
+/** Enough of a Modal for classes to extend, with the scope a dialog's chords ride on. */
 export class Modal {
+	readonly scope = new Scope();
 	constructor(..._arguments: unknown[]) {}
 	open(): void {}
 	close(): void {}
