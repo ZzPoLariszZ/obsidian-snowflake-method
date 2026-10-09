@@ -65,6 +65,185 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The page's alignment reaches the multi-line fields only under the body
+	 * class the plugin puts there, and only as far as the plugin's own
+	 * dashboard and dialogs: a textarea of the app's or another plugin's is
+	 * never justified by this file.
+	 */
+	it('justifies the dashboard’s and the dialogs’ fields under the body class alone', () => {
+		const fields = section('Field alignment');
+		expect(fields.includes('!important')).toBe(false);
+		expect(fields.includes(':has(')).toBe(false);
+		for (const selector of [
+			'body.snowflake-method-justify-fields .snowflake-method-dashboard textarea',
+			'body.snowflake-method-justify-fields .snowflake-method-form-modal textarea',
+			'body.snowflake-method-justify-fields .snowflake-method-compact-form-modal textarea',
+			'body.snowflake-method-justify-fields textarea.snowflake-method-corkboard-recovered-text',
+		]) {
+			expect(declarations(selector)).toContain('text-align: justify');
+		}
+		// Every textarea rule in the section stands under the body class.
+		const selectors = fields
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.map((entry) => entry.split('{')[0] ?? '')
+			.flatMap((list) => list.split(','))
+			.map((one) => one.trim())
+			.filter((one) => one.includes('textarea'));
+		expect(selectors.length).toBeGreaterThan(0);
+		for (const selector of selectors) {
+			expect(selector.startsWith('body.snowflake-method-justify-fields ')).toBe(true);
+		}
+	});
+
+	/**
+	 * A note of Obsidian's own wears the stream's dress from the same
+	 * variables, under the one marker class the plugin puts on the leaf, with
+	 * the theme's own values as fallback -- so a value left at the theme's
+	 * renders exactly as the theme would, as the stream's rules promise.
+	 */
+	it('dresses a note of Obsidian’s own from the stream’s variables under the marker class', () => {
+		const notes = section('Note typography');
+		expect(notes.includes('!important')).toBe(false);
+		expect(notes.includes(':has(')).toBe(false);
+		expect(notes).not.toMatch(/text-indent/u);
+		const typed = declarations(
+			'.snowflake-method-note-dressed .markdown-source-view.mod-cm6 .cm-scroller',
+		);
+		expect(typed).toContain('font-family: var(--snowflake-method-manuscript-font, var(--font-text))');
+		expect(typed).toContain('--snowflake-method-manuscript-line-height');
+		expect(declarations('.snowflake-method-note-dressed .markdown-source-view')).toContain(
+			'font-size: var(--snowflake-method-manuscript-font-size, var(--font-preferred-size))',
+		);
+		expect(declarations('.snowflake-method-note-dressed .markdown-preview-section > div > p')).toContain(
+			'text-align: var(--snowflake-method-manuscript-align, start)',
+		);
+		expect(declarations('.snowflake-method-note-dressed .markdown-preview-section > div > p::before')).toContain(
+			'width: var(--snowflake-method-manuscript-indent, 0)',
+		);
+		expect(declarations('.snowflake-method-note-dressed .markdown-source-view .cm-line.snowflake-method-paragraph-line')).toContain(
+			'hyphens: var(--snowflake-method-manuscript-hyphens, manual)',
+		);
+		// The ground outweighs the app's own `.workspace-split.mod-root .view-content`,
+		// and the header's its `.is-focused .workspace-leaf.mod-active .view-header`;
+		// both under the stream's own name, which the bar above the note paints.
+		expect(declarations('.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed .view-content')).toContain(
+			'background-color: var(--snowflake-method-manuscript-surface)',
+		);
+		expect(declarations('.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed .view-header')).toContain(
+			'background-color: var(--snowflake-method-manuscript-surface)',
+		);
+		expect(declarations('body.theme-light .snowflake-method-note-dressed')).toContain(
+			'--snowflake-method-manuscript-surface',
+		);
+		// The properties and the section markers keep the app's own type, and
+		// the empty section's placeholder takes the prose's.
+		const chrome = declarations('.snowflake-method-note-dressed .metadata-container');
+		expect(chrome).toContain('font-size: var(--font-preferred-size)');
+		expect(chrome).toContain('font-family: var(--font-text)');
+		expect(chrome).toContain('line-height: var(--line-height-normal)');
+		expect(declarations('.snowflake-method-note-dressed .snowflake-managed-section-placeholder')).toContain(
+			'font-family: var(--snowflake-method-manuscript-font, var(--font-text))',
+		);
+		// What the theme paints a shade off the page is painted a shade off the
+		// tint: the generated block, a file embed and, through the name the
+		// app's own rules read, code inline and in blocks. Without a tint the
+		// theme's own stand, through the fallbacks.
+		expect(declarations('.snowflake-method-note-dressed .cm-line.snowflake-managed-generated-line')).toContain(
+			'background-color: var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt))',
+		);
+		expect(declarations('.snowflake-method-note-dressed .file-embed')).toContain(
+			'var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt))',
+		);
+		const code = declarations('.snowflake-method-note-dressed');
+		expect(code).toContain('--code-background: var(');
+		expect(code).toContain('--snowflake-method-theme-code-background');
+		const alt = declarations('body.theme-light .snowflake-method-note-dressed');
+		expect(alt).toContain('--snowflake-method-manuscript-surface-alt: color-mix(');
+		expect(alt).toContain('var(--snowflake-method-manuscript-tint-light)');
+		expect(declarations('body.theme-dark .snowflake-method-note-dressed')).toContain(
+			'var(--snowflake-method-manuscript-tint-dark)',
+		);
+		// The grid lines are the stream's alone: a heading or a marker in a
+		// note of the app's own sits at a pitch of its own, and rules through
+		// it read as a mess, so no rule is drawn on a note at all.
+		expect(notes).not.toMatch(/::after|mask-image|is-guide-/u);
+		// Every rule in the section stands under the marker class or names it.
+		const selectors = notes
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.split('}')
+			.map((entry) => entry.split('{')[0] ?? '')
+			.flatMap((list) => list.split(','))
+			.map((one) => one.trim())
+			.filter((one) => one.length > 0);
+		expect(selectors.length).toBeGreaterThan(0);
+		for (const selector of selectors) {
+			expect(selector, selector).toContain('.snowflake-method-note-dressed');
+		}
+	});
+
+	/**
+	 * The stream derives the same shade off its tinted page for code and
+	 * embeds, and takes the theme's code background down from the body first,
+	 * so a leaf without a tint shows the theme's own.
+	 */
+	it('paints code a shade off the stream’s tinted page, and the theme’s own without one', () => {
+		expect(styles).toContain('--snowflake-method-theme-code-background: var(--code-background)');
+		const leaf = declarations(".workspace-leaf-content[data-type='snowflake-method-manuscript']");
+		expect(leaf).toContain('--code-background: var(');
+		expect(leaf).toContain('--snowflake-method-manuscript-surface-alt');
+		expect(leaf).toContain('--snowflake-method-theme-code-background');
+		const light = declarations("body.theme-light .workspace-leaf-content[data-type='snowflake-method-manuscript']");
+		expect(light).toContain('--snowflake-method-manuscript-surface-alt: color-mix(');
+		expect(light).toContain('var(--snowflake-method-manuscript-tint-light)');
+		expect(declarations("body.theme-dark .workspace-leaf-content[data-type='snowflake-method-manuscript']")).toContain(
+			'var(--snowflake-method-manuscript-tint-dark)',
+		);
+		expect(declarations(".workspace-leaf-content[data-type='snowflake-method-manuscript'] .file-embed")).toContain(
+			'var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt))',
+		);
+	});
+
+	/**
+	 * The bar above a dressed note is the stream's bar, so the section owns
+	 * no look of its own: only the room the leaf's content gives up, and only
+	 * while the bar stands before it.
+	 */
+	it('gives the note toolbar its room without a look of its own', () => {
+		const toolbar = section('Note toolbar');
+		expect(toolbar.includes('!important')).toBe(false);
+		expect(toolbar.includes(':has(')).toBe(false);
+		const room = declarations('.snowflake-method-note-toolbar + .view-content');
+		expect(room).toContain('flex: 1 1 auto');
+		expect(room).toContain('min-height: 0');
+		expect(room).toContain('height: auto');
+		expect(toolbar).not.toMatch(/background|color:|font/u);
+		// The header over the bar keeps the app's height over the stream and a
+		// note alike, so the lines under the two bars stand level.
+		expect(
+			declarations(
+				".workspace-leaf-content[data-type='snowflake-method-manuscript'] > .view-header",
+			),
+		).toContain('flex-shrink: 0');
+		expect(declarations('.snowflake-method-note-dressed > .view-header')).toContain('flex-shrink: 0');
+	});
+
+	/**
+	 * The typography's choice rows share the sliders' column, but the scope
+	 * row above them keeps the width the app fits to the answer chosen, as the
+	 * explorer's scope and the statistics' do: `width: auto` would size it to
+	 * its longest answer instead, a gap before the chevron whenever a shorter
+	 * one is chosen.
+	 */
+	it('leaves the typography scope at the width the app fits to its answer', () => {
+		const column = declarations(
+			'.snowflake-method-manuscript-settings .snowflake-method-appearance-heading ~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item) select.dropdown',
+		);
+		expect(column).toContain('width: var(--snowflake-method-presentation-control, 100px)');
+		expect(styles).not.toMatch(/appearance-heading\s*\+\s*\.setting-item\s+select\.dropdown\s*\{/u);
+	});
+
+	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and
 	 * nothing the explorer's own rules say is overruled.
@@ -582,6 +761,8 @@ describe('styles.css', () => {
 		const spacers = styles.match(
 			/::before\s*\{[^}]*width:\s*var\(--snowflake-method-manuscript-indent[^}]*\}/g,
 		);
-		expect(spacers?.length).toBe(2);
+		// The stream's two faces, and the two faces of a note of Obsidian's
+		// own wearing the same dress.
+		expect(spacers?.length).toBe(4);
 	});
 });

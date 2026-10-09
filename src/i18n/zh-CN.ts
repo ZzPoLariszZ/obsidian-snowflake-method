@@ -327,6 +327,11 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.manuscriptAppearance.themeDefault': '跟随主题',
 	'settings.manuscriptAppearance.pixels': '{value} px',
 	'settings.manuscriptAppearance.reset': '恢复默认',
+	'settings.manuscriptPresentationScope.name': '排版范围',
+	'settings.manuscriptPresentationScope.desc': '应用于正文流、雪花项目或整个 Vault。',
+	'settings.manuscriptPresentationScope.stream': '正文流',
+	'settings.manuscriptPresentationScope.project': '雪花项目',
+	'settings.manuscriptPresentationScope.vault': '整个 Vault',
 	'settings.manuscriptFontFamily.name': '字体',
 	'settings.manuscriptFontFamily.desc':
 		'选择正文使用的字体。\n重启 Obsidian 后才能看到新装的字体。',

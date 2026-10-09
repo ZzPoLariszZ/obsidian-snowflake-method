@@ -5356,9 +5356,14 @@
    a boundary -- paints this one, so a tinted manuscript is tinted throughout.
    The variables are written on the leaf rather than on the page because the
    header is the leaf's, outside the page; being custom properties, everything
-   inside reads them wherever they are set. */
+   inside reads them wherever they are set. The code background is the
+   name the app's own rules read, derived a shade off the tint below. */
 .workspace-leaf-content[data-type='snowflake-method-manuscript'] {
 	--snowflake-method-manuscript-surface: var(--background-primary);
+	--code-background: var(
+		--snowflake-method-manuscript-surface-alt,
+		var(--snowflake-method-theme-code-background)
+	);
 }
 
 .snowflake-method-manuscript-view.view-content {
@@ -5385,11 +5390,28 @@
 	background-color: var(--snowflake-method-manuscript-surface);
 }
 
+/* The ground by mode, and beside it the shade off the ground: what the
+   theme paints a shade off the page -- code, inline and in blocks, a file
+   embed, the plugin's own generated block in a note -- is painted a shade
+   off the tinted page instead, the tint with a touch of the text colour,
+   which darkens a light ground and lightens a dark one. Without a tint
+   there is nothing to mix, the mix is invalid, and every reader of it falls
+   back to the theme's own: for code, the theme's code background, taken
+   down from the body below before the leaf's rule above overrides the name
+   the app's own rules read, so the editor's code lines and the rendered
+   half's `pre` and `code` follow alike. Where color-mix() is unknown the
+   same fallbacks stand. The note typography section derives the same two
+   for a dressed note. */
 body.theme-light
 	.workspace-leaf-content[data-type='snowflake-method-manuscript'] {
 	--snowflake-method-manuscript-surface: var(
 		--snowflake-method-manuscript-tint-light,
 		var(--background-primary)
+	);
+	--snowflake-method-manuscript-surface-alt: color-mix(
+		in srgb,
+		var(--snowflake-method-manuscript-tint-light),
+		var(--text-normal) 4%
 	);
 }
 
@@ -5399,6 +5421,19 @@ body.theme-dark
 		--snowflake-method-manuscript-tint-dark,
 		var(--background-primary)
 	);
+	--snowflake-method-manuscript-surface-alt: color-mix(
+		in srgb,
+		var(--snowflake-method-manuscript-tint-dark),
+		var(--text-normal) 4%
+	);
+}
+
+body {
+	--snowflake-method-theme-code-background: var(--code-background);
+}
+
+.workspace-leaf-content[data-type='snowflake-method-manuscript'] .file-embed {
+	background-color: var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt));
 }
 
 .snowflake-method-manuscript-stream {
@@ -8183,11 +8218,14 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    class, so the walk from the appearance heading -- whose rows are the last
    of the group -- carries the rule there, and no other heading's rows take
    it: the milestone and numbering dropdowns above keep the width the app
-   fits to their answer. */
+   fits to their answer. So does the first row under the heading, which says
+   how far the dress reaches: its answers are phrases, named as the
+   explorer's scope names its own, and it fits the one chosen as that scope
+   does. */
 .snowflake-method-presentation-row select.dropdown,
 .snowflake-method-manuscript-settings
 	.snowflake-method-appearance-heading
-	~ .setting-item
+	~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item)
 	select.dropdown {
 	width: var(--snowflake-method-presentation-control, 100px);
 }
@@ -17121,4 +17159,216 @@ body.snowflake-method-hide-scrollbars * {
 
 body.snowflake-method-hide-scrollbars ::-webkit-scrollbar {
 	display: none;
+}
+
+/* == Field alignment ======================================================= */
+
+/* The typography's alignment, worn by every multi-line field the dashboard
+   and the plugin's dialogs offer, so a paragraph typed into a box sits as
+   it will on the page. The class rides each window's body, put there with
+   the other dress preferences, and only when the page is justified: a left
+   alignment is the field's own and asks for no rule. The recovered-text
+   boxes are the two dialogs that show drafts back, which open on no form
+   class of their own. */
+body.snowflake-method-justify-fields .snowflake-method-dashboard textarea,
+body.snowflake-method-justify-fields .snowflake-method-form-modal textarea,
+body.snowflake-method-justify-fields .snowflake-method-compact-form-modal textarea,
+body.snowflake-method-justify-fields textarea.snowflake-method-corkboard-recovered-text {
+	text-align: justify;
+}
+
+/* == Note typography ======================================================= */
+
+/* The manuscript's dress on a note opened in a tab of Obsidian's own, when
+   the typography's scope reaches it: the same variables the stream reads,
+   written on the leaf by the plugin, with the theme's own as fallback. The
+   marker class is the leaf's content root, so one class covers the editor
+   and the reading view alike. The grid lines are the stream's alone: a note
+   of the app's own sets its headings, lists and markers at sizes of their
+   own, and rules drawn through them at the prose's pitch read as a mess
+   wherever they met, so none are drawn here. */
+
+/* The type: on the two surfaces the app itself sizes, from the app's own
+   variables when the author has set nothing. */
+.snowflake-method-note-dressed .markdown-source-view,
+.snowflake-method-note-dressed .markdown-preview-view {
+	font-size: var(--snowflake-method-manuscript-font-size, var(--font-preferred-size));
+}
+
+.snowflake-method-note-dressed .markdown-source-view,
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6 .cm-scroller,
+.snowflake-method-note-dressed .markdown-preview-view {
+	font-family: var(--snowflake-method-manuscript-font, var(--font-text));
+	line-height: var(
+		--snowflake-method-manuscript-line-height,
+		var(--line-height-normal)
+	);
+}
+
+/* The column: the app's readable line width, read where the app reads it, so
+   a table that the app lets run wider than the column still may. */
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6.is-readable-line-width .cm-sizer,
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6.is-readable-line-width .cm-content,
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6.is-readable-line-width .cm-line,
+.snowflake-method-note-dressed .markdown-preview-view.is-readable-line-width .markdown-preview-sizer {
+	max-width: var(--snowflake-method-manuscript-width, var(--file-line-width));
+}
+
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6.is-readable-line-width .cm-line.HyperMD-table-row {
+	max-width: 100%;
+}
+
+/* Reading: the gap below a paragraph in lines of its line height, and the
+   paragraph set as the stream sets its own -- the alignment, the word
+   breaks and the first line set in by a blank box before it. Each block of
+   the reading view stands in a box of its own, which is what the child
+   combinators walk. */
+.snowflake-method-note-dressed .markdown-preview-view {
+	--p-spacing: calc(
+		var(--snowflake-method-manuscript-paragraph-spacing, 1) * 1lh
+	);
+}
+
+.snowflake-method-note-dressed .markdown-preview-section > div > p {
+	text-align: var(--snowflake-method-manuscript-align, start);
+	hyphens: var(--snowflake-method-manuscript-hyphens, manual);
+}
+
+.snowflake-method-note-dressed .markdown-preview-section > div > p::before {
+	content: '';
+	display: inline-block;
+	width: var(--snowflake-method-manuscript-indent, 0);
+}
+
+/* Editing: the same three line marks the stream's editor wears, put on
+   the note's lines by the shared editor extension, and the same rules over
+   them. */
+.snowflake-method-note-dressed .markdown-source-view .cm-line.snowflake-method-paragraph-first::before {
+	content: '';
+	display: inline-block;
+	width: var(--snowflake-method-manuscript-indent, 0);
+}
+
+.snowflake-method-note-dressed .markdown-source-view .cm-line.snowflake-method-paragraph-line {
+	text-align: var(--snowflake-method-manuscript-align, start);
+	hyphens: var(--snowflake-method-manuscript-hyphens, manual);
+}
+
+.snowflake-method-note-dressed .markdown-source-view .cm-line.snowflake-method-blank-line {
+	line-height: calc(
+		var(--snowflake-method-manuscript-line-height, var(--line-height-normal)) *
+			var(--snowflake-method-manuscript-paragraph-spacing, 1)
+	);
+}
+
+/* The ground: the tint for the mode in force, under the same name the
+   stream's leaf carries, so the bar above the note -- the stream's own bar,
+   mounted here -- paints the same ground without a rule of its own. Painted
+   on the leaf's content, and on the header over it, as the stream paints
+   both: a white strip over a tinted page reads as something else's. The
+   class is written three times for the weight, as the stream's rule is, to
+   stand over the app's own `.workspace-split.mod-root .view-content`, and
+   four times over its `.is-focused .workspace-leaf.mod-active .view-header`. */
+body.theme-light .snowflake-method-note-dressed {
+	--snowflake-method-manuscript-surface: var(
+		--snowflake-method-manuscript-tint-light,
+		var(--background-primary)
+	);
+	--snowflake-method-manuscript-surface-alt: color-mix(
+		in srgb,
+		var(--snowflake-method-manuscript-tint-light),
+		var(--text-normal) 4%
+	);
+}
+
+body.theme-dark .snowflake-method-note-dressed {
+	--snowflake-method-manuscript-surface: var(
+		--snowflake-method-manuscript-tint-dark,
+		var(--background-primary)
+	);
+	--snowflake-method-manuscript-surface-alt: color-mix(
+		in srgb,
+		var(--snowflake-method-manuscript-tint-dark),
+		var(--text-normal) 4%
+	);
+}
+
+/* A shade off the tinted page for what the theme paints a shade off its
+   own, as the stream's section explains: the code background the app's
+   rules read, and a file embed. Without a tint the theme's own stand. */
+.snowflake-method-note-dressed {
+	--code-background: var(
+		--snowflake-method-manuscript-surface-alt,
+		var(--snowflake-method-theme-code-background)
+	);
+}
+
+.snowflake-method-note-dressed .file-embed {
+	background-color: var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt));
+}
+
+.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed .view-content {
+	background-color: var(--snowflake-method-manuscript-surface);
+}
+
+.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed.snowflake-method-note-dressed .view-header {
+	background-color: var(--snowflake-method-manuscript-surface);
+}
+
+/* What is not prose keeps the app's own type. The properties, in the
+   editor and in reading view alike, are a form the app lays out in ems of
+   the text size, and at a manuscript size they filled the page before a
+   word of the note was reached; a section marker is the plugin's own
+   label, which wrapped to three rows at that size. Both read exactly as
+   they do in an undressed note. */
+.snowflake-method-note-dressed .metadata-container,
+.snowflake-method-note-dressed .cm-line.snowflake-managed-boundary-line {
+	font-family: var(--font-text);
+	font-size: var(--font-preferred-size);
+	line-height: var(--line-height-normal);
+}
+
+/* The empty section's placeholder, though, stands where the prose will:
+   it takes the prose's own face and size so the row it holds open is the
+   row the first words will take, keeping its slant and its colour. */
+.snowflake-method-note-dressed .snowflake-managed-section-placeholder {
+	min-height: 0;
+	font-family: var(--snowflake-method-manuscript-font, var(--font-text));
+	font-size: var(--snowflake-method-manuscript-font-size, var(--font-preferred-size));
+	line-height: inherit;
+}
+
+/* A generated fields block keeps its faint shading, but a shade off the
+   tinted page: the app's alternate background it wears elsewhere is a
+   shade of the app's own white, which over a tinted page stood as a white
+   box. Without a tint it is that alternate background, as elsewhere. */
+.snowflake-method-note-dressed .cm-line.snowflake-managed-generated-line {
+	background-color: var(--snowflake-method-manuscript-surface-alt, var(--background-primary-alt));
+}
+
+/* == Note toolbar ========================================================== */
+
+/* The header over the formatting bar, the stream's and a note's alike,
+   keeps the height the app gives a header. The app sizes a leaf's content
+   to the whole leaf and lets the header give way to it, a pixel and a half
+   in an ordinary leaf and more with a bar between them, which stood the
+   line under a note's bar a pixel above the line under the stream's. */
+.workspace-leaf-content[data-type='snowflake-method-manuscript'] > .view-header,
+.snowflake-method-note-dressed > .view-header {
+	flex-shrink: 0;
+}
+
+/* The stream's formatting bar above a note of Obsidian's own that wears the
+   dress, mounted between the leaf's header and its content, which is where
+   the stream's stands. The bar's own look is the stream's rules, under the
+   class it shares with them; what is the leaf's to settle is the room. The
+   app gives a leaf's content the leaf's height less the header's, which
+   with a bar in between would run the page off the bottom of the leaf by
+   the bar's height; the leaf is a column already, so the content is told to
+   take what is left instead. Keyed on the bar standing before it, so a leaf
+   without one keeps the app's own arithmetic. */
+.snowflake-method-note-toolbar + .view-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
 }

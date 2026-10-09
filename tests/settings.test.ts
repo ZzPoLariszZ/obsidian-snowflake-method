@@ -289,6 +289,9 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.manuscriptTintLight).toBe('');
 		expect(DEFAULT_SETTINGS.manuscriptTintDark).toBe('');
 		expect(DEFAULT_SETTINGS.manuscriptGuide).toBe('none');
+		// The dress reaches every note of a Snowflake project until narrowed
+		// to the stream or widened to the vault.
+		expect(DEFAULT_SETTINGS.manuscriptPresentationScope).toBe('project');
 
 		// And every one of them is the domain's value rather than a second
 		// copy of it. Walked through the mapping, so a twelfth dress field is
@@ -355,6 +358,14 @@ describe('settings', () => {
 			expect(read({ manuscriptGuide: guide }).manuscriptGuide).toBe(guide);
 		}
 		expect(read({ manuscriptGuide: 'dotted' }).manuscriptGuide).toBe('none');
+		for (const scope of ['stream', 'project', 'vault'] as const) {
+			expect(
+				read({ manuscriptPresentationScope: scope }).manuscriptPresentationScope,
+			).toBe(scope);
+		}
+		expect(
+			read({ manuscriptPresentationScope: 'manuscript' }).manuscriptPresentationScope,
+		).toBe('project');
 	});
 
 	/**

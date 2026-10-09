@@ -358,6 +358,11 @@ export const en = {
 	'settings.manuscriptAppearance.themeDefault': 'Theme default',
 	'settings.manuscriptAppearance.pixels': '{value} px',
 	'settings.manuscriptAppearance.reset': 'Reset to default',
+	'settings.manuscriptPresentationScope.name': 'Typography scope',
+	'settings.manuscriptPresentationScope.desc': 'Apply to the stream, Snowflake projects or the whole vault.',
+	'settings.manuscriptPresentationScope.stream': 'Manuscript stream',
+	'settings.manuscriptPresentationScope.project': 'Snowflake projects',
+	'settings.manuscriptPresentationScope.vault': 'Whole vault',
 	'settings.manuscriptFontFamily.name': 'Font family',
 	'settings.manuscriptFontFamily.desc':
 		'Choose the font used for manuscript text.\nRestart Obsidian to see newly installed fonts.',

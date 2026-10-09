@@ -23,6 +23,7 @@ import {
 	FONT_SIZE_STOPS,
 	LINE_HEIGHT_STOPS,
 	DEFAULT_MANUSCRIPT_PRESENTATION,
+	DEFAULT_PRESENTATION_SCOPE,
 	DIALOGUE_PRESENTATIONS,
 	MENTION_HIGHLIGHT_MODES,
 	MANUSCRIPT_TINTS,
@@ -39,6 +40,7 @@ import {
 	isDateFormat,
 	isManuscriptGuide,
 	isManuscriptTextAlign,
+	isPresentationScope,
 	isDialoguePresentation,
 	newChapterRuleId,
 	sanitizeChapterNumberRules,
@@ -65,6 +67,7 @@ import {
 	sanitizeLineHeight,
 	sanitizeParagraphSpacing,
 	sanitizeRecentFonts,
+	sanitizePresentationScope,
 	sanitizeTextAlign,
 	sanitizeTint,
 	weekdayLabels,
@@ -74,6 +77,7 @@ import {
 	type DialoguePresentation,
 	type ManuscriptGuide,
 	type ManuscriptTextAlign,
+	type PresentationScope,
 	type ManuscriptTint,
 	type ChapterNumberingStyle,
 	type ChapterNumberRule,
@@ -233,6 +237,8 @@ export interface SnowflakeSettings {
 	manuscriptFirstLineIndent: number;
 	/** How paragraphs sit in the column: the theme's ragged right, or justified. */
 	manuscriptTextAlign: ManuscriptTextAlign;
+	/** Which notes wear the dress in tabs of Obsidian's own, besides the stream. */
+	manuscriptPresentationScope: PresentationScope;
 	/** Long words broken at line ends with a hyphen, from the browser's dictionary. */
 	manuscriptHyphenation: boolean;
 	/** The page's color in light mode: '' for the theme's, else #rrggbb. */
@@ -411,6 +417,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptParagraphSpacing: DEFAULT_MANUSCRIPT_PRESENTATION.paragraphSpacing,
 	manuscriptFirstLineIndent: DEFAULT_MANUSCRIPT_PRESENTATION.firstLineIndent,
 	manuscriptTextAlign: DEFAULT_MANUSCRIPT_PRESENTATION.textAlign,
+	manuscriptPresentationScope: DEFAULT_PRESENTATION_SCOPE,
 	manuscriptHyphenation: DEFAULT_MANUSCRIPT_PRESENTATION.hyphenation,
 	manuscriptTintLight: DEFAULT_MANUSCRIPT_PRESENTATION.tintLight,
 	manuscriptTintDark: DEFAULT_MANUSCRIPT_PRESENTATION.tintDark,
@@ -514,6 +521,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptTintLight',
 	'manuscriptTintDark',
 	'manuscriptGuide',
+	'manuscriptPresentationScope',
 	'customHighlightsEnabled',
 	'customHighlightRules',
 	'sensitiveHighlight',
@@ -791,6 +799,9 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			raw.manuscriptFirstLineIndent,
 		),
 		manuscriptTextAlign: sanitizeTextAlign(raw.manuscriptTextAlign),
+		manuscriptPresentationScope: sanitizePresentationScope(
+			raw.manuscriptPresentationScope,
+		),
 		manuscriptHyphenation: sanitizeHyphenation(raw.manuscriptHyphenation),
 		manuscriptTintLight: sanitizeTint(raw.manuscriptTintLight),
 		manuscriptTintDark: sanitizeTint(raw.manuscriptTintDark),
@@ -1776,6 +1787,27 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							// under it, which are the last of the group; the rows above
 							// keep the app's own dropdown widths.
 							setting.settingEl.addClass('snowflake-method-appearance-heading');
+						},
+					},
+					// How far the dress reaches first, before what it is: the stream
+					// alone, or with it the notes of Snowflake projects or of the
+					// whole vault in Obsidian's own tabs, named as the explorer's
+					// scope names its two. The stylesheet leaves this row, the first
+					// after the heading, out of the choice rows' shared column, so it
+					// keeps the width the app fits to the answer chosen, as that
+					// scope does: its answers are phrases, not single words.
+					{
+						name: this.t('settings.manuscriptPresentationScope.name'),
+						desc: this.t('settings.manuscriptPresentationScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptPresentationScope',
+							defaultValue: DEFAULT_SETTINGS.manuscriptPresentationScope,
+							options: {
+								stream: this.t('settings.manuscriptPresentationScope.stream'),
+								project: this.t('settings.manuscriptPresentationScope.project'),
+								vault: this.t('settings.manuscriptPresentationScope.vault'),
+							},
 						},
 					},
 					{
@@ -3219,6 +3251,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptTextAlign':
 				if (isManuscriptTextAlign(value)) {
 					this.owner.settings.manuscriptTextAlign = value;
+				}
+				break;
+			case 'manuscriptPresentationScope':
+				if (isPresentationScope(value)) {
+					this.owner.settings.manuscriptPresentationScope = value;
 				}
 				break;
 			case 'manuscriptHyphenation':

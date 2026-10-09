@@ -16,37 +16,24 @@ import {
 	historyField,
 	historyKeymap,
 	insertNewline,
-	redo,
 	redoDepth,
-	undo,
 	undoDepth,
 } from '@codemirror/commands';
-import {
-	defaultHighlightStyle,
-	ensureSyntaxTree,
-	syntaxHighlighting,
-	syntaxTree,
-} from '@codemirror/language';
+import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
 
 import {
-	INLINE_PAIRS,
 	MARKDOWN_LANGUAGE,
-	addTracked,
 	autoPair,
 	deleteAutoPair,
 	mentionHighlights,
 	mentionMarkAt,
 	paragraphBreak,
-	paragraphLayout,
+	paragraphLines,
 	refreshMentionHighlights,
+	runEditorCommand,
 	selectedTextOf,
-	toggleHeading,
-	toggleInline,
-	trackedRunAt,
 	wikilinkAt,
-	type HeadingLevel,
-	type InlineMarker,
-	type TrackedCloser,
+	type EditorCommandId,
 } from '../editor';
 import type { MentionMark } from '../domain';
 import {
@@ -134,13 +121,11 @@ export interface WikilinkTarget {
 
 /**
  * The editing commands a segment editor answers: the toolbar's buttons and the
- * keyboard's chords, one name each, whichever way they were asked for.
+ * keyboard's chords, one name each, whichever way they were asked for. The
+ * commands themselves live with the editor extensions, where the bar above a
+ * note of Obsidian's own runs the same ones.
  */
-export type SegmentEditorCommandId =
-	| 'undo'
-	| 'redo'
-	| InlineMarker
-	| `heading-${HeadingLevel}`;
+export type SegmentEditorCommandId = EditorCommandId;
 
 export interface SegmentEditorHooks {
 	onChange(path: string, body: string): void;
@@ -259,21 +244,6 @@ const caretParagraph = ViewPlugin.fromClass(
 	{ decorations: (plugin) => plugin.decorations },
 );
 
-const PARAGRAPH_FIRST = Decoration.line({
-	class: 'snowflake-method-paragraph-first',
-});
-
-const PARAGRAPH_LINE = Decoration.line({
-	class: 'snowflake-method-paragraph-line',
-});
-
-const BLANK_LINE = Decoration.line({
-	class: 'snowflake-method-blank-line',
-});
-
-/** How long one update may spend parsing ahead for the lines in view. */
-const LAYOUT_PARSE_MS = 50;
-
 /** Enter as the manuscript's paragraph break; declines outside prose. */
 const breaksParagraph = (view: EditorView): boolean => {
 	const spec = paragraphBreak(view.state);
@@ -282,76 +252,6 @@ const breaksParagraph = (view: EditorView): boolean => {
 	return true;
 };
 
-/**
- * The lines the page indents, aligns or spaces, found over what is on
- * screen: the first line of a paragraph carries the indent, every line of
- * one its alignment and hyphenation, and a blank line the gap.
- */
-function layoutDecorations(view: EditorView): DecorationSet {
-	const { doc } = view.state;
-	// The grammar is parsed in the background a few thousand characters at a
-	// time, and a state just made has parsed only its first three thousand, so
-	// the parse is brought up to the whole note here before the lines are
-	// decorated. Measured on a fifteen thousand character chapter: one and a
-	// half milliseconds, once.
-	const tree =
-		ensureSyntaxTree(view.state, doc.length, LAYOUT_PARSE_MS) ??
-		syntaxTree(view.state);
-	// The whole note, not the lines in view.
-	//
-	// Decorating the viewport meant decorating wherever the viewport happened
-	// to be at the moment the editor was built -- which is not where the reader
-	// is. Mounting empties the note's body first, so the page around it
-	// collapses and settles again over the frames that follow, and the caret is
-	// sought after that; the lines the reader actually ends up looking at were
-	// therefore drawn once undecorated, ragged and unindented, and dressed a
-	// frame or two later when the viewport caught up. Recorded on a click into
-	// the middle of a chapter: plain at 99ms, justified and indented at 154ms.
-	//
-	// Laying out the whole note costs a tenth of a millisecond on that same
-	// chapter and nothing on scrolling, since the answer no longer depends on
-	// where the page is. CodeMirror draws only the lines in view whatever the
-	// set holds.
-	const layout = paragraphLayout(view.state, 0, doc.length, tree);
-	return Decoration.set(
-		[
-			...layout.first.map((at) => PARAGRAPH_FIRST.range(at)),
-			...layout.lines.map((at) => PARAGRAPH_LINE.range(at)),
-			...layout.blank.map((at) => BLANK_LINE.range(at)),
-		],
-		true,
-	);
-}
-
-/**
- * Marks the first line of every paragraph and every blank line between
- * blocks, always. The page gives a paragraph its indent and its gap, and the
- * stylesheet gives these lines the same from the same variables — so a change
- * of typography is live without an editor reconfiguration, and the two halves
- * cannot drift apart. Rebuilt when the text changes and when the grammar has
- * parsed further, which a new tree identity says; not when the page scrolls,
- * because the whole note is marked at once and scrolling reveals lines that
- * are already dressed.
- */
-const paragraphLines = ViewPlugin.fromClass(
-	class {
-		decorations: DecorationSet;
-
-		constructor(view: EditorView) {
-			this.decorations = layoutDecorations(view);
-		}
-
-		update(update: ViewUpdate): void {
-			if (
-				update.docChanged ||
-				syntaxTree(update.startState) !== syntaxTree(update.state)
-			) {
-				this.decorations = layoutDecorations(update.view);
-			}
-		}
-	},
-	{ decorations: (plugin) => plugin.decorations },
-);
 
 /**
  * A row of the wikilink popup as CodeMirror holds it, carrying the option the
@@ -459,72 +359,6 @@ function layoutWholeDocument(view: EditorView, measureNow: boolean): void {
 		// The flag is held even when this measure failed; the editor's own
 		// next measure completes the layout.
 	}
-}
-
-/**
- * Runs one editing command as the author's own edit.
- *
- * Everything but undo and redo dispatches a plain user transaction, which is
- * what keeps the pending text, the save timer, the word count and the writing
- * session all fed: the update listener treats it exactly like typing.
- */
-function runEditorCommand(
-	view: EditorView,
-	command: SegmentEditorCommandId,
-): boolean {
-	if (command === 'undo') return undo(view);
-	if (command === 'redo') return redo(view);
-	if (
-		command === 'heading-1' ||
-		command === 'heading-2' ||
-		command === 'heading-3' ||
-		command === 'heading-4' ||
-		command === 'heading-5' ||
-		command === 'heading-6'
-	) {
-		const spec = toggleHeading(
-			view.state,
-			Number(command.slice('heading-'.length)) as HeadingLevel,
-		);
-		if (spec === null) return false;
-		view.dispatch({ ...spec, userEvent: 'input.format', scrollIntoView: true });
-		return true;
-	}
-	const spec = toggleInline(view.state, command);
-	if (spec === null) return false;
-	view.dispatch({ ...spec, userEvent: 'input.format', scrollIntoView: true });
-	markCommandClosers(view, command);
-	return true;
-}
-
-/**
- * Hands the pairing engine the pair a formatting command just placed, so it
- * behaves exactly as if the author had typed it: Backspace at its centre
- * takes both sides, and typing a closing character steps over the tracked
- * one instead of doubling it. Ranges the command did not leave flanked — an
- * unwrap, a removal — hand over nothing, and without the pairing engine the
- * effect lands on no field and means nothing.
- */
-function markCommandClosers(view: EditorView, marker: InlineMarker): void {
-	const { open, close } = INLINE_PAIRS[marker];
-	const entries: TrackedCloser[] = [];
-	for (const range of view.state.selection.ranges) {
-		if (range.from < open.length) continue;
-		if (view.state.sliceDoc(range.from - open.length, range.from) !== open) {
-			continue;
-		}
-		if (view.state.sliceDoc(range.to, range.to + close.length) !== close) {
-			continue;
-		}
-		if (marker === 'underline') {
-			// One entry for the whole tag: per-character tracking would let a
-			// typed `<` step into its middle.
-			entries.push({ pos: range.to, close, command: true });
-		} else {
-			entries.push(...trackedRunAt(range.to, close, { command: true }));
-		}
-	}
-	if (entries.length > 0) view.dispatch({ effects: addTracked.of(entries) });
 }
 
 export interface SegmentEditorHandle {

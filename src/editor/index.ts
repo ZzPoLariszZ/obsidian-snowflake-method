@@ -1,4 +1,5 @@
 export * from './auto-pair';
+export * from './format-commands';
 export * from './inline-format';
 export * from './managed-section-editor';
 export * from './managed-section-locale';
@@ -6,7 +7,10 @@ export * from './managed-section-navigation';
 export * from './managed-section-ranges';
 export * from './markdown-language';
 export * from './mention-highlights';
+export * from './nested-editor';
 export * from './paragraph-break';
 export * from './paragraph-layout';
+export * from './paragraph-lines';
 export * from './selection-watch';
+export * from './typewriter';
 export * from './wikilink-spans';

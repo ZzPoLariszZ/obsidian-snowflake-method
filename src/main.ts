@@ -1,5 +1,6 @@
 import {
 	addIcon,
+	editorInfoField,
 	MarkdownView,
 	Menu,
 	moment,
@@ -127,6 +128,7 @@ import {
 	type ChapterNumberProposal,
 	type ChapterRemovalProposal,
 	type CanvasExportWords,
+	type NoteStanding,
 } from './domain';
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
@@ -146,6 +148,10 @@ import {
 	type ManagedSectionEditorContext,
 	type ManagedSectionEditorIdentity,
 	type ManagedSectionEditorStrings,
+	paragraphBreakWhen,
+	paragraphLinesWhen,
+	refreshParagraphLines,
+	typewriterWhen,
 } from './editor';
 import {
 	ConcurrentChangeError,
@@ -216,6 +222,7 @@ import {
 	type StartWritingSessionOptions,
 	type WritingSessionEvent,
 	projectArchiveRoot,
+	getProjectPathLayout,
 } from './services';
 import {
 	isPathAtOrBelow,
@@ -258,6 +265,10 @@ import {
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import { NotePresentation, type DressableNote } from './ui/note-presentation';
+import { NoteToolbars, type ToolbarNote } from './ui/note-toolbar';
+import type { EditorState } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import {
 	confirmForeshadowingDeletion,
 	promptForForeshadowing,
@@ -415,6 +426,8 @@ const SETTINGS_SAVE_DELAY_MS = 400;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
+/** Worn by a window's body while the page is justified: the fields follow. */
+const JUSTIFY_FIELDS_CLASS = 'snowflake-method-justify-fields';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
@@ -665,6 +678,10 @@ export default class SnowflakeMethodPlugin
 	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
 	/** Root folders of the projects discovered under the configured root. */
 	private readonly knownProjectRoots = new Set<string>();
+	/** The manuscript's dress on notes in tabs of Obsidian's own. */
+	private notePresentation: NotePresentation | null = null;
+	/** The formatting bar above every note the dress reaches. */
+	private noteToolbars: NoteToolbars | null = null;
 	/** The folders the explorer tools reach: the known roots, and the archived projects beside them. */
 	private readonly explorerRoots = new Set<string>();
 	/** The plugin's hand in the file explorer, made once the layout is ready. */
@@ -755,6 +772,7 @@ export default class SnowflakeMethodPlugin
 				targetWindow.document.body.classList.remove(
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
+					JUSTIFY_FIELDS_CLASS,
 				);
 				this.dressedDocuments.delete(targetWindow.document);
 				targetWindow.document.body.style.removeProperty(
@@ -768,6 +786,71 @@ export default class SnowflakeMethodPlugin
 			}),
 		);
 		this.applyBodyPreferences();
+		// The manuscript's dress on notes in tabs of Obsidian's own, as far as
+		// the typography's scope reaches: every note view dressed afresh when
+		// the layout changes, a tab opens a note or a tab comes to the front --
+		// the three moments a note can newly be on screen -- with the stream's
+		// bar above each, and in each one's editor what the stream's editors
+		// carry: the line marks that go with the dress, Enter as the paragraph
+		// break, and typewriter scrolling. All worn by an editor only while
+		// its note is one the scope reaches.
+		this.notePresentation = new NotePresentation({
+			look: () => this.manuscriptPresentation(),
+			scope: () => this.settings.manuscriptPresentationScope,
+			standing: (path) => this.noteStanding(path),
+			notes: () => this.openNotes(),
+		});
+		this.noteToolbars = new NoteToolbars({
+			app: this.app,
+			t: (path) => (key, vars) =>
+				this.translateForProject(
+					path === null ? null : (this.projectRefAtPath(path)?.locale ?? null),
+					key,
+					vars,
+				),
+			wears: (path) => this.notePresentation?.wears(path) === true,
+			notes: () => this.openNotes(),
+			settings: () => ({
+				typewriter: this.settings.manuscriptTypewriter,
+				enterParagraph: this.settings.manuscriptEnterParagraph,
+				presentation: this.manuscriptPresentation(),
+				recentFonts: this.settings.manuscriptRecentFonts,
+			}),
+			setPresentation: (patch) => this.setManuscriptPresentation(patch),
+			setEnterParagraph: (on) => this.setManuscriptEnterParagraph(on),
+			toggleTypewriter: () => this.toggleManuscriptMode('typewriter'),
+			showError: (error) => {
+				this.showError(error);
+			},
+		});
+		this.register(() => {
+			this.noteToolbars?.destroy();
+			this.noteToolbars = null;
+		});
+		this.registerEditorExtension([
+			paragraphLinesWhen((view) => this.editorDressed(view)),
+			paragraphBreakWhen(
+				(view) => this.settings.manuscriptEnterParagraph && this.editorDressed(view),
+			),
+			typewriterWhen(
+				(state) => this.settings.manuscriptTypewriter && this.stateDressed(state),
+			),
+		]);
+		this.registerEvent(
+			this.app.workspace.on('layout-change', () => {
+				this.dressNotes();
+			}),
+		);
+		this.registerEvent(
+			this.app.workspace.on('file-open', () => {
+				this.dressNotes();
+			}),
+		);
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', () => {
+				this.dressNotes();
+			}),
+		);
 		// A theme can restyle scrollbars, which changes how much room they take.
 		this.registerEvent(
 			this.app.workspace.on('css-change', () => this.publishScrollbarWidth()),
@@ -797,6 +880,7 @@ export default class SnowflakeMethodPlugin
 				targetDocument.body.classList.remove(
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
+					JUSTIFY_FIELDS_CLASS,
 				);
 			}
 			this.dressedDocuments.clear();
@@ -1452,6 +1536,9 @@ export default class SnowflakeMethodPlugin
 			if (this.holdsProjectMetadata(folder.path)) this.explorerRoots.add(folder.path);
 		}
 		this.explorer?.projectsChanged();
+		// The roster decides which notes the typography reaches.
+		this.dressNotes();
+		this.refreshParagraphLineEditors();
 		return projects;
 	}
 
@@ -3027,11 +3114,28 @@ export default class SnowflakeMethodPlugin
 		// dragged live.
 		if (isManuscriptPresentationKey(key)) {
 			this.applyManuscriptPresentation();
+			// The notes in Obsidian's own tabs that wear the dress wear the
+			// new one too, a popover open over one of them shows it, and the
+			// fields follow the page's alignment.
+			this.notePresentation?.apply();
+			this.noteToolbars?.sync();
+			if (key === 'manuscriptTextAlign') this.applyBodyPreferences();
 			// The settings page shows these same values, and in 1.13 it stands
 			// in a window of its own, so it can be open beside the popover that
 			// just wrote one. It declines while it is the page doing the writing.
 			this.settingTab?.refreshRows();
 			return;
+		}
+		// How far the dress reaches: the open notes are dressed or undressed
+		// afresh, and every editor asked again whether its note is one of them.
+		if (key === 'manuscriptPresentationScope') {
+			this.dressNotes();
+			this.refreshParagraphLineEditors();
+			return;
+		}
+		// The bars above the notes show both, and the popover the one.
+		if (key === 'manuscriptTypewriter' || key === 'manuscriptEnterParagraph') {
+			this.noteToolbars?.sync();
 		}
 		// The explorer tools read their own keys straight from the settings:
 		// a repaint of the open explorers is the whole change, and no count
@@ -3254,6 +3358,10 @@ export default class SnowflakeMethodPlugin
 		targetDocument.body.classList.toggle(
 			HIDE_SCROLLBARS_CLASS,
 			this.settings.hideScrollbars,
+		);
+		targetDocument.body.classList.toggle(
+			JUSTIFY_FIELDS_CLASS,
+			this.settings.manuscriptTextAlign === 'justify',
 		);
 	}
 
@@ -9754,6 +9862,8 @@ export default class SnowflakeMethodPlugin
 		this.projects.repository.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
+		// A note carried into or out of a manuscript folder changes its dress.
+		this.dressNotes();
 		this.projects.writingCount.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
@@ -10033,6 +10143,74 @@ export default class SnowflakeMethodPlugin
 		this.rerenderStatisticsViews();
 		if (options.streams !== false) await this.refreshManuscriptStreams();
 		this.refreshManagedEditors();
+	}
+
+	/** Every note view open anywhere, popouts included, as the dress and the bar read them. */
+	private openNotes(): (DressableNote & ToolbarNote)[] {
+		const notes: (DressableNote & ToolbarNote)[] = [];
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) return;
+			notes.push({
+				path: view.file?.path ?? null,
+				containerEl: view.containerEl,
+				contentEl: view.contentEl,
+				editing: () => view.getMode() === 'source',
+				editor: () => findEditorViewForMarkdownInfo(view),
+			});
+		});
+		return notes;
+	}
+
+	/** Every open note dressed or undressed afresh, and given its bar or relieved of it. */
+	private dressNotes(): void {
+		this.notePresentation?.apply();
+		this.noteToolbars?.apply();
+	}
+
+	/** Whether the note an editor shows is one the dress reaches. */
+	private stateDressed(state: EditorState): boolean {
+		const path = state.field(editorInfoField, false)?.file?.path;
+		return path !== undefined && this.notePresentation?.wears(path) === true;
+	}
+
+	private editorDressed(view: EditorView): boolean {
+		return this.stateDressed(view.state);
+	}
+
+	/**
+	 * Where a note stands for the typography's scope: in a project the scan
+	 * knows, and in that project's manuscript -- under either language's
+	 * manuscript folder, as the manuscript service looks, or the draft the
+	 * project links to from outside its own folder.
+	 */
+	private noteStanding(path: string): NoteStanding & { locale: string | null } {
+		const project = this.projectRefAtPath(path);
+		if (project === null) {
+			return { inProject: false, inManuscript: false, locale: null };
+		}
+		const folders = new Set([
+			getProjectPathLayout(project.locale).directories.draft,
+			...Object.values(PROJECT_PATH_LAYOUTS).map(
+				(layout) => layout.directories.draft,
+			),
+		]);
+		const inManuscript =
+			[...folders].some((folder) =>
+				isPathAtOrBelow(path, `${project.rootPath}/${folder}`),
+			) || this.externalDrafts.get(project.rootPath) === path;
+		return { inProject: true, inManuscript, locale: project.locale };
+	}
+
+	/** Every open editor asked to decide afresh whether its note is dressed. */
+	private refreshParagraphLineEditors(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const editorView = findEditorViewForMarkdownInfo(
+				leaf.view as unknown as MarkdownFileInfo,
+			);
+			if (editorView === null) continue;
+			editorView.dispatch({ effects: refreshParagraphLines.of(null) });
+		}
 	}
 
 	private refreshManagedEditors(relock = false): void {

@@ -34,6 +34,11 @@ import {
 	RECENT_FONT_LIMIT,
 	sizeOrTheme,
 	PRESENTATION_THEME_VARS,
+	DEFAULT_PRESENTATION_SCOPE,
+	PRESENTATION_SCOPES,
+	isPresentationScope,
+	noteWearsPresentation,
+	sanitizePresentationScope,
 	type ManuscriptPresentation,
 } from '../../src/domain';
 
@@ -383,5 +388,37 @@ describe('presentationShape', () => {
 		expect(fields.map(([field]) => field).sort()).toEqual(
 			Object.keys(look()).sort(),
 		);
+	});
+});
+
+describe('the typography scope', () => {
+	it('offers the stream, the projects and the vault, the projects by default', () => {
+		expect(PRESENTATION_SCOPES).toEqual(['stream', 'project', 'vault']);
+		expect(DEFAULT_PRESENTATION_SCOPE).toBe('project');
+		for (const scope of PRESENTATION_SCOPES) {
+			expect(isPresentationScope(scope)).toBe(true);
+			expect(sanitizePresentationScope(scope)).toBe(scope);
+		}
+		// The development build's narrowest scope, which reached the
+		// manuscript's notes in any tab, is gone: it reads as the default.
+		expect(isPresentationScope('manuscript')).toBe(false);
+		expect(sanitizePresentationScope('manuscript')).toBe('project');
+		expect(sanitizePresentationScope(undefined)).toBe('project');
+	});
+
+	it('leaves every note to the stream, then reaches the projects, then the whole vault', () => {
+		const manuscript = { inProject: true, inManuscript: true };
+		const character = { inProject: true, inManuscript: false };
+		// The draft a project links to from outside its own folder.
+		const linkedDraft = { inProject: false, inManuscript: true };
+		const loose = { inProject: false, inManuscript: false };
+		for (const standing of [manuscript, character, linkedDraft, loose]) {
+			expect(noteWearsPresentation('stream', standing)).toBe(false);
+			expect(noteWearsPresentation('vault', standing)).toBe(true);
+		}
+		expect(noteWearsPresentation('project', manuscript)).toBe(true);
+		expect(noteWearsPresentation('project', character)).toBe(true);
+		expect(noteWearsPresentation('project', linkedDraft)).toBe(true);
+		expect(noteWearsPresentation('project', loose)).toBe(false);
 	});
 });

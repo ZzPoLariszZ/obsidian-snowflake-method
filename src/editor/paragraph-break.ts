@@ -1,9 +1,18 @@
+import { insertNewline } from '@codemirror/commands';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import {
 	EditorSelection,
+	Prec,
 	type EditorState,
+	type Extension,
+	type Line,
+	type SelectionRange,
 	type TransactionSpec,
 } from '@codemirror/state';
+import { keymap, type EditorView } from '@codemirror/view';
+
+import { isNestedEditor } from './nested-editor';
+import { lineKeepsPlainEnter } from './paragraph-layout';
 
 /**
  * Enter as a manuscript knows it: the blank line Markdown needs between
@@ -110,6 +119,11 @@ export function paragraphBreak(state: EditorState): TransactionSpec | null {
 	) {
 		if (KEEPS_PLAIN_ENTER.has(node.name)) return null;
 	}
+	return breakSpec(range, line);
+}
+
+/** The break itself, once the caret's line is known to be prose. */
+function breakSpec(range: SelectionRange, line: Line): TransactionSpec {
 	const onBlank = range.empty && line.text.trim().length === 0;
 	return {
 		changes: { from: range.from, to: range.to, insert: '\n\n' },
@@ -117,4 +131,57 @@ export function paragraphBreak(state: EditorState): TransactionSpec | null {
 		scrollIntoView: true,
 		userEvent: 'input',
 	};
+}
+
+/**
+ * The same decision read off the text alone, for an editor of Obsidian's
+ * own, whose grammar is not the stream's (see `paragraphLayoutByText`): a
+ * list, a quote, a code block, raw HTML, a comment, a math block and the
+ * front matter keep CodeMirror's own Enter, and a table does by the same
+ * reading as above. Null when Enter is not this command's to answer.
+ */
+export function paragraphBreakByText(state: EditorState): TransactionSpec | null {
+	const range = state.selection.main;
+	const line = state.doc.lineAt(range.head);
+	if (/^\s*\|/u.test(line.text)) return null;
+	if (insideTable(state.doc, line.number)) return null;
+	if (lineKeepsPlainEnter(state.doc, line.number)) return null;
+	return breakSpec(range, line);
+}
+
+/**
+ * Enter as the paragraph break in an editor of Obsidian's own, and
+ * Shift+Enter the plain break, while the note in it is one the typography
+ * dresses and the setting is on -- both asked at each press, so a flip in a
+ * popover reaches the editor already open. Only in the leaf's own editor:
+ * the editors the app nests in it, a table's cells, hold text that has no
+ * paragraphs. Bound above the app's own bindings, which would otherwise
+ * answer Enter first; off, outside prose and in a nested editor, both
+ * bindings decline and the app's answer stands.
+ */
+export function paragraphBreakWhen(isOn: (view: EditorView) => boolean): Extension {
+	const on = (view: EditorView): boolean => !isNestedEditor(view) && isOn(view);
+	return Prec.high(
+		keymap.of([
+			{
+				key: 'Enter',
+				run: (view) => {
+					if (!on(view)) return false;
+					const spec = paragraphBreakByText(view.state);
+					if (spec === null) return false;
+					view.dispatch(spec);
+					return true;
+				},
+			},
+			{
+				key: 'Shift-Enter',
+				run: (view) => {
+					if (!on(view)) return false;
+					const line = view.state.doc.lineAt(view.state.selection.main.head);
+					if (lineKeepsPlainEnter(view.state.doc, line.number)) return false;
+					return insertNewline(view);
+				},
+			},
+		]),
+	);
 }

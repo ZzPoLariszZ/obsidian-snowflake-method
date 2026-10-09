@@ -37,6 +37,57 @@ export function isManuscriptTextAlign(value: unknown): value is ManuscriptTextAl
 	return (MANUSCRIPT_TEXT_ALIGNS as readonly unknown[]).includes(value);
 }
 
+/**
+ * How far the dress reaches: the stream alone, which always wears it, or
+ * with it every note of a Snowflake project, or every note in the vault,
+ * when opened in a tab of Obsidian's own.
+ */
+export type PresentationScope = 'stream' | 'project' | 'vault';
+
+export const PRESENTATION_SCOPES: readonly PresentationScope[] = [
+	'stream',
+	'project',
+	'vault',
+];
+
+export const DEFAULT_PRESENTATION_SCOPE: PresentationScope = 'project';
+
+export function isPresentationScope(value: unknown): value is PresentationScope {
+	return (PRESENTATION_SCOPES as readonly unknown[]).includes(value);
+}
+
+export function sanitizePresentationScope(value: unknown): PresentationScope {
+	return isPresentationScope(value) ? value : DEFAULT_PRESENTATION_SCOPE;
+}
+
+/** Where a note stands, as far as the scope cares. */
+export interface NoteStanding {
+	/** Inside a Snowflake project's folder. */
+	inProject: boolean;
+	/** Inside that project's manuscript folder, or the draft the project links to. */
+	inManuscript: boolean;
+}
+
+/**
+ * Whether a note at a standing wears the dress under a scope. The stream
+ * dresses itself, so its scope reaches no note in a tab of the app's own. A
+ * project's notes include the draft it links to from outside its folder,
+ * and a note outside every project is reached by the vault alone.
+ */
+export function noteWearsPresentation(
+	scope: PresentationScope,
+	standing: NoteStanding,
+): boolean {
+	switch (scope) {
+		case 'stream':
+			return false;
+		case 'project':
+			return standing.inProject || standing.inManuscript;
+		case 'vault':
+			return true;
+	}
+}
+
 export interface ManuscriptPresentation {
 	/** A font list as the author typed it; empty for the theme's text font. */
 	fontFamily: string;

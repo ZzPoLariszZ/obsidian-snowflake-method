@@ -43,6 +43,12 @@ export interface PresentationPanelDeps {
 	/** Whether Enter puts the paragraph break: shown among the paragraph rows. */
 	enterParagraph: () => boolean;
 	setEnterParagraph: (on: boolean) => Promise<void>;
+	/**
+	 * Whether the grid lines row is offered. The stream draws them; a note of
+	 * the app's own never does, and the bar above one leaves the row out.
+	 * Offered unless told otherwise.
+	 */
+	guides?: boolean;
 	/** Told when the panel has gone, by whichever route it went. */
 	onClose: (how: PanelCloseReason) => void;
 }
@@ -218,16 +224,19 @@ export function openPresentationPanel(
 			write({ textAlign: value });
 		},
 	});
-	const guide = addChoicePicker(row(t('settings.manuscriptGuide.name')), {
-		value: look.guide,
-		options: MANUSCRIPT_GUIDES.map((value) => ({
-			value,
-			label: t(`settings.manuscriptGuide.${value}`),
-		})),
-		onPick: (value) => {
-			write({ guide: value });
-		},
-	});
+	const guide =
+		deps.guides === false
+			? null
+			: addChoicePicker(row(t('settings.manuscriptGuide.name')), {
+					value: look.guide,
+					options: MANUSCRIPT_GUIDES.map((value) => ({
+						value,
+						label: t(`settings.manuscriptGuide.${value}`),
+					})),
+					onPick: (value) => {
+						write({ guide: value });
+					},
+				});
 	const hyphens = addToggleControl(row(t('settings.manuscriptHyphenation.name')), {
 		value: look.hyphenation,
 		onPick: (value) => {
@@ -281,7 +290,7 @@ export function openPresentationPanel(
 		align.sync(next.textAlign);
 		hyphens.sync(next.hyphenation);
 		tint.sync(dark ? next.tintDark : next.tintLight);
-		guide.sync(next.guide);
+		guide?.sync(next.guide);
 	};
 
 	// Under the button and lined up with its end, in the layer above the
