@@ -8,6 +8,22 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0]
+
+### Added
+
+- **A tidy file explorer.** A new button at the top of Obsidian's file explorer hides the plugin's own files and folders. The system folder, the JSON records and the sticky notes are tucked away. It also drops the numbering prefixes, so `50_Manuscript` shows as Manuscript. Nothing is renamed on disk, and when you rename something, the box shows its real name. In the settings you can add more files and folders to hide.
+- **Immersive mode.** A second button shows only the project you're working on. Every other row is hidden under a faint bar, and the other folders fold away. When you switch to another project's dashboard, workspace or manuscript, the view follows you. Turn it off and the folders go back to how you left them. It's on by default, and it can't be on at the same time as arrange mode.
+- **Arrange mode.** A third button lets you drag files and folders into whatever order you like inside their folder. Each row also gets a handle with **Move up**, **Move down** and the other move actions. It's handy on a touch screen. Your order is saved in the plugin's settings and stays put through renames and moves. Press Escape or the button again when you're done. Outside arrange mode, dragging moves files as usual.
+- **Word counts in the file explorer.** A fourth button shows the word count beside every note and folder. It uses the counting rule you picked for the statistics, and a folder adds up everything inside it, subfolders too. Notes the plugin makes, like templates and sticky notes, aren't counted, so the totals only show your own writing. You can turn the counts off for notes or for folders in the settings.
+- **File explorer settings.** A new section right after General holds the settings for the four buttons. Choose whether they work in your Snowflake projects or the whole Vault, what the tidy view hides, and where word counts show. Each button also has a command, so you can run it from the command palette or give it a hotkey.
+- **Hide scrollbar.** A new setting under General hides every scrollbar in every Obsidian window, and it's on by default. Scrolling still works the same with the mouse wheel, the trackpad or the keyboard. To bring the bars back, turn the setting off or use the new **Toggle scrollbars** command.
+- **Ctrl+Enter in dialogs.** In any dialog that creates or saves, Ctrl+Enter, or Cmd+Enter on a Mac, clicks the main button. It works wherever the cursor is. That covers the forms for projects, characters, scenes, tasks, foreshadowing, timelines, beat sheets, freeform, kinds, categories, templates and highlight rules. Enter and Shift+Enter keep doing what they did, like starting a new line in a text box.
+
+### Changed
+
+- The last hint under the scene list in Step 8 now opens the **Visualization workspace**, so you can try the corkboard, freeform, timeline and beat sheet from there. It used to create an empty Obsidian Canvas.
+
 ## [0.23.0]
 
 ### Added
@@ -543,6 +559,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 本文件记录本项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+## [0.24.0]
+
+### 新增
+
+- **整洁的文件列表。** Obsidian 文件列表顶部新增一个按钮，可以隐藏插件自己存放的文件和文件夹，比如系统文件夹、JSON 记录和便签。名称上的编号前缀也会去掉，`50_正文` 就显示为 正文。磁盘上的文件不会被重命名，重命名时输入框里显示的仍是原名。在设置里还可以添加更多要隐藏的文件和文件夹。
+- **沉浸模式。** 第二个按钮只显示你正在写的项目，其他行都被一道淡淡的横条盖住，其他文件夹也会折叠起来。切换到另一个项目的工作台、工作区或正文流时，显示会跟着切换。关掉后，文件夹会回到你离开时的样子。沉浸模式默认开启，不能和排列模式同时开启。
+- **排列模式。** 第三个按钮让你在文件夹内把文件和文件夹拖成任意顺序。每一行还会多出一个抓手，点开就有**上移**、**下移**等移动操作，在触屏上也很方便。排好的顺序保存在插件设置里，重命名和移动后依然有效。排好后按 Escape 或再按一次按钮即可退出。不在排列模式时，拖动文件和以前一样是移动文件。
+- **文件列表中的字数。** 第四个按钮在每篇笔记和每个文件夹旁显示字数，按你在数据统计里选的计数规则计算。文件夹的字数包括其中所有内容，子文件夹也算在内。插件生成的笔记，比如模板和便签，不计入字数，所以总数只算你自己写的内容。在设置里可以分别关闭笔记和文件夹的字数。
+- **文件列表设置。** 设置里新增一节，紧跟在“通用”之后，存放这四个按钮的设置。你可以选择它们只在雪花项目内生效还是在整个 Vault 内生效，整理视图隐藏哪些内容，以及在哪里显示字数。每个按钮也都有对应的命令，可以从命令面板运行，或者设置快捷键。
+- **隐藏滚动条。** “通用”里新增一项设置，默认开启，会隐藏 Obsidian 每个窗口里的所有滚动条。用鼠标滚轮、触控板或键盘滚动都和以前一样。想让滚动条回来，关掉这一项，或者使用新的**切换滚动条**命令。
+- **对话框支持 Ctrl+Enter。** 在任何用于创建或保存的对话框里，按 Ctrl+Enter（Mac 上是 Cmd+Enter）都相当于点击主按钮，无论光标在哪里。项目、角色、场景、任务、伏笔、时间线、节拍表、自由画布、种类、分类、模板和高亮规则的表单都适用。单独按 Enter 和 Shift+Enter 的作用和以前一样，比如在文本框里换行。
+
+### 变更
+
+- 第 8 步场景列表下的最后一条提示，现在会打开**可视化工作区**，从那里可以试试场景看板、自由画布、时间线和节拍表。以前它会新建一个空的 Obsidian 白板。
 
 ## [0.23.0]
 
