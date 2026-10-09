@@ -98,7 +98,7 @@ export default defineConfig(
 						'^ \\(don’t add a scene',
 						'^point-of-view character$',
 						'^ and describe exactly what happens',
-						'^to create a “timeline”',
+						'^to try corkboard',
 						// The numbering presets name their example titles, which
 						// carry a capital of their own.
 						'Chinese \\(Arabic numerals\\) - 第 1 章',

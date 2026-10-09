@@ -2139,7 +2139,7 @@
 	font-weight: var(--font-bold);
 }
 
-.snowflake-method-dashboard button.snowflake-method-canvas-link {
+.snowflake-method-dashboard button.snowflake-method-hint-link {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--size-2-1);
@@ -2159,22 +2159,22 @@
 	vertical-align: baseline;
 }
 
-.snowflake-method-dashboard button.snowflake-method-canvas-link:hover {
+.snowflake-method-dashboard button.snowflake-method-hint-link:hover {
 	background: rgba(var(--interactive-accent-rgb), 0.12);
 	color: var(--interactive-accent-hover);
 }
 
-.snowflake-method-canvas-link-icon {
+.snowflake-method-hint-link-icon {
 	display: inline-flex;
 	align-items: center;
 }
 
-.snowflake-method-canvas-link-icon svg {
+.snowflake-method-hint-link-icon svg {
 	width: 0.95em;
 	height: 0.95em;
 }
 
-.snowflake-method-canvas-link-label {
+.snowflake-method-hint-link-label {
 	border-bottom: 1px dashed currentColor;
 }
 

@@ -3229,22 +3229,6 @@ export class SnowflakeProjectService {
     );
   }
 
-  async createSceneCanvas(projectLocator: ProjectLocator): Promise<string> {
-    const project = await this.loadProject(projectLocator);
-    this.assertProjectWritable(project);
-    const layout = getProjectPathLayout(project.locale);
-    const fileName = project.locale === "zh-CN" ? "场景看板.canvas" : "Scene Board.canvas";
-    const requested = normalizePath(
-      `${project.rootPath}/${layout.directories.scenes}/${fileName}`,
-    );
-    const file = await this.repository.createPlainFile(
-      requested,
-      '{"nodes":[],"edges":[]}',
-      true,
-    );
-    return file.path;
-  }
-
   async listScenes(projectLocator: ProjectLocator): Promise<SceneRecord[]> {
     const project = await this.resolveProjectForRead(projectLocator);
     const records = await this.findManagedFilesInProjectDirectories(

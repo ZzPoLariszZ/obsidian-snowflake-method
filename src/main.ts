@@ -2179,14 +2179,6 @@ export default class SnowflakeMethodPlugin
 		return { id: scene.id, path: scene.path };
 	}
 
-	async createSceneCanvas(): Promise<void> {
-		const project = await this.requireCurrentProject();
-		const path = await this.projects.createSceneCanvas(project);
-		const name = path.slice(path.lastIndexOf('/') + 1);
-		new Notice(this.t('messages.canvasCreated', { name }));
-		await this.openManagedFile(path);
-	}
-
 	async openProjectBase(id: ProjectBaseChoice): Promise<void> {
 		const project = await this.requireCurrentProject();
 		const path = await this.projects.openProjectBase(project, id);

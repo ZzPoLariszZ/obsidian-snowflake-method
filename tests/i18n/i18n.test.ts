@@ -557,12 +557,12 @@ describe('translation resources', () => {
 		expect(en['step8.hints.elementsAfter']).toBe(
 			' (don’t add a scene solely for exposition or atmosphere).',
 		);
-		expect(en['step8.hints.canvasBefore']).toBe(
+		expect(en['step8.hints.workspaceBefore']).toBe(
 			'You can use the following table or explore',
 		);
-		expect(en['step8.hints.canvasAction']).toBe('Obsidian Canvas');
-		expect(en['step8.hints.canvasAfter']).toBe(
-			'to create a “timeline” or “scene board”.',
+		expect(en['step8.hints.workspaceAction']).toBe('Visualization workspace');
+		expect(en['step8.hints.workspaceAfter']).toBe(
+			'to try corkboard, freeform, timeline, and beat sheet.',
 		);
 		expect(en['step8.hints.revision']).toBe(
 			'It’s perfectly fine to revisit steps 1 to 7 at any time. Seeing your scenes take shape often helps you understand your story and characters more deeply.',
@@ -573,12 +573,12 @@ describe('translation resources', () => {
 		);
 		expect(zhCN['step8.hints.title']).toBe('场景列表提示');
 		expect(zhCN['step8.hints.conflict']).toBe('冲突');
-		expect(zhCN['step8.hints.canvasBefore']).toBe(
-			'你可以使用下方表格，也可以利用',
+		expect(zhCN['step8.hints.workspaceBefore']).toBe(
+			'你可以使用下方表格，也可以打开',
 		);
-		expect(zhCN['step8.hints.canvasAction']).toBe('Obsidian Canvas');
-		expect(zhCN['step8.hints.canvasAfter']).toBe(
-			'构造「时间线」或者「场景看板」。',
+		expect(zhCN['step8.hints.workspaceAction']).toBe('可视化工作区');
+		expect(zhCN['step8.hints.workspaceAfter']).toBe(
+			'，试试场景看板、自由画布、时间线和节拍表。',
 		);
 		expect(zhCN['step8.hints.revision']).toBe(
 			'随时回到第一至七步修改也完全没问题。场景的展现往往会让你更深入地了解故事和人物。',

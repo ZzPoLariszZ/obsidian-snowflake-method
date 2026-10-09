@@ -7164,27 +7164,31 @@ export class SnowflakeDashboardView extends ItemView {
 			text: this.t('step1.hints.imagination'),
 		});
 		imaginationHint.addClass('snowflake-method-hint-emphasis');
-		const canvasHint = hintsList.createEl('li');
-		canvasHint.createSpan({ text: this.t('step8.hints.canvasBefore') });
-		const canvasAction = canvasHint.createEl('button', {
-			cls: 'snowflake-method-canvas-link',
+		// The hint leads to the visualization workspace, as the creation tools'
+		// own row does, with the workspace opened on whatever view it last showed.
+		const workspaceHint = hintsList.createEl('li');
+		workspaceHint.createSpan({ text: this.t('step8.hints.workspaceBefore') });
+		const workspaceAction = workspaceHint.createEl('button', {
+			cls: 'snowflake-method-hint-link',
 			attr: {
-				'aria-label': this.t('step8.hints.canvasAria'),
+				'aria-label': this.t('step8.hints.workspaceAria'),
 				type: 'button',
 			},
 		});
-		const canvasIcon = canvasAction.createSpan({
-			cls: 'snowflake-method-canvas-link-icon',
+		const workspaceIcon = workspaceAction.createSpan({
+			cls: 'snowflake-method-hint-link-icon',
 		});
-		setIcon(canvasIcon, 'layout-dashboard');
-		canvasAction.createSpan({
-			cls: 'snowflake-method-canvas-link-label',
-			text: this.t('step8.hints.canvasAction'),
+		setIcon(workspaceIcon, 'orbit');
+		workspaceAction.createSpan({
+			cls: 'snowflake-method-hint-link-label',
+			text: this.t('step8.hints.workspaceAction'),
 		});
-		canvasAction.addEventListener('click', () => {
-			void this.runAndRefresh(() => this.host.createSceneCanvas());
+		workspaceAction.addEventListener('click', () => {
+			void this.runAndRefresh(() =>
+				this.host.openStoryStructure(undefined, { projectPath: this.projectPath }),
+			);
 		});
-		canvasHint.createSpan({ text: this.t('step8.hints.canvasAfter') });
+		workspaceHint.createSpan({ text: this.t('step8.hints.workspaceAfter') });
 		const revisionHint = hintsList.createEl('li', {
 			text: this.t('step8.hints.revision'),
 		});

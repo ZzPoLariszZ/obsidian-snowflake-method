@@ -1084,21 +1084,6 @@ describe("SnowflakeProjectService", () => {
     expect(fakeVault.getAbstractFileByPath(`${project.rootPath}/Manuscript`)).toBeNull();
   });
 
-  it("creates localized scene canvases without overwriting an existing canvas", async () => {
-    const project = await service.createProject({
-      title: "画布测试",
-      locale: "zh-CN",
-    });
-
-    const first = await service.createSceneCanvas(project);
-    const second = await service.createSceneCanvas(project);
-
-    expect(first).toBe(`${project.rootPath}/40_场景/场景看板.canvas`);
-    expect(second).toBe(`${project.rootPath}/40_场景/场景看板 (2).canvas`);
-    expect(fakeVault.contents.get(first)).toBe('{"nodes":[],"edges":[]}');
-    expect(fakeVault.contents.get(second)).toBe('{"nodes":[],"edges":[]}');
-  });
-
   describe("archiving a project", () => {
     it("files the project under the archive folder and marks the metadata note", async () => {
       const project = await service.createProject({ name: "Wintering" });

@@ -811,7 +811,6 @@ export interface DashboardHost {
 		targetIndex: number,
 		projectPath?: string,
 	): Promise<void>;
-	createSceneCanvas(): Promise<void>;
 	openProjectBase(id: ProjectBaseChoice): Promise<void>;
 	/** Rewrites the base from the current template and opens it. */
 	restoreProjectBase(id: ProjectBaseChoice): Promise<void>;

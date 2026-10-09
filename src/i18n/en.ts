@@ -635,7 +635,6 @@ export const en = {
 	'messages.characterDeleted': 'Moved character note to the trash.',
 	'messages.sceneCreated': 'Created scene “{name}”.',
 	'messages.sceneDeleted': 'Moved scene note to the trash.',
-	'messages.canvasCreated': 'Created scene canvas “{name}”.',
 	'messages.stepChanged': 'Step {step} status changed to {status}.',
 	'messages.noCurrentProject': 'Open a Snowflake project first.',
 	'messages.sessionScopeSwitched': 'Writing statistics now show: {scope}.',
@@ -1981,10 +1980,10 @@ export const en = {
 	'step8.hints.povKeyword': 'point-of-view character',
 	'step8.hints.povAfter':
 		' and describe exactly what happens in each scene.',
-	'step8.hints.canvasBefore': 'You can use the following table or explore',
-	'step8.hints.canvasAction': 'Obsidian Canvas',
-	'step8.hints.canvasAfter': 'to create a “timeline” or “scene board”.',
-	'step8.hints.canvasAria': 'Create a new Obsidian Canvas',
+	'step8.hints.workspaceBefore': 'You can use the following table or explore',
+	'step8.hints.workspaceAction': 'Visualization workspace',
+	'step8.hints.workspaceAfter': 'to try corkboard, freeform, timeline, and beat sheet.',
+	'step8.hints.workspaceAria': 'Open the visualization workspace',
 	'step8.hints.revision':
 		'It’s perfectly fine to revisit steps 1 to 7 at any time. Seeing your scenes take shape often helps you understand your story and characters more deeply.',
 	'steps.9.title': 'Scene planning (optional)',
