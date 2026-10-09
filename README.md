@@ -65,9 +65,10 @@ Your writing stays local, linkable, portable, and editable without the plugin. T
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions in the text. |
 | Task board | Put everything that's waiting on one Kanban board: your own tasks and the ones the plugin derives from your writing. |
 | Revision | Propose a replacement, a deletion or an insertion beside the manuscript. The chapter only changes once you accept the proposal. |
-| Revision awareness | Get reminders that never block you when the material a step builds on changes. |
 | Foreshadowing | Follow a thread from its plant to its payoff. Each of its passages is marked in the text, and they're all listed together. |
 | Sticky notes | Keep an idea or a reminder on a colored note, on the dashboard, in a sidebar of its own, or floating over the workspace. |
+| File explorer enhancement | Hide the plugin's own files from the file explorer, focus on one project, arrange files your own way, and see word counts. |
+| Revision awareness | Get reminders that never block you when the material a step builds on changes. |
 | Safe repair tools | Detect damaged structure and repair missing managed files without overwriting prose. |
 | Bilingual workspace | Choose English or Simplified Chinese separately for the interface and for each project. |
 
@@ -189,9 +190,9 @@ In the manuscript stream, click any chapter and it switches to an editing view. 
 
 **Typewriter scrolling** keeps the line you're writing in the middle of the page. **Focus mode** fades everything except the paragraph you're writing. Its deepest level, solo, shows only the manuscript, in full screen. Each has a button in every chapter's header. The arrow keys move the cursor from one chapter into the next.
 
-**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page.
-
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted background, justified with automatic hyphenation. First lines are indented, dashed grid lines run behind the text, and focus mode keeps the paragraph being written at full contrast." /></a></p>
+
+**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page.
 
 **Word milestones** put the running word count in the margin, beside the line that reaches each interval. The interval is five hundred words by default. Milestones use the same counting rule as the status bar. They count across the whole manuscript in reading order, or start again in every chapter. They also follow your typing. As a chapter grows, its marks move, and in whole-manuscript mode so do the marks of every chapter after it. Switch them on under **Word milestone** in the settings.
 
@@ -205,43 +206,43 @@ In the manuscript stream, click any chapter and it switches to an editing view. 
 
 The work around the writing has a pane of its own. The dashboard's **Task management** pane has four tabs, each holding a different kind of note to yourself.
 
-**Tasks** puts everything that's waiting on one board of six columns, from To do to Done. Your own tasks are cards you write. Each one holds a title, a description, a priority, a due date and the entities the task is about. Make one with **Add task** on the tab or **New task** in the Command palette. Drag a card within a column to reorder it, or into another column to change its status. Edit, archive and delete are on the card's own menu. The plugin fills in the rest of the board itself, and works it out afresh every time the board loads. It shows your daily, weekly and monthly writing goals, which move through the columns as the words come in. It adds foreshadowing and revisions that are still open, and the ones whose words have changed underneath them. It also adds mentions no single entity can claim, your sensitive words, and sticky notes waiting to be read. Click one of these cards to open the tab it was counted from, filtered to what it counted. A command in the Command palette hides them all. The bar above the board searches every card, and filters the board by kind, priority and due date. **Archived** folds away underneath, with a search of its own, where you can restore or delete a card.
-
 <p align="center"><a href="assets/screenshots/task_kanban_en.png"><img src="assets/screenshots/task_kanban_en.png" width="100%" alt="The Task management pane's Tasks tab as a Kanban board. To do holds derived cards for open foreshadowings, pending revisions and sticky notes to review, above an urgent task with its due date. In progress holds the daily, weekly and monthly writing goals with their word counts. Blocked holds a high-priority task and an overdue low-priority one, and a collapsed archive is under the board." /></a></p>
 
-**Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread, and choose **Create foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**. Each passage is marked as a plant, a reinforcement or the payoff. The thread itself is planned, active, resolved or abandoned. Every occurrence is marked in the prose and has a card in the margin to the right of the chapter. The card shows the role, the thread's status, its name and description, the marked words and a note of your own. An occurrence stays with its words as you write above and around them. If you rewrite those words directly, the occurrence isn't lost. It becomes unresolved, and you can put it back on the passage that replaced them. The tab gives every occurrence a row. You can search the rows by name, and filter them by status, by role, or to show only the unresolved ones.
+**Tasks** puts everything that's waiting on one board of six columns, from To do to Done. Your own tasks are cards you write. Each one holds a title, a description, a priority, a due date and the entities the task is about. Make one with **Add task** on the tab or **New task** in the Command palette. Drag a card within a column to reorder it, or into another column to change its status. Edit, archive and delete are on the card's own menu. The plugin fills in the rest of the board itself, and works it out afresh every time the board loads. It shows your daily, weekly and monthly writing goals, which move through the columns as the words come in. It adds foreshadowing and revisions that are still open, and the ones whose words have changed underneath them. It also adds mentions no single entity can claim, your sensitive words, and sticky notes waiting to be read. Click one of these cards to open the tab it was counted from, filtered to what it counted. A command in the Command palette hides them all. The bar above the board searches every card, and filters the board by kind, priority and due date. **Archived** folds away underneath, with a search of its own, where you can restore or delete a card.
 
 <p align="center"><a href="assets/screenshots/foreshadowing_en.png"><img src="assets/screenshots/foreshadowing_en.png" width="100%" alt="Two foreshadowing occurrences marked in a chapter of the manuscript stream. Each has a card in the right margin with its role and status, the thread's name and description, the marked words, a note, and Open, Edit and Delete." /></a></p>
 
-**Revision** makes a change easier to judge before it is made. Select the words in question and choose **Create revision** from the same menu. The selection becomes a replacement, or a deletion if you leave the proposed text empty. With just the cursor and nothing selected, you get an insertion at that point. The words a proposal would take out are struck through in place. But the chapter itself doesn't change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin, with the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it. **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal stays with its words as you write around them. If you change its words directly, it's shown as a conflict, and you can only discard it, not apply it.
+**Foreshadowing** follows one thread from its plant to its payoff. Click into a chapter of the manuscript stream, select the words that plant the thread, and choose **Create foreshadowing** from the right-click menu. Later passages join the same thread through **Add to existing foreshadowing**. Each passage is marked as a plant, a reinforcement or the payoff. The thread itself is planned, active, resolved or abandoned. Every occurrence is marked in the prose and has a card in the margin to the right of the chapter. The card shows the role, the thread's status, its name and description, the marked words and a note of your own. An occurrence stays with its words as you write above and around them. If you rewrite those words directly, the occurrence isn't lost. It becomes unresolved, and you can put it back on the passage that replaced them. The tab gives every occurrence a row. You can search the rows by name, and filter them by status, by role, or to show only the unresolved ones.
 
 <p align="center"><a href="assets/screenshots/revision_en.png"><img src="assets/screenshots/revision_en.png" width="100%" alt="Three revisions beside a chapter in the manuscript stream: a replacement and a deletion struck through in the prose, an insertion marked by a bar, and a card for each with the original text, the proposed text, a comment, and Accept, Reject and Edit" /></a></p>
 
-**Sticky notes** hold what doesn't belong in a record: an idea, a reminder, or a question to come back to. To make one, use **New sticky note** in the Command palette, the sticker icon in the ribbon, or **Add sticky note** on the tab. The new note opens ready for writing. A note has two faces. Click its text to write in it with the plugin's own editor, and press Escape to read it back as rendered Markdown. The same file shows in three places at once. It's a card on the dashboard, a compact card in a sidebar of its own, and a floating panel over the workspace. You can drag the panel by its header, resize it from any edge and pin it in place. You can also make it translucent so the page shows through. The same button on the card opens the panel and closes it again. Each device remembers where you put a panel, and focus mode never fades it, not even in solo. Eight colors tell the notes apart at a glance. **Archive** moves a note into a folded section under the board and closes all its panels. There you can read, restore, or delete it.
+**Revision** makes a change easier to judge before it is made. Select the words in question and choose **Create revision** from the same menu. The selection becomes a replacement, or a deletion if you leave the proposed text empty. With just the cursor and nothing selected, you get an insertion at that point. The words a proposal would take out are struck through in place. But the chapter itself doesn't change, and nothing is counted, analyzed or tracked until the proposal is accepted. Each proposal is a card in the margin, with the original text, the proposed text and a comment. **Accept** writes the change into the chapter as if you had typed it. **Reject** leaves the text as it was, and **Edit** changes the proposal or the comment. A proposal stays with its words as you write around them. If you change its words directly, it's shown as a conflict, and you can only discard it, not apply it.
 
 <p align="center"><a href="assets/screenshots/sticky_note_en.png"><img src="assets/screenshots/sticky_note_en.png" width="100%" alt="The dashboard's Sticky notes tab with two colored cards and a collapsed archive, the same two notes as compact cards in the sidebar, and both floating as resizable panels over the workspace" /></a></p>
+
+**Sticky notes** hold what doesn't belong in a record: an idea, a reminder, or a question to come back to. To make one, use **New sticky note** in the Command palette, the sticker icon in the ribbon, or **Add sticky note** on the tab. The new note opens ready for writing. A note has two faces. Click its text to write in it with the plugin's own editor, and press Escape to read it back as rendered Markdown. The same file shows in three places at once. It's a card on the dashboard, a compact card in a sidebar of its own, and a floating panel over the workspace. You can drag the panel by its header, resize it from any edge and pin it in place. You can also make it translucent so the page shows through. The same button on the card opens the panel and closes it again. Each device remembers where you put a panel, and focus mode never fades it, not even in solo. Eight colors tell the notes apart at a glance. **Archive** moves a note into a folded section under the board and closes all its panels. There you can read, restore, or delete it.
 
 ### Data statistics
 
 Writing is easier to keep up when you can see it. The dashboard's **Data statistics** pane turns a project into numbers, with one tab for each question. **Writing sessions** measures the time, **Prose analysis** measures the prose, and **Entity tracking** follows who and what that prose names.
 
-**Writing sessions** is where the clock lives. A sitting starts when you start it, or by itself when you turn on focus mode. Words you write with no sitting running still count. So a morning at the manuscript still belongs to that day, whether or not you remembered to start the clock. You only need a sitting to record the time.
-
 <p align="center"><a href="assets/screenshots/data_statistics_01_en.png"><img src="assets/screenshots/data_statistics_01_en.png" width="100%" alt="Data statistics: daily goal, focus timer, today's summary, recent trend, and annual contribution" /></a></p>
 
 <p align="center"><a href="assets/screenshots/data_statistics_02_en.png"><img src="assets/screenshots/data_statistics_02_en.png" width="100%" alt="Data statistics: calendar, weekly and monthly goals, temporal distribution, and writing stages" /></a></p>
 
-**Prose analysis** looks at the draft as prose. At the top are total reading time, reading time per chapter, sentences per chapter, words per sentence and the share of dialogue. Below them, every chapter has a row of its own. You can search the rows by title and filter them by length. **Word frequency** counts the words themselves and ranks them, with a word cloud of the ones you use most. Stopwords and the names of your own characters and places are left out of the count until you ask for them. Chinese is read as words rather than as single characters.
+**Writing sessions** is where the clock lives. A sitting starts when you start it, or by itself when you turn on focus mode. Words you write with no sitting running still count. So a morning at the manuscript still belongs to that day, whether or not you remembered to start the clock. You only need a sitting to record the time.
 
 <p align="center"><a href="assets/screenshots/prose_analysis_en.png"><img src="assets/screenshots/prose_analysis_en.png" width="100%" alt="Prose analysis: reading time, sentences and dialogue share at the top, a searchable chapter table, and word frequency ranked with a word cloud" /></a></p>
 
-**Entity tracking** follows the cast through the draft. Every character, scene, time, location, item and kind of your own that the manuscript names gets a row. The row shows how often it's mentioned, how many of those mentions are already links, and the first and last chapter to name it. There's also a distribution that shows the whole book as one line. Open a row to see every mention, grouped by chapter with the sentence around it. Choose one to jump to that spot in the manuscript. Sensitive words you've listed and dialogue by chapter each have a section of their own. So do mentions no single member can claim, and the ignore rules you've written.
+**Prose analysis** looks at the draft as prose. At the top are total reading time, reading time per chapter, sentences per chapter, words per sentence and the share of dialogue. Below them, every chapter has a row of its own. You can search the rows by title and filter them by length. **Word frequency** counts the words themselves and ranks them, with a word cloud of the ones you use most. Stopwords and the names of your own characters and places are left out of the count until you ask for them. Chinese is read as words rather than as single characters.
 
 <p align="center"><a href="assets/screenshots/entity_tracking_1_en.png"><img src="assets/screenshots/entity_tracking_1_en.png" width="100%" alt="Entity tracking: foldable sections by kind, a character table with counts, first and last mention and a distribution line, above a window listing every mention gathered by chapter" /></a></p>
 
-**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose.
+**Entity tracking** follows the cast through the draft. Every character, scene, time, location, item and kind of your own that the manuscript names gets a row. The row shows how often it's mentioned, how many of those mentions are already links, and the first and last chapter to name it. There's also a distribution that shows the whole book as one line. Open a row to see every mention, grouped by chapter with the sentence around it. Choose one to jump to that spot in the manuscript. Sensitive words you've listed and dialogue by chapter each have a section of their own. So do mentions no single member can claim, and the ignore rules you've written.
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_en.png"><img src="assets/screenshots/entity_tracking_2_en.png" width="100%" alt="A chapter in the manuscript stream with a character name marked in the accent color within the prose" /></a></p>
+
+**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose.
 
 <a id="installation"></a>
 
@@ -334,19 +335,24 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Stop editing the current manuscript note | Leave the note at the center of the page and return it to reading view. |
 | Stop the writing session | End the running session and save its record. |
 | Switch statistics scope | Switch the statistics between the whole project and the manuscript alone. |
+| Toggle arrange mode in the file explorer | Start or stop dragging files and folders into your own order. |
 | Toggle custom highlights | Turn your own highlight rules on or off in the manuscript. |
 | Toggle derived tasks on the task board | Show or hide the cards the plugin derives from your writing. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
+| Toggle immersive mode in the file explorer | Show only the project you're working on, or every project again. |
 | Toggle managed boundary protection | Temporarily turn protection for managed section markers on or off. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle opening a form for new notes from a field | Choose whether a note created from a picker field opens its form first. |
 | Toggle opening notes beside the dashboard | Choose between a companion pane and regular tabs. |
 | Toggle order numbers in the manuscript | Show or hide each manuscript note's stored position. |
+| Toggle plugin files in the file explorer | Hide or show the plugin's own files and the numbering prefixes. |
 | Toggle progress status in tables | Show or hide each note's progress status under its name in the tables. |
 | Toggle reduced animations | Switch between animated and reduced-motion visuals. |
+| Toggle scrollbars | Hide every scrollbar in Obsidian, or show them again. |
 | Toggle the actions column in tables | Show or hide each row's actions column. |
 | Toggle the dashboard rail | Collapse the rail beside the dashboard so only its marks show, or expand it again. |
 | Toggle typewriter scrolling | Keep the line you are writing at the middle of the page. |
+| Toggle word counts in the file explorer | Show or hide the word count beside each note and folder. |
 | Toggle writing count outside sessions | Start or stop recording the words you write while no session is running. |
 | Update notes in older format | Update every note written by an older release. |
 
@@ -364,10 +370,20 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Freeform mode | Off | Hide the ten steps and their progress. Characters and scenes join the worldbuilding list. |
 | Open notes beside the dashboard | On | Reuse one companion pane for the notes you open. |
 | Reduce animations | Off | Replace animations with static visuals. |
+| Hide scrollbar | On | Hide every scrollbar in Obsidian. Scrolling still works. |
 | Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
 | Show progress status in tables | Off | Show each note's progress status under its name in the member tables. |
 | Show the actions column in tables | On | Keep each row's actions visible beside it. |
 | New notes from a field | Open its form | Choose whether a note created from a picker field opens its form first or is created directly. |
+| Scope | Snowflake projects | Apply the file explorer enhancement to Snowflake projects or to the whole Vault. |
+| Immersive mode | On | Show only the project you're working on in the file explorer. |
+| Hide numbering prefixes | On | Show `50_Manuscript` as Manuscript without renaming anything. |
+| Hide plugin-managed files | On | Hide the JSON files and sticky notes the plugin keeps. |
+| Additional files to hide | None | More files to hide, one name or path per line, with `*` as a wildcard. |
+| Hide plugin-managed folders | On | Hide the system folder and the other folders the plugin keeps. |
+| Additional folders to hide | None | More folders to hide, one name or path per line, with `*` as a wildcard. |
+| Show word counts on notes | On | Show each note's word count, using your writing count rules. |
+| Show word counts on folders | On | Show each folder's total word count, subfolders included. |
 | Notes to keep loaded | 5 | Keep this many manuscript notes loaded on each side of the one you are reading. |
 | Show note paths | On | Show where each manuscript note is stored, just above the note. |
 | Show order numbers | Off | Show the stored position that decides where a note comes in the reading order. |
@@ -503,6 +519,8 @@ Writing sessions are recorded per device, so two machines never write to the sam
 
 Archiving a project moves its whole folder into `Snowflake Archive`. That folder is next to your projects, not inside any of them. Nothing in the notes changes. A project keeps every reference inside its own folder, so no link breaks while it is archived. The project manager lists what is in the archive and can restore any of it. If its old name has been taken in the meantime, the project comes back under a free name. Moving a folder in or out by hand works the same way, so the archive is a place, not a mechanism.
 
+The numbered folders keep a project in order, but they make Obsidian's file explorer busy to read. Four buttons at the top of the explorer help. The first hides the plugin's own files and the numbering prefixes, so `50_Manuscript` shows as Manuscript. The second, immersive mode, shows only the project you're working on. The third lets you drag files and folders into your own order. The fourth shows word counts. Nothing is renamed or moved on disk, and the rename box always shows the real name. Your order is kept in the plugin's settings and follows renames and moves.
+
 Exporting writes plain-text files into `Snowflake Export`, a folder next to your projects like the archive. You can pick another folder in the settings, as long as it is outside the project. If a note has left the manuscript since an earlier export, its exported file is never deleted. A workspace exported as an Obsidian Canvas is the one exception. Its file goes next to the workspace's own file inside the project, as the layout above shows.
 
 A manuscript can be one note or many, in whatever folders suit you. Each note records its place with `snowflake-manuscript-sequence`, so moving or renaming a note never changes where it is read. The manuscript stream shows the notes in that order as a single page.
@@ -556,6 +574,8 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Beat sheet (0.21.0)
 - [x] Freeform (0.22.0)
 - [x] Export visualization workspace as Obsidian Canvas (0.23.0)
+- [x] File explorer enhancement (0.24.0)
+- [x] Hidden scrollbars (0.24.0)
 
 <a id="development"></a>
 
@@ -681,9 +701,10 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
 | 任务看板 | 把待办的事情放上看板，既有你自己写下的任务，也有插件根据你的写作派生出的任务。 |
 | 修订 | 在正文旁提出替换、删除或插入的建议，只有接受后才会改动正文。 |
-| 修订提醒 | 上游材料有变化时给出复核提示，不会打断写作。 |
 | 伏笔 | 追踪一条线索从埋设到回收，在每一处落点上标出，并把它们汇总列出。 |
 | 便签 | 把想法或提醒写在一张彩色便签上。便签可以放在工作台或独立侧栏里，也可以悬浮在工作区上方。 |
+| 文件列表增强 | 隐藏插件自己的文件，专注于一个项目，按自己的方式排列，还能显示字数。 |
+| 修订提醒 | 上游材料有变化时给出复核提示，不会打断写作。 |
 | 安全修复 | 检测项目结构问题，安全地补齐缺失的托管文件，不会覆盖正文。 |
 | 中英双语 | 界面语言与每个项目的模板语言可分别选择。 |
 
@@ -805,9 +826,9 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 
 **打字机滚动**让正在写的那一行保持在页面中部。**专注模式**会淡化正在写的段落以外的一切，最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮。用方向键也能让光标从一章移到下一章。
 
-**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。
-
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
+
+**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。
 
 **字数里程碑**会在页边标出累计字数，就标在达到每个间隔的那一行旁边，默认每五百字一处。它和状态栏使用同一套字数规则。可以按阅读顺序在整部正文中连续累计，也可以每章重新计数。里程碑会跟着你的写作走。一章变长时，它的里程碑随之移动。在整部正文模式下，后面每一章的里程碑也会一起移动。在设置的**字数里程碑**一节中开启。
 
@@ -821,43 +842,43 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 
 写作之外的事务，交给一块专门的面板。工作台的**任务管理**面板有四个标签页，每个标签页放一类写给自己的记录。
 
-**任务**标签页把所有待办的事情放在一块看板上。看板共有六列，从待处理一直到已完成。你自己的任务是一张张卡片，写着标题、描述、优先级、截止日期，以及关联的实体。用标签页上的**添加任务**或命令面板中的**新建任务**来新建。卡片可以在同一列中拖动排序，也可以拖到另一列来改变状态。编辑、归档与删除都在卡片自己的菜单里。看板上的其余卡片由插件自动填写，每次读取都会重新算出。其中有每日、每周与每月的写作目标，会随着你写下的字数在各列之间推进。还有尚未了结的伏笔与修订，以及所指文字已被改动过的那些。此外还有无法归到某个实体名下的提及、你列出的敏感词，以及等着查看的便签。点击其中任意一张，就会打开它的来源标签页，并只显示它统计的那些内容。也可以用命令面板把这些卡片全部隐藏。看板上方的搜索会搜遍每一张卡片，也可以按类型、优先级与截止日期筛选。**已归档**折叠在看板下方，有自己的搜索，可以在那里恢复或删除卡片。
-
 <p align="center"><a href="assets/screenshots/task_kanban_cn.png"><img src="assets/screenshots/task_kanban_cn.png" width="100%" alt="任务管理面板的任务标签页，是一块看板。待处理列里先是三张派生卡片：待回收的伏笔、待处理的修订与待查看的便签，其后是一条带截止日期的紧急任务。进行中列里是每日、每周与每月写作目标，以及各自的字数。阻塞中列里是一条高优先级任务与一条已经过期的低优先级任务。看板下方是折叠起来的归档。" /></a></p>
 
-**伏笔**追踪一条线索，从埋设一直到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**。之后的段落用**加入已有伏笔**并入同一条线索。每一处都标为埋设、强化或回收，线索本身的状态则是计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片。卡片上写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作，它也不会走丢。如果你直接改写了那段文字，它只是变成锚点失效，而不会丢失，之后还可以接到替换后的段落上。标签页里每一处落点各占一行，可以按名称搜索，也可以按状态、环节或「仅锚点失效」筛选。
+**任务**标签页把所有待办的事情放在一块看板上。看板共有六列，从待处理一直到已完成。你自己的任务是一张张卡片，写着标题、描述、优先级、截止日期，以及关联的实体。用标签页上的**添加任务**或命令面板中的**新建任务**来新建。卡片可以在同一列中拖动排序，也可以拖到另一列来改变状态。编辑、归档与删除都在卡片自己的菜单里。看板上的其余卡片由插件自动填写，每次读取都会重新算出。其中有每日、每周与每月的写作目标，会随着你写下的字数在各列之间推进。还有尚未了结的伏笔与修订，以及所指文字已被改动过的那些。此外还有无法归到某个实体名下的提及、你列出的敏感词，以及等着查看的便签。点击其中任意一张，就会打开它的来源标签页，并只显示它统计的那些内容。也可以用命令面板把这些卡片全部隐藏。看板上方的搜索会搜遍每一张卡片，也可以按类型、优先级与截止日期筛选。**已归档**折叠在看板下方，有自己的搜索，可以在那里恢复或删除卡片。
 
 <p align="center"><a href="assets/screenshots/foreshadowing_cn.png"><img src="assets/screenshots/foreshadowing_cn.png" width="100%" alt="正文流的一章里标出了两处伏笔落点。每处在右侧页边各有一张卡片，写着环节与状态、伏笔的名称与描述、所标的文字和备注，以及打开、编辑与删除按钮。" /></a></p>
 
-**修订**让改动先摆在眼前看清楚，再落到纸上。选中要改的文字，在同一个右键菜单里选择**新建修订**。所选文字会成为一处替换，建议文本留空则成为一处删除，只放一个光标就在那里插入。将被改掉的文字会在原处划去，但这一章本身不会改变。在接受之前，这处修订也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，就像你亲手打出来的一样。**拒绝**会移除修订，让正文保持原样。**编辑**可以修改建议文本与备注。修订会跟着它所指的文字走。如果你直接改动了那段文字，它就会被标为冲突，只能丢弃，不能应用。
+**伏笔**追踪一条线索，从埋设一直到回收。在正文流中点进一章，选中埋下线索的文字，在右键菜单里选择**新建伏笔**。之后的段落用**加入已有伏笔**并入同一条线索。每一处都标为埋设、强化或回收，线索本身的状态则是计划中、进行中、已回收或已放弃。每一处落点都会在正文原处标出，并在章节右侧的页边留下一张卡片。卡片上写着环节、伏笔的状态、名称与描述、所标的文字，以及你自己的备注。落点会跟着它所指的文字走，你在它前后继续写作，它也不会走丢。如果你直接改写了那段文字，它只是变成锚点失效，而不会丢失，之后还可以接到替换后的段落上。标签页里每一处落点各占一行，可以按名称搜索，也可以按状态、环节或「仅锚点失效」筛选。
 
 <p align="center"><a href="assets/screenshots/revision_cn.png"><img src="assets/screenshots/revision_cn.png" width="100%" alt="正文流中一章旁的三处修订。替换与删除在正文中划去，插入用一道竖线标出。每一处各有一张卡片，写着原文、建议文本与备注，以及接受、拒绝与编辑按钮。" /></a></p>
 
-**便签**用来放不必写进记录的东西：一个想法、一句提醒，或者一个稍后再回头看的问题。命令面板中的**新建便签**、功能区的便签图标和标签页上的**添加便签**，都会新建一张便签并立刻打开，可以直接写。每张便签都有两面：点击正文，就能用插件自带的编辑器书写，按 Escape 则切回渲染后的 Markdown 来阅读。同一个文件会同时以三种样子出现：工作台上的卡片、独立侧栏中的紧凑卡片，以及悬浮在工作区上方的面板。悬浮面板可以拖动标题栏来移动，可以从任意边缘调整大小，可以固定位置，也可以调淡，让底下的页面透出来。卡片上的同一个按钮，既能让便签浮起来，也能把它收回去。面板停在哪里，会按设备分别记住。专注模式从不淡化它，「仅正文」一档也一样。便签有八种颜色，一眼就能分辨。**归档**会把便签收进面板下方的折叠区，同时关闭它所有的悬浮面板。在折叠区里，可以阅读、恢复或删除便签。
+**修订**让改动先摆在眼前看清楚，再落到纸上。选中要改的文字，在同一个右键菜单里选择**新建修订**。所选文字会成为一处替换，建议文本留空则成为一处删除，只放一个光标就在那里插入。将被改掉的文字会在原处划去，但这一章本身不会改变。在接受之前，这处修订也不计入字数、分析与追踪。每一处修订都是页边的一张卡片，写着原文、建议文本与备注。**接受**会把改动写进这一章，就像你亲手打出来的一样。**拒绝**会移除修订，让正文保持原样。**编辑**可以修改建议文本与备注。修订会跟着它所指的文字走。如果你直接改动了那段文字，它就会被标为冲突，只能丢弃，不能应用。
 
 <p align="center"><a href="assets/screenshots/sticky_note_cn.png"><img src="assets/screenshots/sticky_note_cn.png" width="100%" alt="工作台的便签标签页里有两张彩色卡片和折叠起来的归档。侧栏里是同样两张便签的紧凑卡片。工作区上方还悬浮着两个可调整大小的面板。" /></a></p>
+
+**便签**用来放不必写进记录的东西：一个想法、一句提醒，或者一个稍后再回头看的问题。命令面板中的**新建便签**、功能区的便签图标和标签页上的**添加便签**，都会新建一张便签并立刻打开，可以直接写。每张便签都有两面：点击正文，就能用插件自带的编辑器书写，按 Escape 则切回渲染后的 Markdown 来阅读。同一个文件会同时以三种样子出现：工作台上的卡片、独立侧栏中的紧凑卡片，以及悬浮在工作区上方的面板。悬浮面板可以拖动标题栏来移动，可以从任意边缘调整大小，可以固定位置，也可以调淡，让底下的页面透出来。卡片上的同一个按钮，既能让便签浮起来，也能把它收回去。面板停在哪里，会按设备分别记住。专注模式从不淡化它，「仅正文」一档也一样。便签有八种颜色，一眼就能分辨。**归档**会把便签收进面板下方的折叠区，同时关闭它所有的悬浮面板。在折叠区里，可以阅读、恢复或删除便签。
 
 ### 数据统计
 
 写作看得见，才更容易坚持下去。工作台的**数据统计**面板用数据回看项目，每个标签页回答一个问题。**写作时段**衡量时间，**正文分析**衡量正文本身，**实体追踪**则追踪正文写到了谁、写到了什么。
 
-**写作时段**这一页负责计时。时段可以由你开启，也可以在进入专注模式时自动开始。没有开启时段时写下的字，同样会被记下。所以在正文里写了一上午，无论你是否记得开始计时，这些字都会算进这一天。只有写作时长，仍然只按时段计算。
-
 <p align="center"><a href="assets/screenshots/data_statistics_01_cn.png"><img src="assets/screenshots/data_statistics_01_cn.png" width="100%" alt="数据统计：每日目标、专注计时、今日总结、近期趋势与年度贡献" /></a></p>
 
 <p align="center"><a href="assets/screenshots/data_statistics_02_cn.png"><img src="assets/screenshots/data_statistics_02_cn.png" width="100%" alt="数据统计：日历、每周与每月目标、时间分布与写作阶段" /></a></p>
 
-**正文分析**着眼于草稿的文字本身。最上方列出总阅读时间、每章阅读时间、每章句数、每句字数，以及对话在全部文字中所占的比例。下面每一章各占一行，可以按标题搜索，也可以按篇幅筛选。**词频**统计词语本身并排出名次，还会用你最常用的词组成一片词云。停用词和你自己的角色、地点等名称默认不计入，需要时再勾选。中文以词为单位统计，而不是逐字计数。
+**写作时段**这一页负责计时。时段可以由你开启，也可以在进入专注模式时自动开始。没有开启时段时写下的字，同样会被记下。所以在正文里写了一上午，无论你是否记得开始计时，这些字都会算进这一天。只有写作时长，仍然只按时段计算。
 
 <p align="center"><a href="assets/screenshots/prose_analysis_cn.png"><img src="assets/screenshots/prose_analysis_cn.png" width="100%" alt="正文分析：最上方的阅读时间、句数与对话占比，可搜索的章节表格，以及排出名次并配有词云的词频" /></a></p>
 
-**实体追踪**记录出场的人与物在全书中留下的足迹。正文写到的每一个角色、场景、时间、地点、物品，以及你自定义种类中的成员，都各占一行。每一行写着被提及了多少次、其中多少处已经是链接、首次与末次提及在哪一章，还有一条把整本书浓缩成一行的分布线。展开一行，就能看到每一处提及，按章节归在一起，并带着前后的句子。点击其中一处，就会跳到正文中的那个位置。你列出的敏感词、按章节统计的对话、无法确定属于哪一位成员的提及，以及你写下的忽略规则，也各有一节。
+**正文分析**着眼于草稿的文字本身。最上方列出总阅读时间、每章阅读时间、每章句数、每句字数，以及对话在全部文字中所占的比例。下面每一章各占一行，可以按标题搜索，也可以按篇幅筛选。**词频**统计词语本身并排出名次，还会用你最常用的词组成一片词云。停用词和你自己的角色、地点等名称默认不计入，需要时再勾选。中文以词为单位统计，而不是逐字计数。
 
 <p align="center"><a href="assets/screenshots/entity_tracking_1_cn.png"><img src="assets/screenshots/entity_tracking_1_cn.png" width="100%" alt="实体追踪：按种类折叠的分节，带有计数、首末次提及和分布线的角色表格，以及一个按章节归拢、列出每一处提及的窗口" /></a></p>
 
-**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。
+**实体追踪**记录出场的人与物在全书中留下的足迹。正文写到的每一个角色、场景、时间、地点、物品，以及你自定义种类中的成员，都各占一行。每一行写着被提及了多少次、其中多少处已经是链接、首次与末次提及在哪一章，还有一条把整本书浓缩成一行的分布线。展开一行，就能看到每一处提及，按章节归在一起，并带着前后的句子。点击其中一处，就会跳到正文中的那个位置。你列出的敏感词、按章节统计的对话、无法确定属于哪一位成员的提及，以及你写下的忽略规则，也各有一节。
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_cn.png"><img src="assets/screenshots/entity_tracking_2_cn.png" width="100%" alt="正文流中的一章，角色名在正文原处以强调色标出" /></a></p>
+
+**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。
 
 ## 安装
 
@@ -958,7 +979,12 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 | 切换表格中的操作列 | 显示或隐藏每行的操作列。 |
 | 切换任务看板中的派生任务 | 显示或隐藏插件根据你的写作派生出的卡片。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
+| 切换滚动条 | 隐藏 Obsidian 里的所有滚动条，或者重新显示。 |
 | 切换自由模式 | 隐藏十个步骤和进度，或者让它们重新显示。 |
+| 切换文件列表中的插件文件 | 隐藏或显示插件自己的文件和编号前缀。 |
+| 切换文件列表的沉浸模式 | 只显示你正在写的项目，或者重新显示全部项目。 |
+| 切换文件列表的排列模式 | 开始或停止把文件和文件夹拖成自己的顺序。 |
+| 切换文件列表中的字数 | 显示或隐藏每篇笔记和每个文件夹旁的字数。 |
 
 与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。两条针对当前笔记的命令，作用于页面正中的那一篇。
 
@@ -972,10 +998,20 @@ Randy Ingermanson 的雪花写作法，名字来自[科赫雪花](https://baike.
 | 自由模式 | 关闭 | 隐藏十个步骤和进度。角色和场景会并入世界观列表。 |
 | 在工作台旁打开笔记 | 开启 | 长篇笔记都在工作台旁的同一个固定分栏里打开。 |
 | 减少动画 | 关闭 | 用静态的视觉效果代替动画。 |
+| 隐藏滚动条 | 开启 | 隐藏 Obsidian 里的所有滚动条，滚动不受影响。 |
 | 保护托管区段边界 | 开启 | 防止同步标记被意外修改。 |
 | 在表格中显示进度状态 | 关闭 | 在成员表格中，把每条笔记的进度状态显示在名称下方。 |
 | 在表格中显示操作列 | 开启 | 每一行的操作按钮都始终显示。 |
 | 从字段新建笔记 | 打开它的表单 | 从字段新建笔记时，选择先打开表单还是直接创建。 |
+| 作用范围 | 雪花项目 | 文件列表增强应用于雪花项目，或者整个 Vault。 |
+| 沉浸模式 | 开启 | 文件列表里只显示你正在写的项目。 |
+| 隐藏编号前缀 | 开启 | 把 `50_正文` 显示为 正文，不会重命名任何东西。 |
+| 隐藏插件管理的文件 | 开启 | 隐藏插件存放的 JSON 文件和便签。 |
+| 额外隐藏的文件 | 无 | 还要隐藏的文件，每行一个名称或路径，`*` 为通配符。 |
+| 隐藏插件管理的文件夹 | 开启 | 隐藏系统文件夹和插件存放的其他文件夹。 |
+| 额外隐藏的文件夹 | 无 | 还要隐藏的文件夹，每行一个名称或路径，`*` 为通配符。 |
+| 在笔记上显示字数 | 开启 | 按你的字数规则显示每篇笔记的字数。 |
+| 在文件夹上显示字数 | 开启 | 显示每个文件夹的总字数，包括子文件夹。 |
 | 保持载入的笔记数 | 5 | 在你正在读的笔记前后，各保持载入这么多篇正文笔记。 |
 | 显示笔记路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
 | 显示顺序编号 | 关闭 | 显示笔记记下的编号，这个编号决定它在正文中的阅读位置。 |
@@ -1107,6 +1143,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
+编号文件夹让项目井然有序，但也让 Obsidian 的文件列表显得杂乱。文件列表顶部的四个按钮可以帮上忙。第一个隐藏插件自己的文件和编号前缀，`50_正文` 就显示为 正文。第二个是沉浸模式，只显示你正在写的项目。第三个可以把文件和文件夹拖成自己的顺序。第四个显示字数。磁盘上的文件不会被重命名或移动，重命名框里显示的始终是原名。你排好的顺序记在插件设置里，重命名和移动后依然有效。
+
 导出会把纯文本文件写进 `Snowflake Export`。它和归档文件夹一样，与各个项目放在同一层。如果你在设置里另指定了一个项目之外的文件夹，就会写到那里。以前导出过、后来又从正文中移走的笔记，它导出的文件不会被删除。导出为 Obsidian 白板是唯一的例外，它的文件会放在项目内工作区自己的文件旁边，如上面的目录所示。
 
 正文可以只有一篇笔记，也可以有很多篇，文件夹怎么组织都行。每篇笔记都用 `snowflake-manuscript-sequence` 记下自己的位置，所以移动或重命名笔记，都不会改变它的阅读顺序。正文流会按这个顺序，把它们连成一整页来显示。
@@ -1158,6 +1196,8 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 节拍表 (0.21.0)
 - [x] 自由画布 (0.22.0)
 - [x] 将可视化工作区导出为 Obsidian Canvas (0.23.0)
+- [x] 文件列表增强 (0.24.0)
+- [x] 隐藏滚动条 (0.24.0)
 
 ## 开发
 
