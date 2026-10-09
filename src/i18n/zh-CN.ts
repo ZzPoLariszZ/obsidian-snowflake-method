@@ -508,6 +508,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'fields.oneParagraphSummaryPlaceholder': '将一句话概述扩展成一个完整段落。',
 	'fields.description': '简介',
 	'fields.descriptionPlaceholder': '为小说写一段简短的简介。',
+	'fields.plotSynopsis': '情节大纲',
+	'fields.plotSynopsisPlaceholder': '把一段式梗概的每一句话扩展成一个段落。',
+	'fields.longSynopsis': '长篇大纲',
+	'fields.longSynopsisPlaceholder': '把情节大纲的每个段落扩展成完整的一页。',
 	'table.name': '姓名',
 	'table.category': '类别',
 	'table.description': '描述',
@@ -1802,7 +1806,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'step4.sourceSummary.title': '一段式梗概',
 	'step4.sourceSummary.empty': '完成第二步后，一段式梗概会显示在这里。',
 	'step4.hints.title': '情节大纲提示',
-	'step4.hints.openNote': '请打开独立笔记进行编辑。',
+	'step4.hints.openNote': '可以直接在这里写情节大纲，也可以打开笔记在编辑器里写。',
 	'step4.hints.structure': '每个段落都可以尝试起承转合或三幕式结构。',
 	'step4.hints.paragraphs':
 		'让每个段落展开故事的一部分，每部分结尾应可以衔接下一段。',
@@ -1820,7 +1824,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'steps.6.title': '长篇大纲',
 	'steps.6.description': '将情节大纲中的每个段落拓展成完整一页的内容。',
 	'step6.hints.title': '长篇大纲提示',
-	'step6.hints.openNote': '请打开独立笔记进行编辑。',
+	'step6.hints.openNote': '可以直接在这里写长篇大纲，也可以打开笔记在编辑器里写。',
 	'step6.hints.pageLength': '完整一页的内容大概为八百字。',
 	'step6.hints.revision':
 		'随时回到第一至五步修改也完全没问题。这可以帮你补充更多的故事和人物细节。',

@@ -87,7 +87,13 @@ interface Drag {
 	band: RowBounds | null;
 }
 
-const TYPING_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+/**
+ * Where a key is a field's own: a control, or an editable block of any kind,
+ * the plain-text ones the dashboard's steps are written in among them, but
+ * not a block shown only to be read.
+ */
+export const TYPING_SELECTOR =
+	'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
 export class ArrangeController {
 	active = false;

@@ -14,7 +14,9 @@ import {
 import {
 	DEFINITION_FILE_IDS,
 	STEP_ONE_SECTION_IDS,
+	STEP_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	type EditableStepId,
 	areStepPrerequisitesComplete,
 	countWriting,
 	countsCharacters,
@@ -112,6 +114,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
+import { ProseBox } from './prose-box';
 import { FilterPanel } from './filter-panel';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
@@ -729,6 +732,7 @@ export class SnowflakeDashboardView extends ItemView {
 			this.railObserver = new view.ResizeObserver((entries) => {
 				const width = entries[entries.length - 1]?.contentRect.width;
 				if (width !== undefined) this.measureRail(width);
+				this.publishFrameHeight();
 			});
 			this.railObserver.observe(this.contentEl);
 		}
@@ -1073,6 +1077,7 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	onResize(): void {
+		this.publishFrameHeight();
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
 		void this.refresh().catch((error: unknown) => {
@@ -1089,6 +1094,25 @@ export class SnowflakeDashboardView extends ItemView {
 	 * for what the width alone decides: the head hides there, having
 	 * nothing to open.
 	 */
+	/**
+	 * The height of the main column, written on the root for the rules that
+	 * hold a block to a share of the frame: a quoted synopsis is held to half
+	 * of it. A column not yet laid out measures nothing, and says nothing,
+	 * so the rule's own fallback stands until it is.
+	 */
+	private publishFrameHeight(): void {
+		// The tests draw the view over a fake that has no style of its own.
+		const style = (this.contentEl as Partial<HTMLElement>).style;
+		if (style === undefined) return;
+		const main = this.contentEl.querySelector<HTMLElement>(MAIN_PANEL_SELECTOR);
+		const height = main?.clientHeight ?? 0;
+		if (height > 0) {
+			style.setProperty('--snowflake-method-frame-height', `${String(height)}px`);
+		} else {
+			style.removeProperty('--snowflake-method-frame-height');
+		}
+	}
+
 	private measureRail(width: number): void {
 		const root = this.contentEl;
 		const rem = Number.parseFloat(
@@ -1396,6 +1420,7 @@ export class SnowflakeDashboardView extends ItemView {
 				root, RAIL_SCROLL_SELECTOR, ACTIVE_STEP_SELECTOR, headerHeight,
 			);
 		}
+		this.publishFrameHeight();
 	}
 
 	private createDisclosure(
@@ -4787,8 +4812,9 @@ export class SnowflakeDashboardView extends ItemView {
 			case 10:
 				this.renderManuscript(panel, model);
 				break;
-			default:
-				this.renderOpenArtifact(panel, step, model);
+			case 4:
+			case 6:
+				this.renderSynopsis(panel, step, model, step.id, contentReadOnly);
 				break;
 		}
 		if (!projectComplete || step.id === 10) {
@@ -5553,7 +5579,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const fieldReadOnly = readOnly;
 		const inputs = new Map<
 			StepOneSectionId,
-			HTMLInputElement | HTMLTextAreaElement
+			HTMLInputElement | ProseBox
 		>();
 		const audience = panel.createEl('section', {
 			cls: 'snowflake-method-guided-section',
@@ -5596,7 +5622,8 @@ export class SnowflakeDashboardView extends ItemView {
 				fieldReadOnly,
 			),
 		);
-		const genreField = inputs.get('genre')?.parentElement;
+		const genre = inputs.get('genre');
+		const genreField = genre instanceof HTMLInputElement ? genre.parentElement : null;
 		genreField?.addClass('snowflake-method-question-field-wide');
 		const reasonsField = questionFields.createDiv({
 			cls: 'snowflake-method-field snowflake-method-question-field-wide snowflake-method-audience-reasons-field',
@@ -5604,13 +5631,13 @@ export class SnowflakeDashboardView extends ItemView {
 		reasonsField.createEl('label', {
 			text: this.t('fields.audienceAppeal'),
 		});
-		const reasonsInput = reasonsField.createEl('textarea', {
-			attr: {
-				placeholder: this.t('fields.audienceReasonsPlaceholder'),
-			},
+		const reasonsInput = new ProseBox(reasonsField, {
+			cls: 'snowflake-method-audience-reasons-input',
+			label: this.t('fields.audienceAppeal'),
+			placeholder: this.t('fields.audienceReasonsPlaceholder'),
+			value: fields['audience-reason-1'] ?? '',
+			disabled: fieldReadOnly,
 		});
-		reasonsInput.value = fields['audience-reason-1'] ?? '';
-		reasonsInput.disabled = fieldReadOnly;
 		inputs.set('audience-reason-1', reasonsInput);
 
 		const writingHints = this.createDisclosure(
@@ -5644,42 +5671,15 @@ export class SnowflakeDashboardView extends ItemView {
 		const oneSentenceSummaryField = panel.createDiv({
 			cls: 'snowflake-method-field snowflake-method-one-sentence-summary-field',
 		});
-		const textarea = oneSentenceSummaryField.createEl('textarea', {
+		const textarea = new ProseBox(oneSentenceSummaryField, {
 			cls: 'snowflake-method-one-sentence-summary-input',
-			attr: {
-				'aria-label': this.t('fields.oneSentenceSummary'),
-				placeholder: this.t('fields.oneSentenceSummaryPlaceholder'),
-			},
+			label: this.t('fields.oneSentenceSummary'),
+			placeholder: this.t('fields.oneSentenceSummaryPlaceholder'),
+			value: fields['one-sentence-summary'] ?? '',
+			disabled: fieldReadOnly,
 		});
-		textarea.value = fields['one-sentence-summary'] ?? '';
-		textarea.disabled = fieldReadOnly;
 		inputs.set('one-sentence-summary', textarea);
-		const hint = panel.createEl('p', {
-			cls: 'snowflake-method-hint snowflake-method-length-hint',
-		});
-		const lengthCount = hint.createSpan({
-			cls: 'snowflake-method-length-count',
-		});
-		const updateHint = (): void => {
-			const mode = this.host.writingCountMode();
-			const { total } = countWriting(textarea.value, { mode });
-			// The step asks for a sentence of a certain length, so the unit has
-			// to say which length: under a convention that counts characters,
-			// calling them words puts the target out by a factor of five.
-			const unit = countsCharacters(mode)
-				? total === 1
-					? 'statusBar.unitCharacter'
-					: 'statusBar.unitCharacters'
-				: total === 1
-					? 'statusBar.unitWord'
-					: 'statusBar.unitWords';
-			lengthCount.setText(
-				this.t('fields.oneSentenceSummaryCount', {
-					count: total,
-					unit: this.t(unit),
-				}),
-			);
-		};
+		this.addLengthHint(panel, textarea);
 		const candidateTitles = this.createDisclosure(
 			panel,
 			'1:candidate-titles',
@@ -5734,12 +5734,11 @@ export class SnowflakeDashboardView extends ItemView {
 			});
 		};
 		for (const input of inputs.values()) {
-			input.addEventListener('input', () => {
-				rememberDraft();
-				if (input === textarea) updateHint();
-			});
+			(input instanceof ProseBox ? input.el : input).addEventListener(
+				'input',
+				rememberDraft,
+			);
 		}
-		updateHint();
 		this.addSaveAndOpenActions(
 			panel,
 			1,
@@ -5806,16 +5805,14 @@ export class SnowflakeDashboardView extends ItemView {
 		const paragraphField = panel.createDiv({
 			cls: 'snowflake-method-field snowflake-method-one-paragraph-summary-field',
 		});
-		const input = paragraphField.createEl('textarea', {
+		const input = new ProseBox(paragraphField, {
 			cls: 'snowflake-method-one-paragraph-summary-input',
-			attr: {
-				'aria-label': this.t('fields.oneParagraphSummary'),
-				placeholder: this.t('fields.oneParagraphSummaryPlaceholder'),
-				rows: '6',
-			},
+			label: this.t('fields.oneParagraphSummary'),
+			placeholder: this.t('fields.oneParagraphSummaryPlaceholder'),
+			value: current[paragraphSectionId] ?? '',
+			disabled: readOnly,
 		});
-		input.value = current[paragraphSectionId] ?? '';
-		input.disabled = readOnly;
+		this.addLengthHint(panel, input);
 
 		const description = this.createDisclosure(
 			panel,
@@ -5837,16 +5834,14 @@ export class SnowflakeDashboardView extends ItemView {
 		const descriptionField = description.createDiv({
 			cls: 'snowflake-method-field snowflake-method-description-field',
 		});
-		const descriptionInput = descriptionField.createEl('textarea', {
+		const descriptionInput = new ProseBox(descriptionField, {
 			cls: 'snowflake-method-description-input',
-			attr: {
-				'aria-label': this.t('fields.description'),
-				placeholder: this.t('fields.descriptionPlaceholder'),
-				rows: '12',
-			},
+			label: this.t('fields.description'),
+			placeholder: this.t('fields.descriptionPlaceholder'),
+			value: current[descriptionSectionId] ?? '',
+			disabled: readOnly,
 		});
-		descriptionInput.value = current[descriptionSectionId] ?? '';
-		descriptionInput.disabled = readOnly;
+		this.addLengthHint(description, descriptionInput);
 
 		const rememberDraft = (): void => {
 			const activeDraft = this.stepDrafts.get(draftKey);
@@ -5859,8 +5854,8 @@ export class SnowflakeDashboardView extends ItemView {
 					activeDraft?.expectedRevision ?? model.stepRevisions[2] ?? '',
 			});
 		};
-		input.addEventListener('input', rememberDraft);
-		descriptionInput.addEventListener('input', rememberDraft);
+		input.el.addEventListener('input', rememberDraft);
+		descriptionInput.el.addEventListener('input', rememberDraft);
 		this.addSaveAndOpenActions(
 			panel,
 			2,
@@ -7195,15 +7190,26 @@ export class SnowflakeDashboardView extends ItemView {
 		revisionHint.addClass('snowflake-method-hint-emphasis');
 	}
 
-	private renderOpenArtifact(
+	/**
+	 * The two synopses, written where the summaries are: a box bound to the
+	 * note's one managed section, the running length under it, the hints and
+	 * the source text above, and the note itself a click away for the
+	 * editor's own comforts. The box takes the rest of the panel's height,
+	 * where a sentence's and a paragraph's boxes keep a height of their own:
+	 * a page or four of prose wants the room.
+	 */
+	private renderSynopsis(
 		panel: HTMLElement,
 		step: StepViewModel,
 		model: ProjectDashboardModel,
+		id: 4 | 6,
+		readOnly: boolean,
 	): void {
-		if (step.id === 4) {
+		panel.addClass('snowflake-method-filling-panel');
+		if (id === 4) {
 			this.renderWritingHints(
 				panel,
-				step.id,
+				id,
 				'step4.hints.title',
 				[
 					'step4.hints.openNote',
@@ -7223,11 +7229,10 @@ export class SnowflakeDashboardView extends ItemView {
 				'step4.sourceSummary.empty',
 				oneParagraphSummary,
 			);
-		}
-		if (step.id === 6) {
+		} else {
 			this.renderWritingHints(
 				panel,
-				step.id,
+				id,
 				'step6.hints.title',
 				[
 					'step6.hints.openNote',
@@ -7238,7 +7243,7 @@ export class SnowflakeDashboardView extends ItemView {
 				['step1.hints.imagination', 'step6.hints.revision'],
 			);
 			const plotSynopsis =
-				model.stepFields[4]?.['plot-synopsis'] ?? '';
+				model.stepFields[4]?.[STEP_SECTION_IDS[4][0]] ?? '';
 			this.renderSourceSummary(
 				panel,
 				'step6.sourceSynopsis.title',
@@ -7246,15 +7251,83 @@ export class SnowflakeDashboardView extends ItemView {
 				plotSynopsis,
 			);
 		}
-		const actions = panel.createDiv({ cls: 'snowflake-method-actions' });
-		const open = actions.createEl('button', {
-			cls: 'mod-cta',
-			text: this.t('actions.openNote'),
+		// A note that is not there cannot be written to or opened: the box
+		// stands, so the step still reads as one, but takes nothing.
+		const missing = step.artifactPath === null;
+		const sectionId = STEP_SECTION_IDS[id][0];
+		const draftKey = `${model.projectId}:${String(id)}`;
+		const draft = this.stepDrafts.get(draftKey);
+		const current = draft?.fields ?? model.stepFields[id] ?? {};
+		const field = panel.createDiv({
+			cls: 'snowflake-method-field snowflake-method-synopsis-field',
 		});
-		open.disabled = step.artifactPath === null;
-		open.addEventListener('click', () => {
-			void this.host.openStep(step.id);
+		const input = new ProseBox(field, {
+			cls: 'snowflake-method-synopsis-input',
+			label: this.t(id === 4 ? 'fields.plotSynopsis' : 'fields.longSynopsis'),
+			placeholder: this.t(
+				id === 4 ? 'fields.plotSynopsisPlaceholder' : 'fields.longSynopsisPlaceholder',
+			),
+			value: current[sectionId] ?? '',
+			disabled: readOnly || missing,
 		});
+		this.addLengthHint(panel, input);
+		const rememberDraft = (): void => {
+			const activeDraft = this.stepDrafts.get(draftKey);
+			this.stepDrafts.set(draftKey, {
+				fields: { [sectionId]: input.value },
+				expectedRevision:
+					activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
+			});
+		};
+		input.el.addEventListener('input', rememberDraft);
+		this.addSaveAndOpenActions(
+			panel,
+			id,
+			readOnly || missing,
+			async () => {
+				const activeDraft = this.stepDrafts.get(draftKey);
+				await this.host.saveStepFields(
+					id,
+					{ [sectionId]: input.value },
+					activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
+				);
+				this.stepDrafts.delete(draftKey);
+			},
+			() => this.stepDrafts.delete(draftKey),
+		);
+	}
+
+	/**
+	 * The running length of a box, under it at the right, in the unit the
+	 * counting convention counts by. The step asks for a sentence, a
+	 * paragraph or a page of a certain length, so the number has to say
+	 * which length: under a convention that counts characters, calling them
+	 * words puts the target out by a factor of five.
+	 */
+	private addLengthHint(container: HTMLElement, box: ProseBox): void {
+		const hint = container.createEl('p', {
+			cls: 'snowflake-method-hint snowflake-method-length-hint',
+		});
+		const count = hint.createSpan({ cls: 'snowflake-method-length-count' });
+		const update = (): void => {
+			const mode = this.host.writingCountMode();
+			const { total } = countWriting(box.value, { mode });
+			const unit = countsCharacters(mode)
+				? total === 1
+					? 'statusBar.unitCharacter'
+					: 'statusBar.unitCharacters'
+				: total === 1
+					? 'statusBar.unitWord'
+					: 'statusBar.unitWords';
+			count.setText(
+				this.t('fields.oneSentenceSummaryCount', {
+					count: total,
+					unit: this.t(unit),
+				}),
+			);
+		};
+		box.el.addEventListener('input', update);
+		update();
 	}
 
 	private renderWritingHints(
@@ -7309,7 +7382,14 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-source-summary-label',
 			text: this.t(titleKey),
 		});
-		const sourceSummaryContent = sourceSummary.createEl('p', {
+		// One block, newlines kept, set as the box below sets its own text,
+		// so the two read alike; in a body that scrolls, held to a third of
+		// the frame, so a long synopsis quoted above the box does not push
+		// the box off the page.
+		const body = sourceSummary.createDiv({
+			cls: 'snowflake-method-source-summary-body',
+		});
+		const sourceSummaryContent = body.createEl('p', {
 			cls: 'snowflake-method-source-summary-content',
 			text: content.length > 0 ? content : this.t(emptyKey),
 		});
@@ -7320,7 +7400,7 @@ export class SnowflakeDashboardView extends ItemView {
 
 	private addSaveAndOpenActions(
 		panel: HTMLElement,
-		step: 1 | 2,
+		step: EditableStepId,
 		readOnly: boolean,
 		onSave: () => Promise<void>,
 		onDiscard: () => void,

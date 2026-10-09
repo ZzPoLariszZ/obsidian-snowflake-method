@@ -1745,6 +1745,14 @@
 	line-height: 1.55;
 }
 
+/* The running length under a box inside a section is the same line it is
+   under the boxes outside one: at the box's full width, so its number
+   stands at the box's right edge, and with no measure of its own. */
+.snowflake-method-guided-section > p.snowflake-method-length-hint {
+	max-width: none;
+	margin: 0;
+}
+
 .snowflake-method-guided-details {
 	margin-top: var(--size-4-3);
 	padding-top: var(--size-4-5);
@@ -1863,8 +1871,8 @@
 	margin-bottom: 0;
 }
 
-.snowflake-method-audience-reasons-field textarea {
-	min-height: 8rem;
+.snowflake-method-audience-reasons-field .snowflake-method-audience-reasons-input {
+	height: 8rem;
 }
 
 .snowflake-method-question-prompt {
@@ -1900,20 +1908,32 @@
 }
 
 .snowflake-method-one-sentence-summary-input {
-	min-height: 8rem;
+	height: 8rem;
 	font-size: var(--font-text-size);
 	line-height: 1.55;
 }
 
+/* The summary boxes keep the height each was given, scrolling inside it,
+   where the synopsis boxes take the column: a sentence and a paragraph
+   are read whole in a box of their size, and the boxes under them stay
+   where they were. The handle still lets the author pull one taller. */
 .snowflake-method-field .snowflake-method-one-paragraph-summary-input {
-	min-height: calc(6 * 1.65em + 2 * var(--size-4-2));
+	height: calc(6 * 1.65em + 2 * var(--size-4-2));
 	font-size: var(--font-text-size);
 	line-height: 1.65;
 }
 
+/* The quoted text of the earlier step, framed to the box below it: the
+   same frame width on the right, the accent stripe on the left two pixels
+   thicker than a box's frame and the inset two pixels less, so the words
+   start and end where the box's do, and the scrolling body reaching the
+   frame as the box's does, so the two scrollbars stand in one line. The
+   padding is the header's and the body's rather than the block's, for the
+   same reason. */
 .snowflake-method-source-summary {
 	margin: var(--size-4-4) 0;
-	padding: var(--size-4-3) var(--size-4-4);
+	padding: var(--size-4-3) 0;
+	border: var(--input-border-width) solid transparent;
 	border-inline-start: 3px solid var(--interactive-accent);
 	background: var(--background-secondary);
 }
@@ -1923,6 +1943,12 @@
 	align-items: center;
 	gap: var(--size-4-2);
 	margin-bottom: var(--size-4-2);
+	/* Inset as the body's words are: the body holds a bar's width of room
+	   on both edges, shown or hidden, which the header has no bar to hold
+	   it for, so it reads the width the plugin publishes and keeps the same
+	   inset by hand. */
+	padding-inline: calc(var(--size-4-2) - 2px + var(--snowflake-method-scrollbar-native-width, 0px))
+		calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px));
 }
 
 .snowflake-method-source-summary-icon {
@@ -1942,10 +1968,33 @@
 	line-height: 1.35;
 }
 
+/* Held to a third of the frame and scrolled past it: the view writes the
+   main column's height on the root, and a column not yet measured leaves
+   the viewport's third to stand in. The text is one block set exactly as
+   the box sets its own -- the same face and size, the same line height,
+   newlines kept -- so the field typography rules indent and justify it as
+   they do the box. */
+.snowflake-method-source-summary-body {
+	max-height: calc(var(--snowflake-method-frame-height, 100vh) / 3);
+	padding-inline: calc(var(--size-4-2) - 2px) var(--size-4-2);
+	overflow-y: auto;
+	/* The scrollbar's room on both edges, as the box below holds it, so a
+	   quote that scrolls and a box that does not still set their words at
+	   the same edges. */
+	scrollbar-gutter: stable both-edges;
+}
+
+/* And as padding while the bars are hidden, as the box holds it then. */
+body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
+	padding-inline: calc(var(--size-4-2) - 2px + var(--snowflake-method-scrollbar-native-width, 0px))
+		calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px));
+}
+
 .snowflake-method-source-summary-content {
 	margin: 0;
 	color: var(--text-normal);
-	line-height: 1.6;
+	font-size: var(--font-text-size);
+	line-height: 1.65;
 	white-space: pre-wrap;
 }
 
@@ -1955,9 +2004,44 @@
 }
 
 .snowflake-method-field .snowflake-method-description-input {
+	height: calc(12 * 1.65em + 2 * var(--size-4-2));
+	font-size: var(--font-text-size);
+	line-height: 1.65;
+}
+
+/* The synopsis panels take the rest of the column's height, and their box
+   the rest of theirs: a page or four of prose wants the room a sentence's
+   and a paragraph's boxes never asked for. The box is not resizable, since
+   the column already gives it all there is, and keeps a floor of a dozen
+   lines so a short column still shows a page's worth. The panel grows to
+   the column but never shrinks under what it holds: shrunk, its frame
+   closed above a box that ran on past it, where now the column scrolls. */
+.snowflake-method-panel.snowflake-method-filling-panel {
+	display: flex;
+	flex: 1 0 auto;
+	flex-direction: column;
+}
+
+.snowflake-method-filling-panel .snowflake-method-synopsis-field {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* A basis of nothing, so the box takes the column's room and no more,
+   scrolling what runs past it: at a basis of its content a page of prose
+   would stand the box as tall as itself and carry the buttons under it
+   off the screen. */
+.snowflake-method-field .snowflake-method-synopsis-input {
+	flex: 1 1 0;
 	min-height: calc(12 * 1.65em + 2 * var(--size-4-2));
 	font-size: var(--font-text-size);
 	line-height: 1.65;
+	resize: none;
+}
+
+/* The running length stands clear of the buttons under it. */
+.snowflake-method-length-hint + .snowflake-method-actions {
+	margin-top: var(--size-4-4);
 }
 
 .snowflake-method-guided-details > summary .snowflake-method-status,
@@ -2027,7 +2111,8 @@
 }
 
 .snowflake-method-field input,
-.snowflake-method-field textarea {
+.snowflake-method-field textarea,
+.snowflake-method-field .snowflake-method-prose-box {
 	width: 100%;
 	min-width: 0;
 	box-sizing: border-box;
@@ -2036,6 +2121,84 @@
 .snowflake-method-field textarea {
 	min-height: 7rem;
 	resize: vertical;
+}
+
+/* The same floor for a prose box, at no weight at all: the app gives a
+   textarea its look with a bare type selector that any class outweighs,
+   and the box's look below is held to the same weight, so the rules that
+   size one step's box or another win over it as they win over the app's. */
+:where(.snowflake-method-field .snowflake-method-prose-box) {
+	min-height: 7rem;
+	resize: vertical;
+}
+
+/* A box for prose: an editable block that stands where a textarea stood
+   and dresses as the app dresses one -- its ground, frame, radius, padding
+   and placeholder colour read from the same variables -- so that every
+   paragraph in it can be set in, which a textarea cannot do (see the
+   field typography rules). It scrolls, which also lets the resize handle
+   work on a block, and it keeps the app's half-faded look when disabled. */
+:where(.snowflake-method-prose-box) {
+	display: block;
+	padding: var(--textarea-padding, var(--input-padding));
+	border: var(--input-border-width) solid var(--background-modifier-border);
+	border-radius: var(--textarea-radius, var(--input-radius));
+	background: var(--background-modifier-form-field);
+	color: var(--text-normal);
+	font-family: inherit;
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	overflow-y: auto;
+	/* The scrollbar's room held on both edges whether or not a bar is
+	   showing, as the panels hold it: a box that fills and starts to
+	   scroll would otherwise narrow its lines under the author, and a
+	   quoted text and a box side by side would set their words at two
+	   different edges. Both edges, so the words stay centred in the box. */
+	scrollbar-gutter: stable both-edges;
+	cursor: text;
+}
+
+/* With the bars hidden the gutter holds nothing, so the room is padding
+   instead, a bar's native width on each edge: the words stand where they
+   stood with the bars showing. */
+body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
+	padding-inline: calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px));
+}
+
+/* A one-line field on the dashboard keeps the same room at both edges,
+   though it never scrolls, so the words of every field on a step start
+   where the prose boxes' words start. A picker draws its frame around an
+   inner box that holds its chips and its input, so the inner box takes the
+   room and the input keeps none of its own. A search box is an input of
+   another type, with an icon in its inset, and keeps the app's. A dialog's
+   fields keep the app's spacing, as its text areas do. */
+.snowflake-method-dashboard input[type='text']:not(.snowflake-method-option-picker-input),
+.snowflake-method-dashboard .snowflake-method-option-picker-values {
+	padding-inline: calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px));
+}
+
+.snowflake-method-prose-box:not(.is-disabled):hover {
+	background-color: var(--background-modifier-form-field-hover);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.snowflake-method-prose-box:focus {
+	outline: none;
+	border-color: var(--background-modifier-border-focus);
+	box-shadow: 0 0 0 var(--input-border-width-focus) var(--background-modifier-border-focus);
+}
+
+.snowflake-method-prose-box:empty::before {
+	content: attr(data-placeholder);
+	color: var(--input-placeholder-color);
+	pointer-events: none;
+}
+
+.snowflake-method-prose-box.is-disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .snowflake-method-hint {
@@ -17164,11 +17327,14 @@ body.snowflake-method-hide-scrollbars {
 	--scrollbar-native-width: none;
 }
 
-body.snowflake-method-hide-scrollbars * {
+/* All but the plugin's own measuring probe, which has to go on seeing the
+   bar the machine draws: the boxes keep a bar's width of room at their
+   edges while the bars are hidden, so hiding them moves no words. */
+body.snowflake-method-hide-scrollbars *:not(.snowflake-method-scrollbar-probe) {
 	scrollbar-width: none;
 }
 
-body.snowflake-method-hide-scrollbars ::-webkit-scrollbar {
+body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-webkit-scrollbar {
 	display: none;
 }
 
@@ -17184,8 +17350,34 @@ body.snowflake-method-hide-scrollbars ::-webkit-scrollbar {
 body.snowflake-method-justify-fields .snowflake-method-dashboard textarea,
 body.snowflake-method-justify-fields .snowflake-method-form-modal textarea,
 body.snowflake-method-justify-fields .snowflake-method-compact-form-modal textarea,
-body.snowflake-method-justify-fields textarea.snowflake-method-corkboard-recovered-text {
+body.snowflake-method-justify-fields textarea.snowflake-method-corkboard-recovered-text,
+body.snowflake-method-justify-fields .snowflake-method-prose-box,
+body.snowflake-method-justify-fields .snowflake-method-source-summary-content {
 	text-align: justify;
+}
+
+/* The typography's first-line indent, on the prose boxes the dashboard's
+   steps are written in and on the paragraphs quoted above them. A textarea
+   cannot wear it: told to set each line after a forced break in, Chromium
+   sets in the first line of the box and no other, and a box with its first
+   paragraph alone set in reads as a mistake, so the dialogs' textareas keep
+   the alignment and no indent. The prose box and the quoted text, being
+   blocks, honour the property, and this is the one place the stylesheet
+   names it: under each-line, and only where the browser knows the keyword.
+   The class and the measure ride each window's body with the other dress
+   preferences, and both are absent at an indent of nothing. */
+@supports (text-indent: 1em each-line) {
+	body.snowflake-method-indent-fields .snowflake-method-prose-box,
+	body.snowflake-method-indent-fields .snowflake-method-source-summary-content {
+		text-indent: var(--snowflake-method-field-indent, 0) each-line;
+	}
+
+	/* An empty box shows its placeholder, which is the box's prompt and not
+	   a paragraph, so it stands flush; the indent comes with the first
+	   letter typed. */
+	body.snowflake-method-indent-fields .snowflake-method-prose-box:empty {
+		text-indent: 0;
+	}
 }
 
 /* == Note typography ======================================================= */

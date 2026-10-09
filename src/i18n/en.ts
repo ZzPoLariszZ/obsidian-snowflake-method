@@ -562,6 +562,12 @@ export const en = {
 		'Expand your one-sentence summary into a full paragraph.',
 	'fields.description': 'Description',
 	'fields.descriptionPlaceholder': 'Write a brief description of your novel.',
+	'fields.plotSynopsis': 'Plot synopsis',
+	'fields.plotSynopsisPlaceholder':
+		'Expand each sentence of the one-paragraph summary into a paragraph.',
+	'fields.longSynopsis': 'Long synopsis',
+	'fields.longSynopsisPlaceholder':
+		'Expand each paragraph of the plot synopsis into a full page.',
 	'table.name': 'Name',
 	'table.category': 'Category',
 	'table.description': 'Description',
@@ -1928,7 +1934,8 @@ export const en = {
 	'step4.sourceSummary.empty':
 		'Complete step 2 to see the one-paragraph summary here.',
 	'step4.hints.title': 'Hints for plot synopsis',
-	'step4.hints.openNote': 'Open the separate note to edit your plot synopsis.',
+	'step4.hints.openNote':
+		'Write the plot synopsis here, or open the note to work on it in the editor.',
 	'step4.hints.structure':
 		'Each paragraph can use a four-part structure or a three-act structure.',
 	'step4.hints.paragraphs':
@@ -1951,7 +1958,7 @@ export const en = {
 		'Expand each paragraph of the plot synopsis into full-page content.',
 	'step6.hints.title': 'Hints for long synopsis',
 	'step6.hints.openNote':
-		'Open the separate note to edit your long synopsis.',
+		'Write the long synopsis here, or open the note to work on it in the editor.',
 	'step6.hints.pageLength': 'Full-page content is about 500 words.',
 	'step6.hints.revision':
 		'It’s perfectly fine to revisit steps 1 to 5 at any time. This can help you add more story and character details.',

@@ -1,6 +1,7 @@
 import type { Menu } from 'obsidian';
 
 import type {
+	EditableStepId,
 	CharacterType,
 	CompiledHighlightRules,
 	DialoguePresentation,
@@ -908,7 +909,7 @@ export interface DashboardHost {
 	deleteScene(id: string, expectedRevision: string, projectPath?: string): Promise<void>;
 	setStepStatus(step: StepId, status: StepStatus): Promise<void>;
 	saveStepFields(
-		step: 1 | 2,
+		step: EditableStepId,
 		fields: StepFields,
 		expectedRevision: string,
 	): Promise<void>;

@@ -380,7 +380,7 @@ describe('translation resources', () => {
 		expect(en['step4.sourceSummary.title']).toBe('One-paragraph summary');
 		expect(en['step4.hints.title']).toBe('Hints for plot synopsis');
 		expect(en['step4.hints.openNote']).toBe(
-			'Open the separate note to edit your plot synopsis.',
+			'Write the plot synopsis here, or open the note to work on it in the editor.',
 		);
 		expect(en['step4.hints.structure']).not.toContain('Hero');
 		expect(en['step4.hints.paragraphs']).toBe(
@@ -395,7 +395,7 @@ describe('translation resources', () => {
 		);
 		expect(zhCN['step4.sourceSummary.title']).toBe('一段式梗概');
 		expect(zhCN['step4.hints.title']).toBe('情节大纲提示');
-		expect(zhCN['step4.hints.openNote']).toBe('请打开独立笔记进行编辑。');
+		expect(zhCN['step4.hints.openNote']).toBe('可以直接在这里写情节大纲，也可以打开笔记在编辑器里写。');
 	});
 
 	it('keeps the Step 5 character synopsis terminology exact', () => {

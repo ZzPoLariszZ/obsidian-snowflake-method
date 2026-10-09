@@ -60,8 +60,8 @@ describe('styles.css', () => {
 		const scrollbars = section('Scrollbars');
 		expect(scrollbars.includes('!important')).toBe(false);
 		expect(declarations('body.snowflake-method-hide-scrollbars')).toContain('--scrollbar-native-width: none');
-		expect(declarations('body.snowflake-method-hide-scrollbars *')).toContain('scrollbar-width: none');
-		expect(declarations('body.snowflake-method-hide-scrollbars ::-webkit-scrollbar')).toContain('display: none');
+		expect(declarations('body.snowflake-method-hide-scrollbars *:not(.snowflake-method-scrollbar-probe)')).toContain('scrollbar-width: none');
+		expect(declarations('body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-webkit-scrollbar')).toContain('display: none');
 	});
 
 	/**
@@ -82,9 +82,25 @@ describe('styles.css', () => {
 		]) {
 			expect(declarations(selector)).toContain('text-align: justify');
 		}
-		// Every textarea rule in the section stands under the body class.
+		// The prose boxes and the quoted paragraphs are justified with them.
+		expect(fields).toContain('body.snowflake-method-justify-fields .snowflake-method-prose-box');
+		expect(fields).toContain('body.snowflake-method-justify-fields .snowflake-method-source-summary-content');
+		// The indent, under its own body class: on the prose boxes alone,
+		// for every paragraph and only where the browser can set every
+		// paragraph in, and on the quoted paragraphs with a box before each.
+		// A textarea sets its first line in and no other, so none wears it.
+		expect(fields).toContain('@supports (text-indent: 1em each-line)');
+		expect(fields).toContain('body.snowflake-method-indent-fields .snowflake-method-prose-box');
+		expect(fields).toContain('text-indent: var(--snowflake-method-field-indent, 0) each-line');
+		const rules = fields.replace(/\/\*[\s\S]*?\*\//g, ' ');
+		expect(rules).not.toMatch(/textarea[^{]*\{[^}]*text-indent/u);
+		expect(fields).toContain('body.snowflake-method-indent-fields .snowflake-method-source-summary-content');
+		// The placeholder is the box's prompt, not a paragraph: flush.
+		expect(rules).toMatch(/body\.snowflake-method-indent-fields \.snowflake-method-prose-box:empty \{\s*text-indent: 0;/u);
+		// Every textarea rule in the section stands under a body class.
 		const selectors = fields
 			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.replace(/@supports[^{]*\{/g, ' ')
 			.split('}')
 			.map((entry) => entry.split('{')[0] ?? '')
 			.flatMap((list) => list.split(','))
@@ -92,7 +108,7 @@ describe('styles.css', () => {
 			.filter((one) => one.includes('textarea'));
 		expect(selectors.length).toBeGreaterThan(0);
 		for (const selector of selectors) {
-			expect(selector.startsWith('body.snowflake-method-justify-fields ')).toBe(true);
+			expect(selector, selector).toMatch(/^body\.snowflake-method-justify-fields /u);
 		}
 	});
 
@@ -228,6 +244,53 @@ describe('styles.css', () => {
 	 * no look of its own: only the room the leaf's content gives up, and only
 	 * while the bar stands before it.
 	 */
+	it('dresses the prose box as the app dresses a textarea, and holds the quoted text to half the frame', () => {
+		const box = declarations(':where(.snowflake-method-prose-box)');
+		expect(box).toContain('background: var(--background-modifier-form-field)');
+		expect(box).toContain('white-space: pre-wrap');
+		expect(box).toContain('overflow-y: auto');
+		expect(declarations('.snowflake-method-prose-box:empty::before')).toContain('content: attr(data-placeholder)');
+		expect(declarations('.snowflake-method-prose-box.is-disabled')).toContain('cursor: not-allowed');
+		expect(declarations('.snowflake-method-source-summary-body')).toContain(
+			'max-height: calc(var(--snowflake-method-frame-height, 100vh) / 3)',
+		);
+		expect(declarations('.snowflake-method-source-summary-body')).toContain('overflow-y: auto');
+		// Both hold the scrollbar's room on both edges, so neither jumps when
+		// one of them scrolls and the other does not.
+		expect(declarations('.snowflake-method-source-summary-body')).toContain('scrollbar-gutter: stable both-edges');
+		expect(box).toContain('scrollbar-gutter: stable both-edges');
+		expect(declarations('.snowflake-method-guided-section > p.snowflake-method-length-hint')).toContain('max-width: none');
+		// Hidden bars leave the room as padding, a bar's native width, which
+		// the hiding rule lets the plugin's probe go on measuring.
+		expect(declarations('body.snowflake-method-hide-scrollbars .snowflake-method-prose-box')).toContain(
+			'padding-inline: calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px))',
+		);
+		expect(declarations('body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body')).toContain(
+			'--snowflake-method-scrollbar-native-width',
+		);
+		expect(declarations('.snowflake-method-source-summary-header')).toContain('--snowflake-method-scrollbar-native-width');
+		// A one-line field on the dashboard keeps the same room, a picker's
+		// inner box for it; a search box is left alone, and no dialog rule
+		// takes the room at all: a dialog keeps the app's spacing.
+		const oneLine = declarations(".snowflake-method-dashboard input[type='text']:not(.snowflake-method-option-picker-input)");
+		expect(oneLine).toContain('padding-inline: calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px))');
+		expect(declarations('.snowflake-method-dashboard .snowflake-method-option-picker-values')).toBe(oneLine);
+		expect(styles).not.toMatch(/input\[type='search'\][^{]*\{[^}]*--snowflake-method-scrollbar-native-width/u);
+		const rulesOnly = styles.replace(/\/\*[\s\S]*?\*\//g, ' ').split('}').map((entry) => entry.split('{'));
+		for (const [selector = '', body = ''] of rulesOnly) {
+			if (selector.includes('.modal') && body.includes('--snowflake-method-scrollbar-native-width')) {
+				throw new Error(`a dialog rule keeps the scrollbar's room: ${selector.trim()}`);
+			}
+		}
+		expect(declarations('body.snowflake-method-hide-scrollbars *:not(.snowflake-method-scrollbar-probe)')).toContain('scrollbar-width: none');
+		expect(styles).toContain('body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-webkit-scrollbar');
+		expect(declarations('.snowflake-method-source-summary-content')).toContain('font-size: var(--font-text-size)');
+		// The summary boxes keep a height of their own; the synopsis box takes the column.
+		expect(declarations('.snowflake-method-one-sentence-summary-input')).toContain('height: 8rem');
+		expect(declarations('.snowflake-method-field .snowflake-method-synopsis-input')).toContain('flex: 1 1 0');
+		expect(declarations('.snowflake-method-length-hint + .snowflake-method-actions')).toContain('margin-top: var(--size-4-4)');
+	});
+
 	it('gives the note toolbar its room without a look of its own', () => {
 		const toolbar = section('Note toolbar');
 		expect(toolbar.includes('!important')).toBe(false);
@@ -774,8 +837,12 @@ describe('styles.css', () => {
 		expect(named).toEqual([]);
 	});
 
-	it('indents a first line without naming the flagged property', () => {
-		const declarations = styles.replace(/\/\*[\s\S]*?\*\//g, ' ');
+	it('indents a first line without naming the flagged property, outside the fields', () => {
+		// A textarea has no box to set a line in with, so the fields section
+		// alone names text-indent; nowhere else does.
+		const declarations = styles
+			.replace(section('Field alignment'), ' ')
+			.replace(/\/\*[\s\S]*?\*\//g, ' ');
 		expect(declarations.includes('text-indent')).toBe(false);
 		const spacers = styles.match(
 			/::before\s*\{[^}]*width:\s*var\(--snowflake-method-manuscript-indent[^}]*\}/g,

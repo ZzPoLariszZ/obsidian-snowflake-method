@@ -29,7 +29,9 @@ import {
 	SCENE_POV_OMNISCIENT,
 	STEP_DEFINITIONS,
 	STEP_ONE_SECTION_IDS,
+	STEP_SECTION_IDS,
 	STEP_TWO_SECTION_IDS,
+	type EditableStepId,
 	STICKY_NOTE_LOCAL_STATE_KEY,
 	builtInBeatSheetTemplate,
 	TEMPLATE_SECTION_IDS,
@@ -267,6 +269,7 @@ import {
 } from './ui/manuscript-view';
 import { NotePresentation, type DressableNote } from './ui/note-presentation';
 import { NoteToolbars, type ToolbarNote } from './ui/note-toolbar';
+import { isProseBox, proseBoxSelection, proseBoxText } from './ui/prose-box';
 import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import {
@@ -427,8 +430,44 @@ const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
 /** Worn by a window's body while the page is justified: the fields follow. */
+/**
+ * A box of this plugin's own that holds prose: an input, a textarea, or the
+ * editable block the dashboard's steps are written in.
+ */
+type WritingField = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
+
+function fieldText(field: WritingField): string {
+	return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
+		? field.value
+		: proseBoxText(field);
+}
+
+/** The words selected in a field, or null when none are. */
+function fieldSelection(field: WritingField): string | null {
+	if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+		const { selectionStart, selectionEnd } = field;
+		return selectionStart !== null &&
+			selectionEnd !== null &&
+			selectionEnd > selectionStart
+			? field.value.slice(selectionStart, selectionEnd)
+			: null;
+	}
+	return proseBoxSelection(field);
+}
+
 const JUSTIFY_FIELDS_CLASS = 'snowflake-method-justify-fields';
+/** Worn by a window's body while the typography sets first lines in, with the measure beside it. */
+const INDENT_FIELDS_CLASS = 'snowflake-method-indent-fields';
+const FIELD_INDENT_PROPERTY = '--snowflake-method-field-indent';
 const SCROLLBAR_WIDTH_PROPERTY = '--snowflake-method-scrollbar-width';
+/**
+ * The width a scrollbar has on this machine whether or not the plugin's own
+ * setting hides it: the boxes keep that much room at their edges either way,
+ * so hiding the bars moves no words.
+ */
+const SCROLLBAR_NATIVE_WIDTH_PROPERTY = '--snowflake-method-scrollbar-native-width';
+/** Worn by the measuring probes, which the hiding rules pass over. */
+const SCROLLBAR_PROBE_CLASS = 'snowflake-method-scrollbar-probe';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
 
@@ -514,10 +553,14 @@ function categoryDisplayPath(raw: string, categoryRoot: string): string {
  * inside, which walks every field in the dialog left of the title above them.
  */
 function measureScrollbarWidth(targetDocument: Document): number | null {
-	const probe = targetDocument.body.createDiv();
+	const probe = targetDocument.body.createDiv({ cls: SCROLLBAR_PROBE_CLASS });
 	// Dressed here rather than from the stylesheet: this runs before the plugin's
 	// own stylesheet reaches the document, and a probe with no scrollbar to
-	// measure would quietly report that a scrollbar costs nothing.
+	// measure would quietly report that a scrollbar costs nothing. The bar is
+	// asked for inline, because the plugin's own hiding reaches every element
+	// through the app's variable as well as through a rule of its own, and
+	// only an inline value stands over both: the probe measures the bar the
+	// machine draws whether or not the setting hides it.
 	probe.setCssStyles({
 		position: 'absolute',
 		top: '-9999px',
@@ -525,6 +568,7 @@ function measureScrollbarWidth(targetDocument: Document): number | null {
 		height: '100px',
 		overflowY: 'auto',
 		scrollbarGutter: 'stable',
+		scrollbarWidth: 'auto',
 		visibility: 'hidden',
 	});
 	const laidOut = probe.offsetWidth > 0;
@@ -773,10 +817,15 @@ export default class SnowflakeMethodPlugin
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
 					JUSTIFY_FIELDS_CLASS,
+					INDENT_FIELDS_CLASS,
 				);
+				targetWindow.document.body.style.removeProperty(FIELD_INDENT_PROPERTY);
 				this.dressedDocuments.delete(targetWindow.document);
 				targetWindow.document.body.style.removeProperty(
 					SCROLLBAR_WIDTH_PROPERTY,
+				);
+				targetWindow.document.body.style.removeProperty(
+					SCROLLBAR_NATIVE_WIDTH_PROPERTY,
 				);
 				this.scrollbarDocuments.delete(targetWindow.document);
 				this.dropScrollbarSentinel(targetWindow.document);
@@ -881,11 +930,14 @@ export default class SnowflakeMethodPlugin
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
 					JUSTIFY_FIELDS_CLASS,
+					INDENT_FIELDS_CLASS,
 				);
+				targetDocument.body.style.removeProperty(FIELD_INDENT_PROPERTY);
 			}
 			this.dressedDocuments.clear();
 			for (const targetDocument of this.scrollbarDocuments) {
 				targetDocument.body.style.removeProperty(SCROLLBAR_WIDTH_PROPERTY);
+				targetDocument.body.style.removeProperty(SCROLLBAR_NATIVE_WIDTH_PROPERTY);
 			}
 			this.scrollbarDocuments.clear();
 			for (const targetDocument of [...this.scrollbarSentinels.keys()]) {
@@ -1942,11 +1994,19 @@ export default class SnowflakeMethodPlugin
 						'plot-synopsis',
 					),
 				},
-			},
-				stepRevisions: {
-					1: artifactMap.get(1)?.revision,
-					2: artifactMap.get(2)?.revision,
+				6: {
+					'long-synopsis': this.readArtifactSection(
+						artifactMap.get(6)?.content,
+						'long-synopsis',
+					),
 				},
+			},
+			stepRevisions: {
+				1: artifactMap.get(1)?.revision,
+				2: artifactMap.get(2)?.revision,
+				4: artifactMap.get(4)?.revision,
+				6: artifactMap.get(6)?.revision,
+			},
 			characters: characterModels,
 			scenes: sceneModels,
 			manuscriptPaths: manuscript.map((segment) => segment.path),
@@ -2679,7 +2739,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async saveStepFields(
-		step: 1 | 2,
+		step: EditableStepId,
 		fields: StepFields,
 		expectedRevision: string,
 	): Promise<void> {
@@ -2690,14 +2750,9 @@ export default class SnowflakeMethodPlugin
 			throw new Error(this.t('errors.concurrentChange'));
 		}
 
-		const values =
-			step === 1
-				? Object.fromEntries(
-						STEP_ONE_SECTION_IDS.map((key) => [key, fields[key] ?? '']),
-					)
-				: Object.fromEntries(
-						STEP_TWO_SECTION_IDS.map((key) => [key, fields[key] ?? '']),
-					);
+		const values = Object.fromEntries(
+			STEP_SECTION_IDS[step].map((key) => [key, fields[key] ?? '']),
+		);
 		try {
 			await this.projects.updateSections(path, values, expectedRevision);
 		} catch (error) {
@@ -3119,7 +3174,9 @@ export default class SnowflakeMethodPlugin
 			// fields follow the page's alignment.
 			this.notePresentation?.apply();
 			this.noteToolbars?.sync();
-			if (key === 'manuscriptTextAlign') this.applyBodyPreferences();
+			if (key === 'manuscriptTextAlign' || key === 'manuscriptFirstLineIndent') {
+				this.applyBodyPreferences();
+			}
 			// The settings page shows these same values, and in 1.13 it stands
 			// in a window of its own, so it can be open beside the popover that
 			// just wrote one. It declines while it is the page doing the writing.
@@ -3363,6 +3420,19 @@ export default class SnowflakeMethodPlugin
 			JUSTIFY_FIELDS_CLASS,
 			this.settings.manuscriptTextAlign === 'justify',
 		);
+		// The first-line indent as well, with its measure: a box sets each
+		// paragraph in as the page does, and sets nothing in at an indent of
+		// nothing, when neither the class nor the measure is there.
+		const indent = this.settings.manuscriptFirstLineIndent;
+		targetDocument.body.classList.toggle(INDENT_FIELDS_CLASS, indent > 0);
+		if (indent > 0) {
+			targetDocument.body.style.setProperty(
+				FIELD_INDENT_PROPERTY,
+				`${String(indent)}em`,
+			);
+		} else {
+			targetDocument.body.style.removeProperty(FIELD_INDENT_PROPERTY);
+		}
 	}
 
 	private publishScrollbarWidth(): void {
@@ -3375,25 +3445,31 @@ export default class SnowflakeMethodPlugin
 	private publishScrollbarWidthToDocument(targetDocument: Document): void {
 		this.scrollbarDocuments.add(targetDocument);
 		this.ensureScrollbarSentinel(targetDocument);
-		const width = measureScrollbarWidth(targetDocument);
+		// The probe is passed over by the plugin's own hiding rule, so this is
+		// the width a bar has on the machine; the room a bar takes is that, or
+		// nothing while the setting hides the bars.
+		const native = measureScrollbarWidth(targetDocument);
 		// Nothing is published from a window that could not answer: the value
 		// left standing is either a true one from before or none at all, and
 		// asking again once the workspace is ready costs one probe.
-		if (width === null) return;
-		const next = `${String(width)}px`;
+		if (native === null) return;
+		const room = this.settings.hideScrollbars ? 0 : native;
 		// Written only when it has actually moved. This is asked again every
 		// time the window comes forward, and writing the same value back would
 		// have every rule reading it re-evaluated for nothing.
-		const shown = targetDocument.body.style.getPropertyValue(
-			SCROLLBAR_WIDTH_PROPERTY,
-		);
-		if (shown === next) return;
-		targetDocument.body.style.setProperty(SCROLLBAR_WIDTH_PROPERTY, next);
+		const body = targetDocument.body;
+		for (const [property, value] of [
+			[SCROLLBAR_NATIVE_WIDTH_PROPERTY, `${String(native)}px`],
+			[SCROLLBAR_WIDTH_PROPERTY, `${String(room)}px`],
+		] as const) {
+			if (body.style.getPropertyValue(property) === value) continue;
+			body.style.setProperty(property, value);
+		}
 	}
 
 	private ensureScrollbarSentinel(targetDocument: Document): void {
 		if (this.scrollbarSentinels.has(targetDocument)) return;
-		const probe = targetDocument.body.createDiv();
+		const probe = targetDocument.body.createDiv({ cls: SCROLLBAR_PROBE_CLASS });
 		probe.setCssStyles({
 			position: 'absolute',
 			top: '-9999px',
@@ -3401,6 +3477,7 @@ export default class SnowflakeMethodPlugin
 			height: '100px',
 			overflowY: 'auto',
 			scrollbarGutter: 'stable',
+			scrollbarWidth: 'auto',
 			visibility: 'hidden',
 			pointerEvents: 'none',
 		});
@@ -3620,13 +3697,12 @@ export default class SnowflakeMethodPlugin
 	 * ownership test the writing count already uses, minus Obsidian's
 	 * settings window: a project root is configuration, not writing.
 	 */
-	private writingSurfaceField(
-		target: EventTarget | null,
-	): HTMLInputElement | HTMLTextAreaElement | null {
+	private writingSurfaceField(target: EventTarget | null): WritingField | null {
 		const field =
 			target instanceof HTMLTextAreaElement ||
 			(target instanceof HTMLInputElement &&
-				COUNTABLE_FIELD_TYPES.has(target.type))
+				COUNTABLE_FIELD_TYPES.has(target.type)) ||
+			isProseBox(target)
 				? target
 				: null;
 		if (field === null || !this.ownsField(field)) return null;
@@ -5541,11 +5617,12 @@ export default class SnowflakeMethodPlugin
 	 * count is taken rather than remembered, so a field whose modal closed
 	 * cannot leave its number standing.
 	 */
-	private focusedField(): HTMLInputElement | HTMLTextAreaElement | null {
+	private focusedField(): WritingField | null {
 		const active = this.app.workspace.containerEl.doc.activeElement;
 		const field =
 			active instanceof HTMLTextAreaElement ||
-			(active instanceof HTMLInputElement && COUNTABLE_FIELD_TYPES.has(active.type))
+			(active instanceof HTMLInputElement && COUNTABLE_FIELD_TYPES.has(active.type)) ||
+			isProseBox(active)
 				? active
 				: null;
 		return field !== null && this.ownsField(field) ? field : null;
@@ -5585,15 +5662,9 @@ export default class SnowflakeMethodPlugin
 		// the dashboard's own box gives.
 		const field = this.focusedField();
 		if (field !== null) {
-			const { selectionStart, selectionEnd } = field;
-			const selected =
-				selectionStart !== null &&
-				selectionEnd !== null &&
-				selectionEnd > selectionStart
-					? field.value.slice(selectionStart, selectionEnd)
-					: null;
+			const selected = fieldSelection(field);
 			return {
-				count: countWriting(selected ?? field.value, options),
+				count: countWriting(selected ?? fieldText(field), options),
 				selection: selected !== null,
 			};
 		}
