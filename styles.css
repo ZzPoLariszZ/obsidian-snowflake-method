@@ -3445,6 +3445,28 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	resize: vertical;
 }
 
+/* A dialog's text box follows its words: it grows and shrinks with what it
+   holds, from the floor its own rule gives it, so a description is read
+   whole rather than through a slot that scrolls, and a dialog that runs
+   long scrolls as a whole. The handle goes with the fixed height, since a
+   box dragged to a height of its own would stop following its words. The
+   compact forms' rule above is named again so this one, coming after it,
+   outweighs it; an app that does not know the property keeps the fixed
+   height and the scrolling. */
+.modal:is(.snowflake-method-form-modal, .snowflake-method-compact-form-modal)
+	.modal-content
+	textarea,
+.modal:is(
+		.snowflake-method-project-modal,
+		.snowflake-method-compact-form-modal
+	)
+	.modal-content.snowflake-method-project-form
+	textarea,
+textarea.snowflake-method-corkboard-recovered-text {
+	field-sizing: content;
+	resize: none;
+}
+
 /* The kind a rule was written in, shown but no longer chosen: a control's
    place, a description's voice. */
 .snowflake-method-project-form .snowflake-method-rule-kind-fixed {

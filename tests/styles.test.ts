@@ -240,6 +240,35 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A dialog's text box grows and shrinks with its words from the floor
+	 * its own rule gives it, without a handle, and the rule outweighs the
+	 * compact forms' own by naming it again after it.
+	 */
+	it('fits the dialogs’ text boxes to their words', () => {
+		const rules = styles
+			.replace(/\/\*[\s\S]*?\*\//g, ' ')
+			.replace(/\s+/gu, ' ')
+			.split('}')
+			.map((entry) => {
+				const [head = '', body = ''] = entry.split('{');
+				return { head: head.trim(), body };
+			});
+		const growing = rules.filter((rule) => rule.body.includes('field-sizing: content'));
+		expect(growing).toHaveLength(1);
+		const [grow] = growing;
+		expect(grow?.head).toContain('.modal:is(.snowflake-method-form-modal, .snowflake-method-compact-form-modal) .modal-content textarea');
+		expect(grow?.head).toContain('textarea.snowflake-method-corkboard-recovered-text');
+		expect(grow?.body).toContain('resize: none');
+		// The compact forms' rule, handle and all, comes first and is named
+		// again by the growing rule after it, which so outweighs it.
+		const compact = '.modal:is( .snowflake-method-project-modal, .snowflake-method-compact-form-modal ) .modal-content.snowflake-method-project-form textarea';
+		const formRule = rules.findIndex((rule) => rule.head === compact && rule.body.includes('resize: vertical'));
+		expect(formRule).toBeGreaterThan(-1);
+		expect(grow?.head).toContain(compact);
+		expect(rules.indexOf(grow!)).toBeGreaterThan(formRule);
+	});
+
+	/**
 	 * The bar above a dressed note is the stream's bar, so the section owns
 	 * no look of its own: only the room the leaf's content gives up, and only
 	 * while the bar stands before it.
