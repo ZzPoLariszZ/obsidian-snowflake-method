@@ -303,7 +303,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.exportChapterSeparator.rule': '一行短横线',
 	'settings.exportChapterSeparator.asterisks': '三个星号',
 	'settings.section.explorer': '文件列表',
-	'settings.explorerScope.name': '作用范围',
+	'settings.explorerScope.name': '增强范围',
 	'settings.explorerScope.desc': '应用于雪花项目或整个 Vault。',
 	'settings.explorerScope.projects': '雪花项目',
 	'settings.explorerScope.vault': '整个 Vault',

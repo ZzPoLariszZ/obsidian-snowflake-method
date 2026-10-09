@@ -332,7 +332,7 @@ export const en = {
 	'settings.exportChapterSeparator.rule': 'Line of dashes',
 	'settings.exportChapterSeparator.asterisks': 'Three asterisks',
 	'settings.section.explorer': 'File explorer',
-	'settings.explorerScope.name': 'Scope',
+	'settings.explorerScope.name': 'Enhancement scope',
 	'settings.explorerScope.desc': 'Apply to Snowflake projects or the whole vault.',
 	'settings.explorerScope.projects': 'Snowflake projects',
 	'settings.explorerScope.vault': 'Whole vault',
