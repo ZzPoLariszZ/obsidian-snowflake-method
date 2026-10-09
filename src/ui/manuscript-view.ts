@@ -650,7 +650,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			for (const entry of this.mounted.values()) {
 				if (entry.rail !== null) this.syncSegmentRail(entry);
 			}
-			this.syncRevisionOverlay();
+			this.syncMarginRoom();
 		}
 		if (!this.refreshQueuedWhileHidden || !this.containerEl.isShown()) return;
 		this.refreshQueuedWhileHidden = false;
@@ -2060,7 +2060,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		if (!wanted) {
 			entry.rail?.dispose();
 			entry.rail = null;
-			this.syncRevisionOverlay();
+			this.syncMarginRoom();
 			return;
 		}
 		// The feed is dropped to null for as long as it takes to fetch again,
@@ -2128,7 +2128,7 @@ export class SnowflakeManuscriptView extends ItemView {
 				unresolved: threads.conflicts.map((ref) => ({ ...ref, top: null })),
 			},
 		});
-		this.syncRevisionOverlay();
+		this.syncMarginRoom();
 	}
 
 	/**
@@ -2728,14 +2728,20 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
-	 * Widens the rail's room or narrows it: with margin beside the column the
-	 * cards stand in the margin, and in a tight pane they overlay the right
-	 * edge on a surface of their own instead of squeezing the prose.
+	 * Says whether the margin has room for what stands in it. With margin
+	 * beside the column the cards stand there; in a tight pane they are held
+	 * back, as the milestone labels are, rather than laid over the prose --
+	 * a card over the right edge covered the very words a jump from the
+	 * Revision or Foreshadowing tab had just flashed. Held back, not taken
+	 * down: every card is still placed beside its words and glides with
+	 * them, so a widened pane finds them where they belong. The one card a
+	 * tight pane still shows is the proposal being written, which the
+	 * author opened and must be able to finish.
 	 */
-	private syncRevisionOverlay(): void {
+	private syncMarginRoom(): void {
 		const stream = this.streamEl;
 		if (stream === null) return;
-		// A hidden pane measures zero wide and would flap the overlay on;
+		// A hidden pane measures zero wide and would flap the tight mode on;
 		// the reveal's own resize re-asks with real numbers.
 		if (!this.contentEl.isShown()) return;
 		const sample = [...this.mounted.values()][0];
@@ -2743,7 +2749,7 @@ export class SnowflakeManuscriptView extends ItemView {
 			sample === undefined
 				? 0
 				: (stream.clientWidth - sample.el.offsetWidth) / 2;
-		this.contentEl.toggleClass('is-revision-overlay', margin < 300);
+		this.contentEl.toggleClass('is-revision-tight', margin < 300);
 		this.contentEl.toggleClass('is-milestone-tight', !this.milestonesFit(stream));
 	}
 

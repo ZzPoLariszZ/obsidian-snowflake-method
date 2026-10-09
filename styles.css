@@ -6152,12 +6152,23 @@ body {
 	width: 260px;
 }
 
-/* A pane too narrow for a margin lays the cards over the right edge on a
-   surface of their own instead of squeezing the prose. */
-.is-revision-overlay .snowflake-method-revision-rail {
+/* A pane too narrow for a margin holds the cards back, as it holds the
+   milestone labels back: laid over the right edge of the prose they
+   covered the very words a jump from the Revision or Foreshadowing tab
+   flashes. Hidden rather than gone, so each card is still placed beside its
+   words, glides with them, and comes back where it belongs when the pane
+   widens. The proposal being written is the one card still shown: the
+   author opened it and must be able to finish it, so in a tight pane the
+   rail stands over the right edge on a surface of its own, with only that
+   card visible on it. */
+.is-revision-tight .snowflake-method-revision-rail {
 	right: 0;
 	left: auto;
 	width: min(260px, 70%);
+}
+
+.is-revision-tight .snowflake-method-rail-card:not(.is-draft) {
+	visibility: hidden;
 }
 
 /* Word milestones: the count reached at each interval, drawn beside the row

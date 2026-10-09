@@ -205,6 +205,25 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A pane too narrow for a margin holds the cards back as it holds the
+	 * milestone labels back, hidden rather than gone, and leaves only a
+	 * proposal being written on view.
+	 */
+	it('holds the margin cards back in a tight pane, all but the one being written', () => {
+		expect(styles.includes('is-revision-overlay')).toBe(false);
+		expect(declarations('.is-revision-tight .snowflake-method-rail-card:not(.is-draft)')).toContain(
+			'visibility: hidden',
+		);
+		expect(declarations('.is-revision-tight .snowflake-method-rail-card:not(.is-draft)')).not.toContain('display');
+		const rail = declarations('.is-revision-tight .snowflake-method-revision-rail');
+		expect(rail).toContain('right: 0');
+		expect(rail).toContain('left: auto');
+		expect(declarations('.is-milestone-tight .snowflake-method-milestone::before')).toContain(
+			'visibility: hidden',
+		);
+	});
+
+	/**
 	 * The bar above a dressed note is the stream's bar, so the section owns
 	 * no look of its own: only the room the leaf's content gives up, and only
 	 * while the bar stands before it.
