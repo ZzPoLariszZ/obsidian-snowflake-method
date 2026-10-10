@@ -310,6 +310,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.section.explorer': '文件列表',
 	'settings.explorerScope.name': '增强范围',
 	'settings.explorerScope.desc': '应用于雪花项目或整个 Vault。',
+	'settings.explorerScope.off': '关闭',
 	'settings.explorerScope.projects': '雪花项目',
 	'settings.explorerScope.vault': '整个 Vault',
 	'settings.explorerImmersive.name': '沉浸模式',

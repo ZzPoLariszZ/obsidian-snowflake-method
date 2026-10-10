@@ -65,7 +65,8 @@ describe("display names", () => {
 		expect(displayNameOf("50_Manuscript", false)).toBe("50_Manuscript");
 	});
 
-	it("knows the two scopes", () => {
+	it("knows the three scopes, off among them", () => {
+		expect(isExplorerScope("off")).toBe(true);
 		expect(isExplorerScope("projects")).toBe(true);
 		expect(isExplorerScope("vault")).toBe(true);
 		expect(isExplorerScope("everywhere")).toBe(false);

@@ -1,5 +1,6 @@
 import {
 	addIcon,
+	Component,
 	editorInfoField,
 	MarkdownView,
 	Menu,
@@ -730,8 +731,10 @@ export default class SnowflakeMethodPlugin
 	private noteToolbars: NoteToolbars | null = null;
 	/** The folders the explorer tools reach: the known roots, and the archived projects beside them. */
 	private readonly explorerRoots = new Set<string>();
-	/** The plugin's hand in the file explorer, made once the layout is ready. */
+	/** The plugin's hand in the file explorer, made once the layout is ready and while its scope is not off. */
 	private explorer: ExplorerEnhancer | null = null;
+	/** The tools' own life within the plugin's: ending it takes their listeners and their dress away together. */
+	private explorerLife: Component | null = null;
 	/**
 	 * The discovered projects by root folder, for resolving which project a
 	 * path belongs to without a read: the untimed tracking asks on every edit
@@ -1381,7 +1384,7 @@ export default class SnowflakeMethodPlugin
 		// author turning focus mode on here, so it starts no session.
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
 		await this.syncCurrentProjectLocale();
-		this.explorer?.settingsChanged('explorerOrders');
+		this.syncExplorer('explorerOrders');
 		await this.refreshDashboards();
 	}
 
@@ -3210,9 +3213,10 @@ export default class SnowflakeMethodPlugin
 		}
 		// The explorer tools read their own keys straight from the settings:
 		// a repaint of the open explorers is the whole change, and no count
-		// and no dashboard needs to hear of it.
+		// and no dashboard needs to hear of it. The scope may also have
+		// turned them off, or on again.
 		if (key.startsWith('explorer')) {
-			this.explorer?.settingsChanged(key);
+			this.syncExplorer(key);
 			return;
 		}
 		// Which mentions the streams mark is likewise a dress on text they
@@ -8835,33 +8839,49 @@ export default class SnowflakeMethodPlugin
 				});
 			},
 		});
+		// The explorer's four buttons as commands, offered only while the
+		// tools stand: with their scope off there is nothing for them to turn.
 		this.addCommand({
 			id: 'toggle-explorer-tidy',
 			name: this.globalT('commands.toggleExplorerTidy'),
-			callback: () => {
+			checkCallback: (checking) => {
+				if (this.explorer === null) return false;
+				if (checking) return true;
 				void this.toggleExplorerTidy().catch((error: unknown) => {
 					this.showError(error);
 				});
+				return true;
 			},
 		});
 		this.addCommand({
 			id: 'toggle-explorer-arrange',
 			name: this.globalT('commands.toggleExplorerArrange'),
-			callback: () => this.toggleExplorerArrange(),
+			checkCallback: (checking) => {
+				if (this.explorer === null) return false;
+				if (!checking) this.toggleExplorerArrange();
+				return true;
+			},
 		});
 		this.addCommand({
 			id: 'toggle-explorer-counts',
 			name: this.globalT('commands.toggleExplorerCounts'),
-			callback: () => {
+			checkCallback: (checking) => {
+				if (this.explorer === null) return false;
+				if (checking) return true;
 				void this.toggleExplorerCounts().catch((error: unknown) => {
 					this.showError(error);
 				});
+				return true;
 			},
 		});
 		this.addCommand({
 			id: 'toggle-explorer-immersive',
 			name: this.globalT('commands.toggleExplorerImmersive'),
-			callback: () => this.toggleExplorerImmersive(),
+			checkCallback: (checking) => {
+				if (this.explorer === null) return false;
+				if (!checking) this.toggleExplorerImmersive();
+				return true;
+			},
 		});
 		this.addCommand({
 			id: 'toggle-untimed-word-tracking',
@@ -9398,16 +9418,18 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * The plugin's hand in the file explorer, started once the layout is
-	 * ready so the explorer's rows exist to be dressed. Everything it needs
-	 * of the plugin is handed over as closures, so the private members stay
-	 * private; its own cleanup rides the plugin's.
+	 * ready so the explorer's rows exist to be dressed, and not at all while
+	 * its scope is off. Everything it needs of the plugin is handed over as
+	 * closures, so the private members stay private; its cleanup rides a life
+	 * of its own within the plugin's, which turning the scope off ends early.
 	 */
 	private startExplorer(): void {
-		if (this.explorer !== null) return;
+		if (this.explorer !== null || this.settings.explorerScope === 'off') return;
 		addIcon(IMMERSIVE_ICON, IMMERSIVE_ICON_SVG);
+		const life = new Component();
 		const explorer = new ExplorerEnhancer({
 			app: this.app,
-			plugin: this,
+			plugin: life,
 			t: this.globalT,
 			settings: () => this.settings,
 			saveOrders: (next) => {
@@ -9468,11 +9490,37 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		this.explorer = explorer;
-		this.register(() => {
+		this.explorerLife = life;
+		life.register(() => {
 			explorer.dispose();
-			this.explorer = null;
+			if (this.explorer === explorer) this.explorer = null;
 		});
+		this.addChild(life);
 		explorer.start();
+	}
+
+	/**
+	 * Takes the explorer tools away whole, as unloading the plugin would: the
+	 * buttons, the patches, the listeners and the dress on every row. The
+	 * explorer is left as Obsidian draws it.
+	 */
+	private stopExplorer(): void {
+		const life = this.explorerLife;
+		if (life === null) return;
+		this.explorerLife = null;
+		this.removeChild(life);
+	}
+
+	/**
+	 * The explorer tools after a change to their settings: gone while the
+	 * scope is off, started afresh when it comes back, and otherwise
+	 * repainted. Never started before the layout is ready, whose rows they
+	 * dress.
+	 */
+	private syncExplorer(key: string): void {
+		if (this.settings.explorerScope === 'off') this.stopExplorer();
+		else if (this.explorer !== null) this.explorer.settingsChanged(key);
+		else if (this.app.workspace.layoutReady) this.startExplorer();
 	}
 
 	private async toggleExplorerTidy(): Promise<void> {

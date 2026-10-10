@@ -1377,6 +1377,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
+		const explorerOn = (): boolean => this.owner.settings.explorerScope !== 'off';
 		return [
 			{
 				type: 'group',
@@ -1546,14 +1547,19 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							key: 'explorerScope',
 							defaultValue: DEFAULT_SETTINGS.explorerScope,
 							options: {
+								off: this.t('settings.explorerScope.off'),
 								projects: this.t('settings.explorerScope.projects'),
 								vault: this.t('settings.explorerScope.vault'),
 							},
 						},
 					},
+					// The rest of the section sets up tools that are not there
+					// while the scope is off, so it goes with them; the
+					// dropdown's own change re-reads the page.
 					{
 						name: this.t('settings.explorerImmersive.name'),
 						desc: this.t('settings.explorerImmersive.desc'),
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerImmersive',
@@ -1563,6 +1569,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.explorerHidePrefix.name'),
 						desc: this.t('settings.explorerHidePrefix.desc'),
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerHidePrefix',
@@ -1573,6 +1580,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						name: this.t('settings.explorerHideFiles.name'),
 						// The name is the whole of it, as with the folders below.
 						desc: '',
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerHideFiles',
@@ -1583,7 +1591,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						name: this.t('settings.explorerHiddenFiles.name'),
 						desc: this.lines('settings.explorerHiddenFiles.desc'),
 						// The list only means anything while files are being hidden.
-						visible: () => this.owner.settings.explorerHideFiles,
+						visible: () => explorerOn() && this.owner.settings.explorerHideFiles,
 						control: {
 							type: 'textarea',
 							key: 'explorerHiddenFiles',
@@ -1595,6 +1603,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.explorerHideFolders.name'),
 						desc: '',
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerHideFolders',
@@ -1604,7 +1613,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.explorerHiddenFolders.name'),
 						desc: this.lines('settings.explorerHiddenFolders.desc'),
-						visible: () => this.owner.settings.explorerHideFolders,
+						visible: () => explorerOn() && this.owner.settings.explorerHideFolders,
 						control: {
 							type: 'textarea',
 							key: 'explorerHiddenFolders',
@@ -1616,6 +1625,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.explorerNoteCounts.name'),
 						desc: this.t('settings.explorerNoteCounts.desc'),
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerNoteCounts',
@@ -1625,6 +1635,7 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					{
 						name: this.t('settings.explorerFolderCounts.name'),
 						desc: this.t('settings.explorerFolderCounts.desc'),
+						visible: explorerOn,
 						control: {
 							type: 'toggle',
 							key: 'explorerFolderCounts',

@@ -13,7 +13,8 @@ import {
 import { isStickyNotePath } from "./sticky-note-service";
 import { PROJECT_PATH_LAYOUTS, type ProjectPathLayout } from "./types";
 
-export const EXPLORER_SCOPES = ["projects", "vault"] as const;
+/** Where the explorer tools reach, off being nowhere at all: no buttons, no dress, no patch on the explorer. */
+export const EXPLORER_SCOPES = ["off", "projects", "vault"] as const;
 export type ExplorerScope = (typeof EXPLORER_SCOPES)[number];
 
 export function isExplorerScope(value: unknown): value is ExplorerScope {

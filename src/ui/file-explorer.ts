@@ -118,7 +118,7 @@ export interface ExplorerSettingsView {
 
 export interface ExplorerDeps {
 	app: App;
-	/** Whose life the listeners share: the plugin. */
+	/** Whose life the listeners share: a part of the plugin's, ended when the tools are turned off. */
 	plugin: Component;
 	t: Translate;
 	settings(): ExplorerSettingsView;
@@ -971,6 +971,9 @@ export class ExplorerEnhancer {
 	// -- Scope, hiding and rules ----------------------------------------------
 
 	private inScope(path: string, settings: ExplorerSettingsView): boolean {
+		// The host takes the tools away while the scope is off; a pass caught
+		// between the setting and that reaches nothing.
+		if (settings.explorerScope === 'off') return false;
 		if (settings.explorerScope === 'vault') return true;
 		if (this.deps.projectRootOf(path) !== null) return true;
 		const folders = this.deps.pluginFolders();

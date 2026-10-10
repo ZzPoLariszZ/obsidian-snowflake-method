@@ -340,6 +340,7 @@ export const en = {
 	'settings.section.explorer': 'File explorer',
 	'settings.explorerScope.name': 'Enhancement scope',
 	'settings.explorerScope.desc': 'Apply to Snowflake projects or the whole vault.',
+	'settings.explorerScope.off': 'Off',
 	'settings.explorerScope.projects': 'Snowflake projects',
 	'settings.explorerScope.vault': 'Whole vault',
 	'settings.explorerImmersive.name': 'Immersive mode',
