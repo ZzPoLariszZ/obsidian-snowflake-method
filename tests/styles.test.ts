@@ -365,10 +365,10 @@ describe('styles.css', () => {
 	it('leaves the typography scope at the width the app fits to its answer', () => {
 		// The background scope's row too, which marks itself for it.
 		const column = declarations(
-			'.snowflake-method-manuscript-settings .snowflake-method-appearance-heading ~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item):not(.snowflake-method-tint-scope-row) select.dropdown',
+			'.snowflake-method-typography-settings .setting-item:not(.snowflake-method-settings-dress + .setting-item):not(.snowflake-method-tint-scope-row) select.dropdown',
 		);
 		expect(column).toContain('width: var(--snowflake-method-presentation-control, 100px)');
-		expect(styles).not.toMatch(/appearance-heading\s*\+\s*\.setting-item\s+select\.dropdown\s*\{/u);
+		expect(styles).not.toMatch(/settings-dress\s*\+\s*\.setting-item\s+select\.dropdown\s*\{/u);
 	});
 
 	/**

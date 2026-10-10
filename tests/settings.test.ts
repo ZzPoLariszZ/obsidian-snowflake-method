@@ -417,6 +417,42 @@ describe('settings', () => {
 	});
 
 	/**
+	 * The typography reaches past the stream, to notes in Obsidian's own
+	 * tabs and, with the background, to the rest of the app, so it stands in
+	 * a section of its own just above the stream's, its scope first.
+	 */
+	it('gives the typography a section of its own, just above the stream’s', () => {
+		const groups = settingTabFor('en').getSettingDefinitions() as {
+			heading?: string;
+			items?: { name?: unknown }[];
+		}[];
+		expect(groups.map((group) => group.heading)).toEqual([
+			'General',
+			'File explorer',
+			'Typography',
+			'Manuscript stream',
+			'Data statistics',
+			'Export',
+		]);
+		const names = (index: number): unknown[] =>
+			(groups[index]?.items ?? [])
+				.map((item) => item.name)
+				.filter((name) => name !== '');
+		expect(names(2)[0]).toBe('Typography scope');
+		expect(names(2)).toContain('Background scope');
+		expect(names(3)).not.toContain('Font family');
+		expect(names(3)).not.toContain('Typography');
+		expect(settingTabFor('zh-CN').getSettingDefinitions().map((group) => (group as { heading?: string }).heading)).toEqual([
+			'通用',
+			'文件列表',
+			'排版',
+			'正文流',
+			'数据统计',
+			'导出',
+		]);
+	});
+
+	/**
 	 * The background scope's row is drawn rather than declared, so the walk
 	 * over the declared rows never reaches it. It is no part of the dress a
 	 * stream wears, so it is saved before it is announced.

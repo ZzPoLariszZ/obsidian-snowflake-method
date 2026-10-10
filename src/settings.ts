@@ -1656,6 +1656,186 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			// The page's dress, in a section of its own just above the stream's:
+			// what the manuscript looks like is a different question from how it
+			// behaves, and the dress reaches past the stream, to notes in tabs of
+			// Obsidian's own and, with the background, to the rest of the app,
+			// so it comes before the section that is the stream's alone. An
+			// author who has found the look they want never needs to come back
+			// here. The same controls are offered over the manuscript itself,
+			// from the formatting bar.
+			{
+				type: 'group',
+				heading: this.t('settings.manuscriptAppearance.heading'),
+				cls: 'snowflake-method-typography-settings',
+				items: [
+					this.sectionDress('typography'),
+					// How far the dress reaches first, before what it is: the stream
+					// alone, or with it the notes of Snowflake projects or of the
+					// whole vault in Obsidian's own tabs, named as the explorer's
+					// scope names its two. The stylesheet leaves this row, the first
+					// of the section, out of the choice rows' shared column, so it
+					// keeps the width the app fits to the answer chosen, as that
+					// scope does: its answers are phrases, not single words.
+					{
+						name: this.t('settings.manuscriptPresentationScope.name'),
+						desc: this.t('settings.manuscriptPresentationScope.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptPresentationScope',
+							defaultValue: DEFAULT_SETTINGS.manuscriptPresentationScope,
+							options: {
+								stream: this.t('settings.manuscriptPresentationScope.stream'),
+								project: this.t('settings.manuscriptPresentationScope.project'),
+								vault: this.t('settings.manuscriptPresentationScope.vault'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptFontFamily.name'),
+						desc: this.lines('settings.manuscriptFontFamily.desc'),
+						render: (setting) => this.renderFontFamily(setting),
+					},
+					{
+						name: this.t('settings.manuscriptFontSize.name'),
+						desc: this.t('settings.manuscriptFontSize.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptFontSize',
+								FONT_SIZE_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: this.t('settings.manuscriptAppearance.pixels', { value }),
+								PRESENTATION_THEME_VARS.fontSize,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptLineHeight.name'),
+						desc: this.t('settings.manuscriptLineHeight.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptLineHeight',
+								LINE_HEIGHT_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: String(value),
+								PRESENTATION_THEME_VARS.lineHeight,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptContentWidth.name'),
+						desc: this.t('settings.manuscriptContentWidth.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptContentWidth',
+								CONTENT_WIDTH_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptAppearance.themeDefault')
+										: this.t('settings.manuscriptAppearance.pixels', { value }),
+								PRESENTATION_THEME_VARS.contentWidth,
+							),
+					},
+					{
+						name: this.t('settings.manuscriptParagraphSpacing.name'),
+						desc: this.t('settings.manuscriptParagraphSpacing.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptParagraphSpacing',
+								PARAGRAPH_SPACING_STOPS,
+								(value) =>
+									this.t(
+										value === 1
+											? 'settings.manuscriptParagraphSpacing.line'
+											: 'settings.manuscriptParagraphSpacing.lines',
+										{ value },
+									),
+							),
+					},
+					{
+						name: this.t('settings.manuscriptFirstLineIndent.name'),
+						desc: this.t('settings.manuscriptFirstLineIndent.desc'),
+						render: (setting) =>
+							this.renderStops(
+								setting,
+								'manuscriptFirstLineIndent',
+								FIRST_LINE_INDENT_STOPS,
+								(value) =>
+									value === 0
+										? this.t('settings.manuscriptFirstLineIndent.none')
+										: this.t('settings.manuscriptFirstLineIndent.value', { value }),
+							),
+					},
+					{
+						name: this.t('settings.manuscriptTextAlign.name'),
+						desc: this.t('settings.manuscriptTextAlign.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptTextAlign',
+							defaultValue: DEFAULT_SETTINGS.manuscriptTextAlign,
+							options: {
+								start: this.t('settings.manuscriptTextAlign.start'),
+								justify: this.t('settings.manuscriptTextAlign.justify'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptGuide.name'),
+						desc: this.t('settings.manuscriptGuide.desc'),
+						control: {
+							type: 'dropdown',
+							key: 'manuscriptGuide',
+							defaultValue: DEFAULT_SETTINGS.manuscriptGuide,
+							options: {
+								none: this.t('settings.manuscriptGuide.none'),
+								solid: this.t('settings.manuscriptGuide.solid'),
+								dashed: this.t('settings.manuscriptGuide.dashed'),
+							},
+						},
+					},
+					{
+						name: this.t('settings.manuscriptHyphenation.name'),
+						desc: this.t('settings.manuscriptHyphenation.desc'),
+						control: {
+							type: 'toggle',
+							key: 'manuscriptHyphenation',
+							defaultValue: DEFAULT_SETTINGS.manuscriptHyphenation,
+						},
+					},
+					// How far the color reaches, asked just before the color
+					// itself: as far as the typography above, or over every view,
+					// tab, dialog and panel of the plugin's own, or over the whole
+					// app. Drawn rather than declared, for the class: its answers
+					// are phrases, like the typography scope's, and the choice
+					// rows' shared column passes it by on that class, so it fits
+					// the one chosen as that scope does.
+					{
+						name: this.t('settings.manuscriptTintScope.name'),
+						desc: this.t('settings.manuscriptTintScope.desc'),
+						render: (setting) => {
+							this.renderTintScope(setting);
+						},
+					},
+					{
+						name: this.t('settings.manuscriptTintLight.name'),
+						desc: this.t('settings.manuscriptTintLight.desc'),
+						render: (setting) =>
+							this.renderTint(setting, 'manuscriptTintLight', MANUSCRIPT_TINTS.light),
+					},
+					{
+						name: this.t('settings.manuscriptTintDark.name'),
+						desc: this.t('settings.manuscriptTintDark.desc'),
+						render: (setting) =>
+							this.renderTint(setting, 'manuscriptTintDark', MANUSCRIPT_TINTS.dark),
+					},
+				],
+			},
 			{
 				type: 'group',
 				heading: this.t('settings.manuscript.heading'),
@@ -1823,185 +2003,6 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						render: (setting) => {
 							this.renderNumberRules(setting);
 						},
-					},
-				// The page's dress, under a heading of its own: what the manuscript
-				// looks like is a different question from how it behaves, and an
-				// author who has found the look they want never needs to come back
-				// here. The same controls are offered over the manuscript itself,
-				// from the formatting bar.
-					{
-						name: this.t('settings.manuscriptAppearance.heading'),
-						render: (setting) => {
-							setting.setHeading();
-							// The stylesheet walks from this heading to the choice rows
-							// under it, which are the last of the group; the rows above
-							// keep the app's own dropdown widths.
-							setting.settingEl.addClass('snowflake-method-appearance-heading');
-						},
-					},
-					// How far the dress reaches first, before what it is: the stream
-					// alone, or with it the notes of Snowflake projects or of the
-					// whole vault in Obsidian's own tabs, named as the explorer's
-					// scope names its two. The stylesheet leaves this row, the first
-					// after the heading, out of the choice rows' shared column, so it
-					// keeps the width the app fits to the answer chosen, as that
-					// scope does: its answers are phrases, not single words.
-					{
-						name: this.t('settings.manuscriptPresentationScope.name'),
-						desc: this.t('settings.manuscriptPresentationScope.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'manuscriptPresentationScope',
-							defaultValue: DEFAULT_SETTINGS.manuscriptPresentationScope,
-							options: {
-								stream: this.t('settings.manuscriptPresentationScope.stream'),
-								project: this.t('settings.manuscriptPresentationScope.project'),
-								vault: this.t('settings.manuscriptPresentationScope.vault'),
-							},
-						},
-					},
-					{
-						name: this.t('settings.manuscriptFontFamily.name'),
-						desc: this.lines('settings.manuscriptFontFamily.desc'),
-						render: (setting) => this.renderFontFamily(setting),
-					},
-					{
-						name: this.t('settings.manuscriptFontSize.name'),
-						desc: this.t('settings.manuscriptFontSize.desc'),
-						render: (setting) =>
-							this.renderStops(
-								setting,
-								'manuscriptFontSize',
-								FONT_SIZE_STOPS,
-								(value) =>
-									value === 0
-										? this.t('settings.manuscriptAppearance.themeDefault')
-										: this.t('settings.manuscriptAppearance.pixels', { value }),
-								PRESENTATION_THEME_VARS.fontSize,
-							),
-					},
-					{
-						name: this.t('settings.manuscriptLineHeight.name'),
-						desc: this.t('settings.manuscriptLineHeight.desc'),
-						render: (setting) =>
-							this.renderStops(
-								setting,
-								'manuscriptLineHeight',
-								LINE_HEIGHT_STOPS,
-								(value) =>
-									value === 0
-										? this.t('settings.manuscriptAppearance.themeDefault')
-										: String(value),
-								PRESENTATION_THEME_VARS.lineHeight,
-							),
-					},
-					{
-						name: this.t('settings.manuscriptContentWidth.name'),
-						desc: this.t('settings.manuscriptContentWidth.desc'),
-						render: (setting) =>
-							this.renderStops(
-								setting,
-								'manuscriptContentWidth',
-								CONTENT_WIDTH_STOPS,
-								(value) =>
-									value === 0
-										? this.t('settings.manuscriptAppearance.themeDefault')
-										: this.t('settings.manuscriptAppearance.pixels', { value }),
-								PRESENTATION_THEME_VARS.contentWidth,
-							),
-					},
-					{
-						name: this.t('settings.manuscriptParagraphSpacing.name'),
-						desc: this.t('settings.manuscriptParagraphSpacing.desc'),
-						render: (setting) =>
-							this.renderStops(
-								setting,
-								'manuscriptParagraphSpacing',
-								PARAGRAPH_SPACING_STOPS,
-								(value) =>
-									this.t(
-										value === 1
-											? 'settings.manuscriptParagraphSpacing.line'
-											: 'settings.manuscriptParagraphSpacing.lines',
-										{ value },
-									),
-							),
-					},
-					{
-						name: this.t('settings.manuscriptFirstLineIndent.name'),
-						desc: this.t('settings.manuscriptFirstLineIndent.desc'),
-						render: (setting) =>
-							this.renderStops(
-								setting,
-								'manuscriptFirstLineIndent',
-								FIRST_LINE_INDENT_STOPS,
-								(value) =>
-									value === 0
-										? this.t('settings.manuscriptFirstLineIndent.none')
-										: this.t('settings.manuscriptFirstLineIndent.value', { value }),
-							),
-					},
-					{
-						name: this.t('settings.manuscriptTextAlign.name'),
-						desc: this.t('settings.manuscriptTextAlign.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'manuscriptTextAlign',
-							defaultValue: DEFAULT_SETTINGS.manuscriptTextAlign,
-							options: {
-								start: this.t('settings.manuscriptTextAlign.start'),
-								justify: this.t('settings.manuscriptTextAlign.justify'),
-							},
-						},
-					},
-					{
-						name: this.t('settings.manuscriptGuide.name'),
-						desc: this.t('settings.manuscriptGuide.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'manuscriptGuide',
-							defaultValue: DEFAULT_SETTINGS.manuscriptGuide,
-							options: {
-								none: this.t('settings.manuscriptGuide.none'),
-								solid: this.t('settings.manuscriptGuide.solid'),
-								dashed: this.t('settings.manuscriptGuide.dashed'),
-							},
-						},
-					},
-					{
-						name: this.t('settings.manuscriptHyphenation.name'),
-						desc: this.t('settings.manuscriptHyphenation.desc'),
-						control: {
-							type: 'toggle',
-							key: 'manuscriptHyphenation',
-							defaultValue: DEFAULT_SETTINGS.manuscriptHyphenation,
-						},
-					},
-					// How far the color reaches, asked just before the color
-					// itself: as far as the typography above, or over every view,
-					// tab, dialog and panel of the plugin's own, or over the whole
-					// app. Drawn rather than declared, for the class: its answers
-					// are phrases, like the typography scope's, and the choice
-					// rows' shared column passes it by on that class, so it fits
-					// the one chosen as that scope does.
-					{
-						name: this.t('settings.manuscriptTintScope.name'),
-						desc: this.t('settings.manuscriptTintScope.desc'),
-						render: (setting) => {
-							this.renderTintScope(setting);
-						},
-					},
-					{
-						name: this.t('settings.manuscriptTintLight.name'),
-						desc: this.t('settings.manuscriptTintLight.desc'),
-						render: (setting) =>
-							this.renderTint(setting, 'manuscriptTintLight', MANUSCRIPT_TINTS.light),
-					},
-					{
-						name: this.t('settings.manuscriptTintDark.name'),
-						desc: this.t('settings.manuscriptTintDark.desc'),
-						render: (setting) =>
-							this.renderTint(setting, 'manuscriptTintDark', MANUSCRIPT_TINTS.dark),
 					},
 				],
 			},

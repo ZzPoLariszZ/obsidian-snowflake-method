@@ -8449,7 +8449,8 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 }
 
 /* One sentence per line: the descriptions here break where the text breaks. */
-.snowflake-method-manuscript-settings .setting-item-description {
+.snowflake-method-manuscript-settings .setting-item-description,
+.snowflake-method-typography-settings .setting-item-description {
 	white-space: pre-line;
 }
 
@@ -8485,19 +8486,18 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
 /* Two lists of two or three short words come out two different widths when
    each is measured from its own longest one. Both take the width the app
    gives a slider, so every control that has a width of its own stands in one
-   column. The settings page draws its choice rows itself, without the row
-   class, so the walk from the appearance heading -- whose rows are the last
-   of the group -- carries the rule there, and no other heading's rows take
-   it: the milestone and numbering dropdowns above keep the width the app
-   fits to their answer. So does the first row under the heading, which says
-   how far the dress reaches: its answers are phrases, named as the
-   explorer's scope names its own, and it fits the one chosen as that scope
-   does. The row that says how far the ground reaches, just above the two
-   grounds, answers in phrases too and fits the same way. */
+   column. The settings page declares its choice rows, without the row
+   class, so the typography section's own class carries the rule there, and
+   no other section's rows take it: the milestone and numbering dropdowns in
+   the stream's section keep the width the app fits to their answer. So does
+   the section's first row, after the hidden one that dresses the card,
+   which says how far the dress reaches: its answers are phrases, named as
+   the explorer's scope names its own, and it fits the one chosen as that
+   scope does. The row that says how far the ground reaches, just above the
+   two grounds, answers in phrases too and fits the same way. */
 .snowflake-method-presentation-row select.dropdown,
-.snowflake-method-manuscript-settings
-	.snowflake-method-appearance-heading
-	~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item):not(.snowflake-method-tint-scope-row)
+.snowflake-method-typography-settings
+	.setting-item:not(.snowflake-method-settings-dress + .setting-item):not(.snowflake-method-tint-scope-row)
 	select.dropdown {
 	width: var(--snowflake-method-presentation-control, 100px);
 }
@@ -8509,13 +8509,7 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    the column, and nothing is painted in the overhang. The popover's rows keep
    the app's default dropdown, which paints its own slab to its edge and needs
    no nudge. */
-/* The typography rows are the ones past their own subheading in the
-   manuscript card, now that the section is a subsection: the sibling walk
-   stands in for the wrapper class the merged group used to wear. */
-.snowflake-method-manuscript-settings
-	.snowflake-method-appearance-heading
-	~ .setting-item
-	select.dropdown {
+.snowflake-method-typography-settings .setting-item select.dropdown {
 	margin-inline-end: -2px;
 }
 
