@@ -851,10 +851,15 @@
 	background: var(--interactive-accent);
 }
 
+/* The gap beside the rail is where the rail's scrollbar stands, so it is never
+   narrower than the bar and a little air before the main column. */
 .snowflake-method-layout {
 	display: grid;
 	grid-template-columns: minmax(17rem, var(--snowflake-method-sidebar-width)) minmax(0, 1fr);
-	gap: var(--size-4-5);
+	gap: max(
+		var(--size-4-5),
+		calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1))
+	);
 	min-height: 0;
 	flex: 1 1 auto;
 }
@@ -888,9 +893,8 @@
 	flex: 1 1 auto;
 }
 
-/* The scrollbar's own width is what the steps are inset by on the far side, so
-   the near side is opened to match rather than leaving the rail lopsided. Where a
-   scrollbar costs nothing the rail keeps the padding it always had. */
+/* The rail keeps the same padding on both sides whether a scrollbar shows or
+   not: its scrollbar stands outside it (see the scroller below). */
 .snowflake-method-step-nav {
 	--snowflake-method-rail-header-height: max(
 		2.75rem,
@@ -901,10 +905,6 @@
 	min-width: 0;
 	min-height: 0;
 	padding: var(--size-4-2) var(--size-4-2) 0;
-	padding-inline-start: max(
-		var(--size-4-2),
-		var(--snowflake-method-scrollbar-width, 0px)
-	);
 	border: 1px solid var(--background-modifier-border);
 	border-bottom: 0;
 	border-radius: var(--radius-m);
@@ -917,9 +917,13 @@
    what will not fit — one scroll for all of them, since any can be open and
    neither has a height of its own to scroll inside. It is the groups that
    scroll and not the rail, so the bar stops above the project switcher instead
-   of running down beside it. The bar runs in the rail's own end padding, which
-   keeps the rows their full width, and its lane is kept whether or not there is
-   anything to scroll, so folding a group never shifts the rows sideways. */
+   of running down beside it. The bar stands outside the rail, just past its
+   border in the gap before the main column: the scroller reaches through the
+   rail's end padding and its border and on by the bar's own width, and pads
+   the rows back to where the rail's padding ends. So a bar never takes room
+   from the rows or the padding, and an overlaid bar is drawn over the padding
+   rather than the counts. Its lane is kept whether or not there is anything
+   to scroll, so folding a group never shifts the rows sideways. */
 .snowflake-method-step-nav-scroll {
 	display: flex;
 	flex-direction: column;
@@ -930,8 +934,10 @@
 	scrollbar-gutter: stable;
 	scroll-padding-block-start: var(--snowflake-method-rail-header-height);
 	margin-inline-end: calc(
-		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2))
+		-1 *
+			(var(--size-4-2) + 1px + var(--snowflake-method-scrollbar-width, 0px))
 	);
+	padding-inline-end: calc(var(--size-4-2) + 1px);
 	flex: 1 1 auto;
 }
 
@@ -943,16 +949,11 @@
 	display: flex;
 	justify-content: flex-end;
 	flex: 0 0 auto;
-	/* The toggle stands on the column the rows keep their counts in. The rows
-	   sit inside the scroller, which is narrower than the head by whatever
-	   of the scrollbar's gutter it does not hand back into the padding, and
-	   a count's centre is 0.375rem nearer the wall than a toolbar button's
-	   would be at the scroller's own edge. */
-	padding-inline-end: calc(
-		var(--snowflake-method-scrollbar-width, 0px) -
-			min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-2)) +
-			0.375rem
-	);
+	/* The toggle stands on the column the rows keep their counts in. The
+	   rows end where the head does, and a count's centre stands 21px in from
+	   a row's end, past its hairline, its padding and the 22px column it
+	   starts, where a 30px toolbar button's stands 15px in from its own. */
+	padding-inline-end: 0.375rem;
 }
 
 .snowflake-method-dashboard.is-rail-narrow .snowflake-method-step-nav-head {
@@ -1019,16 +1020,12 @@
 }
 
 /* The footer reaches back out through the rail's padding so its rule meets both
-   walls. The near side has to reach as far as that padding actually goes, which
-   is the scrollbar's width once the rail has opened up to match it. */
+   walls. */
 .snowflake-method-project-footer {
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-1);
 	margin: auto calc(var(--size-4-2) * -1) 0;
-	margin-inline-start: calc(
-		-1 * max(var(--size-4-2), var(--snowflake-method-scrollbar-width, 0px))
-	);
 	padding: var(--size-4-2);
 	border-top: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
@@ -4752,7 +4749,10 @@ textarea.snowflake-method-corkboard-recovered-text {
 @container snowflake-dashboard (max-width: 68rem) {
 	.snowflake-method-layout {
 		grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
-		gap: var(--size-4-3);
+		gap: max(
+			var(--size-4-3),
+			calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1))
+		);
 	}
 }
 
@@ -4769,20 +4769,9 @@ textarea.snowflake-method-corkboard-recovered-text {
    moves nothing else: the rail keeps its padding, the toggle and the group
    headings stand where they stood, and every row keeps its height, its
    frame's near edge, and its mark and count at the same insets from its
-   two ends. A scrollbar wider than the rail's end padding takes the rest of
-   its width from the rows, and the near padding opens by as much to match,
-   so the folded rail grows by twice that rather than squeezing them. */
+   two ends. */
 :where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout {
-	grid-template-columns:
-		calc(
-			6rem +
-				max(
-					0px,
-					var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-2)
-				) *
-				2
-		)
-		minmax(0, 1fr);
+	grid-template-columns: 6rem minmax(0, 1fr);
 	grid-template-rows: minmax(0, 1fr);
 }
 

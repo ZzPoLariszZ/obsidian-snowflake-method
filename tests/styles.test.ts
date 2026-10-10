@@ -464,8 +464,7 @@ describe('styles.css', () => {
 	 * stand where they stood open. So the folded rules may not set the rail's
 	 * padding, the toggle's place, the scroller's reach, a heading's columns
 	 * or a row's padding and height; a row only lays its two marks at its
-	 * ends, in the open row's own columns. A scrollbar wider than the end
-	 * padding costs the rows twice its excess, which the folded rail grows by.
+	 * ends, in the open row's own columns.
 	 */
 	it('folds the rail without moving its toggle, its headings or its rows', () => {
 		const sheet = styles.replace(/\/\*[\s\S]*?\*\//gu, ' ');
@@ -492,14 +491,49 @@ describe('styles.css', () => {
 		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-project-footer')).not.toContain(
 			'margin',
 		);
-		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout').replace(/\s+/gu, ' ')).toContain(
-			'calc( 6rem + max( 0px, var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-2) ) * 2 )',
+		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout')).toContain(
+			'grid-template-columns: 6rem minmax(0, 1fr)',
 		);
 		// A workspace row keeps its sparkles' room folded, so the rows below it stay put.
 		expect(declarations('.snowflake-method-dashboard button.snowflake-method-workspace-entry')).toContain('padding-block: 0.9rem');
 		// The footer reaches the walls through the open rail's padding at every width.
 		const narrow = sheet.split('@container snowflake-dashboard (max-width: 42rem) {')[1]?.split(/\n\}\n/u)[0] ?? '';
 		expect(narrow).not.toContain('.snowflake-method-project-footer');
+	});
+
+	/**
+	 * The rail's scrollbar stands outside it, just past its border in the gap
+	 * before the main column: the scroller reaches through the end padding,
+	 * the hairline and the bar's own width, and pads the rows back. So no bar
+	 * changes the rail's padding, the rows' width or where the toggle stands,
+	 * and the gap is never narrower than the bar and a little air.
+	 */
+	it('stands the rail\u2019s scrollbar outside its frame, in the gap before the main column', () => {
+		const flat = (rule: string): string => rule.replace(/\s+/gu, ' ');
+		const nav = declarations('.snowflake-method-step-nav');
+		expect(nav).not.toContain('scrollbar-width');
+		expect(nav).toContain('padding: var(--size-4-2) var(--size-4-2) 0');
+		const scroller = flat(declarations('.snowflake-method-step-nav-scroll'));
+		expect(scroller).toContain(
+			'margin-inline-end: calc( -1 * (var(--size-4-2) + 1px + var(--snowflake-method-scrollbar-width, 0px)) )',
+		);
+		expect(scroller).toContain('padding-inline-end: calc(var(--size-4-2) + 1px)');
+		expect(scroller).toContain('scrollbar-gutter: stable');
+		expect(declarations('.snowflake-method-step-nav-head')).toContain('padding-inline-end: 0.375rem');
+		expect(declarations('.snowflake-method-step-nav-head')).not.toContain('scrollbar-width');
+		expect(declarations('.snowflake-method-project-footer')).not.toContain('scrollbar-width');
+		const gaps = styles
+			.replace(/\/\*[\s\S]*?\*\//gu, ' ')
+			.split('}')
+			.filter((entry) => {
+				const parts = entry.split('{');
+				return (parts[parts.length - 2] ?? '').trim() === '.snowflake-method-layout';
+			})
+			.map((entry) => flat(/gap:([^;]+);/u.exec(entry)?.[1] ?? ''));
+		expect(gaps).toEqual([
+			' max( var(--size-4-5), calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1)) )',
+			' max( var(--size-4-3), calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1)) )',
+		]);
 	});
 
 	/**
