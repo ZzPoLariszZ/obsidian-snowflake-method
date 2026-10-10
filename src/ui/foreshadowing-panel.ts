@@ -318,7 +318,7 @@ export function renderForeshadowingPanel(
 			itemCell('name', (host) => {
 				const block = host.createDiv({ cls: 'snowflake-method-member-name-cell' });
 				const line = block.createDiv({ cls: 'snowflake-method-member-name-line' });
-				line.createSpan({ text: item.name, attr: { title: item.name } });
+				setTooltip(line.createSpan({ text: item.name }), item.name);
 				// The status word follows the member tables' setting.
 				if (bridge.showsProgressStatus()) {
 					block.createDiv({

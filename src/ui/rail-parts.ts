@@ -115,7 +115,7 @@ export function railParts(restack: () => void): RailParts {
 							? 'snowflake-method-rail-action is-danger'
 							: 'snowflake-method-rail-action',
 				text: label,
-				attr: { type: 'button', 'aria-label': label, title: label },
+				attr: { type: 'button', 'aria-label': label },
 			});
 			button.addEventListener('click', (event) => {
 				event.stopPropagation();

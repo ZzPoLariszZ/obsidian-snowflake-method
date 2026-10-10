@@ -65,6 +65,21 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * Obsidian draws every tooltip, the plugin's and the app's alike, as a
+	 * `.tooltip` on the body of its window, so the one rule under the body
+	 * class reaches them all, as Hider's does, but for the warning a section
+	 * marker shows, which wears a class of its own.
+	 */
+	it('hides every tooltip under the body class but the section markers’ warning', () => {
+		const tooltips = section('Tooltips');
+		expect(tooltips.includes('!important')).toBe(false);
+		expect(
+			declarations('body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip)'),
+		).toContain('display: none');
+		expect(styles).not.toMatch(/hide-tooltips \.tooltip\s*\{/u);
+	});
+
+	/**
 	 * The page's alignment reaches the multi-line fields only under the body
 	 * class the plugin puts there, and only as far as the plugin's own
 	 * dashboard and dialogs: a textarea of the app's or another plugin's is

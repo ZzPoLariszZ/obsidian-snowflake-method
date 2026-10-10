@@ -10,6 +10,7 @@ import {
 	ToggleComponent,
 	getIconIds,
 	setIcon,
+	setTooltip,
 } from 'obsidian';
 
 import {
@@ -1510,11 +1511,14 @@ export class ManageProjectsModal extends Modal {
 		const cls = 'snowflake-method-project-manager-project';
 		const item =
 			row.open === null
-				? projectRow.createDiv({ cls, attr: { title: project.title } })
+				? projectRow.createDiv({ cls })
 				: projectRow.createEl('button', {
 						cls,
-						attr: { type: 'button', title: project.title },
+						attr: { type: 'button' },
 					});
+		// The whole title on hover, where the row cuts it short, in the app's
+		// own tooltip, so the tooltip setting can put it away like any other.
+		setTooltip(item, project.title);
 		item.createSpan({
 			cls: 'snowflake-method-project-manager-project-title',
 			text: project.title,

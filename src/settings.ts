@@ -169,6 +169,8 @@ export interface SnowflakeSettings {
 	reduceMotion: boolean;
 	/** Whether every window hides its scrollbars. Scrolling is untouched. */
 	hideScrollbars: boolean;
+	/** Whether every window hides the tooltips that appear on hover. */
+	hideTooltips: boolean;
 	/**
 	 * How far along each member note is, written under its name in the tables.
 	 * Off unless it is asked for: it is a line on every row of every table, and
@@ -379,6 +381,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	protectManagedBoundaries: true,
 	reduceMotion: false,
 	hideScrollbars: true,
+	hideTooltips: true,
 	showTableProgressStatus: false,
 	showDerivedTasks: true,
 	showTableActionsColumn: true,
@@ -485,6 +488,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'protectManagedBoundaries',
 	'reduceMotion',
 	'hideScrollbars',
+	'hideTooltips',
 	'showTableProgressStatus',
 	'showDerivedTasks',
 	'showTableActionsColumn',
@@ -700,6 +704,10 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 			typeof raw.hideScrollbars === 'boolean'
 				? raw.hideScrollbars
 				: DEFAULT_SETTINGS.hideScrollbars,
+		hideTooltips:
+			typeof raw.hideTooltips === 'boolean'
+				? raw.hideTooltips
+				: DEFAULT_SETTINGS.hideTooltips,
 		showTableProgressStatus:
 			typeof raw.showTableProgressStatus === 'boolean'
 				? raw.showTableProgressStatus
@@ -1471,6 +1479,15 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						type: 'toggle',
 						key: 'hideScrollbars',
 						defaultValue: DEFAULT_SETTINGS.hideScrollbars,
+					},
+				},
+				{
+					name: this.t('settings.hideTooltips.name'),
+					desc: this.t('settings.hideTooltips.desc'),
+					control: {
+						type: 'toggle',
+						key: 'hideTooltips',
+						defaultValue: DEFAULT_SETTINGS.hideTooltips,
 					},
 				},
 					{
@@ -3094,6 +3111,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'hideScrollbars':
 				if (typeof value === 'boolean') {
 					this.owner.settings.hideScrollbars = value;
+				}
+				break;
+			case 'hideTooltips':
+				if (typeof value === 'boolean') {
+					this.owner.settings.hideTooltips = value;
 				}
 				break;
 			case 'protectManagedBoundaries':

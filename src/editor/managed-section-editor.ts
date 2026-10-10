@@ -20,6 +20,7 @@ import {
 	editorInfoField,
 	editorLivePreviewField,
 	setIcon,
+	setTooltip,
 	type MarkdownFileInfo,
 } from 'obsidian';
 
@@ -96,6 +97,14 @@ const DEFAULT_STRINGS: ManagedSectionEditorStrings = {
 };
 
 export const setManagedBoundariesUnlockedEffect = StateEffect.define<boolean>();
+
+/**
+ * Worn by the tooltip a boundary marker shows. Every other tooltip names what
+ * can already be seen; this one is a warning, that the marker must not be
+ * edited or deleted, or once unlocked that editing it can cost the dashboard
+ * its section. So the setting that hides tooltips leaves this one standing.
+ */
+export const BOUNDARY_TOOLTIP_CLASS = 'snowflake-method-boundary-tooltip';
 export const refreshManagedSectionDecorationsEffect = StateEffect.define<null>();
 type ManagedSectionFlashTarget =
 	| { kind: 'sections'; sectionIds: readonly string[] }
@@ -473,7 +482,11 @@ function buildDecorations(
 			ranges.push(
 				Decoration.mark({
 					class: `snowflake-managed-boundary-source ${kindClass} ${modifier}`,
-					attributes: { title: tooltip },
+					// What setTooltip writes, as attributes the mark can carry.
+					attributes: {
+						'aria-label': tooltip,
+						'data-tooltip-classes': BOUNDARY_TOOLTIP_CLASS,
+					},
 				}).range(boundary.from, boundary.to),
 				Decoration.widget({
 					widget: new ManagedBoundaryLockWidget(tooltip, locked),
@@ -657,8 +670,7 @@ class ManagedBoundaryCommentWidget extends WidgetType {
 	toDOM(): HTMLElement {
 		const element = createSpan();
 		element.className = 'snowflake-managed-boundary-comment';
-		element.title = this.tooltip;
-		element.setAttribute('aria-label', this.tooltip);
+		setTooltip(element, this.tooltip, { classes: [BOUNDARY_TOOLTIP_CLASS] });
 		element.setAttribute('contenteditable', 'false');
 
 		const icon = element.createSpan({
@@ -694,8 +706,7 @@ class ManagedBoundaryLockWidget extends WidgetType {
 		element.className = `snowflake-managed-boundary-lock ${
 			this.locked ? 'is-locked' : 'is-unlocked'
 		}`;
-		element.title = this.tooltip;
-		element.setAttribute('aria-label', this.tooltip);
+		setTooltip(element, this.tooltip, { classes: [BOUNDARY_TOOLTIP_CLASS] });
 		element.setAttribute('contenteditable', 'false');
 		setIcon(element, this.locked ? 'lock-keyhole' : 'lock-keyhole-open');
 		return element;

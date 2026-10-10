@@ -429,6 +429,7 @@ const SETTINGS_SAVE_DELAY_MS = 400;
 const FIELDS_RECONCILE_DELAY_MS = 1_000;
 const REDUCE_MOTION_CLASS = 'snowflake-method-reduce-motion';
 const HIDE_SCROLLBARS_CLASS = 'snowflake-method-hide-scrollbars';
+const HIDE_TOOLTIPS_CLASS = 'snowflake-method-hide-tooltips';
 /** Worn by a window's body while the page is justified: the fields follow. */
 /**
  * A box of this plugin's own that holds prose: an input, a textarea, or the
@@ -816,6 +817,7 @@ export default class SnowflakeMethodPlugin
 				targetWindow.document.body.classList.remove(
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
+					HIDE_TOOLTIPS_CLASS,
 					JUSTIFY_FIELDS_CLASS,
 					INDENT_FIELDS_CLASS,
 				);
@@ -929,6 +931,7 @@ export default class SnowflakeMethodPlugin
 				targetDocument.body.classList.remove(
 					REDUCE_MOTION_CLASS,
 					HIDE_SCROLLBARS_CLASS,
+					HIDE_TOOLTIPS_CLASS,
 					JUSTIFY_FIELDS_CLASS,
 					INDENT_FIELDS_CLASS,
 				);
@@ -3244,10 +3247,10 @@ export default class SnowflakeMethodPlugin
 		if (key === 'sensitiveWords') {
 			this.applyManuscriptMentionMode();
 		}
-		// Both body dresses have a command as well as a row, and a row left
+		// The body dresses have a command as well as a row, and a row left
 		// showing the old value is the next press undoing the command: the page
 		// is asked to show what was written, and declines when it wrote it.
-		if (key === 'reduceMotion') {
+		if (key === 'reduceMotion' || key === 'hideTooltips') {
 			this.applyBodyPreferences();
 			this.settingTab?.refreshRows();
 		}
@@ -3403,8 +3406,8 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * The author's dress choices, worn by a window's body as classes: fewer
-	 * animations, and no scrollbars. The settings window shares the main
-	 * window's body classes, so it needs no telling of its own.
+	 * animations, no scrollbars and no tooltips. The settings window shares
+	 * the main window's body classes, so it needs no telling of its own.
 	 */
 	private applyBodyPreferencesToDocument(targetDocument: Document): void {
 		this.dressedDocuments.add(targetDocument);
@@ -3415,6 +3418,10 @@ export default class SnowflakeMethodPlugin
 		targetDocument.body.classList.toggle(
 			HIDE_SCROLLBARS_CLASS,
 			this.settings.hideScrollbars,
+		);
+		targetDocument.body.classList.toggle(
+			HIDE_TOOLTIPS_CLASS,
+			this.settings.hideTooltips,
 		);
 		targetDocument.body.classList.toggle(
 			JUSTIFY_FIELDS_CLASS,
@@ -6106,6 +6113,16 @@ export default class SnowflakeMethodPlugin
 		);
 	}
 
+	private async toggleTooltips(): Promise<void> {
+		const hidden = !this.settings.hideTooltips;
+		this.settings.hideTooltips = hidden;
+		await this.saveSettings();
+		await this.handleSettingsChanged('hideTooltips');
+		new Notice(
+			this.globalT(hidden ? 'commands.tooltipsHidden' : 'commands.tooltipsShown'),
+		);
+	}
+
 	/**
 	 * The two dashboard settings an author changes while looking at what they
 	 * govern: whether a row says how far along its note is, and whether a name
@@ -8716,6 +8733,15 @@ export default class SnowflakeMethodPlugin
 			name: this.globalT('commands.toggleScrollbars'),
 			callback: () => {
 				void this.toggleScrollbars().catch((error: unknown) => {
+					this.showError(error);
+				});
+			},
+		});
+		this.addCommand({
+			id: 'toggle-tooltips',
+			name: this.globalT('commands.toggleTooltips'),
+			callback: () => {
+				void this.toggleTooltips().catch((error: unknown) => {
 					this.showError(error);
 				});
 			},

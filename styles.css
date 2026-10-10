@@ -17360,6 +17360,19 @@ body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-
 	display: none;
 }
 
+/* == Tooltips ============================================================= */
+
+/* The author's choice to see no tooltip, worn by every window's body as the
+   scrollbars' choice is. Obsidian draws each tooltip as one element on the
+   body of the window it shows in, for the plugin's buttons and every other
+   alike, so one rule hides them all. The label it reads stays on the element
+   it describes, where a screen reader still finds it. A section marker's
+   tooltip is the one left standing: it is a warning, not a name, and wears
+   a class of its own for this. */
+body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip) {
+	display: none;
+}
+
 /* == Field alignment ======================================================= */
 
 /* The typography's alignment, worn by every multi-line field the dashboard

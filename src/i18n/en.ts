@@ -77,6 +77,9 @@ export const en = {
 	'commands.toggleScrollbars': 'Toggle scrollbars',
 	'commands.scrollbarsHidden': 'Scrollbars hidden.',
 	'commands.scrollbarsShown': 'Scrollbars shown.',
+	'commands.toggleTooltips': 'Toggle tooltips',
+	'commands.tooltipsHidden': 'Tooltips hidden.',
+	'commands.tooltipsShown': 'Tooltips shown.',
 	'commands.toggleNotesBesideDashboard':
 		'Toggle opening notes beside the dashboard',
 	'commands.notesBesideDashboardEnabled':
@@ -165,8 +168,11 @@ export const en = {
 	'settings.createFromField.now': 'Create directly',
 	'settings.reduceMotion.name': 'Reduce animations',
 	'settings.reduceMotion.desc': 'Use static visual effects instead of animations.',
-	'settings.hideScrollbars.name': 'Hide scrollbar',
+	'settings.hideScrollbars.name': 'Hide scrollbars',
 	'settings.hideScrollbars.desc': 'Hide every vertical and horizontal scrollbar.',
+	'settings.hideTooltips.name': 'Hide tooltips',
+	'settings.hideTooltips.desc':
+		'Hide every tooltip that appears on hover, except the warning on section markers.',
 	'settings.tableActionsColumn.name': 'Show the actions column in tables',
 	'settings.tableActionsColumn.desc':
 		"Show each row's actions in a separate column.\nIf off, the action menu appears at the end of the row when focused.",

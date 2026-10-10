@@ -75,6 +75,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'commands.toggleScrollbars': '切换滚动条',
 	'commands.scrollbarsHidden': '滚动条已隐藏。',
 	'commands.scrollbarsShown': '滚动条已显示。',
+	'commands.toggleTooltips': '切换工具提示',
+	'commands.tooltipsHidden': '工具提示已隐藏。',
+	'commands.tooltipsShown': '工具提示已显示。',
 	'commands.toggleNotesBesideDashboard': '切换在工作台旁打开笔记',
 	'commands.notesBesideDashboardEnabled': '笔记将在工作台旁打开。',
 	'commands.notesBesideDashboardDisabled': '笔记将在标签页中打开。',
@@ -156,6 +159,8 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.reduceMotion.desc': '使用静态视觉效果替代动画。',
 	'settings.hideScrollbars.name': '隐藏滚动条',
 	'settings.hideScrollbars.desc': '隐藏所有垂直和水平滚动条。',
+	'settings.hideTooltips.name': '隐藏工具提示',
+	'settings.hideTooltips.desc': '隐藏鼠标悬停时出现的所有工具提示，分节标记上的警告除外。',
 	'settings.tableActionsColumn.name': '在表格中显示操作列',
 	'settings.tableActionsColumn.desc':
 		'为每行的操作单独设一列。\n关闭时，操作菜单在聚焦该行时显示于行尾。',

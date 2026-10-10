@@ -518,6 +518,13 @@ describe('settings', () => {
 		expect(sanitizeSettings({ hideScrollbars: 'no' }).hideScrollbars).toBe(true);
 	});
 
+	it('hides the tooltips until the plugin setting shows them', () => {
+		expect(DEFAULT_SETTINGS.hideTooltips).toBe(true);
+		expect(sanitizeSettings(undefined).hideTooltips).toBe(true);
+		expect(sanitizeSettings({ hideTooltips: false }).hideTooltips).toBe(false);
+		expect(sanitizeSettings({ hideTooltips: 'no' }).hideTooltips).toBe(true);
+	});
+
 	it('opens a note’s own form when a field asks for one', () => {
 		expect(DEFAULT_SETTINGS.createFromField).toBe('form');
 		expect(sanitizeSettings(undefined).createFromField).toBe('form');
