@@ -3097,6 +3097,12 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	scrollbar-gutter: stable;
 }
 
+/* A confirm dialog's paragraph never ends on a lone word: the browser balances
+   the last lines whatever width the window leaves the dialog. */
+.modal.snowflake-method-delete-member-modal .modal-content p {
+	text-wrap: pretty;
+}
+
 .snowflake-method-modal-actions {
 	display: flex;
 	align-items: center;

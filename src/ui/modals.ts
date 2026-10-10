@@ -4792,6 +4792,34 @@ class ConfirmSegmentMergeModal extends Modal {
 	}
 }
 
+/**
+ * Asked before the section markers lose their guard in every note at once,
+ * from the settings switch and the palette's toggle alike. Turning the guard
+ * back on asks nothing.
+ */
+class ConfirmBoundaryProtectionOffModal extends ConfirmModal {
+	constructor(app: App, t: Translate, onResolve: (confirmed: boolean) => void) {
+		super(
+			app,
+			t,
+			{ label: t('modal.boundaryProtectionOff.confirm'), style: 'mod-warning' },
+			onResolve,
+		);
+		this.setTitle(t('modal.boundaryProtectionOff.title'));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.boundaryProtectionOff.description') });
+	}
+}
+
+export function confirmBoundaryProtectionOff(app: App, t: Translate): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmBoundaryProtectionOffModal(app, t, resolve).open();
+	});
+}
+
 export class ManagedBoundaryUnlockModal extends Modal {
 	constructor(
 		app: App,
@@ -4800,6 +4828,8 @@ export class ManagedBoundaryUnlockModal extends Modal {
 	) {
 		super(app);
 		this.setTitle(t('editor.managedSection.unlockConfirmTitle'));
+		// The confirm dialogs' own look, which the turn-off question beside it wears.
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
 	}
 
 	onOpen(): void {

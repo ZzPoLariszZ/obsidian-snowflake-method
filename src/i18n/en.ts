@@ -149,7 +149,7 @@ export const en = {
 		'Open Snowflake notes in one pane beside the dashboard.',
 	'settings.protectBoundaries.name': 'Protect managed boundaries',
 	'settings.protectBoundaries.desc':
-		'Protect section markers from accidental edits.',
+		'Protect section markers in every note from accidental edits.',
 	'settings.writingCountMode.name': 'Word count rule',
 	'settings.writingCountMode.desc': 'Which tool the word count follows.',
 	'settings.writingCountMode.jinjiang': 'Jinjiang',
@@ -816,23 +816,25 @@ export const en = {
 		'Write inside the highlighted section. Keep its Snowflake boundary markers unchanged.',
 	'editor.managedSection.placeholder': 'Write here…',
 	'editor.managedSection.boundaryTooltip':
-		'Snowflake boundary marker. Do not edit or delete it.',
+		'This marker shows where a section starts or ends. Don’t edit or delete it.',
+	'editor.managedSection.unlockedTooltip':
+		'This marker shows where a section starts or ends. It’s unlocked now. If you edit or delete it, the dashboard can’t update this section.',
 	'editor.managedSection.protectedNotice':
-		'Snowflake section boundaries are protected.',
+		'This section marker is locked. To change it, right-click in the note and unlock its section markers.',
 	'editor.managedSection.generatedNotice':
 		'The overview is generated from the note properties. Use the dashboard to edit (recommended) or modify the properties above directly.',
 	'editor.managedSection.recordNotice':
 		'These records are managed by the plugin. Open the note in the dashboard to change them.',
 	'editor.managedSection.templateNotice':
 		'This template is managed by the plugin. Edit it from the custom fields pane of the dashboard.',
-	'editor.managedSection.unlock': 'Unlock boundaries',
-	'editor.managedSection.relock': 'Relock boundaries',
-	'editor.managedSection.unlockConfirmTitle':
-		'Unlock Snowflake boundaries?',
+	'editor.managedSection.unlock': 'Unlock section markers in this note',
+	'editor.managedSection.relock': 'Lock section markers in this note',
+	'editor.managedSection.unlockConfirmTitle': 'Unlock section markers in this note?',
 	'editor.managedSection.unlockConfirmDescription':
-		'Boundary markers let the dashboard find and safely update each section. Unlock them only if you understand the Markdown data contract.',
+		'The dashboard uses these markers to find each section and keep it up to date. While they’re unlocked, you can edit them like normal text, so an accidental change can stop the dashboard from updating that section. They lock again when you close the note.',
 	'editor.managedSection.unlockConfirmAction': 'Unlock',
-	'editor.managedSection.switchToSource': 'Switch to source mode',
+	'editor.managedSection.switchToSource':
+		'Section markers unlocked. Switch to source mode to edit them.',
 	'editor.managedSection.damagedTitle':
 		'Snowflake section boundary needs repair',
 	'editor.managedSection.damagedDescription':
@@ -1833,6 +1835,10 @@ export const en = {
 	'modal.archiveProject.description':
 		'The whole project moves into the “Snowflake Archive” folder beside your projects, with every note unchanged. Restore it from this manager whenever you want it back.',
 	'modal.archiveProject.confirm': 'Archive',
+	'modal.boundaryProtectionOff.title': 'Turn off managed boundary protection?',
+	'modal.boundaryProtectionOff.description':
+		'Section markers tell the dashboard where each section starts and ends. With protection off, the markers in every note can be changed or deleted by mistake, and the dashboard can’t update a section whose marker is broken.',
+	'modal.boundaryProtectionOff.confirm': 'Turn off',
 	'modal.character.title': 'Add character',
 	'modal.character.editTitle': 'Edit character',
 	'modal.character.name': 'Name',

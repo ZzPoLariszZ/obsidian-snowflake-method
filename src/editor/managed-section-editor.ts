@@ -92,8 +92,10 @@ export interface ManagedSectionEditorOptions {
 
 const DEFAULT_STRINGS: ManagedSectionEditorStrings = {
 	emptyPlaceholder: 'Write here…',
-	protectedBoundary: 'This Snowflake section boundary is protected.',
-	unlockedBoundary: 'This Snowflake section boundary is temporarily unlocked.',
+	protectedBoundary:
+		'This marker shows where a section starts or ends. Don’t edit or delete it.',
+	unlockedBoundary:
+		'This marker shows where a section starts or ends. It’s unlocked now. If you edit or delete it, the dashboard can’t update this section.',
 };
 
 export const setManagedBoundariesUnlockedEffect = StateEffect.define<boolean>();

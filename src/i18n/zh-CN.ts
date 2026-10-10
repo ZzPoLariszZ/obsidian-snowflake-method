@@ -139,7 +139,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.split.desc':
 		'在工作台旁的同一分栏中打开雪花写作笔记。',
 	'settings.protectBoundaries.name': '保护托管区段边界',
-	'settings.protectBoundaries.desc': '防止意外修改区段标记。',
+	'settings.protectBoundaries.desc': '防止意外修改所有笔记里的区段标记。',
 	'settings.writingCountMode.name': '字数统计规则',
 	'settings.writingCountMode.desc': '字数按哪个平台的规则计算。',
 	'settings.writingCountMode.jinjiang': '晋江/写作助手',
@@ -160,7 +160,7 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'settings.hideScrollbars.name': '隐藏滚动条',
 	'settings.hideScrollbars.desc': '隐藏所有垂直和水平滚动条。',
 	'settings.hideTooltips.name': '隐藏工具提示',
-	'settings.hideTooltips.desc': '隐藏鼠标悬停时出现的所有工具提示，分节标记上的警告除外。',
+	'settings.hideTooltips.desc': '隐藏鼠标悬停时出现的所有工具提示，区段标记上的警告除外。',
 	'settings.tableActionsColumn.name': '在表格中显示操作列',
 	'settings.tableActionsColumn.desc':
 		'为每行的操作单独设一列。\n关闭时，操作菜单在聚焦该行时显示于行尾。',
@@ -748,21 +748,24 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 		'请在高亮区段内写作，并保留两端的雪花写作边界标记。',
 	'editor.managedSection.placeholder': '在这里写作…',
 	'editor.managedSection.boundaryTooltip':
-		'雪花写作边界标记，请勿修改或删除。',
-	'editor.managedSection.protectedNotice': '雪花写作区段边界已受保护。',
+		'这个标记表示一个区段的开头或结尾，请勿修改或删除。',
+	'editor.managedSection.unlockedTooltip':
+		'这个标记表示一个区段的开头或结尾，现在已解锁。如果修改或删除它，工作台将无法更新这个区段。',
+	'editor.managedSection.protectedNotice':
+		'这个区段标记已锁定。如需修改，请在笔记中点击右键，选择“解锁这篇笔记的区段标记”。',
 	'editor.managedSection.generatedNotice':
 		'此概览由笔记属性生成。推荐使用工作台编辑，也可直接修改上方属性。',
 	'editor.managedSection.recordNotice':
 		'这些记录由插件管理。请在工作台中打开该笔记进行修改。',
 	'editor.managedSection.templateNotice':
 		'此模板由插件管理。请在工作台的自定义字段面板中编辑。',
-	'editor.managedSection.unlock': '解锁边界',
-	'editor.managedSection.relock': '重新锁定边界',
-	'editor.managedSection.unlockConfirmTitle': '解锁雪花写作边界？',
+	'editor.managedSection.unlock': '解锁这篇笔记的区段标记',
+	'editor.managedSection.relock': '锁定这篇笔记的区段标记',
+	'editor.managedSection.unlockConfirmTitle': '解锁这篇笔记的区段标记？',
 	'editor.managedSection.unlockConfirmDescription':
-		'工作台依靠边界标记定位并安全更新各个区段。仅在了解 Markdown 数据契约时解锁。',
+		'工作台靠这些标记找到每个区段，并保持内容同步。解锁后，标记可以像普通文字一样修改，一不小心改错，工作台就无法再更新那个区段。关闭这篇笔记后，标记会自动重新锁定。',
 	'editor.managedSection.unlockConfirmAction': '解锁',
-	'editor.managedSection.switchToSource': '切换到源码模式',
+	'editor.managedSection.switchToSource': '区段标记已解锁。切换到源码模式就能编辑。',
 	'editor.managedSection.damagedTitle': '雪花写作区段边界需要修复',
 	'editor.managedSection.damagedDescription':
 		'一个或多个边界标记已被修改。修复之前，工作台无法安全更新此区段。',
@@ -1713,6 +1716,10 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.archiveProject.description':
 		'整个项目将移入项目旁的“Snowflake Archive”文件夹，所有笔记保持原样。想要找回时，随时可以在此管理器中恢复。',
 	'modal.archiveProject.confirm': '归档',
+	'modal.boundaryProtectionOff.title': '关闭托管区段边界保护？',
+	'modal.boundaryProtectionOff.description':
+		'区段标记告诉工作台每个区段从哪里开始、到哪里结束。关闭保护后，所有笔记里的标记都可能被误改或误删，标记损坏的区段就无法再从工作台更新。',
+	'modal.boundaryProtectionOff.confirm': '关闭',
 	'modal.character.title': '添加角色',
 	'modal.character.editTitle': '编辑角色',
 	'modal.character.name': '姓名',

@@ -366,6 +366,7 @@ import {
 	ManageProjectsModal,
 	ManagedBoundaryUnlockModal,
 	RepairReportModal,
+	confirmBoundaryProtectionOff,
 	promptForSegmentTitle,
 	confirmSegmentMerge,
 	confirmExportReplace,
@@ -1215,11 +1216,21 @@ export default class SnowflakeMethodPlugin
 					return;
 				}
 				const unlocked = areManagedBoundariesUnlocked(view.state);
+				const content = view.state.doc.toString();
+				// Under the plugin's own heading, as the file menu has it.
+				const section = 'snowflake-method';
 				menu.addItem((item) =>
 					item
+						.setSection(section)
+						.setIsLabel(true)
+						.setTitle(this.editorT(content, 'plugin.name')),
+				);
+				menu.addItem((item) =>
+					item
+						.setSection(section)
 						.setTitle(
 							this.editorT(
-								view.state.doc.toString(),
+								content,
 								unlocked
 									? 'editor.managedSection.relock'
 									: 'editor.managedSection.unlock',
@@ -3285,6 +3296,8 @@ export default class SnowflakeMethodPlugin
 					this.settings.protectManagedBoundaries,
 			);
 		}
+		// The palette's toggle writes it too, and the settings page shows it.
+		if (key === 'protectManagedBoundaries') this.settingTab?.refreshRows();
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
 		// Turning untimed tracking off files what the day has so far; the
 		// stored records keep contributing to every reading either way.
@@ -6042,9 +6055,7 @@ export default class SnowflakeMethodPlugin
 		return {
 			emptyPlaceholder: t('editor.managedSection.placeholder'),
 			protectedBoundary: t('editor.managedSection.boundaryTooltip'),
-			unlockedBoundary: t(
-				'editor.managedSection.unlockConfirmDescription',
-			),
+			unlockedBoundary: t('editor.managedSection.unlockedTooltip'),
 		};
 	}
 
@@ -6075,8 +6086,17 @@ export default class SnowflakeMethodPlugin
 		}).open();
 	}
 
+	/**
+	 * Whether the author means to take the guard off every note's section
+	 * markers, asked by the settings switch and the palette's toggle alike.
+	 */
+	confirmBoundaryProtectionOff(): Promise<boolean> {
+		return confirmBoundaryProtectionOff(this.app, this.globalT);
+	}
+
 	private async toggleManagedBoundaryProtection(): Promise<void> {
 		const enabled = !this.settings.protectManagedBoundaries;
+		if (!enabled && !(await this.confirmBoundaryProtectionOff())) return;
 		this.settings.protectManagedBoundaries = enabled;
 		await this.saveSettings();
 		await this.handleSettingsChanged('protectManagedBoundaries');

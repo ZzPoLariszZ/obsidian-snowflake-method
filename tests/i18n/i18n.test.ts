@@ -201,18 +201,43 @@ describe('translation resources', () => {
 		expect(zhCN['commands.reducedAnimationsDisabled']).toContain('已关闭');
 		expect(en['editor.managedSection.placeholder']).toBe('Write here…');
 		expect(zhCN['editor.managedSection.placeholder']).toBe('在这里写作…');
+		// The marker's tooltip is a warning in both states, which is why the
+		// Hide tooltips setting leaves it standing.
 		expect(en['editor.managedSection.boundaryTooltip']).toContain(
-			'Do not edit or delete',
+			'Don’t edit or delete',
 		);
 		expect(zhCN['editor.managedSection.boundaryTooltip']).toContain(
 			'请勿修改或删除',
 		);
+		expect(en['editor.managedSection.unlockedTooltip']).toContain(
+			'If you edit or delete it',
+		);
+		expect(zhCN['editor.managedSection.unlockedTooltip']).toContain(
+			'如果修改或删除它',
+		);
+		expect(en['modal.boundaryProtectionOff.title']).toBe(
+			'Turn off managed boundary protection?',
+		);
+		expect(zhCN['modal.boundaryProtectionOff.title']).toBe(
+			'关闭托管区段边界保护？',
+		);
+		// The two right-click items mirror each other.
+		expect(en['editor.managedSection.unlock']).toBe('Unlock section markers in this note');
+		expect(en['editor.managedSection.relock']).toBe('Lock section markers in this note');
+		expect(zhCN['editor.managedSection.unlock']).toBe('解锁这篇笔记的区段标记');
+		expect(zhCN['editor.managedSection.relock']).toBe('锁定这篇笔记的区段标记');
+		// The per-note unlock says what it reaches and how long it lasts.
+		expect(en['editor.managedSection.unlockConfirmTitle']).toContain('in this note');
+		expect(zhCN['editor.managedSection.unlockConfirmTitle']).toContain('这篇笔记');
 		expect(en['editor.managedSection.unlockConfirmDescription']).toContain(
-			'Markdown data contract',
+			'They lock again when you close the note.',
 		);
 		expect(
 			zhCN['editor.managedSection.unlockConfirmDescription'],
-		).toContain('Markdown 数据契约');
+		).toContain('关闭这篇笔记后，标记会自动重新锁定。');
+		// The setting reaches every note, and says so.
+		expect(en['settings.protectBoundaries.desc']).toContain('every note');
+		expect(zhCN['settings.protectBoundaries.desc']).toContain('所有笔记');
 		expect(en['editor.managedSection.damagedDescription']).toContain(
 			'cannot safely update',
 		);

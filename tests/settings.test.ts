@@ -84,6 +84,7 @@ function writableSettingTab(): {
 		saveSettings: async () => undefined,
 		saveSettingsSoon: () => undefined,
 		handleSettingsChanged: async () => undefined,
+		confirmBoundaryProtectionOff: async () => true,
 	} as unknown as SnowflakeMethodPlugin;
 	return { tab: new SnowflakeSettingTab({} as never, plugin), settings };
 }
@@ -125,6 +126,46 @@ describe('settings', () => {
 			).toEqual({ key, value: wanted });
 			expect(tab.getControlValue(key)).toEqual(wanted);
 		}
+	});
+
+	/**
+	 * Turning the guard off leaves every note's markers open, so the switch
+	 * asks first; a refusal writes and announces nothing. Turning it back on
+	 * asks nothing at all.
+	 */
+	it('asks before turning boundary protection off, and only then', async () => {
+		const asked: boolean[] = [];
+		const saved: string[] = [];
+		const settings: SnowflakeSettings = { ...DEFAULT_SETTINGS };
+		let answer = false;
+		const plugin = {
+			settings,
+			saveSettings: async () => {
+				saved.push('save');
+			},
+			saveSettingsSoon: () => undefined,
+			handleSettingsChanged: async (key: string) => {
+				saved.push(key);
+			},
+			confirmBoundaryProtectionOff: async () => {
+				asked.push(answer);
+				return answer;
+			},
+		} as unknown as SnowflakeMethodPlugin;
+		const tab = new SnowflakeSettingTab({} as never, plugin);
+
+		await tab.setControlValue('protectManagedBoundaries', false);
+		expect(settings.protectManagedBoundaries).toBe(true);
+		expect(saved).toEqual([]);
+
+		answer = true;
+		await tab.setControlValue('protectManagedBoundaries', false);
+		expect(settings.protectManagedBoundaries).toBe(false);
+		expect(saved).toEqual(['save', 'protectManagedBoundaries']);
+
+		await tab.setControlValue('protectManagedBoundaries', true);
+		expect(settings.protectManagedBoundaries).toBe(true);
+		expect(asked).toEqual([false, true]);
 	});
 
 	it('migrates settings to schema v6 with boundary protection enabled', () => {

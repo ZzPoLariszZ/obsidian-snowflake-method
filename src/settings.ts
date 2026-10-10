@@ -1509,13 +1509,23 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 						},
 					},
 				},
+				// Drawn here rather than declared: turning the guard off asks first,
+				// and a declared switch cannot be set back when the answer is no,
+				// since the page redraws a row only when its stored value moves,
+				// and a refusal moves nothing.
 				{
 					name: this.t('settings.protectBoundaries.name'),
 					desc: this.t('settings.protectBoundaries.desc'),
-					control: {
-						type: 'toggle',
-						key: 'protectManagedBoundaries',
-						defaultValue: DEFAULT_SETTINGS.protectManagedBoundaries,
+					render: (setting) => {
+						setting.addToggle((toggle) => {
+							toggle
+								.setValue(this.owner.settings.protectManagedBoundaries)
+								.onChange(async (value) => {
+									if (value === this.owner.settings.protectManagedBoundaries) return;
+									await this.setControlValue('protectManagedBoundaries', value);
+									toggle.setValue(this.owner.settings.protectManagedBoundaries);
+								});
+						});
 					},
 				},
 				],
@@ -3066,6 +3076,17 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		if (!SETTINGS_KEYS.has(key as keyof SnowflakeSettings)) {
+			return;
+		}
+		// Taking the guard off every note's section markers asks first, as the
+		// palette's toggle does. A refusal writes nothing, and the row's switch
+		// goes back to the setting that still stands.
+		if (
+			key === 'protectManagedBoundaries' &&
+			value === false &&
+			this.owner.settings.protectManagedBoundaries &&
+			!(await this.owner.confirmBoundaryProtectionOff())
+		) {
 			return;
 		}
 
