@@ -459,6 +459,50 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * Folding the rail takes the words away and narrows it, and moves nothing
+	 * else: the toggle, the headings and every row's frame, mark and count
+	 * stand where they stood open. So the folded rules may not set the rail's
+	 * padding, the toggle's place, the scroller's reach, a heading's columns
+	 * or a row's padding and height; a row only lays its two marks at its
+	 * ends, in the open row's own columns. A scrollbar wider than the end
+	 * padding costs the rows twice its excess, which the folded rail grows by.
+	 */
+	it('folds the rail without moving its toggle, its headings or its rows', () => {
+		const sheet = styles.replace(/\/\*[\s\S]*?\*\//gu, ' ');
+		const folded = sheet
+			.split('}')
+			.map((entry) => entry.split('{'))
+			.filter(([selector]) => (selector ?? '').includes('is-rail-compact'))
+			.map(([selector, body]) => ({ selector: (selector ?? '').trim().replace(/\s+/gu, ' '), body: body ?? '' }));
+		const still = [
+			/\.snowflake-method-step-nav$/u,
+			/\.snowflake-method-step-nav-head$/u,
+			/\.snowflake-method-step-nav-scroll$/u,
+			/button\.snowflake-method-rail-group-header$/u,
+		];
+		for (const { selector } of folded) {
+			for (const pattern of still) expect(selector).not.toMatch(pattern);
+		}
+		const open = declarations('.snowflake-method-dashboard button.snowflake-method-step-button');
+		expect(open).toContain('grid-template-columns: 1.75rem minmax(0, 1fr) 1.375rem');
+		const row = declarations('.snowflake-method-dashboard:where(.is-rail-compact) button.snowflake-method-step-button');
+		expect(row).toContain('grid-template-columns: 1.75rem 1.375rem');
+		expect(row).toContain('justify-content: space-between');
+		expect(row).not.toMatch(/padding|min-height|gap/u);
+		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-project-footer')).not.toContain(
+			'margin',
+		);
+		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout').replace(/\s+/gu, ' ')).toContain(
+			'calc( 6rem + max( 0px, var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-2) ) * 2 )',
+		);
+		// A workspace row keeps its sparkles' room folded, so the rows below it stay put.
+		expect(declarations('.snowflake-method-dashboard button.snowflake-method-workspace-entry')).toContain('padding-block: 0.9rem');
+		// The footer reaches the walls through the open rail's padding at every width.
+		const narrow = sheet.split('@container snowflake-dashboard (max-width: 42rem) {')[1]?.split(/\n\}\n/u)[0] ?? '';
+		expect(narrow).not.toContain('.snowflake-method-project-footer');
+	});
+
+	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and
 	 * nothing the explorer's own rules say is overruled.

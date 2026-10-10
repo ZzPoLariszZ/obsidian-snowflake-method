@@ -1220,8 +1220,10 @@
 }
 
 /* The shimmer fills the letters; sparkles float just above and below them. */
-.snowflake-method-dashboard:not(.is-rail-compact) button.snowflake-method-workspace-entry {
-	/* Keep the largest sparkles inside the row, including a two-line label. */
+.snowflake-method-dashboard button.snowflake-method-workspace-entry {
+	/* Keep the largest sparkles inside the row, including a two-line label,
+	   and the row as tall when the rail is folded and they are gone, so that
+	   nothing below it moves on a fold. */
 	padding-block: 0.9rem;
 }
 
@@ -4761,55 +4763,32 @@ textarea.snowflake-method-corkboard-recovered-text {
    for both, `is-rail-compact`, with `is-rail-narrow` beside it for what the
    width alone decides. The rules keep the weight they had inside the query,
    through :where(), so what each wins or loses against the rest of the sheet
-   is what it won or lost before. */
+   is what it won or lost before.
+
+   Folding takes the words away and brings the rail in to the marks, and
+   moves nothing else: the rail keeps its padding, the toggle and the group
+   headings stand where they stood, and every row keeps its height, its
+   frame's near edge, and its mark and count at the same insets from its
+   two ends. A scrollbar wider than the rail's end padding takes the rest of
+   its width from the rows, and the near padding opens by as much to match,
+   so the folded rail grows by twice that rather than squeezing them. */
 :where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout {
-	grid-template-columns: 6rem minmax(0, 1fr);
+	grid-template-columns:
+		calc(
+			6rem +
+				max(
+					0px,
+					var(--snowflake-method-scrollbar-width, 0px) - var(--size-4-2)
+				) *
+				2
+		)
+		minmax(0, 1fr);
 	grid-template-rows: minmax(0, 1fr);
 }
 
-:where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-nav {
-	--snowflake-method-rail-header-height: max(
-		2rem,
-		calc((var(--font-ui-medium) + 2px) * 1.25 + var(--size-4-1) * 2)
-	);
-	padding: var(--size-4-1) var(--size-4-1) 0;
-	padding-inline-start: max(
-		var(--size-4-1),
-		var(--snowflake-method-scrollbar-width, 0px)
-	);
-}
-
-/* Narrow or wide, a rail taller than the window scrolls rather than losing
-   what will not fit — but the rail keeps less padding at this width, so
-   there is less of it to hand the scrollbar back into. */
-:where(.snowflake-method-dashboard.is-rail-compact)
-	.snowflake-method-step-nav-scroll {
-	margin-inline-end: calc(
-		-1 * min(var(--snowflake-method-scrollbar-width, 0px), var(--size-4-1))
-	);
-}
-
-/* On the counts here too. A folded row centres its mark and count between
-   the rail's even margins, so the count's far edge stands the same 17px in
-   from the padding whatever the scrollbar costs, and the toggle, 5px wider
-   each side than a circle, ends 12px in. */
-:where(.snowflake-method-dashboard.is-rail-compact)
-	.snowflake-method-step-nav-head {
-	justify-content: flex-end;
-	padding-inline-end: 0.75rem;
-}
-
 /* No room for a word in a column this narrow, but the fold is worth
-   keeping: the chevron stands alone, centred over the marks it heads, and
-   the word stays for anything reading the page aloud. */
-.snowflake-method-dashboard:where(.is-rail-compact)
-	button.snowflake-method-rail-group-header {
-	grid-template-columns: minmax(0, 1fr);
-	justify-items: center;
-	min-height: 2rem;
-	padding: var(--size-4-1);
-}
-
+   keeping: the chevron stands alone in its column over the marks it heads,
+   and the word stays for anything reading the page aloud. */
 :where(.snowflake-method-dashboard.is-rail-compact)
 	.snowflake-method-rail-group-header
 	> span:not(.snowflake-method-rail-group-chevron) {
@@ -4830,20 +4809,13 @@ textarea.snowflake-method-corkboard-recovered-text {
 	flex: 0 0 auto;
 }
 
-/* A rail this narrow would rather close up the space between a step's number
-   and its mark than lose the even margin, so that space gives way by whatever
-   the scrollbar took, down to a floor. It gives way by nothing at all where a
-   scrollbar costs nothing. */
+/* The open row's mark column and count column, at its two ends as they
+   stand there, with the words that stood between them gone. A row with no
+   count keeps its mark where the others keep theirs. */
 .snowflake-method-dashboard:where(.is-rail-compact)
 	button.snowflake-method-step-button {
-	grid-template-columns: 1.75rem 1.25rem;
-	justify-content: center;
-	gap: max(
-		var(--size-4-1),
-		calc(var(--size-4-3) - var(--snowflake-method-scrollbar-width, 0px))
-	);
-	min-height: 2.875rem;
-	padding: var(--size-4-1);
+	grid-template-columns: 1.75rem 1.375rem;
+	justify-content: space-between;
 }
 
 :where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-step-label {
@@ -4863,10 +4835,6 @@ textarea.snowflake-method-corkboard-recovered-text {
 	justify-content: center;
 	flex-direction: row;
 	gap: 0;
-	margin: auto calc(var(--size-4-1) * -1) 0;
-	margin-inline-start: calc(
-		-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
-	);
 	padding: var(--size-4-2) 0;
 }
 
@@ -4954,14 +4922,6 @@ textarea.snowflake-method-corkboard-recovered-text {
 	.snowflake-method-table-toolbar .search-input-container {
 		flex: 1 1 12rem;
 		width: auto;
-	}
-
-	.snowflake-method-project-footer {
-		margin: auto calc(var(--size-4-1) * -1) 0;
-		margin-inline-start: calc(
-			-1 * max(var(--size-4-1), var(--snowflake-method-scrollbar-width, 0px))
-		);
-		padding: var(--size-4-2) 0;
 	}
 }
 
