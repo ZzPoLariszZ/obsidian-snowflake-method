@@ -403,6 +403,38 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A table becomes cards when its own frame is too narrow for it, not when
+	 * the dashboard is: a table held at its floor in a narrower frame ran past
+	 * the frame's edge. The floors are a property the frame reads, and the
+	 * card rules key on the frame's word, weighing what they did before.
+	 */
+	it('stacks a table into cards by its own frame, at the table\u2019s own floor', () => {
+		expect(styles).toMatch(/--snowflake-method-table-floor: 40rem;\s*min-width: var\(--snowflake-method-table-floor\);/u);
+		expect(declarations('.snowflake-method-table.has-actions-column')).toContain('--snowflake-method-table-floor: 52rem');
+		expect(declarations('.snowflake-method-table.snowflake-method-foreshadowing-table')).toContain(
+			'--snowflake-method-table-floor: 60rem',
+		);
+		expect(
+			declarations('.snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column)'),
+		).toContain('--snowflake-method-table-floor: 47.5rem');
+		expect(styles).not.toMatch(/min-width: (?:40|52|60)rem;/u);
+		expect(declarations('.snowflake-method-table-wrap:where(.is-stacked)')).toContain('border: 0');
+		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) > .snowflake-method-table-head')).toContain(
+			'display: none',
+		);
+		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td')).toContain(
+			'display: grid',
+		);
+		const narrow = styles
+			.replace(/\/\*[\s\S]*?\*\//gu, ' ')
+			.split('@container snowflake-dashboard (max-width: 42rem) {')
+			.slice(1)
+			.map((block) => block.split(/\n\}\n/u)[0] ?? '');
+		expect(narrow.length).toBeGreaterThan(0);
+		for (const block of narrow) expect(block).not.toMatch(/\.snowflake-method-table(?:[\s.:{>]|-wrap|-head)/u);
+	});
+
+	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and
 	 * nothing the explorer's own rules say is overruled.

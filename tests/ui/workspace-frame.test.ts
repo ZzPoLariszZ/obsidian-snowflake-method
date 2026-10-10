@@ -302,7 +302,7 @@ describe('the folds', () => {
 
 	it('takes a rem it cannot read for sixteen pixels, and a workspace with no width for no measure at all', () => {
 		const fixture = foldsOf();
-		fixture.dom.win.getComputedStyle = () => ({ fontSize: '', borderTopWidth: '', borderBottomWidth: '', columnGap: '' });
+		fixture.dom.win.getComputedStyle = () => ({ fontSize: '', borderTopWidth: '', borderBottomWidth: '', columnGap: '', getPropertyValue: () => '' });
 		fixture.widen(NARROW_MAX_REM * 16 - 1);
 		expect(fixture.folds.folded('pool')).toBe(true);
 		// A hidden tab measures nothing, which is not a narrow workspace widening.

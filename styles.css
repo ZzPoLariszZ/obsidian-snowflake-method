@@ -2625,8 +2625,10 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	width: 11rem;
 }
 
+/* The actions column's eleven on top of the shared floor, with a little
+   more room left for the text. */
 .snowflake-method-table.has-actions-column {
-	min-width: 52rem;
+	--snowflake-method-table-floor: 52rem;
 }
 
 .snowflake-method-table.has-actions-column td:last-child
@@ -2767,7 +2769,12 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	   to pull the table out to its frame: the three fixed columns take theirs
 	   and the text column takes the rest of the room the frame gives. */
 	width: 100%;
-	min-width: 40rem;
+	/* The narrowest the columns can go and still read as a table. A frame
+	   narrower than this lays the table out as cards instead (the stacked
+	   rules below the dashboard's narrow layout), so a table never runs past
+	   its frame. Kept in a property because the frame reads it too. */
+	--snowflake-method-table-floor: 40rem;
+	min-width: var(--snowflake-method-table-floor);
 	table-layout: fixed;
 }
 
@@ -4942,76 +4949,11 @@ textarea.snowflake-method-corkboard-recovered-text {
 		align-items: center;
 	}
 
-	/* The border and fill go, the way the rest of this layout sheds its
-	   chrome, but the wrap stays the scrollport: the virtual window still
-	   needs an element that scrolls and has a height. */
-	.snowflake-method-table-wrap {
-		border: 0;
-		background: transparent;
-	}
-
-	.snowflake-method-table {
-		display: block;
-	}
-
-	.snowflake-method-table {
-		min-width: 0;
-		table-layout: auto;
-	}
-
-	.snowflake-method-table-head {
-		display: none;
-	}
-
 	/* The column the search was sized to is gone here, so it takes the row and
 	   gives the funnel beside it whatever it needs. */
 	.snowflake-method-table-toolbar .search-input-container {
 		flex: 1 1 12rem;
 		width: auto;
-	}
-
-	.snowflake-method-table tbody {
-		display: grid;
-		gap: var(--size-4-2);
-	}
-
-	.snowflake-method-table tr {
-		display: block;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--radius-s);
-		overflow: hidden;
-		background: var(--background-primary);
-	}
-
-	/* A spacer is height, not a card. */
-	.snowflake-method-table tr.snowflake-method-virtual-spacer {
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-	}
-
-	.snowflake-method-table tr.snowflake-method-virtual-spacer > td {
-		display: block;
-		padding: 0;
-	}
-
-	.snowflake-method-table tr.snowflake-method-virtual-spacer > td::before {
-		content: none;
-	}
-
-	.snowflake-method-table td {
-		display: grid;
-		grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
-		gap: var(--size-4-2);
-		width: auto;
-		padding: var(--size-4-3);
-		white-space: normal;
-	}
-
-	/* The row's menu rides at the end of the last cell here too, so the cell
-	   keeps the room for it. */
-	.snowflake-method-table:not(.has-actions-column) td:last-child {
-		padding-inline-end: calc(var(--snowflake-row-more) + var(--size-4-2));
 	}
 
 	.snowflake-method-project-footer {
@@ -5021,56 +4963,157 @@ textarea.snowflake-method-corkboard-recovered-text {
 		);
 		padding: var(--size-4-2) 0;
 	}
+}
 
-	.snowflake-method-table td::before {
-		color: var(--text-muted);
-		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-semibold);
-		content: attr(data-label);
-	}
+/* A table its frame cannot hold becomes a list of cards. The frame watches
+   its own width against the table's floor and says is-stacked (see
+   buildTableFrame), so the switch follows the room the table really has,
+   whatever the rail and the panel's own chrome take of the pane. :where()
+   keeps every rule at the weight it had when the dashboard's width alone
+   decided, so what overrode it still does. */
 
-	/* Names and short fields keep to one line in the cards; the storyline
-	   and the conflict wrap in full, as they do in the wide table. */
-	.snowflake-method-table td:nth-child(1),
-	.snowflake-method-table td:nth-child(2),
-	.snowflake-method-table td:nth-child(3) {
-		border-inline-end: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+/* The border and fill go, the way the rest of this layout sheds its
+   chrome, but the wrap stays the scrollport: the virtual window still
+   needs an element that scrolls and has a height. */
+.snowflake-method-table-wrap:where(.is-stacked) {
+	border: 0;
+	background: transparent;
+}
 
-	.snowflake-method-table td:nth-child(4) {
-		border-inline-end: 0;
-		white-space: normal;
-		overflow-wrap: anywhere;
-	}
+:where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table {
+	display: block;
+}
 
-	/* A card is as tall as it needs to be, so the categories show in full
-	   here rather than ending in an ellipsis the way they do in a row. */
-	.snowflake-method-table td.snowflake-method-member-categories {
-		overflow: visible;
-		text-overflow: clip;
-		white-space: normal;
-	}
+:where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table {
+	min-width: 0;
+	table-layout: auto;
+}
 
+:where(.snowflake-method-table-wrap.is-stacked) > .snowflake-method-table-head {
+	display: none;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table tbody {
+	display: grid;
+	gap: var(--size-4-2);
+}
+
+:where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table tr {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+	background: var(--background-primary);
+}
+
+/* A spacer is height, not a card. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	tr.snowflake-method-virtual-spacer {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	tr.snowflake-method-virtual-spacer
+	> td {
+	display: block;
+	padding: 0;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	tr.snowflake-method-virtual-spacer
+	> td::before {
+	content: none;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td {
+	display: grid;
+	grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
+	gap: var(--size-4-2);
+	width: auto;
+	padding: var(--size-4-3);
+	white-space: normal;
+}
+
+/* The row's menu rides at the end of the last cell here too, so the cell
+   keeps the room for it. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table:not(.has-actions-column)
+	td:last-child {
+	padding-inline-end: calc(var(--snowflake-row-more) + var(--size-4-2));
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td::before {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	content: attr(data-label);
+}
+
+/* Names and short fields keep to one line in the cards; the storyline
+   and the conflict wrap in full, as they do in the wide table. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td:nth-child(1),
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td:nth-child(2),
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td:nth-child(3) {
+	border-inline-end: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td:nth-child(4) {
+	border-inline-end: 0;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+/* A card is as tall as it needs to be, so the categories show in full
+   here rather than ending in an ellipsis the way they do in a row. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td.snowflake-method-member-categories {
+	overflow: visible;
+	text-overflow: clip;
+	white-space: normal;
+}
+
+:where(.snowflake-method-table-wrap.is-stacked)
 	.snowflake-method-table-actions {
-		justify-content: flex-start;
-		flex-wrap: wrap;
-	}
+	justify-content: flex-start;
+	flex-wrap: wrap;
+}
 
-	/* Every other cell becomes a labelled two-column grid here. The add row has
-	   no label to show, so it would otherwise sit in the right-hand column with
-	   an empty third of the card beside it -- off-centre, and further so the
-	   narrower the window. It is one plain block instead. */
-	.snowflake-method-table tr.snowflake-method-table-add-row > td {
-		display: block;
-		padding: 0;
-	}
+/* Every other cell becomes a labelled two-column grid here. The add row has
+   no label to show, so it would otherwise sit in the right-hand column with
+   an empty third of the card beside it -- off-centre, and further so the
+   narrower the window. It is one plain block instead. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	tr.snowflake-method-table-add-row
+	> td {
+	display: block;
+	padding: 0;
+}
 
-	.snowflake-method-table tr.snowflake-method-table-add-row > td::before {
-		content: none;
-	}
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	tr.snowflake-method-table-add-row
+	> td::before {
+	content: none;
 }
 
 @container snowflake-dashboard (max-width: 32rem) {
@@ -7089,9 +7132,14 @@ col.snowflake-method-revision-column-place {
 }
 
 /* Six columns, two buttons in the last, so the floor is higher than the
-   shared 40rem. */
+   shared 40rem. Without the buttons it drops by their column, and the
+   description keeps the same room either way. */
 .snowflake-method-table.snowflake-method-foreshadowing-table {
-	min-width: 60rem;
+	--snowflake-method-table-floor: 60rem;
+}
+
+.snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column) {
+	--snowflake-method-table-floor: 47.5rem;
 }
 
 col.snowflake-method-foreshadowing-column-name {
@@ -11818,34 +11866,31 @@ button.snowflake-method-kind-options {
 	font-weight: var(--font-semibold);
 }
 
-/* A pane too narrow for a grid: the shared sheet turns every row into a
+/* A frame too narrow for the grid: the shared sheet turns every row into a
    card, and a thread's cells are shown on every card again so each card is
    whole, the borders the wide layout dropped between a thread's rows given
-   back. Doubled to stand level with those rules and win by order. */
-@container snowflake-dashboard (max-width: 42rem) {
-	/* The six-column floor above outranks the shared reset by its second
-	   class, so it is given back here in the same terms. */
-	.snowflake-method-table.snowflake-method-foreshadowing-table {
-		min-width: 0;
-	}
-
+   back. Doubled to stand level with those rules and win by order. The
+   floor needs no reset of its own: it is a property now, and the shared
+   stacked rule sets the width it drives. */
+:where(.snowflake-method-table-wrap.is-stacked)
 	.snowflake-method-table.snowflake-method-foreshadowing-table
-		td.is-continued
-		.snowflake-method-foreshadowing-item-cell {
-		display: block;
-	}
+	td.is-continued
+	.snowflake-method-foreshadowing-item-cell {
+	display: block;
+}
 
+:where(.snowflake-method-table-wrap.is-stacked)
 	.snowflake-method-table.snowflake-method-foreshadowing-table
-		tr:not(.is-group-tail)
-		td.is-item {
-		border-bottom: 1px solid var(--background-modifier-border);
-	}
+	tr:not(.is-group-tail)
+	td.is-item {
+	border-bottom: 1px solid var(--background-modifier-border);
+}
 
+:where(.snowflake-method-table-wrap.is-stacked)
 	.snowflake-method-table.snowflake-method-foreshadowing-table
-		tr.is-match
-		td.snowflake-method-foreshadowing-column-role {
-		box-shadow: none;
-	}
+	tr.is-match
+	td.snowflake-method-foreshadowing-column-role {
+	box-shadow: none;
 }
 
 /* == Sticky notes ========================================================== */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { rowOffsets, virtualWindow } from '../../src/ui/virtual-table';
+import { buildTableFrame, rowOffsets, virtualWindow } from '../../src/ui/virtual-table';
+import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 const uniform = rowOffsets(new Array<number>(100).fill(40));
 
@@ -92,5 +93,54 @@ describe('virtual table window', () => {
 	it('reads a scroll position past either end as the nearest one', () => {
 		expect(virtualWindow(-50, 400, uniform, 3).first).toBe(0);
 		expect(virtualWindow(999999, 400, uniform, 3).first).toBe(87);
+	});
+});
+
+describe('table frame', () => {
+	/**
+	 * A frame in a window whose stylesheet gives the table the floor named,
+	 * and the body the padding the gutter leaves it. The frame is as wide as
+	 * the fake window, which the test moves.
+	 */
+	const framed = (floor: string, width: number) => {
+		const dom = new CorkboardDom();
+		(dom.win as unknown as { getComputedStyle: (element: CorkboardElement) => unknown }).getComputedStyle = (element) => ({
+			fontSize: '16px',
+			paddingLeft: '0px',
+			paddingRight: '12px',
+			getPropertyValue: (name: string): string =>
+				name === '--snowflake-method-table-floor' && element.classList.contains('snowflake-method-table') ? floor : '',
+		});
+		dom.width = width;
+		const frame = buildTableFrame(dom.container as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table',
+			columns: ['order', 'name'],
+			headers: ['#', 'Name'],
+		});
+		return { dom, stacked: () => frame.wrap.classList.contains('is-stacked') };
+	};
+
+	it('lays its table out as cards while the frame is narrower than the table\u2019s floor', () => {
+		// 52rem is 832 pixels; the body keeps 12 of its width for the gutter.
+		const { dom, stacked } = framed('52rem', 840);
+		expect(stacked()).toBe(true);
+		dom.resize(844);
+		expect(stacked()).toBe(false);
+		dom.resize(843);
+		expect(stacked()).toBe(true);
+	});
+
+	it('reads a floor in pixels as well as in rem', () => {
+		const { dom, stacked } = framed('600px', 700);
+		expect(stacked()).toBe(false);
+		dom.resize(611);
+		expect(stacked()).toBe(true);
+	});
+
+	it('leaves a table the stylesheet gives no floor as a table', () => {
+		const { dom, stacked } = framed('', 100);
+		expect(stacked()).toBe(false);
+		dom.resize(10);
+		expect(stacked()).toBe(false);
 	});
 });

@@ -82,6 +82,14 @@ export function virtualWindow(
 
 const SPACER_CLASS = 'snowflake-method-virtual-spacer';
 
+/** A window with the measuring tool a frame keeps its layout by, which every window has and the types name on none. */
+type MeasuringWindow = Window & {
+	ResizeObserver?: new (callback: () => void) => {
+		observe(target: Element, options?: { box: 'border-box' }): void;
+		disconnect(): void;
+	};
+};
+
 interface VirtualTableOptions {
 	/** The element that scrolls, and whose height frames the window. */
 	scroller: HTMLElement;
@@ -124,6 +132,7 @@ export class VirtualTable {
 	private padBottom = -1;
 	private estimate: number;
 	private frame = 0;
+	private resized: { disconnect(): void } | null = null;
 
 	constructor(private readonly options: VirtualTableOptions) {
 		this.estimate = Math.max(1, options.estimatedRowHeight);
@@ -135,14 +144,31 @@ export class VirtualTable {
 				this.refresh();
 			});
 		});
+		// A frame that changes size changes what fits in it, and a frame
+		// that stacks its table into cards, or lays the cards back out as
+		// rows, changes every row's height under the window. Either way the
+		// rows are read again at once, before the frame is painted: the
+		// frame's own watcher was made first, so its word is already said.
+		const win = options.scroller.win as MeasuringWindow;
+		if (win.ResizeObserver !== undefined) {
+			const resized = new win.ResizeObserver(() => {
+				// A frame taken out of the document reports a size of none.
+				if (options.scroller.isConnected) this.refresh();
+			});
+			resized.observe(options.scroller);
+			this.resized = resized;
+		}
 	}
 
 	/**
-	 * Drops a frame still waiting to run, for a table whose elements are
-	 * going away. The scroll listener needs no such care: it lives on the
-	 * scroller, which the next render discards along with it.
+	 * Drops a frame still waiting to run, and the watch on the frame's size,
+	 * for a table whose elements are going away. The scroll listener needs
+	 * no such care: it lives on the scroller, which the next render discards
+	 * along with it.
 	 */
 	destroy(): void {
+		this.resized?.disconnect();
+		this.resized = null;
 		if (this.frame === 0) return;
 		this.options.scroller.win.cancelAnimationFrame(this.frame);
 		this.frame = 0;
@@ -300,13 +326,81 @@ export interface TableFrame {
 	body: HTMLElement;
 }
 
+type MigratingElement = HTMLElement & {
+	onWindowMigrated?: (listener: (win: Window) => unknown) => () => void;
+};
+
+/** The floor the stylesheet sets on a table, in pixels; null where none can be read. */
+function tableFloor(table: HTMLElement): number | null {
+	const win = table.win;
+	const value = win
+		.getComputedStyle(table)
+		.getPropertyValue('--snowflake-method-table-floor')
+		.trim();
+	const match = /^(\d+(?:\.\d+)?)(rem|px)$/u.exec(value);
+	if (match === null) return null;
+	const size = Number(match[1]);
+	if (match[2] === 'px') return size;
+	const root = parseFloat(
+		win.getComputedStyle(table.ownerDocument.documentElement).fontSize,
+	);
+	return size * (root > 0 ? root : 16);
+}
+
+/**
+ * Lays a table out as cards while its frame is narrower than the table's
+ * floor, the width its columns need to read as a table. The frame is
+ * watched, not the dashboard: the rail and the panel's own chrome take a
+ * share of the pane that differs from table to table, and a table held at
+ * its floor in a narrower frame ran past the frame's edge. The floor is the
+ * stylesheet's, read from the table, so the two cannot disagree. Nothing is
+ * let go by hand: a kept panel's frame can leave the document and come
+ * back, and a discarded one takes its watcher with it.
+ */
+function stackWhenNarrow(
+	wrap: HTMLElement,
+	bodyWrap: HTMLElement,
+	table: HTMLElement,
+): void {
+	const settle = (): void => {
+		const floor = tableFloor(table);
+		if (floor === null) return;
+		const style = bodyWrap.win.getComputedStyle(bodyWrap);
+		const room =
+			bodyWrap.clientWidth -
+			parseFloat(style.paddingLeft) -
+			parseFloat(style.paddingRight);
+		wrap.toggleClass('is-stacked', room < floor);
+	};
+	let observer: { disconnect(): void } | null = null;
+	const watch = (): void => {
+		observer?.disconnect();
+		observer = null;
+		const win = wrap.win as MeasuringWindow;
+		if (win.ResizeObserver === undefined) return;
+		const watching = new win.ResizeObserver(settle);
+		// The wrap by its outer box, which the pane alone decides: the body
+		// grows when stacking hides the header, and a watch on the body
+		// would hear its own answer in the same frame, which the browser
+		// holds over and reports as a loop.
+		watching.observe(wrap, { box: 'border-box' });
+		observer = watching;
+	};
+	watch();
+	(wrap as MigratingElement).onWindowMigrated?.(watch);
+	// Once now as well, so rows drawn straight after are measured as the
+	// cards they will be in a frame too narrow for them.
+	settle();
+}
+
 /**
  * The split frame every table here stands in: one wrap, a header strip the
  * body's scroll carries sideways by a transform (the table-head styles say
  * why it must never scroll itself), and one colgroup worn twice so the two
  * halves agree on their columns. Stated once, because the stylesheet keys on
  * these class names and the carry idiom alike, and four frames laid by hand
- * were four places for either to drift.
+ * were four places for either to drift. A frame too narrow for its table
+ * lays it out as cards.
  */
 export function buildTableFrame(
 	host: HTMLElement,
@@ -348,5 +442,6 @@ export function buildTableFrame(
 		carried = shift;
 		headTable.style.transform = shift;
 	});
+	stackWhenNarrow(wrap, bodyWrap, bodyTable);
 	return { wrap, headTable, bodyWrap, body: bodyTable.createEl('tbody') };
 }

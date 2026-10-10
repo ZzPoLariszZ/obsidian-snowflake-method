@@ -39,7 +39,7 @@ export class CorkboardDom {
 			getComputedStyle: (element: CorkboardElement) => {
 				this.geometryReads++;
 				this.operations.push({ kind: 'read', target: element, property: 'computedStyle' });
-				return { fontSize: '16px', borderTopWidth: '1px', borderBottomWidth: '1px', columnGap: '12px' };
+				return { fontSize: '16px', borderTopWidth: '1px', borderBottomWidth: '1px', columnGap: '12px', getPropertyValue: (): string => '' };
 			},
 			setTimeout: (callback: () => void): number => {
 				const id = ++this.sequence;
