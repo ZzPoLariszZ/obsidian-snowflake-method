@@ -7110,10 +7110,10 @@ col.snowflake-method-foreshadowing-column-place {
 	width: 13rem;
 }
 
-/* Two split buttons side by side, each with its word standing clear of its
-   edges, and the cell's own padding kept on either side of the pair. */
+/* Two split buttons side by side, each the size a member row's is, and the
+   cell's own padding kept on either side of the pair. */
 col.snowflake-method-foreshadowing-column-actions {
-	width: 14rem;
+	width: 12.5rem;
 }
 
 /* Every text shows whole, and the positional clamps are given back: the
@@ -7134,22 +7134,6 @@ col.snowflake-method-foreshadowing-column-actions {
 	td:last-child {
 	position: static;
 	padding-inline-end: var(--size-4-3);
-}
-
-/* The two buttons share the cell's width in halves rather than keeping the
-   member row's one-button width, so Delete has room for its word and the
-   pair ends where the cell's padding begins, the same distance from the
-   frame on both sides. */
-.snowflake-method-table.snowflake-method-foreshadowing-table.has-actions-column
-	td:last-child
-	> .snowflake-method-table-actions {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-}
-
-.snowflake-method-foreshadowing-table .snowflake-method-character-split-button {
-	width: auto;
-	min-width: 0;
 }
 
 /* A thread's cell on a row after its first: the words are there for the

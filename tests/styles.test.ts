@@ -390,12 +390,16 @@ describe('styles.css', () => {
 	/**
 	 * A row's split button is as wide as its word, and Edit's width at the
 	 * least: Open is wider in English, and a fixed width cut it at both ends.
+	 * The foreshadowing table's pair is the same button, not halves of its
+	 * cell with the words adrift in them.
 	 */
-	it('fits a row\u2019s split button to its word', () => {
+	it('fits a row\u2019s split button to its word, in every table', () => {
 		const split = declarations('.snowflake-method-character-split-button');
 		expect(split).toMatch(/(?:^|\s)width: auto;/u);
 		expect(split).toContain('flex: 0 0 auto');
 		expect(split).toContain('min-width: 4.75rem');
+		expect(styles).not.toMatch(/foreshadowing-table[^{]*\.snowflake-method-character-split-button\s*\{/u);
+		expect(styles).not.toMatch(/foreshadowing-table\.has-actions-column[^{]*\.snowflake-method-table-actions\s*\{/u);
 	});
 
 	/**
