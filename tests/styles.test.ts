@@ -370,6 +370,24 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A locked section marker steps back to a quarter of its strength and
+	 * comes back when pointed at or when the caret is on its line; an
+	 * unlocked one is left alone, and the fade honours reduced motion.
+	 */
+	it('fades locked section markers until they are looked at', () => {
+		// The marker's parts fade, never the line, whose background is a share
+		// of the tint behind a plugin-written block in source mode.
+		expect(declarations('.cm-line.snowflake-managed-boundary-line.is-locked > *')).toContain('opacity: 0.25');
+		expect(styles).not.toMatch(/boundary-line\.is-locked\s*\{[^}]*opacity/u);
+		expect(declarations('.cm-line.snowflake-managed-boundary-line.is-locked:hover > *')).toContain('opacity: 1');
+		expect(declarations('.cm-line.snowflake-managed-boundary-line.is-locked.cm-active > *')).toContain('opacity: 1');
+		expect(styles).not.toMatch(/boundary-line\.is-unlocked[^{]*\{[^}]*opacity/u);
+		expect(
+			declarations('.snowflake-method-reduce-motion .cm-line.snowflake-managed-boundary-line.is-locked > *'),
+		).toContain('transition: none');
+	});
+
+	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and
 	 * nothing the explorer's own rules say is overruled.

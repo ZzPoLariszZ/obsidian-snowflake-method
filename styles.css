@@ -5109,6 +5109,23 @@ textarea.snowflake-method-corkboard-recovered-text {
 	color: var(--text-faint);
 }
 
+/* A locked marker steps back behind the prose: there when looked for, faint
+   enough to read past. Pointing at it, or bringing the caret onto its line,
+   brings it back to full strength, with the warning its tooltip carries. An
+   unlocked marker stays at full strength, since that is when an edit can
+   break its section. What fades is the marker's own parts, never the line:
+   in source mode the line carries its share of the tint behind a block the
+   plugin writes, which has to stay whole. */
+.cm-line.snowflake-managed-boundary-line.is-locked > * {
+	opacity: 0.25;
+	transition: opacity 120ms ease-in-out;
+}
+
+.cm-line.snowflake-managed-boundary-line.is-locked:hover > *,
+.cm-line.snowflake-managed-boundary-line.is-locked.cm-active > * {
+	opacity: 1;
+}
+
 /* A generated fields block only ever says what the properties say, so its
    whole range reads as plugin matter rather than prose: faintly tinted, with
    the default cursor instead of the text beam. */
@@ -5514,6 +5531,7 @@ textarea.snowflake-method-corkboard-recovered-text {
 }
 
 .snowflake-method-reduce-motion .snowflake-method-disclosure-icon::before,
+.snowflake-method-reduce-motion .cm-line.snowflake-managed-boundary-line.is-locked > *,
 .snowflake-method-reduce-motion
 	.snowflake-method-guided-details
 	> summary::before,
