@@ -388,6 +388,17 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * A row's split button is as wide as its word, and Edit's width at the
+	 * least: Open is wider in English, and a fixed width cut it at both ends.
+	 */
+	it('fits a row\u2019s split button to its word', () => {
+		const split = declarations('.snowflake-method-character-split-button');
+		expect(split).toMatch(/(?:^|\s)width: auto;/u);
+		expect(split).toContain('flex: 0 0 auto');
+		expect(split).toContain('min-width: 4.75rem');
+	});
+
+	/**
 	 * The explorer section dresses Obsidian's own rows, where a colour of
 	 * the plugin's own would clash with every theme: tokens alone, and
 	 * nothing the explorer's own rules say is overruled.

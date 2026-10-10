@@ -2129,7 +2129,7 @@ describe('what a node opens', () => {
 		]);
 		// A note's card offers its two faces.
 		expect(fixture.menuAt({ kind: 'node', id: 'c1' })!.map((item) => item.title)).toEqual([
-			'actions.edit', 'actions.openNote', ...CARD_DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+			'actions.edit', 'common.open', ...CARD_DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		const menu = fixture.menuAt({ kind: 'node', id: 'w1' })!;
 		menu[1]!.click();
@@ -2558,7 +2558,7 @@ describe('records on the canvas', () => {
 		expect(first('p2')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.open.occurrence', false]]);
 		expect(first('p6')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.open.occurrence', true]]);
 		expect(first('p3')).toEqual([['freeformCanvas.open.manuscript', false], ['freeformCanvas.display.auto', false]]);
-		expect(first('p4')).toEqual([['stickyNotes.float', false], ['actions.openNote', false]]);
+		expect(first('p4')).toEqual([['stickyNotes.float', false], ['common.open', false]]);
 		fixture.menuAt({ kind: 'node', id: 'p4' })![1]!.click();
 		expect(fixture.host.openManagedFile).toHaveBeenCalledWith('Notes/note-1.md');
 		const picks = watch(TimelineTimePickModal);
@@ -3279,7 +3279,7 @@ describe('the menus', () => {
 			'freeformCanvas.text.edit', ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => item.title)).toEqual([
-			'actions.edit', 'actions.openNote', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
+			'actions.edit', 'common.open', ...DISPLAY_ITEMS, ...FRAME_ITEMS, ...SINGLE_ITEMS, ...COPY_ITEMS, ...TAIL_ITEMS,
 		]);
 		// A link opens, copies and edits, and has one face; a frame has no face to choose and is removed as a frame, its nodes kept.
 		expect(fixture.menuAt({ kind: 'node', id: 'l1' })!.map((item) => item.title)).toEqual([
@@ -3330,7 +3330,7 @@ describe('the menus', () => {
 		expect(fixture.menuAt({ kind: 'edge', id: 'e1' })!.map((item) => item.disabled)).toEqual([true, true, true, true, false, false, true]);
 		// A note is opened all the same.
 		expect(fixture.menuAt({ kind: 'node', id: 's1' })!.map((item) => [item.title, item.disabled]).slice(0, 2)).toEqual([
-			['actions.edit', true], ['actions.openNote', false],
+			['actions.edit', true], ['common.open', false],
 		]);
 		// Looking about and the switches change nothing in the project; the lock is the project's own there.
 		expect(fixture.menuAt({ kind: 'ground', at: { x: 0, y: 0 } })!.map((item) => item.disabled)).toEqual([

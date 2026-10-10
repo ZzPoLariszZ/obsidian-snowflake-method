@@ -221,7 +221,7 @@ describe('repair report actions for unsafe member forms', () => {
 		Object.assign(modal, { t: (key: string) => key, openFile, editMember, close });
 		modal.renderEntryActions(dom.container as unknown as HTMLElement, entry);
 		const primary = dom.container.querySelector('.snowflake-method-character-edit')!;
-		expect(primary.textContent).toBe(canEdit === false ? 'editor.managedSection.openNote' : 'actions.edit');
+		expect(primary.textContent).toBe(canEdit === false ? 'common.open' : 'actions.edit');
 		expect(dom.container.querySelector('.snowflake-method-character-action-menu-trigger')!.disabled)
 			.toBe(canEdit === false);
 		if (canEdit === false) {

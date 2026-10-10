@@ -2896,12 +2896,14 @@ body.snowflake-method-hide-scrollbars .snowflake-method-prose-box {
 	cursor: help;
 }
 
+/* As wide as its word, and never narrower than Edit's: a fixed width cut
+   Open off at both ends, since a button centres what overflows it. */
 .snowflake-method-character-split-button {
 	display: inline-grid;
 	grid-template-columns: minmax(0, 1fr) 2rem;
 	align-items: center;
-	flex: 0 0 4.75rem;
-	width: 4.75rem;
+	flex: 0 0 auto;
+	width: auto;
 	min-width: 4.75rem;
 	box-sizing: border-box;
 }

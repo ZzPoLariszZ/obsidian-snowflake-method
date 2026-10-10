@@ -93,6 +93,13 @@ describe('translation resources', () => {
 		);
 	});
 
+	it('calls every way into a note Open, the word beside Edit', () => {
+		expect(en['common.open']).toBe('Open');
+		expect(zhCN['common.open']).toBe('打开');
+		expect(Object.values(en)).not.toContain('Open note');
+		expect(Object.values(zhCN)).not.toContain('打开笔记');
+	});
+
 	it('uses a clear bilingual empty-project state', () => {
 		expect(en['dashboard.emptyTitle']).toBe('No projects');
 		expect(en['dashboard.emptyDesc']).toBe(

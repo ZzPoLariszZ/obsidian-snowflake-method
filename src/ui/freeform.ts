@@ -2439,7 +2439,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 				});
 			});
 			menu.addItem((item) => {
-				item.setTitle(t('actions.openNote')).setIcon('file-text').onClick(() => {
+				item.setTitle(t('common.open')).setIcon('file-text').onClick(() => {
 					void host.openManagedFile(node.note.path).catch(notice);
 				});
 			});
@@ -2487,7 +2487,7 @@ export const renderFreeform: RenderFreeform = (container, controls) => {
 		});
 		menu.addItem((item) => {
 			item
-				.setTitle(t('actions.openNote'))
+				.setTitle(t('common.open'))
 				.setIcon('file-text')
 				.onClick(() => {
 					openNote(node);

@@ -3971,7 +3971,7 @@ export class RepairReportModal extends Modal {
 		}
 		if (entry.canOpen) {
 			actions.push({
-				label: this.t('editor.managedSection.openNote'),
+				label: this.t('common.open'),
 				icon: 'file-text',
 				run: () => reach(this.openFile(entry.path, entry.sectionId)),
 			});

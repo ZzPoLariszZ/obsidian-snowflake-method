@@ -472,7 +472,6 @@ export const en = {
 	'dashboard.emptyTitle': 'No projects',
 	'dashboard.emptyDesc':
 		'Open the project manager to create your first project',
-	'dashboard.openArtifact': 'Open step note',
 	'status.not-started': 'Not started',
 	'status.in-progress': 'In progress',
 	'status.in-revision': 'In revision',
@@ -495,7 +494,6 @@ export const en = {
 	'modal.restoreBase.description':
 		'The file is rewritten from the current template. Views and arrangements you added in it are replaced.',
 	'modal.restoreBase.action': 'Restore',
-	'actions.openNote': 'Open note',
 	'actions.edit': 'Edit',
 	'actions.delete': 'Delete',
 	'actions.merge': 'Merge',
@@ -844,7 +842,6 @@ export const en = {
 	'editor.managedSection.navigationDamaged':
 		'The safe writing section is damaged. The affected boundary marker has been highlighted for manual review.',
 	'editor.managedSection.repair': 'Check project health',
-	'editor.managedSection.openNote': 'Open',
 	'editor.managedSection.readOnlyNewerSchema':
 		'This section uses a newer Snowflake schema and is read-only.',
 	'editor.managedSection.repairUnchanged':

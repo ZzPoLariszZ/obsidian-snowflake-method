@@ -428,7 +428,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'dashboard.expandRail': '展开导航栏',
 	'dashboard.emptyTitle': '暂无项目',
 	'dashboard.emptyDesc': '打开项目管理器以创建第一个项目',
-	'dashboard.openArtifact': '打开步骤笔记',
 	'status.not-started': '未开始',
 	'status.in-progress': '进行中',
 	'status.in-revision': '修订中',
@@ -451,7 +450,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.restoreBase.description':
 		'将按当前模板重写该文件，你在其中添加的视图与排列将被替换。',
 	'modal.restoreBase.action': '重置',
-	'actions.openNote': '打开笔记',
 	'actions.edit': '编辑',
 	'actions.delete': '删除',
 	'actions.merge': '合并',
@@ -774,7 +772,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'editor.managedSection.navigationDamaged':
 		'安全写作区段已损坏。已定位并高亮可识别的边界标记，请手动检查。',
 	'editor.managedSection.repair': '检查项目健康状态',
-	'editor.managedSection.openNote': '打开',
 	'editor.managedSection.readOnlyNewerSchema':
 		'此区段使用了更新的雪花写作数据格式，现为只读状态。',
 	'editor.managedSection.repairUnchanged':

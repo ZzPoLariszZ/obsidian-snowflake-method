@@ -265,7 +265,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 				tools,
 				'snowflake-method-sticky-open',
 				'file-text',
-				t('actions.openNote'),
+				t('common.open'),
 			);
 			openButton.addEventListener('click', () => {
 				void deps.bridge.openNote(this.note.path).catch((error: unknown) => {
@@ -784,7 +784,7 @@ class StickyNoteCard implements StickyNoteCardHandle {
 		menu.setParentElement(anchor);
 		menu.addItem((item) => {
 			item
-				.setTitle(t('actions.openNote'))
+				.setTitle(t('common.open'))
 				.setIcon('file-text')
 				.onClick(() => {
 					void this.deps.bridge.openNote(this.note.path).catch((error: unknown) => {

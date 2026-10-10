@@ -7409,7 +7409,7 @@ export class SnowflakeDashboardView extends ItemView {
 			cls: 'snowflake-method-actions',
 		});
 		const open = actions.createEl('button', {
-			text: this.t('actions.openNote'),
+			text: this.t('common.open'),
 		});
 		open.addEventListener('click', () => {
 			void this.host.openStep(step);
