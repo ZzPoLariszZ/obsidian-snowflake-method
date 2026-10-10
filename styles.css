@@ -4996,6 +4996,8 @@ textarea.snowflake-method-corkboard-recovered-text {
 :where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table tbody {
 	display: grid;
 	gap: var(--size-4-2);
+	/* The cards' width, for the cells' label column below. */
+	container-type: inline-size;
 }
 
 :where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table tr {
@@ -5030,13 +5032,24 @@ textarea.snowflake-method-corkboard-recovered-text {
 	content: none;
 }
 
+/* The label column is a share of the card, not of the cell: the last cell
+   keeps room at its end for the row's menu, and a share of its own narrower
+   box started its value short of every other cell's. */
 :where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td {
 	display: grid;
-	grid-template-columns: minmax(7rem, 34%) minmax(0, 1fr);
+	grid-template-columns: minmax(7rem, 34cqi) minmax(0, 1fr);
 	gap: var(--size-4-2);
 	width: auto;
 	padding: var(--size-4-3);
 	white-space: normal;
+}
+
+/* A card has no columns to rule between, so no cell keeps the line the
+   wide table draws at its end, however many cells the row holds. */
+:where(.snowflake-method-table-wrap.is-stacked)
+	.snowflake-method-table
+	td:not(:last-child) {
+	border-inline-end: 0;
 }
 
 /* The row's menu rides at the end of the last cell here too, so the cell

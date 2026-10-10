@@ -427,6 +427,17 @@ describe('styles.css', () => {
 		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td')).toContain(
 			'display: grid',
 		);
+		// A card's labels share one column whatever room a cell keeps at its
+		// end: a share of the card, which the cards' list measures.
+		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td')).toContain(
+			'grid-template-columns: minmax(7rem, 34cqi) minmax(0, 1fr)',
+		);
+		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table tbody')).toContain(
+			'container-type: inline-size',
+		);
+		expect(
+			declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td:not(:last-child)'),
+		).toContain('border-inline-end: 0');
 		// At its floor the foreshadowing description keeps room for a long
 		// English word, 8.5rem, with the buttons' column and without it.
 		const rem = (selector: string): number => Number(/(?:width|floor): ([\d.]+)rem/u.exec(declarations(selector))?.[1]);
