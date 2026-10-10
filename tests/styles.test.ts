@@ -411,12 +411,14 @@ describe('styles.css', () => {
 	it('stacks a table into cards by its own frame, at the table\u2019s own floor', () => {
 		expect(styles).toMatch(/--snowflake-method-table-floor: 40rem;\s*min-width: var\(--snowflake-method-table-floor\);/u);
 		expect(declarations('.snowflake-method-table.has-actions-column')).toContain('--snowflake-method-table-floor: 52rem');
+		// The foreshadowing table's columns are slim enough to share the member
+		// tables' floors, with the buttons and without.
 		expect(declarations('.snowflake-method-table.snowflake-method-foreshadowing-table')).toContain(
-			'--snowflake-method-table-floor: 60rem',
+			'--snowflake-method-table-floor: 52rem',
 		);
 		expect(
 			declarations('.snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column)'),
-		).toContain('--snowflake-method-table-floor: 47.5rem');
+		).toContain('--snowflake-method-table-floor: 40rem');
 		expect(styles).not.toMatch(/min-width: (?:40|52|60)rem;/u);
 		expect(declarations('.snowflake-method-table-wrap:where(.is-stacked)')).toContain('border: 0');
 		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) > .snowflake-method-table-head')).toContain(
@@ -425,6 +427,17 @@ describe('styles.css', () => {
 		expect(declarations(':where(.snowflake-method-table-wrap.is-stacked) .snowflake-method-table td')).toContain(
 			'display: grid',
 		);
+		// At its floor the foreshadowing description keeps room for a long
+		// English word, 8.5rem, with the buttons' column and without it.
+		const rem = (selector: string): number => Number(/(?:width|floor): ([\d.]+)rem/u.exec(declarations(selector))?.[1]);
+		const fixed = ['name', 'related', 'role', 'place']
+			.map((column) => rem(`col.snowflake-method-foreshadowing-column-${column}`))
+			.reduce((sum, width) => sum + width, 0);
+		const buttons = rem('col.snowflake-method-foreshadowing-column-actions');
+		const floor = rem('.snowflake-method-table.snowflake-method-foreshadowing-table');
+		const bare = rem('.snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column)');
+		expect(floor - fixed - buttons).toBeGreaterThanOrEqual(8.5);
+		expect(bare - fixed).toBeGreaterThanOrEqual(8.5);
 		const narrow = styles
 			.replace(/\/\*[\s\S]*?\*\//gu, ' ')
 			.split('@container snowflake-dashboard (max-width: 42rem) {')

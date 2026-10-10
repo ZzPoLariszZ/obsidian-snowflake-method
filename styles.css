@@ -7131,23 +7131,25 @@ col.snowflake-method-revision-column-place {
 	white-space: nowrap;
 }
 
-/* Six columns, two buttons in the last, so the floor is higher than the
-   shared 40rem. Without the buttons it drops by their column, and the
-   description keeps the same room either way. */
+/* Six columns, two buttons in the last. The fixed columns keep only the
+   room their longest words need (a name's, a role's, a chapter's), so the
+   table holds its rows as long as a member table does: the same floors,
+   with the buttons and without. The description takes the rest, which at
+   the floor is still room for a long word without breaking it. */
 .snowflake-method-table.snowflake-method-foreshadowing-table {
-	--snowflake-method-table-floor: 60rem;
+	--snowflake-method-table-floor: 52rem;
 }
 
 .snowflake-method-table.snowflake-method-foreshadowing-table:not(.has-actions-column) {
-	--snowflake-method-table-floor: 47.5rem;
+	--snowflake-method-table-floor: 40rem;
 }
 
 col.snowflake-method-foreshadowing-column-name {
-	width: 12rem;
+	width: 9rem;
 }
 
 col.snowflake-method-foreshadowing-column-related {
-	width: 10rem;
+	width: 7rem;
 }
 
 col.snowflake-method-foreshadowing-column-role {
@@ -7155,7 +7157,7 @@ col.snowflake-method-foreshadowing-column-role {
 }
 
 col.snowflake-method-foreshadowing-column-place {
-	width: 13rem;
+	width: 9rem;
 }
 
 /* Two split buttons side by side, each the size a member row's is, and the
