@@ -1136,7 +1136,6 @@ export const en = {
 	'foreshadowingTable.refresh': 'Refresh',
 	'foreshadowingTable.searchPlaceholder': 'Search foreshadowing',
 	'foreshadowingTable.add': 'Add foreshadowing',
-	'foreshadowingTable.none': 'No occurrence',
 	'foreshadowingTable.unresolved':
 		'The chapter no longer answers for this occurrence.',
 	'foreshadowingTable.editOccurrence': 'Edit occurrence',

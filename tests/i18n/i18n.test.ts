@@ -1343,7 +1343,6 @@ describe('foreshadowing copy', () => {
 			'foreshadowingTable.refresh',
 			'foreshadowingTable.searchPlaceholder',
 			'foreshadowingTable.add',
-			'foreshadowingTable.none',
 			'foreshadowingTable.unresolved',
 			'foreshadowingTable.editOccurrence',
 			'foreshadowingTable.editItem',

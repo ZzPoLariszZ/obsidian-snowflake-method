@@ -241,13 +241,6 @@ export function renderForeshadowingPanel(
 			tr.toggleClass('is-group-hover', on);
 		}
 	};
-	const none = (cell: HTMLElement): void => {
-		cell.createSpan({
-			cls: 'snowflake-method-foreshadowing-none',
-			text: '—',
-			attr: { 'aria-label': t('foreshadowingTable.none') },
-		});
-	};
 	/** The member tables' own split button, the primary dressed for this table. */
 	const splitButton = (
 		host: HTMLElement,
@@ -331,10 +324,10 @@ export function renderForeshadowingPanel(
 				host.setText(item.description);
 			});
 			itemCell('related', (host) => {
-				if (item.related.length === 0) {
-					none(host);
-					return;
-				}
+				// An empty cell stays blank, as a member table's does: here
+				// with nothing related, and in the role and position below for
+				// a thread not yet marked in the manuscript.
+				if (item.related.length === 0) return;
 				// One entity to a line, as the thread's editor lists them.
 				const list = host.createDiv({
 					cls: 'snowflake-method-foreshadowing-related-list',
@@ -353,8 +346,7 @@ export function renderForeshadowingPanel(
 				}
 			});
 			const roleCell = cell('role');
-			if (occurrence === null) none(roleCell);
-			else {
+			if (occurrence !== null) {
 				roleCell.createSpan({
 					cls: 'snowflake-method-foreshadowing-role',
 					text: labels.role(occurrence.role),
@@ -362,8 +354,7 @@ export function renderForeshadowingPanel(
 				});
 			}
 			const placeCell = cell('place');
-			if (occurrence === null) none(placeCell);
-			else {
+			if (occurrence !== null) {
 				const line = placeCell.createDiv({ cls: 'snowflake-method-tracking-scope-row' });
 				if (occurrence.standing === 'unresolved') {
 					// The warning is the link: there is no passage left to

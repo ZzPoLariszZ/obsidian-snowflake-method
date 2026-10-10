@@ -1042,7 +1042,6 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'foreshadowingTable.refresh': '刷新',
 	'foreshadowingTable.searchPlaceholder': '搜索伏笔',
 	'foreshadowingTable.add': '添加伏笔',
-	'foreshadowingTable.none': '暂无落点',
 	'foreshadowingTable.unresolved': '该章节已无法对应此落点。',
 	'foreshadowingTable.editOccurrence': '编辑落点',
 	'foreshadowingTable.editItem': '编辑伏笔',

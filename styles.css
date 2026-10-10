@@ -7281,11 +7281,6 @@ col.snowflake-method-foreshadowing-column-actions {
 	text-decoration: line-through;
 }
 
-/* A row with no occurrence still stands, and says so. */
-.snowflake-method-foreshadowing-none {
-	color: var(--text-faint);
-}
-
 /* What the search or the funnel landed on, marked where every occurrence row
    has a cell: a tint the hover replaces and an edge it cannot. */
 .snowflake-method-table.snowflake-method-foreshadowing-table tr.is-match td {
