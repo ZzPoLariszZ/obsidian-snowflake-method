@@ -464,7 +464,8 @@ describe('styles.css', () => {
 	 * stand where they stood open. So the folded rules may not set the rail's
 	 * padding, the toggle's place, the scroller's reach, a heading's columns
 	 * or a row's padding and height; a row only lays its two marks at its
-	 * ends, in the open row's own columns.
+	 * ends, in the open row's own columns, and the folded rail is as wide as
+	 * two circles and the open row's gap inside the two paddings and hairlines.
 	 */
 	it('folds the rail without moving its toggle, its headings or its rows', () => {
 		const sheet = styles.replace(/\/\*[\s\S]*?\*\//gu, ' ');
@@ -483,17 +484,20 @@ describe('styles.css', () => {
 			for (const pattern of still) expect(selector).not.toMatch(pattern);
 		}
 		const open = declarations('.snowflake-method-dashboard button.snowflake-method-step-button');
-		expect(open).toContain('grid-template-columns: 1.75rem minmax(0, 1fr) 1.375rem');
+		expect(open).toContain('grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem');
 		const row = declarations('.snowflake-method-dashboard:where(.is-rail-compact) button.snowflake-method-step-button');
-		expect(row).toContain('grid-template-columns: 1.75rem 1.375rem');
+		expect(row).toContain('grid-template-columns: 1.75rem 1.75rem');
 		expect(row).toContain('justify-content: space-between');
 		expect(row).not.toMatch(/padding|min-height|gap/u);
 		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-project-footer')).not.toContain(
 			'margin',
 		);
+		// Two 28px circles and the open row's 8px gap, inside a row's 8px padding
+		// and hairline on each side, inside the rail's own: 100px.
 		expect(declarations(':where(.snowflake-method-dashboard.is-rail-compact) .snowflake-method-layout')).toContain(
-			'grid-template-columns: 6rem minmax(0, 1fr)',
+			'grid-template-columns: 6.25rem minmax(0, 1fr)',
 		);
+		expect(6.25 * 16).toBe(28 + 8 + 28 + 2 * (8 + 1) + 2 * (8 + 1));
 		// A workspace row keeps its sparkles' room folded, so the rows below it stay put.
 		expect(declarations('.snowflake-method-dashboard button.snowflake-method-workspace-entry')).toContain('padding-block: 0.9rem');
 		// The footer reaches the walls through the open rail's padding at every width.
@@ -519,7 +523,7 @@ describe('styles.css', () => {
 		);
 		expect(scroller).toContain('padding-inline-end: calc(var(--size-4-2) + 1px)');
 		expect(scroller).toContain('scrollbar-gutter: stable');
-		expect(declarations('.snowflake-method-step-nav-head')).toContain('padding-inline-end: 0.375rem');
+		expect(declarations('.snowflake-method-step-nav-head')).toContain('padding-inline-end: var(--size-4-2)');
 		expect(declarations('.snowflake-method-step-nav-head')).not.toContain('scrollbar-width');
 		expect(declarations('.snowflake-method-project-footer')).not.toContain('scrollbar-width');
 		const gaps = styles
@@ -534,6 +538,46 @@ describe('styles.css', () => {
 			' max( var(--size-4-5), calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1)) )',
 			' max( var(--size-4-3), calc(var(--snowflake-method-scrollbar-width, 0px) + var(--size-4-1)) )',
 		]);
+	});
+
+	/**
+	 * A rail row's circle at its end is the mark at its start over again: as
+	 * large, and filled with no line round it, since a line drew it a size
+	 * larger to the eye. Only there: the same circle on a board's lane or a
+	 * card keeps its own size and its ring. A warning stands in a step's disc
+	 * as its status would, tinted orange, its sign drawn as the marks' icons
+	 * are. The link arrow stands alone with nothing behind it, which its own
+	 * rule says later in the sheet at the same weight.
+	 */
+	it('draws a rail row\u2019s end circle as the mark at its start: as large, filled, with no line, a warning too', () => {
+		const mark = declarations('.snowflake-method-step-number');
+		const disc = declarations('.snowflake-method-step-button .snowflake-method-step-indicator');
+		for (const side of ['width', 'height']) {
+			const size = new RegExp(`${side}: ([\\d.]+rem)`, 'u');
+			expect(size.exec(disc)?.[1]).toBe(size.exec(mark)?.[1]);
+		}
+		expect(disc).toContain('border: 0');
+		expect(mark).toContain('background: var(--background-modifier-border)');
+		expect(disc.replace(/\s+/gu, ' ')).toContain(
+			'background: var( --snowflake-method-rail-disc, var(--background-modifier-border) )',
+		);
+		expect(declarations('.snowflake-method-step-indicator')).toContain('width: 1.25rem');
+		expect(declarations('.snowflake-method-step-button .snowflake-method-step-indicator[data-digits=\'4\']')).toContain(
+			'font-size: calc(var(--font-ui-smaller) * 0.75)',
+		);
+		const warning = '.snowflake-method-step-button .snowflake-method-step-indicator.has-managed-section-issue';
+		expect(declarations(warning)).toContain('background: rgba(var(--color-orange-rgb), 0.15)');
+		const sign = declarations(`${warning} svg`);
+		const icon = declarations('.snowflake-method-worldbuilding-icon svg');
+		for (const side of ['width: var(--icon-s)', 'height: var(--icon-s)']) {
+			expect(sign).toContain(side);
+			expect(icon).toContain(side);
+		}
+		expect(sign).toContain('stroke-width: var(--icon-s-stroke-width)');
+		const discAt = styles.indexOf('.snowflake-method-step-button .snowflake-method-step-indicator {');
+		const link = '.snowflake-method-step-indicator.snowflake-method-step-link-mark';
+		expect(declarations(link)).toContain('background: transparent');
+		expect(styles.indexOf(`${link} {`)).toBeGreaterThan(discAt);
 	});
 
 	/**
