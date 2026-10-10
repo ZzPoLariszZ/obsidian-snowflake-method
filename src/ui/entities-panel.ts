@@ -30,6 +30,7 @@ import type { Translate } from './modals';
 import { paintCount } from './pane-parts';
 import { refreshLoop } from './refresh-loop';
 import { buildTableFrame } from './virtual-table';
+import { DIALOG_CLASS } from './dialog-class';
 
 /** One kind's table: its label and its mentioned members, busiest first. */
 export interface TrackingKindSection {
@@ -147,6 +148,7 @@ class MentionListModal extends Modal {
 		},
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	onOpen(): void {

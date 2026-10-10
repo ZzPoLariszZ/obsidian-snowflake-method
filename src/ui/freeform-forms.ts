@@ -25,6 +25,7 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, buildOptionPicker, type OptionPicker, type PickerOption } from './option-picker';
+import { DIALOG_CLASS } from './dialog-class';
 
 export interface FreeformViewFormOptions {
 	mode: 'add' | 'edit';
@@ -136,6 +137,7 @@ export class FreeformTextModal extends Modal {
 		private readonly drafts: readonly RecoveredFreeformText[],
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	onOpen(): void {

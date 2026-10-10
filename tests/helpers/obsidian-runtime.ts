@@ -87,9 +87,13 @@ export class Scope {
 		if (at >= 0) this.keys.splice(at, 1);
 	}
 }
-/** Enough of a Modal for classes to extend, with the scope a dialog's chords ride on. */
+/**
+ * Enough of a Modal for classes to extend, with the scope a dialog's chords
+ * ride on, and the dialog's own element as far as a constructor marks it.
+ */
 export class Modal {
 	readonly scope = new Scope();
+	modalEl = { addClass: (..._classes: string[]): void => undefined };
 	constructor(..._arguments: unknown[]) {}
 	open(): void {}
 	close(): void {}

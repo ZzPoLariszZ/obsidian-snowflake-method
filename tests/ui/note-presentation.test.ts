@@ -10,6 +10,7 @@ import {
 } from '../../src/domain';
 import {
 	NOTE_DRESS_CLASS,
+	NOTE_TAB_DRESS_CLASS,
 	NotePresentation,
 	type DressableNote,
 } from '../../src/ui/note-presentation';
@@ -43,6 +44,7 @@ describe('NotePresentation', () => {
 		const notes: DressableNote[] = Object.keys(standings).map((path) => ({
 			path,
 			containerEl: document.body.createDiv(),
+			tabHeaderEl: document.body.createDiv(),
 		}));
 		let current = scope;
 		let dress = look;
@@ -129,6 +131,23 @@ describe('NotePresentation', () => {
 		const blank: DressableNote = { path: null, containerEl: document.body.createDiv() };
 		presentation.applyTo(blank);
 		expect(blank.containerEl.classList.contains(NOTE_DRESS_CLASS)).toBe(false);
+	});
+
+	it('marks the tab over a dressed note, and takes the mark off with the dress', () => {
+		const { presentation, notes, setScope } = harness('project');
+		presentation.apply();
+		const tabOf = (index: number): HTMLElement => notes[index]?.tabHeaderEl as HTMLElement;
+		expect(tabOf(0).classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(true);
+		expect(tabOf(1).classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(true);
+		expect(tabOf(2).classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(false);
+		setScope('stream');
+		presentation.apply();
+		expect(notes.some((_note, index) => tabOf(index).classList.contains(NOTE_TAB_DRESS_CLASS))).toBe(false);
+		// A view the app gives no tab is dressed all the same.
+		const untabbed: DressableNote = { path: 'Loose/Idea.md', containerEl: document.body.createDiv() };
+		setScope('vault');
+		presentation.applyTo(untabbed);
+		expect(untabbed.containerEl.classList.contains(NOTE_DRESS_CLASS)).toBe(true);
 	});
 
 	it('reaches notes alone: a canvas in the project is no note', () => {

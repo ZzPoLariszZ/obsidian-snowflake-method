@@ -12,6 +12,7 @@ import type { App } from 'obsidian';
 
 import { isMacaronColor } from '../domain';
 import { followAnchor } from './anchored-panel';
+import { DIALOG_CLASS } from './dialog-class';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import type { Translate } from './modals';
 import { buildOptionField, type OptionPicker } from './option-picker';
@@ -59,7 +60,7 @@ export class FilterPanel {
 		this.close();
 		const heading = title ?? this.t('table.filter');
 		const panel = anchor.win.activeDocument.body.createDiv({
-			cls: 'snowflake-method-filter-panel',
+			cls: `${DIALOG_CLASS} snowflake-method-filter-panel`,
 			attr: { role: 'dialog', 'aria-label': heading },
 		});
 		panel.createDiv({

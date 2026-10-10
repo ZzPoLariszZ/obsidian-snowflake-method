@@ -15,6 +15,8 @@
  * own field opened, say); the two that need that still spell their own.
  */
 
+import { DIALOG_CLASS } from './dialog-class';
+
 /** The gap between a panel and the button it hangs from. */
 export const PANEL_ANCHOR_GAP = 4;
 /** The gap a panel keeps from the edges of the window. */
@@ -76,7 +78,7 @@ export function hangPanel(
 ): HungPanel {
 	const win = anchor.win;
 	const panel = win.activeDocument.body.createDiv({
-		cls: spec.cls,
+		cls: `${DIALOG_CLASS} ${spec.cls}`,
 		attr: { role: 'dialog', 'aria-label': spec.label },
 	});
 	spec.build(panel);

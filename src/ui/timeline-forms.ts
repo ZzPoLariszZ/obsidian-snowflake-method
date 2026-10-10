@@ -17,6 +17,7 @@ import {
 	type Translate,
 } from './modals';
 import { buildOptionField, type OptionPicker, type PickerOption } from './option-picker';
+import { DIALOG_CLASS } from './dialog-class';
 
 interface NameFormSpec {
 	title: string;
@@ -247,6 +248,7 @@ export class TimelineTimePickModal extends FuzzySuggestModal<PickerOption> {
 		private readonly pick: (time: PickerOption) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(placeholder);
 	}
 
@@ -272,6 +274,7 @@ class TimelinePickModal extends FuzzySuggestModal<Timeline> {
 		private readonly pick: (timeline: Timeline) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(placeholder);
 	}
 
@@ -551,6 +554,7 @@ export interface RecoveredTimelineDraft {
 export class TimelineDraftModal extends Modal {
 	constructor(app: App, private readonly t: Translate, private readonly drafts: readonly RecoveredTimelineDraft[]) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	onOpen(): void {

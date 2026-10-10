@@ -39,6 +39,12 @@ import {
 	isPresentationScope,
 	noteWearsPresentation,
 	sanitizePresentationScope,
+	DEFAULT_TINT_SCOPE,
+	TINT_REACH_CLASSES,
+	TINT_SCOPES,
+	isTintScope,
+	sanitizeTintScope,
+	tintReach,
 	type ManuscriptPresentation,
 } from '../../src/domain';
 
@@ -420,5 +426,68 @@ describe('the typography scope', () => {
 		expect(noteWearsPresentation('project', character)).toBe(true);
 		expect(noteWearsPresentation('project', linkedDraft)).toBe(true);
 		expect(noteWearsPresentation('project', loose)).toBe(false);
+	});
+});
+
+describe('the background scope', () => {
+	it('offers the typography’s reach, the plugin and the whole app, the first by default', () => {
+		expect(TINT_SCOPES).toEqual(['typography', 'snowflake', 'obsidian']);
+		expect(DEFAULT_TINT_SCOPE).toBe('typography');
+		for (const scope of TINT_SCOPES) {
+			expect(isTintScope(scope)).toBe(true);
+			expect(sanitizeTintScope(scope)).toBe(scope);
+		}
+		expect(isTintScope('vault')).toBe(false);
+		expect(sanitizeTintScope('vault')).toBe('typography');
+		expect(sanitizeTintScope(undefined)).toBe('typography');
+	});
+
+	it('carries the tints and the typography’s reach at every scope, and no reach past it there', () => {
+		const reach = tintReach('typography', { tintLight: '#e5d8be', tintDark: '#202e47' });
+		expect(reach.properties).toEqual({
+			[PRESENTATION_PROPERTIES.tintLight]: '#e5d8be',
+			[PRESENTATION_PROPERTIES.tintDark]: '#202e47',
+		});
+		expect(reach.classes).toEqual({
+			[TINT_REACH_CLASSES.typographyLight]: true,
+			[TINT_REACH_CLASSES.typographyDark]: true,
+			[TINT_REACH_CLASSES.snowflakeLight]: false,
+			[TINT_REACH_CLASSES.snowflakeDark]: false,
+			[TINT_REACH_CLASSES.obsidianLight]: false,
+			[TINT_REACH_CLASSES.obsidianDark]: false,
+		});
+	});
+
+	it('carries a mode’s tint and names its reach only for a mode with a tint', () => {
+		const plugin = tintReach('snowflake', { tintLight: '#e5d8be', tintDark: '' });
+		expect(plugin.properties).toEqual({
+			[PRESENTATION_PROPERTIES.tintLight]: '#e5d8be',
+			[PRESENTATION_PROPERTIES.tintDark]: null,
+		});
+		expect(plugin.classes).toEqual({
+			[TINT_REACH_CLASSES.typographyLight]: true,
+			[TINT_REACH_CLASSES.typographyDark]: false,
+			[TINT_REACH_CLASSES.snowflakeLight]: true,
+			[TINT_REACH_CLASSES.snowflakeDark]: false,
+			[TINT_REACH_CLASSES.obsidianLight]: false,
+			[TINT_REACH_CLASSES.obsidianDark]: false,
+		});
+		const app = tintReach('obsidian', { tintLight: '', tintDark: '#202e47' });
+		expect(app.properties).toEqual({
+			[PRESENTATION_PROPERTIES.tintLight]: null,
+			[PRESENTATION_PROPERTIES.tintDark]: '#202e47',
+		});
+		expect(app.classes).toEqual({
+			[TINT_REACH_CLASSES.typographyLight]: false,
+			[TINT_REACH_CLASSES.typographyDark]: true,
+			[TINT_REACH_CLASSES.snowflakeLight]: false,
+			[TINT_REACH_CLASSES.snowflakeDark]: false,
+			[TINT_REACH_CLASSES.obsidianLight]: false,
+			[TINT_REACH_CLASSES.obsidianDark]: true,
+		});
+		// Both modes at the theme's own carry nothing, however far it reaches.
+		const none = tintReach('obsidian', { tintLight: '', tintDark: '' });
+		expect(Object.values(none.properties)).toEqual([null, null]);
+		expect(Object.values(none.classes).some((on) => on)).toBe(false);
 	});
 });

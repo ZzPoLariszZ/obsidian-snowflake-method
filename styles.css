@@ -8492,11 +8492,12 @@ body.snowflake-method-solo .snowflake-method-segment-sequence {
    fits to their answer. So does the first row under the heading, which says
    how far the dress reaches: its answers are phrases, named as the
    explorer's scope names its own, and it fits the one chosen as that scope
-   does. */
+   does. The row that says how far the ground reaches, just above the two
+   grounds, answers in phrases too and fits the same way. */
 .snowflake-method-presentation-row select.dropdown,
 .snowflake-method-manuscript-settings
 	.snowflake-method-appearance-heading
-	~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item)
+	~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item):not(.snowflake-method-tint-scope-row)
 	select.dropdown {
 	width: var(--snowflake-method-presentation-control, 100px);
 }
@@ -17681,4 +17682,317 @@ body.theme-dark .snowflake-method-note-dressed {
 	flex: 1 1 auto;
 	min-height: 0;
 	height: auto;
+}
+
+/* == Background scope ====================================================== */
+
+/* The page's ground, and how far it reaches. The plugin puts each mode's
+   tint on every window's body, with a class for each reach the tint has in
+   that mode, and only for a mode with a tint of its own: the typography's
+   reach whenever there is a tint, and past it the plugin's whole interface
+   or the whole app, as the author chooses.
+
+   What is painted is the app's own palette, rebuilt from the tint. The app
+   draws every surface from one ramp of greys, each a set step from the
+   page toward the text: the page itself, the shades just off it that the
+   sidebars, code and hovered buttons take, the borders, then the faint and
+   muted text. The same steps are taken from the tint toward the text, so
+   every surface keeps its place against the page, and faint and muted text
+   keep their contrast with it, whatever the tint. The steps are the app's
+   own, read off its two ramps, which differ a little between the modes.
+
+   Over the whole app the ramp is set on the body, where the app derives
+   every other color from it. Elsewhere it is set on what the reach covers:
+   within the typography's reach, the stream, the notes the typography
+   dresses and the tabs over both; over the plugin's interface, its other
+   views and their tabs too, and its dialogs, pickers and hung panels,
+   which wear a class of their own for this. The app derives its other
+   colors once, on the body, so inside these they are derived again from
+   the ramp, as the app derives them. The stream and a dressed note look
+   the same at every reach, down to their lines, buttons and faint text,
+   and the tab over each joins its page, stacked or not. */
+body.theme-light.snowflake-method-tint-obsidian-light,
+body.theme-light.snowflake-method-tint-typography-light
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--snowflake-method-tint: var(--snowflake-method-manuscript-tint-light);
+	--color-base-00: var(--snowflake-method-tint);
+	--color-base-05: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 1.5%);
+	--color-base-10: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 2.5%);
+	--color-base-20: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 4%);
+	--color-base-25: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 7%);
+	--color-base-30: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 12%);
+	--color-base-35: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 17%);
+	--color-base-40: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 30%);
+	--color-base-50: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 38%);
+	--color-base-60: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 65%);
+	--color-base-70: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 74%);
+	--background-secondary-alt: var(--color-base-05);
+}
+
+body.theme-dark.snowflake-method-tint-obsidian-dark,
+body.theme-dark.snowflake-method-tint-typography-dark
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--snowflake-method-tint: var(--snowflake-method-manuscript-tint-dark);
+	--color-base-00: var(--snowflake-method-tint);
+	--color-base-05: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 2.5%);
+	--color-base-10: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 3.5%);
+	--color-base-20: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 6.5%);
+	--color-base-25: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 9.5%);
+	--color-base-30: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 12%);
+	--color-base-35: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 18.5%);
+	--color-base-40: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 30%);
+	--color-base-50: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 39%);
+	--color-base-60: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 66%);
+	--color-base-70: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 79.5%);
+	--background-secondary-alt: var(--color-base-30);
+}
+
+/* The names every surface is painted by, set from the ramp at every reach.
+   Over the whole app this is what the app itself says, written again so a
+   theme that names its grounds outright still takes the tint. */
+body.theme-light.snowflake-method-tint-obsidian-light,
+body.theme-dark.snowflake-method-tint-obsidian-dark,
+body.theme-light.snowflake-method-tint-typography-light
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-dark.snowflake-method-tint-typography-dark
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	),
+body.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--background-primary: var(--color-base-00);
+	--background-primary-alt: var(--color-base-10);
+	--background-secondary: var(--color-base-20);
+	--background-modifier-border: var(--color-base-30);
+	--background-modifier-border-hover: var(--color-base-35);
+	--background-modifier-border-focus: var(--color-base-40);
+	--text-muted: var(--color-base-70);
+	--text-faint: var(--color-base-50);
+}
+
+/* Within a reach, what the app derives on the body is derived again, by
+   the app's own aliases for the grounds, lines and text it paints with, so
+   a code block, a table, a slider, an icon or a tab keeps its place against
+   the tint as it does against the theme's page. Code in the stream and in a
+   dressed note keeps the shade off the page those two already give it. The
+   buttons, fields and dropdowns follow below, by mode and, on a Mac, from
+   the borders as the app has them there. */
+body.theme-light.snowflake-method-tint-typography-light
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-dark.snowflake-method-tint-typography-dark
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	),
+body.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	/* Grounds. */
+	--background-modifier-form-field-hover: var(--background-modifier-form-field);
+	--canvas-background: var(--background-primary);
+	--checkbox-marker-color: var(--background-primary);
+	--code-background: var(
+		--snowflake-method-manuscript-surface-alt,
+		var(--background-primary-alt)
+	);
+	--drag-item-background: var(--background-primary);
+	--dropdown-background: var(--interactive-normal);
+	--dropdown-background-hover: var(--interactive-hover);
+	--file-header-background: var(--background-primary);
+	--file-header-background-focused: var(--background-primary);
+	--flair-background: var(--interactive-normal);
+	--modal-background: var(--background-primary);
+	--prompt-background: var(--background-primary);
+	--setting-items-background: var(--background-primary-alt);
+	--suggestion-background: var(--background-primary);
+	--tab-background-active: var(--background-primary);
+
+	/* Lines. */
+	--canvas-dot-pattern: var(--color-base-30);
+	--code-border-color: var(--background-modifier-border);
+	--divider-color: var(--background-modifier-border);
+	--hr-color: var(--background-modifier-border);
+	--metadata-border-color: var(--background-modifier-border);
+	--metadata-divider-color: var(--background-modifier-border);
+	--modal-border-color: var(--background-modifier-border-hover);
+	--pill-border-color: var(--background-modifier-border);
+	--pill-border-color-hover: var(--background-modifier-border-hover);
+	--prompt-border-color: var(--background-modifier-border-hover);
+	--setting-items-border-color: var(--background-modifier-border);
+	--setting-items-divider-color: var(--background-modifier-border);
+	--slider-thumb-border-color: var(--background-modifier-border-hover);
+	--slider-track-background: var(--background-modifier-border-hover);
+	--tab-divider-color: var(--background-modifier-border-hover);
+	--table-add-button-border-color: var(--background-modifier-border);
+	--table-border-color: var(--background-modifier-border);
+
+	/* Text. */
+	--canvas-card-label-color: var(--text-faint);
+	--checkbox-border-color: var(--text-faint);
+	--checkbox-border-color-hover: var(--text-muted);
+	--checklist-done-color: var(--text-muted);
+	--code-comment: var(--text-faint);
+	--code-punctuation: var(--text-muted);
+	--collapse-icon-color: var(--text-faint);
+	--heading-formatting: var(--text-faint);
+	--icon-color: var(--text-muted);
+	--icon-color-hover: var(--text-muted);
+	--input-date-separator: var(--text-faint);
+	--input-placeholder-color: var(--text-faint);
+	--list-marker-color: var(--text-faint);
+	--list-marker-color-hover: var(--text-muted);
+	--metadata-label-text-color: var(--text-muted);
+	--metadata-label-text-color-hover: var(--text-muted);
+	--pill-color: var(--text-muted);
+	--pill-color-remove: var(--text-faint);
+	--tab-text-color: var(--text-faint);
+	--tab-text-color-active: var(--text-muted);
+	--tab-text-color-focused: var(--text-muted);
+	--tab-text-color-focused-active: var(--text-muted);
+	--table-drag-handle-color: var(--text-faint);
+}
+
+body.theme-light.snowflake-method-tint-typography-light
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--background-modifier-form-field: var(--color-base-00);
+	--interactive-normal: var(--color-base-00);
+	--interactive-hover: var(--color-base-10);
+}
+
+body.theme-dark.snowflake-method-tint-typography-dark
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--background-modifier-form-field: var(--color-base-25);
+	--interactive-normal: var(--color-base-30);
+	--interactive-hover: var(--color-base-35);
+}
+
+/* A view of the plugin's in a sidebar stands on the sidebar's ground, which
+   the app paints on the leaf around the view, outside what the plugin
+   draws. The view paints that ground itself, the tint's sidebar shade. The
+   stream and a dressed note paint their own page wherever they stand. */
+body.theme-light.snowflake-method-tint-snowflake-light
+	.mod-sidedock
+	.workspace-leaf-content[data-type^='snowflake-method-'],
+body.theme-dark.snowflake-method-tint-snowflake-dark
+	.mod-sidedock
+	.workspace-leaf-content[data-type^='snowflake-method-'] {
+	background-color: var(--background-secondary);
+}
+
+body.mod-macos.theme-light.snowflake-method-tint-typography-light
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.mod-macos.theme-dark.snowflake-method-tint-typography-dark
+	:is(
+		.workspace-leaf-content[data-type='snowflake-method-manuscript'],
+		.workspace-tab-header[data-type='snowflake-method-manuscript'],
+		.snowflake-method-note-dressed,
+		.snowflake-method-note-dressed-tab
+	),
+body.mod-macos.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	),
+body.mod-macos.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.workspace-tab-header[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--interactive-normal: var(--background-modifier-border);
+	--interactive-hover: var(--background-modifier-border);
 }

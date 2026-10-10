@@ -333,6 +333,9 @@ describe('settings', () => {
 		// The dress reaches every note of a Snowflake project until narrowed
 		// to the stream or widened to the vault.
 		expect(DEFAULT_SETTINGS.manuscriptPresentationScope).toBe('project');
+		// The ground goes where the typography goes until it is carried over
+		// the plugin's whole interface or the whole app.
+		expect(DEFAULT_SETTINGS.manuscriptTintScope).toBe('typography');
 
 		// And every one of them is the domain's value rather than a second
 		// copy of it. Walked through the mapping, so a twelfth dress field is
@@ -407,6 +410,25 @@ describe('settings', () => {
 		expect(
 			read({ manuscriptPresentationScope: 'manuscript' }).manuscriptPresentationScope,
 		).toBe('project');
+		for (const scope of ['typography', 'snowflake', 'obsidian'] as const) {
+			expect(read({ manuscriptTintScope: scope }).manuscriptTintScope).toBe(scope);
+		}
+		expect(read({ manuscriptTintScope: 'vault' }).manuscriptTintScope).toBe('typography');
+	});
+
+	/**
+	 * The background scope's row is drawn rather than declared, so the walk
+	 * over the declared rows never reaches it. It is no part of the dress a
+	 * stream wears, so it is saved before it is announced.
+	 */
+	it('stores the background scope the drawn row hands over', async () => {
+		const { tab, settings } = writableSettingTab();
+		expect(isManuscriptPresentationKey('manuscriptTintScope')).toBe(false);
+		await tab.setControlValue('manuscriptTintScope', 'obsidian');
+		expect(settings.manuscriptTintScope).toBe('obsidian');
+		expect(tab.getControlValue('manuscriptTintScope')).toBe('obsidian');
+		await tab.setControlValue('manuscriptTintScope', 'vault');
+		expect(settings.manuscriptTintScope).toBe('obsidian');
 	});
 
 	/**

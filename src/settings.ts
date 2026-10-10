@@ -24,6 +24,8 @@ import {
 	LINE_HEIGHT_STOPS,
 	DEFAULT_MANUSCRIPT_PRESENTATION,
 	DEFAULT_PRESENTATION_SCOPE,
+	DEFAULT_TINT_SCOPE,
+	TINT_SCOPES,
 	DIALOGUE_PRESENTATIONS,
 	MENTION_HIGHLIGHT_MODES,
 	MANUSCRIPT_TINTS,
@@ -41,6 +43,7 @@ import {
 	isManuscriptGuide,
 	isManuscriptTextAlign,
 	isPresentationScope,
+	isTintScope,
 	isDialoguePresentation,
 	newChapterRuleId,
 	sanitizeChapterNumberRules,
@@ -70,6 +73,7 @@ import {
 	sanitizePresentationScope,
 	sanitizeTextAlign,
 	sanitizeTint,
+	sanitizeTintScope,
 	weekdayLabels,
 	type BandSpan,
 	type CustomHighlightRule,
@@ -78,6 +82,7 @@ import {
 	type ManuscriptGuide,
 	type ManuscriptTextAlign,
 	type PresentationScope,
+	type TintScope,
 	type ManuscriptTint,
 	type ChapterNumberingStyle,
 	type ChapterNumberRule,
@@ -119,6 +124,7 @@ import {
 	buildProjectRootField,
 	type ProjectRootField,
 } from './ui/project-root-field';
+import { DIALOG_CLASS } from './ui/dialog-class';
 
 export type { UiLocalePreference } from './i18n';
 export type ProjectLocale = 'en' | 'zh-CN';
@@ -247,6 +253,8 @@ export interface SnowflakeSettings {
 	manuscriptTintLight: string;
 	/** The page's color in dark mode: '' for the theme's, else #rrggbb. */
 	manuscriptTintDark: string;
+	/** How far the page's color reaches: the typography's notes, the plugin's own UI, or the whole app. */
+	manuscriptTintScope: TintScope;
 	/** Lines drawn under the text to write along, if any. */
 	manuscriptGuide: ManuscriptGuide;
 	/** The master switch over every custom highlight rule at once. */
@@ -424,6 +432,7 @@ export const DEFAULT_SETTINGS: SnowflakeSettings = {
 	manuscriptHyphenation: DEFAULT_MANUSCRIPT_PRESENTATION.hyphenation,
 	manuscriptTintLight: DEFAULT_MANUSCRIPT_PRESENTATION.tintLight,
 	manuscriptTintDark: DEFAULT_MANUSCRIPT_PRESENTATION.tintDark,
+	manuscriptTintScope: DEFAULT_TINT_SCOPE,
 	manuscriptGuide: DEFAULT_MANUSCRIPT_PRESENTATION.guide,
 	customHighlightsEnabled: true,
 	customHighlightRules: [],
@@ -524,6 +533,7 @@ const SETTINGS_KEYS = new Set<keyof SnowflakeSettings>([
 	'manuscriptHyphenation',
 	'manuscriptTintLight',
 	'manuscriptTintDark',
+	'manuscriptTintScope',
 	'manuscriptGuide',
 	'manuscriptPresentationScope',
 	'customHighlightsEnabled',
@@ -813,6 +823,7 @@ export function sanitizeSettings(input: unknown): SnowflakeSettings {
 		manuscriptHyphenation: sanitizeHyphenation(raw.manuscriptHyphenation),
 		manuscriptTintLight: sanitizeTint(raw.manuscriptTintLight),
 		manuscriptTintDark: sanitizeTint(raw.manuscriptTintDark),
+		manuscriptTintScope: sanitizeTintScope(raw.manuscriptTintScope),
 		manuscriptGuide: sanitizeGuide(raw.manuscriptGuide),
 		customHighlightsEnabled:
 			typeof raw.customHighlightsEnabled === 'boolean'
@@ -1137,6 +1148,7 @@ class HighlightOptionsModal extends Modal {
 		},
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	onOpen(): void {
@@ -1963,6 +1975,20 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 							type: 'toggle',
 							key: 'manuscriptHyphenation',
 							defaultValue: DEFAULT_SETTINGS.manuscriptHyphenation,
+						},
+					},
+					// How far the color reaches, asked just before the color
+					// itself: as far as the typography above, or over every view,
+					// tab, dialog and panel of the plugin's own, or over the whole
+					// app. Drawn rather than declared, for the class: its answers
+					// are phrases, like the typography scope's, and the choice
+					// rows' shared column passes it by on that class, so it fits
+					// the one chosen as that scope does.
+					{
+						name: this.t('settings.manuscriptTintScope.name'),
+						desc: this.t('settings.manuscriptTintScope.desc'),
+						render: (setting) => {
+							this.renderTintScope(setting);
 						},
 					},
 					{
@@ -2909,6 +2935,19 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 		});
 	}
 
+	/** How far the page's ground reaches, marked for the stylesheet's column rule. */
+	private renderTintScope(setting: Setting): void {
+		setting.settingEl.addClass('snowflake-method-tint-scope-row');
+		setting.addDropdown((dropdown) => {
+			for (const scope of TINT_SCOPES) {
+				dropdown.addOption(scope, this.t(`settings.manuscriptTintScope.${scope}`));
+			}
+			dropdown.setValue(this.owner.settings.manuscriptTintScope).onChange((value) => {
+				void this.setControlValue('manuscriptTintScope', value);
+			});
+		});
+	}
+
 	/** The page's ground for one mode: swatches and the color picker. */
 	private renderTint(
 		setting: Setting,
@@ -3325,6 +3364,11 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			case 'manuscriptTintDark':
 				if (typeof value === 'string') {
 					this.owner.settings.manuscriptTintDark = sanitizeTint(value);
+				}
+				break;
+			case 'manuscriptTintScope':
+				if (isTintScope(value)) {
+					this.owner.settings.manuscriptTintScope = value;
 				}
 				break;
 			case 'manuscriptGuide':

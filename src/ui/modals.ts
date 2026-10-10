@@ -105,6 +105,7 @@ import type {
 	DefinitionFileChoice,
 	RepairReportViewModel,
 } from './view-model';
+import { DIALOG_CLASS } from './dialog-class';
 
 const PROJECT_LIST_SELECTOR = '.snowflake-method-project-manager-list';
 const ARCHIVED_LIST_SELECTOR = '.snowflake-method-project-manager-archived-list';
@@ -614,7 +615,7 @@ export abstract class SnowflakeFormModal<T> extends Modal {
 		this.setTitle(title);
 		// What every form the plugin opens has in common, for the few things
 		// that should be true of all of them at once.
-		this.modalEl.addClass('snowflake-method-form-modal');
+		this.modalEl.addClass(DIALOG_CLASS, 'snowflake-method-form-modal');
 		submitOnModEnter(this, () => {
 			void this.submit();
 		});
@@ -1012,6 +1013,7 @@ export class ManageProjectsModal extends Modal {
 		) => Promise<ManageProjectLists | null>,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.t = t;
 		this.locale = locale;
 		this.projects = projects;
@@ -2063,6 +2065,7 @@ class NewDefinitionModal extends Modal {
 		private readonly done: (created: NewDefinitionPath | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(t(`modal.definition.title.${definitionId}`));
 		this.modalEl.addClass(
 			'snowflake-method-form-modal',
@@ -2179,6 +2182,7 @@ class DefinitionKindModal extends SuggestModal<DefinitionKindChoice> {
 		private readonly done: (kind: EntityKindId | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(t('definition.pickKind'));
 	}
 
@@ -2247,6 +2251,7 @@ class EditDefinitionModal extends Modal {
 		private readonly done: (settled: DefinitionEditResult | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(t(`modal.definition.edit.${definitionId}`));
 		this.modalEl.addClass(
 			'snowflake-method-form-modal',
@@ -2370,6 +2375,7 @@ export abstract class ConfirmModal extends Modal {
 		private readonly onResolve: (confirmed: boolean) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	/** What this dialog says, above the buttons the base draws for it. */
@@ -2453,6 +2459,7 @@ class EntityReferenceModal extends SuggestModal<ReferenceChoice> {
 		private readonly done: (picked: PickedEntity | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(t('form.record.pickGroup'));
 	}
 
@@ -2579,6 +2586,7 @@ class SceneManuscriptReferenceModal extends FuzzySuggestModal<PickerOption> {
 		private readonly pick: (option: PickerOption) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(placeholder);
 		this.limit = 50;
 	}
@@ -3776,6 +3784,7 @@ export class MoveAfterModal extends FuzzySuggestModal<MoveAfterEntry> {
 		private readonly onPick: (entry: MoveAfterEntry) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setPlaceholder(t('modal.moveAfter.placeholder'));
 		// Enough matches to scan, few enough to render at three thousand rows.
 		this.limit = 50;
@@ -3815,6 +3824,7 @@ export class RepairReportModal extends Modal {
 			| null = null,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(t('actions.repair'));
 		this.modalEl.addClass('snowflake-method-repair-report-modal');
 	}
@@ -4214,6 +4224,7 @@ class KindFormModal extends Modal {
 		private readonly onResolve: (result: KindFormResult | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(options.title);
 		// Worn like the vocabulary dialogs: the same frame, the same rows,
 		// each label above the field it names.
@@ -4410,6 +4421,7 @@ class CustomFieldTemplateModal extends Modal {
 		) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(options.title);
 		this.modalEl.addClass(
 			'snowflake-method-form-modal',
@@ -4713,6 +4725,7 @@ class ConfirmSegmentMergeModal extends Modal {
 		private readonly onResolve: (choice: SegmentMergeChoice | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(t('modal.mergeSegments.title'));
 		this.modalEl.addClass('snowflake-method-merge-segments-modal');
 	}
@@ -4827,6 +4840,7 @@ export class ManagedBoundaryUnlockModal extends Modal {
 		private readonly onConfirm: () => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(t('editor.managedSection.unlockConfirmTitle'));
 		// The confirm dialogs' own look, which the turn-off question beside it wears.
 		this.modalEl.addClass('snowflake-method-delete-member-modal');
@@ -5205,6 +5219,7 @@ class HighlightRuleModal extends Modal {
 		private readonly onResolve: (result: HighlightRuleFormResult | null) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(options.title);
 		// The compact form's own cloth, the highlight options dialog's twin:
 		// stacked names in the form's face, no dividers, and the controls
@@ -5454,6 +5469,7 @@ class ChapterNumberRuleModal extends Modal {
 		) => void,
 	) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 		this.setTitle(options.title);
 		// The highlight rule dialog's own cloth: stacked names, no dividers,
 		// the controls stretched to one shared width.

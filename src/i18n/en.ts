@@ -402,6 +402,12 @@ export const en = {
 	'settings.manuscriptHyphenation.name': 'Automatic hyphenation',
 	'settings.manuscriptHyphenation.desc':
 		'Break long words at line endings automatically.',
+	'settings.manuscriptTintScope.name': 'Background scope',
+	'settings.manuscriptTintScope.desc':
+		'Apply to the typography scope, Snowflake or the whole app.',
+	'settings.manuscriptTintScope.typography': 'Typography scope',
+	'settings.manuscriptTintScope.snowflake': 'Snowflake interface',
+	'settings.manuscriptTintScope.obsidian': 'Whole app',
 	'settings.manuscriptTintLight.name': 'Background in light mode',
 	'settings.manuscriptTintLight.desc':
 		'Choose the manuscript background color in light mode.',

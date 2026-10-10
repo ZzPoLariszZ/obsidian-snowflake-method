@@ -60,6 +60,67 @@ export function sanitizePresentationScope(value: unknown): PresentationScope {
 	return isPresentationScope(value) ? value : DEFAULT_PRESENTATION_SCOPE;
 }
 
+/**
+ * How far the page's ground reaches: as far as the typography does and no
+ * further, or over everything the plugin draws as well -- its views and
+ * their tabs, its dialogs and the panels it hangs over the page -- or over
+ * the whole of Obsidian.
+ */
+export type TintScope = 'typography' | 'snowflake' | 'obsidian';
+
+export const TINT_SCOPES: readonly TintScope[] = ['typography', 'snowflake', 'obsidian'];
+
+export const DEFAULT_TINT_SCOPE: TintScope = 'typography';
+
+export function isTintScope(value: unknown): value is TintScope {
+	return (TINT_SCOPES as readonly unknown[]).includes(value);
+}
+
+export function sanitizeTintScope(value: unknown): TintScope {
+	return isTintScope(value) ? value : DEFAULT_TINT_SCOPE;
+}
+
+/** The classes a window's body wears for each reach the ground has, by mode. */
+export const TINT_REACH_CLASSES = {
+	typographyLight: 'snowflake-method-tint-typography-light',
+	typographyDark: 'snowflake-method-tint-typography-dark',
+	snowflakeLight: 'snowflake-method-tint-snowflake-light',
+	snowflakeDark: 'snowflake-method-tint-snowflake-dark',
+	obsidianLight: 'snowflake-method-tint-obsidian-light',
+	obsidianDark: 'snowflake-method-tint-obsidian-dark',
+} as const;
+
+/**
+ * What a window's body carries for the page's ground: the tint of each mode,
+ * and a class for each reach it has in that mode. The typography's reach
+ * comes with any tint, at every scope: the stream, the dressed notes and the
+ * tabs over both, which stand outside their leaves, take the tint from the
+ * body. Past it, the plugin's interface or the whole app, as the scope says.
+ * A mode left at the theme's ground carries neither, so the stylesheet reads
+ * a tint only under a class that says there is one.
+ */
+export function tintReach(
+	scope: TintScope,
+	look: Pick<ManuscriptPresentation, 'tintLight' | 'tintDark'>,
+): PresentationStyle {
+	const light = look.tintLight.length > 0;
+	const dark = look.tintDark.length > 0;
+	return {
+		properties: {
+			[PRESENTATION_PROPERTIES.tintLight]: light ? look.tintLight : null,
+			[PRESENTATION_PROPERTIES.tintDark]: dark ? look.tintDark : null,
+		},
+		classes: {
+			[TINT_REACH_CLASSES.typographyLight]: light,
+			[TINT_REACH_CLASSES.typographyDark]: dark,
+			[TINT_REACH_CLASSES.snowflakeLight]: light && scope === 'snowflake',
+			[TINT_REACH_CLASSES.snowflakeDark]: dark && scope === 'snowflake',
+			[TINT_REACH_CLASSES.obsidianLight]: light && scope === 'obsidian',
+			[TINT_REACH_CLASSES.obsidianDark]: dark && scope === 'obsidian',
+		},
+	};
+}
+
 /** Where a note stands, as far as the scope cares. */
 export interface NoteStanding {
 	/** Inside a Snowflake project's folder. */

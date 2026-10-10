@@ -1,6 +1,7 @@
 import { Modal, type App } from 'obsidian';
 
 import type { Translate } from './modals';
+import { DIALOG_CLASS } from './dialog-class';
 
 export interface RecoveredCorkboardDraft {
 	scene: string;
@@ -12,6 +13,7 @@ export interface RecoveredCorkboardDraft {
 export class CorkboardDraftModal extends Modal {
 	constructor(app: App, private readonly t: Translate, private readonly drafts: readonly RecoveredCorkboardDraft[]) {
 		super(app);
+		this.modalEl.addClass(DIALOG_CLASS);
 	}
 
 	onOpen(): void {

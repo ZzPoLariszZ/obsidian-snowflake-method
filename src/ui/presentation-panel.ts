@@ -1,6 +1,7 @@
 import { setIcon, setTooltip, Setting, type App } from 'obsidian';
 
 import { followAnchor } from './anchored-panel';
+import { DIALOG_CLASS } from './dialog-class';
 
 import {
 	CONTENT_WIDTH_STOPS,
@@ -74,7 +75,7 @@ export function openPresentationPanel(
 	// on the settings page, where both sit side by side.
 	const dark = doc.body.hasClass('theme-dark');
 	const panel = doc.body.createDiv({
-		cls: 'snowflake-method-presentation-panel',
+		cls: `${DIALOG_CLASS} snowflake-method-presentation-panel`,
 		attr: {
 			role: 'dialog',
 			'aria-label': t('settings.manuscriptAppearance.heading'),

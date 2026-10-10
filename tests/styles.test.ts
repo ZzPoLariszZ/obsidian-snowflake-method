@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import engine from '@xyflow/react/dist/base.css?raw';
 
 import styles from '../styles.css?raw';
+import { TINT_REACH_CLASSES } from '../src/domain';
 import { scopeCss } from './helpers/scope-css';
 
 /**
@@ -362,11 +363,83 @@ describe('styles.css', () => {
 	 * one is chosen.
 	 */
 	it('leaves the typography scope at the width the app fits to its answer', () => {
+		// The background scope's row too, which marks itself for it.
 		const column = declarations(
-			'.snowflake-method-manuscript-settings .snowflake-method-appearance-heading ~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item) select.dropdown',
+			'.snowflake-method-manuscript-settings .snowflake-method-appearance-heading ~ .setting-item:not(.snowflake-method-appearance-heading + .setting-item):not(.snowflake-method-tint-scope-row) select.dropdown',
 		);
 		expect(column).toContain('width: var(--snowflake-method-presentation-control, 100px)');
 		expect(styles).not.toMatch(/appearance-heading\s*\+\s*\.setting-item\s+select\.dropdown\s*\{/u);
+	});
+
+	/**
+	 * The ground past the typography, read only under the classes the plugin
+	 * puts on a window's body for a mode with a tint: over the whole app on
+	 * the body itself, over the plugin alone on what it draws. Both rebuild
+	 * the app's own palette from the tint, and the plugin's reach derives
+	 * again what the app derives once on the body.
+	 */
+	it('carries the ground past the typography only under the body’s reach classes', () => {
+		const scope = section('Background scope');
+		const drawn = [
+			".workspace-leaf-content[data-type='snowflake-method-manuscript']",
+			".workspace-tab-header[data-type='snowflake-method-manuscript']",
+			'.snowflake-method-note-dressed',
+			'.snowflake-method-note-dressed-tab',
+			".workspace-leaf-content[data-type^='snowflake-method-']",
+			".workspace-tab-header[data-type^='snowflake-method-']",
+			'.snowflake-method-dialog',
+			'.snowflake-method-suggestions',
+		];
+		for (const target of drawn) expect(scope).toContain(target);
+		for (const cls of Object.values(TINT_REACH_CLASSES)) expect(scope).toContain(cls);
+		for (const mode of ['light', 'dark']) {
+			expect(scope).toContain(`body.theme-${mode}.snowflake-method-tint-obsidian-${mode},`);
+			expect(scope).toContain(`--snowflake-method-tint: var(--snowflake-method-manuscript-tint-${mode});`);
+		}
+		// Every tint read sits under a reach class: the body's own variables
+		// are written only for a mode that has one.
+		const blocks = scope.replace(/\/\*[\s\S]*?\*\//gu, ' ').split('}');
+		for (const block of blocks.filter((one) => one.includes('--snowflake-method-manuscript-tint-'))) {
+			expect(block).toMatch(/snowflake-method-tint-(?:typography|snowflake|obsidian)-(?:light|dark)/u);
+		}
+		// The app's ramp, rebuilt from the tint toward the text, and the names
+		// the app paints by set from it.
+		expect(scope).toContain('--color-base-00: var(--snowflake-method-tint);');
+		expect(scope).toContain('--color-base-30: color-mix(in srgb, var(--snowflake-method-tint), var(--color-base-100) 12%);');
+		expect(scope).toContain('--background-primary: var(--color-base-00);');
+		expect(scope).toContain('--background-modifier-border: var(--color-base-30);');
+		expect(scope).toContain('--text-faint: var(--color-base-50);');
+		// The plugin's reach derives the app's derived names again, the
+		// buttons on a Mac from the borders as the app has them there.
+		expect(scope).toContain('--modal-background: var(--background-primary);');
+		expect(scope).toContain('--tab-background-active: var(--background-primary);');
+		expect(scope).toContain('body.mod-macos.theme-light.snowflake-method-tint-snowflake-light');
+		expect(scope).toContain('--interactive-normal: var(--background-modifier-border);');
+		// A view in a sidebar paints the sidebar's ground the app leaves outside it.
+		expect(
+			declarations(
+				"body.theme-light.snowflake-method-tint-snowflake-light .mod-sidedock .workspace-leaf-content[data-type^='snowflake-method-']",
+			),
+		).toContain('background-color: var(--background-secondary)');
+	});
+
+	/**
+	 * Within the typography's reach the stream, a dressed note and the tabs
+	 * over both take the whole rebuilt palette at every scope, so the line
+	 * under their bar is the same line at every reach, and a tab joins its
+	 * page whether the tabs are in a row or stacked.
+	 */
+	it('tints the stream, a dressed note and their tabs alike at every reach', () => {
+		const scope = section('Background scope');
+		for (const mode of ['light', 'dark']) {
+			const typography = `body.theme-${mode}.snowflake-method-tint-typography-${mode}\n\t:is(\n\t\t.workspace-leaf-content[data-type='snowflake-method-manuscript'],\n\t\t.workspace-tab-header[data-type='snowflake-method-manuscript'],\n\t\t.snowflake-method-note-dressed,\n\t\t.snowflake-method-note-dressed-tab\n\t)`;
+			// The ramp, the names painted by, the aliases and the buttons.
+			expect(scope.split(typography).length - 1).toBe(4);
+			expect(scope).toContain(`body.mod-macos.theme-${mode}.snowflake-method-tint-typography-${mode}`);
+		}
+		// A tab joins its page in a row by the active face, stacked by the ground.
+		expect(scope).toContain('--tab-background-active: var(--background-primary);');
+		expect(scope).toContain('--background-primary: var(--color-base-00);');
 	});
 
 	/**

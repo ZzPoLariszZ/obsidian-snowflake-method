@@ -81,6 +81,7 @@ import {
 	sanitizeTextAlign,
 	sanitizeTint,
 	sessionPace,
+	tintReach,
 	splitMentionIgnores,
 	addDays,
 	daysInMonth,
@@ -108,6 +109,7 @@ import {
 	type EntityMatcher,
 	type EntityOccurrence,
 	type ManuscriptPresentation,
+	type PresentationStyle,
 	type MentionHighlightMode,
 	type MentionIgnore,
 	type SensitiveMatcher,
@@ -474,6 +476,19 @@ const SCROLLBAR_PROBE_CLASS = 'snowflake-method-scrollbar-probe';
 /** Below this width a second pane leaves neither side room to write in. */
 const MIN_SPLIT_WIDTH_PX = 900;
 
+/** A body carrying no ground at all, which is what taking it off writes. */
+const NO_TINT_REACH = tintReach('typography', { tintLight: '', tintDark: '' });
+
+/** The page's ground and how far it reaches, put on one window's body or taken off it. */
+function applyTintReach(targetDocument: Document, reach: PresentationStyle): void {
+	const body = targetDocument.body;
+	for (const [name, value] of Object.entries(reach.properties)) {
+		if (value === null) body.style.removeProperty(name);
+		else body.style.setProperty(name, value);
+	}
+	for (const [cls, on] of Object.entries(reach.classes)) body.classList.toggle(cls, on);
+}
+
 /** Fields that hold writing. A date, a number, a checkbox holds none. */
 const COUNTABLE_FIELD_TYPES = new Set(['text', 'search']);
 
@@ -826,6 +841,7 @@ export default class SnowflakeMethodPlugin
 					INDENT_FIELDS_CLASS,
 				);
 				targetWindow.document.body.style.removeProperty(FIELD_INDENT_PROPERTY);
+				applyTintReach(targetWindow.document, NO_TINT_REACH);
 				this.dressedDocuments.delete(targetWindow.document);
 				targetWindow.document.body.style.removeProperty(
 					SCROLLBAR_WIDTH_PROPERTY,
@@ -940,6 +956,7 @@ export default class SnowflakeMethodPlugin
 					INDENT_FIELDS_CLASS,
 				);
 				targetDocument.body.style.removeProperty(FIELD_INDENT_PROPERTY);
+				applyTintReach(targetDocument, NO_TINT_REACH);
 			}
 			this.dressedDocuments.clear();
 			for (const targetDocument of this.scrollbarDocuments) {
@@ -3191,13 +3208,23 @@ export default class SnowflakeMethodPlugin
 			// fields follow the page's alignment.
 			this.notePresentation?.apply();
 			this.noteToolbars?.sync();
-			if (key === 'manuscriptTextAlign' || key === 'manuscriptFirstLineIndent') {
+			if (
+				key === 'manuscriptTextAlign' ||
+				key === 'manuscriptFirstLineIndent' ||
+				key === 'manuscriptTintLight' ||
+				key === 'manuscriptTintDark'
+			) {
 				this.applyBodyPreferences();
 			}
 			// The settings page shows these same values, and in 1.13 it stands
 			// in a window of its own, so it can be open beside the popover that
 			// just wrote one. It declines while it is the page doing the writing.
 			this.settingTab?.refreshRows();
+			return;
+		}
+		// How far the ground reaches is the bodies' to carry, every window's.
+		if (key === 'manuscriptTintScope') {
+			this.applyBodyPreferences();
 			return;
 		}
 		// How far the dress reaches: the open notes are dressed or undressed
@@ -3457,6 +3484,17 @@ export default class SnowflakeMethodPlugin
 		} else {
 			targetDocument.body.style.removeProperty(FIELD_INDENT_PROPERTY);
 		}
+		// The page's ground, for the tabs over the tinted pages, and wherever
+		// it reaches past the typography: over the plugin's own views,
+		// dialogs and panels, or over the whole app. The settings window
+		// mirrors this body's style as it does its classes.
+		applyTintReach(
+			targetDocument,
+			tintReach(this.settings.manuscriptTintScope, {
+				tintLight: this.settings.manuscriptTintLight,
+				tintDark: this.settings.manuscriptTintDark,
+			}),
+		);
 	}
 
 	private publishScrollbarWidth(): void {
@@ -10319,6 +10357,8 @@ export default class SnowflakeMethodPlugin
 			notes.push({
 				path: view.file?.path ?? null,
 				containerEl: view.containerEl,
+				// Not in the published API: the tab the app keeps for the leaf.
+				tabHeaderEl: (leaf as WorkspaceLeaf & { tabHeaderEl?: HTMLElement }).tabHeaderEl ?? null,
 				contentEl: view.contentEl,
 				editing: () => view.getMode() === 'source',
 				editor: () => findEditorViewForMarkdownInfo(view),

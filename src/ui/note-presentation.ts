@@ -24,12 +24,21 @@ import {
  */
 export const NOTE_DRESS_CLASS = 'snowflake-method-note-dressed';
 
+/**
+ * Worn by the tab over a dressed note. The tab stands outside the leaf, so
+ * the leaf's class does not reach it, and its face, which joins the page
+ * below it while the note is in front, takes the page's ground from this.
+ */
+export const NOTE_TAB_DRESS_CLASS = 'snowflake-method-note-dressed-tab';
+
 /** What a note's view offers: the file it shows and the two elements dressed. */
 export interface DressableNote {
 	/** The note's path, or null while the view shows nothing. */
 	path: string | null;
 	/** The leaf's content root, where the variables and the marker class go. */
 	containerEl: HTMLElement;
+	/** The tab over the leaf, where the app gives the leaf one. */
+	tabHeaderEl?: HTMLElement | null;
 }
 
 export interface NotePresentationDeps {
@@ -92,6 +101,7 @@ export class NotePresentation {
 				root.style.removeProperty(name);
 			}
 			root.removeClass(NOTE_DRESS_CLASS, ...Object.keys(style.classes));
+			note.tabHeaderEl?.removeClass(NOTE_TAB_DRESS_CLASS);
 			if (root.dataset.snowflakeMethodLang !== undefined) {
 				root.removeAttribute('lang');
 				delete root.dataset.snowflakeMethodLang;
@@ -103,6 +113,7 @@ export class NotePresentation {
 			else root.style.setProperty(name, value);
 		}
 		root.addClass(NOTE_DRESS_CLASS);
+		note.tabHeaderEl?.addClass(NOTE_TAB_DRESS_CLASS);
 		// The classes are the guide lines, which a note never wears.
 		root.removeClass(...Object.keys(style.classes));
 		// The page speaks the project's language, as the stream does, so
