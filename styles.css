@@ -17434,9 +17434,12 @@ body.snowflake-method-hide-scrollbars :not(.snowflake-method-scrollbar-probe)::-
    body of the window it shows in, for the plugin's buttons and every other
    alike, so one rule hides them all. The label it reads stays on the element
    it describes, where a screen reader still finds it. A section marker's
-   tooltip is the one left standing: it is a warning, not a name, and wears
-   a class of its own for this. */
-body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip) {
+   tooltip is left standing: it is a warning, not a name, and wears a class
+   of its own for this. So are the app's own error messages, which it draws
+   as the same element, marked `mod-error`: a name that cannot be used, a
+   property that cannot be kept. Hidden, they would leave a refusal
+   unexplained. */
+body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip):not(.mod-error) {
 	display: none;
 }
 

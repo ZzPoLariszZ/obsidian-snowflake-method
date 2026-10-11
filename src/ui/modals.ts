@@ -1518,9 +1518,11 @@ export class ManageProjectsModal extends Modal {
 						cls,
 						attr: { type: 'button' },
 					});
-		// The whole title on hover, where the row cuts it short, in the app's
-		// own tooltip, so the tooltip setting can put it away like any other.
-		setTooltip(item, project.title);
+		// The whole title and folder on hover, where the row cuts them short,
+		// in the app's own tooltip, so the tooltip setting can put it away like
+		// any other. The tooltip is the row's name to a screen reader as well,
+		// so it says all the row shows: two projects can share a title.
+		setTooltip(item, `${project.title}\n${project.rootPath}`);
 		item.createSpan({
 			cls: 'snowflake-method-project-manager-project-title',
 			text: project.title,

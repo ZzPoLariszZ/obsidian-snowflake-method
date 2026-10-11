@@ -105,8 +105,9 @@ describe('dress-only decorations', () => {
 		set.between(0, 10, (from, to, value) => {
 			attributes = (value.spec as { attributes?: unknown }).attributes;
 		});
+		// The name is the app's own tooltip, never a native title.
 		expect(attributes).toEqual({
-			title: 'Weather words',
+			'aria-label': 'Weather words',
 			style: '--snowflake-method-highlight-color: #aabbcc',
 		});
 	});

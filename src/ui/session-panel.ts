@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 
 import {
 	BAND_SPANS,
@@ -1676,8 +1676,8 @@ function renderBandsWidget(
 				);
 				// The number the share is of, for a reader who wants it: a
 				// percentage says how the day divided, not how much it came to.
-				row.row.setAttribute(
-					'title',
+				setTooltip(
+					row.row,
 					`${bandLabel(at)} · ${
 						words
 							? grouped(Math.round(value(band)))
@@ -1856,10 +1856,9 @@ function renderModesWidget(
 			}
 			const entry = entries[at];
 			entry?.classList.toggle('is-picked', mode.mode === picked);
-			entry?.setAttribute(
-				'title',
-				`${t(`session.mode.${mode.mode}`)} · ${formatClock(mode.focusMs)}`,
-			);
+			if (entry !== undefined) {
+				setTooltip(entry, `${t(`session.mode.${mode.mode}`)} · ${formatClock(mode.focusMs)}`);
+			}
 			before += share;
 		}
 		const chosen = totals.find((mode) => mode.mode === picked);

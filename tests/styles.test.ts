@@ -69,15 +69,19 @@ describe('styles.css', () => {
 	 * Obsidian draws every tooltip, the plugin's and the app's alike, as a
 	 * `.tooltip` on the body of its window, so the one rule under the body
 	 * class reaches them all, as Hider's does, but for the warning a section
-	 * marker shows, which wears a class of its own.
+	 * marker shows, which wears a class of its own, and the app's error
+	 * messages, which it draws as the same element marked `mod-error`.
 	 */
-	it('hides every tooltip under the body class but the section markers’ warning', () => {
+	it('hides every tooltip under the body class but the section markers’ warning and the app’s errors', () => {
 		const tooltips = section('Tooltips');
 		expect(tooltips.includes('!important')).toBe(false);
 		expect(
-			declarations('body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip)'),
+			declarations(
+				'body.snowflake-method-hide-tooltips .tooltip:not(.snowflake-method-boundary-tooltip):not(.mod-error)',
+			),
 		).toContain('display: none');
 		expect(styles).not.toMatch(/hide-tooltips \.tooltip\s*\{/u);
+		expect(styles).not.toMatch(/hide-tooltips \.tooltip:not\(\.snowflake-method-boundary-tooltip\)\s*\{/u);
 	});
 
 	/**

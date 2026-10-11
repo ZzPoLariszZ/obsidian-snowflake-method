@@ -264,7 +264,8 @@ function applyMarkSpans(
 						...(indexAttr === null
 							? {}
 							: { [indexAttr]: String(segment.span.index) }),
-						...(mark.title === undefined ? {} : { title: mark.title }),
+						// The app's own tooltip, as in the editor half.
+						...(mark.title === undefined ? {} : { 'aria-label': mark.title }),
 						...(mark.styleVar === undefined
 							? {}
 							: { style: mark.styleVar }),

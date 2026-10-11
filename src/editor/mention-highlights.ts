@@ -113,8 +113,10 @@ export function mentionDecorations(
 					widget: new PointMarkWidget(mark.classes),
 				}).range(mark.from);
 			}
+			// The name on hover is the app's own tooltip, which the Hide tooltips
+			// setting reaches, where a native title is the browser's.
 			const attributes = {
-				...(mark.title === undefined ? {} : { title: mark.title }),
+				...(mark.title === undefined ? {} : { 'aria-label': mark.title }),
 				...(mark.styleVar === undefined ? {} : { style: mark.styleVar }),
 				...(mark.label === undefined
 					? {}

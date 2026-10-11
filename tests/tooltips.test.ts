@@ -19,16 +19,21 @@ describe('tooltips', () => {
 	});
 
 	it('are never native titles', () => {
+		// Read over each whole file, so an attribute object or a call spread
+		// over several lines is read as one.
 		const native = [
-			/\battr:\s*\{[^}]*\btitle\s*:/u,
-			/\battributes:\s*\{[^}]*\btitle\s*:/u,
-			/\bsetAttr(?:ibute)?\(\s*['"]title['"]/u,
+			/\battr:\s*\{[^}]*\btitle\s*:/gu,
+			/\battributes:\s*\{[^}]*\btitle\s*:/gu,
+			/\bsetAttr(?:ibute)?\(\s*['"]title['"]/gu,
+			// An attribute spread in only when there is a title to give.
+			/\?\s*\{\}\s*:\s*\{\s*title\s*:/gu,
 		];
 		const offenders = Object.entries(sources).flatMap(([path, text]) =>
-			text
-				.split('\n')
-				.map((line, index) => ({ path, line: index + 1, text: line.trim() }))
-				.filter((entry) => native.some((pattern) => pattern.test(entry.text))),
+			native.flatMap((pattern) =>
+				[...text.matchAll(pattern)].map(
+					(match) => `${path}:${text.slice(0, match.index).split('\n').length}`,
+				),
+			),
 		);
 		expect(offenders).toEqual([]);
 	});

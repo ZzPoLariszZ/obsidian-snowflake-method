@@ -159,7 +159,6 @@ export function railParts(restack: () => void): RailParts {
 					attr: {
 						type: 'button',
 						'aria-label': label,
-						title: label,
 						// The first and the last card say so plainly.
 						...(has(step) ? {} : { disabled: 'disabled' }),
 					},
