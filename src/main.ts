@@ -904,6 +904,7 @@ export default class SnowflakeMethodPlugin
 			setPresentation: (patch) => this.setManuscriptPresentation(patch),
 			setEnterParagraph: (on) => this.setManuscriptEnterParagraph(on),
 			toggleTypewriter: () => this.toggleManuscriptMode('typewriter'),
+			exportNote: (path) => this.exportNote(path),
 			showError: (error) => {
 				this.showError(error);
 			},
@@ -6837,14 +6838,48 @@ export default class SnowflakeMethodPlugin
 	}
 
 	async exportManuscript(projectPath: string | null): Promise<void> {
-		await this.runExport(projectPath, { kind: 'manuscript' });
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.runExport(project, { kind: 'manuscript' });
 	}
 
 	async exportManuscriptSegment(
 		projectPath: string | null,
 		path: string,
 	): Promise<void> {
-		await this.runExport(projectPath, { kind: 'segment', path });
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.runExport(project, { kind: 'segment', path });
+	}
+
+	/**
+	 * One note of the app's own as plain text, from the export button on
+	 * the bar above it: under its project when it has one -- read-only or
+	 * not, or the project whose draft it is -- and straight into the export
+	 * folder when it has none. A note of no project names no project to keep
+	 * out of, so its folder is kept out of every project the scan knows,
+	 * where a file it wrote would be read as one of that project's notes.
+	 */
+	async exportNote(path: string): Promise<void> {
+		const root = this.noteProjectRoot(path);
+		if (root !== null) {
+			const project = await this.resolveProject(root);
+			if (project !== null) await this.runExport(project, { kind: 'segment', path });
+			return;
+		}
+		const folder = this.exportOptions().folder;
+		const inside = [...this.knownProjectRoots].some(
+			(rootPath) => rootPath.length > 0 && isPathAtOrBelow(folder, rootPath),
+		);
+		if (inside) {
+			new Notice(
+				this.translateForProject(null, 'errors.exportIntoProject', {
+					path: normalizeProjectRoot(folder),
+				}),
+			);
+			return;
+		}
+		await this.runExport(null, { kind: 'segment', path });
 	}
 
 	async manuscriptSegmentPlainText(
@@ -6858,17 +6893,16 @@ export default class SnowflakeMethodPlugin
 
 	/**
 	 * Plans, asks once about the files that already stand, writes, and says
-	 * where. A folder inside the project is refused before anything is
+	 * where, in the project's language, or the plugin's own for a note of no
+	 * project. A folder inside the project is refused before anything is
 	 * planned, because a file written there would read as a note.
 	 */
 	private async runExport(
-		projectPath: string | null,
+		project: ProjectSnapshot | null,
 		scope: ManuscriptExportScope,
 	): Promise<void> {
-		const project = await this.resolveProject(projectPath);
-		if (project === null) return;
 		const t = (key: string, vars?: Record<string, string | number>): string =>
-			this.translateForProject(project.locale, key, vars);
+			this.translateForProject(project?.locale ?? null, key, vars);
 		let plan: ManuscriptExportPlan;
 		try {
 			plan = await this.projects.exporter.plan(project, scope, this.exportOptions());
@@ -10433,13 +10467,18 @@ export default class SnowflakeMethodPlugin
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView)) return;
 			notes.push({
-				path: view.file?.path ?? null,
+				// Read when asked rather than when listed: a bar outlives the
+				// note its tab first showed, and acts on the one it shows now.
+				get path() {
+					return view.file?.path ?? null;
+				},
 				containerEl: view.containerEl,
 				// Not in the published API: the tab the app keeps for the leaf.
 				tabHeaderEl: (leaf as WorkspaceLeaf & { tabHeaderEl?: HTMLElement }).tabHeaderEl ?? null,
 				contentEl: view.contentEl,
 				editing: () => view.getMode() === 'source',
 				editor: () => findEditorViewForMarkdownInfo(view),
+				save: () => view.save(),
 			});
 		});
 		return notes;
@@ -10497,6 +10536,23 @@ export default class SnowflakeMethodPlugin
 			}
 		}
 		return { inProject: false, inManuscript: false, locale: null };
+	}
+
+	/**
+	 * The folder of the project a note belongs to, found as `noteStanding`
+	 * finds it -- the read-only projects too, and the project whose draft it
+	 * is when the draft stands outside its folder -- or null for a note of
+	 * no project.
+	 */
+	private noteProjectRoot(path: string): string | null {
+		const roster = this.rosterScanned ? this.projectLocalesByRoot : this.projectFolderAt(path);
+		for (const [rootPath] of roster) {
+			if (isPathAtOrBelow(path, rootPath)) return rootPath;
+		}
+		for (const [rootPath, draftPath] of this.externalDrafts) {
+			if (draftPath === path) return rootPath;
+		}
+		return null;
 	}
 
 	/**

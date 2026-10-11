@@ -11,15 +11,17 @@ import { openPresentationPanel, type PresentationPanel } from './presentation-pa
  *
  * A note the typography reaches is read and written the way a chapter in
  * the stream is, and the author reaches for the same bar: undo and redo,
- * the heading levels, the inline marks, the dress popover and typewriter
- * scrolling. What the bar leaves out is what only the stream can answer --
- * the export of the whole manuscript, the mentions it marks, the focus
- * levels that fade the page around it -- and the popover leaves out the
- * grid lines, which a note never wears. The bar stands where the stream's
- * does, between the leaf's header and its content, and the buttons that
- * edit go grey while the note is read rather than written, as the stream's
- * do while no note is being written in: greyed rather than gone, because a
- * bar that came and went would move the page under the reader.
+ * the heading levels, the inline marks, the dress popover, the export and
+ * typewriter scrolling. The export is the note's own, as the button on a
+ * chapter's header in the stream is the chapter's: a tab shows one note,
+ * not the whole manuscript. What the bar leaves out is what only the
+ * stream can answer -- the mentions it marks, the focus levels that fade
+ * the page around it -- and the popover leaves out the grid lines, which a
+ * note never wears. The bar stands where the stream's does, between the
+ * leaf's header and its content, and the buttons that edit go grey while
+ * the note is read rather than written, as the stream's do while no note
+ * is being written in: greyed rather than gone, because a bar that came
+ * and went would move the page under the reader.
  *
  * One bar per note view, put up when the dress reaches the note it shows
  * and taken down when it stops, which the host asks at the moments a note
@@ -40,6 +42,8 @@ export interface ToolbarNote {
 	editing(): boolean;
 	/** The note's editor, for the bar's commands; null while there is none. */
 	editor(): EditorView | null;
+	/** Writes what was typed since the app last saved the note. */
+	save(): Promise<void>;
 }
 
 /** The settings the bar shows and the popover writes. */
@@ -62,6 +66,8 @@ export interface NoteToolbarDeps {
 	setPresentation(patch: Partial<ManuscriptPresentation>): Promise<void>;
 	setEnterParagraph(on: boolean): Promise<void>;
 	toggleTypewriter(): Promise<void>;
+	/** The note at a path written out as plain text, as the export settings say. */
+	exportNote(path: string): Promise<void>;
 	showError(error: unknown): void;
 }
 
@@ -210,6 +216,14 @@ export class NoteToolbars {
 			{ 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
 		);
 		dress.addClass('snowflake-method-toolbar-presentation');
+		// The note as plain text, live while reading for the same reason: it
+		// reads the note and edits none of it.
+		const exporter = button('file-down', t('manuscript.exportNote'), () => {
+			void this.exportNote(note).catch((error: unknown) => {
+				this.deps.showError(error);
+			});
+		});
+		exporter.addClass('snowflake-method-toolbar-export');
 		separator();
 		// Typewriter scrolling is the author's rather than the note's, and
 		// pressing it here turns it for the stream and every note at once.
@@ -252,6 +266,18 @@ export class NoteToolbars {
 		// where the author can see it.
 		if (!view.hasFocus) view.focus();
 		runEditorCommand(view, command);
+	}
+
+	/**
+	 * The note the tab shows now, written out as it stands: what was typed
+	 * since the app last saved it goes to the file first, so the export is
+	 * the page the author is looking at.
+	 */
+	private async exportNote(note: ToolbarNote): Promise<void> {
+		const path = note.path;
+		if (path === null) return;
+		await note.save();
+		await this.deps.exportNote(path);
 	}
 
 	/**

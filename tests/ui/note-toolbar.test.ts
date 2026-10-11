@@ -4,7 +4,7 @@ import { history } from '@codemirror/commands';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { App } from 'obsidian';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_MANUSCRIPT_PRESENTATION } from '../../src/domain';
 import {
@@ -14,11 +14,22 @@ import {
 } from '../../src/ui/note-toolbar';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
+// The name a button is given, kept where a test can read it back.
+vi.mock('obsidian', async (importOriginal) => {
+	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	return {
+		...runtime,
+		setTooltip: (el: HTMLElement, text: string) => {
+			el.setAttribute('data-tooltip', text);
+		},
+	};
+});
+
 /**
  * The stream's bar above a note of Obsidian's own, over plain elements:
  * put up for the notes the dress reaches and taken down for the rest,
- * grey while the note is read, lit while typewriter scrolling is on, and
- * driving the note's own editor.
+ * grey while the note is read, lit while typewriter scrolling is on,
+ * driving the note's own editor, and exporting the note it shows.
  */
 describe('NoteToolbars', () => {
 	beforeAll(() => {
@@ -28,6 +39,7 @@ describe('NoteToolbars', () => {
 	interface FakeNote extends ToolbarNote {
 		view: EditorView;
 		mode: 'source' | 'preview';
+		saved: number;
 	}
 
 	function note(path: string | null, doc = 'a word here'): FakeNote {
@@ -52,8 +64,13 @@ describe('NoteToolbars', () => {
 			contentEl,
 			view,
 			mode: 'source',
+			saved: 0,
 			editing: () => fake.mode === 'source',
 			editor: () => (fake.mode === 'source' ? fake.view : null),
+			save: () => {
+				fake.saved += 1;
+				return Promise.resolve();
+			},
 		};
 		return fake;
 	}
@@ -81,6 +98,10 @@ describe('NoteToolbars', () => {
 			toggleTypewriter: () => {
 				typewriter = !typewriter;
 				calls.push('typewriter');
+				return Promise.resolve();
+			},
+			exportNote: (path) => {
+				calls.push(`export:${path}`);
 				return Promise.resolve();
 			},
 			showError: (error) => {
@@ -116,12 +137,15 @@ describe('NoteToolbars', () => {
 		const { toolbars } = harness([one], () => true);
 		toolbars.apply();
 		const mounted = bar(one) as HTMLElement;
-		expect(mounted.querySelector('.snowflake-method-toolbar-export')).toBeNull();
 		expect(mounted.querySelector('.snowflake-method-toolbar-mentions')).toBeNull();
 		expect(mounted.querySelectorAll('.snowflake-method-mode-toggle')).toHaveLength(1);
 		expect(mounted.querySelector('.snowflake-method-toolbar-presentation')).not.toBeNull();
-		// Undo, redo, two headings and the ladder, five marks, the dress, the mode.
-		expect(mounted.querySelectorAll('button')).toHaveLength(12);
+		// The note's own export, named as the button on a chapter's header is.
+		const exporter = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export');
+		expect(exporter?.getAttribute('data-tooltip')).toBe('manuscript.exportNote');
+		// Undo, redo, two headings and the ladder, five marks, the dress, the
+		// export, the mode.
+		expect(mounted.querySelectorAll('button')).toHaveLength(13);
 	});
 
 	it('greys the editing buttons while the note is read, and lights the mode', () => {
@@ -130,13 +154,15 @@ describe('NoteToolbars', () => {
 		toolbars.apply();
 		const mounted = bar(one) as HTMLElement;
 		const buttons = Array.from(mounted.querySelectorAll('button'));
-		const editing = buttons.filter((button) => !button.classList.contains('snowflake-method-toolbar-presentation') && !button.classList.contains('snowflake-method-mode-toggle'));
+		const live = ['snowflake-method-toolbar-presentation', 'snowflake-method-toolbar-export', 'snowflake-method-mode-toggle'];
+		const editing = buttons.filter((button) => !live.some((cls) => button.classList.contains(cls)));
 		expect(editing.every((button) => !button.disabled)).toBe(true);
 		one.mode = 'preview';
 		toolbars.apply();
 		expect(editing.every((button) => button.disabled)).toBe(true);
 		const dress = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-presentation');
 		expect(dress?.disabled).toBe(false);
+		expect(mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export')?.disabled).toBe(false);
 		const mode = mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle');
 		expect(mode?.disabled).toBe(false);
 		expect(mode?.classList.contains('is-active')).toBe(false);
@@ -160,6 +186,22 @@ describe('NoteToolbars', () => {
 		expect(one.view.state.doc.toString()).toBe('## a word here');
 		mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle')?.click();
 		expect(calls).toEqual(['typewriter']);
+	});
+
+	it('exports the note the tab shows now, what was typed saved first, while read too', async () => {
+		const one = note('Novel/Chapter 1.md');
+		const { toolbars, calls } = harness([one], () => true);
+		toolbars.apply();
+		const exporter = (bar(one) as HTMLElement).querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export');
+		// The tab turned to another note of the same project keeps its bar.
+		one.path = 'Novel/Chapter 2.md';
+		one.mode = 'preview';
+		toolbars.apply();
+		exporter?.click();
+		await vi.waitFor(() => {
+			expect(calls).toEqual(['export:Novel/Chapter 2.md']);
+		});
+		expect(one.saved).toBe(1);
 	});
 
 	it('writes in a table cell’s own editor while the cell holds the caret', () => {

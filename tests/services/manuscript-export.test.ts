@@ -86,6 +86,56 @@ describe("ManuscriptExportService", () => {
     ).toBe("One\n\u2003\u2003First bold words.\n");
   });
 
+  it("writes a note of no project straight into the export folder, indented as its words ask", async () => {
+    await fakeVault.seedFile("Loose/Idea.md", "# Idea\n\nA **plain** thought.\n");
+    await fakeVault.seedFile("Loose/想法.md", "# 想法\n\n一个**简单**的念头。\n");
+    const plan = await service.exporter.plan(
+      null,
+      { kind: "segment", path: "Loose/Idea.md" },
+      { ...options, paragraphSpacing: false },
+    );
+    expect(plan.targets.map((target) => [target.path, target.content])).toEqual([
+      ["Out/Idea.txt", "Idea\n\u2003\u2003A plain thought.\n"],
+    ]);
+    expect(
+      await service.exporter.segmentText(null, "Loose/想法.md", {
+        indent: true,
+        paragraphSpacing: false,
+      }),
+    ).toBe("想法\n\u3000\u3000一个简单的念头。\n");
+    // A note of no project is never part of a manuscript.
+    expect((await service.exporter.plan(null, { kind: "manuscript" }, options)).targets).toEqual([]);
+  });
+
+  it("leaves out the sections the plugin wrote by the kind the note declares", async () => {
+    const path = "Snowflake Projects/Novel/20_Character/Alice.md";
+    await fakeVault.seedFile(
+      path,
+      [
+        "---",
+        "snowflake-document: character",
+        "---",
+        "# Alice",
+        "",
+        "<!-- snowflake:section:character-fields:start -->",
+        "> [!info] Character overview",
+        "> **Role**: lead",
+        "<!-- snowflake:section:character-fields:end -->",
+        "",
+        "She keeps the lighthouse.",
+        "",
+      ].join("\n"),
+    );
+    const plan = await service.exporter.plan(
+      project,
+      { kind: "segment", path },
+      { ...options, paragraphSpacing: false },
+    );
+    expect(plan.targets.map((target) => [target.path, target.content])).toEqual([
+      ["Out/Novel/Alice.txt", "Alice\n\u2003\u2003She keeps the lighthouse.\n"],
+    ]);
+  });
+
   it("says which files already stand, and writes over them when told to", async () => {
     const first = await service.exporter.plan(project, { kind: "manuscript" }, options);
     await service.exporter.write(first);

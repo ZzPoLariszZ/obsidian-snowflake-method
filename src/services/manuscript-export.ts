@@ -3,13 +3,16 @@ import { normalizePath } from "obsidian";
 import {
   exportFileName,
   exportProse,
+  exportScriptOf,
+  fileStem,
+  isDocumentType,
   joinChapters,
   safeFileName,
   type ExportFormat,
   type ExportLayout,
   type ExportSeparator,
 } from "../domain";
-import type { VaultRepository } from "../repository";
+import { documentTypeOf, type VaultRepository } from "../repository";
 import { pluginWrittenRanges } from "../templates";
 import { createOrUpdatePlainFile } from "./json-store";
 import type { ManuscriptService } from "./manuscript-service";
@@ -26,6 +29,10 @@ export interface ManuscriptExportOptions {
   separator: ExportSeparator;
 }
 
+/**
+ * The whole manuscript, or one note on its own: a chapter of the stream, or
+ * any note at all from the bar above it in a tab of the app's own.
+ */
 export type ManuscriptExportScope =
   | { kind: "manuscript" }
   | { kind: "segment"; path: string };
@@ -66,50 +73,55 @@ export class ManuscriptExportService {
 
   /** One note's plain text under the options: what the copy button puts on the clipboard. */
   async segmentText(
-    project: ProjectRef,
+    project: ProjectRef | null,
     path: string,
     options: Pick<ManuscriptExportOptions, "indent" | "paragraphSpacing">,
   ): Promise<string> {
-    const segment = await this.manuscript.readSegment(path);
-    return this.textOf(project, segment.body, options);
+    return (await this.noteText(project, path, options)).content;
   }
 
   /**
    * The files an export would write, each with its text, and whether a file
    * already stands at its path. A note with no writing in it makes no file;
-   * a single file made of nothing makes none either.
+   * a single file made of nothing makes none either. A note of no project
+   * has no manuscript to be part of, so only it alone is ever written, and
+   * keeping its folder out of every project is the caller's to see to.
    */
   async plan(
-    project: ProjectRef,
+    project: ProjectRef | null,
     scope: ManuscriptExportScope,
     options: ManuscriptExportOptions,
   ): Promise<ManuscriptExportPlan> {
     const folder = normalizeFolder(options.folder);
     const base = folder.length === 0 ? "" : `${folder}/`;
-    if (this.insideProject(project, folder)) {
+    if (project !== null && this.insideProject(project, folder)) {
       throw new ExportIntoManuscriptError(folder);
     }
-    const title = safeFileName(project.title);
     const target = (path: string, content: string): ManuscriptExportTarget => ({
       path,
       exists: this.repository.getFile(path) !== null,
       content,
     });
     if (scope.kind === "segment") {
-      const segment = await this.manuscript.readSegment(scope.path);
-      const content = this.textOf(project, segment.body, options);
-      if (content.length === 0) return { targets: [] };
+      const note = await this.noteText(project, scope.path, options);
+      if (note.content.length === 0) return { targets: [] };
+      // In the folder named after its project, where the whole manuscript's
+      // files go; a note of no project has no such folder and goes straight
+      // into the export folder.
+      const under = project === null ? "" : `${safeFileName(project.title)}/`;
       return {
         targets: [
           target(
             normalizePath(
-              `${base}${title}/${safeFileName(segment.title)}.${options.format}`,
+              `${base}${under}${safeFileName(note.title)}.${options.format}`,
             ),
-            content,
+            note.content,
           ),
         ],
       };
     }
+    if (project === null) return { targets: [] };
+    const title = safeFileName(project.title);
     const chapters: { title: string; text: string }[] = [];
     for (const segment of await this.manuscript.listSegments(project)) {
       const content = await this.manuscript.readSegment(segment.path);
@@ -183,6 +195,37 @@ export class ManuscriptExportService {
       paragraphSpacing: options.paragraphSpacing,
       script: project.locale === "zh-CN" ? "cjk" : "latin",
     });
+  }
+
+  /**
+   * One note on its own, named and laid out as its file will be. The
+   * sections the plugin wrote are left out by the kind the note declares --
+   * a character's generated views as surely as a chapter's -- and a note
+   * that declares none is read as a chapter, which leaves out nothing from
+   * a note that holds no chapter's sections. The indent is its project's
+   * language's, or, for a note of no project, the one its own words ask for.
+   */
+  private async noteText(
+    project: ProjectRef | null,
+    path: string,
+    options: Pick<ManuscriptExportOptions, "indent" | "paragraphSpacing">,
+  ): Promise<{ title: string; content: string }> {
+    const record = await this.repository.readManaged(path);
+    const declared = documentTypeOf(record.frontmatter);
+    const kind = isDocumentType(declared) ? declared : "draft";
+    return {
+      title: fileStem(record.path),
+      content: exportProse(record.body, pluginWrittenRanges(record.body, kind), {
+        indent: options.indent,
+        paragraphSpacing: options.paragraphSpacing,
+        script:
+          project === null
+            ? exportScriptOf(record.body)
+            : project.locale === "zh-CN"
+              ? "cjk"
+              : "latin",
+      }),
+    };
   }
 }
 

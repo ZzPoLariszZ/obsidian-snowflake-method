@@ -313,7 +313,7 @@ export const en = {
 		'The rule {name} will be removed. Names already given stay as they are.',
 	'settings.exportFolder.name': 'Export folder',
 	'settings.exportFolder.desc':
-		'Folder where exported files are saved.\nLeave empty to use "Snowflake Export" beside the project.',
+		'Folder where exported files are saved.\nLeave empty to use "Snowflake Export" beside the projects.',
 	'settings.exportFolder.placeholder': 'Snowflake Export',
 	'settings.exportFolder.invalid': 'Enter a valid vault-relative folder path.',
 	'settings.exportFormat.name': 'Export format',
@@ -337,6 +337,10 @@ export const en = {
 	'settings.exportChapterSeparator.blank': 'Blank line',
 	'settings.exportChapterSeparator.rule': 'Line of dashes',
 	'settings.exportChapterSeparator.asterisks': 'Three asterisks',
+	'settings.exportNote.heading': 'One note',
+	'settings.exportNoteLocation.name': 'Location',
+	'settings.exportNoteLocation.desc':
+		'Saved in a subfolder of the export folder named after the project.\nA note outside any project is saved directly in the export folder.',
 	'settings.section.explorer': 'File explorer',
 	'settings.explorerScope.name': 'Enhancement scope',
 	'settings.explorerScope.desc': 'Apply to Snowflake projects or the whole vault.',
@@ -2196,6 +2200,8 @@ export const en = {
 	'messages.copiedNote': 'Copied the note as plain text.',
 	'errors.exportIntoManuscript':
 		'The export folder {path} lies inside the project. Choose another folder.',
+	'errors.exportIntoProject':
+		'The export folder {path} lies inside a project. Choose another folder.',
 	'manuscript.copySelection': 'Copy',
 	'manuscript.revision.create': 'Create revision',
 	'manuscript.revision.emptyProposed': 'An insertion needs proposed text.',

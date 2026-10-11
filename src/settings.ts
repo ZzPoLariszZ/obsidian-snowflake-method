@@ -2301,7 +2301,9 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 			},
 			// What leaves the Vault as plain text, and how it is laid out on the
 			// way out. Its own section: an export is neither the plugin's manner
-			// nor the manuscript's dress.
+			// nor the manuscript's dress. The rows every export reads stand
+			// first, then a group for each kind of export: the whole manuscript,
+			// and one note on its own.
 			{
 				type: 'group',
 				heading: this.t('settings.section.export'),
@@ -2380,6 +2382,22 @@ export class SnowflakeSettingTab extends PluginSettingTab {
 								asterisks: this.t('settings.exportChapterSeparator.asterisks'),
 							},
 						},
+					},
+					// One note on its own: a chapter from its header in the stream
+					// or by the command, or any note from the bar above it in a
+					// tab of the app's own. Nothing about it is its own to choose:
+					// it goes under its project's name, as the manuscript's own
+					// files do, and its text is laid out by the rows every export
+					// reads, so the group only says where it goes.
+					{
+						name: this.t('settings.exportNote.heading'),
+						render: (setting) => {
+							setting.setHeading();
+						},
+					},
+					{
+						name: this.t('settings.exportNoteLocation.name'),
+						desc: this.lines('settings.exportNoteLocation.desc'),
 					},
 				],
 			},

@@ -1201,6 +1201,9 @@ describe('plaintext export copy', () => {
 			'settings.exportChapterSeparator.blank',
 			'settings.exportChapterSeparator.rule',
 			'settings.exportChapterSeparator.asterisks',
+			'settings.exportNote.heading',
+			'settings.exportNoteLocation.name',
+			'settings.exportNoteLocation.desc',
 			'manuscript.toolbar.export',
 			'manuscript.exportNote',
 			'manuscript.copyNote',
@@ -1217,6 +1220,7 @@ describe('plaintext export copy', () => {
 			'messages.exportNothing',
 			'messages.copiedNote',
 			'errors.exportIntoManuscript',
+			'errors.exportIntoProject',
 		];
 		for (const key of keys) {
 			expect(Object.keys(en), key).toContain(key);
@@ -1229,6 +1233,7 @@ describe('plaintext export copy', () => {
 			expect(locale['messages.exportedMany']).toContain('{count}');
 			expect(locale['modal.exportReplace.question']).toContain('{count}');
 			expect(locale['errors.exportIntoManuscript']).toContain('{path}');
+			expect(locale['errors.exportIntoProject']).toContain('{path}');
 		}
 	});
 });

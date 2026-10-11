@@ -16,6 +16,7 @@
 
 import { countablePieces } from './countable-prose';
 import type { CountableRange } from './markdown-scan';
+import { scriptSplit } from './text-length';
 
 export const EXPORT_FORMATS = ['md', 'txt'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -48,6 +49,16 @@ export interface ExportProseOptions {
 	paragraphSpacing: boolean;
 	/** Which indent a paragraph is given. */
 	script: 'cjk' | 'latin';
+}
+
+/**
+ * The indent a note's own words ask for, where no project's language says
+ * which: the ideographic one for writing that is mostly characters counted
+ * one by one, as Chinese is, and the Latin one otherwise.
+ */
+export function exportScriptOf(text: string): ExportProseOptions['script'] {
+	const split = scriptSplit(text);
+	return split.cjk > split.words ? 'cjk' : 'latin';
 }
 
 const CJK_INDENT = '　　';

@@ -988,6 +988,25 @@ describe('export settings', () => {
 		expect(fallen.exportIndent).toBe(true);
 	});
 
+	it('groups the export rows by the export they shape: every one, the whole manuscript, one note', () => {
+		const names = settingNames(settingTabFor('en'));
+		expect(names.slice(names.indexOf('Export'))).toEqual([
+			'Export',
+			'Export folder',
+			'Export format',
+			'Preserve first-line indentation',
+			'Preserve extra paragraph spacing',
+			'Whole manuscript',
+			'Layout',
+			'Between notes',
+			'One note',
+			'Location',
+		]);
+		// One note has nothing of its own to choose: the row says where it goes.
+		const location = settingRows(settingTabFor('en')).find((row) => row.name === 'Location');
+		expect(location).toEqual({ name: 'Location' });
+	});
+
 	it('starts the explorer immersive until the plugin setting turns it off', () => {
 		expect(DEFAULT_SETTINGS.explorerImmersive).toBe(true);
 		expect(sanitizeSettings(undefined).explorerImmersive).toBe(true);
