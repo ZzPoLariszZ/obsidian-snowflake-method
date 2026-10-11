@@ -1209,6 +1209,19 @@
 	color: var(--text-faint);
 }
 
+/* On the rail's disc a status mark takes the row's ink as a count does:
+   in its status colour, on a fill of that colour's own tint, it is too
+   faint to read. A warning keeps its colour. */
+.snowflake-method-step-button
+	.snowflake-method-step-indicator[data-status]:not(.has-managed-section-issue) {
+	color: inherit;
+}
+
+.snowflake-method-step-button
+	.snowflake-method-step-indicator[data-status='not-started']::after {
+	background: currentColor;
+}
+
 .snowflake-method-step-indicator.has-managed-section-issue {
 	border-color: transparent;
 	background: transparent;

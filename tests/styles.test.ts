@@ -666,6 +666,17 @@ describe('styles.css', () => {
 		const link = '.snowflake-method-step-indicator.snowflake-method-step-link-mark';
 		expect(declarations(link)).toContain('background: transparent');
 		expect(styles.indexOf(`${link} {`)).toBeGreaterThan(discAt);
+		// A status mark takes the row's ink on its disc, over the status
+		// colours set later at a lighter weight; a warning keeps its own.
+		const status = '.snowflake-method-step-button .snowflake-method-step-indicator[data-status]:not(.has-managed-section-issue)';
+		const flat = styles.replace(/\s+/gu, ' ');
+		expect(flat).toContain(`${status} { color: inherit; }`);
+		expect(flat.indexOf(`${status} {`)).toBeGreaterThan(
+			flat.indexOf(".snowflake-method-step-indicator[data-status='skipped'] {"),
+		);
+		expect(flat).toContain(
+			".snowflake-method-step-button .snowflake-method-step-indicator[data-status='not-started']::after { background: currentColor; }",
+		);
 	});
 
 	/**
