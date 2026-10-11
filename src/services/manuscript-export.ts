@@ -31,11 +31,14 @@ export interface ManuscriptExportOptions {
 
 /**
  * The whole manuscript, or one note on its own: a chapter of the stream, or
- * any note at all from the bar above it in a tab of the app's own.
+ * any note at all from the bar above it in a tab of the app's own. Or a
+ * passage, the words selected somewhere, under a name the caller gives its
+ * file for each number it may take.
  */
 export type ManuscriptExportScope =
   | { kind: "manuscript" }
-  | { kind: "segment"; path: string };
+  | { kind: "segment"; path: string }
+  | { kind: "passage"; name: (number: number) => string; text: string };
 
 /** One file an export will write: its path, whether it stands already, its text. */
 export interface ManuscriptExportTarget {
@@ -102,23 +105,36 @@ export class ManuscriptExportService {
       exists: this.repository.getFile(path) !== null,
       content,
     });
+    // A note or a passage goes in the folder named after its project, where
+    // the whole manuscript's files go; one of no project has no such folder
+    // and goes straight into the export folder.
+    const under = project === null ? "" : `${safeFileName(project.title)}/`;
+    const pathFor = (name: string): string =>
+      normalizePath(`${base}${under}${safeFileName(name)}.${options.format}`);
     if (scope.kind === "segment") {
       const note = await this.noteText(project, scope.path, options);
       if (note.content.length === 0) return { targets: [] };
-      // In the folder named after its project, where the whole manuscript's
-      // files go; a note of no project has no such folder and goes straight
-      // into the export folder.
-      const under = project === null ? "" : `${safeFileName(project.title)}/`;
-      return {
-        targets: [
-          target(
-            normalizePath(
-              `${base}${under}${safeFileName(note.title)}.${options.format}`,
-            ),
-            note.content,
-          ),
-        ],
-      };
+      return { targets: [target(pathFor(note.title), note.content)] };
+    }
+    if (scope.kind === "passage") {
+      // The words as selected, read the way a note is: a passage is no note,
+      // so nothing in it was written by the plugin to be left out.
+      const content = exportProse(scope.text, [], {
+        indent: options.indent,
+        paragraphSpacing: options.paragraphSpacing,
+        script:
+          project === null
+            ? exportScriptOf(scope.text)
+            : project.locale === "zh-CN"
+              ? "cjk"
+              : "latin",
+      });
+      if (content.length === 0) return { targets: [] };
+      // The first number no file holds yet, so one passage never writes
+      // over another taken from the same place.
+      let number = 1;
+      while (this.repository.getFile(pathFor(scope.name(number))) !== null) number += 1;
+      return { targets: [target(pathFor(scope.name(number)), content)] };
     }
     if (project === null) return { targets: [] };
     const title = safeFileName(project.title);

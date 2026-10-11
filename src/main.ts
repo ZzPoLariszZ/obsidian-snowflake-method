@@ -13,6 +13,7 @@ import {
 	setTooltip,
 	TFile,
 	TFolder,
+	type Editor,
 	type EditorPosition,
 	type MarkdownFileInfo,
 	type TAbstractFile,
@@ -405,6 +406,15 @@ import {
 	type StartSessionRequest,
 	type Translate,
 } from './ui/modals';
+import { addExportEntries, addSelectionMakers } from './ui/selection-menu';
+import {
+	FieldPress,
+	addClipboardEntries,
+	textFieldOf,
+	type FieldSpan,
+	type TextField,
+} from './ui/field-menu';
+import { DIALOG_CLASS } from './ui/dialog-class';
 import { actTitle } from './ui/beat-sheet-layout';
 import { missingResourceWord } from './ui/freeform-faces';
 import type {
@@ -722,6 +732,8 @@ export default class SnowflakeMethodPlugin
 	private unloading = false;
 	/** What is selected in the focused native Markdown editor, or null. */
 	private editorFocus: EditorFocusReport | null = null;
+	/** The selection a right-click found in a box, for the menu over it. */
+	private readonly fieldPress = new FieldPress();
 	/** Reject an earlier tab activation when its deferred load finishes late. */
 	private projectLeafActivation = 0;
 	/** Which sidebars solo folded away, so leaving it unfolds only those. */
@@ -854,6 +866,7 @@ export default class SnowflakeMethodPlugin
 				// A popout carries writing surfaces of its own, and a session
 				// must hear the typing in them.
 				this.registerWritingSurfaceWatch(targetWindow.document);
+				this.registerFieldMenu(targetWindow.document);
 			}),
 		);
 		this.registerEvent(
@@ -1317,7 +1330,7 @@ export default class SnowflakeMethodPlugin
 		this.settingTab = new SnowflakeSettingTab(this.app, this);
 		this.addSettingTab(this.settingTab);
 		this.registerEvent(
-			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
+			this.app.workspace.on('editor-menu', (menu, editor, info) => {
 				const view = findEditorViewForMarkdownInfo(info);
 				if (view === null) return;
 				const content = view.state.doc.toString();
@@ -1342,27 +1355,29 @@ export default class SnowflakeMethodPlugin
 					this.noteMentions?.addEditorMenuItems(menu, view, path, section, head);
 				}
 				if (
-					!this.settings.protectManagedBoundaries ||
-					!this.isManagedEditorContext(content)
+					this.settings.protectManagedBoundaries &&
+					this.isManagedEditorContext(content)
 				) {
-					return;
+					const unlocked = areManagedBoundariesUnlocked(view.state);
+					head();
+					menu.addItem((item) =>
+						item
+							.setSection(section)
+							.setTitle(
+								this.editorT(
+									content,
+									unlocked
+										? 'editor.managedSection.relock'
+										: 'editor.managedSection.unlock',
+								),
+							)
+							.setIcon(unlocked ? 'lock-keyhole' : 'lock-keyhole-open')
+							.onClick(() => this.toggleManagedBoundaries(info)),
+					);
 				}
-				const unlocked = areManagedBoundariesUnlocked(view.state);
-				head();
-				menu.addItem((item) =>
-					item
-						.setSection(section)
-						.setTitle(
-							this.editorT(
-								content,
-								unlocked
-									? 'editor.managedSection.relock'
-									: 'editor.managedSection.unlock',
-							),
-						)
-						.setIcon(unlocked ? 'lock-keyhole' : 'lock-keyhole-open')
-						.onClick(() => this.toggleManagedBoundaries(info)),
-				);
+				if (path !== undefined) {
+					this.addNoteSelectionEntries(menu, editor, info, path, section, head);
+				}
 			}),
 		);
 
@@ -3812,6 +3827,7 @@ export default class SnowflakeMethodPlugin
 			this.sessions.subscribe((event) => this.handleSessionEvent(event)),
 		);
 		this.registerWritingSurfaceWatch(this.app.workspace.containerEl.doc);
+		this.registerFieldMenu(this.app.workspace.containerEl.doc);
 		// Popout windows already on screen never fire `window-open` again --
 		// a plugin update or a disable-enable with one open -- so their
 		// documents are gathered from the leaves they hold. Windows opened
@@ -3823,6 +3839,7 @@ export default class SnowflakeMethodPlugin
 			if (watched.has(doc)) return;
 			watched.add(doc);
 			this.registerWritingSurfaceWatch(doc);
+			this.registerFieldMenu(doc);
 		});
 	}
 
@@ -3888,6 +3905,109 @@ export default class SnowflakeMethodPlugin
 					.snowflakeProject ?? this.settings.recentProjectPath,
 			);
 		});
+	}
+
+	/**
+	 * The plugin's menu over words selected in a box of the dashboard or of a
+	 * dialog of its own, in one window. The press is read in the capture
+	 * phase, before the browser moves the caret, and the menu stands in for
+	 * the app's only where the right-click lands on the selection it found.
+	 */
+	private registerFieldMenu(doc: Document): void {
+		this.registerDomEvent(
+			doc,
+			'mousedown',
+			(event) => {
+				if (event.button === 2) this.fieldPress.press(this.menuField(event.target));
+			},
+			{ capture: true },
+		);
+		this.registerDomEvent(
+			doc,
+			'contextmenu',
+			(event) => {
+				const field = this.menuField(event.target);
+				const span = this.fieldPress.release(field);
+				if (field === null || span === null) return;
+				// The dashboard says whose box it is; a dialog is drawn outside
+				// the view that opened it, so the current project answers.
+				const projectPath =
+					field.closest<HTMLElement>('[data-snowflake-project]')?.dataset
+						.snowflakeProject ?? this.settings.recentProjectPath;
+				if (projectPath === null) return;
+				event.preventDefault();
+				event.stopPropagation();
+				this.openFieldMenu(field, span, projectPath, event);
+			},
+			{ capture: true },
+		);
+	}
+
+	/** A box of the dashboard or of one of the plugin's dialogs, if the event landed in one. */
+	private menuField(target: EventTarget | null): TextField | null {
+		const field = textFieldOf(target);
+		if (field === null) return null;
+		return field.closest(`.${DIALOG_CLASS}`) !== null ||
+			field.closest('.snowflake-method-dashboard') !== null
+			? field
+			: null;
+	}
+
+	/**
+	 * The box's own cut, copy and paste over the selection, then the
+	 * manuscript menu's entries for the words: made into an entity or a
+	 * sticky note in the project, or written out as plain text.
+	 */
+	private openFieldMenu(
+		field: TextField,
+		span: FieldSpan,
+		projectPath: string,
+		event: MouseEvent,
+	): void {
+		const locale = this.projectLocaleOfPath(projectPath);
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(locale, key, vars);
+		const settled = (work: Promise<void>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		const menu = new Menu();
+		addClipboardEntries(menu, {
+			t,
+			field,
+			span,
+			showError: (error) => {
+				this.showError(error);
+			},
+		});
+		const section = 'snowflake-method';
+		menu.addItem((item) =>
+			item.setSection(section).setIsLabel(true).setTitle(t('plugin.name')),
+		);
+		const ref = this.projectRefAtPath(projectPath);
+		if (ref !== null && !ref.readOnly) {
+			addSelectionMakers(menu, {
+				t,
+				section,
+				selection: span.text,
+				addEntity: (name) => {
+					settled(this.addEntityFromText(ref.projectFile, name));
+				},
+				addStickyNote: (text) => {
+					settled(this.addStickyNoteFromText(ref.projectFile, text));
+				},
+			});
+		}
+		addExportEntries(menu, {
+			t,
+			section,
+			selection: span.text,
+			exportSelection: (text) => {
+				settled(this.exportFieldPassage(projectPath, text));
+			},
+		});
+		menu.showAtMouseEvent(event);
 	}
 
 	/**
@@ -6960,10 +7080,67 @@ export default class SnowflakeMethodPlugin
 	 * where a file it wrote would be read as one of that project's notes.
 	 */
 	async exportNote(path: string): Promise<void> {
+		await this.exportOutOfNote(path, () => ({ kind: 'segment', path }));
+	}
+
+	/** Words selected in a note, written as `exportNote` writes the note itself. */
+	async exportPassage(path: string, text: string): Promise<void> {
+		await this.exportOutOfNote(path, (locale) =>
+			this.passageScope(locale, fileStem(path), text),
+		);
+	}
+
+	/** Words selected in one note of the stream, written under its project. */
+	async exportManuscriptPassage(
+		projectPath: string | null,
+		path: string,
+		text: string,
+	): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.runExport(project, this.passageScope(project.locale, fileStem(path), text));
+	}
+
+	/**
+	 * Words selected in a box of the dashboard or of a dialog, written under
+	 * the project they belong to and named after it, since no note holds them.
+	 */
+	async exportFieldPassage(projectPath: string | null, text: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		await this.runExport(project, this.passageScope(project.locale, project.title, text));
+	}
+
+	/**
+	 * A passage's file is named after where its words came from, marked as an
+	 * excerpt and numbered, so a second excerpt from the same place is kept
+	 * beside the first rather than written over it.
+	 */
+	private passageScope(
+		locale: 'en' | 'zh-CN' | null,
+		name: string,
+		text: string,
+	): ManuscriptExportScope {
+		return {
+			kind: 'passage',
+			name: (number) =>
+				this.translateForProject(locale, 'manuscript.menu.passageFile', { name, number }),
+			text,
+		};
+	}
+
+	/**
+	 * An export out of one note: under the note's project when it has one, and
+	 * straight into the export folder when it has none, as `exportNote` says.
+	 */
+	private async exportOutOfNote(
+		path: string,
+		scope: (locale: 'en' | 'zh-CN' | null) => ManuscriptExportScope,
+	): Promise<void> {
 		const root = this.noteProjectRoot(path);
 		if (root !== null) {
 			const project = await this.resolveProject(root);
-			if (project !== null) await this.runExport(project, { kind: 'segment', path });
+			if (project !== null) await this.runExport(project, scope(project.locale));
 			return;
 		}
 		const folder = this.exportOptions().folder;
@@ -6978,7 +7155,7 @@ export default class SnowflakeMethodPlugin
 			);
 			return;
 		}
-		await this.runExport(null, { kind: 'segment', path });
+		await this.runExport(null, scope(null));
 	}
 
 	async manuscriptSegmentPlainText(
@@ -7163,12 +7340,54 @@ export default class SnowflakeMethodPlugin
 	private async createStickyNote(
 		projectPath: string | null,
 		color: StickyNoteColor = DEFAULT_STICKY_NOTE_COLOR,
+		body = '',
 	): Promise<StickyNoteRecord | null> {
 		const project = await this.writableProject(projectPath);
 		if (project === null) return null;
-		const note = await this.projects.stickyNotes.create(project, color);
+		const note = await this.projects.stickyNotes.create(
+			project,
+			color,
+			undefined,
+			undefined,
+			body,
+		);
 		this.stickyNoteHub.notify();
 		return note;
+	}
+
+	/**
+	 * A sticky note holding words selected in the manuscript or a note, made
+	 * in that note's project. It floats in the author's window as a new one
+	 * does where that project is the current one, the only one whose notes
+	 * float; elsewhere a notice says where it went.
+	 */
+	async addStickyNoteFromText(projectPath: string | null, text: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) {
+			new Notice(t('errors.readOnly'));
+			return;
+		}
+		const note = await this.createStickyNote(
+			project.projectFile,
+			DEFAULT_STICKY_NOTE_COLOR,
+			text,
+		);
+		if (note === null) {
+			new Notice(t('stickyNotes.refused'));
+			return;
+		}
+		if (this.settings.recentProjectPath !== project.projectFile) {
+			new Notice(t('manuscript.menu.stickyNoteAdded', { project: project.title }));
+			return;
+		}
+		await this.floatStickyNote(
+			note.id,
+			this.app.workspace.containerEl.win.activeWindow,
+			{ mode: 'editing', focus: true },
+		);
 	}
 
 	/**
@@ -9618,6 +9837,64 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * A project note's share of the stream's menu: its selected words made
+	 * into an entity or a sticky note, and the note or the words written out
+	 * as plain text. The whole manuscript is the stream's to write out, so it
+	 * is not offered here, and a note of no project is left to Obsidian.
+	 */
+	private addNoteSelectionEntries(
+		menu: Menu,
+		editor: Editor,
+		info: MarkdownView | MarkdownFileInfo,
+		path: string,
+		section: string,
+		head: () => void,
+	): void {
+		const root = this.noteProjectRoot(path);
+		if (root === null) return;
+		const locale = this.projectLocaleOfPath(path);
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(locale, key, vars);
+		const selection = editor.getSelection();
+		const settled = (work: Promise<void>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		head();
+		const ref = this.projectRefAtPath(path);
+		if (ref !== null && !ref.readOnly) {
+			addSelectionMakers(menu, {
+				t,
+				section,
+				selection,
+				addEntity: (name) => {
+					settled(this.addEntityFromText(ref.projectFile, name));
+				},
+				addStickyNote: (text) => {
+					settled(this.addStickyNoteFromText(ref.projectFile, text));
+				},
+			});
+		}
+		addExportEntries(menu, {
+			t,
+			section,
+			selection,
+			// What the editor holds is saved first, as the bar's button saves it.
+			exportNote: () => {
+				settled(
+					(info instanceof MarkdownView ? info.save() : Promise.resolve()).then(() =>
+						this.exportNote(path),
+					),
+				);
+			},
+			exportSelection: (text) => {
+				settled(this.exportPassage(path, text));
+			},
+		});
+	}
+
+	/**
 	 * The section itself, shared by the file menu and the manuscript's own.
 	 *
 	 * `source` is where the menu was raised, so the section can leave out the way
@@ -11268,11 +11545,11 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/** What a kind is called wherever a command has to ask which one. */
-	private kindLabel(kind: EntityKindId): string {
+	private kindLabel(kind: EntityKindId, t: Translate = this.t): string {
 		if (kind === 'character' || kind === 'scene') {
-			return this.t(`definition.kind.${kind}`);
+			return t(`definition.kind.${kind}`);
 		}
-		return isWorldbuildingKind(kind) ? this.t(`worldbuilding.kind.${kind}`) : kind;
+		return isWorldbuildingKind(kind) ? t(`worldbuilding.kind.${kind}`) : kind;
 	}
 
 	/**
@@ -11282,14 +11559,39 @@ export default class SnowflakeMethodPlugin
 	 */
 	private async askEntityKind(
 		project: ProjectSnapshot,
+		t: Translate = this.t,
 	): Promise<EntityKindId | null> {
 		return promptForDefinitionKind(
 			this.app,
-			this.t,
+			t,
 			entityKindIds(project.worldbuildingKinds).map((kind) => ({
 				kind,
-				label: this.kindLabel(kind),
+				label: this.kindLabel(kind, t),
 			})),
+		);
+	}
+
+	/**
+	 * A note made from words selected in the manuscript or a note: the kind is
+	 * asked first, then that kind's own form opens with the words as its name.
+	 * The form is the dashboard's, so it is the whole form the dashboard's
+	 * button opens, and the page the author was on stays in front.
+	 */
+	async addEntityFromText(projectPath: string | null, name: string): Promise<void> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return;
+		const t = (key: string, vars?: Record<string, string | number>): string =>
+			this.translateForProject(project.locale, key, vars);
+		if (project.readOnly) {
+			new Notice(t('errors.readOnly'));
+			return;
+		}
+		const kind = await this.askEntityKind(project, t);
+		if (kind === null) return;
+		await this.withDashboardForm(
+			(view) => view.createMemberThroughForm(kind, name),
+			false,
+			project.projectFile,
 		);
 	}
 

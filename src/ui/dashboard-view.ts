@@ -5242,6 +5242,24 @@ export class SnowflakeDashboardView extends ItemView {
 	}
 
 	/**
+	 * The create form of one kind for another surface, opened with the name it
+	 * hands in: the manuscript's menu, which makes a note from words selected
+	 * there. Always the form, whatever a field would do, since the author
+	 * asked for it. Resolves with whether a note was made.
+	 */
+	async createMemberThroughForm(kind: EntityKindId, name: string): Promise<boolean> {
+		const requestedProject = this.projectPath;
+		if (requestedProject === null) return false;
+		const model = await this.host.loadDashboardModel(requestedProject);
+		if (this.projectPath !== requestedProject) return false;
+		if (model === null || model.readOnly) return false;
+		const made = await this.createInGroupThroughForm(model, kind, name, undefined, async () => {
+			this.queueRefreshWhenShown();
+		});
+		return made !== null;
+	}
+
+	/**
 	 * The worldbuilding form for another surface, as `openSceneForm` is: one
 	 * note's editor, opened on its description when asked, or the create form
 	 * of a kind with what the asker knows preset. Resolves when the modal is

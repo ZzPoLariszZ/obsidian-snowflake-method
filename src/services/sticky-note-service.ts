@@ -94,20 +94,22 @@ export class StickyNoteService {
 	}
 
 	/**
-	 * Writes a new, empty note named for the moment of its making, in the
-	 * device's own offset; a second note born in the same millisecond takes the
+	 * Writes a new note named for the moment of its making, in the device's
+	 * own offset; a second note born in the same millisecond takes the
 	 * repository's numbered name. The folder is made on the way when missing.
+	 * It starts empty, or holding the words it was made from.
 	 */
 	async create(
 		project: ProjectRef,
 		color: StickyNoteColor = DEFAULT_STICKY_NOTE_COLOR,
 		now: Date = new Date(),
 		offsetMinutes: number = now.getTimezoneOffset(),
+		body = "",
 	): Promise<StickyNoteRecord> {
 		const stem = stickyNoteFileStem(now, offsetMinutes);
 		const created = await this.repository.createManagedFile({
 			path: `${this.folderOf(project)}/${stem}.md`,
-			template: { body: "", sections: [] },
+			template: { body, sections: [] },
 			frontmatter: stickyNoteFrontmatter({
 				projectId: project.id,
 				id: this.deps.mintId(),

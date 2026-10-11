@@ -39,6 +39,7 @@ function dashboardLeaf(
 	const openEntityForm = vi.fn((_intent: EntityFormIntent) => Promise.resolve(null));
 	const revealTask = vi.fn((_id: string) => Promise.resolve(true));
 	const createMemberFromField = vi.fn((_group: string, _name: string) => Promise.resolve<{ id: string; name: string } | null>({ id: 'made-1', name: 'Ferryman' }));
+	const createMemberThroughForm = vi.fn((_kind: string, _name: string) => Promise.resolve(true));
 	const queueRefreshWhenShown = vi.fn();
 	Object.assign(dashboard, {
 		getProjectPath: () => path,
@@ -47,6 +48,7 @@ function dashboardLeaf(
 		openEntityForm,
 		revealTask,
 		createMemberFromField,
+		createMemberThroughForm,
 		queueRefreshWhenShown,
 	});
 	let state: ViewState = {
@@ -66,7 +68,7 @@ function dashboardLeaf(
 			leaf.view = dashboard;
 		}),
 	};
-	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, createMemberFromField, queueRefreshWhenShown };
+	return { leaf, openSceneForm, openCharacterForm, openEntityForm, revealTask, createMemberFromField, createMemberThroughForm, queueRefreshWhenShown };
 }
 
 function pluginWith(
@@ -278,5 +280,41 @@ describe('one task revealed on its project’s board', () => {
 		const { plugin } = pluginWith([]);
 		Object.assign(plugin, { selectProject: vi.fn(() => Promise.resolve()) });
 		await expect(plugin.revealTask(projectPath, 'task-1')).resolves.toBe(false);
+	});
+});
+
+describe('a note made from words selected in the manuscript', () => {
+	/** The plugin over one standing dashboard, its project read as asked and the kind picked as given. */
+	function asked(kind: string | null, readOnly = false) {
+		const standing = dashboardLeaf();
+		const { plugin } = pluginWith([standing.leaf]);
+		const askEntityKind = vi.fn(() => Promise.resolve(kind));
+		Object.assign(plugin, {
+			resolveProject: vi.fn(() => Promise.resolve({
+				projectFile: projectPath, locale: 'en', readOnly, worldbuildingKinds: [],
+			})),
+			translateForProject: (_locale: unknown, key: string) => key,
+			askEntityKind,
+		});
+		return { plugin, standing, askEntityKind };
+	}
+
+	it("asks the kind, then opens that kind's form in the project's dashboard with the words as its name", async () => {
+		const { plugin, standing } = asked('location');
+		await plugin.addEntityFromText(projectPath, 'Ash Tree');
+		expect(standing.createMemberThroughForm).toHaveBeenCalledExactlyOnceWith('location', 'Ash Tree');
+	});
+
+	it('opens nothing when the author walks away from the kinds', async () => {
+		const { plugin, standing } = asked(null);
+		await plugin.addEntityFromText(projectPath, 'Ash Tree');
+		expect(standing.createMemberThroughForm).not.toHaveBeenCalled();
+	});
+
+	it('asks nothing in a project that cannot be written', async () => {
+		const { plugin, standing, askEntityKind } = asked('location', true);
+		await plugin.addEntityFromText(projectPath, 'Ash Tree');
+		expect(askEntityKind).not.toHaveBeenCalled();
+		expect(standing.createMemberThroughForm).not.toHaveBeenCalled();
 	});
 });

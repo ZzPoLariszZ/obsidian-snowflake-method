@@ -102,6 +102,7 @@ import {
 } from './revision-cards';
 import { projectedIndexAt } from './prose-projection';
 import { confirmStreamReplaceAll, confirmStreamReplaceMarked } from './modals';
+import { addExportEntries, addSelectionMakers } from './selection-menu';
 import {
 	StreamSearch,
 	type MarkedPassage,
@@ -2813,6 +2814,19 @@ export class SnowflakeManuscriptView extends ItemView {
 	}
 
 	/**
+	 * The words selected for a right-click on one note: the editor's own
+	 * selection on the note being written in, as the note holds them, and
+	 * nothing anywhere else, as for a foreshadowing. A note being read takes
+	 * no selection: the app keeps its rendered words from being selected.
+	 */
+	private menuSelection(path: string): string {
+		const editing = this.editingPath === path ? this.mounted.get(path)?.editor : null;
+		if (editing == null) return '';
+		const { from, to } = editing.selection();
+		return editing.read().slice(from, to);
+	}
+
+	/**
 	 * The passage a foreshadowing would be anchored to: the editor's own
 	 * selection on the note being written in, and nothing anywhere else --
 	 * the one place a revision is begun from too, and for the same reason:
@@ -5054,6 +5068,11 @@ export class SnowflakeManuscriptView extends ItemView {
 				MANUSCRIPT_VIEW_TYPE,
 				mentionLead,
 			);
+			const guarded = (work: Promise<void>): void => {
+				void work.catch((error: unknown) => {
+					this.showError(error);
+				});
+			};
 			if (this.model?.readOnly !== true && entry?.text.readOnly !== true) {
 				menu.addItem((item) =>
 					item
@@ -5076,11 +5095,6 @@ export class SnowflakeManuscriptView extends ItemView {
 				const passage =
 					entry === undefined ? null : this.selectedPassage(entry);
 				const threads = this.mentionState?.foreshadowings ?? [];
-				const guarded = (work: Promise<void>): void => {
-					void work.catch((error: unknown) => {
-						this.showError(error);
-					});
-				};
 				menu.addItem((item) =>
 					item
 						.setSection(section)
@@ -5118,6 +5132,24 @@ export class SnowflakeManuscriptView extends ItemView {
 					);
 				}
 			}
+			// The words selected, made into something new or written out, as a
+			// project note's own menu offers them too. Making needs a project
+			// that may be written; writing out only reads.
+			const selected = this.menuSelection(segment.path);
+			const projectPath = this.model?.projectPath ?? this.projectPath;
+			if (this.model?.readOnly !== true) {
+				addSelectionMakers(menu, {
+					t: this.t,
+					section,
+					selection: selected,
+					addEntity: (name) => {
+						guarded(this.host.addEntityFromText(projectPath, name));
+					},
+					addStickyNote: (text) => {
+						guarded(this.host.addStickyNoteFromText(projectPath, text));
+					},
+				});
+			}
 			menu.addItem((item) =>
 				item
 					.setSection(section)
@@ -5141,6 +5173,20 @@ export class SnowflakeManuscriptView extends ItemView {
 						}),
 				);
 			}
+			addExportEntries(menu, {
+				t: this.t,
+				section,
+				selection: selected,
+				exportNote: () => {
+					guarded(this.exportSegment(segment.path));
+				},
+				exportManuscript: () => {
+					guarded(this.exportWholeManuscript());
+				},
+				exportSelection: (text) => {
+					guarded(this.host.exportManuscriptPassage(projectPath, segment.path, text));
+				},
+			});
 
 			const file = this.app.vault.getFileByPath(segment.path);
 			if (file !== null) {

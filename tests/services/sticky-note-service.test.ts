@@ -56,6 +56,12 @@ describe("StickyNoteService", () => {
 		project = await service.createProject({ title: "Novel", locale: "en" });
 	});
 
+	it("starts a note holding the words it was made from", async () => {
+		const note = await sticky().create(project, undefined, INSTANT, -60, "The **ash** tree.");
+		expect(note.body).toBe("The **ash** tree.");
+		expect(fakeVault.contents.get(PATH)).toMatch(/---\nThe \*\*ash\*\* tree\.$/u);
+	});
+
 	it("keeps its notes in the task-management chain of either language", async () => {
 		expect(sticky().folderOf(project)).toBe(FOLDER);
 		const zh = await service.createProject({ title: "小说", locale: "zh-CN" });

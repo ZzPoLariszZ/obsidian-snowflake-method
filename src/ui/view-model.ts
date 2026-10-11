@@ -524,6 +524,19 @@ export interface ManuscriptHost {
 		projectPath: string | null,
 		path: string,
 	): Promise<void>;
+	/** Writes words selected in one note as plain text, named after the note. */
+	exportManuscriptPassage(
+		projectPath: string | null,
+		path: string,
+		text: string,
+	): Promise<void>;
+	/**
+	 * Asks which kind of note to make, then opens that kind's own form with the
+	 * words given as its name, while the stream stays in front.
+	 */
+	addEntityFromText(projectPath: string | null, name: string): Promise<void>;
+	/** A sticky note holding the words given, floated as a new one is. */
+	addStickyNoteFromText(projectPath: string | null, text: string): Promise<void>;
 	/** One note's plain text under the export settings, for the clipboard. */
 	manuscriptSegmentPlainText(
 		projectPath: string | null,

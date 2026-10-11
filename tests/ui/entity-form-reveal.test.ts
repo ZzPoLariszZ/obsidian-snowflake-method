@@ -127,6 +127,25 @@ describe('worldbuilding forms opened from another surface', () => {
 		expect(await closing).toBe('entity-9');
 	});
 
+	it('opens the create form on the words handed in, though a field would make the note from them alone', async () => {
+		const { view, opened, createEntity } = dashboard([]);
+		Object.assign((view as unknown as { host: object }).host, {
+			opensFormWhenCreatingFromField: () => false,
+		});
+		const making = view.createMemberThroughForm('location', 'Ash Tree');
+		await vi.waitFor(() => expect(opened).toHaveLength(1));
+		const form = opened[0]!;
+		expect((form as unknown as { value: { kind: string; name: string } }).value).toMatchObject({
+			kind: 'location',
+			name: 'Ash Tree',
+		});
+		await submit(form, { kind: 'location', name: 'Ash Tree', description: '' });
+		expect(createEntity).toHaveBeenCalledOnce();
+		form.onClose();
+		expect(await making).toBe(true);
+		expect(view).toMatchObject({ refreshQueuedWhileHidden: true });
+	});
+
 	it('does not open an editor for a note that cannot be written, or one that is gone', async () => {
 		const { view, opened } = dashboard([entity({ readOnly: true })]);
 		expect(await view.openEntityForm({ mode: 'edit', id: 'entity-1', section: 'description' })).toBeNull();

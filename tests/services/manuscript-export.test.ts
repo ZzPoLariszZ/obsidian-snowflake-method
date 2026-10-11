@@ -86,6 +86,34 @@ describe("ManuscriptExportService", () => {
     ).toBe("One\n\u2003\u2003First bold words.\n");
   });
 
+  it("writes a passage under the first number its name has free, read as the note's words are", async () => {
+    const name = (number: number): string => `Draft (excerpt ${number})`;
+    const plan = await service.exporter.plan(
+      project,
+      { kind: "passage", name, text: "First **bold** words.\n\nSee [[Character/Alice|Alice]]." },
+      options,
+    );
+    expect(plan.targets.map((target) => [target.path, target.exists])).toEqual([
+      ["Out/Novel/Draft (excerpt 1).txt", false],
+    ]);
+    await service.exporter.write(plan);
+    expect(fakeVault.contents.get("Out/Novel/Draft (excerpt 1).txt")).toBe(
+      "\u2003\u2003First bold words.\n\n\u2003\u2003See Alice.\n",
+    );
+    // A second passage from the same place takes the next number.
+    const second = await service.exporter.plan(project, { kind: "passage", name, text: "More." }, options);
+    expect(second.targets.map((target) => [target.path, target.exists])).toEqual([
+      ["Out/Novel/Draft (excerpt 2).txt", false],
+    ]);
+    // Words that come to nothing make no file.
+    const empty = await service.exporter.plan(
+      project,
+      { kind: "passage", name, text: "%% hidden %%" },
+      options,
+    );
+    expect(empty.targets).toEqual([]);
+  });
+
   it("writes a note of no project straight into the export folder, indented as its words ask", async () => {
     await fakeVault.seedFile("Loose/Idea.md", "# Idea\n\nA **plain** thought.\n");
     await fakeVault.seedFile("Loose/想法.md", "# 想法\n\n一个**简单**的念头。\n");
