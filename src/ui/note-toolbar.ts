@@ -9,21 +9,21 @@ import {
 	type MentionModeSetters,
 } from './mention-mode-menu';
 import { openPresentationPanel, type PresentationPanel } from './presentation-panel';
+import { NEXT_FOCUS_LEVEL, type FocusLevel } from './view-model';
 
 /**
  * The formatting bar above a note of Obsidian's own that wears the
- * manuscript's dress: the stream's bar, less what is the stream's alone.
+ * manuscript's dress: the stream's bar, with the note's own export.
  *
  * A note the typography reaches is read and written the way a chapter in
  * the stream is, and the author reaches for the same bar: undo and redo,
  * the heading levels, the inline marks, the dress popover, the marks the
- * page wears, the export and typewriter scrolling. The export is the
- * note's own, as the button on a chapter's header in the stream is the
- * chapter's: a tab shows one note, not the whole manuscript. The marks are
- * a project's, read off its roster, so the button that chooses them is
- * greyed on a note no project holds. What the bar leaves out is what only
- * the stream can answer -- the focus levels that fade the page around it --
- * and the popover leaves out the grid lines, which a note never wears. The
+ * page wears, the export, typewriter scrolling and focus mode. The export
+ * is the note's own, as the button on a chapter's header in the stream is
+ * the chapter's: a tab shows one note, not the whole manuscript. The marks
+ * are a project's, read off its roster, and focus mode is a project's
+ * writing, so the buttons for both are greyed on a note no project holds.
+ * The popover leaves out the grid lines, which a note never wears. The
  * bar stands where the stream's does, between the leaf's header and its
  * content, and the buttons that edit go grey while the note is read rather
  * than written, as the stream's do while no note is being written in:
@@ -36,6 +36,13 @@ import { openPresentationPanel, type PresentationPanel } from './presentation-pa
  * dress itself, so the rule can be run over plain objects in a test.
  */
 export const NOTE_TOOLBAR_CLASS = 'snowflake-method-note-toolbar';
+
+/**
+ * Worn by a note of a project while focus mode is on: the class under which
+ * styles.css fades the page around the paragraph being written, as the
+ * stream's own class does there. A class, so turning the mode moves nothing.
+ */
+export const NOTE_FOCUS_CLASS = 'snowflake-method-note-focus';
 
 /** What a note's view offers the bar: where it goes, and the editor it drives. */
 export interface ToolbarNote {
@@ -56,6 +63,7 @@ export interface ToolbarNote {
 /** The settings the bar shows and the popover writes. */
 export interface NoteToolbarSettings {
 	typewriter: boolean;
+	focusLevel: FocusLevel;
 	enterParagraph: boolean;
 	presentation: ManuscriptPresentation;
 	recentFonts: readonly string[];
@@ -75,8 +83,13 @@ export interface NoteToolbarDeps {
 	setPresentation(patch: Partial<ManuscriptPresentation>): Promise<void>;
 	setEnterParagraph(on: boolean): Promise<void>;
 	toggleTypewriter(): Promise<void>;
-	/** Whether a note at a path is in a project, whose roster its marks are read off. */
-	marks(path: string): boolean;
+	/** Focus mode one level deeper, and off again past the deepest. */
+	toggleFocus(): Promise<void>;
+	/**
+	 * Whether a note at a path is in a project: the roster its marks are read
+	 * off, and the writing focus mode reaches.
+	 */
+	inProject(path: string): boolean;
 	/** Where the marks' menu writes a pick: the settings the stream reads too. */
 	mentionModes: MentionModeSetters;
 	/** The note at a path written out as plain text, as the export settings say. */
@@ -91,8 +104,10 @@ interface MountedBar {
 	/** The marks' button, inert on a note no project holds. */
 	mentions: HTMLButtonElement;
 	typewriter: HTMLButtonElement;
-	/** Whether the typewriter button was last painted lit, so a repaint is cheap. */
-	lit: boolean | null;
+	/** Focus mode's button, inert on a note no project holds as the marks' is. */
+	focus: HTMLButtonElement;
+	/** The modes as the two buttons were last painted, so a repaint is cheap. */
+	face: string | null;
 	/** One of the bar's own words as it was drawn, which says what language it speaks. */
 	tongue: string;
 }
@@ -136,8 +151,7 @@ export class NoteToolbars {
 		// a project in another one, or the plugin's language changed, has it
 		// drawn again: its words, its menu and its popover alike.
 		if (bar !== undefined && (!wears || bar.tongue !== this.deps.t(note.path)(TONGUE_KEY))) {
-			bar.el.remove();
-			this.bars.delete(note.containerEl);
+			this.unmount(note.containerEl, bar);
 			bar = undefined;
 		}
 		if (!wears) return;
@@ -158,10 +172,15 @@ export class NoteToolbars {
 		this.closePanel();
 		for (const note of this.deps.notes()) {
 			const bar = this.bars.get(note.containerEl);
-			if (bar === undefined) continue;
-			bar.el.remove();
-			this.bars.delete(note.containerEl);
+			if (bar !== undefined) this.unmount(note.containerEl, bar);
 		}
+	}
+
+	/** A note's bar taken down, and the fade it switched with it. */
+	private unmount(root: HTMLElement, bar: MountedBar): void {
+		bar.el.remove();
+		this.bars.delete(root);
+		root.removeClass(NOTE_FOCUS_CLASS);
 	}
 
 	private mount(note: ToolbarNote): MountedBar {
@@ -251,20 +270,31 @@ export class NoteToolbars {
 		});
 		exporter.addClass('snowflake-method-toolbar-export');
 		separator();
-		// Typewriter scrolling is the author's rather than the note's, and
-		// pressing it here turns it for the stream and every note at once.
+		// The writing modes are the author's rather than the note's, and
+		// pressing one here turns it for the stream and every note at once.
 		const typewriter = button('align-vertical-space-around', '', () => {
 			void this.deps.toggleTypewriter().catch((error: unknown) => {
 				this.deps.showError(error);
 			});
 		});
 		typewriter.addClass('snowflake-method-mode-toggle');
+		// Focus mode walks its levels as the stream's button does, fading the
+		// note around the paragraph being written, and the app around the
+		// note.
+		const focus = button('focus', '', () => {
+			if (note.path === null || !this.deps.inProject(note.path)) return;
+			void this.deps.toggleFocus().catch((error: unknown) => {
+				this.deps.showError(error);
+			});
+		});
+		focus.addClass('snowflake-method-mode-toggle', 'snowflake-method-toolbar-focus');
 		const bar: MountedBar = {
 			el,
 			editing,
 			mentions,
 			typewriter,
-			lit: null,
+			focus,
+			face: null,
 			tongue: t(TONGUE_KEY),
 		};
 		this.bars.set(note.containerEl, bar);
@@ -273,20 +303,38 @@ export class NoteToolbars {
 
 	/**
 	 * The bar's face from the note and the settings: grey while read, the
-	 * marks grey on a note no project holds, lit while on.
+	 * marks and focus mode grey on a note no project holds, the modes lit
+	 * while on, and the note faded around its paragraph while focus mode is
+	 * on and reaches it.
 	 */
 	private paint(bar: MountedBar, note: ToolbarNote): void {
 		const reading = !note.editing();
 		for (const control of bar.editing) control.disabled = reading;
-		bar.mentions.disabled = note.path === null || !this.deps.marks(note.path);
-		const on = this.deps.settings().typewriter;
-		if (bar.lit === on) return;
-		bar.lit = on;
+		const inProject = note.path !== null && this.deps.inProject(note.path);
+		bar.mentions.disabled = !inProject;
+		bar.focus.disabled = !inProject;
+		const { typewriter, focusLevel } = this.deps.settings();
+		note.containerEl.toggleClass(NOTE_FOCUS_CLASS, inProject && focusLevel !== 'off');
+		// The buttons say what the modes are, the author's across every page,
+		// as the stream's do: a greyed one says the note is out of its reach.
+		const face = `${String(typewriter)} ${focusLevel}`;
+		if (bar.face === face) return;
+		bar.face = face;
 		const t = this.deps.t(note.path);
-		bar.typewriter.toggleClass('is-active', on);
-		const state = t(on ? 'manuscript.typewriterOn' : 'manuscript.typewriterOff');
-		const then = t(on ? 'manuscript.modeTurnOff' : 'manuscript.modeTurnOn');
-		setTooltip(bar.typewriter, `${state}\n${then}`);
+		bar.typewriter.toggleClass('is-active', typewriter);
+		setTooltip(
+			bar.typewriter,
+			`${t(typewriter ? 'manuscript.typewriterOn' : 'manuscript.typewriterOff')}\n${t(
+				typewriter ? 'manuscript.modeTurnOff' : 'manuscript.modeTurnOn',
+			)}`,
+		);
+		bar.focus.toggleClass('is-active', focusLevel !== 'off');
+		setTooltip(
+			bar.focus,
+			`${t(`manuscript.focusLevel.${focusLevel}`)}\n${t(
+				`manuscript.focusNext.${NEXT_FOCUS_LEVEL[focusLevel]}`,
+			)}`,
+		);
 	}
 
 	/** A bar press, delivered to the note's editor as the author's own edit. */
@@ -320,7 +368,7 @@ export class NoteToolbars {
 	/** The stream's menu of marks, under the button of a note in a project. */
 	private openMentionMenu(note: ToolbarNote, event: MouseEvent): void {
 		const path = note.path;
-		if (path === null || !this.deps.marks(path)) return;
+		if (path === null || !this.deps.inProject(path)) return;
 		openMentionModeMenu({
 			t: this.deps.t(path),
 			choices: this.deps.settings().mentions,

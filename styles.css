@@ -8295,9 +8295,10 @@ td.snowflake-method-tracking-numeric {
 
 /* -------------------------------------------------------------------------
    The writing modes: typewriter scrolling is scrolling and needs no ink;
-   focus and solo are below. Focus is opacity from top to bottom — never
-   layout — so entering and leaving it moves nothing at all. Solo is the one
-   mode whose point is to change the layout, and it says so by existing. */
+   focus and solo are below, in the stream and in a project's notes alike.
+   Focus is opacity from top to bottom — never layout — so entering and
+   leaving it moves nothing at all. Solo is the one mode whose point is to
+   change the layout, and it says so by existing. */
 
 /* The toolbar's mode buttons, lit while their mode is on. */
 .snowflake-method-mode-toggle.is-active {
@@ -8366,10 +8367,54 @@ td.snowflake-method-tracking-numeric {
 	opacity: 1;
 }
 
-/* Focus reaches past the stream: the rest of the app steps back with it, and
+/* A project's note in a tab of Obsidian's own fades the same way while it is
+   written, which is while its editor shows: the lines and blocks of the
+   note's own editor step back but the paragraph under the caret, and a block
+   holding the caret, a table's cell being written in, stays with it. A
+   cell's own editor is faded with its table, not again inside it. */
+.snowflake-method-note-focus
+	.markdown-source-view
+	.cm-content:not(.cm-table-widget *)
+	> * {
+	opacity: 0.35;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-note-focus
+	.markdown-source-view
+	.cm-content:not(.cm-table-widget *)
+	> :is(.snowflake-method-caret-paragraph, :focus-within) {
+	opacity: 1;
+}
+
+/* The note's own chrome, its title and properties, all but disappears and
+   returns under the pointer, as a chapter's header does in the stream; what
+   follows the note, its backlinks, steps back as the stream's end does. */
+.snowflake-method-note-focus .markdown-source-view .inline-title,
+.snowflake-method-note-focus .markdown-source-view .metadata-container {
+	opacity: 0.15;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-note-focus .markdown-source-view .embedded-backlinks {
+	opacity: 0.3;
+	transition: opacity 200ms ease-in-out;
+}
+
+.snowflake-method-note-focus .markdown-source-view .inline-title:hover,
+.snowflake-method-note-focus .markdown-source-view .inline-title:focus-within,
+.snowflake-method-note-focus .markdown-source-view .metadata-container:hover,
+.snowflake-method-note-focus
+	.markdown-source-view
+	.metadata-container:focus-within {
+	opacity: 1;
+}
+
+/* Focus reaches past the page: the rest of the app steps back with it, and
    any of it returns under the pointer. The plugin's own dashboards stay
    bright unless the author asks for them faded too. Containers are told
-   apart by classes the plugin lays on them — the leaf holding a stream, its
+   apart by classes the plugin lays on them — the leaf holding the page being
+   written, which is the project's note in front or else every stream, its
    tab group and splits, the leaf holding a dashboard — because asking the
    selector engine what a container holds is the kind of question the plugin
    review flags for its invalidation costs. */
@@ -8380,7 +8425,7 @@ body.snowflake-method-focus-app .workspace-split.mod-left-split,
 body.snowflake-method-focus-app .workspace-split.mod-right-split,
 body.snowflake-method-focus-app
 	.workspace-split.mod-root
-	.workspace-leaf:not(.snowflake-method-holds-stream):not(
+	.workspace-leaf:not(.snowflake-method-holds-page):not(
 		.snowflake-method-holds-dashboard
 	) {
 	opacity: 0.25;
@@ -8390,7 +8435,7 @@ body.snowflake-method-focus-app
 body.snowflake-method-focus-app.snowflake-method-focus-dashboard
 	.workspace-split.mod-root
 	.workspace-leaf.snowflake-method-holds-dashboard:not(
-		.snowflake-method-holds-stream
+		.snowflake-method-holds-page
 	) {
 	opacity: 0.25;
 	transition: opacity 200ms ease-in-out;
@@ -8405,42 +8450,56 @@ body.snowflake-method-focus-app .workspace-split.mod-left-split:hover,
 body.snowflake-method-focus-app .workspace-split.mod-right-split:hover,
 body.snowflake-method-focus-app
 	.workspace-split.mod-root
-	.workspace-leaf:not(.snowflake-method-holds-stream):not(
+	.workspace-leaf:not(.snowflake-method-holds-page):not(
 		.snowflake-method-holds-dashboard
 	):hover,
 body.snowflake-method-focus-app.snowflake-method-focus-dashboard
 	.workspace-split.mod-root
 	.workspace-leaf.snowflake-method-holds-dashboard:not(
-		.snowflake-method-holds-stream
+		.snowflake-method-holds-page
 	):hover {
 	opacity: 1;
 }
 
-/* Solo: nothing but the manuscript. The sidebars are folded by the plugin so
-   they can be unfolded exactly as they were; the rest is simply not drawn —
-   including every pane in the main area that is not showing a stream, so the
-   one that is takes the whole window. */
+/* Solo: nothing but the page being written. The sidebars are folded by the
+   plugin so they can be unfolded exactly as they were; the rest is simply
+   not drawn — including every pane in the main area that is not showing the
+   page, so the one that is takes the whole window. */
 body.snowflake-method-solo .workspace-ribbon,
 body.snowflake-method-solo .workspace-tab-header-container,
 body.snowflake-method-solo .status-bar,
 body.snowflake-method-solo
 	.workspace-split.mod-root
-	.workspace-tabs:not(.snowflake-method-holds-stream),
+	.workspace-tabs:not(.snowflake-method-holds-page),
 body.snowflake-method-solo
 	.workspace-split.mod-root
-	.workspace-split:not(.snowflake-method-holds-stream) {
+	.workspace-split:not(.snowflake-method-holds-page) {
 	display: none;
 }
 
 /* In solo even the notes' own bookkeeping goes: where a note lives and where
    it stands are for working on the book, not for being alone with it. The
-   header holds its height, so nothing below it moves. */
+   header holds its height, so nothing below it moves. A project's note says
+   where it lives in the folders before its title in the leaf's header. */
 body.snowflake-method-solo .snowflake-method-segment-path,
-body.snowflake-method-solo .snowflake-method-segment-sequence {
+body.snowflake-method-solo .snowflake-method-segment-sequence,
+body.snowflake-method-solo
+	.snowflake-method-holds-page
+	> .snowflake-method-note-focus
+	.view-header-title-parent {
 	display: none;
 }
 
 .snowflake-method-reduce-motion .snowflake-method-segment.is-writing .cm-line,
+.snowflake-method-reduce-motion
+	.snowflake-method-note-focus
+	.markdown-source-view
+	.cm-content:not(.cm-table-widget *)
+	> *,
+.snowflake-method-reduce-motion
+	.snowflake-method-note-focus
+	.markdown-source-view
+	:is(.inline-title, .metadata-container, .embedded-backlinks),
 .snowflake-method-reduce-motion .snowflake-method-segment,
 .snowflake-method-reduce-motion .snowflake-method-segment-header,
 .snowflake-method-reduce-motion .snowflake-method-segment-boundary,

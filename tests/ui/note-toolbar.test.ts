@@ -8,10 +8,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_MANUSCRIPT_PRESENTATION } from '../../src/domain';
 import {
+	NOTE_FOCUS_CLASS,
 	NOTE_TOOLBAR_CLASS,
 	NoteToolbars,
 	type ToolbarNote,
 } from '../../src/ui/note-toolbar';
+import { NEXT_FOCUS_LEVEL, type FocusLevel } from '../../src/ui/view-model';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
 interface ShownItem {
@@ -65,9 +67,9 @@ vi.mock('obsidian', async (importOriginal) => {
 /**
  * The stream's bar above a note of Obsidian's own, over plain elements:
  * put up for the notes the dress reaches and taken down for the rest,
- * grey while the note is read, lit while typewriter scrolling is on,
- * driving the note's own editor, choosing the marks a project's note
- * wears, and exporting the note it shows.
+ * grey while the note is read, lit while the modes are on, driving the
+ * note's own editor, choosing the marks a project's note wears, fading a
+ * project's note in focus mode, and exporting the note it shows.
  */
 describe('NoteToolbars', () => {
 	beforeAll(() => {
@@ -121,6 +123,7 @@ describe('NoteToolbars', () => {
 	) {
 		const calls: string[] = [];
 		let typewriter = false;
+		let focusLevel: FocusLevel = 'off';
 		const record = (call: string): Promise<void> => {
 			calls.push(call);
 			return Promise.resolve();
@@ -132,6 +135,7 @@ describe('NoteToolbars', () => {
 			notes: () => notes,
 			settings: () => ({
 				typewriter,
+				focusLevel,
 				enterParagraph: true,
 				presentation: DEFAULT_MANUSCRIPT_PRESENTATION,
 				recentFonts: [],
@@ -149,7 +153,12 @@ describe('NoteToolbars', () => {
 				calls.push('typewriter');
 				return Promise.resolve();
 			},
-			marks: inProject,
+			toggleFocus: () => {
+				focusLevel = NEXT_FOCUS_LEVEL[focusLevel];
+				calls.push(`focus:${focusLevel}`);
+				return Promise.resolve();
+			},
+			inProject,
 			mentionModes: {
 				setMentionHighlight: (mode) => record(`mentions:${mode}`),
 				setSensitiveHighlight: (on) => record(`sensitive:${String(on)}`),
@@ -164,7 +173,16 @@ describe('NoteToolbars', () => {
 				calls.push(`error:${String(error)}`);
 			},
 		});
-		return { toolbars, calls, setTypewriter: (on: boolean) => { typewriter = on; } };
+		return {
+			toolbars,
+			calls,
+			setTypewriter: (on: boolean) => {
+				typewriter = on;
+			},
+			setFocus: (level: FocusLevel) => {
+				focusLevel = level;
+			},
+		};
 	}
 
 	const bar = (one: ToolbarNote): HTMLElement | null =>
@@ -188,13 +206,16 @@ describe('NoteToolbars', () => {
 		expect(dressed.containerEl.querySelectorAll(`.${NOTE_TOOLBAR_CLASS}`)).toHaveLength(1);
 	});
 
-	it('leaves out what is the stream’s alone, and keeps the rest', () => {
+	it('carries the stream’s buttons, with the note’s own export', () => {
 		const one = note('Novel/Chapter.md');
 		const { toolbars } = harness([one], () => true);
 		toolbars.apply();
 		const mounted = bar(one) as HTMLElement;
-		// Typewriter scrolling alone of the modes: focus fades the stream.
-		expect(mounted.querySelectorAll('.snowflake-method-mode-toggle')).toHaveLength(1);
+		// Both modes, focus after typewriter scrolling as on the stream's bar.
+		const modes = mounted.querySelectorAll('.snowflake-method-mode-toggle');
+		expect(modes).toHaveLength(2);
+		expect(modes[1]?.classList.contains('snowflake-method-toolbar-focus')).toBe(true);
+		expect(modes[1]?.previousElementSibling).toBe(modes[0]);
 		expect(mounted.querySelector('.snowflake-method-toolbar-presentation')).not.toBeNull();
 		// The marks, named as the stream's button is, between the dress and the export.
 		const mentions = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-mentions');
@@ -206,11 +227,11 @@ describe('NoteToolbars', () => {
 		expect(exporter?.getAttribute('data-tooltip')).toBe('manuscript.exportNote');
 		expect(exporter?.previousElementSibling).toBe(mentions);
 		// Undo, redo, two headings and the ladder, five marks, the dress, the
-		// mentions, the export, the mode.
-		expect(mounted.querySelectorAll('button')).toHaveLength(14);
+		// mentions, the export, the two modes.
+		expect(mounted.querySelectorAll('button')).toHaveLength(15);
 	});
 
-	it('greys the editing buttons while the note is read, and lights the mode', () => {
+	it('greys the editing buttons while the note is read, and lights the modes', () => {
 		const one = note('Novel/Chapter.md');
 		const { toolbars, setTypewriter } = harness([one], () => true);
 		toolbars.apply();
@@ -234,6 +255,7 @@ describe('NoteToolbars', () => {
 		const mode = mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle');
 		expect(mode?.disabled).toBe(false);
 		expect(mode?.classList.contains('is-active')).toBe(false);
+		expect(mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-focus')?.disabled).toBe(false);
 		setTypewriter(true);
 		toolbars.sync();
 		expect(mode?.classList.contains('is-active')).toBe(true);
@@ -299,6 +321,78 @@ describe('NoteToolbars', () => {
 		loose.path = 'Novel/Idea.md';
 		toolbars.apply();
 		expect(button(loose).disabled).toBe(false);
+	});
+
+	it('walks focus mode through the host, and fades a project’s note while it is on', () => {
+		const chapter = note('Novel/Chapter.md');
+		const loose = note('Loose/Idea.md');
+		const { toolbars, calls, setFocus } = harness(
+			[chapter, loose],
+			() => true,
+			() => '',
+			(path) => path.startsWith('Novel/'),
+		);
+		toolbars.apply();
+		const button = (one: FakeNote): HTMLButtonElement =>
+			(bar(one) as HTMLElement).querySelector<HTMLButtonElement>(
+				'.snowflake-method-toolbar-focus',
+			) as HTMLButtonElement;
+		const faded = (one: FakeNote): boolean => one.containerEl.classList.contains(NOTE_FOCUS_CLASS);
+		// Off: unlit, nothing faded, the tooltip naming the level and the next.
+		expect(button(chapter).disabled).toBe(false);
+		expect(button(chapter).classList.contains('is-active')).toBe(false);
+		expect(button(chapter).getAttribute('data-tooltip')).toBe(
+			'manuscript.focusLevel.off\nmanuscript.focusNext.on',
+		);
+		expect(faded(chapter)).toBe(false);
+		// A press goes through the host, one level deeper each time, while
+		// the note is read as well as while it is written.
+		chapter.mode = 'preview';
+		toolbars.apply();
+		button(chapter).click();
+		button(chapter).click();
+		expect(calls).toEqual(['focus:on', 'focus:deep']);
+		// The settings changed: the bar lit and captioned anew, the project's
+		// note faded, and a note no project holds greyed and left alone.
+		toolbars.sync();
+		expect(button(chapter).classList.contains('is-active')).toBe(true);
+		expect(button(chapter).getAttribute('data-tooltip')).toBe(
+			'manuscript.focusLevel.deep\nmanuscript.focusNext.solo',
+		);
+		expect(faded(chapter)).toBe(true);
+		expect(button(loose).disabled).toBe(true);
+		expect(faded(loose)).toBe(false);
+		// A press that reaches a greyed button anyway turns nothing.
+		button(loose).dispatchEvent(new MouseEvent('click'));
+		expect(calls).toEqual(['focus:on', 'focus:deep']);
+		// The note moved into a project, and the tab turned to one outside.
+		loose.path = 'Novel/Idea.md';
+		chapter.path = 'Loose/Chapter.md';
+		toolbars.apply();
+		expect(faded(loose)).toBe(true);
+		expect(faded(chapter)).toBe(false);
+		// Off again: nothing faded anywhere.
+		setFocus('off');
+		toolbars.sync();
+		expect(faded(loose)).toBe(false);
+		expect(button(loose).classList.contains('is-active')).toBe(false);
+	});
+
+	it('takes the fade off with the bar, when the dress stops reaching the note', () => {
+		const one = note('Novel/Chapter.md');
+		let reaches = true;
+		const { toolbars, setFocus } = harness([one], () => reaches);
+		setFocus('solo');
+		toolbars.apply();
+		expect(one.containerEl.classList.contains(NOTE_FOCUS_CLASS)).toBe(true);
+		reaches = false;
+		toolbars.apply();
+		expect(one.containerEl.classList.contains(NOTE_FOCUS_CLASS)).toBe(false);
+		reaches = true;
+		toolbars.apply();
+		expect(one.containerEl.classList.contains(NOTE_FOCUS_CLASS)).toBe(true);
+		toolbars.destroy();
+		expect(one.containerEl.classList.contains(NOTE_FOCUS_CLASS)).toBe(false);
 	});
 
 	it('exports the note the tab shows now, what was typed saved first, while read too', async () => {

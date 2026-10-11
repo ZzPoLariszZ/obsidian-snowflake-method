@@ -175,9 +175,10 @@ export const paragraphLines: Extension = ViewPlugin.fromClass(
 );
 
 /**
- * Asks every editor carrying `paragraphLinesWhen` to decide afresh whether
- * its note is dressed: dispatched after the scope or the roster of projects
- * changes, which the editor cannot see for itself.
+ * Asks every editor carrying `paragraphLinesWhen` or `caretParagraphWhen` to
+ * decide afresh whether its note is one they reach: dispatched after the
+ * scope or the roster of projects changes, which the editor cannot see for
+ * itself.
  */
 export const refreshParagraphLines = StateEffect.define<null>();
 

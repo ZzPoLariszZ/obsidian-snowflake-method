@@ -343,6 +343,17 @@ export interface ManuscriptSegmentText {
 	readOnly: boolean;
 }
 
+/** How far focus mode reaches; 'off' fades nothing. */
+export type FocusLevel = 'off' | 'on' | 'deep' | 'solo';
+
+/** One press of a focus button deeper each time, and off again past the deepest. */
+export const NEXT_FOCUS_LEVEL = {
+	off: 'on',
+	on: 'deep',
+	deep: 'solo',
+	solo: 'off',
+} as const satisfies Record<FocusLevel, FocusLevel>;
+
 export interface ManuscriptWindowSettings {
 	before: number;
 	after: number;
@@ -351,7 +362,7 @@ export interface ManuscriptWindowSettings {
 	/** The line being written held at the middle of the page. */
 	typewriter: boolean;
 	/** How far the fading reaches; 'off' fades nothing. */
-	focusLevel: 'off' | 'on' | 'deep' | 'solo';
+	focusLevel: FocusLevel;
 	/** Brackets and quotes close themselves in the editor. */
 	autoPairBrackets: boolean;
 	/** Emphasis markers close themselves in the editor. */

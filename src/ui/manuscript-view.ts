@@ -105,6 +105,7 @@ import {
 } from './segment-editor-backend';
 import {
 	ManuscriptSaveConflict,
+	NEXT_FOCUS_LEVEL,
 	type ManuscriptHost,
 	type ManuscriptModel,
 	type ManuscriptSegmentText,
@@ -147,14 +148,6 @@ const ARRIVAL_FRAMES = 90;
  * through both.
  */
 const LOOK_SETTLING_MS = 150;
-
-/** One press deeper each time, and off again past the deepest. */
-export const NEXT_FOCUS_LEVEL = {
-	off: 'on',
-	on: 'deep',
-	deep: 'solo',
-	solo: 'off',
-} as const;
 
 interface ManuscriptViewStateSnapshot {
 	projectPath: string | null;

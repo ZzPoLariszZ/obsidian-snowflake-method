@@ -24,6 +24,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import {
 	MARKDOWN_LANGUAGE,
 	autoPair,
+	caretParagraph,
 	deleteAutoPair,
 	mentionHighlights,
 	mentionMarkAt,
@@ -42,17 +43,8 @@ import {
 	EditorState,
 	type Extension,
 } from '@codemirror/state';
-import {
-	Decoration,
-	EditorView,
-	ViewPlugin,
-	keymap,
-	tooltips,
-	type DecorationSet,
-	type ViewUpdate,
-} from '@codemirror/view';
+import { EditorView, keymap, tooltips } from '@codemirror/view';
 
-import { paragraphAround } from './caret-paragraph';
 import { DIALOG_CLASS } from './dialog-class';
 import { findPassage } from './prose-projection';
 import { wikilinkOptions, wikilinkReplaceRange } from './wikilink-complete';
@@ -203,47 +195,6 @@ export interface SegmentEditorHooks {
 
 /** Marks a change the editor was handed rather than one the author typed. */
 const FROM_ELSEWHERE = Annotation.define<boolean>();
-
-const CARET_PARAGRAPH = Decoration.line({
-	class: 'snowflake-method-caret-paragraph',
-});
-
-function lightParagraph(state: EditorState): DecorationSet {
-	const doc = state.doc;
-	const bounds = paragraphAround(
-		{ lines: doc.lines, lineText: (line) => doc.line(line).text },
-		doc.lineAt(state.selection.main.head).number,
-	);
-	if (bounds === null) return Decoration.none;
-	const lines = [];
-	for (let line = bounds.first; line <= bounds.last; line += 1) {
-		lines.push(CARET_PARAGRAPH.range(doc.line(line).from));
-	}
-	return Decoration.set(lines);
-}
-
-/**
- * Marks the lines of the paragraph the caret is in, always. The styling that
- * fades everything else is applied by the view, in focus mode only, so keeping
- * the mark current is the whole of this plugin's job — a toggle is a class
- * flip, never an editor reconfiguration.
- */
-const caretParagraph = ViewPlugin.fromClass(
-	class {
-		decorations: DecorationSet;
-
-		constructor(view: EditorView) {
-			this.decorations = lightParagraph(view.state);
-		}
-
-		update(update: ViewUpdate): void {
-			if (update.docChanged || update.selectionSet) {
-				this.decorations = lightParagraph(update.state);
-			}
-		}
-	},
-	{ decorations: (plugin) => plugin.decorations },
-);
 
 /** Enter as the manuscript's paragraph break; declines outside prose. */
 const breaksParagraph = (view: EditorView): boolean => {

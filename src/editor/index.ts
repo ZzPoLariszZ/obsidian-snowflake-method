@@ -1,4 +1,5 @@
 export * from './auto-pair';
+export * from './caret-paragraph';
 export * from './format-commands';
 export * from './inline-format';
 export * from './managed-section-editor';

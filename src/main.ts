@@ -16,6 +16,7 @@ import {
 	type EditorPosition,
 	type MarkdownFileInfo,
 	type TAbstractFile,
+	type View,
 	type WorkspaceLeaf,
 } from 'obsidian';
 
@@ -141,6 +142,7 @@ import {
 import { resolveGlobalLocale, resolveLocale, t as translate } from './i18n';
 import {
 	areManagedBoundariesUnlocked,
+	caretParagraphWhen,
 	createManagedSectionEditorExtension,
 	createSelectionWatchExtension,
 	type EditorFocusReport,
@@ -272,7 +274,6 @@ import {
 	MANUSCRIPT_EDITING_HOVER_SOURCE,
 	MANUSCRIPT_READING_HOVER_SOURCE,
 	MANUSCRIPT_VIEW_TYPE,
-	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
 import {
@@ -431,7 +432,7 @@ import type {
 	WorldbuildingEntityViewModel,
 } from './ui/view-model';
 import type { EntityGroupId } from './ui/entity-form';
-import { ManuscriptSaveConflict, kindEntities } from './ui/view-model';
+import { ManuscriptSaveConflict, NEXT_FOCUS_LEVEL, kindEntities } from './ui/view-model';
 
 const REFRESH_DELAY_MS = 250;
 /**
@@ -887,9 +888,10 @@ export default class SnowflakeMethodPlugin
 		// the three moments a note can newly be on screen -- with the stream's
 		// bar above each, and in each one's editor what the stream's editors
 		// carry: the line marks that go with the dress, Enter as the paragraph
-		// break, typewriter scrolling and a project's mention marks, put in
-		// once the project service below stands. All worn by an editor only
-		// while its note is one the scope reaches.
+		// break, typewriter scrolling, and a project's mention marks and the
+		// paragraph focus mode keeps, put in once the project service below
+		// stands. All worn by an editor only while its note is one the scope
+		// reaches.
 		this.notePresentation = new NotePresentation({
 			look: () => this.manuscriptPresentation(),
 			scope: () => this.settings.manuscriptPresentationScope,
@@ -908,6 +910,7 @@ export default class SnowflakeMethodPlugin
 			notes: () => this.openNotes(),
 			settings: () => ({
 				typewriter: this.settings.manuscriptTypewriter,
+				focusLevel: this.settings.manuscriptFocusLevel,
 				enterParagraph: this.settings.manuscriptEnterParagraph,
 				presentation: this.manuscriptPresentation(),
 				recentFonts: this.settings.manuscriptRecentFonts,
@@ -921,7 +924,8 @@ export default class SnowflakeMethodPlugin
 			setPresentation: (patch) => this.setManuscriptPresentation(patch),
 			setEnterParagraph: (on) => this.setManuscriptEnterParagraph(on),
 			toggleTypewriter: () => this.toggleManuscriptMode('typewriter'),
-			marks: (path) => this.noteMentionProject(path) !== null,
+			toggleFocus: () => this.toggleManuscriptMode('focus'),
+			inProject: (path) => this.dressedNoteProject(path) !== null,
 			mentionModes: {
 				setMentionHighlight: (mode) => this.setManuscriptMentionHighlight(mode),
 				setSensitiveHighlight: (on) => this.setSensitiveHighlight(on),
@@ -938,7 +942,7 @@ export default class SnowflakeMethodPlugin
 		// view, section by section as the app draws it, both from the feed
 		// the note's project gives.
 		this.noteMentions = new NoteMentions({
-			projectOf: (path) => this.noteMentionProject(path),
+			projectOf: (path) => this.dressedNoteProject(path),
 			feed: (projectPath) => this.noteMentionFeed(projectPath),
 			mode: () => this.settings.manuscriptMentionHighlight,
 			documentType: (path) => {
@@ -1123,6 +1127,7 @@ export default class SnowflakeMethodPlugin
 			typewriterWhen(
 				(state) => this.settings.manuscriptTypewriter && this.stateDressed(state),
 			),
+			caretParagraphWhen((view) => this.editorInProject(view)),
 			mentionHighlights({
 				marks: (body, view) => this.noteEditorMarks(view, body),
 			}),
@@ -3417,6 +3422,8 @@ export default class SnowflakeMethodPlugin
 		}
 		if (key === 'manuscriptFocusLevel') {
 			this.applyManuscriptModePresence();
+			// The bars above the notes show the level, and their notes fade by it.
+			this.noteToolbars?.sync();
 			// The setting transition, deliberately not the effective focus: a
 			// glance at another tab mid-session accrues idle, it does not end
 			// the session.
@@ -3467,17 +3474,25 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * Stamps the app with the focus levels that reach past the stream — fading
-	 * the rest of the workspace, and solo — and only while a stream is the view
-	 * in front of the author. Going anywhere else lifts all of it at once: the
-	 * settings keep the author's choice, but the app is never left faded or
-	 * folded away behind a note that has nothing to do with the manuscript.
+	 * Stamps the app with the focus levels that reach past the page — fading
+	 * the rest of the workspace, and solo — and only while the page in front
+	 * of the author is a stream, or a note of a project in the main area.
+	 * Going anywhere else lifts all of it at once: the settings keep the
+	 * author's choice, but the app is never left faded or folded away behind
+	 * a note that has nothing to do with the book. A note in a sidebar fades
+	 * on its own page only, since its sidebar would fade with the rest and
+	 * fold away in solo.
 	 */
 	private applyManuscriptModePresence(): void {
 		const body = this.app.workspace.containerEl.doc.body;
 		const level = this.settings.manuscriptFocusLevel;
-		const inFront = this.activeManuscriptView() !== null;
-		this.markModeContainers();
+		const note = this.activeProjectNote();
+		const page =
+			note !== null && note.leaf.getRoot() === this.app.workspace.rootSplit
+				? note
+				: null;
+		const inFront = page !== null || this.activeManuscriptView() !== null;
+		this.markModeContainers(page);
 		body.classList.toggle(
 			'snowflake-method-focus-app',
 			inFront && level !== 'off',
@@ -3522,37 +3537,41 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * Marks the containers the focus levels select by: the leaf holding each
-	 * manuscript stream — and, for solo, the tab group and splits above it —
+	 * Marks the containers the focus levels select by: the leaf holding the
+	 * page being written — the note of a project in front, or else every
+	 * manuscript stream — and, for solo, the tab group and splits above it,
 	 * and the leaf holding each dashboard. The stylesheet reads these classes
 	 * where it once asked `:has()` what a container held, a question whose
 	 * broad invalidation the plugin review flags. Swept and re-laid whole,
 	 * because containers keep their elements as leaves move between them.
 	 */
-	private markModeContainers(): void {
+	private markModeContainers(note: MarkdownView | null): void {
 		const root = this.app.workspace.containerEl.doc.body;
 		for (const cls of [
-			'snowflake-method-holds-stream',
+			'snowflake-method-holds-page',
 			'snowflake-method-holds-dashboard',
 		]) {
 			for (const marked of Array.from(root.querySelectorAll(`.${cls}`))) {
 				marked.classList.remove(cls);
 			}
 		}
+		const holdsPage = (view: View): void => {
+			let above: HTMLElement | null = view.containerEl.closest('.workspace-leaf');
+			while (above !== null && !above.classList.contains('mod-root')) {
+				if (
+					above.classList.contains('workspace-leaf') ||
+					above.classList.contains('workspace-tabs') ||
+					above.classList.contains('workspace-split')
+				) {
+					above.classList.add('snowflake-method-holds-page');
+				}
+				above = above.parentElement;
+			}
+		};
+		if (note !== null) holdsPage(note);
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof SnowflakeManuscriptView) {
-				let above: HTMLElement | null =
-					leaf.view.containerEl.closest('.workspace-leaf');
-				while (above !== null && !above.classList.contains('mod-root')) {
-					if (
-						above.classList.contains('workspace-leaf') ||
-						above.classList.contains('workspace-tabs') ||
-						above.classList.contains('workspace-split')
-					) {
-						above.classList.add('snowflake-method-holds-stream');
-					}
-					above = above.parentElement;
-				}
+				if (note === null) holdsPage(leaf.view);
 			} else if (leaf.view instanceof SnowflakeDashboardView) {
 				leaf.view.containerEl
 					.closest('.workspace-leaf')
@@ -9464,8 +9483,9 @@ export default class SnowflakeMethodPlugin
 			},
 		});
 		// The writing modes, offered where they act: while a stream is in front,
-		// and typewriter scrolling while a note it reaches is in front too.
-		// The header buttons walk the levels; the palette names them — one
+		// and while a note they reach is in front too -- typewriter scrolling
+		// in any note the typography dresses, focus mode in a project's.
+		// The toolbars' buttons walk the levels; the palette names them — one
 		// command per focus mode level, so a key can be bound to the exact
 		// depth wanted rather than cycling through the rest.
 		const typewriterInStream = inStream(
@@ -9491,10 +9511,16 @@ export default class SnowflakeMethodPlugin
 			this.addCommand({
 				id: `set-focus-mode-${level}`,
 				name: this.globalT(`commands.setFocusMode.${level}`),
-				checkCallback: inStream(
-					() => this.setManuscriptFocus(level),
-					() => true,
-				),
+				checkCallback: (checking) => {
+					const available =
+						this.activeManuscriptView() !== null || this.activeProjectNote() !== null;
+					if (!checking && available) {
+						void this.setManuscriptFocus(level).catch((error: unknown) => {
+							this.showError(error);
+						});
+					}
+					return available;
+				},
 			});
 		}
 		this.addCommand({
@@ -10261,6 +10287,13 @@ export default class SnowflakeMethodPlugin
 		// one carried with its whole project keeps it.
 		this.carryRosterThroughRename(oldPath, file.path);
 		this.dressNotes();
+		// An open note carried into a project or out of one: its editor asks
+		// again whether the line marks and focus mode reach it. Only then,
+		// because a project's folder renamed fires once for every note in it.
+		const open = this.app.workspace
+			.getLeavesOfType('markdown')
+			.some((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
+		if (open) this.refreshParagraphLineEditors();
 		this.projects.writingCount.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
@@ -10574,11 +10607,16 @@ export default class SnowflakeMethodPlugin
 		return notes;
 	}
 
-	/** Every open note dressed or undressed afresh, given its bar or relieved of it, and its marks. */
+	/**
+	 * Every open note dressed or undressed afresh, given its bar or relieved
+	 * of it, and its marks; and the app's focus stamped again, which reaches
+	 * past a note of a project in front as it does past a stream.
+	 */
 	private dressNotes(): void {
 		this.notePresentation?.apply();
 		this.noteToolbars?.apply();
 		this.noteMentions?.apply();
+		if (this.app.workspace.layoutReady) this.applyManuscriptModePresence();
 	}
 
 	/** Whether the note an editor shows is one the dress reaches. */
@@ -10630,13 +10668,28 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The project whose mention marks a note wears: its own, where the
-	 * typography dresses it. Null for a note the typography does not dress,
-	 * and for a note no project holds, which has no roster to read.
+	 * The project a note belongs to, where the typography dresses it: the
+	 * roster its mention marks are read off, and the writing focus mode
+	 * reaches. Null for a note the typography does not dress, and for a note
+	 * no project holds.
 	 */
-	private noteMentionProject(path: string): string | null {
+	private dressedNoteProject(path: string): string | null {
 		if (this.notePresentation?.wears(path) !== true) return null;
 		return this.noteProjectRoot(path);
+	}
+
+	/** The view in front of the author when it shows a dressed note of a project. */
+	private activeProjectNote(): MarkdownView | null {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const path = view?.file?.path;
+		if (view === null || path === undefined) return null;
+		return this.dressedNoteProject(path) === null ? null : view;
+	}
+
+	/** Whether the note an editor shows is a dressed note of a project, which focus mode reaches. */
+	private editorInProject(view: EditorView): boolean {
+		const path = view.state.field(editorInfoField, false)?.file?.path;
+		return path !== undefined && this.dressedNoteProject(path) !== null;
 	}
 
 	/** The marks an editor of the app's own wears, for the note it shows. */
