@@ -8490,7 +8490,32 @@ body.snowflake-method-solo
 	display: none;
 }
 
-.snowflake-method-reduce-motion .snowflake-method-segment.is-writing .cm-line,
+/* Reduced motion stills every fade above, each selector the fade's own under
+   the body's class: as with the restores, a rule that carries less weight
+   than the transition it undoes stills nothing at all. */
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	.cm-line,
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment:not(.is-writing),
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-manuscript-end,
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-header,
+.snowflake-method-reduce-motion
+	.snowflake-method-focus
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-boundary,
 .snowflake-method-reduce-motion
 	.snowflake-method-note-focus
 	.markdown-source-view
@@ -8500,15 +8525,24 @@ body.snowflake-method-solo
 	.snowflake-method-note-focus
 	.markdown-source-view
 	:is(.inline-title, .metadata-container, .embedded-backlinks),
-.snowflake-method-reduce-motion .snowflake-method-segment,
-.snowflake-method-reduce-motion .snowflake-method-segment-header,
-.snowflake-method-reduce-motion .snowflake-method-segment-boundary,
-.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-ribbon,
-.snowflake-method-reduce-motion.snowflake-method-focus-app
+body.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-ribbon,
+body.snowflake-method-reduce-motion.snowflake-method-focus-app
 	.workspace-tab-header-container,
-.snowflake-method-reduce-motion.snowflake-method-focus-app .status-bar,
-.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-split,
-.snowflake-method-reduce-motion.snowflake-method-focus-app .workspace-leaf {
+body.snowflake-method-reduce-motion.snowflake-method-focus-app .status-bar,
+body.snowflake-method-reduce-motion.snowflake-method-focus-app
+	.workspace-split.mod-left-split,
+body.snowflake-method-reduce-motion.snowflake-method-focus-app
+	.workspace-split.mod-right-split,
+body.snowflake-method-reduce-motion.snowflake-method-focus-app
+	.workspace-split.mod-root
+	.workspace-leaf:not(.snowflake-method-holds-page):not(
+		.snowflake-method-holds-dashboard
+	),
+body.snowflake-method-reduce-motion.snowflake-method-focus-app.snowflake-method-focus-dashboard
+	.workspace-split.mod-root
+	.workspace-leaf.snowflake-method-holds-dashboard:not(
+		.snowflake-method-holds-page
+	) {
 	transition: none;
 }
 
