@@ -2011,12 +2011,11 @@
 	align-items: center;
 	gap: var(--size-4-2);
 	margin-bottom: var(--size-4-2);
-	/* Inset as the body's words are: the body holds a bar's width of room
-	   on both edges, shown or hidden, which the header has no bar to hold
-	   it for, so it reads the width the plugin publishes and keeps the same
-	   inset by hand. */
-	padding-inline: calc(var(--size-4-2) - 2px + var(--snowflake-method-scrollbar-native-width, 0px))
-		calc(var(--size-4-2) + var(--snowflake-method-scrollbar-native-width, 0px));
+	/* Inset as the writing hints' header is, the box above it with the same
+	   stripe, so the two icons and the two names stand in one line. The body
+	   below keeps a bar's width of room on both edges, which a header with no
+	   bar has no need of. */
+	padding-inline: var(--size-4-4);
 }
 
 .snowflake-method-source-summary-icon {

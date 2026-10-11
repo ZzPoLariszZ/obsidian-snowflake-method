@@ -341,7 +341,16 @@ describe('styles.css', () => {
 		expect(declarations('body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body')).toContain(
 			'--snowflake-method-scrollbar-native-width',
 		);
-		expect(declarations('.snowflake-method-source-summary-header')).toContain('--snowflake-method-scrollbar-native-width');
+		// The quote's header stands where the hints' header above it does, the
+		// same stripe and the same inset, so the icons and the names line up;
+		// the bar's room is the body's alone.
+		const header = declarations('.snowflake-method-source-summary-header');
+		expect(header).toContain('padding-inline: var(--size-4-4)');
+		expect(header).not.toContain('--snowflake-method-scrollbar-native-width');
+		expect(declarations('.snowflake-method-writing-hints')).toContain('padding: var(--size-4-3) var(--size-4-4)');
+		for (const box of ['.snowflake-method-writing-hints', '.snowflake-method-source-summary']) {
+			expect(declarations(box), box).toContain('border-inline-start: 3px solid var(--interactive-accent)');
+		}
 		// A one-line field on the dashboard keeps the same room, a picker's
 		// inner box for it; a search box is left alone, and no dialog rule
 		// takes the room at all: a dialog keeps the app's spacing.
