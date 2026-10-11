@@ -219,6 +219,27 @@ describe('styles.css', () => {
 	});
 
 	/**
+	 * The same paragraph breaks into the same rows in the stream and in a
+	 * dressed note beside it: both editors let a space hang at a row's end
+	 * rather than carry it to the next row, a table cell's editor keeping the
+	 * app's own, and the stream's column is a note's -- the measure as a text
+	 * column, inside the app's own margin across a note.
+	 */
+	it('breaks a paragraph into the same rows in the stream and in a dressed note', () => {
+		expect(declarations('.snowflake-method-two-faces .cm-content.cm-lineWrapping')).toContain('white-space: pre-wrap');
+		expect(
+			declarations('.snowflake-method-note-dressed .markdown-source-view.mod-cm6 .cm-content.cm-lineWrapping:not(.cm-table-widget *)'),
+		).toContain('white-space: pre-wrap');
+		const column = declarations('.snowflake-method-manuscript-end').replace(/\s+/gu, ' ');
+		expect(column).toContain('--snowflake-method-page-margin: var(--file-margins-x, var(--size-4-8))');
+		expect(column).toContain(
+			'max-width: calc( var(--snowflake-method-manuscript-width, var(--file-line-width)) + var(--snowflake-method-page-margin) * 2 )',
+		);
+		expect(column).toContain('padding-inline: var(--snowflake-method-page-margin)');
+		expect(styles).not.toContain('--snowflake-method-manuscript-box');
+	});
+
+	/**
 	 * The stream derives the same shade off its tinted page for code and
 	 * embeds, and takes the theme's code background down from the body first,
 	 * so a leaf without a tint shows the theme's own.

@@ -5981,25 +5981,25 @@ body {
    happens to be, so a wide window does not stretch a line past reading length
    -- or at the width the author set, which the view writes as a variable.
 
-   That variable is the text column, and this box is border-box with a column
-   of padding on each side, so the padding is added back here. Named once: the
-   sum used to be built in the domain, which meant a change to the padding
-   below silently moved every author's column by twice the difference, with
-   nothing on either side to notice. Obsidian's own measure needs no such
-   addition, being a box width already. */
+   Both are text columns: the app holds a note's lines to its measure and sets
+   the page's margin outside them, on each side. This box is border-box with
+   the same margin as its padding, so the padding is added back here, and a
+   narrow pane takes the margin out of the column as it does from a note's. A
+   paragraph then breaks into the same rows here as in a note beside it, at
+   any width. Named once: the sum used to be built in the domain, which meant
+   a change to the padding below silently moved every author's column by twice
+   the difference, with nothing on either side to notice. */
 .snowflake-method-segment,
 .snowflake-method-manuscript-end {
-	/* Unset, the sum holds a var() that resolves to nothing, which makes the
-	   whole custom property invalid -- and a var() reading an invalid property
-	   takes its fallback. So the theme's own measure is used as it stands,
-	   being a box width already, and the author's is used with the padding
-	   added. */
-	--snowflake-method-manuscript-box: calc(
-		var(--snowflake-method-manuscript-width) + var(--size-4-6) * 2
+	/* The app's margin across a note, which is narrower on a phone or a
+	   tablet; before Obsidian 1.14 named it, the desktop's own. */
+	--snowflake-method-page-margin: var(--file-margins-x, var(--size-4-8));
+	max-width: calc(
+		var(--snowflake-method-manuscript-width, var(--file-line-width)) +
+			var(--snowflake-method-page-margin) * 2
 	);
-	max-width: var(--snowflake-method-manuscript-box, var(--file-line-width));
 	margin-inline: auto;
-	padding-inline: var(--size-4-6);
+	padding-inline: var(--snowflake-method-page-margin);
 }
 
 /* One height whether it carries a path, a number, both or neither: turning a
@@ -17542,6 +17542,17 @@ body.snowflake-method-justify-fields .snowflake-method-source-summary-content {
 
 .snowflake-method-note-dressed .markdown-source-view.mod-cm6.is-readable-line-width .cm-line.HyperMD-table-row {
 	max-width: 100%;
+}
+
+/* The rows: broken where the stream's editor breaks them. CodeMirror wraps
+   with break-spaces, under which a space that no longer fits at the end of a
+   row is carried to the start of the next, where it takes up room and can
+   push that row's last word down; the stream sets its editor in pre-wrap,
+   under which the space hangs past the end of its row, so the same paragraph
+   broke into other rows in a note than in the stream beside it. A table
+   cell's editor keeps the app's own, which the app gives it at this weight. */
+.snowflake-method-note-dressed .markdown-source-view.mod-cm6 .cm-content.cm-lineWrapping:not(.cm-table-widget *) {
+	white-space: pre-wrap;
 }
 
 /* Reading: the gap below a paragraph in lines of its line height, and the
