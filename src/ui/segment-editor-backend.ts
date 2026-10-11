@@ -53,6 +53,7 @@ import {
 } from '@codemirror/view';
 
 import { paragraphAround } from './caret-paragraph';
+import { DIALOG_CLASS } from './dialog-class';
 import { findPassage } from './prose-projection';
 import { wikilinkOptions, wikilinkReplaceRange } from './wikilink-complete';
 
@@ -495,8 +496,10 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 		await this.unmount(target.path);
 		let tooltipHost: HTMLElement | null = null;
 		if (!target.readOnly) {
+			// Hung on the window's body, as a dialog is, and wearing what a
+			// dialog wears, so the link list takes the plugin's ground too.
 			tooltipHost = container.ownerDocument.body.createDiv({
-				cls: 'snowflake-method-cm-tooltips',
+				cls: `${DIALOG_CLASS} snowflake-method-cm-tooltips`,
 			});
 			this.tooltipHosts.set(target.path, tooltipHost);
 			// The selection follows the pointer, as it does in Obsidian's own

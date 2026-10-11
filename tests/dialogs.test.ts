@@ -39,8 +39,14 @@ describe('dialogs', () => {
 		expect(bare).toEqual([]);
 	});
 
-	it('and so do the panels hung under a button', () => {
-		for (const file of ['anchored-panel', 'filter-panel', 'presentation-panel']) {
+	it('and so does everything else hung on a window’s body: the panels, the editors’ popups, the floating notes', () => {
+		for (const file of [
+			'anchored-panel',
+			'filter-panel',
+			'presentation-panel',
+			'segment-editor-backend',
+			'sticky-note-float',
+		]) {
 			const text = sources[`../src/ui/${file}.ts`] ?? '';
 			expect(text, file).toMatch(/body\.createDiv\(\{\s*cls: `\$\{DIALOG_CLASS\} /u);
 		}

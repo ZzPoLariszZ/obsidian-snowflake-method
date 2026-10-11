@@ -420,6 +420,14 @@ describe('styles.css', () => {
 		// buttons on a Mac from the borders as the app has them there.
 		expect(scope).toContain('--modal-background: var(--background-primary);');
 		expect(scope).toContain('--tab-background-active: var(--background-primary);');
+		// The names derived from those in turn: a table's header rule, an
+		// embedded base, the rail's ink, the option pickers' group headings.
+		expect(scope).toContain('--table-header-border-color: var(--table-border-color);');
+		expect(scope).toContain('--bases-table-header-background: var(--background-primary);');
+		expect(scope).toContain('--bases-table-group-background: var(--background-primary-alt);');
+		expect(scope).toContain('--nav-item-color: var(--text-muted);');
+		expect(scope).toContain('--snowflake-method-list-heading-rule: 1px solid var(--background-modifier-border);');
+		expect(scope).toContain('--snowflake-method-list-heading-color: var(--text-muted);');
 		expect(scope).toContain('body.mod-macos.theme-light.snowflake-method-tint-snowflake-light');
 		expect(scope).toContain('--interactive-normal: var(--background-modifier-border);');
 		// A view in a sidebar paints the sidebar's ground the app leaves outside it.

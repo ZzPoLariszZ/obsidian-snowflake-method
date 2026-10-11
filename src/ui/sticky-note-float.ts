@@ -17,6 +17,7 @@ import { Component, type App, type Plugin } from 'obsidian';
 
 import type { StickyNoteFloatState } from '../domain';
 import type { StickyNoteRecord } from '../services';
+import { DIALOG_CLASS } from './dialog-class';
 import { PublicCodeMirrorBackend } from './segment-editor-backend';
 import type { StickyNoteBridge, StickyNoteFloatOptions } from './sticky-note-bridge';
 import { renderStickyNoteCard, type StickyNoteCardHandle } from './sticky-note-card';
@@ -87,7 +88,9 @@ export class StickyNoteFloatLayer {
 		layerCount += 1;
 		this.ownerId = `floating-${String(layerCount)}`;
 		deps.plugin.addChild(this.component);
-		this.root = doc.body.createDiv({ cls: 'snowflake-method-sticky-layer' });
+		// Over the workspace as a dialog is, so it wears the dialogs' class
+		// and takes the plugin's ground with them.
+		this.root = doc.body.createDiv({ cls: `${DIALOG_CLASS} snowflake-method-sticky-layer` });
 		this.onResize = () => {
 			for (const [id, panel] of this.panels) {
 				this.apply(id, panel, this.clamp(panel.state));

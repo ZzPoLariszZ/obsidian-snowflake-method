@@ -17853,6 +17853,12 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 	) {
 	/* Grounds. */
 	--background-modifier-form-field-hover: var(--background-modifier-form-field);
+	--bases-cards-background: var(--background-primary);
+	--bases-kanban-card-background: var(--background-primary);
+	--bases-kanban-column-background: var(--background-primary-alt);
+	--bases-table-group-background: var(--background-primary-alt);
+	--bases-table-header-background: var(--background-primary);
+	--bases-table-summary-background: var(--background-primary);
 	--canvas-background: var(--background-primary);
 	--checkbox-marker-color: var(--background-primary);
 	--code-background: var(
@@ -17862,6 +17868,7 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 	--drag-item-background: var(--background-primary);
 	--dropdown-background: var(--interactive-normal);
 	--dropdown-background-hover: var(--interactive-hover);
+	--embed-actions-background: color-mix(in srgb, var(--background-primary) 80%, transparent);
 	--file-header-background: var(--background-primary);
 	--file-header-background-focused: var(--background-primary);
 	--flair-background: var(--interactive-normal);
@@ -17872,12 +17879,19 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 	--tab-background-active: var(--background-primary);
 
 	/* Lines. */
+	--bases-embed-border-color: var(--background-modifier-border);
+	--bases-table-border-color: var(--table-border-color);
 	--canvas-dot-pattern: var(--color-base-30);
 	--code-border-color: var(--background-modifier-border);
 	--divider-color: var(--background-modifier-border);
+	--embed-block-shadow-hover: 0 0 0 1px var(--background-modifier-border),
+		inset 0 0 0 1px var(--background-modifier-border);
 	--hr-color: var(--background-modifier-border);
 	--metadata-border-color: var(--background-modifier-border);
 	--metadata-divider-color: var(--background-modifier-border);
+	--metadata-property-box-shadow-focus: 0 0 0 2px var(--background-modifier-border-focus);
+	--metadata-property-box-shadow-hover: 0 0 0 var(--border-width)
+		var(--background-modifier-border-hover);
 	--modal-border-color: var(--background-modifier-border-hover);
 	--pill-border-color: var(--background-modifier-border);
 	--pill-border-color-hover: var(--background-modifier-border-hover);
@@ -17885,12 +17899,17 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 	--setting-items-border-color: var(--background-modifier-border);
 	--setting-items-divider-color: var(--background-modifier-border);
 	--slider-thumb-border-color: var(--background-modifier-border-hover);
+	--slider-thumb-shadow-focus: var(--slider-thumb-shadow-active),
+		0 0px 0px 2px var(--background-modifier-border-focus);
 	--slider-track-background: var(--background-modifier-border-hover);
+	--snowflake-method-list-heading-rule: 1px solid var(--background-modifier-border);
 	--tab-divider-color: var(--background-modifier-border-hover);
 	--table-add-button-border-color: var(--background-modifier-border);
 	--table-border-color: var(--background-modifier-border);
+	--table-header-border-color: var(--table-border-color);
 
 	/* Text. */
+	--bases-table-header-color: var(--text-muted);
 	--canvas-card-label-color: var(--text-faint);
 	--checkbox-border-color: var(--text-faint);
 	--checkbox-border-color-hover: var(--text-muted);
@@ -17907,13 +17926,33 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 	--list-marker-color-hover: var(--text-muted);
 	--metadata-label-text-color: var(--text-muted);
 	--metadata-label-text-color-hover: var(--text-muted);
+	--nav-item-color: var(--text-muted);
 	--pill-color: var(--text-muted);
 	--pill-color-remove: var(--text-faint);
+	--search-icon-color: var(--text-muted);
+	--snowflake-method-list-heading-color: var(--text-muted);
 	--tab-text-color: var(--text-faint);
 	--tab-text-color-active: var(--text-muted);
 	--tab-text-color-focused: var(--text-muted);
 	--tab-text-color-focused-active: var(--text-muted);
 	--table-drag-handle-color: var(--text-faint);
+}
+
+/* On a phone or a tablet the app sets a nav item in the normal ink, and the
+   dashboard's rail follows it there too. */
+body.is-mobile.theme-light.snowflake-method-tint-snowflake-light
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	),
+body.is-mobile.theme-dark.snowflake-method-tint-snowflake-dark
+	:is(
+		.workspace-leaf-content[data-type^='snowflake-method-'],
+		.snowflake-method-dialog,
+		.snowflake-method-suggestions
+	) {
+	--nav-item-color: var(--text-normal);
 }
 
 body.theme-light.snowflake-method-tint-typography-light
