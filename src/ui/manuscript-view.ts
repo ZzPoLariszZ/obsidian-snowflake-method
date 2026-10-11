@@ -4062,18 +4062,21 @@ export class SnowflakeManuscriptView extends ItemView {
 	 *
 	 * The line stays and the page moves: each time the author moves the caret,
 	 * the stream is scrolled by however far that line has drifted from the
-	 * anchor. Near the very top of the book the page cannot scroll above its
-	 * first line and the caret rides high; near the end, the room below the last
-	 * note is grown so there is always page left to bring up — the same spacer
-	 * `settleTail` keeps, which refuses to shrink under anyone standing in it.
+	 * anchor. The caret's row is centred there, its middle on the page's, as
+	 * an editor of Obsidian's own centres it under the same mode: a note open
+	 * beside the stream holds its line at the same height. Near the very top
+	 * of the book the page cannot scroll above its first line and the caret
+	 * rides high; near the end, the room below the last note is grown so
+	 * there is always page left to bring up — the same spacer `settleTail`
+	 * keeps, which refuses to shrink under anyone standing in it.
 	 */
 	private recentreCaret(entry: MountedSegment): boolean {
 		const stream = this.streamEl;
-		const top = entry.editor?.caretBand()?.top ?? null;
-		if (stream === null || top === null) return false;
+		const band = entry.editor?.caretBand() ?? null;
+		if (stream === null || band === null) return false;
 		const anchor =
 			stream.getBoundingClientRect().top + stream.clientHeight / 2;
-		const delta = top - anchor;
+		const delta = (band.top + band.bottom) / 2 - anchor;
 		if (Math.abs(delta) < 1) return false;
 		this.scrollBy(delta);
 		return true;
@@ -4128,7 +4131,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		const lower = rect.bottom - 32;
 		if (top >= upper && bottom <= lower) return 0;
 		const delta = this.host.manuscriptWindowSettings().typewriter
-			? top - (rect.top + stream.clientHeight / 2)
+			? (top + bottom) / 2 - (rect.top + stream.clientHeight / 2)
 			: top < upper
 				? top - upper
 				: bottom - lower;
