@@ -572,7 +572,10 @@ function categoryDisplayPath(raw: string, categoryRoot: string): string {
  * zero gives the whole padding back and then loses the gutter's width off the
  * inside, which walks every field in the dialog left of the title above them.
  */
-function measureScrollbarWidth(targetDocument: Document): number | null {
+function measureScrollbarWidth(
+	targetDocument: Document,
+	{ asDrawn = false }: { asDrawn?: boolean } = {},
+): number | null {
 	const probe = targetDocument.body.createDiv({ cls: SCROLLBAR_PROBE_CLASS });
 	// Dressed here rather than from the stylesheet: this runs before the plugin's
 	// own stylesheet reaches the document, and a probe with no scrollbar to
@@ -580,7 +583,8 @@ function measureScrollbarWidth(targetDocument: Document): number | null {
 	// asked for inline, because the plugin's own hiding reaches every element
 	// through the app's variable as well as through a rule of its own, and
 	// only an inline value stands over both: the probe measures the bar the
-	// machine draws whether or not the setting hides it.
+	// machine draws whether or not the setting hides it. Asked as drawn, it
+	// keeps the page's own width instead, so a bar a theme hides costs nothing.
 	probe.setCssStyles({
 		position: 'absolute',
 		top: '-9999px',
@@ -588,7 +592,7 @@ function measureScrollbarWidth(targetDocument: Document): number | null {
 		height: '100px',
 		overflowY: 'auto',
 		scrollbarGutter: 'stable',
-		scrollbarWidth: 'auto',
+		...(asDrawn ? {} : { scrollbarWidth: 'auto' }),
 		visibility: 'hidden',
 	});
 	const laidOut = probe.offsetWidth > 0;
@@ -1411,6 +1415,9 @@ export default class SnowflakeMethodPlugin
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
 		this.applyBodyPreferences();
+		// The bars may have come or gone with the settings, and the room they
+		// take moves with them, as it does when the setting is changed here.
+		this.publishScrollbarWidth();
 		// Resynced silently: a level that arrived from outside is not the
 		// author turning focus mode on here, so it starts no session.
 		this.lastFocusLevel = this.settings.manuscriptFocusLevel;
@@ -3540,7 +3547,11 @@ export default class SnowflakeMethodPlugin
 		// left standing is either a true one from before or none at all, and
 		// asking again once the workspace is ready costs one probe.
 		if (native === null) return;
-		const room = this.settings.hideScrollbars ? 0 : native;
+		// While the setting shows the bars, the room is what a bar takes as
+		// the page draws it, which a theme or a snippet can hide on its own.
+		const room = this.settings.hideScrollbars
+			? 0
+			: (measureScrollbarWidth(targetDocument, { asDrawn: true }) ?? native);
 		// Written only when it has actually moved. This is asked again every
 		// time the window comes forward, and writing the same value back would
 		// have every rule reading it re-evaluated for nothing.
