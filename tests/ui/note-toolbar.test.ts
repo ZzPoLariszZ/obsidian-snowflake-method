@@ -14,11 +14,48 @@ import {
 } from '../../src/ui/note-toolbar';
 import { installObsidianDom } from '../helpers/obsidian-dom';
 
-// The name a button is given, kept where a test can read it back.
+interface ShownItem {
+	title: string;
+	checked: boolean;
+	label: boolean;
+	click: (() => void) | null;
+}
+
+// Every menu shown, with its items, kept where a test can read them back.
+const shownMenus = vi.hoisted(() => [] as ShownItem[][]);
+
+// The name a button is given, and the menus it opens, kept where a test can
+// read them back.
 vi.mock('obsidian', async (importOriginal) => {
 	const runtime = await importOriginal<typeof import('../helpers/obsidian-runtime')>();
+	class RecordingMenu {
+		private readonly items: ShownItem[] = [];
+		addItem(build: (item: unknown) => void): this {
+			const entry: ShownItem = { title: '', checked: false, label: false, click: null };
+			const handle = {
+				setTitle: (title: string) => ((entry.title = title), handle),
+				setChecked: (checked: boolean) => ((entry.checked = checked), handle),
+				setIsLabel: (label: boolean) => ((entry.label = label), handle),
+				setIcon: () => handle,
+				setSection: () => handle,
+				onClick: (click: () => void) => ((entry.click = click), handle),
+			};
+			build(handle);
+			this.items.push(entry);
+			return this;
+		}
+		addSeparator(): this {
+			this.items.push({ title: '---', checked: false, label: false, click: null });
+			return this;
+		}
+		showAtMouseEvent(): this {
+			shownMenus.push(this.items);
+			return this;
+		}
+	}
 	return {
 		...runtime,
+		Menu: RecordingMenu,
 		setTooltip: (el: HTMLElement, text: string) => {
 			el.setAttribute('data-tooltip', text);
 		},
@@ -29,7 +66,8 @@ vi.mock('obsidian', async (importOriginal) => {
  * The stream's bar above a note of Obsidian's own, over plain elements:
  * put up for the notes the dress reaches and taken down for the rest,
  * grey while the note is read, lit while typewriter scrolling is on,
- * driving the note's own editor, and exporting the note it shows.
+ * driving the note's own editor, choosing the marks a project's note
+ * wears, and exporting the note it shows.
  */
 describe('NoteToolbars', () => {
 	beforeAll(() => {
@@ -79,9 +117,14 @@ describe('NoteToolbars', () => {
 		notes: FakeNote[],
 		dressed: (path: string) => boolean,
 		speaks: (path: string | null) => string = () => '',
+		inProject: (path: string) => boolean = () => true,
 	) {
 		const calls: string[] = [];
 		let typewriter = false;
+		const record = (call: string): Promise<void> => {
+			calls.push(call);
+			return Promise.resolve();
+		};
 		const toolbars = new NoteToolbars({
 			app: new App(),
 			t: (path) => (key) => `${speaks(path)}${key}`,
@@ -92,6 +135,12 @@ describe('NoteToolbars', () => {
 				enterParagraph: true,
 				presentation: DEFAULT_MANUSCRIPT_PRESENTATION,
 				recentFonts: [],
+				mentions: {
+					mentionHighlight: 'unlinked',
+					sensitiveHighlight: false,
+					dialoguePresentation: 'highlight',
+					customHighlights: true,
+				},
 			}),
 			setPresentation: () => Promise.resolve(),
 			setEnterParagraph: () => Promise.resolve(),
@@ -99,6 +148,13 @@ describe('NoteToolbars', () => {
 				typewriter = !typewriter;
 				calls.push('typewriter');
 				return Promise.resolve();
+			},
+			marks: inProject,
+			mentionModes: {
+				setMentionHighlight: (mode) => record(`mentions:${mode}`),
+				setSensitiveHighlight: (on) => record(`sensitive:${String(on)}`),
+				setDialoguePresentation: (mode) => record(`dialogue:${mode}`),
+				setCustomHighlights: (on) => record(`custom:${String(on)}`),
 			},
 			exportNote: (path) => {
 				calls.push(`export:${path}`);
@@ -137,15 +193,21 @@ describe('NoteToolbars', () => {
 		const { toolbars } = harness([one], () => true);
 		toolbars.apply();
 		const mounted = bar(one) as HTMLElement;
-		expect(mounted.querySelector('.snowflake-method-toolbar-mentions')).toBeNull();
+		// Typewriter scrolling alone of the modes: focus fades the stream.
 		expect(mounted.querySelectorAll('.snowflake-method-mode-toggle')).toHaveLength(1);
 		expect(mounted.querySelector('.snowflake-method-toolbar-presentation')).not.toBeNull();
+		// The marks, named as the stream's button is, between the dress and the export.
+		const mentions = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-mentions');
+		expect(mentions?.getAttribute('data-tooltip')).toBe('manuscript.toolbar.mentions');
+		expect(mentions?.getAttribute('aria-haspopup')).toBe('menu');
+		expect(mentions?.previousElementSibling?.classList.contains('snowflake-method-toolbar-presentation')).toBe(true);
 		// The note's own export, named as the button on a chapter's header is.
 		const exporter = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export');
 		expect(exporter?.getAttribute('data-tooltip')).toBe('manuscript.exportNote');
+		expect(exporter?.previousElementSibling).toBe(mentions);
 		// Undo, redo, two headings and the ladder, five marks, the dress, the
-		// export, the mode.
-		expect(mounted.querySelectorAll('button')).toHaveLength(13);
+		// mentions, the export, the mode.
+		expect(mounted.querySelectorAll('button')).toHaveLength(14);
 	});
 
 	it('greys the editing buttons while the note is read, and lights the mode', () => {
@@ -154,7 +216,12 @@ describe('NoteToolbars', () => {
 		toolbars.apply();
 		const mounted = bar(one) as HTMLElement;
 		const buttons = Array.from(mounted.querySelectorAll('button'));
-		const live = ['snowflake-method-toolbar-presentation', 'snowflake-method-toolbar-export', 'snowflake-method-mode-toggle'];
+		const live = [
+			'snowflake-method-toolbar-presentation',
+			'snowflake-method-toolbar-mentions',
+			'snowflake-method-toolbar-export',
+			'snowflake-method-mode-toggle',
+		];
 		const editing = buttons.filter((button) => !live.some((cls) => button.classList.contains(cls)));
 		expect(editing.every((button) => !button.disabled)).toBe(true);
 		one.mode = 'preview';
@@ -162,6 +229,7 @@ describe('NoteToolbars', () => {
 		expect(editing.every((button) => button.disabled)).toBe(true);
 		const dress = mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-presentation');
 		expect(dress?.disabled).toBe(false);
+		expect(mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-mentions')?.disabled).toBe(false);
 		expect(mounted.querySelector<HTMLButtonElement>('.snowflake-method-toolbar-export')?.disabled).toBe(false);
 		const mode = mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle');
 		expect(mode?.disabled).toBe(false);
@@ -186,6 +254,51 @@ describe('NoteToolbars', () => {
 		expect(one.view.state.doc.toString()).toBe('## a word here');
 		mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle')?.click();
 		expect(calls).toEqual(['typewriter']);
+	});
+
+	it('greys the marks on a note no project holds, and offers the stream’s menu on one it does', () => {
+		const chapter = note('Novel/Chapter.md');
+		const loose = note('Loose/Idea.md');
+		const { toolbars, calls } = harness(
+			[chapter, loose],
+			() => true,
+			() => '',
+			(path) => path.startsWith('Novel/'),
+		);
+		toolbars.apply();
+		const button = (one: FakeNote): HTMLButtonElement =>
+			(bar(one) as HTMLElement).querySelector<HTMLButtonElement>(
+				'.snowflake-method-toolbar-mentions',
+			) as HTMLButtonElement;
+		expect(button(chapter).disabled).toBe(false);
+		expect(button(loose).disabled).toBe(true);
+		// A press that reaches a greyed button anyway opens nothing.
+		shownMenus.length = 0;
+		button(loose).dispatchEvent(new MouseEvent('click'));
+		expect(shownMenus).toHaveLength(0);
+		// The stream's own menu: every family under its heading, the settings'
+		// choice checked, and a pick written through the host.
+		button(chapter).click();
+		const items = shownMenus[0] ?? [];
+		expect(items.filter((item) => item.label).map((item) => item.title)).toEqual([
+			'settings.mentionHighlight.entities',
+			'settings.sensitiveWords.heading',
+			'settings.mentionHighlight.dialogues',
+			'settings.mentionHighlight.custom',
+		]);
+		expect(items.filter((item) => item.checked).map((item) => item.title)).toEqual([
+			'settings.mentionHighlight.unlinked',
+			'settings.mentionHighlight.off',
+			'settings.dialoguePresentation.highlight',
+			'settings.mentionHighlight.on',
+		]);
+		items.find((item) => item.title === 'settings.mentionHighlight.all')?.click?.();
+		items.find((item) => item.title === 'settings.dialoguePresentation.focus')?.click?.();
+		expect(calls).toEqual(['mentions:all', 'dialogue:focus']);
+		// The note moved into a project: the same bar, its button live again.
+		loose.path = 'Novel/Idea.md';
+		toolbars.apply();
+		expect(button(loose).disabled).toBe(false);
 	});
 
 	it('exports the note the tab shows now, what was typed saved first, while read too', async () => {

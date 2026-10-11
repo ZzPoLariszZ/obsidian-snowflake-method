@@ -41,6 +41,15 @@ export function parseMarkdownFrontmatter(content: string): ParsedMarkdown {
   };
 }
 
+/**
+ * How far a note's frontmatter reaches, both fences included: where its body
+ * begins, as `parseMarkdownFrontmatter` cuts it. Read from the fences alone,
+ * so YAML that does not parse still ends where its closing fence stands.
+ */
+export function frontmatterLength(content: string): number {
+  return FRONTMATTER_PATTERN.exec(content)?.[0].length ?? 0;
+}
+
 /** Replaces YAML while retaining the original fences, BOM and body bytes. */
 export function replaceMarkdownFrontmatter(
   content: string,

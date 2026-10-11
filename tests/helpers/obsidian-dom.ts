@@ -49,6 +49,7 @@ export function installObsidianDom(win: Window & typeof globalThis): void {
 	};
 	element.addClass = function (this: Element, ...names: string[]): void { this.classList.add(...names); };
 	element.removeClass = function (this: Element, ...names: string[]): void { this.classList.remove(...names); };
+	element.removeClasses = function (this: Element, names: string[]): void { this.classList.remove(...names); };
 	element.toggleClass = function (this: Element, name: string, on: boolean): void { this.classList.toggle(name, on); };
 	element.hasClass = function (this: Element, name: string): boolean { return this.classList.contains(name); };
 	element.createEl = create;
@@ -62,4 +63,20 @@ export function installObsidianDom(win: Window & typeof globalThis): void {
 		heard.add(listener);
 		return () => { heard.delete(listener); };
 	};
+	// And the loose builders the app puts on the window, which make an
+	// element of nobody's until it is placed.
+	const loose = {
+		createSpan: (spec: ElementSpec = {}): HTMLSpanElement => {
+			const holder = win.document.createElement('div');
+			const span = create.call(holder, 'span', spec) as HTMLSpanElement;
+			span.remove();
+			return span;
+		},
+		createFragment: (): DocumentFragment => win.document.createDocumentFragment(),
+	};
+	for (const target of [win, globalThis] as Record<string, unknown>[]) {
+		for (const [name, builder] of Object.entries(loose)) {
+			if (typeof target[name] !== 'function') target[name] = builder;
+		}
+	}
 }

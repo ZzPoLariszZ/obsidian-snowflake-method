@@ -200,6 +200,18 @@ describe('entity mentions', () => {
 			).toEqual([]);
 		});
 
+		it('never finds a note mentioning itself, and lets another candidate settle', () => {
+			const own = 'Demo/20_Character/Alice.md';
+			// The entity's own page names it throughout: none of that is a mention.
+			expect(
+				mentions('Alice keeps the light. [[Alice]] again.', [source('Alice', 'name', own)], [], own),
+			).toEqual([]);
+			// A name the page shares with another member means the other one.
+			const [found] = mentions('小艾走了。', shared, [], alice);
+			expect(found?.resolution).toBe('unique');
+			expect(found?.resolvedMemberPath).toBe(bob);
+		});
+
 		it('holds a note-scoped silence to its note', () => {
 			const rule: MentionIgnore = {
 				scope: 'note',

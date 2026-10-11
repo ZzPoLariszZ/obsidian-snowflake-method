@@ -6288,6 +6288,17 @@ body {
 	transition: color 200ms ease-in-out;
 }
 
+/* A note of a project steps back the same way, page and page alone: its
+   editor's content, and its reading view's sections, which leave out the
+   title and the properties above them and the links below. */
+.snowflake-method-note-dressed.snowflake-method-dialogue-focus .markdown-source-view .cm-content,
+.snowflake-method-note-dressed.snowflake-method-dialogue-focus
+	.markdown-preview-sizer
+	> div:not(.mod-header, .mod-footer) {
+	color: color-mix(in srgb, var(--text-normal) 35%, transparent);
+	transition: color 200ms ease-in-out;
+}
+
 .snowflake-method-dialogue-focus .snowflake-method-dialogue {
 	color: var(--text-normal);
 }

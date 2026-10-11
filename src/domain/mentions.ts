@@ -355,11 +355,15 @@ export function resolveMentions(
 	candidateIgnores: readonly MentionIgnore[],
 ): EntityOccurrence[] {
 	// Candidate ignores first: a hit that loses its only candidate is not a
-	// mention at all, and a shorter hit it overlapped may now win instead.
+	// mention at all, and a shorter hit it overlapped may now win instead. A
+	// note never mentions itself, so its own candidacy goes the same way: an
+	// entity's page names it throughout, and a link from the page to itself
+	// leads nowhere.
 	const silenced = (
 		candidate: MentionCandidate,
 		matchedText: string,
 	): boolean =>
+		candidate.memberPath === path ||
 		candidateIgnores.some(
 			(rule) =>
 				rule.scope !== 'occurrence' &&

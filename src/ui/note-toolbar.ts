@@ -3,6 +3,11 @@ import { EditorView } from '@codemirror/view';
 
 import type { ManuscriptPresentation } from '../domain';
 import { runEditorCommand, type EditorCommandId } from '../editor';
+import {
+	openMentionModeMenu,
+	type MentionModeChoices,
+	type MentionModeSetters,
+} from './mention-mode-menu';
 import { openPresentationPanel, type PresentationPanel } from './presentation-panel';
 
 /**
@@ -11,17 +16,19 @@ import { openPresentationPanel, type PresentationPanel } from './presentation-pa
  *
  * A note the typography reaches is read and written the way a chapter in
  * the stream is, and the author reaches for the same bar: undo and redo,
- * the heading levels, the inline marks, the dress popover, the export and
- * typewriter scrolling. The export is the note's own, as the button on a
- * chapter's header in the stream is the chapter's: a tab shows one note,
- * not the whole manuscript. What the bar leaves out is what only the
- * stream can answer -- the mentions it marks, the focus levels that fade
- * the page around it -- and the popover leaves out the grid lines, which a
- * note never wears. The bar stands where the stream's does, between the
- * leaf's header and its content, and the buttons that edit go grey while
- * the note is read rather than written, as the stream's do while no note
- * is being written in: greyed rather than gone, because a bar that came
- * and went would move the page under the reader.
+ * the heading levels, the inline marks, the dress popover, the marks the
+ * page wears, the export and typewriter scrolling. The export is the
+ * note's own, as the button on a chapter's header in the stream is the
+ * chapter's: a tab shows one note, not the whole manuscript. The marks are
+ * a project's, read off its roster, so the button that chooses them is
+ * greyed on a note no project holds. What the bar leaves out is what only
+ * the stream can answer -- the focus levels that fade the page around it --
+ * and the popover leaves out the grid lines, which a note never wears. The
+ * bar stands where the stream's does, between the leaf's header and its
+ * content, and the buttons that edit go grey while the note is read rather
+ * than written, as the stream's do while no note is being written in:
+ * greyed rather than gone, because a bar that came and went would move the
+ * page under the reader.
  *
  * One bar per note view, put up when the dress reaches the note it shows
  * and taken down when it stops, which the host asks at the moments a note
@@ -52,6 +59,8 @@ export interface NoteToolbarSettings {
 	enterParagraph: boolean;
 	presentation: ManuscriptPresentation;
 	recentFonts: readonly string[];
+	/** Which marks the page wears, which the marks' menu shows checked. */
+	mentions: MentionModeChoices;
 }
 
 export interface NoteToolbarDeps {
@@ -66,6 +75,10 @@ export interface NoteToolbarDeps {
 	setPresentation(patch: Partial<ManuscriptPresentation>): Promise<void>;
 	setEnterParagraph(on: boolean): Promise<void>;
 	toggleTypewriter(): Promise<void>;
+	/** Whether a note at a path is in a project, whose roster its marks are read off. */
+	marks(path: string): boolean;
+	/** Where the marks' menu writes a pick: the settings the stream reads too. */
+	mentionModes: MentionModeSetters;
 	/** The note at a path written out as plain text, as the export settings say. */
 	exportNote(path: string): Promise<void>;
 	showError(error: unknown): void;
@@ -75,6 +88,8 @@ interface MountedBar {
 	el: HTMLElement;
 	/** The buttons that edit, inert while the note is read. */
 	editing: HTMLButtonElement[];
+	/** The marks' button, inert on a note no project holds. */
+	mentions: HTMLButtonElement;
 	typewriter: HTMLButtonElement;
 	/** Whether the typewriter button was last painted lit, so a repaint is cheap. */
 	lit: boolean | null;
@@ -216,6 +231,17 @@ export class NoteToolbars {
 			{ 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
 		);
 		dress.addClass('snowflake-method-toolbar-presentation');
+		// Which marks the page wears, live while reading for the same reason
+		// as the stream's: it is how the page is read, not an edit.
+		const mentions = button(
+			'scan-text',
+			t('manuscript.toolbar.mentions'),
+			(event) => {
+				this.openMentionMenu(note, event);
+			},
+			{ 'aria-haspopup': 'menu' },
+		);
+		mentions.addClass('snowflake-method-toolbar-mentions');
 		// The note as plain text, live while reading for the same reason: it
 		// reads the note and edits none of it.
 		const exporter = button('file-down', t('manuscript.exportNote'), () => {
@@ -233,15 +259,26 @@ export class NoteToolbars {
 			});
 		});
 		typewriter.addClass('snowflake-method-mode-toggle');
-		const bar: MountedBar = { el, editing, typewriter, lit: null, tongue: t(TONGUE_KEY) };
+		const bar: MountedBar = {
+			el,
+			editing,
+			mentions,
+			typewriter,
+			lit: null,
+			tongue: t(TONGUE_KEY),
+		};
 		this.bars.set(note.containerEl, bar);
 		return bar;
 	}
 
-	/** The bar's face from the note and the settings: grey while read, lit while on. */
+	/**
+	 * The bar's face from the note and the settings: grey while read, the
+	 * marks grey on a note no project holds, lit while on.
+	 */
 	private paint(bar: MountedBar, note: ToolbarNote): void {
 		const reading = !note.editing();
 		for (const control of bar.editing) control.disabled = reading;
+		bar.mentions.disabled = note.path === null || !this.deps.marks(note.path);
 		const on = this.deps.settings().typewriter;
 		if (bar.lit === on) return;
 		bar.lit = on;
@@ -278,6 +315,21 @@ export class NoteToolbars {
 		if (path === null) return;
 		await note.save();
 		await this.deps.exportNote(path);
+	}
+
+	/** The stream's menu of marks, under the button of a note in a project. */
+	private openMentionMenu(note: ToolbarNote, event: MouseEvent): void {
+		const path = note.path;
+		if (path === null || !this.deps.marks(path)) return;
+		openMentionModeMenu({
+			t: this.deps.t(path),
+			choices: this.deps.settings().mentions,
+			set: this.deps.mentionModes,
+			showError: (error) => {
+				this.deps.showError(error);
+			},
+			event,
+		});
 	}
 
 	/**

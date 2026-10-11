@@ -14,7 +14,12 @@
  * what aborts a composition mid-word.
  */
 
-import { Facet, StateEffect, type Extension } from '@codemirror/state';
+import {
+	Facet,
+	StateEffect,
+	type EditorState,
+	type Extension,
+} from '@codemirror/state';
 import {
 	Decoration,
 	EditorView,
@@ -67,9 +72,10 @@ export interface MentionHighlightConfig {
 	/**
 	 * The marks one body wears right now: mode chosen, ignores applied,
 	 * synchronous. Empty while the roster is still warming, or when the
-	 * mode is off.
+	 * mode is off. The editor is handed along for a planner that serves
+	 * more than one, as a note's does, which asks it which note it shows.
 	 */
-	marks(body: string): readonly MentionMark[];
+	marks(body: string, view: EditorView): readonly MentionMark[];
 }
 
 /** How long typing may pause before the marks are re-planned. */
@@ -132,11 +138,9 @@ export function mentionDecorations(
 	);
 }
 
-function planDecorations(
-	config: MentionHighlightConfig | null,
-	body: string,
-): DecorationSet {
-	return mentionDecorations(config?.marks(body) ?? []);
+function planDecorations(view: EditorView, state: EditorState): DecorationSet {
+	const config = state.facet(mentionConfig);
+	return mentionDecorations(config?.marks(state.doc.toString(), view) ?? []);
 }
 
 const mentionPlugin = ViewPlugin.fromClass(
@@ -145,10 +149,7 @@ const mentionPlugin = ViewPlugin.fromClass(
 		private timer: number | null = null;
 
 		constructor(private readonly view: EditorView) {
-			this.decorations = planDecorations(
-				view.state.facet(mentionConfig),
-				view.state.doc.toString(),
-			);
+			this.decorations = planDecorations(view, view.state);
 		}
 
 		update(update: ViewUpdate): void {
@@ -156,10 +157,7 @@ const mentionPlugin = ViewPlugin.fromClass(
 				transaction.effects.some((effect) => effect.is(refreshMentions)),
 			);
 			if (refreshed) {
-				this.decorations = planDecorations(
-					update.state.facet(mentionConfig),
-					update.state.doc.toString(),
-				);
+				this.decorations = planDecorations(update.view, update.state);
 				return;
 			}
 			if (!update.docChanged) return;

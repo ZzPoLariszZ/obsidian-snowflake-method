@@ -114,6 +114,7 @@ import {
 	type PresentationStyle,
 	type MentionHighlightMode,
 	type MentionIgnore,
+	type MentionMark,
 	type SensitiveMatcher,
 	type Revision,
 	type DerivedTaskSources,
@@ -147,6 +148,8 @@ import {
 	flashManagedMarkerIssue,
 	flashManagedSections,
 	isManagedSectionEditorLivePreview,
+	isNestedEditor,
+	mentionHighlights,
 	refreshManagedSectionDecorations,
 	resolveManagedSectionNavigationTarget,
 	resolveManagedMarkerIssueNavigationTarget,
@@ -272,11 +275,16 @@ import {
 	NEXT_FOCUS_LEVEL,
 	SnowflakeManuscriptView,
 } from './ui/manuscript-view';
+import {
+	NoteMentions,
+	type MentionNote,
+	type NoteMentionFeed,
+} from './ui/note-mentions';
 import { NotePresentation, type DressableNote } from './ui/note-presentation';
 import { NoteToolbars, type ToolbarNote } from './ui/note-toolbar';
 import { isProseBox, proseBoxSelection, proseBoxText } from './ui/prose-box';
 import type { EditorState } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import {
 	confirmForeshadowingDeletion,
 	promptForForeshadowing,
@@ -758,6 +766,8 @@ export default class SnowflakeMethodPlugin
 	private notePresentation: NotePresentation | null = null;
 	/** The formatting bar above every note the dress reaches. */
 	private noteToolbars: NoteToolbars | null = null;
+	/** The stream's mention marks on the dressed notes of a project. */
+	private noteMentions: NoteMentions | null = null;
 	/** The folders the explorer tools reach: the known roots, and the archived projects beside them. */
 	private readonly explorerRoots = new Set<string>();
 	/** The plugin's hand in the file explorer, made once the layout is ready and while its scope is not off. */
@@ -877,8 +887,9 @@ export default class SnowflakeMethodPlugin
 		// the three moments a note can newly be on screen -- with the stream's
 		// bar above each, and in each one's editor what the stream's editors
 		// carry: the line marks that go with the dress, Enter as the paragraph
-		// break, and typewriter scrolling. All worn by an editor only while
-		// its note is one the scope reaches.
+		// break, typewriter scrolling and a project's mention marks, put in
+		// once the project service below stands. All worn by an editor only
+		// while its note is one the scope reaches.
 		this.notePresentation = new NotePresentation({
 			look: () => this.manuscriptPresentation(),
 			scope: () => this.settings.manuscriptPresentationScope,
@@ -900,16 +911,58 @@ export default class SnowflakeMethodPlugin
 				enterParagraph: this.settings.manuscriptEnterParagraph,
 				presentation: this.manuscriptPresentation(),
 				recentFonts: this.settings.manuscriptRecentFonts,
+				mentions: {
+					mentionHighlight: this.settings.manuscriptMentionHighlight,
+					sensitiveHighlight: this.settings.sensitiveHighlight,
+					dialoguePresentation: this.settings.dialoguePresentation,
+					customHighlights: this.settings.customHighlightsEnabled,
+				},
 			}),
 			setPresentation: (patch) => this.setManuscriptPresentation(patch),
 			setEnterParagraph: (on) => this.setManuscriptEnterParagraph(on),
 			toggleTypewriter: () => this.toggleManuscriptMode('typewriter'),
+			marks: (path) => this.noteMentionProject(path) !== null,
+			mentionModes: {
+				setMentionHighlight: (mode) => this.setManuscriptMentionHighlight(mode),
+				setSensitiveHighlight: (on) => this.setSensitiveHighlight(on),
+				setDialoguePresentation: (mode) => this.setDialoguePresentation(mode),
+				setCustomHighlights: (on) => this.setCustomHighlights(on),
+			},
 			exportNote: (path) => this.exportNote(path),
 			showError: (error) => {
 				this.showError(error);
 			},
 		});
+		// The stream's mention marks on the dressed notes of a project: in
+		// each one's editor, through the extension below, and in its reading
+		// view, section by section as the app draws it, both from the feed
+		// the note's project gives.
+		this.noteMentions = new NoteMentions({
+			projectOf: (path) => this.noteMentionProject(path),
+			feed: (projectPath) => this.noteMentionFeed(projectPath),
+			mode: () => this.settings.manuscriptMentionHighlight,
+			documentType: (path) => {
+				const frontmatter = this.app.metadataCache.getCache(path)?.frontmatter;
+				const declared = frontmatter === undefined ? null : documentTypeOf(frontmatter);
+				return isDocumentType(declared) ? declared : null;
+			},
+			notes: () => this.openNotes(),
+			t: (path) => (key, vars) =>
+				this.translateForProject(this.noteStanding(path).locale, key, vars),
+			openMember: (memberPath) => this.openManagedFile(memberPath),
+			addIgnore: (projectPath, rule) => this.addMentionIgnore(projectPath, rule),
+			replaceInFile: (path, from, to, expected, insert) =>
+				this.replaceInNote(path, from, to, expected, insert),
+			showError: (error) => {
+				this.showError(error);
+			},
+		});
+		this.registerMarkdownPostProcessor((el, ctx) => {
+			this.noteMentions?.dressSection(el, ctx);
+		});
 		this.register(() => {
+			this.noteMentions?.destroy();
+			this.noteMentions = null;
 			this.noteToolbars?.destroy();
 			this.noteToolbars = null;
 			// The app is handed back as it stands: no note keeps the dress, or
@@ -917,15 +970,6 @@ export default class SnowflakeMethodPlugin
 			this.notePresentation?.undressAll();
 			this.notePresentation = null;
 		});
-		this.registerEditorExtension([
-			paragraphLinesWhen((view) => this.editorDressed(view)),
-			paragraphBreakWhen(
-				(view) => this.settings.manuscriptEnterParagraph && this.editorDressed(view),
-			),
-			typewriterWhen(
-				(state) => this.settings.manuscriptTypewriter && this.stateDressed(state),
-			),
-		]);
 		this.registerEvent(
 			this.app.workspace.on('layout-change', () => {
 				this.dressNotes();
@@ -1067,6 +1111,29 @@ export default class SnowflakeMethodPlugin
 				},
 			},
 		);
+		// The dress's editor extensions, once there is a project service to say
+		// where a note stands: a note already open when the plugin loads -- an
+		// update, or the plugin turned back on -- has its editor's extensions
+		// built here and now, and each one asks at once.
+		this.registerEditorExtension([
+			paragraphLinesWhen((view) => this.editorDressed(view)),
+			paragraphBreakWhen(
+				(view) => this.settings.manuscriptEnterParagraph && this.editorDressed(view),
+			),
+			typewriterWhen(
+				(state) => this.settings.manuscriptTypewriter && this.stateDressed(state),
+			),
+			mentionHighlights({
+				marks: (body, view) => this.noteEditorMarks(view, body),
+			}),
+			// Where a right-click landed, for the mention under it: the app
+			// builds its menu after the click, and does not say where it was.
+			EditorView.domEventObservers({
+				contextmenu: (event, view) => {
+					this.noteMentions?.pointAt(view, event);
+				},
+			}),
+		]);
 		this.sessions = new WritingSessionService({
 			repository: this.projects.repository,
 			writingCount: this.projects.writingCount,
@@ -1247,23 +1314,36 @@ export default class SnowflakeMethodPlugin
 		this.registerEvent(
 			this.app.workspace.on('editor-menu', (menu, _editor, info) => {
 				const view = findEditorViewForMarkdownInfo(info);
+				if (view === null) return;
+				const content = view.state.doc.toString();
+				// Under the plugin's own heading, as the file menu has it, put
+				// up once whichever of the plugin's entries come.
+				const section = 'snowflake-method';
+				let headed = false;
+				const head = (): void => {
+					if (headed) return;
+					headed = true;
+					menu.addItem((item) =>
+						item
+							.setSection(section)
+							.setIsLabel(true)
+							.setTitle(this.editorT(content, 'plugin.name')),
+					);
+				};
+				// A mention under the pointer leads, as it leads the stream's
+				// menu: the click's own subject outranks the standing entries.
+				const path = info.file?.path;
+				if (path !== undefined) {
+					this.noteMentions?.addEditorMenuItems(menu, view, path, section, head);
+				}
 				if (
 					!this.settings.protectManagedBoundaries ||
-					view === null ||
-					!this.isManagedEditorContext(view.state.doc.toString())
+					!this.isManagedEditorContext(content)
 				) {
 					return;
 				}
 				const unlocked = areManagedBoundariesUnlocked(view.state);
-				const content = view.state.doc.toString();
-				// Under the plugin's own heading, as the file menu has it.
-				const section = 'snowflake-method';
-				menu.addItem((item) =>
-					item
-						.setSection(section)
-						.setIsLabel(true)
-						.setTitle(this.editorT(content, 'plugin.name')),
-				);
+				head();
 				menu.addItem((item) =>
 					item
 						.setSection(section)
@@ -7888,6 +7968,8 @@ export default class SnowflakeMethodPlugin
 				leaf.view.applyMentionMode();
 			}
 		}
+		// The notes of a project wear the same marks, from the same feed.
+		this.noteMentions?.refresh();
 	}
 
 	/**
@@ -10456,13 +10538,17 @@ export default class SnowflakeMethodPlugin
 				}),
 		);
 		this.rerenderStatisticsViews();
-		if (options.streams !== false) await this.refreshManuscriptStreams();
+		if (options.streams !== false) {
+			await this.refreshManuscriptStreams();
+			// A roster that moved moves what the notes of its project mark.
+			this.noteMentions?.refresh();
+		}
 		this.refreshManagedEditors();
 	}
 
-	/** Every note view open anywhere, popouts included, as the dress and the bar read them. */
-	private openNotes(): (DressableNote & ToolbarNote)[] {
-		const notes: (DressableNote & ToolbarNote)[] = [];
+	/** Every note view open anywhere, popouts included, as the dress, the bar and the marks read them. */
+	private openNotes(): (DressableNote & ToolbarNote & MentionNote)[] {
+		const notes: (DressableNote & ToolbarNote & MentionNote)[] = [];
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView)) return;
@@ -10479,15 +10565,20 @@ export default class SnowflakeMethodPlugin
 				editing: () => view.getMode() === 'source',
 				editor: () => findEditorViewForMarkdownInfo(view),
 				save: () => view.save(),
+				text: () => view.data,
+				rerender: () => {
+					view.previewMode.rerender(true);
+				},
 			});
 		});
 		return notes;
 	}
 
-	/** Every open note dressed or undressed afresh, and given its bar or relieved of it. */
+	/** Every open note dressed or undressed afresh, given its bar or relieved of it, and its marks. */
 	private dressNotes(): void {
 		this.notePresentation?.apply();
 		this.noteToolbars?.apply();
+		this.noteMentions?.apply();
 	}
 
 	/** Whether the note an editor shows is one the dress reaches. */
@@ -10536,6 +10627,68 @@ export default class SnowflakeMethodPlugin
 			}
 		}
 		return { inProject: false, inManuscript: false, locale: null };
+	}
+
+	/**
+	 * The project whose mention marks a note wears: its own, where the
+	 * typography dresses it. Null for a note the typography does not dress,
+	 * and for a note no project holds, which has no roster to read.
+	 */
+	private noteMentionProject(path: string): string | null {
+		if (this.notePresentation?.wears(path) !== true) return null;
+		return this.noteProjectRoot(path);
+	}
+
+	/** The marks an editor of the app's own wears, for the note it shows. */
+	private noteEditorMarks(view: EditorView, body: string): readonly MentionMark[] {
+		// A table's cell is an editor of its own inside the note's, its text
+		// the cell's alone rather than the note's, and it wears nothing.
+		if (!view.dom.isConnected || isNestedEditor(view)) return [];
+		const path = view.state.field(editorInfoField, false)?.file?.path;
+		if (path === undefined) return [];
+		return this.noteMentions?.editorMarks(path, body) ?? [];
+	}
+
+	/**
+	 * One project's feed for its notes: the roster's matcher and the ignores
+	 * the stream reads, with the dress the settings give every page.
+	 */
+	private async noteMentionFeed(projectPath: string): Promise<NoteMentionFeed | null> {
+		const project = await this.resolveProject(projectPath);
+		if (project === null) return null;
+		const [matcher, ignores] = await Promise.all([
+			this.manuscriptEntityMatcher(projectPath),
+			this.mentionIgnores(projectPath),
+		]);
+		if (matcher === null) return null;
+		return { matcher, ignores, ...this.manuscriptDressFeeds(), readOnly: project.readOnly };
+	}
+
+	/**
+	 * One stretch of a note's file replaced, failing closed: what was typed
+	 * in its tabs goes to the file first, so the text a reading view shows
+	 * is the file's, and a stretch that no longer reads as expected when the
+	 * write comes leaves the file untouched.
+	 */
+	private async replaceInNote(
+		path: string,
+		from: number,
+		to: number,
+		expected: string,
+		insert: string,
+	): Promise<boolean> {
+		for (const note of this.openNotes()) {
+			if (note.path === path) await note.save();
+		}
+		const file = this.app.vault.getFileByPath(path);
+		if (file === null) return false;
+		let done = false;
+		await this.app.vault.process(file, (data) => {
+			if (data.slice(from, to) !== expected) return data;
+			done = true;
+			return data.slice(0, from) + insert + data.slice(to);
+		});
+		return done;
 	}
 
 	/**
