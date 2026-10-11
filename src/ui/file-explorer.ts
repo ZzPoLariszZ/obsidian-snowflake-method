@@ -69,6 +69,10 @@ export const EXPLORER_VIEW_TYPE = 'file-explorer';
 export const EXPLORER_MENU_SECTION = 'snowflake-method';
 const BADGE_CLASS = 'snowflake-method-explorer-count';
 const BUTTON_CLASS = 'snowflake-method-explorer-button';
+/** The box the four buttons stand in, kept together at the end of the explorer's row. */
+const BUTTON_GROUP_CLASS = 'snowflake-method-explorer-buttons';
+/** On the explorer's header while its row holds that box, for the rules that size the row on mobile. */
+const WITH_BUTTONS_CLASS = 'snowflake-method-explorer-with-buttons';
 const COUNTS_OFF_CLASS = 'snowflake-method-explorer-counts-off';
 /** On the scroller while only the current project is shown. */
 const IMMERSIVE_CLASS = 'snowflake-method-explorer-immersive';
@@ -155,6 +159,8 @@ interface Attachment {
 		counts: HTMLElement | null;
 		immersive: HTMLElement | null;
 	};
+	/** The box the buttons stand in, at the end of the explorer's row; null until one is made. */
+	group: HTMLElement | null;
 	arrange: ArrangeController | null;
 	paintFrame: number | null;
 	/** The rows the explorer shows, top to bottom, kept from one paint to the next until the tree changes. */
@@ -603,6 +609,7 @@ export class ExplorerEnhancer {
 			view,
 			container,
 			buttons: { tidy: null, arrange: null, counts: null, immersive: null },
+			group: null,
 			arrange: null,
 			paintFrame: null,
 			order: null,
@@ -661,6 +668,9 @@ export class ExplorerEnhancer {
 		attachment.arrange?.exit();
 		attachment.arrange = null;
 		for (const button of Object.values(attachment.buttons)) button?.remove();
+		attachment.group?.parentElement?.parentElement?.removeClass(WITH_BUTTONS_CLASS);
+		attachment.group?.remove();
+		attachment.group = null;
 		for (const dispose of attachment.disposers.splice(0)) dispose();
 		if (attachment.paintFrame !== null) {
 			view.containerEl.win.cancelAnimationFrame(attachment.paintFrame);
@@ -688,7 +698,7 @@ export class ExplorerEnhancer {
 	 * The buttons the capabilities allow, each made once. A view attached
 	 * before its rows existed could not be probed for the row features, so
 	 * the two buttons that need them are made when the rows arrive, and the
-	 * four are put back in their one order whichever came late.
+	 * four are put back in their one order whichever came late, together.
 	 */
 	private addButtons(view: ExplorerViewShape, attachment: Attachment): void {
 		const { buttons, container } = attachment;
@@ -718,9 +728,31 @@ export class ExplorerEnhancer {
 			added = true;
 		}
 		if (!added) return;
+		const group = this.buttonGroup(view, attachment);
 		for (const button of [buttons.tidy, buttons.immersive, buttons.arrange, buttons.counts]) {
-			button?.parentElement?.insertBefore(button, null);
+			if (button !== null) (group ?? button.parentElement)?.insertBefore(button, null);
 		}
+	}
+
+	/**
+	 * The box the buttons stand in: one item at the end of the app's row,
+	 * which the row's own wrapping keeps whole. While the row has room for
+	 * all nine, the four end the explorer's line; when it has not, they take
+	 * a line of their own below it rather than splitting across two, laid
+	 * out by the row's rules either way -- centred, the row's gap, and on
+	 * mobile the drawer's touch sizes. The drawer keeps its row to one line,
+	 * which nine buttons overran at both ends, so the header is marked for
+	 * the stylesheet to give the four a line of their own there.
+	 */
+	private buttonGroup(view: ExplorerViewShape, attachment: Attachment): HTMLElement | null {
+		if (attachment.group !== null) return attachment.group;
+		const row =
+			view.headerDom?.navButtonsEl ??
+			view.containerEl.querySelector<HTMLElement>('.nav-buttons-container');
+		if (row == null) return null;
+		attachment.group = row.createDiv({ cls: BUTTON_GROUP_CLASS });
+		row.parentElement?.addClass(WITH_BUTTONS_CLASS);
+		return attachment.group;
 	}
 
 	private makeButton(

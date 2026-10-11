@@ -32,6 +32,7 @@ import {
 
 const BADGE = '.snowflake-method-explorer-count';
 const BUTTONS = ['tidy', 'immersive', 'arrange', 'counts'].map((kind) => `snowflake-method-explorer-button-${kind}`);
+const LINE = '.snowflake-method-explorer-buttons';
 
 /** A menu that keeps what the explorer's move items would do, so a test can press one. */
 class CapturingMenu {
@@ -132,9 +133,11 @@ function harness(options: HarnessOptions) {
 	cleanups.push(() => enhancer.dispose());
 	const badgeOf = (path: string): string | null =>
 		view.fileItems[path]?.selfEl.querySelector(BADGE)?.textContent ?? null;
+	// The plugin's buttons, in their box at the end of the explorer's row.
+	const shown = () => view.buttonsEl.querySelector(LINE)?.children ?? [];
 	const buttons = (): string[] =>
-		view.buttonsEl.children.map((button) => [...button.classes].find((cls) => cls.startsWith('snowflake-method-explorer-button-')) ?? '');
-	return { dom, files, app, view, settings, plugin, saved, toggles, notices, totals, enhancer, badgeOf, buttons, current };
+		shown().map((button) => [...button.classes].find((cls) => cls.startsWith('snowflake-method-explorer-button-')) ?? '');
+	return { dom, files, app, view, settings, plugin, saved, toggles, notices, totals, enhancer, badgeOf, buttons, shown, current };
 }
 
 const cleanups: (() => void)[] = [];
@@ -152,7 +155,7 @@ describe('the explorer tools', () => {
 			'snowflake-method-explorer-button-arrange',
 			'snowflake-method-explorer-button-counts',
 		]);
-		const tidy = open.view.buttonsEl.children[0];
+		const tidy = open.shown()[0];
 		expect(tidy?.classes.has('is-active')).toBe(true);
 		expect(tidy?.getAttribute('aria-label')).toBe('explorer.tidyOn\nexplorer.tidyTurnOff');
 		// No hook is left on the view: a leaf that leaves the workspace is let go of at the next layout change.
@@ -164,6 +167,32 @@ describe('the explorer tools', () => {
 		const deferred = harness({ files: ['Novel/50_Manuscript/Draft.md'], deferred: true });
 		deferred.enhancer.start();
 		expect(deferred.buttons()).toEqual([]);
+	});
+
+	it('keeps the buttons together in one box at the end of the explorer’s row, and takes it away with them', () => {
+		const { enhancer, view, app, buttons } = harness({ files: ['Novel/50_Manuscript/Draft.md'] });
+		// The explorer's own five, there before the plugin.
+		for (const icon of ['edit', 'folder-plus', 'sort-asc', 'gallery-vertical', 'chevrons-down-up']) {
+			view.headerDom.addNavButton(icon, '', () => undefined);
+		}
+		enhancer.start();
+		const row = view.buttonsEl;
+		const line = row.children[row.children.length - 1];
+		expect(line?.classes.has('snowflake-method-explorer-buttons')).toBe(true);
+		expect(row.children.slice(0, 5).map((button) => button.getAttribute('data-nav-icon'))).toEqual([
+			'edit',
+			'folder-plus',
+			'sort-asc',
+			'gallery-vertical',
+			'chevrons-down-up',
+		]);
+		expect(buttons()).toEqual(BUTTONS);
+		// The header is marked, for the rules that give the four a line of their own on mobile.
+		expect(row.parentElement?.classes.has('snowflake-method-explorer-with-buttons')).toBe(true);
+		app.leaves.length = 0;
+		app.workspace.trigger('layout-change');
+		expect(row.children).toHaveLength(5);
+		expect(row.parentElement?.classes.has('snowflake-method-explorer-with-buttons')).toBe(false);
 	});
 
 	it('makes the row buttons once the rows arrive, for a view dressed before it had any', async () => {
@@ -296,7 +325,7 @@ describe('the explorer tools', () => {
 	});
 
 	it('shows only the current project, folds the rest, follows the author, and opens the folds again', async () => {
-		const { enhancer, view, settings, notices, dom, current, app } = harness({
+		const { enhancer, view, settings, notices, dom, current, app, shown } = harness({
 			files: ['Novel/50_Manuscript/Draft.md', 'Other/50_Manuscript/Draft.md', 'Inbox/a.md', 'Roadmap.md'],
 			roots: ['Novel', 'Other'],
 			current: 'Novel',
@@ -362,7 +391,7 @@ describe('the explorer tools', () => {
 		expect(folded('Novel')).toBe(false);
 		// The two modes take turns, and the blocked one's button steps back.
 		current.root = 'Novel';
-		const buttonOf = (kind: string) => view.buttonsEl.children.find((button) => button.classes.has(`snowflake-method-explorer-button-${kind}`));
+		const buttonOf = (kind: string) => shown().find((button) => button.classes.has(`snowflake-method-explorer-button-${kind}`));
 		expect(enhancer.setImmersive(true)).toBe(true);
 		expect(enhancer.toggleArrange()).toBe(false);
 		expect(notices[notices.length - 1]).toBe('explorer.arrangeBlocked');

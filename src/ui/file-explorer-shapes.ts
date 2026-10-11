@@ -35,6 +35,8 @@ export interface ExplorerHeaderShape {
 		onClick: (event: MouseEvent) => void,
 		cls?: string,
 	): HTMLElement;
+	/** The row the buttons stand in, inside the header. */
+	navButtonsEl?: HTMLElement;
 }
 
 export interface ExplorerViewShape extends View {

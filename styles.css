@@ -17404,6 +17404,49 @@ body.theme-dark .snowflake-method-sticky-tint[data-color='macaron-8'] {
 	display: none;
 }
 
+/* The four buttons stay together, one box at the end of the app's row, which the row's own wrapping keeps whole: on the explorer's line while there is room for all nine, on a line of their own below it when there is not, laid out by the row's rules either way. Its own buttons wrap only if the sidebar is too narrow even for the four. */
+.nav-buttons-container > .snowflake-method-explorer-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: inherit;
+}
+
+/* The drawer on mobile keeps its row to one line, which nine buttons overran at both ends, and a sidebar there never holds all nine: the four always take a line of their own, which the rules below size for. */
+.workspace-drawer .nav-header.snowflake-method-explorer-with-buttons > .nav-buttons-container {
+	flex-wrap: wrap;
+}
+
+.workspace-drawer
+	.nav-header.snowflake-method-explorer-with-buttons
+	> .nav-buttons-container
+	> .snowflake-method-explorer-buttons {
+	flex-basis: 100%;
+}
+
+/* The drawer sizes what it draws around its row for one line of buttons: the fade under a row at the top, and on a phone, where the row floats at the foot, the fade over it and the room the list keeps to scroll clear of it. Each takes the second line too, a button and the row's gap. */
+.is-mobile.is-floating-nav
+	.workspace-drawer
+	.nav-header.snowflake-method-explorer-with-buttons
+	> .nav-buttons-container::after {
+	height: calc(72px + var(--touch-size-m) + var(--size-4-2));
+}
+
+.is-mobile.is-floating-nav.is-phone
+	.workspace-drawer
+	.nav-header.snowflake-method-explorer-with-buttons
+	> .nav-buttons-container::after {
+	height: calc(120px + var(--touch-size-m) + var(--size-4-2));
+}
+
+.is-mobile.is-floating-nav.is-phone
+	.workspace-drawer
+	.workspace-leaf-content
+	.nav-header.snowflake-method-explorer-with-buttons
+	~ div:last-child {
+	padding-bottom: calc(96px + var(--touch-size-m) + var(--size-4-2));
+}
+
 /* The buttons show their state the way the explorer's own auto-reveal button does. Arrange mode and immersive mode take turns, and whichever is off while the other is on steps back, still clickable: a press says which mode is in the way. */
 .nav-buttons-container .nav-action-button.snowflake-method-explorer-button.is-active {
 	color: var(--text-accent);

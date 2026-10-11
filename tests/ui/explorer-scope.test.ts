@@ -85,8 +85,9 @@ function host(scope: ExplorerScope) {
 		},
 	});
 	hosts.push(plugin);
+	// The plugin's buttons, in their box at the end of the explorer's row.
 	const buttons = (): string[] =>
-		view.buttonsEl.children.map(
+		(view.buttonsEl.querySelector('.snowflake-method-explorer-buttons')?.children ?? []).map(
 			(button) => [...button.classes].find((cls) => cls.startsWith('snowflake-method-explorer-button-')) ?? '',
 		);
 	const shownName = (path: string): string | null => view.fileItems[path]?.innerEl.textContent ?? null;
