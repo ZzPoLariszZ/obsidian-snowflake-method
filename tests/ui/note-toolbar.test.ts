@@ -58,12 +58,16 @@ describe('NoteToolbars', () => {
 		return fake;
 	}
 
-	function harness(notes: FakeNote[], dressed: (path: string) => boolean) {
+	function harness(
+		notes: FakeNote[],
+		dressed: (path: string) => boolean,
+		speaks: (path: string | null) => string = () => '',
+	) {
 		const calls: string[] = [];
 		let typewriter = false;
 		const toolbars = new NoteToolbars({
 			app: new App(),
-			t: () => (key) => key,
+			t: (path) => (key) => `${speaks(path)}${key}`,
 			wears: dressed,
 			notes: () => notes,
 			settings: () => ({
@@ -156,6 +160,51 @@ describe('NoteToolbars', () => {
 		expect(one.view.state.doc.toString()).toBe('## a word here');
 		mounted.querySelector<HTMLButtonElement>('.snowflake-method-mode-toggle')?.click();
 		expect(calls).toEqual(['typewriter']);
+	});
+
+	it('writes in a table cell’s own editor while the cell holds the caret', () => {
+		const one = note('Novel/Chapter.md', '| Name | Role |\n| --- | --- |\n| Ann | lead |');
+		// The app nests an editor in the note's for the cell being written in.
+		const host = one.view.dom.createDiv();
+		const cell = new EditorView({
+			state: EditorState.create({ doc: 'Ann', selection: { anchor: 3 } }),
+			parent: host,
+		});
+		Object.defineProperty(cell, 'focus', { value: () => undefined });
+		const owner = one.view.dom.ownerDocument;
+		Object.defineProperty(owner, 'activeElement', { configurable: true, get: () => cell.contentDOM });
+		try {
+			const { toolbars } = harness([one], () => true);
+			toolbars.apply();
+			const buttons = Array.from((bar(one) as HTMLElement).querySelectorAll('button'));
+			buttons[2]?.click();
+			expect(cell.state.doc.toString()).toBe('## Ann');
+			expect(one.view.state.doc.toString()).toBe('| Name | Role |\n| --- | --- |\n| Ann | lead |');
+		} finally {
+			Reflect.deleteProperty(owner, 'activeElement');
+			cell.destroy();
+		}
+	});
+
+	it('draws the bar again when its note comes to speak another language, and only then', () => {
+		const one = note('Novel/Chapter 1.md');
+		let language = 'en:';
+		const { toolbars } = harness([one], () => true, () => language);
+		toolbars.apply();
+		const first = bar(one);
+		// Another note of the same project in the same tab keeps the bar.
+		one.path = 'Novel/Chapter 2.md';
+		toolbars.apply();
+		expect(bar(one)).toBe(first);
+		// A note of a project in another language, or the plugin's language changed.
+		language = 'zh:';
+		toolbars.apply();
+		const second = bar(one);
+		expect(second).not.toBe(first);
+		expect(first?.isConnected).toBe(false);
+		expect(one.containerEl.querySelectorAll(`.${NOTE_TOOLBAR_CLASS}`)).toHaveLength(1);
+		toolbars.apply();
+		expect(bar(one)).toBe(second);
 	});
 
 	it('takes the bar down when the dress stops reaching the note', () => {

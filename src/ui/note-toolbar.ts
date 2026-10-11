@@ -1,5 +1,5 @@
 import { Menu, setIcon, setTooltip, type App } from 'obsidian';
-import type { EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 
 import type { ManuscriptPresentation } from '../domain';
 import { runEditorCommand, type EditorCommandId } from '../editor';
@@ -72,6 +72,24 @@ interface MountedBar {
 	typewriter: HTMLButtonElement;
 	/** Whether the typewriter button was last painted lit, so a repaint is cheap. */
 	lit: boolean | null;
+	/** One of the bar's own words as it was drawn, which says what language it speaks. */
+	tongue: string;
+}
+
+/** The word a bar is asked for again, to tell whether its note now speaks another language. */
+const TONGUE_KEY = 'manuscript.toolbar.undo';
+
+/**
+ * The editor of a table cell that holds the caret, nested in a note's own
+ * editor, or null when the caret is anywhere else. The app builds one per
+ * cell in Live Preview while the cell is being written in.
+ */
+function cellEditorIn(outer: EditorView): EditorView | null {
+	const active = outer.dom.ownerDocument.activeElement;
+	if (active === null || !outer.dom.contains(active)) return null;
+	const cell = active.closest<HTMLElement>('.cm-editor');
+	if (cell === null || cell === outer.dom) return null;
+	return EditorView.findFromDOM(cell);
 }
 
 export class NoteToolbars {
@@ -92,13 +110,16 @@ export class NoteToolbars {
 
 	applyTo(note: ToolbarNote): void {
 		const wears = note.path !== null && this.deps.wears(note.path);
-		const bar = this.bars.get(note.containerEl);
-		if (!wears) {
-			if (bar === undefined) return;
+		let bar = this.bars.get(note.containerEl);
+		// A bar is drawn in its note's language, so a tab turned to a note of
+		// a project in another one, or the plugin's language changed, has it
+		// drawn again: its words, its menu and its popover alike.
+		if (bar !== undefined && (!wears || bar.tongue !== this.deps.t(note.path)(TONGUE_KEY))) {
 			bar.el.remove();
 			this.bars.delete(note.containerEl);
-			return;
+			bar = undefined;
 		}
+		if (!wears) return;
 		this.paint(bar ?? this.mount(note), note);
 	}
 
@@ -198,7 +219,7 @@ export class NoteToolbars {
 			});
 		});
 		typewriter.addClass('snowflake-method-mode-toggle');
-		const bar: MountedBar = { el, editing, typewriter, lit: null };
+		const bar: MountedBar = { el, editing, typewriter, lit: null, tongue: t(TONGUE_KEY) };
 		this.bars.set(note.containerEl, bar);
 		return bar;
 	}
@@ -219,8 +240,13 @@ export class NoteToolbars {
 
 	/** A bar press, delivered to the note's editor as the author's own edit. */
 	private exec(note: ToolbarNote, command: EditorCommandId): void {
-		const view = note.editor();
-		if (view === null) return;
+		const outer = note.editor();
+		if (outer === null) return;
+		// While a table's cell is being written in, the app hands its own
+		// commands to the cell's editor, which holds the caret, and so does
+		// the bar: the note's editor would take the caret out of the cell and
+		// write over the row the cell stands in.
+		const view = cellEditorIn(outer) ?? outer;
 		// The press kept the caret where it was; a bar pressed from outside
 		// the editor brings the caret back to it first, so the edit lands
 		// where the author can see it.

@@ -201,6 +201,9 @@ export function toggleInline(
 
 const HEADING_PREFIX = /^(#{1,6})[ \t]+/u;
 
+/** A quote's or a callout's markers before a line's words, which a heading goes after. */
+const QUOTE_LEAD = /^[>\s]*>[ \t]*/u;
+
 /**
  * Sets or clears a heading level on every line the selection touches.
  *
@@ -209,7 +212,9 @@ const HEADING_PREFIX = /^(#{1,6})[ \t]+/u;
  * caret resting on an empty line is an author starting a heading, and gets
  * the prefix to type after. When every touched line already carries exactly
  * the asked-for level the toggle takes it away; otherwise every line is set
- * to it, whatever it carried before. Null when nothing would change hands.
+ * to it, whatever it carried before. A line in a quote or a callout keeps
+ * its `>` markers in front, as the app's own heading command keeps them,
+ * so the line stays in its quote. Null when nothing would change hands.
  */
 export function toggleHeading(
 	state: EditorState,
@@ -231,9 +236,10 @@ export function toggleHeading(
 	gather(false);
 	if (lines.size === 0) gather(true);
 	const parsed = [...lines.values()].map((line) => {
-		const match = HEADING_PREFIX.exec(line.text);
+		const lead = QUOTE_LEAD.exec(line.text)?.[0].length ?? 0;
+		const match = HEADING_PREFIX.exec(line.text.slice(lead));
 		return {
-			from: line.from,
+			from: line.from + lead,
 			prefixLength: match === null ? 0 : match[0].length,
 			level: match === null ? 0 : match[1]?.length ?? 0,
 		};

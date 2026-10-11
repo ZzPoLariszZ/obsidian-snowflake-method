@@ -157,6 +157,13 @@ describe('toggleHeading', () => {
 		expect(heading('para\n|', 3)).toBe('para\n### |');
 		expect(heading('## |', 2)).toBe('|');
 	});
+
+	it('keeps a quote’s or a callout’s markers in front, as the app does', () => {
+		expect(heading('> quoted line|\n> second', 2)).toBe('> ## quoted line|\n> second');
+		expect(heading('> [!note] Title|', 2)).toBe('> ## [!note] Title|');
+		expect(heading('> ## Quoted heading|', 2)).toBe('> Quoted heading|');
+		expect(heading('>> deep|', 3)).toBe('>> ### deep|');
+	});
 });
 
 describe('read-only states', () => {

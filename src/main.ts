@@ -3329,6 +3329,8 @@ export default class SnowflakeMethodPlugin
 					this.settings.protectManagedBoundaries,
 			);
 		}
+		// The bars over notes are drawn in the language the plugin speaks.
+		if (key === 'uiLocale') this.noteToolbars?.apply();
 		// The palette's toggle writes it too, and the settings page shows it.
 		if (key === 'protectManagedBoundaries') this.settingTab?.refreshRows();
 		if (key === 'projectRoot') await this.syncCurrentProjectLocale();
