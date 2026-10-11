@@ -1,4 +1,4 @@
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 
 import { paragraphBreakByText } from '../../src/editor';
@@ -32,5 +32,14 @@ describe('paragraphBreakByText', () => {
 		expect(paragraphBreakByText(state('---\ntitle: a\n---', 10))).toBeNull();
 		expect(paragraphBreakByText(state('| a | b |\n|---|---|\n| 1 | 2 |', 24))).toBeNull();
 		expect(paragraphBreakByText(state('a | b\n--|--\n1 | 2', 16))).toBeNull();
+	});
+
+	it('leaves Enter to the app with more than one caret, which breaks at every one', () => {
+		const several = EditorState.create({
+			doc: 'First line of prose.\n\nSecond paragraph here.',
+			selection: EditorSelection.create([EditorSelection.cursor(5), EditorSelection.cursor(39)], 1),
+			extensions: EditorState.allowMultipleSelections.of(true),
+		});
+		expect(paragraphBreakByText(several)).toBeNull();
 	});
 });

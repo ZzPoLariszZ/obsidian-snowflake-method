@@ -168,6 +168,36 @@ const PLAIN_ENTER_KINDS: ReadonlySet<TextLineKind> = new Set<TextLineKind>([
 	'code',
 ]);
 
+const HEADING_LINE = /^ {0,3}#{1,6}(?:\s|$)/u;
+const RULE_LINE = /^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/u;
+const LIST_ITEM_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/u;
+
+/**
+ * A tag that opens an HTML block wherever it stands, a paragraph's next
+ * line included: the block-level names CommonMark lists, as the stream's
+ * grammar reads them.
+ */
+const HTML_BLOCK_TAG =
+	/^<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|pre|script|section|source|style|summary|table|tbody|td|textarea|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/iu;
+
+/**
+ * Any other tag, whole and alone on its line: an HTML block too, but one
+ * that cannot break into a paragraph. A line that merely opens with a tag
+ * -- an underline, a span, an autolink -- is the paragraph's.
+ */
+const HTML_LONE_TAG =
+	/^(?:<\/[a-z][\w-]*\s*>|<[a-z][\w-]*(?:\s+[a-z:_][\w.-]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*>)\s*$/iu;
+
+/**
+ * Whether a line leaves an Obsidian comment open or closed behind it: each
+ * `%%` outside a code span turns the comment on or off, wherever in the line
+ * it stands, as the app's editor reads it.
+ */
+function togglesComment(text: string): boolean {
+	if (!text.includes('%%')) return false;
+	return (text.replace(/`+[^`]*`+/gu, '').split('%%').length - 1) % 2 === 1;
+}
+
 /**
  * The lines read as a Markdown reader reads them, for an editor whose
  * grammar is not the stream's.
@@ -235,7 +265,7 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 		}
 		if (comment) {
 			kinds.push('comment');
-			if (text.includes('%%')) comment = false;
+			if (togglesComment(text)) comment = false;
 			continue;
 		}
 		if (html !== null) {
@@ -261,7 +291,7 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 				const after = next <= doc.lines ? doc.line(next).text : '';
 				if (
 					next <= doc.lines &&
-					(/^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/u.test(after) ||
+					((LIST_ITEM_LINE.test(after) && !RULE_LINE.test(after)) ||
 						/^(?: {2,}|\t)\S/u.test(after))
 				) {
 					kinds.push('list');
@@ -273,24 +303,36 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 			kinds.push('blank');
 			continue;
 		}
-		const opening = /^ {0,3}(`{3,}|~{3,})/u.exec(text);
-		if (opening !== null) {
+		// A backtick fence's info string holds no backtick: a line that opens
+		// with a code span and goes on is a paragraph's.
+		const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(text);
+		if (
+			opening !== null &&
+			!(opening[1]?.startsWith('`') === true && (opening[2] ?? '').includes('`'))
+		) {
 			fence = { marker: opening[1]?.charAt(0) ?? '`', length: opening[1]?.length ?? 3 };
 			kinds.push('fence');
 			paragraph = false;
 			container = null;
 			continue;
 		}
-		if (/^ {0,3}\$\$/u.test(text)) {
+		// A math block opens on a `$$` with no other dollar sign after it, as
+		// the app's editor opens one, and `$$…$$` closing the line is a block of
+		// its own; display math with words after it is a paragraph's.
+		const afterMath = /^ {0,3}\$\$(.*)$/u.exec(text)?.[1];
+		if (
+			afterMath !== undefined &&
+			(!afterMath.includes('$') || /\$\$\s*$/u.test(afterMath))
+		) {
 			kinds.push('math');
-			if (!/\$\$.*\$\$\s*$/u.test(trimmed)) math = true;
+			if (!afterMath.includes('$')) math = true;
 			paragraph = false;
 			container = null;
 			continue;
 		}
 		if (/^ {0,3}%%/u.test(text)) {
 			kinds.push('comment');
-			if (!/%%.*%%/u.test(trimmed)) comment = true;
+			comment = togglesComment(text);
 			paragraph = false;
 			container = null;
 			continue;
@@ -298,9 +340,15 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 		// An HTML block, by the kinds CommonMark names: a comment, a processing
 		// instruction, a declaration and CDATA each end at their own closing,
 		// on the same line as often as not -- a section marker is one line --
-		// and a tag block runs to the next blank line.
+		// and a tag block runs to the next blank line: one opening with a
+		// block-level tag, or a lone tag on a line that no paragraph runs into.
 		const htmlOpening = /^ {0,3}<(?:(!--)|(\?)|(!\[CDATA\[)|(![A-Za-z])|[A-Za-z]|\/)/u.exec(text);
-		if (htmlOpening !== null) {
+		if (
+			htmlOpening !== null &&
+			(htmlOpening.slice(1).some((group) => group !== undefined) ||
+				HTML_BLOCK_TAG.test(trimmed) ||
+				(!paragraph && HTML_LONE_TAG.test(trimmed)))
+		) {
 			const closing =
 				htmlOpening[1] !== undefined
 					? /-->/u
@@ -323,27 +371,38 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 			container = null;
 			continue;
 		}
-		if (/^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/u.test(text)) {
+		// A rule before an item: `* * *` and `- - -` are a scene break, not a
+		// list of nothing.
+		const rule = RULE_LINE.test(text);
+		if (!rule && LIST_ITEM_LINE.test(text)) {
 			container = 'list';
 			kinds.push('list');
 			paragraph = false;
+			if (togglesComment(text)) comment = true;
 			continue;
 		}
 		if (/^ {0,3}>/u.test(text)) {
 			container = 'quote';
 			kinds.push('quote');
 			paragraph = false;
+			if (togglesComment(text)) comment = true;
 			continue;
 		}
 		if (container !== null) {
 			// Still the item's or the quote's: indented under it, or a lazy
-			// continuation of the line before.
-			kinds.push(container);
-			continue;
+			// continuation of the line before. A heading or a rule that is
+			// neither ends it, as it ends the paragraph a lazy line continues.
+			const indented = container === 'list' && /^(?: {2,}|\t)/u.test(text);
+			if (indented || !(HEADING_LINE.test(text) || rule)) {
+				kinds.push(container);
+				if (togglesComment(text)) comment = true;
+				continue;
+			}
+			container = null;
 		}
-		const standing: TextLineKind | null = /^ {0,3}#{1,6}(?:\s|$)/u.test(text)
+		const standing: TextLineKind | null = HEADING_LINE.test(text)
 			? 'heading'
-			: /^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/u.test(text)
+			: rule
 				? 'rule'
 				: /^ {0,3}\|/u.test(text)
 					? 'table'
@@ -355,10 +414,13 @@ export function classifyLinesByText(doc: Text, upTo = doc.lines): TextLineKind[]
 		if (standing !== null) {
 			kinds.push(standing);
 			paragraph = false;
+			if (standing !== 'code' && togglesComment(text)) comment = true;
 			continue;
 		}
 		kinds.push('text');
 		paragraph = true;
+		// A comment opened partway along the line runs on below it.
+		if (togglesComment(text)) comment = true;
 	}
 	return kinds;
 }

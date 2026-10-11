@@ -138,9 +138,12 @@ function breakSpec(range: SelectionRange, line: Line): TransactionSpec {
  * own, whose grammar is not the stream's (see `paragraphLayoutByText`): a
  * list, a quote, a code block, raw HTML, a comment, a math block and the
  * front matter keep CodeMirror's own Enter, and a table does by the same
- * reading as above. Null when Enter is not this command's to answer.
+ * reading as above. Null when Enter is not this command's to answer, and
+ * with more than one caret: the app's Enter breaks at every one of them,
+ * where this break would answer for the main one and drop the rest.
  */
 export function paragraphBreakByText(state: EditorState): TransactionSpec | null {
+	if (state.selection.ranges.length > 1) return null;
 	const range = state.selection.main;
 	const line = state.doc.lineAt(range.head);
 	if (/^\s*\|/u.test(line.text)) return null;
