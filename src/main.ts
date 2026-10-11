@@ -9336,17 +9336,29 @@ export default class SnowflakeMethodPlugin
 				);
 			},
 		});
-		// The writing modes, offered where they act: while a stream is in front.
+		// The writing modes, offered where they act: while a stream is in front,
+		// and typewriter scrolling while a note it reaches is in front too.
 		// The header buttons walk the levels; the palette names them — one
 		// command per focus mode level, so a key can be bound to the exact
 		// depth wanted rather than cycling through the rest.
+		const typewriterInStream = inStream(
+			() => this.toggleManuscriptMode('typewriter'),
+			() => true,
+		);
 		this.addCommand({
 			id: 'toggle-typewriter-scrolling',
 			name: this.globalT('commands.toggleManuscriptTypewriter'),
-			checkCallback: inStream(
-				() => this.toggleManuscriptMode('typewriter'),
-				() => true,
-			),
+			checkCallback: (checking) => {
+				if (typewriterInStream(checking)) return true;
+				const path = this.app.workspace.getActiveViewOfType(MarkdownView)?.file?.path;
+				const available = path !== undefined && this.notePresentation?.wears(path) === true;
+				if (!checking && available) {
+					void this.toggleManuscriptMode('typewriter').catch((error: unknown) => {
+						this.showError(error);
+					});
+				}
+				return available;
+			},
 		});
 		for (const level of ['off', 'on', 'deep', 'solo'] as const) {
 			this.addCommand({
