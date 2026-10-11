@@ -19,6 +19,7 @@
 
 import { firstAtOrAfter, visibleOffsets } from './analyzable-prose';
 import type { MentionMark, RevisionOccurrence } from './mentions';
+import { applyReplacements, type TextReplacement } from './text-search';
 
 export const REVISION_KINDS = ['replace', 'insert', 'delete'] as const;
 export type RevisionKind = (typeof REVISION_KINDS)[number];
@@ -367,6 +368,61 @@ export function passageTravels(
 	const stands = passageStandsAt(body, spot);
 	if (stands !== at) return stands > at;
 	return spot.kind !== 'insert' || spot.before.length === 0;
+}
+
+/**
+ * The stored places a set of replacements would cost their words, for a find
+ * bar to ask about before it makes them. Each place standing now is carried
+ * through the replacements the way an editor carries a position, then asked
+ * of the body after them as the page will ask it. A replacement reaching
+ * into its words loses it at once: a range to any overlap, a point only to a
+ * replacement across it, since either witness alone keeps a point. So does a
+ * body that no longer answers where the words were carried, which a
+ * replacement beside them brings about by rewriting the context that told
+ * two copies of them apart.
+ *
+ * A place already lost has nothing left to lose, and a replacement putting
+ * back the very words it takes out changes nothing. Each place is asked as
+ * the next save levels it, from where its words stand now and with the
+ * context they have now. The replacements arrive in order and none overlaps,
+ * as a find bar makes them.
+ */
+export function passagesLostTo<T extends RevisionSpot>(
+	body: string,
+	spots: readonly T[],
+	replacements: readonly TextReplacement[],
+): T[] {
+	if (spots.length === 0) return [];
+	const changes = replacements.filter(
+		(change) => change.insert !== body.slice(change.from, change.to),
+	);
+	if (changes.length === 0) return [];
+	let changed: string | null = null;
+	return spots.filter((spot) => {
+		const anchor = anchorSpot(body, spot);
+		if (anchor.state === 'conflict') return false;
+		let shift = 0;
+		for (const change of changes) {
+			if (change.to <= anchor.from) {
+				shift += change.insert.length - (change.to - change.from);
+				continue;
+			}
+			if (change.from < anchor.to) return true;
+			break;
+		}
+		changed ??= applyReplacements(body, changes);
+		const now = anchorSpot(changed, {
+			...spot,
+			from: anchor.from,
+			to: anchor.to,
+			...passageContext(body, anchor.from, anchor.to),
+		});
+		return (
+			now.state === 'conflict' ||
+			now.from !== anchor.from + shift ||
+			now.to !== anchor.to + shift
+		);
+	});
 }
 
 /**

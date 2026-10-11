@@ -2,6 +2,7 @@ import {
 	autocompletion,
 	closeCompletion,
 	completionKeymap,
+	completionStatus,
 	currentCompletions,
 	selectedCompletionIndex,
 	setSelectedCompletion,
@@ -32,9 +33,12 @@ import {
 	paragraphLines,
 	refreshMentionHighlights,
 	runEditorCommand,
+	searchMatches,
 	selectedTextOf,
+	setSearchMatches,
 	wikilinkAt,
 	type EditorCommandId,
+	type SearchMatches,
 } from '../editor';
 import type { MentionMark } from '../domain';
 import {
@@ -195,6 +199,9 @@ export interface SegmentEditorHooks {
 
 /** Marks a change the editor was handed rather than one the author typed. */
 const FROM_ELSEWHERE = Annotation.define<boolean>();
+
+/** How often matches held back for a composition ask again whether it has closed. */
+const SEARCH_COMPOSING_RETRY_MS = 120;
 
 /** Enter as the manuscript's paragraph break; declines outside prose. */
 const breaksParagraph = (view: EditorView): boolean => {
@@ -392,6 +399,26 @@ export interface SegmentEditorHandle {
 	 */
 	splice(from: number, to: number, expected: string, insert: string): boolean;
 	/**
+	 * The find bar's matches in this note, the current one by its index; an
+	 * empty list takes them off. Held back while an input method is composing,
+	 * because redrawing marks around the composition ends it mid-word, and laid
+	 * once the composition closes.
+	 */
+	showSearchMatches(matches: SearchMatches): void;
+	/** Puts the selection on one stretch, as the find bar leaves it when it closes. */
+	select(from: number, to: number): void;
+	/**
+	 * The find bar's replacements as one edit the author can undo, each made
+	 * only where its text still reads `expected`; says how many were made. The
+	 * caret lands after the last one made. Not a move of the author's, so the
+	 * modes that follow the caret leave the page to the bar.
+	 */
+	replace(
+		changes: readonly { from: number; to: number; expected: string; insert: string }[],
+	): number;
+	/** Whether the editor's own popup, the link list, is open and an Escape is its. */
+	hasPopup(): boolean;
+	/**
 	 * Asks the editor to measure its lines again on the next frame. The page
 	 * calls this when it changes the typography under the editor, because the
 	 * editor notices a resize on its own only after a debounce, and the page
@@ -438,6 +465,9 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 	private readonly parked = new Map<string, unknown>();
 
 	private static readonly PARKED_LIMIT = 8;
+
+	/** The newest matches for an editor whose input method was composing when they came. */
+	private readonly searchHeld = new WeakMap<EditorView, { matches: SearchMatches }>();
 
 	async mount(
 		target: SegmentEditorTarget,
@@ -714,6 +744,39 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				});
 				return true;
 			},
+			showSearchMatches: (matches: SearchMatches) => {
+				this.showSearchMatches(view, matches);
+			},
+			select: (from: number, to: number) => {
+				const length = view.state.doc.length;
+				view.dispatch({
+					selection: EditorSelection.range(
+						Math.min(from, length),
+						Math.min(to, length),
+					),
+					annotations: FROM_ELSEWHERE.of(true),
+				});
+			},
+			replace: (changes) => {
+				const made = changes
+					.filter(
+						(change) =>
+							view.state.sliceDoc(change.from, change.to) === change.expected,
+					)
+					.sort((left, right) => left.from - right.from);
+				const last = made[made.length - 1];
+				if (last === undefined) return 0;
+				const edit = view.state.changes(
+					made.map(({ from, to, insert }) => ({ from, to, insert })),
+				);
+				view.dispatch({
+					changes: edit,
+					selection: EditorSelection.cursor(edit.mapPos(last.to, 1)),
+					userEvent: 'input.replace',
+				});
+				return made.length;
+			},
+			hasPopup: () => completionStatus(view.state) !== null,
 			focus: () => {
 				view.focus();
 			},
@@ -721,6 +784,39 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 				void this.unmount(path);
 			},
 		};
+	}
+
+	/**
+	 * Lays a note's matches, or holds them while an input method is
+	 * composing: the newest answer waits, and one timer tries again until the
+	 * composition has closed or the editor has gone.
+	 */
+	private showSearchMatches(view: EditorView, matches: SearchMatches): void {
+		const held = this.searchHeld.get(view);
+		if (held !== undefined) {
+			held.matches = matches;
+			return;
+		}
+		if (!view.composing) {
+			view.dispatch({ effects: setSearchMatches.of(matches) });
+			return;
+		}
+		const waiting = { matches };
+		this.searchHeld.set(view, waiting);
+		const win = view.dom.win;
+		const retry = (): void => {
+			if ((view as unknown as { destroyed?: boolean }).destroyed === true) {
+				this.searchHeld.delete(view);
+				return;
+			}
+			if (view.composing) {
+				win.setTimeout(retry, SEARCH_COMPOSING_RETRY_MS);
+				return;
+			}
+			this.searchHeld.delete(view);
+			view.dispatch({ effects: setSearchMatches.of(waiting.matches) });
+		};
+		win.setTimeout(retry, SEARCH_COMPOSING_RETRY_MS);
 	}
 
 	/**
@@ -1046,6 +1142,7 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 			EditorView.lineWrapping,
 			caretParagraph,
 			paragraphLines,
+			searchMatches,
 			...(target.readOnly || hooks.mentionMarks === undefined
 				? []
 				: [
@@ -1065,9 +1162,12 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 					hooks.onBlur(target.path);
 				}
 				// A pointer selection is the click the view already answers with
-				// `putBack`; everything else that moved the caret is the author.
-				const pointed = update.transactions.some((transaction) =>
-					transaction.isUserEvent('select.pointer'),
+				// `putBack`, and a replacement is the find bar's, which shows its
+				// own next match; everything else that moved the caret is the author.
+				const pointed = update.transactions.some(
+					(transaction) =>
+						transaction.isUserEvent('select.pointer') ||
+						transaction.isUserEvent('input.replace'),
 				);
 				if ((update.docChanged || update.selectionSet) && !handed && !pointed) {
 					hooks.onCaretMove?.(target.path);

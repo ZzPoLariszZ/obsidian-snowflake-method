@@ -9442,6 +9442,27 @@ export default class SnowflakeMethodPlugin
 				(view) => view.activeSegment() !== null,
 			),
 		});
+		// The find bar, from the palette as from Mod+F and Mod+Alt+F, so a key
+		// of the author's own can be bound to it.
+		this.addCommand({
+			id: 'search-manuscript',
+			name: this.globalT('commands.searchManuscript'),
+			checkCallback: inStream((view) => {
+				view.openSearch(false);
+				return Promise.resolve();
+			}),
+		});
+		this.addCommand({
+			id: 'search-replace-manuscript',
+			name: this.globalT('commands.searchReplaceManuscript'),
+			checkCallback: inStream(
+				(view) => {
+					view.openSearch(true);
+					return Promise.resolve();
+				},
+				(view) => view.hasSegments() && view.canReplace(),
+			),
+		});
 		this.addCommand({
 			id: 'manuscript-insert-note-after',
 			name: this.globalT('commands.manuscriptInsertAfter'),

@@ -5742,3 +5742,153 @@ export function confirmExportReplace(
 		new ConfirmExportReplaceModal(app, t, paths, resolve).open();
 	});
 }
+
+/** What a replacement breaks: revisions put in conflict, occurrences left unresolved. */
+export interface MarksLostPrompt {
+	revisions: number;
+	occurrences: number;
+}
+
+/** Where a replacement across the manuscript lands, as its dialog asks about it. */
+export interface StreamReplaceAllPrompt extends MarksLostPrompt {
+	matches: number;
+	notes: number;
+	/** The note being written in: the only one written, one of several, or none of them. */
+	editing: 'only' | 'some' | 'none';
+}
+
+/**
+ * The marks a replacement breaks, one line for each kind under the sentence
+ * that leads into them. Nothing is drawn where it breaks none.
+ */
+function renderMarksLost(
+	body: HTMLElement,
+	t: Translate,
+	lead: string,
+	lost: MarksLostPrompt,
+): void {
+	if (lost.revisions + lost.occurrences === 0) return;
+	body.createEl('p', { text: lead });
+	const list = body.createEl('ul');
+	if (lost.revisions > 0) {
+		list.createEl('li', {
+			text: t(
+				lost.revisions === 1
+					? 'modal.streamReplace.revisionsOne'
+					: 'modal.streamReplace.revisions',
+				{ count: lost.revisions },
+			),
+		});
+	}
+	if (lost.occurrences > 0) {
+		list.createEl('li', {
+			text: t(
+				lost.occurrences === 1
+					? 'modal.streamReplace.occurrencesOne'
+					: 'modal.streamReplace.occurrences',
+				{ count: lost.occurrences },
+			),
+		});
+	}
+}
+
+/**
+ * Asked before the stream's find bar replaces matches in notes other than
+ * the one being written in, which are saved at once and which Undo cannot
+ * reach, and before it breaks revisions or foreshadowing anywhere.
+ */
+class ConfirmStreamReplaceAllModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly plan: StreamReplaceAllPrompt,
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(
+			app,
+			t,
+			{ label: t('modal.streamReplaceAll.confirm'), style: 'mod-warning' },
+			onResolve,
+		);
+		this.setTitle(t('modal.streamReplaceAll.title'));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		const { matches, notes, editing } = this.plan;
+		body.createEl('p', {
+			text: this.t(
+				matches === 1
+					? 'modal.streamReplaceAll.questionOne'
+					: notes === 1
+						? 'modal.streamReplaceAll.questionOneNote'
+						: 'modal.streamReplaceAll.question',
+				{ matches, notes },
+			),
+		});
+		renderMarksLost(body, this.t, this.t('modal.streamReplaceAll.marked'), this.plan);
+		body.createEl('p', {
+			text: this.t(
+				editing === 'only'
+					? 'modal.streamReplace.undo'
+					: editing === 'some'
+						? 'modal.streamReplaceAll.undoEditing'
+						: notes === 1
+							? 'modal.streamReplace.noUndoOne'
+							: 'modal.streamReplaceAll.noUndo',
+			),
+		});
+	}
+}
+
+/** True when the author agreed to replace the matches across the notes counted. */
+export function confirmStreamReplaceAll(
+	app: App,
+	t: Translate,
+	plan: StreamReplaceAllPrompt,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmStreamReplaceAllModal(app, t, plan, resolve).open();
+	});
+}
+
+/**
+ * Asked before the find bar replaces one match whose replacement breaks
+ * revisions or foreshadowing: their words are what they are found by, so
+ * the revision falls into conflict and the occurrence is left unresolved.
+ */
+class ConfirmStreamReplaceMarkedModal extends ConfirmModal {
+	constructor(
+		app: App,
+		t: Translate,
+		private readonly prompt: MarksLostPrompt & { editing: boolean },
+		onResolve: (confirmed: boolean) => void,
+	) {
+		super(
+			app,
+			t,
+			{ label: t('modal.streamReplaceMarked.confirm'), style: 'mod-warning' },
+			onResolve,
+		);
+		this.setTitle(t('modal.streamReplaceMarked.title'));
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		renderMarksLost(body, this.t, this.t('modal.streamReplaceMarked.question'), this.prompt);
+		body.createEl('p', {
+			text: this.t(
+				this.prompt.editing ? 'modal.streamReplace.undo' : 'modal.streamReplace.noUndoOne',
+			),
+		});
+	}
+}
+
+/** True when the author agreed to replace a match whose replacement breaks marks. */
+export function confirmStreamReplaceMarked(
+	app: App,
+	t: Translate,
+	prompt: MarksLostPrompt & { editing: boolean },
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmStreamReplaceMarkedModal(app, t, prompt, resolve).open();
+	});
+}

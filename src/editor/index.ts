@@ -12,6 +12,7 @@ export * from './nested-editor';
 export * from './paragraph-break';
 export * from './paragraph-layout';
 export * from './paragraph-lines';
+export * from './search-matches';
 export * from './selection-watch';
 export * from './typewriter';
 export * from './wikilink-spans';

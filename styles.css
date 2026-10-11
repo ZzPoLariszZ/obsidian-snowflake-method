@@ -5782,6 +5782,173 @@ body {
 	background-color: transparent;
 }
 
+/* The find bar above the page: the app's own bar above a note, in its markup
+   and so in whatever dress the theme gives that one, standing on the page's
+   ground as the formatting bar above it does. Its column is the page's
+   column, so the box lines up over the words it searches. */
+.workspace-leaf-content[data-type='snowflake-method-manuscript']
+	.document-search-container.snowflake-method-stream-search {
+	flex: 0 0 auto;
+	container: snowflake-method-search / inline-size;
+	/* Across the whole pane, with the room the page keeps for its scrollbar,
+	   so its rows are centred exactly where the chapters below them are. */
+	margin-inline: 0;
+	padding-inline: 0;
+	overflow: hidden;
+	scrollbar-gutter: stable;
+	background-color: var(--snowflake-method-manuscript-surface);
+}
+
+.snowflake-method-stream-search .document-search,
+.snowflake-method-stream-search .document-replace {
+	align-items: center;
+}
+
+/* The bar's buttons are a chapter header's buttons: 28 by 24 on a 16px icon,
+   side by side with no gap and flush with the end of the column, so the
+   arrows and the close stand in the header's last three columns and the two
+   replace buttons in its last two. */
+.snowflake-method-stream-search .document-search-button,
+.snowflake-method-stream-search .document-search-close-button,
+.snowflake-method-stream-search .snowflake-method-search-spacer {
+	--icon-size: var(--icon-s);
+}
+
+.snowflake-method-stream-search .document-search-buttons,
+.snowflake-method-stream-search .document-replace-buttons {
+	justify-content: flex-end;
+	gap: 0;
+}
+
+/* The replace box wears its own symbol where the find box wears the
+   magnifier, drawn the same way, as a mask in the search icon's colour and
+   size: the app's corner arrow, pointing down from the find box into this
+   one, where the words found become the words typed. Not the replace icon,
+   which the two buttons at the end of the row already wear. */
+.snowflake-method-stream-search .snowflake-method-replace-box {
+	flex-grow: 1;
+}
+
+.snowflake-method-stream-search .snowflake-method-replace-box::before {
+	-webkit-mask-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27><path d=%27m15 10 5 5-5 5%27/><path d=%27M4 4v7a4 4 0 0 0 4 4h12%27/></svg>");
+}
+
+/* The replace row starts where the chevron above it ends, so the two boxes
+   stand one over the other. */
+.snowflake-method-stream-search .snowflake-method-search-spacer {
+	visibility: hidden;
+}
+
+/* The query's three options stand inside its box at the far end, and the
+   count just before them; the box keeps room for both, which the bar
+   measures as the count's digits change. */
+.snowflake-method-stream-search .snowflake-method-search-options {
+	position: absolute;
+	top: 50%;
+	inset-inline-end: var(--size-2-2);
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	transform: translateY(-50%);
+}
+
+.snowflake-method-stream-search .snowflake-method-search-option {
+	--icon-size: var(--icon-s);
+	padding: var(--size-2-1) var(--size-2-2);
+}
+
+.snowflake-method-stream-search .document-search-input .document-search-count {
+	inset-inline-end: calc(
+		var(--snowflake-method-search-options-width, 0px) + var(--size-4-2)
+	);
+}
+
+/* Nothing found, or an expression that will not read: said in the count's
+   own words, in the colour the app says an error in. */
+.snowflake-method-stream-search .document-search-input.mod-no-match .document-search-count {
+	color: var(--text-error);
+}
+
+.snowflake-method-stream-search .document-search-input input[type='text'] {
+	padding-inline-end: calc(
+		var(--snowflake-method-search-options-width, 0px) +
+			var(--snowflake-method-search-count-width, 0px) + var(--size-4-4)
+	);
+}
+
+/* A narrow bar, on a phone or in a pane pulled thin, gives the query its
+   row: the options step down under the box, at its start, and the arrows and
+   the close go to the end of that second row. Kept on one row, the box held
+   a word or two between them. */
+@container snowflake-method-search (max-width: 30rem) {
+	.snowflake-method-stream-search .document-search {
+		flex-wrap: wrap;
+		row-gap: var(--size-4-2);
+	}
+
+	.snowflake-method-stream-search .document-search .document-search-input {
+		flex: 1 1 calc(100% - var(--size-4-12));
+	}
+
+	.snowflake-method-stream-search .document-search .document-search-buttons {
+		margin-inline-start: auto;
+	}
+
+	.snowflake-method-stream-search .snowflake-method-search-options {
+		top: calc(100% + var(--size-4-2) + var(--size-2-2));
+		inset-inline-start: 0;
+		inset-inline-end: auto;
+		transform: none;
+	}
+
+	.snowflake-method-stream-search .document-search-input .document-search-count {
+		inset-inline-end: var(--size-4-2);
+	}
+
+	.snowflake-method-stream-search .document-search-input input[type='text'] {
+		padding-inline-end: calc(
+			var(--snowflake-method-search-count-width, 0px) + var(--size-4-4)
+		);
+	}
+}
+
+/* The find bar's matches, in both halves of the page: every one tinted as
+   the app tints a search hit, and the one the bar stands on ringed as the
+   app's own bar rings it. Neither adds width or height, so a line measures
+   the same with them as without. */
+.snowflake-method-manuscript-view .snowflake-method-search-match {
+	border-radius: 2px;
+	background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
+}
+
+.snowflake-method-manuscript-view .snowflake-method-search-match.is-current {
+	box-shadow: 0 0 0 3px var(--text-accent);
+}
+
+/* Searching is reading: while the find bar is open, the page stops stepping
+   back around the paragraph being written, so a match can be read wherever
+   it stands. The fades return when the bar closes. */
+.snowflake-method-focus.is-searching
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	.cm-line,
+.snowflake-method-focus.is-searching
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment:not(.is-writing),
+.snowflake-method-focus.is-searching
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-manuscript-end,
+.snowflake-method-focus.is-searching
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-header,
+.snowflake-method-focus.is-searching
+	.snowflake-method-manuscript-stream.is-writing
+	.snowflake-method-segment.is-writing
+	> .snowflake-method-segment-boundary {
+	opacity: 1;
+}
+
 /* The dress popover, hung under its bar button and body-parented so the
    stream's own overflow cannot clip it, in the layer the dashboard's filter
    panel uses: above the workspace, below menus. Dressed as the app dresses a
@@ -5987,9 +6154,14 @@ body {
    paragraph then breaks into the same rows here as in a note beside it, at
    any width. Named once: the sum used to be built in the domain, which meant
    a change to the padding below silently moved every author's column by twice
-   the difference, with nothing on either side to notice. */
+   the difference, with nothing on either side to notice.
+
+   The find bar's two rows stand in the same column, so their buttons line up
+   under the buttons of each chapter's header. */
 .snowflake-method-segment,
-.snowflake-method-manuscript-end {
+.snowflake-method-manuscript-end,
+.snowflake-method-stream-search .document-search,
+.snowflake-method-stream-search .document-replace {
 	/* The app's margin across a note, which is narrower on a phone or a
 	   tablet; before Obsidian 1.14 named it, the desktop's own. */
 	--snowflake-method-page-margin: var(--file-margins-x, var(--size-4-8));

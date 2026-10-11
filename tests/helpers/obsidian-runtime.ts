@@ -41,6 +41,9 @@ export class AbstractInputSuggest {
 /** Only `locale()` is reached from the code under test. */
 export const moment = { locale: (): string => 'en' };
 
+/** A desktop that is not a Mac, which is what the tests' chords are written for. */
+export const Platform = { isMacOS: false, isMobile: false, isDesktop: true };
+
 export const editorEditorField = StateField.define<unknown>({
 	create: () => undefined,
 	update: (value) => value,

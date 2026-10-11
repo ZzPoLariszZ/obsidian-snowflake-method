@@ -17,6 +17,7 @@ import {
 	anchorOccurrence,
 	anchorRevision,
 	anchorSpot,
+	applyReplacements,
 	captureOccurrence,
 	captureOccurrencePlacement,
 	captureRevision,
@@ -27,6 +28,7 @@ import {
 	dialogueRanges,
 	fileStem,
 	milestonePositions,
+	occurrenceSpot,
 	orderOccurrences,
 	orderRevisions,
 	overlapsLive,
@@ -59,6 +61,8 @@ import {
 	type Revision,
 	type RevisionPlan,
 	type SensitiveMatcher,
+	type TextRange,
+	type TextReplacement,
 	type WritingCountHeadings,
 	type WritingCountMode,
 } from '../domain';
@@ -76,8 +80,13 @@ import {
 	applyMentionMarks,
 	applyMilestoneMarks,
 	applyRevisionMarks,
+	applySearchMarks,
 	clearMentionMarks,
+	clearSearchMarks,
+	firstSearchMarkBelow,
+	markCurrentSearch,
 	projectMentionMarks,
+	searchMarkPieces,
 } from './mention-marks';
 import {
 	promptForForeshadowing,
@@ -92,6 +101,14 @@ import {
 	type RevisionRail,
 } from './revision-cards';
 import { projectedIndexAt } from './prose-projection';
+import { confirmStreamReplaceAll, confirmStreamReplaceMarked } from './modals';
+import {
+	StreamSearch,
+	type MarkedPassage,
+	type ReplacePlanEntry,
+	type StreamSearchHost,
+} from './stream-search';
+import { StreamSearchBar } from './stream-search-bar';
 import {
 	openPresentationPanel,
 	type PresentationPanel,
@@ -148,6 +165,12 @@ const ARRIVAL_FRAMES = 90;
  * through both.
  */
 const LOOK_SETTLING_MS = 150;
+
+/** The longest selection the find bar opens on; anything longer is not a query. */
+const SEARCH_SEED_LIMIT = 200;
+
+/** A line's height, for a match the prose does not draw and so cannot measure. */
+const SEARCH_FALLBACK_LINE = 24;
 
 interface ManuscriptViewStateSnapshot {
 	projectPath: string | null;
@@ -298,6 +321,18 @@ export class SnowflakeManuscriptView extends ItemView {
 		Record<'typewriter' | 'focus', HTMLButtonElement>
 	> = {};
 	/**
+	 * The view's own keys: the chords, and the find bar's two ways in. The
+	 * bar's keys stand on these while it is open, and the view wears the
+	 * bar's scope in place of this one, as a note wears its search's.
+	 */
+	private readonly baseScope: Scope;
+	/** The find bar, built the first time it is asked for and kept after. */
+	private searchBar: StreamSearchBar | null = null;
+	/** Whether the find bar is up above the page. */
+	private searchOpen = false;
+	/** What the find bar finds, across the whole manuscript. */
+	private readonly search: StreamSearch;
+	/**
 	 * The `[[` popup's feed, fetched once per quiet stretch and shared by
 	 * every keystroke. Nulled whenever the project may have changed shape,
 	 * so a member created mid-writing appears on the next popup.
@@ -440,12 +475,14 @@ export class SnowflakeManuscriptView extends ItemView {
 		// anyone who unbinds Obsidian's.
 		const scope = new Scope(this.app.scope);
 		this.scope = scope;
+		this.baseScope = scope;
+		this.search = new StreamSearch(this.searchHost());
 		scope.register(['Mod'], 'e', () => {
 			// One way only: back to prose. Opening an editor is the click's
 			// job, which lands the caret under the clicked words; a blind
 			// toggle would jump the page by the difference between prose
 			// and Markdown heights. While reading, the press is passed on.
-			if (this.editingPath === null || !this.holdsFocus()) return true;
+			if (this.editingPath === null || !this.holdsWritingFocus()) return true;
 			void this.stopEditing().catch((error: unknown) => {
 				this.showError(error);
 			});
@@ -456,13 +493,17 @@ export class SnowflakeManuscriptView extends ItemView {
 				// With no note being written in, or with the caret somewhere
 				// that is not this view, the press is not this view's: passed
 				// on rather than swallowed.
-				if (this.editingPath === null || !this.holdsFocus()) return true;
+				if (this.editingPath === null || !this.holdsWritingFocus()) return true;
 				this.execToolbar(command);
 				return false;
 			});
 		};
 		chord('b', 'bold');
 		chord('i', 'italic');
+		// The find bar, at the keys the app searches a note with: Mod+F, and
+		// Mod+Alt+F with the replace row open.
+		scope.register(['Mod'], 'f', () => this.openSearchFromKeys(false));
+		scope.register(['Mod', 'Alt'], 'f', () => this.openSearchFromKeys(true));
 	}
 
 	/**
@@ -480,6 +521,15 @@ export class SnowflakeManuscriptView extends ItemView {
 	private holdsFocus(): boolean {
 		const active = this.containerEl.doc.activeElement;
 		return active !== null && this.containerEl.contains(active);
+	}
+
+	/**
+	 * Whether the caret is in this view somewhere the chords may act from:
+	 * anywhere but the find bar, whose boxes are for typing a query. Mod+B
+	 * pressed there would bold the note behind it, out of sight.
+	 */
+	private holdsWritingFocus(): boolean {
+		return this.holdsFocus() && this.searchBar?.hasFocus() !== true;
 	}
 
 	getViewType(): string {
@@ -603,6 +653,9 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	async onClose(): Promise<void> {
 		this.closePresentationPanel();
+		this.closeSearch();
+		this.searchBar?.destroy();
+		this.searchBar = null;
 		// Guarded step by step: this is teardown, and a single rejection --
 		// a parting save hitting a conflict, one segment's unmount going
 		// wrong -- must not stop what follows. An EditorView that teardown
@@ -741,6 +794,11 @@ export class SnowflakeManuscriptView extends ItemView {
 				// roster behind it may be why this refresh fired: a member just
 				// created should light up where it already stands.
 				this.applyMentionMode();
+				// And the find bar's count is the manuscript's, wherever it changed.
+				this.searchBar?.setReplaceAllowed(this.model?.readOnly !== true);
+				void this.search.reconcile().catch((error: unknown) => {
+					this.showError(error);
+				});
 				return;
 			}
 
@@ -855,6 +913,11 @@ export class SnowflakeManuscriptView extends ItemView {
 	/** True once there is a manuscript to move around in. */
 	hasSegments(): boolean {
 		return (this.model?.segments.length ?? 0) > 0;
+	}
+
+	/** Whether the find bar may replace: never in a read-only manuscript. */
+	canReplace(): boolean {
+		return this.model !== null && !this.model.readOnly;
 	}
 
 	/** The note the page is centred on, for the commands that act on "this note". */
@@ -990,6 +1053,8 @@ export class SnowflakeManuscriptView extends ItemView {
 		const model = this.model;
 		this.renderedProject = model?.projectPath ?? null;
 		if (model === null || model.segments.length === 0) {
+			// Nothing left to search: the bar goes with the page it searched.
+			this.closeSearch();
 			this.renderEmpty();
 			return;
 		}
@@ -1001,12 +1066,20 @@ export class SnowflakeManuscriptView extends ItemView {
 			cls: 'snowflake-method-manuscript-stream',
 		});
 		this.streamEl.addEventListener('scroll', this.onScroll);
+		// A find bar left open stands over the page built afresh, and is
+		// asked again of the manuscript it now holds.
+		const bar = this.searchOpen ? this.searchBar : null;
+		if (bar !== null) {
+			this.contentEl.insertBefore(bar.containerEl, this.streamEl);
+			bar.setReplaceAllowed(model.readOnly !== true);
+		}
 		if (this.activePath === null) {
 			this.activePath = this.anchorPath ?? model.segments[0]?.path ?? null;
 		}
 		await this.applyWindow();
 		this.scrollToActive();
 		if (this.placeOwed) this.recoverPlace();
+		if (bar !== null) this.runSearch();
 	}
 
 	/**
@@ -1226,6 +1299,495 @@ export class SnowflakeManuscriptView extends ItemView {
 	private refreshToolbar(): void {
 		const disabled = this.editingPath === null;
 		for (const el of this.toolbarButtons) el.disabled = disabled;
+	}
+
+	/**
+	 * Opens the find bar from its keys, or hands the press on where there is
+	 * no manuscript to search: the empty state has nothing for it to find.
+	 */
+	private openSearchFromKeys(replace: boolean): boolean {
+		return !this.openSearch(replace);
+	}
+
+	/**
+	 * Opens the find bar above the page, or brings the caret back to it when
+	 * it is open already: on the words selected where the author was, else on
+	 * the query it last held. Says whether there was a manuscript to open it
+	 * over. Public because the command palette reaches for it too.
+	 */
+	openSearch(replace: boolean): boolean {
+		if (this.streamEl === null || !this.hasSegments()) return false;
+		const seed = this.searchSeed();
+		const bar = (this.searchBar ??= this.buildSearchBar());
+		// Directly above the page, under the formatting bar: where the app
+		// puts its own, above a note.
+		if (bar.containerEl.nextElementSibling !== this.streamEl) {
+			this.contentEl.insertBefore(bar.containerEl, this.streamEl);
+		}
+		bar.setReplaceAllowed(this.model?.readOnly !== true);
+		const opening = !this.searchOpen;
+		this.searchOpen = true;
+		this.scope = bar.scope;
+		this.contentEl.addClass('is-searching');
+		// Opened afresh, the bar is what was asked for, as the app's is: find
+		// alone, or with the replace row. Already open, Mod+F only takes the
+		// caret back to it and leaves the row as the author left it.
+		bar.open(replace || opening ? replace : null, seed);
+		// Searched afresh on opening, from where the reader stands now, and
+		// for new words; a press that only brings the caret back moves nothing.
+		if (opening || seed !== null) this.runSearch();
+		return true;
+	}
+
+	private buildSearchBar(): StreamSearchBar {
+		const report = (work: Promise<void>): void => {
+			void work.catch((error: unknown) => {
+				this.showError(error);
+			});
+		};
+		const bar: StreamSearchBar = new StreamSearchBar(this.contentEl, this.baseScope, {
+			t: this.t,
+			onQuery: () => {
+				this.runSearch();
+			},
+			onStep: (direction) => {
+				report(this.search.step(direction));
+			},
+			onReplace: () => {
+				report(this.search.replaceCurrent(bar.replacement()));
+			},
+			onReplaceAll: () => {
+				report(this.search.replaceAll(bar.replacement()));
+			},
+			onClose: () => {
+				this.closeSearch();
+			},
+			escapeOutside: () => this.escapeClosesSearch(),
+		});
+		// Built in the view's own document, and put in its place on opening.
+		bar.containerEl.detach();
+		return bar;
+	}
+
+	private runSearch(): void {
+		const bar = this.searchBar;
+		if (bar === null || !this.searchOpen) return;
+		void this.search
+			.setQuery(bar.query(), bar.searchOptions())
+			.catch((error: unknown) => {
+				this.showError(error);
+			});
+	}
+
+	/**
+	 * Closes the find bar and takes its matches off the page; the query is
+	 * kept for the next time. A caret that was in the bar goes back to the
+	 * note being written in, onto the match the bar stood on when that is in
+	 * this note: how the app's own bar leaves a note.
+	 */
+	private closeSearch(): void {
+		const bar = this.searchBar;
+		if (!this.searchOpen || bar === null) return;
+		const hadFocus = bar.hasFocus();
+		const current = this.search.currentMatch();
+		this.searchOpen = false;
+		this.search.close();
+		this.scope = this.baseScope;
+		this.contentEl.removeClass('is-searching');
+		bar.showCount({ kind: 'none' });
+		bar.containerEl.detach();
+		const editor =
+			this.editingPath === null
+				? null
+				: (this.mounted.get(this.editingPath)?.editor ?? null);
+		if (!hadFocus || editor === null) return;
+		if (current !== null && current.path === this.editingPath) {
+			editor.select(current.from, current.to);
+		}
+		editor.focus();
+	}
+
+	/**
+	 * The words the bar opens on: what is selected where the author was, in
+	 * the note being written or in the prose being read, when it is a short
+	 * run on one line. A press made from inside the bar seeds nothing, since
+	 * the query there is already the author's.
+	 */
+	private searchSeed(): string | null {
+		if (this.searchBar?.hasFocus() === true) return null;
+		const fit = (text: string | null): string | null =>
+			text !== null &&
+			text.length > 0 &&
+			text.length <= SEARCH_SEED_LIMIT &&
+			!/[\r\n]/u.test(text)
+				? text
+				: null;
+		if (this.editingPath !== null && this.holdsFocus()) {
+			const selected = fit(this.editingSelection);
+			if (selected !== null) return selected;
+		}
+		const stream = this.streamEl;
+		const selection = this.contentEl.win.getSelection();
+		if (stream === null || selection === null || selection.isCollapsed) return null;
+		const anchor = selection.anchorNode;
+		if (anchor === null || !stream.contains(anchor)) return null;
+		return fit(selection.toString());
+	}
+
+	/**
+	 * Whether an Escape pressed in the view outside the bar closes it: while
+	 * the caret is in the view at all, and not while the editor's link list
+	 * is open, whose Escape that is.
+	 */
+	private escapeClosesSearch(): boolean {
+		if (!this.holdsFocus()) return false;
+		const editor =
+			this.editingPath === null
+				? null
+				: (this.mounted.get(this.editingPath)?.editor ?? null);
+		return editor === null || !editor.hasPopup();
+	}
+
+	/** What the find bar needs of the page, said in the page's terms. */
+	private searchHost(): StreamSearchHost {
+		// The same element wherever the leaf goes; its window is the one it
+		// stands in now, a popout's once it is moved into one.
+		const { contentEl } = this;
+		const segment = (path: string): ManuscriptSegmentViewModel | undefined =>
+			this.model?.segments.find((candidate) => candidate.path === path);
+		return {
+			get win(): Window {
+				return contentEl.win;
+			},
+			notes: () => this.model?.segments.map((candidate) => candidate.path) ?? [],
+			heldText: (path) => {
+				const entry = this.mounted.get(path);
+				return entry === undefined ? null : (entry.pending ?? entry.text.body);
+			},
+			stamp: (path) => this.host.manuscriptSegmentStamp(path),
+			read: async (path) => {
+				const text = await this.host.readManuscriptSegment(path);
+				return { body: text.body, stamp: text.stamp };
+			},
+			paint: (path) => {
+				const entry = this.mounted.get(path);
+				if (entry !== undefined) this.paintSearch(entry);
+			},
+			markCurrent: (path, index) => {
+				this.markSearchCurrent(path, index);
+			},
+			isShown: (path, range, index) => {
+				const box = this.searchMatchBox(path, range, index);
+				const band = this.searchBand();
+				return box !== null && band !== null && box.top >= band.upper && box.bottom <= band.lower;
+			},
+			reveal: (path, range, index) => this.revealSearchMatch(path, range, index),
+			origin: () => this.searchOrigin(),
+			showCount: (count) => {
+				this.searchBar?.showCount(count);
+			},
+			writable: (path) =>
+				this.model?.readOnly !== true &&
+				segment(path)?.readOnly !== true &&
+				this.mounted.get(path)?.text.readOnly !== true,
+			rewrite: (path, plan) => this.rewriteNote(path, plan),
+			markedPassages: () => this.markedPassages(),
+			confirmReplaceMarked: (path, lost) =>
+				confirmStreamReplaceMarked(this.app, this.t, {
+					...lost,
+					editing: this.mounted.get(path)?.editor != null,
+				}),
+			confirmReplaceAll: (plan) => this.confirmSearchReplaceAll(plan),
+			replacedAll: ({ matches, notes, plan }) => {
+				// The note being written in shows its own replacements; a
+				// count is owed only for the notes written out of sight, and
+				// a write that failed has already said so.
+				if (matches === 0) return;
+				if (plan.every((entry) => entry.path === this.editingPath)) return;
+				new Notice(
+					this.t(
+						matches === 1
+							? 'manuscript.search.replacedAllOne'
+							: notes === 1
+								? 'manuscript.search.replacedAllOneNote'
+								: 'manuscript.search.replacedAll',
+						{ matches, notes },
+					),
+				);
+			},
+			refusedReadOnly: () => {
+				new Notice(this.t('manuscript.search.readOnlyNote'));
+			},
+		};
+	}
+
+	/**
+	 * One note's matches drawn where the note stands: in its editor's marks,
+	 * or wrapped into its rendered prose, inside every other mark there.
+	 */
+	private paintSearch(entry: MountedSegment): void {
+		const matches = this.search.matchesFor(entry.path);
+		if (entry.editor !== null) {
+			entry.editor.showSearchMatches(matches ?? { ranges: [], current: null });
+			return;
+		}
+		const rendered = entry.bodyEl.querySelector(
+			'.snowflake-method-segment-rendered',
+		);
+		if (!(rendered instanceof HTMLElement)) return;
+		clearSearchMarks(rendered);
+		if (matches === null || matches.ranges.length === 0) return;
+		const body = entry.pending ?? entry.text.body;
+		applySearchMarks(
+			rendered,
+			projectMentionMarks(
+				body,
+				matches.ranges.map((range, index) => ({
+					from: range.from,
+					to: range.to,
+					classes:
+						index === matches.current
+							? 'snowflake-method-search-match is-current'
+							: 'snowflake-method-search-match',
+				})),
+			),
+		);
+	}
+
+	/** The ring moved within one note, without drawing its matches again. */
+	private markSearchCurrent(path: string, index: number | null): void {
+		const entry = this.mounted.get(path);
+		if (entry === undefined) return;
+		if (entry.editor !== null) {
+			this.paintSearch(entry);
+			return;
+		}
+		const rendered = entry.bodyEl.querySelector(
+			'.snowflake-method-segment-rendered',
+		);
+		if (rendered instanceof HTMLElement) markCurrentSearch(rendered, index);
+	}
+
+	/**
+	 * The stretch of the screen a match counts as shown in: below the sticky
+	 * header a note keeps at the top of the page, and a line clear of the
+	 * bottom, the margins the caret is kept inside.
+	 */
+	private searchBand(): { upper: number; lower: number } | null {
+		const stream = this.streamEl;
+		if (stream === null) return null;
+		const box = stream.getBoundingClientRect();
+		return { upper: box.top + 56, lower: box.bottom - 32 };
+	}
+
+	/**
+	 * Where a match stands on the screen, or null while its note is off the
+	 * page. A match the rendered prose does not show -- one made only of
+	 * syntax, such as the target of a link -- answers with the place in the
+	 * prose its words would stand at.
+	 */
+	private searchMatchBox(
+		path: string,
+		range: TextRange,
+		index: number,
+	): { top: number; bottom: number } | null {
+		const entry = this.mounted.get(path);
+		if (entry === undefined || !entry.el.isConnected) return null;
+		if (entry.editor !== null) {
+			const start = entry.editor.bandAt(range.from);
+			const end = entry.editor.bandAt(Math.max(range.from, range.to - 1));
+			if (start === null) return null;
+			return { top: start.top, bottom: Math.max(start.bottom, end?.bottom ?? start.bottom) };
+		}
+		const rendered = entry.bodyEl.querySelector(
+			'.snowflake-method-segment-rendered',
+		);
+		if (!(rendered instanceof HTMLElement)) return null;
+		const pieces = searchMarkPieces(rendered, index);
+		const first = pieces[0];
+		const last = pieces[pieces.length - 1];
+		if (first !== undefined && last !== undefined) {
+			return {
+				top: first.getBoundingClientRect().top,
+				bottom: last.getBoundingClientRect().bottom,
+			};
+		}
+		const projected = projectedIndexAt(entry.pending ?? entry.text.body, range.from);
+		const top = projected === null ? null : this.proseTopAt(rendered, projected);
+		if (top === null) return null;
+		return { top, bottom: top + SEARCH_FALLBACK_LINE };
+	}
+
+	/**
+	 * Brings a match onto the screen: its note put on the page first when the
+	 * page does not hold it, then the match into the middle of the page, as a
+	 * code editor brings one it had to go looking for. Scrolled as the reader
+	 * scrolls, so the window slides along to where the match is.
+	 */
+	private async revealSearchMatch(
+		path: string,
+		range: TextRange,
+		index: number,
+	): Promise<void> {
+		if (!this.mounted.has(path)) {
+			this.activePath = path;
+			await this.applyWindow();
+		}
+		const stream = this.streamEl;
+		const band = this.searchBand();
+		const box = this.searchMatchBox(path, range, index);
+		if (stream === null || band === null || box === null) return;
+		if (box.top >= band.upper && box.bottom <= band.lower) return;
+		const middle = stream.getBoundingClientRect().top + stream.clientHeight / 2;
+		this.scrollBy((box.top + box.bottom) / 2 - middle, false);
+	}
+
+	/**
+	 * Where the reader stands, for the first match a new search lands on: the
+	 * caret, while a note is being written in and its caret is on the screen;
+	 * otherwise the first match drawn at or below the top of the page, in the
+	 * note standing there, or the start of the note after it.
+	 */
+	private searchOrigin(): { path: string; at: number } | null {
+		const stream = this.streamEl;
+		const band = this.searchBand();
+		const model = this.model;
+		if (stream === null || band === null || model === null) return null;
+		const box = stream.getBoundingClientRect();
+		if (this.editingPath !== null) {
+			const editor = this.mounted.get(this.editingPath)?.editor ?? null;
+			const caret = editor?.caretBand() ?? null;
+			if (editor !== null && caret !== null && caret.top >= box.top && caret.bottom <= box.bottom) {
+				return { path: this.editingPath, at: editor.cursor() };
+			}
+		}
+		const paths = model.segments.map((candidate) => candidate.path);
+		for (const [order, path] of paths.entries()) {
+			const entry = this.mounted.get(path);
+			if (entry === undefined) continue;
+			const seen = entry.el.getBoundingClientRect();
+			if (seen.bottom <= band.upper) continue;
+			if (seen.top >= band.upper) return { path, at: 0 };
+			if (entry.editor !== null) {
+				const place = entry.editor.place(band.upper);
+				return { path, at: place?.at ?? 0 };
+			}
+			const rendered = entry.bodyEl.querySelector(
+				'.snowflake-method-segment-rendered',
+			);
+			const index =
+				rendered instanceof HTMLElement ? firstSearchMarkBelow(rendered, band.upper) : null;
+			const range =
+				index === null ? undefined : this.search.matchesFor(path)?.ranges[index];
+			if (range !== undefined) return { path, at: range.from };
+			const next = paths[order + 1];
+			return next === undefined
+				? { path, at: Number.MAX_SAFE_INTEGER }
+				: { path: next, at: 0 };
+		}
+		return this.activePath === null ? null : { path: this.activePath, at: 0 };
+	}
+
+	/**
+	 * Makes a find bar's replacements in one note. The note being written in
+	 * takes them in its editor, as one edit Undo takes back; any other note
+	 * is read afresh, written once, and put back on the page where it stands
+	 * there. Typing not yet saved is saved first, so no note is written from
+	 * behind what it holds.
+	 */
+	private async rewriteNote(
+		path: string,
+		plan: (text: string) => readonly TextReplacement[],
+	): Promise<{ text: string; count: number } | null> {
+		await this.flushPendingSave();
+		const held = this.mounted.get(path);
+		if (held?.editor != null) {
+			const editor = held.editor;
+			const text = editor.read();
+			const changes = plan(text).filter(
+				(change) => change.insert !== text.slice(change.from, change.to),
+			);
+			const made = editor.replace(
+				changes.map((change) => ({
+					...change,
+					expected: text.slice(change.from, change.to),
+				})),
+			);
+			return made === 0 ? null : { text: editor.read(), count: made };
+		}
+		let fresh: ManuscriptSegmentText;
+		try {
+			fresh = await this.host.readManuscriptSegment(path);
+		} catch (error) {
+			this.showError(error);
+			return null;
+		}
+		if (fresh.readOnly) return null;
+		const changes = plan(fresh.body);
+		const text = applyReplacements(fresh.body, changes);
+		// Words put back exactly as they were change nothing worth a write.
+		if (changes.length === 0 || text === fresh.body) return null;
+		let saved: { revision: string; stamp: string };
+		try {
+			saved = await this.host.saveManuscriptSegment(path, text, fresh.revision);
+		} catch (error) {
+			this.showError(error);
+			return null;
+		}
+		const entry = this.mounted.get(path);
+		if (entry !== undefined && entry.editor === null && entry.pending === null) {
+			entry.text = { ...fresh, body: text, ...saved };
+			const release = this.holdPosition();
+			await this.renderSegmentBody(entry);
+			release();
+		}
+		return { text, count: changes.length };
+	}
+
+	/**
+	 * Asks before replacing in notes other than the one being written in,
+	 * which are saved at once and which Undo cannot reach, and before
+	 * breaking revisions or foreshadowing anywhere. A replacement wholly
+	 * inside the note being written, breaking nothing, is the editor's own
+	 * edit, and is made without asking, as a code editor makes it.
+	 */
+	private confirmSearchReplaceAll(plan: readonly ReplacePlanEntry[]): Promise<boolean> {
+		const editing = plan.filter((entry) => entry.path === this.editingPath).length;
+		const revisions = plan.reduce((sum, entry) => sum + entry.lost.revisions, 0);
+		const occurrences = plan.reduce((sum, entry) => sum + entry.lost.occurrences, 0);
+		if (editing === plan.length && revisions + occurrences === 0) {
+			return Promise.resolve(true);
+		}
+		return confirmStreamReplaceAll(this.app, this.t, {
+			matches: plan.reduce((sum, entry) => sum + entry.count, 0),
+			notes: plan.length,
+			editing: editing === plan.length ? 'only' : editing > 0 ? 'some' : 'none',
+			revisions,
+			occurrences,
+		});
+	}
+
+	/**
+	 * Every place the project's revisions and foreshadowing occurrences keep
+	 * in its notes, read from their files rather than from the dress, which
+	 * may not have caught up with one just made.
+	 */
+	private async markedPassages(): Promise<MarkedPassage[]> {
+		const projectPath = this.model?.projectPath ?? this.projectPath;
+		const [revisions, threads] = await Promise.all([
+			this.host.manuscriptRevisions(projectPath),
+			this.host.manuscriptForeshadowings(projectPath),
+		]);
+		return [
+			...revisions.map((revision) => ({ ...revision, family: 'revision' as const })),
+			...threads.flatMap((item) =>
+				item.occurrences.map((occurrence) => ({
+					...occurrenceSpot(occurrence),
+					path: occurrence.path,
+					family: 'foreshadowing' as const,
+				})),
+			),
+		];
 	}
 
 	/**
@@ -1548,6 +2110,9 @@ export class SnowflakeManuscriptView extends ItemView {
 			this.syncSegmentRail(entry);
 			return;
 		}
+		// The find bar's matches come off first and go back on last, so they
+		// stay the innermost wrap whatever the dress lays around them.
+		clearSearchMarks(rendered);
 		clearMentionMarks(rendered);
 		// The milestone layer wraps outermost of all: its label is positioned
 		// from the block it stands in, and a span of another family standing
@@ -1566,6 +2131,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		applyRevisionMarks(rendered, projectMentionMarks(body, revisions.plan));
 		applyDialogueMarks(rendered, projectMentionMarks(body, dialogue));
 		applyMentionMarks(rendered, projectMentionMarks(body, marks));
+		if (this.search.isActive()) this.paintSearch(entry);
 		this.syncSegmentRail(entry);
 	}
 
@@ -3715,6 +4281,9 @@ export class SnowflakeManuscriptView extends ItemView {
 			entry.path,
 			this,
 		);
+		// The find bar's matches go on at once, ahead of the dress, which
+		// takes them off and lays them back inside its own marks.
+		if (this.search.isActive()) this.paintSearch(entry);
 		this.dressRenderedSoon(entry);
 		rendered.addEventListener('click', (event) => {
 			// An unlinked mention wears the pointer cursor, and a click on it
@@ -3850,6 +4419,7 @@ export class SnowflakeManuscriptView extends ItemView {
 					this.scheduleSave();
 					this.host.manuscriptWritingChanged();
 					this.host.manuscriptSegmentEdited(changed, body);
+					this.search.noteEdited(changed);
 				},
 				onSelectionChange: (inPath, selectedText) => {
 					if (inPath !== this.editingPath) return;
@@ -3909,6 +4479,7 @@ export class SnowflakeManuscriptView extends ItemView {
 		// The editor asked for its marks at mount, before the feed had
 		// necessarily answered; asked again the moment it has.
 		this.primeEditorMentions(entry);
+		if (this.search.isActive()) this.paintSearch(entry);
 		// Focus fades only while something is being written, and only around the
 		// note it is written in. Classes, so that starting to write moves nothing.
 		this.streamEl?.addClass('is-writing');
@@ -4205,9 +4776,11 @@ export class SnowflakeManuscriptView extends ItemView {
 
 	/**
 	 * The view's own scroll by a distance, growing the tail spacer when the
-	 * page would run out before the distance is covered.
+	 * page would run out before the distance is covered. Quiet unless told
+	 * otherwise: the find bar's moves are the reader's own, and the window
+	 * slides along after them.
 	 */
-	private scrollBy(delta: number): void {
+	private scrollBy(delta: number, quiet = true): void {
 		const stream = this.streamEl;
 		if (stream === null) return;
 		const wanted = stream.scrollTop + delta;
@@ -4220,6 +4793,10 @@ export class SnowflakeManuscriptView extends ItemView {
 				'--snowflake-method-manuscript-tail',
 				`${String(this.tail)}px`,
 			);
+		}
+		if (!quiet) {
+			stream.scrollTop = wanted;
+			return;
 		}
 		// The view's own movement: answering it as the reader's would set the
 		// window sliding under the author's hands.

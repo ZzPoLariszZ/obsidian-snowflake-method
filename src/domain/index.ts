@@ -34,6 +34,7 @@ export * from './sticky-note';
 export * from './task';
 export * from './timeline';
 export * from './text-length';
+export * from './text-search';
 export * from './types';
 export * from './wikilink';
 export * from './word-frequency';

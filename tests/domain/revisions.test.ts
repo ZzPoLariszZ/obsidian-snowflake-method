@@ -12,6 +12,7 @@ import {
 	orderRevisions,
 	overlapsLive,
 	passageContext,
+	passagesLostTo,
 	planRevisionMarks,
 	refreshAnchors,
 	resolvePassage,
@@ -320,6 +321,45 @@ describe('overlap between live revisions', () => {
 	it('a conflicted revision holds no ground', () => {
 		const edited = BODY.replace('grey heron', 'grey-heron');
 		expect(overlapsLive(edited, standing, '50/one.md', 4, 14)).toBeNull();
+	});
+});
+
+describe('the places replacements would cost their words', () => {
+	const heron = capture('replace', 4, 14);
+	const point = capture('insert', 20, 20);
+	const swap = (from: number, to: number, insert: string) => ({ from, to, insert });
+
+	it('a range loses its words to a replacement reaching into them, and keeps them past one beside', () => {
+		expect(passagesLostTo(BODY, [heron], [swap(4, 8, 'pale')])).toEqual([heron]);
+		expect(passagesLostTo(BODY, [heron], [swap(9, 20, 'egret waded')])).toEqual([heron]);
+		expect(passagesLostTo(BODY, [heron], [swap(0, 3, 'A')])).toEqual([]);
+		expect(passagesLostTo(BODY, [heron], [swap(14, 15, '  '), swap(15, 20, 'waded')])).toEqual([]);
+	});
+
+	it('a point is lost only to a replacement across it, either side alone keeping it', () => {
+		expect(passagesLostTo(BODY, [point], [swap(15, 23, 'waded into')])).toEqual([point]);
+		expect(passagesLostTo(BODY, [point], [swap(15, 20, 'waded')])).toEqual([]);
+		expect(passagesLostTo(BODY, [point], [swap(15, 20, 'stayed')])).toEqual([]);
+		expect(passagesLostTo(BODY, [point], [swap(20, 23, ' by')])).toEqual([]);
+	});
+
+	it('a replacement beside the words loses them where it rewrites what told two copies apart', () => {
+		const twice = 'He opened the door. He opened the door.';
+		const second = captureRevision('50/one.md', twice, 'replace', 34, 38, 'gate', '', 'rev-2', 7);
+		// Both doors read "a door." after: nothing tells them apart any more.
+		expect(passagesLostTo(twice, [second], [swap(10, 13, 'a'), swap(30, 33, 'a')])).toEqual([
+			second,
+		]);
+		// Only its own context rewritten, the other door wins the place.
+		expect(passagesLostTo(twice, [second], [swap(30, 33, 'a')])).toEqual([second]);
+		// One before it, of the same length, leaves it where it stood.
+		expect(passagesLostTo(twice, [second], [swap(10, 13, 'his')])).toEqual([]);
+	});
+
+	it('a place already lost has nothing to lose, and words put back as they were change nothing', () => {
+		const edited = BODY.replace('grey heron', 'grey-heron');
+		expect(passagesLostTo(edited, [heron], [swap(4, 8, 'pale')])).toEqual([]);
+		expect(passagesLostTo(BODY, [heron, point], [swap(4, 8, 'grey')])).toEqual([]);
 	});
 });
 

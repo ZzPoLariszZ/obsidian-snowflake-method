@@ -33,34 +33,48 @@ const UNCOUNTED =
 	'pre, code, .internal-embed, .callout-title, sup.footnote-ref';
 
 /**
+ * What the wrap needs of a mark: its stretch, the classes it wears, and
+ * whatever it carries onto its element. A mention mark is one, and so is a
+ * find bar's match, which belongs to no family the menus answer for.
+ */
+export interface DressMark {
+	from: number;
+	to: number;
+	classes: string;
+	title?: string;
+	styleVar?: string;
+	label?: string;
+}
+
+/**
  * One mark as the rendered page counts it: indices into the visible,
  * whitespace-free character sequence both sides walk.
  */
-export interface RenderedMentionSpan {
+export interface RenderedMentionSpan<M extends DressMark = MentionMark> {
 	from: number;
 	to: number;
 	/** Position in the marks array handed in, for the click handler. */
 	index: number;
 	/** The mark's text with whitespace dropped: what a wrap must gather. */
 	text: string;
-	mark: MentionMark;
+	mark: M;
 }
 
 /**
  * Marks mapped onto the visible sequence. A mark whose stretch holds no
  * visible character is dropped rather than guessed at.
  */
-export function projectMentionMarks(
+export function projectMentionMarks<M extends DressMark = MentionMark>(
 	body: string,
-	marks: readonly MentionMark[],
+	marks: readonly M[],
 	excludeRanges: readonly CountableRange[] = [],
-): RenderedMentionSpan[] {
+): RenderedMentionSpan<M>[] {
 	// The same sequence the domain picks an insertion's carrier out of, so a
 	// character chosen there is one this can always draw.
 	const sourceIndexOf = visibleOffsets(body, excludeRanges);
 	// The first visible character at or after a source position.
 	const indexAt = (at: number): number => firstAtOrAfter(sourceIndexOf, at);
-	const spans: RenderedMentionSpan[] = [];
+	const spans: RenderedMentionSpan<M>[] = [];
 	marks.forEach((mark, index) => {
 		const from = indexAt(mark.from);
 		const to = indexAt(mark.to);
@@ -84,7 +98,7 @@ interface CoveredSegment {
 	node: Text;
 	start: number;
 	end: number;
-	span: RenderedMentionSpan;
+	span: RenderedMentionSpan<DressMark>;
 }
 
 /**
@@ -204,14 +218,14 @@ export function markBands(
 
 function applyMarkSpans(
 	rendered: HTMLElement,
-	spans: readonly RenderedMentionSpan[],
+	spans: readonly RenderedMentionSpan<DressMark>[],
 	indexAttr: string | null,
 ): void {
 	if (spans.length === 0) return;
 	const doc = rendered.ownerDocument;
 	const walker = doc.createTreeWalker(rendered, NodeFilter.SHOW_TEXT);
 	const segments: CoveredSegment[] = [];
-	const gathered = new Map<RenderedMentionSpan, string>();
+	const gathered = new Map<RenderedMentionSpan<DressMark>, string>();
 	let counted = 0;
 	let cursor = 0;
 	for (
@@ -331,4 +345,69 @@ export function clearMentionMarks(rendered: HTMLElement): void {
 		anchor.removeAttribute('data-snowflake-method-label');
 	}
 	rendered.normalize();
+}
+
+const SEARCH_ATTR = 'data-snowflake-method-search';
+const SEARCH_SPANS = 'span.snowflake-method-search-match';
+
+/**
+ * The find bar's matches on the rendered half: wrapped last of all, so each
+ * stands inside whatever family of marks its words already wear and its tint
+ * lies over theirs. Its own index attribute, numbered by the note's matches,
+ * so the current match can be moved without wrapping anything again.
+ */
+export function applySearchMarks(
+	rendered: HTMLElement,
+	spans: readonly RenderedMentionSpan<DressMark>[],
+): void {
+	applyMarkSpans(rendered, spans, SEARCH_ATTR);
+}
+
+/** Takes the find bar's matches back off, every other family left as it stands. */
+export function clearSearchMarks(rendered: HTMLElement): void {
+	const wraps = Array.from(rendered.querySelectorAll(SEARCH_SPANS));
+	if (wraps.length === 0) return;
+	for (const wrap of wraps) wrap.replaceWith(...Array.from(wrap.childNodes));
+	rendered.normalize();
+}
+
+/**
+ * Moves the current match's ring to the match of that index, or takes it off
+ * with null, and hands back the pieces it now stands on: a match crossing
+ * emphasis or a link wraps as several.
+ */
+export function markCurrentSearch(
+	rendered: HTMLElement,
+	index: number | null,
+): HTMLElement[] {
+	for (const piece of Array.from(rendered.querySelectorAll(`${SEARCH_SPANS}.is-current`))) {
+		piece.removeClass('is-current');
+	}
+	if (index === null) return [];
+	const pieces = Array.from(
+		rendered.querySelectorAll<HTMLElement>(`${SEARCH_SPANS}[${SEARCH_ATTR}="${String(index)}"]`),
+	);
+	for (const piece of pieces) piece.addClass('is-current');
+	return pieces;
+}
+
+/** The pieces one match stands on, in page order; none when it showed nothing. */
+export function searchMarkPieces(rendered: HTMLElement, index: number): HTMLElement[] {
+	return Array.from(
+		rendered.querySelectorAll<HTMLElement>(`${SEARCH_SPANS}[${SEARCH_ATTR}="${String(index)}"]`),
+	);
+}
+
+/**
+ * The index of the first match drawn at or below a height on the screen, or
+ * null when every match drawn stands above it. Read off the pieces' own
+ * boxes, so a match that wrapped onto two rows answers with its first.
+ */
+export function firstSearchMarkBelow(rendered: HTMLElement, top: number): number | null {
+	for (const piece of Array.from(rendered.querySelectorAll<HTMLElement>(SEARCH_SPANS))) {
+		if (piece.getBoundingClientRect().bottom <= top) continue;
+		const index = Number(piece.getAttribute(SEARCH_ATTR));
+		if (Number.isInteger(index)) return index;
+	}
+	return null;
 }

@@ -57,6 +57,12 @@ export function installObsidianDom(win: Window & typeof globalThis): void {
 	element.createSpan = function (this: Element, spec?: ElementSpec): Element { return create.call(this, 'span', spec); };
 	element.setText = function (this: Element, text: string): void { this.textContent = text; };
 	element.empty = function (this: Element): void { this.replaceChildren(); };
+	element.detach = function (this: Element): void { this.remove(); };
+	// Hidden by the attribute here rather than the style the app writes:
+	// what the code under test reads back is whether it is shown.
+	element.hide = function (this: HTMLElement): void { this.hidden = true; };
+	element.show = function (this: HTMLElement): void { this.hidden = false; };
+	element.isShown = function (this: HTMLElement): boolean { return this.isConnected && !this.hidden; };
 	element.onWindowMigrated = function (this: Element, listener: MigrationListener): () => void {
 		const heard = migrations.get(this) ?? new Set<MigrationListener>();
 		migrations.set(this, heard);
