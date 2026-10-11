@@ -243,14 +243,13 @@ describe('styles.css', () => {
 	/**
 	 * A pane too narrow for a margin holds the cards back as it holds the
 	 * milestone labels back, hidden rather than gone, and leaves only a
-	 * proposal being written on view.
+	 * proposal being written, or a card whose form is open, on view.
 	 */
-	it('holds the margin cards back in a tight pane, all but the one being written', () => {
+	it('holds the margin cards back in a tight pane, all but the ones being written', () => {
 		expect(styles.includes('is-revision-overlay')).toBe(false);
-		expect(declarations('.is-revision-tight .snowflake-method-rail-card:not(.is-draft)')).toContain(
-			'visibility: hidden',
-		);
-		expect(declarations('.is-revision-tight .snowflake-method-rail-card:not(.is-draft)')).not.toContain('display');
+		const held = '.is-revision-tight .snowflake-method-rail-card:not(.is-draft):not(.is-editing)';
+		expect(declarations(held)).toContain('visibility: hidden');
+		expect(declarations(held)).not.toContain('display');
 		const rail = declarations('.is-revision-tight .snowflake-method-revision-rail');
 		expect(rail).toContain('right: 0');
 		expect(rail).toContain('left: auto');

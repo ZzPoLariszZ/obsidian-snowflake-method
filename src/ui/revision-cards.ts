@@ -113,6 +113,9 @@ export interface RevisionRail {
 
 const CARD_GAP = 8;
 
+/** Worn by a standing card while a form is open in it. */
+export const EDITING_CARD_CLASS = 'is-editing';
+
 /**
  * Stacks cards down the rail: each takes its asked-for top unless the one
  * before it reaches lower, and a card with no measurable anchor simply
@@ -501,6 +504,9 @@ export function renderRevisionRail(
 		// as an unchanged card.
 		state.print = '';
 		card.empty();
+		// Marked for the stylesheet, which keeps a card with an open form in
+		// view when a tight pane holds the others back.
+		card.addClass(EDITING_CARD_CLASS);
 		openForm({
 			save: (commit, landed) => {
 				// The answer is waited for, because a save that fails fails
@@ -510,12 +516,14 @@ export function renderRevisionRail(
 					const took = await commit();
 					if (!took) return;
 					state.editing = false;
+					card.removeClass(EDITING_CARD_CLASS);
 					landed();
 					restack();
 				})();
 			},
 			cancel: () => {
 				state.editing = false;
+				card.removeClass(EDITING_CARD_CLASS);
 				restack();
 			},
 		});
