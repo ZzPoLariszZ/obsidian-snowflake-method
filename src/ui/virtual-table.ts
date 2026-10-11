@@ -133,6 +133,7 @@ export class VirtualTable {
 	private estimate: number;
 	private frame = 0;
 	private resized: { disconnect(): void } | null = null;
+	private unmigrate: (() => void) | null = null;
 
 	constructor(private readonly options: VirtualTableOptions) {
 		this.estimate = Math.max(1, options.estimatedRowHeight);
@@ -149,15 +150,22 @@ export class VirtualTable {
 		// rows, changes every row's height under the window. Either way the
 		// rows are read again at once, before the frame is painted: the
 		// frame's own watcher was made first, so its word is already said.
-		const win = options.scroller.win as MeasuringWindow;
-		if (win.ResizeObserver !== undefined) {
+		const watch = (): void => {
+			this.resized?.disconnect();
+			this.resized = null;
+			const win = options.scroller.win as MeasuringWindow;
+			if (win.ResizeObserver === undefined) return;
 			const resized = new win.ResizeObserver(() => {
 				// A frame taken out of the document reports a size of none.
 				if (options.scroller.isConnected) this.refresh();
 			});
 			resized.observe(options.scroller);
 			this.resized = resized;
-		}
+		};
+		watch();
+		// Watched again from the window a moved table now stands in, as the
+		// frame is: one window's watcher hears nothing of another's layout.
+		this.unmigrate = (options.scroller as MigratingElement).onWindowMigrated?.(watch) ?? null;
 	}
 
 	/**
@@ -167,6 +175,8 @@ export class VirtualTable {
 	 * along with it.
 	 */
 	destroy(): void {
+		this.unmigrate?.();
+		this.unmigrate = null;
 		this.resized?.disconnect();
 		this.resized = null;
 		if (this.frame === 0) return;
@@ -362,14 +372,25 @@ function stackWhenNarrow(
 	bodyWrap: HTMLElement,
 	table: HTMLElement,
 ): void {
+	/** The frame's own border while it draws one, which a stacked frame takes off. */
+	let border = 0;
 	const settle = (): void => {
 		const floor = tableFloor(table);
 		if (floor === null) return;
+		const stacked = wrap.classList.contains('is-stacked');
+		if (!stacked) {
+			const own = wrap.win.getComputedStyle(wrap);
+			border = (parseFloat(own.borderLeftWidth) || 0) + (parseFloat(own.borderRightWidth) || 0);
+		}
 		const style = bodyWrap.win.getComputedStyle(bodyWrap);
+		// The room the rows would have as a table, inside the border a table
+		// is framed by: read the same way stacked or not, so the answer does
+		// not turn over on its own measure.
 		const room =
 			bodyWrap.clientWidth -
 			parseFloat(style.paddingLeft) -
-			parseFloat(style.paddingRight);
+			parseFloat(style.paddingRight) -
+			(stacked ? border : 0);
 		wrap.toggleClass('is-stacked', room < floor);
 	};
 	let observer: { disconnect(): void } | null = null;

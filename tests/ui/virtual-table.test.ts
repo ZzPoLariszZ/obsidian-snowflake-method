@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildTableFrame, rowOffsets, virtualWindow } from '../../src/ui/virtual-table';
+import { buildTableFrame, rowOffsets, VirtualTable, virtualWindow } from '../../src/ui/virtual-table';
 import { CorkboardDom, type CorkboardElement } from '../helpers/corkboard-dom';
 
 const uniform = rowOffsets(new Array<number>(100).fill(40));
@@ -142,5 +142,76 @@ describe('table frame', () => {
 		expect(stacked()).toBe(false);
 		dom.resize(10);
 		expect(stacked()).toBe(false);
+	});
+
+	/**
+	 * A frame draws a border round a table and none round its cards, so the
+	 * body is two pixels wider stacked. The room is read inside the border
+	 * either way, or a frame just over the floor would stack, read itself
+	 * wider, and lay the table out again a pixel past its edge.
+	 */
+	it('reads the room inside the frame’s border whether it is stacked or not', () => {
+		const dom = new CorkboardDom();
+		(dom.win as unknown as { getComputedStyle: (element: CorkboardElement) => unknown }).getComputedStyle = (element) => ({
+			fontSize: '16px',
+			paddingLeft: '0px',
+			paddingRight: '0px',
+			borderLeftWidth: element.classList.contains('snowflake-method-table-wrap') ? '1px' : '0px',
+			borderRightWidth: element.classList.contains('snowflake-method-table-wrap') ? '1px' : '0px',
+			getPropertyValue: (name: string): string =>
+				name === '--snowflake-method-table-floor' && element.classList.contains('snowflake-method-table') ? '640px' : '',
+		});
+		const frame = buildTableFrame(dom.container as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table',
+			columns: ['order', 'name'],
+			headers: ['#', 'Name'],
+		});
+		const stacked = (): boolean => frame.wrap.classList.contains('is-stacked');
+		// The body fills the frame inside its border, which stacking takes off.
+		Object.defineProperty(frame.bodyWrap, 'clientWidth', {
+			get: () => dom.width - (stacked() ? 0 : 2),
+		});
+		dom.resize(641);
+		expect(stacked()).toBe(true);
+		// The frame heard again at the same size, as it is when first laid out.
+		dom.resize(641);
+		expect(stacked()).toBe(true);
+		dom.resize(642);
+		expect(stacked()).toBe(false);
+		dom.resize(642);
+		expect(stacked()).toBe(false);
+	});
+
+	it('watches its rows from the window a moved table stands in', () => {
+		const dom = new CorkboardDom();
+		const frame = buildTableFrame(dom.container as unknown as HTMLElement, {
+			tableCls: 'snowflake-method-character-table',
+			columns: ['order', 'name'],
+			headers: ['#', 'Name'],
+		});
+		const table = new VirtualTable({
+			scroller: frame.bodyWrap,
+			body: frame.body,
+			columns: 2,
+			estimatedRowHeight: 30,
+			overscan: 2,
+			rowKey: (index) => String(index),
+			heights: new Map(),
+			renderRow: (body, index) => {
+				body.createEl('tr').createEl('td', { text: String(index) });
+			},
+			renderTail: () => undefined,
+			onScroll: () => undefined,
+			onMeasure: () => undefined,
+		});
+		const refresh = vi.spyOn(table, 'refresh');
+		const popout = new CorkboardDom();
+		(frame.wrap as unknown as CorkboardElement).migrateTo(popout);
+		popout.resize(700);
+		expect(refresh).toHaveBeenCalled();
+		table.destroy();
+		refresh.mockClear();
+		popout.resize(600);
+		expect(refresh).not.toHaveBeenCalled();
 	});
 });
