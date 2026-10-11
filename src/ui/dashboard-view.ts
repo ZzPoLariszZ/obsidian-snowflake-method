@@ -59,6 +59,7 @@ import {
 	CreateSceneModal,
 	EntityFormModal,
 	RepairReportModal,
+	confirmDraftDiscard,
 	promptForCustomFieldTemplate,
 	promptForDefinitionEdit,
 	promptForKindForm,
@@ -114,7 +115,7 @@ import {
 	type ProseFilterMemory,
 	type ProsePanelHandle,
 } from './prose-panel';
-import { ProseBox } from './prose-box';
+import { PROSE_BOX_CLASS, ProseBox, placeProseBoxCaret, proseBoxCaret } from './prose-box';
 import { FilterPanel } from './filter-panel';
 import type { FilterRow, LentFilterPopover } from './filter-rows';
 import {
@@ -226,6 +227,8 @@ const PANEL_SCROLL_SELECTORS = [
 	'.snowflake-method-tab-scroll',
 	'.snowflake-method-tab-scroll .snowflake-method-table-body',
 	'.snowflake-method-prose-frequency-list',
+	// A synopsis box scrolls its own pages, and is drawn anew by every refresh.
+	'.snowflake-method-synopsis-input',
 ];
 
 // The statistics tab strip's faces live in dashboard-state, because which
@@ -307,12 +310,20 @@ interface KeptTaskPanel<T = { dispose(): void }> {
 	current(): T | null;
 }
 
+interface StepDraft {
+	fields: StepFields;
+	expectedRevision: string;
+}
+
+/**
+ * The steps' unsaved words, kept with the host rather than with one view:
+ * a dashboard closed and opened again finds what was typed in the one
+ * before, where words held by the view went with its tab.
+ */
+const STEP_DRAFTS = new WeakMap<DashboardHost, Map<string, StepDraft>>();
+
 export class SnowflakeDashboardView extends ItemView {
 	private readonly host: DashboardHost;
-	private readonly stepDrafts = new Map<
-		string,
-		{ fields: StepFields; expectedRevision: string }
-	>();
 	private selectedStep: StepId;
 	/** What the main panel shows: the selected step, or a worldbuilding kind. */
 	private selectedPane: DashboardPane;
@@ -609,6 +620,15 @@ export class SnowflakeDashboardView extends ItemView {
 
 	getViewType(): string {
 		return DASHBOARD_VIEW_TYPE;
+	}
+
+	private get stepDrafts(): Map<string, StepDraft> {
+		let drafts = STEP_DRAFTS.get(this.host);
+		if (drafts === undefined) {
+			drafts = new Map();
+			STEP_DRAFTS.set(this.host, drafts);
+		}
+		return drafts;
 	}
 
 	getDisplayText(): string {
@@ -1251,20 +1271,38 @@ export class SnowflakeDashboardView extends ItemView {
 	 * takes the document's focus off whatever was being typed in among them
 	 * -- a sticky note's editor, say, when a writing record lands or the
 	 * health verdict moves -- and with no blur to say so. Whatever held the
-	 * focus and came back attached is given it again.
+	 * focus and came back attached is given it again. A step's box is drawn
+	 * anew instead, so the new one of the same name takes the focus, with
+	 * the caret where it stood.
 	 */
 	private keepingFocus(work: () => void): void {
 		const doc = this.contentEl.doc;
 		const active = doc.activeElement;
-		work();
-		if (
+		const box =
 			active !== null &&
-			doc.activeElement !== active &&
 			this.contentEl.contains(active) &&
-			'focus' in active
-		) {
+			active.classList.contains(PROSE_BOX_CLASS)
+				? (active as HTMLElement)
+				: null;
+		const label = box?.getAttribute('aria-label') ?? null;
+		const caret = box === null ? null : proseBoxCaret(box);
+		work();
+		if (active === null || doc.activeElement === active) return;
+		if (this.contentEl.contains(active) && 'focus' in active) {
 			(active as HTMLElement).focus({ preventScroll: true });
+			return;
 		}
+		if (label === null) return;
+		const twin = Array.from(
+			this.contentEl.querySelectorAll<HTMLElement>(`.${PROSE_BOX_CLASS}`),
+		).find(
+			(candidate) =>
+				candidate.getAttribute('aria-label') === label &&
+				candidate.getAttribute('contenteditable') !== 'false',
+		);
+		if (twin === undefined) return;
+		twin.focus({ preventScroll: true });
+		if (caret !== null) placeProseBoxCaret(twin, caret);
 	}
 
 	private get freeformMode(): boolean {
@@ -5752,7 +5790,7 @@ export class SnowflakeDashboardView extends ItemView {
 				);
 				this.stepDrafts.delete(draftKey);
 			},
-			() => this.stepDrafts.delete(draftKey),
+			draftKey,
 		);
 	}
 
@@ -5872,7 +5910,7 @@ export class SnowflakeDashboardView extends ItemView {
 				);
 				this.stepDrafts.delete(draftKey);
 			},
-			() => this.stepDrafts.delete(draftKey),
+			draftKey,
 		);
 	}
 
@@ -7286,14 +7324,25 @@ export class SnowflakeDashboardView extends ItemView {
 			readOnly || missing,
 			async () => {
 				const activeDraft = this.stepDrafts.get(draftKey);
-				await this.host.saveStepFields(
-					id,
-					{ [sectionId]: input.value },
-					activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
-				);
+				// The box holds still while its words are written and the panel
+				// drawn again: a word typed meanwhile would go with the draft the
+				// save lets go, or start one against the revision the save has
+				// just replaced, which every later save would refuse.
+				input.disabled = true;
+				try {
+					await this.host.saveStepFields(
+						id,
+						{ [sectionId]: input.value },
+						activeDraft?.expectedRevision ?? model.stepRevisions[id] ?? '',
+					);
+				} catch (error) {
+					input.disabled = false;
+					throw error;
+				}
 				this.stepDrafts.delete(draftKey);
 			},
-			() => this.stepDrafts.delete(draftKey),
+			draftKey,
+			!missing,
 		);
 	}
 
@@ -7403,7 +7452,8 @@ export class SnowflakeDashboardView extends ItemView {
 		step: EditableStepId,
 		readOnly: boolean,
 		onSave: () => Promise<void>,
-		onDiscard: () => void,
+		draftKey: string,
+		openable = true,
 	): void {
 		const actions = panel.createDiv({
 			cls: 'snowflake-method-actions',
@@ -7411,6 +7461,7 @@ export class SnowflakeDashboardView extends ItemView {
 		const open = actions.createEl('button', {
 			text: this.t('common.open'),
 		});
+		open.disabled = !openable;
 		open.addEventListener('click', () => {
 			void this.host.openStep(step);
 		});
@@ -7418,8 +7469,7 @@ export class SnowflakeDashboardView extends ItemView {
 			text: this.t('actions.discardDraft'),
 		});
 		discard.addEventListener('click', () => {
-			onDiscard();
-			void this.refresh();
+			void this.discardDraft(draftKey);
 		});
 		const save = actions.createEl('button', {
 			cls: 'mod-cta',
@@ -7429,6 +7479,19 @@ export class SnowflakeDashboardView extends ItemView {
 		save.addEventListener('click', () => {
 			void this.runAndRefresh(onSave);
 		});
+	}
+
+	/**
+	 * A step's unsaved words let go and the note drawn as it stands, once the
+	 * author has said so: a box can hold a page or more, and nothing else
+	 * keeps what was typed since the last save.
+	 */
+	private async discardDraft(draftKey: string): Promise<void> {
+		if (this.stepDrafts.has(draftKey) && !(await confirmDraftDiscard(this.app, this.t))) {
+			return;
+		}
+		this.stepDrafts.delete(draftKey);
+		await this.refresh();
 	}
 
 	private addTextInputField(

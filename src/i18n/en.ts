@@ -1842,6 +1842,10 @@ export const en = {
 	'modal.boundaryProtectionOff.description':
 		'Section markers tell the dashboard where each section starts and ends. With protection off, the markers in every note can be changed or deleted by mistake, and the dashboard can’t update a section whose marker is broken.',
 	'modal.boundaryProtectionOff.confirm': 'Turn off',
+	'modal.discardDraft.title': 'Discard what you typed?',
+	'modal.discardDraft.description':
+		'The words typed here since the last save will be lost, and the box will show the note as it is saved.',
+	'modal.discardDraft.confirm': 'Discard',
 	'modal.character.title': 'Add character',
 	'modal.character.editTitle': 'Edit character',
 	'modal.character.name': 'Name',

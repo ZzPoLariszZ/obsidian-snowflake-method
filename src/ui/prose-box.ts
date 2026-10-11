@@ -102,6 +102,44 @@ export function proseBoxText(box: HTMLElement): string {
 }
 
 /**
+ * Where the caret stands in a prose box, as the number of characters before
+ * it, or null when the selection is somewhere else. A box drawn again from
+ * its value takes the caret back at the same count.
+ */
+export function proseBoxCaret(box: HTMLElement): number | null {
+	const selection = selectionOf(box);
+	if (selection === null || selection.rangeCount === 0) return null;
+	const { focusNode, focusOffset } = selection;
+	if (focusNode === null || !box.contains(focusNode)) return null;
+	const range = box.doc.createRange();
+	range.selectNodeContents(box);
+	range.setEnd(focusNode, focusOffset);
+	return range.toString().length;
+}
+
+/** The selection of the window a box stands in, where that window has one. */
+function selectionOf(box: HTMLElement): Selection | null {
+	const win = box.win as Window | undefined;
+	return typeof win?.getSelection === 'function' ? win.getSelection() : null;
+}
+
+/** Puts the caret in a box drawn from its value, at a count `proseBoxCaret` read. */
+export function placeProseBoxCaret(box: HTMLElement, offset: number): void {
+	const selection = selectionOf(box);
+	if (selection === null) return;
+	const range = box.doc.createRange();
+	const text = box.firstChild;
+	if (text !== null && text.nodeType === Node.TEXT_NODE) {
+		range.setStart(text, Math.min(offset, text.nodeValue?.length ?? 0));
+	} else {
+		range.setStart(box, 0);
+	}
+	range.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
+/**
  * The words selected inside a prose box, or null when the selection is
  * collapsed or reaches outside it.
  */

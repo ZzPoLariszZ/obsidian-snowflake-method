@@ -1722,6 +1722,9 @@ export const zhCN: Readonly<Record<TranslationKey, string>> = {
 	'modal.boundaryProtectionOff.description':
 		'区段标记告诉工作台每个区段从哪里开始、到哪里结束。关闭保护后，所有笔记里的标记都可能被误改或误删，标记损坏的区段就无法再从工作台更新。',
 	'modal.boundaryProtectionOff.confirm': '关闭',
+	'modal.discardDraft.title': '放弃输入的内容？',
+	'modal.discardDraft.description': '上次保存后在这里输入的文字将会丢失，文本框会显示笔记已保存的内容。',
+	'modal.discardDraft.confirm': '放弃',
 	'modal.character.title': '添加角色',
 	'modal.character.editTitle': '编辑角色',
 	'modal.character.name': '姓名',

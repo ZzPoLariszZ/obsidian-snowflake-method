@@ -4835,6 +4835,29 @@ export function confirmBoundaryProtectionOff(app: App, t: Translate): Promise<bo
 	});
 }
 
+/**
+ * Asked before a step's unsaved words on the dashboard are let go: a box
+ * there can hold a page or more, and the button that drops them stands
+ * between the two that keep them.
+ */
+class ConfirmDraftDiscardModal extends ConfirmModal {
+	constructor(app: App, t: Translate, onResolve: (confirmed: boolean) => void) {
+		super(app, t, { label: t('modal.discardDraft.confirm'), style: 'mod-warning' }, onResolve);
+		this.setTitle(t('modal.discardDraft.title'));
+		this.modalEl.addClass('snowflake-method-delete-member-modal');
+	}
+
+	protected renderBody(body: HTMLElement): void {
+		body.createEl('p', { text: this.t('modal.discardDraft.description') });
+	}
+}
+
+export function confirmDraftDiscard(app: App, t: Translate): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmDraftDiscardModal(app, t, resolve).open();
+	});
+}
+
 export class ManagedBoundaryUnlockModal extends Modal {
 	constructor(
 		app: App,

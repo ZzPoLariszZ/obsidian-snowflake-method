@@ -2213,6 +2213,11 @@ body.snowflake-method-hide-scrollbars .snowflake-method-source-summary-body {
 	   different edges. Both edges, so the words stay centred in the box. */
 	scrollbar-gutter: stable both-edges;
 	cursor: text;
+	/* The app's body takes selection away from all but the editors it marks
+	   `contenteditable="true"`, and an older WebKit, an iPad's on iOS 15,
+	   places no caret in text that cannot be selected. */
+	-webkit-user-select: text;
+	user-select: text;
 }
 
 /* With the bars hidden the gutter holds nothing, so the room is padding

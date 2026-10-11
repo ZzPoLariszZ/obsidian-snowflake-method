@@ -298,6 +298,10 @@ describe('styles.css', () => {
 		expect(box).toContain('background: var(--background-modifier-form-field)');
 		expect(box).toContain('white-space: pre-wrap');
 		expect(box).toContain('overflow-y: auto');
+		// Selectable, as the app makes its own editors: an older WebKit puts
+		// no caret in text the body has made unselectable.
+		expect(box).toContain('-webkit-user-select: text');
+		expect(box).toContain('user-select: text');
 		expect(declarations('.snowflake-method-prose-box:empty::before')).toContain('content: attr(data-placeholder)');
 		expect(declarations('.snowflake-method-prose-box.is-disabled')).toContain('cursor: not-allowed');
 		expect(declarations('.snowflake-method-source-summary-body')).toContain(
