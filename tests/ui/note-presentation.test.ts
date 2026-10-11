@@ -150,6 +150,45 @@ describe('NotePresentation', () => {
 		expect(untabbed.containerEl.classList.contains(NOTE_DRESS_CLASS)).toBe(true);
 	});
 
+	it('takes the tab’s mark off when the tab turns to another view, and redresses a note that comes back', () => {
+		const { presentation, notes } = harness('project');
+		presentation.apply();
+		const first = notes[0] as DressableNote;
+		const tab = first.tabHeaderEl as HTMLElement;
+		expect(tab.classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(true);
+		// The same tab now shows a PDF: the app lists the leaf no more.
+		notes.splice(0, 1);
+		presentation.apply();
+		expect(tab.classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(false);
+		// A note brought back into that tab is a new view under the same tab.
+		const back: DressableNote = {
+			path: 'Novel/50_Manuscript/Chapter 1.md',
+			containerEl: document.body.createDiv(),
+			tabHeaderEl: tab,
+		};
+		notes.unshift(back);
+		presentation.apply();
+		expect(tab.classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(true);
+		expect(back.containerEl.classList.contains(NOTE_DRESS_CLASS)).toBe(true);
+	});
+
+	it('takes every trace off every note when it is let go', () => {
+		const { presentation, notes } = harness('project');
+		presentation.apply();
+		expect(notes[0]?.containerEl.style.getPropertyValue(PRESENTATION_PROPERTIES.font)).not.toBe('');
+		presentation.undressAll();
+		for (const note of notes) {
+			const root = note.containerEl;
+			expect(root.classList.contains(NOTE_DRESS_CLASS)).toBe(false);
+			expect(root.getAttribute('lang')).toBeNull();
+			expect(root.dataset.snowflakeMethodLang).toBeUndefined();
+			for (const name of Object.values(PRESENTATION_PROPERTIES)) {
+				expect(root.style.getPropertyValue(name)).toBe('');
+			}
+			expect(note.tabHeaderEl?.classList.contains(NOTE_TAB_DRESS_CLASS)).toBe(false);
+		}
+	});
+
 	it('reaches notes alone: a canvas in the project is no note', () => {
 		const { presentation } = harness('vault');
 		expect(presentation.wears('Novel/Board.canvas')).toBe(false);

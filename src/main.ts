@@ -742,6 +742,14 @@ export default class SnowflakeMethodPlugin
 	private readonly projectLocalesById = new Map<string, 'en' | 'zh-CN'>();
 	/** Root folders of the projects discovered under the configured root. */
 	private readonly knownProjectRoots = new Set<string>();
+	/**
+	 * Each discovered project's language by root folder, the read-only ones
+	 * too: what the dress on a note and its bar speak, which reach a project
+	 * a newer build wrote as much as any other.
+	 */
+	private readonly projectLocalesByRoot = new Map<string, 'en' | 'zh-CN'>();
+	/** Whether a scan has filled the roster, which until then is read from the paths alone. */
+	private rosterScanned = false;
 	/** The manuscript's dress on notes in tabs of Obsidian's own. */
 	private notePresentation: NotePresentation | null = null;
 	/** The formatting bar above every note the dress reaches. */
@@ -877,7 +885,7 @@ export default class SnowflakeMethodPlugin
 			app: this.app,
 			t: (path) => (key, vars) =>
 				this.translateForProject(
-					path === null ? null : (this.projectRefAtPath(path)?.locale ?? null),
+					path === null ? null : this.noteStanding(path).locale,
 					key,
 					vars,
 				),
@@ -899,6 +907,10 @@ export default class SnowflakeMethodPlugin
 		this.register(() => {
 			this.noteToolbars?.destroy();
 			this.noteToolbars = null;
+			// The app is handed back as it stands: no note keeps the dress, or
+			// the project's language, once the plugin is gone.
+			this.notePresentation?.undressAll();
+			this.notePresentation = null;
 		});
 		this.registerEditorExtension([
 			paragraphLinesWhen((view) => this.editorDressed(view)),
@@ -1601,10 +1613,12 @@ export default class SnowflakeMethodPlugin
 		);
 		this.projectLocalesById.clear();
 		this.knownProjectRoots.clear();
+		this.projectLocalesByRoot.clear();
 		this.knownProjectsByRoot.clear();
 		for (const project of projects) {
 			this.projectLocalesById.set(project.id, project.locale);
 			this.knownProjectRoots.add(project.rootPath);
+			this.projectLocalesByRoot.set(project.rootPath, project.locale);
 			if (!project.readOnly) {
 				this.knownProjectsByRoot.set(project.rootPath, project);
 			}
@@ -1624,6 +1638,7 @@ export default class SnowflakeMethodPlugin
 			if (this.holdsProjectMetadata(folder.path)) this.explorerRoots.add(folder.path);
 		}
 		this.explorer?.projectsChanged();
+		this.rosterScanned = true;
 		// The roster decides which notes the typography reaches.
 		this.dressNotes();
 		this.refreshParagraphLineEditors();
@@ -1674,11 +1689,17 @@ export default class SnowflakeMethodPlugin
 	 */
 	private rememberDraft(project: ProjectSnapshot): void {
 		const draftPath = project.links.draft;
+		const known = this.externalDrafts.get(project.rootPath);
 		if (draftPath === null || isPathAtOrBelow(draftPath, project.rootPath)) {
 			this.externalDrafts.delete(project.rootPath);
-			return;
+		} else {
+			this.externalDrafts.set(project.rootPath, draftPath);
 		}
-		this.externalDrafts.set(project.rootPath, draftPath);
+		// The dress reaches that draft too, and this is where it is learned.
+		if (this.externalDrafts.get(project.rootPath) !== known) {
+			this.dressNotes();
+			this.refreshParagraphLineEditors();
+		}
 	}
 
 	private projectHasMarkerIssues(project: ProjectSnapshot): boolean {
@@ -10097,7 +10118,9 @@ export default class SnowflakeMethodPlugin
 		this.projects.repository.forget(oldPath, {
 			children: file instanceof TFolder,
 		});
-		// A note carried into or out of a manuscript folder changes its dress.
+		// A note carried into or out of a manuscript folder changes its dress;
+		// one carried with its whole project keeps it.
+		this.carryRosterThroughRename(oldPath, file.path);
 		this.dressNotes();
 		this.projects.writingCount.forget(oldPath, {
 			children: file instanceof TFolder,
@@ -10421,22 +10444,79 @@ export default class SnowflakeMethodPlugin
 	 * manuscript folder, as the manuscript service looks, or the draft the
 	 * project links to from outside its own folder.
 	 */
-	private noteStanding(path: string): NoteStanding & { locale: string | null } {
-		const project = this.projectRefAtPath(path);
-		if (project === null) {
-			return { inProject: false, inManuscript: false, locale: null };
+	private noteStanding(path: string): NoteStanding & { locale: 'en' | 'zh-CN' | null } {
+		// Every project the scan knows, the read-only ones too: the dress is a
+		// look, and changes nothing in the note. Before the first scan the
+		// folder over the note is asked from its paths alone, so a note the
+		// app restores at startup is dressed from its first paint.
+		const roster = this.rosterScanned ? this.projectLocalesByRoot : this.projectFolderAt(path);
+		for (const [rootPath, locale] of roster) {
+			if (!isPathAtOrBelow(path, rootPath)) continue;
+			const folders = new Set([
+				getProjectPathLayout(locale).directories.draft,
+				...Object.values(PROJECT_PATH_LAYOUTS).map(
+					(layout) => layout.directories.draft,
+				),
+			]);
+			const inManuscript = [...folders].some((folder) =>
+				isPathAtOrBelow(path, `${rootPath}/${folder}`),
+			);
+			return { inProject: true, inManuscript, locale };
 		}
-		const folders = new Set([
-			getProjectPathLayout(project.locale).directories.draft,
-			...Object.values(PROJECT_PATH_LAYOUTS).map(
-				(layout) => layout.directories.draft,
-			),
-		]);
-		const inManuscript =
-			[...folders].some((folder) =>
-				isPathAtOrBelow(path, `${project.rootPath}/${folder}`),
-			) || this.externalDrafts.get(project.rootPath) === path;
-		return { inProject: true, inManuscript, locale: project.locale };
+		// The draft a project links to from outside its own folder.
+		for (const [rootPath, draftPath] of this.externalDrafts) {
+			if (draftPath === path) {
+				return {
+					inProject: false,
+					inManuscript: true,
+					locale: this.projectLocalesByRoot.get(rootPath) ?? null,
+				};
+			}
+		}
+		return { inProject: false, inManuscript: false, locale: null };
+	}
+
+	/**
+	 * The project folder a note stands in and its language, read from the
+	 * paths alone as the scan would find it: a folder right under the
+	 * configured root, holding a project's metadata note in either layout.
+	 * Empty for a note in no such folder.
+	 */
+	private projectFolderAt(path: string): [string, 'en' | 'zh-CN'][] {
+		const root = normalizeProjectRoot(this.settings.projectRoot);
+		if (root.length > 0 && !path.startsWith(`${root}/`)) return [];
+		const rest = root.length === 0 ? path : path.slice(root.length + 1);
+		const slash = rest.indexOf('/');
+		if (slash <= 0) return [];
+		const folder = root.length === 0 ? rest.slice(0, slash) : `${root}/${rest.slice(0, slash)}`;
+		for (const [locale, layout] of Object.entries(PROJECT_PATH_LAYOUTS)) {
+			const metadata = `${folder}/${layout.directories.system}/${layout.projectFileName}`;
+			if (this.projects.repository.getFile(metadata) !== null) {
+				return [[folder, locale as 'en' | 'zh-CN']];
+			}
+		}
+		return [];
+	}
+
+	/**
+	 * The roster the dress reads, carried through a rename at once: the scan
+	 * that knows a moved project by its new name comes after, and its notes
+	 * would wear no dress in between.
+	 */
+	private carryRosterThroughRename(oldPath: string, newPath: string): void {
+		for (const [rootPath, locale] of [...this.projectLocalesByRoot]) {
+			const moved = movedWithRename(rootPath, oldPath, newPath);
+			if (moved === null) continue;
+			this.projectLocalesByRoot.delete(rootPath);
+			this.projectLocalesByRoot.set(moved, locale);
+		}
+		for (const [rootPath, draftPath] of [...this.externalDrafts]) {
+			const movedRoot = movedWithRename(rootPath, oldPath, newPath) ?? rootPath;
+			const movedDraft = movedWithRename(draftPath, oldPath, newPath) ?? draftPath;
+			if (movedRoot === rootPath && movedDraft === draftPath) continue;
+			this.externalDrafts.delete(rootPath);
+			this.externalDrafts.set(movedRoot, movedDraft);
+		}
 	}
 
 	/** Every open editor asked to decide afresh whether its note is dressed. */

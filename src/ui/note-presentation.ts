@@ -58,6 +58,12 @@ function isNotePath(path: string): boolean {
 export class NotePresentation {
 	/** The dress each view wears, so a repeat changes nothing. */
 	private readonly worn = new WeakMap<HTMLElement, string>();
+	/**
+	 * Every view dressed, with its tab: what a view no longer listed, or the
+	 * plugin going away, has to take off again. The tab outlives the view in
+	 * it, so a tab turned to a PDF or a canvas would otherwise keep the tint.
+	 */
+	private readonly dressed = new Map<HTMLElement, HTMLElement | null>();
 
 	constructor(private readonly deps: NotePresentationDeps) {}
 
@@ -80,7 +86,34 @@ export class NotePresentation {
 
 	/** Every open note dressed or undressed afresh. */
 	apply(): void {
-		for (const note of this.deps.notes()) this.applyTo(note);
+		const notes = [...this.deps.notes()];
+		const listed = new Set(notes.map((note) => note.containerEl));
+		const tabs = new Set(notes.map((note) => note.tabHeaderEl ?? null));
+		// A view dressed before and gone since, its tab now showing something
+		// else, takes the dress off; a tab a listed note now holds is left to it.
+		for (const [root, tab] of [...this.dressed]) {
+			if (!listed.has(root)) this.undress(root, tabs.has(tab) ? null : tab);
+		}
+		for (const note of notes) this.applyTo(note);
+	}
+
+	/** The dress taken off every view that wears it, for the plugin going away. */
+	undressAll(): void {
+		for (const [root, tab] of [...this.dressed]) this.undress(root, tab);
+	}
+
+	private undress(root: HTMLElement, tab: HTMLElement | null | undefined): void {
+		this.dressed.delete(root);
+		this.worn.delete(root);
+		for (const name of Object.values(PRESENTATION_PROPERTIES)) {
+			root.style.removeProperty(name);
+		}
+		root.removeClass(NOTE_DRESS_CLASS, ...Object.keys(presentationStyle(this.deps.look()).classes));
+		tab?.removeClass(NOTE_TAB_DRESS_CLASS);
+		if (root.dataset.snowflakeMethodLang !== undefined) {
+			root.removeAttribute('lang');
+			delete root.dataset.snowflakeMethodLang;
+		}
 	}
 
 	applyTo(note: DressableNote): void {
@@ -94,20 +127,14 @@ export class NotePresentation {
 				? `${presentationShape(look)}|lang:${standing.locale ?? ''}`
 				: '';
 		if (this.worn.get(root) === shape) return;
-		this.worn.set(root, shape);
-		const style = presentationStyle(look);
 		if (standing === null) {
-			for (const name of Object.values(PRESENTATION_PROPERTIES)) {
-				root.style.removeProperty(name);
-			}
-			root.removeClass(NOTE_DRESS_CLASS, ...Object.keys(style.classes));
-			note.tabHeaderEl?.removeClass(NOTE_TAB_DRESS_CLASS);
-			if (root.dataset.snowflakeMethodLang !== undefined) {
-				root.removeAttribute('lang');
-				delete root.dataset.snowflakeMethodLang;
-			}
+			this.undress(root, note.tabHeaderEl);
+			this.worn.set(root, shape);
 			return;
 		}
+		this.worn.set(root, shape);
+		this.dressed.set(root, note.tabHeaderEl ?? null);
+		const style = presentationStyle(look);
 		for (const [name, value] of Object.entries(style.properties)) {
 			if (value === null) root.style.removeProperty(name);
 			else root.style.setProperty(name, value);
