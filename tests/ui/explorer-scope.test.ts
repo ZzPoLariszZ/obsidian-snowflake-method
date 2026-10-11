@@ -42,6 +42,7 @@ interface ExplorerHost {
 	explorer: unknown;
 	startExplorer(): void;
 	handleSettingsChanged(key: string): Promise<void>;
+	carryExplorerChoices(oldPath: string, newPath: string | null): void;
 }
 
 const hosts: ExplorerHost[] = [];
@@ -73,6 +74,7 @@ function host(scope: ExplorerScope) {
 		explorerLife: null,
 		explorerRoots: new Set(['Novel']),
 		globalT: (key: string) => key,
+		saveSettingsSoon: () => undefined,
 		addChild: (child: Component) => {
 			child.load();
 			return child;
@@ -88,7 +90,7 @@ function host(scope: ExplorerScope) {
 			(button) => [...button.classes].find((cls) => cls.startsWith('snowflake-method-explorer-button-')) ?? '',
 		);
 	const shownName = (path: string): string | null => view.fileItems[path]?.innerEl.textContent ?? null;
-	return { dom, view, plugin, buttons, shownName };
+	return { dom, files, view, plugin, buttons, shownName };
 }
 
 afterEach(async () => {
@@ -135,6 +137,40 @@ describe('the explorer tools and their scope', () => {
 		expect(shownName('Novel/50_Manuscript')).toBe('50_Manuscript');
 		expect(view.renderedPaths()).toContain('Novel/00_System');
 		expect(Reflect.get(FakeBaseItem.prototype, 'updateTitle')).toBe(updateTitle);
+	});
+
+	it('keeps the arranged order and the saved folds through what is renamed or deleted while the scope is off', async () => {
+		const { dom, files, plugin } = host('projects');
+		for (const name of ['A', 'B', 'C', 'D']) files.file(`Novel/50_Manuscript/Chapters/${name}.md`);
+		plugin.settings.explorerOrders = { 'Novel/50_Manuscript/Chapters': ['C.md', 'A.md', 'D.md', 'B.md'] };
+		plugin.startExplorer();
+		await settle(dom);
+		plugin.settings.explorerScope = 'off';
+		await plugin.handleSettingsChanged('explorerScope');
+		// Folds a cover saved, still waiting to be opened when the tools return.
+		plugin.settings.explorerImmersiveFolds = ['Novel/50_Manuscript/Chapters'];
+		/** A rename the way the vault tells it: the entry, then everything under it. */
+		const rename = (path: string, next: string): void => {
+			const moves = [path, ...[...files.byPath.keys()].filter((key) => key.startsWith(`${path}/`)).sort()];
+			for (const from of moves) {
+				const entry = files.get(from);
+				if (entry === null) throw new Error(`no ${from}`);
+				const oldPath = files.rename(entry, `${next}${from.slice(path.length)}`);
+				plugin.carryExplorerChoices(oldPath, entry.path);
+			}
+		};
+		rename('Novel/50_Manuscript/Chapters/C.md', 'Novel/50_Manuscript/Chapters/C2.md');
+		rename('Novel/50_Manuscript/Chapters', 'Novel/50_Manuscript/Parts');
+		plugin.carryExplorerChoices('Novel/50_Manuscript/Parts/D.md', null);
+		expect(plugin.settings.explorerImmersiveFolds).toEqual(['Novel/50_Manuscript/Parts']);
+		plugin.settings.explorerScope = 'projects';
+		await plugin.handleSettingsChanged('explorerScope');
+		await settle(dom);
+		// What the tools prune on their return no longer names anything gone.
+		expect(plugin.settings.explorerOrders).toEqual({ 'Novel/50_Manuscript/Parts': ['C2.md', 'A.md', 'B.md'] });
+		// While the tools run, they follow renames themselves and this stands aside.
+		plugin.carryExplorerChoices('Novel/50_Manuscript/Parts/A.md', 'Novel/50_Manuscript/Parts/A2.md');
+		expect(plugin.settings.explorerOrders).toEqual({ 'Novel/50_Manuscript/Parts': ['C2.md', 'A.md', 'B.md'] });
 	});
 
 	it('repaints rather than starts again when the scope moves between projects and the whole vault', async () => {

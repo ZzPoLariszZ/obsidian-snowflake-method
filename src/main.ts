@@ -25,6 +25,8 @@ import {
 	DEFAULT_STOPWORDS_ZH,
 	DEFINITION_FILE_IDS,
 	DIALOGUE_STYLE_TOKENS,
+	deleteFromOrders,
+	renameInOrders,
 	parseWikiLink,
 	SCENE_POV_MULTIPLE,
 	SCENE_POV_OMNISCIENT,
@@ -9550,6 +9552,32 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
+	 * The arranged order and the folds the immersive cover saved, carried
+	 * through a rename or a delete (`newPath` null) while the explorer tools
+	 * are away, which follow these themselves while they run. The tools prune
+	 * whatever their record names that the vault no longer has when they come
+	 * back, so a name changed meanwhile would otherwise lose its place.
+	 */
+	private carryExplorerChoices(oldPath: string, newPath: string | null): void {
+		if (this.explorer !== null) return;
+		const orders =
+			newPath === null
+				? deleteFromOrders(this.settings.explorerOrders, oldPath)
+				: renameInOrders(this.settings.explorerOrders, oldPath, newPath);
+		const saved = this.settings.explorerImmersiveFolds;
+		const folds = saved.flatMap((path) => {
+			if (newPath !== null) return [movedWithRename(path, oldPath, newPath) ?? path];
+			return isPathAtOrBelow(path, oldPath) ? [] : [path];
+		});
+		const foldsMoved =
+			folds.length !== saved.length || folds.some((path, index) => path !== saved[index]);
+		if (orders === this.settings.explorerOrders && !foldsMoved) return;
+		this.settings.explorerOrders = orders;
+		if (foldsMoved) this.settings.explorerImmersiveFolds = folds;
+		this.saveSettingsSoon();
+	}
+
+	/**
 	 * The explorer tools after a change to their settings: gone while the
 	 * scope is off, started afresh when it comes back, and otherwise
 	 * repainted. Never started before the layout is ready, whose rows they
@@ -9853,6 +9881,7 @@ export default class SnowflakeMethodPlugin
 	}
 
 	private async handleVaultDelete(file: TAbstractFile): Promise<void> {
+		this.carryExplorerChoices(file.path, null);
 		// Before any guard: the parse cache lets the record go wherever the
 		// file was, and forgetting can never change what a read returns.
 		this.projects.repository.forget(file.path, {
@@ -10058,6 +10087,7 @@ export default class SnowflakeMethodPlugin
 		file: TAbstractFile,
 		oldPath: string,
 	): Promise<void> {
+		this.carryExplorerChoices(oldPath, file.path);
 		// Before any guard: the parse cache lets the old path's record go. The
 		// new path caches itself on its next read. The counts go with it: a
 		// note's size and modified time both survive a rename, so a count left
