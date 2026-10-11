@@ -29,6 +29,57 @@ const PARAGRAPH_FIRST = Decoration.line({ class: PARAGRAPH_LINE_CLASSES.first })
 const PARAGRAPH_LINE = Decoration.line({ class: PARAGRAPH_LINE_CLASSES.line });
 const BLANK_LINE = Decoration.line({ class: PARAGRAPH_LINE_CLASSES.blank });
 
+/**
+ * A paragraph's line that begins with a space, in Obsidian's own editor,
+ * which hangs such a line's wrapped rows under its first word with a style
+ * of its own on the line. The indent's box stands before that word, so the
+ * rows hung a whole indent in and the paragraph read as a block set apart,
+ * where the stream's editor and both reading halves run them flush under
+ * the indent. The rows are put back flush by a style of the plugin's on the
+ * same line: a line's decorations join their styles in turn, the app's
+ * first, and the later declaration is the one that holds. That holds for a
+ * line as the editor draws it; what the app writes onto a line afterwards is
+ * answered by `flushHungRows`.
+ */
+const FLUSH_LINE = Decoration.line({
+	attributes: { style: 'text-indent: 0; padding-inline-start: 0' },
+});
+
+/**
+ * A line that begins with the whitespace Obsidian hangs a line's rows under:
+ * any space at all, the ideographic one a Chinese paragraph may open with
+ * included, as the app's own test reads it.
+ */
+const HUNG_LEAD = /^\s/u;
+
+/** A length the style leaves at nothing: unset, or zero. */
+const isNothing = (value: string): boolean =>
+	value === '' || Number.parseFloat(value) === 0;
+
+/**
+ * The rows of a hung paragraph line put back flush wherever the app wrote
+ * the hang onto the line itself. Obsidian draws a hung line with an
+ * estimate, then measures it -- when it is drawn, and again whenever its
+ * text changes -- and writes the measured hang straight onto the line, past
+ * the decorations, so it stood until the editor next wrote the line's own
+ * style back: a frame or more, which read as the paragraph jumping in and
+ * back. Answered as the style changes, in the same turn, before anything is
+ * painted. A line's own style, so the editor writes it again whole the next
+ * time it draws the line, and the decoration above stands then.
+ */
+function flushHungRows(records: readonly MutationRecord[]): void {
+	for (const record of records) {
+		const line = record.target as HTMLElement;
+		if (line.classList?.contains(PARAGRAPH_LINE_CLASSES.line) !== true) continue;
+		const { style } = line;
+		if (isNothing(style.textIndent) && isNothing(style.paddingInlineStart)) continue;
+		// Taken off the line rather than written over: what is left is the
+		// page's own flush row, the same nothing the decoration writes.
+		style.removeProperty('text-indent');
+		style.removeProperty('padding-inline-start');
+	}
+}
+
 /** How long one update may spend parsing ahead for the lines in view. */
 const LAYOUT_PARSE_MS = 50;
 
@@ -61,20 +112,29 @@ export function layoutDecorations(state: EditorState): DecorationSet {
 	return decorationsFor(paragraphLayout(state, 0, doc.length, tree));
 }
 
-/** The same marks from the text alone, for Obsidian's own editor. */
+/**
+ * The same marks from the text alone, for Obsidian's own editor, with the
+ * paragraph lines that begin with a space kept flush (see `FLUSH_LINE`).
+ */
 export function layoutDecorationsByText(state: EditorState): DecorationSet {
-	return decorationsFor(paragraphLayoutByText(state.doc));
+	const layout = paragraphLayoutByText(state.doc);
+	const flush = layout.lines.filter((at) => HUNG_LEAD.test(state.doc.lineAt(at).text));
+	return decorationsFor(layout, flush);
 }
 
-function decorationsFor(layout: {
-	first: number[];
-	lines: number[];
-	blank: number[];
-}): DecorationSet {
+function decorationsFor(
+	layout: {
+		first: number[];
+		lines: number[];
+		blank: number[];
+	},
+	flush: readonly number[] = [],
+): DecorationSet {
 	return Decoration.set(
 		[
 			...layout.first.map((at) => PARAGRAPH_FIRST.range(at)),
 			...layout.lines.map((at) => PARAGRAPH_LINE.range(at)),
+			...flush.map((at) => FLUSH_LINE.range(at)),
 			...layout.blank.map((at) => BLANK_LINE.range(at)),
 		],
 		true,
@@ -146,13 +206,16 @@ export function paragraphLinesWhen(
 			private dressed: boolean;
 			/** Known once the editor stands in the document; a nested one never dresses. */
 			private nested: boolean | null;
+			/** The watch on the lines' own style, kept while the note is dressed (see `flushHungRows`). */
+			private guard: MutationObserver | null = null;
 
-			constructor(view: EditorView) {
+			constructor(private readonly view: EditorView) {
 				this.nested = view.dom.isConnected ? isNestedEditor(view) : null;
 				this.dressed = this.nested !== true && isDressed(view);
 				this.decorations = this.dressed
 					? layoutDecorationsByText(view.state)
 					: Decoration.none;
+				this.watch();
 			}
 
 			update(update: ViewUpdate): void {
@@ -163,6 +226,7 @@ export function paragraphLinesWhen(
 					if (this.dressed) {
 						this.dressed = false;
 						this.decorations = Decoration.none;
+						this.watch();
 					}
 					return;
 				}
@@ -173,12 +237,35 @@ export function paragraphLinesWhen(
 				if (asked || update.docChanged) {
 					this.dressed = isDressed(update.view);
 				}
+				if (this.dressed !== was) this.watch();
 				if (!this.dressed) {
 					if (was) this.decorations = Decoration.none;
 					return;
 				}
 				if (!was || update.docChanged) {
 					this.decorations = layoutDecorationsByText(update.state);
+				}
+			}
+
+			destroy(): void {
+				this.guard?.disconnect();
+				this.guard = null;
+			}
+
+			/** The watch kept exactly while the note is dressed. */
+			private watch(): void {
+				if (this.dressed && this.guard === null) {
+					// The editor's own window's observer, so a popout watches its own lines.
+					const Observer = this.view.dom.ownerDocument.defaultView?.MutationObserver ?? MutationObserver;
+					this.guard = new Observer(flushHungRows);
+					this.guard.observe(this.view.contentDOM, {
+						attributes: true,
+						attributeFilter: ['style'],
+						subtree: true,
+					});
+				} else if (!this.dressed && this.guard !== null) {
+					this.guard.disconnect();
+					this.guard = null;
 				}
 			}
 		},

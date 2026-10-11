@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { EditorState, type Extension } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { Decoration, EditorView } from '@codemirror/view';
 
 import {
 	MARKDOWN_LANGUAGE,
@@ -58,6 +58,67 @@ describe('paragraphLinesWhen', () => {
 		// Nothing has asked yet: the editor goes on as it was.
 		view.dispatch({ changes: { from: doc.length, insert: '!' } });
 		expect(marks(view)).not.toEqual({});
+		view.destroy();
+	});
+
+	it('keeps the rows of a paragraph that begins with a space flush, against the app’s hang', () => {
+		const text = ['Plain line.', '', ' One space.', '', '\u3000\u3000Ideographic.'].join('\n');
+		const state = EditorState.create({ doc: text });
+		// Obsidian hangs a space-led line's wrapped rows under its first word
+		// with a style on the line, made before the plugin's own: stood in for here.
+		const hang = EditorView.decorations.of(
+			Decoration.set([
+				Decoration.line({
+					attributes: { style: 'text-indent:-70px;padding-inline-start:70px' },
+				}).range(state.doc.line(3).from),
+			]),
+		);
+		const view = new EditorView({
+			state: EditorState.create({
+				doc: text,
+				extensions: [MARKDOWN_LANGUAGE, hang, paragraphLinesWhen(() => true)],
+			}),
+			parent: document.body.createDiv(),
+		});
+		const lines = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-line'));
+		// The plugin's style comes last, and the last declaration holds.
+		expect(lines[2]?.style.getPropertyValue('text-indent')).toMatch(/^0(px)?$/u);
+		expect(lines[2]?.style.getPropertyValue('padding-inline-start')).toMatch(/^0(px)?$/u);
+		// The app hangs the ideographic spaces a Chinese paragraph opens with
+		// too, so that line is kept flush as well; one with no space before it
+		// is left without a style of the plugin's.
+		expect(lines[4]?.style.getPropertyValue('padding-inline-start')).toMatch(/^0(px)?$/u);
+		expect(lines[0]?.getAttribute('style')).toBeNull();
+		view.destroy();
+	});
+
+	it('puts the rows back flush in the same turn when the app writes a hang onto the line', async () => {
+		const text = ['Plain line.', '', ' One space.', '', '- A list item.'].join('\n');
+		const view = new EditorView({
+			state: EditorState.create({
+				doc: text,
+				extensions: [MARKDOWN_LANGUAGE, paragraphLinesWhen(() => true)],
+			}),
+			parent: document.body.createDiv(),
+		});
+		const lines = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-line'));
+		const paragraph = lines[2] as HTMLElement;
+		const item = lines[4] as HTMLElement;
+		// What Obsidian does once it has measured a hung line: the hang it
+		// measured written straight onto the line, past the decorations.
+		const hang = 70;
+		for (const line of [paragraph, item]) {
+			line.style.setProperty('text-indent', `${String(-hang)}px`);
+			line.style.setProperty('padding-inline-start', `${String(hang)}px`);
+		}
+		await Promise.resolve();
+		await Promise.resolve();
+		// Gone again before the turn is out: nothing left to hang the rows by.
+		const nothing = /^(0(px)?)?$/u;
+		expect(paragraph.style.getPropertyValue('text-indent')).toMatch(nothing);
+		expect(paragraph.style.getPropertyValue('padding-inline-start')).toMatch(nothing);
+		// A list item is no paragraph of the page's, and keeps the app's hang.
+		expect(item.style.getPropertyValue('padding-inline-start')).toBe('70px');
 		view.destroy();
 	});
 
