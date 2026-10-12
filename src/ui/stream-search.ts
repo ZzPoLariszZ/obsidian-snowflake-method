@@ -182,6 +182,8 @@ export class StreamSearch {
 	/** One move or replacement at a time, in the order they were asked for. */
 	private work: Promise<void> = Promise.resolve();
 	private readonly editTimers = new Map<string, number>();
+	/** The marked places as read for this search, until the manuscript may have changed under them. */
+	private marked: Promise<Map<string, MarkedPassage[]>> | null = null;
 
 	constructor(private readonly host: StreamSearchHost) {}
 
@@ -219,6 +221,7 @@ export class StreamSearch {
 		this.generation += 1;
 		const generation = this.generation;
 		this.cancelEdits();
+		this.marked = null;
 		const compiled = compileTextSearch(query, options);
 		this.current = null;
 		const painted = [...this.found.keys()];
@@ -440,6 +443,8 @@ export class StreamSearch {
 	 * read and searched again, and the rest are left exactly as they were.
 	 */
 	reconcile(): Promise<void> {
+		// What the stores hold may have moved with the manuscript.
+		this.marked = null;
 		if (!this.isActive()) return Promise.resolve();
 		return this.queue(async () => {
 			await this.ready;
@@ -498,6 +503,7 @@ export class StreamSearch {
 		this.current = null;
 		this.search = null;
 		this.error = null;
+		this.marked = null;
 		const painted = [...this.found.keys()];
 		this.found.clear();
 		for (const path of painted) this.host.paint(path);
@@ -515,11 +521,18 @@ export class StreamSearch {
 	}
 
 	/**
-	 * The places marked in each note, read afresh for a replacement. Marks
-	 * that will not read leave nothing to ask about: a store that cannot
-	 * answer must not stop the replacing.
+	 * The places marked in each note, read once for a search and kept until a
+	 * new query, the bar closing or the manuscript changing, so walking the
+	 * matches with Replace reads the stores once rather than at every press.
+	 * Marks that will not read leave nothing to ask about: a store that
+	 * cannot answer must not stop the replacing.
 	 */
-	private async markedByNote(): Promise<Map<string, MarkedPassage[]>> {
+	private markedByNote(): Promise<Map<string, MarkedPassage[]>> {
+		this.marked ??= this.readMarked();
+		return this.marked;
+	}
+
+	private async readMarked(): Promise<Map<string, MarkedPassage[]>> {
 		const passages = await this.host.markedPassages().catch(() => []);
 		const byNote = new Map<string, MarkedPassage[]>();
 		for (const passage of passages) {
