@@ -460,12 +460,25 @@ describe('styles.css', () => {
 		expect(scope).toContain('--snowflake-method-list-heading-color: var(--text-muted);');
 		expect(scope).toContain('body.mod-macos.theme-light.snowflake-method-tint-snowflake-light');
 		expect(scope).toContain('--interactive-normal: var(--background-modifier-border);');
-		// A view in a sidebar paints the sidebar's ground the app leaves outside it.
-		expect(
-			declarations(
-				"body.theme-light.snowflake-method-tint-snowflake-light .mod-sidedock .workspace-leaf-content[data-type^='snowflake-method-']",
-			),
-		).toContain('background-color: var(--background-secondary)');
+		for (const mode of ['light', 'dark']) {
+			// A view in a sidebar paints the sidebar's ground the app leaves
+			// outside it, but never over a translucent window's glass, which
+			// the app paints beneath everything and lifts in full screen.
+			for (const solid of [':not(.is-translucent)', '.is-fullscreen']) {
+				expect(
+					declarations(
+						`body.theme-${mode}.snowflake-method-tint-snowflake-${mode}${solid} .mod-sidedock .workspace-leaf-content[data-type^='snowflake-method-']`,
+					),
+				).toContain('background-color: var(--background-secondary)');
+			}
+			// Over the whole app the glass is the tint, at the app's strength.
+			expect(
+				declarations(`body.theme-${mode}.snowflake-method-tint-obsidian-${mode}.is-translucent`).replace(/\s+/gu, ' '),
+			).toContain(
+				'--workspace-background-translucent: color-mix( in srgb, var(--snowflake-method-tint) 60%, transparent );',
+			);
+		}
+		expect(scope).not.toMatch(/snowflake-method-tint-snowflake-(?:light|dark)\s+\.mod-sidedock/u);
 	});
 
 	/**

@@ -18338,14 +18338,40 @@ body.theme-dark.snowflake-method-tint-snowflake-dark
 /* A view of the plugin's in a sidebar stands on the sidebar's ground, which
    the app paints on the leaf around the view, outside what the plugin
    draws. The view paints that ground itself, the tint's sidebar shade. The
-   stream and a dressed note paint their own page wherever they stand. */
-body.theme-light.snowflake-method-tint-snowflake-light
+   stream and a dressed note paint their own page wherever they stand. In a
+   translucent window the sidebars are the window's glass, which the app
+   paints once beneath everything, so a view there paints nothing and stands
+   on the glass beside the app's own; in full screen the app paints no
+   glass, and the view its ground again. */
+body.theme-light.snowflake-method-tint-snowflake-light:not(.is-translucent)
 	.mod-sidedock
 	.workspace-leaf-content[data-type^='snowflake-method-'],
-body.theme-dark.snowflake-method-tint-snowflake-dark
+body.theme-light.snowflake-method-tint-snowflake-light.is-fullscreen
+	.mod-sidedock
+	.workspace-leaf-content[data-type^='snowflake-method-'],
+body.theme-dark.snowflake-method-tint-snowflake-dark:not(.is-translucent)
+	.mod-sidedock
+	.workspace-leaf-content[data-type^='snowflake-method-'],
+body.theme-dark.snowflake-method-tint-snowflake-dark.is-fullscreen
 	.mod-sidedock
 	.workspace-leaf-content[data-type^='snowflake-method-'] {
 	background-color: var(--background-secondary);
+}
+
+/* The glass of a translucent window, which the app paints over the desktop
+   behind it, under the ribbon, the sidebars and the tab bars, as its white
+   or black at a set strength. Over the whole app it is the tint at that
+   strength, so the window is one color with its pages, and the desktop
+   still shows through. Mixed in sRGB, which keeps the tint's own color:
+   the app's OKLCH mix drops the hue of a dark, nearly grey tint, and the
+   glass comes out a grey of another cast. */
+body.theme-light.snowflake-method-tint-obsidian-light.is-translucent,
+body.theme-dark.snowflake-method-tint-obsidian-dark.is-translucent {
+	--workspace-background-translucent: color-mix(
+		in srgb,
+		var(--snowflake-method-tint) 60%,
+		transparent
+	);
 }
 
 body.mod-macos.theme-light.snowflake-method-tint-typography-light
