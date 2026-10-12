@@ -10939,7 +10939,9 @@ export default class SnowflakeMethodPlugin
 	 * manuscript folder, as the manuscript service looks, or the draft the
 	 * project links to from outside its own folder.
 	 */
-	private noteStanding(path: string): NoteStanding & { locale: 'en' | 'zh-CN' | null } {
+	private noteStanding(
+		path: string,
+	): NoteStanding & { locale: 'en' | 'zh-CN' | null; root: string | null } {
 		// Every project the scan knows, the read-only ones too: the dress is a
 		// look, and changes nothing in the note. Before the first scan the
 		// folder over the note is asked from its paths alone, so a note the
@@ -10956,19 +10958,21 @@ export default class SnowflakeMethodPlugin
 			const inManuscript = [...folders].some((folder) =>
 				isPathAtOrBelow(path, `${rootPath}/${folder}`),
 			);
-			return { inProject: true, inManuscript, locale };
+			return { inProject: true, inManuscript, locale, root: rootPath };
 		}
-		// The draft a project links to from outside its own folder.
+		// The draft a project links to from outside its own folder: not in the
+		// project's folder, but the project's all the same.
 		for (const [rootPath, draftPath] of this.externalDrafts) {
 			if (draftPath === path) {
 				return {
 					inProject: false,
 					inManuscript: true,
 					locale: this.projectLocalesByRoot.get(rootPath) ?? null,
+					root: rootPath,
 				};
 			}
 		}
-		return { inProject: false, inManuscript: false, locale: null };
+		return { inProject: false, inManuscript: false, locale: null, root: null };
 	}
 
 	/**
@@ -11057,20 +11061,14 @@ export default class SnowflakeMethodPlugin
 	}
 
 	/**
-	 * The folder of the project a note belongs to, found as `noteStanding`
-	 * finds it -- the read-only projects too, and the project whose draft it
-	 * is when the draft stands outside its folder -- or null for a note of
-	 * no project.
+	 * The folder of the project a note belongs to, as `noteStanding` finds it
+	 * -- the read-only projects too, and the project whose draft it is when
+	 * the draft stands outside its folder -- or null for a note of no
+	 * project. One walk for both, so the dress and the marks, focus mode and
+	 * export never disagree about a note's project.
 	 */
 	private noteProjectRoot(path: string): string | null {
-		const roster = this.rosterScanned ? this.projectLocalesByRoot : this.projectFolderAt(path);
-		for (const [rootPath] of roster) {
-			if (isPathAtOrBelow(path, rootPath)) return rootPath;
-		}
-		for (const [rootPath, draftPath] of this.externalDrafts) {
-			if (draftPath === path) return rootPath;
-		}
-		return null;
+		return this.noteStanding(path).root;
 	}
 
 	/**

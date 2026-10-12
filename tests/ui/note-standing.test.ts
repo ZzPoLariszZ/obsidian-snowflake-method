@@ -17,7 +17,12 @@ vi.mock('obsidian', async (importOriginal) => {
 import SnowflakeMethodPlugin from '../../src/main';
 
 interface StandingHost {
-	noteStanding(path: string): { inProject: boolean; inManuscript: boolean; locale: string | null };
+	noteStanding(path: string): {
+		inProject: boolean;
+		inManuscript: boolean;
+		locale: string | null;
+		root: string | null;
+	};
 	scanProjects(): Promise<unknown>;
 	rememberDraft(project: { rootPath: string; links: { draft: string | null } }): void;
 	carryRosterThroughRename(oldPath: string, newPath: string): void;
@@ -70,21 +75,26 @@ describe('where a note stands', () => {
 			inProject: true,
 			inManuscript: true,
 			locale: 'en',
+			root: 'Projects/Novel',
 		});
 		expect(plugin.noteStanding('Projects/Future/50_正文/初稿.md')).toEqual({
 			inProject: true,
 			inManuscript: true,
 			locale: 'zh-CN',
+			root: 'Projects/Future',
 		});
+		// Outside the folder, yet the project's own: its root goes with it.
 		expect(plugin.noteStanding('Drafts/Novel draft.md')).toEqual({
 			inProject: false,
 			inManuscript: true,
 			locale: 'en',
+			root: 'Projects/Novel',
 		});
 		expect(plugin.noteStanding('Loose/Idea.md')).toEqual({
 			inProject: false,
 			inManuscript: false,
 			locale: null,
+			root: null,
 		});
 	});
 
@@ -97,6 +107,7 @@ describe('where a note stands', () => {
 			inProject: true,
 			inManuscript: true,
 			locale: 'en',
+			root: 'Projects/Novel',
 		});
 		expect(plugin.noteStanding('Projects/小说/50_正文/第一章.md').locale).toBe('zh-CN');
 		expect(plugin.noteStanding('Projects/Loose/Idea.md').inProject).toBe(false);
@@ -115,6 +126,7 @@ describe('where a note stands', () => {
 			inProject: false,
 			inManuscript: true,
 			locale: 'en',
+			root: 'Projects/Novel II',
 		});
 	});
 
