@@ -64,6 +64,8 @@ If the plugin helps your writing, you can also buy me a coffee.
 </tr>
 </table>
 
+Thank you for your support!
+
 </details>
 
 </div>
@@ -751,6 +753,8 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 如果插件对你的写作有帮助，也欢迎用微信扫码请我喝瓶快乐水。
 
 <p><img src="assets/sponsor/wechat-qr.png" width="200" alt="微信赞赏码" /></p>
+
+谢谢你的支持！
 
 </details>
 
