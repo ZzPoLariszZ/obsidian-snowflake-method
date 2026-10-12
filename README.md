@@ -88,12 +88,13 @@ If the plugin helps your writing, you can also buy me a coffee.
 | Project archive | Put a project you are done with out of the way, and bring it back whenever you want it. |
 | Story structure | See every scene as a card in narrative order, and reorder and edit it right on the card. Place the same scenes on timelines to see when they happen, or under the acts and beats of a beat sheet. Or spread them across a freeform canvas with anything else in the project. Export any of the three as an Obsidian Canvas file. |
 | Manuscript stream | Read and write the whole manuscript as one continuous page, while every chapter stays its own note. |
-| Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. |
+| Custom typography | Set the font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation. Add a background tint and grid lines to write along. Keep the look to the manuscript stream, or apply it to your Snowflake projects or the whole vault. |
 | Typewriter scrolling | Keep the line you are writing in the middle of the page. |
 | Focus mode | Fade everything except the paragraph you are writing, with four levels to choose from. |
+| Search and replace | Find words anywhere in the manuscript, with options for case, whole words and regular expressions, and replace one match or all of them. |
 | Word milestones | Mark the word count in the margin every so many words, across the whole manuscript or starting over in each chapter. |
 | Automatic chapter numbers | Number a new chapter from the one before it, in a Chinese or English style or with a rule of your own. Renumber the chapters after it to make room. |
-| Plain-text export | Export the manuscript, or one chapter, as plain text into the Vault, or copy a chapter to the clipboard, with every mark taken out. |
+| Plain-text export | Export the manuscript, a chapter, a note or selected words into the Vault as plain text, with every mark taken out. Or copy a chapter to the clipboard. |
 | Writing sessions | Time each sitting, aim for a daily goal, and look back at where the words and the hours went. |
 | Prose analysis | See the draft's reading time, sentences, dialogue share, and the words you use most. |
 | Entity tracking | Follow every character, place, and thing through the manuscript, and mark their mentions in the text. |
@@ -151,7 +152,7 @@ Work from a compact premise toward a scene-level plan. Each stage keeps the earl
     <td width="50%" valign="top">
       <a href="assets/screenshots/step_06_en.png"><img src="assets/screenshots/step_06_en.png" width="100%" alt="Step 6: Long synopsis" /></a><br />
       <strong>6. Long synopsis</strong><br />
-      <sub>Develop each plot paragraph into a full page, in a note of its own.</sub>
+      <sub>Develop each plot paragraph into a full page.</sub>
     </td>
   </tr>
   <tr>
@@ -222,17 +223,21 @@ A novel is easier to write in chapters and easier to read as a book. The manuscr
 
 In the manuscript stream, click any chapter and it switches to an editing view. It goes back to reading view when you move to another chapter. You can *(i) insert a chapter between two others, (ii) cut one in two at the cursor, or (iii) merge the next one into it.*
 
-**Typewriter scrolling** keeps the line you're writing in the middle of the page. **Focus mode** fades everything except the paragraph you're writing. Its deepest level, solo, shows only the manuscript, in full screen. Each has a button in every chapter's header. The arrow keys move the cursor from one chapter into the next.
+**Typewriter scrolling** keeps the line you're writing in the middle of the page. **Focus mode** fades everything except the paragraph you're writing. Its deepest level, solo, shows only the manuscript, in full screen. Each has a button in the toolbar. The arrow keys move the cursor from one chapter into the next.
+
+**Search and replace** reaches the whole manuscript. Press Ctrl+F, or Cmd+F on a Mac, and a bar like Obsidian's own opens above the page. It finds every match in every chapter, even the ones the stream hasn't loaded yet, and Enter takes you to the next one. Buttons in the box match case, match whole words or read the query as a regular expression. The arrow at the left, or Ctrl+Alt+F, opens the replace row. In the note you're writing in, Undo takes a replacement back. Replace all asks before it changes other notes, because those are saved straight away. Replacing text a revision or foreshadowing marks asks first too, since the mark would lose its place.
+
+**The right-click menu** has more for the words you select. It works in the manuscript stream, in your projects' notes, and in the text boxes of the dashboard and the plugin's dialogs. **Add as entity** asks which kind of note to make, from characters, scenes and your worldbuilding kinds. That kind's form then opens with the words as its name, while the page you're on stays in front. **Add as sticky note** puts the words on a new sticky note. The menu also exports the selected words as plain text, to a new numbered excerpt file each time. In a note it exports the whole note too, and in the manuscript stream the whole manuscript. In a text box, right-click words you've already selected to get this menu, with Cut, Copy and Paste at its top.
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_en.png"><img src="assets/screenshots/manuscript_typography_en.png" width="100%" alt="A chapter set in a custom font on a tinted background, justified with automatic hyphenation. First lines are indented, dashed grid lines run behind the text, and focus mode keeps the paragraph being written at full contrast." /></a></p>
 
-**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page.
+**The page is yours to set.** Font, size, line height, column width, paragraph spacing, first-line indent, alignment and hyphenation are all settings. So are a background tint for light and dark mode and grid lines to write along. Reading and writing follow the same layout rules, so a chapter is laid out the same whether you're reading it or writing in it. The typography button in the toolbar opens the same controls right over the page. The same look can dress notes you open in a normal tab. Under **Typography scope**, keep it to the manuscript stream, or apply it to every note in your Snowflake projects or in the whole vault. Snowflake projects is the default. Those notes get the same toolbar above them. The export button there exports just that note. Focus mode works in your projects' notes too, and solo then shows only that note. The text boxes in the dashboard follow the alignment and first-line indent settings too, and those in the plugin's dialogs follow the alignment. The tabs above those pages take the background color too, and under **Background scope** it can also cover the whole Snowflake interface, or the whole app.
 
 **Word milestones** put the running word count in the margin, beside the line that reaches each interval. The interval is five hundred words by default. Milestones use the same counting rule as the status bar. They count across the whole manuscript in reading order, or start again in every chapter. They also follow your typing. As a chapter grows, its marks move, and in whole-manuscript mode so do the marks of every chapter after it. Switch them on under **Word milestone** in the settings.
 
 **Automatic chapter numbers** offer each new chapter the number after the one before it. Choose a style under **Automatic chapter number**: `第一章`, `第 1 章` or `Chapter 1`. You can also write a rule of your own, as a simplified format such as `第{nnnn}章` or `Chapter {n}:`, or as a regular expression. With a style on, the naming form has two fields: the number, already filled in, and the name you type. It also has a switch that moves every numbered chapter after the new one up by one. Merging a numbered chapter away offers the reverse: the chapters after it move down by one, so there's no gap in the numbers. A chapter whose name doesn't match the rule is left as it is. A chapter whose heading you've rewritten keeps that heading.
 
-**Plain-text export** writes the manuscript into the Vault with every Markdown and Obsidian mark taken out. Headings keep just their words, and links just their text. Comments and block IDs are removed, and HTML entities become the characters they stand for. The export button in the toolbar writes the whole book. You can export it as one file, with a blank line, a line of dashes or three asterisks between chapters. Or you can export one file per chapter, numbered in reading order, inside a folder. Every chapter's header has a button that exports just that chapter. Another button copies it to the clipboard as the same text. Files go to `Snowflake Export` beside the projects, unless you name another folder in the settings. They get a `.txt` or `.md` extension, with the same text inside either way. Each line of prose becomes a paragraph, indented or not as you choose. You also choose whether to keep or drop the blank lines between paragraphs. If a file is already at the destination, it's only overwritten after you agree.
+**Plain-text export** writes the manuscript into the Vault with every Markdown and Obsidian mark taken out. Headings keep just their words, and links just their text. Comments and block IDs are removed, and HTML entities become the characters they stand for. The export button in the toolbar writes the whole book. You can export it as one file, with a blank line, a line of dashes or three asterisks between chapters. Or you can export one file per chapter, numbered in reading order, inside a folder. Every chapter's header has a button that exports just that chapter. Another button copies it to the clipboard as the same text. The toolbar above a note in a normal tab exports that note the same way. A single note goes into a subfolder named after its project, and a note outside any project goes straight into the export folder. Files go to `Snowflake Export` beside the projects, unless you name another folder in the settings. They get a `.txt` or `.md` extension, with the same text inside either way. Each line of prose becomes a paragraph, indented or not as you choose. You also choose whether to keep or drop the blank lines between paragraphs. If a file is already at the destination, it's only overwritten after you agree.
 
 **All actions stay quick when the book is long (under 20ms on average).** This was measured on a vault of more than 9000 notes. Two projects had 1500 chapters each, and every chapter had more than 2000 English words or Chinese characters. A third project had 300 characters, 3000 scenes and another 1500 chapters.
 
@@ -276,7 +281,7 @@ Writing is easier to keep up when you can see it. The dashboard's **Data statist
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_en.png"><img src="assets/screenshots/entity_tracking_2_en.png" width="100%" alt="A chapter in the manuscript stream with a character name marked in the accent color within the prose" /></a></p>
 
-**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose.
+**The same reading marks up the manuscript itself.** A name written as plain text is marked in place, and a name already written as a link is marked as a link. Right-click a plain name to turn it into a link, or to leave it alone here, in this chapter, or anywhere it appears. The switches are in the toolbar's highlight menu. For entities, you can mark the first mention, unlinked mentions or all mentions. There's also one switch each for sensitive words, dialogue and your own **custom highlight rules**. A rule can be literal text or a regular expression, drawn in the color and decoration you choose. Notes in your projects that use the typography get the same marks and the same menus.
 
 <a id="installation"></a>
 
@@ -360,6 +365,8 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Open worldbuilding base | Open the Bases view of a worldbuilding kind you choose. |
 | Open writing session sidebar | Open today's writing numbers in their own sidebar. |
 | Pause or resume the writing session | Pause the running session's clock, or start it again. |
+| Search and replace in the manuscript | Open the manuscript stream's search bar with its replace row. |
+| Search the manuscript | Open the search bar above the manuscript stream, to find words anywhere in the manuscript. |
 | Set focus mode to off / on / deep / solo | Set how far focus mode reaches, with one command for each level. |
 | Split manuscript note at the cursor | Split the note open for writing in two at the caret. |
 | Start a countdown writing session | Begin a session that ends when its clock runs out. |
@@ -374,7 +381,7 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Toggle derived tasks on the task board | Show or hide the cards the plugin derives from your writing. |
 | Toggle freeform mode | Hide the ten steps and their progress, or bring them back. |
 | Toggle immersive mode in the file explorer | Show only the project you're working on, or every project again. |
-| Toggle managed boundary protection | Temporarily turn protection for managed section markers on or off. |
+| Toggle managed boundary protection | Turn protection for section markers on or off in every note. |
 | Toggle note paths in the manuscript | Show or hide where each manuscript note is stored. |
 | Toggle opening a form for new notes from a field | Choose whether a note created from a picker field opens its form first. |
 | Toggle opening notes beside the dashboard | Choose between a companion pane and regular tabs. |
@@ -385,12 +392,13 @@ Updating the plugin never rewrites your notes on its own. The files the plugin g
 | Toggle scrollbars | Hide every scrollbar in Obsidian, or show them again. |
 | Toggle the actions column in tables | Show or hide each row's actions column. |
 | Toggle the dashboard rail | Collapse the rail beside the dashboard so only its marks show, or expand it again. |
+| Toggle tooltips | Hide every tooltip in Obsidian, or show them again. |
 | Toggle typewriter scrolling | Keep the line you are writing at the middle of the page. |
 | Toggle word counts in the file explorer | Show or hide the word count beside each note and folder. |
 | Toggle writing count outside sessions | Start or stop recording the words you write while no session is running. |
 | Update notes in older format | Update every note written by an older release. |
 
-Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. The two commands that copy or export the current note use the note at the center of the page.
+Commands that act on the manuscript are available only while a manuscript stream is the current view. **Split manuscript note at the cursor** also needs a note in the stream to be open for writing. **Toggle typewriter scrolling** works in the notes under the typography scope as well, and the focus mode commands work in your projects' notes. The two commands that copy or export the current note use the note at the center of the page.
 
 <a id="settings"></a>
 
@@ -404,12 +412,13 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Freeform mode | Off | Hide the ten steps and their progress. Characters and scenes join the worldbuilding list. |
 | Open notes beside the dashboard | On | Reuse one companion pane for the notes you open. |
 | Reduce animations | Off | Replace animations with static visuals. |
-| Hide scrollbar | On | Hide every scrollbar in Obsidian. Scrolling still works. |
-| Protect managed boundaries | On | Prevent accidental edits to synchronization markers. |
+| Hide scrollbars | On | Hide every scrollbar in Obsidian. Scrolling still works. |
+| Hide tooltips | On | Hide every tooltip in Obsidian except the warning on section markers. |
+| Protect managed boundaries | On | Prevent accidental edits to synchronization markers. Turning it off asks you first. |
 | Show progress status in tables | Off | Show each note's progress status under its name in the member tables. |
 | Show the actions column in tables | On | Keep each row's actions visible beside it. |
 | New notes from a field | Open its form | Choose whether a note created from a picker field opens its form first or is created directly. |
-| Scope | Snowflake projects | Apply the file explorer enhancement to Snowflake projects or to the whole Vault. |
+| Enhancement scope | Snowflake projects | Apply the file explorer enhancement to Snowflake projects or to the whole Vault, or turn it off. |
 | Immersive mode | On | Show only the project you're working on in the file explorer. |
 | Hide numbering prefixes | On | Show `50_Manuscript` as Manuscript without renaming anything. |
 | Hide plugin-managed files | On | Hide the JSON files and sticky notes the plugin keeps. |
@@ -418,6 +427,19 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Additional folders to hide | None | More folders to hide, one name or path per line, with `*` as a wildcard. |
 | Show word counts on notes | On | Show each note's word count, using your writing count rules. |
 | Show word counts on folders | On | Show each folder's total word count, subfolders included. |
+| Typography scope | Snowflake projects | Apply the typography to the manuscript stream alone, to Snowflake projects, or to the whole Vault. |
+| Font family | Theme default | Choose the font for manuscript text. Restart Obsidian to see fonts you have just installed. |
+| Font size | Theme default | Adjust the size of manuscript text. |
+| Line height | Theme default | Adjust the spacing between lines of manuscript text. |
+| Content width | Theme default | Set the maximum width of manuscript content. |
+| Paragraph spacing | 1 line | Adjust the space between paragraphs. |
+| First-line indent | None | Set the indent at the start of each paragraph. |
+| Text alignment | Justified | Choose how paragraph text is aligned. |
+| Grid lines | None | Show guide lines behind manuscript content. |
+| Automatic hyphenation | Off | Break long words at the end of a line automatically. |
+| Background scope | Typography scope | Apply the background color to the typography scope, to the Snowflake interface, or to the whole app. |
+| Background in light mode | Theme default | Choose the manuscript background color in light mode. |
+| Background in dark mode | Theme default | Choose the manuscript background color in dark mode. |
 | Notes to keep loaded | 5 | Keep this many manuscript notes loaded on each side of the one you are reading. |
 | Show note paths | On | Show where each manuscript note is stored, just above the note. |
 | Show order numbers | Off | Show the stored position that decides where a note comes in the reading order. |
@@ -431,17 +453,6 @@ Commands that act on the manuscript are available only while a manuscript stream
 | Milestone mode | Per chapter | Count across the whole manuscript, or start the count again in each note. |
 | Milestone interval | 500 | The number of words between milestones. |
 | Numbering style | Off | Number each new chapter by counting on from the one before it. Choose Chinese (第一章), Chinese with Arabic numerals (第 1 章), or English (Chapter 1). You can also write rules of your own as a simplified format or a regular expression. |
-| Font family | Theme default | Choose the font for manuscript text. Restart Obsidian to see fonts you have just installed. |
-| Font size | Theme default | Adjust the size of manuscript text. |
-| Line height | Theme default | Adjust the spacing between lines of manuscript text. |
-| Content width | Theme default | Set the maximum width of manuscript content. |
-| Paragraph spacing | 1 line | Adjust the space between paragraphs. |
-| First-line indent | None | Set the indent at the start of each paragraph. |
-| Text alignment | Justified | Choose how paragraph text is aligned. |
-| Automatic hyphenation | Off | Break long words at the end of a line automatically. |
-| Background in light mode | Theme default | Choose the manuscript background color in light mode. |
-| Background in dark mode | Theme default | Choose the manuscript background color in dark mode. |
-| Grid lines | None | Show guide lines behind manuscript content. |
 | Word count rule | MS Word | Choose which tool the word count matches. |
 | Count headings | Skip the first H1 only | Choose whether heading lines count as writing. |
 | Focus timer type | Pomodoro | The timer a new session starts with. |
@@ -553,7 +564,7 @@ Writing sessions are recorded per device, so two machines never write to the sam
 
 Archiving a project moves its whole folder into `Snowflake Archive`. That folder is next to your projects, not inside any of them. Nothing in the notes changes. A project keeps every reference inside its own folder, so no link breaks while it is archived. The project manager lists what is in the archive and can restore any of it. If its old name has been taken in the meantime, the project comes back under a free name. Moving a folder in or out by hand works the same way, so the archive is a place, not a mechanism.
 
-The numbered folders keep a project in order, but they make Obsidian's file explorer busy to read. Four buttons at the top of the explorer help. The first hides the plugin's own files and the numbering prefixes, so `50_Manuscript` shows as Manuscript. The second, immersive mode, shows only the project you're working on. The third lets you drag files and folders into your own order. The fourth shows word counts. Nothing is renamed or moved on disk, and the rename box always shows the real name. Your order is kept in the plugin's settings and follows renames and moves.
+The numbered folders keep a project in order, but they make Obsidian's file explorer busy to read. Four buttons at the top of the explorer help. The first hides the plugin's own files and the numbering prefixes, so `50_Manuscript` shows as Manuscript. The second, immersive mode, shows only the project you're working on. The third lets you drag files and folders into your own order. The fourth shows word counts. Nothing is renamed or moved on disk, and the rename box always shows the real name. Your order is kept in the plugin's settings and follows renames and moves. To keep the explorer as Obsidian shows it, set **Enhancement scope** to Off.
 
 Exporting writes plain-text files into `Snowflake Export`, a folder next to your projects like the archive. You can pick another folder in the settings, as long as it is outside the project. If a note has left the manuscript since an earlier export, its exported file is never deleted. A workspace exported as an Obsidian Canvas is the one exception. Its file goes next to the workspace's own file inside the project, as the layout above shows.
 
@@ -567,7 +578,7 @@ Your writing remains editable here.
 <!-- snowflake:section:one-sentence-summary:end -->
 ```
 
-These HTML comments are structural markers, not story content. Boundary protection is on by default, to stop accidental edits to the marker lines. The text inside the pair stays in sync with the dashboard. Markdown outside it stays under your control, and the plugin does not replace it. If markers are missing, duplicated, reversed, or overlapping, the plugin reports the problem instead of making an unsafe write.
+These HTML comments are structural markers, not story content. Boundary protection is on by default, to stop accidental edits to the marker lines. To change the markers in one note, right-click in it and choose **Unlock section markers in this note**. They lock again when you close the note. The text inside the pair stays in sync with the dashboard. Markdown outside it stays under your control, and the plugin does not replace it. If markers are missing, duplicated, reversed, or overlapping, the plugin reports the problem instead of making an unsafe write.
 
 <a id="roadmap"></a>
 
@@ -610,6 +621,14 @@ These HTML comments are structural markers, not story content. Boundary protecti
 - [x] Export visualization workspace as Obsidian Canvas (0.23.0)
 - [x] File explorer enhancement (0.24.0)
 - [x] Hidden scrollbars (0.24.0)
+- [x] Typography beyond the manuscript stream (0.25.0)
+- [x] Hidden tooltips (0.25.0)
+- [x] Search and replace in the manuscript stream (0.25.0)
+- [x] Richer right-click menu (0.25.0)
+- [ ] Gallery and character cards: pictures for characters, scenes and worldbuilding, linked in note properties, and character cards that show them in a new character view on the corkboard, beside the scene view, and on the freeform canvas
+- [ ] Graph view enhancement: different views of a project, such as how scenes connect to the manuscript, and relationships shown as labels on the lines between entities instead of as nodes of their own
+- [ ] Import and series: a project can import any part of a story's design from another Snowflake project, and books in the same series can share anything
+- [ ] Better display on tablets and phones
 
 <a id="development"></a>
 
@@ -757,12 +776,13 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 项目归档 | 把暂时写完的项目收起来，需要时再取回。 |
 | 故事结构 | 每个场景都是一张卡片，按叙事顺序排列，可以拖动调整次序，也能直接在卡片上编辑。同一批场景还能放上时间线，看清它们何时发生。也可以排进节拍表的幕与节拍，或者和项目里的其他内容一起铺在自由画布上。三者都可以导出为 Obsidian 白板文件。 |
 | 正文流 | 把整部正文当作连续的一页来读写，每一章仍是独立的笔记。 |
-| 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。 |
+| 自定义排版 | 设置字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与连字符，还有背景底色和可以照着写的网格线。这套版面可以只用在正文流，也可以用到雪花项目或整个 Vault 的笔记上。 |
 | 打字机滚动 | 让正在写的一行保持在页面中部。 |
 | 专注模式 | 分四档淡化正在写的段落以外的一切。 |
+| 查找和替换 | 在整部正文里查找，可以区分大小写、全字匹配或使用正则表达式，并替换其中一处或全部。 |
 | 字数里程碑 | 每隔若干字就在页边标出字数，可以在整部正文中连续累计，也可以按章节重新计数。 |
 | 自动章节编号 | 新章节接着前一章编号，样式可选中文、英文或自定义规则，后面的章节会随之顺延。 |
-| 纯文本导出 | 把整部正文或单独一章导出为 Vault 里的纯文本文件，也可以把一章去掉所有标记后复制到剪贴板。 |
+| 纯文本导出 | 把整部正文、单独一章、任意一篇笔记或选中的文字导出为 Vault 里的纯文本文件，也可以把一章去掉所有标记后复制到剪贴板。 |
 | 写作时段 | 为每次写作计时，设定每日目标，回看字数与时间都花在了哪里。 |
 | 正文分析 | 从草稿中算出阅读时间、句数和对话占比，并找出你最常用的那些词。 |
 | 实体追踪 | 追踪每个角色、地点与物品在正文中的足迹，并在原处标出对它们的提及。 |
@@ -820,7 +840,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
     <td width="50%" valign="top">
       <a href="assets/screenshots/step_06_cn.png"><img src="assets/screenshots/step_06_cn.png" width="100%" alt="第六步：长篇大纲" /></a><br />
       <strong>六、长篇大纲</strong><br />
-      <sub>在单独的笔记里，把每个情节段落扩展成长篇内容。</sub>
+      <sub>把每个情节段落扩展成完整一页的内容。</sub>
     </td>
   </tr>
   <tr>
@@ -891,17 +911,21 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 在正文流里点击任意一章，它就会变成编辑视图。转到另一章时，它又回到阅读视图。你可以<em>（一）在两章之间插入新的一章，（二）在光标处把一章拆成两章，或（三）把下一章并入这一章。</em>
 
-**打字机滚动**让正在写的那一行保持在页面中部。**专注模式**会淡化正在写的段落以外的一切，最深的一档「仅正文」会全屏只显示正文。两者在每一章的标题栏里各有一个按钮。用方向键也能让光标从一章移到下一章。
+**打字机滚动**让正在写的那一行保持在页面中部。**专注模式**会淡化正在写的段落以外的一切，最深的一档「仅正文」会全屏只显示正文。两者在工具栏里各有一个按钮。用方向键也能让光标从一章移到下一章。
+
+**查找和替换**覆盖整部正文。按 Ctrl+F（Mac 上是 Cmd+F），页面上方就会打开一个和 Obsidian 自带的一样的查找栏。它会找出每一章里的每一处匹配，正文流还没有载入的章节也不例外，按 Enter 就能跳到下一处。输入框里的按钮可以区分大小写、全字匹配，或者把查询当作正则表达式。点左侧的箭头或按 Ctrl+Alt+F，可以打开替换栏。在正在写的笔记里，替换可以撤销。全部替换要改动其他笔记时，会先请你确认，因为那些笔记会立即保存。替换修订或伏笔标记的文字时，也会先请你确认，因为标记会因此失效。
+
+**右键菜单**为选中的文字提供了更多操作，正文流、项目的笔记，以及工作台和插件对话框里的文本框都可以使用。**添加为实体**会先问要建哪一类实体，可以是角色、场景，也可以是你的任一类世界观，然后打开这一类的表单，并把选中的文字填作名称，你所在的页面保持不变。**添加为便签**会把这些文字写进一张新便签。菜单还能把选中的文字导出为纯文本，每次都写进一个新的带编号的节选文件。在笔记里还能导出整篇笔记，在正文流里还能导出整部正文。在文本框里，先选中文字再在上面点击右键，就会出现这个菜单，顶部仍有剪切、复制和粘贴。
 
 <p align="center"><a href="assets/screenshots/manuscript_typography_cn.png"><img src="assets/screenshots/manuscript_typography_cn.png" width="100%" alt="一章正文：自定义字体、带底色的纸面、两端对齐、首行缩进两字、文字后面的虚线网格，以及专注模式下只有正在写的那一段保持全黑" /></a></p>
 
-**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。
+**版面由你来定。** 字体、字号、行高、正文宽度、段间距、首行缩进、对齐方式与自动连字符都可以设置。浅色和深色模式的背景底色可以分别指定，另外还有可以照着写的网格线。阅读和写作共用同一套排版，所以无论你是在读一章还是在写一章，版面都一样。工具栏里的排版按钮，会在正文上方直接打开同样的这些控件。这套版面也可以用在普通标签页里打开的笔记上。在**排版范围**里，可以只用于正文流，也可以用到雪花项目或整个 Vault 的每篇笔记上。默认是雪花项目。这些笔记上方也会出现同一条工具栏，其中的导出按钮只导出这篇笔记。项目里的笔记也能用专注模式，这时「仅正文」只显示这一篇笔记。工作台里的多行文本框也会跟随对齐方式和首行缩进的设置，插件对话框里的则跟随对齐方式。这些页面上方的标签页也会用上背景颜色。在**背景范围**里，背景颜色还可以铺满整个雪花界面，或者整个 Obsidian。
 
 **字数里程碑**会在页边标出累计字数，就标在达到每个间隔的那一行旁边，默认每五百字一处。它和状态栏使用同一套字数规则。可以按阅读顺序在整部正文中连续累计，也可以每章重新计数。里程碑会跟着你的写作走。一章变长时，它的里程碑随之移动。在整部正文模式下，后面每一章的里程碑也会一起移动。在设置的**字数里程碑**一节中开启。
 
 **自动章节编号**会给新章节接上前一章之后的编号。在**自动章节编号**一节中选择样式：`第一章`、`第 1 章`或`Chapter 1`。也可以自己写一条规则，用简化格式（如`第{nnnn}章`或`Chapter {n}:`）或正则表达式都行。开启样式后，命名表单有两个字段：编号已经填好，名称由你来写。表单里还有一个开关，可以把新章节之后所有带编号的章节顺延一号。把带编号的一章并入前一章时，会给出相反的选项：把后面的章节各减一号，让编号重新连续。规则读不出编号的章节保持不动，你改写过标题的章节也会保留你的标题。
 
-**纯文本导出**会把正文写入 Vault，并去掉所有 Markdown 与 Obsidian 标记。标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原成它所代表的字符。工具栏的导出按钮会导出整部正文。可以合成一个文件，章节之间用空行、一行短横线或三个星号分隔。也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有两个按钮：一个只导出这一章，一个把同样的文本复制到剪贴板。文件默认保存到项目旁的 `Snowflake Export`，除非你在设置里另外指定了文件夹。扩展名为 `.txt` 或 `.md`，两者内容相同。每一行文字都是一个段落，是否缩进由你选择，段落之间的空行也由你决定保留还是去掉。目标位置已有文件时，只有在你同意后才会覆盖。
+**纯文本导出**会把正文写入 Vault，并去掉所有 Markdown 与 Obsidian 标记。标题只留文字，链接只留显示文本，注释与块 ID 一并去除，HTML 实体还原成它所代表的字符。工具栏的导出按钮会导出整部正文。可以合成一个文件，章节之间用空行、一行短横线或三个星号分隔。也可以每章一个文件，放在按阅读顺序编号的文件夹里。每一章的标题栏各有两个按钮：一个只导出这一章，一个把同样的文本复制到剪贴板。普通标签页里笔记上方的工具栏，也能用同样的方式导出这篇笔记。单独导出的笔记会放进导出文件夹里以项目命名的子文件夹，不属于任何项目的笔记则直接放进导出文件夹。文件默认保存到项目旁的 `Snowflake Export`，除非你在设置里另外指定了文件夹。扩展名为 `.txt` 或 `.md`，两者内容相同。每一行文字都是一个段落，是否缩进由你选择，段落之间的空行也由你决定保留还是去掉。目标位置已有文件时，只有在你同意后才会覆盖。
 
 **书籍再长，各项操作也依然利落，平均不到 20 毫秒。** 实测环境是一个超过 9000 篇笔记的库。其中两个项目各有 1500 章，每章都在 2000 个英文单词或汉字以上。另一个项目有 300 个角色、3000 个场景，以及另外 1500 章。
 
@@ -945,7 +969,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 
 <p align="center"><a href="assets/screenshots/entity_tracking_2_cn.png"><img src="assets/screenshots/entity_tracking_2_cn.png" width="100%" alt="正文流中的一章，角色名在正文原处以强调色标出" /></a></p>
 
-**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。
+**同样的追踪结果也会直接给正文着色。** 用纯文本写下的名字会在原处标出，已经写成链接的名字则按链接本身的样式标出。右键可以把纯文本的那一处转成链接，也可以忽略它：只忽略这一处、在本章忽略，或在它出现的所有地方忽略。工具栏的高亮菜单里有这些开关。实体的高亮可以选首次提及、未链接的提及或全部提及。敏感词、对话和你自定义的**高亮规则**也各有一个开关。规则可以用文本或正则表达式来写，颜色与装饰由你来选。用上排版的项目笔记也会这样标出，菜单也一样。
 
 ## 安装
 
@@ -1017,9 +1041,11 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在这一篇之后插入正文笔记 | 在你正在读的这一篇后面新增一篇。 |
 | 在光标处拆分正文笔记 | 从光标处把正在写的笔记一分为二。 |
 | 退出当前正文笔记的编辑 | 让页面正中的那一篇退出写作状态，回到渲染后的样子。 |
-| 导出正文为纯文本 | 把整部正文导出为纯文本，写进导出文件夹。 |
+| 将全篇正文导出为纯文本 | 把整部正文导出为纯文本，写进导出文件夹。 |
 | 将当前正文笔记导出为纯文本 | 把页面正中的这一篇导出为纯文本，写进导出文件夹。 |
 | 复制当前正文笔记为纯文本 | 去掉页面正中这一篇的所有标记，再放到剪贴板。 |
+| 在正文中查找 | 打开正文流上方的查找栏，在整部正文里查找。 |
+| 在正文中查找并替换 | 打开带替换栏的查找栏，在整部正文里替换。 |
 | 按选项开始写作时段 | 先选好计时方式、时长和写作阶段，再开始。 |
 | 开始正计时写作时段 | 开始一个时段，直到你停止才结束。 |
 | 开始倒计时写作时段 | 开始一个时段，倒计时走完就结束。 |
@@ -1038,7 +1064,7 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换自定义高亮 | 让你自己的高亮规则在正文中生效，或者暂时收起来。 |
 | 切换正文中的笔记路径 | 显示或隐藏每篇正文笔记的存放位置。 |
 | 切换正文中的顺序编号 | 显示或隐藏每篇正文笔记为自己记下的位置。 |
-| 切换托管区段边界保护 | 临时开启或关闭同步标记的编辑保护。 |
+| 切换托管区段边界保护 | 在所有笔记里开启或关闭区段标记的编辑保护。 |
 | 切换在工作台旁打开笔记 | 在固定分栏和普通标签页之间选择。 |
 | 切换工作台导航栏 | 把工作台旁的导航栏收成一列图标，或者重新展开。 |
 | 切换从字段新建笔记时是否打开表单 | 从字段新建笔记时，选择先打开表单还是直接创建。 |
@@ -1047,13 +1073,14 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 切换任务看板中的派生任务 | 显示或隐藏插件根据你的写作派生出的卡片。 |
 | 切换减少动画模式 | 在动画效果和减少动态效果之间切换。 |
 | 切换滚动条 | 隐藏 Obsidian 里的所有滚动条，或者重新显示。 |
+| 切换工具提示 | 隐藏 Obsidian 里的所有工具提示，或者重新显示。 |
 | 切换自由模式 | 隐藏十个步骤和进度，或者让它们重新显示。 |
 | 切换文件列表中的插件文件 | 隐藏或显示插件自己的文件和编号前缀。 |
 | 切换文件列表的沉浸模式 | 只显示你正在写的项目，或者重新显示全部项目。 |
 | 切换文件列表的排列模式 | 开始或停止把文件和文件夹拖成自己的顺序。 |
 | 切换文件列表中的字数 | 显示或隐藏每篇笔记和每个文件夹旁的字数。 |
 
-与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。两条针对当前笔记的命令，作用于页面正中的那一篇。
+与正文相关的命令，只有当前视图是正文流时才能使用。其中**在光标处拆分正文笔记**还要求有一篇笔记正处于写作状态。**切换打字机滚动**在排版范围内的笔记里也能使用。设置专注模式的四条命令，在项目里的笔记中也能使用。两条针对当前笔记的命令，作用于页面正中的那一篇。
 
 ## 设置
 
@@ -1066,11 +1093,12 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 在工作台旁打开笔记 | 开启 | 长篇笔记都在工作台旁的同一个固定分栏里打开。 |
 | 减少动画 | 关闭 | 用静态的视觉效果代替动画。 |
 | 隐藏滚动条 | 开启 | 隐藏 Obsidian 里的所有滚动条，滚动不受影响。 |
-| 保护托管区段边界 | 开启 | 防止同步标记被意外修改。 |
+| 隐藏工具提示 | 开启 | 隐藏 Obsidian 里的所有工具提示，区段标记上的警告除外。 |
+| 保护托管区段边界 | 开启 | 防止同步标记被意外修改。关闭前会先请你确认。 |
 | 在表格中显示进度状态 | 关闭 | 在成员表格中，把每条笔记的进度状态显示在名称下方。 |
 | 在表格中显示操作列 | 开启 | 每一行的操作按钮都始终显示。 |
 | 从字段新建笔记 | 打开它的表单 | 从字段新建笔记时，选择先打开表单还是直接创建。 |
-| 作用范围 | 雪花项目 | 文件列表增强应用于雪花项目，或者整个 Vault。 |
+| 增强范围 | 雪花项目 | 文件列表增强应用于雪花项目或整个 Vault，也可以关闭。 |
 | 沉浸模式 | 开启 | 文件列表里只显示你正在写的项目。 |
 | 隐藏编号前缀 | 开启 | 把 `50_正文` 显示为 正文，不会重命名任何东西。 |
 | 隐藏插件管理的文件 | 开启 | 隐藏插件存放的 JSON 文件和便签。 |
@@ -1079,6 +1107,19 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 额外隐藏的文件夹 | 无 | 还要隐藏的文件夹，每行一个名称或路径，`*` 为通配符。 |
 | 在笔记上显示字数 | 开启 | 按你的字数规则显示每篇笔记的字数。 |
 | 在文件夹上显示字数 | 开启 | 显示每个文件夹的总字数，包括子文件夹。 |
+| 排版范围 | 雪花项目 | 排版只用于正文流，或者也用于雪花项目或整个 Vault。 |
+| 字体 | 跟随主题 | 选择正文使用的字体。新装的字体要重启 Obsidian 后才能看到。 |
+| 字号 | 跟随主题 | 调整正文文字的大小。 |
+| 行高 | 跟随主题 | 调整正文行与行之间的间距。 |
+| 正文宽度 | 跟随主题 | 设置正文内容的最大宽度。 |
+| 段间距 | 1 行 | 调整段落之间的间距。 |
+| 首行缩进 | 无 | 设置每段开头的缩进。 |
+| 文本对齐 | 两端对齐 | 选择段落文字的对齐方式。 |
+| 网格线 | 无 | 在正文内容后面显示辅助线。 |
+| 自动连字符 | 关闭 | 在行末自动断开长单词。 |
+| 背景范围 | 排版范围 | 背景颜色用于排版范围，或者用于雪花界面或整个 Obsidian。 |
+| 浅色模式背景 | 跟随主题 | 选择浅色模式下正文的背景颜色。 |
+| 深色模式背景 | 跟随主题 | 选择深色模式下正文的背景颜色。 |
 | 保持载入的笔记数 | 5 | 在你正在读的笔记前后，各保持载入这么多篇正文笔记。 |
 | 显示笔记路径 | 开启 | 在正文笔记上方显示它的存放位置。 |
 | 显示顺序编号 | 关闭 | 显示笔记记下的编号，这个编号决定它在正文中的阅读位置。 |
@@ -1092,17 +1133,6 @@ Randy Ingermanson 讲雪花写作法的书有中文版[《雪花写作法：10�
 | 里程碑模式 | 按章节 | 在整部正文中连续累计，或者每篇笔记重新计数。 |
 | 里程碑间隔 | 500 | 相邻两个里程碑之间的字数。 |
 | 编号样式 | 关闭 | 新章节接着前一章的编号往下编。可选中文（第一章）、中文加阿拉伯数字（第 1 章）或英文（Chapter 1）。也可以用简化格式或正则表达式写自定义规则。 |
-| 字体 | 跟随主题 | 选择正文使用的字体。新装的字体要重启 Obsidian 后才能看到。 |
-| 字号 | 跟随主题 | 调整正文文字的大小。 |
-| 行高 | 跟随主题 | 调整正文行与行之间的间距。 |
-| 正文宽度 | 跟随主题 | 设置正文内容的最大宽度。 |
-| 段间距 | 1 行 | 调整段落之间的间距。 |
-| 首行缩进 | 无 | 设置每段开头的缩进。 |
-| 文本对齐 | 两端对齐 | 选择段落文字的对齐方式。 |
-| 自动连字符 | 关闭 | 在行末自动断开长单词。 |
-| 浅色模式背景 | 跟随主题 | 选择浅色模式下正文的背景颜色。 |
-| 深色模式背景 | 跟随主题 | 选择深色模式下正文的背景颜色。 |
-| 网格线 | 无 | 在正文内容后面显示辅助线。 |
 | 字数统计规则 | 微软 Word | 按哪一种工具的规则统计字数。 |
 | 标题计入字数 | 仅忽略第一个一级标题 | 标题行算不算进写作字数。 |
 | 专注计时方式 | 番茄钟 | 新时段默认使用哪种计时方式。 |
@@ -1210,7 +1240,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 
 归档一个项目，会把它的整个文件夹移进 `Snowflake Archive`。这个文件夹和各个项目放在同一层，不在任何项目里面。笔记本身不会有任何改动。项目的所有引用都在它自己的文件夹内，所以归档期间不会留下任何断链。项目管理器会列出归档里的项目，你随时可以取回。如果原来的名称已被占用，会给它换一个还没被用过的名称。手动把文件夹移进或移出，效果完全一样。归档只是一个存放位置，背后没有别的机制。
 
-编号文件夹让项目井然有序，但也让 Obsidian 的文件列表显得杂乱。文件列表顶部的四个按钮可以帮上忙。第一个隐藏插件自己的文件和编号前缀，`50_正文` 就显示为 正文。第二个是沉浸模式，只显示你正在写的项目。第三个可以把文件和文件夹拖成自己的顺序。第四个显示字数。磁盘上的文件不会被重命名或移动，重命名框里显示的始终是原名。你排好的顺序记在插件设置里，重命名和移动后依然有效。
+编号文件夹让项目井然有序，但也让 Obsidian 的文件列表显得杂乱。文件列表顶部的四个按钮可以帮上忙。第一个隐藏插件自己的文件和编号前缀，`50_正文` 就显示为 正文。第二个是沉浸模式，只显示你正在写的项目。第三个可以把文件和文件夹拖成自己的顺序。第四个显示字数。磁盘上的文件不会被重命名或移动，重命名框里显示的始终是原名。你排好的顺序记在插件设置里，重命名和移动后依然有效。想让文件列表保持 Obsidian 原本的样子，把**增强范围**设为关闭即可。
 
 导出会把纯文本文件写进 `Snowflake Export`。它和归档文件夹一样，与各个项目放在同一层。如果你在设置里另指定了一个项目之外的文件夹，就会写到那里。以前导出过、后来又从正文中移走的笔记，它导出的文件不会被删除。导出为 Obsidian 白板是唯一的例外，它的文件会放在项目内工作区自己的文件旁边，如上面的目录所示。
 
@@ -1224,7 +1254,7 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 <!-- snowflake:section:one-sentence-summary:end -->
 ```
 
-这些 HTML 注释是结构标记，不是正文内容。边界保护默认开启，防止标记行被意外修改。标记之间的内容会和工作台同步。标记之外的 Markdown 始终由你自己管理，插件不会替换。如果标记缺失、重复、顺序颠倒或互相重叠，插件会报告问题，并停止不安全的写入。
+这些 HTML 注释是结构标记，不是正文内容。边界保护默认开启，防止标记行被意外修改。如果要修改某篇笔记里的标记，在笔记中点击右键，选择**解锁这篇笔记的区段标记**，关闭笔记后标记会自动重新锁定。标记之间的内容会和工作台同步。标记之外的 Markdown 始终由你自己管理，插件不会替换。如果标记缺失、重复、顺序颠倒或互相重叠，插件会报告问题，并停止不安全的写入。
 
 ## 路线图
 
@@ -1265,6 +1295,14 @@ Obsidian 雪花写作法采用本地优先的设计。项目文件和插件设�
 - [x] 将可视化工作区导出为 Obsidian Canvas (0.23.0)
 - [x] 文件列表增强 (0.24.0)
 - [x] 隐藏滚动条 (0.24.0)
+- [x] 正文流之外的排版 (0.25.0)
+- [x] 隐藏工具提示 (0.25.0)
+- [x] 正文流中的查找和替换 (0.25.0)
+- [x] 更丰富的右键菜单 (0.25.0)
+- [ ] 图库与角色卡片：角色、场景和世界观的图片链接记在笔记属性里，场景看板改名为卡片看板，新增与场景视图并列的角色视图，角色卡片能显示图库里的图片，也能用在自由画布上
+- [ ] 关系图增强：提供多种视图，比如场景与正文之间的联系，实体之间的关系显示为连线上的标签，不再作为单独的节点
+- [ ] 导入与系列：项目可以从其他雪花项目导入任何小说设计内容，也支持系列作品，同一系列的作品可以共享任何内容
+- [ ] 改进平板和手机上的显示
 
 ## 开发
 
