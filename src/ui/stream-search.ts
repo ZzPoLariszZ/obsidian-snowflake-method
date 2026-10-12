@@ -409,11 +409,19 @@ export class StreamSearch {
 	/**
 	 * A note's text changed under typing: its matches are found again once
 	 * the typing pauses, and the bar keeps to the match it stood on, wherever
-	 * the typing has carried it. Nothing is brought onto the screen: the
+	 * the typing has carried it. The edit's own map of positions carries the
+	 * match at once, so words taken out ahead of it leave the bar on it rather
+	 * than on the next one along. Nothing is brought onto the screen: the
 	 * author is writing, not searching.
 	 */
-	noteEdited(path: string): void {
+	noteEdited(path: string, map?: (pos: number, assoc: -1 | 1) => number): void {
 		if (!this.isActive()) return;
+		const current = this.current;
+		if (map !== undefined && current !== null && current.path === path) {
+			// Words put in at either end stay outside the match.
+			const from = map(current.from, 1);
+			this.current = { path, from, to: Math.max(from, map(current.to, -1)) };
+		}
 		const win = this.host.win;
 		const timer = this.editTimers.get(path);
 		if (timer !== undefined) win.clearTimeout(timer);

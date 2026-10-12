@@ -125,7 +125,12 @@ export interface WikilinkTarget {
 export type SegmentEditorCommandId = EditorCommandId;
 
 export interface SegmentEditorHooks {
-	onChange(path: string, body: string): void;
+	/**
+	 * The note's text changed, with where each position of the text before
+	 * the change now stands: `assoc` says which side of words put in at that
+	 * very place a position keeps to.
+	 */
+	onChange(path: string, body: string, map: (pos: number, assoc: -1 | 1) => number): void;
 	onBlur(path: string): void;
 	/**
 	 * Whether Enter puts the paragraph break Markdown needs (and Shift+Enter
@@ -1156,7 +1161,9 @@ export class PublicCodeMirrorBackend implements SegmentEditorBackend {
 					(transaction) => transaction.annotation(FROM_ELSEWHERE) === true,
 				);
 				if (update.docChanged && !handed) {
-					hooks.onChange(target.path, update.state.doc.toString());
+					hooks.onChange(target.path, update.state.doc.toString(), (pos, assoc) =>
+						update.changes.mapPos(pos, assoc),
+					);
 				}
 				if (update.focusChanged && !update.view.hasFocus) {
 					hooks.onBlur(target.path);

@@ -4427,14 +4427,14 @@ export class SnowflakeManuscriptView extends ItemView {
 			},
 			entry.bodyEl,
 			{
-				onChange: (changed, body) => {
+				onChange: (changed, body, map) => {
 					const target = this.mounted.get(changed);
 					if (target === undefined) return;
 					target.pending = body;
 					this.scheduleSave();
 					this.host.manuscriptWritingChanged();
 					this.host.manuscriptSegmentEdited(changed, body);
-					this.search.noteEdited(changed);
+					this.search.noteEdited(changed, map);
 				},
 				onSelectionChange: (inPath, selectedText) => {
 					if (inPath !== this.editingPath) return;

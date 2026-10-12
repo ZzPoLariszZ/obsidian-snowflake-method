@@ -325,6 +325,20 @@ describe('StreamSearch', () => {
 		expect(record.paints[record.paints.length - 1]).toEqual({ path: 'one.md', current: 0 });
 	});
 
+	it('keeps to its match through words taken out ahead of it, and replaces that one', async () => {
+		const { search, write, texts } = manuscript({ 'one.md': 'ash tree ash bush ash leaf' }, { held: ['one.md'] });
+		await search.setQuery('ash', plain);
+		await search.step(1);
+		expect(search.currentMatch()).toEqual({ path: 'one.md', from: 9, to: 12 });
+		// "tree " deleted: the editor says where every position went.
+		write('one.md', 'ash ash bush ash leaf');
+		search.noteEdited('one.md', (pos) => (pos <= 4 ? pos : pos >= 9 ? pos - 5 : 4));
+		vi.advanceTimersByTime(500);
+		expect(search.currentMatch()).toEqual({ path: 'one.md', from: 4, to: 7 });
+		await search.replaceCurrent('oak');
+		expect(texts.get('one.md')).toBe('ash oak bush ash leaf');
+	});
+
 	it('settles its match before drawing a note a refresh found changed', async () => {
 		const { search, write, record } = manuscript(book);
 		await search.setQuery('ash', plain);
